@@ -8,9 +8,11 @@
 
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { signOutAndroidCloud } from "../android-cloud/android-cloud-auth";
 import { client } from "../api";
 import { signOutFromSsoBridgedHost } from "../cloud/sso-bridge/sso-bridge";
 import {
+  clearPersistedActiveServer,
   loadPersistedActiveServer,
   loadPersistedFirstRunComplete,
   savePersistedActiveServer,
@@ -22,8 +24,38 @@ const getCloudStatusMock = vi.hoisted(() => vi.fn());
 const getCloudCreditsMock = vi.hoisted(() => vi.fn());
 const cloudDisconnectMock = vi.hoisted(() => vi.fn());
 const signOutFromSsoBridgedHostMock = vi.hoisted(() => vi.fn());
+const signOutAndroidCloudMock = vi.hoisted(() => vi.fn());
+const nativePlatformState = vi.hoisted(() => ({ enabled: false }));
 const isElizaCloudRuntimeLockedMock = vi.hoisted(() => vi.fn());
 const isAppModeHostMock = vi.hoisted(() => vi.fn());
+const clearManagedCloudAccountBindingMock = vi.hoisted(() => vi.fn());
+
+vi.mock("./shared-cloud-account-binding", () => ({
+  clearManagedCloudAccountBinding: clearManagedCloudAccountBindingMock,
+}));
+
+vi.mock("@capacitor/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@capacitor/core")>();
+  return {
+    ...actual,
+    Capacitor: {
+      ...actual.Capacitor,
+      isNativePlatform: () => nativePlatformState.enabled,
+    },
+  };
+});
+
+vi.mock("../platform/android-runtime", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../platform/android-runtime")>()),
+  isAndroidCloudBuild: () => true,
+}));
+
+vi.mock("../android-cloud/android-cloud-auth", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../android-cloud/android-cloud-auth")
+  >()),
+  signOutAndroidCloud: signOutAndroidCloudMock,
+}));
 
 vi.mock("../api", () => ({
   client: {
@@ -75,6 +107,11 @@ describe("useCloudState — Cloud account sign-out", () => {
     });
     cloudDisconnectMock.mockResolvedValue(undefined);
     signOutFromSsoBridgedHostMock.mockResolvedValue(undefined);
+    signOutAndroidCloudMock.mockResolvedValue(undefined);
+    clearManagedCloudAccountBindingMock.mockImplementation(async () => {
+      clearPersistedActiveServer();
+    });
+    nativePlatformState.enabled = false;
     isElizaCloudRuntimeLockedMock.mockReturnValue(true);
     isAppModeHostMock.mockReturnValue(false);
   });
@@ -84,6 +121,7 @@ describe("useCloudState — Cloud account sign-out", () => {
   });
 
   it("clears the account session without calling the locked runtime disconnect path", async () => {
+    nativePlatformState.enabled = true;
     savePersistedActiveServer({
       id: "cloud:previous-account-agent",
       kind: "cloud",
@@ -105,7 +143,8 @@ describe("useCloudState — Cloud account sign-out", () => {
       await result.current.handleCloudSignOut();
     });
 
-    expect(signOutFromSsoBridgedHost).toHaveBeenCalledTimes(1);
+    expect(signOutAndroidCloud).toHaveBeenCalledWith("https://eliza.app");
+    expect(signOutFromSsoBridgedHost).not.toHaveBeenCalled();
     expect(client.cloudDisconnect).not.toHaveBeenCalled();
     expect(result.current.elizaCloudConnected).toBe(false);
     expect(result.current.elizaCloudEnabled).toBe(false);

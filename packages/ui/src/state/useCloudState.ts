@@ -31,6 +31,7 @@ import {
   beginAndroidCloudSignIn,
   cancelAndroidCloudSignIn,
   navigateAndroidCloudSignInInApp,
+  signOutAndroidCloud,
   takeLatestAndroidCloudCompletion,
 } from "../android-cloud/android-cloud-auth";
 import { client } from "../api";
@@ -537,6 +538,8 @@ export function useCloudState({
   const elizaCloudLoginCompletionRef = useRef<Promise<void> | null>(null);
   /** Synchronous lock to prevent duplicate login clicks in the same tick. */
   const elizaCloudLoginBusyRef = useRef(false);
+  /** Explicit native sign-out requires the next hosted handoff to change accounts. */
+  const androidCloudAccountSwitchPendingRef = useRef(false);
   /** Tracks whether the auth-rejected notice has already been sent for the current rejection. */
   const elizaCloudAuthNoticeSentRef = useRef(false);
 
@@ -851,7 +854,9 @@ export function useCloudState({
                 onResult,
               );
           });
-          const attempt = await beginAndroidCloudSignIn(cloudApiBase);
+          const attempt = await beginAndroidCloudSignIn(cloudApiBase, {
+            switchAccount: androidCloudAccountSwitchPendingRef.current,
+          });
           attemptId = attempt.state;
           if (isAndroidLauncherBuild()) {
             if (!navigateAndroidCloudSignInInApp(attempt.browserUrl)) {
@@ -918,6 +923,7 @@ export function useCloudState({
               "Could not verify your Eliza Cloud session. Please sign in again.",
             );
           }
+          androidCloudAccountSwitchPendingRef.current = false;
         } catch (error) {
           androidLoginError = error;
           setElizaCloudLoginError(
@@ -1778,7 +1784,16 @@ export function useCloudState({
       // inherits the retired console's sign-out menu. Preserve the hardened
       // cross-origin teardown here: synchronously suppress auto-bridging,
       // revoke the server session, then scrub the local Steward session.
-      await signOutFromSsoBridgedHost();
+      const nativeAndroidCloud =
+        isAndroidCloudBuild() && Capacitor.isNativePlatform();
+      if (nativeAndroidCloud) {
+        const cloudApiBase =
+          getBootConfig().cloudApiBase ?? DEFAULT_DIRECT_CLOUD_BASE_URL;
+        await signOutAndroidCloud(cloudApiBase);
+        androidCloudAccountSwitchPendingRef.current = true;
+      } else {
+        await signOutFromSsoBridgedHost();
+      }
       // A managed agent selection is scoped to the account that proved
       // ownership. Account switching must not restore that target under the
       // next account or strand the cloud-only app in backend-unreachable.

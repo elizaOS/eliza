@@ -962,6 +962,43 @@ export default function StewardLoginSection() {
 
   useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
+    if (searchParams.get("switchAccount") !== "1") return;
+
+    setSessionRecoveryComplete(false);
+    let cancelled = false;
+    void import("../../../sso-bridge/sso-bridge")
+      .then(({ prepareSsoAccountSwitch }) => prepareSsoAccountSwitch())
+      .then(() => {
+        if (cancelled) return;
+        const next = new URLSearchParams(searchParams);
+        next.delete("switchAccount");
+        navigate(
+          {
+            pathname,
+            search: next.size > 0 ? `?${next.toString()}` : "",
+          },
+          { replace: true },
+        );
+      })
+      .catch((accountSwitchError) => {
+        if (cancelled) return;
+        setError(
+          getErrorMessage(
+            accountSwitchError,
+            "Could not end the previous Eliza Cloud session",
+          ),
+        );
+        setSessionRecoveryComplete(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate, pathname, searchParams]);
+
+  useEffect(() => {
+    if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
+    if (searchParams.get("switchAccount") === "1") return;
     if (searchParams.get("code") || searchParams.get("error")) {
       setSessionRecoveryComplete(true);
       return;

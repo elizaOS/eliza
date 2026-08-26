@@ -15,6 +15,7 @@ import {
   AndroidCloudClient,
   type AndroidCloudLoginAttempt,
   type AndroidCloudLoginCompletion,
+  type AndroidCloudLoginOptions,
   type AndroidCloudPendingLoginStore,
   parseAndroidCloudCallbackAttemptId,
 } from "./android-cloud-client";
@@ -94,8 +95,16 @@ function publishResult(result: AndroidCloudAuthResult): void {
 /** Creates the hosted login URL while keeping the verifier in Android Keystore. */
 export async function beginAndroidCloudSignIn(
   cloudApiBase?: string,
+  options: AndroidCloudLoginOptions = {},
 ): Promise<AndroidCloudLoginAttempt> {
-  return client(cloudApiBase).beginLogin();
+  return client(cloudApiBase).beginLogin(options);
+}
+
+/** Revokes the exact mobile credential before removing its local copy. */
+export async function signOutAndroidCloud(
+  cloudApiBase?: string,
+): Promise<void> {
+  await client(cloudApiBase).signOut();
 }
 
 /** Navigate the launcher WebView only to the canonical hosted login origins. */

@@ -50,6 +50,10 @@ export interface AndroidCloudLoginAttempt {
   browserUrl: string;
 }
 
+export interface AndroidCloudLoginOptions {
+  switchAccount?: boolean;
+}
+
 export interface AndroidCloudLoginCompletion {
   apiBase: string;
   pendingCleanupRequired: boolean;
@@ -433,7 +437,9 @@ export class AndroidCloudClient {
     return { identity: { id, displayName }, token, chatApiBase };
   }
 
-  async beginLogin(): Promise<AndroidCloudLoginAttempt> {
+  async beginLogin(
+    options: AndroidCloudLoginOptions = {},
+  ): Promise<AndroidCloudLoginAttempt> {
     const clientId = MOBILE_APP_AUTH_CLIENT_ID;
     const redirectUri = MOBILE_APP_AUTH_REDIRECT_URI;
     const environment =
@@ -497,6 +503,7 @@ export class AndroidCloudClient {
       "returnTo",
       `${authorizePath.pathname}${authorizePath.search}`,
     );
+    if (options.switchAccount) loginUrl.searchParams.set("switchAccount", "1");
     return { state, browserUrl: loginUrl.toString() };
   }
 
@@ -761,19 +768,24 @@ export class AndroidCloudClient {
 
   async signOut(): Promise<void> {
     const token = await this.readToken();
-    try {
-      if (token) {
-        await this.fetchImpl(`${this.apiBase}/api/auth/logout`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      }
-    } catch {
-      // error-policy:J6 remote logout is best-effort teardown; the authoritative
-      // local credential removal is awaited in the finally block below.
-    } finally {
-      await this.credentialStore.clear();
+    if (!token) return;
+    const response = await this.fetchImpl(
+      `${this.apiBase}/api/v1/api-keys/current`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+    const body = await responseJson(response);
+    if (!response.ok || body.success !== true) {
+      throw new Error(
+        responseError(
+          body,
+          `Unable to revoke this device session (${response.status}).`,
+        ),
+      );
     }
+    await this.credentialStore.clear();
   }
 
   async getConversationMessages(

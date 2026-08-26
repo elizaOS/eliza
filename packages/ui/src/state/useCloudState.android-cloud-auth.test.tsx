@@ -60,6 +60,7 @@ vi.mock("../android-cloud/android-cloud-auth", () => ({
   ANDROID_CLOUD_AUTH_STARTED_EVENT: "eliza:android-cloud-auth-started",
   beginAndroidCloudSignIn: harness.begin,
   cancelAndroidCloudSignIn: harness.cancel,
+  signOutAndroidCloud: vi.fn(async () => {}),
   hasPendingAndroidCloudSignIn: vi.fn(async () => {
     throw new Error("pending cleanup record unavailable");
   }),
