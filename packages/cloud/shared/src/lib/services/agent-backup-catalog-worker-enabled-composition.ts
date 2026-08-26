@@ -6,6 +6,7 @@
  */
 
 import path from "node:path";
+import { ElizaError } from "@elizaos/core";
 import {
   createKmsClient,
   KmsAeadOperationKeyBundleProvider,
@@ -13,6 +14,11 @@ import {
 } from "@elizaos/core/security/kms";
 import { AGENT_BACKUP_CAPTURE_V2_LIMITS } from "@elizaos/shared";
 import { recordCapturedAgentBackupManifest } from "../../db/repositories/agent-backup-catalog";
+import type { RuntimeR2Bucket } from "../storage/r2-runtime-binding";
+import { createAccountDeletionBackupAuthority } from "./account-deletion-backup-authority";
+import { createAccountDeletionProviderAdapters } from "./account-deletion-provider-adapters";
+import { processIrreversibleAccountDeletionSaga } from "./account-deletion-saga";
+import { createAccountDeletionSpoolAuthority } from "./account-deletion-spool-authority";
 import {
   type AgentBackupCaptureV3LegacyWriterDrainReceipt,
   createAgentBackupCaptureV2CatalogExecutor,
@@ -23,6 +29,7 @@ import { createAgentBackupCaptureV3RuntimeContextResolver } from "./agent-backup
 import { createAgentBackupCaptureV3SpoolCleanupJanitor } from "./agent-backup-capture-v3-spool-cleanup";
 import {
   type AgentBackupCatalogRuntimeConfig,
+  type AgentBackupCatalogRuntimeSummary,
   createAgentBackupCatalogRegistryFromEnv,
   readAgentBackupCatalogRuntimeConfig,
   runAgentBackupCatalogRuntimeCycle,
@@ -37,6 +44,17 @@ const PLUGIN_ID_PATTERN = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 const VERSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._+:-]{0,127}$/;
 const DEPLOYMENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const OPERATION_LEASE_SETTLEMENT_MARGIN_MS = 30_000;
+
+function applicationObjectAuthorityUnavailable(operation: string): ElizaError {
+  return new ElizaError(
+    `Backup authority worker cannot ${operation} the application object bucket`,
+    {
+      code: "ACCOUNT_DELETION_APPLICATION_OBJECT_AUTHORITY_UNAVAILABLE",
+      context: { operation },
+      severity: "fatal",
+    },
+  );
+}
 
 export interface AgentBackupCatalogWorkerEnabledConfig {
   runtime: Extract<AgentBackupCatalogRuntimeConfig, { enabled: true }>;
@@ -61,6 +79,10 @@ export interface AgentBackupCatalogWorkerEnabledConfig {
   };
 }
 
+export interface AccountDeletionBackupAuthorityConfig {
+  spool: AgentBackupCaptureV3SpoolConfig;
+}
+
 export interface AgentBackupCatalogWorkerEnabledCompositionDependencies {
   createRegistry: typeof createAgentBackupCatalogRegistryFromEnv;
   createKms(options: { baseUrl: string; tokenProvider: () => Promise<string> }): KmsClient;
@@ -70,7 +92,38 @@ export interface AgentBackupCatalogWorkerEnabledCompositionDependencies {
   createPublicationSource: typeof createAgentBackupCaptureV3PublicationSourceResolver;
   createPublicationExecutor: typeof createAgentBackupCatalogPublicationExecutor;
   createJanitor: typeof createAgentBackupCaptureV3SpoolCleanupJanitor;
+  createAccountDeletionBackup: typeof createAccountDeletionBackupAuthority;
+  createAccountDeletionSpool: typeof createAccountDeletionSpoolAuthority;
+  processAccountDeletionAuthorities: typeof processAccountDeletionAuthorities;
   runCycle: typeof runAgentBackupCatalogRuntimeCycle;
+}
+
+const AUTHORITY_ONLY_BLOB: RuntimeR2Bucket = Object.freeze({
+  async get() {
+    throw applicationObjectAuthorityUnavailable("read");
+  },
+  async put() {
+    throw applicationObjectAuthorityUnavailable("write");
+  },
+  async delete() {
+    throw applicationObjectAuthorityUnavailable("delete from");
+  },
+});
+
+async function processAccountDeletionAuthorities(input: {
+  backup: ReturnType<typeof createAccountDeletionBackupAuthority>;
+  spool: ReturnType<typeof createAccountDeletionSpoolAuthority>;
+}): Promise<void> {
+  const adapters = createAccountDeletionProviderAdapters({
+    backupAuthority: input.backup,
+    spoolAuthority: input.spool,
+  });
+  await processIrreversibleAccountDeletionSaga({
+    limit: 10,
+    blob: AUTHORITY_ONLY_BLOB,
+    adapters,
+    allowedPhases: new Set(["secondary_backups", "spools"]),
+  });
 }
 
 function requiredText(env: NodeJS.ProcessEnv, name: string, maxBytes = 512): string {
@@ -189,13 +242,13 @@ function kmsConfig(env: NodeJS.ProcessEnv): AgentBackupCatalogWorkerEnabledConfi
   };
 }
 
-/** Validate the complete enabled contract before any provider or spool is created. */
-export function readAgentBackupCatalogWorkerEnabledConfig(
+/** Validate the always-on deletion authority without enabling capture or scheduling. */
+export function readAccountDeletionBackupAuthorityConfig(
   env: NodeJS.ProcessEnv,
-): AgentBackupCatalogWorkerEnabledConfig {
-  const runtime = readAgentBackupCatalogRuntimeConfig(env);
-  if (!runtime.enabled) throw new Error("Enabled backup catalogue composition requires its gate");
-
+): AccountDeletionBackupAuthorityConfig {
+  if (env.ACCOUNT_DELETION_BACKUP_AUTHORITY_ENABLED !== "1") {
+    throw new Error("Account deletion backup authority composition requires its gate");
+  }
   const databaseUrl = requiredText(env, "DATABASE_URL", 16 * 1024);
   let parsedDatabaseUrl: URL;
   try {
@@ -213,9 +266,6 @@ export function readAgentBackupCatalogWorkerEnabledConfig(
   if (!/^[0-9a-fA-F]{64}$/.test(secretsMasterKey)) {
     throw new Error("SECRETS_MASTER_KEY must be exactly 32 bytes encoded as hexadecimal");
   }
-
-  // Validate every storage name up-front; the registry factory is not allowed
-  // to partially initialize before a later configuration failure is found.
   for (const name of [
     "AGENT_BACKUP_R2_ENDPOINT_ALIAS",
     "AGENT_BACKUP_R2_ACCOUNT_ID",
@@ -231,24 +281,11 @@ export function readAgentBackupCatalogWorkerEnabledConfig(
     requiredText(env, name, MAX_PROVIDER_IDENTITY_BYTES);
   }
   for (const name of ["AGENT_BACKUP_R2_ENDPOINT", "AGENT_BACKUP_HETZNER_ENDPOINT"] as const) {
-    requiredText(env, name, 2048);
+    canonicalUrl(env, name);
   }
   requiredSecret(env, "AGENT_BACKUP_R2_SECRET_ACCESS_KEY");
   requiredSecret(env, "AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY");
-  canonicalUrl(env, "AGENT_BACKUP_R2_ENDPOINT");
-  canonicalUrl(env, "AGENT_BACKUP_HETZNER_ENDPOINT");
-
-  const primaryEndpointAlias = requiredText(
-    env,
-    "AGENT_BACKUP_R2_ENDPOINT_ALIAS",
-    MAX_PROVIDER_IDENTITY_BYTES,
-  );
-  const secondaryEndpointAlias = requiredText(
-    env,
-    "AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS",
-    MAX_PROVIDER_IDENTITY_BYTES,
-  );
-  if (primaryEndpointAlias === secondaryEndpointAlias) {
+  if (env.AGENT_BACKUP_R2_ENDPOINT_ALIAS === env.AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS) {
     throw new Error("Primary and secondary backup endpoint aliases must be distinct");
   }
   const stateDirectory = requiredText(env, "AGENT_BACKUP_SPOOL_STATE_DIRECTORY", 4096);
@@ -270,6 +307,30 @@ export function readAgentBackupCatalogWorkerEnabledConfig(
   if (minFreeBytes >= maxSpoolBytes) {
     throw new Error("AGENT_BACKUP_SPOOL_MIN_FREE_BYTES must be smaller than spool capacity");
   }
+  return { spool: { stateDirectory, maxSpoolBytes, minFreeBytes } };
+}
+
+/** Validate the complete enabled contract before any provider or spool is created. */
+export function readAgentBackupCatalogWorkerEnabledConfig(
+  env: NodeJS.ProcessEnv,
+): AgentBackupCatalogWorkerEnabledConfig {
+  const runtime = readAgentBackupCatalogRuntimeConfig(env);
+  if (!runtime.enabled) throw new Error("Enabled backup catalogue composition requires its gate");
+  const deletionAuthority = readAccountDeletionBackupAuthorityConfig({
+    ...env,
+    ACCOUNT_DELETION_BACKUP_AUTHORITY_ENABLED: "1",
+  });
+
+  const primaryEndpointAlias = requiredText(
+    env,
+    "AGENT_BACKUP_R2_ENDPOINT_ALIAS",
+    MAX_PROVIDER_IDENTITY_BYTES,
+  );
+  const secondaryEndpointAlias = requiredText(
+    env,
+    "AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS",
+    MAX_PROVIDER_IDENTITY_BYTES,
+  );
   const agentSchemaVersion = requiredText(env, "AGENT_BACKUP_AGENT_SCHEMA_VERSION", 128);
   const databaseSchemaVersion = requiredText(env, "AGENT_BACKUP_DATABASE_SCHEMA_VERSION", 128);
   if (!VERSION_PATTERN.test(agentSchemaVersion) || !VERSION_PATTERN.test(databaseSchemaVersion)) {
@@ -312,7 +373,7 @@ export function readAgentBackupCatalogWorkerEnabledConfig(
   }
   return {
     runtime,
-    spool: { stateDirectory, maxSpoolBytes, minFreeBytes },
+    spool: deletionAuthority.spool,
     spoolCleanupBatchSize: boundedInteger({
       env,
       name: "AGENT_BACKUP_SPOOL_CLEANUP_BATCH_SIZE",
@@ -350,8 +411,84 @@ const DEFAULT_DEPENDENCIES: AgentBackupCatalogWorkerEnabledCompositionDependenci
   createPublicationSource: createAgentBackupCaptureV3PublicationSourceResolver,
   createPublicationExecutor: createAgentBackupCatalogPublicationExecutor,
   createJanitor: createAgentBackupCaptureV3SpoolCleanupJanitor,
+  createAccountDeletionBackup: createAccountDeletionBackupAuthority,
+  createAccountDeletionSpool: createAccountDeletionSpoolAuthority,
+  processAccountDeletionAuthorities,
   runCycle: runAgentBackupCatalogRuntimeCycle,
 };
+
+type AccountDeletionBackupAuthorityCompositionDependencies = Pick<
+  AgentBackupCatalogWorkerEnabledCompositionDependencies,
+  | "createRegistry"
+  | "createAccountDeletionBackup"
+  | "createAccountDeletionSpool"
+  | "processAccountDeletionAuthorities"
+>;
+
+function accountDeletionAuthoritySummary(): AgentBackupCatalogRuntimeSummary {
+  return {
+    enabled: true,
+    scheduleEnrolled: 0,
+    scheduleProtected: 0,
+    scheduleRecycled: 0,
+    scheduleClaimed: 0,
+    scheduleReserved: 0,
+    scheduleDeferred: 0,
+    scheduleIndeterminate: 0,
+    scheduleOverdue: 0,
+    operationClaimed: 0,
+    operationCaptured: 0,
+    operationCaptureRetryScheduled: 0,
+    operationCaptureTerminal: 0,
+    operationProtected: 0,
+    operationPublicationRetryScheduled: 0,
+    operationDeferred: 0,
+    operationIndeterminate: 0,
+    spoolCleanup: {
+      discovered: 0,
+      authorized: 0,
+      completed: 0,
+      pending: 0,
+      skippedUnprotected: 0,
+      indeterminate: 0,
+    },
+    deletionCandidates: 0,
+    deletionEnqueued: 0,
+    deletionEnqueueIndeterminate: 0,
+    gcClaimed: 0,
+    gcCompleted: 0,
+    gcFailed: 0,
+    gcIndeterminate: 0,
+    deletionFinalized: 0,
+    deletionFinalizeIndeterminate: 0,
+    alertCodes: [],
+  };
+}
+
+/**
+ * Construct only the always-on account-deletion authorities. Capture,
+ * publication, scheduling, KMS, and catalogue GC remain disabled.
+ */
+export async function createAccountDeletionBackupAuthorityComposition(input: {
+  env: NodeJS.ProcessEnv;
+  dependencies?: Partial<AccountDeletionBackupAuthorityCompositionDependencies>;
+}): Promise<AgentBackupCatalogWorkerComposition> {
+  const config = readAccountDeletionBackupAuthorityConfig(input.env);
+  const dependencies = { ...DEFAULT_DEPENDENCIES, ...input.dependencies };
+  const registry = await dependencies.createRegistry({ env: input.env });
+  const accountDeletionAuthorities = Object.freeze({
+    backup: dependencies.createAccountDeletionBackup(registry),
+    spool: dependencies.createAccountDeletionSpool(config.spool),
+  });
+  return Object.freeze({
+    enabled: true,
+    accountDeletionAuthorities,
+    async runCycle() {
+      await dependencies.processAccountDeletionAuthorities(accountDeletionAuthorities);
+      return accountDeletionAuthoritySummary();
+    },
+  });
+}
 
 /** Construct exactly one compatible provider/executor graph for this process. */
 export async function createAgentBackupCatalogWorkerEnabledComposition(input: {
@@ -389,16 +526,24 @@ export async function createAgentBackupCatalogWorkerEnabledComposition(input: {
     spool: config.spool,
     batchSize: config.spoolCleanupBatchSize,
   });
+  const accountDeletionAuthorities = Object.freeze({
+    backup: dependencies.createAccountDeletionBackup(registry),
+    spool: dependencies.createAccountDeletionSpool(config.spool),
+  });
   return Object.freeze({
     enabled: true,
-    runCycle: (signal?: AbortSignal) =>
-      dependencies.runCycle({
+    accountDeletionAuthorities,
+    async runCycle(signal?: AbortSignal) {
+      const summary = await dependencies.runCycle({
         config: config.runtime,
         registry,
         captureExecutor,
         publicationExecutor,
         spoolCleanupJanitor,
         signal,
-      }),
+      });
+      await dependencies.processAccountDeletionAuthorities(accountDeletionAuthorities);
+      return summary;
+    },
   });
 }

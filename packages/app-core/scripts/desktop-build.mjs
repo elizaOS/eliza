@@ -41,6 +41,10 @@ const STAGE_MACOS_RELEASE_SCRIPT = path.join(
   "scripts",
   "stage-macos-release-artifacts.sh",
 );
+const BUILD_EXPERIMENTAL_EXACT_WINDOW_HELPER_SCRIPT = path.join(
+  SCRIPT_DIR,
+  "build-experimental-exact-window-helper.mjs",
+);
 const PROFILE_EXCLUDED_OPTIONAL_PACKS = {
   full: [],
   "no-streaming": ["streaming"],
@@ -259,6 +263,17 @@ const stageMacosReleaseApp = getBooleanArg(args, "stage-macos-release-app");
 const nativeEffectsExplicitlyRequested =
   getBooleanArg(args, "build-native-effects") ||
   process.env.ELIZA_DESKTOP_BUILD_NATIVE_EFFECTS === "1";
+const experimentalExactWindowHelperRequested =
+  getBooleanArg(args, "build-experimental-exact-window-helper") ||
+  process.env.ELIZA_BUILD_EXPERIMENTAL_EXACT_WINDOW_HELPER === "1";
+if (experimentalExactWindowHelperRequested && buildVariant === "store") {
+  fail(
+    "Experimental exact-window helper is forbidden for --build-variant=store",
+  );
+}
+if (experimentalExactWindowHelperRequested) {
+  process.env.ELIZA_BUILD_EXPERIMENTAL_EXACT_WINDOW_HELPER = "1";
+}
 
 function resolveBuildVariant(raw) {
   if (raw === "store" || raw === "direct") return raw;
@@ -621,6 +636,28 @@ function ensureAppDirs() {
   }
 }
 
+function patchElectrobunLinuxCefProfile({ requireNative = false } = {}) {
+  if (process.platform !== "linux") return;
+  run(
+    "node",
+    [
+      path.join(
+        ROOT,
+        "packages",
+        "scripts",
+        "patch-electrobun-linux-cef-profile.mjs",
+      ),
+      ...(requireNative ? ["--require"] : []),
+    ],
+    {
+      cwd: ROOT,
+      label: requireNative
+        ? "Requiring materialized Electrobun Linux CEF profile hotfix"
+        : "Verifying available Electrobun Linux CEF profile hotfix inputs",
+    },
+  );
+}
+
 function logPreflightDiagnostic(fields) {
   console.log(`[desktop-preflight] ${JSON.stringify(fields)}`);
 }
@@ -639,6 +676,10 @@ function failPreflight(message, fields = {}, detailLines = []) {
 
 function runDesktopPreflight() {
   ensureAppDirs();
+  // Electrobun downloads its platform-native wrapper lazily during the first
+  // package pass. Patch the BrowserWindow source now, but allow a genuinely
+  // absent native directory until packageDesktopBuild has materialized it.
+  patchElectrobunLinuxCefProfile();
   const moduleName = "electrobun/view";
   const preflightCwd = ELECTROBUN_DIR;
 
@@ -1522,6 +1563,21 @@ function stageDesktopBuild() {
         label: "Building native macOS effects dylib",
       });
     }
+
+    if (experimentalExactWindowHelperRequested) {
+      run(
+        "node",
+        [
+          BUILD_EXPERIMENTAL_EXACT_WINDOW_HELPER_SCRIPT,
+          `--build-variant=${buildVariant}`,
+        ],
+        {
+          cwd: ROOT,
+          label:
+            "Building optional direct-only experimental exact-window helper",
+        },
+      );
+    }
   }
 }
 
@@ -1722,10 +1778,19 @@ function packageDesktopBuild() {
       : "Packaging Electrobun app",
   });
 
+  // The first Electrobun package pass may have downloaded the Linux native
+  // wrapper. Require and apply the pinned CEF profile patch now, then repackage
+  // once so the emitted artifact cannot retain the unpatched wrapper.
+  const repackageForLinuxCefProfile = process.platform === "linux";
+  if (repackageForLinuxCefProfile) {
+    patchElectrobunLinuxCefProfile({ requireNative: true });
+  }
+
   // The Electrobun CLI downloads its platform core lazily. If that happened
   // during the first build, harden the new copy and package once more so the
   // artifact cannot retain the dependency's wildcard RPC listener.
-  if (hardenInstalledElectrobunRpc() > 0) {
+  const repackageForRpcHardening = hardenInstalledElectrobunRpc() > 0;
+  if (repackageForLinuxCefProfile || repackageForRpcHardening) {
     console.log(
       "[desktop-build] Repackaging after hardening the downloaded Electrobun core.",
     );
@@ -1880,6 +1945,8 @@ Options:
   --stage-macos-release-app        Stage a direct macOS .app + DMG from the Electrobun build output
   --exclude-optional-pack <name>   Exclude a manifest-classified optional capability pack during staging
   --build-native-effects           Require the native macOS effects dylib build (hard-fail if Xcode CLT is missing)
+  --build-experimental-exact-window-helper
+                                   Build and package the optional direct-only experimental Computer Use helper
   --verify-mas                     After MAS codesign, walk the bundle and verify the tightened
                                    entitlements via mas-smoke.mjs. Off by default; ELIZA_VERIFY_MAS=1
                                    also enables it.

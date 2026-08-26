@@ -168,7 +168,7 @@ export const SETTINGS_NON_CATALOG_SECTION_AUDIT = {
 		reason:
 			"Runtime registry management spans local/cloud/VPS runtimes and is outside the pinned settings catalog.",
 		coveredBy:
-			"MODEL_SWITCH for inference target changes; runtime CRUD needs a separate runtime-management action if chat-write is required.",
+			"RUNTIMES for device/runtime lifecycle and AGENT_SWITCH for switching an already-saved runtime.",
 	},
 } satisfies Readonly<
 	Record<

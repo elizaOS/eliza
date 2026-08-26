@@ -4014,12 +4014,15 @@ export class DockerSandboxProvider implements SandboxProvider {
       // A cold CP-side mesh socket at provision time can miss every tailnet
       // probe while the container is demonstrably healthy on its node; without
       // this fallback the provision path ghost-kills that healthy container.
-      // Node-side docker health is NOT proof of tailnet reachability — the
-      // heartbeat cycle owns reconciling/escalating a stale tailnet IP — but at
-      // provision time it is enough evidence to avoid tearing down a container
-      // the node can prove is up. A container that fails BOTH probes still
-      // reports unhealthy, so a dead provision still times out and self-heals.
-      return this.pollSshDockerHealth(meta, Date.now() + HEALTH_CHECK_SSH_FALLBACK_TIMEOUT_MS);
+      // Node-side Docker health is NOT proof of the managed ingress used by the
+      // immediately-following runtime bootstrap calls. Report that split truth
+      // explicitly: preserve/retry the healthy workload, but do not declare it
+      // ready and then issue a doomed fetch through the same dead tailnet URL.
+      const nodeHealth = await this.pollSshDockerHealth(
+        meta,
+        Date.now() + HEALTH_CHECK_SSH_FALLBACK_TIMEOUT_MS,
+      );
+      return nodeHealth.ready ? { ready: false, verdict: "ingress_unresolved" } : nodeHealth;
     }
 
     return this.pollSshDockerHealth(meta, deadline);

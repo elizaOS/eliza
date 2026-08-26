@@ -336,8 +336,8 @@ function dedupeKey(item: InboxItem): string {
 }
 
 export function compareInboxItemsByReceivedAt(
-  a: InboxItem,
-  b: InboxItem,
+  a: Pick<InboxItem, "id" | "receivedAt">,
+  b: Pick<InboxItem, "id" | "receivedAt">,
 ): number {
   const aTime = Date.parse(a.receivedAt);
   const bTime = Date.parse(b.receivedAt);
