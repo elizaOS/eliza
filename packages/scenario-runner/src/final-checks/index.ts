@@ -5,7 +5,7 @@
  */
 
 import { createHash } from "node:crypto";
-import type { IAgentRuntime } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed, type IAgentRuntime } from "@elizaos/core";
 import {
   FINAL_CHECK_KEYS,
   type ScenarioContext,
@@ -1114,12 +1114,17 @@ function actionCallSummary(
             : undefined,
       }
     : undefined;
-  return JSON.stringify({
-    actionName: action.actionName,
-    parameters: action.parameters,
-    result,
-    error: action.error?.message,
-  }).slice(0, 500);
+  return truncateWellFormed(
+    toWellFormedUnicode(
+      JSON.stringify({
+        actionName: action.actionName,
+        parameters: action.parameters,
+        result,
+        error: action.error?.message,
+      }),
+    ),
+    500,
+  );
 }
 
 type TrustedObservationCheck = {
@@ -1432,7 +1437,7 @@ registerFinalCheckHandler("selectedActionArguments", (check, { ctx }) => {
       if (!matchesPattern(blob, pattern)) {
         return {
           status: "failed",
-          detail: `selectedActionArguments: expected arguments to include ${String(pattern)}, saw ${JSON.stringify(blob.slice(0, 500))}`,
+          detail: `selectedActionArguments: expected arguments to include ${String(pattern)}, saw ${JSON.stringify(truncateWellFormed(toWellFormedUnicode(blob), 500))}`,
         };
       }
     }
@@ -1442,7 +1447,7 @@ registerFinalCheckHandler("selectedActionArguments", (check, { ctx }) => {
     if (!ok) {
       return {
         status: "failed",
-        detail: `selectedActionArguments: expected arguments to include any of [${includesAny.map(String).join(",")}], saw ${JSON.stringify(blob.slice(0, 500))}`,
+        detail: `selectedActionArguments: expected arguments to include any of [${includesAny.map(String).join(",")}], saw ${JSON.stringify(truncateWellFormed(toWellFormedUnicode(blob), 500))}`,
       };
     }
   }
