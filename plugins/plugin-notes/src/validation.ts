@@ -24,6 +24,14 @@ const ENTITY_ID_PATTERN = /^[a-z][a-z0-9-]{2,127}$/;
 const MAX_TITLE_LENGTH = 240;
 const MAX_BODY_LENGTH = 20_000;
 const MAX_NOTE_CONTENT_LENGTH = 20_000;
+// The v1→v2 upgrade prepends a single separator newline to the retired view's
+// body (see `migrateNoteFromV1`), so a persisted v1 body already at
+// `MAX_BODY_LENGTH` becomes exactly one character longer once upgraded. Persisted
+// notes are therefore validated against this slightly wider bound; new create and
+// update input stays capped at `MAX_BODY_LENGTH`. The delta is exactly one
+// because a document is upgraded at most once (it is written back as v2 and never
+// re-migrated), so it cannot compound across reloads.
+const MAX_PERSISTED_BODY_LENGTH = MAX_BODY_LENGTH + 1;
 
 function validationError(message: string, field: string): ElizaError {
   return new ElizaError(message, {
@@ -99,15 +107,21 @@ function parseRequiredTitle(value: unknown, field: string): string {
  * `reconstructNoteContent` concatenates onto the label, so a leading blank line
  * or trailing whitespace is structure to preserve, not noise to normalize. It
  * still fails fast on the wrong type, ill-formed Unicode, or the length bound.
+ * `maxLength` defaults to the new-input bound; persisted parsing widens it by one
+ * to admit the migration separator (see `MAX_PERSISTED_BODY_LENGTH`).
  */
-function parseBodyText(value: unknown, field: string): string {
+function parseBodyText(
+  value: unknown,
+  field: string,
+  maxLength: number = MAX_BODY_LENGTH,
+): string {
   if (typeof value !== "string") {
     throw validationError(`${field} must be a string.`, field);
   }
   const text = toWellFormedUnicode(value);
-  if (text.length > MAX_BODY_LENGTH) {
+  if (text.length > maxLength) {
     throw validationError(
-      `${field} must be at most ${MAX_BODY_LENGTH} characters.`,
+      `${field} must be at most ${maxLength} characters.`,
       field,
     );
   }
@@ -277,7 +291,11 @@ function parseStickyNote(value: unknown, index: number): StickyNote {
   return {
     id: parseEntityId(record.id, `${field}.id`),
     title: parseRequiredTitle(record.title, `${field}.title`),
-    body: parseBodyText(record.body, `${field}.body`),
+    body: parseBodyText(
+      record.body,
+      `${field}.body`,
+      MAX_PERSISTED_BODY_LENGTH,
+    ),
     color: parseStickyColor(record.color, `${field}.color`),
     createdAt: parseTimestamp(record.createdAt, `${field}.createdAt`),
     updatedAt: parseTimestamp(record.updatedAt, `${field}.updatedAt`),

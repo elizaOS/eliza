@@ -375,6 +375,64 @@ describe("NotesStore", () => {
     });
     expect(() => store.snapshot()).toThrow("not valid JSON");
   });
+
+  it("keeps a migrated v1 note at the body-length bound writable after reload (#29033)", async () => {
+    // A v1 body already at the 20,000-character limit gains one separator
+    // character during the v1→v2 upgrade. Before the persisted-body bound was
+    // widened, the next mutation reparsed the upgraded draft as v2 and rejected
+    // the 20,001-character body, leaving the store effectively read-only. This
+    // exercises the full load → mutate → stop → reload path so both the legacy
+    // bytes and the new write must survive exactly.
+    const filePath = await temporaryStateFile();
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    const legacyBody = "x".repeat(20_000);
+    await fs.writeFile(
+      filePath,
+      JSON.stringify({
+        schemaVersion: 1,
+        revision: 4,
+        persistedAt: "2026-07-16T12:00:00.000Z",
+        notes: [
+          {
+            id: "note-legacy",
+            title: "Legacy header",
+            body: legacyBody,
+            color: "yellow",
+            createdAt: "2026-07-16T12:00:00.000Z",
+            updatedAt: "2026-07-16T12:00:00.000Z",
+          },
+        ],
+      }),
+      "utf8",
+    );
+
+    const legacyReconstructed = `Legacy header\n${legacyBody}`;
+    const service = await serviceFor(filePath);
+    const migrated = service.getNote("note-legacy");
+    expect(migrated.body).toHaveLength(20_001);
+    expect(reconstructNoteContent(migrated)).toBe(legacyReconstructed);
+
+    // The mutation is the write that reparses the upgraded draft as v2; it must
+    // not fail because the migrated body is one character over the input bound.
+    const added = await service.createNote({
+      title: "New note",
+      body: "After upgrade",
+    });
+    await service.stop();
+
+    // On reload the document is already v2 on disk, so it is reparsed as v2
+    // without a second migration; the persisted body must still validate.
+    const reloaded = await serviceFor(filePath);
+    const reloadedLegacy = reloaded.getNote("note-legacy");
+    expect(reloadedLegacy.body).toHaveLength(20_001);
+    expect(reconstructNoteContent(reloadedLegacy)).toBe(legacyReconstructed);
+    const reloadedNew = reloaded.getNote(added.id);
+    expect(reloadedNew).toMatchObject({
+      title: "New note",
+      body: "After upgrade",
+    });
+    await reloaded.stop();
+  });
 });
 
 describe("Notes content round-trip (#29003)", () => {
