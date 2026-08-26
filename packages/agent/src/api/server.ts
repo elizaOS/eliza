@@ -2128,23 +2128,6 @@ async function handleRequest(
   ) {
     return;
   }
-  // Computer-use is a desktop/cloud-only plugin; on mobile it is not in the
-  // agent bundle, so importing it here would REJECT (`Cannot find module
-  // '@elizaos/plugin-computeruse'`) and surface as a 500 on every renderer poll
-  // of /api/computer-use/approvals. Skip the import path on mobile and let the
-  // request fall through to handleMobileOptionalRoutes, which serves the inert
-  // {mode:"off",…} approval snapshot.
-  if (!isMobilePlatform() && pathname.startsWith("/api/computer-use/")) {
-    const { handleComputerUseRoutes } = await getOptionalPluginApi<{
-      handleComputerUseRoutes: (
-        req: http.IncomingMessage,
-        res: http.ServerResponse,
-        pathname: string,
-        method: string,
-      ) => Promise<boolean>;
-    }>("computerUse");
-    if (await handleComputerUseRoutes(req, res, pathname, method)) return;
-  }
 
   // ── Provider inference helpers ────────────────────────────────────────
   const _disableCloudInference = (): void => {
@@ -3515,6 +3498,26 @@ async function handleRequest(
     })
   ) {
     return;
+  }
+
+  // Computer-use is a desktop/cloud-only plugin. Its registered runtime routes
+  // above own live service state (approval mode, pending actions, sessions).
+  // Reach this compatibility handler only when no registered route matched;
+  // otherwise the inert optional fallback would mask the service and report a
+  // writable-looking but permanently full-control approval snapshot.
+  //
+  // On mobile the plugin is absent, so skip the import and let
+  // handleMobileOptionalRoutes serve the explicit {mode:"off",…} snapshot.
+  if (!isMobilePlatform() && pathname.startsWith("/api/computer-use/")) {
+    const { handleComputerUseRoutes } = await getOptionalPluginApi<{
+      handleComputerUseRoutes: (
+        req: http.IncomingMessage,
+        res: http.ServerResponse,
+        pathname: string,
+        method: string,
+      ) => Promise<boolean>;
+    }>("computerUse");
+    if (await handleComputerUseRoutes(req, res, pathname, method)) return;
   }
 
   if (await handleBuiltinOptionalRoutes(req, res, pathname, method)) {
