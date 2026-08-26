@@ -26,6 +26,7 @@ import {
 	type InstallationLifecycleService,
 	type InstallationScope,
 	type InstallationTransitionEvent,
+	installationPermitsTraffic,
 	isInstallationLifecycleService,
 } from "@elizaos/core";
 import { generateInviteUrl } from "./permissions";
@@ -185,14 +186,9 @@ export function discordInstallationAllowsTraffic(
 	};
 	const record = service.get(scope);
 	if (!record) return true;
-	if (
-		record.state === "removed" ||
-		record.state === "revoked" ||
-		record.state === "failed"
-	) {
-		return false;
-	}
-	return true;
+	// Terminal-state rule owned by core (INSTALLATION_STATES owner); this
+	// adapter deliberately stays fail-open for missing service/record.
+	return installationPermitsTraffic(record);
 }
 
 /**

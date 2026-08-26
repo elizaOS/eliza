@@ -390,7 +390,12 @@ export function applyInstallationTransition(
 		const created: GroupInstallationRecord = {
 			contractVersion: INSTALLATION_LIFECYCLE_CONTRACT_VERSION,
 			installationId: stringToUuid(
-				`${event.scope.connectorId}:${event.scope.connectorAccountId}:${event.scope.externalWorldId}`,
+				// Agent-scoped like every other identity surface in this module
+				// (InstallationScope, installationScopeEquals, the service's
+				// scopeKey): two agents installed into the same guild under the
+				// same connector account must not mint byte-identical IDs on
+				// distinct records.
+				`${event.scope.agentId}:${event.scope.connectorId}:${event.scope.connectorAccountId}:${event.scope.externalWorldId}`,
 			),
 			reinstallVersion: 1,
 			generation: 1,
@@ -653,7 +658,22 @@ export function applyInstallationTransition(
 			}
 			break;
 		}
-		case "removal":
+		case "removal": {
+			// The removal fence is only as strong as the timestamp it is
+			// written from: an unparseable observedAt must not become a
+			// permanent open fence (NaN comparisons are false, so
+			// isStaleAgainstRemoval would report "not stale" forever while
+			// recreateInstallationAfterRemoval refuses the malformed record).
+			// Reject with the record untouched — the connector must redeliver
+			// with a parseable provider timestamp, matching
+			// recreateInstallationAfterRemoval's finite checks.
+			if (!Number.isFinite(Date.parse(event.observedAt))) {
+				return reject(
+					record,
+					"INVALID_TRANSITION",
+					"Removal requires a parseable observedAt timestamp; a malformed fence timestamp would permanently disable the stale-event fence.",
+				);
+			}
 			next.state =
 				event.transition.reason === "revoked_by_owner" ? "revoked" : "removed";
 			next.removedAt = event.observedAt;
@@ -661,6 +681,7 @@ export function applyInstallationTransition(
 			next.ownerClaim = null;
 			next.capabilityReadiness = [];
 			break;
+		}
 		case "failure":
 			next.state = "failed";
 			next.removalReason = event.transition.reason;
@@ -778,5 +799,34 @@ export function isStaleAgainstRemoval(
 	observedAt: string,
 ): boolean {
 	if (record.removedAt === null) return false;
-	return Date.parse(observedAt) <= Date.parse(record.removedAt);
+	// Fail closed on unparseable timestamps: NaN comparisons are false, so an
+	// unguarded comparison would report "not stale" forever for a malformed
+	// fence — the opposite of the fence's contract. The reducer refuses to
+	// persist a malformed removedAt; this guard also covers records written
+	// by hosts predating that write-side guard.
+	const removedMs = Date.parse(record.removedAt);
+	const observedMs = Date.parse(observedAt);
+	if (!Number.isFinite(removedMs) || !Number.isFinite(observedMs)) {
+		return true;
+	}
+	return observedMs <= removedMs;
+}
+
+/**
+ * Terminal-state traffic predicate for storage adapters and connectors:
+ * answers "does this record permit traffic" with the one definition owned by
+ * the module that owns INSTALLATION_STATES, so connectors cannot drift from
+ * it by re-deriving the terminal-state rule. Non-terminal states (onboarding,
+ * ready, degraded) permit traffic; only removal-fenced terminal states stop
+ * it. A null record is the caller's policy (grandfathered vs gated), not
+ * this predicate's.
+ */
+export function installationPermitsTraffic(
+	record: GroupInstallationRecord,
+): boolean {
+	return (
+		record.state !== "removed" &&
+		record.state !== "revoked" &&
+		record.state !== "failed"
+	);
 }

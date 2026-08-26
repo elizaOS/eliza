@@ -16,10 +16,12 @@ import {
 } from "./installation-contribution";
 import {
 	applyInstallationTransition,
+	type GroupInstallationRecord,
 	INSTALLATION_LIFECYCLE_CONTRACT_VERSION,
 	type InstallationCapability,
 	type InstallationScope,
 	type InstallationTransitionEvent,
+	installationPermitsTraffic,
 	isStaleAgainstRemoval,
 	recreateInstallationAfterRemoval,
 } from "./installation-lifecycle";
@@ -176,10 +178,28 @@ describe("installation lifecycle state machine", () => {
 		expect(receipt.record.reinstallVersion).toBe(1);
 		expect(receipt.record.generation).toBe(1);
 		expect(receipt.record.externalGroupLabel).toBe("Test Guild");
-		// installationId is derived from the full scope tuple, not the raw
-		// snowflake (round-1 F14).
+		// installationId is derived from the full agent-scoped scope tuple,
+		// not the raw snowflake. agentId is in the seed so two agents in the
+		// same guild get distinct installation IDs.
 		expect(receipt.record.installationId).toBe(
-			stringToUuid(`discord:${connectorAccountId}:123456789012345678`),
+			stringToUuid(
+				`${agentId}:discord:${connectorAccountId}:123456789012345678`,
+			),
+		);
+		// Distinct agents in the same guild/account mint distinct IDs on
+		// distinct records (the one identity value that previously
+		// was not agent-scoped).
+		const otherAgentScope: InstallationScope = {
+			...scope,
+			agentId: stringToUuid("agent-two") as InstallationScope["agentId"],
+		};
+		const otherAgentEvent = applyInstallationTransition(null, {
+			...event({ kind: "invite_created" }, 1),
+			scope: otherAgentScope,
+		});
+		expect(otherAgentEvent.accepted).toBe(true);
+		expect(otherAgentEvent.record.installationId).not.toBe(
+			receipt.record.installationId,
 		);
 	});
 
@@ -1577,5 +1597,122 @@ describe("round-3: ordering fence parity and initial-epoch fail-fast", () => {
 				),
 			),
 		).toThrowError(/reinstallVersion 1/);
+	});
+});
+
+describe("agent-scoped installationId, fence fail-closed, core traffic predicate", () => {
+	it("two agents in the same guild/account mint distinct installationIds (distinct records)", () => {
+		const first = applyInstallationTransition(
+			null,
+			event({ kind: "invite_created" }, 1, OBSERVED_AT, "a1"),
+		);
+		const secondScope: InstallationScope = {
+			...scope,
+			agentId: stringToUuid("agent-b") as InstallationScope["agentId"],
+		};
+		const second = applyInstallationTransition(null, {
+			...event({ kind: "invite_created" }, 1, OBSERVED_AT, "b1"),
+			scope: secondScope,
+		});
+		expect(first.accepted).toBe(true);
+		expect(second.accepted).toBe(true);
+		expect(first.record.installationId).not.toBe(second.record.installationId);
+		// The seed is agent-first: every other scope field identical.
+		expect(second.record.installationId).toBe(
+			stringToUuid(
+				`${secondScope.agentId}:discord:${connectorAccountId}:123456789012345678`,
+			),
+		);
+	});
+
+	it("a removal with a malformed observedAt is rejected and never writes the fence", () => {
+		let record = applyInstallationTransition(
+			null,
+			event({ kind: "invite_created" }, 1, OBSERVED_AT, "f1"),
+		).record;
+		record = applyInstallationTransition(
+			record,
+			next(record, {
+				kind: "provider_authorized",
+				evidence: "connector_observed",
+			}),
+		).record;
+		const malformed = applyInstallationTransition(
+			record,
+			next(record, { kind: "removal", reason: "kicked" }, "not-a-timestamp"),
+		);
+		// Fail-closed reject: the record is untouched and stays non-terminal.
+		expect(malformed.accepted).toBe(false);
+		expect(malformed.rejection?.code).toBe("INVALID_TRANSITION");
+		expect(malformed.record.state).not.toBe("removed");
+		expect(malformed.record.removedAt).toBeNull();
+		// A parseable redelivery still terminates cleanly.
+		const repaired = applyInstallationTransition(
+			malformed.record,
+			next(
+				malformed.record,
+				{ kind: "removal", reason: "kicked" },
+				"2026-08-25T12:05:00Z",
+			),
+		);
+		expect(repaired.accepted).toBe(true);
+		expect(repaired.record.state).toBe("removed");
+	});
+
+	it("isStaleAgainstRemoval fails closed on malformed timestamps instead of reporting fresh", () => {
+		let record = applyInstallationTransition(
+			null,
+			event({ kind: "invite_created" }, 1, OBSERVED_AT, "s1"),
+		).record;
+		record = applyInstallationTransition(
+			record,
+			next(record, {
+				kind: "provider_authorized",
+				evidence: "connector_observed",
+			}),
+		).record;
+		record = applyInstallationTransition(
+			record,
+			next(
+				record,
+				{ kind: "removal", reason: "kicked" },
+				"2026-08-25T12:05:00Z",
+			),
+		).record;
+		expect(record.state).toBe("removed");
+		// Malformed observedAt event: stale (fenced), never "fresh".
+		expect(isStaleAgainstRemoval(record, "garbage")).toBe(true);
+		// Legacy record carrying a malformed removedAt (written by a host
+		// before the write-side guard): still fenced, never fresh.
+		const legacy = { ...record, removedAt: "not-parseable" };
+		expect(isStaleAgainstRemoval(legacy, OBSERVED_AT)).toBe(true);
+		// Ordering semantics are unchanged for parseable values.
+		expect(isStaleAgainstRemoval(record, "2026-08-25T12:04:59Z")).toBe(true);
+		expect(isStaleAgainstRemoval(record, "2026-08-25T12:05:00Z")).toBe(true);
+		expect(isStaleAgainstRemoval(record, "2026-08-25T12:05:01Z")).toBe(false);
+	});
+
+	it("installationPermitsTraffic owns the terminal-state rule in core", () => {
+		const create = (state: GroupInstallationRecord["state"]) => {
+			const record = applyInstallationTransition(
+				null,
+				event({ kind: "invite_created" }, 1, OBSERVED_AT, `p-${state}`),
+			).record;
+			return { ...record, state } as GroupInstallationRecord;
+		};
+		for (const state of [
+			"invite_created",
+			"provider_authorized",
+			"agent_joined",
+			"permissions_verifying",
+			"owner_claim_pending",
+			"ready",
+			"degraded",
+		] as const) {
+			expect(installationPermitsTraffic(create(state))).toBe(true);
+		}
+		for (const state of ["removed", "revoked", "failed"] as const) {
+			expect(installationPermitsTraffic(create(state))).toBe(false);
+		}
 	});
 });
