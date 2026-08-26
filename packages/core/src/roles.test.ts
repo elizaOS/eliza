@@ -21,6 +21,7 @@ import { createUniqueUuid } from "./entities.ts";
 import {
 	CANONICAL_ROLE_RANK,
 	canModifyRole,
+	checkSenderPrivateAccess,
 	deterministicOwnerEntityId,
 	getEntityRole,
 	getLiveEntityMetadataFromMessage,
@@ -444,6 +445,78 @@ describe("recordRoleGrant (#12087 Item 11 generic auditable grant)", () => {
 		const metadata = {} as never;
 		recordRoleGrant(metadata, "user-1", "USER", "manual");
 		expect(recordRoleGrant(metadata, "user-1", "USER", "manual")).toBe(false);
+	});
+});
+
+describe("machine-session grant source (paired-device chat attribution)", () => {
+	const sessionRuntime = {
+		agentId: "agent-1",
+		getSetting: () => undefined,
+		getRelationships: async () => [],
+		getEntityById: async () => null,
+		getRoom: async () => ({ id: "room-1", worldId: "world-1" }),
+		getWorld: async (id: string) => ({
+			id,
+			metadata: {
+				roles: { "device-entity": "USER" },
+				roleSources: { "device-entity": "session" },
+			},
+		}),
+	} as unknown as IAgentRuntime;
+
+	it("resolves a session-sourced USER grant to USER (not GUEST, not more)", async () => {
+		await expect(
+			resolveEntityRole(
+				sessionRuntime,
+				null,
+				{
+					roles: { "device-entity": "USER" },
+					roleSources: { "device-entity": "session" },
+				} as never,
+				"device-entity",
+			),
+		).resolves.toBe("USER");
+	});
+
+	it("does not confer manual-grant private access", async () => {
+		const message = {
+			entityId: "device-entity",
+			roomId: "room-1",
+			content: { text: "hi", source: "client_chat" },
+		} as unknown as Memory;
+		const access = await checkSenderPrivateAccess(sessionRuntime, message);
+		expect(access?.role).toBe("USER");
+		expect(access?.isOwner).toBe(false);
+		expect(access?.isAdmin).toBe(false);
+		expect(access?.hasPrivateAccess).toBe(false);
+		expect(access?.accessRole).toBeNull();
+	});
+
+	it("folds a tampered session-sourced OWNER grant to GUEST (only manual honors OWNER)", async () => {
+		await expect(
+			resolveEntityRole(
+				sessionRuntime,
+				null,
+				{
+					roles: { "device-entity": "OWNER" },
+					roleSources: { "device-entity": "session" },
+				} as never,
+				"device-entity",
+			),
+		).resolves.toBe("GUEST");
+	});
+
+	it("round-trips the 'session' source through recordRoleGrant", () => {
+		const metadata = {} as never;
+		expect(recordRoleGrant(metadata, "device-entity", "USER", "session")).toBe(
+			true,
+		);
+		const md = metadata as {
+			roles: Record<string, string>;
+			roleSources: Record<string, string>;
+		};
+		expect(md.roles["device-entity"]).toBe("USER");
+		expect(md.roleSources["device-entity"]).toBe("session");
 	});
 });
 
