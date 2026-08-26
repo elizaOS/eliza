@@ -1007,17 +1007,21 @@ export function truncateToCompleteSentence(
 	maxLength: number,
 ): string {
 	if (maxLength <= 0) return "";
-	if (text.length <= maxLength) {
-		return text;
+	const wellFormed = toWellFormedUnicode(text);
+	if (wellFormed.length <= maxLength) {
+		return wellFormed;
 	}
 	if (maxLength <= 3) {
-		return truncateWellFormed(text, maxLength);
+		return truncateWellFormed(wellFormed, maxLength);
 	}
 
 	// Attempt to truncate at the last period within the limit
-	const lastPeriodIndex = text.lastIndexOf(".", maxLength - 1);
+	const lastPeriodIndex = wellFormed.lastIndexOf(".", maxLength - 1);
 	if (lastPeriodIndex !== -1) {
-		const truncatedAtPeriod = text.slice(0, lastPeriodIndex + 1).trim();
+		const truncatedAtPeriod = truncateWellFormed(
+			wellFormed,
+			lastPeriodIndex + 1,
+		).trim();
 		if (truncatedAtPeriod.length > 0) {
 			return truncatedAtPeriod;
 		}
@@ -1026,16 +1030,19 @@ export function truncateToCompleteSentence(
 	// If no period, truncate to the nearest whitespace within the limit.
 	// Search from maxLength - 3 so the appended ellipsis still fits the cap,
 	// matching the hard-truncate fallback below.
-	const lastSpaceIndex = text.lastIndexOf(" ", maxLength - 3);
+	const lastSpaceIndex = wellFormed.lastIndexOf(" ", maxLength - 3);
 	if (lastSpaceIndex !== -1) {
-		const truncatedAtSpace = text.slice(0, lastSpaceIndex).trim();
+		const truncatedAtSpace = truncateWellFormed(
+			wellFormed,
+			lastSpaceIndex,
+		).trim();
 		if (truncatedAtSpace.length > 0) {
 			return `${truncatedAtSpace}...`;
 		}
 	}
 
 	// Fallback: Hard truncate (surrogate-safe) and add ellipsis
-	const hardTruncated = truncateWellFormed(text, maxLength - 3).trim();
+	const hardTruncated = truncateWellFormed(wellFormed, maxLength - 3).trim();
 	return `${hardTruncated}...`;
 }
 
