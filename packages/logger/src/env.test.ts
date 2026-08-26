@@ -65,4 +65,26 @@ describe("logger env reader", () => {
     expect(getBrowserEnv("FEATURE_ENABLED")).toBe("true");
     expect(getBrowserEnv("MISSING", "fallback")).toBe("fallback");
   });
+
+  it("reads from globalThis.ENV in web worker / headless contexts", async () => {
+    Object.defineProperty(process.versions, "node", {
+      configurable: true,
+      value: undefined,
+    });
+    vi.stubGlobal("ENV", {
+      WORKER_SETTING: "active",
+    });
+    vi.resetModules();
+
+    const { getEnv: getWorkerEnv } = await import("./env.js");
+    expect(getWorkerEnv("WORKER_SETTING")).toBe("active");
+  });
+
+  it("returns defaultValue when key is empty or not a string", () => {
+    expect(getEnv("", "default-empty")).toBe("default-empty");
+    expect(getEnv(null as unknown as string, "default-null")).toBe(
+      "default-null",
+    );
+    expect(getEnv(undefined as unknown as string)).toBeUndefined();
+  });
 });
