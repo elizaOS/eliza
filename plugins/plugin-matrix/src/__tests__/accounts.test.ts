@@ -67,6 +67,102 @@ describe("Matrix account settings", () => {
     });
   });
 
+  it("normalizes a padded MATRIX_ACCOUNTS object key so listing and lookup agree", () => {
+    const runtime = runtimeWithSettings({
+      MATRIX_ACCOUNTS: JSON.stringify({
+        " work ": {
+          homeserver: "https://hs.example",
+          userId: "@a:hs.example",
+          accessToken: "tok-123",
+        },
+      }),
+    });
+
+    expect(listMatrixAccountIds(runtime)).toEqual(["work"]);
+    // Before the fix this resolved to empty homeserver/userId/accessToken
+    // because accounts[" work "] was never rewritten to accounts["work"],
+    // which then reached MatrixService.initialize()'s validateSettings throw.
+    expect(resolveMatrixAccountSettings(runtime, "work")).toMatchObject({
+      accountId: "work",
+      homeserver: "https://hs.example",
+      userId: "@a:hs.example",
+      accessToken: "tok-123",
+    });
+  });
+
+  it("normalizes a padded character.settings.matrix.accounts key identically", () => {
+    const runtime = runtimeWithSettings(
+      {},
+      {
+        matrix: {
+          accounts: {
+            " work ": {
+              homeserver: "https://char.example",
+              userId: "@c:char.example",
+              accessToken: "char-tok",
+            },
+          },
+        },
+      }
+    );
+
+    expect(listMatrixAccountIds(runtime)).toEqual(["work"]);
+    expect(resolveMatrixAccountSettings(runtime, "work")).toMatchObject({
+      accountId: "work",
+      homeserver: "https://char.example",
+      userId: "@c:char.example",
+      accessToken: "char-tok",
+    });
+  });
+
+  it("rejects MATRIX_ACCOUNTS keys that collide after normalization", () => {
+    const runtime = runtimeWithSettings({
+      MATRIX_ACCOUNTS: JSON.stringify({
+        work: { homeserver: "https://a", userId: "@a:a", accessToken: "a" },
+        " work ": { homeserver: "https://b", userId: "@b:b", accessToken: "b" },
+      }),
+    });
+
+    try {
+      listMatrixAccountIds(runtime);
+      throw new Error("expected duplicate normalized account id to throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe("MATRIX_CONFIG_INVALID");
+      expect((error as ElizaError).context).toEqual({
+        setting: "MATRIX_ACCOUNTS",
+        accountId: "work",
+      });
+      expect((error as ElizaError).severity).toBe("fatal");
+    }
+  });
+
+  it("rejects character.settings.matrix.accounts keys that collide after normalization", () => {
+    const runtime = runtimeWithSettings(
+      {},
+      {
+        matrix: {
+          accounts: {
+            work: { homeserver: "https://a", userId: "@a:a", accessToken: "a" },
+            "work ": { homeserver: "https://b", userId: "@b:b", accessToken: "b" },
+          },
+        },
+      }
+    );
+
+    try {
+      listMatrixAccountIds(runtime);
+      throw new Error("expected duplicate normalized character account id to throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe("MATRIX_CONFIG_INVALID");
+      expect((error as ElizaError).context).toEqual({
+        setting: "character.settings.matrix.accounts",
+        accountId: "work",
+      });
+    }
+  });
+
   it("reads account IDs only from non-empty string fields across payload shapes", () => {
     expect(
       readMatrixAccountId(

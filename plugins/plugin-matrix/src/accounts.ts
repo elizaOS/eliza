@@ -33,23 +33,48 @@ function characterConfig(runtime: IAgentRuntime): MatrixMultiAccountConfig {
   return raw && typeof raw === "object" ? (raw as MatrixMultiAccountConfig) : {};
 }
 
+function isAccountConfig(value: unknown): value is MatrixAccountConfig {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+// Normalize each raw account key through normalizeMatrixAccountId at parse
+// time so listMatrixAccountIds() (which trims when building the id list) and
+// accountConfig() (which looks up the map key) agree: a padded " work " key
+// otherwise lists as `work` but resolves to an empty config. Reject a
+// post-normalization collision so two keys cannot silently clobber one config.
+function indexAccountConfigs(
+  entries: Iterable<readonly [unknown, unknown]>,
+  setting: string
+): Record<string, MatrixAccountConfig> {
+  const configs = new Map<string, MatrixAccountConfig>();
+  for (const [rawId, value] of entries) {
+    if (!isAccountConfig(value)) continue;
+    const accountId = normalizeMatrixAccountId(rawId);
+    if (configs.has(accountId)) {
+      throw new ElizaError(
+        `Matrix accounts config contains duplicate account id ${JSON.stringify(accountId)} after normalization.`,
+        {
+          code: "MATRIX_CONFIG_INVALID",
+          context: { setting, accountId },
+          severity: "fatal",
+        }
+      );
+    }
+    configs.set(accountId, value);
+  }
+  return Object.fromEntries(configs);
+}
+
 function parseAccountsJson(runtime: IAgentRuntime): Record<string, MatrixAccountConfig> {
   const raw = stringSetting(runtime, "MATRIX_ACCOUNTS");
   if (!raw) return {};
 
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (Array.isArray(parsed)) {
-      return Object.fromEntries(
-        parsed
-          .filter((item): item is MatrixAccountConfig => Boolean(item) && typeof item === "object")
-          .map((item) => [normalizeMatrixAccountId(item.accountId ?? item.id), item])
-      );
-    }
-    return parsed && typeof parsed === "object"
-      ? (parsed as Record<string, MatrixAccountConfig>)
-      : {};
+    parsed = JSON.parse(raw) as unknown;
   } catch (error) {
+    // error-policy:J2 preserve the JSON parse cause and identify the setting
+    // whose invalid value must not degrade into an empty account collection.
     throw new ElizaError("Matrix accounts config is not valid JSON.", {
       code: "MATRIX_CONFIG_INVALID",
       cause: error,
@@ -57,11 +82,24 @@ function parseAccountsJson(runtime: IAgentRuntime): Record<string, MatrixAccount
       severity: "fatal",
     });
   }
+
+  if (Array.isArray(parsed)) {
+    return indexAccountConfigs(
+      parsed.map((item) => [isAccountConfig(item) ? (item.accountId ?? item.id) : undefined, item]),
+      "MATRIX_ACCOUNTS"
+    );
+  }
+  return isAccountConfig(parsed)
+    ? indexAccountConfigs(Object.entries(parsed), "MATRIX_ACCOUNTS")
+    : {};
 }
 
 function allAccountConfigs(runtime: IAgentRuntime): Record<string, MatrixAccountConfig> {
+  const characterAccounts = characterConfig(runtime).accounts;
   return {
-    ...(characterConfig(runtime).accounts ?? {}),
+    ...(isAccountConfig(characterAccounts)
+      ? indexAccountConfigs(Object.entries(characterAccounts), "character.settings.matrix.accounts")
+      : {}),
     ...parseAccountsJson(runtime),
   };
 }
