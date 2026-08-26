@@ -11,22 +11,7 @@ import { resolveStateDir } from "./state-dir";
 function getEnvVar(key: string): string | undefined {
 	if (typeof process !== "undefined" && process.env) {
 		const raw = process.env[key]?.trim();
-		if (raw && raw.length > 0) return raw;
-	}
-	const g = globalThis as {
-		window?: { ENV?: Record<string, unknown> };
-		__ENV__?: Record<string, unknown>;
-		ENV?: Record<string, unknown>;
-	};
-	const bag = {
-		...(g.window?.ENV ?? {}),
-		...(g.__ENV__ ?? {}),
-		...(g.ENV ?? {}),
-	};
-	const raw = bag[key];
-	if (typeof raw === "string") {
-		const trimmed = raw.trim();
-		return trimmed.length > 0 ? trimmed : undefined;
+		return raw && raw.length > 0 ? raw : undefined;
 	}
 	return undefined;
 }
