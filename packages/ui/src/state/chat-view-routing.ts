@@ -86,7 +86,7 @@ export function resolveChatViewRouting(
       view: "wallet",
       primaryContext: "wallet",
       secondaryContexts: [],
-      capabilities: ["inspect-wallet", "configure-wallet-rpc"],
+      capabilities: [],
     };
   }
   if (viewPath === "/apps/tasks" || viewPath.startsWith("/apps/tasks/")) {
@@ -162,7 +162,7 @@ export function resolveChatViewRouting(
         view: "wallet",
         primaryContext: "wallet",
         secondaryContexts: [],
-        capabilities: ["inspect-wallet", "configure-wallet-rpc"],
+        capabilities: [],
       };
     case "plugins":
     case "runtime":

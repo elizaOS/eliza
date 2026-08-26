@@ -15,14 +15,6 @@ function asString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function asStringList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((entry) => {
-    const parsed = asString(entry);
-    return parsed ? [parsed] : [];
-  });
-}
-
 function uniqueStrings(values: readonly string[]): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
@@ -128,7 +120,6 @@ export function enrichChatUiViewMetadata(
       .filter((capability) => capability.authority !== "human")
       .map((capability) => capability.id),
   );
-  const rendererCapabilities = asStringList(metadata.uiViewCapabilities);
   const viewActionNames = uniqueStrings([
     ...(view.relatedActions ?? []),
     ...(view.scopedActions ?? []).map((action) => action.name),
@@ -139,10 +130,10 @@ export function enrichChatUiViewMetadata(
     uiView: view.id,
     uiViewPath:
       normalizeViewPath(metadata.uiViewPath) ?? view.path ?? undefined,
-    uiViewCapabilities:
-      declaredCapabilities.length > 0
-        ? declaredCapabilities
-        : rendererCapabilities,
+    // A resolved registry view is authoritative even when it declares zero
+    // capabilities. Falling back to renderer hints lets stale or invented
+    // names become planner facts for actions the server cannot execute.
+    uiViewCapabilities: declaredCapabilities,
     uiViewActionNames: viewActionNames,
   };
 }

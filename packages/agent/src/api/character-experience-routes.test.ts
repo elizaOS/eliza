@@ -74,6 +74,22 @@ describe("Character Experience routes", () => {
     });
   });
 
+  it("forwards the typed client's repeated tag filters", async () => {
+    const service = {
+      listExperiences: vi.fn().mockResolvedValue([]),
+    };
+    const { ctx } = context({
+      url: "/api/character/experiences?tag=voice&tag=demo&tags=demo,local",
+      service,
+    });
+
+    await expect(handleCharacterRoutes(ctx)).resolves.toBe(true);
+    expect(service.listExperiences).toHaveBeenCalledWith({
+      tags: ["voice", "demo", "local"],
+      includeRelated: false,
+    });
+  });
+
   it("returns a designed 503 when the service is unavailable", async () => {
     const { ctx, error } = context({ service: null });
     (

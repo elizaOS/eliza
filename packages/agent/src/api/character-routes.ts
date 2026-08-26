@@ -194,14 +194,20 @@ function parseExperienceQuery(url: URL): {
   const type = repeatedOrCsv(url.searchParams, "type");
   const outcome = repeatedOrCsv(url.searchParams, "outcome");
   const domain = repeatedOrCsv(url.searchParams, "domain");
-  const tags = repeatedOrCsv(url.searchParams, "tags");
+  // The typed UI client emits repeated singular `tag` parameters. Preserve the
+  // plural `tags` spelling for existing callers and normalize both forms into
+  // one stable, de-duplicated query list.
+  const tags = [
+    ...(repeatedOrCsv(url.searchParams, "tag") ?? []),
+    ...(repeatedOrCsv(url.searchParams, "tags") ?? []),
+  ].filter((value, index, values) => values.indexOf(value) === index);
   return {
     query: {
       ...(queryText ? { query: queryText } : {}),
       ...(type ? { type } : {}),
       ...(outcome ? { outcome } : {}),
       ...(domain ? { domain } : {}),
-      ...(tags ? { tags } : {}),
+      ...(tags.length > 0 ? { tags } : {}),
       ...(typeof minImportance === "number" ? { minImportance } : {}),
       ...(typeof minConfidence === "number" ? { minConfidence } : {}),
       includeRelated: url.searchParams.get("includeRelated") === "true",
