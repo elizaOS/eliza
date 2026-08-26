@@ -69,11 +69,13 @@ Strict deterministic fixtures are the only model in the PR lane.
 `stability:real -- --provider openai|anthropic` runs the identical scenario,
 world, plugins, services, and mock endpoints while replacing only the model.
 The selected provider is forced through a bounded loopback proxy; a pinned-Bun
-preload rejects direct child fetch and Node HTTP(S) egress. The attempt parent
-captures exactly one selected `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`, removes
-it before starting the mock stack, and injects it only at the provider proxy;
-the scenario child receives a dummy SDK key. Real service credentials are never
-passed. Before dispatch, the proxy requires the exact target model, rejects
+preload rejects direct child fetch and Node HTTP(S) egress. The outer adapter
+conveys exactly one selected `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` and its
+per-attempt receipt key over a bounded inherited pipe, never the harness
+environment. The trusted attempt harness consumes and closes that descriptor
+before starting the mock stack; the scenario child receives only a dummy SDK
+key. Real service credentials are injected only at the provider proxy. Before
+dispatch, the proxy requires the exact target model, rejects
 provider-hosted context/tools and non-text inputs, and injects or clamps the
 route-specific output cap to the remaining budget. Its conservative input
 envelope charges the larger canonical/original UTF-8 body size plus an 8,192
@@ -83,9 +85,13 @@ malformed, over-budget, oversized, or unmetered responses fail closed, and the
 manifest's 16-request ceiling remains binding.
 Accepted request evidence binds the exact canonical upstream byte length and
 SHA-256; rejected requests retain structural evidence without a forwarded hash.
-The trusted attempt harness signs the complete real-model receipt with a
-parent-owned, per-attempt HMAC key that is removed before any stack or scenario
-child starts; the outer adapter verifies that attestation before accepting it.
+The trusted attempt harness signs the complete real-model receipt with the
+parent-owned, per-attempt HMAC key; the outer adapter verifies that attestation
+before accepting it.
+This blocks direct secret inheritance into the harness and scenario child, but
+does not claim isolation from generic same-UID process inspection or raw network
+transports. The credentialed lane is not certifiable against a hostile child
+until #26821 supplies the OS/user/process sandbox for those boundaries.
 
 Attempts retain trajectories, tool receipts, transitions, bounded logs,
 network and mock-service ledgers, and authority hashes. The aggregate retains

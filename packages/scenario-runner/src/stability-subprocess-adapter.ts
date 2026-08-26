@@ -1,8 +1,9 @@
 /**
  * Executes stability attempts in independent OS process groups while one
  * leased synthetic-control session owns the exact mock manifest per attempt.
- * Child processes receive only explicit mock endpoints and, for live lanes,
- * one explicit model credential; ambient service credentials are never inherited.
+ * Child processes receive only explicit mock endpoints. For live lanes, the
+ * trusted attempt harness consumes secrets from a bounded bootstrap pipe that
+ * is closed before it starts any mock stack or scenario child.
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
@@ -16,6 +17,7 @@ import { constants } from "node:fs";
 import fs from "node:fs/promises";
 import { isIP } from "node:net";
 import path from "node:path";
+import { Writable } from "node:stream";
 import { logger } from "@elizaos/core";
 import { canonicalJsonString } from "@elizaos/shared/canonical-json";
 import type {
@@ -33,6 +35,7 @@ import {
 import { openScenarioSyntheticWorld } from "./synthetic-control.ts";
 
 const MAX_STDERR_BYTES = 1024 * 1024;
+const MAX_REAL_MODEL_BOOTSTRAP_BYTES = 128 * 1024;
 const ENVIRONMENT_NAME = /^[A-Z_][A-Z0-9_]*$/;
 const CREDENTIAL_NAME =
   /(?:^|_)(?:API_KEY|TOKEN|SECRET|PASSWORD|CREDENTIALS?|ACCESS_KEY(?:_ID)?|PRIVATE_KEY|CLIENT_SECRET|CONNECTION_STRING)$/;
@@ -463,12 +466,8 @@ function childEnvironment(
   input: Parameters<ScenarioStabilityExecutionAdapter["execute"]>[0],
   session: SyntheticControlSession,
   initialStateHash: string,
-  attestationKey?: string,
 ): NodeJS.ProcessEnv {
   const mode = options.modelMode;
-  if (mode.kind === "real-llm" && !attestationKey) {
-    throw new Error("real-llm attempt requires a parent-owned attestation key");
-  }
   return {
     PATH: process.env.PATH,
     TMPDIR: process.env.TMPDIR,
@@ -476,12 +475,6 @@ function childEnvironment(
     TZ: process.env.TZ ?? "UTC",
     ...options.env,
     ...options.mockServiceUrls,
-    ...(mode.kind === "real-llm"
-      ? {
-          [mode.credentialEnv]: mode.credentialValue,
-          [METER_ATTESTATION_ENV]: attestationKey,
-        }
-      : {}),
     ELIZA_STABILITY_MODEL_MODE: mode.kind,
     ...(mode.kind === "deterministic-mock"
       ? {
@@ -553,6 +546,18 @@ export class ScenarioStabilitySubprocessAdapter
       this.options.modelMode.kind === "real-llm"
         ? randomBytes(32).toString("hex")
         : undefined;
+    const bootstrap =
+      this.options.modelMode.kind === "real-llm" && attestationKey
+        ? JSON.stringify({
+            version: 1,
+            credentialEnvironment: this.options.modelMode.credentialEnv,
+            credentialValue: this.options.modelMode.credentialValue,
+            meterAttestationKey: attestationKey,
+          })
+        : "";
+    if (Buffer.byteLength(bootstrap) > MAX_REAL_MODEL_BOOTSTRAP_BYTES) {
+      throw new Error("real-model bootstrap exceeds its byte limit");
+    }
     const child = spawn(
       this.options.command,
       this.options.args({
@@ -564,14 +569,8 @@ export class ScenarioStabilitySubprocessAdapter
         cwd: this.options.cwd,
         detached: true,
         shell: false,
-        stdio: ["ignore", "pipe", "pipe"],
-        env: childEnvironment(
-          this.options,
-          input,
-          session,
-          initialStateHash,
-          attestationKey,
-        ),
+        stdio: ["ignore", "pipe", "pipe", "pipe"],
+        env: childEnvironment(this.options, input, session, initialStateHash),
       },
     );
     boundary.child = child;
@@ -595,6 +594,15 @@ export class ScenarioStabilitySubprocessAdapter
         );
       }
     };
+    const bootstrapPipe = child.stdio[3];
+    if (!(bootstrapPipe instanceof Writable)) {
+      stopForOutputFailure(
+        new Error("stability subprocess omitted its bootstrap pipe"),
+      );
+    } else {
+      bootstrapPipe.on("error", stopForOutputFailure);
+      bootstrapPipe.end(bootstrap);
+    }
     child.stdout?.on("data", (chunk: Buffer) => {
       try {
         stdoutBytes = appendBounded(
@@ -820,13 +828,13 @@ export class ScenarioStabilitySubprocessAdapter
                 REAL_MODEL_METER_FAILURE_CODES.has(failureCode))
           );
         }) &&
-        requestEnvelopes.every((value, index) => {
+        requestEnvelopes?.every((value, index) => {
           const envelope = value as Record<string, unknown>;
           return index < (requestCount as number)
             ? envelope.accepted === true && envelope.requestNumber === index + 1
             : envelope.accepted === false &&
                 envelope.requestNumber === (requestCount as number) + 1;
-        });
+        }) === true;
       const successMeteringValid =
         execution.passed === false ||
         (receipt?.liveModelInvoked === true &&
