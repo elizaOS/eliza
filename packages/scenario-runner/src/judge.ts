@@ -8,7 +8,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { logger, ModelType, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   CerebrasJudge,
   extractBalancedJsonObject,
@@ -96,10 +96,18 @@ function parseJudgeJson(raw: string): JudgeResult | null {
 export class JudgeParseError extends Error {
   readonly raw: string;
   constructor(attempts: number, raw: string) {
+    const wellFormed = toWellFormedUnicode(raw);
+    const start = truncateWellFormed(wellFormed, 150);
+    let endCut = wellFormed.length - 100;
+    const code = wellFormed.charCodeAt(endCut);
+    if (code >= 0xdc00 && code <= 0xdfff) {
+      endCut += 1;
+    }
+    const end = wellFormed.slice(endCut);
     const preview =
-      raw.length <= 300
-        ? raw
-        : `${raw.slice(0, 150)} … ${raw.slice(-100)} (${raw.length} chars)`;
+      wellFormed.length <= 300
+        ? wellFormed
+        : `${start} … ${end} (${wellFormed.length} chars)`;
     super(
       `[scenario-judge] model did not return a parseable JSON object after ${attempts} attempt(s). Raw: ${preview}`,
     );

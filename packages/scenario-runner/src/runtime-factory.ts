@@ -18,6 +18,8 @@ import {
   ModelType,
   NotificationService,
   trajectoriesPlugin,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import {
   createDeterministicModelPlugin,
@@ -576,7 +578,7 @@ export function deterministicScheduledDispatchRenderText(
   if (!ownerMessage) return "checking in.";
   const clamped =
     ownerMessage.length >= 64
-      ? `${ownerMessage.slice(0, 60).trimEnd()}…`
+      ? `${truncateWellFormed(toWellFormedUnicode(ownerMessage), 60).trimEnd()}…`
       : ownerMessage;
   return `Heads up: ${clamped}`;
 }
