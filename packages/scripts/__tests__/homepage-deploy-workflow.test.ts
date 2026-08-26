@@ -149,6 +149,52 @@ describe("homepage deployment workflow", () => {
     );
   });
 
+  it("fails closed when staging Discord uses the production application", () => {
+    for (const source of [workflow, releaseWorkflow]) {
+      expect(source).toContain("Resolve public Discord application");
+      expect(source).toContain(
+        "Staging homepage Discord CTA requires VITE_DISCORD_CLIENT_ID for a distinct staging application",
+      );
+      expect(source).toContain(
+        "Staging VITE_DISCORD_CLIENT_ID must not equal the production Discord application",
+      );
+      expect(source).toContain(
+        "VITE_DISCORD_CLIENT_ID must be a Discord application snowflake",
+      );
+      expect(source).toContain(
+        "Production VITE_DISCORD_CLIENT_ID must be the canonical production Discord application",
+      );
+      expect(source).toContain(
+        "Resolved public Discord application for staging (value redacted).",
+      );
+      expect(source).toContain("staging_discord_distinct_from_production=true");
+      expect(source).toContain(
+        'PRODUCTION_DISCORD_APPLICATION_ID: "1468649258654630063"',
+      );
+      expect(
+        source.match(
+          /PRODUCTION_DISCORD_APPLICATION_ID: "1468649258654630063"/g,
+        ),
+      ).toHaveLength(1);
+    }
+    expect(workflow).toContain("TARGET_ENVIRONMENT: staging");
+    expect(workflow).toContain(
+      "VITE_DISCORD_CLIENT_ID: $" +
+        "{{ needs.resolve-pages-preview-config.outputs.discord_client_id }}",
+    );
+    expect(releaseWorkflow).toContain(
+      "TARGET_ENVIRONMENT: $" + "{{ inputs.target_environment }}",
+    );
+    expect(releaseWorkflow).toContain(
+      "VITE_DISCORD_CLIENT_ID: $" +
+        "{{ needs.resolve-pages-environment-config.outputs.discord_client_id }}",
+    );
+    expect(releaseWorkflow).toContain(
+      "VITE_DISCORD_CLIENT_ID: $" +
+        "{{ needs.build-pages.outputs.discord_client_id }}",
+    );
+  });
+
   it("validates homepage source while building only packages/app in quality CI", () => {
     expect(qualityWorkflow).toContain("consolidated-frontend-build:");
     expect(qualityWorkflow).toContain("Validate homepage source contracts");

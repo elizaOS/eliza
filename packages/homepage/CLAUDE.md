@@ -124,7 +124,8 @@ isolated visual harness.
 | `VITE_ELIZACLOUD_API_URL` | `https://api.eliza.app` | Eliza Cloud backend base URL |
 | `VITE_TELEGRAM_BOT_USERNAME` | `ElizaIsNotABot` | Optional Telegram bot username override |
 | `VITE_TELEGRAM_BOT_ID` | `8931353359` | Optional numeric Telegram bot ID override |
-| `VITE_DISCORD_CLIENT_ID` | `1468649258654630063` | Optional Discord Application ID override |
+| `VITE_DISCORD_CLIENT_ID` | production: `1468649258654630063` | Discord application snowflake for the public CTA. Staging and preview builds fail closed unless this is a distinct staging application. Never fall back to production on staging. |
+| `VITE_ENVIRONMENT` | unset locally | `staging` or `production` on Pages builds. Staging requires a distinct `VITE_DISCORD_CLIENT_ID`. |
 | `WHATSAPP_PUBLIC_ENABLED` | disabled | Deployment-only switch that admits the public WhatsApp CTA |
 | `VITE_WHATSAPP_PHONE_NUMBER` | — | Admitted Blooio WhatsApp sender (E.164); production uses the shared `+18087881821` number only after its WhatsApp channel passes live proof |
 

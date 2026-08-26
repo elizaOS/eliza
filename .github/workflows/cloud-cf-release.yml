@@ -1779,6 +1779,7 @@ jobs:
       telegram_bot_id: ${{ steps.telegram.outputs.bot_id }}
       telegram_bot_username: ${{ steps.telegram.outputs.bot_username }}
       whatsapp_phone_number: ${{ steps.whatsapp.outputs.phone_number }}
+      discord_client_id: ${{ steps.discord.outputs.client_id }}
     steps:
       - name: Validate Telegram configuration
         id: telegram
@@ -1827,6 +1828,44 @@ jobs:
               ;;
           esac
 
+      - name: Resolve public Discord application
+        id: discord
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+          DISCORD_CLIENT_ID: ${{ vars.VITE_DISCORD_CLIENT_ID }}
+          PRODUCTION_DISCORD_APPLICATION_ID: "1468649258654630063"
+        run: |
+          set -euo pipefail
+          configured="$(printf '%s' "$DISCORD_CLIENT_ID" | tr -d '[:space:]')"
+          if [[ "$TARGET_ENVIRONMENT" == "staging" ]]; then
+            if [[ ! "$configured" =~ ^[0-9]{17,20}$ ]]; then
+              echo "::error::Staging homepage Discord CTA requires VITE_DISCORD_CLIENT_ID for a distinct staging application"
+              exit 1
+            fi
+            if [[ "$configured" == "$PRODUCTION_DISCORD_APPLICATION_ID" ]]; then
+              echo "::error::Staging VITE_DISCORD_CLIENT_ID must not equal the production Discord application"
+              exit 1
+            fi
+            echo "client_id=$configured" >> "$GITHUB_OUTPUT"
+            echo "Resolved public Discord application for staging (value redacted)." >> "$GITHUB_STEP_SUMMARY"
+            echo "staging_discord_distinct_from_production=true" >> "$GITHUB_STEP_SUMMARY"
+          elif [[ "$TARGET_ENVIRONMENT" == "production" ]]; then
+            if [[ -z "$configured" ]]; then
+              configured="$PRODUCTION_DISCORD_APPLICATION_ID"
+            elif [[ ! "$configured" =~ ^[0-9]{17,20}$ ]]; then
+              echo "::error::VITE_DISCORD_CLIENT_ID must be a Discord application snowflake"
+              exit 1
+            elif [[ "$configured" != "$PRODUCTION_DISCORD_APPLICATION_ID" ]]; then
+              echo "::error::Production VITE_DISCORD_CLIENT_ID must be the canonical production Discord application"
+              exit 1
+            fi
+            echo "client_id=$configured" >> "$GITHUB_OUTPUT"
+            echo "Resolved public Discord application for production (value redacted)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::Unknown Pages target environment"
+            exit 1
+          fi
+
   build-pages:
     name: Build Pages artifacts
     needs: [migrate-db, resolve-pages-environment-config]
@@ -1844,6 +1883,7 @@ jobs:
       telegram_bot_id: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_id }}
       telegram_bot_username: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_username }}
       whatsapp_phone_number: ${{ needs.resolve-pages-environment-config.outputs.whatsapp_phone_number }}
+      discord_client_id: ${{ needs.resolve-pages-environment-config.outputs.discord_client_id }}
     steps:
       - name: Validate PR preview identity
         if: github.event_name == 'pull_request'
@@ -1898,6 +1938,7 @@ jobs:
           VITE_TELEGRAM_BOT_ID: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_id }}
           VITE_TELEGRAM_BOT_USERNAME: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_username }}
           VITE_WHATSAPP_PHONE_NUMBER: ${{ needs.resolve-pages-environment-config.outputs.whatsapp_phone_number }}
+          VITE_DISCORD_CLIENT_ID: ${{ needs.resolve-pages-environment-config.outputs.discord_client_id }}
           VITE_API_URL: ${{ (inputs.target_environment == 'production') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
           NEXT_PUBLIC_API_URL: ${{ (inputs.target_environment == 'production') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
           VITE_OIDC_ISSUER_URL: ${{ (inputs.target_environment == 'production') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
@@ -2182,6 +2223,7 @@ jobs:
           VITE_TELEGRAM_BOT_ID: ${{ needs.build-pages.outputs.telegram_bot_id }}
           VITE_TELEGRAM_BOT_USERNAME: ${{ needs.build-pages.outputs.telegram_bot_username }}
           VITE_WHATSAPP_PHONE_NUMBER: ${{ needs.build-pages.outputs.whatsapp_phone_number }}
+          VITE_DISCORD_CLIENT_ID: ${{ needs.build-pages.outputs.discord_client_id }}
           VITE_API_URL: ${{ (inputs.target_environment == 'production') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
           NEXT_PUBLIC_API_URL: ${{ (inputs.target_environment == 'production') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
           VITE_OIDC_ISSUER_URL: ${{ (inputs.target_environment == 'production') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}

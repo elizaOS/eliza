@@ -341,6 +341,19 @@ post-deploy inventories fail closed if a required binding is absent. This proves
 presence, not byte-for-byte parity, so parity still requires an intentional
 rotation to one newly generated environment-owned value.
 
+The public homepage Discord CTA is compiled into the Pages Vite artifact as
+`VITE_DISCORD_CLIENT_ID`. Git records only that variable name. Staging and
+pull-request preview builds fail closed when the value is absent, blank,
+malformed, or equal to the production application `1468649258654630063`.
+Production may omit it and uses that canonical id. Pull-request previews have no
+GitHub Environment, so they read the repository variable; `staging` and
+`production` Environments supply the develop and main deploys. If the repository
+variable is the staging snowflake, the production Environment must set the
+canonical production id. Cloudflare injects the value at
+`bun run --cwd packages/app build:web`; Railway does not own this CTA. Deploy
+step summaries redact the snowflake and record that staging is distinct from
+production.
+
 The protected `TUNNEL_HOSTNAME_SIGNING_SECRET` is intentionally shared by the
 Cloud Worker and Railway tunnel proxy. Configure one environment-owned value
 per environment; `cloud-cf-deploy.yml` publishes it to the Worker and
