@@ -6202,7 +6202,7 @@ export function findAndroidCloudPackagedRuntimeOffenders(entries) {
 
 export function cloudSafeMainActivityJava(
   androidPackage,
-  { launcherKiosk = false } = {},
+  { launcherKiosk = false, immersiveNavigation = false } = {},
 ) {
   const launcherImports = launcherKiosk
     ? `import android.util.Log;
@@ -6210,6 +6210,9 @@ import android.view.KeyEvent;
 
 import androidx.activity.OnBackPressedCallback;
 `
+    : "";
+  const navigationInsetsImport = immersiveNavigation
+    ? "import androidx.core.view.WindowInsetsCompat;\n"
     : "";
   const launcherConstants = launcherKiosk
     ? '    private static final String TAG = "ElizaMainActivity";\n'
@@ -6247,6 +6250,28 @@ import androidx.activity.OnBackPressedCallback;
     }
 `
     : "";
+  const navigationBarPolicy = immersiveNavigation
+    ? `            systemBars.hide(WindowInsetsCompat.Type.navigationBars());
+            systemBars.setSystemBarsBehavior(
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);`
+    : "            systemBars.setAppearanceLightNavigationBars(false);";
+  const focusHandler = immersiveNavigation
+    ? `
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (!hasFocus) return;
+        WindowInsetsControllerCompat controller =
+            WindowCompat.getInsetsController(
+                getWindow(), getWindow().getDecorView());
+        if (controller != null) {
+            controller.hide(WindowInsetsCompat.Type.navigationBars());
+            controller.setSystemBarsBehavior(
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+        }
+    }
+`
+    : "";
   return `package ${androidPackage};
 
 import android.os.Bundle;
@@ -6256,7 +6281,7 @@ import android.webkit.WebView;
 
 import androidx.core.splashscreen.SplashScreen;
 import androidx.core.view.WindowCompat;
-import androidx.core.view.WindowInsetsControllerCompat;
+${navigationInsetsImport}import androidx.core.view.WindowInsetsControllerCompat;
 ${launcherImports}
 
 import com.getcapacitor.BridgeActivity;
@@ -6288,17 +6313,16 @@ ${launcherConstants}
         super.onCreate(savedInstanceState);
 ${launcherSetup}
 
-        // Draw the canonical Cloud renderer behind transparent system bars while
-        // keeping both bars visible and user-controlled. This uses only the
-        // public AndroidX edge-to-edge API and avoids white-on-white status
-        // icons on the signed-out screen.
+        // Draw the canonical Cloud renderer behind transparent system bars. The
+        // launcher variant hides only the navigation bar; a swipe can reveal
+        // it transiently; ordinary Cloud builds keep both bars visible.
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         WindowInsetsControllerCompat systemBars =
             WindowCompat.getInsetsController(
                 getWindow(), getWindow().getDecorView());
         if (systemBars != null) {
             systemBars.setAppearanceLightStatusBars(false);
-            systemBars.setAppearanceLightNavigationBars(false);
+${navigationBarPolicy}
         }
 
         if (getBridge() != null && getBridge().getWebView() != null) {
@@ -6313,6 +6337,7 @@ ${launcherSetup}
         super.onNewIntent(intent);
     }
 ${launcherMethods}
+${focusHandler}
 
 }
 `;
@@ -7171,7 +7196,7 @@ public class ElizaTasksWorker extends Worker {
 function rewriteCloudJavaSources(
   javaRoots,
   androidPackage,
-  { launcherKiosk = false } = {},
+  { launcherKiosk = false, immersiveNavigation = false } = {},
 ) {
   let touched = 0;
   for (const root of javaRoots) {
@@ -7180,7 +7205,10 @@ function rewriteCloudJavaSources(
     if (fs.existsSync(mainActivity)) {
       fs.writeFileSync(
         mainActivity,
-        cloudSafeMainActivityJava(androidPackage, { launcherKiosk }),
+        cloudSafeMainActivityJava(androidPackage, {
+          launcherKiosk,
+          immersiveNavigation,
+        }),
         "utf8",
       );
       touched += 1;
@@ -8020,6 +8048,7 @@ function stripAndroidForCloud({ env = process.env } = {}) {
   }
   rewriteCloudJavaSources(javaRoots, androidPackage, {
     launcherKiosk: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
+    immersiveNavigation: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
   });
 
   const testJavaRoots = [
