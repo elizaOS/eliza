@@ -56,8 +56,8 @@ function viteEnvFlagEnabled(name: string, defaultValue: boolean): boolean {
 /** Apps are enabled by default; opt-out via VITE_ENABLE_APPS=false. */
 export const APPS_ENABLED = viteEnvFlagEnabled("VITE_ENABLE_APPS", true);
 
-/** Stream routes stay addressable; the nav hides the tab unless streaming is enabled. */
-export const STREAM_ENABLED = true;
+/** Stream routes stay addressable; builds can hide the tab without removing it. */
+export const STREAM_ENABLED = viteEnvFlagEnabled("VITE_ENABLE_STREAM", true);
 
 /**
  * Tab identifier — includes all built-in tabs plus arbitrary strings

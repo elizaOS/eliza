@@ -142,12 +142,14 @@ vi.mock("../../api", async (importOriginal) => {
   };
 });
 
+import { client } from "../../api";
 import { BrowserWorkspaceView } from "./BrowserWorkspaceView";
 
 beforeEach(() => {
   surfaceHarness.error = null;
   surfaceHarness.retry.mockClear();
   openExternalHarness.openExternalUrl.mockClear();
+  vi.mocked(client.getBrowserWorkspace).mockClear();
 });
 
 afterEach(() => {
@@ -199,5 +201,27 @@ describe("BrowserWorkspaceView native surface error states", () => {
     fireEvent.click(retry);
     expect(surfaceHarness.retry).toHaveBeenCalledTimes(1);
     expect(openExternalHarness.openExternalUrl).not.toHaveBeenCalled();
+  });
+
+  it("does not replace native client tabs with an empty server poll", async () => {
+    vi.useFakeTimers();
+    try {
+      render(<BrowserWorkspaceView />);
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(screen.getByText("Example")).not.toBeNull();
+      expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3_000);
+      });
+
+      expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(1);
+      expect(screen.getByText("Example")).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
