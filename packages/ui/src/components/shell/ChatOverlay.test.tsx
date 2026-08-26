@@ -2426,7 +2426,7 @@ describe("ChatOverlay", () => {
     expect(screen.getAllByTestId("chat-composer-textarea")).toHaveLength(1);
   });
 
-  it("keeps Home above the surface-local conversation actions", () => {
+  it("keeps Home above the surface-local search and upload actions", () => {
     render(<ChatOverlay controller={makeController()} />);
     const plus = screen.getByTestId("chat-composer-plus");
     expect(screen.getByLabelText("chat actions")).toBeTruthy();
@@ -2443,18 +2443,12 @@ describe("ChatOverlay", () => {
     });
 
     const home = screen.getByText("Back to Home");
-    const newChat = screen.getByText("New chat");
     const search = screen.getByText("Search chat…");
     expect(home).toBeTruthy();
-    expect(newChat).toBeTruthy();
     expect(search).toBeTruthy();
     expect(screen.getByText("Upload file")).toBeTruthy();
     expect(
       home.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      newChat.compareDocumentPosition(search) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(screen.queryByText("Record long-form transcript…")).toBeNull();
     expect(screen.queryByText("Enable camera")).toBeNull();
@@ -2538,26 +2532,6 @@ describe("ChatOverlay", () => {
     fireEvent.click(screen.getByText("Back to Home"));
 
     expect(navigateHome).toHaveBeenCalledTimes(1);
-  });
-
-  it("starts a fresh preserved conversation from the chat-actions menu", () => {
-    const clearConversation = vi.fn();
-    render(<ChatOverlay controller={makeController({ clearConversation })} />);
-
-    const plus = screen.getByTestId("chat-composer-plus");
-    fireEvent.pointerDown(plus, {
-      button: 0,
-      pointerId: 1,
-      pointerType: "mouse",
-    });
-    fireEvent.pointerUp(plus, {
-      button: 0,
-      pointerId: 1,
-      pointerType: "mouse",
-    });
-    fireEvent.click(screen.getByText("New chat"));
-
-    expect(clearConversation).toHaveBeenCalledTimes(1);
   });
 
   it("hides the redundant Home action while already on Home", () => {
@@ -4218,12 +4192,13 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(screen.queryByTestId("message-search-empty")).toBeNull();
   });
 
-  it("never invokes clearConversation from the header", () => {
+  it("never invokes clearConversation from the header (no new-chat control)", () => {
     const { controller } = makeSwipeController();
     render(<ChatOverlay controller={controller} />);
     openSheet();
 
-    // New chat belongs in the composer menu, not the reading header.
+    // The new-chat header control was removed: nothing in the header may
+    // reset the thread.
     expect(screen.queryByTestId("chat-full-clear")).toBeNull();
     expect(controller.clearConversation).not.toHaveBeenCalled();
   });
