@@ -220,10 +220,10 @@ describe("Launcher", () => {
 
 describe("Launcher tile imagery (glyph-only)", () => {
   // The launcher deslop (#13453): a launcher tile is a clean app icon, the
-  // branded gradient plate + the crisp Lucide glyph, and NEVER composites a
-  // generated hero <img> on top (that painted a cartoon virus over Settings,
-  // etc: the "icons are slop" report). Hero images stay on the catalog card
-  // surface, not here.
+  // shared smoked-glass adaptive plate + the crisp Ionicons glyph, and NEVER
+  // composites a generated hero <img> on top (that painted a cartoon virus
+  // over Settings, etc: the "icons are slop" report). Hero images stay on the
+  // catalog card surface, not here.
   it("renders the glyph only and never a hero <img>, even when imageUrl is set", () => {
     const entries = [imageEntry("notes", "Notes", "/api/views/notes/hero")];
     const { container } = render(
@@ -235,11 +235,57 @@ describe("Launcher tile imagery (glyph-only)", () => {
       '[data-view-visual="notes"]',
     );
     expect(visual).toBeTruthy();
-    expect(visual?.querySelector("img")).toBeNull();
-    // The crisp Lucide glyph is what the tile shows.
-    expect(visual?.querySelector("svg")).toBeTruthy();
+    expect(visual?.querySelector("span")).toBeNull();
+    expect(visual?.style.background).toBe("");
+    // The approved filled Ionicon is what the tile shows.
+    const glyph = visual?.querySelector<HTMLImageElement>(
+      'img[data-ionicon="document-text"]',
+    );
+    expect(glyph).toBeTruthy();
+    expect(glyph?.src).toMatch(/^(?:data:image\/svg\+xml|https?:|file:)/);
+    expect(visual?.querySelector("svg")).toBeNull();
     // The launch button is still labelled for a11y + tap.
     expect(screen.getByRole("button", { name: "Notes" })).toBeTruthy();
+  });
+
+  it("preserves an explicit third-party URL icon without probing its hero", () => {
+    const entries = [
+      {
+        ...imageEntry(
+          "third-party",
+          "Third Party",
+          "https://cdn.example.com/hero.png",
+        ),
+        icon: "https://cdn.example.com/icon.png",
+      },
+    ];
+    const { container } = render(
+      <Launcher entries={entries} onLaunch={() => {}} />,
+    );
+
+    expect(screen.queryByTestId("launcher-image-third-party")).toBeNull();
+    const visual = container.querySelector<HTMLElement>(
+      '[data-view-visual="third-party"]',
+    );
+    expect(visual?.querySelector("img")?.getAttribute("src")).toBe(
+      "https://cdn.example.com/icon.png",
+    );
+  });
+
+  it("keeps an unknown third-party fallback deterministic and accessible", () => {
+    const unknown = {
+      ...entry("acme-tool", "Acme Tool"),
+      icon: "NoSuchLucideIcon",
+    };
+    const { container } = render(
+      <Launcher entries={[unknown]} onLaunch={() => {}} />,
+    );
+
+    expect(screen.getByRole("button", { name: "Acme Tool" })).toBeTruthy();
+    const visual = container.querySelector<HTMLElement>(
+      '[data-view-visual="acme-tool"]',
+    );
+    expect(visual?.querySelector('img[data-ionicon="apps"]')).toBeTruthy();
   });
 
   it("renders the real Automations entry with its semantic clock glyph", () => {
@@ -259,8 +305,8 @@ describe("Launcher tile imagery (glyph-only)", () => {
     render(<Launcher entries={entries} onLaunch={() => {}} />);
 
     const visual = document.querySelector('[data-view-visual="automations"]');
-    expect(visual?.querySelector("svg.lucide-clock-3")).toBeTruthy();
-    expect(visual?.querySelector("svg.lucide-layout-grid")).toBeNull();
+    expect(visual?.querySelector('img[data-ionicon="time"]')).toBeTruthy();
+    expect(visual?.querySelector('img[data-ionicon="apps"]')).toBeNull();
   });
 
   it("keeps loaded Finances distinct from catalog Hyperliquid", () => {
@@ -299,10 +345,10 @@ describe("Launcher tile imagery (glyph-only)", () => {
     const hyperliquid = document.querySelector(
       '[data-view-visual="@elizaos/plugin-hyperliquid"]',
     );
+    expect(finances?.querySelector('img[data-ionicon="cash"]')).toBeTruthy();
     expect(
-      finances?.querySelector("svg.lucide-circle-dollar-sign"),
+      hyperliquid?.querySelector('img[data-ionicon="trending-up"]'),
     ).toBeTruthy();
-    expect(hyperliquid?.querySelector("svg.lucide-trending-up")).toBeTruthy();
   });
 
   it("renders the icon glyph when imageUrl is absent", () => {
@@ -311,7 +357,9 @@ describe("Launcher tile imagery (glyph-only)", () => {
       <Launcher entries={entries} onLaunch={() => {}} />,
     );
     expect(screen.queryByTestId("launcher-image-notes")).toBeNull();
-    expect(container.querySelector("svg")).toBeTruthy();
+    expect(
+      container.querySelector('img[data-ionicon="document-text"]'),
+    ).toBeTruthy();
   });
 
   it("renders the glyph regardless of the API base (no hero probe on any agent)", () => {
@@ -328,7 +376,9 @@ describe("Launcher tile imagery (glyph-only)", () => {
     const visual = container.querySelector<HTMLElement>(
       '[data-view-visual="notes"]',
     );
-    expect(visual?.querySelector("img")).toBeNull();
-    expect(visual?.querySelector("svg")).toBeTruthy();
+    expect(
+      visual?.querySelector('img[data-ionicon="document-text"]'),
+    ).toBeTruthy();
+    expect(visual?.querySelector("svg")).toBeNull();
   });
 });

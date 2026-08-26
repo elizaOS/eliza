@@ -75,6 +75,7 @@ const mocks = vi.hoisted(() => ({
     stopCodingAgent: vi.fn(),
     renameConversation: vi.fn(() => Promise.resolve()),
     truncateConversationMessages: vi.fn(() => Promise.resolve()),
+    deleteConversation: vi.fn(() => Promise.resolve({ ok: true })),
     deleteConversationMessage: vi.fn(() =>
       Promise.resolve({ ok: true, deletedCount: 1 }),
     ),
@@ -199,6 +200,13 @@ function makeDeps(
     loadConversationMessages: vi.fn(
       async (): Promise<LoadConversationMessagesResult> => ({ ok: true }),
     ),
+    claimConversationMessagesOwnership: vi.fn(() => 0),
+    isConversationMessagesOwnershipCurrent: vi.fn(() => true),
+    conversationHydrationEpochRef: { current: 0 },
+    registerConversationMessageOverlay: vi.fn(),
+    applyConversationMessageOverlayModification: vi.fn(),
+    removeConversationMessageStateMessages: vi.fn(),
+    discardConversationMessageState: vi.fn(),
     elizaCloudEnabled: false,
     elizaCloudConnected: false,
     pollCloudCredits: vi.fn(async () => true),
@@ -598,6 +606,50 @@ describe("useChatSend stop handling", () => {
     });
 
     expect(listPendingChatTurns("conv-1")).toHaveLength(0);
+  });
+});
+
+describe("useChatSend clear ownership race", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.localStorage.clear();
+  });
+
+  it("does not clear B when deleting A resolves after the user selected B", async () => {
+    const deletion = deferred<{ ok: boolean }>();
+    mocks.client.deleteConversation.mockReturnValueOnce(deletion.promise);
+    const deps = makeDeps({
+      activeConversationId: "conv-A",
+      conversations: [
+        conversation("conv-A", "room-A"),
+        conversation("conv-B", "room-B"),
+      ],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let clearing: Promise<void>;
+    act(() => {
+      clearing = result.current.handleChatClear();
+    });
+    const bMessages: ConversationMessage[] = [
+      { id: "b-user", role: "user", text: "B stays", timestamp: 1 },
+    ];
+    deps.activeConversationIdRef.current = "conv-B";
+    deps.conversationMessagesRef.current = bMessages;
+
+    await act(async () => {
+      deletion.resolve({ ok: true });
+      await clearing;
+    });
+
+    expect(deps.activeConversationIdRef.current).toBe("conv-B");
+    expect(deps.conversationMessagesRef.current).toEqual(bMessages);
+    expect(deps.discardConversationMessageState).toHaveBeenCalledWith("conv-A");
+    expect(deps.setActiveConversationId).not.toHaveBeenCalledWith(null);
+    expect(mocks.client.sendWsMessage).not.toHaveBeenCalledWith({
+      type: "active-conversation",
+      conversationId: null,
+    });
   });
 });
 
@@ -2339,6 +2391,17 @@ describe("useChatSend retry re-runs the turn in place (no duplicate)", () => {
       "u1",
       { inclusive: true },
     );
+    expect(deps.removeConversationMessageStateMessages).toHaveBeenCalledWith(
+      "conv-1",
+      expect.objectContaining({
+        mode: "truncate",
+        preservedMessages: [],
+        removedMessages: expect.arrayContaining([
+          expect.objectContaining({ id: "u1" }),
+          expect.objectContaining({ id: "a1" }),
+        ]),
+      }),
+    );
     // The text was resent once (re-run), not as a brand-new extra turn.
     expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
 
@@ -2542,6 +2605,17 @@ describe("useChatSend edit preserves a cancelled queued draft", () => {
     });
 
     expect(await editPromise).toBe(true);
+    expect(deps.removeConversationMessageStateMessages).toHaveBeenCalledWith(
+      "conv-1",
+      expect.objectContaining({
+        mode: "truncate",
+        preservedMessages: [],
+        removedMessages: expect.arrayContaining([
+          expect.objectContaining({ id: "u1" }),
+          expect.objectContaining({ id: "a1" }),
+        ]),
+      }),
+    );
     expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
     expect(mocks.client.sendConversationMessageStream.mock.calls[0]?.[1]).toBe(
       "edited",
@@ -3678,6 +3752,13 @@ describe("useChatSend — handleChatDelete persistent single-message delete (#13
     expect(mocks.client.deleteConversationMessage).toHaveBeenCalledWith(
       "c-1",
       "m-2",
+    );
+    expect(deps.removeConversationMessageStateMessages).toHaveBeenCalledWith(
+      "c-1",
+      {
+        mode: "delete-exact",
+        removedMessages: [expect.objectContaining({ id: "m-2" })],
+      },
     );
     // Target gone, neighbors intact (single-row delete, not truncate).
     const ids = deps.conversationMessagesRef.current.map((m) => m.id);

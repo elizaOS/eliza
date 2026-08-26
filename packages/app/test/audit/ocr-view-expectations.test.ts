@@ -93,12 +93,18 @@ describe("aesthetic audit semantic OCR policy coverage", () => {
     }
   });
 
-  it("expects the production Cloud plugin bundle's signed-out state", () => {
-    const policy = resolveViewOcrPolicy("plugin-cloud-gui");
-    expect(policy).toEqual({
+  it("keeps separate connected and signed-out Cloud semantic contracts", () => {
+    expect(resolveViewOcrPolicy("plugin-cloud-gui")).toEqual({
       kind: "expectation",
       expectation: {
         requireAll: ["Eliza Cloud"],
+        requireAny: ["Credits", "Hosted agents", "API keys", "Connected"],
+      },
+    });
+    expect(resolveViewOcrPolicy("plugin-cloud-signed-out-gui")).toEqual({
+      kind: "expectation",
+      expectation: {
+        requireAll: ["Eliza Cloud", "Connect in Settings"],
         requireAny: [
           "credits",
           "hosted agents",

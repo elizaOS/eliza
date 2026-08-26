@@ -157,6 +157,11 @@ export const SETTINGS_NON_CATALOG_SECTION_META = [
     group: "cloud",
   },
   {
+    id: "android-account-lifecycle",
+    defaultLabel: "Account & Privacy",
+    group: "security",
+  },
+  {
     id: "my-runtimes",
     defaultLabel: "My Runtimes",
     group: "system",

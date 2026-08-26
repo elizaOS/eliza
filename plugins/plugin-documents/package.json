@@ -48,7 +48,12 @@
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {}
   },
+  "sideEffects": [
+    "./src/register.ts",
+    "./dist/register.js"
+  ],
   "elizaos": {
+    "appRegister": "register",
     "app": {
       "heroImage": "assets/hero.png"
     }
@@ -58,11 +63,12 @@
   },
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "bun run build:js && bun run build:types",
+    "build": "bun run build:js && bun run build:views && bun run build:types",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "build:types": "tsc6 --noCheck -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config ./vitest.config.ts",
     "test:e2e:manual": "vitest run --config ../../vitest.config.ts test/*.live.e2e.test.ts",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -78,6 +84,7 @@
     "@types/node": "^25.0.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "vite": "^8.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tsup": "^8.5.1",

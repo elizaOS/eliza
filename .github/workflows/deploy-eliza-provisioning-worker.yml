@@ -707,6 +707,23 @@ jobs:
             # `FATAL ERROR: ... JavaScript heap out of memory` (exit 134). Raise
             # the heap ceiling to match the repo's typecheck lane (8 GB).
             export NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=8192"
+
+            # The systemd daemons execute through Node/tsx as well as Bun.
+            # `packages/core/src/prompts.ts` re-exports `@elizaos/prompts`, and
+            # default-condition resolution therefore requires the prompts
+            # package's dist entrypoint. The host deliberately preserves
+            # node_modules between deploys, so an old real directory can also
+            # mask the workspace link that `bun install` would normally create.
+            # Reconcile this one declared workspace dependency explicitly;
+            # `build:core` does not include the prompts package because its full
+            # build has a deliberate reverse action-doc dependency on core.
+            mkdir -p packages/core/node_modules/@elizaos
+            rm -rf packages/core/node_modules/@elizaos/prompts
+            ln -s ../../../prompts packages/core/node_modules/@elizaos/prompts
+            test "$(realpath packages/core/node_modules/@elizaos/prompts)" = \
+              /opt/eliza/packages/prompts
+            bun run --cwd packages/prompts build:package
+            test -f packages/core/node_modules/@elizaos/prompts/dist/index.js
             bun run build:core
             mkdir -p plugins/plugin-sql/node_modules/@elizaos
             rm -rf plugins/plugin-sql/node_modules/@elizaos/core

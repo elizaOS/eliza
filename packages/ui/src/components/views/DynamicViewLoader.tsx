@@ -550,8 +550,30 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@elizaos/ui/state": () => import("../../state/index.ts"),
   "@elizaos/ui/state/useApp": () => import("../../state/useApp.ts"),
   "@elizaos/ui/utils": () => import("../../utils/index.ts"),
+  "@elizaos/ui/hooks/resource-cache": () =>
+    import("../../hooks/resource-cache.ts"),
+  "@elizaos/ui/utils/attachment-url": () =>
+    import("../../utils/attachment-url.ts"),
+  "@elizaos/ui/utils/desktop-dialogs": () =>
+    import("../../utils/desktop-dialogs.ts"),
+  "@elizaos/ui/utils/download-share": () =>
+    import("../../utils/download-share.ts"),
   "@elizaos/ui/components/composites/page-panel": () =>
     import("../composites/page-panel/index.ts"),
+  "@elizaos/ui/components/composites/settings": () =>
+    import("../composites/settings/index.ts"),
+  "@elizaos/ui/components/shared/confirm-delete-control": () =>
+    import("../shared/confirm-delete-control.tsx"),
+  "@elizaos/ui/components/shared/SectionNav": () =>
+    import("../shared/SectionNav.tsx"),
+  "@elizaos/ui/components/shared/ViewHeader": () =>
+    import("../shared/ViewHeader.tsx"),
+  "@elizaos/ui/components/transcripts/TranscriptPlayer": () =>
+    import("../transcripts/TranscriptPlayer.tsx"),
+  "@elizaos/ui/components/transcripts/TranscriptsView": () =>
+    import("../transcripts/TranscriptsView.tsx"),
+  "@elizaos/ui/components/views/ShellViewAgentSurface": () =>
+    import("./ShellViewAgentSurface.tsx"),
   "@elizaos/ui/components/composites/sidebar/sidebar-content": () =>
     import("../composites/sidebar/sidebar-content.tsx"),
   "@elizaos/ui/components/composites/sidebar/sidebar-panel": () =>
@@ -564,6 +586,7 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
     import("../pages/vector-browser-utils.ts"),
   "@elizaos/ui/components/shared/AppPageSidebar": () =>
     import("../shared/AppPageSidebar.tsx"),
+  "@elizaos/ui/components/shared": () => import("../shared/index.ts"),
   "@elizaos/ui/components/ui/button": () => import("../ui/button.tsx"),
   "@elizaos/ui/components/ui/input": () => import("../ui/input.tsx"),
   "@elizaos/ui/components/ui/select": () => import("../ui/select.tsx"),
