@@ -4,7 +4,7 @@
  * and browser window.ENV / __ENV__ global bag reading.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getEnv } from "./env.js";
+import { getEnv, getEnvBoolean, getEnvNumber } from "./env.js";
 
 describe("logger env reader", () => {
   const originalEnv = { ...process.env };
@@ -64,5 +64,31 @@ describe("logger env reader", () => {
     expect(getBrowserEnv("RETRY_COUNT")).toBe("3");
     expect(getBrowserEnv("FEATURE_ENABLED")).toBe("true");
     expect(getBrowserEnv("MISSING", "fallback")).toBe("fallback");
+  });
+
+  it("parses booleans correctly with getEnvBoolean", () => {
+    process.env.FLAG_TRUE = "true";
+    process.env.FLAG_ONE = "1";
+    process.env.FLAG_YES = "yes";
+    process.env.FLAG_FALSE = "false";
+    process.env.FLAG_ZERO = "0";
+
+    expect(getEnvBoolean("FLAG_TRUE")).toBe(true);
+    expect(getEnvBoolean("FLAG_ONE")).toBe(true);
+    expect(getEnvBoolean("FLAG_YES")).toBe(true);
+    expect(getEnvBoolean("FLAG_FALSE")).toBe(false);
+    expect(getEnvBoolean("FLAG_ZERO")).toBe(false);
+    expect(getEnvBoolean("UNSET_FLAG", true)).toBe(true);
+    expect(getEnvBoolean("UNSET_FLAG", false)).toBe(false);
+  });
+
+  it("parses numbers correctly with getEnvNumber", () => {
+    process.env.PORT = "3000";
+    process.env.INVALID_NUM = "not-a-number";
+
+    expect(getEnvNumber("PORT")).toBe(3000);
+    expect(getEnvNumber("INVALID_NUM", 8080)).toBe(8080);
+    expect(getEnvNumber("UNSET_NUM", 5000)).toBe(5000);
+    expect(getEnvNumber("UNSET_NUM")).toBeUndefined();
   });
 });

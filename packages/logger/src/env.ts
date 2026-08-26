@@ -32,3 +32,28 @@ export function getEnv(key: string, defaultValue?: string): string | undefined {
   const value = browserEnvBag()[key];
   return value !== undefined ? String(value) : defaultValue;
 }
+
+/** Read an environment variable as a boolean, recognizing true/false/1/0/yes/no. */
+export function getEnvBoolean(key: string, defaultValue = false): boolean {
+  const val = getEnv(key);
+  if (val === undefined) return defaultValue;
+  const normalized = val.trim().toLowerCase();
+  if (normalized === "true" || normalized === "1" || normalized === "yes") {
+    return true;
+  }
+  if (normalized === "false" || normalized === "0" || normalized === "no") {
+    return false;
+  }
+  return defaultValue;
+}
+
+/** Read an environment variable as a parsed number, or defaultValue if unset/invalid. */
+export function getEnvNumber(
+  key: string,
+  defaultValue?: number,
+): number | undefined {
+  const val = getEnv(key);
+  if (val === undefined) return defaultValue;
+  const parsed = Number(val.trim());
+  return Number.isFinite(parsed) ? parsed : defaultValue;
+}
