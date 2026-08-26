@@ -64,11 +64,20 @@ function makeTx(txIndex: number) {
       }
       return { rows: [] };
     },
-    select: () => {
-      const state = { table: undefined as unknown, hasOrderBy: false };
+    select: (selection?: Record<string, unknown>) => {
+      const state = {
+        table: undefined as unknown,
+        hasAuthorityJoin: false,
+        hasOrderBy: false,
+        selectsOnlyId: selection ? Object.keys(selection).length === 1 && "id" in selection : false,
+      };
       const chain = {
         from: (table: unknown) => {
           state.table = table;
+          return chain;
+        },
+        innerJoin: () => {
+          state.hasAuthorityJoin = true;
           return chain;
         },
         where: (_clause: SQL | undefined) => chain,
@@ -83,9 +92,13 @@ function makeTx(txIndex: number) {
         limit: () => {
           // The live-target re-check orders by created_at; the enqueue's
           // sandbox-existence probe does not — that distinguishes them.
-          if (state.table === agentSandboxes && state.hasOrderBy) {
+          if (state.table === agentSandboxes && state.hasAuthorityJoin && state.hasOrderBy) {
             events.push({ tx: txIndex, kind: "select-live-target" });
-            return liveTargetRowsForTx(txIndex);
+            return liveTargetRowsForTx(txIndex).map((agent) => ({ agent }));
+          }
+          if (state.table === agentSandboxes && state.selectsOnlyId) {
+            events.push({ tx: txIndex, kind: "select-quarantined-marker" });
+            return [];
           }
           if (state.table === agentSandboxes) {
             events.push({ tx: txIndex, kind: "select-sandbox-for-enqueue" });
@@ -222,6 +235,7 @@ describe("tier-upgrade single-flight span (#15943)", () => {
       "lock",
       "lock",
       "select-live-target",
+      "select-quarantined-marker",
       "select-quota-count",
     ]);
     // Global lock order: the ORG-WIDE agent-create lock is acquired FIRST
@@ -242,6 +256,7 @@ describe("tier-upgrade single-flight span (#15943)", () => {
       "lock",
       "lock",
       "select-live-target",
+      "select-quarantined-marker",
       "select-quota-count",
       "insert-target",
       "deadline",

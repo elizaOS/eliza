@@ -14,6 +14,10 @@ import { creditsService } from "@elizaos/cloud-shared/lib/services/credits";
 import { invoicesService } from "@elizaos/cloud-shared/lib/services/invoices";
 import { stripeCheckoutOrdersService } from "@elizaos/cloud-shared/lib/services/stripe-checkout-orders";
 import {
+  createCloudAgent,
+  getPersistedAgentSummary,
+} from "../src/helpers/provisioning";
+import {
   buildPlaywrightSessionToken,
   expect,
   test,
@@ -21,16 +25,63 @@ import {
 
 const CHECKOUT_PATH = "/api/stripe/create-checkout-session";
 const WEBHOOK_PATH = "/api/stripe/webhook";
+const BILLING_PAGE_PATH = "/cloud/billing";
+const BILLING_SNAPSHOT_PATH = "/api/v1/billing/limits";
+const INVOICE_LIST_PATH = "/api/invoices/list";
 const WEBHOOK_SECRET = "whsec_cloud_e2e";
+
+const SHELL_PATHS = [
+  "/api/health",
+  "/api/status",
+  "/api/auth/status",
+  "/api/auth/me",
+  "/api/conversations",
+  "/api/character",
+  "/api/first-run/status",
+  "/api/first-run",
+  "/api/views",
+  "/api/config",
+  "/api/runtime/mode",
+  "/api/commands",
+  "/api/custom-actions",
+  "/api/agent/events",
+  "/api/agent/start",
+  "/api/apps/overlay-presence",
+  "/api/lifeops/activity-signals",
+  "/api/stream/settings",
+] as const;
+
+interface BillingSnapshotResponse {
+  success?: boolean;
+  data?: {
+    schemaVersion?: number;
+    v2?: {
+      balance?: unknown;
+    };
+  };
+}
+
+interface InvoiceListResponse {
+  invoices?: Array<{
+    id?: string;
+    stripeInvoiceId?: string;
+    total?: string;
+    status?: string;
+    type?: string;
+    creditsAdded?: number;
+  }>;
+  count?: number;
+}
 
 test.use({
   stackOptions: {
-    frontend: false,
     fakeStripe: true,
+    backendFaults: true,
   },
 });
 
 test("lost provider response and duplicate webhook settle exactly once", async ({
+  authenticatedPage,
   stack,
   seededUser,
 }) => {
@@ -374,6 +425,146 @@ test("lost provider response and duplicate webhook settle exactly once", async (
   expect(
     await creditsService.getOrganizationBalanceUsd(seededUser.organizationId),
   ).toBe(startingBalance + 5);
+
+  const invoiceId = settlementIdentity.invoiceId;
+  expect(invoiceId).toEqual(expect.any(String));
+  if (typeof invoiceId !== "string") {
+    throw new Error("settled invoice identity was not retained after replay");
+  }
+
+  const backendFaults = stack.mocks.backendFaults;
+  expect(
+    backendFaults,
+    "the real app shell requires the server-side path-rewrite controller",
+  ).toBeDefined();
+  if (!backendFaults) throw new Error("backend fault controller unavailable");
+  backendFaults.clearFault();
+
+  try {
+    const agentId = await createCloudAgent(
+      { apiUrl: stack.urls.api },
+      seededUser.apiKey,
+      `billing-replay-projection-e2e-${Date.now().toString(36)}`,
+    );
+    const shellRuntime = await getPersistedAgentSummary(
+      agentId,
+      seededUser.organizationId,
+    );
+    expect(shellRuntime.executionTier).toBe("shared");
+
+    const sharedAdapterPrefix = `/api/v1/eliza/agents/${encodeURIComponent(agentId)}`;
+    backendFaults.setPathRewrites(
+      SHELL_PATHS.map((path) => ({
+        path,
+        targetPath: `${sharedAdapterPrefix}${path}`,
+      })),
+    );
+
+    const context = authenticatedPage.context();
+    await context.addInitScript(
+      ({ runtimeAgentId, apiBase, apiKey }) => {
+        window.localStorage.setItem("eliza:first-run-complete", "1");
+        window.localStorage.setItem(
+          "elizaos:active-server",
+          JSON.stringify({
+            id: `cloud:${runtimeAgentId}`,
+            kind: "cloud",
+            label: "Billing replay projection E2E shared runtime",
+            apiBase,
+            accessToken: apiKey,
+            cloudRuntimeAgentId: runtimeAgentId,
+            cloudRuntime: "shared",
+          }),
+        );
+      },
+      {
+        runtimeAgentId: agentId,
+        apiBase: stack.urls.frontend,
+        apiKey: seededUser.apiKey,
+      },
+    );
+
+    const runtimeReady = authenticatedPage.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/status" &&
+        response.status() === 200,
+      { timeout: 60_000 },
+    );
+    await authenticatedPage.goto(stack.urls.frontend, { timeout: 60_000 });
+    await runtimeReady;
+    await expect(
+      authenticatedPage.getByTestId("home-launcher-surface"),
+    ).toBeVisible();
+
+    const snapshotResponsePromise = authenticatedPage.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === BILLING_SNAPSHOT_PATH &&
+        response.status() === 200,
+      { timeout: 60_000 },
+    );
+    const invoiceResponsePromise = authenticatedPage.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === INVOICE_LIST_PATH &&
+        response.status() === 200,
+      { timeout: 60_000 },
+    );
+    await authenticatedPage.goto(`${stack.urls.frontend}${BILLING_PAGE_PATH}`, {
+      timeout: 60_000,
+    });
+    const [snapshotResponse, invoiceResponse] = await Promise.all([
+      snapshotResponsePromise,
+      invoiceResponsePromise,
+    ]);
+
+    const snapshotBody =
+      (await snapshotResponse.json()) as BillingSnapshotResponse;
+    expect(snapshotBody.success).toBe(true);
+    expect(snapshotBody.data?.schemaVersion).toBe(2);
+    expect(snapshotBody.data?.v2?.balance).toMatchObject({
+      status: "available",
+      source: "organizations",
+      value: {
+        balance: {
+          value: "1005.000000",
+          unit: "usd",
+          currency: "USD",
+        },
+      },
+    });
+
+    const invoiceBody = (await invoiceResponse.json()) as InvoiceListResponse;
+    expect(invoiceBody.count).toBe(1);
+    expect(invoiceBody.invoices).toHaveLength(1);
+    expect(invoiceBody.invoices?.[0]).toMatchObject({
+      id: invoiceId,
+      stripeInvoiceId: `cs_${session.id}`,
+      total: "$5.00",
+      status: "Paid",
+      type: "custom_amount",
+      creditsAdded: 5,
+    });
+
+    const renderedBalance = authenticatedPage.getByText("$1,005.00", {
+      exact: true,
+    });
+    await expect(renderedBalance).toHaveCount(1);
+    await expect(renderedBalance).toBeVisible();
+
+    const invoiceRow = authenticatedPage.getByTestId("invoice-row");
+    await expect(invoiceRow).toHaveCount(1);
+    await expect(invoiceRow.getByText("$5.00", { exact: true })).toBeVisible();
+    await expect(invoiceRow.getByText("Paid", { exact: true })).toBeVisible();
+    // The response above owns the durable invoice identity; this slice only
+    // proves its single list projection. Navigation and invoice detail are a
+    // separate contract, so the existing View control is intentionally not clicked.
+    await expect(
+      invoiceRow.getByRole("button", { name: "View", exact: true }),
+    ).toBeVisible();
+  } finally {
+    backendFaults.clearFault();
+    backendFaults.clearPathRewrites();
+  }
+
   expect(fakeStripe.state.sessions.size).toBe(1);
   expect(fakeStripe.state.sessions.get(session.id)?.id).toBe(session.id);
   expect(fakeStripe.state.effects).toHaveLength(1);

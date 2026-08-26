@@ -19,12 +19,14 @@ import {
   ANDROID_PLAY_ALLOWED_PERMISSIONS,
   ANDROID_PLAY_DATA_EXTRACTION_RULES,
   androidPlayManifestEvidenceFromAapt,
+  applyAndroidCloudSplashTheme,
   applyAndroidGeneratedBuildTargetProperties,
   applyAndroidPlayManifestHardening,
   createAndroidPlayManifestPolicy,
   findAndroidCloudPackagedRuntimeOffenders,
   findAndroidPlayIndexHtmlFindings,
   findAndroidPlayTextAssetFindings,
+  resolveAndroidCloudAuditCapacitorConfig,
   sanitizeAndroidCloudCapacitorConfig,
 } from "./run-mobile-build.mjs";
 
@@ -67,6 +69,45 @@ const AAPT_MANIFEST = `
 `;
 
 describe("Android Play manifest policy", () => {
+  it("generates a Cloud-only transparent white system splash theme", () => {
+    const base = `<resources>
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
+    </style>
+</resources>`;
+    const cloud = applyAndroidCloudSplashTheme(base, { cloudBuild: true });
+
+    expect(cloud).toContain(
+      '<item name="windowSplashScreenAnimatedIcon">@drawable/eliza_cloud_splash_mark</item>',
+    );
+    expect(cloud).toContain(
+      '<item name="windowSplashScreenBackground">@color/splash_background</item>',
+    );
+    expect(applyAndroidCloudSplashTheme(cloud, { cloudBuild: true })).toBe(
+      cloud,
+    );
+    const nonCloud = base.replace(
+      '<item name="postSplashScreenTheme">',
+      '<item name="windowSplashScreenAnimatedIcon">@drawable/custom_splash</item>\n        <item name="postSplashScreenTheme">',
+    );
+    expect(applyAndroidCloudSplashTheme(nonCloud, { cloudBuild: false })).toBe(
+      nonCloud,
+    );
+
+    const transparentWhiteMark = fs.readFileSync(
+      new URL(
+        "../../app/public/brand/logos/logo_white_nobg.svg",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    expect(transparentWhiteMark).toContain('fill="none"');
+    expect(transparentWhiteMark).toContain('fill="white"');
+    expect(transparentWhiteMark).not.toMatch(/#FF5800/i);
+    expect(transparentWhiteMark).not.toMatch(/<rect[^>]+fill=["']#FF5800["']/i);
+  });
+
   it("places permissions before the application and disables all backup transfer", () => {
     const hardened = applyAndroidPlayManifestHardening(`<manifest>
     <queries />
@@ -133,6 +174,39 @@ describe("Android Play manifest policy", () => {
       /eliza\.app|localhost|127\.0\.0\.1|BackgroundRunner|bun-runtime|includePlugins/,
     );
     expect(sanitized).not.toHaveProperty("ios");
+    expect(sanitized).not.toHaveProperty("loggingBehavior");
+  });
+
+  it("preserves launcher-only logging suppression and opt-in WebView inspection", () => {
+    const sanitized = sanitizeAndroidCloudCapacitorConfig(
+      {
+        loggingBehavior: "debug",
+        android: { webContentsDebuggingEnabled: false },
+      },
+      { launcherKiosk: true, webViewDebugging: true },
+    );
+
+    expect(sanitized.loggingBehavior).toBe("none");
+    expect(sanitized.android.webContentsDebuggingEnabled).toBe(true);
+  });
+
+  it("audits launcher configs against the launcher-only kiosk contract", () => {
+    const config = {
+      loggingBehavior: "none",
+      android: { webContentsDebuggingEnabled: true },
+    };
+
+    expect(
+      resolveAndroidCloudAuditCapacitorConfig(config, {
+        allowHomeRole: true,
+        env: { ELIZA_WEBVIEW_DEBUG: "1" },
+      }),
+    ).toMatchObject(config);
+    expect(
+      resolveAndroidCloudAuditCapacitorConfig(config, {
+        env: { ELIZA_WEBVIEW_DEBUG: "1" },
+      }),
+    ).not.toHaveProperty("loggingBehavior");
   });
 
   it("keeps the unused native Google identity stack out of Android source", () => {
@@ -235,15 +309,36 @@ describe("Android Play manifest policy", () => {
       "BIND_NOTIFICATION_LISTENER_SERVICE",
       "CALL_PHONE",
       "CAMERA",
-      "POST_NOTIFICATIONS",
       "READ_SMS",
       "SYSTEM_ALERT_WINDOW",
     ]) {
       expect(ANDROID_CLOUD_STRIPPED_PERMISSIONS).toContain(permission);
     }
-    expect(ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES).toEqual([]);
+    expect(ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES).toEqual([
+      "lib/arm64-v8a/libdatastore_shared_counter.so",
+      "lib/armeabi-v7a/libdatastore_shared_counter.so",
+      "lib/x86/libdatastore_shared_counter.so",
+      "lib/x86_64/libdatastore_shared_counter.so",
+    ]);
     expect(ANDROID_PLAY_ALLOWED_PERMISSIONS).toContain(
       "android.permission.MODIFY_AUDIO_SETTINGS",
+    );
+    expect(ANDROID_PLAY_ALLOWED_PERMISSIONS).toEqual(
+      expect.arrayContaining([
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS",
+      ]),
+    );
+    expect(ANDROID_CLOUD_STRIPPED_PERMISSIONS).not.toEqual(
+      expect.arrayContaining([
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "POST_NOTIFICATIONS",
+      ]),
+    );
+    expect(ANDROID_CLOUD_STRIPPED_PERMISSIONS).toContain(
+      "ACCESS_BACKGROUND_LOCATION",
     );
     expect(ANDROID_PLAY_ALLOWED_PERMISSIONS).not.toContain(
       "android.permission.USE_BIOMETRIC",
@@ -271,16 +366,18 @@ describe("Android Play manifest policy", () => {
       "@capacitor/app",
       "@capacitor/browser",
       "@capacitor/keyboard",
+      "@capacitor/local-notifications",
       "@capacitor/network",
       "@capacitor/preferences",
+      "@capacitor/push-notifications",
       "@capacitor/status-bar",
       "@elizaos/capacitor-browser-surface",
+      "@elizaos/capacitor-location",
       "@elizaos/capacitor-secure-store",
     ]);
     expect(ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS.map(([pkg]) => pkg)).toEqual(
       expect.arrayContaining([
         "@capacitor/background-runner",
-        "@capacitor/push-notifications",
         "@elizaos/capacitor-bun-runtime",
         "@elizaos/capacitor-mobile-signals",
         "@elizaos/capacitor-screencapture",
