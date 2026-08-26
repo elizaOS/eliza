@@ -205,4 +205,57 @@ describe("POST trusted connector account routing", () => {
 		});
 		expect(postHandler).not.toHaveBeenCalled();
 	});
+
+	it("preserves every ordered receipt from a multipart connector delivery", async () => {
+		const receiptIds = [
+			"00000000-0000-0000-0000-000000000101",
+			"00000000-0000-0000-0000-000000000102",
+		];
+		const runtime = {
+			agentId: "00000000-0000-0000-0000-000000000001",
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
+			getPostConnectors: () => [
+				{
+					source: "threaded",
+					label: "Threaded feed",
+					capabilities: ["post"],
+					contexts: [],
+					postHandler: async () =>
+						receiptIds.map(
+							(id, index) =>
+								({
+									id,
+									agentId: "00000000-0000-0000-0000-000000000001",
+									entityId: "00000000-0000-0000-0000-000000000001",
+									roomId: "00000000-0000-0000-0000-0000000000bb",
+									content: { text: `part ${index + 1}`, source: "threaded" },
+									createdAt: index + 1,
+								}) as Memory,
+						),
+				},
+			],
+			upsertMemory: vi.fn(async () => undefined),
+		} as unknown as IAgentRuntime;
+		const message = {
+			id: "00000000-0000-0000-0000-0000000000aa",
+			roomId: "00000000-0000-0000-0000-0000000000bb",
+			entityId: "00000000-0000-0000-0000-0000000000cc",
+			agentId: runtime.agentId,
+			content: { text: "complete post" },
+			createdAt: 1,
+		} as Memory;
+
+		const result = await postAction.handler(runtime, message, undefined, {
+			parameters: {
+				action: "send",
+				text: "complete post",
+				persist: false,
+			},
+		});
+
+		expect(result).toMatchObject({
+			success: true,
+			data: { memoryId: receiptIds[0], memoryIds: receiptIds },
+		});
+	});
 });
