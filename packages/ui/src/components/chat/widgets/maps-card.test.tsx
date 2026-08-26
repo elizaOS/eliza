@@ -99,6 +99,22 @@ describe("message-maps-parser", () => {
     expect(isAllowedMapsUri("http://maps.apple.com/")).toBe(false);
   });
 
+  it("allows OpenStreetMap apex domain and signed geo coordinates in handoff cards", () => {
+    const handoff = {
+      kind: "handoff",
+      handoffKind: "navigate",
+      place,
+      geoUri: "geo:+37.7749,-122.4194?q=dest",
+      appleMapsUri: "https://maps.apple.com/?daddr=37.7749,-122.4194",
+      webUri: "https://openstreetmap.org/directions?to=37.7749%2C-122.4194",
+    };
+    expect(
+      isAllowedMapsUri("https://openstreetmap.org/directions?to=dest"),
+    ).toBe(true);
+    expect(isAllowedMapsUri("geo:+37.7749,-122.4194")).toBe(true);
+    expect(parseMapsCardBody(JSON.stringify(handoff))).not.toBeNull();
+  });
+
   it("caps places lists and requires at least one entry", () => {
     const many = Array.from({ length: 15 }, (_, index) => ({
       ...place,
