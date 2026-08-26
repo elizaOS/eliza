@@ -15,6 +15,11 @@ import { ServiceType, stringToUuid } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  MAX_CONSECUTIVE_DELIVERY_FAILURES,
+  TRIGGER_AUTO_DISABLED_EVENT,
+  TRIGGER_DELIVERY_FAILURE_CODE,
+} from "./delivery.ts";
+import {
   dispatchRuntimeEventTriggers,
   executeTriggerTask,
   listTriggerTasks,
@@ -24,7 +29,11 @@ import {
   TRIGGER_TASK_TAGS,
 } from "./runtime.ts";
 import { buildTriggerConfig } from "./scheduling.ts";
-import type { NormalizedTriggerDraft } from "./types.ts";
+import type {
+  NormalizedTriggerDraft,
+  TriggerRunRecord,
+  TriggerTaskMetadata,
+} from "./types.ts";
 
 const AGENT_ID = stringToUuid("trigger-runtime-test-agent");
 
@@ -61,6 +70,7 @@ interface MockRuntimeHandle {
   ) => void;
   setWorkflowServicePresent: (present: boolean) => void;
   setNotifyError: (error: Error | null) => void;
+  setPromptError: (error: Error | null) => void;
   setRuntimeSetting: (name: string, value: unknown) => void;
 }
 
@@ -81,6 +91,7 @@ function makeRuntime(agentId: UUID = AGENT_ID): MockRuntimeHandle {
   >();
   let tasks: Task[] = [];
 
+  let promptError: Error | null = null;
   const messageService = {
     async handleMessage(
       _runtime: IAgentRuntime,
@@ -95,6 +106,7 @@ function makeRuntime(agentId: UUID = AGENT_ID): MockRuntimeHandle {
         roomId: message.roomId,
         entityId: message.entityId,
       });
+      if (promptError) throw promptError;
       return {};
     },
   };
@@ -208,6 +220,9 @@ function makeRuntime(agentId: UUID = AGENT_ID): MockRuntimeHandle {
     },
     setNotifyError: (error) => {
       notifyError = error;
+    },
+    setPromptError: (error) => {
+      promptError = error;
     },
     setRuntimeSetting: (name, value) => runtimeSettings.set(name, value),
   };
@@ -833,6 +848,198 @@ describe("executeTriggerTask", () => {
     });
     expect(result.status).toBe("skipped");
     expect(handle.dispatchCalls).toHaveLength(0);
+  });
+});
+
+describe("prompt trigger delivery-failure auto-disable", () => {
+  // The exact throw shape client-chat-sender raises when no dashboard
+  // conversation can receive the trigger's message (live QA 2026-08-26).
+  const NO_CONVERSATION_ERROR = new Error(
+    "autonomy-service send failed: no conversation available to deliver message",
+  );
+
+  let handle: MockRuntimeHandle;
+
+  beforeEach(() => {
+    handle = makeRuntime();
+    taskSeq = 0;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function makePromptTask(): Task {
+    return makeTriggerTask(
+      {
+        triggerType: "interval",
+        kind: "prompt",
+        instructions: "time to stretch",
+        displayName: "Daily Stretch",
+        notifyOnOutcome: true,
+        workflowId: undefined,
+        workflowName: undefined,
+      },
+      { kindOverride: "prompt" },
+    );
+  }
+
+  function deliveryFailureRun(task: Task, index: number): TriggerRunRecord {
+    const trigger = readTriggerConfig(task);
+    if (!trigger || !task.id) throw new Error("prompt task missing config");
+    const finishedAt = Date.now() - (10 - index) * 60_000;
+    return {
+      triggerRunId: stringToUuid(`run-${index}`),
+      triggerId: trigger.triggerId,
+      taskId: task.id,
+      startedAt: finishedAt - 5,
+      finishedAt,
+      status: "error",
+      error: `${TRIGGER_DELIVERY_FAILURE_CODE}: Error: ${NO_CONVERSATION_ERROR.message}`,
+      latencyMs: 5,
+      source: "scheduler",
+    };
+  }
+
+  it("marks a delivery failure with the structured code but keeps the trigger enabled below the streak threshold", async () => {
+    handle.setPromptError(NO_CONVERSATION_ERROR);
+    const task = makePromptTask();
+
+    const result = await executeTriggerTask(handle.runtime, task, {
+      source: "scheduler",
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.error).toContain(TRIGGER_DELIVERY_FAILURE_CODE);
+    expect(result.error).toContain(
+      "no conversation available to deliver message",
+    );
+    expect(result.taskDeleted).toBe(false);
+
+    const persistedMeta = handle.updatedTasks[0]?.patch
+      .metadata as TriggerTaskMetadata;
+    const persisted = readTriggerConfig({
+      ...task,
+      metadata: persistedMeta,
+    } as Task);
+    expect(persisted?.enabled).toBe(true);
+    expect(persisted?.lastError).toContain(TRIGGER_DELIVERY_FAILURE_CODE);
+    expect(persistedMeta.triggerRuns?.at(-1)?.error).toContain(
+      TRIGGER_DELIVERY_FAILURE_CODE,
+    );
+    expect(persistedMeta.triggerEvents).toBeUndefined();
+    // Below the threshold the failure notifies as "failed", not "disabled".
+    expect(handle.notifyCalls[0]?.title).toBe(
+      'Automation "Daily Stretch" failed',
+    );
+  });
+
+  it("auto-disables the trigger with a durable task event after K consecutive delivery failures", async () => {
+    handle.setPromptError(NO_CONVERSATION_ERROR);
+    const task = makePromptTask();
+    const meta = task.metadata as TriggerTaskMetadata;
+    // Seed K-1 trailing delivery failures; this fire completes the streak.
+    meta.triggerRuns = Array.from(
+      { length: MAX_CONSECUTIVE_DELIVERY_FAILURES - 1 },
+      (_, index) => deliveryFailureRun(task, index),
+    );
+    const autoDisabledEvents: Array<Record<string, unknown>> = [];
+    (
+      handle.runtime.registerEvent as (
+        kind: string,
+        handler: (params: Record<string, unknown>) => Promise<void>,
+      ) => void
+    )(TRIGGER_AUTO_DISABLED_EVENT, async (params) => {
+      autoDisabledEvents.push(params);
+    });
+
+    const result = await executeTriggerTask(handle.runtime, task, {
+      source: "scheduler",
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.taskDeleted).toBe(false);
+    expect(handle.runtime.deleteTask).not.toHaveBeenCalled();
+
+    const persistedMeta = handle.updatedTasks[0]?.patch
+      .metadata as TriggerTaskMetadata;
+    const persisted = readTriggerConfig({
+      ...task,
+      metadata: persistedMeta,
+    } as Task);
+    expect(persisted?.enabled).toBe(false);
+    expect(persisted?.lastError).toContain("Auto-disabled after");
+    expect(persisted?.lastError).toContain(TRIGGER_DELIVERY_FAILURE_CODE);
+
+    // The durable task event records why the schedule was parked.
+    const event = persistedMeta.triggerEvents?.at(-1);
+    expect(event?.type).toBe("auto_disabled");
+    expect(event?.code).toBe(TRIGGER_DELIVERY_FAILURE_CODE);
+    expect(event?.consecutiveFailures).toBe(MAX_CONSECUTIVE_DELIVERY_FAILURES);
+    expect(event?.triggerId).toBe(persisted?.triggerId);
+
+    // The runtime event rail observes the state change.
+    expect(autoDisabledEvents).toHaveLength(1);
+    expect(autoDisabledEvents[0]?.code).toBe(TRIGGER_DELIVERY_FAILURE_CODE);
+    expect(autoDisabledEvents[0]?.taskId).toBe(task.id);
+
+    // The rail notification reads as a disable, not another generic failure.
+    expect(handle.notifyCalls[0]?.title).toBe(
+      'Automation "Daily Stretch" disabled',
+    );
+    expect(String(handle.notifyCalls[0]?.body)).toContain(
+      "no conversation to deliver",
+    );
+  });
+
+  it("does not auto-disable on repeated non-delivery prompt failures", async () => {
+    handle.setPromptError(new Error("model overloaded"));
+    const task = makePromptTask();
+    const meta = task.metadata as TriggerTaskMetadata;
+    meta.triggerRuns = Array.from(
+      { length: MAX_CONSECUTIVE_DELIVERY_FAILURES - 1 },
+      (_, index) => deliveryFailureRun(task, index),
+    );
+
+    const result = await executeTriggerTask(handle.runtime, task, {
+      source: "scheduler",
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.error).not.toContain(TRIGGER_DELIVERY_FAILURE_CODE);
+    const persistedMeta = handle.updatedTasks[0]?.patch
+      .metadata as TriggerTaskMetadata;
+    const persisted = readTriggerConfig({
+      ...task,
+      metadata: persistedMeta,
+    } as Task);
+    expect(persisted?.enabled).toBe(true);
+    expect(persistedMeta.triggerEvents).toBeUndefined();
+  });
+
+  it("keeps the healthy prompt delivery path unchanged after an interrupted failure streak", async () => {
+    const task = makePromptTask();
+    const meta = task.metadata as TriggerTaskMetadata;
+    meta.triggerRuns = Array.from(
+      { length: MAX_CONSECUTIVE_DELIVERY_FAILURES },
+      (_, index) => deliveryFailureRun(task, index),
+    );
+
+    const result = await executeTriggerTask(handle.runtime, task, {
+      source: "scheduler",
+    });
+
+    expect(result.status).toBe("success");
+    expect(handle.promptMessages).toHaveLength(1);
+    const persistedMeta = handle.updatedTasks[0]?.patch
+      .metadata as TriggerTaskMetadata;
+    const persisted = readTriggerConfig({
+      ...task,
+      metadata: persistedMeta,
+    } as Task);
+    expect(persisted?.enabled).toBe(true);
+    expect(persisted?.lastStatus).toBe("success");
+    expect(persistedMeta.triggerEvents).toBeUndefined();
   });
 });
 

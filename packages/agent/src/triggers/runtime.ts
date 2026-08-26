@@ -15,7 +15,10 @@
  * emitted the event, trigger-to-trigger chains stop after a fixed hop depth,
  * and each saved trigger has a sustained per-minute dispatch ceiling. Failures
  * anywhere on the bridge are reported, never propagated back into the emitting
- * run.
+ * run. Prompt triggers whose delivery repeatedly fails with the
+ * no-conversation shape are auto-disabled after a small consecutive-failure
+ * streak (see delivery.ts) with a durable task event recording why, so a
+ * trigger that can never deliver stops firing instead of failing forever.
  */
 import crypto from "node:crypto";
 import type {
@@ -38,6 +41,13 @@ import {
   truncateWellFormed,
 } from "@elizaos/core";
 import {
+  countTrailingDeliveryFailures,
+  isNoConversationDeliveryError,
+  MAX_CONSECUTIVE_DELIVERY_FAILURES,
+  TRIGGER_AUTO_DISABLED_EVENT,
+  TRIGGER_DELIVERY_FAILURE_CODE,
+} from "./delivery.ts";
+import {
   buildTriggerMetadata,
   DISABLED_TRIGGER_INTERVAL_MS,
   MAX_TRIGGER_RUN_HISTORY,
@@ -48,6 +58,7 @@ import type {
   TriggerHealthSnapshot,
   TriggerRunRecord,
   TriggerSummary,
+  TriggerTaskEvent,
   TriggerTaskMetadata,
   WorkflowTriggerConfig,
 } from "./types.ts";
@@ -210,6 +221,19 @@ function appendRunRecord(
   return runs.length <= MAX_TRIGGER_RUN_HISTORY
     ? runs
     : runs.slice(runs.length - MAX_TRIGGER_RUN_HISTORY);
+}
+
+/** Lifecycle events persisted per task, bounded like the run history. */
+const MAX_TRIGGER_EVENT_HISTORY = 20;
+
+function appendTriggerEvent(
+  existing: TriggerTaskEvent[] | undefined,
+  event: TriggerTaskEvent,
+): TriggerTaskEvent[] {
+  const events = [...(existing ?? []), event];
+  return events.length <= MAX_TRIGGER_EVENT_HISTORY
+    ? events
+    : events.slice(events.length - MAX_TRIGGER_EVENT_HISTORY);
 }
 
 /** Match an event payload against a recursive subset filter. */
@@ -723,6 +747,9 @@ export async function executeTriggerTask(
   let errorMessage = "";
   let workflowExecutionId: string | undefined;
   let workflowGone = false;
+  let deliveryUnbound = false;
+  let consecutiveDeliveryFailures = 0;
+  let deliveryAutoDisable = false;
   const dispatchedWorkflowId =
     trigger.kind === "workflow" ? trigger.workflowId : undefined;
 
@@ -755,6 +782,20 @@ export async function executeTriggerTask(
     // final "disabled" notification and task deletion below replace the
     // hourly failed-automation storm.
     workflowGone = "code" in result && result.code === "workflow_not_found";
+    // A prompt trigger with no resolvable delivery conversation fails with
+    // this same shape on every fire (the send handler's no-conversation
+    // throw). Stamp the run's error with a stable code and measure the
+    // trailing failure streak so a permanently unbound trigger is
+    // auto-disabled below instead of firing-and-failing forever.
+    deliveryUnbound =
+      trigger.kind === "prompt" && isNoConversationDeliveryError(errorMessage);
+    if (deliveryUnbound) {
+      errorMessage = `${TRIGGER_DELIVERY_FAILURE_CODE}: ${errorMessage}`;
+      consecutiveDeliveryFailures =
+        1 + countTrailingDeliveryFailures(readTriggerRuns(task));
+      deliveryAutoDisable =
+        consecutiveDeliveryFailures >= MAX_CONSECUTIVE_DELIVERY_FAILURES;
+    }
     runtime.logger.error(
       {
         src: "trigger-runtime",
@@ -766,10 +807,18 @@ export async function executeTriggerTask(
           trigger.kind === "workflow" ? trigger.workflowId : undefined,
         error: errorMessage,
         ...(workflowGone ? { permanentFailure: "workflow_not_found" } : {}),
+        ...(deliveryUnbound
+          ? {
+              deliveryFailure: TRIGGER_DELIVERY_FAILURE_CODE,
+              consecutiveDeliveryFailures,
+            }
+          : {}),
       },
       workflowGone
         ? "Trigger workflow no longer exists; disabling the schedule"
-        : "Trigger dispatch failed",
+        : deliveryAutoDisable
+          ? "Trigger has no conversation to deliver into; disabling after repeated delivery failures"
+          : "Trigger dispatch failed",
     );
     // Scheduled automations run without the user in the chat loop, so a
     // dispatch failure is otherwise invisible. Surface it on the notification
@@ -777,12 +826,15 @@ export async function executeTriggerTask(
     if (shouldNotifyForTriggerOutcome(runtime, trigger)) {
       void getNotifier(runtime)
         ?.notify({
-          title: workflowGone
-            ? `Automation "${trigger.displayName}" disabled`
-            : `Automation "${trigger.displayName}" failed`,
+          title:
+            workflowGone || deliveryAutoDisable
+              ? `Automation "${trigger.displayName}" disabled`
+              : `Automation "${trigger.displayName}" failed`,
           body: workflowGone
             ? "Its workflow no longer exists, so the schedule was removed. Recreate the automation if you still need it."
-            : truncateWellFormed(toWellFormedUnicode(errorMessage), 200),
+            : deliveryAutoDisable
+              ? "It has no conversation to deliver its messages into, so it was disabled after repeated failed deliveries. Recreate it from a chat (or rebind its delivery conversation), then re-enable it."
+              : truncateWellFormed(toWellFormedUnicode(errorMessage), 200),
           category: "workflow",
           priority: "high",
           source: "trigger",
@@ -896,6 +948,25 @@ export async function executeTriggerTask(
     lastError: errorMessage || undefined,
   };
 
+  // After K consecutive no-conversation delivery failures the trigger is
+  // auto-disabled: every future fire would fail identically, so the schedule
+  // is parked — not deleted, rebinding its delivery conversation and
+  // re-enabling revives it — and a durable task event records why.
+  let autoDisableEvent: TriggerTaskEvent | undefined;
+  if (deliveryAutoDisable && updatedTrigger.enabled) {
+    const reason = `Auto-disabled after ${consecutiveDeliveryFailures} consecutive delivery failures: no conversation is available to deliver this trigger's messages. Recreate the trigger from a chat (or rebind its delivery conversation) and re-enable it.`;
+    updatedTrigger.enabled = false;
+    updatedTrigger.lastError = `${TRIGGER_DELIVERY_FAILURE_CODE}: ${reason}`;
+    autoDisableEvent = {
+      type: "auto_disabled",
+      at: finishedAt,
+      code: TRIGGER_DELIVERY_FAILURE_CODE,
+      reason,
+      triggerId: updatedTrigger.triggerId,
+      consecutiveFailures: consecutiveDeliveryFailures,
+    };
+  }
+
   const workflowStillGone =
     workflowGone &&
     triggerToPersist.kind === "workflow" &&
@@ -947,6 +1018,13 @@ export async function executeTriggerTask(
     };
   }
 
+  if (autoDisableEvent) {
+    metadataToPersist.triggerEvents = appendTriggerEvent(
+      existingMetadata.triggerEvents,
+      autoDisableEvent,
+    );
+  }
+
   // Refresh the idempotency key for the next fire so a re-run within the
   // same minute window collapses at dispatch. The schedule-arming layer
   // (`armSchedules`) seeds the initial key with the same formula.
@@ -968,6 +1046,32 @@ export async function executeTriggerTask(
       metadataToPersist.trigger?.displayName ?? taskToPersist.description,
     metadata: metadataToPersist,
   });
+
+  if (autoDisableEvent) {
+    // The auto-disable is a durable state change made outside any user turn;
+    // emit it on the runtime event rail so observers can react without
+    // polling task metadata.
+    const eventPayload = {
+      runtime,
+      source: "trigger-runtime",
+      taskId: task.id,
+      triggerId: updatedTrigger.triggerId,
+      displayName: updatedTrigger.displayName,
+      code: autoDisableEvent.code,
+      reason: autoDisableEvent.reason,
+      consecutiveFailures: autoDisableEvent.consecutiveFailures,
+    };
+    try {
+      await runtime.emitEvent(TRIGGER_AUTO_DISABLED_EVENT, eventPayload);
+    } catch (err) {
+      // error-policy:J7 event-rail diagnostics must not change the recorded
+      // run outcome or block schedule persistence.
+      runtime.reportError("TriggerRuntime.autoDisableEvent", err, {
+        taskId: task.id,
+        triggerId: updatedTrigger.triggerId,
+      });
+    }
+  }
 
   const updatedTask: Task = {
     ...taskToPersist,

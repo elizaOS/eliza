@@ -4,7 +4,7 @@
  * task-metadata shape (`TriggerTaskMetadata`) plus the normalized draft shape
  * (`NormalizedTriggerDraft`) used when building a trigger from user input.
  */
-import type { TriggerConfig, TriggerRunRecord } from "@elizaos/core";
+import type { TriggerConfig, TriggerRunRecord, UUID } from "@elizaos/core";
 
 export {
   type PromptTriggerConfig,
@@ -25,12 +25,27 @@ export type {
   UpdateTriggerRequest,
 } from "@elizaos/shared";
 
+/**
+ * Durable lifecycle event persisted on a trigger task's metadata — currently
+ * only the fire path's auto-disable record, so a disabled trigger carries the
+ * machine-readable reason it was parked alongside its run history.
+ */
+export interface TriggerTaskEvent {
+  type: "auto_disabled";
+  at: number;
+  code: string;
+  reason: string;
+  triggerId: UUID;
+  consecutiveFailures?: number;
+}
+
 export interface TriggerTaskMetadata {
   updatedAt?: number;
   updateInterval?: number;
   blocking?: boolean;
   trigger?: TriggerConfig;
   triggerRuns?: TriggerRunRecord[];
+  triggerEvents?: TriggerTaskEvent[];
   idempotencyKey?: string;
   [key: string]:
     | string
@@ -41,7 +56,8 @@ export interface TriggerTaskMetadata {
     | Record<string, string | number | boolean>
     | undefined
     | TriggerConfig
-    | TriggerRunRecord[];
+    | TriggerRunRecord[]
+    | TriggerTaskEvent[];
 }
 
 export interface NormalizedTriggerDraft {

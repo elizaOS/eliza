@@ -699,6 +699,7 @@ import type {
   LogEntry,
   ServerState,
 } from "./server-types.ts";
+import { interceptTriggerCreate } from "./trigger-routes.ts";
 import type { X402PluginModule } from "./x402-contract.ts";
 
 export {
@@ -2233,6 +2234,22 @@ async function handleRequest(
   }
 
   if (pathname.startsWith("/api/triggers")) {
+    // Prompt-kind creates must resolve (or reject on) a delivery binding
+    // BEFORE the workflow plugin's generic create binds the task to the
+    // undeliverable autonomy room — see ./trigger-routes.ts.
+    const preflight = await interceptTriggerCreate({
+      req,
+      res,
+      method,
+      pathname,
+      runtime: state.runtime,
+      readJsonBody,
+      json,
+      error,
+    });
+    if (preflight.handled) {
+      return;
+    }
     const { handleTriggerRoutes } = await getOptionalPluginApi<{
       handleTriggerRoutes: (args: unknown) => Promise<boolean>;
     }>("workflow");
@@ -2242,7 +2259,7 @@ async function handleRequest(
       method,
       pathname,
       runtime: state.runtime,
-      readJsonBody,
+      readJsonBody: preflight.replayJsonBody ?? readJsonBody,
       json,
       error,
       executeTriggerTask,
