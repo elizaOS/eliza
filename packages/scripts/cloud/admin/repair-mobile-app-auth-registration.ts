@@ -53,6 +53,43 @@ export function databaseFailureInvariant(error: unknown): string {
   return `database.${safeCodes.has(code) ? code : "connection_or_query"}`;
 }
 
+export const REQUIRED_REGISTRATION_TABLES = [
+  "apps",
+  "organizations",
+  "users",
+  "api_keys",
+] as const;
+
+export function missingRegistrationTableInvariant(
+  table: (typeof REQUIRED_REGISTRATION_TABLES)[number],
+): string {
+  return `schema.missing_${table}`;
+}
+
+export async function diagnoseRequiredRegistrationSchema(
+  databaseUrl: string,
+): Promise<void> {
+  const { url, ssl } = mobileAppAuthDatabaseConnection(databaseUrl);
+  const client = new Client({ connectionString: url, ...(ssl ? { ssl } : {}) });
+  try {
+    await client.connect();
+    for (const table of REQUIRED_REGISTRATION_TABLES) {
+      const result = await client.query<{ exists: boolean }>(
+        "SELECT to_regclass($1) IS NOT NULL AS exists",
+        [`public.${table}`],
+      );
+      if (result.rows[0]?.exists !== true) {
+        fail(missingRegistrationTableInvariant(table));
+      }
+    }
+  } catch (error) {
+    if (error instanceof RegistrationRepairError) throw error;
+    fail(databaseFailureInvariant(error));
+  } finally {
+    await client.end().catch(() => undefined);
+  }
+}
+
 export async function diagnose(
   databaseUrl: string,
   appId: string,
@@ -265,7 +302,10 @@ async function main(): Promise<void> {
   const appId = requireMobileAppAuthAppId(
     process.env.ELIZA_MOBILE_APP_AUTH_APP_ID,
   );
-  if (operation === "diagnose") return await diagnose(databaseUrl, appId);
+  if (operation === "diagnose") {
+    await diagnoseRequiredRegistrationSchema(databaseUrl);
+    return await diagnose(databaseUrl, appId);
+  }
   const organizationId = optionalUuid(
     process.env.ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID,
     "input.organization_id",
