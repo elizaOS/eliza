@@ -4,11 +4,11 @@ import { describe, expect, test } from "bun:test";
 import { runInNewContext } from "node:vm";
 import appViteConfig, {
   ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS,
+  androidCloudCuratedAssetsPlugin,
   androidCloudRendererEntryPlugin,
   appDevWsBasePlugin,
   appShellMetadataPlugin,
   findAndroidCloudEmittedRoutingFindings,
-  readAndroidCloudCuratedAssets,
   resolveAndroidCloudPrebootLockupDataUri,
   resolveAppShellLocalCspSources,
   selectAndroidCloudRendererEntry,
@@ -89,13 +89,56 @@ describe("app shell local connection policy", () => {
   });
 
   test("packages third-party notices with the curated Android cloud assets", () => {
-    const notice = readAndroidCloudCuratedAssets().find(
+    if (typeof appViteConfig !== "function") {
+      throw new Error("app Vite config is not callable");
+    }
+    const config = appViteConfig({
+      command: "build",
+      mode: "test",
+      isSsrBuild: false,
+      isPreview: false,
+    });
+    if (config instanceof Promise) {
+      throw new Error("app Vite config unexpectedly became async");
+    }
+    expect(
+      config.plugins?.some(
+        (plugin) =>
+          typeof plugin === "object" &&
+          plugin !== null &&
+          "name" in plugin &&
+          plugin.name === "android-cloud-curated-assets",
+      ),
+    ).toBe(true);
+
+    const emitted: Array<{
+      type?: string;
+      fileName?: string;
+      source?: string | Uint8Array;
+    }> = [];
+    const hook = androidCloudCuratedAssetsPlugin(true).generateBundle;
+    if (typeof hook !== "function") {
+      throw new Error("Android Cloud curated-assets plugin has no bundle hook");
+    }
+    Reflect.apply(
+      hook,
+      {
+        emitFile(asset: (typeof emitted)[number]) {
+          emitted.push(asset);
+          return asset.fileName ?? "emitted-asset";
+        },
+      },
+      [{}, {}, false],
+    );
+
+    const notice = emitted.find(
       (asset) => asset.fileName === "THIRD_PARTY_NOTICES.txt",
     );
 
     expect(notice?.type).toBe("asset");
-    expect(notice?.source.toString("utf8")).toContain("Ionicons");
-    expect(notice?.source.toString("utf8")).toContain("MIT License");
+    const noticeText = Buffer.from(notice?.source ?? "").toString("utf8");
+    expect(noticeText).toContain("Ionicons");
+    expect(noticeText).toContain("MIT License");
   });
 
   test("audits every emitted file without rewriting packaged code", () => {

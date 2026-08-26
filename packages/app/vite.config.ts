@@ -1150,7 +1150,7 @@ const ANDROID_CLOUD_CURATED_PUBLIC_ASSETS = Object.freeze([
   "wallpapers/slate.webp",
 ]);
 
-export function readAndroidCloudCuratedAssets(): Array<{
+function readAndroidCloudCuratedAssets(): Array<{
   type: "asset";
   fileName: string;
   source: Buffer;
@@ -1167,11 +1167,13 @@ export function readAndroidCloudCuratedAssets(): Array<{
  * browser public tree, whose service workers, installers, and local task
  * runner are not capabilities of the Cloud-only Android application.
  */
-function androidCloudCuratedAssetsPlugin(): Plugin {
+export function androidCloudCuratedAssetsPlugin(
+  androidCloudBuild = IS_ANDROID_CLOUD_RENDERER_BUILD,
+): Plugin {
   return {
     name: "android-cloud-curated-assets",
     generateBundle() {
-      if (!IS_ANDROID_CLOUD_RENDERER_BUILD) return;
+      if (!androidCloudBuild) return;
       for (const asset of readAndroidCloudCuratedAssets()) {
         this.emitFile(asset);
       }
