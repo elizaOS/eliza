@@ -41,15 +41,9 @@ describe("resolveChatViewRouting", () => {
   });
 
   it("does not invent capabilities for plugin routes without declarations", () => {
-    expect(resolveChatViewRouting("views", "/wallet")).toMatchObject({
-      view: "wallet",
+    expect(resolveChatViewRouting("views", "/weather-map")).toMatchObject({
+      view: "weather-map",
       capabilities: [],
-    });
-    expect(resolveChatViewRouting("inventory", "/")).toEqual({
-      view: "wallet",
-      primaryContext: "wallet",
-      secondaryContexts: ["documents"],
-      capabilities: ["wallet", "portfolio", "transactions"],
     });
   });
 

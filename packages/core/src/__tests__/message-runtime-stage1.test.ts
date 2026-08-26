@@ -222,7 +222,6 @@ function makeRuntime(
 	}
 	return {
 		agentId: "00000000-0000-0000-0000-000000000003" as UUID,
-		getModelRegistrations: vi.fn(() => []),
 		character: {
 			name: "Test Agent",
 			system: "You are concise.",
