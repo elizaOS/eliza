@@ -145,6 +145,7 @@ function makeRuntime(opts: {
 			: {}),
 		emitEvent: vi.fn(async () => undefined),
 		runActionsByMode: vi.fn(async () => undefined),
+		getModelRegistrations: vi.fn(() => []),
 		getSetting: vi.fn((key: string) =>
 			opts.owner && key === "ELIZA_ADMIN_ENTITY_ID" ? SENDER_ID : undefined,
 		),
@@ -2108,6 +2109,17 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 	const runDeterministicViewsTurn = async (
 		handlerResult: ActionResult,
 	): Promise<string | undefined> => {
+		const expectedModelReply = (() => {
+			if (handlerResult.modelReplyRequired !== true) return undefined;
+			try {
+				const label = JSON.parse(String(handlerResult.text ?? ""))?.label;
+				return typeof label === "string"
+					? `done — you're on ${label}.`
+					: undefined;
+			} catch {
+				return undefined;
+			}
+		})();
 		const views = makeMockAction({
 			name: "VIEWS",
 			parameters: [
@@ -2155,6 +2167,14 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						thought: "The view switch is deterministic.",
 					}),
 				},
+				...(expectedModelReply
+					? [
+							{
+								expectModelType: ModelType.ACTION_PLANNER,
+								body: { text: expectedModelReply, toolCalls: [] },
+							},
+						]
+					: []),
 			],
 		});
 		const result = await runV5MessageRuntimeStage1({
@@ -2164,9 +2184,11 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			responseId: RESPONSE_ID,
 		});
 		expect(result.kind).toBe("planned_reply");
-		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
-			ModelType.RESPONSE_HANDLER,
-		]);
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual(
+			expectedModelReply
+				? [ModelType.RESPONSE_HANDLER, ModelType.ACTION_PLANNER]
+				: [ModelType.RESPONSE_HANDLER],
+		);
 		return result.kind === "planned_reply"
 			? result.result.responseContent?.text
 			: undefined;
@@ -2309,6 +2331,110 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					transcriptVisibility: "internal",
 				},
 			]);
+		}
+	});
+
+	it("synthesizes a natural Calendar answer from sanitized read-only view state", async () => {
+		const modelReply = "The calendar is showing August 2026.";
+		const views = makeMockAction({
+			name: "VIEWS",
+			suppressEarlyReply: true,
+			suppressPostActionContinuation: true,
+			parameters: [
+				{
+					name: "action",
+					description: "View operation",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "view",
+					description: "Registered view id",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "capability",
+					description: "Registered view capability",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			handler: async () => ({
+				success: true,
+				text: 'Interacted with view "calendar" — capability "get-agent-state" (returned structured state).',
+				transcriptVisibility: "internal",
+				modelReplyRequired: true,
+				promptData: {
+					operation: "read_view_state",
+					viewId: "calendar",
+					capability: "get-agent-state",
+					interactionResult: {
+						elements: [
+							{
+								id: "calendar.month-heading",
+								label: "August 2026",
+								visible: true,
+							},
+						],
+					},
+				},
+			}),
+		});
+		const evaluator = {
+			name: "test.force_calendar_state_read",
+			priority: 10,
+			deterministicActions: ["VIEWS"],
+			shouldRun: () => true,
+			evaluate: () => ({
+				requiresTool: true,
+				clearReply: true,
+				deterministicToolCall: {
+					name: "VIEWS",
+					params: {
+						action: "interact",
+						view: "calendar",
+						capability: "get-agent-state",
+					},
+				},
+			}),
+		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
+		const runtime = makeRuntime({
+			actions: [views],
+			responseHandlerEvaluators: [evaluator],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						replyText: "Checking the Calendar view.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: { text: modelReply, toolCalls: [] },
+				},
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("what month and year is shown on the calendar"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+		]);
+		const synthesisParams = JSON.stringify(getCalls(runtime)[1]?.params);
+		expect(synthesisParams).toContain("August 2026");
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(modelReply);
+			expect(result.result.responseContent?.text).not.toContain(
+				"Interacted with view",
+			);
 		}
 	});
 

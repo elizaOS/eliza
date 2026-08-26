@@ -75,6 +75,15 @@ const NOTES_VIEW: ViewSummary = {
 	],
 };
 
+const CALENDAR_VIEW: ViewSummary = {
+	id: "calendar",
+	label: "Calendar",
+	path: "/calendar",
+	pluginName: "plugin-calendar",
+	available: true,
+	viewType: "gui",
+};
+
 const LOOPBACK_EFFECT_RECEIPT = {
 	receiptId: "simple-views:create-note:note-loopback:9",
 	operation: "simple-views.create-note",
@@ -137,7 +146,9 @@ async function startAuthenticatedViewsServer(
 			}
 
 			if (request.method === "GET" && request.pathname === "/api/views") {
-				sendJson(res, 200, { views: [SETTINGS_VIEW, NOTES_VIEW] });
+				sendJson(res, 200, {
+					views: [SETTINGS_VIEW, NOTES_VIEW, CALENDAR_VIEW],
+				});
 				return;
 			}
 			if (
@@ -191,6 +202,43 @@ async function startAuthenticatedViewsServer(
 							data: { note: { id: "note-loopback" } },
 							effectReceipts: [LOOPBACK_EFFECT_RECEIPT],
 							userFacingEffectReceiptIds: [LOOPBACK_EFFECT_RECEIPT.receiptId],
+						},
+					});
+					return;
+				}
+				if (interactionBody.capability === "get-agent-state") {
+					sendJson(res, 200, {
+						requestId: "request-calendar-state",
+						success: true,
+						result: {
+							viewId: "calendar",
+							viewType: "gui",
+							elementCount: 2,
+							focusedId: null,
+							elements: [
+								{
+									id: "calendar.month-heading",
+									role: "heading",
+									label: "August 2026",
+									fillable: false,
+									clickable: false,
+									focused: false,
+									visible: true,
+								},
+								{
+									id: "calendar.private-token",
+									role: "text-input",
+									label: "API key",
+									sensitive: true,
+									valueRedacted: true,
+									value: "must-not-reach-the-planner",
+									fillable: false,
+									clickable: false,
+									focused: false,
+									visible: true,
+								},
+							],
+							updatedAt: 11,
 						},
 					});
 					return;
@@ -355,6 +403,7 @@ describe("authenticated view loopback requests", () => {
 		await expect(client.listViews()).resolves.toEqual([
 			SETTINGS_VIEW,
 			NOTES_VIEW,
+			CALENDAR_VIEW,
 		]);
 		await expect(client.getCurrentView()).resolves.toMatchObject({
 			viewId: "settings",
@@ -475,6 +524,58 @@ describe("authenticated view loopback requests", () => {
 				viewType: "gui",
 			}),
 		});
+	});
+
+	it("keeps a structured Calendar read internal while giving the planner sanitized visible state", async () => {
+		const token = "views-calendar-state-token";
+		const server = await startAuthenticatedViewsServer(token);
+		process.env.ELIZA_PORT = String(server.port);
+		process.env.ELIZA_API_TOKEN = token;
+
+		const callbackTexts: string[] = [];
+		const result = await createViewsAction({
+			hasOwnerAccess: async () => true,
+		}).handler(
+			{ agentId: "agent-1" } as never,
+			{
+				entityId: "user-1",
+				roomId: "room-1",
+				agentId: "agent-1",
+				content: {
+					text: "what month and year is shown on the calendar",
+				},
+			} as never,
+			undefined,
+			{
+				action: "interact",
+				view: "calendar",
+				capability: "get-agent-state",
+			},
+			async (content) => {
+				if (content.text) callbackTexts.push(content.text);
+				return [];
+			},
+		);
+
+		expect(callbackTexts).toEqual([]);
+		expect(result).toMatchObject({
+			success: true,
+			transcriptVisibility: "internal",
+			modelReplyRequired: true,
+			promptData: {
+				operation: "read_view_state",
+				viewId: "calendar",
+				capability: "get-agent-state",
+			},
+		});
+		expect(result).not.toHaveProperty("userFacingText");
+		expect(result).not.toHaveProperty("verifiedUserFacing");
+		expect(result).not.toHaveProperty("turnComplete");
+		const plannerState = JSON.stringify(result.promptData);
+		expect(plannerState).toContain("August 2026");
+		expect(plannerState).toContain("valueRedacted");
+		expect(plannerState).not.toContain("must-not-reach-the-planner");
+		expect(result.text).toContain("Interacted with view");
 	});
 
 	it("keeps a failed view interaction's diagnostic off the user callback", async () => {
