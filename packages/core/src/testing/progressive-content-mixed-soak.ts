@@ -469,7 +469,9 @@ async function runRealPositiveLeakControl(
 		| Promise<ProgressiveContentMixedResourceSample>,
 ): Promise<readonly ProgressiveContentResourceSample[]> {
 	const before = await measure();
-	const retained = new Uint8Array(32 * 1024 * 1024);
+	// Keep this materially larger than the allocator's normal free-page reserve;
+	// a small allocation can be satisfied without changing RSS in Bun's runtime.
+	const retained = new Uint8Array(256 * 1024 * 1024);
 	for (let offset = 0; offset < retained.byteLength; offset += 4_096)
 		retained[offset] = 1;
 	// Let asynchronous resource samplers observe the allocation, but never rewrite

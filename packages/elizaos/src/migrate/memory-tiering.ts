@@ -29,7 +29,10 @@ export interface TieringOptions {
   agentId: UUID;
   /** Minimum chunk length to bother seeding. Default 20 chars. */
   minChunkLen?: number;
-  /** Max UTF-16 code units per memory body segment. Default 6000. */
+  /**
+   * Max UTF-16 code units per memory body segment. When omitted, bodies are
+   * never segmented: a complete source record becomes one complete memory.
+   */
   maxChunkLen?: number;
   /**
    * When true, the personal corpus (daily logs, awareness, curated MEMORY.md,
@@ -137,7 +140,10 @@ function makeMemories(
   opts: TieringOptions,
   createdAt: number,
 ): Memory[] {
-  const parts = losslessBodySegments(text, opts.maxChunkLen ?? 6000);
+  if (opts.maxChunkLen === undefined) {
+    return [mkMemory(text, tier, opts, createdAt)];
+  }
+  const parts = losslessBodySegments(text, opts.maxChunkLen);
   if (parts.length <= 1) return [mkMemory(text, tier, opts, createdAt)];
   const groupId = randomUUID();
   return parts.map((part, ordinal) =>

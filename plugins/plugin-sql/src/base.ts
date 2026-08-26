@@ -17,6 +17,8 @@ import {
   type AtomicMemoryPublicationParams,
   type AtomicMemoryPublicationResult,
   actorFromAccessContext,
+  advanceWorldMetadataRevision,
+  appendWorldMetadataRoleAudit,
   authorizeMessageContentRead,
   ChannelType,
   type Component,
@@ -31,6 +33,7 @@ import {
   canRequesterManageDocumentDirectGrants,
   canRequesterMutateDocument,
   DatabaseAdapter,
+  type DeleteConnectorAccountCredentialRefsParams,
   type DeleteConnectorAccountParams,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
   DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS,
@@ -55,8 +58,10 @@ import {
   encryptedCharacter,
   type GetConnectorAccountCredentialRefParams,
   type GetConnectorAccountParams,
+  getWorldMetadataRevision,
   hashAttachmentIdForLocator,
   type IDatabaseAdapter,
+  initializeWorldMetadataRevision,
   type JsonValue,
   type ListConnectorAccountCredentialRefsParams,
   type ListConnectorAccountsParams,
@@ -89,11 +94,13 @@ import {
   type PatchOp,
   portableDocumentSearchTokens,
   type Relationship,
+  ROLE_WRITE_AUDIT_LOG_TYPE,
   type Room,
   type RunStatus,
   readDocumentSourceProjection,
   readMessageContentProjection,
   requireDocumentSourceReadMetadata,
+  requireFreshWorldMetadataRevision,
   resolveMessageContentSourceDescriptor,
   type SetConnectorAccountCredentialRefParams,
   type Task,
@@ -108,8 +115,12 @@ import {
   validateQueryEntitiesPagination,
   validateTaskQueryPagination,
   type World,
+  type WorldMetadataCompareAndSwapParams,
+  type WorldMetadataMutationResult,
+  worldMetadataValueEquals,
 } from "@elizaos/core";
 import { sanitizeJsonObject } from "./sanitize-json";
+import { worldRoleAuditTable } from "./schema/worldRoleAudit";
 import {
   readTaskDueAt,
   serializeTaskDueAt,
@@ -887,6 +898,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         return await operation();
       } catch (error) {
         if (error instanceof TaskTimingValidationError) throw error;
+        if (error instanceof ElizaError && error.code === "WORLD_METADATA_STALE_WRITE") {
+          throw error;
+        }
         lastError = error as Error;
 
         if (attempt < this.maxRetries) {
@@ -5527,9 +5541,23 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async createWorld(world: World): Promise<UUID> {
     return this.withDatabase(async () => {
       const normalizedWorld = this.normalizeWorldData(world);
+      normalizedWorld.metadata = initializeWorldMetadataRevision(
+        normalizedWorld.metadata as Metadata | undefined
+      );
       const newWorldId = normalizedWorld.id as UUID;
 
-      await this.db.insert(worldTable).values(normalizedWorld);
+      try {
+        await this.db.insert(worldTable).values(normalizedWorld);
+      } catch (error) {
+        if (isDuplicateKeyError(error)) {
+          throw new ElizaError("World already exists", {
+            code: "WORLD_ALREADY_EXISTS",
+            cause: error,
+            context: { worldId: newWorldId, agentId: this.agentId },
+          });
+        }
+        throw error;
+      }
       return newWorldId;
     });
   }
@@ -5569,10 +5597,121 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this.withDatabase(async () => {
       const normalizedWorld = this.normalizeWorldData(world);
       delete normalizedWorld.id;
-      await this.db
+      const committedMetadata = await this.db.transaction(async (tx) => {
+        const rows = await tx
+          .select()
+          .from(worldTable)
+          .where(and(eq(worldTable.id, world.id), eq(worldTable.agentId, this.agentId)))
+          .for("update")
+          .limit(1);
+        const row = rows[0];
+        if (!row) return null;
+        const storedRevision = requireFreshWorldMetadataRevision(
+          row.metadata as Metadata | undefined,
+          world.metadata as Metadata | undefined,
+          String(world.id)
+        );
+        const nextMetadata = advanceWorldMetadataRevision(
+          normalizedWorld.metadata as Metadata | undefined,
+          storedRevision
+        );
+        normalizedWorld.metadata = nextMetadata;
+        await tx
+          .update(worldTable)
+          .set(normalizedWorld)
+          .where(and(eq(worldTable.id, world.id), eq(worldTable.agentId, this.agentId)));
+        return nextMetadata;
+      });
+      if (committedMetadata) {
+        world.metadata = structuredClone(committedMetadata) as World["metadata"];
+      }
+    });
+  }
+
+  /**
+   * Compare-and-swap replacement of a world's whole metadata under the exact
+   * prior snapshot (#23100 role-write atomicity). SELECT ... FOR UPDATE pins
+   * the row, the stored metadata is compared against `expectedMetadata` by
+   * canonical JSON value, the durable `role_audit` log row is inserted in the
+   * SAME transaction, and only then does the metadata column advance — so a
+   * concurrent metadata writer surfaces as a typed conflict instead of being
+   * silently overwritten, and a committed authority change is never
+   * separable from its audit record.
+   */
+  async compareAndSwapWorldMetadata(
+    params: WorldMetadataCompareAndSwapParams
+  ): Promise<WorldMetadataMutationResult> {
+    return this.withEntityContext(params.audit?.actorEntityId ?? null, async (tx) => {
+      const rows = await tx
+        .select()
+        .from(worldTable)
+        .where(and(eq(worldTable.id, params.worldId), eq(worldTable.agentId, this.agentId)))
+        .for("update")
+        .limit(1);
+      const row = rows[0];
+      if (!row) return { status: "not_found" as const };
+
+      const storedMetadata = (row.metadata ?? {}) as Record<string, unknown>;
+      if (
+        !worldMetadataValueEquals(
+          storedMetadata,
+          params.expectedMetadata as Record<string, unknown>
+        )
+      ) {
+        return { status: "conflict" as const };
+      }
+      const storedRevision = getWorldMetadataRevision(row.metadata as Metadata | undefined);
+      if (storedRevision === null) return { status: "conflict" as const };
+
+      if (params.audit) {
+        const audit = params.audit;
+        await tx.insert(worldRoleAuditTable).values({
+          agentId: this.agentId,
+          worldId: params.worldId,
+          actorEntityId: audit.actorEntityId,
+          targetEntityId: audit.targetEntityId,
+          roomId: audit.roomId,
+          previousRole: audit.previousRole,
+          newRole: audit.newRole,
+          grantSource: audit.source,
+        });
+        const sanitizedBody = sanitizeJsonObject({
+          source: "role-write-cas",
+          metadata: {
+            worldId: params.worldId,
+            actorEntityId: audit.actorEntityId,
+            targetEntityId: audit.targetEntityId,
+            previousRole: audit.previousRole,
+            newRole: audit.newRole,
+            grantSource: audit.source,
+            outcome: "committed",
+          },
+        });
+        await tx.insert(logTable).values({
+          entityId: audit.actorEntityId,
+          roomId: audit.roomId,
+          type: ROLE_WRITE_AUDIT_LOG_TYPE,
+          body: sql`${JSON.stringify(sanitizedBody)}::jsonb`,
+        });
+      }
+
+      const replacementMetadata = params.audit
+        ? appendWorldMetadataRoleAudit(params.replacementMetadata, {
+            actorEntityId: params.audit.actorEntityId,
+            targetEntityId: params.audit.targetEntityId,
+            previousRole: params.audit.previousRole,
+            newRole: params.audit.newRole,
+            source: params.audit.source,
+            roomId: params.audit.roomId,
+          })
+        : params.replacementMetadata;
+      await tx
         .update(worldTable)
-        .set(normalizedWorld)
-        .where(and(eq(worldTable.id, world.id), eq(worldTable.agentId, this.agentId)));
+        .set({
+          metadata: advanceWorldMetadataRevision(replacementMetadata, storedRevision),
+        })
+        .where(eq(worldTable.id, params.worldId));
+      return { status: "updated" as const };
     });
   }
 
@@ -7932,6 +8071,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     params: ListConnectorAccountCredentialRefsParams
   ): Promise<ConnectorAccountCredentialRefRecord[]> {
     return this.getConnectorAccountStore().listCredentialRefs(params);
+  }
+
+  async deleteConnectorAccountCredentialRefs(
+    params: DeleteConnectorAccountCredentialRefsParams
+  ): Promise<number> {
+    return this.getConnectorAccountStore().deleteCredentialRefs(params);
   }
 
   async appendConnectorAccountAuditEvent(
