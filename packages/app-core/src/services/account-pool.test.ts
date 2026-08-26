@@ -1355,6 +1355,91 @@ describe("applyDirectProviderCredentialsToEnv fail-closed export", () => {
     expect(env.OPENAI_BASE_URL).toBeUndefined();
   });
 
+  it("restores operator provider and OpenAI-compatible env after a linked account is disabled", async () => {
+    const accounts: Record<string, LinkedAccountConfig> = {
+      "openrouter-api:linked": account("openrouter-api", { id: "linked" }),
+    };
+    const env: NodeJS.ProcessEnv = {
+      OPENROUTER_API_KEY: "operator-router",
+      OPENAI_API_KEY: "operator-openai",
+      OPENAI_BASE_URL: "https://operator.example/v1",
+    };
+    const { deps } = harness(accounts, { linked: "linked-router" }, env);
+
+    await applyDirectProviderCredentialsToEnv("openrouter", deps);
+    expect(env.OPENROUTER_API_KEY).toBe("linked-router");
+    expect(env.OPENAI_API_KEY).toBe("linked-router");
+    expect(env.OPENAI_BASE_URL).toBe("https://openrouter.ai/api/v1");
+
+    accounts["openrouter-api:linked"] = account("openrouter-api", {
+      id: "linked",
+      enabled: false,
+    });
+    await applyDirectProviderCredentialsToEnv("openrouter", deps);
+
+    expect(env.OPENROUTER_API_KEY).toBe("operator-router");
+    expect(env.OPENAI_API_KEY).toBe("operator-openai");
+    expect(env.OPENAI_BASE_URL).toBe("https://operator.example/v1");
+  });
+
+  it("generation-fences an older selection after a newer disable sync", async () => {
+    const accounts: Record<string, LinkedAccountConfig> = {
+      "openrouter-api:linked": account("openrouter-api", { id: "linked" }),
+    };
+    const env: NodeJS.ProcessEnv = {};
+    const ledger: DirectProviderEnvLedger = new Map();
+    let releaseFirstToken: (() => void) | undefined;
+    let signalFirstTokenRead: (() => void) | undefined;
+    const firstTokenRead = new Promise<void>((resolve) => {
+      signalFirstTokenRead = resolve;
+    });
+    const firstTokenGate = new Promise<void>((resolve) => {
+      releaseFirstToken = resolve;
+    });
+    let tokenReads = 0;
+    const pool = new AccountPool({
+      readAccounts: () => accounts,
+      writeAccount: async () => {},
+    });
+    const deps = {
+      pool,
+      listAccounts: (providerId: string) =>
+        Object.values(accounts)
+          .filter((candidate) => candidate.providerId === providerId)
+          .map((candidate) => ({ id: candidate.id })),
+      getToken: async () => {
+        tokenReads += 1;
+        if (tokenReads === 1) {
+          signalFirstTokenRead?.();
+          await firstTokenGate;
+        }
+        return "linked-router";
+      },
+      env,
+      ledger,
+    };
+
+    const olderSync = applyDirectProviderCredentialsToEnv("openrouter", deps);
+    await firstTokenRead;
+    accounts["openrouter-api:linked"] = account("openrouter-api", {
+      id: "linked",
+      enabled: false,
+    });
+    const newerDisableSync = applyDirectProviderCredentialsToEnv(
+      "openrouter",
+      deps,
+    );
+    await newerDisableSync;
+    releaseFirstToken?.();
+    await olderSync;
+
+    expect(tokenReads).toBe(1);
+    expect(env.OPENROUTER_API_KEY).toBeUndefined();
+    expect(env.OPENAI_API_KEY).toBeUndefined();
+    expect(env.OPENAI_BASE_URL).toBeUndefined();
+    expect(ledger.size).toBe(0);
+  });
+
   it("retracts the export after the selected account is deleted and re-exports after it is re-enabled", async () => {
     const accounts: Record<string, LinkedAccountConfig> = {
       "xai-api:only": account("xai-api", { id: "only" }),
