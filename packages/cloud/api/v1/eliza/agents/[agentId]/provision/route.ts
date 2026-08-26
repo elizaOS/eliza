@@ -208,7 +208,7 @@ async function __hono_POST(
             status: existing.status,
             webUiUrl: getConfiguredElizaAgentPublicWebUiUrl(
               existing,
-              ctx?.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
+              ctx?.env?.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
             ),
           },
         }),
@@ -354,7 +354,7 @@ async function __hono_POST(
                 status: "running",
                 webUiUrl: getConfiguredElizaAgentPublicWebUiUrl(
                   claimed,
-                  ctx?.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
+                  ctx?.env?.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
                 ),
               },
               source: "warm_pool",

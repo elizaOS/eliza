@@ -26,11 +26,12 @@ describe("cloudSafeMainActivityJava", () => {
     expect(splashInstall).toBeLessThan(bridgeCreation);
   });
 
-  it("does not register push or background messaging in the Play activity", () => {
+  it("registers crash-guarded push without any background agent service", () => {
     const source = cloudSafeMainActivityJava("ai.elizaos.app");
 
-    expect(source).not.toContain("SafePushNotificationsPlugin");
-    expect(source).not.toContain("PushNotifications");
+    expect(source).toContain(
+      "getBridge().registerPlugin(SafePushNotificationsPlugin.class);",
+    );
     expect(source).not.toContain("GatewayConnectionService");
   });
 
@@ -68,6 +69,8 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).toContain("KeyEvent.KEYCODE_FORWARD");
     expect(source).toContain("KeyEvent.KEYCODE_NAVIGATE_NEXT");
     expect(source).toContain("startLockTask();");
+    expect(source).toContain("protected void onResume()");
+    expect(source).toContain("super.onResume();");
     expect(source).toContain(
       "IllegalArgumentException | IllegalStateException | SecurityException",
     );
@@ -109,11 +112,13 @@ describe("cloudSafeMainActivityJava", () => {
     expect(warmCapture).toBeLessThan(warmDispatch);
   });
 
-  it("opens only this package's standard Android app settings", () => {
+  it("opens only this package's Android permission settings", () => {
     const source = cloudSafePlaySettingsPluginJava("ai.elizaos.app");
 
     expect(source).toContain('@CapacitorPlugin(name = "ElizaPlaySettings")');
     expect(source).toContain("Settings.ACTION_APPLICATION_DETAILS_SETTINGS");
+    expect(source).toContain("Settings.ACTION_APP_NOTIFICATION_SETTINGS");
+    expect(source).toContain("Settings.EXTRA_APP_PACKAGE");
     expect(source).toContain(
       'Uri.parse("package:" + getContext().getPackageName())',
     );
@@ -136,9 +141,9 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).toContain('"accountDeletionRecovery".equals(key)');
     expect(source).toContain('"pending_login".equals(slot)');
     expect(source).toContain('"mobile_login_ciphertext"');
-    expect(source.match(/private String preferenceKey\(PluginCall call\)/g)).toHaveLength(
-      1,
-    );
+    expect(
+      source.match(/private String preferenceKey\(PluginCall call\)/g),
+    ).toHaveLength(1);
     expect(source).not.toContain("CREDENTIAL_CIPHERTEXT");
     expect(source).toContain("putString(preferenceKey, encoded).commit()");
     expect(source).toContain("remove(preferenceKey).commit()");

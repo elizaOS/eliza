@@ -80,7 +80,7 @@ This plugin reads **no environment variables**. All configuration is passed per-
 
 Native platform permissions are requested at runtime via `requestPermissions()` and must be declared in the host app:
 - **iOS:** `NSLocationWhenInUseUsageDescription` (and `NSLocationAlwaysAndWhenInUseUsageDescription` for background) in `Info.plist`
-- **Android:** `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`, and optionally `ACCESS_BACKGROUND_LOCATION` in `AndroidManifest.xml`
+- **Android:** `ACCESS_FINE_LOCATION` and `ACCESS_COARSE_LOCATION` in `AndroidManifest.xml`. The Android implementation is foreground-only and does not request or report background location.
 
 ## How to extend
 
@@ -105,7 +105,7 @@ Native platform permissions are requested at runtime via `requestPermissions()` 
 - **Capacitor bridge, not elizaOS Plugin object.** Do not look for `actions`, `providers`, or `services` — this package does not export any. It integrates with Capacitor, not the elizaOS agent runtime directly.
 - **`@capacitor/core` is a peer dep.** The Capacitor version in the host app must be `^8.3.1`. Do not bundle it.
 - **Web permission flow is implicit.** `requestPermissions()` on web calls `getCurrentPosition` internally to trigger the browser permission prompt — there is no direct Permissions API call for geolocation.
-- **Android background location is a separate permission on Android 10+.** On API 29+ the `background` field in `LocationPermissionStatus` reflects the distinct `ACCESS_BACKGROUND_LOCATION` grant; earlier versions mirror the foreground state.
+- **Background status is iOS-only.** Android exposes foreground coarse/fine permission and accuracy only; it intentionally omits the `background` field and never requests `ACCESS_BACKGROUND_LOCATION`.
 - **iOS accuracy mapping.** `"high"` maps to `kCLLocationAccuracyNearestTenMeters` (not `kCLLocationAccuracyBest`). Only `"best"` gives `kCLLocationAccuracyBest`.
 - **Watch IDs are not integers.** Android and iOS both use UUID strings; web uses a prefixed timestamp string. Always treat watchId as an opaque string.
 - **Instrumented test (issue #9967).** Android fused-fix, permission/provider reads, and result shaping live in `LocationFixReader`, so they can be exercised on a real device/emulator via `./gradlew :elizaos-capacitor-location:connectedDebugAndroidTest` without a Capacitor `Bridge`/WebView. `LocationPlugin` delegates to the reader where it preserves the unchanged JS shape; the foreground permission field still comes from Capacitor `getPermissionState("location")` so the `"prompt"` state survives.

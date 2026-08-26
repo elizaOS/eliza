@@ -129,6 +129,15 @@ export function stripReservedElizaConfigKeys(
   );
 }
 
+export function stripPersonalDedicatedAuthorityConfigKeys(
+  agentConfig?: Record<string, unknown> | null,
+): Record<string, unknown> {
+  const sanitized = cloneAgentConfig(agentConfig);
+  delete sanitized[AGENT_UPGRADED_FROM_KEY];
+  delete sanitized[AGENT_PERSONAL_CUTOVER_KEY];
+  return sanitized;
+}
+
 export function withReusedElizaCharacterOwnership(
   agentConfig?: Record<string, unknown> | null,
 ): Record<string, unknown> {
