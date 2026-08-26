@@ -94,6 +94,14 @@ function extractPolicyParamPatterns(policySource: string): RegExp[] {
 }
 
 describe("hosted public renderer entry policy", () => {
+  it("keeps the document canvas full-bleed while routed surfaces own safe areas", () => {
+    const indexHtml = readFileSync(resolve(appRoot, "index.html"), "utf8");
+
+    expect(indexHtml).not.toMatch(
+      /body\s*\{[^}]*padding-(?:top|left|right):\s*env\(safe-area-inset-/s,
+    );
+  });
+
   it("ships the selector as the HTML entry and keeps all renderers dynamic", () => {
     const indexHtml = readFileSync(resolve(appRoot, "index.html"), "utf8");
     const entrySource = readFileSync(resolve(appRoot, "src/entry.ts"), "utf8");

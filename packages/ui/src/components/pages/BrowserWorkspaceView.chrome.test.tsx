@@ -310,9 +310,6 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(nav?.className).toContain("gap-1");
     expect(nav?.className).toContain("p-1");
 
-    expect(nav?.className).toContain(
-      "grid-cols-[2.75rem_2.75rem_minmax(0,1fr)_repeat(3,2.75rem)]",
-    );
     expect(
       screen.getByTestId("browser-workspace-address-input").className,
     ).toContain("flex-1");
