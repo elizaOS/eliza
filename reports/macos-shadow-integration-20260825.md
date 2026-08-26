@@ -284,6 +284,74 @@ No source-owner branch was changed or pushed, no native bundle was built or
 launched, no final port was bound, no credential/TCC surface was opened, and
 no physical-pointer action occurred.
 
+## Pre-Account 7099 / Devices / Shared refresh
+
+Starting from tagged receipt
+`d0c90c9f311c3c8d345803fd8526ad60a1b10bd9`, the disposable shadow was
+advanced through these exact inputs, in order:
+
+- `origin/develop`: `7099dd568a83dd6b330428ecade0b84a62ed229d`.
+- Devices PR #25427: `e0c05729f9f30a79ef6b3108e885848cf3fe7ef0`.
+- Shared PR #27103: `460ba16c41fb8337fed74bfd7eb745750c103bca`.
+
+The develop merge was conflict-free and produced source tree
+`4e67b700a9c59d9865b2fba7cb780ff9836dfa57`. Both new PR heads contain their
+previous frozen head plus exact `7099dd56...`; their rehearsed and executed
+merges were tree-neutral. The resulting pre-receipt source composite is
+`4f871e1ef191a3894d6b1e10830c49bf019f3c98`, with that same tree.
+
+Frozen authorities remain ancestors:
+
+- Computer Use PR #27215:
+  `888d3d74e567b25f98d29ecb8ca7d0b9c2bcc3af`.
+- iOS PR #27216: `e5b4d076f4f064163ac45a1c14c17f0f5f894fb6`.
+- Desktop preflight PR #28826:
+  `eb74d871f652a550205f297f48617d97bf519aad`.
+- Merged Vault: `a982a071b66f4688809ca49c5fb83284f54912dc`.
+- Merged Auth: `c61c7f72123c722f7a14cfd0355f13123ba6c237`.
+
+Account Deletion PR #27213 at stale placeholder `378c4c5a` was deliberately not
+merged. A read-only merge rehearsal still conflicts in its source-owned
+provision/resume routes and receipt surface:
+
+- `packages/cloud/api/v1/eliza/agents/[agentId]/provision/route.ts`.
+- `packages/cloud/api/v1/eliza/agents/[agentId]/resume/route.ts`.
+- `packages/cloud/api/v1/eliza/agents/[agentId]/resume/route.sync.test.ts`.
+- `packages/cloud/api/src/_router.generated.ts`.
+- Root `STATUS.md`.
+
+Those conflicts remain for the Account owner’s replacement current-base head;
+no integration-side resolution was attempted.
+
+Bounded verification:
+
+- Computer Use Linux a11y plus pointer-free route/coordinator/exact-window
+  contracts: 31/31.
+- Desktop runtime preflight and reset contracts: 23/23.
+- App Core remote-mode route-auth contracts: 8/8.
+- Cloud provision/resume/pairing/detail slice: 71/72. The sole stale pairing
+  assertion expects `{code: "insufficient_credits"}` while the route returns
+  `{error: "insufficient credits"}`; route and test blobs are byte-identical to
+  exact `7099dd56...`, so this is a current-develop baseline discrepancy rather
+  than a shadow merge regression.
+- Computer Use strict typecheck and production build: passed.
+- App Core source-package build: passed. Its broad strict typecheck remains
+  unavailable in the existing dependency state because optional workspace and
+  Capacitor declarations are not built; no `packages/app-core` source changed
+  from the prior receipt.
+- Cloud API broad compile reaches the existing missing
+  `@elizaos/plugin-doordash` declaration; the importing initializer blob is
+  byte-identical to exact develop.
+- Computer Use package dry run: 122 files, 4,595,892 bytes unpacked,
+  1,040,839-byte archive estimate.
+- App Core package dry run: 1,478 files, 12,845,950 bytes unpacked,
+  5,140,710-byte archive estimate.
+- `git diff --check`: passed; builds produced no tracked source drift.
+
+No source-owner branch was changed or pushed, no native bundle was built or
+launched, no final port was bound, no credential/TCC surface was opened, and
+no physical-pointer action occurred.
+
 ## Frozen inputs
 
 - Base `origin/develop`: `69c0291954942c9ae375fe5aacc82729a24bac6f`
