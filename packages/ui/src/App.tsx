@@ -16,6 +16,7 @@ import {
   type SurfaceManifestBearer,
   type ViewKind,
 } from "@elizaos/core";
+import { hasStewardAuthedCookie } from "@elizaos/shared/steward-session-client";
 import { X } from "lucide-react";
 import "./components/chat/chat-source-registration";
 import {
@@ -121,6 +122,7 @@ import { useShellControllerContext } from "./components/shell/ShellControllerCon
 import { ShellOverlays } from "./components/shell/ShellOverlays";
 import { StartupFailureView } from "./components/shell/StartupFailureView";
 import { StartupScreen } from "./components/shell/StartupScreen";
+import { StartupShell } from "./components/shell/StartupShell";
 import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
 import { TrayLauncher } from "./components/shell/TrayLauncher";
 import { useBarSurfaceWindows } from "./components/shell/useBarSurfaceWindows";
@@ -132,6 +134,7 @@ import { ShellViewAgentSurface } from "./components/views/ShellViewAgentSurface"
 import { ViewErrorBoundary } from "./components/views/ViewErrorBoundary";
 import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
 import { useBootConfig } from "./config/boot-config-react.hooks";
+import { useBranding } from "./config/branding";
 import {
   CHAT_OPEN_EVENT,
   dispatchNavigateViewEvent,
@@ -144,7 +147,10 @@ import {
   type PushToTalkHoldDetail,
 } from "./events";
 import { completeRemoteAgentFirstRun } from "./first-run/adopt-remote-first-run";
-import { persistMobileRuntimeModeForServerTarget } from "./first-run/mobile-runtime-mode";
+import {
+  isElizaCloudRuntimeLocked,
+  persistMobileRuntimeModeForServerTarget,
+} from "./first-run/mobile-runtime-mode";
 import { BootRecoveryConductorMount } from "./first-run/use-boot-recovery-conductor";
 import { FirstRunConductorMount } from "./first-run/use-first-run-conductor";
 import { ModelStatusConductorMount } from "./first-run/use-model-status-conductor";
@@ -172,6 +178,7 @@ import {
   titleForTab,
 } from "./navigation";
 import { applyLaunchConnection } from "./platform";
+import { isAndroidCloudBuild } from "./platform/android-runtime";
 import {
   type AppShellMode,
   resolveAppShellMode,
@@ -188,6 +195,11 @@ import {
   useChatComposer,
   useChatInputRef,
 } from "./state/ChatComposerContext.hooks";
+import {
+  clearCloudAuthFirstScreenGreeting,
+  markCloudAuthFirstScreenGreeting,
+} from "./state/cloud-auth-first-screen";
+import { hasUsableStoredStewardToken } from "./state/cloud-steward-login";
 import { isAuthoritativeFirstRunOpen } from "./state/first-run-chat-release";
 import {
   authProbeShouldHoldShell,
@@ -2344,6 +2356,7 @@ function HomeScreenMount({
 }
 
 function AppContent() {
+  const branding = useBranding();
   const {
     startupError,
     startupCoordinator,
@@ -2363,6 +2376,9 @@ function AppContent() {
     uiShellMode,
     uiLanguage,
     t,
+    elizaCloudConnected,
+    elizaCloudLoginBusy,
+    elizaCloudLoginError,
   } = useAppSelectorShallow((s) => ({
     startupError: s.startupError,
     startupCoordinator: s.startupCoordinator,
@@ -2382,6 +2398,9 @@ function AppContent() {
     uiShellMode: s.uiShellMode,
     uiLanguage: s.uiLanguage,
     t: s.t,
+    elizaCloudConnected: s.elizaCloudConnected,
+    elizaCloudLoginBusy: s.elizaCloudLoginBusy,
+    elizaCloudLoginError: s.elizaCloudLoginError,
   }));
   const isPopout = useIsPopout();
   const isAuxiliaryAppWindow = isAppWindowRoute();
@@ -3030,6 +3049,52 @@ function AppContent() {
   const bugReport = useBugReportState();
   // Loading is handled entirely by StartupScreen.
 
+  const cloudAuthFirstScreenOwnsSurface =
+    shellMode === "full" &&
+    !isPopout &&
+    !isAuxiliaryAppWindow &&
+    !cloudPairToken &&
+    (branding.cloudOnly === true ||
+      isAndroidCloudBuild() ||
+      isElizaCloudRuntimeLocked());
+  const hasUsableCloudSession =
+    elizaCloudConnected ||
+    hasUsableStoredStewardToken() ||
+    (typeof window !== "undefined" && hasStewardAuthedCookie());
+  const startCloudAuthFirstScreen = useCallback(async () => {
+    if (firstRunComplete !== true) {
+      markCloudAuthFirstScreenGreeting();
+    }
+    try {
+      await handleCloudLoginRecovery({ requireClientAuth: true });
+    } catch (error) {
+      clearCloudAuthFirstScreenGreeting();
+      throw error;
+    }
+  }, [firstRunComplete, handleCloudLoginRecovery]);
+  const cloudAuthAutoStartedRef = useRef(false);
+  useEffect(() => {
+    if (
+      !cloudAuthFirstScreenOwnsSurface ||
+      hasUsableCloudSession ||
+      elizaCloudLoginBusy ||
+      elizaCloudLoginError ||
+      cloudAuthAutoStartedRef.current
+    ) {
+      return;
+    }
+    cloudAuthAutoStartedRef.current = true;
+    void startCloudAuthFirstScreen().catch(() => {
+      // error-policy:J4 the full-screen retry surface renders the hook's error.
+    });
+  }, [
+    cloudAuthFirstScreenOwnsSurface,
+    elizaCloudLoginBusy,
+    elizaCloudLoginError,
+    hasUsableCloudSession,
+    startCloudAuthFirstScreen,
+  ]);
+
   useEffect(() => {
     // Safety-net watchdog: the coordinator has its own timeouts per phase, but
     // this catches any edge case where the coordinator gets stuck in a loading
@@ -3128,6 +3193,44 @@ function AppContent() {
   // Self-contained (its own ElizaClient + AudioContext); no app chrome / gate.
   if (shellMode === "voice-workbench") {
     return <VoiceWorkbenchShell />;
+  }
+
+  // Cloud account auth owns the primary viewport before chat exists. Hosted
+  // web redirects to Steward in this tab; the Android launcher keeps Eliza's
+  // hosted page in-app and uses the secure browser only for providers such as
+  // Google that reject embedded WebViews.
+  if (cloudAuthFirstScreenOwnsSurface && !hasUsableCloudSession) {
+    return (
+      <BugReportProvider value={bugReport}>
+        {elizaCloudLoginError ? (
+          <StartupFailureView
+            error={{
+              reason: "unknown",
+              phase: "starting-backend",
+              message: "Eliza Cloud sign-in could not be completed.",
+              detail: elizaCloudLoginError,
+            }}
+            onRetry={() => {
+              void startCloudAuthFirstScreen().catch(() => {
+                // error-policy:J4 the same retry surface receives the error.
+              });
+            }}
+          />
+        ) : (
+          <StartupShell
+            view={{
+              kind: "loading",
+              phase: "initializing-agent",
+              status: "Opening secure sign in…",
+            }}
+            onRetry={() => {
+              void startCloudAuthFirstScreen();
+            }}
+          />
+        )}
+        <BugReportModal />
+      </BugReportProvider>
+    );
   }
 
   // OS chat-overlay window — render JUST the floating assistant pill +
