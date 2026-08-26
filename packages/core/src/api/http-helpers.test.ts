@@ -5,11 +5,7 @@
 import http from "node:http";
 import { describe, expect, it } from "vitest";
 import { ElizaError } from "../errors.js";
-import {
-	readJsonBody,
-	readRequestBodyBuffer,
-	writeJsonResponse,
-} from "./http-helpers.js";
+import { readJsonBody, readRequestBodyBuffer } from "./http-helpers.js";
 
 interface IncomingRequestResult<T> {
 	inspection: T;
@@ -146,23 +142,5 @@ describe("readRequestBodyBuffer", () => {
 		expect(outcome.responseBody).toBe(
 			JSON.stringify({ error: "Request body exceeds this route's limit" }),
 		);
-	});
-});
-
-describe("writeJsonResponse", () => {
-	it("serializes payloads containing BigInt values without throwing", async () => {
-		const outcome = await withIncomingRequest("", async (_req, res) => {
-			await writeJsonResponse(res, {
-				amount: 1000000000000000000n,
-				token: "SOL",
-			});
-			return true;
-		});
-
-		expect(outcome.status).toBe(200);
-		expect(JSON.parse(outcome.responseBody)).toEqual({
-			amount: "1000000000000000000",
-			token: "SOL",
-		});
 	});
 });

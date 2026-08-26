@@ -196,11 +196,7 @@ export async function writeJsonResponse(
 ): Promise<void> {
 	res.statusCode = status;
 	res.setHeader("Content-Type", "application/json");
-	res.end(
-		JSON.stringify(body, (_key, value) =>
-			typeof value === "bigint" ? value.toString() : value,
-		),
-	);
+	res.end(JSON.stringify(body));
 }
 
 export async function writeJsonError(
