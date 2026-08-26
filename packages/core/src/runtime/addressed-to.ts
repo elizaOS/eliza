@@ -41,6 +41,26 @@ export interface ApplyAddressedToArgs {
 	addressedTo: readonly string[];
 }
 
+export interface MessageAddressedToOtherParticipantArgs
+	extends ApplyAddressedToArgs {
+	/**
+	 * Caller-attested signal that Stage 1's plan commits this turn to tool
+	 * work (`requiresTool`, a non-simple context, or named candidate actions).
+	 * The agent-chatter damping arm stands down for such turns: damping is a
+	 * cost/noise bias against SIMPLE conversational chatter, and a verifiably
+	 * unaddressed work request in an all-agent room has no other participant
+	 * who could serve it — silencing it swallows the ask entirely (live
+	 * 2026-08-26, room f26fec5e: "re-run that binary matrix thing" with
+	 * requiresTool=true and "hows the quiz master build going" with
+	 * GET_TASK_STATUS/CHECK_BUILD_STATUS candidates were both terminally
+	 * ignored; the user got silence twice, trajectories tj-b014fedf6c8211 and
+	 * tj-bcb32b4ffbba84). The two VERIFIED addressing arms are unaffected —
+	 * a corroborated tag or leading vocative still silences tool-shaped
+	 * overheard turns (#9874).
+	 */
+	turnCommitsToToolWork?: boolean;
+}
+
 export interface ApplyAddressedToResult {
 	created: number;
 	updated: number;
@@ -175,7 +195,7 @@ function agentSelfNames(runtime: IAgentRuntime): Set<string> {
  * vocative fallback.
  */
 export async function messageAddressedToOtherParticipant(
-	args: ApplyAddressedToArgs,
+	args: MessageAddressedToOtherParticipantArgs,
 ): Promise<boolean> {
 	const { runtime, message, addressedTo } = args;
 	const text =
@@ -279,6 +299,28 @@ export async function messageAddressedToOtherParticipant(
 	// precondition fails open — human turns, addressed turns, DMs, unknown
 	// history — and the caller's personality reply_gate "always" opt-out still
 	// bypasses the whole gate.
+	//
+	// Damping is a cost/noise bias, never load-bearing, and its target class —
+	// mutual-validation chatter — is simple-path conversation by construction
+	// (both 2026-08-24 incident turns planned contexts=["simple"],
+	// requiresTool=false). A turn whose Stage-1 plan commits to TOOL WORK is a
+	// work request only this agent can serve (nobody else was addressed), so
+	// the damping arm stands down for it instead of terminally swallowing the
+	// ask (live 2026-08-26, room f26fec5e: two bot-stamped owner probes —
+	// "re-run that binary matrix thing", requiresTool=true, and "hows the quiz
+	// master build going", candidates GET_TASK_STATUS/CHECK_BUILD_STATUS —
+	// were damped to total silence; trajectories tj-b014fedf6c8211 and
+	// tj-bcb32b4ffbba84 ended after Stage 1 with nothing delivered).
+	if (args.turnCommitsToToolWork === true) {
+		runtime.logger?.debug?.(
+			{
+				src: "addressed-to",
+				roomId: message.roomId,
+			},
+			"[addressed-to] Agent-chatter damping stood down: Stage-1 plan commits this turn to tool work",
+		);
+		return false;
+	}
 	const damping = await evaluateAgentChatterDamping({ runtime, message });
 	if (damping.damped) {
 		runtime.logger?.debug?.(

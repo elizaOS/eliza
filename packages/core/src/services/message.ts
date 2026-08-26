@@ -143,6 +143,7 @@ import {
 import { getLocalizedExamplesProvider } from "../runtime/localized-examples-provider";
 import {
 	getMessageHandlerReply,
+	type MessageHandlerRoute,
 	parseMessageHandlerOutput,
 	routeMessageHandlerOutput,
 	SIMPLE_CONTEXT_ID,
@@ -9158,11 +9159,31 @@ export async function runV5MessageRuntimeStage1(args: {
 		// the fail-open interjection path, live 2026-08-22) — over a single room
 		// lookup. The personality reply_gate override is consulted LAST and only
 		// on a positive.
+		// Stage-1 committed this turn to tool work (requiresTool, a non-simple
+		// context, or named candidates). The gate's VERIFIED addressing arms
+		// still silence such turns — an overheard "bob, re-run the build" must
+		// not make this agent run it — but the agent-chatter damping arm stands
+		// down: damping targets simple-path validation chatter, and a verifiably
+		// unaddressed work request has no other participant who could serve it,
+		// so damping it swallows the ask outright (live 2026-08-26, room
+		// f26fec5e: tj-b014fedf6c8211 "re-run that binary matrix thing",
+		// requiresTool=true, and tj-bcb32b4ffbba84 "hows the quiz master build
+		// going", candidates GET_TASK_STATUS/CHECK_BUILD_STATUS — both ended at
+		// Stage 1 with total silence).
+		const stageOnePlanCommitsToToolWork =
+			messageHandler.processMessage === "RESPOND" &&
+			(messageHandler.plan.requiresTool === true ||
+				getMessageHandlerCandidateActions(messageHandler).length > 0 ||
+				messageHandler.plan.contexts.some((context) => {
+					const id = String(context).trim().toLowerCase();
+					return id.length > 0 && id !== SIMPLE_CONTEXT_ID;
+				}));
 		const suppressionCandidate = ambientTurn
 			? await messageAddressedToOtherParticipant({
 					runtime: args.runtime,
 					message: args.message,
 					addressedTo,
+					turnCommitsToToolWork: stageOnePlanCommitsToToolWork,
 				}).catch((error) => {
 					// error-policy:J4 an unresolved addressee must not suppress a
 					// response, but the failed room lookup remains observable.
@@ -9188,10 +9209,32 @@ export async function runV5MessageRuntimeStage1(args: {
 				"[message] Turn addressed to another participant — engagement gate ignores it",
 			);
 		}
-		const route = routeMessageHandlerOutput(messageHandler, {
-			addressedToOtherParticipant,
-			messageText: getUserMessageText(args.message) ?? "",
-		});
+		// A field-evaluator preempt (ack-and-stop / direct-reply) already owns
+		// this turn's terminal shape: the staged replyText IS the final reply
+		// and the planner must not run — the preempting handler (e.g. the
+		// threadOps abort) has already performed its side effects. Plan
+		// normalization encodes the preempt as the simple path, but leftover
+		// model-routed contexts ("general") or candidate actions would let the
+		// router's planning promotions (mixed-selection, progress-ack) resurrect
+		// the planner and dishonor the preempt, so the route is pinned here
+		// where the preempt is in scope. "ignore" mode already flows through
+		// processMessage=IGNORE, and the engagement addressing gate keeps
+		// precedence — a turn addressed to another participant stays silenced.
+		const fieldPreemptMode = fieldRunResult?.preempt?.mode;
+		const route: MessageHandlerRoute =
+			!addressedToOtherParticipant &&
+			messageHandler.processMessage === "RESPOND" &&
+			(fieldPreemptMode === "ack-and-stop" ||
+				fieldPreemptMode === "direct-reply")
+				? {
+						type: "final_reply",
+						reply: getMessageHandlerReply(messageHandler),
+						output: messageHandler,
+					}
+				: routeMessageHandlerOutput(messageHandler, {
+						addressedToOtherParticipant,
+						messageText: getUserMessageText(args.message) ?? "",
+					});
 		if (route.type === "ignored" || route.type === "stopped") {
 			return {
 				kind: "terminal",
