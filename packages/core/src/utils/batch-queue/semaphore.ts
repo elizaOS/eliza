@@ -29,6 +29,25 @@ export class Semaphore {
 		return this.waiters.length;
 	}
 
+	/** Try to acquire a permit immediately without waiting. Returns true if acquired. */
+	tryAcquire(): boolean {
+		if (this.permits > 0) {
+			this.permits -= 1;
+			return true;
+		}
+		return false;
+	}
+
+	/** Run an asynchronous operation with an automatically acquired and released permit. */
+	async withPermit<T>(fn: () => Promise<T>): Promise<T> {
+		await this.acquire();
+		try {
+			return await fn();
+		} finally {
+			this.release();
+		}
+	}
+
 	async acquire(): Promise<void> {
 		if (this.permits > 0) {
 			this.permits -= 1;

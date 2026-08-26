@@ -64,4 +64,31 @@ describe("Semaphore", () => {
 		expect(sem.queueLength).toBe(0);
 		expect(sem.availablePermits).toBe(1);
 	});
+
+	it("supports tryAcquire non-blocking permit acquisition", () => {
+		const sem = new Semaphore(1);
+		expect(sem.tryAcquire()).toBe(true);
+		expect(sem.availablePermits).toBe(0);
+		expect(sem.tryAcquire()).toBe(false);
+		sem.release();
+		expect(sem.tryAcquire()).toBe(true);
+	});
+
+	it("executes operations within withPermit and automatically releases permit on completion or error", async () => {
+		const sem = new Semaphore(1);
+		const result = await sem.withPermit(async () => {
+			expect(sem.availablePermits).toBe(0);
+			return "success";
+		});
+		expect(result).toBe("success");
+		expect(sem.availablePermits).toBe(1);
+
+		await expect(
+			sem.withPermit(async () => {
+				expect(sem.availablePermits).toBe(0);
+				throw new Error("fail inside");
+			}),
+		).rejects.toThrow("fail inside");
+		expect(sem.availablePermits).toBe(1);
+	});
 });
