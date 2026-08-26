@@ -139,6 +139,7 @@ import { readAttachmentAction } from "../working-memory/readAttachmentAction.ts"
 // ../advanced-capabilities/index.ts for the Bun.build mis-rewrite that
 // requires bypassing barrels here too.
 import { calculateAction } from "./actions/calculate.ts";
+import { channelRecapAction } from "./actions/channel-recap.ts";
 import { channelTopicSearchAction } from "./actions/channel-topic-search.ts";
 import { choiceAction } from "./actions/choice.ts";
 import { ignoreAction } from "./actions/ignore.ts";
@@ -1456,6 +1457,7 @@ export const basicActions = [
 	withCanonicalActionDocs(noneAction),
 	withCanonicalActionDocs(channelTopicSearchAction),
 	withCanonicalActionDocs(calculateAction),
+	withCanonicalActionDocs(channelRecapAction),
 ];
 
 /**

@@ -161,7 +161,7 @@ export function deriveCompactionContentManifest(
 		const visited = new WeakSet<object>();
 		while (pending.length > 0) {
 			const current = pending.pop();
-			if (!current) break;
+			if (!current) continue;
 			if (isReadView(current)) {
 				addReference(current.reference, reason, {
 					unit: current.slice.range.unit,

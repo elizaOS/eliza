@@ -211,8 +211,9 @@ export function resolveDevHarnessBuildDirs(opts) {
 }
 
 /**
- * Private/internal packages to build on a fresh clone, in ascending `order`
- * (deps before dependents). Each entry is `{ dir, name, sentinel, order }`.
+ * Workspace packages to build on a fresh clone, in ascending `order`
+ * (deps before dependents). Each entry is `{ dir, name, sentinel, order }`
+ * plus an optional non-default `script`.
  * Replaces the hardcoded PACKAGES list in build-private-workspace-packages.mjs.
  */
 export function resolveBuildOnInstallPackages(opts) {
@@ -223,11 +224,15 @@ export function resolveBuildOnInstallPackages(opts) {
         typeof pkg.scripts.buildOnInstall === "object" &&
         typeof pkg.scripts.buildOnInstall.sentinel === "string",
     )
-    .map((pkg) => ({
-      dir: pkg.dir,
-      name: pkg.name,
-      sentinel: pkg.scripts.buildOnInstall.sentinel,
-      order: Number(pkg.scripts.buildOnInstall.order ?? 0),
-    }))
+    .map((pkg) => {
+      const script = pkg.scripts.buildOnInstall.script;
+      return {
+        dir: pkg.dir,
+        name: pkg.name,
+        sentinel: pkg.scripts.buildOnInstall.sentinel,
+        order: Number(pkg.scripts.buildOnInstall.order ?? 0),
+        ...(typeof script === "string" && script.length > 0 ? { script } : {}),
+      };
+    })
     .sort((a, b) => a.order - b.order || a.dir.localeCompare(b.dir));
 }

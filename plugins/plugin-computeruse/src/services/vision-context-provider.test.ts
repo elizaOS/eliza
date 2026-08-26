@@ -173,6 +173,33 @@ describe("VisionContextProvider — focused window", () => {
     });
   });
 
+  it("refreshes the scene when no current scene is cached", async () => {
+    const scene = makeScene();
+    let refreshMode: string | undefined;
+    const runtime = {
+      agentId: "agent-refresh",
+      getCache: vi.fn(async () => undefined),
+      setCache: vi.fn(async () => true),
+      getService: vi.fn((name: string) =>
+        name === ComputerUseService.serviceType
+          ? ({
+              getCurrentScene: () => null,
+              refreshScene: async (mode: string) => {
+                refreshMode = mode;
+                return scene;
+              },
+              getRecentActions: () => [],
+            } as unknown as ComputerUseService)
+          : null,
+      ),
+    } as unknown as IAgentRuntime;
+
+    const provider = new VisionContextProvider(runtime);
+    const context = await provider.getContext();
+    expect(refreshMode).toBe("agent-turn");
+    expect(context.focusedWindow?.app).toBe("Cursor");
+  });
+
   it("returns null focusedWindow when neither scene nor windows produce a hit", async () => {
     const { runtime } = makeRuntime();
     const provider = new VisionContextProvider(runtime);
