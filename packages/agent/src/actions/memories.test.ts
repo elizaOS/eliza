@@ -7,7 +7,11 @@
 import type { ActionResult, IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { normalizeActionIdentifier } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { memoryAction } from "./memories";
+import {
+  MAX_MEMORY_ACTION_RESULT_CHARS,
+  MAX_MEMORY_PAGE_ITEMS,
+  memoryAction,
+} from "./memories";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000aa" as UUID;
 const USER_ID = "00000000-0000-0000-0000-0000000000bb" as UUID;
@@ -869,6 +873,83 @@ describe("MEMORY op:search complete traversal", () => {
     });
   });
 
+  it("rejects a caller page size above the enforced maximum", async () => {
+    const { runtime } = makeRuntime();
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      query: "invoice number",
+      limit: MAX_MEMORY_PAGE_ITEMS + 1,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({
+      error: "MEMORY_PAGE_LIMIT_EXCEEDED",
+      requestedLimit: MAX_MEMORY_PAGE_ITEMS + 1,
+      maxLimit: MAX_MEMORY_PAGE_ITEMS,
+    });
+  });
+
+  it("requires pagination instead of rendering an oversized complete result", async () => {
+    const { runtime, rows } = makeRuntime();
+    for (let i = 0; i <= MAX_MEMORY_PAGE_ITEMS; i++) {
+      seedFact(rows, { text: `invoice number ${i}`, entityId: USER_ID });
+    }
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      query: "invoice number",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({
+      error: "MEMORY_SEARCH_REQUIRES_PAGINATION",
+      totalMatches: MAX_MEMORY_PAGE_ITEMS + 1,
+      maxLimit: MAX_MEMORY_PAGE_ITEMS,
+    });
+    expect(result.text).not.toContain("- [facts]");
+  });
+
+  it("rejects one indivisible memory that exceeds the page character budget", async () => {
+    const { runtime, rows } = makeRuntime();
+    const memoryId = seedFact(rows, {
+      text: `invoice ${"x".repeat(MAX_MEMORY_ACTION_RESULT_CHARS)}`,
+      entityId: USER_ID,
+    });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      query: "invoice",
+      limit: 1,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({
+      error: "MEMORY_RECORD_EXCEEDS_PAGE_BUDGET",
+      memoryId,
+      maxResultChars: MAX_MEMORY_ACTION_RESULT_CHARS,
+    });
+    expect(JSON.stringify(result).length).toBeLessThan(1_048_576);
+  });
+
+  it("keeps the maximum accepted page below the Codex input boundary", async () => {
+    const { runtime, rows } = makeRuntime();
+    for (let i = 0; i < MAX_MEMORY_PAGE_ITEMS; i++) {
+      seedFact(rows, { text: `invoice number ${i}`, entityId: USER_ID });
+    }
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      query: "invoice number",
+      limit: MAX_MEMORY_PAGE_ITEMS,
+    });
+
+    expect(result.success).toBe(true);
+    expect(JSON.stringify(result).length).toBeLessThanOrEqual(
+      MAX_MEMORY_ACTION_RESULT_CHARS,
+    );
+    expect(JSON.stringify(result).length).toBeLessThan(1_048_576);
+  });
+
   it("rejects an offset without an explicit page size", async () => {
     const { runtime } = makeRuntime();
     const result = await runAction(runtime, makeMessage(), {
@@ -892,6 +973,32 @@ describe("MEMORY op:search complete traversal", () => {
       limit: 3,
     });
     seedFact(rows, { text: "invoice number 6", entityId: USER_ID });
+
+    const continuation = await runAction(runtime, makeMessage(), {
+      action: "search",
+      query: "invoice number",
+      limit: 3,
+      offset: 3,
+      snapshot: String(first.values?.snapshot),
+    });
+
+    expect(continuation.success).toBe(false);
+    expect(continuation.data).toMatchObject({
+      error: "MEMORY_PAGE_SNAPSHOT_CHANGED",
+    });
+  });
+
+  it("rejects a continuation when a matched record changes under the same id", async () => {
+    const { runtime, rows } = makeRuntime();
+    for (let i = 0; i < 6; i++) {
+      seedFact(rows, { text: `invoice number ${i}`, entityId: USER_ID });
+    }
+    const first = await runAction(runtime, makeMessage(), {
+      action: "search",
+      query: "invoice number",
+      limit: 3,
+    });
+    rows[0].memory.content.text = "invoice number corrected in place";
 
     const continuation = await runAction(runtime, makeMessage(), {
       action: "search",

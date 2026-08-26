@@ -109,8 +109,12 @@ const SEARCH_QUERY_STOP_WORDS = new Set([
   "your",
 ]);
 
-function fail(text: string, error: string): ActionResult {
-  return { success: false, text, data: { error } };
+function fail(
+  text: string,
+  error: string,
+  context?: Record<string, unknown>,
+): ActionResult {
+  return { success: false, text, data: { error, ...context } };
 }
 
 type UuidParamName = "entityId" | "roomId" | "memoryId";
@@ -279,6 +283,8 @@ interface CandidateScan {
 }
 
 const COMPLETE_MEMORY_PAGE_SIZE = 10_000;
+export const MAX_MEMORY_PAGE_ITEMS = 50;
+export const MAX_MEMORY_ACTION_RESULT_CHARS = 256 * 1024;
 
 function traversalError(
   code: string,
@@ -313,13 +319,21 @@ function compareMemoryTuple(left: Memory, right: Memory): number {
     .localeCompare(String(left.id).toLowerCase());
 }
 
-function memoryPageSnapshot(matches: readonly MemoryCandidate[]): string {
+function memoryPageSnapshot(items: readonly MemoryListItem[]): string {
   const hash = createHash("sha256");
-  for (const candidate of matches) {
-    hash.update(candidate.type);
-    hash.update("\0");
-    hash.update(String(candidate.memory.id));
-    hash.update("\0");
+  for (const item of items) {
+    const canonical = JSON.stringify([
+      item.id,
+      item.type,
+      item.text,
+      item.entityId,
+      item.roomId,
+      item.agentId,
+      item.createdAt,
+    ]);
+    hash.update(String(Buffer.byteLength(canonical)));
+    hash.update(":");
+    hash.update(canonical);
   }
   return hash.digest("hex");
 }
@@ -573,6 +587,13 @@ async function doSearch(
       "MEMORY_INVALID_PAGE",
     );
   }
+  if (limit !== undefined && limit > MAX_MEMORY_PAGE_ITEMS) {
+    return fail(
+      `search limit ${limit} exceeds the maximum page size of ${MAX_MEMORY_PAGE_ITEMS}. Retry with a smaller limit.`,
+      "MEMORY_PAGE_LIMIT_EXCEEDED",
+      { requestedLimit: limit, maxLimit: MAX_MEMORY_PAGE_ITEMS },
+    );
+  }
 
   const scope = {
     type,
@@ -582,19 +603,31 @@ async function doSearch(
   };
   const scan = await collectCandidates(runtime, scope);
 
-  const totalMatches = scan.matches.length;
-  const snapshot = memoryPageSnapshot(scan.matches);
+  const allItems = scan.matches.map((candidate) =>
+    toListItem(candidate.memory, candidate.type),
+  );
+  const totalMatches = allItems.length;
+  const snapshot = memoryPageSnapshot(allItems);
   if (requestedSnapshot && requestedSnapshot !== snapshot) {
     return fail(
       "The ordered memory matches changed after the previous page. Restart this search at offset 0.",
       "MEMORY_PAGE_SNAPSHOT_CHANGED",
     );
   }
-  const pageMatches =
-    limit === undefined
-      ? scan.matches
-      : scan.matches.slice(offset, offset + limit);
-  const items = pageMatches.map((c) => toListItem(c.memory, c.type));
+  if (limit === undefined && totalMatches > MAX_MEMORY_PAGE_ITEMS) {
+    return fail(
+      `The complete search has ${totalMatches} matches, which exceeds the maximum safe result size of ${MAX_MEMORY_PAGE_ITEMS} records. Retry with limit at most ${MAX_MEMORY_PAGE_ITEMS}.`,
+      "MEMORY_SEARCH_REQUIRES_PAGINATION",
+      {
+        totalMatches,
+        maxLimit: MAX_MEMORY_PAGE_ITEMS,
+        suggestedLimit: Math.min(20, MAX_MEMORY_PAGE_ITEMS),
+        snapshot,
+      },
+    );
+  }
+  const items =
+    limit === undefined ? allItems : allItems.slice(offset, offset + limit);
   const nextOffset =
     limit !== undefined && offset + items.length < totalMatches
       ? offset + items.length
@@ -626,7 +659,7 @@ async function doSearch(
           `More matches remain. To continue losslessly, call MEMORY_SEARCH with the same filters, limit=${limit}, offset=${nextOffset}, snapshot=${snapshot}.`,
         ];
 
-  return {
+  const result: ActionResult = {
     success: true,
     text: [
       `${renderNote} (filters: ${describeSearchScope(scope)}).`,
@@ -676,6 +709,54 @@ async function doSearch(
       snapshot,
     },
   };
+  const serializedChars = JSON.stringify(result).length;
+  if (serializedChars > MAX_MEMORY_ACTION_RESULT_CHARS) {
+    if (limit === undefined) {
+      return fail(
+        `The complete search result requires ${serializedChars} characters, exceeding the safe action-result budget of ${MAX_MEMORY_ACTION_RESULT_CHARS}. Retry with an explicit page limit.`,
+        "MEMORY_SEARCH_REQUIRES_PAGINATION",
+        {
+          totalMatches,
+          renderedChars: serializedChars,
+          maxResultChars: MAX_MEMORY_ACTION_RESULT_CHARS,
+          suggestedLimit: Math.min(20, MAX_MEMORY_PAGE_ITEMS),
+          snapshot,
+        },
+      );
+    }
+    if (items.length === 1) {
+      return fail(
+        `Memory ${items[0].id} alone requires ${serializedChars} action-result characters, exceeding the safe budget of ${MAX_MEMORY_ACTION_RESULT_CHARS}. Narrow the search or use a provider with a larger input boundary.`,
+        "MEMORY_RECORD_EXCEEDS_PAGE_BUDGET",
+        {
+          memoryId: items[0].id,
+          renderedChars: serializedChars,
+          maxResultChars: MAX_MEMORY_ACTION_RESULT_CHARS,
+        },
+      );
+    }
+    const suggestedLimit = Math.max(
+      1,
+      Math.min(
+        items.length - 1,
+        Math.floor(
+          (items.length * MAX_MEMORY_ACTION_RESULT_CHARS) / serializedChars,
+        ),
+      ),
+    );
+    return fail(
+      `The requested page requires ${serializedChars} action-result characters, exceeding the safe budget of ${MAX_MEMORY_ACTION_RESULT_CHARS}. Retry with limit=${suggestedLimit}.`,
+      "MEMORY_PAGE_RESULT_TOO_LARGE",
+      {
+        requestedLimit: limit,
+        suggestedLimit,
+        renderedChars: serializedChars,
+        maxResultChars: MAX_MEMORY_ACTION_RESULT_CHARS,
+        snapshot,
+      },
+    );
+  }
+  return result;
 }
 
 async function doUpdate(
@@ -1076,10 +1157,13 @@ export const memoryAction: Action = {
     },
     {
       name: "limit",
-      description:
-        "search: optional positive page size. When supplied, the result reports totalMatches and nextOffset so every ordered match remains retrievable.",
+      description: `search: optional positive page size up to ${MAX_MEMORY_PAGE_ITEMS}. Large complete results reject with a typed instruction to retry using this lossless pagination contract.`,
       required: false,
-      schema: { type: "integer" as const, minimum: 1 },
+      schema: {
+        type: "integer" as const,
+        minimum: 1,
+        maximum: MAX_MEMORY_PAGE_ITEMS,
+      },
     },
     {
       name: "offset",
