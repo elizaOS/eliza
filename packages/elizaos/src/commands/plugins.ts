@@ -224,7 +224,11 @@ function createThirdPartyMetadata(projectDir: string): ThirdPartyMetadata {
     );
   }
 
-  const kind = normalizeKind(pkg.elizaos?.kind, packageName);
+  const kind = normalizeKind(
+    pkg.elizaos?.kind,
+    packageName,
+    pkg.elizaos?.app !== undefined,
+  );
   const metadata: ThirdPartyMetadata = {
     package: packageName,
     repository: `github:${repo}`,
@@ -324,11 +328,15 @@ function inferGithubRepoFromGit(projectDir: string): string | null {
 function normalizeKind(
   declaredKind: string | undefined,
   packageName: string,
+  hasAppMetadata: boolean,
 ): "plugin" | "connector" | "app" {
   if (declaredKind && VALID_KINDS.has(declaredKind)) {
     return declaredKind as "plugin" | "connector" | "app";
   }
-  if (packageName.includes("/app-") || packageName.startsWith("app-")) {
+  if (
+    hasAppMetadata &&
+    (packageName.includes("/app-") || packageName.startsWith("app-"))
+  ) {
     return "app";
   }
   return "plugin";

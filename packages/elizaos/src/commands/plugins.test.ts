@@ -46,6 +46,32 @@ describe("submitPluginToRegistry", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("does not infer app kind from a package name without app metadata", async () => {
+    const dir = makePluginPackage({
+      name: "@myorg/app-analytics",
+      version: "1.0.0",
+      description: "Analytics plugin for elizaOS",
+      repository: {
+        type: "git",
+        url: "https://github.com/myorg/app-analytics.git",
+      },
+    });
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await submitPluginToRegistry(dir, { base: "main", dryRun: true });
+      const printed = logSpy.mock.calls.at(-1)?.[0];
+      expect(typeof printed).toBe("string");
+      const parsed = JSON.parse(printed as string) as {
+        metadata: { kind: string; app?: Record<string, unknown> };
+      };
+      expect(parsed.metadata.kind).toBe("plugin");
+      expect(parsed.metadata).not.toHaveProperty("app");
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
   it.each([
     ["git+ssh://git@github.com/acme/plugin-weather.git"],
     ["ssh://git@github.com/acme/plugin-weather.git"],
