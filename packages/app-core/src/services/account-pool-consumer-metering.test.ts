@@ -243,13 +243,27 @@ describe("consumer key lifecycle and management", () => {
 
     const cyclic: Record<string, unknown> = {};
     cyclic.self = cyclic;
-    expect(estimateAnthropicRequestReservation(cyclic)).toBeGreaterThanOrEqual(
-      1,
-    );
+    expect(estimateAnthropicRequestReservation(cyclic)).toBe(1);
   });
 });
 
 describe("usage extraction and streaming meter", () => {
+  it("replaces cumulative streaming usage across multiple message_delta events without double counting", async () => {
+    const wire =
+      'event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":10,"cache_read_input_tokens":4,"cache_creation_input_tokens":6}}}\n\n' +
+      'event: message_delta\ndata: {"type":"message_delta","usage":{"output_tokens":15,"cache_creation_input_tokens":8}}\n\n' +
+      'event: message_delta\ndata: {"type":"message_delta","usage":{"output_tokens":25,"cache_creation_input_tokens":12}}\n\n' +
+      "data: [DONE]\n\n";
+    const result = await pipeMeteredSse([wire]);
+    expect(result.observed).toEqual([
+      {
+        input_tokens: 10,
+        output_tokens: 25,
+        cache_read_input_tokens: 4,
+        cache_creation_input_tokens: 12,
+      },
+    ]);
+  });
   it("extracts non-stream usage from Anthropic response JSON", () => {
     expect(
       extractAnthropicUsageFromJson({
@@ -526,5 +540,157 @@ describe("quota and totals", () => {
       tokens: 150,
     });
     expect(summary.records).toEqual([]);
+  });
+
+  it("enforces isolated daily quotas across multiple distinct consumers", async () => {
+    const consumerA = createAccountPoolConsumerKey({
+      label: "consumer-a",
+      dailyTokenQuota: 50,
+    });
+    const consumerB = createAccountPoolConsumerKey({
+      label: "consumer-b",
+      dailyTokenQuota: 100,
+    });
+    if (!consumerA || !consumerB) throw new Error("failed to create consumers");
+
+    // Consumer A spends 45 tokens
+    const admissionA = await admitAccountPoolConsumerRequest(
+      consumerA.consumer,
+      10,
+    );
+    if ("ok" in admissionA)
+      throw new Error("unexpected quota admission failure for A");
+    await recordAccountPoolConsumerUsage({
+      consumerId: consumerA.consumer.id,
+      consumerLabel: consumerA.consumer.label,
+      model: "claude-test",
+      streaming: false,
+      status: 200,
+      latencyMs: 10,
+      usage: {
+        input_tokens: 25,
+        output_tokens: 20,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+      },
+      admission: admissionA,
+    });
+
+    // Consumer A cannot admit 10 tokens (exceeds remaining quota 50 - 45 = 5)
+    const secondA = await admitAccountPoolConsumerRequest(
+      consumerA.consumer,
+      10,
+    );
+    expect(secondA).toMatchObject({
+      ok: false,
+      status: 429,
+      body: { error: { type: "rate_limit_error" } },
+    });
+
+    // Consumer B is completely unaffected and has its own independent 100 token quota
+    const admissionB = await admitAccountPoolConsumerRequest(
+      consumerB.consumer,
+      60,
+    );
+    if ("ok" in admissionB)
+      throw new Error("unexpected quota rejection for B");
+
+    await recordAccountPoolConsumerUsage({
+      consumerId: consumerB.consumer.id,
+      consumerLabel: consumerB.consumer.label,
+      model: "claude-test",
+      streaming: false,
+      status: 200,
+      latencyMs: 20,
+      usage: {
+        input_tokens: 30,
+        output_tokens: 30,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+      },
+      admission: admissionB,
+    });
+
+    // Per-consumer summaries remain isolated
+    const summary = await getAccountPoolConsumerUsageSummary();
+    expect(summary.byConsumer[consumerA.consumer.id]).toMatchObject({
+      requests: 1,
+      tokens: 45,
+    });
+    expect(summary.byConsumer[consumerB.consumer.id]).toMatchObject({
+      requests: 1,
+      tokens: 60,
+    });
+    expect(summary.totals.requests).toBeGreaterThanOrEqual(2);
+    expect(summary.totals.tokens).toBeGreaterThanOrEqual(105);
+  });
+
+  it("tracks per-dimension accumulator counters and error statuses in totals and byDay buckets", async () => {
+    const created = createAccountPoolConsumerKey({
+      label: "metered-accumulators",
+    });
+    if (!created) throw new Error("failed to create consumer");
+
+    const fixedTs = 1_800_000_500_000;
+    // Successful request: status 200
+    await recordAccountPoolConsumerUsage({
+      ts: fixedTs,
+      consumerId: created.consumer.id,
+      consumerLabel: created.consumer.label,
+      model: "claude-test",
+      streaming: false,
+      status: 200,
+      latencyMs: 15,
+      usage: {
+        input_tokens: 10,
+        output_tokens: 20,
+        cache_read_input_tokens: 5,
+        cache_creation_input_tokens: 3,
+      },
+    });
+
+    // Failed request: status 400 (counted toward input tokens, requests, and errors)
+    await recordAccountPoolConsumerUsage({
+      ts: fixedTs + 1000,
+      consumerId: created.consumer.id,
+      consumerLabel: created.consumer.label,
+      model: "claude-test",
+      streaming: true,
+      status: 400,
+      latencyMs: 25,
+      usage: {
+        input_tokens: 4,
+        output_tokens: 0,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+      },
+    });
+
+    const usage = await queryAccountPoolConsumerUsage({
+      consumerId: created.consumer.id,
+    });
+
+    // Detailed per-dimension counters
+    expect(usage.totals.requests).toBe(2);
+    expect(usage.totals.tokens).toBe(42); // (10 + 20 + 5 + 3) + (4) = 42
+    expect(usage.totals.input_tokens).toBe(14);
+    expect(usage.totals.output_tokens).toBe(20);
+    expect(usage.totals.cache_read_input_tokens).toBe(5);
+    expect(usage.totals.cache_creation_input_tokens).toBe(3);
+    expect(usage.totals.latencyMs).toBe(40); // 15 + 25 = 40
+    expect(usage.totals.errors).toBe(1); // status >= 400 recorded as error
+
+    const summary = await getAccountPoolConsumerUsageSummary();
+    const consumerBucket = summary.byConsumer[created.consumer.id];
+    expect(consumerBucket).toMatchObject({
+      requests: 2,
+      tokens: 42,
+      input_tokens: 14,
+      output_tokens: 20,
+      cache_read_input_tokens: 5,
+      cache_creation_input_tokens: 3,
+      latencyMs: 40,
+      errors: 1,
+    });
   });
 });
