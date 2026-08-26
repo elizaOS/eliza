@@ -8,8 +8,27 @@ const QUOTED_SEGMENT = /`[^`]*`|"[^"]*"|“[^”]*”|‘[^’]*’/gu;
 const EXPLICIT_COMPUTER_USE_REQUEST =
   /^(?:(?:hey|hi)\s*,?\s+)?(?:(?:please|kindly)\s*,?\s+)?(?:(?:can|could|would|will)\s+(?:you|u)\s+(?:please\s+)?|i\s+(?:(?:want|need)\s+(?:you|u)\s+to|would\s+like\s+(?:you|u)\s+to)\s+)?use\s+(?:computer[\s_-]*use|(?:my|the)\s+computer)\b/iu;
 const IMMEDIATE_NEGATED_ACTION = /^\s+to\s+(?:not|never)\b/iu;
-const RETRACTION_CLAUSE =
-  /(?:^|[?!.,;]\s*)(?:(?:but|actually)\s*,?\s*|on\s+second\s+thought\s*,?\s*)(?:please\s+)?(?:do\s+not|don't|never|cancel|stop)\b/iu;
+const EXPLICIT_RECONSIDERATION =
+  /(?:^|[?!.,;:—-]\s*)(?:actually\s*,?\s*|on\s+second\s+thought\s*,?\s*)(?:please\s+)?(?:do\s+not|don't|never|cancel|stop)\b/iu;
+const TERMINAL_CANCEL =
+  /(?:^|[?!.,;:—-]\s*)(?:please\s+)?(?:cancel|stop)(?:\s+(?:that|it|the\s+request))?\s*[.!?]*$/iu;
+const BUT_NEGATED_ACTION =
+  /\bbut\s+(?:please\s+)?(?:do\s+not|don't|never)\s+(.+)$/iu;
+const GENERIC_NEGATED_REFERENCE = /^(?:actually\s+)?(?:do\s+)?(?:that|it)\b/iu;
+
+function retractsExplicitComputerUseRequest(trailingRequest: string): boolean {
+  if (IMMEDIATE_NEGATED_ACTION.test(trailingRequest)) return true;
+  if (EXPLICIT_RECONSIDERATION.test(trailingRequest)) return true;
+  if (TERMINAL_CANCEL.test(trailingRequest)) return true;
+
+  const butNegation = BUT_NEGATED_ACTION.exec(trailingRequest);
+  if (!butNegation) return false;
+  const positiveInstruction = trailingRequest
+    .slice(0, butNegation.index)
+    .replace(/[\s?!.,;:—-]/gu, "");
+  if (positiveInstruction.length === 0) return true;
+  return GENERIC_NEGATED_REFERENCE.test(butNegation[1] ?? "");
+}
 
 /**
  * Match only an explicit request for the Computer Use capability. Generic
@@ -26,10 +45,7 @@ export function looksLikeExplicitComputerUseRequest(text: string): boolean {
   const explicitRequest = EXPLICIT_COMPUTER_USE_REQUEST.exec(normalized);
   if (!explicitRequest) return false;
   const trailingRequest = normalized.slice(explicitRequest[0].length);
-  return (
-    !IMMEDIATE_NEGATED_ACTION.test(trailingRequest) &&
-    !RETRACTION_CLAUSE.test(trailingRequest)
-  );
+  return !retractsExplicitComputerUseRequest(trailingRequest);
 }
 
 export function createComputerUseDirectRoutingRule(): DirectActionRoutingRule {

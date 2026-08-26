@@ -20,6 +20,8 @@ describe("Computer Use direct routing", () => {
     "please, use computer use to open Telegram",
     "I would like you to use computer use to open Telegram",
     "hey please can you use computer use to open Telegram",
+    "use computer use to open Telegram, but do not close it",
+    "use computer use to open Telegram, but don't type anything",
   ])("recognizes an explicit host-control request: %s", (text) => {
     expect(looksLikeExplicitComputerUseRequest(text)).toBe(true);
   });
@@ -37,6 +39,12 @@ describe("Computer Use direct routing", () => {
     "use computer use, but do not open Telegram",
     "use computer use? Actually, do not open Telegram",
     "use computer use. On second thought, cancel that request",
+    "use computer use but do not open Telegram",
+    "use computer use — but do not do that",
+    "use computer use to open Telegram but do not actually do it",
+    "use computer use; cancel that",
+    "use computer use. cancel that",
+    "use computer use, stop",
     'please explain why "use computer use to take a screenshot" is unsafe',
     "please explain why `use computer use to open Telegram` is unsafe",
   ])("does not hijack an adjacent request: %s", (text) => {
