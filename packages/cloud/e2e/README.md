@@ -96,6 +96,13 @@ Attempts retain trajectories, tool receipts, transitions, bounded logs,
 network and mock-service ledgers, and authority hashes. The aggregate retains
 first-attempt success, failure clusters, 3/3 status, a canonical report hash,
 and the asserted three-cycle seed/reset ledger. Failures still upload evidence.
+`stability.json` is stored as bounded canonical JSON; its raw SHA-256 is the
+exact digest in both `stability.sha256` and `manifest.json`. Verify retained
+evidence before consuming it with
+`bun run stability:verify -- --output <artifact-directory>`.
+The verifier also checks the strict aggregate schema and a manifest self-hash
+that binds `reportSha256`; artifact publication is staged, fsynced, and refuses
+to overwrite a prior bundle.
 
 The lane composes #24081, #24136, #24209, and pending #24344. Until those stacks
 land together, source runs need their exact dependency heads; real-model proof
