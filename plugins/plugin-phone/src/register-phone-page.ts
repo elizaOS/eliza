@@ -15,9 +15,13 @@ if (Capacitor.getPlatform() === "android") {
     icon: "Phone",
     path: "/phone",
     tabAffinity: "phone",
+    surface: {
+      header: "fullscreen",
+      capabilities: ["agent-surface"],
+    },
     loader: () =>
-      import("./components/PhoneView.tsx").then((module) => ({
-        default: module.PhoneView,
+      import("./components/PhonePage.tsx").then((module) => ({
+        default: module.PhonePage,
       })),
   });
 }

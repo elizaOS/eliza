@@ -26,12 +26,12 @@ const CORE_SURFACE_OWNERS: Readonly<Record<string, CoreSurfaceOwner>> = {
   knowledge: {
     viewId: "documents",
     provider: "shell",
-    // The /documents route is KnowledgeView (the shell-agent-surface host) which
-    // mounts the standalone DocumentsView + its upload controls (#13594).
+    // The /documents route is the plugin-owned KnowledgeView, which mounts the
+    // standalone multimedia hub and its upload controls (#13594).
     files: [
-      "packages/ui/src/components/pages/KnowledgeView.tsx",
-      "packages/ui/src/components/pages/DocumentsView.tsx",
-      "packages/ui/src/components/pages/documents-upload.tsx",
+      "plugins/plugin-documents/src/components/documents/KnowledgeView.tsx",
+      "plugins/plugin-documents/src/components/documents/KnowledgeDocumentsView.tsx",
+      "plugins/plugin-documents/src/components/documents/documents-upload.tsx",
     ],
     minAgentElements: 4,
   },
@@ -123,11 +123,11 @@ const CORE_SURFACE_OWNERS: Readonly<Record<string, CoreSurfaceOwner>> = {
   },
   relationships: {
     viewId: "relationships",
-    provider: "shell",
+    provider: "dynamic",
     files: [
-      "packages/ui/src/components/pages/RelationshipsView.tsx",
-      "packages/ui/src/components/pages/relationships/RelationshipsWorkspaceView.tsx",
-      "packages/ui/src/components/pages/relationships/RelationshipsPersonPanels.tsx",
+      "plugins/plugin-relationships/src/components/relationships/RelationshipsPage.tsx",
+      "plugins/plugin-relationships/src/components/relationships/RelationshipsView.tsx",
+      "plugins/plugin-relationships/src/components/relationships/RelationshipsSpatialView.tsx",
     ],
     minAgentElements: 4,
   },

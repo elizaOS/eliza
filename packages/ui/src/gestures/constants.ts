@@ -3,7 +3,7 @@
  * in the UI (#12188). Two kinds of value live here: shared DEFAULTS
  * (`TAP_SLOP`, `AXIS_COMMIT_SLOP`, `DEFAULT_*`, the hold table) that every
  * surface gets unless it passes explicit options, and named PER-SURFACE
- * overrides (`PAGER_*`, `COPY_HOLD_MS`, `GRAPH_PAN_ENGAGE_SLOP`,
+ * overrides (`PAGER_*`, `COPY_HOLD_MS`,
  * `SHEET_DETENT_OVERSHOOT_SCALE`) where a surface deliberately tunes away from
  * the default — centralized so each divergence is visible and documented
  * instead of drifting silently inside its hook.
@@ -22,14 +22,6 @@ export const TAP_SLOP = 8;
  * pull pipeline.
  */
 export const TOUCH_TAP_MOVE_SLOP = 10;
-
-/**
- * Per-surface override (RelationshipsGraphPanel): pointer travel (px, hypot)
- * at which a press on the graph canvas engages a pan. Far tighter than
- * {@link TAP_SLOP} — the canvas wants pixel-precise panning; node taps stay
- * safe because any engaged pan arms click suppression on release.
- */
-export const GRAPH_PAN_ENGAGE_SLOP = 4;
 
 /** Movement (px) at which a gesture commits to a single (x or y) axis. */
 export const AXIS_COMMIT_SLOP = 8;

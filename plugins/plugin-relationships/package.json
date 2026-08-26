@@ -6,7 +6,10 @@
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/register.ts",
+    "./dist/register.js"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/elizaos/eliza.git"
@@ -93,6 +96,7 @@
     "access": "public"
   },
   "elizaos": {
+    "appRegister": "register",
     "app": {
       "displayName": "Relationships",
       "category": "personal"

@@ -1250,7 +1250,7 @@ function populatedTodos() {
 }
 
 // Valid populated DTOs for the /api/documents* endpoints the decomposed
-// DocumentsView fetches, so `documents:gui` renders its `documents-populated`
+// KnowledgeDocumentsView fetches, so `documents:gui` renders its `documents-populated`
 // branch (a document row + stats line) instead of the empty/upload-prompt
 // state. Shapes mirror the PresentedDocument + stats responses from
 // plugin-documents/src/routes.ts.

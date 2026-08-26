@@ -258,12 +258,6 @@ const CHAT_GESTURE_MATRIX: readonly GestureRow[] = [
   },
   {
     id: 15,
-    interaction: "Graph pan/pinch/wheel-zoom",
-    sites: [S("components/pages/RelationshipsGraphPanel.tsx")],
-    tests: [],
-  },
-  {
-    id: 16,
     interaction: "Slash menu open/dismiss (incl. outside pointerdown)",
     sites: [],
     tests: [
@@ -272,14 +266,14 @@ const CHAT_GESTURE_MATRIX: readonly GestureRow[] = [
     ],
   },
   {
-    id: 17,
+    id: 16,
     interaction:
       "Pinch/dblclick on chat surface (should NOT zoom/break layout)",
     sites: [OVERLAY],
     tests: [],
   },
   {
-    id: 18,
+    id: 17,
     // The inline home notification center (#15180) carries real gestures:
     // pointer-captured row swipe-to-dismiss, long-press row menu, and the
     // shade pull-expand (touch pan at list top + desktop wheel pull).
@@ -307,7 +301,6 @@ const PINNED_GESTURE_SITES: readonly string[] = [
   "packages/ui/src/components/chat/TasksEventsPanel.tsx",
   "packages/ui/src/components/composites/chat/chat-message.tsx",
   "packages/ui/src/components/composites/sidebar/sidebar-root.tsx",
-  "packages/ui/src/components/pages/RelationshipsGraphPanel.tsx",
   "packages/ui/src/components/shell/ChatOverlay.tsx",
   "packages/ui/src/components/shell/HomeLauncherSurface.tsx",
   "packages/ui/src/components/shell/KioskViewCanvas.tsx",

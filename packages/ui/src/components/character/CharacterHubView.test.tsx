@@ -105,7 +105,7 @@ describe("CharacterHubView (Personality-only collapse)", () => {
 
   it("does not render the collapsed embedded sub-view branches (dual path is gone)", () => {
     renderHub();
-    // The old renderSection() mounted DocumentsView / the relationships /
+    // The old renderSection() mounted the Knowledge / relationships /
     // skills / experience workspaces inline; those branches were removed, so
     // none of their surfaces appear on the Personality hub.
     expect(screen.queryByTestId("documents-view-stub")).toBeNull();

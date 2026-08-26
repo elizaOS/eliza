@@ -59,21 +59,9 @@ export const LazyCameraPageView = lazyNamedView(
   () => import("./components/pages/CameraPageView"),
   "CameraPageView",
 );
-export const LazyContactsPageView = lazyNamedView(
-  () => import("./components/pages/ElizaOsAppsView"),
-  "ContactsPageView",
-);
 export const LazyDesktopWorkspaceSection = lazyNamedView(
   () => import("./components/settings/DesktopWorkspaceSection"),
   "DesktopWorkspaceSection",
-);
-export const LazyMessagesPageView = lazyNamedView(
-  () => import("./components/pages/ElizaOsAppsView"),
-  "MessagesPageView",
-);
-export const LazyPhonePageView = lazyNamedView(
-  () => import("./components/pages/ElizaOsAppsView"),
-  "PhonePageView",
 );
 export const LazySettingsView = lazyNamedView(
   () => import("./components/pages/SettingsView"),
@@ -110,14 +98,6 @@ export const LazyMemoryViewerView = lazyNamedView(
 export const LazyPluginsPageView = lazyNamedView(
   () => import("./components/pages/PluginsPageView"),
   "PluginsPageView",
-);
-export const LazyRelationshipsView = lazyNamedView(
-  () => import("./components/pages/RelationshipsView"),
-  "RelationshipsView",
-);
-export const LazyKnowledgeView = lazyNamedView(
-  () => import("./components/pages/KnowledgeView"),
-  "KnowledgeView",
 );
 export const LazyCharacterExperienceView = lazyNamedView(
   () => import("./components/character/CharacterExperienceView"),

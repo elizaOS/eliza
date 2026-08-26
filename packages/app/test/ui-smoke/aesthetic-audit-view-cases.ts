@@ -7,9 +7,6 @@ import { VIEW_CASES } from "./plugin-view-cases";
 
 export const BUILTIN_TAB_PATHS: Record<string, string> = {
   chat: "/chat",
-  phone: "/phone",
-  messages: "/messages",
-  contacts: "/contacts",
   camera: "/camera",
   tasks: "/apps/tasks",
   browser: "/browser",
@@ -29,7 +26,6 @@ export const BUILTIN_TAB_PATHS: Record<string, string> = {
   skills: "/apps/skills",
   trajectories: "/apps/trajectories",
   transcripts: "/apps/transcripts",
-  relationships: "/apps/relationships",
   memories: "/apps/memories",
   rolodex: "/rolodex",
   runtime: "/apps/runtime",

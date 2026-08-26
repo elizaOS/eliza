@@ -46,19 +46,14 @@ import {
   LazyCharacterEditor,
   LazyCharacterExperienceView,
   LazyCharacterSkillsView,
-  LazyContactsPageView,
   LazyDatabasePageView,
   LazyDesktopWorkspaceSection,
   LazyFilesView,
-  LazyKnowledgeView,
   LazyLiveMeetingPageView,
   LazyLogsView,
   LazyMemoryViewerView,
-  LazyMessagesPageView,
   LazyPendantTranscriptView,
-  LazyPhonePageView,
   LazyPluginsPageView,
-  LazyRelationshipsView,
   LazyRuntimeView,
   LazySettingsView,
   LazySkillsView,
@@ -1326,15 +1321,13 @@ function buildStaticTabRenderers(): Record<
     skills: withHeader("skills", <LazySkillsView />),
     trajectories: withHeader("trajectories", <LazyTrajectoriesView />),
     transcripts: wrap(<LazyLiveMeetingPageView />),
-    // Relationships is a Character-family section: the shared CharacterSectionNav
-    // (passed as `nav`) owns the "Character" header + strip, so the view renders
-    // headerless.
-    relationships: ({ characterNav }) => (
-      <TabContentView nav={characterNav}>
-        <LazyRelationshipsView hideHeader={Boolean(characterNav)} />
-      </TabContentView>
-    ),
-    documents: wrap(<LazyKnowledgeView />),
+    // Relationships is plugin-owned. Its app-shell registration claims the
+    // route and supplies the page chrome; an absent plugin is an unavailable
+    // feature rather than a host-side duplicate implementation.
+    relationships: () => <ViewUnavailableFallback />,
+    // Knowledge is plugin-owned. If the document plugin is unavailable, the
+    // registered-page resolver renders its explicit unavailable state.
+    documents: () => <ViewUnavailableFallback />,
     experience: ({ characterNav }) => (
       <TabContentView nav={characterNav}>
         <LazyCharacterExperienceView />
@@ -1379,12 +1372,9 @@ function buildStaticTabRenderers(): Record<
     // marker as the home tile, so a deep-link off the fork falls back to
     // "unavailable" instead of rendering on web/desktop/iOS/Play-Store Android.
     camera: () => renderPhoneSurface(isAospShellEnabled(), LazyCameraPageView),
-    phone: ({ nativeOsSurfaceEnabled }) =>
-      renderPhoneSurface(nativeOsSurfaceEnabled, LazyPhonePageView),
-    messages: ({ nativeOsSurfaceEnabled }) =>
-      renderPhoneSurface(nativeOsSurfaceEnabled, LazyMessagesPageView),
-    contacts: ({ nativeOsSurfaceEnabled }) =>
-      renderPhoneSurface(nativeOsSurfaceEnabled, LazyContactsPageView),
+    phone: () => <ViewUnavailableFallback />,
+    messages: () => <ViewUnavailableFallback />,
+    contacts: () => <ViewUnavailableFallback />,
     views: ({ navigationPath }) => renderAppsSurface(navigationPath),
     apps: ({ navigationPath }) => renderAppsSurface(navigationPath),
     // Rendered directly (no opaque TabContentView chrome) so the live app
@@ -1479,13 +1469,27 @@ function renderViewRouterContent({
   const walletNav = isWalletSectionPath(navigationPath) ? (
     <WalletSectionNav activePath={navigationPath} />
   ) : undefined;
-  // The AOSP system surfaces are host-owned because they coordinate privileged
-  // device APIs beyond the narrower plugin views. Keep them stable when remote
-  // metadata or a late in-process registration for the same path arrives.
+  // Native-OS feature surfaces are plugin-owned. Prefer the plugin's bundled
+  // registration when it is present; retain the legacy renderer only as a
+  // compatibility fallback while older builds finish migrating their plugin.
   if (
     nativeOsSurfaceEnabled &&
     (NATIVE_OS_VIEW_IDS as readonly string[]).includes(resolveBuiltinTabId(tab))
   ) {
+    const nativeRegistration = listAppShellPages().find(
+      (entry) =>
+        entry.tabAffinity === resolveBuiltinTabId(tab) &&
+        appShellPageMatchesPath(entry, navigationPath),
+    );
+    if (nativeRegistration) {
+      return (
+        <TabContentView
+          reserveChatClearance={!surfaceOwnsViewport(nativeRegistration)}
+        >
+          <RegisteredAppShellPage registration={nativeRegistration} />
+        </TabContentView>
+      );
+    }
     return renderStaticViewRouterTab({
       tab,
       nativeOsSurfaceEnabled,

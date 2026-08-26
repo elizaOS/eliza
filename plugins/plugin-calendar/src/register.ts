@@ -21,7 +21,7 @@ registerAppShellPage({
     capabilities: ["agent-surface"],
   },
   loader: () =>
-    import("./components/calendar/SimpleCalendarView.tsx").then((module) => ({
-      default: module.SimpleCalendarView,
+    import("./components/calendar/CalendarPage.tsx").then((module) => ({
+      default: module.CalendarPage,
     })),
 });

@@ -23,6 +23,10 @@ import {
   type PluginInfo,
 } from "../../api";
 import { useAppSelectorShallow } from "../../state";
+import {
+  buildManagedDiscordSettingsReturnUrl,
+  resolveManagedDiscordAgentChoice,
+} from "../../utils/cloud-connector";
 import { getProvenanceFlags, getProvenanceTitle } from "../apps/provenance";
 import { PagePanel } from "../composites/page-panel";
 import { ConnectorModeSelector } from "../connectors/ConnectorModeSelector";
@@ -45,10 +49,6 @@ import {
 } from "../ui/select";
 import { StatusBadge } from "../ui/status-badge";
 import { Switch } from "../ui/switch";
-import {
-  buildManagedDiscordSettingsReturnUrl,
-  resolveManagedDiscordAgentChoice,
-} from "./cloud-dashboard-utils";
 import { PluginConfigForm } from "./PluginConfigForm";
 import {
   getPluginResourceLinks,
