@@ -449,6 +449,12 @@ describe("Android Play manifest policy", () => {
     );
   });
 
+  it("exposes Firebase Messaging to the guarded push plugin in every lane", () => {
+    expect(APP_BUILD_GRADLE).toMatch(
+      /if \(project\.findProperty\('elizaCloudBuild'\) != 'true'\) \{\s*implementation "com\.google\.firebase:firebase-common-ktx:21\.0\.0"\s*\}\s*\/\/ The push plugin[\s\S]*compileOnly "com\.google\.firebase:firebase-messaging:25\.0\.1"/,
+    );
+  });
+
   it("rejects active development routing and credential material in packaged text assets", () => {
     expect(
       findAndroidPlayTextAssetFindings(
