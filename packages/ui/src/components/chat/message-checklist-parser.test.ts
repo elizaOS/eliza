@@ -43,4 +43,20 @@ describe("parseChecklistBody", () => {
     expect(regions).toHaveLength(1);
     expect(regions[0].checklist.items[0].content).toBe("x");
   });
+
+  it("finds a checklist region with CRLF line endings", () => {
+    const text =
+      '[CHECKLIST]\r\n{"items":[{"content":"crlf"}]}\r\n[/CHECKLIST]';
+    const regions = findChecklistRegions(text);
+    expect(regions).toHaveLength(1);
+    expect(regions[0].checklist.items[0].content).toBe("crlf");
+  });
+
+  it("finds a checklist region with whitespace inside tag brackets", () => {
+    const text =
+      '[ CHECKLIST ]\n{"items":[{"content":"spaced"}]}\n[ /CHECKLIST ]';
+    const regions = findChecklistRegions(text);
+    expect(regions).toHaveLength(1);
+    expect(regions[0].checklist.items[0].content).toBe("spaced");
+  });
 });

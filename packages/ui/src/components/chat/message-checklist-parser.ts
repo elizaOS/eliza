@@ -25,7 +25,8 @@ export const MAX_CHECKLIST_ITEMS = 40;
 
 const ITEM_STATUSES = new Set(["pending", "in_progress", "completed"]);
 
-export const CHECKLIST_RE = /\[CHECKLIST\]\n([\s\S]*?)\n\[\/CHECKLIST\]/g;
+export const CHECKLIST_RE =
+  /\[[ \t]*CHECKLIST[ \t]*\][ \t]*\r?\n([\s\S]*?)\r?\n\[[ \t]*\/[ \t]*CHECKLIST[ \t]*\]/g;
 
 export interface ChecklistSpec {
   title?: string;
