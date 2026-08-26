@@ -4,10 +4,9 @@
  */
 import type { DirectActionRoutingRule } from "@elizaos/core";
 
+const QUOTED_SEGMENT = /`[^`]*`|"[^"]*"|“[^”]*”|‘[^’]*’/gu;
 const EXPLICIT_COMPUTER_USE_REQUEST =
-  /\b(?:use\s+(?:computer[\s_-]*use|(?:my|the)\s+computer)|computer[\s_-]*use\s+to)\b/iu;
-const NEGATED_COMPUTER_USE_REQUEST =
-  /\b(?:do\s+not|don't|dont|never)\s+(?:please\s+)?use\s+(?:computer[\s_-]*use|(?:my|the)\s+computer)\b/iu;
+  /^(?:(?:please|kindly)\s+)?(?:(?:can|could|would|will)\s+(?:you|u)\s+)?use\s+(?:computer[\s_-]*use|(?:my|the)\s+computer)\b/iu;
 
 /**
  * Match only an explicit request for the Computer Use capability. Generic
@@ -16,11 +15,12 @@ const NEGATED_COMPUTER_USE_REQUEST =
  * boundary.
  */
 export function looksLikeExplicitComputerUseRequest(text: string): boolean {
-  const normalized = text.trim();
-  return (
-    !NEGATED_COMPUTER_USE_REQUEST.test(normalized) &&
-    EXPLICIT_COMPUTER_USE_REQUEST.test(normalized)
-  );
+  const normalized = text
+    .normalize("NFKC")
+    .replace(QUOTED_SEGMENT, " ")
+    .replace(/’/gu, "'")
+    .trim();
+  return EXPLICIT_COMPUTER_USE_REQUEST.test(normalized);
 }
 
 export function createComputerUseDirectRoutingRule(): DirectActionRoutingRule {
@@ -40,6 +40,11 @@ export function createComputerUseDirectRoutingRule(): DirectActionRoutingRule {
       "effect:host-action",
     ],
     contexts: ["automation", "admin"],
+    unavailable: {
+      code: "COMPUTER_USE_UNAVAILABLE",
+      reply:
+        "Computer Use is unavailable in this app session. Enable Computer Use and try again. (COMPUTER_USE_UNAVAILABLE)",
+    },
     matches: looksLikeExplicitComputerUseRequest,
   };
 }

@@ -4685,23 +4685,47 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 				userRoles,
 			}) => {
 				const text = getActionInferenceMessageText(message);
+				const matchingRules = getDirectActionRoutingRules(runtime).filter(
+					(rule) => rule.matches(text),
+				);
 				const declaredReplacementRules = new Set(
-					getDirectActionRoutingRules(runtime).filter(
-						(rule) =>
-							rule.matches(text) &&
-							routeReplacesStage1Candidate(
-								rule,
-								messageHandler.plan.candidateActions,
-							),
+					matchingRules.filter((rule) =>
+						routeReplacesStage1Candidate(
+							rule,
+							messageHandler.plan.candidateActions,
+						),
 					),
 				);
+				const unavailablePatch = (rule: DirectActionRoutingRule) => {
+					const unavailable = rule.unavailable;
+					if (!unavailable) return undefined;
+					return {
+						requiresTool: false,
+						setContexts: [SIMPLE_CONTEXT_ID],
+						clearCandidateActions: true,
+						clearReply: true,
+						reply: unavailable.reply,
+						debug: [
+							`direct route unavailable: ${rule.id} (${unavailable.code})`,
+						],
+					};
+				};
 				const routes = await resolveEligibleDirectActionRoutes({
 					runtime,
 					message,
 					state,
 					userRoles,
 				});
-				if (routes.length === 0) return undefined;
+				if (routes.length === 0) {
+					const unavailableRule =
+						[...declaredReplacementRules].find((rule) => rule.unavailable) ??
+						(messageHandler.plan.requiresTool !== true
+							? matchingRules.find((rule) => rule.unavailable)
+							: undefined);
+					return unavailableRule
+						? unavailablePatch(unavailableRule)
+						: undefined;
+				}
 				// A declared owner keeps exclusive reconciliation authority even when
 				// its action is unavailable. Falling through to a second text-matching
 				// direct route could execute adjacent work now instead of preserving the
@@ -4711,7 +4735,12 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 						? routes.filter(({ rule }) => declaredReplacementRules.has(rule))
 						: [];
 				if (declaredReplacementRules.size > 0 && replacingRoutes.length === 0) {
-					return undefined;
+					const unavailableRule = [...declaredReplacementRules].find(
+						(rule) => rule.unavailable,
+					);
+					return unavailableRule
+						? unavailablePatch(unavailableRule)
+						: undefined;
 				}
 				const selectedRoutes =
 					replacingRoutes.length > 0 ? replacingRoutes : routes;

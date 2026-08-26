@@ -6729,6 +6729,94 @@ describe("runV5MessageRuntimeStage1", () => {
 		]);
 	});
 
+	it("does not execute browser or automation fallbacks when explicit Computer Use is unavailable", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["browser", "automation"],
+				intents: ["open telegram using computer use"],
+				candidateActionNames: ["BROWSER_NAVIGATE", "AUTOMATION_TRIGGER"],
+				replyText: "On it.",
+				extra: { requiresTool: true },
+			}),
+		]);
+		const browserHandler = vi.fn(async () => ({
+			success: true,
+			text: "Browser fallback ran.",
+		}));
+		const automationHandler = vi.fn(async () => ({
+			success: true,
+			text: "Automation fallback ran.",
+		}));
+		runtime.actions = [
+			{
+				name: "BROWSER_NAVIGATE",
+				description: "Navigate a browser.",
+				contexts: ["browser"],
+				validate: async () => true,
+				handler: browserHandler,
+			},
+			{
+				name: "AUTOMATION_TRIGGER",
+				description: "Run an automation.",
+				contexts: ["automation"],
+				validate: async () => true,
+				handler: automationHandler,
+			},
+		] as never;
+		registerDirectActionRoutingRule(runtime, {
+			id: "test.computer-use.explicit-host-control",
+			actionNames: ["COMPUTER_USE"],
+			replacesActionNames: ["BROWSER_NAVIGATE", "AUTOMATION_TRIGGER"],
+			requiredActionTags: [
+				"domain:computer-use",
+				"capability:desktop-control",
+				"effect:host-action",
+			],
+			contexts: ["automation", "admin"],
+			unavailable: {
+				code: "COMPUTER_USE_UNAVAILABLE",
+				reply:
+					"Computer Use is unavailable in this app session. Enable Computer Use and try again. (COMPUTER_USE_UNAVAILABLE)",
+			},
+			matches: (text) => /\bcomputer[\s_-]*use\s+to\b/iu.test(text),
+		});
+		const directRouteEvaluator = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+			(evaluator) =>
+				evaluator.name === "core.direct_registered_capability_request",
+		);
+		if (!directRouteEvaluator)
+			throw new Error("direct route evaluator missing");
+		runtime.responseHandlerEvaluators = [directRouteEvaluator];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "can u use computer use to open telegram",
+			}),
+			state: {
+				...makeState(),
+				values: {
+					availableContexts: "general, browser, automation, admin",
+				},
+			},
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(result.messageHandler.plan.requiresTool).toBe(false);
+		expect(result.messageHandler.plan.candidateActions).toBeUndefined();
+		expect(browserHandler).not.toHaveBeenCalled();
+		expect(automationHandler).not.toHaveBeenCalled();
+		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
+			ModelType.RESPONSE_HANDLER,
+		]);
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Computer Use is unavailable in this app session. Enable Computer Use and try again. (COMPUTER_USE_UNAVAILABLE)",
+			);
+		}
+	});
+
 	it("reconciles the owner reminder route without dropping a compound Stage-1 candidate", async () => {
 		const runtime = makeRuntime([
 			stage1Response({

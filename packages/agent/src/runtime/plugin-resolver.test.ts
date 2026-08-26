@@ -206,7 +206,7 @@ describe("resolvePlugins manifest discovery", () => {
     }
   }, 120_000);
 
-  it("registers explicitly enabled packaged Computer Use before chat readiness", async () => {
+  it("registers only disabled Computer Use intent ownership before chat readiness", async () => {
     const pluginName = "@elizaos/plugin-computeruse";
     const appPackagePath = path.resolve(
       import.meta.dirname,
@@ -219,7 +219,11 @@ describe("resolvePlugins manifest discovery", () => {
         app?: {
           defaults?: Record<
             string,
-            { enabled?: boolean; requiredForReady?: boolean }
+            {
+              enabled?: boolean;
+              requiredForReady?: boolean;
+              routingOnlyWhenDisabled?: boolean;
+            }
           >;
         };
       };
@@ -227,6 +231,7 @@ describe("resolvePlugins manifest discovery", () => {
     expect(appPackage.elizaos?.app?.defaults?.computeruse).toEqual({
       enabled: false,
       requiredForReady: true,
+      routingOnlyWhenDisabled: true,
     });
 
     const previousCwd = process.cwd();
@@ -234,6 +239,8 @@ describe("resolvePlugins manifest discovery", () => {
       path.join(tmpdir(), "eliza-computeruse-ready-"),
     );
     const previousStaticPlugin = STATIC_ELIZA_PLUGINS[pluginName];
+    const init = vi.fn();
+    const preflight = vi.fn();
 
     try {
       await writeFile(
@@ -248,29 +255,86 @@ describe("resolvePlugins manifest discovery", () => {
         default: {
           name: pluginName,
           description: "Computer Use readiness fixture.",
-          services: [],
-        },
+          packageName: pluginName,
+          init,
+          preflight,
+          actions: [{ name: "SHOULD_NOT_LOAD_WHILE_DISABLED" }],
+          services: [class ShouldNotLoadWhileDisabled {}],
+          routes: [{ path: "/should-not-load" }],
+          providers: [{ name: "should-not-load" }],
+          views: [{ id: "should-not-load" }],
+        } as unknown as Plugin,
       };
       process.chdir(workspace);
-      const config: ElizaConfig = {
+      const disabledConfig: ElizaConfig = {
+        plugins: { allow: [], entries: {} },
+      } as ElizaConfig;
+
+      const disabledBlocking = await resolvePlugins(disabledConfig, {
+        quiet: true,
+        phase: "blocking",
+      });
+      const routingOnly = disabledBlocking.find(
+        (plugin) => plugin.name === pluginName,
+      )?.plugin;
+      expect(routingOnly).toBeDefined();
+      expect(Object.keys(routingOnly ?? {}).sort()).toEqual([
+        "description",
+        "init",
+        "name",
+        "packageName",
+      ]);
+      expect(routingOnly?.init).toEqual(expect.any(Function));
+      expect(routingOnly?.actions).toBeUndefined();
+      expect(routingOnly?.services).toBeUndefined();
+      expect(routingOnly?.routes).toBeUndefined();
+      expect(routingOnly?.providers).toBeUndefined();
+      expect(routingOnly?.views).toBeUndefined();
+      expect(preflight).not.toHaveBeenCalled();
+      expect(disabledConfig.plugins?.entries?.computeruse).toEqual({
+        enabled: false,
+      });
+
+      const disabledDeferred = await resolvePlugins(disabledConfig, {
+        quiet: true,
+        phase: "deferred",
+      });
+      expect(disabledDeferred.map((plugin) => plugin.name)).not.toContain(
+        pluginName,
+      );
+
+      const enabledConfig: ElizaConfig = {
         plugins: {
           allow: [],
           entries: { computeruse: { enabled: true } },
         },
       } as ElizaConfig;
 
-      const blocking = await resolvePlugins(config, {
+      const enabledBlocking = await resolvePlugins(enabledConfig, {
         quiet: true,
         phase: "blocking",
       });
-      expect(blocking.map((plugin) => plugin.name)).toContain(pluginName);
-      expect(config.plugins?.entries?.computeruse).toEqual({ enabled: true });
+      const fullPlugin = enabledBlocking.find(
+        (plugin) => plugin.name === pluginName,
+      )?.plugin;
+      expect(fullPlugin).toBeDefined();
+      expect(fullPlugin?.actions).toHaveLength(1);
+      expect(fullPlugin?.services).toHaveLength(1);
+      expect(fullPlugin?.routes).toHaveLength(1);
+      expect(fullPlugin?.providers).toHaveLength(1);
+      expect(fullPlugin?.views).toHaveLength(1);
+      expect(preflight).toHaveBeenCalledTimes(1);
+      expect(enabledConfig.plugins?.entries?.computeruse).toEqual({
+        enabled: true,
+      });
 
-      const deferred = await resolvePlugins(config, {
+      const enabledDeferred = await resolvePlugins(enabledConfig, {
         quiet: true,
         phase: "deferred",
       });
-      expect(deferred.map((plugin) => plugin.name)).not.toContain(pluginName);
+      expect(enabledDeferred.map((plugin) => plugin.name)).not.toContain(
+        pluginName,
+      );
     } finally {
       process.chdir(previousCwd);
       if (previousStaticPlugin === undefined) {

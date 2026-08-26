@@ -274,7 +274,8 @@
       "defaults": {
         "computeruse": {
           "enabled": false,
-          "requiredForReady": true
+          "requiredForReady": true,
+          "routingOnlyWhenDisabled": true
         },
         "personal-assistant": {
           "enabled": true,

@@ -23,6 +23,12 @@ describe("Computer Use direct routing", () => {
     "open telegram in the browser",
     "tell me what computer use means",
     "do not use the computer",
+    "do not use computer use to open Telegram",
+    "never ever use computer use to take a screenshot",
+    "do not, under any circumstances, use computer use to open Telegram",
+    "don’t use computer use to open Telegram",
+    'please explain why "use computer use to take a screenshot" is unsafe',
+    "please explain why `use computer use to open Telegram` is unsafe",
   ])("does not hijack an adjacent request: %s", (text) => {
     expect(looksLikeExplicitComputerUseRequest(text)).toBe(false);
   });
@@ -41,6 +47,10 @@ describe("Computer Use direct routing", () => {
         "effect:host-action",
       ],
       contexts: ["automation", "admin"],
+      unavailable: {
+        code: "COMPUTER_USE_UNAVAILABLE",
+        reply: expect.stringContaining("Computer Use is unavailable"),
+      },
     });
   });
 });
