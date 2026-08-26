@@ -199,8 +199,10 @@ async function compensateOAuthCompletion(args: {
 }): Promise<never> {
   const compensationErrors: unknown[] = [];
   const revocationToken = nonEmptyString(args.tokens.refresh_token) ?? args.tokens.access_token;
+  let revocationAttempted = false;
   let grantRevoked = false;
   try {
+    revocationAttempted = true;
     await revokeGoogleOAuthGrantWithFetch(revocationToken);
     grantRevoked = true;
   } catch (error) {
@@ -223,7 +225,7 @@ async function compensateOAuthCompletion(args: {
   const rollbackAccountId = args.pendingAccountId ?? args.existingAccount?.id;
   if (rollbackAccountId) {
     try {
-      if (grantRevoked) {
+      if (revocationAttempted) {
         for (const priorRef of args.priorCredentialRefs) {
           try {
             await removeCredentialIfPresent(args.runtime, priorRef.vaultRef);
@@ -277,6 +279,7 @@ async function compensateOAuthCompletion(args: {
     ),
     context: {
       accountId: rollbackAccountId,
+      revocationAttempted,
       grantRevoked,
       compensationFailureCount: compensationErrors.length,
     },
@@ -896,7 +899,7 @@ async function exchangeAuthorizationCode(args: {
 export function createGoogleConnectorAccountProvider(
   runtime: IAgentRuntime
 ): ConnectorAccountProvider {
-  return {
+  const provider: ConnectorAccountProvider = {
     provider: GOOGLE_SERVICE_NAME,
     label: GOOGLE_OAUTH_PROVIDER_METADATA.label,
 
@@ -1021,6 +1024,15 @@ export function createGoogleConnectorAccountProvider(
       }
       // The manager removes the now-revoked account row only after this
       // provider callback confirms remote and local credential cleanup.
+    },
+
+    compensateOAuthCompletion: async (_request, result, _cause, manager) => {
+      const accountId = nonEmptyString(
+        (result.account as Partial<ConnectorAccount> | undefined)?.id
+      );
+      if (!accountId) return;
+      await provider.deleteAccount?.(accountId, manager);
+      await manager.getStorage().deleteAccount(GOOGLE_SERVICE_NAME, accountId);
     },
 
     startOAuth: async (
@@ -1359,4 +1371,5 @@ export function createGoogleConnectorAccountProvider(
       }
     },
   };
+  return provider;
 }

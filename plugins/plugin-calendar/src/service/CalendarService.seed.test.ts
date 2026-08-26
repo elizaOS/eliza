@@ -156,6 +156,35 @@ describe("CalendarService.seedImportedCalendarData", () => {
     });
   });
 
+  it("issues a Google-only receipt when an unselected Apple source is unavailable", async () => {
+    const { seed } = seedWithFeed({
+      state: "partial",
+      timeMin: "2026-08-15T00:00:00.000Z",
+      timeMax: "2026-11-20T00:00:00.000Z",
+      sources: [
+        freshSource(googleSource),
+        {
+          ...freshSource(appleSource),
+          status: "error",
+          error: { code: "provider_unavailable" },
+        },
+      ],
+      events: [event({})],
+    });
+
+    await expect(
+      seed({
+        timeMin: "2026-08-15T00:00:00.000Z",
+        timeMax: "2026-11-20T00:00:00.000Z",
+        calendars: [googleSource],
+      }),
+    ).resolves.toMatchObject({
+      feedState: "complete",
+      selectedSourceCount: 1,
+      eventCount: 1,
+    });
+  });
+
   it("requires at least one selected calendar before touching the feed", async () => {
     const { seed, getCalendarFeed } = seedWithFeed({ state: "complete" });
 

@@ -4812,18 +4812,6 @@ export class CalendarService extends Service {
       },
       now,
     );
-    if (feed.state !== "complete") {
-      const failed = feed.sources
-        .filter((source) => source.error !== null)
-        .map((source) => source.summary);
-      throw new CalendarServiceError(
-        409,
-        failed.length > 0
-          ? `Calendar seed did not complete: ${failed.join(", ")} could not be synchronized. No receipt was issued.`
-          : "Calendar seed did not complete because no authoritative calendar source could be read. No receipt was issued.",
-        "CALENDAR_SEED_INCOMPLETE",
-      );
-    }
     const serializedSourceKey = (source: LifeOpsCalendarSourceKey) =>
       JSON.stringify([
         source.provider,
@@ -4839,6 +4827,29 @@ export class CalendarService extends Service {
         400,
         "Calendar seed selection contains the same exact source more than once.",
         "CALENDAR_SEED_SELECTION_DUPLICATE",
+      );
+    }
+    const selectedFeedSources = feed.sources.filter(
+      (source) => source.key && selected.has(serializedSourceKey(source.key)),
+    );
+    const selectedFailures = selectedFeedSources
+      .filter((source) => source.status !== "fresh" || source.error !== null)
+      .map((source) => source.summary);
+    const legacyUnkeyedFailures = feed.sources
+      .filter((source) => !source.key && source.error !== null)
+      .map((source) => source.summary);
+    if (
+      selectedFailures.length > 0 ||
+      (feed.state !== "complete" &&
+        selectedFeedSources.length === 0 &&
+        feed.sources.every((source) => !source.key))
+    ) {
+      throw new CalendarServiceError(
+        409,
+        selectedFailures.length > 0 || legacyUnkeyedFailures.length > 0
+          ? `Calendar seed did not complete: ${[...selectedFailures, ...legacyUnkeyedFailures].join(", ")} could not be synchronized. No receipt was issued.`
+          : "Calendar seed did not complete because a selected authoritative calendar source could not be read. No receipt was issued.",
+        "CALENDAR_SEED_INCOMPLETE",
       );
     }
     const authorizedFreshSources = new Set(

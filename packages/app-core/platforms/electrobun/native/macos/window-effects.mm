@@ -1492,8 +1492,31 @@ static NSDictionary *elizaCalendarJson(EKCalendar *calendar,
 	};
 }
 
+static NSString *elizaRecurrenceFrequencyString(EKRecurrenceFrequency frequency) {
+	switch (frequency) {
+		case EKRecurrenceFrequencyDaily: return @"daily";
+		case EKRecurrenceFrequencyWeekly: return @"weekly";
+		case EKRecurrenceFrequencyMonthly: return @"monthly";
+		case EKRecurrenceFrequencyYearly: return @"yearly";
+	}
+	return @"unknown";
+}
+
+static NSString *elizaCalendarSourceTypeString(EKSourceType sourceType) {
+	switch (sourceType) {
+		case EKSourceTypeLocal: return @"local";
+		case EKSourceTypeExchange: return @"exchange";
+		case EKSourceTypeCalDAV: return @"caldav";
+		case EKSourceTypeMobileMe: return @"mobileme";
+		case EKSourceTypeSubscribed: return @"subscribed";
+		case EKSourceTypeBirthdays: return @"birthdays";
+	}
+	return @"unknown";
+}
+
 static NSDictionary *elizaEventJson(EKEvent *event) {
 	EKCalendar *calendar = [event calendar];
+	EKSource *source = [calendar source];
 	NSString *identifier =
 		[event calendarItemIdentifier] ?: [event eventIdentifier] ?: @"";
 	NSMutableArray *attendees = [NSMutableArray array];
@@ -1504,11 +1527,41 @@ static NSDictionary *elizaEventJson(EKEvent *event) {
 	id organizer = [event organizer] != nil
 		? (id)elizaParticipantJson([event organizer])
 		: (id)[NSNull null];
+	NSMutableArray *recurrenceRules = [NSMutableArray array];
+	for (EKRecurrenceRule *rule in [event recurrenceRules] ?: @[]) {
+		EKRecurrenceEnd *end = [rule recurrenceEnd];
+		[recurrenceRules addObject:@{
+			@"frequency" : elizaRecurrenceFrequencyString([rule frequency]),
+			@"interval" : @([rule interval]),
+			@"endDate" : [end endDate] != nil
+				? elizaISO8601StringFromDate([end endDate])
+				: (id)[NSNull null],
+			@"occurrenceCount" : @([end occurrenceCount]),
+		}];
+	}
+	NSMutableArray *reminders = [NSMutableArray array];
+	for (EKAlarm *alarm in [event alarms] ?: @[]) {
+		[reminders addObject:@{
+			@"relativeOffsetSeconds" : @([alarm relativeOffset]),
+			@"absoluteDate" : [alarm absoluteDate] != nil
+				? elizaISO8601StringFromDate([alarm absoluteDate])
+				: (id)[NSNull null],
+		}];
+	}
 	return @{
 		@"id" : identifier,
 		@"externalId" : identifier,
 		@"calendarId" : [calendar calendarIdentifier] ?: @"",
 		@"calendarSummary" : [calendar title] ?: @"",
+		@"iCalUID" : [event calendarItemExternalIdentifier] ?: (id)[NSNull null],
+		@"originalStartAt" : [event occurrenceDate] != nil
+			? elizaISO8601StringFromDate([event occurrenceDate])
+			: (id)[NSNull null],
+		@"sourceIdentifier" : [source sourceIdentifier] ?: (id)[NSNull null],
+		@"sourceTitle" : [source title] ?: (id)[NSNull null],
+		@"sourceType" : elizaCalendarSourceTypeString([source sourceType]),
+		@"recurrenceRules" : recurrenceRules,
+		@"reminders" : reminders,
 		@"title" : [[event title] length] > 0 ? [event title] : @"(untitled)",
 		@"description" : [event notes] ?: @"",
 		@"location" : [event location] ?: @"",

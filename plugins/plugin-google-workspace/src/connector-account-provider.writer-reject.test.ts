@@ -71,7 +71,8 @@ afterEach(() => {
 function stubTokenExchangeSuccess(
   nonce: string,
   subject = "google-sub-writer-reject",
-  tokenOverrides: Record<string, unknown> = {}
+  tokenOverrides: Record<string, unknown> = {},
+  revokeFailure?: Error
 ): ReturnType<typeof vi.fn> {
   const now = Math.floor(Date.now() / 1000);
   const payload = {
@@ -90,6 +91,7 @@ function stubTokenExchangeSuccess(
   const fetchStub = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url === REVOKE_ENDPOINT) {
+      if (revokeFailure) throw revokeFailure;
       return new Response(null, { status: 200 });
     }
     if (url !== TOKEN_ENDPOINT) {
@@ -367,5 +369,88 @@ describe("google provider completion with a rejecting durable credential writer 
     expect(vault.size).toBe(0);
     expect(fetchStub).toHaveBeenCalledTimes(2);
     await expect(manager.listAccounts("google")).resolves.toEqual([]);
+  });
+
+  it("revokes and removes the grant when the manager's final connected-account write rejects", async () => {
+    const vault = new Map<string, string>();
+    const putSecret = vi.fn(async (params: unknown) => {
+      const input = params as { vaultRef: string; value: string };
+      vault.set(input.vaultRef, input.value);
+      return input.vaultRef;
+    });
+    const remove = vi.fn(async (key: string) => void vault.delete(key));
+    const adapter = new InMemoryDatabaseAdapter();
+    await adapter.initialize();
+    const runtime = makeRuntime(putSecret, adapter, remove, {
+      get: async (key) => vault.get(key) ?? "",
+      has: async (key) => vault.has(key),
+    });
+    const manager: ConnectorAccountManager = getConnectorAccountManager(runtime);
+    manager.registerProvider(createGoogleConnectorAccountProvider(runtime));
+    const flow = await manager.startOAuth("google", {
+      scopes: ["gmail.read"],
+      metadata: { requestedRole: "OWNER" },
+    });
+    const originalUpsert = manager.upsertAccount.bind(manager);
+    vi.spyOn(manager, "upsertAccount")
+      .mockImplementationOnce(originalUpsert)
+      .mockRejectedValueOnce(new Error("authoritative connected write rejected"));
+    const fetchStub = stubTokenExchangeSuccess(
+      String((flow.metadata as Record<string, unknown>).oidcNonce),
+      "final-writer-subject"
+    );
+
+    await expect(
+      manager.completeOAuth("google", { state: flow.state, code: "final-writer-failure" })
+    ).rejects.toMatchObject({ code: "CONNECTOR_OAUTH_ACCOUNT_PERSISTENCE_FAILED" });
+
+    expect(fetchStub).toHaveBeenCalledTimes(2);
+    expect(vault.size).toBe(0);
+    await expect(manager.listAccounts("google")).resolves.toEqual([]);
+    await expect(manager.getOAuthFlow("google", flow.id)).resolves.toMatchObject({
+      status: "failed",
+    });
+  });
+
+  it("marks the prior account unavailable when Google processes revoke but the response is lost", async () => {
+    const adapter = new InMemoryDatabaseAdapter();
+    await adapter.initialize();
+    const runtime = makeRuntime(async () => {
+      throw new Error(WRITER_ERROR);
+    }, adapter);
+    const manager: ConnectorAccountManager = getConnectorAccountManager(runtime);
+    manager.registerProvider(createGoogleConnectorAccountProvider(runtime));
+    const account = await manager.upsertAccount(
+      "google",
+      {
+        provider: "google",
+        role: "OWNER",
+        purpose: ["messaging"],
+        accessGate: "open",
+        status: "connected",
+        externalId: "google-sub-writer-reject",
+      },
+      "acct_response_lost"
+    );
+    const flow = await manager.startOAuth("google", {
+      accountId: account.id,
+      scopes: ["gmail.read"],
+    });
+    stubTokenExchangeSuccess(
+      String((flow.metadata as Record<string, unknown>).oidcNonce),
+      "google-sub-writer-reject",
+      {},
+      new Error("response lost after provider processed revoke")
+    );
+
+    await expect(
+      manager.completeOAuth("google", { state: flow.state, code: "response-lost" })
+    ).rejects.toMatchObject({ code: "CONNECTOR_OAUTH_COMPLETION_FAILED" });
+    await expect(manager.getAccount("google", account.id)).resolves.toMatchObject({
+      status: "error",
+      metadata: {
+        oauthUnavailableReason: "reauthorization_compensation_revoked_combined_grant",
+      },
+    });
   });
 });
