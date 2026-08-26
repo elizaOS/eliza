@@ -178,9 +178,13 @@ const realtimeVoiceMock = vi.hoisted(() => {
   });
 });
 
+const realtimeVoiceMintMock = vi.hoisted(() => ({
+  agentId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" as string | null,
+}));
+
 vi.mock("../../../hooks/useRealtimeVoiceMint", () => ({
   useRealtimeVoiceMint: () => ({
-    agentId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+    agentId: realtimeVoiceMintMock.agentId,
     getConsentNonce: vi.fn(async () => "consent-nonce"),
   }),
 }));
@@ -365,6 +369,7 @@ afterEach(() => {
     async () => micPermissionMock.state,
   );
   realtimeVoiceMock.enabled = false;
+  realtimeVoiceMintMock.agentId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
   realtimeVoiceMock.options = null;
   realtimeVoiceMock.startOutcome = { kind: "live" };
   realtimeVoiceMock.startedConversationIds.length = 0;
@@ -374,6 +379,7 @@ afterEach(() => {
   realtimeVoiceMock.bargeIn.mockClear();
   realtimeVoiceMock.toggleMicrophoneMute.mockClear();
   realtimeVoiceMock.state.active = false;
+  realtimeVoiceMock.state.available = true;
   realtimeVoiceMock.state.connecting = false;
   realtimeVoiceMock.state.status = "idle";
   realtimeVoiceMock.state.transcriptPartial = "";
@@ -2158,7 +2164,8 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     realtimeVoiceMock.startedConversationIds.length = 0;
     realtimeVoiceMock.start.mockClear();
     realtimeVoiceMock.stop.mockClear();
-    createVoiceCaptureMock.mockClear();
+    createVoiceCaptureMock.mockReset();
+    installFakeCapture();
     appMock.value.activeConversationId = conversationId;
     try {
       window.localStorage.clear();
@@ -2189,6 +2196,23 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("keeps batch Talk authoritative while a stale Shared binding has no Dedicated identity", async () => {
+    realtimeVoiceMintMock.agentId = null;
+    realtimeVoiceMock.state.available = false;
+    const { result } = renderHook(() => useShellController());
+
+    await act(async () => {
+      result.current.toggleHandsFree();
+      await Promise.resolve();
+    });
+
+    expect(realtimeVoiceMock.start).not.toHaveBeenCalled();
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+    expect(result.current.handsFree).toBe(true);
+    expect(result.current.realtimeVoice?.enabled).toBe(false);
+    expect(result.current.realtimeVoice?.error).toBeNull();
   });
 
   it("routes programmatic converse capture to one realtime session", async () => {
