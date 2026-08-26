@@ -8,8 +8,7 @@
 
 import JSON5 from "json5";
 
-const jsonBlockPattern =
-	/```(?:[a-zA-Z0-9_-]+)?\s*\r?\n?([\s\S]*?)\r?\n?```/;
+const jsonBlockPattern = /```(?:json|json5)?\s*\r?\n?([\s\S]*?)\r?\n?```/i;
 
 /**
  * Extract and parse JSON from text using JSON5 for LLM output tolerance.
@@ -37,49 +36,9 @@ export function extractAndParseJSONObjectFromText(
 			throw new Error("Parsed JSON must be an object or array");
 		}
 		return parsed as Record<string, unknown> | unknown[];
-	} catch (primaryError) {
-		// If initial parse failed and no code fence was present, attempt substring extraction for { ... } or [ ... ]
-		if (!match) {
-			const firstBrace = textToParse.indexOf("{");
-			const lastBrace = textToParse.lastIndexOf("}");
-			const firstBracket = textToParse.indexOf("[");
-			const lastBracket = textToParse.lastIndexOf("]");
-
-			let candidate: string | undefined;
-			if (
-				firstBrace !== -1 &&
-				lastBrace !== -1 &&
-				lastBrace > firstBrace &&
-				(firstBracket === -1 || firstBrace < firstBracket)
-			) {
-				candidate = textToParse.slice(firstBrace, lastBrace + 1);
-			} else if (
-				firstBracket !== -1 &&
-				lastBracket !== -1 &&
-				lastBracket > firstBracket
-			) {
-				candidate = textToParse.slice(firstBracket, lastBracket + 1);
-			}
-
-			if (candidate) {
-				try {
-					const parsedCandidate = JSON5.parse(candidate);
-					if (
-						parsedCandidate !== null &&
-						typeof parsedCandidate === "object"
-					) {
-						return parsedCandidate as
-							| Record<string, unknown>
-							| unknown[];
-					}
-				} catch {
-					// Fall through to throw stable parse error
-				}
-			}
-		}
-
+	} catch (error) {
 		// error-policy:J2 Give callers a stable parse error while retaining the
 		// native JSON parser's location and syntax detail as the cause.
-		throw new Error("Failed to parse invalid JSON", { cause: primaryError });
+		throw new Error("Failed to parse invalid JSON", { cause: error });
 	}
 }
