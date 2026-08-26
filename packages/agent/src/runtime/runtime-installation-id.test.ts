@@ -15,6 +15,8 @@ import {
 
 const cleanup: string[] = [];
 const execFileAsync = promisify(execFile);
+const originalElizaPlatform = process.env.ELIZA_PLATFORM;
+const originalAndroidAppDataDir = process.env.ELIZA_ANDROID_APP_DATA_DIR;
 
 async function expectNoIdentityArtifacts(directory: string): Promise<void> {
   const names = await fs.readdir(directory);
@@ -28,6 +30,17 @@ async function expectNoIdentityArtifacts(directory: string): Promise<void> {
 }
 
 afterEach(async () => {
+  vi.restoreAllMocks();
+  if (originalElizaPlatform === undefined) {
+    delete process.env.ELIZA_PLATFORM;
+  } else {
+    process.env.ELIZA_PLATFORM = originalElizaPlatform;
+  }
+  if (originalAndroidAppDataDir === undefined) {
+    delete process.env.ELIZA_ANDROID_APP_DATA_DIR;
+  } else {
+    process.env.ELIZA_ANDROID_APP_DATA_DIR = originalAndroidAppDataDir;
+  }
   await Promise.all(
     cleanup
       .splice(0)
@@ -36,6 +49,69 @@ afterEach(async () => {
 });
 
 describe("runtime installation identity", () => {
+  it("uses the explicit Android app-data boundary for platform ancestors", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "runtime-owner-android-"),
+    );
+    const appDataDirectory = path.join(
+      root,
+      "data",
+      "user",
+      "0",
+      "ai.elizaos.app",
+    );
+    const stateDirectory = path.join(appDataDirectory, "files", "agent-state");
+    cleanup.push(root);
+    await fs.mkdir(path.dirname(stateDirectory), {
+      recursive: true,
+      mode: 0o700,
+    });
+    await fs.chmod(appDataDirectory, 0o700);
+    process.env.ELIZA_PLATFORM = "android";
+    process.env.ELIZA_ANDROID_APP_DATA_DIR = appDataDirectory;
+
+    await expect(
+      loadOrCreateRuntimeInstallationId(stateDirectory),
+    ).resolves.toMatch(/^[a-f0-9-]{36}$/);
+  });
+
+  it("rejects missing, escaped, and mutable Android app-data boundaries", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "runtime-owner-android-boundary-"),
+    );
+    const appDataDirectory = path.join(root, "app-data");
+    const stateDirectory = path.join(appDataDirectory, "files", "agent-state");
+    const escapedState = path.join(root, "escaped", "agent-state");
+    cleanup.push(root);
+    await fs.mkdir(path.dirname(stateDirectory), {
+      recursive: true,
+      mode: 0o700,
+    });
+    await fs.mkdir(path.dirname(escapedState), {
+      recursive: true,
+      mode: 0o700,
+    });
+    process.env.ELIZA_PLATFORM = "android";
+
+    delete process.env.ELIZA_ANDROID_APP_DATA_DIR;
+    await expect(
+      loadOrCreateRuntimeInstallationId(stateDirectory),
+    ).rejects.toThrow("requires an absolute ELIZA_ANDROID_APP_DATA_DIR");
+
+    process.env.ELIZA_ANDROID_APP_DATA_DIR = appDataDirectory;
+    await expect(
+      loadOrCreateRuntimeInstallationId(escapedState),
+    ).rejects.toThrow("must remain inside ELIZA_ANDROID_APP_DATA_DIR");
+
+    await fs.chmod(appDataDirectory, 0o777);
+    await expect(
+      loadOrCreateRuntimeInstallationId(stateDirectory),
+    ).rejects.toThrow("replaceable by another user");
+    await expect(fs.access(stateDirectory)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
   it("survives host reconstruction and concurrent boot in one state directory", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "runtime-owner-one-"));
     cleanup.push(root);

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 type FileHandle = Awaited<ReturnType<typeof fs.open>>;
 
 const faults = vi.hoisted(() => ({
+  beforeOpen: undefined as ((target: string) => Promise<void>) | undefined,
   afterLstat: undefined as
     | ((
         target: string,
@@ -32,6 +33,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
       return stat;
     },
     open: async (...args: Parameters<typeof actual.open>) => {
+      await faults.beforeOpen?.(String(args[0]));
       const handle = await actual.open(...args);
       await faults.afterOpen?.(String(args[0]), handle);
       return handle;
@@ -64,6 +66,7 @@ async function expectNoIdentityArtifacts(directory: string): Promise<void> {
 }
 
 afterEach(async () => {
+  faults.beforeOpen = undefined;
   faults.afterLstat = undefined;
   faults.afterOpen = undefined;
   faults.afterLink = undefined;
@@ -76,6 +79,54 @@ afterEach(async () => {
 });
 
 describe("runtime installation identity filesystem races", () => {
+  it("does not open SELinux-protected ancestors above an Android app-data boundary", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "runtime-id-android-open-"),
+    );
+    const appDataDirectory = path.join(
+      root,
+      "data",
+      "user",
+      "0",
+      "ai.elizaos.app",
+    );
+    const stateDirectory = path.join(appDataDirectory, "files", "agent-state");
+    cleanup.push(root);
+    await fs.mkdir(path.dirname(stateDirectory), {
+      recursive: true,
+      mode: 0o700,
+    });
+    await fs.chmod(appDataDirectory, 0o700);
+    const previousPlatform = process.env.ELIZA_PLATFORM;
+    const previousBoundary = process.env.ELIZA_ANDROID_APP_DATA_DIR;
+    process.env.ELIZA_PLATFORM = "android";
+    process.env.ELIZA_ANDROID_APP_DATA_DIR = appDataDirectory;
+    faults.beforeOpen = async (target) => {
+      const relative = path.relative(appDataDirectory, path.resolve(target));
+      const inside =
+        relative === "" ||
+        (!relative.startsWith("..") && !path.isAbsolute(relative));
+      if (!inside) {
+        throw Object.assign(new Error(`SELinux denied open: ${target}`), {
+          code: "EACCES",
+        });
+      }
+    };
+    try {
+      await expect(
+        loadOrCreateRuntimeInstallationId(stateDirectory),
+      ).resolves.toMatch(/^[a-f0-9-]{36}$/);
+    } finally {
+      if (previousPlatform === undefined) delete process.env.ELIZA_PLATFORM;
+      else process.env.ELIZA_PLATFORM = previousPlatform;
+      if (previousBoundary === undefined) {
+        delete process.env.ELIZA_ANDROID_APP_DATA_DIR;
+      } else {
+        process.env.ELIZA_ANDROID_APP_DATA_DIR = previousBoundary;
+      }
+    }
+  });
+
   it("rejects link injection between identity lstat and open", async () => {
     const root = await fs.mkdtemp(
       path.join(os.tmpdir(), "runtime-id-lstat-link-"),
