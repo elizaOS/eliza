@@ -99,6 +99,7 @@ interface GroupDeliveryAuthority {
   ownerUserId: string;
   personalAgentId: string;
   version: number;
+  requiresAllAdultsConsent?: boolean;
 }
 
 type GroupDeliveryDirective =
@@ -126,13 +127,25 @@ function parseGroupDeliveryDirective(
     typeof candidate.personalAgentId !== "string" ||
     typeof candidate.version !== "number" ||
     !Number.isSafeInteger(candidate.version) ||
-    candidate.version <= 0
+    candidate.version <= 0 ||
+    (candidate.requiresAllAdultsConsent !== undefined &&
+      typeof candidate.requiresAllAdultsConsent !== "boolean")
   ) {
     return null;
   }
   return {
     kind: "binding",
-    authority: candidate as unknown as GroupDeliveryAuthority,
+    authority: {
+      bindingId: candidate.bindingId,
+      ownerUserId: candidate.ownerUserId,
+      personalAgentId: candidate.personalAgentId,
+      version: candidate.version,
+      ...(candidate.requiresAllAdultsConsent === undefined
+        ? {}
+        : {
+            requiresAllAdultsConsent: candidate.requiresAllAdultsConsent,
+          }),
+    },
   };
 }
 
@@ -1174,6 +1187,9 @@ async function sendPersonalSharedReply(
                 messageId: `${adapter.platform}:${project}:${event.messageId}`,
                 message: event.text,
                 invocation: groupInvocationForEvent(event),
+                ...(adapter.platform === "telegram" && event.providerThreadId
+                  ? { providerThreadId: event.providerThreadId }
+                  : {}),
                 ...(event.replyToMessageId
                   ? { replyToMessageId: event.replyToMessageId }
                   : {}),

@@ -15,16 +15,20 @@ import {
   sql,
 } from "drizzle-orm";
 import { v5 as uuidv5 } from "uuid";
-import { dbWrite } from "../client";
+import { type DbTransaction, dbWrite } from "../client";
+import { organizations } from "../schemas/organizations";
 import {
   type PersonalSharedGroupBinding,
+  type PersonalSharedGroupConsentMode,
   type PersonalSharedGroupPlatform,
   type PersonalSharedGroupResponsePolicy,
   personalSharedGroupBindings,
   personalSharedGroupClaims,
   personalSharedGroupDeliveryAttempts,
   personalSharedGroupDeliveryReceipts,
+  personalSharedGroupParticipants,
 } from "../schemas/personal-shared-groups";
+import { users } from "../schemas/users";
 
 const PERSONAL_SHARED_GROUP_NAMESPACE = "987af3c6-5e48-4ad7-a5b6-883b51d0c904";
 
@@ -56,6 +60,12 @@ export interface PersonalSharedGroupDeliveryAuthority {
   ownerUserId: string;
   personalAgentId: string;
   version: number;
+  /**
+   * Explicitly false only for consent-control replies. Missing is fail-closed
+   * for an all-adults binding so a rolling gateway cannot strip capability
+   * admission and accidentally bypass the persisted consent policy.
+   */
+  requiresAllAdultsConsent?: boolean;
 }
 
 export interface PersonalSharedGroupDeliveryLease {
@@ -81,6 +91,94 @@ export class PersonalSharedGroupDeliveryPendingError extends ElizaError {
   }
 }
 
+export class PersonalSharedGroupIndependentAuthenticationRequiredError extends ElizaError {
+  constructor(platform: PersonalSharedGroupPlatform, phase: "issue" | "consume") {
+    super("An all-adults group owner must independently authenticate their Eliza account", {
+      code: "PERSONAL_SHARED_GROUP_OWNER_INDEPENDENT_AUTHENTICATION_REQUIRED",
+      severity: "fatal",
+      context: { platform, phase },
+    });
+  }
+}
+
+async function assertIndependentlyAuthenticatedOwner(
+  tx: DbTransaction,
+  input: {
+    ownerUserId: string;
+    organizationId: string;
+    platform: PersonalSharedGroupPlatform;
+    platformSenderId: string;
+    phase: "issue" | "consume";
+  },
+): Promise<void> {
+  const [owner] = await tx
+    .select({
+      organizationId: users.organization_id,
+      stewardUserId: users.steward_user_id,
+      telegramId: users.telegram_id,
+      phoneNumber: users.phone_number,
+      phoneVerified: users.phone_verified,
+      isAnonymous: users.is_anonymous,
+      isActive: users.is_active,
+      deletedAt: users.deleted_at,
+    })
+    .from(users)
+    .where(eq(users.id, input.ownerUserId))
+    .limit(1)
+    .for("update");
+  const matureSubject =
+    owner &&
+    !owner.stewardUserId.startsWith("phone:") &&
+    !owner.stewardUserId.startsWith("telegram:");
+  const providerIdentityMatches =
+    owner &&
+    (input.platform === "blooio"
+      ? owner.phoneNumber === input.platformSenderId && owner.phoneVerified === true
+      : owner.telegramId === input.platformSenderId);
+  const [activeOrganization] = await tx
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(and(eq(organizations.id, input.organizationId), eq(organizations.is_active, true)))
+    .limit(1);
+  if (
+    !owner ||
+    owner.organizationId !== input.organizationId ||
+    !activeOrganization ||
+    !owner.isActive ||
+    owner.deletedAt !== null ||
+    owner.isAnonymous ||
+    !matureSubject ||
+    !providerIdentityMatches
+  ) {
+    throw new PersonalSharedGroupIndependentAuthenticationRequiredError(
+      input.platform,
+      input.phase,
+    );
+  }
+}
+
+function resolveConsentConfiguration(input: {
+  consentMode?: PersonalSharedGroupConsentMode;
+  requiredPrincipalCount?: number;
+}): { consentMode: PersonalSharedGroupConsentMode; requiredPrincipalCount: number } {
+  const consentMode = input.consentMode ?? "single_owner";
+  const requiredPrincipalCount = input.requiredPrincipalCount ?? 1;
+  const valid =
+    (consentMode === "single_owner" && requiredPrincipalCount === 1) ||
+    (consentMode === "all_adults" &&
+      Number.isInteger(requiredPrincipalCount) &&
+      requiredPrincipalCount >= 2 &&
+      requiredPrincipalCount <= 32);
+  if (!valid) {
+    throw new ElizaError("Personal Shared group consent configuration is invalid", {
+      code: "PERSONAL_SHARED_GROUP_CONSENT_CONFIGURATION_INVALID",
+      severity: "fatal",
+      context: { consentMode, requiredPrincipalCount },
+    });
+  }
+  return { consentMode, requiredPrincipalCount };
+}
+
 function deliveryLeaseAvailable(now: Date) {
   return or(
     isNull(personalSharedGroupBindings.delivery_lease_source_id),
@@ -88,6 +186,43 @@ function deliveryLeaseAvailable(now: Date) {
       isNull(personalSharedGroupBindings.delivery_lease_committed_at),
       lte(personalSharedGroupBindings.delivery_lease_expires_at, now),
     ),
+  );
+}
+
+function deliveryConsentAllowsEgress(authority: PersonalSharedGroupDeliveryAuthority) {
+  if (authority.requiresAllAdultsConsent === false) return sql`true`;
+  return or(
+    eq(personalSharedGroupBindings.consent_mode, "single_owner"),
+    sql`(
+      SELECT
+        count(*) >= ${personalSharedGroupBindings.required_principal_count}
+        AND count(*) FILTER (
+          WHERE participant.linked_user_id = ${personalSharedGroupBindings.owner_user_id}
+        ) = 1
+      FROM ${personalSharedGroupParticipants} participant
+      INNER JOIN ${users} eligible_user
+        ON eligible_user.id = participant.linked_user_id
+      INNER JOIN ${organizations} eligible_organization
+        ON eligible_organization.id = eligible_user.organization_id
+        AND eligible_organization.is_active = true
+      WHERE participant.binding_id = ${personalSharedGroupBindings.id}
+        AND participant.revoked_at IS NULL
+        AND participant.consented_at IS NOT NULL
+        AND participant.consent_provenance IS NOT NULL
+        AND eligible_user.is_active = true
+        AND eligible_user.deleted_at IS NULL
+        AND eligible_user.is_anonymous = false
+        AND eligible_user.steward_user_id NOT LIKE 'phone:%'
+        AND eligible_user.steward_user_id NOT LIKE 'telegram:%'
+        AND (
+          (${personalSharedGroupBindings.platform} = 'blooio'
+            AND eligible_user.phone_number = participant.platform_user_id
+            AND eligible_user.phone_verified = true)
+          OR
+          (${personalSharedGroupBindings.platform} = 'telegram'
+            AND eligible_user.telegram_id = participant.platform_user_id)
+        )
+    )`,
   );
 }
 
@@ -133,10 +268,35 @@ export const personalSharedGroupsRepository = {
     project: string;
     connectorAccountId: string;
     issuedToPlatformUserId: string;
+    consentMode?: PersonalSharedGroupConsentMode;
+    requiredPrincipalCount?: number;
     expiresAt: Date;
   }): Promise<void> {
+    const consent = resolveConsentConfiguration(input);
     await dbWrite.transaction(async (tx) => {
       const now = new Date();
+      if (consent.consentMode === "all_adults") {
+        await assertIndependentlyAuthenticatedOwner(tx, {
+          ownerUserId: input.ownerUserId,
+          organizationId: input.organizationId,
+          platform: input.platform,
+          platformSenderId: input.issuedToPlatformUserId,
+          phase: "issue",
+        });
+      } else {
+        const [owner] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.id, input.ownerUserId))
+          .limit(1)
+          .for("update");
+        if (!owner) {
+          throw new ElizaError("Personal Shared group claim owner is missing", {
+            code: "PERSONAL_SHARED_GROUP_CLAIM_OWNER_MISSING",
+            severity: "fatal",
+          });
+        }
+      }
       await tx
         .update(personalSharedGroupClaims)
         .set({ consumed_at: now })
@@ -158,6 +318,8 @@ export const personalSharedGroupsRepository = {
         project: input.project,
         connector_account_id: input.connectorAccountId,
         issued_to_platform_user_id: input.issuedToPlatformUserId,
+        consent_mode: consent.consentMode,
+        required_principal_count: consent.requiredPrincipalCount,
         expires_at: input.expiresAt,
       });
     });
@@ -175,6 +337,43 @@ export const personalSharedGroupsRepository = {
     return dbWrite.transaction(async (tx) => {
       const leaseNow = new Date();
       const now = input.verifiedAt ?? leaseNow;
+      const [observedClaim] = await tx
+        .select()
+        .from(personalSharedGroupClaims)
+        .where(eq(personalSharedGroupClaims.code_hash, input.codeHash))
+        .limit(1);
+      if (!observedClaim) return { status: "invalid" } as const;
+      if (observedClaim.consumed_at) return { status: "already_used" } as const;
+      if (observedClaim.expires_at <= now) return { status: "expired" } as const;
+      if (
+        observedClaim.platform !== input.platform ||
+        observedClaim.project !== input.project ||
+        observedClaim.connector_account_id !== input.connectorAccountId ||
+        observedClaim.issued_to_platform_user_id !== input.actorPlatformUserId
+      ) {
+        return { status: "invalid" } as const;
+      }
+
+      // Owner authority takes the user row before the claim row. Account
+      // lifecycle uses the same order, closing both FK-cascade deadlocks and
+      // the no-binding-yet resurrection race during first all-adults bind.
+      if (observedClaim.consent_mode === "all_adults") {
+        await assertIndependentlyAuthenticatedOwner(tx, {
+          ownerUserId: observedClaim.owner_user_id,
+          organizationId: observedClaim.organization_id,
+          platform: input.platform,
+          platformSenderId: input.actorPlatformUserId,
+          phase: "consume",
+        });
+      } else {
+        const [owner] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.id, observedClaim.owner_user_id))
+          .limit(1)
+          .for("update");
+        if (!owner) return { status: "invalid" } as const;
+      }
       const [claim] = await tx
         .update(personalSharedGroupClaims)
         .set({ consumed_at: now })
@@ -229,6 +428,8 @@ export const personalSharedGroupsRepository = {
       ) {
         return { status: "already_bound" } as const;
       }
+      const resetsAllAdultsConsent =
+        claim.consent_mode === "all_adults" || existing?.consent_mode === "all_adults";
       const [binding] = await tx
         .insert(personalSharedGroupBindings)
         .values({
@@ -242,6 +443,8 @@ export const personalSharedGroupsRepository = {
           conversation_id: conversationId,
           state: "active",
           response_policy: "mention_only",
+          consent_mode: claim.consent_mode,
+          required_principal_count: claim.required_principal_count,
           created_by_platform_user_id: input.actorPlatformUserId,
           last_verified_at: now,
           updated_at: now,
@@ -260,6 +463,9 @@ export const personalSharedGroupsRepository = {
             conversation_id: conversationId,
             state: "active",
             response_policy: "mention_only",
+            consent_mode: claim.consent_mode,
+            required_principal_count: claim.required_principal_count,
+            consent_version: sql`${personalSharedGroupBindings.consent_version} + 1`,
             authority_version: sql`${personalSharedGroupBindings.authority_version} + 1`,
             delivery_lease_source_id: sql`CASE WHEN ${personalSharedGroupBindings.delivery_lease_committed_at} IS NULL THEN NULL ELSE ${personalSharedGroupBindings.delivery_lease_source_id} END`,
             delivery_lease_token: sql`CASE WHEN ${personalSharedGroupBindings.delivery_lease_committed_at} IS NULL THEN NULL ELSE ${personalSharedGroupBindings.delivery_lease_token} END`,
@@ -306,6 +512,48 @@ export const personalSharedGroupsRepository = {
           throw new PersonalSharedGroupDeliveryPendingError();
         }
         return { status: "already_bound" } as const;
+      }
+      if (resetsAllAdultsConsent) {
+        // The upsert holds binding authority before this ordinal lock.
+        // recordTurn takes a binding key-share lock first as well, keeping all
+        // participant mutations on B -> advisory -> P even when ON CONFLICT
+        // discovers a binding that was absent from the earlier observation.
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(
+            hashtext(${binding.id}),
+            hashtext('personal-shared-group-participant-ordinal')
+          )`,
+        );
+        if (existing) {
+          // Rebinding an all-adults group starts a new consent epoch. Keep
+          // ordinal audit rows for redaction/history, but no prior account link
+          // or consent crosses that whole-binding boundary.
+          await tx
+            .update(personalSharedGroupParticipants)
+            .set({
+              linked_user_id: null,
+              consented_at: null,
+              consent_provenance: null,
+              revoked_at: now,
+            })
+            .where(eq(personalSharedGroupParticipants.binding_id, binding.id));
+        }
+      }
+      if (claim.consent_mode === "all_adults") {
+        await tx.execute(sql`INSERT INTO ${personalSharedGroupParticipants}
+          (binding_id, platform_user_id, ordinal, linked_user_id, consented_at,
+            consent_provenance, revoked_at, last_seen_at)
+        SELECT ${binding.id}::uuid, ${input.actorPlatformUserId},
+          COALESCE(MAX(${personalSharedGroupParticipants.ordinal}), 0) + 1,
+          ${claim.owner_user_id}::uuid, ${now}, 'owner_binding', NULL, ${now}
+        FROM ${personalSharedGroupParticipants}
+        WHERE ${personalSharedGroupParticipants.binding_id} = ${binding.id}::uuid
+        ON CONFLICT (binding_id, platform_user_id) DO UPDATE SET
+          linked_user_id = EXCLUDED.linked_user_id,
+          consented_at = EXCLUDED.consented_at,
+          consent_provenance = EXCLUDED.consent_provenance,
+          revoked_at = NULL,
+          last_seen_at = EXCLUDED.last_seen_at`);
       }
       return { status: "bound", binding } as const;
     });
@@ -393,22 +641,40 @@ export const personalSharedGroupsRepository = {
     return Boolean(
       await waitForAuthorityMutation(
         async (now) => {
-          const [binding] = await dbWrite
-            .update(personalSharedGroupBindings)
-            .set({
-              state: "revoked",
-              authority_version: sql`${personalSharedGroupBindings.authority_version} + 1`,
-              updated_at: now,
-            })
-            .where(
-              and(
-                eq(personalSharedGroupBindings.id, input.bindingId),
-                eq(personalSharedGroupBindings.owner_user_id, input.ownerUserId),
-                deliveryLeaseAllowsAuthorityMutation(now),
-              ),
-            )
-            .returning({ id: personalSharedGroupBindings.id });
-          return binding ?? null;
+          return dbWrite.transaction(async (tx) => {
+            const [binding] = await tx
+              .update(personalSharedGroupBindings)
+              .set({
+                state: "revoked",
+                authority_version: sql`${personalSharedGroupBindings.authority_version} + 1`,
+                consent_version: sql`${personalSharedGroupBindings.consent_version} + 1`,
+                updated_at: now,
+              })
+              .where(
+                and(
+                  eq(personalSharedGroupBindings.id, input.bindingId),
+                  eq(personalSharedGroupBindings.owner_user_id, input.ownerUserId),
+                  deliveryLeaseAllowsAuthorityMutation(now),
+                ),
+              )
+              .returning({
+                id: personalSharedGroupBindings.id,
+                consentMode: personalSharedGroupBindings.consent_mode,
+              });
+            if (!binding) return null;
+            if (binding.consentMode === "all_adults") {
+              await tx
+                .update(personalSharedGroupParticipants)
+                .set({
+                  linked_user_id: null,
+                  consented_at: null,
+                  consent_provenance: null,
+                  revoked_at: now,
+                })
+                .where(eq(personalSharedGroupParticipants.binding_id, binding.id));
+            }
+            return binding;
+          });
         },
         async (now) => {
           const [binding] = await dbWrite
@@ -610,6 +876,7 @@ export const personalSharedGroupsRepository = {
             eq(personalSharedGroupBindings.connector_account_id, input.connectorAccountId),
             eq(personalSharedGroupBindings.provider_chat_id, input.providerChatId),
             eq(personalSharedGroupBindings.state, "active"),
+            deliveryConsentAllowsEgress(input.authority),
             notExists(
               tx
                 .select({ id: personalSharedGroupDeliveryAttempts.id })
@@ -735,6 +1002,7 @@ export const personalSharedGroupsRepository = {
             eq(personalSharedGroupBindings.connector_account_id, input.connectorAccountId),
             eq(personalSharedGroupBindings.provider_chat_id, input.providerChatId),
             eq(personalSharedGroupBindings.state, "active"),
+            deliveryConsentAllowsEgress(input.authority),
             eq(personalSharedGroupBindings.delivery_lease_source_id, input.sourceMessageId),
             eq(personalSharedGroupBindings.delivery_lease_token, input.leaseToken),
             or(
