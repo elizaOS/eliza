@@ -6,14 +6,22 @@ import { describe, expect, it } from "vitest";
 import { errorMessage, isRedirectResponse, isTimeoutError } from "./errors";
 
 describe("isTimeoutError", () => {
-  it("identifies standard TimeoutError and AbortError instances", () => {
+  it("identifies standard TimeoutError instances and distinguishes from AbortError", () => {
     const timeoutErr = new Error("Gateway timeout");
     timeoutErr.name = "TimeoutError";
     expect(isTimeoutError(timeoutErr)).toBe(true);
 
+    const domTimeout = new DOMException("deadline", "TimeoutError");
+    expect(isTimeoutError(domTimeout)).toBe(true);
+
     const abortErr = new Error("The operation was aborted");
     abortErr.name = "AbortError";
-    expect(isTimeoutError(abortErr)).toBe(true);
+    expect(isTimeoutError(abortErr)).toBe(false);
+
+    const domAbort = new DOMException("caller canceled", "AbortError");
+    expect(isTimeoutError(domAbort)).toBe(false);
+
+    expect(isTimeoutError({ code: "ABORT_ERR" })).toBe(false);
   });
 
   it("identifies timeout keywords in Error message", () => {
@@ -34,24 +42,60 @@ describe("isTimeoutError", () => {
 
   it("identifies duck-typed error objects", () => {
     expect(isTimeoutError({ name: "TimeoutError" })).toBe(true);
-    expect(isTimeoutError({ name: "AbortError" })).toBe(true);
+    expect(isTimeoutError({ name: "AbortError" })).toBe(false);
     expect(isTimeoutError({ message: "Socket timed out" })).toBe(true);
     expect(isTimeoutError({ message: "Invalid payload" })).toBe(false);
   });
 
-  it("identifies error code properties (ETIMEDOUT, ESOCKETTIMEDOUT, etc.)", () => {
+  it("identifies direct and Undici timeout codes (ETIMEDOUT, UND_ERR_BODY_TIMEOUT, etc.)", () => {
     const etimedout = Object.assign(new Error("Connection failed"), {
       code: "ETIMEDOUT",
     });
     expect(isTimeoutError(etimedout)).toBe(true);
 
-    const undConnect = Object.assign(new Error("Headers failed"), {
+    const undConnect = Object.assign(new Error("Connect failed"), {
       code: "UND_ERR_CONNECT_TIMEOUT",
     });
     expect(isTimeoutError(undConnect)).toBe(true);
 
+    const undHeaders = Object.assign(new Error("Headers failed"), {
+      code: "UND_ERR_HEADERS_TIMEOUT",
+    });
+    expect(isTimeoutError(undHeaders)).toBe(true);
+
+    const undBody = Object.assign(new Error("Body failed"), {
+      code: "UND_ERR_BODY_TIMEOUT",
+    });
+    expect(isTimeoutError(undBody)).toBe(true);
+
     expect(isTimeoutError({ code: "ESOCKETTIMEDOUT" })).toBe(true);
     expect(isTimeoutError({ code: "ECONNREFUSED" })).toBe(false);
+  });
+
+  it("follows wrapped cause chains and safely handles cyclic error graphs", () => {
+    const wrappedFetch = new TypeError("fetch failed", {
+      cause: Object.assign(new Error("Connect timed out"), {
+        code: "UND_ERR_CONNECT_TIMEOUT",
+      }),
+    });
+    expect(isTimeoutError(wrappedFetch)).toBe(true);
+
+    const wrappedDom = new Error("Request failed", {
+      cause: new DOMException("deadline elapsed", "TimeoutError"),
+    });
+    expect(isTimeoutError(wrappedDom)).toBe(true);
+
+    // Cyclic cause graph
+    const cyclic: Record<string, unknown> = new Error("Generic failure");
+    cyclic.cause = cyclic;
+    expect(isTimeoutError(cyclic)).toBe(false);
+
+    const cyclicWithTimeout: Record<string, unknown> = new Error("Outer error");
+    cyclicWithTimeout.cause = {
+      code: "ETIMEDOUT",
+      cause: cyclicWithTimeout,
+    };
+    expect(isTimeoutError(cyclicWithTimeout)).toBe(true);
   });
 
   it("returns false for null, undefined, and non-timeout values", () => {

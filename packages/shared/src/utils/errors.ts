@@ -12,20 +12,15 @@ const TIMEOUT_CODES = new Set([
   "ESOCKETTIMEDOUT",
   "UND_ERR_CONNECT_TIMEOUT",
   "UND_ERR_HEADERS_TIMEOUT",
-  "ABORT_ERR",
+  "UND_ERR_BODY_TIMEOUT",
 ]);
 
-/** Classify an error as a fetch/AbortSignal timeout. */
-export function isTimeoutError(error: unknown): boolean {
+const MAX_CAUSE_DEPTH = 10;
+
+function checkDirectTimeout(error: unknown): boolean {
   if (!error) return false;
-  if (error instanceof Error) {
-    if (error.name === "TimeoutError" || error.name === "AbortError")
-      return true;
-    const code = (error as { code?: unknown }).code;
-    if (typeof code === "string" && TIMEOUT_CODES.has(code)) {
-      return true;
-    }
-    const msg = error.message.toLowerCase();
+  if (typeof error === "string") {
+    const msg = error.toLowerCase();
     return msg.includes("timed out") || msg.includes("timeout");
   }
   if (typeof error === "object") {
@@ -34,7 +29,7 @@ export function isTimeoutError(error: unknown): boolean {
       message?: unknown;
       code?: unknown;
     };
-    if (candidate.name === "TimeoutError" || candidate.name === "AbortError") {
+    if (candidate.name === "TimeoutError") {
       return true;
     }
     if (
@@ -45,13 +40,41 @@ export function isTimeoutError(error: unknown): boolean {
     }
     if (typeof candidate.message === "string") {
       const msg = candidate.message.toLowerCase();
-      return msg.includes("timed out") || msg.includes("timeout");
+      if (msg.includes("timed out") || msg.includes("timeout")) {
+        return true;
+      }
     }
   }
-  if (typeof error === "string") {
-    const msg = error.toLowerCase();
-    return msg.includes("timed out") || msg.includes("timeout");
+  return false;
+}
+
+/** Classify an error as a fetch/AbortSignal/network timeout. */
+export function isTimeoutError(error: unknown): boolean {
+  if (!error) return false;
+  let current: unknown = error;
+  const visited = new Set<unknown>();
+  let depth = 0;
+
+  while (current && typeof current === "object" && depth < MAX_CAUSE_DEPTH) {
+    if (visited.has(current)) break;
+    visited.add(current);
+
+    if (checkDirectTimeout(current)) {
+      return true;
+    }
+
+    if ("cause" in current) {
+      current = (current as { cause?: unknown }).cause;
+      depth++;
+    } else {
+      break;
+    }
   }
+
+  if (typeof current === "string") {
+    return checkDirectTimeout(current);
+  }
+
   return false;
 }
 
