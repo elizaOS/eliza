@@ -5,10 +5,10 @@
  */
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@elizaos/ui/api/client-types-core";
 import { __resetResourceCache } from "@elizaos/ui/hooks/resource-cache";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const appMock = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 const platformMock = vi.hoisted(() => ({ isNative: false }));
@@ -29,6 +29,7 @@ vi.mock("@elizaos/ui/platform", () => ({
     return platformMock.isNative;
   },
 }));
+
 import { KnowledgeDocumentsView } from "./KnowledgeDocumentsView";
 
 function t(key: string, options?: { defaultValue?: string }) {

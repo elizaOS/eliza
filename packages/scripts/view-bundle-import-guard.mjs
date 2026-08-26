@@ -69,18 +69,9 @@ const LOADER_RELATIVE_IMPORT_BINDINGS = new Map([
   ["@elizaos/ui/state/useApp", "../../state/useApp.ts"],
   ["@elizaos/ui/utils", "../../utils/index.ts"],
   ["@elizaos/ui/hooks/resource-cache", "../../hooks/resource-cache.ts"],
-  [
-    "@elizaos/ui/utils/attachment-url",
-    "../../utils/attachment-url.ts",
-  ],
-  [
-    "@elizaos/ui/utils/desktop-dialogs",
-    "../../utils/desktop-dialogs.ts",
-  ],
-  [
-    "@elizaos/ui/utils/download-share",
-    "../../utils/download-share.ts",
-  ],
+  ["@elizaos/ui/utils/attachment-url", "../../utils/attachment-url.ts"],
+  ["@elizaos/ui/utils/desktop-dialogs", "../../utils/desktop-dialogs.ts"],
+  ["@elizaos/ui/utils/download-share", "../../utils/download-share.ts"],
   [
     "@elizaos/ui/components/composites/page-panel",
     "../composites/page-panel/index.ts",

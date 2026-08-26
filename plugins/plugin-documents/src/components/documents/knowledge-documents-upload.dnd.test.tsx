@@ -57,8 +57,8 @@ vi.mock("@elizaos/ui/utils/desktop-dialogs", () => ({
   confirmDesktopAction: vi.fn(async () => true),
 }));
 
-import { KnowledgeDocumentsView } from "./KnowledgeDocumentsView";
 import { UploadZone } from "./documents-upload";
+import { KnowledgeDocumentsView } from "./KnowledgeDocumentsView";
 
 function t(key: string, options?: { defaultValue?: string }) {
   return options?.defaultValue ?? key;

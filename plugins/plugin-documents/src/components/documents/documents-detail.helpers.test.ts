@@ -1,8 +1,9 @@
 /**
  * Unit tests for documents detail helpers: validates document label formatters and summary derivation.
  */
-import { describe, expect, it } from "vitest";
+
 import type { DocumentRecord } from "@elizaos/ui/api/client-types-chat";
+import { describe, expect, it } from "vitest";
 import {
   getDocumentSourceLabel,
   getDocumentSummary,
