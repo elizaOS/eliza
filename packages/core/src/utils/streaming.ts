@@ -55,6 +55,11 @@ export class StreamError extends Error {
 	}
 }
 
+/** Standalone type guard checking whether an unknown value is a StreamError instance. */
+export function isStreamError(error: unknown): error is StreamError {
+	return error instanceof StreamError;
+}
+
 // ============================================================================
 // Shared constants and utilities
 // ============================================================================

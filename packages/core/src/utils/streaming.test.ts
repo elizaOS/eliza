@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	createStreamingContext,
 	createStreamingRetryState,
+	isStreamError,
 	MarkableExtractor,
 	PassthroughExtractor,
 	StreamError,
@@ -24,6 +25,9 @@ describe("StreamError", () => {
 		expect(error.details).toEqual({ chunkSize: 2000 });
 		expect(StreamError.isStreamError(error)).toBe(true);
 		expect(StreamError.isStreamError(new Error("generic"))).toBe(false);
+		expect(isStreamError(error)).toBe(true);
+		expect(isStreamError(new Error("generic"))).toBe(false);
+		expect(isStreamError(null)).toBe(false);
 	});
 });
 
