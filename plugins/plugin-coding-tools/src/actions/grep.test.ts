@@ -225,6 +225,44 @@ describe("GREP", () => {
     ).toBe(0);
   });
 
+  it("returns matches_count:0 for count mode with an unmatched pattern", async () => {
+    const bundle = await buildRuntime();
+    if (!bundle) {
+      console.warn("no ripgrep available, skipping");
+      return;
+    }
+    const { runtime, message } = bundle;
+
+    const result = await grepHandler(runtime, message, state, {
+      parameters: {
+        pattern: "ZZZ_DEFINITELY_NO_MATCH_ZZZ",
+        output_mode: "count",
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("no matches");
+    expect(
+      (result.data as Record<string, unknown> | undefined)?.matches_count,
+    ).toBe(0);
+  });
+
+  it("still reports matches for count mode with a matched pattern", async () => {
+    const bundle = await buildRuntime();
+    if (!bundle) {
+      console.warn("no ripgrep available, skipping");
+      return;
+    }
+    const { runtime, message } = bundle;
+
+    const result = await grepHandler(runtime, message, state, {
+      parameters: { pattern: "NEEDLE", output_mode: "count" },
+    });
+    expect(result.success).toBe(true);
+    const data = result.data as Record<string, unknown> | undefined;
+    expect(data?.mode).toBe("count");
+    expect((data?.matches_count as number) > 0).toBe(true);
+  });
+
   it("fails when roomId is missing", async () => {
     const bundle = await buildRuntime();
     if (!bundle) {

@@ -139,10 +139,7 @@ export async function grepHandler(
 
     const result = await rg.search(rgOptions, mode);
 
-    if (
-      result.exitCode === 1 &&
-      (mode === "content" || mode === "files_with_matches")
-    ) {
+    if (result.exitCode === 1) {
       const text = "no matches";
       return successActionResult(text, {
         matches_count: 0,
