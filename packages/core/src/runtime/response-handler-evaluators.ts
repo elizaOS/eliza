@@ -19,6 +19,7 @@ import type {
 import type { Memory } from "../types/memory";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
+import { CORE_STAGE1_GUARD_EVALUATORS } from "./core-stage1-guard-evaluators";
 
 export interface ResponseHandlerPatch {
 	processMessage?: MessageHandlerAction;
@@ -276,7 +277,15 @@ export async function runResponseHandlerEvaluators(args: {
 		? (args.runtime
 				.responseHandlerEvaluators as readonly ResponseHandlerEvaluator[])
 		: [];
-	const candidates = [...(args.evaluators ?? []), ...registered].sort(
+	// Core guard evaluators (unknown-context fallback, simple-path execution
+	// claim guard) always participate: they are correctness backstops on the
+	// Stage-1 plan itself, not optional enrichers, and their high priorities
+	// place them after every builtin and registered evaluator.
+	const candidates = [
+		...(args.evaluators ?? []),
+		...registered,
+		...CORE_STAGE1_GUARD_EVALUATORS,
+	].sort(
 		(a, b) =>
 			(a.priority ?? 100) - (b.priority ?? 100) || a.name.localeCompare(b.name),
 	);

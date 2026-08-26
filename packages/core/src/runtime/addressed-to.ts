@@ -15,6 +15,7 @@ import {
 	escapeRegex,
 	normalizeName,
 } from "../utils/agent-name-match";
+import { evaluateAgentChatterDamping } from "./agent-chatter-damping";
 
 /**
  * Post-parse persistence for the messageHandler's `extract.addressedTo`
@@ -146,12 +147,15 @@ function agentSelfNames(runtime: IAgentRuntime): Set<string> {
 }
 
 /**
- * True only when a turn is verifiably directed at a resolvable OTHER room
- * participant. Two independent evidence sources are OR-composed — a
- * text-corroborated Stage-1 tag, or a structural leading vocative — so a
- * hallucinated tag never blocks the vocative evidence and an empty tag list
- * never blocks the tag path. Three invariants bound the answer, because a
- * positive here converts the turn into deliberate silence:
+ * Engagement-gate resolver: true when this turn should be ignored because it
+ * is verifiably directed at a resolvable OTHER room participant, or (third
+ * evidence source, agent-chatter damping) because it is an unaddressed
+ * bot-authored turn capping an unbroken all-agent message run in a group room
+ * (see `evaluateAgentChatterDamping`). The addressing evidence sources are
+ * OR-composed — a text-corroborated Stage-1 tag, or a structural leading
+ * vocative — so a hallucinated tag never blocks the vocative evidence and an
+ * empty tag list never blocks the tag path. Three invariants bound the
+ * answer, because a positive here converts the turn into deliberate silence:
  *
  *  - addressed to US (by name, name token, id, or platform alias) never
  *    gates, and short-circuits both evidence sources — the turn is ours;
@@ -256,12 +260,40 @@ export async function messageAddressedToOtherParticipant(
 	// unresolvable, author-only, or uncorroborated tags), but the text itself
 	// may still open by addressing another participant — a hallucinated tag
 	// must not block that independent evidence.
-	return vocativelyAddressesOtherParticipant({
-		runtime,
-		message,
-		participants,
-		self,
-	});
+	if (
+		vocativelyAddressesOtherParticipant({
+			runtime,
+			message,
+			participants,
+			self,
+		})
+	) {
+		return true;
+	}
+
+	// Third engagement-gate evidence source: agent-to-agent chatter damping.
+	// The turn is verifiably unaddressed (both sources above came up empty),
+	// so when it is bot-authored and caps an unbroken all-agent run in a group
+	// room, ignore it rather than extend a bot-to-bot mutual-validation loop
+	// (live 2026-08-24: ~25 essay-length agent replies in 7 minutes). Every
+	// precondition fails open — human turns, addressed turns, DMs, unknown
+	// history — and the caller's personality reply_gate "always" opt-out still
+	// bypasses the whole gate.
+	const damping = await evaluateAgentChatterDamping({ runtime, message });
+	if (damping.damped) {
+		runtime.logger?.debug?.(
+			{
+				src: "addressed-to",
+				roomId: message.roomId,
+				runLength: damping.runLength,
+				threshold: damping.threshold,
+				reason: damping.reason,
+			},
+			"[addressed-to] Agent-chatter damping: unaddressed bot turn caps an all-agent run — engagement gate ignores it",
+		);
+		return true;
+	}
+	return false;
 }
 
 export async function resolveAddressedTargets(

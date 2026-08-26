@@ -103,9 +103,9 @@ export const shouldRespondFieldEvaluator: ResponseHandlerFieldEvaluator<
 export const contextsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 	name: "contexts",
 	description:
-		'Routing tags from available_contexts. Use ["simple"] only for direct replies needing no tool/action/provider. Owner goals/habits/routines/todos/reminders are never simple; route to tasks/OWNER_* actions. Empty invalid when shouldRespond=RESPOND.',
+		'Routing tags from available_contexts. ONLY ids listed in available_contexts are valid — never invent an unlisted id; when no listed context fits the needed tool work, use "general". Use ["simple"] only for direct replies needing no tool/action/provider. Owner goals/habits/routines/todos/reminders are never simple; route to the tasks context when listed, otherwise "general", plus the matching OWNER_* action. Empty invalid when shouldRespond=RESPOND.',
 	descriptionCompressed:
-		'Ids from available_contexts. ["simple"]=direct reply, no tools; personal goals/habits/reminders route to tasks/actions.',
+		'Ids from available_contexts ONLY — never invent an unlisted id; no fitting listed context => "general". ["simple"]=direct reply, no tools; personal goals/habits/reminders route to tasks/actions.',
 	priority: 10,
 	schema: {
 		type: "array",
@@ -211,9 +211,9 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 export const replyTextFieldEvaluator: ResponseHandlerFieldEvaluator<string> = {
 	name: "replyText",
 	description:
-		'User-facing reply. Populate when shouldRespond=RESPOND. contexts includes "simple" => whole answer. Planning/tool path => brief ack only ("On it.", "Spawning the sub-agent now.", "Looking into it."); planner sends grounded follow-up. IGNORE => empty. No thinking/reasoning.\n\nNEVER refuse in replyText on planning path. If `contexts` or `candidateActionNames` != "simple", planner handles work; ack only, no capability gatekeeping. Ban refusal openings: "I cannot...", "I am unable to...", "I don\'t have the ability to...", "Sorry, I can\'t...". Tools exist (FILE, BASH, TASKS_SPAWN_AGENT, etc.). If no tool can attempt, use shouldRespond=RESPOND, `contexts: ["simple"]`, explain.',
+		'User-facing reply. Populate when shouldRespond=RESPOND. contexts includes "simple" => whole answer. Planning/tool path => brief ack only ("On it.", "Spawning the sub-agent now.", "Looking into it."); planner sends grounded follow-up. IGNORE => empty. No thinking/reasoning.\n\nNEVER refuse in replyText on planning path. If `contexts` or `candidateActionNames` != "simple", planner handles work; ack only, no capability gatekeeping. Ban refusal openings: "I cannot...", "I am unable to...", "I don\'t have the ability to...", "Sorry, I can\'t...". Tools exist (FILE, BASH, TASKS_SPAWN_AGENT, etc.). If no tool can attempt, use shouldRespond=RESPOND, `contexts: ["simple"]`, explain.\n\nNEVER promise future or background work on the simple path ("I\'ll run/re-run/send/paste/post it now/when it lands", "will report back the second it hits"): with contexts=["simple"] and no candidate actions, NOTHING runs after this reply, so the promised output can never arrive. Either state only what is already true now, or route to a tool context/candidate action and let replyText be the brief ack.',
 	descriptionCompressed:
-		'User-facing reply. simple=whole answer; tool/planning path=brief ack ("On it."), never a refusal; IGNORE=empty string.',
+		'User-facing reply. simple=whole answer stating only what is already true — never a promise of future/background work; tool/planning path=brief ack ("On it."), never a refusal; IGNORE=empty string.',
 	priority: 20,
 	schema: {
 		type: "string",

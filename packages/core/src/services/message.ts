@@ -4131,6 +4131,13 @@ import {
 	replyClaimsEmptyTrackedWorkState,
 } from "./message/side-effect-claims.ts";
 
+export {
+	replyAcknowledgesWorkNotFinished,
+	replyClaimsFinishedDelegatedWork,
+	toolEvidenceReportsTerminalFailure,
+	toolEvidenceReportsVerifiedCompletion,
+} from "./message/side-effect-claims.ts";
+
 export { replyClaimsCompletedSideEffect, replyClaimsEmptyTrackedWorkState };
 
 export interface EligibleDirectActionRoute {
@@ -9074,7 +9081,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			disclosureRejectedReasons: [] as string[],
 			nonDisclosureRejectedExplicitCandidates: [] as string[],
 		};
-		const prePatchStageOneReply =
+		let prePatchStageOneReply =
 			typeof messageHandler.plan.reply === "string" &&
 			messageHandler.plan.reply.trim().length > 0
 				? messageHandler.plan.reply
@@ -9108,6 +9115,18 @@ export async function runV5MessageRuntimeStage1(args: {
 						evaluators: BUILTIN_RESPONSE_HANDLER_EVALUATORS,
 					}),
 				);
+		// When the execution-claim guard replaced a promise-shaped Stage-1 reply
+		// ("i'll re-run it now" with no tool routed), the pre-patch snapshot holds
+		// the un-honorable promise — drop it so the answer-rescue and
+		// answerless-final fallback paths cannot resurrect what the guard
+		// retracted.
+		if (
+			responseHandlerEvaluation.appliedPatches.some(
+				(patch) => patch.evaluatorName === "core.stage1_execution_claim_guard",
+			)
+		) {
+			prePatchStageOneReply = undefined;
+		}
 		messageHandler.plan.contexts = filterSelectedContextsForRole(
 			messageHandler.plan.contexts,
 			availableContexts,
@@ -11688,7 +11707,7 @@ function looksLikeExplicitDelegationRequest(text: string): boolean {
 }
 
 const COMPUTED_OBJECT_RE =
-	/[\/\\:@]|https?:|\b(?:current|latest|live|today|now|price|prices|contents?|weather|time|date|random|primes?|fibonacci|under|between|from|of|in|at|each|every|all|list|first|last|largest|smallest|sum|count|number|result|output|value|api|file|url|env|variable|ip|address|size|length|temperature|stats?|status|usage|memory|disk|uptime|hostname|version|fetch(?:es|ed)?|read(?:s)?|calculat\w*|comput\w*)\b/iu;
+	/[/\\:@]|https?:|\b(?:current|latest|live|today|now|price|prices|contents?|weather|time|date|random|primes?|fibonacci|under|between|from|of|in|at|each|every|all|list|first|last|largest|smallest|sum|count|number|result|output|value|api|file|url|env|variable|ip|address|size|length|temperature|stats?|status|usage|memory|disk|uptime|hostname|version|fetch(?:es|ed)?|read(?:s)?|calculat\w*|comput\w*)\b/iu;
 
 /** The object of "just prints X" is a constant when it is a quoted literal,
  * a bare numeric literal, or a few bare words naming nothing computed. The
