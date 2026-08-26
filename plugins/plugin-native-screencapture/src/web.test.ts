@@ -626,6 +626,97 @@ describe("ScreenCaptureWeb", () => {
     });
   });
 
+  it("serializes two concurrent startRecording calls, rejecting the second without leaking a display stream", async () => {
+    installDocument();
+    vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+
+    // Each getDisplayMedia call resolves to a *fresh* stream, mirroring the OS
+    // picker handing back a distinct capture. If the re-entrancy guard is racy,
+    // both concurrent calls acquire a stream and the first is orphaned.
+    const acquiredStreams: FakeStream[] = [];
+    const getDisplayMedia = vi.fn(async () => {
+      const stream = new FakeStream([new FakeTrack("video")]);
+      acquiredStreams.push(stream);
+      return stream as unknown as MediaStream;
+    });
+    setNavigator({
+      mediaDevices: { getDisplayMedia } as unknown as MediaDevices,
+    });
+
+    const plugin = new ScreenCaptureWeb();
+    const results = await Promise.allSettled([
+      plugin.startRecording(),
+      plugin.startRecording(),
+    ]);
+
+    const rejections = results.filter((r) => r.status === "rejected");
+    expect(rejections).toHaveLength(1);
+    expect((rejections[0] as PromiseRejectedResult).reason).toMatchObject({
+      message: expect.stringMatching(/already in progress/i),
+    });
+
+    // The guard's whole purpose: only one OS picker opens and only one display
+    // stream is ever acquired, so there is no orphaned, never-stopped track.
+    expect(getDisplayMedia).toHaveBeenCalledTimes(1);
+    expect(acquiredStreams).toHaveLength(1);
+    expect(FakeMediaRecorder.instances).toHaveLength(1);
+    const liveTrack = acquiredStreams[0].getVideoTracks()[0] as unknown as {
+      stopped: boolean;
+    };
+    expect(liveTrack.stopped).toBe(false);
+    await expect(plugin.getRecordingState()).resolves.toMatchObject({
+      isRecording: true,
+    });
+
+    // The single accepted recording still stops cleanly, releasing its track.
+    await plugin.stopRecording();
+    expect(liveTrack.stopped).toBe(true);
+  });
+
+  it("clears the in-flight guard after a failed start so a later start succeeds", async () => {
+    installDocument();
+    vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+
+    const firstVideoTrack = new FakeTrack("video");
+    const secondVideoTrack = new FakeTrack("video");
+    const getDisplayMedia = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new FakeStream([firstVideoTrack]) as unknown as MediaStream,
+      )
+      .mockResolvedValueOnce(
+        new FakeStream([secondVideoTrack]) as unknown as MediaStream,
+      );
+    const getUserMedia = vi.fn(async (): Promise<MediaStream> => {
+      throw new Error("Permission denied");
+    });
+    setNavigator({
+      mediaDevices: {
+        getDisplayMedia,
+        getUserMedia,
+      } as unknown as MediaDevices,
+    });
+
+    const plugin = new ScreenCaptureWeb();
+
+    // A mic-denied failure runs the J2 rollback; the finally must still release
+    // the in-flight latch or every subsequent start would falsely report
+    // "Recording already in progress".
+    await expect(
+      plugin.startRecording({ captureMicrophone: true }),
+    ).rejects.toThrow("Permission denied");
+    expect(firstVideoTrack.stopped).toBe(true);
+
+    await plugin.startRecording();
+    expect(getDisplayMedia).toHaveBeenCalledTimes(2);
+    await expect(plugin.getRecordingState()).resolves.toMatchObject({
+      isRecording: true,
+    });
+
+    await plugin.stopRecording();
+    expect(secondVideoTrack.stopped).toBe(true);
+  });
+
   it("surfaces an error event when auto-stop over the limit fails", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
