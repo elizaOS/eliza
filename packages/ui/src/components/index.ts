@@ -223,8 +223,6 @@ export * from "./pages/ConfigPageView";
 // the direct subpath; re-exporting it here forms a barrel cycle with
 // DynamicViewLoader (issue #9154).
 export * from "./pages/DatabaseView";
-export * from "./pages/DocumentsView";
-export * from "./pages/ElizaCloudDashboard";
 export * from "./pages/FilesView";
 export * from "./pages/LogsView";
 export * from "./pages/MediaGalleryView";
@@ -232,7 +230,6 @@ export * from "./pages/MemoryDetailPanel";
 export * from "./pages/MemoryViewerView";
 export * from "./pages/PluginsPageView";
 export * from "./pages/PluginsView";
-export * from "./pages/RelationshipsView";
 export * from "./pages/ReleaseCenterView";
 export * from "./pages/RuntimeView";
 export * from "./pages/SecretsView";

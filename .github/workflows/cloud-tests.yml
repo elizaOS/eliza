@@ -122,12 +122,26 @@ jobs:
         run: >-
           bun test --config=/dev/null --isolate
           packages/cloud/shared/src/db/repositories/__tests__/agent-sandboxes-stuck-provisioning-lock.integration.test.ts
+      - name: Run PostgreSQL replacement-attempt lock tests
+        env:
+          APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
+          REQUIRE_REAL_POSTGRES_REPLACEMENT_LOCK_TESTS: "1"
+        run: >-
+          bun test --config=/dev/null --isolate
+          packages/cloud/shared/src/db/repositories/__tests__/agent-sandbox-replacement-account-deletion-locks.integration.test.ts
       - name: Run PostgreSQL agent billing lease precision tests
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
         run: >-
           bun test --config=/dev/null --isolate
           packages/cloud/shared/src/db/repositories/__tests__/agent-billing-runs-postgres.integration.test.ts
+      - name: Run PostgreSQL container admission tests
+        env:
+          APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
+        run: >-
+          test -n "${APPS_TENANT_DB_TEST_DSN:-}" &&
+          bun test --config=/dev/null --isolate
+          packages/cloud/shared/src/db/repositories/__tests__/containers-project-intent-postgres.integration.test.ts
       - name: Run cloud e2e tests
         run: bun run test:cloud:e2e
 
@@ -136,9 +150,10 @@ jobs:
   # control plane, cloud-api Worker, app frontend) and drives real flows.
   # The complete suite takes ~12 minutes plus the linked-workspace build, so
   # this per-push gate runs the explicit shared-to-dedicated funnel subset
-  # (onboarding -> handoff -> provisioning -> upgrade); the remaining specs run
-  # nightly in .github/workflows/monetized-loop-nightly.yml, which executes the
-  # full suite on a schedule. Failures propagate — no continue-on-error.
+  # (onboarding -> handoff -> provisioning -> upgrade) plus the once-only
+  # billing settlement replay contract. The remaining specs are available from
+  # .github/workflows/monetized-loop-nightly.yml. Failures propagate — no
+  # continue-on-error.
   stack-e2e-tests:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
@@ -160,7 +175,7 @@ jobs:
       - uses: ./.github/actions/cloud-setup-test-env
       - name: Install Playwright browsers
         run: .github/scripts/install-playwright-browsers.sh chromium
-      - name: Run shared-to-dedicated funnel specs
+      - name: Run blocking cloud stack specs
         run: >-
           bun run cloud:e2e --
           'app-client-onboarding\.spec\.ts$'
@@ -168,6 +183,7 @@ jobs:
           '(^|/)provision\.spec\.ts$'
           'onboarding-reprovision\.spec\.ts$'
           'shared-to-dedicated-upgrade\.spec\.ts$'
+          'billing-payment-replay\.spec\.ts$'
       - name: Upload Playwright evidence
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

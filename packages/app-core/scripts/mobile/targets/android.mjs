@@ -46,7 +46,7 @@ export const ANDROID_BUILD_TARGETS = Object.freeze({
   }),
   "android-launcher": freezeAndroidBuildTarget({
     target: "android-launcher",
-    webTarget: "android-cloud-debug",
+    webTarget: "android-launcher",
     env: {
       ELIZA_ANDROID_CLOUD_BUILD: "1",
       ELIZA_ANDROID_LAUNCHER_BUILD: "1",

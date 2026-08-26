@@ -48,18 +48,32 @@ describe("resolvePrimingSet", () => {
     ]);
   });
 
-  it("primes nothing in the Android Cloud artifact, including explicit re-prime requests", () => {
-    vi.mocked(isAndroidCloudBuild).mockReturnValue(true);
-
-    expect(resolvePrimingSet({ platform: "android" })).toEqual([]);
+  it("keeps supported Android permissions available for explicit re-priming", () => {
+    expect(resolvePrimingSet({ platform: "android" })).toEqual([
+      "microphone",
+      "notifications",
+      "location",
+    ]);
     expect(
       resolvePrimingSet({ platform: "android", only: ["notifications"] }),
-    ).toEqual([]);
+    ).toEqual(["notifications"]);
     expect(resolvePrimingSet({ platform: "desktop" })).toEqual([
       "microphone",
       "notifications",
       "location",
     ]);
+  });
+
+  it("primes only exact-artifact capabilities in Android Cloud", () => {
+    vi.mocked(isAndroidCloudBuild).mockReturnValue(true);
+
+    expect(resolvePrimingSet({ platform: "android" })).toEqual([
+      "notifications",
+      "location",
+    ]);
+    expect(
+      resolvePrimingSet({ platform: "android", only: ["microphone"] }),
+    ).toEqual([]);
   });
 
   it("primes nothing on web (JIT only — eager browser prompts are a dark pattern)", () => {

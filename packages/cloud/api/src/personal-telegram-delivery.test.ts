@@ -3,7 +3,10 @@
 import { describe, expect, test } from "bun:test";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import {
+  isPersonalTelegramDeliveryEpoch1CompatEnabled,
+  PERSONAL_TELEGRAM_DELIVERY_EPOCH,
   PERSONAL_TELEGRAM_DELIVERY_PATH,
+  PERSONAL_TELEGRAM_DELIVERY_TOMBSTONE_TTL_MS,
   PersonalTelegramDelivery,
 } from "./personal-telegram-delivery";
 
@@ -76,6 +79,42 @@ async function json(response: Promise<Response>): Promise<unknown> {
 }
 
 describe("PersonalTelegramDelivery", () => {
+  test.each([
+    [{}, false],
+    [{ PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED: "false" }, false],
+    [{ PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED: "1" }, false],
+    [{ PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED: " true " }, false],
+    [{ PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED: "true" }, true],
+  ])("resolves epoch-1 compatibility %o as %s", (env, expected) => {
+    expect(isPersonalTelegramDeliveryEpoch1CompatEnabled(env)).toBe(expected);
+  });
+
+  test("bounds quarantined epoch 1 tombstones to the 30-day delivery TTL", async () => {
+    expect(PERSONAL_TELEGRAM_DELIVERY_EPOCH).toBe(2);
+    expect(PERSONAL_TELEGRAM_DELIVERY_TOMBSTONE_TTL_MS).toBe(
+      30 * 24 * 60 * 60_000,
+    );
+    const storage = new MemoryStorage();
+    const object = new PersonalTelegramDelivery(
+      durableState(storage),
+      {} as AppEnv["Bindings"],
+    );
+    const before = Date.now();
+
+    await object.fetch(operation("legacy-epoch-1", "mark_delivered"));
+
+    const entry = storage.values.get("delivery:legacy-epoch-1") as
+      | { expiresAt?: unknown }
+      | undefined;
+    expect(typeof entry?.expiresAt).toBe("number");
+    expect(Number(entry?.expiresAt)).toBeGreaterThanOrEqual(
+      before + PERSONAL_TELEGRAM_DELIVERY_TOMBSTONE_TTL_MS,
+    );
+    expect(Number(entry?.expiresAt)).toBeLessThanOrEqual(
+      Date.now() + PERSONAL_TELEGRAM_DELIVERY_TOMBSTONE_TTL_MS,
+    );
+  });
+
   test("persists an uncertain chunk across object eviction", async () => {
     const storage = new MemoryStorage();
     const first = new PersonalTelegramDelivery(

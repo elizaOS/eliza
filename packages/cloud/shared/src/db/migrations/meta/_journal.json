@@ -2115,6 +2115,83 @@
       "when": 1794254400009,
       "tag": "0318_provider_admissions",
       "breakpoints": true
+    },
+    {
+      "idx": 302,
+      "version": "7",
+      "when": 1794254400010,
+      "tag": "0319_personal_dedicated_upgrade_authorities",
+      "breakpoints": true
+    },
+    {
+      "idx": 303,
+      "version": "7",
+      "when": 1794254400011,
+      "tag": "0320_personal_shared_multi_principal_consent",
+      "breakpoints": true
+    },
+    {
+      "idx": 304,
+      "version": "7",
+      "when": 1794254400012,
+      "tag": "0321_agent_sandbox_replacement_attempts_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 305,
+      "version": "7",
+      "when": 1794254400013,
+      "tag": "0322_agent_sandbox_replacement_attempts_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 306,
+      "version": "7",
+      "when": 1794254400014,
+      "tag": "0323_agent_sandbox_replacement_attempt_locator",
+      "breakpoints": true
+    },
+    {
+      "idx": 307,
+      "version": "7",
+      "when": 1794254400015,
+      "tag": "0324_agent_sandbox_replacement_attempt_settlement",
+      "breakpoints": true
+    },
+    {
+      "idx": 308,
+      "version": "7",
+      "when": 1794254400016,
+      "tag": "0325_agent_sandbox_replacement_attempt_admission_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 309,
+      "version": "7",
+      "when": 1794254400017,
+      "tag": "0326_agent_sandbox_replacement_attempt_identity_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 310,
+      "version": "7",
+      "when": 1794254400018,
+      "tag": "0327_agent_sandbox_replacement_attempt_locator_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 311,
+      "version": "7",
+      "when": 1794254400019,
+      "tag": "0328_agent_sandbox_replacement_attempt_state_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 312,
+      "version": "7",
+      "when": 1794254400020,
+      "tag": "0329_personal_dedicated_adoption_selections",
+      "breakpoints": true
     }
   ]
 }
