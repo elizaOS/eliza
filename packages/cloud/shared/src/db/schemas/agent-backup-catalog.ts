@@ -216,6 +216,10 @@ export const agentBackupGcOutbox = pgTable(
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    tenant_identity_unique: unique("agent_backup_gc_outbox_tenant_identity_unique").on(
+      table.id,
+      table.organization_id,
+    ),
     object_tenant_fk: foreignKey({
       name: "agent_backup_gc_outbox_object_tenant_fkey",
       columns: [table.object_id, table.organization_id],
