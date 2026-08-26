@@ -1,5 +1,5 @@
 /**
- * Small, Cloud-only transport used by the Play-safe Android consumer shell.
+ * Cloud protocol client used by the native Android authentication handoff.
  *
  * This module deliberately has no dependency on ElizaClient, AppContext, the
  * desktop/native-agent transports, or any plugin registry. Every request is
@@ -7,12 +7,14 @@
  * returned by that API.
  */
 
+import { logger } from "@elizaos/logger";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import {
+  DEFAULT_DIRECT_CLOUD_API_BASE_URL,
   directCloudAppBaseForApi,
   resolveCanonicalDirectCloudApiBase,
   STAGING_DIRECT_CLOUD_API_BASE_URL,
@@ -22,6 +24,7 @@ const MANAGED_RUNTIME_HOST_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.cloud(?:-staging)?\.eliza\.app$/i;
 const MOBILE_APP_AUTH_CLIENT_ID = "ai.elizaos.app";
 const MOBILE_APP_AUTH_REDIRECT_URI = "https://eliza.app/auth/callback";
+const MOBILE_AUTH_CONFIG_TIMEOUT_MS = 15_000;
 export const ANDROID_CLOUD_PENDING_LOGIN_KEY =
   "eliza:android-cloud:pending-login:v1";
 
@@ -45,6 +48,44 @@ export interface AndroidCloudTranscriptMessage {
 export interface AndroidCloudLoginAttempt {
   state: string;
   browserUrl: string;
+}
+
+export interface AndroidCloudLoginCompletion {
+  apiBase: string;
+  pendingCleanupRequired: boolean;
+  state: string;
+}
+
+export type AndroidCloudCallbackDisposition = "acknowledge" | "retry";
+
+/** Carries the native replay decision without exposing protocol internals. */
+export class AndroidCloudAuthError extends Error {
+  readonly attemptId: string | null;
+  readonly disposition: AndroidCloudCallbackDisposition;
+
+  constructor(
+    message: string,
+    options: {
+      attemptId?: string | null;
+      cause?: unknown;
+      disposition: AndroidCloudCallbackDisposition;
+    },
+  ) {
+    super(
+      message,
+      options.cause === undefined ? undefined : { cause: options.cause },
+    );
+    this.name = "AndroidCloudAuthError";
+    this.attemptId = options.attemptId ?? null;
+    this.disposition = options.disposition;
+  }
+}
+
+export function shouldAcknowledgeAndroidCloudCallback(error: unknown): boolean {
+  return (
+    error instanceof AndroidCloudAuthError &&
+    error.disposition === "acknowledge"
+  );
 }
 
 interface AndroidCloudPendingLogin {
@@ -79,10 +120,10 @@ const browserCredentialStore: AndroidCloudCredentialStore = {
     return readStoredStewardToken()?.trim() || null;
   },
   async write(token) {
-    writeStoredStewardToken(token);
+    await writeStoredStewardToken(token);
   },
   async clear() {
-    clearStoredStewardToken();
+    await clearStoredStewardToken();
   },
 };
 
@@ -115,6 +156,8 @@ function parsePendingLogin(value: string): AndroidCloudPendingLogin | null {
   try {
     parsed = JSON.parse(value);
   } catch {
+    // error-policy:J3 malformed protected pending-login JSON is an explicit
+    // invalid signal; callers never treat it as a valid authentication state.
     return null;
   }
   const pending = record(parsed);
@@ -133,6 +176,87 @@ function parsePendingLogin(value: string): AndroidCloudPendingLogin | null {
     return null;
   }
   return { clientId, codeVerifier, environment, redirectUri, state };
+}
+
+function apiBaseForEnvironment(
+  environment: AndroidCloudPendingLogin["environment"],
+): string {
+  return environment === "staging"
+    ? STAGING_DIRECT_CLOUD_API_BASE_URL
+    : DEFAULT_DIRECT_CLOUD_API_BASE_URL;
+}
+
+function singleCallbackValue(
+  callback: URL,
+  key: "code" | "error" | "error_description" | "state",
+): string | null {
+  const values = callback.searchParams.getAll(key);
+  if (values.length > 1) {
+    throw new AndroidCloudAuthError(
+      "Eliza Cloud returned an ambiguous app callback.",
+      { disposition: "acknowledge" },
+    );
+  }
+  return values[0]?.trim() || null;
+}
+
+function parseCanonicalCallback(callbackUrl: string): {
+  callback: URL;
+  returnedState: string | null;
+} {
+  let callback: URL;
+  try {
+    callback = new URL(callbackUrl);
+  } catch (error) {
+    throw new AndroidCloudAuthError(
+      "Eliza Cloud returned an invalid app callback.",
+      { cause: error, disposition: "acknowledge" },
+    );
+  }
+  const allowedKeys = new Set(["code", "error", "error_description", "state"]);
+  const hasUnknownKey = [...callback.searchParams.keys()].some(
+    (key) => !allowedKeys.has(key),
+  );
+  if (
+    callback.protocol !== "elizaos:" ||
+    callback.hostname !== "auth" ||
+    callback.pathname !== "/callback" ||
+    callback.username ||
+    callback.password ||
+    callback.port ||
+    callback.hash ||
+    hasUnknownKey
+  ) {
+    throw new AndroidCloudAuthError(
+      "Eliza Cloud returned an untrusted app callback.",
+      { disposition: "acknowledge" },
+    );
+  }
+  const returnedState = singleCallbackValue(callback, "state");
+  return { callback, returnedState };
+}
+
+/** Validates the complete native callback grammar before exposing its attempt. */
+export function parseAndroidCloudCallbackAttemptId(
+  callbackUrl: string,
+): string | null {
+  return parseCanonicalCallback(callbackUrl).returnedState;
+}
+
+function protocolFailure(
+  message: string,
+  responseStatus: number,
+  attemptId: string,
+): AndroidCloudAuthError {
+  const retryableStatus =
+    responseStatus === 408 ||
+    responseStatus === 425 ||
+    responseStatus === 429 ||
+    responseStatus >= 500;
+  return new AndroidCloudAuthError(message, {
+    attemptId,
+    disposition: retryableStatus ? "retry" : "acknowledge",
+  });
 }
 
 async function responseJson(response: Response): Promise<JsonRecord> {
@@ -323,7 +447,9 @@ export class AndroidCloudClient {
     const configUrl = new URL(`${this.apiBase}/api/v1/app-auth/mobile/config`);
     for (const [key, value] of Object.entries(binding))
       configUrl.searchParams.set(key, value);
-    const configResponse = await this.fetchImpl(configUrl);
+    const configResponse = await this.fetchImpl(configUrl, {
+      signal: AbortSignal.timeout(MOBILE_AUTH_CONFIG_TIMEOUT_MS),
+    });
     const configBody = await responseJson(configResponse);
     if (!configResponse.ok) {
       throw new Error(
@@ -374,50 +500,73 @@ export class AndroidCloudClient {
     return { state, browserUrl: loginUrl.toString() };
   }
 
-  async cancelLogin(): Promise<void> {
+  async cancelLogin(expectedState?: string): Promise<boolean> {
+    if (expectedState) {
+      const storedPending = await this.pendingLoginStore.read();
+      const persisted = storedPending ? parsePendingLogin(storedPending) : null;
+      const currentState = persisted?.state ?? this.pendingLogin?.state ?? null;
+      if (currentState !== expectedState) return false;
+    }
     this.pendingLogin = null;
     await this.pendingLoginStore.clear();
+    return true;
+  }
+
+  private async clearTerminalLogin(expectedState: string): Promise<void> {
+    try {
+      await this.cancelLogin(expectedState);
+    } catch (err) {
+      // error-policy:J6 terminal PKCE cleanup is best-effort after the protocol
+      // has already decided the callback; the typed disposition must remain
+      // authoritative so the native callback buffer can be acknowledged.
+      logger.warn(
+        { err },
+        "[AndroidCloudClient] pending login cleanup deferred after terminal authentication failure",
+      );
+    }
   }
 
   async completeLogin(
     callbackUrl: string,
     signal?: AbortSignal,
-  ): Promise<void> {
+  ): Promise<AndroidCloudLoginCompletion> {
     signal?.throwIfAborted();
     const storedPending = await this.pendingLoginStore.read();
     const pending =
-      this.pendingLogin ??
-      (storedPending ? parsePendingLogin(storedPending) : null);
-    if (!pending) throw new Error("No Eliza Cloud sign-in is waiting.");
-    let callback: URL;
-    try {
-      callback = new URL(callbackUrl);
-    } catch {
-      throw new Error("Eliza Cloud returned an invalid app callback.");
+      (storedPending ? parsePendingLogin(storedPending) : null) ??
+      this.pendingLogin;
+    const { callback, returnedState } = parseCanonicalCallback(callbackUrl);
+    if (!pending) {
+      throw new AndroidCloudAuthError("No Eliza Cloud sign-in is waiting.", {
+        attemptId: returnedState,
+        disposition: "acknowledge",
+      });
     }
-    if (
-      callback.protocol !== "elizaos:" ||
-      [callback.host, callback.pathname]
-        .join("/")
-        .replace(/\/+/g, "/")
-        .replace(/^\/+|\/+$/g, "") !== "auth/callback"
-    ) {
-      throw new Error("Eliza Cloud returned an untrusted app callback.");
-    }
-    const returnedState = callback.searchParams.get("state")?.trim();
     if (!returnedState || returnedState !== pending.state) {
-      throw new Error("Eliza Cloud sign-in state did not match this device.");
-    }
-    const callbackError = callback.searchParams.get("error")?.trim();
-    if (callbackError) {
-      await this.cancelLogin();
-      throw new Error(
-        callback.searchParams.get("error_description")?.trim() ||
-          "Eliza Cloud sign-in was cancelled.",
+      throw new AndroidCloudAuthError(
+        "Eliza Cloud sign-in state did not match this device.",
+        { attemptId: returnedState, disposition: "acknowledge" },
       );
     }
-    const code = callback.searchParams.get("code")?.trim();
-    if (!code) throw new Error("Eliza Cloud returned no authorization code.");
+    const callbackError = singleCallbackValue(callback, "error");
+    if (callbackError) {
+      await this.clearTerminalLogin(pending.state);
+      throw new AndroidCloudAuthError(
+        singleCallbackValue(callback, "error_description") ||
+          "Eliza Cloud sign-in was cancelled.",
+        { attemptId: pending.state, disposition: "acknowledge" },
+      );
+    }
+    const code = singleCallbackValue(callback, "code");
+    if (!code) {
+      await this.clearTerminalLogin(pending.state);
+      throw new AndroidCloudAuthError(
+        "Eliza Cloud returned no authorization code.",
+        { attemptId: pending.state, disposition: "acknowledge" },
+      );
+    }
+
+    const completionApiBase = apiBaseForEnvironment(pending.environment);
 
     const tokenRequest = {
       clientId: pending.clientId,
@@ -428,9 +577,10 @@ export class AndroidCloudClient {
       code,
       codeVerifier: pending.codeVerifier,
     };
+    let terminalFailure = false;
     try {
       const tokenResponse = await this.fetchImpl(
-        `${this.apiBase}/api/v1/app-auth/mobile/token`,
+        `${completionApiBase}/api/v1/app-auth/mobile/token`,
         {
           method: "POST",
           signal,
@@ -440,24 +590,37 @@ export class AndroidCloudClient {
       );
       const exchanged = await responseJson(tokenResponse);
       if (!tokenResponse.ok) {
-        throw new Error(
+        const failure = protocolFailure(
           mobileAuthResponseError(
             exchanged,
             "Eliza Cloud could not create a mobile session.",
           ),
+          tokenResponse.status,
+          pending.state,
         );
+        terminalFailure = failure.disposition === "acknowledge";
+        throw failure;
       }
       const secret = stringField(exchanged.secret);
       const credentialId = stringField(exchanged.credentialId);
       if (!secret || !credentialId)
-        throw new Error("Eliza Cloud returned an invalid mobile session.");
+        throw new AndroidCloudAuthError(
+          "Eliza Cloud returned an invalid mobile session.",
+          { attemptId: pending.state, disposition: "retry" },
+        );
 
       signal?.throwIfAborted();
       const previousSecret = await this.credentialStore.read();
-      await this.credentialStore.write(secret);
       try {
+        await this.credentialStore.write(secret);
+        if ((await this.credentialStore.read()) !== secret) {
+          throw new AndroidCloudAuthError(
+            "Eliza Cloud could not durably store the mobile session.",
+            { attemptId: pending.state, disposition: "retry" },
+          );
+        }
         const acknowledgeResponse = await this.fetchImpl(
-          `${this.apiBase}/api/v1/app-auth/mobile/ack`,
+          `${completionApiBase}/api/v1/app-auth/mobile/ack`,
           {
             method: "POST",
             signal,
@@ -476,20 +639,25 @@ export class AndroidCloudClient {
         );
         const acknowledged = await responseJson(acknowledgeResponse);
         if (!acknowledgeResponse.ok) {
-          throw new Error(
+          const failure = protocolFailure(
             mobileAuthResponseError(
               acknowledged,
               "Eliza Cloud could not activate the mobile session.",
             ),
+            acknowledgeResponse.status,
+            pending.state,
           );
+          terminalFailure = failure.disposition === "acknowledge";
+          throw failure;
         }
         if (
           acknowledged.success !== true ||
           acknowledged.status !== "acknowledged" ||
           stringField(acknowledged.credentialId) !== credentialId
         ) {
-          throw new Error(
+          throw new AndroidCloudAuthError(
             "Eliza Cloud returned an invalid mobile session acknowledgement.",
+            { attemptId: pending.state, disposition: "retry" },
           );
         }
       } catch (error) {
@@ -497,10 +665,33 @@ export class AndroidCloudClient {
         else await this.credentialStore.clear();
         throw error;
       }
-      await this.cancelLogin();
+      let pendingCleanupRequired = false;
+      try {
+        await this.cancelLogin(pending.state);
+      } catch (err) {
+        // The credential write and server acknowledgement are the commit point.
+        // A protected-store cleanup failure must not roll back an activated
+        // session; callers retain this explicit signal for later cleanup.
+        // error-policy:J4 the authenticated session remains valid while this
+        // explicit cleanup signal and diagnostic preserve the degraded state.
+        logger.warn(
+          { err },
+          "[AndroidCloudClient] pending login cleanup deferred after authentication",
+        );
+        pendingCleanupRequired = true;
+      }
+      return {
+        apiBase: completionApiBase,
+        pendingCleanupRequired,
+        state: pending.state,
+      };
     } catch (error) {
-      await this.cancelLogin();
-      throw error;
+      if (terminalFailure) await this.clearTerminalLogin(pending.state);
+      if (error instanceof AndroidCloudAuthError) throw error;
+      throw new AndroidCloudAuthError(
+        "Eliza Cloud sign-in was interrupted. Please try again.",
+        { attemptId: pending.state, cause: error, disposition: "retry" },
+      );
     }
   }
 

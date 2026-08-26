@@ -8,6 +8,7 @@
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  ANDROID_CLOUD_PENDING_LOGIN_KEY,
   AndroidCloudClient,
   resolveAndroidCloudChatAuthority,
 } from "./android-cloud-client";
@@ -115,7 +116,11 @@ describe("AndroidCloudClient", () => {
       client.completeLogin(
         `elizaos://auth/callback?code=emac_${"a".repeat(64)}&state=${encodeURIComponent(attempt.state)}`,
       ),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({
+      apiBase: "https://api.eliza.app",
+      pendingCleanupRequired: false,
+      state: attempt.state,
+    });
     expect(credentialStore.write).toHaveBeenCalledWith(MOBILE_SECRET);
     expect(fetchImpl.mock.calls.map(([input]) => String(input))).toEqual([
       expect.stringContaining("/api/v1/app-auth/mobile/config?"),
@@ -201,11 +206,70 @@ describe("AndroidCloudClient", () => {
       recreatedClient.completeLogin(
         `elizaos://auth/callback?code=emac_${"a".repeat(64)}&state=${encodeURIComponent(attempt.state)}`,
       ),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({
+      apiBase: "https://api.eliza.app",
+      pendingCleanupRequired: false,
+      state: attempt.state,
+    });
 
     expect(secureToken).toBe(MOBILE_SECRET);
     expect(pendingLoginStore.clear).toHaveBeenCalledOnce();
     expect(pendingLogin).toBeNull();
+  });
+
+  it("uses the persisted staging authority after renderer recreation", async () => {
+    let pendingLogin: string | null = null;
+    const pendingLoginStore = {
+      read: vi.fn(async () => pendingLogin),
+      write: vi.fn(async (value: string) => {
+        pendingLogin = value;
+      }),
+      clear: vi.fn(async () => {
+        pendingLogin = null;
+      }),
+    };
+    const firstClient = new AndroidCloudClient({
+      cloudApiBase: "https://api-staging.eliza.app",
+      fetchImpl: vi.fn<typeof fetch>().mockResolvedValueOnce(
+        json(200, {
+          success: true,
+          clientId: "ai.elizaos.app",
+          environment: "staging",
+          redirectUri: "https://eliza.app/auth/callback",
+          codeChallengeMethod: "S256",
+        }),
+      ),
+      pendingLoginStore,
+    });
+    const attempt = await firstClient.beginLogin();
+    const recreatedFetch = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        json(200, {
+          credentialId: MOBILE_CREDENTIAL_ID,
+          secret: MOBILE_SECRET,
+        }),
+      )
+      .mockResolvedValueOnce(
+        json(200, {
+          success: true,
+          status: "acknowledged",
+          credentialId: MOBILE_CREDENTIAL_ID,
+        }),
+      );
+    const recreatedClient = new AndroidCloudClient({
+      cloudApiBase: "https://api.eliza.app",
+      fetchImpl: recreatedFetch,
+      pendingLoginStore,
+    });
+
+    await recreatedClient.completeLogin(
+      `elizaos://auth/callback?code=current&state=${attempt.state}`,
+    );
+    expect(recreatedFetch.mock.calls.map(([input]) => String(input))).toEqual([
+      "https://api-staging.eliza.app/api/v1/app-auth/mobile/token",
+      "https://api-staging.eliza.app/api/v1/app-auth/mobile/ack",
+    ]);
   });
 
   it("rejects a callback that does not match the in-memory PKCE state", async () => {
@@ -272,6 +336,400 @@ describe("AndroidCloudClient", () => {
     expect(credentialStore.write).toHaveBeenNthCalledWith(1, MOBILE_SECRET);
     expect(credentialStore.write).toHaveBeenNthCalledWith(2, "previous-secret");
     expect(credentialStore.clear).not.toHaveBeenCalled();
+    expect(
+      localStorage.getItem(ANDROID_CLOUD_PENDING_LOGIN_KEY),
+    ).not.toBeNull();
+  });
+
+  it("retains retry authority after a transient acknowledgement failure", async () => {
+    let secureToken: string | null = null;
+    const credentialStore = {
+      read: vi.fn(async () => secureToken),
+      write: vi.fn(async (token: string) => {
+        secureToken = token;
+      }),
+      clear: vi.fn(async () => {
+        secureToken = null;
+      }),
+    };
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        json(200, {
+          success: true,
+          clientId: "ai.elizaos.app",
+          environment: "production",
+          redirectUri: "https://eliza.app/auth/callback",
+          codeChallengeMethod: "S256",
+        }),
+      )
+      .mockResolvedValueOnce(
+        json(200, {
+          credentialId: MOBILE_CREDENTIAL_ID,
+          secret: MOBILE_SECRET,
+        }),
+      )
+      .mockResolvedValueOnce(json(503, { error: "temporarily_unavailable" }))
+      .mockResolvedValueOnce(
+        json(200, {
+          credentialId: MOBILE_CREDENTIAL_ID,
+          secret: MOBILE_SECRET,
+        }),
+      )
+      .mockResolvedValueOnce(
+        json(200, {
+          success: true,
+          status: "acknowledged",
+          credentialId: MOBILE_CREDENTIAL_ID,
+        }),
+      );
+    const client = new AndroidCloudClient({ credentialStore, fetchImpl });
+    const attempt = await client.beginLogin();
+    const callback = `elizaos://auth/callback?code=emac_${"a".repeat(64)}&state=${encodeURIComponent(attempt.state)}`;
+
+    await expect(client.completeLogin(callback)).rejects.toMatchObject({
+      disposition: "retry",
+    });
+    expect(
+      localStorage.getItem(ANDROID_CLOUD_PENDING_LOGIN_KEY),
+    ).not.toBeNull();
+    await expect(client.completeLogin(callback)).resolves.toMatchObject({
+      state: attempt.state,
+    });
+    expect(secureToken).toBe(MOBILE_SECRET);
+    expect(localStorage.getItem(ANDROID_CLOUD_PENDING_LOGIN_KEY)).toBeNull();
+  });
+
+  it.each(
+    ([408, 425, 429] as const).flatMap((status) =>
+      (["token", "ack"] as const).map((step) => ({ status, step })),
+    ),
+  )(
+    "retains and replays the pending attempt after a $status from $step",
+    async ({ status, step: rateLimitedStep }) => {
+      let secureToken: string | null = null;
+      const credentialStore = {
+        read: vi.fn(async () => secureToken),
+        write: vi.fn(async (token: string) => {
+          secureToken = token;
+        }),
+        clear: vi.fn(async () => {
+          secureToken = null;
+        }),
+      };
+      const config = json(200, {
+        success: true,
+        clientId: "ai.elizaos.app",
+        environment: "production",
+        redirectUri: "https://eliza.app/auth/callback",
+        codeChallengeMethod: "S256",
+      });
+      const token = json(200, {
+        credentialId: MOBILE_CREDENTIAL_ID,
+        secret: MOBILE_SECRET,
+      });
+      const ack = json(200, {
+        success: true,
+        status: "acknowledged",
+        credentialId: MOBILE_CREDENTIAL_ID,
+      });
+      const fetchImpl =
+        rateLimitedStep === "token"
+          ? vi
+              .fn<typeof fetch>()
+              .mockResolvedValueOnce(config)
+              .mockResolvedValueOnce(json(status, { error: "retryable" }))
+              .mockResolvedValueOnce(token)
+              .mockResolvedValueOnce(ack)
+          : vi
+              .fn<typeof fetch>()
+              .mockResolvedValueOnce(config)
+              .mockResolvedValueOnce(token)
+              .mockResolvedValueOnce(json(status, { error: "retryable" }))
+              .mockResolvedValueOnce(
+                json(200, {
+                  credentialId: MOBILE_CREDENTIAL_ID,
+                  secret: MOBILE_SECRET,
+                }),
+              )
+              .mockResolvedValueOnce(ack);
+      const client = new AndroidCloudClient({ credentialStore, fetchImpl });
+      const attempt = await client.beginLogin();
+      const callback = `elizaos://auth/callback?code=current&state=${attempt.state}`;
+
+      await expect(client.completeLogin(callback)).rejects.toMatchObject({
+        disposition: "retry",
+      });
+      expect(
+        localStorage.getItem(ANDROID_CLOUD_PENDING_LOGIN_KEY),
+      ).not.toBeNull();
+      await expect(client.completeLogin(callback)).resolves.toMatchObject({
+        pendingCleanupRequired: false,
+        state: attempt.state,
+      });
+      expect(secureToken).toBe(MOBILE_SECRET);
+    },
+  );
+
+  it("commits an acknowledged credential when pending cleanup fails", async () => {
+    let pendingLogin: string | null = null;
+    const pendingLoginStore = {
+      read: vi.fn(async () => pendingLogin),
+      write: vi.fn(async (value: string) => {
+        pendingLogin = value;
+      }),
+      clear: vi.fn(async () => {
+        throw new Error("Keystore cleanup unavailable");
+      }),
+    };
+    let secureToken: string | null = null;
+    const credentialStore = {
+      read: vi.fn(async () => secureToken),
+      write: vi.fn(async (token: string) => {
+        secureToken = token;
+      }),
+      clear: vi.fn(async () => {
+        secureToken = null;
+      }),
+    };
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        json(200, {
+          success: true,
+          clientId: "ai.elizaos.app",
+          environment: "production",
+          redirectUri: "https://eliza.app/auth/callback",
+          codeChallengeMethod: "S256",
+        }),
+      )
+      .mockResolvedValueOnce(
+        json(200, {
+          credentialId: MOBILE_CREDENTIAL_ID,
+          secret: MOBILE_SECRET,
+        }),
+      )
+      .mockResolvedValueOnce(
+        json(200, {
+          success: true,
+          status: "acknowledged",
+          credentialId: MOBILE_CREDENTIAL_ID,
+        }),
+      );
+    const client = new AndroidCloudClient({
+      credentialStore,
+      fetchImpl,
+      pendingLoginStore,
+    });
+    const attempt = await client.beginLogin();
+
+    await expect(
+      client.completeLogin(
+        `elizaos://auth/callback?code=current&state=${attempt.state}`,
+      ),
+    ).resolves.toEqual({
+      apiBase: "https://api.eliza.app",
+      pendingCleanupRequired: true,
+      state: attempt.state,
+    });
+    expect(secureToken).toBe(MOBILE_SECRET);
+    expect(pendingLogin).not.toBeNull();
+  });
+
+  it("does not acknowledge success when protected credential readback fails", async () => {
+    const credentialStore = {
+      read: vi.fn(async () => null),
+      write: vi.fn(async () => {}),
+      clear: vi.fn(async () => {}),
+    };
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        json(200, {
+          success: true,
+          clientId: "ai.elizaos.app",
+          environment: "production",
+          redirectUri: "https://eliza.app/auth/callback",
+          codeChallengeMethod: "S256",
+        }),
+      )
+      .mockResolvedValueOnce(
+        json(200, {
+          credentialId: MOBILE_CREDENTIAL_ID,
+          secret: MOBILE_SECRET,
+        }),
+      );
+    const client = new AndroidCloudClient({ credentialStore, fetchImpl });
+    const attempt = await client.beginLogin();
+
+    await expect(
+      client.completeLogin(
+        `elizaos://auth/callback?code=current&state=${attempt.state}`,
+      ),
+    ).rejects.toMatchObject({ disposition: "retry" });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(
+      localStorage.getItem(ANDROID_CLOUD_PENDING_LOGIN_KEY),
+    ).not.toBeNull();
+  });
+
+  it("clears a terminal 4xx exchange while preserving typed acknowledgement", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        json(200, {
+          success: true,
+          clientId: "ai.elizaos.app",
+          environment: "production",
+          redirectUri: "https://eliza.app/auth/callback",
+          codeChallengeMethod: "S256",
+        }),
+      )
+      .mockResolvedValueOnce(json(400, { error: "invalid_grant" }));
+    const client = new AndroidCloudClient({ fetchImpl });
+    const attempt = await client.beginLogin();
+
+    await expect(
+      client.completeLogin(
+        `elizaos://auth/callback?code=emac_${"a".repeat(64)}&state=${attempt.state}`,
+      ),
+    ).rejects.toMatchObject({ disposition: "acknowledge" });
+    expect(localStorage.getItem(ANDROID_CLOUD_PENDING_LOGIN_KEY)).toBeNull();
+  });
+
+  it("preserves callback cancellation when protected pending cleanup fails", async () => {
+    let pendingLogin: string | null = null;
+    const pendingLoginStore = {
+      read: vi.fn(async () => pendingLogin),
+      write: vi.fn(async (value: string) => {
+        pendingLogin = value;
+      }),
+      clear: vi.fn(async () => {
+        throw new Error("Keystore cleanup unavailable");
+      }),
+    };
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      json(200, {
+        success: true,
+        clientId: "ai.elizaos.app",
+        environment: "production",
+        redirectUri: "https://eliza.app/auth/callback",
+        codeChallengeMethod: "S256",
+      }),
+    );
+    const client = new AndroidCloudClient({ fetchImpl, pendingLoginStore });
+    const attempt = await client.beginLogin();
+
+    await expect(
+      client.completeLogin(
+        `elizaos://auth/callback?error=access_denied&error_description=Not%20now&state=${attempt.state}`,
+      ),
+    ).rejects.toMatchObject({
+      attemptId: attempt.state,
+      disposition: "acknowledge",
+      message: "Not now",
+    });
+    expect(pendingLoginStore.clear).toHaveBeenCalledOnce();
+  });
+
+  it("preserves a missing-code acknowledgement when protected pending cleanup fails", async () => {
+    let pendingLogin: string | null = null;
+    const pendingLoginStore = {
+      read: vi.fn(async () => pendingLogin),
+      write: vi.fn(async (value: string) => {
+        pendingLogin = value;
+      }),
+      clear: vi.fn(async () => {
+        throw new Error("Keystore cleanup unavailable");
+      }),
+    };
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      json(200, {
+        success: true,
+        clientId: "ai.elizaos.app",
+        environment: "production",
+        redirectUri: "https://eliza.app/auth/callback",
+        codeChallengeMethod: "S256",
+      }),
+    );
+    const client = new AndroidCloudClient({ fetchImpl, pendingLoginStore });
+    const attempt = await client.beginLogin();
+
+    await expect(
+      client.completeLogin(`elizaos://auth/callback?state=${attempt.state}`),
+    ).rejects.toMatchObject({
+      attemptId: attempt.state,
+      disposition: "acknowledge",
+      message: "Eliza Cloud returned no authorization code.",
+    });
+    expect(pendingLoginStore.clear).toHaveBeenCalledOnce();
+  });
+
+  it("preserves a terminal exchange error when protected pending cleanup fails", async () => {
+    let pendingLogin: string | null = null;
+    const pendingLoginStore = {
+      read: vi.fn(async () => pendingLogin),
+      write: vi.fn(async (value: string) => {
+        pendingLogin = value;
+      }),
+      clear: vi.fn(async () => {
+        throw new Error("Keystore cleanup unavailable");
+      }),
+    };
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        json(200, {
+          success: true,
+          clientId: "ai.elizaos.app",
+          environment: "production",
+          redirectUri: "https://eliza.app/auth/callback",
+          codeChallengeMethod: "S256",
+        }),
+      )
+      .mockResolvedValueOnce(
+        json(400, {
+          error: "invalid_grant",
+          errorDescription: "Authorization code expired.",
+        }),
+      );
+    const client = new AndroidCloudClient({ fetchImpl, pendingLoginStore });
+    const attempt = await client.beginLogin();
+
+    await expect(
+      client.completeLogin(
+        `elizaos://auth/callback?code=emac_${"a".repeat(64)}&state=${attempt.state}`,
+      ),
+    ).rejects.toMatchObject({
+      attemptId: attempt.state,
+      disposition: "acknowledge",
+      message: "Authorization code expired.",
+    });
+    expect(pendingLoginStore.clear).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    "elizaos://user@auth/callback?code=x&state=s",
+    "elizaos://auth/callback?code=x&state=s#fragment",
+    "elizaos://auth/callback?code=x&code=y&state=s",
+    "elizaos://auth/callback?code=x&state=s&state=t",
+    "elizaos://wrong/callback?code=x&state=s",
+  ])("rejects noncanonical callback grammar: %s", async (callback) => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      json(200, {
+        success: true,
+        clientId: "ai.elizaos.app",
+        environment: "production",
+        redirectUri: "https://eliza.app/auth/callback",
+        codeChallengeMethod: "S256",
+      }),
+    );
+    const client = new AndroidCloudClient({ fetchImpl });
+    await client.beginLogin();
+    await expect(client.completeLogin(callback)).rejects.toMatchObject({
+      disposition: "acknowledge",
+    });
+    expect(fetchImpl).toHaveBeenCalledOnce();
   });
 
   it("translates a mobile-auth configuration failure into product language", async () => {
