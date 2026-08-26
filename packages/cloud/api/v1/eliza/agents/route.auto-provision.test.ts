@@ -181,6 +181,86 @@ test("GET reconnects an agent row to its newest active lifecycle job", async () 
   expect(body.data[0]?.activeJob).toMatchObject({ id: "job-1", attempts: 1 });
 });
 
+test("GET returns an owner-safe error summary without internal stack frames", async () => {
+  listAgents.mockImplementationOnce(async () => [
+    {
+      id: "agent-1",
+      agent_name: "Ada",
+      status: "error",
+      database_status: "ready",
+      last_backup_at: null,
+      last_heartbeat_at: null,
+      error_message:
+        "Provisioning permanently failed: Sandbox health check timed out\n    at ProvisioningJobService.executeAgentProvision (/opt/eliza/packages/cloud/shared/src/lib/services/provisioning-jobs.ts:6003:13)",
+      created_at: new Date("2026-08-21T00:00:00.000Z"),
+      updated_at: new Date("2026-08-21T00:01:00.000Z"),
+      character_id: null,
+      agent_config: {},
+      docker_image: null,
+      execution_tier: "dedicated-always",
+    },
+  ]);
+
+  const response = await get();
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as {
+    data: Array<{ errorMessage: string | null }>;
+  };
+  expect(body.data[0]?.errorMessage).toBe(
+    "Provisioning permanently failed: Sandbox health check timed out",
+  );
+});
+
+test.each([
+  "ENOENT [/srv/eliza/agents/agent-1/config.json]",
+  "ENOENT: //srv/eliza/agents/agent-1/config.json",
+  "Provider https://api.eliza.app?debug=/srv/eliza/agents/agent-1/config.json",
+  "Provider https://api.eliza.app?debug=/workspace/eliza/agents/agent-1/config.json",
+  "Provider https://api.eliza.app?debug=/app/eliza/agents/agent-1/config.json",
+  "Provider https://api.eliza.app?debug=/data/agents/agent-1/config.json",
+  "Provider https://api.eliza.app?debug=/nix/store/secret/agents/agent-1/config.json",
+  "Provider https://api.eliza.app?debug=//internal-host/agents/agent-1/config.json",
+  "Provider https://api.eliza.app?debug=/callback/eliza/agents/agent-1/config.json",
+  "Provider https://api.eliza.app?debug=/v1/chat/private/agents/agent-1/config.json",
+  "Provider https://api.eliza.app(/srv/eliza/agents/agent-1/config.json)",
+  "Provider https://api.eliza.app,C:\\eliza\\agents\\agent-1\\config.json",
+  "Provider https://api.eliza.app?debug=%20%2Fsrv%2Feliza%2Fagents%2Fagent-1%2Fconfig.json",
+  "Provider https://api.eliza.app?debug=%09%2Fworkspace%2Feliza%2Fagents%2Fagent-1%2Fconfig.json",
+  "Provider https://api.eliza.app?%2Fsrv%2Feliza%2Fagents%2Fagent-1%2Fconfig.json=debug",
+])(
+  "GET withholds formatted server paths from the list DTO: %s",
+  async (message) => {
+    listAgents.mockImplementationOnce(async () => [
+      {
+        id: "agent-1",
+        agent_name: "Ada",
+        status: "error",
+        database_status: "ready",
+        last_backup_at: null,
+        last_heartbeat_at: null,
+        error_message: `${message}\n    at readAgentConfig (/opt/eliza/provision.ts:42:7)`,
+        created_at: new Date("2026-08-21T00:00:00.000Z"),
+        updated_at: new Date("2026-08-21T00:01:00.000Z"),
+        character_id: null,
+        agent_config: {},
+        docker_image: null,
+        execution_tier: "dedicated-always",
+      },
+    ]);
+
+    const response = await get();
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: Array<{ errorMessage: string | null }>;
+    };
+    expect(body.data[0]?.errorMessage).toBe(
+      "The operation failed. Retry from Eliza Cloud or contact support if it continues.",
+    );
+    expect(JSON.stringify(body)).not.toContain("agent-1/config.json");
+    expect(JSON.stringify(body)).not.toContain("/opt/eliza");
+  },
+);
+
 describe("POST /api/v1/eliza/agents autoProvision identity", () => {
   beforeEach(() => {
     checkAgentCreditGate.mockClear();
