@@ -44,21 +44,27 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).not.toContain("SYSTEM_UI_FLAG_");
   });
 
-  it("keeps lock-task and Back suppression out of ordinary Cloud builds", () => {
+  it("keeps kiosk navigation suppression out of ordinary Cloud builds", () => {
     const source = cloudSafeMainActivityJava("ai.elizaos.app");
 
     expect(source).not.toContain("OnBackPressedCallback");
     expect(source).not.toContain("startLockTask()");
+    expect(source).not.toContain("KEYCODE_FORWARD");
+    expect(source).not.toContain("KEYCODE_NAVIGATE_NEXT");
   });
 
-  it("pins the launcher task and suppresses Back only in the kiosk launcher", () => {
+  it("pins the launcher task and suppresses Back and Forward only in kiosk", () => {
     const source = cloudSafeMainActivityJava("ai.elizaos.app", {
       launcherKiosk: true,
     });
 
+    expect(source).toContain("import android.view.KeyEvent;");
     expect(source).toContain("import androidx.activity.OnBackPressedCallback;");
     expect(source).toContain("new OnBackPressedCallback(true)");
     expect(source).toContain("public void handleOnBackPressed()");
+    expect(source).toContain("public boolean dispatchKeyEvent(KeyEvent event)");
+    expect(source).toContain("KeyEvent.KEYCODE_FORWARD");
+    expect(source).toContain("KeyEvent.KEYCODE_NAVIGATE_NEXT");
     expect(source).toContain("startLockTask();");
     expect(source).toContain(
       "IllegalArgumentException | IllegalStateException | SecurityException",

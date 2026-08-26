@@ -6095,7 +6095,9 @@ export function cloudSafeMainActivityJava(
   { launcherKiosk = false } = {},
 ) {
   const launcherImports = launcherKiosk
-    ? `import androidx.activity.OnBackPressedCallback;
+    ? `import android.view.KeyEvent;
+
+import androidx.activity.OnBackPressedCallback;
 `
     : "";
   const launcherSetup = launcherKiosk
@@ -6115,6 +6117,20 @@ export function cloudSafeMainActivityJava(
         } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
             Log.w(TAG, "Unable to enter launcher lock-task mode", e);
         }
+`
+    : "";
+  const launcherMethods = launcherKiosk
+    ? `
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        // Keep hardware keyboards and accessibility navigation from moving the
+        // launcher WebView forward through browser history.
+        if (event.getKeyCode() == KeyEvent.KEYCODE_FORWARD
+                || event.getKeyCode() == KeyEvent.KEYCODE_NAVIGATE_NEXT) {
+            return true;
+        }
+        return super.dispatchKeyEvent(event);
+    }
 `
     : "";
   return `package ${androidPackage};
@@ -6200,6 +6216,7 @@ ${launcherSetup}
         DeepLinkBufferPlugin.captureIntent(this, intent);
         super.onNewIntent(intent);
     }
+${launcherMethods}
 
     private void applyBrandUserAgentMarkers(WebSettings settings) {
         StringBuilder newUa = null;
