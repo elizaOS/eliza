@@ -18,16 +18,16 @@ import {
 
 describe("view-format: stripAnsi", () => {
   it("removes CSI color sequences and trims the result", () => {
-    expect(stripAnsi("[31mred text[0m")).toBe("red text");
-    expect(stripAnsi("[1;32mbold green[0m  ")).toBe("bold green");
+    expect(stripAnsi("\u001b[31mred text\u001b[0m")).toBe("red text");
+    expect(stripAnsi("\u001b[1;32mbold green\u001b[0m  ")).toBe("bold green");
   });
 
   it("removes OSC sequences terminated by BEL", () => {
-    expect(stripAnsi("]0;window titlepayload")).toBe("payload");
+    expect(stripAnsi("\u001b]0;window title\u0007payload")).toBe("payload");
   });
 
   it("removes charset-designation escapes", () => {
-    expect(stripAnsi("(Bplain")).toBe("plain");
+    expect(stripAnsi("\u001b(Bplain")).toBe("plain");
   });
 
   it("leaves plain text untouched apart from trimming", () => {
@@ -158,6 +158,7 @@ describe("view-format: formatDuration", () => {
 
   it("renders two-digit seconds without a decimal", () => {
     expect(formatDuration(12_000)).toBe("12s");
+    expect(formatDuration(45_000)).toBe("45s");
   });
 
   it("renders minutes-and-seconds for >= 60s", () => {
