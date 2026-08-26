@@ -4383,7 +4383,11 @@ export async function startApiServer(opts?: {
       const staticallyAuthorized = isWebSocketAuthorized(request, wsUrl);
       const sessionAuthorized = isWebSocketUpgradeSessionAuthorized(request);
       let hostAuthorized = false;
-      if (!staticallyAuthorized && !sessionAuthorized && opts?.authorizeWebSocket) {
+      if (
+        !staticallyAuthorized &&
+        !sessionAuthorized &&
+        opts?.authorizeWebSocket
+      ) {
         try {
           hostAuthorized = await opts.authorizeWebSocket(request, wsUrl);
         } catch (error) {
