@@ -101,6 +101,21 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).not.toContain("readSystemProperty");
   });
 
+  it("hides only the launcher navigation bar with transient swipe recovery", () => {
+    const source = cloudSafeMainActivityJava("ai.elizaos.app", {
+      launcherKiosk: true,
+      immersiveNavigation: true,
+    });
+
+    expect(source).toContain("import androidx.core.view.WindowInsetsCompat;");
+    expect(source).toContain(
+      "controller.hide(WindowInsetsCompat.Type.navigationBars())",
+    );
+    expect(source).toContain("BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE");
+    expect(source).toContain("onWindowFocusChanged(boolean hasFocus)");
+    expect(source).not.toContain("WindowInsetsCompat.Type.statusBars()");
+  });
+
   it("captures cold and warm deep links before Capacitor dispatches them", () => {
     const source = cloudSafeMainActivityJava("ai.elizaos.app");
     const coldCapture = source.indexOf(
