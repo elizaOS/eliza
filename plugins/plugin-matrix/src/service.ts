@@ -196,17 +196,15 @@ type MatrixAccountState = {
   /** Authority handle for evidence publication; null when absent. */
   membershipAuthority?: MatrixMembershipAuthority;
   /**
-   * Per-process monotonically increasing snapshot observation counter plus a
-   * boot token: together they make every snapshot idempotency key unique to
-   * one observation, so restarts and resyncs never collide with prior runs.
+   * Snapshot evidence identity: a per-STATE instance token (rotates whenever
+   * account state is constructed) plus a monotonically increasing observation
+   * counter. Together they make every snapshot idempotency key unique to one
+   * observation by one state instance, so restarts, resyncs, and in-process
+   * state reconstruction never reuse keys.
    */
+  membershipSnapshotToken: string;
   membershipSnapshotCounter: number;
 };
-
-// Per-process boot token for snapshot idempotency keys: distinguishes this
-// process's observations from a previous process's, so a restart's snapshots
-// are new evidence rather than idempotency conflicts against stale keys.
-const MATRIX_SNAPSHOT_BOOT_TOKEN = crypto.randomUUID().split("-")[0];
 
 /**
  * Serialized form of an IndexedDB database: object-store schemas plus their
@@ -861,6 +859,7 @@ export class MatrixService extends Service implements IMatrixService {
         }),
         connected: false,
         syncing: false,
+        membershipSnapshotToken: crypto.randomUUID(),
         membershipSnapshotCounter: 0,
       };
 
@@ -1228,7 +1227,7 @@ export class MatrixService extends Service implements IMatrixService {
       // than left authorizing on an untrustworthy roster. The room is also
       // marked locally incomplete so a later publication pass re-establishes
       // a complete baseline instead of streaming deltas over the gap.
-      state.membershipAuthority.markRoomIncomplete(room.roomId);
+      state.membershipAuthority.markRoomIncomplete(room.roomId, "limited_sync_timeline_reset");
       // error-policy:J7 stale-degrade is diagnostic; a failed degrade leaves
       // the local incompleteness flag set, so publication stays blocked.
       void state.membershipAuthority
@@ -1251,7 +1250,14 @@ export class MatrixService extends Service implements IMatrixService {
       if (event.isEncrypted() && event.getType() === "m.room.encrypted") {
         event.once(sdk.MatrixEventEvent.Decrypted, () => {
           if (event.getType() === "m.room.message") {
-            void this.handleRoomMessage(state, event, room);
+            // error-policy:J7 admission/dispatch failures are reported and
+            // swallowed here: the SDK event callback must not become an
+            // unhandled rejection source.
+            void this.handleRoomMessage(state, event, room).catch((err) =>
+              logger.error(
+                `Matrix room message handling failed: ${err instanceof Error ? err.message : String(err)}`
+              )
+            );
           } else if (event.isDecryptionFailure()) {
             logger.warn(
               `Matrix could not decrypt event ${event.getId()} in ${event.getRoomId()} — the sender has not shared the megolm key with this device yet.`
@@ -1262,7 +1268,13 @@ export class MatrixService extends Service implements IMatrixService {
       }
 
       if (event.getType() !== "m.room.message") return;
-      void this.handleRoomMessage(state, event, room);
+      // error-policy:J7 see the Decrypted branch above — never leak an
+      // unhandled rejection into the SDK event handler.
+      void this.handleRoomMessage(state, event, room).catch((err) =>
+        logger.error(
+          `Matrix room message handling failed: ${err instanceof Error ? err.message : String(err)}`
+        )
+      );
     });
 
     // Room membership events
@@ -1323,74 +1335,105 @@ export class MatrixService extends Service implements IMatrixService {
         continue;
       }
       if (authority.isRoomIncomplete(room.roomId)) {
-        await authority.reportIncomplete({
-          roomId: room.roomId,
-          reason: "member_list_incomplete",
-          observedAt: new Date().toISOString(),
-        });
-        continue;
+        // Recovery: a limited-sync gap (timeline reset) is disproved by a
+        // FULLY RESOLVED out-of-band member list in this pass — the SDK just
+        // told us the roster is complete again. Clear exactly that reason and
+        // fall through to publish a fresh complete baseline; other
+        // incompleteness reasons (member load failed, empty roster) still
+        // report incomplete and skip. Without this, one timeline reset would
+        // leave the scope permanently stale.
+        const recovered =
+          membersReady && authority.clearRoomIncomplete(room.roomId, "limited_sync_timeline_reset");
+        if (!recovered) {
+          await authority.reportIncomplete({
+            roomId: room.roomId,
+            reason: "member_list_incomplete",
+            observedAt: new Date().toISOString(),
+          });
+          continue;
+        }
+        // Fall through: publish the complete baseline.
       }
-      const joinedMembers = room.getJoinedMembers();
-      if (joinedMembers.length === 0) {
-        await authority.reportIncomplete({
-          roomId: room.roomId,
-          reason: "empty_roster",
-          observedAt: new Date().toISOString(),
-        });
-        continue;
-      }
-      // Snapshot members must reference existing entity/room/world rows; the
-      // gate path creates them lazily, and PREPARED rooms may carry members
-      // the runtime has never seen — bootstrap rows before publishing.
-      const worldId = createUniqueUuid(this.runtime, `${state.accountId}:${room.roomId}`);
-      await this.runtime.createWorld({
-        id: worldId,
-        name: room.name || room.roomId,
-        agentId: this.runtime.agentId,
-        metadata: { source: MATRIX_SERVICE_NAME, accountId: state.accountId, roomId: room.roomId },
-      });
-      await this.runtime.createRoom({
-        id: worldId,
-        name: room.name || room.roomId,
-        source: MATRIX_SERVICE_NAME,
-        type: ChannelType.GROUP,
-        channelId: room.roomId,
-        worldId,
-      });
-      const memberRecords = [];
-      for (const member of joinedMembers) {
-        const entityId = createUniqueUuid(this.runtime, `${state.accountId}:${member.userId}`);
-        await this.runtime.createEntity({
-          id: entityId,
-          agentId: this.runtime.agentId,
-          names: [`matrix-${getMatrixLocalpart(member.userId)}`],
-          metadata: { source: MATRIX_SERVICE_NAME, matrixUserId: member.userId },
-        });
-        memberRecords.push({
-          canonicalPrincipalId: entityId,
-          roles: matrixMemberRoles(member.powerLevel),
-          permissionSnapshot: { membership: "join" },
-          runtime: { worldId, roomId: worldId, entityId },
-        });
-      }
-      const snapshotObservedAt = new Date().toISOString();
-      // Idempotency keys must identify ONE observation, not a class of sync
-      // events: a per-process monotonically increasing token keeps restarts
-      // and resyncs distinct (a reused key is an idempotency CONFLICT, and
-      // publishSnapshot would silently skip a changed roster).
-      state.membershipSnapshotCounter += 1;
-      const published = await authority.publishSnapshot({
-        roomId: room.roomId,
-        observedAt: snapshotObservedAt,
-        members: memberRecords,
-        idempotencyKey: `mx:${state.accountId}:${room.roomId}:snapshot:${state.membershipSnapshotCounter}:${MATRIX_SNAPSHOT_BOOT_TOKEN}`,
-      });
-      if (published) {
-        logger.debug(
-          `Matrix membership snapshot published for ${room.roomId}: ${memberRecords.length} members`
-        );
-      }
+      await this.publishSingleRoomMembershipSnapshot(state, room);
     }
+  }
+
+  /**
+   * Publishes ONE room's complete membership snapshot (the ordered-delta
+   * baseline): bootstraps entity/room/world rows for members the runtime has
+   * never seen, then submits the roster under a unique observation key.
+   * Shared by the sync-driven publication pass and the grown-room baseline
+   * path in the membership-transition handler. Returns true when published.
+   */
+  private async publishSingleRoomMembershipSnapshot(
+    state: MatrixAccountState,
+    room: sdk.Room
+  ): Promise<boolean> {
+    const authority = state.membershipAuthority;
+    if (!authority) {
+      return false;
+    }
+    const joinedMembers = room.getJoinedMembers();
+    if (joinedMembers.length === 0) {
+      await authority.reportIncomplete({
+        roomId: room.roomId,
+        reason: "empty_roster",
+        observedAt: new Date().toISOString(),
+      });
+      return false;
+    }
+    // Snapshot members must reference existing entity/room/world rows; the
+    // gate path creates them lazily, and synced rooms may carry members the
+    // runtime has never seen — bootstrap rows before publishing.
+    const worldId = createUniqueUuid(this.runtime, `${state.accountId}:${room.roomId}`);
+    await this.runtime.createWorld({
+      id: worldId,
+      name: room.name || room.roomId,
+      agentId: this.runtime.agentId,
+      metadata: { source: MATRIX_SERVICE_NAME, accountId: state.accountId, roomId: room.roomId },
+    });
+    await this.runtime.createRoom({
+      id: worldId,
+      name: room.name || room.roomId,
+      source: MATRIX_SERVICE_NAME,
+      type: ChannelType.GROUP,
+      channelId: room.roomId,
+      worldId,
+    });
+    const memberRecords = [];
+    for (const roomMember of joinedMembers) {
+      const entityId = createUniqueUuid(this.runtime, `${state.accountId}:${roomMember.userId}`);
+      await this.runtime.createEntity({
+        id: entityId,
+        agentId: this.runtime.agentId,
+        names: [`matrix-${getMatrixLocalpart(roomMember.userId)}`],
+        metadata: { source: MATRIX_SERVICE_NAME, matrixUserId: roomMember.userId },
+      });
+      memberRecords.push({
+        canonicalPrincipalId: entityId,
+        roles: matrixMemberRoles(roomMember.powerLevel),
+        permissionSnapshot: { membership: "join" },
+        runtime: { worldId, roomId: worldId, entityId },
+      });
+    }
+    // Idempotency keys must identify ONE observation, not a class of sync
+    // events: a per-state instance token + monotonic counter keeps restarts,
+    // resyncs, and in-process state reconstruction distinct (a reused key is
+    // an idempotency CONFLICT, and publishSnapshot would silently skip a
+    // changed roster).
+    state.membershipSnapshotCounter += 1;
+    const published = await authority.publishSnapshot({
+      roomId: room.roomId,
+      observedAt: new Date().toISOString(),
+      members: memberRecords,
+      idempotencyKey: `mx:${state.accountId}:${room.roomId}:snapshot:${state.membershipSnapshotToken}:${state.membershipSnapshotCounter}`,
+    });
+    if (published) {
+      logger.debug(
+        `Matrix membership snapshot published for ${room.roomId}: ${memberRecords.length} members`
+      );
+    }
+    return published;
   }
 
   /**
@@ -1483,6 +1526,27 @@ export class MatrixService extends Service implements IMatrixService {
     if (room && room.getJoinedMemberCount() <= 2 && member.membership === "join") {
       // Direct rooms are not membership-governed.
       return;
+    }
+    // A previously ungoverned (direct) room that grew past two members has NO
+    // snapshot baseline, and the SQL authority rejects ordered deltas without
+    // one — the delta below would be dropped, leaving the new group
+    // permanently denied. When the room has crossed into group territory and
+    // carries no current scope evidence, publish the complete baseline first;
+    // the transition delta then lands on top of it.
+    if (room && room.getJoinedMemberCount() > 2 && member.membership === "join") {
+      const health = await authority.scopeHealth({ roomId }).catch((err: unknown) => {
+        logger.error(
+          `Matrix membership scope health probe failed: ${err instanceof Error ? err.message : String(err)}`
+        );
+        return null;
+      });
+      if (health?.health !== "current") {
+        await this.publishSingleRoomMembershipSnapshot(state, room).catch((err) =>
+          logger.error(
+            `Matrix membership baseline for grown room failed: ${err instanceof Error ? err.message : String(err)}`
+          )
+        );
+      }
     }
     const transition = classifyMatrixTransition(member.membership, oldMembership);
     const matrixUserId = member.userId || event.getSender() || "unknown";
@@ -2268,6 +2332,7 @@ export class MatrixService extends Service implements IMatrixService {
         client: legacy.client ?? ({} as sdk.MatrixClient),
         connected: legacy.connected ?? true,
         syncing: legacy.syncing ?? true,
+        membershipSnapshotToken: crypto.randomUUID(),
         membershipSnapshotCounter: 0,
       };
     }

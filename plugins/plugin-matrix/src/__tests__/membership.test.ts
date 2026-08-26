@@ -525,6 +525,29 @@ describe("MatrixMembershipMessageGate", () => {
       getJoinedMemberIds: () => ["@alice:example"],
     });
     expect(allowed).toBe(false);
+    // Direct rooms too: a configured authority that failed bootstrap must
+    // never be bypassed by room shape.
+    const directAllowed = await gate.authorizeMessage({
+      roomId: ROOM,
+      isDirectRoom: true,
+      principalEntityId: PRINCIPAL_A,
+      matrixUserId: "@alice:example",
+      getJoinedMemberIds: () => ["@alice:example"],
+    });
+    expect(directAllowed).toBe(false);
+  });
+
+  it("clears a limited-sync incompleteness only for its recorded reason", async () => {
+    const { service } = createAuthorityService();
+    const authority = createAuthority(service);
+    authority.markRoomIncomplete(ROOM, "limited_sync_timeline_reset");
+    expect(authority.isRoomIncomplete(ROOM)).toBe(true);
+    // A different reason must NOT clear it.
+    expect(authority.clearRoomIncomplete(ROOM, "member_load_failed")).toBe(false);
+    expect(authority.isRoomIncomplete(ROOM)).toBe(true);
+    // The recorded reason clears it.
+    expect(authority.clearRoomIncomplete(ROOM, "limited_sync_timeline_reset")).toBe(true);
+    expect(authority.isRoomIncomplete(ROOM)).toBe(false);
   });
 
   it("fails closed when no authority is configured but enforcement is strict", async () => {
