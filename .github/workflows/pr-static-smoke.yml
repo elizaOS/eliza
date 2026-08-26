@@ -124,6 +124,15 @@ jobs:
       - name: Validate CI Bun version pin contract
         run: node packages/scripts/ci-bun-version-contract.mjs --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
 
+      - name: Test Cloud Pages workflow contracts
+        run: >-
+          bun test
+          packages/scripts/__tests__/homepage-deploy-workflow.test.ts
+          packages/scripts/__tests__/cloud-cf-canonical-source-guard-workflow.test.ts
+          packages/scripts/__tests__/cloud-cf-voice-deploy-workflow.test.ts
+          packages/scripts/__tests__/ci-bun-version-contract.test.ts
+          packages/scripts/__tests__/github-action-pinning.test.ts
+
       - name: Upload Bun runtime resolution inventory
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:

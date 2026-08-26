@@ -34,8 +34,121 @@ permissions:
   actions: read
 
 jobs:
+  resolve-pages-environment-config:
+    name: Preflight Pages environment configuration
+    runs-on: ubuntu-latest
+    # Map an invalid callable input to the non-production environment only so
+    # GitHub cannot create or enter an arbitrary environment before the shell
+    # rejects it. The target value itself is never normalized.
+    environment: ${{ inputs.target_environment == 'production' && 'production' || 'staging' }}
+    outputs:
+      telegram_bot_id: ${{ steps.telegram.outputs.bot_id }}
+      telegram_bot_username: ${{ steps.telegram.outputs.bot_username }}
+      whatsapp_phone_number: ${{ steps.whatsapp.outputs.phone_number }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Validate Telegram public identity preflight
+        id: telegram
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+          # GitHub Environment variables cannot overwrite values already
+          # resolved through the vars context. Treat this repository pair as
+          # staging-only input; production ignores it and uses source truth.
+          STAGING_TELEGRAM_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
+          STAGING_TELEGRAM_BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
+        run: |
+          set -euo pipefail
+
+          fail() {
+            printf '%s\n' "::error::$1" >&2
+            exit 1
+          }
+
+          valid_bot_id() {
+            local candidate="$1"
+            [[ "$candidate" =~ ^[1-9][0-9]{0,15}$ ]] || return 1
+            (( 10#$candidate <= 4503599627370495 ))
+          }
+
+          case "$TARGET_ENVIRONMENT" in
+            staging|production) ;;
+            *) fail "target_environment must be exactly staging or production" ;;
+          esac
+
+          canonical_source="packages/homepage/src/lib/contact.ts"
+          canonical_bot_id="$(sed -nE 's/^export const ELIZA_TELEGRAM_BOT_ID = "([^"]+)";$/\1/p' "$canonical_source")"
+          canonical_bot_username="$(sed -nE 's/^export const ELIZA_TELEGRAM_BOT_USERNAME = "([^"]+)";$/\1/p' "$canonical_source")"
+          valid_bot_id "$canonical_bot_id" || \
+            fail "The homepage canonical Telegram bot ID is missing or invalid"
+          [[ "$canonical_bot_username" =~ ^[A-Za-z0-9_]{5,32}$ ]] || \
+            fail "The homepage canonical Telegram username is missing or invalid"
+          canonical_bot_username_key="$(printf '%s' "$canonical_bot_username" | tr '[:upper:]' '[:lower:]')"
+          [[ "$canonical_bot_username_key" == *bot ]] || \
+            fail "The homepage canonical Telegram username must use the managed bot suffix"
+
+          if [ "$TARGET_ENVIRONMENT" = "production" ]; then
+            resolved_bot_id="$canonical_bot_id"
+            resolved_bot_username="$canonical_bot_username"
+          else
+            if [ -z "$STAGING_TELEGRAM_BOT_ID" ] || \
+              [ -z "$STAGING_TELEGRAM_BOT_USERNAME" ]; then
+              fail "Repository VITE_TELEGRAM_BOT_ID and VITE_TELEGRAM_BOT_USERNAME must configure the complete staging pair"
+            fi
+            valid_bot_id "$STAGING_TELEGRAM_BOT_ID" || \
+              fail "Repository VITE_TELEGRAM_BOT_ID must match the Telegram bot ID contract"
+            [[ "$STAGING_TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]] || \
+              fail "Repository VITE_TELEGRAM_BOT_USERNAME must match the Telegram username contract"
+            staging_bot_username_key="$(printf '%s' "$STAGING_TELEGRAM_BOT_USERNAME" | tr '[:upper:]' '[:lower:]')"
+            [[ "$staging_bot_username_key" == *bot ]] || \
+              fail "Repository VITE_TELEGRAM_BOT_USERNAME must use the managed bot suffix"
+            if [ "$STAGING_TELEGRAM_BOT_ID" = "$canonical_bot_id" ] || \
+              [ "$staging_bot_username_key" = "$canonical_bot_username_key" ]; then
+              fail "Staging Telegram configuration must use an identity fully distinct from production"
+            fi
+            resolved_bot_id="$STAGING_TELEGRAM_BOT_ID"
+            resolved_bot_username="$STAGING_TELEGRAM_BOT_USERNAME"
+          fi
+
+          printf 'bot_id=%s\n' "$resolved_bot_id" >> "$GITHUB_OUTPUT"
+          printf 'bot_username=%s\n' "$resolved_bot_username" >> "$GITHUB_OUTPUT"
+          printf 'Validated Telegram public identity policy for %s.\n' \
+            "$TARGET_ENVIRONMENT" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Resolve public WhatsApp configuration
+        id: whatsapp
+        env:
+          WHATSAPP_PUBLIC_ENABLED: ${{ vars.WHATSAPP_PUBLIC_ENABLED }}
+          WHATSAPP_PHONE_NUMBER: ${{ vars.VITE_WHATSAPP_PHONE_NUMBER }}
+        run: |
+          set -euo pipefail
+          enabled="$(printf '%s' "$WHATSAPP_PUBLIC_ENABLED" | tr '[:upper:]' '[:lower:]')"
+          case "$enabled" in
+            ""|0|false|no|off)
+              echo "phone_number=" >> "$GITHUB_OUTPUT"
+              ;;
+            1|true|yes|on)
+              [[ "$WHATSAPP_PHONE_NUMBER" =~ ^\+[1-9][0-9]{7,14}$ ]] || { echo "::error::VITE_WHATSAPP_PHONE_NUMBER must be an E.164 number when WHATSAPP_PUBLIC_ENABLED is true"; exit 1; }
+              case "$WHATSAPP_PHONE_NUMBER" in
+                +14155238886|+15551649988|+14159611510)
+                  echo "::error::The public WhatsApp CTA cannot use a shared sandbox, developer test, or unverified sender"
+                  exit 1
+                  ;;
+              esac
+              echo "phone_number=$WHATSAPP_PHONE_NUMBER" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::WHATSAPP_PUBLIC_ENABLED must be a boolean"
+              exit 1
+              ;;
+          esac
+
   migrate-db:
     name: Run Database Migrations
+    needs: resolve-pages-environment-config
+    if: ${{ !cancelled() && needs.resolve-pages-environment-config.result == 'success' }}
     # Hosted unconditionally: CI must never contend with production
     # agent-placement nodes for disk or CPU (#17881).
     runs-on: ubuntu-latest
@@ -394,8 +507,8 @@ jobs:
     # Schema gate (#11208): the Worker talks to the database, so it only
     # deploys after migrate-db succeeded for this same commit. A failed or
     # cancelled migrate-db skips this job — fail-closed.
-    needs: migrate-db
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.migrate-db.result == 'success' && needs.migrate-db.outputs.superseded != 'true' }}
+    needs: [resolve-pages-environment-config, migrate-db]
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.resolve-pages-environment-config.result == 'success' && needs.migrate-db.result == 'success' && needs.migrate-db.outputs.superseded != 'true' }}
     env:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-api
       CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
@@ -411,9 +524,9 @@ jobs:
           # ones idle >90 min: a real deploy job runs <~50 min and self-cleans, so
           # a dir untouched for 90 min is a definitively-dead leak.
           # CONCURRENCY-SAFE: API, console, and app jobs within one release still
-          # materialize concurrently, and PR previews use independent groups. The
-          # age filter never deletes an actively-written checkout (its mtime stays
-          # fresh), and we also exclude this run's own dirs by name.
+          # materialize concurrently. The age filter never deletes an
+          # actively-written checkout (its mtime stays fresh), and we also
+          # exclude this run's own dirs by name.
           # UNFAILABLE BY CONSTRUCTION: sibling runs execute this same step at the
           # same moment, so one sibling's rm -rf can race another's find into
           # ENOENT (exit 1) — under the job's default `bash -e` (plus the pipefail
@@ -1806,64 +1919,6 @@ jobs:
   # ---------------------------------------------------------------------------
   # Pages build — one prepared workspace emits the host-aware frontend.
   # ---------------------------------------------------------------------------
-  resolve-pages-environment-config:
-    name: Resolve Pages environment configuration
-    needs: migrate-db
-    if: ${{ !cancelled() && needs.migrate-db.result == 'success' && needs.migrate-db.outputs.superseded != 'true' }}
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.target_environment }}
-    outputs:
-      telegram_bot_id: ${{ steps.telegram.outputs.bot_id }}
-      telegram_bot_username: ${{ steps.telegram.outputs.bot_username }}
-      whatsapp_phone_number: ${{ steps.whatsapp.outputs.phone_number }}
-    steps:
-      - name: Validate Telegram configuration
-        id: telegram
-        env:
-          TELEGRAM_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
-          TELEGRAM_BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
-        run: |
-          set -euo pipefail
-          if [[ -z "$TELEGRAM_BOT_ID" && -z "$TELEGRAM_BOT_USERNAME" ]]; then
-            TELEGRAM_BOT_ID=7684336618
-            TELEGRAM_BOT_USERNAME=Elizav2_Bot
-          elif [[ -z "$TELEGRAM_BOT_ID" || -z "$TELEGRAM_BOT_USERNAME" ]]; then
-            echo "::error::VITE_TELEGRAM_BOT_ID and VITE_TELEGRAM_BOT_USERNAME must be configured together"
-            exit 1
-          fi
-          [[ "$TELEGRAM_BOT_ID" =~ ^[0-9]+$ ]] || { echo "::error::VITE_TELEGRAM_BOT_ID must be numeric"; exit 1; }
-          [[ "$TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]+$ ]] || { echo "::error::VITE_TELEGRAM_BOT_USERNAME must be a Telegram username without @"; exit 1; }
-          echo "bot_id=$TELEGRAM_BOT_ID" >> "$GITHUB_OUTPUT"
-          echo "bot_username=$TELEGRAM_BOT_USERNAME" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve public WhatsApp configuration
-        id: whatsapp
-        env:
-          WHATSAPP_PUBLIC_ENABLED: ${{ vars.WHATSAPP_PUBLIC_ENABLED }}
-          WHATSAPP_PHONE_NUMBER: ${{ vars.VITE_WHATSAPP_PHONE_NUMBER }}
-        run: |
-          set -euo pipefail
-          enabled="$(printf '%s' "$WHATSAPP_PUBLIC_ENABLED" | tr '[:upper:]' '[:lower:]')"
-          case "$enabled" in
-            ""|0|false|no|off)
-              echo "phone_number=" >> "$GITHUB_OUTPUT"
-              ;;
-            1|true|yes|on)
-              [[ "$WHATSAPP_PHONE_NUMBER" =~ ^\+[1-9][0-9]{7,14}$ ]] || { echo "::error::VITE_WHATSAPP_PHONE_NUMBER must be an E.164 number when WHATSAPP_PUBLIC_ENABLED is true"; exit 1; }
-              case "$WHATSAPP_PHONE_NUMBER" in
-                +14155238886|+15551649988|+14159611510)
-                  echo "::error::The public WhatsApp CTA cannot use a shared sandbox, developer test, or unverified sender"
-                  exit 1
-                  ;;
-              esac
-              echo "phone_number=$WHATSAPP_PHONE_NUMBER" >> "$GITHUB_OUTPUT"
-              ;;
-            *)
-              echo "::error::WHATSAPP_PUBLIC_ENABLED must be a boolean"
-              exit 1
-              ;;
-          esac
-
   build-pages:
     name: Build Pages artifacts
     needs: [migrate-db, resolve-pages-environment-config]
@@ -1882,25 +1937,6 @@ jobs:
       telegram_bot_username: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_username }}
       whatsapp_phone_number: ${{ needs.resolve-pages-environment-config.outputs.whatsapp_phone_number }}
     steps:
-      - name: Validate PR preview identity
-        if: github.event_name == 'pull_request'
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          if ! [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
-            echo "::error::Pull-request Pages branch requires a valid immutable PR number"
-            exit 1
-          fi
-          pages_branch="pr-${PR_NUMBER}"
-          case "$pages_branch" in
-            main|develop)
-              echo "::error::Pull-request Pages branch may not target canonical branch $pages_branch"
-              exit 1
-              ;;
-          esac
-          echo "Pages artifacts are bound to trusted preview branch ${pages_branch}." >> "$GITHUB_STEP_SUMMARY"
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Bind Pages artifacts to this producer attempt
@@ -1989,8 +2025,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 75
     # Release gate (#11208/#18088): canonical Pages aliases wait for the matching
-    # API deployment; pull-request artifacts
-    # are consumed only by the separate trusted preview workflow.
+    # API deployment and the artifact built by this protected release.
     needs: [deploy-api, build-pages]
     if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.deploy-api.result == 'success' && needs.build-pages.result == 'success' }}
     env:
@@ -2015,9 +2050,9 @@ jobs:
           # ones idle >90 min: a real deploy job runs <~50 min and self-cleans, so
           # a dir untouched for 90 min is a definitively-dead leak.
           # CONCURRENCY-SAFE: API, console, and app jobs within one release still
-          # materialize concurrently, and PR previews use independent groups. The
-          # age filter never deletes an actively-written checkout (its mtime stays
-          # fresh), and we also exclude this run's own dirs by name.
+          # materialize concurrently. The age filter never deletes an
+          # actively-written checkout (its mtime stays fresh), and we also
+          # exclude this run's own dirs by name.
           # UNFAILABLE BY CONSTRUCTION: sibling runs execute this same step at the
           # same moment, so one sibling's rm -rf can race another's find into
           # ENOENT (exit 1) — under the job's default `bash -e` (plus the pipefail
@@ -2569,10 +2604,9 @@ jobs:
   verify-routing:
     name: Verify ${{ inputs.target_environment }} routing
     needs: [deploy-api, deploy-app]
-    # Custom domains only exist for the real environments -- PR previews deploy to
-    # a preview branch alias, so skip them. Require both deploys to have landed
-    # (the beacon is served by the API Worker; both frontend domains by
-    # one Pages project), else there is nothing trustworthy to probe.
+    # Require both canonical deploys to have landed (the beacon is served by the
+    # API Worker; both frontend domains by one Pages project), else there is
+    # nothing trustworthy to probe. Retain the non-PR guard as defense in depth.
     if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.deploy-api.result == 'success' && needs.deploy-app.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10

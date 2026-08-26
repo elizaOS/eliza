@@ -21,8 +21,8 @@ cp .env.example .env.local
 | Variable | Description |
 |---|---|
 | `VITE_ELIZACLOUD_API_URL` | Eliza Cloud backend URL (defaults to `https://api.eliza.app`) |
-| `VITE_TELEGRAM_BOT_USERNAME` | Optional Telegram bot username override (default `ElizaIsNotABot`) |
-| `VITE_TELEGRAM_BOT_ID` | Optional numeric Telegram bot ID override (default `8931353359`) |
+| `VITE_TELEGRAM_BOT_USERNAME` | Local/direct-build Telegram username fallback (default `ElizaIsNotABot`); with the ID, the repository-scoped staging release authority |
+| `VITE_TELEGRAM_BOT_ID` | Local/direct-build numeric Telegram ID fallback (default `8931353359`); with the username, the repository-scoped staging release authority |
 | `VITE_DISCORD_CLIENT_ID` | Optional Discord Application ID override (default `1468649258654630063`) |
 | `WHATSAPP_PUBLIC_ENABLED` | Deployment switch that must be true before the public WhatsApp CTA is built |
 | `VITE_WHATSAPP_PHONE_NUMBER` | Admitted Blooio WhatsApp sender in E.164 format; set to the shared `+18087881821` number |
@@ -30,6 +30,15 @@ cp .env.example .env.local
 OAuth provider callback configuration belongs to the unified Cloud auth routes
 and API deployment. Do not register a callback against this source package or
 its optional test-harness port.
+
+Protected staging releases require the complete repository-scoped pair before
+migrations or API deployment, and neither component may match the canonical
+production identity. Protected production releases ignore that pair and derive
+their exact identity from `src/lib/contact.ts` at the checked-out release SHA.
+Same-named GitHub Environment variables are not an override mechanism because
+GitHub resolves the repository `vars` context before Environment variables
+arrive on the runner. Pull requests have static build checks but no Pages
+preview release path.
 
 ### WhatsApp production activation
 
