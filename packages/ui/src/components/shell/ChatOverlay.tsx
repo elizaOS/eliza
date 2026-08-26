@@ -156,6 +156,10 @@ import {
   shellToChatMessageData,
 } from "./chat-overlay-transcript";
 import {
+  CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+  CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
+} from "./chat-overlay-window-bounds";
+import {
   isShortLandscapeViewport,
   measureSafeAreaInsetTop,
   resolveChatPanelHalfDetentHeight,
@@ -164,6 +168,7 @@ import {
 import { setChatComposerAccessoryBarHidden } from "./ios-chat-accessory-bar";
 import { LIQUID_GLASS_SHEEN, liquidGlassEdgeShadow } from "./liquid-glass";
 import { withPressLatch } from "./press-latch";
+import { RestingPillButton } from "./RestingPillButton";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
 import {
   filterRenderableShellMessages,
@@ -1059,6 +1064,7 @@ export function PillHandle({
   onOpen,
   breathing,
   pilled,
+  desktopOverlayHost = false,
 }: {
   binding: PullGestureBinding;
   // Inverse of the panel's pill-morph scale (see pillHandleCounterScale),
@@ -1076,19 +1082,66 @@ export function PillHandle({
   // opts back in), so the keyboard would never open. Gate on `pilled` so taps
   // pass through to the textarea once the input has formed.
   pilled: boolean;
+  desktopOverlayHost?: boolean;
 }): React.JSX.Element {
+  if (desktopOverlayHost) {
+    return (
+      <motion.div
+        className="h-1.5 w-12 origin-bottom"
+        style={{
+          scale: counterScale,
+          transformOrigin: desktopOverlayHost ? "center" : "bottom center",
+          ...(desktopOverlayHost
+            ? {
+                width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
+                height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+              }
+            : {}),
+        }}
+      >
+        <RestingPillButton
+          data-testid="chat-pill"
+          markTestId="chat-pill-mark"
+          aria-label="open chat"
+          breathing={breathing}
+          style={{
+            width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
+            height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+          }}
+          onClick={(event) => {
+            if (event.detail === 0) onOpen();
+          }}
+          onKeyDown={(event) => {
+            if (
+              event.key === "Enter" ||
+              event.key === " " ||
+              event.key === "ArrowUp"
+            ) {
+              event.preventDefault();
+              onOpen();
+            }
+          }}
+          onTouchEnd={(event) => {
+            if (event.cancelable) event.preventDefault();
+          }}
+          {...binding}
+          tabIndex={pilled ? 0 : -1}
+          aria-hidden={pilled ? undefined : true}
+          className={cn(
+            "cursor-grab touch-none select-none active:cursor-grabbing",
+            pilled ? "pointer-events-auto" : "pointer-events-none",
+          )}
+        />
+      </motion.div>
+    );
+  }
+
   return (
     <Button
       variant="transparent"
       size="content"
       data-testid="chat-pill"
       aria-label="open chat"
-      // No onClick: the pull-gesture binding is the single tap authority (a tap
-      // routes through onPointerUp → onTap → openFromPill), matching the
-      // SheetGrabber. A native onClick would ALSO fire on every tap, opening the
-      // pill twice in one gesture (double haptic + a stale focus-suppress flag
-      // that swallowed the next focus→expand). Keyboard activation still routes
-      // through onKeyDown below.
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " " || e.key === "ArrowUp") {
           e.preventDefault();
@@ -1106,43 +1159,23 @@ export function PillHandle({
       // to their touchstart element), i.e. while it was the pilled handle —
       // the render that formed the input has already flipped `pilled` false by
       // the time this fires, so the prop cannot gate it.
-      onTouchEnd={(e) => {
-        if (e.cancelable) e.preventDefault();
+      onTouchEnd={(event) => {
+        if (event.cancelable) event.preventDefault();
       }}
       {...binding}
       tabIndex={pilled ? undefined : -1}
       aria-hidden={pilled ? undefined : true}
       className={cn(
-        // The bar hugs the BOTTOM (small pb) where the collapsed input sat — not
-        // floating mid-air; the tall pt + full width keep a generous upward grab/
-        // flick zone so a swipe-up from anywhere across the bottom opens the chat
-        // (the lock-screen affordance). Flex-center keeps the capsule centred
-        // while the invisible hit area spans wide.
-        "flex cursor-grab touch-none select-none items-end justify-center active:cursor-grabbing",
-        "h-auto w-full rounded-none px-8 pb-1.5 pt-10",
-        // Interactive only while pilled. When NOT pilled the (faded) handle must
-        // let taps fall through to the composer textarea below it — otherwise its
-        // tall hit zone steals the tap and the keyboard never opens.
+        "flex h-auto w-full cursor-grab touch-none select-none items-end justify-center rounded-none px-8 pb-1.5 pt-10 active:cursor-grabbing",
         pilled ? "pointer-events-auto" : "pointer-events-none",
       )}
     >
       <motion.span
         aria-hidden="true"
         className={cn(
-          // Identical to the SheetGrabber's closed-state bar — same white shape
-          // + color whether the chat is open or collapsed to the pill. Its
-          // show/hide is driven by the WRAPPER's `pillOpacity` crossfade
-          // (anti-phase with the grabber). The bar paints at full opacity — a
-          // prior regression pinned it to `opacity-0`, leaving the pill handle
-          // grabbable but invisible (#9142).
           "h-1.5 w-12 rounded-full opacity-100 transition-colors duration-300",
-          // Same compositor-only work-state breath as the SheetGrabber bar.
           breathing && "eliza-chat-handle-breathe",
         )}
-        // Same explicit color as the grabber bar so the two are pixel-identical
-        // through the crossfade (HANDLE_BAR_COLOR). The counter-scale cancels
-        // the panel's pill-morph shrink for the BAR alone, so the collapsed
-        // handle renders the same size as the input-mode grabber bar.
         style={{
           backgroundColor: HANDLE_BAR_COLOR,
           scale: counterScale,
@@ -6867,6 +6900,7 @@ export function ChatOverlay({
               // deliberately does not (the composer glyphs carry that cue).
               breathing={listening || responding || recording}
               pilled={pilled}
+              desktopOverlayHost={fillHostAtHalf}
             />
           </motion.div>
         </motion.fieldset>
