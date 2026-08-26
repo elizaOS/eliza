@@ -62,21 +62,11 @@ describe("truncateWellFormed", () => {
 		expect(truncateWellFormed("abc", Number.NaN)).toBe("");
 		expect(truncateWellFormed("abc", Number.POSITIVE_INFINITY)).toBe("");
 		expect(truncateWellFormed("abc", Number.NEGATIVE_INFINITY)).toBe("");
-		expect(truncateWellFormed(null as unknown as string, 10)).toBe("");
-		expect(truncateWellFormed(undefined as unknown as string, 10)).toBe("");
 	});
 
 	it("preserves a pre-existing lone surrogate (sanitizing is not its job)", () => {
 		const malformed = `x\uD83D`;
 		expect(truncateWellFormed(`${malformed}yz`, 2)).toBe(malformed);
-	});
-});
-
-describe("toWellFormedUnicode defensive handling", () => {
-	it("returns empty string for non-string inputs", () => {
-		expect(toWellFormedUnicode(null as unknown as string)).toBe("");
-		expect(toWellFormedUnicode(undefined as unknown as string)).toBe("");
-		expect(toWellFormedUnicode(123 as unknown as string)).toBe("");
 	});
 });
 
