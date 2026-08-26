@@ -179,7 +179,7 @@ describe("installation lifecycle state machine", () => {
 		// installationId is derived from the full scope tuple, not the raw
 		// snowflake (round-1 F14).
 		expect(receipt.record.installationId).toBe(
-			stringToUuid("discord:" + connectorAccountId + ":123456789012345678"),
+			stringToUuid(`discord:${connectorAccountId}:123456789012345678`),
 		);
 	});
 

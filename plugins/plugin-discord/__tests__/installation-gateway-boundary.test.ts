@@ -90,7 +90,6 @@ describe("guildCreate installation lifecycle boundary", () => {
 		setupDiscordEventListeners(
 			svc as unknown as Parameters<typeof setupDiscordEventListeners>[0],
 		);
-		const acct = stringToUuid("acct");
 		// First join + removal establish the removal fence.
 		const first = makeGuild("g1", "2026-08-25T10:00:00Z");
 		svc.client.emit("guildCreate", guildPayload(first));
