@@ -4788,6 +4788,8 @@
   "dynamicviewloader.viewId": "ID da visualização: {{viewId}}",
   "dynamicviewloader.restricted.title": "Visualização não disponível nesta plataforma",
   "dynamicviewloader.restricted.body": "Visualizações dinâmicas não podem ser carregadas em compilações da App Store para iOS ou Android.",
+  "dynamicviewloader.unavailable.title": "Visualização indisponível",
+  "dynamicviewloader.unavailable.body": "Esta visualização não está disponível no ambiente de execução atual.",
   "vaultinventory.storedSecrets": "Segredos armazenados",
   "vaultinventory.storedSecrets.description": "Todos os segredos armazenados localmente, agrupados por categoria. Adicione chaves de API, chaves de carteira e tokens de plugin aqui.",
   "vaultinventory.addSecret": "Adicionar segredo",

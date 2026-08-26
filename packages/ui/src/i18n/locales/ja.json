@@ -4788,6 +4788,8 @@
   "dynamicviewloader.viewId": "ビュー ID: {{viewId}}",
   "dynamicviewloader.restricted.title": "このプラットフォームではビューが利用できません",
   "dynamicviewloader.restricted.body": "iOS または Android のストアビルドでは動的ビューを読み込めません。",
+  "dynamicviewloader.unavailable.title": "ビューを利用できません",
+  "dynamicviewloader.unavailable.body": "このビューは現在のランタイムでは利用できません。",
   "vaultinventory.storedSecrets": "保存済みシークレット",
   "vaultinventory.storedSecrets.description": "ローカルに保存されているすべてのシークレットをカテゴリ別に表示します。API キー、ウォレットキー、プラグイントークンをここに追加してください。",
   "vaultinventory.addSecret": "シークレットを追加",

@@ -4788,6 +4788,8 @@
   "dynamicviewloader.viewId": "ID de vista: {{viewId}}",
   "dynamicviewloader.restricted.title": "Vista no disponible en esta plataforma",
   "dynamicviewloader.restricted.body": "Las vistas dinámicas no se pueden cargar en compilaciones de iOS o Android de la tienda.",
+  "dynamicviewloader.unavailable.title": "Vista no disponible",
+  "dynamicviewloader.unavailable.body": "Esta vista no está disponible en el entorno de ejecución actual.",
   "vaultinventory.storedSecrets": "Secretos almacenados",
   "vaultinventory.storedSecrets.description": "Cada secreto almacenado localmente, agrupado por categoría. Añade aquí claves de API, claves de cartera y tokens de plugins.",
   "vaultinventory.addSecret": "Añadir secreto",

@@ -4781,6 +4781,8 @@
   "dynamicviewloader.viewId": "ID ng View: {{viewId}}",
   "dynamicviewloader.restricted.title": "Hindi available ang view sa platform na ito",
   "dynamicviewloader.restricted.body": "Hindi maaaring i-load ang mga dynamic view sa iOS o Android store builds.",
+  "dynamicviewloader.unavailable.title": "Hindi available ang view",
+  "dynamicviewloader.unavailable.body": "Hindi available ang view na ito sa kasalukuyang runtime.",
   "vaultinventory.storedSecrets": "Mga nakaimbak na lihim",
   "vaultinventory.storedSecrets.description": "Bawat lihim na nakaimbak nang lokal, naka-grupo ayon sa kategorya. Magdagdag ng mga API key, wallet key, at plugin token dito.",
   "vaultinventory.addSecret": "Magdagdag ng lihim",

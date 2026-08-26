@@ -4788,6 +4788,8 @@
   "dynamicviewloader.viewId": "视图 ID：{{viewId}}",
   "dynamicviewloader.restricted.title": "此平台不支持该视图",
   "dynamicviewloader.restricted.body": "iOS 或 Android 商店版本不支持动态视图加载。",
+  "dynamicviewloader.unavailable.title": "视图不可用",
+  "dynamicviewloader.unavailable.body": "当前运行时不提供此视图。",
   "vaultinventory.storedSecrets": "已存储的密钥",
   "vaultinventory.storedSecrets.description": "所有本地存储的密钥，按类别分组。在此添加 API 密钥、钱包密钥和插件令牌。",
   "vaultinventory.addSecret": "添加密钥",

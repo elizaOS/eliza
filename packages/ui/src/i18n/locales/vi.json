@@ -4781,6 +4781,8 @@
   "dynamicviewloader.viewId": "ID giao diện: {{viewId}}",
   "dynamicviewloader.restricted.title": "Giao diện không khả dụng trên nền tảng này",
   "dynamicviewloader.restricted.body": "Không thể tải giao diện động trên các bản iOS hoặc Android từ cửa hàng.",
+  "dynamicviewloader.unavailable.title": "Giao diện không khả dụng",
+  "dynamicviewloader.unavailable.body": "Giao diện này không khả dụng trong môi trường chạy hiện tại.",
   "vaultinventory.storedSecrets": "Bí mật đã lưu",
   "vaultinventory.storedSecrets.description": "Tất cả bí mật được lưu cục bộ, nhóm theo danh mục. Thêm khóa API, khóa ví và token plugin tại đây.",
   "vaultinventory.addSecret": "Thêm bí mật",

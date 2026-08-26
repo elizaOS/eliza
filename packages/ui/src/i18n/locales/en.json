@@ -5387,6 +5387,8 @@
   "dynamicviewloader.viewId": "View ID: {{viewId}}",
   "dynamicviewloader.restricted.title": "View not available on this platform",
   "dynamicviewloader.restricted.body": "Dynamic views cannot be loaded on iOS or Android store builds.",
+  "dynamicviewloader.unavailable.title": "View unavailable",
+  "dynamicviewloader.unavailable.body": "This view is not available in the current runtime.",
   "dynamicviewloader.retry": "Retry",
   "vaultinventory.storedSecrets": "Stored secrets",
   "vaultinventory.storedSecrets.description": "Every secret stored locally, grouped by category. Add API keys, wallet keys, and plugin tokens here.",

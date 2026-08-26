@@ -4788,6 +4788,8 @@
   "dynamicviewloader.viewId": "뷰 ID: {{viewId}}",
   "dynamicviewloader.restricted.title": "이 플랫폼에서 사용할 수 없는 뷰",
   "dynamicviewloader.restricted.body": "iOS 또는 Android 스토어 빌드에서는 동적 뷰를 불러올 수 없습니다.",
+  "dynamicviewloader.unavailable.title": "사용할 수 없는 뷰",
+  "dynamicviewloader.unavailable.body": "이 뷰는 현재 런타임에서 사용할 수 없습니다.",
   "vaultinventory.storedSecrets": "저장된 시크릿",
   "vaultinventory.storedSecrets.description": "카테고리별로 그룹화된 로컬 저장 시크릿. API 키, 지갑 키, 플러그인 토큰을 여기에 추가하세요.",
   "vaultinventory.addSecret": "시크릿 추가",
