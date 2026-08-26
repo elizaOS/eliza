@@ -750,4 +750,22 @@ describe("app management role gates", () => {
       });
     },
   );
+
+  it.each(deniedRoles)(
+    "denies %s actor from relaunching apps",
+    async (actorRole) => {
+      const result = await callRoute({
+        method: "POST",
+        pathname: "/api/apps/relaunch",
+        actorRole,
+        body: { name: "calculator" },
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.res.status).toBe(403);
+      expect(result.res.body).toEqual({
+        error: "App relaunch requires OWNER or ADMIN role",
+      });
+    },
+  );
 });
