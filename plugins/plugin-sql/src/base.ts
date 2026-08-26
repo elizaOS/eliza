@@ -452,6 +452,38 @@ function documentTimestampExpression(): SQL {
   )`;
 }
 
+/**
+ * Builds the WHERE predicates for the documented `metadata` filter on
+ * `getMemories`/`countMemories`. Mirrors the reference in-memory
+ * `memoryMatchesMetadata`: each requested top-level key must be present and its
+ * value must equal the stored value, AND-combined across keys. Equality is
+ * per-top-level JSON value equality via JSONB `=` (canonical), NOT `@>`
+ * whole-object containment — containment would recursively match nested-object
+ * and array supersets (e.g. stored `{tags:["a","b"]}` under filter
+ * `{tags:["a"]}`) and diverge from the reference adapter, so callers would see
+ * different results per backend (issue #29069).
+ *
+ * `undefined` is not representable in JSONB and cannot equal any stored value,
+ * so a filter value of `undefined` emits an unsatisfiable predicate and the
+ * filter matches nothing — the same result the reference matcher produces —
+ * rather than a backend-dependent serialization (`JSON.stringify` silently
+ * drops undefined keys).
+ */
+function metadataFilterConditions(
+  metadataColumn: SQLWrapper,
+  filter: Record<string, unknown>
+): SQL[] {
+  const conditions: SQL[] = [];
+  for (const [key, value] of Object.entries(filter)) {
+    if (value === undefined) {
+      conditions.push(sql`false`);
+      continue;
+    }
+    conditions.push(sql`(${metadataColumn} -> ${key}) = ${JSON.stringify(value)}::jsonb`);
+  }
+  return conditions;
+}
+
 function isMessageSearchObjectsMissing(error: unknown): boolean {
   const seen = new Set<unknown>();
   let current: unknown = error;
@@ -2792,12 +2824,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     worldId?: UUID;
     textContains?: string;
     /**
-     * JSONB containment filter over `memory.metadata`. Documented on the core
+     * Top-level metadata filter over `memory.metadata`. Documented on the core
      * `IDatabaseAdapter.getMemories` contract and honored by the reference
      * `InMemoryDatabaseAdapter` (see `memoryMatchesMetadata`). Previously this
      * key was accepted but dropped here, so SQL callers received a superset of
-     * rows (issue #29069). Applied identically to `countMemories` so their
-     * totals cannot drift.
+     * rows (issue #29069). Each key is matched by per-top-level JSON value
+     * equality (see `metadataFilterConditions`) and applied identically to
+     * `countMemories` so their totals cannot drift.
      */
     metadata?: Record<string, unknown>;
     orderBy?: "createdAt";
@@ -2894,12 +2927,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         conditions.push(eq(memoryTable.agentId, agentId));
       }
 
-      // Honor the documented `metadata` filter with JSONB whole-object
-      // containment, matching `countMemories` so get/count totals cannot drift
-      // and mirroring the in-memory reference adapter's top-level equality. An
+      // Honor the documented `metadata` filter with per-top-level JSON value
+      // equality, matching `countMemories` so get/count totals cannot drift and
+      // mirroring the in-memory reference adapter's `memoryMatchesMetadata`. An
       // empty object is a no-op (would otherwise match every row).
       if (params.metadata && Object.keys(params.metadata).length > 0) {
-        conditions.push(sql`${memoryTable.metadata} @> ${JSON.stringify(params.metadata)}::jsonb`);
+        conditions.push(...metadataFilterConditions(memoryTable.metadata, params.metadata));
       }
 
       if (textContains) {
@@ -4461,7 +4494,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         conditions.push(eq(memoryTable.unique, true));
       }
       if (params.metadata && Object.keys(params.metadata).length > 0) {
-        conditions.push(sql`${memoryTable.metadata} @> ${JSON.stringify(params.metadata)}::jsonb`);
+        conditions.push(...metadataFilterConditions(memoryTable.metadata, params.metadata));
       }
 
       const result = await this.db
