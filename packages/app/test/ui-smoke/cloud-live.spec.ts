@@ -8,7 +8,6 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { resolveDirectCloudAuthApiBase } from "@elizaos/ui/api/direct-cloud-endpoints";
 import { isPersonalSharedElizaId } from "@elizaos/ui/utils/cloud-agent-base";
 import {
   type BrowserContext,
@@ -37,6 +36,7 @@ import {
   writeCloudLiveContinuityEvidence,
 } from "../cloud-live-continuity-contract";
 import { resolveCloudLiveOriginContract } from "../cloud-live-origin";
+import { waitForRendererCloudApiOrigin } from "../cloud-live-renderer-api-readiness";
 import {
   CLOUD_LIVE_TRAJECTORY_TIMEOUT_MS,
   type CloudLiveTrajectoryPhase,
@@ -267,28 +267,11 @@ async function requireRendererCloudApiOrigin(
       ).__ELIZAOS_APP_BOOT_CONFIG__;
       return config?.cloudApiBase?.trim() ?? "";
     });
-  await expect
-    .poll(readRendererCloudBase, {
-      message: "renderer boot config must expose its Cloud base",
-      timeout: 30_000,
-    })
-    .not.toBe("");
-  const rendererCloudBase = await readRendererCloudBase();
-  const rendererApiOrigin = (() => {
-    if (!rendererCloudBase) return "";
-    try {
-      return new URL(resolveDirectCloudAuthApiBase(rendererCloudBase)).origin;
-    } catch {
-      // error-policy:J3 a malformed boot value is reported as an explicit
-      // mismatch carrying the offending string, never as a raw TypeError.
-      return `<unparseable: ${rendererCloudBase}>`;
-    }
-  })();
-  expect(
-    rendererApiOrigin,
-    `renderer bundle resolves ${rendererCloudBase || "<unset>"} -> ${rendererApiOrigin || "<empty>"}; the lane pinned ${expectedApiOrigin}`,
-  ).toBe(expectedApiOrigin);
-  return rendererApiOrigin;
+  const observation = await waitForRendererCloudApiOrigin({
+    readCloudBase: readRendererCloudBase,
+    expectedApiOrigin,
+  });
+  return observation.apiOrigin;
 }
 
 async function openProtectedCloudBlankStart(
