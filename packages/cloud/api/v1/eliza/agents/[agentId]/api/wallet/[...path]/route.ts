@@ -11,6 +11,7 @@ import {
   requireUserOrApiKeyWithOrg,
 } from "@/lib/auth/workers-hono-auth";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import { isPersonalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { createStewardClient } from "@/lib/services/steward-client";
 import { parseClampedLimit, parseClampedOffset } from "@/lib/utils/clamp-limit";
@@ -176,6 +177,17 @@ async function resolveStewardAgentIdForProxy(
   sandboxAgentId: string,
   organizationId: string,
 ): Promise<string | null> {
+  // Personal Shared ids are rowless namespaced ids, not UUID-backed
+  // sandbox agents: skip the UUID-column sandbox mapping entirely and
+  // resolve straight through the Steward client (#28500).
+  if (isPersonalSharedAgentId(sandboxAgentId)) {
+    try {
+      await client.getAgent(sandboxAgentId);
+      return sandboxAgentId;
+    } catch {
+      return null;
+    }
+  }
   const stewardAgentId = await resolveStewardAgentId(
     sandboxAgentId,
     organizationId,
@@ -353,12 +365,20 @@ export async function handleDirectWalletRequest(
     );
   }
 
-  const agent = await elizaSandboxService.getAgent(
-    agentId,
-    user.organization_id,
-  );
-  if (!agent) {
-    return json({ success: false, error: "Agent not found" }, { status: 404 });
+  // Personal Shared identities are rowless (no agent_sandboxes row) with a
+  // namespaced `personal:` id. Passing that id into the UUID-backed sandbox
+  // lookup makes Postgres raise an invalid-UUID error (HTTP 500) before the
+  // intended behavior runs. Route Personal wallet requests straight to the
+  // account-scoped Steward resolution instead (#28500).
+  const isPersonal = isPersonalSharedAgentId(agentId);
+  if (!isPersonal) {
+    const agent = await elizaSandboxService.getAgent(
+      agentId,
+      user.organization_id,
+    );
+    if (!agent) {
+      return json({ success: false, error: "Agent not found" }, { status: 404 });
+    }
   }
 
   let client: StewardClient;

@@ -20,6 +20,7 @@ import { containersEnv } from "@/lib/config/containers-env";
 import { getElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
 import { adminService } from "@/lib/services/admin";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import { isPersonalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { getStewardAgent } from "@/lib/services/steward-client";
 import type {
@@ -133,6 +134,16 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const agentId = c.req.param("agentId") ?? "";
+
+    // Personal Shared identities are rowless namespaced ids, not
+    // agent_sandboxes rows. Forwarding the namespaced id into the
+    // UUID-backed sandbox lookup raises an invalid-UUID error (HTTP 500)
+    // during Shared-to-Dedicated handoff polls; reject before repository
+    // I/O so the provisioning widget can fall back to the Dedicated
+    // target id (#28500).
+    if (isPersonalSharedAgentId(agentId)) {
+      return c.json({ success: false, error: "Agent not found" }, 404);
+    }
 
     const agent = await elizaSandboxService.getAgent(
       agentId,
