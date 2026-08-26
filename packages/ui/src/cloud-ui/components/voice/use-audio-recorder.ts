@@ -90,9 +90,11 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
   }, [clearTimer, stopStream]);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       startAttemptRef.current += 1;
+      startPendingRef.current = false;
       clearTimer();
       const recorder = mediaRecorderRef.current;
       mediaRecorderRef.current = null;
@@ -181,6 +183,9 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
 
       createdRecorder.start(100);
       createdRecorder.addEventListener("stop", () => {
+        if (mediaRecorderRef.current !== createdRecorder) {
+          return;
+        }
         const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
         if (mountedRef.current) {
           setAudioBlob(audioBlob);

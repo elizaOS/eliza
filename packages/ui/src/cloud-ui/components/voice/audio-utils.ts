@@ -47,6 +47,15 @@ export function isUsableMediaRecorder(
       return false;
     }
 
+    const state = (candidate as Record<string, unknown>).state;
+    if (
+      !(["inactive", "recording", "paused"] as const).includes(
+        state as RecordingState,
+      )
+    ) {
+      return false;
+    }
+
     return REQUIRED_RECORDER_METHODS.every(
       (method) =>
         typeof (candidate as Record<string, unknown>)[method] === "function",

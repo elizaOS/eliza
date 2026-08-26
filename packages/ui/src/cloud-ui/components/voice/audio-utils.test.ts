@@ -4,6 +4,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getSupportedMimeType,
+  isUsableMediaRecorder,
   supportsGetUserMedia,
   supportsMediaRecorder,
 } from "./audio-utils.ts";
@@ -94,6 +95,29 @@ describe("supportsGetUserMedia", () => {
       }),
     );
     expect(supportsGetUserMedia()).toBe(false);
+  });
+});
+
+describe("isUsableMediaRecorder", () => {
+  it("requires a readable recorder state in addition to callable methods", () => {
+    const methods = {
+      addEventListener: vi.fn(),
+      start: vi.fn(),
+      stop: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
+    };
+    expect(isUsableMediaRecorder({ state: "inactive", ...methods })).toBe(true);
+    expect(isUsableMediaRecorder(methods)).toBe(false);
+    expect(
+      isUsableMediaRecorder(
+        Object.defineProperty({ ...methods }, "state", {
+          get: () => {
+            throw new Error("blocked");
+          },
+        }),
+      ),
+    ).toBe(false);
   });
 });
 

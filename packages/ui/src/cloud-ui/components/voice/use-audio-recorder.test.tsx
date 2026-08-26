@@ -83,6 +83,22 @@ afterEach(() => {
 });
 
 describe("useAudioRecorder", () => {
+  it("remains usable across React Strict Mode's setup-cleanup replay", async () => {
+    const stopTrack = vi.fn();
+    installRecorder(async () => createStream({ stop: stopTrack }));
+
+    const { result } = renderHook(() => useAudioRecorder(), {
+      reactStrictMode: true,
+    });
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    expect(result.current.isRecording).toBe(true);
+    act(() => result.current.stopRecording());
+    expect(stopTrack).toHaveBeenCalledOnce();
+  });
+
   it("stops a stream that resolves after the hook unmounts", async () => {
     let resolveStream: ((stream: MediaStream) => void) | undefined;
     const streamPromise = new Promise<MediaStream>((resolve) => {
@@ -222,5 +238,51 @@ describe("useAudioRecorder", () => {
 
     act(() => result.current.stopRecording());
     expect(stopTrack).toHaveBeenCalledOnce();
+  });
+
+  it("ignores a delayed stop event from an older recorder session", async () => {
+    class DelayedStopMediaRecorder extends FakeMediaRecorder {
+      override stop(): void {
+        this.stopCall();
+        this.state = "inactive";
+      }
+
+      emitStop(): void {
+        for (const listener of this.listeners.get("stop") ?? []) {
+          listener(new Event("stop"));
+        }
+      }
+    }
+    const firstTrackStop = vi.fn();
+    const secondTrackStop = vi.fn();
+    const streams = [
+      createStream({ stop: firstTrackStop }),
+      createStream({ stop: secondTrackStop }),
+    ];
+    installRecorder(async () => {
+      const stream = streams.shift();
+      if (!stream) throw new Error("unexpected acquisition");
+      return stream;
+    }, DelayedStopMediaRecorder);
+
+    const { result } = renderHook(() => useAudioRecorder());
+    await act(async () => {
+      await result.current.startRecording();
+    });
+    const firstRecorder = FakeMediaRecorder
+      .instances[0] as DelayedStopMediaRecorder;
+
+    act(() => result.current.stopRecording());
+    act(() => result.current.stopRecording());
+    expect(firstTrackStop).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+    expect(result.current.isRecording).toBe(true);
+
+    act(() => firstRecorder.emitStop());
+    expect(result.current.isRecording).toBe(true);
+    expect(secondTrackStop).not.toHaveBeenCalled();
   });
 });
