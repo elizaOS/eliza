@@ -63,6 +63,25 @@ const _require = createRequire(import.meta.url);
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../..");
+export function resolveAndroidCloudPrebootLockupDataUri(): string {
+  const androidCloudPrebootLockupSvg = fs
+    .readFileSync(
+      path.join(here, "public", "brand", "logos", "eliza_logotext.svg"),
+      "utf8",
+    )
+    .replace(
+      /\s*<rect x="0\.081543" y="1\.84143" width="101\.919" height="101\.919" fill="#FF5800"\s*\/?>\s*/,
+      "\n",
+    );
+  if (androidCloudPrebootLockupSvg.includes("#FF5800")) {
+    throw new Error(
+      "Android Cloud preboot lockup still contains its orange backing rect",
+    );
+  }
+  return `data:image/svg+xml;base64,${Buffer.from(
+    androidCloudPrebootLockupSvg,
+  ).toString("base64")}`;
+}
 const nativePluginsRoot = path.join(elizaRoot, "plugins");
 const bunLinkedPackageCacheRoot = path.join(
   os.homedir(),
@@ -1122,6 +1141,7 @@ function androidCloudRendererPolicyPlugin(): Plugin {
 }
 
 const ANDROID_CLOUD_CURATED_PUBLIC_ASSETS = Object.freeze([
+  "THIRD_PARTY_NOTICES.txt",
   "bg-sunset.webp",
   "wallpapers/canopy.webp",
   "wallpapers/dusk-dunes.webp",
@@ -1130,22 +1150,32 @@ const ANDROID_CLOUD_CURATED_PUBLIC_ASSETS = Object.freeze([
   "wallpapers/slate.webp",
 ]);
 
+function readAndroidCloudCuratedAssets(): Array<{
+  type: "asset";
+  fileName: string;
+  source: Buffer;
+}> {
+  return ANDROID_CLOUD_CURATED_PUBLIC_ASSETS.map((fileName) => ({
+    type: "asset" as const,
+    fileName,
+    source: fs.readFileSync(path.join(here, "public", fileName)),
+  }));
+}
+
 /**
  * Packages the canonical app's selectable backgrounds without copying the
  * browser public tree, whose service workers, installers, and local task
  * runner are not capabilities of the Cloud-only Android application.
  */
-function androidCloudCuratedAssetsPlugin(): Plugin {
+export function androidCloudCuratedAssetsPlugin(
+  androidCloudBuild = IS_ANDROID_CLOUD_RENDERER_BUILD,
+): Plugin {
   return {
     name: "android-cloud-curated-assets",
     generateBundle() {
-      if (!IS_ANDROID_CLOUD_RENDERER_BUILD) return;
-      for (const fileName of ANDROID_CLOUD_CURATED_PUBLIC_ASSETS) {
-        this.emitFile({
-          type: "asset",
-          fileName,
-          source: fs.readFileSync(path.join(here, "public", fileName)),
-        });
+      if (!androidCloudBuild) return;
+      for (const asset of readAndroidCloudCuratedAssets()) {
+        this.emitFile(asset);
       }
     },
   };
@@ -1174,11 +1204,18 @@ export function stripAndroidCloudIpcBootstrap(html: string): string {
 }
 
 /** Removes browser-only assets whose public tree is not packaged. */
-export function stripAndroidCloudPublicAssetReferences(html: string): string {
+export function stripAndroidCloudPublicAssetReferences(
+  html: string,
+  prebootLockupDataUri = resolveAndroidCloudPrebootLockupDataUri(),
+): string {
   return html
     .replace(
       /\s*<link\b[^>]*\brel=["'](?:icon|apple-touch-icon|manifest)["'][^>]*>\s*/gi,
       "\n",
+    )
+    .replace(
+      /<img\b[^>]*\bclass=["'][^"']*\beliza-preboot-shell__mark\b[^"']*["'][^>]*>\s*<span\b[^>]*\bclass=["'][^"']*\beliza-preboot-shell__name\b[^"']*["'][^>]*>[^<]*<\/span>/gi,
+      `<img class="eliza-preboot-shell__lockup" src="${prebootLockupDataUri}" alt="" decoding="sync" fetchpriority="high" />`,
     )
     .replace(
       /\s*<img\b[^>]*\bclass=["'][^"']*\beliza-preboot-shell__mark\b[^"']*["'][^>]*>\s*/gi,
@@ -1223,7 +1260,11 @@ export function androidCloudRendererEntryPlugin(
 
 /** Creates the metadata transform; the target override keeps build-mode tests exact. */
 export function appShellMetadataPlugin(
-  options: { androidCloudBuild?: boolean; capacitorBuildTarget?: string } = {},
+  options: {
+    androidCloudBuild?: boolean;
+    capacitorBuildTarget?: string;
+    resolveAndroidCloudPrebootLockup?: () => string;
+  } = {},
 ): Plugin {
   const capacitorBuildTarget =
     options.capacitorBuildTarget ?? CAPACITOR_BUILD_TARGET;
@@ -1290,7 +1331,13 @@ export function appShellMetadataPlugin(
       }
       if (isAndroidCloudBuild) {
         next = stripAndroidCloudIpcBootstrap(next);
-        next = stripAndroidCloudPublicAssetReferences(next);
+        next = stripAndroidCloudPublicAssetReferences(
+          next,
+          (
+            options.resolveAndroidCloudPrebootLockup ??
+            resolveAndroidCloudPrebootLockupDataUri
+          )(),
+        );
       }
       return next;
     },

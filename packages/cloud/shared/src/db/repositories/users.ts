@@ -19,9 +19,23 @@ import {
 } from "../schemas/personal-account-convergences";
 import { type UserIdentity, userIdentities } from "../schemas/user-identities";
 import { type NewUser, type User, users } from "../schemas/users";
+import { revokePersonalSharedGroupConsentForUser } from "./personal-shared-group-consent-lifecycle";
 
 const stewardAuthorityIdentity = alias(userIdentities, "steward_authority_identity");
 const canonicalStewardIdentity = alias(userIdentities, "canonical_steward_identity");
+
+function userMutationRevokesPersonalSharedConsent(data: Partial<NewUser>): boolean {
+  return (
+    data.is_active === false ||
+    data.deleted_at != null ||
+    data.is_anonymous === true ||
+    data.phone_verified === false ||
+    Object.hasOwn(data, "organization_id") ||
+    Object.hasOwn(data, "steward_user_id") ||
+    Object.hasOwn(data, "telegram_id") ||
+    Object.hasOwn(data, "phone_number")
+  );
+}
 
 export type { NewUser, User, UserIdentity };
 
@@ -2318,15 +2332,21 @@ export class UsersRepository {
    * Updates an existing user.
    */
   async update(id: string, data: Partial<NewUser>): Promise<User | undefined> {
-    const [updated] = await dbWrite
-      .update(users)
-      .set({
-        ...data,
-        updated_at: new Date(),
-      })
-      .where(eq(users.id, id))
-      .returning();
-    return updated;
+    return dbWrite.transaction(async (tx) => {
+      const now = new Date();
+      if (userMutationRevokesPersonalSharedConsent(data)) {
+        await revokePersonalSharedGroupConsentForUser(tx, id, now);
+      }
+      const [updated] = await tx
+        .update(users)
+        .set({
+          ...data,
+          updated_at: now,
+        })
+        .where(eq(users.id, id))
+        .returning();
+      return updated;
+    });
   }
 
   /**
@@ -2342,6 +2362,7 @@ export class UsersRepository {
   ): Promise<User | undefined> {
     return dbWrite.transaction(async (tx) => {
       const updatedAt = new Date();
+      await revokePersonalSharedGroupConsentForUser(tx, userId, updatedAt);
       const [updated] = await tx
         .update(users)
         .set({ ...identity, updated_at: updatedAt })
@@ -2380,6 +2401,28 @@ export class UsersRepository {
     platformId: string,
     platformName?: string,
   ): Promise<LinkMessagingIdentityResult> {
+    // Lock and validate the target before revoking any authority. Returning a
+    // conflict must not commit a consent revocation when no identity changed.
+    const [targetUser] = await tx
+      .select({
+        id: users.id,
+        phoneNumber: users.phone_number,
+        phoneVerified: users.phone_verified,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1)
+      .for("update");
+    if (!targetUser) return { status: "user_not_found" };
+    if (
+      provider === "phone" &&
+      targetUser.phoneVerified === true &&
+      targetUser.phoneNumber !== null &&
+      targetUser.phoneNumber !== platformId
+    ) {
+      return { status: "handle_conflict" };
+    }
+
     const ownerPredicates =
       provider === "telegram"
         ? [eq(users.telegram_id, platformId), eq(userIdentities.telegram_id, platformId)]
@@ -2406,6 +2449,9 @@ export class UsersRepository {
     }
 
     const now = new Date();
+    if (provider === "telegram" || provider === "phone") {
+      await revokePersonalSharedGroupConsentForUser(tx, userId, now);
+    }
     const identity =
       provider === "telegram"
         ? { telegram_id: platformId, telegram_username: platformName ?? null }
@@ -2431,8 +2477,9 @@ export class UsersRepository {
       .where(targetPredicate)
       .returning();
     if (!updated) {
-      const [existing] = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId));
-      return existing ? { status: "handle_conflict" } : { status: "user_not_found" };
+      // The target row is locked above. A miss is only possible if a guarded
+      // phone precondition changes in this transaction; fail closed.
+      return { status: "handle_conflict" };
     }
 
     await tx
@@ -2528,6 +2575,7 @@ export class UsersRepository {
   async linkVerifiedPhone(id: string, phoneNumber: string): Promise<User | undefined> {
     return dbWrite.transaction(async (tx) => {
       const now = new Date();
+      await revokePersonalSharedGroupConsentForUser(tx, id, now);
       const [updated] = await tx
         .update(users)
         .set({
@@ -2604,6 +2652,24 @@ export class UsersRepository {
   ): Promise<LinkTelegramAndPhoneResult> {
     return dbWrite.transaction(async (tx) => {
       const updatedAt = new Date();
+      const [existing] = await tx
+        .select({
+          phoneNumber: users.phone_number,
+          phoneVerified: users.phone_verified,
+        })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1)
+        .for("update");
+      if (!existing) return { status: "user_not_found" };
+      if (
+        existing.phoneVerified === true &&
+        existing.phoneNumber !== null &&
+        existing.phoneNumber !== identity.phone_number
+      ) {
+        return { status: "phone_mismatch", existingPhone: existing.phoneNumber };
+      }
+      await revokePersonalSharedGroupConsentForUser(tx, userId, updatedAt);
       const [updated] = await tx
         .update(users)
         .set({
@@ -2624,17 +2690,9 @@ export class UsersRepository {
         .returning();
 
       if (!updated) {
-        const [existing] = await tx
-          .select({ phone_number: users.phone_number })
-          .from(users)
-          .where(eq(users.id, userId))
-          .limit(1);
-        if (!existing || !existing.phone_number) {
-          // A present row with a NULL phone would have matched the UPDATE
-          // predicate, so a phoneless miss means the user row is gone.
-          return { status: "user_not_found" };
-        }
-        return { status: "phone_mismatch", existingPhone: existing.phone_number };
+        // The user row and guarded phone state are locked above, so a miss is
+        // unreachable unless a future mutation adds another predicate.
+        return { status: "phone_mismatch", existingPhone: existing.phoneNumber ?? "" };
       }
 
       await tx
@@ -2678,15 +2736,19 @@ export class UsersRepository {
    * Links a Steward user ID to an existing user.
    */
   async linkStewardId(userId: string, stewardUserId: string): Promise<User | undefined> {
-    const [updated] = await dbWrite
-      .update(users)
-      .set({
-        steward_user_id: stewardUserId,
-        updated_at: new Date(),
-      })
-      .where(eq(users.id, userId))
-      .returning();
-    return updated;
+    return dbWrite.transaction(async (tx) => {
+      const now = new Date();
+      await revokePersonalSharedGroupConsentForUser(tx, userId, now);
+      const [updated] = await tx
+        .update(users)
+        .set({
+          steward_user_id: stewardUserId,
+          updated_at: now,
+        })
+        .where(eq(users.id, userId))
+        .returning();
+      return updated;
+    });
   }
 
   /**
@@ -3035,7 +3097,10 @@ export class UsersRepository {
    * Deletes a user by ID.
    */
   async delete(id: string): Promise<void> {
-    await dbWrite.delete(users).where(eq(users.id, id));
+    await dbWrite.transaction(async (tx) => {
+      await revokePersonalSharedGroupConsentForUser(tx, id, new Date());
+      await tx.delete(users).where(eq(users.id, id));
+    });
   }
 
   /**
@@ -3049,16 +3114,25 @@ export class UsersRepository {
     organizationId: string,
   ): Promise<void> {
     await dbWrite.transaction(async (tx) => {
-      const members = await tx
+      const observedMembers = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.organization_id, organizationId));
+      if (!observedMembers.some((member) => member.id === userId)) {
+        throw new Error("Account deletion user is not a member of its personal organization");
+      }
+      if (observedMembers.length !== 1) {
+        throw new Error("Account deletion requires a sole-user personal organization");
+      }
+
+      await revokePersonalSharedGroupConsentForUser(tx, userId, new Date());
+      const lockedMembers = await tx
         .select({ id: users.id })
         .from(users)
         .where(eq(users.organization_id, organizationId))
         .for("update");
-      if (!members.some((member) => member.id === userId)) {
-        throw new Error("Account deletion user is not a member of its personal organization");
-      }
-      if (members.length !== 1) {
-        throw new Error("Account deletion requires a sole-user personal organization");
+      if (lockedMembers.length !== 1 || lockedMembers[0]?.id !== userId) {
+        throw new Error("Account deletion personal organization membership changed");
       }
 
       const deleted = await tx

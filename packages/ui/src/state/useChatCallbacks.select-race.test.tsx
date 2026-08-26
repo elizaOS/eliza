@@ -42,6 +42,9 @@ import type { LifecycleAction } from "./internal";
 import { type DataLoadersDeps, useDataLoaders } from "./useDataLoaders";
 
 const mocks = vi.hoisted(() => ({
+  runtimeAuthoritySwitchListeners: new Set<
+    (phase: "before" | "after") => void
+  >(),
   client: {
     getConversationMessages: vi.fn(),
     listConversations: vi.fn(),
@@ -62,6 +65,14 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../api", () => ({ client: mocks.client }));
+vi.mock("./switch-runtime", () => ({
+  subscribeRuntimeAuthoritySwitch: (
+    listener: (phase: "before" | "after") => void,
+  ) => {
+    mocks.runtimeAuthoritySwitchListeners.add(listener);
+    return () => mocks.runtimeAuthoritySwitchListeners.delete(listener);
+  },
+}));
 
 vi.mock("@capacitor/core", () => ({
   Capacitor: { isNativePlatform: () => false, getPlatform: () => "web" },
@@ -128,6 +139,13 @@ interface Harness {
     | "loadConversations"
     | "loadConversationMessages"
     | "prefetchConversationMessages"
+    | "claimConversationMessagesOwnership"
+    | "isConversationMessagesOwnershipCurrent"
+    | "getConversationMessagesOwnershipGeneration"
+    | "registerConversationMessageOverlay"
+    | "applyConversationMessageOverlayModification"
+    | "removeConversationMessageStateMessages"
+    | "discardConversationMessageState"
     | "loadedConversationIdRef"
   >;
   activeConversationIdRef: MutableRefObject<string | null>;
@@ -135,6 +153,8 @@ interface Harness {
   conversationsRef: MutableRefObject<Conversation[]>;
   chatInputRef: MutableRefObject<string>;
   chatPendingImagesRef: MutableRefObject<ImageAttachment[]>;
+  greetingFiredRef: MutableRefObject<boolean>;
+  greetingInFlightConversationRef: MutableRefObject<string | null>;
   /** Resolve the oldest in-flight getConversationMessages fetch for `id`. */
   resolveLoad: (id: string, messages: ConversationMessage[]) => void;
   deletedConversationIds: () => string[];
@@ -367,6 +387,8 @@ function makeHarness(seedConversations: Conversation[]): Harness {
     conversationsRef,
     chatInputRef,
     chatPendingImagesRef,
+    greetingFiredRef,
+    greetingInFlightConversationRef,
     resolveLoad: (id, messages) => {
       pendingLoads.get(id)?.shift()?.resolve(messages);
     },
@@ -386,6 +408,19 @@ function mountChat(h: Harness) {
       loadConversations: loaders.loadConversations,
       loadConversationMessages: loaders.loadConversationMessages,
       prefetchConversationMessages: loaders.prefetchConversationMessages,
+      claimConversationMessagesOwnership:
+        loaders.claimConversationMessagesOwnership,
+      isConversationMessagesOwnershipCurrent:
+        loaders.isConversationMessagesOwnershipCurrent,
+      getConversationMessagesOwnershipGeneration:
+        loaders.getConversationMessagesOwnershipGeneration,
+      registerConversationMessageOverlay:
+        loaders.registerConversationMessageOverlay,
+      applyConversationMessageOverlayModification:
+        loaders.applyConversationMessageOverlayModification,
+      removeConversationMessageStateMessages:
+        loaders.removeConversationMessageStateMessages,
+      discardConversationMessageState: loaders.discardConversationMessageState,
       loadedConversationIdRef: loaders.loadedConversationIdRef,
     });
     return { loaders, callbacks };
@@ -406,6 +441,17 @@ async function selectAndCommit(
   });
 }
 
+async function flushPendingWork(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+function emitRuntimeAuthoritySwitch(phase: "before" | "after"): void {
+  for (const listener of mocks.runtimeAuthoritySwitchListeners) listener(phase);
+}
+
 const SEED = [
   conversationRecord("draft-d"),
   conversationRecord("conv-b"),
@@ -414,10 +460,157 @@ const SEED = [
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.runtimeAuthoritySwitchListeners.clear();
   window.localStorage.clear();
 });
 
 describe("rapid conversation switching must never delete a real conversation", () => {
+  it("fences a pending greeting across a same-id authority switch and hydrates B exactly once", async () => {
+    const oldConversation = conversationRecord("authority-collision");
+    const newConversation = {
+      ...conversationRecord("authority-collision"),
+      title: "Authority B initial",
+    };
+    const h = makeHarness([oldConversation]);
+    const { result, unmount } = mountChat(h);
+    await selectAndCommit(
+      result,
+      h,
+      oldConversation.id,
+      realHistory("authority-a"),
+    );
+    expect(mocks.runtimeAuthoritySwitchListeners.size).toBe(2);
+
+    type GreetingResponse = {
+      text: string;
+      agentName: string;
+      generated: boolean;
+    };
+    let resolveGreetingA: ((value: GreetingResponse) => void) | undefined;
+    let resolveGreetingB: ((value: GreetingResponse) => void) | undefined;
+    mocks.client.requestGreeting
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveGreetingA = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveGreetingB = resolve;
+          }),
+      );
+    let greetingA: Promise<boolean>;
+    act(() => {
+      greetingA = result.current.callbacks.fetchGreeting(oldConversation.id);
+    });
+    expect(mocks.client.requestGreeting).toHaveBeenCalledTimes(1);
+
+    mocks.client.listConversations.mockClear();
+    mocks.client.getConversationMessages.mockClear();
+    mocks.client.listConversations.mockResolvedValueOnce({
+      conversations: [newConversation],
+    });
+
+    act(() => emitRuntimeAuthoritySwitch("before"));
+    expect(h.conversationMessagesRef.current).toEqual([]);
+    expect(h.conversationsRef.current).toEqual([]);
+    expect(h.activeConversationIdRef.current).toBeNull();
+
+    act(() => emitRuntimeAuthoritySwitch("after"));
+    await flushPendingWork();
+    expect(mocks.client.listConversations).toHaveBeenCalledTimes(1);
+    expect(h.activeConversationIdRef.current).toBe(newConversation.id);
+    expect(mocks.client.getConversationMessages).toHaveBeenCalledTimes(1);
+    expect(mocks.client.getConversationMessages).toHaveBeenCalledWith(
+      newConversation.id,
+    );
+
+    await act(async () => {
+      h.resolveLoad(newConversation.id, []);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await vi.waitFor(() => {
+      expect(mocks.client.requestGreeting).toHaveBeenCalledTimes(2);
+    });
+
+    await act(async () => {
+      resolveGreetingA?.({
+        text: "private greeting from A",
+        agentName: "A",
+        generated: true,
+      });
+      await greetingA;
+    });
+    expect(h.conversationMessagesRef.current).toEqual([]);
+    expect(h.greetingFiredRef.current).toBe(false);
+    expect(h.greetingInFlightConversationRef.current).toBe(newConversation.id);
+
+    // A's finally must not clear B's same-id flight. A duplicate B request is
+    // still suppressed until the real B request resolves.
+    await act(async () => {
+      await expect(
+        result.current.callbacks.fetchGreeting(newConversation.id),
+      ).resolves.toBe(false);
+    });
+    expect(mocks.client.requestGreeting).toHaveBeenCalledTimes(2);
+
+    act(() => {
+      resolveGreetingB?.({
+        text: "greeting from B",
+        agentName: "B",
+        generated: true,
+      });
+    });
+    await vi.waitFor(() => {
+      expect(h.conversationMessagesRef.current).toMatchObject([
+        { role: "assistant", text: "greeting from B" },
+      ]);
+    });
+    expect(mocks.client.listConversations).toHaveBeenCalledTimes(1);
+    expect(mocks.client.getConversationMessages).toHaveBeenCalledTimes(1);
+    expect(mocks.client.requestGreeting).toHaveBeenNthCalledWith(
+      2,
+      newConversation.id,
+      "en",
+    );
+    expect(h.conversationsRef.current).toEqual([newConversation]);
+    expect(h.greetingFiredRef.current).toBe(true);
+
+    unmount();
+    expect(mocks.runtimeAuthoritySwitchListeners.size).toBe(0);
+  });
+
+  it("drops a pre-switch getStatus result before it can request a greeting", async () => {
+    const conversation = conversationRecord("status-authority-a");
+    const h = makeHarness([conversation]);
+    const { result } = mountChat(h);
+    await selectAndCommit(result, h, conversation.id, realHistory("status-a"));
+    let resolveStatus: ((value: { state: string }) => void) | undefined;
+    mocks.client.getStatus.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveStatus = resolve;
+        }),
+    );
+    mocks.client.requestGreeting.mockClear();
+
+    let pendingStatusGreeting: Promise<void>;
+    act(() => {
+      pendingStatusGreeting =
+        result.current.callbacks.requestGreetingWhenRunning(conversation.id);
+    });
+    act(() => emitRuntimeAuthoritySwitch("before"));
+    await act(async () => {
+      resolveStatus?.({ state: "running" });
+      await pendingStatusGreeting;
+    });
+
+    expect(mocks.client.requestGreeting).not.toHaveBeenCalled();
+  });
+
   it("draft → B → C: B (real, load still in flight) is NOT judged by the draft's stale messages and survives", async () => {
     const h = makeHarness(SEED);
     const { result } = mountChat(h);
@@ -638,6 +831,290 @@ describe("rapid conversation switching must never delete a real conversation", (
     expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
   });
 
+  it("keeps a pending greeting valid across a same-id reload", async () => {
+    const h = makeHarness(SEED);
+    const { result } = mountChat(h);
+    mocks.client.createConversation.mockResolvedValueOnce({
+      conversation: conversationRecord("conv-new-greeting-reload"),
+    });
+    let resolveGreeting:
+      | ((value: {
+          text: string;
+          agentName: string;
+          generated: boolean;
+        }) => void)
+      | undefined;
+    mocks.client.requestGreeting.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveGreeting = resolve;
+        }),
+    );
+
+    const newConversation = result.current.callbacks.handleNewConversation();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(h.activeConversationIdRef.current).toBe("conv-new-greeting-reload");
+
+    await act(async () => {
+      const reload = result.current.loaders.loadConversationMessages(
+        "conv-new-greeting-reload",
+      );
+      h.resolveLoad("conv-new-greeting-reload", []);
+      await reload;
+    });
+    await act(async () => {
+      resolveGreeting?.({
+        text: "greeting after reload",
+        agentName: "Eliza",
+        generated: true,
+      });
+      await newConversation;
+    });
+
+    expect(h.conversationMessagesRef.current).toMatchObject([
+      {
+        role: "assistant",
+        text: "greeting after reload",
+        source: MESSAGE_SOURCE_AGENT_GREETING,
+      },
+    ]);
+  });
+
+  it("keeps a greeting that commits before an older same-id reload and converges without a phantom duplicate", async () => {
+    const conversationId = "conv-greeting-before-reload";
+    const h = makeHarness(SEED);
+    const { result } = mountChat(h);
+    mocks.client.createConversation.mockResolvedValueOnce({
+      conversation: conversationRecord(conversationId),
+    });
+    let resolveGreeting:
+      | ((value: {
+          text: string;
+          agentName: string;
+          generated: boolean;
+        }) => void)
+      | undefined;
+    mocks.client.requestGreeting.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveGreeting = resolve;
+        }),
+    );
+
+    const newConversation = result.current.callbacks.handleNewConversation();
+    await Promise.resolve();
+    await Promise.resolve();
+    let staleReload: Promise<unknown>;
+    act(() => {
+      staleReload =
+        result.current.loaders.loadConversationMessages(conversationId);
+    });
+    await act(async () => {
+      resolveGreeting?.({
+        text: "owned greeting",
+        agentName: "Eliza",
+        generated: true,
+      });
+      await newConversation;
+    });
+    const localGreeting = h.conversationMessagesRef.current[0];
+    expect(localGreeting).toMatchObject({
+      role: "assistant",
+      text: "owned greeting",
+      source: MESSAGE_SOURCE_AGENT_GREETING,
+    });
+    expect(localGreeting?.clientRenderId).toMatch(/^temp-greeting-/);
+    expect(h.greetingFiredRef.current).toBe(true);
+
+    await act(async () => {
+      h.resolveLoad(conversationId, []);
+      await staleReload;
+    });
+    expect(h.conversationMessagesRef.current).toEqual([localGreeting]);
+    expect(h.greetingFiredRef.current).toBe(true);
+
+    const serverGreeting: ConversationMessage = {
+      id: "server-greeting",
+      role: "assistant",
+      text: "owned greeting",
+      timestamp: localGreeting?.timestamp ?? Date.now(),
+      source: MESSAGE_SOURCE_AGENT_GREETING,
+    };
+    await act(async () => {
+      const convergence =
+        result.current.loaders.loadConversationMessages(conversationId);
+      h.resolveLoad(conversationId, [serverGreeting]);
+      await convergence;
+    });
+    expect(h.conversationMessagesRef.current).toEqual([serverGreeting]);
+
+    mocks.client.requestGreeting.mockResolvedValueOnce({
+      text: "discarded duplicate",
+      agentName: "Eliza",
+      generated: true,
+    });
+    await act(async () => {
+      await result.current.callbacks.fetchGreeting(conversationId);
+    });
+    expect(h.conversationMessagesRef.current).toEqual([serverGreeting]);
+
+    await act(async () => {
+      const noPhantom =
+        result.current.loaders.loadConversationMessages(conversationId);
+      h.resolveLoad(conversationId, []);
+      await noPhantom;
+    });
+    expect(h.conversationMessagesRef.current).toEqual([]);
+  });
+
+  it("does not let a delayed new-chat greeting overwrite a turn sent meanwhile", async () => {
+    const h = makeHarness(SEED);
+    const { result } = mountChat(h);
+    await selectAndCommit(result, h, "conv-b", realHistory("b"));
+
+    mocks.client.createConversation.mockResolvedValueOnce({
+      conversation: conversationRecord("conv-new-greeting"),
+    });
+    let resolveGreeting:
+      | ((value: {
+          text: string;
+          agentName: string;
+          generated: boolean;
+        }) => void)
+      | undefined;
+    mocks.client.requestGreeting.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveGreeting = resolve;
+        }),
+    );
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "terminal reply",
+      completed: true,
+      userMessageId: "sent-user",
+      messageId: "sent-assistant",
+    });
+    mocks.client.renameConversation.mockResolvedValue({
+      conversation: conversationRecord("conv-new-greeting"),
+    });
+
+    const newConversation = result.current.callbacks.handleNewConversation();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(h.activeConversationIdRef.current).toBe("conv-new-greeting");
+    expect(mocks.client.requestGreeting).toHaveBeenCalledWith(
+      "conv-new-greeting",
+      "en",
+    );
+
+    const sentTurn = result.current.callbacks.sendChatText(
+      "sent before greeting",
+      {
+        conversationId: "conv-new-greeting",
+      },
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalled();
+    await act(async () => {
+      await sentTurn;
+    });
+    expect(h.conversationMessagesRef.current).toMatchObject([
+      { id: "sent-user", text: "sent before greeting" },
+      { id: "sent-assistant", text: "terminal reply" },
+    ]);
+
+    await act(async () => {
+      resolveGreeting?.({
+        text: "late greeting",
+        agentName: "Eliza",
+        generated: true,
+      });
+      await newConversation;
+    });
+
+    expect(h.activeConversationIdRef.current).toBe("conv-new-greeting");
+    expect(h.conversationMessagesRef.current).toMatchObject([
+      { id: "sent-user", text: "sent before greeting" },
+      { id: "sent-assistant", text: "terminal reply" },
+    ]);
+    expect(
+      h.conversationMessagesRef.current.some(
+        (message) => message.text === "late greeting",
+      ),
+    ).toBe(false);
+  });
+
+  it("new-chat rollback keeps the flushed partial and does not resurrect a cancelled queued row", async () => {
+    const h = makeHarness(SEED);
+    const { result } = mountChat(h);
+
+    await selectAndCommit(result, h, "conv-b", realHistory("b"));
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      (
+        _conversationId: string,
+        _text: string,
+        onToken: (token: string, accumulatedText?: string) => void,
+        _channelType: string,
+        signal: AbortSignal,
+      ) =>
+        new Promise((_resolve, reject) => {
+          onToken("partial", "partial reply");
+          signal.addEventListener(
+            "abort",
+            () => {
+              reject(
+                Object.assign(new Error("aborted"), { name: "AbortError" }),
+              );
+            },
+            { once: true },
+          );
+        }),
+    );
+    mocks.client.createConversation.mockRejectedValueOnce(new Error("offline"));
+
+    let activeSend!: Promise<void>;
+    let queuedSend!: Promise<void>;
+    act(() => {
+      activeSend = result.current.callbacks.sendChatText("active question", {
+        conversationId: "conv-b",
+      });
+    });
+    await flushPendingWork();
+    act(() => {
+      queuedSend = result.current.callbacks.sendChatText("queued question", {
+        conversationId: "conv-b",
+      });
+    });
+    await flushPendingWork();
+
+    await act(async () => {
+      await Promise.all([
+        result.current.callbacks.handleNewConversation(),
+        activeSend,
+        queuedSend,
+      ]);
+    });
+
+    expect(h.activeConversationIdRef.current).toBe("conv-b");
+    expect(h.chatInputRef.current).toBe("queued question");
+    expect(
+      h.conversationMessagesRef.current.filter(
+        (message) => message.text === "queued question",
+      ),
+    ).toEqual([]);
+    expect(h.conversationMessagesRef.current).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: "user", text: "active question" }),
+        expect.objectContaining({
+          role: "assistant",
+          text: "partial reply",
+        }),
+      ]),
+    );
+  });
+
   it("conversation selection parks cancelled queued text and images on the source conversation", async () => {
     const h = makeHarness(SEED);
     const { result } = mountChat(h);
@@ -677,5 +1154,105 @@ describe("rapid conversation switching must never delete a real conversation", (
     expect(h.chatInputRef.current).toBe("stay with B");
     expect(h.chatPendingImagesRef.current).toEqual([queuedImage]);
     expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+  });
+
+  it("waits for a cold startup hydration before routing an action send", async () => {
+    const h = makeHarness([]);
+    const { result } = mountChat(h);
+    let resolveHydrationCreate:
+      | ((value: { conversation: Conversation }) => void)
+      | undefined;
+    mocks.client.createConversation.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveHydrationCreate = resolve;
+        }),
+    );
+    mocks.client.listConversations
+      .mockResolvedValueOnce({ conversations: [] })
+      .mockResolvedValue({
+        conversations: [conversationRecord("conv-hydrated")],
+      });
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "hydrated action reply",
+      completed: true,
+      userMessageId: "hydrated-action-user",
+      messageId: "hydrated-action-assistant",
+    });
+
+    let hydration: Promise<string | null>;
+    act(() => {
+      hydration = result.current.callbacks.hydrateInitialConversationState();
+    });
+    await flushPendingWork();
+    expect(mocks.client.createConversation).toHaveBeenCalledTimes(1);
+
+    let actionSend: Promise<void>;
+    act(() => {
+      actionSend = result.current.callbacks.sendActionMessage(
+        "action during hydration",
+      );
+    });
+    await flushPendingWork();
+    expect(mocks.client.createConversation).toHaveBeenCalledTimes(1);
+    expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveHydrationCreate?.({
+        conversation: conversationRecord("conv-hydrated"),
+      });
+      await hydration;
+    });
+    await flushPendingWork();
+    expect(
+      mocks.client.sendConversationMessageStream.mock.calls[0]?.slice(0, 2),
+    ).toEqual(["conv-hydrated", "action during hydration"]);
+
+    await act(async () => {
+      h.resolveLoad("conv-hydrated", []);
+      await actionSend;
+    });
+
+    expect(mocks.client.createConversation).toHaveBeenCalledTimes(1);
+    expect(h.activeConversationIdRef.current).toBe("conv-hydrated");
+    expect(h.conversationsRef.current).toEqual([
+      conversationRecord("conv-hydrated"),
+    ]);
+    expect(h.conversationMessagesRef.current).toMatchObject([
+      { id: "hydrated-action-user", text: "action during hydration" },
+      { id: "hydrated-action-assistant", text: "hydrated action reply" },
+    ]);
+  });
+
+  it("does not clear C when deleting B resolves after the user selected C", async () => {
+    const h = makeHarness(SEED);
+    const { result } = mountChat(h);
+    await selectAndCommit(result, h, "conv-b", realHistory("b"));
+
+    let resolveDelete: ((value: { ok: boolean }) => void) | undefined;
+    mocks.client.deleteConversation.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveDelete = resolve;
+        }),
+    );
+    let deletion: Promise<void>;
+    act(() => {
+      deletion = result.current.callbacks.handleDeleteConversation("conv-b");
+    });
+    await flushPendingWork();
+    await selectAndCommit(result, h, "conv-c", realHistory("c"));
+
+    await act(async () => {
+      resolveDelete?.({ ok: true });
+      await deletion;
+    });
+
+    expect(h.activeConversationIdRef.current).toBe("conv-c");
+    expect(h.conversationMessagesRef.current).toEqual(realHistory("c"));
+    expect(mocks.client.sendWsMessage).not.toHaveBeenCalledWith({
+      type: "active-conversation",
+      conversationId: null,
+    });
   });
 });

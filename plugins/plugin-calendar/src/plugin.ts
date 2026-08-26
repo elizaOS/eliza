@@ -58,7 +58,7 @@ export const calendarPlugin: Plugin = {
       label: "Calendar",
       description:
         "Chat-first calendar over unified Google, Microsoft, Apple, and ICS events.",
-      icon: "Calendar",
+      icon: "CalendarDays",
       path: "/calendar",
       modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",

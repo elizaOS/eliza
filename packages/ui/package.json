@@ -246,6 +246,11 @@
       "import": "./dist/components/composites/settings/index.js",
       "default": "./dist/components/composites/settings/index.js"
     },
+    "./components/shared": {
+      "types": "./dist/components/shared/index.d.ts",
+      "import": "./dist/components/shared/index.js",
+      "default": "./dist/components/shared/index.js"
+    },
     "./components/*": {
       "types": "./dist/components/*.d.ts",
       "import": "./dist/components/*.js",
