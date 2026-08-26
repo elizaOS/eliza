@@ -39,6 +39,11 @@ describe("detectSecrets", () => {
     expect(match?.preview).toBe("AKIAIO…MPLE");
   });
 
+
+  it("preserves well-formed Unicode in secret preview when secret contains surrogate pairs", () => {
+    const [match] = detectSecrets("AKIAIOSFODNN7EXAMPLE");
+    expect(match?.preview.isWellFormed()).toBe(true);
+  });
   it("reports multiple distinct secrets in one blob", () => {
     const names = detectSecrets(
       `aws=AKIAIOSFODNN7EXAMPLE\ngh=ghp_${"a".repeat(36)}\n`,

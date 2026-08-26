@@ -1,3 +1,5 @@
+import { tailWellFormed, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+
 // Conservative secret detection. Catches the obvious: AWS keys, GitHub tokens,
 // generic high-entropy assignments to *_SECRET / *_TOKEN / *_KEY. Designed to
 // gate WRITE/EDIT, not to be a full DLP solution.
@@ -33,8 +35,11 @@ export function detectSecrets(content: string): SecretMatch[] {
     const m = regex.exec(content);
     if (m) {
       const found = m[0];
+      const wellFormed = toWellFormedUnicode(found);
       const preview =
-        found.length > 16 ? `${found.slice(0, 6)}…${found.slice(-4)}` : found;
+        wellFormed.length > 16
+          ? `${truncateWellFormed(wellFormed, 6)}…${tailWellFormed(wellFormed, 4)}`
+          : wellFormed;
       matches.push({ name, preview });
     }
   }
