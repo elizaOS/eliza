@@ -721,3 +721,184 @@ export function replyClaimsEmptyTrackedWorkState(reply: string): boolean {
 	}
 	return false;
 }
+
+// ── Delegated-work terminal-outcome recognizers ──────────────────────────
+//
+// Third fabricated-state family: a reply ASSERTING that delegated tracked
+// work (a build, task, session, job, run) is finished, on a turn whose own
+// tool evidence reports the opposite — a terminal failure / interrupted /
+// no-deliverable status for that work. Observed live (2026-08-25,
+// chart-dep-check): the TASKS history result said the orchestrator task was
+// "[interrupted]" with no results, and the final reply shipped "it's
+// finished. it looks like we're using chart.js now." — the completion AND
+// the specifics both fabricated. The planner-loop's evidence-grounded
+// completion post-pass (runtime/planner-loop.ts) consumes these the same way
+// the planned-reply egress guard consumes the completed-side-effect
+// recognizer above; they live here so every honesty boundary shares ONE
+// claim grammar instead of growing parallel dialects.
+
+// Optional hedging adverbs a completion claim may carry without changing its
+// assertive force ("it's actually all finished"). Deliberately a closed list:
+// an open [^ ]+ gap would swallow negators ("it's not finished").
+const FINISHED_WORK_ADVERB = String.raw`(?:actually\s+|basically\s+|already\s+|now\s+|officially\s+|finally\s+|totally\s+|completely\s+)?`;
+// Completed-state adjectives/participles the claim can assert.
+const FINISHED_WORK_STATE = String.raw`(?:finished|done|complete|completed|wrapped\s+up|successful)`;
+// Delegated tracked-work nouns a completion claim can attach to. Includes the
+// verification vocabulary (tests/checks) because "the tests passed" is the
+// same claim shape about the same delegated evidence.
+const FINISHED_WORK_NOUN = String.raw`(?:build|task|job|session|run|work|report|investigation|deploy(?:ment)?|pipeline|pr|pull\s+request|script|app|page|site|fix|patch|migration|refactor|upgrade|update|agent|sub-?agent|tests?|typecheck|lint|ci|checks?)`;
+
+// "it's finished", "that is done", "everything's actually all complete".
+const PRONOUN_FINISHED_CLAIM_PATTERN = new RegExp(
+	String.raw`\b(?:it|that|this|everything)(?:['’]s|\s+(?:is|was))\s+${FINISHED_WORK_ADVERB}(?:all\s+)?${FINISHED_WORK_STATE}\b`,
+	"gi",
+);
+// "the build is finished", "your chart-dep-check session is complete". The
+// bounded modifier gap admits compound labels ("the chart-dep-check session")
+// while its tempered shape refuses to cross a negator or auxiliary that would
+// flip the claim ("the build I stopped", "the build hasn't...").
+const FINISHED_WORK_MODIFIER_GAP = String.raw`(?:(?!\b(?:not|no|never|isn|wasn|aren|weren|hasn|hadn|haven|don|doesn|didn|won|wouldn|couldn|shouldn|can)['’a-z]*\b)[\w'’-]+\s+){0,3}?`;
+const NOUN_FINISHED_STATE_CLAIM_PATTERN = new RegExp(
+	String.raw`\b(?:the|your|our|my|that|this)\s+${FINISHED_WORK_MODIFIER_GAP}${FINISHED_WORK_NOUN}\s+(?:is|was|are|were)\s+${FINISHED_WORK_ADVERB}(?:all\s+)?(?:${FINISHED_WORK_STATE}|deployed|merged|live)\b`,
+	"gi",
+);
+// "the build finished", "the tests passed", "that job has completed".
+const NOUN_FINISHED_VERB_CLAIM_PATTERN = new RegExp(
+	String.raw`\b(?:the|your|our|my|that|this)\s+${FINISHED_WORK_MODIFIER_GAP}${FINISHED_WORK_NOUN}\s+(?:has\s+|have\s+|just\s+)*(?:finished|completed|succeeded|passed|went\s+through)(?:\s+successfully)?\b`,
+	"gi",
+);
+// Sentence-initial blanket completion ("All done!", "all finished.").
+const BLANKET_FINISHED_CLAIM_PATTERN =
+	/(?:^|[.!?]\s+)all\s+(?:done|finished|complete|wrapped\s+up)\b/gi;
+// "completed successfully" / "successfully deployed" in any sentence shape.
+const SUCCESSFULLY_FINISHED_CLAIM_PATTERN =
+	/\b(?:(?:finished|completed|built|deployed|merged)\s+successfully|successfully\s+(?:finished|completed|built|deployed|merged))\b/gi;
+
+// A subordinator/conditional lead turns the match into a plan or hypothesis
+// ("once it's finished, I'll let you know"), not a report.
+const FINISHED_CLAIM_NON_ASSERTIVE_LEAD_PATTERN =
+	/\b(?:if|unless|when|whenever|once|until|after|before|assuming|whether|hoping|in\s+case|as\s+soon\s+as|should|will|would|could|might|may)\b[^.!?\n]*$/i;
+
+const FINISHED_WORK_CLAIM_PATTERNS: readonly RegExp[] = [
+	PRONOUN_FINISHED_CLAIM_PATTERN,
+	NOUN_FINISHED_STATE_CLAIM_PATTERN,
+	NOUN_FINISHED_VERB_CLAIM_PATTERN,
+	BLANKET_FINISHED_CLAIM_PATTERN,
+	SUCCESSFULLY_FINISHED_CLAIM_PATTERN,
+];
+
+/**
+ * True when a reply ASSERTS that delegated tracked work is finished /
+ * succeeded. Questions ("is it finished?"), negations ("it's not finished",
+ * "the build hasn't finished"), and plans/conditionals ("once it's finished…",
+ * "it should be done soon") pass through — only reports fire, mirroring the
+ * assertion-only contract of `replyClaimsCompletedSideEffect`.
+ */
+export function replyClaimsFinishedDelegatedWork(reply: string): boolean {
+	const text = reply.trim();
+	if (!text) return false;
+	for (const pattern of FINISHED_WORK_CLAIM_PATTERNS) {
+		for (const match of text.matchAll(pattern)) {
+			const index = match.index ?? 0;
+			const prefix = text.slice(0, index);
+			if (FINISHED_CLAIM_NON_ASSERTIVE_LEAD_PATTERN.test(prefix)) continue;
+			if (sideEffectClaimSentenceIsQuestion(text, index)) continue;
+			return true;
+		}
+	}
+	return false;
+}
+
+// Failure-acknowledgment vocabulary: a reply that carries any of these is
+// already telling the user something went wrong, so the honesty boundary must
+// not rewrite it (a mixed report — "part A finished, part B failed" — is the
+// honest shape, not a fabrication). Bare "stopped" is deliberately absent:
+// "the session stopped a few minutes ago" reads as a neutral end, and the
+// live fabrication used exactly that framing next to "it's finished".
+const WORK_NOT_FINISHED_ACKNOWLEDGMENT_PATTERN =
+	/\b(?:fail(?:ed|ure|s|ing)?|didn['’]t\s+(?:finish|complete|work|run|build|make\s+it)|did\s+not\s+(?:finish|complete|work|run)|couldn['’]t|could\s+not|wasn['’]t\s+able|was\s+not\s+able|hasn['’]t\s+(?:finished|completed)|interrupt(?:ed|ion)|crash(?:ed|es|ing)?|error(?:ed|s)?|broke|gave\s+up|unsuccessful|incomplete|cancell?ed|timed\s+out|no\s+deliverables?|stopped\s+(?:early|short|before|without)|fell\s+over|never\s+(?:finished|completed|produced|ran))\b/i;
+
+/** True when a reply acknowledges that the work failed / did not finish. */
+export function replyAcknowledgesWorkNotFinished(reply: string): boolean {
+	return WORK_NOT_FINISHED_ACKNOWLEDGMENT_PATTERN.test(reply);
+}
+
+// ── Tool-evidence terminal-status markers ────────────────────────────────
+//
+// Text-level recognizers for the status vocabulary orchestrator/tracking
+// tools emit. Bracketed tokens are gated on a tracked-work noun in the same
+// line so bracketed prose in arbitrary fetched content cannot masquerade as a
+// status report; the phrase patterns are self-describing failure reports.
+
+const EVIDENCE_TRACKED_WORK_NOUN_PATTERN =
+	/\b(?:task|build|session|job|run|worker|agent|sub-?agent|lane|workspace|pipeline|deployment|verification|goal|orchestrator)\b/i;
+const BRACKETED_TERMINAL_FAILURE_STATUS_PATTERN =
+	/\[\s*(?:interrupted|failed|failure|cancelled|canceled|stopped|stop_failed|parked|errored|timed[ _-]?out|abandoned|crashed)\s*\]/i;
+const TERMINAL_FAILURE_EVIDENCE_PATTERNS: readonly RegExp[] = [
+	/"passed"\s*:\s*false\b/,
+	/\bfailed\s+to\s+produce\s+(?:any\s+)?(?:deliverables?|results?|a\s+usable\s+result)\b/i,
+	/\b(?:stopped|failed|crashed|died|exited|was\s+interrupted)\s+before\s+(?:completion|completing|finishing|producing|results?|it\s+(?:could\s+)?(?:finish|complete|produce))\b/i,
+	/\bruntime\s+(?:step\s+)?failed\b/i,
+	/\bdid\s+not\s+produce\s+(?:any\s+)?(?:deliverables?|results?|output)\b/i,
+	/\bno\s+results?\s+(?:were|was)\s+produced\b/i,
+];
+
+const EVIDENCE_LINE_MAX_CHARS = 240;
+
+function evidenceLineContaining(text: string, index: number): string {
+	let start = index;
+	while (start > 0 && text[start - 1] !== "\n") start -= 1;
+	let end = index;
+	while (end < text.length && text[end] !== "\n") end += 1;
+	const line = text.slice(start, end).trim();
+	return line.length > EVIDENCE_LINE_MAX_CHARS
+		? `${line.slice(0, EVIDENCE_LINE_MAX_CHARS)}…`
+		: line;
+}
+
+/**
+ * When tool-result text reports a TERMINAL failure/interrupted/no-deliverable
+ * status for tracked work, returns the (trimmed, capped) line carrying that
+ * report — the honesty boundary quotes it into the forced-synthesis
+ * instruction. Returns undefined for ordinary prose: a bare "failed" in
+ * fetched content is not a status report.
+ */
+export function toolEvidenceReportsTerminalFailure(
+	text: string,
+): string | undefined {
+	const bracketed = BRACKETED_TERMINAL_FAILURE_STATUS_PATTERN.exec(text);
+	if (bracketed) {
+		const line = evidenceLineContaining(text, bracketed.index);
+		if (EVIDENCE_TRACKED_WORK_NOUN_PATTERN.test(line)) return line;
+	}
+	for (const pattern of TERMINAL_FAILURE_EVIDENCE_PATTERNS) {
+		const match = pattern.exec(text);
+		if (match) return evidenceLineContaining(text, match.index);
+	}
+	return undefined;
+}
+
+const BRACKETED_TERMINAL_SUCCESS_STATUS_PATTERN =
+	/\[\s*(?:done|completed?|finished|passed|verified|succeeded)\s*\]/i;
+const TERMINAL_SUCCESS_EVIDENCE_PATTERNS: readonly RegExp[] = [
+	/"passed"\s*:\s*true\b/,
+	/\bverified\s+done\b/i,
+	/\bevery\s+acceptance\s+criterion\s+(?:passes|now\s+verifies|verified)\b/i,
+];
+
+/**
+ * True when tool-result text reports a verified terminal SUCCESS for tracked
+ * work. Success evidence at-or-after failure evidence makes the turn's status
+ * ambiguous (e.g. a respawned lane that passed), so the completion post-pass
+ * stands down rather than contradicting a possibly-true completion.
+ */
+export function toolEvidenceReportsVerifiedCompletion(text: string): boolean {
+	const bracketed = BRACKETED_TERMINAL_SUCCESS_STATUS_PATTERN.exec(text);
+	if (bracketed) {
+		const line = evidenceLineContaining(text, bracketed.index);
+		if (EVIDENCE_TRACKED_WORK_NOUN_PATTERN.test(line)) return true;
+	}
+	return TERMINAL_SUCCESS_EVIDENCE_PATTERNS.some((pattern) =>
+		pattern.test(text),
+	);
+}

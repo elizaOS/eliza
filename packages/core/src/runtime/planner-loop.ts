@@ -25,6 +25,12 @@ import {
 	projectToolDiagnosticValue,
 	type ToolDiagnosticTextRedactor,
 } from "../security/tool-diagnostics";
+import {
+	replyAcknowledgesWorkNotFinished,
+	replyClaimsFinishedDelegatedWork,
+	toolEvidenceReportsTerminalFailure,
+	toolEvidenceReportsVerifiedCompletion,
+} from "../services/message/side-effect-claims";
 import { resolveOptimizedPromptForRuntime } from "../services/optimized-prompt-resolver";
 import {
 	emitStreamingHook,
@@ -309,8 +315,8 @@ interface RawPlannerOutput {
 }
 
 /**
- * Public planner-loop entry: runs the iteration loop, then enforces two reply
- * guarantees. Failed turns get the honest-failure guarantee — a turn that
+ * Public planner-loop entry: runs the iteration loop, then enforces three
+ * reply guarantees. Failed turns get the honest-failure guarantee — a turn that
  * would ship the generic failed-step sentence gets ONE forced no-tools
  * synthesis pass whose instruction names the failed step and its scrubbed
  * human-readable cause, so the model states what failed and why in its own
@@ -318,8 +324,12 @@ interface RawPlannerOutput {
  * real tool work must end with a user-facing reply, not silence or the
  * generic handled-step placeholder; junk evaluator output after a successful
  * tool converts into ONE forced no-tools synthesis call grounded in the tool
- * results (#16935). Deliberate silence (STOP/IGNORE, suppressPlannerReply) is
- * flagged by the loop and respected.
+ * results (#16935). Finished turns get the evidence-grounded completion
+ * guarantee — a final reply asserting delegated work finished while the turn's
+ * tool evidence reports a terminal failure/interrupted status gets ONE forced
+ * failure-grounded synthesis (or the typed honest fallback). Deliberate
+ * silence (STOP/IGNORE, suppressPlannerReply) is flagged by the loop and
+ * respected.
  */
 export async function runPlannerLoop(
 	params: PlannerLoopParams,
@@ -348,7 +358,11 @@ export async function runPlannerLoop(
 	const result = await runPlannerLoopIterations(trackedParams);
 	const honest = await ensureFailedTurnFinalMessage(trackedParams, result);
 	const final = await ensureToolTurnFinalMessage(trackedParams, honest);
-	return { ...final, modelUsage: usage };
+	const grounded = await ensureEvidenceGroundedCompletionClaim(
+		trackedParams,
+		final,
+	);
+	return { ...grounded, modelUsage: usage };
 }
 
 async function runPlannerLoopIterations(
@@ -5185,6 +5199,150 @@ async function ensureFailedTurnFinalMessage(
 		);
 		return result;
 	}
+}
+
+/**
+ * Deterministic honest degrade for the evidence-grounded completion guarantee
+ * below: ships only when the forced failure-grounded synthesis itself fails or
+ * still claims completion — the contradicted claim must never ship, and unlike
+ * the failed-step case there is no honest generic sentence to fall back to.
+ */
+export const CONTRADICTED_COMPLETION_FALLBACK_MESSAGE =
+	"I can't actually confirm that finished — the latest status I have shows it stopped before completing, with no results delivered. Want me to restart it?";
+
+/**
+ * Latest tool-result evidence in the turn that reports a TERMINAL
+ * failure/interrupted/no-deliverable status for tracked work, unless a
+ * verified-success report lands at or after it (a respawned lane that passed
+ * makes the completion claim possibly true, so the guarantee stands down).
+ * Scans successful results too: the live incident's status tool SUCCEEDED
+ * while its text said the task was "[interrupted]" with no results.
+ */
+function latestTerminalFailureEvidence(
+	trajectory: PlannerTrajectory,
+): { toolName: string; evidenceLine: string } | undefined {
+	const steps = [...trajectory.archivedSteps, ...trajectory.steps];
+	let failure:
+		| { at: number; toolName: string; evidenceLine: string }
+		| undefined;
+	let successAt = -1;
+	steps.forEach((step, at) => {
+		const result = step.result;
+		if (!step.toolCall || !result) return;
+		for (const text of [result.text, result.userFacingText, result.summary]) {
+			if (typeof text !== "string" || !text) continue;
+			const line = toolEvidenceReportsTerminalFailure(text);
+			if (line) {
+				failure = { at, toolName: step.toolCall.name, evidenceLine: line };
+			}
+			if (toolEvidenceReportsVerifiedCompletion(text)) successAt = at;
+		}
+	});
+	if (!failure) return undefined;
+	if (successAt >= failure.at) return undefined;
+	return { toolName: failure.toolName, evidenceLine: failure.evidenceLine };
+}
+
+/**
+ * Evidence-grounded completion guarantee (post-pass of {@link runPlannerLoop},
+ * the honesty twin of {@link ensureFailedTurnFinalMessage}). A finished turn
+ * whose final reply ASSERTS that delegated tracked work is finished, while the
+ * turn's own tool evidence reports a terminal failure/interrupted/
+ * no-deliverable status for it, gets ONE forced no-tools failure-aware
+ * synthesis pass whose instruction quotes the scrubbed evidence line and bans
+ * both the completion claim and invented specifics. Live incident
+ * (2026-08-25, chart-dep-check): the TASKS history result said the task was
+ * "[interrupted]" with no results, and the gated terminal REPLY shipped "it's
+ * finished. it looks like we're using chart.js now." — completion and
+ * specifics both fabricated. Replies that already acknowledge the failure are
+ * left alone (a mixed honest report is the desired shape, not a fabrication).
+ * Unlike the failed-step pass, an unusable synthesis degrades to the typed
+ * honest fallback — keeping the original reply here would ship the lie.
+ */
+async function ensureEvidenceGroundedCompletionClaim(
+	params: PlannerLoopParams,
+	result: PlannerLoopResult,
+): Promise<PlannerLoopResult> {
+	if (result.status !== "finished") return result;
+	if (result.endedWithDeliberateSilence === true) return result;
+	// Coding/full-surface mode is exempt for the same reason as the other two
+	// reply guarantees: its result feeds the orchestrator, whose own
+	// verification pipeline (goal verifier + relay gating) owns completion
+	// honesty for that surface.
+	if (isCodingFullSurfaceMode()) return result;
+	const finalMessage = result.finalMessage?.trim();
+	if (!finalMessage) return result;
+	if (!replyClaimsFinishedDelegatedWork(finalMessage)) return result;
+	if (replyAcknowledgesWorkNotFinished(finalMessage)) return result;
+	const evidence = latestTerminalFailureEvidence(result.trajectory);
+	if (!evidence) return result;
+	const scrubbedEvidence =
+		scrubFailureCauseForPrompt(evidence.evidenceLine) ??
+		"a terminal failure/interrupted status with no deliverables";
+	const iteration = result.trajectory.steps.length + 1;
+	const instruction =
+		`The draft final reply claims the delegated work is finished, but the ${evidence.toolName} result in this turn reports the opposite. ` +
+		`Tool-reported status: ${scrubbedEvidence}. ` +
+		"Do not call any tool. Do not claim the work finished or succeeded, and " +
+		"do not invent results, names, libraries, or details that no tool result " +
+		"in this trajectory contains. Write the final reply to the user now, in " +
+		"your own conversational voice: say honestly that the work stopped or " +
+		"failed before finishing, summarize the tool-reported status in everyday " +
+		"terms, and offer a next step (for example restarting it). Never include " +
+		"file paths, internal ids, or raw logs.";
+	try {
+		const synthesized = await finishWithForcedSynthesis({
+			loop: params,
+			config: mergeChainingLoopConfig(params.config),
+			trajectory: result.trajectory,
+			iteration,
+			instruction,
+			failureAware: true,
+			onUsage: params.onModelUsage,
+		});
+		const message = synthesized.finalMessage?.trim();
+		const synthesizedUsable =
+			message !== undefined &&
+			message !== "" &&
+			message !== HANDLED_STEP_FALLBACK_MESSAGE &&
+			message !== FAILED_TOOL_FALLBACK_MESSAGE &&
+			!(
+				replyClaimsFinishedDelegatedWork(message) &&
+				!replyAcknowledgesWorkNotFinished(message)
+			);
+		params.runtime.logger?.warn?.(
+			{
+				iteration,
+				evidenceTool: evidence.toolName,
+				synthesizedUsable,
+			},
+			"[planner-loop] final reply claimed completion contradicted by terminal-failure tool evidence; forced a failure-grounded synthesis pass",
+		);
+		if (synthesizedUsable) {
+			return {
+				...result,
+				trajectory: synthesized.trajectory,
+				finalMessage: synthesized.finalMessage,
+			};
+		}
+	} catch (err) {
+		// error-policy:J4 explicit user-facing degrade — a model failure in the
+		// forced synthesis must not ship the contradicted completion claim, so
+		// the typed honest fallback below ships instead and the failure is
+		// logged for diagnosis.
+		params.runtime.logger?.warn?.(
+			{ err: err instanceof Error ? err.message : String(err) },
+			"[planner-loop] failure-grounded completion synthesis failed; shipping the typed honest fallback",
+		);
+	}
+	result.trajectory.steps.push({
+		iteration: result.trajectory.steps.length + 1,
+		thought:
+			"evidence-grounded completion guarantee: contradicted completion claim replaced with the typed honest fallback",
+		terminalMessage: CONTRADICTED_COMPLETION_FALLBACK_MESSAGE,
+		terminalOnly: true,
+	});
+	return { ...result, finalMessage: CONTRADICTED_COMPLETION_FALLBACK_MESSAGE };
 }
 
 /** Newest successful excerpts fed to the rescue synthesis, and the per-excerpt
