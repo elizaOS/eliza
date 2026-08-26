@@ -225,4 +225,64 @@ describe("useRealtimeVoiceMint", () => {
       );
     });
   });
+
+  describe("production self-hosted eligibility", () => {
+    it("arms only after the paired runtime proves its same-origin gateway", async () => {
+      const fetch = vi
+        .fn()
+        .mockResolvedValue(new Response('{"ready":true}', { status: 200 }));
+      const { result } = renderHook(() =>
+        useRealtimeVoiceMint({
+          resolveAgentId: () => null,
+          resolveSelfHostedRuntime: () => true,
+          selfHostedEnabled: true,
+          forceEnabled: false,
+          fetch,
+        }),
+      );
+
+      expect(result.current.agentId).toBeNull();
+      await waitFor(() =>
+        expect(result.current.agentId).toBe(REALTIME_FORCE_SENTINEL_AGENT_ID),
+      );
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/v1/voice/session/health",
+        expect.objectContaining({ method: "GET" }),
+      );
+    });
+
+    it("does not arm for a non-remote runtime under the self-hosted stamp", () => {
+      const fetch = vi.fn();
+      const { result } = renderHook(() =>
+        useRealtimeVoiceMint({
+          resolveAgentId: () => null,
+          resolveSelfHostedRuntime: () => false,
+          selfHostedEnabled: true,
+          forceEnabled: false,
+          fetch,
+        }),
+      );
+
+      expect(result.current.agentId).toBeNull();
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it("fails closed when the paired runtime lacks the gateway", async () => {
+      const fetch = vi
+        .fn()
+        .mockResolvedValue(new Response("{}", { status: 404 }));
+      const { result } = renderHook(() =>
+        useRealtimeVoiceMint({
+          resolveAgentId: () => null,
+          resolveSelfHostedRuntime: () => true,
+          selfHostedEnabled: true,
+          forceEnabled: false,
+          fetch,
+        }),
+      );
+
+      await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+      expect(result.current.agentId).toBeNull();
+    });
+  });
 });

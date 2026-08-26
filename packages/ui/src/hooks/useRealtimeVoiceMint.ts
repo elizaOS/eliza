@@ -1,8 +1,8 @@
 /**
  * Resolves the cloud agent identity and one-time consent required before
- * realtime voice may own the microphone. Self-hosted runtimes stay on batch
- * voice unless an explicit force build also passes its same-origin health
- * probe; failed consent or availability checks never fabricate eligibility.
+ * realtime voice may own the microphone. A production self-hosted build may
+ * arm only after its paired same-origin runtime proves the voice-session
+ * contract; failed consent or availability checks never fabricate eligibility.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -35,6 +35,21 @@ export function isRealtimeVoiceForceEnabled(): boolean {
     return v === "1" || v === "true" || v === "yes" || v === "on";
   } catch {
     // error-policy:J4 An unreadable build flag leaves force-arming explicitly disabled.
+    return false;
+  }
+}
+
+/** Read the production self-hosted realtime capability stamp. */
+export function isRealtimeVoiceSelfHostedEnabled(): boolean {
+  try {
+    const raw = import.meta.env?.VITE_VOICE_REALTIME_SELF_HOSTED as unknown;
+    if (typeof raw !== "string") return false;
+    const value = raw.trim().toLowerCase();
+    return (
+      value === "1" || value === "true" || value === "yes" || value === "on"
+    );
+  } catch {
+    // error-policy:J4 An unreadable build stamp leaves self-hosted realtime disabled.
     return false;
   }
 }
@@ -133,11 +148,20 @@ export function useRealtimeVoiceMint(options?: {
    * health probe succeeds. Never overrides a real resolved agent id.
    */
   forceEnabled?: boolean;
+  /** Production self-hosted capability stamp (tests may inject it). */
+  selfHostedEnabled?: boolean;
+  /** Whether the selected runtime is a paired self-hosted remote. */
+  resolveSelfHostedRuntime?: () => boolean;
 }): UseRealtimeVoiceMintResult {
   const doFetch = options?.fetch ?? defaultConsentFetch;
   const consentPath = options?.consentPath ?? "/api/v1/voice/session/consent";
   const probePath = options?.probePath ?? "/api/v1/voice/session/health";
   const forceEnabled = options?.forceEnabled ?? isRealtimeVoiceForceEnabled();
+  const selfHostedEnabled =
+    options?.selfHostedEnabled ?? isRealtimeVoiceSelfHostedEnabled();
+  const persistedActiveServer = options?.resolveAgentId
+    ? null
+    : loadPersistedActiveServer();
 
   const resolvedAgentId = useMemo(() => {
     // A real, resolvable cloud agent id ALWAYS wins over the sentinel.
@@ -145,15 +169,22 @@ export function useRealtimeVoiceMint(options?: {
       const id = options.resolveAgentId();
       return isUuid(id) ? id : null;
     }
-    const active = loadPersistedActiveServer();
-    const id = active ? resolveDedicatedAgentId(active) : null;
+    const id = persistedActiveServer
+      ? resolveDedicatedAgentId(persistedActiveServer)
+      : null;
     return isUuid(id) ? id : null;
     // resolveAgentId identity is stable in practice; the persisted server read
     // is intentionally per-mount (a runtime switch remounts the chat surface).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options?.resolveAgentId]);
+  }, [options?.resolveAgentId, persistedActiveServer]);
 
-  const forceProbeEligible = forceEnabled && !resolvedAgentId;
+  const selfHostedRuntime = options?.resolveSelfHostedRuntime
+    ? options.resolveSelfHostedRuntime()
+    : persistedActiveServer?.kind === "remote";
+
+  const forceProbeEligible =
+    !resolvedAgentId &&
+    (forceEnabled || (selfHostedEnabled && selfHostedRuntime));
   const [forceProbeArmed, setForceProbeArmed] = useState(false);
 
   useEffect(() => {

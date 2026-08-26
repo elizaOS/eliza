@@ -34,8 +34,18 @@ export function resolveMobileRendererFeatureEnv({ platform, env = {} } = {}) {
       .trim()
       .toLowerCase(),
   );
+  const isVpsSidecar = ["1", "true", "yes"].includes(
+    String(env.ELIZA_ANDROID_VPS_SIDECAR ?? "")
+      .trim()
+      .toLowerCase(),
+  );
   return {
     VITE_VOICE_REALTIME_WS: "1",
+    // A production self-hosted artifact may arm realtime only after its paired
+    // same-origin runtime proves the authenticated voice-session contract is
+    // available. This is distinct from the developer force override: the
+    // runtime remains authoritative and provider credentials stay server-side.
+    VITE_VOICE_REALTIME_SELF_HOSTED: isVpsSidecar ? "1" : "0",
     // Never inherit an ambient debug-force flag into a device artifact. A
     // Cloud mobile build may use realtime only when the normal eligibility
     // contract and server gate both pass.
