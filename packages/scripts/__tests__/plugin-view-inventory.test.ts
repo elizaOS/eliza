@@ -40,6 +40,20 @@ function addBuiltin(root: string, declaration = view("builtin", "/builtin")) {
   return source;
 }
 
+function addShellRoutes(
+  root: string,
+  routes = '{ builtin: "/builtin" }',
+  aliases = "{}",
+) {
+  const source = "packages/ui/src/navigation/index.ts";
+  write(
+    root,
+    source,
+    `export const TAB_PATHS = ${routes};\nexport const TAB_ROUTE_OWNER_ALIASES = ${aliases};\n`,
+  );
+  return source;
+}
+
 function addPlugin(
   root: string,
   name: string,
@@ -87,7 +101,7 @@ function view(id: string, route = `/${id}`, modalities = '["gui"]') {
 function discover(root: string, files: string[]) {
   return discoverPluginViewInventory({
     repoRoot: root,
-    files: [addBuiltin(root), ...files],
+    files: [addBuiltin(root), addShellRoutes(root), ...files],
   });
 }
 
@@ -128,6 +142,7 @@ describe("first-party runtime view inventory", () => {
       builtinCount: 1,
       pluginCount: 1,
       declarationSourceCount: 2,
+      shellRouteCount: 1,
     });
     expect(serialized.views[1]).toMatchObject({
       id: "alpha",
@@ -145,6 +160,7 @@ describe("first-party runtime view inventory", () => {
       "| @fixture/plugin-alpha | alpha | gui | /alpha |",
     );
     expect(markdown).toContain("refresh, open");
+    expect(markdown).toContain("## App-shell routes");
     expect(markdown).toBe(renderPluginViewInventoryMarkdown(serialized));
   });
 
@@ -170,6 +186,96 @@ describe("first-party runtime view inventory", () => {
     expect(() => discover(pathRoot, [pathAlpha, pathBeta])).toThrow(
       /duplicate path "\/SHARED\/" for gui/,
     );
+  });
+
+  test("rejects cross-registry owner and normalized path collisions", () => {
+    const ownerRoot = makeRoot();
+    const ownerPlugin = addPlugin(
+      ownerRoot,
+      "plugin-owner",
+      view("relationships", "/relationships"),
+    );
+    addShellRoutes(
+      ownerRoot,
+      '{ builtin: "/builtin", relationships: "/apps/relationships" }',
+    );
+    expect(() =>
+      discoverPluginViewInventory({
+        repoRoot: ownerRoot,
+        files: [
+          addBuiltin(ownerRoot),
+          "packages/ui/src/navigation/index.ts",
+          ownerPlugin,
+        ],
+      }),
+    ).toThrow(
+      /cross-registry owner mismatch.*plugin-owner.*navigation\/index\.ts/,
+    );
+
+    const pathRoot = makeRoot();
+    const pathPlugin = addPlugin(
+      pathRoot,
+      "plugin-path",
+      view("other", "/SHARED/"),
+    );
+    addShellRoutes(pathRoot, '{ builtin: "/builtin", shell: "/shared" }');
+    expect(() =>
+      discoverPluginViewInventory({
+        repoRoot: pathRoot,
+        files: [
+          addBuiltin(pathRoot),
+          "packages/ui/src/navigation/index.ts",
+          pathPlugin,
+        ],
+      }),
+    ).toThrow(
+      /cross-registry path collision.*plugin-path.*navigation\/index\.ts/,
+    );
+  });
+
+  test("accepts an explicitly declared shell route owner alias", () => {
+    const root = makeRoot();
+    addShellRoutes(
+      root,
+      '{ builtin: "/builtin", builtinAlias: "/builtin" }',
+      '{ builtinAlias: "builtin" }',
+    );
+    const inventory = discoverPluginViewInventory({
+      repoRoot: root,
+      files: [
+        addBuiltin(root),
+        "packages/ui/src/navigation/index.ts",
+        addPlugin(root, "plugin-alpha", view("alpha", "/alpha")),
+      ],
+    });
+    expect(inventory.shellRoutes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "builtinAlias",
+          ownerId: "builtin",
+          path: "/builtin",
+        }),
+      ]),
+    );
+  });
+
+  test("rejects an explicit shell alias without a canonical owner", () => {
+    const root = makeRoot();
+    addShellRoutes(
+      root,
+      '{ builtin: "/builtin", retired: "/retired" }',
+      '{ retired: "missing" }',
+    );
+    expect(() =>
+      discoverPluginViewInventory({
+        repoRoot: root,
+        files: [
+          addBuiltin(root),
+          "packages/ui/src/navigation/index.ts",
+          addPlugin(root, "plugin-alpha", view("alpha", "/alpha")),
+        ],
+      }),
+    ).toThrow(/shell route retired aliases missing owner missing/);
   });
 
   test("rejects repeated modalities within one declaration", () => {
@@ -695,7 +801,7 @@ export const legacyPlugin: Plugin = {
     ).toThrow(/traversal segments/);
   });
 
-  test("the repository inventory is collision-free and has one document view", () => {
+  test("the repository inventory reconciles canonical document and relationship owners", () => {
     const repoRoot = path.resolve(import.meta.dirname, "../../..");
     const serialized = serializePluginViewInventory(
       discoverPluginViewInventory({ repoRoot }),
@@ -716,5 +822,32 @@ export const legacyPlugin: Plugin = {
         (source) => source.owner === "@elizaos/plugin-documents",
       ),
     ).toBe(false);
+    expect(
+      serialized.views.filter((entry) => entry.id === "relationships"),
+    ).toEqual([
+      expect.objectContaining({
+        owner: "@elizaos/builtin",
+        route: "/apps/relationships",
+      }),
+    ]);
+    expect(
+      serialized.declarationSources.some(
+        (source) => source.owner === "@elizaos/plugin-relationships",
+      ),
+    ).toBe(false);
+    expect(serialized.shellRoutes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "documents",
+          ownerId: "documents",
+          path: "/character/documents",
+        }),
+        expect.objectContaining({
+          id: "relationships",
+          ownerId: "relationships",
+          path: "/apps/relationships",
+        }),
+      ]),
+    );
   }, 30_000);
 });

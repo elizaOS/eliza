@@ -7,6 +7,10 @@ typed relationships), an
 `ENTITY_GRAPH` context provider for the planner, and a drizzle
 `pgSchema('app_relationships')` with `entities` and `relationships` tables.
 
+The app shell owns the canonical Relationships UI at `/apps/relationships`.
+The legacy `/relationships` deep link resolves there; this plugin ships no
+view bundle.
+
 ## Status
 
 The action and provider are implemented facades over the runtime-owned

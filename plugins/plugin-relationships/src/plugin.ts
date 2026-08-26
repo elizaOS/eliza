@@ -1,6 +1,6 @@
 /**
- * Relationships plugin registration adds graph CRUD, planner context, schema,
- * and the dashboard viewer over the runtime knowledge graph service.
+ * Relationships plugin registration adds graph CRUD, planner context, and the
+ * schema over the runtime knowledge graph service. The app owns presentation.
  */
 import type { Plugin } from "@elizaos/core";
 
@@ -11,40 +11,12 @@ import { entityGraphProvider } from "./providers/entity-graph.js";
 export const relationshipsPlugin: Plugin = {
   name: "relationships",
   description:
-    "Relationships viewer + extras over the runtime knowledge graph. Provides the KNOWLEDGE_GRAPH action (create/read/list/log_interaction/set_relationship), the ENTITY_GRAPH planner-context provider, the /relationships viewer, and a drizzle pgSchema('app_relationships'). Identity claims and merges are deterministic authority operations, not agent actions. The graph stores are owned by @elizaos/agent's KnowledgeGraphService; contact orchestration stays in @elizaos/plugin-personal-assistant.",
+    "Relationships graph capabilities over the runtime knowledge graph. Provides the KNOWLEDGE_GRAPH action (create/read/list/log_interaction/set_relationship), the ENTITY_GRAPH planner-context provider, and a drizzle pgSchema('app_relationships'). The app-owned /apps/relationships surface is the canonical presentation. Identity claims and merges are deterministic authority operations, not agent actions. The graph stores are owned by @elizaos/agent's KnowledgeGraphService; contact orchestration stays in @elizaos/plugin-personal-assistant.",
   dependencies: ["@elizaos/plugin-sql"],
   actions: [entityAction],
   providers: [entityGraphProvider],
   services: [],
   schema: dbSchema,
-  views: [
-    {
-      id: "relationships",
-      // Developer-gated: the graph renders empty in the MVP (#14479), so it is
-      // hidden from a fresh user's launcher AND view manager until Developer Mode
-      // is on — kept and reachable, not deleted. `developer` here keeps the
-      // manager grid in step with the launcher's own developer-gating of this id
-      // (launcher-curation LAUNCHER_DEVELOPER_ORDER), which previously diverged
-      // because the declaration claimed `system`.
-      viewKind: "developer",
-      label: "Relationships",
-      description:
-        "Entity and relationship knowledge-graph viewer: people, organizations, identities, and the typed edges between them.",
-      icon: "Users",
-      path: "/relationships",
-      modalities: ["gui"],
-      bundlePath: "dist/views/bundle.js",
-      // First-party instrumented view (data-agent-id controls): grant the
-      // agent-surface capability so the view broker admits agent-driven
-      // fills/clicks (#13452 manifest gate).
-      surface: { capabilities: ["agent-surface"] },
-      componentExport: "RelationshipsView",
-      tags: ["relationships", "entities", "people", "contacts", "graph"],
-      relatedActions: ["ENTITY"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-  ],
 };
 
 export default relationshipsPlugin;

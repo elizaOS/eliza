@@ -393,6 +393,19 @@ export const TAB_PATHS: Record<BuiltinTab, string> = {
   background: "/background",
 };
 
+/**
+ * Shell route ids that are compatibility names for another canonical owner.
+ * The view inventory consumes this declaration when reconciling app routes
+ * with runtime declarations, so a shared path cannot silently acquire two
+ * owners.
+ */
+export const TAB_ROUTE_OWNER_ALIASES: Partial<Record<BuiltinTab, string>> = {
+  inventory: "wallet",
+  plugins: "plugins-page",
+  triggers: "automations",
+  views: "views-manager",
+};
+
 const PATH_TO_TAB = new Map(
   Object.entries(TAB_PATHS).map(([tab, p]) => [p, tab as Tab]),
 );
@@ -435,11 +448,11 @@ export function resolveInitialTabForPath(
 }
 
 /**
- * Legacy host-owned prefix aliases: `/<prefix>/<sub>` paths whose target tab is
+ * Legacy host-owned aliases whose target tab is
  * NOT derivable from `TAB_PATHS` because the tab's canonical path lives under a
  * different prefix. Everything else under `/apps/*` and `/character/*` resolves
  * from the `TAB_PATHS`-derived {@link PATH_TO_TAB} registry (see
- * {@link prefixSubTabFromPath}); only these two irreducible aliases remain, and
+ * {@link prefixSubTabFromPath}); only these irreducible aliases remain, and
  * the `no-derivable-alias` drift guard in `index.test.ts` proves that any alias
  * whose full path IS already in `TAB_PATHS` was dropped from this table.
  *
@@ -451,10 +464,14 @@ export function resolveInitialTabForPath(
  *   Relationships lives at canonical `TAB_PATHS.relationships` = `/apps/relationships`,
  *   but the promoted character sections keep a `/character/*` alias for old deep
  *   links.
+ * - `/relationships` → relationships: the retired plugin-owned route. It now
+ *   resolves to the canonical app-owned workspace without shipping a second
+ *   renderer or bundle.
  */
 export const LEGACY_PREFIX_TAB_ALIASES: Record<string, Tab> = {
   "/apps/inventory": "inventory",
   "/character/relationships": "relationships",
+  "/relationships": "relationships",
 };
 
 /**
@@ -513,6 +530,9 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   if (normalized === "/apps" || normalized === "/apps/my-apps") {
     return "tasks";
   }
+
+  const legacyTab = LEGACY_PREFIX_TAB_ALIASES[normalized];
+  if (legacyTab) return legacyTab;
 
   // /character/<sub> — resolve nested character paths. The character hub's
   // sections are now top-level views, but their routes keep the /character/*

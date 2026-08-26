@@ -55,10 +55,6 @@ const LEVELS = [
     file: "plugins/plugin-calendar/src/components/CalendarSection.tsx",
   },
   {
-    name: "plugin view documents",
-    file: "plugins/plugin-documents/src/components/documents/DocumentsView.tsx",
-  },
-  {
     name: "plugin view finances",
     file: "plugins/plugin-finances/src/components/finances/FinancesView.tsx",
   },
@@ -81,10 +77,6 @@ const LEVELS = [
   {
     name: "plugin view todos",
     file: "plugins/plugin-todos/src/components/todos/TodosView.tsx",
-  },
-  {
-    name: "plugin view relationships",
-    file: "plugins/plugin-relationships/src/components/relationships/RelationshipsView.tsx",
   },
   {
     name: "plugin view messages",

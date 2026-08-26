@@ -207,6 +207,23 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     desktopTabEnabled: true,
   },
   {
+    id: "relationships",
+    viewKind: "system",
+    label: "Relationships",
+    description:
+      "People, organizations, identity evidence, relationship activity, and merge candidates",
+    icon: "Network",
+    path: "/apps/relationships",
+    order: 52,
+    tags: ["relationships", "people", "contacts", "entities", "identity"],
+    relatedActions: ["ENTITY", "KNOWLEDGE_GRAPH"],
+    anticipatoryIntent:
+      "Offer to review relationship activity, resolve identity candidates, or inspect a person, grounded in the visible relationship state.",
+    visibleInManager: true,
+    desktopTabEnabled: true,
+    platforms: ["web", "desktop", "ios", "android"],
+  },
+  {
     id: "automations",
     viewKind: "system",
     label: "Automations",

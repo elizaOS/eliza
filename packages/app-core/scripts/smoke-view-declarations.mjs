@@ -62,13 +62,6 @@ export const smokeViewDeclarations = [
   ["health", "Health", "plugin-health", "/health", "HealthView"],
   ["inbox", "Inbox", "plugin-inbox", "/inbox", "InboxView"],
   ["todos", "Todos", "plugin-todos", "/todos", "TodosView"],
-  [
-    "relationships",
-    "Relationships",
-    "plugin-relationships",
-    "/relationships",
-    "RelationshipsView",
-  ],
   ["messages", "Messages", "plugin-messages", "/messages", "MessagesView"],
   ["phone", "Phone", "plugin-phone", "/phone", "PhoneView"],
   ["wallet", "Wallet", "plugin-wallet", "/wallet", "InventoryView"],

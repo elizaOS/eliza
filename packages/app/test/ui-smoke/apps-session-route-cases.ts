@@ -235,7 +235,6 @@ const managerVisibleViewTileCases = [
   { viewId: "orchestrator", path: "/orchestrator" },
   { viewId: "cloud", path: "/cloud" },
   { viewId: "phone", path: "/phone" },
-  { viewId: "relationships", path: "/relationships" },
   { viewId: "notes", path: "/notes" },
   { viewId: "task-coordinator", path: "/task-coordinator" },
   { viewId: "todos", path: "/todos" },

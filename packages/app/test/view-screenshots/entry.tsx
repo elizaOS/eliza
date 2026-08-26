@@ -53,14 +53,6 @@ const LOADERS: Record<string, () => Promise<{ default: ComponentType }>> = {
     import(
       "../../../../plugins/plugin-todos/src/components/todos/TodosView.tsx"
     ) as Promise<{ default: ComponentType }>,
-  documents: () =>
-    import(
-      "../../../../plugins/plugin-documents/src/components/documents/DocumentsView.tsx"
-    ) as Promise<{ default: ComponentType }>,
-  relationships: () =>
-    import(
-      "../../../../plugins/plugin-relationships/src/components/relationships/RelationshipsView.tsx"
-    ) as Promise<{ default: ComponentType }>,
   calendar: () =>
     import(
       "../../../../plugins/plugin-calendar/src/components/calendar/SimpleCalendarView.tsx"

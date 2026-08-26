@@ -125,13 +125,14 @@ describe("navigation prefix sub-tab resolution is registry-derived", () => {
     expect(tabFromPath("/character/unknown-section")).toBe("character");
   });
 
-  it("keeps only the two irreducible legacy prefix aliases", () => {
+  it("keeps only the irreducible legacy route aliases", () => {
     // /apps/inventory (canonical tab path is /wallet) and
     // /character/relationships (canonical tab path is /apps/relationships) are
-    // the ONLY paths whose target tab lives under a different prefix, so they
-    // stay as an explicitly-marked host-owned fallback.
+    // the prefix aliases whose target tabs live elsewhere. /relationships is
+    // the retired plugin route and translates to the same canonical owner.
     expect(tabFromPath("/apps/inventory")).toBe("inventory");
     expect(tabFromPath("/character/relationships")).toBe("relationships");
+    expect(tabFromPath("/relationships")).toBe("relationships");
   });
 
   it("legacy alias table holds no path already derivable from TAB_PATHS (drift guard)", () => {
