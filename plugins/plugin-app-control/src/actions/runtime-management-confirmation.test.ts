@@ -87,6 +87,22 @@ describe("runtime mutation confirmation", () => {
 		expect(isBoundRuntimeManagementConfirmation(phrase, evil)).toBe(false);
 	});
 
+	it("does not normalize away punctuation that distinguishes targets or URLs", () => {
+		const sshA = {
+			op: "connect_ssh" as const,
+			runtimeId: "prod",
+			target: "admin@good.example:prod",
+			sshPort: 22,
+			remoteApiPort: 2138,
+			expectedFingerprint: "SHA256:GOOD",
+		};
+		const sshB = { ...sshA, target: "admin@good.example-prod" };
+		expect(isBoundRuntimeManagementConfirmation(runtimeManagementConfirmationText(sshA), sshB)).toBe(false);
+		const directA = { op: "add_direct" as const, runtimeId: "prod", apiBase: "https://good.example/a-b" };
+		const directB = { ...directA, apiBase: "https://good.example/a.b" };
+		expect(isBoundRuntimeManagementConfirmation(runtimeManagementConfirmationText(directA), directB)).toBe(false);
+	});
+
 	it("distinguishes managed-network opt-in and rejects incomplete enrollment", () => {
 		const managed = {
 			op: "enroll_host" as const,
