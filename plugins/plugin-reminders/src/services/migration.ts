@@ -53,13 +53,20 @@ export interface TableMigrationResult {
     | "already-migrated";
 }
 
-export function parseSqlBoolean(value: unknown): boolean {
+export function parseSqlBoolean(
+  value: unknown,
+  context = "sql boolean",
+): boolean {
   if (value === true || value === 1) return true;
+  if (value === false || value === 0) return false;
   if (typeof value === "string") {
     const norm = value.trim().toLowerCase();
-    return norm === "true" || norm === "t" || norm === "1";
+    if (norm === "true" || norm === "t" || norm === "1") return true;
+    if (norm === "false" || norm === "f" || norm === "0") return false;
   }
-  return false;
+  throw new Error(
+    `Expected boolean result for ${context}, got ${String(value)}`,
+  );
 }
 
 function quoteIdent(name: string): string {
@@ -73,7 +80,10 @@ async function sourceTableExists(
   const rows = await exec(
     `SELECT to_regclass('${SOURCE_SCHEMA}.${table}') IS NOT NULL AS present`,
   );
-  return parseSqlBoolean(rows[0]?.present);
+  if (!rows || rows.length === 0) {
+    throw new Error(`Missing query result for source table check (${table})`);
+  }
+  return parseSqlBoolean(rows[0]?.present, `sourceTableExists(${table})`);
 }
 
 async function targetTableIsEmpty(
@@ -83,7 +93,10 @@ async function targetTableIsEmpty(
   const rows = await exec(
     `SELECT NOT EXISTS (SELECT 1 FROM ${TARGET_SCHEMA}.${quoteIdent(table)}) AS empty`,
   );
-  return parseSqlBoolean(rows[0]?.empty);
+  if (!rows || rows.length === 0) {
+    throw new Error(`Missing query result for target table check (${table})`);
+  }
+  return parseSqlBoolean(rows[0]?.empty, `targetTableIsEmpty(${table})`);
 }
 
 const MIGRATION_MARKER_TABLE = "reminders_migration_state";
@@ -107,7 +120,12 @@ async function migrationMarkerExists(
        WHERE table_name = '${table}'
      ) AS done`,
   );
-  return parseSqlBoolean(rows[0]?.done);
+  if (!rows || rows.length === 0) {
+    throw new Error(
+      `Missing query result for migration marker check (${table})`,
+    );
+  }
+  return parseSqlBoolean(rows[0]?.done, `migrationMarkerExists(${table})`);
 }
 
 async function writeMigrationMarker(

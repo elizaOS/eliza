@@ -18,6 +18,12 @@ function fakeExec(
     for (const [re, rows] of responses) {
       if (re.test(sql)) return rows;
     }
+    if (
+      sql.includes("reminders_migration_state") &&
+      sql.includes("SELECT EXISTS")
+    ) {
+      return [{ done: false }];
+    }
     return [];
   };
 }
@@ -63,6 +69,12 @@ describe("RemindersMigration", () => {
 
   it("tolerates a concurrent migration after observing an empty target", async () => {
     const exec: SqlExecutor = async (sql) => {
+      if (
+        sql.includes("reminders_migration_state") &&
+        sql.includes("SELECT EXISTS")
+      ) {
+        return [{ done: false }];
+      }
       if (sql.includes("to_regclass")) return [{ present: true }];
       if (sql.includes("SELECT NOT EXISTS")) return [{ empty: true }];
       if (
@@ -185,13 +197,30 @@ describe("parseSqlBoolean", () => {
     expect(parseSqlBoolean("1")).toBe(true);
   });
 
-  it("returns false for falsy and unrecognized inputs", () => {
+  it("recognizes standard boolean and SQL wire falsy formats", () => {
     expect(parseSqlBoolean(false)).toBe(false);
     expect(parseSqlBoolean(0)).toBe(false);
     expect(parseSqlBoolean("false")).toBe(false);
+    expect(parseSqlBoolean("FALSE")).toBe(false);
     expect(parseSqlBoolean("f")).toBe(false);
+    expect(parseSqlBoolean("F")).toBe(false);
     expect(parseSqlBoolean("0")).toBe(false);
-    expect(parseSqlBoolean(null)).toBe(false);
-    expect(parseSqlBoolean(undefined)).toBe(false);
+  });
+
+  it("throws on null, undefined, and unrecognized inputs", () => {
+    expect(() => parseSqlBoolean(null)).toThrow("Expected boolean result");
+    expect(() => parseSqlBoolean(undefined)).toThrow("Expected boolean result");
+    expect(() => parseSqlBoolean("unknown")).toThrow("Expected boolean result");
+    expect(() => parseSqlBoolean({})).toThrow("Expected boolean result");
+    expect(() => parseSqlBoolean(123)).toThrow("Expected boolean result");
+  });
+
+  it("aborts migration when database query returns malformed/empty results", async () => {
+    const emptyExec = fakeExec([
+      [/reminders_migration_state[\s\S]*table_name = /, []],
+    ]);
+    await expect(
+      migrateReminderTable(emptyExec, "life_reminder_plans"),
+    ).rejects.toThrow("Missing query result");
   });
 });
