@@ -612,6 +612,54 @@ export function deriveScenarioStabilityFailureClusters(
     );
 }
 
+/** Validates the execution-owned relationships within one retained cell. */
+export function assertScenarioStabilityExecutedCellCoherence(
+  cell: ScenarioStabilityExecutedCell,
+): void {
+  if (
+    cell.attempts.length !== 3 ||
+    cell.attempts.some((attempt, index) => attempt.attemptNumber !== index + 1)
+  ) {
+    throw new Error(
+      "stability cell must retain canonical attempts 1, 2, and 3",
+    );
+  }
+  for (const attempt of cell.attempts) {
+    if (attempt.passed !== (attempt.failureClassification === null)) {
+      throw new Error(
+        "stability attempt pass and failure classification disagree",
+      );
+    }
+  }
+  const passedAttempts = cell.attempts.filter(
+    (attempt) => attempt.passed,
+  ).length;
+  if (
+    cell.passedAttempts !== passedAttempts ||
+    cell.tier !== tier(passedAttempts) ||
+    cell.strictPassed !== (passedAttempts === 3) ||
+    cell.firstAttemptPassed !== cell.attempts[0]?.passed
+  ) {
+    throw new Error("stability cell summary does not match its attempts");
+  }
+  if (cell.baselineInitialStateHash !== null) {
+    if (
+      !cell.attempts.some(
+        (attempt) => attempt.initialStateHash === cell.baselineInitialStateHash,
+      ) ||
+      cell.attempts.some(
+        (attempt) =>
+          attempt.passed &&
+          attempt.initialStateHash !== cell.baselineInitialStateHash,
+      )
+    ) {
+      throw new Error(
+        "stability cell baseline does not match its admitted passing attempts",
+      );
+    }
+  }
+}
+
 /** Runs every declared scenario/provider/model cell exactly three times. */
 export async function executeScenarioStability(input: {
   plan: ScenarioStabilityPlan;
@@ -729,7 +777,7 @@ export async function executeScenarioStability(input: {
       });
     }
     const passedAttempts = attempts.filter((attempt) => attempt.passed).length;
-    cells.push({
+    const cell: ScenarioStabilityExecutedCell = {
       scenarioId: target.scenarioId,
       model: target.model,
       baselineInitialStateHash,
@@ -738,7 +786,9 @@ export async function executeScenarioStability(input: {
       tier: tier(passedAttempts),
       strictPassed: passedAttempts === 3,
       attempts,
-    });
+    };
+    assertScenarioStabilityExecutedCellCoherence(cell);
+    cells.push(cell);
   }
   const focusList = deriveScenarioStabilityFocusList(cells);
   const report: ScenarioStabilityExecutionReport = {

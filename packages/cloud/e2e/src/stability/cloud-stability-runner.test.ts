@@ -154,6 +154,70 @@ describe("Cloud stability manifest", () => {
     );
   }, 30_000);
 
+  test("accepts executor-owned baselines established after the first attempt or never", async () => {
+    const result = {
+      passed: true,
+      initialStateHash: "b".repeat(64),
+      finalStateHash: "c".repeat(64),
+      inputTokens: 1,
+      outputTokens: 1,
+      toolCalls: 1,
+      evidence: {
+        trajectory: [],
+        toolReceipts: [],
+        stateTransitions: [],
+        providerReceipts: [],
+        judgeVerdicts: [],
+      },
+      stateDiff: {},
+    };
+    const delayedBaselineRoot = await mkdtemp(
+      path.join(tmpdir(), "cloud-stability-delayed-baseline-test-"),
+    );
+    directories.push(delayedBaselineRoot);
+    const delayedBaseline = await runCloudStabilityLane({
+      manifest,
+      outputRoot: delayedBaselineRoot,
+      adapter: {
+        async execute(input) {
+          if (input.attemptNumber === 1) {
+            throw new Error("pre-admission harness failure");
+          }
+          return result;
+        },
+        async terminate() {},
+      },
+    });
+    expect(delayedBaseline.cells[0]?.baselineInitialStateHash).toBe(
+      result.initialStateHash,
+    );
+    expect(delayedBaseline.cells[0]?.attempts[0]?.initialStateHash).toBe(
+      "unavailable",
+    );
+    await expect(
+      verifyCloudStabilityArtifacts(delayedBaselineRoot),
+    ).resolves.toMatchObject({ report: delayedBaseline });
+
+    const absentBaselineRoot = await mkdtemp(
+      path.join(tmpdir(), "cloud-stability-absent-baseline-test-"),
+    );
+    directories.push(absentBaselineRoot);
+    const absentBaseline = await runCloudStabilityLane({
+      manifest,
+      outputRoot: absentBaselineRoot,
+      adapter: {
+        async execute() {
+          throw new Error("pre-admission harness failure");
+        },
+        async terminate() {},
+      },
+    });
+    expect(absentBaseline.cells[0]?.baselineInitialStateHash).toBeNull();
+    await expect(
+      verifyCloudStabilityArtifacts(absentBaselineRoot),
+    ).resolves.toMatchObject({ report: absentBaseline });
+  }, 30_000);
+
   test("rejects modified, truncated, noncanonical, and duplicate-key reports", async () => {
     const outputRoot = await mkdtemp(
       path.join(tmpdir(), "cloud-stability-integrity-test-"),
@@ -327,7 +391,7 @@ describe("Cloud stability manifest", () => {
       Buffer.from(canonicalCloudStabilityJson(wrongBaseline), "utf8"),
     );
     await expect(verifyCloudStabilityArtifacts(outputRoot)).rejects.toThrow(
-      /baseline does not match its first attempt/,
+      /baseline does not match its admitted passing attempts/,
     );
 
     const fabricatedSummaries = structuredClone(parsedReport);
