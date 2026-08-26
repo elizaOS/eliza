@@ -5742,15 +5742,19 @@ export function resolveAndroidLp3ColorPolicyBuildEnv(env = process.env) {
   };
 }
 
-export function enforceAndroidLp3RemoteFallbackBuildPolicy({
-  targetName,
-  env = process.env,
-}) {
-  const required = ["1", "true", "yes"].includes(
+export function isAndroidLp3RemoteFallbackRequired(env = process.env) {
+  return ["1", "true", "yes"].includes(
     String(env.ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED ?? "")
       .trim()
       .toLowerCase(),
   );
+}
+
+export function enforceAndroidLp3RemoteFallbackBuildPolicy({
+  targetName,
+  env = process.env,
+}) {
+  const required = isAndroidLp3RemoteFallbackRequired(env);
   if (!required) return;
   if (
     targetName !== "android-cloud-debug" ||
@@ -5822,37 +5826,47 @@ export function enforceAndroidLp3ColorPolicyBuildPolicy({
 }
 
 export function resolveAndroidCloudStripPolicy(env = process.env) {
-  if (!isAndroidLp3ColorPolicyEnabled(env)) {
-    return {
-      components: ANDROID_CLOUD_STRIPPED_COMPONENTS,
-      permissions: ANDROID_CLOUD_STRIPPED_PERMISSIONS,
-      mergerRemovedPermissions:
-        ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS,
-      javaFiles: ANDROID_CLOUD_STRIPPED_JAVA_FILES,
-      testJavaFiles: ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES,
-    };
-  }
+  const stripPolicy = !isAndroidLp3ColorPolicyEnabled(env)
+    ? {
+        components: ANDROID_CLOUD_STRIPPED_COMPONENTS,
+        permissions: ANDROID_CLOUD_STRIPPED_PERMISSIONS,
+        mergerRemovedPermissions:
+          ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS,
+        javaFiles: ANDROID_CLOUD_STRIPPED_JAVA_FILES,
+        testJavaFiles: ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES,
+      }
+    : (() => {
+        const allowedComponents = new Set(ANDROID_LP3_COLOR_POLICY_COMPONENTS);
+        const allowedPermissions = new Set(
+          ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS,
+        );
+        const allowedJavaFiles = new Set(ANDROID_LP3_COLOR_POLICY_JAVA_FILES);
+        return {
+          components: ANDROID_CLOUD_STRIPPED_COMPONENTS.filter(
+            (component) => !allowedComponents.has(component),
+          ),
+          permissions: ANDROID_CLOUD_STRIPPED_PERMISSIONS.filter(
+            (permission) => !allowedPermissions.has(permission),
+          ),
+          mergerRemovedPermissions:
+            ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS.filter(
+              (permission) => !allowedPermissions.has(permission),
+            ),
+          javaFiles: ANDROID_CLOUD_STRIPPED_JAVA_FILES.filter(
+            (file) => !allowedJavaFiles.has(file),
+          ),
+          testJavaFiles: ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES,
+        };
+      })();
 
-  const allowedComponents = new Set(ANDROID_LP3_COLOR_POLICY_COMPONENTS);
-  const allowedPermissions = new Set(
-    ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS,
-  );
-  const allowedJavaFiles = new Set(ANDROID_LP3_COLOR_POLICY_JAVA_FILES);
+  if (!isAndroidLp3RemoteFallbackRequired(env)) return stripPolicy;
+
   return {
-    components: ANDROID_CLOUD_STRIPPED_COMPONENTS.filter(
-      (component) => !allowedComponents.has(component),
-    ),
-    permissions: ANDROID_CLOUD_STRIPPED_PERMISSIONS.filter(
-      (permission) => !allowedPermissions.has(permission),
-    ),
-    mergerRemovedPermissions:
-      ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS.filter(
-        (permission) => !allowedPermissions.has(permission),
-      ),
-    javaFiles: ANDROID_CLOUD_STRIPPED_JAVA_FILES.filter(
-      (file) => !allowedJavaFiles.has(file),
-    ),
-    testJavaFiles: ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES,
+    ...stripPolicy,
+    // This wrapper subclasses the native FCM plugin. The dedicated fallback
+    // intentionally excludes that dependency because it has no Firebase
+    // project, so its Java wrapper must leave the generated tree with it.
+    javaFiles: [...stripPolicy.javaFiles, "SafePushNotificationsPlugin.java"],
   };
 }
 
@@ -5963,6 +5977,16 @@ export const ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES = Object.freeze([
   "@elizaos/capacitor-location",
   "@elizaos/capacitor-secure-store",
 ]);
+
+export function resolveAndroidCloudAllowedNativePluginPackages(
+  env = process.env,
+) {
+  return isAndroidLp3RemoteFallbackRequired(env)
+    ? ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES.filter(
+        (pkg) => pkg !== "@capacitor/push-notifications",
+      )
+    : [...ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES];
+}
 
 export const ANDROID_PLAY_ALLOWED_CAPACITOR_CONFIG_PLUGINS = Object.freeze([
   "CapacitorHttp",
@@ -7981,9 +8005,8 @@ function auditAndroidCloudSource(
             .filter(Boolean)
             .sort()
         : [];
-      const allowedPackages = [
-        ...ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES,
-      ].sort();
+      const allowedPackages =
+        resolveAndroidCloudAllowedNativePluginPackages(env).sort();
       if (JSON.stringify(actualPackages) !== JSON.stringify(allowedPackages)) {
         failures.push(
           `capacitor.plugins.json packages differ from the Play allowlist: ${JSON.stringify(actualPackages)}`,

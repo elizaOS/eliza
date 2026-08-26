@@ -28,6 +28,8 @@ import {
   enforceAndroidLp3ColorPolicyBuildPolicy,
   enforceAndroidLp3RemoteFallbackBuildPolicy,
   isAndroidLp3ColorPolicyEnabled,
+  isAndroidLp3RemoteFallbackRequired,
+  resolveAndroidCloudAllowedNativePluginPackages,
   resolveAndroidCloudStripPolicy,
   resolveAndroidLp3ColorPolicyBuildEnv,
 } from "./run-mobile-build.mjs";
@@ -140,6 +142,27 @@ describe("LP3 direct Cloud build flag", () => {
         ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED: "YES",
       }),
     ).toBe(true);
+  });
+
+  it("omits native FCM only from the dedicated LP3 VPS fallback", () => {
+    expect(isAndroidLp3RemoteFallbackRequired({})).toBe(false);
+    expect(resolveAndroidCloudAllowedNativePluginPackages({})).toContain(
+      "@capacitor/push-notifications",
+    );
+    expect(resolveAndroidCloudStripPolicy({}).javaFiles).not.toContain(
+      "SafePushNotificationsPlugin.java",
+    );
+
+    const fallbackEnv = {
+      ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED: "yes",
+    };
+    expect(isAndroidLp3RemoteFallbackRequired(fallbackEnv)).toBe(true);
+    expect(
+      resolveAndroidCloudAllowedNativePluginPackages(fallbackEnv),
+    ).not.toContain("@capacitor/push-notifications");
+    expect(resolveAndroidCloudStripPolicy(fallbackEnv).javaFiles).toContain(
+      "SafePushNotificationsPlugin.java",
+    );
   });
 
   it("normalizes the passed build environment without consulting process.env", () => {
