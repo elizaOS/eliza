@@ -113,6 +113,7 @@ import {
 import { __setAppValueForTests } from "../../state/app-store";
 import {
   getShellSurface,
+  goLauncher,
   resetShellSurfaceForTests,
 } from "../../state/shell-surface-store";
 import {
@@ -876,6 +877,35 @@ describe("ChatOverlay", () => {
       />,
     );
     expect(document.activeElement).not.toBe(composer);
+  });
+
+  it("collapses an open thread sheet and returns the launcher rail home for agent Home navigation", () => {
+    render(<ChatOverlay controller={makeController()} />);
+    const composer = screen.getByLabelText("message") as HTMLTextAreaElement;
+    const sheet = screen.getByTestId("chat-sheet");
+    act(() => {
+      goLauncher();
+      composer.focus();
+      fireEvent.focus(composer);
+    });
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    expect(getShellSurface().page).toBe("launcher");
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(NAVIGATE_VIEW_EVENT, {
+          detail: {
+            viewId: "chat",
+            viewPath: "/chat",
+            source: "agent",
+          },
+        }),
+      );
+    });
+
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+    expect(document.activeElement).not.toBe(composer);
+    expect(getShellSurface().page).toBe("home");
   });
 
   it("keeps composer focus when the active view stays on chat (no spurious blur)", () => {
