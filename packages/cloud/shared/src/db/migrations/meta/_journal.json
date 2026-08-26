@@ -2192,6 +2192,34 @@
       "when": 1794254400020,
       "tag": "0329_personal_dedicated_adoption_selections",
       "breakpoints": true
+    },
+    {
+      "idx": 313,
+      "version": "7",
+      "when": 1794254400021,
+      "tag": "0330_remote_session_two_phase_activation",
+      "breakpoints": true
+    },
+    {
+      "idx": 314,
+      "version": "7",
+      "when": 1794254400022,
+      "tag": "0331_remote_host_managed_network",
+      "breakpoints": true
+    },
+    {
+      "idx": 315,
+      "version": "7",
+      "when": 1794254400023,
+      "tag": "0332_remote_target_initiated_pairing",
+      "breakpoints": true
+    },
+    {
+      "idx": 316,
+      "version": "7",
+      "when": 1794254400024,
+      "tag": "0333_remote_host_connection_mode_check",
+      "breakpoints": true
     }
   ]
 }
