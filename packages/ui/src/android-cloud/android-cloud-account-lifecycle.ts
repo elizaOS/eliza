@@ -163,6 +163,7 @@ export function createAndroidCloudAccountLifecycle(
   let volatileStatusCredential: string | null = null;
   let volatileRecoveryCredential: string | null = null;
   let mutationTail: Promise<void> = Promise.resolve();
+  let deletionRequestInFlight: Promise<AccountDeletionRequestDto> | null = null;
 
   const store = (slot: SecureCredentialSlot) => ({
     async read(): Promise<string | null> {
@@ -352,6 +353,58 @@ export function createAndroidCloudAccountLifecycle(
     return parseAccountDeletionRequest(body.request);
   }
 
+  async function requestDeletionOnce(): Promise<AccountDeletionRequestDto> {
+    const admission = await admissionCredential();
+    let body: Record<string, unknown>;
+    try {
+      body = await lifecycleRequest("/api/v1/me/account-deletion", {
+        method: "POST",
+        authenticated: true,
+        data: { confirmation: "DELETE", admissionCredential: admission },
+      });
+    } catch (error) {
+      const status =
+        error instanceof AndroidCloudLifecycleError ? error.status : null;
+      const ambiguous =
+        status === null ||
+        status === 408 ||
+        status === 425 ||
+        status === 429 ||
+        status >= 500;
+      if (!ambiguous) await Promise.allSettled([admissionStore.clear()]);
+      throw error;
+    }
+    const accepted = parseAccountDeletionAccepted(body);
+    try {
+      await persistCapabilities(accepted);
+    } catch (storageError) {
+      try {
+        const canceling = await cancelWith(accepted.recoveryCredential);
+        volatileRecoveryCredential = null;
+        await Promise.allSettled([admissionStore.clear()]);
+        return canceling;
+      } catch (rollbackError) {
+        throw new AndroidCloudLifecycleError(
+          `Deletion receipt ${accepted.request.requestId} was reserved, but this device could not preserve recovery access or verify automatic cancellation. Keep the app open and contact support.`,
+          "RECOVERY_STORAGE_AND_ROLLBACK_FAILED",
+          null,
+          { cause: new AggregateError([storageError, rollbackError]) },
+        );
+      }
+    }
+    try {
+      await admissionStore.clear();
+    } catch (cause) {
+      throw new AndroidCloudLifecycleError(
+        `Deletion receipt ${accepted.request.requestId} was reserved and recovery access was stored, but this device could not clear its pending admission credential. Retry to finish secure cleanup.`,
+        "ADMISSION_CLEANUP_UNAVAILABLE",
+        null,
+        { cause },
+      );
+    }
+    return accepted.request;
+  }
+
   return {
     async getAvailability() {
       return parseAccountDeletionAvailability(
@@ -383,55 +436,16 @@ export function createAndroidCloudAccountLifecycle(
     },
 
     async requestDeletion() {
-      const admission = await admissionCredential();
-      let body: Record<string, unknown>;
+      if (deletionRequestInFlight) return deletionRequestInFlight;
+      const attempt = requestDeletionOnce();
+      deletionRequestInFlight = attempt;
       try {
-        body = await lifecycleRequest("/api/v1/me/account-deletion", {
-          method: "POST",
-          authenticated: true,
-          data: { confirmation: "DELETE", admissionCredential: admission },
-        });
-      } catch (error) {
-        const status =
-          error instanceof AndroidCloudLifecycleError ? error.status : null;
-        const ambiguous =
-          status === null ||
-          status === 408 ||
-          status === 425 ||
-          status === 429 ||
-          status >= 500;
-        if (!ambiguous) await Promise.allSettled([admissionStore.clear()]);
-        throw error;
-      }
-      const accepted = parseAccountDeletionAccepted(body);
-      try {
-        await persistCapabilities(accepted);
-      } catch (storageError) {
-        try {
-          const canceling = await cancelWith(accepted.recoveryCredential);
-          volatileRecoveryCredential = null;
-          await Promise.allSettled([admissionStore.clear()]);
-          return canceling;
-        } catch (rollbackError) {
-          throw new AndroidCloudLifecycleError(
-            `Deletion receipt ${accepted.request.requestId} was reserved, but this device could not preserve recovery access or verify automatic cancellation. Keep the app open and contact support.`,
-            "RECOVERY_STORAGE_AND_ROLLBACK_FAILED",
-            null,
-            { cause: new AggregateError([storageError, rollbackError]) },
-          );
+        return await attempt;
+      } finally {
+        if (deletionRequestInFlight === attempt) {
+          deletionRequestInFlight = null;
         }
       }
-      try {
-        await admissionStore.clear();
-      } catch (cause) {
-        throw new AndroidCloudLifecycleError(
-          `Deletion receipt ${accepted.request.requestId} was reserved and recovery access was stored, but this device could not clear its pending admission credential. Retry to finish secure cleanup.`,
-          "ADMISSION_CLEANUP_UNAVAILABLE",
-          null,
-          { cause },
-        );
-      }
-      return accepted.request;
     },
 
     async cancelDeletion() {
