@@ -70,6 +70,22 @@ regexes = [
   '''unit-probe-token:[0-9a-f]{32}''',
 ]
 
+# Mobile app authorization identifies the public client with a UUID in the
+# checked-in Worker configuration. The identifier selects an OAuth client but
+# cannot authenticate as it; credentials remain secret bindings. Scope the
+# exception to the exact field and UUID shape so every neighboring value and
+# every secret-shaped mobile auth setting stays scanned.
+[[allowlists]]
+description = "Public mobile app authorization client identifier"
+condition = "AND"
+paths = [
+  '''(^|/)packages/cloud/api/wrangler\.toml$''',
+]
+regexTarget = "line"
+regexes = [
+  '''ELIZA_MOBILE_APP_AUTH_APP_ID\s*=\s*"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"''',
+]
+
 # The resource-capacity action-effect tests pin a literal proposal
 # idempotency key so replay assertions are readable; the fixed fixture name
 # crosses the generic-api-key entropy threshold. Scope the exact literal to

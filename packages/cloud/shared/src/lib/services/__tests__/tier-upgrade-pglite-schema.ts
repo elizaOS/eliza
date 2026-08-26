@@ -27,6 +27,10 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   "pay_as_you_go_from_earnings" boolean NOT NULL DEFAULT true,
   "steward_tenant_id" text,
   "steward_tenant_api_key" text,
+  "account_lifecycle_state" text NOT NULL DEFAULT 'active',
+  "account_lifecycle_revision" bigint NOT NULL DEFAULT 0,
+  "account_deletion_request_id" uuid,
+  "paid_work_fenced_at" timestamp,
   "is_active" boolean NOT NULL DEFAULT true,
   "created_at" timestamp NOT NULL DEFAULT now(),
   "updated_at" timestamp NOT NULL DEFAULT now(),
@@ -64,6 +68,10 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   "preferences" text,
   "email_notifications" boolean DEFAULT true,
   "response_notifications" boolean DEFAULT true,
+  "account_lifecycle_state" text NOT NULL DEFAULT 'active',
+  "account_lifecycle_revision" bigint NOT NULL DEFAULT 0,
+  "account_deletion_request_id" uuid,
+  "auth_fenced_at" timestamp,
   "is_active" boolean NOT NULL DEFAULT true,
   "email_ciphertext" text,
   "email_nonce" text,
@@ -276,6 +284,28 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   `CREATE INDEX IF NOT EXISTS "agent_sandboxes_activation_generation_idx"
   ON "agent_sandboxes" ("activation_generation")
   WHERE "activation_generation" IS NOT NULL`,
+  `CREATE TABLE IF NOT EXISTS "personal_dedicated_upgrade_authorities" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "organization_id" uuid NOT NULL,
+  "user_id" uuid NOT NULL,
+  "source_agent_id" text NOT NULL,
+  "dedicated_agent_id" uuid NOT NULL,
+  "schema_version" integer NOT NULL DEFAULT 1,
+  "bound_at" timestamptz NOT NULL DEFAULT now(),
+  "cutover_token" text,
+  "shared_message_count" integer,
+  "shared_scheduled_task_count" integer,
+  "shared_todo_count" integer,
+  "shared_todo_mutation_count" integer,
+  "shared_todo_digest" text,
+  "cutover_activated_at" timestamptz,
+  "created_at" timestamptz NOT NULL DEFAULT now(),
+  "updated_at" timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT "personal_dedicated_upgrade_authorities_source_unique"
+    UNIQUE ("organization_id", "user_id", "source_agent_id"),
+  CONSTRAINT "personal_dedicated_upgrade_authorities_target_unique"
+    UNIQUE ("dedicated_agent_id")
+)`,
   `CREATE TABLE IF NOT EXISTS "agent_sandbox_backups" (
   "id" uuid NOT NULL DEFAULT gen_random_uuid(),
   "sandbox_record_id" uuid,

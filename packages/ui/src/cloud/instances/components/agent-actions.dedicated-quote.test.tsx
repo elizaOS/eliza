@@ -160,6 +160,39 @@ describe("Dedicated activation quote", () => {
     );
   });
 
+  it("names an existing migration target as recovery and promises reuse", async () => {
+    apiWithStatus.mockResolvedValueOnce({
+      status: 200,
+      data: {
+        success: true,
+        data: {
+          ...QUOTE,
+          activation: {
+            state: "in_progress" as const,
+            dedicatedAgentId: "00000000-0000-4000-8000-000000000099",
+            status: "error",
+          },
+        },
+      },
+    });
+    renderActions();
+
+    const resumeButton = await screen.findByRole("button", {
+      name: "Resume Dedicated setup",
+    });
+    await userEvent.click(resumeButton);
+
+    expect(
+      await screen.findByRole("heading", { name: "Resume Dedicated setup?" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "A Dedicated Agent already exists for this upgrade, but setup did not finish. Resuming reuses that agent — it does not create another one. Hosting uses $0.24 per day ($0.01/hr) while running.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Resume setup" })).toBeTruthy();
+  });
+
   it("keeps lifecycle controls while removing the manual snapshot action", () => {
     renderWithQueryClient(
       <MemoryRouter>

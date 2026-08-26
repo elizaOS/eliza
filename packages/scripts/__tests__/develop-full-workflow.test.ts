@@ -34,6 +34,47 @@ const qualityWorkflow = readFileSync(
   ),
   "utf8",
 );
+const testWorkflow = Bun.YAML.parse(
+  readFileSync(
+    fileURLToPath(
+      new URL("../../../.github/workflows/test.yml", import.meta.url),
+    ),
+    "utf8",
+  ),
+) as {
+  jobs?: Record<
+    string,
+    {
+      steps?: Array<{
+        name?: string;
+        run?: string;
+        with?: Record<string, string>;
+      }>;
+    }
+  >;
+};
+const promptsPackage = JSON.parse(
+  readFileSync(
+    fileURLToPath(new URL("../../prompts/package.json", import.meta.url)),
+    "utf8",
+  ),
+) as {
+  elizaos?: {
+    scripts?: {
+      buildOnInstall?: { sentinel?: string; order?: number; script?: string };
+    };
+  };
+};
+const corePackage = JSON.parse(
+  readFileSync(
+    fileURLToPath(new URL("../../core/package.json", import.meta.url)),
+    "utf8",
+  ),
+) as {
+  elizaos?: {
+    scripts?: { buildOnInstall?: { sentinel?: string; order?: number } };
+  };
+};
 const surfaceGraph = JSON.parse(
   readFileSync(
     fileURLToPath(
@@ -164,5 +205,22 @@ describe("Develop Full workflow authority", () => {
     );
     expect(handoff?.steps?.[0]?.run).toContain("inputs[source_sha]");
     expect(handoff?.steps?.[0]?.run).toContain("inputs[source_run_id]");
+  });
+
+  test("builds prompts before core for Electrobun diagnostics", () => {
+    const steps = testWorkflow.jobs?.["zero-key-diagnostics"]?.steps ?? [];
+    const setupIndex = steps.findIndex(
+      (step) => step.name === "Setup workspace dependencies",
+    );
+    const diagnosticsIndex = steps.findIndex(
+      (step) => step.name === "Electrobun window and dynamic-view coverage",
+    );
+    const promptsBuild = promptsPackage.elizaos?.scripts?.buildOnInstall;
+    const coreBuild = corePackage.elizaos?.scripts?.buildOnInstall;
+    expect(steps[setupIndex]?.with?.["run-postinstall"]).toBe("true");
+    expect(promptsBuild?.sentinel).toBe("dist/index.js");
+    expect(promptsBuild?.script).toBe("build:package");
+    expect(coreBuild?.order).toBeGreaterThan(promptsBuild?.order ?? Infinity);
+    expect(diagnosticsIndex).toBeGreaterThan(setupIndex);
   });
 });

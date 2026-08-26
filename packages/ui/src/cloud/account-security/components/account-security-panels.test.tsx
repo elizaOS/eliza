@@ -91,6 +91,10 @@ const ACCOUNT_DELETION_DIALOG_SOURCE = path.join(
   HERE,
   "account-deletion-dialog.tsx",
 );
+const ACCOUNT_DELETION_PAGE_SOURCE = path.join(
+  HERE,
+  "../../public-pages/pages/legal/account-deletion-page.tsx",
+);
 
 describe("account-security panels", () => {
   beforeEach(() => {
@@ -229,12 +233,18 @@ describe("account-security panels", () => {
   it("keeps export unavailable while wiring the real account-deletion endpoint", () => {
     const source = readFileSync(PRIVACY_PANEL_SOURCE, "utf8");
     const deletionDialog = readFileSync(ACCOUNT_DELETION_DIALOG_SOURCE, "utf8");
+    const deletionPage = readFileSync(ACCOUNT_DELETION_PAGE_SOURCE, "utf8");
 
     expect(source).toContain("Export unavailable");
     expect(source).toContain("<AccountDeletionDialog />");
     expect(source).not.toContain("Deletion unavailable");
     expect(deletionDialog).toContain('data-testid="delete-account-trigger"');
     expect(deletionDialog).toContain("submitAccountDeletion");
+    expect(deletionDialog).not.toContain("?requested=");
+    expect(deletionPage).toContain("readAccountDeletionStatus");
+    expect(deletionPage).toContain("cancelAccountDeletion");
+    expect(deletionPage).not.toContain("useSearchParams");
+    expect(deletionPage).not.toContain('params.get("requested")');
     expect(source).not.toContain("/api/v1/me/export");
     expect(deletionDialog).not.toContain("/api/v1/me/delete-request");
   });
