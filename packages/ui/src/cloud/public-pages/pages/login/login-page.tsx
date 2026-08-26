@@ -18,7 +18,12 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "../../../../components/primitives";
 import { subscribeCloudAuthComplete } from "../../../auth/cloud-auth-complete-signal";
+import { peekPendingOnboardingSession } from "../../../join/lib/onboarding-continuation";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
+import {
+  peekPendingOAuthReturnTo,
+  sanitizeLoginReturnTo,
+} from "../../lib/login-return-to";
 import { usePageTitle } from "../../lib/use-page-title";
 import { LoginOptionsSkeleton } from "./login-section-skeleton";
 
@@ -92,11 +97,34 @@ function sessionIdFromLoginReturnTo(returnTo: string | null): string | null {
   }
 }
 
+type LoginJourney = "default" | "messaging" | "messaging-recovery";
+
+function loginJourneyFromReturnTo(
+  returnTo: string | null,
+  intent: string | null,
+): LoginJourney {
+  if (intent === "launch") return "default";
+
+  // An explicit destination always wins, including an invalid one that fails
+  // closed. Only a callback with no returnTo may consult the non-consuming,
+  // already-sanitized OAuth hand-through.
+  const sanitizedReturnTo =
+    returnTo === null
+      ? peekPendingOAuthReturnTo()
+      : sanitizeLoginReturnTo(returnTo);
+  if (sanitizedReturnTo !== "/get-started") return "default";
+
+  return peekPendingOnboardingSession() ? "messaging" : "messaging-recovery";
+}
+
 function PublicLoginPage(): React.JSX.Element {
   const t = useCloudT();
   const [searchParams] = useSearchParams();
-  const handoffSessionId = sessionIdFromLoginReturnTo(
-    searchParams.get("returnTo"),
+  const returnTo = searchParams.get("returnTo");
+  const handoffSessionId = sessionIdFromLoginReturnTo(returnTo);
+  const loginJourney = loginJourneyFromReturnTo(
+    returnTo,
+    searchParams.get("intent"),
   );
   const [handoffComplete, setHandoffComplete] = useState(false);
 
@@ -162,14 +190,33 @@ function PublicLoginPage(): React.JSX.Element {
           />
           <div className="space-y-1.5">
             <h1 className="font-sans text-2xl font-semibold tracking-tight text-txt-strong">
-              {t("cloud.login.signIn", {
-                defaultValue: "Sign in",
-              })}
+              {loginJourney === "messaging"
+                ? t("cloud.login.messagingHeading", {
+                    defaultValue: "Sign in to connect Eliza",
+                  })
+                : loginJourney === "messaging-recovery"
+                  ? t("cloud.login.continuationUnavailableHeading", {
+                      defaultValue:
+                        "This connection link is no longer available",
+                    })
+                  : t("cloud.login.signIn", {
+                      defaultValue: "Sign in",
+                    })}
             </h1>
             <p className="text-sm text-muted">
-              {t("cloud.login.tagline", {
-                defaultValue: "Build and run agents from anywhere.",
-              })}
+              {loginJourney === "messaging"
+                ? t("cloud.login.messagingBody", {
+                    defaultValue:
+                      "Use any sign-in method. You'll confirm the connection before returning to your conversation.",
+                  })
+                : loginJourney === "messaging-recovery"
+                  ? t("cloud.login.continuationUnavailableBody", {
+                      defaultValue:
+                        "Return to your conversation and request a new link, or sign in to continue in Eliza.",
+                    })
+                  : t("cloud.login.tagline", {
+                      defaultValue: "Build and run agents from anywhere.",
+                    })}
             </p>
           </div>
         </div>

@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   consumePendingOAuthReturnTo,
   defaultLoginReturnTo,
+  peekPendingOAuthReturnTo,
   resolveLoginReturnTo,
   storePendingOAuthReturnTo,
 } from "./login-return-to";
@@ -77,6 +78,16 @@ describe("login return-to resolution", () => {
       "/get-started",
     );
     expect(consumePendingOAuthReturnTo()).toBeNull();
+  });
+
+  it("peeks at callback context without consuming its destination", () => {
+    storePendingOAuthReturnTo(params("/get-started"));
+
+    expect(peekPendingOAuthReturnTo()).toBe("/get-started");
+    window.sessionStorage.clear();
+    expect(peekPendingOAuthReturnTo()).toBe("/get-started");
+    expect(consumePendingOAuthReturnTo()).toBe("/get-started");
+    expect(peekPendingOAuthReturnTo()).toBeNull();
   });
 
   it("never persists an external login destination", () => {
