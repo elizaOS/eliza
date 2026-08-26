@@ -6,6 +6,7 @@ import {
   isDedicatedCloudAgentBase,
 } from "../utils/cloud-agent-base";
 import {
+  getBuildConfiguredRemoteApiBaseUrl,
   isTrustedBuildConfiguredRemoteApiBaseUrl,
   isTrustedCloudApiBaseUrl,
   isTrustedRestoreApiBaseUrl,
@@ -39,6 +40,18 @@ describe("isTrustedRestoreApiBaseUrl", () => {
         "http://fallback.example.test",
       ),
     ).toBe(false);
+  });
+
+  it("exposes only a strictly valid build-pinned root origin", () => {
+    expect(
+      getBuildConfiguredRemoteApiBaseUrl("https://fallback.example.test/"),
+    ).toBe("https://fallback.example.test");
+    expect(
+      getBuildConfiguredRemoteApiBaseUrl("https://fallback.example.test/api"),
+    ).toBeNull();
+    expect(
+      getBuildConfiguredRemoteApiBaseUrl("http://fallback.example.test"),
+    ).toBeNull();
   });
 
   it("trusts loopback and local-agent hosts", () => {
