@@ -78,6 +78,9 @@ describe("database identity staging report workflow", () => {
 
   test("requires the exact develop commit", () => {
     const guard = step("Require exact develop commit");
+    expect(job.steps.indexOf(step("Setup Bun"))).toBeLessThan(
+      job.steps.indexOf(guard),
+    );
     expect(guard.env?.EXPECTED_COMMIT).toBe(
       expression("inputs.expected_cloud_commit"),
     );
