@@ -16,6 +16,7 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "../../../components/ui/avatar";
 import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { EmptyState } from "../../../components/ui/empty-state";
 import {
   Table,
@@ -121,7 +122,7 @@ export function AppUsers({ appId }: AppUsersProps) {
   return (
     <div className="space-y-4">
       {hasUsers && (
-        <div className="space-y-4 rounded-sm border border-border bg-card p-4">
+        <Card stack="default" variant="outlinedPadded">
           <div className="flex items-center justify-between">
             <h3 className="flex items-center gap-2 text-sm font-medium text-txt">
               <UsersIcon className="size-4 text-accent" />
@@ -188,11 +189,11 @@ export function AppUsers({ appId }: AppUsersProps) {
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       )}
 
       {hasVisitors && (
-        <div className="space-y-4 rounded-sm border border-border bg-card p-4">
+        <Card stack="default" variant="outlinedPadded">
           <div className="flex items-center justify-between">
             <h3 className="flex items-center gap-2 text-sm font-medium text-txt">
               <Globe className="size-4 text-accent" />
@@ -265,7 +266,7 @@ export function AppUsers({ appId }: AppUsersProps) {
               </TableBody>
             </Table>
           </div>
-        </div>
+        </Card>
       )}
     </div>
   );

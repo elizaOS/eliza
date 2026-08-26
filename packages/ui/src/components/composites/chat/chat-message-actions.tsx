@@ -10,11 +10,9 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type * as React from "react";
 
 import { cn } from "../../../lib/utils";
-import {
-  LIQUID_GLASS_EDGE_SHADOW,
-  LIQUID_GLASS_SHEEN,
-} from "../../shell/liquid-glass";
+import { LIQUID_GLASS_SHEEN } from "../../shell/liquid-glass";
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 import type { ChatMessageLabels } from "./chat-types";
 
 export interface ChatMessageActionsProps {
@@ -47,12 +45,13 @@ export function ChatMessageActionSurface({
   ...props
 }: React.HTMLAttributes<HTMLDivElement> & { bare?: boolean }) {
   return (
-    <div
+    <Card
+      variant={bare ? "transparent" : "panel"}
+      elevation={bare ? undefined : "liquidGlass"}
+      flow="row"
       className={cn(
-        "inline-flex items-center text-white",
-        bare
-          ? "gap-0"
-          : "gap-0.5 rounded-xl border border-white/25 bg-black/55 p-0.5 transition-colors duration-150",
+        "inline-flex text-white",
+        bare ? "gap-0" : "gap-0.5 p-0.5 transition-colors duration-150",
         className,
       )}
       style={
@@ -60,7 +59,6 @@ export function ChatMessageActionSurface({
           ? style
           : {
               backgroundImage: LIQUID_GLASS_SHEEN,
-              boxShadow: LIQUID_GLASS_EDGE_SHADOW,
               ...style,
             }
       }

@@ -31,7 +31,10 @@ import type {
   VoiceSpeakerMetadata,
   VoiceTtsError,
 } from "../../../voice/voice-chat-types";
+import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
+import { StatusDot, type StatusVariant } from "../../ui/status-badge";
 
 /** User-facing label per failed engine for the fail-closed TTS banner (#12253). */
 const TTS_ERROR_ENGINE_LABEL: Record<VoiceTtsError["engine"], string> = {
@@ -97,13 +100,13 @@ export interface ChatVoiceStatusBarProps {
   "data-testid"?: string;
 }
 
-const STATUS_DOT_CLASS: Record<VoiceContinuousStatus, string> = {
-  idle: "bg-muted/60",
-  listening: "bg-ok",
-  thinking: "bg-warn animate-pulse",
-  speaking: "bg-accent",
-  interrupting: "bg-danger animate-pulse",
-  transcribing: "bg-accent animate-pulse",
+const STATUS_DOT_CLASS: Record<VoiceContinuousStatus, StatusVariant> = {
+  idle: "muted",
+  listening: "success",
+  thinking: "warning",
+  speaking: "success",
+  interrupting: "danger",
+  transcribing: "warning",
 };
 
 const STATUS_LABEL: Record<VoiceContinuousStatus, string> = {
@@ -123,13 +126,6 @@ function latencyTone(
   if (ms <= 1500) return "warn";
   return "danger";
 }
-
-const TONE_CLASS = {
-  ok: "text-ok border-ok/40 bg-ok/10",
-  warn: "text-warn border-warn/40 bg-warn/10",
-  danger: "text-danger border-danger/40 bg-danger/10",
-  muted: "text-muted border-border/30 bg-card/20",
-} as const;
 
 function formatLatency(ms: number | null | undefined): string {
   if (ms === null || ms === undefined || !Number.isFinite(ms)) return "—";
@@ -176,21 +172,18 @@ export function ChatVoiceStatusBar({
   const cached = latency?.firstSegmentCached === true;
 
   return (
-    <div
+    <Card
+      variant="insetCompact"
+      flow="row"
+      gap="compact"
       data-testid={dataTestId ?? "chat-voice-status-bar"}
       data-status={status}
       role="status"
       aria-live="polite"
-      className={cn(
-        "flex flex-wrap items-center gap-2 rounded-sm border border-border/35 bg-card/40 px-3 py-1.5 text-xs",
-        className,
-      )}
+      className={cn("flex-wrap text-xs", className)}
     >
-      <span
-        className={cn(
-          "inline-block size-2 rounded-full",
-          STATUS_DOT_CLASS[status],
-        )}
+      <StatusDot
+        tone={STATUS_DOT_CLASS[status]}
         aria-hidden="true"
         data-testid="chat-voice-status-dot"
       />
@@ -203,46 +196,51 @@ export function ChatVoiceStatusBar({
 
       {realtimeActive ? (
         realtimePaused ? (
-          <span
-            className="inline-flex items-center gap-1 rounded-sm border border-warn/40 bg-warn/10 px-2 py-0.5 font-medium text-warn"
+          <Badge
+            variant="outline"
+            tone="warning"
             data-testid="chat-voice-realtime-paused"
           >
             <PauseCircle className="size-3" aria-hidden="true" />
             <span>Paused</span>
-          </span>
+          </Badge>
         ) : (
-          <span
-            className="inline-flex items-center gap-1 rounded-sm border border-accent/40 bg-accent/10 px-2 py-0.5 font-medium text-accent"
+          <Badge
+            variant="outline"
+            tone="accent"
             data-testid="chat-voice-realtime-live"
             title="Realtime voice session"
           >
             <Radio className="size-3" aria-hidden="true" />
             <span>Live</span>
-          </span>
+          </Badge>
         )
       ) : realtimeConnecting ? (
-        <span
-          className="inline-flex items-center gap-1 rounded-sm border border-accent/30 bg-accent/5 px-2 py-0.5 font-medium text-accent"
+        <Badge
+          variant="outline"
+          tone="accent"
           data-testid="chat-voice-realtime-connecting"
           title="Realtime voice session connecting"
         >
           <Radio className="size-3 animate-pulse" aria-hidden="true" />
           <span>Connecting</span>
-        </span>
+        </Badge>
       ) : realtimeEligible ? (
-        <span
-          className="inline-flex items-center gap-1 rounded-sm border border-accent/30 bg-accent/5 px-2 py-0.5 font-medium text-accent"
+        <Badge
+          variant="outline"
+          tone="accent"
           data-testid="chat-voice-realtime-armed"
           title="Realtime voice armed, connecting on mic start"
         >
           <Radio className="size-3" aria-hidden="true" />
           <span>Realtime armed</span>
-        </span>
+        </Badge>
       ) : null}
 
       {realtimeFallbackReason ? (
-        <span
-          className="inline-flex min-w-0 items-center gap-1 rounded-sm border border-warn/40 bg-warn/10 px-2 py-0.5 font-medium text-warn"
+        <Badge
+          variant="outline"
+          tone="warning"
           data-testid="chat-voice-realtime-fallback"
           data-reason={realtimeFallbackReason}
           title={`Realtime fallback reason: ${realtimeFallbackReason}`}
@@ -251,23 +249,25 @@ export function ChatVoiceStatusBar({
           <span className="truncate">
             Realtime voice unavailable, using standard voice mode
           </span>
-        </span>
+        </Badge>
       ) : null}
 
       {realtimeErrorMessage ? (
-        <span
-          className="inline-flex min-w-0 items-center gap-1 rounded-sm border border-danger/40 bg-danger/10 px-2 py-0.5 font-medium text-danger"
+        <Badge
+          variant="outline"
+          tone="danger"
           data-testid="chat-voice-realtime-error"
           title={realtimeErrorMessage}
         >
           <AlertTriangle className="size-3 shrink-0" aria-hidden="true" />
           <span className="truncate">{realtimeErrorMessage}</span>
-        </span>
+        </Badge>
       ) : null}
 
       {ttsError ? (
-        <span
-          className="inline-flex min-w-0 items-center gap-1 rounded-sm border border-danger/40 bg-danger/10 px-2 py-0.5 font-medium text-danger"
+        <Badge
+          variant="outline"
+          tone="danger"
           data-testid="chat-voice-tts-error"
           data-engine={ttsError.engine}
           title={ttsError.message}
@@ -276,12 +276,13 @@ export function ChatVoiceStatusBar({
           <span className="truncate">
             {TTS_ERROR_ENGINE_LABEL[ttsError.engine]} unavailable
           </span>
-        </span>
+        </Badge>
       ) : null}
 
       {speakerName ? (
-        <span
-          className="inline-flex items-center gap-1 rounded-sm border border-border/40 bg-card/50 px-2 py-0.5"
+        <Badge
+          variant="outline"
+          tone="muted"
           data-testid="chat-voice-speaker-pill"
         >
           {isOwnerSpeaking ? (
@@ -292,17 +293,18 @@ export function ChatVoiceStatusBar({
             />
           ) : null}
           <span className="text-txt">{speakerName}</span>
-        </span>
+        </Badge>
       ) : null}
 
       {micReconnected ? (
-        <span
-          className="inline-flex items-center gap-1 rounded-sm border border-border/40 bg-card/50 px-2 py-0.5 text-muted"
+        <Badge
+          variant="outline"
+          tone="muted"
           data-testid="chat-voice-mic-reconnected"
         >
           <RefreshCw className="size-3" aria-hidden="true" />
           <span>Mic reconnected</span>
-        </span>
+        </Badge>
       ) : null}
 
       {needsAudioUnlock ? (
@@ -317,13 +319,14 @@ export function ChatVoiceStatusBar({
             <span>Tap to enable sound</span>
           </Button>
         ) : (
-          <span
-            className="inline-flex items-center gap-1 rounded-sm border border-warn/40 bg-warn/10 px-2 py-0.5 font-medium text-warn"
+          <Badge
+            variant="outline"
+            tone="warning"
             data-testid="chat-voice-audio-unlock"
           >
             <VolumeX className="size-3" aria-hidden="true" />
             <span>Tap anywhere to enable sound</span>
-          </span>
+          </Badge>
         )
       ) : null}
 
@@ -341,11 +344,10 @@ export function ChatVoiceStatusBar({
         <span className="flex-1" />
       )}
 
-      <span
-        className={cn(
-          "inline-flex items-center gap-1 rounded-sm border px-2 py-0.5 text-2xs font-medium",
-          TONE_CLASS[tone],
-        )}
+      <Badge
+        variant="outline"
+        size="compact"
+        tone={tone === "ok" ? "success" : tone === "warn" ? "warning" : tone}
         data-testid="chat-voice-latency-badge"
         data-tone={tone}
         title={
@@ -363,12 +365,12 @@ export function ChatVoiceStatusBar({
             cached
           </span>
         ) : null}
-      </span>
+      </Badge>
 
       {hasNativeTranscript ? (
         <LiveNativeTranscriptView snapshot={nativeTranscript} />
       ) : null}
-    </div>
+    </Card>
   );
 }
 

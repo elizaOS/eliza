@@ -28,7 +28,10 @@ if (appDirCandidates.length !== 1) {
   );
 }
 const [APP_DIR] = appDirCandidates;
-const NAVIGATION_SOURCE = resolve(APP_DIR, "../ui/src/navigation/index.ts");
+const NAVIGATION_SOURCE = resolve(
+  APP_DIR,
+  "../ui/src/navigation/builtin-route-descriptors.ts",
+);
 
 describe("aesthetic audit semantic OCR policy coverage", () => {
   it("declares exactly one policy for every captured view slug", () => {

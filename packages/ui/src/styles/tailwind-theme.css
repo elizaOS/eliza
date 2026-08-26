@@ -106,6 +106,10 @@
   --color-chain-pol: #8247e5;
   --color-chain-sol: #9945ff;
   --color-chain-bsc: var(--warn);
+  --color-authorize-backdrop-edge: #000;
+  --color-authorize-backdrop-center: #18181b;
+  --color-authorize-panel: #000;
+  --color-homepage-canvas: #fdfaf7;
 
   --font-sans: var(--font-body);
   --font-body: var(--font-body);
@@ -123,6 +127,12 @@
   --shadow-xl: var(--shadow-xl);
   --shadow-2xl: var(--shadow-2xl);
   --shadow-inset: var(--shadow-inset);
+  --shadow-drawer: var(--shadow-drawer);
+  --shadow-background-selected: var(--shadow-background-selected);
+  --shadow-agent-focus: var(--shadow-agent-focus);
+  --shadow-chat-action: var(--chat-action-shadow);
+  --shadow-chat-mic: var(--shadow-chat-mic);
+  --background-image-launcher-icon-sheen: var(--launcher-icon-sheen);
 
   --radius-xs: var(--radius-xs);
   --radius-sm: var(--radius-sm);

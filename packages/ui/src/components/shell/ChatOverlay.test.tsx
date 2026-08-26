@@ -550,8 +550,10 @@ describe("ChatOverlay", () => {
     // The native material remains attached below the WebView, but the open
     // conversation owns an opaque DOM fill. Underlying launcher/view controls
     // must never remain visible through the chat surface on iPad.
-    expect(surface.style.backgroundColor).toBe("var(--bg)");
-    expect(surface.style.backdropFilter).toBe("");
+    expect(surface.style.getPropertyValue("--chat-sheet-background")).toBe(
+      "var(--bg)",
+    );
+    expect(surface.style.getPropertyValue("--chat-sheet-backdrop")).toBe("");
     expect(screen.getByTestId("chat-overlay").className).toContain("isolate");
     expect(screen.getByTestId("chat-glass-tier-probe").textContent).toContain(
       "chat-glass-tier:native",
@@ -1006,10 +1008,9 @@ describe("ChatOverlay", () => {
         screen.getByTestId("chat-pill").querySelector("span");
       const barOf = () => spanOf()?.className ?? "";
       expect(barOf()).not.toContain("eliza-chat-handle-breathe");
-      // Resting bar color is an explicit white inline style (not the
-      // `bg-muted-strong` token, which resolved dark/black on the grabber that
-      // renders outside the panel theme) — kept identical to the grabber bar.
-      expect(spanOf()?.style.backgroundColor).toBe("rgba(255, 255, 255, 0.96)");
+      // The canonical handle surface owns explicit wallpaper-white paint rather
+      // than inheriting an ambient muted token outside the panel theme.
+      expect(barOf()).toContain("chat-handle-bar-surface");
       rerender(
         <ChatOverlay
           controller={makeController({ phase: "listening", recording: true })}
@@ -1025,7 +1026,7 @@ describe("ChatOverlay", () => {
       expect(barOf()).not.toContain("background-clip");
       expect(barOf()).not.toContain("bg-accent");
       expect(barOf()).not.toContain("animate-pulse");
-      expect(spanOf()?.style.backgroundColor).toBe("rgba(255, 255, 255, 0.96)");
+      expect(barOf()).toContain("chat-handle-bar-surface");
     });
   });
 
@@ -4249,7 +4250,7 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(viewport.className.split(/\s+/)).not.toContain("scroll-fade-b");
     expect(screen.queryByTestId("chat-thread-top-fade")).toBeNull();
     expect(screen.queryByTestId("chat-sheet-top-sheen")).toBeNull();
-    expect(surface.style.backgroundImage).toBe("none");
+    expect(surface.style.getPropertyValue("--chat-sheet-image")).toBe("none");
   });
 
   it("snaps to full-screen at 90% while held and reverses below the same line", async () => {

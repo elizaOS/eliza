@@ -33,6 +33,26 @@
   --inverse: var(--brand-white);
   --inverse-foreground: var(--brand-black);
 
+  /* Fixed shell chrome stays legible over arbitrary wallpaper and host
+     content. These semantic roles preserve the established neutral recipes
+     while keeping component callers free of raw paint literals. */
+  --shell-overlay-grabber-background: rgb(255 255 255 / 96%);
+  --notification-count-background: rgb(255 255 255 / 90%);
+  --notification-count-foreground: rgb(0 0 0);
+  --notification-count-shadow:
+    0 0 0 2px rgb(16 10 5 / 70%), 0 1px 4px rgb(16 10 5 / 45%);
+  --notification-source-background: rgb(0 0 0 / 30%);
+  --notification-source-border: rgb(255 255 255 / 15%);
+  --notification-source-radius: 9px;
+  --assistant-overlay-card: rgb(20 20 24 / 82%);
+  --assistant-overlay-foreground: #f5f5f5;
+  --assistant-overlay-strong-foreground: #ffffff;
+  --assistant-overlay-muted: rgb(255 255 255 / 64%);
+  --assistant-overlay-muted-strong: rgb(255 255 255 / 78%);
+  --assistant-overlay-background: rgb(12 12 14);
+  --assistant-overlay-accent-subtle: rgb(255 88 0 / 18%);
+  --assistant-overlay-border: rgb(255 255 255 / 20%);
+
   /* Text */
   --text: var(--brand-black);
   --text-strong: var(--brand-black);
@@ -130,6 +150,16 @@
   --shadow-xl: none;
   --shadow-2xl: none;
   --shadow-inset: none;
+  --shadow-drawer: 0 -12px 48px -12px rgb(0 0 0 / 75%);
+  --shadow-background-selected: 0 8px 28px -14px var(--scrim);
+  --shadow-agent-focus: 0 0 0 2px var(--accent-muted);
+  --shadow-chat-mic: 0 0 9px rgb(255 255 255 / 40%);
+  --launcher-icon-sheen: linear-gradient(
+    160deg,
+    rgb(255 255 255 / 36%) 0%,
+    rgb(255 255 255 / 8%) 42%,
+    rgb(0 0 0 / 20%) 100%
+  );
   /* A soft, intimate radius ramp. A companion surface should feel rounded and
      calm, not hard-edged/utilitarian, but still restrained (no toy-like pills).
      The ramp grows so chips stay tight while cards/sheets relax. */
@@ -199,6 +229,82 @@
   --plugin-max-field-width: 32rem;
 
   color-scheme: light;
+}
+
+.chat-handle-bar-surface {
+  background-color: var(--shell-overlay-grabber-background);
+}
+
+.home-pill-mark-idle,
+.home-pill-mark-preview,
+.home-pill-mark-listening,
+.home-pill-mark-chip,
+.home-pill-mark-responding,
+.home-pill-mark-speaking,
+.home-pill-preview-handle,
+.home-pill-meter-surface,
+.home-pill-process-dot-surface {
+  border-radius: 9999px;
+}
+
+.home-pill-mark-idle {
+  border-color: transparent;
+  background: rgb(255 255 255 / 95%);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 12%);
+}
+
+.home-pill-mark-preview {
+  border-width: 1px;
+  border-style: solid;
+  border-color: rgb(255 255 255 / 55%);
+  background: linear-gradient(180deg, rgb(38 39 40 / 98%), rgb(18 19 21 / 98%));
+  box-shadow:
+    0 14px 36px rgb(0 0 0 / 42%),
+    inset 0 1px 0 rgb(255 255 255 / 12%);
+}
+
+.home-pill-mark-listening {
+  border-width: 1px;
+  border-style: solid;
+  border-color: rgb(255 255 255 / 55%);
+  background: rgb(23 23 23 / 95%);
+}
+
+.home-pill-mark-chip {
+  border-color: transparent;
+  background: rgb(23 23 23 / 95%);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 35%);
+}
+
+.home-pill-mark-responding {
+  border-color: transparent;
+  background: rgb(255 255 255 / 95%);
+  box-shadow:
+    0 0 10px rgb(255 138 42 / 60%),
+    0 0 0 1px rgb(0 0 0 / 12%);
+}
+
+.home-pill-mark-speaking {
+  border-color: transparent;
+  background: rgb(255 255 255 / 95%);
+  box-shadow:
+    0 0 14px rgb(255 138 42 / 85%),
+    0 0 0 1px rgb(255 138 42 / 50%);
+}
+
+.home-pill-preview-handle,
+.home-pill-meter-surface {
+  border-color: transparent;
+  background: rgb(255 255 255 / 95%);
+}
+
+.home-pill-wave-bar {
+  box-shadow: 0 0 9px rgb(255 255 255 / 40%);
+}
+
+.home-pill-process-dot-surface {
+  border-color: transparent;
+  background: rgb(255 255 255 / 90%);
 }
 
 :root.eliza-mobile-bottom-nav {
@@ -308,6 +414,16 @@
   --shadow-xl: none;
   --shadow-2xl: none;
   --shadow-inset: none;
+  --shadow-drawer: 0 -12px 48px -12px rgb(0 0 0 / 75%);
+  --shadow-background-selected: 0 8px 28px -14px var(--scrim);
+  --shadow-agent-focus: 0 0 0 2px var(--accent-muted);
+  --shadow-chat-mic: 0 0 9px rgb(255 255 255 / 40%);
+  --launcher-icon-sheen: linear-gradient(
+    160deg,
+    rgb(255 255 255 / 36%) 0%,
+    rgb(255 255 255 / 8%) 42%,
+    rgb(0 0 0 / 20%) 100%
+  );
   --radius-sm: var(--radius-xs);
   --radius-md: var(--radius-xs);
   --radius-lg: var(--radius-xs);

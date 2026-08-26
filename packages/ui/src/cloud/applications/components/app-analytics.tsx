@@ -41,6 +41,7 @@ import {
   MiniStatCard,
 } from "../../../cloud-ui/components/brand";
 import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import {
   Select,
   SelectContent,
@@ -454,7 +455,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
             </div>
           )}
 
-          <div className="bg-card rounded-sm p-4">
+          <Card variant="flatPadded">
             <h3 className="text-sm font-medium text-txt mb-4 flex items-center gap-2">
               <BarChart3 className="size-4 text-muted" />
               Requests Over Time
@@ -498,9 +499,9 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                 No data available
               </p>
             )}
-          </div>
+          </Card>
 
-          <div className="bg-card rounded-sm p-4">
+          <Card variant="flatPadded">
             <h3 className="text-sm font-medium text-txt mb-4">User Growth</h3>
             {chartData.length > 0 ? (
               <ResponsiveContainer width="100%" height={250}>
@@ -536,7 +537,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                 No data available
               </p>
             )}
-          </div>
+          </Card>
         </div>
       )}
 
@@ -587,7 +588,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="bg-card rounded-sm p-4">
+                <Card variant="flatPadded">
                   <h3 className="text-sm font-medium text-txt mb-4">
                     By Source
                   </h3>
@@ -632,9 +633,9 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                       No data
                     </p>
                   )}
-                </div>
+                </Card>
 
-                <div className="bg-card rounded-sm p-4">
+                <Card variant="flatPadded">
                   <h3 className="text-sm font-medium text-txt mb-4">By Type</h3>
                   {Object.keys(requestStats.byType).length > 0 ? (
                     <div className="space-y-2">
@@ -677,7 +678,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                       No data
                     </p>
                   )}
-                </div>
+                </Card>
               </div>
             </>
           ) : (
@@ -723,7 +724,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                 </div>
               )}
 
-              <div className="bg-card rounded-sm p-4">
+              <Card variant="flatPadded">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-sm font-medium text-txt">Top Visitors</h3>
                   <Button
@@ -787,7 +788,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                     No visitor data available
                   </p>
                 )}
-              </div>
+              </Card>
             </>
           )}
         </div>
@@ -837,7 +838,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
               </div>
 
               <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-                <div className="bg-card rounded-sm p-4">
+                <Card variant="flatPadded">
                   <h3 className="text-sm font-medium text-txt mb-4 flex items-center gap-2">
                     <GitBranch className="size-4 text-muted" />
                     Funnel
@@ -879,9 +880,9 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                       No funnel data available
                     </p>
                   )}
-                </div>
+                </Card>
 
-                <div className="bg-card rounded-sm p-4">
+                <Card variant="flatPadded">
                   <h3 className="text-sm font-medium text-txt mb-4">
                     Recent Sessions
                   </h3>
@@ -934,7 +935,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                       No session data available
                     </p>
                   )}
-                </div>
+                </Card>
               </div>
             </>
           ) : (
@@ -947,7 +948,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
 
       {/* Logs Tab */}
       {activeTab === "logs" && (
-        <div className="bg-card rounded-sm p-4">
+        <Card variant="flatPadded">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-medium text-txt">Request Logs</h3>
             <div className="flex items-center gap-2">
@@ -1084,7 +1085,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
               No request logs available yet
             </p>
           )}
-        </div>
+        </Card>
       )}
     </div>
   );

@@ -13,6 +13,8 @@ import {
   ServerCog,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { Badge } from "../../../components/ui/badge";
+import { Card } from "../../../components/ui/card";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { StatusBadge } from "../../../components/ui/status-badge";
 import { useCloudT } from "../../shell/CloudI18nProvider";
@@ -118,127 +120,139 @@ function ResourceCard({
         });
 
   return (
-    <li className="min-w-0 border border-brand-surface bg-surface p-4">
-      <div className="flex min-w-0 items-start gap-3">
-        <div className="mt-0.5 shrink-0 border border-border bg-bg-accent p-2 text-muted-strong">
-          <ResourceIcon className="size-4" aria-hidden="true" />
+    <Card asChild variant="brandSurface" padding="comfortable">
+      <li className="min-w-0">
+        <div className="flex min-w-0 items-start gap-3">
+          <Badge
+            variant="providerMark"
+            size="providerMark"
+            className="mt-0.5 shrink-0"
+          >
+            <ResourceIcon className="size-4" aria-hidden="true" />
+          </Badge>
+          <div className="min-w-0 flex-1">
+            <p className="break-words font-mono text-sm font-semibold text-txt-strong [overflow-wrap:anywhere]">
+              {resource.name}
+            </p>
+            <p className="mt-1 break-words font-mono text-xs text-muted-strong [overflow-wrap:anywhere]">
+              {typeLabel} · {resource.resourceId}
+            </p>
+          </div>
         </div>
-        <div className="min-w-0 flex-1">
-          <p className="break-words font-mono text-sm font-semibold text-txt-strong [overflow-wrap:anywhere]">
-            {resource.name}
-          </p>
-          <p className="mt-1 break-words font-mono text-xs text-muted-strong [overflow-wrap:anywhere]">
-            {typeLabel} · {resource.resourceId}
-          </p>
-        </div>
-      </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        <StatusBadge
-          status="muted"
-          className="max-w-full whitespace-normal break-words"
-          label={t("cloud.billing.compute.lifecycleStatus", {
-            status: resource.status,
-            defaultValue: "Lifecycle: {{status}}",
-          })}
-        />
-        <StatusBadge
-          status="info"
-          className="max-w-full whitespace-normal break-words"
-          label={t("cloud.billing.compute.billingStatus", {
-            status: resource.billingStatus,
-            defaultValue: "Billing: {{status}}",
-          })}
-        />
-      </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <StatusBadge
+            status="muted"
+            className="max-w-full whitespace-normal break-words"
+            label={t("cloud.billing.compute.lifecycleStatus", {
+              status: resource.status,
+              defaultValue: "Lifecycle: {{status}}",
+            })}
+          />
+          <StatusBadge
+            status="info"
+            className="max-w-full whitespace-normal break-words"
+            label={t("cloud.billing.compute.billingStatus", {
+              status: resource.billingStatus,
+              defaultValue: "Billing: {{status}}",
+            })}
+          />
+        </div>
 
-      <dl className="mt-4 grid gap-3 border-t border-border pt-4 sm:grid-cols-2">
-        <div className="min-w-0">
-          <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
-            {t("cloud.billing.compute.rate", { defaultValue: "Rate" })}
-          </dt>
-          <dd className="mt-1 break-words text-sm text-txt-strong [overflow-wrap:anywhere]">
-            {exactAmount(
-              resource.ratePerHour,
-              t("cloud.billing.compute.perHour", { defaultValue: "/ hour" }),
-              t,
-            )}
-          </dd>
-        </div>
-        <div className="min-w-0">
-          <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
-            {t("cloud.billing.compute.estimatedRecurring", {
-              defaultValue: "Estimated recurring",
-            })}
-          </dt>
-          <dd className="mt-1 break-words text-sm text-txt-strong [overflow-wrap:anywhere]">
-            {exactAmount(
-              resource.estimatedRecurringComputeCostPerDay,
-              t("cloud.billing.compute.perDay", { defaultValue: "/ day" }),
-              t,
-            )}
-          </dd>
-        </div>
-      </dl>
+        <Card asChild variant="billingTopDivider">
+          <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="min-w-0">
+              <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
+                {t("cloud.billing.compute.rate", { defaultValue: "Rate" })}
+              </dt>
+              <dd className="mt-1 break-words text-sm text-txt-strong [overflow-wrap:anywhere]">
+                {exactAmount(
+                  resource.ratePerHour,
+                  t("cloud.billing.compute.perHour", {
+                    defaultValue: "/ hour",
+                  }),
+                  t,
+                )}
+              </dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
+                {t("cloud.billing.compute.estimatedRecurring", {
+                  defaultValue: "Estimated recurring",
+                })}
+              </dt>
+              <dd className="mt-1 break-words text-sm text-txt-strong [overflow-wrap:anywhere]">
+                {exactAmount(
+                  resource.estimatedRecurringComputeCostPerDay,
+                  t("cloud.billing.compute.perDay", { defaultValue: "/ day" }),
+                  t,
+                )}
+              </dd>
+            </div>
+          </dl>
+        </Card>
 
-      <dl className="mt-3 grid gap-3 border-t border-border pt-4 sm:grid-cols-2">
-        <div className="min-w-0">
-          <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
-            {t("cloud.billing.compute.billingPeriod", {
-              defaultValue: "Billing period",
-            })}
-          </dt>
-          <dd className="mt-1 break-words font-mono text-sm text-txt-strong [overflow-wrap:anywhere]">
-            {billingIntervalLabel(resource.billingInterval, t)}
-          </dd>
-        </div>
-        <div className="min-w-0">
-          <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
-            {t("cloud.billing.compute.lastBilled", {
-              defaultValue: "Last billed",
-            })}
-          </dt>
-          <dd className="mt-1 break-words font-mono text-sm text-txt-strong [overflow-wrap:anywhere]">
-            {billingCursorLabel(
-              resource.lastBilledAt,
-              t("cloud.billing.compute.notReported", {
-                defaultValue: "Not reported",
-              }),
-            )}
-          </dd>
-        </div>
-        <div className="min-w-0">
-          <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
-            {t("cloud.billing.compute.nextBilling", {
-              defaultValue: "Next billing",
-            })}
-          </dt>
-          <dd className="mt-1 break-words font-mono text-sm text-txt-strong [overflow-wrap:anywhere]">
-            {billingCursorLabel(
-              resource.nextBillingAt,
-              t("cloud.billing.compute.notScheduled", {
-                defaultValue: "Not scheduled",
-              }),
-            )}
-          </dd>
-        </div>
-        <div className="min-w-0">
-          <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
-            {t("cloud.billing.compute.estimatedNextBilling", {
-              defaultValue: "Estimated next billing",
-            })}
-          </dt>
-          <dd className="mt-1 break-words font-mono text-sm text-txt-strong [overflow-wrap:anywhere]">
-            {billingCursorLabel(
-              resource.estimatedNextBillingAt,
-              t("cloud.billing.compute.notEstimated", {
-                defaultValue: "Not estimated",
-              }),
-            )}
-          </dd>
-        </div>
-      </dl>
-    </li>
+        <Card asChild variant="billingTopDivider">
+          <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div className="min-w-0">
+              <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
+                {t("cloud.billing.compute.billingPeriod", {
+                  defaultValue: "Billing period",
+                })}
+              </dt>
+              <dd className="mt-1 break-words font-mono text-sm text-txt-strong [overflow-wrap:anywhere]">
+                {billingIntervalLabel(resource.billingInterval, t)}
+              </dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
+                {t("cloud.billing.compute.lastBilled", {
+                  defaultValue: "Last billed",
+                })}
+              </dt>
+              <dd className="mt-1 break-words font-mono text-sm text-txt-strong [overflow-wrap:anywhere]">
+                {billingCursorLabel(
+                  resource.lastBilledAt,
+                  t("cloud.billing.compute.notReported", {
+                    defaultValue: "Not reported",
+                  }),
+                )}
+              </dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
+                {t("cloud.billing.compute.nextBilling", {
+                  defaultValue: "Next billing",
+                })}
+              </dt>
+              <dd className="mt-1 break-words font-mono text-sm text-txt-strong [overflow-wrap:anywhere]">
+                {billingCursorLabel(
+                  resource.nextBillingAt,
+                  t("cloud.billing.compute.notScheduled", {
+                    defaultValue: "Not scheduled",
+                  }),
+                )}
+              </dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-xs font-medium uppercase tracking-wide text-muted-strong">
+                {t("cloud.billing.compute.estimatedNextBilling", {
+                  defaultValue: "Estimated next billing",
+                })}
+              </dt>
+              <dd className="mt-1 break-words font-mono text-sm text-txt-strong [overflow-wrap:anywhere]">
+                {billingCursorLabel(
+                  resource.estimatedNextBillingAt,
+                  t("cloud.billing.compute.notEstimated", {
+                    defaultValue: "Not estimated",
+                  }),
+                )}
+              </dd>
+            </div>
+          </dl>
+        </Card>
+      </li>
+    </Card>
   );
 }
 
@@ -457,9 +471,11 @@ export function ActiveComputeCardView({
         </div>
 
         {state.refreshFailed || state.refreshPaused ? (
-          <div
+          <Card
+            variant="warningNotice"
+            padding="default"
             role="alert"
-            className="flex flex-col gap-3 border border-warn/40 bg-warn/10 p-3 sm:flex-row sm:items-center sm:justify-between"
+            className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
           >
             <div className="flex min-w-0 items-start gap-2 text-sm text-txt">
               <Clock3
@@ -491,7 +507,7 @@ export function ActiveComputeCardView({
                 t={t}
               />
             ) : null}
-          </div>
+          </Card>
         ) : (
           <p className="text-xs font-mono text-muted">
             {t("cloud.billing.compute.observedAt", {
@@ -503,7 +519,7 @@ export function ActiveComputeCardView({
 
         {resourcesObservation.status === "available" ? (
           resourcesObservation.value.length === 0 ? (
-            <div className="border border-brand-surface bg-surface px-4 py-8 text-center">
+            <Card variant="brandSurface" className="px-4 py-8 text-center">
               <p className="font-mono text-sm text-txt-strong">
                 {t("cloud.billing.compute.empty", {
                   defaultValue: "No active billable compute",
@@ -515,7 +531,7 @@ export function ActiveComputeCardView({
                     "No containers or agent sandboxes are currently reported as billable.",
                 })}
               </p>
-            </div>
+            </Card>
           ) : (
             <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">
               {resourcesObservation.value.map((resource) => (
@@ -528,7 +544,10 @@ export function ActiveComputeCardView({
             </ul>
           )
         ) : (
-          <div className="flex flex-col items-start gap-4 border border-brand-surface bg-surface p-4 sm:flex-row sm:justify-between">
+          <Card
+            variant="brandSurface"
+            className="flex flex-col items-start gap-4 p-4 sm:flex-row sm:justify-between"
+          >
             <div className="flex min-w-0 items-start gap-3">
               <AlertCircle
                 className="mt-0.5 size-4 shrink-0 text-warn"
@@ -553,11 +572,15 @@ export function ActiveComputeCardView({
                 t={t}
               />
             ) : null}
-          </div>
+          </Card>
         )}
 
         {resourcesObservation.status === "available" && hasPartialCost ? (
-          <div className="flex flex-col items-start gap-3 border border-warn/40 bg-warn/10 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <Card
+            variant="warningNotice"
+            padding="default"
+            className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between"
+          >
             <div className="flex min-w-0 items-start gap-2 text-sm text-txt">
               <AlertCircle
                 className="mt-0.5 size-4 shrink-0 text-warn"
@@ -577,7 +600,7 @@ export function ActiveComputeCardView({
                 t={t}
               />
             ) : null}
-          </div>
+          </Card>
         ) : null}
       </div>
     </BrandCard>

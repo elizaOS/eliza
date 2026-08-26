@@ -28,6 +28,8 @@ import {
   type VaultTab,
 } from "../../hooks/useSecretsManagerModal";
 import { getShortcutLabel } from "../../hooks/useSecretsManagerShortcut";
+import { Badge } from "../ui/badge";
+import { Banner } from "../ui/banner";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +37,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
+import { Separator } from "../ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { SettingsActionButton } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
@@ -129,14 +132,14 @@ export function SecretsManagerSection() {
                 {primary?.label ?? "Local (encrypted)"}
               </span>
               {primary ? (
-                <span className="rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
+                <Badge variant="outline" size="microBold" tone="accent">
                   Primary
-                </span>
+                </Badge>
               ) : null}
               {enabledCount > 1 ? (
-                <span className="rounded-full border border-border bg-surface px-1.5 py-0.5 text-2xs text-muted">
+                <Badge variant="outline" size="micro" tone="muted">
                   +{enabledCount - 1} more
-                </span>
+                </Badge>
               ) : null}
             </span>
           }
@@ -539,27 +542,35 @@ export function VaultWorkspace({
               <KeyRound className="size-4 text-muted" aria-hidden />
               Vault
             </span>
-            <span className="rounded-sm border border-border/50 bg-bg/40 px-2 py-0.5 font-mono text-2xs font-normal text-muted">
+            <Badge variant="outline" size="micro" tone="muted">
               {getShortcutLabel()}
-            </span>
+            </Badge>
           </DialogTitle>
         </DialogHeader>
       ) : (
-        <header className="flex shrink-0 items-start justify-between gap-4 border-b border-border/45 pb-4">
-          <div className="min-w-0">
-            <h1 className="flex items-center gap-2 text-lg font-semibold text-txt">
-              <KeyRound className="size-5 text-accent" aria-hidden />
-              Vault
-            </h1>
-            <p className="mt-1 max-w-2xl text-sm text-muted">
-              Encrypted credentials and references available to this agent.
-              Organization credential pools remain managed in Eliza Cloud.
-            </p>
-          </div>
-          <span className="hidden shrink-0 rounded-sm border border-border/50 bg-bg/40 px-2 py-0.5 font-mono text-2xs font-normal text-muted sm:inline-flex">
-            {getShortcutLabel()}
-          </span>
-        </header>
+        <div className="shrink-0">
+          <header className="flex items-start justify-between gap-4 pb-4">
+            <div className="min-w-0">
+              <h1 className="flex items-center gap-2 text-lg font-semibold text-txt">
+                <KeyRound className="size-5 text-accent" aria-hidden />
+                Vault
+              </h1>
+              <p className="mt-1 max-w-2xl text-sm text-muted">
+                Encrypted credentials and references available to this agent.
+                Organization credential pools remain managed in Eliza Cloud.
+              </p>
+            </div>
+            <Badge
+              variant="outline"
+              size="micro"
+              tone="muted"
+              className="hidden shrink-0 sm:inline-flex"
+            >
+              {getShortcutLabel()}
+            </Badge>
+          </header>
+          <Separator tone="subtle45" />
+        </div>
       )}
 
       <div
@@ -575,13 +586,13 @@ export function VaultWorkspace({
         ) : (
           <>
             {error && (
-              <div
+              <Banner
+                variant="error"
                 aria-live="polite"
                 data-testid="vault-modal-error"
-                className="rounded-sm border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger"
               >
                 {error}
-              </div>
+              </Banner>
             )}
 
             <Tabs
@@ -683,7 +694,7 @@ export function VaultWorkspace({
               agentGroup="secrets"
               variant="ghost"
               size="sm"
-              className="h-9 rounded-sm"
+              className="h-9"
               onClick={() => onOpenChange(false)}
               disabled={saving}
             >

@@ -7,6 +7,7 @@ import { useMemo } from "react";
 import { useWhatsAppPairing } from "../../hooks";
 import { DEFAULT_CONNECTOR_ACCOUNT_ID } from "../../hooks/useConnectorAccounts";
 import { useAppSelector } from "../../state";
+import { StatusPulseDot } from "../ui/status-badge";
 import { ConnectorQrPairingOverlay } from "./ConnectorQrPairingOverlay";
 
 interface WhatsAppQrOverlayProps {
@@ -60,10 +61,7 @@ export function WhatsAppQrOverlay({
   const footer = useMemo(
     () => (
       <div className="mt-3 flex items-center gap-2">
-        <span
-          className="inline-block size-1.5 animate-pulse rounded-full"
-          style={{ background: "var(--accent)" }}
-        />
+        <StatusPulseDot tone="accent" pulse size="micro" />
         <span className="text-2xs text-muted">
           {t("whatsappqroverlay.QRRefreshesAutomat")}
         </span>

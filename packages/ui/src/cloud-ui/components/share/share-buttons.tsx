@@ -71,12 +71,12 @@ export function ShareButtons({ url, title, description }: ShareButtonsProps) {
 
   return (
     <div className="flex flex-wrap gap-2">
-      <Button variant="outline" size="labeledSm" onClick={handleNativeShare}>
+      <Button variant="outline" size="sm" onClick={handleNativeShare}>
         <Share2 className="size-4" />
         Share
       </Button>
 
-      <Button variant="outline" size="labeledSm" onClick={handleCopyLink}>
+      <Button variant="outline" size="sm" onClick={handleCopyLink}>
         {copied ? (
           <>
             <Check className="size-4" />
@@ -90,7 +90,7 @@ export function ShareButtons({ url, title, description }: ShareButtonsProps) {
         )}
       </Button>
 
-      <Button variant="outline" size="labeledSm" onClick={shareOnTwitter}>
+      <Button variant="outline" size="sm" onClick={shareOnTwitter}>
         <svg
           aria-hidden="true"
           className="size-4"
@@ -102,7 +102,7 @@ export function ShareButtons({ url, title, description }: ShareButtonsProps) {
         Twitter
       </Button>
 
-      <Button variant="outline" size="labeledSm" onClick={shareOnLinkedIn}>
+      <Button variant="outline" size="sm" onClick={shareOnLinkedIn}>
         <svg
           aria-hidden="true"
           className="size-4"
@@ -114,7 +114,7 @@ export function ShareButtons({ url, title, description }: ShareButtonsProps) {
         LinkedIn
       </Button>
 
-      <Button variant="outline" size="labeledSm" onClick={shareOnTelegram}>
+      <Button variant="outline" size="sm" onClick={shareOnTelegram}>
         <svg
           aria-hidden="true"
           className="size-4"

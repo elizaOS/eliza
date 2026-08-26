@@ -20,6 +20,8 @@ import {
 import type { ReactNode } from "react";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { shellHistory } from "../../surface-realm-channel";
+import { Alert } from "../ui/alert.tsx";
+import { Badge } from "../ui/badge.tsx";
 import { Button } from "../ui/button.tsx";
 
 /**
@@ -47,25 +49,36 @@ export function ViewStatusFrame({
   children?: ReactNode;
   actions?: ReactNode;
 }) {
-  const toneClass =
-    tone === "error"
-      ? "border-destructive/25 bg-destructive/5 text-destructive"
-      : tone === "restricted"
-        ? "border-muted-foreground/20 bg-muted/20 text-muted-foreground"
-        : "border-primary/20 bg-primary/5 text-primary";
-
   return (
     <div
       className="flex flex-1 min-h-0 min-w-0 items-center justify-center p-6"
       data-view-status={tone}
     >
-      <div
-        className={`flex w-full max-w-sm flex-col gap-3 rounded-lg border p-4 ${toneClass}`}
+      <Alert
+        variant={
+          tone === "error"
+            ? "destructive"
+            : tone === "restricted"
+              ? "sidebar"
+              : "default"
+        }
+        role={tone === "error" ? "alert" : "status"}
+        className="flex w-full max-w-sm flex-col gap-3 p-4"
       >
         <div className="flex items-center gap-3">
-          <div className="grid size-10 shrink-0 place-items-center rounded-md bg-background/70">
+          <Badge
+            variant="visualAnchor"
+            tone={
+              tone === "error"
+                ? "danger"
+                : tone === "restricted"
+                  ? "muted"
+                  : "accent"
+            }
+            className="grid size-10 shrink-0 place-items-center"
+          >
             {icon}
-          </div>
+          </Badge>
           <div className="min-w-0 text-left">
             <div className="text-sm font-semibold">{title}</div>
             {children ? <div className="mt-1 text-xs">{children}</div> : null}
@@ -74,7 +87,7 @@ export function ViewStatusFrame({
         {actions ? (
           <div className="flex flex-wrap gap-2 pl-[3.25rem]">{actions}</div>
         ) : null}
-      </div>
+      </Alert>
     </div>
   );
 }
@@ -103,7 +116,8 @@ export function ViewRecoveryActions({
       <Button
         type="button"
         variant="outline"
-        size="labeledTiny"
+        size="tiny"
+        className="gap-1"
         onClick={onRetry}
       >
         <RotateCw className="size-3.5" aria-hidden="true" />
@@ -112,7 +126,8 @@ export function ViewRecoveryActions({
       <Button
         type="button"
         variant="ghostMuted"
-        size="labeledTiny"
+        size="tiny"
+        className="gap-1"
         onClick={onBack}
       >
         <ArrowLeft className="size-3.5" aria-hidden="true" />

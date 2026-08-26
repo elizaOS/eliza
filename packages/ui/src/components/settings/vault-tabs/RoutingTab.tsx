@@ -21,7 +21,9 @@ import { useAgentElement } from "../../../agent-surface";
 // authed runtimes (e.g. the Android local agent).
 import { client } from "../../../api/client";
 import { useTranslation } from "../../../state/TranslationContext.hooks";
+import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
 import {
@@ -376,13 +378,13 @@ export function RoutingTab(props: RoutingTabProps) {
         </div>
 
         {error && (
-          <p
-            className="rounded-sm border border-danger/40 bg-danger/10 px-3 py-1.5 text-xs text-danger"
+          <Card
+            variant="vaultError"
             aria-live="polite"
             data-testid="routing-tab-error"
           >
             {error}
-          </p>
+          </Card>
         )}
 
         {config.rules.length > 0 && (
@@ -401,200 +403,196 @@ export function RoutingTab(props: RoutingTabProps) {
         )}
 
         {showAdd && (
-          <form
-            onSubmit={onAddRule}
-            data-testid="routing-add-rule-form"
-            className="space-y-2 rounded-sm border border-border/50 bg-card/30 p-3"
-          >
-            <div>
-              <Label className="text-2xs text-muted">
-                {t("routing.field.keyPattern", {
-                  defaultValue: "Key pattern",
-                })}
-              </Label>
-              <Input
-                ref={keyPatternRef}
-                {...keyPatternAgentProps}
-                variant="config"
-                density="compact"
-                value={keyPattern}
-                onChange={(e) => setKeyPattern(e.target.value)}
-                placeholder="OPENROUTER_API_KEY or OPENROUTER_*"
-                autoComplete="off"
-                list="routing-key-suggestions"
-                required
-              />
-              <datalist id="routing-key-suggestions">
-                {allKeys.map((k) => (
-                  <option key={k} value={k} />
-                ))}
-              </datalist>
-            </div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <Card asChild variant="vaultForm">
+            <form
+              onSubmit={onAddRule}
+              data-testid="routing-add-rule-form"
+              className="space-y-2"
+            >
               <div>
                 <Label className="text-2xs text-muted">
-                  {t("routing.field.scope", { defaultValue: "Scope" })}
+                  {t("routing.field.keyPattern", {
+                    defaultValue: "Key pattern",
+                  })}
                 </Label>
-                <Select
-                  value={scopeKind}
-                  onValueChange={(value) =>
-                    setScopeKind(value as RoutingScopeKind)
-                  }
-                >
-                  <SettingsSelectTrigger
-                    ref={scopeKindRef}
-                    {...scopeKindAgentProps}
-                    variant="touch"
-                    className="w-full"
-                  >
-                    <SelectValue />
-                  </SettingsSelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="agent">
-                      {t("routing.scope.agent", { defaultValue: "Agent" })}
-                    </SelectItem>
-                    <SelectItem value="app">
-                      {t("routing.scope.app", { defaultValue: "App" })}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+                <Input
+                  ref={keyPatternRef}
+                  {...keyPatternAgentProps}
+                  variant="config"
+                  density="compact"
+                  value={keyPattern}
+                  onChange={(e) => setKeyPattern(e.target.value)}
+                  placeholder="OPENROUTER_API_KEY or OPENROUTER_*"
+                  autoComplete="off"
+                  list="routing-key-suggestions"
+                  required
+                />
+                <datalist id="routing-key-suggestions">
+                  {allKeys.map((k) => (
+                    <option key={k} value={k} />
+                  ))}
+                </datalist>
               </div>
-              <div>
-                <Label className="text-2xs text-muted">
-                  {scopeKind === "agent"
-                    ? t("routing.scope.agent", { defaultValue: "Agent" })
-                    : t("routing.scope.app", { defaultValue: "App" })}
-                </Label>
-                {scopeKind === "agent" ? (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div>
+                  <Label className="text-2xs text-muted">
+                    {t("routing.field.scope", { defaultValue: "Scope" })}
+                  </Label>
                   <Select
-                    value={scopeAgentId || undefined}
-                    onValueChange={(value) => setScopeAgentId(value)}
+                    value={scopeKind}
+                    onValueChange={(value) =>
+                      setScopeKind(value as RoutingScopeKind)
+                    }
                   >
                     <SettingsSelectTrigger
-                      ref={scopeAgentRef}
-                      {...scopeAgentAgentProps}
+                      ref={scopeKindRef}
+                      {...scopeKindAgentProps}
                       variant="touch"
                       className="w-full"
                     >
-                      <SelectValue
-                        placeholder={t("routing.selectAgent", {
-                          defaultValue: "Select agent…",
-                        })}
-                      />
+                      <SelectValue />
                     </SettingsSelectTrigger>
                     <SelectContent>
-                      {agents.map((a) => (
-                        <SelectItem key={a.id} value={a.id}>
-                          {a.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <Select
-                    value={scopeAppName || undefined}
-                    onValueChange={(value) => setScopeAppName(value)}
-                  >
-                    <SettingsSelectTrigger
-                      ref={scopeAppRef}
-                      {...scopeAppAgentProps}
-                      variant="touch"
-                      className="w-full"
-                    >
-                      <SelectValue
-                        placeholder={t("routing.selectApp", {
-                          defaultValue: "Select app…",
-                        })}
-                      />
-                    </SettingsSelectTrigger>
-                    <SelectContent>
-                      {apps.map((a) => (
-                        <SelectItem key={a.name} value={a.name}>
-                          {a.displayName ?? a.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
-              <div>
-                <Label className="text-2xs text-muted">
-                  {t("routing.field.profile", { defaultValue: "Profile" })}
-                </Label>
-                <Select
-                  value={profileId || undefined}
-                  onValueChange={(value) => setProfileId(value)}
-                >
-                  <SettingsSelectTrigger
-                    ref={ruleProfileRef}
-                    {...ruleProfileAgentProps}
-                    variant="touch"
-                    className="w-full"
-                  >
-                    <SelectValue
-                      placeholder={t("routing.selectProfile", {
-                        defaultValue: "Select profile…",
-                      })}
-                    />
-                  </SettingsSelectTrigger>
-                  <SelectContent>
-                    {profilesForNewRule.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.label}
+                      <SelectItem value="agent">
+                        {t("routing.scope.agent", { defaultValue: "Agent" })}
                       </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                      <SelectItem value="app">
+                        {t("routing.scope.app", { defaultValue: "App" })}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-2xs text-muted">
+                    {scopeKind === "agent"
+                      ? t("routing.scope.agent", { defaultValue: "Agent" })
+                      : t("routing.scope.app", { defaultValue: "App" })}
+                  </Label>
+                  {scopeKind === "agent" ? (
+                    <Select
+                      value={scopeAgentId || undefined}
+                      onValueChange={(value) => setScopeAgentId(value)}
+                    >
+                      <SettingsSelectTrigger
+                        ref={scopeAgentRef}
+                        {...scopeAgentAgentProps}
+                        variant="touch"
+                        className="w-full"
+                      >
+                        <SelectValue
+                          placeholder={t("routing.selectAgent", {
+                            defaultValue: "Select agent…",
+                          })}
+                        />
+                      </SettingsSelectTrigger>
+                      <SelectContent>
+                        {agents.map((a) => (
+                          <SelectItem key={a.id} value={a.id}>
+                            {a.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Select
+                      value={scopeAppName || undefined}
+                      onValueChange={(value) => setScopeAppName(value)}
+                    >
+                      <SettingsSelectTrigger
+                        ref={scopeAppRef}
+                        {...scopeAppAgentProps}
+                        variant="touch"
+                        className="w-full"
+                      >
+                        <SelectValue
+                          placeholder={t("routing.selectApp", {
+                            defaultValue: "Select app…",
+                          })}
+                        />
+                      </SettingsSelectTrigger>
+                      <SelectContent>
+                        {apps.map((a) => (
+                          <SelectItem key={a.name} value={a.name}>
+                            {a.displayName ?? a.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+                <div>
+                  <Label className="text-2xs text-muted">
+                    {t("routing.field.profile", { defaultValue: "Profile" })}
+                  </Label>
+                  <Select
+                    value={profileId || undefined}
+                    onValueChange={(value) => setProfileId(value)}
+                  >
+                    <SettingsSelectTrigger
+                      ref={ruleProfileRef}
+                      {...ruleProfileAgentProps}
+                      variant="touch"
+                      className="w-full"
+                    >
+                      <SelectValue
+                        placeholder={t("routing.selectProfile", {
+                          defaultValue: "Select profile…",
+                        })}
+                      />
+                    </SettingsSelectTrigger>
+                    <SelectContent>
+                      {profilesForNewRule.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-1">
-              <Button
-                ref={ruleCancelRef}
-                {...ruleCancelAgentProps}
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowAdd(false)}
-                disabled={saving}
-              >
-                {t("routing.cancel", { defaultValue: "Cancel" })}
-              </Button>
-              <Button
-                ref={ruleSaveRef}
-                {...ruleSaveAgentProps}
-                type="submit"
-                variant="default"
-                size="sm"
-                disabled={saving || !keyPattern.trim() || !profileId}
-              >
-                {saving
-                  ? t("routing.saving", { defaultValue: "Saving…" })
-                  : t("routing.saveRule", { defaultValue: "Save rule" })}
-              </Button>
-            </div>
-          </form>
+              <div className="flex justify-end gap-2 pt-1">
+                <Button
+                  ref={ruleCancelRef}
+                  {...ruleCancelAgentProps}
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowAdd(false)}
+                  disabled={saving}
+                >
+                  {t("routing.cancel", { defaultValue: "Cancel" })}
+                </Button>
+                <Button
+                  ref={ruleSaveRef}
+                  {...ruleSaveAgentProps}
+                  type="submit"
+                  variant="default"
+                  size="sm"
+                  disabled={saving || !keyPattern.trim() || !profileId}
+                >
+                  {saving
+                    ? t("routing.saving", { defaultValue: "Saving…" })
+                    : t("routing.saveRule", { defaultValue: "Save rule" })}
+                </Button>
+              </div>
+            </form>
+          </Card>
         )}
 
         {config.rules.length === 0 ? (
-          <div
-            data-testid="routing-rules-empty"
-            className="rounded-sm border border-dashed border-border/50 bg-card/20 p-3 text-center text-xs text-muted"
-          >
+          <Card variant="vaultEmpty" data-testid="routing-rules-empty">
             {t("routing.empty", {
               defaultValue:
                 "No routing rules. The default profile applies for every caller.",
             })}
-          </div>
+          </Card>
         ) : visibleRules.length === 0 ? (
-          <div
-            data-testid="routing-rules-no-match"
-            className="rounded-sm border border-dashed border-border/50 bg-card/20 p-3 text-center text-xs text-muted"
-          >
+          <Card variant="vaultEmpty" data-testid="routing-rules-no-match">
             {t("routing.noMatch", {
               filter: rulesFilter,
               defaultValue: 'No rules match "{{filter}}".',
             })}
-          </div>
+          </Card>
         ) : (
           <Table
             data-testid="routing-rules-table"
@@ -712,7 +710,7 @@ const RoutingRuleRow = memo(
     return (
       <TableRow
         data-testid={`routing-rule-row-${ruleKey}`}
-        className="border-t border-border/30"
+        variant="topDivider"
       >
         <TableCell className="px-2 py-1.5 align-top">
           {keyExists ? (
@@ -736,15 +734,13 @@ const RoutingRuleRow = memo(
           )}
         </TableCell>
         <TableCell className="px-2 py-1.5 align-top">
-          <span className="rounded-full border border-border/40 bg-bg/40 px-1.5 py-0.5 text-2xs text-muted">
+          <Badge variant="vaultStatusMuted" className="font-normal">
             {scopeKind}
-          </span>
+          </Badge>
           <span className="ml-1.5 text-2xs text-txt">{targetLabel}</span>
         </TableCell>
         <TableCell className="px-2 py-1.5 align-top">
-          <span className="rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
-            {profileId}
-          </span>
+          <Badge variant="vaultAccent">{profileId}</Badge>
         </TableCell>
         <TableCell className="px-2 py-1.5 align-top text-right">
           <Button

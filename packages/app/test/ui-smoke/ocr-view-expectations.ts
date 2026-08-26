@@ -204,7 +204,9 @@ export const VIEW_OCR_POLICIES = {
       "Filter by type",
     ],
   }),
-  "builtin-rolodex": expected(LAUNCHER_FALLBACK),
+  "builtin-rolodex": expected({
+    requireAny: ["Relationships", "No relationships yet", "Search people"],
+  }),
   "builtin-runtime": expected({
     requireAny: ["Plugins", "Actions", "Providers"],
   }),

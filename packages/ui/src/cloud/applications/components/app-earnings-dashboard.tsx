@@ -33,6 +33,7 @@ import { DashboardStatCard } from "../../../cloud-ui/components/brand";
 import { MilestoneProgress } from "../../../cloud-ui/components/monetization";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import {
   Select,
   SelectContent,
@@ -199,12 +200,12 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
   return (
     <div className="space-y-4">
       {isTestData && (
-        <div className="flex items-center gap-2 p-3 bg-surface border border-border rounded-sm">
+        <Card flow="row" gap="compact" variant="insetPadded">
           <FlaskConical className="size-4 text-muted" />
           <p className="text-sm text-muted">
             Test Data Mode - Showing sample earnings data
           </p>
-        </div>
+        </Card>
       )}
 
       {/* Period Selector */}
@@ -256,7 +257,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
       {summary && (
         <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
           {/* Total Earnings */}
-          <div className="bg-card rounded-sm p-4">
+          <Card variant="flatPadded">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs text-neutral-500">
@@ -274,7 +275,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
               </div>
               <TrendingUp className="size-5 text-muted" />
             </div>
-          </div>
+          </Card>
 
           {/* Withdrawable Balance */}
           <div
@@ -373,7 +374,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
       )}
 
       {/* Chart */}
-      <div className="bg-card rounded-sm p-4">
+      <Card variant="flatPadded">
         <h3 className="text-sm font-medium text-txt mb-4 flex items-center gap-2">
           <BarChart3 className="size-4 text-neutral-400" />
           Earnings Over Time
@@ -433,10 +434,10 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
             <p className="text-sm">No earnings data yet</p>
           </div>
         )}
-      </div>
+      </Card>
 
       {/* Recent Transactions */}
-      <div className="bg-card rounded-sm p-4">
+      <Card variant="flatPadded">
         <h3 className="text-sm font-medium text-txt mb-4 flex items-center gap-2">
           <Clock className="size-4 text-neutral-400" />
           Recent Earnings
@@ -445,10 +446,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
         {transactions.length > 0 ? (
           <div className="space-y-2">
             {transactions.map((tx) => (
-              <div
-                key={tx.id}
-                className="flex items-center justify-between p-3 bg-surface rounded-sm border border-border hover:border-border transition-colors"
-              >
+              <Card key={tx.id} flow="rowBetween" variant="insetPadded">
                 <div className="flex items-center gap-3">
                   <TransactionIcon type={tx.type} />
                   <div>
@@ -474,7 +472,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
                     {Math.abs(Number(tx.amount)).toFixed(4)}
                   </span>
                 </div>
-              </div>
+              </Card>
             ))}
           </div>
         ) : (
@@ -486,7 +484,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
             </p>
           </div>
         )}
-      </div>
+      </Card>
 
       {/* Withdraw Dialog */}
       {summary && (

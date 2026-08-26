@@ -24,6 +24,7 @@ import {
 } from "../../utils/desktop-bug-report";
 import { Banner } from "../ui/banner";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import {
   Dialog,
   DialogContent,
@@ -41,6 +42,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
+import { TextLink } from "../ui/text-link";
 import { Textarea } from "../ui/textarea";
 
 const ENV_OPTIONS = ["macOS", "Windows", "Linux", "Other"] as const;
@@ -66,10 +68,6 @@ const EMPTY_FORM: BugReportForm = {
   modelProvider: "",
   logs: "",
 };
-
-/* Modal surfaces keep their scrim: self-contained contrast over the wallpaper. */
-const modalContentClassName =
-  "w-[min(calc(100%_-_2rem),42rem)] max-h-[min(88vh,52rem)] overflow-hidden rounded-sm border border-border/70 bg-card/96 p-0";
 
 function environmentOptionLabel(
   t: ReturnType<typeof useApp>["t"],
@@ -417,48 +415,50 @@ export function BugReportModal() {
           if (!open) close();
         }}
       >
-        <DialogContent className="w-[min(calc(100%_-_2rem),28rem)] rounded-sm border border-border/70 bg-card/96 p-0">
-          <DialogHeader className="px-5 py-4 text-left">
-            <DialogTitle
-              ref={(node) => {
-                successHeadingRef.current = node;
-              }}
-              tabIndex={-1}
-              className="text-sm font-bold text-txt"
-            >
-              {t("bugreportmodal.BugReportSubmitted")}
-            </DialogTitle>
-            <DialogDescription className="text-sm leading-relaxed text-muted">
-              {t("bugreportmodal.YourBugReportHas")}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 px-5 py-6 text-center">
-            {acceptedWithoutUrl ? (
-              <p className="text-sm text-txt">Your report was received.</p>
-            ) : null}
-            {resultUrl ? (
-              <a
-                href={resultUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="break-all text-sm font-medium text-accent underline-offset-4 hover:underline"
+        <Card asChild surface="cardOverlay" border="subtle" radius="default">
+          <DialogContent className="w-[min(calc(100%_-_2rem),28rem)] p-0">
+            <DialogHeader className="px-5 py-4 text-left">
+              <DialogTitle
+                ref={(node) => {
+                  successHeadingRef.current = node;
+                }}
+                tabIndex={-1}
+                className="text-sm font-bold text-txt"
               >
-                {resultUrl}
-              </a>
-            ) : (
-              <p className="text-xs text-muted">
-                {t("bugreportmodal.DiagnosticsSharedSuccessfully", {
-                  defaultValue: "Diagnostics were shared successfully.",
-                })}
-              </p>
-            )}
-          </div>
-          <DialogFooter className="px-5 py-4 sm:justify-end">
-            <Button variant="outline" size="sm" onClick={close}>
-              {t("common.close")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
+                {t("bugreportmodal.BugReportSubmitted")}
+              </DialogTitle>
+              <DialogDescription className="text-sm leading-relaxed text-muted">
+                {t("bugreportmodal.YourBugReportHas")}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 px-5 py-6 text-center">
+              {acceptedWithoutUrl ? (
+                <p className="text-sm text-txt">Your report was received.</p>
+              ) : null}
+              {resultUrl ? (
+                <TextLink
+                  href={resultUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="break-all text-sm underline-offset-4 hover:underline"
+                >
+                  {resultUrl}
+                </TextLink>
+              ) : (
+                <p className="text-xs text-muted">
+                  {t("bugreportmodal.DiagnosticsSharedSuccessfully", {
+                    defaultValue: "Diagnostics were shared successfully.",
+                  })}
+                </p>
+              )}
+            </div>
+            <DialogFooter className="px-5 py-4 sm:justify-end">
+              <Button variant="outline" size="sm" onClick={close}>
+                {t("common.close")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Card>
       </Dialog>
     );
   }
@@ -470,309 +470,309 @@ export function BugReportModal() {
         if (!open) close();
       }}
     >
-      <DialogContent
-        className={modalContentClassName}
-        onOpenAutoFocus={(event: Event) => {
-          event.preventDefault();
-          descRef.current?.focus();
-        }}
-      >
-        <DialogHeader className="px-5 py-4 text-left">
-          <DialogTitle className="text-sm font-bold text-txt">
-            {t("bugreportmodal.ReportABug")}
-          </DialogTitle>
-          <DialogDescription className="text-sm leading-relaxed text-muted">
-            {t("bugreportmodal.ReproductionPrompt", {
-              defaultValue:
-                "Help us reproduce the issue with concrete steps and environment details.",
-            })}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div
-          className="flex max-h-[min(88vh,52rem)] flex-col"
-          aria-busy={submitting}
+      <Card asChild surface="cardOverlay" border="subtle" radius="default">
+        <DialogContent
+          className="w-[min(calc(100%_-_2rem),42rem)] max-h-[min(88vh,52rem)] overflow-hidden p-0"
+          onOpenAutoFocus={(event: Event) => {
+            event.preventDefault();
+            descRef.current?.focus();
+          }}
         >
-          <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
-            {errorMsg && (
-              <Banner variant="error" className="rounded-sm text-xs">
-                {errorMsg}
-              </Banner>
-            )}
-            {bundlePath && (
-              <FieldMessage tone="success" className="text-xs">
-                {bundlePath}
-              </FieldMessage>
-            )}
-            <Field>
-              <FieldLabel htmlFor="bug-report-description">
-                {t("common.description")}{" "}
-                <span className="text-danger" aria-hidden="true">
-                  *
-                </span>
-              </FieldLabel>
-              <Textarea
-                ref={descRef}
-                id="bug-report-description"
-                variant="modal"
-                density="modalDefault"
-                placeholder={t("bugreportmodal.DescribeTheIssueY")}
-                value={form.description}
-                onChange={(e) => updateField("description", e.target.value)}
-                rows={4}
-              />
-            </Field>
+          <DialogHeader className="px-5 py-4 text-left">
+            <DialogTitle className="text-sm font-bold text-txt">
+              {t("bugreportmodal.ReportABug")}
+            </DialogTitle>
+            <DialogDescription className="text-sm leading-relaxed text-muted">
+              {t("bugreportmodal.ReproductionPrompt", {
+                defaultValue:
+                  "Help us reproduce the issue with concrete steps and environment details.",
+              })}
+            </DialogDescription>
+          </DialogHeader>
 
-            <Field>
-              <FieldLabel htmlFor="bug-report-steps">
-                {t("bugreportmodal.StepsToReproduce")}{" "}
-                <span className="text-danger" aria-hidden="true">
-                  *
-                </span>
-              </FieldLabel>
-              <Textarea
-                id="bug-report-steps"
-                variant="modal"
-                density="modalDefault"
-                placeholder={t("bugreportmodal.stepsPlaceholder")}
-                value={form.stepsToReproduce}
-                onChange={(e) =>
-                  updateField("stepsToReproduce", e.target.value)
-                }
-                rows={4}
-              />
-            </Field>
-
-            <Field>
-              <FieldLabel htmlFor="bug-report-expected">
-                {t("bugreportmodal.ExpectedBehavior")}
-              </FieldLabel>
-              <Textarea
-                id="bug-report-expected"
-                variant="modal"
-                density="modalShort"
-                placeholder={t("bugreportmodal.DescribeTheExpecte")}
-                value={form.expectedBehavior}
-                onChange={(e) =>
-                  updateField("expectedBehavior", e.target.value)
-                }
-                rows={3}
-              />
-            </Field>
-
-            <Field>
-              <FieldLabel htmlFor="bug-report-actual">
-                {t("bugreportmodal.ActualBehavior")}
-              </FieldLabel>
-              <Textarea
-                id="bug-report-actual"
-                variant="modal"
-                density="modalShort"
-                placeholder={t("bugreportmodal.DescribeTheActual")}
-                value={form.actualBehavior}
-                onChange={(e) => updateField("actualBehavior", e.target.value)}
-                rows={3}
-              />
-            </Field>
-
-            <div className="grid gap-3 md:grid-cols-2">
+          <div
+            className="flex max-h-[min(88vh,52rem)] flex-col"
+            aria-busy={submitting}
+          >
+            <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+              {errorMsg && <Banner variant="errorCompact">{errorMsg}</Banner>}
+              {bundlePath && (
+                <FieldMessage tone="success" className="text-xs">
+                  {bundlePath}
+                </FieldMessage>
+              )}
               <Field>
-                <FieldLabel htmlFor="bug-report-environment">
-                  {t("bugreportmodal.Environment")}
+                <FieldLabel htmlFor="bug-report-description">
+                  {t("common.description")}{" "}
+                  <span className="text-danger" aria-hidden="true">
+                    *
+                  </span>
                 </FieldLabel>
-                <Select
-                  value={form.environment}
-                  onValueChange={(value: string) =>
-                    updateField("environment", value)
-                  }
-                >
-                  <SelectTrigger id="bug-report-environment" variant="modal">
-                    <SelectValue placeholder={t("bugreportmodal.Select")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__" disabled>
-                      {t("bugreportmodal.Select")}
-                    </SelectItem>
-                    {ENV_OPTIONS.map((opt) => (
-                      <SelectItem key={opt} value={opt}>
-                        {environmentOptionLabel(t, opt)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-
-              <Field>
-                <FieldLabel htmlFor="bug-report-node-version">
-                  {t("bugreportmodal.NodeVersion")}
-                </FieldLabel>
-                <Input
-                  id="bug-report-node-version"
+                <Textarea
+                  ref={descRef}
+                  id="bug-report-description"
                   variant="modal"
-                  placeholder={t("bugreportmodal.22X")}
-                  value={form.nodeVersion}
-                  onChange={(e) => updateField("nodeVersion", e.target.value)}
+                  density="modalDefault"
+                  placeholder={t("bugreportmodal.DescribeTheIssueY")}
+                  value={form.description}
+                  onChange={(e) => updateField("description", e.target.value)}
+                  rows={4}
                 />
               </Field>
+
+              <Field>
+                <FieldLabel htmlFor="bug-report-steps">
+                  {t("bugreportmodal.StepsToReproduce")}{" "}
+                  <span className="text-danger" aria-hidden="true">
+                    *
+                  </span>
+                </FieldLabel>
+                <Textarea
+                  id="bug-report-steps"
+                  variant="modal"
+                  density="modalDefault"
+                  placeholder={t("bugreportmodal.stepsPlaceholder")}
+                  value={form.stepsToReproduce}
+                  onChange={(e) =>
+                    updateField("stepsToReproduce", e.target.value)
+                  }
+                  rows={4}
+                />
+              </Field>
+
+              <Field>
+                <FieldLabel htmlFor="bug-report-expected">
+                  {t("bugreportmodal.ExpectedBehavior")}
+                </FieldLabel>
+                <Textarea
+                  id="bug-report-expected"
+                  variant="modal"
+                  density="modalShort"
+                  placeholder={t("bugreportmodal.DescribeTheExpecte")}
+                  value={form.expectedBehavior}
+                  onChange={(e) =>
+                    updateField("expectedBehavior", e.target.value)
+                  }
+                  rows={3}
+                />
+              </Field>
+
+              <Field>
+                <FieldLabel htmlFor="bug-report-actual">
+                  {t("bugreportmodal.ActualBehavior")}
+                </FieldLabel>
+                <Textarea
+                  id="bug-report-actual"
+                  variant="modal"
+                  density="modalShort"
+                  placeholder={t("bugreportmodal.DescribeTheActual")}
+                  value={form.actualBehavior}
+                  onChange={(e) =>
+                    updateField("actualBehavior", e.target.value)
+                  }
+                  rows={3}
+                />
+              </Field>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field>
+                  <FieldLabel htmlFor="bug-report-environment">
+                    {t("bugreportmodal.Environment")}
+                  </FieldLabel>
+                  <Select
+                    value={form.environment}
+                    onValueChange={(value: string) =>
+                      updateField("environment", value)
+                    }
+                  >
+                    <SelectTrigger id="bug-report-environment" variant="modal">
+                      <SelectValue placeholder={t("bugreportmodal.Select")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__" disabled>
+                        {t("bugreportmodal.Select")}
+                      </SelectItem>
+                      {ENV_OPTIONS.map((opt) => (
+                        <SelectItem key={opt} value={opt}>
+                          {environmentOptionLabel(t, opt)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+
+                <Field>
+                  <FieldLabel htmlFor="bug-report-node-version">
+                    {t("bugreportmodal.NodeVersion")}
+                  </FieldLabel>
+                  <Input
+                    id="bug-report-node-version"
+                    variant="modal"
+                    placeholder={t("bugreportmodal.22X")}
+                    value={form.nodeVersion}
+                    onChange={(e) => updateField("nodeVersion", e.target.value)}
+                  />
+                </Field>
+              </div>
+
+              <Field>
+                <FieldLabel htmlFor="bug-report-model-provider">
+                  {t("bugreportmodal.ModelProvider")}
+                </FieldLabel>
+                <Input
+                  id="bug-report-model-provider"
+                  variant="modal"
+                  placeholder={t("bugreportmodal.AnthropicOpenAI")}
+                  value={form.modelProvider}
+                  onChange={(e) => updateField("modelProvider", e.target.value)}
+                />
+              </Field>
+
+              <Field>
+                <div className="flex items-center justify-between gap-3">
+                  <FieldLabel className="mb-0">{t("common.logs")}</FieldLabel>
+                  <Button
+                    type="button"
+                    variant="ghostMuted"
+                    size="compact"
+                    onClick={() => setShowLogs(!showLogs)}
+                    aria-expanded={showLogs}
+                    aria-controls="bug-report-logs-panel"
+                  >
+                    <ChevronRight
+                      className={`size-3.5 transition-transform ${showLogs ? "rotate-90" : ""}`}
+                    />
+                    {showLogs
+                      ? t("bugreportmodal.HideLogs", {
+                          defaultValue: "Hide logs",
+                        })
+                      : t("bugreportmodal.AddLogs", {
+                          defaultValue: "Add logs",
+                        })}
+                  </Button>
+                </div>
+                {showLogs && (
+                  <div className="space-y-3">
+                    {desktopRuntime ? (
+                      <div className="flex flex-wrap gap-4 text-xs-tight text-muted">
+                        <label
+                          htmlFor="bug-report-attach-logs"
+                          className="inline-flex items-center gap-2"
+                        >
+                          <Input
+                            id="bug-report-attach-logs"
+                            type="checkbox"
+                            checked={attachLogs}
+                            onChange={(e) => setAttachLogs(e.target.checked)}
+                            className="size-4 shrink-0"
+                          />
+                          {t("bugreportmodal.attachLogs")}
+                        </label>
+                        <label
+                          htmlFor="bug-report-attach-system-info"
+                          className="inline-flex items-center gap-2"
+                        >
+                          <Input
+                            id="bug-report-attach-system-info"
+                            type="checkbox"
+                            checked={attachSystemInfo}
+                            onChange={(e) =>
+                              setAttachSystemInfo(e.target.checked)
+                            }
+                            className="size-4 shrink-0"
+                          />
+                          {t("bugreportmodal.attachSystemInfo")}
+                        </label>
+                      </div>
+                    ) : null}
+                    <Textarea
+                      id="bug-report-logs-panel"
+                      variant="modal"
+                      density="modalLogs"
+                      placeholder={t("bugreportmodal.PasteRelevantError")}
+                      value={form.logs}
+                      onChange={(e) => updateField("logs", e.target.value)}
+                      rows={6}
+                    />
+                  </div>
+                )}
+              </Field>
             </div>
 
-            <Field>
-              <FieldLabel htmlFor="bug-report-model-provider">
-                {t("bugreportmodal.ModelProvider")}
-              </FieldLabel>
-              <Input
-                id="bug-report-model-provider"
-                variant="modal"
-                placeholder={t("bugreportmodal.AnthropicOpenAI")}
-                value={form.modelProvider}
-                onChange={(e) => updateField("modelProvider", e.target.value)}
-              />
-            </Field>
-
-            <Field>
-              <div className="flex items-center justify-between gap-3">
-                <FieldLabel className="mb-0">{t("common.logs")}</FieldLabel>
+            <DialogFooter className="px-5 py-4 sm:items-center sm:justify-between sm:space-x-0">
+              <Button variant="outline" size="sm" onClick={close}>
+                {t("common.cancel")}
+              </Button>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row">
+                {desktopRuntime ? (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleCopyDiagnostics}
+                    >
+                      {copiedDiagnostics
+                        ? t("bugreportmodal.copiedDiagnostics")
+                        : t("bugreportmodal.copyDiagnostics")}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={openDesktopLogsFolder}
+                    >
+                      {t("bugreportmodal.openLogsFolder")}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleSaveBundle}
+                      disabled={savingBundle}
+                    >
+                      {savingBundle
+                        ? t("bugreportmodal.savingBundle")
+                        : t("bugreportmodal.saveBundle")}
+                    </Button>
+                  </>
+                ) : null}
                 <Button
-                  type="button"
-                  variant="ghostMuted"
-                  size="compact"
-                  onClick={() => setShowLogs(!showLogs)}
-                  aria-expanded={showLogs}
-                  aria-controls="bug-report-logs-panel"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCopyAndOpen}
+                  disabled={!canSubmit}
                 >
-                  <ChevronRight
-                    className={`size-3.5 transition-transform ${showLogs ? "rotate-90" : ""}`}
-                  />
-                  {showLogs
-                    ? t("bugreportmodal.HideLogs", {
-                        defaultValue: "Hide logs",
-                      })
-                    : t("bugreportmodal.AddLogs", {
-                        defaultValue: "Add logs",
-                      })}
+                  {copied
+                    ? t("bugreportmodal.copied")
+                    : t("bugreportmodal.copyAndOpenGitHub")}
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleSubmit}
+                  disabled={!canSubmit}
+                >
+                  {submitting
+                    ? t("bugreportmodal.submitting")
+                    : t("common.submit")}
                 </Button>
               </div>
-              {showLogs && (
-                <div className="space-y-3">
-                  {desktopRuntime ? (
-                    <div className="flex flex-wrap gap-4 text-xs-tight text-muted">
-                      <label
-                        htmlFor="bug-report-attach-logs"
-                        className="inline-flex items-center gap-2"
-                      >
-                        <Input
-                          id="bug-report-attach-logs"
-                          type="checkbox"
-                          checked={attachLogs}
-                          onChange={(e) => setAttachLogs(e.target.checked)}
-                          className="size-4 shrink-0"
-                        />
-                        {t("bugreportmodal.attachLogs")}
-                      </label>
-                      <label
-                        htmlFor="bug-report-attach-system-info"
-                        className="inline-flex items-center gap-2"
-                      >
-                        <Input
-                          id="bug-report-attach-system-info"
-                          type="checkbox"
-                          checked={attachSystemInfo}
-                          onChange={(e) =>
-                            setAttachSystemInfo(e.target.checked)
-                          }
-                          className="size-4 shrink-0"
-                        />
-                        {t("bugreportmodal.attachSystemInfo")}
-                      </label>
-                    </div>
-                  ) : null}
-                  <Textarea
-                    id="bug-report-logs-panel"
-                    variant="modal"
-                    density="modalLogs"
-                    placeholder={t("bugreportmodal.PasteRelevantError")}
-                    value={form.logs}
-                    onChange={(e) => updateField("logs", e.target.value)}
-                    rows={6}
-                  />
-                </div>
-              )}
-            </Field>
+            </DialogFooter>
+
+            {copied && !resultUrl ? (
+              <FieldMessage
+                tone="success"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+                className="px-5 pb-4 pt-0"
+              >
+                {t("bugreportmodal.ReportCopiedToClipboard", {
+                  defaultValue: "Report copied to clipboard.",
+                })}
+              </FieldMessage>
+            ) : null}
           </div>
-
-          <DialogFooter className="px-5 py-4 sm:items-center sm:justify-between sm:space-x-0">
-            <Button variant="outline" size="sm" onClick={close}>
-              {t("common.cancel")}
-            </Button>
-            <div className="flex flex-col-reverse gap-2 sm:flex-row">
-              {desktopRuntime ? (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleCopyDiagnostics}
-                  >
-                    {copiedDiagnostics
-                      ? t("bugreportmodal.copiedDiagnostics")
-                      : t("bugreportmodal.copyDiagnostics")}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={openDesktopLogsFolder}
-                  >
-                    {t("bugreportmodal.openLogsFolder")}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleSaveBundle}
-                    disabled={savingBundle}
-                  >
-                    {savingBundle
-                      ? t("bugreportmodal.savingBundle")
-                      : t("bugreportmodal.saveBundle")}
-                  </Button>
-                </>
-              ) : null}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleCopyAndOpen}
-                disabled={!canSubmit}
-              >
-                {copied
-                  ? t("bugreportmodal.copied")
-                  : t("bugreportmodal.copyAndOpenGitHub")}
-              </Button>
-              <Button
-                variant="default"
-                size="sm"
-                onClick={handleSubmit}
-                disabled={!canSubmit}
-              >
-                {submitting
-                  ? t("bugreportmodal.submitting")
-                  : t("common.submit")}
-              </Button>
-            </div>
-          </DialogFooter>
-
-          {copied && !resultUrl ? (
-            <FieldMessage
-              tone="success"
-              role="status"
-              aria-live="polite"
-              aria-atomic="true"
-              className="px-5 pb-4 pt-0"
-            >
-              {t("bugreportmodal.ReportCopiedToClipboard", {
-                defaultValue: "Report copied to clipboard.",
-              })}
-            </FieldMessage>
-          ) : null}
-        </div>
-      </DialogContent>
+        </DialogContent>
+      </Card>
     </Dialog>
   );
 }

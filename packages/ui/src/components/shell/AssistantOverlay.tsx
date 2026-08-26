@@ -10,6 +10,7 @@ import { useNativeGlassAnchor } from "../../glass";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { NATIVE_GLASS_DARK_TINT } from "../../themes/native-glass.js";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import type { ShellPhase } from "./shell-state";
 
 export interface AssistantOverlayProps {
@@ -128,15 +129,6 @@ export function AssistantOverlay({
 
   return (
     <div
-      ref={dialogRef}
-      tabIndex={-1}
-      role="dialog"
-      aria-modal="true"
-      aria-label={`${appName} assistant`}
-      data-testid="shell-assistant-overlay"
-      data-popup-material="dark-frosted"
-      data-phase={phase}
-      data-glass-tier={glassTier}
       // Sits one tick above the pill in stacking order. The desktop overlay
       // shell also offsets the panel so the two surfaces never overlap.
       // Inline style because Tailwind's JIT can't track template-interpolated
@@ -144,36 +136,55 @@ export function AssistantOverlay({
       // GlassSurface's shared recipe establishes `position: relative` for rim
       // pseudo-elements. This overlay is itself the anchored surface, so keep
       // the fixed-position contract explicit at higher precedence.
-      style={{ zIndex: Z_SHELL_OVERLAY + 1, position: "fixed" }}
-      className={[
-        "shell-assistant-overlay-panel eliza-glass-sheet pointer-events-auto overflow-hidden",
-        // Position: bottom sheet on mobile, centered drawer on >= sm
-        "fixed inset-x-0 bottom-0",
-        "sm:left-1/2 sm:right-auto sm:top-1/2 sm:bottom-auto",
-        "sm:-translate-x-1/2 sm:-translate-y-1/2",
-        "sm:w-[min(560px,90vw)] sm:h-[min(640px,80vh)]",
-        // Size on mobile
-        "h-[80vh]",
-        // Surface
-        "rounded-t-3xl sm:rounded-3xl",
-        "border border-white/25",
-        // Enter motion (skipped under prefers-reduced-motion)
-        "motion-safe:animate-[shell-overlay-in_220ms_ease-out]",
-      ].join(" ")}
+      style={{ zIndex: Z_SHELL_OVERLAY + 1 }}
+      className="pointer-events-auto fixed inset-x-0 bottom-0 h-[80vh] sm:left-1/2 sm:right-auto sm:top-1/2 sm:bottom-auto sm:h-[min(640px,80vh)] sm:w-[min(560px,90vw)] sm:-translate-x-1/2 sm:-translate-y-1/2"
     >
-      <Button
-        variant="ghostMuted"
-        size="icon-sm"
-        aria-label="Close assistant"
-        onClick={onClose}
-        shape="circle"
-        className="absolute right-2 top-2 z-10"
+      <Card
+        surface="transparent"
+        border="subtle"
+        radius="large"
+        glass="sheet"
+        ref={dialogRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${appName} assistant`}
+        data-testid="shell-assistant-overlay"
+        data-popup-material="dark-frosted"
+        data-phase={phase}
+        data-glass-tier={glassTier}
+        tokenStyle={{
+          "--card": "var(--assistant-overlay-card)",
+          "--card-foreground": "var(--assistant-overlay-foreground)",
+          "--text": "var(--assistant-overlay-foreground)",
+          "--text-strong": "var(--assistant-overlay-strong-foreground)",
+          "--txt": "var(--text)",
+          "--muted": "var(--assistant-overlay-muted)",
+          "--muted-strong": "var(--assistant-overlay-muted-strong)",
+          "--foreground": "var(--text)",
+          "--muted-foreground": "var(--muted)",
+          "--bg": "var(--assistant-overlay-background)",
+          "--accent-subtle": "var(--assistant-overlay-accent-subtle)",
+        }}
+        visualStyle={{
+          borderColor: "var(--assistant-overlay-border)",
+        }}
+        className="shell-assistant-overlay-panel h-full w-full overflow-hidden motion-safe:animate-[shell-overlay-in_220ms_ease-out]"
       >
-        <X aria-hidden="true" className="size-4" />
-      </Button>
-      <div className="box-border h-full min-h-0 px-3 pb-2 pt-10">
-        {children}
-      </div>
+        <Button
+          variant="ghostMuted"
+          size="icon-sm"
+          aria-label="Close assistant"
+          onClick={onClose}
+          shape="circle"
+          className="absolute right-2 top-2 z-10"
+        >
+          <X aria-hidden="true" className="size-4" />
+        </Button>
+        <div className="box-border h-full min-h-0 px-3 pb-2 pt-10">
+          {children}
+        </div>
+      </Card>
     </div>
   );
 }

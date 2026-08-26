@@ -56,11 +56,9 @@ describe("SettingsRow", () => {
     render(
       <SettingsRow label="This device" active control={<span>Active</span>} />,
     );
-    const row = screen
-      .getByText("This device")
-      .closest("[aria-current='true']");
+    const row = screen.getByText("This device").closest("[aria-current]");
     expect(row).toBeTruthy();
-    expect(row?.className).toContain("bg-accent/10");
+    expect(row?.getAttribute("aria-current")).toBe("true");
   });
 });
 

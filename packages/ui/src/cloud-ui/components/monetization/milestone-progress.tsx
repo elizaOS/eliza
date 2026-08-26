@@ -7,6 +7,7 @@
 
 import { CheckCircle2, Target } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Progress } from "../../../components/ui/progress";
 import { cn } from "../../lib/utils";
 
 interface MilestoneProgressProps {
@@ -25,14 +26,11 @@ export function MilestoneProgress({
   showAmount = true,
 }: MilestoneProgressProps) {
   const [animatedProgress, setAnimatedProgress] = useState(0);
-  const progress = Math.min((current / target) * 100, 100);
+  const progress = target > 0 ? Math.min((current / target) * 100, 100) : 100;
   const isComplete = current >= target;
 
   useEffect(() => {
-    // Animate progress bar on mount
-    const timeout = setTimeout(() => {
-      setAnimatedProgress(progress);
-    }, 100);
+    const timeout = setTimeout(() => setAnimatedProgress(progress), 100);
     return () => clearTimeout(timeout);
   }, [progress]);
 
@@ -50,16 +48,12 @@ export function MilestoneProgress({
         )}
       </div>
 
-      <div className="relative h-1.5 bg-white/10 rounded-full overflow-hidden">
-        {/* Progress bar */}
-        <div
-          className={cn(
-            "absolute inset-y-0 left-0 rounded-full transition-all duration-700 ease-out",
-            isComplete ? "bg-status-success" : "bg-txt",
-          )}
-          style={{ width: `${animatedProgress}%` }}
-        />
-      </div>
+      <Progress
+        value={animatedProgress}
+        aria-label={label}
+        variant="milestone"
+        tone={isComplete ? "success" : "foreground"}
+      />
 
       {/* Status message */}
       <div className="flex items-center justify-between">
@@ -94,10 +88,10 @@ export function MilestoneCard({
   return (
     <div
       className={cn(
-        "p-4 rounded-sm border transition-colors",
+        "rounded-sm border p-4 text-card-fg transition-colors",
         isComplete
-          ? "bg-status-success-bg/50 border-status-success/30"
-          : "bg-neutral-900 border-white/10",
+          ? "border-status-success/30 bg-status-success-bg/50"
+          : "border-inverse-foreground/10 bg-inverse",
       )}
     >
       <h4 className="text-sm font-medium text-white mb-3">{title}</h4>
