@@ -63,13 +63,17 @@ import type { ChildProcess } from "node:child_process";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  closeSync,
   copyFileSync,
+  fsyncSync,
   mkdtempSync,
   openSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   writeFileSync,
+  writeSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -729,6 +733,11 @@ export function parseTenantProbes(
   }
   const expected = new Set(databases.map((entry) => entry.dumpId));
   const seen = new Set<string>();
+  // One-to-one tenant↔role mapping (#23453 review r2): two restored tenant
+  // databases sharing one probe role would collapse their credentials — each
+  // own-connect would pass while one role could reach both databases. Every
+  // role must be claimed by exactly one tenant.
+  const rolesTaken = new Set<string>();
   const probes: TenantProbe[] = [];
   for (const item of record.tenants) {
     if (typeof item !== "object" || item === null) {
@@ -759,6 +768,13 @@ export function parseTenantProbes(
       );
     }
     seen.add(dumpId);
+    if (rolesTaken.has(role)) {
+      throw new RecoveryDrillError(
+        "INVALID_PROBE_METADATA",
+        `probe role '${role.slice(0, 64)}' is used by more than one tenant; the tenant-to-role mapping must be one-to-one`,
+      );
+    }
+    rolesTaken.add(role);
     probes.push({ dumpId, role, passwordEnv });
   }
   if (seen.size !== expected.size) {
@@ -1358,6 +1374,7 @@ export function acquireDrillLock(
     try {
       if (child.pid !== undefined) process.kill(child.pid, 0);
     } catch {
+      // error-policy:J3 signal-zero probe failure proves the holder is gone.
       child.kill("SIGKILL");
       throw new RecoveryDrillError(
         "LOCK_FAILED",
@@ -1392,6 +1409,7 @@ export function assertDrillLockHeld(lock: DrillLock): void {
     if (lock.child.pid !== undefined) process.kill(lock.child.pid, 0);
     alive = true;
   } catch {
+    // error-policy:J3 signal-zero probe failure means the holder is gone.
     alive = false;
   }
   if (!alive || !observed.includes(DRILL_LOCK_HANDSHAKE)) {
@@ -1546,6 +1564,8 @@ export function executeDrill(options: CliOptions): DrillReport {
       // claim script upserts the row, so asking after it would always answer
       // true and exempt archive-named roles on fresh targets too.
       const capabilityEnvelopeLocal = serializeRestoreCapability(capability);
+      assertCapabilityLive();
+      assertDrillLockHeld(drillLock);
       const isSameCapabilityRetry = targetHasDrillClaim(
         options.targetDsn,
         capabilityEnvelopeLocal,
@@ -1692,6 +1712,11 @@ export function executeDrill(options: CliOptions): DrillReport {
         );
         const rawRestore = join(work, `${entry.dumpId}.restore.sql`);
         run("pg_restore", ["--file", rawRestore, dumpFile]);
+        // pg_restore can run long enough for the capability to expire or the
+        // lock holder to die mid-extraction; re-prove both immediately
+        // before the extracted destructive SQL executes (#23453 review r2).
+        assertCapabilityLive();
+        assertDrillLockHeld(drillLock);
         const guardedRestore = join(
           work,
           `${entry.dumpId}.guarded-restore.sql`,
@@ -1965,7 +1990,22 @@ export function runProvisionCommand(
   // The serialized capability contains no single quotes (pipe-delimited
   // envelope over UUID/hex ids and a hex signature), so this literal is safe.
   kept.push(`eliza.restore_capability = '${capabilityText}'`);
-  writeFileSync(autoConf, `${kept.join("\n").trimEnd()}\n`);
+  // Atomic update (#23453 review r2): write the new content to a sibling
+  // temp file, fsync it, then rename over postgresql.auto.conf — the same
+  // crash-consistency shape ALTER SYSTEM SET itself uses. A crash or a
+  // concurrent ALTER SYSTEM can never observe a truncated/partial file;
+  // the filter above re-reads immediately before this write, so the only
+  // lost race is a concurrent eliza.* line, which the fresh-session
+  // verification below catches.
+  const tmpConf = `${autoConf}.eliza-provision-${process.pid}.tmp`;
+  const fd = openSync(tmpConf, "w");
+  try {
+    writeSync(fd, `${kept.join("\n").trimEnd()}\n`);
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+  renameSync(tmpConf, autoConf);
   run("psql", [
     "--no-psqlrc",
     "--set",

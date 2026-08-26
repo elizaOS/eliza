@@ -160,6 +160,23 @@ export function verifyRestoreCapability(
   const fromSignedBytes = parseRestoreCapability(
     serializeRestoreCapability(cap),
   );
+  // Exact-equality invariant (#23453 review r2): the caller-visible fields
+  // must equal the values authenticated inside the signed payload bytes. A
+  // capability object whose targetId/archiveSha256/issuedAt/expiresAt were
+  // mutated without re-signing is refused outright rather than silently
+  // healed — the returned canonical object is the ONLY thing later code
+  // trusts, so it must provably match the signed envelope.
+  if (
+    cap.targetId !== fromSignedBytes.targetId ||
+    cap.archiveSha256 !== fromSignedBytes.archiveSha256 ||
+    cap.issuedAtEpochMs !== fromSignedBytes.issuedAtEpochMs ||
+    cap.expiresAtEpochMs !== fromSignedBytes.expiresAtEpochMs
+  ) {
+    throw new RestoreCapabilityError(
+      "REFUSED_CAPABILITY_SIGNATURE",
+      "capability fields diverge from the signed payload bytes",
+    );
+  }
   const expected = hmacHex(signingKey, fromSignedBytes.payload);
   const a = Buffer.from(fromSignedBytes.signature, "utf-8");
   const b = Buffer.from(expected, "utf-8");
