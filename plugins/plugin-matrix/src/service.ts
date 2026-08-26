@@ -1273,7 +1273,12 @@ export class MatrixService extends Service implements IMatrixService {
     const isDirectRoom = room.getJoinedMemberCount() <= 2;
     if (state.settings.requireMention && !isDirectRoom) {
       const localpart = getMatrixLocalpart(state.settings.userId);
-      const mentionPattern = new RegExp(`@?${escapeRegExp(localpart)}`, "i");
+      // Anchor the localpart to word boundaries so a genuine mention
+      // (`@localpart`, bare `localpart`, `localpart:`, or trailing punctuation)
+      // is required rather than any bare substring. Without this, a short/common
+      // localpart like `ai` matched inside unrelated words (e.g. "wait") and
+      // defeated requireMention, dispatching the full inbound path unprompted.
+      const mentionPattern = new RegExp(`(^|[^\\w@])@?${escapeRegExp(localpart)}(?!\\w)`, "i");
       if (!mentionPattern.test(message.content)) {
         return;
       }

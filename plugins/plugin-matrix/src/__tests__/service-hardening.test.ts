@@ -231,6 +231,47 @@ describe("Matrix service hardening", () => {
     );
   });
 
+  it("requires a real mention and ignores the localpart as a bare substring", () => {
+    // Short localpart `ai` is the adversarial case: without word boundaries it
+    // matches inside unrelated words like "wait", defeating requireMention and
+    // dispatching the full inbound path unprompted.
+    const mentionSettings: MatrixSettings = {
+      accountId: "work",
+      homeserver: "https://matrix.example",
+      userId: "@ai:example",
+      accessToken: "token",
+      rooms: [],
+      autoJoin: false,
+      encryption: false,
+      requireMention: true,
+      enabled: true,
+    };
+
+    const dispatched = (body: string): boolean => {
+      const { runtime, service, state } = createService({ settings: mentionSettings });
+      (
+        service as unknown as {
+          handleRoomMessage: (s: TestState, e: unknown, r: unknown) => void;
+        }
+      ).handleRoomMessage(state, createEvent({ msgtype: "m.text", body }), createRoom());
+      return (runtime.emitEvent as ReturnType<typeof vi.fn>).mock.calls.some(
+        ([type]) => type === MatrixEventTypes.MESSAGE_RECEIVED
+      );
+    };
+
+    // Unrelated words that merely contain the localpart must NOT dispatch.
+    expect(dispatched("ok let's wait for the build")).toBe(false);
+    expect(dispatched("please email me later")).toBe(false);
+    expect(dispatched("we need to maintain the server")).toBe(false);
+
+    // Genuine mentions in their various surface forms MUST dispatch.
+    expect(dispatched("hey @ai can you help")).toBe(true);
+    expect(dispatched("ai: status report please")).toBe(true);
+    expect(dispatched("thanks @ai, that worked")).toBe(true);
+    expect(dispatched("can ai take a look")).toBe(true);
+    expect(dispatched("@ai")).toBe(true);
+  });
+
   it("trims room aliases before resolving and sending messages", async () => {
     const { runtime, service, state } = createService();
     const getRoomIdForAlias = vi.fn().mockResolvedValue({ room_id: "!resolved:example" });
