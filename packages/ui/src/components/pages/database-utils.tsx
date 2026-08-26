@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Presentational building blocks for `DatabaseView`: the results grid, a cell
  * value popover, the pagination bar, and the shared `DbView`/`SortDir` types.
@@ -58,7 +59,7 @@ function typeLabel(type: string): string {
     return "text";
   if (t.includes("vector")) return "vector";
   if (t.includes("bytea")) return "bytes";
-  return type.slice(0, 6);
+  return truncateWellFormed(toWellFormedUnicode(type), 6);
 }
 
 /** Semantic tone for column type badges. */

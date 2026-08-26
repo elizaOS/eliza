@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Runtime inspector page: fetches a deep snapshot of the live AgentRuntime
  * (services, actions, providers, evaluators, plugins, and their registration
@@ -87,7 +88,8 @@ const SECTION_TAB_KEYS: Array<{
 function nodeSummary(value: unknown): string {
   if (value === null) return "null";
   if (typeof value === "string") {
-    const compact = value.length > 100 ? `${value.slice(0, 100)}...` : value;
+    const wellFormed = toWellFormedUnicode(value);
+    const compact = wellFormed.length > 100 ? `${truncateWellFormed(wellFormed, 100)}...` : wellFormed;
     return JSON.stringify(compact);
   }
   if (typeof value === "number" || typeof value === "boolean") {

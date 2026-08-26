@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Media gallery view: scans agent database tables for attachment/media rows and
  * renders them as a filterable, searchable grid with a full-size detail modal
@@ -255,7 +256,7 @@ const MediaListItem = memo(function MediaListItem({
       {...agentProps}
     >
       <SidebarContent.ItemIcon active={isActive}>
-        {item.type.slice(0, 1).toUpperCase()}
+        {truncateWellFormed(toWellFormedUnicode(item.type), 1).toUpperCase()}
       </SidebarContent.ItemIcon>
       <SidebarContent.ItemBody>
         <SidebarContent.ItemTitle className="truncate">
