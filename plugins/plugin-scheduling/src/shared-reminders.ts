@@ -38,6 +38,25 @@ export const SHARED_REMINDERS_EDGE_COMPATIBILITY = {
   requiredSecrets: [],
 } as const;
 
+interface SharedGroupReminderDeliveryBase {
+  kind: "group";
+  project: string;
+  connectorAccountId: string;
+  chatId: string;
+  ownerLabel: string;
+  authority: SharedGroupReminderDeliveryAuthority;
+}
+
+export type SharedGroupReminderDelivery =
+  | (SharedGroupReminderDeliveryBase & {
+      platform: "telegram";
+      /** Provider-owned forum topic containing the reminder-creating turn. */
+      providerThreadId?: string;
+    })
+  | (SharedGroupReminderDeliveryBase & {
+      platform: "blooio";
+    });
+
 export type SharedReminderDelivery =
   | {
       platform: "telegram";
@@ -53,15 +72,7 @@ export type SharedReminderDelivery =
       platform: "discord";
       discordUserId: string;
     }
-  | {
-      platform: "telegram" | "blooio";
-      kind: "group";
-      project: string;
-      connectorAccountId: string;
-      chatId: string;
-      ownerLabel: string;
-      authority: SharedGroupReminderDeliveryAuthority;
-    };
+  | SharedGroupReminderDelivery;
 
 /**
  * The binding generation a group reminder was scheduled under. Fire-time
@@ -74,11 +85,6 @@ export interface SharedGroupReminderDeliveryAuthority {
   personalAgentId: string;
   version: number;
 }
-
-export type SharedGroupReminderDelivery = Extract<
-  SharedReminderDelivery,
-  { kind: "group" }
->;
 
 export function isSharedGroupReminderDelivery(
   delivery: SharedReminderDelivery,
@@ -130,6 +136,7 @@ export function sharedReminderMaxBodyLength(
 
 const PROJECT_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/i;
 const TELEGRAM_CHAT_ID_PATTERN = /^-?\d{1,20}$/;
+const TELEGRAM_THREAD_ID_PATTERN = /^[1-9]\d{0,15}$/;
 const BLOOIO_GROUP_CHAT_ID_PATTERN = /^chat_[A-Za-z0-9_-]{1,120}$/i;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -171,6 +178,12 @@ export function parseSharedReminderDelivery(
   const delivery = value as Record<string, unknown>;
   if (delivery.kind === "group") {
     const authority = parseGroupDeliveryAuthority(delivery.authority);
+    const providerThreadId = delivery.providerThreadId;
+    const validTelegramThread =
+      providerThreadId === undefined ||
+      (typeof providerThreadId === "string" &&
+        TELEGRAM_THREAD_ID_PATTERN.test(providerThreadId) &&
+        Number.isSafeInteger(Number(providerThreadId)));
     if (
       authority &&
       (delivery.platform === "telegram" || delivery.platform === "blooio") &&
@@ -186,17 +199,28 @@ export function parseSharedReminderDelivery(
       ).test(delivery.chatId) &&
       typeof delivery.ownerLabel === "string" &&
       delivery.ownerLabel.trim().length > 0 &&
-      delivery.ownerLabel.length <= 128
+      delivery.ownerLabel.length <= 128 &&
+      (delivery.platform === "telegram"
+        ? validTelegramThread
+        : providerThreadId === undefined)
     ) {
-      return {
-        platform: delivery.platform,
+      const groupDelivery = {
         kind: "group",
         project: delivery.project,
         connectorAccountId: delivery.connectorAccountId,
         chatId: delivery.chatId,
         ownerLabel: sanitizedOwnerLabel(delivery.ownerLabel),
         authority,
-      };
+      } as const;
+      return delivery.platform === "telegram"
+        ? {
+            platform: "telegram",
+            ...groupDelivery,
+            ...(typeof providerThreadId === "string"
+              ? { providerThreadId }
+              : {}),
+          }
+        : { platform: "blooio", ...groupDelivery };
     }
     return undefined;
   }

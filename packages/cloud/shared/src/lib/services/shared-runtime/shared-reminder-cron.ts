@@ -64,6 +64,7 @@ type GatewayDeliveryResponse = {
 export interface SharedTelegramReminderDispatchInput {
   project: string;
   chatId: string;
+  providerThreadId?: string;
   text: string;
   idempotencyKey: string;
 }
@@ -156,6 +157,9 @@ function gatewayWireDelivery(delivery: SharedReminderDelivery) {
         platform: delivery.platform,
         project: delivery.project,
         chatId: delivery.chatId,
+        ...(delivery.platform === "telegram" && delivery.providerThreadId
+          ? { providerThreadId: delivery.providerThreadId }
+          : {}),
       }
     : delivery;
 }
@@ -234,6 +238,9 @@ export function sharedReminderDispatcher(
         const result = await options.telegramDispatch({
           project: delivery.project,
           chatId: delivery.chatId,
+          ...(groupDelivery?.platform === "telegram" && groupDelivery.providerThreadId
+            ? { providerThreadId: groupDelivery.providerThreadId }
+            : {}),
           text,
           idempotencyKey,
         });

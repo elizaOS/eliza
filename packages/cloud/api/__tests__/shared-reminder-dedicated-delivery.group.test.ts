@@ -37,6 +37,7 @@ const committedGroupTask = {
       project: "eliza-app",
       connectorAccountId: "telegram:test-bot",
       chatId: "-100123456789",
+      providerThreadId: "909",
       ownerLabel: "Nubs",
       authority: AUTHORITY,
     },
@@ -187,6 +188,7 @@ describe("Dedicated cutover group reminder relay", () => {
       platform: "telegram",
       project: "eliza-app",
       chatId: "-100123456789",
+      providerThreadId: "909",
       text: "Reminder for this group from Nubs: pay the rent",
       idempotencyKey: "shared-reminder-1:2026-08-15T17:00:00.000Z",
     });

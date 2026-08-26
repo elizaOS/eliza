@@ -40,6 +40,7 @@ const telegramGroupDelivery = {
   project: "eliza-app",
   connectorAccountId: "telegram:test-bot",
   chatId: "-100123456789",
+  providerThreadId: "909",
   ownerLabel: "Nubs",
   authority: AUTHORITY,
 } as const;
@@ -97,6 +98,11 @@ describe("Shared group reminder delivery parsing", () => {
       blooioGroupDelivery,
     );
     expect(isSharedGroupReminderDelivery(telegramGroupDelivery)).toBe(true);
+    const { providerThreadId: _providerThreadId, ...telegramWithoutTopic } =
+      telegramGroupDelivery;
+    expect(parseSharedReminderDelivery(telegramWithoutTopic)).toEqual(
+      telegramWithoutTopic,
+    );
     expect(
       isSharedGroupReminderDelivery({
         platform: "telegram",
@@ -153,6 +159,27 @@ describe("Shared group reminder delivery parsing", () => {
       parseSharedReminderDelivery({
         ...telegramGroupDelivery,
         project: "bad project!",
+      }),
+    ).toBeUndefined();
+    for (const providerThreadId of [
+      "0",
+      "-1",
+      "0909",
+      "topic",
+      "9999999999999999",
+      "9".repeat(17),
+    ]) {
+      expect(
+        parseSharedReminderDelivery({
+          ...telegramGroupDelivery,
+          providerThreadId,
+        }),
+      ).toBeUndefined();
+    }
+    expect(
+      parseSharedReminderDelivery({
+        ...blooioGroupDelivery,
+        providerThreadId: "909",
       }),
     ).toBeUndefined();
   });
