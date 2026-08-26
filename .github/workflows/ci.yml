@@ -404,6 +404,7 @@ jobs:
       - name: Build mobile package dependencies
         if: steps.selection.outputs.selected == 'true'
         run: |
+          bun run --cwd packages/prompts build:package
           bun run build:core
           bun run --cwd packages/ui build
           bun run --cwd packages/vault build
