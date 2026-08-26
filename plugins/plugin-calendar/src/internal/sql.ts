@@ -2,15 +2,14 @@
  * Adapts the Core raw-SQL boundary to calendar repositories and retains the
  * calendar-owned atomic transaction requirement.
  */
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import {
   coerceRawSqlBoolean,
   coerceRawSqlNumber,
   coerceRawSqlText,
-  ElizaError,
   executeRawSqlOnDb,
   executeRuntimeRawSql,
   getRuntimeRawSqlDb,
-  type IAgentRuntime,
   parseRawSqlJsonArray,
   parseRawSqlJsonRecord,
   type RawSqlQuery,
@@ -19,7 +18,7 @@ import {
   sqlJson,
   sqlQuote,
   sqlText,
-} from "@elizaos/core";
+} from "@elizaos/core/raw-sql";
 
 const options = { subsystem: "CalendarSql" } as const;
 

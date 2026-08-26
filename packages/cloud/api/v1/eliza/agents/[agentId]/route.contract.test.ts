@@ -183,7 +183,7 @@ describe("owned agent detail private-address contract", () => {
     },
   );
 
-  test.each(AGENT_SANDBOX_STATUSES)(
+  test.each([...AGENT_SANDBOX_STATUSES])(
     "returns canonical sandbox status %s without translation",
     async (status) => {
       getAgent.mockResolvedValue({ ...dedicatedAgent(), status });
@@ -196,7 +196,7 @@ describe("owned agent detail private-address contract", () => {
     },
   );
 
-  test.each(AGENT_EXECUTION_TIERS)(
+  test.each([...AGENT_EXECUTION_TIERS])(
     "returns canonical execution tier %s without translation",
     async (executionTier) => {
       getAgent.mockResolvedValue({

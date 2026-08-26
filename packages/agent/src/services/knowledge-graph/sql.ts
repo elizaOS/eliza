@@ -2,12 +2,12 @@
  * Adapts the Core raw-SQL boundary to the runtime knowledge-graph stores while
  * retaining their established repository helper names.
  */
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   coerceRawSqlBoolean,
   coerceRawSqlNumber,
   coerceRawSqlText,
   executeRuntimeRawSql,
-  type IAgentRuntime,
   parseRawSqlJsonArray,
   parseRawSqlJsonRecord,
   parseRawSqlJsonValue,
@@ -16,7 +16,7 @@ import {
   sqlNumber,
   sqlQuote,
   sqlText,
-} from "@elizaos/core";
+} from "@elizaos/core/raw-sql";
 
 const options = { subsystem: "KnowledgeGraphSql" } as const;
 

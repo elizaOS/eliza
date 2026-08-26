@@ -4,7 +4,6 @@
  * extraction of supported driver row shapes.
  */
 import { ElizaError } from "../errors.js";
-import type { IAgentRuntime } from "../types/runtime.js";
 
 export type RawSqlQuery = {
 	queryChunks: Array<{ value?: unknown }>;
@@ -17,6 +16,13 @@ export type RuntimeRawSqlDb = {
 export interface RawSqlBoundaryOptions {
 	subsystem: string;
 	allowRuntimeDb?: boolean;
+}
+
+/** Minimal runtime capability consumed by raw-SQL repositories. */
+export interface RawSqlRuntime {
+	agentId: string;
+	adapter?: unknown;
+	db?: unknown;
 }
 
 let cachedSqlRaw: ((query: string) => RawSqlQuery) | null = null;
@@ -161,20 +167,22 @@ export function extractRawSqlRows(
 }
 
 export function findRuntimeRawSqlDb(
-	runtime: IAgentRuntime,
+	runtime: RawSqlRuntime,
 	options: RawSqlBoundaryOptions,
 ): RuntimeRawSqlDb | null {
-	const adapterDb = runtime.adapter?.db as RuntimeRawSqlDb | undefined;
+	const adapterDb = asRawSqlRecord(runtime.adapter)?.db as
+		| RuntimeRawSqlDb
+		| undefined;
 	if (adapterDb && typeof adapterDb.execute === "function") return adapterDb;
 	if (options.allowRuntimeDb) {
-		const runtimeDb = (runtime as IAgentRuntime & { db?: RuntimeRawSqlDb }).db;
+		const runtimeDb = runtime.db as RuntimeRawSqlDb | undefined;
 		if (runtimeDb && typeof runtimeDb.execute === "function") return runtimeDb;
 	}
 	return null;
 }
 
 export function getRuntimeRawSqlDb(
-	runtime: IAgentRuntime,
+	runtime: RawSqlRuntime,
 	options: RawSqlBoundaryOptions,
 ): RuntimeRawSqlDb {
 	const db = findRuntimeRawSqlDb(runtime, options);
@@ -199,7 +207,7 @@ export async function executeRawSqlOnDb(
 }
 
 export async function executeRuntimeRawSql(
-	runtime: IAgentRuntime,
+	runtime: RawSqlRuntime,
 	sqlText: string,
 	options: RawSqlBoundaryOptions,
 ): Promise<Array<Record<string, unknown>>> {

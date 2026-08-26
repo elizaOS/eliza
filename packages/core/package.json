@@ -135,6 +135,16 @@
 			"import": "./dist/node/errors.js",
 			"default": "./dist/node/errors.js"
 		},
+		"./raw-sql": {
+			"types": "./dist/database/raw-sql.d.ts",
+			"eliza-source": {
+				"types": "./src/raw-sql.ts",
+				"import": "./src/raw-sql.ts",
+				"default": "./src/raw-sql.ts"
+			},
+			"import": "./dist/node/raw-sql.js",
+			"default": "./dist/node/raw-sql.js"
+		},
 		"./security/kms": {
 			"types": "./dist/security/kms/index.d.ts",
 			"eliza-source": {

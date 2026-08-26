@@ -814,6 +814,7 @@ export async function buildNode(
 				`${TS_SRC}/index.node.ts`,
 				`${TS_SRC}/errors.ts`,
 				`${TS_SRC}/roles.ts`,
+				`${TS_SRC}/raw-sql.ts`,
 				`${TS_SRC}/client-public.ts`,
 				`${TS_SRC}/security/kms/index.ts`,
 				`${TS_SRC}/security/mcp-server-config.ts`,

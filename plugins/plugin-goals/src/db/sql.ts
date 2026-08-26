@@ -2,6 +2,7 @@
  * Adapts the Core raw-SQL boundary to goals-attributed parsing errors while
  * retaining the repository's established helper names.
  */
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   asRawSqlRecord,
   coerceRawSqlBoolean,
@@ -10,7 +11,6 @@ import {
   executeRuntimeRawSql,
   extractRawSqlRows,
   getRuntimeRawSqlDb,
-  type IAgentRuntime,
   parseRawSqlJsonArray,
   parseRawSqlJsonRecord,
   parseRawSqlJsonValue,
@@ -22,7 +22,7 @@ import {
   sqlNumber,
   sqlQuote,
   sqlText,
-} from "@elizaos/core";
+} from "@elizaos/core/raw-sql";
 
 const options = { subsystem: "GoalsSql" } as const;
 

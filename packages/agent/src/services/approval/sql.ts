@@ -2,18 +2,18 @@
  * Adapts the Core raw-SQL boundary to the runtime approval store, including
  * caller-owned transaction handles for atomic domain and approval writes.
  */
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   coerceRawSqlText,
   executeRawSqlOnDb,
   executeRuntimeRawSql,
-  type IAgentRuntime,
   parseRawSqlJsonRecord,
   type RuntimeRawSqlDb,
   sqlInteger,
   sqlJson,
   sqlQuote,
   sqlText,
-} from "@elizaos/core";
+} from "@elizaos/core/raw-sql";
 
 const options = { subsystem: "ApprovalSql" } as const;
 

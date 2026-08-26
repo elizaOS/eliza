@@ -2,6 +2,7 @@
  * Adapts the Core raw-SQL boundary for the scheduling store while preserving
  * its optional-database probe and injected executor surface.
  */
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   asRawSqlRecord,
   coerceRawSqlBoolean,
@@ -9,7 +10,6 @@ import {
   executeRuntimeRawSql,
   extractRawSqlRows,
   findRuntimeRawSqlDb,
-  type IAgentRuntime,
   parseRawSqlJsonRecord,
   parseRawSqlJsonValue,
   type RawSqlQuery,
@@ -19,7 +19,7 @@ import {
   sqlJson,
   sqlQuote,
   sqlText,
-} from "@elizaos/core";
+} from "@elizaos/core/raw-sql";
 
 const options = { subsystem: "SchedulingSql", allowRuntimeDb: true } as const;
 

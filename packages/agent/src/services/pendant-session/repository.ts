@@ -18,7 +18,7 @@ import {
   sqlText,
   coerceRawSqlNumber as toNumber,
   coerceRawSqlText as toText,
-} from "@elizaos/core";
+} from "@elizaos/core/raw-sql";
 import {
   type PendantInsightRef,
   PendantInsightRefSchema,
