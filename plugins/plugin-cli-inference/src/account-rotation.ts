@@ -84,7 +84,7 @@ export interface RotationAccountSelection {
   providerId: string;
   accountId: string;
   label: string;
-  source: "oauth" | "api-key";
+  source: "oauth" | "api-key" | "coding-plan-key";
   strategy: string;
   /** Secrets / paths injected into the SDK subprocess env, never persisted or logged. */
   envPatch: Record<string, string>;

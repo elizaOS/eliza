@@ -1,8 +1,8 @@
 # Multi-account coding-agent orchestration
 
 Goal: an Eliza orchestrator agent that runs **multiple Claude Code + Codex
-subscriptions** (and rotates OpenCode across pooled Cerebras accounts), picks
-the **least-used** account for each new
+subscriptions** and typed Pi coding-plan/direct-API routes, picks the
+**least-used** account for each new
 sub-agent, tracks per-account **session + weekly usage**, manages those
 sub-agents in a **shared task room**, and decides **when to interrupt** a
 running sub-agent vs. let it keep working.
@@ -67,10 +67,10 @@ bridge**.
 
 ## Known constraints / follow-ups
 - **OpenCode pool-rotates across Cerebras accounts only.** OpenCode resolves a pooled key for exactly one backend — Cerebras (`CEREBRAS_API_KEY`, see `buildOpencodeSpawnConfig`) — so `opencode` is a multi-account selector type mapped to `cerebras-api`: it least-used-rotates across linked Cerebras accounts (the bridge injects the selected `CEREBRAS_API_KEY`, which OpenCode's config reads) and no-ops when none are linked (Eliza Cloud / single-key setups are unchanged). OpenCode's other backends (Eliza Cloud, local, user-configured opencode.json) are not pooled. Precedence: a `CEREBRAS_API_KEY` runtime **setting** still wins over a pooled injection — pooling is authoritative only when no single key is configured.
-- **z.ai / Kimi / GLM have no first-party coding CLI.** Their linked accounts serve the main runtime's API-key routing (`resolveProviderCredentialMulti` for `zai-api` / `moonshot-api`) and OpenCode's provider config — there is no `zai`/`kimi`/`glm` spawnable agent type, so they are not advertised as coding-agent selector candidates.
+- **Z.AI, Kimi, DeepSeek, Moonshot, xAI, and OpenRouter keys route through Pi.** Each spawn or reconnect materializes one session-private Pi home whose provider, allowlisted endpoint, model, billing mode, and generic child-only credential move together. Z.AI/Kimi coding-plan keys remain distinct from their PAYG API routes. OpenRouter requires an explicit model slug. Native `kimi` and `grok` adapters continue to use their provider-owned CLI login state rather than these pooled keys.
 
 ## Quality bar
 - No regression when zero accounts are linked (bridge returns null → today's behavior).
 - Selected account is **observable** (session metadata + structured log + dashboard), never assumed.
-- Subscription tokens only ever flow to the first-party coding subprocess (TOS), never into runtime `process.env`.
+- Subscription tokens and coding-plan keys only flow to a supported coding subprocess, never into runtime `process.env`; coding-plan routes retain their explicit supported-tool policy metadata.
 - Per-agent credential precedence is enforced: a selected Claude subscription drops `ANTHROPIC_API_KEY`; a selected Codex subscription (per-account `CODEX_HOME`) drops a forwarded `OPENAI_API_KEY` — so the chosen account always authenticates.

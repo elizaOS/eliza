@@ -47,9 +47,9 @@ export interface ResolvedCodingAccount {
 
 /**
  * Agent types that authenticate per pooled account. claude and codex are
- * first-party CLIs. elizaos/pi-agent authenticate through their own backend,
- * and z.ai/Kimi/GLM have no wired coding-account transport. Derivation from the
- * shared descriptor keeps this gate aligned with the app-core bridge.
+ * first-party CLIs. Pi additionally consumes the typed coding-plan and direct
+ * API routes declared in the shared descriptor. Derivation from that descriptor
+ * keeps this gate aligned with the app-core bridge.
  */
 const MULTI_ACCOUNT_AGENT_TYPES = new Set(
   Object.entries(CODING_AGENT_BACKEND_PROVIDERS)
