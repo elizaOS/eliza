@@ -166,4 +166,48 @@ describe("runHelper", () => {
 
     expect(killed).toEqual([]);
   });
+
+  it("does not throw unhandled EPIPE when stdin closes before payload drains", async () => {
+    const proc = new EventEmitter() as ReturnType<HelperSpawn>;
+    proc.stdout = new PassThrough() as never;
+    proc.stderr = new PassThrough() as never;
+    proc.kill = (() => true) as never;
+    let stdinErrorEmitted = false;
+    proc.stdin = new Writable({
+      write(_chunk, _encoding, callback) {
+        const err = Object.assign(new Error("write EPIPE"), {
+          code: "EPIPE",
+          errno: -32,
+        });
+        stdinErrorEmitted = true;
+        queueMicrotask(() => proc.stdin.emit("error", err));
+        callback();
+      },
+      final(callback) {
+        queueMicrotask(() => {
+          proc.stdout.end('{"success":true,"alarms":[]}\n');
+          proc.stderr.end();
+          proc.emit("close", 0);
+        });
+        callback();
+      },
+    }) as never;
+
+    const unhandled: unknown[] = [];
+    const handler = (err: unknown) => unhandled.push(err);
+    process.on("uncaughtException", handler);
+    try {
+      await expect(
+        runHelper(
+          { action: "list" },
+          { spawnImpl: () => proc, binPathOverride: "/tmp/helper" },
+        ),
+      ).resolves.toEqual({ success: true, alarms: [] });
+      expect(stdinErrorEmitted).toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("uncaughtException", handler);
+    }
+  });
 });

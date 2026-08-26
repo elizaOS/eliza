@@ -72,6 +72,14 @@ export async function runHelper(
   proc.stdout.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
   proc.stderr.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
 
+  // error-policy:J6 stdin write EPIPE is expected when the helper exits before
+  // draining its request (early crash, arch mismatch, or large payload). An
+  // unhandled 'error' on proc.stdin becomes an uncaughtException that kills
+  // the agent. The helper's exit code / stdout still surfaces the failure, so
+  // silently absorbing the pipe error is correct — the close handler below
+  // decides the result.
+  proc.stdin.on("error", () => {});
+
   const payload = `${JSON.stringify(request)}\n`;
   proc.stdin.end(payload);
 
