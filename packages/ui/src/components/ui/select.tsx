@@ -27,7 +27,11 @@ interface SelectTriggerProps
     | "settingsFilter"
     | "settingsSoft"
     | "settingsToolbar"
-    | "settingsTouch";
+    | "settingsTouch"
+    | "form"
+    | "accountCompact"
+    | "connectorCompact"
+    | "connectorLocal";
   density?: "default" | "compact" | "short";
   hasError?: boolean;
 }
@@ -65,6 +69,12 @@ const SelectTrigger = React.forwardRef<
           "h-11 rounded-sm border-border/60 bg-bg/70 text-left",
         variant === "settingsTouch" &&
           "h-11 rounded-md border-border bg-card px-3.5 text-left text-sm text-txt",
+        variant === "form" &&
+          "h-11 border-border bg-bg px-4 py-2 text-sm text-txt outline-none transition-colors hover:border-border-strong hover:bg-bg-hover data-[placeholder]:text-muted",
+        variant === "accountCompact" && "h-8 border-border bg-card text-xs",
+        variant === "connectorCompact" && "h-8 border-border bg-card text-xs",
+        variant === "connectorLocal" &&
+          "h-9 border-border/40 bg-bg text-sm text-txt",
         density === "compact" && "h-8 px-2 py-1 text-xs",
         density === "short" && "h-9 px-3 py-2 text-sm",
         hasError &&
@@ -117,37 +127,48 @@ const SelectScrollDownButton = React.forwardRef<
 SelectScrollDownButton.displayName =
   SelectPrimitive.ScrollDownButton.displayName;
 
+interface SelectContentProps
+  extends React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content> {
+  variant?: "default" | "form";
+}
+
 const SelectContent = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
->(({ className, children, position = "popper", ...props }, ref) => (
-  <SelectPrimitive.Portal>
-    <SelectPrimitive.Content
-      ref={ref}
-      data-floating-layer={CONFIG_SELECT_FLOATING_LAYER_NAME}
-      className={cn(
-        "relative z-[12000] max-h-96 min-w-[8rem] overflow-hidden rounded-sm border border-border bg-card text-txt data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
-        position === "popper" &&
-          "w-[var(--radix-select-trigger-width)] min-w-[var(--radix-select-trigger-width)] data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
-        className,
-      )}
-      position={position}
-      {...props}
-    >
-      <SelectScrollUpButton />
-      <SelectPrimitive.Viewport
+  SelectContentProps
+>(
+  (
+    { className, children, position = "popper", variant = "default", ...props },
+    ref,
+  ) => (
+    <SelectPrimitive.Portal>
+      <SelectPrimitive.Content
+        ref={ref}
+        data-floating-layer={CONFIG_SELECT_FLOATING_LAYER_NAME}
         className={cn(
-          "p-1",
+          "relative z-[12000] max-h-96 min-w-[8rem] overflow-hidden rounded-sm border border-border bg-card text-txt data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
           position === "popper" &&
-            "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)] max-w-[var(--radix-select-trigger-width)]",
+            "w-[var(--radix-select-trigger-width)] min-w-[var(--radix-select-trigger-width)] data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
+          variant === "form" && "border-border bg-card",
+          className,
         )}
+        position={position}
+        {...props}
       >
-        {children}
-      </SelectPrimitive.Viewport>
-      <SelectScrollDownButton />
-    </SelectPrimitive.Content>
-  </SelectPrimitive.Portal>
-));
+        <SelectScrollUpButton />
+        <SelectPrimitive.Viewport
+          className={cn(
+            "p-1",
+            position === "popper" &&
+              "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)] max-w-[var(--radix-select-trigger-width)]",
+          )}
+        >
+          {children}
+        </SelectPrimitive.Viewport>
+        <SelectScrollDownButton />
+      </SelectPrimitive.Content>
+    </SelectPrimitive.Portal>
+  ),
+);
 SelectContent.displayName = SelectPrimitive.Content.displayName;
 
 const SelectLabel = React.forwardRef<
@@ -165,34 +186,42 @@ SelectLabel.displayName = SelectPrimitive.Label.displayName;
 export interface SelectItemProps
   extends React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item> {
   description?: React.ReactNode;
+  variant?: "default" | "form";
 }
 
 const SelectItem = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Item>,
   SelectItemProps
->(({ className, children, description, ...props }, ref) => (
-  <SelectPrimitive.Item
-    ref={ref}
-    className={cn(
-      "flex w-full cursor-default select-none gap-1.5 rounded-sm py-1.5 pl-2 pr-2 text-sm outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
-      description ? "items-start" : "items-center",
-      className,
-    )}
-    {...props}
-  >
-    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-      <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
-      {description ? (
-        <span className="text-xs text-muted">{description}</span>
-      ) : null}
-    </div>
-    <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
-      <SelectPrimitive.ItemIndicator>
-        <Check className="size-3" />
-      </SelectPrimitive.ItemIndicator>
-    </span>
-  </SelectPrimitive.Item>
-));
+>(
+  (
+    { className, children, description, variant = "default", ...props },
+    ref,
+  ) => (
+    <SelectPrimitive.Item
+      ref={ref}
+      className={cn(
+        "flex w-full cursor-default select-none gap-1.5 rounded-sm py-1.5 pl-2 pr-2 text-sm outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+        description ? "items-start" : "items-center",
+        variant === "form" &&
+          "min-h-11 px-3 py-2.5 text-txt transition-colors data-[highlighted]:bg-bg-hover data-[highlighted]:text-txt-strong data-[state=checked]:bg-accent-subtle data-[state=checked]:text-txt-strong",
+        className,
+      )}
+      {...props}
+    >
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+        {description ? (
+          <span className="text-xs text-muted">{description}</span>
+        ) : null}
+      </div>
+      <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
+        <SelectPrimitive.ItemIndicator>
+          <Check className="size-3" />
+        </SelectPrimitive.ItemIndicator>
+      </span>
+    </SelectPrimitive.Item>
+  ),
+);
 SelectItem.displayName = SelectPrimitive.Item.displayName;
 
 const SelectSeparator = React.forwardRef<

@@ -41,7 +41,9 @@ import {
   fileToBackgroundDataUrl,
 } from "../pages/background-image";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { Input } from "../ui/input";
+import { Separator } from "../ui/separator";
 
 function resolvePreviewImageUrl(url: string): string {
   if (
@@ -95,28 +97,44 @@ function TileFrame({
   className?: string;
 }) {
   return (
-    <span
-      className={cn(
-        "group/tile relative flex aspect-[3/4] w-full min-h-touch flex-col items-center justify-center overflow-hidden rounded-2xl text-center transition-transform duration-200 ease-out",
-        "border border-border/50 group-hover/btn:-translate-y-0.5 group-active/btn:scale-[0.98]",
-        selected &&
-          "border-2 border-accent shadow-[0_8px_28px_-14px_var(--color-scrim)]",
-        className,
-      )}
-      style={style}
+    <Card
+      asChild
+      variant="transparent"
+      surface="transparent"
+      border={selected ? "accent" : "subtle"}
+      radius="xlarge"
     >
-      {/* A low legibility gradient so the label reads over any wallpaper, tinted
-          toward the field rather than a flat black bar. */}
-      <span className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-linear-to-t from-scrim/80 to-transparent" />
-      <span className="relative flex flex-col items-center gap-0.5 px-1.5">
-        <span className="whitespace-nowrap text-xs leading-tight font-semibold text-white drop-shadow-[0_1px_2px_var(--color-scrim)]">
-          {label}
+      <span
+        className={cn(
+          "group/tile relative aspect-[3/4] min-h-touch w-full overflow-hidden text-center text-card-fg transition-transform duration-200 ease-out group-hover/btn:-translate-y-0.5 group-active/btn:scale-[0.98]",
+          selected && "ring-1 ring-accent/30",
+          className,
+        )}
+      >
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={style}
+        />
+        <Card
+          asChild
+          variant="transparent"
+          surface="transparent"
+          radius="none"
+          wallpaperScrim
+        >
+          <span className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2" />
+        </Card>
+        <span className="relative flex h-full flex-col items-center justify-center gap-0.5 px-1.5">
+          <span className="whitespace-nowrap text-xs leading-tight font-semibold text-white drop-shadow-[0_1px_2px_var(--color-scrim)]">
+            {label}
+          </span>
+          {meta ? (
+            <span className="truncate text-2xs text-white/70">{meta}</span>
+          ) : null}
         </span>
-        {meta ? (
-          <span className="truncate text-2xs text-white/70">{meta}</span>
-        ) : null}
       </span>
-    </span>
+    </Card>
   );
 }
 
@@ -456,7 +474,7 @@ export function BackgroundSettingsControls({
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
               Yours
             </h3>
-            <span className="h-px flex-1 bg-border/40" />
+            <Separator tone="subtle40" className="flex-1" />
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {userCatalog.map((entry) => (

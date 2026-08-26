@@ -2,7 +2,7 @@
  * Renders inspectable timeline and session detail without owning task state or mutations.
  */
 
-import { Button } from "@elizaos/ui";
+import { Button, Card } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type {
   CodingAgentRerunFromEventInput,
@@ -90,12 +90,14 @@ function JsonBlock({
   const text =
     typeof value === "string" ? value : JSON.stringify(value, null, 2);
   return (
-    <pre
-      className="max-h-72 overflow-auto bg-bg/60 px-2.5 py-1.5 font-mono text-2xs leading-relaxed text-muted"
-      data-testid="orchestrator-detail-json"
-    >
-      {compactText(text)}
-    </pre>
+    <Card asChild variant="codePane">
+      <pre
+        className="max-h-72 overflow-auto font-mono text-2xs leading-relaxed text-muted"
+        data-testid="orchestrator-detail-json"
+      >
+        {compactText(text)}
+      </pre>
+    </Card>
   );
 }
 

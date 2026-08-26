@@ -9,7 +9,9 @@ import { registerAppShellPage } from "../app-shell-registry";
 import { resetUiRegistryHostForTests } from "../registry-host";
 import {
   ALL_TAB_GROUPS,
+  BUILTIN_ROUTE_IDS,
   LEGACY_PREFIX_TAB_ALIASES,
+  resolveBuiltinRouteDescriptor,
   TAB_PATHS,
   tabFromPath,
   titleForTab,
@@ -88,6 +90,53 @@ describe("navigation tabFromPath", () => {
       (group) => group.label === "Wallet",
     );
     expect(walletGroup?.tabs).toEqual(["inventory", "test.perps"]);
+  });
+});
+
+describe("navigation built-in route descriptors", () => {
+  it("classifies every path exposed by the compatibility map", () => {
+    expect(Object.keys(TAB_PATHS)).toEqual(BUILTIN_ROUTE_IDS);
+
+    for (const id of BUILTIN_ROUTE_IDS) {
+      const descriptor = resolveBuiltinRouteDescriptor(id);
+      expect(descriptor, `missing route descriptor for ${id}`).not.toBeNull();
+      expect(descriptor?.path).toBe(TAB_PATHS[id]);
+    }
+  });
+
+  it("inherits route, surface, and layout classification through aliases", () => {
+    const canonical = resolveBuiltinRouteDescriptor("automations");
+    const alias = resolveBuiltinRouteDescriptor("triggers");
+
+    expect(alias?.canonicalId).toBe("automations");
+    expect(alias?.path).toBe(canonical?.path);
+    expect(alias?.layout).toBe(canonical?.layout);
+    expect(alias?.surface).toBe(canonical?.surface);
+  });
+
+  it("does not classify plugin-provided tab ids as built-ins", () => {
+    expect(resolveBuiltinRouteDescriptor("some-plugin-tab")).toBeNull();
+  });
+
+  it("matches scroll ownership to the current routed view architecture", () => {
+    const shellScrolled = BUILTIN_ROUTE_IDS.filter(
+      (id) => resolveBuiltinRouteDescriptor(id)?.layout.scroll === "shell",
+    );
+    expect(shellScrolled).toEqual(["inventory"]);
+
+    expect(resolveBuiltinRouteDescriptor("chat")?.layout).toEqual({
+      kind: "immersive",
+      topology: "ambient",
+      width: "full",
+      scroll: "view",
+      gutter: "none",
+    });
+    expect(resolveBuiltinRouteDescriptor("background")?.layout).toEqual({
+      kind: "immersive",
+      width: "full",
+      scroll: "view",
+      gutter: "none",
+    });
   });
 });
 

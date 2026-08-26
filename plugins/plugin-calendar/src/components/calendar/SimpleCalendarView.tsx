@@ -95,8 +95,6 @@ const DAY_CELL_BASE_STYLE: CSSProperties = {
   boxSizing: "border-box",
   minWidth: 0,
   minHeight: "clamp(38px, 7vw, 62px)",
-  border: 0,
-  borderRadius: 11,
   padding: "6px clamp(4px, .8vw, 8px)",
   display: "flex",
   flexDirection: "column",
@@ -250,7 +248,7 @@ function CalendarDay({
     <Button
       ref={cell.ref}
       {...cell.agentProps}
-      className="eliza-calendar-day"
+      className="active:scale-[0.98] motion-reduce:transition-none"
       data-selected={selected ? "true" : "false"}
       variant="selection"
       size="row"
@@ -258,8 +256,9 @@ function CalendarDay({
       aria-label={formatSelectedDate(key)}
       aria-pressed={selected}
       aria-current={today ? "date" : undefined}
-      style={{
-        ...DAY_CELL_BASE_STYLE,
+      layoutStyle={DAY_CELL_BASE_STYLE}
+      visualStyle={{
+        borderRadius: 11,
         background: selected
           ? "color-mix(in srgb, var(--accent, #ff6a1f) 22%, var(--surface, rgba(255,255,255,.08)))"
           : currentMonth
@@ -642,15 +641,6 @@ export function SimpleCalendarView() {
       style={ROOT_STYLE}
     >
       <style>{`
-        .eliza-calendar-day:focus { outline: none; }
-        .eliza-calendar-day:focus-visible {
-          outline: 2px solid var(--accent, #ff6a1f);
-          outline-offset: 2px;
-        }
-        .eliza-calendar-day:active { transform: scale(.98); }
-        @media (prefers-reduced-motion: reduce) {
-          .eliza-calendar-day { transition: none !important; }
-        }
         @keyframes eliza-calendar-hydrate {
           0%, 100% { opacity: .35; }
           50% { opacity: .7; }

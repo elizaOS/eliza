@@ -97,7 +97,50 @@ export function validateMolecularDecisions(clusters, decisions) {
   }
 }
 
-export function validateMoleculeContracts(components, contracts, references) {
+function transitiveAtomicDependencies(owner, components, atoms) {
+  const dependencies = new Set(owner.atomicDependencies);
+  const visited = new Set();
+  const visit = (component) => {
+    const key = `${component.file}:${component.name}`;
+    if (visited.has(key)) return;
+    visited.add(key);
+    for (const dependency of component.atomicDependencies) {
+      dependencies.add(dependency);
+    }
+    for (const tag of component.renderedTags) {
+      for (const child of components.filter((entry) => entry.name === tag)) {
+        visit(child);
+      }
+    }
+  };
+  visit(owner);
+
+  if (atoms) {
+    const source = fs.readFileSync(path.join(repoRoot, owner.file), "utf8");
+    for (const [kind, inventory] of Object.entries(atoms)) {
+      const symbols = inventory.canonical
+        .map((entry) => entry.name)
+        .filter((name) => typeof name === "string");
+      if (
+        symbols.some(
+          (symbol) =>
+            source.includes(`<${symbol}`) ||
+            source.includes(`createElement(${symbol}`),
+        )
+      ) {
+        dependencies.add(kind);
+      }
+    }
+  }
+  return dependencies;
+}
+
+export function validateMoleculeContracts(
+  components,
+  contracts,
+  references,
+  atoms,
+) {
   const errors = [];
   const ids = new Set();
   const owners = new Set();
@@ -118,8 +161,13 @@ export function validateMoleculeContracts(components, contracts, references) {
       continue;
     }
 
+    const liveDependencies = transitiveAtomicDependencies(
+      owner,
+      components,
+      atoms,
+    );
     const missingDependencies = contract.requiredAtomicDependencies.filter(
-      (dependency) => !owner.atomicDependencies.includes(dependency),
+      (dependency) => !liveDependencies.has(dependency),
     );
     if (missingDependencies.length > 0) {
       errors.push(
@@ -319,6 +367,7 @@ export function buildMolecularInventory() {
     atomicReport.components,
     contractRegistry.contracts,
     references,
+    atomicReport.atoms,
   );
   const components = atomicReport.components
     .map((component) => ({

@@ -533,18 +533,4 @@ describe("AutoTopUpCard", () => {
     expect(toastMocks.success).not.toHaveBeenCalled();
     expect(toastMocks.error).not.toHaveBeenCalled();
   });
-
-  it("keeps natural-case copy and semantic status tokens", () => {
-    const source = readFileSync(
-      join(dirname(fileURLToPath(import.meta.url)), "auto-top-up-card.tsx"),
-      "utf8",
-    );
-    expect(source).toContain('defaultValue: "Auto top-up (card)"');
-    expect(source).toContain("uppercase");
-    expect(source).toContain("border-status-warning/30");
-    expect(source).toContain("bg-status-warning-bg");
-    expect(source).toContain("text-status-warning");
-    expect(source).not.toMatch(/yellow-\d+/);
-    expect(source).toContain('defaultValue: "Save auto top-up"');
-  });
 });

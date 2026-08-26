@@ -22,7 +22,16 @@ export function registerManagedCloudAppShellPage(): void {
     pathPatterns: ["/cloud/*"],
     availability: "managed-cloud",
     viewKind: "release",
-    surface: { capabilities: ["navigate"] },
+    surface: {
+      capabilities: ["navigate"],
+      layout: {
+        kind: "immersive",
+        topology: "ambient",
+        width: "full",
+        scroll: "view",
+        gutter: "none",
+      },
+    },
     loader: () =>
       import("./shell/ManagedCloudPage").then((module) => ({
         default: module.default,

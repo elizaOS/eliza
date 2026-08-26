@@ -615,12 +615,12 @@ export function ApiTester({
                 </div>
               </div>
               {endpoint.pricing.isVariable && !endpoint.pricing.isFree && (
-                <div className="flex items-center gap-1.5 px-3 py-2 bg-surface border border-border rounded-sm">
+                <Card flow="row" gap="tight" variant="insetCompact">
                   <Info className="size-3.5 text-muted" />
                   <span className="text-xs text-muted font-medium">
                     Variable pricing
                   </span>
-                </div>
+                </Card>
               )}
             </div>
           </CardContent>
@@ -1084,7 +1084,7 @@ export function ApiTester({
                   <CardTitle>Response Headers</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <ScrollArea className="h-64 w-full rounded-sm border border-border/60">
+                  <ScrollArea variant="bordered" className="h-64 w-full">
                     <div className="min-w-0">
                       <dl className="divide-y divide-border/60 text-sm">
                         {Object.entries(response.headers).map(

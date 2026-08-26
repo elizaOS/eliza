@@ -18,6 +18,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { BrandButton } from "../../cloud-ui/components/brand/brand-button";
+import { Card } from "../../components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -464,7 +465,7 @@ export function McpEditorDialog({
             </div>
           )}
 
-          <div className="flex items-center justify-between rounded-sm border border-border bg-surface px-3 py-2">
+          <Card flow="rowBetween" variant="insetCompact">
             <Label htmlFor="mcp-x402-enabled" className="cursor-pointer">
               {t("cloud.mcps.x402EnabledLabel", {
                 defaultValue: "Enable x402 micropayments",
@@ -475,7 +476,7 @@ export function McpEditorDialog({
               checked={form.x402Enabled}
               onCheckedChange={(v) => update_("x402Enabled", v)}
             />
-          </div>
+          </Card>
 
           {!isEdit && (
             <div className="grid gap-2">

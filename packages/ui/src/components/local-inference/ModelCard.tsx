@@ -13,6 +13,7 @@ import type {
 } from "../../api/client-local-inference";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { DownloadProgress } from "./DownloadProgress";
 import {
   computeFit,
@@ -79,7 +80,7 @@ export function ModelCard({
   const parameterLabel = model.parameterLabel ?? model.params;
 
   return (
-    <div className="rounded-sm border border-border bg-card p-4 flex flex-col gap-3">
+    <Card flow="column" gap="default" variant="outlinedPadded">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="font-semibold truncate">
@@ -205,6 +206,6 @@ export function ModelCard({
           </Button>
         )}
       </div>
-    </div>
+    </Card>
   );
 }

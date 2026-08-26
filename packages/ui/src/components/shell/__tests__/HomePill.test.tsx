@@ -29,9 +29,8 @@ describe("HomePill", () => {
     const btn = screen.getByRole("button", { name: /open eliza/i });
     expect(btn).toBeTruthy();
     const mark = screen.getByTestId("shell-home-pill-mark");
-    expect(mark.className).toContain("bg-white/95");
+    expect(mark.dataset.visualState).toBe("homePillIdle");
     expect(mark.className).toContain("w-12");
-    expect(mark.className).toContain("shadow-[0_0_0_1px_rgba(0,0,0,0.12)]");
     expect(btn.textContent).toBe("");
     // Transparent resting surface: the handle is the only painted pixel run;
     // the button still spans the full 64x44 native window for hit bounds.
@@ -208,7 +207,7 @@ describe("HomePill", () => {
     const mark = screen.getByTestId("shell-home-pill-mark");
     // Fn/hold-to-talk uses the same footprint and bar count as the open
     // composer's microphone activity lane instead of a separate tiny chip.
-    expect(mark.className).toContain("bg-neutral-900/95");
+    expect(mark.dataset.visualState).toBe("homePillListening");
     expect(mark.className).toContain("h-14");
     expect(mark.className).toContain("w-full");
     expect(screen.getByRole("button").getAttribute("data-composer-sized")).toBe(
@@ -252,9 +251,9 @@ describe("HomePill", () => {
       const { unmount } = render(
         <HomePill phase={phase} onOpen={() => {}} onClose={() => {}} />,
       );
-      expect(screen.getByTestId("shell-home-pill-mark").className).toContain(
-        "bg-white/95",
-      );
+      expect(
+        screen.getByTestId("shell-home-pill-mark").dataset.visualState,
+      ).toBe(phase === "responding" ? "homePillResponding" : "homePillIdle");
       expect(screen.queryAllByTestId("shell-home-pill-wave-bar")).toHaveLength(
         0,
       );
@@ -267,7 +266,7 @@ describe("HomePill", () => {
       <HomePill phase="processing" onOpen={() => {}} onClose={() => {}} />,
     );
     const mark = screen.getByTestId("shell-home-pill-mark");
-    expect(mark.className).toContain("bg-neutral-900/95");
+    expect(mark.dataset.visualState).toBe("homePillChip");
     expect(mark.className).not.toContain("239,68,68");
     const dots = screen.getAllByTestId("shell-home-pill-process-dot");
     expect(dots).toHaveLength(3);
@@ -286,7 +285,7 @@ describe("HomePill", () => {
       <HomePill phase="responding" onOpen={() => {}} onClose={() => {}} />,
     );
     const mark = screen.getByTestId("shell-home-pill-mark");
-    expect(mark.className).toContain("255,138,42");
+    expect(mark.dataset.visualState).toBe("homePillResponding");
     expect(mark.className).toContain("animate-pulse");
     expect(mark.className).toContain("motion-reduce:animate-none");
   });
@@ -303,7 +302,7 @@ describe("HomePill", () => {
     const btn = screen.getByRole("button", { name: /is speaking/i });
     expect(btn.getAttribute("data-speaking")).toBe("true");
     const mark = screen.getByTestId("shell-home-pill-mark");
-    expect(mark.className).toContain("0.85");
+    expect(mark.dataset.visualState).toBe("homePillSpeaking");
     expect(mark.className).not.toContain("animate-pulse");
   });
 
@@ -328,7 +327,7 @@ describe("HomePill", () => {
     expect(btn.className).toContain("w-16");
     expect(mark.className).toContain("h-2.5");
     expect(mark.className).toContain("w-12");
-    expect(mark.className).toContain("bg-white/95");
+    expect(mark.dataset.visualState).toBe("homePillIdle");
     expect(mark.className).not.toContain("bg-[#FF5800]");
     expect(screen.queryByTestId("shell-home-pill-sign-in-icon")).toBeNull();
     expect(screen.queryAllByTestId("shell-home-pill-wave-bar")).toHaveLength(0);
@@ -348,7 +347,7 @@ describe("HomePill", () => {
     const mark = screen.getByTestId("shell-home-pill-mark");
     expect(mark.className).not.toContain("opacity-65");
     expect(mark.className).not.toContain("animate-pulse");
-    expect(mark.className).toContain("bg-white/95");
+    expect(mark.dataset.visualState).toBe("homePillIdle");
     expect(mark.className).not.toContain("bg-[#FF5800]");
     expect(screen.queryByTestId("shell-home-pill-sign-in-spinner")).toBeNull();
     expect(screen.queryByTestId("shell-home-pill-sign-in-icon")).toBeNull();

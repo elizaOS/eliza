@@ -13,6 +13,7 @@ import {
   XCircle,
 } from "lucide-react";
 import type * as React from "react";
+import { Alert, AlertDescription } from "../../components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,12 +27,15 @@ import {
 } from "../../components/ui/alert-dialog";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
+import { CodeBlock } from "../../components/ui/code-block";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "../../components/ui/collapsible";
 import { Label } from "../../components/ui/label";
+import { Separator } from "../../components/ui/separator";
 import { cn } from "../lib/utils";
 
 type ConnectionCardStatus =
@@ -75,16 +79,14 @@ interface ConnectionCardProps {
 
 function ConnectionLoadingCard({ className }: { className?: string }) {
   return (
-    <div
-      className={cn(
-        "min-w-0 overflow-hidden rounded-sm border bg-card text-card-foreground",
-        className,
-      )}
+    <Card
+      variant="accountCard"
+      className={cn("min-w-0 overflow-hidden", className)}
     >
       <div className="flex items-center justify-center py-8">
         <Loader2 className="size-6 animate-spin text-muted-foreground" />
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -123,20 +125,19 @@ function ConnectionIdentityPanel({
   actions,
 }: ConnectionIdentityPanelProps) {
   return (
-    <div
-      className={cn(
-        "flex items-center gap-4 p-4 bg-bg-muted rounded-sm",
-        className,
-      )}
+    <Card
+      variant="flatPadded"
+      className={cn("flex items-center gap-4", className)}
     >
-      <div
+      <Card
+        variant="connectorAvatar"
         className={cn(
-          "size-12 rounded-full flex items-center justify-center shrink-0",
+          "flex size-12 shrink-0 items-center justify-center",
           iconClassName,
         )}
       >
         {icon}
-      </div>
+      </Card>
       <div className="flex-1 min-w-0">
         {title && <div className="font-semibold truncate">{title}</div>}
         {subtitle && (
@@ -145,7 +146,7 @@ function ConnectionIdentityPanel({
         {children}
       </div>
       {actions}
-    </div>
+    </Card>
   );
 }
 
@@ -157,17 +158,17 @@ interface ConnectionCalloutProps {
   className?: string;
 }
 
-const calloutToneClassName: Record<
+const calloutToneVariant: Record<
   NonNullable<ConnectionCalloutProps["tone"]>,
-  string
+  React.ComponentProps<typeof Alert>["variant"]
 > = {
   // Brand rule: blue is banned. Existing `tone="blue"` call sites now
   // render as a neutral informational callout instead.
-  blue: "bg-white/5 border-white/15 text-foreground dark:text-white/80",
-  green: "bg-status-success-bg border-status-success/30 text-status-success",
-  red: "bg-destructive-subtle border-destructive/30 text-destructive",
-  yellow: "bg-status-warning-bg border-status-warning/30 text-status-warning",
-  muted: "bg-bg-muted border-transparent text-foreground",
+  blue: "default",
+  green: "dashboardSuccess",
+  red: "destructive",
+  yellow: "dashboardWarning",
+  muted: "sidebar",
 };
 
 function ConnectionCallout({
@@ -178,23 +179,19 @@ function ConnectionCallout({
   className,
 }: ConnectionCalloutProps) {
   return (
-    <div
-      className={cn(
-        "p-3 border rounded-sm",
-        calloutToneClassName[tone],
-        className,
-      )}
-    >
-      {title && <p className="text-sm font-medium mb-2">{title}</p>}
-      {items && items.length > 0 && (
-        <ul className="text-xs text-muted-foreground space-y-1">
-          {items.map((item) => (
-            <li key={String(item)}>• {item}</li>
-          ))}
-        </ul>
-      )}
-      {children}
-    </div>
+    <Alert variant={calloutToneVariant[tone]} className={className}>
+      <AlertDescription className="block">
+        {title && <p className="mb-2 text-sm font-medium">{title}</p>}
+        {items && items.length > 0 && (
+          <ul className="space-y-1 text-xs text-muted-foreground">
+            {items.map((item) => (
+              <li key={String(item)}>• {item}</li>
+            ))}
+          </ul>
+        )}
+        {children}
+      </AlertDescription>
+    </Alert>
   );
 }
 
@@ -225,13 +222,14 @@ function ConnectionInstructions({
           />
         </Button>
       </CollapsibleTrigger>
-      <CollapsibleContent
-        className={cn(
-          "p-4 bg-bg-muted rounded-b-lg border-t",
-          contentClassName,
-        )}
-      >
-        {children}
+      <CollapsibleContent asChild>
+        <Card
+          variant="topDivider"
+          padding="comfortable"
+          className={contentClassName}
+        >
+          {children}
+        </Card>
       </CollapsibleContent>
     </Collapsible>
   );
@@ -253,12 +251,12 @@ function ConnectionCopyRow({
   className,
 }: ConnectionCopyRowProps) {
   return (
-    <div className={cn("p-3 bg-bg-muted rounded-sm space-y-2", className)}>
+    <Card variant="flatPadded" className={cn("space-y-2 p-3", className)}>
       <Label className="text-xs text-muted-foreground">{label}</Label>
       <div className="flex items-center gap-2">
-        <code className="flex-1 text-xs bg-background p-2 rounded-sm border overflow-x-auto">
+        <CodeBlock variant="inline" className="flex-1 overflow-x-auto p-2">
           {value}
-        </code>
+        </CodeBlock>
         <Button
           variant="outline"
           size="sm"
@@ -271,7 +269,7 @@ function ConnectionCopyRow({
           {copyLabel}
         </Button>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -313,11 +311,10 @@ function ConnectionDisconnectAction({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={onDisconnect}
-            className="bg-destructive text-destructive-fg hover:bg-destructive/85"
-          >
-            {confirmLabel}
+          <AlertDialogAction asChild>
+            <Button variant="destructive" onClick={onDisconnect}>
+              {confirmLabel}
+            </Button>
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -335,15 +332,13 @@ function ConnectionFooterActions({
   className?: string;
 }) {
   return (
-    <div
-      className={cn(
-        "flex items-center justify-between pt-2 border-t",
-        className,
-      )}
-    >
-      {note && <div className="text-sm text-muted-foreground">{note}</div>}
-      {children}
-    </div>
+    <>
+      <Separator />
+      <div className={cn("flex items-center justify-between pt-2", className)}>
+        {note && <div className="text-sm text-muted-foreground">{note}</div>}
+        {children}
+      </div>
+    </>
   );
 }
 
@@ -366,12 +361,10 @@ function ConnectionCard({
   }
 
   return (
-    <div
+    <Card
+      variant="accountCard"
       data-slot="connection-card"
-      className={cn(
-        "min-w-0 overflow-hidden rounded-sm border bg-card text-card-foreground",
-        className,
-      )}
+      className={cn("min-w-0 overflow-hidden", className)}
     >
       {/* Header */}
       <div className="flex min-w-0 flex-col gap-1.5 p-4 sm:p-6">
@@ -398,17 +391,14 @@ function ConnectionCard({
       {/* Content */}
       <div className="min-w-0 p-4 pt-0 sm:p-6 sm:pt-0">
         {status === "not-configured" && (
-          <div className="p-4 bg-bg-muted rounded-sm">
+          <Card variant="flatPadded">
             <p className="text-sm text-muted-foreground">
               {notConfiguredMessage}
             </p>
-          </div>
+          </Card>
         )}
         {status === "error" && (
-          <div
-            role="alert"
-            className="flex flex-col gap-3 p-4 bg-destructive/10 border border-destructive/30 rounded-sm"
-          >
+          <Alert variant="destructive" className="flex flex-col gap-3">
             <div className="flex items-start gap-2">
               <AlertTriangle className="size-4 mt-0.5 shrink-0 text-destructive" />
               <p className="text-sm text-destructive">{errorMessage}</p>
@@ -420,12 +410,12 @@ function ConnectionCard({
                 </Button>
               </div>
             )}
-          </div>
+          </Alert>
         )}
         {status === "connected" && connectedContent}
         {status === "disconnected" && setupContent}
       </div>
-    </div>
+    </Card>
   );
 }
 
