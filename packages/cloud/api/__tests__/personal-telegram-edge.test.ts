@@ -280,6 +280,7 @@ describe("Personal Shared Telegram edge", () => {
       await expect(
         dispatchPersonalTelegramReminder(env, {
           project: "eliza-app",
+          connectorAccountId: "bot:123",
           chatId: "-100123456789",
           providerThreadId,
           text: "time to stretch",
