@@ -1845,7 +1845,12 @@ function findViewShellActionName(
 	actions: ReadonlyArray<Pick<Action, "name" | "tags">>,
 	messageText: string,
 ): string | undefined {
-	if (looksLikeInstructionalViewQuestion(messageText)) return undefined;
+	if (
+		looksLikeInstructionalViewQuestion(messageText) ||
+		looksLikeCurrentViewInspection(messageText)
+	) {
+		return undefined;
+	}
 	const viewActionName = findViewsActionName(actions);
 	if (!viewActionName) return undefined;
 
@@ -1889,7 +1894,12 @@ function findViewCapabilityActionName(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
 	messageText: string,
 ): string | undefined {
-	if (looksLikeInstructionalViewQuestion(messageText)) return undefined;
+	if (
+		looksLikeInstructionalViewQuestion(messageText) ||
+		looksLikeCurrentViewInspection(messageText)
+	) {
+		return undefined;
+	}
 	const viewActionName = findViewsActionName(actions);
 	if (!viewActionName) return undefined;
 	const viewActions = collectViewActionMetadataEntries(actions, viewActionName);
@@ -1970,6 +1980,131 @@ function looksLikeInstructionalViewQuestion(messageText: string): boolean {
 	// message-routing-live-regression.test.ts).
 	return /^\s*(?:explain|describe|teach|what\s+(?:is|are)|how\s+(?:do|can|to)\b)/iu.test(
 		messageText,
+	);
+}
+
+/**
+ * A read-only question about the view that is already open is not a navigation
+ * command. The view detector otherwise reads the adjective "open" as an
+ * imperative operation and promotes an already-complete Stage-1 answer into a
+ * full planner call. Besides wasting a second model round, that false promotion
+ * can add the complete action catalog to a prompt that no longer fits the
+ * provider context window.
+ *
+ * Keep the guard deliberately grammatical: an inspection verb must precede a
+ * deictic/current-view noun phrase. Any non-negated view operation anywhere in
+ * the request is still actionable and falls through, regardless of clause
+ * order or separator.
+ */
+function looksLikeCurrentViewInspection(messageText: string): boolean {
+	const normalized = messageText.replace(/\s+/gu, " ").trim();
+	const inspectionSpans = [
+		...normalized.matchAll(
+			/\b(?:identify|name|tell\s+me|what|which)\b[^,;.!?\n]{0,160}?\b(?:(?:this|the)\s+)?(?:current(?:\s+(?:active|open))?|currently\s+(?:active|open)|active|open)\s+(?:app\s+)?(?:panel|screen|ui|view|window)\b(?:\s+(?:(?:is|remains?|stays?)\s+(?:active|open)|i\s+have\s+open))?/giu,
+		),
+	].map((match) => ({
+		start: match.index ?? 0,
+		end: (match.index ?? 0) + match[0].length,
+	}));
+	if (inspectionSpans.length === 0) return false;
+
+	const operationOccurrences = [...normalized.matchAll(/\b[A-Za-z]+\b/gu)]
+		.map((match) => {
+			const word = match[0].toUpperCase();
+			const candidates = [word];
+			for (const suffix of ["ING", "ED", "ES", "S"] as const) {
+				if (!word.endsWith(suffix) || word.length <= suffix.length + 1)
+					continue;
+				const stem = word.slice(0, -suffix.length);
+				candidates.push(stem, `${stem}E`);
+				if (/([A-Z])\1$/u.test(stem)) candidates.push(stem.slice(0, -1));
+			}
+			const token = candidates.find(
+				(candidate) =>
+					candidate !== "WHAT" &&
+					candidate !== "WHICH" &&
+					VIEW_REQUEST_OPERATION_TOKENS.has(candidate),
+			);
+			if (!token) return undefined;
+			return {
+				token,
+				index: match.index ?? 0,
+			};
+		})
+		.filter(
+			(
+				event,
+			): event is {
+				token: string;
+				index: number;
+			} => event !== undefined,
+		);
+	for (const operation of operationOccurrences) {
+		const operationToken = operation.token;
+		const operationIndex = operation.index;
+		const beforeOperation = normalized.slice(0, operationIndex);
+		// OPEN is also an adjective/state in genuine inspection phrases. Exempt
+		// only those grammatical uses; an imperative OPEN elsewhere (including
+		// inside a longer inspection-looking clause) remains actionable.
+		if (
+			operationToken === "OPEN" &&
+			inspectionSpans.some(
+				(span) => operationIndex >= span.start && operationIndex < span.end,
+			) &&
+			/\b(?:are|current|currently|have|is|remains?|stays?|the|this|was|were)\s*$/iu.test(
+				beforeOperation,
+			)
+		) {
+			continue;
+		}
+		if (
+			isViewOperationLocallyNegated(normalized, operationIndex, operationToken)
+		) {
+			continue;
+		}
+		return false;
+	}
+	return true;
+}
+
+function isViewOperationLocallyNegated(
+	messageText: string,
+	operationIndex: number,
+	operationToken: string,
+): boolean {
+	const prefix = messageText.slice(
+		Math.max(0, operationIndex - 120),
+		operationIndex,
+	);
+	const localNegation = prefix.match(
+		/\b(?:without|never|do\s+not|don't)((?:\s+[A-Za-z]+){0,3})\s*$/iu,
+	);
+	if (localNegation) {
+		const modifiers = (localNegation[1] ?? "")
+			.trim()
+			.toUpperCase()
+			.split(/\s+/u)
+			.filter(Boolean);
+		const modifierOnly = modifiers.every(
+			(token) =>
+				token === "ALL" ||
+				token === "AT" ||
+				token === "EVER" ||
+				token === "JUST" ||
+				token === "PLEASE" ||
+				token.endsWith("LY"),
+		);
+		if (modifierOnly) return true;
+	}
+
+	// Preserve the explicit read-only acceptance constraint. This is modeled
+	// negative coordination, not free-floating polarity: the marker governs USE
+	// and the following CHANGE through a concrete "tools or" coordination.
+	return (
+		operationToken === "CHANGE" &&
+		/\b(?:do\s+not|don't|never)\s+(?:use|invoke|call)\s+(?:any\s+)?tools?\s+(?:or|nor)\s*$/iu.test(
+			prefix,
+		)
 	);
 }
 

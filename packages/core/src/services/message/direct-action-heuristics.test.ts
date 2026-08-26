@@ -958,6 +958,141 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 		).toEqual({ names: ["VIEWS"], kind: "view-navigation" });
 	});
 
+	it("does not treat read-only inspection of the already-open view as navigation", () => {
+		for (const message of [
+			"identify the currently open view",
+			"identify this open view and name two things available here",
+			"tell me which current screen I have open",
+			"name the active app view",
+			"Reply in one concise sentence and identify the currently open view. Do not use tools or change anything.",
+			"identify the current view; do not open anything",
+			"which current view is open? don't switch anything",
+			"name the current view and tell me what I can do here",
+			"identify the current view without closing it but don't switch anything",
+			"without closing the current window please don't open settings and identify the current view",
+			"without hiding this panel please don't pin it then name the active view",
+			"never close this window just don't switch to settings and identify the current view",
+			"identify the current view without accidentally closing it",
+			"name the active view and do not ever hide it",
+			"Identify the current open view. Reply with the view name and exact nonce CEREBRAS-E1F-20260826-0952. Do not use tools or change anything.",
+			"identify the current active view",
+			"name the open panel",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference([viewsAction], message),
+			).toEqual({ names: [], kind: null });
+		}
+	});
+
+	it.each([
+		[
+			"create / and / inspection-first",
+			"identify the current view and add a new panel",
+		],
+		["read / comma / action-first", "show settings, identify the current view"],
+		[
+			"update / semicolon / inspection-first",
+			"name the active view; change the layout",
+		],
+		[
+			"delete / period / action-first",
+			"remove this panel. identify the current view",
+		],
+		[
+			"open / and / action-first",
+			"open settings and tell me which current view is active",
+		],
+		[
+			"open / question / inspection-first",
+			"which current view is open? switch to settings",
+		],
+		[
+			"open / embedded / inspection-first",
+			"identify and open the current view",
+		],
+		[
+			"open / current-open adjective / inspection-first",
+			"identify the current open view and open settings",
+		],
+		[
+			"close / and / inspection-first",
+			"identify the current view and close it",
+		],
+		[
+			"close / embedded / inspection-first",
+			"identify and close the current view",
+		],
+		[
+			"close / comma / action-first",
+			"dismiss the active window, then name the current view",
+		],
+		["close / newline / inspection-first", "name the current view\nhide it"],
+		[
+			"layout / semicolon / action-first",
+			"arrange the windows; identify the current view",
+		],
+		[
+			"layout / then / inspection-first",
+			"identify the current view, then split it right",
+		],
+		[
+			"layout / period / action-first",
+			"tile the windows. name the active view",
+		],
+		["pin / comma / inspection-first", "name the active panel, then pin it"],
+		[
+			"pin / and / action-first",
+			"dock the view and identify the current panel",
+		],
+		[
+			"adversative but / inspection-first",
+			"identify the current view without closing it but switch to settings",
+		],
+		[
+			"adversative but after semicolon / inspection-first",
+			"name the active view; never hide it but split it right",
+		],
+		[
+			"adversative but / action-first",
+			"do not close this window but switch to settings, then identify the current view",
+		],
+		[
+			"adversative however / action-first",
+			"don't hide this panel; however, pin it, then name the active view",
+		],
+		[
+			"adversative yet / inspection-first",
+			"identify the current view and never close it, yet open settings",
+		],
+		[
+			"unpunctuated without / action-first",
+			"without closing the current window please open settings and identify the current view",
+		],
+		[
+			"unpunctuated without then / action-first",
+			"without hiding this panel please pin it then name the active view",
+		],
+		[
+			"unpunctuated never / action-first",
+			"never close this window just switch to settings and identify the current view",
+		],
+		[
+			"negated inspection / open",
+			"do not identify the current view just open settings",
+		],
+		[
+			"negated inspection / switch",
+			"do not name the active view just switch to settings",
+		],
+	] as const)(
+		"preserves actionable current-view compound: %s",
+		(_case, message) => {
+			expect(
+				inferDirectCurrentRequestCandidateInference([viewsAction], message),
+			).toEqual({ names: ["VIEWS"], kind: "view-surface" });
+		},
+	);
+
 	it("routes explicit voice preference writes to SETTINGS ahead of view navigation", () => {
 		const settingsAction: Pick<Action, "name" | "similes" | "tags"> = {
 			name: "SETTINGS",
