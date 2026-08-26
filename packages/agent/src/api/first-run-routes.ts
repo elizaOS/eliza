@@ -270,6 +270,16 @@ export interface FirstRunServerState {
   chatConnectionPromise: Promise<void> | null;
 }
 
+function restoreProcessEnvironment(snapshot: NodeJS.ProcessEnv): void {
+  for (const key of Object.keys(process.env)) {
+    if (!Object.hasOwn(snapshot, key)) delete process.env[key];
+  }
+  for (const [key, value] of Object.entries(snapshot)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
@@ -390,6 +400,10 @@ export async function handleFirstRunRoutes(
         `[eliza-api] Failed to reload config before first-run: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+    // Build first-run against an isolated config snapshot. The live server
+    // state remains authoritative until the config file has actually committed.
+    config = structuredClone(config);
+    const preCommitEnvironment = { ...process.env };
     const configuredLanguage = ctx.normalizeCharacterLanguage(
       (body.language as string | undefined) ??
         ctx.readUiLanguageHeader(req) ??
@@ -403,10 +417,6 @@ export async function handleFirstRunRoutes(
       `${(body.name as string).trim()}-admin-entity`,
     ) as UUID;
     config.agents.defaults.adminEntityId = firstRunAdminEntityId;
-    state.adminEntityId = firstRunAdminEntityId;
-    state.chatUserId = firstRunAdminEntityId;
-    state.chatConnectionReady = null;
-    state.chatConnectionPromise = null;
 
     if (!config.agents.list) config.agents.list = [];
     if (config.agents.list.length === 0) {
@@ -787,6 +797,95 @@ export async function handleFirstRunRoutes(
     }
     config.meta.firstRunComplete = true;
 
+    migrateLegacyRuntimeConfig(config as Record<string, unknown>);
+    if (firstRunAdoption) {
+      try {
+        await syncDirectProviderCredentials(
+          { state: { ...state, config, runtime: null } } as Pick<
+            import("./accounts-routes.ts").AccountsRouteContext,
+            "state"
+          >,
+          firstRunAdoption.account.providerId,
+        );
+      } catch (err) {
+        // error-policy:J1 the account must become the live billing authority
+        // before config commit; otherwise retract it and fail onboarding.
+        await firstRunAdoption.rollback();
+        await syncDirectProviderCredentials(
+          { state: { ...state, runtime: null } } as Pick<
+            import("./accounts-routes.ts").AccountsRouteContext,
+            "state"
+          >,
+          firstRunAdoption.account.providerId,
+        );
+        restoreProcessEnvironment(preCommitEnvironment);
+        error(
+          res,
+          err instanceof Error ? err.message : "Account activation failed",
+          500,
+        );
+        return true;
+      }
+    }
+    try {
+      ctx.saveElizaConfig(config);
+    } catch (err) {
+      // error-policy:J6 config commit failed after account adoption; remove the
+      // not-yet-authoritative account so retry starts from a clean boundary.
+      await firstRunAdoption?.rollback();
+      if (firstRunAdoption) {
+        await syncDirectProviderCredentials(
+          { state: { ...state, runtime: null } } as Pick<
+            import("./accounts-routes.ts").AccountsRouteContext,
+            "state"
+          >,
+          firstRunAdoption.account.providerId,
+        );
+      }
+      restoreProcessEnvironment(preCommitEnvironment);
+      logger.error(`[eliza-api] Failed to save config after first-run: ${err}`);
+      error(res, "Failed to save configuration", 500);
+      return true;
+    }
+
+    if (!configFileExists()) {
+      // error-policy:J6 the save helper returned without producing its durable
+      // artifact, so roll back the paired account adoption as well.
+      await firstRunAdoption?.rollback();
+      if (firstRunAdoption) {
+        await syncDirectProviderCredentials(
+          { state: { ...state, runtime: null } } as Pick<
+            import("./accounts-routes.ts").AccountsRouteContext,
+            "state"
+          >,
+          firstRunAdoption.account.providerId,
+        );
+      }
+      restoreProcessEnvironment(preCommitEnvironment);
+      logger.error(
+        `[eliza-api] Config file does not exist after save — first-run data will be lost on restart`,
+      );
+      error(res, "Configuration file was not persisted to disk", 500);
+      return true;
+    }
+
+    state.config = config;
+    state.agentName = (body.name as string) ?? state.agentName;
+    state.adminEntityId = firstRunAdminEntityId;
+    state.chatUserId = firstRunAdminEntityId;
+    state.chatConnectionReady = null;
+    state.chatConnectionPromise = null;
+
+    if (firstRunAdoption && state.runtime) {
+      await syncDirectProviderCredentials(
+        { state } as Pick<
+          import("./accounts-routes.ts").AccountsRouteContext,
+          "state"
+        >,
+        firstRunAdoption.account.providerId,
+      );
+    }
+
     if (state.runtime) {
       const runtimeCharacter = state.runtime.character;
       const agentTopics = agent.topics as string[] | undefined;
@@ -804,7 +903,7 @@ export async function handleFirstRunRoutes(
         runtimeCharacter.topics = [...agentTopics];
       }
       if (agent.style) {
-        runtimeCharacter.style = JSON.parse(JSON.stringify(agent.style));
+        runtimeCharacter.style = structuredClone(agent.style);
       }
       if (normalizedMessageExamples) {
         runtimeCharacter.messageExamples = normalizedMessageExamples;
@@ -838,70 +937,6 @@ export async function handleFirstRunRoutes(
           `[character-db] Failed to persist first-run character to DB: ${err instanceof Error ? err.message : err}`,
         );
       }
-    }
-
-    state.config = config;
-    state.agentName = (body.name as string) ?? state.agentName;
-    migrateLegacyRuntimeConfig(config as Record<string, unknown>);
-    if (firstRunAdoption) {
-      try {
-        await syncDirectProviderCredentials(
-          { state } as Pick<
-            import("./accounts-routes.ts").AccountsRouteContext,
-            "state"
-          >,
-          firstRunAdoption.account.providerId,
-        );
-      } catch (err) {
-        // error-policy:J1 the account must become the live billing authority
-        // before config commit; otherwise retract it and fail onboarding.
-        await firstRunAdoption.rollback();
-        error(
-          res,
-          err instanceof Error ? err.message : "Account activation failed",
-          500,
-        );
-        return true;
-      }
-    }
-    try {
-      ctx.saveElizaConfig(config);
-    } catch (err) {
-      // error-policy:J6 config commit failed after account adoption; remove the
-      // not-yet-authoritative account so retry starts from a clean boundary.
-      await firstRunAdoption?.rollback();
-      if (firstRunAdoption) {
-        await syncDirectProviderCredentials(
-          { state } as Pick<
-            import("./accounts-routes.ts").AccountsRouteContext,
-            "state"
-          >,
-          firstRunAdoption.account.providerId,
-        );
-      }
-      logger.error(`[eliza-api] Failed to save config after first-run: ${err}`);
-      error(res, "Failed to save configuration", 500);
-      return true;
-    }
-
-    if (!configFileExists()) {
-      // error-policy:J6 the save helper returned without producing its durable
-      // artifact, so roll back the paired account adoption as well.
-      await firstRunAdoption?.rollback();
-      if (firstRunAdoption) {
-        await syncDirectProviderCredentials(
-          { state } as Pick<
-            import("./accounts-routes.ts").AccountsRouteContext,
-            "state"
-          >,
-          firstRunAdoption.account.providerId,
-        );
-      }
-      logger.error(
-        `[eliza-api] Config file does not exist after save — first-run data will be lost on restart`,
-      );
-      error(res, "Configuration file was not persisted to disk", 500);
-      return true;
     }
 
     const resolvedRuntime =

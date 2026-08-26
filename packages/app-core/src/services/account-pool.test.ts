@@ -1382,6 +1382,82 @@ describe("applyDirectProviderCredentialsToEnv fail-closed export", () => {
     expect(env.OPENAI_BASE_URL).toBe("https://operator.example/v1");
   });
 
+  it("owns operator-fallback compatibility aliases across route switch and reset", async () => {
+    const env: NodeJS.ProcessEnv = {
+      OPENROUTER_API_KEY: "operator-router",
+      OPENAI_API_KEY: "operator-openai",
+      OPENAI_BASE_URL: "https://operator.example/v1",
+    };
+    const ledger: DirectProviderEnvLedger = new Map();
+    const { deps } = harness({}, {}, env, ledger);
+
+    await applyDirectProviderCredentialsToEnv("openrouter", deps);
+    expect(env.OPENROUTER_API_KEY).toBe("operator-router");
+    expect(env.OPENAI_API_KEY).toBe("operator-router");
+    expect(env.OPENAI_BASE_URL).toBe("https://openrouter.ai/api/v1");
+    expect(ledger.get("openrouter-api")).toMatchObject({
+      token: "operator-router",
+      openAiCompat: true,
+      providerEnv: false,
+    });
+
+    await applyDirectProviderCredentialsToEnv("openai", deps);
+    expect(env.OPENROUTER_API_KEY).toBe("operator-router");
+    expect(env.OPENAI_API_KEY).toBe("operator-openai");
+    expect(env.OPENAI_BASE_URL).toBe("https://operator.example/v1");
+    expect(ledger.size).toBe(0);
+
+    await applyDirectProviderCredentialsToEnv("openrouter", deps);
+    retractAllExportedDirectProviderEnv(env, ledger);
+    expect(env.OPENROUTER_API_KEY).toBe("operator-router");
+    expect(env.OPENAI_API_KEY).toBe("operator-openai");
+    expect(env.OPENAI_BASE_URL).toBe("https://operator.example/v1");
+  });
+
+  it.each(["select", "token"] as const)(
+    "retracts a revoked export before a fallible %s read",
+    async (failure) => {
+      const accounts: Record<string, LinkedAccountConfig> = {
+        "openrouter-api:linked": account("openrouter-api", { id: "linked" }),
+      };
+      const env: NodeJS.ProcessEnv = {};
+      const ledger: DirectProviderEnvLedger = new Map();
+      const { deps } = harness(
+        accounts,
+        { linked: "revoked-token" },
+        env,
+        ledger,
+      );
+      await applyDirectProviderCredentialsToEnv("openrouter", deps);
+      expect(env.OPENROUTER_API_KEY).toBe("revoked-token");
+
+      const failingDeps = {
+        ...deps,
+        ...(failure === "select"
+          ? {
+              pool: {
+                select: async () => {
+                  throw new Error("selection storage failed");
+                },
+              },
+            }
+          : {
+              getToken: async () => {
+                throw new Error("credential read failed");
+              },
+            }),
+      };
+
+      await expect(
+        applyDirectProviderCredentialsToEnv("openrouter", failingDeps),
+      ).rejects.toThrow(failure === "select" ? "selection" : "credential");
+      expect(env.OPENROUTER_API_KEY).toBeUndefined();
+      expect(env.OPENAI_API_KEY).toBeUndefined();
+      expect(env.OPENAI_BASE_URL).toBeUndefined();
+      expect(ledger.size).toBe(0);
+    },
+  );
+
   it("generation-fences an older selection after a newer disable sync", async () => {
     const accounts: Record<string, LinkedAccountConfig> = {
       "openrouter-api:linked": account("openrouter-api", { id: "linked" }),
