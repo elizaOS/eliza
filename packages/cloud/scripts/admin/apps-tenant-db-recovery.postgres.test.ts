@@ -206,13 +206,11 @@ let pgbouncerDir: string | undefined;
 
 /**
  * The drill probes an isolated pgbouncer on the canonical pooler port; the
- * gated suite runs a REAL local pgbouncer listing only the restored tenant
- * databases (the pooler-side isolation surface). Skipped (with the drill's
- * pooler probe) when RUN_REAL_PGBOUNCER_DRILL_TESTS is unset so the suite
- * can still run where port 6432 cannot be bound.
+ * gated suite runs a REAL local pgbouncer listing the restored tenant
+ * databases. Own-connect probes route through it (the per-tenant routing
+ * assertion), so the pooler is required whenever the suite is enabled.
  */
-const POOLER_ENABLED =
-  process.env.RUN_REAL_PGBOUNCER_DRILL_TESTS === "1" && ENABLED;
+const POOLER_ENABLED = ENABLED;
 
 function startPgbouncer(databases: string[]): void {
   pgbouncerDir = mkdtempSync(join(tmpdir(), "drill-pgbouncer-"));
@@ -246,41 +244,37 @@ pool_mode = transaction
   child.unref();
 }
 
+/**
+ * Provision the twin settings through the REAL `provision` subcommand — the
+ * same path an operator runs — so the postgresql.auto.conf write, reload, and
+ * fresh-session verification are exercised as shipped, not re-implemented
+ * here.
+ */
 async function provisionTarget(targetDb: string, capabilityFile: string) {
-  // Twin settings live cluster-wide on the disposable target. PostgreSQL 14
-  // rejects ALTER SYSTEM SET for undeclared custom GUCs, so provisioning
-  // writes the settings to postgresql.auto.conf directly (the exact file
-  // ALTER SYSTEM SET itself writes) and reloads.
-  const cap = readFileSync(capabilityFile, "utf-8").trim();
-  const dataDir = (await admin.query("SHOW data_directory")).rows[0]
-    .data_directory as string;
-  const autoConf = join(dataDir, "postgresql.auto.conf");
-  const current = readFileSync(autoConf, "utf-8");
-  const lines = current
-    .split("\n")
-    .filter(
-      (line) =>
-        !line.startsWith("eliza.restore_target_id") &&
-        !line.startsWith("eliza.restore_capability"),
-    );
-  lines.push(`eliza.restore_target_id = '${TARGET_ID}'`);
-  lines.push(`eliza.restore_capability = '${cap}'`);
-  writeFileSync(autoConf, `${lines.join("\n").trimEnd()}\n`);
-  const target = new Client({ connectionString: dbUrl(targetDb) });
-  await target.connect();
-  await target.query("SELECT pg_reload_conf()");
-  await target.end();
-  // Verify through a FRESH session: a session opened before the reload may
-  // still hold the previous (unset) value of a custom placeholder GUC.
-  const verify = new Client({ connectionString: dbUrl(targetDb) });
-  await verify.connect();
-  const check = await verify.query(
-    `SELECT COALESCE(current_setting('eliza.restore_target_id', true), '') AS tid`,
+  const result = spawnSync(
+    "bun",
+    [
+      "packages/cloud/scripts/admin/apps-tenant-db-recovery.ts",
+      "provision",
+      "--target-dsn",
+      dbUrl(targetDb),
+      "--target-id",
+      TARGET_ID,
+      "--capability-file",
+      capabilityFile,
+    ],
+    {
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        ELIZA_RESTORE_CAPABILITY_KEY: SIGNING_KEY,
+      },
+    },
   );
-  const ok = check.rows[0].tid === TARGET_ID;
-  await verify.end();
-  if (!ok) {
-    throw new Error("twin settings did not apply after reload");
+  if (result.status !== 0) {
+    throw new Error(
+      `provision exited ${result.status}\n--- stdout ---\n${result.stdout}\n--- stderr ---\n${result.stderr}`,
+    );
   }
 }
 
@@ -400,10 +394,9 @@ describe.if(ENABLED)(
           maxBuffer: 64 * 1024 * 1024,
         },
       );
-      // NOTE: the pooler endpoint is probed only for the cross-reject
-      // sample; with a single tenant there is no cross pair, so no pooler
-      // connection is attempted — own-connect proves out on the direct
-      // surface only (drill databases are absent from any pooler config).
+      // NOTE: the e2e run includes the pooler surface — own-connect probes
+      // route through pgbouncer as the per-tenant routing assertion, so the
+      // local pgbouncer must list every restored tenant database.
       if (result.status !== 0) {
         throw new Error(
           `drill exited ${result.status}\n--- stdout ---\n${result.stdout}\n--- stderr ---\n${result.stderr}`,
