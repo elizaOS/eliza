@@ -635,6 +635,11 @@ describe("live model usage meter", () => {
     expect(proxy.snapshot().failures.at(-1)?.code).toBe(
       "STABILITY_MODEL_REQUEST_BUDGET_EXCEEDED",
     );
+    expect(proxy.snapshot().requestEnvelopes.at(-1)).toMatchObject({
+      accepted: false,
+      forwardedBodyBytes: null,
+      forwardedBodySha256: null,
+    });
   });
 
   test("proxy atomically reserves one admission under concurrent request pressure", async () => {
@@ -905,14 +910,176 @@ describe("live model usage meter", () => {
     },
   );
 
+  test.each([
+    {
+      name: "Anthropic remote URL document",
+      provider: "anthropic" as const,
+      path: "/messages",
+      body: {
+        model: EXPECTED_MODEL,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "document",
+                source: { type: "url", url: "https://example.invalid/doc" },
+              },
+            ],
+          },
+        ],
+        max_tokens: 1,
+      },
+    },
+    {
+      name: "OpenAI provider item reference",
+      provider: "openai" as const,
+      path: "/responses",
+      body: {
+        model: EXPECTED_MODEL,
+        input: [{ type: "item_reference", id: "item_provider_hosted" }],
+        max_output_tokens: 1,
+      },
+    },
+    ...["shell", "local_shell", "apply_patch"].map((type) => ({
+      name: `OpenAI hosted ${type} tool`,
+      provider: "openai" as const,
+      path: "/responses",
+      body: {
+        model: EXPECTED_MODEL,
+        input: "test",
+        tools: [{ type }],
+        max_output_tokens: 1,
+      },
+    })),
+    ...["web_fetch_20250910", "code_execution_20250522"].map((type) => ({
+      name: `Anthropic hosted ${type} tool`,
+      provider: "anthropic" as const,
+      path: "/messages",
+      body: {
+        model: EXPECTED_MODEL,
+        messages: [{ role: "user", content: "test" }],
+        tools: [{ type, name: type, input_schema: {} }],
+        max_tokens: 1,
+      },
+    })),
+    ...[
+      ["fallback routing", { fallbacks: ["claude-expensive"] }],
+      ["default fallback routing", { fallbacks: "default" }],
+      ["container", { container: "container_provider" }],
+      ["context management", { context_management: { edits: [] } }],
+      [
+        "MCP servers",
+        { mcp_servers: [{ url: "https://example.invalid/mcp" }] },
+      ],
+      ["premium speed", { speed: "fast" }],
+      ["inference geography", { inference_geo: "us" }],
+    ].map(([name, extra]) => ({
+      name: `Anthropic ${name}`,
+      provider: "anthropic" as const,
+      path: "/messages",
+      body: {
+        model: EXPECTED_MODEL,
+        messages: [{ role: "user", content: "test" }],
+        max_tokens: 1,
+        ...(extra as object),
+      },
+    })),
+    ...[
+      ["multiple choices", { n: 2 }],
+      ["invalid n", { n: "1" }],
+      ["web search options", { web_search_options: {} }],
+      ["audio modality", { modalities: ["text", "audio"] }],
+      ["premium service tier", { service_tier: "priority" }],
+      [
+        "stream without usage",
+        { stream: true, stream_options: { include_usage: false } },
+      ],
+      [
+        "stream extra controls",
+        { stream: true, stream_options: { include_usage: true, extra: true } },
+      ],
+    ].map(([name, extra]) => ({
+      name: `OpenAI Chat ${name}`,
+      provider: "openai" as const,
+      path: "/chat/completions",
+      body: {
+        model: EXPECTED_MODEL,
+        messages: [{ role: "user", content: "test" }],
+        max_completion_tokens: 1,
+        ...(extra as object),
+      },
+    })),
+    ...[
+      ["background execution", { background: true }],
+      ["container", { container: "container_provider" }],
+      ["premium service tier", { service_tier: "priority" }],
+      ["generic remote URL", { url: "https://example.invalid/context" }],
+    ].map(([name, extra]) => ({
+      name: `OpenAI Responses ${name}`,
+      provider: "openai" as const,
+      path: "/responses",
+      body: {
+        model: EXPECTED_MODEL,
+        input: "test",
+        max_output_tokens: 1,
+        ...(extra as object),
+      },
+    })),
+  ])(
+    "rejects endpoint-schema bypass: $name",
+    async ({ provider, path, body }) => {
+      let upstreamCalls = 0;
+      const proxy = await startLiveModelEgressProxy({
+        provider,
+        expectedModel: EXPECTED_MODEL,
+        budgets: {
+          maxInputTokens: 10_000,
+          maxOutputTokens: 10,
+          maxRequests: 1,
+        },
+        upstreamCredential: "real-model-secret",
+        fetchUpstream: async () => {
+          upstreamCalls += 1;
+          return Response.json({
+            usage: { input_tokens: 1, output_tokens: 1 },
+          });
+        },
+      });
+      proxies.push(proxy);
+      expect(
+        (
+          await fetch(`${proxy.url}${path}`, {
+            method: "POST",
+            body: JSON.stringify(body),
+          })
+        ).status,
+      ).toBe(422);
+      expect(upstreamCalls).toBe(0);
+      expect(proxy.snapshot()).toMatchObject({
+        requestCount: 0,
+        requestEnvelopes: [
+          {
+            accepted: false,
+            forwardedBodyBytes: null,
+            forwardedBodySha256: null,
+          },
+        ],
+      });
+    },
+  );
+
   test("canonicalizes output caps to the remaining attempt budget", async () => {
     const forwardedCaps: number[] = [];
+    const forwardedBodies: string[] = [];
     const proxy = await startLiveModelEgressProxy({
       provider: "openai",
       expectedModel: EXPECTED_MODEL,
       budgets: { maxInputTokens: 20_000, maxOutputTokens: 5, maxRequests: 2 },
       fetchUpstream: async (_url, init) => {
-        const body = JSON.parse(String(init.body)) as {
+        const rawBody = String(init.body);
+        forwardedBodies.push(rawBody);
+        const body = JSON.parse(rawBody) as {
           max_output_tokens: number;
         };
         forwardedCaps.push(body.max_output_tokens);
@@ -949,13 +1116,38 @@ describe("live model usage meter", () => {
       { requestedMaxOutputTokens: 1_000_000, effectiveMaxOutputTokens: 5 },
       { requestedMaxOutputTokens: 1_000_000, effectiveMaxOutputTokens: 2 },
     ]);
+    for (const [index, envelope] of proxy
+      .snapshot()
+      .requestEnvelopes.entries()) {
+      const forwardedBody = forwardedBodies[index] ?? "";
+      expect(envelope.forwardedBodyBytes).toBe(
+        Buffer.byteLength(forwardedBody),
+      );
+      expect(envelope.forwardedBodySha256).toBe(
+        new Bun.CryptoHasher("sha256").update(forwardedBody).digest("hex"),
+      );
+      expect(envelope.inputBudgetCharge).toBe(
+        Math.max(envelope.bodyBytes, Buffer.byteLength(forwardedBody)) + 8_192,
+      );
+    }
   });
 
   test.each([
     {
       provider: "openai" as const,
       path: "/responses",
-      body: { model: EXPECTED_MODEL, input: "test" },
+      body: {
+        model: EXPECTED_MODEL,
+        input: "test",
+        tools: [
+          {
+            type: "function",
+            name: "local_tool",
+            parameters: { type: "object", properties: {} },
+          },
+        ],
+        tool_choice: { type: "function", name: "local_tool" },
+      },
       capField: "max_output_tokens",
     },
     {
@@ -964,6 +1156,17 @@ describe("live model usage meter", () => {
       body: {
         model: EXPECTED_MODEL,
         messages: [{ role: "user", content: "test" }],
+        stream: true,
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "local_tool",
+              parameters: { type: "object", properties: {} },
+            },
+          },
+        ],
+        tool_choice: { type: "function", function: { name: "local_tool" } },
       },
       capField: "max_completion_tokens",
     },
@@ -974,6 +1177,13 @@ describe("live model usage meter", () => {
         model: EXPECTED_MODEL,
         messages: [{ role: "user", content: "test" }],
         max_tokens: 64_000,
+        tools: [
+          {
+            name: "local_tool",
+            input_schema: { type: "object", properties: {} },
+          },
+        ],
+        tool_choice: { type: "tool", name: "local_tool" },
       },
       capField: "max_tokens",
     },
@@ -1011,6 +1221,9 @@ describe("live model usage meter", () => {
       ).toBe(200);
       expect(forwarded?.model).toBe(EXPECTED_MODEL);
       expect(forwarded?.[capField]).toBe(7);
+      if (path === "/chat/completions") {
+        expect(forwarded?.stream_options).toEqual({ include_usage: true });
+      }
       expect(JSON.stringify(forwarded)).not.toContain("real-model-secret");
     },
   );
