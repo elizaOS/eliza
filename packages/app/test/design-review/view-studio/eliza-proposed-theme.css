@@ -4,7 +4,8 @@
  */
 
 html[data-eliza-studio-proposed="true"],
-html[data-eliza-studio-proposed="true"] :where(
+html[data-eliza-studio-proposed="true"]
+  :where(
     [data-theme="dark"],
     .dark,
     .theme-cloud,
@@ -118,7 +119,8 @@ html[data-eliza-studio-proposed="true"] :where(
   --radius-xl: 15px !important;
   --radius-2xl: 18px !important;
   --radius-3xl: 22px !important;
-  --font-sans: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Segoe UI", sans-serif !important;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Segoe UI", sans-serif !important;
   --font-body: var(--font-sans) !important;
   --font-display: var(--font-sans) !important;
   --font-chat: var(--font-sans) !important;
@@ -133,7 +135,8 @@ html[data-eliza-studio-proposed="true"] body {
   letter-spacing: -0.006em;
 }
 
-html[data-eliza-studio-proposed="true"] :where(button, input, select, textarea) {
+html[data-eliza-studio-proposed="true"]
+  :where(button, input, select, textarea) {
   font-family: var(--font-body) !important;
 }
 
@@ -141,7 +144,8 @@ html[data-eliza-studio-proposed="true"] :where(button, [role="button"]) {
   box-shadow: none !important;
 }
 
-html[data-eliza-studio-proposed="true"] :where(button, a, input, select, textarea):focus-visible {
+html[data-eliza-studio-proposed="true"]
+  :where(button, a, input, select, textarea):focus-visible {
   outline-color: #d8d8dc !important;
 }
 
@@ -185,11 +189,8 @@ html[data-eliza-studio-proposed="true"] ::selection {
     scroll-behavior: auto !important;
   }
 
-  html[data-eliza-studio-proposed="true"] :where(
-      .animate-pulse,
-      [class*="shimmer"],
-      [class*="glow"]
-    ) {
+  html[data-eliza-studio-proposed="true"]
+    :where(.animate-pulse, [class*="shimmer"], [class*="glow"]) {
     transition-duration: 0.001ms !important;
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;

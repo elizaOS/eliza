@@ -27,6 +27,9 @@ describe("devViewStudioPlugin", () => {
     expect(
       existsSync(path.join(testDir, "public", "eliza-view-studio.html")),
     ).toBe(false);
+    expect(
+      existsSync(path.join(testDir, "public", "eliza-proposed-theme.css")),
+    ).toBe(false);
 
     let middleware:
       | ((
@@ -64,6 +67,21 @@ describe("devViewStudioPlugin", () => {
     expect(nextCalled).toBe(false);
     expect(headers.get("Cache-Control")).toBe("no-store");
     expect(body?.toString()).toContain("Eliza View Studio");
+
+    headers.clear();
+    body = undefined;
+    middleware?.(
+      { url: "/eliza-proposed-theme.css" },
+      {
+        setHeader: (name, value) => headers.set(name, value),
+        end: (value) => (body = value),
+      },
+      () => (nextCalled = true),
+    );
+
+    expect(headers.get("Content-Type")).toBe("text/css; charset=utf-8");
+    expect(headers.get("Cache-Control")).toBe("no-store");
+    expect(body?.toString()).toContain("data-eliza-studio-proposed");
   });
 });
 

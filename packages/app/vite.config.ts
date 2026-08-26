@@ -1378,6 +1378,7 @@ export function devViewStudioPlugin(): Plugin {
     ["/eliza-view-studio.html", ["eliza-view-studio.html", "text/html"]],
     ["/eliza-view-studio.css", ["eliza-view-studio.css", "text/css"]],
     ["/eliza-view-studio.js", ["eliza-view-studio.js", "text/javascript"]],
+    ["/eliza-proposed-theme.css", ["eliza-proposed-theme.css", "text/css"]],
   ]);
 
   return {
