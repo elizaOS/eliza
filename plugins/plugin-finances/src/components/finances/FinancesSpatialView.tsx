@@ -155,7 +155,7 @@ export function FinancesSpatialView({
   const dispatch = (action: string) => () => onAction?.(action);
 
   return (
-    <Card gap={1} padding={1} shrink={0}>
+    <Card gap={3} padding={6} width="100%" shrink={0}>
       {snapshot.state === "loading" ? (
         <Text tone="muted" align="center" style="caption">
           Loading
@@ -201,14 +201,33 @@ function FinancesEmptyBody({
   dispatch: (action: string) => () => void;
 }) {
   return (
-    <>
-      <Text bold>None</Text>
+    <VStack
+      gap={2}
+      width="100%"
+      agent={{
+        id: "finances-empty",
+        role: "status",
+        label: "No payment sources connected",
+      }}
+    >
+      <Text style="heading" bold>
+        Finances
+      </Text>
+      <Text tone="muted">
+        Connect a payment source to see balances, transactions, and recurring
+        charges.
+      </Text>
       <HStack gap={1}>
-        <Button agent="connect" onPress={dispatch("connect")}>
-          Connect
+        <Button
+          agent="connect"
+          tone="muted"
+          variant="outline"
+          onPress={dispatch("connect")}
+        >
+          Connect a source
         </Button>
       </HStack>
-    </>
+    </VStack>
   );
 }
 

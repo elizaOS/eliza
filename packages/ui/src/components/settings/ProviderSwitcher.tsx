@@ -262,7 +262,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           })
         : t("providerswitcher.cloudTileUnsignedDescription", {
             defaultValue:
-              "Sign in to use managed models. Chat replies use Local until then.",
+              "Sign in to use managed models. Your current chat provider stays active until you switch.",
           })
       : t("providerswitcher.localTileDescription", {
           defaultValue:
