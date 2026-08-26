@@ -3,6 +3,8 @@
 # so they must stay byte-identical across platforms — never let a Windows
 # checkout (autocrlf) rewrite them to CRLF.
 patches/CHECKSUMS.sha256 -text
+# Binary fixtures must not be inspected as text by repository whitespace gates.
+*.pdf binary
 
 # Source files must check out with LF everywhere: Windows runners default to
 # core.autocrlf=true, and a CRLF checkout makes vitest's transform pipeline
