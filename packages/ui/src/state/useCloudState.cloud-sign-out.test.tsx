@@ -8,7 +8,10 @@
 
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { signOutAndroidCloud } from "../android-cloud/android-cloud-auth";
+import {
+  isAndroidCloudAccountSwitchPending,
+  signOutAndroidCloud,
+} from "../android-cloud/android-cloud-auth";
 import { client } from "../api";
 import { signOutFromSsoBridgedHost } from "../cloud/sso-bridge/sso-bridge";
 import {
@@ -144,6 +147,7 @@ describe("useCloudState — Cloud account sign-out", () => {
     });
 
     expect(signOutAndroidCloud).toHaveBeenCalledWith("https://eliza.app");
+    expect(isAndroidCloudAccountSwitchPending()).toBe(true);
     expect(signOutFromSsoBridgedHost).not.toHaveBeenCalled();
     expect(client.cloudDisconnect).not.toHaveBeenCalled();
     expect(result.current.elizaCloudConnected).toBe(false);

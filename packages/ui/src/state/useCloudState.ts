@@ -30,6 +30,9 @@ import {
   type AndroidCloudAuthResult,
   beginAndroidCloudSignIn,
   cancelAndroidCloudSignIn,
+  clearAndroidCloudAccountSwitchPending,
+  isAndroidCloudAccountSwitchPending,
+  markAndroidCloudAccountSwitchPending,
   navigateAndroidCloudSignInInApp,
   signOutAndroidCloud,
   takeLatestAndroidCloudCompletion,
@@ -538,8 +541,6 @@ export function useCloudState({
   const elizaCloudLoginCompletionRef = useRef<Promise<void> | null>(null);
   /** Synchronous lock to prevent duplicate login clicks in the same tick. */
   const elizaCloudLoginBusyRef = useRef(false);
-  /** Explicit native sign-out requires the next hosted handoff to change accounts. */
-  const androidCloudAccountSwitchPendingRef = useRef(false);
   /** Tracks whether the auth-rejected notice has already been sent for the current rejection. */
   const elizaCloudAuthNoticeSentRef = useRef(false);
 
@@ -855,7 +856,7 @@ export function useCloudState({
               );
           });
           const attempt = await beginAndroidCloudSignIn(cloudApiBase, {
-            switchAccount: androidCloudAccountSwitchPendingRef.current,
+            switchAccount: isAndroidCloudAccountSwitchPending(),
           });
           attemptId = attempt.state;
           if (isAndroidLauncherBuild()) {
@@ -923,7 +924,17 @@ export function useCloudState({
               "Could not verify your Eliza Cloud session. Please sign in again.",
             );
           }
-          androidCloudAccountSwitchPendingRef.current = false;
+          try {
+            clearAndroidCloudAccountSwitchPending();
+          } catch (error) {
+            // error-policy:J4 the replacement session is already verified;
+            // retaining this non-secret marker only forces another explicit
+            // account choice on a future login instead of weakening auth.
+            logger.warn(
+              { error },
+              "[useCloudState] Could not clear Android account-switch marker",
+            );
+          }
         } catch (error) {
           androidLoginError = error;
           setElizaCloudLoginError(
@@ -1790,7 +1801,7 @@ export function useCloudState({
         const cloudApiBase =
           getBootConfig().cloudApiBase ?? DEFAULT_DIRECT_CLOUD_BASE_URL;
         await signOutAndroidCloud(cloudApiBase);
-        androidCloudAccountSwitchPendingRef.current = true;
+        markAndroidCloudAccountSwitchPending();
       } else {
         await signOutFromSsoBridgedHost();
       }

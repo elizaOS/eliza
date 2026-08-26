@@ -28,6 +28,8 @@ const ANDROID_CLOUD_LOGIN_HOSTS = new Set([
   "cloud.eliza.app",
   "cloud-staging.eliza.app",
 ]);
+const ANDROID_CLOUD_ACCOUNT_SWITCH_KEY =
+  "eliza:android-cloud:account-switch-pending:v1";
 
 export interface AndroidCloudAuthResult {
   apiBase?: string;
@@ -90,6 +92,24 @@ function publishResult(result: AndroidCloudAuthResult): void {
       detail: result,
     }),
   );
+}
+
+/** Persists explicit account-switch intent across renderer and app recreation. */
+export function markAndroidCloudAccountSwitchPending(): void {
+  window.localStorage.setItem(ANDROID_CLOUD_ACCOUNT_SWITCH_KEY, "1");
+  if (window.localStorage.getItem(ANDROID_CLOUD_ACCOUNT_SWITCH_KEY) !== "1") {
+    throw new Error("Eliza Cloud could not preserve the account switch.");
+  }
+}
+
+/** True until a replacement mobile session is verified end to end. */
+export function isAndroidCloudAccountSwitchPending(): boolean {
+  return window.localStorage.getItem(ANDROID_CLOUD_ACCOUNT_SWITCH_KEY) === "1";
+}
+
+/** Removes the durable switch marker after replacement-session verification. */
+export function clearAndroidCloudAccountSwitchPending(): void {
+  window.localStorage.removeItem(ANDROID_CLOUD_ACCOUNT_SWITCH_KEY);
 }
 
 /** Creates the hosted login URL while keeping the verifier in Android Keystore. */

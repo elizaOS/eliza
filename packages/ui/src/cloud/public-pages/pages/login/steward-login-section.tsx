@@ -650,6 +650,9 @@ export default function StewardLoginSection() {
   const [step, setStep] = useState<AuthStep>("idle");
   const [loading, setLoading] = useState<Provider | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [accountSwitchError, setAccountSwitchError] = useState<string | null>(
+    null,
+  );
   const [showPasskeyRecovery, setShowPasskeyRecovery] = useState(false);
   const [showPasskeyEnrollmentRecovery, setShowPasskeyEnrollmentRecovery] =
     useState(false);
@@ -965,6 +968,7 @@ export default function StewardLoginSection() {
     if (searchParams.get("switchAccount") !== "1") return;
 
     setSessionRecoveryComplete(false);
+    setAccountSwitchError(null);
     let cancelled = false;
     void import("../../../sso-bridge/sso-bridge")
       .then(({ prepareSsoAccountSwitch }) => prepareSsoAccountSwitch())
@@ -982,13 +986,12 @@ export default function StewardLoginSection() {
       })
       .catch((accountSwitchError) => {
         if (cancelled) return;
-        setError(
+        setAccountSwitchError(
           getErrorMessage(
             accountSwitchError,
             "Could not end the previous Eliza Cloud session",
           ),
         );
-        setSessionRecoveryComplete(true);
       });
 
     return () => {
@@ -2283,6 +2286,39 @@ export default function StewardLoginSection() {
           </Button>
         </div>
       </div>
+    );
+  }
+
+  if (accountSwitchError) {
+    return (
+      <ReservedLoginFrame>
+        <div
+          className="flex flex-col items-center gap-4 text-center"
+          role="alert"
+        >
+          <div className="flex size-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+            <AlertCircle className="size-5" aria-hidden="true" />
+          </div>
+          <div className="space-y-1">
+            <p className="text-base font-semibold text-txt-strong">
+              {t("cloud.login.accountSwitch.title", {
+                defaultValue: "Couldn't switch accounts",
+              })}
+            </p>
+            <p className="text-sm text-muted">{accountSwitchError}</p>
+          </div>
+          <Button
+            variant="default"
+            type="button"
+            className="hosted-signin-focus-emphasis w-full"
+            onClick={() => window.location.reload()}
+          >
+            {t("cloud.login.accountSwitch.retry", {
+              defaultValue: "Try again",
+            })}
+          </Button>
+        </div>
+      </ReservedLoginFrame>
     );
   }
 

@@ -14,6 +14,7 @@ const harness = vi.hoisted(() => ({
   cancel: vi.fn(async () => true),
   sequence: 0,
   stewardToken: null as string | null,
+  switchAccountPending: false,
   api: {
     getBaseUrl: vi.fn(() => ""),
     setBaseUrl: vi.fn(),
@@ -60,6 +61,13 @@ vi.mock("../android-cloud/android-cloud-auth", () => ({
   ANDROID_CLOUD_AUTH_STARTED_EVENT: "eliza:android-cloud-auth-started",
   beginAndroidCloudSignIn: harness.begin,
   cancelAndroidCloudSignIn: harness.cancel,
+  clearAndroidCloudAccountSwitchPending: vi.fn(() => {
+    harness.switchAccountPending = false;
+  }),
+  isAndroidCloudAccountSwitchPending: vi.fn(() => harness.switchAccountPending),
+  markAndroidCloudAccountSwitchPending: vi.fn(() => {
+    harness.switchAccountPending = true;
+  }),
   signOutAndroidCloud: vi.fn(async () => {}),
   hasPendingAndroidCloudSignIn: vi.fn(async () => {
     throw new Error("pending cleanup record unavailable");
@@ -107,6 +115,7 @@ describe("useCloudState Android hosted auth", () => {
     });
     harness.sequence = 0;
     harness.stewardToken = null;
+    harness.switchAccountPending = false;
     for (const method of Object.values(harness.api)) method.mockClear();
   });
 
@@ -148,6 +157,29 @@ describe("useCloudState Android hosted auth", () => {
     });
     expect(harness.cancel).toHaveBeenCalledWith("attempt-2");
     expect(result.current.elizaCloudLoginBusy).toBe(false);
+  });
+
+  it("preserves account-switch intent across hook recreation", async () => {
+    harness.switchAccountPending = true;
+    const first = renderHook(() => useCloudState(params()));
+    first.unmount();
+    const recreated = renderHook(() => useCloudState(params()));
+
+    let login: Promise<void> | undefined;
+    act(() => {
+      login = recreated.result.current.handleCloudLogin();
+    });
+    await act(async () => {
+      for (let index = 0; index < 5; index += 1) await Promise.resolve();
+    });
+    expect(harness.begin).toHaveBeenCalledWith("https://eliza.app", {
+      switchAccount: true,
+    });
+    act(() => harness.browserFinished?.());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_500);
+      await login;
+    });
   });
 
   it("does not cancel a callback that starts before the browser-close grace expires", async () => {
