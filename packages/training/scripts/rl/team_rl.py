@@ -36,7 +36,11 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from training.tokenization import tokenize_with_explicit_limit
 
-from lib.generation_integrity import require_complete_generated_tokens
+from lib.generation_integrity import (
+    model_context_tokens,
+    remaining_model_context_tokens,
+    require_complete_generated_tokens,
+)
 from .simulation_bridge import (
     ActionOutcome,
     Scenario,
@@ -201,7 +205,6 @@ class TeamRLConfig:
     kondo_hard: bool = True
 
     # Generation
-    max_new_tokens: int = 256
     temperature: float = 0.7
 
     # Game
@@ -337,15 +340,25 @@ class TeamModel:
         enc = tokenize_with_explicit_limit(
             self.tokenizer,
             prompt,
-            max_tokens=2048,
+            max_tokens=model_context_tokens(
+                self.model,
+                self.tokenizer,
+                source="team_rl.generate_action",
+            ),
             return_tensors="pt",
         ).to(self.config.device)
+        max_new_tokens = remaining_model_context_tokens(
+            self.model,
+            self.tokenizer,
+            prompt_tokens=enc["input_ids"].shape[1],
+            source="team_rl.generate_action",
+        )
         # Must switch to eval mode for generation — gradient checkpointing
         # corrupts the KV cache and produces garbled output in train mode.
         self.model.eval()
         out = self.model.generate(
             enc["input_ids"],
-            max_new_tokens=self.config.max_new_tokens,
+            max_new_tokens=max_new_tokens,
             temperature=self.config.temperature,
             top_p=0.9,
             do_sample=True,
@@ -356,7 +369,7 @@ class TeamModel:
         generated_ids = out[0, prompt_len:]
         require_complete_generated_tokens(
             generated_ids,
-            max_new_tokens=self.config.max_new_tokens,
+            max_new_tokens=max_new_tokens,
             source="team_rl.generate_action",
             terminal_token_ids=self.tokenizer.eos_token_id,
         )
@@ -821,7 +834,7 @@ async def run_team_training(
                 try:
                     # Get market context for realism
                     scenario = await bridge.get_scenario(red_npc)
-                    context = scenario.to_prompt_context()[:300]
+                    context = scenario.to_prompt_context()
 
                     # Red agent generates attack message
                     atk_prompt = build_social_attack_prompt(red_name, blue_name, intent, context)
@@ -837,14 +850,24 @@ async def run_team_training(
                     atk_enc = tokenize_with_explicit_limit(
                         red_team.tokenizer,
                         atk_text,
-                        max_tokens=2048,
+                        max_tokens=model_context_tokens(
+                            red_team.model,
+                            red_team.tokenizer,
+                            source="team_rl.red_team",
+                        ),
                         return_tensors="pt",
                     ).to(config.device)
+                    atk_max_new_tokens = remaining_model_context_tokens(
+                        red_team.model,
+                        red_team.tokenizer,
+                        prompt_tokens=atk_enc["input_ids"].shape[1],
+                        source="team_rl.red_team",
+                    )
                     red_team.model.eval()
                     with torch.no_grad():
                         atk_out = red_team.model.generate(
                             atk_enc["input_ids"],
-                            max_new_tokens=256,
+                            max_new_tokens=atk_max_new_tokens,
                             temperature=0.8,
                             top_p=0.9,
                             do_sample=True,
@@ -854,7 +877,7 @@ async def run_team_training(
                     atk_generated_ids = atk_out[0, atk_enc["input_ids"].shape[1] :]
                     require_complete_generated_tokens(
                         atk_generated_ids,
-                        max_new_tokens=256,
+                        max_new_tokens=atk_max_new_tokens,
                         source="team_rl.red_team",
                         terminal_token_ids=red_team.tokenizer.eos_token_id,
                     )
@@ -885,14 +908,24 @@ async def run_team_training(
                     def_enc = tokenize_with_explicit_limit(
                         blue_team.tokenizer,
                         def_text,
-                        max_tokens=2048,
+                        max_tokens=model_context_tokens(
+                            blue_team.model,
+                            blue_team.tokenizer,
+                            source="team_rl.blue_team",
+                        ),
                         return_tensors="pt",
                     ).to(config.device)
+                    def_max_new_tokens = remaining_model_context_tokens(
+                        blue_team.model,
+                        blue_team.tokenizer,
+                        prompt_tokens=def_enc["input_ids"].shape[1],
+                        source="team_rl.blue_team",
+                    )
                     blue_team.model.eval()
                     with torch.no_grad():
                         def_out = blue_team.model.generate(
                             def_enc["input_ids"],
-                            max_new_tokens=256,
+                            max_new_tokens=def_max_new_tokens,
                             temperature=0.7,
                             top_p=0.9,
                             do_sample=True,
@@ -902,7 +935,7 @@ async def run_team_training(
                     def_generated_ids = def_out[0, def_enc["input_ids"].shape[1] :]
                     require_complete_generated_tokens(
                         def_generated_ids,
-                        max_new_tokens=256,
+                        max_new_tokens=def_max_new_tokens,
                         source="team_rl.blue_team",
                         terminal_token_ids=blue_team.tokenizer.eos_token_id,
                     )

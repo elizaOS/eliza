@@ -311,12 +311,13 @@ function AppsSidebarAppButtonInner<TPayload>({
 
   return (
     <Button
-      variant="ghost"
+      variant="selection"
+      size="eventRow"
+      align="start"
+      data-state={selected ? "on" : "off"}
       onClick={handleClick}
       aria-current={selected ? "page" : undefined}
-      className={`group flex h-auto w-full min-w-0 justify-start gap-2 rounded-sm px-2 py-1 text-left font-normal transition-colors ${
-        selected ? "bg-accent/15 text-txt" : "text-txt hover:bg-bg-muted/50"
-      }`}
+      className="group min-w-0"
     >
       <Icon
         className="size-3.5 shrink-0 text-muted"

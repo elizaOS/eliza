@@ -16,6 +16,7 @@ import {
 	runV5MessageRuntimeStage1,
 	wrapSingleTurnVisibleCallback,
 } from "../services/message";
+import { PI_CODING_ACTION_PROFILE } from "../types/coding";
 import type {
 	Action,
 	ActionResult,
@@ -379,6 +380,107 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		);
 	});
 
+	it("applies the Pi coding profile while retaining planner protocol terminals", async () => {
+		const actions = [
+			"FILE",
+			"READ",
+			"WRITE",
+			"EDIT",
+			"SHELL",
+			"WORKTREE",
+			"ATTACHMENT",
+			"GENERATE_MEDIA",
+			"WEB_FETCH",
+			"WEB_SEARCH",
+		].map((name) =>
+			makeMockAction({
+				name,
+				contexts: ["code", "files", "terminal"],
+				handler: async () => ({ success: true, text: `${name} complete` }),
+			}),
+		);
+		const runtime = makeRuntime({
+			actions,
+			owner: true,
+			responses: [
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						completed: true,
+						toolCalls: [{ id: "read-1", name: "READ", args: {} }],
+					},
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{ id: "reply-1", name: "REPLY", args: { text: "Done." } },
+						],
+					},
+				},
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("read the repository"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			codingMode: true,
+			codingActionProfile: PI_CODING_ACTION_PROFILE,
+		});
+
+		const plannerTools = new Set(
+			getCalls(runtime).flatMap((call) =>
+				(
+					(call.params as { tools?: Array<{ name?: string }> }).tools ?? []
+				).flatMap((tool) => (tool.name ? [tool.name] : [])),
+			),
+		);
+		for (const name of ["READ", "SHELL", "EDIT", "WRITE"]) {
+			expect(plannerTools).toContain(name);
+		}
+		for (const name of ["REPLY", "IGNORE", "STOP"]) {
+			expect(plannerTools).toContain(name);
+		}
+		for (const name of [
+			"FILE",
+			"WORKTREE",
+			"ATTACHMENT",
+			"GENERATE_MEDIA",
+			"WEB_FETCH",
+			"WEB_SEARCH",
+		]) {
+			expect(plannerTools).not.toContain(name);
+		}
+		const nonterminalTools = [...plannerTools]
+			.filter((name) => !["REPLY", "IGNORE", "STOP"].includes(name))
+			.sort();
+		expect(nonterminalTools).toEqual(["EDIT", "READ", "SHELL", "WRITE"]);
+		expect(runtime.actions).toHaveLength(actions.length);
+		expect(runtime.logger.debug).toHaveBeenCalledWith(
+			expect.objectContaining({
+				actionSurface: expect.objectContaining({
+					tierAParents: ["EDIT", "READ", "SHELL", "WRITE"],
+					codingActionProfile: {
+						kind: "pi",
+						includeWorktree: false,
+					},
+				}),
+			}),
+			"Built v5 planner action surface",
+		);
+		const recordedTrajectory = readRecordedTrajectories(String(AGENT_ID))[0] as
+			| { codingActionProfile?: { kind: string; includeWorktree: boolean } }
+			| undefined;
+		expect(recordedTrajectory?.codingActionProfile).toEqual({
+			kind: "pi",
+			includeWorktree: false,
+		});
+	});
+
 	it("does not leak coding mode into the next ordinary turn", async () => {
 		const replyAction = makeMockAction({
 			name: "REPLY",
@@ -537,6 +639,127 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			message: expect.stringContaining("coding task is incomplete"),
 		});
 		expect(getCalls(runtime)).toHaveLength(2);
+	});
+
+	it("carries an exhausted verification repair through production Content", async () => {
+		const writeAction = makeMockAction({
+			name: "WRITE",
+			contexts: ["code", "files"],
+			parameters: [
+				{
+					name: "file_path",
+					description: "File path",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "content",
+					description: "File content",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			handler: async () => ({ success: true, text: "wrote config.go" }),
+		});
+		const shellAction = makeMockAction({
+			name: "SHELL",
+			contexts: ["code", "terminal"],
+			parameters: [
+				{
+					name: "command",
+					description: "Command to execute",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			handler: async () => ({
+				success: false,
+				text: "command_failed: command exited with code 1",
+				data: {
+					command: "bun run typecheck",
+					exit_code: 1,
+					output: "src/config.ts:41:7 TS2322",
+					signal: null,
+				},
+			}),
+		});
+		const terminalReply = {
+			expectModelType: ModelType.ACTION_PLANNER,
+			body: {
+				text: "",
+				toolCalls: [
+					{
+						id: "reply-unverified",
+						name: "REPLY",
+						args: { text: "Implemented the change." },
+					},
+				],
+			},
+		};
+		const runtime = makeRuntime({
+			actions: [writeAction, shellAction],
+			owner: true,
+			responses: [
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "write-1",
+								name: "WRITE",
+								args: { file_path: "config.go", content: "package config" },
+							},
+						],
+					},
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "typecheck-1",
+								name: "SHELL",
+								args: { command: "bun run typecheck" },
+							},
+						],
+					},
+				},
+				terminalReply,
+				terminalReply,
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("change config.go"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			codingMode: true,
+			plannerLoopConfig: { maxTerminalOnlyContinuations: 1 },
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind !== "planned_reply") throw new Error("expected reply");
+		const terminalFailure = {
+			kind: "coding_verification_failed",
+			code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
+			transient: false,
+			message: expect.stringContaining("coding task is incomplete"),
+		};
+		expect(result.result.responseContent).toMatchObject({
+			failureKind: "coding_verification_failed",
+			terminalFailure,
+			elizaSyntheticFailure: true,
+			transient: false,
+		});
+		expect(result.result.responseMessages.at(-1)?.content).toMatchObject({
+			failureKind: "coding_verification_failed",
+			terminalFailure,
+		});
+		expect(result.result.terminalFailure).toMatchObject(terminalFailure);
+		expect(getCalls(runtime)).toHaveLength(4);
 	});
 
 	it("preserves an unverified-mutation failure when callback delivery suppresses response content", async () => {
@@ -821,7 +1044,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					promptSegments?: unknown[];
 					responseSchema?: unknown;
 					providerOptions?: {
-						eliza?: { segmentHashes?: unknown[] };
+						eliza?: { segmentHashes?: unknown[]; conversationId?: string };
 						cerebras?: { prompt_cache_key?: string; promptCacheKey?: string };
 					};
 			  }
@@ -832,7 +1055,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					promptSegments?: unknown[];
 					responseSchema?: unknown;
 					providerOptions?: {
-						eliza?: { segmentHashes?: unknown[] };
+						eliza?: { segmentHashes?: unknown[]; conversationId?: string };
 						cerebras?: { prompt_cache_key?: string; promptCacheKey?: string };
 					};
 			  }
@@ -908,6 +1131,15 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		);
 		expect(evaluatorParams?.providerOptions?.cerebras?.prompt_cache_key).toBe(
 			plannerParams?.providerOptions?.cerebras?.prompt_cache_key,
+		);
+		// Local/model-runner affinity is stable across turns but stage-scoped so
+		// planner and evaluator KV state cannot collide. The shared provider
+		// prefix hash above intentionally remains identical across both stages.
+		expect(plannerParams?.providerOptions?.eliza?.conversationId).toBe(
+			`${ROOM_ID}:planner`,
+		);
+		expect(evaluatorParams?.providerOptions?.eliza?.conversationId).toBe(
+			`${ROOM_ID}:evaluator`,
 		);
 
 		// Trajectory recording wrote a JSON file

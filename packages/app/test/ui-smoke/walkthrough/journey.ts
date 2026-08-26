@@ -396,6 +396,7 @@ async function installMutableFirstRun(page: Page): Promise<FirstRunControl> {
 
 async function injectFullCapabilityHost(page: Page): Promise<void> {
   await page.addInitScript(() => {
+    const secureStore = new Map<string, string>();
     const win = window as unknown as Record<string, unknown>;
     win.__ELIZA_APP_API_BASE__ = window.location.origin;
     win.__electrobunWindowId = 1;
@@ -407,6 +408,24 @@ async function injectFullCapabilityHost(page: Page): Promise<void> {
         desktopGetVersion: async () => ({ runtime: "walkthrough-test" }),
         desktopRegisterShortcut: async () => ({ success: true }),
         desktopSetTrayMenu: async () => undefined,
+        secureStoreGet: async ({ kind }: { kind: string }) =>
+          secureStore.has(kind)
+            ? { ok: true, value: secureStore.get(kind) }
+            : { ok: false, reason: "not_found" },
+        secureStoreSet: async ({
+          kind,
+          value,
+        }: {
+          kind: string;
+          value: string;
+        }) => {
+          secureStore.set(kind, value);
+          return { ok: true };
+        },
+        secureStoreDelete: async ({ kind }: { kind: string }) => ({
+          ok: true,
+          deleted: secureStore.delete(kind),
+        }),
       },
       onMessage: () => undefined,
       offMessage: () => undefined,

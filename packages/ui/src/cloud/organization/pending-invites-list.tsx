@@ -85,7 +85,7 @@ export function PendingInvitesList({
         );
       case "accepted":
         return (
-          <span className="px-2 py-0.5 border border-green-500/40 bg-green-500/20 text-green-700 dark:text-green-300 flex items-center gap-1 text-xs font-mono">
+          <span className="px-2 py-0.5 border border-status-success/40 bg-status-success-bg text-status-success flex items-center gap-1 text-xs font-mono">
             <CheckCircle2 className="size-3" />
             Accepted
           </span>
@@ -169,10 +169,10 @@ export function PendingInvitesList({
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button
-                      variant="ghost"
+                      variant="dangerGhost"
+                      size="icon-sm"
                       type="button"
                       aria-label={`Revoke invitation for ${invite.email}`}
-                      className="p-2 hover:bg-surface transition-colors border border-border"
                     >
                       <X className="size-4 text-danger" />
                     </Button>

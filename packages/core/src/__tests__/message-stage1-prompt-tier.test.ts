@@ -15,6 +15,7 @@ import {
 import { ContextRegistry } from "../runtime/context-registry";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import {
+	classifyMessageAddress,
 	runV5MessageRuntimeStage1,
 	textContainsAgentName,
 } from "../services/message";
@@ -322,6 +323,30 @@ describe("Stage-1 complete prompt rendering", () => {
 		expect(
 			textContainsAgentName("nubilio whats the setting", ["remilio nubilio"]),
 		).toBe(true);
+	});
+
+	it.each([
+		["Eliza, what time is it?", true],
+		["hey Eliza can you help", true],
+		["@Eliza why did that fail", true],
+		["Eliza tell me about the weather", true],
+		["Eliza help me with this", true],
+		["Eliza show me the logs", true],
+		["Eliza summarize that", true],
+		["Eliza run the build", true],
+		["ok Eliza", true],
+		["I think Eliza is great", false],
+		["Eliza was right about that", false],
+		["ask Eliza about it", false],
+	] as const)("classifies textual address %s -> %s", (text, expected) => {
+		const runtime = { character: { name: "Eliza" } } as IAgentRuntime;
+		const message = makeMessage({
+			channelType: String(ChannelType.GROUP),
+			text,
+		});
+		expect(classifyMessageAddress(runtime, message).textualAgentName).toBe(
+			expected,
+		);
 	});
 
 	it("renders the full rule block when channel type is missing (fail-open)", async () => {

@@ -16,7 +16,8 @@
  *     crashes, zero rate-limit accumulation inside a single runtime.
  *
  * Usage:
- *   bun packages/scripts/run-scenarios-isolated.mjs <scenarios-dir> [--report <path>]
+ *   bun packages/scripts/run-scenarios-isolated.mjs <scenarios-dir>
+ *     [--file-glob <glob>] [--artifacts-dir <path>] [--report <path>]
  *
  * Env:
  *   Same as the underlying CLI (GROQ_API_KEY / OPENAI_API_KEY / etc.).
@@ -41,6 +42,13 @@ export function resolveScenarioIsolatedPaths() {
 }
 
 const { repoRoot: REPO_ROOT, cli: CLI } = resolveScenarioIsolatedPaths();
+const SOURCE_CLI_ARGS = [
+  "--conditions",
+  "eliza-source",
+  "--tsconfig-override",
+  path.join(REPO_ROOT, "tsconfig.json"),
+  CLI,
+];
 
 if (process.argv.includes("--print-paths")) {
   console.log(JSON.stringify({ repoRoot: REPO_ROOT, cli: CLI }));
@@ -55,9 +63,11 @@ if (args.length === 0) {
 
 const dir = path.resolve(args[0]);
 let reportPath = null;
+let artifactsDir = null;
 let workers = Math.min(4, Math.max(1, os.availableParallelism()));
 let timeoutMs = 15 * 60 * 1000;
 const forwardedArgs = [];
+const listSelectionArgs = [];
 for (let i = 1; i < args.length; i += 1) {
   if (args[i] === "--report" && args[i + 1]) {
     reportPath = path.resolve(args[i + 1]);
@@ -67,6 +77,16 @@ for (let i = 1; i < args.length; i += 1) {
     i += 1;
   } else if (args[i] === "--timeout-ms" && args[i + 1]) {
     timeoutMs = Number(args[i + 1]);
+    i += 1;
+  } else if (args[i] === "--artifacts-dir" && args[i + 1]) {
+    artifactsDir = path.resolve(args[i + 1]);
+    i += 1;
+  } else if (args[i] === "--file-glob" && args[i + 1]) {
+    listSelectionArgs.push(args[i + 1]);
+    i += 1;
+  } else if (args[i] === "--lane" && args[i + 1]) {
+    listSelectionArgs.push(args[i], args[i + 1]);
+    forwardedArgs.push(args[i], args[i + 1]);
     i += 1;
   } else {
     forwardedArgs.push(args[i]);
@@ -88,11 +108,15 @@ if (!fs.existsSync(dir)) {
 }
 
 // 1. List scenario IDs from the target dir.
-const listed = spawnSync("bun", [CLI, "list", dir], {
-  cwd: REPO_ROOT,
-  encoding: "utf8",
-  stdio: ["inherit", "pipe", "inherit"],
-});
+const listed = spawnSync(
+  "bun",
+  [...SOURCE_CLI_ARGS, "list", dir, ...listSelectionArgs],
+  {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    stdio: ["inherit", "pipe", "inherit"],
+  },
+);
 if (listed.status !== 0) {
   console.error(`[isolated] scenario listing failed (exit ${listed.status})`);
   process.exit(listed.status ?? 1);
@@ -107,9 +131,21 @@ console.error(
 );
 
 // 2. Run each scenario in a unique directory and bounded worker process.
-const runRoot = fs.mkdtempSync(
-  path.join(os.tmpdir(), "scenario-isolated-run-"),
-);
+let temporaryRunRoot = false;
+let runRoot;
+if (artifactsDir) {
+  if (fs.existsSync(artifactsDir) && fs.readdirSync(artifactsDir).length > 0) {
+    console.error(
+      `[isolated] --artifacts-dir must be absent or empty: ${artifactsDir}`,
+    );
+    process.exit(2);
+  }
+  fs.mkdirSync(artifactsDir, { recursive: true });
+  runRoot = artifactsDir;
+} else {
+  temporaryRunRoot = true;
+  runRoot = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-isolated-run-"));
+}
 const perRunReports = new Array(ids.length).fill(null);
 const startedAtIso = new Date().toISOString();
 let passed = 0;
@@ -135,10 +171,19 @@ function runOne(id, index) {
     );
     fs.mkdirSync(scenarioDir, { recursive: true });
     const tmpReport = path.join(scenarioDir, "report.json");
+    const stdout = fs.openSync(path.join(scenarioDir, "stdout.log"), "wx");
+    const stderr = fs.openSync(path.join(scenarioDir, "stderr.log"), "wx");
+    let logsClosed = false;
+    const closeLogs = () => {
+      if (logsClosed) return;
+      logsClosed = true;
+      fs.closeSync(stdout);
+      fs.closeSync(stderr);
+    };
     const child = spawn(
       "bun",
       [
-        CLI,
+        ...SOURCE_CLI_ARGS,
         "run",
         dir,
         "--scenario",
@@ -151,7 +196,7 @@ function runOne(id, index) {
       ],
       {
         cwd: REPO_ROOT,
-        stdio: ["inherit", "inherit", "inherit"],
+        stdio: ["ignore", stdout, stderr],
         env: process.env,
       },
     );
@@ -167,12 +212,14 @@ function runOne(id, index) {
     child.once("error", (error) => {
       clearTimeout(timer);
       activeChildren.delete(child);
+      closeLogs();
       resolve({ id, index, ok: false, cause: `spawn error ${error.message}` });
     });
     child.once("close", (status, signal) => {
       clearTimeout(timer);
       activeChildren.delete(child);
-      if (status !== 0) {
+      closeLogs();
+      if (status === null || timedOut || (status !== 0 && status !== 1)) {
         const cause = timedOut
           ? `timeout after ${timeoutMs}ms`
           : status === null
@@ -251,6 +298,7 @@ const completedAtIso = new Date().toISOString();
 // 3. Aggregate into a single report.
 const aggregate = {
   runId: `isolated-${Date.now()}`,
+  artifactsDir: temporaryRunRoot ? null : runRoot,
   providerName: perRunReports.find(Boolean)?.providerName ?? "unknown",
   startedAtIso,
   completedAtIso,
@@ -273,7 +321,11 @@ for (const s of aggregate.scenarios) {
   console.error(`  ${icon} ${s.id} (${s.durationMs}ms)`);
 }
 
-fs.rmSync(runRoot, { recursive: true, force: true });
+if (temporaryRunRoot) {
+  fs.rmSync(runRoot, { recursive: true, force: true });
+} else {
+  console.error(`[isolated] retained artifacts at ${runRoot}`);
+}
 
 if (interruptedSignal !== null) {
   process.kill(process.pid, interruptedSignal);

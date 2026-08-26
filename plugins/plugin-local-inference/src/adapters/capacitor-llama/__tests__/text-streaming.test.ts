@@ -144,17 +144,23 @@ describe("capacitor-llama / text-streaming", () => {
 		expect(await stream.finishReason).toBe("stop");
 	});
 
-	it("resolves finishReason to length on stopped_limit", async () => {
+	it("rejects partial streamed output when the native limit is reached", async () => {
 		const ctx = makeCtx(["a"], { stopped_eos: false, stopped_limit: 1 });
 		const stream = streamCapacitorPrompt({
 			ctx,
 			params: { prompt: "hi" },
 			estimateUsage,
 		});
-		for await (const _ of stream.textStream) {
-			/* drain */
-		}
-		expect(await stream.finishReason).toBe("length");
+		const fullText = stream.text;
+		await expect(async () => {
+			for await (const _ of stream.textStream) {
+				/* drain until the terminal error */
+			}
+		}).rejects.toMatchObject({ code: "LOCAL_INFERENCE_INCOMPLETE_OUTPUT" });
+		await expect(fullText).rejects.toMatchObject({
+			code: "LOCAL_INFERENCE_INCOMPLETE_OUTPUT",
+		});
+		expect(await stream.finishReason).toBeUndefined();
 	});
 
 	it("invokes onChunk with every visible delta and the concatenation matches the full text", async () => {

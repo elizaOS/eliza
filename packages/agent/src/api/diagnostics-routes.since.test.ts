@@ -76,6 +76,21 @@ describe("GET /api/logs since timestamp", () => {
     );
   });
 
+  it("returns every filtered buffered entry without a hidden tail cap", async () => {
+    const ctx = makeCtx("");
+    ctx.logBuffer = Array.from({ length: 260 }, (_, index) =>
+      entry(index + 1, `entry-${index}`),
+    );
+
+    await handleDiagnosticsRoutes(ctx);
+
+    const [, body, status] = ctx.json.mock.calls[0];
+    expect(status ?? 200).toBe(200);
+    expect(body.entries).toHaveLength(260);
+    expect(body.entries[0].message).toBe("entry-0");
+    expect(body.entries.at(-1).message).toBe("entry-259");
+  });
+
   it.each([
     "1e2",
     "12px",

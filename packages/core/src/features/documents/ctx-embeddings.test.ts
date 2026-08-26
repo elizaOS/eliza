@@ -16,8 +16,8 @@ import {
  * and chunk content into the template (so the model contextualizes the right
  * chunk) and fail safe with an explicit error string when content is missing.
  * getPromptForMimeType selects a content-type-specific template, and
- * getChunkWithContext returns the generated context, falling back to the raw
- * chunk when no context was produced.
+ * getChunkWithContext mechanically retains the complete raw chunk regardless
+ * of what the enrichment model returned.
  */
 
 describe("getContextualizationPrompt", () => {
@@ -27,6 +27,7 @@ describe("getContextualizationPrompt", () => {
 		expect(out).toContain("THE CHUNK");
 		expect(out).not.toContain("{chunk_content}");
 		expect(out).not.toContain("{doc_content}");
+		expect(out).not.toMatch(/\d+[–-]\d+ tokens/);
 	});
 
 	it("fails safe when content is missing", () => {
@@ -64,10 +65,12 @@ describe("getCachingContextualizationPrompt", () => {
 });
 
 describe("getChunkWithContext", () => {
-	it("returns the generated context, or the raw chunk when context is empty", () => {
-		expect(getChunkWithContext("the chunk", "  enriched context  ")).toBe(
-			"enriched context",
-		);
+	it("always preserves the complete source chunk mechanically", () => {
+		const longChunk = `${"source ".repeat(10_000)}END_SENTINEL`;
+		const enriched = getChunkWithContext(longChunk, "  enriched context  ");
+		expect(enriched).toContain("enriched context");
+		expect(enriched).toContain(longChunk);
+		expect(enriched).toContain("END_SENTINEL");
 		expect(getChunkWithContext("the chunk", "")).toBe("the chunk");
 		expect(getChunkWithContext("the chunk", "   ")).toBe("the chunk");
 	});

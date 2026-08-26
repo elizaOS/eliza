@@ -139,6 +139,105 @@ describe("Shared turn AgentRuntime boundary", () => {
     expect(result.reply).toBe("runtime reply");
   });
 
+  test("requires a grounded media action result instead of accepting a model-invented tool failure", async () => {
+    const mediaInput = {
+      character: { name: "Eliza", system: "You are Eliza." },
+      history: [
+        {
+          role: "assistant" as const,
+          content: "The image tool had a billing problem earlier.",
+        },
+      ],
+      message: "Generate an image of a golden retriever puppy",
+      execution: {
+        agentKey: "personal:user-1",
+        authenticatedPersonalSharedUser: true as const,
+        channel: { type: ChannelType.GROUP, source: "blooio" },
+        media: {
+          canGenerateMedia: async () => true,
+          generateMedia: async () => ({ mediaType: "image" as const }),
+        },
+      },
+    };
+
+    const error = await runSharedAgentTurn(mediaInput).catch((caught) => caught as Error);
+    expect(error.message).toContain("AgentRuntime turn failed");
+    expect((error.cause as Error).message).toContain(
+      "executable GENERATE_MEDIA request without an action result",
+    );
+    expect(JSON.stringify(runtimeInputs[0])).toContain(
+      "Call GENERATE_MEDIA before any terminal answer",
+    );
+    expect(JSON.stringify(runtimeInputs[0])).toContain(
+      "generation was attempted, unavailable, or failed is not an execution result",
+    );
+
+    runtimeActionResults = [
+      {
+        success: false,
+        error: "provider rejected request",
+        data: { actionName: "GENERATE_MEDIA", mediaType: "image" },
+      },
+    ];
+    const groundedFailure = await runSharedAgentTurn(mediaInput);
+    expect(groundedFailure.actionResults).toEqual(runtimeActionResults);
+  });
+
+  test("buffers explicit media streams so the required action receipt cannot be bypassed", async () => {
+    runtimeActionResults = [
+      {
+        success: true,
+        data: { actionName: "GENERATE_MEDIA", mediaType: "video" },
+      },
+    ];
+    const result = await runSharedAgentTurnStream({
+      character: { name: "Eliza", system: "You are Eliza." },
+      history: [],
+      message: "Create a video from this attached image",
+      execution: {
+        agentKey: "personal:user-1",
+        authenticatedPersonalSharedUser: true,
+        channel: { type: ChannelType.GROUP, source: "blooio" },
+        media: {
+          canGenerateMedia: async () => true,
+          generateMedia: async () => ({ mediaType: "video" }),
+        },
+      },
+    });
+
+    expect(runtimeInputs).toHaveLength(1);
+    expect(streamInputs).toHaveLength(0);
+    const parts = [];
+    if (!result.parts) throw new Error("Expected buffered media parts");
+    for await (const part of result.parts) parts.push(part);
+    expect(parts.at(-1)).toMatchObject({
+      type: "finish",
+      actionResults: runtimeActionResults,
+    });
+  });
+
+  test("does not force generation for an image-description request", async () => {
+    const result = await runSharedAgentTurn({
+      character: { name: "Eliza", system: "You are Eliza." },
+      history: [],
+      message: "Can you describe the image I attached?",
+      execution: {
+        agentKey: "personal:user-1",
+        authenticatedPersonalSharedUser: true,
+        channel: { type: ChannelType.GROUP, source: "blooio" },
+        media: {
+          canGenerateMedia: async () => true,
+          generateMedia: async () => ({ mediaType: "image" }),
+        },
+      },
+    });
+
+    expect(result.reply).toBe("runtime reply");
+    expect(JSON.stringify(runtimeInputs[0])).not.toContain(
+      "Call GENERATE_MEDIA before any terminal answer",
+    );
+  });
+
   test("routes unsupported capabilities through the model with a truthful constraint", async () => {
     let dispatches = 0;
     const result = await runSharedAgentTurn({

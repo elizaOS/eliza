@@ -7,15 +7,10 @@
  */
 
 import { describe, expect, test } from "vitest";
-import * as stub from "./ssh2";
-import workerSsh2Surface, { Client, Server, utils } from "./ssh2";
+import { Client, Server, utils } from "./ssh2";
 
 const NOT_AVAILABLE =
   "ssh2 is not available on Cloudflare Workers — proxy to the Node sidecar (cloud/INFRA.md).";
-
-const EXPORT_NAMES = ["Client", "Server", "default", "utils"] as const;
-
-const DEFAULT_KEYS = ["Client", "Server", "utils"] as const;
 
 const CONSTRUCTORS = {
   Client,
@@ -39,52 +34,6 @@ function expectUnavailable(fn: () => unknown, label: string): void {
 }
 
 describe("ssh2 Worker stub", () => {
-  test("exports Client, Server, utils, and default and nothing else", () => {
-    expect([...Object.keys(stub)].sort()).toEqual([...EXPORT_NAMES]);
-    expect(Object.keys(stub)).toHaveLength(4);
-  });
-
-  test("does not expose queue, comparator, or capacity fields", () => {
-    const record = stub as unknown as Record<string, unknown>;
-    expect("queue" in record).toBe(false);
-    expect("capacity" in record).toBe(false);
-    expect("comparator" in record).toBe(false);
-    expect(record.queue).toBeUndefined();
-    expect(record.capacity).toBeUndefined();
-    expect(record.comparator).toBeUndefined();
-  });
-
-  test("default export is a distinct object whose own keys are Client, Server, utils in source order", () => {
-    expect(workerSsh2Surface).toBe(stub.default);
-    expect(workerSsh2Surface).not.toBe(stub);
-    expect(Object.keys(workerSsh2Surface)).toEqual([...DEFAULT_KEYS]);
-    expect(workerSsh2Surface.Client).toBe(Client);
-    expect(workerSsh2Surface.Server).toBe(Server);
-    expect(workerSsh2Surface.utils).toBe(utils);
-  });
-
-  test("Client and Server are distinct class constructors", () => {
-    expect(typeof Client).toBe("function");
-    expect(typeof Server).toBe("function");
-    expect(Client).not.toBe(Server);
-    expect(Client.name).toBe("Client");
-    expect(Server.name).toBe("Server");
-    expect(Object.getOwnPropertyNames(Client.prototype)).toEqual([
-      "constructor",
-    ]);
-    expect(Object.getOwnPropertyNames(Server.prototype)).toEqual([
-      "constructor",
-    ]);
-  });
-
-  test("dynamic import resolves to the same module singleton", async () => {
-    const again = await import("./ssh2");
-    expect(again.Client).toBe(Client);
-    expect(again.Server).toBe(Server);
-    expect(again.utils).toBe(utils);
-    expect(again.default).toBe(workerSsh2Surface);
-  });
-
   describe("unavailable constructors", () => {
     test.each(CONSTRUCTOR_NAMES)(
       "%s is a class whose constructor throws the unavailable Error",

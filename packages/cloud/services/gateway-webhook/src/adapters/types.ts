@@ -65,6 +65,7 @@ export interface PlatformAdapter {
     event: ChatEvent,
     text: string,
     deliveryHooks?: TelegramDeliveryHooks,
+    mediaUrls?: readonly string[],
   ): Promise<PlatformDeliveryReceipt>;
   sendTypingIndicator(config: WebhookConfig, event: ChatEvent): Promise<void>;
   /** Clears an explicit provider typing state when the adapter supports it. */

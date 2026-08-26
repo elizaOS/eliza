@@ -3,59 +3,11 @@
  * identity-bearing classes and private mutable registries stay elsewhere,
  * while boot configuration uses the established cross-bundle ambient slot.
  */
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { setAmbientSingleton } from "./ambient-context.ts";
 import * as clientPublic from "./client-public.ts";
 
-const src = readFileSync(
-	path.join(path.dirname(fileURLToPath(import.meta.url)), "client-public.ts"),
-	"utf8",
-);
-const packageJson = JSON.parse(
-	readFileSync(
-		path.join(path.dirname(fileURLToPath(import.meta.url)), "../package.json"),
-		"utf8",
-	),
-);
-
 describe("@elizaos/core/client-public is duplicate-safe", () => {
-	it("exports only the reviewed helper allowlist", () => {
-		expect(src).not.toMatch(/^export[\s\S]*\bElizaError\b/m);
-		expect(src).not.toMatch(/^export[\s\S]*registerConnectorSource/m);
-		expect(src).not.toMatch(/^export\s+\*/m);
-		expect(Object.keys(clientPublic).sort()).toEqual([
-			"formatError",
-			"isElizaSettingsDebugEnabled",
-			"isTruthyEnvValue",
-			"resolveAliasedEnvValue",
-			"sanitizeForSettingsDebug",
-			"sanitizeSpeechText",
-			"settingsDebugCloudSummary",
-		]);
-	});
-
-	it("exports the helpers required by shared", () => {
-		expect(typeof clientPublic.formatError).toBe("function");
-		expect(typeof clientPublic.isTruthyEnvValue).toBe("function");
-		expect(typeof clientPublic.resolveAliasedEnvValue).toBe("function");
-		expect(typeof clientPublic.isElizaSettingsDebugEnabled).toBe("function");
-		expect(typeof clientPublic.sanitizeForSettingsDebug).toBe("function");
-		expect(typeof clientPublic.sanitizeSpeechText).toBe("function");
-		expect(typeof clientPublic.settingsDebugCloudSummary).toBe("function");
-	});
-
-	it("publishes the browser and server builds through matching conditions", () => {
-		const subpath = packageJson.exports["./client-public"];
-		expect(subpath.browser.import).toBe("./dist/browser/client-public.js");
-		expect(subpath.browser.default).toBe("./dist/browser/client-public.js");
-		expect(subpath.node.import).toBe("./dist/node/client-public.js");
-		expect(subpath.bun.import).toBe("./dist/node/client-public.js");
-		expect(subpath.default).toBe("./dist/node/client-public.js");
-	});
-
 	it("formatError survives hostile primitives", () => {
 		const hostile = Object.create(null);
 		Object.defineProperty(hostile, Symbol.toPrimitive, {

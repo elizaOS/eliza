@@ -48,8 +48,8 @@ interface ModelCardProps {
 
 const FIT_STYLES: Record<FitLevel, string> = {
   fits: "text-status-success border-status-success/40 bg-status-success-bg",
-  tight: "text-amber-500 border-amber-500/40 bg-amber-500/10",
-  wontfit: "text-rose-500 border-rose-500/40 bg-rose-500/10",
+  tight: "border-warn/40 bg-warn/10 text-warn",
+  wontfit: "border-danger/40 bg-danger/10 text-danger",
 };
 
 export function ModelCard({
@@ -123,7 +123,7 @@ export function ModelCard({
 
       {download && downloading && <DownloadProgress job={download} />}
       {failed && download?.error && (
-        <div className="text-xs text-rose-500">
+        <div className="text-xs text-danger">
           {t("modelcard.downloadFailed", {
             error: download.error,
             defaultValue: "Download failed: {{error}}",

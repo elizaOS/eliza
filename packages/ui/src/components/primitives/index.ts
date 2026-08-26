@@ -23,15 +23,20 @@ export {
   MessageHeader,
 } from "../ui/message";
 export * from "../ui/message-scroller";
+export * from "../ui/native-dialog";
+export * from "../ui/native-select";
 export * from "../ui/popover";
 export * from "../ui/progress";
+export * from "../ui/radio-group";
 export * from "../ui/select";
 export * from "../ui/separator";
+export * from "../ui/settings-controls";
 export * from "../ui/skeleton";
 export * from "../ui/slider";
 export * from "../ui/spinner";
 export * from "../ui/stack";
 export * from "../ui/switch";
+export * from "../ui/table";
 export * from "../ui/tabs";
 export * from "../ui/tag-editor";
 export * from "../ui/textarea";

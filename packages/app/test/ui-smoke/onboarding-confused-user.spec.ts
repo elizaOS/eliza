@@ -12,7 +12,7 @@ import {
 } from "./helpers";
 import {
   expectChatFirstOnboarding,
-  expectOnboardingSettleToHalf,
+  expectOnboardingSettleToFull,
   injectFullCapabilityHost,
   installHomeRoutes,
   makeScreenshotter,
@@ -154,7 +154,7 @@ test.describe("confused-user onboarding", () => {
     await expect(skip).toBeVisible({ timeout: 30_000 });
     await skip.click();
 
-    await expectOnboardingSettleToHalf(page);
+    await expectOnboardingSettleToFull(page);
     await settleHomeEntrance(page);
     await screenshot(page, "tapped-through-home");
 
@@ -186,7 +186,7 @@ test.describe("confused-user onboarding", () => {
     await expect(skip).toBeVisible({ timeout: 30_000 });
     await doubleTapChoice(page, TUTORIAL_CHOICE("skip"));
 
-    await expectOnboardingSettleToHalf(page);
+    await expectOnboardingSettleToFull(page);
     await settleHomeEntrance(page);
     await screenshot(page, "double-click-home");
 
@@ -257,7 +257,7 @@ test.describe("confused-user onboarding", () => {
     await expect(skip).toBeVisible({ timeout: 30_000 });
     await skip.click();
 
-    await expectOnboardingSettleToHalf(page);
+    await expectOnboardingSettleToFull(page);
     await settleHomeEntrance(page);
     await screenshot(page, "retry-after-failure-home");
 
@@ -300,7 +300,7 @@ test.describe("confused-user onboarding", () => {
     await expect(skip).toBeVisible({ timeout: 30_000 });
     await skip.click();
 
-    await expectOnboardingSettleToHalf(page);
+    await expectOnboardingSettleToFull(page);
     await settleHomeEntrance(page);
     await screenshot(page, "after-reload-home");
 

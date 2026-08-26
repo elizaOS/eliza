@@ -253,7 +253,7 @@ def _make_record(
 
     thought, response_text = _extract_think(assistant_content)
     tool_calls = _extract_tool_calls(assistant_content)
-    rec_id = stable_id(source_tag, str(raw_id), assistant_content[:64])
+    rec_id = stable_id(source_tag, str(raw_id), assistant_content)
 
     if tool_calls:
         clean_response = _TOOL_CALL_RE.sub("", response_text).strip()

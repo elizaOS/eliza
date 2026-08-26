@@ -2576,6 +2576,7 @@ describeIfPosix("shellAction", () => {
     const data = result.data as Record<string, unknown> | undefined;
     expect(data?.command).toBe("exit 7");
     expect(data?.exit_code).toBe(7);
+    expect(data?.signal).toBeNull();
   });
 
   it("retains an observed worktree mutation when the command later fails", async () => {

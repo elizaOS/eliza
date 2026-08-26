@@ -4,7 +4,7 @@
  */
 
 export type { BrandButtonProps } from "./brand-button";
-export { BrandButton, brandButtonVariants } from "./brand-button";
+export { BrandButton } from "./brand-button";
 export { AgentCard, BrandCard } from "./brand-card";
 export {
   BrandTabs,

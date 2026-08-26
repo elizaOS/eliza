@@ -1,11 +1,25 @@
 /** Tests deterministic and live provider selection for scenario runtimes. */
-import { ModelType } from "@elizaos/core";
-import { createDeterministicModelPlugin } from "@elizaos/core/testing";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  AgentRuntime,
+  createCharacter,
+  ModelType,
+  type Plugin,
+} from "@elizaos/core";
+import {
+  createDeterministicModelPlugin,
+  type LiveProviderConfig,
+} from "@elizaos/core/testing";
 import { describe, expect, it, vi } from "vitest";
+import { InMemoryDatabaseAdapter } from "../../core/src/database/inMemoryAdapter";
 import {
   clearLlmWireMockEnvForLiveProvider,
+  configureExplicitCliScenarioPlanner,
   deterministicScheduledDispatchRenderText,
   disableScenarioEmbeddingCapability,
+  disposeScenarioProviderPlugin,
   isPostTurnEvaluationPrompt,
   isScheduledDispatchRenderPrompt,
   loadScenarioTestMocksForTests,
@@ -14,6 +28,163 @@ import {
   scenarioLiveProviderPreflightProblems,
   shouldUseDeterministicModel,
 } from "./runtime-factory";
+
+describe("explicit CLI scenario planner", () => {
+  it("registers and calls the CLI ACTION_PLANNER for a required WORKFLOW turn", async () => {
+    const providerConfig: LiveProviderConfig = {
+      name: "cli" as const,
+      apiKey: "cli-subscription:test",
+      baseUrl: "cli://codex",
+      smallModel: "gpt-test",
+      largeModel: "gpt-test",
+      pluginPackage: "@elizaos/plugin-cli-inference",
+      env: { ELIZA_CHAT_VIA_CLI: "codex" },
+    };
+    const environment: NodeJS.ProcessEnv = {
+      ELIZA_CHAT_VIA_CLI: "codex",
+    };
+    configureExplicitCliScenarioPlanner("cli", providerConfig, environment);
+    expect(environment.ELIZA_PLANNER_NATIVE_TOOLS).toBe("0");
+    expect(providerConfig.env.ELIZA_PLANNER_NATIVE_TOOLS).toBe("0");
+
+    const previousBackend = process.env.ELIZA_CHAT_VIA_CLI;
+    const previousPlannerMode = process.env.ELIZA_PLANNER_NATIVE_TOOLS;
+    process.env.ELIZA_CHAT_VIA_CLI = environment.ELIZA_CHAT_VIA_CLI;
+    process.env.ELIZA_PLANNER_NATIVE_TOOLS =
+      environment.ELIZA_PLANNER_NATIVE_TOOLS;
+    let executableRoot: string | undefined;
+    try {
+      vi.resetModules();
+      const cliInferenceSpecifier = "@elizaos/plugin-cli-inference" as string;
+      const cliModule = (await import(cliInferenceSpecifier)) as {
+        default: Plugin;
+      };
+      executableRoot = await mkdtemp(join(tmpdir(), "cli-planner-test-"));
+      const executablePath = join(executableRoot, "codex");
+      const invocationPath = join(executableRoot, "invocation.json");
+      await writeFile(
+        executablePath,
+        [
+          "#!/usr/bin/env bun",
+          'let input = "";',
+          "for await (const chunk of process.stdin) input += String(chunk);",
+          `await Bun.write(${JSON.stringify(invocationPath)}, JSON.stringify({ argv: process.argv.slice(2), input }));`,
+          `process.stdout.write(${JSON.stringify('{"type":"agent_message","message":"{\\"action\\":\\"WORKFLOW\\",\\"params\\":{\\"action\\":\\"executions\\",\\"workflowId\\":\\"morning-digest\\",\\"limit\\":1}}"}\n')});`,
+        ].join("\n"),
+        { mode: 0o700 },
+      );
+      await chmod(executablePath, 0o700);
+      const runtime = new AgentRuntime({
+        character: createCharacter({ name: "CliPlannerRegression" }),
+        adapter: new InMemoryDatabaseAdapter(),
+        plugins: [],
+        enableAutonomy: false,
+        settings: {
+          ELIZA_CHAT_VIA_CLI: "codex",
+          ELIZA_CLI_CODEX_BIN: executablePath,
+        },
+      });
+      await runtime.registerPlugin(cliModule.default);
+
+      await expect(
+        runtime.useModel(ModelType.ACTION_PLANNER, {
+          messages: [
+            {
+              role: "user",
+              content:
+                "The WORKFLOW action is required. List executions for morning-digest and do not return terminal prose.",
+            },
+          ],
+          tools: [
+            {
+              name: "WORKFLOW",
+              description: "Inspect stored workflows and their executions.",
+              parameters: {
+                type: "object",
+                properties: {
+                  action: { type: "string", enum: ["executions"] },
+                  workflowId: { type: "string" },
+                  limit: { type: "number" },
+                },
+                required: ["action", "workflowId"],
+              },
+            },
+          ],
+          toolChoice: "required",
+        }),
+      ).resolves.toContain('"action":"WORKFLOW"');
+      const invocation = JSON.parse(await readFile(invocationPath, "utf8")) as {
+        argv: string[];
+        input: string;
+      };
+      expect(invocation.argv[0]).toBe("exec");
+      expect(invocation.input).toContain("WORKFLOW");
+      expect(invocation.input).toContain("required");
+    } finally {
+      if (executableRoot) {
+        await rm(executableRoot, { recursive: true, force: true });
+      }
+      if (previousBackend === undefined) {
+        delete process.env.ELIZA_CHAT_VIA_CLI;
+      } else {
+        process.env.ELIZA_CHAT_VIA_CLI = previousBackend;
+      }
+      if (previousPlannerMode === undefined) {
+        delete process.env.ELIZA_PLANNER_NATIVE_TOOLS;
+      } else {
+        process.env.ELIZA_PLANNER_NATIVE_TOOLS = previousPlannerMode;
+      }
+    }
+  });
+
+  it("leaves implicit CLI provider selection unchanged", () => {
+    const providerConfig: LiveProviderConfig = {
+      name: "cli",
+      apiKey: "cli-subscription:test",
+      baseUrl: "cli://codex",
+      smallModel: "gpt-test",
+      largeModel: "gpt-test",
+      pluginPackage: "@elizaos/plugin-cli-inference",
+      env: { ELIZA_CHAT_VIA_CLI: "codex" },
+    };
+    const environment: NodeJS.ProcessEnv = {};
+
+    configureExplicitCliScenarioPlanner(undefined, providerConfig, environment);
+
+    expect(environment.ELIZA_PLANNER_NATIVE_TOOLS).toBeUndefined();
+    expect(providerConfig.env).toEqual({ ELIZA_CHAT_VIA_CLI: "codex" });
+  });
+
+  it("leaves explicit API-key provider selection unchanged", () => {
+    const providerConfig: LiveProviderConfig = {
+      name: "openai",
+      apiKey: "test-key",
+      baseUrl: "https://api.openai.com/v1",
+      smallModel: "gpt-test",
+      largeModel: "gpt-test",
+      pluginPackage: "@elizaos/plugin-openai",
+      env: { OPENAI_API_KEY: "test-key" },
+    };
+    const environment: NodeJS.ProcessEnv = {};
+
+    configureExplicitCliScenarioPlanner("openai", providerConfig, environment);
+
+    expect(environment.ELIZA_PLANNER_NATIVE_TOOLS).toBeUndefined();
+    expect(providerConfig.env).toEqual({ OPENAI_API_KEY: "test-key" });
+  });
+});
+
+describe("scenario provider lifecycle", () => {
+  it("disposes the selected provider during runtime cleanup", async () => {
+    const dispose = vi.fn(async () => undefined);
+    const runtime = {} as never;
+
+    await disposeScenarioProviderPlugin({ dispose }, runtime);
+
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(dispose).toHaveBeenCalledWith(runtime);
+  });
+});
 
 describe("scenario embedding capability", () => {
   it("declares the canonical embedding capability disabled", () => {

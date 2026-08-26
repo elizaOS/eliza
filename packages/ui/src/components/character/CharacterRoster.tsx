@@ -83,95 +83,96 @@ export function CharacterRoster({
         const imageLoaded = loadedImages[entry.id] === true;
 
         return (
-          <Button
+          <div
             key={entry.id}
-            variant="ghost"
-            className={`relative max-w-36 min-w-0 text-center transition-all duration-300 ease-out cursor-pointer appearance-none opacity-[0.85] hover:opacity-100 max-[600px]:!max-w-none max-[600px]:opacity-[0.65] h-auto rounded-none p-0${isSelected ? " opacity-100 z-10 max-[600px]:opacity-100" : ""}`}
+            className={`relative max-w-36 min-w-0 text-center opacity-[0.85] transition-all duration-300 ease-out hover:opacity-100 max-[600px]:!max-w-none max-[600px]:opacity-[0.65] ${isSelected ? "z-10 opacity-100 max-[600px]:opacity-100" : ""}`}
             style={{
               flex: "1 1 0",
-              border: "none",
-              background: "none",
-              padding: 0,
               margin: "0 -0.75rem",
             }}
-            onClick={() => onSelect(entry)}
-            data-testid={`${testIdPrefix}-preset-${entry.id}`}
-            aria-label={`${entry.name}${entry.catchphrase ? ` — ${entry.catchphrase}` : ""}`}
-            aria-pressed={isSelected}
           >
-            <div
-              /* Frameless at rest; the accent gradient frame below is the selection state. */
-              className="relative aspect-[14/15] w-full p-0.5 transition-all duration-300"
-              style={{
-                clipPath: SLANT_CLIP,
-                ...(isSelected
-                  ? {
-                      background:
-                        "linear-gradient(180deg, color-mix(in srgb, var(--accent) 90%, white 10%) 0%, var(--accent) 100%)",
-                    }
-                  : {}),
-              }}
+            <Button
+              variant="mediaZoom"
+              size="fill"
+              onClick={() => onSelect(entry)}
+              data-testid={`${testIdPrefix}-preset-${entry.id}`}
+              aria-label={`${entry.name}${entry.catchphrase ? ` — ${entry.catchphrase}` : ""}`}
+              aria-pressed={isSelected}
             >
               <div
-                className="relative h-full w-full overflow-hidden"
-                style={{ clipPath: SLANT_CLIP }}
+                /* Frameless at rest; the accent gradient frame below is the selection state. */
+                className="relative aspect-[14/15] w-full p-0.5 transition-all duration-300"
+                style={{
+                  clipPath: SLANT_CLIP,
+                  ...(isSelected
+                    ? {
+                        background:
+                          "linear-gradient(180deg, color-mix(in srgb, var(--accent) 90%, white 10%) 0%, var(--accent) 100%)",
+                      }
+                    : {}),
+                }}
               >
-                {isSelected && (
-                  <div
-                    className="pointer-events-none absolute -inset-3 bg-[rgba(var(--accent-rgb),0.15)] blur-xl"
-                    style={{ clipPath: SLANT_CLIP }}
+                <div
+                  className="relative h-full w-full overflow-hidden"
+                  style={{ clipPath: SLANT_CLIP }}
+                >
+                  {isSelected && (
+                    <div
+                      className="pointer-events-none absolute -inset-3 bg-[rgba(var(--accent-rgb),0.15)] blur-xl"
+                      style={{ clipPath: SLANT_CLIP }}
+                    />
+                  )}
+                  {!imageLoaded && (
+                    <div
+                      aria-hidden="true"
+                      className="absolute inset-0 animate-pulse bg-[linear-gradient(110deg,rgba(255,255,255,0.08)_8%,rgba(255,255,255,0.18)_18%,rgba(255,255,255,0.08)_33%)] bg-[length:200%_100%]"
+                    />
+                  )}
+                  <img
+                    src={
+                      entry.previewUrl ??
+                      getVrmPreviewUrl(
+                        entry.avatarIndex > 0 ? entry.avatarIndex : 1,
+                      )
+                    }
+                    alt={entry.name}
+                    draggable={false}
+                    loading={index < 4 ? "eager" : "lazy"}
+                    fetchPriority={index < 4 ? "high" : "auto"}
+                    decoding="async"
+                    onLoad={() =>
+                      setLoadedImages((previous) => ({
+                        ...previous,
+                        [entry.id]: true,
+                      }))
+                    }
+                    onError={() =>
+                      setLoadedImages((previous) => ({
+                        ...previous,
+                        [entry.id]: true,
+                      }))
+                    }
+                    className={`h-full w-full object-cover transition-[opacity,transform] duration-300 ease-out ${imageLoaded ? "opacity-100" : "opacity-0"}${isSelected ? " scale-[1.04]" : ""}`}
                   />
-                )}
-                {!imageLoaded && (
-                  <div
-                    aria-hidden="true"
-                    className="absolute inset-0 animate-pulse bg-[linear-gradient(110deg,rgba(255,255,255,0.08)_8%,rgba(255,255,255,0.18)_18%,rgba(255,255,255,0.08)_33%)] bg-[length:200%_100%]"
-                  />
-                )}
-                <img
-                  src={
-                    entry.previewUrl ??
-                    getVrmPreviewUrl(
-                      entry.avatarIndex > 0 ? entry.avatarIndex : 1,
-                    )
-                  }
-                  alt={entry.name}
-                  draggable={false}
-                  loading={index < 4 ? "eager" : "lazy"}
-                  fetchPriority={index < 4 ? "high" : "auto"}
-                  decoding="async"
-                  onLoad={() =>
-                    setLoadedImages((previous) => ({
-                      ...previous,
-                      [entry.id]: true,
-                    }))
-                  }
-                  onError={() =>
-                    setLoadedImages((previous) => ({
-                      ...previous,
-                      [entry.id]: true,
-                    }))
-                  }
-                  className={`h-full w-full object-cover transition-[opacity,transform] duration-300 ease-out ${imageLoaded ? "opacity-100" : "opacity-0"}${isSelected ? " scale-[1.04]" : ""}`}
-                />
-                <div className="absolute inset-x-0 bottom-0">
-                  <div
-                    className={`py-1 pr-9 pl-2.5 text-[clamp(9px,1.22vw,12px)] font-semibold whitespace-nowrap overflow-hidden text-ellipsis text-right tracking-[0.01em] ${
-                      useWhiteBorders
-                        ? "text-[var(--first-run-text-strong)]"
-                        : "text-white"
-                    }${isSelected ? (useWhiteBorders ? " bg-[rgba(7,11,15,0.9)]" : " bg-black/[0.82]") : useWhiteBorders ? " bg-[rgba(7,11,15,0.8)]" : " bg-black/[0.72]"}`}
-                    style={{
-                      clipPath: INSET_CLIP,
-                      textShadow: "0 2px 10px rgba(3,5,10,0.72)",
-                    }}
-                  >
-                    {entry.name}
+                  <div className="absolute inset-x-0 bottom-0">
+                    <div
+                      className={`py-1 pr-9 pl-2.5 text-[clamp(9px,1.22vw,12px)] font-semibold whitespace-nowrap overflow-hidden text-ellipsis text-right tracking-[0.01em] ${
+                        useWhiteBorders
+                          ? "text-[var(--first-run-text-strong)]"
+                          : "text-white"
+                      }${isSelected ? (useWhiteBorders ? " bg-[rgba(7,11,15,0.9)]" : " bg-black/[0.82]") : useWhiteBorders ? " bg-[rgba(7,11,15,0.8)]" : " bg-black/[0.72]"}`}
+                      style={{
+                        clipPath: INSET_CLIP,
+                        textShadow: "0 2px 10px rgba(3,5,10,0.72)",
+                      }}
+                    >
+                      {entry.name}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          </Button>
+            </Button>
+          </div>
         );
       })}
     </div>

@@ -556,18 +556,13 @@ app.post("/", async (c) => {
       selectedModel,
       process.env,
     );
-    const effectiveMaxOutputTokens =
-      cotBudget != null
-        ? Math.max(
-            DEFAULT_MIN_OUTPUT_TOKENS,
-            cotBudget + DEFAULT_MIN_OUTPUT_TOKENS,
-          )
-        : undefined;
     const estimatedInputTokens = estimateTokens(
       messages.map((message) => extractTextFromParts(message.parts)).join(" "),
     );
     const estimatedOutputTokens =
-      effectiveMaxOutputTokens ?? DEFAULT_OUTPUT_TOKENS;
+      cotBudget != null
+        ? cotBudget + DEFAULT_MIN_OUTPUT_TOKENS
+        : DEFAULT_OUTPUT_TOKENS;
     const billingSource = resolveAiProviderSource(selectedModel) ?? "gateway";
     const affiliateCode = isAnonymous
       ? null
@@ -638,9 +633,6 @@ app.post("/", async (c) => {
       messages: modelMessages,
       abortSignal: c.req.raw.signal,
       timeout: routeTimeoutMs,
-      ...(effectiveMaxOutputTokens != null
-        ? { maxOutputTokens: effectiveMaxOutputTokens }
-        : {}),
       ...mergeAnthropicCotProviderOptions(
         selectedModel,
         process.env,

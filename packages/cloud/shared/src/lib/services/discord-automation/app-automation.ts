@@ -241,7 +241,6 @@ Maximum ${MAX_ANNOUNCEMENT_LENGTH} characters. Do not include the URL in your re
         system: systemPrompt,
         prompt:
           "Create a compelling Discord announcement about this app that would engage a community. Focus on what makes it unique and valuable.",
-        maxOutputTokens: 150,
       });
       assertModelOutputComplete({
         finishReason: result.finishReason,

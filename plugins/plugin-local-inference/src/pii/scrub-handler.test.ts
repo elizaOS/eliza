@@ -127,15 +127,21 @@ describe("parseScrubCompletion (fail-closed)", () => {
 describe("registered PII_SCRUB model handler (production model map)", () => {
 	function runtimeWithBackend(completion: string) {
 		const prompts: string[] = [];
+		const requests: Array<{ prompt: string; maxTokens?: number }> = [];
 		return {
 			prompts,
+			requests,
 			runtime: {
 				agentId: "00000000-0000-0000-0000-000000000001",
 				getService: (name: string) =>
 					name === "localInference"
 						? {
-								generate: async (args: { prompt: string }) => {
+								generate: async (args: {
+									prompt: string;
+									maxTokens?: number;
+								}) => {
 									prompts.push(args.prompt);
+									requests.push(args);
 									return completion;
 								},
 							}
@@ -149,7 +155,7 @@ describe("registered PII_SCRUB model handler (production model map)", () => {
 		const handlers = createLocalInferenceModelHandlers();
 		const handler = handlers[ModelType.PII_SCRUB];
 		expect(typeof handler).toBe("function");
-		const { runtime, prompts } = runtimeWithBackend(
+		const { runtime, prompts, requests } = runtimeWithBackend(
 			`[{"span":"Alice Johnson","verdict":"pii","replacement":"Nora Vane","cluster":"entity:e1"},
 			  {"span":"Acme Corp","verdict":"safe"}]`,
 		);
@@ -157,6 +163,7 @@ describe("registered PII_SCRUB model handler (production model map)", () => {
 			handler as (r: unknown, p: PiiScrubParams) => Promise<unknown>
 		)(runtime, PARAMS);
 		expect(prompts).toHaveLength(1);
+		expect(requests[0]?.maxTokens).toBeUndefined();
 		expect(result).toMatchObject({
 			rulesetVersion: "2026.08",
 			modelId: expect.stringContaining("eliza-local-inference"),

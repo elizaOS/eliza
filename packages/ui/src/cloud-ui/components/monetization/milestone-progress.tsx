@@ -55,7 +55,7 @@ export function MilestoneProgress({
         <div
           className={cn(
             "absolute inset-y-0 left-0 rounded-full transition-all duration-700 ease-out",
-            isComplete ? "bg-emerald-500" : "bg-txt",
+            isComplete ? "bg-status-success" : "bg-txt",
           )}
           style={{ width: `${animatedProgress}%` }}
         />
@@ -64,7 +64,7 @@ export function MilestoneProgress({
       {/* Status message */}
       <div className="flex items-center justify-between">
         {isComplete ? (
-          <span className="text-xs text-emerald-400 flex items-center gap-1.5">
+          <span className="text-xs text-status-success flex items-center gap-1.5">
             <CheckCircle2 className="size-3.5" />
             Ready to withdraw!
           </span>
@@ -96,7 +96,7 @@ export function MilestoneCard({
       className={cn(
         "p-4 rounded-sm border transition-colors",
         isComplete
-          ? "bg-emerald-500/5 border-emerald-500/30"
+          ? "bg-status-success-bg/50 border-status-success/30"
           : "bg-neutral-900 border-white/10",
       )}
     >

@@ -1181,6 +1181,24 @@ describe("F21 alias rows: email + terminal candidates bind to real parents", () 
 	});
 });
 
+describe("candidate family hints: arithmetic", () => {
+	it("arithmetic-shaped inventions hint the deterministic evaluator", () => {
+		for (const name of ["CALC_RESULT", "DO_MATH", "MULTIPLY_NUMBERS"]) {
+			expect(parentAliasesForCandidateAction(name)).toEqual(["CALCULATE"]);
+		}
+	});
+
+	it("does not treat unrelated candidate-name substrings as arithmetic", () => {
+		for (const name of [
+			"MULTIPLATFORM_SETUP",
+			"CALCULUS_NOTES",
+			"MATHILDA_PROFILE",
+		]) {
+			expect(parentAliasesForCandidateAction(name)).not.toContain("CALCULATE");
+		}
+	});
+});
+
 describe("contact lookup candidate aliases", () => {
 	it.each([
 		"CONTACTS_LOOKUP",

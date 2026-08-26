@@ -110,16 +110,7 @@ export interface AdminInputProps extends InputProps {}
 
 export const AdminInput = forwardRef<HTMLInputElement, AdminInputProps>(
   function AdminInput({ className, ...props }, ref) {
-    return (
-      <Input
-        ref={ref}
-        className={cn(
-          "h-10 w-full rounded-sm border border-border bg-card px-3 text-sm font-mono text-txt transition-colors placeholder:text-muted/60 ",
-          className,
-        )}
-        {...props}
-      />
-    );
+    return <Input ref={ref} variant="admin" className={className} {...props} />;
   },
 );
 

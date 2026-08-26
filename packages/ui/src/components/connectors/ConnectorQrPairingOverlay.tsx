@@ -210,7 +210,7 @@ export function ConnectorQrPairingOverlay({
           <Button
             variant="ghost"
             size="sm"
-            className="mt-3 text-2xs text-muted"
+            className="mt-3"
             onClick={() => void onStopPairing()}
           >
             {t("common.cancel")}

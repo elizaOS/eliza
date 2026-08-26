@@ -158,7 +158,6 @@ async function reviewOne(capture) {
                 }
               : {
                   model: MODEL,
-                  max_tokens: 1024,
                   messages: [
                     {
                       role: "user",

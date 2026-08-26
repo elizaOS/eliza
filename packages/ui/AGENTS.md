@@ -158,13 +158,14 @@ given class of bug; reach for the heavier ones when behaviour or pixels matter.
 
 2. **Story gate (`audit:stories`, `test/story-gate/`).** Renders **every**
    Storybook story in headless Chromium and HARD-fails on a story that throws,
-   renders blank, or raises a pageerror; console errors + serious/critical axe
-   a11y violations are enforced once their baselines are populated. A determinism
-   shim (frozen clock / seeded RNG / en-US-UTC / animations off) makes every
-   screenshot byte-stable. App-context-dependent stories are classified soft
-   `needs-runtime` (covered live by `audit:app`), not failed. Build the catalog
-   first (`build-storybook --output-dir storybook-static`), then run the gate
-   when reviewing story or design-system changes. Reusable helpers:
+   renders blank, or raises a pageerror. Console errors that remain after the
+   static-harness noise filters and serious or critical axe violations fail
+   directly; there is no per-story allowlist or baseline. A
+   determinism shim (frozen clock / seeded RNG / en-US-UTC / animations off)
+   makes every screenshot byte-stable. App-context-dependent stories are
+   classified soft `needs-runtime` (covered live by `audit:app`), not failed.
+   Build the catalog first (`build-storybook --output-dir storybook-static`),
+   then run the gate when reviewing story or design-system changes. Reusable helpers:
    `determinism-shim.mjs` and `log-capture.mjs`
    (durable frontend console/network artifact, wired per story into
    `output/frontend-logs.json`).
@@ -179,32 +180,20 @@ component should ship at least a `*.stories.tsx` (states) **and** a `*.test.tsx`
 (behaviour). The live full-app visual audit lives in `packages/app`
 (`audit:app` and `audit:cloud` in `packages/app`).
 
-### Source gates (vitest, no runtime)
+Story presence is also checked against
+`scripts/stories-coverage-baseline.json`. `node scripts/stories-coverage.mjs
+--check` fails when the covered-component count or coverage ratio falls, or
+when a component newly appears in the missing-story set.
 
-Design-contract gates scan `src` as text and fail on regression; they are the
-cheapest layer and run with the normal unit lane:
+### Design validation
 
-- `src/no-focus-ring-gate.test.ts` — bans stray focus/ring utilities; pins the
-  shell pill's sole indicator.
-- `src/no-backdrop-blur-gate.test.ts` — bans backdrop-filter app-wide (#9141).
-- `src/brand-token-gate.test.ts` — enforces the black/white/orange brand
-  contract found by the dynamic audits (#25901, #26066, #26075, #26117): hard
-  ban on blue/purple/cyan utilities (exemptions: code syntax palette, external
-  brand colors), hard ban on retired Binance-gold literals and the first-run
-  text-support scrim plate, and a DOWN-ONLY ratchet on off-token status
-  utilities (`red-*`/`green-*`/`amber-*` → use `status-success`/`destructive`
-  tokens). When a burn-down PR cleans a surface, lower the ratchet baseline in
-  the same PR; never raise it.
-
-The dynamic complement is the surface-audit workflow (see #26117): rank
-Storybook surfaces by composite offender score (rendered contrast, banned
-hues, broken states, stray type/spacing), then fix worst-first with the
-`better-*` review skills. The gates encode each dynamic finding class once it
-is understood, so it can never silently regress.
-
-A third layer wraps the external `react-doctor design` diagnostics (redundant
+Design contracts are validated on rendered Storybook and application surfaces.
+Do not add source-text tests for CSS classes, color literals, component names,
+or other implementation tokens; those checks do not prove the resulting pixels
+or interaction behavior. The external `react-doctor design` diagnostics remain
+available behind a repo-root ratchet for redundant
 utility axes, arbitrary px font sizes, dvh/vh, deprecated Tailwind classes,
-hover-only reveals, …) behind a repo-root ratchet:
+hover-only reveals, and similar problems:
 
 ```bash
 bun run audit:design                  # react-doctor design vs committed baseline; fails on any rule growing
@@ -328,6 +317,7 @@ This package mostly reads config injected by the host, not raw env vars:
   shimmer and spinner for thinking, tool work, and speaking so transport-phase
   changes do not flash the app accent. Preserve its `motion-reduce` fallback
   when changing the status treatment.
+- **Local-agent prompt integrity.** The iOS in-renderer compatibility kernel forwards the complete conversation and does not add reply-token caps to local or Cloud generation. Native decode-boundary exhaustion must be rejected rather than displayed as a completed response.
 - **Builtin view mutations need semantic action twins.** When adding a
   button/filter/toggle/form handler to a builtin view, add or reuse the owning
   action first; see "Add a mutating control to a builtin view" above.

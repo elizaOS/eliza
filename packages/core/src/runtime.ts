@@ -6663,7 +6663,14 @@ export class AgentRuntime implements IAgentRuntime {
 				for (const item of candidate) result.push(clone(item));
 				return result;
 			}
-			if (!isPlainObject(candidate)) return candidate;
+			// A hostile Proxy may trap prototype reflection. Keep such an opaque
+			// value intact here; the descriptor-only secret/PII walkers normalize it
+			// later without consulting its prototype.
+			try {
+				if (!isPlainObject(candidate)) return candidate;
+			} catch {
+				return candidate;
+			}
 			const result: Record<string, unknown> = {};
 			seen.set(candidate, result);
 			for (const [key, nested] of Object.entries(candidate)) {
@@ -7044,6 +7051,9 @@ export class AgentRuntime implements IAgentRuntime {
 					ModelType.VIDEO,
 					ModelType.TEXT_EMBEDDING,
 				];
+				const shouldSubstituteSecrets =
+					this.isSecretSwapEnabled() &&
+					!binaryModels.includes(resolvedModelKey);
 				// Validate the caller-owned graph before `isPlainObject` / object spread
 				// below can reflect it. The later collection still runs after secret swap
 				// so NER never sees raw secrets; this preflight exists to make the earlier
@@ -7056,7 +7066,9 @@ export class AgentRuntime implements IAgentRuntime {
 				}
 				let modelParams: ModelParamsMap[T];
 				const paramsClone = isPlainObject(params)
-					? this.cloneModelRequestGraph(params)
+					? shouldSubstituteSecrets
+						? { ...(params as Record<string, unknown>) }
+						: this.cloneModelRequestGraph(params)
 					: params;
 				if (
 					params === null ||
@@ -7365,10 +7377,7 @@ export class AgentRuntime implements IAgentRuntime {
 					modelParams,
 				);
 
-				if (
-					this.isSecretSwapEnabled() &&
-					!binaryModels.includes(resolvedModelKey)
-				) {
+				if (shouldSubstituteSecrets) {
 					// Reuse one session per turn so every model call in the turn shares a
 					// nonce and the action-execution boundary can restore what this call
 					// swapped. The session hangs off the turn-scoped trajectory context;

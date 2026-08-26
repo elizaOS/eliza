@@ -2,6 +2,7 @@
  * Renders inspectable timeline and session detail without owning task state or mutations.
  */
 
+import { Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type {
   CodingAgentRerunFromEventInput,
@@ -11,7 +12,6 @@ import type {
   CodingAgentTaskSessionRecord,
   CodingAgentTaskUsageSummary,
 } from "@elizaos/ui/api/client-types-cloud";
-import { Button } from "@elizaos/ui/components/ui/button";
 import { ChevronsUp, RotateCcw, X } from "lucide-react";
 import { type CSSProperties, type ReactNode, useState } from "react";
 import { type ConversationBlock, ToolBody } from "./orchestrator-stream";
@@ -54,15 +54,15 @@ function OperatorTabButton({
   });
   return (
     <Button
-      unstyled
+      variant="selection"
+      size="tiny"
+      data-state={active === tab.id ? "on" : "off"}
       ref={ref}
       type="button"
       role="tab"
       aria-selected={active === tab.id}
       onClick={() => onSelect(tab.id)}
-      className={`flex-1 p-1 text-xs font-medium transition-colors ${
-        active === tab.id ? "text-accent" : "text-muted hover:text-txt"
-      }`}
+      className="flex-1"
       {...agentProps}
     >
       {tab.label}
@@ -313,7 +313,7 @@ function sessionError(
 function ErrorFirstBanner({ text }: { text: string | null }) {
   if (!text) return null;
   return (
-    <div className="rounded-md bg-red-500/10 px-2.5 py-2 text-xs-tight text-red-500">
+    <div className="rounded-md bg-destructive-subtle px-2.5 py-2 text-xs-tight text-destructive">
       {text}
     </div>
   );
@@ -358,11 +358,12 @@ function OperatorDrawerShell({
           </p>
         </div>
         <Button
-          unstyled
+          variant="ghostMuted"
+          size="icon-sm"
           ref={closeRef}
           type="button"
           onClick={onClose}
-          className="-mr-1 p-1 text-muted transition-colors hover:text-txt"
+          className="-mr-1"
           aria-label={closeLabel}
           data-testid="orchestrator-close-operator-detail"
           {...closeAgentProps}

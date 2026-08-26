@@ -10,7 +10,10 @@ import {
 
 export const BRAND_ASSET_BASE_PATH = "/brand" as const;
 
-export function brandAssetPath(path: string, basePath = BRAND_ASSET_BASE_PATH) {
+export function brandAssetPath(
+  path: string,
+  basePath: string = BRAND_ASSET_BASE_PATH,
+) {
   const normalizedBase = trimEndCharacters(basePath, "/");
   const normalizedPath = trimStartCharacters(path, "/");
   return `${normalizedBase}/${normalizedPath}`;

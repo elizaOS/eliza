@@ -3,8 +3,8 @@
  * tool and reasoning disclosures shared by Orchestrator and Cockpit views.
  */
 
+import { Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { Button } from "@elizaos/ui/components/ui/button";
 import {
   Check,
   ChevronRight,
@@ -146,7 +146,7 @@ const STATUS_BADGE: Record<
     spin: true,
   },
   done: { icon: Check, tone: "text-ok", label: "Done" },
-  failed: { icon: CircleX, tone: "text-red-500", label: "Failed" },
+  failed: { icon: CircleX, tone: "text-destructive", label: "Failed" },
 };
 
 const MAX_BODY_CHARS = 4000;
@@ -274,11 +274,13 @@ function ToolCallCard({
     >
       <Button
         ref={ref}
-        unstyled
+        variant="sectionToggle"
+        size="content"
+        align="start"
         type="button"
         disabled={!hasBody}
         onClick={toggle}
-        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left disabled:cursor-default"
+        className="disabled:cursor-default"
         {...agentProps}
       >
         {hasBody ? (
@@ -377,7 +379,7 @@ export function ConversationBlockView({
         <div
           className={
             block.tone === "error"
-              ? "w-full border-l-2 border-red-500/40 pl-2.5 text-red-500"
+              ? "w-full border-l-2 border-destructive/40 pl-2.5 text-destructive"
               : "w-full text-txt"
           }
         >
