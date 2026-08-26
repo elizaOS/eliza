@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { NOTES_SCHEMA_VERSION } from "../types.js";
 import {
   isRecord,
+  isStickyColor,
   parseCreateNoteInput,
   parseEntityId,
   parseNoteContent,
@@ -82,12 +83,18 @@ describe("Notes boundary validation", () => {
     });
   });
 
-  describe("parseStickyColor", () => {
-    it("accepts valid sticky colors", () => {
+  describe("parseStickyColor and isStickyColor", () => {
+    it("accepts valid sticky colors and normalizes case/whitespace", () => {
       expect(parseStickyColor("yellow")).toBe("yellow");
-      expect(parseStickyColor("green")).toBe("green");
+      expect(parseStickyColor("  Yellow  ")).toBe("yellow");
+      expect(parseStickyColor("GREEN")).toBe("green");
       expect(parseStickyColor("rose")).toBe("rose");
       expect(parseStickyColor("slate")).toBe("slate");
+
+      expect(isStickyColor("yellow")).toBe(true);
+      expect(isStickyColor("  GREEN  ")).toBe(true);
+      expect(isStickyColor("blue")).toBe(false);
+      expect(isStickyColor(123)).toBe(false);
     });
 
     it("rejects unknown colors", () => {

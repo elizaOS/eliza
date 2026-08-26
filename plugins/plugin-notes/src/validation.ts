@@ -136,14 +136,28 @@ export function parseEntityId(value: unknown, field = "id"): string {
   return id;
 }
 
+export function isStickyColor(value: unknown): value is StickyColor {
+  if (typeof value !== "string") return false;
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized === "yellow" ||
+    normalized === "green" ||
+    normalized === "rose" ||
+    normalized === "slate"
+  );
+}
+
 export function parseStickyColor(value: unknown, field = "color"): StickyColor {
-  if (
-    value === "yellow" ||
-    value === "green" ||
-    value === "rose" ||
-    value === "slate"
-  ) {
-    return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (
+      normalized === "yellow" ||
+      normalized === "green" ||
+      normalized === "rose" ||
+      normalized === "slate"
+    ) {
+      return normalized;
+    }
   }
   throw validationError(
     `${field} must be yellow, green, rose, or slate.`,
