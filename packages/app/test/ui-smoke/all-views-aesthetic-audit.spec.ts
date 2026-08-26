@@ -36,6 +36,7 @@ import {
   type ScreenshotQuality,
   screenshotQualityIssues,
 } from "./helpers/screenshot-quality";
+import { seedStewardSession } from "./helpers/test-auth";
 import {
   normalize,
   type OcrExpectation,
@@ -1816,6 +1817,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
 
         await page.setViewportSize({ width: vp.width, height: vp.height });
         await seedAppStorage(page);
+        await seedStewardSession(page, { jwt: true });
         await installDefaultAppRoutes(page);
         const remoteBundleProof = await forceRemoteBundleAuditRoute(page, view);
         await openAppPath(page, remoteBundleProof?.auditPath ?? view.path);

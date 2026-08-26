@@ -1677,6 +1677,8 @@ export function useFirstRunConductor(): void {
               // error-policy:J6 best-effort nudge — consumers re-read the
               // stored token on their next tick regardless.
             }
+            greetAfterCloudAuthRef.current =
+              consumeCloudAuthFirstScreenGreeting();
             runCloudResumeRef.current("cloud");
             return;
           }
