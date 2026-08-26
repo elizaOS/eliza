@@ -15,6 +15,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { motionValue } from "motion/react";
 import {
   afterEach,
   beforeAll,
@@ -120,7 +121,7 @@ import {
 } from "../../state/useStreamingText";
 import { setViewChatBinding } from "../../state/view-chat-binding";
 import { copyTextToClipboard } from "../../utils/clipboard";
-import { ChatOverlay } from "./ChatOverlay";
+import { ChatOverlay, PillHandle } from "./ChatOverlay";
 import type { ShellMessage } from "./shell-state";
 import {
   buildConversationNav,
@@ -3274,6 +3275,33 @@ describe("ChatOverlay", () => {
     expect(sheet.getAttribute("data-detent")).toBe("pill");
     fireEvent.keyDown(screen.getByTestId("chat-pill"), { key: "Enter" });
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+  });
+
+  it("opens exactly once when native keyboard activation emits a compatibility click", () => {
+    const onOpen = vi.fn();
+    const handler = vi.fn();
+    render(
+      <PillHandle
+        binding={{
+          onPointerDown: handler,
+          onPointerMove: handler,
+          onPointerUp: handler,
+          onPointerCancel: handler,
+          onLostPointerCapture: handler,
+        }}
+        counterScale={motionValue(1)}
+        onOpen={onOpen}
+        breathing={false}
+        pilled
+        desktopOverlayHost
+      />,
+    );
+
+    const pill = screen.getByRole("button", { name: "open chat" });
+    fireEvent.keyDown(pill, { key: "Enter" });
+    fireEvent.click(pill, { detail: 0 });
+
+    expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
   it("flicks UP from the pill to recover the input", () => {
