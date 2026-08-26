@@ -8,20 +8,12 @@ const QUOTED_SEGMENT = /`[^`]*`|"[^"]*"|“[^”]*”|‘[^’]*’/gu;
 const EXPLICIT_COMPUTER_USE_REQUEST =
   /^(?:(?:hey|hi)\s*,?\s+)?(?:(?:please|kindly)\s*,?\s+)?(?:(?:can|could|would|will)\s+(?:you|u)\s+(?:please\s+)?|i\s+(?:(?:want|need)\s+(?:you|u)\s+to|would\s+like\s+(?:you|u)\s+to)\s+)?use\s+(?:computer[\s_-]*use|(?:my|the)\s+computer)\b/iu;
 const IMMEDIATE_NEGATED_ACTION = /^\s+to\s+(?:not|never)\b/iu;
-const TERMINAL_REFERENTIAL_CANCEL =
-  /(?:^|[\s?!.,;:—-])(?:(?:but|and\s+then)\s+)?(?:please\s+)?(?:cancel|stop)\s+(?:that(?:\s+request)?|it|the\s+request)\s*[.!?]*$/iu;
-const TERMINAL_BARE_CANCEL =
-  /(?:^|[?!.,;:—-]\s*|\bbut\s+|\band\s+then\s+)(?:please\s+)?(?:cancel|stop)\s*[.!?]*$/iu;
-const TERMINAL_ABANDON =
-  /(?:^|[\s?!.,;:—-])(?:never\s+mind|forget\s+it)\s*[.!?]*$/iu;
-const TERMINAL_BARE_NEGATION =
-  /(?:^|[?!.,;:—-]\s*|\bbut\s+)(?:please\s+)?(?:do\s+not|don't|never)\s*[.!?]*$/iu;
+const TERMINAL_RETRACTION =
+  /(?:^|[\s?!.,;:—-])(?:(?:and(?:\s+then)?|but)\s+)?(?:(?:actually|just|please)\s+)?(?:(?:cancel|stop)(?:\s+(?:that(?:\s+request)?|it|the\s+request))?|never(?:[-\s]?mind)|forget(?:[-\s]?it|\s+about\s+it)|(?:do\s+not|don't|never)(?:\s+(?:do\s+)?(?:it|that|this))?)\s*[.!?]*$/iu;
 const BUT_NEGATED_ACTION =
   /\bbut\s+(?:actually\s*,?\s*)?(?:please\s+)?(?:do\s+not|don't|never)(?:\s+(.+))?$/iu;
 const RECONSIDERED_NEGATED_ACTION =
   /(?:^|[\s?!.,;:—-])(?:and\s+|but\s+)?(?:actually\s*,?\s*|on\s+second\s+thought\s*,?\s*)(?:please\s+)?(?:do\s+not|don't|never)\s+(.+)$/iu;
-const RECONSIDERED_CANCEL =
-  /(?:^|[?!.,;:—-]\s*)(?:actually\s*,?\s*|on\s+second\s+thought\s*,?\s*)(?:please\s+)?(?:cancel|stop)(?:\s+(?:that(?:\s+request)?|it|the\s+request))?\s*[.!?]*$/iu;
 const GENERIC_NEGATED_REFERENCE = /^(?:actually\s+)?(?:do\s+)?(?:that|it)\b/iu;
 const COMPUTER_USE_REFERENCE =
   /^(?:use\s+)?(?:computer[\s_-]*use|(?:my|the)\s+computer)\b/iu;
@@ -43,20 +35,52 @@ function requestedAction(trailingRequest: string): string | undefined {
   return normalized.length > 0 ? normalized : undefined;
 }
 
+function terminalRetractionCancels(trailingRequest: string): boolean {
+  const retraction = TERMINAL_RETRACTION.exec(trailingRequest);
+  if (!retraction) return false;
+
+  const actionPrefix = /^\s+(?:to|and)\s+[\p{L}\p{N}_-]+\b/iu.exec(
+    trailingRequest,
+  );
+  if (!actionPrefix) return true;
+  if (/^[?!.,;:—-]/u.test(retraction[0].trimStart())) return true;
+
+  // A terminal phrase can itself be the requested text or UI target (for
+  // example, "click Stop" or "type never mind"). It is a retraction only
+  // once an earlier target/instruction exists before that terminal phrase.
+  const priorTarget = normalizeAction(
+    trailingRequest.slice(actionPrefix[0].length, retraction.index),
+  );
+  return priorTarget.length > 0;
+}
+
+function normalizeRetractionAction(action: string): string {
+  return normalizeAction(action).replace(
+    /(?:\s+(?:please|anymore|now)|\s+after\s+all)+$/u,
+    "",
+  );
+}
+
 function negatedActionRetractsRequest(
   negatedAction: string,
   affirmativeAction: string | undefined,
+  allowDeicticTarget: boolean,
 ): boolean {
   const normalized = negatedAction.trim();
   if (normalized.length === 0) return true;
   if (GENERIC_NEGATED_REFERENCE.test(normalized)) return true;
   if (COMPUTER_USE_REFERENCE.test(normalized)) return true;
   const affirmativeVerb = affirmativeAction?.split(" ", 1)[0];
-  const normalizedNegation = normalizeAction(normalized);
+  const normalizedNegation = normalizeRetractionAction(normalized);
   if (
     affirmativeVerb &&
     (normalizedNegation === `${affirmativeVerb} it` ||
-      normalizedNegation === `${affirmativeVerb} that`)
+      normalizedNegation === `${affirmativeVerb} that` ||
+      normalizedNegation === `${affirmativeVerb} this` ||
+      (allowDeicticTarget &&
+        new RegExp(`^${affirmativeVerb}\\s+(?:it|that|this)\\b`, "iu").test(
+          normalizedNegation,
+        )))
   ) {
     return true;
   }
@@ -65,18 +89,18 @@ function negatedActionRetractsRequest(
 
 function retractsExplicitComputerUseRequest(trailingRequest: string): boolean {
   if (IMMEDIATE_NEGATED_ACTION.test(trailingRequest)) return true;
-  if (TERMINAL_REFERENTIAL_CANCEL.test(trailingRequest)) return true;
-  if (TERMINAL_BARE_CANCEL.test(trailingRequest)) return true;
-  if (TERMINAL_ABANDON.test(trailingRequest)) return true;
-  if (TERMINAL_BARE_NEGATION.test(trailingRequest)) return true;
-  if (RECONSIDERED_CANCEL.test(trailingRequest)) return true;
+  if (terminalRetractionCancels(trailingRequest)) return true;
 
   const affirmativeAction = requestedAction(trailingRequest);
   const reconsideration = RECONSIDERED_NEGATED_ACTION.exec(trailingRequest);
   if (
     reconsideration &&
     (!affirmativeAction ||
-      negatedActionRetractsRequest(reconsideration[1] ?? "", affirmativeAction))
+      negatedActionRetractsRequest(
+        reconsideration[1] ?? "",
+        affirmativeAction,
+        true,
+      ))
   ) {
     return true;
   }
@@ -87,7 +111,11 @@ function retractsExplicitComputerUseRequest(trailingRequest: string): boolean {
     .slice(0, butNegation.index)
     .replace(/[\s?!.,;:—-]/gu, "");
   if (positiveInstruction.length === 0) return true;
-  return negatedActionRetractsRequest(butNegation[1] ?? "", affirmativeAction);
+  return negatedActionRetractsRequest(
+    butNegation[1] ?? "",
+    affirmativeAction,
+    false,
+  );
 }
 
 /**
