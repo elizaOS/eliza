@@ -975,6 +975,9 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 			"identify the current view without accidentally closing it",
 			"name the active view and do not ever hide it",
 			"Identify the current open view. Reply with the view name and exact nonce CEREBRAS-E1F-20260826-0952. Do not use tools or change anything.",
+			"Which view is open? End your answer with Mango 7.",
+			"Tell me which current panel is active.",
+			"What screen is open?",
 			"identify the current active view",
 			"name the open panel",
 		]) {
@@ -1005,6 +1008,10 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 		[
 			"open / question / inspection-first",
 			"which current view is open? switch to settings",
+		],
+		[
+			"open / natural voice question / inspection-first",
+			"which view is open? switch to settings",
 		],
 		[
 			"open / embedded / inspection-first",

@@ -3199,6 +3199,11 @@ describe("runV5MessageRuntimeStage1", () => {
 				"Identify the current open view. Reply with the view name and exact nonce CEREBRAS-E1F-20260826-0952. Do not use tools or change anything.",
 			reply: "notes CEREBRAS-E1F-20260826-0952",
 		},
+		{
+			caseName: "natural voice predicate order",
+			prompt: "Which view is open? End your answer with Mango 7.",
+			reply: "Notes is open. Mango 7.",
+		},
 	] as const)(
 		"keeps read-only current-view inspection direct when the view tool surface would overflow a planner call: $caseName",
 		async ({ prompt, reply }) => {

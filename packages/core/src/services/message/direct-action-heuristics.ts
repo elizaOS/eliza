@@ -2002,6 +2002,9 @@ function looksLikeCurrentViewInspection(messageText: string): boolean {
 		...normalized.matchAll(
 			/\b(?:identify|name|tell\s+me|what|which)\b[^,;.!?\n]{0,160}?\b(?:(?:this|the)\s+)?(?:current(?:\s+(?:active|open))?|currently\s+(?:active|open)|active|open)\s+(?:app\s+)?(?:panel|screen|ui|view|window)\b(?:\s+(?:(?:is|remains?|stays?)\s+(?:active|open)|i\s+have\s+open))?/giu,
 		),
+		...normalized.matchAll(
+			/\b(?:tell\s+me\s+)?(?:what|which)\s+(?:(?:this|the|my)\s+)?(?:current\s+)?(?:app\s+)?(?:panel|screen|ui|view|window)\b\s+(?:(?:is|remains?|stays?)\s+(?:active|open)|i\s+have\s+open)/giu,
+		),
 	].map((match) => ({
 		start: match.index ?? 0,
 		end: (match.index ?? 0) + match[0].length,
