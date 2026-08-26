@@ -58,6 +58,7 @@ interface MemoryParams {
   limit?: number;
   memoryId?: string;
   confirm?: boolean;
+  all?: boolean;
 }
 
 interface MemoryListItem {
@@ -559,6 +560,15 @@ async function doDelete(
   if (!memoryParam.ok) return memoryParam.result;
   const memoryId = memoryParam.id;
   const query = params.query?.trim();
+  // all:true is an every-MATCH semantic, and a match set only exists for a
+  // query. A bare all (or all + a lone memoryId) has no match set to widen
+  // over, so it fails typed before the generic missing-target check.
+  if (params.all === true && !query) {
+    return fail(
+      "all:true removes every record matching a query, so it cannot run without one. Pass the query whose matches should all be forgotten.",
+      "MEMORY_ALL_REQUIRES_QUERY",
+    );
+  }
   if (!memoryId && !query) {
     return fail("memoryId or query is required.", "MEMORY_MISSING_ID");
   }
@@ -569,7 +579,11 @@ async function doDelete(
     );
   }
 
-  if (memoryId) {
+  // all:true routes to the query path even when a memoryId rides along: a
+  // single-row delete would silently unserve the explicit every-match intent
+  // (the exact failure this parameter exists to close). The bypass is
+  // disclosed in the receipt.
+  if (memoryId && params.all !== true) {
     const existing = await runtime.getMemoryById(memoryId);
     if (!existing) {
       return fail(`Memory ${memoryId} was not found.`, "MEMORY_NOT_FOUND");
@@ -621,7 +635,12 @@ function storageDuplicateFactKey(text: string): string {
  * dual-write shapes) count as that single text. A query that strongly
  * matches more than one genuinely distinct text is ambiguous: refuse, list
  * the candidates, and return their ids in `data.matches` so the model can
- * delete by exact id mechanically.
+ * delete by exact id mechanically — unless the caller passed all:true, the
+ * explicit "forget every match" semantic, which deletes the complete match
+ * set and receipts every removed row. all:true supersedes the distinct-text
+ * ambiguity but never the entity scope: it only completes when the match set
+ * is pinned to one entity scope (the requester's cluster, or one shared
+ * entityId on entity-less internal invocations).
  *
  * The read is pinned to the requesting entity's identity cluster: a text-only
  * match in a multi-user room would also hit another user's identical-text
@@ -683,9 +702,14 @@ async function doDeleteByQuery(
     complete: true,
   });
   let matched = strongMatches(scan);
+  const deleteAllMatches = params.all === true;
   let widenedNote = ignoredEntityId
     ? ` (ignored invalid entityId "${ignoredEntityId}"; scoped to the requester)`
     : "";
+  if (deleteAllMatches && params.memoryId?.trim()) {
+    widenedNote +=
+      " (memoryId ignored: all:true forgets the full query match set)";
+  }
 
   // The table is an implementation detail the caller routinely guesses wrong
   // (live 2026-08-23: "forget my dog's name" arrived as type=memories while
@@ -753,16 +777,33 @@ async function doDeleteByQuery(
       new Set(matched.map((c) => c.memory.entityId ?? null)).size === 1;
     const storageInternalDuplicates =
       duplicateKeys.size === 1 && !duplicateKeys.has("") && singleEntityScope;
-    if (!storageInternalDuplicates) {
+    // all:true is the caller's explicit every-match intent — "forget ALL of
+    // the favorite color memories" (live tj-6f110aa9) names the whole match
+    // set, so genuinely distinct matches are the request, not an ambiguity.
+    // The supersession is scope-bound exactly like the duplicate collapse: a
+    // match set spanning several entities with no requester to pin to stays
+    // a refusal, never a cross-user sweep.
+    const allIntentServed = deleteAllMatches && singleEntityScope;
+    if (!storageInternalDuplicates && !allIntentServed) {
       const items = matched.map((c) => toListItem(c.memory, c.type));
       const lines = items.map(
         (m) => `- [${m.type}] ${m.id}: ${toWellFormedUnicode(m.text)}`,
       );
+      // The recovery line only appears where the retry it names would
+      // actually succeed; the cross-entity refusal names its own reason.
+      const recoveryLines = deleteAllMatches
+        ? [
+            "all:true was not honored: the matches span more than one entity and this invocation has no requesting entity to scope the delete to.",
+          ]
+        : singleEntityScope
+          ? ["If the user asked to remove every match, retry with all:true."]
+          : [];
       return {
         success: false,
         text: [
           `Query "${query}" matches ${distinctTexts.size} distinct memories. Delete by memoryId instead:`,
           ...lines,
+          ...recoveryLines,
         ].join("\n"),
         data: {
           error: "MEMORY_AMBIGUOUS_QUERY",
@@ -801,14 +842,27 @@ async function doDeleteByQuery(
     await runtime.deleteMemory(ids[0]);
   }
 
+  // The all:true receipt names EVERY deleted row — the user asked for the
+  // whole match set, so the proof is the complete list, never a sample or a
+  // ceilinged excerpt. The single-text path keeps its one-line receipt: all
+  // its rows carry the same text.
+  const receipt = deleteAllMatches
+    ? [
+        `Forgot all ${deleted.length} memory record(s) matching "${query}"${widenedNote}:`,
+        ...deleted.map(
+          (m) => `- [${m.type}] ${m.id}: ${toWellFormedUnicode(m.text)}`,
+        ),
+      ].join("\n")
+    : `Forgot ${deleted.length} memory record(s) matching "${query}": ${toWellFormedUnicode(deleted[0]?.text ?? "")}${widenedNote}`;
   return {
     success: true,
-    text: `Forgot ${deleted.length} memory record(s) matching "${query}": ${toWellFormedUnicode(deleted[0]?.text ?? "")}${widenedNote}`,
+    text: receipt,
     values: { deletedCount: deleted.length },
     data: {
       actionName: "MEMORY",
       op: "delete" as const,
       query,
+      all: deleteAllMatches,
       deleted,
     },
   };
@@ -845,11 +899,15 @@ export const memoryAction: Action = {
     "SEARCH_MEMORY",
     "REMOVE_MEMORY",
     "MODIFY_MEMORY",
+    // "Forget all of them" routes here; the every-match semantic itself is
+    // op:delete with all:true, documented on the `all` parameter.
+    "FORGET_ALL_MEMORIES",
+    "DELETE_ALL_MEMORIES",
   ],
   description:
-    "Manage agent memory records. op:create stores a new memory; op:search filters by type/entityId/roomId/query; op:update edits text and re-embeds (requires confirm:true); op:delete removes a memory by memoryId or by query text match (requires confirm:true).",
+    "Manage agent memory records. op:create stores a new memory; op:search filters by type/entityId/roomId/query; op:update edits text and re-embeds (requires confirm:true); op:delete removes a memory by memoryId or by query text match (requires confirm:true) — add all:true when the user asked to forget EVERY match of the query.",
   descriptionCompressed:
-    "manage agent memory create search update delete; delete by memoryId or query; update/delete require confirm:true",
+    "manage agent memory create search update delete; delete by memoryId or query; all:true deletes every query match; update/delete require confirm:true",
   routingHint:
     "NOTES ARE NOT MEMORY: 'make a note', 'note to self', 'jot this down', 'what notes do i have' -> the NOTES action, which writes the durable note store the user sees in the Notes view. MEMORY is the agent's own recall of the conversation. store/search/edit the agent's OWN memory records about the user or conversation -> MEMORY. This includes recalling or COUNTING what was said earlier than the messages shown in context ('how many times have I mentioned X', 'have I ever told you about X', 'what did we say about X last week') — the conversation block in context is only the most recent turns, so answer those from op:search over the stored record, never from that block alone. Do NOT use for open-web lookups -> WEB_SEARCH, for searching connected external channels such as email or another platform's inbox -> MESSAGE (action=search), or for the skill catalog -> SKILL",
   validate: async () => true,
@@ -967,6 +1025,13 @@ export const memoryAction: Action = {
       name: "confirm",
       description:
         "update/delete: must be true to proceed with the destructive operation.",
+      required: false,
+      schema: { type: "boolean" as const },
+    },
+    {
+      name: "all",
+      description:
+        'delete: set true when the user asked to forget EVERY match of the query ("forget all of them", "delete every X memory") — removes every record the query matches within the requesting user\'s own scope and receipts each deleted row, instead of refusing a multi-match query as ambiguous. Only valid together with query.',
       required: false,
       schema: { type: "boolean" as const },
     },

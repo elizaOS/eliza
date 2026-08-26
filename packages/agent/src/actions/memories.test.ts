@@ -556,6 +556,12 @@ describe("MEMORY op:delete by query", () => {
     );
     expect(result.text).toContain(idA);
     expect(result.text).toContain(idB);
+    // The refusal names both recoveries: per-id deletes, and the all:true
+    // retry for an explicit "forget every match" intent (live tj-6f110aa9
+    // ended the turn here with the all-intent unserved).
+    expect(result.text).toContain(
+      "If the user asked to remove every match, retry with all:true.",
+    );
     // The named recovery is machine-readable: the ids ride in data so the
     // planner's next call (delete by memoryId) is mechanical.
     const matches = (
@@ -771,6 +777,230 @@ describe("MEMORY op:delete by query", () => {
 
     expect(result.success).toBe(true);
     expect(rows).toHaveLength(0);
+  });
+});
+
+describe("MEMORY op:delete all matches (all:true)", () => {
+  it("deletes every distinct match of the query and receipts each deleted row (live tj-6f110aa9)", async () => {
+    // The live gap: "forget all of the favorite color memories pls, all of
+    // them" hit MEMORY_AMBIGUOUS_QUERY over genuinely distinct color rows and
+    // the explicit all-intent went unserved. all:true names the whole match
+    // set as the request, so distinct matches are the deletion, not an
+    // ambiguity.
+    const { runtime, rows } = makeRuntime();
+    const ids = [
+      seedFact(rows, { text: "favorite color is orange", entityId: USER_ID }),
+      seedFact(rows, {
+        text: "favorite color was teal in 2020",
+        entityId: USER_ID,
+      }),
+      seedFact(rows, {
+        text: "favorite color for cars is crimson",
+        entityId: USER_ID,
+      }),
+    ];
+    seedFact(rows, { text: "the dog is named biscuit", entityId: USER_ID });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "favorite color",
+      all: true,
+      confirm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect((result.values as { deletedCount: number }).deletedCount).toBe(3);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].memory.content.text).toBe("the dog is named biscuit");
+    // The receipt names every deleted row by id and text — the proof the
+    // whole match set was served.
+    for (const id of ids) expect(result.text).toContain(id);
+    expect(result.text).toContain("orange");
+    expect(result.text).toContain("teal");
+    expect(result.text).toContain("crimson");
+    const data = result.data as {
+      all: boolean;
+      deleted: Array<{ id: string }>;
+    };
+    expect(data.all).toBe(true);
+    expect(data.deleted.map((m) => m.id).sort()).toEqual([...ids].sort());
+  });
+
+  it("receipts the complete deleted list with no ceiling", async () => {
+    const { runtime, rows } = makeRuntime();
+    for (let i = 0; i < 12; i += 1) {
+      seedFact(rows, {
+        text: `favorite color ranked ${i} is shade-${i}`,
+        entityId: USER_ID,
+      });
+    }
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "favorite color",
+      all: true,
+      confirm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(rows).toHaveLength(0);
+    expect(
+      (result.text ?? "").split("\n").filter((l) => l.startsWith("- [")),
+    ).toHaveLength(12);
+  });
+
+  it("rejects a bare all:true without a query, typed", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, { text: "favorite color is orange", entityId: USER_ID });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      all: true,
+      confirm: true,
+    });
+
+    expect(result.success).toBe(false);
+    expect((result.data as { error: string }).error).toBe(
+      "MEMORY_ALL_REQUIRES_QUERY",
+    );
+    expect(rows).toHaveLength(1);
+  });
+
+  it("rejects all:true with only a memoryId — the every-match semantic needs a query", async () => {
+    const { runtime, rows } = makeRuntime();
+    const id = seedFact(rows, {
+      text: "favorite color is orange",
+      entityId: USER_ID,
+    });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      memoryId: id,
+      all: true,
+      confirm: true,
+    });
+
+    expect(result.success).toBe(false);
+    expect((result.data as { error: string }).error).toBe(
+      "MEMORY_ALL_REQUIRES_QUERY",
+    );
+    expect(rows).toHaveLength(1);
+  });
+
+  it("still requires confirm:true", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, { text: "favorite color is orange", entityId: USER_ID });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "favorite color",
+      all: true,
+    });
+
+    expect(result.success).toBe(false);
+    expect((result.data as { error: string }).error).toBe(
+      "MEMORY_CONFIRMATION_REQUIRED",
+    );
+    expect(rows).toHaveLength(1);
+  });
+
+  it("stays requester-bound: another entity's matching rows survive", async () => {
+    const { runtime, rows } = makeRuntime({
+      clusters: { [USER_ID]: [SIBLING_ID] },
+    });
+    seedFact(rows, { text: "favorite color is orange", entityId: USER_ID });
+    seedFact(rows, { text: "favorite color is teal", entityId: SIBLING_ID });
+    seedFact(rows, {
+      text: "favorite color is orange",
+      entityId: OTHER_USER_ID,
+    });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "favorite color",
+      all: true,
+      confirm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect((result.values as { deletedCount: number }).deletedCount).toBe(2);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].memory.entityId).toBe(OTHER_USER_ID);
+  });
+
+  it("refuses a cross-entity match set on an entity-less invocation even with all:true", async () => {
+    // all:true supersedes the distinct-text ambiguity, never the entity
+    // scope: with no requester to pin to, a match set spanning two users
+    // stays a refusal — and the refusal says the retry line does not apply.
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, { text: "favorite color is orange", entityId: USER_ID });
+    seedFact(rows, {
+      text: "favorite color is teal",
+      entityId: OTHER_USER_ID,
+    });
+    const message = {
+      ...makeMessage(),
+      entityId: undefined,
+    } as unknown as Memory;
+
+    const result = await runAction(runtime, message, {
+      action: "delete",
+      query: "favorite color",
+      all: true,
+      confirm: true,
+    });
+
+    expect(result.success).toBe(false);
+    expect((result.data as { error: string }).error).toBe(
+      "MEMORY_AMBIGUOUS_QUERY",
+    );
+    expect(result.text).toContain("all:true was not honored");
+    expect(result.text).not.toContain("retry with all:true");
+    expect(rows).toHaveLength(2);
+  });
+
+  it("composes with the duplicate collapse: dual-written duplicates plus all:true delete completely", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "user's favorite planet is saturn",
+      entityId: USER_ID,
+    });
+    seedFact(rows, { text: "favorite planet is saturn", entityId: USER_ID });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "favorite planet is saturn",
+      all: true,
+      confirm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect((result.values as { deletedCount: number }).deletedCount).toBe(2);
+    expect(rows).toHaveLength(0);
+  });
+
+  it("serves the all-intent over a stray memoryId and discloses the bypass", async () => {
+    // A single-row delete by the riding memoryId would silently unserve the
+    // explicit every-match intent — the exact live failure family.
+    const { runtime, rows } = makeRuntime();
+    const idA = seedFact(rows, {
+      text: "favorite color is orange",
+      entityId: USER_ID,
+    });
+    seedFact(rows, { text: "favorite color is teal", entityId: USER_ID });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      memoryId: idA,
+      query: "favorite color",
+      all: true,
+      confirm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect((result.values as { deletedCount: number }).deletedCount).toBe(2);
+    expect(rows).toHaveLength(0);
+    expect(result.text).toContain("memoryId ignored");
   });
 });
 
