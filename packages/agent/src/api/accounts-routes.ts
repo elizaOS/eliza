@@ -1168,29 +1168,36 @@ export async function syncDirectProviderCredentials(
   const config = ctx.state.config as Record<string, unknown>;
   const serviceRouting = resolveServiceRoutingInConfig(config);
   const accountStrategies = config.accountStrategies;
-  await getAgentHostBridge().applyAccountPoolApiCredentials({
-    activeBackend: serviceRouting?.llmText?.backend,
-    accountStrategies:
-      accountStrategies && typeof accountStrategies === "object"
-        ? (accountStrategies as Record<string, unknown>)
-        : undefined,
-    serviceRouting,
-  });
   const runtime = ctx.state.runtime;
-  if (!runtime) return;
-  const secretKeys = new Set([
-    ...Object.values(DIRECT_ACCOUNT_PROVIDER_ENV),
-    "Z_AI_API_KEY",
-    "KIMI_API_KEY",
-    "OPENAI_API_KEY",
-  ]);
-  for (const key of secretKeys) {
-    runtime.setSetting(key, process.env[key]?.trim() || null, true);
+  try {
+    await getAgentHostBridge().applyAccountPoolApiCredentials({
+      activeBackend: serviceRouting?.llmText?.backend,
+      accountStrategies:
+        accountStrategies && typeof accountStrategies === "object"
+          ? (accountStrategies as Record<string, unknown>)
+          : undefined,
+      serviceRouting,
+    });
+  } finally {
+    // The pool retracts its live export before fallible storage/token reads.
+    // Mirror that retraction even when reconciliation rejects, otherwise the
+    // already-running runtime can retain and bill through the revoked secret.
+    if (runtime) {
+      const secretKeys = new Set([
+        ...Object.values(DIRECT_ACCOUNT_PROVIDER_ENV),
+        "Z_AI_API_KEY",
+        "KIMI_API_KEY",
+        "OPENAI_API_KEY",
+      ]);
+      for (const key of secretKeys) {
+        runtime.setSetting(key, process.env[key]?.trim() || null, true);
+      }
+      runtime.setSetting(
+        "OPENAI_BASE_URL",
+        process.env.OPENAI_BASE_URL?.trim() || null,
+      );
+    }
   }
-  runtime.setSetting(
-    "OPENAI_BASE_URL",
-    process.env.OPENAI_BASE_URL?.trim() || null,
-  );
 }
 
 async function handleOAuthRoutes(

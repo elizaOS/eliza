@@ -364,6 +364,44 @@ describe("POST /api/first-run direct account authority", () => {
     delete process.env.SOLANA_PRIVATE_KEY;
   });
 
+  it("preserves an external env edit made while a failing config commit is in flight", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ data: { label: "primary" } }), {
+            status: 200,
+          }),
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ data: [{ id: "openai/gpt-5" }] }), {
+            status: 200,
+          }),
+        ),
+    );
+    const { context, responses } = firstRunRouteContext({
+      apiKey: "sk-or-external-edit",
+      saveConfig: () => {
+        process.env.EXTERNAL_OPERATOR_EDIT = "preserve-me";
+        throw new Error("disk unavailable");
+      },
+    });
+
+    await expect(handleFirstRunRoutes(context)).resolves.toBe(true);
+
+    expect(responses.at(-1)).toEqual({
+      status: 500,
+      data: { error: "Failed to save configuration" },
+    });
+    expect(await listAccounts("openrouter-api")).toEqual([]);
+    expect(process.env.OPENROUTER_API_KEY).toBeUndefined();
+    expect(process.env.OPENAI_API_KEY).toBeUndefined();
+    expect(process.env.OPENAI_BASE_URL).toBeUndefined();
+    expect(process.env.EXTERNAL_OPERATOR_EDIT).toBe("preserve-me");
+    delete process.env.EXTERNAL_OPERATOR_EDIT;
+  });
+
   it("retries cleanly after a failed config commit", async () => {
     vi.stubGlobal(
       "fetch",
