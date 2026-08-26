@@ -488,7 +488,9 @@ describe("billing cancellation durable receipt authority", () => {
     ).resolves.toMatchObject({
       receiptId: accepted.receipt.receiptId,
       status: "provider_confirmed",
-      billingStopped: true,
+      computeStopped: true,
+      providerStopped: true,
+      retainedBackupBilling: { status: "not_applicable", ratePerHour: null },
       infrastructureStatus: "provider_confirmed",
     });
   });
@@ -812,7 +814,7 @@ describe("billing cancellation durable receipt authority", () => {
     });
     expect(agentReplay.receipt).toMatchObject({
       jobId: originalAgentJobId,
-      pollEndpoint: `/api/v1/jobs/${originalAgentJobId}`,
+      pollEndpoint: `/api/v1/billing/resources/${OTHER_RESOURCE}/cancel?receiptId=${agentReplay.receipt.receiptId}`,
       retainedBackupBilling: { status: "billable", ratePerHour: 0.0025 },
     });
   });

@@ -1,7 +1,7 @@
 /**
- * POST /api/v1/billing/resources/:id/cancel
- * Durably admits a provider stop for a container or managed agent sandbox.
- * Billing is reported stopped only after provider confirmation is persisted.
+ * Reads durable cancellation receipts and admits provider stops for billable
+ * compute. Billing is reported stopped only after provider confirmation is
+ * persisted.
  */
 
 import { Hono } from "hono";
@@ -11,8 +11,10 @@ import { requireCurrentBillingManagerSession } from "@/lib/auth/workers-hono-aut
 import {
   moneyRateLimit,
   RateLimitPresets,
+  rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { activeBillingService } from "@/lib/services/active-billing";
+import { billingResourceCancellationsService } from "@/lib/services/billing-resource-cancellations";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -48,9 +50,46 @@ function compatibilityIdempotencyKey(
 
 const app = new Hono<AppEnv>();
 
-app.use("*", moneyRateLimit(RateLimitPresets.STANDARD));
+app.get("/", rateLimit(RateLimitPresets.RELAXED), async (c) => {
+  try {
+    const user = await requireCurrentBillingManagerSession(c);
+    const resourceId = c.req.param("id");
+    const receiptId = c.req.query("receiptId")?.trim();
+    if (c.req.header(DURABLE_CANCEL_VERSION_HEADER)?.trim() !== "2") {
+      return c.json(
+        { success: false, error: "Billing cancellation version 2 required" },
+        400,
+      );
+    }
+    if (!resourceId || !z.uuid().safeParse(resourceId).success) {
+      return c.json(
+        { success: false, error: "Resource id must be a UUID" },
+        400,
+      );
+    }
+    if (!receiptId || !z.uuid().safeParse(receiptId).success) {
+      return c.json(
+        { success: false, error: "Receipt id must be a UUID" },
+        400,
+      );
+    }
+    const receipt = await billingResourceCancellationsService.readReceipt({
+      organizationId: user.organization_id,
+      resourceId,
+      receiptId,
+    });
+    c.header(DURABLE_CANCEL_VERSION_HEADER, "2");
+    return c.json({ success: true, receipt }, 200);
+  } catch (error) {
+    logger.error(
+      "[Billing Cancel API] Error reading billable resource cancellation receipt",
+      error,
+    );
+    return failureResponse(c, error);
+  }
+});
 
-app.post("/", async (c) => {
+app.post("/", moneyRateLimit(RateLimitPresets.STANDARD), async (c) => {
   try {
     const resourceId = c.req.param("id");
     if (!resourceId) {

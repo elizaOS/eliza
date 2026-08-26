@@ -978,7 +978,7 @@ describe("buildAccountBillingSnapshot v2", () => {
               name: "missing-rate-agent",
               status: "running",
               billingInterval: "hour",
-              cancelAction: "suspend_billing",
+              cancelAction: "stop_compute",
               cancelEndpoint: `/api/v1/billing/resources/${agentId}/cancel?resourceType=agent_sandbox`,
             },
           ],

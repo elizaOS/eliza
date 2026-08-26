@@ -206,6 +206,16 @@ function isRetryableReceiptReadFailure(error: unknown): boolean {
   return error instanceof TypeError || isTimeoutAbortError(error);
 }
 
+function terminalRefreshSucceeded(result: unknown): boolean {
+  if (typeof result !== "object" || result === null) return true;
+  const record = result as Record<string, unknown>;
+  return !(
+    record.isError === true ||
+    record.status === "error" ||
+    (Object.hasOwn(record, "error") && record.error != null)
+  );
+}
+
 function sameBoundContext(
   context: CancellationContext,
   generation: number,
@@ -428,7 +438,7 @@ export function useBillingResourceCancellations({
   );
 
   const schedulePoll = useCallback(
-    (context: CancellationContext) => {
+    (context: CancellationContext, delayMs = pollIntervalMs) => {
       const key = billingCancellationIdentityKey(context.displayResource);
       clearTimer(key);
       const control = pollControlsRef.current.get(key);
@@ -443,7 +453,7 @@ export function useBillingResourceCancellations({
       const timer = setTimeout(() => {
         timersRef.current.delete(key);
         void pollRef.current(context);
-      }, pollIntervalMs);
+      }, delayMs);
       timersRef.current.set(key, timer);
     },
     [clearTimer, isContextCurrent, pollIntervalMs],
@@ -500,7 +510,13 @@ export function useBillingResourceCancellations({
         context.blocksNewerRevision || receipt.status === "conflict"
           ? { kind: "conflict", receiptId: receipt.receiptId }
           : receipt.status === "provider_confirmed"
-            ? { kind: "provider_confirmed", receiptId: receipt.receiptId }
+            ? {
+                kind: "provider_confirmed",
+                receiptId: receipt.receiptId,
+                computeStopped: true,
+                providerStopped: true,
+                retainedBackupBilling: receipt.retainedBackupBilling,
+              }
             : { kind: "terminal_attention", receiptId: receipt.receiptId };
       setState(key, terminalState, context.generation, context.signature);
       try {
@@ -515,8 +531,7 @@ export function useBillingResourceCancellations({
       let refreshed = false;
       if (isContextCurrent(key, context)) {
         try {
-          await terminalRef.current();
-          refreshed = true;
+          refreshed = terminalRefreshSucceeded(await terminalRef.current());
         } catch {
           // The terminal receipt remains authoritative even when refreshing the
           // surrounding snapshot fails; that query already exposes stale/error UI.
@@ -604,7 +619,13 @@ export function useBillingResourceCancellations({
           context.signature,
         );
         if (isRetryableReceiptReadFailure(error)) {
-          schedulePoll(context);
+          schedulePoll(
+            context,
+            error instanceof BillingCancellationHttpError &&
+              error.retryAfterMs !== null
+              ? Math.max(pollIntervalMs, error.retryAfterMs)
+              : pollIntervalMs,
+          );
         } else {
           clearTimer(key);
         }
@@ -952,7 +973,11 @@ export function useBillingResourceCancellations({
             operationSignature,
             resource,
           );
-          if (result.receipt.status !== "accepted" && !currentlyBound) {
+          if (
+            result.receipt.status !== "accepted" &&
+            !currentlyBound &&
+            result.disposition !== "same_key_replay"
+          ) {
             context.blocksNewerRevision = true;
           }
           await applyReceipt(context, result.receipt);

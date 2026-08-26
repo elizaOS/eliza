@@ -44,6 +44,7 @@ export type BillingCancelIntentCoordinationErrorCode =
   | "BILLING_CANCEL_COORDINATION_STORAGE_UNAVAILABLE"
   | "BILLING_CANCEL_COORDINATION_STORAGE_ACCESS_FAILED"
   | "BILLING_CANCEL_COORDINATION_STORAGE_CORRUPT"
+  | "BILLING_CANCEL_COORDINATION_STORAGE_FORWARD_VERSION"
   | "BILLING_CANCEL_COORDINATION_STORAGE_ROUNDTRIP_MISMATCH"
   | "BILLING_CANCEL_COORDINATION_LOCK_UNAVAILABLE"
   | "BILLING_CANCEL_COORDINATION_LOCK_TIMEOUT"
@@ -439,7 +440,7 @@ function parsePersistedIntent(
   if (value.version !== 1) {
     throw coordinationError(
       "Persisted billing cancellation data has an unsupported version.",
-      "BILLING_CANCEL_COORDINATION_STORAGE_CORRUPT",
+      "BILLING_CANCEL_COORDINATION_STORAGE_FORWARD_VERSION",
       { key },
     );
   }
@@ -569,7 +570,33 @@ function readSlot(
 ): PersistedBillingCancelIntentV1 | null {
   const key = billingCancelIntentStorageKey(identity);
   const raw = getStorageItem(storage, key);
-  return raw === null ? null : parsePersistedIntent(raw, key);
+  if (raw === null) return null;
+  try {
+    return parsePersistedIntent(raw, key);
+  } catch (cause) {
+    if (
+      !(cause instanceof BillingCancelIntentCoordinationError) ||
+      ![
+        "BILLING_CANCEL_COORDINATION_STORAGE_CORRUPT",
+        "BILLING_CANCEL_COORDINATION_STORAGE_FORWARD_VERSION",
+      ].includes(cause.code)
+    ) {
+      throw cause;
+    }
+    const quarantineKey = `${key}:quarantine:v1`;
+    setStorageItem(
+      storage,
+      quarantineKey,
+      JSON.stringify({
+        version: 1,
+        quarantinedAt: new Date().toISOString(),
+        reason: cause.code,
+        raw,
+      }),
+    );
+    removeStorageItem(storage, key);
+    return null;
+  }
 }
 
 function writeSlot(

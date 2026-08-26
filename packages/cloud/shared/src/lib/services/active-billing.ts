@@ -45,7 +45,7 @@ export interface ActiveBillableResource {
   estimatedNextBillingAt: string | null;
   totalBilled: number;
   cancelEndpoint: string;
-  cancelAction: "stop" | "suspend_billing";
+  cancelAction: "stop" | "stop_compute";
   metadata: Record<string, unknown>;
 }
 
@@ -246,7 +246,7 @@ class ActiveBillingService {
           "agent_sandbox.total_billed",
         ),
         cancelEndpoint: cancelEndpoint("agent_sandbox", agent.id),
-        cancelAction: "suspend_billing",
+        cancelAction: "stop_compute",
         metadata: {
           characterId: agent.character_id,
           sandboxId: agent.sandbox_id,
@@ -608,7 +608,7 @@ class ActiveBillingService {
               estimatedNextBillingAt: null,
               totalBilled,
               cancelEndpoint: cancelEndpoint("agent_sandbox", agent.id),
-              cancelAction: "suspend_billing",
+              cancelAction: "stop_compute",
               metadata: {
                 characterId: agent.character_id,
                 cancelledAt: now.toISOString(),
@@ -682,7 +682,7 @@ class ActiveBillingService {
               estimatedNextBillingAt: null,
               totalBilled,
               cancelEndpoint: cancelEndpoint("agent_sandbox", agent.id),
-              cancelAction: "suspend_billing",
+              cancelAction: "stop_compute",
               metadata: {
                 characterId: agent.character_id,
                 cancelledAt: now.toISOString(),
@@ -714,7 +714,7 @@ class ActiveBillingService {
             estimatedNextBillingAt: null,
             totalBilled,
             cancelEndpoint: cancelEndpoint("agent_sandbox", updated.id),
-            cancelAction: "suspend_billing",
+            cancelAction: "stop_compute",
             metadata: {
               characterId: updated.character_id,
               cancelledAt: now.toISOString(),

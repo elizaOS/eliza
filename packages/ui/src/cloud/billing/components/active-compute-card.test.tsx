@@ -819,13 +819,19 @@ describe("ActiveComputeCardView", () => {
           [identity]: {
             kind: "provider_confirmed",
             receiptId: "22222222-2222-4222-8222-222222222222",
+            computeStopped: true,
+            providerStopped: true,
+            retainedBackupBilling: {
+              status: "not_applicable",
+              ratePerHour: null,
+            },
           },
         }}
       />,
     );
     expect(
       screen.getByText(
-        "Provider confirmed the stop. Billing stop is now authoritative.",
+        "Provider confirmed compute stopped. No retained backup billing remains for this resource.",
       ),
     ).toBeTruthy();
 
@@ -842,9 +848,55 @@ describe("ActiveComputeCardView", () => {
         }}
       />,
     );
+    const attentionAlert = screen.getByRole("alert");
+    expect(attentionAlert.textContent).toMatch(/operator attention/i);
+    expect(attentionAlert.textContent).toMatch(/provider.*not confirmed/i);
+    expect(attentionAlert.textContent).toMatch(/billing continues/i);
+    expect(attentionAlert.textContent).not.toMatch(
+      /provider confirmed compute stopped/i,
+    );
+  });
+
+  it("keeps retained agent-backup billing explicit after compute stops", () => {
+    const resource = computeResource({
+      resourceType: "agent_sandbox",
+      resourceId: "agent-1234567890",
+      name: "Research agent",
+      cancellationControl: {
+        displayAction: "stop_compute",
+        method: "POST",
+        mode: "stop",
+        endpoint:
+          "/api/v1/billing/resources/agent-1234567890/cancel?resourceType=agent_sandbox",
+        expectedLifecycleRevision: 7,
+        eligible: true,
+        blockers: [],
+      },
+    });
+
+    render(
+      <ActiveComputeCardView
+        state={ready(snapshot({ resources: available([resource]) }))}
+        onRetry={vi.fn()}
+        onRequestCancellation={vi.fn()}
+        cancellationStates={{
+          "agent_sandbox:agent-1234567890:7": {
+            kind: "provider_confirmed",
+            receiptId: "22222222-2222-4222-8222-222222222222",
+            computeStopped: true,
+            providerStopped: true,
+            retainedBackupBilling: {
+              status: "billable",
+              ratePerHour: 0.0025,
+            },
+          },
+        }}
+      />,
+    );
+
     expect(
       screen.getByText(
-        "The stop needs operator attention. Billing has not been confirmed stopped.",
+        "Provider confirmed compute stopped. The retained backup remains billable at $0.0025/hour until it is deleted.",
       ),
     ).toBeTruthy();
   });

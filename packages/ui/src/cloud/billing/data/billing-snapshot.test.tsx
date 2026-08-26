@@ -64,7 +64,7 @@ function resource(
     billingStatus: "active",
     ...authority,
     cancellationControl: {
-      displayAction: type === "container" ? "stop" : "suspend_billing",
+      displayAction: type === "container" ? "stop" : "stop_compute",
       method: "POST",
       mode: "stop",
       endpoint: `/api/v1/billing/resources/${resourceId}/cancel?resourceType=${type}`,
@@ -403,7 +403,7 @@ describe("parseBillingSnapshotV2Envelope", () => {
           activeOf(envelope).resources,
         ) as unknown[];
         record(record(resources[0]).cancellationControl).displayAction =
-          "suspend_billing";
+          "stop_compute";
       },
     ],
     [

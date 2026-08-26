@@ -205,6 +205,22 @@ export interface AccountTierSnapshot {
 export type ActiveComputeResourceType = "container" | "agent_sandbox";
 export type ActiveComputeBillingInterval = "hour" | "day";
 
+export type ActiveComputeCancellationBlockerCode =
+  | "interactive_session_required"
+  | "billing_account_ineligible"
+  | "owner_or_admin_role_required";
+
+/** Server-owned mutation descriptor; clients render it without inferring policy. */
+export interface ActiveComputeCancellationControlSnapshot {
+  displayAction: "stop" | "stop_compute";
+  method: "POST";
+  mode: "stop";
+  endpoint: string;
+  expectedLifecycleRevision: number;
+  eligible: boolean;
+  blockers: ActiveComputeCancellationBlockerCode[];
+}
+
 export interface ActiveComputeRateSegmentSnapshot {
   workloadKind: "agent" | "container";
   billingState: "running" | "backup";
@@ -221,6 +237,7 @@ export interface ActiveComputeResourceSnapshot {
   lastBilledAt: string | null;
   nextBillingAt: string | null;
   estimatedNextBillingAt: string | null;
+  cancellationControl: ActiveComputeCancellationControlSnapshot;
   rateSegment: Observed<ActiveComputeRateSegmentSnapshot>;
   ratePerHour: Observed<
     ExactBillingValue & { unit: "usd_per_hour"; currency: "USD" }

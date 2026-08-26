@@ -269,7 +269,7 @@ export function BillingTab({
       : null;
   const refetchBillingSnapshot = billingSnapshot.refetch;
   const handleCancellationTerminal = useCallback(async () => {
-    await refetchBillingSnapshot();
+    return await refetchBillingSnapshot();
   }, [refetchBillingSnapshot]);
   const billingCancellations = useBillingResourceCancellations({
     organizationId: user.organization_id,

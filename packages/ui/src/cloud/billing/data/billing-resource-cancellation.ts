@@ -1,6 +1,8 @@
 /** Strict browser boundary for authoritative billable-resource cancellation receipts. */
 
-import { apiWithStatus } from "../../lib/api-client";
+import { apiWithStatusAndHeaders } from "../../lib/api-client";
+
+const DURABLE_CANCEL_VERSION_HEADER = "X-Eliza-Billing-Cancel-Version";
 
 export type BillingCancellationResourceType = "container" | "agent_sandbox";
 export type BillingCancellationStatus =
@@ -17,7 +19,12 @@ export interface BillingCancellationReceipt {
   action: "stop";
   expectedLifecycleRevision: number;
   status: BillingCancellationStatus;
-  billingStopped: boolean;
+  computeStopped: boolean;
+  providerStopped: boolean;
+  retainedBackupBilling: {
+    status: "not_applicable" | "pending" | "none" | "billable";
+    ratePerHour: number | null;
+  };
   infrastructureStatus:
     | "queued"
     | "provider_confirmed"
@@ -47,6 +54,7 @@ export class BillingCancellationHttpError extends Error {
     public readonly code: string,
     message: string,
     public readonly retryable: boolean,
+    public readonly retryAfterMs: number | null = null,
   ) {
     super(message);
     this.name = "BillingCancellationHttpError";
@@ -150,26 +158,50 @@ function parseReceipt(value: unknown): BillingCancellationReceipt {
   }
   const status = record.status as BillingCancellationStatus;
   const invariant = {
-    accepted: { billingStopped: false, infrastructureStatus: "queued" },
+    accepted: { stopped: false, infrastructureStatus: "queued" },
     provider_confirmed: {
-      billingStopped: true,
+      stopped: true,
       infrastructureStatus: "provider_confirmed",
     },
-    conflict: { billingStopped: false, infrastructureStatus: "superseded" },
+    conflict: { stopped: false, infrastructureStatus: "superseded" },
     terminal_attention: {
-      billingStopped: false,
+      stopped: false,
       infrastructureStatus: "terminal_attention",
     },
   }[status] as {
-    billingStopped: boolean;
+    stopped: boolean;
     infrastructureStatus: BillingCancellationReceipt["infrastructureStatus"];
   };
   if (
-    record.billingStopped !== invariant.billingStopped ||
+    record.computeStopped !== invariant.stopped ||
+    record.providerStopped !== invariant.stopped ||
     record.infrastructureStatus !== invariant.infrastructureStatus
   ) {
     return invalidResponse();
   }
+  const retainedRecord = asRecord(record.retainedBackupBilling);
+  const retainedStatus = retainedRecord.status;
+  const retainedRate = retainedRecord.ratePerHour;
+  const retainedBackupBilling: BillingCancellationReceipt["retainedBackupBilling"] =
+    resourceType === "container"
+      ? retainedStatus === "not_applicable" && retainedRate === null
+        ? { status: "not_applicable", ratePerHour: null }
+        : invalidResponse()
+      : status === "provider_confirmed"
+        ? retainedStatus === "none" && retainedRate === null
+          ? { status: "none", ratePerHour: null }
+          : retainedStatus === "billable" &&
+              typeof retainedRate === "number" &&
+              Number.isFinite(retainedRate) &&
+              retainedRate > 0
+            ? { status: "billable", ratePerHour: retainedRate }
+            : invalidResponse()
+        : retainedStatus === "pending" &&
+            typeof retainedRate === "number" &&
+            Number.isFinite(retainedRate) &&
+            retainedRate > 0
+          ? { status: "pending", ratePerHour: retainedRate }
+          : invalidResponse();
 
   return {
     receiptId,
@@ -179,7 +211,9 @@ function parseReceipt(value: unknown): BillingCancellationReceipt {
     action: "stop",
     expectedLifecycleRevision: safeRevision(record.expectedLifecycleRevision),
     status,
-    billingStopped: invariant.billingStopped,
+    computeStopped: invariant.stopped,
+    providerStopped: invariant.stopped,
+    retainedBackupBilling,
     infrastructureStatus: invariant.infrastructureStatus,
     acceptedAt: canonicalIsoTimestamp(record.acceptedAt),
     pollEndpoint: parsePollEndpoint(record.pollEndpoint, resourceId, receiptId),
@@ -189,6 +223,7 @@ function parseReceipt(value: unknown): BillingCancellationReceipt {
 function parseHttpError(
   status: number,
   value: unknown,
+  headers: Headers,
 ): BillingCancellationHttpError {
   let code = "billing_cancellation_failed";
   let message = "The billing cancellation request failed.";
@@ -208,7 +243,19 @@ function parseHttpError(
     code,
     message,
     status === 408 || status === 425 || status === 429 || status >= 500,
+    parseRetryAfterMs(headers.get("Retry-After")),
   );
+}
+
+function parseRetryAfterMs(value: string | null): number | null {
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.min(Math.ceil(seconds * 1_000), 15 * 60_000);
+  }
+  const at = Date.parse(value);
+  if (!Number.isFinite(at)) return null;
+  return Math.min(Math.max(0, at - Date.now()), 15 * 60_000);
 }
 
 function assertRequestInput(input: RequestBillingCancellationInput): void {
@@ -230,9 +277,12 @@ export async function requestBillingCancellation(
   input: RequestBillingCancellationInput,
 ): Promise<BillingCancellationResult> {
   assertRequestInput(input);
-  const response = await apiWithStatus<unknown>(input.endpoint, {
+  const response = await apiWithStatusAndHeaders<unknown>(input.endpoint, {
     method: "POST",
-    headers: { "Idempotency-Key": input.idempotencyKey },
+    headers: {
+      "Idempotency-Key": input.idempotencyKey,
+      [DURABLE_CANCEL_VERSION_HEADER]: "2",
+    },
     json: {
       resourceType: input.resourceType,
       mode: "stop",
@@ -242,7 +292,11 @@ export async function requestBillingCancellation(
   });
   const envelope = asRecord(response.data);
   if (!("receipt" in envelope)) {
-    throw parseHttpError(response.status, response.data);
+    throw parseHttpError(
+      response.status,
+      response.data,
+      response.headers ?? new Headers(),
+    );
   }
   if (
     typeof envelope.disposition !== "string" ||
@@ -265,7 +319,9 @@ export async function requestBillingCancellation(
       ? 202
       : receipt.status === "conflict"
         ? 409
-        : 200;
+        : receipt.status === "terminal_attention"
+          ? 424
+          : 200;
   const expectedSuccess = !["conflict", "terminal_attention"].includes(
     receipt.status,
   );
@@ -302,9 +358,16 @@ export async function readBillingCancellationReceipt(
   ) {
     throw new Error("Billing cancellation poll endpoint is invalid.");
   }
-  const response = await apiWithStatus<unknown>(pollEndpoint, { signal });
+  const response = await apiWithStatusAndHeaders<unknown>(pollEndpoint, {
+    headers: { [DURABLE_CANCEL_VERSION_HEADER]: "2" },
+    signal,
+  });
   if (response.status !== 200) {
-    throw parseHttpError(response.status, response.data);
+    throw parseHttpError(
+      response.status,
+      response.data,
+      response.headers ?? new Headers(),
+    );
   }
   const envelope = asRecord(response.data);
   if (envelope.success !== true) return invalidResponse();
