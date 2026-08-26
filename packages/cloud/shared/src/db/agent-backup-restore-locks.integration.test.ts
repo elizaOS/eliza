@@ -27,6 +27,10 @@ import {
 import { installAgentNodeOccurrenceTriggerForTests } from "./agent-node-occurrence-test-support";
 import type { AgentBackupRestoreLeaseAuthorityReceipt } from "./repositories/agent-backup-restore-lease";
 import {
+  agentBackupNodeAdmissionCursors,
+  agentBackupOrganizationAdmissionCursors,
+} from "./schemas/agent-backup-admission";
+import {
   agentBackupCatalogAuthorities,
   agentBackupObjects,
   agentBackupRestoreLeases,
@@ -634,6 +638,9 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
         organizations,
         users,
         userCharacters,
+        agentNodeIncarnationHistories,
+        agentBackupOrganizationAdmissionCursors,
+        agentBackupNodeAdmissionCursors,
         dockerNodes,
         agentSandboxes,
         agentBackupCatalogAuthorities,
@@ -641,7 +648,6 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
         agentBackupObjects,
         agentBackupRestoreLeases,
         agentBackupRestoreOperations,
-        agentNodeIncarnationHistories,
         agentActivationPublications,
         agentVaultKeySeedReceipts,
         agentBackupRestoreReceipts,
@@ -799,6 +805,8 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
           LOCK_VAULT_GENERATION,
         ]),
       );
+    await dbWrite.delete(agentBackupNodeAdmissionCursors);
+    await dbWrite.delete(agentBackupOrganizationAdmissionCursors);
     await dbWrite.delete(dockerNodes).where(eq(dockerNodes.id, LOCK_TARGET_NODE_RECORD_ID));
     await dbWrite
       .delete(agentNodeIncarnationHistories)

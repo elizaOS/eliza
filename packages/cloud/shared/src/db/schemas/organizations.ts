@@ -104,10 +104,6 @@ export const organizations = pgTable(
       .default(0),
     account_deletion_request_id: uuid("account_deletion_request_id"),
     paid_work_fenced_at: timestamp("paid_work_fenced_at"),
-    backup_admission_cursor_at: timestamp("backup_admission_cursor_at", {
-      withTimezone: true,
-    }),
-
     is_active: boolean("is_active").default(true).notNull(),
     created_at: timestamp("created_at").notNull().defaultNow(),
     updated_at: timestamp("updated_at").notNull().defaultNow(),
