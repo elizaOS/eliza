@@ -44,6 +44,7 @@ import {
   AttachmentTrigger,
 } from "../ui/attachment";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { CodeBlock } from "../ui/code-block";
 import { TranscriptViewerOverlay } from "./TranscriptViewerOverlay";
 
@@ -376,7 +377,12 @@ function ImageTile({
 }): React.JSX.Element {
   const label = attachmentLabel(att);
   return (
-    <div className="group relative inline-block max-w-[min(20rem,100%)] overflow-hidden rounded-lg border border-border bg-card">
+    <Card
+      surface="card"
+      border="standard"
+      radius="large"
+      className="group relative inline-block max-w-[min(20rem,100%)] overflow-hidden"
+    >
       <Button
         variant="publicRow"
         size="content"
@@ -412,7 +418,7 @@ function ImageTile({
           </TileButton>
         </span>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -449,7 +455,8 @@ function FileTile({
   return (
     <Attachment
       size="sm"
-      className="min-h-touch w-full max-w-[min(20rem,100%)] border-border bg-card text-txt hover:border-border-strong hover:bg-bg-hover"
+      presentation="chatTile"
+      className="w-full max-w-[min(20rem,100%)]"
     >
       <AttachmentTrigger asChild aria-label={actionLabel}>
         <a
@@ -461,7 +468,7 @@ function FileTile({
           <span className="sr-only">{actionLabel}</span>
         </a>
       </AttachmentTrigger>
-      <AttachmentMedia className="bg-transparent text-muted">
+      <AttachmentMedia variant="transparent">
         <Icon className="size-5 shrink-0 text-muted" strokeWidth={1.5} />
       </AttachmentMedia>
       <AttachmentContent>
@@ -548,39 +555,54 @@ function PdfTile({
   }
 
   return (
-    <figure
-      data-testid="pdf-attachment"
-      aria-label={frameTitle}
-      className="m-0 w-full max-w-[min(36rem,100%)] overflow-hidden rounded-lg border border-border bg-card"
+    <Card
+      asChild
+      variant="attachmentFrame"
+      className="m-0 w-full max-w-[min(36rem,100%)]"
     >
-      <figcaption className="flex items-center gap-2 border-b border-border px-3 py-2">
-        <FileText className="size-4 shrink-0 text-muted" strokeWidth={1.5} />
-        <span className="min-w-0 flex-1 truncate text-xs-tight font-medium text-txt">
-          {label}
-        </span>
-        <span className="flex shrink-0 gap-1.5">
-          <TileButton label={openLabel} href={src}>
-            <ExternalLink className="size-3.5" />
-          </TileButton>
-          <TileButton
-            label={downloadLabel}
-            href={src}
-            download={downloadName(att, "pdf")}
-          >
-            <Download className="size-3.5" />
-          </TileButton>
-        </span>
-      </figcaption>
-      <iframe
-        src={src}
-        title={frameTitle}
-        // Chromium's built-in PDF viewer requires scripts. Keep the document
-        // in an opaque origin and grant no forms, navigation, or same-origin
-        // access so PDF bytes cannot reach application state.
-        sandbox="allow-scripts"
-        className="block h-[28rem] w-full border-0 bg-brand-white"
-      />
-    </figure>
+      <figure data-testid="pdf-attachment" aria-label={frameTitle}>
+        <Card
+          asChild
+          variant="attachmentHeader"
+          flow="row"
+          gap="compact"
+          padding="compact"
+        >
+          <figcaption>
+            <FileText
+              className="size-4 shrink-0 text-muted"
+              strokeWidth={1.5}
+            />
+            <span className="min-w-0 flex-1 truncate text-xs-tight font-medium text-txt">
+              {label}
+            </span>
+            <span className="flex shrink-0 gap-1.5">
+              <TileButton label={openLabel} href={src}>
+                <ExternalLink className="size-3.5" />
+              </TileButton>
+              <TileButton
+                label={downloadLabel}
+                href={src}
+                download={downloadName(att, "pdf")}
+              >
+                <Download className="size-3.5" />
+              </TileButton>
+            </span>
+          </figcaption>
+        </Card>
+        <Card asChild surface="inverseForeground" border="none" radius="none">
+          <iframe
+            src={src}
+            title={frameTitle}
+            // Chromium's built-in PDF viewer requires scripts. Keep the document
+            // in an opaque origin and grant no forms, navigation, or same-origin
+            // access so PDF bytes cannot reach application state.
+            sandbox="allow-scripts"
+            className="block h-[28rem] w-full"
+          />
+        </Card>
+      </figure>
+    </Card>
   );
 }
 
@@ -720,59 +742,71 @@ function Model3dTile({
   const showFallbackBody = status === "unsupported" || status === "error";
 
   return (
-    <figure
-      data-testid="model3d-attachment"
-      aria-label={label}
-      className="m-0 w-full max-w-[min(28rem,100%)] overflow-hidden rounded-lg border border-border bg-card"
+    <Card
+      asChild
+      variant="attachmentFrame"
+      className="m-0 w-full max-w-[min(28rem,100%)]"
     >
-      <figcaption className="flex items-center gap-2 border-b border-border px-3 py-2">
-        <Box className="size-4 shrink-0 text-muted" strokeWidth={1.5} />
-        <span className="min-w-0 flex-1 truncate text-xs-tight font-medium text-txt">
-          {label}
-        </span>
-        <span className="flex shrink-0 gap-1.5">
-          <TileButton
-            label={downloadLabel}
-            href={src}
-            download={downloadName(att, "model3d")}
-          >
-            <Download className="size-3.5" />
-          </TileButton>
-        </span>
-      </figcaption>
-      {showFallbackBody ? (
-        <Button asChild variant="sectionToggle" size="content" align="start">
-          <a
-            href={src}
-            target="_blank"
-            rel="noreferrer"
-            download={downloadName(att, "model3d")}
-            data-testid="model3d-attachment-fallback"
-          >
-            <Box className="size-5 shrink-0 text-muted" strokeWidth={1.5} />
-            <span className="min-w-0 flex-1 text-2xs text-muted">
-              {t("messageattachments.model3dDownloadToView")}
-            </span>
-            <Download
-              className="size-4 shrink-0 text-muted"
-              strokeWidth={1.5}
-            />
-          </a>
-        </Button>
-      ) : (
-        <div
-          ref={mountRef}
-          data-testid="model3d-canvas"
-          className="relative h-72 w-full bg-bg-elevated"
+      <figure data-testid="model3d-attachment" aria-label={label}>
+        <Card
+          asChild
+          variant="attachmentHeader"
+          flow="row"
+          gap="compact"
+          padding="compact"
         >
-          {status === "loading" ? (
-            <span className="absolute inset-0 flex items-center justify-center text-2xs text-muted">
-              {t("messageattachments.model3dLoading")}
+          <figcaption>
+            <Box className="size-4 shrink-0 text-muted" strokeWidth={1.5} />
+            <span className="min-w-0 flex-1 truncate text-xs-tight font-medium text-txt">
+              {label}
             </span>
-          ) : null}
-        </div>
-      )}
-    </figure>
+            <span className="flex shrink-0 gap-1.5">
+              <TileButton
+                label={downloadLabel}
+                href={src}
+                download={downloadName(att, "model3d")}
+              >
+                <Download className="size-3.5" />
+              </TileButton>
+            </span>
+          </figcaption>
+        </Card>
+        {showFallbackBody ? (
+          <Button asChild variant="sectionToggle" size="content" align="start">
+            <a
+              href={src}
+              target="_blank"
+              rel="noreferrer"
+              download={downloadName(att, "model3d")}
+              data-testid="model3d-attachment-fallback"
+            >
+              <Box className="size-5 shrink-0 text-muted" strokeWidth={1.5} />
+              <span className="min-w-0 flex-1 text-2xs text-muted">
+                {t("messageattachments.model3dDownloadToView")}
+              </span>
+              <Download
+                className="size-4 shrink-0 text-muted"
+                strokeWidth={1.5}
+              />
+            </a>
+          </Button>
+        ) : (
+          <Card
+            surface="raised"
+            radius="none"
+            ref={mountRef}
+            data-testid="model3d-canvas"
+            className="relative h-72 w-full"
+          >
+            {status === "loading" ? (
+              <span className="absolute inset-0 flex items-center justify-center text-2xs text-muted">
+                {t("messageattachments.model3dLoading")}
+              </span>
+            ) : null}
+          </Card>
+        )}
+      </figure>
+    </Card>
   );
 }
 
@@ -828,38 +862,52 @@ function CodeTile({
 
   const language = codeLanguageHint(att);
   return (
-    <figure
-      data-testid="code-attachment"
-      aria-label={t("messageattachments.codePreviewTitle", { name: label })}
-      className="m-0 w-full max-w-[min(36rem,100%)] overflow-hidden rounded-lg border border-border bg-card"
+    <Card
+      asChild
+      variant="attachmentFrame"
+      className="m-0 w-full max-w-[min(36rem,100%)]"
     >
-      <figcaption className="flex items-center gap-2 border-b border-border px-3 py-2">
-        <Code2 className="size-4 shrink-0 text-muted" strokeWidth={1.5} />
-        <span className="min-w-0 flex-1 truncate text-xs-tight font-medium text-txt">
-          {label}
-        </span>
-        <span className="shrink-0 text-2xs uppercase tracking-wider text-muted">
-          {language}
-        </span>
-        <TileButton
-          label={t("messageattachments.download")}
-          href={src}
-          download={downloadName(att, "code")}
+      <figure
+        data-testid="code-attachment"
+        aria-label={t("messageattachments.codePreviewTitle", { name: label })}
+      >
+        <Card
+          asChild
+          variant="attachmentHeader"
+          flow="row"
+          gap="compact"
+          padding="compact"
         >
-          <Download className="size-3.5" />
-        </TileButton>
-      </figcaption>
-      <CodeBlock
-        value={text}
-        copyable
-        data-language={language}
-        // `overscroll-x-contain`: this is a designed horizontal scroller (wide
-        // code lines). Now that the transcript pins its own X axis closed
-        // (#14328), a code tile scrolled to its right edge must not chain the
-        // leftover horizontal delta up into the thread — contain it here.
-        className="max-h-[24rem] overflow-auto overscroll-x-contain rounded-none border-0 bg-transparent"
-      />
-    </figure>
+          <figcaption>
+            <Code2 className="size-4 shrink-0 text-muted" strokeWidth={1.5} />
+            <span className="min-w-0 flex-1 truncate text-xs-tight font-medium text-txt">
+              {label}
+            </span>
+            <span className="shrink-0 text-2xs uppercase tracking-wider text-muted">
+              {language}
+            </span>
+            <TileButton
+              label={t("messageattachments.download")}
+              href={src}
+              download={downloadName(att, "code")}
+            >
+              <Download className="size-3.5" />
+            </TileButton>
+          </figcaption>
+        </Card>
+        <CodeBlock
+          value={text}
+          copyable
+          data-language={language}
+          // `overscroll-x-contain`: this is a designed horizontal scroller (wide
+          // code lines). Now that the transcript pins its own X axis closed
+          // (#14328), a code tile scrolled to its right edge must not chain the
+          // leftover horizontal delta up into the thread — contain it here.
+          presentation="attachment"
+          className="overscroll-x-contain"
+        />
+      </figure>
+    </Card>
   );
 }
 
@@ -881,9 +929,10 @@ function UnsafeAttachmentTile({
       state="error"
       size="sm"
       data-testid="unsafe-attachment"
-      className="w-full max-w-[min(20rem,100%)] border-border bg-card text-txt"
+      presentation="chatTile"
+      className="w-full max-w-[min(20rem,100%)]"
     >
-      <AttachmentMedia className="bg-transparent text-muted">
+      <AttachmentMedia variant="transparent">
         <FileText className="size-5" strokeWidth={1.5} />
       </AttachmentMedia>
       <AttachmentContent>
@@ -907,13 +956,14 @@ function TranscriptTile({
     <Attachment
       size="sm"
       data-testid="transcript-attachment"
-      className="group min-h-touch w-full max-w-[min(20rem,100%)] border-border bg-card text-txt hover:border-border-strong hover:bg-bg-hover"
+      presentation="chatTile"
+      className="group w-full max-w-[min(20rem,100%)]"
     >
       <AttachmentTrigger
         onClick={onOpen}
         aria-label={`Open transcript ${label}`}
       />
-      <AttachmentMedia className="bg-transparent text-muted">
+      <AttachmentMedia variant="transparent">
         <ScrollText className="size-5" strokeWidth={1.5} />
       </AttachmentMedia>
       <AttachmentContent>
@@ -965,13 +1015,15 @@ function Lightbox({
         onClick={onClose}
         className="absolute inset-0 cursor-zoom-out"
       />
-      <img
-        src={src}
-        alt={alt}
-        // pointer-events fall through to the backdrop button, so clicking the
-        // image closes too — standard lightbox behaviour.
-        className="pointer-events-none relative max-h-full max-w-full rounded-lg object-contain"
-      />
+      <Card asChild surface="transparent" radius="large">
+        <img
+          src={src}
+          alt={alt}
+          // pointer-events fall through to the backdrop button, so clicking the
+          // image closes too — standard lightbox behaviour.
+          className="pointer-events-none relative max-h-full max-w-full object-contain"
+        />
+      </Card>
       <div className="absolute right-4 top-4 flex gap-2">
         <TileButton label="Download image" href={src} download={downloadAs}>
           <Download className="size-4" />
@@ -1096,15 +1148,15 @@ export function MessageAttachments({
           }
           case "audio":
             return withNotice(
-              <div
+              <Attachment
                 key={att.id}
                 data-testid="audio-attachment"
-                className="max-w-[min(22rem,100%)] rounded-lg border border-border bg-card px-3 py-2.5"
+                className="w-full max-w-[min(22rem,100%)]"
               >
                 {att.title?.trim() ? (
-                  <div className="mb-1.5 truncate text-2xs font-medium text-txt">
-                    {att.title.trim()}
-                  </div>
+                  <AttachmentContent>
+                    <AttachmentTitle>{att.title.trim()}</AttachmentTitle>
+                  </AttachmentContent>
                 ) : null}
                 <audio
                   src={src}
@@ -1115,21 +1167,25 @@ export function MessageAttachments({
                 >
                   <track kind="captions" />
                 </audio>
-              </div>,
+              </Attachment>,
             );
           case "video":
             return withNotice(
-              <video
+              <Attachment
                 key={att.id}
-                src={src}
-                controls
-                preload="metadata"
-                // Reserve a stable 16:9 box so the row height is fixed before
-                // the video metadata loads — avoids layout shift on load.
-                className="aspect-video max-h-80 w-full max-w-[min(22rem,100%)] rounded-lg border border-border bg-card object-contain"
+                className="w-full max-w-[min(22rem,100%)] overflow-hidden"
               >
-                <track kind="captions" />
-              </video>,
+                <video
+                  src={src}
+                  controls
+                  preload="metadata"
+                  // Reserve a stable 16:9 box so the row height is fixed before
+                  // the video metadata loads — avoids layout shift on load.
+                  className="aspect-video max-h-80 w-full object-contain"
+                >
+                  <track kind="captions" />
+                </video>
+              </Attachment>,
             );
           default: {
             // `document` attachments get a richer inline preview when we can

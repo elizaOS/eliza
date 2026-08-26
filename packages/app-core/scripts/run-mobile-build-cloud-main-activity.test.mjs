@@ -26,11 +26,25 @@ describe("cloudSafeMainActivityJava", () => {
     expect(splashInstall).toBeLessThan(bridgeCreation);
   });
 
-  it("does not reference removed push or background-agent services", () => {
+  it("guards push registration without restoring background-agent services", () => {
     const source = cloudSafeMainActivityJava("ai.elizaos.app");
+    const bridgeCreation = source.indexOf(
+      "super.onCreate(savedInstanceState);",
+    );
+    const guardedPushRegistration = source.indexOf(
+      "getBridge().registerPlugin(SafePushNotificationsPlugin.class);",
+    );
+
+    expect(guardedPushRegistration).toBeGreaterThan(bridgeCreation);
+    expect(source).not.toContain("GatewayConnectionService");
+  });
+
+  it("omits the push guard when the target strips the push plugin", () => {
+    const source = cloudSafeMainActivityJava("ai.elizaos.app", {
+      safePushNotifications: false,
+    });
 
     expect(source).not.toContain("SafePushNotificationsPlugin");
-    expect(source).not.toContain("GatewayConnectionService");
   });
 
   it("uses public edge-to-edge APIs without hiding the system bars", () => {

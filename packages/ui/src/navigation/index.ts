@@ -27,7 +27,19 @@ import {
   listAppShellPages,
 } from "../app-shell-registry";
 import { userAgentHasElizaOSMarker } from "../platform/aosp-user-agent";
+import { type BuiltinTab, mapBuiltinRoutes } from "./builtin-route-descriptors";
 import { resolveDefaultLandingTab } from "./main-tab";
+
+export {
+  BUILTIN_ROUTE_DESCRIPTORS,
+  BUILTIN_ROUTE_IDS,
+  type BuiltinRouteConditionalSurface,
+  type BuiltinRouteSurfaceDeclaration,
+  type BuiltinTab,
+  type CanonicalBuiltinTab,
+  type ResolvedBuiltinRouteDescriptor,
+  resolveBuiltinRouteDescriptor,
+} from "./builtin-route-descriptors";
 
 type RuntimeImportMeta = ImportMeta & {
   env?: Record<string, unknown>;
@@ -46,43 +58,6 @@ export const APPS_ENABLED = viteEnvFlagEnabled("VITE_ENABLE_APPS", true);
 
 /** Stream routes stay addressable; the nav hides the tab unless streaming is enabled. */
 export const STREAM_ENABLED = true;
-
-/** Built-in tab identifiers. */
-export type BuiltinTab =
-  | "chat"
-  | "phone"
-  | "messages"
-  | "contacts"
-  | "camera"
-  | "tasks"
-  | "automations"
-  | "browser"
-  | "stream"
-  | "pendant-transcript"
-  | "apps"
-  | "views"
-  | "character"
-  | "character-select"
-  | "inventory"
-  | "documents"
-  | "files"
-  | "triggers"
-  | "plugins"
-  | "skills"
-  | "trajectories"
-  | "transcripts"
-  | "relationships"
-  | "experience"
-  | "character-skills"
-  | "memories"
-  | "rolodex"
-  | "runtime"
-  | "database"
-  | "desktop"
-  | "settings"
-  | "vault"
-  | "logs"
-  | "background";
 
 /**
  * Tab identifier — includes all built-in tabs plus arbitrary strings
@@ -356,42 +331,8 @@ export {
   type SettingsSectionMeta,
 } from "../components/settings/settings-section-meta";
 
-export const TAB_PATHS: Record<BuiltinTab, string> = {
-  chat: "/chat",
-  phone: "/phone",
-  messages: "/messages",
-  contacts: "/contacts",
-  camera: "/camera",
-  tasks: "/apps/tasks",
-  browser: "/browser",
-  stream: "/stream",
-  "pendant-transcript": "/pendant/transcript",
-  apps: "/apps",
-  views: "/views",
-  character: "/character",
-  "character-select": "/character/select",
-  automations: "/automations",
-  triggers: "/automations",
-  inventory: "/wallet",
-  documents: "/character/documents",
-  files: "/apps/files",
-  plugins: "/apps/plugins",
-  skills: "/apps/skills",
-  trajectories: "/apps/trajectories",
-  transcripts: "/apps/transcripts",
-  relationships: "/apps/relationships",
-  experience: "/character/experience",
-  "character-skills": "/character/skills",
-  memories: "/apps/memories",
-  rolodex: "/rolodex",
-  runtime: "/apps/runtime",
-  database: "/apps/database",
-  desktop: "/desktop",
-  settings: "/settings",
-  vault: "/vault",
-  logs: "/apps/logs",
-  background: "/background",
-};
+/** Canonical paths derived from the built-in route descriptors. */
+export const TAB_PATHS = mapBuiltinRoutes((descriptor) => descriptor.path);
 
 const PATH_TO_TAB = new Map(
   Object.entries(TAB_PATHS).map(([tab, p]) => [p, tab as Tab]),

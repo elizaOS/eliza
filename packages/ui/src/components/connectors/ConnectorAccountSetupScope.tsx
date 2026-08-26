@@ -10,6 +10,7 @@ import type { ConnectorAccountRecord } from "../../api/client-agent";
 import { useConnectorAccounts } from "../../hooks/useConnectorAccounts";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Badge } from "../ui/badge";
+import { Card } from "../ui/card";
 import {
   Select,
   SelectContent,
@@ -51,7 +52,12 @@ export function ConnectorAccountSetupScope({
   return (
     <>
       {accounts.accounts.length > 0 ? (
-        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-sm border border-border/45 bg-bg-accent/35 px-3 py-2">
+        <Card
+          variant="insetCompact"
+          flow="row"
+          gap="compact"
+          className="mt-3 flex-wrap"
+        >
           <span className="text-2xs font-medium uppercase tracking-wider text-muted">
             {t("connectorsetupscope.setupAccount", {
               defaultValue: "Setup account",
@@ -67,7 +73,7 @@ export function ConnectorAccountSetupScope({
               accounts.setSelectedAccountId(accountId);
             }}
           >
-            <SelectTrigger className="h-8 min-w-[180px] rounded-sm border border-border bg-card text-xs">
+            <SelectTrigger variant="connectorCompact" className="min-w-[180px]">
               <SelectValue
                 placeholder={t("connectorsetupscope.choosePlaceholder", {
                   defaultValue: "Choose account",
@@ -117,7 +123,7 @@ export function ConnectorAccountSetupScope({
               })}
             </span>
           ) : null}
-        </div>
+        </Card>
       ) : null}
       {children(selectedSetupAccountId)}
     </>

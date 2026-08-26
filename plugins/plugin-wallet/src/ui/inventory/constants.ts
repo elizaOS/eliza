@@ -4,6 +4,8 @@
  * name normalization and badge codes, balance display formatting, address
  * lowercasing, and lenient numeric parsing for untrusted balance strings.
  */
+import type { AvatarFallbackTone } from "@elizaos/ui";
+
 export const BSC_GAS_READY_THRESHOLD = 0.005;
 export const BSC_GAS_THRESHOLD = 0.005;
 export const HEX_ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
@@ -27,25 +29,28 @@ export interface NftItem {
   collectionName: string;
 }
 
-export function chainIcon(chain: string): { code: string; cls: string } {
+export function chainIcon(chain: string): {
+  code: string;
+  tone: AvatarFallbackTone;
+} {
   const c = chain.toLowerCase();
   if (c === "ethereum" || c === "mainnet")
-    return { code: "E", cls: "bg-chain-eth" };
-  if (c === "base") return { code: "B", cls: "bg-chain-base" };
+    return { code: "E", tone: "chainEthereum" };
+  if (c === "base") return { code: "B", tone: "chainBase" };
   if (c === "bsc" || c === "bnb chain" || c === "bnb smart chain")
-    return { code: "B", cls: "bg-chain-bsc" };
+    return { code: "B", tone: "chainBsc" };
   if (
     c === "avax" ||
     c === "avalanche" ||
     c === "c-chain" ||
     c === "avalanche c-chain"
   )
-    return { code: "A", cls: "bg-chain-avax" };
-  if (c === "arbitrum") return { code: "A", cls: "bg-chain-arb" };
-  if (c === "optimism") return { code: "O", cls: "bg-chain-op" };
-  if (c === "polygon") return { code: "P", cls: "bg-chain-pol" };
-  if (c === "solana") return { code: "S", cls: "bg-chain-sol" };
-  return { code: chain.charAt(0).toUpperCase(), cls: "bg-bg-muted" };
+    return { code: "A", tone: "chainAvalanche" };
+  if (c === "arbitrum") return { code: "A", tone: "chainArbitrum" };
+  if (c === "optimism") return { code: "O", tone: "chainOptimism" };
+  if (c === "polygon") return { code: "P", tone: "chainPolygon" };
+  if (c === "solana") return { code: "S", tone: "chainSolana" };
+  return { code: chain.charAt(0).toUpperCase(), tone: "default" };
 }
 
 export function normalizeChainName(chain: string): string {

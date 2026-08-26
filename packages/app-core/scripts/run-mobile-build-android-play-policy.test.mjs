@@ -19,6 +19,8 @@ import {
   ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES,
   ANDROID_PLAY_ALLOWED_PERMISSIONS,
   ANDROID_PLAY_DATA_EXTRACTION_RULES,
+  ANDROID_SMS_GATEWAY_STRIPPED_JAVA_FILES,
+  ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS,
   androidPlayManifestEvidenceFromAapt,
   applyAndroidCloudSplashTheme,
   applyAndroidGeneratedBuildTargetProperties,
@@ -175,10 +177,10 @@ describe("Android Play manifest policy", () => {
       /eliza\.app|localhost|127\.0\.0\.1|BackgroundRunner|bun-runtime|includePlugins/,
     );
     expect(sanitized).not.toHaveProperty("ios");
-    expect(sanitized).not.toHaveProperty("loggingBehavior");
+    expect(sanitized.loggingBehavior).toBe("none");
   });
 
-  it("preserves launcher-only logging suppression and opt-in WebView inspection", () => {
+  it("preserves Cloud logging suppression and launcher-only WebView inspection", () => {
     const sanitized = sanitizeAndroidCloudCapacitorConfig(
       {
         loggingBehavior: "debug",
@@ -189,6 +191,15 @@ describe("Android Play manifest policy", () => {
 
     expect(sanitized.loggingBehavior).toBe("none");
     expect(sanitized.android.webContentsDebuggingEnabled).toBe(true);
+  });
+
+  it("removes the SafePush source when SMS builds remove its native dependency", () => {
+    expect(ANDROID_SMS_GATEWAY_STRIPPED_JAVA_FILES).toContain(
+      "SafePushNotificationsPlugin.java",
+    );
+    expect(
+      ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS.map(([pkg]) => pkg),
+    ).toContain("@capacitor/push-notifications");
   });
 
   it("allows only canonical hosted-auth navigation in launcher config", () => {

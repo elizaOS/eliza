@@ -13,6 +13,7 @@ import { type RoleGateRole, satisfiesRoleGate } from "@elizaos/core";
 import { Lock } from "lucide-react";
 import type { ReactNode } from "react";
 import { useRole } from "../hooks/useRole.tsx";
+import { Card } from "./ui/card";
 
 export interface RoleGateProps {
   /** Minimum role by rank (e.g. "OWNER", "ADMIN"). */
@@ -50,9 +51,9 @@ export function OwnerOnlyNotice({
   message?: string;
 }): React.JSX.Element {
   return (
-    <div className="flex items-center gap-2 rounded-sm border border-border/45 bg-card/30 px-3 py-6 text-xs text-muted">
+    <Card variant="insetPadded" flow="row" gap="compact">
       <Lock className="size-3.5 shrink-0" aria-hidden />
-      <span>{message}</span>
-    </div>
+      <span className="text-xs text-muted">{message}</span>
+    </Card>
   );
 }

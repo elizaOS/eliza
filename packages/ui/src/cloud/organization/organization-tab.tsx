@@ -29,6 +29,8 @@ import {
   SettingsRow,
   SettingsStack,
 } from "../../components/settings/settings-layout";
+import { Badge } from "../../components/ui/badge";
+import { Card } from "../../components/ui/card";
 import { CredentialsTab } from "./credentials-tab";
 import type { UserWithOrganizationDto } from "./data/cloud-org-types";
 import { MembersTab } from "./members-tab";
@@ -76,7 +78,7 @@ export function OrganizationTab({ user }: OrganizationTabProps) {
         <div className="relative z-10 flex flex-col sm:flex-row items-start justify-between gap-4">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2">
-              <div className="size-2 rounded-full bg-muted" />
+              <Badge variant="vaultStatusMuted" className="size-2 p-0" />
               <h2 className="text-base md:text-xl font-mono font-semibold text-txt uppercase">
                 {user.organization.name}
               </h2>
@@ -85,14 +87,14 @@ export function OrganizationTab({ user }: OrganizationTabProps) {
               {user.organization.slug}
             </p>
           </div>
-          <div className="bg-surface border border-brand-surface px-4 py-3">
+          <Card variant="insetPadded" className="px-4 py-3">
             <div className="text-left sm:text-right">
               <p className="text-xl md:text-2xl font-mono font-bold text-txt-strong">
                 ${Number(user.organization.credit_balance).toFixed(2)}
               </p>
               <p className="text-xs text-muted">Credits available</p>
             </div>
-          </div>
+          </Card>
         </div>
       </BrandCard>
 

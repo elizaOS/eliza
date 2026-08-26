@@ -4,7 +4,11 @@
  * slice of the ElizaClient type surface, re-exported through client-types.ts.
  */
 
-import type { AppShellBackgroundPolicy, ViewKind } from "@elizaos/core";
+import type {
+  AppShellBackgroundPolicy,
+  SurfaceManifest,
+  ViewKind,
+} from "@elizaos/core";
 import type { MessageExampleContent, PluginParamDef } from "@elizaos/shared";
 import type { ConfigUiHint } from "../types";
 import type {
@@ -198,6 +202,7 @@ export interface PluginInfo {
       viewKind?: ViewKind;
       group?: string;
       backgroundPolicy?: AppShellBackgroundPolicy;
+      surface?: SurfaceManifest;
       componentExport?: string;
     }>;
   };

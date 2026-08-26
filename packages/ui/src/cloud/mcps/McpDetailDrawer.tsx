@@ -9,6 +9,7 @@
 
 import {
   ExternalLink,
+  Loader2,
   Pencil,
   Play,
   Puzzle,
@@ -36,8 +37,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
+import { CodeBlock } from "../../components/ui/code-block";
 import { CopyButton } from "../../components/ui/copy-button";
 import { StatusBadge } from "../../components/ui/status-badge";
+import { TextLink } from "../../components/ui/text-link";
 import { ApiError } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import type { UserMcpRecord } from "./lib/api-types";
@@ -165,19 +171,20 @@ export function McpDetailDrawer({
           </div>
         ) : (
           <>
-            <div className="shrink-0 flex items-start justify-between gap-4 p-4 sm:p-6 border-b border-border">
+            <Card
+              variant="bottomDivider"
+              className="shrink-0 flex items-start justify-between gap-4 p-4 sm:p-6"
+            >
               <div className="flex items-start gap-3 min-w-0">
-                <div className="p-2.5 rounded-sm border border-border bg-bg-elevated shrink-0">
+                <Card variant="insetPadded" className="shrink-0">
                   <Puzzle className="size-5 text-accent" />
-                </div>
+                </Card>
                 <div className="min-w-0">
                   <DrawerTitle className="flex items-center gap-2 flex-wrap">
                     <span className="truncate">{mcp.name}</span>
                     <McpStatusBadge status={mcp.status} />
                     {mcp.x402_enabled && (
-                      <span className="px-1.5 py-0.5 text-2xs rounded-full border border-accent/40 bg-accent-subtle text-accent">
-                        x402
-                      </span>
+                      <Badge variant="vaultAccent">x402</Badge>
                     )}
                   </DrawerTitle>
                   <DrawerDescription className="mt-1">
@@ -185,10 +192,12 @@ export function McpDetailDrawer({
                   </DrawerDescription>
                 </div>
               </div>
-              <DrawerClose className="inline-flex min-h-touch items-center justify-center p-2 rounded-sm hover:bg-bg-hover transition-colors">
-                <X className="size-5 text-muted" />
+              <DrawerClose asChild>
+                <Button variant="ghost" size="icon" aria-label="Close details">
+                  <X className="size-5 text-muted" />
+                </Button>
               </DrawerClose>
-            </div>
+            </Card>
 
             <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-6">
               {endpointUrl && (
@@ -198,14 +207,16 @@ export function McpDetailDrawer({
                   })}
                 >
                   <div className="flex items-center gap-2">
-                    <code className="flex-1 rounded-sm border border-border bg-bg-elevated p-3 font-mono text-sm text-txt overflow-x-auto">
-                      {endpointUrl}
-                    </code>
+                    <CodeBlock
+                      variant="inline"
+                      className="flex-1 p-3 text-sm text-txt overflow-x-auto"
+                      value={endpointUrl}
+                    />
                     <CopyButton
                       value={endpointUrl}
                       copyLabel="Copy endpoint"
                       copiedLabel="Copied"
-                      className="min-h-touch justify-center p-3 bg-bg-elevated"
+                      className="min-h-touch justify-center p-3"
                     />
                   </div>
                 </Field>
@@ -216,9 +227,7 @@ export function McpDetailDrawer({
                   defaultValue: "Agent configuration",
                 })}
               >
-                <pre className="rounded-sm border border-border bg-bg-elevated p-3 font-mono text-xs text-txt overflow-x-auto">
-                  {configSnippet}
-                </pre>
+                <CodeBlock value={configSnippet} />
               </Field>
 
               <Field
@@ -235,13 +244,14 @@ export function McpDetailDrawer({
                 ) : (
                   <div className="flex flex-wrap gap-1.5">
                     {mcp.tools.map((tool) => (
-                      <span
+                      <Badge
                         key={tool.name}
                         title={tool.description}
-                        className="px-2.5 py-1 text-xs rounded-full border border-border bg-bg-elevated text-txt"
+                        variant="outline"
+                        size="pill"
                       >
                         {tool.name}
-                      </span>
+                      </Badge>
                     ))}
                   </div>
                 )}
@@ -288,31 +298,30 @@ export function McpDetailDrawer({
                     defaultValue: "Connection test",
                   })}
                 >
-                  <pre
-                    className={`rounded-sm border p-3 font-mono text-xs overflow-x-auto max-h-48 overflow-y-auto ${
-                      testResult.ok
-                        ? "border-border bg-bg-elevated text-txt"
-                        : "border-destructive/30 bg-status-danger-bg text-destructive"
-                    }`}
-                  >
-                    {testResult.detail}
-                  </pre>
+                  <CodeBlock
+                    tone={testResult.ok ? "default" : "destructive"}
+                    className="max-h-48"
+                    value={testResult.detail}
+                  />
                 </Field>
               )}
             </div>
 
-            <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 p-4 sm:p-6 border-t border-border">
+            <Card
+              variant="topDivider"
+              className="shrink-0 flex flex-wrap items-center justify-between gap-3 p-4 sm:p-6"
+            >
               <div className="flex flex-wrap items-center gap-2">
                 {mcp.documentation_url && (
                   <BrandButton variant="outline" size="sm" asChild>
-                    <a
+                    <TextLink
                       href={mcp.documentation_url}
                       target="_blank"
                       rel="noopener noreferrer"
                     >
                       <ExternalLink className="size-4" />
                       {t("cloud.mcps.docs", { defaultValue: "Docs" })}
-                    </a>
+                    </TextLink>
                   </BrandButton>
                 )}
                 {isOwner && (
@@ -347,16 +356,15 @@ export function McpDetailDrawer({
                         {t("cloud.mcps.publish", { defaultValue: "Publish" })}
                       </BrandButton>
                     )}
-                    <BrandButton
-                      variant="ghost"
+                    <Button
+                      variant="dangerGhost"
                       size="sm"
                       onClick={() => setConfirmDelete(true)}
                       disabled={del.isPending}
-                      className="text-destructive hover:text-destructive hover:bg-destructive-subtle"
                     >
                       <Trash2 className="size-4" />
                       {t("cloud.mcps.delete", { defaultValue: "Delete" })}
-                    </BrandButton>
+                    </Button>
                   </>
                 )}
               </div>
@@ -374,7 +382,7 @@ export function McpDetailDrawer({
                 }
               >
                 {testing ? (
-                  <span className="size-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                  <Loader2 className="size-4 animate-spin" />
                 ) : (
                   <Play className="size-4" />
                 )}
@@ -382,7 +390,7 @@ export function McpDetailDrawer({
                   defaultValue: "Test connection",
                 })}
               </BrandButton>
-            </div>
+            </Card>
           </>
         )}
       </DrawerContent>
@@ -404,11 +412,10 @@ export function McpDetailDrawer({
             <AlertDialogCancel>
               {t("cloud.mcps.cancel", { defaultValue: "Cancel" })}
             </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => void doDelete()}
-              className="bg-destructive hover:bg-accent-hover text-accent-foreground"
-            >
-              {t("cloud.mcps.delete", { defaultValue: "Delete" })}
+            <AlertDialogAction asChild>
+              <Button variant="destructive" onClick={() => void doDelete()}>
+                {t("cloud.mcps.delete", { defaultValue: "Delete" })}
+              </Button>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -434,12 +441,12 @@ function Field({
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-sm border border-border bg-bg-elevated p-3">
+    <Card variant="insetPadded">
       <p className="text-xs text-muted">{label}</p>
       <p className="mt-1 text-lg font-semibold text-txt-strong tabular-nums">
         {value}
       </p>
-    </div>
+    </Card>
   );
 }
 

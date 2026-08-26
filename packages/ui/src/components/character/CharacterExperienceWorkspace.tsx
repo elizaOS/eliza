@@ -11,6 +11,7 @@ import { useAgentElement } from "../../agent-surface";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { StatusDot } from "../ui/status-badge";
 import { Textarea } from "../ui/textarea";
 import type {
   CharacterExperienceDraft,
@@ -84,11 +85,7 @@ function outcomeDotColor(outcome: string): string {
 function OutcomeDot({ outcome, review }: { outcome: string; review: boolean }) {
   const color = review ? "var(--status-warning)" : outcomeDotColor(outcome);
   return (
-    <span
-      aria-hidden="true"
-      className="mt-1.5 inline-block size-2 shrink-0 rounded-full"
-      style={{ background: color }}
-    />
+    <StatusDot aria-hidden="true" className="mt-1.5 shrink-0" color={color} />
   );
 }
 

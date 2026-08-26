@@ -2,7 +2,7 @@
 // single-pane landings. Both views render the same card medallion + chips so the
 // two surfaces read as one product. Pure presentation — no data fetching.
 
-import { Button, Input } from "@elizaos/ui";
+import { Button, Card, Input, StatusPulseDot } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   Archive,
@@ -38,7 +38,7 @@ interface StatusVisual {
   /** Foreground icon tone. */
   fg: string;
   /** Status-dot color for the trailing chip. */
-  dot: string;
+  tone: "accent" | "success" | "warning" | "danger" | "muted";
   pulse: boolean;
 }
 
@@ -48,55 +48,55 @@ const STATUS_VISUAL: Record<TaskCardStatus, StatusVisual> = {
   open: {
     icon: Circle,
     fg: "text-accent",
-    dot: "bg-accent",
+    tone: "accent",
     pulse: false,
   },
   active: {
     icon: CirclePlay,
     fg: "text-ok",
-    dot: "bg-ok",
+    tone: "success",
     pulse: true,
   },
   validating: {
     icon: CircleDashed,
     fg: "text-accent",
-    dot: "bg-accent",
+    tone: "accent",
     pulse: true,
   },
   waiting_on_user: {
     icon: UserRound,
     fg: "text-warn",
-    dot: "bg-warn",
+    tone: "warning",
     pulse: false,
   },
   blocked: {
     icon: OctagonX,
     fg: "text-warn",
-    dot: "bg-warn",
+    tone: "warning",
     pulse: false,
   },
   interrupted: {
     icon: CircleAlert,
     fg: "text-warn",
-    dot: "bg-warn",
+    tone: "warning",
     pulse: false,
   },
   done: {
     icon: CircleCheck,
     fg: "text-ok",
-    dot: "bg-ok",
+    tone: "success",
     pulse: false,
   },
   failed: {
     icon: CircleX,
     fg: "text-danger",
-    dot: "bg-danger",
+    tone: "danger",
     pulse: false,
   },
   archived: {
     icon: Archive,
     fg: "text-muted",
-    dot: "bg-muted",
+    tone: "muted",
     pulse: false,
   },
 };
@@ -148,9 +148,7 @@ export function TaskStatusChip({
     <span
       className={`inline-flex items-center gap-1.5 text-2xs font-medium ${visual.fg}`}
     >
-      <span
-        className={`size-1.5 rounded-full ${visual.dot}${visual.pulse ? " animate-pulse" : ""}`}
-      />
+      <StatusPulseDot tone={visual.tone} pulse={visual.pulse} size="micro" />
       {statusLabel(status, t)}
     </span>
   );
@@ -199,8 +197,9 @@ export function TaskSearchInput({
   agentProps?: Record<string, unknown>;
 }) {
   return (
-    <div
-      className={`relative flex h-9 items-center border-border/35 border-b transition-colors focus-within:border-accent/60 ${className ?? "flex-1"}`}
+    <Card
+      variant="bottomDivider"
+      className={`relative flex h-9 items-center transition-colors ${className ?? "flex-1"}`}
     >
       <Search
         className="pointer-events-none absolute left-1 size-3.5 text-muted"
@@ -218,7 +217,7 @@ export function TaskSearchInput({
         data-testid={testId}
         {...agentProps}
       />
-    </div>
+    </Card>
   );
 }
 

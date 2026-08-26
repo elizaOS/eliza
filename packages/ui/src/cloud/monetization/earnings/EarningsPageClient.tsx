@@ -65,6 +65,8 @@ import {
   // Deep primitive/brand imports per the packages/ui extension rules — the
   // root cloud-ui barrel would drag the entire kit into this chunk graph.
 } from "../../../cloud-ui/components/primitives";
+import { Alert } from "../../../components/ui/alert";
+import { Card } from "../../../components/ui/card";
 import { api } from "../../lib/api-client";
 import { formatUsd as formatCurrency } from "../../lib/format-usd";
 import { useCloudT } from "../../shell/CloudI18nProvider";
@@ -126,12 +128,24 @@ interface BalanceData {
 const NETWORKS: Array<{
   value: RedemptionNetwork;
   label: string;
-  dotClass: string;
+  indicatorColor: string;
 }> = [
-  { value: "base", label: "Base", dotClass: "bg-chain-base" },
-  { value: "solana", label: "Solana", dotClass: "bg-chain-sol" },
-  { value: "ethereum", label: "Ethereum", dotClass: "bg-chain-eth" },
-  { value: "bnb", label: "BNB Chain", dotClass: "bg-chain-bsc" },
+  { value: "base", label: "Base", indicatorColor: "var(--color-chain-base)" },
+  {
+    value: "solana",
+    label: "Solana",
+    indicatorColor: "var(--color-chain-sol)",
+  },
+  {
+    value: "ethereum",
+    label: "Ethereum",
+    indicatorColor: "var(--color-chain-eth)",
+  },
+  {
+    value: "bnb",
+    label: "BNB Chain",
+    indicatorColor: "var(--color-chain-bsc)",
+  },
 ];
 
 const SOURCE_ICONS = {
@@ -146,14 +160,16 @@ const buildSourceLabels = (t: TFn): Record<string, string> => ({
   mcp: t("cloud.earnings.sourceMcps", { defaultValue: "MCPs" }),
 });
 
-const STATUS_COLORS: Record<string, string> = {
-  pending: "bg-status-warning-bg text-status-warning border-status-warning/30",
-  approved: "bg-bg-muted text-muted-strong border-border",
-  processing: "bg-bg-muted text-muted-strong border-border",
-  completed:
-    "bg-status-success-bg text-status-success border-status-success/30",
-  failed: "bg-destructive-subtle text-destructive border-destructive/30",
-  rejected: "bg-destructive-subtle text-destructive border-destructive/30",
+const STATUS_VARIANTS: Record<
+  string,
+  "earningsPending" | "earningsNeutral" | "earningsCompleted" | "earningsFailed"
+> = {
+  pending: "earningsPending",
+  approved: "earningsNeutral",
+  processing: "earningsNeutral",
+  completed: "earningsCompleted",
+  failed: "earningsFailed",
+  rejected: "earningsFailed",
 };
 
 export function EarningsPageClient() {
@@ -519,10 +535,10 @@ export function EarningsPageClient() {
       <div className="flex flex-col gap-6 max-w-7xl mx-auto">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-32 rounded-sm" />
+            <Skeleton key={i} className="h-32" />
           ))}
         </div>
-        <Skeleton className="h-64 rounded-sm" />
+        <Skeleton className="h-64" />
       </div>
     );
   }
@@ -531,10 +547,7 @@ export function EarningsPageClient() {
     <div className="flex flex-col gap-6 max-w-7xl mx-auto">
       {/* System Status Banner */}
       {systemStatus && !systemStatus.operational && (
-        <BrandCard
-          className="border-status-warning/40 bg-status-warning-bg"
-          corners={false}
-        >
+        <Alert variant="dashboardWarning">
           <div className="flex items-center gap-3">
             <AlertTriangle className="size-5 text-status-warning" />
             <div>
@@ -548,7 +561,7 @@ export function EarningsPageClient() {
               </p>
             </div>
           </div>
-        </BrandCard>
+        </Alert>
       )}
 
       {/* Balance Cards */}
@@ -571,9 +584,9 @@ export function EarningsPageClient() {
                 })}
               </p>
             </div>
-            <div className="p-2 rounded-sm bg-accent-subtle">
+            <Card surface="accentSubtle" padding="compact">
               <Wallet className="size-6 text-accent" />
-            </div>
+            </Card>
           </div>
           <Button
             className="w-full mt-4"
@@ -610,9 +623,9 @@ export function EarningsPageClient() {
                 })}
               </p>
             </div>
-            <div className="p-2 rounded-sm bg-status-success-bg">
+            <Card surface="raised" padding="compact">
               <TrendingUp className="size-6 text-status-success" />
-            </div>
+            </Card>
           </div>
           <div className="mt-4 grid grid-cols-3 gap-2">
             {balance?.bySource.map((source) => {
@@ -650,37 +663,47 @@ export function EarningsPageClient() {
                 })}
               </p>
             </div>
-            <div className="p-2 rounded-sm bg-bg-muted">
+            <Card
+              border="none"
+              className="p-2"
+              visualStyle={{ backgroundColor: "var(--bg-muted)" }}
+            >
               <CheckCircle className="size-6 text-muted-strong" />
-            </div>
+            </Card>
           </div>
-          <div className="mt-4 pt-4 border-t border-border space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted">
-                {t("cloud.earnings.spentOnHosting", {
-                  defaultValue: "Spent on hosting",
-                })}
-              </span>
-              <span
-                className="text-txt-strong"
-                title={t("cloud.earnings.autoConvertedTooltip", {
-                  defaultValue: "Earnings auto-converted into org credits",
-                })}
-              >
-                {formatCurrency(balance?.balance.totalConvertedToCredits || 0)}
-              </span>
+          <Card asChild variant="billingTopDivider">
+            <div className="mt-4 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted">
+                  {t("cloud.earnings.spentOnHosting", {
+                    defaultValue: "Spent on hosting",
+                  })}
+                </span>
+                <span
+                  className="text-txt-strong"
+                  title={t("cloud.earnings.autoConvertedTooltip", {
+                    defaultValue: "Earnings auto-converted into org credits",
+                  })}
+                >
+                  {formatCurrency(
+                    balance?.balance.totalConvertedToCredits || 0,
+                  )}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted">
+                  {t("cloud.earnings.dailyLimitRemaining", {
+                    defaultValue: "Daily limit remaining",
+                  })}
+                </span>
+                <span className="text-txt-strong">
+                  {formatCurrency(
+                    balance?.eligibility.dailyLimitRemaining || 0,
+                  )}
+                </span>
+              </div>
             </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted">
-                {t("cloud.earnings.dailyLimitRemaining", {
-                  defaultValue: "Daily limit remaining",
-                })}
-              </span>
-              <span className="text-txt-strong">
-                {formatCurrency(balance?.eligibility.dailyLimitRemaining || 0)}
-              </span>
-            </div>
-          </div>
+          </Card>
         </BrandCard>
       </div>
 
@@ -716,14 +739,21 @@ export function EarningsPageClient() {
             {balance.recentEarnings.map((earning) => {
               const Icon = SOURCE_ICONS[earning.source];
               return (
-                <div
+                <Card
                   key={earning.id}
-                  className="flex min-h-touch items-center justify-between p-3 rounded-sm bg-bg-hover"
+                  surface="raised"
+                  flow="rowBetween"
+                  padding="default"
+                  className="min-h-touch"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-sm bg-bg-muted">
+                    <Card
+                      border="none"
+                      className="p-2"
+                      visualStyle={{ backgroundColor: "var(--bg-muted)" }}
+                    >
                       <Icon className="size-4 text-muted" />
-                    </div>
+                    </Card>
                     <div>
                       <p className="text-sm font-medium text-txt-strong">
                         {earning.description}
@@ -736,7 +766,7 @@ export function EarningsPageClient() {
                   <p className="text-sm font-semibold text-status-success">
                     +{formatCurrency(earning.amount)}
                   </p>
-                </div>
+                </Card>
               );
             })}
           </div>
@@ -768,7 +798,7 @@ export function EarningsPageClient() {
         {redemptionsLoading ? (
           <div className="space-y-3">
             {[1, 2, 3].map((i) => (
-              <Skeleton key={i} className="h-16 rounded-sm" />
+              <Skeleton key={i} className="h-16" />
             ))}
           </div>
         ) : redemptions.length === 0 ? (
@@ -788,7 +818,7 @@ export function EarningsPageClient() {
         ) : (
           <Table>
             <TableHeader>
-              <TableRow className="border-border">
+              <TableRow>
                 <TableHead className="text-muted">
                   {t("cloud.earnings.colDate", { defaultValue: "Date" })}
                 </TableHead>
@@ -808,7 +838,7 @@ export function EarningsPageClient() {
             </TableHeader>
             <TableBody>
               {redemptions.map((r) => (
-                <TableRow key={r.id} className="border-border">
+                <TableRow key={r.id}>
                   <TableCell className="text-txt">
                     {formatDate(r.createdAt)}
                   </TableCell>
@@ -828,24 +858,27 @@ export function EarningsPageClient() {
                   </TableCell>
                   <TableCell>
                     <Badge
-                      className={
-                        STATUS_COLORS[r.status] || STATUS_COLORS.pending
-                      }
+                      variant={STATUS_VARIANTS[r.status] ?? "earningsPending"}
                     >
                       {r.status}
                     </Badge>
                   </TableCell>
                   <TableCell>
                     {r.txHash ? (
-                      <a
-                        href={getExplorerUrl(r.network, r.txHash)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-accent hover:underline inline-flex min-h-touch items-center gap-1"
+                      <Button
+                        asChild
+                        variant="externalLink"
+                        className="min-h-touch gap-1"
                       >
-                        {t("cloud.earnings.view", { defaultValue: "View" })}{" "}
-                        <ExternalLink className="size-3" />
-                      </a>
+                        <a
+                          href={getExplorerUrl(r.network, r.txHash)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {t("cloud.earnings.view", { defaultValue: "View" })}{" "}
+                          <ExternalLink className="size-3" />
+                        </a>
+                      </Button>
                     ) : (
                       <span className="text-muted">-</span>
                     )}
@@ -862,7 +895,7 @@ export function EarningsPageClient() {
         open={showRedeemDialog}
         onOpenChange={handleRedeemDialogOpenChange}
       >
-        <DialogContent className="grid-rows-[auto_minmax(0,1fr)_auto] bg-card border-border sm:max-w-lg">
+        <DialogContent className="grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="text-txt-strong">
               {t("cloud.earnings.redeemDialogTitle", {
@@ -889,6 +922,7 @@ export function EarningsPageClient() {
                 })}
               </label>
               <Input
+                variant="muted"
                 id="redeem-amount"
                 type="number"
                 inputMode="decimal"
@@ -898,7 +932,7 @@ export function EarningsPageClient() {
                 })}
                 value={redeemAmount}
                 onChange={(e) => handleRedeemAmountChange(e.target.value)}
-                className="bg-bg-hover border-border text-txt"
+                className="text-txt"
                 min={redeemMinPoints / REDEMPTION_POINTS_PER_USD}
                 max={redeemMaxPoints / REDEMPTION_POINTS_PER_USD}
                 aria-invalid={redeemAmountInvalid}
@@ -946,10 +980,10 @@ export function EarningsPageClient() {
                   handleRedeemNetworkChange(value as RedemptionNetwork)
                 }
               >
-                <SelectTrigger className="bg-bg-hover border-border text-txt">
+                <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-card border-border">
+                <SelectContent>
                   {NETWORKS.map((network) => (
                     <SelectItem
                       key={network.value}
@@ -960,8 +994,9 @@ export function EarningsPageClient() {
                       )}
                     >
                       <span className="flex items-center gap-2">
-                        <span
-                          className={`inline-block size-2.5 rounded-full ${network.dotClass}`}
+                        <Badge
+                          variant="chainDot"
+                          indicatorColor={network.indicatorColor}
                           aria-hidden="true"
                         />
                         <span>{network.label}</span>
@@ -996,6 +1031,7 @@ export function EarningsPageClient() {
                 })}
               </label>
               <Input
+                variant="muted"
                 id="redeem-wallet-address"
                 type="text"
                 placeholder={
@@ -1009,14 +1045,17 @@ export function EarningsPageClient() {
                 }
                 value={redeemAddress}
                 onChange={(e) => handleRedeemAddressChange(e.target.value)}
-                className="bg-bg-hover border-border text-txt font-mono text-sm"
+                className="font-mono text-sm text-txt"
               />
             </div>
 
             {/* Quote Display */}
             {quoteLoading && (
-              <div
-                className="p-4 rounded-sm bg-bg-hover animate-pulse"
+              <Card
+                border="none"
+                padding="comfortable"
+                visualStyle={{ backgroundColor: "var(--bg-hover)" }}
+                className="animate-pulse"
                 role="status"
                 aria-live="polite"
               >
@@ -1025,11 +1064,16 @@ export function EarningsPageClient() {
                     defaultValue: "Getting quote...",
                   })}
                 </p>
-              </div>
+              </Card>
             )}
 
             {quote && !quoteLoading && (
-              <div className="p-4 rounded-sm bg-bg-hover space-y-2">
+              <Card
+                border="none"
+                padding="comfortable"
+                className="space-y-2"
+                visualStyle={{ backgroundColor: "var(--bg-hover)" }}
+              >
                 {quote.success ? (
                   <>
                     <div className="flex justify-between">
@@ -1055,69 +1099,71 @@ export function EarningsPageClient() {
                         {quote.quote.elizaAmount.toFixed(4)} elizaOS
                       </span>
                     </div>
-                    <div className="pt-2 border-t border-border text-xs text-muted">
-                      <div className="flex justify-between">
-                        <span>
-                          {t("cloud.earnings.price", {
-                            defaultValue: "Price",
-                          })}
-                        </span>
-                        <span>
-                          ${quote.quote.twapPriceUsd.toFixed(6)}
-                          /token
-                        </span>
+                    <Card asChild variant="billingTopDivider">
+                      <div className="text-xs text-muted">
+                        <div className="flex justify-between">
+                          <span>
+                            {t("cloud.earnings.price", {
+                              defaultValue: "Price",
+                            })}
+                          </span>
+                          <span>
+                            ${quote.quote.twapPriceUsd.toFixed(6)}
+                            /token
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>
+                            {t("cloud.earnings.expires", {
+                              defaultValue: "Expires",
+                            })}
+                          </span>
+                          <span>
+                            <Clock className="inline size-3 mr-1" />
+                            {new Date(
+                              quote.quote.validUntil,
+                            ).toLocaleTimeString()}
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex justify-between">
-                        <span>
-                          {t("cloud.earnings.expires", {
-                            defaultValue: "Expires",
-                          })}
-                        </span>
-                        <span>
-                          <Clock className="inline size-3 mr-1" />
-                          {new Date(
-                            quote.quote.validUntil,
-                          ).toLocaleTimeString()}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="pt-2 border-t border-border text-xs text-muted">
-                      {t("cloud.earnings.quotePreviewNotice", {
-                        defaultValue:
-                          "This is a preview. The final token amount is recalculated when you submit and may change with the market price.",
-                      })}
-                    </p>
-                    {!quote.canRedeem && (
-                      <p
-                        className="pt-2 border-t border-border text-sm text-destructive"
-                        role="alert"
-                      >
-                        {quote.message}
+                    </Card>
+                    <Card asChild variant="billingTopDivider">
+                      <p className="text-xs text-muted">
+                        {t("cloud.earnings.quotePreviewNotice", {
+                          defaultValue:
+                            "This is a preview. The final token amount is recalculated when you submit and may change with the market price.",
+                        })}
                       </p>
+                    </Card>
+                    {!quote.canRedeem && (
+                      <Card asChild variant="billingTopDivider">
+                        <p className="text-sm text-destructive" role="alert">
+                          {quote.message}
+                        </p>
+                      </Card>
                     )}
                     {quoteExpired && (
-                      <div
-                        className="pt-2 border-t border-border text-sm text-destructive"
-                        role="alert"
-                      >
-                        <p>
-                          {t("cloud.earnings.quoteExpired", {
-                            defaultValue:
-                              "This quote has expired. Request a new quote to continue.",
-                          })}
-                        </p>
-                        <Button
-                          className="mt-2"
-                          size="sm"
-                          variant="outline"
-                          onClick={handleRefreshQuote}
-                        >
-                          <RefreshCw className="size-3.5" />
-                          {t("cloud.earnings.refreshQuote", {
-                            defaultValue: "Refresh quote",
-                          })}
-                        </Button>
-                      </div>
+                      <Card asChild variant="billingTopDivider">
+                        <div className="text-sm text-destructive" role="alert">
+                          <p>
+                            {t("cloud.earnings.quoteExpired", {
+                              defaultValue:
+                                "This quote has expired. Request a new quote to continue.",
+                            })}
+                          </p>
+                          <Button
+                            className="mt-2"
+                            size="sm"
+                            variant="outline"
+                            onClick={handleRefreshQuote}
+                          >
+                            <RefreshCw className="size-3.5" />
+                            {t("cloud.earnings.refreshQuote", {
+                              defaultValue: "Refresh quote",
+                            })}
+                          </Button>
+                        </div>
+                      </Card>
                     )}
                   </>
                 ) : (
@@ -1128,7 +1174,7 @@ export function EarningsPageClient() {
                     {quote.error}
                   </p>
                 )}
-              </div>
+              </Card>
             )}
           </div>
 

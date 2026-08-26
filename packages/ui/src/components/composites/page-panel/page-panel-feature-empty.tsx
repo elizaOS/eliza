@@ -5,6 +5,7 @@
  */
 import type { ComponentType, HTMLAttributes, ReactNode } from "react";
 import { cn } from "../../../lib/utils";
+import { Card } from "../../ui/card";
 import { PagePanelRoot } from "./page-panel-root";
 import type { PagePanelVariant } from "./page-panel-types";
 
@@ -46,15 +47,19 @@ export function PagePanelFeatureEmpty({
       {...props}
     >
       <div className="w-full max-w-2xl text-center">
-        <div
+        <Card
+          asChild
+          variant="transparent"
           className={cn(
             // Borderless icon plate (#10710): tint alone carries the shape.
-            "mx-auto flex size-14 items-center justify-center rounded-sm",
+            "mx-auto flex size-14 items-center justify-center",
             iconTone,
           )}
         >
-          <Icon className="size-7" />
-        </div>
+          <div>
+            <Icon className="size-7" />
+          </div>
+        </Card>
         <h2 className="mt-4 text-balance text-base font-semibold text-txt">
           {title}
         </h2>

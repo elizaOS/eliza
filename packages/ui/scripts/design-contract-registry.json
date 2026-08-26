@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "organisms": [
+    {
+      "id": "organism:startup-shell",
+      "owner": {
+        "kind": "export",
+        "file": "packages/ui/src/components/shell/StartupShell.tsx",
+        "symbol": "StartupShell"
+      },
+      "responsibility": "Owns the application startup lifecycle across loading, failure, pairing, and bootstrap states.",
+      "dependsOn": [],
+      "grants": [
+        "layout.viewport",
+        "layout.region",
+        "semantics.landmark"
+      ],
+      "lifecycleOwner": "application-startup"
+    }
+  ],
+  "pageShells": [
+    {
+      "id": "page-shell:page-frame",
+      "owner": {
+        "kind": "export",
+        "file": "packages/ui/src/layouts/page-frame/page-frame.tsx",
+        "symbol": "PageFrame"
+      },
+      "responsibility": "Owns canonical page width, gutter, scroll-boundary, and landmark topology for classified content, workspace, and immersive routes.",
+      "dependsOn": [],
+      "grants": [
+        "layout.viewport",
+        "layout.container",
+        "layout.region",
+        "layout.scroll-owner",
+        "semantics.landmark"
+      ],
+      "supportedLayoutKinds": ["content", "workspace", "immersive"],
+      "supportedTopologies": ["framed"]
+    }
+  ]
+}
