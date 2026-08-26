@@ -107,6 +107,7 @@ vi.mock("../native/auth-bridge", async (importOriginal) => {
 
 import { logger } from "../logger";
 import {
+  createDesktopSessionGenerationTracker,
   markDesktopSessionStale,
   primeDesktopSessionAuth,
 } from "./desktop-session-prime";
@@ -210,6 +211,26 @@ describe("desktop-session-prime", () => {
       fs.rmSync(dir, { force: true, recursive: true });
     }
     markDesktopSessionStale();
+  });
+
+  it("invalidates authority only when the running backend generation changes", () => {
+    const changed = createDesktopSessionGenerationTracker();
+
+    expect(changed({ state: "starting", port: null, startedAt: null })).toBe(
+      false,
+    );
+    expect(changed({ state: "running", port: 31_337, startedAt: 1_000 })).toBe(
+      true,
+    );
+    expect(changed({ state: "running", port: 31_337, startedAt: 1_000 })).toBe(
+      false,
+    );
+    expect(changed({ state: "running", port: 31_337, startedAt: 2_000 })).toBe(
+      true,
+    );
+    expect(changed({ state: "running", port: 31_338, startedAt: 2_000 })).toBe(
+      true,
+    );
   });
 
   it("skips the bridge and cookie jar after a successful prime", async () => {

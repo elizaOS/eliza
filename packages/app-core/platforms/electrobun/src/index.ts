@@ -70,6 +70,7 @@ import {
 import { publishAgentApiBase } from "./lifecycle/agent-ready-publish";
 import * as apiBaseOwner from "./lifecycle/api-base-owner";
 import {
+  createDesktopSessionGenerationTracker,
   markDesktopSessionStale,
   primeDesktopSessionAuth,
 } from "./lifecycle/desktop-session-prime";
@@ -2786,20 +2787,23 @@ async function main(): Promise<void> {
   // settle on a different loopback port than env/static HTML (allocation + stdout).
   // Detached surfaces must not keep a stale boot-config apiBase while the main
   // window was already updated—menu reset, chat, and settings each own a webview.
+  const desktopSessionGenerationChanged =
+    createDesktopSessionGenerationTracker();
   cleanupFns.push(
     getAgentManager().onStatusChange((status) => {
       if (status.port) {
-        // The agent rebound to a different loopback port (or recovered from a
-        // crash) — the cookies we installed during _startAgent were scoped to
-        // the old origin. Re-prime so every renderer's next /api request stays
-        // authenticated, including any open secondary renderer windows.
-        markDesktopSessionStale();
         const apiBase = `http://127.0.0.1:${status.port}`;
         const rendererBase = resolveRendererFacingApiBase(
           process.env as Record<string, string | undefined>,
           status.port,
         );
-        void primeDesktopSessionAuth(apiBase, rendererBase);
+        if (desktopSessionGenerationChanged(status)) {
+          // A real backend generation change invalidates its database-backed
+          // session row. Metadata-only emissions retain authority and must not
+          // fan out one-shot sockets or replace cookies under active requests.
+          markDesktopSessionStale();
+          void primeDesktopSessionAuth(apiBase, rendererBase);
+        }
         injectApiBaseIntoOpenRendererWindows();
       }
     }),
