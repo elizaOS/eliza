@@ -79,4 +79,10 @@ describe("printDiscordBanner conversational defaults", () => {
 		expect(prefix.isWellFormed()).toBe(true);
 		expect(prefix.length).toBe(6); // backed off by 1 unit to avoid splitting U+1D11E
 	});
+	it("preserves well-formed Unicode when masking sensitive secrets containing surrogate pairs", () => {
+		const surrogateSecret = "🚀abcSECRETVALUEdef🚀";
+		const masked = fmtVal(surrogateSecret, true, 40);
+		expect(masked.isWellFormed()).toBe(true);
+	});
+
 });
