@@ -46,6 +46,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { agentNodeIncarnationHistories } from "./agent-node-incarnation-histories";
 import { organizations } from "./organizations";
 import { userCharacters } from "./user-characters";
 import { users } from "./users";
@@ -914,6 +915,8 @@ export const agentSandboxBackups = pgTable(
     source_node_id: text("source_node_id"),
     /** Immutable Linux boot UUID resolved from typed node authority at reservation. */
     source_node_incarnation: uuid("source_node_incarnation"),
+    /** Append-only occurrence token bound at reservation; never infer from a reusable boot UUID. */
+    source_node_history_id: uuid("source_node_history_id"),
     /** Exact Hetzner Cloud server id; null for operator-onboarded Robot nodes. */
     source_provider_server_id: text("source_provider_server_id"),
     /** Provider/container-name handle used only to locate the running sandbox. */
@@ -1117,6 +1120,19 @@ export const agentSandboxBackups = pgTable(
       columns: [table.sandbox_record_id, table.catalog_organization_id],
       foreignColumns: [agentSandboxes.id, agentSandboxes.organization_id],
     }).onDelete("cascade"),
+    source_node_occurrence_fk: foreignKey({
+      name: "agent_sandbox_backups_source_node_occurrence_fkey",
+      columns: [
+        table.source_node_history_id,
+        table.source_node_record_id,
+        table.source_node_incarnation,
+      ],
+      foreignColumns: [
+        agentNodeIncarnationHistories.id,
+        agentNodeIncarnationHistories.docker_node_record_id,
+        agentNodeIncarnationHistories.node_incarnation,
+      ],
+    }).onDelete("restrict"),
     parent_catalog_authority_fk: foreignKey({
       name: "agent_sandbox_backups_parent_catalog_authority_fkey",
       columns: [table.parent_backup_id, table.catalog_organization_id, table.catalog_agent_id],
@@ -1235,6 +1251,20 @@ export const agentSandboxBackups = pgTable(
             END)
         )
       )) IS TRUE`,
+    ),
+    capture_source_occurrence_check: check(
+      "agent_sandbox_backups_capture_source_occurrence_check",
+      sql`(
+        ${table.catalog_version} IS DISTINCT FROM 2
+        OR ${table.source_node_history_id} IS NOT NULL
+        OR NOT (
+          ${table.catalog_state} IN ('scheduled', 'capturing')
+          OR (
+            ${table.catalog_state} = 'failed_retryable'
+            AND ${table.catalog_resume_state} IN ('scheduled', 'capturing')
+          )
+        )
+      ) IS TRUE`,
     ),
     catalog_manifest_shape_check: check(
       "agent_sandbox_backups_catalog_manifest_shape_check",
