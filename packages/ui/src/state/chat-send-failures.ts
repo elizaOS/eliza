@@ -10,23 +10,67 @@ const VALIDATION_FAILURE_STATUSES: ReadonlySet<number> = new Set([
   400, 413, 415, 422,
 ]);
 
-export function getSendValidationFailureMessage(err: unknown): string | null {
-  // Optional read: this classifies a rejection value, and a rejection can be
-  // `null`/`undefined` (`throw null`, `Promise.reject()`). A plain property
-  // read throws there, which would replace the user-facing notice with an
-  // unhandled error inside the send path's own failure handler.
-  const status = (err as { status?: number } | null | undefined)?.status;
+interface SendFailureMetadata {
+  status: unknown;
+  kind: unknown;
+  message: string;
+}
+
+function readFailureProperty(
+  failure: unknown,
+  property: "status" | "kind",
+): unknown {
+  if (
+    failure === null ||
+    (typeof failure !== "object" && typeof failure !== "function")
+  ) {
+    return undefined;
+  }
+
+  try {
+    return Reflect.get(failure, property);
+  } catch {
+    // error-policy:J3 Rejection values are untrusted and hostile getters fail closed.
+    return undefined;
+  }
+}
+
+function readFailureMetadata(failure: unknown): SendFailureMetadata {
+  let message = "";
+  try {
+    if (failure instanceof Error && typeof failure.message === "string") {
+      message = failure.message.trim();
+    }
+  } catch {
+    // error-policy:J3 A hostile Error prototype or message getter fails closed.
+    message = "";
+  }
+
+  return {
+    status: readFailureProperty(failure, "status"),
+    kind: readFailureProperty(failure, "kind"),
+    message,
+  };
+}
+
+function validationFailureMessage({
+  status,
+  message,
+}: SendFailureMetadata): string | null {
   if (typeof status !== "number" || !VALIDATION_FAILURE_STATUSES.has(status)) {
     return null;
   }
-  const message = err instanceof Error ? err.message.trim() : "";
   if (!message || /^HTTP \d+$/i.test(message)) return null;
   return message;
 }
 
+export function getSendValidationFailureMessage(err: unknown): string | null {
+  return validationFailureMessage(readFailureMetadata(err));
+}
+
 export function buildSendFailureNotice(err: unknown): string {
-  const status = (err as { status?: number } | null | undefined)?.status;
-  const kind = (err as { kind?: string } | null | undefined)?.kind;
+  const metadata = readFailureMetadata(err);
+  const { status, kind } = metadata;
   if (status === 401 || status === 403) {
     return "Your session expired — sign in again and resend your message.";
   }
@@ -36,7 +80,7 @@ export function buildSendFailureNotice(err: unknown): string {
   if (status === 503 || status === 502) {
     return "The agent is still waking up — give it a moment and resend.";
   }
-  const validationMessage = getSendValidationFailureMessage(err);
+  const validationMessage = validationFailureMessage(metadata);
   if (validationMessage !== null) {
     return `The agent couldn't accept that message: ${validationMessage}.`;
   }

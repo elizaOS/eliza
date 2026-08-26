@@ -74,6 +74,24 @@ describe("getSendValidationFailureMessage", () => {
     expect(getSendValidationFailureMessage(null)).toBeNull();
     expect(getSendValidationFailureMessage("nope")).toBeNull();
   });
+
+  it("fails closed when rejection metadata uses hostile getters", () => {
+    const hostileStatus = Object.defineProperty({}, "status", {
+      get: () => {
+        throw new Error("blocked");
+      },
+    });
+    const hostileMessage = new Error("placeholder");
+    Object.defineProperty(hostileMessage, "message", {
+      get: () => {
+        throw new Error("blocked");
+      },
+    });
+    Object.assign(hostileMessage, { status: 422 });
+
+    expect(getSendValidationFailureMessage(hostileStatus)).toBeNull();
+    expect(getSendValidationFailureMessage(hostileMessage)).toBeNull();
+  });
 });
 
 describe("buildSendFailureNotice", () => {
@@ -136,6 +154,46 @@ describe("buildSendFailureNotice", () => {
         "That message didn't go through — please resend.",
       );
     }
+  });
+
+  it("reads changing rejection metadata once for a consistent classification", () => {
+    const failure = new Error("Attachment too large") as Error & {
+      readonly status: number;
+    };
+    let reads = 0;
+    Object.defineProperty(failure, "status", {
+      get: () => {
+        reads += 1;
+        return reads === 1 ? 422 : 500;
+      },
+    });
+
+    expect(buildSendFailureNotice(failure)).toBe(
+      "The agent couldn't accept that message: Attachment too large.",
+    );
+    expect(reads).toBe(1);
+  });
+
+  it("falls back to generic when status and kind getters throw", () => {
+    const failure = Object.defineProperties(
+      {},
+      {
+        status: {
+          get: () => {
+            throw new Error("blocked");
+          },
+        },
+        kind: {
+          get: () => {
+            throw new Error("blocked");
+          },
+        },
+      },
+    );
+
+    expect(buildSendFailureNotice(failure)).toBe(
+      "That message didn't go through — please resend.",
+    );
   });
 
   it("falls back to generic when a validation status carries no usable text", () => {
