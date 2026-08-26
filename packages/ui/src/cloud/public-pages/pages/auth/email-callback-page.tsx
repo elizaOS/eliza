@@ -10,6 +10,7 @@ import type { ReactNode } from "react";
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
+  APP_AUTHORIZE_PATH,
   clearStoredAppAuthorizeReturnTo,
   readStoredAppAuthorizeReturnTo,
 } from "../../../../cloud-ui/components/auth/authorize-return";
@@ -67,7 +68,10 @@ export function classifyEmailCallbackDestination(destination: string): {
   isAppAuthorization: boolean;
   isJoinFallback: boolean;
 } {
-  const isAppAuthorization = destination.includes("/app-auth/authorize");
+  const isAppAuthorization =
+    destination === APP_AUTHORIZE_PATH ||
+    destination.startsWith(`${APP_AUTHORIZE_PATH}?`) ||
+    destination.startsWith(`${APP_AUTHORIZE_PATH}#`);
   const isJoinFallback = destination === defaultLoginReturnTo();
   return { isAppAuthorization, isJoinFallback };
 }
