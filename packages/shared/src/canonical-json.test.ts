@@ -380,4 +380,12 @@ describe("canonical JSON fail-closed bounds", () => {
     expect(() => canonicalJsonString(cyclic, options)).toThrow(DomainError);
     expect(typeof failCanonicalJsonUnbounded).toBe("function");
   });
+
+  it("safely serializes BigInt values", () => {
+    expect(canonicalJsonString(123n, OPTIONS)).toBe('"123"');
+    expect(canonicalJsonString([1n, 2n], OPTIONS)).toBe('["1","2"]');
+    expect(canonicalJsonString({ id: 9007199254740993n }, OPTIONS)).toBe(
+      '{"id":"9007199254740993"}',
+    );
+  });
 });
