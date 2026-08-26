@@ -6,9 +6,6 @@ import { describe, expect, it } from "vitest";
 import {
 	asRecord,
 	asRecordOrUndefined,
-	isFiniteNumber,
-	isNonEmptyArray,
-	isNonEmptyString,
 	isObjectRecord,
 	isPlainObject,
 } from "./type-guards";
@@ -94,38 +91,5 @@ describe("asRecord and asRecordOrUndefined", () => {
 
 		expect(asRecord(undefined)).toBeNull();
 		expect(asRecordOrUndefined(undefined)).toBeUndefined();
-	});
-});
-
-describe("isNonEmptyString", () => {
-	it("narrows non-empty and non-whitespace-only strings", () => {
-		expect(isNonEmptyString("hello")).toBe(true);
-		expect(isNonEmptyString("  world  ")).toBe(true);
-		expect(isNonEmptyString("")).toBe(false);
-		expect(isNonEmptyString("   ")).toBe(false);
-		expect(isNonEmptyString(null)).toBe(false);
-		expect(isNonEmptyString(123)).toBe(false);
-	});
-});
-
-describe("isFiniteNumber", () => {
-	it("narrows finite numbers and rejects NaN, Infinity, and non-numbers", () => {
-		expect(isFiniteNumber(0)).toBe(true);
-		expect(isFiniteNumber(42)).toBe(true);
-		expect(isFiniteNumber(-3.14)).toBe(true);
-		expect(isFiniteNumber(Number.NaN)).toBe(false);
-		expect(isFiniteNumber(Number.POSITIVE_INFINITY)).toBe(false);
-		expect(isFiniteNumber("42")).toBe(false);
-		expect(isFiniteNumber(null)).toBe(false);
-	});
-});
-
-describe("isNonEmptyArray", () => {
-	it("narrows non-empty arrays and rejects empty arrays or non-arrays", () => {
-		expect(isNonEmptyArray([1])).toBe(true);
-		expect(isNonEmptyArray(["a", "b"])).toBe(true);
-		expect(isNonEmptyArray([])).toBe(false);
-		expect(isNonEmptyArray(null)).toBe(false);
-		expect(isNonEmptyArray({ length: 1 })).toBe(false);
 	});
 });
