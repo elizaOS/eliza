@@ -62,6 +62,7 @@ export const notesPlugin: Plugin = {
         "scratchpad",
         "view switching",
       ],
+      responseContext: { primaryContext: "notes" },
       bundlePath: "dist/views/bundle.js",
       componentExport: "NotesView",
       surface: { header: "fullscreen" },

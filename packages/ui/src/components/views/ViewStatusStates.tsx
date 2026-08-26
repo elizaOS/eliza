@@ -43,7 +43,7 @@ export function ViewStatusFrame({
   children,
   actions,
 }: {
-  tone: "loading" | "error" | "restricted";
+  tone: "loading" | "error" | "restricted" | "unavailable";
   icon: ReactNode;
   title: ReactNode;
   children?: ReactNode;
@@ -191,6 +191,44 @@ export function ViewRestrictedState({ viewId }: { viewId: string }) {
         {t("dynamicviewloader.restricted.body", {
           defaultValue:
             "Dynamic views cannot be loaded on iOS or Android store builds.",
+        })}
+      </span>
+      <span className="mt-1 block">
+        {t("dynamicviewloader.viewId", {
+          viewId,
+          defaultValue: "View ID: {{viewId}}",
+        })}
+      </span>
+    </ViewStatusFrame>
+  );
+}
+
+export function ViewUnavailableState({
+  viewId,
+  onRetry,
+  onBack = navigateToViews,
+}: {
+  viewId: string;
+  onRetry?: () => void;
+  onBack?: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <ViewStatusFrame
+      tone="unavailable"
+      icon={<Ban className="size-5" aria-hidden="true" />}
+      title={t("dynamicviewloader.unavailable.title", {
+        defaultValue: "View unavailable",
+      })}
+      actions={
+        onRetry ? (
+          <ViewRecoveryActions onRetry={onRetry} onBack={onBack} />
+        ) : undefined
+      }
+    >
+      <span>
+        {t("dynamicviewloader.unavailable.body", {
+          defaultValue: "This view is not available in the current runtime.",
         })}
       </span>
       <span className="mt-1 block">

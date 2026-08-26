@@ -131,6 +131,7 @@ import { Button } from "./components/ui/button";
 import { KeepAliveViewHost } from "./components/views/KeepAliveViewHost";
 import { ShellViewAgentSurface } from "./components/views/ShellViewAgentSurface";
 import { ViewErrorBoundary } from "./components/views/ViewErrorBoundary";
+import { ViewUnavailableState } from "./components/views/ViewStatusStates";
 import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
 import { useBootConfig } from "./config/boot-config-react.hooks";
 import { useBranding } from "./config/branding";
@@ -1267,25 +1268,31 @@ function ViewLayoutSurface({
  * inline ChatView — so an unavailable view falls back to the Launcher page
  * of the retained Home/Launcher surface, not a chat surface.
  */
-function ViewUnavailableFallback(): ReactNode {
-  return <HomeScreenMount initialSection="apps" />;
+function ViewUnavailableFallback({ viewId }: { viewId: string }): ReactNode {
+  const { refresh } = useAvailableViews();
+  return (
+    <TabContentView>
+      <ViewUnavailableState viewId={viewId} onRetry={refresh} />
+    </TabContentView>
+  );
 }
 
 function renderPhoneSurface(
   enabled: boolean,
   Component: ComponentType,
+  viewId: string,
 ): ReactNode {
   return enabled ? (
     <TabContentView>
       <Component />
     </TabContentView>
   ) : (
-    <ViewUnavailableFallback />
+    <ViewUnavailableFallback viewId={viewId} />
   );
 }
 
 function renderAppsSurface(navigationPath: string): ReactNode {
-  if (!APPS_ENABLED) return <ViewUnavailableFallback />;
+  if (!APPS_ENABLED) return <ViewUnavailableFallback viewId="apps" />;
   const appSlug = getAppSlugFromPath(navigationPath);
   if (!appSlug) {
     return <HomeScreenMount initialSection="apps" />;
@@ -1349,7 +1356,7 @@ function buildStaticTabRenderers(): Record<
     </TabContentView>
   );
   return {
-    chat: () => <ViewUnavailableFallback />,
+    chat: () => <HomeScreenMount initialSection="apps" />,
     browser: () => <LazyBrowserWorkspaceView />,
     stream: () => <LazyStreamView />,
     "pendant-transcript": () => <LazyPendantTranscriptView />,
@@ -1362,10 +1369,10 @@ function buildStaticTabRenderers(): Record<
     // Relationships is plugin-owned. Its app-shell registration claims the
     // route and supplies the page chrome; an absent plugin is an unavailable
     // feature rather than a host-side duplicate implementation.
-    relationships: () => <ViewUnavailableFallback />,
+    relationships: () => <ViewUnavailableFallback viewId="relationships" />,
     // Knowledge is plugin-owned. If the document plugin is unavailable, the
     // registered-page resolver renders its explicit unavailable state.
-    documents: () => <ViewUnavailableFallback />,
+    documents: () => <ViewUnavailableFallback viewId="documents" />,
     experience: ({ characterNav }) => (
       <TabContentView nav={characterNav} reserveChatClearance={false}>
         <LazyCharacterExperienceView />
@@ -1409,10 +1416,11 @@ function buildStaticTabRenderers(): Record<
     // Camera is an AOSP-ElizaOS-fork-only surface — gate the route on the same
     // marker as the home tile, so a deep-link off the fork falls back to
     // "unavailable" instead of rendering on web/desktop/iOS/Play-Store Android.
-    camera: () => renderPhoneSurface(isAospShellEnabled(), LazyCameraPageView),
-    phone: () => <ViewUnavailableFallback />,
-    messages: () => <ViewUnavailableFallback />,
-    contacts: () => <ViewUnavailableFallback />,
+    camera: () =>
+      renderPhoneSurface(isAospShellEnabled(), LazyCameraPageView, "camera"),
+    phone: () => <ViewUnavailableFallback viewId="phone" />,
+    messages: () => <ViewUnavailableFallback viewId="messages" />,
+    contacts: () => <ViewUnavailableFallback viewId="contacts" />,
     views: ({ navigationPath }) => renderAppsSurface(navigationPath),
     apps: ({ navigationPath }) => renderAppsSurface(navigationPath),
     // Rendered directly (no opaque TabContentView chrome) so the live app
@@ -1471,7 +1479,7 @@ function renderStaticViewRouterTab({
       characterNav,
     });
   }
-  return <ViewUnavailableFallback />;
+  return <ViewUnavailableFallback viewId={tab} />;
 }
 
 function renderViewRouterContent({

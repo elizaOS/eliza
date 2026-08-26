@@ -123,6 +123,19 @@ describe("mergeViewCatalog", () => {
     expect(claw?.fallbackImageUrl).toMatch(PACKAGED_VIEW_ICON_PATTERN);
   });
 
+  it("excludes unavailable views from routable launchers but keeps them in management", () => {
+    const unavailable = makeView("notes", { available: false });
+
+    expect(
+      merge({ views: [unavailable], visibilityScope: "routable" }),
+    ).toEqual([]);
+    expect(
+      merge({ views: [unavailable], visibilityScope: "manager" }).map(
+        (entry) => entry.id,
+      ),
+    ).toEqual(["notes"]);
+  });
+
   it("uses an absolute (shell-reachable) app hero as the real tile image", () => {
     const entries = merge({
       catalog: [

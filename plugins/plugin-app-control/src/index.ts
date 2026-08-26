@@ -224,6 +224,7 @@ export const appControlPlugin: Plugin = {
 			description: "Browse and open available views contributed by plugins",
 			icon: "LayoutGrid",
 			path: "/views",
+			responseContext: { primaryContext: "system" },
 			modalities: ["gui"],
 			bundlePath: "dist/views/bundle.js",
 			// First-party instrumented view (data-agent-id controls): grant the
