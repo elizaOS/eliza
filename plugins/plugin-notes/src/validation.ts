@@ -13,6 +13,7 @@ import {
 import {
   type CreateNoteInput,
   NOTES_SCHEMA_VERSION,
+  NOTES_SCHEMA_VERSION_V1,
   type NotesDocument,
   type StickyColor,
   type StickyNote,
@@ -93,50 +94,93 @@ function parseRequiredTitle(value: unknown, field: string): string {
   });
 }
 
-function parseText(value: unknown, field: string): string {
-  return parseString(value, field, {
-    allowEmpty: true,
-    maxLength: MAX_BODY_LENGTH,
-  });
+/**
+ * Validate a note body without trimming. The body is verbatim user content that
+ * `reconstructNoteContent` concatenates onto the label, so a leading blank line
+ * or trailing whitespace is structure to preserve, not noise to normalize. It
+ * still fails fast on the wrong type, ill-formed Unicode, or the length bound.
+ */
+function parseBodyText(value: unknown, field: string): string {
+  if (typeof value !== "string") {
+    throw validationError(`${field} must be a string.`, field);
+  }
+  const text = toWellFormedUnicode(value);
+  if (text.length > MAX_BODY_LENGTH) {
+    throw validationError(
+      `${field} must be at most ${MAX_BODY_LENGTH} characters.`,
+      field,
+    );
+  }
+  return text;
 }
 
 /**
  * Split the one user-authored note field into the storage schema's stable list
- * label and remainder. The first line is the label; overflow and later lines
- * stay in the body, so the transformation never asks a model to invent text or
- * discards user content. A one-line note written as "Label: details" keeps the
- * label as the title and the details as the body — planners flatten "titled X
- * saying Y" into exactly that shape — and the colon must be followed by
- * whitespace so URLs ("https://…") and clock times ("5:30") never split.
+ * label and verbatim remainder. `title` is the first line bounded to
+ * `MAX_TITLE_LENGTH` for list lookup and the agent surface; `body` is the exact
+ * suffix so that `title + body` (see `reconstructNoteContent`) returns the
+ * original content unchanged. The transformation never asks a model to invent
+ * text, never injects a line break into a long first line, and never discards a
+ * blank line the user placed after the title. Only leading whitespace before
+ * the first character is normalized away, because the label must be non-empty.
+ *
+ * The one deliberate reshaping is a single-line note written as "Label: details"
+ * — the shape planners flatten "titled X saying Y" into. It splits at the
+ * labelled colon into `title` and a `"\n"`-separated `body`, the same layout a
+ * two-line note produces, so the retired multi-field intent survives and
+ * `reconstructNoteContent` still yields coherent text. The colon must be
+ * followed by whitespace, so URLs ("https://…") and clock times ("5:30") never
+ * split.
  */
 export function parseNoteContent(
   value: unknown,
   field = "content",
 ): Pick<CreateNoteInput, "title" | "body"> {
-  const content = parseString(value, field, {
-    allowEmpty: false,
-    maxLength: MAX_NOTE_CONTENT_LENGTH,
-  });
-  const [firstLine = "", ...remainingLines] = content.split(/\r?\n/);
-  let labelLine = toWellFormedUnicode(firstLine.trim());
-  let inlineDetails = "";
-  if (remainingLines.length === 0) {
-    const labeled = /^([^:]+):\s+(.+)$/.exec(labelLine);
-    if (labeled) {
-      labelLine = labeled[1].trim();
-      inlineDetails = labeled[2].trim();
+  if (typeof value !== "string") {
+    throw validationError(`${field} must be a string.`, field);
+  }
+  const content = toWellFormedUnicode(value).replace(/^\s+/u, "");
+  if (content.length === 0) {
+    throw validationError(`${field} must not be empty.`, field);
+  }
+  if (content.length > MAX_NOTE_CONTENT_LENGTH) {
+    throw validationError(
+      `${field} must be at most ${MAX_NOTE_CONTENT_LENGTH} characters.`,
+      field,
+    );
+  }
+  const newlineIndex = content.search(/\r?\n/u);
+  if (newlineIndex === -1) {
+    // A one-line "Label: details" note keeps the label as the title and the
+    // details as the body; the colon must be followed by whitespace so URLs and
+    // clock times never split. The body carries the same leading "\n" separator
+    // a two-line note would, so `reconstructNoteContent` stays coherent.
+    const labeled = /^([^:]+):\s+(.+)$/u.exec(content);
+    const labelText = labeled?.[1].trim() ?? "";
+    if (
+      labeled &&
+      labelText.length > 0 &&
+      labelText.length <= MAX_TITLE_LENGTH
+    ) {
+      const title = parseRequiredTitle(labelText, `${field}.firstLine`);
+      const body = parseBodyText(
+        `\n${labeled[2].trim()}`,
+        `${field}.remainder`,
+      );
+      return { title, body };
     }
   }
-  const title = truncateWellFormed(labelLine, MAX_TITLE_LENGTH).trim();
-  const overflow = labelLine.slice(title.length).trim();
-  const body = [overflow, inlineDetails, ...remainingLines]
-    .filter((part, index) => index >= 2 || part.length > 0)
-    .join("\n")
-    .trim();
-  return {
-    title: parseRequiredTitle(title, `${field}.firstLine`),
-    body: parseText(body, `${field}.remainder`),
-  };
+  const firstLine =
+    newlineIndex === -1 ? content : content.slice(0, newlineIndex);
+  // Trailing whitespace is dropped from the *label* only; the slice below keeps
+  // it in `body`, so `title + body` still reconstructs `content` exactly.
+  const label = truncateWellFormed(firstLine, MAX_TITLE_LENGTH).replace(
+    /[^\S\r\n]+$/u,
+    "",
+  );
+  const title = parseRequiredTitle(label, `${field}.firstLine`);
+  const body = parseBodyText(content.slice(title.length), `${field}.remainder`);
+  return { title, body };
 }
 
 export function parseEntityId(value: unknown, field = "id"): string {
@@ -193,7 +237,7 @@ export function parseCreateNoteInput(value: unknown): CreateNoteInput {
   assertOnlyKeys(record, ["title", "body", "color"], "note");
   return {
     title: parseRequiredTitle(record.title, "note.title"),
-    body: hasOwn(record, "body") ? parseText(record.body, "note.body") : "",
+    body: hasOwn(record, "body") ? parseBodyText(record.body, "note.body") : "",
     color: hasOwn(record, "color")
       ? parseStickyColor(record.color, "note.color")
       : "yellow",
@@ -208,7 +252,7 @@ export function parseUpdateNoteInput(value: unknown): UpdateNoteInput {
     patch.title = parseRequiredTitle(record.title, "note.title");
   }
   if (hasOwn(record, "body")) {
-    patch.body = parseText(record.body, "note.body");
+    patch.body = parseBodyText(record.body, "note.body");
   }
   if (hasOwn(record, "color")) {
     patch.color = parseStickyColor(record.color, "note.color");
@@ -233,11 +277,22 @@ function parseStickyNote(value: unknown, index: number): StickyNote {
   return {
     id: parseEntityId(record.id, `${field}.id`),
     title: parseRequiredTitle(record.title, `${field}.title`),
-    body: parseText(record.body, `${field}.body`),
+    body: parseBodyText(record.body, `${field}.body`),
     color: parseStickyColor(record.color, `${field}.color`),
     createdAt: parseTimestamp(record.createdAt, `${field}.createdAt`),
     updatedAt: parseTimestamp(record.updatedAt, `${field}.updatedAt`),
   };
+}
+
+/**
+ * Upgrade a v1 note to the v2 body layout. A v1 `body` dropped the separator
+ * that its retired view re-inserted as `title + "\n" + body`, so restoring that
+ * exact leading newline makes `reconstructNoteContent` reproduce what the old
+ * view showed without re-corrupting the record.
+ */
+function migrateNoteFromV1(note: StickyNote): StickyNote {
+  if (note.body.length === 0) return note;
+  return { ...note, body: `\n${note.body}` };
 }
 
 export function parseNotesDocument(value: unknown): NotesDocument {
@@ -247,7 +302,11 @@ export function parseNotesDocument(value: unknown): NotesDocument {
     ["schemaVersion", "revision", "persistedAt", "notes"],
     "notes state",
   );
-  if (record.schemaVersion !== NOTES_SCHEMA_VERSION) {
+  const schemaVersion = record.schemaVersion;
+  if (
+    schemaVersion !== NOTES_SCHEMA_VERSION &&
+    schemaVersion !== NOTES_SCHEMA_VERSION_V1
+  ) {
     throw validationError(
       `schemaVersion must be ${NOTES_SCHEMA_VERSION}.`,
       "schemaVersion",
@@ -256,7 +315,11 @@ export function parseNotesDocument(value: unknown): NotesDocument {
   if (!Array.isArray(record.notes)) {
     throw validationError("notes must be an array.", "notes");
   }
-  const notes = record.notes.map(parseStickyNote);
+  const parsedNotes = record.notes.map(parseStickyNote);
+  const notes =
+    schemaVersion === NOTES_SCHEMA_VERSION_V1
+      ? parsedNotes.map(migrateNoteFromV1)
+      : parsedNotes;
   const noteIds = new Set(notes.map((note) => note.id));
   if (noteIds.size !== notes.length) {
     throw validationError("notes contain duplicate ids.", "notes");

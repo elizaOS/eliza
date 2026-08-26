@@ -11,7 +11,11 @@ import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 import { ViewHeader } from "@elizaos/ui/components/shared/ViewHeader";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import type { CSSProperties } from "react";
-import type { NotesSnapshot, StickyNote as StickyNoteModel } from "../types.js";
+import {
+  type NotesSnapshot,
+  reconstructNoteContent,
+  type StickyNote as StickyNoteModel,
+} from "../types.js";
 import {
   AgentAction,
   COLOR_MATERIALS,
@@ -52,13 +56,12 @@ function formatUpdatedAt(value: string): string {
   }).format(new Date(timestamp));
 }
 
-function noteContent(note: StickyNoteModel): string {
-  const body = note.body.trim();
-  return body ? `${note.title}\n${body}` : note.title;
-}
-
 function NoteRow({ note }: { note: StickyNoteModel }) {
-  const content = noteContent(note);
+  // v2 stores `body` as the verbatim remainder (including its leading
+  // separator), so `reconstructNoteContent` returns the exact authored text for
+  // the planner-visible agent description without re-injecting a newline or
+  // dropping a blank line the user placed after the first line (#29003).
+  const content = reconstructNoteContent(note);
   const card = useAgentElement<HTMLLIElement>({
     id: note.id,
     label: `Note ${note.title}`,
