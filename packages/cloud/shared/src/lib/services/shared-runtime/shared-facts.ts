@@ -20,8 +20,6 @@ import { ElizaError } from "@elizaos/core/edge";
 /** Core memories table-name discriminator Dedicated's facts provider reads. */
 export const SHARED_FACTS_MEMORY_TYPE = "facts";
 
-export const SHARED_FACTS_MAX_PER_TURN = 5;
-
 export const SHARED_FACTS_INVALID_RESPONSE = "SHARED_FACTS_INVALID_RESPONSE";
 
 /** Hard deadline for the off-path extraction model call (see shared-runtime-chat). */
@@ -91,7 +89,7 @@ export function buildSharedFactsExtractionPrompt(input: SharedFactsPromptInput):
     "Exchange:",
     `User: ${input.userMessage}`,
     `Assistant: ${input.assistantReply}`,
-    `Respond with ONLY a JSON array of at most ${SHARED_FACTS_MAX_PER_TURN} short third-person fact strings (e.g. ["The user is allergic to peanuts"]). Respond with [] when the exchange contains no new durable fact.`,
+    'Respond with ONLY a JSON array of short third-person fact strings (e.g. ["The user is allergic to peanuts"]). Respond with [] when the exchange contains no new durable fact.',
   ].join("\n\n");
 }
 
@@ -100,8 +98,7 @@ export function buildSharedFactsExtractionPrompt(input: SharedFactsPromptInput):
  * code block around the array but nothing else: a body without a parseable
  * JSON string array is a typed invalid-response failure (error-policy:J3 at
  * the caller), never silently "no facts". Entries are sanitized to one plain
- * line ({@link sanitizeSharedFact}) and capped at the number requested from the
- * extraction model.
+ * line ({@link sanitizeSharedFact}) without dropping valid entries.
  */
 export function parseSharedFactsResponse(text: string): string[] {
   const stripped = text.replace(/```(?:json)?/gi, "").trim();
@@ -136,8 +133,7 @@ export function parseSharedFactsResponse(text: string): string[] {
   }
   return (parsed as string[])
     .map((fact) => sanitizeSharedFact(fact))
-    .filter((fact) => fact.length > 0)
-    .slice(0, SHARED_FACTS_MAX_PER_TURN);
+    .filter((fact) => fact.length > 0);
 }
 
 export interface ExtractSharedTurnFactsInput extends SharedFactsPromptInput {

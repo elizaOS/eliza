@@ -822,7 +822,31 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 
 	async deleteEntities(entityIds: UUID[]): Promise<void> {
 		for (const entityId of entityIds) {
-			this.entities.delete(String(entityId));
+			const entityKey = String(entityId);
+			for (const [componentId, component] of this.components.entries()) {
+				if (
+					String(component.entityId) === entityKey ||
+					String(component.sourceEntityId) === entityKey
+				) {
+					this.removeComponentIndexes(component);
+					this.components.delete(componentId);
+				}
+			}
+
+			const roomIds = this.roomsByParticipant.get(entityKey);
+			if (roomIds) {
+				for (const roomId of roomIds) {
+					const participants = this.participantsByRoom.get(roomId);
+					participants?.delete(entityKey);
+					if (participants?.size === 0) {
+						this.participantsByRoom.delete(roomId);
+					}
+					this.participantUserState.delete(`${roomId}:${entityKey}`);
+				}
+				this.roomsByParticipant.delete(entityKey);
+			}
+
+			this.entities.delete(entityKey);
 		}
 	}
 
@@ -937,14 +961,19 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 							return fragments;
 						}, [])
 						.filter((fragment) => fragment.length > 0);
-		const text = units
-			.slice(params.offset, params.offset + params.limit)
-			.join("");
+		const selected =
+			params.limit === undefined
+				? units.slice(params.offset)
+				: units.slice(params.offset, params.offset + params.limit);
+		const text = selected.join("");
 		const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
 		return {
 			text,
 			start: params.offset,
-			end: Math.min(params.offset + params.limit, units.length),
+			end:
+				params.limit === undefined
+					? units.length
+					: Math.min(params.offset + params.limit, units.length),
 			total: units.length,
 			documentRevision:
 				typeof metadata.documentRevision === "number"
@@ -1500,7 +1529,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		).filter(
 			(memory) => !params.entityId || memory.entityId === params.entityId,
 		);
-		const limit = params.count ?? params.limit ?? 10;
+		const limit = params.count ?? params.limit ?? Infinity;
 		// Same truthiness contract as plugin-sql: an absent or zero threshold
 		// applies no similarity floor.
 		const threshold = params.match_threshold;
@@ -2417,8 +2446,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	): Promise<ConnectorAccountRecord[]> {
 		const agentId = params.agentId ?? DEFAULT_UUID;
 		const offset = params.offset ?? 0;
-		const limit = params.limit ?? 100;
-		return Array.from(this.connectorAccountsById.values())
+		const accounts = Array.from(this.connectorAccountsById.values())
 			.filter((account) => account.agentId === agentId)
 			.filter((account) => account.deletedAt == null)
 			.filter(
@@ -2436,15 +2464,17 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 						: 0;
 				return bTime - aTime || a.id.localeCompare(b.id);
 			})
-			.slice(offset, offset + limit)
-			.map((account) => ({
-				...account,
-				scopes: [...account.scopes],
-				purpose: [...account.purpose],
-				capabilities: [...account.capabilities],
-				profile: cloneConnectorJsonObject(account.profile),
-				metadata: cloneConnectorJsonObject(account.metadata),
-			}));
+			.slice(offset);
+		const selected =
+			params.limit === undefined ? accounts : accounts.slice(0, params.limit);
+		return selected.map((account) => ({
+			...account,
+			scopes: [...account.scopes],
+			purpose: [...account.purpose],
+			capabilities: [...account.capabilities],
+			profile: cloneConnectorJsonObject(account.profile),
+			metadata: cloneConnectorJsonObject(account.metadata),
+		}));
 	}
 
 	async getConnectorAccount(

@@ -111,10 +111,14 @@ export function AppsListView({
                 <StatusBadge
                   status={app.is_active ? "success" : "neutral"}
                   label={app.is_active ? "Active" : "Inactive"}
-                  className="px-1.5 py-0 text-2xs"
                 />
                 {app.affiliate_code ? (
-                  <Badge className="shrink-0 rounded-sm border-border bg-surface px-1.5 py-0 text-2xs text-muted">
+                  <Badge
+                    variant="outline"
+                    size="micro"
+                    tone="muted"
+                    className="shrink-0"
+                  >
                     Affiliate
                   </Badge>
                 ) : null}
@@ -170,7 +174,7 @@ export function AppsListView({
                     icon: deletingId === app.id ? Loader2 : Trash2,
                     disabled: deletingId === app.id,
                     className:
-                      "cursor-pointer bg-red-500/10 text-red-500 hover:bg-red-500/20   [&_svg]:text-red-500 data-[disabled]:opacity-60",
+                      "cursor-pointer bg-destructive-subtle text-destructive hover:bg-destructive-subtle/70 [&_svg]:text-destructive data-[disabled]:opacity-60",
                     onSelect: () => onDeleteApp?.(app),
                   },
                 ]}

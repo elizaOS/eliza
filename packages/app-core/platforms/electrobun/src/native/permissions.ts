@@ -292,7 +292,7 @@ export async function runSettingsCommand(
     new Response(proc.stderr).text(),
   ]);
   if (exitCode !== 0) {
-    const detail = stderr.trim().slice(0, 512);
+    const detail = stderr.trim();
     throw new ElizaError(
       `Settings command exited ${exitCode}${detail ? `: ${detail}` : ""}`,
       {

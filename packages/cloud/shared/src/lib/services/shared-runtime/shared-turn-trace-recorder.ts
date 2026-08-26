@@ -29,9 +29,6 @@ import type { SharedRuntimeTimingReceipt } from "./shared-runtime-timing";
 /** Default keep fraction when `SHARED_TURN_TRACES_SAMPLE` is unset or invalid. */
 export const DEFAULT_SHARED_TURN_TRACES_SAMPLE = 0.1;
 
-/** Cap on recorded action stages so a pathological turn cannot bloat the row. */
-const MAX_ACTION_STAGES = 16;
-
 /** Everything the recorder persists about one completed Shared turn. */
 export interface SharedTurnSummary {
   organizationId: string;
@@ -155,7 +152,7 @@ export function buildTurnSummary(input: BuildTurnSummaryInput): SharedTurnSummar
   } else {
     finishReason = "reply";
     stages.push({ name: "model" });
-    for (const actionResult of (result.actionResults ?? []).slice(0, MAX_ACTION_STAGES)) {
+    for (const actionResult of result.actionResults ?? []) {
       const actionName = actionResult.data?.actionName;
       stages.push({
         name: "action",

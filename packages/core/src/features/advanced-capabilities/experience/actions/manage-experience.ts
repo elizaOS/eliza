@@ -253,7 +253,6 @@ async function doDelete(
 
 	const candidates = await experienceService.queryExperiences({
 		query,
-		limit: 25,
 	});
 	const matched = candidates.filter(
 		(experience) => scoreText(experienceMatchText(experience), query) >= 1,

@@ -71,9 +71,6 @@ const GripIconSvg = ({ className }: { className?: string }) => (
   </svg>
 );
 
-const compactIconBtn =
-  "inline-flex size-7 items-center justify-center rounded-sm text-muted transition-colors hover:bg-bg-muted/70 hover:text-txt disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent";
-
 /* ── Style section constants ─────────────────────────────────────── */
 const STYLE_SECTION_KEYS = ["all"] as const;
 const STYLE_SECTION_PLACEHOLDERS: Record<
@@ -194,6 +191,8 @@ export function CharacterIdentityPanel({
         </span>
         <Input
           ref={nameRef}
+          variant="config"
+          density="compact"
           value={nameText}
           placeholder={t("startupshell.AgentName", {
             defaultValue: "Agent name",
@@ -201,7 +200,6 @@ export function CharacterIdentityPanel({
           onChange={(e: ChangeEvent<HTMLInputElement>) =>
             handleFieldEdit("name", e.target.value)
           }
-          className="h-9 w-full rounded-none border-0 border-b border-border/40 bg-transparent px-0 text-sm text-txt"
           {...nameAgentProps}
         />
       </div>
@@ -213,6 +211,8 @@ export function CharacterIdentityPanel({
         </span>
         <Textarea
           ref={systemRef}
+          variant="documentEditor"
+          density="relaxed"
           value={systemText}
           rows={3}
           placeholder={t("charactereditor.SystemPromptPlaceholder", {
@@ -221,7 +221,6 @@ export function CharacterIdentityPanel({
           onChange={(e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
             handleFieldEdit("system", e.target.value)
           }
-          className="w-full resize-none min-h-[5rem] overflow-x-hidden rounded-none border-0 border-b border-border/40 bg-transparent px-0 py-2 font-mono text-xs leading-relaxed text-txt sm:min-h-[10rem] lg:min-h-[14rem]"
           {...systemAgentProps}
         />
       </div>
@@ -231,6 +230,8 @@ export function CharacterIdentityPanel({
         </span>
         <Textarea
           ref={bioRef}
+          variant="documentEditor"
+          density="compact"
           value={bioText}
           rows={2}
           placeholder={t("charactereditor.AboutMePlaceholder", {
@@ -239,7 +240,6 @@ export function CharacterIdentityPanel({
           onChange={(e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
             handleFieldEdit("bio", e.target.value)
           }
-          className="w-full resize-none min-h-[3.5rem] overflow-x-hidden rounded-none border-0 border-b border-border/40 bg-transparent px-0 py-2 font-mono text-xs leading-relaxed text-txt sm:min-h-[6rem] lg:min-h-[8rem]"
           {...bioAgentProps}
         />
       </div>
@@ -321,6 +321,9 @@ function StyleRuleRow({
         <GripIconSvg />
       </span>
       <Input
+        variant="embeddedName"
+        density="denseResponsive"
+        hasError={isDuplicate}
         ref={inputRef}
         value={value}
         onChange={(e: ChangeEvent<HTMLInputElement>) =>
@@ -328,9 +331,7 @@ function StyleRuleRow({
         }
         onBlur={onCommit}
         aria-label={ruleLabel}
-        className={`h-8 min-w-0 flex-1 rounded-none border-0 border-b bg-transparent px-0 text-sm text-txt ${
-          isDuplicate ? "border-warning/60 " : "border-border/30 "
-        }`}
+        className="min-w-0 flex-1"
         {...inputAgentProps}
       />
       {isDuplicate ? (
@@ -343,9 +344,9 @@ function StyleRuleRow({
       <Button
         ref={removeRef}
         type="button"
-        variant="ghost"
-        size="icon"
-        className="size-7 shrink-0 rounded-sm p-0 text-muted opacity-0 transition-colors hover:text-danger group-hover:opacity-100 "
+        variant="destructive"
+        size="icon-sm"
+        className="shrink-0 opacity-0 group-hover:opacity-100"
         onClick={onRemove}
         title={t("common.remove")}
         aria-label={`${t("common.remove")} ${ruleLabel}`}
@@ -400,6 +401,8 @@ function StyleAddRow({
       <Input
         ref={inputRef}
         type="text"
+        variant="config"
+        density="compact"
         value={pendingValue}
         placeholder={placeholder}
         onChange={(e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
@@ -411,14 +414,14 @@ function StyleAddRow({
             onAdd();
           }
         }}
-        className="h-9 min-w-0 flex-1 rounded-none border-0 border-b border-border/30 bg-transparent px-0 text-sm text-txt outline-none"
+        className="min-w-0 flex-1"
         {...inputAgentProps}
       />
       <Button
         ref={addRef}
-        variant="ghost"
+        variant="default"
         size="sm"
-        className="inline-flex h-9 shrink-0 items-center gap-2 rounded-sm px-3 text-sm font-medium text-accent transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+        className="shrink-0"
         onClick={onAdd}
         disabled={!pendingValue.trim()}
         title={addLabel}
@@ -597,11 +600,12 @@ function ConversationTurnTextarea({
   return (
     <Textarea
       ref={ref}
+      variant="documentEditor"
+      density="compact"
       value={value}
       rows={2}
       aria-label={label}
       onChange={(e) => onChange(e.target.value)}
-      className="min-h-[3rem] w-full resize-none rounded-none border-0 border-b border-border/30 bg-transparent px-0 py-1.5 text-sm leading-relaxed text-txt"
       {...agentProps}
     />
   );
@@ -643,9 +647,8 @@ function ConversationFooter({
     <div className="mt-1 flex items-center justify-end gap-2">
       <Button
         ref={addTurnRef}
-        variant="ghost"
+        variant="default"
         size="sm"
-        className="inline-flex h-8 items-center gap-2 rounded-sm px-2.5 text-xs font-medium text-txt transition-colors hover:bg-bg-muted/70"
         onClick={onAddTurn}
         title={addTurnLabel}
         aria-label={addTurnLabel}
@@ -656,9 +659,8 @@ function ConversationFooter({
       </Button>
       <Button
         ref={removeRef}
-        variant="ghost"
+        variant="dangerGhost"
         size="icon-sm"
-        className={compactIconBtn}
         onClick={onRemove}
         title={t("charactereditor.RemoveExample", {
           defaultValue: "Remove conversation",
@@ -753,11 +755,12 @@ function PostExampleRow({
         </div>
         <Textarea
           ref={textRef}
+          variant="documentEditor"
+          density="compact"
           value={post}
           rows={3}
           aria-label={postLabel}
           onChange={(e) => onChange(e.target.value)}
-          className="min-h-[4.25rem] w-full resize-none rounded-none border-0 border-b border-border/30 bg-transparent px-0 py-1.5 text-sm leading-relaxed text-txt"
           {...textAgentProps}
         />
       </div>
@@ -765,9 +768,9 @@ function PostExampleRow({
         <Button
           ref={removeRef}
           type="button"
-          variant="ghost"
-          size="icon"
-          className="size-7 shrink-0 rounded-sm p-0 text-muted transition-colors hover:bg-danger/10 hover:text-danger"
+          variant="destructive"
+          size="icon-sm"
+          className="shrink-0"
           onClick={onRemove}
           aria-label={`${t("common.remove")} post ${pi + 1}`}
           title={t("charactereditor.RemovePost", {
@@ -937,9 +940,9 @@ export function CharacterExamplesPanel({
         </div>
         <Button
           ref={addConversationRef}
-          variant="ghost"
+          variant="default"
           size="sm"
-          className="inline-flex h-9 self-start items-center gap-2 rounded-sm px-3 text-sm font-medium text-accent transition-colors hover:bg-accent/10"
+          className="self-start"
           onClick={addConversation}
           title={addConversationLabel}
           aria-label={addConversationLabel}
@@ -1029,9 +1032,9 @@ export function CharacterExamplesPanel({
           )}
           <Button
             ref={addPostRef}
-            variant="ghost"
+            variant="default"
             size="sm"
-            className="mt-1 inline-flex h-9 self-start items-center gap-2 rounded-sm px-3 text-sm font-medium text-accent transition-colors hover:bg-accent/10"
+            className="mt-1 self-start"
             onClick={addPost}
             title={addPostLabel}
             aria-label={addPostLabel}

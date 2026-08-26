@@ -589,6 +589,28 @@ describe("VoiceService", () => {
     ]);
   });
 
+  it("preserves complete turn history and pages only when explicitly requested", async () => {
+    const { voice } = harness();
+    await voice.start();
+
+    for (let index = 0; index < 25; index += 1) {
+      await voice.injectTranscript({ text: `prompt-${index}`, final: true });
+      await voice.speak({ text: `response-${index}` });
+    }
+
+    const allTurns = await voice.recentTurns();
+    expect(allTurns).toHaveLength(25);
+    expect(allTurns[0]?.responseText).toBe("response-24");
+    expect(allTurns.at(-1)?.responseText).toBe("response-0");
+    await expect(voice.recentTurns({ limit: 21 })).resolves.toHaveLength(21);
+    await expect(voice.recentTurns({ limit: 0 })).rejects.toMatchObject({
+      code: "VOICE_RECENT_TURNS_LIMIT_INVALID",
+    });
+
+    const snapshot = await voice.status();
+    expect(snapshot.recentTurns).toHaveLength(25);
+  });
+
   it("returns structured errors for missing ASR, TTS, and playback", async () => {
     const { voice, adapter } = harness({
       ELIZA_VOICE_LIVE_RUNTIME: "1",

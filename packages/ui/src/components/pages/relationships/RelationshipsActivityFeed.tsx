@@ -149,9 +149,8 @@ export function RelationshipsActivityFeed() {
       {hasMore ? (
         <Button
           type="button"
-          size="sm"
+          size="dense"
           variant="outline"
-          className="h-8 rounded-sm px-3"
           disabled={loadingMore}
           onClick={loadMore}
         >

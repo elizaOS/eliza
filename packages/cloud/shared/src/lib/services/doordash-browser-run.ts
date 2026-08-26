@@ -292,8 +292,7 @@ async function runDoorDashOperation(
           const name = text.split(/\d\.\d\s*\(/)[0].trim();
           return { id, name, rating, text, url: new URL(href, location.origin).href };
         })
-        .filter((entry) => entry !== null)
-        .slice(0, 20);
+        .filter((entry) => entry !== null);
     });
     return { success: true, restaurants };
   }
@@ -328,11 +327,10 @@ async function runDoorDashOperation(
               id: `${restaurantId}-${index}`,
               name,
               price: Number(price[1]),
-              description: text.slice(text.indexOf(price[0]) + price[0].length, 240).trim(),
+              description: text.slice(text.indexOf(price[0]) + price[0].length).trim(),
             };
           })
-          .filter((entry) => entry !== null)
-          .slice(0, 100);
+          .filter((entry) => entry !== null);
       }, String(args.restaurantId));
     return { success: true, restaurant: restaurant.trim(), categories: [{ name: "Menu", items }] };
   }
@@ -414,15 +412,21 @@ async function runDoorDashOperation(
   if (op === "order_history") {
     await page.goto(`${BASE_URL}/orders`, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(2_000);
-    const limit = Math.max(1, Math.min(20, Number(args.limit || 5)));
+    const requestedLimit = args.limit === undefined ? undefined : Number(args.limit);
+    if (
+      requestedLimit !== undefined &&
+      (!Number.isInteger(requestedLimit) || requestedLimit <= 0)
+    ) {
+      throw new Error("DoorDash order history limit must be a positive integer");
+    }
     const orders = await page.locator('a[href*="/orders/"]').evaluateAll(
       (links, maximum) =>
-        links.slice(0, maximum).map((link) => ({
+        (maximum === undefined ? links : links.slice(0, maximum)).map((link) => ({
           orderId: (link.getAttribute("href") || "").match(/\/orders\/([^/?]+)/)?.[1],
           summary: (link.textContent || "").replace(/\s+/g, " ").trim(),
           url: new URL(link.getAttribute("href") || "", location.origin).href,
         })),
-      limit,
+      requestedLimit,
     );
     return { success: true, orders };
   }

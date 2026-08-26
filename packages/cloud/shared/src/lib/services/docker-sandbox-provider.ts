@@ -4199,7 +4199,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       logger.warn("[docker-sandbox] Health timeout diagnostics", {
         containerName: current.containerName,
         nodeId: current.nodeId,
-        diagnostics: diagnostics.slice(-12_000),
+        diagnostics,
       });
 
       // Promote a distinct auth_expired signal when the diagnostics show the
@@ -4249,7 +4249,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     const fullCmd = escapedArgs ? `${shellQuote(cmd)} ${escapedArgs}` : shellQuote(cmd);
 
     logger.info(
-      `[docker-sandbox] Executing command in ${meta.containerName}: ${cmd} ${(args ?? []).join(" ").slice(0, 80)}`,
+      `[docker-sandbox] Executing command in ${meta.containerName}: ${cmd} ${(args ?? []).join(" ")}`,
     );
 
     const ssh = DockerSSHClient.getClient(

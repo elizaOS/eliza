@@ -179,16 +179,12 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
   if (error) {
     return (
       <div className="bg-card rounded-sm p-8 text-center">
-        <AlertCircle className="size-12 mx-auto mb-4 text-red-400" />
+        <AlertCircle className="size-12 mx-auto mb-4 text-destructive" />
         <h3 className="text-lg font-medium text-txt-strong mb-2">
           Error loading earnings
         </h3>
         <p className="text-neutral-400 mb-4 text-sm">{error}</p>
-        <Button
-          onClick={fetchEarnings}
-          variant="outline"
-          className="border-border hover:bg-bg-hover"
-        >
+        <Button onClick={fetchEarnings} variant="outline">
           Try Again
         </Button>
       </div>
@@ -248,7 +244,6 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
                 onClick={() => {
                   navigate(`/cloud/apps/${appId}?tab=monetization`);
                 }}
-                className="bg-txt hover:bg-txt/90 text-bg"
               >
                 Enable Monetization
               </Button>
@@ -271,7 +266,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
                   ${summary.totalLifetimeEarnings.toFixed(2)}
                 </p>
                 {breakdown && (
-                  <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
+                  <p className="text-xs text-status-success mt-1 flex items-center gap-1">
                     <ArrowUpRight className="size-3" />$
                     {breakdown.thisWeek.total.toFixed(2)} this week
                   </p>
@@ -285,24 +280,24 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
           <div
             className={cn(
               "bg-card rounded-sm p-4",
-              canWithdraw && "border border-green-500/30",
+              canWithdraw && "border border-status-success/30",
             )}
           >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs text-neutral-500">Ready to Withdraw</p>
-                <p className="text-2xl font-semibold text-green-400 mt-1">
+                <p className="text-2xl font-semibold text-status-success mt-1">
                   ${summary.withdrawableBalance.toFixed(2)}
                 </p>
               </div>
-              <Wallet className="size-5 text-green-400" />
+              <Wallet className="size-5 text-status-success" />
             </div>
             <div className="mt-3">
               {canWithdraw ? (
                 <Button
                   onClick={() => setShowWithdrawDialog(true)}
                   size="sm"
-                  className="w-full bg-green-600 hover:bg-green-500 text-txt"
+                  className="w-full"
                 >
                   <Wallet className="size-4 mr-2" />
                   Withdraw Now
@@ -471,8 +466,8 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
                     className={cn(
                       "font-mono text-sm font-medium",
                       Number(tx.amount) >= 0
-                        ? "text-green-400"
-                        : "text-red-400",
+                        ? "text-status-success"
+                        : "text-destructive",
                     )}
                   >
                     {Number(tx.amount) >= 0 ? "+" : ""}$
@@ -513,39 +508,23 @@ function TransactionIcon({ type }: { type: string }) {
     case "inference_markup":
       return <Zap className="size-4 text-accent" />;
     case "purchase_share":
-      return <Coins className="size-4 text-yellow-400" />;
+      return <Coins className="size-4 text-status-warning" />;
     case "withdrawal":
-      return <ArrowUpRight className="size-4 text-red-400" />;
+      return <ArrowUpRight className="size-4 text-destructive" />;
     default:
-      return <DollarSign className="size-4 text-gray-400" />;
+      return <DollarSign className="size-4 text-muted" />;
   }
 }
 
 function TransactionBadge({ type }: { type: string }) {
   switch (type) {
     case "inference_markup":
-      return (
-        <Badge className="bg-accent/20 text-accent border-accent/30 text-2xs">
-          Inference
-        </Badge>
-      );
+      return <Badge variant="default">Inference</Badge>;
     case "purchase_share":
-      return (
-        <Badge className="bg-surface text-muted border-border text-2xs">
-          Purchase
-        </Badge>
-      );
+      return <Badge variant="secondary">Purchase</Badge>;
     case "withdrawal":
-      return (
-        <Badge className="bg-red-500/20 text-red-400 border-red-500/30 text-2xs">
-          Withdrawal
-        </Badge>
-      );
+      return <Badge variant="destructive">Withdrawal</Badge>;
     default:
-      return (
-        <Badge className="bg-surface text-neutral-400 border-border text-2xs">
-          {type}
-        </Badge>
-      );
+      return <Badge variant="outline">{type}</Badge>;
   }
 }

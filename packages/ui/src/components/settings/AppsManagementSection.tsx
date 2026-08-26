@@ -14,6 +14,14 @@ import type {
 } from "../../api/client-types-cloud";
 import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../ui/table";
 import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
 import {
@@ -60,9 +68,9 @@ function AppRowActionButton({
     <Button
       ref={ref}
       type="button"
-      size="sm"
-      variant="ghost"
-      className={className ?? "h-7 px-2 text-xs"}
+      size="tiny"
+      variant="ghostMuted"
+      className={className}
       disabled={disabled}
       onClick={onClick}
       title={label}
@@ -470,7 +478,7 @@ export function AppsManagementSection() {
             ref={createToggleRef}
             type="button"
             variant="default"
-            className="min-h-11 rounded-md px-4 text-sm"
+            size="touch"
             onClick={() => {
               setShowCreate((v) => !v);
               setShowLoad(false);
@@ -485,7 +493,7 @@ export function AppsManagementSection() {
             ref={loadToggleRef}
             type="button"
             variant="outline"
-            className="min-h-11 rounded-md px-4 text-sm"
+            size="touch"
             onClick={() => {
               setShowLoad((v) => !v);
               setShowCreate(false);
@@ -574,7 +582,7 @@ export function AppsManagementSection() {
                   ref={createSubmitRef}
                   type="submit"
                   variant="default"
-                  className="h-11 rounded-md px-4 text-sm"
+                  size="touch"
                   disabled={isCreating || createIntent.trim().length === 0}
                   {...createSubmitAgentProps}
                 >
@@ -598,7 +606,7 @@ export function AppsManagementSection() {
                   ref={createCancelRef}
                   type="button"
                   variant="ghost"
-                  className="h-11 rounded-md px-4 text-sm text-muted"
+                  size="touch"
                   onClick={() => {
                     setShowCreate(false);
                     setCreateIntent("");
@@ -649,7 +657,7 @@ export function AppsManagementSection() {
                   ref={loadSubmitRef}
                   type="submit"
                   variant="default"
-                  className="h-11 rounded-md px-4 text-sm"
+                  size="touch"
                   disabled={isLoading || loadDirectory.trim().length === 0}
                   {...loadSubmitAgentProps}
                 >
@@ -673,7 +681,7 @@ export function AppsManagementSection() {
                   ref={loadCancelRef}
                   type="button"
                   variant="ghost"
-                  className="h-11 rounded-md px-4 text-sm text-muted"
+                  size="touch"
                   onClick={() => {
                     setShowLoad(false);
                     setLoadDirectory("");
@@ -717,7 +725,7 @@ export function AppsManagementSection() {
             <Button
               type="button"
               variant="outline"
-              className="min-h-11 px-4 text-sm"
+              size="touch"
               onClick={() => void refresh()}
             >
               {t("common.retry", { defaultValue: "Retry" })}
@@ -740,59 +748,63 @@ export function AppsManagementSection() {
           })}
         >
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[34rem] text-left text-sm">
-              <thead>
-                <tr className="border-b border-border/50">
-                  <th className={HEAD_CELL_CLASS}>
+            <Table className="min-w-[34rem]">
+              <TableHeader>
+                <TableRow className="border-b border-border/50">
+                  <TableHead className={HEAD_CELL_CLASS}>
                     {t("settings.sections.apps.col.name", {
                       defaultValue: "App",
                     })}
-                  </th>
-                  <th className={HEAD_CELL_CLASS}>
+                  </TableHead>
+                  <TableHead className={HEAD_CELL_CLASS}>
                     {t("settings.sections.apps.col.id", {
                       defaultValue: "ID",
                     })}
-                  </th>
-                  <th className={HEAD_CELL_CLASS}>
+                  </TableHead>
+                  <TableHead className={HEAD_CELL_CLASS}>
                     {t("settings.sections.apps.col.version", {
                       defaultValue: "Version",
                     })}
-                  </th>
-                  <th className={HEAD_CELL_CLASS}>
+                  </TableHead>
+                  <TableHead className={HEAD_CELL_CLASS}>
                     {t("settings.sections.apps.col.runs", {
                       defaultValue: "Runs",
                     })}
-                  </th>
-                  <th className={`${HEAD_CELL_CLASS} text-right`}>
+                  </TableHead>
+                  <TableHead className={`${HEAD_CELL_CLASS} text-right`}>
                     {t("settings.sections.apps.col.actions", {
                       defaultValue: "Actions",
                     })}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {installed.map((app) => {
                   const appRuns = runsByName.get(app.name) ?? [];
                   const running = appRuns.length > 0;
                   const busy = busyApp === app.name;
                   return (
-                    <tr
+                    <TableRow
                       key={app.name}
                       className="border-t border-border/60 hover:bg-bg-hover/40"
                       data-testid={`apps-mgmt-row-${app.name}`}
                     >
-                      <td className={`${BODY_CELL_CLASS} font-medium text-txt`}>
+                      <TableCell
+                        className={`${BODY_CELL_CLASS} font-medium text-txt`}
+                      >
                         {app.displayName}
-                      </td>
-                      <td
+                      </TableCell>
+                      <TableCell
                         className={`${BODY_CELL_CLASS} font-mono text-xs text-muted`}
                       >
                         {app.name}
-                      </td>
-                      <td className={`${BODY_CELL_CLASS} text-xs text-muted`}>
+                      </TableCell>
+                      <TableCell
+                        className={`${BODY_CELL_CLASS} text-xs text-muted`}
+                      >
                         {app.version || "—"}
-                      </td>
-                      <td className={BODY_CELL_CLASS}>
+                      </TableCell>
+                      <TableCell className={BODY_CELL_CLASS}>
                         {running ? (
                           <span className="inline-flex items-center rounded-full bg-ok/10 px-2 py-0.5 text-xs font-medium text-ok">
                             {appRuns.length}{" "}
@@ -801,8 +813,8 @@ export function AppsManagementSection() {
                         ) : (
                           <span className="text-xs text-muted">—</span>
                         )}
-                      </td>
-                      <td className={`${BODY_CELL_CLASS} text-right`}>
+                      </TableCell>
+                      <TableCell className={`${BODY_CELL_CLASS} text-right`}>
                         <div className="inline-flex items-center gap-1">
                           <AppRowActionButton
                             agentId={`apps-launch-${app.name}`}
@@ -846,12 +858,12 @@ export function AppsManagementSection() {
                             </AppRowActionButton>
                           ) : null}
                         </div>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </SettingsGroup>
       )}

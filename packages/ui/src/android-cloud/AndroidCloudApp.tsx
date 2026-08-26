@@ -1,6 +1,8 @@
 /** Minimal Google Play consumer shell: Cloud auth, text/voice chat and history. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "../components/ui/button";
+import { Textarea } from "../components/ui/textarea";
 import {
   AndroidCloudClient,
   type AndroidCloudSession,
@@ -317,30 +319,34 @@ export function AndroidCloudApp({
             </p>
           ) : null}
           {busy ? (
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="touch"
               onClick={cancelSignIn}
-              className="w-full rounded-xl border border-border px-4 py-3 font-semibold"
+              className="w-full"
             >
               Cancel sign-in
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button
               type="button"
+              variant="default"
+              size="touch"
               onClick={() => void signIn()}
-              className="w-full rounded-xl bg-accent px-4 py-3 font-semibold text-accent-foreground"
+              className="w-full"
             >
               Sign in
-            </button>
+            </Button>
           )}
           {error ? (
-            <button
+            <Button
               type="button"
+              variant="mutedLink"
               onClick={() => void restore()}
-              className="text-sm text-muted underline"
             >
               Retry session check
-            </button>
+            </Button>
           ) : null}
         </section>
       </main>
@@ -355,25 +361,27 @@ export function AndroidCloudApp({
           <p className="text-xs text-muted">{session?.identity.displayName}</p>
         </div>
         <div className="flex gap-3">
-          <button
+          <Button
             type="button"
+            variant="ghostMuted"
+            size="compact"
             onClick={() => {
               localStorage.removeItem(ANDROID_CLOUD_CONVERSATION_ID_KEY);
               setConversationId(null);
               setMessages([]);
             }}
-            className="text-sm text-muted"
           >
             New chat
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="ghostMuted"
+            size="compact"
             disabled={busy}
             onClick={() => void signOut()}
-            className="text-sm text-muted disabled:opacity-50"
           >
             Sign out
-          </button>
+          </Button>
         </div>
       </header>
       <ol
@@ -392,13 +400,14 @@ export function AndroidCloudApp({
           >
             <p className="whitespace-pre-wrap">{message.text || "Thinking…"}</p>
             {message.role === "assistant" && message.text ? (
-              <button
+              <Button
                 type="button"
+                variant="mutedLink"
                 onClick={() => speak(message.text)}
-                className="mt-2 text-xs text-muted underline"
+                className="mt-2"
               >
                 Play
-              </button>
+              </Button>
             ) : null}
           </li>
         ))}
@@ -415,43 +424,48 @@ export function AndroidCloudApp({
           void send();
         }}
       >
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="touch"
           aria-pressed={listening}
           aria-label={listening ? "Stop dictation" : "Start dictation"}
           onClick={() => void toggleDictation()}
-          className="rounded-xl border border-border px-3"
         >
           {listening ? "Stop" : "Mic"}
-        </button>
+        </Button>
         <label className="sr-only" htmlFor="android-cloud-message">
           Message Eliza
         </label>
-        <textarea
+        <Textarea
+          variant="mobileComposer"
+          density="singleLine"
           id="android-cloud-message"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           rows={1}
           disabled={busy}
-          className="min-h-11 flex-1 resize-none rounded-xl border border-border bg-card px-3 py-2"
+          className="flex-1"
           placeholder="Message Eliza"
         />
         {busy ? (
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="touch"
             onClick={() => abortRef.current?.abort()}
-            className="rounded-xl border border-border px-4"
           >
             Stop
-          </button>
+          </Button>
         ) : (
-          <button
+          <Button
             type="submit"
+            variant="default"
+            size="touch"
             disabled={!draft.trim()}
-            className="rounded-xl bg-accent px-4 text-accent-foreground disabled:opacity-50"
           >
             Send
-          </button>
+          </Button>
         )}
       </form>
     </main>

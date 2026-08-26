@@ -4759,7 +4759,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       expect(fetchSnap).not.toHaveBeenCalled();
       expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, "account_deletion", {
         snapshot: null,
-        captureUnsupportedGeneration: null,
+        captureWaiverGeneration: null,
         captureWaiverAlreadyPersisted: false,
         existingBackup: null,
       });

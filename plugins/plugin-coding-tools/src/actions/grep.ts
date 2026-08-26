@@ -166,22 +166,13 @@ export async function grepHandler(
       });
     }
 
-    const headLimitRequested = readNumberParam(options, "head_limit");
-    const headLimit = Math.max(0, Math.floor(headLimitRequested ?? 0));
-
     const rawLines =
       result.output.length === 0
         ? []
         : result.output.replace(/\n$/, "").split("\n");
 
-    let outputLines = rawLines;
-    let headTruncated = false;
-    if (headLimit > 0 && rawLines.length > headLimit) {
-      outputLines = rawLines.slice(0, headLimit);
-      headTruncated = true;
-    }
-
-    const truncated = headTruncated;
+    const outputLines = rawLines;
+    const truncated = false;
     const text =
       outputLines.length === 0 ? "no matches" : outputLines.join("\n");
     coreLogger.debug(

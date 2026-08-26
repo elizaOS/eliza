@@ -77,4 +77,38 @@ describe("message-corpus", () => {
     expect(messageMemories).toHaveLength(4);
     expect(factMemories).toHaveLength(2);
   });
+
+  it("binds planted conversations to an explicit existing owner", async () => {
+    const ownerEntityId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" as UUID;
+    const createdMemories: Array<{
+      memory: { entityId?: UUID };
+      table: string;
+    }> = [];
+    const mockRuntime: MessageCorpusRuntime = {
+      agentId: "12345678-1234-1234-1234-123456789abc" as UUID,
+      character: { name: "Eliza" },
+      ensureConnection: vi.fn().mockResolvedValue(undefined),
+      createMemory: vi.fn().mockImplementation(async (memory, table) => {
+        createdMemories.push({ memory, table });
+        return memory.id;
+      }),
+    };
+    const corpus = generateMessageCorpus({
+      conversationCount: 1,
+      messagesPerConversation: 2,
+      factsPerConversation: 1,
+      seed: 101,
+    });
+
+    await seedMessageCorpus(mockRuntime, corpus, { ownerEntityId });
+
+    expect(mockRuntime.ensureConnection).toHaveBeenCalledWith(
+      expect.objectContaining({ entityId: ownerEntityId }),
+    );
+    expect(
+      createdMemories
+        .filter(({ memory }) => memory.entityId !== mockRuntime.agentId)
+        .every(({ memory }) => memory.entityId === ownerEntityId),
+    ).toBe(true);
+  });
 });

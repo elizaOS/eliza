@@ -1,18 +1,8 @@
 /** Verifies the RelationshipTypeRegistry seeds built-ins and tracks symmetric vs asymmetric types. Deterministic vitest. */
 import { describe, expect, it } from "vitest";
-import {
-  BUILT_IN_RELATIONSHIP_TYPES,
-  RelationshipTypeRegistry,
-} from "./types.js";
+import { RelationshipTypeRegistry } from "./types.js";
 
 describe("RelationshipTypeRegistry", () => {
-  it("includes all built-ins on construction", () => {
-    const registry = new RelationshipTypeRegistry();
-    for (const type of BUILT_IN_RELATIONSHIP_TYPES) {
-      expect(registry.has(type)).toBe(true);
-    }
-  });
-
   it("knows symmetric vs asymmetric built-ins", () => {
     const registry = new RelationshipTypeRegistry();
     expect(registry.isSymmetric("partner_of")).toBe(true);

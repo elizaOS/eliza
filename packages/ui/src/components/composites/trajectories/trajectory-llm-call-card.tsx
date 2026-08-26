@@ -123,7 +123,7 @@ export function TrajectoryLlmCallCard({
               variant="outline"
               size="sm"
               onClick={() => setShowSystem((current) => !current)}
-              className="shrink-0 gap-2 self-start"
+              className="shrink-0 self-start"
             >
               {showSystem ? (
                 <ChevronDown className="size-3.5" />

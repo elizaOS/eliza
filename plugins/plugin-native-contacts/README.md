@@ -62,7 +62,7 @@ const { imported } = await Contacts.importVCard({ vcardText: myVCardString });
 | Option  | Type     | Default | Description |
 |---------|----------|---------|-------------|
 | `query` | `string` | —       | Case-insensitive search across name, phone, and email. |
-| `limit` | `number` | `100`   | Max contacts to return. Must be 1–500. |
+| `limit` | `number` | all matches | Optional positive caller-requested result limit. |
 
 Returns `{ contacts: ContactSummary[] }`.
 

@@ -152,18 +152,6 @@ describe("hasContextSignalSync", () => {
     ).toBe(false);
   });
 
-  it("inspects the full state even when the deprecated contextLimit is 0", () => {
-    expect(
-      hasContextSignalSync(
-        messageWith(""),
-        stateWithRecent("calendar reminder"),
-        ["calendar"],
-        [],
-        0,
-      ),
-    ).toBe(true);
-  });
-
   it("returns false when no term is present", () => {
     expect(
       hasContextSignalSync(messageWith("what is the weather"), undefined, [
@@ -399,27 +387,6 @@ describe("hasContextSignal", () => {
     ).resolves.toBe(true);
   });
 
-  it("ignores the legacy contextLimit and inspects complete durable context", async () => {
-    let called = false;
-    const runtime = runtimeWithMemories(
-      [{ content: { text: "the only calendar mention" } }],
-      () => {
-        called = true;
-      },
-    );
-    const state = stateWithRecent("hello\nworld");
-    const matched = await hasContextSignal(
-      runtime,
-      messageWith("ok", { roomId: "room-1" } as Partial<Memory>),
-      state,
-      ["calendar"],
-      [],
-      2,
-    );
-    expect(called).toBe(true);
-    expect(matched).toBe(true);
-  });
-
   it("inspects both durable context and the current message", async () => {
     let called = false;
     const matched = await hasContextSignal(
@@ -429,27 +396,6 @@ describe("hasContextSignal", () => {
       messageWith("open the calendar", { roomId: "room-1" } as Partial<Memory>),
       stateWithRecent("hello\nworld"),
       ["calendar"],
-      [],
-      2,
-    );
-    expect(called).toBe(true);
-    expect(matched).toBe(true);
-  });
-
-  it("does not let legacy contextLimit 0 suppress durable context", async () => {
-    let called = false;
-    const matched = await hasContextSignal(
-      runtimeWithMemories(
-        [{ content: { text: "the only calendar mention" } }],
-        () => {
-          called = true;
-        },
-      ),
-      messageWith("", { roomId: "room-1" } as Partial<Memory>),
-      undefined,
-      ["calendar"],
-      [],
-      0,
     );
     expect(called).toBe(true);
     expect(matched).toBe(true);

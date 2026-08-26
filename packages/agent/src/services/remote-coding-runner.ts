@@ -674,7 +674,6 @@ export class RemoteCodingCapabilityRouterService
     await this.requireAvailable("fs", "fs.list");
     const sandbox = await this.getRunner();
     const target = this.mapPath(params.path ?? this.routerConfig.workdir);
-    const limit = params.limit ?? Number.MAX_SAFE_INTEGER;
     const entries = await sandbox.files.list(target, {
       depth: 1,
       requestTimeoutMs: this.routerConfig.requestTimeoutMs,
@@ -684,12 +683,13 @@ export class RemoteCodingCapabilityRouterService
       params.includeHidden === true
         ? filtered
         : filtered.filter((entry) => !entry.name.startsWith("."));
-    const capped = visible.slice(0, limit);
+    const selected =
+      params.limit === undefined ? visible : visible.slice(0, params.limit);
     return {
       root: this.rootObject(target),
       path: target,
-      entries: capped.map(toFileStat),
-      truncated: visible.length > capped.length,
+      entries: selected.map(toFileStat),
+      truncated: visible.length > selected.length,
       totalAfterIgnore: visible.length,
     };
   }

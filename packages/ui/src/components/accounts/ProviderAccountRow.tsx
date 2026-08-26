@@ -226,15 +226,15 @@ export function ProviderAccountRow({
     >
       {/* ── Header row: the single calm summary line ── */}
       <div className="flex items-center gap-3 px-3 py-2.5">
-        <button
+        <Button
+          variant="transparent"
+          size="content"
+          align="start"
           type="button"
           onClick={onToggle}
           disabled={!connected}
           aria-expanded={connected ? expanded : undefined}
-          className={cn(
-            "flex min-w-0 flex-1 items-center gap-3 rounded-md text-left",
-            connected ? "cursor-pointer" : "cursor-default",
-          )}
+          className={cn("min-w-0 flex-1")}
         >
           {connected ? (
             <ChevronRight
@@ -319,7 +319,7 @@ export function ProviderAccountRow({
               ) : null}
             </span>
           </span>
-        </button>
+        </Button>
 
         {/* Right-aligned inline actions — no separate modal world. */}
         <div className="flex shrink-0 items-center gap-1.5">
@@ -328,7 +328,6 @@ export function ProviderAccountRow({
               type="button"
               variant={isActiveChatProvider ? "secondary" : "ghost"}
               size="sm"
-              className="h-7 px-2 text-xs-tight"
               disabled={isActiveChatProvider || !onSelectChatProvider}
               onClick={() => onSelectChatProvider?.(option.id)}
               title={t("accounts.row.useForChat.tooltip", {
@@ -347,7 +346,6 @@ export function ProviderAccountRow({
               type="button"
               variant={isActiveSubscription ? "secondary" : "ghost"}
               size="sm"
-              className="h-7 px-2 text-xs-tight"
               disabled={
                 (isActiveSubscription && !cloudCallsDisabled) ||
                 !onSelectSubscription
@@ -370,7 +368,6 @@ export function ProviderAccountRow({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-7 px-2 text-xs-tight text-muted hover:text-txt-strong"
             onClick={() => onAdd(option.id)}
           >
             {connected

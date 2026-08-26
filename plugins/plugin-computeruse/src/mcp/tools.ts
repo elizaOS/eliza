@@ -50,6 +50,18 @@ const DISPLAY: McpToolProperty = {
   type: "number",
   description: "Target display id (from the computer-state provider).",
 };
+const APP: McpToolProperty = {
+  type: "string",
+  description: "App id, bundle id, name, or pid returned by list_apps.",
+};
+const STATE_ID: McpToolProperty = {
+  type: "string",
+  description: "Fresh stateId returned by get_app_state.",
+};
+const ELEMENT_INDEX: McpToolProperty = {
+  type: "number",
+  description: "Ephemeral element_index from the referenced app state.",
+};
 
 /**
  * The catalog. Every `command` here is a real desktop verb accepted by
@@ -58,6 +70,172 @@ const DISPLAY: McpToolProperty = {
  * smart_approve; the rest are approval-gated.
  */
 export const COMPUTERUSE_MCP_TOOLS: readonly ComputerUseMcpTool[] = [
+  {
+    name: "computer_list_apps",
+    description:
+      "List running applications that can be addressed by app-scoped computer use.",
+    command: "list_apps",
+    destructive: false,
+    properties: {},
+  },
+  {
+    name: "computer_get_app_state",
+    description:
+      "Capture one app's screenshot, Accessibility tree, ephemeral element indices, and incremental diff.",
+    command: "get_app_state",
+    destructive: false,
+    properties: {
+      app: {
+        ...APP,
+      },
+      disableDiff: {
+        type: "boolean",
+        description: "Return a full state without an incremental diff.",
+      },
+    },
+    required: ["app"],
+  },
+  {
+    name: "computer_app_click",
+    description:
+      "Click an app element by fresh state-bound element_index; semantic AX action is attempted before guarded visual fallback.",
+    command: "app_click",
+    destructive: true,
+    properties: {
+      app: APP,
+      stateId: STATE_ID,
+      element_index: ELEMENT_INDEX,
+      allowPhysicalFallback: {
+        type: "boolean",
+        description:
+          "Request the approval-gated last-resort physical pointer fallback.",
+      },
+    },
+    required: ["app", "stateId", "element_index"],
+  },
+  {
+    name: "computer_app_key",
+    description: "Post a key and optional modifiers to one app process.",
+    command: "app_key",
+    destructive: true,
+    properties: {
+      app: APP,
+      stateId: STATE_ID,
+      key: { type: "string", description: "Key name." },
+      modifiers: {
+        type: "array",
+        description: "Optional modifier key names.",
+        items: { type: "string" },
+      },
+    },
+    required: ["app", "stateId", "key"],
+  },
+  {
+    name: "computer_app_type",
+    description:
+      "Post Unicode text to one app process without moving the pointer.",
+    command: "app_type",
+    destructive: true,
+    properties: {
+      app: APP,
+      stateId: STATE_ID,
+      text: { type: "string", description: "Text to type." },
+    },
+    required: ["app", "stateId", "text"],
+  },
+  {
+    name: "computer_app_paste",
+    description:
+      "Paste into one app while restoring the complete prior clipboard when it was not concurrently changed.",
+    command: "app_paste",
+    destructive: true,
+    properties: {
+      app: APP,
+      stateId: STATE_ID,
+      text: { type: "string", description: "Content to paste." },
+      format: {
+        type: "string",
+        description: "text | markdown | html",
+      },
+    },
+    required: ["app", "stateId", "text"],
+  },
+  {
+    name: "computer_app_scroll",
+    description:
+      "Scroll an app element using exposed AX actions before guarded visual fallback.",
+    command: "app_scroll",
+    destructive: true,
+    properties: {
+      app: APP,
+      stateId: STATE_ID,
+      element_index: ELEMENT_INDEX,
+      direction: { type: "string", description: "up | down | left | right" },
+      amount: { type: "number", description: "Requested scroll amount." },
+      allowPhysicalFallback: {
+        type: "boolean",
+        description:
+          "Request the approval-gated last-resort physical pointer fallback.",
+      },
+    },
+    required: ["app", "stateId", "element_index"],
+  },
+  {
+    name: "computer_app_set_value",
+    description: "Set AXValue on one indexed app element.",
+    command: "app_set_value",
+    destructive: true,
+    properties: {
+      app: APP,
+      stateId: STATE_ID,
+      element_index: ELEMENT_INDEX,
+      text: { type: "string", description: "Value to set." },
+    },
+    required: ["app", "stateId", "element_index", "text"],
+  },
+  {
+    name: "computer_app_select_text",
+    description: "Select exact text through the indexed element's AX range.",
+    command: "app_select_text",
+    destructive: true,
+    properties: {
+      app: APP,
+      stateId: STATE_ID,
+      element_index: ELEMENT_INDEX,
+      text: { type: "string", description: "Exact text to select." },
+    },
+    required: ["app", "stateId", "element_index", "text"],
+  },
+  {
+    name: "computer_app_secondary_action",
+    description:
+      "Run one secondary AX action only when that action was exposed by the indexed element.",
+    command: "app_secondary_action",
+    destructive: true,
+    properties: {
+      app: APP,
+      stateId: STATE_ID,
+      element_index: ELEMENT_INDEX,
+      secondaryAction: {
+        type: "string",
+        description: "AX action name exposed in the app state.",
+      },
+    },
+    required: ["app", "stateId", "element_index", "secondaryAction"],
+  },
+  {
+    name: "computer_app_hover_target",
+    description:
+      "Show the agent target overlay for an indexed element without moving the physical pointer.",
+    command: "app_hover_target",
+    destructive: false,
+    properties: {
+      app: APP,
+      stateId: STATE_ID,
+      element_index: ELEMENT_INDEX,
+    },
+    required: ["app", "stateId", "element_index"],
+  },
   {
     name: "computer_screenshot",
     description: "Capture a screenshot of a display.",

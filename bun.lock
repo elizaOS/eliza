@@ -248,6 +248,7 @@
         "@elizaos/plugin-blocker": "workspace:*",
         "@elizaos/plugin-browser": "workspace:*",
         "@elizaos/plugin-calendar": "workspace:*",
+        "@elizaos/plugin-computeruse": "workspace:*",
         "@elizaos/plugin-contacts": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-maps": "workspace:*",
@@ -1006,6 +1007,9 @@
     "packages/prompts": {
       "name": "@elizaos/prompts",
       "version": "2.0.3-beta.7",
+      "devDependencies": {
+        "@typescript/native": "npm:typescript@^7.0.2",
+      },
     },
     "packages/registry": {
       "name": "@elizaos/registry",
@@ -1143,6 +1147,7 @@
         "@radix-ui/react-label": "^2.1.8",
         "@radix-ui/react-popover": "^1.1.15",
         "@radix-ui/react-progress": "^1.1.8",
+        "@radix-ui/react-radio-group": "^1.4.7",
         "@radix-ui/react-scroll-area": "^1.2.10",
         "@radix-ui/react-select": "^2.2.6",
         "@radix-ui/react-separator": "^1.1.8",
@@ -1272,14 +1277,12 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/auth": "workspace:*",
-        "@octokit/core": "^7.0.6",
         "@octokit/rest": "^22.0.0",
         "coding-agent-adapters": "0.16.3",
         "drizzle-orm": "0.45.2",
         "effect": "4.0.0-beta.105",
         "smol-toml": "^1.8.0",
         "smthrs": "0.34.0",
-        "universal-user-agent": "^7.0.3",
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.8",

@@ -221,6 +221,52 @@ describe("eliza sse bridge", () => {
     expect(result).toEqual({ completed: true, aborted: false });
   });
 
+  test("emits cancellable progress heartbeats while a provisional action waits", async () => {
+    const progress: string[] = [];
+    const encoder = new TextEncoder();
+    const fetchImpl = (async () => {
+      const body = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ type: "token", text: "On it.", provisional: true })}\n\n`,
+            ),
+          );
+          await new Promise((resolve) => setTimeout(resolve, 28));
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ type: "token", fullText: "Bitcoin is $100." })}\n\n`,
+            ),
+          );
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        },
+      });
+      return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+    }) as unknown as typeof fetch;
+
+    const result = await streamElizaConversation(
+      {
+        endpoint: "http://x",
+        authorization: "Bearer s",
+        model: "m",
+        transcript: "search bitcoin price",
+        agentId: "agent-1",
+        conversationId: "conv-1",
+        traceId: "trace-progress",
+        signal: new AbortController().signal,
+        fetchImpl,
+        progressIntervalMs: 10,
+        onProgress: (text) => progress.push(text),
+      },
+      () => undefined,
+    );
+
+    expect(progress.length).toBeGreaterThanOrEqual(2);
+    expect(progress.every((text) => text === "Still working on that.")).toBe(true);
+    expect(result).toEqual({ completed: true, aborted: false });
+  });
+
   test("speaks a provisional turnComplete acknowledgement once at terminal confirmation", async () => {
     const deltas: string[] = [];
     const fetchImpl = (async () =>

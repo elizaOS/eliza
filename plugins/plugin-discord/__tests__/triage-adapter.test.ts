@@ -201,6 +201,33 @@ describe("DiscordTriageAdapter", () => {
 		expect(refs.map((r) => r.externalId)).toEqual(["10", "20"]);
 	});
 
+	it("preserves every discovered channel and message when limit is omitted", async () => {
+		const channels = Array.from({ length: 30 }, (_, index) => ({
+			channelId: `c${index}`,
+		}));
+		const messagesByChannel = Object.fromEntries(
+			channels.map(({ channelId }, channelIndex) => [
+				channelId,
+				Array.from({ length: 20 }, (_, messageIndex) =>
+					discordMemory({
+						messageId: `${channelIndex}-${messageIndex}`,
+						channelId,
+						createdAt: channelIndex * 100 + messageIndex,
+					}),
+				),
+			]),
+		);
+		const service = createFakeDiscordService({ channels, messagesByChannel });
+
+		const refs = await new DiscordTriageAdapter().listMessages(
+			createRuntime(service),
+			{},
+		);
+
+		expect(refs).toHaveLength(600);
+		expect(new Set(refs.map((ref) => ref.channelId)).size).toBe(30);
+	});
+
 	it("skips the agent's own messages", async () => {
 		const service = createFakeDiscordService({
 			channels: [{ channelId: "c1" }],
