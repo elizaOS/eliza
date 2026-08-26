@@ -335,6 +335,41 @@ describe("provisioning worker deployment contract", () => {
     expect(backupService).not.toContain("ensure-generated-keywords.sh");
   });
 
+  it("builds the default-condition prompts runtime before core and restart", () => {
+    const script = deployStep("Deploy and restart worker").with?.script ?? "";
+    const install = script.indexOf(
+      "bun install --frozen-lockfile --no-save --ignore-scripts",
+    );
+    const promptsLinkRemoval = script.indexOf(
+      "rm -rf packages/core/node_modules/@elizaos/prompts",
+    );
+    const promptsLink = script.indexOf(
+      "ln -s ../../../prompts packages/core/node_modules/@elizaos/prompts",
+    );
+    const promptsLinkIdentity = script.indexOf(
+      'test "$(realpath packages/core/node_modules/@elizaos/prompts)" =',
+    );
+    const promptsBuild = script.indexOf(
+      "bun run --cwd packages/prompts build:package",
+    );
+    const promptsSentinel = script.indexOf(
+      "test -f packages/core/node_modules/@elizaos/prompts/dist/index.js",
+    );
+    const coreBuild = script.indexOf("bun run build:core");
+    const firstRestart = script.indexOf(
+      'sudo systemctl restart "$SYSTEMD_UNIT"',
+    );
+
+    expect(install).toBeGreaterThan(-1);
+    expect(promptsLinkRemoval).toBeGreaterThan(install);
+    expect(promptsLink).toBeGreaterThan(promptsLinkRemoval);
+    expect(promptsLinkIdentity).toBeGreaterThan(promptsLink);
+    expect(promptsBuild).toBeGreaterThan(promptsLinkIdentity);
+    expect(promptsSentinel).toBeGreaterThan(promptsBuild);
+    expect(coreBuild).toBeGreaterThan(promptsSentinel);
+    expect(firstRestart).toBeGreaterThan(coreBuild);
+  });
+
   it("installs the dormant backup worker with persistent spool and exact disabled health", () => {
     expect(workflow).toContain(
       "packages/cloud/scripts/admin/eliza-backup-catalog-worker.service",
