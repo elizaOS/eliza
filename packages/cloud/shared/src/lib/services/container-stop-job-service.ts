@@ -22,6 +22,7 @@
  * load on workerd (the enqueue side never pulls `ssh2`).
  */
 
+import { ElizaError } from "@elizaos/core";
 import Decimal from "decimal.js";
 import {
   and,
@@ -700,6 +701,8 @@ export async function dispatchContainerStopJob(
         providerNodeId = provider.nodeId;
         confirmedAt = provider.alreadyAbsent ? providerEffectStartedAt : new Date();
       } catch (error) {
+        // error-policy:J2 context-adding rethrow — persist the durable retry
+        // classification, then propagate provider context with its original cause.
         const message = error instanceof Error ? error.message : String(error);
         const failedAt = new Date();
         await tx
@@ -711,7 +714,14 @@ export async function dispatchContainerStopJob(
             updated_at: failedAt,
           })
           .where(eq(containerComputeStopIntents.id, intentId));
-        return { outcome: { stopped: false }, error: new Error(message) };
+        return {
+          outcome: { stopped: false },
+          error: new ElizaError(`Container provider stop failed: ${message}`, {
+            code: "CONTAINER_STOP_PROVIDER_FAILED",
+            context: { containerId, organizationId, intentId, lifecycleRevision, attempt },
+            cause: error,
+          }),
+        };
       }
 
       // Persist the first successful provider cutoff before the settlement
@@ -935,6 +945,7 @@ async function rearmContainerStopIntentJobInTx(
     intentId: string;
     lifecycleRevision: number;
     hasProviderProof: boolean;
+    preserveProviderConfirmedStatus?: boolean;
     jobId: string | null;
     rearmAt?: Date;
   },
@@ -981,25 +992,32 @@ async function rearmContainerStopIntentJobInTx(
   await tx
     .update(containerComputeStopIntents)
     .set(
-      p.hasProviderProof
+      p.preserveProviderConfirmedStatus
         ? {
-            status: "retry",
+            status: "provider_confirmed",
             job_id: boundJob?.id ?? null,
             next_attempt_at: rearmedAt,
             updated_at: rearmedAt,
           }
-        : {
-            status: "pending",
-            job_id: boundJob?.id ?? null,
-            attempts: 0,
-            last_error: null,
-            next_attempt_at: rearmedAt,
-            provider_started_at: null,
-            provider_confirmed_at: null,
-            provider_node_id: null,
-            superseded_at: null,
-            updated_at: rearmedAt,
-          },
+        : p.hasProviderProof
+          ? {
+              status: "retry",
+              job_id: boundJob?.id ?? null,
+              next_attempt_at: rearmedAt,
+              updated_at: rearmedAt,
+            }
+          : {
+              status: "pending",
+              job_id: boundJob?.id ?? null,
+              attempts: 0,
+              last_error: null,
+              next_attempt_at: rearmedAt,
+              provider_started_at: null,
+              provider_confirmed_at: null,
+              provider_node_id: null,
+              superseded_at: null,
+              updated_at: rearmedAt,
+            },
     )
     .where(eq(containerComputeStopIntents.id, p.intentId));
   if (boundJob) {
@@ -1064,11 +1082,7 @@ export async function rearmRecoverableContainerStopIntentOnce(p: {
       )
       .for("update")
       .limit(1);
-    if (
-      !container ||
-      container.status !== "running" ||
-      container.lifecycleRevision !== p.lifecycleRevision
-    ) {
+    if (!container || container.lifecycleRevision !== p.lifecycleRevision) {
       throw new Error("Recoverable container stop intent lost its live lifecycle fence");
     }
 
@@ -1081,7 +1095,12 @@ export async function rearmRecoverableContainerStopIntentOnce(p: {
           eq(containerComputeStopIntents.organization_id, p.organizationId),
           eq(containerComputeStopIntents.container_id, p.containerId),
           eq(containerComputeStopIntents.lifecycle_revision, p.lifecycleRevision),
-          inArray(containerComputeStopIntents.status, ["pending", "retry", "terminal_attention"]),
+          inArray(containerComputeStopIntents.status, [
+            "pending",
+            "retry",
+            "terminal_attention",
+            "provider_confirmed",
+          ]),
           lte(containerComputeStopIntents.next_attempt_at, p.now),
         ),
       )
@@ -1090,7 +1109,19 @@ export async function rearmRecoverableContainerStopIntentOnce(p: {
     if (!intent) {
       throw new Error("Container stop intent is no longer due for recovery");
     }
+    const providerConfirmedSlotRelease =
+      intent.status === "provider_confirmed" &&
+      intent.provider_confirmed_at !== null &&
+      intent.provider_node_id !== null &&
+      intent.slot_released_at === null &&
+      container.status === "stopped";
+    const liveStopRecovery =
+      container.status === "running" && intent.status !== "provider_confirmed";
+    if (!providerConfirmedSlotRelease && !liveStopRecovery) {
+      throw new Error("Recoverable container stop intent lost its live lifecycle fence");
+    }
     if (
+      !providerConfirmedSlotRelease &&
       intent.authorization === "billing_request" &&
       intent.provider_confirmed_at === null &&
       container.billingStatus !== "shutdown_pending"
@@ -1113,6 +1144,7 @@ export async function rearmRecoverableContainerStopIntentOnce(p: {
       intentId: intent.id,
       lifecycleRevision: intent.lifecycle_revision,
       hasProviderProof: intent.provider_confirmed_at !== null,
+      preserveProviderConfirmedStatus: providerConfirmedSlotRelease,
       jobId: intent.job_id,
       rearmAt: p.now,
     });
@@ -1639,33 +1671,50 @@ export async function listRecoverableContainerStopIntents(now: Date, limit = 100
           eq(containers.id, containerComputeStopIntents.container_id),
           eq(containers.organization_id, containerComputeStopIntents.organization_id),
           eq(containers.lifecycle_revision, containerComputeStopIntents.lifecycle_revision),
-          eq(containers.status, "running"),
         ),
       )
       .leftJoin(jobs, eq(jobs.id, containerComputeStopIntents.job_id))
       .where(
         and(
-          inArray(containerComputeStopIntents.status, ["pending", "retry", "terminal_attention"]),
           lte(containerComputeStopIntents.next_attempt_at, now),
           cursor
             ? sql`(${containerComputeStopIntents.next_attempt_at}, ${containerComputeStopIntents.id}) >
                 (${cursor.nextAttemptAtText}::timestamptz, ${cursor.id}::uuid)`
             : undefined,
           or(
-            // Explicit user authority remains valid without a billing schedule.
-            eq(containerComputeStopIntents.authorization, "user_request"),
             and(
-              eq(containerComputeStopIntents.authorization, "billing_request"),
+              eq(containers.status, "running"),
+              inArray(containerComputeStopIntents.status, [
+                "pending",
+                "retry",
+                "terminal_attention",
+              ]),
               or(
-                // Provider-confirmed retries must settle even after the container
-                // has been fenced out of ordinary billing discovery.
-                isNotNull(containerComputeStopIntents.provider_confirmed_at),
+                // Explicit user authority remains valid without a billing schedule.
+                eq(containerComputeStopIntents.authorization, "user_request"),
                 and(
-                  eq(containers.billing_status, "shutdown_pending"),
-                  isNotNull(containers.scheduled_shutdown_at),
-                  lte(containers.scheduled_shutdown_at, now),
+                  eq(containerComputeStopIntents.authorization, "billing_request"),
+                  or(
+                    // Provider-confirmed retries must settle even after ordinary
+                    // billing discovery has been fenced off.
+                    isNotNull(containerComputeStopIntents.provider_confirmed_at),
+                    and(
+                      eq(containers.billing_status, "shutdown_pending"),
+                      isNotNull(containers.scheduled_shutdown_at),
+                      lte(containers.scheduled_shutdown_at, now),
+                    ),
+                  ),
                 ),
               ),
+            ),
+            // Provider settlement is already terminal; this path only retries
+            // the idempotent node-slot release after the bound job dies.
+            and(
+              eq(containers.status, "stopped"),
+              eq(containerComputeStopIntents.status, "provider_confirmed"),
+              isNotNull(containerComputeStopIntents.provider_confirmed_at),
+              isNotNull(containerComputeStopIntents.provider_node_id),
+              isNull(containerComputeStopIntents.slot_released_at),
             ),
           ),
           // Live work is independently recoverable by the provisioning worker.
@@ -1718,6 +1767,8 @@ export async function listRecoverableContainerStopIntents(now: Date, limit = 100
           readProviderEffectStartedAt(boundJob.data, { createdAt, databaseNow });
           safelyRearmable = true;
         } catch {
+          // error-policy:J3 untrusted-input sanitizing — malformed persisted job
+          // envelopes are excluded explicitly and never treated as recoverable.
           safelyRearmable = false;
         }
       }

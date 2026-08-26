@@ -378,6 +378,7 @@ async function handleContainerBilling(c: AppContext): Promise<Response> {
     // failed terminal job cannot become orphaned once the container is fenced
     // suspended. Per-intent failures are isolated; a later cron can retry.
     let recoveryJobsRequested = 0;
+    let recoveryFailures = 0;
     let recoverableStopIntents: Awaited<
       ReturnType<typeof listRecoverableContainerStopIntents>
     > = [];
@@ -385,6 +386,9 @@ async function handleContainerBilling(c: AppContext): Promise<Response> {
       recoverableStopIntents =
         await listRecoverableContainerStopIntents(runNow);
     } catch (error) {
+      // error-policy:J1 boundary translation — the cron response exposes the
+      // recovery-lane failure while container billing continues independently.
+      recoveryFailures += 1;
       logger.error(
         "[Container Billing] Failed to scan recoverable container stops",
         { error },
@@ -401,6 +405,9 @@ async function handleContainerBilling(c: AppContext): Promise<Response> {
         });
         recoveryJobsRequested += 1;
       } catch (error) {
+        // error-policy:J1 boundary translation — the cron response exposes one
+        // poisoned recovery item without fabricating a successful rearm.
+        recoveryFailures += 1;
         logger.error(
           "[Container Billing] Failed to rearm recoverable container stop",
           {
@@ -419,20 +426,44 @@ async function handleContainerBilling(c: AppContext): Promise<Response> {
 
     if (runningContainers.length === 0) {
       if (recoveryJobsRequested > 0) {
-        void provisioningJobService.triggerImmediate(c.env).catch(() => {});
+        // error-policy:J5 fire-and-forget daemon kick — the provisioning
+        // worker's own cron observes and retries an unavailable immediate trigger.
+        void provisioningJobService.triggerImmediate(c.env).catch((error) => {
+          logger.warn("[Container Billing] Immediate recovery trigger failed", {
+            error,
+          });
+        });
       }
       logger.info("[Container Billing] No running containers to bill");
+      const data = {
+        containersProcessed: 0,
+        containersBilled: 0,
+        warningsSent: 0,
+        containersShutdown: 0,
+        totalRevenue: 0,
+        errors: 0,
+        stopRecovery: {
+          status: recoveryFailures === 0 ? "succeeded" : "degraded",
+          scanned: recoverableStopIntents.length,
+          rearmed: recoveryJobsRequested,
+          failures: recoveryFailures,
+        },
+        duration: Date.now() - startTime,
+      };
+      if (recoveryFailures > 0) {
+        return c.json(
+          {
+            success: false,
+            error: "Container stop recovery completed with failures",
+            code: "container_stop_recovery_degraded",
+            data,
+          },
+          500,
+        );
+      }
       return c.json({
         success: true,
-        data: {
-          containersProcessed: 0,
-          containersBilled: 0,
-          warningsSent: 0,
-          containersShutdown: 0,
-          totalRevenue: 0,
-          errors: 0,
-          duration: Date.now() - startTime,
-        },
+        data,
       });
     }
 
@@ -550,7 +581,11 @@ async function handleContainerBilling(c: AppContext): Promise<Response> {
       // error-policy:J5 fire-and-forget daemon kick — a failed trigger is
       // recovered by the provisioning worker's own cron (the safety net named in
       // the comment above), which is where the rejection is effectively observed.
-      void provisioningJobService.triggerImmediate(c.env).catch(() => {});
+      void provisioningJobService.triggerImmediate(c.env).catch((error) => {
+        logger.warn("[Container Billing] Immediate stop trigger failed", {
+          error,
+        });
+      });
     }
 
     const duration = Date.now() - startTime;
@@ -565,20 +600,35 @@ async function handleContainerBilling(c: AppContext): Promise<Response> {
       duration,
     });
 
-    return c.json({
-      success: true,
-      data: {
-        containersProcessed: results.length,
-        containersBilled,
-        warningsSent,
-        containersShutdown,
-        totalRevenue: Math.round(totalRevenue * 100) / 100,
-        errors,
-        duration,
-        timestamp: new Date().toISOString(),
-        results: results.slice(0, 100),
+    const data = {
+      containersProcessed: results.length,
+      containersBilled,
+      warningsSent,
+      containersShutdown,
+      totalRevenue: Math.round(totalRevenue * 100) / 100,
+      errors,
+      stopRecovery: {
+        status: recoveryFailures === 0 ? "succeeded" : "degraded",
+        scanned: recoverableStopIntents.length,
+        rearmed: recoveryJobsRequested,
+        failures: recoveryFailures,
       },
-    });
+      duration,
+      timestamp: new Date().toISOString(),
+      results: results.slice(0, 100),
+    };
+    if (recoveryFailures > 0) {
+      return c.json(
+        {
+          success: false,
+          error: "Container stop recovery completed with failures",
+          code: "container_stop_recovery_degraded",
+          data,
+        },
+        500,
+      );
+    }
+    return c.json({ success: true, data });
   } catch (error) {
     logger.error("[Container Billing] Failed", {
       error: error instanceof Error ? error.message : String(error),

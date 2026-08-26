@@ -3429,6 +3429,137 @@ describe("compute billing recovery", () => {
     }
   });
 
+  test("recovery releases a provider-confirmed node slot exactly once after job exhaustion", async () => {
+    const { org, user } = await seed("10.000000");
+    const containerId = crypto.randomUUID();
+    const nodeId = crypto.randomUUID();
+    const periodStart = new Date(Date.now() - 60 * 60 * 1000);
+    await dbWrite.insert(containers).values({
+      id: containerId,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "provider-confirmed-slot-recovery",
+      project_name: "provider-confirmed-slot-recovery",
+      status: "running",
+      billing_status: "active",
+      last_billed_at: periodStart,
+      lifecycle_revision: 62,
+      created_at: periodStart,
+      updated_at: periodStart,
+    });
+    await dbWrite.insert(computeBillingRateSegments).values({
+      organization_id: org.id,
+      workload_kind: "container",
+      workload_id: containerId,
+      lifecycle_revision: 62,
+      billing_state: "running",
+      rate_per_hour: "0.027917",
+      effective_at: periodStart,
+    });
+    const requested = await enqueueContainerUserStopOnce({
+      containerId,
+      organizationId: org.id,
+      userId: user.id,
+      expectedLifecycleRevision: 62,
+    });
+    if (!requested.requested) throw new Error("Expected durable user stop request");
+    const [job] = await dbWrite.select().from(jobs).where(eq(jobs.id, requested.jobId));
+    const providerStop = spyOn(
+      getHetznerContainersClient(),
+      "stopContainerRuntimeForBilling",
+    ).mockResolvedValue({ nodeId, alreadyAbsent: false });
+    const releaseNodeSlot = spyOn(containersRepository, "tryReleaseNodeSlot")
+      .mockRejectedValueOnce(new Error("slot release unavailable 1"))
+      .mockRejectedValueOnce(new Error("slot release unavailable 2"))
+      .mockRejectedValueOnce(new Error("slot release unavailable 3"))
+      .mockResolvedValue(true);
+
+    try {
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        await expect(dispatchContainerStopJob(job)).rejects.toThrow(
+          `slot release unavailable ${attempt}`,
+        );
+      }
+      expect(providerStop).toHaveBeenCalledTimes(1);
+      const [confirmedBeforeRecovery] = await dbWrite
+        .select()
+        .from(containerComputeStopIntents)
+        .where(eq(containerComputeStopIntents.id, requested.intentId));
+      expect(confirmedBeforeRecovery).toMatchObject({
+        status: "provider_confirmed",
+        provider_node_id: nodeId,
+        slot_released_at: null,
+      });
+      expect(confirmedBeforeRecovery.provider_confirmed_at).toBeInstanceOf(Date);
+      const providerCutoff = confirmedBeforeRecovery.provider_confirmed_at;
+
+      await dbWrite
+        .update(jobs)
+        .set({ status: "failed", attempts: 3, completed_at: new Date() })
+        .where(eq(jobs.id, requested.jobId));
+      const recoveryAt = new Date();
+      const recoverable = await listRecoverableContainerStopIntents(recoveryAt);
+      expect(recoverable.map((intent) => intent.id)).toContain(requested.intentId);
+
+      const rearmed = await rearmRecoverableContainerStopIntentOnce({
+        intentId: requested.intentId,
+        containerId,
+        organizationId: org.id,
+        lifecycleRevision: 62,
+        now: recoveryAt,
+      });
+      expect(rearmed).toEqual({ id: requested.jobId, rearmed: true });
+      const [preservedIntent] = await dbWrite
+        .select()
+        .from(containerComputeStopIntents)
+        .where(eq(containerComputeStopIntents.id, requested.intentId));
+      expect(preservedIntent).toMatchObject({
+        status: "provider_confirmed",
+        provider_node_id: nodeId,
+        slot_released_at: null,
+      });
+      expect(preservedIntent.provider_confirmed_at).toEqual(providerCutoff);
+      const [rearmedJob] = await dbWrite.select().from(jobs).where(eq(jobs.id, rearmed.id));
+      expect(rearmedJob).toMatchObject({ status: "pending", attempts: 0 });
+
+      providerStop.mockClear();
+      releaseNodeSlot.mockClear();
+      await expect(dispatchContainerStopJob(rearmedJob)).resolves.toEqual({
+        stopped: true,
+        reason: "already-provider-confirmed",
+      });
+      expect(providerStop).not.toHaveBeenCalled();
+      expect(releaseNodeSlot).toHaveBeenCalledTimes(1);
+      expect(releaseNodeSlot).toHaveBeenCalledWith(containerId, org.id, nodeId);
+      const [releasedIntent] = await dbWrite
+        .select()
+        .from(containerComputeStopIntents)
+        .where(eq(containerComputeStopIntents.id, requested.intentId));
+      expect(releasedIntent.status).toBe("provider_confirmed");
+      expect(releasedIntent.provider_confirmed_at).toEqual(providerCutoff);
+      expect(releasedIntent.slot_released_at).toBeInstanceOf(Date);
+
+      await expect(dispatchContainerStopJob(rearmedJob)).resolves.toEqual({
+        stopped: true,
+        reason: "already-provider-confirmed",
+      });
+      expect(providerStop).not.toHaveBeenCalled();
+      expect(releaseNodeSlot).toHaveBeenCalledTimes(1);
+
+      await dbWrite
+        .update(jobs)
+        .set({ status: "failed", attempts: 3, completed_at: new Date() })
+        .where(eq(jobs.id, requested.jobId));
+      const afterRelease = await listRecoverableContainerStopIntents(
+        new Date(recoveryAt.getTime() + 1_000),
+      );
+      expect(afterRelease.map((intent) => intent.id)).not.toContain(requested.intentId);
+    } finally {
+      releaseNodeSlot.mockRestore();
+      providerStop.mockRestore();
+    }
+  });
+
   test("provider confirmation is the only transition to stopped and suspended", async () => {
     const { org, user } = await seed("0.000000");
     const containerId = "00000000-0000-4000-8000-000000000005";

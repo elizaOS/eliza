@@ -44,6 +44,7 @@ import { JOB_TYPES } from "./provisioning-job-types";
 import {
   listRecoverableAgentComputeStopIntents,
   provisioningJobService,
+  rearmRecoverableAgentComputeStopIntentOnce,
   resolveAgentSuspendAuthorization,
 } from "./provisioning-jobs";
 
@@ -471,6 +472,10 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
         .update(agentComputeStopIntents)
         .set({ next_attempt_at: new Date(0) })
         .where(eq(agentComputeStopIntents.agent_id, agentId));
+      await dbWrite
+        .update(jobs)
+        .set({ status: "failed", attempts: 3, completed_at: new Date() })
+        .where(eq(jobs.id, enqueued.job.id));
       const [terminal] = await dbWrite
         .select()
         .from(agentComputeStopIntents)
@@ -484,9 +489,19 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
         .where(eq(agentSandboxes.id, agentId));
       expect(stillLive).toMatchObject({ status: "running", billing_status: "shutdown_pending" });
 
+      const rearmed = await rearmRecoverableAgentComputeStopIntentOnce({
+        intentId: terminal.id,
+        agentId,
+        organizationId: orgId,
+        lifecycleRevision: terminal.lifecycle_revision,
+        now: new Date(),
+      });
+      expect(rearmed).toEqual({ id: enqueued.job.id, rearmed: true });
+      const [rearmedJob] = await dbWrite.select().from(jobs).where(eq(jobs.id, rearmed.id));
+      expect(rearmedJob).toMatchObject({ status: "pending", attempts: 0 });
       providerStop.mockResolvedValue(null);
       await expect(
-        service.executeSuspend(agentId, orgId, enqueued.job.id, "billing_request"),
+        service.executeSuspend(agentId, orgId, rearmed.id, "billing_request"),
       ).resolves.toMatchObject({ success: true, containerStopped: true });
       const [confirmed] = await dbWrite
         .select()
@@ -497,6 +512,83 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
       providerStop.mockRestore();
       gateSpy.mockRestore();
     }
+  });
+
+  test("poisoned failed envelopes cannot starve a later valid recovery page", async () => {
+    const { orgId, userId } = await seedOwner();
+    const poisonUserId = crypto.randomUUID();
+    const fixtures = Array.from({ length: 101 }, (_, index) => ({
+      agentId: crypto.randomUUID(),
+      intentId: crypto.randomUUID(),
+      jobId: crypto.randomUUID(),
+      poison: index < 100,
+    }));
+    await dbWrite.insert(agentSandboxes).values(
+      fixtures.map(({ agentId }) => ({
+        id: agentId,
+        organization_id: orgId,
+        user_id: userId,
+        agent_name: uniq("recovery-agent"),
+        status: "running" as const,
+        execution_tier: "dedicated-always" as const,
+        billing_status: "shutdown_pending" as const,
+        scheduled_shutdown_at: new Date(0),
+        bridge_url: REACHABLE_BRIDGE,
+      })),
+    );
+    await dbWrite.insert(jobs).values(
+      fixtures.map(({ agentId, jobId, poison }) => ({
+        id: jobId,
+        type: JOB_TYPES.AGENT_SUSPEND,
+        status: "failed" as const,
+        data: {
+          agentId,
+          organizationId: orgId,
+          userId: poison ? poisonUserId : userId,
+          authorization: "billing_request",
+          lifecycleRevision: 0,
+        },
+        data_storage: "inline" as const,
+        organization_id: orgId,
+        user_id: userId,
+        attempts: 3,
+        max_attempts: 3,
+        completed_at: new Date(),
+      })),
+    );
+    await dbWrite.insert(agentComputeStopIntents).values(
+      fixtures.map(({ agentId, intentId, jobId, poison }) => ({
+        id: intentId,
+        organization_id: orgId,
+        agent_id: agentId,
+        lifecycle_revision: 0,
+        authorization: "billing_request" as const,
+        status: "terminal_attention" as const,
+        job_id: jobId,
+        attempts: 3,
+        next_attempt_at: new Date(poison ? 0 : 1_000),
+      })),
+    );
+
+    const valid = fixtures.at(-1);
+    if (!valid) throw new Error("Expected a valid recovery fixture");
+    const recovery = await listRecoverableAgentComputeStopIntents(new Date(), 1);
+    expect(recovery.map((row) => row.id)).toEqual([valid.intentId]);
+    await expect(
+      rearmRecoverableAgentComputeStopIntentOnce({
+        intentId: valid.intentId,
+        agentId: valid.agentId,
+        organizationId: orgId,
+        lifecycleRevision: 0,
+        now: new Date(),
+      }),
+    ).resolves.toEqual({ id: valid.jobId, rearmed: true });
+    expect(
+      await dbWrite
+        .select({ id: jobs.id })
+        .from(jobs)
+        .where(and(eq(jobs.status, "failed"), eq(jobs.user_id, userId))),
+    ).toHaveLength(100);
   });
 
   test("an in-progress funded billing stop leaves an independent manual follow-up", async () => {

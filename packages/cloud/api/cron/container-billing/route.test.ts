@@ -342,6 +342,64 @@ describe("container-billing cron", () => {
     expect(listBillingOrganizations).not.toHaveBeenCalled();
   });
 
+  test("returns a structured degraded response when the recovery scan fails", async () => {
+    listRecoverableContainerStopIntents.mockRejectedValueOnce(
+      new Error("scan secret must not escape"),
+    );
+    listBillableContainers.mockResolvedValueOnce([]);
+
+    const response = await runCron();
+    const bodyText = await response.text();
+
+    expect(response.status).toBe(500);
+    expect(bodyText).not.toContain("scan secret must not escape");
+    expect(JSON.parse(bodyText)).toMatchObject({
+      success: false,
+      code: "container_stop_recovery_degraded",
+      data: {
+        stopRecovery: {
+          status: "degraded",
+          scanned: 0,
+          rearmed: 0,
+          failures: 1,
+        },
+      },
+    });
+  });
+
+  test("returns a structured degraded response when one recovery rearm fails", async () => {
+    listRecoverableContainerStopIntents.mockResolvedValueOnce([
+      {
+        id: "intent-poison",
+        organization_id: ORG_ID,
+        container_id: "container-poison",
+        lifecycle_revision: 43,
+      } as never,
+    ]);
+    rearmRecoverableContainerStopIntentOnce.mockRejectedValueOnce(
+      new Error("poison detail must not escape"),
+    );
+    listBillableContainers.mockResolvedValueOnce([]);
+
+    const response = await runCron();
+    const bodyText = await response.text();
+
+    expect(response.status).toBe(500);
+    expect(bodyText).not.toContain("poison detail must not escape");
+    expect(JSON.parse(bodyText)).toMatchObject({
+      success: false,
+      code: "container_stop_recovery_degraded",
+      data: {
+        stopRecovery: {
+          status: "degraded",
+          scanned: 1,
+          rearmed: 0,
+          failures: 1,
+        },
+      },
+    });
+  });
+
   test("bills a single container at the $0.67 daily cost, charged purely to credits when no earnings", async () => {
     listBillableContainers.mockImplementation(async () => [makeContainer()]);
     listBillingOrganizations.mockImplementation(async () => [

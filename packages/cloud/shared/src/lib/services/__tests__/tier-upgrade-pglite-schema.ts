@@ -581,6 +581,8 @@ EXECUTE FUNCTION advance_agent_sandbox_lifecycle_revision()`,
   "agent_id" uuid NOT NULL,
   "lifecycle_revision" bigint NOT NULL,
   "authorization" text NOT NULL DEFAULT 'billing_request',
+  "retained_backup_billing" boolean NOT NULL DEFAULT false,
+  "retained_backup_rate_per_hour" numeric(18,6),
   "status" text NOT NULL DEFAULT 'pending',
   "job_id" uuid REFERENCES "jobs"("id") ON DELETE SET NULL,
   "attempts" integer NOT NULL DEFAULT 0,
@@ -596,6 +598,10 @@ EXECUTE FUNCTION advance_agent_sandbox_lifecycle_revision()`,
   ),
   CONSTRAINT "agent_compute_stop_intents_authorization_check" CHECK (
     "authorization" IN ('billing_request', 'user_request')
+  ),
+  CONSTRAINT "agent_compute_stop_intents_retained_backup_billing_check" CHECK (
+    ("retained_backup_billing" = true AND "retained_backup_rate_per_hour" > 0)
+    OR ("retained_backup_billing" = false AND "retained_backup_rate_per_hour" IS NULL)
   )
 )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "agent_compute_stop_intents_active_unique"

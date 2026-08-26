@@ -78,6 +78,8 @@ app.post("/", async (c) => {
       try {
         decoded = JSON.parse(rawBody);
       } catch {
+        // error-policy:J3 untrusted-input sanitizing — invalid JSON becomes an
+        // explicit 400 response and never reaches cancellation admission.
         return c.json(
           { success: false, error: "Cancellation body must be valid JSON" },
           400,
