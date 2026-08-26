@@ -167,16 +167,27 @@ describe("homepage deployment workflow", () => {
     );
   });
 
-  it("builds the core workspace before the quality frontend build", () => {
-    // packages/app/vite.config.ts reaches @elizaos/core through the
-    // packages/shared barrels, and Vite bundles the config with esbuild under
-    // default export conditions, so core's dist must exist first. Both
-    // workflows install with --ignore-scripts and therefore need the step.
+  it("builds the default-condition workspace chain before homepage validation", () => {
+    // Homepage resolves UI's public dist subpaths and the frontend reaches
+    // prompts through core. A clean --ignore-scripts install produces none of
+    // those dist artifacts, so the consumer gates must follow their builds.
     expect(workflow).toContain("run: bun run build:core");
-    expect(qualityWorkflow).toContain("run: bun run build:core");
-    const coreBuildIndex = qualityWorkflow.indexOf("run: bun run build:core");
+    const promptsBuildIndex = qualityWorkflow.indexOf(
+      "bun run --cwd packages/prompts build:package",
+    );
+    const coreBuildIndex = qualityWorkflow.indexOf("bun run build:core");
+    const uiBuildIndex = qualityWorkflow.indexOf(
+      "bun run --cwd packages/ui build",
+    );
+    const homepageValidationIndex = qualityWorkflow.indexOf(
+      "name: Validate homepage source contracts",
+    );
     const webBuildIndex = qualityWorkflow.indexOf("run: bun run build:web");
+    expect(promptsBuildIndex).toBeGreaterThan(-1);
+    expect(coreBuildIndex).toBeGreaterThan(promptsBuildIndex);
+    expect(uiBuildIndex).toBeGreaterThan(coreBuildIndex);
+    expect(homepageValidationIndex).toBeGreaterThan(uiBuildIndex);
     expect(coreBuildIndex).toBeGreaterThan(-1);
-    expect(webBuildIndex).toBeGreaterThan(coreBuildIndex);
+    expect(webBuildIndex).toBeGreaterThan(homepageValidationIndex);
   });
 });
