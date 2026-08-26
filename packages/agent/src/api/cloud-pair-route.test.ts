@@ -11,6 +11,7 @@ import {
 } from "@elizaos/shared/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  __cloudPairRateLimitSizeForTests,
   __resetCloudPairRateLimitForTests,
   handleStandaloneCloudPairRoute,
 } from "./cloud-pair-route.ts";
@@ -151,6 +152,57 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   vi.unstubAllGlobals();
   restoreManagedEnv();
+});
+
+describe("cloud-pair rate-limit buckets", () => {
+  it("does not retain a bucket for every peer address that never returns", async () => {
+    // Each unique peer mints a bucket. Without a sweep they are only ever
+    // replaced when that same address comes back, so one-off peers accumulate
+    // for the lifetime of the process.
+    const start = Date.parse("2026-08-25T00:00:00.000Z");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(start);
+
+    for (let i = 0; i < 150; i += 1) {
+      const harness = fakeRes();
+      await handleStandaloneCloudPairRoute(
+        fakeReq({
+          pathname: "/pair",
+          ip: `127.0.${Math.floor(i / 256)}.${i % 256}`,
+        }),
+        harness.res,
+      );
+    }
+    expect(__cloudPairRateLimitSizeForTests()).toBe(150);
+
+    // Every bucket above is now expired. One further request must not leave
+    // the map holding all 150 dead entries.
+    vi.setSystemTime(start + 61_000);
+    const harness = fakeRes();
+    await handleStandaloneCloudPairRoute(
+      fakeReq({ pathname: "/pair", ip: "127.9.9.9" }),
+      harness.res,
+    );
+
+    expect(__cloudPairRateLimitSizeForTests()).toBe(1);
+  });
+
+  it("still rate-limits a repeat caller within the window", async () => {
+    const start = Date.parse("2026-08-25T00:00:00.000Z");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(start);
+
+    let last = 0;
+    for (let i = 0; i < 21; i += 1) {
+      const harness = fakeRes();
+      await handleStandaloneCloudPairRoute(
+        fakeReq({ pathname: "/pair", ip: "127.1.1.1" }),
+        harness.res,
+      );
+      last = harness.status();
+    }
+    expect(last).toBe(429);
+  });
 });
 
 describe("handleStandaloneCloudPairRoute", () => {

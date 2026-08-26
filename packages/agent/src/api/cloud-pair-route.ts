@@ -26,6 +26,7 @@ import {
   renderCloudPairHandoffHtml,
   resolveCloudPairAgentIdFromEnv,
 } from "@elizaos/shared/contracts";
+import { sweepExpiredEntries } from "./memory-bounds.js";
 import { resolveDirectRequestOrigin } from "./request-origin.js";
 
 const RELAY_TIMEOUT_MS = 15_000;
@@ -43,9 +44,18 @@ export function __resetCloudPairRateLimitForTests(): void {
   rateBuckets.clear();
 }
 
+/** Retained-bucket count, so tests can assert the map stays bounded. */
+export function __cloudPairRateLimitSizeForTests(): number {
+  return rateBuckets.size;
+}
+
 function rateLimitConsume(key: string | null): boolean {
   const now = Date.now();
   const bucketKey = key || "unknown";
+
+  // Lazy sweep: evict expired entries when map grows beyond 100
+  sweepExpiredEntries(rateBuckets, now, 100);
+
   const current = rateBuckets.get(bucketKey);
   if (!current || current.resetAt <= now) {
     rateBuckets.set(bucketKey, {
