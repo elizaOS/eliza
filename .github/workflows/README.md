@@ -310,6 +310,18 @@ through `cloud-release-dependency-trigger-workflow.test.ts`; otherwise a
 source-form package can change an artifact without creating a release
 candidate.
 
+The staging path of `cloud-cf-release.yml` uses the
+[anonymous Steward provider-discovery verifier](../../packages/cloud/scripts/verify-steward-provider-discovery.mjs)
+to fail closed at three boundaries: the canonical Steward upstream before
+session-exchange cutover, the deployed API after exact-source health verification
+and before Pages deployment, and both staging custom-domain Pages aliases during
+frontend-freshness verification. Proxy `GET` and `HEAD` must return HTTP 200,
+a JSON media type, and `x-eliza-steward-path: thin`; `GET` also validates the
+bounded provider document. These probes require no sign-in credentials and
+report only sanitized outcomes, never response bodies or header values.
+Production does not run these gates. They detect broken login discovery;
+restoring the upstream Railway service remains a separate authorized operation.
+
 Production Cloud admission is also tree-bound to staging. A staging release
 whose run SHA the `develop` head has fast-forwarded past ends neutrally before
 any mutation only when GitHub proves that an active Cloud CF Deploy push run
