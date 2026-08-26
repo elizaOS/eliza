@@ -9,21 +9,10 @@ import path from "node:path";
 import dotenv from "dotenv";
 
 export function expandTildePath(filepath: string): string {
-  if (typeof filepath !== "string") {
-    return "";
+  if (filepath.startsWith("~")) {
+    return path.join(process.cwd(), filepath.slice(1));
   }
-  const trimmed = filepath.trim();
-  if (trimmed === "~") {
-    return process.env.HOME || process.cwd();
-  }
-  if (trimmed.startsWith("~/") || trimmed.startsWith("~\\")) {
-    const home = process.env.HOME || process.cwd();
-    return path.join(home, trimmed.slice(2));
-  }
-  if (trimmed.startsWith("~")) {
-    return path.join(process.cwd(), trimmed.slice(1));
-  }
-  return trimmed;
+  return filepath;
 }
 
 export function resolveEnvFile(startDir: string = process.cwd()): string {
