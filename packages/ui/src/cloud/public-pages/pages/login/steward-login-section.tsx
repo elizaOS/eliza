@@ -11,8 +11,9 @@
  * billing crypto top-up's `StewardWalletProviders` contexts. Both pieces are
  * React.lazy + mounted only on wallet intent, so wagmi/rainbowkit/@solana stay
  * out of the login bundle until a wallet button is clicked. Wallet methods are
- * collapsed behind a single "Continue with a wallet" toggle so email / Magic
- * Link is the only above-the-fold primary action (#19217).
+ * collapsed behind a single "Continue with a wallet" toggle. The toggle sits
+ * alongside the other identity providers while the heavy wallet stack still
+ * mounts only after the user chooses a chain (#19217).
  */
 
 import {
@@ -2207,7 +2208,8 @@ export default function StewardLoginSection() {
                 <SelectContent
                   position="popper"
                   align="start"
-                  className="!max-h-72 !w-[min(20rem,calc(100vw-2rem))] border-input !bg-bg-elevated text-txt [&_[data-radix-select-viewport]]:!w-full [&_[data-radix-select-viewport]]:!max-w-none"
+                  collisionPadding={16}
+                  className="!max-h-72 !w-[min(20rem,calc(100vw-2rem))] border-border-strong bg-card text-txt [&_[data-radix-select-viewport]]:!w-full [&_[data-radix-select-viewport]]:!max-w-none [&_[data-radix-select-viewport]]:overscroll-contain"
                 >
                   {PHONE_COUNTRY_OPTIONS.map((option) => (
                     <SelectItem
@@ -2412,8 +2414,13 @@ export default function StewardLoginSection() {
         </section>
       )}
 
-      {hasIdentityProviders && (
-        <div className="grid grid-cols-2 gap-2">
+      {(hasIdentityProviders || showWallets) && (
+        <fieldset
+          aria-label={t("cloud.login.orContinueWith", {
+            defaultValue: "or continue with",
+          })}
+          className="grid min-w-0 grid-cols-2 gap-2 border-0 p-0"
+        >
           {enabledOAuthProviders.map((provider) => (
             <Button
               key={provider}
@@ -2458,7 +2465,34 @@ export default function StewardLoginSection() {
               })}
             </Button>
           )}
-        </div>
+          {showWallets && (
+            <Button
+              variant="outlineMuted"
+              type="button"
+              aria-expanded={showWalletOptions || walletButtonsMounted}
+              aria-controls="steward-wallet-options"
+              onClick={() => setShowWalletOptions((v) => !v)}
+              disabled={isLoading || walletButtonsMounted}
+              className={
+                hasIdentityProviders
+                  ? "hosted-signin-focus-emphasis col-span-2 sm:col-span-1"
+                  : "hosted-signin-focus-emphasis col-span-2"
+              }
+            >
+              {walletButtonsMounted
+                ? t("cloud.login.walletOptions", {
+                    defaultValue: "Wallet options",
+                  })
+                : showWalletOptions
+                  ? t("cloud.login.collapseWalletOptions", {
+                      defaultValue: "Collapse wallet options",
+                    })
+                  : t("cloud.login.moreOptions", {
+                      defaultValue: "Continue with a wallet",
+                    })}
+            </Button>
+          )}
+        </fieldset>
       )}
 
       {providers.telegram && telegramIntent && (
@@ -2510,102 +2544,78 @@ export default function StewardLoginSection() {
       )}
 
       {showWallets && (
-        <>
-          <Button
-            variant="outlineMuted"
-            type="button"
-            aria-expanded={showWalletOptions || walletButtonsMounted}
-            aria-controls="steward-wallet-options"
-            onClick={() => setShowWalletOptions((v) => !v)}
-            disabled={isLoading || walletButtonsMounted}
-            className="hosted-signin-focus-emphasis w-full"
-          >
-            {walletButtonsMounted
-              ? t("cloud.login.walletOptions", {
-                  defaultValue: "Wallet options",
-                })
-              : showWalletOptions
-                ? t("cloud.login.collapseWalletOptions", {
-                    defaultValue: "Collapse wallet options",
-                  })
-                : t("cloud.login.moreOptions", {
-                    defaultValue: "Continue with a wallet",
-                  })}
-          </Button>
-
-          <div
-            id="steward-wallet-options"
-            ref={walletOptionsRegionRef}
-            tabIndex={-1}
-            hidden={!showWalletOptions && !walletButtonsMounted}
-          >
-            {(showWalletOptions || walletButtonsMounted) &&
-              (walletButtonsMounted ? (
-                <Suspense
-                  fallback={
-                    <div className="flex min-h-touch items-center justify-center py-2.5">
-                      <Spinner />
-                    </div>
-                  }
-                >
-                  <StewardWalletProviders>
-                    <WalletButtons
-                      auth={auth}
-                      autoStart={autoStartWallet}
-                      disabled={isLoading}
-                      loadingProvider={
-                        loading === "ethereum" || loading === "solana"
-                          ? (loading as WalletKind)
-                          : null
-                      }
-                      onAutoStartHandled={() => setAutoStartWallet(null)}
-                      onLoadingChange={(kind) => setLoading(kind)}
-                      onSuccess={(result) =>
-                        handleSuccess(result.token, result.refreshToken)
-                      }
-                      onError={(walletError) => {
-                        setError(
-                          walletError.message ||
-                            t("cloud.login.error.walletFailed", {
-                              defaultValue: "Wallet sign-in failed",
-                            }),
-                        );
-                      }}
-                    />
-                  </StewardWalletProviders>
-                </Suspense>
-              ) : (
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {providers.siwe && (
-                    <Button
-                      variant="outlineMuted"
-                      type="button"
-                      onClick={() => handleWalletIntent("ethereum")}
-                      disabled={isLoading}
-                      className="hosted-signin-focus-emphasis"
-                    >
-                      {t("cloud.login.wallet.evm", {
-                        defaultValue: "EVM wallet",
-                      })}
-                    </Button>
-                  )}
-                  {providers.siws && (
-                    <Button
-                      variant="outlineMuted"
-                      type="button"
-                      onClick={() => handleWalletIntent("solana")}
-                      disabled={isLoading}
-                      className="hosted-signin-focus-emphasis"
-                    >
-                      {t("cloud.login.wallet.solana", {
-                        defaultValue: "Solana wallet",
-                      })}
-                    </Button>
-                  )}
-                </div>
-              ))}
-          </div>
-        </>
+        <div
+          id="steward-wallet-options"
+          ref={walletOptionsRegionRef}
+          tabIndex={-1}
+          hidden={!showWalletOptions && !walletButtonsMounted}
+        >
+          {(showWalletOptions || walletButtonsMounted) &&
+            (walletButtonsMounted ? (
+              <Suspense
+                fallback={
+                  <div className="flex min-h-touch items-center justify-center py-2.5">
+                    <Spinner />
+                  </div>
+                }
+              >
+                <StewardWalletProviders>
+                  <WalletButtons
+                    auth={auth}
+                    autoStart={autoStartWallet}
+                    disabled={isLoading}
+                    loadingProvider={
+                      loading === "ethereum" || loading === "solana"
+                        ? (loading as WalletKind)
+                        : null
+                    }
+                    onAutoStartHandled={() => setAutoStartWallet(null)}
+                    onLoadingChange={(kind) => setLoading(kind)}
+                    onSuccess={(result) =>
+                      handleSuccess(result.token, result.refreshToken)
+                    }
+                    onError={(walletError) => {
+                      setError(
+                        walletError.message ||
+                          t("cloud.login.error.walletFailed", {
+                            defaultValue: "Wallet sign-in failed",
+                          }),
+                      );
+                    }}
+                  />
+                </StewardWalletProviders>
+              </Suspense>
+            ) : (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {providers.siwe && (
+                  <Button
+                    variant="outlineMuted"
+                    type="button"
+                    onClick={() => handleWalletIntent("ethereum")}
+                    disabled={isLoading}
+                    className="hosted-signin-focus-emphasis"
+                  >
+                    {t("cloud.login.wallet.evm", {
+                      defaultValue: "EVM wallet",
+                    })}
+                  </Button>
+                )}
+                {providers.siws && (
+                  <Button
+                    variant="outlineMuted"
+                    type="button"
+                    onClick={() => handleWalletIntent("solana")}
+                    disabled={isLoading}
+                    className="hosted-signin-focus-emphasis"
+                  >
+                    {t("cloud.login.wallet.solana", {
+                      defaultValue: "Solana wallet",
+                    })}
+                  </Button>
+                )}
+              </div>
+            ))}
+        </div>
       )}
 
       {error && (

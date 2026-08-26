@@ -44,17 +44,70 @@ async function readFocusStyle(locator: Locator): Promise<FocusStyle> {
   });
 }
 
-async function installProviderFixture(page: Page): Promise<void> {
+async function installProviderFixture(
+  page: Page,
+  providers: Record<string, unknown> = PROVIDERS,
+): Promise<void> {
   await page.route("**/auth/providers", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(PROVIDERS),
+      body: JSON.stringify(providers),
     });
   });
 }
 
 for (const viewport of VIEWPORTS) {
+  test(`phone country menu stays opaque and scrollable at ${viewport.name}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await installProviderFixture(page, { ...PROVIDERS, sms: true });
+
+    await page.goto("/login");
+    const countryTrigger = page.getByRole("combobox", {
+      name: "Country calling code",
+    });
+    await countryTrigger.click();
+
+    const countryMenu = page.getByRole("listbox");
+    await expect(countryMenu).toBeVisible();
+    const menuStyle = await countryMenu.evaluate((element) => {
+      const style = getComputedStyle(element);
+      const scroller = element.querySelector<HTMLElement>(
+        "[data-radix-select-viewport]",
+      );
+      const colorParts = style.backgroundColor.match(/[\d.]+/g) ?? [];
+      return {
+        backgroundAlpha: style.backgroundColor.startsWith("rgba")
+          ? Number(colorParts[3] ?? 0)
+          : 1,
+        borderColor: style.borderColor,
+        scrollerClientHeight: scroller?.clientHeight ?? 0,
+        scrollerOverflowY: scroller ? getComputedStyle(scroller).overflowY : "",
+        scrollerScrollHeight: scroller?.scrollHeight ?? 0,
+        zIndex: Number(style.zIndex),
+      };
+    });
+
+    expect(menuStyle.backgroundAlpha).toBe(1);
+    expect(menuStyle.borderColor).not.toBe("rgba(0, 0, 0, 0)");
+    expect(menuStyle.zIndex).toBeGreaterThanOrEqual(12_000);
+    expect(menuStyle.scrollerOverflowY).toBe("auto");
+    expect(menuStyle.scrollerScrollHeight).toBeGreaterThan(
+      menuStyle.scrollerClientHeight,
+    );
+
+    await page.keyboard.press("Home");
+    await expect(countryMenu.getByRole("option").first()).toHaveAttribute(
+      "data-highlighted",
+    );
+    await page.keyboard.press("End");
+    const lastOption = countryMenu.getByRole("option").last();
+    await expect(lastOption).toHaveAttribute("data-highlighted");
+    await expect(lastOption).toBeInViewport();
+  });
+
   test(`all hosted sign-in targets render a focus delta at ${viewport.name}`, async ({
     page,
   }, testInfo) => {
