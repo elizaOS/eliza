@@ -310,7 +310,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           </div>
         ) : null}
 
-        {visibleProviderPanelId === "__local__" &&
+        {bootstrap.routingConfigResolved &&
+        visibleProviderPanelId === "__local__" &&
         !selection.cloudRuntimeLocked ? (
           <LocalProviderPanel
             cloudCallsDisabled={
@@ -322,7 +323,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           />
         ) : null}
 
-        {visibleProviderPanelId === "__cloud__" &&
+        {bootstrap.routingConfigResolved &&
+        visibleProviderPanelId === "__cloud__" &&
         !selection.cloudRuntimeLocked ? (
           <CloudPanel
             cloudCallsDisabled={selection.cloudCallsDisabled}
