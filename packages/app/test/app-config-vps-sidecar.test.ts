@@ -20,7 +20,10 @@ describe("VPS sidecar app identity", () => {
   });
 
   it("uses a separately installable identity only for the explicit sidecar lane", () => {
-    const config = resolveAppConfig({ ELIZA_ANDROID_VPS_SIDECAR: "1" });
+    const processLikeEnv: NodeJS.ProcessEnv = {
+      ELIZA_ANDROID_VPS_SIDECAR: "1",
+    };
+    const config = resolveAppConfig(processLikeEnv);
 
     expect(config).toMatchObject({
       appName: "Eliza VPS",
