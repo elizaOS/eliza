@@ -1164,6 +1164,7 @@
         "@radix-ui/react-tooltip": "^1.2.8",
         "@rainbow-me/rainbowkit": "^2.2.11",
         "@shadcn/react": "0.3.0",
+        "@simplewebauthn/browser": "^13.0.0",
         "@solana/spl-token": "^0.4.14",
         "@solana/wallet-adapter-phantom": "^0.9.29",
         "@solana/wallet-adapter-react": "^0.15.39",
@@ -5724,6 +5725,8 @@
     "@simple-libs/normalize-package-data": ["@simple-libs/normalize-package-data@1.0.0", "", { "dependencies": { "@simple-libs/hosted-git-info": "^2.0.0", "semver": "^7.8.5" } }, "sha512-/EOmFBekV9tGee8gac/k+5Ox3twkypNqh5TfxA9vTkmcJkjm6f1xqrlstDNOrEhTvnYyVtU6Du2ZhY/IV1+9GA=="],
 
     "@simple-libs/stream-utils": ["@simple-libs/stream-utils@2.0.0", "", {}, "sha512-fCTuZK4QBa+39Oz9l4OGfJfz+GpwCp3AqO7Zch3to99xHPgstVsRFpeQ8LNd2o1Gv8raL2mCFwiaHh7bFSp5DQ=="],
+
+    "@simplewebauthn/browser": ["@simplewebauthn/browser@13.3.0", "", {}, "sha512-BE/UWv6FOToAdVk0EokzkqQQDOWtNydYlY6+OrmiZ5SCNmb41VehttboTetUM3T/fr6EAFYVXjz4My2wg230rQ=="],
 
     "@sinclair/typebox": ["@sinclair/typebox@0.34.52", "", {}, "sha512-XiMQh7qqVlxZzcVD+kkGMNGMzcTrDMLWI7S4x7z1MkCkbDPrekpZXEUK0eZqZFMuHQg2a2DZOcDIh9o5v3Gonw=="],
 
