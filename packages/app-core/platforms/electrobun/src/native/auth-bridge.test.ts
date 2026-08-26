@@ -157,6 +157,44 @@ describe("desktop auth bridge", () => {
     );
   });
 
+  it("starts the proof deadline after a bounded 503 retry ladder", async () => {
+    const stateDir = createStateDir();
+    let attempts = 0;
+
+    const fresh = await loadOrCreateDesktopSession({
+      apiBase: "http://127.0.0.1:31337",
+      env: { ELIZA_STATE_DIR: stateDir },
+      reusePersistedSession: false,
+      generateSecret: () => Buffer.alloc(32, 10),
+      timing: {
+        httpRequestTimeoutMs: 1_000,
+        socketConnectTimeoutMs: 10,
+        dbUnavailableRetryDelaysMs: [25],
+      },
+      fetchImpl: async (_input, init) => {
+        attempts += 1;
+        const body = JSON.parse(String(init?.body)) as { socketPath: string };
+        if (attempts === 1) {
+          return Response.json({ error: "db_unavailable" }, { status: 503 });
+        }
+        await new Promise<void>((resolve, reject) => {
+          const socket = net.createConnection(body.socketPath);
+          socket.once("error", reject);
+          socket.on("data", () => undefined);
+          socket.once("end", resolve);
+        });
+        return Response.json({
+          sessionId: "post-retry-session",
+          csrfToken: "post-retry-csrf",
+          expiresAt: Date.now() + 86_400_000,
+        });
+      },
+    });
+
+    expect(attempts).toBe(2);
+    expect(fresh?.sessionId).toBe("post-retry-session");
+  });
+
   it("does not retry a rejected desktop proof", async () => {
     const stateDir = createStateDir();
     let attempts = 0;
