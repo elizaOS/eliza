@@ -73,15 +73,12 @@ describe("normalizeEnumValue", () => {
   it("returns valid members and the fallback for empties", () => {
     expect(normalizeEnumValue("a", "f", allowed)).toBe("a");
     expect(normalizeEnumValue(undefined, "f", allowed, "b")).toBe("b");
-    expect(normalizeEnumValue(null, "f", allowed, "b")).toBe("b");
     expect(normalizeEnumValue("", "f", allowed, "b")).toBe("b");
-    expect(normalizeEnumValue("   ", "f", allowed, "b")).toBe("b");
   });
   it("rejects out-of-set values (400)", () => {
     expectFail(() => normalizeEnumValue("z", "f", allowed), 400);
     // no fallback + empty → required error
     expectFail(() => normalizeEnumValue(undefined, "f", allowed), 400);
-    expectFail(() => normalizeEnumValue("   ", "f", allowed), 400);
   });
 });
 

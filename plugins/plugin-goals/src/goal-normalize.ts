@@ -64,9 +64,7 @@ export function normalizeEnumValue<T extends string>(
 ): T {
   if (
     fallback !== undefined &&
-    (value === undefined ||
-      value === null ||
-      (typeof value === "string" && value.trim().length === 0))
+    (value === undefined || value === null || value === "")
   ) {
     return fallback;
   }
