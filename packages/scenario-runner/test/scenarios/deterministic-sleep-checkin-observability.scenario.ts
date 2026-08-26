@@ -57,6 +57,17 @@ const TICK_2 = new Date(BASE.getTime() + 6 * MINUTE_MS);
 // Assistant event ledger — subscribes through the production
 // AgentEventService seam exactly like the API server does.
 // ---------------------------------------------------------------------------
+/** Raw listener envelope emitted by AgentEventService (core AgentEventPayload). */
+interface AgentEventEnvelope {
+  runId: string;
+  seq: number;
+  stream: string;
+  ts: number;
+  data: Record<string, unknown>;
+  agentId?: string;
+}
+
+/** Narrowed ledger row captured from the assistant stream. */
 interface CapturedAssistantEvent {
   runId: string;
   stream: string;
@@ -71,7 +82,9 @@ interface CapturedAssistantEvent {
 }
 
 interface AgentEventServiceLike {
-  subscribe: (listener: (event: CapturedAssistantEvent) => void) => () => void;
+  subscribe: (
+    listener: (event: AgentEventEnvelope) => void,
+  ) => () => void;
 }
 
 interface RuntimeLike {

@@ -415,7 +415,11 @@ type ScheduledWorkflowRunner = {
  */
 export interface SleepCycleCheckinDeliveryReport {
   kind: "morning" | "night";
-  status: "delivered" | "skipped_already_sent" | "disconnected";
+  status:
+    | "delivered"
+    | "skipped_already_sent"
+    | "disconnected"
+    | "unknown_recipient";
   reportId: string | null;
   messageId: string | null;
   reason: string | null;
@@ -5865,9 +5869,14 @@ export class RemindersDomain {
     // subsystem-isolation contract still holds — the tick completes and the
     // failure is typed in the summary — but the owning scenario (or operator
     // reading the scheduler task result) can no longer see 16/16 green while
-    // a morning check-in silently vanished.
+    // a morning check-in silently vanished. Both delivery-rejection statuses
+    // count (a mislabeled failure is as invisible as an unlabeled one);
+    // `skipped_already_sent` is the deterministic day-dedupe and stays green.
     for (const checkin of sleepCycleCheckins) {
-      if (checkin.status === "disconnected") {
+      if (
+        checkin.status === "disconnected" ||
+        checkin.status === "unknown_recipient"
+      ) {
         subsystemFailures.push({
           subsystem: "sleep_cycle_checkins",
           error:
@@ -6085,9 +6094,25 @@ export class RemindersDomain {
             message: delivery.message,
           },
         );
+        // Status mirrors the typed dispatch reason; `disconnected` is not a
+        // catch-all — `unknown_recipient` and future typed reasons surface
+        // as themselves so the tick summary never mislabels a failure (#29068).
+        if (
+          delivery.reason !== "disconnected" &&
+          delivery.reason !== "unknown_recipient"
+        ) {
+          this.ctx.logLifeOpsWarn(
+            "sleep_cycle_checkin_delivery",
+            "[lifeops] Sleep-cycle check-in delivery failed with an unmapped dispatch reason; reporting it generically.",
+            { kind, reason: delivery.reason },
+          );
+        }
         return {
           kind,
-          status: "disconnected",
+          status:
+            delivery.reason === "unknown_recipient"
+              ? "unknown_recipient"
+              : "disconnected",
           reportId: report.reportId,
           messageId: null,
           reason: delivery.reason,
