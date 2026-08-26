@@ -1,17 +1,33 @@
 /**
- * Regression tests for the OCR results SharedArrayBuffer round-trip
- * (issue #29076). These exercise the real shared writer/reader codec in
- * `workers/ocr-results-buffer.ts` and the real, reachable
- * `VisionWorkerManager.readOCRResult` reader — no worker threads, GPU, or
- * display required. Before the fix, a dense frame's OCR JSON larger than the
- * former hardcoded 64KB cap was truncated mid-token, so `JSON.parse` threw and
- * the entire OCR frame was silently discarded even though it fit comfortably in
- * the 5MB buffer. The suite proves such payloads now round-trip intact and that
- * the writer never advertises a header length larger than the bytes it wrote.
+ * Regression tests for the OCR results SharedArrayBuffer round-trip and its
+ * overflow propagation (issue #29076). These exercise the real shared
+ * writer/reader codec in `workers/ocr-results-buffer.ts`, the real reachable
+ * `VisionWorkerManager` cache/readiness/enhanced-scene path, and the real
+ * `visionProvider` model-facing text — no worker threads, GPU, or display
+ * required.
+ *
+ * Before the fix, a dense frame's OCR JSON larger than the former hardcoded
+ * 64KB cap was truncated mid-token, so `JSON.parse` threw and the entire OCR
+ * frame was silently discarded even though it fit comfortably in the 5MB
+ * buffer. The suite proves such payloads now round-trip intact and that the
+ * writer never advertises a header length larger than the bytes it wrote.
+ *
+ * It also pins the overflow contract at the consumer boundary: when only
+ * bounding-box blocks are dropped the recognized text stays complete and the
+ * result is flagged partial through readiness, the enhanced scene, and the
+ * provider; when the recognized text alone cannot fit, OCR becomes an explicit
+ * unavailable/size-error state and no text prefix is ever presented as complete
+ * perception.
  */
 
 import { describe, expect, it } from "vitest";
-import type { OCRResult } from "./types";
+import { visionProvider } from "./provider";
+import type {
+  EnhancedSceneDescription,
+  OCRResult,
+  ScreenCapture,
+} from "./types";
+import { VisionMode } from "./types";
 import { VisionWorkerManager } from "./vision-worker-manager";
 import {
   encodeOcrResultWithinCapacity,
@@ -20,6 +36,7 @@ import {
   OCR_RESULTS_HEADER_SIZE,
   OCR_RESULTS_PAYLOAD_CAPACITY,
   readOcrResultFromBuffer,
+  type SerializedOcrResult,
   writeOcrResultToBuffer,
 } from "./workers/ocr-results-buffer";
 
@@ -45,6 +62,66 @@ function headerLength(view: DataView): number {
   return view.getUint32(OCR_RESULTS_HEADER_SIZE, true);
 }
 
+/** Drive a written buffer through the real manager cache path. */
+function ingestThroughManager(
+  results: OCRResult[],
+  capacity: number,
+): VisionWorkerManager {
+  const manager = new VisionWorkerManager({ ocrEnabled: true } as never);
+  const view = Reflect.get(manager, "ocrResultsView") as DataView;
+  writeOcrResultToBuffer(view, results, 1, 1000, capacity);
+  // updateOCRCache is what the OCR worker's `ocr_complete` message triggers.
+  Reflect.get(manager, "updateOCRCache").call(manager, {
+    type: "ocr_complete",
+  });
+  return manager;
+}
+
+/**
+ * Render the provider's model-facing perception text for a SCREEN-mode scene.
+ * All collaborators are stubbed except the enhanced scene under test, so the
+ * assertions exercise the real provider formatting of OCR overflow state.
+ */
+async function renderProviderText(
+  scene: EnhancedSceneDescription,
+): Promise<string> {
+  const screenCapture: ScreenCapture = {
+    timestamp: Date.now(),
+    width: 1920,
+    height: 1080,
+    data: Buffer.alloc(0),
+    tiles: [],
+  };
+  const visionService = {
+    getEnhancedSceneDescription: async () => scene,
+    getSceneDescription: async () => scene,
+    getCameraInfo: () => null,
+    isActive: () => true,
+    getVisionMode: () => VisionMode.SCREEN,
+    getScreenCapture: async () => screenCapture,
+    getCapabilities: () => ({
+      objectDetection: false,
+      ocr: true,
+      faceRecognition: false,
+      screenCapture: true,
+      camera: false,
+      audio: false,
+    }),
+    getEntityTracker: () => null,
+  };
+  const runtime = {
+    getService: () => visionService,
+  } as never;
+  const result = await visionProvider.get(
+    runtime,
+    { worldId: "w" } as never,
+    {} as never,
+  );
+  // The full serialized provider text is what the model receives: it carries
+  // both the human-readable `summary` and the `sceneDescription` value.
+  return result.text ?? "";
+}
+
 describe("OCR results buffer round-trip (issue #29076)", () => {
   it("round-trips a small OCR result through the real manager reader", () => {
     const manager = new VisionWorkerManager({ ocrEnabled: true } as never);
@@ -59,7 +136,7 @@ describe("OCR results buffer round-trip (issue #29076)", () => {
 
     const read = Reflect.get(manager, "readOCRResult").call(
       manager,
-    ) as OCRResult | null;
+    ) as SerializedOcrResult | null;
     expect(read).not.toBeNull();
     expect(read?.fullText).toBe("hello world");
   });
@@ -81,7 +158,7 @@ describe("OCR results buffer round-trip (issue #29076)", () => {
 
     const read = Reflect.get(manager, "readOCRResult").call(
       manager,
-    ) as OCRResult | null;
+    ) as SerializedOcrResult | null;
     expect(read).not.toBeNull();
     expect(read?.blocks.length).toBe(dense.blocks.length);
     expect(read?.fullText).toBe(dense.fullText);
@@ -115,19 +192,27 @@ describe("OCR results buffer round-trip (issue #29076)", () => {
     dense.fullText = fullText;
     const smallCapacity = 512;
 
-    const { bytes, truncated } = encodeOcrResultWithinCapacity(
+    const outcome = encodeOcrResultWithinCapacity(
       [dense],
       3,
       1000,
       smallCapacity,
     );
-    expect(truncated).toBe(true);
-    expect(bytes.length).toBeLessThanOrEqual(smallCapacity);
+    expect(outcome.truncated).toBe(true);
+    expect(outcome.textOverflow).toBe(false);
+    expect(outcome.omittedBlocks).toBeGreaterThan(0);
+    expect(outcome.bytes.length).toBeLessThanOrEqual(smallCapacity);
 
-    const parsed = JSON.parse(bytes.toString("utf-8"));
+    const parsed = JSON.parse(outcome.bytes.toString("utf-8"));
     expect(parsed.truncated).toBe(true);
+    expect(parsed.textOverflow).toBe(false);
+    // The recognized text must be preserved in full; only box metadata is cut.
     expect(parsed.fullText).toBe(fullText);
     expect(parsed.blocks.length).toBeLessThan(dense.blocks.length);
+    expect(parsed.totalBlocks).toBe(dense.blocks.length);
+    expect(parsed.omittedBlocks).toBe(
+      dense.blocks.length - parsed.blocks.length,
+    );
   });
 
   it("treats a header length beyond capacity as an explicit error, not a truncated parse", () => {
@@ -153,7 +238,7 @@ describe("OCR results buffer round-trip (issue #29076)", () => {
     );
     const read = Reflect.get(manager, "readOCRResult").call(
       manager,
-    ) as OCRResult | null;
+    ) as SerializedOcrResult | null;
     expect(read).toBeNull();
   });
 
@@ -161,5 +246,73 @@ describe("OCR results buffer round-trip (issue #29076)", () => {
     const view = new DataView(new ArrayBuffer(OCR_RESULTS_BUFFER_SIZE));
     expect(readOcrResultFromBuffer(view)).toBeNull();
     expect(OCR_RESULTS_DATA_OFFSET).toBe(32);
+  });
+});
+
+describe("OCR overflow propagation to consumers (issue #29076 review)", () => {
+  it("surfaces a blocks-dropped result as partial while keeping the complete text visible", async () => {
+    const fullText =
+      "line one of recognized screen text with plenty of words to render";
+    const dense = makeDenseResult(300);
+    dense.fullText = fullText;
+    // Capacity big enough to hold the full text but not all bounding boxes.
+    const capacity = 800;
+
+    const manager = ingestThroughManager([dense], capacity);
+
+    // Text is complete, so OCR stays ready and the manager reports omission.
+    expect(manager.getReadiness().ocr).toBe(true);
+    const scene = manager.getLatestEnhancedScene();
+    expect(scene.description).toBe(fullText);
+    expect(scene.screenAnalysis?.fullScreenOCR).toBe(fullText);
+    expect(scene.screenAnalysis?.ocrSizeError).toBeUndefined();
+    const truncation = scene.screenAnalysis?.ocrTruncation;
+    expect(truncation).toBeDefined();
+    expect(truncation?.totalBlocks).toBe(dense.blocks.length);
+    expect(truncation?.omittedBlocks).toBeGreaterThan(0);
+    expect(truncation?.omittedBlocks).toBeLessThan(dense.blocks.length);
+
+    const text = await renderProviderText(scene);
+    // Provider shows the complete recognized text plus a visible partial note.
+    expect(text).toContain(fullText);
+    expect(text).toContain("were omitted to fit the transfer buffer");
+    expect(text).not.toContain("unavailable");
+  });
+
+  it("surfaces a text-only overflow as an explicit size error, never a text prefix", async () => {
+    // A single result whose recognized text alone dwarfs a tiny capacity.
+    const fullText = "S".repeat(4096);
+    const result: OCRResult = { text: fullText, fullText, blocks: [] };
+    const capacity = 256;
+
+    const outcome = encodeOcrResultWithinCapacity([result], 9, 1000, capacity);
+    expect(outcome.textOverflow).toBe(true);
+    expect(outcome.overflowTextBytes).toBe(
+      Buffer.byteLength(fullText, "utf-8"),
+    );
+    expect(outcome.bytes.length).toBeLessThanOrEqual(capacity);
+    // The codec must not emit any of the recognized text as a prefix.
+    const parsed = JSON.parse(outcome.bytes.toString("utf-8"));
+    expect(parsed.fullText).toBe("");
+    expect(parsed.blocks).toEqual([]);
+
+    const manager = ingestThroughManager([result], capacity);
+
+    // OCR is unavailable for this frame: no partial value is presented.
+    expect(manager.getReadiness().ocr).toBe(false);
+    const scene = manager.getLatestEnhancedScene();
+    expect(scene.description).toBe("");
+    expect(scene.screenAnalysis?.fullScreenOCR).toBeUndefined();
+    expect(scene.screenAnalysis?.ocrTruncation).toBeUndefined();
+    const sizeError = scene.screenAnalysis?.ocrSizeError;
+    expect(sizeError).toBeDefined();
+    expect(sizeError?.textBytes).toBe(Buffer.byteLength(fullText, "utf-8"));
+    expect(sizeError?.capacity).toBe(OCR_RESULTS_PAYLOAD_CAPACITY);
+
+    const text = await renderProviderText(scene);
+    // Provider renders an explicit unavailable state and never leaks the text.
+    expect(text).toContain("Screen OCR unavailable");
+    expect(text).not.toContain(fullText);
+    expect(text).not.toContain("SSSS");
   });
 });

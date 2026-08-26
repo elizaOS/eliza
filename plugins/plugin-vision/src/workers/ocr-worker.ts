@@ -247,15 +247,21 @@ class OCRWorker {
     // Delegate to the shared codec so the committed byte count and the header
     // length always agree and the payload is bounded by the real buffer
     // capacity rather than an arbitrary 64KB cap.
-    const { length, truncated } = writeOcrResultToBuffer(
-      this.resultsView,
-      results,
-      frameId,
-    );
+    const {
+      length,
+      omittedBlocks,
+      totalBlocks,
+      textOverflow,
+      overflowTextBytes,
+    } = writeOcrResultToBuffer(this.resultsView, results, frameId);
 
-    if (truncated) {
+    if (textOverflow) {
       logger.warn(
-        `[OCRWorker] OCR result for frame ${frameId} exceeded buffer capacity; dropped lower-value blocks to fit (${length} bytes written)`,
+        `[OCRWorker] OCR result for frame ${frameId} could not fit the transfer buffer: recognized text alone was ${overflowTextBytes} bytes. Emitted an explicit size-error marker instead of a text prefix; the reader will surface OCR as unavailable for this frame.`,
+      );
+    } else if (omittedBlocks > 0) {
+      logger.warn(
+        `[OCRWorker] OCR result for frame ${frameId} exceeded buffer capacity; kept the leading ${totalBlocks - omittedBlocks} of ${totalBlocks} bounding-box blocks in reading order and preserved the full recognized text (${length} bytes written)`,
       );
     }
   }

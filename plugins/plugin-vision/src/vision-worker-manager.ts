@@ -14,7 +14,9 @@ import type {
 } from "./types";
 import {
   OCR_RESULTS_BUFFER_SIZE,
+  OCR_RESULTS_PAYLOAD_CAPACITY,
   readOcrResultFromBuffer,
+  type SerializedOcrResult,
 } from "./workers/ocr-results-buffer";
 
 interface WorkerStats {
@@ -48,6 +50,14 @@ export class VisionWorkerManager {
 
   private latestScreenCapture: ScreenCapture | null = null;
   private latestOCRResult: OCRResult | null = null;
+  /** Set when trailing OCR blocks were dropped to fit; `fullText` stays complete. */
+  private latestOCROmission: {
+    totalBlocks: number;
+    omittedBlocks: number;
+  } | null = null;
+  /** Set when recognized text alone overflowed the buffer, so OCR is unavailable. */
+  private latestOCRSizeError: { textBytes: number; capacity: number } | null =
+    null;
   private lastProcessedFrameId = -1;
 
   private restartAttempts = new Map<string, number>();
@@ -189,8 +199,8 @@ export class VisionWorkerManager {
 
   private updateOCRCache(_msg: unknown): void {
     try {
-      const result = this.readOCRResult();
-      this.latestOCRResult = result;
+      const serialized = this.readOCRResult();
+      this.applySerializedOcrResult(serialized);
     } catch (error) {
       logger.error(
         { error },
@@ -199,13 +209,12 @@ export class VisionWorkerManager {
     }
   }
 
-  private readOCRResult(): OCRResult | null {
+  private readOCRResult(): SerializedOcrResult | null {
     // error-policy:J4 buffer read/parse/capacity failures degrade to a null OCR
     // result (an explicit unavailable state surfaced via getReadiness().ocr),
     // never a fabricated or silently truncated one.
     try {
-      const result = readOcrResultFromBuffer(this.ocrResultsView);
-      return result as OCRResult | null;
+      return readOcrResultFromBuffer(this.ocrResultsView);
     } catch (error) {
       logger.error(
         { error },
@@ -213,6 +222,50 @@ export class VisionWorkerManager {
       );
       return null;
     }
+  }
+
+  /**
+   * Fold a decoded buffer result into the manager's OCR state without erasing
+   * its overflow markers. A `textOverflow` payload becomes an explicit
+   * size-error/unavailable state (no `latestOCRResult`), and a blocks-dropped
+   * payload keeps the complete recognized text plus an omission count so
+   * consumers can render a visibly partial result rather than a prefix passed
+   * off as complete perception.
+   */
+  private applySerializedOcrResult(
+    serialized: SerializedOcrResult | null,
+  ): void {
+    if (serialized === null) {
+      this.clearOCRReadiness();
+      return;
+    }
+
+    if (serialized.textOverflow) {
+      // Recognized text alone exceeds the transfer buffer. We cannot present
+      // the complete text and must not present a prefix, so OCR is unavailable
+      // for this frame with an explicit size error.
+      this.latestOCRResult = null;
+      this.latestOCROmission = null;
+      this.latestOCRSizeError = {
+        textBytes: serialized.overflowTextBytes,
+        capacity: OCR_RESULTS_PAYLOAD_CAPACITY,
+      };
+      return;
+    }
+
+    this.latestOCRResult = {
+      text: serialized.fullText,
+      fullText: serialized.fullText,
+      blocks: serialized.blocks,
+    };
+    this.latestOCROmission =
+      serialized.omittedBlocks > 0
+        ? {
+            totalBlocks: serialized.totalBlocks,
+            omittedBlocks: serialized.omittedBlocks,
+          }
+        : null;
+    this.latestOCRSizeError = null;
   }
 
   getLatestScreenCapture(): ScreenCapture | null {
@@ -277,6 +330,8 @@ export class VisionWorkerManager {
 
   private clearOCRReadiness(): void {
     this.latestOCRResult = null;
+    this.latestOCROmission = null;
+    this.latestOCRSizeError = null;
   }
 
   getLatestEnhancedScene(): EnhancedSceneDescription {
@@ -292,6 +347,8 @@ export class VisionWorkerManager {
       screenCapture: this.latestScreenCapture || undefined,
       screenAnalysis: {
         fullScreenOCR: this.latestOCRResult?.fullText,
+        ocrTruncation: this.latestOCROmission ?? undefined,
+        ocrSizeError: this.latestOCRSizeError ?? undefined,
         activeTile: {
           timestamp: Date.now(),
           ocr: this.latestOCRResult || undefined,
