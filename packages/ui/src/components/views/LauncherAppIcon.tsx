@@ -47,7 +47,7 @@ export function LauncherAppIcon({
 }: LauncherAppIconProps) {
   const asset = resolveLauncherIconAsset(entry);
   return (
-    <Card asChild variant="launcherIcon" radius="xlarge">
+    <Card asChild variant="launcherIcon">
       <div
         className={cn(SHAPE_CLASS, className)}
         data-launcher-icon=""
@@ -85,7 +85,7 @@ export function LauncherAppIcon({
 /** Loading placeholder locked to the exact same continuous-corner geometry. */
 export function LauncherAppIconSkeleton({ className }: { className?: string }) {
   return (
-    <Card asChild variant="launcherIcon" radius="xlarge">
+    <Card asChild variant="launcherIcon">
       <div
         aria-hidden="true"
         className={cn(SHAPE_CLASS, "opacity-50", className)}

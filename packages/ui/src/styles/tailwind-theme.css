@@ -18,6 +18,11 @@
   --color-surface: var(--surface);
   --color-inverse: var(--inverse);
   --color-inverse-foreground: var(--inverse-foreground);
+  --color-bg-launcher-icon: var(--bg-launcher-icon);
+  --color-bg-launcher-icon-hover: var(--bg-launcher-icon-hover);
+  --color-bg-launcher-icon-focus: var(--bg-launcher-icon-focus);
+  --color-border-launcher-icon: var(--border-launcher-icon);
+  --color-txt-launcher-icon: var(--txt-launcher-icon);
   --color-scrim: var(--scrim);
 
   --color-txt: var(--text);
@@ -132,6 +137,7 @@
   --shadow-agent-focus: var(--shadow-agent-focus);
   --shadow-chat-action: var(--chat-action-shadow);
   --shadow-chat-mic: var(--shadow-chat-mic);
+  --shadow-launcher-icon: var(--shadow-launcher-icon);
   --background-image-launcher-icon-sheen: var(--launcher-icon-sheen);
 
   --radius-xs: var(--radius-xs);

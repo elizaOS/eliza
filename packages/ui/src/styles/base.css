@@ -52,6 +52,14 @@
   --assistant-overlay-background: rgb(12 12 14);
   --assistant-overlay-accent-subtle: rgb(255 88 0 / 18%);
   --assistant-overlay-border: rgb(255 255 255 / 20%);
+  --bg-launcher-icon: rgb(16 17 20 / 68%);
+  --bg-launcher-icon-hover: rgb(28 29 32 / 74%);
+  --bg-launcher-icon-focus: rgb(28 29 32 / 78%);
+  --border-launcher-icon: rgb(255 255 255 / 24%);
+  --txt-launcher-icon: rgb(255 255 255);
+  --shadow-launcher-icon:
+    inset 0 1px 0 rgb(255 255 255 / 30%), inset 0 -1px 0 rgb(255 255 255 / 8%),
+    inset 0 -18px 34px -28px rgb(0 0 0 / 42%);
 
   /* Text */
   --text: var(--brand-black);
@@ -154,11 +162,10 @@
   --shadow-background-selected: 0 8px 28px -14px var(--scrim);
   --shadow-agent-focus: 0 0 0 2px var(--accent-muted);
   --shadow-chat-mic: 0 0 9px rgb(255 255 255 / 40%);
-  --launcher-icon-sheen: linear-gradient(
-    160deg,
-    rgb(255 255 255 / 36%) 0%,
-    rgb(255 255 255 / 8%) 42%,
-    rgb(0 0 0 / 20%) 100%
+  --launcher-icon-sheen: radial-gradient(
+    120% 60% at 30% -10%,
+    rgb(255 255 255 / 14%) 0%,
+    transparent 55%
   );
   /* A soft, intimate radius ramp. A companion surface should feel rounded and
      calm, not hard-edged/utilitarian, but still restrained (no toy-like pills).
@@ -418,11 +425,10 @@
   --shadow-background-selected: 0 8px 28px -14px var(--scrim);
   --shadow-agent-focus: 0 0 0 2px var(--accent-muted);
   --shadow-chat-mic: 0 0 9px rgb(255 255 255 / 40%);
-  --launcher-icon-sheen: linear-gradient(
-    160deg,
-    rgb(255 255 255 / 36%) 0%,
-    rgb(255 255 255 / 8%) 42%,
-    rgb(0 0 0 / 20%) 100%
+  --launcher-icon-sheen: radial-gradient(
+    120% 60% at 30% -10%,
+    rgb(255 255 255 / 14%) 0%,
+    transparent 55%
   );
   --radius-sm: var(--radius-xs);
   --radius-md: var(--radius-xs);
