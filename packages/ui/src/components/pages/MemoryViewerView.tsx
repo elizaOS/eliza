@@ -1,5 +1,5 @@
 /**
- * Memories page: browses the agent's memory store in three modes — a recent
+ * Memories page: browses the agent's memory store in three modes: a recent
  * feed, a filtered browse list, and a person-centric view scoped to a
  * relationship's member entity ids. Pulls stats, people (via the relationships
  * API), and memory rows from the typed client. On mobile the people/filter
@@ -7,15 +7,7 @@
  * inline trigger.
  */
 
-import {
-  Brain,
-  ChevronDown,
-  FileText,
-  MessageSquareText,
-  Search,
-  Sparkles,
-  X,
-} from "lucide-react";
+import { AlertTriangle, Brain, ChevronDown, Search, X } from "lucide-react";
 import {
   memo,
   type ReactNode,
@@ -38,10 +30,16 @@ import { isApiError } from "../../api/client-types-core";
 import type { RelationshipsPersonSummary } from "../../api/client-types-relationships";
 import { dispatchChatOpen } from "../../events";
 import { getCached, setCached } from "../../hooks/resource-cache";
+import {
+  isCapabilityWarmupAbort,
+  useAbortableCapabilityWarmup,
+} from "../../hooks/runtime-capability-retry";
+import { useActiveAgentAuthority } from "../../hooks/useActiveAgentAuthority";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
-import { PageLayout } from "../../layouts/page-layout/page-layout";
+import { WorkspaceLayout } from "../../layouts/workspace-layout";
 import { useWorkspaceMobileSidebarHeader } from "../../layouts/workspace-layout/workspace-mobile-sidebar-controls.hooks";
 import { WorkspaceMobileSidebarScope } from "../../layouts/workspace-layout/workspace-mobile-sidebar-scope";
+import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
 import {
   type TranslationContextValue,
@@ -52,12 +50,12 @@ import { formatDateTime } from "../../utils/format";
 import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";
 import { MetaPill } from "../composites/page-panel/page-panel-header";
-import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { ViewHeader } from "../shared/ViewHeader";
 import { ViewHeaderSidebarTrigger } from "../shared/ViewHeaderSidebarTrigger";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -104,38 +102,83 @@ function memoryTypeKey(type: string): MemoryTypeKey {
 
 type ViewMode = "feed" | "browse";
 
-const MEMORY_FEED_EMPTY_FEATURES = [
-  {
-    id: "chat",
-    labelKey: "memoryviewer.empty.chat",
-    defaultLabel: "Chat",
-    icon: MessageSquareText,
-    tone: "text-muted-strong",
-  },
-  {
-    id: "facts",
-    labelKey: "memoryviewer.empty.facts",
-    defaultLabel: "Facts",
-    icon: Sparkles,
-    tone: "text-muted-strong",
-  },
-  {
-    id: "docs",
-    labelKey: "memoryviewer.empty.docs",
-    defaultLabel: "Docs",
-    icon: FileText,
-    tone: "text-muted-strong",
-  },
-] as const;
-
 const FEED_PAGE_SIZE = 50;
 /** Max retained feed items (10 pages) so long sessions stay bounded. */
 const FEED_MAX_ITEMS = 500;
 /** Poll interval to keep the feed fresh in place of a manual refresh button. */
 const FEED_POLL_MS = 30_000;
 const BROWSE_PAGE_SIZE = 50;
-/** Filled accent focus — the product bans rings, not keyboard position. */
+/** Filled accent focus keeps keyboard position visible without a ring. */
 const MEMORY_FOCUS_CLASS = "keyboard-focus-surface";
+
+interface MemoryIssue {
+  title: string;
+  description: string;
+  retryable: boolean;
+}
+
+function isMemoryRuntimeUnavailable(error: unknown): boolean {
+  return (
+    isApiError(error) &&
+    (error.code === "memory_runtime_unavailable" || error.status === 404)
+  );
+}
+
+function isRelationshipsRuntimeUnavailable(error: unknown): boolean {
+  return (
+    isApiError(error) &&
+    (error.code === "relationships_runtime_unavailable" || error.status === 404)
+  );
+}
+
+function memoryIssue(error: unknown, t: TranslateFn): MemoryIssue {
+  if (isApiError(error) && (error.status === 401 || error.status === 403)) {
+    return {
+      title: t("memoryviewer.accessUnavailable", {
+        defaultValue: "Memories aren't available",
+      }),
+      description: t("memoryviewer.accessUnavailableDescription", {
+        defaultValue: "This account can't access these memories.",
+      }),
+      retryable: false,
+    };
+  }
+
+  if (isApiError(error) && error.status === 429) {
+    return {
+      title: t("memoryviewer.busy", { defaultValue: "Memories are busy" }),
+      description: t("memoryviewer.busyDescription", {
+        defaultValue: "Wait a moment, then try again.",
+      }),
+      retryable: true,
+    };
+  }
+
+  if (
+    error instanceof TypeError ||
+    (isApiError(error) && (error.status ?? 0) >= 500)
+  ) {
+    return {
+      title: t("memoryviewer.temporarilyUnavailable", {
+        defaultValue: "Memories are temporarily unavailable",
+      }),
+      description: t("memoryviewer.temporarilyUnavailableDescription", {
+        defaultValue: "Reconnect to Eliza, then try again.",
+      }),
+      retryable: true,
+    };
+  }
+
+  return {
+    title: t("memoryviewer.couldNotLoad", {
+      defaultValue: "Memories couldn't load",
+    }),
+    description: t("memoryviewer.couldNotLoadDescription", {
+      defaultValue: "Try again in a moment.",
+    }),
+    retryable: true,
+  };
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -186,6 +229,40 @@ function truncateText(text: string, max = 200): string {
   return `${text.slice(0, max)}…`;
 }
 
+function memoryCopy(
+  memory: MemoryBrowseItem,
+  t: TranslateFn,
+): {
+  title: string | null;
+  preview: string;
+  fullText: string;
+} {
+  const fullText = memory.text.trim();
+  if (!fullText) {
+    const empty = t("memoryviewer.empty.value", {
+      defaultValue: "Empty memory",
+    });
+    return { title: null, preview: empty, fullText: empty };
+  }
+
+  const lines = fullText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const firstLine = lines[0] ?? fullText;
+  const hasUsefulDocumentTitle =
+    memory.type === "documents" && lines.length > 1 && firstLine.length <= 96;
+  const previewSource = hasUsefulDocumentTitle
+    ? lines.slice(1).join(" ")
+    : fullText.replace(/\s+/g, " ");
+
+  return {
+    title: hasUsefulDocumentTitle ? firstLine : null,
+    preview: truncateText(previewSource, 220),
+    fullText,
+  };
+}
+
 function formatRelativeTime(timestamp: number, t: TranslateFn): string {
   const diff = Date.now() - timestamp;
   const unknown = t("memoryviewer.unknown", { defaultValue: "unknown" });
@@ -223,8 +300,7 @@ const MemoryCard = memo(function MemoryCard({
 }) {
   const { t } = useTranslation();
   const typeKey = memoryTypeKey(memory.type);
-  const text =
-    memory.text || t("memoryviewer.empty.value", { defaultValue: "(empty)" });
+  const copy = memoryCopy(memory, t);
 
   return (
     <Button
@@ -237,76 +313,118 @@ const MemoryCard = memo(function MemoryCard({
       data-testid={`memory-card-${memory.id}`}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="inline-flex items-center gap-1.5 text-xs-tight text-muted">
-          <Badge
-            variant="statusDotMuted"
-            className={`memory-type-dot-${typeKey}`}
-          />
+        <span className="inline-flex items-center gap-1.5 text-xs-tight text-[color:var(--settings-muted)]">
+          <Badge asChild variant="statusDotMuted">
+            <span className={`memory-type-dot-${typeKey}`} />
+          </Badge>
           {typeLabel(memory.type, t)}
         </span>
-        {memory.source ? (
-          <span className="text-xs-tight text-muted">{memory.source}</span>
-        ) : null}
-        <span className="ml-auto tabular-nums text-xs-tight text-muted">
+        <span className="ml-auto tabular-nums text-xs-tight text-[color:var(--settings-muted)]">
           {formatRelativeTime(memory.createdAt, t)}
         </span>
       </div>
-      <div className="mt-2 text-sm leading-6 text-txt">
-        {expanded ? text : truncateText(text)}
+      {copy.title ? (
+        <div className="mt-2 text-sm font-semibold leading-5 text-[color:var(--settings-foreground)]">
+          {copy.title}
+        </div>
+      ) : null}
+      <div
+        className={cn(
+          copy.title ? "mt-1" : "mt-2",
+          "max-w-[72ch] whitespace-pre-wrap text-sm leading-6 text-[color:var(--settings-foreground)]",
+        )}
+      >
+        {expanded ? copy.fullText : copy.preview}
       </div>
       {expanded ? (
-        <div className="mt-3 space-y-1.5 pt-3">
-          {memory.entityId ? (
-            <div className="text-xs-tight text-muted">
+        <Card asChild variant="topDivider" className="mt-3 pt-3">
+          <div>
+            <div className="text-xs-tight text-[color:var(--settings-muted)]">
               <span className="text-muted">
-                {t("memoryviewer.field.entity", { defaultValue: "Entity" })}
+                {t("memoryviewer.field.created", { defaultValue: "Created" })}
               </span>{" "}
-              <span className="font-mono text-2xs">{memory.entityId}</span>
+              {formatDateTime(memory.createdAt, {
+                fallback: t("memoryviewer.unknown", {
+                  defaultValue: "unknown",
+                }),
+              })}
             </div>
-          ) : null}
-          {memory.roomId ? (
-            <div className="text-xs-tight text-muted">
-              <span className="text-muted">
-                {t("memoryviewer.field.room", { defaultValue: "Room" })}
-              </span>{" "}
-              <span className="font-mono text-2xs">{memory.roomId}</span>
-            </div>
-          ) : null}
-          <div className="text-xs-tight text-muted">
-            <span className="text-muted">
-              {t("memoryviewer.field.created", { defaultValue: "Created" })}
-            </span>{" "}
-            {formatDateTime(memory.createdAt, {
-              fallback: t("memoryviewer.unknown", { defaultValue: "unknown" }),
-            })}
           </div>
-          <div className="text-xs-tight text-muted">
-            <span className="text-muted">
-              {t("memoryviewer.field.id", { defaultValue: "ID" })}
-            </span>{" "}
-            <span className="font-mono text-2xs">{memory.id}</span>
-          </div>
-        </div>
+        </Card>
       ) : null}
     </Button>
   );
 });
 
+function MemoryListSurface({
+  memories,
+  expandedId,
+  onToggle,
+  testId,
+}: {
+  memories: MemoryBrowseItem[];
+  expandedId: string | null;
+  onToggle: (id: string) => void;
+  testId?: string;
+}) {
+  return (
+    <Card
+      variant="panel"
+      radius="xlarge"
+      className="overflow-hidden"
+      data-testid={testId}
+    >
+      {memories.map((memory, index) => (
+        <Card
+          asChild
+          key={memory.id}
+          variant={index > 0 ? "topDivider" : "transparentSquare"}
+        >
+          <div>
+            <MemoryCard
+              memory={memory}
+              expanded={expandedId === memory.id}
+              onToggle={onToggle}
+            />
+          </div>
+        </Card>
+      ))}
+    </Card>
+  );
+}
+
+function MemoryStateSurface({ children }: { children: ReactNode }) {
+  return (
+    <Card variant="panel" radius="xlarge" className="overflow-hidden">
+      {children}
+    </Card>
+  );
+}
+
 // ── Memory Feed ──────────────────────────────────────────────────────────
 
-function MemoryFeedPanel({ typeFilter }: { typeFilter: readonly string[] }) {
+function MemoryFeedPanel({
+  typeFilter,
+  authority,
+  onRuntimeUnavailable,
+}: {
+  typeFilter: readonly string[];
+  authority: string;
+  onRuntimeUnavailable: () => void;
+}) {
   const { t } = useTranslation();
+  const runCapabilityWarmup = useAbortableCapabilityWarmup();
   // Seed the first page from the shared cache so a revisit paints the
   // last-known feed instantly and revalidates silently. Pagination appends
-  // (`before`) stay uncached — only the base page is the instant-revisit win.
-  const feedCacheKey = `memory:feed:${typeFilterCacheKey(typeFilter)}`;
+  // (`before`) stay uncached; only the base page is the instant-revisit win.
+  const feedCacheKey = `memory:${authority}:feed:${typeFilterCacheKey(typeFilter)}`;
   const cachedFeed = getCached<MemoryFeedResponse>(feedCacheKey);
   const [loading, setLoading] = useState(!cachedFeed);
   const [feed, setFeed] = useState<MemoryBrowseItem[]>(
     cachedFeed?.data.memories ?? [],
   );
   const [hasMore, setHasMore] = useState(cachedFeed?.data.hasMore ?? false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<MemoryIssue | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const loadingMore = useRef(false);
 
@@ -320,17 +438,20 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: readonly string[] }) {
       options?: { silent?: boolean },
     ) => {
       if (loadingMore.current && before) return;
+      let lifecycleAborted = false;
       if (before) loadingMore.current = true;
       else if (!options?.silent) setLoading(true);
       setError(null);
 
       try {
-        const result: MemoryFeedResponse = await client.getMemoryFeed({
-          type: serverTypeParam(typeFilter),
-          limit: FEED_PAGE_SIZE,
-          before: before?.createdAt,
-          beforeId: before?.id,
-        });
+        const result: MemoryFeedResponse = await runCapabilityWarmup(() =>
+          client.getMemoryFeed({
+            type: serverTypeParam(typeFilter),
+            limit: FEED_PAGE_SIZE,
+            before: before?.createdAt,
+            beforeId: before?.id,
+          }),
+        );
         const memories = filterMemoriesByTypes(result.memories, typeFilter);
         if (before) {
           // Cap retained items so a long pagination session can't grow the
@@ -343,20 +464,23 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: readonly string[] }) {
         }
         setHasMore(result.hasMore);
       } catch (err) {
-        setError(
-          err instanceof Error
-            ? err.message
-            : t("memoryviewer.error.feed", {
-                defaultValue:
-                  "Unable to load the memory feed. Check the connection and try again.",
-              }),
-        );
+        if (isCapabilityWarmupAbort(err)) {
+          lifecycleAborted = true;
+          return;
+        }
+        if (isMemoryRuntimeUnavailable(err)) {
+          onRuntimeUnavailable();
+          return;
+        }
+        setError(memoryIssue(err, t));
       } finally {
-        setLoading(false);
-        loadingMore.current = false;
+        if (!lifecycleAborted) {
+          setLoading(false);
+          loadingMore.current = false;
+        }
       }
     },
-    [typeFilter, t, feedCacheKey],
+    [typeFilter, t, feedCacheKey, onRuntimeUnavailable, runCapabilityWarmup],
   );
 
   useEffect(() => {
@@ -378,75 +502,85 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: readonly string[] }) {
   };
 
   if (loading && feed.length === 0) {
-    return <ListSkeleton rows={6} />;
+    return (
+      <MemoryStateSurface>
+        <div className="p-4 min-[700px]:p-5">
+          <ListSkeleton rows={6} />
+        </div>
+      </MemoryStateSurface>
+    );
   }
 
   if (error) {
     return (
-      <PagePanel.Notice
-        tone="danger"
-        actions={
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className={MEMORY_FOCUS_CLASS}
-            onClick={() => void loadFeed()}
-          >
-            {t("memoryviewer.retry", { defaultValue: "Retry" })}
-          </Button>
-        }
-      >
-        {error}
-      </PagePanel.Notice>
+      <MemoryStateSurface>
+        <PagePanel.ContentState
+          state="error"
+          placement="workspace"
+          icon={<AlertTriangle className="size-5" />}
+          title={error.title}
+          description={error.description}
+          action={
+            error.retryable ? (
+              <Button
+                type="button"
+                size="touch"
+                variant="outline"
+                className={MEMORY_FOCUS_CLASS}
+                onClick={() => void loadFeed()}
+              >
+                {t("memoryviewer.retry", { defaultValue: "Retry" })}
+              </Button>
+            ) : undefined
+          }
+        />
+      </MemoryStateSurface>
     );
   }
 
   if (feed.length === 0) {
     return (
-      <PagePanel.FeatureEmpty
-        className="memory-feed-empty min-h-[24rem]"
-        features={MEMORY_FEED_EMPTY_FEATURES.map((feature) => ({
-          ...feature,
-          label: t(feature.labelKey, { defaultValue: feature.defaultLabel }),
-        }))}
-        icon={Brain}
-        iconTone="bg-accent/12 text-accent"
-        title={t("memoryviewer.noMemoriesYet", {
-          defaultValue: "No memories yet",
-        })}
-        description={t("memoryviewer.empty.description", {
-          defaultValue: "Chat with Eliza and memories will show up here.",
-        })}
-      >
-        <Button
-          type="button"
-          className={MEMORY_FOCUS_CLASS}
-          data-chat-open="true"
-          onClick={dispatchChatOpen}
-        >
-          {t("memoryviewer.empty.askEliza", { defaultValue: "Ask Eliza" })}
-        </Button>
-      </PagePanel.FeatureEmpty>
+      <MemoryStateSurface>
+        <PagePanel.ContentState
+          state="empty"
+          placement="workspace"
+          className="min-h-[20rem]"
+          icon={<Brain className="size-5" />}
+          title={t("memoryviewer.noMemoriesYet", {
+            defaultValue: "No memories yet",
+          })}
+          description={t("memoryviewer.empty.description", {
+            defaultValue: "Chat with Eliza and memories will appear here.",
+          })}
+          action={
+            <Button
+              type="button"
+              className={MEMORY_FOCUS_CLASS}
+              data-chat-open="true"
+              onClick={dispatchChatOpen}
+            >
+              {t("memoryviewer.empty.askEliza", { defaultValue: "Ask Eliza" })}
+            </Button>
+          }
+        />
+      </MemoryStateSurface>
     );
   }
 
   return (
-    <div className="space-y-2" data-testid="memory-feed">
-      {feed.map((memory) => (
-        <MemoryCard
-          key={memory.id}
-          memory={memory}
-          expanded={expandedId === memory.id}
-          onToggle={toggleExpanded}
-        />
-      ))}
+    <div className="space-y-3">
+      <MemoryListSurface
+        memories={feed}
+        expandedId={expandedId}
+        onToggle={toggleExpanded}
+        testId="memory-feed"
+      />
       {hasMore ? (
         <Button
           type="button"
-          size="sm"
+          size="touch"
           variant="outline"
-          className={`${MEMORY_FOCUS_CLASS} mt-3 w-full`}
+          className={`${MEMORY_FOCUS_CLASS} w-full`}
           onClick={loadMore}
         >
           {t("memoryviewer.loadOlder", { defaultValue: "Load older" })}
@@ -462,17 +596,22 @@ function MemoryBrowserPanel({
   typeFilter,
   entityId,
   entityIds,
+  authority,
+  onRuntimeUnavailable,
 }: {
   typeFilter: readonly string[];
   entityId: string | null;
   entityIds: string[] | null;
+  authority: string;
+  onRuntimeUnavailable: () => void;
 }) {
   const { t } = useTranslation();
+  const runCapabilityWarmup = useAbortableCapabilityWarmup();
   const [searchInput, setSearchInput] = useState("");
   const deferredSearch = useDeferredValue(searchInput);
 
   // The floating chat IS the memory-text search box while Browse is open (and
-  // not scoped to a person — entity mode has no free-text search). Typing in the
+  // not scoped to a person because entity mode has no free-text search). Typing in the
   // composer drives `searchInput`; the binding clears when the view unmounts.
   const searchNoun = t("memoryviewer.searchNoun", {
     defaultValue: "memories",
@@ -492,14 +631,14 @@ function MemoryBrowserPanel({
   // revisits instantly without colliding. Offset is appended per-call below.
   const typeKey = typeFilterCacheKey(typeFilter);
   const browseKeyBase = entityId
-    ? `memory:browse:entity:${entityId}:${(entityIds ?? []).join(",")}:${typeKey}`
-    : `memory:browse:all:${typeKey}:${deferredSearch.trim()}`;
+    ? `memory:${authority}:browse:entity:${entityId}:${(entityIds ?? []).join(",")}:${typeKey}`
+    : `memory:${authority}:browse:all:${typeKey}:${deferredSearch.trim()}`;
   const cachedBrowse = getCached<MemoryBrowseResponse>(`${browseKeyBase}:0`);
   const [loading, setLoading] = useState(!cachedBrowse);
   const [result, setResult] = useState<MemoryBrowseResponse | null>(
     cachedBrowse?.data ?? null,
   );
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<MemoryIssue | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
 
@@ -510,22 +649,25 @@ function MemoryBrowserPanel({
   const loadMemories = useCallback(
     async (pageOffset: number, options?: { silent?: boolean }) => {
       const cacheKey = `${browseKeyBase}:${pageOffset}`;
+      let lifecycleAborted = false;
       if (!options?.silent) setLoading(true);
       setError(null);
       try {
-        const resp: MemoryBrowseResponse = entityId
-          ? await client.getMemoriesByEntity(entityId, {
-              type: serverTypeParam(typeFilter),
-              limit: BROWSE_PAGE_SIZE,
-              offset: pageOffset,
-              entityIds: entityIds ?? undefined,
-            })
-          : await client.browseMemories({
-              type: serverTypeParam(typeFilter),
-              q: deferredSearch.trim() || undefined,
-              limit: BROWSE_PAGE_SIZE,
-              offset: pageOffset,
-            });
+        const resp: MemoryBrowseResponse = await runCapabilityWarmup(() =>
+          entityId
+            ? client.getMemoriesByEntity(entityId, {
+                type: serverTypeParam(typeFilter),
+                limit: BROWSE_PAGE_SIZE,
+                offset: pageOffset,
+                entityIds: entityIds ?? undefined,
+              })
+            : client.browseMemories({
+                type: serverTypeParam(typeFilter),
+                q: deferredSearch.trim() || undefined,
+                limit: BROWSE_PAGE_SIZE,
+                offset: pageOffset,
+              }),
+        );
         const filtered = {
           ...resp,
           memories: filterMemoriesByTypes(resp.memories, typeFilter),
@@ -533,19 +675,29 @@ function MemoryBrowserPanel({
         setResult(filtered);
         setCached(cacheKey, filtered);
       } catch (err) {
-        setError(
-          err instanceof Error
-            ? err.message
-            : t("memoryviewer.error.memories", {
-                defaultValue:
-                  "Unable to load memories. Check the connection and try again.",
-              }),
-        );
+        if (isCapabilityWarmupAbort(err)) {
+          lifecycleAborted = true;
+          return;
+        }
+        if (isMemoryRuntimeUnavailable(err)) {
+          onRuntimeUnavailable();
+          return;
+        }
+        setError(memoryIssue(err, t));
       } finally {
-        setLoading(false);
+        if (!lifecycleAborted) setLoading(false);
       }
     },
-    [typeFilter, entityId, entityIds, deferredSearch, t, browseKeyBase],
+    [
+      typeFilter,
+      entityId,
+      entityIds,
+      deferredSearch,
+      t,
+      browseKeyBase,
+      onRuntimeUnavailable,
+      runCapabilityWarmup,
+    ],
   );
 
   useEffect(() => {
@@ -588,76 +740,87 @@ function MemoryBrowserPanel({
         <ChatSearchHint noun={searchNoun} query={searchInput} />
       )}
       {loading && !result ? (
-        <ListSkeleton rows={6} />
-      ) : error ? (
-        <PagePanel.Notice
-          tone="danger"
-          actions={
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className={MEMORY_FOCUS_CLASS}
-              onClick={() => void loadMemories(offset)}
-            >
-              {t("memoryviewer.retry", { defaultValue: "Retry" })}
-            </Button>
-          }
-        >
-          {error}
-        </PagePanel.Notice>
-      ) : !result || result.memories.length === 0 ? (
-        <PagePanel.FeatureEmpty
-          icon={Search}
-          iconTone="bg-bg-hover text-muted"
-          title={t("memoryviewer.noMemoriesFound", {
-            defaultValue: "No memories found",
-          })}
-          description={t("memoryviewer.noMemoriesFoundDescription", {
-            defaultValue:
-              "Try another type filter, or search by typing in the chat.",
-          })}
-        >
-          <div className="flex flex-wrap justify-center gap-x-4 gap-y-1.5">
-            {TYPE_KEYS.slice(0, 4).map((type) => (
-              <span
-                key={type}
-                className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs-tight text-muted"
-              >
-                <span
-                  className={`memory-type-dot-${type} inline-block size-2 rounded-full`}
-                />
-                {typeLabel(type, t)}
-              </span>
-            ))}
+        <MemoryStateSurface>
+          <div className="p-4 min-[700px]:p-5">
+            <ListSkeleton rows={6} />
           </div>
-          {entityId ? null : (
-            <Button
-              type="button"
-              className={`${MEMORY_FOCUS_CLASS} mt-4`}
-              data-chat-open="true"
-              onClick={dispatchChatOpen}
-            >
-              {t("memoryviewer.empty.askEliza", { defaultValue: "Ask Eliza" })}
-            </Button>
-          )}
-        </PagePanel.FeatureEmpty>
+        </MemoryStateSurface>
+      ) : error ? (
+        <MemoryStateSurface>
+          <PagePanel.ContentState
+            state="error"
+            placement="workspace"
+            icon={<AlertTriangle className="size-5" />}
+            title={error.title}
+            description={error.description}
+            action={
+              error.retryable ? (
+                <Button
+                  type="button"
+                  size="touch"
+                  variant="outline"
+                  className={MEMORY_FOCUS_CLASS}
+                  onClick={() => void loadMemories(offset)}
+                >
+                  {t("memoryviewer.retry", { defaultValue: "Retry" })}
+                </Button>
+              ) : undefined
+            }
+          />
+        </MemoryStateSurface>
+      ) : !result || result.memories.length === 0 ? (
+        <MemoryStateSurface>
+          <PagePanel.ContentState
+            state="empty"
+            placement="workspace"
+            className="min-h-[20rem]"
+            icon={<Search className="size-5" />}
+            title={t("memoryviewer.noMemoriesFound", {
+              defaultValue: "No memories found",
+            })}
+            description={
+              entityId
+                ? t("memoryviewer.noPersonMemoriesFoundDescription", {
+                    defaultValue:
+                      "This person doesn't have any matching memories.",
+                  })
+                : t("memoryviewer.noMemoriesFoundDescription", {
+                    defaultValue:
+                      "Try another filter or search from the chat bar.",
+                  })
+            }
+            action={
+              entityId ? undefined : (
+                <Button
+                  type="button"
+                  className={MEMORY_FOCUS_CLASS}
+                  data-chat-open="true"
+                  onClick={dispatchChatOpen}
+                >
+                  {t("memoryviewer.empty.askEliza", {
+                    defaultValue: "Ask Eliza",
+                  })}
+                </Button>
+              )
+            }
+          />
+        </MemoryStateSurface>
       ) : (
         <>
-          <div className="flex items-center justify-between gap-3 text-xs-tight text-muted">
+          <div className="flex items-center justify-between gap-3 text-xs-tight text-[color:var(--settings-muted)]">
             <span className="tabular-nums">
               {result.totalIsExact === false
                 ? t("memoryviewer.pageRangeIncomplete", {
                     start: offset + 1,
                     end: offset + result.memories.length,
                     total: result.total,
-                    defaultValue: "{{start}}–{{end}} of at least {{total}}",
+                    defaultValue: "{{start}}-{{end}} of at least {{total}}",
                   })
                 : t("memoryviewer.pageRange", {
                     start: offset + 1,
                     end: offset + result.memories.length,
                     total: result.total,
-                    defaultValue: "{{start}}–{{end}} of {{total}}",
+                    defaultValue: "{{start}}-{{end}} of {{total}}",
                   })}
             </span>
             <div className="flex gap-2">
@@ -691,14 +854,11 @@ function MemoryBrowserPanel({
               </Button>
             </div>
           </div>
-          {result.memories.map((memory) => (
-            <MemoryCard
-              key={memory.id}
-              memory={memory}
-              expanded={expandedId === memory.id}
-              onToggle={toggleExpanded}
-            />
-          ))}
+          <MemoryListSurface
+            memories={result.memories}
+            expandedId={expandedId}
+            onToggle={toggleExpanded}
+          />
         </>
       )}
     </div>
@@ -736,7 +896,7 @@ function TypeFilterMenu({
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
-          variant="memorySidebar"
+          variant="outline"
           size="memorySidebar"
           className={MEMORY_FOCUS_CLASS}
           aria-label={filterLabel}
@@ -829,7 +989,7 @@ const PeoplePicker = memo(function PeoplePicker({
       <PopoverTrigger asChild>
         <Button
           type="button"
-          variant="memorySidebar"
+          variant="outline"
           size="memorySidebar"
           className={MEMORY_FOCUS_CLASS}
           aria-label={personLabel}
@@ -837,7 +997,7 @@ const PeoplePicker = memo(function PeoplePicker({
         >
           <span className="flex min-w-0 items-center gap-2">
             {selected ? (
-              <span className="flex  size-6 shrink-0 items-center justify-center rounded-sm bg-bg-accent text-2xs font-semibold">
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-accent-subtle text-2xs font-semibold text-[color:var(--settings-foreground)]">
                 {selected.displayName.charAt(0).toUpperCase()}
               </span>
             ) : null}
@@ -888,7 +1048,7 @@ const PeoplePicker = memo(function PeoplePicker({
                   setOpen(false);
                 }}
               >
-                <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-bg-accent text-2xs font-semibold">
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-accent-subtle text-2xs font-semibold text-[color:var(--settings-foreground)]">
                   {person.displayName.charAt(0).toUpperCase()}
                 </span>
                 <span className="min-w-0 flex-1 truncate">
@@ -908,13 +1068,30 @@ const PeoplePicker = memo(function PeoplePicker({
   );
 });
 
-export function MemoryViewerView({
-  contentHeader,
-}: {
+export interface MemoryViewerViewProps {
   contentHeader?: ReactNode;
-} = {}) {
+}
+
+export function MemoryViewerView(props: MemoryViewerViewProps = {}) {
+  const authority = useActiveAgentAuthority();
+  return (
+    <MemoryViewerViewForAuthority
+      key={authority}
+      {...props}
+      authority={authority}
+    />
+  );
+}
+
+function MemoryViewerViewForAuthority({
+  contentHeader,
+  authority,
+}: MemoryViewerViewProps & { authority: string }) {
   const t = useAppSelector((s) => s.t);
   const setTab = useAppSelector((s) => s.setTab);
+  const authorityRef = useRef(authority);
+  authorityRef.current = authority;
+  const runCapabilityWarmup = useAbortableCapabilityWarmup();
   // Mobile: the people/filter sidebar opens from a compact "People" control in
   // the view header (never an inline trigger between the header and content).
   const mobileSidebarHeader = useWorkspaceMobileSidebarHeader();
@@ -922,50 +1099,82 @@ export function MemoryViewerView({
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
   const [stats, setStats] = useState<MemoryStatsResponse | null>(null);
   const [statsError, setStatsError] = useState(false);
+  const [unavailableAuthority, setUnavailableAuthority] = useState<
+    string | null
+  >(null);
+  const memoryRuntimeUnavailable = unavailableAuthority === authority;
 
   // People list for person-centric view. `peopleError` keeps a failed load
-  // visually distinct from the designed "No people yet." empty state — a
+  // visually distinct from the designed "No people yet." empty state; a
   // 5xx/transport failure must never render as healthy-empty (three-state rule).
   const [people, setPeople] = useState<RelationshipsPersonSummary[]>([]);
   const [peopleLoading, setPeopleLoading] = useState(true);
   const [peopleError, setPeopleError] = useState(false);
+  const [peopleUnavailable, setPeopleUnavailable] = useState(false);
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
 
+  const markMemoryRuntimeUnavailable = useCallback(() => {
+    setUnavailableAuthority(authority);
+    setStatsError(false);
+  }, [authority]);
+
   const loadStats = useCallback(() => {
-    void client
-      .getMemoryStats()
+    void runCapabilityWarmup(() => client.getMemoryStats())
       .then((s) => {
+        if (authorityRef.current !== authority) return;
         setStats(s);
         setStatsError(false);
       })
-      .catch(() => {
-        // error-policy:J4 stats are a sidebar summary — show the error row
+      .catch((err: unknown) => {
+        if (authorityRef.current !== authority) return;
+        if (isCapabilityWarmupAbort(err)) return;
+        if (isMemoryRuntimeUnavailable(err)) {
+          markMemoryRuntimeUnavailable();
+          return;
+        }
+        // error-policy:J4 stats are a sidebar summary; show the error row
         // and keep the rest of the page usable.
         setStatsError(true);
       });
-  }, []);
+  }, [authority, markMemoryRuntimeUnavailable, runCapabilityWarmup]);
 
   const loadPeople = useCallback(() => {
     setPeopleLoading(true);
     setPeopleError(false);
-    void client
-      .getRelationshipsPeople({ limit: 200 })
+    setPeopleUnavailable(false);
+    void runCapabilityWarmup(() =>
+      client.getRelationshipsPeople({ limit: 200 }),
+    )
       .then((result) => {
+        if (authorityRef.current !== authority) return;
         setPeople(result.people);
         setPeopleError(false);
+        setPeopleUnavailable(false);
+        setPeopleLoading(false);
       })
       .catch((err: unknown) => {
-        // error-policy:J4 a 404 means the relationships surface isn't hosted
-        // here — the designed empty state is correct. Anything else (5xx,
-        // transport, parse) flips the sidebar into an explicit error render
-        // instead of masquerading as "No people yet."
+        if (authorityRef.current !== authority) return;
+        if (isCapabilityWarmupAbort(err)) return;
+        // A Shared runtime has no relationships graph to derive honest people
+        // from. Treat the typed capability response (and legacy 404) as a
+        // stable unavailable state; retry only genuinely transient failures.
         setPeople([]);
-        setPeopleError(!(isApiError(err) && err.status === 404));
-      })
-      .finally(() => setPeopleLoading(false));
-  }, []);
+        setSelectedPersonId(null);
+        if (isRelationshipsRuntimeUnavailable(err)) {
+          setPeopleUnavailable(true);
+          setPeopleError(false);
+          setPeopleLoading(false);
+          return;
+        }
+        setPeopleUnavailable(false);
+        setPeopleError(true);
+        setPeopleLoading(false);
+      });
+  }, [authority, runCapabilityWarmup]);
 
   useEffect(() => {
+    setStats(null);
+    setStatsError(false);
     loadStats();
   }, [loadStats]);
 
@@ -1021,86 +1230,100 @@ export function MemoryViewerView({
   const sidebar = (
     <AppPageSidebar
       testId="memory-viewer-sidebar"
-      collapsible
+      collapsible={false}
+      resizable={false}
+      defaultWidth={272}
       contentIdentity="memory-viewer"
-      mobileTitle={t("memoryviewer.people", { defaultValue: "People" })}
+      mobileTitle={t("memoryviewer.filters", { defaultValue: "Filters" })}
+      className="settings-surface settings-canvas"
     >
-      <SidebarPanel>
-        <div className="flex flex-col gap-6 px-1 pt-2">
-          <div className="space-y-2">
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="text-xs-tight text-muted">
-                {t("memoryviewer.total", { defaultValue: "Total" })}
+      <div className="flex h-full flex-col gap-5 overflow-y-auto px-4 py-4 min-[700px]:px-5 min-[700px]:py-5">
+        <section className="space-y-2">
+          <h2 className="px-1 text-xs font-semibold text-[color:var(--settings-muted)]">
+            {t("memoryviewer.library", { defaultValue: "Library" })}
+          </h2>
+          <div className="space-y-4 rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)] p-4">
+            <div className="flex min-h-11 items-center justify-between gap-3">
+              <span className="text-sm text-[color:var(--settings-foreground)]">
+                {t("memoryviewer.allMemories", {
+                  defaultValue: "All memories",
+                })}
               </span>
-              <span className="text-sm font-semibold tabular-nums text-txt">
-                {stats ? stats.total : "—"}
+              <span className="text-sm font-semibold tabular-nums text-[color:var(--settings-foreground)]">
+                {stats ? stats.total : "..."}
               </span>
             </div>
             {statsError ? (
-              <div className="space-y-2 text-xs text-danger">
-                <div>
-                  {t("memoryviewer.statsError", {
-                    defaultValue:
-                      "Unable to load memory stats. Check the connection and try again.",
-                  })}
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className={MEMORY_FOCUS_CLASS}
-                  onClick={loadStats}
-                >
-                  {t("memoryviewer.retry", { defaultValue: "Retry" })}
-                </Button>
+              <div
+                role="status"
+                aria-label={t("memoryviewer.statsError", {
+                  defaultValue: "Memory stats unavailable",
+                })}
+                className="text-xs leading-5 text-[color:var(--settings-muted)]"
+              >
+                {t("memoryviewer.statsUnavailable", {
+                  defaultValue: "The total isn't available right now.",
+                })}
               </div>
             ) : null}
-            <div className="text-xs-tight text-muted">
-              {t("memoryviewer.filterByType", {
-                defaultValue: "Filter by type",
-              })}
+            <div className="space-y-2 border-t border-[color:var(--settings-hairline)] pt-4">
+              <div className="text-xs text-[color:var(--settings-muted)]">
+                {t("memoryviewer.filterByType", {
+                  defaultValue: "Type",
+                })}
+              </div>
+              <TypeFilterMenu
+                types={typeOptions}
+                selected={typeFilter}
+                onChange={setTypeFilter}
+                allLabel={t("memoryviewer.allTypes", {
+                  defaultValue: "All types",
+                })}
+                typeCountLabel={(count) =>
+                  t("memoryviewer.typeCount", {
+                    count,
+                    defaultValue: "{{count}} types",
+                  })
+                }
+                filterLabel={t("memoryviewer.filterByType", {
+                  defaultValue: "Filter by type",
+                })}
+              />
             </div>
-            <TypeFilterMenu
-              types={typeOptions}
-              selected={typeFilter}
-              onChange={setTypeFilter}
-              allLabel={t("memoryviewer.allTypes", {
-                defaultValue: "All types",
-              })}
-              typeCountLabel={(count) =>
-                t("memoryviewer.typeCount", {
-                  count,
-                  defaultValue: "{{count}} types",
-                })
-              }
-              filterLabel={t("memoryviewer.filterByType", {
-                defaultValue: "Filter by type",
-              })}
-            />
           </div>
+        </section>
 
-          <div className="space-y-2">
-            <div className="text-xs-tight text-muted">
-              {t("memoryviewer.person", { defaultValue: "Person" })}
-            </div>
+        <section className="space-y-2">
+          <h2 className="px-1 text-xs font-semibold text-[color:var(--settings-muted)]">
+            {t("memoryviewer.people", { defaultValue: "People" })}
+          </h2>
+          <div className="rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)] p-4">
             {peopleLoading ? (
-              <div className="text-xs text-muted">
-                {t("memoryviewer.loading", { defaultValue: "Loading…" })}
+              <div className="flex min-h-11 items-center text-sm text-[color:var(--settings-muted)]">
+                {t("memoryviewer.loading", { defaultValue: "Loading..." })}
+              </div>
+            ) : peopleUnavailable ? (
+              <div
+                data-testid="memory-people-unavailable"
+                className="py-2 text-sm leading-5 text-[color:var(--settings-muted)]"
+              >
+                {t("memoryviewer.peopleUnavailableSimple", {
+                  defaultValue: "People filters aren't available here.",
+                })}
               </div>
             ) : peopleError ? (
               <div
                 data-testid="memory-people-error"
-                className="space-y-2 text-xs text-danger"
+                className="space-y-3 py-1 text-sm text-[color:var(--settings-muted)]"
               >
                 <div>
-                  {t("memoryviewer.peopleError", {
-                    defaultValue:
-                      "Unable to load people. Check the connection and try again.",
+                  {t("memoryviewer.peopleCouldNotLoad", {
+                    defaultValue: "People couldn't load.",
                   })}
                 </div>
                 <Button
                   type="button"
-                  size="sm"
+                  size="touch"
                   variant="outline"
                   className={MEMORY_FOCUS_CLASS}
                   onClick={loadPeople}
@@ -1109,16 +1332,18 @@ export function MemoryViewerView({
                 </Button>
               </div>
             ) : people.length === 0 ? (
-              <div className="space-y-2">
-                <div className="text-xs text-muted">
+              <div className="space-y-2 py-1">
+                <div className="text-sm text-[color:var(--settings-muted)]">
                   {t("memoryviewer.noPeopleYet", {
-                    defaultValue: "No people yet.",
+                    defaultValue: "No people yet",
                   })}
                 </div>
                 <Button
                   type="button"
-                  variant="mutedLink"
-                  className={MEMORY_FOCUS_CLASS}
+                  size="touch"
+                  variant="ghostMuted"
+                  align="start"
+                  className={`${MEMORY_FOCUS_CLASS} -mx-3 w-[calc(100%+1.5rem)] justify-start`}
                   onClick={() => setTab("relationships")}
                 >
                   {t("memoryviewer.openRelationships", {
@@ -1163,9 +1388,10 @@ export function MemoryViewerView({
                 </div>
                 <Button
                   type="button"
-                  variant="mutedLink"
+                  size="touch"
+                  variant="ghostMuted"
                   align="start"
-                  className={MEMORY_FOCUS_CLASS}
+                  className={`${MEMORY_FOCUS_CLASS} -mx-3 mt-2 w-[calc(100%+1.5rem)] justify-start`}
                   onClick={() => setTab("relationships")}
                 >
                   {t("memoryviewer.openRelationships", {
@@ -1175,75 +1401,132 @@ export function MemoryViewerView({
               </>
             )}
           </div>
-        </div>
-      </SidebarPanel>
+        </section>
+      </div>
     </AppPageSidebar>
   );
 
   return (
     <ShellViewAgentSurface viewId="memories">
-      <div className="flex h-full min-h-0 w-full flex-col">
+      <div className="settings-surface settings-canvas flex h-full min-h-0 w-full flex-col">
         <ViewHeader
           title={t("memoryviewer.title", { defaultValue: "Memories" })}
+          className="text-[color:var(--settings-foreground)]"
           right={
-            <ViewHeaderSidebarTrigger
-              control={mobileSidebarHeader.control}
-              className={MEMORY_FOCUS_CLASS}
-            />
+            memoryRuntimeUnavailable ? undefined : (
+              <ViewHeaderSidebarTrigger
+                control={mobileSidebarHeader.control}
+                className={MEMORY_FOCUS_CLASS}
+              />
+            )
           }
         />
         <div className="flex min-h-0 flex-1 overflow-hidden">
           <WorkspaceMobileSidebarScope controls={mobileSidebarHeader.controls}>
-            <PageLayout
-              sidebar={sidebar}
+            <WorkspaceLayout
+              sidebar={memoryRuntimeUnavailable ? null : sidebar}
               contentHeader={contentHeader}
+              headerPlacement="outside"
+              contentPadding={false}
+              className="settings-canvas"
+              contentClassName="settings-canvas overflow-y-hidden"
+              contentInnerClassName="settings-canvas"
               data-testid="memory-viewer-view"
             >
-              <div className="eliza-chat-scroll flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto pb-[var(--eliza-chat-clearance,5.25rem)] pe-[var(--eliza-chat-side-clearance,0px)]">
-                <div className="flex w-full flex-col items-start gap-3">
-                  <div
-                    ref={viewModeControl.ref}
-                    className="min-h-11"
-                    {...viewModeControl.agentProps}
-                  >
-                    <SegmentedControl
-                      value={viewMode}
-                      onValueChange={(v) => setViewMode(v as ViewMode)}
-                      items={viewModeItems}
-                      buttonClassName={`${MEMORY_FOCUS_CLASS} min-h-11 px-4 py-2`}
-                    />
-                  </div>
-                  {selectedPerson ? (
-                    <div className="flex items-center gap-2 text-sm text-muted">
-                      {t("memoryviewer.filteredTo", {
-                        defaultValue: "Filtered to",
-                      })}
-                      <MetaPill compact>{selectedPerson.displayName}</MetaPill>
-                      <Button
-                        type="button"
-                        size="touch"
-                        variant="ghostMuted"
-                        className={MEMORY_FOCUS_CLASS}
-                        onClick={handleClearPerson}
-                      >
-                        {t("memoryviewer.clear", { defaultValue: "Clear" })}
-                      </Button>
-                    </div>
-                  ) : null}
-                </div>
+              <div
+                data-testid="memory-content-scroll-region"
+                className="settings-canvas min-h-0 flex-1 overflow-y-auto"
+              >
+                <PagePanel.ContentRail
+                  width="standard"
+                  className="flex flex-col gap-4 pb-6 pt-2 min-[700px]:gap-5 min-[700px]:pb-8 min-[700px]:pt-5"
+                >
+                  {memoryRuntimeUnavailable ? (
+                    <MemoryStateSurface>
+                      <PagePanel.ContentState
+                        state="error"
+                        placement="workspace"
+                        tone="warning"
+                        role="status"
+                        data-testid="memory-runtime-unavailable"
+                        className="min-h-[20rem]"
+                        icon={<Brain className="size-5" />}
+                        title={t("memoryviewer.runtimeUnavailable", {
+                          defaultValue: "Memories unavailable",
+                        })}
+                        description={t(
+                          "memoryviewer.runtimeUnavailableSimpleDescription",
+                          {
+                            defaultValue:
+                              "Durable memories aren't available here.",
+                          },
+                        )}
+                      />
+                    </MemoryStateSurface>
+                  ) : (
+                    <>
+                      <div className="flex w-full flex-col items-start gap-2">
+                        <div
+                          ref={viewModeControl.ref}
+                          className="min-h-11"
+                          {...viewModeControl.agentProps}
+                        >
+                          <SegmentedControl
+                            role="tablist"
+                            aria-label={t("memoryviewer.viewMode", {
+                              defaultValue: "Memory view mode",
+                            })}
+                            value={viewMode}
+                            onValueChange={(v) => setViewMode(v as ViewMode)}
+                            items={viewModeItems}
+                            buttonClassName={`${MEMORY_FOCUS_CLASS} min-h-11 px-4 py-2`}
+                          />
+                        </div>
+                        {selectedPerson ? (
+                          <div className="flex min-h-11 flex-wrap items-center gap-2 text-sm text-[color:var(--settings-muted)]">
+                            {t("memoryviewer.filteredTo", {
+                              defaultValue: "Showing",
+                            })}
+                            <MetaPill compact>
+                              {selectedPerson.displayName}
+                            </MetaPill>
+                            <Button
+                              type="button"
+                              size="touch"
+                              variant="ghostMuted"
+                              className={MEMORY_FOCUS_CLASS}
+                              onClick={handleClearPerson}
+                            >
+                              {t("memoryviewer.clear", {
+                                defaultValue: "Clear",
+                              })}
+                            </Button>
+                          </div>
+                        ) : null}
+                      </div>
 
-                {/* Content */}
-                {viewMode === "feed" ? (
-                  <MemoryFeedPanel typeFilter={typeFilter} />
-                ) : (
-                  <MemoryBrowserPanel
-                    typeFilter={typeFilter}
-                    entityId={selectedPersonId}
-                    entityIds={selectedEntityIds}
-                  />
-                )}
+                      {viewMode === "feed" ? (
+                        <MemoryFeedPanel
+                          key={`feed:${authority}`}
+                          typeFilter={typeFilter}
+                          authority={authority}
+                          onRuntimeUnavailable={markMemoryRuntimeUnavailable}
+                        />
+                      ) : (
+                        <MemoryBrowserPanel
+                          key={`browse:${authority}`}
+                          typeFilter={typeFilter}
+                          entityId={selectedPersonId}
+                          entityIds={selectedEntityIds}
+                          authority={authority}
+                          onRuntimeUnavailable={markMemoryRuntimeUnavailable}
+                        />
+                      )}
+                    </>
+                  )}
+                </PagePanel.ContentRail>
               </div>
-            </PageLayout>
+            </WorkspaceLayout>
           </WorkspaceMobileSidebarScope>
         </div>
       </div>

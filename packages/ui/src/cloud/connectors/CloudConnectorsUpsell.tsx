@@ -10,7 +10,7 @@
 
 "use client";
 
-import { Bot, Cloud, MessageSquare, Plug, RadioTower } from "lucide-react";
+import { Cloud, Plug, RadioTower } from "lucide-react";
 import { useCallback } from "react";
 import { useAgentElement } from "../../agent-surface";
 import {
@@ -22,30 +22,6 @@ import { Button } from "../../components/ui/button";
 import { useAppSelectorShallow } from "../../state";
 import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
 import { CloudConnectorsSection } from "./CloudConnectorsSection";
-
-const CLOUD_CONNECTOR_FEATURES = [
-  {
-    icon: RadioTower,
-    key: "alwaysOnGateway",
-    label: "Always-on gateway hosting",
-    description:
-      "Keep Discord, Telegram, WhatsApp, Twilio, Google, and Microsoft routes online without depending on this Mac staying awake.",
-  },
-  {
-    icon: Bot,
-    key: "agentRouting",
-    label: "Agent routing",
-    description:
-      "Route each cloud connection to the right hosted agent or local app target as your setup grows.",
-  },
-  {
-    icon: MessageSquare,
-    key: "sharedSurfaces",
-    label: "Shared messaging surfaces",
-    description:
-      "Use managed OAuth, webhooks, and bot gateways for teams and devices that cannot reach your local machine.",
-  },
-] as const;
 
 function CloudConnectorsUpsell(): React.JSX.Element {
   const {
@@ -91,11 +67,11 @@ function CloudConnectorsUpsell(): React.JSX.Element {
     <SettingsStack>
       <SettingsGroup
         title={t("settings.cloudConnectorsUpsell.title", {
-          defaultValue: "Hosted connector gateways",
+          defaultValue: "Connect Eliza Cloud",
         })}
         description={t("settings.cloudConnectorsUpsell.description", {
           defaultValue:
-            "Local connectors stay available in the regular Connectors tab. Cloud Connectors unlock hosted OAuth and bot gateways when you want messaging to keep working beyond this machine.",
+            "Run OAuth, bot, and webhook gateways outside this device.",
         })}
         action={
           <Button
@@ -117,41 +93,27 @@ function CloudConnectorsUpsell(): React.JSX.Element {
         }
       >
         <SettingsRow
+          icon={RadioTower}
+          label={t("settings.cloudConnectorsUpsell.hostedLabel", {
+            defaultValue: "Hosted gateways",
+          })}
+          description={t("settings.cloudConnectorsUpsell.hostedDescription", {
+            defaultValue:
+              "Keep supported connections online when this device sleeps.",
+          })}
+        />
+        <SettingsRow
           icon={Plug}
           label={t("settings.cloudConnectorsUpsell.localModeLabel", {
-            defaultValue: "Cloud is not connected",
+            defaultValue: "Local connectors stay available",
           })}
           description={t(
             "settings.cloudConnectorsUpsell.localModeDescription",
             {
-              defaultValue:
-                "You can keep using local Discord, Telegram, Slack, iMessage, and WhatsApp connectors without Cloud.",
+              defaultValue: "Use Connectors without signing in to Cloud.",
             },
           )}
         />
-      </SettingsGroup>
-
-      <SettingsGroup
-        title={t("settings.cloudConnectorsUpsell.unlockTitle", {
-          defaultValue: "What Cloud Connectors unlock",
-        })}
-      >
-        {CLOUD_CONNECTOR_FEATURES.map((feature) => (
-          <SettingsRow
-            key={feature.key}
-            icon={feature.icon}
-            label={t(
-              `settings.cloudConnectorsUpsell.features.${feature.key}.label`,
-              {
-                defaultValue: feature.label,
-              },
-            )}
-            description={t(
-              `settings.cloudConnectorsUpsell.features.${feature.key}.description`,
-              { defaultValue: feature.description },
-            )}
-          />
-        ))}
       </SettingsGroup>
     </SettingsStack>
   );

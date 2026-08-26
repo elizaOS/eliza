@@ -7,7 +7,7 @@
  */
 import { logger } from "@elizaos/logger";
 import * as React from "react";
-import { isManagedCloudRuntime } from "../../cloud/managed-cloud-runtime";
+import { useSessionAuth } from "../../cloud/lib/use-session-auth";
 import { dispatchChatOpen } from "../../events";
 import { useViewCatalog } from "../../hooks/useViewCatalog";
 import type { ViewEntry } from "../../hooks/view-catalog";
@@ -45,16 +45,15 @@ export const LauncherSurface = React.memo(function LauncherSurface({
 }: LauncherSurfaceProps): React.JSX.Element {
   const { entries, get, loading } = useViewCatalog();
   const enabledKinds = useEnabledViewKinds();
-  const { appRuns, runtimeTarget, setActionNotice, setState, setTab, t } =
+  const { appRuns, setActionNotice, setState, setTab, t } =
     useAppSelectorShallow((state) => ({
       appRuns: state.appRuns,
-      runtimeTarget: state.startupCoordinator.target,
       setActionNotice: state.setActionNotice,
       setState: state.setState,
       setTab: state.setTab,
       t: state.t,
     }));
-  const managedCloudRuntime = isManagedCloudRuntime(runtimeTarget);
+  const { authenticated: cloudAuthenticated } = useSessionAuth();
   const isAosp = React.useMemo(() => isAospShellEnabled(), []);
 
   const page = React.useMemo<ViewEntry[]>(
@@ -74,10 +73,10 @@ export const LauncherSurface = React.memo(function LauncherSurface({
         {
           isAosp,
           enabledKinds,
-          cloudActive: managedCloudRuntime,
+          cloudActive: cloudAuthenticated,
         },
       ),
-    [catalogMode, entries, isAosp, enabledKinds, managedCloudRuntime],
+    [catalogMode, entries, isAosp, enabledKinds, cloudAuthenticated],
   );
 
   const handleLaunch = React.useCallback(

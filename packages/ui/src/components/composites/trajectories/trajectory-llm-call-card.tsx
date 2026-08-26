@@ -20,12 +20,14 @@ interface CallMetricProps {
 function CallMetric({ label, value, meta }: CallMetricProps) {
   return (
     <PagePanel.SummaryCard compact className="px-4 py-3">
-      <div className="text-xs-tight uppercase tracking-[0.14em] text-muted">
-        {label}
+      <div className="text-xs text-[color:var(--settings-muted)]">{label}</div>
+      <div className="mt-1 truncate text-sm font-semibold text-[color:var(--settings-foreground)]">
+        {value}
       </div>
-      <div className="mt-2 text-sm font-semibold text-txt">{value}</div>
       {meta ? (
-        <div className="mt-1 text-xs-tight text-muted">{meta}</div>
+        <div className="mt-1 truncate text-xs text-[color:var(--settings-muted)]">
+          {meta}
+        </div>
       ) : null}
     </PagePanel.SummaryCard>
   );
@@ -96,22 +98,24 @@ export function TrajectoryLlmCallCard({
   const purposeValue = tags?.length ? tags.join(", ") : "Inference";
 
   return (
-    <PagePanel variant="section" className="p-5">
+    <PagePanel as="section" variant="section" className="p-5">
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-1.5">
-            <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
+            <div className="text-xs font-medium text-[color:var(--settings-muted)]">
               {callLabel}
             </div>
-            <div className="text-lg font-semibold text-txt">{model}</div>
+            <div className="text-lg font-semibold text-[color:var(--settings-foreground)]">
+              {model}
+            </div>
             {tags?.length ? (
               <div className="flex flex-wrap gap-2">
                 {tags.map((tag) => (
                   <Badge
                     key={tag}
                     variant="secondary"
+                    size="compact"
                     tone="muted"
-                    className="py-1 text-xs-tight font-medium"
                   >
                     {tag}
                   </Badge>
@@ -124,7 +128,7 @@ export function TrajectoryLlmCallCard({
             <Button
               type="button"
               variant="outline"
-              size="sm"
+              size="touch"
               onClick={() => setShowSystem((current) => !current)}
               className="shrink-0 self-start"
             >
@@ -138,7 +142,7 @@ export function TrajectoryLlmCallCard({
           ) : null}
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <CallMetric
             label={purposeLabel}
             value={purposeValue}
@@ -180,7 +184,7 @@ export function TrajectoryLlmCallCard({
         ) : null}
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+      <div className="mt-4 grid gap-4 min-[1000px]:grid-cols-2">
         <TrajectoryCodeBlock
           content={userPrompt}
           label={inputLabel}

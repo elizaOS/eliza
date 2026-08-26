@@ -1,6 +1,6 @@
 # Molecular component duplicate inventory
 
-Scanned 896 maintained React files. 100 exported compositions have a recognized molecular role and at least two atomic dependencies.
+Scanned 897 maintained React files. 101 exported compositions have a recognized molecular role and at least two atomic dependencies.
 
 Clusters share both a role and an atomic dependency signature. Detection creates a review queue; this committed report contains only final dispositions based on product behavior, state ownership, and responsive layout.
 
@@ -13,8 +13,7 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 | auth-result-shell | `AuthResultShell` in `packages/ui/src/cloud/public-pages/pages/auth/auth-result-shell.tsx` | 2 | Full-page surface, centered card, and content geometry for authentication results. |
 | connection-capability-tile | `ConnectionCapabilityTile` in `packages/ui/src/cloud/connectors/connection-capability-tile.tsx` | 2 | Icon, title, and description hierarchy for connector capability grids. |
 | content-state | `ContentState` in `packages/ui/src/components/composites/page-panel/content-state.tsx` | 2 | Empty and loading presentation inside page-panel placements. |
-| settings-row | `SettingsRow` in `packages/ui/src/components/settings/settings-layout.tsx` | 40 | Label, description, control, and navigation alignment for settings. |
-| selectable-tile | `SelectableTile` in `packages/ui/src/components/composites/settings/selectable-tile.tsx` | 1 | Pressed-state selection tile with a leading visual and check indicator. |
+| settings-row | `SettingsRow` in `packages/ui/src/components/settings/settings-layout.tsx` | 42 | Label, description, control, and navigation alignment for settings. |
 | action-list-row | `ActionListRow` in `packages/ui/src/components/shared/ActionListRow.tsx` | 2 | Button, link, and static list rows with shared content slots. |
 
 ## Duplicate review queue
@@ -39,7 +38,7 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 ### row: button + card
 
 - `SidebarItem` in `packages/ui/src/components/composites/sidebar/sidebar-content.tsx:174`
-- `SettingsRow` in `packages/ui/src/components/settings/settings-layout.tsx:196`
+- `SettingsRow` in `packages/ui/src/components/settings/settings-layout.tsx:298`
 - `ActionListRow` in `packages/ui/src/components/shared/ActionListRow.tsx:115`
 - `ReasoningCell` in `plugins/plugin-task-coordinator/src/orchestrator-reasoning.tsx:96`
 - Decision: **distinct-domain-compositions** — Sidebar and settings rows share atomic controls but own different selection, status, and lifecycle contracts.

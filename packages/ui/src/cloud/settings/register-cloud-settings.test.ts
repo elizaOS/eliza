@@ -86,13 +86,14 @@ describe("register-cloud-settings", () => {
     }
   });
 
-  it("registers Cloud Connectors as visible with Developer Mode off", () => {
+  it("keeps Cloud Connectors registered for direct access with Developer Mode off", () => {
     const connector = listSettingsSections().find(
       (section) => section.id === "cloud-connectors",
     );
 
     expect(connector).toBeDefined();
     expect(connector?.viewKind).toBe("release");
+    expect(connector?.prominence).toBe("secondary");
     expect(connector?.developerOnly).not.toBe(true);
     expect(connector?.cloudOnly).toBe(true);
     expect(

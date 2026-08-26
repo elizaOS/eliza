@@ -109,6 +109,13 @@ export async function installMobileRemoteFallback(
   // after the first route transition.
   installBuildConfiguredRemoteApiBaseUrl(apiBase);
 
+  // Clamp and disconnect an already-created client before the first storage
+  // await. The lazy request getters fail closed as soon as the pin is
+  // published; these setters also retire any pre-pin socket and in-memory
+  // bearer before asynchronous bootstrap work continues.
+  client?.setBaseUrl(apiBase);
+  client?.setToken(null);
+
   const current = loadPersistedActiveServer();
   const profileCredential = loadAgentProfileRegistry().profiles.find(
     (profile) =>
@@ -169,7 +176,6 @@ export async function installMobileRemoteFallback(
     setStorageValue(FIRST_RUN_COMPLETE_STORAGE_KEY, "1"),
   ]);
 
-  client?.setBaseUrl(apiBase);
-  client?.setToken(accessToken ?? null);
+  if (accessToken) client?.setToken(accessToken);
   return true;
 }

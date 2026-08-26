@@ -272,7 +272,16 @@ import {
   debugLogResolvedContext,
   validateRuntimeContext,
 } from "../api/plugin-validation.ts";
-import { getWalletAddresses, syncSolanaPublicKeyEnv } from "../api/wallet.ts";
+import {
+  type AgentWalletAddressCacheSession,
+  abandonAgentWalletAddressCacheSession,
+  activateAgentWalletAddressCacheSession,
+  beginAgentWalletAddressCacheSession,
+  beginDeferredAgentWalletAddressCacheSession,
+  cacheAgentWalletAddresses,
+  getWalletAddresses,
+  syncSolanaPublicKeyEnv,
+} from "../api/wallet.ts";
 import {
   configFileExists,
   type ElizaConfig,
@@ -3766,6 +3775,11 @@ export interface StartElizaOptions {
   configOverride?: ElizaConfig;
   /** Reuses a caller-owned context across an extracted boot composition. */
   bootContext?: BootContext;
+  /**
+   * Internal replacement-build transaction. The runtime stages wallet
+   * addresses until the API host atomically activates it.
+   */
+  deferWalletAddressCacheActivation?: boolean;
   /** Receives the connected thin-client proxy when boot resolves to cloud mode. */
   onCloudProxyCreated?: (proxy: CloudRuntimeProxyLike) => void;
   /** Publishes idempotent teardown without installing process handlers. */
@@ -3818,6 +3832,11 @@ export interface BuildInitializedRuntimeOptions {
   onRuntimeCreated?: (runtime: AgentRuntime) => void;
 }
 
+const walletAddressCacheSessionsByRuntime = new WeakMap<
+  AgentRuntime,
+  AgentWalletAddressCacheSession
+>();
+
 /**
  * Boots a headless agent and preserves the intentional local/cloud distinction.
  * Hosts that require a local runtime can reject cloud mode explicitly instead
@@ -3854,24 +3873,39 @@ export async function bootEliza(
 export async function buildInitializedRuntime(
   options: BuildInitializedRuntimeOptions,
 ): Promise<AgentRuntime> {
-  const result = await bootEliza({
-    headless: true,
-    configOverride: options.config,
-    abortSignal: options.abortSignal,
-    localAgentMode: options.localAgentMode,
-    onBootPhase: options.onBootPhase,
-    onRuntimeCreated: options.onRuntimeCreated,
-  });
-  if (result.mode === "cloud") {
-    throw new ElizaError(
-      "A local runtime replacement cannot switch to cloud thin-client mode",
-      {
-        code: "LOCAL_RUNTIME_REPLACEMENT_RESOLVED_TO_CLOUD",
-        severity: "fatal",
+  let constructedRuntime: AgentRuntime | undefined;
+  try {
+    const result = await bootEliza({
+      headless: true,
+      configOverride: options.config,
+      abortSignal: options.abortSignal,
+      localAgentMode: options.localAgentMode,
+      onBootPhase: options.onBootPhase,
+      deferWalletAddressCacheActivation: true,
+      onRuntimeCreated: (runtime) => {
+        constructedRuntime = runtime;
+        options.onRuntimeCreated?.(runtime);
       },
-    );
+    });
+    if (result.mode === "cloud") {
+      throw new ElizaError(
+        "A local runtime replacement cannot switch to cloud thin-client mode",
+        {
+          code: "LOCAL_RUNTIME_REPLACEMENT_RESOLVED_TO_CLOUD",
+          severity: "fatal",
+        },
+      );
+    }
+    return result.runtime;
+  } catch (error) {
+    const session = constructedRuntime
+      ? walletAddressCacheSessionsByRuntime.get(constructedRuntime)
+      : undefined;
+    if (session) {
+      abandonAgentWalletAddressCacheSession(session);
+    }
+    throw error;
   }
-  return result.runtime;
 }
 
 /** Starts an agent at a process boundary and owns SIGINT/SIGTERM translation. */
@@ -4897,6 +4931,10 @@ export async function startEliza(
         }),
       }),
   });
+  const walletAddressCacheSession = opts?.deferWalletAddressCacheActivation
+    ? beginDeferredAgentWalletAddressCacheSession(runtime.agentId)
+    : beginAgentWalletAddressCacheSession(runtime.agentId);
+  walletAddressCacheSessionsByRuntime.set(runtime, walletAddressCacheSession);
   installRuntimeMethodBindings(runtime);
   opts?.onRuntimeCreated?.(runtime);
   opts?.abortSignal?.throwIfAborted();
@@ -5556,6 +5594,16 @@ export async function startEliza(
           "agent-bootstrap",
           abortSignal,
         );
+        abortSignal.throwIfAborted();
+        const published = cacheAgentWalletAddresses(walletAddressCacheSession, {
+          evmAddress:
+            descriptors.find((descriptor) => descriptor.chain === "evm")
+              ?.address ?? null,
+          solanaAddress:
+            descriptors.find((descriptor) => descriptor.chain === "solana")
+              ?.address ?? null,
+        });
+        if (!published) return descriptors;
         abortSignal.throwIfAborted();
         const summary = descriptors
           .map((d) => `${d.chain}:${d.address}`)
@@ -6251,6 +6299,20 @@ export async function startEliza(
         }
       },
       onRuntimeActivated: async (previousRuntime, activeRuntime) => {
+        const walletAddressCacheSession =
+          walletAddressCacheSessionsByRuntime.get(activeRuntime);
+        if (
+          !walletAddressCacheSession ||
+          !activateAgentWalletAddressCacheSession(walletAddressCacheSession)
+        ) {
+          throw new ElizaError(
+            "Replacement runtime wallet-address cache session is no longer current",
+            {
+              code: "WALLET_ADDRESS_CACHE_SESSION_ACTIVATION_REJECTED",
+              context: { agentId: activeRuntime.agentId },
+            },
+          );
+        }
         runtime = activeRuntime;
         if (!previousRuntime || previousRuntime === activeRuntime) {
           return;

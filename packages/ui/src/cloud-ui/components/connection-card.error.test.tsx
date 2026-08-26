@@ -4,23 +4,26 @@
 /**
  * ConnectionCard three-state error surface (#12784/#13419).
  *
- * A failed connector status probe now renders `status="error"` — a
- * distinguishable state with an alert + retry — instead of collapsing into the
- * "disconnected" setup form. These tests pin that the error branch renders its
- * own content (not the setup form), and that the retry affordance is wired.
+ * A failed connector status probe renders `status="error"` instead of
+ * collapsing into the "disconnected" setup form. Provider rows stay quiet and
+ * collapsed while one section-owned notice aggregates recovery.
  */
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ConnectionCard } from "./connection-card";
+import {
+  ConnectionCard,
+  ConnectionStatusNotice,
+  ConnectionStatusProvider,
+} from "./connection-card";
 
 afterEach(() => {
   cleanup();
 });
 
 describe("ConnectionCard — error state (#12784/#13419)", () => {
-  it("renders a distinguishable alert (not the setup form) when status is error", () => {
+  it("keeps an unavailable provider collapsed without repeating its diagnostic", () => {
     render(
       <ConnectionCard
         name="Twilio"
@@ -33,16 +36,15 @@ describe("ConnectionCard — error state (#12784/#13419)", () => {
       />,
     );
 
-    expect(screen.getByRole("alert").textContent).toContain(
-      "We couldn't load Twilio status.",
-    );
-    // The regression this guards: an errored probe must NOT show the setup form
-    // (which would read as a healthy "not connected" connector).
+    expect(screen.getByText("Unavailable")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText("We couldn't load Twilio status.")).toBeNull();
     expect(screen.queryByText("SETUP FORM")).toBeNull();
     expect(screen.queryByText("CONNECTED PANEL")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Twilio/ })).toBeNull();
   });
 
-  it("still renders the setup form for a genuine disconnected status", () => {
+  it("keeps a genuine disconnected setup compact until the user opens it", async () => {
     render(
       <ConnectionCard
         name="Twilio"
@@ -53,25 +55,54 @@ describe("ConnectionCard — error state (#12784/#13419)", () => {
       />,
     );
 
+    expect(screen.queryByText("SETUP FORM")).toBeNull();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Set up Twilio" }),
+    );
     expect(screen.getByText("SETUP FORM")).not.toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
+    expect(
+      screen
+        .getByRole("button", { name: "Close Twilio" })
+        .getAttribute("aria-expanded"),
+    ).toBe("true");
   });
 
-  it("invokes onRetry when the retry button is pressed", async () => {
-    const onRetry = vi.fn();
+  it("aggregates failed probes into one compact section-level retry", async () => {
+    const retryTwilio = vi.fn();
+    const retryTelegram = vi.fn();
     render(
-      <ConnectionCard
-        name="Twilio"
-        icon={<span>icon</span>}
-        description="desc"
-        status="error"
-        errorMessage="boom"
-        onRetry={onRetry}
-        retryLabel="Try again"
-      />,
+      <ConnectionStatusProvider>
+        <ConnectionStatusNotice />
+        <ConnectionCard
+          name="Twilio"
+          icon={<span>icon</span>}
+          description="desc"
+          status="error"
+          errorMessage="API server unavailable"
+          onRetry={retryTwilio}
+        />
+        <ConnectionCard
+          name="Telegram"
+          icon={<span>icon</span>}
+          description="desc"
+          status="error"
+          errorMessage="API server unavailable"
+          onRetry={retryTelegram}
+        />
+      </ConnectionStatusProvider>,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
-    expect(onRetry).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(screen.getAllByText("Status checks unavailable")).toHaveLength(1);
+    });
+    expect(screen.queryByText("API server unavailable")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Retry unavailable connections" }),
+    );
+    expect(retryTwilio).toHaveBeenCalledTimes(1);
+    expect(retryTelegram).toHaveBeenCalledTimes(1);
   });
 });

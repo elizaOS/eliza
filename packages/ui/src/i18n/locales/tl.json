@@ -4085,6 +4085,7 @@
   "settings.sections.aimodel.desc": "Mga setting ng provider at model",
   "settings.sections.appearance.desc": "Content packs, VRM avatars, backgrounds, at mga tema",
   "settings.sections.appearance.label": "Hitsura",
+  "settings.sections.general.label": "Pangkalahatan",
   "settings.sections.apps.basedOnLabel": "Based sa existing app (opsyonal)",
   "settings.sections.apps.basedOnNone": "Magsimula sa simula",
   "settings.sections.apps.col.actions": "Mga Aksyon",

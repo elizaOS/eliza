@@ -254,7 +254,7 @@ describe("BrowserTabSwitcher", () => {
     expect(dialog.getAttribute("data-chat-clearance-aware")).toBe("true");
     expect(dialog.style.top).toContain("--eliza-chat-clearance");
     expect(dialog.style.maxHeight).toContain("--eliza-chat-clearance");
-    expect(dialog.className).toContain("rounded-3xl");
+    expect(dialog.className).toContain("rounded-2xl");
     expect(dialog.className).not.toContain("accent");
     expect(Z_VIEW_MODAL).toBeLessThan(Z_SHELL_OVERLAY);
     expect(Z_VIEW_MODAL_BACKDROP).toBeLessThan(Z_VIEW_MODAL);

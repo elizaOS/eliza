@@ -788,14 +788,16 @@ export function createWalletBalanceDeltaDispatcher(
  * Modules are imported lazily so agent boot does not pay for the wallet stack
  * until the first watcher fire.
  */
-export function createAgentWalletBalanceSource(): WalletBalanceSampleSource {
+export function createAgentWalletBalanceSource(
+  agentId?: string | null,
+): WalletBalanceSampleSource {
   return async () => {
     const [walletApi, walletRpc, configModule] = await Promise.all([
       import("../api/wallet.ts"),
       import("../api/wallet-rpc.ts"),
       import("../config/config.ts"),
     ]);
-    const addresses = walletApi.getWalletAddresses();
+    const addresses = walletApi.getWalletAddresses(agentId);
     const readiness = walletRpc.resolveWalletRpcReadiness(
       configModule.loadElizaConfig(),
     );
@@ -875,7 +877,8 @@ export async function registerWalletBalanceDeltaProducer(
     );
     return;
   }
-  const source = options.source ?? createAgentWalletBalanceSource();
+  const source =
+    options.source ?? createAgentWalletBalanceSource(runtime.agentId);
   registerScheduledTaskChannelDispatcher(runtime, {
     channelKey: WALLET_BALANCE_DELTA_CHANNEL,
     dispatch: createWalletBalanceDeltaDispatcher(runtime, source),

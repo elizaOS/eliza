@@ -7,7 +7,14 @@
 
 "use client";
 
-import { DashboardSection } from "../../cloud-ui/components/brand/dashboard-section";
+import {
+  ConnectionStatusNotice,
+  ConnectionStatusProvider,
+} from "../../cloud-ui/components/connection-card";
+import {
+  SettingsGroup,
+  SettingsStack,
+} from "../../components/settings/settings-layout";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { BlooioConnection } from "./blooio-connection";
 import { DiscordGatewayConnection } from "./discord-gateway-connection";
@@ -20,44 +27,37 @@ import { WhatsAppConnection } from "./whatsapp-connection";
 export function CloudConnectorsSection() {
   const t = useCloudT();
   return (
-    <div className="space-y-8">
-      {/* Messaging & Communication Section */}
-      <div className="space-y-4">
-        <DashboardSection
-          label={t("cloud.connectionsTab.connectionsLabel", {
-            defaultValue: "Connections",
+    <ConnectionStatusProvider>
+      <SettingsStack data-testid="cloud-connectors-section">
+        <ConnectionStatusNotice />
+        <SettingsGroup
+          title={t("cloud.connectionsTab.servicesTitle", {
+            defaultValue: "Services",
           })}
-          title={t("cloud.connectionsTab.messagingTitle", {
-            defaultValue: "Messaging & Communication",
+          description={t("cloud.connectionsTab.servicesDescription", {
+            defaultValue: "Email, calendar, phone, and business messaging.",
           })}
-        />
-
-        <div className="grid gap-4">
+        >
           <GoogleConnection />
           <MicrosoftConnection />
           <TwilioConnection />
           <BlooioConnection />
           <WhatsAppConnection />
-        </div>
-      </div>
+        </SettingsGroup>
 
-      {/* Social Media Section */}
-      <div className="space-y-4">
-        <DashboardSection
-          label={t("cloud.connectionsTab.channelsLabel", {
-            defaultValue: "Channels",
+        <SettingsGroup
+          title={t("cloud.connectionsTab.botChannelsTitle", {
+            defaultValue: "Bot channels",
           })}
-          title={t("cloud.connectionsTab.socialTitle", {
-            defaultValue: "Social Media Connections",
+          description={t("cloud.connectionsTab.botChannelsDescription", {
+            defaultValue: "Managed Discord and Telegram gateways.",
           })}
-        />
-
-        <div className="grid gap-4">
+        >
           <DiscordGatewayConnection />
           <TelegramConnection />
-        </div>
-      </div>
-    </div>
+        </SettingsGroup>
+      </SettingsStack>
+    </ConnectionStatusProvider>
   );
 }
 

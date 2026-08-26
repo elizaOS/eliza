@@ -27,6 +27,14 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 
+const BROWSER_TAB_FOLD_CONTROL_ID = "browser-workspace-tab-fold-control";
+
+function browserTabFoldControl(): HTMLButtonElement | null {
+  return document.getElementById(
+    BROWSER_TAB_FOLD_CONTROL_ID,
+  ) as HTMLButtonElement | null;
+}
+
 /** A tab as the switcher needs to render it — the view maps its richer
  *  `BrowserWorkspaceTab` down to this display shape so the switcher stays free
  *  of transport/session concerns. */
@@ -106,6 +114,7 @@ export function BrowserTabFoldControl({
   onOpen,
   disabled,
   openLabel,
+  controlRef,
 }: {
   activeLabel: string;
   count: number;
@@ -113,6 +122,8 @@ export function BrowserTabFoldControl({
   disabled?: boolean;
   /** Accessible + agent label, e.g. "Show 4 tabs". */
   openLabel: string;
+  /** Owning view uses the real trigger node for deterministic focus return. */
+  controlRef?: React.RefObject<HTMLButtonElement | null>;
 }): React.JSX.Element {
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: "tab-switcher",
@@ -124,14 +135,18 @@ export function BrowserTabFoldControl({
   });
   return (
     <Button
-      ref={ref}
+      ref={(node) => {
+        ref.current = node;
+        if (controlRef) controlRef.current = node;
+      }}
       {...agentProps}
       type="button"
-      variant="outlineAccent"
+      variant="surface"
       size="touch"
       shape="circle"
       onClick={onOpen}
       disabled={disabled}
+      id={BROWSER_TAB_FOLD_CONTROL_ID}
       aria-label={openLabel}
       aria-haspopup="dialog"
       data-testid="browser-workspace-tab-fold-control"
@@ -283,6 +298,7 @@ export function BrowserTabSwitcher({
   onActivateTab,
   onCloseTab,
   onNewTab,
+  returnFocusRef,
   actionsDisabled,
 }: {
   open: boolean;
@@ -297,6 +313,7 @@ export function BrowserTabSwitcher({
   onActivateTab: (id: string) => void;
   onCloseTab: (id: string) => void;
   onNewTab: () => void;
+  returnFocusRef?: React.RefObject<HTMLElement | null>;
   actionsDisabled?: boolean;
 }): React.JSX.Element {
   return (
@@ -307,7 +324,22 @@ export function BrowserTabSwitcher({
         data-view-overlay="browser-tabs"
         data-chat-clearance-aware="true"
         overlayClassName="z-[8800] bg-black/70"
-        className="z-[8810] grid-rows-[auto_minmax(0,1fr)] gap-4 rounded-3xl border-border/60 bg-bg shadow-[0_24px_80px_rgba(16,10,5,.48)] max-sm:-translate-y-1/2 max-sm:rounded-3xl"
+        onCloseAutoFocus={(event) => {
+          const returnTarget =
+            returnFocusRef?.current ?? browserTabFoldControl();
+          if (!returnTarget?.isConnected) return;
+          event.preventDefault();
+          returnTarget.focus();
+        }}
+        onEscapeKeyDown={() => {
+          const returnTarget =
+            returnFocusRef?.current ?? browserTabFoldControl();
+          if (!returnTarget?.isConnected) return;
+          window.setTimeout(() => {
+            if (returnTarget.isConnected) returnTarget.focus();
+          }, 0);
+        }}
+        className="z-[8810] grid-rows-[auto_minmax(0,1fr)] gap-4 rounded-2xl border-border bg-bg shadow-[0_24px_80px_rgba(16,10,5,.48)] max-sm:-translate-y-1/2 max-sm:rounded-2xl"
         style={{
           top: "calc((100dvh - var(--eliza-chat-clearance, 5.25rem)) / 2)",
           bottom: "auto",
@@ -322,7 +354,7 @@ export function BrowserTabSwitcher({
           <DialogTitle>{title}</DialogTitle>
           <Button
             type="button"
-            variant="outlineAccent"
+            variant="surface"
             size="touch"
             shape="circle"
             className="shrink-0"

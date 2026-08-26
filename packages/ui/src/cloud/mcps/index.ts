@@ -111,6 +111,7 @@ export function registerMcpsSettingsSection(): void {
     titleKey: "settings.sections.mcps.title",
     defaultTitle: "MCP Servers",
     viewKind: "release",
+    prominence: "secondary",
     cloudOnly: true,
     Component: McpsSection,
   });

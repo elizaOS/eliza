@@ -110,6 +110,136 @@ const SOLANA_SPL_TOKEN_PROGRAM_ID =
 let stewardAddressCache: { evm: string | null; solana: string | null } | null =
   null;
 
+type AgentAddressCacheEntry = {
+  evm: string | null;
+  solana: string | null;
+};
+
+/** Ownership token for one constructed runtime's public-address cache writes. */
+export interface AgentWalletAddressCacheSession {
+  readonly agentId: string;
+  readonly generation: symbol;
+  readonly activation: "active" | "deferred";
+}
+
+/**
+ * Public addresses for Eliza agents' vault-backed wallets, isolated by the
+ * runtime agent id that owns them. A process can hot-swap or host more than one
+ * runtime, so a single "active agent" slot would let the next runtime observe
+ * the previous agent's wallet until its own deferred bootstrap completed.
+ */
+const agentAddressCache = new Map<string, AgentAddressCacheEntry>();
+const activeAgentAddressCacheGenerations = new Map<string, symbol>();
+const pendingAgentAddressCacheGenerations = new Map<string, symbol>();
+const pendingAgentAddressCacheEntries = new Map<
+  symbol,
+  AgentAddressCacheEntry | null
+>();
+
+function createAgentWalletAddressCacheSession(
+  agentId: string,
+  activation: AgentWalletAddressCacheSession["activation"],
+): AgentWalletAddressCacheSession {
+  const cacheKey = agentId.trim();
+  if (!cacheKey) {
+    throw new TypeError(
+      "wallet: agent id is required to start an address cache session",
+    );
+  }
+  return Object.freeze({
+    agentId: cacheKey,
+    generation: Symbol(cacheKey),
+    activation,
+  });
+}
+
+/**
+ * Start and immediately activate an empty public-address cache generation for
+ * a cold runtime. This also invalidates any pending build for the same agent.
+ */
+export function beginAgentWalletAddressCacheSession(
+  agentId: string,
+): AgentWalletAddressCacheSession {
+  const session = createAgentWalletAddressCacheSession(agentId, "active");
+  const pendingGeneration = pendingAgentAddressCacheGenerations.get(
+    session.agentId,
+  );
+  if (pendingGeneration) {
+    pendingAgentAddressCacheEntries.delete(pendingGeneration);
+    pendingAgentAddressCacheGenerations.delete(session.agentId);
+  }
+  activeAgentAddressCacheGenerations.set(session.agentId, session.generation);
+  agentAddressCache.delete(session.agentId);
+  return session;
+}
+
+/**
+ * Start a replacement runtime's private cache generation without changing the
+ * incumbent's active addresses. A newer pending build supersedes the previous
+ * one for the same agent.
+ */
+export function beginDeferredAgentWalletAddressCacheSession(
+  agentId: string,
+): AgentWalletAddressCacheSession {
+  const session = createAgentWalletAddressCacheSession(agentId, "deferred");
+  const previousGeneration = pendingAgentAddressCacheGenerations.get(
+    session.agentId,
+  );
+  if (previousGeneration) {
+    pendingAgentAddressCacheEntries.delete(previousGeneration);
+  }
+  pendingAgentAddressCacheGenerations.set(session.agentId, session.generation);
+  pendingAgentAddressCacheEntries.set(session.generation, null);
+  return session;
+}
+
+/** Atomically promote the current pending generation and its staged addresses. */
+export function activateAgentWalletAddressCacheSession(
+  session: AgentWalletAddressCacheSession,
+): boolean {
+  if (
+    activeAgentAddressCacheGenerations.get(session.agentId) ===
+    session.generation
+  ) {
+    return true;
+  }
+  if (
+    session.activation !== "deferred" ||
+    pendingAgentAddressCacheGenerations.get(session.agentId) !==
+      session.generation
+  ) {
+    return false;
+  }
+
+  const stagedAddresses =
+    pendingAgentAddressCacheEntries.get(session.generation) ?? null;
+  activeAgentAddressCacheGenerations.set(session.agentId, session.generation);
+  pendingAgentAddressCacheGenerations.delete(session.agentId);
+  pendingAgentAddressCacheEntries.delete(session.generation);
+  if (stagedAddresses) {
+    agentAddressCache.set(session.agentId, stagedAddresses);
+  } else {
+    agentAddressCache.delete(session.agentId);
+  }
+  return true;
+}
+
+/** Abandon the current pending generation without changing the incumbent. */
+export function abandonAgentWalletAddressCacheSession(
+  session: AgentWalletAddressCacheSession,
+): boolean {
+  if (
+    session.activation !== "deferred" ||
+    pendingAgentAddressCacheGenerations.get(session.agentId) !==
+      session.generation
+  ) {
+    return false;
+  }
+  pendingAgentAddressCacheGenerations.delete(session.agentId);
+  pendingAgentAddressCacheEntries.delete(session.generation);
+  return true;
+}
+
 function normalizeWalletSource(
   value: string | undefined,
 ): "local" | "cloud" | null {
@@ -137,6 +267,57 @@ function readValidatedSolanaAddress(value: string | undefined): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Publish one agent's public wallet identities to read-only wallet surfaces.
+ * Private keys remain in the vault; this cache contains addresses only and
+ * therefore does not require the opt-in process-env signing bridge. Returns
+ * false without mutation when a replacement runtime has superseded the session.
+ */
+export function cacheAgentWalletAddresses(
+  session: AgentWalletAddressCacheSession,
+  addresses: WalletAddresses,
+): boolean {
+  const cacheKey = session.agentId.trim();
+  const ownsActiveGeneration =
+    activeAgentAddressCacheGenerations.get(cacheKey) === session.generation;
+  const ownsPendingGeneration =
+    session.activation === "deferred" &&
+    pendingAgentAddressCacheGenerations.get(cacheKey) === session.generation;
+  if (!cacheKey || (!ownsActiveGeneration && !ownsPendingGeneration)) {
+    return false;
+  }
+
+  const evmAddress = addresses.evmAddress
+    ? readValidatedEvmAddress(addresses.evmAddress)
+    : null;
+  const solanaAddress = addresses.solanaAddress
+    ? readValidatedSolanaAddress(addresses.solanaAddress)
+    : null;
+
+  if (addresses.evmAddress && !evmAddress) {
+    throw new TypeError("wallet: invalid agent EVM address");
+  }
+  if (addresses.solanaAddress && !solanaAddress) {
+    throw new TypeError("wallet: invalid agent Solana address");
+  }
+
+  const cacheEntry =
+    !evmAddress && !solanaAddress
+      ? null
+      : {
+          evm: evmAddress,
+          solana: solanaAddress,
+        };
+  if (ownsPendingGeneration) {
+    pendingAgentAddressCacheEntries.set(session.generation, cacheEntry);
+  } else if (cacheEntry) {
+    agentAddressCache.set(cacheKey, cacheEntry);
+  } else {
+    agentAddressCache.delete(cacheKey);
+  }
+  return true;
 }
 
 // A configured-but-unusable key is an operator misconfiguration, not an absent
@@ -196,6 +377,30 @@ function readStewardSolanaAddress(): string | null {
     stewardAddressCache?.solana?.trim() ??
     process.env[STEWARD_SOLANA_ADDRESS_ENV_KEY]?.trim();
   return readValidatedSolanaAddress(stewardSolana);
+}
+
+function readAgentAddressCache(
+  agentId: string | null | undefined,
+): AgentAddressCacheEntry | null {
+  const cacheKey = agentId?.trim();
+  if (!cacheKey) return null;
+  return agentAddressCache.get(cacheKey) ?? null;
+}
+
+function readAgentEvmAddress(
+  agentId: string | null | undefined,
+): string | null {
+  return readValidatedEvmAddress(
+    readAgentAddressCache(agentId)?.evm ?? undefined,
+  );
+}
+
+function readAgentSolanaAddress(
+  agentId: string | null | undefined,
+): string | null {
+  return readValidatedSolanaAddress(
+    readAgentAddressCache(agentId)?.solana ?? undefined,
+  );
 }
 
 function readManagedEvmAddress(): string | null {
@@ -676,9 +881,14 @@ export async function initStewardWalletCache(): Promise<void> {
  * Resolution order (steward-first):
  *   1. Steward cached addresses  (`STEWARD_EVM_ADDRESS` / `STEWARD_SOLANA_ADDRESS`)
  *   2. Local private key derivation  (`EVM_PRIVATE_KEY` / `SOLANA_PRIVATE_KEY`)
- *   3. Managed address env vars  (`ELIZA_MANAGED_EVM_ADDRESS` / `ELIZA_MANAGED_SOLANA_ADDRESS`)
+ *   3. The requested agent's public addresses (vault-backed; no private-key export)
+ *   4. Managed address env vars  (`ELIZA_MANAGED_EVM_ADDRESS` / `ELIZA_MANAGED_SOLANA_ADDRESS`)
+ *
+ * Calls without an agent id intentionally skip the agent cache. Environment
+ * and source-selected wallets retain their legacy process-wide behavior, but
+ * an unscoped caller must never inherit whichever runtime bootstrapped last.
  */
-export function getWalletAddresses(): WalletAddresses {
+export function getWalletAddresses(agentId?: string | null): WalletAddresses {
   const configuredEvmSource = normalizeWalletSource(
     process.env[WALLET_SOURCE_EVM_ENV_KEY],
   );
@@ -696,6 +906,7 @@ export function getWalletAddresses(): WalletAddresses {
     evmAddress =
       readStewardEvmAddress() ??
       deriveLocalEvmAddress() ??
+      readAgentEvmAddress(agentId) ??
       readManagedEvmAddress();
   }
 
@@ -703,6 +914,7 @@ export function getWalletAddresses(): WalletAddresses {
     solanaAddress =
       readStewardSolanaAddress() ??
       deriveLocalSolanaAddress() ??
+      readAgentSolanaAddress(agentId) ??
       readManagedSolanaAddress();
   }
 
@@ -714,13 +926,15 @@ export function getWalletAddresses(): WalletAddresses {
  * Calls steward API (async) to discover additional addresses.
  * Key-derived addresses are always preferred; steward addresses fill gaps.
  */
-export async function getWalletAddressesWithSteward(): Promise<
+export async function getWalletAddressesWithSteward(
+  runtimeAgentId?: string | null,
+): Promise<
   WalletAddresses & {
     stewardEvmAddress?: string | null;
     stewardSolanaAddress?: string | null;
   }
 > {
-  const base = getWalletAddresses();
+  const base = getWalletAddresses(runtimeAgentId);
 
   // Only augment when steward is configured
   const stewardApiUrl = process.env.STEWARD_API_URL?.trim();

@@ -122,12 +122,13 @@ Use the narrowest shared lifecycle owner that fits:
 - `ContentState` owns empty and loading presentation across panel, inset,
   surface, and workspace placements. Page-specific wrappers supply copy and
   behavior rather than rebuilding the state geometry.
+- `PagePanel.ContentRail` owns centered content widths and the shared 16px to
+  24px responsive horizontal inset for routed views. Headers, scrolling,
+  vertical safe areas, and chat-composer clearance stay with their narrower
+  route or workspace lifecycle owner.
 - `ActionListRow` owns a single row-level action with native button, link, or
   static semantics and typed leading, copy, metadata, and trailing slots. It is
   not suitable for rows with multiple independent controls or domain progress.
-- `SelectableTile` owns controlled settings choices with a leading visual,
-  centered label, pressed state, and selected indicator. Selected state must
-  not add visible `ON` or `OFF` copy.
 - `AuthResultShell` owns the full-page background, centered card, and content
   geometry for public authentication outcomes. Result pages supply only their
   state-specific icon, copy, and actions.

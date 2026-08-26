@@ -87,7 +87,7 @@ export * from "./components/ui/alert.tsx";
 export * from "./components/ui/alert-dialog.tsx";
 export * from "./components/ui/avatar.tsx";
 export { Badge } from "./components/ui/badge.tsx";
-export { Button } from "./components/ui/button.tsx";
+export { Button, type ButtonProps } from "./components/ui/button.tsx";
 export * from "./components/ui/card.tsx";
 export * from "./components/ui/checkbox.tsx";
 export * from "./components/ui/code-block.tsx";
@@ -97,6 +97,7 @@ export * from "./components/ui/dialog.tsx";
 export * from "./components/ui/dropdown-menu.tsx";
 export { ErrorBoundary } from "./components/ui/error-boundary.tsx";
 export * from "./components/ui/form.tsx";
+export * from "./components/ui/grid.tsx";
 export * from "./components/ui/hover-card.tsx";
 export { Input } from "./components/ui/input.tsx";
 export * from "./components/ui/label.tsx";
@@ -109,6 +110,7 @@ export * from "./components/ui/select.tsx";
 export * from "./components/ui/separator.tsx";
 export { SettingsControls } from "./components/ui/settings-controls.tsx";
 export { Skeleton } from "./components/ui/skeleton.tsx";
+export * from "./components/ui/skeleton-layouts.tsx";
 export { Spinner } from "./components/ui/spinner.tsx";
 export {
   agentLifecycleLabel,
@@ -130,6 +132,7 @@ export * from "./components/ui/toggle.tsx";
 export * from "./components/ui/tooltip.tsx";
 export { IconTooltip } from "./components/ui/tooltip-extended.tsx";
 export * from "./components/workspace/AppWorkspaceChrome.tsx";
+export * from "./components/workspace/AppWorkspaceContent.tsx";
 // === Phase 5C: ./config/app-config moved to @elizaos/app-core/config/app-config ===
 export * from "./config/boot-config.ts";
 export * from "./config/boot-config-react.hooks.ts";

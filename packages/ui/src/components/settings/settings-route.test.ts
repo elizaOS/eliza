@@ -33,6 +33,10 @@ describe("parseSettingsHash", () => {
       kind: "section",
       sectionId: "appearance",
     });
+    expect(parseSettingsHash("#general")).toEqual({
+      kind: "section",
+      sectionId: "appearance",
+    });
     expect(parseSettingsHash("#connectors")).toEqual({
       kind: "section",
       sectionId: "connectors",

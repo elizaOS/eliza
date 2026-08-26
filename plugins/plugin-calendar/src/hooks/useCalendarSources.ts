@@ -8,6 +8,7 @@
 
 import type { LifeOpsCalendarSummary } from "@elizaos/shared";
 import { client } from "@elizaos/ui/api";
+import { useActiveAgentAuthority } from "@elizaos/ui/hooks/useActiveAgentAuthority";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "../api/client-calendar.js";
 import type { CalendarClientMethods } from "../api/client-calendar.js";
@@ -52,13 +53,23 @@ function matchesCalendarIdentity(
   return calendarSourceIdentityKey(left) === calendarSourceIdentityKey(right);
 }
 
+const EMPTY_PENDING_KEYS: ReadonlySet<string> = new Set();
+const EMPTY_MUTATION_ERRORS: Readonly<Record<string, string>> = Object.freeze(
+  {},
+);
+
 export function useCalendarSources(): UseCalendarSourcesResult {
+  const authority = useActiveAgentAuthority();
+  const authorityRef = useRef(authority);
+  authorityRef.current = authority;
   const mountedRef = useRef(true);
   const listRequestIdRef = useRef(0);
+  const listAbortControllerRef = useRef<AbortController | null>(null);
   const mutationVersionRef = useRef(0);
   const writeIdRef = useRef(0);
   const activeWriteByKeyRef = useRef(new Map<string, number>());
-  const hasLoadedRef = useRef(false);
+  const loadedAuthorityRef = useRef<string | null>(null);
+  const [stateAuthority, setStateAuthority] = useState(authority);
   const [calendars, setCalendars] = useState<LifeOpsCalendarSummary[]>([]);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -75,39 +86,68 @@ export function useCalendarSources(): UseCalendarSourcesResult {
     return () => {
       mountedRef.current = false;
       listRequestIdRef.current += 1;
+      listAbortControllerRef.current?.abort("Calendar sources view unmounted");
       activeWriteByKeyRef.current.clear();
     };
   }, []);
 
   const refresh = useCallback(async () => {
+    const requestAuthority = authority;
     const requestId = listRequestIdRef.current + 1;
     listRequestIdRef.current = requestId;
-    const startingMutationVersion = mutationVersionRef.current;
-    const initialLoad = !hasLoadedRef.current;
+    listAbortControllerRef.current?.abort(
+      "Calendar sources refresh superseded",
+    );
+    const abortController = new AbortController();
+    listAbortControllerRef.current = abortController;
+    const initialLoad = loadedAuthorityRef.current !== requestAuthority;
     if (initialLoad) {
+      // Mask and clear the previous profile before issuing the new request.
+      // The returned state also checks stateAuthority, so this reset is
+      // synchronous from the consumer's perspective on the switching render.
+      mutationVersionRef.current += 1;
+      activeWriteByKeyRef.current.clear();
+      setStateAuthority(requestAuthority);
+      setCalendars([]);
+      setHasLoaded(false);
       setLoading(true);
+      setRefreshing(false);
       setError(null);
+      setRefreshError(null);
+      setPendingKeys(new Set());
+      setMutationErrors({});
     } else {
       setRefreshing(true);
       setRefreshError(null);
     }
+    const startingMutationVersion = mutationVersionRef.current;
     try {
-      const response = await calendarClient.getLifeOpsCalendars({
-        side: "owner",
-      });
+      const response = await calendarClient.getLifeOpsCalendars(
+        { side: "owner" },
+        { signal: abortController.signal },
+      );
       const isCurrent =
-        mountedRef.current && listRequestIdRef.current === requestId;
+        mountedRef.current &&
+        authorityRef.current === requestAuthority &&
+        listRequestIdRef.current === requestId;
       const writeStartedSinceRequest =
         mutationVersionRef.current !== startingMutationVersion;
       if (!isCurrent || writeStartedSinceRequest) return;
       setCalendars([...response.calendars]);
-      hasLoadedRef.current = true;
+      loadedAuthorityRef.current = requestAuthority;
       setHasLoaded(true);
       setError(null);
       setRefreshError(null);
     } catch {
+      if (abortController.signal.aborted) return;
       // error-policy:J4 Discovery failure stays visually distinct from an authoritative empty source list.
-      if (!mountedRef.current || listRequestIdRef.current !== requestId) return;
+      if (
+        !mountedRef.current ||
+        authorityRef.current !== requestAuthority ||
+        listRequestIdRef.current !== requestId
+      ) {
+        return;
+      }
       if (initialLoad) {
         setError("Calendar sources could not load.");
       } else {
@@ -116,15 +156,28 @@ export function useCalendarSources(): UseCalendarSourcesResult {
         );
       }
     } finally {
-      if (mountedRef.current && listRequestIdRef.current === requestId) {
+      if (listAbortControllerRef.current === abortController) {
+        listAbortControllerRef.current = null;
+      }
+      if (
+        !abortController.signal.aborted &&
+        mountedRef.current &&
+        authorityRef.current === requestAuthority &&
+        listRequestIdRef.current === requestId
+      ) {
         if (initialLoad) setLoading(false);
         else setRefreshing(false);
       }
     }
-  }, []);
+  }, [authority]);
 
   useEffect(() => {
     void refresh();
+    return () => {
+      listAbortControllerRef.current?.abort(
+        "Calendar sources authority changed",
+      );
+    };
   }, [refresh]);
 
   const setIncluded = useCallback(
@@ -132,6 +185,7 @@ export function useCalendarSources(): UseCalendarSourcesResult {
       calendar: LifeOpsCalendarSummary,
       includeInFeed: boolean,
     ): Promise<CalendarSourceWriteOutcome> => {
+      const requestAuthority = authority;
       const key = calendarSourceIdentityKey(calendar);
       const writeId = writeIdRef.current + 1;
       writeIdRef.current = writeId;
@@ -145,7 +199,9 @@ export function useCalendarSources(): UseCalendarSourcesResult {
         return next;
       });
       const isCurrentWrite = () =>
-        mountedRef.current && activeWriteByKeyRef.current.get(key) === writeId;
+        mountedRef.current &&
+        authorityRef.current === requestAuthority &&
+        activeWriteByKeyRef.current.get(key) === writeId;
 
       try {
         const response = await calendarClient.setLifeOpsCalendarIncluded({
@@ -194,25 +250,39 @@ export function useCalendarSources(): UseCalendarSourcesResult {
         }
       }
     },
-    [],
+    [authority],
   );
 
+  const stateMatchesAuthority = stateAuthority === authority;
+  const visibleCalendars = stateMatchesAuthority ? calendars : [];
+  const visibleHasLoaded = stateMatchesAuthority ? hasLoaded : false;
+  const visibleLoading = stateMatchesAuthority ? loading : true;
+  const visibleRefreshing = stateMatchesAuthority ? refreshing : false;
+  const visibleError = stateMatchesAuthority ? error : null;
+  const visibleRefreshError = stateMatchesAuthority ? refreshError : null;
+  const visiblePendingKeys = stateMatchesAuthority
+    ? pendingKeys
+    : EMPTY_PENDING_KEYS;
+  const visibleMutationErrors = stateMatchesAuthority
+    ? mutationErrors
+    : EMPTY_MUTATION_ERRORS;
+
   const status = useMemo<CalendarSourceManagerStatus>(() => {
-    if (loading && !hasLoaded) return "loading";
-    if (error && !hasLoaded) return "error";
-    if (hasLoaded && calendars.length === 0) return "empty";
+    if (visibleLoading && !visibleHasLoaded) return "loading";
+    if (visibleError && !visibleHasLoaded) return "error";
+    if (visibleHasLoaded && visibleCalendars.length === 0) return "empty";
     return "ready";
-  }, [calendars.length, error, hasLoaded, loading]);
+  }, [visibleCalendars.length, visibleError, visibleHasLoaded, visibleLoading]);
 
   return {
-    calendars,
+    calendars: visibleCalendars,
     status,
-    loading,
-    refreshing,
-    error,
-    refreshError,
-    pendingKeys,
-    mutationErrors,
+    loading: visibleLoading,
+    refreshing: visibleRefreshing,
+    error: visibleError,
+    refreshError: visibleRefreshError,
+    pendingKeys: visiblePendingKeys,
+    mutationErrors: visibleMutationErrors,
     refresh,
     setIncluded,
   };

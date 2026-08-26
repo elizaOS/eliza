@@ -14,6 +14,7 @@ import {
   listSettingsSections,
   registerSettingsSection,
   type SettingsSectionDef,
+  settingsSectionIsAvailable,
   subscribeSettingsSections,
 } from "./settings-section-registry";
 
@@ -64,6 +65,20 @@ describe("settings-section-registry", () => {
     const ordered = listSettingsSections().map((s) => s.id);
     expect(ordered.indexOf("order-early")).toBeLessThan(
       ordered.indexOf("order-late"),
+    );
+  });
+
+  it("evaluates declarative runtime requirements without platform inference", () => {
+    const portable = new Set<never>();
+    const desktop = new Set(["desktop-bridge"] as const);
+    const section = makeSection("desktop-only", {
+      requires: ["desktop-bridge"],
+    });
+
+    expect(settingsSectionIsAvailable(section, portable)).toBe(false);
+    expect(settingsSectionIsAvailable(section, desktop)).toBe(true);
+    expect(settingsSectionIsAvailable(makeSection("portable"), portable)).toBe(
+      true,
     );
   });
 

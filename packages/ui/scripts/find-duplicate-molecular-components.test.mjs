@@ -36,7 +36,6 @@ test("molecular inventory is deterministic and requires meaningful signatures", 
       "connection-capability-tile",
       "content-state",
       "settings-row",
-      "selectable-tile",
       "action-list-row",
     ],
   );

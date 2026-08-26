@@ -91,8 +91,10 @@ function PipelineNodeButton({
   const Icon = node.icon;
 
   const iconColor = {
-    active: selected ? "text-accent-fg" : "text-muted-strong",
-    skipped: "text-muted/50",
+    active: selected
+      ? "text-[color:var(--settings-foreground)]"
+      : "text-[color:var(--settings-muted)]",
+    skipped: "text-[color:var(--settings-muted)] opacity-50",
     error: "text-danger/80",
   };
 
@@ -108,23 +110,20 @@ function PipelineNodeButton({
       size="card"
       data-state={selected ? "on" : "off"}
       onClick={onClick}
-      className="min-w-[90px] items-center"
+      className="min-w-[7rem] items-center"
     >
       <Icon className={`size-5 ${iconColor[node.status]}`} />
-      <span
-        className={`text-2xs font-semibold uppercase tracking-[0.12em] whitespace-nowrap ${
-          selected ? "text-accent-fg" : "text-muted-strong"
-        }`}
-      >
+      <span className="whitespace-nowrap text-xs font-medium">
         {node.label}
       </span>
       <Badge
+        asChild
         variant="secondary"
         size="compact"
         tone={countTone[node.status]}
-        className="px-2 py-0.5 text-2xs font-bold leading-none"
+        className="px-2 py-0.5 text-xs font-medium normal-case leading-none"
       >
-        {node.id === "input" ? "\u2713" : node.callCount}
+        <span>{node.id === "input" ? "Ready" : `${node.callCount} calls`}</span>
       </Badge>
     </Button>
   );
@@ -140,7 +139,7 @@ export function TrajectoryPipelineGraph({
   onStageClick,
 }: TrajectoryPipelineGraphProps) {
   return (
-    <div className="flex items-center gap-1 overflow-x-auto py-1">
+    <div className="flex items-center overflow-x-auto py-1">
       {nodes.map((node, i) => (
         <div key={node.id} className="contents">
           {i > 0 && (

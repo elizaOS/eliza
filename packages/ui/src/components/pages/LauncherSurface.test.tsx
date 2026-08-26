@@ -23,7 +23,8 @@ import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { LauncherSurface } from "./LauncherSurface";
 
 let aospEnabled = false;
-const { useViewCatalogMock } = vi.hoisted(() => ({
+const { useSessionAuthMock, useViewCatalogMock } = vi.hoisted(() => ({
+  useSessionAuthMock: vi.fn(),
   useViewCatalogMock: vi.fn(),
 }));
 const getMock = vi.fn();
@@ -33,6 +34,9 @@ const setTabMock = vi.fn();
 
 vi.mock("../../hooks/useViewCatalog", () => ({
   useViewCatalog: useViewCatalogMock,
+}));
+vi.mock("../../cloud/lib/use-session-auth", () => ({
+  useSessionAuth: useSessionAuthMock,
 }));
 vi.mock("../../api", () => ({
   client: { getBaseUrl: () => "http://localhost:31337" },
@@ -103,6 +107,11 @@ beforeEach(() => {
   window.localStorage.clear();
   window.history.replaceState(null, "", "/");
   getMock.mockResolvedValue(null);
+  useSessionAuthMock.mockReturnValue({
+    ready: true,
+    authenticated: false,
+    user: null,
+  });
   __setAppValueForTests({
     appRuns: [],
     elizaCloudConnected: false,
@@ -265,6 +274,50 @@ describe("LauncherSurface", () => {
     render(<LauncherSurface />);
     fireEvent.click(screen.getByRole("button", { name: "Browser" }));
     expect(window.location.pathname).toBe("/browser");
+  });
+
+  it("opens the Cloud dashboard directly for an authenticated Cloud session", () => {
+    setViews([
+      view("settings", "Settings", "/settings"),
+      view("cloud", "Cloud", "/cloud"),
+    ]);
+    useSessionAuthMock.mockReturnValue({
+      ready: true,
+      authenticated: true,
+      user: { id: "cloud-user", email: "cloud@example.test" },
+    });
+
+    render(<LauncherSurface />);
+    fireEvent.click(screen.getByRole("button", { name: "Cloud" }));
+
+    expect(window.location.pathname).toBe("/cloud");
+  });
+
+  it("keeps the Cloud dashboard tile out of signed-out launcher sessions", () => {
+    setViews([
+      view("settings", "Settings", "/settings"),
+      view("cloud", "Cloud", "/cloud"),
+    ]);
+
+    render(<LauncherSurface />);
+
+    expect(screen.queryByTestId("launcher-tile-cloud")).toBeNull();
+  });
+
+  it("keeps Cloud available while a persisted authenticated session refreshes", () => {
+    setViews([
+      view("settings", "Settings", "/settings"),
+      view("cloud", "Cloud", "/cloud"),
+    ]);
+    useSessionAuthMock.mockReturnValue({
+      ready: false,
+      authenticated: true,
+      user: { id: "cloud-user", email: "cloud@example.test" },
+    });
+
+    render(<LauncherSurface />);
+
+    expect(screen.getByTestId("launcher-tile-cloud")).toBeTruthy();
   });
 
   it("opens an installable app's returned viewer on the first launch", async () => {

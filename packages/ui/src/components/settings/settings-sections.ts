@@ -14,11 +14,13 @@ import {
   Bot,
   Brain,
   Cloud,
+  Keyboard,
   KeyRound,
   LayoutGrid,
   Lock,
   type LucideIcon,
   Mic,
+  Monitor,
   Palette,
   RefreshCw,
   Server,
@@ -41,6 +43,7 @@ import {
   readSettingsHashSectionId,
   replaceSettingsHashRoute,
 } from "./settings-route";
+import type { SettingsRuntimeCapability } from "./settings-runtime-capabilities";
 import {
   SETTINGS_GROUP_LABEL,
   SETTINGS_GROUP_ORDER,
@@ -53,6 +56,7 @@ import {
   registerSettingsSection,
   type SettingsSectionDef,
   type SettingsSectionHue,
+  type SettingsSectionProminence,
   type SettingsSectionTone,
 } from "./settings-section-registry";
 
@@ -90,6 +94,16 @@ const AppsManagementSection = lazy(() =>
 );
 const ConnectorsSection = lazy(() =>
   import("./ConnectorsSection").then((m) => ({ default: m.ConnectorsSection })),
+);
+const DesktopIntegrationSection = lazy(() =>
+  import("./cloud-panel/sections/GeneralSection").then((m) => ({
+    default: m.DesktopIntegrationSection,
+  })),
+);
+const DesktopShortcutsSection = lazy(() =>
+  import("./cloud-panel/sections/ShortcutsSection").then((m) => ({
+    default: m.ShortcutsSection,
+  })),
 );
 const RuntimeSettingsSection = lazy(() =>
   import("./RuntimeSettingsSection").then((m) => ({
@@ -193,7 +207,10 @@ export const SECTION_HUE_MEDALLION_CLASS: Record<SettingsSectionHue, string> = {
   accent: "bg-accent/12 text-accent  ",
   amber: "bg-warn/12 text-warn  ",
   rose: "bg-[color-mix(in_oklab,var(--accent)_14%,var(--surface))] text-accent  ",
-  slate: "bg-surface text-txt-strong  ",
+  // Compact Settings uses one coherent warm medallion family. A white glyph on
+  // a near-black tile made neutral destinations (notably Basics and Backups)
+  // look like a different icon set from their peers.
+  slate: "bg-accent/12 text-accent  ",
 };
 
 /**
@@ -240,6 +257,8 @@ interface BuiltinSectionDefinition {
    */
   defaultTitle?: string;
   bodyClassName?: string;
+  /** Compact navigation weight; secondary rows stay one disclosure away. */
+  prominence?: SettingsSectionProminence;
   /** Hide unless Developer Mode is on. */
   developerOnly?: boolean;
   /** Hide on the cloud mobile build (no host machine). */
@@ -250,6 +269,8 @@ interface BuiltinSectionDefinition {
   hideOnManagedCloud?: boolean;
   /** Show only for a managed Eliza Cloud runtime target. */
   cloudOnly?: boolean;
+  /** Host features required before the section may mount or deep-link. */
+  requires?: readonly SettingsRuntimeCapability[];
   /**
    * Explicit sort order override. Catalog sections default to their META list
    * index; the late-registered Cloud/runtime sections declare fractional orders
@@ -301,6 +322,7 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     tone: "neutral",
     hue: "slate",
     labelKey: "settings.sections.identity.label",
+    prominence: "secondary",
     Component: IdentitySettingsSection,
   },
   {
@@ -366,18 +388,30 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     labelKey: "settings.sections.connectors.label",
     Component: ConnectorsSection,
   },
+  {
+    ...nonCatalogMeta("desktop-integration"),
+    catalog: false,
+    icon: Monitor,
+    tone: "neutral",
+    hue: "slate",
+    labelKey: "settings.sections.desktopIntegration.label",
+    defaultTitle: "Desktop app",
+    order: -1,
+    requires: ["desktop-bridge"],
+    Component: DesktopIntegrationSection,
+  },
   // System group order mirrors SETTINGS_SECTION_META: personalization first
   // (appearance, background), then infrastructure (runtime, wallet), then
   // maintenance (updates, backups) last.
   {
     id: "appearance",
-    defaultLabel: "Appearance",
+    defaultLabel: "General",
     group: "system",
-    aliases: ["theme", "look"],
+    aliases: ["general", "preferences", "theme", "look"],
     icon: Palette,
     tone: "neutral",
     hue: "rose",
-    labelKey: "settings.sections.appearance.label",
+    labelKey: "settings.sections.general.label",
     Component: AppearanceSettingsSection,
   },
   {
@@ -403,7 +437,20 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     tone: "accent",
     hue: "accent",
     labelKey: "settings.sections.notifications.label",
+    prominence: "secondary",
     Component: WebPushSettingsSection,
+  },
+  {
+    ...nonCatalogMeta("shortcuts"),
+    catalog: false,
+    icon: Keyboard,
+    tone: "neutral",
+    hue: "slate",
+    labelKey: "settings.sections.shortcuts.label",
+    defaultTitle: "Shortcuts",
+    order: 8.5,
+    requires: ["desktop-bridge"],
+    Component: DesktopShortcutsSection,
   },
   {
     id: "runtime",
@@ -607,11 +654,13 @@ function toSettingsSectionDef(
     titleKey: def.titleKey ?? def.labelKey,
     defaultTitle: sectionDefaultTitle(def),
     bodyClassName: def.bodyClassName,
+    prominence: def.prominence,
     developerOnly: def.developerOnly,
     hideOnCloud: def.hideOnCloud,
     androidCloudOnly: def.androidCloudOnly,
     hideOnManagedCloud: def.hideOnManagedCloud,
     cloudOnly: def.cloudOnly,
+    requires: def.requires,
     order: def.order ?? order,
     Component: def.Component,
   };

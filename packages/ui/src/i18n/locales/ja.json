@@ -4092,6 +4092,7 @@
   "settings.sections.aimodel.desc": "クラウド、ローカル、サブスクリプション、直接プロバイダー。",
   "settings.sections.appearance.desc": "コンテンツパック、VRMアバター、背景、テーマ",
   "settings.sections.appearance.label": "外観",
+  "settings.sections.general.label": "一般",
   "settings.sections.apps.basedOnLabel": "既存のアプリに基づく（オプション）",
   "settings.sections.apps.basedOnNone": "ゼロから開始",
   "settings.sections.apps.col.actions": "アクション",

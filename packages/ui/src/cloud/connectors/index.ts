@@ -44,10 +44,10 @@ export function CloudConnectorsSettingsSection(): React.JSX.Element {
 }
 
 /**
- * Register the cloud connectors surface as a Settings section under the "agent"
- * group. Idempotent (the registry replaces by id). Call from the host's cloud
- * boot path; not invoked at import time so the settings IA stays the host's
- * decision.
+ * Register the cloud connectors surface as a secondary Settings destination.
+ * The everyday hub exposes one canonical Connectors row and links here from
+ * inside it; the stable section remains registered for OAuth callbacks and
+ * direct deep links. Idempotent (the registry replaces by id).
  */
 export function registerCloudConnectorsSettingsSection(): void {
   registerSettingsSection({
@@ -60,7 +60,9 @@ export function registerCloudConnectorsSettingsSection(): void {
     group: "agent",
     titleKey: "settings.sections.cloudConnectors.title",
     defaultTitle: "Cloud Connectors",
-    // Deliberately public in the consolidated Cloud IA.
+    // Reachable from canonical Connectors and legacy/deep-link callbacks, but
+    // not a duplicate top-level row in the everyday hub.
+    prominence: "secondary",
     viewKind: "release",
     cloudOnly: true,
     Component: CloudConnectorsSettingsSection,

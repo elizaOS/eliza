@@ -22,6 +22,17 @@ describe("managed Cloud app-shell registration", () => {
     );
     expect(registration?.path).toBe("/cloud");
     expect(registration?.pathPatterns).toEqual(["/cloud/*"]);
-    expect(registration?.surface).toEqual({ capabilities: ["navigate"] });
+    expect(registration?.availability).toBeUndefined();
+    expect(registration?.surface).toEqual({
+      capabilities: ["navigate"],
+      layout: {
+        kind: "immersive",
+        topology: "ambient",
+        width: "full",
+        scroll: "view",
+        gutter: "none",
+      },
+    });
+    expect(registration?.surface?.background).toBeUndefined();
   });
 });
