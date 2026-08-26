@@ -166,9 +166,9 @@ export const SETTINGS_NON_CATALOG_SECTION_AUDIT = {
 	},
 	"android-account-lifecycle": {
 		reason:
-			"Android Cloud account deletion and privacy controls are platform lifecycle workflows, not local SETTINGS values.",
+			"Account export and deletion are security-sensitive Cloud workflows, not local setting values.",
 		coveredBy:
-			"AndroidAccountLifecycleSection and the authenticated Android cloud account-deletion contract",
+			"The Account & Privacy settings surface owns authenticated export, deletion, status, and cancellation flows.",
 	},
 	"my-runtimes": {
 		reason:

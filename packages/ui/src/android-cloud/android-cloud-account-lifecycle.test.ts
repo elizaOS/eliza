@@ -134,6 +134,50 @@ describe("Android account lifecycle transport", () => {
     expect(secure.values.has("account_deletion_admission")).toBe(false);
   });
 
+  it("coalesces concurrent deletion submissions into one reservation", async () => {
+    const secure = secureStore();
+    let resolveRequest!: (value: {
+      status: number;
+      data: Record<string, unknown>;
+    }) => void;
+    const request = vi.fn(
+      async () =>
+        await new Promise<{
+          status: number;
+          data: Record<string, unknown>;
+        }>((resolve) => {
+          resolveRequest = resolve;
+        }),
+    );
+    const lifecycle = createAndroidCloudAccountLifecycle(
+      clientOptions({ secureCredentials: secure.plugin, request }),
+    );
+
+    const first = lifecycle.requestDeletion();
+    const second = lifecycle.requestDeletion();
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+    resolveRequest({
+      status: 202,
+      data: {
+        request: requestDto(),
+        statusCredential: STATUS_CREDENTIAL,
+        recoveryCredential: RECOVERY_CREDENTIAL,
+      },
+    });
+
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      requestDto(),
+      requestDto(),
+    ]);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(secure.values.get("account_deletion_status")).toBe(
+      STATUS_CREDENTIAL,
+    );
+    expect(secure.values.get("account_deletion_recovery")).toBe(
+      RECOVERY_CREDENTIAL,
+    );
+  });
+
   it("CAS-invalidates only the rejected status capability", async () => {
     const secure = secureStore({
       account_deletion_status: STATUS_CREDENTIAL,
