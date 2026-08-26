@@ -79,6 +79,11 @@ describe("Capacitor logging behavior", () => {
         ELIZA_ANDROID_CLOUD_BUILD: "true",
       }),
     ).toBe("none");
+    expect(
+      resolveCapacitorLoggingBehavior({
+        ELIZA_ANDROID_CLOUD_HYBRID_BUILD: "1",
+      }),
+    ).toBe("none");
   });
 
   it("retains debug-only logging for other lanes", () => {
