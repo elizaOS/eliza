@@ -215,7 +215,18 @@ export class AppControlCoordinator {
       );
     }
     const element = this.resolveElement(stored, request);
+    // Semantic AX owns the first attempt; experimental delivery is never a shortcut.
+    let nativeResult =
+      request.kind === "hover_target"
+        ? { success: true }
+        : await this.adapter.perform(
+            stored.publicState.app,
+            element,
+            request,
+            signal,
+          );
     if (
+      !nativeResult.success &&
       request.allowExperimentalExactWindow &&
       this.exactWindowPointer?.available() &&
       element &&
@@ -312,12 +323,6 @@ export class AppControlCoordinator {
       | "set_of_marks"
       | "ocr"
       | "guarded_physical" = "semantic_ax";
-    let nativeResult = await this.adapter.perform(
-      stored.publicState.app,
-      element,
-      request,
-      signal,
-    );
     let physicalPointerMoved = false;
 
     if (!nativeResult.success) {

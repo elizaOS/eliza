@@ -183,7 +183,10 @@ describe("AppControlCoordinator", () => {
     };
     const snapshots = [nativeSnapshot(), nativeSnapshot()];
     for (const snapshot of snapshots) snapshot.focusedWindowId = 17;
-    const { coordinator } = fixture({ snapshots, exactWindowPointer });
+    const { coordinator } = fixture({
+      snapshots,
+      exactWindowPointer,
+    });
     const before = await coordinator.getAppState(app.id);
     await coordinator.act(action(before.stateId));
     expect(dispatch).not.toHaveBeenCalled();
@@ -206,7 +209,11 @@ describe("AppControlCoordinator", () => {
     };
     const snapshots = [nativeSnapshot(), nativeSnapshot()];
     for (const snapshot of snapshots) snapshot.focusedWindowId = 17;
-    const { coordinator } = fixture({ snapshots, exactWindowPointer });
+    const { coordinator } = fixture({
+      snapshots,
+      exactWindowPointer,
+      performSuccess: false,
+    });
     const before = await coordinator.getAppState(app.id);
     const outcome = await coordinator.act(
       action(before.stateId, { allowExperimentalExactWindow: true }),
