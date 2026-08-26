@@ -2423,12 +2423,28 @@ function withViewsUserFacingText(result: ActionResult): ActionResult {
 	};
 }
 
+function asViewInteractionDataValue(
+	value: unknown,
+): object | string | number | boolean | null | undefined {
+	if (value === null || value === undefined) return value;
+	if (typeof value === "object") return value;
+	if (
+		typeof value === "string" ||
+		typeof value === "number" ||
+		typeof value === "boolean"
+	) {
+		return value;
+	}
+	return String(value);
+}
+
 const VIEWS_ROUTING_HINT = [
 	"UI view/window/panel/app navigation and layout -> VIEWS.",
+	"The UI Context capability list is informational: never invoke a capability merely because the user asks which view is open or what can be done there; answer that meta-question directly from UI Context.",
 	"View switching is a common proactive response in app chat: use action=show when the user asks to open, show, switch to, or pull up a matching surface, including a bare surface name in any language.",
-	"Use VIEWS for navigation, close/hide, the view manager, split/tile/window/pin layouts, and capabilities that the selected view actually declares.",
+	"Use VIEWS for navigation, close/hide, the view manager, split/tile/window/pin layouts, and explicit capabilities that the selected view declares when no dedicated domain action owns the data.",
 	"Opening the Calendar surface uses VIEWS action=show; reading or changing calendar events uses the CALENDAR action because the first-party Calendar view is read-only.",
-	"Sticky Notes operations use the registered Notes capabilities. Create and update pass the complete user-authored note in the single content field; never invent a separate title or body. Do not route Notes to documents or Knowledge.",
+	"Reading, searching, creating, updating, or deleting note records uses NOTES, not VIEWS. Pass the complete user-authored note in the single content field; never invent a separate title or body. Do not route Notes to documents or Knowledge.",
 	"Phone flashlight requests use action=interact view=device-control capability=set-flashlight with params={enabled:true|false}; never claim success before the capability returns success.",
 	"For declared domain capabilities, use action=interact with an explicit view and capability. Semantic record capabilities are required; agent-fill and agent-click are only for an explicitly requested form-control interaction. Pass parameters in params rather than dotted keys.",
 	"Close/hide means VIEWS action=close, never delete/remove.",
@@ -2597,14 +2613,15 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"torch",
 		],
 		description:
-			"Manage and navigate UI views. List available views, report the current view, open or close a view, search views, show the view manager, arrange layouts, and invoke capabilities that a view declares, including Notes and native device controls. Calendar event reads and writes belong to the CALENDAR action; VIEWS only opens the Calendar surface.",
+			"Manage and navigate UI views. List available views, report the current view, open or close a view, search views, show the view manager, arrange layouts, and invoke explicit capabilities that a view declares when no dedicated domain action owns the data, including native device controls. Notes records belong to NOTES and calendar events belong to CALENDAR; VIEWS opens those surfaces.",
 		descriptionCompressed:
-			"navigate/close/arrange UI views; invoke declared Notes/device capabilities; Calendar records use CALENDAR",
+			"navigate/close/arrange UI views; invoke explicit UI-only capabilities; Notes records use NOTES; Calendar records use CALENDAR",
 		routingHint: VIEWS_ROUTING_HINT,
 		allowAdditionalParameters: true,
 		toolSchemaStrict: false,
-		// Every mode reports its authoritative outcome through its handler
-		// callback, after the shell or capability boundary has actually settled.
+		// Navigation and layout modes report their authoritative outcome through
+		// their handler callback. Data-bearing capability interactions stay
+		// internal and request a model-written finishing pass.
 		suppressEarlyReply: true,
 		suppressPostActionContinuation: true,
 
@@ -3403,20 +3420,27 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						const effectContract = interaction.success
 							? readViewInteractionEffectContract(interaction.result)
 							: undefined;
-						// Failure text is a catalog-internal diagnostic ("Cannot invoke
-						// capability X on view Y") — it goes back to the planner via the
-						// result, never straight to the user.
-						if (interaction.success) {
-							await callback?.({ text: resultText });
-						}
+						const interactionPayload =
+							interaction.result !== null &&
+							typeof interaction.result === "object" &&
+							!Array.isArray(interaction.result) &&
+							"result" in interaction.result
+								? (interaction.result as Record<string, unknown>).result
+								: interaction.result;
+						// Capability results are structured facts for the planner, not a
+						// preformatted chat reply. Keep both success and failure text off the
+						// user callback and require one model-owned finishing pass on success.
+						// This preserves a consistent Eliza voice while receipts keep mutation
+						// claims grounded in the actual view interaction.
 						return {
 							success: interaction.success,
 							text: resultText,
+							transcriptVisibility: "internal",
 							...(interaction.success
 								? {
-										userFacingText: resultText,
-										verifiedUserFacing: true,
-										turnComplete: true,
+										modelReplyRequired: true,
+										modelReplyFallback: resultText,
+										turnComplete: false,
 									}
 								: {}),
 							...(effectContract ?? {}),
@@ -3431,6 +3455,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 								viewType: resolvedViewType ?? "gui",
 								capability,
 								params,
+								result: asViewInteractionDataValue(interactionPayload),
 								...(receipt ? { receipt } : {}),
 							},
 						};

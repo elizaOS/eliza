@@ -80,9 +80,9 @@ function failure(text: string, code: string): ActionResult {
 }
 
 /**
- * Notes are a single-operation turn: the delivered text IS the outcome, so the
- * result opts into the turn-complete contract rather than letting the
- * evaluator re-render the same answer as a second message.
+ * Notes return settled facts to the planner, then require one model-authored
+ * closing reply. The fallback is deliberately short and truthful so a model
+ * outage never turns an already-completed operation into a generic failure.
  */
 function committed(text: string, data: Record<string, unknown>): ActionResult {
   // Bind the mutation to an applied effect receipt so the reply-egress
@@ -111,17 +111,11 @@ function committed(text: string, data: Record<string, unknown>): ActionResult {
   return {
     success: true,
     text,
-    userFacingText: text,
-    verifiedUserFacing: true,
-    turnComplete: true,
+    modelReplyRequired: true,
+    modelReplyFallback: text,
     ...(effectReceipts
       ? {
           effectReceipts,
-          // Bind the exact user-facing text to the committed receipt — the
-          // grounding resolvers only accept receipts named here.
-          userFacingEffectReceiptIds: effectReceipts.map(
-            (receipt) => receipt.receiptId,
-          ),
         }
       : {}),
     data: { actionName: "NOTES", ...data },
@@ -139,10 +133,14 @@ export const notesAction: Action = {
     "WRITE_NOTE",
     "JOT_DOWN",
     "WRITE_DOWN",
-    "LIST_NOTES",
     "READ_NOTES",
-    "SHOW_NOTES",
     "SEARCH_NOTES",
+    "NOTES_SEARCH",
+    "NOTES_LIST",
+    "NOTES_READ",
+    "NOTES_CREATE",
+    "NOTES_UPDATE",
+    "NOTES_DELETE",
     "FIND_NOTE",
     "LOOKUP_NOTE",
     "DELETE_NOTE",
@@ -163,7 +161,7 @@ export const notesAction: Action = {
     _message: Memory,
     _state?: State,
     options?: HandlerOptions,
-    callback?: HandlerCallback,
+    _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const params = readParams(options);
     const parsed = readOp(params);
@@ -177,10 +175,6 @@ export const notesAction: Action = {
     }
     const op: NotesOp = parsed?.op ?? "list";
     const service = getNotesService(runtime);
-
-    const deliver = async (text: string) => {
-      await callback?.({ text, source: "action", action: "NOTES" });
-    };
 
     if (op === "list") {
       const notes = service.listNotes();
@@ -196,19 +190,24 @@ export const notesAction: Action = {
               .includes(normalizedTopic),
           )
         : notes;
-      const text = topic
+      const fallback = topic
         ? matches.length === 0
-          ? "you don't have any matching notes."
-          : `your matching notes:\n${matches.map((note) => `- ${describe(note)}`).join("\n")}`
+          ? "I couldn't find a matching note."
+          : `I found ${matches.length} matching ${matches.length === 1 ? "note" : "notes"}.`
         : notes.length === 0
-          ? "you don't have any notes yet."
-          : `your notes:\n${notes.map((n) => `- ${describe(n)}`).join("\n")}`;
-      await deliver(text);
-      return committed(text, {
+          ? "You don't have any notes yet."
+          : `You have ${notes.length} ${notes.length === 1 ? "note" : "notes"}.`;
+      return committed(fallback, {
         op,
         count: matches.length,
         total: notes.length,
         filterApplied: topic !== undefined,
+        ...(topic ? { topic } : {}),
+        notes: matches.map(({ title, body, color }) => ({
+          title,
+          body,
+          color,
+        })),
       });
     }
 
@@ -232,7 +231,6 @@ export const notesAction: Action = {
       const text = created.replayed
         ? `that note was already saved: ${describe(note)}`
         : `saved a note: ${describe(note)}`;
-      await deliver(text);
       return committed(text, {
         op,
         noteId: note.id,
@@ -249,7 +247,6 @@ export const notesAction: Action = {
         removed.removedCount > 1
           ? `deleted the note: ${describe(removed.value)} (removed ${removed.removedCount} identical copies)`
           : `deleted the note: ${describe(removed.value)}`;
-      await deliver(text);
       return committed(text, {
         op,
         noteId: removed.value.id,
@@ -273,7 +270,6 @@ export const notesAction: Action = {
       updated.consolidatedCount > 0
         ? `updated the note: ${describe(updated.value)} (consolidated ${updated.consolidatedCount + 1} identical copies)`
         : `updated the note: ${describe(updated.value)}`;
-    await deliver(text);
     return committed(text, {
       op,
       noteId: updated.value.id,

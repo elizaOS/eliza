@@ -66,6 +66,7 @@ export const notesPlugin: Plugin = {
       componentExport: "NotesView",
       surface: { header: "fullscreen" },
       capabilities: NOTES_CAPABILITIES,
+      relatedActions: ["NOTES"],
       serverInteract,
       visibleInManager: true,
       desktopTabEnabled: true,
