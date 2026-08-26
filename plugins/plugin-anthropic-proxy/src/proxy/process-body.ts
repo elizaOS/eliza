@@ -1,6 +1,10 @@
 /**
  * Forward request body pipeline. Mirrors processBody() in proxy.js v2.2.3
- * layer-by-layer, in the same order, with the same string operations.
+ * layer-by-layer, in the same order, with the same string operations, except
+ * that `stripThinkingParameters` brace-matches the parameter value and skips
+ * insignificant whitespace around the separator comma so removal never emits
+ * malformed JSON regardless of key position or pretty-printing. That is a
+ * deliberate correctness divergence, not drift to reconcile away.
  *
  * Layers (in processing order):
  *   2. String trigger sanitization       (sanitize.ts)
@@ -73,14 +77,23 @@ function stripThinkingParameters(value: string): {
       cursor = keyStart + 1;
       continue;
     }
-    const objectEnd = value.indexOf("}", objectStart + 1);
+    // Brace-match the value (tracking string/escape state) so a nested object
+    // or a `}` inside a string does not end the removal early and leave
+    // orphaned syntax on the wire. `findMatchingObjectEnd` returns the index
+    // just past the matching `}`.
+    const objectEnd = findMatchingObjectEnd(value, objectStart);
     if (objectEnd < 0) break;
     // Consume the leading comma when present; otherwise (first key of the
     // object) consume the trailing comma so removal never leaves a dangling
-    // separator such as `{,"system":...}` that api.anthropic.com rejects.
-    const hasLeadingComma = keyStart > cursor && value[keyStart - 1] === ",";
-    const removalStart = hasLeadingComma ? keyStart - 1 : keyStart;
-    let removalEnd = objectEnd + 1;
+    // separator such as `{,"system":...}` that api.anthropic.com rejects. Both
+    // scans skip insignificant whitespace so pretty-printed bodies (where the
+    // char adjacent to the key is a space or newline, not the comma) are
+    // handled the same as minified ones.
+    let leading = keyStart - 1;
+    while (leading > cursor && value[leading]?.trim() === "") leading -= 1;
+    const hasLeadingComma = leading >= cursor && value[leading] === ",";
+    const removalStart = hasLeadingComma ? leading : keyStart;
+    let removalEnd = objectEnd;
     if (!hasLeadingComma) {
       let trailing = removalEnd;
       while (trailing < value.length && value[trailing]?.trim() === "") {

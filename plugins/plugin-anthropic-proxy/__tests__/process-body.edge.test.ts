@@ -151,3 +151,50 @@ describe("processBody thinking-parameter strip position invariance", () => {
     });
   }
 });
+
+// The proxy forwards arbitrary client bodies, so the strip must survive raw
+// wire shapes that `JSON.stringify` never emits: pretty-printed whitespace
+// around the separator, a nested object inside the `thinking` value, and a `}`
+// that lives inside a string. Each row is a raw request string, not a
+// stringified object, and each must leave the whole pipeline output parseable
+// with `thinking` removed. See PR #29167 review.
+describe("processBody thinking-parameter strip raw-body shapes", () => {
+  const prodDefaults: Partial<ProcessBodyConfig> = {
+    stripSystemConfig: true,
+    stripToolDescriptions: true,
+    injectCCSyntheticTools: true,
+    stripThinkingBlocks: true,
+  };
+  const messages = '"messages":[{"role":"user","content":"hi"}]';
+
+  const rawBodies: Array<[string, string]> = [
+    [
+      "pretty-printed body with thinking as the last key",
+      `{\n  "model": "x",\n  ${messages},\n  "thinking": {"type": "enabled", "budget_tokens": 2000}\n}`,
+    ],
+    [
+      "a nested object inside the thinking value",
+      `{"model":"x","thinking":{"type":"enabled","budget":{"tokens":5}},${messages}}`,
+    ],
+    [
+      "a closing brace inside a string in the thinking value",
+      `{"model":"x","thinking":{"type":"enab}led"},${messages}}`,
+    ],
+  ];
+
+  for (const [label, raw] of rawBodies) {
+    it(`produces valid JSON with the thinking param removed for ${label}`, () => {
+      const result = processBody(raw, { ...baseConfig, ...prodDefaults });
+
+      // Before the fix each of these throws: the last-key case leaves a
+      // trailing comma, the nested and in-string cases stop removal early on
+      // the wrong `}` and leave orphaned syntax.
+      const parsed = JSON.parse(result.body) as Record<string, unknown>;
+      expect("thinking" in parsed).toBe(false);
+      expect(result.stats.thinkingParamsStripped).toBe(1);
+      expect(result.body).not.toContain("{,");
+      expect(result.body).not.toContain(",,");
+      expect(result.body).not.toContain(",}");
+    });
+  }
+});
