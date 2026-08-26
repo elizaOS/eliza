@@ -8,51 +8,75 @@ const QUOTED_SEGMENT = /`[^`]*`|"[^"]*"|“[^”]*”|‘[^’]*’/gu;
 const EXPLICIT_COMPUTER_USE_REQUEST =
   /^(?:(?:hey|hi)\s*,?\s+)?(?:(?:please|kindly)\s*,?\s+)?(?:(?:can|could|would|will)\s+(?:you|u)\s+(?:please\s+)?|i\s+(?:(?:want|need)\s+(?:you|u)\s+to|would\s+like\s+(?:you|u)\s+to)\s+)?use\s+(?:computer[\s_-]*use|(?:my|the)\s+computer)\b/iu;
 const IMMEDIATE_NEGATED_ACTION = /^\s+to\s+(?:not|never)\b/iu;
-const TERMINAL_CANCEL =
-  /(?:^|[\s?!.,;:—-])(?:(?:but|and\s+then)\s+)?(?:please\s+)?(?:cancel|stop)(?:\s+(?:that(?:\s+request)?|it|the\s+request))?\s*[.!?]*$/iu;
+const TERMINAL_REFERENTIAL_CANCEL =
+  /(?:^|[\s?!.,;:—-])(?:(?:but|and\s+then)\s+)?(?:please\s+)?(?:cancel|stop)\s+(?:that(?:\s+request)?|it|the\s+request)\s*[.!?]*$/iu;
+const TERMINAL_BARE_CANCEL =
+  /(?:^|[?!.,;:—-]\s*|\bbut\s+|\band\s+then\s+)(?:please\s+)?(?:cancel|stop)\s*[.!?]*$/iu;
+const TERMINAL_ABANDON =
+  /(?:^|[\s?!.,;:—-])(?:never\s+mind|forget\s+it)\s*[.!?]*$/iu;
+const TERMINAL_BARE_NEGATION =
+  /(?:^|[?!.,;:—-]\s*|\bbut\s+)(?:please\s+)?(?:do\s+not|don't|never)\s*[.!?]*$/iu;
 const BUT_NEGATED_ACTION =
   /\bbut\s+(?:actually\s*,?\s*)?(?:please\s+)?(?:do\s+not|don't|never)(?:\s+(.+))?$/iu;
 const RECONSIDERED_NEGATED_ACTION =
-  /(?:^|[?!.,;:—-]\s*)(?:actually\s*,?\s*|on\s+second\s+thought\s*,?\s*)(?:please\s+)?(?:do\s+not|don't|never)\s+(.+)$/iu;
+  /(?:^|[\s?!.,;:—-])(?:and\s+|but\s+)?(?:actually\s*,?\s*|on\s+second\s+thought\s*,?\s*)(?:please\s+)?(?:do\s+not|don't|never)\s+(.+)$/iu;
 const RECONSIDERED_CANCEL =
   /(?:^|[?!.,;:—-]\s*)(?:actually\s*,?\s*|on\s+second\s+thought\s*,?\s*)(?:please\s+)?(?:cancel|stop)(?:\s+(?:that(?:\s+request)?|it|the\s+request))?\s*[.!?]*$/iu;
 const GENERIC_NEGATED_REFERENCE = /^(?:actually\s+)?(?:do\s+)?(?:that|it)\b/iu;
 const COMPUTER_USE_REFERENCE =
   /^(?:use\s+)?(?:computer[\s_-]*use|(?:my|the)\s+computer)\b/iu;
 
-function requestedActionVerb(trailingRequest: string): string | undefined {
-  return /^\s+to\s+([\p{L}\p{N}_-]+)/iu
-    .exec(trailingRequest)?.[1]
-    ?.toLocaleLowerCase();
+function normalizeAction(action: string): string {
+  return action
+    .normalize("NFKC")
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+function requestedAction(trailingRequest: string): string | undefined {
+  const match =
+    /^\s+(?:to|and)\s+(.+?)(?=\s+but\b|\s+actually\b|\s+on\s+second\s+thought\b|\s+and\s+then\s+(?:cancel|stop)\b|\s+(?:cancel|stop)\s+(?:that|it|the\s+request)\b|[?!.,;:—-]|$)/iu.exec(
+      trailingRequest,
+    );
+  const normalized = normalizeAction(match?.[1] ?? "");
+  return normalized.length > 0 ? normalized : undefined;
 }
 
 function negatedActionRetractsRequest(
   negatedAction: string,
-  requestedVerb: string | undefined,
+  affirmativeAction: string | undefined,
 ): boolean {
   const normalized = negatedAction.trim();
   if (normalized.length === 0) return true;
   if (GENERIC_NEGATED_REFERENCE.test(normalized)) return true;
   if (COMPUTER_USE_REFERENCE.test(normalized)) return true;
-  const negatedVerb = /^(?:actually\s+)?([\p{L}\p{N}_-]+)/iu.exec(
-    normalized,
-  )?.[1];
-  return Boolean(
-    requestedVerb && negatedVerb?.toLocaleLowerCase() === requestedVerb,
-  );
+  const affirmativeVerb = affirmativeAction?.split(" ", 1)[0];
+  const normalizedNegation = normalizeAction(normalized);
+  if (
+    affirmativeVerb &&
+    (normalizedNegation === `${affirmativeVerb} it` ||
+      normalizedNegation === `${affirmativeVerb} that`)
+  ) {
+    return true;
+  }
+  return Boolean(affirmativeAction && normalizedNegation === affirmativeAction);
 }
 
 function retractsExplicitComputerUseRequest(trailingRequest: string): boolean {
   if (IMMEDIATE_NEGATED_ACTION.test(trailingRequest)) return true;
-  if (TERMINAL_CANCEL.test(trailingRequest)) return true;
+  if (TERMINAL_REFERENTIAL_CANCEL.test(trailingRequest)) return true;
+  if (TERMINAL_BARE_CANCEL.test(trailingRequest)) return true;
+  if (TERMINAL_ABANDON.test(trailingRequest)) return true;
+  if (TERMINAL_BARE_NEGATION.test(trailingRequest)) return true;
   if (RECONSIDERED_CANCEL.test(trailingRequest)) return true;
 
-  const requestedVerb = requestedActionVerb(trailingRequest);
+  const affirmativeAction = requestedAction(trailingRequest);
   const reconsideration = RECONSIDERED_NEGATED_ACTION.exec(trailingRequest);
   if (
     reconsideration &&
-    (!requestedVerb ||
-      negatedActionRetractsRequest(reconsideration[1] ?? "", requestedVerb))
+    (!affirmativeAction ||
+      negatedActionRetractsRequest(reconsideration[1] ?? "", affirmativeAction))
   ) {
     return true;
   }
@@ -63,7 +87,7 @@ function retractsExplicitComputerUseRequest(trailingRequest: string): boolean {
     .slice(0, butNegation.index)
     .replace(/[\s?!.,;:—-]/gu, "");
   if (positiveInstruction.length === 0) return true;
-  return negatedActionRetractsRequest(butNegation[1] ?? "", requestedVerb);
+  return negatedActionRetractsRequest(butNegation[1] ?? "", affirmativeAction);
 }
 
 /**
