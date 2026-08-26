@@ -1353,4 +1353,23 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
 			awaitingUserInput: true,
 		});
 	});
+
+	it("a stale armed preview for ANOTHER recipient cannot be selected (#25284 review: one slot per room)", async () => {
+		// Preview to recipient A arms the room's single slot; a yes arriving
+		// with bytes for a different recipient B must not consume A's record
+		// — the digest covers the full TargetInfo, so any recipient change is
+		// a mismatch that re-arms and sends nothing.
+		const { runtime, sends } = harness({ known: false });
+		await send(runtime, "message fuzzymatch saying hey"); // arm for A
+
+		const second = await send(runtime, "yes", {
+			body: "substituted bytes aimed at recipient B",
+			messageId: "00000000-0000-0000-0000-0000000000a2",
+		});
+		expect(sends).toHaveLength(0);
+		expect(second.data).toMatchObject({
+			confirmationRequired: true,
+			awaitingUserInput: true,
+		});
+	});
 });

@@ -3133,16 +3133,18 @@ async function handleSend(
 	if (isUnvettedDirectUserCandidate(selected)) {
 		const known = await recipientIsKnownEntity(runtime, message, target);
 		if (!known) {
-			// Turn-bound (#27932 review): one pending record per actor+action
-			// per connector+recipient+room (single slot — a new operation
-			// OVERWRITES any prior armed preview, so a stale record can never
-			// be selected). The record carries a SHA-256 digest of the complete
+			// Turn-bound (#27932 review): exactly ONE pending send confirmation
+			// per actor per room (the helper's cache key already prefixes
+			// actor+action; this key adds only the room). A new operation
+			// OVERWRITES any prior armed preview — even for a different
+			// recipient or connector — so no stale record can ever be
+			// selected. The record carries a SHA-256 digest of the complete
 			// effective send operation — the outbound Content AND the full
 			// resolved TargetInfo — and the arming message id; consumption
-			// requires a DIFFERENT, later user message whose recomputed digest
+			// requires a DIFFERENT user message whose recomputed digest
 			// matches byte-for-byte. Substituted bytes, a different thread or
 			// target, a different room, a same-message re-invocation, or a
-			// planner re-emit across two turns all re-prompt instead of
+			// yes aimed at a superseded preview all re-prompt instead of
 			// sending; the provider call stays at zero on every mismatch.
 			const confirmationFingerprint = createHash("sha256")
 				.update(stableStringify({ target, content }))
@@ -3152,7 +3154,7 @@ async function handleSend(
 				runtime,
 				message,
 				actionName: "MESSAGE" as const,
-				pendingKey: `send:${selected.connector.source}:${String(target.entityId)}:${message.roomId}`,
+				pendingKey: `send:${message.roomId}`,
 				prompt: `Send this via ${selected.connector.label} to ${selected.label}? They are not in this room, your contacts, or your relationship graph.`,
 				metadata: {
 					confirmationFingerprint,
