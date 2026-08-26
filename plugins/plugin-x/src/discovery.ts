@@ -1082,7 +1082,7 @@ Character bio: ${characterBio}
 
 Keep the reply:
 - Relevant and adding value to the conversation
-- Under 280 characters
+- Complete; the connector will preserve longer output as an ordered thread
 - Natural and conversational
 - Related to your expertise and interests
 - Respectful and constructive
@@ -1120,7 +1120,7 @@ Character bio: ${characterBio}
 
 Create a quote tweet that:
 - Adds unique insight or perspective
-- Is under 280 characters
+- Is complete; the connector will preserve longer output as an ordered thread
 - Respectfully builds on the original idea
 - Showcases your expertise
 - Encourages further discussion
