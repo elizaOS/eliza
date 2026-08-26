@@ -83,18 +83,29 @@ describe("Notes boundary validation", () => {
     });
   });
 
-  describe("parseStickyColor and isStickyColor", () => {
+  describe("isStickyColor", () => {
+    it("narrows exact valid sticky colors and rejects non-exact or invalid values", () => {
+      expect(isStickyColor("yellow")).toBe(true);
+      expect(isStickyColor("green")).toBe(true);
+      expect(isStickyColor("rose")).toBe(true);
+      expect(isStickyColor("slate")).toBe(true);
+
+      // Must not treat un-normalized or invalid inputs as StickyColor
+      expect(isStickyColor("  GREEN  ")).toBe(false);
+      expect(isStickyColor("Yellow")).toBe(false);
+      expect(isStickyColor("blue")).toBe(false);
+      expect(isStickyColor(123)).toBe(false);
+      expect(isStickyColor(null)).toBe(false);
+    });
+  });
+
+  describe("parseStickyColor", () => {
     it("accepts valid sticky colors and normalizes case/whitespace", () => {
       expect(parseStickyColor("yellow")).toBe("yellow");
       expect(parseStickyColor("  Yellow  ")).toBe("yellow");
       expect(parseStickyColor("GREEN")).toBe("green");
       expect(parseStickyColor("rose")).toBe("rose");
       expect(parseStickyColor("slate")).toBe("slate");
-
-      expect(isStickyColor("yellow")).toBe(true);
-      expect(isStickyColor("  GREEN  ")).toBe(true);
-      expect(isStickyColor("blue")).toBe(false);
-      expect(isStickyColor(123)).toBe(false);
     });
 
     it("rejects unknown colors", () => {

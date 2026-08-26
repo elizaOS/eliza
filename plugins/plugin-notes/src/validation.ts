@@ -14,6 +14,7 @@ import {
   type CreateNoteInput,
   NOTES_SCHEMA_VERSION,
   type NotesDocument,
+  STICKY_COLORS,
   type StickyColor,
   type StickyNote,
   type UpdateNoteInput,
@@ -137,26 +138,17 @@ export function parseEntityId(value: unknown, field = "id"): string {
 }
 
 export function isStickyColor(value: unknown): value is StickyColor {
-  if (typeof value !== "string") return false;
-  const normalized = value.trim().toLowerCase();
   return (
-    normalized === "yellow" ||
-    normalized === "green" ||
-    normalized === "rose" ||
-    normalized === "slate"
+    typeof value === "string" &&
+    (STICKY_COLORS as readonly string[]).includes(value)
   );
 }
 
 export function parseStickyColor(value: unknown, field = "color"): StickyColor {
   if (typeof value === "string") {
     const normalized = value.trim().toLowerCase();
-    if (
-      normalized === "yellow" ||
-      normalized === "green" ||
-      normalized === "rose" ||
-      normalized === "slate"
-    ) {
-      return normalized;
+    if ((STICKY_COLORS as readonly string[]).includes(normalized)) {
+      return normalized as StickyColor;
     }
   }
   throw validationError(
