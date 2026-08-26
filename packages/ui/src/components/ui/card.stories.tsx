@@ -17,7 +17,20 @@ const meta = {
   argTypes: {
     variant: {
       control: "select",
-      options: ["default", "interactive", "status", "setting", "flat"],
+      options: [
+        "default",
+        "setting",
+        "flatPadded",
+        "outlinedPadded",
+        "reportPanel",
+        "insetCompact",
+        "insetPadded",
+        "transparent",
+        "dashed",
+        "accentTile",
+        "brand",
+        "panel",
+      ],
     },
   },
   args: { variant: "default" },
@@ -45,21 +58,6 @@ export const Default: Story = {
   ),
 };
 
-export const Interactive: Story = {
-  args: { variant: "interactive" },
-  render: (args) => (
-    <Card {...args} className="w-80">
-      <CardHeader>
-        <CardTitle>Open chat</CardTitle>
-        <CardDescription>Hover to highlight this card.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <p className="text-sm">Click anywhere to start a conversation.</p>
-      </CardContent>
-    </Card>
-  ),
-};
-
 export const WithAction: Story = {
   render: (args) => (
     <Card
@@ -78,10 +76,76 @@ export const WithAction: Story = {
 };
 
 export const Flat: Story = {
-  args: { variant: "flat" },
+  args: { variant: "flatPadded" },
   render: (args) => (
-    <Card {...args} variant="flatPadded" className="w-80">
+    <Card {...args} className="w-80">
       <p className="text-sm">A borderless container for inline content.</p>
+    </Card>
+  ),
+};
+
+export const Outlined: Story = {
+  args: { variant: "outlinedPadded", stack: "default" },
+  render: (args) => (
+    <Card {...args} className="w-80">
+      <CardTitle>Local model</CardTitle>
+      <CardDescription>
+        Outlined surface with canonical padding.
+      </CardDescription>
+    </Card>
+  ),
+};
+
+export const ReportPanel: Story = {
+  args: { variant: "reportPanel" },
+  render: (args) => (
+    <Card {...args} className="w-80">
+      <CardHeader>
+        <CardTitle>Provider usage</CardTitle>
+        <CardDescription>Analytics report surface.</CardDescription>
+      </CardHeader>
+    </Card>
+  ),
+};
+
+export const InsetRow: Story = {
+  args: {
+    variant: "insetCompact",
+    flow: "rowBetween",
+    gap: "default",
+  },
+  render: (args) => (
+    <Card {...args} className="w-80">
+      <span className="text-sm">Monetization</span>
+      <span className="text-sm text-muted">Enabled</span>
+    </Card>
+  ),
+};
+
+export const Dashed: Story = {
+  args: { variant: "dashed" },
+  render: (args) => (
+    <Card {...args} className="w-80 p-8 text-center">
+      <CardTitle>No results</CardTitle>
+      <CardDescription>Try adjusting the current filters.</CardDescription>
+    </Card>
+  ),
+};
+
+export const Transparent: Story = {
+  args: { variant: "transparent" },
+  render: (args) => (
+    <Card {...args} className="w-80 p-4">
+      Transparent grouping surface
+    </Card>
+  ),
+};
+
+export const AccentTile: Story = {
+  args: { variant: "accentTile" },
+  render: (args) => (
+    <Card {...args} className="size-14">
+      AI
     </Card>
   ),
 };

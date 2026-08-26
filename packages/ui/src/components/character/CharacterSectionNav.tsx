@@ -25,6 +25,7 @@ import {
   SectionTabStrip,
 } from "../shared/SectionNav";
 import { ViewHeader } from "../shared/ViewHeader";
+import { Separator } from "../ui/separator";
 
 const CHARACTER_SECTION_GROUP = "character";
 
@@ -77,7 +78,7 @@ export function CharacterSectionNav({
   activePath: string;
 }): React.JSX.Element {
   return (
-    <div className="flex shrink-0 flex-col border-b border-border/45">
+    <div className="flex shrink-0 flex-col">
       <ViewHeader title="Character" />
       <SectionTabStrip
         entries={CHARACTER_SECTION_TABS}
@@ -92,6 +93,7 @@ export function CharacterSectionNav({
         ariaLabel="Character sections"
         className="pt-0"
       />
+      <Separator tone="subtle45" />
     </div>
   );
 }

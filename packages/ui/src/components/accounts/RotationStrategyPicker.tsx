@@ -103,11 +103,12 @@ export function RotationStrategyPicker({
         disabled={disabled}
       >
         <SelectTrigger
+          variant="accountCompact"
           aria-label={t("accounts.strategy.label", {
             defaultValue: "Strategy",
           })}
           id={`rotation-strategy-${providerId}`}
-          className="h-8 w-[160px] gap-1 truncate whitespace-nowrap rounded-sm border border-border bg-card text-xs [&>span]:truncate"
+          className="w-[160px] gap-1 truncate whitespace-nowrap [&>span]:truncate"
         >
           <SelectValue
             placeholder={t("accounts.strategy.choose", {

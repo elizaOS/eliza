@@ -28,6 +28,7 @@ import type {
 import { useCallback, useEffect, useRef } from "react";
 import { type Connector, useAccount, useConnect, useSignMessage } from "wagmi";
 import { Button } from "../../../../components/ui/button";
+import { Spinner } from "../../../../components/ui/spinner";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 
 type HexAddress = `0x${string}`;
@@ -463,11 +464,5 @@ function SolanaButton({
       {loading && <Spinner />}
       {t("cloud.login.wallet.solana", { defaultValue: "Solana wallet" })}
     </Button>
-  );
-}
-
-function Spinner() {
-  return (
-    <div className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent opacity-70 motion-reduce:animate-none" />
   );
 }

@@ -22,16 +22,35 @@ const buttonPath = path.join(
   repoRoot,
   "packages/ui/src/components/ui/button.tsx",
 );
+const cardPath = path.join(repoRoot, "packages/ui/src/components/ui/card.tsx");
 const BUTTON_AXES = ["variant", "size", "shape", "align"];
 const BUTTON_MIN_MAINTAINED_CALLERS = 2;
+const CARD_AXES = [
+  "variant",
+  "stack",
+  "flow",
+  "gap",
+  "padding",
+  "tone",
+  "surface",
+  "border",
+  "radius",
+  "shadow",
+];
+const CARD_MIN_MAINTAINED_CALLERS = 2;
 
 export const RULES = [
   "atomic-duplicate",
   "raw-control",
+  "raw-card-recipe",
+  "raw-outlined-card-recipe",
+  "card-report-panel-override",
+  "raw-inset-card-recipe",
   "direct-primitive-import",
   "deep-canonical-import",
   "variant-helper-bypass",
   "button-axis-reuse",
+  "card-variant-reuse",
   "unstyled-canonical",
   "visual-override",
   "off-token-color",
@@ -107,9 +126,16 @@ const TOKEN_ROLE_CONTRACTS = Object.freeze({
     ],
   },
   surface: {
-    foreground: ["content", "muted", "inverse", "on-inverse", "status"],
-    surface: ["neutral", "inverse", "transparent", "status"],
-    border: ["structure", "inverse", "transparent", "status"],
+    foreground: [
+      "content",
+      "muted",
+      "inverse",
+      "on-inverse",
+      "action",
+      "status",
+    ],
+    surface: ["neutral", "inverse", "transparent", "action", "status"],
+    border: ["structure", "inverse", "transparent", "action", "status"],
     radius: ["none", "control", "container", "pill"],
     spacing: ["container"],
     elevation: ["none", "low", "raised"],
@@ -175,7 +201,11 @@ const CANONICAL_RECIPE_CONTRACTS = Object.freeze({
   },
   "packages/ui/src/components/ui/attachment.tsx:attachmentVariants": {
     role: "surface",
-    axes: { size: "surface", orientation: "layout" },
+    axes: {
+      size: "surface",
+      orientation: "layout",
+      presentation: "surface",
+    },
   },
   "packages/ui/src/components/ui/attachment.tsx:attachmentMediaVariants": {
     role: "surface",
@@ -183,7 +213,13 @@ const CANONICAL_RECIPE_CONTRACTS = Object.freeze({
   },
   "packages/ui/src/components/ui/badge.tsx:badgeVariants": {
     role: "status",
-    axes: { variant: "status", size: "status", tone: "status" },
+    axes: {
+      variant: "status",
+      size: "status",
+      tone: "status",
+      presentation: "surface",
+      overlay: "action",
+    },
   },
   "packages/ui/src/components/ui/banner.tsx:bannerVariants": {
     role: "status",
@@ -200,7 +236,30 @@ const CANONICAL_RECIPE_CONTRACTS = Object.freeze({
   },
   "packages/ui/src/components/ui/card.tsx:cardVariants": {
     role: "surface",
+    axes: {
+      variant: "surface",
+      stack: "surface",
+      flow: "surface",
+      gap: "surface",
+      padding: "surface",
+      tone: "surface",
+      surface: "surface",
+      border: "surface",
+      radius: "surface",
+      shadow: "surface",
+    },
+  },
+  "packages/ui/src/components/ui/radio-group.tsx:radioGroupVariants": {
+    role: "field",
+    axes: { variant: "field" },
+  },
+  "packages/ui/src/components/ui/scroll-area.tsx:scrollAreaVariants": {
+    role: "surface",
     axes: { variant: "surface" },
+  },
+  "packages/ui/src/components/ui/spinner.tsx:spinnerVariants": {
+    role: "content",
+    axes: { variant: "content" },
   },
   "packages/ui/src/components/ui/grid.tsx:gridVariants": {
     role: "layout",
@@ -235,6 +294,22 @@ const CANONICAL_RECIPE_CONTRACTS = Object.freeze({
       spacing: "layout",
     },
   },
+  "packages/ui/src/components/ui/table.tsx:tableRowVariants": {
+    role: "surface",
+    axes: { variant: "surface" },
+  },
+  "packages/ui/src/components/ui/table.tsx:tableHeaderVariants": {
+    role: "surface",
+    axes: { variant: "surface" },
+  },
+  "packages/ui/src/components/ui/table.tsx:tableHeadVariants": {
+    role: "surface",
+    axes: { divider: "surface", interactive: "surface" },
+  },
+  "packages/ui/src/components/ui/table.tsx:tableCellVariants": {
+    role: "surface",
+    axes: { variant: "surface" },
+  },
   "packages/ui/src/components/ui/tabs.tsx:tabsListVariants": {
     role: "surface",
     axes: { variant: "surface" },
@@ -246,6 +321,10 @@ const CANONICAL_RECIPE_CONTRACTS = Object.freeze({
   "packages/ui/src/components/ui/textarea.tsx:textareaVariants": {
     role: "field",
     axes: { variant: "field", density: "field" },
+  },
+  "packages/ui/src/components/ui/text-link.tsx:textLinkVariants": {
+    role: "action",
+    axes: { variant: "action" },
   },
   "packages/ui/src/components/ui/toggle.tsx:toggleVariants": {
     role: "action",
@@ -320,7 +399,7 @@ export function assertRegisteredAdaptersUsed(adapters, matches, exports) {
   }
 }
 const VISUAL_UTILITY =
-  /(?:^|\s)(?:[a-z-]+:)*(?:bg|text|border|rounded|shadow|ring|outline|fill|stroke|p[trblxy]?|h|min-h|max-h|gap|space-[xy])-(?:\[[^\]]+\]|[^\s]+)/;
+  /(?:^|\s)(?:[a-z-]+:)*(?:(?:bg|border|rounded|shadow|ring|outline|fill|stroke|from|via|to)-(?:\[[^\]]+\]|[^\s]+)|text-(?:\[[^\]]+\]|(?:txt|foreground|card-fg|card-foreground|popover-foreground|muted|inverse|accent|primary|secondary|destructive|danger|warn|warning|ok|success|info|status|header|sidebar|black|white|slate|gray|zinc|neutral|stone|red|rose|pink|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia)(?:-|\/|$)[^\s]*))/;
 // Skeleton width, height, spacing, and radius describe the geometry of the
 // content being previewed. Its paint and effects remain primitive-owned.
 const SKELETON_PAINT_UTILITY =
@@ -335,7 +414,7 @@ function isGovernedSource(file) {
   const rel = relative(file);
   return (
     /^(packages|plugins)\//.test(rel) &&
-    /\.[jt]sx$/.test(rel) &&
+    /\.[jt]sx?$/.test(rel) &&
     !/(^|\/)(node_modules|dist|build|coverage|generated)(\/|$)/.test(rel) &&
     !/\.(test|spec)\.[jt]sx$/.test(rel) &&
     !/(^|\/)(test|__tests__|__e2e__|__fixtures__|fixtures|stubs|templates)(\/|$)/.test(
@@ -347,12 +426,260 @@ function isGovernedSource(file) {
 function* walk(directory) {
   if (!fs.existsSync(directory)) return;
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-    if (["node_modules", "dist", "build", ".git"].includes(entry.name))
+    if (
+      [
+        "node_modules",
+        "dist",
+        "build",
+        "coverage",
+        "generated",
+        "test-results",
+        ".git",
+      ].includes(entry.name) ||
+      entry.name.startsWith(".playwright-artifacts-")
+    )
       continue;
     const full = path.join(directory, entry.name);
     if (entry.isDirectory()) yield* walk(full);
-    else if (isGovernedSource(full)) yield full;
+    else if (isGovernedSource(full)) {
+      if (/\.[jt]sx$/.test(full)) {
+        yield full;
+        continue;
+      }
+      const source = fs.readFileSync(full, "utf8");
+      if (
+        /\bcreateElement\b/.test(source) &&
+        /from\s+["']react["']/.test(source)
+      ) {
+        yield full;
+      }
+    }
   }
+}
+
+function* walkStylesheets(directory) {
+  if (!fs.existsSync(directory)) return;
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    if (
+      [
+        "node_modules",
+        "dist",
+        "build",
+        "coverage",
+        "generated",
+        "test-results",
+        ".git",
+        "stories",
+        "test",
+        "__tests__",
+        "__e2e__",
+      ].includes(entry.name) ||
+      entry.name.startsWith(".playwright-artifacts-")
+    )
+      continue;
+    const full = path.join(directory, entry.name);
+    if (entry.isDirectory()) yield* walkStylesheets(full);
+    else if (entry.name.endsWith(".css")) yield full;
+  }
+}
+
+const CSS_PAINT_DECLARATION =
+  /(?:^|;)\s*(?:-webkit-)?(?:backdrop-filter|background(?:-[a-z-]+)?|border(?:-[a-z-]+)?|box-shadow|color|filter|outline(?:-[a-z-]+)?)\s*:/im;
+
+/** Maps named CSS classes to the maintained stylesheets that give them paint. */
+export function indexPaintedCssClasses(stylesheets) {
+  const painted = new Map();
+
+  function splitSelectorList(selectorText) {
+    const selectors = [];
+    let bracketDepth = 0;
+    let parenthesisDepth = 0;
+    let quote = null;
+    let start = 0;
+    let escaped = false;
+    for (let index = 0; index < selectorText.length; index += 1) {
+      const character = selectorText[index];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (character === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (quote) {
+        if (character === quote) quote = null;
+        continue;
+      }
+      if (character === '"' || character === "'") {
+        quote = character;
+        continue;
+      }
+      if (character === "[") bracketDepth += 1;
+      else if (character === "]") bracketDepth = Math.max(0, bracketDepth - 1);
+      else if (character === "(") parenthesisDepth += 1;
+      else if (character === ")") {
+        parenthesisDepth = Math.max(0, parenthesisDepth - 1);
+      } else if (
+        character === "," &&
+        bracketDepth === 0 &&
+        parenthesisDepth === 0
+      ) {
+        selectors.push(selectorText.slice(start, index));
+        start = index + 1;
+      }
+    }
+    selectors.push(selectorText.slice(start));
+    return selectors;
+  }
+
+  function paintedSubjectClasses(selector) {
+    const normalizedSelector = selector.trim();
+    let bracketDepth = 0;
+    let parenthesisDepth = 0;
+    let quote = null;
+    let subjectStart = 0;
+    let escaped = false;
+    for (let index = 0; index < normalizedSelector.length; index += 1) {
+      const character = normalizedSelector[index];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (character === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (quote) {
+        if (character === quote) quote = null;
+        continue;
+      }
+      if (character === '"' || character === "'") {
+        quote = character;
+        continue;
+      }
+      if (character === "[") bracketDepth += 1;
+      else if (character === "]") bracketDepth = Math.max(0, bracketDepth - 1);
+      else if (character === "(") parenthesisDepth += 1;
+      else if (character === ")") {
+        parenthesisDepth = Math.max(0, parenthesisDepth - 1);
+      } else if (
+        bracketDepth === 0 &&
+        parenthesisDepth === 0 &&
+        (/\s/.test(character) || [">", "+", "~"].includes(character))
+      ) {
+        subjectStart = index + 1;
+      }
+    }
+
+    const subject = normalizedSelector.slice(subjectStart).trim();
+    const classes = [];
+    bracketDepth = 0;
+    parenthesisDepth = 0;
+    quote = null;
+    escaped = false;
+    for (let index = 0; index < subject.length; index += 1) {
+      const character = subject[index];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (character === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (quote) {
+        if (character === quote) quote = null;
+        continue;
+      }
+      if (character === '"' || character === "'") {
+        quote = character;
+        continue;
+      }
+      if (character === "[") {
+        bracketDepth += 1;
+        continue;
+      }
+      if (character === "]") {
+        bracketDepth = Math.max(0, bracketDepth - 1);
+        continue;
+      }
+      if (character === ":" && bracketDepth === 0 && parenthesisDepth === 0) {
+        const functionalPseudo = /^:(?:where|is|global)\(/.exec(
+          subject.slice(index),
+        );
+        if (functionalPseudo) {
+          const openIndex = index + functionalPseudo[0].length - 1;
+          let nestedDepth = 1;
+          let nestedQuote = null;
+          let nestedEscaped = false;
+          let closeIndex = openIndex + 1;
+          for (; closeIndex < subject.length; closeIndex += 1) {
+            const nestedCharacter = subject[closeIndex];
+            if (nestedEscaped) {
+              nestedEscaped = false;
+              continue;
+            }
+            if (nestedCharacter === "\\") {
+              nestedEscaped = true;
+              continue;
+            }
+            if (nestedQuote) {
+              if (nestedCharacter === nestedQuote) nestedQuote = null;
+              continue;
+            }
+            if (nestedCharacter === '"' || nestedCharacter === "'") {
+              nestedQuote = nestedCharacter;
+              continue;
+            }
+            if (nestedCharacter === "(") nestedDepth += 1;
+            else if (nestedCharacter === ")") nestedDepth -= 1;
+            if (nestedDepth === 0) break;
+          }
+          if (nestedDepth === 0) {
+            const argumentsText = subject.slice(openIndex + 1, closeIndex);
+            for (const argument of splitSelectorList(argumentsText)) {
+              classes.push(...paintedSubjectClasses(argument));
+            }
+            index = closeIndex;
+            continue;
+          }
+        }
+      }
+      if (character === "(") {
+        parenthesisDepth += 1;
+        continue;
+      }
+      if (character === ")") {
+        parenthesisDepth = Math.max(0, parenthesisDepth - 1);
+        continue;
+      }
+      if (character !== "." || bracketDepth !== 0 || parenthesisDepth !== 0) {
+        continue;
+      }
+      const match = /^\.([_a-zA-Z][\w-]*)/.exec(subject.slice(index));
+      if (!match) continue;
+      classes.push(match[1]);
+      index += match[0].length - 1;
+    }
+    return classes;
+  }
+
+  for (const { file, source } of stylesheets) {
+    for (const block of source.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const declarations = block[2].replace(/\/\*[\s\S]*?\*\//g, "");
+      if (!CSS_PAINT_DECLARATION.test(declarations)) continue;
+      const selectorText = block[1].replace(/\/\*[\s\S]*?\*\//g, "");
+      for (const selector of splitSelectorList(selectorText)) {
+        for (const className of paintedSubjectClasses(selector)) {
+          const owners = painted.get(className) ?? new Set();
+          owners.add(file);
+          painted.set(className, owners);
+        }
+      }
+    }
+  }
+  return painted;
 }
 
 function importsByLocalName(sourceFile) {
@@ -399,12 +726,67 @@ function exportedNames(sourceFile) {
     if (ts.isExportDeclaration(statement) && statement.exportClause) {
       if (ts.isNamedExports(statement.exportClause)) {
         for (const element of statement.exportClause.elements) {
-          names.add(element.name.text);
+          names.add(element.propertyName?.text ?? element.name.text);
         }
       }
     }
   }
   return names;
+}
+
+function reachableOwnerNames(sourceFile) {
+  const ownerNodes = new Map();
+  for (const statement of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(statement) && statement.name) {
+      ownerNodes.set(statement.name.text, statement);
+    } else if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        if (ts.isIdentifier(declaration.name) && declaration.initializer) {
+          ownerNodes.set(declaration.name.text, declaration);
+        }
+      }
+    }
+  }
+
+  const reachable = new Set();
+  const pending = [...exportedNames(sourceFile)].filter((name) =>
+    ownerNodes.has(name),
+  );
+  while (pending.length > 0) {
+    const owner = pending.pop();
+    if (!owner || reachable.has(owner)) continue;
+    reachable.add(owner);
+    const ownerNode = ownerNodes.get(owner);
+    if (!ownerNode) continue;
+    function enqueue(name) {
+      if (name !== owner && ownerNodes.has(name) && !reachable.has(name)) {
+        pending.push(name);
+      }
+    }
+    function visit(node) {
+      if (
+        (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
+        ts.isIdentifier(node.tagName)
+      ) {
+        enqueue(node.tagName.text);
+      }
+      if (ts.isCallExpression(node)) {
+        if (ts.isIdentifier(node.expression)) enqueue(node.expression.text);
+        const isCreateElement =
+          (ts.isPropertyAccessExpression(node.expression) &&
+            node.expression.name.text === "createElement") ||
+          (ts.isIdentifier(node.expression) &&
+            node.expression.text === "createElement");
+        const rendered = node.arguments[0];
+        if (isCreateElement && rendered && ts.isIdentifier(rendered)) {
+          enqueue(rendered.text);
+        }
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(ownerNode);
+  }
+  return reachable;
 }
 
 function enclosingSymbol(node) {
@@ -449,6 +831,17 @@ export function resolvesToCanonical(record, file) {
   );
 }
 
+function resolvesCardUsage(record, file) {
+  if (resolvesToCanonical(record, file)) return true;
+  if (!record?.origin.startsWith(".")) return false;
+  const resolved = relative(path.resolve(path.dirname(file), record.origin));
+  return (
+    resolved === "packages/ui/src/cloud-ui" ||
+    resolved === "packages/ui/src/cloud-ui/index" ||
+    resolved === "packages/ui/src/cloud-ui/components/primitives"
+  );
+}
+
 function stringAttribute(node, name) {
   const attribute = node.attributes.properties.find(
     (property) =>
@@ -481,6 +874,43 @@ function propertyNameText(property) {
   return null;
 }
 
+function loadCardTokenStyleKeys() {
+  const sourceFile = ts.createSourceFile(
+    cardPath,
+    fs.readFileSync(cardPath, "utf8"),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  let keys = null;
+  function visit(node) {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === "CARD_TOKEN_STYLE_KEYS" &&
+      node.initializer
+    ) {
+      let initializer = node.initializer;
+      while (ts.isAsExpression(initializer))
+        initializer = initializer.expression;
+      if (ts.isArrayLiteralExpression(initializer)) {
+        keys = initializer.elements
+          .filter(ts.isStringLiteral)
+          .map((element) => element.text);
+      }
+      return;
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  if (!keys || keys.length === 0 || new Set(keys).size !== keys.length) {
+    throw new Error("Card must declare a unique CARD_TOKEN_STYLE_KEYS array");
+  }
+  return new Set(keys);
+}
+
+const CARD_TOKEN_STYLE_KEYS = loadCardTokenStyleKeys();
+
 function objectProperty(object, name) {
   return object.properties.find(
     (property) =>
@@ -499,8 +929,8 @@ const CONTEXT_TOKEN = /^(?:header|sidebar)(?:-|$)/;
 const CONTENT_TOKEN =
   /^(?:txt(?:-|$)|foreground$|card-fg$|card-foreground$|popover-foreground$|muted(?:-|$))/;
 const NEUTRAL_SURFACE_TOKEN =
-  /^(?:bg(?:-|$)|background$|card$|surface$|popover$|muted$)/;
-const STRUCTURE_TOKEN = /^(?:border(?:-|$)|input$|ring$)/;
+  /^(?:authorize-(?:backdrop|panel)(?:-|$)|bg(?:-|$)|background$|card$|homepage-canvas$|surface$|popover$|muted$|scrim$)/;
+const STRUCTURE_TOKEN = /^(?:border(?:-|$)|brand-surface$|input$|ring$)/;
 
 function tailwindUtility(token) {
   let bracketDepth = 0;
@@ -585,7 +1015,7 @@ function colorClass(utility) {
   );
   if (!match) return null;
   if (
-    /^(?:bg-(?:clip|origin|gradient)|border-(?:solid|dashed|dotted|double|hidden|none)|outline-(?:none|hidden))/.test(
+    /^(?:bg-(?:clip|origin|gradient|linear|radial|conic|launcher-icon-sheen)|border-(?:solid|dashed|dotted|double|hidden|none)|outline-(?:none|hidden))/.test(
       utility,
     )
   ) {
@@ -921,6 +1351,17 @@ function indexStaticDeclarations(sourceFile) {
         existing === undefined ? candidate.initializer : null,
       );
     }
+    if (
+      ts.isFunctionDeclaration(candidate) &&
+      candidate.name &&
+      candidate.body
+    ) {
+      const existing = declarations.get(candidate.name.text);
+      declarations.set(
+        candidate.name.text,
+        existing === undefined ? candidate : null,
+      );
+    }
     ts.forEachChild(candidate, visit);
   }
   visit(sourceFile);
@@ -953,6 +1394,38 @@ function staticStringValues(expression, declarations) {
       return;
     }
     if (
+      ts.isCallExpression(candidate) &&
+      ts.isIdentifier(candidate.expression)
+    ) {
+      const declaration = declarations.get(candidate.expression.text);
+      if (declaration && !resolving.has(candidate.expression.text)) {
+        resolving.add(candidate.expression.text);
+        collect(declaration);
+        resolving.delete(candidate.expression.text);
+      }
+      return;
+    }
+    if (
+      ts.isFunctionDeclaration(candidate) ||
+      ts.isFunctionExpression(candidate) ||
+      ts.isArrowFunction(candidate)
+    ) {
+      if (ts.isBlock(candidate.body)) {
+        function collectReturns(node) {
+          if (node !== candidate && ts.isFunctionLike(node)) return;
+          if (ts.isReturnStatement(node) && node.expression) {
+            collect(node.expression);
+            return;
+          }
+          ts.forEachChild(node, collectReturns);
+        }
+        collectReturns(candidate.body);
+      } else {
+        collect(candidate.body);
+      }
+      return;
+    }
+    if (
       ts.isBinaryExpression(candidate) &&
       [
         ts.SyntaxKind.AmpersandAmpersandToken,
@@ -968,26 +1441,184 @@ function staticStringValues(expression, declarations) {
   return [...values];
 }
 
-function jsxAxisValues(node, axis, defaults, declarations) {
-  const attribute = node.attributes.properties.find(
-    (property) =>
-      ts.isJsxAttribute(property) && property.name.getText() === axis,
-  );
-  if (!attribute) return defaults[axis] ? [defaults[axis]] : [];
-  if (!ts.isJsxAttribute(attribute) || !attribute.initializer) return [];
-  if (ts.isStringLiteral(attribute.initializer)) {
-    return [attribute.initializer.text];
+function objectPropertyExpressions(expression, propertyName, declarations) {
+  const expressions = [];
+  let opaque = false;
+  const resolving = new Set();
+  function visitFunction(candidate) {
+    const body = candidate.body;
+    if (!body) return;
+    if (!ts.isBlock(body)) {
+      visit(body);
+      return;
+    }
+    function visitReturns(child) {
+      if (child !== body && ts.isFunctionLike(child)) return;
+      if (ts.isReturnStatement(child) && child.expression) {
+        visit(child.expression);
+        return;
+      }
+      ts.forEachChild(child, visitReturns);
+    }
+    visitReturns(body);
   }
-  if (
-    ts.isJsxExpression(attribute.initializer) &&
-    attribute.initializer.expression
-  ) {
-    return staticStringValues(attribute.initializer.expression, declarations);
+  function localObjectMemberCall(candidate) {
+    if (!ts.isCallExpression(candidate)) return null;
+    const names = [];
+    let root = candidate.expression;
+    while (ts.isPropertyAccessExpression(root)) {
+      names.unshift(root.name.text);
+      root = root.expression;
+    }
+    if (!ts.isIdentifier(root) || names.length === 0) return null;
+    let value = declarations.get(root.text);
+    if (!value || !ts.isObjectLiteralExpression(value)) return null;
+    for (let index = 0; index < names.length; index += 1) {
+      const member = value.properties.find(
+        (property) => propertyNameText(property) === names[index],
+      );
+      if (!member) return null;
+      if (index === names.length - 1) return { member, rootName: root.text };
+      if (
+        !ts.isPropertyAssignment(member) ||
+        !ts.isObjectLiteralExpression(member.initializer)
+      ) {
+        return null;
+      }
+      value = member.initializer;
+    }
+    return null;
   }
-  return [];
+  function visit(candidate) {
+    if (ts.isParenthesizedExpression(candidate)) {
+      visit(candidate.expression);
+      return;
+    }
+    if (ts.isIdentifier(candidate)) {
+      const declaration = declarations.get(candidate.text);
+      if (!declaration || resolving.has(candidate.text)) {
+        opaque = true;
+        return;
+      }
+      resolving.add(candidate.text);
+      if (ts.isFunctionLike(declaration)) visitFunction(declaration);
+      else visit(declaration);
+      resolving.delete(candidate.text);
+      return;
+    }
+    if (
+      ts.isCallExpression(candidate) &&
+      ts.isIdentifier(candidate.expression)
+    ) {
+      const declaration = declarations.get(candidate.expression.text);
+      if (!declaration || resolving.has(candidate.expression.text)) {
+        opaque = true;
+        return;
+      }
+      resolving.add(candidate.expression.text);
+      if (ts.isFunctionLike(declaration)) visitFunction(declaration);
+      else visit(declaration);
+      resolving.delete(candidate.expression.text);
+      return;
+    }
+    if (ts.isCallExpression(candidate)) {
+      const resolvedCall = localObjectMemberCall(candidate);
+      if (!resolvedCall || resolving.has(resolvedCall.rootName)) {
+        opaque = true;
+        return;
+      }
+      const { member, rootName } = resolvedCall;
+      resolving.add(rootName);
+      if (ts.isMethodDeclaration(member)) {
+        visitFunction(member);
+      } else if (ts.isPropertyAssignment(member)) {
+        if (ts.isFunctionLike(member.initializer)) {
+          visitFunction(member.initializer);
+        } else {
+          visit(member.initializer);
+        }
+      } else {
+        opaque = true;
+      }
+      resolving.delete(rootName);
+      return;
+    }
+    if (ts.isConditionalExpression(candidate)) {
+      visit(candidate.whenTrue);
+      visit(candidate.whenFalse);
+      return;
+    }
+    if (!ts.isObjectLiteralExpression(candidate)) {
+      opaque = true;
+      return;
+    }
+    for (const property of candidate.properties) {
+      if (ts.isSpreadAssignment(property)) {
+        visit(property.expression);
+      } else if (
+        ts.isPropertyAssignment(property) &&
+        propertyNameText(property) === propertyName
+      ) {
+        expressions.push(property.initializer);
+      } else if (
+        ts.isShorthandPropertyAssignment(property) &&
+        property.name.text === propertyName
+      ) {
+        expressions.push(property.name);
+      }
+    }
+  }
+
+  visit(expression);
+  return { expressions, opaque };
 }
 
-export function extractButtonAxisDefinitions({ file, source }) {
+function jsxPropertyExpressions(node, propertyName, declarations) {
+  const expressions = [];
+  let opaque = false;
+
+  for (const property of node.attributes.properties) {
+    if (ts.isJsxSpreadAttribute(property)) {
+      const resolved = objectPropertyExpressions(
+        property.expression,
+        propertyName,
+        declarations,
+      );
+      expressions.push(...resolved.expressions);
+      opaque ||= resolved.opaque;
+    } else if (
+      ts.isJsxAttribute(property) &&
+      property.name.getText() === propertyName
+    ) {
+      if (!property.initializer) continue;
+      if (ts.isStringLiteral(property.initializer)) {
+        expressions.push(property.initializer);
+      } else if (
+        ts.isJsxExpression(property.initializer) &&
+        property.initializer.expression
+      ) {
+        expressions.push(property.initializer.expression);
+      }
+    }
+  }
+  return { expressions, opaque };
+}
+
+function jsxAxisValues(node, axis, defaults, declarations) {
+  const property = jsxPropertyExpressions(node, axis, declarations);
+  const values = property.expressions.flatMap((expression) =>
+    staticStringValues(expression, declarations),
+  );
+  if (values.length > 0) return [...new Set(values)];
+  return !property.opaque && defaults[axis] ? [defaults[axis]] : [];
+}
+
+export function extractCanonicalAxisDefinitions({
+  axes,
+  configName,
+  file,
+  source,
+}) {
   const sourceFile = ts.createSourceFile(
     file,
     source,
@@ -1000,7 +1631,7 @@ export function extractButtonAxisDefinitions({ file, source }) {
     if (
       ts.isVariableDeclaration(node) &&
       ts.isIdentifier(node.name) &&
-      node.name.text === "buttonVariants" &&
+      node.name.text === configName &&
       node.initializer &&
       ts.isCallExpression(node.initializer) &&
       node.initializer.arguments[1] &&
@@ -1012,7 +1643,7 @@ export function extractButtonAxisDefinitions({ file, source }) {
     ts.forEachChild(node, findConfig);
   }
   findConfig(sourceFile);
-  if (!config) throw new Error("buttonVariants must be a cva config object");
+  if (!config) throw new Error(`${configName} must be a cva config object`);
 
   const variantsProperty = objectProperty(config, "variants");
   const defaultsProperty = objectProperty(config, "defaultVariants");
@@ -1025,30 +1656,37 @@ export function extractButtonAxisDefinitions({ file, source }) {
     !ts.isObjectLiteralExpression(defaultsProperty.initializer)
   ) {
     throw new Error(
-      "buttonVariants must declare object-literal variants and defaultVariants",
+      `${configName} must declare object-literal variants and defaultVariants`,
     );
   }
 
   const definitions = [];
   const defaults = {};
-  for (const axis of BUTTON_AXES) {
+  for (const axis of axes) {
     const axisProperty = objectProperty(variantsProperty.initializer, axis);
     if (
       !axisProperty ||
       !ts.isPropertyAssignment(axisProperty) ||
       !ts.isObjectLiteralExpression(axisProperty.initializer)
     ) {
-      throw new Error(`buttonVariants is missing the ${axis} axis`);
+      throw new Error(`${configName} is missing the ${axis} axis`);
     }
     for (const valueProperty of axisProperty.initializer.properties) {
       const value = propertyNameText(valueProperty);
       if (!value) continue;
+      const recipe =
+        ts.isPropertyAssignment(valueProperty) &&
+        (ts.isStringLiteral(valueProperty.initializer) ||
+          ts.isNoSubstitutionTemplateLiteral(valueProperty.initializer))
+          ? valueProperty.initializer.text
+          : null;
       definitions.push({
         axis,
         file: relative(file),
         line:
           sourceFile.getLineAndCharacterOfPosition(valueProperty.getStart())
             .line + 1,
+        recipe,
         value,
       });
     }
@@ -1065,7 +1703,33 @@ export function extractButtonAxisDefinitions({ file, source }) {
   return { defaults, definitions };
 }
 
-export function scanButtonAxisUsages({ file, source, defaults }) {
+export function extractButtonAxisDefinitions(options) {
+  return extractCanonicalAxisDefinitions({
+    ...options,
+    axes: BUTTON_AXES,
+    configName: "buttonVariants",
+  });
+}
+
+export function extractCardVariantDefinitions(options) {
+  return extractCanonicalAxisDefinitions({
+    ...options,
+    axes: CARD_AXES,
+    configName: "cardVariants",
+  });
+}
+
+export function scanCanonicalAxisUsages({
+  axes,
+  componentName,
+  defaults,
+  file,
+  helperName,
+  source,
+}) {
+  if (/(^|\/)stories(\/|$)|\.stories\.[jt]sx?$/.test(relative(file))) {
+    return [];
+  }
   const sourceFile = ts.createSourceFile(
     file,
     source,
@@ -1073,6 +1737,7 @@ export function scanButtonAxisUsages({ file, source, defaults }) {
     true,
     ts.ScriptKind.TSX,
   );
+  const reachableOwners = reachableOwnerNames(sourceFile);
   const imports = importsByLocalName(sourceFile);
   const declarations = indexStaticDeclarations(sourceFile);
   const usages = [];
@@ -1081,6 +1746,7 @@ export function scanButtonAxisUsages({ file, source, defaults }) {
       axis,
       file: relative(file),
       line: sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1,
+      owner: enclosingSymbol(node) ?? "<module>",
       value,
     });
   }
@@ -1089,10 +1755,12 @@ export function scanButtonAxisUsages({ file, source, defaults }) {
       const rootName = node.tagName.getText().split(".")[0];
       const imported = imports.get(rootName);
       if (
-        imported?.imported === "Button" &&
-        resolvesToCanonical(imported, file)
+        imported?.imported === componentName &&
+        (componentName === "Card"
+          ? resolvesCardUsage(imported, file)
+          : resolvesToCanonical(imported, file))
       ) {
-        for (const axis of BUTTON_AXES) {
+        for (const axis of axes) {
           for (const value of jsxAxisValues(
             node,
             axis,
@@ -1108,12 +1776,12 @@ export function scanButtonAxisUsages({ file, source, defaults }) {
       const imported = imports.get(node.expression.text);
       const options = node.arguments[0];
       if (
-        imported?.imported === "buttonVariants" &&
+        imported?.imported === helperName &&
         resolvesToCanonical(imported, file) &&
         options &&
         ts.isObjectLiteralExpression(options)
       ) {
-        for (const axis of BUTTON_AXES) {
+        for (const axis of axes) {
           const property = objectProperty(options, axis);
           const values =
             property && ts.isPropertyAssignment(property)
@@ -1128,37 +1796,167 @@ export function scanButtonAxisUsages({ file, source, defaults }) {
     ts.forEachChild(node, visit);
   }
   visit(sourceFile);
-  return usages;
+  return usages.filter((usage) => reachableOwners.has(usage.owner));
 }
 
-export function findUnderusedButtonAxes({
+export function scanButtonAxisUsages(options) {
+  return scanCanonicalAxisUsages({
+    ...options,
+    axes: BUTTON_AXES,
+    componentName: "Button",
+    helperName: "buttonVariants",
+  });
+}
+
+export function scanCardVariantUsages(options) {
+  return scanCanonicalAxisUsages({
+    ...options,
+    axes: CARD_AXES,
+    componentName: "Card",
+    helperName: "cardVariants",
+  });
+}
+
+export function findUnderusedCanonicalAxes({
   definitions,
   usages,
-  minimumCallers = BUTTON_MIN_MAINTAINED_CALLERS,
+  minimumCallers,
 }) {
-  return definitions
-    .map((definition) => {
-      const callers = usages.filter(
-        (usage) =>
-          usage.axis === definition.axis && usage.value === definition.value,
-      );
-      return { ...definition, callerCount: callers.length, callers };
-    })
-    .filter((entry) => entry.callerCount < minimumCallers);
+  return inventoryCanonicalAxes({ definitions, usages }).filter(
+    (entry) => entry.callerCount < minimumCallers,
+  );
 }
 
-function staticAttributeText(node, name, declarations) {
-  const attribute = node.attributes.properties.find(
-    (property) =>
-      ts.isJsxAttribute(property) && property.name.getText() === name,
-  );
-  if (!attribute || !ts.isJsxAttribute(attribute) || !attribute.initializer)
-    return null;
-  if (ts.isStringLiteral(attribute.initializer)) {
-    return attribute.initializer.text;
-  }
-  if (!ts.isJsxExpression(attribute.initializer)) return null;
+function inventoryCanonicalAxes({ definitions, usages }) {
+  return definitions.map((definition) => {
+    const matchingUsages = usages.filter(
+      (usage) =>
+        usage.axis === definition.axis && usage.value === definition.value,
+    );
+    const callers = [
+      ...new Map(
+        matchingUsages.map((usage) => [
+          `${usage.file}#${usage.owner ?? `line:${usage.line}`}`,
+          usage,
+        ]),
+      ).values(),
+    ];
+    return { ...definition, callerCount: callers.length, callers };
+  });
+}
 
+export function findUnderusedButtonAxes(options) {
+  return findUnderusedCanonicalAxes({
+    ...options,
+    minimumCallers: options.minimumCallers ?? BUTTON_MIN_MAINTAINED_CALLERS,
+  });
+}
+
+export function findUnderusedCardVariants(options) {
+  return findUnderusedCanonicalAxes({
+    ...options,
+    minimumCallers: options.minimumCallers ?? CARD_MIN_MAINTAINED_CALLERS,
+  });
+}
+
+function cardVariantDomain(file) {
+  const plugin = /^plugins\/([^/]+)\//.exec(file);
+  if (plugin) return plugin[1];
+  const cloudUiArea =
+    /^packages\/ui\/src\/cloud-ui\/components\/([^/]+)\//.exec(file);
+  if (cloudUiArea) return `cloud-ui/${cloudUiArea[1]}`;
+  if (/^packages\/ui\/src\/cloud-ui\/components\/[^/]+\.[jt]sx$/.test(file))
+    return "cloud-ui/core";
+  const compositeArea =
+    /^packages\/ui\/src\/components\/composites\/([^/]+)\//.exec(file);
+  if (compositeArea) return `components/composites/${compositeArea[1]}`;
+  const uiArea = /^packages\/ui\/src\/(cloud|components)\/([^/]+)\//.exec(file);
+  if (uiArea) return `${uiArea[1]}/${uiArea[2]}`;
+  const uiRoot = /^packages\/ui\/src\/([^/]+)\//.exec(file);
+  if (uiRoot) return `ui/${uiRoot[1]}`;
+  const packageName = /^packages\/([^/]+)\//.exec(file);
+  return packageName ? packageName[1] : "other";
+}
+
+function genericCardAxes(recipe) {
+  if (!recipe) return {};
+  const tokens = new Set(recipe.split(/\s+/).filter(Boolean));
+  const axes = {};
+  if (tokens.has("space-y-3")) axes.stack = "compact";
+  else if (tokens.has("space-y-4")) axes.stack = "default";
+  if (tokens.has("flex-col")) axes.flow = "column";
+  else if (tokens.has("items-center") && tokens.has("justify-between"))
+    axes.flow = "rowBetween";
+  else if (tokens.has("items-center")) axes.flow = "row";
+  if (tokens.has("gap-1.5")) axes.gap = "tight";
+  else if (tokens.has("gap-2")) axes.gap = "compact";
+  else if (tokens.has("gap-3")) axes.gap = "default";
+  if (tokens.has("p-4")) axes.padding = "comfortable";
+  else if (tokens.has("p-3")) axes.padding = "default";
+  else if (tokens.has("px-3") && tokens.has("py-2")) axes.padding = "compact";
+  const tones = [
+    ["text-accent", "accent"],
+    ["text-warn", "warning"],
+    ["text-status-info", "info"],
+    ["text-ok", "success"],
+    ["text-danger", "danger"],
+    ["text-txt-strong", "strong"],
+    ["text-muted-strong", "mutedStrong"],
+    ["text-txt", "text"],
+    ["text-inverse-foreground", "inverse"],
+  ];
+  const tone = tones.find(([token]) => tokens.has(token));
+  if (tone) axes.tone = tone[1];
+  return axes;
+}
+
+function suggestedCardOwner(value, domain) {
+  if (/^attachment/.test(value)) return "Attachment atom";
+  if (/(?:Notice|^errorFallback$|^viewStatus)/.test(value))
+    return "Alert atom or local status molecule";
+  if (/^(?:drawer|authorize)/.test(value)) return `${domain} overlay molecule`;
+  return `${domain} molecule`;
+}
+
+export function buildCardVariantMigrationInventory(cardVariants) {
+  const entries = cardVariants
+    .filter((entry) => entry.callerCount < CARD_MIN_MAINTAINED_CALLERS)
+    .map((entry) => {
+      const callerFiles = [
+        ...new Set(entry.callers.map((caller) => caller.file)),
+      ];
+      const domains = [...new Set(callerFiles.map(cardVariantDomain))];
+      const primaryDomain = domains[0] ?? "unowned";
+      return {
+        callerCount: entry.callerCount,
+        callers: entry.callers.map(({ file, line }) => ({ file, line })),
+        domains,
+        file: entry.file,
+        line: entry.line,
+        recipe: entry.recipe,
+        suggestedAxes: genericCardAxes(entry.recipe),
+        suggestedOwner: suggestedCardOwner(entry.value, primaryDomain),
+        value: entry.value,
+      };
+    });
+  const byDomain = Object.fromEntries(
+    [...new Set(entries.flatMap((entry) => entry.domains))]
+      .sort()
+      .map((domain) => [
+        domain,
+        entries
+          .filter((entry) => entry.domains.includes(domain))
+          .map((entry) => entry.value),
+      ]),
+  );
+  return {
+    byDomain,
+    entries,
+    minimumMaintainedCallers: CARD_MIN_MAINTAINED_CALLERS,
+  };
+}
+
+function staticPropertyText(property, declarations) {
   const fragments = [];
   const resolving = new Set();
   function collect(expression) {
@@ -1179,7 +1977,11 @@ function staticAttributeText(node, name, declarations) {
     }
     if (ts.isIdentifier(expression)) {
       const initializer = declarations.get(expression.text);
-      if (initializer && !resolving.has(expression.text)) {
+      if (
+        initializer &&
+        !ts.isFunctionLike(initializer) &&
+        !resolving.has(expression.text)
+      ) {
         resolving.add(expression.text);
         collect(initializer);
         resolving.delete(expression.text);
@@ -1188,27 +1990,20 @@ function staticAttributeText(node, name, declarations) {
     }
     ts.forEachChild(expression, collect);
   }
-  if (attribute.initializer.expression) {
-    collect(attribute.initializer.expression);
+  for (const expression of property.expressions) {
+    collect(expression);
   }
   return fragments.length > 0 ? fragments.join(" ") : null;
 }
 
-function hasOpaqueClassExpression(node, declarations) {
-  const attribute = node.attributes.properties.find(
-    (property) =>
-      ts.isJsxAttribute(property) && property.name.getText() === "className",
+function staticAttributeText(node, name, declarations) {
+  return staticPropertyText(
+    jsxPropertyExpressions(node, name, declarations),
+    declarations,
   );
-  if (
-    !attribute ||
-    !ts.isJsxAttribute(attribute) ||
-    !attribute.initializer ||
-    !ts.isJsxExpression(attribute.initializer) ||
-    !attribute.initializer.expression
-  ) {
-    return false;
-  }
+}
 
+function hasOpaquePropertyExpression(property, declarations) {
   const resolving = new Set();
   function inspect(expression) {
     if (
@@ -1223,7 +2018,12 @@ function hasOpaqueClassExpression(node, declarations) {
     }
     if (ts.isIdentifier(expression)) {
       const initializer = declarations.get(expression.text);
-      if (!initializer || resolving.has(expression.text)) return false;
+      if (
+        !initializer ||
+        ts.isFunctionLike(initializer) ||
+        resolving.has(expression.text)
+      )
+        return false;
       resolving.add(expression.text);
       const opaque = inspect(initializer);
       resolving.delete(expression.text);
@@ -1257,7 +2057,14 @@ function hasOpaqueClassExpression(node, declarations) {
     return opaque;
   }
 
-  return inspect(attribute.initializer.expression);
+  return property.expressions.some(inspect);
+}
+
+function hasOpaqueClassExpression(node, declarations) {
+  return hasOpaquePropertyExpression(
+    jsxPropertyExpressions(node, "className", declarations),
+    declarations,
+  );
 }
 
 const VISUAL_STYLE_PROPERTIES = new Set([
@@ -1289,21 +2096,271 @@ const VISUAL_STYLE_PROPERTIES = new Set([
   "stroke",
 ]);
 
-function staticStyleProperties(node, declarations) {
-  const attribute = node.attributes.properties.find(
-    (property) =>
-      ts.isJsxAttribute(property) && property.name.getText() === "style",
-  );
-  if (
-    !attribute ||
-    !ts.isJsxAttribute(attribute) ||
-    !attribute.initializer ||
-    !ts.isJsxExpression(attribute.initializer) ||
-    !attribute.initializer.expression
-  ) {
-    return [];
+const CARD_VISUAL_STYLE_PROPERTIES = new Set([
+  "backdropFilter",
+  "background",
+  "backgroundColor",
+  "backgroundImage",
+  "border",
+  "borderBottom",
+  "borderColor",
+  "borderLeft",
+  "borderRadius",
+  "borderRight",
+  "borderTop",
+  "boxShadow",
+  "color",
+  "WebkitBackdropFilter",
+]);
+
+const SAFE_LITERAL_PAINT = new Set([
+  "currentColor",
+  "inherit",
+  "initial",
+  "none",
+  "revert",
+  "revert-layer",
+  "transparent",
+  "unset",
+]);
+
+function hasInvalidTokenStyleKey(property, declarations) {
+  const resolving = new Set();
+  function hasRawValue(expression) {
+    const values = staticStringValues(expression, declarations);
+    if (values.length > 0) {
+      return values.some((value) => !/var\(\s*--/.test(value));
+    }
+    if (
+      ts.isNumericLiteral(expression) ||
+      (ts.isPrefixUnaryExpression(expression) &&
+        ts.isNumericLiteral(expression.operand))
+    ) {
+      return true;
+    }
+    if (ts.isIdentifier(expression)) {
+      const initializer = declarations.get(expression.text);
+      if (!initializer || resolving.has(expression.text)) return false;
+      resolving.add(expression.text);
+      const raw = hasRawValue(initializer);
+      resolving.delete(expression.text);
+      return raw;
+    }
+    return false;
+  }
+  function inspect(expression) {
+    if (ts.isParenthesizedExpression(expression)) {
+      return inspect(expression.expression);
+    }
+    if (ts.isIdentifier(expression)) {
+      const initializer = declarations.get(expression.text);
+      if (!initializer || resolving.has(expression.text)) return false;
+      resolving.add(expression.text);
+      const invalid = inspect(initializer);
+      resolving.delete(expression.text);
+      return invalid;
+    }
+    if (ts.isConditionalExpression(expression)) {
+      return inspect(expression.whenTrue) || inspect(expression.whenFalse);
+    }
+    if (!ts.isObjectLiteralExpression(expression)) return false;
+    for (const member of expression.properties) {
+      if (ts.isSpreadAssignment(member)) {
+        if (inspect(member.expression)) return true;
+        continue;
+      }
+      if (
+        !ts.isPropertyAssignment(member) &&
+        !ts.isShorthandPropertyAssignment(member)
+      ) {
+        return true;
+      }
+      const name = propertyNameText(member);
+      if (!name || !CARD_TOKEN_STYLE_KEYS.has(name)) return true;
+      if (ts.isPropertyAssignment(member) && hasRawValue(member.initializer)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  return property.expressions.some(inspect);
+}
+
+function hasRawVisualStyleLiteral(property, declarations) {
+  const resolving = new Set();
+  function staticValues(expression) {
+    if (
+      ts.isStringLiteral(expression) ||
+      ts.isNoSubstitutionTemplateLiteral(expression) ||
+      ts.isNumericLiteral(expression)
+    ) {
+      return [expression.text];
+    }
+    if (ts.isParenthesizedExpression(expression)) {
+      return staticValues(expression.expression);
+    }
+    if (ts.isIdentifier(expression)) {
+      const initializer = declarations.get(expression.text);
+      if (!initializer || resolving.has(expression.text)) return null;
+      resolving.add(expression.text);
+      const values = staticValues(initializer);
+      resolving.delete(expression.text);
+      return values;
+    }
+    if (ts.isConditionalExpression(expression)) {
+      const whenTrue = staticValues(expression.whenTrue);
+      const whenFalse = staticValues(expression.whenFalse);
+      return whenTrue && whenFalse ? [...whenTrue, ...whenFalse] : null;
+    }
+    if (
+      ts.isBinaryExpression(expression) &&
+      expression.operatorToken.kind === ts.SyntaxKind.PlusToken
+    ) {
+      const left = staticValues(expression.left);
+      const right = staticValues(expression.right);
+      if (!left || !right) return null;
+      return left.flatMap((leftValue) =>
+        right.map((rightValue) => `${leftValue}${rightValue}`),
+      );
+    }
+    if (ts.isTemplateExpression(expression)) {
+      let values = [expression.head.text];
+      for (const span of expression.templateSpans) {
+        const spanValues = staticValues(span.expression);
+        if (!spanValues) return null;
+        values = values.flatMap((prefix) =>
+          spanValues.map(
+            (spanValue) => `${prefix}${spanValue}${span.literal.text}`,
+          ),
+        );
+      }
+      return values;
+    }
+    if (
+      ts.isPrefixUnaryExpression(expression) &&
+      ts.isNumericLiteral(expression.operand)
+    ) {
+      return [
+        `${expression.operator === ts.SyntaxKind.MinusToken ? "-" : ""}${expression.operand.text}`,
+      ];
+    }
+    if (
+      ts.isCallExpression(expression) &&
+      ts.isIdentifier(expression.expression)
+    ) {
+      const declaration = declarations.get(expression.expression.text);
+      if (!declaration || resolving.has(expression.expression.text)) {
+        return null;
+      }
+      resolving.add(expression.expression.text);
+      const values = staticValues(declaration);
+      resolving.delete(expression.expression.text);
+      return values;
+    }
+    if (ts.isFunctionLike(expression) && expression.body) {
+      if (!ts.isBlock(expression.body)) return staticValues(expression.body);
+      const values = [];
+      let complete = true;
+      function collectReturns(node) {
+        if (node !== expression.body && ts.isFunctionLike(node)) return;
+        if (ts.isReturnStatement(node)) {
+          const returned = node.expression
+            ? staticValues(node.expression)
+            : null;
+          if (!returned) complete = false;
+          else values.push(...returned);
+          return;
+        }
+        ts.forEachChild(node, collectReturns);
+      }
+      collectReturns(expression.body);
+      return complete && values.length > 0 ? values : null;
+    }
+    return null;
   }
 
+  function inspectValue(expression) {
+    const values = staticValues(expression);
+    if (values) {
+      return values.some(
+        (value) =>
+          !SAFE_LITERAL_PAINT.has(value.trim()) && !/var\(\s*--/.test(value),
+      );
+    }
+    if (ts.isIdentifier(expression)) {
+      const initializer = declarations.get(expression.text);
+      return initializer ? inspectValue(initializer) : false;
+    }
+    if (ts.isConditionalExpression(expression)) {
+      return (
+        inspectValue(expression.whenTrue) || inspectValue(expression.whenFalse)
+      );
+    }
+    if (
+      ts.isPropertyAccessExpression(expression) ||
+      ts.isElementAccessExpression(expression)
+    ) {
+      return false;
+    }
+    if (ts.isCallExpression(expression)) {
+      if (
+        ts.isIdentifier(expression.expression) &&
+        declarations.has(expression.expression.text)
+      ) {
+        return true;
+      }
+      return false;
+    }
+    if (ts.isTemplateExpression(expression)) {
+      return expression.templateSpans.some((span) =>
+        inspectValue(span.expression),
+      );
+    }
+    return true;
+  }
+  function inspectObject(expression) {
+    if (ts.isParenthesizedExpression(expression)) {
+      return inspectObject(expression.expression);
+    }
+    if (ts.isIdentifier(expression)) {
+      const initializer = declarations.get(expression.text);
+      if (!initializer || resolving.has(expression.text)) return false;
+      resolving.add(expression.text);
+      const raw = inspectObject(initializer);
+      resolving.delete(expression.text);
+      return raw;
+    }
+    if (ts.isConditionalExpression(expression)) {
+      return (
+        inspectObject(expression.whenTrue) ||
+        inspectObject(expression.whenFalse)
+      );
+    }
+    if (!ts.isObjectLiteralExpression(expression)) return false;
+    for (const member of expression.properties) {
+      if (ts.isSpreadAssignment(member)) {
+        if (inspectObject(member.expression)) return true;
+        continue;
+      }
+      const name = propertyNameText(member);
+      if (!name || !CARD_VISUAL_STYLE_PROPERTIES.has(name)) continue;
+      if (ts.isPropertyAssignment(member) && inspectValue(member.initializer)) {
+        return true;
+      }
+      if (
+        ts.isShorthandPropertyAssignment(member) &&
+        inspectValue(member.name)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  return property.expressions.some(inspectObject);
+}
+
+function staticStylePropertyNames(property, declarations) {
   const properties = new Set();
   const resolving = new Set();
   function collect(expression) {
@@ -1323,7 +2380,11 @@ function staticStyleProperties(node, declarations) {
     }
     if (ts.isIdentifier(expression)) {
       const initializer = declarations.get(expression.text);
-      if (initializer && !resolving.has(expression.text)) {
+      if (
+        initializer &&
+        !ts.isFunctionLike(initializer) &&
+        !resolving.has(expression.text)
+      ) {
         resolving.add(expression.text);
         collect(initializer);
         resolving.delete(expression.text);
@@ -1332,9 +2393,18 @@ function staticStyleProperties(node, declarations) {
     }
     ts.forEachChild(expression, collect);
   }
-  collect(attribute.initializer.expression);
+  for (const expression of property.expressions) {
+    collect(expression);
+  }
   return [...properties].filter((property) =>
     VISUAL_STYLE_PROPERTIES.has(property),
+  );
+}
+
+function staticStyleProperties(node, declarations) {
+  return staticStylePropertyNames(
+    jsxPropertyExpressions(node, "style", declarations),
+    declarations,
   );
 }
 
@@ -1353,12 +2423,256 @@ function finding({ rule, file, line, symbol, detail }) {
   return { detail, file, line, rule, symbol };
 }
 
+function importedExpressionIsOpaque(expression, imports, declarations) {
+  let root = expression;
+  if (ts.isCallExpression(root)) root = root.expression;
+  while (
+    ts.isPropertyAccessExpression(root) ||
+    ts.isElementAccessExpression(root)
+  ) {
+    root = root.expression;
+  }
+  return (
+    ts.isIdentifier(root) &&
+    imports.has(root.text) &&
+    !declarations.has(root.text)
+  );
+}
+
+function hasOpaqueImportedJsxSpread(node, imports, declarations) {
+  return node.attributes.properties.some(
+    (property) =>
+      ts.isJsxSpreadAttribute(property) &&
+      importedExpressionIsOpaque(property.expression, imports, declarations),
+  );
+}
+
+function bindingContainsName(binding, name) {
+  if (ts.isIdentifier(binding)) return binding.text === name;
+  return binding.elements.some(
+    (element) =>
+      ts.isBindingElement(element) && bindingContainsName(element.name, name),
+  );
+}
+
+function expressionIsForwardedParameter(expression, node, declarations) {
+  let root = expression;
+  if (ts.isCallExpression(root)) root = root.expression;
+  while (
+    ts.isPropertyAccessExpression(root) ||
+    ts.isElementAccessExpression(root)
+  ) {
+    root = root.expression;
+  }
+  if (
+    !ts.isIdentifier(root) ||
+    declarations.has(root.text) ||
+    root.text === "undefined"
+  ) {
+    return false;
+  }
+  for (let owner = node.parent; owner; owner = owner.parent) {
+    if (!ts.isFunctionLike(owner)) continue;
+    const parameter = owner.parameters.find((candidate) =>
+      bindingContainsName(candidate.name, root.text),
+    );
+    if (!parameter) return false;
+    const contextualCall = ts.isCallExpression(owner.parent)
+      ? owner.parent
+      : null;
+    if (contextualCall?.typeArguments?.length) return false;
+    return (
+      !parameter.type ||
+      parameter.type.kind === ts.SyntaxKind.AnyKeyword ||
+      parameter.type.kind === ts.SyntaxKind.UnknownKeyword
+    );
+  }
+  return false;
+}
+
+function hasOpaqueForwardedJsxSpread(node, declarations) {
+  return node.attributes.properties.some(
+    (property) =>
+      ts.isJsxSpreadAttribute(property) &&
+      expressionIsForwardedParameter(property.expression, node, declarations),
+  );
+}
+
+function canonicalRecordForExpression(
+  expression,
+  imports,
+  declarations,
+  resolving = new Set(),
+) {
+  function localObject(candidate) {
+    if (ts.isParenthesizedExpression(candidate)) {
+      return localObject(candidate.expression);
+    }
+    if (ts.isObjectLiteralExpression(candidate)) return candidate;
+    if (ts.isIdentifier(candidate)) {
+      const key = `object:${candidate.text}`;
+      const declaration = declarations.get(candidate.text);
+      if (!declaration || resolving.has(key)) return null;
+      resolving.add(key);
+      const object = localObject(declaration);
+      resolving.delete(key);
+      return object;
+    }
+    return null;
+  }
+
+  if (ts.isIdentifier(expression)) {
+    const imported = imports.get(expression.text);
+    if (imported) return imported;
+    const key = `alias:${expression.text}`;
+    const declaration = declarations.get(expression.text);
+    if (!declaration || resolving.has(key)) return null;
+    resolving.add(key);
+    const record = canonicalRecordForExpression(
+      declaration,
+      imports,
+      declarations,
+      resolving,
+    );
+    resolving.delete(key);
+    return record;
+  }
+  let root = null;
+  let imported = null;
+  if (ts.isPropertyAccessExpression(expression)) {
+    root = expression.expression;
+    imported = expression.name.text;
+  } else if (
+    ts.isElementAccessExpression(expression) &&
+    expression.argumentExpression &&
+    (ts.isStringLiteral(expression.argumentExpression) ||
+      ts.isNoSubstitutionTemplateLiteral(expression.argumentExpression))
+  ) {
+    root = expression.expression;
+    imported = expression.argumentExpression.text;
+  }
+  if (!root || !imported) return null;
+  if (ts.isIdentifier(root)) {
+    const namespace = imports.get(root.text);
+    if (namespace?.imported === "*") return { ...namespace, imported };
+  }
+  const object = localObject(root);
+  if (!object) return null;
+  const member = object.properties.find(
+    (property) => propertyNameText(property) === imported,
+  );
+  if (!member) return null;
+  if (ts.isShorthandPropertyAssignment(member)) {
+    return canonicalRecordForExpression(
+      member.name,
+      imports,
+      declarations,
+      resolving,
+    );
+  }
+  if (ts.isPropertyAssignment(member)) {
+    return canonicalRecordForExpression(
+      member.initializer,
+      imports,
+      declarations,
+      resolving,
+    );
+  }
+  return null;
+}
+
+function reactFactoryReferences(sourceFile, imports) {
+  const factories = new Set();
+  const namespaces = new Set();
+  for (const [local, record] of imports) {
+    if (record.origin !== "react") continue;
+    if (record.imported === "createElement") factories.add(local);
+    if (["default", "*"].includes(record.imported)) namespaces.add(local);
+  }
+  function isFactoryReference(expression) {
+    if (ts.isIdentifier(expression)) return factories.has(expression.text);
+    if (
+      ts.isPropertyAccessExpression(expression) &&
+      expression.name.text === "createElement" &&
+      ts.isIdentifier(expression.expression)
+    ) {
+      return namespaces.has(expression.expression.text);
+    }
+    return (
+      ts.isElementAccessExpression(expression) &&
+      ts.isIdentifier(expression.expression) &&
+      namespaces.has(expression.expression.text) &&
+      expression.argumentExpression &&
+      (ts.isStringLiteral(expression.argumentExpression) ||
+        ts.isNoSubstitutionTemplateLiteral(expression.argumentExpression)) &&
+      expression.argumentExpression.text === "createElement"
+    );
+  }
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const statement of sourceFile.statements) {
+      if (!ts.isVariableStatement(statement)) continue;
+      for (const declaration of statement.declarationList.declarations) {
+        if (!declaration.initializer) continue;
+        if (ts.isIdentifier(declaration.name)) {
+          if (
+            isFactoryReference(declaration.initializer) &&
+            !factories.has(declaration.name.text)
+          ) {
+            factories.add(declaration.name.text);
+            changed = true;
+          }
+          if (
+            ts.isIdentifier(declaration.initializer) &&
+            namespaces.has(declaration.initializer.text) &&
+            !namespaces.has(declaration.name.text)
+          ) {
+            namespaces.add(declaration.name.text);
+            changed = true;
+          }
+          continue;
+        }
+        if (
+          ts.isObjectBindingPattern(declaration.name) &&
+          ts.isIdentifier(declaration.initializer) &&
+          namespaces.has(declaration.initializer.text)
+        ) {
+          for (const element of declaration.name.elements) {
+            if (
+              ts.isIdentifier(element.name) &&
+              (element.propertyName ?? element.name).getText() ===
+                "createElement" &&
+              !factories.has(element.name.text)
+            ) {
+              factories.add(element.name.text);
+              changed = true;
+            }
+          }
+        }
+      }
+    }
+  }
+  return { factories, isFactoryReference };
+}
+
+function reactCreateElementProps(node, reactFactories) {
+  if (!ts.isCallExpression(node)) return null;
+  if (!reactFactories.isFactoryReference(node.expression)) return null;
+  const [element, props] = node.arguments;
+  if (!element || !props) return null;
+  return { element, props };
+}
+
 export function scanSourceText({
   adapterExports,
   adapterMatches,
   buttonDefaults,
   buttonUsages,
+  cardDefaults,
+  cardUsages,
   file,
+  paintedCssClasses,
   registeredAdapters,
   source,
 }) {
@@ -1371,9 +2685,19 @@ export function scanSourceText({
   );
   const imports = importsByLocalName(sourceFile);
   const declarations = indexStaticDeclarations(sourceFile);
+  const reactFactories = reactFactoryReferences(sourceFile, imports);
   const rel = relative(file);
   const findings = [];
   const fileExports = exportedNames(sourceFile);
+  const isStoryFile = /(^|\/)stories(\/|$)|\.stories\.[jt]sx?$/.test(rel);
+  const maintainedReuseOwners = isStoryFile
+    ? new Set()
+    : reachableOwnerNames(sourceFile);
+
+  function maintainedReuseOwner(node) {
+    const owner = enclosingSymbol(node);
+    return owner && maintainedReuseOwners.has(owner) ? owner : null;
+  }
 
   for (const statement of sourceFile.statements) {
     if (!ts.isImportDeclaration(statement)) continue;
@@ -1436,7 +2760,11 @@ export function scanSourceText({
       const tag = node.tagName.getText();
       const line =
         sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1;
-      if (/^[a-z]/.test(tag) && !rel.startsWith(`${canonicalRoot}/`)) {
+      if (
+        ts.isIdentifier(node.tagName) &&
+        /^[a-z]/.test(tag) &&
+        !rel.startsWith(`${canonicalRoot}/`)
+      ) {
         const rawSymbol = tag === "input" ? inputHost(node) : tag;
         const isRawControl = [
           "button",
@@ -1460,6 +2788,75 @@ export function scanSourceText({
         }
         const className = staticAttributeText(node, "className", declarations);
         const styleProperties = staticStyleProperties(node, declarations);
+        const classTokens = new Set(className?.split(/\s+/).filter(Boolean));
+        if (
+          classTokens.has("bg-card") &&
+          classTokens.has("rounded-sm") &&
+          classTokens.has("p-4") &&
+          ![...classTokens].some((token) =>
+            /^(?:border|shadow|ring)(?:-|$)/.test(token),
+          )
+        ) {
+          findings.push(
+            finding({
+              rule: "raw-card-recipe",
+              file: rel,
+              line,
+              symbol: tag,
+              detail:
+                'Use Card variant="flatPadded" instead of reconstructing its surface recipe on a raw host.',
+            }),
+          );
+        }
+        const hasInsetDensity =
+          classTokens.has("p-3") ||
+          (classTokens.has("px-3") && classTokens.has("py-2"));
+        if (
+          classTokens.has("bg-surface") &&
+          classTokens.has("rounded-sm") &&
+          classTokens.has("border") &&
+          classTokens.has("border-border") &&
+          hasInsetDensity &&
+          ![...classTokens].some(
+            (token) =>
+              (token.startsWith("bg-") && token !== "bg-surface") ||
+              (token.startsWith("border-") && token !== "border-border"),
+          )
+        ) {
+          findings.push(
+            finding({
+              rule: "raw-inset-card-recipe",
+              file: rel,
+              line,
+              symbol: tag,
+              detail:
+                'Use Card variant="insetCompact" or "insetPadded" instead of reconstructing its inset surface recipe on a raw host.',
+            }),
+          );
+        }
+        if (
+          classTokens.has("bg-card") &&
+          classTokens.has("rounded-sm") &&
+          classTokens.has("border") &&
+          classTokens.has("border-border") &&
+          classTokens.has("p-4") &&
+          ![...classTokens].some(
+            (token) =>
+              (token.startsWith("bg-") && token !== "bg-card") ||
+              (token.startsWith("border-") && token !== "border-border"),
+          )
+        ) {
+          findings.push(
+            finding({
+              rule: "raw-outlined-card-recipe",
+              file: rel,
+              line,
+              symbol: tag,
+              detail:
+                'Use Card variant="outlinedPadded" instead of reconstructing its outlined surface recipe on a raw host.',
+            }),
+          );
+        }
         if (
           isRawControl &&
           ((className && VISUAL_UTILITY.test(className)) ||
@@ -1477,8 +2874,36 @@ export function scanSourceText({
           );
         }
       } else {
-        const rootName = tag.split(".")[0];
-        const record = imports.get(rootName);
+        const record = canonicalRecordForExpression(
+          node.tagName,
+          imports,
+          declarations,
+        );
+        const reuseOwner = maintainedReuseOwner(node);
+        if (
+          record?.imported === "Card" &&
+          cardDefaults &&
+          cardUsages &&
+          reuseOwner &&
+          resolvesCardUsage(record, file)
+        ) {
+          for (const axis of CARD_AXES) {
+            for (const value of jsxAxisValues(
+              node,
+              axis,
+              cardDefaults,
+              declarations,
+            )) {
+              cardUsages.push({
+                axis,
+                file: rel,
+                line,
+                owner: reuseOwner,
+                value,
+              });
+            }
+          }
+        }
         if (record && resolvesToCanonical(record, file)) {
           const symbol = enclosingSymbol(node);
           const registeredAdapter = symbol
@@ -1493,7 +2918,12 @@ export function scanSourceText({
               adapterExports.add(key);
             }
           }
-          if (record.imported === "Button" && buttonDefaults && buttonUsages) {
+          if (
+            record.imported === "Button" &&
+            buttonDefaults &&
+            buttonUsages &&
+            reuseOwner
+          ) {
             for (const axis of BUTTON_AXES) {
               for (const value of jsxAxisValues(
                 node,
@@ -1501,7 +2931,13 @@ export function scanSourceText({
                 buttonDefaults,
                 declarations,
               )) {
-                buttonUsages.push({ axis, file: rel, line, value });
+                buttonUsages.push({
+                  axis,
+                  file: rel,
+                  line,
+                  owner: reuseOwner,
+                  value,
+                });
               }
             }
           }
@@ -1547,13 +2983,49 @@ export function scanSourceText({
                 ? SKELETON_PAINT_UTILITY
                 : VISUAL_UTILITY;
             const styleProperties = staticStyleProperties(node, declarations);
+            const paintedNamedClasses =
+              record.imported === "Card"
+                ? [
+                    ...new Set(
+                      (className?.split(/\s+/) ?? []).filter(
+                        (classToken) =>
+                          paintedCssClasses?.has(classToken) &&
+                          !VISUAL_UTILITY.test(classToken),
+                      ),
+                    ),
+                  ]
+                : [];
             const opaqueClassName =
               !["Skeleton", "Tabs"].includes(record.imported) &&
               hasOpaqueClassExpression(node, declarations);
+            const opaqueImportedSpread = hasOpaqueImportedJsxSpread(
+              node,
+              imports,
+              declarations,
+            );
+            const opaqueForwardedSpread =
+              !isStoryFile && hasOpaqueForwardedJsxSpread(node, declarations);
+            const rawVisualStyle =
+              record.imported === "Card" &&
+              hasRawVisualStyleLiteral(
+                jsxPropertyExpressions(node, "visualStyle", declarations),
+                declarations,
+              );
+            const invalidTokenStyle =
+              record.imported === "Card" &&
+              hasInvalidTokenStyleKey(
+                jsxPropertyExpressions(node, "tokenStyle", declarations),
+                declarations,
+              );
             if (
               (className && visualUtility.test(className)) ||
               styleProperties.length > 0 ||
-              opaqueClassName
+              paintedNamedClasses.length > 0 ||
+              opaqueClassName ||
+              opaqueImportedSpread ||
+              opaqueForwardedSpread ||
+              rawVisualStyle ||
+              invalidTokenStyle
             ) {
               if (!registeredAdapter) {
                 findings.push(
@@ -1563,7 +3035,13 @@ export function scanSourceText({
                     line,
                     symbol: record.imported,
                     detail:
-                      "Canonical visual state must use a typed variant or a registered adapter owner; className is reserved for caller layout.",
+                      paintedNamedClasses.length > 0
+                        ? `Canonical visual state is hidden in painted CSS class ${paintedNamedClasses.join(", ")}; move that paint into the atom's typed contract.`
+                        : invalidTokenStyle
+                          ? "Card tokenStyle keys must come from the canonical CSS-variable allowlist."
+                          : rawVisualStyle
+                            ? "Card visualStyle literals must use semantic CSS variables or runtime domain data."
+                            : "Canonical visual state must use a typed variant or a registered adapter owner; className is reserved for caller layout.",
                   }),
                 );
               }
@@ -1572,6 +3050,23 @@ export function scanSourceText({
         }
       }
       const className = staticAttributeText(node, "className", declarations);
+      const classTokens = new Set(className?.split(/\s+/).filter(Boolean));
+      if (
+        tag === "Card" &&
+        classTokens.has("border-border/70") &&
+        classTokens.has("bg-background/85")
+      ) {
+        findings.push(
+          finding({
+            rule: "card-report-panel-override",
+            file: rel,
+            line,
+            symbol: tag,
+            detail:
+              'Use Card variant="reportPanel" instead of repainting the canonical surface through className.',
+          }),
+        );
+      }
       if (className && OFF_TOKEN_COLOR.test(className)) {
         findings.push(
           finding({
@@ -1584,9 +3079,114 @@ export function scanSourceText({
         );
       }
     }
+    const reactFactory = reactCreateElementProps(node, reactFactories);
+    if (reactFactory) {
+      const record = canonicalRecordForExpression(
+        reactFactory.element,
+        imports,
+        declarations,
+      );
+      if (
+        record &&
+        CANONICAL_NAMES.has(record.imported) &&
+        resolvesToCanonical(record, file)
+      ) {
+        const line =
+          sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1;
+        const classProperty = objectPropertyExpressions(
+          reactFactory.props,
+          "className",
+          declarations,
+        );
+        const className = staticPropertyText(classProperty, declarations);
+        const styleProperties = staticStylePropertyNames(
+          objectPropertyExpressions(reactFactory.props, "style", declarations),
+          declarations,
+        );
+        const paintedNamedClasses =
+          record.imported === "Card"
+            ? [
+                ...new Set(
+                  (className?.split(/\s+/) ?? []).filter(
+                    (classToken) =>
+                      paintedCssClasses?.has(classToken) &&
+                      !VISUAL_UTILITY.test(classToken),
+                  ),
+                ),
+              ]
+            : [];
+        const opaqueClassName =
+          !["Skeleton", "Tabs"].includes(record.imported) &&
+          hasOpaquePropertyExpression(classProperty, declarations);
+        const opaqueImportedSpread = importedExpressionIsOpaque(
+          reactFactory.props,
+          imports,
+          declarations,
+        );
+        const opaqueForwardedSpread =
+          !isStoryFile &&
+          expressionIsForwardedParameter(
+            reactFactory.props,
+            node,
+            declarations,
+          );
+        const rawVisualStyle =
+          record.imported === "Card" &&
+          hasRawVisualStyleLiteral(
+            objectPropertyExpressions(
+              reactFactory.props,
+              "visualStyle",
+              declarations,
+            ),
+            declarations,
+          );
+        const invalidTokenStyle =
+          record.imported === "Card" &&
+          hasInvalidTokenStyleKey(
+            objectPropertyExpressions(
+              reactFactory.props,
+              "tokenStyle",
+              declarations,
+            ),
+            declarations,
+          );
+        const visualUtility =
+          record.imported === "Skeleton" || record.imported === "Tabs"
+            ? SKELETON_PAINT_UTILITY
+            : VISUAL_UTILITY;
+        if (
+          (className && visualUtility.test(className)) ||
+          styleProperties.length > 0 ||
+          paintedNamedClasses.length > 0 ||
+          opaqueClassName ||
+          opaqueImportedSpread ||
+          opaqueForwardedSpread ||
+          rawVisualStyle ||
+          invalidTokenStyle
+        ) {
+          findings.push(
+            finding({
+              rule: "visual-override",
+              file: rel,
+              line,
+              symbol: record.imported,
+              detail:
+                paintedNamedClasses.length > 0
+                  ? `Canonical visual state is hidden in painted CSS class ${paintedNamedClasses.join(", ")}; move that paint into the atom's typed contract.`
+                  : invalidTokenStyle
+                    ? "Card tokenStyle keys must come from the canonical CSS-variable allowlist."
+                    : rawVisualStyle
+                      ? "Card visualStyle literals must use semantic CSS variables or runtime domain data."
+                      : "Canonical visual state must use a typed variant or a registered adapter owner; className is reserved for caller layout.",
+            }),
+          );
+        }
+      }
+    }
     if (
       buttonDefaults &&
       buttonUsages &&
+      maintainedReuseOwner(node) &&
       ts.isCallExpression(node) &&
       ts.isIdentifier(node.expression)
     ) {
@@ -1609,7 +3209,13 @@ export function scanSourceText({
                 ? [buttonDefaults[axis]]
                 : [];
           for (const value of values) {
-            buttonUsages.push({ axis, file: rel, line, value });
+            buttonUsages.push({
+              axis,
+              file: rel,
+              line,
+              owner: maintainedReuseOwner(node),
+              value,
+            });
           }
         }
       }
@@ -1633,6 +3239,7 @@ export function validateExceptions(document, now) {
       ids.has(exception.id) ||
       !RULES.includes(exception.rule) ||
       exception.rule === "button-axis-reuse" ||
+      exception.rule === "card-variant-reuse" ||
       typeof exception.file !== "string" ||
       typeof exception.symbol !== "string" ||
       typeof exception.owner !== "string" ||
@@ -1730,6 +3337,17 @@ export function buildComplianceReport(options = {}) {
     ...walk(path.join(repoRoot, "packages")),
     ...walk(path.join(repoRoot, "plugins")),
   ].sort();
+  const paintedCssClasses = indexPaintedCssClasses(
+    [
+      ...walkStylesheets(path.join(repoRoot, "packages")),
+      ...walkStylesheets(path.join(repoRoot, "plugins")),
+    ]
+      .sort()
+      .map((file) => ({
+        file: relative(file),
+        source: fs.readFileSync(file, "utf8"),
+      })),
+  );
   const adapters = validateAdapterRegistry(
     JSON.parse(fs.readFileSync(adaptersPath, "utf8")),
   );
@@ -1744,11 +3362,18 @@ export function buildComplianceReport(options = {}) {
       source: fs.readFileSync(buttonPath, "utf8"),
     });
   const buttonUsages = [];
+  const { definitions: cardDefinitions, defaults: cardDefaults } =
+    extractCardVariantDefinitions({
+      file: cardPath,
+      source: fs.readFileSync(cardPath, "utf8"),
+    });
+  const cardUsages = [];
   const seenCanonicalRecipeContracts = new Set();
   for (const file of files) {
     if (relative(file).startsWith(`${canonicalRoot}/`)) {
       const tokenAudit = auditCanonicalTokenRoles({
         file,
+        paintedCssClasses,
         source: fs.readFileSync(file, "utf8"),
       });
       findings.push(...tokenAudit.findings);
@@ -1762,7 +3387,10 @@ export function buildComplianceReport(options = {}) {
         adapterMatches,
         buttonDefaults,
         buttonUsages,
+        cardDefaults,
+        cardUsages,
         file,
+        paintedCssClasses,
         registeredAdapters,
         source: fs.readFileSync(file, "utf8"),
       }),
@@ -1770,12 +3398,9 @@ export function buildComplianceReport(options = {}) {
   }
   assertCanonicalRecipeContractsSeen(seenCanonicalRecipeContracts);
   assertRegisteredAdaptersUsed(adapters, adapterMatches, adapterExports);
-  const buttonAxes = buttonDefinitions.map((definition) => {
-    const callers = buttonUsages.filter(
-      (usage) =>
-        usage.axis === definition.axis && usage.value === definition.value,
-    );
-    return { ...definition, callerCount: callers.length, callers };
+  const buttonAxes = inventoryCanonicalAxes({
+    definitions: buttonDefinitions,
+    usages: buttonUsages,
   });
   for (const entry of buttonAxes) {
     if (entry.callerCount >= BUTTON_MIN_MAINTAINED_CALLERS) continue;
@@ -1786,6 +3411,22 @@ export function buildComplianceReport(options = {}) {
         line: entry.line,
         symbol: `${entry.axis}.${entry.value}`,
         detail: `Canonical Button axes require at least ${BUTTON_MIN_MAINTAINED_CALLERS} maintained callers; found ${entry.callerCount}.`,
+      }),
+    );
+  }
+  const cardVariants = inventoryCanonicalAxes({
+    definitions: cardDefinitions,
+    usages: cardUsages,
+  });
+  for (const entry of cardVariants) {
+    if (entry.callerCount >= CARD_MIN_MAINTAINED_CALLERS) continue;
+    findings.push(
+      finding({
+        rule: "card-variant-reuse",
+        file: entry.file,
+        line: entry.line,
+        symbol: `${entry.axis}.${entry.value}`,
+        detail: `Canonical Card variants require at least ${CARD_MIN_MAINTAINED_CALLERS} maintained callers; found ${entry.callerCount}. Domain-specific paint belongs to its molecule owner, while reusable surface concerns belong on generic Card axes.`,
       }),
     );
   }
@@ -1805,6 +3446,8 @@ export function buildComplianceReport(options = {}) {
   return {
     adapters,
     buttonAxes,
+    cardVariantMigration: buildCardVariantMigrationInventory(cardVariants),
+    cardVariants,
     canonicalRecipes: Object.entries(CANONICAL_RECIPE_CONTRACTS).map(
       ([owner, contract]) => ({
         owner,
@@ -1844,6 +3487,34 @@ export function renderComplianceMarkdown(report) {
     }
     lines.push("");
   }
+  lines.push(
+    "## Card variant inventory",
+    "",
+    "| Value | Maintained callers |",
+    "| --- | ---: |",
+  );
+  for (const entry of report.cardVariants) {
+    lines.push(`| \`${entry.value}\` | ${entry.callerCount} |`);
+  }
+  lines.push("");
+  lines.push(
+    "## Underused Card variant ownership",
+    "",
+    "| Value | Caller | Domain | Reusable axes | Suggested owner |",
+    "| --- | --- | --- | --- | --- |",
+  );
+  for (const entry of report.cardVariantMigration.entries) {
+    const caller = entry.callers[0]
+      ? `${entry.callers[0].file}:${entry.callers[0].line}`
+      : "None";
+    const axes = Object.entries(entry.suggestedAxes)
+      .map(([axis, value]) => `${axis}=${value}`)
+      .join(", ");
+    lines.push(
+      `| \`${entry.value}\` | \`${caller}\` | ${entry.domains.join(", ") || "unowned"} | ${axes || "None"} | ${entry.suggestedOwner} |`,
+    );
+  }
+  lines.push("");
   lines.push(
     "## Canonical token-role inventory",
     "",

@@ -9,22 +9,32 @@ import { Button, type ButtonProps } from "../../../components/ui/button";
 
 export interface BrandButtonProps
   extends Omit<ButtonProps, "variant" | "size"> {
-  variant?: "primary" | "ghost" | "outline" | "icon" | "icon-primary";
+  variant?:
+    | "primary"
+    | "primaryBilling"
+    | "ghost"
+    | "outline"
+    | "icon"
+    | "icon-primary";
   size?: "sm" | "md" | "lg" | "icon";
 }
 
 const BrandButton = React.forwardRef<HTMLButtonElement, BrandButtonProps>(
-  ({ variant = "primary", size = "md", ...props }, ref) => (
+  ({ variant = "primary", size = "md", disabled, ...props }, ref) => (
     <Button
       ref={ref}
       variant={
         variant === "primary"
           ? "default"
-          : variant === "icon-primary"
-            ? "surfaceAccent"
-            : variant === "icon"
-              ? "surface"
-              : variant
+          : variant === "primaryBilling"
+            ? disabled
+              ? "outline"
+              : "default"
+            : variant === "icon-primary"
+              ? "surfaceAccent"
+              : variant === "icon"
+                ? "surface"
+                : variant
       }
       size={
         variant === "icon" || variant === "icon-primary" || size === "icon"
@@ -33,6 +43,7 @@ const BrandButton = React.forwardRef<HTMLButtonElement, BrandButtonProps>(
             ? "default"
             : size
       }
+      disabled={disabled}
       {...props}
     />
   ),

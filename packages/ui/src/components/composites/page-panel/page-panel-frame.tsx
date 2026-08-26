@@ -6,6 +6,7 @@
 import * as React from "react";
 
 import { cn } from "../../../lib/utils";
+import { Card } from "../../ui/card";
 import type {
   PagePanelContentAreaProps,
   PagePanelFrameProps,
@@ -16,11 +17,13 @@ export const PagePanelFrame = React.forwardRef<
   PagePanelFrameProps
 >(function PagePanelFrame({ className, ...props }, ref) {
   return (
-    <div
-      ref={ref}
-      className={cn("flex h-full w-full min-h-0 bg-transparent p-0", className)}
-      {...props}
-    />
+    <Card
+      asChild
+      variant="transparent"
+      className={cn("flex h-full w-full min-h-0 p-0", className)}
+    >
+      <div ref={ref} {...props} />
+    </Card>
   );
 });
 
@@ -29,8 +32,9 @@ export const PagePanelContentArea = React.forwardRef<
   PagePanelContentAreaProps
 >(function PagePanelContentArea({ className, tabIndex = 0, ...props }, ref) {
   return (
-    <div
+    <Card
       ref={ref}
+      variant="transparentSquare"
       tabIndex={tabIndex}
       className={cn("min-w-0 flex-1 overflow-y-auto", className)}
       {...props}

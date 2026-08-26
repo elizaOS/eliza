@@ -32,6 +32,7 @@ import {
   sectionTabs,
 } from "../shared/SectionNav";
 import { ViewHeader } from "../shared/ViewHeader";
+import { Separator } from "../ui/separator";
 
 const WALLET_SECTION_GROUP = "wallet";
 const WALLET_ROOT_PATH = "/wallet";
@@ -92,7 +93,7 @@ export function WalletSectionNav({
     getAppShellPageRegistrySnapshot,
   );
   return (
-    <div className="flex shrink-0 flex-col border-b border-border/45">
+    <div className="flex shrink-0 flex-col">
       <ViewHeader title="Wallet" />
       <SectionNav
         group={WALLET_SECTION_GROUP}
@@ -109,6 +110,7 @@ export function WalletSectionNav({
           <WalletBalanceWidget spanClassName="w-full" />
         </div>
       ) : null}
+      <Separator tone="subtle45" />
     </div>
   );
 }

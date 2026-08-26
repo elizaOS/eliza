@@ -18,6 +18,7 @@ import {
   type VoiceContinuousMode,
 } from "../../../voice/voice-chat-types";
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 import {
   Tooltip,
   TooltipContent,
@@ -128,15 +129,14 @@ export function ContinuousChatToggle({
   }
 
   return (
-    <div
+    <Card
+      variant="insetCompact"
+      flow="row"
       role="radiogroup"
       aria-label="Continuous chat mode"
       data-testid={dataTestId ?? "continuous-chat-toggle"}
       data-mode={value}
-      className={cn(
-        "inline-flex items-center gap-0.5 rounded-sm border border-border/40 bg-card/30 p-0.5",
-        className,
-      )}
+      className={cn("inline-flex gap-0.5", className)}
     >
       {VOICE_CONTINUOUS_MODES.map((modeId) => {
         const meta = MODE_META[modeId];
@@ -167,7 +167,7 @@ export function ContinuousChatToggle({
           </TooltipProvider>
         );
       })}
-    </div>
+    </Card>
   );
 }
 

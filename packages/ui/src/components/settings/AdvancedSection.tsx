@@ -65,7 +65,7 @@ function BackupOptionList({
     <RadioGroup
       value={selectedFileName}
       onValueChange={onSelect}
-      className="gap-0 overflow-hidden rounded-sm border border-line bg-bg"
+      variant="backupList"
       aria-label="Backup to restore"
     >
       {backups.map((backup) => {

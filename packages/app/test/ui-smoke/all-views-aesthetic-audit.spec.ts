@@ -85,7 +85,10 @@ const HORIZONTAL_OVERFLOW_TOLERANCE_PX = 2;
 // Parse the canonical TAB_PATHS straight from the @elizaos/ui navigation source
 // (no UI-bundle import) so the guard reads the real table, not a stale copy.
 const NAV_INDEX_PATH = fileURLToPath(
-  new URL("../../../ui/src/navigation/index.ts", import.meta.url),
+  new URL(
+    "../../../ui/src/navigation/builtin-route-descriptors.ts",
+    import.meta.url,
+  ),
 );
 
 // {desktop,mobile} × {landscape,portrait}. "desktop" (landscape) and "mobile"
@@ -1258,7 +1261,20 @@ async function collectSpatialSizingIssues(page: Page): Promise<string[]> {
       const duplicatePadding =
         Number.parseFloat(surfaceStyle.paddingInlineEnd) || 0;
       const usableWidth = rect.width - duplicatePadding;
-      const expectedWidth = window.innerWidth - sideClearance;
+      const pageContent = surface.closest("[data-page-content]");
+      const pageContentStyle = pageContent
+        ? getComputedStyle(pageContent)
+        : null;
+      const pageContentWidth = pageContent
+        ? pageContent.getBoundingClientRect().width -
+          (Number.parseFloat(pageContentStyle?.paddingInlineStart ?? "0") ||
+            0) -
+          (Number.parseFloat(pageContentStyle?.paddingInlineEnd ?? "0") || 0)
+        : Number.POSITIVE_INFINITY;
+      const expectedWidth = Math.min(
+        window.innerWidth - sideClearance,
+        pageContentWidth,
+      );
       if (usableWidth >= expectedWidth * 0.8) return [];
       return [
         `spatial surface underfills shell content (${Math.round(usableWidth)}/${Math.round(expectedWidth)}px usable; ${Math.round(duplicatePadding)}px nested clearance)`,

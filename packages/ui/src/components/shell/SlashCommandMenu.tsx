@@ -18,11 +18,8 @@ import {
 import type { SlashCommandController } from "../../chat/useSlashCommandController";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
-import {
-  WALLPAPER_FLOAT_SHADOW,
-  WALLPAPER_GLASS,
-  WALLPAPER_TEXT,
-} from "./wallpaper-idiom";
+import { Card } from "../ui/card";
+import { WALLPAPER_FLOAT_SHADOW, WALLPAPER_TEXT } from "./wallpaper-idiom";
 
 export interface SlashMenuItem {
   id: string;
@@ -245,36 +242,47 @@ export function SlashCommandMenu({
   if (!state.open) {
     if (loading) {
       return (
-        <div
+        <Card
+          surface="wallpaperOverlay"
+          border="standard"
+          radius="xlarge"
+          tone="inverse"
+          visualStyle={{
+            borderColor:
+              "color-mix(in srgb, var(--inverse-foreground) 12%, transparent)",
+          }}
           className={cn(
-            "absolute bottom-full left-0 right-0 z-10 mb-2 rounded-2xl px-4 py-3 text-xs",
-            WALLPAPER_GLASS.menuStatus,
-            WALLPAPER_TEXT.soft,
+            "absolute bottom-full left-0 right-0 z-10 mb-2 px-4 py-3 text-xs",
             WALLPAPER_FLOAT_SHADOW,
           )}
           role="status"
           data-testid="slash-menu-loading"
         >
           loading commands…
-        </div>
+        </Card>
       );
     }
     // Loading takes precedence; once settled, a failed load surfaces here as a
     // distinct error state rather than an empty/absent menu.
     if (error) {
       return (
-        <div
+        <Card
+          surface="wallpaperOverlay"
+          border="standard"
+          radius="xlarge"
+          visualStyle={{
+            borderColor: "color-mix(in srgb, var(--warning) 25%, transparent)",
+            color: "color-mix(in srgb, var(--warning) 80%, transparent)",
+          }}
           className={cn(
-            "absolute bottom-full left-0 right-0 z-10 mb-2 rounded-2xl px-4 py-3 text-xs",
-            WALLPAPER_GLASS.menuWarning,
-            WALLPAPER_TEXT.warning,
+            "absolute bottom-full left-0 right-0 z-10 mb-2 px-4 py-3 text-xs",
             WALLPAPER_FLOAT_SHADOW,
           )}
           role="status"
           data-testid="slash-menu-error"
         >
           couldn't load commands
-        </div>
+        </Card>
       );
     }
     return null;
@@ -283,12 +291,17 @@ export function SlashCommandMenu({
   return (
     // The combobox input (in the composer) owns aria-activedescendant + focus;
     // this listbox is a non-focusable popup the input points to via aria-controls.
-    <div
+    <Card
+      surface="wallpaperOverlay"
+      border="standard"
+      radius="xlarge"
       data-testid="slash-command-menu"
+      visualStyle={{
+        borderColor:
+          "color-mix(in srgb, var(--inverse-foreground) 12%, transparent)",
+      }}
       className={cn(
-        "absolute bottom-full left-0 right-0 z-10 mb-2 max-h-[min(46vh,22rem)] overflow-y-auto",
-        "rounded-2xl py-1.5",
-        WALLPAPER_GLASS.menuPanel,
+        "absolute bottom-full left-0 right-0 z-10 mb-2 max-h-[min(46vh,22rem)] overflow-y-auto py-1.5",
         "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
       )}
     >
@@ -306,78 +319,93 @@ export function SlashCommandMenu({
           look like a complete, healthy list. Surface a degraded affordance so
           `error === true` is distinguishable even with non-empty `commands`. */}
       {error ? (
-        <div
+        <Card
+          surface="accentSubtle"
+          border="standard"
+          radius="large"
+          visualStyle={{
+            borderColor: "color-mix(in srgb, var(--warning) 25%, transparent)",
+            color: "color-mix(in srgb, var(--warning) 80%, transparent)",
+          }}
           className={cn(
-            "mx-2 mb-1 rounded-lg border border-warn/25 bg-warn/5 px-2.5 py-1 text-2xs text-warn/80",
+            "mx-2 mb-1 px-2.5 py-1 text-2xs",
             WALLPAPER_FLOAT_SHADOW,
           )}
           role="status"
           data-testid="slash-menu-partial-error"
         >
           some commands couldn't load
-        </div>
+        </Card>
       ) : null}
       <div id={listboxId} role="listbox" aria-label="Slash commands">
         {state.items.map((item, index) => (
-          <Button
+          <Card
+            asChild
+            surface="transparent"
+            border="none"
+            radius="none"
+            tone="strong"
             key={item.id}
-            id={`slash-option-${item.id}`}
-            role="option"
-            aria-selected={index === state.activeIndex}
-            data-testid={`slash-option-${index}`}
-            data-active={index === state.activeIndex ? "true" : undefined}
-            // Mouse-enter highlights. Pointer-down prevents the mouse/pen focus
-            // steal (the composer input must keep focus); touch keeps the
-            // platform default so iOS/WebKit does not suppress the tap's click.
-            // The pick itself fires on click so the engine's native
-            // tap-vs-scroll discrimination applies — a touch drag that scrolls
-            // this overflowing listbox emits pointercancel and never clicks,
-            // whereas the old pointer-down pick executed a command the instant a
-            // scroll gesture touched a row (#10722 real-pointer gesture coverage
-            // in slash-commands.spec.ts).
-            onMouseEnter={() => state.setActiveIndex(index)}
-            onPointerDown={(e) => {
-              if (e.pointerType !== "touch") e.preventDefault();
-            }}
-            onClick={() => onPick(index)}
-            variant="transparent"
-            size="content"
-            align="start"
-            className="h-auto w-full gap-3 rounded-none bg-transparent px-3.5 py-2 font-normal whitespace-normal hover:bg-bg-hover data-[active=true]:bg-bg-muted"
           >
-            <span
-              className={cn(
-                "min-w-0 shrink-0 font-mono text-sm-tight",
-                WALLPAPER_TEXT.strong,
-                WALLPAPER_FLOAT_SHADOW,
-              )}
+            <Button
+              id={`slash-option-${item.id}`}
+              role="option"
+              aria-selected={index === state.activeIndex}
+              data-testid={`slash-option-${index}`}
+              data-state={index === state.activeIndex ? "on" : "off"}
+              // Mouse-enter highlights. Pointer-down prevents the mouse/pen focus
+              // steal (the composer input must keep focus); touch keeps the
+              // platform default so iOS/WebKit does not suppress the tap's click.
+              // The pick itself fires on click so the engine's native
+              // tap-vs-scroll discrimination applies — a touch drag that scrolls
+              // this overflowing listbox emits pointercancel and never clicks,
+              // whereas the old pointer-down pick executed a command the instant a
+              // scroll gesture touched a row (#10722 real-pointer gesture coverage
+              // in slash-commands.spec.ts).
+              onMouseEnter={() => state.setActiveIndex(index)}
+              onPointerDown={(e) => {
+                if (e.pointerType !== "touch") e.preventDefault();
+              }}
+              onClick={() => onPick(index)}
+              variant="selection"
+              size="content"
+              align="start"
+              className="h-auto w-full gap-3 px-3.5 py-2 font-normal whitespace-normal"
             >
-              {item.primary}
-            </span>
-            {item.secondary ? (
               <span
                 className={cn(
-                  "min-w-0 flex-1 truncate text-xs",
-                  WALLPAPER_TEXT.soft,
+                  "min-w-0 shrink-0 font-mono text-sm-tight",
+                  WALLPAPER_TEXT.strong,
                   WALLPAPER_FLOAT_SHADOW,
                 )}
               >
-                {item.secondary}
+                {item.primary}
               </span>
-            ) : (
-              <span className="flex-1" />
-            )}
-            {item.isCommand && item.hasArgs ? (
-              <span
-                aria-hidden="true"
-                className="shrink-0 text-xs-tight text-white/35"
-              >
-                ⇥
-              </span>
-            ) : null}
-          </Button>
+              {item.secondary ? (
+                <span
+                  className={cn(
+                    "min-w-0 flex-1 truncate text-xs",
+                    WALLPAPER_TEXT.soft,
+                    WALLPAPER_FLOAT_SHADOW,
+                  )}
+                >
+                  {item.secondary}
+                </span>
+              ) : (
+                <span className="flex-1" />
+              )}
+              {item.isCommand && item.hasArgs ? (
+                <span
+                  aria-hidden="true"
+                  className="shrink-0 text-xs-tight text-white/35"
+                >
+                  ⇥
+                </span>
+              ) : null}
+            </Button>
+          </Card>
         ))}
       </div>
-    </div>
+    </Card>
   );
 }

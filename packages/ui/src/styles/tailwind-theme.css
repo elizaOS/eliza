@@ -18,6 +18,12 @@
   --color-surface: var(--surface);
   --color-inverse: var(--inverse);
   --color-inverse-foreground: var(--inverse-foreground);
+  --color-bg-launcher-icon: var(--bg-launcher-icon);
+  --color-bg-launcher-icon-hover: var(--bg-launcher-icon-hover);
+  --color-bg-launcher-icon-focus: var(--bg-launcher-icon-focus);
+  --color-bg-wallpaper-overlay: var(--bg-wallpaper-overlay);
+  --color-border-launcher-icon: var(--border-launcher-icon);
+  --color-txt-launcher-icon: var(--txt-launcher-icon);
   --color-scrim: var(--scrim);
 
   --color-txt: var(--text);
@@ -106,6 +112,10 @@
   --color-chain-pol: #8247e5;
   --color-chain-sol: #9945ff;
   --color-chain-bsc: var(--warn);
+  --color-authorize-backdrop-edge: #000;
+  --color-authorize-backdrop-center: #18181b;
+  --color-authorize-panel: #000;
+  --color-homepage-canvas: #fdfaf7;
 
   --font-sans: var(--font-body);
   --font-body: var(--font-body);
@@ -123,6 +133,13 @@
   --shadow-xl: var(--shadow-xl);
   --shadow-2xl: var(--shadow-2xl);
   --shadow-inset: var(--shadow-inset);
+  --shadow-drawer: var(--shadow-drawer);
+  --shadow-background-selected: var(--shadow-background-selected);
+  --shadow-agent-focus: var(--shadow-agent-focus);
+  --shadow-chat-action: var(--chat-action-shadow);
+  --shadow-chat-mic: var(--shadow-chat-mic);
+  --shadow-launcher-icon: var(--shadow-launcher-icon);
+  --background-image-launcher-icon-sheen: var(--launcher-icon-sheen);
 
   --radius-xs: var(--radius-xs);
   --radius-sm: var(--radius-sm);

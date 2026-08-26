@@ -35,12 +35,5 @@ export const WALLPAPER_GLASS = {
   // glass — no per-message fill and no hairline box; row alignment + the float
   // shadow carry the user/assistant distinction (#13560 de-slop).
   messageBubble: "text-white",
-  // Launcher-native scale of the chat composer's smoked glass: enough of the
-  // wallpaper survives to tint each squircle, while the neutral blur, quiet
-  // rim, and inset light keep a repeated icon grid calmer than ten pale cards.
-  // Hover lifts only the graphite tone; keyboard focus uses the existing
-  // orange accent as a thin rim. Neither state moves or scales the icon.
-  launcherIcon:
-    "relative border border-white/24 bg-[rgba(16,17,20,0.68)] text-white backdrop-blur-[18px] group-hover:bg-[rgba(28,29,32,0.74)] group-focus-visible:border-[var(--accent)] group-focus-visible:bg-[rgba(28,29,32,0.78)] !shadow-[inset_0_1px_0_rgba(255,255,255,0.30),inset_0_-1px_0_rgba(255,255,255,0.08),inset_0_-18px_34px_-28px_rgba(0,0,0,0.42)] before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:bg-[radial-gradient(120%_60%_at_30%_-10%,rgba(255,255,255,0.14)_0%,transparent_55%)] before:content-['']",
   floatingControl: "bg-black/55 text-white hover:bg-black/70",
 } as const;

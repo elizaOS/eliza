@@ -5,6 +5,7 @@
 import type React from "react";
 import type { ReactNode } from "react";
 import { useMediaQuery } from "../../hooks";
+import { Card } from "../ui/card";
 
 const WORKSPACE_MOBILE_MEDIA_QUERY = "(max-width: 819px)";
 
@@ -51,10 +52,11 @@ export function AppWorkspaceChrome({
   const isMobileViewport = useMediaQuery(WORKSPACE_MOBILE_MEDIA_QUERY);
 
   return (
-    <div
-      className={`flex min-h-0 min-w-0 w-full flex-1 ${
-        surface === "transparent" ? "" : "bg-bg"
-      } pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px))] ${
+    <Card
+      variant={
+        surface === "transparent" ? "transparentSquare" : "appWindowState"
+      }
+      className={`flex min-h-0 min-w-0 w-full flex-1 pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px))] ${
         isMobileViewport ? "flex-col" : ""
       }`}
       data-testid={testId}
@@ -65,6 +67,6 @@ export function AppWorkspaceChrome({
           {main}
         </div>
       </div>
-    </div>
+    </Card>
   );
 }

@@ -33,7 +33,9 @@ import { useAgentElement } from "../../agent-surface";
 import { cn } from "../../lib/utils";
 import { PagePanel } from "../composites/page-panel";
 import { RedactedBadge } from "../RedactedBadge";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import {
   Select,
   SelectContent,
@@ -41,6 +43,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
+import { StatusDot } from "../ui/status-badge";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { LiveMeetingPane } from "./LiveMeetingPane";
 import { MeetingJoinBar } from "./MeetingJoinBar";
@@ -119,84 +122,88 @@ export function ArtifactPrivacyControls({
 }): React.JSX.Element {
   const state = transcriptCapturePrivacyState(transcript);
   return (
-    <section
+    <Card
+      asChild
+      variant="insetPadded"
       data-testid="transcript-artifact-privacy-controls"
-      className="rounded-sm border border-border p-3"
       aria-label="Meeting artifact privacy"
     >
-      <div className="mb-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-        <div>
-          <h3 className="text-sm font-medium text-txt">Artifact privacy</h3>
-          <p className="text-xs text-muted">
-            Control each retained artifact independently.
-          </p>
+      <section>
+        <div className="mb-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+          <div>
+            <h3 className="text-sm font-medium text-txt">Artifact privacy</h3>
+            <p className="text-xs text-muted">
+              Control each retained artifact independently.
+            </p>
+          </div>
+          {transcript.audioUrl && !state.sourceAudioDeleted ? (
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              className="justify-self-start sm:justify-self-end"
+              disabled={saving}
+              onClick={onDeleteSourceAudio}
+            >
+              Delete source audio
+            </Button>
+          ) : null}
         </div>
-        {transcript.audioUrl && !state.sourceAudioDeleted ? (
-          <Button
-            type="button"
-            variant="destructive"
-            size="sm"
-            className="justify-self-start sm:justify-self-end"
-            disabled={saving}
-            onClick={onDeleteSourceAudio}
-          >
-            Delete source audio
-          </Button>
-        ) : null}
-      </div>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {ARTIFACT_SHARING_CONTROLS.map(({ key, label }) => {
-          const value = state.sharing[key] ?? "owner_private";
-          return (
-            <div key={key} className="grid gap-1 text-xs text-muted">
-              <span>{label}</span>
-              <Select
-                value={value}
-                disabled={
-                  saving || (key === "sourceAudio" && state.sourceAudioDeleted)
-                }
-                onValueChange={(next) =>
-                  onUpdate({ [key]: next as TranscriptSharingState })
-                }
-              >
-                <SelectTrigger
-                  data-testid={`transcript-sharing-${key}`}
-                  className="h-9"
-                  aria-label={`${label} visibility`}
+        <div className="grid gap-2 sm:grid-cols-2">
+          {ARTIFACT_SHARING_CONTROLS.map(({ key, label }) => {
+            const value = state.sharing[key] ?? "owner_private";
+            return (
+              <div key={key} className="grid gap-1 text-xs text-muted">
+                <span>{label}</span>
+                <Select
+                  value={value}
+                  disabled={
+                    saving ||
+                    (key === "sourceAudio" && state.sourceAudioDeleted)
+                  }
+                  onValueChange={(next) =>
+                    onUpdate({ [key]: next as TranscriptSharingState })
+                  }
                 >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MANAGEABLE_SHARING_STATES.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {SHARING_LABEL[option]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          );
-        })}
-      </div>
-      {saving ? (
-        <p className="mt-2 text-xs text-muted" role="status">
-          Saving privacy settings…
-        </p>
-      ) : null}
-      {state.sourceAudioDeleted ? (
-        <p
-          data-testid="transcript-source-audio-deleted"
-          className="mt-2 text-xs text-muted"
-        >
-          Audio deleted, transcript retained
-        </p>
-      ) : null}
-      {error ? (
-        <p className="mt-2 text-xs text-destructive" role="alert">
-          {error}
-        </p>
-      ) : null}
-    </section>
+                  <SelectTrigger
+                    data-testid={`transcript-sharing-${key}`}
+                    className="h-9"
+                    aria-label={`${label} visibility`}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MANAGEABLE_SHARING_STATES.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {SHARING_LABEL[option]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            );
+          })}
+        </div>
+        {saving ? (
+          <p className="mt-2 text-xs text-muted" role="status">
+            Saving privacy settings…
+          </p>
+        ) : null}
+        {state.sourceAudioDeleted ? (
+          <p
+            data-testid="transcript-source-audio-deleted"
+            className="mt-2 text-xs text-muted"
+          >
+            Audio deleted, transcript retained
+          </p>
+        ) : null}
+        {error ? (
+          <p className="mt-2 text-xs text-destructive" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </section>
+    </Card>
   );
 }
 
@@ -292,7 +299,7 @@ function LiveIndicator({ testId }: { testId: string }): React.JSX.Element {
       data-testid={testId}
       className="inline-flex items-center gap-1 text-xs font-medium text-accent"
     >
-      <span aria-hidden className="size-1.5 rounded-full bg-accent" />
+      <StatusDot aria-hidden size="compact" tone="accent" />
       LIVE
     </span>
   );
@@ -406,12 +413,14 @@ function MeetingDetailHeader({
       className="flex flex-wrap items-center gap-2 text-xs text-muted"
     >
       {meta.platform ? (
-        <span
+        <Badge
+          asChild
+          variant="meetingPlatform"
+          size="microBold"
           data-testid="meeting-detail-platform"
-          className="rounded-sm border border-border px-1.5 py-0.5 font-medium text-txt"
         >
-          {MEETING_PLATFORM_LABELS[meta.platform]}
-        </span>
+          <span>{MEETING_PLATFORM_LABELS[meta.platform]}</span>
+        </Badge>
       ) : null}
       {meta.participants.length > 0 ? (
         <span data-testid="meeting-detail-participants" className="truncate">
@@ -437,19 +446,18 @@ function MeetingCapturePrivacyStrip({
       className="flex flex-wrap gap-1.5 text-xs"
     >
       {chips.map((chip) => (
-        <span
+        <Badge
+          asChild
+          variant={chip.alert ? "meetingPrivacyDanger" : "meetingPrivacy"}
+          size="microBold"
           key={`${chip.label}:${chip.value}`}
           data-testid={`meeting-privacy-chip-${agentSafeId(chip.label)}`}
-          className={cn(
-            "rounded-sm border px-1.5 py-0.5",
-            chip.alert
-              ? "border-destructive/40 text-destructive"
-              : "border-border text-muted",
-          )}
         >
-          <span className="font-medium text-txt">{chip.label}:</span>{" "}
-          {chip.value}
-        </span>
+          <span>
+            <span className="font-medium text-txt">{chip.label}:</span>{" "}
+            {chip.value}
+          </span>
+        </Badge>
       ))}
     </div>
   );

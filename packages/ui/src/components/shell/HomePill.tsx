@@ -22,7 +22,9 @@ import * as React from "react";
 import { useBranding } from "../../config/branding";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { computeWaveBarScales, FLATLINE_SCALE } from "./home-pill-wave";
 import type { ShellPhase } from "./shell-state";
 
@@ -304,6 +306,17 @@ export function HomePill({
   const listeningExpanded = listening && previewHostReady;
   const chipExpanded = listening || phase === "processing";
   const composerSized = previewVisible || listeningExpanded;
+  const markPresentation = previewVisible
+    ? "homePillPreview"
+    : listeningExpanded
+      ? "homePillListening"
+      : chipExpanded
+        ? "homePillChip"
+        : phase === "responding"
+          ? speaking
+            ? "homePillSpeaking"
+            : "homePillResponding"
+          : "homePillIdle";
   const label = needsAuth
     ? signingIn
       ? `Signing in to ${appName} Cloud`
@@ -319,152 +332,163 @@ export function HomePill({
             : `Open ${appName}`;
 
   return (
-    <Button
-      variant="transparent"
-      size="content"
-      aria-label={label}
-      aria-busy={needsAuth && signingIn ? true : undefined}
-      aria-pressed={needsAuth ? undefined : isOpen}
-      data-phase={phase}
-      data-speaking={speaking || undefined}
-      data-composer-sized={composerSized ? "true" : "false"}
-      data-needs-auth={needsAuth ? "true" : "false"}
-      data-testid="shell-home-pill"
-      onClick={handleClick}
-      onPointerDown={handlePointerDown}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerCancel}
-      onMouseEnter={() => setPreviewHover(true)}
-      onMouseLeave={() => setPreviewHover(false)}
-      // A foreground NSWindow owns wheel routing before CSS hit-testing. Drop
-      // the wide hover host on the first scroll gesture so subsequent trackpad
-      // momentum reaches the application underneath instead of being trapped
-      // by a decorative preview.
-      onWheel={() => setPreviewHover(false)}
-      style={{ zIndex: Z_SHELL_OVERLAY }}
-      className={cn(
-        // The resting launcher is deliberately transparent: only the white
-        // handle (shell-home-pill-mark) paints, so the pill reads as a
-        // floating handle over the desktop. The button still fills the 64x44
-        // native window, so the #21876 hit-bounds contract (native bounds ==
-        // interactive surface) is preserved without an opaque backdrop.
-        // When a run must prove the window itself composited (packaged pixel
-        // proofs, manual QA on hard-to-read wallpapers), temporarily swap in a
-        // painted surface — e.g. "border border-white/20 bg-[#181a20]/95"
-        // plus a frosted blur utility — instead of asserting on transparent
-        // pixels. The shipped default stays transparent, and a permanent blur
-        // here would fail the battery gate (see the blur allowlist test in
-        // packages/ui/src).
-        "group pointer-events-auto relative flex items-center justify-center",
-        "transition-[width,height,transform] duration-200 motion-reduce:transition-none",
-        "h-11 w-16 rounded-full bg-transparent p-0 shadow-none hover:bg-transparent active:scale-95 data-[composer-sized=true]:h-16 data-[composer-sized=true]:w-[36rem] data-[needs-auth=true]:active:scale-[0.96] focus-visible:bg-transparent focus-visible:ring-2 focus-visible:ring-inverse/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
-      )}
-    >
-      <span
-        aria-hidden="true"
-        data-testid="shell-home-pill-mark"
+    <Card asChild variant="transparent">
+      <Button
+        variant="transparent"
+        size="content"
+        shape="circle"
+        aria-label={label}
+        aria-busy={needsAuth && signingIn ? true : undefined}
+        aria-pressed={needsAuth ? undefined : isOpen}
+        data-phase={phase}
+        data-speaking={speaking || undefined}
+        data-composer-sized={composerSized ? "true" : "false"}
+        data-needs-auth={needsAuth ? "true" : "false"}
+        data-testid="shell-home-pill"
+        onClick={handleClick}
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+        onMouseEnter={() => setPreviewHover(true)}
+        onMouseLeave={() => setPreviewHover(false)}
+        // A foreground NSWindow owns wheel routing before CSS hit-testing. Drop
+        // the wide hover host on the first scroll gesture so subsequent trackpad
+        // momentum reaches the application underneath instead of being trapped
+        // by a decorative preview.
+        onWheel={() => setPreviewHover(false)}
+        style={{ zIndex: Z_SHELL_OVERLAY }}
         className={cn(
-          "flex items-center justify-center rounded-full",
-          "transition-[width,height,opacity,transform,background-color,box-shadow] duration-200",
-          // Listening/processing grow the capsule into a dark status chip.
-          // Logged-out and idle states share the neutral handle/hover preview.
-          previewVisible
-            ? "h-14 w-full justify-start overflow-hidden border border-white/55 bg-[linear-gradient(180deg,rgba(38,39,40,0.98),rgba(18,19,21,0.98))] px-5"
-            : listeningExpanded
-              ? "h-14 w-full justify-between overflow-hidden border border-white/55 bg-neutral-900/95 px-5"
-              : chipExpanded
-                ? "h-7 w-20 gap-[3px] bg-neutral-900/95"
-                : "h-2.5 w-12 gap-[3px] bg-white/95 group-hover:w-14",
-          previewVisible
-            ? "shadow-[0_14px_36px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.12)]"
-            : chipExpanded && "shadow-[0_4px_16px_rgba(0,0,0,0.35)]",
-          !chipExpanded &&
-            !previewVisible &&
-            (phase === "responding"
-              ? speaking
-                ? // Speaking: stronger, tighter warm glow than thinking — the
-                  // reply is audibly playing right now.
-                  "shadow-[0_0_14px_rgba(255,138,42,0.85),0_0_0_1px_rgba(255,138,42,0.5)]"
-                : "shadow-[0_0_10px_rgba(255,138,42,0.6),0_0_0_1px_rgba(0,0,0,0.12)]"
-              : "shadow-[0_0_0_1px_rgba(0,0,0,0.12)]"),
-          phase === "booting" &&
-            "animate-pulse opacity-65 motion-reduce:animate-none",
-          phase === "responding" &&
-            !speaking &&
-            "animate-pulse opacity-90 motion-reduce:animate-none",
+          // The resting launcher is deliberately transparent: only the white
+          // handle (shell-home-pill-mark) paints, so the pill reads as a
+          // floating handle over the desktop. The button still fills the 64x44
+          // native window, so the #21876 hit-bounds contract (native bounds ==
+          // interactive surface) is preserved without an opaque backdrop.
+          // When a run must prove the window itself composited (packaged pixel
+          // proofs, manual QA on hard-to-read wallpapers), temporarily swap in a
+          // painted surface — e.g. "border border-white/20 bg-[#181a20]/95"
+          // plus a frosted blur utility — instead of asserting on transparent
+          // pixels. The shipped default stays transparent, and a permanent blur
+          // here would fail the battery gate (see the blur allowlist test in
+          // packages/ui/src).
+          "group pointer-events-auto relative flex items-center justify-center",
+          "transition-[width,height,transform] duration-200 motion-reduce:transition-none",
+          "h-11 w-16 p-0 active:scale-95 data-[composer-sized=true]:h-16 data-[composer-sized=true]:w-[36rem] data-[needs-auth=true]:active:scale-[0.96] focus-visible:ring-2 focus-visible:ring-inverse/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
         )}
       >
-        {previewVisible && (
-          <>
-            <Plus
-              aria-hidden="true"
-              data-testid="shell-home-pill-preview-plus"
-              className="size-5 shrink-0 text-white"
-              strokeWidth={2}
-            />
-            <span
-              data-testid="shell-home-pill-preview-label"
-              className="ml-5 whitespace-nowrap text-sm font-normal leading-none text-white/85"
-            >
-              Message {appName}
-            </span>
-            <span className="absolute inset-x-0 top-4 flex justify-center">
-              <span className="h-2 w-12 rounded-full bg-white/95" />
-            </span>
-            <AudioWaveform
-              aria-hidden="true"
-              data-testid="shell-home-pill-preview-waveform"
-              className="ml-auto size-5 shrink-0 text-white"
-              strokeWidth={2}
-            />
-          </>
-        )}
-        {phase === "listening" ? (
-          <>
-            <span className="w-5 shrink-0" aria-hidden="true" />
-            <span className="flex flex-1 items-center justify-center gap-2 px-6">
-              {WAVE_BARS.map((bar, index) => (
-                <span
-                  key={bar.id}
-                  ref={(node) => {
-                    waveBarRefs.current[index] = node;
-                  }}
-                  data-testid="shell-home-pill-wave-bar"
-                  data-live={metered || undefined}
-                  className={cn(
-                    "w-1 origin-center rounded-full bg-white/95 shadow-[0_0_9px_rgba(255,255,255,0.4)]",
-                    // Live-metered: the analyser drives scaleY each frame; in
-                    // silence the bars flatline — the honest dead-mic signal.
-                    metered && "transition-transform duration-75",
-                  )}
-                  style={{
-                    height: `${bar.height}px`,
-                    // Flat is the truthful rest state: no analyser frames (mic
-                    // opening, capture-less host, reduced motion) means no
-                    // motion — never a decorative shimmer.
-                    transform: `scaleY(${FLATLINE_SCALE})`,
-                  }}
+        <Badge asChild variant="visualAnchor" presentation={markPresentation}>
+          <span
+            aria-hidden="true"
+            data-testid="shell-home-pill-mark"
+            data-visual-state={markPresentation}
+            className={cn(
+              "flex items-center justify-center transition-[width,height,opacity,transform,background-color,box-shadow] duration-200",
+              // Listening/processing grow the capsule into a dark status chip.
+              // Logged-out and idle states share the neutral handle/hover preview.
+              previewVisible
+                ? "h-14 w-full justify-start overflow-hidden px-5"
+                : listeningExpanded
+                  ? "h-14 w-full justify-between overflow-hidden px-5"
+                  : chipExpanded
+                    ? "h-7 w-20 gap-[3px]"
+                    : "h-2.5 w-12 gap-[3px] group-hover:w-14",
+              phase === "booting" &&
+                "animate-pulse opacity-65 motion-reduce:animate-none",
+              phase === "responding" &&
+                !speaking &&
+                "animate-pulse opacity-90 motion-reduce:animate-none",
+            )}
+          >
+            {previewVisible && (
+              <>
+                <Plus
+                  aria-hidden="true"
+                  data-testid="shell-home-pill-preview-plus"
+                  className="size-5 shrink-0 text-white"
+                  strokeWidth={2}
                 />
+                <span
+                  data-testid="shell-home-pill-preview-label"
+                  className="ml-5 whitespace-nowrap text-sm font-normal leading-none text-white/85"
+                >
+                  Message {appName}
+                </span>
+                <span className="absolute inset-x-0 top-4 flex justify-center">
+                  <Badge
+                    asChild
+                    variant="visualAnchor"
+                    presentation="homePillPreviewHandle"
+                  >
+                    <span className="h-2 w-12" />
+                  </Badge>
+                </span>
+                <AudioWaveform
+                  aria-hidden="true"
+                  data-testid="shell-home-pill-preview-waveform"
+                  className="ml-auto size-5 shrink-0 text-white"
+                  strokeWidth={2}
+                />
+              </>
+            )}
+            {phase === "listening" ? (
+              <>
+                <span className="w-5 shrink-0" aria-hidden="true" />
+                <span className="flex flex-1 items-center justify-center gap-2 px-6">
+                  {WAVE_BARS.map((bar, index) => (
+                    <Badge
+                      asChild
+                      variant="visualAnchor"
+                      presentation="homePillWave"
+                      key={bar.id}
+                    >
+                      <span
+                        ref={(node) => {
+                          waveBarRefs.current[index] = node;
+                        }}
+                        data-testid="shell-home-pill-wave-bar"
+                        data-live={metered || undefined}
+                        className={cn(
+                          "w-1 origin-center",
+                          // Live-metered: the analyser drives scaleY each frame; in
+                          // silence the bars flatline — the honest dead-mic signal.
+                          metered && "transition-transform duration-75",
+                        )}
+                        style={{
+                          height: `${bar.height}px`,
+                          // Flat is the truthful rest state: no analyser frames (mic
+                          // opening, capture-less host, reduced motion) means no
+                          // motion — never a decorative shimmer.
+                          transform: `scaleY(${FLATLINE_SCALE})`,
+                        }}
+                      />
+                    </Badge>
+                  ))}
+                </span>
+                <Square
+                  aria-hidden="true"
+                  data-testid="shell-home-pill-listening-stop"
+                  className="size-5 shrink-0 fill-white/90 text-white/90"
+                  strokeWidth={1.5}
+                />
+              </>
+            ) : null}
+            {phase === "processing" &&
+              PROCESS_DOTS.map((dot) => (
+                <Badge
+                  asChild
+                  variant="visualAnchor"
+                  presentation="homePillProcessDot"
+                  key={dot.id}
+                >
+                  <span
+                    data-testid="shell-home-pill-process-dot"
+                    className="home-pill-process-dot size-[5px] motion-reduce:animate-none"
+                    style={{ animationDelay: `${dot.delayMs}ms` }}
+                  />
+                </Badge>
               ))}
-            </span>
-            <Square
-              aria-hidden="true"
-              data-testid="shell-home-pill-listening-stop"
-              className="size-5 shrink-0 fill-white/90 text-white/90"
-              strokeWidth={1.5}
-            />
-          </>
-        ) : null}
-        {phase === "processing" &&
-          PROCESS_DOTS.map((dot) => (
-            <span
-              key={dot.id}
-              data-testid="shell-home-pill-process-dot"
-              className="home-pill-process-dot size-[5px] rounded-full bg-white/90 motion-reduce:animate-none"
-              style={{ animationDelay: `${dot.delayMs}ms` }}
-            />
-          ))}
-      </span>
-    </Button>
+          </span>
+        </Badge>
+      </Button>
+    </Card>
   );
 }

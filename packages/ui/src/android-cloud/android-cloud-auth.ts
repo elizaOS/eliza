@@ -9,12 +9,14 @@
  */
 
 import { registerPlugin } from "@capacitor/core";
+import { shellLocalStorage } from "../surface-realm-channel";
 import { isSafeNavigationUrl } from "../utils/navigation-url";
 import {
   AndroidCloudAuthError,
   AndroidCloudClient,
   type AndroidCloudLoginAttempt,
   type AndroidCloudLoginCompletion,
+  type AndroidCloudLoginOptions,
   type AndroidCloudPendingLoginStore,
   parseAndroidCloudCallbackAttemptId,
 } from "./android-cloud-client";
@@ -27,6 +29,8 @@ const ANDROID_CLOUD_LOGIN_HOSTS = new Set([
   "cloud.eliza.app",
   "cloud-staging.eliza.app",
 ]);
+const ANDROID_CLOUD_ACCOUNT_SWITCH_KEY =
+  "eliza:android-cloud:account-switch-pending:v1";
 
 export interface AndroidCloudAuthResult {
   apiBase?: string;
@@ -91,11 +95,37 @@ function publishResult(result: AndroidCloudAuthResult): void {
   );
 }
 
+/** Persists explicit account-switch intent across renderer and app recreation. */
+export function markAndroidCloudAccountSwitchPending(): void {
+  shellLocalStorage.setItem(ANDROID_CLOUD_ACCOUNT_SWITCH_KEY, "1");
+  if (window.localStorage.getItem(ANDROID_CLOUD_ACCOUNT_SWITCH_KEY) !== "1") {
+    throw new Error("Eliza Cloud could not preserve the account switch.");
+  }
+}
+
+/** True until a replacement mobile session is verified end to end. */
+export function isAndroidCloudAccountSwitchPending(): boolean {
+  return window.localStorage.getItem(ANDROID_CLOUD_ACCOUNT_SWITCH_KEY) === "1";
+}
+
+/** Removes the durable switch marker after replacement-session verification. */
+export function clearAndroidCloudAccountSwitchPending(): void {
+  shellLocalStorage.removeItem(ANDROID_CLOUD_ACCOUNT_SWITCH_KEY);
+}
+
 /** Creates the hosted login URL while keeping the verifier in Android Keystore. */
 export async function beginAndroidCloudSignIn(
   cloudApiBase?: string,
+  options: AndroidCloudLoginOptions = {},
 ): Promise<AndroidCloudLoginAttempt> {
-  return client(cloudApiBase).beginLogin();
+  return client(cloudApiBase).beginLogin(options);
+}
+
+/** Revokes the exact mobile credential before removing its local copy. */
+export async function signOutAndroidCloud(
+  cloudApiBase?: string,
+): Promise<void> {
+  await client(cloudApiBase).signOut();
 }
 
 /** Navigate the launcher WebView only to the canonical hosted login origins. */

@@ -5,7 +5,15 @@
  */
 import { FileText, Film, Music } from "lucide-react";
 import type * as React from "react";
-import { Button } from "../../ui/button";
+import {
+  Attachment,
+  AttachmentAction,
+  AttachmentActions,
+  AttachmentContent,
+  AttachmentGroup,
+  AttachmentMedia,
+  AttachmentTitle,
+} from "../../ui/attachment";
 import type { ChatAttachmentItem, ChatVariant } from "./chat-types";
 
 export interface ChatAttachmentStripProps {
@@ -23,12 +31,14 @@ function NonImageTile({
   const Icon =
     item.kind === "audio" ? Music : item.kind === "video" ? Film : FileText;
   return (
-    <div className="flex size-16 flex-col items-center justify-center gap-1 rounded-sm border border-border bg-bg/40 px-1 text-center">
-      <Icon className="size-5 text-muted" />
-      <span className="w-full truncate text-2xs text-muted" title={item.name}>
-        {item.name}
-      </span>
-    </div>
+    <>
+      <AttachmentMedia>
+        <Icon className="size-5 text-muted" />
+      </AttachmentMedia>
+      <AttachmentContent>
+        <AttachmentTitle title={item.name}>{item.name}</AttachmentTitle>
+      </AttachmentContent>
+    </>
   );
 }
 
@@ -43,38 +53,36 @@ export function ChatAttachmentStrip({
   }
 
   return (
-    <div
-      className={`relative flex flex-wrap gap-2 py-1 ${
-        variant === "game-modal" ? "pointer-events-auto" : ""
-      }`}
+    <AttachmentGroup
+      className={
+        variant === "game-modal" ? "z-[1] pointer-events-auto" : "z-[1]"
+      }
       data-no-camera-drag={variant === "game-modal" || undefined}
-      style={{ zIndex: 1 }}
     >
       {items.map((item, index) => (
-        <div key={item.id} className="relative size-16 shrink-0 group">
+        <Attachment key={item.id} orientation="vertical" size="xs">
           {!item.kind || item.kind === "image" ? (
-            <img
-              src={item.src}
-              alt={item.alt}
-              className="size-16 rounded-sm border border-border object-cover"
-            />
+            <AttachmentMedia variant="image">
+              <img src={item.src} alt={item.alt} />
+            </AttachmentMedia>
           ) : (
             <NonImageTile item={item} />
           )}
-          <Button
-            variant={
-              variant === "game-modal" ? "surfaceDestructive" : "destructive"
-            }
-            size="icon-sm"
-            title={removeLabel(item)}
-            aria-label={removeLabel(item)}
-            onClick={() => onRemove(item.id, index)}
-            className="absolute -right-1.5 -top-1.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
-          >
-            ×
-          </Button>
-        </div>
+          <AttachmentActions>
+            <AttachmentAction
+              variant={
+                variant === "game-modal" ? "surfaceDestructive" : "destructive"
+              }
+              size="icon-sm"
+              title={removeLabel(item)}
+              aria-label={removeLabel(item)}
+              onClick={() => onRemove(item.id, index)}
+            >
+              ×
+            </AttachmentAction>
+          </AttachmentActions>
+        </Attachment>
       ))}
-    </div>
+    </AttachmentGroup>
   );
 }

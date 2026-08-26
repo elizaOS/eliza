@@ -12,6 +12,7 @@ import { Link } from "react-router-dom";
 import { PromoteAppDialog } from "../../../cloud-ui/components/promotion/promote-app-dialog";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { ApiError, api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import type { App } from "../lib/apps";
@@ -156,7 +157,7 @@ export function AppPromote({ app }: AppPromoteProps) {
 
       {/* Suggestions */}
       {suggestions && (
-        <div className="bg-card rounded-sm p-4 space-y-4">
+        <Card stack="default" variant="flatPadded">
           <h3 className="text-sm font-medium text-txt">
             {t("cloud.appPromote.tipsTitle", {
               defaultValue: "Promotion Tips",
@@ -188,11 +189,11 @@ export function AppPromote({ app }: AppPromoteProps) {
               </span>
             </div>
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Connected Ad Accounts */}
-      <div className="bg-card rounded-sm p-4 space-y-4">
+      <Card stack="default" variant="flatPadded">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium text-txt">
             {t("cloud.appPromote.connectedAccounts", {
@@ -234,10 +235,7 @@ export function AppPromote({ app }: AppPromoteProps) {
         ) : (
           <div className="space-y-2">
             {adAccounts.map((account) => (
-              <div
-                key={account.id}
-                className="flex items-center justify-between p-3 rounded-sm bg-surface border border-border"
-              >
+              <Card key={account.id} flow="rowBetween" variant="insetPadded">
                 <div className="flex items-center gap-2">
                   <Badge variant="outline">{account.platform}</Badge>
                   <span className="text-sm text-txt">
@@ -247,11 +245,11 @@ export function AppPromote({ app }: AppPromoteProps) {
                 <Button variant="ghost" size="icon-sm">
                   <ExternalLink className="size-4" />
                 </Button>
-              </div>
+              </Card>
             ))}
           </div>
         )}
-      </div>
+      </Card>
 
       {/* Promote Dialog */}
       <PromoteAppDialog

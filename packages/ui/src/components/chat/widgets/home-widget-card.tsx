@@ -20,7 +20,9 @@ import { reportUserViewSwitch } from "../../../chat/useSlashCommandController";
 import { dispatchNavigateViewEvent } from "../../../events";
 import { cn } from "../../../lib/utils";
 import { useAppSelectorShallow } from "../../../state";
+import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
+import { StatusDot } from "../../ui/status-badge";
 
 /**
  * Navigation for home widgets: tapping a card opens the relevant full surface.
@@ -57,13 +59,6 @@ const TONE_VALUE_CLASS: Record<HomeWidgetTone, string> = {
   default: "text-[var(--brand-white)]",
   danger: "text-[var(--brand-white)]",
   warn: "text-[var(--brand-white)]",
-};
-
-const TONE_CHIP_CLASS: Record<HomeWidgetTone, string> = {
-  default:
-    "border-[color:color-mix(in_srgb,var(--brand-white)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-white)_10%,transparent)] text-[var(--brand-white)]",
-  danger: "border-danger/55 bg-danger/15 text-[var(--brand-white)]",
-  warn: "border-warn/55 bg-warn/15 text-[var(--brand-white)]",
 };
 
 export interface HomeWidgetCardProps {
@@ -109,25 +104,28 @@ export function HomeWidgetCard({
     >
       {/* Left accent rail: a quiet ember stripe at rest, brightening on hover,
           a deliberate edge detail, not a generic one-sided border. */}
-      <span
+      <StatusDot
         aria-hidden
-        className={cn(
-          "absolute inset-y-2.5 left-0 w-[3px] rounded-full transition-colors duration-150",
-          tone === "danger"
-            ? "bg-danger"
-            : tone === "warn"
-              ? "bg-warn"
-              : "bg-border-strong group-hover:bg-accent",
-        )}
+        tone={
+          tone === "danger" ? "danger" : tone === "warn" ? "warning" : "accent"
+        }
+        className="absolute inset-y-2.5 left-0 h-auto w-[3px] transition-colors duration-150"
       />
-      <span
-        className={cn(
-          "relative inline-flex size-9 shrink-0 items-center justify-center rounded-xl border [&>svg]:h-[18px] [&>svg]:w-[18px]",
-          TONE_CHIP_CLASS[tone],
-        )}
+      <Badge
+        asChild
+        variant={
+          tone === "danger"
+            ? "statusDanger"
+            : tone === "warn"
+              ? "statusWarning"
+              : "statusMuted"
+        }
+        size="providerMark"
       >
-        {icon}
-      </span>
+        <span className="relative size-9 shrink-0 [&>svg]:size-4.5">
+          {icon}
+        </span>
+      </Badge>
 
       {/* The label is now a visible eyebrow (the widgets are the hero, so they
           read as a real dashboard), with the single high-priority datum below
@@ -158,18 +156,21 @@ export function HomeWidgetCard({
         </span>
       ) : null}
       {badge != null ? (
-        <span
-          className={cn(
-            "shrink-0 rounded-full px-2 py-0.5 text-xs-tight font-semibold tabular-nums",
+        <Badge
+          asChild
+          variant={
             tone === "danger"
-              ? "border border-danger/55 bg-danger/15 text-[var(--brand-white)]"
+              ? "statusDanger"
               : tone === "warn"
-                ? "border border-warn/55 bg-warn/15 text-[var(--brand-white)]"
-                : "border border-[color:color-mix(in_srgb,var(--brand-white)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-white)_10%,transparent)] text-[var(--brand-white)]",
-          )}
+                ? "statusWarning"
+                : "statusMuted"
+          }
+          size="pill"
         >
-          {badge}
-        </span>
+          <span className="shrink-0 text-xs-tight font-semibold tabular-nums">
+            {badge}
+          </span>
+        </Badge>
       ) : null}
     </Button>
   );

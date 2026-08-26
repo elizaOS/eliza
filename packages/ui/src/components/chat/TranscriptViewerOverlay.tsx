@@ -34,12 +34,12 @@ import { client } from "../../api";
 import { navigateBrowserPath } from "../../app-navigate-view";
 import { useRole } from "../../hooks/useRole";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
-import { cn } from "../../lib/utils";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { fetchWithDeadline } from "../../utils/fetch-with-deadline";
 import { RoleGate } from "../RoleGate";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { Input } from "../ui/input";
 import { Spinner } from "../ui/spinner";
 import { Textarea } from "../ui/textarea";
@@ -469,14 +469,21 @@ export function TranscriptViewerOverlay({
         size="content"
         className="absolute inset-0 cursor-default"
       />
-      <div
-        className={cn(
-          "relative flex max-h-full w-full max-w-2xl flex-col overflow-hidden",
-          "rounded-lg border border-border bg-card text-txt",
-        )}
+      <Card
+        flow="column"
+        surface="card"
+        border="standard"
+        radius="large"
+        tone="text"
+        className="relative max-h-full w-full max-w-2xl overflow-hidden"
       >
         {/* Header: title + close */}
-        <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+        <Card
+          variant="attachmentHeader"
+          flow="row"
+          gap="compact"
+          className="px-4 py-3"
+        >
           <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-txt-strong">
             {title}
           </h2>
@@ -509,7 +516,7 @@ export function TranscriptViewerOverlay({
           >
             <X className="size-4" strokeWidth={1.5} />
           </Button>
-        </div>
+        </Card>
 
         {/* Body */}
         <div className="min-h-0 flex-1 overflow-auto p-4">
@@ -576,8 +583,11 @@ export function TranscriptViewerOverlay({
             </p>
           ) : null}
           {shareOpen ? (
-            <div
-              className="mt-4 rounded-sm border border-border bg-bg/45 p-3"
+            <Card
+              surface="backgroundSubtle"
+              border="standard"
+              padding="default"
+              className="mt-4"
               data-testid="transcript-share-sheet"
             >
               <div className="flex flex-wrap items-center gap-2">
@@ -606,47 +616,54 @@ export function TranscriptViewerOverlay({
                   />
                 </label>
                 <div className="grid content-end gap-1">
-                  <fieldset className="inline-flex rounded-sm border border-border bg-card p-1">
-                    <legend className="sr-only">
-                      Transcript disclosure mode
-                    </legend>
-                    <Button
-                      variant={shareMode === "redacted" ? "default" : "ghost"}
-                      size="dense"
-                      onClick={() => {
-                        setShareMode("redacted");
-                        setShareStatus({ kind: "idle" });
-                      }}
-                      data-testid="transcript-share-mode-redacted"
-                    >
-                      Redacted
-                    </Button>
-                    <RoleGate
-                      minRole="ADMIN"
-                      fallback={
+                  <Card
+                    asChild
+                    surface="card"
+                    border="standard"
+                    className="inline-flex p-1"
+                  >
+                    <fieldset>
+                      <legend className="sr-only">
+                        Transcript disclosure mode
+                      </legend>
+                      <Button
+                        variant={shareMode === "redacted" ? "default" : "ghost"}
+                        size="dense"
+                        onClick={() => {
+                          setShareMode("redacted");
+                          setShareStatus({ kind: "idle" });
+                        }}
+                        data-testid="transcript-share-mode-redacted"
+                      >
+                        Redacted
+                      </Button>
+                      <RoleGate
+                        minRole="ADMIN"
+                        fallback={
+                          <Button
+                            variant="ghostMuted"
+                            size="dense"
+                            disabled
+                            data-testid="transcript-share-mode-full-disabled"
+                          >
+                            Full
+                          </Button>
+                        }
+                      >
                         <Button
-                          variant="ghostMuted"
+                          variant={shareMode === "full" ? "default" : "ghost"}
                           size="dense"
-                          disabled
-                          data-testid="transcript-share-mode-full-disabled"
+                          onClick={() => {
+                            setShareMode("full");
+                            setShareStatus({ kind: "idle" });
+                          }}
+                          data-testid="transcript-share-mode-full"
                         >
                           Full
                         </Button>
-                      }
-                    >
-                      <Button
-                        variant={shareMode === "full" ? "default" : "ghost"}
-                        size="dense"
-                        onClick={() => {
-                          setShareMode("full");
-                          setShareStatus({ kind: "idle" });
-                        }}
-                        data-testid="transcript-share-mode-full"
-                      >
-                        Full
-                      </Button>
-                    </RoleGate>
-                  </fieldset>
+                      </RoleGate>
+                    </fieldset>
+                  </Card>
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -705,16 +722,16 @@ export function TranscriptViewerOverlay({
                   {shareStatus.message}
                 </p>
               ) : null}
-            </div>
+            </Card>
           ) : null}
         </div>
 
         {/* Action bar */}
-        <div
-          className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-3"
-          style={{
-            paddingBottom: "calc(var(--safe-area-bottom, 0px) + 0.75rem)",
-          }}
+        <Card
+          variant="topDivider"
+          flow="row"
+          gap="compact"
+          className="flex-wrap px-4 pt-3 pb-[calc(var(--safe-area-bottom,0px)+0.75rem)]"
         >
           {!editing ? (
             <Button
@@ -814,8 +831,8 @@ export function TranscriptViewerOverlay({
               {saving ? "Saving…" : "Save & exit"}
             </Button>
           </div>
-        </div>
-      </div>
+        </Card>
+      </Card>
     </div>,
     document.body,
   );

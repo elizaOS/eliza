@@ -3,7 +3,7 @@
  * outside header placement and a mobile drawer.
  */
 import * as React from "react";
-
+import { Card } from "../../components/ui/card";
 import { cn } from "../../lib/utils";
 import { PageLayoutHeader } from "../page-layout/page-layout-header";
 import { PageLayoutMobileDrawer } from "../page-layout/page-layout-mobile-drawer";
@@ -136,42 +136,44 @@ export function WorkspaceLayout({
           </div>
         ) : null}
 
-        <main
-          ref={setContentRef}
-          className={cn(
-            "chat-native-scrollbar relative flex min-w-0 flex-1 flex-col bg-transparent",
-            showMobileSidebarPane ? "overflow-hidden" : "overflow-y-auto",
-            contentPadding && !showMobileSidebarPane && "px-2 pb-4 pt-1",
-            !showMobileSidebarPane && contentClassName,
-          )}
-        >
-          {sidebar ? (
-            <PageLayoutMobileDrawer
-              isDesktop={isDesktop}
-              mobileSidebarLabel={mobileSidebarLabel}
-              mobileSidebarOpen={mobileSidebarOpen}
-              mobileSidebarTriggerClassName={mobileSidebarTriggerClassName}
-              onMobileSidebarOpenChange={setMobileSidebarOpen}
-              sidebar={sidebar}
-            />
-          ) : null}
-
-          {contentHeader &&
-          headerPlacement === "inside" &&
-          !showMobileSidebarPane
-            ? headerElement
-            : null}
-
-          <div
+        <Card asChild variant="transparentSquare">
+          <main
+            ref={setContentRef}
             className={cn(
-              "flex w-full min-h-0 flex-1 flex-col",
-              contentInnerClassName,
-              showMobileSidebarPane && "hidden",
+              "chat-native-scrollbar relative flex min-w-0 flex-1 flex-col",
+              showMobileSidebarPane ? "overflow-hidden" : "overflow-y-auto",
+              contentPadding && !showMobileSidebarPane && "px-2 pb-4 pt-1",
+              !showMobileSidebarPane && contentClassName,
             )}
           >
-            {children}
-          </div>
-        </main>
+            {sidebar ? (
+              <PageLayoutMobileDrawer
+                isDesktop={isDesktop}
+                mobileSidebarLabel={mobileSidebarLabel}
+                mobileSidebarOpen={mobileSidebarOpen}
+                mobileSidebarTriggerClassName={mobileSidebarTriggerClassName}
+                onMobileSidebarOpenChange={setMobileSidebarOpen}
+                sidebar={sidebar}
+              />
+            ) : null}
+
+            {contentHeader &&
+            headerPlacement === "inside" &&
+            !showMobileSidebarPane
+              ? headerElement
+              : null}
+
+            <div
+              className={cn(
+                "flex w-full min-h-0 flex-1 flex-col",
+                contentInnerClassName,
+                showMobileSidebarPane && "hidden",
+              )}
+            >
+              {children}
+            </div>
+          </main>
+        </Card>
       </div>
     </div>
   );

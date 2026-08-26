@@ -5,12 +5,16 @@
 
 import {
   type AppShellBackgroundPolicy,
-  IMMERSIVE_WALLPAPER_SURFACE,
+  type PageLayoutManifest,
   type ResolvedSurfaceManifest,
   resolveSurfaceBackgroundPolicy,
   resolveSurfaceManifest,
-  type SurfaceManifest,
 } from "@elizaos/core";
+import {
+  BUILTIN_ROUTE_IDS,
+  type BuiltinRouteSurfaceDeclaration,
+  resolveBuiltinRouteDescriptor,
+} from "./navigation/builtin-route-descriptors";
 
 /**
  * Declarative registry for the app's builtin (host-owned) tab surfaces.
@@ -58,9 +62,7 @@ import {
  * (#13452). A tab with no `surface` field declares no builtin-level policy and
  * falls through to the caller's downstream resolution (registered views etc.).
  */
-export type BuiltinTabSurfaceDecl =
-  | SurfaceManifest
-  | { readonly shared: (trimmedNavigationPath: string) => boolean };
+export type BuiltinTabSurfaceDecl = BuiltinRouteSurfaceDeclaration;
 
 export interface BuiltinTabMetadata {
   /** Canonical builtin tab id (the id the render map is keyed by). */
@@ -71,6 +73,8 @@ export interface BuiltinTabMetadata {
    * than duplicated if-branches.
    */
   readonly aliases?: readonly string[];
+  /** Semantic page topology consumed by canonical shell implementations. */
+  readonly layout: PageLayoutManifest;
   /**
    * Builtin-level surface manifest (or path predicate for tabs whose launcher
    * root differs from their sub-routes). Omitted = no builtin policy (fall
@@ -83,52 +87,39 @@ export interface BuiltinTabMetadata {
  * The canonical builtin-tab table. IDs here are the keys the `App.tsx` render
  * map uses; aliases and surface manifests are consumed by the resolvers below.
  *
- * Only tabs that need an alias or a non-default surface manifest carry those
- * fields; the rest declare id-only, which is the common case and keeps drift
- * surface minimal. The wallpaper-painting tabs reuse
- * {@link IMMERSIVE_WALLPAPER_SURFACE}, the one manifest that pairs
- * `background: "shared"` with the `wallpaper` grant — so the wallpaper opt-in
- * lives in exactly one place, not re-spelled per tab.
+ * Every canonical route is represented because layout classification is
+ * exhaustive. Optional aliases and surface policies are folded in from the
+ * same React-free route descriptor authority.
  */
-export const BUILTIN_TAB_METADATA: readonly BuiltinTabMetadata[] = [
-  // ── Immersive wallpaper surfaces (grant-backed shared background) ──
-  { id: "chat", surface: IMMERSIVE_WALLPAPER_SURFACE },
-  { id: "background", surface: IMMERSIVE_WALLPAPER_SURFACE },
-  // ── Native-webview isolation surface (arbitrary third-party web content) ──
-  // The Browser view is the canonical `native-webview` consumer documented in
-  // the isolation catalogue (`surface-isolation.ts`): it hosts arbitrary
-  // third-party pages in a native child web-content surface (desktop
-  // `WebContentsView` / electrobun OOPIF, iOS `WKWebView`, Android `WebView`)
-  // with the strongest platform renderer boundary, so page content never shares
-  // the host realm.
-  // Declaring the manifest here makes that isolation level authoritative on the
-  // view instead of only documented. `background: "opaque"` is the default made
-  // explicit — the browser never paints the shared wallpaper (it owns its whole
-  // surface). `header: "fullscreen"` gives the Browser the same shell framing
-  // as the other full-surface content views (Notes, Calendar): the shell mounts
-  // it edge-to-edge with no host top bar, and the view owns its own floating
-  // chrome. This declares policy only; the native embedding itself lives in
-  // the tab renderers, not here (#13596).
-  {
-    id: "browser",
-    surface: {
-      isolation: "native-webview",
-      background: "opaque",
-      header: "fullscreen",
-    },
-  },
-  // ── Wallpaper only at the tab's launcher root; opaque on sub-routes ──
-  {
-    id: "views",
-    surface: { shared: (path) => path === "/views" },
-  },
-  {
-    id: "apps",
-    surface: { shared: (path) => path === "/apps" },
-  },
-  // ── Aliases (canonical id + legacy id that routes onto it) ──
-  { id: "automations", aliases: ["triggers"] },
-] as const;
+const BUILTIN_ALIAS_IDS_BY_CANONICAL = new Map<string, string[]>();
+for (const id of BUILTIN_ROUTE_IDS) {
+  const descriptor = resolveBuiltinRouteDescriptor(id);
+  if (descriptor && descriptor.canonicalId !== id) {
+    const aliases = BUILTIN_ALIAS_IDS_BY_CANONICAL.get(descriptor.canonicalId);
+    if (aliases) aliases.push(id);
+    else BUILTIN_ALIAS_IDS_BY_CANONICAL.set(descriptor.canonicalId, [id]);
+  }
+}
+
+/**
+ * Canonical built-in metadata derived from the route descriptors. Alias rows
+ * are folded into their owner so every resolver inherits one classification.
+ */
+export const BUILTIN_TAB_METADATA: readonly BuiltinTabMetadata[] =
+  BUILTIN_ROUTE_IDS.flatMap((id) => {
+    const descriptor = resolveBuiltinRouteDescriptor(id);
+    if (!descriptor || descriptor.canonicalId !== id) return [];
+
+    const aliases = BUILTIN_ALIAS_IDS_BY_CANONICAL.get(id);
+    const surface = descriptor.surface;
+    const metadata: BuiltinTabMetadata = {
+      id,
+      layout: descriptor.layout,
+      ...(aliases ? { aliases } : {}),
+      ...(surface ? { surface } : {}),
+    };
+    return [metadata];
+  });
 
 /** Fast id -> metadata lookup, including alias ids. */
 const BUILTIN_TAB_BY_ID: ReadonlyMap<string, BuiltinTabMetadata> = (() => {
@@ -158,7 +149,14 @@ const BUILTIN_TAB_BY_ID: ReadonlyMap<string, BuiltinTabMetadata> = (() => {
  * tabs pass straight through.
  */
 export function resolveBuiltinTabId(tab: string): string {
-  return BUILTIN_TAB_BY_ID.get(tab)?.id ?? tab;
+  return resolveBuiltinRouteDescriptor(tab)?.canonicalId ?? tab;
+}
+
+/** The semantic page layout for a built-in tab, inherited through aliases. */
+export function resolveBuiltinPageLayout(
+  tab: string,
+): PageLayoutManifest | null {
+  return resolveBuiltinRouteDescriptor(tab)?.layout ?? null;
 }
 
 /**
@@ -218,7 +216,10 @@ export function resolveBuiltinRoutedViewManifest(
 ): ResolvedSurfaceManifest | null {
   const decl = BUILTIN_TAB_BY_ID.get(tab)?.surface;
   if (decl === undefined || "shared" in decl) return null;
-  const manifest = resolveSurfaceManifest({ surface: decl });
+  const layout = resolveBuiltinPageLayout(tab);
+  const manifest = resolveSurfaceManifest({
+    surface: layout ? { ...decl, layout } : decl,
+  });
   if (manifest.header === "immersive") return null;
   return manifest;
 }
@@ -245,5 +246,8 @@ export function resolveBuiltinSurfaceManifest(
       `Builtin tab "${tab}" declares no full surface manifest — cannot resolve its isolation level`,
     );
   }
-  return resolveSurfaceManifest({ surface: decl });
+  const layout = resolveBuiltinPageLayout(tab);
+  return resolveSurfaceManifest({
+    surface: layout ? { ...decl, layout } : decl,
+  });
 }

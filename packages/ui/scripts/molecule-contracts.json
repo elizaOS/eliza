@@ -5,7 +5,7 @@
       "id": "auth-result-shell",
       "owner": "packages/ui/src/cloud/public-pages/pages/auth/auth-result-shell.tsx",
       "symbol": "AuthResultShell",
-      "requiredAtomicDependencies": [],
+      "requiredAtomicDependencies": ["card"],
       "requiredRenderedTags": ["main"],
       "requiredConsumerFiles": [
         "packages/ui/src/cloud/public-pages/pages/auth/auth-error-page.tsx",
@@ -18,7 +18,7 @@
       "id": "connection-capability-tile",
       "owner": "packages/ui/src/cloud/connectors/connection-capability-tile.tsx",
       "symbol": "ConnectionCapabilityTile",
-      "requiredAtomicDependencies": [],
+      "requiredAtomicDependencies": ["card"],
       "requiredRenderedTags": ["p"],
       "requiredConsumerFiles": [
         "packages/ui/src/cloud/connectors/google-connection.tsx",
@@ -31,7 +31,7 @@
       "id": "content-state",
       "owner": "packages/ui/src/components/composites/page-panel/content-state.tsx",
       "symbol": "ContentState",
-      "requiredAtomicDependencies": [],
+      "requiredAtomicDependencies": ["card", "spinner"],
       "requiredRenderedTags": ["LoadingContent", "PlainEmptyContent"],
       "requiredConsumerFiles": [
         "packages/ui/src/components/composites/page-panel/page-panel-empty.tsx",
@@ -44,7 +44,7 @@
       "id": "settings-row",
       "owner": "packages/ui/src/components/settings/settings-layout.tsx",
       "symbol": "SettingsRow",
-      "requiredAtomicDependencies": ["button"],
+      "requiredAtomicDependencies": ["button", "card"],
       "requiredRenderedTags": ["Button"],
       "requiredConsumerFiles": [
         "packages/ui/src/components/settings/settings-agent-rows.tsx",
@@ -69,7 +69,7 @@
       "id": "action-list-row",
       "owner": "packages/ui/src/components/shared/ActionListRow.tsx",
       "symbol": "ActionListRow",
-      "requiredAtomicDependencies": ["button"],
+      "requiredAtomicDependencies": ["button", "card"],
       "requiredRenderedTags": ["Button"],
       "requiredConsumerFiles": [
         "packages/ui/src/components/settings/LoadedPacksList.tsx",

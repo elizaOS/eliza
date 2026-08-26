@@ -6,6 +6,7 @@ import { ChevronRight } from "lucide-react";
 import type * as React from "react";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 
 /**
  * Settings layout vocabulary.
@@ -243,28 +244,35 @@ export function SettingsRow({
   }
 
   return (
-    <div
-      aria-current={active ? "true" : undefined}
-      className={cn(
-        "flex min-h-[3rem] flex-col justify-center py-2.5",
-        active && "rounded-lg bg-accent/10",
-        className,
-      )}
+    <Card
+      asChild
+      variant="transparent"
+      flow="column"
+      surface={active ? "accentSubtle" : "transparent"}
+      radius={active ? "large" : "default"}
     >
-      <SettingsRowBody
-        icon={icon}
-        iconClassName={iconClassName}
-        label={label}
-        description={description}
-        control={stacked ? undefined : control}
-        htmlFor={htmlFor}
-        tone={tone}
-        trailing={trailing}
-        chevron={chevron}
-      />
-      {children ? (
-        <div className={cn(stacked ? "mt-3" : "mt-2")}>{children}</div>
-      ) : null}
-    </div>
+      <div
+        aria-current={active ? "true" : undefined}
+        className={cn(
+          "min-h-[3rem] justify-center py-2.5 text-card-fg",
+          className,
+        )}
+      >
+        <SettingsRowBody
+          icon={icon}
+          iconClassName={iconClassName}
+          label={label}
+          description={description}
+          control={stacked ? undefined : control}
+          htmlFor={htmlFor}
+          tone={tone}
+          trailing={trailing}
+          chevron={chevron}
+        />
+        {children ? (
+          <div className={cn(stacked ? "mt-3" : "mt-2")}>{children}</div>
+        ) : null}
+      </div>
+    </Card>
   );
 }
