@@ -37,6 +37,7 @@ describe("desktop session renderer readiness", () => {
     await expect(
       reloadRendererAfterDesktopSessionPrime({
         sessionPrimed: true,
+        backendGeneration: "31337:1",
         window,
         resolveRendererUrl,
       }),
@@ -56,6 +57,7 @@ describe("desktop session renderer readiness", () => {
     await expect(
       reloadRendererAfterDesktopSessionPrime({
         sessionPrimed: false,
+        backendGeneration: "31337:1",
         window,
         resolveRendererUrl,
       }),
@@ -63,6 +65,7 @@ describe("desktop session renderer readiness", () => {
     await expect(
       reloadRendererAfterDesktopSessionPrime({
         sessionPrimed: true,
+        backendGeneration: "31337:1",
         window: null,
         resolveRendererUrl,
       }),
@@ -81,6 +84,7 @@ describe("desktop session renderer readiness", () => {
     await expect(
       reloadRendererAfterDesktopSessionPrime({
         sessionPrimed: true,
+        backendGeneration: "31337:1",
         window,
         resolveRendererUrl: async () => "http://127.0.0.1:5174/chat",
       }),
@@ -89,5 +93,55 @@ describe("desktop session renderer readiness", () => {
     expect(loggerState.warn).toHaveBeenCalledWith(
       "[Main] Desktop renderer reload after session prime failed: webview gone",
     );
+  });
+
+  it("coalesces concurrent callers for one backend generation", async () => {
+    const window = createWindow();
+    let releaseUrl: (() => void) | undefined;
+    const resolveRendererUrl = vi.fn(
+      () =>
+        new Promise<string>((resolve) => {
+          releaseUrl = () => resolve("http://127.0.0.1:5174/chat");
+        }),
+    );
+
+    const first = reloadRendererAfterDesktopSessionPrime({
+      sessionPrimed: true,
+      backendGeneration: "31337:2",
+      window,
+      resolveRendererUrl,
+    });
+    const duplicate = reloadRendererAfterDesktopSessionPrime({
+      sessionPrimed: true,
+      backendGeneration: "31337:2",
+      window,
+      resolveRendererUrl,
+    });
+    releaseUrl?.();
+
+    await expect(Promise.all([first, duplicate])).resolves.toEqual([
+      true,
+      false,
+    ]);
+    expect(resolveRendererUrl).toHaveBeenCalledTimes(1);
+    expect(window.webview.loadURL).toHaveBeenCalledTimes(1);
+  });
+
+  it("reloads the same window once for each backend generation", async () => {
+    const window = createWindow();
+    const resolveRendererUrl = vi.fn(async () => "http://127.0.0.1:5174/chat");
+
+    for (const backendGeneration of ["31337:3", "31337:4"]) {
+      await expect(
+        reloadRendererAfterDesktopSessionPrime({
+          sessionPrimed: true,
+          backendGeneration,
+          window,
+          resolveRendererUrl,
+        }),
+      ).resolves.toBe(true);
+    }
+
+    expect(window.webview.loadURL).toHaveBeenCalledTimes(2);
   });
 });

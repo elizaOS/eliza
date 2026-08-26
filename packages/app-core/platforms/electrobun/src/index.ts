@@ -2035,6 +2035,7 @@ async function _startAgent(): Promise<void> {
       setAgentReady(true);
       await reloadRendererAfterDesktopSessionPrime({
         sessionPrimed,
+        backendGeneration: `${status.port}:${status.startedAt ?? "running"}`,
         window: currentWindow,
         resolveRendererUrl: resolveMainWindowRendererUrl,
       });
@@ -2825,6 +2826,7 @@ async function main(): Promise<void> {
               if (!recoveringExistingRenderer) return;
               await reloadRendererAfterDesktopSessionPrime({
                 sessionPrimed,
+                backendGeneration: `${status.port}:${status.startedAt ?? "running"}`,
                 window: currentWindow,
                 resolveRendererUrl: resolveMainWindowRendererUrl,
               });
