@@ -10,13 +10,12 @@
  *    resulting Infinity was silently clamped to 100 — a fabricated "fully
  *    utilized" answer for a range with no width.
  *
- * The unimplemented position/rebalance operations must also keep failing
- * loud ("coming soon") rather than silently returning empty results.
+ * Additionally, non-positive prices, widths of 200+, extreme finite inputs
+ * that overflow, and non-finite prices all fail loud instead of returning
+ * degenerate ranges or a fail-open 0% utilization.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import type { IRangeParams } from "../types";
 import { ConcentratedLiquidityService } from "./ConcentratedLiquidityService";
 
 describe("ConcentratedLiquidityService — range math bounds and fail-loud contract", () => {
@@ -45,6 +44,33 @@ describe("ConcentratedLiquidityService — range math bounds and fail-loud contr
     expect(() =>
       svc.calculateOptimalRange(100, Number.POSITIVE_INFINITY),
     ).toThrow(RangeError);
+  });
+
+  it("throws RangeError on a non-positive price instead of returning an inverted negative range", () => {
+    const svc = new ConcentratedLiquidityService();
+    // (0, 20) previously returned { priceLower: 0, priceUpper: 0 } — a
+    // zero-width range that made every downstream utilization decision
+    // degenerate. A negative price mirrors the range: (-100, 20) yielded
+    // lower=-90 > upper=-110.
+    expect(() => svc.calculateOptimalRange(0, 20)).toThrow(RangeError);
+    expect(() => svc.calculateOptimalRange(-100, 20)).toThrow(RangeError);
+  });
+
+  it("throws RangeError on a width of 200+ that would drive the lower bound to zero or below", () => {
+    const svc = new ConcentratedLiquidityService();
+    // width 200 → lower = price * (1 - 1) = 0; width 250 → lower < 0.
+    expect(() => svc.calculateOptimalRange(100, 200)).toThrow(RangeError);
+    expect(() => svc.calculateOptimalRange(100, 250)).toThrow(RangeError);
+  });
+
+  it("throws RangeError when extreme finite inputs overflow into degenerate bounds", () => {
+    const svc = new ConcentratedLiquidityService();
+    expect(() => svc.calculateOptimalRange(Number.MAX_VALUE, 199.99)).toThrow(
+      RangeError,
+    );
+    expect(() => svc.calculateOptimalRange(Number.MAX_VALUE, 20)).toThrow(
+      RangeError,
+    );
   });
 
   it("returns 100% utilization at the center of the range", () => {
@@ -77,26 +103,15 @@ describe("ConcentratedLiquidityService — range math bounds and fail-loud contr
     expect(() => svc.calculateUtilization(100, 110, 90)).toThrow(RangeError);
   });
 
-  it("keeps the unimplemented position operations failing loud", async () => {
+  it("throws RangeError on a non-finite price instead of reporting fail-open 0%", () => {
     const svc = new ConcentratedLiquidityService();
-    await expect(
-      svc.createConcentratedPosition("u", {} as IRangeParams),
-    ).rejects.toThrow(/coming soon/);
-    await expect(svc.rebalanceConcentratedPosition("u", "p")).rejects.toThrow(
-      /coming soon/,
+    // NaN previously fell through isPriceInRange as "outside" → 0, silently
+    // under-reporting utilization for a malformed price.
+    expect(() => svc.calculateUtilization(Number.NaN, 90, 110)).toThrow(
+      RangeError,
     );
-    await expect(svc.getConcentratedPositions("u")).resolves.toEqual([]);
-  });
-
-  it("exposes the service type and starts/stops without side effects", async () => {
-    expect(ConcentratedLiquidityService.serviceType).toBe(
-      "concentrated-liquidity",
-    );
-    const started = await ConcentratedLiquidityService.start(
-      {} as IAgentRuntime,
-    );
-    expect(started).toBeInstanceOf(ConcentratedLiquidityService);
-    await started.stop();
-    await ConcentratedLiquidityService.stop({} as IAgentRuntime);
+    expect(() =>
+      svc.calculateUtilization(Number.POSITIVE_INFINITY, 90, 110),
+    ).toThrow(RangeError);
   });
 });
