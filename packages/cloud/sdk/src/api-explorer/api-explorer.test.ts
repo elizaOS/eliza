@@ -11,7 +11,6 @@ import { describe, expect, it } from "vitest";
 import { parse as parseYaml } from "yaml";
 import {
   API_ENDPOINTS,
-  type ApiEndpoint,
   formatEndpointPrice,
   getAvailableCategories,
   getEndpointsByCategory,
@@ -37,6 +36,8 @@ describe("generateOpenAPISpec — every cataloged endpoint maps to an operation"
       expect(operation.operationId).toBe(endpoint.id);
       expect(operation.summary).toBe(endpoint.name);
       expect(operation.description).toBe(endpoint.description);
+      // Tags drive OpenAPI grouping and the Explorer's category presentation.
+      expect(operation.tags).toEqual([endpoint.category]);
     }
   });
 
@@ -79,15 +80,23 @@ describe("generateOpenAPISpec — every cataloged endpoint maps to an operation"
   });
 
   it("carries response examples through to the generated response content", () => {
-    // `voice-speech-to-text` declares a 200 example; generated clients and the
-    // docs preview render it.
-    const operation = spec.paths["/api/elevenlabs/stt"]?.post;
-    expect(
-      operation.responses["200"].content?.["application/json"]?.example,
-    ).toEqual({
-      transcript: "This is the transcribed text from the audio file.",
-      duration_ms: 1234,
-    });
+    // Derived from the catalog rather than re-typed: every response that
+    // declares an example must surface it in the operation's JSON content.
+    const withExamples = API_ENDPOINTS.flatMap((endpoint) =>
+      endpoint.responses
+        .filter((r) => r.example !== undefined)
+        .map((r) => ({ endpoint, response: r })),
+    );
+    expect(withExamples.length).toBeGreaterThan(0);
+    for (const { endpoint, response } of withExamples) {
+      const operation = spec.paths[endpoint.path][endpoint.method.toLowerCase()];
+      expect(
+        operation.responses[String(response.statusCode)].content?.[
+          "application/json"
+        ]?.example,
+        endpoint.id,
+      ).toEqual(response.example);
+    }
   });
 });
 
@@ -305,5 +314,3 @@ describe("catalog invariants the generated spec depends on", () => {
   });
 });
 
-// Re-exported type sanity used by the assertions above (compile-time pin).
-export type { ApiEndpoint };
