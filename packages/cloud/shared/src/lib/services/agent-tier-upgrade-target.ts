@@ -41,14 +41,17 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { dbWrite } from "../../db/helpers";
 import type { AgentSandbox, AgentSandboxStatus } from "../../db/repositories/agent-sandboxes";
 import type { Job } from "../../db/repositories/jobs";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { jobs } from "../../db/schemas/jobs";
+import { organizations } from "../../db/schemas/organizations";
+import { AGENT_PRICING } from "../constants/agent-pricing";
 import { logger } from "../utils/logger";
+import { parseGateCreditBalance } from "./agent-billing-gate";
 import { encryptAgentEnvVarsForStorage } from "./agent-env-crypto";
 import { apiKeysService } from "./api-keys";
 import {
@@ -61,6 +64,7 @@ import {
   configureElizaLifecycleTransaction,
   elizaAgentCreateAdvisoryLockSql,
   elizaAgentTierUpgradeAdvisoryLockSql,
+  elizaProvisionAdvisoryLockSql,
 } from "./eliza-provision-lock";
 import { assertOrgAgentQuota, buildAgentSandboxInsertValues } from "./eliza-sandbox";
 import { prepareManagedElizaSharedEnvironment } from "./managed-eliza-config";
@@ -78,6 +82,15 @@ const LIVE_TARGET_STATUSES: AgentSandboxStatus[] = [
   "running",
   "stopped",
   "sleeping",
+  "error",
+];
+
+/** Existing owner rows that can be deliberately bound without minting capacity. */
+const ADOPTABLE_UNMARKED_TARGET_STATUSES: AgentSandboxStatus[] = [
+  "running",
+  "stopped",
+  "sleeping",
+  "error",
 ];
 
 export interface CreateTierUpgradeTargetParams {
@@ -104,8 +117,326 @@ function liveTargetWhere(organizationId: string, sourceAgentId: string) {
     // reattached to — only a dedicated-always row can own the upgrade.
     eq(agentSandboxes.execution_tier, "dedicated-always"),
     inArray(agentSandboxes.status, LIVE_TARGET_STATUSES),
+    isNull(agentSandboxes.pool_status),
+    isNull(agentSandboxes.deleted_at),
+    isNull(agentSandboxes.deletion_attempt_id),
     sql`${agentSandboxes.agent_config} ->> ${AGENT_UPGRADED_FROM_KEY} = ${sourceAgentId}`,
   );
+}
+
+function adoptableUnmarkedTargetWhere(organizationId: string, userId: string) {
+  return and(
+    eq(agentSandboxes.organization_id, organizationId),
+    eq(agentSandboxes.user_id, userId),
+    eq(agentSandboxes.execution_tier, "dedicated-always"),
+    inArray(agentSandboxes.status, ADOPTABLE_UNMARKED_TARGET_STATUSES),
+    isNull(agentSandboxes.pool_status),
+    isNull(agentSandboxes.deleted_at),
+    isNull(agentSandboxes.deletion_attempt_id),
+    isNull(sql`${agentSandboxes.agent_config} ->> ${AGENT_UPGRADED_FROM_KEY}`),
+    isNull(sql`${agentSandboxes.agent_config} -> ${AGENT_PERSONAL_CUTOVER_KEY}`),
+  );
+}
+
+function adoptedTargetWhere(organizationId: string, userId: string, sourceAgentId: string) {
+  return and(liveTargetWhere(organizationId, sourceAgentId), eq(agentSandboxes.user_id, userId));
+}
+
+export type PersonalDedicatedAdoptionResolution =
+  | { state: "unavailable" }
+  | { state: "ambiguous" }
+  | { state: "available" | "adopted"; agent: AgentSandbox };
+
+export class PersonalDedicatedAdoptionError extends ElizaError {
+  override readonly name = "PersonalDedicatedAdoptionError";
+}
+
+function classifyAdoptionRows(
+  adopted: AgentSandbox[],
+  available: AgentSandbox[],
+): PersonalDedicatedAdoptionResolution {
+  if (adopted.length + available.length > 1) return { state: "ambiguous" };
+  if (adopted[0]) return { state: "adopted", agent: adopted[0] };
+  if (available[0]) return { state: "available", agent: available[0] };
+  return { state: "unavailable" };
+}
+
+/**
+ * Resolve the sole same-owner Dedicated row that may be explicitly adopted.
+ * No target id comes from the client: the server either finds one exact row or
+ * returns an unavailable/ambiguous state without writing anything.
+ */
+export async function resolvePersonalDedicatedAdoption(params: {
+  organizationId: string;
+  userId: string;
+  sourceAgentId: string;
+}): Promise<PersonalDedicatedAdoptionResolution> {
+  const adopted = await dbWrite
+    .select()
+    .from(agentSandboxes)
+    .where(adoptedTargetWhere(params.organizationId, params.userId, params.sourceAgentId))
+    .orderBy(desc(agentSandboxes.created_at))
+    .limit(2);
+
+  const available = await dbWrite
+    .select()
+    .from(agentSandboxes)
+    .where(adoptableUnmarkedTargetWhere(params.organizationId, params.userId))
+    .orderBy(desc(agentSandboxes.created_at))
+    .limit(2);
+  return classifyAdoptionRows(adopted, available);
+}
+
+async function resolvePersonalDedicatedAdoptionInTx(
+  tx: DbTransaction,
+  params: {
+    organizationId: string;
+    userId: string;
+    sourceAgentId: string;
+  },
+): Promise<PersonalDedicatedAdoptionResolution> {
+  const adopted = await tx
+    .select()
+    .from(agentSandboxes)
+    .where(adoptedTargetWhere(params.organizationId, params.userId, params.sourceAgentId))
+    .orderBy(desc(agentSandboxes.created_at))
+    .limit(2)
+    .for("update");
+
+  const available = await tx
+    .select()
+    .from(agentSandboxes)
+    .where(adoptableUnmarkedTargetWhere(params.organizationId, params.userId))
+    .orderBy(desc(agentSandboxes.created_at))
+    .limit(2)
+    .for("update");
+  return classifyAdoptionRows(adopted, available);
+}
+
+async function previewPersonalDedicatedAdoptionInTx(
+  tx: DbTransaction,
+  params: {
+    organizationId: string;
+    userId: string;
+    sourceAgentId: string;
+  },
+): Promise<PersonalDedicatedAdoptionResolution> {
+  const adopted = await tx
+    .select()
+    .from(agentSandboxes)
+    .where(adoptedTargetWhere(params.organizationId, params.userId, params.sourceAgentId))
+    .orderBy(desc(agentSandboxes.created_at))
+    .limit(2);
+
+  const available = await tx
+    .select()
+    .from(agentSandboxes)
+    .where(adoptableUnmarkedTargetWhere(params.organizationId, params.userId))
+    .orderBy(desc(agentSandboxes.created_at))
+    .limit(2);
+  return classifyAdoptionRows(adopted, available);
+}
+
+export interface AdoptPersonalDedicatedTargetParams {
+  organizationId: string;
+  userId: string;
+  sourceAgentId: string;
+  expectedTargetId: string;
+  expectedLifecycleRevision: number;
+  expectedStatus: AgentSandboxStatus;
+  expectedBalance: number;
+  expectedHourlyRate: number;
+  expectedDailyRate: number;
+  expectedMinimumBalance: number;
+  expectedMinimumRunwayDays: number;
+}
+
+export interface AdoptPersonalDedicatedTargetResult {
+  agent: AgentSandbox;
+  alreadyAdopted: boolean;
+  job?: Job;
+  jobCreated: boolean;
+}
+
+function adoptionError(
+  code:
+    | "PERSONAL_DEDICATED_ADOPTION_UNAVAILABLE"
+    | "PERSONAL_DEDICATED_ADOPTION_AMBIGUOUS"
+    | "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
+  message: string,
+  params: AdoptPersonalDedicatedTargetParams,
+): PersonalDedicatedAdoptionError {
+  return new PersonalDedicatedAdoptionError(message, {
+    code,
+    context: {
+      organizationId: params.organizationId,
+      sourceAgentId: params.sourceAgentId,
+      expectedTargetId: params.expectedTargetId,
+    },
+  });
+}
+
+/**
+ * Atomically bind the sole existing same-owner Dedicated row to personal
+ * Eliza and, when it is not already running, enqueue same-id provisioning.
+ * The marker and job commit together under the canonical org/source/agent
+ * lock order. Personal cutover remains a separate running-target transaction.
+ */
+export async function adoptPersonalDedicatedTargetWithProvision(
+  params: AdoptPersonalDedicatedTargetParams,
+): Promise<AdoptPersonalDedicatedTargetResult> {
+  return dbWrite.transaction(async (tx) => {
+    await configureElizaLifecycleTransaction(tx);
+    await tx.execute(elizaAgentCreateAdvisoryLockSql(params.organizationId));
+
+    // Lock the billing authority before the per-source/per-agent lifecycle
+    // locks. This makes quote confirmation serial with balance mutations and
+    // preserves the global org -> source -> agent lock order.
+    const [organization] = await tx
+      .select({ creditBalance: organizations.credit_balance })
+      .from(organizations)
+      .where(eq(organizations.id, params.organizationId))
+      .for("update")
+      .limit(1);
+    if (!organization) {
+      throw adoptionError(
+        "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
+        "The Dedicated adoption billing authority is unavailable",
+        params,
+      );
+    }
+
+    await tx.execute(
+      elizaAgentTierUpgradeAdvisoryLockSql(params.organizationId, params.sourceAgentId),
+    );
+
+    const preview = await previewPersonalDedicatedAdoptionInTx(tx, params);
+    if (preview.state === "unavailable") {
+      throw adoptionError(
+        "PERSONAL_DEDICATED_ADOPTION_UNAVAILABLE",
+        "No eligible existing Dedicated target is available",
+        params,
+      );
+    }
+    if (preview.state === "ambiguous") {
+      throw adoptionError(
+        "PERSONAL_DEDICATED_ADOPTION_AMBIGUOUS",
+        "More than one existing Dedicated target is eligible",
+        params,
+      );
+    }
+    if (preview.agent.id !== params.expectedTargetId) {
+      throw adoptionError(
+        "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
+        "The eligible Dedicated target changed after quoting",
+        params,
+      );
+    }
+
+    await tx.execute(elizaProvisionAdvisoryLockSql(params.organizationId, preview.agent.id));
+    const resolution = await resolvePersonalDedicatedAdoptionInTx(tx, params);
+    if (
+      resolution.state === "unavailable" ||
+      resolution.state === "ambiguous" ||
+      resolution.agent.id !== params.expectedTargetId
+    ) {
+      throw adoptionError(
+        "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
+        "The eligible Dedicated target changed while acquiring lifecycle authority",
+        params,
+      );
+    }
+
+    let currentBalance: number;
+    try {
+      currentBalance = parseGateCreditBalance(organization.creditBalance);
+    } catch {
+      // error-policy:J1 a corrupt locked billing value must fail closed before
+      // either the ownership marker or provisioning job is written.
+      throw adoptionError(
+        "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
+        "The Dedicated adoption billing quote can no longer be verified",
+        params,
+      );
+    }
+    const quoteStillCurrent =
+      currentBalance.toFixed(6) === params.expectedBalance.toFixed(6) &&
+      AGENT_PRICING.RUNNING_HOURLY_RATE.toFixed(6) === params.expectedHourlyRate.toFixed(6) &&
+      AGENT_PRICING.DAILY_RUNNING_COST.toFixed(6) === params.expectedDailyRate.toFixed(6) &&
+      AGENT_PRICING.UPGRADE_MINIMUM_BALANCE.toFixed(6) ===
+        params.expectedMinimumBalance.toFixed(6) &&
+      AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS === params.expectedMinimumRunwayDays;
+    if (!quoteStillCurrent) {
+      throw adoptionError(
+        "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
+        "The Dedicated adoption billing quote changed while acquiring lifecycle authority",
+        params,
+      );
+    }
+
+    let target = resolution.agent;
+    const alreadyAdopted = resolution.state === "adopted";
+    if (
+      target.lifecycle_revision !== params.expectedLifecycleRevision ||
+      target.status !== params.expectedStatus
+    ) {
+      throw adoptionError(
+        "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
+        "The eligible Dedicated target state changed after quoting",
+        params,
+      );
+    }
+    if (!alreadyAdopted) {
+      const [updated] = await tx
+        .update(agentSandboxes)
+        .set({
+          agent_config: {
+            ...((target.agent_config as Record<string, unknown> | null) ?? {}),
+            [AGENT_UPGRADED_FROM_KEY]: params.sourceAgentId,
+          },
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(agentSandboxes.id, target.id),
+            eq(agentSandboxes.organization_id, params.organizationId),
+            eq(agentSandboxes.user_id, params.userId),
+            eq(agentSandboxes.lifecycle_revision, params.expectedLifecycleRevision),
+            eq(agentSandboxes.status, params.expectedStatus),
+            isNull(agentSandboxes.pool_status),
+            isNull(agentSandboxes.deleted_at),
+            isNull(agentSandboxes.deletion_attempt_id),
+            isNull(sql`${agentSandboxes.agent_config} ->> ${AGENT_UPGRADED_FROM_KEY}`),
+          ),
+        )
+        .returning();
+      if (!updated) {
+        throw adoptionError(
+          "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
+          "The eligible Dedicated target changed while adopting",
+          params,
+        );
+      }
+      target = updated;
+    }
+
+    if (target.status === "running") {
+      return { agent: target, alreadyAdopted, jobCreated: false };
+    }
+
+    const enqueue = await provisioningJobService.enqueueAgentProvisionOnceInTx(tx, {
+      agentId: target.id,
+      organizationId: params.organizationId,
+      userId: params.userId,
+      agentName: target.agent_name ?? target.id,
+    });
+    return {
+      agent: target,
+      alreadyAdopted,
+      job: enqueue.job,
+      jobCreated: enqueue.created,
+    };
+  });
 }
 
 async function findLiveTargetInTx(

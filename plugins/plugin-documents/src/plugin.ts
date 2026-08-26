@@ -19,6 +19,7 @@ import type {
 import {
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
+  validateUuid,
 } from "@elizaos/core";
 import { readJsonBody as httpReadJsonBody } from "@elizaos/shared";
 import { handleDocumentsRoutes } from "./routes.js";
@@ -29,6 +30,43 @@ function json(res: http.ServerResponse, data: unknown, status = 200): void {
 
 function error(res: http.ServerResponse, message: string, status = 400): void {
   httpSendJsonError(res, message, status);
+}
+
+/**
+ * Reconstructs the trusted local principal for document routes. The HTTP
+ * boundary intentionally omits `accessContext` for the single-owner local
+ * dashboard, but document routes need an explicit actor to apply their scope
+ * wall. Use a configured owner when one exists; otherwise the runtime itself
+ * is the only safe principal. The access-control layer recognizes a requester
+ * matching `runtime.agentId` as the AGENT actor.
+ */
+export function resolveTrustedLocalDocumentAccessContext(
+  ctx: Pick<
+    RouteHandlerContext,
+    "accessContext" | "isTrustedLocal" | "runtime"
+  >,
+): AccessContext | undefined {
+  if (ctx.accessContext || !ctx.isTrustedLocal || !ctx.runtime?.agentId) {
+    return ctx.accessContext as AccessContext | undefined;
+  }
+
+  const configuredOwner =
+    typeof ctx.runtime.getSetting === "function"
+      ? validateUuid(ctx.runtime.getSetting("ELIZA_ADMIN_ENTITY_ID"))
+      : null;
+  if (configuredOwner) {
+    return {
+      requesterEntityId: configuredOwner,
+      role: "OWNER",
+      isOwner: true,
+      source: "trusted-local",
+    };
+  }
+
+  return {
+    requesterEntityId: ctx.runtime.agentId,
+    source: "trusted-local",
+  };
 }
 
 /**
@@ -232,7 +270,7 @@ function documentRouteHandler(): (
         }
         return httpReadJsonBody<T>(req, _res, options);
       },
-      accessContext: ctx.accessContext as AccessContext | undefined,
+      accessContext: resolveTrustedLocalDocumentAccessContext(ctx),
     });
 
     return capturedToResult(captured);
