@@ -103,6 +103,20 @@ describe("callPayloadBlob", () => {
 });
 
 describe("describeCalls", () => {
+  it("preserves well-formed Unicode when data payload contains surrogate pairs near truncation boundary", () => {
+    const longPayloadWithSurrogate = {
+      message: "a".repeat(170) + "🚀" + "tail",
+    };
+    const c = ctx([
+      action({
+        actionName: "send",
+        result: { success: true, data: longPayloadWithSurrogate },
+      }),
+    ]);
+    const summary = describeCalls(c);
+    expect(summary.isWellFormed?.()).not.toBe(false);
+  });
+
   it("summarizes calls and handles the empty case", () => {
     expect(describeCalls(ctx([]))).toBe("(no actions called)");
     const c = ctx([

@@ -23,6 +23,8 @@ import type {
 } from "@elizaos/core";
 import {
   attestDeliveryAudienceFromCanonicalRoom,
+  toWellFormedUnicode,
+  truncateWellFormed,
   ChannelType,
   createMessageMemory,
   drainPostDeliveryTasks,
@@ -2621,7 +2623,7 @@ async function runTurnAssertions(
     plannerExcludes.length > 0
   ) {
     const plannerBlob = buildPlannerAssertionBlob(execution);
-    const plannerPreview = JSON.stringify(plannerBlob.slice(0, 500));
+    const plannerPreview = JSON.stringify(truncateWellFormed(toWellFormedUnicode(plannerBlob), 500));
     if (plannerIncludesAll.length > 0) {
       const missing = plannerIncludesAll.filter(
         (pattern) => !matchesTurnMatcher(plannerBlob, pattern),

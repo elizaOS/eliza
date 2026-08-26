@@ -5,6 +5,7 @@
  * the domain artifact the action claims to have produced or read — and fail
  * with a precise diff when the effect is missing.
  */
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -27,7 +28,7 @@ export function describeCalls(ctx: ScenarioContext): string {
     ctx.actionsCalled
       .map(
         (a) =>
-          `${a.actionName}(success=${String(a.result?.success)}, data=${JSON.stringify(a.result?.data ?? null)?.slice(0, 200)})`,
+          `${a.actionName}(success=${String(a.result?.success)}, data=${truncateWellFormed(toWellFormedUnicode(JSON.stringify(a.result?.data ?? null)), 200)})`,
       )
       .join(" | ") || "(no actions called)"
   );
