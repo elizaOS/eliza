@@ -2456,51 +2456,6 @@ export async function resolvePlugins(
       }
     }
   }
-  // Synthetic/scenario execution is deny-by-default (#24394): only the
-  // composition-declared allowlist and the minimal boot-required set may
-  // proceed. This runs after every collection source (config, env,
-  // connectors, forced includes, app-manifest routing additions) so ambient
-  // authority cannot enter through any of them, and before the deny-list
-  // sweep because synthetic admission is jurisdictionally prior to operator
-  // opt-outs. Denials are persisted as a bounded ledger and fail the boot.
-  const syntheticPolicy = readSyntheticAdmissionPolicy();
-  if (syntheticPolicy.active) {
-    const admission = applySyntheticAdmission(
-      pluginsToLoad,
-      loadReasons,
-      syntheticPolicy,
-    );
-    if (admission.denials.length > 0 || admission.overflowDenialCount > 0) {
-      const ledgerPath = path.join(
-        resolveStateDir(),
-        "synthetic-admission-denials.json",
-      );
-      try {
-        await fs.mkdir(path.dirname(ledgerPath), { recursive: true });
-        await fs.writeFile(
-          ledgerPath,
-          `${JSON.stringify(
-            {
-              deniedAt: new Date().toISOString(),
-              denials: admission.denials,
-              overflowDenialCount: admission.overflowDenialCount,
-            },
-            null,
-            2,
-          )}\n`,
-          "utf8",
-        );
-      } catch (ledgerError) {
-        // error-policy:J6 the ledger file is retention for CI; the denial
-        // itself still fails the boot below with the same ledger in context.
-        logger.warn(
-          `[eliza] SyntheticAdmission: failed to persist denial ledger at ${ledgerPath}: ${formatError(ledgerError)}`,
-        );
-      }
-      assertSyntheticAdmission(admission);
-    }
-  }
-
   // Build a mutable map of install records so we can merge drop-in discoveries
   const installRecords: Record<string, PluginInstallRecord> = {
     ...(config.plugins?.installs ?? {}),
@@ -2590,11 +2545,59 @@ export async function resolvePlugins(
     pluginsToLoad,
   });
 
+  for (const name of customPluginNames) {
+    if (!loadReasons.has(name)) loadReasons.set(name, "custom plugins dir");
+  }
   for (const msg of skipped) logger.warn(msg);
   if (customPluginNames.length > 0) {
     logger.info(
       `[eliza] Discovered ${customPluginNames.length} custom plugin(s): ${customPluginNames.join(", ")}`,
     );
+  }
+
+  // Synthetic/scenario execution is deny-by-default (#24394): only the
+  // composition-declared allowlist and the minimal boot-required set may
+  // proceed. This must run after EVERY source that can populate the load set
+  // — config, env, connectors, forced includes, app-manifest routing
+  // additions, AND the filesystem sources above (ejected plugins and custom
+  // drop-in directories) — so ambient authority cannot enter through any of
+  // them. Denials are persisted as a bounded ledger and fail the boot.
+  const syntheticPolicy = readSyntheticAdmissionPolicy();
+  if (syntheticPolicy.active) {
+    const admission = applySyntheticAdmission(
+      pluginsToLoad,
+      loadReasons,
+      syntheticPolicy,
+    );
+    if (admission.denials.length > 0 || admission.overflowDenialCount > 0) {
+      const ledgerPath = path.join(
+        resolveStateDir(),
+        "synthetic-admission-denials.json",
+      );
+      try {
+        await fs.mkdir(path.dirname(ledgerPath), { recursive: true });
+        await fs.writeFile(
+          ledgerPath,
+          `${JSON.stringify(
+            {
+              deniedAt: new Date().toISOString(),
+              denials: admission.denials,
+              overflowDenialCount: admission.overflowDenialCount,
+            },
+            null,
+            2,
+          )}\n`,
+          "utf8",
+        );
+      } catch (ledgerError) {
+        // error-policy:J6 the ledger file is retention for CI; the denial
+        // itself still fails the boot below with the same ledger in context.
+        logger.warn(
+          `[eliza] SyntheticAdmission: failed to persist denial ledger at ${ledgerPath}: ${formatError(ledgerError)}`,
+        );
+      }
+      assertSyntheticAdmission(admission);
+    }
   }
 
   if (phase !== "all") {

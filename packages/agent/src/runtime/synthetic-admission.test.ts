@@ -8,7 +8,13 @@
  * Messages database path. Deterministic; the poison path is a temp directory
  * and the positive control exercises the real chat.db reader against it.
  */
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ElizaError } from "@elizaos/core";
@@ -263,6 +269,57 @@ describe("synthetic-mode boot fails closed with a persisted denial ledger (poiso
       "../../../../plugins/plugin-imessage/src/chatdb-reader.ts"
     );
     expect(getLastChatDbAccessIssue(poisonedChatDbPath)).toBeNull();
+  });
+
+  it("denies filesystem drop-in plugins from the custom and ejected directories (late-source controls)", async () => {
+    const stateDir = makeTempDir("synthetic-admission-dropin-");
+    // Filesystem sources populate the load set AFTER config/env collection;
+    // these controls pin that admission still gates them (the bypass a
+    // reviewer demonstrated against the first head of this change).
+    mkdirSync(
+      path.join(stateDir, "plugins", "custom", "dropin-bypass-control"),
+      {
+        recursive: true,
+      },
+    );
+    mkdirSync(
+      path.join(stateDir, "plugins", "ejected", "ejected-bypass-control"),
+      { recursive: true },
+    );
+
+    process.env.ELIZA_STATE_DIR = stateDir;
+    process.env.ELIZA_SYNTHETIC_MODE = "1";
+
+    let thrown: unknown;
+    try {
+      await resolvePlugins({} as unknown as ElizaConfig, { quiet: true });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(ElizaError);
+    const admissionError = thrown as ElizaError;
+    expect(admissionError.code).toBe("SYNTHETIC_ADMISSION_DENIED");
+    const context = admissionError.context as {
+      denials: Array<{ packageName: string; provenance: string }>;
+    };
+    expect(context.denials).toContainEqual({
+      packageName: "dropin-bypass-control",
+      provenance: "custom plugins dir",
+    });
+    expect(context.denials).toContainEqual({
+      packageName: "ejected-bypass-control",
+      provenance: "ejected plugins dir",
+    });
+
+    const ledger = JSON.parse(
+      readFileSync(
+        path.join(stateDir, "synthetic-admission-denials.json"),
+        "utf8",
+      ),
+    ) as { denials: Array<{ packageName: string }> };
+    const ledgerNames = ledger.denials.map((denial) => denial.packageName);
+    expect(ledgerNames).toContain("dropin-bypass-control");
+    expect(ledgerNames).toContain("ejected-bypass-control");
   });
 
   it("positive control: the real chat.db reader records access when it does touch the poison", async () => {
