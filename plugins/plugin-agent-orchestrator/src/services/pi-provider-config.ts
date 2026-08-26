@@ -48,16 +48,16 @@ export interface PiProviderRoute {
 export const PI_PROVIDER_ROUTES = {
   "zai-coding": {
     accountProviderId: "zai-coding",
-    piProviderId: "eliza-zai-coding-plan",
+    piProviderId: "zai",
     providerLabel: "Z.AI Coding Plan",
-    dialect: "openai-completions",
+    dialect: "builtin-openai-compatible",
     keyEnv: "ZAI_API_KEY",
     baseUrl: "https://api.z.ai/api/coding/paas/v4",
     defaultModel: "glm-5.1",
     authHeader: "Authorization: Bearer",
     billingMode: "subscription-coding-plan",
     termsPolicy: "coding-plan-supported-tools",
-    builtIn: false,
+    builtIn: true,
   },
   "kimi-coding": {
     accountProviderId: "kimi-coding",
@@ -74,16 +74,16 @@ export const PI_PROVIDER_ROUTES = {
   },
   "deepseek-api": {
     accountProviderId: "deepseek-api",
-    piProviderId: "eliza-deepseek",
+    piProviderId: "deepseek",
     providerLabel: "DeepSeek API (PAYG)",
-    dialect: "openai-completions",
+    dialect: "builtin-openai-compatible",
     keyEnv: "DEEPSEEK_API_KEY",
     baseUrl: "https://api.deepseek.com",
-    defaultModel: "deepseek-chat",
+    defaultModel: "deepseek-v4-flash",
     authHeader: "Authorization: Bearer",
     billingMode: "api-payg",
     termsPolicy: "direct-api",
-    builtIn: false,
+    builtIn: true,
   },
   "zai-api": {
     accountProviderId: "zai-api",
@@ -100,16 +100,16 @@ export const PI_PROVIDER_ROUTES = {
   },
   "moonshot-api": {
     accountProviderId: "moonshot-api",
-    piProviderId: "eliza-moonshot",
+    piProviderId: "moonshotai",
     providerLabel: "Kimi / Moonshot API (PAYG)",
-    dialect: "openai-completions",
+    dialect: "builtin-openai-compatible",
     keyEnv: "MOONSHOT_API_KEY",
     baseUrl: "https://api.moonshot.ai/v1",
     defaultModel: "kimi-k2.5",
     authHeader: "Authorization: Bearer",
     billingMode: "api-payg",
     termsPolicy: "direct-api",
-    builtIn: false,
+    builtIn: true,
   },
   "xai-api": {
     accountProviderId: "xai-api",
@@ -118,7 +118,7 @@ export const PI_PROVIDER_ROUTES = {
     dialect: "builtin-openai-compatible",
     keyEnv: "XAI_API_KEY",
     baseUrl: "https://api.x.ai/v1",
-    defaultModel: "grok-code-fast-1",
+    defaultModel: "grok-build-0.1",
     authHeader: "Authorization: Bearer",
     billingMode: "api-payg",
     termsPolicy: "direct-api",
@@ -255,10 +255,19 @@ export async function preparePiProviderRoute(input: {
 
   const provider = {
     baseUrl: endpoint,
-    apiKey: "ELIZA_PI_ROUTE_API_KEY",
+    // Pi treats a bare uppercase string as a literal credential. The `$`
+    // prefix is its documented environment interpolation syntax, keeping the
+    // secret in the isolated child environment instead of this file.
+    apiKey: "$ELIZA_PI_ROUTE_API_KEY",
     ...(!route.builtIn ? { api: "openai-completions" } : {}),
     ...(route.headers ? { headers: route.headers } : {}),
-    models: [{ id: model, name: model }],
+    // Built-in model entries carry provider-specific reasoning, image, token,
+    // compatibility, and pricing metadata. Do not replace them with a minimal
+    // custom row. OpenRouter is the exception: its route contract deliberately
+    // accepts arbitrary catalog ids, so the selected id must be materialized.
+    ...(route.accountProviderId === "openrouter-api" || !route.builtIn
+      ? { models: [{ id: model, name: model }] }
+      : {}),
   };
   const models = { providers: { [route.piProviderId]: provider } };
   const settings = {

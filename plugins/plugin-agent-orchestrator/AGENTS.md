@@ -122,7 +122,11 @@ Kimi coding-plan keys plus DeepSeek, Z.AI, Moonshot, xAI, and OpenRouter API
 accounts. DeepSeek is API PAYG, not a consumer coding subscription; OpenRouter
 retains credits/BYOK billing and requires an explicit model. Native Kimi and
 Grok backends continue to use their provider-owned CLI OAuth state rather than
-these Pi key routes.
+these Pi key routes. Private Pi configs reference the selected credential with
+Pi's `$ENV_VAR` interpolation syntax and preserve built-in model metadata;
+OpenRouter alone materializes an arbitrary requested model. When linked Pi
+accounts exist, selection and availability failures fail closed rather than
+falling back to ambient provider keys.
 
 Classifier precedence: `store_build` > `vanilla_mobile` (iOS) > `not_local_yolo`
 (Android non-yolo) > missing staged shell. When a device is supported every

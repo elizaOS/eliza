@@ -327,9 +327,9 @@ describe("multi-account coding-agent spawn", () => {
         },
         piProvider: {
           accountProviderId: "deepseek-api",
-          piProviderId: "eliza-deepseek",
+          piProviderId: "deepseek",
           billingMode: "api-payg",
-          model: "deepseek-chat",
+          model: "deepseek-v4-flash",
         },
       });
       expect(JSON.stringify(result.metadata)).not.toContain(
@@ -342,6 +342,40 @@ describe("multi-account coding-agent spawn", () => {
         if (value === undefined) delete process.env[key];
         else process.env[key] = value;
       }
+    }
+  });
+
+  it("refuses ambient Pi credentials when linked routes are unavailable", async () => {
+    const previous = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = "ambient-must-not-run";
+    (globalThis as Record<symbol, unknown>)[BRIDGE_SYMBOL] = {
+      describe: () => ({
+        "pi-agent": [
+          { providerId: "deepseek-api", total: 1, enabled: 1, healthy: 0 },
+        ],
+      }),
+      select: vi.fn(async () => null),
+      markRateLimited: vi.fn(async () => undefined),
+      markNeedsReauth: vi.fn(async () => undefined),
+      recordUsage: vi.fn(async () => undefined),
+    };
+    try {
+      const service = new AcpService(
+        runtime({ ELIZA_PI_AGENT_ACP_COMMAND: "test-pi-agent" }),
+      );
+      await service.start();
+      await expect(
+        service.spawnSession({
+          name: "pi-unavailable",
+          agentType: "pi-agent",
+          workdir: "/tmp/acp-test",
+        }),
+      ).rejects.toMatchObject({ code: "PI_PROVIDER_ROUTE_UNAVAILABLE" });
+      expect(nativeClientMock.instances).toHaveLength(0);
+      await service.stop();
+    } finally {
+      if (previous === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = previous;
     }
   });
 

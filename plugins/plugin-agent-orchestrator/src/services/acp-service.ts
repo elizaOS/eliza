@@ -71,6 +71,7 @@ import {
   accountMetaFromSessionMetadata,
   type CodingAccountMeta,
   type CodingAccountSelection,
+  connectedCodingAccountCount,
   diagnoseCodingAccountFallback,
   isRefreshTokenExpiryText,
   isTokenExpiryText,
@@ -2110,7 +2111,23 @@ export class AcpService extends Service {
               sessionKey: id,
               ...(accountStrategy ? { strategy: accountStrategy } : {}),
               ...(spawnModel ? { model: spawnModel } : {}),
+              ...(agentType === "pi-agent" ? { failClosedOnError: true } : {}),
             });
+      if (
+        agentType === "pi-agent" &&
+        !resolveModelGatewayConfig() &&
+        !resolvedAccount &&
+        connectedCodingAccountCount(agentType) > 0
+      ) {
+        throw new ElizaError(
+          "Pi has linked provider accounts, but none is currently selectable",
+          {
+            code: "PI_PROVIDER_ROUTE_UNAVAILABLE",
+            context: { agentType },
+            severity: "ephemeral",
+          },
+        );
+      }
       const piProviderRoute =
         agentType === "pi-agent" && resolvedAccount
           ? await preparePiProviderRoute({

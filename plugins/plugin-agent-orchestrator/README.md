@@ -57,8 +57,12 @@ coding-agent spawn. Claude subscription and OpenAI Codex accounts feed their
 native backends. The Pi backend can instead consume a selected Z.AI or Kimi
 coding-plan key, or a DeepSeek, Z.AI, Moonshot, xAI, or OpenRouter API account.
 Each spawn receives a mode-0700 private Pi home whose config references a
-child-only environment variable; the credential itself is never written to
-disk. Coding-plan endpoints remain pinned to plan quota, DeepSeek and the other
+child-only environment variable using Pi's `$ENV_VAR` interpolation syntax;
+the credential itself is never written to disk. Existing Pi providers retain
+their built-in model capability metadata, while OpenRouter alone materializes
+an arbitrary requested model. If linked Pi accounts exist but selection or
+availability fails, spawn fails closed instead of using ambient provider keys.
+Coding-plan endpoints remain pinned to plan quota, DeepSeek and the other
 direct APIs remain PAYG, and OpenRouter remains credits/BYOK with an explicit
 arbitrary model. Native Kimi and Grok adapters still use provider-owned CLI
 OAuth and never reuse these API credentials.
