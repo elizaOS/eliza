@@ -96,6 +96,16 @@ const FILTER_LABELS: Record<FeedFilter, { key: string; defaultLabel: string }> =
       defaultLabel: "Inactive",
     },
   };
+
+function isUnavailableScheduledTaskSupplement(error: unknown): boolean {
+  if (!isApiError(error)) return false;
+  if (error.status === 404) return true;
+  return (
+    error.status === 500 &&
+    error.path.startsWith("/api/lifeops/scheduled-tasks") &&
+    error.message.includes("cannot be parsed as a URL against")
+  );
+}
 const FILTER_ICONS: Record<FeedFilter, ReactNode> = {
   all: <Layers className="size-3.5" aria-hidden />,
   prompts: <CheckCircle2 className="size-3.5" aria-hidden />,
@@ -316,9 +326,10 @@ export function AutomationsFeed({
             .listScheduledTasks({ ownerVisibleOnly: true })
             .catch((scheduledError) => {
               // error-policy:J4 some runtimes intentionally omit the LifeOps
-              // route; only that explicit unavailable response may degrade to
-              // an empty supplemental list. Operational failures must surface.
-              if (isApiError(scheduledError) && scheduledError.status === 404) {
+              // route. A reverse-proxy origin parse failure is also scoped to
+              // this optional supplement: keep the core automation feed while
+              // ordinary storage/runtime failures remain explicit.
+              if (isUnavailableScheduledTaskSupplement(scheduledError)) {
                 return { tasks: [] };
               }
               throw scheduledError;

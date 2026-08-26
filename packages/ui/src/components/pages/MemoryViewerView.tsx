@@ -1192,7 +1192,7 @@ export function MemoryViewerView({
             />
           }
         />
-        <div className="min-h-0 flex-1 overflow-hidden">
+        <div className="flex min-h-0 flex-1 overflow-hidden">
           <WorkspaceMobileSidebarScope controls={mobileSidebarHeader.controls}>
             <PageLayout
               sidebar={sidebar}

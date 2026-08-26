@@ -5859,10 +5859,13 @@ export function resolveAndroidCloudStripPolicy(env = process.env) {
         };
       })();
 
-  if (!isAndroidLp3RemoteFallbackRequired(env)) return stripPolicy;
+  if (!isAndroidLp3RemoteFallbackRequired(env)) {
+    return { ...stripPolicy, safePushNotifications: true };
+  }
 
   return {
     ...stripPolicy,
+    safePushNotifications: false,
     // This wrapper subclasses the native FCM plugin. The dedicated fallback
     // intentionally excludes that dependency because it has no Firebase
     // project, so its Java wrapper must leave the generated tree with it.
@@ -8419,6 +8422,7 @@ function stripAndroidForCloud({ env = process.env } = {}) {
   rewriteCloudJavaSources([activeJavaRoot], androidPackage, {
     launcherKiosk: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
     immersiveNavigation: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
+    safePushNotifications: stripPolicy.safePushNotifications,
   });
 
   const testJavaRoots = [

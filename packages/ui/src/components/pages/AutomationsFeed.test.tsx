@@ -513,6 +513,24 @@ describe("AutomationsFeed", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 
+  it("keeps core automations usable when only the LifeOps proxy origin is malformed", async () => {
+    clientMock.listAutomations.mockResolvedValue(responseFixture());
+    clientMock.listScheduledTasks.mockRejectedValue(
+      new ApiError({
+        kind: "http",
+        path: "/api/lifeops/scheduled-tasks?ownerVisibleOnly=1",
+        status: 500,
+        message:
+          '"/api/lifeops/scheduled-tasks?ownerVisibleOnly=1" cannot be parsed as a URL against "invalid-proxy-origin"',
+      }),
+    );
+
+    render(<AutomationsFeed />);
+
+    expect(await screen.findByText("Nightly review")).toBeTruthy();
+    expect(screen.queryByText("Automations couldn't be loaded")).toBeNull();
+  });
+
   it("distinguishes unavailable execution history from a workflow that never ran", async () => {
     const response = responseFixture();
     response.automations = [

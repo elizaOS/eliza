@@ -489,9 +489,7 @@ function LegacySettingsView({
     <ShellViewAgentSurface viewId="settings">
       <ContentLayout
         inModal={inModal}
-        className={cn(
-          !inModal && !isDesktop && "mb-[var(--eliza-chat-clearance,5.25rem)]",
-        )}
+        className={cn(!inModal && !isDesktop && "min-h-0")}
         contentClassName={isDesktop ? "px-0 pt-0" : "max-sm:pt-1"}
         sidebar={desktopSidebar}
         sidebarCollapsible={false}
@@ -520,11 +518,12 @@ function LegacySettingsView({
           </div>
 
           <div
+            data-scroll-cert-scroller={!isDesktop ? "" : undefined}
             className={cn(
               "min-w-0 flex-1",
               isDesktop
                 ? "pb-32"
-                : "eliza-chat-scroll max-h-[calc(100dvh-var(--eliza-chat-clearance,5.25rem)-5rem)] min-h-0 overflow-y-auto pb-4",
+                : "eliza-chat-scroll min-h-0 overflow-y-auto pb-[calc(var(--eliza-chat-clearance,5.25rem)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+1rem)]",
             )}
           >
             {isDesktop ? (

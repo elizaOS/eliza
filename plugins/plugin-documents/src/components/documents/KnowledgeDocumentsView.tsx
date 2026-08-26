@@ -1302,7 +1302,7 @@ export function KnowledgeDocumentsView({
         </div>
       )}
 
-      <div className="custom-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div className="custom-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto pb-[calc(var(--eliza-chat-clearance,5.25rem)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+1rem)]">
         {listBody}
       </div>
     </div>
