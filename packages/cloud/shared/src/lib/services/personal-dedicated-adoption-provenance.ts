@@ -1,7 +1,10 @@
 /** Non-secret, deterministic state binding for duplicate Dedicated selection. */
 
 import type { AgentSandbox } from "../../db/repositories/agent-sandboxes";
-import type { AgentBackupCatalogState } from "../../db/schemas/agent-sandboxes";
+import type {
+  AgentBackupCatalogState,
+  StoredAgentSandboxBackup,
+} from "../../db/schemas/agent-sandboxes";
 import { catalogStateAllowsRestore } from "./agent-backup-catalog-state";
 
 export type PersonalDedicatedStateDisposition =
@@ -13,7 +16,6 @@ export interface PersonalDedicatedReviewedBackupChainEntry {
   backupKind: "full" | "incremental";
   parentBackupId: string | null;
   contentHash: string;
-  verifiedAt: string;
   catalogVersion: number | null;
   catalogState: string | null;
 }
@@ -61,6 +63,45 @@ export interface PersonalDedicatedBackupProvenance {
   restoreReceiptDigest: string | null;
   catalogDeletedAt: Date | null;
   createdAt: Date;
+}
+
+export function personalDedicatedBackupProvenanceFromStored(
+  backup: StoredAgentSandboxBackup,
+): PersonalDedicatedBackupProvenance {
+  return {
+    id: backup.id,
+    sandboxRecordId: backup.sandbox_record_id,
+    snapshotType: backup.snapshot_type,
+    stateDataStorage: backup.state_data_storage,
+    stateDataKey: backup.state_data_key,
+    backupKind: backup.backup_kind,
+    parentBackupId: backup.parent_backup_id,
+    contentHash: backup.content_hash,
+    verificationStatus: backup.verification_status,
+    verifiedAt: backup.verified_at,
+    catalogVersion: backup.catalog_version,
+    catalogState: backup.catalog_state,
+    catalogPayloadDigest: backup.catalog_payload_digest,
+    catalogRevision: backup.catalog_revision,
+    catalogOrganizationId: backup.catalog_organization_id,
+    catalogAgentId: backup.catalog_agent_id,
+    sourceProvider: backup.source_provider,
+    sourceNodeRecordId: backup.source_node_record_id,
+    sourceNodeId: backup.source_node_id,
+    sourceProviderServerId: backup.source_provider_server_id,
+    sourceProviderHandle: backup.source_provider_handle,
+    sourceContainerId: backup.source_container_id,
+    manifestVersion: backup.manifest_version,
+    manifestDigest: backup.manifest_digest,
+    objectInventoryDigest: backup.object_inventory_digest,
+    imageDigest: backup.image_digest,
+    databaseSchemaVersion: backup.database_schema_version,
+    pluginSetDigest: backup.plugin_set_digest,
+    watermarkDigest: backup.watermark_digest,
+    restoreReceiptDigest: backup.restore_receipt_digest,
+    catalogDeletedAt: backup.catalog_deleted_at,
+    createdAt: backup.created_at,
+  };
 }
 
 const FINGERPRINT_VERSION = "personal-dedicated-selection-v2";
@@ -126,10 +167,17 @@ export async function personalDedicatedInventoryFingerprint(params: {
       activationReceiptHash: candidate.activation_receipt_hash,
       activationImageDigest: candidate.activation_image_digest,
     }));
-  const backups = [...params.backups].sort((left, right) => {
-    const sandboxOrder = (left.sandboxRecordId ?? "").localeCompare(right.sandboxRecordId ?? "");
-    return sandboxOrder || left.id.localeCompare(right.id);
-  });
+  const backups = [...params.backups]
+    .sort((left, right) => {
+      const sandboxOrder = (left.sandboxRecordId ?? "").localeCompare(right.sandboxRecordId ?? "");
+      return sandboxOrder || left.id.localeCompare(right.id);
+    })
+    .map((backup) => ({
+      ...backup,
+      // Periodic verification rewrites its observation timestamp even when the
+      // exact payload remains healthy. Bind presence, not that mutable clock.
+      verifiedAt: backup.verifiedAt instanceof Date,
+    }));
   return await sha256(
     JSON.stringify(
       canonical({
@@ -182,7 +230,6 @@ function reviewedLegacyBackupChain(
       backupKind: cursor.backupKind,
       parentBackupId: cursor.parentBackupId,
       contentHash: cursor.contentHash,
-      verifiedAt: cursor.verifiedAt.toISOString(),
       catalogVersion: cursor.catalogVersion,
       catalogState: cursor.catalogState,
     });
@@ -288,7 +335,6 @@ export function personalDedicatedActivationAuthorityKey(
       entry.backupKind,
       entry.parentBackupId,
       entry.contentHash,
-      entry.verifiedAt,
       entry.catalogVersion,
       entry.catalogState,
     ]),
@@ -311,8 +357,6 @@ export function isPersonalDedicatedReviewedBackupChain(
           typeof (entry as { parentBackupId?: unknown }).parentBackupId === "string") &&
         typeof (entry as { contentHash?: unknown }).contentHash === "string" &&
         /^[a-f0-9]{64}$/.test((entry as { contentHash: string }).contentHash) &&
-        typeof (entry as { verifiedAt?: unknown }).verifiedAt === "string" &&
-        Number.isFinite(Date.parse((entry as { verifiedAt: string }).verifiedAt)) &&
         ((entry as { catalogVersion?: unknown }).catalogVersion === null ||
           (entry as { catalogVersion?: unknown }).catalogVersion === 1) &&
         ((entry as { catalogState?: unknown }).catalogState === null ||

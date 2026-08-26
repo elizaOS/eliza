@@ -765,7 +765,7 @@ describe("admin personal Dedicated adoption selection", () => {
     });
     expect(result).toMatchObject({ agent: { id: RETAINED }, jobCreated: true });
     expect(result.job?.data).toMatchObject({
-      restoreDirective: { kind: "fresh-boot" },
+      restoreDirective: { kind: "reviewed-fresh-boot" },
     });
     expect(await dbWrite.select().from(agentSandboxes)).toHaveLength(2);
     expect(await dbWrite.select().from(jobs)).toHaveLength(1);
@@ -803,7 +803,7 @@ describe("admin personal Dedicated adoption selection", () => {
     });
     expect(retry).toMatchObject({ alreadyAdopted: true, jobCreated: true });
     expect(retry.job?.data).toMatchObject({
-      restoreDirective: { kind: "fresh-boot" },
+      restoreDirective: { kind: "reviewed-fresh-boot" },
     });
   });
 
@@ -885,7 +885,6 @@ describe("admin personal Dedicated adoption selection", () => {
         backupKind: "full" as const,
         parentBackupId: null,
         contentHash,
-        verifiedAt: verifiedAt.toISOString(),
         catalogVersion: 1,
         catalogState: "legacy_unmigrated",
       },
@@ -909,6 +908,13 @@ describe("admin personal Dedicated adoption selection", () => {
       expectedStateDisposition: "verified_backup_present",
     });
 
+    // A routine healthy verifier pass only advances its observation time; it
+    // must not invalidate an immutable selection or reviewed restore chain.
+    await dbWrite
+      .update(agentSandboxBackups)
+      .set({ verified_at: new Date("2026-08-25T13:00:00.000Z") })
+      .where(eq(agentSandboxBackups.id, backup!.id));
+
     const result = await adoptPersonalDedicatedTargetWithProvision({
       organizationId: ORG_A,
       userId: USER_A,
@@ -927,7 +933,6 @@ describe("admin personal Dedicated adoption selection", () => {
           entry.backupKind,
           entry.parentBackupId,
           entry.contentHash,
-          entry.verifiedAt,
           entry.catalogVersion,
           entry.catalogState,
         ]),
@@ -941,6 +946,13 @@ describe("admin personal Dedicated adoption selection", () => {
         expectedBackupChain,
       },
     });
+    const reviewedSelectionId = (
+      result.job?.data as
+        | { restoreDirective?: { selectionId?: string } }
+        | undefined
+    )?.restoreDirective?.selectionId;
+    if (!reviewedSelectionId)
+      throw new Error("reviewed selection id was not persisted");
 
     const reviewedJobData = {
       agentId: RETAINED,
@@ -949,6 +961,7 @@ describe("admin personal Dedicated adoption selection", () => {
       agentName: "Retained",
       restoreDirective: {
         kind: "from-reviewed-backup" as const,
+        selectionId: reviewedSelectionId,
         backupId: backup!.id,
         expectedContentHash: contentHash,
         expectedBackupChain,

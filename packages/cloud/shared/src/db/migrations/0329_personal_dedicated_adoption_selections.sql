@@ -13,6 +13,8 @@ CREATE TABLE "personal_dedicated_adoption_selections" (
   "activation_backup_id" uuid,
   "activation_backup_hash" text,
   "activation_backup_chain" jsonb,
+  "restore_fence_hash" text,
+  "restore_fence_started_at" timestamp with time zone,
   "inventory_fingerprint" text NOT NULL,
   "candidate_count" integer NOT NULL,
   "schema_version" integer DEFAULT 1 NOT NULL,
@@ -48,6 +50,10 @@ CREATE TABLE "personal_dedicated_adoption_selections" (
         AND "activation_backup_chain" IS NULL)),
   CONSTRAINT "personal_dedicated_adoption_selections_fingerprint_check"
     CHECK ("inventory_fingerprint" ~ '^[a-f0-9]{64}$'),
+  CONSTRAINT "personal_dedicated_adoption_selections_restore_fence_check"
+    CHECK (("restore_fence_hash" IS NULL AND "restore_fence_started_at" IS NULL)
+      OR ("restore_fence_hash" ~ '^[a-f0-9]{64}$'
+        AND "restore_fence_started_at" IS NOT NULL)),
   CONSTRAINT "personal_dedicated_adoption_selections_candidate_count_check"
     CHECK ("candidate_count" >= 2)
 );
@@ -57,6 +63,46 @@ CREATE UNIQUE INDEX "personal_dedicated_adoption_selections_source_unique"
   ("organization_id", "user_id", "source_agent_id");
 CREATE UNIQUE INDEX "personal_dedicated_adoption_selections_target_unique"
   ON "personal_dedicated_adoption_selections" USING btree ("dedicated_agent_id");
+
+-- A reviewed restore fence is committed before provider or billing admission.
+-- Every backup mutation locks the affected agent row, then checks this durable
+-- receipt. Older mutations finish before authority validation; newer mutations
+-- wait for the fence commit and then fail closed.
+CREATE OR REPLACE FUNCTION "guard_personal_dedicated_restore_backup_mutation"()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  affected_agent_id uuid;
+BEGIN
+  FOR affected_agent_id IN
+    SELECT DISTINCT candidate
+    FROM unnest(ARRAY[
+      CASE WHEN TG_OP <> 'INSERT' THEN OLD."sandbox_record_id" ELSE NULL END,
+      CASE WHEN TG_OP <> 'DELETE' THEN NEW."sandbox_record_id" ELSE NULL END
+    ]::uuid[]) AS candidate
+    WHERE candidate IS NOT NULL
+    ORDER BY candidate
+  LOOP
+    PERFORM 1 FROM "agent_sandboxes" WHERE "id" = affected_agent_id FOR KEY SHARE;
+    IF EXISTS (
+      SELECT 1
+      FROM "personal_dedicated_adoption_selections"
+      WHERE "dedicated_agent_id" = affected_agent_id
+        AND "restore_fence_hash" IS NOT NULL
+    ) THEN
+      RAISE EXCEPTION 'reviewed restore authority is fenced for agent %', affected_agent_id
+        USING ERRCODE = '55000';
+    END IF;
+  END LOOP;
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER "agent_sandbox_backups_reviewed_restore_fence"
+BEFORE INSERT OR UPDATE OR DELETE ON "agent_sandbox_backups"
+FOR EACH ROW EXECUTE FUNCTION "guard_personal_dedicated_restore_backup_mutation"();
 
 -- Adoption authority must remain as a fail-closed tombstone if its target is
 -- later deleted. Migration 0319 originally cascaded this FK; remove it before

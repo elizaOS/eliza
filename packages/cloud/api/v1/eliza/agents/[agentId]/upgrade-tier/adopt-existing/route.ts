@@ -348,7 +348,7 @@ async function __hono_POST(
       );
     }
 
-    if (quote.startsCompute) {
+    if (quote.startsCompute && resolved.selectionActivationAuthority) {
       const workerHealth = await checkProvisioningWorkerCapability(
         REVIEWED_BACKUP_RESTORE_CAPABILITY,
       );

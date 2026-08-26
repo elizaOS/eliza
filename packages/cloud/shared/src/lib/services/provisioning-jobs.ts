@@ -101,6 +101,7 @@ import {
 } from "./eliza-provision-lock";
 import {
   AdminCanaryCleanupExpectationError,
+  assertReviewedFreshBootAuthority,
   assertReviewedProvisionRestoreAuthority,
   type DeleteAuthorization,
   elizaSandboxService,
@@ -229,8 +230,10 @@ export interface AgentProvisionJobData {
   restoreDirective?:
     | { kind: "from-backup"; backupId: string }
     | { kind: "fresh-boot" }
+    | { kind: "reviewed-fresh-boot"; selectionId: string }
     | {
         kind: "from-reviewed-backup";
+        selectionId: string;
         backupId: string;
         expectedContentHash: string;
         expectedBackupChain: PersonalDedicatedReviewedBackupChainEntry[];
@@ -604,9 +607,12 @@ function isAgentProvisionJobData(value: unknown): value is AgentProvisionJobData
       restoreDirective !== null &&
       (((restoreDirective as { kind?: unknown }).kind === "fresh-boot" &&
         !("backupId" in restoreDirective)) ||
+        ((restoreDirective as { kind?: unknown }).kind === "reviewed-fresh-boot" &&
+          typeof (restoreDirective as { selectionId?: unknown }).selectionId === "string") ||
         ((restoreDirective as { kind?: unknown }).kind === "from-backup" &&
           typeof (restoreDirective as { backupId?: unknown }).backupId === "string") ||
         ((restoreDirective as { kind?: unknown }).kind === "from-reviewed-backup" &&
+          typeof (restoreDirective as { selectionId?: unknown }).selectionId === "string" &&
           typeof (restoreDirective as { backupId?: unknown }).backupId === "string" &&
           typeof (restoreDirective as { expectedContentHash?: unknown }).expectedContentHash ===
             "string" &&
@@ -732,10 +738,14 @@ function sameProvisionRestoreDirective(
   }
   if (left?.kind === "from-reviewed-backup" && right?.kind === "from-reviewed-backup") {
     return (
+      left.selectionId === right.selectionId &&
       left.backupId === right.backupId &&
       left.expectedContentHash === right.expectedContentHash &&
       JSON.stringify(left.expectedBackupChain) === JSON.stringify(right.expectedBackupChain)
     );
+  }
+  if (left?.kind === "reviewed-fresh-boot" && right?.kind === "reviewed-fresh-boot") {
+    return left.selectionId === right.selectionId;
   }
   return true;
 }
@@ -750,8 +760,13 @@ export async function resolveReviewedProvisionRestoreDirectiveForExecution(
   data: AgentProvisionJobData,
 ): Promise<AgentProvisionJobData["restoreDirective"]> {
   const directive = data.restoreDirective;
-  if (directive?.kind !== "from-reviewed-backup") return directive;
-  await assertReviewedProvisionRestoreAuthority(data.agentId, directive);
+  if (directive?.kind === "from-reviewed-backup") {
+    await assertReviewedProvisionRestoreAuthority(data.agentId, directive);
+  } else if (directive?.kind === "reviewed-fresh-boot") {
+    await assertReviewedFreshBootAuthority(data.agentId, directive);
+  } else {
+    return directive;
+  }
   return directive;
 }
 

@@ -193,6 +193,7 @@ beforeEach(async () => {
   currentUser.email = "owner-a@test.test";
   currentUser.organization_id = ORG_A;
   currentUser.organization = { id: ORG_A, name: "Org A", is_active: true };
+  ENV.NODE_ENV = "test";
   await dbWrite.delete(jobs);
   await dbWrite.delete(personalDedicatedUpgradeAuthorities);
   await dbWrite.delete(personalDedicatedAdoptionSelections);
@@ -665,6 +666,26 @@ describe("GET/POST adopt-existing Dedicated", () => {
       expect(await targetJobs(TARGET_A)).toHaveLength(1);
     });
   }
+
+  test("does not require a versioned worker for an unselected legacy-compatible provision", async () => {
+    expect(pgliteReady).toBe(true);
+    await seedCandidate({ status: "error" });
+    const quoteId = await currentQuoteId();
+
+    // Production mode with no Redis capability evidence would 503 if this
+    // request crossed the reviewed-directive gate. This ordinary one-row path
+    // carries no new directive and remains compatible with the legacy daemon.
+    ENV.NODE_ENV = "production";
+    let response: Response;
+    try {
+      response = await confirm(quoteId);
+    } finally {
+      ENV.NODE_ENV = "test";
+    }
+
+    expect(response.status).toBe(202);
+    expect(await targetJobs(TARGET_A)).toHaveLength(1);
+  });
 
   test("adopts a running row without starting another provision job", async () => {
     expect(pgliteReady).toBe(true);
