@@ -10,6 +10,7 @@ import {
   tierBundleSlug,
 } from "@elizaos/shared/local-inference";
 import {
+  assertAospModelDownloadSize,
   bundleSlugFromModelName,
   fetchRecommendedAospModel,
   resolveRecommendedAospModel,
@@ -23,6 +24,7 @@ describe("AOSP published model resolution", () => {
 
     const resolved = resolveRecommendedAospModel("chat");
     expect(resolved.id).toBe(catalogModel.id);
+    expect(resolved.expectedSizeBytes).toBe(4_967_494_592);
     expect(resolved.candidates.at(-1)?.url).toContain("huggingface.co");
     expect(resolved.ggufFile).toBe(
       [catalogModel.hfPathPrefix, catalogModel.ggufFile]
@@ -44,6 +46,7 @@ describe("AOSP published model resolution", () => {
 
   it("resolves the embedding download under the published architecture slug", () => {
     const resolved = resolveRecommendedAospModel("embedding");
+    expect(resolved.expectedSizeBytes).toBe(639_150_592);
     expect(resolved.ggufFile).toContain(
       `bundles/${tierBundleSlug("eliza-1-4b")}/embedding/`,
     );
@@ -52,6 +55,16 @@ describe("AOSP published model resolution", () => {
         new URL(resolved.candidates.at(-1)?.url ?? "").pathname,
       ),
     ).toContain(resolved.ggufFile);
+  });
+
+  it("rejects a partial 200 response before it can become the live model", () => {
+    const model = resolveRecommendedAospModel("chat");
+    expect(() => assertAospModelDownloadSize(model, 4_967_494_591)).toThrow(
+      /size 4967494591 != expected 4967494592/,
+    );
+    expect(() =>
+      assertAospModelDownloadSize(model, 4_967_494_592),
+    ).not.toThrow();
   });
 
   it("forwards cloud authorization and falls through to direct HF", async () => {

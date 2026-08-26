@@ -27,6 +27,8 @@ function isTransientDownloadStatus(status: number): boolean {
 }
 
 const AOSP_EMBEDDING_TIER_ID = "eliza-1-4b" satisfies Eliza1TierId;
+const AOSP_CHAT_MODEL_SIZE_BYTES = 4_967_494_592;
+const AOSP_EMBEDDING_MODEL_SIZE_BYTES = 639_150_592;
 
 export function resolveRecommendedAospModel(
   role: "chat" | "embedding",
@@ -50,6 +52,7 @@ export function resolveRecommendedAospModel(
         model,
         model.ggufFile,
       ),
+      expectedSizeBytes: AOSP_CHAT_MODEL_SIZE_BYTES,
     };
   }
 
@@ -61,7 +64,22 @@ export function resolveRecommendedAospModel(
       { ...model, hfPathPrefix: undefined },
       ggufFile,
     ),
+    expectedSizeBytes: AOSP_EMBEDDING_MODEL_SIZE_BYTES,
   };
+}
+
+export function assertAospModelDownloadSize(
+  model: AospRecommendedModel,
+  actualSizeBytes: number,
+): void {
+  if (
+    model.expectedSizeBytes !== undefined &&
+    actualSizeBytes !== model.expectedSizeBytes
+  ) {
+    throw new Error(
+      `[aosp-local-inference] Downloaded ${model.ggufFile} size ${actualSizeBytes} != expected ${model.expectedSizeBytes}.`,
+    );
+  }
 }
 
 export async function fetchRecommendedAospModel(

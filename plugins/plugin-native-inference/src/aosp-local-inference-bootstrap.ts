@@ -82,6 +82,7 @@ import {
   streamGenerate,
 } from "./aosp-llama-streaming.js";
 import {
+  assertAospModelDownloadSize,
   bundleSlugFromModelName,
   fetchRecommendedAospModel,
   resolveRecommendedAospModel,
@@ -1349,15 +1350,15 @@ async function downloadRecommendedAospModel(
       createWriteStream(stagingPath),
     );
     const stagedSize = statSync(stagingPath).size;
-    if (model.expectedSizeBytes && stagedSize !== model.expectedSizeBytes) {
+    try {
+      assertAospModelDownloadSize(model, stagedSize);
+    } catch (error) {
       try {
         unlinkSync(stagingPath);
       } catch {
         // error-policy:J6 best-effort teardown — unlink bad-size staging artifact (real error thrown next).
       }
-      throw new Error(
-        `[aosp-local-inference] Downloaded ${model.ggufFile} size ${stagedSize} != expected ${model.expectedSizeBytes}.`,
-      );
+      throw error;
     }
     renameSync(stagingPath, finalPath);
     logger.info(
