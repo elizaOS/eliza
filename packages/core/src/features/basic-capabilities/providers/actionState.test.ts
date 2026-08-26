@@ -54,8 +54,8 @@ describe("normalizeThoughtText Unicode boundaries", () => {
 	});
 });
 
-describe("ACTION_STATE progressive projection", () => {
-	it("removes recoverable bodies from every provider text carrier", async () => {
+describe("ACTION_STATE complete result projection", () => {
+	it("preserves recoverable bodies in every model-facing carrier", async () => {
 		const canary = `BEGIN_PRIVATE_PAGE_${"x".repeat(20_000)}_END`;
 		const actionResult = {
 			success: true,
@@ -105,7 +105,7 @@ describe("ACTION_STATE progressive projection", () => {
 		);
 
 		expect(result.text).toContain("opaque-file");
-		expect(result.text).not.toContain("BEGIN_PRIVATE_PAGE");
+		expect(result.text).toContain("BEGIN_PRIVATE_PAGE");
 		expect(JSON.stringify(result.data)).toContain("BEGIN_PRIVATE_PAGE");
 	});
 

@@ -20,6 +20,7 @@ import {
 import {
   type ComponentPropsWithRef,
   type CSSProperties,
+  forwardRef,
   type MouseEvent,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
@@ -40,8 +41,9 @@ import {
   useClickSuppression,
   useRafCoalescer,
 } from "../../gestures";
+import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
-import { Button } from "../ui/button";
+import { Button, type ButtonProps } from "../ui/button";
 import {
   Tooltip,
   TooltipContent,
@@ -609,9 +611,9 @@ function GraphIconButton({
         <Button
           ref={agentRef}
           type="button"
-          size="sm"
+          size="icon-sm"
           variant="outline"
-          className="size-8 rounded-full p-0"
+          shape="circle"
           aria-label={label}
           disabled={disabled}
           onClick={onClick}
@@ -624,6 +626,22 @@ function GraphIconButton({
     </Tooltip>
   );
 }
+
+export const GraphZoomButton = forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ className, ...props }, ref) => (
+    <Button
+      ref={ref}
+      variant="ghostMuted"
+      size="content"
+      className={cn(
+        "h-7 min-w-10 rounded-full px-1 text-2xs font-semibold tabular-nums transition",
+        className,
+      )}
+      {...props}
+    />
+  ),
+);
+GraphZoomButton.displayName = "GraphZoomButton";
 
 type TooltipState =
   | { kind: "node"; person: RelationshipsPersonSummary; x: number; y: number }
@@ -1048,19 +1066,16 @@ export function RelationshipsGraphPanel({
             </GraphIconButton>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
+                <GraphZoomButton
                   ref={zoomToggleButton.ref}
                   onClick={handleZoomPercentClick}
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 min-w-10 rounded-full px-1 text-2xs font-semibold tabular-nums text-muted transition hover:text-txt"
                   aria-label={t("relationshipsgraph.toggleZoomAria", {
                     defaultValue: "Toggle zoom (fit / 100%)",
                   })}
                   {...zoomToggleButton.agentProps}
                 >
                   {zoomPercent}
-                </Button>
+                </GraphZoomButton>
               </TooltipTrigger>
               <TooltipContent>
                 {t("relationshipsgraph.toggleFit", {
@@ -1261,7 +1276,8 @@ export function RelationshipsGraphPanel({
                     height={radius + 72}
                   >
                     <Button
-                      variant="ghost"
+                      variant="transparent"
+                      size="fill"
                       onClick={(event) => {
                         if (clickSuppression.consumeArmed()) {
                           event.preventDefault();
@@ -1275,7 +1291,6 @@ export function RelationshipsGraphPanel({
                       }
                       onMouseMove={(event) => showTooltipForNode(person, event)}
                       onMouseLeave={hideTooltip}
-                      className="h-full w-full rounded-sm bg-transparent hover:bg-transparent"
                       aria-label={t("relationshipsgraph.selectPerson", {
                         name: person.displayName,
                         defaultValue: "Select {{name}}",

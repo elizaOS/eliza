@@ -60,7 +60,7 @@ describe("HomePill", () => {
     const btn = screen.getByRole("button");
     fireEvent.mouseEnter(btn);
 
-    expect(btn.className).toContain("w-[36rem]");
+    expect(btn.getAttribute("data-composer-sized")).toBe("true");
     expect(screen.getByTestId("shell-home-pill-mark").className).toContain(
       "h-14",
     );
@@ -120,7 +120,7 @@ describe("HomePill", () => {
         previewHostReady
       />,
     );
-    expect(button.className).toContain("w-[36rem]");
+    expect(button.getAttribute("data-composer-sized")).toBe("true");
     expect(screen.getByTestId("shell-home-pill-preview-label")).toBeTruthy();
   });
 
@@ -211,7 +211,9 @@ describe("HomePill", () => {
     expect(mark.className).toContain("bg-neutral-900/95");
     expect(mark.className).toContain("h-14");
     expect(mark.className).toContain("w-full");
-    expect(screen.getByRole("button").className).toContain("w-[36rem]");
+    expect(screen.getByRole("button").getAttribute("data-composer-sized")).toBe(
+      "true",
+    );
     expect(mark.className).not.toContain("239,68,68");
     expect(mark.className).not.toContain("bg-white/95");
     const bars = screen.getAllByTestId("shell-home-pill-wave-bar");
@@ -235,7 +237,7 @@ describe("HomePill", () => {
     const button = screen.getByRole("button");
     const mark = screen.getByTestId("shell-home-pill-mark");
     expect(button.className).toContain("w-16");
-    expect(button.className).not.toContain("w-[36rem]");
+    expect(button.getAttribute("data-composer-sized")).toBe("false");
     expect(mark.className).toContain("w-20");
     expect(mark.className).not.toContain("w-full");
   });

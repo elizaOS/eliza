@@ -229,7 +229,14 @@ function selectCliProvider(): LiveProviderConfig | null {
 		? process.env.ELIZA_CLI_CODEX_MODEL?.trim() || "gpt-5.5"
 		: process.env.ELIZA_CLI_CLAUDE_MODEL?.trim() || "claude-opus-4-7";
 
-	const env: Record<string, string> = { ELIZA_CHAT_VIA_CLI: backend };
+	const env: Record<string, string> = {
+		ELIZA_CHAT_VIA_CLI: backend,
+		// The testing selector returns one complete acting provider. CLI inference
+		// can route ACTION_PLANNER only through its text-planner contract; leaving
+		// native-tools mode enabled omits that handler and makes required-action
+		// turns retry free-text responses until the outer scenario deadline.
+		ELIZA_PLANNER_NATIVE_TOOLS: "0",
+	};
 	for (const envVar of CLI_PASSTHROUGH_ENV_VARS) {
 		const val = process.env[envVar]?.trim();
 		if (val !== undefined && val !== "") env[envVar] = val;

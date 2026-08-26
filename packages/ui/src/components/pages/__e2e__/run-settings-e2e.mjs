@@ -149,12 +149,7 @@ const bundle = await build({
   loader: { ".tsx": "tsx", ".ts": "ts", ".css": "empty", ".svg": "dataurl", ".png": "dataurl" },
   define: {
     "process.env.NODE_ENV": '"production"',
-    "import.meta.env": JSON.stringify({
-      DEV: false,
-      MODE: "production",
-      PROD: true,
-      SSR: false,
-    }),
+    "import.meta.env": JSON.stringify({ DEV: false, MODE: "test" }),
   },
   plugins: [stubBarrels, stubElizaCore, stubNodeBuiltins],
   write: false,

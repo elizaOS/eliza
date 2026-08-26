@@ -272,7 +272,6 @@ export async function findDeliveredReply(
 			roomId,
 			tableName: "messages",
 			agentId: runtime.agentId,
-			count: 50,
 		});
 	} catch {
 		// Probe failure is treated as "unknown / not found": we would rather

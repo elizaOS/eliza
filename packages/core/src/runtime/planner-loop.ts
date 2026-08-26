@@ -58,7 +58,9 @@ import {
 } from "../types/workspace-delta";
 import {
 	isModelProviderError,
+	isProviderContextOverflowError,
 	modelProviderErrorDetail,
+	PROVIDER_CONTEXT_OVERFLOW,
 } from "../utils/model-errors";
 import {
 	hasReasoningResidue,
@@ -695,6 +697,16 @@ async function runPlannerLoopIterations(
 					onUsage: observePlannerUsage,
 				});
 			} catch (err) {
+				// A context overflow is a terminal integrity boundary even after a
+				// successful action. Relaying the action-owned fallback would hide that
+				// the planner never saw the complete result and could not verify a final
+				// answer from it.
+				if (
+					err instanceof ElizaError &&
+					err.code === PROVIDER_CONTEXT_OVERFLOW
+				) {
+					throw err;
+				}
 				// error-policy:J4 the sole tool already committed; an expected model
 				// provider outage degrades to its vetted action-owned fallback without replay.
 				if (!synthesizingRequiredModelReply || !isModelProviderError(err)) {
@@ -2528,7 +2540,7 @@ function appendMissingJsonObjectClosers(text: string): string {
 	return `${text}${"}".repeat(depth)}`;
 }
 
-async function callPlanner(params: {
+async function dispatchPlannerModelCall(params: {
 	runtime: PlannerRuntime;
 	context: ContextObject;
 	trajectory: PlannerTrajectory;
@@ -2762,6 +2774,69 @@ async function callPlanner(params: {
 	});
 
 	return parsed;
+}
+
+/** Typed terminal error for an unrecoverable provider context overflow. */
+function providerContextOverflowFailure(
+	cause: unknown,
+	context: Record<string, unknown>,
+): ElizaError {
+	return new ElizaError(
+		"Planner model input exceeded the provider's context limit and could not " +
+			"be recovered losslessly.",
+		{
+			code: PROVIDER_CONTEXT_OVERFLOW,
+			cause,
+			context: {
+				...context,
+				...(modelProviderErrorDetail(cause) ?? {}),
+			},
+		},
+	);
+}
+
+/**
+ * Planner model call with the context-overflow boundary applied. A hard
+ * provider length rejection (live: Cerebras 400 "Please reduce the length of
+ * the messages or completion. Current length is 202427 while limit is
+ * 131072") TERMINATES the turn with the typed PROVIDER_CONTEXT_OVERFLOW
+ * ElizaError with every completed result and model-facing projection byte-
+ * intact. A nested ReadView is only a content locator; it neither proves the
+ * complete ActionResult can be reconstructed nor names an invocable resolver.
+ * Continuing from such a locator allowed the planner to skip retrieval and
+ * falsely FINISH after source data and action metadata had been removed. Until
+ * a whole-result recovery protocol can execute and verify a resolver before
+ * any completion path, overflow is terminal. The typed error lets the message
+ * boundary answer honestly ("that needed more context — want a smaller
+ * range?") instead of surfacing a raw provider 400 or falsifying history.
+ *
+ * COMPOSITION with the pre-emptive input budget (model-input-budget.ts +
+ * `ProviderResult.overflowText` in services/message.ts): that mechanism is
+ * estimation-driven and runs BEFORE dispatch — when the utf8-upper-bound
+ * estimate crosses the dispatch threshold, Stage-1 composition swaps provider
+ * blocks for their explicitly declared lossless `overflowText` retrieval
+ * forms, and `buildModelInputBudget` stamps diagnostics into providerOptions.
+ * It never rewrites tool results. This boundary is rejection-driven and runs
+ * AT dispatch: the provider's actual length rejection is ground truth for
+ * what the estimator missed (tool results land after provider composition and
+ * estimation is heuristic). It preserves every projection and terminates the
+ * turn with a typed error. Ordered stages: the estimator lowers the odds of
+ * hitting this boundary; this boundary is the integrity-preserving backstop.
+ */
+async function callPlanner(
+	params: Parameters<typeof dispatchPlannerModelCall>[0],
+): ReturnType<typeof dispatchPlannerModelCall> {
+	try {
+		return await dispatchPlannerModelCall(params);
+	} catch (error) {
+		// error-policy:J2 only a structurally classified provider length rejection
+		// is translated; every other failure propagates intact.
+		if (!isProviderContextOverflowError(error)) throw error;
+		throw providerContextOverflowFailure(error, {
+			iteration: params.iteration,
+			recovery: "typed_boundary_terminal",
+		});
+	}
 }
 
 /** Record a gated evaluator outcome without making another model call. */
@@ -3929,10 +4004,12 @@ function deferCodingCompletionUntilMutationVerified(args: {
 		: {
 				success: false,
 				decision: "CONTINUE",
-				thought:
-					"A successful WRITE or EDIT has not been followed by a successful SHELL verification.",
-				messageToUser:
-					"Run the narrowest relevant test, typecheck, lint, build, or diff check with SHELL before finishing.",
+				thought: latestSuccessfulNoTestVerification(args.trajectory)
+					? "The last test command selected no tests."
+					: "A successful WRITE or EDIT has not been followed by a successful SHELL verification.",
+				messageToUser: latestSuccessfulNoTestVerification(args.trajectory)
+					? "The last test command selected no tests. Run the task's actual acceptance tests with SHELL before finishing."
+					: "Run the narrowest relevant test, typecheck, lint, build, or diff check with SHELL before finishing.",
 			};
 	args.trajectory.evaluatorOutputs.push(
 		projectToolDiagnosticValue(
@@ -3948,6 +4025,21 @@ function deferCodingCompletionUntilMutationVerified(args: {
 	);
 	args.trajectory.plannedQueue.length = 0;
 	return true;
+}
+
+function latestSuccessfulNoTestVerification(
+	trajectory: PlannerTrajectory,
+): boolean {
+	const steps = [...trajectory.archivedSteps, ...trajectory.steps];
+	for (let index = steps.length - 1; index >= 0; index--) {
+		const step = steps[index];
+		if (step.toolCall?.name.toUpperCase() !== "SHELL") continue;
+		if (step.result?.success !== true) continue;
+		const command = shellCommandParam(step.toolCall);
+		if (codingVerificationKind(command) !== "test") return false;
+		return verificationRanNoTests(step);
+	}
+	return false;
 }
 
 function codingMutationRequiresVerification(
@@ -4241,7 +4333,42 @@ function isSuccessfulCodingVerificationStep(step: PlannerStep): boolean {
 	}
 	const command = shellCommandParam(step.toolCall);
 	if (!command) return false;
-	return codingVerificationKind(command) !== undefined;
+	const kind = codingVerificationKind(command);
+	if (kind === undefined) return false;
+	return !(kind === "test" && verificationRanNoTests(step));
+}
+
+/** Test seam for rejecting zero-test verification as completion proof. */
+export function __isSuccessfulCodingVerificationStepForTests(
+	step: PlannerStep,
+): boolean {
+	return isSuccessfulCodingVerificationStep(step);
+}
+
+/**
+ * A command that exits zero while selecting no tests is not completion proof.
+ * Go and several test runners report this as an `ok` line annotated with
+ * `[no tests to run]`; reject only when every package result is so annotated,
+ * preserving mixed runs where at least one real test suite executed.
+ */
+function verificationRanNoTests(step: PlannerStep): boolean {
+	const result = step.result;
+	const data = result?.data;
+	const output = [
+		result?.text,
+		result?.summary,
+		typeof data?.output === "string" ? data.output : undefined,
+	]
+		.filter((value): value is string => typeof value === "string")
+		.join("\n");
+	if (!/\[no tests to run\]/i.test(output)) return false;
+	const packageResults = output
+		.split(/\r?\n/u)
+		.filter((line) => /^ok\s+\S+\s+\S+/u.test(line));
+	return (
+		packageResults.length > 0 &&
+		packageResults.every((line) => /\[no tests to run\]/i.test(line))
+	);
 }
 
 function isNoopShellVerificationCommand(command: string): boolean {
@@ -4421,8 +4548,34 @@ function resolveShellFailuresSubsumedBy(
 		if (!failedCommand || shellCwdParam(failedCall) !== cwd) continue;
 		if (containsCommandVerbatim(command, failedCommand)) {
 			unresolvedByOperation.delete(key);
+			continue;
+		}
+		// A narrower successful verifier is a valid recovery for a broader failed
+		// verifier when both commands belong to the same tool family (for example,
+		// `go test ./...` followed by `go test ./internal/config -run TestLoad`).
+		// This is restricted to coding verification commands and an identical
+		// executable prefix so an unrelated deploy/build failure cannot be laundered
+		// by a later test.
+		if (
+			codingVerificationKind(failedCommand) !== undefined &&
+			codingVerificationKind(command) ===
+				codingVerificationKind(failedCommand) &&
+			verificationCommandFamily(command) ===
+				verificationCommandFamily(failedCommand)
+		) {
+			unresolvedByOperation.delete(key);
 		}
 	}
+}
+
+function verificationCommandFamily(command: string): string {
+	const segment = splitSafeShellVerificationChain(command)?.[0] ?? command;
+	return stripShellVerificationPrefix(segment)
+		.trim()
+		.split(/\s+/u)
+		.slice(0, 2)
+		.join(" ")
+		.toLowerCase();
 }
 
 function shellCommandParam(call: PlannerToolCall): string {

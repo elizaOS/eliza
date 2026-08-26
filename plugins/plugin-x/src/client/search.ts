@@ -192,7 +192,7 @@ export async function searchTweetsPage(
  */
 export async function* searchTweets(
   query: string,
-  maxTweets: number,
+  maxTweets: number | undefined,
   searchMode: SearchMode,
   auth: TwitterAuth,
 ): AsyncGenerator<Tweet, void> {
@@ -201,13 +201,13 @@ export async function* searchTweets(
 
   try {
     const searchIterator = (await client.v2.search(finalQuery, {
-      max_results: Math.min(maxTweets, 100),
+      max_results: maxTweets === undefined ? 100 : Math.min(maxTweets, 100),
       ...SEARCH_TWEET_QUERY,
     })) as SearchPaginator & AsyncIterable<TweetV2>;
 
     let count = 0;
     for await (const tweet of searchIterator) {
-      if (count >= maxTweets) break;
+      if (maxTweets !== undefined && count >= maxTweets) break;
       yield convertSearchTweet(tweet, searchIterator.includes);
       count++;
     }
@@ -313,7 +313,7 @@ export async function* searchProfiles(
  */
 export async function* searchQuotedTweets(
   quotedTweetId: string,
-  maxTweets: number,
+  maxTweets: number | undefined,
   auth: TwitterAuth,
 ): AsyncGenerator<Tweet, void> {
   // Twitter API v2 doesn't have a direct endpoint for quote tweets

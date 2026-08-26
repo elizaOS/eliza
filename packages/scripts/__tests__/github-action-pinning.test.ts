@@ -291,6 +291,28 @@ describe("GitHub action supply-chain references", () => {
     );
   });
 
+  test("builds core before extended UI fixtures bundle workspace exports", () => {
+    const source = readFileSync(
+      join(githubRoot, "workflows", "ui-fixture-e2e.yml"),
+      "utf8",
+    );
+    const workflow = Bun.YAML.parse(source) as {
+      jobs?: { "fixture-e2e"?: { steps?: WorkflowStep[] } };
+    };
+    const steps = workflow.jobs?.["fixture-e2e"]?.steps ?? [];
+    const buildIndex = steps.findIndex(
+      (step) =>
+        step.name === "Build core contract" &&
+        step.run === "bun run build:core",
+    );
+    const walletIndex = steps.findIndex(
+      (step) => step.run === "bun run --cwd packages/ui test:wallet-widget-e2e",
+    );
+
+    expect(buildIndex).toBeGreaterThanOrEqual(0);
+    expect(walletIndex).toBeGreaterThan(buildIndex);
+  });
+
   test("keeps the WebKit fixture lane on a provisionable hosted runner", () => {
     const source = readFileSync(
       join(githubRoot, "workflows", "ui-fixture-e2e.yml"),

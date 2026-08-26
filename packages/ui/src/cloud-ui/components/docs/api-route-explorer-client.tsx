@@ -212,10 +212,12 @@ export function ApiRouteExplorerClient({
                   strokeWidth={2}
                 />
                 <Input
+                  variant="embeddedSearch"
+                  density="search"
+                  adornment="leading"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search endpoints…"
-                  className="w-full min-h-touch pl-10 pr-4 py-2.5 rounded-sm border border-border bg-bg text-sm text-txt placeholder:text-muted transition-colors"
                 />
               </div>
 
@@ -255,16 +257,14 @@ export function ApiRouteExplorerClient({
                           r.path.replace("/api/v1/", "").replace(/\//g, " / ");
                         return (
                           <Button
-                            variant="ghost"
+                            variant="choice"
+                            size="row"
+                            align="start"
+                            data-state={active ? "on" : "off"}
                             key={key}
                             type="button"
                             onClick={() => setSelectedKey(key)}
-                            className={cn(
-                              "w-full min-h-touch text-left rounded-sm border px-3 py-2.5 transition-colors my-1",
-                              active
-                                ? "bg-bg-muted border-border-strong"
-                                : "border-transparent hover:bg-bg-hover hover:border-border",
-                            )}
+                            className="my-1 w-full"
                           >
                             <div className="flex items-start gap-2">
                               <div className="flex flex-wrap gap-1 pt-0.5 shrink-0">

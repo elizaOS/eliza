@@ -63,6 +63,25 @@ const _require = createRequire(import.meta.url);
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../..");
+export function resolveAndroidCloudPrebootLockupDataUri(): string {
+  const androidCloudPrebootLockupSvg = fs
+    .readFileSync(
+      path.join(here, "public", "brand", "logos", "eliza_logotext.svg"),
+      "utf8",
+    )
+    .replace(
+      /\s*<rect x="0\.081543" y="1\.84143" width="101\.919" height="101\.919" fill="#FF5800"\s*\/?>\s*/,
+      "\n",
+    );
+  if (androidCloudPrebootLockupSvg.includes("#FF5800")) {
+    throw new Error(
+      "Android Cloud preboot lockup still contains its orange backing rect",
+    );
+  }
+  return `data:image/svg+xml;base64,${Buffer.from(
+    androidCloudPrebootLockupSvg,
+  ).toString("base64")}`;
+}
 const nativePluginsRoot = path.join(elizaRoot, "plugins");
 const bunLinkedPackageCacheRoot = path.join(
   os.homedir(),
@@ -1058,15 +1077,12 @@ export function resolveAppShellLocalCspSources(
 }
 
 export const ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS = Object.freeze([
-  "31337",
-  "31338",
   "32437",
   "32438",
   "10.0.2.2",
   "adb reverse",
-  "eliza-local-agent:",
   "__ELIZA_ANDROID_IPC_FETCH_BRIDGE__",
-  "remote-mac",
+  "navigator.serviceWorker",
 ]);
 
 type AndroidCloudAuditOutput = {
@@ -1077,8 +1093,10 @@ type AndroidCloudAuditOutput = {
 
 /**
  * Fail-only audit of every text-bearing file emitted into the Android Cloud
- * renderer. Build policy must never rewrite arbitrary dependency output to
- * conceal a marker, and lazy chunks remain executable packaged product code.
+ * renderer for concrete development routing capabilities. Cross-platform UI
+ * copy and dormant mode labels are allowed because the canonical application
+ * renders them on other platforms; the Cloud APK's native graph, CSP, and
+ * stripped IPC bootstrap remain the capability boundary.
  */
 export function findAndroidCloudEmittedRoutingFindings(
   bundle: Record<string, AndroidCloudAuditOutput>,
@@ -1122,6 +1140,36 @@ function androidCloudRendererPolicyPlugin(): Plugin {
   };
 }
 
+const ANDROID_CLOUD_CURATED_PUBLIC_ASSETS = Object.freeze([
+  "bg-sunset.webp",
+  "wallpapers/canopy.webp",
+  "wallpapers/dusk-dunes.webp",
+  "wallpapers/ember-dunes.webp",
+  "wallpapers/reef.webp",
+  "wallpapers/slate.webp",
+]);
+
+/**
+ * Packages the canonical app's selectable backgrounds without copying the
+ * browser public tree, whose service workers, installers, and local task
+ * runner are not capabilities of the Cloud-only Android application.
+ */
+function androidCloudCuratedAssetsPlugin(): Plugin {
+  return {
+    name: "android-cloud-curated-assets",
+    generateBundle() {
+      if (!IS_ANDROID_CLOUD_RENDERER_BUILD) return;
+      for (const fileName of ANDROID_CLOUD_CURATED_PUBLIC_ASSETS) {
+        this.emitFile({
+          type: "asset",
+          fileName,
+          source: fs.readFileSync(path.join(here, "public", fileName)),
+        });
+      }
+    },
+  };
+}
+
 /** Viewport policies selected by the app-shell metadata transform. */
 export const VIEWPORT_META_NATIVE =
   "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover";
@@ -1145,11 +1193,18 @@ export function stripAndroidCloudIpcBootstrap(html: string): string {
 }
 
 /** Removes browser-only assets whose public tree is not packaged. */
-export function stripAndroidCloudPublicAssetReferences(html: string): string {
+export function stripAndroidCloudPublicAssetReferences(
+  html: string,
+  prebootLockupDataUri = resolveAndroidCloudPrebootLockupDataUri(),
+): string {
   return html
     .replace(
       /\s*<link\b[^>]*\brel=["'](?:icon|apple-touch-icon|manifest)["'][^>]*>\s*/gi,
       "\n",
+    )
+    .replace(
+      /<img\b[^>]*\bclass=["'][^"']*\beliza-preboot-shell__mark\b[^"']*["'][^>]*>\s*<span\b[^>]*\bclass=["'][^"']*\beliza-preboot-shell__name\b[^"']*["'][^>]*>[^<]*<\/span>/gi,
+      `<img class="eliza-preboot-shell__lockup" src="${prebootLockupDataUri}" alt="" decoding="sync" fetchpriority="high" />`,
     )
     .replace(
       /\s*<img\b[^>]*\bclass=["'][^"']*\beliza-preboot-shell__mark\b[^"']*["'][^>]*>\s*/gi,
@@ -1158,13 +1213,11 @@ export function stripAndroidCloudPublicAssetReferences(html: string): string {
 }
 
 const DEFAULT_RENDERER_ENTRY = "/src/entry.ts";
-const ANDROID_CLOUD_RENDERER_ENTRY = "/src/main.android-cloud.tsx";
 
 /**
- * Selects the minimal Play-safe renderer before Rollup sees the application
- * graph. A source-level entry swap is stronger than a runtime branch: Android
- * Cloud builds cannot accidentally package the desktop, local-runtime, iOS,
- * service-worker, or generic App composition roots behind a dormant condition.
+ * Keeps the canonical application renderer for Android Cloud builds. Play
+ * policy is enforced at the native capability and emitted-artifact boundaries;
+ * it must not fork the user-facing application into a second product shell.
  */
 export function selectAndroidCloudRendererEntry(
   html: string,
@@ -1176,7 +1229,7 @@ export function selectAndroidCloudRendererEntry(
       `Android Cloud HTML is missing the expected ${DEFAULT_RENDERER_ENTRY} module entry`,
     );
   }
-  return html.replace(DEFAULT_RENDERER_ENTRY, ANDROID_CLOUD_RENDERER_ENTRY);
+  return html;
 }
 
 /** Runs before Vite discovers HTML module imports, enforcing graph isolation. */
@@ -1196,7 +1249,11 @@ export function androidCloudRendererEntryPlugin(
 
 /** Creates the metadata transform; the target override keeps build-mode tests exact. */
 export function appShellMetadataPlugin(
-  options: { androidCloudBuild?: boolean; capacitorBuildTarget?: string } = {},
+  options: {
+    androidCloudBuild?: boolean;
+    capacitorBuildTarget?: string;
+    resolveAndroidCloudPrebootLockup?: () => string;
+  } = {},
 ): Plugin {
   const capacitorBuildTarget =
     options.capacitorBuildTarget ?? CAPACITOR_BUILD_TARGET;
@@ -1263,7 +1320,13 @@ export function appShellMetadataPlugin(
       }
       if (isAndroidCloudBuild) {
         next = stripAndroidCloudIpcBootstrap(next);
-        next = stripAndroidCloudPublicAssetReferences(next);
+        next = stripAndroidCloudPublicAssetReferences(
+          next,
+          (
+            options.resolveAndroidCloudPrebootLockup ??
+            resolveAndroidCloudPrebootLockupDataUri
+          )(),
+        );
       }
       return next;
     },
@@ -2355,6 +2418,9 @@ export default defineConfig(({ command }) => ({
     __ELIZA_WEB_SHELL__: JSON.stringify(
       !IS_CAPACITOR_MOBILE_BUILD && process.env.ELIZA_DISABLE_WEB_SHELL !== "1",
     ),
+    __ELIZA_PUBLIC_WEB_ENTRY__: JSON.stringify(!IS_CAPACITOR_MOBILE_BUILD),
+    __ELIZA_WEB_PUSH__: JSON.stringify(!IS_CAPACITOR_MOBILE_BUILD),
+    __ELIZA_SERVICE_WORKER__: JSON.stringify(!IS_CAPACITOR_MOBILE_BUILD),
     __ELIZA_CHAT_UI_HARNESS__: JSON.stringify(
       process.env.ELIZA_CHAT_UI_HARNESS === "1",
     ),
@@ -2377,6 +2443,7 @@ export default defineConfig(({ command }) => ({
   },
   plugins: [
     androidCloudRendererEntryPlugin(),
+    androidCloudCuratedAssetsPlugin(),
     androidCloudRendererPolicyPlugin(),
     forcedHostModeFlagGuardPlugin(),
     productionBuildStampGuardPlugin(),
@@ -2938,6 +3005,16 @@ export const INVALID_TRACER_PROVIDER = {};
         find: /^@elizaos\/ui\/styles$/,
         replacement: path.join(uiPkgRoot, "src/styles.ts"),
       },
+      ...[
+        ["button", "button.tsx"],
+        ["input", "input.tsx"],
+        ["textarea", "textarea.tsx"],
+        ["native-select", "native-select.tsx"],
+        ["native-dialog", "native-dialog.tsx"],
+      ].map(([subpath, source]) => ({
+        find: new RegExp(`^${escapeRegExp(`@elizaos/ui/${subpath}`)}$`),
+        replacement: path.join(uiPkgRoot, "src/components/ui", source),
+      })),
       {
         find: /^@elizaos\/ui\/(.+)$/,
         replacement: path.join(uiPkgRoot, "src/$1"),

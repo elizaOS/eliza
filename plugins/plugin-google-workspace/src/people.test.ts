@@ -36,7 +36,9 @@ function clientFor(fakes: PeopleApiFakes): {
       search: fakes.otherContactsSearch ?? vi.fn(async () => ({ data: {} })),
     },
   }));
-  const factory = { people: peopleFactory } as unknown as GoogleApiClientFactory;
+  const factory = {
+    people: peopleFactory,
+  } as unknown as GoogleApiClientFactory;
   return { client: new GooglePeopleClient(factory), peopleFactory };
 }
 
@@ -170,7 +172,9 @@ describe("searchContacts", () => {
     expect(searchContacts.mock.calls[1][0]).toMatchObject({ query: "ada" });
     expect(otherContactsSearch).toHaveBeenCalledTimes(2);
     expect(otherContactsSearch.mock.calls[0][0]).toMatchObject({ query: "" });
-    expect(otherContactsSearch.mock.calls[1][0]).toMatchObject({ query: "ada" });
+    expect(otherContactsSearch.mock.calls[1][0]).toMatchObject({
+      query: "ada",
+    });
   });
 
   it("merges saved contacts and Other Contacts with per-source tags", async () => {
@@ -179,7 +183,14 @@ describe("searchContacts", () => {
         results:
           params.query === ""
             ? []
-            : [{ person: { resourceName: "people/c1", names: [{ displayName: "Ada" }] } }],
+            : [
+                {
+                  person: {
+                    resourceName: "people/c1",
+                    names: [{ displayName: "Ada" }],
+                  },
+                },
+              ],
       },
     }));
     const otherContactsSearch = vi.fn(async (params: { query: string }) => ({
@@ -199,10 +210,16 @@ describe("searchContacts", () => {
     }));
     const { client } = clientFor({ searchContacts, otherContactsSearch });
 
-    const results = await client.searchContacts({ accountId: "acct-1", query: "a" });
+    const results = await client.searchContacts({
+      accountId: "acct-1",
+      query: "a",
+    });
 
     expect(results).toHaveLength(2);
-    expect(results[0]).toMatchObject({ resourceName: "people/c1", source: "contact" });
+    expect(results[0]).toMatchObject({
+      resourceName: "people/c1",
+      source: "contact",
+    });
     expect(results[1]).toMatchObject({
       resourceName: "otherContacts/o1",
       displayName: "other@example.com",
@@ -224,18 +241,54 @@ describe("searchContacts", () => {
     expect(otherContactsSearch).not.toHaveBeenCalled();
   });
 
-  it("clamps the requested page size to the People API search maximum of 30", async () => {
+  it("rejects a requested size above the provider maximum before dispatch", async () => {
     const searchContacts = vi.fn(async () => ({ data: { results: [] } }));
-    const { client } = clientFor({ searchContacts });
+    const { client, peopleFactory } = clientFor({ searchContacts });
 
-    await client.searchContacts({
+    await expect(
+      client.searchContacts({
+        accountId: "acct-1",
+        query: "ada",
+        maxResults: 500,
+        includeOtherContacts: false,
+      })
+    ).rejects.toMatchObject({ code: "GOOGLE_PEOPLE_SEARCH_LIMIT_UNSUPPORTED" });
+
+    expect(peopleFactory).not.toHaveBeenCalled();
+    expect(searchContacts).not.toHaveBeenCalled();
+  });
+
+  it("keeps all results returned by both provider search surfaces by default", async () => {
+    const saved = Array.from({ length: 30 }, (_, index) => ({
+      person: {
+        resourceName: `people/c${index}`,
+        names: [{ displayName: `Saved ${index}` }],
+      },
+    }));
+    const others = Array.from({ length: 30 }, (_, index) => ({
+      person: {
+        resourceName: `otherContacts/o${index}`,
+        names: [{ displayName: `Other ${index}` }],
+      },
+    }));
+    const searchContacts = vi.fn(async (params: { query: string }) => ({
+      data: { results: params.query ? saved : [] },
+    }));
+    const otherContactsSearch = vi.fn(async (params: { query: string }) => ({
+      data: { results: params.query ? others : [] },
+    }));
+    const { client } = clientFor({ searchContacts, otherContactsSearch });
+
+    const results = await client.searchContacts({
       accountId: "acct-1",
-      query: "ada",
-      maxResults: 500,
-      includeOtherContacts: false,
+      query: "person",
     });
 
+    expect(results).toHaveLength(60);
     expect(searchContacts.mock.calls[1][0]).toMatchObject({ pageSize: 30 });
+    expect(otherContactsSearch.mock.calls[1][0]).toMatchObject({
+      pageSize: 30,
+    });
   });
 });
 
@@ -244,9 +297,15 @@ describe("getContact", () => {
     const get = vi.fn(async () => ({ data: RICH_PERSON }));
     const { client, peopleFactory } = clientFor({ get });
 
-    const contact = await client.getContact({ accountId: "acct-1", resourceName: "people/c1" });
+    const contact = await client.getContact({
+      accountId: "acct-1",
+      resourceName: "people/c1",
+    });
 
-    expect(contact).toMatchObject({ resourceName: "people/c1", source: "contact" });
+    expect(contact).toMatchObject({
+      resourceName: "people/c1",
+      source: "contact",
+    });
     expect(get).toHaveBeenCalledWith(expect.objectContaining({ resourceName: "people/c1" }));
     expect(peopleFactory).toHaveBeenCalledWith(
       expect.objectContaining({ accountId: "acct-1" }),

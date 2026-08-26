@@ -371,7 +371,7 @@ export function StreamingPermissionsSettingsView({
                     )}
                     variant={getBadgeTone(status)}
                     withDot
-                    className="rounded-full font-semibold"
+                    presentation="pill"
                   />
                 </span>
               }
@@ -380,8 +380,7 @@ export function StreamingPermissionsSettingsView({
                 !isGranted ? (
                   <Button
                     variant="surfaceAccent"
-                    size="sm"
-                    className="h-11 text-xs-tight"
+                    size="touch"
                     disabled={isRequesting}
                     onClick={() => void requestPermission(def.id)}
                     aria-label={`${translateWithFallback(t, "permissionssection.Grant", "Grant")} ${name}`}

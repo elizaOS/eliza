@@ -50,7 +50,6 @@ jobs:
               - 'packages/elizaresearch/**'
               - 'packages/evidence/**'
               - 'packages/native/**'
-              - 'packages/os-homepage/**'
               - 'packages/registry/**'
               - 'packages/robot/**'
               - 'packages/scenario-runner/**'

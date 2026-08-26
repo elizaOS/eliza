@@ -121,31 +121,19 @@ describe("MESSAGE op=send exact-beats-prefix tier (ambiguity over-fire fix)", ()
 		expect(sends[0].target).toMatchObject({ channelId: "dm-shadow" });
 	});
 
-	it("two exact matches remain genuinely ambiguous — asks instead of guessing", async () => {
-		const { runtime, sends } = harness([
-			{
-				target: {
-					source: "discord",
-					channelId: "dm-shadow-1",
-					entityId: "111",
-				},
-				label: "shadow",
-				kind: "user",
-				score: 0.95,
-				contexts: [],
+	it("returns every exact ambiguous match instead of a hidden candidate window", async () => {
+		const matches = Array.from({ length: 12 }, (_, index) => ({
+			target: {
+				source: "discord",
+				channelId: `dm-shadow-${index}`,
+				entityId: String(index),
 			},
-			{
-				target: {
-					source: "discord",
-					channelId: "dm-shadow-2",
-					entityId: "222",
-				},
-				label: "shadow",
-				kind: "user",
-				score: 0.95,
-				contexts: [],
-			},
-		]);
+			label: "shadow",
+			kind: "user",
+			score: 0.95,
+			contexts: [],
+		}));
+		const { runtime, sends } = harness(matches);
 		const result = await send(runtime, {
 			target: "shadow",
 			targetKind: "user",
@@ -154,6 +142,9 @@ describe("MESSAGE op=send exact-beats-prefix tier (ambiguity over-fire fix)", ()
 
 		expect(result.success).toBe(false);
 		expect((result.data as { error?: string })?.error).toBe("TARGET_AMBIGUOUS");
+		expect(
+			(result.data as { candidates?: unknown[] })?.candidates,
+		).toHaveLength(12);
 		expect(sends).toHaveLength(0);
 	});
 });

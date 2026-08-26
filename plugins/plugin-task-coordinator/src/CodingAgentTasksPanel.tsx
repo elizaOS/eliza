@@ -1,10 +1,10 @@
+import { Button } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { ApiError, client } from "@elizaos/ui/api";
 import type {
   CodingAgentTaskThread,
   CodingAgentTaskThreadDetail,
 } from "@elizaos/ui/api/client-types-cloud";
-import { Button } from "@elizaos/ui/components/ui/button";
 import { useAppSelectorShallow } from "@elizaos/ui/state";
 import { Archive, Bot, ListChecks, Terminal } from "lucide-react";
 import {
@@ -952,17 +952,14 @@ export function CodingAgentTasksPanel({
             agentProps={searchAgentProps}
           />
           <Button
-            unstyled
+            variant="choice"
+            size="compact"
+            data-state={showArchived ? "on" : "off"}
             ref={archivedRef}
             type="button"
             onClick={() => setShowArchived((value) => !value)}
             aria-pressed={showArchived}
             data-testid="task-show-archived"
-            className={`inline-flex h-9 min-h-11 items-center gap-2 rounded-xl border px-3 text-xs font-medium transition-colors ${
-              showArchived
-                ? "border-accent/40 bg-accent-subtle text-accent"
-                : "border-border/50 bg-bg-accent/30 text-muted hover:text-txt"
-            }`}
             {...archivedAgentProps}
           >
             <Archive className="size-3.5" />

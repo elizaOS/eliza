@@ -86,7 +86,7 @@ export function BillingSectionBody() {
   return (
     <ConditionalWalletProviders>
       {wasCheckoutCanceled() ? (
-        <div className="mb-4 border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+        <div className="mb-4 border border-destructive/40 bg-destructive-subtle px-4 py-3 text-sm text-destructive">
           {t("cloud.billing.paymentCanceled", {
             defaultValue: "Payment canceled. No charges were made.",
           })}

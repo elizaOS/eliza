@@ -197,6 +197,7 @@ import {
   renderDeterministicVerdict,
 } from "./producible-evidence.js";
 import {
+  assertProjectIdRegistered,
   resolveBoundProjectCloudAppId,
   resolveTaskProjectId,
   resolveTaskSpawnWorkdir,
@@ -3529,6 +3530,7 @@ export class OrchestratorTaskService extends Service {
    * binding.
    */
   private bindProject(input: CreateTaskInput): CreateTaskInput {
+    assertProjectIdRegistered(input.projectId);
     const projectId = resolveTaskProjectId(input);
     const { workdir: _workdir, ...rest } = input;
     const worldId =
@@ -3619,6 +3621,7 @@ export class OrchestratorTaskService extends Service {
   async getTask(taskId: string): Promise<TaskThreadDetailDto | null> {
     const doc = await this.store.getTask(taskId);
     if (!doc) return null;
+    assertProjectIdRegistered(doc.task.projectId);
     return this.withAdmissionPosition(toTaskThreadDetail(doc));
   }
 

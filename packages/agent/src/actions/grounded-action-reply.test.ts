@@ -1,27 +1,18 @@
 /**
  * Covers the grounded-action-reply helpers against the real State-mining and
  * reply-rendering path: action-result extraction from every candidate queue,
- * complete recent-history serialization, trajectory propagation, and explicit
+ * complete recent-history serialization and explicit
  * model/context failure behavior. Runtime doubles stand in for IAgentRuntime;
  * the module under test is not mocked.
  */
 import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
-import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   extractActionResultsFromState,
   renderGroundedActionReply,
-  summarizeActiveTrajectory,
   summarizeRecentActionHistory,
 } from "./grounded-action-reply.ts";
-
-const { loadTrajectoryByStepId } = vi.hoisted(() => ({
-  loadTrajectoryByStepId: vi.fn(),
-}));
-
-vi.mock("../runtime/trajectory-internals.ts", () => ({
-  loadTrajectoryByStepId,
-}));
 
 function stateFrom(data: Record<string, unknown>): State {
   return { data } as unknown as State;
@@ -111,7 +102,6 @@ async function renderWith(options: {
 }
 
 afterEach(() => {
-  loadTrajectoryByStepId.mockReset();
   vi.restoreAllMocks();
 });
 
@@ -435,83 +425,6 @@ describe("summarizeRecentActionHistory", () => {
   });
 });
 
-describe("summarizeActiveTrajectory", () => {
-  it("returns null when no trajectory step is active", async () => {
-    expect(await summarizeActiveTrajectory({} as IAgentRuntime)).toBeNull();
-  });
-
-  it("rejects when the loader returns nothing or throws", async () => {
-    loadTrajectoryByStepId.mockResolvedValueOnce(null);
-    await expect(
-      runWithTrajectoryContext({ trajectoryStepId: "step-missing" }, () =>
-        summarizeActiveTrajectory({ agentId: "agent-1" } as IAgentRuntime),
-      ),
-    ).rejects.toMatchObject({ code: "GROUNDED_REPLY_TRAJECTORY_UNAVAILABLE" });
-
-    loadTrajectoryByStepId.mockRejectedValueOnce(new Error("db down"));
-    await expect(
-      runWithTrajectoryContext({ trajectoryStepId: "step-throw" }, () =>
-        summarizeActiveTrajectory({} as IAgentRuntime),
-      ),
-    ).rejects.toMatchObject({ code: "GROUNDED_REPLY_TRAJECTORY_UNAVAILABLE" });
-  });
-
-  it("formats an empty step list with the plural", async () => {
-    loadTrajectoryByStepId.mockResolvedValue({
-      id: "traj-empty",
-      steps: [],
-    });
-    const summary = await runWithTrajectoryContext(
-      { trajectoryStepId: "step-empty" },
-      () => summarizeActiveTrajectory({} as IAgentRuntime),
-    );
-    expect(summary).toBe('{"id":"traj-empty","steps":[]}');
-  });
-
-  it("uses singular step, latest llm purpose, and non-empty providers", async () => {
-    loadTrajectoryByStepId.mockResolvedValue({
-      id: "traj-one",
-      steps: [
-        {
-          llmCalls: [{ purpose: "plan" }, { purpose: "reply" }],
-          providerAccesses: [
-            { providerName: "TIME" },
-            { providerName: "  " },
-            { providerName: 12 },
-            { providerName: "ACTION_STATE" },
-          ],
-        },
-      ],
-    });
-    const summary = await runWithTrajectoryContext(
-      { trajectoryStepId: "step-one" },
-      () => summarizeActiveTrajectory({} as IAgentRuntime),
-    );
-    expect(summary).toBe(
-      '{"id":"traj-one","steps":[{"llmCalls":[{"purpose":"plan"},{"purpose":"reply"}],"providerAccesses":[{"providerName":"TIME"},{"providerName":"  "},{"providerName":12},{"providerName":"ACTION_STATE"}]}]}',
-    );
-  });
-
-  it("uses the last step of a multi-step trajectory and omits empty purpose/providers", async () => {
-    loadTrajectoryByStepId.mockResolvedValue({
-      id: "traj-two",
-      steps: [
-        {
-          llmCalls: [{ purpose: "stale" }],
-          providerAccesses: [{ providerName: "OLD" }],
-        },
-        { llmCalls: [], providerAccesses: [] },
-      ],
-    });
-    const summary = await runWithTrajectoryContext(
-      { trajectoryStepId: "step-two" },
-      () => summarizeActiveTrajectory({} as IAgentRuntime),
-    );
-    expect(summary).toContain('"id":"traj-two"');
-    expect(summary).toContain('"providerName":"OLD"');
-  });
-});
-
 describe("renderGroundedActionReply", () => {
   it("returns the fallback when useModel is missing", async () => {
     const { reply } = await renderWith({
@@ -668,6 +581,7 @@ describe("renderGroundedActionReply", () => {
     });
     expect(prompt).toContain("Complete action history:");
     expect(prompt).toContain("added milk");
+    expect(prompt).not.toContain("Active trajectory");
   });
 
   it("preserves repeated storage and provider-state turns in the grounded prompt", async () => {

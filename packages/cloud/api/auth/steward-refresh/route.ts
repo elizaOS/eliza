@@ -140,20 +140,77 @@ interface StewardRefreshErr {
   code?: string;
 }
 
+interface StewardRefreshRequestContext {
+  clientIp?: string;
+  origin?: string;
+  userAgent?: string;
+}
+
+function stewardRefreshRequestContext(
+  c: {
+    req: { url: string; header: (name: string) => string | undefined };
+  },
+  isProduction: boolean,
+): StewardRefreshRequestContext {
+  // Cloudflare owns cf-connecting-ip at the edge. Prefer it over caller-
+  // supplied forwarding headers so Steward's per-client auth limiter cannot
+  // be bypassed by spoofing X-Forwarded-For. A forwarding-header fallback is
+  // accepted only on a direct loopback request, where the caller already owns
+  // the local listener and the cookie path remains origin/CSRF gated.
+  const hostname = new URL(c.req.url).hostname.toLowerCase();
+  const isLoopback =
+    hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  const edgeClientIp = c.req.header("cf-connecting-ip")?.trim();
+  const localClientIp =
+    !isProduction && isLoopback
+      ? c.req.header("x-real-ip")?.trim() ||
+        c.req.header("x-forwarded-for")?.split(",")[0]?.trim()
+      : undefined;
+  const clientIp = edgeClientIp || localClientIp || undefined;
+  return {
+    ...(clientIp ? { clientIp } : {}),
+    ...(c.req.header("origin")?.trim()
+      ? { origin: c.req.header("origin")?.trim() }
+      : {}),
+    ...(c.req.header("user-agent")?.trim()
+      ? { userAgent: c.req.header("user-agent")?.trim() }
+      : {}),
+  };
+}
+
 async function callStewardRefresh(
   baseUrl: string,
   refreshToken: string,
   pinnedTenantId?: string,
   signingSecret?: string,
+  requestContext: StewardRefreshRequestContext = {},
 ): Promise<
   | { kind: "ok"; data: StewardRefreshOk }
-  | { kind: "error"; status: number; data: StewardRefreshErr }
+  | {
+      kind: "error";
+      status: number;
+      data: StewardRefreshErr;
+      retryAfter: string | null;
+      responseKind: "json" | "non-json";
+    }
   | { kind: "transport"; message: string }
 > {
   const headers = new Headers({
     "Content-Type": "application/json",
     Accept: "application/json",
   });
+  // Preserve the real browser identity across the direct Cloud -> Steward
+  // hop. Without this, every Cloud refresh is bucketed under the shared
+  // Worker/Railway egress IP and unrelated users can throttle each other.
+  // Never forward inbound Cookie or Authorization headers: the refresh token
+  // is carried only in the signed JSON body below.
+  if (requestContext.clientIp) {
+    headers.set("X-Forwarded-For", requestContext.clientIp);
+  }
+  if (requestContext.origin) headers.set("Origin", requestContext.origin);
+  if (requestContext.userAgent) {
+    headers.set("User-Agent", requestContext.userAgent);
+  }
   // Pin the tenant per-env: this route bypasses the /steward/* proxy in
   // bootstrap-app.ts and would otherwise hit Steward without scoping,
   // letting a staging refresh land against the prod tenant.
@@ -206,10 +263,15 @@ async function callStewardRefresh(
     return {
       kind: "error",
       status: response.status,
-      data: (parsed as StewardRefreshErr) ?? {
-        ok: false,
-        error: text || "Steward refresh failed",
-      },
+      data:
+        parsed && parsed.ok === false
+          ? (parsed as StewardRefreshErr)
+          : {
+              ok: false,
+              error: "Steward refresh failed",
+            },
+      retryAfter: response.headers.get("retry-after"),
+      responseKind: parsed ? "json" : "non-json",
     };
   }
   return { kind: "ok", data: parsed };
@@ -317,6 +379,7 @@ app.post("/", async (c) => {
     refreshToken,
     c.env.STEWARD_TENANT_ID,
     c.env.STEWARD_REQUEST_SIGNING_SECRET,
+    stewardRefreshRequestContext(c, isProduction),
   );
 
   if (refresh.kind === "transport") {
@@ -332,6 +395,13 @@ app.post("/", async (c) => {
 
   if (refresh.kind === "error") {
     logRefresh(`upstream-${refresh.status}`);
+    if (refresh.status !== 401) {
+      logger.warn("[steward-refresh] upstream rejected refresh", {
+        upstreamStatus: refresh.status,
+        responseKind: refresh.responseKind,
+        retryAfterPresent: refresh.retryAfter !== null,
+      });
+    }
     // Steward 401s BOTH for a genuinely dead token AND for the loser of a
     // refresh-token ROTATION RACE: tokens are single-use and two tabs on the
     // same host can fire their 15-min timers together — the second request
@@ -345,6 +415,16 @@ app.post("/", async (c) => {
     // terminal UX, one extra failed call, no domain-wide nuke.
     if (refresh.status === 401) {
       return c.json(errorBody("Refresh token rejected", "invalid_token"), 401);
+    }
+    if (refresh.status === 429) {
+      return c.json(
+        errorBody(
+          "Too many refresh attempts. Wait a moment and try again.",
+          "internal_error",
+        ),
+        429,
+        refresh.retryAfter ? { "Retry-After": refresh.retryAfter } : undefined,
+      );
     }
     return c.json(
       errorBody(refresh.data.error || "Refresh failed", "internal_error"),

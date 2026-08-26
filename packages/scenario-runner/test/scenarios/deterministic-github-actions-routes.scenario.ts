@@ -720,7 +720,7 @@ function expectGithubNotificationTriage(
   }
   for (const [path, expected] of Object.entries({
     "data.totalUnread": 2,
-    "data.notificationLimit": 25,
+    "data.notificationLimit": null,
     "data.notifications.0.id": "n-security",
     "data.notifications.0.reason": "security_advisory",
     "data.notifications.1.id": "n-comment",

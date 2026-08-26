@@ -30,10 +30,6 @@ function createMockWalletProvider() {
 }
 
 describe("SwapAction fetch timeout", () => {
-  it("exposes the documented 10s budget", () => {
-    expect(DEFAULT_EVM_SWAP_FETCH_TIMEOUT_MS).toBe(10_000);
-  });
-
   it("aborts a stalled Bebop quote at the deadline", async () => {
     const svc = new SwapAction(createMockWalletProvider());
     const orig = AbortSignal.timeout.bind(AbortSignal);

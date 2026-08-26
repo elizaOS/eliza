@@ -111,6 +111,7 @@ type ConversationRequest =
       token: string;
       leaseMs: number;
       organizationId: string;
+      userId: string;
       dedicatedAgentId: string;
     }
   | { operation: "cutover-release"; token: string }
@@ -234,8 +235,10 @@ interface StoredCutoverSeal {
   expiresAt: number;
   committed: boolean;
   organizationId?: string;
+  userId?: string;
   sourceAgentId?: string;
   dedicatedAgentId?: string;
+  recoveryBlocked?: true;
 }
 
 interface StoredProvisionalConvergenceSeal {
@@ -869,7 +872,6 @@ export class SharedRuntimeConversation {
           snapshot.agentId,
           snapshot.channelId,
           completeHistory,
-          Number.MAX_SAFE_INTEGER,
         );
         // The caller purges Postgres before dispatching the DO delete. A merge
         // already in flight can therefore finish after that purge. Re-check
@@ -1014,13 +1016,8 @@ export class SharedRuntimeConversation {
   ): Promise<SharedTurnMessage[]> {
     const archived = await this.loadArchivedHistory();
     return mergeSharedRuntimeHistoryMessages(
-      mergeSharedRuntimeHistoryMessages(
-        archived,
-        current.recall ?? [],
-        Number.MAX_SAFE_INTEGER,
-      ),
+      mergeSharedRuntimeHistoryMessages(archived, current.recall ?? []),
       current.history,
-      Number.MAX_SAFE_INTEGER,
     );
   }
 
@@ -1037,7 +1034,6 @@ export class SharedRuntimeConversation {
         return mergeSharedRuntimeHistoryMessages(
           await this.loadCompleteHistory(current),
           this.pendingHistory.get(pendingKey(agentId, channelId)) ?? [],
-          Number.MAX_SAFE_INTEGER,
         );
       },
       stagePending: (agentId, channelId, messages) => {
@@ -1047,7 +1043,6 @@ export class SharedRuntimeConversation {
           mergeSharedRuntimeHistoryMessages(
             this.pendingHistory.get(key) ?? [],
             messages,
-            Number.MAX_SAFE_INTEGER,
           ),
         );
         this.pendingHistoryCheckpoint = this.pendingHistoryCheckpoint.then(
@@ -1068,10 +1063,8 @@ export class SharedRuntimeConversation {
           mergeSharedRuntimeHistoryMessages(
             await this.loadCompleteHistory(current),
             pending,
-            Number.MAX_SAFE_INTEGER,
           ),
           messages,
-          Number.MAX_SAFE_INTEGER,
         );
         const retained = boundSnapshotHistory(
           merged.slice(-MAX_SNAPSHOT_MESSAGES),
@@ -1172,19 +1165,31 @@ export class SharedRuntimeConversation {
     if (seal.organizationId && seal.sourceAgentId && seal.dedicatedAgentId) {
       const organizationId = seal.organizationId;
       const sourceAgentId = seal.sourceAgentId;
-      const active = await this.runWithBindings(async () => {
-        const { findActivePersonalDedicatedTarget } = await import(
+      const recovery = await this.runWithBindings(async () => {
+        const { resolvePersonalDedicatedCutoverRecovery } = await import(
           "@/lib/services/agent-tier-upgrade-target"
         );
-        return await findActivePersonalDedicatedTarget(
+        return await resolvePersonalDedicatedCutoverRecovery({
           organizationId,
+          ...(seal.userId ? { userId: seal.userId } : {}),
           sourceAgentId,
-        );
+          dedicatedAgentId: seal.dedicatedAgentId!,
+        });
       });
-      if (active?.id === seal.dedicatedAgentId) {
-        const recovered = { ...seal, committed: true };
+      if (recovery.state === "committed") {
+        const recovered = {
+          ...seal,
+          userId: recovery.userId,
+          committed: true,
+          recoveryBlocked: undefined,
+        };
         await this.state.storage.put(CUTOVER_SEAL_KEY, recovered);
         return recovered;
+      }
+      if (recovery.state === "conflict") {
+        const blocked = { ...seal, recoveryBlocked: true as const };
+        await this.state.storage.put(CUTOVER_SEAL_KEY, blocked);
+        return blocked;
       }
     }
     await this.state.storage.delete(CUTOVER_SEAL_KEY);
@@ -1742,6 +1747,7 @@ export class SharedRuntimeConversation {
         expiresAt: Date.now() + payload.leaseMs,
         committed: existing?.committed ?? false,
         organizationId: payload.organizationId,
+        userId: payload.userId,
         sourceAgentId: payload.agentId,
         dedicatedAgentId: payload.dedicatedAgentId,
       };
@@ -1775,7 +1781,11 @@ export class SharedRuntimeConversation {
     }
     if (payload.operation === "cutover-commit") {
       const existing = await this.activeCutoverSeal();
-      if (!existing || existing.token !== payload.token) {
+      if (
+        !existing ||
+        existing.token !== payload.token ||
+        existing.recoveryBlocked
+      ) {
         return Response.json(
           { success: false, code: "personal_cutover_seal_lost" },
           { status: 409 },
@@ -1909,7 +1919,13 @@ export class SharedRuntimeConversation {
             }
           : undefined,
       });
-      return Response.json(result);
+      const response = Response.json(result);
+      // A bridge result is complete before this response exists. Releasing the
+      // room here avoids coupling later turns to whether a nested Worker fetch
+      // happens to pull the small JSON body promptly; only live SSE streams
+      // need to retain serialization until their body is consumed.
+      response.headers.set(RELEASE_QUEUE_BEFORE_BODY_HEADER, "before-body");
+      return response;
     });
   }
 

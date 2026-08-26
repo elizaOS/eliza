@@ -15,10 +15,8 @@
  * same structure but the control differs.
  */
 
-import { Circle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, api, apiFetch } from "../../../../cloud/lib/api-client";
-import { cn } from "../../../../lib/utils";
 import { useAppSelector } from "../../../../state";
 import { Button } from "../../../ui/button";
 import { useDesktopPermissionsState } from "../../permission-controls.hooks";
@@ -30,28 +28,7 @@ import {
   SettingsGroup,
   SettingsStack,
 } from "../cloud-settings-primitives";
-
-/* ── Shared status badge ────────────────────────────────────────── */
-
-function StatusBadge({ granted }: { granted: boolean }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 text-[13px] font-medium",
-        granted ? "text-success" : "text-muted-foreground",
-      )}
-    >
-      <Circle
-        className={cn(
-          "size-2 fill-current",
-          granted ? "text-success" : "text-muted-foreground",
-        )}
-        aria-hidden
-      />
-      {granted ? "Granted" : "Not granted"}
-    </span>
-  );
-}
+import { PermissionStatusBadge } from "./permission-status-badge";
 
 /* ── Device permissions ─────────────────────────────────────────── */
 
@@ -109,7 +86,7 @@ function DevicePermissionRow({
       description={def.description}
       control={
         <span className="flex items-center gap-3">
-          <StatusBadge granted={granted} />
+          <PermissionStatusBadge granted={granted} />
           {granted ? (
             <Button variant="outline" size="sm" onClick={onOpenSettings}>
               Open
@@ -285,7 +262,7 @@ function CloudPluginGrantsGroup() {
               .join(" · ")}
             control={
               <span className="flex items-center gap-3">
-                <StatusBadge granted />
+                <PermissionStatusBadge granted />
                 <DestructiveSecondaryButton
                   size="sm"
                   disabled={revoking === grant.grant_id}

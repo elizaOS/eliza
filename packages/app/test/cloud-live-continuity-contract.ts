@@ -354,6 +354,7 @@ const NAMED_WARMING_CODES = new Set([
 ]);
 const MAX_WARMING_RESPONSE_BYTES = 4 * 1024;
 const MAX_HISTORY_RESPONSE_BYTES = 1024 * 1024;
+const RESPONSE_BODY_AUDIT_TIMEOUT_MS = 30_000;
 
 function isJsonContentType(contentType: string | null | undefined): boolean {
   return (
@@ -361,18 +362,50 @@ function isJsonContentType(contentType: string | null | undefined): boolean {
   );
 }
 
+/**
+ * Keeps diagnostic body inspection subordinate to the browser trajectory's
+ * phase deadline. Playwright can report response headers while its body promise
+ * remains pending forever; awaiting that promise directly would prevent the
+ * surrounding `expect.poll` timeout from ever adjudicating the real UI proof.
+ */
+export async function readCloudLiveBoundedResponseBody(
+  responseBody: CloudLiveBoundedResponseBody,
+  maxBytes: number,
+  timeoutMs = RESPONSE_BODY_AUDIT_TIMEOUT_MS,
+): Promise<Uint8Array | null> {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
+    fail("response body byte budget must be a positive safe integer");
+  }
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
+    fail("response body timeout must be a positive safe integer");
+  }
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const bytes = await Promise.race([
+      responseBody.read(maxBytes).catch(() => null),
+      new Promise<null>((resolveTimeout) => {
+        timeoutId = setTimeout(resolveTimeout, timeoutMs, null);
+      }),
+    ]);
+    if (!bytes || bytes.byteLength === 0 || bytes.byteLength > maxBytes) {
+      return null;
+    }
+    return bytes;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function isNamedWarmingResponse(
   responseBody: CloudLiveBoundedResponseBody,
 ): Promise<boolean> {
   if (!isJsonContentType(responseBody.contentType)) return false;
-  const bytes = await responseBody.read(MAX_WARMING_RESPONSE_BYTES);
-  if (
-    !bytes ||
-    bytes.byteLength === 0 ||
-    bytes.byteLength > MAX_WARMING_RESPONSE_BYTES
-  ) {
-    return false;
-  }
+  const bytes = await readCloudLiveBoundedResponseBody(
+    responseBody,
+    MAX_WARMING_RESPONSE_BYTES,
+  );
+  if (!bytes) return false;
   try {
     const parsed = JSON.parse(
       new TextDecoder("utf-8", { fatal: true }).decode(bytes),
@@ -405,14 +438,11 @@ async function inspectHistoryAnchor(
   };
   if (!isJsonContentType(responseBody.contentType)) return unavailable;
   try {
-    const bytes = await responseBody.read(MAX_HISTORY_RESPONSE_BYTES);
-    if (
-      !bytes ||
-      bytes.byteLength === 0 ||
-      bytes.byteLength > MAX_HISTORY_RESPONSE_BYTES
-    ) {
-      return unavailable;
-    }
+    const bytes = await readCloudLiveBoundedResponseBody(
+      responseBody,
+      MAX_HISTORY_RESPONSE_BYTES,
+    );
+    if (!bytes) return unavailable;
     const parsed = JSON.parse(
       new TextDecoder("utf-8", { fatal: true }).decode(bytes),
     ) as unknown;

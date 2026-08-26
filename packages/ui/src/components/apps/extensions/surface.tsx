@@ -7,6 +7,7 @@
 
 import type React from "react";
 import type { AppRunSummary } from "../../../api";
+import { StatusBadge, type StatusTone } from "../../ui/status-badge";
 
 export type SurfaceTone = "neutral" | "accent" | "success" | "warn" | "danger";
 
@@ -37,13 +38,14 @@ export function SurfaceBadge({
   children: React.ReactNode;
   tone?: SurfaceTone;
 }) {
-  return (
-    <span
-      className={`inline-flex min-h-6 items-center px-1.5 py-1 text-2xs font-medium ${toneClassName(tone)}`}
-    >
-      {children}
-    </span>
-  );
+  const statusTone: Record<SurfaceTone, StatusTone> = {
+    neutral: "muted",
+    accent: "info",
+    success: "success",
+    warn: "warning",
+    danger: "danger",
+  };
+  return <StatusBadge label={children} tone={statusTone[tone]} />;
 }
 
 export function SurfaceCard({

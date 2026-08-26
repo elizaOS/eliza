@@ -26,6 +26,7 @@ import {
   isIosNativeAgentBootInProgress,
   isTerminalIosNativeAgentBootErrorMessage,
 } from "../api/ios-local-agent-transport";
+import { isPasswordAuthTransportConfidential } from "../api/password-auth-transport-policy";
 import { getBackendStartupTimeoutMs } from "../bridge";
 import { resumePendingCloudHandoff } from "../cloud/handoff/resume-pending-handoff";
 import {
@@ -780,6 +781,20 @@ export async function runPollingBackend(
           deps.setFirstRunComplete(false);
           deps.setFirstRunLoading(false);
           dispatch({ type: "BACKEND_REACHED", firstRunComplete: false });
+          return;
+        }
+        // A configured owner password is a supported path forward only when it
+        // cannot cross a plaintext remote network. Runtime URL trust allows
+        // explicit LAN/Tailscale targets for short-lived pairing, but that is
+        // not channel confidentiality for a reusable OWNER credential.
+        if (
+          auth.passwordConfigured === true &&
+          isPasswordAuthTransportConfidential(client.getBaseUrl())
+        ) {
+          deps.setAuthRequired(false);
+          deps.setFirstRunComplete(true);
+          deps.setFirstRunLoading(false);
+          dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
           return;
         }
         // A stale remote that requires auth but has pairing DISABLED is a hard

@@ -110,12 +110,23 @@ function scoreText(text: string, query: string): number {
   return whole + matches / terms.length;
 }
 
+function searchableMemoryText(memory: Memory): string {
+  const text = memory.content.text ?? "";
+  const attachments = (memory.content.attachments ?? []).map((attachment) => {
+    const label =
+      attachment.filename ?? attachment.title ?? attachment.id ?? "attachment";
+    const mediaType = attachment.mimeType ?? attachment.contentType;
+    const readableContent = attachment.text ?? attachment.description;
+    return `[attachment: ${label}${mediaType ? `; ${mediaType}` : ""}${readableContent ? `; ${readableContent}` : ""}]`;
+  });
+  return [text, ...attachments].filter(Boolean).join(" ");
+}
+
 function toListItem(memory: Memory, type: MemoryType): MemoryListItem {
-  const content = memory.content as Record<string, unknown> | undefined;
   return {
     id: memory.id ?? "",
     type,
-    text: (content?.text as string) ?? "",
+    text: searchableMemoryText(memory),
     entityId: memory.entityId,
     roomId: memory.roomId,
     agentId: memory.agentId ?? null,
@@ -399,8 +410,7 @@ async function collectCandidates(
   }
 
   let filtered = collected.filter((c) => {
-    const text = (c.memory.content as { text?: string } | undefined)?.text;
-    return typeof text === "string" && text.trim().length > 0;
+    return searchableMemoryText(c.memory).trim().length > 0;
   });
 
   if (scope.entityId) {
@@ -415,15 +425,20 @@ async function collectCandidates(
   if (scope.query) {
     const query = scope.query;
     filtered = filtered.filter((c) => {
-      const text =
-        (c.memory.content as { text?: string } | undefined)?.text ?? "";
-      return scoreText(text, query) > 0;
+      return scoreText(searchableMemoryText(c.memory), query) > 0;
     });
   }
 
-  filtered.sort(
-    (a, b) => (b.memory.createdAt ?? 0) - (a.memory.createdAt ?? 0),
-  );
+  filtered.sort((a, b) => {
+    if (scope.query) {
+      const leftText = searchableMemoryText(a.memory);
+      const rightText = searchableMemoryText(b.memory);
+      const relevance =
+        scoreText(rightText, scope.query) - scoreText(leftText, scope.query);
+      if (relevance !== 0) return relevance;
+    }
+    return (b.memory.createdAt ?? 0) - (a.memory.createdAt ?? 0);
+  });
   return { matches: filtered, tables, scanned: collected.length };
 }
 
@@ -487,13 +502,15 @@ async function doSearch(
   // The text projection carries enough of each hit for model reasoning; the
   // complete records remain machine data for state and trajectory consumers.
   const lines = items.map(
-    (m) => `- [${m.type}] ${m.id}: ${toWellFormedUnicode(m.text)}`,
+    (m) =>
+      `- [${m.type}] ${m.id} at ${new Date(m.createdAt).toISOString()}: ${toWellFormedUnicode(m.text)}`,
   );
   const userFacingText = items.length
     ? [
         `I found ${items.length} matching memory record(s):`,
         ...items.map(
-          (item) => `- [${item.type}] ${toWellFormedUnicode(item.text)}`,
+          (item) =>
+            `- [${item.type}] at ${new Date(item.createdAt).toISOString()}: ${toWellFormedUnicode(item.text)}`,
         ),
       ].join("\n")
     : undefined;
@@ -542,13 +559,17 @@ async function doSearch(
 
 async function doUpdate(
   runtime: IAgentRuntime,
+  message: Memory,
   params: MemoryParams,
 ): Promise<ActionResult> {
   const memoryParam = parseUuidParam(params.memoryId, "memoryId");
   if (!memoryParam.ok) return memoryParam.result;
   const memoryId = memoryParam.id;
+  const query = params.query?.trim();
   const text = typeof params.text === "string" ? params.text.trim() : "";
-  if (!memoryId) return fail("memoryId is required.", "MEMORY_MISSING_ID");
+  if (!memoryId && !query) {
+    return fail("memoryId or query is required.", "MEMORY_MISSING_ID");
+  }
   if (!text) return fail("text is required.", "MEMORY_MISSING_TEXT");
   if (params.confirm !== true) {
     return fail(
@@ -557,38 +578,101 @@ async function doUpdate(
     );
   }
 
-  const existing = await runtime.getMemoryById(memoryId);
-  if (!existing) {
-    return fail(`Memory ${memoryId} was not found.`, "MEMORY_NOT_FOUND");
-  }
-
-  const existingContent =
-    (existing.content as Record<string, unknown> | undefined) ?? {};
-  const nextContent = { ...existingContent, text };
-
-  const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, { text });
-  if (!Array.isArray(embedding) || embedding.length === 0) {
-    return fail(
-      "Embedding model returned no vector.",
-      "MEMORY_EMBEDDING_FAILED",
+  let existingMemories: Memory[];
+  if (memoryId) {
+    const existing = await runtime.getMemoryById(memoryId);
+    if (!existing) {
+      return fail(`Memory ${memoryId} was not found.`, "MEMORY_NOT_FOUND");
+    }
+    existingMemories = [existing];
+  } else {
+    const scan = await collectCandidates(runtime, {
+      type:
+        params.type && MEMORY_TYPES.includes(params.type)
+          ? params.type
+          : undefined,
+      entityId: message.entityId,
+      query,
+    });
+    const matched = scan.matches.filter((candidate) => {
+      const candidateText =
+        (candidate.memory.content as { text?: string } | undefined)?.text ?? "";
+      return scoreText(candidateText, query ?? "") >= 1;
+    });
+    if (matched.length === 0) {
+      return fail(
+        `No stored memory matches "${query}". ${describeCompleteScan(scan)}`,
+        "MEMORY_NOT_FOUND",
+      );
+    }
+    const distinctTexts = new Set(
+      matched.map((candidate) =>
+        (
+          (candidate.memory.content as { text?: string } | undefined)?.text ??
+          ""
+        )
+          .trim()
+          .toLowerCase(),
+      ),
     );
+    if (distinctTexts.size > 1) {
+      const lines = matched.map((candidate) => {
+        const item = toListItem(candidate.memory, candidate.type);
+        return `- [${item.type}] ${item.id}: ${toWellFormedUnicode(item.text)}`;
+      });
+      return {
+        success: false,
+        text: [
+          `Query "${query}" matches ${distinctTexts.size} distinct memories. Update by memoryId instead:`,
+          ...lines,
+        ].join("\n"),
+        data: { error: "MEMORY_AMBIGUOUS_QUERY" },
+      };
+    }
+    existingMemories = matched.map((candidate) => candidate.memory);
   }
 
-  await runtime.updateMemory({
-    id: memoryId,
-    content: nextContent,
-    embedding,
-  });
+  const updatedIds: UUID[] = [];
+  for (const existing of existingMemories) {
+    if (!existing.id) continue;
+    const existingContent =
+      (existing.content as Record<string, unknown> | undefined) ?? {};
+    const nextContent = { ...existingContent, text };
+    let embedding: number[] | undefined;
+    if (Array.isArray(existing.embedding) && existing.embedding.length > 0) {
+      const regenerated = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+        text,
+      });
+      if (!Array.isArray(regenerated) || regenerated.length === 0) {
+        return fail(
+          "Embedding model returned no vector.",
+          "MEMORY_EMBEDDING_FAILED",
+        );
+      }
+      embedding = regenerated;
+    }
 
-  const updated = await runtime.getMemoryById(memoryId);
+    await runtime.updateMemory({
+      id: existing.id,
+      content: nextContent,
+      ...(embedding ? { embedding } : {}),
+    });
+    updatedIds.push(existing.id);
+  }
+
+  const primaryMemoryId = updatedIds[0];
+  const updated = primaryMemoryId
+    ? await runtime.getMemoryById(primaryMemoryId)
+    : null;
   return {
     success: true,
-    text: `Updated memory ${memoryId}.`,
-    values: { memoryId },
+    text: `Updated ${updatedIds.length} memory record(s).`,
+    values: { memoryId: primaryMemoryId, updatedCount: updatedIds.length },
     data: {
       actionName: "MEMORY",
       op: "update" as const,
-      memoryId,
+      memoryId: primaryMemoryId,
+      memoryIds: updatedIds,
       memory: updated ?? null,
     },
   };
@@ -761,9 +845,9 @@ export const memoryAction: Action = {
     "MODIFY_MEMORY",
   ],
   description:
-    "Manage agent memory records. op:create stores a new memory; op:search filters by type/entityId/roomId/query; op:update edits text and re-embeds (requires confirm:true); op:delete removes a memory by memoryId or by query text match (requires confirm:true).",
+    "Manage agent memory records. op:create stores a new memory; op:search filters by type/entityId/roomId/query; op:update edits by memoryId or a unique requester-scoped query match (requires confirm:true); op:delete removes by memoryId or requester-scoped query match (requires confirm:true).",
   descriptionCompressed:
-    "manage agent memory create search update delete; delete by memoryId or query; update/delete require confirm:true",
+    "manage agent memory create search update delete; update/delete by memoryId or query; update/delete require confirm:true",
   routingHint:
     "NOTES ARE NOT MEMORY: 'make a note', 'note to self', 'jot this down', 'what notes do i have' -> the NOTES action, which writes the durable note store the user sees in the Notes view. MEMORY is the agent's own recall of the conversation. store/search/edit the agent's OWN memory records about the user or conversation -> MEMORY. This includes recalling or COUNTING what was said earlier than the messages shown in context ('how many times have I mentioned X', 'have I ever told you about X', 'what did we say about X last week') — the conversation block in context is only the most recent turns, so answer those from op:search over the stored record, never from that block alone. Do NOT use for open-web lookups -> WEB_SEARCH, for searching connected external channels such as email or another platform's inbox -> MESSAGE (action=search), or for the skill catalog -> SKILL",
   validate: async () => true,
@@ -789,7 +873,7 @@ export const memoryAction: Action = {
         case "search":
           return await doSearch(runtime, params);
         case "update":
-          return await doUpdate(runtime, params);
+          return await doUpdate(runtime, message, params);
         case "delete":
           return await doDelete(runtime, message, params);
       }
@@ -865,15 +949,16 @@ export const memoryAction: Action = {
     {
       name: "query",
       description:
-        "search/delete: case-insensitive text match against memory content. delete: resolves the memory to remove when memoryId is unknown; scoped to the requesting user's own memories.",
+        "search/update/delete: case-insensitive text match against memory content. update/delete: resolves the memory to mutate when memoryId is unknown; scoped to the requesting user's own memories.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "memoryId",
       description:
-        "update/delete: id of the memory to mutate. delete: optional when query is provided.",
+        "update/delete: id of the memory to mutate; optional when query is provided.",
       required: false,
+      modelOmissionSentinels: ["", "null", "undefined"],
       schema: { type: "string" as const, pattern: UUID_SCHEMA_PATTERN },
     },
     {

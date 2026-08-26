@@ -344,7 +344,10 @@ import {
 	getUserMessageText,
 	stripAugmentationForPersistence,
 } from "../utils/message-text";
-import { modelProviderErrorDetail } from "../utils/model-errors";
+import {
+	isProviderContextOverflowFailure,
+	modelProviderErrorDetail,
+} from "../utils/model-errors";
 import { readEnv } from "../utils/read-env";
 import {
 	createFirstSentenceStreamTracker,
@@ -1273,6 +1276,48 @@ async function composeResponseState(
 		);
 	}
 	return runtime.composeState(message, providers, true, skipCache);
+}
+
+/** Replace provider text only with explicitly declared lossless retrieval forms. */
+function withProviderOverflowText(state: State): State | null {
+	const providerResults = state.data.providers;
+	const providerOrder = Array.isArray(state.data.providerOrder)
+		? state.data.providerOrder.filter(
+				(name): name is string => typeof name === "string",
+			)
+		: Object.keys(providerResults ?? {});
+	if (!providerResults) return null;
+	let changed = false;
+	const nextProviders = { ...providerResults };
+	for (const name of providerOrder) {
+		const result = providerResults[name];
+		if (typeof result?.overflowText !== "string") continue;
+		nextProviders[name] = { ...result, text: result.overflowText };
+		changed = true;
+	}
+	if (!changed) return null;
+	const text = providerOrder
+		.map((name) => nextProviders[name]?.text)
+		.filter((value): value is string => Boolean(value?.trim()))
+		.join("\n");
+	return {
+		...state,
+		values: { ...state.values, providers: text },
+		data: { ...state.data, providers: nextProviders },
+		text,
+	};
+}
+
+function responseHandlerContextWindow(
+	runtime: IAgentRuntime,
+): number | undefined {
+	return runtime
+		.getModelRegistrations()
+		.find(
+			(registration) =>
+				registration.modelType === ModelType.RESPONSE_HANDLER &&
+				typeof registration.metadata?.contextWindowTokens === "number",
+		)?.metadata?.contextWindowTokens;
 }
 
 export function selectV5PlannerStateProviderNames(args: {
@@ -8261,7 +8306,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		messageExplicitlyAddressesAgent(args.runtime, args.message) ||
 			messageChallengesPriorAgentReply(args.runtime, args.message, args.state),
 	);
-	const context = await createV5MessageContextObject({
+	let context = await createV5MessageContextObject({
 		...args,
 		userRoles: [senderRole],
 		availableContexts,
@@ -8274,6 +8319,21 @@ export async function runV5MessageRuntimeStage1(args: {
 		// left RECENT_ERRORS in state, an unaddressed group turn must not
 		// render internal diagnostics into its Stage-1 context.
 	});
+	const overflowState = withProviderOverflowText(args.state);
+	const overflowContext = overflowState
+		? await createV5MessageContextObject({
+				...args,
+				state: overflowState,
+				userRoles: [senderRole],
+				availableContexts,
+				ambientTurn,
+				extraProviderExclusions: ambientTurnProviderExclusions(
+					args.runtime,
+					args.message,
+				),
+			})
+		: null;
+	let useProviderOverflow = false;
 	const stage1PreprocessStartedAt = performance.now();
 
 	// G10/G11: construct the per-trajectory recorder. No-op when disabled via
@@ -8364,7 +8424,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			);
 		const responseHandlerSchema =
 			args.runtime.responseHandlerFieldRegistry.composeSchema();
-		const messageHandlerInput = renderMessageHandlerModelInput(
+		let messageHandlerInput = renderMessageHandlerModelInput(
 			args.runtime,
 			context,
 			availableContexts,
@@ -8374,18 +8434,18 @@ export async function runV5MessageRuntimeStage1(args: {
 				responseHandlerFields: responseHandlerFieldPrompt.rendered,
 			},
 		);
-		const stage1PrefixHashes = computePrefixHashes(
+		let stage1PrefixHashes = computePrefixHashes(
 			messageHandlerInput.promptSegments,
 		);
-		const stableStage1Segments = messageHandlerInput.promptSegments.filter(
+		let stableStage1Segments = messageHandlerInput.promptSegments.filter(
 			(segment) => segment.stable,
 		);
-		const stableStage1PrefixHashes = computePrefixHashes(stableStage1Segments);
-		const stage1SystemContent =
+		let stableStage1PrefixHashes = computePrefixHashes(stableStage1Segments);
+		let stage1SystemContent =
 			typeof messageHandlerInput.messages[0]?.content === "string"
 				? messageHandlerInput.messages[0].content
 				: "";
-		const stage1PrefixHash =
+		let stage1PrefixHash =
 			stableStage1PrefixHashes[stableStage1PrefixHashes.length - 1]?.hash ??
 			hashString(`stage1:${stage1SystemContent}`);
 		const messageHandlerTools = [
@@ -8396,6 +8456,46 @@ export async function runV5MessageRuntimeStage1(args: {
 					"Stage 1: populate registered response-handler fields once before action tools. Empty values for non-applicable fields.",
 			}),
 		];
+		const contextWindowTokens = responseHandlerContextWindow(args.runtime);
+		if (overflowContext && contextWindowTokens) {
+			const eagerBudget = buildModelInputBudget({
+				messages: messageHandlerInput.messages,
+				promptSegments: messageHandlerInput.promptSegments,
+				tools: messageHandlerTools,
+				contextWindowTokens,
+				estimationMode: "utf8-upper-bound",
+			});
+			if (
+				eagerBudget.estimatedInputTokens > eagerBudget.dispatchThresholdTokens
+			) {
+				useProviderOverflow = true;
+				context = overflowContext;
+				messageHandlerInput = renderMessageHandlerModelInput(
+					args.runtime,
+					context,
+					availableContexts,
+					{
+						directMessage: directMessageChannel && !voiceDirectMessageChannel,
+						voiceDirectMessage: voiceDirectMessageChannel,
+						responseHandlerFields: responseHandlerFieldPrompt.rendered,
+					},
+				);
+				stage1PrefixHashes = computePrefixHashes(
+					messageHandlerInput.promptSegments,
+				);
+				stableStage1Segments = messageHandlerInput.promptSegments.filter(
+					(segment) => segment.stable,
+				);
+				stableStage1PrefixHashes = computePrefixHashes(stableStage1Segments);
+				stage1SystemContent =
+					typeof messageHandlerInput.messages[0]?.content === "string"
+						? messageHandlerInput.messages[0].content
+						: "";
+				stage1PrefixHash =
+					stableStage1PrefixHashes[stableStage1PrefixHashes.length - 1]?.hash ??
+					hashString(`stage1:${stage1SystemContent}`);
+			}
+		}
 		const messageHandlerProviderOptions = withModelInputBudgetProviderOptions(
 			cacheProviderOptions({
 				prefixHash: stage1PrefixHash,
@@ -9272,8 +9372,19 @@ export async function runV5MessageRuntimeStage1(args: {
 						},
 					}
 				: undefined;
+		// Once Stage 1 has explicitly selected the memory domain, the planner owns
+		// retrieval through its complete search tools. Repeating an eager corpus in
+		// every tool iteration adds no recall capability and can turn a technically
+		// admissible prompt into an operational timeout. Ordinary chat still keeps
+		// eager context; this branch is driven by the typed routing decision.
+		const retrievalContextSelected = selectedContexts.includes("memory");
+		const capacityAdjustedPlannerState =
+			useProviderOverflow || retrievalContextSelected
+				? (withProviderOverflowText(recomposedPlannerState) ??
+					recomposedPlannerState)
+				: recomposedPlannerState;
 		const plannerState = withContextRoutingValues(
-			attachAvailableContexts(recomposedPlannerState, args.runtime),
+			attachAvailableContexts(capacityAdjustedPlannerState, args.runtime),
 			selectedContextRoutingState,
 		);
 		if (args.codingMode === true) {
@@ -10614,8 +10725,12 @@ export async function runV5MessageRuntimeStage1(args: {
 		};
 	} catch (err) {
 		// error-policy:J2 Preserve the failing status for trajectory diagnostics,
-		// then rethrow the original failure to the message boundary.
-		endStatus = "errored";
+		// then rethrow the original failure to the message boundary. A provider
+		// context-overflow rejection classified by the planner boundary is the
+		// exception: the message boundary converts it into a designed
+		// honest reply, so the trajectory FINISHES with that outcome instead of
+		// recording a dead errored turn.
+		endStatus = isProviderContextOverflowFailure(err) ? "finished" : "errored";
 		throw err;
 	} finally {
 		// Trajectory persistence is diagnostic work. Preserve stage ordering in
@@ -12659,7 +12774,6 @@ async function rewriteActionCallbackInCharacter(args: {
 	try {
 		const raw = (await args.runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt,
-			maxTokens: 260,
 			providerOptions: { eliza: { thinking: "off" } },
 		})) as string | GenerateTextResult;
 		const cleaned = stripReasoningBlocks(getV5ModelText(raw)).trim();
@@ -16004,6 +16118,14 @@ export class DefaultMessageService implements IMessageService {
 						? fallbackTmpl({ state })
 						: fallbackTmpl) ||
 					"I ran out of attempts before I could finish that. Nothing was completed - please try again.";
+			} else if (cause === "context_overflow") {
+				// The provider rejected the call at its context limit; retrying the
+				// identical request cannot succeed, so the honest reply asks for a
+				// smaller ask instead of the generic "try again".
+				const tmpl = runtime.character.templates?.contextOverflowFailureReply;
+				replyText =
+					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
+					"That needed more context than my model can take in one call - try a smaller range or a narrower request.";
 			} else {
 				const tmpl = runtime.character.templates?.transientFailureReply;
 				replyText =

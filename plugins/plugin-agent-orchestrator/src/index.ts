@@ -767,8 +767,6 @@ export function sanitizePlannerText(text: string): string {
 // nothing usable — never the primary path. Kept short and neutral on purpose.
 export const SPAWN_ACK_FALLBACK = "On it.";
 
-// Longest acknowledgement we keep. An ack is a one-liner; anything longer is the
-// model over-answering, so it gets clipped.
 const SPAWN_ACK_TIMEOUT_MS = 750;
 
 function withSpawnAckTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
@@ -829,76 +827,12 @@ export function buildSpawnAckUserPrompt(task: string): string {
 }
 
 /**
- * Clean a model-produced ack into a single plain line: first non-empty line,
- * surrounding quotes / emoji / list markers stripped and whitespace collapsed.
- * Returns "" when nothing usable remains (the caller then falls
- * back to SPAWN_ACK_FALLBACK). Pure + deterministic.
+ * Preserve a model-produced acknowledgement as complete well-formed text.
+ * The prompt requests one line, but an overlong or multiline response remains
+ * observable rather than being silently rewritten into a partial answer.
  */
 export function sanitizeSpawnAck(raw: string): string {
-  if (!raw) return "";
-  const firstLine =
-    raw
-      .replace(/\r\n/g, "\n")
-      .split("\n")
-      .map((line) => line.trim())
-      .find((line) => line.length > 0) ?? "";
-  if (!firstLine) return "";
-  let cleaned = firstLine
-    .replace(PROGRESS_EMOJI_PREFIX_REGEX, "")
-    .replace(/^[>*\-•\s]+/, "")
-    .trim();
-  // Strip a single pair of surrounding quotes (straight, smart, or backtick).
-  const quotePairs: ReadonlyArray<readonly [string, string]> = [
-    ['"', '"'],
-    ["'", "'"],
-    ["“", "”"],
-    ["‘", "’"],
-    ["`", "`"],
-  ];
-  for (const [open, close] of quotePairs) {
-    if (
-      cleaned.length >= open.length + close.length &&
-      cleaned.startsWith(open) &&
-      cleaned.endsWith(close)
-    ) {
-      cleaned = cleaned
-        .slice(open.length, cleaned.length - close.length)
-        .trim();
-      break;
-    }
-  }
-  cleaned = cleaned.replace(/\s{2,}/g, " ").trim();
-  if (!cleaned) return "";
-  return toWellFormedUnicode(cleaned);
-}
-
-function stripToolTranscripts(raw: string): string {
-  if (!raw) return "";
-  const lines = raw.replace(/\r\n/g, "\n").split("\n");
-  let insideToolOutput = false;
-  const out: string[] = [];
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!insideToolOutput && trimmed.startsWith("[tool output:")) {
-      insideToolOutput = true;
-      // Extract tool name from `[tool output: NAME]` or `[tool output: NAME: arg]`
-      const m = trimmed.match(/^\[tool output:\s*([^:\]]+)/);
-      const toolName = (m?.[1] ?? "").trim() || "tool";
-      out.push(`[Tool: ${toolName}]`);
-      continue;
-    }
-    if (insideToolOutput && trimmed === "[/tool output]") {
-      insideToolOutput = false;
-      continue;
-    }
-    if (insideToolOutput) continue;
-    if (trimmed.startsWith("[sub-agent:")) continue;
-    if (trimmed.startsWith("[verification:")) continue;
-    if (trimmed.startsWith("[verification note:")) continue;
-    if (/^\/[^\s]+/.test(trimmed)) continue;
-    out.push(line);
-  }
-  return out.join("\n").trim();
+  return toWellFormedUnicode(raw.trim());
 }
 
 export function extractCompletionSummary(raw: string): string {
@@ -908,17 +842,17 @@ export function extractCompletionSummary(raw: string): string {
 
 /**
  * Prompt for the LLM-driven progress heartbeat. The model gets the
- * recently captured narration tail and must reply with ONE short sentence
+ * complete captured session output and must reply with one short sentence
  * describing what the sub-agent is doing right now — the same kind of
  * concise status the parent agent would give the user when asked "where
  * are you?".
  */
 const HEARTBEAT_SUMMARY_PROMPT = `Thin progress reporter for an autonomous coding sub-agent.
-Below is recent activity. It may include:
+Below is the complete captured activity. It may include:
 - prose narration the sub-agent wrote ("Now let me build...")
-- a list of CONCRETE tool calls with args (most recent last), e.g. \`Read(…/site/index.html)\`, \`Bash(wrangler pages deploy)\`, \`Edit(…/styles.css)\`, \`Grep("color-accent")\`
+- a list of CONCRETE tool calls with args (in source order), e.g. \`Read(…/site/index.html)\`, \`Bash(wrangler pages deploy)\`, \`Edit(…/styles.css)\`, \`Grep("color-accent")\`
 
-Reply with ONE short sentence (max 25 words) describing what the sub-agent is actually doing right now — be SPECIFIC: name the files, commands, or patterns when the tool list shows them. Match the narration's language (French if FR, English if EN, default English).
+Reply with ONE short sentence describing what the sub-agent is actually doing right now — be SPECIFIC: name the files, commands, or patterns when the tool list shows them. Match the narration's language (French if FR, English if EN, default English).
 
 Rules:
 - ALWAYS use the concrete details from the tool list. "Editing locales/fr.json and rebuilding" beats "editing files". "Running wrangler pages deploy" beats "running terminal commands".
@@ -927,7 +861,7 @@ Rules:
 - NEVER say "no narration provided", "cannot assess", "investigating", "running terminal commands" (too generic) — the tool list always has specifics.
 - No prefix, no markdown, no quotes. Just the sentence.
 
-Recent activity:
+Complete captured activity:
 {tail}`;
 
 /**
@@ -1324,9 +1258,9 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
           typeof acp.getSessionOutput === "function"
             ? // error-policy:J7 best-effort heartbeat read; a failed read degrades
               // to "" so the tick is skipped rather than posting a false status.
-              await acp.getSessionOutput(sessionId, 200).catch(() => "")
+              await acp.getSessionOutput(sessionId).catch(() => "")
             : "";
-        const cleaned = stripToolTranscripts(raw);
+        const cleaned = raw;
         const tools = toolHistory.get(sessionId) ?? [];
         // Skip if we genuinely have nothing — neither narration nor any
         // recorded tool call. That happens in the very first seconds
@@ -1335,7 +1269,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         if (cleaned.trim().length === 0 && tools.length === 0) return;
         const toolsLine =
           tools.length > 0
-            ? `\nTools the sub-agent has called recently (most recent last): ${tools.map((t) => t.formatted).join(", ")}`
+            ? `\nTools the sub-agent has called (in source order): ${tools.map((t) => t.formatted).join(", ")}`
             : "";
         const filledPrompt = HEARTBEAT_SUMMARY_PROMPT.replace(
           "{tail}",
@@ -1344,7 +1278,6 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         const summary = await runtime
           .useModel(ModelType.TEXT_SMALL, {
             prompt: filledPrompt,
-            maxTokens: 80,
           })
           // error-policy:J7 best-effort heartbeat summary; a failed model call
           // degrades to "" and the tick is skipped, never a fabricated status.
@@ -1408,7 +1341,6 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
           .useModel(ModelType.TEXT_SMALL, {
             system: buildSpawnAckSystemPrompt(runtime.character),
             prompt: buildSpawnAckUserPrompt(task),
-            maxTokens: 32,
             temperature: 0.7,
           })
           .then(
@@ -2214,26 +2146,10 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
             trimmedFormatted.toLowerCase() === "tool";
           if (!isNonInformative) {
             const arr = toolHistory.get(sessionId) ?? [];
-            // Same toolCallId as an existing entry: replace it. claude-agent-acp
-            // sends an initial `tool_call` with empty rawInput / generic title
-            // ("Bash", "Terminal") followed by a `tool_call_update` carrying
-            // the real command/path. Replacing keeps history clean instead of
-            // listing both bare and enriched versions.
-            const existingIdx = id
-              ? arr.findIndex((entry) => entry.id === id)
-              : -1;
-            if (existingIdx >= 0) {
-              arr[existingIdx] = { id, formatted };
-            } else {
-              // Drop consecutive duplicates so loops over the same file don't
-              // dominate the prompt.
-              if (arr[arr.length - 1]?.formatted !== formatted) {
-                arr.push({ id, formatted });
-              }
-            }
-            // Keep last 20 — enough context for a one-sentence summary
-            // without bloating the LLM prompt.
-            if (arr.length > 20) arr.shift();
+            // Preserve every informative event in source order. A later ACP
+            // update may enrich an earlier generic event, but replacing or
+            // deduplicating it would make the summarizer's context lossy.
+            arr.push({ id, formatted });
             toolHistory.set(sessionId, arr);
           }
         }

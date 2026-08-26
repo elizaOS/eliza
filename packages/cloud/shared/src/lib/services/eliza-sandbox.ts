@@ -45,6 +45,7 @@ import {
 } from "../../db/schemas/agent-sandboxes";
 import { dockerNodes } from "../../db/schemas/docker-nodes";
 import { jobs } from "../../db/schemas/jobs";
+import { personalDedicatedUpgradeAuthorities } from "../../db/schemas/personal-dedicated-upgrade-authorities";
 import { imageRepo, repinImageDigest } from "../../db/utils/docker-image-ref";
 import type { RuntimeDurableObjectNamespace } from "../../types/cloud-worker-env";
 import { ApiError } from "../api/cloud-worker-errors";
@@ -91,7 +92,11 @@ import type { DockerSandboxMetadata } from "./docker-sandbox-provider";
 import { shellQuote } from "./docker-sandbox-utils";
 import { DockerSSHClient } from "./docker-ssh";
 import {
+  AGENT_PERSONAL_CUTOVER_KEY,
+  AGENT_UPGRADED_FROM_KEY,
+  readPersonalElizaCutover,
   reusesExistingElizaCharacter,
+  stripPersonalDedicatedAuthorityConfigKeys,
   stripReservedElizaConfigKeys,
   withReusedElizaCharacterOwnership,
 } from "./eliza-agent-config";
@@ -394,16 +399,16 @@ function resolveManagedProvisionDockerImage(
 }
 
 /**
- * Thrown when the post-create readiness probe could not REACH the container
- * (SSH transport unresolved), as distinct from the container being genuinely
- * not-ready. The provision path uses it to keep the container in place and
- * return a RETRYABLE failure instead of tearing down a likely-healthy container
- * and marking the row terminally failed (#15310 failure mode #6).
+ * Thrown when post-create readiness cannot establish the required managed
+ * reachability: either every SSH probe failed, or SSH proved the workload
+ * healthy while its tailnet ingress remained unavailable. The provision path
+ * keeps the container in place and returns a RETRYABLE failure instead of
+ * tearing down a healthy or unproven workload (#15310 failure mode #6).
  */
-export class SandboxTransportUnresolvedError extends Error {
+export class SandboxReachabilityUnresolvedError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "SandboxTransportUnresolvedError";
+    this.name = "SandboxReachabilityUnresolvedError";
   }
 }
 
@@ -755,7 +760,6 @@ export const SNAPSHOT_CAPTURE_TRANSIENT = "Snapshot capture temporarily unavaila
 const AGENT_SNAPSHOT_CAPTURE_TRANSIENT_CODE = "PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT";
 
 const MAX_BACKUPS = 10;
-const SHARED_RUNTIME_HISTORY_MAX_MESSAGES = 40;
 // Heartbeat probes the agent over the headscale tailnet. When idle the path
 // goes cold, so the first probe after a quiet period can fail while it
 // re-establishes — retry before evicting a healthy agent.
@@ -2122,14 +2126,65 @@ export class ElizaSandboxService {
 
       const updates: { agent_name?: string; agent_config?: Record<string, unknown> } = {};
       if (input.agentName !== undefined) updates.agent_name = input.agentName;
-      if (input.agentConfig !== undefined) {
+      if (input.agentConfig !== undefined || input.agentName !== undefined) {
         const existing =
           rec.agent_config &&
           typeof rec.agent_config === "object" &&
           !Array.isArray(rec.agent_config)
             ? (rec.agent_config as Record<string, unknown>)
             : {};
-        updates.agent_config = { ...existing, ...input.agentConfig };
+        const [authority] = await tx
+          .select()
+          .from(personalDedicatedUpgradeAuthorities)
+          .where(
+            and(
+              eq(personalDedicatedUpgradeAuthorities.dedicated_agent_id, rec.id),
+              eq(personalDedicatedUpgradeAuthorities.organization_id, orgId),
+            ),
+          )
+          .limit(1);
+        const reservedProjection: Record<string, unknown> = {};
+        if (authority) {
+          if (authority.schema_version !== 1 || authority.user_id !== rec.user_id) {
+            throw new ElizaError("Personal Dedicated authority is inconsistent", {
+              code: "PERSONAL_DEDICATED_AUTHORITY_INVALID",
+              context: { agentId, organizationId: orgId },
+            });
+          }
+          reservedProjection[AGENT_UPGRADED_FROM_KEY] = authority.source_agent_id;
+          if (authority.cutover_token !== null) {
+            const cutover = readPersonalElizaCutover({
+              [AGENT_PERSONAL_CUTOVER_KEY]: {
+                mode: "dedicated",
+                sourceAgentId: authority.source_agent_id,
+                conversationId: authority.source_agent_id,
+                cutoverToken: authority.cutover_token,
+                sharedMessageCount: authority.shared_message_count,
+                sharedScheduledTaskCount: authority.shared_scheduled_task_count,
+                sharedTodoCount: authority.shared_todo_count,
+                sharedTodoMutationCount: authority.shared_todo_mutation_count,
+                sharedTodoDigest: authority.shared_todo_digest,
+                activatedAt: authority.cutover_activated_at?.toISOString(),
+              },
+            });
+            if (!cutover) {
+              throw new ElizaError("Personal Dedicated cutover authority is malformed", {
+                code: "PERSONAL_DEDICATED_AUTHORITY_INVALID",
+                context: { agentId, organizationId: orgId },
+              });
+            }
+            reservedProjection[AGENT_PERSONAL_CUTOVER_KEY] = cutover;
+          }
+        }
+        // Only adoption state is untrusted on an existing row. Other internal
+        // bindings are server-owned and must survive ordinary profile edits;
+        // the broad input sanitizer still prevents callers from replacing any
+        // internal key.
+        updates.agent_config = {
+          ...stripPersonalDedicatedAuthorityConfigKeys(existing),
+          ...(input.agentConfig ? stripReservedElizaConfigKeys(input.agentConfig) : {}),
+          ...reservedProjection,
+        };
       }
       if (Object.keys(updates).length === 0) return rec;
 
@@ -3536,7 +3591,10 @@ export class ElizaSandboxService {
         const dockerMeta = isDockerSandboxMetadata(handle.metadata) ? handle.metadata : undefined;
 
         if (!health.ready) {
-          if (health.verdict === "transport_unresolved") {
+          if (
+            health.verdict === "transport_unresolved" ||
+            health.verdict === "ingress_unresolved"
+          ) {
             // Do NOT tear the container down: the probe never reached it, so it
             // is probably up and serving. PERSIST the container handle onto the
             // row (status stays `provisioning`) BEFORE throwing so that:
@@ -3556,9 +3614,10 @@ export class ElizaSandboxService {
               handle,
               dockerMeta,
             );
-            throw new SandboxTransportUnresolvedError(
-              "Sandbox readiness probe could not reach the container (SSH transport unresolved); " +
-                "leaving the container in place for retry/reconciliation",
+            throw new SandboxReachabilityUnresolvedError(
+              health.verdict === "ingress_unresolved"
+                ? "Sandbox container is healthy but its managed ingress is unresolved; leaving the container in place for retry/reconciliation"
+                : "Sandbox readiness probe could not reach the container (SSH transport unresolved); leaving the container in place for retry/reconciliation",
             );
           }
           throw new Error("Sandbox health check timed out");
@@ -3880,9 +3939,9 @@ export class ElizaSandboxService {
         // reconciler re-probes and flips the row to `running` once transport
         // recovers. Preserve the (pending/provisioning) row so the reconciler
         // and job retry both have something to act on.
-        if (err instanceof SandboxTransportUnresolvedError) {
+        if (err instanceof SandboxReachabilityUnresolvedError) {
           logger.warn(
-            "[agent-sandbox] Readiness probe transport-unresolved; leaving container in place for retry/reconciliation",
+            "[agent-sandbox] Managed reachability remains unresolved; leaving container in place for retry/reconciliation",
             { agentId: rec.id, sandboxId: handle.sandboxId, attempt },
           );
           return {
@@ -4425,12 +4484,7 @@ export class ElizaSandboxService {
     channelId: string,
     history: SharedTurnMessage[],
   ): Promise<void> {
-    await sharedRuntimeHistoryRepository.merge(
-      agentId,
-      channelId,
-      history,
-      SHARED_RUNTIME_HISTORY_MAX_MESSAGES,
-    );
+    await sharedRuntimeHistoryRepository.merge(agentId, channelId, history);
   }
 
   private sharedRuntimeBillingPrompt(

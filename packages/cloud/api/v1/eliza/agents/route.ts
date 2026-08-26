@@ -17,7 +17,7 @@ import {
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { containersEnv } from "@/lib/config/containers-env";
 import { getMaxNonTerminalAgentsForOrg } from "@/lib/constants/agent-sandbox-quota";
-import { getElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
+import { getConfiguredElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
 import {
@@ -30,6 +30,7 @@ import {
   AgentQuotaExceededError,
   elizaSandboxService,
 } from "@/lib/services/eliza-sandbox";
+import { publicJobErrorSummary } from "@/lib/services/job-error-text";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import {
   checkProvisioningWorkerHealth,
@@ -186,16 +187,19 @@ function deriveModelTooLargeForShared(
   );
 }
 
-function resolvePublicWebUiUrl(agent: Agent): string | null {
+function resolvePublicWebUiUrl(
+  agent: Agent,
+  canonicalAgentBaseDomain: string | undefined,
+): string | null {
   if (agent.execution_tier === "shared") return null;
-  const baseDomain = containersEnv.publicBaseDomain();
-  return getElizaAgentPublicWebUiUrl(agent, baseDomain ? { baseDomain } : {});
+  return getConfiguredElizaAgentPublicWebUiUrl(agent, canonicalAgentBaseDomain);
 }
 
 function toAgentListItemDto(
   agent: Agent,
   character: UserCharacter | undefined,
   activeJob: AgentActiveJobDto | null,
+  canonicalAgentBaseDomain: string | undefined,
 ): AgentListItemDto {
   return {
     id: agent.id,
@@ -204,7 +208,9 @@ function toAgentListItemDto(
     databaseStatus: agent.database_status,
     lastBackupAt: toIsoStringOrNull(agent.last_backup_at),
     lastHeartbeatAt: toIsoStringOrNull(agent.last_heartbeat_at),
-    errorMessage: agent.error_message,
+    // The durable row keeps the redacted operator stack. Owners get only the
+    // failure summary; absolute server paths and module layout stay private.
+    errorMessage: publicJobErrorSummary(agent.error_message),
     createdAt: toIsoString(agent.created_at),
     updatedAt: toIsoString(agent.updated_at),
     token_address:
@@ -220,7 +226,7 @@ function toAgentListItemDto(
       stringConfigValue(agent.agent_config, "tokenTicker"),
     dockerImage: agent.docker_image,
     executionTier: agent.execution_tier,
-    webUiUrl: resolvePublicWebUiUrl(agent),
+    webUiUrl: resolvePublicWebUiUrl(agent, canonicalAgentBaseDomain),
     activeJob,
   };
 }
@@ -323,6 +329,7 @@ app.get("/", async (c) => {
         agent,
         agent.character_id ? charMap.get(agent.character_id) : undefined,
         activeJobByAgentId.get(agent.id) ?? null,
+        c.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
       ),
     ),
   };
@@ -740,8 +747,10 @@ app.post("/", async (c) => {
                 id: claimed.id,
                 agentName: claimed.agent_name,
                 status: "running",
-                bridgeUrl: claimed.bridge_url,
-                healthUrl: claimed.health_url,
+                webUiUrl: getConfiguredElizaAgentPublicWebUiUrl(
+                  claimed,
+                  c.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
+                ),
                 createdAt: claimed.created_at,
                 executionTier: claimed.execution_tier,
               },

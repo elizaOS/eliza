@@ -79,9 +79,8 @@ function DefaultViewErrorFallback({
       <div className="flex items-center gap-2">
         <Button
           type="button"
-          size="sm"
+          size="compact"
           variant="outline"
-          className="rounded-sm text-xs"
           onClick={onRetry}
           data-testid="view-error-retry"
         >
@@ -89,9 +88,8 @@ function DefaultViewErrorFallback({
         </Button>
         <Button
           type="button"
-          size="sm"
-          variant="ghost"
-          className="rounded-sm text-xs"
+          size="compact"
+          variant="ghostMuted"
           onClick={goToLauncher}
           data-testid="view-error-back"
         >

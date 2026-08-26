@@ -31,6 +31,17 @@ describe("parseAiJson", () => {
     expect(() => parseAiJson("{bad}", schema)).toThrow(/Invalid JSON/);
   });
 
+  it("preserves the complete malformed model output in the typed error", () => {
+    const malformed = `{"a":"${"x".repeat(300)}",bad}`;
+
+    expect(() => parseAiJson(malformed, schema)).toThrow(
+      expect.objectContaining({
+        code: "AI_JSON_PARSE_FAILED",
+        message: expect.stringContaining(malformed),
+      }),
+    );
+  });
+
   it("throws on schema mismatch", () => {
     expect(() => parseAiJson('{"a":"oops","b":"hi"}', schema)).toThrow(/validation failed/);
   });

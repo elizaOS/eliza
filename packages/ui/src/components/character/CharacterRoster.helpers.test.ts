@@ -6,17 +6,10 @@ import type { StylePreset } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import {
   createCustomPackRosterEntry,
-  INSET_CLIP,
   resolveRosterEntries,
-  SLANT_CLIP,
 } from "./CharacterRoster.helpers.ts";
 
 describe("CharacterRoster.helpers", () => {
-  it("exports polygon clip path constants", () => {
-    expect(SLANT_CLIP).toContain("polygon(");
-    expect(INSET_CLIP).toContain("polygon(");
-  });
-
   it("resolves StylePreset list into roster entries", () => {
     const presets = [
       { id: "preset-1", name: "Sam", avatarIndex: 1 },

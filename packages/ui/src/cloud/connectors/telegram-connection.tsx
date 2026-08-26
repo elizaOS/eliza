@@ -208,7 +208,9 @@ export function TelegramConnection() {
             }
           >
             {status?.error && (
-              <div className="text-sm text-yellow-600 mt-1">{status.error}</div>
+              <div className="text-sm text-status-warning mt-1">
+                {status.error}
+              </div>
             )}
           </ConnectionIdentityPanel>
 

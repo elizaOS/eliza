@@ -218,17 +218,14 @@ export function SettingsRow({
     return (
       <Button
         ref={buttonRef}
-        variant="ghost"
+        variant="selection"
+        size="touch"
+        align="start"
+        data-state={active ? "on" : "off"}
         onClick={onClick}
         disabled={disabled}
         aria-current={active ? "true" : undefined}
-        className={cn(
-          "group flex w-full min-h-[3rem] items-center justify-start whitespace-normal rounded-lg px-2 py-2.5 text-left transition-colors",
-          "hover:bg-surface/70    ",
-          active && "bg-accent/10 hover:bg-accent/12",
-          disabled && "cursor-not-allowed opacity-50",
-          className,
-        )}
+        className={cn("group w-full", className)}
         {...buttonProps}
       >
         <SettingsRowBody

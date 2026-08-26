@@ -121,6 +121,7 @@ export {
   rowPropsEqual,
 } from "./notification-shade-content";
 
+import { Button } from "../ui/button";
 import {
   LIQUID_GLASS_BLUR,
   LIQUID_GLASS_EDGE_SHADOW,
@@ -658,6 +659,35 @@ export interface NotificationsHomeCenterProps {
   openRequestId?: number | null;
   /** Acknowledges an open request after this visible component applies it. */
   onOpenRequestHandled?: (requestId: number) => void;
+}
+
+export function NotificationStackClearButton({
+  confirming,
+  label,
+  onClick,
+}: {
+  confirming: boolean;
+  label: string;
+  onClick: () => void;
+}): React.JSX.Element {
+  return (
+    <Button
+      type="button"
+      variant="overlayEdge"
+      size="content"
+      data-testid="notification-stack-clear"
+      data-confirming={confirming ? "true" : undefined}
+      data-notif-control=""
+      aria-label={label}
+      onClick={onClick}
+      className={cn(
+        "eliza-notif-control-transition h-8 overflow-hidden text-xs font-medium transition-[width,color] duration-200 ease-out",
+        confirming ? "w-12" : "w-8",
+      )}
+    >
+      <ClearConfirmationContent confirming={confirming} />
+    </Button>
+  );
 }
 
 export function NotificationsHomeCenter({
@@ -2599,14 +2629,16 @@ export function NotificationsHomeCenter({
               still arrive.
             </p>
           </div>
-          <button
+          <Button
             type="button"
+            variant="default"
+            size="touch"
             onClick={() => void retryNotificationHydration()}
-            className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-accent px-3 text-xs font-semibold text-accent-foreground transition-colors hover:bg-accent-hover"
+            className="shrink-0"
           >
             <RefreshCw aria-hidden className="size-3.5" />
             Retry
-          </button>
+          </Button>
         </div>
       </section>
     );
@@ -2995,8 +3027,10 @@ export function NotificationsHomeCenter({
                       {group.label}
                     </span>
                     <span className="flex shrink-0 items-center gap-1">
-                      <button
+                      <Button
                         type="button"
+                        variant="ghostMuted"
+                        size="dense"
                         data-testid="notification-stack-collapse"
                         data-notification-stack-collapse=""
                         data-notification-stack-key={group.key}
@@ -3005,18 +3039,12 @@ export function NotificationsHomeCenter({
                         onClick={(event) =>
                           foldStack(group.key, event.detail === 0)
                         }
-                        className="h-8 px-2 text-xs font-medium text-white/60 transition-colors hover:text-white/90"
                       >
                         Show Less
-                      </button>
-                      <button
-                        type="button"
-                        data-testid="notification-stack-clear"
-                        data-confirming={
-                          confirmingGroupKey === group.key ? "true" : undefined
-                        }
-                        data-notif-control=""
-                        aria-label={
+                      </Button>
+                      <NotificationStackClearButton
+                        confirming={confirmingGroupKey === group.key}
+                        label={
                           confirmingGroupKey === group.key
                             ? `Confirm clear ${group.label} notifications`
                             : `Clear ${group.label} notifications`
@@ -3027,17 +3055,7 @@ export function NotificationsHomeCenter({
                             allGroupRows.map((notification) => notification.id),
                           )
                         }
-                        className={cn(
-                          "eliza-notif-control-transition h-8 overflow-hidden text-xs font-medium text-white/60 transition-[width,color] duration-200 ease-out hover:text-white/90",
-                          confirmingGroupKey === group.key
-                            ? "w-12 text-white"
-                            : "w-8",
-                        )}
-                      >
-                        <ClearConfirmationContent
-                          confirming={confirmingGroupKey === group.key}
-                        />
-                      </button>
+                      />
                     </span>
                   </div>
                 ) : null}

@@ -86,7 +86,7 @@ export function ConnectorAccountSetupScope({
                     <div className="flex flex-col gap-0.5 py-0.5">
                       <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-txt">
                         <span className="truncate">{account.label}</span>
-                        <Badge variant="outline" className="text-2xs uppercase">
+                        <Badge variant="outline" size="compact">
                           {account.role}
                         </Badge>
                       </span>
