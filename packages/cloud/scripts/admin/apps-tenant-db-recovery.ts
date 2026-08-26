@@ -495,21 +495,53 @@ DO $$ BEGIN RAISE EXCEPTION 'restore target authority mismatch'; END $$;
 \\endif
 `;
 
-/**
- * Guard one psql session before its first destructive statement. Both twin
- * settings — the disposable target id and the serialized capability — must
- * still be present and exactly equal (supplied via psql --set variables at
- * invocation), so every destructive session of the drill is individually
- * authority-checked.
- */
-export function guardPsqlScript(sql: string): string {
-  return `${TARGET_GUARD_SQL}${sql}`;
-}
-
 const CONSUME_AUTHORITY_SQL = `ALTER SYSTEM RESET ${SETTING_TARGET_ID};
 ALTER SYSTEM RESET ${SETTING_CAPABILITY};
 SELECT pg_reload_conf();
 `;
+
+/**
+ * Server-side expiry enforcement embedded in every guarded psql session
+ * (#23453 review r4): the locally verified capability's expiry — signed
+ * bytes the HMAC covers — is passed as an epoch-millisecond cutoff, and the
+ * session ABORTS unless the SERVER clock is still inside the capability
+ * window. The local assertCapabilityLive() checks are advisory; only this
+ * check closes the expiry TOCTOU between the local check and the SQL
+ * executing on the server. An arbitrary skew between the drill host and the
+ * server can only shrink or (bounded by the signed TTL) widen the window.
+ */
+function expiryGuardSql(expiresAtEpochMs: number): string {
+  if (!Number.isSafeInteger(expiresAtEpochMs) || expiresAtEpochMs <= 0) {
+    throw new RecoveryDrillError(
+      "INVALID_CAPABILITY",
+      "capability expiry is not a safe positive epoch-millisecond value",
+    );
+  }
+  return `SELECT (floor(extract(epoch from (clock_timestamp() AT TIME ZONE 'utc'))) * 1000) <= ${expiresAtEpochMs} AS eliza_capability_live \\gset
+\\if :eliza_capability_live
+\\else
+\\echo 'restore capability has expired on the server clock'
+DO $$ BEGIN RAISE EXCEPTION 'restore capability has expired on the server clock'; END $$;
+\\endif
+`;
+}
+
+/**
+ * Guard one psql session before its first destructive statement. Both twin
+ * settings — the disposable target id and the serialized capability — must
+ * still be present and exactly equal (supplied via psql --set variables at
+ * invocation), and the server clock must still be inside the capability
+ * window, so every destructive session of the drill is individually
+ * authority-checked with no local-check/SQL-execution TOCTOU.
+ */
+export function guardPsqlScript(
+  sql: string,
+  expiresAtEpochMs?: number,
+): string {
+  const expiry =
+    expiresAtEpochMs === undefined ? "" : expiryGuardSql(expiresAtEpochMs);
+  return `${TARGET_GUARD_SQL}${expiry}${sql}`;
+}
 
 /**
  * Guarded script that spends the target authority at the END of the drill:
@@ -520,8 +552,8 @@ SELECT pg_reload_conf();
  * NOT consume the settings — the disposable target stays recoverable for an
  * idempotent re-run inside the capability TTL.
  */
-export function guardedConsumeAuthoritySql(): string {
-  return guardPsqlScript(CONSUME_AUTHORITY_SQL);
+export function guardedConsumeAuthoritySql(expiresAtEpochMs?: number): string {
+  return guardPsqlScript(CONSUME_AUTHORITY_SQL, expiresAtEpochMs);
 }
 
 /**
@@ -552,6 +584,7 @@ DELETE FROM public.eliza_restore_drill_claim WHERE capability_sha256 = '${claimI
 INSERT INTO public.eliza_restore_drill_claim (capability_sha256) VALUES ('${claimId}');
 COMMIT;
 `,
+    capability.expiresAtEpochMs,
   );
 }
 
@@ -1114,7 +1147,10 @@ export function consumeRestoreAuthority(
   work: string,
 ): void {
   const script = join(work, "consume-authority.sql");
-  writeFileSync(script, guardedConsumeAuthoritySql());
+  writeFileSync(
+    script,
+    guardedConsumeAuthoritySql(capability.expiresAtEpochMs),
+  );
   run("psql", [
     "--no-psqlrc",
     "--set",
@@ -1331,8 +1367,13 @@ export function acquireDrillLock(
       targetDsn,
       "--command",
       `SELECT CASE WHEN pg_try_advisory_lock(${DRILL_ADVISORY_LOCK_KEY}) THEN '${DRILL_LOCK_HANDSHAKE}:' || pg_backend_pid() ELSE '${DRILL_LOCK_REFUSED}' END;`,
+      // A refused lock must NOT fall through to the hold-sleep: the refusal
+      // sentinel is not a SQL error, so ON_ERROR_STOP does not stop psql and
+      // the second --command WOULD execute — leaking a 24h pg_sleep backend
+      // with no lock to its name (#23453 review r4). The 1/0 division aborts
+      // the refused holder deterministically.
       "--command",
-      `SELECT pg_sleep(${DRILL_LOCK_MAX_SECONDS});`,
+      `SELECT CASE WHEN (SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND classid = 0 AND objid = ${DRILL_ADVISORY_LOCK_KEY} AND objsubid = 1 AND pid = pg_backend_pid()) = 1 THEN pg_sleep(${DRILL_LOCK_MAX_SECONDS}) ELSE 1/0 END;`,
     ],
     { stdio: ["ignore", outFd, "pipe"] },
   );
@@ -1442,25 +1483,33 @@ export function releaseDrillLock(lock: DrillLock): void {
   // DRILL_LOCK_MAX_SECONDS sleep and refuse every idempotent re-run within
   // the capability TTL (proven by the claim-order regression test: a failed
   // first invocation must leave the target retryable, not lock-pinned).
+  // Termination is gated on pg_locks proving the pid STILL holds this drill's
+  // exact advisory lock (#23453 review r4): a recycled OS pid would otherwise
+  // point at an unrelated backend, and terminating it would be collateral
+  // damage. The same query proves termination succeeded (returns true), not
+  // merely that psql exited cleanly.
   if (lock.backendPid !== undefined) {
     const terminated = spawnSync(
       "psql",
       [
         "--no-psqlrc",
         "--quiet",
+        "--tuples-only",
+        "--no-align",
         "--dbname",
         lock.targetDsn,
         "--command",
-        `SELECT pg_terminate_backend(${lock.backendPid}) WHERE pg_backend_pid() <> ${lock.backendPid};`,
+        `SELECT CASE WHEN EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND classid = 0 AND objid = ${DRILL_ADVISORY_LOCK_KEY} AND objsubid = 1 AND pid = ${lock.backendPid} AND pid <> pg_backend_pid()) THEN pg_terminate_backend(${lock.backendPid}) ELSE false END;`,
       ],
       { encoding: "utf-8" },
     );
-    if (terminated.status !== 0) {
-      // error-policy:J4 the SIGKILL fallback below still drops the client;
-      // termination is best-effort so a completed drill's report is never
-      // masked by a cleanup failure.
+    const released =
+      terminated.status === 0 && (terminated.stdout ?? "").trim() === "t";
+    if (!released) {
+      // error-policy:J6 teardown-only: the SIGKILL fallback below still drops
+      // the client; a termination miss here never masks the drill outcome.
       process.stderr.write(
-        `drill lock backend termination failed: ${terminated.stderr?.slice(-200) ?? "unknown"}\n`,
+        `drill lock backend termination not confirmed: ${(terminated.stderr ?? terminated.stdout ?? "unknown").slice(-200)}\n`,
       );
     }
   }
@@ -1480,7 +1529,14 @@ function guardedPsqlFile(
   targetId: string,
   capability: string,
   script: string,
+  expiresAtEpochMs?: number,
 ): void {
+  if (expiresAtEpochMs !== undefined) {
+    // Re-guard the already-written script with the server-clock expiry check
+    // by prefixing it (guardPsqlScript composes the same way).
+    const body = readFileSync(script, "utf-8");
+    writeFileSync(script, guardPsqlScript(body, expiresAtEpochMs));
+  }
   run("psql", [
     "--no-psqlrc",
     "--set",
@@ -1675,6 +1731,7 @@ export function executeDrill(options: CliOptions): DrillReport {
         options.targetId,
         capabilityEnvelope,
         claimScript,
+        capability.expiresAtEpochMs,
       );
       const dbMap = parseDbMap(readFileSync(join(work, "dbmap.tsv"), "utf-8"));
       if (dbMap.length !== manifest.databaseCount) {
@@ -1724,13 +1781,17 @@ export function executeDrill(options: CliOptions): DrillReport {
       const guardedGlobals = join(work, "guarded-globals.sql");
       writeFileSync(
         guardedGlobals,
-        guardPsqlScript(makeGlobalsIdempotent(globalsSql)),
+        guardPsqlScript(
+          makeGlobalsIdempotent(globalsSql),
+          capability.expiresAtEpochMs,
+        ),
       );
       guardedPsqlFile(
         options.targetDsn,
         options.targetId,
         capabilityEnvelope,
         guardedGlobals,
+        capability.expiresAtEpochMs,
       );
       for (const entry of dbMap) {
         const dumpFile = join(work, "dumps", `${entry.dumpId}.dump`);
@@ -1763,6 +1824,7 @@ export function executeDrill(options: CliOptions): DrillReport {
           options.targetId,
           capabilityEnvelope,
           guardedDrop,
+          capability.expiresAtEpochMs,
         );
         const rawRestore = join(work, `${entry.dumpId}.restore.sql`);
         run("pg_restore", ["--file", rawRestore, dumpFile]);
@@ -1777,7 +1839,10 @@ export function executeDrill(options: CliOptions): DrillReport {
         );
         writeFileSync(
           guardedRestore,
-          guardPsqlScript(readFileSync(rawRestore, "utf-8")),
+          guardPsqlScript(
+            readFileSync(rawRestore, "utf-8"),
+            capability.expiresAtEpochMs,
+          ),
         );
         run("psql", [
           "--no-psqlrc",
@@ -1821,8 +1886,14 @@ export function executeDrill(options: CliOptions): DrillReport {
                 `gexec`,
               "",
             ].join("\n"),
+            capability.expiresAtEpochMs,
           ),
         );
+        // The restore SQL can run long enough for the capability to expire
+        // or the lock holder to die mid-restore; re-prove both immediately
+        // before the handoff session executes (#23453 review r4).
+        assertCapabilityLive();
+        assertDrillLockHeld(drillLock);
         run("psql", [
           "--no-psqlrc",
           "--set",
@@ -2053,11 +2124,30 @@ export function runMintCommand(argv: string[]): string {
 const PROVISION_LOCK_STALE_MS = 120_000;
 
 /**
- * Atomically claim the provision lock (O_EXCL). A lock older than the
- * staleness window is removed and retried once — the holder refreshes the
- * mtime on acquire, so only a crashed holder's lock is ever broken.
+ * Handle over a claimed provision lock: the stat identifies THIS claim's
+ * lock-file inode (dev+ino), so release can only unlink a file this claim
+ * created — never a successor's lock after a stale takeover (#23453
+ * review r4).
  */
-function claimProvisionLock(lockPath: string): void {
+interface ProvisionLockHandle {
+  lockPath: string;
+  dev: number;
+  ino: number;
+}
+
+/**
+ * Atomically claim the provision lock (O_EXCL). A lock older than the
+ * staleness window is presumed crashed and taken over by RENAMING it aside
+ * (the rename is atomic and unlinks exactly one file) and retrying the
+ * O_EXCL create once. Takeover never unlinks the shared lock path directly,
+ * so two provisioners racing on a stale lock cannot remove each other's
+ * fresh claims: only the rename winner recreates the lock, and the loser's
+ * next O_EXCL fails against the winner's lock (#23453 review r4). This is
+ * a takeover, not a lease: the critical section is seconds-long and the
+ * window only bounds how long a crashed holder can block the next
+ * provisioner.
+ */
+function claimProvisionLock(lockPath: string): ProvisionLockHandle {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const fd = openSync(lockPath, "wx");
@@ -2066,7 +2156,8 @@ function claimProvisionLock(lockPath: string): void {
       } finally {
         closeSync(fd);
       }
-      return;
+      const own = statSync(lockPath);
+      return { lockPath, dev: own.dev, ino: own.ino };
     } catch (error) {
       const code = (error as { code?: string }).code;
       if (code !== "EEXIST") {
@@ -2076,28 +2167,52 @@ function claimProvisionLock(lockPath: string): void {
         );
       }
     }
+    if (attempt > 0) {
+      break;
+    }
     const stale = statSync(lockPath, { throwIfNoEntry: false });
     if (
-      stale !== undefined &&
-      Date.now() - stale.mtimeMs > PROVISION_LOCK_STALE_MS
+      stale === undefined ||
+      Date.now() - stale.mtimeMs <= PROVISION_LOCK_STALE_MS
     ) {
-      try {
-        // error-policy:J6 a stale lock from a crashed holder is removed.
-        rmSync(lockPath, { force: true });
-      } catch {
-        // error-policy:J6 stale-lock removal failure surfaces as EEXIST retry.
-      }
-      continue;
+      break;
     }
-    throw new RecoveryDrillError(
-      "PROVISION_LOCK_HELD",
-      "another provisioner holds the postgresql.auto.conf lock",
-    );
+    // Take the stale lock out of the way by renaming it aside: the rename
+    // is atomic and cannot remove a concurrently recreated lock at this
+    // path. The sidecar is left for the operator; it proves a crashed
+    // holder was superseded.
+    // error-policy:J6 a stale lock from a crashed holder is moved aside.
+    try {
+      renameSync(lockPath, `${lockPath}.stale-${Date.now()}`);
+    } catch {
+      // error-policy:J6 takeover failure surfaces as a held lock below.
+      break;
+    }
   }
   throw new RecoveryDrillError(
     "PROVISION_LOCK_HELD",
     "another provisioner holds the postgresql.auto.conf lock",
   );
+}
+
+/**
+ * Release the provision lock by identity: unlink only when the path still
+ * resolves to THIS claim's inode. A successor's recreated lock at the same
+ * path is a different inode and is never removed (#23453 review r4).
+ */
+function releaseProvisionLock(handle: ProvisionLockHandle): void {
+  try {
+    const current = statSync(handle.lockPath, { throwIfNoEntry: false });
+    if (
+      current !== undefined &&
+      current.dev === handle.dev &&
+      current.ino === handle.ino
+    ) {
+      rmSync(handle.lockPath, { force: true });
+    }
+  } catch {
+    // error-policy:J6 lock release must not mask the provisioning outcome.
+  }
 }
 
 /**
@@ -2173,20 +2288,15 @@ export function runProvisionCommand(
   // lost-update race entirely.
   // Neither Node nor Bun exposes flock(2), so the lock is an O_EXCL lock
   // file: creation is atomic, so exactly one provisioner can hold it. A
-  // crash while holding leaves a stale lock; it is broken after
-  // PROVISION_LOCK_STALE_MS because a live holder refreshes the lock's
-  // mtime, and the whole window is minutes, not hours.
-  const lockPath = `${autoConf}.eliza-provision.lock`;
-  claimProvisionLock(lockPath);
+  // crash while holding leaves a stale lock; it is superseded after
+  // PROVISION_LOCK_STALE_MS by an atomic rename-aside takeover — a live
+  // holder finishes well inside the window, so the bound only matters for
+  // crashed holders.
+  const lockHandle = claimProvisionLock(`${autoConf}.eliza-provision.lock`);
   try {
     writeAutoConfAtomic(autoConf, targetId, capabilityText);
   } finally {
-    try {
-      // error-policy:J6 best-effort lock-file release.
-      rmSync(lockPath, { force: true });
-    } catch {
-      // error-policy:J6 lock release must not mask the provisioning outcome.
-    }
+    releaseProvisionLock(lockHandle);
   }
   run("psql", [
     "--no-psqlrc",
