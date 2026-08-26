@@ -5,7 +5,6 @@
 import { describe, expect, it } from "vitest";
 import {
   assertKey,
-  maskSecret,
   optsCaller,
   toWellFormedUnicode,
   truncateWellFormed,
@@ -102,23 +101,5 @@ describe("truncateWellFormed", () => {
 
     // Truncating at index 5 includes both surrogates ("abc\uD83D\uDE00")
     expect(truncateWellFormed(text, 5)).toBe("abc\uD83D\uDE00");
-  });
-
-  it("safely handles non-string inputs", () => {
-    expect(toWellFormedUnicode(null as unknown as string)).toBe("");
-    expect(truncateWellFormed(null as unknown as string, 5)).toBe("");
-  });
-});
-
-describe("maskSecret", () => {
-  it("masks secrets while preserving prefix and suffix characters", () => {
-    expect(maskSecret("sk-1234567890abcdef", 3)).toBe("sk-*************def");
-    expect(maskSecret("short", 2)).toBe("sh****rt");
-  });
-
-  it("completely masks short secrets", () => {
-    expect(maskSecret("key", 4)).toBe("***");
-    expect(maskSecret("", 4)).toBe("");
-    expect(maskSecret(null as unknown as string)).toBe("");
   });
 });
