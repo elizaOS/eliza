@@ -34,6 +34,7 @@ import {
 import { startApiServer } from "./server.ts";
 import {
   __resetPendingWebSocketsForTests,
+  MAX_PENDING_WEBSOCKETS_PER_PEER,
   pendingWebSocketCount,
 } from "./server-helpers-auth.ts";
 
@@ -271,5 +272,76 @@ describe("handshake bearer accepts a machine-session id (#13985)", () => {
     await expect(
       openWs(port, { Authorization: "Bearer not-a-real-credential" }),
     ).rejects.toThrow(/401/);
+  }, 60_000);
+});
+
+describe("session lookups stay behind the pre-auth admission bounds", () => {
+  it("runs at most one in-band session lookup per socket at a time", async () => {
+    let lookups = 0;
+    let releaseLookup: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      releaseLookup = resolve;
+    });
+    setAgentHostBridge({
+      ...defaultAgentHostBridge,
+      resolveSessionTokenAuthorization: async (token) => {
+        lookups += 1;
+        await gate;
+        return token === ACTIVE_SESSION_ID
+          ? { ok: true, role: "USER", identityId: "identity-paired-device" }
+          : { ok: false, role: "NONE" };
+      },
+    });
+    const port = await bootServer();
+    const ws = await openWs(port);
+
+    const authOk = waitForFrame(ws, "auth-ok");
+    for (let i = 0; i < 5; i += 1) {
+      ws.send(JSON.stringify({ type: "auth", token: ACTIVE_SESSION_ID }));
+    }
+    // Give the server time to drain all five frames while the first lookup
+    // is still blocked on the gate; the other four must be dropped, not
+    // fanned out as concurrent store lookups.
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(lookups).toBe(1);
+
+    releaseLookup?.();
+    await authOk;
+    expect(lookups).toBe(1);
+
+    const pong = waitForFrame(ws, "pong");
+    ws.send(JSON.stringify({ type: "ping" }));
+    await pong;
+    ws.close();
+  }, 60_000);
+
+  it("rejects a handshake-bearer upgrade without a store lookup once the peer's pre-auth slots are exhausted", async () => {
+    let lookups = 0;
+    setAgentHostBridge({
+      ...defaultAgentHostBridge,
+      resolveSessionTokenAuthorization: async () => {
+        lookups += 1;
+        return { ok: false, role: "NONE" };
+      },
+    });
+    const port = await bootServer();
+
+    // Fill every pre-auth slot for this peer with bare (credential-less)
+    // sockets, which the server admits pending post-open authentication.
+    const preAuthSockets: WebSocket[] = [];
+    while (
+      pendingWebSocketCount("127.0.0.1") < MAX_PENDING_WEBSOCKETS_PER_PEER
+    ) {
+      preAuthSockets.push(await openWs(port));
+    }
+
+    // With the admission cap saturated, an invalid handshake bearer must be
+    // rejected before any session-store work happens.
+    await expect(
+      openWs(port, { Authorization: "Bearer not-a-real-credential" }),
+    ).rejects.toThrow(/401/);
+    expect(lookups).toBe(0);
+
+    for (const socket of preAuthSockets) socket.close();
   }, 60_000);
 });

@@ -4353,15 +4353,35 @@ export async function startApiServer(opts?: {
         // host-bridge session seam REST uses. Fail-closed: an absent token or
         // an unknown/expired/revoked session keeps the rejection.
         const handshakeToken = extractWebSocketHandshakeToken(request, wsUrl);
-        if (
-          handshakeToken &&
-          (await isWebSocketSessionTokenAuthorized(
-            handshakeToken,
-            state.runtime,
-          ))
-        ) {
-          markWebSocketUpgradeSessionAuthorized(request);
-          rejection = null;
+        if (handshakeToken) {
+          // The session lookup is asynchronous store work, so it must sit
+          // behind the same per-peer pre-auth admission cap as post-open
+          // authentication — otherwise repeated invalid bearers from one
+          // remote could fan out unbounded concurrent store lookups. The
+          // slot is held only for the lookup itself; the pre-auth socket
+          // flow below re-acquires its own longer-lived slot.
+          const lookupPeer = request.socket.remoteAddress ?? null;
+          if (!tryAcquirePendingWebSocket(lookupPeer)) {
+            rejectWebSocketUpgrade(
+              socket,
+              401,
+              "Too many unauthenticated WebSocket connections",
+            );
+            return;
+          }
+          try {
+            if (
+              await isWebSocketSessionTokenAuthorized(
+                handshakeToken,
+                state.runtime,
+              )
+            ) {
+              markWebSocketUpgradeSessionAuthorized(request);
+              rejection = null;
+            }
+          } finally {
+            releasePendingWebSocket(lookupPeer);
+          }
         }
       }
       if (rejection) {
@@ -4471,6 +4491,9 @@ export async function startApiServer(opts?: {
       hostAuthorized ||
       isWebSocketAuthorized(request, wsUrl) ||
       isWebSocketUpgradeSessionAuthorized(request);
+    // Serializes in-band machine-session lookups for this socket (see the
+    // auth branch of the message handler).
+    let inBandSessionLookupInFlight = false;
 
     // W5-015: the upgrade handler reserved a pre-auth slot for this socket's
     // peer. It releases on post-open authentication or on close — whichever
@@ -4637,10 +4660,23 @@ export async function startApiServer(opts?: {
             // id, never the static connection key (#13985). Resolve it through
             // the same host-bridge session seam REST uses; unknown, expired,
             // and revoked sessions fall through to the fail-closed 1008.
-            authorized = await isWebSocketSessionTokenAuthorized(
-              providedToken,
-              state.runtime,
-            );
+            // At most one store lookup may be in flight per socket: the
+            // lookup is asynchronous, so an attacker spamming auth frames on
+            // one pre-auth socket must not fan out concurrent store work.
+            // Extra frames are dropped; the in-flight lookup's verdict
+            // decides this socket either way.
+            if (inBandSessionLookupInFlight) {
+              return;
+            }
+            inBandSessionLookupInFlight = true;
+            try {
+              authorized = await isWebSocketSessionTokenAuthorized(
+                providedToken,
+                state.runtime,
+              );
+            } finally {
+              inBandSessionLookupInFlight = false;
+            }
             if (isAuthenticated) {
               // Another frame authenticated this socket while the session
               // lookup was in flight; this pre-auth frame is spent either way.
