@@ -117,6 +117,51 @@ function haveSameWebsiteSet(
 }
 
 /**
+ * Required duration for the merged block: indefinite (`null`) when any rule
+ * has no time bound, otherwise the longest remaining gate in whole minutes.
+ */
+function requiredBlockDurationMinutes(
+  rules: readonly BlockRule[],
+  nowMs: number,
+): number | null {
+  let durationMinutes: number | null = 0;
+  for (const rule of rules) {
+    const remaining = remainingMinutesForRule(rule, nowMs);
+    if (remaining === null) {
+      durationMinutes = null;
+      break;
+    }
+    durationMinutes = Math.max(durationMinutes, remaining);
+  }
+  return durationMinutes;
+}
+
+/**
+ * True when the running OS block still covers the required duration. An
+ * indefinite block covers any timed requirement; a timed block only covers
+ * requirements that expire no later than its own scheduled end. When the
+ * block would expire before the rules demand, the caller must reshape it —
+ * otherwise the scheduled expiry silently unblocks the sites while a rule is
+ * still active (fail-open).
+ */
+function runningBlockCoversDuration(
+  status: { endsAt: string | null },
+  requiredMinutes: number | null,
+  nowMs: number,
+): boolean {
+  if (requiredMinutes === null) {
+    // Indefinite required: only an indefinite block satisfies it.
+    return status.endsAt === null;
+  }
+  if (status.endsAt === null) {
+    // Indefinite running block never expires early; it covers any timed need.
+    return true;
+  }
+  const remainingMs = Date.parse(status.endsAt) - nowMs;
+  return remainingMs >= requiredMinutes * 60_000;
+}
+
+/**
  * Converge the single OS-level website block onto the given active rules.
  *
  * - No active rules → stop the OS block if (and only if) it is rule-managed.
@@ -160,7 +205,14 @@ export async function syncOsBlockToRules(
           "A website block that is not managed by block rules is already running; the block rules cannot engage until it ends.",
       };
     }
-    if (haveSameWebsiteSet(status.requestedWebsites, desiredWebsites)) {
+    if (
+      haveSameWebsiteSet(status.requestedWebsites, desiredWebsites) &&
+      runningBlockCoversDuration(
+        status,
+        requiredBlockDurationMinutes(rules, nowMs),
+        nowMs,
+      )
+    ) {
       return { ok: true, changed: false, error: null };
     }
     const stopped = await stopSelfControlBlock();
@@ -169,15 +221,10 @@ export async function syncOsBlockToRules(
     }
   }
 
-  let durationMinutes: number | null = 0;
-  for (const rule of rules) {
-    const remaining = remainingMinutesForRule(rule, nowMs);
-    if (remaining === null) {
-      durationMinutes = null;
-      break;
-    }
-    durationMinutes = Math.max(durationMinutes, remaining);
-  }
+  const durationMinutes: number | null = requiredBlockDurationMinutes(
+    rules,
+    nowMs,
+  );
 
   const activation = await activateBlockRule({
     runtime,
