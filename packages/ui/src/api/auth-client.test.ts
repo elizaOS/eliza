@@ -618,7 +618,23 @@ describe("authMe over plain HTTP boundaries", () => {
     });
   });
 
-  it("maps any non-401 HTTP failure onto 503", async () => {
+  it("preserves auth throttling and the server retry window", async () => {
+    fetchWithCsrfMock.mockResolvedValueOnce(
+      new Response("", {
+        status: 429,
+        headers: { "Retry-After": "12" },
+      }),
+    );
+
+    await expect(authMe()).resolves.toEqual({
+      ok: false,
+      status: 429,
+      reason: "rate_limited",
+      retryAfterMs: 12_000,
+    });
+  });
+
+  it("maps other non-401 HTTP failures onto 503", async () => {
     fetchWithCsrfMock.mockResolvedValueOnce(textResponse("", 403));
 
     await expect(authMe()).resolves.toEqual({ ok: false, status: 503 });
