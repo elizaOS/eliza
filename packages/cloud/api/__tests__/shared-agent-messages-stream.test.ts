@@ -236,11 +236,24 @@ describe("shared agent messages/stream", () => {
 
   function voiceWorkerRuntime(sseText = "adapter ok") {
     const fetch = mock(
-      async (_input: RequestInfo | URL, _init?: RequestInit) =>
-        new Response(
-          `event: chunk\ndata: ${JSON.stringify({ chunk: sseText })}\n\nevent: done\ndata: {}\n\n`,
-          { headers: { "Content-Type": "text/event-stream" } },
-        ),
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const request = JSON.parse(String(init?.body)) as {
+          operation?: string;
+          rpc?: { id?: string };
+        };
+        if (request.operation === "prewarm") {
+          return Response.json({ success: true });
+        }
+        return Response.json({
+          jsonrpc: "2.0",
+          id: request.rpc?.id ?? "voice-buffered",
+          result: {
+            text: sseText,
+            messageId: "assistant-message",
+            userMessageId: "user-message",
+          },
+        });
+      },
     );
     const namespace = {
       getByName: mock(() => ({ fetch })),
@@ -367,7 +380,7 @@ describe("shared agent messages/stream", () => {
     });
   });
 
-  test("internal voice fetch adapter dispatches cached scope through the conversation Durable Object", async () => {
+  test("internal voice fetch adapter buffers cached scope through the conversation Durable Object", async () => {
     await seedVoiceScope();
     const runtime = voiceWorkerRuntime();
 
@@ -404,7 +417,7 @@ describe("shared agent messages/stream", () => {
       String(runtime.fetch.mock.calls[0]?.[1]?.body),
     ) as Record<string, unknown>;
     expect(operation).toMatchObject({
-      operation: "stream",
+      operation: "bridge",
       agent: cachedVoiceAgent(),
       rpc: {
         method: "message.send",
@@ -447,16 +460,26 @@ describe("shared agent messages/stream", () => {
     expect(hasCloudBindingsContext()).toBe(false);
     expect(hasDbCacheContext()).toBe(false);
 
-    runtime.fetch.mockImplementation(async () => {
+    runtime.fetch.mockImplementation(async (_input, init) => {
       expect(hasCloudBindingsContext()).toBe(true);
       expect(hasDbCacheContext()).toBe(false);
       expect(getCloudAwareEnv().DATABASE_URL).toBe(env.DATABASE_URL);
-      return new Response(
-        'event: chunk\ndata: {"chunk":"late callback ok"}\n\nevent: done\ndata: {}\n\n',
-        {
-          headers: { "Content-Type": "text/event-stream" },
+      const request = JSON.parse(String(init?.body)) as {
+        operation?: string;
+        rpc?: { id?: string };
+      };
+      if (request.operation === "prewarm") {
+        return Response.json({ success: true });
+      }
+      return Response.json({
+        jsonrpc: "2.0",
+        id: request.rpc?.id ?? "voice-buffered",
+        result: {
+          text: "late callback ok",
+          messageId: "assistant-message",
+          userMessageId: "user-message",
         },
-      );
+      });
     });
 
     const fetchImpl = createLateFetch({
@@ -483,7 +506,7 @@ describe("shared agent messages/stream", () => {
     ) as Array<{ operation: string }>;
     expect(operations.map(({ operation }) => operation)).toEqual([
       "prewarm",
-      "stream",
+      "bridge",
     ]);
   });
 
@@ -554,7 +577,7 @@ describe("shared agent messages/stream", () => {
     ) as Array<{ operation: string }>;
     expect(operations.map(({ operation }) => operation)).toEqual([
       "prewarm",
-      "stream",
+      "bridge",
     ]);
     expect(bridgeStream).not.toHaveBeenCalled();
   });

@@ -289,9 +289,7 @@ export function BrowserSessionPolicyPanel({
         className="flex flex-col gap-2 rounded-sm border border-danger/50 bg-danger/10 p-4 text-sm text-danger"
       >
         <span>Failed to load browser sessions.</span>
-        {loadError ? (
-          <span className="text-xs opacity-80">{loadError}</span>
-        ) : null}
+        {loadError ? <span className="text-xs">{loadError}</span> : null}
         <Button size="sm" variant="outline" onClick={() => void load()}>
           Retry
         </Button>

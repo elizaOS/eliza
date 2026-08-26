@@ -1,12 +1,14 @@
 // Provides shared support logic for the Code example.
 import {
   ChannelType,
+  type CodingActionProfile,
   type Content,
   createMessageMemory,
   ElizaError,
   FAILED_TOOL_FALLBACK_MESSAGE,
   type IAgentRuntime,
   type Memory,
+  PI_CODING_ACTION_PROFILE,
   type StreamChunkCallback,
   type UUID,
 } from "@elizaos/core";
@@ -21,12 +23,14 @@ const STREAM_EVENT_TYPES = new Set([
   "context_event",
 ]);
 
-interface SendMessageParams {
+export interface SendMessageParams {
   room: ChatRoom;
   text: string;
   identity: SessionIdentity;
   /** Enter the runtime's trusted direct coding loop for this turn. */
   codingMode?: boolean;
+  /** Optional trusted model-facing action profile for this coding turn. */
+  codingActionProfile?: CodingActionProfile;
   userName?: string;
   source?: string;
   channelType?: ChannelType;
@@ -37,6 +41,27 @@ interface SendMessageParams {
   onDelta?: (delta: string) => void;
   /** Optional caller-controlled cancellation signal for in-flight turns. */
   abortSignal?: AbortSignal;
+}
+
+export type PiCodingTurnParams = Omit<
+  SendMessageParams,
+  "codingMode" | "codingActionProfile"
+>;
+
+export interface AgentClientSendBoundary {
+  sendMessage(params: SendMessageParams): Promise<string>;
+}
+
+/** Applies the example host's shared Pi policy to any coding turn boundary. */
+export function sendPiCodingTurn(
+  client: AgentClientSendBoundary,
+  params: PiCodingTurnParams,
+): Promise<string> {
+  return client.sendMessage({
+    ...params,
+    codingMode: true,
+    codingActionProfile: PI_CODING_ACTION_PROFILE,
+  });
 }
 
 function hasStreamingEventType(value: unknown): value is { type: string } {
@@ -170,9 +195,15 @@ class AgentClient {
     }
 
     const options =
-      params.codingMode || params.abortSignal || onDelta
+      params.codingMode ||
+      params.codingActionProfile ||
+      params.abortSignal ||
+      onDelta
         ? {
             ...(params.codingMode ? { codingMode: true } : {}),
+            ...(params.codingActionProfile
+              ? { codingActionProfile: params.codingActionProfile }
+              : {}),
             ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
             ...(onDelta ? { onStreamChunk: handleStreamChunk } : {}),
           }

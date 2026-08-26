@@ -3,6 +3,8 @@
  * Action, Content, Footer). cva variants select behaviour/padding: default,
  * interactive (hover-affordance), status, setting, flat.
  */
+
+import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 
@@ -13,9 +15,21 @@ const cardVariants = cva("rounded-sm bg-card/70 text-card-fg", {
     variant: {
       default: "",
       interactive: "transition-colors hover:bg-card cursor-pointer",
-      status: "",
       setting: "p-0",
-      flat: "",
+      flatPadded: "p-4",
+      brand: "relative border border-border bg-bg-elevated p-4 text-txt md:p-6",
+      panel: "border border-border/60 bg-card/92",
+      overlayWide:
+        "relative z-10 w-full max-w-[820px] overflow-hidden border border-border/60 bg-card/95",
+      overlayMedium:
+        "relative z-10 w-full max-w-[640px] overflow-hidden border border-border/60 bg-card/95",
+      pairingGate:
+        "relative z-10 w-full max-w-[620px] overflow-hidden border border-border/60 bg-card/95",
+      startupFailure:
+        "relative z-10 w-full max-w-[720px] overflow-hidden border border-border/60 bg-card/95",
+      cloudPayment: "border border-border bg-card text-card-fg",
+      cloudPaymentPublic:
+        "rounded-xs border border-inverse-foreground/12 bg-inverse/88 text-inverse-foreground",
     },
   },
   defaultVariants: {
@@ -25,16 +39,21 @@ const cardVariants = cva("rounded-sm bg-card/70 text-card-fg", {
 
 export interface CardProps
   extends React.HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof cardVariants> {}
+    VariantProps<typeof cardVariants> {
+  asChild?: boolean;
+}
 
 const Card = React.forwardRef<HTMLDivElement, CardProps>(
-  ({ className, variant, ...props }, ref) => (
-    <div
-      ref={ref}
-      className={cn(cardVariants({ variant }), className)}
-      {...props}
-    />
-  ),
+  ({ asChild = false, className, variant, ...props }, ref) => {
+    const Component = asChild ? Slot : "div";
+    return (
+      <Component
+        ref={ref}
+        className={cn(cardVariants({ variant }), className)}
+        {...props}
+      />
+    );
+  },
 );
 Card.displayName = "Card";
 

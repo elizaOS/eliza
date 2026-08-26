@@ -18,7 +18,7 @@ import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-to
 import { resolveApiUrl } from "../utils/asset-url";
 import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
 import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
-import { readCsrfTokenFromCookie } from "./auth/csrf-cookie";
+import { readCsrfTokenForUrl } from "./auth/csrf-cookie";
 import { CSRF_HEADER_NAME } from "./auth/sessions";
 import { desktopHttpTransportForUrl } from "./desktop-http-transport";
 import { desktopLocalAgentTransportForUrl } from "./desktop-local-agent-transport";
@@ -50,7 +50,7 @@ export async function fetchWithCsrf(
   const isDedicatedAgentRequest = isDedicatedCloudAgentBase(url);
 
   if (!isDedicatedAgentRequest && STATE_CHANGING_METHODS.has(method)) {
-    const csrfToken = readCsrfTokenFromCookie();
+    const csrfToken = readCsrfTokenForUrl(url);
     if (csrfToken) {
       headers.set(CSRF_HEADER_NAME, csrfToken);
     }

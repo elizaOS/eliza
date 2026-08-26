@@ -5,7 +5,8 @@
  */
 import type * as React from "react";
 
-import { SidebarContent } from "../sidebar";
+import { ActionListRow } from "../../shared/ActionListRow";
+import { StatusBadge } from "../../ui/status-badge";
 
 export interface SkillSidebarItemProps {
   active?: boolean;
@@ -22,6 +23,7 @@ export interface SkillSidebarItemProps {
     React.ButtonHTMLAttributes<HTMLButtonElement>,
     "children" | "onClick" | "type"
   >;
+  buttonRef?: React.Ref<HTMLButtonElement>;
 }
 
 export function SkillSidebarItem({
@@ -36,47 +38,43 @@ export function SkillSidebarItem({
   onSelect,
   testId,
   buttonProps,
+  buttonRef,
 }: SkillSidebarItemProps) {
   return (
-    <SidebarContent.Item
-      as="div"
-      active={active}
+    <ActionListRow
+      element="button"
+      buttonRef={buttonRef}
+      selected={active}
       data-testid={testId}
-      className="items-start gap-2"
-    >
-      <SidebarContent.ItemButton
-        aria-current={active ? "page" : undefined}
-        onClick={onSelect}
-        {...buttonProps}
-      >
-        <SidebarContent.ItemIcon active={active}>
-          {icon}
-        </SidebarContent.ItemIcon>
-        <SidebarContent.ItemBody>
-          <SidebarContent.ItemTitle>{name}</SidebarContent.ItemTitle>
-          {description ? (
-            <SidebarContent.ItemDescription>
-              {description}
-            </SidebarContent.ItemDescription>
-          ) : null}
-        </SidebarContent.ItemBody>
-      </SidebarContent.ItemButton>
-      <div className="flex shrink-0 flex-col items-end gap-2">
+      density="compact"
+      alignment="start"
+      aria-current={active ? "page" : undefined}
+      onClick={onSelect}
+      leading={
         <span
-          className={`rounded-sm border px-2.5 py-1 text-2xs font-bold tracking-[0.16em] ${
-            enabled
-              ? "border-accent bg-accent text-accent-fg"
-              : "border-border bg-transparent text-muted"
-          }`}
+          className={
+            active
+              ? "flex size-10 items-center justify-center rounded-sm bg-accent/18 p-2 text-txt-strong"
+              : "flex size-10 items-center justify-center rounded-sm bg-bg-accent/80 p-2 text-muted"
+          }
         >
-          {enabled ? onLabel : offLabel}
+          {icon}
         </span>
-        {attentionLabel ? (
-          <span className="rounded-sm border border-warn/30 bg-warn/12 px-2 py-0.5 text-3xs font-bold uppercase tracking-[0.14em] text-warn">
-            {attentionLabel}
-          </span>
-        ) : null}
-      </div>
-    </SidebarContent.Item>
+      }
+      title={name}
+      description={description}
+      trailing={
+        <span className="flex flex-col items-end gap-2">
+          <StatusBadge
+            label={enabled ? onLabel : offLabel}
+            status={enabled ? "success" : "muted"}
+          />
+          {attentionLabel ? (
+            <StatusBadge label={attentionLabel} status="warning" />
+          ) : null}
+        </span>
+      }
+      {...buttonProps}
+    />
   );
 }

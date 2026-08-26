@@ -87,6 +87,7 @@ const refreshCloudStewardSessionMock = vi.mocked(refreshCloudStewardSession);
 const isDesktopExternalApiBaseUrlMock = vi.mocked(isDesktopExternalApiBaseUrl);
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
 
@@ -112,6 +113,29 @@ function textResponse(body: string, status: number): Response {
 describe("authSetup", () => {
   beforeEach(() => {
     fetchWithCsrfMock.mockReset();
+  });
+
+  it("never serializes owner setup credentials for a plaintext remote", async () => {
+    vi.stubGlobal("window", {
+      location: { origin: "capacitor://localhost" },
+    });
+    getBootConfigMock.mockReturnValueOnce({
+      apiBase: "http://192.168.0.137:31340",
+    } as ReturnType<typeof getBootConfig>);
+
+    const result = await authSetup({
+      displayName: "Owner",
+      password: "must-not-cross-the-lan",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      status: 400,
+      reason: "insecure_transport",
+      message:
+        "Owner password setup requires HTTPS or a local in-process connection.",
+    });
+    expect(fetchWithCsrfMock).not.toHaveBeenCalled();
   });
 
   it("posts credentials to /api/auth/setup and passes the success payload through", async () => {
@@ -250,6 +274,30 @@ describe("authSetup", () => {
 describe("authLoginPassword", () => {
   beforeEach(() => {
     fetchWithCsrfMock.mockReset();
+  });
+
+  it("never serializes owner login credentials for a plaintext remote", async () => {
+    vi.stubGlobal("window", {
+      location: { origin: "capacitor://localhost" },
+    });
+    getBootConfigMock.mockReturnValueOnce({
+      apiBase: "http://host.ts.net:31340",
+    } as ReturnType<typeof getBootConfig>);
+
+    const result = await authLoginPassword({
+      displayName: "Owner",
+      password: "must-not-cross-the-tailnet",
+      rememberDevice: true,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      status: 400,
+      reason: "insecure_transport",
+      message:
+        "Owner password login requires HTTPS or a local in-process connection. Pair this device instead.",
+    });
+    expect(fetchWithCsrfMock).not.toHaveBeenCalled();
   });
 
   it("posts credentials including rememberDevice to the login endpoint", async () => {
@@ -905,6 +953,29 @@ describe("authRevokeSession", () => {
 describe("authChangePassword", () => {
   beforeEach(() => {
     fetchWithCsrfMock.mockReset();
+  });
+
+  it("never serializes an owner password change for a plaintext remote", async () => {
+    vi.stubGlobal("window", {
+      location: { origin: "capacitor://localhost" },
+    });
+    getBootConfigMock.mockReturnValueOnce({
+      apiBase: "http://100.96.0.1:31340",
+    } as ReturnType<typeof getBootConfig>);
+
+    const result = await authChangePassword({
+      currentPassword: "must-not-cross-the-tailnet",
+      newPassword: "must-not-cross-the-tailnet-either",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      status: 400,
+      reason: "insecure_transport",
+      message:
+        "Changing the owner password requires HTTPS or a local in-process connection.",
+    });
+    expect(fetchWithCsrfMock).not.toHaveBeenCalled();
   });
 
   it("posts both passwords to /api/auth/password/change and resolves ok", async () => {

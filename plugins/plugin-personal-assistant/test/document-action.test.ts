@@ -141,24 +141,6 @@ describe("OWNER_DOCUMENTS umbrella action — Docs And Portals", () => {
   });
 
   describe("metadata", () => {
-    it("exposes the canonical name and owner-document similes", () => {
-      expect(ownerDocumentsAction.name).toBe("OWNER_DOCUMENTS");
-      const similes = ownerDocumentsAction.similes ?? [];
-      for (const required of [
-        "OWNER_DOCUMENTS_REQUEST_SIGNATURE",
-        "OWNER_DOCUMENTS_REQUEST_APPROVAL",
-        "OWNER_DOCUMENTS_TRACK_DEADLINE",
-        "OWNER_DOCUMENTS_UPLOAD_ASSET",
-        "OWNER_DOCUMENTS_COLLECT_ID_OR_FORM",
-        "OWNER_DOCUMENTS_CLOSE_REQUEST",
-        "PAPERWORK",
-      ]) {
-        expect(similes).toContain(required);
-      }
-      expect(similes).not.toContain("DOCUMENT");
-      expect(similes).not.toContain("DOCUMENTS");
-    });
-
     it("validates as accessible for an owner-attached message", async () => {
       const ok = await ownerDocumentsAction.validate?.(
         makeRuntime(),

@@ -17,7 +17,6 @@
 packages/native/bun-runtime/artifacts/
 packages/chip/
 packages/robot/
-packages/benchmarks/
 # Test/e2e media and local tooling caches — likewise never in a Railway build.
 **/node_modules/.cache/
 .turbo/

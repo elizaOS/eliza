@@ -335,30 +335,24 @@ describe("Agent A2A billing", () => {
     expect(body.result?.content).toBe("hello from model");
   });
 
-  // #16147: the output ceiling used to price/reserve must be the exact value
-  // capped on the provider call, for every resolved thinking budget including
-  // none. Here we prove the route forwards the resolved value to both sinks.
+  // Billing uses a conservative estimate without turning that estimate into a
+  // provider cap. Final usage is reconciled separately.
   test.each([
     [null, 500],
     [1024, 1524],
     [8000, 8500],
   ] as const)(
-    "prices and caps the provider at one admitted ceiling (budget=%p)",
-    async (budget, expectedCap) => {
+    "prices the request without capping provider output (budget=%p)",
+    async (budget, expectedEstimate) => {
       makeReservation({ adjustmentType: "none" });
       resolveAnthropicThinkingBudgetTokens.mockReturnValue(budget);
 
       const response = await callChat("anthropic/claude-opus-4-5");
       expect(response.status).toBe(200);
 
-      // Reserved with this exact ceiling (3rd arg to estimateRequestCost)...
-      expect(estimateRequestCost.mock.calls[0]?.[2]).toBe(expectedCap);
-      // ...and the provider is capped at the identical value — never omitted.
+      expect(estimateRequestCost.mock.calls[0]?.[2]).toBe(expectedEstimate);
       expect(streamText).toHaveBeenCalledTimes(1);
-      expect(streamText.mock.calls[0]?.[0]?.maxOutputTokens).toBe(expectedCap);
-      expect(streamText.mock.calls[0]?.[0]?.maxOutputTokens).toBe(
-        estimateRequestCost.mock.calls[0]?.[2],
-      );
+      expect(streamText.mock.calls[0]?.[0]?.maxOutputTokens).toBeUndefined();
     },
   );
 

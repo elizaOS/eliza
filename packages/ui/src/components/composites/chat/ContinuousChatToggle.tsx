@@ -103,21 +103,15 @@ export function ContinuousChatToggle({
           <TooltipTrigger asChild>
             <Button
               type="button"
-              variant="ghost"
-              size="icon"
+              variant={value === "off" ? "ghostMuted" : "surfaceAccent"}
+              size="icon-sm"
               aria-pressed={value !== "off"}
               aria-label={`Continuous chat: ${meta.label} (tap to switch)`}
               data-testid={dataTestId ?? "continuous-chat-toggle"}
               data-mode={value}
               disabled={disabled}
               onClick={() => handleSelect(nextMode)}
-              className={cn(
-                "size-8 shrink-0",
-                value === "always-on" && "text-accent",
-                value === "vad-gated" && "text-ok",
-                value === "off" && "text-muted",
-                className,
-              )}
+              className={cn("shrink-0", className)}
             >
               <Icon className="size-4" />
             </Button>
@@ -153,21 +147,14 @@ export function ContinuousChatToggle({
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  variant="ghost"
-                  size="sm"
+                  variant={active ? "surfaceAccent" : "ghostMuted"}
+                  size="tiny"
                   role="radio"
                   aria-checked={active}
                   disabled={disabled}
                   data-mode={modeId}
                   data-active={active ? "true" : "false"}
                   onClick={() => handleSelect(modeId)}
-                  className={cn(
-                    "h-auto gap-1.5 rounded-sm px-2 py-1 text-xs font-medium transition-colors",
-                    "    ",
-                    active
-                      ? "bg-accent/15 text-accent"
-                      : "text-muted hover:text-txt hover:bg-bg-hover",
-                  )}
                 >
                   <Icon className="size-3.5" />
                   <span>{meta.label}</span>

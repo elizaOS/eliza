@@ -53,6 +53,7 @@ if str(_HERE.parent) not in sys.path:
     sys.path.insert(0, str(_HERE.parent))
 
 from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+from lib.generation_integrity import model_context_tokens  # noqa: E402
 
 from _common import (  # noqa: E402
     get_text_config,
@@ -191,7 +192,9 @@ def _collect_end_token_activations(
             ids = tokenize_with_explicit_limit(
                 tokenizer,
                 prompt,
-                max_tokens=2048,
+                max_tokens=model_context_tokens(
+                    model, tokenizer, source="abliteration_apply.calibration"
+                ),
                 return_tensors="pt",
             ).to(model.device)
             with torch.no_grad():

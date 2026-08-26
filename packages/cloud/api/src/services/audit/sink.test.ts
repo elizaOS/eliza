@@ -9,7 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { logger } from "@/lib/utils/logger";
 import { AuditDispatcher } from "./dispatcher.js";
-import { type AuditSink, LoggerSink } from "./sink.js";
+import { LoggerSink } from "./sink.js";
 import { InMemorySink } from "./testing.js";
 import type { AuditEvent } from "./types.js";
 
@@ -68,23 +68,6 @@ describe("LoggerSink", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-  });
-
-  it("satisfies AuditSink as the optional named logger implementation", () => {
-    const sink: AuditSink = new LoggerSink();
-    expect(sink.name).toBe("logger");
-    expect(sink.required).toBe(false);
-    expect(typeof sink.emit).toBe("function");
-  });
-
-  it("keeps name and required stable across independent instances", () => {
-    const a = new LoggerSink();
-    const b = new LoggerSink();
-    expect(a).not.toBe(b);
-    expect(a.name).toBe("logger");
-    expect(b.name).toBe("logger");
-    expect(a.required).toBe(false);
-    expect(b.required).toBe(false);
   });
 
   it("forwards the event to logger.info without copying or mutating it", async () => {

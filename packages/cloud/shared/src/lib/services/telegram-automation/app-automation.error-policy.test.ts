@@ -22,12 +22,20 @@ const APP_ID = "00000000-0000-4000-8000-00000000c002";
 
 // Controls how the mocked Telegram sendMessage behaves for the current test.
 let sendBehavior: () => Promise<{ message_id: number }> = async () => ({ message_id: 1 });
+const sendMessageCalls: unknown[][] = [];
+const sendPhotoCalls: unknown[][] = [];
 
 mock.module("telegraf", () => ({
   Telegraf: class {
     telegram = {
-      sendMessage: (..._args: unknown[]) => sendBehavior(),
-      sendPhoto: (..._args: unknown[]) => sendBehavior(),
+      sendMessage: (...args: unknown[]) => {
+        sendMessageCalls.push(args);
+        return sendBehavior();
+      },
+      sendPhoto: (...args: unknown[]) => {
+        sendPhotoCalls.push(args);
+        return sendBehavior();
+      },
     };
   },
 }));
@@ -83,6 +91,8 @@ const { telegramAppAutomationService } = await import("./app-automation");
 const originalFetch = globalThis.fetch;
 beforeEach(() => {
   updateCalls.length = 0;
+  sendMessageCalls.length = 0;
+  sendPhotoCalls.length = 0;
   appFixture = makeApp();
   sendBehavior = async () => ({ message_id: 1 });
   globalThis.fetch = (async () => {
@@ -142,5 +152,26 @@ describe("postAnnouncement error policy (#13415)", () => {
     expect(result.error).toBeUndefined();
     // Only a real delivery bumps the counter.
     expect(updateCalls).toHaveLength(1);
+  });
+
+  test("a promotional image never turns the generated message into a truncated caption", async () => {
+    appFixture = makeApp({
+      promotional_assets: [
+        {
+          url: "https://cdn.example.test/promo.png",
+          type: "banner",
+          size: { width: 1200, height: 630 },
+        },
+      ],
+    });
+    const text = `${"complete ".repeat(1_000)}END_SENTINEL`;
+
+    const result = await telegramAppAutomationService.postAnnouncement(ORG_ID, APP_ID, text);
+
+    expect(result.success).toBe(true);
+    expect(sendPhotoCalls).toHaveLength(1);
+    expect(sendPhotoCalls[0]?.[2]).toBeUndefined();
+    expect(sendMessageCalls.length).toBeGreaterThan(1);
+    expect(sendMessageCalls.map((call) => String(call[1])).join("")).toBe(text);
   });
 });

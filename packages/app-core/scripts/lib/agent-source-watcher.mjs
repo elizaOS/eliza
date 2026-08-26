@@ -20,7 +20,6 @@ import path from "node:path";
 export const HOT_RELOAD_FRONTEND_PACKAGES = new Set([
   "ui",
   "app",
-  "os-homepage",
   "homepage",
   "docs",
   "docs-elizacloud-redirect",

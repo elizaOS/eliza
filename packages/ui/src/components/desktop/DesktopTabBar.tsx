@@ -49,23 +49,25 @@ function TabButton({
         <ViewIcon icon={tab.icon} label={tab.label} className="size-3" />
       </span>
       <Button
-        variant="ghost"
+        variant="transparent"
+        size="content"
+        align="start"
         aria-pressed={active}
         title={tab.label}
         onClick={onClick}
-        className="h-auto min-w-0 truncate rounded-none bg-transparent p-0 text-xs font-medium leading-none hover:bg-transparent"
+        className="min-w-0 truncate"
       >
         {tab.label}
       </Button>
       <Button
-        variant="ghost"
-        size="icon-sm"
+        variant="ghostMuted"
+        size="disclosure"
         title={`Close ${tab.label}`}
         onClick={(e) => {
           e.stopPropagation();
           onClose();
         }}
-        className="ml-0.5 size-5 shrink-0 rounded-sm p-0 opacity-0 transition-opacity hover:bg-border/40 group-hover:opacity-100"
+        className="ml-0.5 shrink-0"
         aria-label={`Close ${tab.label}`}
       >
         <X className="size-2.5" />
@@ -104,11 +106,11 @@ export function DesktopTabBar({
         />
       ))}
       <Button
-        variant="secondary"
-        size="icon-sm"
+        variant="outlineMuted"
+        size="disclosure"
         title="Open Launcher"
         onClick={onOpenViewManager}
-        className="ml-1 size-6 shrink-0 rounded-sm border border-border/40 bg-card/40 p-0 text-muted transition-colors hover:border-border hover:text-txt"
+        className="ml-1 shrink-0"
         aria-label="Open Launcher"
       >
         <Plus className="size-3" />

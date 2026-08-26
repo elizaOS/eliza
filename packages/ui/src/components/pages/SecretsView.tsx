@@ -259,12 +259,7 @@ export function SecretsView({
           {/* Flat — no card/border. The shell owns the page's horizontal padding. */}
           <div className="px-4 py-8 text-center">
             <div className="mb-2 text-sm text-danger">{error}</div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 px-3 text-sm"
-              onClick={() => void load()}
-            >
+            <Button variant="outline" size="short" onClick={() => void load()}>
               {t("common.retry")}
             </Button>
           </div>
@@ -280,8 +275,8 @@ export function SecretsView({
           <div className="flex justify-end">
             <Button
               variant="default"
-              size="sm"
-              className="h-9 shrink-0 px-3 text-sm"
+              size="regularCompact"
+              className="shrink-0"
               onClick={() => {
                 setPickerOpen(true);
                 setPickerSearch("");
@@ -315,8 +310,9 @@ export function SecretsView({
           {grouped.map(({ category, label, secrets: catSecrets }) => (
             <section key={category} className="space-y-3">
               <Button
-                variant="ghost"
-                className="mb-3 h-auto w-full items-center gap-2 rounded-sm px-3 py-2 text-left hover:bg-bg-hover"
+                variant="sectionToggle"
+                size="content"
+                className="mb-3"
                 onClick={() => toggleCollapse(category)}
                 aria-expanded={!collapsed.has(category)}
               >
@@ -358,8 +354,8 @@ export function SecretsView({
             <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center">
               <Button
                 variant="default"
-                size="sm"
-                className="h-9 px-4 text-sm font-medium transition-colors"
+                size="regularCompact"
+                className="font-medium transition-colors"
                 disabled={dirtyKeys.length === 0 || saving}
                 onClick={handleSave}
               >
@@ -429,9 +425,8 @@ function SecretPicker({
             </DialogDescription>
           </div>
           <Button
-            variant="ghost"
-            size="icon"
-            className="size-8 rounded-sm text-base text-muted hover:text-txt"
+            variant="ghostMuted"
+            size="icon-sm"
             onClick={onClose}
             aria-label={t("common.close")}
           >
@@ -440,7 +435,8 @@ function SecretPicker({
         </DialogHeader>
         <Input
           type="text"
-          className="h-12 w-full rounded-none border-0 bg-transparent px-4 py-2.5 text-sm text-txt shadow-none font-body"
+          variant="embeddedSearch"
+          density="search"
           placeholder={t("secretsview.SearchByKeyDescr")}
           aria-label={t("secretsview.SearchByKeyDescr")}
           value={search}
@@ -491,8 +487,8 @@ function SecretPicker({
                       </div>
                       <Button
                         variant="default"
-                        size="sm"
-                        className="px-2.5 py-1 h-7 text-xs shrink-0"
+                        size="tiny"
+                        className="shrink-0"
                         onClick={() => onAdd(s.key)}
                       >
                         {t("common.add")}
@@ -566,9 +562,8 @@ const SecretCard = memo(function SecretCard({
           {/* Remove from vault — only if not set (set secrets always show) or if explicitly pinned */}
           {isPinned && !secret.isSet && (
             <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 rounded-sm px-2 text-xs-tight text-muted hover:bg-danger/10 hover:text-danger"
+              variant="dangerGhost"
+              size="tiny"
               onClick={() => onRemove(secret.key)}
               title={t("secretsview.RemoveFromVault")}
             >
@@ -599,7 +594,9 @@ const SecretCard = memo(function SecretCard({
       <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
         <Input
           type={isVisible ? "text" : "password"}
-          className="h-9 flex-1 border-border/60 bg-bg px-2.5 py-1.5 text-sm font-mono text-txt"
+          variant="secret"
+          density="short"
+          className="flex-1"
           placeholder={
             secret.isSet ? "Enter new value to update" : "Enter value"
           }
@@ -607,9 +604,8 @@ const SecretCard = memo(function SecretCard({
           onChange={(e) => onDraftChange(secret.key, e.target.value)}
         />
         <Button
-          variant="outline"
-          size="sm"
-          className="h-9 px-3 text-xs text-muted-strong hover:text-txt"
+          variant="outlineMuted"
+          size="compact"
           onClick={() => onToggleVisible(secret.key)}
           title={isVisible ? "Hide" : "Show"}
         >

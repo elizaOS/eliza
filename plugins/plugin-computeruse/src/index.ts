@@ -77,6 +77,14 @@ const computerUseRoutes: Route[] = [
     rawPath: true,
     handler: computerUseRouteHandler(),
   },
+  ...(["pause", "resume", "stop"] as const).map(
+    (operation): Route => ({
+      type: "POST",
+      path: `/api/computer-use/sessions/:id/${operation}`,
+      rawPath: true,
+      handler: computerUseRouteHandler(),
+    }),
+  ),
   {
     type: "GET",
     path: "/api/computer-use/sessions/:id/frame",
@@ -184,6 +192,8 @@ export {
 } from "./actions/use-computer-agent.js";
 // WS7: Brain / Actor / Cascade / Dispatch — autonomous desktop loop.
 export * from "./actor/index.js";
+export * from "./app-control/coordinator.js";
+export * from "./app-control/types.js";
 // iOS computer-use surface. See `docs/IOS_CONSTRAINTS.md` for the honest scope.
 export * from "./mobile/index.js";
 export {

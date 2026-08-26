@@ -271,11 +271,13 @@ describe("documentAction.handler structured routing", () => {
 		expect(service.listDocumentsDetailed).toHaveBeenCalledWith(
 			expect.anything(),
 			expect.objectContaining({
-				limit: 25,
 				query: undefined,
 				timeRangeStart: undefined,
 				timeRangeEnd: undefined,
 			}),
+		);
+		expect(service.listDocumentsDetailed.mock.calls[0]?.[1]).not.toHaveProperty(
+			"limit",
 		);
 	});
 
@@ -602,7 +604,7 @@ describe("documentAction.handler structured routing", () => {
 		);
 		expect(service.readDocumentRange).toHaveBeenCalledWith(
 			DOC_ID,
-			{ unit: "line", offset: 0, limit: 100 },
+			{ unit: "line", offset: 0 },
 			expect.anything(),
 		);
 		expect(res?.data).toMatchObject({ subaction: "read" });

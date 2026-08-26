@@ -756,6 +756,14 @@ export async function refreshCloudStewardSession(opts?: {
     const response = await fetch(endpoint, {
       method: "POST",
       credentials: "include",
+      // This is a cookie-authenticated mutation. Match the canonical Cloud
+      // login helper: a custom non-simple marker lets the Worker reject
+      // cross-site form POSTs without exposing the host-only refresh cookie to
+      // JavaScript. The body remains empty and the cookie remains browser-only.
+      headers: {
+        "Content-Type": "application/json",
+        "X-Eliza-CSRF": "1",
+      },
       signal: stewardSignal,
     });
     if (!response.ok) {

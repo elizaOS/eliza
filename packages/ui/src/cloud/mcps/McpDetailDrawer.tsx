@@ -454,13 +454,7 @@ export function McpStatusBadge({
       : status === "suspended" || status === "deprecated"
         ? "danger"
         : "muted";
-  return (
-    <StatusBadge
-      label={status.replace("_", " ")}
-      variant={variant}
-      className="px-1.5 text-2xs font-medium capitalize"
-    />
-  );
+  return <StatusBadge label={status.replace("_", " ")} variant={variant} />;
 }
 
 function errorMessage(error: unknown): string {

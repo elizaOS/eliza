@@ -339,6 +339,36 @@ describe("shared-rest-adapter — messages", () => {
     });
   });
 
+  test("POST preserves generated media URLs as structured connector output", async () => {
+    coordinateSharedBridge.mockResolvedValue({
+      jsonrpc: "2.0",
+      id: "media",
+      result: {
+        text: "here's your video.\nhttps://media.example.com/dog.mp4",
+        actionResults: [
+          {
+            success: true,
+            data: {
+              actionName: "GENERATE_MEDIA",
+              mediaUrl: "https://media.example.com/dog.mp4",
+            },
+          },
+        ],
+      },
+    });
+
+    const out = await sharedRestMessageSend(
+      SHARED_AGENT,
+      AGENT,
+      "animate this dog",
+      "Eliza",
+      EXECUTION_CTX,
+      NAMESPACE,
+    );
+
+    expect(out.mediaUrls).toEqual(["https://media.example.com/dog.mp4"]);
+  });
+
   test("POST preserves a consistent provider receipt and formats Server-Timing", async () => {
     const timing = {
       replayed: false,
@@ -475,15 +505,15 @@ describe("shared-rest-adapter — messages", () => {
     warn.mockRestore();
   });
 
-  test("POST accepts the explicit first-16 call truncation contract", async () => {
-    const calls = Array.from({ length: 16 }, () => ({
-      provider: "cerebras" as const,
+  test("POST accepts a complete long provider-call receipt", async () => {
+    const calls = Array.from({ length: 17 }, (_, index) => ({
+      provider: index === 16 ? ("openrouter" as const) : ("cerebras" as const),
       durationMs: 1,
-      fallback: false,
+      fallback: index === 16,
     }));
     coordinateSharedBridge.mockResolvedValueOnce({
       jsonrpc: "2.0",
-      id: "timed-truncated",
+      id: "timed-complete",
       result: {
         text: "four",
         timing: {
@@ -493,7 +523,7 @@ describe("shared-rest-adapter — messages", () => {
           callCount: 17,
           fallbackCount: 1,
           selectedProvider: "mixed",
-          callsTruncated: true,
+          callsTruncated: false,
           calls,
         },
       },
@@ -511,7 +541,7 @@ describe("shared-rest-adapter — messages", () => {
       callCount: 17,
       fallbackCount: 1,
       selectedProvider: "mixed",
-      callsTruncated: true,
+      callsTruncated: false,
       calls,
     });
   });

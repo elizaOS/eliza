@@ -1,7 +1,8 @@
 /**
  * Steward email magic-link callback (public). Verifies the token/email via the
  * Steward auth context, syncs the session cookie, then redirects to the stored
- * app-authorize returnTo (third-party app integration) or /cloud.
+ * app-authorize returnTo (third-party app integration) or the default login
+ * destination `/join` (ordinary Eliza Cloud login).
  */
 
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
@@ -9,6 +10,7 @@ import type { ReactNode } from "react";
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
+  APP_AUTHORIZE_PATH,
   clearStoredAppAuthorizeReturnTo,
   readStoredAppAuthorizeReturnTo,
 } from "../../../../cloud-ui/components/auth/authorize-return";
@@ -49,6 +51,29 @@ export function resolveEmailCallbackDestination(
   pendingLoginReturnTo: string | null,
 ): string {
   return appAuthorizeReturnTo ?? pendingLoginReturnTo ?? defaultLoginReturnTo();
+}
+
+/**
+ * Classifies a resolved email-callback destination so the success copy and
+ * manual fallback button describe the actual context instead of always
+ * claiming an app-authorization return.
+ *
+ * - explicit third-party app authorization targets are identified by the
+ *   app-authorization path prefix;
+ * - the ordinary login fallback (`/join`) is the default destination;
+ * - anything else is a validated same-origin return target that gets
+ *   neutral destination-safe wording.
+ */
+export function classifyEmailCallbackDestination(destination: string): {
+  isAppAuthorization: boolean;
+  isJoinFallback: boolean;
+} {
+  const isAppAuthorization =
+    destination === APP_AUTHORIZE_PATH ||
+    destination.startsWith(`${APP_AUTHORIZE_PATH}?`) ||
+    destination.startsWith(`${APP_AUTHORIZE_PATH}#`);
+  const isJoinFallback = destination === defaultLoginReturnTo();
+  return { isAppAuthorization, isJoinFallback };
 }
 
 const pendingEmailVerifications = new Map<
@@ -292,12 +317,8 @@ function EmailCallbackContent() {
         ) : null}
         <Button
           asChild
-          className={
-            email
-              ? undefined
-              : "hosted-signin-focus-emphasis mt-2 border border-transparent transition-none"
-          }
-          variant={email ? "ghost" : undefined}
+          className="hosted-signin-focus-emphasis mt-2"
+          variant={email ? "ghostMuted" : "default"}
         >
           <a href="/login">
             {email
@@ -314,28 +335,39 @@ function EmailCallbackContent() {
   }
 
   if (status === "success") {
+    const destination = successDestinationRef.current ?? defaultLoginReturnTo();
+    const { isAppAuthorization, isJoinFallback } =
+      classifyEmailCallbackDestination(destination);
+    const successCopy = isAppAuthorization
+      ? t("cloud.emailCallback.returning", {
+          defaultValue: "Returning to the app authorization screen...",
+        })
+      : t("cloud.emailCallback.openingEliza", {
+          defaultValue: "Opening Eliza...",
+        });
+    const buttonCopy = isAppAuthorization
+      ? t("cloud.emailCallback.continue", {
+          defaultValue: "Continue to app authorization",
+        })
+      : isJoinFallback
+        ? t("cloud.emailCallback.continueToEliza", {
+            defaultValue: "Continue to Eliza",
+          })
+        : t("cloud.emailCallback.continue", {
+            defaultValue: "Continue",
+          });
     return (
       <Frame>
         <CheckCircle2 className="size-12 text-txt" />
         <h1 className="text-lg font-semibold text-txt">
           {t("cloud.emailCallback.signedIn", { defaultValue: "Signed in" })}
         </h1>
-        <p className="text-sm text-muted">
-          {t("cloud.emailCallback.returning", {
-            defaultValue: "Returning to the app authorization screen...",
-          })}
-        </p>
+        <p className="text-sm text-muted">{successCopy}</p>
         <BrandButton
           className="mt-2"
-          onClick={() =>
-            navigate(successDestinationRef.current ?? defaultLoginReturnTo(), {
-              replace: true,
-            })
-          }
+          onClick={() => navigate(destination, { replace: true })}
         >
-          {t("cloud.emailCallback.continue", {
-            defaultValue: "Continue to app authorization",
-          })}
+          {buttonCopy}
         </BrandButton>
       </Frame>
     );

@@ -60,12 +60,14 @@ function DashboardSidebarComponent({
     <>
       {isOpen && (
         <Button
-          variant="ghost"
+          variant="transparent"
           type="button"
           aria-label="Close navigation backdrop"
-          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          className="fixed inset-0 z-40 md:hidden"
           onClick={handleBackdropClick}
-        />
+        >
+          <span className="absolute inset-0 bg-black/50" aria-hidden />
+        </Button>
       )}
 
       <aside
@@ -82,10 +84,11 @@ function DashboardSidebarComponent({
           {logo ? <div className="relative z-10">{logo}</div> : null}
           {onToggle && (
             <Button
-              variant="ghost"
+              variant="outlineAccent"
+              size="icon-sm"
               type="button"
               onClick={handleCloseClick}
-              className="relative z-10 border border-white/10 bg-white/5 p-2 transition-colors hover:border-white/20 hover:bg-white/10   md:hidden"
+              className="relative z-10 md:hidden"
               aria-label="Close navigation"
             >
               <X className="size-4 text-white" />

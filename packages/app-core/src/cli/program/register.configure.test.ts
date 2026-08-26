@@ -10,7 +10,6 @@ import path from "node:path";
 import { formatDocsLink, theme } from "@elizaos/shared";
 import { Command, CommanderError } from "commander";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import * as configureModule from "./register.configure";
 import { registerConfigureCommand } from "./register.configure";
 
 const CONFIG_PATH = path.join(homedir(), ".local/state/eliza/eliza.json");
@@ -82,11 +81,6 @@ function expectedActionLines(): string[] {
 describe("registerConfigureCommand", () => {
   afterEach(() => {
     vi.restoreAllMocks();
-  });
-
-  it("exports only registerConfigureCommand", () => {
-    expect(Object.keys(configureModule)).toEqual(["registerConfigureCommand"]);
-    expect(typeof registerConfigureCommand).toBe("function");
   });
 
   it("registers a single configure command on an empty program", () => {

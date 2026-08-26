@@ -128,6 +128,7 @@ describe("ComputerUseService isolated session adapters", () => {
         calls.push(target.targetId ?? "missing");
         return { success: true, cursorPosition: { x: 10, y: 11 } };
       },
+      async () => ({ mimeType: "image/png", data: "c2FuZGJveA==" }),
     );
     service.registerSessionTargetExecutor(
       { kind: "remote_guest", targetId: "guest-b" },
@@ -135,6 +136,7 @@ describe("ComputerUseService isolated session adapters", () => {
         calls.push(target.targetId ?? "missing");
         return { success: true, cursorPosition: { x: 90, y: 91 } };
       },
+      async () => ({ mimeType: "image/png", data: "Z3Vlc3Q=" }),
     );
     const sandbox = service.createSession({
       target: { kind: "sandbox", targetId: "sandbox-a" },
@@ -142,17 +144,25 @@ describe("ComputerUseService isolated session adapters", () => {
     const guest = service.createSession({
       target: { kind: "remote_guest", targetId: "guest-b" },
     });
+    const [sandboxFrame, guestFrame] = await Promise.all([
+      service.captureSessionFrame(sandbox.id),
+      service.captureSessionFrame(guest.id),
+    ]);
 
     const [sandboxResult, guestResult] = await Promise.all([
       service.executeSessionAction(sandbox.id, {
         actionId: "sandbox-action",
         expectedSequence: 0,
         command: "mouse_move",
+        observationId: sandboxFrame.provenance.observationId,
+        observationSequence: sandboxFrame.provenance.sequence,
       }),
       service.executeSessionAction(guest.id, {
         actionId: "guest-action",
         expectedSequence: 0,
         command: "mouse_move",
+        observationId: guestFrame.provenance.observationId,
+        observationSequence: guestFrame.provenance.sequence,
       }),
     ]);
 

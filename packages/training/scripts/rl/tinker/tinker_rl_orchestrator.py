@@ -203,7 +203,6 @@ class TinkerRLOrchestrator:
             try:
                 sample = await trainer.tinker_client.sample_async(
                     messages=self._selection_messages(prompt_spec),
-                    max_tokens=128,
                     temperature=0.0,
                     n=1,
                     include_logprobs=False,

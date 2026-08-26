@@ -59,7 +59,7 @@ import { admitOrganizationInference } from "@/lib/services/organization-inferenc
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
-const A2A_TEXT_OUTPUT_TOKENS = 500;
+const A2A_BILLING_OUTPUT_ESTIMATE_TOKENS = 500;
 
 const ProviderUsageSchema = z.object({
   inputTokens: z.number().int().nonnegative(),
@@ -400,12 +400,12 @@ async function handleChat(
     envForThinking,
     agentThinkingBudget,
   );
-  const maxOutputTokens =
-    A2A_TEXT_OUTPUT_TOKENS + (effectiveThinkingBudget ?? 0);
+  const estimatedOutputTokens =
+    A2A_BILLING_OUTPUT_ESTIMATE_TOKENS + (effectiveThinkingBudget ?? 0);
   const baseCost = await estimateRequestCost(
     model,
     fullMessages,
-    maxOutputTokens,
+    estimatedOutputTokens,
   );
 
   const markupPct = Number(character.inference_markup_percentage || 0);
@@ -460,10 +460,6 @@ async function handleChat(
     const result = await streamText({
       model: getLanguageModel(model),
       messages: fullMessages,
-      // Cap the provider at the exact ceiling billing reserved above, so final
-      // usage cannot outrun the admitted reservation (#16147). Omitting it let
-      // the provider bill more output than was priced upfront.
-      maxOutputTokens,
       ...mergeAnthropicCotProviderOptions(
         model,
         envForThinking,

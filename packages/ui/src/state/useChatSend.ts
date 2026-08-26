@@ -28,6 +28,13 @@ import {
 } from "../api/client-base";
 import { describeCreditGateError } from "../api/credit-gate-error";
 import {
+  consumePendingCapabilityIntent,
+  findCapabilityHandoff,
+  markPendingCapabilityReady,
+  readPendingCapabilityReadyAgentId,
+  rememberCapabilityHandoff,
+} from "../capability-handoff";
+import {
   expandSavedCustomCommand,
   loadSavedCustomCommands,
   normalizeSlashCommandName,
@@ -37,6 +44,7 @@ import { dispatchDoorDashHumanHandoff } from "../doordash-human-handoff";
 import {
   CLOUD_HANDOFF_PHASE_EVENT,
   type CloudHandoffPhaseDetail,
+  dispatchChatPrefill,
 } from "../events";
 import type { Tab } from "../navigation";
 import { directCloudSharedAgentIdFromBase } from "../utils/cloud-agent-base";
@@ -402,6 +410,10 @@ export interface UseChatSendDeps {
 
   // Chat state
   activeConversationId: string | null;
+  /** Current composer text, used to avoid overwriting a draft on setup resume. */
+  chatInput?: string;
+  /** Setup continuation waits until first-run no longer owns the composer. */
+  firstRunComplete?: boolean;
   /** Stable ref whose .current mirrors the latest ptySessions array. */
   ptySessionsRef: MutableRefObject<CodingAgentSession[]>;
 
@@ -517,6 +529,8 @@ export function useChatSend(deps: UseChatSendDeps) {
     uiLanguage,
     tab,
     activeConversationId,
+    chatInput = "",
+    firstRunComplete = true,
     ptySessionsRef,
     setChatInput,
     setChatSending,
@@ -678,6 +692,17 @@ export function useChatSend(deps: UseChatSendDeps) {
         return null;
       }
 
+      const capabilityHandoff = findCapabilityHandoff(
+        data.actionResults,
+        directCloudSharedAgentIdFromBase(client.getBaseUrl()),
+      );
+      if (capabilityHandoff) {
+        rememberCapabilityHandoff(
+          data.messageId ?? assistantMessageId,
+          capabilityHandoff,
+        );
+      }
+
       // A non-durable failure belongs only to the turn that produced it. If a
       // later user turn already exists, this request settled out of order after
       // a remount/history reload; dropping its placeholder prevents an old
@@ -710,7 +735,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         });
       }
 
-      if (!data.text.trim()) {
+      if (!data.text.trim() && !capabilityHandoff) {
         applyStreamingModificationForConversation(conversationId, {
           messageId: assistantMessageId,
           ...(data.failureKind
@@ -726,6 +751,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       } else if (
         shouldApplyFinalStreamText(streamedAssistantText, data.text) ||
         (options.includeReasoning && data.reasoning) ||
+        capabilityHandoff ||
         data.messageId
       ) {
         applyStreamingModificationForConversation(conversationId, {
@@ -739,6 +765,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           ...(options.includeAccountConnect && data.accountConnect
             ? { accountConnect: data.accountConnect }
             : {}),
+          ...(capabilityHandoff ? { capabilityHandoff } : {}),
           ...(options.includeReasoning && data.reasoning
             ? { reasoning: data.reasoning }
             : {}),
@@ -754,12 +781,18 @@ export function useChatSend(deps: UseChatSendDeps) {
             ? { terminalFailure: data.terminalFailure }
             : {}),
         });
-      } else if (options.includeAccountConnect && data.accountConnect) {
+      } else if (
+        (options.includeAccountConnect && data.accountConnect) ||
+        capabilityHandoff
+      ) {
         applyStreamingModificationForConversation(conversationId, {
           messageId: assistantMessageId,
           mode: "complete",
           fullText: data.text,
-          accountConnect: data.accountConnect,
+          ...(options.includeAccountConnect && data.accountConnect
+            ? { accountConnect: data.accountConnect }
+            : {}),
+          ...(capabilityHandoff ? { capabilityHandoff } : {}),
           ...(data.assistantEphemeral ? { assistantEphemeral: true } : {}),
           ...(data.messageId ? { persistedMessageId: data.messageId } : {}),
         });
@@ -2332,6 +2365,22 @@ export function useChatSend(deps: UseChatSendDeps) {
         handoffFrozenRef.current = true;
         return;
       }
+      if (
+        (detail.phase === "switched" || detail.phase === "switched-empty") &&
+        markPendingCapabilityReady(detail.agentId) &&
+        firstRunComplete &&
+        !chatInputRef.current.trim()
+      ) {
+        const originalIntent = consumePendingCapabilityIntent(detail.agentId);
+        if (originalIntent) {
+          setChatInput(originalIntent);
+          dispatchChatPrefill({ text: originalIntent, select: true });
+          setActionNotice(
+            "Your workspace is ready. Review your request, then send it when you want.",
+            "success",
+          );
+        }
+      }
       // Any terminal phase ends the window. Drain whatever queued up — by now
       // the client base is the dedicated container (on a switch) or unchanged
       // (on timeout/failure), so the flush targets the right agent either way.
@@ -2342,7 +2391,13 @@ export function useChatSend(deps: UseChatSendDeps) {
     };
     window.addEventListener(CLOUD_HANDOFF_PHASE_EVENT, onPhase);
     return () => window.removeEventListener(CLOUD_HANDOFF_PHASE_EVENT, onPhase);
-  }, [flushQueuedChatSends]);
+  }, [
+    chatInputRef,
+    firstRunComplete,
+    flushQueuedChatSends,
+    setActionNotice,
+    setChatInput,
+  ]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: activeConversationIdRef is a ref — its .current is read at ENQUEUE time (always latest) and must NOT be a dependency, or this callback's identity churns on every conversation switch.
   const sendChatTextInternal = useCallback(
@@ -3083,6 +3138,20 @@ export function useChatSend(deps: UseChatSendDeps) {
     setConversationMessages,
     setUnreadConversations,
   ]);
+
+  useEffect(() => {
+    if (!firstRunComplete || chatInput.trim()) return;
+    const readyAgentId = readPendingCapabilityReadyAgentId();
+    if (!readyAgentId) return;
+    const originalIntent = consumePendingCapabilityIntent(readyAgentId);
+    if (!originalIntent) return;
+    setChatInput(originalIntent);
+    dispatchChatPrefill({ text: originalIntent, select: true });
+    setActionNotice(
+      "Your workspace is ready. Review your request, then send it when you want.",
+      "success",
+    );
+  }, [chatInput, firstRunComplete, setActionNotice, setChatInput]);
 
   return {
     chatSendQueueRef,

@@ -8,6 +8,7 @@ import appViteConfig, {
   appDevWsBasePlugin,
   appShellMetadataPlugin,
   findAndroidCloudEmittedRoutingFindings,
+  resolveAndroidCloudPrebootLockupDataUri,
   resolveAppShellLocalCspSources,
   selectAndroidCloudRendererEntry,
   stripAndroidCloudIpcBootstrap,
@@ -87,7 +88,8 @@ describe("app shell local connection policy", () => {
   });
 
   test("audits every emitted file without rewriting packaged code", () => {
-    const lazyCode = "http://127.0.0.1:31337 adb reverse tcp:32437";
+    const lazyCode =
+      "remote-mac eliza-local-agent: http://127.0.0.1:31337 adb reverse tcp:32437";
     const bundle = {
       "entry.js": {
         type: "chunk" as const,
@@ -105,13 +107,18 @@ describe("app shell local connection policy", () => {
         imports: [],
         code: lazyCode,
       },
+      "sw-registration.js": {
+        type: "chunk" as const,
+        imports: [],
+        code: 'navigator.serviceWorker.register("/sw.js")',
+      },
     };
 
     expect(findAndroidCloudEmittedRoutingFindings(bundle)).toEqual([
-      "lazy-direct-runtime.js: 31337",
       "lazy-direct-runtime.js: 32437",
       "lazy-direct-runtime.js: adb reverse",
       "runtime.js: 10.0.2.2",
+      "sw-registration.js: navigator.serviceWorker",
     ]);
     expect(bundle["lazy-direct-runtime.js"].code).toBe(lazyCode);
     expect(ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS).toContain("adb reverse");
@@ -157,12 +164,62 @@ describe("app shell local connection policy", () => {
     expect(stripped).toContain('rel="stylesheet"');
   });
 
-  test("selects the dedicated renderer before the Android Cloud graph is bundled", () => {
+  test("inlines the complete Play preboot lockup as one atomic image", () => {
+    const source = `
+      <div class="eliza-preboot-shell__brand" aria-hidden="true">
+        <img class="eliza-preboot-shell__mark" src="/brand/logos/logo_white_nobg.svg" alt="" />
+        <span class="eliza-preboot-shell__name">elizaOS</span>
+      </div>`;
+    const stripped = stripAndroidCloudPublicAssetReferences(source);
+
+    expect(stripped).toContain(
+      'class="eliza-preboot-shell__lockup" src="data:image/svg+xml;base64,',
+    );
+    expect(stripped).toContain('decoding="sync" fetchpriority="high"');
+    const encodedLockup = stripped.match(
+      /src="data:image\/svg\+xml;base64,([^"]+)"/,
+    )?.[1];
+    expect(encodedLockup).toBeDefined();
+    const lockupSvg = Buffer.from(encodedLockup ?? "", "base64").toString(
+      "utf8",
+    );
+    expect(lockupSvg).toContain('fill="none"');
+    expect(lockupSvg).toContain('fill="white"');
+    expect(lockupSvg).not.toContain("#FF5800");
+    expect(lockupSvg).not.toContain(
+      '<rect x="0.081543" y="1.84143" width="101.919" height="101.919"',
+    );
+    expect(stripped).not.toContain("eliza-preboot-shell__name");
+    expect(stripped).not.toContain("logo_white_nobg.svg");
+  });
+
+  test("does not resolve the Play-only lockup for non-Cloud renderers", () => {
+    let resolutions = 0;
+    const plugin = appShellMetadataPlugin({
+      androidCloudBuild: false,
+      capacitorBuildTarget: "android",
+      resolveAndroidCloudPrebootLockup: () => {
+        resolutions += 1;
+        throw new Error("Cloud-only logo must stay lazy");
+      },
+    });
+    if (typeof plugin.transformIndexHtml !== "function") {
+      throw new Error("app metadata plugin has no HTML transform");
+    }
+
+    expect(plugin.transformIndexHtml("<main>direct Android</main>")).toContain(
+      "direct Android",
+    );
+    expect(resolutions).toBe(0);
+    expect(resolveAndroidCloudPrebootLockupDataUri()).toStartWith(
+      "data:image/svg+xml;base64,",
+    );
+  });
+
+  test("keeps the canonical renderer for Android Cloud builds", () => {
     const source = '<script type="module" src="/src/entry.ts"></script>';
 
-    expect(selectAndroidCloudRendererEntry(source, true)).toBe(
-      '<script type="module" src="/src/main.android-cloud.tsx"></script>',
-    );
+    expect(selectAndroidCloudRendererEntry(source, true)).toBe(source);
     expect(selectAndroidCloudRendererEntry(source, false)).toBe(source);
     expect(() =>
       selectAndroidCloudRendererEntry("<main></main>", true),
@@ -181,8 +238,7 @@ describe("app shell local connection policy", () => {
       chunk: undefined,
       originalUrl: "/",
     }) as string;
-    expect(transformed).toContain("/src/main.android-cloud.tsx");
-    expect(transformed).not.toContain('src="/src/entry.ts"');
+    expect(transformed).toBe(source);
   });
 
   test("retains the native local-agent bootstrap outside Android cloud builds", () => {

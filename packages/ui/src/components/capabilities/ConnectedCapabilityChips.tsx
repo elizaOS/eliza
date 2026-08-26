@@ -9,6 +9,7 @@
 import { Plus } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import { Button } from "../ui/button";
 import type { CapabilityChipModel } from "./connected-capability-presentation";
 
 export interface ConnectedCapabilityChipsProps {
@@ -73,7 +74,9 @@ export function ConnectedCapabilityChips({
           >
             {chip.label}
             {missing && chip.action === "grant" && onGrantCapability ? (
-              <button
+              <Button
+                variant="link"
+                size="micro"
                 type="button"
                 disabled={busy}
                 onClick={() => onGrantCapability(chip.id)}
@@ -81,7 +84,6 @@ export function ConnectedCapabilityChips({
                   defaultValue: `Grant ${chip.label}`,
                   label: chip.label,
                 })}
-                className="inline-flex items-center gap-0.5 rounded px-1 text-2xs font-semibold text-accent transition-colors hover:text-accent-muted disabled:opacity-50"
               >
                 <Plus className="size-2.5" aria-hidden />
                 {busy
@@ -91,7 +93,7 @@ export function ConnectedCapabilityChips({
                   : t("connectoraccount.capabilities.grant", {
                       defaultValue: "Grant",
                     })}
-              </button>
+              </Button>
             ) : null}
           </span>
         );

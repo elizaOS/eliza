@@ -4,6 +4,8 @@
  * the gui / terminal / voice view types.
  */
 import type { Meta, StoryObj } from "@storybook/react";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { ShellViewAgentSurface } from "./ShellViewAgentSurface";
 
 const meta = {
@@ -44,20 +46,19 @@ export const CharacterView: Story = {
     children: (
       <div className="p-6 rounded-md border border-border bg-card text-card-foreground space-y-3">
         <h2 className="text-lg font-semibold">Character</h2>
-        <label className="block text-sm">
+        <label htmlFor="character-name" className="block text-sm">
           <span className="text-muted-foreground">Name</span>
-          <input
-            className="mt-1 w-full rounded border border-border bg-background px-2 py-1"
+          <Input
+            id="character-name"
+            variant="form"
+            density="compact"
+            className="mt-1 w-full"
             defaultValue="Eliza"
           />
         </label>
-        <button
-          type="button"
-          className="rounded bg-primary px-3 py-1 text-primary-foreground text-sm"
-          onClick={() => {}}
-        >
+        <Button type="button" size="regularCompact" onClick={() => {}}>
           Save
-        </button>
+        </Button>
       </div>
     ),
   },
@@ -79,7 +80,7 @@ export const TerminalSurface: Story = {
     viewId: "terminal-shell",
     viewType: "gui",
     children: (
-      <pre className="p-4 rounded-md bg-black text-green-400 font-mono text-xs whitespace-pre-wrap">
+      <pre className="rounded-md bg-bg p-4 font-mono text-xs text-ok whitespace-pre-wrap">
         {"$ eliza status\nagent: ready\nplugins: 12 loaded\n"}
       </pre>
     ),

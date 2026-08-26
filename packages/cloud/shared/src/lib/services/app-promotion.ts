@@ -625,24 +625,17 @@ Return ONLY valid JSON, no markdown.`;
     app: App,
     content: GeneratedPromotionalContent,
   ): Promise<void> {
-    await advertisingService
-      .createCreative(organizationId, {
-        campaignId,
-        name: `${app.name} - Default Creative`,
-        type: "image",
-        headline: content.headline,
-        primaryText: content.longDescription.substring(0, 500),
-        description: content.shortDescription,
-        callToAction: "learn_more",
-        destinationUrl: app.app_url,
-        media: [],
-      })
-      .catch((err) => {
-        logger.warn("[AppPromotion] Failed to create default creative", {
-          campaignId,
-          error: extractErrorMessage(err),
-        });
-      });
+    await advertisingService.createCreative(organizationId, {
+      campaignId,
+      name: `${app.name} - Default Creative`,
+      type: "image",
+      headline: content.headline,
+      primaryText: content.longDescription,
+      description: content.shortDescription,
+      callToAction: "learn_more",
+      destinationUrl: app.app_url,
+      media: [],
+    });
   }
 
   /**

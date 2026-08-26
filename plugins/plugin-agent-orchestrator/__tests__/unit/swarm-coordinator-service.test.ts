@@ -364,10 +364,7 @@ describe("SwarmCoordinatorService", () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(acp.getSessionTurnOutput).toHaveBeenCalledWith(
-      "sess-output-proof",
-      2_000,
-    );
+    expect(acp.getSessionTurnOutput).toHaveBeenCalledWith("sess-output-proof");
     expect(acp.getSessionOutput).not.toHaveBeenCalled();
     expect(verification.verifyPlugin).toHaveBeenCalledWith(
       expect.objectContaining({

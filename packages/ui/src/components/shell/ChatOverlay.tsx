@@ -482,7 +482,7 @@ function Glyph({
 }
 
 /** A soft round glass control that dissolves into the bar; brightens only when active. */
-function SoftButton({
+export function SoftButton({
   glyph,
   icon: Icon,
   label,
@@ -516,11 +516,12 @@ function SoftButton({
 }): React.JSX.Element {
   return (
     <Button
-      variant="ghost"
+      variant="transparent"
       size="icon"
       data-testid={testId}
       aria-label={label}
       aria-pressed={pressed ?? active}
+      data-state={active ? "on" : "off"}
       // aria-disabled (not the native attr) so the button stays focusable and its
       // label/reason is announceable; the click is guarded instead.
       aria-disabled={disabled}
@@ -538,19 +539,16 @@ function SoftButton({
         // shared Button primitive raise the real element to 44px on coarse
         // pointers. Real target geometry avoids overlapping pseudo hit areas
         // when compact screens draw the two trailing controls closer together.
-        "relative grid shrink-0 place-items-center bg-transparent p-0 transition-colors hover:bg-transparent [&_svg]:size-5",
-        active
-          ? "text-white hover:text-white"
-          : "text-muted-strong hover:text-txt",
+        "relative grid shrink-0 place-items-center [&_svg]:size-5",
+        "bg-transparent text-muted-strong hover:bg-transparent hover:text-txt data-[state=on]:text-inverse data-[state=on]:hover:text-inverse aria-[disabled=true]:pointer-events-none aria-[disabled=true]:opacity-40",
         // Batch capture has no inline waveform, so its glyph breathes; realtime
         // voice keeps this control static because the composer owns the motion.
         pulse && "animate-pulse motion-reduce:animate-none",
-        // Blocked controls (e.g. voice/transcript during sign-in-first
+        // Blocked controls (e.g. voice/transcript during conductor-only
         // onboarding) read as inert: dimmed AND non-interactive to the pointer
         // (no hover color shift, no cursor) — matching the attachment "+".
         // Keyboard focus is unaffected, so the aria-disabled label still
         // announces.
-        disabled && "pointer-events-none opacity-40",
       )}
     >
       {Icon ? (
@@ -898,11 +896,12 @@ function ComposerRealtimeVoiceActivity({
       </div>
       {needsAudioUnlock ? (
         <Button
-          variant="ghost"
-          size="sm"
+          variant="warningOutline"
+          size="tiny"
           onClick={onUnlockAudio}
           data-testid="chat-composer-voice-audio-unlock"
-          className="h-7 shrink-0 rounded-full border border-warn/40 bg-warn/10 px-2 text-xs font-medium text-warn hover:bg-warn/20"
+          shape="circle"
+          className="shrink-0"
         >
           Enable sound
         </Button>
@@ -1054,7 +1053,7 @@ function SheetGrabber({
  * very bottom. Tap or flick/pull it up to bring the input back. Big invisible
  * hit area so it's easy to grab; the visible capsule stays small.
  */
-function PillHandle({
+export function PillHandle({
   binding,
   counterScale,
   onOpen,
@@ -1080,7 +1079,8 @@ function PillHandle({
 }): React.JSX.Element {
   return (
     <Button
-      variant="ghost"
+      variant="transparent"
+      size="content"
       data-testid="chat-pill"
       aria-label="open chat"
       // No onClick: the pull-gesture binding is the single tap authority (a tap
@@ -1118,7 +1118,8 @@ function PillHandle({
         // flick zone so a swipe-up from anywhere across the bottom opens the chat
         // (the lock-screen affordance). Flex-center keeps the capsule centred
         // while the invisible hit area spans wide.
-        "flex h-auto w-full cursor-grab touch-none select-none items-end justify-center rounded-none bg-transparent px-8 pb-1.5 pt-10 hover:bg-transparent active:cursor-grabbing",
+        "flex cursor-grab touch-none select-none items-end justify-center active:cursor-grabbing",
+        "h-auto w-full rounded-none px-8 pb-1.5 pt-10",
         // Interactive only while pilled. When NOT pilled the (faded) handle must
         // let taps fall through to the composer textarea below it — otherwise its
         // tall hit zone steals the tap and the keyboard never opens.
@@ -1245,6 +1246,7 @@ export function ChatOverlay({
     responding,
     turnStatus,
     send,
+    sendFirstRunText,
     canSend,
     recording,
     analyser,
@@ -1289,6 +1291,9 @@ export function ChatOverlay({
     if (/waiting for sign-in/i.test(latestStatus)) {
       return "Waiting for sign-in…";
     }
+    if (/couldn['’]t connect to eliza cloud/i.test(latestStatus)) {
+      return "Hey Eliza…";
+    }
     if (
       /opening your personal eliza|setting up your agent|connecting to eliza cloud/i.test(
         latestStatus,
@@ -1296,7 +1301,7 @@ export function ChatOverlay({
     ) {
       return "Connecting to Eliza Cloud…";
     }
-    return "Sign in to start chatting";
+    return "Hey Eliza…";
   }, [messages]);
   // Local text-model readiness (#12178 WI-4). While it `blocksSend`, the
   // composer stays usable and the in-chat model-status card carries progress +
@@ -1943,40 +1948,6 @@ export function ChatOverlay({
     };
     scheduleClear(180);
   }, []);
-  // Publish the RESTING composer footprint to --eliza-chat-clearance
-  // so content below (home widgets, launcher tiles) always reserves exactly the
-  // space the collapsed composer occupies. Without this the var was never set —
-  // every surface rode the 5.25rem fallback, which a multi-line draft or pending
-  // attachments overgrow, letting the composer cover content. Only measured
-  // while collapsed: an expanded/full sheet covers the screen, so its height
-  // must NOT become the reserved clearance.
-  React.useEffect(() => {
-    if (
-      typeof window === "undefined" ||
-      typeof ResizeObserver === "undefined"
-    ) {
-      return;
-    }
-    const panel = getPanelElement();
-    const root = document.documentElement;
-    if (sheetOpen) return; // Keep the last resting value while the sheet is open.
-    if (!panel) return;
-    const publish = () => {
-      const h =
-        panel.getBoundingClientRect().height + CHAT_CLEARANCE_REST_GAP_PX;
-      // Cap it: a mid-collapse frame can report the open panel height, and
-      // reserving that in the home/launcher layout clips the top apps off-screen.
-      if (h > 0)
-        root.style.setProperty(
-          "--eliza-chat-clearance",
-          `${Math.min(Math.ceil(h), CHAT_CLEARANCE_MAX_PX)}px`,
-        );
-    };
-    publish();
-    const ro = new ResizeObserver(publish);
-    ro.observe(panel);
-    return () => ro.disconnect();
-  }, [sheetOpen, getPanelElement]);
   // The composer content (textarea + thread). Held so we can imperatively clear
   // its `inert` (set while pilled) the instant the pill is tapped open, before
   // React re-renders — iOS only raises the keyboard for a focus() that lands on
@@ -2082,6 +2053,16 @@ export function ChatOverlay({
     renderableMessages,
     renderWindow.windowSize,
   ]);
+  const cloudSignInRequired = React.useMemo(
+    () =>
+      firstRunOpen &&
+      visibleMessages.some((message) =>
+        message.content.includes(
+          "__first_run__:runtime:cloud=Sign in to Eliza Cloud",
+        ),
+      ),
+    [firstRunOpen, visibleMessages],
+  );
   // Automatic realtime speech belongs to the composer-wide voice state. Only
   // user-selected playback belongs to a message row; binding automatic TTS to
   // the newest row would reveal Reply/Copy/Play as each response starts.
@@ -2509,11 +2490,11 @@ export function ChatOverlay({
       const trimmed = text.trim();
       // An image-only turn is valid; only bail when there's nothing to send.
       if (!trimmed && images.length === 0) return;
-      // During onboarding the composer is sign-in-first and locked. Ignore any
-      // synthetic draft entry point that reaches submit, and keep setup choice
-      // handling inside the transcript widgets.
+      // During onboarding, free text belongs to the local conductor and must
+      // never reach the runtime. Attachments remain unavailable until setup.
       if (firstRunOpen) {
         resetMessageHistory();
+        if (trimmed && images.length === 0) sendFirstRunText?.(trimmed);
         setDraft("");
         setSlashDismissed(false);
         setPendingImages([]);
@@ -2594,6 +2575,7 @@ export function ChatOverlay({
       firstRunOpen,
       resetMessageHistory,
       send,
+      sendFirstRunText,
       setDraft,
       setPendingImages,
       viewChatBinding,
@@ -2960,6 +2942,44 @@ export function ChatOverlay({
     !recording &&
     !responding &&
     !pinnedOpen;
+
+  // Publish the RESTING composer footprint to --eliza-chat-clearance so routed
+  // content reserves exactly the space the collapsed composer occupies. The
+  // compact short-landscape composer sits in the inline-end corner instead of
+  // spanning the bottom edge, so that mode reserves side clearance only. A
+  // bottom reservation there removes usable height from overflow-hidden views
+  // and clips their final rows even though the composer does not cover them.
+  React.useEffect(() => {
+    if (
+      typeof window === "undefined" ||
+      typeof ResizeObserver === "undefined"
+    ) {
+      return;
+    }
+    const panel = getPanelElement();
+    const root = document.documentElement;
+    if (sheetOpen) return; // Keep the last resting value while the sheet is open.
+    if (!panel) return;
+    const publish = () => {
+      if (compactLanding) {
+        root.style.setProperty("--eliza-chat-clearance", "0px");
+        return;
+      }
+      const h =
+        panel.getBoundingClientRect().height + CHAT_CLEARANCE_REST_GAP_PX;
+      // Cap it: a mid-collapse frame can report the open panel height, and
+      // reserving that in the home/launcher layout clips the top apps off-screen.
+      if (h > 0)
+        root.style.setProperty(
+          "--eliza-chat-clearance",
+          `${Math.min(Math.ceil(h), CHAT_CLEARANCE_MAX_PX)}px`,
+        );
+    };
+    publish();
+    const ro = new ResizeObserver(publish);
+    ro.observe(panel);
+    return () => ro.disconnect();
+  }, [compactLanding, sheetOpen, getPanelElement]);
 
   // In short landscape the resting composer moves to the bottom inline-end
   // corner. Publish that footprint separately from bottom clearance so hosted
@@ -4349,12 +4369,8 @@ export function ChatOverlay({
   );
 
   const submit = React.useCallback(() => {
-    // Onboarding is sign-in-first; transcript choice widgets are the only input.
-    if (firstRunOpen) {
-      return;
-    }
     const shortcut =
-      pendingImages.length === 0
+      !firstRunOpen && pendingImages.length === 0
         ? resolveClientShortcutExecution(
             slash.commands,
             draft,
@@ -5686,15 +5702,11 @@ export function ChatOverlay({
           className="pointer-events-none relative mb-2 flex w-full justify-center"
         >
           <Button
-            variant="ghost"
-            size="sm"
+            variant="warningOutline"
+            size="pillDense"
             onClick={unlockAudio}
             data-testid="overlay-voice-audio-unlock"
-            className={cn(
-              "pointer-events-auto h-auto gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
-              "border-warn/40 bg-warn/15 text-warn hover:bg-warn/25",
-              WALLPAPER_FLOAT_SHADOW,
-            )}
+            className={cn("pointer-events-auto", WALLPAPER_FLOAT_SHADOW)}
           >
             <Glyph d={SPEAKER_MUTED_GLYPH} />
             <span>Tap to enable sound</span>
@@ -5732,7 +5744,7 @@ export function ChatOverlay({
           // mid-drag pill/maximize commit because `grabberPressRef` retains the
           // accepted pointer id until its terminal event. Using the global drag
           // flag here mounted BOTH handles during restore. Onboarding hides the
-          // grabber entirely: it is pinned, undismissable, and sign-in-first.
+          // grabber entirely: it is pinned and undismissable during setup.
           <SheetGrabber
             open={sheetOpen}
             onOpen={openFromGrabber}
@@ -5990,26 +6002,32 @@ export function ChatOverlay({
               restoreDragging ||
               restorePressRef.current != null) &&
             !pinnedOpen ? (
-              <button
-                {...restoreZoneBinding}
-                type="button"
-                data-testid="chat-maximize-restore-zone"
-                aria-label="drag down to exit full screen"
-                onKeyDown={(e) => {
-                  if (
-                    e.key === "Enter" ||
-                    e.key === " " ||
-                    e.key === "ArrowDown"
-                  ) {
-                    e.preventDefault();
-                    restoreFromMaximizedGuarded();
-                  }
-                }}
-                className="pointer-events-auto absolute inset-x-0 top-0 z-[15] touch-none bg-transparent"
+              <div
+                className="pointer-events-auto absolute inset-x-0 top-0 z-[15]"
                 style={{
                   height: `calc(env(safe-area-inset-top, 0px) + ${MAXIMIZE_RESTORE_ZONE_PX}px)`,
                 }}
-              />
+              >
+                <Button
+                  {...restoreZoneBinding}
+                  type="button"
+                  variant="publicRow"
+                  size="fill"
+                  data-testid="chat-maximize-restore-zone"
+                  aria-label="drag down to exit full screen"
+                  onKeyDown={(e) => {
+                    if (
+                      e.key === "Enter" ||
+                      e.key === " " ||
+                      e.key === "ArrowDown"
+                    ) {
+                      e.preventDefault();
+                      restoreFromMaximizedGuarded();
+                    }
+                  }}
+                  className="touch-none"
+                />
+              </div>
             ) : null}
 
             {/* Sheet header — shown at the HALF detent and up (not just FULL).
@@ -6346,7 +6364,7 @@ export function ChatOverlay({
                       const kind = chatUploadKind(img.mimeType);
                       const removeButton = (
                         <Button
-                          variant="ghost"
+                          variant="outlineMuted"
                           size="icon-sm"
                           aria-label={`remove ${img.name}`}
                           onPointerDown={(event) => event.stopPropagation()}
@@ -6355,7 +6373,8 @@ export function ChatOverlay({
                           // invisible `before` overlay so it's thumb-tappable
                           // without crowding the tile. Bottom placement keeps
                           // that hit zone clear of the grabber above the sheet.
-                          className="pointer-events-auto absolute -bottom-1.5 -right-1.5 z-30 grid  size-5 place-items-center rounded-full border border-border-strong bg-scrim p-0 text-xs text-txt transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-bg"
+                          shape="circle"
+                          className="pointer-events-auto absolute -bottom-1.5 -right-1.5 z-30 before:absolute before:-inset-3 before:content-['']"
                         >
                           ×
                         </Button>
@@ -6441,7 +6460,7 @@ export function ChatOverlay({
                 // gap on the sides as top/bottom.
                 // No divider above the composer — spacing separates it from the
                 // thread; the sheet is one continuous glass surface (#10710).
-                "relative z-10 flex min-w-0 shrink-0 items-center gap-[clamp(0.125rem,1.25vw,0.5rem)] px-[clamp(0.25rem,1.5vw,0.5rem)] py-[clamp(0.125rem,0.75dvh,0.375rem)]",
+                "relative z-10 flex min-w-0 shrink-0 items-center gap-[clamp(0.125rem,1.25vw,0.5rem)] px-[clamp(0.25rem,1.5vw,0.5rem)] py-[clamp(0.125rem,0.75dvh,0.375rem)] [&_textarea]:max-h-[8.5rem] [&_textarea]:min-h-8 [&_textarea]:border-none [&_textarea]:bg-transparent [&_textarea]:px-1.5 [&_textarea]:py-1 [&_textarea]:text-left [&_textarea]:text-sm [&_textarea]:text-txt [&_textarea]:outline-none [&_textarea]:placeholder:text-muted-strong pointer-coarse:[&_textarea]:text-base",
                 // While INSET the composer dissolves into the sheet (one
                 // continuous glass surface, #10710) — border/fill are morph-
                 // driven inline (transparent at rest). At FULL-BLEED they fade
@@ -6493,7 +6512,7 @@ export function ChatOverlay({
                 >
                   <DropdownMenuTrigger asChild>
                     <Button
-                      variant="ghost"
+                      variant="ghostMuted"
                       size="icon"
                       aria-label="chat actions"
                       disabled={firstRunOpen}
@@ -6505,7 +6524,7 @@ export function ChatOverlay({
                       }}
                       // Same responsive real target and 20px mark as the
                       // SoftButton controls, so the row reads as one family.
-                      className="relative grid shrink-0 place-items-center bg-transparent p-0 text-muted-strong transition-colors hover:bg-transparent hover:text-txt data-[state=open]:text-txt [&_svg]:size-5"
+                      className="relative shrink-0 data-[state=open]:text-txt [&_svg]:size-5"
                     >
                       <Glyph d={PLUS_GLYPH} className="size-5" />
                     </Button>
@@ -6584,11 +6603,10 @@ export function ChatOverlay({
                   ref={inputRef}
                   rows={1}
                   value={draft}
-                  // Onboarding is sign-in-first: before launch the composer is
-                  // disabled. While the external browser owns sign-in it is
-                  // read-only instead, so clicking the familiar compact composer
-                  // can reopen the transcript and its recovery action.
-                  disabled={firstRunOpen && !cloudLoginWaiting}
+                  // Hosted Cloud onboarding has one action: the transcript's
+                  // sign-in CTA. Muting the composer avoids presenting a second,
+                  // inert route while local/remote setup can still accept text.
+                  disabled={cloudSignInRequired}
                   readOnly={cloudLoginWaiting}
                   onChange={(e) => {
                     const nextDraft = e.target.value;
@@ -6644,33 +6662,36 @@ export function ChatOverlay({
                     noteInputActivity();
                     handleComposerKeyDown(event);
                   }}
-                  // The composer is LOCKED during onboarding: first-run is
-                  // sign-in-first, so the input is disabled (see `disabled` above)
-                  // until the user signs in.
+                  // Attachments and voice stay gated during onboarding, while
+                  // text can answer the conductor naturally.
                   // (This surface's strings are plain literals by design — see
                   // the imageError note above.)
                   placeholder={
                     compactLanding
                       ? "Message"
-                      : firstRunOpen
-                        ? firstRunComposerPlaceholder
-                        : noProviderConfigured
-                          ? "Connect a model provider in Settings to chat"
-                          : modelBlocksSend
-                            ? modelStatus?.kind === "downloading"
-                              ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
-                              : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
-                            : booting
-                              ? `Message ${agentName} — waking up…`
-                              : (viewChatBinding?.placeholder ??
-                                `Message ${agentName}`)
+                      : cloudSignInRequired
+                        ? "Sign in to get started"
+                        : firstRunOpen
+                          ? firstRunComposerPlaceholder
+                          : noProviderConfigured
+                            ? "Connect a model provider in Settings to chat"
+                            : modelBlocksSend
+                              ? modelStatus?.kind === "downloading"
+                                ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
+                                : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
+                              : booting
+                                ? `Message ${agentName} — waking up…`
+                                : (viewChatBinding?.placeholder ??
+                                  `Message ${agentName}`)
                   }
                   aria-label="message"
                   data-testid="chat-composer-textarea"
                   aria-describedby={
-                    booting && !noProviderConfigured && !firstRunOpen
-                      ? "cc-booting-hint"
-                      : undefined
+                    firstRunOpen
+                      ? "cc-first-run-hint"
+                      : booting && !noProviderConfigured
+                        ? "cc-booting-hint"
+                        : undefined
                   }
                   // Combobox semantics (role + aria-*) are applied as one spread,
                   // and only when a slash catalog is wired in — a plain message
@@ -6678,10 +6699,9 @@ export function ChatOverlay({
                   {...comboboxAria}
                   // The floating composer is the primary chat affordance on the
                   // ambient home surface, so its placeholder must stay readable
-                  // even when the glass pill sits over dark wallpaper. During
-                  // onboarding `disabled:opacity-100` prevents the browser from
-                  // dimming the locked cue.
-                  className="scrollbar-hide max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-txt outline-none placeholder:text-muted-strong pointer-coarse:text-base disabled:pointer-events-none disabled:opacity-100"
+                  // even when the glass pill sits over dark wallpaper. A locked
+                  // Cloud composer is intentionally muted beneath the live CTA.
+                  className="scrollbar-hide min-w-0 flex-1 resize-none self-center leading-relaxed disabled:pointer-events-none disabled:opacity-60"
                 />
               )}
               {!transcriptionComposerActive &&
@@ -6691,6 +6711,11 @@ export function ChatOverlay({
                 <span id="cc-booting-hint" className="sr-only">
                   {agentName} is waking up. You can type now; your message sends
                   and the reply arrives in a moment.
+                </span>
+              ) : null}
+              {firstRunOpen ? (
+                <span id="cc-first-run-hint" className="sr-only">
+                  Your answer stays in setup until your agent is ready.
                 </span>
               ) : null}
               {/* Trailing controls. */}
@@ -6760,13 +6785,19 @@ export function ChatOverlay({
                     <SoftButton
                       icon={SendHorizontal}
                       label={
-                        !canSend
-                          ? "send (agent stopped)"
-                          : responding
-                            ? "send another"
-                            : "send"
+                        firstRunOpen
+                          ? "send to setup assistant"
+                          : !canSend
+                            ? "send (agent stopped)"
+                            : responding
+                              ? "send another"
+                              : "send"
                       }
-                      disabled={firstRunOpen || !canSend}
+                      disabled={
+                        firstRunOpen
+                          ? cloudLoginWaiting || !sendFirstRunText
+                          : !canSend
+                      }
                       onPointerDown={(event) => event.preventDefault()}
                       onClick={submit}
                       testId="chat-composer-action"
