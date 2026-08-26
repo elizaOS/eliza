@@ -6,6 +6,7 @@
 
 import { spawn } from "node:child_process";
 import { createHash, createHmac } from "node:crypto";
+import { closeSync, readSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -36,6 +37,66 @@ const requiredPositiveInteger = (name: string): number => {
   }
   return value;
 };
+const REAL_MODEL_BOOTSTRAP_FD = 3;
+const MAX_REAL_MODEL_BOOTSTRAP_BYTES = 128 * 1024;
+
+type RealModelBootstrap = {
+  credentialEnvironment: "OPENAI_API_KEY" | "ANTHROPIC_API_KEY";
+  credentialValue: string;
+  meterAttestationKey: string;
+};
+
+function readRealModelBootstrap(): RealModelBootstrap {
+  const chunks: Buffer[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const chunk = Buffer.allocUnsafe(
+        Math.min(16 * 1024, MAX_REAL_MODEL_BOOTSTRAP_BYTES + 1 - total),
+      );
+      const bytesRead = readSync(
+        REAL_MODEL_BOOTSTRAP_FD,
+        chunk,
+        0,
+        chunk.byteLength,
+        null,
+      );
+      if (bytesRead === 0) break;
+      total += bytesRead;
+      if (total > MAX_REAL_MODEL_BOOTSTRAP_BYTES) {
+        throw new Error("real-model bootstrap exceeds its byte limit");
+      }
+      chunks.push(chunk.subarray(0, bytesRead));
+    }
+  } finally {
+    closeSync(REAL_MODEL_BOOTSTRAP_FD);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.concat(chunks, total).toString("utf8"));
+  } catch (cause) {
+    // error-policy:J3 the trusted boundary rejects malformed bootstrap input.
+    throw new Error("real-model bootstrap must be valid JSON", { cause });
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("real-model bootstrap must be an object");
+  }
+  const bootstrap = parsed as Record<string, unknown>;
+  if (
+    Object.keys(bootstrap).length !== 4 ||
+    bootstrap.version !== 1 ||
+    (bootstrap.credentialEnvironment !== "OPENAI_API_KEY" &&
+      bootstrap.credentialEnvironment !== "ANTHROPIC_API_KEY") ||
+    typeof bootstrap.credentialValue !== "string" ||
+    bootstrap.credentialValue.trim().length === 0 ||
+    Buffer.byteLength(bootstrap.credentialValue) > 64 * 1024 ||
+    typeof bootstrap.meterAttestationKey !== "string" ||
+    !/^[a-f0-9]{64}$/u.test(bootstrap.meterAttestationKey)
+  ) {
+    throw new Error("real-model bootstrap has an invalid schema");
+  }
+  return bootstrap as RealModelBootstrap;
+}
 const outputDir = required("ELIZA_STABILITY_OUTPUT_DIR");
 const mode = required("ELIZA_STABILITY_MODEL_MODE");
 const provider = required("ELIZA_STABILITY_PROVIDER");
@@ -120,14 +181,19 @@ const providerRoute = providerRoutes[provider];
 if (mode === "real-llm" && !providerRoute) {
   throw new Error(`unsupported real-model provider ${provider}`);
 }
+const realModelBootstrap =
+  mode === "real-llm" ? readRealModelBootstrap() : undefined;
+if (
+  realModelBootstrap &&
+  providerRoute &&
+  realModelBootstrap.credentialEnvironment !==
+    providerRoute.credentialEnvironment
+) {
+  throw new Error("real-model bootstrap credential does not match provider");
+}
 const realModelCredential =
-  mode === "real-llm" && providerRoute
-    ? required(providerRoute.credentialEnvironment)
-    : undefined;
-const meterAttestationKey =
-  mode === "real-llm"
-    ? required("ELIZA_STABILITY_METER_ATTESTATION_KEY")
-    : undefined;
+  mode === "real-llm" ? realModelBootstrap?.credentialValue : undefined;
+const meterAttestationKey = realModelBootstrap?.meterAttestationKey;
 delete process.env.OPENAI_API_KEY;
 delete process.env.ANTHROPIC_API_KEY;
 delete process.env.ELIZA_STABILITY_METER_ATTESTATION_KEY;
