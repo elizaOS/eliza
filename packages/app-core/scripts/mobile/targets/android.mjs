@@ -44,6 +44,29 @@ export const ANDROID_BUILD_TARGETS = Object.freeze({
     },
     artifactAuditKey: "sideload",
   }),
+  "android-launcher": freezeAndroidBuildTarget({
+    target: "android-launcher",
+    webTarget: "android-cloud-debug",
+    env: {
+      ELIZA_ANDROID_CLOUD_BUILD: "1",
+      ELIZA_ANDROID_LAUNCHER_BUILD: "1",
+    },
+    overlayOptions: {
+      includeAospRoleLaunchers: false,
+      includeHomeRole: true,
+    },
+    cleartextPolicy: { allowCleartext: false, label: "launcher" },
+    stripSourceKey: "cloud",
+    auditSourceKey: "launcher",
+    gradle: {
+      flags: ANDROID_CLOUD_GRADLE_FLAGS,
+      metadataVariant: "debug",
+      finalTask: ":app:assembleDebug",
+      includeWebsiteBlockerUnitTest: true,
+      passFlagsToMetadata: true,
+    },
+    artifactAuditKey: "launcher",
+  }),
   "android-host-e2e": freezeAndroidBuildTarget({
     target: "android-host-e2e",
     webTarget: "android",

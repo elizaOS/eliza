@@ -12,6 +12,21 @@ const root = path.resolve(
 const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
 
 describe("Android Play account-deletion contract", () => {
+  it("keeps Android on the canonical full application shell", () => {
+    const entry = read("app/src/entry.ts");
+
+    expect(entry).toContain('import("./main")');
+    expect(entry).not.toContain("main.android-cloud");
+    expect(
+      fs.existsSync(path.join(root, "app/src/main.android-cloud.tsx")),
+    ).toBe(false);
+    expect(
+      fs.existsSync(
+        path.join(root, "ui/src/android-cloud/AndroidCloudApp.tsx"),
+      ),
+    ).toBe(false);
+  });
+
   it("ships real in-app and external deletion paths", () => {
     const privacy = read(
       "ui/src/cloud/account-security/components/privacy-panel.tsx",
@@ -51,8 +66,9 @@ describe("Android Play account-deletion contract", () => {
     expect(route).toContain('body.confirmation !== "DELETE"');
     expect(lifecycle).toContain('"TRANSFER_REQUIRED"');
     expect(lifecycle).toContain('"LIFECYCLE_RESERVATION_REQUIRED"');
-    expect(lifecycle).toContain("listByOrganizationForWrite");
-    expect(lifecycle).not.toContain("deactivateStewardPlatformUser");
+    expect(lifecycle).toContain("reservePersonalAccountDeletion");
+    expect(lifecycle).toContain("deactivateStewardPlatformUser");
+    expect(lifecycle).toContain("reactivateStewardPlatformUser");
     expect(lifecycle).not.toContain("deleteStewardPlatformUser");
     expect(lifecycle).toContain("recoverStaleProcessing");
     expect(lifecycle).toContain("purgePersonalOrganizationResources");
@@ -63,7 +79,7 @@ describe("Android Play account-deletion contract", () => {
     expect(resourcePurge).toContain("purgeOrganizationObjectStorage");
     expect(users).toContain("deletePersonalOrganizationAtomically");
     expect(appCleanup).toContain("requireContainerTeardownCompletion");
-    expect(publicPage).toContain("within 30 days");
+    expect(publicPage).toContain("30-day recovery");
     expect(publicPage).toContain("support@eliza.cloud");
     expect(publicPage).not.toContain("sign back in");
     expect(read("cloud/shared/src/lib/cron/cloudflare-cron.ts")).toContain(
