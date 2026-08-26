@@ -38,7 +38,7 @@ import adze, {
   type UserConfiguration,
 } from "adze";
 import type Log from "adze/dist/log.js";
-import { getEnv as getEnvironmentVar } from "./env.js";
+import { getEnvBoolean, getEnv as getEnvironmentVar } from "./env.js";
 
 /**
  * Interface for Adze sealed logger with known methods
@@ -231,20 +231,6 @@ function safeStringify(obj: unknown): string {
 }
 
 /**
- * Parse boolean from text string
- */
-function parseBooleanFromText(value: string | undefined | null): boolean {
-  if (!value) return false;
-  const normalized = value.toLowerCase().trim();
-  return (
-    normalized === "true" ||
-    normalized === "1" ||
-    normalized === "yes" ||
-    normalized === "on"
-  );
-}
-
-/**
  * Format a value for display in pretty log extras
  */
 function formatExtraValue(value: unknown): string {
@@ -319,10 +305,8 @@ export const customLevels: Record<string, number> = {
 };
 
 // Configuration flags
-const raw = parseBooleanFromText(getEnvironmentVar("LOG_JSON_FORMAT"));
-const showTimestamps = parseBooleanFromText(
-  getEnvironmentVar("LOG_TIMESTAMPS") ?? "true",
-);
+const raw = getEnvBoolean("LOG_JSON_FORMAT", false);
+const showTimestamps = getEnvBoolean("LOG_TIMESTAMPS", true);
 
 // A Worker isolate cannot generate randomness during module evaluation. Node
 // processes already have a stable per-process discriminator; edge hosts should
