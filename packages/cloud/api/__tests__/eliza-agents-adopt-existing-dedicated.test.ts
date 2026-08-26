@@ -99,6 +99,7 @@ let dbWrite: typeof import("@/db/client").dbWrite;
 let agentSandboxes: typeof import("@/db/schemas/agent-sandboxes").agentSandboxes;
 let jobs: typeof import("@/db/schemas/jobs").jobs;
 let organizations: typeof import("@/db/schemas/organizations").organizations;
+let personalDedicatedAdoptionSelections: typeof import("@/db/schemas/personal-dedicated-adoption-selections").personalDedicatedAdoptionSelections;
 let personalDedicatedUpgradeAuthorities: typeof import("@/db/schemas/personal-dedicated-upgrade-authorities").personalDedicatedUpgradeAuthorities;
 
 beforeAll(async () => {
@@ -122,6 +123,9 @@ beforeAll(async () => {
     ({ jobs } = await import("@/db/schemas/jobs"));
     ({ personalDedicatedUpgradeAuthorities } = await import(
       "@/db/schemas/personal-dedicated-upgrade-authorities"
+    ));
+    ({ personalDedicatedAdoptionSelections } = await import(
+      "@/db/schemas/personal-dedicated-adoption-selections"
     ));
 
     const { TIER_UPGRADE_TEST_TABLES } = await import(
@@ -191,6 +195,7 @@ beforeEach(async () => {
   currentUser.organization = { id: ORG_A, name: "Org A", is_active: true };
   await dbWrite.delete(jobs);
   await dbWrite.delete(personalDedicatedUpgradeAuthorities);
+  await dbWrite.delete(personalDedicatedAdoptionSelections);
   await dbWrite.delete(agentSandboxes);
   await dbWrite
     .update(organizations)
@@ -378,7 +383,7 @@ describe("GET/POST adopt-existing Dedicated", () => {
     expect(await dbWrite.select().from(jobs)).toHaveLength(0);
   });
 
-  test("fails closed when one adopted row and one unmarked row are both eligible", async () => {
+  test("keeps one canonical adopted row authoritative when an unrelated stale row remains", async () => {
     expect(pgliteReady).toBe(true);
     await seedCandidate({
       id: TARGET_A,
@@ -389,9 +394,12 @@ describe("GET/POST adopt-existing Dedicated", () => {
     await seedCandidate({ id: TARGET_B, status: "stopped" });
 
     const response = await quote();
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      code: "dedicated_adoption_ambiguous",
+      data: {
+        dedicatedAgentId: TARGET_A,
+        adoptionState: "adopted",
+      },
     });
     expect(await dbWrite.select().from(jobs)).toHaveLength(0);
   });
@@ -922,6 +930,7 @@ describe("GET/POST adopt-existing Dedicated", () => {
       expectedDailyRate: AGENT_PRICING.DAILY_RUNNING_COST,
       expectedMinimumBalance: AGENT_PRICING.UPGRADE_MINIMUM_BALANCE,
       expectedMinimumRunwayDays: AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS,
+      expectedActivationAuthorityKey: "unreviewed-auto",
     };
 
     await expect(
@@ -977,6 +986,7 @@ describe("GET/POST adopt-existing Dedicated", () => {
         expectedDailyRate: AGENT_PRICING.DAILY_RUNNING_COST,
         expectedMinimumBalance: AGENT_PRICING.UPGRADE_MINIMUM_BALANCE,
         expectedMinimumRunwayDays: AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS,
+        expectedActivationAuthorityKey: "unreviewed-auto",
       }),
     ).rejects.toMatchObject({
       code: "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",

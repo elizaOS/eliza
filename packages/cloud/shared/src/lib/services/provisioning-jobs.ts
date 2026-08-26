@@ -221,6 +221,7 @@ export interface AgentProvisionJobData {
   organizationId: string;
   userId: string;
   agentName: string;
+  restoreDirective?: { kind: "from-backup"; backupId: string } | { kind: "fresh-boot" };
 }
 
 export interface AgentDeleteJobData {
@@ -580,13 +581,26 @@ function agentSnapshotJobResultToRecord(result: AgentSnapshotJobResult): Record<
 }
 
 function isAgentProvisionJobData(value: unknown): value is AgentProvisionJobData {
+  const restoreDirective =
+    typeof value === "object" && value !== null
+      ? (value as { restoreDirective?: unknown }).restoreDirective
+      : undefined;
+  const validRestoreDirective =
+    restoreDirective === undefined ||
+    (typeof restoreDirective === "object" &&
+      restoreDirective !== null &&
+      (((restoreDirective as { kind?: unknown }).kind === "fresh-boot" &&
+        !("backupId" in restoreDirective)) ||
+        ((restoreDirective as { kind?: unknown }).kind === "from-backup" &&
+          typeof (restoreDirective as { backupId?: unknown }).backupId === "string")));
   return (
     typeof value === "object" &&
     value !== null &&
     typeof (value as { agentId?: unknown }).agentId === "string" &&
     typeof (value as { organizationId?: unknown }).organizationId === "string" &&
     typeof (value as { userId?: unknown }).userId === "string" &&
-    typeof (value as { agentName?: unknown }).agentName === "string"
+    typeof (value as { agentName?: unknown }).agentName === "string" &&
+    validRestoreDirective
   );
 }
 
@@ -1810,6 +1824,7 @@ export class ProvisioningJobService {
     agentName: string;
     webhookUrl?: string;
     expectedLifecycleRevision?: number;
+    restoreDirective?: AgentProvisionJobData["restoreDirective"];
   }): Promise<EnqueueAgentProvisionResult> {
     return this.enqueueLifecycleJob<AgentProvisionJobData>(
       this.agentProvisionLifecycleOptions(params),
@@ -1835,6 +1850,7 @@ export class ProvisioningJobService {
       organizationId: string;
       userId: string;
       agentName: string;
+      restoreDirective?: AgentProvisionJobData["restoreDirective"];
     },
   ): Promise<EnqueueAgentProvisionResult> {
     return this.enqueueLifecycleJobInTx<AgentProvisionJobData>(
@@ -1850,6 +1866,7 @@ export class ProvisioningJobService {
     agentName: string;
     webhookUrl?: string;
     expectedLifecycleRevision?: number;
+    restoreDirective?: AgentProvisionJobData["restoreDirective"];
   }): LifecycleJobOptions<AgentProvisionJobData> {
     const expected = params.expectedLifecycleRevision;
     return {
@@ -1859,6 +1876,7 @@ export class ProvisioningJobService {
         organizationId: params.organizationId,
         userId: params.userId,
         agentName: params.agentName,
+        ...(params.restoreDirective ? { restoreDirective: params.restoreDirective } : {}),
       },
       toRecord: agentProvisionJobDataToRecord,
       agentId: params.agentId,
@@ -6085,7 +6103,11 @@ export class ProvisioningJobService {
     });
 
     await this.assertExecutionMutationLease(job);
-    const provResult = await elizaSandboxService.provision(data.agentId, data.organizationId);
+    const provResult = await elizaSandboxService.provision(
+      data.agentId,
+      data.organizationId,
+      data.restoreDirective,
+    );
 
     if (await this.completeIfAgentGone(job, provResult, data.agentId)) return;
 
