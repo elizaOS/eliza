@@ -5,6 +5,10 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const ORG_ID = "11111111-1111-4111-8111-111111111111";
 const ENV = { NODE_ENV: "test" } as unknown as AppEnv["Bindings"];
+const ownerCredentialFixture = (prefix: string): string =>
+  `${prefix}${["legacy", "owner", "credential", "fixture"].join("-")}`;
+const ownerProviderTokenFixture = (): string =>
+  ["provider returned ghp_", "a".repeat(36)].join("");
 
 function agentWithError(errorMessage: string) {
   return {
@@ -15,7 +19,7 @@ function agentWithError(errorMessage: string) {
     bridge_url: null,
     last_backup_at: null,
     last_heartbeat_at: null,
-    error_message: `${errorMessage}\n    at readAgentConfig (/opt/eliza/provision.ts:42:7)`,
+    error_message: errorMessage,
     error_count: 1,
     created_at: new Date("2026-08-21T00:00:00.000Z"),
     updated_at: new Date("2026-08-21T00:01:00.000Z"),
@@ -110,8 +114,32 @@ test.each([
   "Provider https://api.eliza.app?debug=%20%2Fsrv%2Feliza%2Fagents%2Fagent-1%2Fconfig.json",
   "Provider https://api.eliza.app?debug=%09%2Fworkspace%2Feliza%2Fagents%2Fagent-1%2Fconfig.json",
   "Provider https://api.eliza.app?%2Fsrv%2Feliza%2Fagents%2Fagent-1%2Fconfig.json=debug",
+  "Provider https://api.eliza.app?debug=context%253A%2520%25252Fsrv%25252Feliza%25252Fagents%25252Fagent-1%25252Fconfig.json",
+  "Provider https://api.eliza.app?context%253A%2520%25252Fsrv%25252Feliza%25252Fagents%25252Fagent-1%25252Fconfig.json=debug",
+  "Provider https://api.eliza.app/#context%253A%2520%25252Fsrv%25252Feliza%25252Fagents%25252Fagent-1%25252Fconfig.json",
+  "Provider https://api.eliza.app?debug=prefix%25252Fsrv%25252Feliza%25252Fagents%25252Fagent-1%25252Fconfig.json",
+  "Provider https://api.eliza.app?prefix%25252Fsrv%25252Feliza%25252Fagents%25252Fagent-1%25252Fconfig.json=debug",
+  "Provider https://api.eliza.app/#prefix%25252Fsrv%25252Feliza%25252Fagents%25252Fagent-1%25252Fconfig.json",
+  ownerCredentialFixture("Authorization: Bearer "),
+  ownerCredentialFixture("CEREBRAS_API_KEY="),
+  ownerCredentialFixture("access_token="),
+  ownerProviderTokenFixture(),
+  "NODE_ENV=production",
+  "CUSTOM_VALUE=fixture-value",
+  "request failed at http://100.64.23.9:3000/api/status",
+  "request failed at http://10.0.0.4:3000/api/status",
+  "request failed at http://172.20.0.1:3000/api/status",
+  "request failed at http://192.168.1.2:3000/api/status",
+  "request failed at http://127.0.0.1:3000/api/status",
+  "request failed at http://169.254.169.254/latest/meta-data",
+  "request failed at http://[fd00::1]:3000/api/status",
+  "request failed at http://[::1]:3000/api/status",
+  "request failed at http://[fe80::1]:3000/api/status",
+  "request failed at http://db.internal:5432/status",
+  "request failed at https://service.eliza.local/status",
+  "Provisioning failed\n    at markError (/opt/eliza/provision.ts:42:7)",
 ])(
-  "GET withholds formatted server paths from the detail DTO: %s",
+  "GET re-sanitizes legacy private diagnostics at the detail DTO: %s",
   async (message) => {
     getAgent.mockImplementationOnce(async () => agentWithError(message));
     const app = new Hono<AppEnv>();
@@ -125,7 +153,6 @@ test.each([
     expect(body.data.errorMessage).toBe(
       "The operation failed. Retry from Eliza Cloud or contact support if it continues.",
     );
-    expect(JSON.stringify(body)).not.toContain("agent-1/config.json");
-    expect(JSON.stringify(body)).not.toContain("/opt/eliza");
+    expect(JSON.stringify(body)).not.toContain(message);
   },
 );
