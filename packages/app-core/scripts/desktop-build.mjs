@@ -23,6 +23,7 @@ import {
   hasElectrobunViewExport,
   isSupportedBunVersion,
 } from "./lib/desktop-preflight.mjs";
+import { canReuseDesktopRuntimePackage } from "./lib/desktop-runtime-package-policy.mjs";
 import { hardenElectrobunRpcSockets } from "./lib/electrobun-loopback-hardening.mjs";
 import { hardenLinuxArtifactPermissions } from "./lib/linux-artifact-permissions.mjs";
 import { appIdentityEnv } from "./lib/read-app-identity.mjs";
@@ -920,8 +921,12 @@ function ensureWorkspaceRuntimePackageBuilt(packageName, packageDir) {
   }
 
   if (
-    process.env.ELIZA_DESKTOP_REBUILD_RUNTIME_PACKAGES !== "1" &&
-    workspaceRuntimePackageLooksBuilt(packageName, packageDir)
+    canReuseDesktopRuntimePackage({
+      packageName,
+      forceRebuild:
+        process.env.ELIZA_DESKTOP_REBUILD_RUNTIME_PACKAGES === "1",
+      looksBuilt: workspaceRuntimePackageLooksBuilt(packageName, packageDir),
+    })
   ) {
     console.log(
       `[desktop-build] Reusing existing ${packageName} runtime package`,
