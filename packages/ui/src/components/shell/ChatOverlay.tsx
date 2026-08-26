@@ -1291,6 +1291,9 @@ export function ChatOverlay({
     if (/waiting for sign-in/i.test(latestStatus)) {
       return "Waiting for sign-in…";
     }
+    if (/couldn['’]t connect to eliza cloud/i.test(latestStatus)) {
+      return "Hey Eliza…";
+    }
     if (
       /opening your personal eliza|setting up your agent|connecting to eliza cloud/i.test(
         latestStatus,

@@ -174,6 +174,24 @@ describe("ChatOverlay first-run gating", () => {
     expect(input.placeholder).toBe("Connecting to Eliza Cloud…");
   });
 
+  it("does not describe a failed Cloud connection as still connecting", () => {
+    const controller = makeController({
+      messages: [
+        {
+          id: "first-run:cloud-error",
+          role: "assistant",
+          content: "Couldn't connect to Eliza Cloud: session expired.",
+          createdAt: 2,
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+
+    render(<ChatOverlay controller={controller} firstRunOpen />);
+
+    const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+    expect(input.placeholder).toBe("Hey Eliza…");
+  });
+
   it("ignores external prefill during onboarding while direct typing stays local", () => {
     const sendActionMessage = seedAppStoreWithActionSpy();
     const controller = makeController();
