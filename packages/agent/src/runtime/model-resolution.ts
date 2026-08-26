@@ -1,9 +1,10 @@
 /**
  * Derives model-selection identifiers from an ElizaConfig: the primary model id
  * (agents.defaults.model.primary), the preferred provider id (from the resolved
- * service-routing llmText transport/backend, falling back to a model-name hint),
- * and the plugin package that provider maps to. Returns undefined when nothing is
- * explicitly configured, so elizaOS falls back to whichever model plugin loads.
+ * service-routing llmText transport/backend, the supported legacy environment
+ * selection, or a model-name hint), and the plugin package that provider maps to.
+ * Returns undefined when nothing is explicitly configured, so elizaOS falls back
+ * to whichever model plugin loads.
  */
 import {
   getFirstRunProviderOption,
@@ -51,6 +52,7 @@ export function resolvePrimaryModel(config: ElizaConfig): string | undefined {
 /** @internal Exported for testing. */
 export function resolvePreferredProviderId(
   config: ElizaConfig,
+  env: Readonly<NodeJS.ProcessEnv> = process.env,
 ): string | undefined {
   const llmText = resolveServiceRoutingInConfig(
     config as Record<string, unknown>,
@@ -77,14 +79,26 @@ export function resolvePreferredProviderId(
     );
   }
 
+  // Persisted service routing is authoritative whenever it declares llmText.
+  // Legacy direct installs may instead select a provider with ELIZA_PROVIDER;
+  // model-config routes already support that contract, so cold boot must use the
+  // same selection before Vault hydration and plugin collection.
+  if (llmText === undefined) {
+    const environmentProvider = resolveProviderIdFromSelectionHint(
+      env.ELIZA_PROVIDER,
+    );
+    if (environmentProvider) return environmentProvider;
+  }
+
   return resolveProviderIdFromSelectionHint(resolvePrimaryModel(config));
 }
 
 /** @internal Exported for testing. */
 export function resolvePreferredProviderPluginName(
   config: ElizaConfig,
+  env: Readonly<NodeJS.ProcessEnv> = process.env,
 ): string | undefined {
-  const providerId = resolvePreferredProviderId(config);
+  const providerId = resolvePreferredProviderId(config, env);
   return providerId
     ? getFirstRunProviderOption(providerId)?.pluginName
     : undefined;

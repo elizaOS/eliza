@@ -83,11 +83,49 @@ describe("resolvePreferredProviderId", () => {
       serviceRouting: {},
       agents: { defaults: { model: { primary: "anthropic/claude" } } },
     };
-    expect(resolvePreferredProviderId(config)).toBe("anthropic");
+    expect(resolvePreferredProviderId(config, {})).toBe("anthropic");
+  });
+
+  it("uses the supported legacy environment selection when routing is absent", () => {
+    expect(
+      resolvePreferredProviderId(
+        { serviceRouting: {} },
+        { ELIZA_PROVIDER: "cerebras" },
+      ),
+    ).toBe("cerebras");
+    expect(
+      resolvePreferredProviderPluginName(
+        { serviceRouting: {} },
+        { ELIZA_PROVIDER: "cerebras" },
+      ),
+    ).toBe("@elizaos/plugin-openai");
+  });
+
+  it("keeps explicit service routing authoritative over the environment", () => {
+    const config: ElizaConfig = {
+      serviceRouting: {
+        llmText: { transport: "direct", backend: "anthropic" },
+      },
+    };
+
+    expect(
+      resolvePreferredProviderId(config, { ELIZA_PROVIDER: "cerebras" }),
+    ).toBe("anthropic");
+  });
+
+  it("does not invent a provider from an unknown environment selection", () => {
+    expect(
+      resolvePreferredProviderId(
+        { serviceRouting: {} },
+        { ELIZA_PROVIDER: "not-a-provider" },
+      ),
+    ).toBeUndefined();
   });
 
   it("returns undefined when nothing is configured", () => {
-    expect(resolvePreferredProviderId({ serviceRouting: {} })).toBeUndefined();
+    expect(
+      resolvePreferredProviderId({ serviceRouting: {} }, {}),
+    ).toBeUndefined();
   });
 });
 
@@ -105,7 +143,7 @@ describe("resolvePreferredProviderPluginName", () => {
 
   it("returns undefined when no provider is resolved", () => {
     expect(
-      resolvePreferredProviderPluginName({ serviceRouting: {} }),
+      resolvePreferredProviderPluginName({ serviceRouting: {} }, {}),
     ).toBeUndefined();
   });
 });

@@ -18,6 +18,7 @@ import {
 const savedStateDir = process.env.ELIZA_STATE_DIR;
 const savedProfileResolver = process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER;
 const savedCerebrasKey = process.env.CEREBRAS_API_KEY;
+const savedProvider = process.env.ELIZA_PROVIDER;
 let stateDir: string | null = null;
 
 afterEach(async () => {
@@ -31,6 +32,8 @@ afterEach(async () => {
   }
   if (savedCerebrasKey === undefined) delete process.env.CEREBRAS_API_KEY;
   else process.env.CEREBRAS_API_KEY = savedCerebrasKey;
+  if (savedProvider === undefined) delete process.env.ELIZA_PROVIDER;
+  else process.env.ELIZA_PROVIDER = savedProvider;
   if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
   stateDir = null;
 });
@@ -66,6 +69,54 @@ describe("selected provider credential boot readiness", () => {
           serviceRouting: {
             llmText: { backend: "cerebras", transport: "direct" },
           },
+          agents: {
+            defaults: {
+              workspace: path.join(stateDir, "workspace"),
+            },
+          },
+        } as never,
+      }),
+    ).rejects.toMatchObject({
+      code: "SELECTED_PROVIDER_CREDENTIAL_UNAVAILABLE",
+      severity: "fatal",
+      context: {
+        providerId: "cerebras",
+        envKey: "CEREBRAS_API_KEY",
+        stage: "lookup",
+      },
+      cause,
+    });
+    expect(onRuntimeCreated).not.toHaveBeenCalled();
+  });
+
+  it("uses the supported environment provider before Vault hydration and runtime construction", async () => {
+    stateDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "eliza-provider-vault-env-"),
+    );
+    process.env.ELIZA_STATE_DIR = stateDir;
+    process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER = "1";
+    process.env.ELIZA_PROVIDER = "cerebras";
+    delete process.env.CEREBRAS_API_KEY;
+
+    const cause = new Error("test env-selected Vault storage unavailable");
+    setAgentHostBridge({
+      ...defaultAgentHostBridge,
+      sharedVault: () => ({
+        ...defaultAgentHostBridge.sharedVault(),
+        has: vi.fn(async (key: string) => {
+          if (key === "providers.cerebras.api-key") throw cause;
+          return false;
+        }),
+      }),
+    });
+    const onRuntimeCreated = vi.fn();
+
+    await expect(
+      startEliza({
+        headless: true,
+        onRuntimeCreated,
+        configOverride: {
+          firstRun: false,
           agents: {
             defaults: {
               workspace: path.join(stateDir, "workspace"),
