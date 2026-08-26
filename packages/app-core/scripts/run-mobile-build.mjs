@@ -6482,25 +6482,19 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
         return currentUrl.get();
     }
 
-    private String preferenceKey(PluginCall call) {
-        String slot = call.getString("slot");
-        if ("credential".equals(slot)) return SESSION_CIPHERTEXT;
-        if ("pending_login".equals(slot)) return PENDING_LOGIN_CIPHERTEXT;
-        if (slot != null) {
-            call.reject("The secure credential slot is invalid.", "SECURE_CREDENTIAL_INVALID");
-            return null;
-        }
-        String key = call.getString("key", "session");
-        if ("session".equals(key)) return SESSION_CIPHERTEXT;
-        if ("accountDeletionAdmission".equals(key)) return ADMISSION_CIPHERTEXT;
-        if ("accountDeletionStatus".equals(key)) return STATUS_CIPHERTEXT;
-        if ("accountDeletionRecovery".equals(key)) return RECOVERY_CIPHERTEXT;
-        call.reject("The credential namespace is invalid.", "SECURE_CREDENTIAL_INVALID");
-        return null;
-    }
-
     private SharedPreferences preferences() {
         return getContext().getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE);
+    }
+
+    private String preferenceKey(PluginCall call) {
+        String slot = call.getString("slot", "credential");
+        if ("credential".equals(slot)) return SESSION_CIPHERTEXT;
+        if ("pending_login".equals(slot)) return PENDING_LOGIN_CIPHERTEXT;
+        if ("account_deletion_admission".equals(slot)) return ADMISSION_CIPHERTEXT;
+        if ("account_deletion_status".equals(slot)) return STATUS_CIPHERTEXT;
+        if ("account_deletion_recovery".equals(slot)) return RECOVERY_CIPHERTEXT;
+        call.reject("The secure credential slot is invalid.", "SECURE_CREDENTIAL_INVALID");
+        return null;
     }
 
     private SecretKey loadOrCreateKey() throws GeneralSecurityException {

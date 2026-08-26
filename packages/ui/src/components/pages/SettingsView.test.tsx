@@ -97,6 +97,17 @@ const stubSections = vi.hoisted(() => [
     defaultTitle: "Cloud Management",
     cloudOnly: true,
   },
+  {
+    id: "android-account-lifecycle",
+    label: "settings.sections.androidAccountLifecycle.label",
+    defaultLabel: "Account & Privacy",
+    tone: "warn",
+    hue: "amber",
+    group: "security",
+    titleKey: "settings.sections.androidAccountLifecycle.title",
+    defaultTitle: "Account & Privacy",
+    androidCloudOnly: true,
+  },
 ]);
 
 vi.mock("../../state", () => ({
@@ -453,6 +464,18 @@ describe("SettingsView", () => {
 
     expect(screen.queryByTestId("permission-priming-modal")).toBeNull();
     expect(permissionPrimingMock.calls).toHaveLength(0);
+  });
+
+  it("exposes the account lifecycle section only in the Android Cloud build", () => {
+    const hidden = render(
+      <SettingsView initialSection="android-account-lifecycle" />,
+    );
+    expect(screen.queryByTestId("stub-android-account-lifecycle")).toBeNull();
+    hidden.unmount();
+
+    androidCloudBuildMock.isAndroidCloud = true;
+    render(<SettingsView initialSection="android-account-lifecycle" />);
+    expect(screen.getByTestId("stub-android-account-lifecycle")).toBeTruthy();
   });
 
   it("ignores malformed permission request navigation payloads", () => {
