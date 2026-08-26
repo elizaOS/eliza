@@ -327,16 +327,34 @@ describe("restore target authority", () => {
         ),
         expiresAt,
       ),
+      // The two remaining session classes are guarded inline in executeDrill;
+      // representative raw SQL pins their composition through the same
+      // guardPsqlScript path (pg_restore output / ownership handoff).
+      restore: guardPsqlScript("-- pg_restore extracted SQL\n", expiresAt),
+      handoff: guardPsqlScript(
+        'ALTER DATABASE "db" OWNER TO "tenant_a";\n',
+        expiresAt,
+      ),
+    };
+    const bodyMarkers: Record<string, string> = {
+      claim: "pg_advisory_xact_lock",
+      globals: "IF NOT EXISTS",
+      consume: "ALTER SYSTEM RESET",
+      drop: "DROP DATABASE",
+      restore: "pg_restore extracted",
+      handoff: "OWNER TO",
     };
     for (const [name, script] of Object.entries(scripts)) {
       // Twin-settings guard once: one gset assignment + one \if read.
       expect(script.split("eliza_restore_target_ok").length - 1, name).toBe(2);
       // Expiry guard once: the variable is set and read inside one block.
       expect(script.split("eliza_capability_live").length - 1, name).toBe(2);
-      // Guard precedes the first destructive statement.
-      expect(script.indexOf("current_setting"), name).toBeLessThan(
-        script.length,
-      );
+      // Guard block precedes the class's own first body statement.
+      const guardEnd = script.indexOf("restore capability has expired");
+      const bodyStart = script.indexOf(bodyMarkers[name]);
+      expect(guardEnd, name).toBeGreaterThanOrEqual(0);
+      expect(bodyStart, name).toBeGreaterThanOrEqual(0);
+      expect(guardEnd, name).toBeLessThan(bodyStart);
     }
     // Double-wrapping is detectable: guardPsqlScript applied to an already
     // guarded script doubles both markers.
