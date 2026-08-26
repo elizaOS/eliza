@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { hardenElectrobunRpcSockets } from "./electrobun-loopback-hardening.mjs";
 
-const VULNERABLE = `server = Bun.serve<{ webviewId: number }>({\n\tport,\n`;
+const VULNERABLE = `const startPort = 50000;\nconst endPort = 65535;\nserver = Bun.serve<{ webviewId: number }>({\n\tport,\n`;
 
 function fixture(source = VULNERABLE) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "electrobun-loopback-"));
@@ -28,7 +28,34 @@ test("hardens shared and downloaded platform RPC sockets idempotently", () => {
         "utf8",
       );
       assert.match(source, /hostname: "127\.0\.0\.1",\n\tport,/);
+      assert.match(source, /Bun\.env\.ELECTROBUN_RPC_PORT/);
+      assert.match(
+        source,
+        /const endPort = hasConfiguredPort \? startPort : 65535;/,
+      );
+      assert.doesNotMatch(source, /const startPort = 50000;/);
     }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("treats a configured renderer RPC port as an exclusive lease", () => {
+  const root = fixture();
+  try {
+    hardenElectrobunRpcSockets(root);
+    const source = fs.readFileSync(
+      path.join(root, "dist", "api", "bun", "core", "Socket.ts"),
+      "utf8",
+    );
+    assert.match(
+      source,
+      /const startPort = hasConfiguredPort \? configuredPort : 50000;/,
+    );
+    assert.match(
+      source,
+      /const endPort = hasConfiguredPort \? startPort : 65535;/,
+    );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
