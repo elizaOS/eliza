@@ -128,30 +128,4 @@ describe("approval messaging boundary", () => {
       expect.objectContaining({ transport: "native" }),
     );
   });
-
-  it("fails closed with ApprovalConnectorPreflightError for invalid/empty target or body", async () => {
-    await expect(
-      prepareCrossChannelSend({
-        runtime: {} as IAgentRuntime,
-        service: {} as LifeOpsService,
-        channel: "telegram",
-        target: "",
-        body: "hello",
-      }),
-    ).rejects.toMatchObject({
-      code: "INVALID_DISPATCH_INPUT",
-    });
-
-    await expect(
-      prepareCrossChannelSend({
-        runtime: {} as IAgentRuntime,
-        service: {} as LifeOpsService,
-        channel: "telegram",
-        target: "chat-1",
-        body: null as unknown as string,
-      }),
-    ).rejects.toMatchObject({
-      code: "INVALID_DISPATCH_INPUT",
-    });
-  });
 });

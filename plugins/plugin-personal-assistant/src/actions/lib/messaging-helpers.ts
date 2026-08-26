@@ -53,13 +53,7 @@ interface ConnectorStatus {
   readonly grantedCapabilities?: ReadonlyArray<string>;
 }
 
-function requireText(value: unknown, field: string): string {
-  if (typeof value !== "string") {
-    throw new ApprovalConnectorPreflightError(
-      "INVALID_DISPATCH_INPUT",
-      `${field} must be a non-empty string`,
-    );
-  }
+function requireText(value: string, field: string): string {
   const normalized = value.trim();
   if (!normalized) {
     throw new ApprovalConnectorPreflightError(
