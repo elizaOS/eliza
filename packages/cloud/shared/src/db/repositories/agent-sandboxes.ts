@@ -30,6 +30,7 @@ import {
 import {
   applyBackupDelta,
   type BackupChainNode,
+  computeStateHash,
   requireBackupDelta,
   requireBackupStateData,
   selectPrunableBackupIds,
@@ -397,6 +398,41 @@ export async function hydrateAgentSandboxBackup(
     ...backup,
     state_data: decrypted,
   };
+}
+
+/**
+ * Reconstruct an already-authorized target→base chain from the exact captured
+ * rows. Every intermediate state is checked against its persisted digest, so
+ * an altered parent payload cannot be masked by a later incremental delta.
+ */
+export async function reconstructStoredAgentSandboxBackupChain(
+  capturedTargetToBase: readonly StoredAgentSandboxBackup[],
+): Promise<{ state: AgentBackupStateData; target: AgentSandboxBackup }> {
+  if (capturedTargetToBase.length === 0) throw new Error("Backup chain is empty");
+  let chainBytes = 0;
+  let state: AgentBackupStateData | undefined;
+  let target: AgentSandboxBackup | undefined;
+  for (const stored of [...capturedTargetToBase].reverse()) {
+    chainBytes += stored.size_bytes ?? Buffer.byteLength(JSON.stringify(stored.state_data), "utf8");
+    if (chainBytes > MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES) {
+      throw new SnapshotPayloadTooLargeError(chainBytes, MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES);
+    }
+    const hydrated = await hydrateAgentSandboxBackup(stored);
+    if (stored.id === capturedTargetToBase[0]?.id) target = hydrated;
+    if (hydrated.backup_kind === "full") {
+      state = requireBackupStateData(hydrated.state_data, hydrated.id);
+    } else {
+      if (!state) throw new Error(`Incremental ${hydrated.id} reached before a full backup`);
+      state = applyBackupDelta(state, requireBackupDelta(hydrated.state_data, hydrated.id));
+    }
+    if (!hydrated.content_hash || computeStateHash(state) !== hydrated.content_hash) {
+      throw new Error(
+        `Backup ${hydrated.id} content digest does not match its reconstructed state`,
+      );
+    }
+  }
+  if (!state || !target) throw new Error("Backup chain did not produce a restorable state");
+  return { state, target };
 }
 
 export async function prepareAgentBackupInsertData(

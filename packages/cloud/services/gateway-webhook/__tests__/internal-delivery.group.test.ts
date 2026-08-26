@@ -7,6 +7,7 @@
  */
 
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { credentialFingerprint } from "../src/connector-account";
 import { deliverInternalMessage } from "../src/internal-delivery";
 import type { GatewayRedis } from "../src/redis";
 
@@ -50,6 +51,8 @@ const originalFetch = globalThis.fetch;
 const originalToken = process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN;
 const originalBlooioKey = process.env.ELIZA_APP_BLOOIO_API_KEY;
 const originalBlooioNumber = process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER;
+const TELEGRAM_TEST_TOKEN = "telegram-test-token";
+const TELEGRAM_CONNECTOR_ACCOUNT_ID = `bot:${credentialFingerprint(TELEGRAM_TEST_TOKEN)}`;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -72,6 +75,7 @@ function request(overrides: Record<string, unknown> = {}) {
     body: JSON.stringify({
       platform: "blooio",
       project: "eliza-app",
+      connectorAccountId: "+15550001111",
       chatId: "chat_group_123",
       text: "Reminder for this group from Nubs: pay the rent",
       idempotencyKey: "group-task-1:2026-08-20T19:30:00.000Z",
@@ -121,7 +125,7 @@ describe("internal proactive group delivery", () => {
   });
 
   test("sends a Telegram group reminder to its negative chat id unchanged", async () => {
-    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = TELEGRAM_TEST_TOKEN;
     const redis = new MemoryRedis();
     const bodies: Array<Record<string, unknown>> = [];
     globalThis.fetch = mock(
@@ -136,7 +140,11 @@ describe("internal proactive group delivery", () => {
     ) as typeof fetch;
 
     const response = await deliverInternalMessage(
-      request({ platform: "telegram", chatId: "-100123456789" }),
+      request({
+        platform: "telegram",
+        connectorAccountId: TELEGRAM_CONNECTOR_ACCOUNT_ID,
+        chatId: "-100123456789",
+      }),
       { redis },
     );
 
@@ -172,6 +180,7 @@ describe("internal proactive group delivery", () => {
     const response = await deliverInternalMessage(
       request({
         platform: "telegram",
+        connectorAccountId: TELEGRAM_CONNECTOR_ACCOUNT_ID,
         chatId: "-100123456789",
         providerThreadId: "909",
       }),
@@ -203,6 +212,7 @@ describe("internal proactive group delivery", () => {
       const response = await deliverInternalMessage(
         request({
           platform: "telegram",
+          connectorAccountId: TELEGRAM_CONNECTOR_ACCOUNT_ID,
           chatId: "-100123456789",
           providerThreadId,
         }),
@@ -213,6 +223,28 @@ describe("internal proactive group delivery", () => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
+  test("rejects a group connector-account mismatch before claim or provider egress", async () => {
+    process.env.ELIZA_APP_BLOOIO_API_KEY = "blooio-test-key";
+    process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+15550001111";
+    const redis = new MemoryRedis();
+    globalThis.fetch = mock(async () => {
+      throw new Error("provider must not run");
+    }) as typeof fetch;
+
+    const response = await deliverInternalMessage(
+      request({ connectorAccountId: "+15550009999" }),
+      { redis },
+    );
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      retryable: false,
+      acceptance: "not_accepted",
+    });
+    expect(redis.store).toEqual(new Map());
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
   test("rejects malformed group recipients before egress", async () => {
     const redis = new MemoryRedis();
     globalThis.fetch = mock(async () => {
@@ -247,7 +279,11 @@ describe("internal proactive group delivery", () => {
     ) as typeof fetch;
 
     const response = await deliverInternalMessage(
-      request({ chatId: undefined, phoneNumber: "+15551234567" }),
+      request({
+        connectorAccountId: undefined,
+        chatId: undefined,
+        phoneNumber: "+15551234567",
+      }),
       { redis },
     );
 

@@ -1877,6 +1877,7 @@ app.post("/", async (c) => {
         ? {
             platform: "telegram" as const,
             project: parsed.data.project,
+            connectorAccountId: parsed.data.connectorAccountId,
             chatId: parsed.data.chatId,
           }
         : parsed.data.platform === "blooio"

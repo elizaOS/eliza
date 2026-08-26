@@ -10,7 +10,7 @@
       "reason": "The desktop renderer owns native window controls outside the React design-system host.",
       "reviewBy": "2026-11-24",
       "matchCount": 1,
-      "lines": [424]
+      "lines": [450]
     },
     {
       "id": "desktop-window-native-button-visuals",
@@ -21,7 +21,7 @@
       "reason": "The desktop renderer owns native window-control visuals outside the React design-system host.",
       "reviewBy": "2026-11-24",
       "matchCount": 1,
-      "lines": [424]
+      "lines": [450]
     },
     {
       "id": "design-lab-shell-native-buttons",

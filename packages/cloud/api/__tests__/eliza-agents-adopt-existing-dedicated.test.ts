@@ -30,7 +30,9 @@ import type {
 } from "@/db/schemas/agent-sandboxes";
 import * as realAuth from "@/lib/auth";
 import * as realWorkersAuth from "@/lib/auth/workers-hono-auth";
+import { buildRedisClient } from "@/lib/cache/redis-factory";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
+import { PROVISIONING_WORKER_HEARTBEAT_KEY } from "@/lib/services/provisioning-worker-health";
 import { personalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import * as dbHelpersActual from "../../shared/src/db/helpers";
@@ -99,6 +101,7 @@ let dbWrite: typeof import("@/db/client").dbWrite;
 let agentSandboxes: typeof import("@/db/schemas/agent-sandboxes").agentSandboxes;
 let jobs: typeof import("@/db/schemas/jobs").jobs;
 let organizations: typeof import("@/db/schemas/organizations").organizations;
+let personalDedicatedAdoptionSelections: typeof import("@/db/schemas/personal-dedicated-adoption-selections").personalDedicatedAdoptionSelections;
 let personalDedicatedUpgradeAuthorities: typeof import("@/db/schemas/personal-dedicated-upgrade-authorities").personalDedicatedUpgradeAuthorities;
 
 beforeAll(async () => {
@@ -122,6 +125,9 @@ beforeAll(async () => {
     ({ jobs } = await import("@/db/schemas/jobs"));
     ({ personalDedicatedUpgradeAuthorities } = await import(
       "@/db/schemas/personal-dedicated-upgrade-authorities"
+    ));
+    ({ personalDedicatedAdoptionSelections } = await import(
+      "@/db/schemas/personal-dedicated-adoption-selections"
     ));
 
     const { TIER_UPGRADE_TEST_TABLES } = await import(
@@ -189,8 +195,12 @@ beforeEach(async () => {
   currentUser.email = "owner-a@test.test";
   currentUser.organization_id = ORG_A;
   currentUser.organization = { id: ORG_A, name: "Org A", is_active: true };
+  ENV.NODE_ENV = "test";
+  delete process.env.REQUIRE_PROVISIONING_WORKER;
+  await buildRedisClient(process.env)?.del(PROVISIONING_WORKER_HEARTBEAT_KEY);
   await dbWrite.delete(jobs);
   await dbWrite.delete(personalDedicatedUpgradeAuthorities);
+  await dbWrite.delete(personalDedicatedAdoptionSelections);
   await dbWrite.delete(agentSandboxes);
   await dbWrite
     .update(organizations)
@@ -378,7 +388,7 @@ describe("GET/POST adopt-existing Dedicated", () => {
     expect(await dbWrite.select().from(jobs)).toHaveLength(0);
   });
 
-  test("fails closed when one adopted row and one unmarked row are both eligible", async () => {
+  test("keeps one canonical adopted row authoritative when an unrelated stale row remains", async () => {
     expect(pgliteReady).toBe(true);
     await seedCandidate({
       id: TARGET_A,
@@ -389,9 +399,12 @@ describe("GET/POST adopt-existing Dedicated", () => {
     await seedCandidate({ id: TARGET_B, status: "stopped" });
 
     const response = await quote();
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      code: "dedicated_adoption_ambiguous",
+      data: {
+        dedicatedAgentId: TARGET_A,
+        adoptionState: "adopted",
+      },
     });
     expect(await dbWrite.select().from(jobs)).toHaveLength(0);
   });
@@ -658,6 +671,49 @@ describe("GET/POST adopt-existing Dedicated", () => {
     });
   }
 
+  test("does not require a versioned worker for an unselected legacy-compatible provision", async () => {
+    expect(pgliteReady).toBe(true);
+    await seedCandidate({ status: "error" });
+    const quoteId = await currentQuoteId();
+
+    const redis = buildRedisClient(process.env);
+    if (!redis) throw new Error("mock Redis is not configured");
+    // A bare timestamp is the legacy daemon's healthy heartbeat. It advertises
+    // no reviewed-restore capability, but this ordinary one-row path carries
+    // no new directive and remains compatible with that daemon.
+    await redis.set(
+      PROVISIONING_WORKER_HEARTBEAT_KEY,
+      new Date().toISOString(),
+    );
+    process.env.REQUIRE_PROVISIONING_WORKER = "true";
+    try {
+      const response = await confirm(quoteId);
+      expect(response.status).toBe(202);
+      expect(await targetJobs(TARGET_A)).toHaveLength(1);
+    } finally {
+      delete process.env.REQUIRE_PROVISIONING_WORKER;
+      await redis.del(PROVISIONING_WORKER_HEARTBEAT_KEY);
+    }
+  });
+
+  test("retains the generic worker-liveness gate for an unselected provision", async () => {
+    expect(pgliteReady).toBe(true);
+    await seedCandidate({ status: "error" });
+    const quoteId = await currentQuoteId();
+    process.env.REQUIRE_PROVISIONING_WORKER = "true";
+    try {
+      const response = await confirm(quoteId);
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({
+        success: false,
+        code: "PROVISIONING_WORKER_UNHEALTHY",
+      });
+      expect(await targetJobs(TARGET_A)).toHaveLength(0);
+    } finally {
+      delete process.env.REQUIRE_PROVISIONING_WORKER;
+    }
+  });
+
   test("adopts a running row without starting another provision job", async () => {
     expect(pgliteReady).toBe(true);
     await seedCandidate({ status: "running" });
@@ -922,6 +978,7 @@ describe("GET/POST adopt-existing Dedicated", () => {
       expectedDailyRate: AGENT_PRICING.DAILY_RUNNING_COST,
       expectedMinimumBalance: AGENT_PRICING.UPGRADE_MINIMUM_BALANCE,
       expectedMinimumRunwayDays: AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS,
+      expectedActivationAuthorityKey: "unreviewed-auto",
     };
 
     await expect(
@@ -977,6 +1034,7 @@ describe("GET/POST adopt-existing Dedicated", () => {
         expectedDailyRate: AGENT_PRICING.DAILY_RUNNING_COST,
         expectedMinimumBalance: AGENT_PRICING.UPGRADE_MINIMUM_BALANCE,
         expectedMinimumRunwayDays: AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS,
+        expectedActivationAuthorityKey: "unreviewed-auto",
       }),
     ).rejects.toMatchObject({
       code: "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",

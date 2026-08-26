@@ -304,7 +304,59 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   CONSTRAINT "personal_dedicated_upgrade_authorities_source_unique"
     UNIQUE ("organization_id", "user_id", "source_agent_id"),
   CONSTRAINT "personal_dedicated_upgrade_authorities_target_unique"
-    UNIQUE ("dedicated_agent_id")
+    UNIQUE ("dedicated_agent_id"),
+  CONSTRAINT "personal_dedicated_upgrade_authorities_organization_id_fk"
+    FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE,
+  CONSTRAINT "personal_dedicated_upgrade_authorities_user_id_fk"
+    FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE
+)`,
+  `CREATE TABLE IF NOT EXISTS "personal_dedicated_adoption_selections" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "organization_id" uuid NOT NULL,
+  "user_id" uuid NOT NULL,
+  "source_agent_id" text NOT NULL,
+  "dedicated_agent_id" uuid NOT NULL,
+  "selected_by_user_id" uuid,
+  "selection_reason" text NOT NULL,
+  "state_disposition" text NOT NULL,
+  "activation_kind" text NOT NULL,
+  "activation_backup_id" uuid,
+  "activation_backup_hash" text,
+  "activation_backup_chain" jsonb,
+  "restore_fence_hash" text,
+  "restore_fence_started_at" timestamptz,
+  "inventory_fingerprint" text NOT NULL,
+  "candidate_count" integer NOT NULL,
+  "schema_version" integer NOT NULL DEFAULT 1,
+  "selected_at" timestamptz NOT NULL DEFAULT now(),
+  "created_at" timestamptz NOT NULL DEFAULT now(),
+  "updated_at" timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT "personal_dedicated_adoption_selections_source_unique"
+    UNIQUE ("organization_id", "user_id", "source_agent_id"),
+  CONSTRAINT "personal_dedicated_adoption_selections_target_unique"
+    UNIQUE ("dedicated_agent_id"),
+  CONSTRAINT "personal_dedicated_adoption_selections_organization_id_fk"
+    FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE,
+  CONSTRAINT "personal_dedicated_adoption_selections_user_id_fk"
+    FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE,
+  CONSTRAINT "personal_dedicated_adoption_selections_selected_by_user_id_fk"
+    FOREIGN KEY ("selected_by_user_id") REFERENCES "users"("id") ON DELETE SET NULL,
+  CONSTRAINT "personal_dedicated_adoption_selections_activation_check"
+    CHECK (("activation_kind" = 'fresh_boot' AND "activation_backup_id" IS NULL
+        AND "activation_backup_hash" IS NULL AND "activation_backup_chain" IS NULL)
+      OR ("activation_kind" = 'legacy_backup'
+        AND "activation_backup_id" IS NOT NULL
+        AND "activation_backup_hash" ~ '^[a-f0-9]{64}$'
+        AND jsonb_typeof("activation_backup_chain") = 'array'
+        AND jsonb_array_length("activation_backup_chain") > 0)
+      OR ("activation_kind" = 'catalog_restore_required'
+        AND "activation_backup_id" IS NOT NULL
+        AND "activation_backup_hash" ~ '^[a-f0-9]{64}$'
+        AND "activation_backup_chain" IS NULL)),
+  CONSTRAINT "personal_dedicated_adoption_selections_restore_fence_check"
+    CHECK (("restore_fence_hash" IS NULL AND "restore_fence_started_at" IS NULL)
+      OR ("restore_fence_hash" ~ '^[a-f0-9]{64}$'
+        AND "restore_fence_started_at" IS NOT NULL))
 )`,
   `CREATE TABLE IF NOT EXISTS "agent_sandbox_backups" (
   "id" uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -394,6 +446,41 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   "created_at" timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY ("id")
 )`,
+  `CREATE OR REPLACE FUNCTION guard_personal_dedicated_restore_backup_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  affected_agent_id uuid;
+BEGIN
+  FOR affected_agent_id IN
+    SELECT DISTINCT candidate
+    FROM unnest(ARRAY[
+      CASE WHEN TG_OP <> 'INSERT' THEN OLD."sandbox_record_id" ELSE NULL END,
+      CASE WHEN TG_OP <> 'DELETE' THEN NEW."sandbox_record_id" ELSE NULL END
+    ]::uuid[]) AS candidate
+    WHERE candidate IS NOT NULL
+    ORDER BY candidate
+  LOOP
+    PERFORM 1 FROM "agent_sandboxes" WHERE "id" = affected_agent_id FOR KEY SHARE;
+    IF EXISTS (
+      SELECT 1 FROM "personal_dedicated_adoption_selections"
+      WHERE "dedicated_agent_id" = affected_agent_id
+        AND "restore_fence_hash" IS NOT NULL
+    ) THEN
+      RAISE EXCEPTION 'reviewed restore authority is fenced for agent %', affected_agent_id
+        USING ERRCODE = '55000';
+    END IF;
+  END LOOP;
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+  RETURN NEW;
+END;
+$$`,
+  `DROP TRIGGER IF EXISTS "agent_sandbox_backups_reviewed_restore_fence"
+ON "agent_sandbox_backups"`,
+  `CREATE TRIGGER "agent_sandbox_backups_reviewed_restore_fence"
+BEFORE INSERT OR UPDATE OR DELETE ON "agent_sandbox_backups"
+FOR EACH ROW EXECUTE FUNCTION "guard_personal_dedicated_restore_backup_mutation"()`,
   `CREATE OR REPLACE FUNCTION advance_agent_sandbox_lifecycle_revision()
 RETURNS trigger
 LANGUAGE plpgsql
