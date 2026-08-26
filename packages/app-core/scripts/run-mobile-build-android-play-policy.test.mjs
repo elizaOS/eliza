@@ -12,15 +12,20 @@ import {
   ANDROID_CLOUD_STRIPPED_PERMISSIONS,
   ANDROID_CLOUD_STRIPPED_RESOURCE_FILES,
   ANDROID_CLOUD_STRIPPED_RESOURCE_VALUES,
+  ANDROID_PLAY_ALLOWED_CAPACITOR_CONFIG_PLUGINS,
+  ANDROID_PLAY_ALLOWED_COMPONENTS,
   ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES,
   ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES,
   ANDROID_PLAY_ALLOWED_PERMISSIONS,
+  ANDROID_PLAY_DATA_EXTRACTION_RULES,
   androidPlayManifestEvidenceFromAapt,
   applyAndroidGeneratedBuildTargetProperties,
+  applyAndroidPlayManifestHardening,
   createAndroidPlayManifestPolicy,
   findAndroidCloudPackagedRuntimeOffenders,
   findAndroidPlayIndexHtmlFindings,
   findAndroidPlayTextAssetFindings,
+  sanitizeAndroidCloudCapacitorConfig,
 } from "./run-mobile-build.mjs";
 
 const VARIABLES_GRADLE = fs.readFileSync(
@@ -62,6 +67,89 @@ const AAPT_MANIFEST = `
 `;
 
 describe("Android Play manifest policy", () => {
+  it("places permissions before the application and disables all backup transfer", () => {
+    const hardened = applyAndroidPlayManifestHardening(`<manifest>
+    <queries />
+    <application android:allowBackup="false"></application>
+    <uses-permission android:name="android.permission.INTERNET" />
+</manifest>`);
+
+    expect(hardened.indexOf("<uses-permission")).toBeLessThan(
+      hardened.indexOf("<queries"),
+    );
+    expect(hardened.indexOf("<uses-permission")).toBeLessThan(
+      hardened.indexOf("<application"),
+    );
+    expect(hardened).toContain(
+      'android:dataExtractionRules="@xml/data_extraction_rules"',
+    );
+    expect(hardened).toContain('android:fullBackupContent="false"');
+    expect(ANDROID_PLAY_DATA_EXTRACTION_RULES).toContain(
+      '<exclude domain="sharedpref" path="." />',
+    );
+    expect(ANDROID_PLAY_DATA_EXTRACTION_RULES).toContain("<device-transfer>");
+  });
+
+  it("packages only the restricted Play-safe Capacitor runtime config", () => {
+    const sanitized = sanitizeAndroidCloudCapacitorConfig({
+      appId: "ai.elizaos.app",
+      appName: "Eliza",
+      webDir: "dist",
+      server: {
+        androidScheme: "http",
+        allowNavigation: ["localhost", "127.0.0.1", "*.elizacloud.ai"],
+      },
+      plugins: {
+        Agent: { apiBase: "http://127.0.0.1:31337" },
+        BackgroundRunner: { autoStart: true },
+        CapacitorHttp: { enabled: true },
+        Keyboard: { resize: "body" },
+        SplashScreen: { launchShowDuration: 0 },
+      },
+      android: {
+        includePlugins: ["@elizaos/capacitor-bun-runtime"],
+        backgroundColor: "#000000",
+        allowMixedContent: true,
+        captureInput: true,
+        webContentsDebuggingEnabled: true,
+      },
+      ios: { webContentsDebuggingEnabled: true },
+    });
+
+    expect(Object.keys(sanitized.plugins).sort()).toEqual(
+      [...ANDROID_PLAY_ALLOWED_CAPACITOR_CONFIG_PLUGINS].sort(),
+    );
+    expect(sanitized.server).toEqual({
+      androidScheme: "https",
+    });
+    expect(sanitized.server).not.toHaveProperty("allowNavigation");
+    expect(sanitized.android).toEqual({
+      backgroundColor: "#000000",
+      allowMixedContent: false,
+      captureInput: true,
+      webContentsDebuggingEnabled: false,
+    });
+    expect(JSON.stringify(sanitized)).not.toMatch(
+      /eliza\.app|localhost|127\.0\.0\.1|BackgroundRunner|bun-runtime|includePlugins/,
+    );
+    expect(sanitized).not.toHaveProperty("ios");
+  });
+
+  it("keeps the unused native Google identity stack out of Android source", () => {
+    const androidSourceDir = new URL(
+      "../platforms/android/app/src/main/java/ai/elizaos/app/",
+      import.meta.url,
+    );
+
+    expect(APP_BUILD_GRADLE).not.toMatch(/androidx\.credentials|googleid/);
+    expect(
+      fs.readFileSync(new URL("MainActivity.java", androidSourceDir), "utf8"),
+    ).not.toContain("GoogleIdentityPlugin");
+    expect(
+      fs.existsSync(new URL("GoogleIdentityPlugin.java", androidSourceDir)),
+    ).toBe(false);
+  });
+
   it("stamps only generated Cloud projects for direct Gradle and IDE use", () => {
     const base = "org.gradle.jvmargs=-Xmx4g\nelizaCloudBuild=false\n";
     const cloud = applyAndroidGeneratedBuildTargetProperties(base, {
@@ -157,6 +245,18 @@ describe("Android Play manifest policy", () => {
     expect(ANDROID_PLAY_ALLOWED_PERMISSIONS).toContain(
       "android.permission.MODIFY_AUDIO_SETTINGS",
     );
+    expect(ANDROID_PLAY_ALLOWED_PERMISSIONS).not.toContain(
+      "android.permission.USE_BIOMETRIC",
+    );
+    expect(ANDROID_PLAY_ALLOWED_PERMISSIONS).not.toContain(
+      "android.permission.USE_FINGERPRINT",
+    );
+    expect(ANDROID_PLAY_ALLOWED_COMPONENTS).not.toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("androidx.credentials"),
+        expect.stringContaining("com.google.android.gms"),
+      ]),
+    );
     expect(ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES).toEqual([
       "agent",
       "runners",
@@ -170,12 +270,9 @@ describe("Android Play manifest policy", () => {
     expect(ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES).toEqual([
       "@capacitor/app",
       "@capacitor/browser",
-      "@capacitor/device",
-      "@capacitor/filesystem",
       "@capacitor/keyboard",
       "@capacitor/network",
       "@capacitor/preferences",
-      "@capacitor/share",
       "@capacitor/status-bar",
       "@elizaos/capacitor-browser-surface",
       "@elizaos/capacitor-secure-store",

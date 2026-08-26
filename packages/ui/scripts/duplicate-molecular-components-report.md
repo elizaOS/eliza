@@ -74,7 +74,7 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 
 ### dialog: button + input
 
-- `AccountDeletionDialog` in `packages/ui/src/cloud/account-security/components/account-deletion-dialog.tsx:30`
+- `AccountDeletionDialog` in `packages/ui/src/cloud/account-security/components/account-deletion-dialog.tsx:21`
 - `SigninSheet` in `packages/ui/src/components/settings/vault-tabs/OverviewTab.tsx:921`
 - Decision: **distinct-domain-compositions** — Account deletion and sign-in are unrelated workflows despite using the same atoms.
 
