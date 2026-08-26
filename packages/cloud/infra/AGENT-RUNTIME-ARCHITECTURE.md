@@ -287,6 +287,16 @@ Restoring that staging test balance is a billing-authority operation, not a
 Hetzner repair, and must be followed by a fresh canary after this SHA is
 deployed to staging.
 
+Exact PR head `5dc4317782539d27c2fc9500264a09d6b54af542` repeated the
+probe in run `33021838017`. The source-side workflow contracts and strict
+artifact privacy validator passed; the real create again stopped at 402. This
+time the artifact carried the intended `insufficient_hosting_credit` code,
+with zero created agents, zero chats, cleanup `not-required`, and
+`possibleOrphan=false`. The API still reported deployed staging commit
+`02f45de149dad7c82dc7a67aa68f66d1e33a3521`, so this run verifies the current
+canary diagnosis while also proving that the PR implementation itself is not
+yet deployed.
+
 Required acceptance evidence is: one non-cancelled exact-SHA worker deploy;
 systemd active identity and effective env-name audit; matching API/daemon DB
 heartbeat authority; node and warm-pool counts; a fresh signed-in activation;
