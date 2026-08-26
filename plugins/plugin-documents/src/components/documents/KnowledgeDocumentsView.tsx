@@ -24,13 +24,11 @@ import {
   type DocumentSearchResult,
   isApiError,
 } from "@elizaos/ui/api";
+import { Button, Input, ListSkeleton } from "@elizaos/ui/components";
 import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 import { ConfirmDeleteControl } from "@elizaos/ui/components/shared/confirm-delete-control";
 import { SectionTabStrip } from "@elizaos/ui/components/shared/SectionNav";
 import { ViewHeader } from "@elizaos/ui/components/shared/ViewHeader";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
-import { ListSkeleton } from "@elizaos/ui/components/ui/skeleton-layouts";
 import { getCached, setCached } from "@elizaos/ui/hooks/resource-cache";
 import { isNative } from "@elizaos/ui/platform";
 import {

@@ -14,11 +14,10 @@ import {
   type DocumentDetail,
   type DocumentFragmentRecord,
 } from "@elizaos/ui/api";
+import { Button, Textarea } from "@elizaos/ui/components";
 import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 import { TranscriptPlayer } from "@elizaos/ui/components/transcripts/TranscriptPlayer";
 import { ArtifactPrivacyControls } from "@elizaos/ui/components/transcripts/TranscriptsView";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Textarea } from "@elizaos/ui/components/ui/textarea";
 import { useAppSelector } from "@elizaos/ui/state";
 import { formatByteSize, resolveAppAssetUrl } from "@elizaos/ui/utils";
 import { safeAttachmentUrl } from "@elizaos/ui/utils/attachment-url";

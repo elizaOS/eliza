@@ -7,10 +7,7 @@
 
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type { DocumentScope } from "@elizaos/ui/api";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Checkbox } from "@elizaos/ui/components/ui/checkbox";
-import { Input } from "@elizaos/ui/components/ui/input";
-import { Textarea } from "@elizaos/ui/components/ui/textarea";
+import { Button, Checkbox, Input, Textarea } from "@elizaos/ui/components";
 import { useAppSelector } from "@elizaos/ui/state";
 import {
   Bot,

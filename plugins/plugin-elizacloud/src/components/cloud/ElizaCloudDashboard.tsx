@@ -31,10 +31,15 @@ import { useAppSelectorShallow } from "@elizaos/ui/state";
 import { claimCloudLoginWindow } from "@elizaos/ui/state/cloud-login-launch";
 import { openExternalUrl } from "@elizaos/ui/utils";
 import { StripeEmbeddedCheckout } from "@elizaos/ui/components/cloud/StripeEmbeddedCheckout";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@elizaos/ui/components/ui/dialog";
-import { Input } from "@elizaos/ui/components/ui/input";
-import { Switch } from "@elizaos/ui/components/ui/switch";
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Switch,
+} from "@elizaos/ui/components";
 import {
   autoTopUpFormReducer,
   BILLING_PRESET_AMOUNTS,
