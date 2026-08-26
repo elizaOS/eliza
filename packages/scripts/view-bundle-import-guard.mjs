@@ -73,6 +73,10 @@ const LOADER_RELATIVE_IMPORT_BINDINGS = new Map([
     "../composites/page-panel/index.ts",
   ],
   [
+    "@elizaos/ui/components/composites/settings",
+    "../composites/settings/index.ts",
+  ],
+  [
     "@elizaos/ui/components/composites/sidebar/sidebar-content",
     "../composites/sidebar/sidebar-content.tsx",
   ],
@@ -96,6 +100,7 @@ const LOADER_RELATIVE_IMPORT_BINDINGS = new Map([
     "@elizaos/ui/components/shared/AppPageSidebar",
     "../shared/AppPageSidebar.tsx",
   ],
+  ["@elizaos/ui/components/shared", "../shared/index.ts"],
   ["@elizaos/ui/components/ui/button", "../ui/button.tsx"],
   ["@elizaos/ui/components/ui/input", "../ui/input.tsx"],
   ["@elizaos/ui/components/ui/select", "../ui/select.tsx"],

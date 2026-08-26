@@ -500,6 +500,34 @@ function surfaceOwnsViewport(
   return header === "fullscreen" || header === "immersive";
 }
 
+function ViewSurfaceFrame({
+  children,
+  declaration,
+  nav,
+  title,
+}: {
+  children: ReactNode;
+  declaration: SurfaceManifestBearer | null | undefined;
+  nav?: ReactNode;
+  title: string;
+}) {
+  const manifest = resolveSurfaceManifest(declaration);
+  const showHeader = manifest.header === "normal" && nav === undefined;
+  return (
+    <TabContentView
+      nav={nav}
+      reserveChatClearance={!surfaceOwnsViewport(declaration)}
+    >
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        {showHeader ? <ViewHeader title={title} /> : null}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          {children}
+        </div>
+      </div>
+    </TabContentView>
+  );
+}
+
 interface ResolvedDynamicPage {
   id: string;
   pluginId: string;
@@ -1076,27 +1104,18 @@ function findRemoteViewForRoute(
 
 function renderRemoteView(view: ViewRegistryEntry, nav?: ReactNode): ReactNode {
   if (!view.bundleUrl && !view.frameUrl) return null;
-  // Plugin views own their canvas and stay flush with the shell. Repeating a
-  // route title above every plugin wasted the narrowest part of mobile screens
-  // and duplicated view-owned headings; navigation remains available from the
-  // persistent chat-actions menu and the browser/OS back affordance.
-  const manifest = resolveSurfaceManifest(view);
-  const ownsViewport =
-    manifest.header === "fullscreen" || manifest.header === "immersive";
   return (
-    <TabContentView nav={nav} reserveChatClearance={!ownsViewport}>
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <DynamicViewLoader
-          bundleUrl={view.bundleUrl}
-          frameUrl={view.frameUrl}
-          componentExport={view.componentExport}
-          viewId={view.id}
-          viewType={view.viewType}
-          reserveChatClearance={false}
-          surface={view.surface}
-        />
-      </div>
-    </TabContentView>
+    <ViewSurfaceFrame declaration={view} nav={nav} title={view.label}>
+      <DynamicViewLoader
+        bundleUrl={view.bundleUrl}
+        frameUrl={view.frameUrl}
+        componentExport={view.componentExport}
+        viewId={view.id}
+        viewType={view.viewType}
+        reserveChatClearance={false}
+        surface={view.surface}
+      />
+    </ViewSurfaceFrame>
   );
 }
 
@@ -1514,12 +1533,13 @@ function renderViewRouterContent({
     managedCloudRuntime,
   );
   const renderAppShellPage = (registration: AppShellPageRegistration) => (
-    <TabContentView
+    <ViewSurfaceFrame
+      declaration={registration}
       nav={walletNav}
-      reserveChatClearance={!surfaceOwnsViewport(registration)}
+      title={registration.label}
     >
       <RegisteredAppShellPage registration={registration} />
-    </TabContentView>
+    </ViewSurfaceFrame>
   );
 
   // Restricted native renderers cannot execute an agent-served bundle. Prefer
@@ -1544,20 +1564,22 @@ function renderViewRouterContent({
 
   if (visibleDynamicPage(dynamicPage, enabledKinds, managedCloudRuntime)) {
     return (
-      <TabContentView
-        reserveChatClearance={!surfaceOwnsViewport(dynamicPage.registration)}
+      <ViewSurfaceFrame
+        declaration={dynamicPage.registration}
+        title={dynamicPage.registration?.label ?? dynamicPage.id}
       >
         <DynamicPluginPage resolved={dynamicPage} />
-      </TabContentView>
+      </ViewSurfaceFrame>
     );
   }
   if (visibleDynamicPage(dynamicAppPage, enabledKinds, managedCloudRuntime)) {
     return (
-      <TabContentView
-        reserveChatClearance={!surfaceOwnsViewport(dynamicAppPage.registration)}
+      <ViewSurfaceFrame
+        declaration={dynamicAppPage.registration}
+        title={dynamicAppPage.registration?.label ?? dynamicAppPage.id}
       >
         <DynamicPluginPage resolved={dynamicAppPage} />
-      </TabContentView>
+      </ViewSurfaceFrame>
     );
   }
 
