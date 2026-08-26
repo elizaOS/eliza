@@ -1199,7 +1199,17 @@ export function parentAliasesForCandidateAction(actionName: string): string[] {
 	return aliases;
 }
 
-function explicitParentAliasesForCandidateAction(actionName: string): string[] {
+/**
+ * The curated high-confidence alias families only (the explicit table plus the
+ * recap/summary, calculate, and task-acceptance stem families) — none of the
+ * weak view/app surface-shape fallbacks that parentAliasesForCandidateAction
+ * appends. Exported for the plan-side candidate collapse in services/message,
+ * which must preserve a Stage-1 invention carrying one of these families while
+ * still letting deterministic text inference override the weak-shape guesses.
+ */
+export function explicitParentAliasesForCandidateAction(
+	actionName: string,
+): string[] {
 	const normalized = normalizeActionName(actionName);
 	const explicit = CANDIDATE_ACTION_PARENT_ALIASES[normalized];
 	if (explicit) return [...explicit];

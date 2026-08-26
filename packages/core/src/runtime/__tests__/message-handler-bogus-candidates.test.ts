@@ -1184,3 +1184,76 @@ describe("model-committed plan — promissory ack never reinterpreted as a finis
 		expect(handler.plan.reply).toBe(reply);
 	});
 });
+
+/**
+ * Live regression tj-9045743a29cfa4 (2026-08-26): "nubilio what tasks have
+ * you done today? quick recap". Stage-1 emitted the alias-bearing candidate
+ * OWNER_TASKS_RECAP (the RECAP stem resolves to CHANNEL_RECAP/TASKS via
+ * parentAliasesForCandidateAction), but the text-derived view-capability
+ * inference ("what" read-op + a tasks-tagged view capability) also fired,
+ * and the runnable-only collapse in messageHandlerFromFieldResult deleted
+ * the recap hint from plan.candidateActions before retrieval ever saw it —
+ * TASKS never reached the planner surface, and the planner (exposed only
+ * PAGE_DELEGATE) invented PAGE_DELEGATE{RECAP_DAY, page:"owner"} and failed
+ * the turn. Alias-bearing Stage-1 hints must survive the collapse; genuinely
+ * dead names (REFUSE — #7620) must still be dropped by it.
+ */
+describe("messageHandlerFromFieldResult — alias-bearing hints survive the runnable-only collapse (tj-9045743a29cfa4)", () => {
+	const LIVE_ASK = "nubilio what tasks have you done today? quick recap";
+	const VIEWS_WITH_TASKS_CAPABILITY = {
+		name: "VIEWS",
+		similes: [],
+		tags: ["tasks"],
+		description: "stub views action with a tasks-tagged view capability",
+		examples: [],
+		validate: async () => true,
+		handler: async () => undefined,
+	} as unknown as Action;
+	const LIVE_ACTIONS: Action[] = [
+		VIEWS_WITH_TASKS_CAPABILITY,
+		makeAction("TASKS"),
+	];
+
+	it("keeps the recap-stem candidate alongside the inferred VIEWS candidate on the live shape", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["tasks"],
+				candidateActionNames: ["OWNER_TASKS_RECAP"],
+				replyText: "on it.",
+				intents: ["recap tasks for today"],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{ actions: LIVE_ACTIONS, messageText: LIVE_ASK },
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		// The alias-bearing hint must reach retrieval, where its RECAP stem
+		// resolves to the CHANNEL_RECAP/TASKS parents.
+		expect(handler.plan.candidateActions).toContain("OWNER_TASKS_RECAP");
+		// The text-derived inference still contributes its candidate.
+		expect(handler.plan.candidateActions).toContain("VIEWS");
+	});
+
+	it("still drops alias-less bogus candidates in the same collapse (#7620 class)", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["tasks"],
+				candidateActionNames: ["REFUSE"],
+				replyText: "on it.",
+				intents: ["recap tasks for today"],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{ actions: LIVE_ACTIONS, messageText: LIVE_ASK },
+		);
+
+		expect(handler.plan.candidateActions).not.toContain("REFUSE");
+		expect(handler.plan.candidateActions).toContain("VIEWS");
+	});
+});

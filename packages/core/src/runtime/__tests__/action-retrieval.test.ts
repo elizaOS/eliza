@@ -1298,3 +1298,52 @@ describe("F21 aliases survive production retrieval topology filtering", () => {
 		expect(response.results[0]).toMatchObject({ name: "EMAIL" });
 	});
 });
+
+/**
+ * Live tj-9045743a29cfa4 (2026-08-26): "what tasks have you done today?
+ * quick recap" — Stage-1 emitted OWNER_TASKS_RECAP, the plan-side collapse
+ * dropped it (fixed in messageHandlerFromFieldResult; see
+ * message-handler-bogus-candidates.test.ts), retrieval saw only VIEWS, and
+ * keyword/context ranking put PAGE_DELEGATE alone in tier A. This block pins
+ * the retrieval half: with the recap-stem candidate preserved, the RECAP
+ * alias family exact-hints the TASKS parent ahead of PAGE_DELEGATE.
+ */
+describe("recap-stem candidate aliases pin the live day-recap shape", () => {
+	it.each([
+		"OWNER_TASKS_RECAP",
+		"RECAP_DAY",
+		"TASKS_RECAP_DAY",
+		"GET_TASKS_SUMMARY",
+	])("binds the %s invention to the recap surfaces", (candidate) => {
+		expect(parentAliasesForCandidateAction(candidate)).toEqual([
+			"CHANNEL_RECAP",
+			"TASKS",
+		]);
+	});
+
+	it("exact-hints TASKS ahead of PAGE_DELEGATE on the live turn", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "TASKS",
+				description:
+					"Track, list, and recap delegated work: task history, status, and what was done.",
+			},
+			{
+				name: "PAGE_DELEGATE",
+				description:
+					"Delegate an action to a UI page (owner page, tasks page, views).",
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "nubilio what tasks have you done today? quick recap",
+			candidateActions: ["OWNER_TASKS_RECAP", "VIEWS"],
+		});
+
+		expect(response.query.parentActionHints).toContain("TASKS");
+		expect(response.results[0]).toMatchObject({ name: "TASKS" });
+		expect(
+			response.results.find((result) => result.name === "TASKS")?.matchedBy,
+		).toContain("exact");
+	});
+});

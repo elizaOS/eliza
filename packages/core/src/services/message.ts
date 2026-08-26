@@ -77,6 +77,7 @@ import {
 	canActionRun,
 } from "../runtime/action-gate";
 import {
+	explicitParentAliasesForCandidateAction,
 	parentAliasesForCandidateAction,
 	retrieveActions,
 } from "../runtime/action-retrieval";
@@ -5972,11 +5973,33 @@ export function messageHandlerFromFieldResult(
 		effectiveCandidateActions,
 		runtimeContext,
 	);
+	// An unregistered Stage-1 candidate that carries one of the curated
+	// explicit alias families (OWNER_TASKS_RECAP → CHANNEL_RECAP/TASKS,
+	// MULTIPLY_NUMBERS → CALCULATE, …) is a live retrieval hint, not a bogus
+	// name: both the retrieval stage and the planner-surface builder resolve
+	// it through the same alias map. The runnable-only collapse below exists
+	// for genuinely dead names (REFUSE, GENERATE_CELEBRITY_IMAGE — #7620) and
+	// must not delete an explicit-family hint when a text-derived inference
+	// also fired (live tj-9045743a29cfa4: "what tasks have you done today?
+	// quick recap" emitted OWNER_TASKS_RECAP, the weak view-capability overlap
+	// inferred VIEWS, this collapse dropped the recap-stem hint before
+	// retrieval, TASKS never reached the planner surface, and the planner —
+	// exposed only PAGE_DELEGATE — invented PAGE_DELEGATE{RECAP_DAY} and
+	// failed the turn). Deliberately explicit families only: an invention
+	// whose sole alias comes from the weak view/app surface-shape fallback
+	// (UPDATE_VOICE_SETTINGS → VIEWS, #16942) is exactly what the
+	// deterministic inference exists to override, and stays collapsed.
+	const aliasHintProvidedCandidates = candidateActions.filter(
+		(name) => explicitParentAliasesForCandidateAction(name).length > 0,
+	);
 	const planCandidateActions =
 		inferredDirectCandidateActions.length > 0 &&
 		candidateActions.length > 0 &&
 		!hasValidProvidedCandidate
-			? runnableCandidateActions
+			? uniqueActionNames([
+					...aliasHintProvidedCandidates,
+					...runnableCandidateActions,
+				])
 			: effectiveCandidateActions;
 	// When the caller passes the runtime's `actions`, narrow the candidate set
 	// to those that are (a) registered actions OR (b) canonical control names
