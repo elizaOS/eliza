@@ -873,6 +873,11 @@ export function discordMembershipCompletenessForGuild(options: {
 
 function membershipErrorCode(error: unknown): string {
 	if (error instanceof ElizaError) {
+		if (typeof error.code === "string" && error.code.length > 0) {
+			return error.code;
+		}
+		// Legacy/wrapped authorities may surface the classification only in
+		// context; keep that fallback without masking a missing top-level code.
 		const context = error.context as { code?: string } | undefined;
 		if (context && typeof context.code === "string") {
 			return context.code;
