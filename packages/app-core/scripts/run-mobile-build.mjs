@@ -7856,7 +7856,10 @@ function auditAndroidCloudSource(
   } else {
     try {
       const config = JSON.parse(fs.readFileSync(capacitorConfigPath, "utf8"));
-      const expected = sanitizeAndroidCloudCapacitorConfig(config);
+      const expected = sanitizeAndroidCloudCapacitorConfig(config, {
+        launcherKiosk: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
+        webViewDebugging: env.ELIZA_WEBVIEW_DEBUG === "1",
+      });
       if (JSON.stringify(config) !== JSON.stringify(expected)) {
         failures.push(
           "capacitor.config.json differs from the restricted Play runtime contract",
