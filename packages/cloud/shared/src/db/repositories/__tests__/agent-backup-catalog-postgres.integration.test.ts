@@ -50,11 +50,10 @@ interface TenantFixture {
   readonly organizationId: string;
   readonly userId: string;
   readonly agentId: string;
-  readonly nodeHistoryId: string;
+  readonly nodeHistoryId?: string;
   readonly nodeRecordId: string;
   readonly nodeId: string;
   readonly nodeIncarnation: string;
-  readonly nodeId: string;
   readonly providerHandle: string;
 }
 
@@ -64,7 +63,6 @@ const TENANT_A = {
   agentId: "30000000-0000-4000-8000-000000000201",
   nodeHistoryId: "41000000-0000-4000-8000-000000000201",
   nodeRecordId: "40000000-0000-4000-8000-000000000201",
-  nodeId: "backup-catalogue-tenant-a-node",
   nodeIncarnation: "50000000-0000-4000-8000-000000000201",
   nodeId: "backup-catalogue-tenant-a-node",
   providerHandle: "backup-catalogue-tenant-a-container",
@@ -84,7 +82,6 @@ const TENANT_B = {
   agentId: "30000000-0000-4000-8000-000000000202",
   nodeHistoryId: "41000000-0000-4000-8000-000000000202",
   nodeRecordId: "40000000-0000-4000-8000-000000000202",
-  nodeId: "backup-catalogue-tenant-b-node",
   nodeIncarnation: "50000000-0000-4000-8000-000000000202",
   nodeId: "backup-catalogue-tenant-b-node",
   providerHandle: "backup-catalogue-tenant-b-container",
@@ -380,6 +377,7 @@ async function expectDatabaseCause(
 
 async function seedSourceAuthority(tenant: TenantFixture): Promise<void> {
   if (!dbWrite) throw new Error("Real PostgreSQL harness was not initialized");
+  if (!tenant.nodeHistoryId) throw new Error("Source authority fixture requires a history ID");
   const hostKeyFingerprint = `sha256:${tenant.nodeId}`;
   await dbWrite.insert(agentNodeIncarnationHistories).values({
     id: tenant.nodeHistoryId,

@@ -2,6 +2,7 @@
 
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import {
   AGENT_BACKUP_MANIFEST_V2_LIMITS,
   AGENT_BACKUP_OPERATION_KEY_BUNDLE_CONTEXT_DERIVATION,
@@ -102,10 +103,21 @@ export class AgentBackupCatalogConflictError extends Error {
 }
 
 /** Expected contention that must roll back a preliminary lease and retry later. */
-class AgentBackupAdmissionContendedError extends Error {
+export const AGENT_BACKUP_ADMISSION_CONTENDED_CODE =
+  "BACKUP_OPERATION_ADMISSION_CONTENDED" as const;
+
+export class AgentBackupAdmissionContendedError extends ElizaError {
+  override readonly name = "AgentBackupAdmissionContendedError";
+
   constructor() {
-    super("Backup admission authority changed while the claim was waiting");
-    this.name = "AgentBackupAdmissionContendedError";
+    super("Backup admission authority changed while the claim was waiting", {
+      code: AGENT_BACKUP_ADMISSION_CONTENDED_CODE,
+      context: {
+        operation: "claim",
+        retryAction: "retry-operation-claim",
+      },
+      severity: "ephemeral",
+    });
   }
 }
 
@@ -1091,11 +1103,10 @@ export async function claimDueAgentBackupOperations(params: {
   }
   const generation = randomUUID();
 
-  try {
-    return await dbWrite.transaction(async (tx) => {
-      const candidates = await sqlRows<DueAgentBackupOperationCandidate>(
-        tx,
-        sql`
+  return dbWrite.transaction(async (tx) => {
+    const candidates = await sqlRows<DueAgentBackupOperationCandidate>(
+      tx,
+      sql`
           WITH RECURSIVE operation_base AS MATERIALIZED (
             SELECT
               backup.id,
@@ -1356,45 +1367,45 @@ export async function claimDueAgentBackupOperations(params: {
           JOIN ordered AS candidate ON candidate.id = backup.id
           ORDER BY chosen.ordinality
         `,
-      );
-      if (candidates.length === 0) return [];
+    );
+    if (candidates.length === 0) return [];
 
-      const authorities = await lockAgentBackupAdmissionAuthorities(tx, candidates);
-      const preClaimDatabaseNow = await readPostLockDatabaseNow(tx);
-      await assertAgentBackupAdmissionLanesRemainFree(tx, candidates, preClaimDatabaseNow);
-      await tx.execute(sql`
+    const authorities = await lockAgentBackupAdmissionAuthorities(tx, candidates);
+    const preClaimDatabaseNow = await readPostLockDatabaseNow(tx);
+    await assertAgentBackupAdmissionLanesRemainFree(tx, candidates, preClaimDatabaseNow);
+    await tx.execute(sql`
         SELECT set_config('eliza.agent_backup_admission_protocol', '2', TRUE)
       `);
-      const claimed = await tx
-        .update(agentSandboxBackups)
-        .set({
-          catalog_lease_owner: params.ownerId,
-          catalog_lease_generation: generation,
-          // The backup, sandbox, and dedicated lane rows are already locked.
-          // This marker-bearing mutation is the atomic lease activation.
-          catalog_lease_expires_at: sql`clock_timestamp()
+    const claimed = await tx
+      .update(agentSandboxBackups)
+      .set({
+        catalog_lease_owner: params.ownerId,
+        catalog_lease_generation: generation,
+        // The backup, sandbox, and dedicated lane rows are already locked.
+        // This marker-bearing mutation is the atomic lease activation.
+        catalog_lease_expires_at: sql`clock_timestamp()
             + (${params.leaseMs} * INTERVAL '1 millisecond')`,
-          catalog_updated_at: sql`clock_timestamp()`,
-        })
-        .where(
-          and(
-            eq(agentSandboxBackups.catalog_version, 2),
-            inArray(
-              agentSandboxBackups.id,
-              candidates.map((candidate) => candidate.id),
-            ),
-            sql`${agentSandboxBackups.sandbox_record_id} IS NOT NULL`,
-            sql`${agentSandboxBackups.source_provider} IN ('operator-onboarded', 'hetzner-cloud')`,
-            sql`${agentSandboxBackups.source_node_record_id} IS NOT NULL`,
-            sql`${agentSandboxBackups.source_node_id} IS NOT NULL
+        catalog_updated_at: sql`clock_timestamp()`,
+      })
+      .where(
+        and(
+          eq(agentSandboxBackups.catalog_version, 2),
+          inArray(
+            agentSandboxBackups.id,
+            candidates.map((candidate) => candidate.id),
+          ),
+          sql`${agentSandboxBackups.sandbox_record_id} IS NOT NULL`,
+          sql`${agentSandboxBackups.source_provider} IN ('operator-onboarded', 'hetzner-cloud')`,
+          sql`${agentSandboxBackups.source_node_record_id} IS NOT NULL`,
+          sql`${agentSandboxBackups.source_node_id} IS NOT NULL
               AND ${agentSandboxBackups.source_node_id} <> ''`,
-            sql`${agentSandboxBackups.source_node_incarnation} IS NOT NULL`,
-            sql`${agentSandboxBackups.source_provider_handle} IS NOT NULL
+          sql`${agentSandboxBackups.source_node_incarnation} IS NOT NULL`,
+          sql`${agentSandboxBackups.source_provider_handle} IS NOT NULL
               AND ${agentSandboxBackups.source_provider_handle} <> ''`,
-            sql`${agentSandboxBackups.source_container_id} ~ '^[0-9a-f]{64}$'`,
-            sql`${agentSandboxBackups.source_provider_handle}
+          sql`${agentSandboxBackups.source_container_id} ~ '^[0-9a-f]{64}$'`,
+          sql`${agentSandboxBackups.source_provider_handle}
               <> ${agentSandboxBackups.source_container_id}`,
-            sql`(
+          sql`(
               (${agentSandboxBackups.source_provider} = 'operator-onboarded'
                 AND ${agentSandboxBackups.source_provider_server_id} IS NULL)
               OR
@@ -1406,50 +1417,46 @@ export async function claimDueAgentBackupOperations(params: {
                   ELSE FALSE
                 END)
             )`,
-            sql`(${agentSandboxBackups.catalog_lease_expires_at} IS NULL
+          sql`(${agentSandboxBackups.catalog_lease_expires_at} IS NULL
               OR ${agentSandboxBackups.catalog_lease_expires_at} <= clock_timestamp())`,
-            inArray(agentSandboxBackups.catalog_state, EXECUTION_OWNED_STATES),
-            or(
-              isNull(agentSandboxBackups.catalog_next_attempt_at),
-              lte(agentSandboxBackups.catalog_next_attempt_at, sql`clock_timestamp()`),
-            ),
+          inArray(agentSandboxBackups.catalog_state, EXECUTION_OWNED_STATES),
+          or(
+            isNull(agentSandboxBackups.catalog_next_attempt_at),
+            lte(agentSandboxBackups.catalog_next_attempt_at, sql`clock_timestamp()`),
           ),
-        )
-        .returning();
-      if (claimed.length !== candidates.length) {
+        ),
+      )
+      .returning();
+    if (claimed.length !== candidates.length) {
+      throw new AgentBackupCatalogConflictError(
+        "Backup admission could not lease every selected operation",
+      );
+    }
+
+    // No external writer can mutate a locked lane. Rechecking here also
+    // fences database triggers or mixed-version code in this transaction.
+    await lockAgentBackupAdmissionAuthorities(tx, candidates);
+    const cursorAt = await readNextAgentBackupAdmissionCursor(tx, authorities);
+    const databaseNow = await readPostLockDatabaseNow(tx);
+    const renewed = await renewAgentBackupOperationLeasesAfterLocks(tx, {
+      backupIds: claimed.map((backup) => backup.id),
+      ownerId: params.ownerId,
+      generation,
+      leaseMs: params.leaseMs,
+      databaseNow,
+    });
+    await advanceAgentBackupAdmissionCursors(tx, authorities, cursorAt);
+    const renewedById = new Map(renewed.map((backup) => [backup.id, backup]));
+    return candidates.map((candidate) => {
+      const backup = renewedById.get(candidate.id);
+      if (!backup) {
         throw new AgentBackupCatalogConflictError(
-          "Backup admission could not lease every selected operation",
+          "Backup admission lost a renewed operation while preserving fair order",
         );
       }
-
-      // No external writer can mutate a locked lane. Rechecking here also
-      // fences database triggers or mixed-version code in this transaction.
-      await lockAgentBackupAdmissionAuthorities(tx, candidates);
-      const cursorAt = await readNextAgentBackupAdmissionCursor(tx, authorities);
-      const databaseNow = await readPostLockDatabaseNow(tx);
-      const renewed = await renewAgentBackupOperationLeasesAfterLocks(tx, {
-        backupIds: claimed.map((backup) => backup.id),
-        ownerId: params.ownerId,
-        generation,
-        leaseMs: params.leaseMs,
-        databaseNow,
-      });
-      await advanceAgentBackupAdmissionCursors(tx, authorities, cursorAt);
-      const renewedById = new Map(renewed.map((backup) => [backup.id, backup]));
-      return candidates.map((candidate) => {
-        const backup = renewedById.get(candidate.id);
-        if (!backup) {
-          throw new AgentBackupCatalogConflictError(
-            "Backup admission lost a renewed operation while preserving fair order",
-          );
-        }
-        return { backup, ownerId: params.ownerId, generation };
-      });
+      return { backup, ownerId: params.ownerId, generation };
     });
-  } catch (error) {
-    if (error instanceof AgentBackupAdmissionContendedError) return [];
-    throw error;
-  }
+  });
 }
 
 export async function heartbeatAgentBackupOperation(params: {

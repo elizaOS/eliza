@@ -10,6 +10,8 @@
  */
 
 import {
+  AGENT_BACKUP_ADMISSION_CONTENDED_CODE,
+  AgentBackupAdmissionContendedError,
   type AgentBackupOperationClaim,
   type AgentBackupOperationExecution,
   claimDueAgentBackupOperations,
@@ -812,6 +814,13 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
       }
     } catch (error) {
       throwIfAborted();
+      // error-policy:J1 Runtime-cycle boundary reports expected admission
+      // contention distinctly instead of fabricating an empty work queue.
+      if (error instanceof AgentBackupAdmissionContendedError) {
+        summary.operationIndeterminate += 1;
+        alertCodes.add(AGENT_BACKUP_ADMISSION_CONTENDED_CODE);
+        break;
+      }
       if (!params.config.scheduleEnabled) throw error;
       summary.operationIndeterminate += 1;
       alertCodes.add(OPERATION_RECONCILE_CODE);
