@@ -219,7 +219,11 @@ describe("StewardLoginSection phone login", () => {
     renderSection();
 
     await screen.findByRole("button", { name: "Google" });
-    expect(screen.getAllByText("or continue with")).toHaveLength(1);
+    const divider = screen.getByText("or continue with");
+    expect(divider.getAttribute("aria-hidden")).toBe("true");
+    expect(
+      screen.getByRole("group", { name: "or continue with" }),
+    ).toBeTruthy();
   });
 
   it("normalizes E.164, sends a code, and exposes the cooldown before resend", async () => {
