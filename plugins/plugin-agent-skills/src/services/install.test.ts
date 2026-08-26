@@ -4,7 +4,12 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { installSkillDependency } from "./install";
+import { parseFrontmatter } from "../parser";
+import {
+	getInstallPlan,
+	installSkillDependencies,
+	installSkillDependency,
+} from "./install";
 
 describe("installSkillDependency command safety", () => {
 	it("rejects package names that would escape the install command", async () => {
@@ -60,5 +65,74 @@ describe("installSkillDependency command safety", () => {
 			error: "Manual installation required: Install from the vendor page",
 		});
 		expect(result.command).toBeUndefined();
+	});
+});
+
+describe("installSkillDependencies over list-frontmatter skills (issue #29157)", () => {
+	// A SKILL.md written with normal YAML block-sequence frontmatter (the format
+	// the README documents) previously parsed `otto.install` into a merged
+	// object. `installSkillDependencies` then did `installOptions.length === 0`
+	// (undefined === 0 -> false) and fell into `for (const option of ...)`,
+	// throwing `TypeError: installOptions is not iterable`. This proves the
+	// canonical parse-then-install path returns results and never throws.
+	const listSkillMd = [
+		"---",
+		"name: needs-missing-bin",
+		"description: Requires a binary that is not installed on this host.",
+		"metadata:",
+		"  otto:",
+		"    requires:",
+		"      bins:",
+		"        - eliza-absent-tool",
+		"    install:",
+		"      - id: brew",
+		"        kind: brew",
+		"        formula: eliza-absent-tool",
+		'        bins: ["eliza-absent-tool"]',
+		"      - id: apt",
+		"        kind: apt",
+		"        package: eliza-absent-tool",
+		'        bins: ["eliza-absent-tool"]',
+		"---",
+		"body",
+	].join("\n");
+
+	it("dry-runs a list-frontmatter skill without throwing", async () => {
+		const frontmatter = parseFrontmatter(listSkillMd).frontmatter;
+		if (!frontmatter) throw new Error("expected parsed frontmatter");
+		expect(Array.isArray(frontmatter.metadata?.otto?.install)).toBe(true);
+
+		const results = await installSkillDependencies(
+			{ slug: "needs-missing-bin", frontmatter },
+			{ dryRun: true },
+		);
+
+		expect(Array.isArray(results)).toBe(true);
+		// The missing bin has install options, so the iterate-and-plan path runs
+		// exactly once and the produced result references that binary's option —
+		// deterministically, regardless of which package managers this host has.
+		expect(results).toHaveLength(1);
+		expect(results[0].option.bins).toContain("eliza-absent-tool");
+	});
+
+	it("builds an install plan from a list-frontmatter skill", async () => {
+		const frontmatter = parseFrontmatter(listSkillMd).frontmatter;
+		if (!frontmatter) throw new Error("expected parsed frontmatter");
+		const plan = await getInstallPlan({
+			slug: "needs-missing-bin",
+			frontmatter,
+		});
+
+		expect(plan.requiredBins).toEqual(["eliza-absent-tool"]);
+		expect(plan.missingBins).toEqual(["eliza-absent-tool"]);
+		expect(plan.recommendedOptions.length).toBeGreaterThan(0);
+	});
+
+	it("returns [] for a skill without install options and does not throw", async () => {
+		const results = await installSkillDependencies(
+			{ slug: "bare", frontmatter: { name: "bare", description: "No otto." } },
+			{ dryRun: true },
+		);
+		expect(results).toEqual([]);
 	});
 });

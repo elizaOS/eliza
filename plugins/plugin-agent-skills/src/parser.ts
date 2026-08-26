@@ -217,6 +217,21 @@ function parseYamlSubset(yaml: string): Record<string, unknown> {
 					jsonBuffer = "";
 					jsonDepth = 0;
 					collectingJson = true;
+				} else if (
+					nextTrimmed === "-" ||
+					nextTrimmed.startsWith("- ")
+				) {
+					// YAML block sequence (`- item` lines). Collect the list into an
+					// array so a documented `metadata.otto.install` list survives as
+					// OttoInstallOption[] instead of being merged into one object.
+					const listIndent = lines[nextLineIdx].search(/\S/);
+					const { items, nextIdx } = parseListBlock(
+						lines,
+						nextLineIdx,
+						listIndent,
+					);
+					parent[key] = items;
+					i = nextIdx - 1;
 				} else {
 					// Regular nested object
 					const childObj: Record<string, unknown> = {};
@@ -274,6 +289,99 @@ function parseYamlSubset(yaml: string): Record<string, unknown> {
 	}
 
 	return result;
+}
+
+/**
+ * Parse one YAML block sequence into an array of items.
+ *
+ * Called from {@link parseYamlSubset} when a key's value is empty and the next
+ * non-empty line at deeper indent is a `- ` item. Each item is one of:
+ * a mapping (the dash remainder is the first `key: value`, following
+ * deeper-indented lines are more entries), a nested block (bare `-` then
+ * deeper-indented lines), or a scalar/inline-JSON (`- gh`, `- ["gh"]`). Mapping
+ * and nested items recurse through `parseYamlSubset` so existing scalar,
+ * nested-object, and inline/multiline JSON handling applies unchanged inside a
+ * list item. Returns the parsed items and the index of the first line past the
+ * sequence so the caller can resume.
+ */
+function parseListBlock(
+	lines: string[],
+	startIdx: number,
+	listIndent: number,
+): { items: unknown[]; nextIdx: number } {
+	const items: unknown[] = [];
+	let i = startIdx;
+
+	while (i < lines.length) {
+		const line = lines[i];
+		const trimmed = line.trim();
+
+		if (!trimmed || trimmed.startsWith("#")) {
+			i++;
+			continue;
+		}
+
+		const indent = line.search(/\S/);
+		// A dedent below the list column, or a deeper/non-`-` line, ends the list.
+		if (indent < listIndent) break;
+		if (indent > listIndent || !(trimmed === "-" || trimmed.startsWith("- "))) {
+			break;
+		}
+
+		const remainder = trimmed.replace(/^-\s*/, "");
+
+		// Gather continuation lines that belong to this item (deeper indent).
+		const itemLines: string[] = [];
+		let j = i + 1;
+		while (j < lines.length) {
+			const l = lines[j];
+			const t = l.trim();
+			if (!t || t.startsWith("#")) {
+				itemLines.push(l);
+				j++;
+				continue;
+			}
+			if (l.search(/\S/) <= listIndent) break;
+			itemLines.push(l);
+			j++;
+		}
+
+		if (remainder === "") {
+			// Bare `-`: the item is defined entirely by its continuation lines.
+			items.push(
+				itemLines.length ? parseYamlSubset(itemLines.join("\n")) : null,
+			);
+		} else if (/^[A-Za-z0-9_-]+:(\s|$)/.test(remainder)) {
+			// Mapping item: the dash remainder is the first `key: value` pair.
+			const firstKeyPad = " ".repeat(listIndent + 2);
+			const block = [`${firstKeyPad}${remainder}`, ...itemLines].join("\n");
+			items.push(parseYamlSubset(block));
+		} else {
+			// Scalar (or inline JSON) list item, e.g. `- gh` or `- ["gh"]`.
+			items.push(parseListScalar(remainder));
+		}
+
+		i = j;
+	}
+
+	return { items, nextIdx: i };
+}
+
+/**
+ * Parse a single scalar list item, honoring inline JSON before YAML scalars.
+ */
+function parseListScalar(raw: string): unknown {
+	const trimmed = raw.trim();
+	if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+		try {
+			return JSON.parse(trimmed.replace(/,(\s*[}\]])/g, "$1"));
+		} catch {
+			// error-policy:J3 untrusted-input sanitizing — not valid JSON, keep the
+			// raw scalar text rather than fabricating a structured value.
+			return trimmed;
+		}
+	}
+	return parseYamlValue(trimmed);
 }
 
 /**

@@ -68,3 +68,116 @@ describe("parseFrontmatter", () => {
     expect(result.errors).toEqual([]);
   });
 });
+
+describe("parseFrontmatter YAML block sequences (issue #29157)", () => {
+  // The exact "Otto Compatibility" install list documented in the plugin
+  // README. Before the parser fix this collapsed into a single merged object
+  // (both `id` fields dropped, item 0 overwritten by item 1), which then made
+  // installSkillDependencies throw "installOptions is not iterable".
+  const ottoListSkill = [
+    "---",
+    "name: gh-skill",
+    "description: A skill that requires the GitHub CLI to operate correctly.",
+    "metadata:",
+    "  otto:",
+    '    emoji: "\ud83d\udc19"',
+    "    requires:",
+    "      bins:",
+    "        - gh",
+    "    install:",
+    "      - id: brew",
+    "        kind: brew",
+    "        formula: gh",
+    '        bins: ["gh"]',
+    '        label: "Install GitHub CLI (brew)"',
+    "      - id: apt",
+    "        kind: apt",
+    "        package: gh",
+    '        bins: ["gh"]',
+    '        label: "Install GitHub CLI (apt)"',
+    "---",
+    "",
+    "# GH Skill",
+  ].join("\n");
+
+  it("parses the README otto install list into a typed OttoInstallOption[]", () => {
+    const otto = parseFrontmatter(ottoListSkill).frontmatter?.metadata?.otto;
+    const install = otto?.install;
+
+    expect(Array.isArray(install)).toBe(true);
+    expect(install).toHaveLength(2);
+    // Each item's first key (`id`) must survive, not be dropped/merged.
+    expect(install?.[0]).toEqual({
+      id: "brew",
+      kind: "brew",
+      formula: "gh",
+      bins: ["gh"],
+      label: "Install GitHub CLI (brew)",
+    });
+    expect(install?.[1]).toEqual({
+      id: "apt",
+      kind: "apt",
+      package: "gh",
+      bins: ["gh"],
+      label: "Install GitHub CLI (apt)",
+    });
+  });
+
+  it("parses a block-style scalar sequence (requires.bins) into an array", () => {
+    const otto = parseFrontmatter(ottoListSkill).frontmatter?.metadata?.otto;
+    expect(otto?.requires?.bins).toEqual(["gh"]);
+    expect(otto?.emoji).toBe("\ud83d\udc19");
+  });
+
+  it("round-trips mixed block-list, nested-object, and scalar frontmatter", () => {
+    const mixed = [
+      "---",
+      "name: mixed-skill",
+      "description: Exercises lists alongside scalars and nested maps.",
+      "license: MIT",
+      "metadata:",
+      "  otto:",
+      "    requires:",
+      "      bins:",
+      "        - jq",
+      "        - yq",
+      "    install:",
+      "      - id: brew",
+      "        kind: brew",
+      "        formula: jq",
+      '        bins: ["jq"]',
+      "---",
+      "body",
+    ].join("\n");
+    const fm = parseFrontmatter(mixed).frontmatter;
+    expect(fm?.name).toBe("mixed-skill");
+    expect(fm?.license).toBe("MIT");
+    expect(fm?.metadata?.otto?.requires?.bins).toEqual(["jq", "yq"]);
+    expect(fm?.metadata?.otto?.install).toHaveLength(1);
+    expect(fm?.metadata?.otto?.install?.[0]).toEqual({
+      id: "brew",
+      kind: "brew",
+      formula: "jq",
+      bins: ["jq"],
+    });
+  });
+
+  it("regression: inline JSON array frontmatter still parses unchanged", () => {
+    const inlineJson = [
+      "---",
+      "name: inline-skill",
+      "description: Inline JSON install options must keep working after the fix.",
+      "metadata:",
+      "  otto:",
+      '    install: [{"id":"brew","kind":"brew","formula":"gh","bins":["gh"]}]',
+      "---",
+      "body",
+    ].join("\n");
+    const install =
+      parseFrontmatter(inlineJson).frontmatter?.metadata?.otto?.install;
+    expect(Array.isArray(install)).toBe(true);
+    expect(install).toEqual([
+      { id: "brew", kind: "brew", formula: "gh", bins: ["gh"] },
+    ]);
+  });
+});
