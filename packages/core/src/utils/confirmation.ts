@@ -32,6 +32,7 @@
  *   // status === "confirmed" — proceed with the destructive op
  */
 
+import { ElizaError } from "../errors";
 import { unwrapUserMessageText } from "../security/incoming-message-security";
 import type { HandlerCallback } from "../types/components";
 import type { Memory } from "../types/memory";
@@ -91,6 +92,29 @@ export interface ConfirmationDecision {
 	metadata?: Record<string, unknown>;
 }
 
+function extractPrincipal(message: Memory): string {
+	if (
+		typeof message.entityId === "string" &&
+		message.entityId.trim().length > 0
+	) {
+		return message.entityId.trim();
+	}
+	const legacyUserId = (message as { userId?: unknown }).userId;
+	if (typeof legacyUserId === "string" && legacyUserId.trim().length > 0) {
+		return legacyUserId.trim();
+	}
+	throw new ElizaError(
+		"A valid non-empty entityId or userId is required for confirmation",
+		{
+			code: "CONFIRMATION_PRINCIPAL_REQUIRED",
+			context: {
+				action: "requireConfirmation",
+			},
+			severity: "ephemeral",
+		},
+	);
+}
+
 function buildCacheKey(
 	userId: string,
 	actionName: string,
@@ -131,11 +155,7 @@ export async function requireConfirmation(
 			? args.ttlMs
 			: DEFAULT_TTL_MS;
 	const confirmRegex = args.confirmRegex ?? DEFAULT_CONFIRM_REGEX;
-	const userId = String(
-		args.message.entityId ??
-			(args.message as { userId?: unknown }).userId ??
-			"",
-	);
+	const userId = extractPrincipal(args.message);
 	const cacheKey = buildCacheKey(userId, args.actionName, args.pendingKey);
 	const userText = readUserText(args.message);
 
