@@ -20,6 +20,7 @@ vi.mock("@elizaos/core", () => ({
       });
     }
   },
+  createPreparedModelRequestGuard: vi.fn(() => ({ assertBeforeAttempt: vi.fn() })),
   ElizaError: class extends Error {
     readonly code: string;
     readonly context?: Record<string, unknown>;

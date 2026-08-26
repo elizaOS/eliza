@@ -121,6 +121,21 @@
       "import": "./dist/api/*.js",
       "default": "./dist/api/*.js"
     },
+    "./testing/*": {
+      "types": "./dist/testing/*.d.ts",
+      "eliza-source": {
+        "types": "./src/testing/*.ts",
+        "import": "./src/testing/*.ts",
+        "default": "./src/testing/*.ts"
+      },
+      "bun": {
+        "types": "./src/testing/*.ts",
+        "import": "./src/testing/*.ts",
+        "default": "./src/testing/*.ts"
+      },
+      "import": "./dist/testing/*.js",
+      "default": "./dist/testing/*.js"
+    },
     "./config/character-schema": "./src/config/character-schema.ts",
     "./config/plugin-auto-enable": "./src/config/plugin-auto-enable.ts",
     "./runtime": {

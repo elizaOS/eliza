@@ -48,7 +48,10 @@
       ]
     },
     "scripts": {
-      "coreBuild": true
+      "coreBuild": true,
+      "contentContextEvidence": {
+        "role": "coding-tools"
+      }
     }
   },
   "keywords": [

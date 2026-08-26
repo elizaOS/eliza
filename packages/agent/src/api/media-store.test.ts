@@ -30,6 +30,7 @@ afterAll(() => {
 // Imported after env is set so resolveStateDir resolves to the temp dir.
 const {
   persistMediaBytes,
+  persistMediaStream,
   persistDataUrl,
   isStoredMediaUrl,
   serveMediaFile,
@@ -40,6 +41,7 @@ const {
   isInlineSafeMime,
   sniffMarkupMime,
   readStoredMediaBytes,
+  readStoredMediaByteRange,
   writeStoredMediaFile,
   deleteMediaFile,
   resolveMediaStoreMaxBytes,
@@ -964,6 +966,101 @@ describe("readStoredMediaBytes fast-fail (#12265)", () => {
     } finally {
       fs.rmdirSync(mediaPath(name));
     }
+  });
+});
+
+describe("readStoredMediaByteRange", () => {
+  it("streams and deduplicates a multi-page attachment without changing identity", async () => {
+    const source = Buffer.concat([
+      Buffer.from("stream-start\n"),
+      Buffer.alloc(150_000, 7),
+      Buffer.from("\nstream-end"),
+    ]);
+    let largestChunk = 0;
+    async function* chunks() {
+      for (let offset = 0; offset < source.byteLength; offset += 16_384) {
+        const chunk = source.subarray(offset, offset + 16_384);
+        largestChunk = Math.max(largestChunk, chunk.byteLength);
+        yield chunk;
+      }
+    }
+    const streamed = await persistMediaStream(
+      chunks(),
+      "application/octet-stream",
+    );
+    const buffered = persistMediaBytes(source, "application/octet-stream");
+    expect(largestChunk).toBeLessThanOrEqual(16_384);
+    expect(streamed).toEqual(buffered);
+    expect(readStoredMediaBytes(streamed.fileName)).toEqual(source);
+  });
+
+  it("removes its private pending file when the source fails", async () => {
+    async function* broken() {
+      yield Buffer.from("partial");
+      throw new Error("source failed");
+    }
+    await expect(
+      persistMediaStream(broken(), "application/octet-stream"),
+    ).rejects.toMatchObject({ code: "MEDIA_STORE_WRITE_FAILED" });
+    expect(
+      fs
+        .readdirSync(path.join(stateDir, "media"))
+        .filter((name) => name.startsWith(".pending-")),
+    ).toEqual([]);
+  });
+
+  it("reassembles binary media through bounded pages and supports exact EOF", () => {
+    const bytes = Buffer.concat([
+      Buffer.from([0, 255, 1, 254]),
+      Buffer.alloc(150_000, 7),
+    ]);
+    const stored = persistMediaBytes(bytes, "application/octet-stream");
+    const pages: Buffer[] = [];
+    let offset = 0;
+    for (;;) {
+      const page = readStoredMediaByteRange(stored.fileName, offset, 64 * 1024);
+      expect(page).not.toBeNull();
+      if (!page) throw new Error("stored media page is absent");
+      expect(page.bytes.byteLength).toBeLessThanOrEqual(64 * 1024);
+      pages.push(page.bytes);
+      offset = page.end;
+      if (page.complete) break;
+    }
+    expect(Buffer.concat(pages)).toEqual(bytes);
+    expect(readStoredMediaByteRange(stored.fileName, bytes.length, 1)).toEqual({
+      bytes: Buffer.alloc(0),
+      start: bytes.length,
+      end: bytes.length,
+      total: bytes.length,
+      complete: true,
+    });
+  });
+
+  it("fails closed for unsafe names and unbounded or invalid ranges", () => {
+    const fileName = persistMediaBytes(
+      Buffer.from("safe"),
+      "text/plain",
+    ).fileName;
+    expect(readStoredMediaByteRange("../../etc/passwd", 0, 1)).toBeNull();
+    expect(readStoredMediaByteRange(fileName, -1, 1)).toBeNull();
+    expect(readStoredMediaByteRange(fileName, 0, 0)).toBeNull();
+    expect(readStoredMediaByteRange(fileName, 0, 64 * 1024 + 1)).toBeNull();
+  });
+
+  it("rejects symlink and hard-link aliases at the bounded read boundary", () => {
+    const stored = persistMediaBytes(Buffer.from("private"), "text/plain");
+    const symlinkName = `${"e".repeat(64)}.txt`;
+    fs.symlinkSync(mediaPath(stored.fileName), mediaPath(symlinkName));
+    expect(() => readStoredMediaByteRange(symlinkName, 0, 1)).toThrowError(
+      expect.objectContaining({ code: "MEDIA_STORE_READ_FAILED" }),
+    );
+    fs.unlinkSync(mediaPath(symlinkName));
+
+    const hardLinkName = `${"f".repeat(64)}.txt`;
+    fs.linkSync(mediaPath(stored.fileName), mediaPath(hardLinkName));
+    expect(readStoredMediaByteRange(stored.fileName, 0, 1)).toBeNull();
+    expect(readStoredMediaByteRange(hardLinkName, 0, 1)).toBeNull();
+    fs.unlinkSync(mediaPath(hardLinkName));
   });
 });
 

@@ -109,6 +109,37 @@ async function collect(stream: { textStream: AsyncIterable<string> }) {
 }
 
 describe("live-stream start retry", () => {
+  it("blocks a mutated provider body before its retry transport", async () => {
+    const transientError = Object.assign(new Error("temporary provider failure"), {
+      statusCode: 500,
+    });
+    aiMocks.streamText.mockImplementationOnce(
+      (options: {
+        messages?: Array<{ content?: unknown }>;
+        onError?: (event: { error: unknown }) => void;
+      }) => ({
+        textStream: (async function* textStream() {
+          if (options.messages?.[0]) options.messages[0].content = "mutated after admission";
+          options.onError?.({ error: transientError });
+          yield* [];
+        })(),
+        text: Promise.resolve(""),
+        toolCalls: Promise.resolve([]),
+        finishReason: Promise.resolve("error"),
+        usage: Promise.resolve(undefined),
+      })
+    );
+
+    const { handleTextSmall } = await import("../models/text");
+    await expect(
+      handleTextSmall(createRuntime(), {
+        messages: [{ role: "user", content: "immutable" }],
+        stream: true,
+      } as never)
+    ).rejects.toMatchObject({ code: "MODEL_PREPARED_REQUEST_MUTATED" });
+    expect(aiMocks.streamText).toHaveBeenCalledTimes(1);
+  }, 20_000);
+
   beforeEach(() => {
     // The plugin intentionally falls back to process.env when the runtime has
     // no setting. Pin the provider so a developer's live Cerebras key cannot

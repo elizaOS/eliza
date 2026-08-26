@@ -130,6 +130,7 @@ async function persistKeywordOnlyFragments(args: {
 		const metadata: DocumentFragmentMemoryMetadata = {
 			...(args.documentMetadata ?? {}),
 			type: MemoryType.FRAGMENT,
+			fragmentRole: "embedding-chunk",
 			documentId: args.documentId,
 			position,
 			timestamp: Date.now(),
@@ -454,6 +455,7 @@ export async function preparePreChunkedFragmentMemories({
 			...(documentMetadata ?? {}),
 			...metadata,
 			type: MemoryType.FRAGMENT,
+			fragmentRole: "embedding-chunk",
 			documentId,
 			position,
 			timestamp: Date.now(),
@@ -600,6 +602,7 @@ async function processAndSaveFragments({
 				const fragmentMetadata: DocumentFragmentMemoryMetadata = {
 					...(documentMetadata ?? {}),
 					type: MemoryType.FRAGMENT,
+					fragmentRole: "embedding-chunk",
 					documentId,
 					position: originalChunkIndex,
 					timestamp: Date.now(),

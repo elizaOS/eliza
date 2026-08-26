@@ -36,6 +36,10 @@ export interface ScriptMetadata {
     /** Ascending build order — deps before dependents. */
     order: number;
   };
+  /** Production seam consumed by progressive-content PostgreSQL evidence. */
+  contentContextEvidence?: {
+    role: "coding-tools" | "sql";
+  };
 }
 
 export interface BuildOnInstallPackage {
@@ -89,3 +93,15 @@ export declare function resolveDevHarnessBuildDirs(
 export declare function resolveBuildOnInstallPackages(
   opts?: WorkspaceDiscoveryOptions,
 ): BuildOnInstallPackage[];
+
+export interface ContentContextEvidencePackage {
+  dir: string;
+  name: string;
+}
+
+export declare function resolveContentContextEvidencePackages(
+  opts?: WorkspaceDiscoveryOptions,
+): {
+  packages: Map<"coding-tools" | "sql", ContentContextEvidencePackage>;
+  invalid: string[];
+};

@@ -7,11 +7,14 @@
  * coding sub-agent is exempted from those rewrites so its explicit commands run
  * verbatim. Gated to coding contexts with OWNER role.
  */
+
+import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
   type Action,
   type ActionResult,
+  buildReadView,
   CANONICAL_SUBACTION_KEY,
   logger as coreLogger,
   getCapabilityRouter,
@@ -1391,6 +1394,40 @@ export const shellAction: Action = {
         });
       }
       const value = page.value;
+      const readView = value.contentRevision
+        ? buildReadView({
+            reference: {
+              kind: "tool-result",
+              ref: `shell:${value.handle}:${value.stream}`,
+              revision: value.contentRevision,
+              resumability: "restart-safe",
+              expiresAt: value.expiresAt,
+            },
+            slice: {
+              range: {
+                unit: "fragment",
+                start: value.startOffset,
+                end: value.endOffset,
+                total: value.totalCharacters,
+              },
+              hasPrevious: value.startOffset > 0,
+              hasMore: !value.complete,
+              ...(!value.complete ? { nextOffset: value.endOffset } : {}),
+              revision: value.contentRevision,
+              completeness: value.complete ? "complete" : "partial-recoverable",
+              sliceSha256: createHash("sha256")
+                .update(value.text)
+                .digest("hex"),
+              ...(value.complete && value.startOffset === 0
+                ? {
+                    sourceSha256: createHash("sha256")
+                      .update(value.text)
+                      .digest("hex"),
+                  }
+                : {}),
+            },
+          })
+        : undefined;
       const text = [
         `Shell artifact ${value.handle} ${value.stream} characters ${value.startOffset}..${value.endOffset} of ${value.totalCharacters} complete=${value.complete}`,
         value.text
@@ -1407,6 +1444,7 @@ export const shellAction: Action = {
         actionName: "SHELL",
         [CANONICAL_SUBACTION_KEY]: "read_output_artifact",
         ...value,
+        ...(readView ? { readView } : {}),
       });
     }
 
@@ -2080,7 +2118,15 @@ export const shellAction: Action = {
 
     let result: ShellResult;
     try {
-      result = await runShell(runtime, { command, cwd, timeoutMs: timeout });
+      result = await runShell(runtime, {
+        command,
+        cwd,
+        timeoutMs: timeout,
+        captureScope: {
+          ownerAgentId: String(runtime.agentId),
+          ownerConversationId: String(message.roomId),
+        },
+      });
     } catch (err) {
       // error-policy:J1 SHELL action boundary; a dispatch failure is logged and
       // returned as a success:false ActionResult carrying the real message, so
@@ -2118,16 +2164,18 @@ export const shellAction: Action = {
     );
 
     const took = Date.now() - startedAt;
-    if (result.outputLimitExceeded) {
+    if (result.sourceLoss) {
       return failureToActionResult(
         {
-          reason: "internal",
-          message:
-            "command output exceeded the 1,000,000-character complete-capture safety limit; no partial output is available",
+          reason: "source_loss",
+          message: result.sourceLoss.message,
         },
         {
           command: redactShellText(runtime, command),
           cwd: redactedCwd,
+          source_loss: true,
+          source_loss_code: result.sourceLoss.code,
+          source_loss_backend: result.sourceLoss.backend,
           ...workspaceDeltaData,
         },
       );
@@ -2140,6 +2188,20 @@ export const shellAction: Action = {
     const head = timedOut
       ? `$ ${redactedCommand}\n[timeout ${timeout}ms] (cwd=${redactedCwd}, took=${took}ms)`
       : `$ ${redactedCommand}\n[exit ${result.exitCode}] (cwd=${redactedCwd}, took=${took}ms)`;
+    const artifact = result.artifact;
+    if (!artifact || !result.projection) {
+      return failureToActionResult({
+        reason: "internal",
+        message:
+          "host shell capture completed without a private output artifact",
+      });
+    }
+    const artifactNotice = [
+      `[private output artifact ${artifact.handle}; expires=${artifact.expiresAt}; revision=${artifact.contentRevision}]`,
+      `stdout source=${artifact.source.stdout.bytes} bytes/${artifact.source.stdout.lines} lines, stored=${artifact.stdout.bytes} bytes/${artifact.stdout.lines} lines, completeInModel=${result.projection.stdoutComplete}`,
+      `stderr source=${artifact.source.stderr.bytes} bytes/${artifact.source.stderr.lines} lines, stored=${artifact.stderr.bytes} bytes/${artifact.stderr.lines} lines, completeInModel=${result.projection.stderrComplete}`,
+      "Use SHELL action=read_output_artifact with handle, artifact_stream, and artifact_offset for exact continuation.",
+    ].join("\n");
     const streams = formatStreams(redactedStdout, redactedStderr, {
       showEmptyStreams: !result.stdout && !result.stderr,
     });
@@ -2147,7 +2209,38 @@ export const shellAction: Action = {
     // this boundary. Every accepted result therefore remains complete after
     // redaction; the planner must never receive a preview or optional handle
     // in place of stdout/stderr it would otherwise reason over.
-    const text = streams.length > 0 ? `${head}\n${streams}` : head;
+    const text =
+      streams.length > 0
+        ? `${head}\n${artifactNotice}\n${streams}`
+        : `${head}\n${artifactNotice}`;
+    const artifactReadViews = (
+      [
+        ["stdout", redactedStdout, artifact.stdout.characters],
+        ["stderr", redactedStderr, artifact.stderr.characters],
+      ] as const
+    ).map(([stream, streamText, total]) =>
+      buildReadView({
+        reference: {
+          kind: "tool-result",
+          ref: `shell:${artifact.handle}:${stream}`,
+          revision: artifact.contentRevision,
+          resumability: "restart-safe",
+          expiresAt: artifact.expiresAt,
+        },
+        slice: {
+          range: { unit: "fragment", start: 0, end: total, total },
+          hasPrevious: false,
+          hasMore: false,
+          revision: artifact.contentRevision,
+          completeness: "complete",
+          sliceSha256: createHash("sha256").update(streamText).digest("hex"),
+          sourceSha256: createHash("sha256").update(streamText).digest("hex"),
+        },
+      }),
+    );
+    const artifactContinuity = {
+      output_artifact_read_views: artifactReadViews,
+    };
 
     const echoTranscript =
       process.env.ELIZA_SHELL_ECHO_TRANSCRIPT?.trim().toLowerCase();
@@ -2187,6 +2280,12 @@ export const shellAction: Action = {
           signal,
           output_truncated: false,
           ...workspaceDeltaData,
+          output_projected:
+            !result.projection.stdoutComplete ||
+            !result.projection.stderrComplete,
+          output_artifact_handle: artifact.handle,
+          output_artifact_revision: artifact.contentRevision,
+          ...artifactContinuity,
         },
       );
     }
@@ -2204,6 +2303,12 @@ export const shellAction: Action = {
           signal,
           output_truncated: false,
           ...workspaceDeltaData,
+          output_projected:
+            !result.projection.stdoutComplete ||
+            !result.projection.stderrComplete,
+          output_artifact_handle: artifact.handle,
+          output_artifact_revision: artifact.contentRevision,
+          ...artifactContinuity,
         },
       );
     }
@@ -2216,6 +2321,17 @@ export const shellAction: Action = {
       signal,
       output_truncated: false,
       ...workspaceDeltaData,
+      output_projected:
+        !result.projection.stdoutComplete || !result.projection.stderrComplete,
+      source_loss: false,
+      output_artifact_handle: artifact.handle,
+      output_artifact_revision: artifact.contentRevision,
+      output_artifact_expires_at: artifact.expiresAt,
+      ...artifactContinuity,
+      stdout_source_bytes: artifact.source.stdout.bytes,
+      stdout_source_lines: artifact.source.stdout.lines,
+      stderr_source_bytes: artifact.source.stderr.bytes,
+      stderr_source_lines: artifact.source.stderr.lines,
     });
     // The crypto / disk / memory / status projections are CHAT conveniences
     // keyed on the *message text*, and the coding sub-agent's message text is

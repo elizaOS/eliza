@@ -15,6 +15,8 @@ import {
   logger,
   type Memory,
   type MemoryMetadata,
+  type MessageContentPublicationParams,
+  type MessageContentPublicationResult,
   type Relationship,
   type Room,
   type Task,
@@ -197,6 +199,34 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     } as Record<string, unknown>);
     const replacementIds = new Set(params.fragments.map(({ id }) => String(id)));
     for (const id of result.removedFragmentIds ?? []) {
+      if (!replacementIds.has(String(id))) {
+        this.manager.notifyWrite("memories", "delete", { id });
+      }
+    }
+    return result;
+  }
+
+  async publishMessageContentSegments(
+    params: MessageContentPublicationParams
+  ): Promise<MessageContentPublicationResult> {
+    const writeBackEnabled = this.manager.getWriteBack() !== null;
+    const result = await super.publishMessageContentSegments(params);
+    if ((result.status !== "created" && result.status !== "updated") || !writeBackEnabled) {
+      return result;
+    }
+    for (const segment of params.segments) {
+      this.manager.notifyWrite("memories", "upsert", {
+        ...segment,
+        id: segment.id,
+      } as Record<string, unknown>);
+    }
+    const parent = params.mode === "create" ? params.parent : result.parent;
+    this.manager.notifyWrite("memories", "upsert", {
+      ...parent,
+      id: parent.id,
+    } as Record<string, unknown>);
+    const replacementIds = new Set(params.segments.map(({ id }) => String(id)));
+    for (const id of result.removedSegmentIds) {
       if (!replacementIds.has(String(id))) {
         this.manager.notifyWrite("memories", "delete", { id });
       }

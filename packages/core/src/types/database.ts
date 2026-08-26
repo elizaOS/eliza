@@ -23,7 +23,7 @@ import type {
 	PairingRequest,
 	PairingRequestQuery,
 } from "./pairing";
-import type { JsonValue, Metadata, UUID } from "./primitives";
+import type { Content, JsonValue, Metadata, UUID } from "./primitives";
 import type { Task } from "./task";
 
 /**
@@ -39,6 +39,89 @@ export interface MessageSearchHit {
 	ftsRank: number;
 	trigramSimilarity: number;
 }
+
+/** Selects one immutable source stored under a message parent. */
+export interface MessageContentSourceSelector {
+	kind: "message-text" | "attachment-text";
+	attachmentIdHash?: string;
+}
+
+/** Storage-enforced bounded read that reauthorizes its parent on every call. */
+export interface MessageContentRangeReadParams {
+	agentId: UUID;
+	messageId: UUID;
+	authorizedRoomId: UUID;
+	accessContext: AccessContext;
+	source: MessageContentSourceSelector;
+	offset: number;
+	limit: number;
+	expectedRevision?: string;
+}
+
+export interface MessageContentRangePage {
+	text: string;
+	start: number;
+	end: number;
+	total: number;
+	revision: string;
+	sourceSha256: string;
+	sliceSha256: string;
+	returnedSegments: number;
+	returnedBytes: number;
+	sourceQueryCount: number;
+}
+
+export type MessageContentRangeReadResult =
+	| { status: "ok"; parent: Memory; page: MessageContentRangePage }
+	| { status: "inline"; parent: Memory; text: string }
+	| { status: "not_found" }
+	| { status: "forbidden" };
+
+/** Atomic manifest-last create or compare-and-swap parent-content replacement. */
+export type MessageContentPublicationParams =
+	| {
+			mode: "create";
+			parent: Memory & { id: UUID };
+			segments: Memory[];
+	  }
+	| {
+			mode: "replace";
+			agentId: UUID;
+			messageId: UUID;
+			expectedContent: Content;
+			replacementContent: Content;
+			segments: Memory[];
+			removeSegmentIds: UUID[];
+	  };
+
+export type MessageContentPublicationResult =
+	| {
+			status: "created" | "updated";
+			parent: Memory;
+			removedSegmentIds: UUID[];
+	  }
+	| { status: "not_found" | "conflict" };
+
+/** One immutable row that must exist before an atomic head becomes visible. */
+export interface AtomicMemoryDependency {
+	memory: Memory;
+	tableName: string;
+}
+
+/**
+ * Atomically inserts immutable dependencies and publishes a mutable head with
+ * compare-and-swap semantics. `expectedRevision: null` means the head must not
+ * exist; otherwise the stored head metadata must carry that exact revision.
+ */
+export interface AtomicMemoryPublicationParams {
+	head: AtomicMemoryDependency;
+	dependencies: AtomicMemoryDependency[];
+	expectedRevision: string | null;
+}
+
+export type AtomicMemoryPublicationResult =
+	| { status: "published"; head: Memory }
+	| { status: "conflict" };
 
 /**
  * Stable newest-first cursor for document-list pagination. New cursors carry
@@ -95,6 +178,8 @@ export interface DocumentListQueryParams extends DocumentRequesterContext {
 	timeRangeStart?: number;
 	timeRangeEnd?: number;
 	tags?: string[];
+	/** Restrict the storage scan to documents explicitly pinned for provider context. */
+	pinnedOnly?: boolean;
 }
 
 /** Authorized single-document lookup. */
@@ -102,27 +187,27 @@ export interface DocumentGetQueryParams extends DocumentRequesterContext {
 	documentId: UUID;
 }
 
-/** Exact unit used by an authorized document read. */
-export type DocumentRangeUnit = "line" | "fragment";
+/** Exact unit used by an authorized bounded document read. */
+export type DocumentRangeUnit = "line" | "fragment" | "byte";
 
 /**
- * Authorized document read. Offsets and caller-requested limits count exact
- * retained line or paragraph-like fragment units, never JavaScript string code
- * units. Omitting `limit` returns the complete remainder of the source.
+ * Authorized bounded document read. Offsets and limits count exact retained
+ * line or paragraph-like fragment units, never JavaScript string code units.
  */
 export interface DocumentRangeReadParams extends DocumentRequesterContext {
 	documentId: UUID;
 	unit: DocumentRangeUnit;
 	offset: number;
-	limit?: number;
+	limit: number;
 }
 
 /**
- * Source projection returned by a native adapter. The source
+ * Bounded source projection returned by a native adapter. The source
  * fingerprint is an adapter-internal change detector and must be wrapped in an
  * opaque public revision before it leaves DocumentService.
  */
 export interface DocumentRangeReadResult {
+	unit: DocumentRangeUnit;
 	text: string;
 	start: number;
 	end: number;
@@ -130,6 +215,10 @@ export interface DocumentRangeReadResult {
 	documentRevision: number;
 	revisionAttemptId?: string;
 	sourceFingerprint: string;
+	examinedSourceSegments: number;
+	sourceQueryCount: number;
+	returnedSourceSegments: number;
+	returnedSourceBytes: number;
 }
 
 /**
@@ -1217,8 +1306,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * authorization, counts, or pagination guarantees.
 	 */
 	readonly documentListQueryCapability: 4;
-	/** Native source projection with optional caller-requested pagination. */
-	readonly documentRangeReadCapability?: 1;
+	/** Native bounded source projection; absent adapters must fail explicitly. */
+	readonly documentRangeReadCapability?: 1 | 2;
 	queryDocuments(
 		params: DocumentListQueryParams,
 	): Promise<DocumentListQueryResult>;
@@ -1254,6 +1343,15 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	): Promise<WorldMetadataMutationResult>;
 
 	getMemoriesByIds(ids: UUID[], tableName?: string): Promise<Memory[]>;
+
+	/** Native immutable MESSAGE/ATTACHMENT source storage and bounded reads. */
+	readonly messageContentSegmentCapability?: 1;
+	publishMessageContentSegments?(
+		params: MessageContentPublicationParams,
+	): Promise<MessageContentPublicationResult>;
+	readMessageContentRange?(
+		params: MessageContentRangeReadParams,
+	): Promise<MessageContentRangeReadResult>;
 
 	/**
 	 * Full-text + trigram message search across a set of rooms, ranked
@@ -1414,6 +1512,11 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	createMemories(
 		memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
 	): Promise<UUID[]>;
+
+	/** Optional first-party atomic dependency publication capability. */
+	compareAndSwapMemoryPublication?(
+		params: AtomicMemoryPublicationParams,
+	): Promise<AtomicMemoryPublicationResult>;
 	/**
 	 * Batch update memories
 	 *

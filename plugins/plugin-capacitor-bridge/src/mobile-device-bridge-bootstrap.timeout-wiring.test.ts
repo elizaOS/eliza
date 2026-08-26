@@ -21,7 +21,7 @@ const savedEnv = {
 const pairingToken = "timeout-wiring-pairing-token";
 // Deliberately not the 600_000 default and not a round number, so this test
 // cannot pass by coincidentally matching the fallback.
-const CONFIGURED_GENERATE_TIMEOUT_MS = 47_531;
+const CONFIGURED_GENERATE_TIMEOUT_MS = 475;
 
 process.env.ELIZA_DEVICE_BRIDGE_ENABLED = "1";
 process.env.ELIZA_DEVICE_PAIRING_TOKEN = pairingToken;

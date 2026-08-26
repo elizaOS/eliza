@@ -237,6 +237,39 @@ afterEach(() => {
 });
 
 describe("OpenAI native text plumbing", () => {
+  it("dispatches complete input when the tokenizer uses a fallback encoding", async () => {
+    aiMocks.generateText.mockResolvedValue({
+      text: "complete response",
+      finishReason: "stop",
+      usage: { inputTokens: 1, outputTokens: 1 },
+    });
+    const { handleTextSmall } = await import("../models/text");
+    await handleTextSmall(createRuntime(), {
+      prompt: "provider-final-wire-canary".repeat(64),
+      providerOptions: {
+        eliza: {
+          modelInputBudget: {
+            contextWindowTokens: 9_000,
+          },
+        },
+      },
+    } as never);
+    expect(aiMocks.generateText).toHaveBeenCalledOnce();
+    expect(aiMocks.streamText).not.toHaveBeenCalled();
+  }, 20_000);
+
+  it("publishes concrete GPT-5.6 defaults for pre-handler admission", async () => {
+    const { openaiPlugin } = await import("../index");
+    expect(openaiPlugin.modelMetadata?.[ModelType.TEXT_SMALL]).toMatchObject({
+      displayModelDefault: "gpt-5.6-luna",
+      displayModelSettings: expect.arrayContaining(["OPENAI_SMALL_MODEL"]),
+    });
+    expect(openaiPlugin.modelMetadata?.[ModelType.TEXT_LARGE]).toMatchObject({
+      displayModelDefault: "gpt-5.6-sol",
+      displayModelSettings: expect.arrayContaining(["OPENAI_LARGE_MODEL"]),
+    });
+  }, 20_000);
+
   it("uses a strict-safe wire schema for planner tool args and restores returned args", async () => {
     const wirePlannerText = JSON.stringify({
       thought: "Need the calendar tool.",

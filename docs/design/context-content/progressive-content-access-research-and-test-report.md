@@ -1,10 +1,10 @@
 # Progressive content access research and test report
 
-Date: 2026-08-22
+Date: 2026-08-23
 
 Third-pass research snapshot: `b82b9f4ca37e19036eb2f0282364b9f2a3382d14`; exact-head implementation evidence lives on each PR because `develop` is moving continuously
 
-Canonical tracking issue: [#24286](https://github.com/elizaOS/eliza/issues/24286)
+Canonical implementation issue: [#26645](https://github.com/elizaOS/eliza/issues/26645). Earlier design issue [#24286](https://github.com/elizaOS/eliza/issues/24286) is closed; [#26634](https://github.com/elizaOS/eliza/issues/26634) separately owns removal of lossy prompt transforms.
 
 ## Executive finding
 
@@ -13,6 +13,22 @@ The problem is not that elizaOS sometimes shows a 10K-character preview. The pro
 The best elizaOS v1 is smaller: keep native FILE, DOCUMENT, ATTACHMENT, email/message, memory, and SHELL actions; give them one `ReadSlice` continuation envelope; and unify prompt projection around the existing model-input budget. Native services retain identifiers and authorization. A generic action/URI and private raw-output spill layer come later only if measured need and lifecycle requirements justify them.
 
 This pass concentrated on proof: generated corpora, fault models, scenario/E2E architecture, live-model behavior, and speed/memory measurements. It also looked for architecture that can be deleted or unified rather than adding another framework.
+
+### Exact-head verification pass (2026-08-25)
+
+The follow-up verification is pinned to commit `2bc8b94a235bd0e5472bc3236426fc5d759ba75c` and the generated scale-corpus manifest `435430b1f502dffcc48b06e528e290237dd032259ada2dca30fc88ae7286f201`. The tightened corpus-evidence validator passes 40/40 adversarial tests, including forged benchmark/soak identities, duplicate-key E2E evidence, incomplete family coverage, stale continuations, and unauthorized fault claims. A fresh exact-head real-PostgreSQL run passes all 30 target-harness entries, records indexed seek plans, 5,346 observed rows, a 32,223,715-byte database, and verified disposable-database deletion (`postDropProbe=absent`); its peak RSS was 1,230,815,232 bytes, so the result is useful performance evidence as well as a reminder that SQL scale work must be monitored separately from bounded page transfer.
+
+The exact-head 90-process/5-repetition benchmark and the mandatory six-hour/100,000-operation mixed soak are deliberately run as external evidence artifacts. They must finish, be validated against the same commit and corpus manifest, and be ingested into one canonical evidence bundle before this design is described as complete. No credentialed live-model trajectory is claimed without explicit model, judge, and pricing configuration; no optional discovery skip can satisfy acceptance.
+
+### Fourth-pass implementation and test audit
+
+The 2026-08-23 pass refreshed `origin/develop`, the open PR/issue queue, every current production source seam, and the evidence/test orchestration. PRs [#24020](https://github.com/elizaOS/eliza/pull/24020) and [#24017](https://github.com/elizaOS/eliza/pull/24017) are closed with changes requested. They made fixed email/inbox previews Unicode-safe but preserved irreversible 800/200/100-character model-facing loss, so they are useful hygiene examples rather than an architecture to revive.
+
+The implementation now has immutable document source segments and bounded SQL seeks, restart-safe ordered continuity shards, a 1 MiB/10 MiB six-family corpus, central planner continuity, protected owner-bound rejected requests, GPT-5.6 model limits, and exact prepared-request admission for OpenAI. The audit still finds honest P0 gaps: Gmail rematerializes/refetches provider bodies; MESSAGE/ATTACHMENT native segmentation and private shell streaming are not yet merged; non-OpenAI providers are not guarded at their final wire seams; the authenticated inspector, real PostgreSQL matrix, five-repetition live lane, and production soak have no passing artifacts. A bounded return shape is not counted as success for any of those gaps.
+
+Testing was simplified around one shared stress contract rather than per-adapter scripts. It runs production adapter factories at concurrency 1/8/32/64, records p50/p95/p99/maximum latency, throughput, source reads/bytes/rows/parent scans, RSS/heap/external/array-buffer/FD deltas, and feeds the same contract into the soak. The canonical success gate requires at least six hours and 100,000 operations plus a deliberately leaking positive control that the detector catches.
+
+The strict named producer now requires these exact sub-artifacts: `corpus-manifest.json`, `native-realization-ledger.json`, `conformance.json`, `mutant-kills.json`, `source-work.json`, `benchmark.json`, `cleanup.json`, `page-ledger.jsonl`, `prompt-tokens.json`, `faults.json`, `stress.json`, `soak.json`, `postgres.json`, `scenario.json`, `scenario-native.jsonl`, `trajectories.jsonl`, and `e2e.json`. It publishes `content-context-result.json` and `completeness-manifest.json` atomically. Its producer-to-bundle regression executes the real producer, baseline-filtered canonical ingestor, and bundle finalization together; the matrix assigns the unique run root and remains the only bundle owner.
 
 ## Implementation pass result
 
@@ -309,6 +325,7 @@ Initial measurement gates for tightening on pinned hosts:
 - Add scenario reports, trajectories, benchmark JSON, heap/RSS summaries, and UI recordings through the existing evidence bundle architecture rather than a separate evidence system.
 - Add one named `reports/content-context/` producer/ingestor with an ingestor regression test; the evidence package deliberately does not scan arbitrary roots.
 - Add `packages/scripts/run-content-context.mjs` as one named producer coordinator invoked by `test:matrix:review`. It validates its declared corpus/realization/test/benchmark/UI sub-artifacts under the assigned run root and writes a strict completeness manifest. The existing matrix command remains the sole owner of pre-run inventory, producer execution, exact bundle creation, verification, and review; sub-producers do not create competing report roots or invoke evidence ingestion themselves.
+- Expose the production lanes as `bun run content-context:produce`, `bun run content-context:postgres`, and `bun run content-context:soak`, so operators use stable repository entrypoints while package ownership remains discoverable rather than hardcoded in generic scripts.
 - UI changes use the app's existing Playwright/audit and recording paths.
 - Use PGLite in PR lanes and real Postgres for nightly/release scale evidence.
 

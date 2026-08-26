@@ -124,7 +124,12 @@ async function getStoredFragments(runtime: AgentRuntime): Promise<Memory[]> {
 		count: 20,
 	});
 	return memories
-		.filter((memory) => memory.metadata?.documentId === ITEM_ID)
+		.filter(
+			(memory) =>
+				memory.metadata?.documentId === ITEM_ID &&
+				(memory.metadata as unknown as Record<string, unknown>).fragmentRole !==
+					"source-segment",
+		)
 		.sort((left, right) => fragmentPosition(left) - fragmentPosition(right));
 }
 

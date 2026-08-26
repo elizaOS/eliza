@@ -20,6 +20,7 @@ import type {
   ChatTurnStatus,
   ConnectionTestResult,
   ContentBlock,
+  ContextInspectorResponse,
   Conversation,
   ConversationChannelType,
   ConversationGreeting,
@@ -771,6 +772,10 @@ declare module "./client-base" {
     ): Promise<TrajectoryListResult>;
     getTrajectoryDetail(trajectoryId: string): Promise<TrajectoryDetailResult>;
     getTrajectoryStats(): Promise<TrajectoryStats>;
+    getContextInspector(
+      conversationId: string,
+      options?: { offset?: number; limit?: number },
+    ): Promise<ContextInspectorResponse>;
     getTrajectoryConfig(): Promise<TrajectoryConfig>;
     updateTrajectoryConfig(
       config: Partial<TrajectoryConfig>,
@@ -2046,6 +2051,27 @@ ElizaClient.prototype.getTrajectoryDetail = async function (
 
 ElizaClient.prototype.getTrajectoryStats = async function (this: ElizaClient) {
   return this.fetch("/api/trajectories/stats");
+};
+
+ElizaClient.prototype.getContextInspector = async function (
+  this: ElizaClient,
+  conversationId,
+  options = {},
+) {
+  const params = new URLSearchParams({ conversationId });
+  if (options.offset !== undefined) {
+    params.set("offset", String(options.offset));
+  }
+  if (options.limit !== undefined) {
+    params.set("limit", String(options.limit));
+  }
+  // The local PGlite host serializes database work. Inspector paging can enter
+  // the queue behind the app's initial catalog/status reads even though the
+  // inspector query itself is fast, so retain a finite but startup-tolerant
+  // deadline for this developer-only diagnostic surface.
+  return this.fetch(`/api/context-inspector?${params.toString()}`, undefined, {
+    timeoutMs: 30_000,
+  });
 };
 
 ElizaClient.prototype.getTrajectoryConfig = async function (this: ElizaClient) {

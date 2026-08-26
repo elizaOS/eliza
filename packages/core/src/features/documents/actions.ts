@@ -356,18 +356,10 @@ function getSearchMode(value: unknown): SearchMode | undefined {
 		: undefined;
 }
 
-function getLimit(value: unknown): number | undefined {
-	if (value === undefined) return undefined;
-	if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) {
-		throw new ElizaError(
-			"Document result limit must be a positive safe integer",
-			{
-				code: "DOCUMENT_INVALID_LIMIT",
-				context: { limit: value },
-			},
-		);
-	}
-	return value;
+function getLimit(value: unknown, fallback: number): number {
+	return typeof value === "number" && Number.isFinite(value) && value >= 1
+		? Math.min(100, Math.floor(value))
+		: fallback;
 }
 
 function getScope(
@@ -692,13 +684,12 @@ async function handleSearch(
 			: undefined,
 		getSearchMode(params.searchMode),
 	);
-	const limit = getLimit(params.limit);
+	const limit = getLimit(params.limit, Number.MAX_SAFE_INTEGER);
 	const filteredMatches = matches.filter((item) =>
 		storedDocumentMatchesFilters(item, filters),
 	);
-	const hasMoreInWindow = limit !== undefined && filteredMatches.length > limit;
-	const visible =
-		limit === undefined ? filteredMatches : filteredMatches.slice(0, limit);
+	const hasMoreInWindow = filteredMatches.length > limit;
+	const visible = filteredMatches.slice(0, limit);
 	const projected = visible.map((item) => {
 		const metadata = item.metadata as Record<string, unknown> | undefined;
 		return {
@@ -732,7 +723,7 @@ async function handleSearch(
 					.join("\n\n")}`
 	} ${retrievalScope}${
 		hasMoreInWindow
-			? ` More filtered matches exist within the retrieved window beyond the explicitly requested ${limit} shown.`
+			? ` More filtered matches exist within the retrieved window beyond the ${limit} shown.`
 			: ""
 	}`;
 	const filtersApplied = [
@@ -753,7 +744,7 @@ async function handleSearch(
 				retrieved: matches.length,
 				matchedInWindow: filteredMatches.length,
 				shown: projected.length,
-				...(limit === undefined ? {} : { limit }),
+				limit,
 				hasMoreInWindow,
 				retrievalCompleteness: "unknown_beyond_ranked_window",
 				filtersApplied,
@@ -766,7 +757,7 @@ async function handleSearch(
 				retrieved: matches.length,
 				matchedInWindow: filteredMatches.length,
 				shown: projected.length,
-				...(limit === undefined ? {} : { limit }),
+				limit,
 				hasMoreInWindow,
 				retrievalCompleteness: "unknown_beyond_ranked_window",
 				filtersApplied,
@@ -775,7 +766,9 @@ async function handleSearch(
 	});
 }
 
-type DocumentReadUnit = "line" | "fragment";
+const DOCUMENT_READ_DEFAULT_LIMIT = 100;
+
+type DocumentReadUnit = "line" | "fragment" | "byte";
 
 function opaqueDocumentRevision(metadata: Record<string, unknown>): string {
 	const declaredRevision =
@@ -811,6 +804,7 @@ function documentReference(item: StoredDocument): ContentReference | null {
 		kind: "document",
 		ref: `document:${documentId}`,
 		revision,
+		resumability: "restart-safe",
 	});
 }
 
@@ -826,10 +820,10 @@ function requiredReadInteger(
 			context: { field: label },
 		});
 	}
-	if (label === "limit" && value < 1) {
-		throw new ElizaError("Document read limit must be positive", {
+	if (label === "limit" && (value < 1 || value > 100)) {
+		throw new ElizaError("Document read limit exceeds 100 units", {
 			code: "DOCUMENT_READ_INVALID_RANGE",
-			context: { field: label },
+			context: { field: label, maximum: 100 },
 		});
 	}
 	return value;
@@ -852,6 +846,7 @@ function documentReadPage(
 				kind: "document",
 				ref: `document:${documentId}`,
 				revision,
+				resumability: "restart-safe",
 			}),
 			slice: buildReadSlice({
 				range: { unit, start: page.start, end: page.end, total: page.total },
@@ -878,28 +873,29 @@ async function handleRead(
 	}
 
 	const unit: DocumentReadUnit =
-		params.unit === "fragment" ? "fragment" : "line";
+		params.unit === "fragment" || params.unit === "byte" ? params.unit : "line";
 	const offset = requiredReadInteger(params.offset, "offset", 0);
-	const limit =
-		params.limit === undefined
-			? undefined
-			: requiredReadInteger(params.limit, "limit", 1);
-	const documentRange = await service.readDocumentRange(
+	const limit = requiredReadInteger(
+		params.limit,
+		"limit",
+		DOCUMENT_READ_DEFAULT_LIMIT,
+	);
+	const bounded = await service.readDocumentRange(
 		documentId,
-		{ unit, offset, ...(limit === undefined ? {} : { limit }) },
+		{ unit, offset, limit },
 		message,
 	);
-	if (!documentRange) {
+	if (!bounded) {
 		const text = `Document ${documentId} was not found; tell the user it doesn't exist.`;
 		return result(false, text, "read", { values: { error: "not_found" } });
 	}
-	if (offset > documentRange.total) {
+	if (offset > bounded.total) {
 		throw new ElizaError("Document read offset exceeds the source", {
 			code: "DOCUMENT_READ_INVALID_RANGE",
-			context: { field: "offset", total: documentRange.total },
+			context: { field: "offset", total: bounded.total },
 		});
 	}
-	const page = documentReadPage(documentRange, documentId, unit);
+	const page = documentReadPage(bounded, documentId, bounded.unit);
 	if (
 		page.view.slice.range.start > 0 &&
 		(typeof params.expectedRevision !== "string" ||
@@ -1220,9 +1216,8 @@ async function handleList(
 			? Math.floor(params.offset)
 			: undefined;
 
-	const requestedLimit = getLimit(params.limit);
 	const listResult = await service.listDocumentsDetailed(message, {
-		...(requestedLimit === undefined ? {} : { limit: requestedLimit }),
+		limit: getLimit(params.limit, 25),
 		offset,
 		query,
 		scope,
@@ -1612,9 +1607,9 @@ export const documentAction: Action = {
 		{
 			name: "unit",
 			description:
-				"Exact read unit for action=read: line or fragment. Defaults to line.",
+				"Exact read unit for action=read: line, fragment, or UTF-8 byte. Defaults to line; oversized logical units continue as bounded byte pages.",
 			required: false,
-			schema: { type: "string", enum: ["line", "fragment"] },
+			schema: { type: "string", enum: ["line", "fragment", "byte"] },
 		},
 		{
 			name: "expectedRevision",

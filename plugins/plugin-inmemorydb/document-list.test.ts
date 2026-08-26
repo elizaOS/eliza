@@ -4,12 +4,14 @@
  * stable keyset pagination without mocks.
  */
 import {
+  buildDocumentSourceProjection,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
   type DocumentListCursor,
   type DocumentListQueryParams,
   type Entity,
   type Memory,
   MemoryType,
+  projectDocumentParentContent,
   readDocumentMutationSnapshot,
   type UUID,
 } from "@elizaos/core";
@@ -73,6 +75,30 @@ function memory(
       scope: "global",
       ...metadata,
     },
+  };
+}
+
+function canonicalRevision(original: Memory & { id: UUID }, text: string, revision: number) {
+  const documentMetadata = {
+    ...(original.metadata as Record<string, unknown>),
+    documentRevision: revision,
+  };
+  const projection = buildDocumentSourceProjection({
+    text,
+    documentId: original.id,
+    agentId: AGENT_ID,
+    roomId: original.roomId,
+    entityId: original.entityId,
+    worldId: original.worldId,
+    documentMetadata: documentMetadata as never,
+  });
+  return {
+    replacement: {
+      ...original,
+      content: projectDocumentParentContent({ text, projection: projection.metadata }),
+      metadata: { ...documentMetadata, ...projection.metadata },
+    },
+    sourceSegments: projection.segments,
   };
 }
 
@@ -387,11 +413,7 @@ describe("InMemoryDatabaseAdapter document list capability", () => {
     ]);
     const expected = readDocumentMutationSnapshot(original);
     if (!expected) throw new Error("Expected a valid document mutation snapshot");
-    const replacement = {
-      ...original,
-      content: { text: "new body" },
-      metadata: { ...original.metadata, documentRevision: 1 },
-    };
+    const { replacement, sourceSegments } = canonicalRevision(original, "new body", 1);
     const newFragment = {
       ...oldFragment,
       id: memory(3, ROOM_A).id,
@@ -407,7 +429,7 @@ describe("InMemoryDatabaseAdapter document list capability", () => {
         documentId: original.id,
         expected,
         replacement,
-        fragments: [newFragment],
+        fragments: [...sourceSegments, newFragment],
       })
     ).resolves.toMatchObject({ status: "updated" });
     await expect(adapter.getMemoriesByIds([oldFragment.id], "document_fragments")).resolves.toEqual(
@@ -452,11 +474,7 @@ describe("InMemoryDatabaseAdapter document list capability", () => {
     ]);
     const expected = readDocumentMutationSnapshot(original);
     if (!expected) throw new Error("Expected a valid document mutation snapshot");
-    const replacement = {
-      ...original,
-      content: { text: "new body" },
-      metadata: { ...original.metadata, documentRevision: 1 },
-    };
+    const { replacement, sourceSegments } = canonicalRevision(original, "new body", 1);
     const reusedFragment = {
       ...oldFragment,
       content: { text: "new fragment with reused id" },
@@ -473,7 +491,7 @@ describe("InMemoryDatabaseAdapter document list capability", () => {
         documentId: original.id,
         expected,
         replacement,
-        fragments: [reusedFragment],
+        fragments: [...sourceSegments, reusedFragment],
       })
     ).rejects.toMatchObject({ code: "DOCUMENT_REVISION_FRAGMENT_ID_CONFLICT" });
     await expect(
@@ -536,11 +554,7 @@ describe("InMemoryDatabaseAdapter document list capability", () => {
     ]);
     const expected = readDocumentMutationSnapshot(original);
     if (!expected) throw new Error("Expected a valid document mutation snapshot");
-    const replacement = {
-      ...original,
-      content: { text: "new body" },
-      metadata: { ...original.metadata, documentRevision: 1 },
-    };
+    const { replacement, sourceSegments } = canonicalRevision(original, "new body", 1);
     const newFragment = {
       ...oldFragment,
       id: memory(12, ROOM_A).id,
@@ -557,7 +571,7 @@ describe("InMemoryDatabaseAdapter document list capability", () => {
       documentId: original.id,
       expected,
       replacement,
-      fragments: [newFragment],
+      fragments: [...sourceSegments, newFragment],
     });
     await storage.batchStarted;
     const readPromise = adapter.searchMemories({

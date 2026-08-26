@@ -383,7 +383,12 @@ export async function readFileHandler(
     const sliceSha256 = createHash("sha256").update(text).digest("hex");
     const opaqueRef = `file:${createHash("sha256").update(checked.resolved).digest("hex")}`;
     const readView = buildReadView({
-      reference: { kind: "file", ref: opaqueRef, revision: currentRevision },
+      reference: {
+        kind: "file",
+        ref: opaqueRef,
+        revision: currentRevision,
+        resumability: "non-resumable",
+      },
       slice: {
         range: {
           unit,

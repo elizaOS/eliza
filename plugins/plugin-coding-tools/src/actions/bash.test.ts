@@ -24,7 +24,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { __codingMutationRequiresVerificationForTests } from "@elizaos/core/runtime/planner-loop";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // These tests exercise the SHELL action through `pwd`, `cd`, `git -C`, and
 // inline pipelines. The action itself does run on Windows (it routes to
@@ -64,13 +64,29 @@ import {
 } from "./bash.js";
 
 const originalEchoTranscript = process.env.ELIZA_SHELL_ECHO_TRANSCRIPT;
+const originalStateDir = process.env.ELIZA_STATE_DIR;
+const originalShellJobTtl = process.env.SHELL_JOB_TTL_MS;
+let shellTestStateDir: string;
 
-afterEach(() => {
+beforeEach(async () => {
+  shellTestStateDir = await fs.mkdtemp(
+    path.join(os.tmpdir(), "coding-tools-shell-test-state-"),
+  );
+  process.env.ELIZA_STATE_DIR = shellTestStateDir;
+  process.env.SHELL_JOB_TTL_MS = "60000";
+});
+
+afterEach(async () => {
   if (originalEchoTranscript === undefined) {
     delete process.env.ELIZA_SHELL_ECHO_TRANSCRIPT;
   } else {
     process.env.ELIZA_SHELL_ECHO_TRANSCRIPT = originalEchoTranscript;
   }
+  if (originalStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
+  else process.env.ELIZA_STATE_DIR = originalStateDir;
+  if (originalShellJobTtl === undefined) delete process.env.SHELL_JOB_TTL_MS;
+  else process.env.SHELL_JOB_TTL_MS = originalShellJobTtl;
+  await fs.rm(shellTestStateDir, { recursive: true, force: true });
 });
 
 const execFileAsync = promisify(execFile);
@@ -324,7 +340,20 @@ function makeShellRouter(
       readText: async () => unavailableCapability("fs", "fs.readText"),
       writeText: async () => unavailableCapability("fs", "fs.writeText"),
     },
-    pty: { runCommand },
+    pty: {
+      runCommand: async (params) => {
+        const result = await runCommand(params);
+        return {
+          ...result,
+          capture: {
+            complete: true,
+            maxBytes: 1_000_000,
+            stdoutBytes: Buffer.byteLength(result.output, "utf8"),
+            stderrBytes: 0,
+          },
+        } as Awaited<ReturnType<ElizaCapabilityRouter["pty"]["runCommand"]>>;
+      },
+    },
     git: {
       status: async () => unavailableCapability("git", "git.status"),
       diff: async () => unavailableCapability("git", "git.diff"),
@@ -381,7 +410,7 @@ function confirmationChallenge(result: ActionResult): string {
 }
 
 describeIfPosix("shellAction", () => {
-  it("runs local-safe commands through the configured sandbox backend", async () => {
+  it("reports source loss for an unattested local-safe sandbox result", async () => {
     const exec = vi.fn(async () => ({
       exitCode: 0,
       stdout: "sandboxed\n",
@@ -413,9 +442,13 @@ describeIfPosix("shellAction", () => {
     });
     expect(result).toMatchObject({
       exitCode: 0,
-      stdout: "sandboxed\n",
+      stdout: "",
       sandbox: "docker",
       timedOut: false,
+      sourceLoss: {
+        code: "SHELL_UPSTREAM_CAPTURE_UNVERIFIED",
+        backend: "docker",
+      },
     });
   });
 
@@ -853,7 +886,35 @@ describeIfPosix("shellAction", () => {
     expect(posts[0].text.length).toBeLessThan(1700);
   });
 
-  it("returns complete redacted Unicode stdout and stderr above the former model cap", async () => {
+  it("fails with typed source loss when a router lacks bounded capture attestation", async () => {
+    const runCommand = async () => ({
+      output: "possibly clipped upstream output",
+      exitCode: 0,
+      timedOut: false,
+    });
+    const router = makeShellRouter(runCommand);
+    router.pty.runCommand = runCommand;
+    const { runtime } = await makeRuntime({ capabilityRouter: router });
+    const result = requireActionResult(
+      await shellAction.handler?.(runtime, makeMessage(), undefined, {
+        command: "remote command",
+      }),
+    );
+    expect(result.success).toBe(false);
+    expect(result.text).toContain(
+      "full string without a streaming completeness contract",
+    );
+    expect(result.data).toMatchObject({
+      source_loss: true,
+      source_loss_code: "SHELL_UPSTREAM_CAPTURE_UNVERIFIED",
+      source_loss_backend: "capability-router",
+    });
+    expect(JSON.stringify(result)).not.toContain(
+      "possibly clipped upstream output",
+    );
+  });
+
+  it("spills complete redacted Unicode streams and returns a bounded projection", async () => {
     const secret = "marigold9-complete-shell-secret";
     const stdout = `${"🙂α\n".repeat(7_000)}${secret}\nstdout-tail`;
     const stderr = `${"界β\n".repeat(8_000)}${secret}\nstderr-tail`;
@@ -871,18 +932,138 @@ describeIfPosix("shellAction", () => {
     );
     const redactedStdout = stdout.replace(secret, "[REDACTED:TEST_SECRET]");
     const redactedStderr = stderr.replace(secret, "[REDACTED:TEST_SECRET]");
-    const resultText = result.text ?? "";
-    const streamText = resultText.slice(resultText.indexOf("--- stdout ---"));
-
     expect(result.success).toBe(true);
-    expect(streamText).toBe(
-      `--- stdout ---\n${redactedStdout}\n--- stderr ---\n${redactedStderr}`,
+    expect(result.text).toContain("model projection omitted");
+    expect(result.text).toContain("stdout-tail");
+    expect(result.text).toContain("stderr-tail");
+    const data = result.data as Record<string, unknown>;
+    expect(data.output_truncated).toBe(false);
+    expect(data.output_projected).toBe(true);
+    expect(data.source_loss).toBe(false);
+    expect(data.stdout_source_bytes).toBe(Buffer.byteLength(stdout, "utf8"));
+    expect(data.stderr_source_bytes).toBe(Buffer.byteLength(stderr, "utf8"));
+    const handle = data.output_artifact_handle as string;
+    expect(handle).toMatch(/^shell_/);
+    const initialReadViews = data.output_artifact_read_views as Array<{
+      reference: {
+        kind: string;
+        ref: string;
+        revision: string;
+        resumability: string;
+        expiresAt: string;
+      };
+      slice: { completeness: string };
+    }>;
+    expect(initialReadViews).toHaveLength(2);
+    expect(initialReadViews).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          reference: expect.objectContaining({
+            kind: "tool-result",
+            ref: `shell:${handle}:stdout`,
+            resumability: "restart-safe",
+          }),
+          slice: expect.objectContaining({ completeness: "complete" }),
+        }),
+        expect.objectContaining({
+          reference: expect.objectContaining({
+            kind: "tool-result",
+            ref: `shell:${handle}:stderr`,
+            resumability: "restart-safe",
+          }),
+        }),
+      ]),
     );
-    expect((result.data as Record<string, unknown>).output_truncated).toBe(
-      false,
-    );
-    expect(result).not.toHaveProperty("data.output_artifact_handle");
     expect(JSON.stringify(result)).not.toContain(secret);
+
+    const retrieve = async (stream: "stdout" | "stderr") => {
+      let offset = 0;
+      let text = "";
+      for (;;) {
+        const page = requireActionResult(
+          await shellAction.handler?.(runtime, makeMessage(), undefined, {
+            action: "read_output_artifact",
+            handle,
+            artifact_stream: stream,
+            artifact_offset: offset,
+            artifact_limit: 20_000,
+          }),
+        );
+        expect(page.success).toBe(true);
+        const pageData = page.data as Record<string, unknown>;
+        const readView = pageData.readView as {
+          reference: { ref: string; resumability: string };
+          slice: { range: { start: number; end: number } };
+        };
+        expect(readView.reference).toMatchObject({
+          ref: `shell:${handle}:${stream}`,
+          resumability: "restart-safe",
+        });
+        expect(readView.slice.range).toMatchObject({
+          start: offset,
+          end: pageData.nextOffset,
+        });
+        text += pageData.text as string;
+        if (pageData.complete === true) return text;
+        expect(pageData.nextOffset).toBeGreaterThan(offset);
+        offset = pageData.nextOffset as number;
+      }
+    };
+    expect(await retrieve("stdout")).toBe(redactedStdout);
+    expect(await retrieve("stderr")).toBe(redactedStderr);
+  });
+
+  it("redacts configured secrets and PEM blocks split across OS chunks before publication", async () => {
+    const secret = "marigold9-cross-chunk-secret";
+    const pem = [
+      "-----BEGIN PRIVATE KEY-----",
+      "aGVsbG8tc2VjcmV0LWtleQ==",
+      "-----END PRIVATE KEY-----",
+    ].join("\n");
+    const { runtime } = await makeRuntime({ configuredSecret: secret });
+    const expression = (value: string) =>
+      `String.fromCodePoint(${[...value]
+        .map((character) => character.codePointAt(0))
+        .join(",")})`;
+    const script = [
+      `process.stdout.write(${expression(secret.slice(0, 11))});`,
+      `setTimeout(()=>process.stdout.write(${expression(`${secret.slice(11)}\n-----BEGIN PRI`)}),5);`,
+      `setTimeout(()=>process.stdout.write(${expression("VATE KEY-----\naGVsbG8tc2VjcmV0LWtleQ==\n-----END PRIVATE KEY-----\n")}),10);`,
+    ].join("");
+    const result = requireActionResult(
+      await shellAction.handler?.(runtime, makeMessage(), undefined, {
+        command: `node -e ${JSON.stringify(script)}`,
+      }),
+    );
+    expect(result.success).toBe(true);
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain(secret);
+    expect(serialized).not.toContain("aGVsbG8tc2VjcmV0LWtleQ");
+    const handle = (result.data as Record<string, unknown>)
+      .output_artifact_handle as string;
+    const page = requireActionResult(
+      await shellAction.handler?.(runtime, makeMessage(), undefined, {
+        action: "read_output_artifact",
+        handle,
+        artifact_stream: "stdout",
+        artifact_limit: 20_000,
+      }),
+    );
+    expect(page.text).toContain("[REDACTED:TEST_SECRET]");
+    expect(page.text).toContain("…redacted…");
+    expect(page.text).not.toContain(secret);
+    expect(page.text).not.toContain(pem.split("\n")[1]);
+    const persistedEntries = await fs.readdir(shellTestStateDir, {
+      recursive: true,
+      withFileTypes: true,
+    });
+    for (const entry of persistedEntries) {
+      if (!entry.isFile()) continue;
+      const parentPath = entry.parentPath ?? entry.path;
+      const bytes = await fs.readFile(path.join(parentPath, entry.name));
+      expect(bytes.includes(Buffer.from(secret))).toBe(false);
+      expect(bytes.includes(Buffer.from(pem.split("\n")[1] ?? ""))).toBe(false);
+    }
   });
 
   it("retrieves a retained legacy artifact through an authorized opaque handle", async () => {
@@ -895,7 +1076,10 @@ describeIfPosix("shellAction", () => {
     process.env.SHELL_JOB_TTL_MS = "60000";
     const artifactRoot = path.join(stateDir, "coding-tools", "shell-output");
     const workspace = path.join(stateDir, "workspace");
-    const staleArtifact = path.join(artifactRoot, "shell_stale");
+    const staleArtifact = path.join(
+      artifactRoot,
+      ".pending-00000000-0000-4000-8000-000000000001",
+    );
     const secret = "marigold9-artifact-secret";
     try {
       await fs.mkdir(workspace, { recursive: true });
@@ -926,32 +1110,47 @@ describeIfPosix("shellAction", () => {
       const handle = artifact.handle;
       const artifactDirectory = path.join(artifactRoot, handle);
       const manifestPath = path.join(artifactDirectory, "manifest.json");
-      const stdoutPath = path.join(artifactDirectory, "stdout.txt");
-      const stderrPath = path.join(artifactDirectory, "stderr.txt");
-      expect(await fs.readFile(stdoutPath, "utf8")).toBe(stdout);
-      expect(await fs.readFile(stderrPath, "utf8")).toBe(stderr);
       const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8")) as {
-        stdout: { bytes: number; lines: number };
-        stderr: { bytes: number; lines: number };
-        truncation: { modelCharacterLimit: number; completeBytes: number };
+        version: number;
+        stdout: {
+          bytes: number;
+          lines: number;
+          characters: number;
+          sha256: string;
+          segments: Array<{ file: string; bytes: number }>;
+        };
+        stderr: {
+          bytes: number;
+          lines: number;
+          characters: number;
+          sha256: string;
+          segments: Array<{ file: string; bytes: number }>;
+        };
+        projection: { modelCharacterLimit: number };
+        contentRevision: string;
+        mac: string;
       };
 
       expect(await fs.readFile(manifestPath, "utf8")).not.toContain(secret);
-      expect(manifest.stdout).toEqual({
-        path: stdoutPath,
+      expect(manifest.version).toBe(2);
+      expect(manifest.stdout).toMatchObject({
         characters: stdout.length,
         bytes: Buffer.byteLength(stdout),
         lines: 14001,
       });
-      expect(manifest.stderr).toEqual({
-        path: stderrPath,
+      expect(manifest.stderr).toMatchObject({
         characters: stderr.length,
         bytes: Buffer.byteLength(stderr),
         lines: 1,
       });
-      expect(manifest.truncation.modelCharacterLimit).toBe(50_000);
-      expect(manifest.truncation.completeBytes).toBe(
-        Buffer.byteLength(stdout) + Buffer.byteLength(stderr),
+      expect(manifest.stdout.segments.length).toBeGreaterThan(0);
+      expect(manifest.stderr.segments.length).toBeGreaterThan(0);
+      expect(manifest.projection.modelCharacterLimit).toBe(50_000);
+      expect(manifest.contentRevision).toMatch(/^sha256:[0-9a-f]{64}$/);
+      expect(manifest.mac).toMatch(/^[0-9a-f]{64}$/);
+      expect(await fs.readFile(manifestPath, "utf8")).not.toContain(workspace);
+      expect(await fs.readFile(manifestPath, "utf8")).not.toContain(
+        "legacy large command",
       );
       await expect(
         sandbox.validatePath(String(message.roomId), manifestPath),

@@ -20,6 +20,15 @@ export { longTermMemoryProvider } from "./providers/index.ts";
 export * from "./schemas/index.ts";
 export { MemoryService } from "./services/memory-service.ts";
 export {
+	latestSessionSummaryContentEnvelope,
+	loadSessionSummaryContentLedger,
+	mergeSessionSummaryMetadata,
+	parseSessionSummaryContentEnvelope,
+	publishSessionSummaryContentManifests,
+	renderSessionSummaryContentLedger,
+	SESSION_SUMMARY_PROGRESSIVE_CONTENT_METADATA_KEY,
+} from "./session-summary-content-manifest.ts";
+export {
 	type LongTermMemory,
 	LongTermMemoryCategory,
 	type MemoryConfig,
