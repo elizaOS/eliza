@@ -90,6 +90,7 @@ export { Badge } from "./components/ui/badge.tsx";
 export { Button } from "./components/ui/button.tsx";
 export * from "./components/ui/card.tsx";
 export * from "./components/ui/checkbox.tsx";
+export * from "./components/ui/code-block.tsx";
 export * from "./components/ui/collapsible.tsx";
 export { ConfirmDialog } from "./components/ui/confirm-dialog.tsx";
 export * from "./components/ui/dialog.tsx";
@@ -116,11 +117,13 @@ export {
 export {
   StatusBadge,
   StatusDot,
+  StatusPulseDot,
 } from "./components/ui/status-badge.tsx";
 export { Switch } from "./components/ui/switch.tsx";
 export * from "./components/ui/table.tsx";
 export * from "./components/ui/tabs.tsx";
 export { TagEditor } from "./components/ui/tag-editor.tsx";
+export * from "./components/ui/text-link.tsx";
 export { Textarea } from "./components/ui/textarea.tsx";
 export * from "./components/ui/toggle.tsx";
 export * from "./components/ui/tooltip.tsx";

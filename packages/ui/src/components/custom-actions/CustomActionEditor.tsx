@@ -8,12 +8,13 @@
  */
 
 import type { CustomActionDef, CustomActionHandler } from "@elizaos/shared";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { client } from "../../api/client";
 import { useAppSelector } from "../../state";
 import { Banner } from "../ui/banner";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { Checkbox } from "../ui/checkbox";
 import {
   Dialog,
@@ -30,14 +31,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
+import { Separator } from "../ui/separator";
 import { Textarea } from "../ui/textarea";
 import {
-  editorDialogContentClassName,
   editorFieldLabelClassName,
-  editorInputClassName,
-  editorMonoTextareaClassName,
-  editorSectionCardClassName,
-  editorTextareaClassName,
   type HandlerType,
   type HeaderRow,
   HTTP_METHODS,
@@ -468,7 +465,7 @@ export function CustomActionEditor({
     >
       <DialogContent
         showCloseButton={false}
-        className={editorDialogContentClassName}
+        className="w-[min(calc(100%_-_2rem),48rem)] max-h-[min(90vh,56rem)] p-0"
       >
         {/* Header */}
         <DialogHeader className="flex flex-row items-center px-5 py-4">
@@ -477,58 +474,57 @@ export function CustomActionEditor({
           </DialogTitle>
           <Button
             variant="ghostMuted"
-            size="closeGlyph"
+            size="icon-sm"
             onClick={onClose}
             aria-label={t("common.close")}
           >
-            {t("bugreportmodal.Times")}
+            <X aria-hidden="true" />
           </Button>
         </DialogHeader>
 
         {/* Body */}
         <div className="flex max-h-[min(72vh,44rem)] flex-col gap-4 overflow-y-auto px-5 py-4">
-          {formError && (
-            <Banner variant="error" className="rounded-sm text-xs">
-              {formError}
-            </Banner>
-          )}
+          {formError && <Banner variant="error">{formError}</Banner>}
 
           {/* AI Generate */}
           {!action && (
-            <div className="flex flex-col gap-2 rounded-sm border border-accent/30 bg-accent/5 p-3">
-              <span className="text-xs text-txt font-medium">
-                {t("customactioneditor.DescribeWhatYouWa")}
-              </span>
-              <div className="flex gap-2">
-                <Input
-                  type="text"
-                  value={aiPrompt}
-                  onChange={(e) => {
-                    setAiPrompt(e.target.value);
-                    setFormError("");
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !generating) {
-                      void handleGenerate();
-                    }
-                  }}
-                  placeholder={t("customactioneditor.eGCheckIfAWebs")}
-                  className={`flex-1 ${editorInputClassName}`}
-                />
-                <Button
-                  variant="default"
-                  size="sm"
-                  className="whitespace-nowrap"
-                  onClick={handleGenerate}
-                  disabled={generating || !aiPrompt.trim()}
-                >
-                  {generating ? "Generating…" : "Generate"}
-                </Button>
+            <Card variant="panel">
+              <div className="flex flex-col gap-2 p-3">
+                <span className="text-xs text-txt font-medium">
+                  {t("customactioneditor.DescribeWhatYouWa")}
+                </span>
+                <div className="flex gap-2">
+                  <Input
+                    type="text"
+                    value={aiPrompt}
+                    onChange={(e) => {
+                      setAiPrompt(e.target.value);
+                      setFormError("");
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !generating) {
+                        void handleGenerate();
+                      }
+                    }}
+                    placeholder={t("customactioneditor.eGCheckIfAWebs")}
+                    variant="surface"
+                    className="flex-1"
+                  />
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="whitespace-nowrap"
+                    onClick={handleGenerate}
+                    disabled={generating || !aiPrompt.trim()}
+                  >
+                    {generating ? "Generating…" : "Generate"}
+                  </Button>
+                </div>
+                <span className="text-xs text-muted">
+                  {t("customactioneditor.TheAgentWillGener")}
+                </span>
               </div>
-              <span className="text-xs text-muted">
-                {t("customactioneditor.TheAgentWillGener")}
-              </span>
-            </div>
+            </Card>
           )}
 
           {/* Name */}
@@ -541,7 +537,8 @@ export function CustomActionEditor({
               value={name}
               onChange={(e) => setNormalizedName(e.target.value)}
               placeholder={t("customactioneditor.MYACTION")}
-              className={`flex-1 ${editorInputClassName}`}
+              variant="surface"
+              className="flex-1"
             />
           </div>
 
@@ -555,7 +552,8 @@ export function CustomActionEditor({
               onChange={(e) => setDescriptionValue(e.target.value)}
               placeholder={t("customactioneditor.WhatDoesThisActio")}
               rows={2}
-              className={`flex-1 ${editorTextareaClassName}`}
+              variant="modal"
+              className="flex-1 resize-none"
             />
           </div>
 
@@ -572,7 +570,8 @@ export function CustomActionEditor({
                 setFormError("");
               }}
               placeholder={t("customactioneditor.SYNONYMONESYNONYM")}
-              className={`flex-1 ${editorInputClassName}`}
+              variant="surface"
+              className="flex-1"
             />
             <span className="text-xs text-muted">
               {t("customactioneditor.CommaSeparatedAlte")}
@@ -608,100 +607,109 @@ export function CustomActionEditor({
 
           {/* Handler Config */}
           {handlerType === "http" && (
-            <div className={editorSectionCardClassName}>
-              <div className="flex gap-2">
-                <Select
-                  value={httpMethod}
-                  onValueChange={(value: string) =>
-                    setHttpMethod(value as HttpMethod)
-                  }
-                >
-                  <SelectTrigger
-                    aria-label="HTTP method"
-                    className={`w-auto min-w-[6.5rem] ${editorInputClassName}`}
+            <Card variant="panel">
+              <div className="flex flex-col gap-3 p-3">
+                <div className="flex gap-2">
+                  <Select
+                    value={httpMethod}
+                    onValueChange={(value: string) =>
+                      setHttpMethod(value as HttpMethod)
+                    }
                   >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {HTTP_METHODS.map((method) => (
-                      <SelectItem key={method} value={method}>
-                        {method}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  type="text"
-                  value={httpUrl}
-                  onChange={(e) => {
-                    setHttpUrl(e.target.value);
-                    setFormError("");
-                  }}
-                  placeholder={t("customactioneditor.httpsApiExample")}
-                  className={`flex-1 ${editorInputClassName}`}
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center justify-between">
-                  <span className={editorFieldLabelClassName}>
-                    {t("customactioneditor.HeadersOptional")}
-                  </span>
-                  <Button
-                    variant="mutedLink"
-                    size="content"
-                    onClick={addHeader}
-                  >
-                    {t("customactioneditor.Add")}
-                  </Button>
-                </div>
-                {httpHeaders.map((header, i) => (
-                  <div
-                    key={`${header.key}:${header.value}`}
-                    className="flex gap-2"
-                  >
-                    <Input
-                      type="text"
-                      value={header.key}
-                      onChange={(e) => updateHeader(i, "key", e.target.value)}
-                      placeholder={t("customactioneditor.HeaderName")}
-                      className={`flex-1 ${editorInputClassName}`}
-                    />
-                    <Input
-                      type="text"
-                      value={header.value}
-                      onChange={(e) => updateHeader(i, "value", e.target.value)}
-                      placeholder={t("customactioneditor.valueOrParam")}
-                      className={`flex-1 ${editorInputClassName}`}
-                    />
-                    <Button
-                      variant="ghostMuted"
-                      size="inlineIcon"
-                      onClick={() => removeHeader(i)}
-                      aria-label={`Remove header ${i + 1}`}
+                    <SelectTrigger
+                      aria-label="HTTP method"
+                      variant="modal"
+                      className="w-auto min-w-[6.5rem]"
                     >
-                      {t("bugreportmodal.Times")}
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {HTTP_METHODS.map((method) => (
+                        <SelectItem key={method} value={method}>
+                          {method}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    type="text"
+                    value={httpUrl}
+                    onChange={(e) => {
+                      setHttpUrl(e.target.value);
+                      setFormError("");
+                    }}
+                    placeholder={t("customactioneditor.httpsApiExample")}
+                    variant="surface"
+                    className="flex-1"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between">
+                    <span className={editorFieldLabelClassName}>
+                      {t("customactioneditor.HeadersOptional")}
+                    </span>
+                    <Button
+                      variant="mutedLink"
+                      size="content"
+                      onClick={addHeader}
+                    >
+                      {t("customactioneditor.Add")}
                     </Button>
                   </div>
-                ))}
-              </div>
+                  {httpHeaders.map((header, i) => (
+                    <div
+                      key={`${header.key}:${header.value}`}
+                      className="flex gap-2"
+                    >
+                      <Input
+                        type="text"
+                        value={header.key}
+                        onChange={(e) => updateHeader(i, "key", e.target.value)}
+                        placeholder={t("customactioneditor.HeaderName")}
+                        variant="surface"
+                        className="flex-1"
+                      />
+                      <Input
+                        type="text"
+                        value={header.value}
+                        onChange={(e) =>
+                          updateHeader(i, "value", e.target.value)
+                        }
+                        placeholder={t("customactioneditor.valueOrParam")}
+                        variant="surface"
+                        className="flex-1"
+                      />
+                      <Button
+                        variant="ghostMuted"
+                        size="inlineIcon"
+                        onClick={() => removeHeader(i)}
+                        aria-label={`Remove header ${i + 1}`}
+                      >
+                        {t("bugreportmodal.Times")}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
 
-              <div className="flex flex-col gap-1">
-                <span className={editorFieldLabelClassName}>
-                  {t("customactioneditor.BodyTemplateOptio")}
-                </span>
-                <Textarea
-                  value={httpBody}
-                  onChange={(e) => {
-                    setHttpBody(e.target.value);
-                    setFormError("");
-                  }}
-                  placeholder={'{"key": "{{param}}"}'}
-                  rows={3}
-                  className={editorMonoTextareaClassName}
-                />
+                <div className="flex flex-col gap-1">
+                  <span className={editorFieldLabelClassName}>
+                    {t("customactioneditor.BodyTemplateOptio")}
+                  </span>
+                  <Textarea
+                    value={httpBody}
+                    onChange={(e) => {
+                      setHttpBody(e.target.value);
+                      setFormError("");
+                    }}
+                    placeholder={'{"key": "{{param}}"}'}
+                    rows={3}
+                    variant="modal"
+                    className="resize-none font-mono"
+                  />
+                </div>
               </div>
-            </div>
+            </Card>
           )}
 
           {handlerType === "shell" && (
@@ -717,7 +725,8 @@ export function CustomActionEditor({
                 }}
                 placeholder={t("customactioneditor.echoMessage")}
                 rows={4}
-                className={editorMonoTextareaClassName}
+                variant="modal"
+                className="resize-none font-mono"
               />
               <span className="text-xs text-muted">
                 {t("streamsettings.Use")} {`{{paramName}}`}{" "}
@@ -739,7 +748,8 @@ export function CustomActionEditor({
                 }}
                 placeholder={t("customactioneditor.AvailableParams")}
                 rows={6}
-                className={editorMonoTextareaClassName}
+                variant="modal"
+                className="resize-none font-mono"
               />
             </div>
           )}
@@ -766,7 +776,8 @@ export function CustomActionEditor({
                     updateParameter(paramIdx, "name", e.target.value)
                   }
                   placeholder={t("customactioneditor.paramName")}
-                  className={`w-32 ${editorInputClassName}`}
+                  variant="surface"
+                  className="w-32"
                 />
                 <Input
                   type="text"
@@ -775,7 +786,8 @@ export function CustomActionEditor({
                     updateParameter(paramIdx, "description", e.target.value)
                   }
                   placeholder={t("common.description")}
-                  className={`flex-1 ${editorInputClassName}`}
+                  variant="surface"
+                  className="flex-1"
                 />
                 <span className="flex items-center gap-1 text-xs text-muted cursor-pointer">
                   <Checkbox
@@ -817,48 +829,57 @@ export function CustomActionEditor({
               </span>
             </Button>
             {testExpanded && (
-              <div className="flex flex-col gap-2 pl-2 border-l-2 border-border">
-                {parameters
-                  .filter((p) => p.name.trim())
-                  .map((param) => (
-                    <div key={param.name} className="flex flex-col gap-1">
-                      <span className={editorFieldLabelClassName}>
-                        {param.name}
-                      </span>
-                      <Input
-                        type="text"
-                        value={testParams[param.name] || ""}
-                        onChange={(e) =>
-                          setTestParams({
-                            ...testParams,
-                            [param.name]: e.target.value,
-                          })
-                        }
-                        placeholder={param.description || "value"}
-                        className={editorInputClassName}
-                      />
-                    </div>
-                  ))}
-                {testResult && (
-                  <div className="bg-surface border border-border p-2 text-xs font-mono">
-                    {testResult.error && (
-                      <div className="text-status-danger">
-                        {t("customactioneditor.Error")} {testResult.error}
+              <div className="flex gap-2">
+                <Separator
+                  orientation="vertical"
+                  className="h-auto self-stretch"
+                />
+                <div className="flex min-w-0 flex-1 flex-col gap-2">
+                  {parameters
+                    .filter((p) => p.name.trim())
+                    .map((param) => (
+                      <div key={param.name} className="flex flex-col gap-1">
+                        <span className={editorFieldLabelClassName}>
+                          {param.name}
+                        </span>
+                        <Input
+                          type="text"
+                          value={testParams[param.name] || ""}
+                          onChange={(e) =>
+                            setTestParams({
+                              ...testParams,
+                              [param.name]: e.target.value,
+                            })
+                          }
+                          placeholder={param.description || "value"}
+                          variant="surface"
+                        />
                       </div>
-                    )}
-                    {testResult.output && (
-                      <pre className="text-txt whitespace-pre-wrap">
-                        {testResult.output}
-                      </pre>
-                    )}
-                    {testResult.duration !== undefined && (
-                      <div className="text-muted mt-1">
-                        {t("customactioneditor.Duration")} {testResult.duration}
-                        ms
+                    ))}
+                  {testResult && (
+                    <Card variant="insetCompact">
+                      <div className="font-mono text-xs">
+                        {testResult.error && (
+                          <div className="text-status-danger">
+                            {t("customactioneditor.Error")} {testResult.error}
+                          </div>
+                        )}
+                        {testResult.output && (
+                          <pre className="text-txt whitespace-pre-wrap">
+                            {testResult.output}
+                          </pre>
+                        )}
+                        {testResult.duration !== undefined && (
+                          <div className="text-muted mt-1">
+                            {t("customactioneditor.Duration")}{" "}
+                            {testResult.duration}
+                            ms
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                )}
+                    </Card>
+                  )}
+                </div>
               </div>
             )}
           </div>

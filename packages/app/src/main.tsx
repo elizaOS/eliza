@@ -30,6 +30,10 @@ import "./web-ws-base-fix";
  */
 import { ErrorBoundary } from "@elizaos/ui";
 import "@elizaos/ui/styles";
+// Relationships owns the canonical /apps/relationships route. Its registration
+// metadata is tiny and must be available before the first route capture; the
+// page component itself remains lazy-loaded by the plugin registration.
+import "@elizaos/plugin-relationships/register";
 // Native-only (ios/android/desktop): register the Eliza Cloud Applications
 // dashboard as an in-process app-shell page (`/cloud-apps`) that mounts the
 // self-contained NativeAppsStudio. No-op on web, where CloudRouterShell serves
@@ -232,6 +236,10 @@ import {
   createMobileLifecycle,
   type MobileLifecycle,
 } from "./mobile-lifecycle";
+import {
+  getMobileRemoteFallbackApiBase,
+  installMobileRemoteFallback,
+} from "./mobile-remote-fallback";
 import { installNativeTranscriptPlatformBridge } from "./native-transcript-bridge";
 import { installPackagedShellStorageTestBridge } from "./packaged-shell-storage-test-bridge";
 import {
@@ -308,6 +316,13 @@ function importAppTaskCoordinatorRegister() {
   return cachedDynamicImport(
     "@elizaos/plugin-task-coordinator/register",
     () => import("@elizaos/plugin-task-coordinator/register"),
+  );
+}
+
+function importAppRelationshipsRegister() {
+  return cachedDynamicImport(
+    "@elizaos/plugin-relationships/register",
+    () => import("@elizaos/plugin-relationships/register"),
   );
 }
 
@@ -447,11 +462,15 @@ const APP_BRANDING: Partial<BrandingConfig> = {
   // opted into cloud-only mode, which remains authoritative over a loopback base.
   cloudOnly: resolveAppCloudOnlyBranding({
     isDev: import.meta.env.DEV ?? false,
-    bootApiBase: getBootConfig().apiBase,
+    bootApiBase:
+      getBootConfig().apiBase ?? getMobileRemoteFallbackApiBase() ?? undefined,
     legacyInjectedApiBase:
       typeof window === "undefined" ? undefined : getLegacyInjectedAppApiBase(),
     isNativePlatform: Capacitor.isNativePlatform(),
-    nativeRuntimeMode: isAndroidCloudBuild() ? "cloud" : undefined,
+    nativeRuntimeMode:
+      isAndroidCloudBuild() && !getMobileRemoteFallbackApiBase()
+        ? "cloud"
+        : undefined,
     desktopRuntimeMode: getInjectedDesktopRuntimeMode(),
   }),
 };
@@ -900,6 +919,10 @@ const BOOT_CONFIG_DEFERRED_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] 
     {
       key: "@elizaos/plugin-task-coordinator/register",
       load: importAppTaskCoordinatorRegister,
+    },
+    {
+      key: "@elizaos/plugin-relationships/register",
+      load: importAppRelationshipsRegister,
     },
     { key: "@elizaos/plugin-phone", load: importAppPhone },
   ];
@@ -3591,6 +3614,9 @@ async function main(): Promise<void> {
   // hydration lands. The voice chunk (kicked off above) downloads in parallel
   // with this wait.
   await initializeStorageBridge();
+  if (isAndroid) {
+    installMobileRemoteFallback();
+  }
   if (isIOS) {
     initializeCapacitorBridge();
     installIosLocalAgentNativeRequestBridge();

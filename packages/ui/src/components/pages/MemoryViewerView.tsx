@@ -56,6 +56,7 @@ import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { ViewHeader } from "../shared/ViewHeader";
 import { ViewHeaderSidebarTrigger } from "../shared/ViewHeaderSidebarTrigger";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import {
   DropdownMenu,
@@ -237,8 +238,9 @@ const MemoryCard = memo(function MemoryCard({
     >
       <div className="flex flex-wrap items-center gap-2">
         <span className="inline-flex items-center gap-1.5 text-xs-tight text-muted">
-          <span
-            className={`memory-type-dot-${typeKey} inline-block size-2 rounded-full`}
+          <Badge
+            variant="statusDotMuted"
+            className={`memory-type-dot-${typeKey}`}
           />
           {typeLabel(memory.type, t)}
         </span>

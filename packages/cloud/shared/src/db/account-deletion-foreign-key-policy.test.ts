@@ -27,7 +27,7 @@ describe("account deletion full-schema foreign-key policy", () => {
       .update(descriptors.map(serializeDescriptor).join("\n"))
       .digest("hex");
 
-    expect(descriptors).toHaveLength(223);
+    expect(descriptors).toHaveLength(230);
     expect(digest).toBe(ACCOUNT_DELETION_FOREIGN_KEY_SNAPSHOT_SHA256);
   });
 
@@ -37,13 +37,31 @@ describe("account deletion full-schema foreign-key policy", () => {
       action: classifyAccountDeletionForeignKey(descriptor),
     }));
 
-    expect(classified).toHaveLength(223);
+    expect(classified).toHaveLength(230);
     expect(classified.every(({ action }) => Boolean(action))).toBe(true);
     expect(classified.filter(({ action }) => action === "reconcile_external_resource").length).toBe(
       70,
     );
     expect(classified.filter(({ action }) => action === "transfer_shared_resource").length).toBe(
-      10,
+      11,
+    );
+  });
+
+  test("requires provider reconciliation before deleting sandbox replacement attempts", () => {
+    const replacementAttempt = listAccountDeletionForeignKeys().find(
+      ({ sourceTable, sourceColumns }) =>
+        sourceTable === "agent_sandbox_replacement_attempts" && sourceColumns === "organization_id",
+    );
+
+    expect(replacementAttempt).toEqual({
+      sourceTable: "agent_sandbox_replacement_attempts",
+      sourceColumns: "organization_id",
+      targetTable: "organizations",
+      targetColumns: "id",
+      onDelete: "cascade",
+    });
+    expect(classifyAccountDeletionForeignKey(replacementAttempt!)).toBe(
+      "reconcile_external_resource",
     );
   });
 

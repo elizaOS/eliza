@@ -205,6 +205,197 @@ describe("resolvePlugins manifest discovery", () => {
       await rm(workspace, { recursive: true, force: true });
     }
   }, 120_000);
+
+  it("registers only disabled Computer Use intent ownership before chat readiness", async () => {
+    const pluginName = "@elizaos/plugin-computeruse";
+    const appPackagePath = path.resolve(
+      import.meta.dirname,
+      "../../../app/package.json",
+    );
+    const appPackage = JSON.parse(
+      await fs.readFile(appPackagePath, "utf8"),
+    ) as {
+      elizaos?: {
+        app?: {
+          defaults?: Record<
+            string,
+            {
+              enabled?: boolean;
+              requiredForReady?: boolean;
+              routingOnlyWhenDisabled?: boolean;
+            }
+          >;
+        };
+      };
+    };
+    expect(appPackage.elizaos?.app?.defaults?.computeruse).toEqual({
+      enabled: false,
+      requiredForReady: true,
+      routingOnlyWhenDisabled: true,
+    });
+
+    const previousCwd = process.cwd();
+    const workspace = await mkdtemp(
+      path.join(tmpdir(), "eliza-computeruse-ready-"),
+    );
+    const previousStaticPlugin = STATIC_ELIZA_PLUGINS[pluginName];
+    const previousSkipPlugins = process.env.ELIZA_SKIP_PLUGINS;
+    const init = vi.fn();
+    const preflight = vi.fn();
+
+    try {
+      await writeFile(
+        path.join(workspace, "package.json"),
+        JSON.stringify({
+          name: "computeruse-ready-host-fixture",
+          elizaos: appPackage.elizaos,
+        }),
+        "utf8",
+      );
+      STATIC_ELIZA_PLUGINS[pluginName] = {
+        default: {
+          name: pluginName,
+          description: "Computer Use readiness fixture.",
+          packageName: pluginName,
+          init,
+          preflight,
+          actions: [{ name: "SHOULD_NOT_LOAD_WHILE_DISABLED" }],
+          services: [class ShouldNotLoadWhileDisabled {}],
+          routes: [{ path: "/should-not-load" }],
+          providers: [{ name: "should-not-load" }],
+          views: [{ id: "should-not-load" }],
+        } as unknown as Plugin,
+      };
+      process.chdir(workspace);
+      const disabledConfig: ElizaConfig = {
+        plugins: { allow: [], entries: {} },
+      } as ElizaConfig;
+
+      const disabledBlocking = await resolvePlugins(disabledConfig, {
+        quiet: true,
+        phase: "blocking",
+      });
+      const routingOnly = disabledBlocking.find(
+        (plugin) => plugin.name === pluginName,
+      )?.plugin;
+      expect(routingOnly).toBeDefined();
+      expect(Object.keys(routingOnly ?? {}).sort()).toEqual([
+        "description",
+        "init",
+        "name",
+        "packageName",
+      ]);
+      expect(routingOnly?.init).toEqual(expect.any(Function));
+      expect(routingOnly?.actions).toBeUndefined();
+      expect(routingOnly?.services).toBeUndefined();
+      expect(routingOnly?.routes).toBeUndefined();
+      expect(routingOnly?.providers).toBeUndefined();
+      expect(routingOnly?.views).toBeUndefined();
+      expect(preflight).not.toHaveBeenCalled();
+      expect(disabledConfig.plugins?.entries?.computeruse).toEqual({
+        enabled: false,
+      });
+
+      const disabledDeferred = await resolvePlugins(disabledConfig, {
+        quiet: true,
+        phase: "deferred",
+      });
+      expect(disabledDeferred.map((plugin) => plugin.name)).not.toContain(
+        pluginName,
+      );
+
+      const enabledConfig: ElizaConfig = {
+        plugins: {
+          allow: [],
+          entries: { computeruse: { enabled: true } },
+        },
+      } as ElizaConfig;
+
+      const enabledBlocking = await resolvePlugins(enabledConfig, {
+        quiet: true,
+        phase: "blocking",
+      });
+      const fullPlugin = enabledBlocking.find(
+        (plugin) => plugin.name === pluginName,
+      )?.plugin;
+      expect(fullPlugin).toBeDefined();
+      expect(fullPlugin?.actions).toHaveLength(1);
+      expect(fullPlugin?.services).toHaveLength(1);
+      expect(fullPlugin?.routes).toHaveLength(1);
+      expect(fullPlugin?.providers).toHaveLength(1);
+      expect(fullPlugin?.views).toHaveLength(1);
+      expect(preflight).toHaveBeenCalledTimes(1);
+      expect(enabledConfig.plugins?.entries?.computeruse).toEqual({
+        enabled: true,
+      });
+
+      const enabledDeferred = await resolvePlugins(enabledConfig, {
+        quiet: true,
+        phase: "deferred",
+      });
+      expect(enabledDeferred.map((plugin) => plugin.name)).not.toContain(
+        pluginName,
+      );
+
+      await expect(
+        resolvePlugins(
+          {
+            plugins: {
+              allow: [],
+              deny: ["computeruse"],
+              entries: {},
+            },
+          } as ElizaConfig,
+          { quiet: true, phase: "blocking" },
+        ),
+      ).rejects.toMatchObject({ code: "PLUGIN_ROUTING_ONLY_DENIED" });
+
+      process.env.ELIZA_SKIP_PLUGINS = pluginName;
+      await expect(
+        resolvePlugins({ plugins: { allow: [], entries: {} } } as ElizaConfig, {
+          quiet: true,
+          phase: "blocking",
+        }),
+      ).rejects.toMatchObject({ code: "PLUGIN_ROUTING_ONLY_DENIED" });
+      if (previousSkipPlugins === undefined) {
+        delete process.env.ELIZA_SKIP_PLUGINS;
+      } else {
+        process.env.ELIZA_SKIP_PLUGINS = previousSkipPlugins;
+      }
+
+      STATIC_ELIZA_PLUGINS[pluginName] = {
+        default: {
+          name: pluginName,
+          description: "Invalid routing-only fixture without init.",
+          services: [],
+        } as Plugin,
+      };
+      const missingInitConfig: ElizaConfig = {
+        plugins: { allow: [], entries: {} },
+      } as ElizaConfig;
+      await expect(
+        resolvePlugins(missingInitConfig, {
+          quiet: true,
+          phase: "blocking",
+        }),
+      ).rejects.toMatchObject({
+        code: "PLUGIN_ROUTING_ONLY_INIT_MISSING",
+      });
+    } finally {
+      process.chdir(previousCwd);
+      if (previousStaticPlugin === undefined) {
+        delete STATIC_ELIZA_PLUGINS[pluginName];
+      } else {
+        STATIC_ELIZA_PLUGINS[pluginName] = previousStaticPlugin;
+      }
+      if (previousSkipPlugins === undefined) {
+        delete process.env.ELIZA_SKIP_PLUGINS;
+      } else {
+        process.env.ELIZA_SKIP_PLUGINS = previousSkipPlugins;
+      }
+      await rm(workspace, { recursive: true, force: true });
+    }
+  }, 120_000);
 });
 
 describe("resolvePlugins boot-phase split for model providers (#14038)", () => {

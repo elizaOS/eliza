@@ -3,7 +3,9 @@
  */
 
 import {
+  Badge,
   Button,
+  Card,
   Input,
   Select,
   SelectContent,
@@ -699,7 +701,9 @@ function AcceptanceSection({
             key={`${criterion}-${index}`}
             className="flex items-start gap-1.5 text-xs-tight text-txt"
           >
-            <span className="mt-1 inline-block size-1.5 shrink-0 rounded-full bg-accent/60" />
+            <Badge asChild variant="chainDot" tone="accent">
+              <span className="mt-1 inline-block size-1.5 shrink-0" />
+            </Badge>
             <span>{criterion}</span>
           </li>
         ))}
@@ -1153,13 +1157,15 @@ function AgentDeleteDialogConfirm({
   onDelete: () => void;
 }) {
   return (
-    <AlertDialogAction
-      onClick={onDelete}
-      className="bg-destructive text-destructive-fg hover:bg-destructive/85"
-      data-agent-authority="human"
-      data-agent-human-id="inspector-delete-confirm"
-    >
-      {label}
+    <AlertDialogAction asChild>
+      <Button
+        variant="destructive"
+        onClick={onDelete}
+        data-agent-authority="human"
+        data-agent-human-id="inspector-delete-confirm"
+      >
+        {label}
+      </Button>
     </AlertDialogAction>
   );
 }
@@ -1267,314 +1273,322 @@ export function TaskInspector({
     });
 
   return (
-    <div
-      className={`shrink-0 flex-col gap-4 overflow-y-auto bg-bg p-3 ${className ?? "flex w-80"}`}
-      style={style}
-      data-testid="orchestrator-inspector"
-    >
-      {onClose ? (
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-medium text-muted">
-            {t("orchestrator.inspector.title", { defaultValue: "Details" })}
-          </h3>
-          <Button
-            variant="ghostMuted"
-            size="icon-sm"
-            ref={closeRef}
-            type="button"
-            onClick={onClose}
-            className="-mr-1"
-            aria-label={closeDetailsLabel}
-            data-testid="orchestrator-close-inspector"
-            {...closeAgentProps}
-          >
-            <X className="size-4" />
-          </Button>
-        </div>
-      ) : null}
-      <div className="flex flex-wrap gap-1">
-        {detail.status === "validating" ? (
-          <>
-            <ControlButton
-              agentId="inspector-approve"
-              description="Approve the task validation"
-              icon={<Check className="size-3" />}
-              label={t("orchestrator.action.approve", {
-                defaultValue: "Approve",
-              })}
-              onClick={() => onValidate(true)}
-              disabled={busy}
-              testId="orchestrator-approve"
-            />
-            <ControlButton
-              agentId="inspector-reject"
-              description="Reject the task validation"
-              icon={<X className="size-3" />}
-              label={t("orchestrator.action.reject", {
-                defaultValue: "Reject",
-              })}
-              onClick={() => onValidate(false)}
-              disabled={busy}
-              tone="danger"
-              testId="orchestrator-reject"
-            />
-          </>
-        ) : null}
-        {archived ? (
-          <ControlButton
-            agentId="inspector-reopen"
-            description="Reopen this archived task"
-            icon={<RotateCcw className="size-3" />}
-            label={t("orchestrator.action.reopen", { defaultValue: "Reopen" })}
-            onClick={onReopen}
-            disabled={busy}
-            testId="orchestrator-reopen"
-          />
-        ) : terminal ? null : detail.paused ? (
-          <ControlButton
-            agentId="inspector-resume"
-            description="Resume this paused task"
-            icon={<Play className="size-3" />}
-            label={t("orchestrator.action.resume", { defaultValue: "Resume" })}
-            onClick={onResume}
-            disabled={busy}
-            testId="orchestrator-inspector-resume"
-          />
-        ) : (
-          <ControlButton
-            agentId="inspector-pause"
-            description="Pause this task"
-            icon={<Pause className="size-3" />}
-            label={t("orchestrator.action.pause", { defaultValue: "Pause" })}
-            onClick={onPause}
-            disabled={busy}
-            testId="orchestrator-inspector-pause"
-          />
-        )}
-        {archived ? null : (
-          <ControlButton
-            agentId="inspector-archive"
-            description="Archive this task"
-            icon={<Archive className="size-3" />}
-            label={t("orchestrator.action.archive", {
-              defaultValue: "Archive",
-            })}
-            onClick={onArchive}
-            disabled={busy}
-            testId="orchestrator-inspector-archive"
-          />
-        )}
-        {terminal ? null : (
-          <ControlButton
-            agentId="inspector-fork"
-            description="Fork this task into a new task"
-            icon={<GitFork className="size-3" />}
-            label={t("orchestrator.action.fork", { defaultValue: "Fork" })}
-            onClick={onFork}
-            disabled={busy}
-            testId="orchestrator-fork"
-          />
-        )}
-        {terminal ? null : (
-          <ControlButton
-            agentId="inspector-restart"
-            description="Restart this task with a fresh worker"
-            icon={<RotateCcw className="size-3" />}
-            label={t("orchestrator.action.restart", {
-              defaultValue: "Restart",
-            })}
-            onClick={onRestart}
-            disabled={busy}
-            testId="orchestrator-inspector-restart"
-          />
-        )}
-        {terminal ? null : (
-          <AgentLocalControlButton
-            agentId="inspector-add-agent"
-            description="Open the add-agent form for this task"
-            icon={<UserPlus className="size-3" />}
-            label={t("orchestrator.action.addAgent", {
-              defaultValue: "Add agent",
-            })}
-            onClick={onToggleAddAgent}
-            disabled={busy}
-            testId="orchestrator-add-agent"
-          />
-        )}
-        <AgentLocalControlButton
-          agentId="inspector-copy-link"
-          description="Copy a deep link to this task"
-          icon={<Copy className="size-3" />}
-          label={t("orchestrator.action.copyLink", {
-            defaultValue: "Copy link",
-          })}
-          onClick={onCopyLink}
-          disabled={busy}
-          testId="orchestrator-copy-link"
-        />
-        {terminal ? null : (
-          <Select
-            value={detail.priority}
-            onValueChange={(value) => {
-              const next = paramPriority(value);
-              if (next && next !== detail.priority) onSetPriority(next);
-            }}
-            disabled={busy}
-          >
-            <SelectTrigger
-              aria-label={setPriorityLabel}
-              className="border-border/35 h-auto w-auto border-b bg-transparent p-1 text-2xs text-muted transition-colors hover:border-accent/60 hover:text-txt disabled:opacity-50"
-              data-testid="orchestrator-priority-select"
-              data-agent-authority="human"
-              data-agent-human-id="inspector-priority"
+    <Card asChild variant="transparentSquare">
+      <div
+        className={`shrink-0 flex-col gap-4 overflow-y-auto p-3 ${className ?? "flex w-80"}`}
+        style={style}
+        data-testid="orchestrator-inspector"
+      >
+        {onClose ? (
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-medium text-muted">
+              {t("orchestrator.inspector.title", { defaultValue: "Details" })}
+            </h3>
+            <Button
+              variant="ghostMuted"
+              size="icon-sm"
+              ref={closeRef}
+              type="button"
+              onClick={onClose}
+              className="-mr-1"
+              aria-label={closeDetailsLabel}
+              data-testid="orchestrator-close-inspector"
+              {...closeAgentProps}
             >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="low">{labelPriority("low", t)}</SelectItem>
-              <SelectItem value="normal">
-                {labelPriority("normal", t)}
-              </SelectItem>
-              <SelectItem value="high">{labelPriority("high", t)}</SelectItem>
-              <SelectItem value="urgent">
-                {labelPriority("urgent", t)}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <ControlButton
-              agentId="inspector-delete"
-              description="Delete this task"
-              icon={<Trash2 className="size-3" />}
-              label={t("orchestrator.action.delete", {
-                defaultValue: "Delete",
-              })}
-              onClick={() => {}}
-              disabled={busy}
-              tone="danger"
-              testId="orchestrator-delete"
-            />
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                {t("orchestrator.confirmDeleteTitle", {
-                  defaultValue: "Delete task?",
+              <X className="size-4" />
+            </Button>
+          </div>
+        ) : null}
+        <div className="flex flex-wrap gap-1">
+          {detail.status === "validating" ? (
+            <>
+              <ControlButton
+                agentId="inspector-approve"
+                description="Approve the task validation"
+                icon={<Check className="size-3" />}
+                label={t("orchestrator.action.approve", {
+                  defaultValue: "Approve",
                 })}
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                {t("orchestrator.confirmDelete", {
-                  defaultValue:
-                    "Delete this task and its transcript? This can't be undone.",
-                })}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AgentDeleteDialogCancel
-                label={t("orchestrator.action.cancel", {
-                  defaultValue: "Cancel",
-                })}
+                onClick={() => onValidate(true)}
+                disabled={busy}
+                testId="orchestrator-approve"
               />
-              <AgentDeleteDialogConfirm
+              <ControlButton
+                agentId="inspector-reject"
+                description="Reject the task validation"
+                icon={<X className="size-3" />}
+                label={t("orchestrator.action.reject", {
+                  defaultValue: "Reject",
+                })}
+                onClick={() => onValidate(false)}
+                disabled={busy}
+                tone="danger"
+                testId="orchestrator-reject"
+              />
+            </>
+          ) : null}
+          {archived ? (
+            <ControlButton
+              agentId="inspector-reopen"
+              description="Reopen this archived task"
+              icon={<RotateCcw className="size-3" />}
+              label={t("orchestrator.action.reopen", {
+                defaultValue: "Reopen",
+              })}
+              onClick={onReopen}
+              disabled={busy}
+              testId="orchestrator-reopen"
+            />
+          ) : terminal ? null : detail.paused ? (
+            <ControlButton
+              agentId="inspector-resume"
+              description="Resume this paused task"
+              icon={<Play className="size-3" />}
+              label={t("orchestrator.action.resume", {
+                defaultValue: "Resume",
+              })}
+              onClick={onResume}
+              disabled={busy}
+              testId="orchestrator-inspector-resume"
+            />
+          ) : (
+            <ControlButton
+              agentId="inspector-pause"
+              description="Pause this task"
+              icon={<Pause className="size-3" />}
+              label={t("orchestrator.action.pause", { defaultValue: "Pause" })}
+              onClick={onPause}
+              disabled={busy}
+              testId="orchestrator-inspector-pause"
+            />
+          )}
+          {archived ? null : (
+            <ControlButton
+              agentId="inspector-archive"
+              description="Archive this task"
+              icon={<Archive className="size-3" />}
+              label={t("orchestrator.action.archive", {
+                defaultValue: "Archive",
+              })}
+              onClick={onArchive}
+              disabled={busy}
+              testId="orchestrator-inspector-archive"
+            />
+          )}
+          {terminal ? null : (
+            <ControlButton
+              agentId="inspector-fork"
+              description="Fork this task into a new task"
+              icon={<GitFork className="size-3" />}
+              label={t("orchestrator.action.fork", { defaultValue: "Fork" })}
+              onClick={onFork}
+              disabled={busy}
+              testId="orchestrator-fork"
+            />
+          )}
+          {terminal ? null : (
+            <ControlButton
+              agentId="inspector-restart"
+              description="Restart this task with a fresh worker"
+              icon={<RotateCcw className="size-3" />}
+              label={t("orchestrator.action.restart", {
+                defaultValue: "Restart",
+              })}
+              onClick={onRestart}
+              disabled={busy}
+              testId="orchestrator-inspector-restart"
+            />
+          )}
+          {terminal ? null : (
+            <AgentLocalControlButton
+              agentId="inspector-add-agent"
+              description="Open the add-agent form for this task"
+              icon={<UserPlus className="size-3" />}
+              label={t("orchestrator.action.addAgent", {
+                defaultValue: "Add agent",
+              })}
+              onClick={onToggleAddAgent}
+              disabled={busy}
+              testId="orchestrator-add-agent"
+            />
+          )}
+          <AgentLocalControlButton
+            agentId="inspector-copy-link"
+            description="Copy a deep link to this task"
+            icon={<Copy className="size-3" />}
+            label={t("orchestrator.action.copyLink", {
+              defaultValue: "Copy link",
+            })}
+            onClick={onCopyLink}
+            disabled={busy}
+            testId="orchestrator-copy-link"
+          />
+          {terminal ? null : (
+            <Select
+              value={detail.priority}
+              onValueChange={(value) => {
+                const next = paramPriority(value);
+                if (next && next !== detail.priority) onSetPriority(next);
+              }}
+              disabled={busy}
+            >
+              <SelectTrigger
+                variant="settingsCompact"
+                density="compact"
+                aria-label={setPriorityLabel}
+                className="h-auto w-auto p-1 text-2xs text-muted transition-colors hover:text-txt disabled:opacity-50"
+                data-testid="orchestrator-priority-select"
+                data-agent-authority="human"
+                data-agent-human-id="inspector-priority"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="low">{labelPriority("low", t)}</SelectItem>
+                <SelectItem value="normal">
+                  {labelPriority("normal", t)}
+                </SelectItem>
+                <SelectItem value="high">{labelPriority("high", t)}</SelectItem>
+                <SelectItem value="urgent">
+                  {labelPriority("urgent", t)}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <ControlButton
+                agentId="inspector-delete"
+                description="Delete this task"
+                icon={<Trash2 className="size-3" />}
                 label={t("orchestrator.action.delete", {
                   defaultValue: "Delete",
                 })}
-                onDelete={onDelete}
+                onClick={() => {}}
+                disabled={busy}
+                tone="danger"
+                testId="orchestrator-delete"
               />
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </div>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {t("orchestrator.confirmDeleteTitle", {
+                    defaultValue: "Delete task?",
+                  })}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t("orchestrator.confirmDelete", {
+                    defaultValue:
+                      "Delete this task and its transcript? This can't be undone.",
+                  })}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AgentDeleteDialogCancel
+                  label={t("orchestrator.action.cancel", {
+                    defaultValue: "Cancel",
+                  })}
+                />
+                <AgentDeleteDialogConfirm
+                  label={t("orchestrator.action.delete", {
+                    defaultValue: "Delete",
+                  })}
+                  onDelete={onDelete}
+                />
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
 
-      {addAgentOpen && !terminal ? (
-        <AddAgentForm
-          busy={busy}
-          onClose={onToggleAddAgent}
-          onSubmit={onAddAgent}
-          t={t}
-        />
-      ) : null}
-
-      <InspectorSection
-        title={t("orchestrator.goal", { defaultValue: "Goal" })}
-      >
-        <p className="whitespace-pre-wrap text-xs-tight text-txt">
-          {detail.goal || detail.originalRequest}
-        </p>
-        {detail.parentTaskId ? (
-          <p className="mt-1.5 text-2xs text-muted">
-            {t("orchestrator.forkedFrom", {
-              defaultValue: "Forked from {{id}}",
-              id: detail.parentTaskId,
-            })}
-          </p>
+        {addAgentOpen && !terminal ? (
+          <AddAgentForm
+            busy={busy}
+            onClose={onToggleAddAgent}
+            onSubmit={onAddAgent}
+            t={t}
+          />
         ) : null}
-      </InspectorSection>
 
-      <InspectorSection
-        title={t("orchestrator.subAgents", { defaultValue: "Sub-agents" })}
-      >
-        {sessions.length === 0 ? (
-          <p className="text-xs-tight text-muted">
-            {t("orchestrator.noSubAgents", {
-              defaultValue: "No sub-agents spawned yet.",
-            })}
+        <InspectorSection
+          title={t("orchestrator.goal", { defaultValue: "Goal" })}
+        >
+          <p className="whitespace-pre-wrap text-xs-tight text-txt">
+            {detail.goal || detail.originalRequest}
           </p>
-        ) : (
-          <div className="space-y-1.5">
-            {sessions.map((session) => (
-              <SubAgentCard
-                key={session.id}
-                session={session}
-                busy={busy}
-                onInspect={onInspectSession}
-                onStop={onStopAgent}
-                t={t}
-                locale={locale}
-              />
-            ))}
-          </div>
-        )}
-      </InspectorSection>
-
-      {latestChangeSet ? (
-        <InspectorSection
-          title={t("orchestrator.changes", { defaultValue: "Changes" })}
-        >
-          <DiffReviewPanel changeSet={latestChangeSet} />
+          {detail.parentTaskId ? (
+            <p className="mt-1.5 text-2xs text-muted">
+              {t("orchestrator.forkedFrom", {
+                defaultValue: "Forked from {{id}}",
+                id: detail.parentTaskId,
+              })}
+            </p>
+          ) : null}
         </InspectorSection>
-      ) : null}
 
-      {plan ? <PlanSection plan={plan} t={t} /> : null}
-      {detail.currentPlan && !terminal ? (
-        <EditedPlanRestartSection
-          plan={detail.currentPlan}
-          latestPlanRevisionId={latestPlanRevisionId}
-          busy={busy}
-          onSubmit={onRestartWithEditedPlan}
-          t={t}
-        />
-      ) : null}
-      {detail.acceptanceCriteria.length > 0 ? (
-        <AcceptanceSection criteria={detail.acceptanceCriteria} t={t} />
-      ) : null}
-      {artifacts.length > 0 ? (
-        <ArtifactSection artifacts={artifacts} t={t} />
-      ) : null}
-      <UsageSection usage={detail.usage} t={t} locale={locale} />
-
-      {providerPolicyLine ? (
         <InspectorSection
-          title={t("orchestrator.providerPolicy", {
-            defaultValue: "Provider policy",
-          })}
+          title={t("orchestrator.subAgents", { defaultValue: "Sub-agents" })}
         >
-          <p className="text-xs-tight text-txt">{providerPolicyLine}</p>
+          {sessions.length === 0 ? (
+            <p className="text-xs-tight text-muted">
+              {t("orchestrator.noSubAgents", {
+                defaultValue: "No sub-agents spawned yet.",
+              })}
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              {sessions.map((session) => (
+                <SubAgentCard
+                  key={session.id}
+                  session={session}
+                  busy={busy}
+                  onInspect={onInspectSession}
+                  onStop={onStopAgent}
+                  t={t}
+                  locale={locale}
+                />
+              ))}
+            </div>
+          )}
         </InspectorSection>
-      ) : null}
-    </div>
+
+        {latestChangeSet ? (
+          <InspectorSection
+            title={t("orchestrator.changes", { defaultValue: "Changes" })}
+          >
+            <DiffReviewPanel changeSet={latestChangeSet} />
+          </InspectorSection>
+        ) : null}
+
+        {plan ? <PlanSection plan={plan} t={t} /> : null}
+        {detail.currentPlan && !terminal ? (
+          <EditedPlanRestartSection
+            plan={detail.currentPlan}
+            latestPlanRevisionId={latestPlanRevisionId}
+            busy={busy}
+            onSubmit={onRestartWithEditedPlan}
+            t={t}
+          />
+        ) : null}
+        {detail.acceptanceCriteria.length > 0 ? (
+          <AcceptanceSection criteria={detail.acceptanceCriteria} t={t} />
+        ) : null}
+        {artifacts.length > 0 ? (
+          <ArtifactSection artifacts={artifacts} t={t} />
+        ) : null}
+        <UsageSection usage={detail.usage} t={t} locale={locale} />
+
+        {providerPolicyLine ? (
+          <InspectorSection
+            title={t("orchestrator.providerPolicy", {
+              defaultValue: "Provider policy",
+            })}
+          >
+            <p className="text-xs-tight text-txt">{providerPolicyLine}</p>
+          </InspectorSection>
+        ) : null}
+      </div>
+    </Card>
   );
 }
 

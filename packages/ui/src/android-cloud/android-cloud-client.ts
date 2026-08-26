@@ -19,6 +19,7 @@ import {
   resolveCanonicalDirectCloudApiBase,
   STAGING_DIRECT_CLOUD_API_BASE_URL,
 } from "../api/direct-cloud-endpoints";
+import { shellLocalStorage } from "../surface-realm-channel";
 
 const MANAGED_RUNTIME_HOST_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.cloud(?:-staging)?\.eliza\.app$/i;
@@ -48,6 +49,10 @@ export interface AndroidCloudTranscriptMessage {
 export interface AndroidCloudLoginAttempt {
   state: string;
   browserUrl: string;
+}
+
+export interface AndroidCloudLoginOptions {
+  switchAccount?: boolean;
 }
 
 export interface AndroidCloudLoginCompletion {
@@ -132,10 +137,10 @@ const browserPendingLoginStore: AndroidCloudPendingLoginStore = {
     return window.localStorage.getItem(ANDROID_CLOUD_PENDING_LOGIN_KEY);
   },
   async write(value) {
-    window.localStorage.setItem(ANDROID_CLOUD_PENDING_LOGIN_KEY, value);
+    shellLocalStorage.setItem(ANDROID_CLOUD_PENDING_LOGIN_KEY, value);
   },
   async clear() {
-    window.localStorage.removeItem(ANDROID_CLOUD_PENDING_LOGIN_KEY);
+    shellLocalStorage.removeItem(ANDROID_CLOUD_PENDING_LOGIN_KEY);
   },
 };
 
@@ -433,7 +438,9 @@ export class AndroidCloudClient {
     return { identity: { id, displayName }, token, chatApiBase };
   }
 
-  async beginLogin(): Promise<AndroidCloudLoginAttempt> {
+  async beginLogin(
+    options: AndroidCloudLoginOptions = {},
+  ): Promise<AndroidCloudLoginAttempt> {
     const clientId = MOBILE_APP_AUTH_CLIENT_ID;
     const redirectUri = MOBILE_APP_AUTH_REDIRECT_URI;
     const environment =
@@ -497,6 +504,7 @@ export class AndroidCloudClient {
       "returnTo",
       `${authorizePath.pathname}${authorizePath.search}`,
     );
+    if (options.switchAccount) loginUrl.searchParams.set("switchAccount", "1");
     return { state, browserUrl: loginUrl.toString() };
   }
 
@@ -761,19 +769,24 @@ export class AndroidCloudClient {
 
   async signOut(): Promise<void> {
     const token = await this.readToken();
-    try {
-      if (token) {
-        await this.fetchImpl(`${this.apiBase}/api/auth/logout`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      }
-    } catch {
-      // error-policy:J6 remote logout is best-effort teardown; the authoritative
-      // local credential removal is awaited in the finally block below.
-    } finally {
-      await this.credentialStore.clear();
+    if (!token) return;
+    const response = await this.fetchImpl(
+      `${this.apiBase}/api/v1/api-keys/current`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+    const body = await responseJson(response);
+    if (!response.ok || body.success !== true) {
+      throw new Error(
+        responseError(
+          body,
+          `Unable to revoke this device session (${response.status}).`,
+        ),
+      );
     }
+    await this.credentialStore.clear();
   }
 
   async getConversationMessages(

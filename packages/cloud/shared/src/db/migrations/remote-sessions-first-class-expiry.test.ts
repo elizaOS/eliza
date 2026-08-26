@@ -10,7 +10,7 @@ import { PGlite } from "@electric-sql/pglite";
 
 const createUrl = new URL("./0068_add_remote_sessions.sql", import.meta.url);
 const expiryUrl = new URL("./0275_remote_sessions_first_class_expiry.sql", import.meta.url);
-const twoPhaseUrl = new URL("./0321_remote_session_two_phase_activation.sql", import.meta.url);
+const twoPhaseUrl = new URL("./0330_remote_session_two_phase_activation.sql", import.meta.url);
 
 const organizationId = "10000000-0000-4000-8000-000000000001";
 const userId = "20000000-0000-4000-8000-000000000001";

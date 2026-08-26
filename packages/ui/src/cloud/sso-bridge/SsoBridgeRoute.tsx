@@ -26,6 +26,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Card } from "../../components/ui/card";
 import { appModeNavigation } from "../app-mode/app-mode";
 import { hasHydratableStewardToken } from "../lib/steward-session";
 import {
@@ -81,11 +82,13 @@ function forgetMintIntent(state: string): void {
 
 function BridgeNotice({ label }: { label: string }): React.JSX.Element {
   return (
-    <div className="theme-cloud flex min-h-dvh flex-col items-center justify-center bg-black px-6 text-center text-white">
-      <p className="font-mono text-xs-tight uppercase tracking-[0.32em] text-white/62">
-        {label}
-      </p>
-    </div>
+    <Card asChild surface="card" radius="none" tone="inverse">
+      <div className="theme-cloud flex min-h-dvh flex-col items-center justify-center px-6 text-center">
+        <p className="font-mono text-xs-tight uppercase tracking-[0.32em] text-white/62">
+          {label}
+        </p>
+      </div>
+    </Card>
   );
 }
 

@@ -30,7 +30,7 @@ export function ProviderBreakdown({ providers }: ProviderBreakdownProps) {
   const t = useCloudT();
   if (providers.length === 0) {
     return (
-      <Card className="border-border/70 bg-background/85">
+      <Card variant="reportPanel">
         <CardHeader className="p-6 pb-5">
           <CardTitle className="text-base font-semibold">
             {t("cloud.analytics.providerBreakdown.title", {
@@ -54,7 +54,7 @@ export function ProviderBreakdown({ providers }: ProviderBreakdownProps) {
   );
 
   return (
-    <Card className="border-border/70 bg-background/85">
+    <Card variant="reportPanel">
       <CardHeader className="flex flex-col gap-3 p-6 pb-5">
         <div className="flex items-center gap-3">
           <CardTitle className="text-base font-semibold">

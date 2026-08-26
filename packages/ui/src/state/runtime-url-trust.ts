@@ -19,6 +19,59 @@ import {
   isPersonalSharedElizaId,
 } from "../utils/cloud-agent-base";
 
+const REMOTE_FALLBACK_API_BASE_ENV_KEY = "VITE_ELIZA_REMOTE_FALLBACK_API_BASE";
+
+function configuredRemoteFallbackApiBase(): string | undefined {
+  const env =
+    typeof import.meta !== "undefined"
+      ? (import.meta as { env?: Record<string, unknown> }).env
+      : undefined;
+  const value = env?.[REMOTE_FALLBACK_API_BASE_ENV_KEY];
+  return typeof value === "string" ? value : undefined;
+}
+
+/**
+ * Trust one exact HTTPS origin compiled into a dedicated remote-fallback app.
+ * The configured value is a root origin only: credentials, custom ports,
+ * query/fragment state, and path-scoped targets are rejected.
+ */
+export function isTrustedBuildConfiguredRemoteApiBaseUrl(
+  apiBase: string | undefined,
+  configuredBase = configuredRemoteFallbackApiBase(),
+): boolean {
+  if (!apiBase || !configuredBase?.trim()) return false;
+
+  try {
+    const configured = new URL(configuredBase.trim());
+    if (
+      configured.protocol !== "https:" ||
+      configured.username ||
+      configured.password ||
+      configured.port ||
+      configured.search ||
+      configured.hash ||
+      configured.pathname.replace(/\/+$/, "") !== ""
+    ) {
+      return false;
+    }
+
+    const candidate = new URL(apiBase);
+    return (
+      candidate.protocol === "https:" &&
+      !candidate.username &&
+      !candidate.password &&
+      !candidate.port &&
+      !candidate.search &&
+      !candidate.hash &&
+      candidate.pathname.replace(/\/+$/, "") === "" &&
+      candidate.origin === configured.origin
+    );
+  } catch {
+    // error-policy:J3 malformed build/runtime URL input is never trusted.
+    return false;
+  }
+}
+
 function isLoopbackHostname(hostname: string): boolean {
   const h = hostname.toLowerCase();
   // RFC 1122 reserves the entire 127.0.0.0/8 block for IPv4 loopback, not
@@ -45,6 +98,8 @@ export function isTrustedRestoreApiBaseUrl(
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     return false;
   }
+
+  if (isTrustedBuildConfiguredRemoteApiBaseUrl(apiBase)) return true;
 
   const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
   if (isLoopbackHostname(host) || host === "0.0.0.0") return true;

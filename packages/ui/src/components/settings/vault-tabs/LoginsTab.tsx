@@ -13,7 +13,10 @@ import { useAgentElement } from "../../../agent-surface";
 // authed runtimes (e.g. the Android local agent).
 import { client } from "../../../api/client";
 import { useTranslation } from "../../../state/TranslationContext.hooks";
+import { Alert } from "../../ui/alert";
+import { Badge, type BadgeProps } from "../../ui/badge";
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
 import type {
@@ -28,11 +31,11 @@ const SOURCE_LABEL: Record<SavedLoginSource, string> = {
   bitwarden: "Bitwarden",
 };
 
-const SOURCE_PILL_CLASS: Record<SavedLoginSource, string> = {
-  "in-house": "border-accent/40 bg-accent/10 text-accent",
-  "1password": "border-status-info/40 bg-status-info/10 text-status-info",
-  bitwarden: "border-warn/40 bg-warn/10 text-warn",
-};
+const SOURCE_PILL_VARIANT = {
+  "in-house": "metaAccent",
+  "1password": "statusInfo",
+  bitwarden: "statusWarning",
+} satisfies Record<SavedLoginSource, NonNullable<BadgeProps["variant"]>>;
 
 function relativeAge(ms: number): string {
   if (!Number.isFinite(ms) || ms <= 0) return "—";
@@ -317,12 +320,13 @@ export function LoginsTab() {
       </div>
 
       {error && (
-        <div
+        <Alert
           aria-live="polite"
-          className="rounded-sm border border-danger/40 bg-danger/10 px-3 py-1.5 text-xs text-danger"
+          variant="destructive"
+          className="px-3 py-1.5 text-xs"
         >
           {error}
-        </div>
+        </Alert>
       )}
 
       {failures.length > 0 && (
@@ -332,114 +336,117 @@ export function LoginsTab() {
           className="space-y-1"
         >
           {failures.map((f) => (
-            <div
-              key={f.source}
-              className="rounded-sm border border-warn/40 bg-warn/10 px-3 py-1.5 text-2xs text-warn"
-            >
+            <Alert key={f.source} variant="warningCompact">
               {t("logins.sourceLoadFailed", {
                 source: sourceLabel(f.source),
                 message: f.message,
                 defaultValue: "{{source}} failed to load: {{message}}",
               })}
-            </div>
+            </Alert>
           ))}
         </div>
       )}
 
       {showAdd && (
-        <form
-          onSubmit={onAdd}
-          className="space-y-2 rounded-sm border border-border/50 bg-card/30 p-2"
+        <Card
+          asChild
+          variant="vaultForm"
+          stack="compact"
           data-testid="saved-logins-add-form"
         >
-          <p className="text-2xs text-muted">
-            {t("logins.addForm.help", {
-              defaultValue:
-                "Saved to local (encrypted) vault. To add to 1Password or Bitwarden, use that app directly.",
-            })}
-          </p>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <div>
-              <Label className="text-2xs text-muted">
-                {t("logins.addForm.domain", { defaultValue: "Domain" })}
-              </Label>
-              <Input
-                ref={addDomainRef}
-                {...addDomainAgentProps}
-                density="compact"
-                value={addDomain}
-                onChange={(e) => setAddDomain(e.target.value)}
-                placeholder="github.com"
-                autoComplete="off"
-                required
-              />
+          <form onSubmit={onAdd}>
+            <p className="text-2xs text-muted">
+              {t("logins.addForm.help", {
+                defaultValue:
+                  "Saved to local (encrypted) vault. To add to 1Password or Bitwarden, use that app directly.",
+              })}
+            </p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div>
+                <Label className="text-2xs text-muted">
+                  {t("logins.addForm.domain", { defaultValue: "Domain" })}
+                </Label>
+                <Input
+                  ref={addDomainRef}
+                  {...addDomainAgentProps}
+                  density="compact"
+                  value={addDomain}
+                  onChange={(e) => setAddDomain(e.target.value)}
+                  placeholder="github.com"
+                  autoComplete="off"
+                  required
+                />
+              </div>
+              <div>
+                <Label className="text-2xs text-muted">
+                  {t("logins.addForm.username", {
+                    defaultValue: "Username / email",
+                  })}
+                </Label>
+                <Input
+                  ref={addUsernameRef}
+                  {...addUsernameAgentProps}
+                  density="compact"
+                  value={addUsername}
+                  onChange={(e) => setAddUsername(e.target.value)}
+                  placeholder="alice@example.com"
+                  autoComplete="off"
+                  required
+                />
+              </div>
             </div>
             <div>
               <Label className="text-2xs text-muted">
-                {t("logins.addForm.username", {
-                  defaultValue: "Username / email",
-                })}
+                {t("logins.addForm.password", { defaultValue: "Password" })}
               </Label>
               <Input
-                ref={addUsernameRef}
-                {...addUsernameAgentProps}
+                ref={addPasswordRef}
+                {...addPasswordAgentProps}
+                type="password"
                 density="compact"
-                value={addUsername}
-                onChange={(e) => setAddUsername(e.target.value)}
-                placeholder="alice@example.com"
-                autoComplete="off"
+                value={addPassword}
+                onChange={(e) => setAddPassword(e.target.value)}
+                autoComplete="new-password"
                 required
               />
             </div>
-          </div>
-          <div>
-            <Label className="text-2xs text-muted">
-              {t("logins.addForm.password", { defaultValue: "Password" })}
-            </Label>
-            <Input
-              ref={addPasswordRef}
-              {...addPasswordAgentProps}
-              type="password"
-              density="compact"
-              value={addPassword}
-              onChange={(e) => setAddPassword(e.target.value)}
-              autoComplete="new-password"
-              required
-            />
-          </div>
-          <div className="flex justify-end gap-2 pt-1">
-            <Button
-              ref={addCancelRef}
-              {...addCancelAgentProps}
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowAdd(false)}
-              disabled={submitting}
-            >
-              {t("logins.cancel", { defaultValue: "Cancel" })}
-            </Button>
-            <Button
-              ref={addSaveRef}
-              {...addSaveAgentProps}
-              type="submit"
-              variant="default"
-              size="sm"
-              disabled={
-                submitting || !addDomain.trim() || !addUsername || !addPassword
-              }
-            >
-              {submitting ? (
-                <>
-                  <Loader2 className="size-3.5 animate-spin" aria-hidden />
-                  {t("logins.saving", { defaultValue: "Saving…" })}
-                </>
-              ) : (
-                t("logins.save", { defaultValue: "Save" })
-              )}
-            </Button>
-          </div>
-        </form>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button
+                ref={addCancelRef}
+                {...addCancelAgentProps}
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowAdd(false)}
+                disabled={submitting}
+              >
+                {t("logins.cancel", { defaultValue: "Cancel" })}
+              </Button>
+              <Button
+                ref={addSaveRef}
+                {...addSaveAgentProps}
+                type="submit"
+                variant="default"
+                size="sm"
+                disabled={
+                  submitting ||
+                  !addDomain.trim() ||
+                  !addUsername ||
+                  !addPassword
+                }
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                    {t("logins.saving", { defaultValue: "Saving…" })}
+                  </>
+                ) : (
+                  t("logins.save", { defaultValue: "Save" })
+                )}
+              </Button>
+            </div>
+          </form>
+        </Card>
       )}
 
       {logins !== null && logins.length > 0 && (
@@ -463,72 +470,82 @@ export function LoginsTab() {
           {t("logins.loading", { defaultValue: "Loading…" })}
         </div>
       ) : logins.length === 0 ? (
-        <div
-          data-testid="saved-logins-empty"
-          className="rounded-sm border border-dashed border-border/50 bg-card/20 p-3 text-center text-xs text-muted"
-        >
-          {t("logins.empty", {
-            defaultValue:
-              "No saved logins. Add one, or sign in to 1Password / Bitwarden on Overview.",
-          })}
-        </div>
+        <Card asChild variant="vaultEmpty" data-testid="saved-logins-empty">
+          <div>
+            {t("logins.empty", {
+              defaultValue:
+                "No saved logins. Add one, or sign in to 1Password / Bitwarden on Overview.",
+            })}
+          </div>
+        </Card>
       ) : filtered.length === 0 ? (
-        <div
-          data-testid="saved-logins-no-match"
-          className="rounded-sm border border-dashed border-border/50 bg-card/20 p-3 text-center text-xs text-muted"
-        >
-          {t("logins.noMatch", {
-            filter,
-            defaultValue: 'No logins match "{{filter}}".',
-          })}
-        </div>
+        <Card asChild variant="vaultEmpty" data-testid="saved-logins-no-match">
+          <div>
+            {t("logins.noMatch", {
+              filter,
+              defaultValue: 'No logins match "{{filter}}".',
+            })}
+          </div>
+        </Card>
       ) : (
-        <ul
-          data-testid="saved-logins-list"
-          className="space-y-1 rounded-sm border border-border/40 bg-card/30 p-1"
+        <Card
+          asChild
+          variant="transparent"
+          surface="card"
+          border="subtle"
+          className="space-y-1 p-1"
         >
-          {filtered.map((login) => (
-            <li
-              key={`${login.source}:${login.identifier}`}
-              className="flex items-center gap-2 rounded-sm px-2 py-1.5 hover:bg-bg-muted/30"
-            >
-              <span
-                className={`shrink-0 rounded-full border px-1.5 py-0.5 text-2xs font-medium ${SOURCE_PILL_CLASS[login.source]}`}
+          <ul data-testid="saved-logins-list">
+            {filtered.map((login) => (
+              <Card
+                asChild
+                key={`${login.source}:${login.identifier}`}
+                variant="vaultListRow"
               >
-                {sourceLabel(login.source)}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-medium text-txt">
-                  {login.title}
-                  {login.domain && login.domain !== login.title ? (
-                    <span className="ml-1.5 text-muted">({login.domain})</span>
+                <li className="flex items-center gap-2">
+                  <Badge
+                    variant={SOURCE_PILL_VARIANT[login.source]}
+                    size="micro"
+                    className="shrink-0"
+                  >
+                    {sourceLabel(login.source)}
+                  </Badge>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-medium text-txt">
+                      {login.title}
+                      {login.domain && login.domain !== login.title ? (
+                        <span className="ml-1.5 text-muted">
+                          ({login.domain})
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="truncate text-2xs text-muted">
+                      {login.username || "—"} · {relativeAge(login.updatedAt)}
+                    </p>
+                  </div>
+                  {login.domain ? (
+                    <AgentAutoallowToggle
+                      domain={login.domain}
+                      allowed={autoallowMap[login.domain] === true}
+                      onChange={(next) =>
+                        void onToggleAutoallow(login.domain ?? "", next)
+                      }
+                    />
                   ) : null}
-                </p>
-                <p className="truncate text-2xs text-muted">
-                  {login.username || "—"} · {relativeAge(login.updatedAt)}
-                </p>
-              </div>
-              {login.domain ? (
-                <AgentAutoallowToggle
-                  domain={login.domain}
-                  allowed={autoallowMap[login.domain] === true}
-                  onChange={(next) =>
-                    void onToggleAutoallow(login.domain ?? "", next)
-                  }
-                />
-              ) : null}
-              {login.source === "in-house" ? (
-                <DeleteLoginButton
-                  identifier={login.identifier}
-                  target={login.domain ?? login.username}
-                  onDelete={() => void onDelete(login)}
-                />
-              ) : (
-                <ExternalRowAction login={login} />
-              )}
-            </li>
-          ))}
-        </ul>
+                  {login.source === "in-house" ? (
+                    <DeleteLoginButton
+                      identifier={login.identifier}
+                      target={login.domain ?? login.username}
+                      onDelete={() => void onDelete(login)}
+                    />
+                  ) : (
+                    <ExternalRowAction login={login} />
+                  )}
+                </li>
+              </Card>
+            ))}
+          </ul>
+        </Card>
       )}
     </section>
   );
@@ -636,18 +653,19 @@ function ExternalRowAction({ login }: { login: SavedLogin }) {
     description: `Open this login in ${SOURCE_LABEL[login.source]}`,
   });
   return (
-    <a
-      ref={ref}
-      {...agentProps}
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="inline-flex h-7 shrink-0 items-center gap-1 rounded-sm border border-border/40 px-2 text-2xs text-muted hover:text-txt"
-      aria-label={viewLabel}
-      title={viewLabel}
-    >
-      <ExternalLink className="size-3" aria-hidden />
-      {t("logins.view", { defaultValue: "View" })}
-    </a>
+    <Button asChild variant="outlineMuted" size="sm" className="h-7 text-2xs">
+      <a
+        ref={ref}
+        {...agentProps}
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={viewLabel}
+        title={viewLabel}
+      >
+        <ExternalLink className="size-3" aria-hidden />
+        {t("logins.view", { defaultValue: "View" })}
+      </a>
+    </Button>
   );
 }

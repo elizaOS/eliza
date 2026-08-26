@@ -1246,6 +1246,70 @@ function hasPageScopedRoutingMetadata(message: Memory): boolean {
 }
 
 /**
+ * The first-party app attaches this renderer-owned metadata to chat and voice
+ * turns. It is a relevance signal, never an authority boundary: it can promote
+ * the focused action family, but it must not remove any otherwise authorized
+ * action from the model-facing catalog.
+ */
+function hasUiViewPlannerScope(message: Memory): boolean {
+	const metadataCandidates = [message.content?.metadata, message.metadata];
+	for (const rawMetadata of metadataCandidates) {
+		if (!rawMetadata || typeof rawMetadata !== "object") continue;
+		const metadata = rawMetadata as Record<string, unknown>;
+		if (
+			(typeof metadata.uiView === "string" && metadata.uiView.trim()) ||
+			(typeof metadata.uiViewPath === "string" && metadata.uiViewPath.trim()) ||
+			Array.isArray(metadata.uiViewCapabilities)
+		) {
+			return true;
+		}
+	}
+	return false;
+}
+
+function uiViewActionNames(message: Memory): Set<string> {
+	const actionNames = new Set<string>();
+	const metadataCandidates = [message.content?.metadata, message.metadata];
+	for (const rawMetadata of metadataCandidates) {
+		if (!rawMetadata || typeof rawMetadata !== "object") continue;
+		const rawNames = (rawMetadata as Record<string, unknown>).uiViewActionNames;
+		if (!Array.isArray(rawNames)) continue;
+		for (const rawName of rawNames) {
+			if (typeof rawName !== "string") continue;
+			const normalized = normalizeActionIdentifier(rawName);
+			if (normalized) actionNames.add(normalized);
+		}
+	}
+	return actionNames;
+}
+
+function uiViewActionPriority(
+	action: Action,
+	selectedContexts: readonly AgentContext[] | undefined,
+	viewActionNames: ReadonlySet<string>,
+): number {
+	const actionName = normalizeActionIdentifier(action.name);
+	if (viewActionNames.has(actionName)) return 0;
+
+	const focusedContexts = (selectedContexts ?? [])
+		.map((context) => String(context).trim().toLowerCase())
+		.filter(
+			(context) =>
+				context.length > 0 &&
+				context !== "general" &&
+				!isPageScopedRoutingContext(context),
+		);
+	if (focusedContexts.length === 0) return 2;
+
+	const focused = new Set(focusedContexts);
+	return (action.contexts ?? []).some((context) =>
+		focused.has(String(context).trim().toLowerCase()),
+	)
+		? 1
+		: 2;
+}
+
+/**
  * The provider include list for Stage-1 response-state composition: the core
  * response providers plus always-on plugin providers. Exported for tests.
  */
@@ -3380,8 +3444,32 @@ async function collectV5PlannerCandidateActions(args: {
 		}
 	};
 
-	for (const action of allRuntimeActions) {
-		await appendIfAllowed(action);
+	// View metadata changes ordering only. The complete runtime catalog still
+	// passes through the ordinary role/context/policy gates, so an ambiguous or
+	// cross-view request never loses an otherwise authorized action merely
+	// because Stage 1 did not guess its exact name.
+	const focusedViewActionNames = uiViewActionNames(args.message);
+	const baseRuntimeActions = hasUiViewPlannerScope(args.message)
+		? allRuntimeActions
+				.map((action, index) => ({ action, index }))
+				.sort((left, right) => {
+					const priorityDelta =
+						uiViewActionPriority(
+							left.action,
+							args.selectedContexts,
+							focusedViewActionNames,
+						) -
+						uiViewActionPriority(
+							right.action,
+							args.selectedContexts,
+							focusedViewActionNames,
+						);
+					return priorityDelta || left.index - right.index;
+				})
+				.map(({ action }) => action)
+		: allRuntimeActions;
+	for (const action of baseRuntimeActions) {
+		await appendIfAllowed(action, undefined, args.selectedContexts);
 	}
 
 	const explicitCandidateActions = Array.isArray(args.candidateActions)
@@ -4668,11 +4756,13 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					messageHandler.plan.requiresTool === true ||
 					nonSimpleContexts.length > 0
 				) {
-					return matchingRules.some((rule) =>
-						routeReplacesStage1Candidate(
-							rule,
-							messageHandler.plan.candidateActions,
-						),
+					return matchingRules.some(
+						(rule) =>
+							rule.unavailable !== undefined ||
+							routeReplacesStage1Candidate(
+								rule,
+								messageHandler.plan.candidateActions,
+							),
 					);
 				}
 				return true;
@@ -4685,23 +4775,49 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 				userRoles,
 			}) => {
 				const text = getActionInferenceMessageText(message);
+				const matchingRules = getDirectActionRoutingRules(runtime).filter(
+					(rule) => rule.matches(text),
+				);
 				const declaredReplacementRules = new Set(
-					getDirectActionRoutingRules(runtime).filter(
-						(rule) =>
-							rule.matches(text) &&
-							routeReplacesStage1Candidate(
-								rule,
-								messageHandler.plan.candidateActions,
-							),
+					matchingRules.filter((rule) =>
+						routeReplacesStage1Candidate(
+							rule,
+							messageHandler.plan.candidateActions,
+						),
 					),
 				);
+				const authoritativeRules = new Set(
+					matchingRules.filter((rule) => rule.unavailable !== undefined),
+				);
+				const unavailablePatch = (rule: DirectActionRoutingRule) => {
+					const unavailable = rule.unavailable;
+					if (!unavailable) return undefined;
+					return {
+						requiresTool: false,
+						setContexts: [SIMPLE_CONTEXT_ID],
+						clearCandidateActions: true,
+						clearReply: true,
+						reply: unavailable.reply,
+						debug: [
+							`direct route unavailable: ${rule.id} (${unavailable.code})`,
+						],
+					};
+				};
 				const routes = await resolveEligibleDirectActionRoutes({
 					runtime,
 					message,
 					state,
 					userRoles,
 				});
-				if (routes.length === 0) return undefined;
+				if (routes.length === 0) {
+					const unavailableRule =
+						[...authoritativeRules].find((rule) => rule.unavailable) ??
+						[...declaredReplacementRules].find((rule) => rule.unavailable) ??
+						matchingRules.find((rule) => rule.unavailable);
+					return unavailableRule
+						? unavailablePatch(unavailableRule)
+						: undefined;
+				}
 				// A declared owner keeps exclusive reconciliation authority even when
 				// its action is unavailable. Falling through to a second text-matching
 				// direct route could execute adjacent work now instead of preserving the
@@ -4710,22 +4826,46 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					declaredReplacementRules.size > 0
 						? routes.filter(({ rule }) => declaredReplacementRules.has(rule))
 						: [];
+				const authoritativeRoutes =
+					authoritativeRules.size > 0
+						? routes.filter(({ rule }) => authoritativeRules.has(rule))
+						: [];
+				if (authoritativeRules.size > 0 && authoritativeRoutes.length === 0) {
+					const unavailableRule = [...authoritativeRules].find(
+						(rule) => rule.unavailable,
+					);
+					return unavailableRule
+						? unavailablePatch(unavailableRule)
+						: undefined;
+				}
 				if (declaredReplacementRules.size > 0 && replacingRoutes.length === 0) {
-					return undefined;
+					const unavailableRule = [...declaredReplacementRules].find(
+						(rule) => rule.unavailable,
+					);
+					return unavailableRule
+						? unavailablePatch(unavailableRule)
+						: undefined;
 				}
 				const selectedRoutes =
-					replacingRoutes.length > 0 ? replacingRoutes : routes;
+					authoritativeRoutes.length > 0
+						? authoritativeRoutes
+						: replacingRoutes.length > 0
+							? replacingRoutes
+							: routes;
 				const replacedActionNames = new Set(
 					replacingRoutes.flatMap(({ rule }) =>
 						(rule.replacesActionNames ?? []).map(normalizeActionIdentifier),
 					),
 				);
-				const retainedStage1Candidates = (
-					messageHandler.plan.candidateActions ?? []
-				).filter(
-					(candidate) =>
-						!replacedActionNames.has(normalizeActionIdentifier(candidate)),
-				);
+				const retainedStage1Candidates =
+					authoritativeRoutes.length > 0
+						? []
+						: (messageHandler.plan.candidateActions ?? []).filter(
+								(candidate) =>
+									!replacedActionNames.has(
+										normalizeActionIdentifier(candidate),
+									),
+							);
 				const candidateActions = uniqueActionNames([
 					...retainedStage1Candidates,
 					...selectedRoutes.map(({ action }) => action.name),
@@ -4737,7 +4877,7 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					requiresTool: true,
 					addContexts: contexts,
 					addCandidateActions: candidateActions,
-					...(replacingRoutes.length > 0
+					...(replacingRoutes.length > 0 || authoritativeRoutes.length > 0
 						? { clearCandidateActions: true }
 						: {}),
 					// A deterministic read route must not emit Stage-1's speculative

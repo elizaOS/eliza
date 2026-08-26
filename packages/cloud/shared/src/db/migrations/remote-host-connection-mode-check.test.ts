@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 
 const migration = await readFile(
-  new URL("./0324_remote_host_connection_mode_check.sql", import.meta.url),
+  new URL("./0333_remote_host_connection_mode_check.sql", import.meta.url),
   "utf8",
 );
 const databases: PGlite[] = [];

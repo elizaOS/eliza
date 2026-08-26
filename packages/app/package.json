@@ -130,6 +130,7 @@
     "build:android:cloud:debug": "node ../../packages/app-core/scripts/run-mobile-build.mjs android-cloud-debug",
     "build:android:launcher": "node ../../packages/app-core/scripts/run-mobile-build.mjs android-launcher",
     "build:android:lp3-cloud:debug": "ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED=1 node ../../packages/app-core/scripts/run-mobile-build.mjs android-cloud-debug",
+    "build:android:lp3-vps:debug": "ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED=1 ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED=1 node ../../packages/app-core/scripts/run-mobile-build.mjs android-cloud-debug",
     "build:android:system": "node ../../packages/app-core/scripts/run-mobile-build.mjs android-system",
     "preflight:android:sideload": "node scripts/mobile-release-preflight.mjs --platform=android --sideload",
     "preflight:android:store": "node scripts/mobile-release-preflight.mjs --platform=android --store",
@@ -208,6 +209,7 @@
     "@elizaos/plugin-calendar": "workspace:*",
     "@elizaos/plugin-computeruse": "workspace:*",
     "@elizaos/plugin-contacts": "workspace:*",
+    "@elizaos/plugin-documents": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-maps": "workspace:*",
     "@elizaos/plugin-messages": "workspace:*",
@@ -215,6 +217,7 @@
     "@elizaos/plugin-personal-assistant": "workspace:*",
     "@elizaos/plugin-phone": "workspace:*",
     "@elizaos/plugin-notes": "workspace:*",
+    "@elizaos/plugin-relationships": "workspace:*",
     "@elizaos/plugin-task-coordinator": "workspace:*",
     "@elizaos/plugin-trajectory-logger": "workspace:*",
     "@elizaos/plugin-wallet": "workspace:*",
@@ -270,6 +273,11 @@
   "elizaos": {
     "app": {
       "defaults": {
+        "computeruse": {
+          "enabled": false,
+          "requiredForReady": true,
+          "routingOnlyWhenDisabled": true
+        },
         "personal-assistant": {
           "enabled": true,
           "requiredForReady": true

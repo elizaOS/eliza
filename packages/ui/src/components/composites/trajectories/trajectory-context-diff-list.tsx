@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import type * as React from "react";
 
+import { Card } from "../../ui/card";
 import { PagePanel } from "../page-panel";
 
 export interface TrajectoryContextDiffSummary {
@@ -42,9 +43,7 @@ export function TrajectoryContextDiffList({
         {heading}
       </div>
       {diffs.length === 0 ? (
-        <div className="rounded-sm border border-dashed border-border/50 px-4 py-6 text-sm text-muted">
-          {emptyLabel}
-        </div>
+        <Card variant="dashedEmpty">{emptyLabel}</Card>
       ) : (
         <div className="space-y-3">
           {diffs.map((diff) => (
@@ -102,12 +101,12 @@ function DiffMetric({
   value: React.ReactNode;
 }) {
   return (
-    <div className="rounded-sm border border-border/40 bg-bg/40 px-3 py-2">
+    <Card variant="insetCompact">
       <div className="flex items-center gap-1.5 text-xs-tight uppercase tracking-[0.12em] text-muted">
         <Icon className="size-3" />
         {label}
       </div>
       <div className="mt-1 text-sm font-semibold text-txt">{value ?? "—"}</div>
-    </div>
+    </Card>
   );
 }

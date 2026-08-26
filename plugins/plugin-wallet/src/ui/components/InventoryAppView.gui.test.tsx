@@ -72,6 +72,22 @@ vi.mock("@elizaos/ui", () => ({
     typeof (value as { status?: unknown }).status === "number",
   Button: (props: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
     React.createElement("button", { type: "button", ...props }),
+  Avatar: (props: React.HTMLAttributes<HTMLSpanElement>) =>
+    React.createElement("span", props),
+  AvatarImage: (props: React.ImgHTMLAttributes<HTMLImageElement>) =>
+    React.createElement("img", props),
+  AvatarFallback: (props: React.HTMLAttributes<HTMLSpanElement>) =>
+    React.createElement("span", props),
+  Badge: ({
+    asChild: _asChild,
+    variant: _variant,
+    tone: _tone,
+    ...props
+  }: React.HTMLAttributes<HTMLDivElement> & {
+    asChild?: boolean;
+    variant?: string;
+    tone?: string;
+  }) => React.createElement("div", props),
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
   // Pass through to navigator.clipboard so the copy-button tests keep
   // asserting the address that reaches the platform clipboard boundary.

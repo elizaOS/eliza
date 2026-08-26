@@ -9,6 +9,7 @@
 import type * as React from "react";
 import { cn } from "../../../lib/utils";
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 import type { ChatVariant } from "./chat-types";
 
 export interface ChatEmptyStateProps {
@@ -48,7 +49,7 @@ export function ChatEmptyState({
     >
       {variant === "default" ? (
         <>
-          <div className="mb-4 flex size-16 items-center justify-center rounded-sm bg-accent-subtle">
+          <Card variant="accentTile" className="mb-4 size-16">
             <svg
               width="32"
               height="32"
@@ -64,7 +65,7 @@ export function ChatEmptyState({
               <title>{labels.chatIconLabel ?? "Chat"}</title>
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
-          </div>
+          </Card>
           <h3 className="mb-2 text-lg font-semibold text-txt-strong">
             {labels.startConversation ?? "Start a Conversation"}
           </h3>

@@ -49,10 +49,9 @@ function resolveTileImageUrl(url: string | undefined): string | undefined {
 /**
  * The shared visual core for view launch surfaces.
  *
- * Launcher tiles are app icons: paint the deterministic glyph tile
- * underneath the concrete hero or generated branded fallback so icons never
- * appear blank while image decoding catches up after a swipe. Catalog cards are
- * previews and use the same image/fallback order at their larger size.
+ * Launcher tiles are app icons and paint the deterministic shared glyph only.
+ * Catalog cards are previews and retain the concrete hero/generated fallback
+ * order at their larger size.
  *
  * A load failure emits a `hero-image-error` interaction event (best-effort,
  * client-only) from preview surfaces so broken hero endpoints are observable

@@ -59,15 +59,6 @@ export const VIEW_OCR_POLICIES = {
       "Submit the quarterly report",
     ],
   }),
-  "builtin-phone": expected({
-    requireAny: ["call-blocked", "dialer", "recent"],
-  }),
-  "builtin-messages": expected({
-    requireAny: ["Set default SMS", "bridge-only", "compose"],
-  }),
-  "builtin-contacts": expected({
-    requireAny: ["address book", "phone, or email", "search"],
-  }),
   "builtin-camera": exempt(
     "native-platform-gated",
     "The camera is an AOSP-native surface, so the browser audit intentionally renders the launcher fallback.",
@@ -182,17 +173,6 @@ export const VIEW_OCR_POLICIES = {
       "recordings",
     ],
   }),
-  "builtin-relationships": expected({
-    requireAny: [
-      "Relationships",
-      "Personality",
-      "Skills",
-      "Experience",
-      "No relationships yet",
-      "Search people",
-      "Connect your platforms",
-    ],
-  }),
   "builtin-memories": expected({
     requireAny: [
       "No memories yet",
@@ -240,11 +220,14 @@ export const VIEW_OCR_POLICIES = {
     requireAll: ["Misty Forest", "Desert Dusk"],
     requireAny: ["Ocean Deep", "Alpine Dawn", "Ember Night"],
   }),
-  // The hermetic audit serves the production plugin bundle with a disconnected
-  // Cloud status, so the designed signed-out state is the stable semantic
-  // contract. The real /cloud management route is intentionally bypassed.
   "plugin-cloud-gui": expected({
     requireAll: ["Eliza Cloud"],
+    requireAny: ["Credits", "Hosted agents", "API keys", "Connected"],
+  }),
+  // Preserve the disconnected state as a separate production-bundle capture;
+  // connected account fixtures must not erase sign-in recovery coverage.
+  "plugin-cloud-signed-out-gui": expected({
+    requireAll: ["Eliza Cloud", "Connect in Settings"],
     requireAny: [
       "credits",
       "hosted agents",

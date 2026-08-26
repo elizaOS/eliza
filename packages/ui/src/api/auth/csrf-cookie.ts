@@ -1,5 +1,6 @@
 /** Reads the browser session's readable CSRF companion cookie. */
 
+import { shellLocalStorage } from "../../surface-realm-channel";
 import { CSRF_COOKIE_NAME } from "./sessions";
 
 const CSRF_TOKEN_BY_ORIGIN_STORAGE_KEY = "eliza_csrf_token_by_origin_v1";
@@ -50,7 +51,7 @@ export function rememberCsrfTokenForUrl(url: string, token: string): void {
   if (!origin || !normalizedToken || normalizedToken.length > 512) return;
   if (typeof localStorage === "undefined") return;
   try {
-    localStorage.setItem(
+    shellLocalStorage.setItem(
       CSRF_TOKEN_BY_ORIGIN_STORAGE_KEY,
       JSON.stringify({ ...readStoredCsrfTokens(), [origin]: normalizedToken }),
     );

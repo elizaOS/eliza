@@ -6,6 +6,8 @@
 import { CheckCircle, Circle, Clock3, XCircle } from "lucide-react";
 import type * as React from "react";
 
+import { Badge } from "../../ui/badge";
+import { Card } from "../../ui/card";
 import { PagePanel } from "../page-panel";
 
 export type TrajectoryTimelineStatus =
@@ -60,47 +62,49 @@ export function TrajectoryEventTimeline({
         {heading}
       </div>
       {events.length === 0 ? (
-        <div className="rounded-sm border border-dashed border-border/50 px-4 py-6 text-sm text-muted">
-          {emptyLabel}
-        </div>
+        <Card variant="dashedEmpty">{emptyLabel}</Card>
       ) : (
         <ol className="space-y-2">
           {events.map((event) => (
-            <li
+            <Card
+              asChild
               key={event.id}
-              className="grid grid-cols-[1.5rem_1fr] gap-3 rounded-sm border border-border/40 bg-bg/40 p-3"
+              variant="insetPadded"
+              className="grid grid-cols-[1.5rem_1fr] gap-3"
             >
-              <div className="mt-0.5 flex justify-center">
-                {statusIcon(event.status)}
-              </div>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <span className="truncate text-sm font-semibold text-txt">
-                    {event.label}
-                  </span>
-                  {event.stage ? (
-                    <span className="rounded-sm border border-border/50 px-1.5 py-0.5 text-xs-tight uppercase tracking-[0.12em] text-muted">
-                      {event.stage}
+              <li>
+                <div className="mt-0.5 flex justify-center">
+                  {statusIcon(event.status)}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="truncate text-sm font-semibold text-txt">
+                      {event.label}
                     </span>
+                    {event.stage ? (
+                      <Badge asChild variant="trajectoryStage" size="compact">
+                        <span>{event.stage}</span>
+                      </Badge>
+                    ) : null}
+                    {event.timestampLabel ? (
+                      <span className="text-xs-tight text-muted">
+                        {event.timestampLabel}
+                      </span>
+                    ) : null}
+                  </div>
+                  {event.description ? (
+                    <div className="mt-1 line-clamp-2 text-xs-tight text-muted">
+                      {event.description}
+                    </div>
                   ) : null}
-                  {event.timestampLabel ? (
-                    <span className="text-xs-tight text-muted">
-                      {event.timestampLabel}
-                    </span>
+                  {event.meta ? (
+                    <div className="mt-2 text-xs-tight text-muted">
+                      {event.meta}
+                    </div>
                   ) : null}
                 </div>
-                {event.description ? (
-                  <div className="mt-1 line-clamp-2 text-xs-tight text-muted">
-                    {event.description}
-                  </div>
-                ) : null}
-                {event.meta ? (
-                  <div className="mt-2 text-xs-tight text-muted">
-                    {event.meta}
-                  </div>
-                ) : null}
-              </div>
-            </li>
+              </li>
+            </Card>
           ))}
         </ol>
       )}

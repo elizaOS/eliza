@@ -47,19 +47,14 @@ import {
   LazyCharacterEditor,
   LazyCharacterExperienceView,
   LazyCharacterSkillsView,
-  LazyContactsPageView,
   LazyDatabasePageView,
   LazyDesktopWorkspaceSection,
   LazyFilesView,
-  LazyKnowledgeView,
   LazyLiveMeetingPageView,
   LazyLogsView,
   LazyMemoryViewerView,
-  LazyMessagesPageView,
   LazyPendantTranscriptView,
-  LazyPhonePageView,
   LazyPluginsPageView,
-  LazyRelationshipsView,
   LazyRuntimeView,
   LazySettingsView,
   LazySkillsView,
@@ -82,9 +77,13 @@ import { isElectrobunRuntime } from "./bridge/electrobun-runtime";
 import {
   NAVIGATE_SETTINGS_EVENT,
   type NavigateSettingsDetail,
-  reportUserViewSwitch,
   useSlashCommandController,
 } from "./chat/useSlashCommandController";
+import {
+  reportUserViewClosed,
+  reportUserViewSwitch,
+  shouldClearReportedView,
+} from "./chat/view-navigation-report";
 import { markCompletedActionNavigationHandled } from "./completed-action-navigation";
 import { OverlayAppSurface } from "./components/apps/AppWindowRenderer";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
@@ -825,7 +824,7 @@ function resolveActiveScreenBackgroundPolicy({
   if (remoteView) return viewRegistrationBackgroundPolicy(remoteView);
 
   const appShellPageForTab = listAppShellPages().find(
-    (entry) => entry.id === tab,
+    (entry) => entry.id === tab || entry.tabAffinity === tab,
   );
   if (appShellPageForTab) {
     return viewRegistrationBackgroundPolicy(appShellPageForTab);
@@ -953,7 +952,7 @@ function resolveActiveViewSurface({
 
   const appShellPageForTab = listAppShellPages().find(
     (entry) =>
-      entry.id === tab &&
+      (entry.id === tab || entry.tabAffinity === tab) &&
       appShellPageIsAvailable(entry, {
         managedCloud: managedCloudRuntime,
       }) &&
@@ -1357,15 +1356,13 @@ function buildStaticTabRenderers(): Record<
     skills: withHeader("skills", <LazySkillsView />),
     trajectories: withHeader("trajectories", <LazyTrajectoriesView />),
     transcripts: wrap(<LazyLiveMeetingPageView />),
-    // Relationships is a Character-family section: the shared CharacterSectionNav
-    // (passed as `nav`) owns the "Character" header + strip, so the view renders
-    // headerless.
-    relationships: ({ characterNav }) => (
-      <TabContentView nav={characterNav}>
-        <LazyRelationshipsView hideHeader={Boolean(characterNav)} />
-      </TabContentView>
-    ),
-    documents: wrap(<LazyKnowledgeView />),
+    // Relationships is plugin-owned. Its app-shell registration claims the
+    // route and supplies the page chrome; an absent plugin is an unavailable
+    // feature rather than a host-side duplicate implementation.
+    relationships: () => <ViewUnavailableFallback />,
+    // Knowledge is plugin-owned. If the document plugin is unavailable, the
+    // registered-page resolver renders its explicit unavailable state.
+    documents: () => <ViewUnavailableFallback />,
     experience: ({ characterNav }) => (
       <TabContentView nav={characterNav}>
         <LazyCharacterExperienceView />
@@ -1410,12 +1407,9 @@ function buildStaticTabRenderers(): Record<
     // marker as the home tile, so a deep-link off the fork falls back to
     // "unavailable" instead of rendering on web/desktop/iOS/Play-Store Android.
     camera: () => renderPhoneSurface(isAospShellEnabled(), LazyCameraPageView),
-    phone: ({ nativeOsSurfaceEnabled }) =>
-      renderPhoneSurface(nativeOsSurfaceEnabled, LazyPhonePageView),
-    messages: ({ nativeOsSurfaceEnabled }) =>
-      renderPhoneSurface(nativeOsSurfaceEnabled, LazyMessagesPageView),
-    contacts: ({ nativeOsSurfaceEnabled }) =>
-      renderPhoneSurface(nativeOsSurfaceEnabled, LazyContactsPageView),
+    phone: () => <ViewUnavailableFallback />,
+    messages: () => <ViewUnavailableFallback />,
+    contacts: () => <ViewUnavailableFallback />,
     views: ({ navigationPath }) => renderAppsSurface(navigationPath),
     apps: ({ navigationPath }) => renderAppsSurface(navigationPath),
     // Rendered directly (no opaque TabContentView chrome) so the live app
@@ -1510,13 +1504,27 @@ function renderViewRouterContent({
   const walletNav = isWalletSectionPath(navigationPath) ? (
     <WalletSectionNav activePath={navigationPath} />
   ) : undefined;
-  // The AOSP system surfaces are host-owned because they coordinate privileged
-  // device APIs beyond the narrower plugin views. Keep them stable when remote
-  // metadata or a late in-process registration for the same path arrives.
+  // Native-OS feature surfaces are plugin-owned. Prefer the plugin's bundled
+  // registration when it is present; retain the legacy renderer only as a
+  // compatibility fallback while older builds finish migrating their plugin.
   if (
     nativeOsSurfaceEnabled &&
     (NATIVE_OS_VIEW_IDS as readonly string[]).includes(resolveBuiltinTabId(tab))
   ) {
+    const nativeRegistration = listAppShellPages().find(
+      (entry) =>
+        entry.tabAffinity === resolveBuiltinTabId(tab) &&
+        appShellPageMatchesPath(entry, navigationPath),
+    );
+    if (nativeRegistration) {
+      return (
+        <TabContentView
+          reserveChatClearance={!surfaceOwnsViewport(nativeRegistration)}
+        >
+          <RegisteredAppShellPage registration={nativeRegistration} />
+        </TabContentView>
+      );
+    }
     return renderStaticViewRouterTab({
       tab,
       nativeOsSurfaceEnabled,
@@ -2302,7 +2310,6 @@ function HomeScreenMount({
     firstRunComplete,
     startupPhase,
   );
-  const { views } = useAvailableViews();
   // Host apps can override the home screen via the `homeScreen` boot-config slot
   // (whitelabel seam); fall back to the built-in HomeScreen.
   const { homeScreen: HomeScreenOverride } = useBootConfig();
@@ -2310,19 +2317,11 @@ function HomeScreenMount({
     (target: HomeTileTarget) => {
       if (target.kind === "tab") {
         setTab(target.tab);
-        // Report the tab id as a surface so the proactive decider reacts to
-        // user-initiated tile navigation (#8792). Fire-and-forget.
-        reportUserViewSwitch(target.tab);
       } else {
         dispatchNavigateViewEvent({ viewPath: target.path });
-        // The tile only carries a path; resolve the registered view id so the
-        // decider keys off the same id the rest of the navigation bus uses
-        // (#8792). Skip the report when no view is registered at that path.
-        const viewId = views.find((v) => v.path === target.path)?.id;
-        if (viewId) reportUserViewSwitch(viewId, target.path);
       }
     },
-    [setTab, views],
+    [setTab],
   );
   const Home = HomeScreenOverride ?? HomeScreen;
   const home = useMemo(
@@ -2807,6 +2806,30 @@ function AppContent() {
     enabledKinds,
     managedCloudRuntime,
   });
+  // Browser history is the authoritative active-view lifecycle. Synchronizing
+  // here covers every route producer uniformly: launcher tiles, chat/voice
+  // navigation, command palette, deep links, Back/Forward, reload, and desktop
+  // tabs. Controls only navigate; the shell reports the surface that actually
+  // rendered, and Home/launcher routes clear all scoped tools.
+  useEffect(() => {
+    if (startupCoordinator.phase !== "ready") return;
+    if (backendConnection?.state !== "connected") return;
+    if (overlayAppSurfaceActive) return;
+    if (shouldClearReportedView(navigationPath)) {
+      reportUserViewClosed();
+      return;
+    }
+    reportUserViewSwitch(
+      resolveBuiltinTabId(activeViewSurface.viewId),
+      navigationPath,
+    );
+  }, [
+    activeViewSurface.viewId,
+    backendConnection?.state,
+    navigationPath,
+    overlayAppSurfaceActive,
+    startupCoordinator.phase,
+  ]);
   useEffect(() => {
     if (typeof window === "undefined") return;
     const scope = new SurfaceRealmScope(
@@ -3007,7 +3030,6 @@ function AppContent() {
       } catch {
         // sandboxed — ignore
       }
-      reportUserViewSwitch(viewId, dtab.path);
     },
     [desktopTabs],
   );

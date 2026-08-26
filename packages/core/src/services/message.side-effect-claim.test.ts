@@ -785,6 +785,70 @@ describe(DIRECT_ROUTE_EVALUATOR_NAME, () => {
 		expect(await evaluator.evaluate(context)).toBeUndefined();
 	});
 
+	it.each(["missing action", "validate denied", "validate throws"])(
+		"fails closed with a stable unavailable reply when an authoritative route is %s",
+		async (failure) => {
+			const runtime = testRuntime.runtime;
+			__resetDirectActionRoutingRulesForTests(runtime);
+			runtime.actions =
+				failure === "missing action"
+					? []
+					: [
+							ownerReminderAction({
+								validate:
+									failure === "validate throws"
+										? async () => {
+												throw new Error("availability probe failed");
+											}
+										: async () => false,
+							}),
+						];
+			registerDirectActionRoutingRule(runtime, {
+				id: "test.owner-reminder-authoritative",
+				actionNames: ["OWNER_REMINDERS"],
+				replacesActionNames: ["TRIGGER_CREATE"],
+				requiredActionTags: [
+					"domain:reminders",
+					"capability:write",
+					"capability:schedule",
+					"effect:receipt-required",
+				],
+				contexts: ["tasks"],
+				unavailable: {
+					code: "OWNER_REMINDERS_UNAVAILABLE",
+					reply:
+						"Owner reminders are unavailable. (OWNER_REMINDERS_UNAVAILABLE)",
+				},
+				matches: (text) => /\bremind\s+me\b/iu.test(text),
+			});
+			const context = makeContext(
+				{
+					processMessage: "RESPOND",
+					thought: "",
+					plan: {
+						contexts: ["tasks"],
+						requiresTool: true,
+						candidateActions: ["TRIGGER_CREATE"],
+						reply: "On it.",
+					},
+				},
+				{ userText: "Remind me to call Pat tomorrow." },
+			);
+			const evaluator = getEvaluator();
+			const patch = (await evaluator.evaluate(context)) as ResponseHandlerPatch;
+			expect(patch).toMatchObject({
+				requiresTool: false,
+				setContexts: ["simple"],
+				clearCandidateActions: true,
+				clearReply: true,
+				reply: "Owner reminders are unavailable. (OWNER_REMINDERS_UNAVAILABLE)",
+			});
+			expect(patch.debug).toEqual([
+				"direct route unavailable: test.owner-reminder-authoritative (OWNER_REMINDERS_UNAVAILABLE)",
+			]);
+		},
+	);
+
 	it.each([
 		"missing action",
 		"missing required tag",

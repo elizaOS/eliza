@@ -10,6 +10,7 @@ import { isTerminalIosNativeAgentBootErrorMessage } from "../api/ios-local-agent
 import { getShaderPreset } from "../backgrounds/shader-presets";
 import { normalizeUniforms } from "../backgrounds/shader-schema";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
+import { removeStorageValue } from "../bridge/storage-bridge";
 import { MAX_BACKGROUND_HISTORY } from "./background-history";
 
 // Re-exported so existing `import { MAX_BACKGROUND_HISTORY } from "./persistence"`
@@ -1431,6 +1432,11 @@ export function clearPersistedActiveServer(): void {
   tryLocalStorage(() => {
     shellLocalStorage.removeItem(ACTIVE_SERVER_STORAGE_KEY);
   }, undefined);
+}
+
+/** Delete the active runtime target from browser and protected native storage. */
+export async function clearPersistedActiveServerDurably(): Promise<void> {
+  await removeStorageValue(ACTIVE_SERVER_STORAGE_KEY);
 }
 
 /**

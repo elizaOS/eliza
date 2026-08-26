@@ -1,4 +1,34 @@
 {
+  "packages/homepage/src/components/landing-demo-attachment.tsx:LandingDemoAttachment": {
+    "disposition": "molecular",
+    "canonicalOwner": null,
+    "note": "Typed dispatcher for homepage demo artifacts, not an Attachment primitive."
+  },
+  "packages/homepage/src/components/landing-handoff-attachment.tsx:LandingHandoffAttachment": {
+    "disposition": "intentional-specialization",
+    "canonicalOwner": null,
+    "note": "Homepage calendar illustration with domain-specific event geometry, not a file Attachment control."
+  },
+  "packages/homepage/src/components/landing-itinerary-attachment.tsx:LandingItineraryAttachment": {
+    "disposition": "intentional-specialization",
+    "canonicalOwner": null,
+    "note": "Homepage itinerary illustration with ordered travel stops, not a file Attachment control."
+  },
+  "packages/homepage/src/components/landing-place-attachment.tsx:LandingPlaceAttachment": {
+    "disposition": "intentional-specialization",
+    "canonicalOwner": null,
+    "note": "Homepage map illustration with place metadata, not a file Attachment control."
+  },
+  "packages/homepage/src/components/landing-task-list-attachment.tsx:LandingTaskListAttachment": {
+    "disposition": "intentional-specialization",
+    "canonicalOwner": null,
+    "note": "Homepage task-list illustration with completion state, not a file Attachment control."
+  },
+  "packages/ui/src/components/settings/VoiceTierBanner.tsx:VoiceTierBanner": {
+    "disposition": "molecular",
+    "canonicalOwner": null,
+    "note": "Device capability summary with tier-specific content and iconography, not a notification Banner primitive."
+  },
   "packages/ui/src/cloud-ui/components/analytics/cost-alerts.tsx:CostAlerts": {
     "disposition": "molecular",
     "canonicalOwner": null,

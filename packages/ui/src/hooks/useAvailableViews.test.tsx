@@ -12,6 +12,7 @@ import { emitViewEvent } from "../views/view-event-bus";
 import { VIEW_EVENTS } from "../views/view-event-types";
 import { __resetResourceCache } from "./resource-cache";
 import {
+  mergeViewRegistryEntries,
   useAvailableViews,
   useRoutableViews,
   type ViewRegistryEntry,
@@ -252,6 +253,38 @@ describe("useAvailableViews", () => {
         id: "calendar",
         bundleUrl: "/api/views/calendar/bundle.js",
         pluginName: "test-plugin",
+      }),
+    );
+  });
+
+  it("promotes an executable signed page over unavailable runtime metadata", () => {
+    const merged = mergeViewRegistryEntries(
+      [
+        view("calendar", {
+          available: false,
+          path: "/calendar",
+          bundleUrl: "/api/views/calendar/bundle.js",
+          description: "Runtime-owned calendar metadata",
+        }),
+      ],
+      [
+        [
+          view("calendar", {
+            available: true,
+            path: "/calendar",
+            pluginName: "@elizaos/plugin-calendar",
+          }),
+        ],
+      ],
+    );
+
+    expect(merged).toContainEqual(
+      expect.objectContaining({
+        id: "calendar",
+        available: true,
+        description: "Runtime-owned calendar metadata",
+        pluginName: "test-plugin",
+        bundleUrl: undefined,
       }),
     );
   });

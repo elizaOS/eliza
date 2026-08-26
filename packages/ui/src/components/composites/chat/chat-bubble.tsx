@@ -11,14 +11,9 @@
 import type * as React from "react";
 
 import { cn } from "../../../lib/utils";
-import {
-  WALLPAPER_FLOAT_SHADOW,
-  WALLPAPER_GLASS,
-} from "../../shell/wallpaper-idiom";
-import {
-  getChatSourceMeta,
-  normalizeChatSourceKey,
-} from "./chat-source.helpers";
+import { WALLPAPER_FLOAT_SHADOW } from "../../shell/wallpaper-idiom";
+import { Card } from "../../ui/card";
+import { normalizeChatSourceKey } from "./chat-source.helpers";
 
 /** @deprecated Use WALLPAPER_FLOAT_SHADOW from shell/wallpaper-idiom instead. */
 export const GLASS_FLOAT_SHADOW = WALLPAPER_FLOAT_SHADOW;
@@ -28,8 +23,16 @@ export const GLASS_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
 export type ChatBubbleTone = "assistant" | "user";
 export type ChatBubbleVariant = "panel" | "glass";
+export type ChatBubbleAppearance =
+  | "default"
+  | "firstRun"
+  | "game"
+  | "gameTyping"
+  | "suggestion";
 
 export interface ChatBubbleProps extends React.HTMLAttributes<HTMLDivElement> {
+  /** Canonical product treatment for specialized chat contexts. */
+  appearance?: ChatBubbleAppearance;
   tone?: ChatBubbleTone;
   /** Chrome: theme-token `panel` (default) or the overlay's floating `glass`. */
   variant?: ChatBubbleVariant;
@@ -50,6 +53,7 @@ export interface ChatBubbleProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 export function ChatBubble({
+  appearance = "default",
   tone = "assistant",
   variant = "panel",
   source,
@@ -61,25 +65,32 @@ export function ChatBubble({
 
   if (variant === "glass") {
     return (
-      <div
+      <Card
+        variant={
+          appearance === "firstRun"
+            ? "panel"
+            : appearance === "suggestion"
+              ? "dashed"
+              : undefined
+        }
+        surface={
+          appearance === "firstRun" || appearance === "suggestion"
+            ? undefined
+            : "transparent"
+        }
+        padding={
+          appearance === "default" && !bare && tone === "user"
+            ? "compact"
+            : undefined
+        }
+        wallpaperText
         className={cn(
           // whitespace-pre-wrap keeps newlines; overflow-wrap breaks long URLs /
           // hashes / paths so they can't blow out the bubble width on a phone.
           "relative w-fit max-w-full whitespace-pre-wrap text-chat-body [overflow-wrap:anywhere]",
+          appearance === "default" && !bare && tone === "assistant" && "py-1",
           // Message text must remain selectable for normal highlight/copy.
           "select-text [-webkit-touch-callout:default]",
-          bare
-            ? // Chromeless wallpaper text keeps the shared float shadow but no
-              // box edge or padding.
-              "text-white"
-            : tone === "user"
-              ? cn(
-                  // Keep authored turns visually scannable while assistant
-                  // replies remain shadcn-style plain text on the wallpaper.
-                  "rounded-2xl rounded-br-md border border-white/15 px-3.5 py-2",
-                  WALLPAPER_GLASS.messageBubble,
-                )
-              : cn("py-1", WALLPAPER_GLASS.messageBubble),
           WALLPAPER_FLOAT_SHADOW,
           className,
         )}
@@ -90,22 +101,24 @@ export function ChatBubble({
   }
 
   return (
-    <div
+    <Card
+      variant={
+        appearance === "suggestion"
+          ? "dashed"
+          : appearance === "game" || appearance === "gameTyping"
+            ? tone === "user"
+              ? "insetCompact"
+              : "panel"
+            : tone === "user" || normalizedSource
+              ? "insetCompact"
+              : "transparent"
+      }
+      tone={tone === "user" ? "strong" : "text"}
       className={cn(
         "relative inline-block max-w-full whitespace-pre-wrap break-words",
         // Chat-native: assistant turns are plain text on the page — no card
         // fill, no box (#13560 de-slop). The user turn keeps its subtle accent
         // tint so the reader can scan who said what at a glance.
-        tone === "user"
-          ? "rounded-sm bg-[color:color-mix(in_srgb,var(--accent-subtle)_70%,var(--bg)_30%)] px-3 py-2 text-txt-strong"
-          : "text-txt",
-        // Cross-channel messages keep their connector-colored outline — the
-        // border exists only when it carries information.
-        normalizedSource &&
-          cn(
-            "rounded-sm border px-3 py-2",
-            getChatSourceMeta(normalizedSource).borderClassName,
-          ),
         className,
       )}
       data-chat-source={normalizedSource ?? undefined}

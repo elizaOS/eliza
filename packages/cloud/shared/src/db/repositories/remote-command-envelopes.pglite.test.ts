@@ -213,9 +213,9 @@ beforeAll(async () => {
     "0275_remote_sessions_first_class_expiry",
     "0305_secure_remote_hosts",
     "0306_secure_remote_command_relay",
-    "0321_remote_session_two_phase_activation",
-    "0322_remote_host_managed_network",
-    "0323_remote_target_initiated_pairing",
+    "0330_remote_session_two_phase_activation",
+    "0331_remote_host_managed_network",
+    "0332_remote_target_initiated_pairing",
   ]) {
     await applyMigration(migration);
   }

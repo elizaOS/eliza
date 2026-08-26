@@ -10,6 +10,7 @@
  */
 
 import { formatError } from "@elizaos/shared";
+import { Button, Card, Spinner } from "@elizaos/ui";
 import {
   type AppLaunchResult,
   type AppRunSummary,
@@ -46,7 +47,6 @@ import { DatabasePageView } from "@elizaos/ui/components/pages/DatabasePageView"
 import { LogsView } from "@elizaos/ui/components/pages/LogsView";
 import { MemoryViewerView } from "@elizaos/ui/components/pages/MemoryViewerView";
 import { PluginsPageView } from "@elizaos/ui/components/pages/PluginsPageView";
-import { RelationshipsView } from "@elizaos/ui/components/pages/RelationshipsView";
 import { RuntimeView } from "@elizaos/ui/components/pages/RuntimeView";
 import { SkillsView } from "@elizaos/ui/components/pages/SkillsView";
 import { TasksPageView } from "@elizaos/ui/components/pages/TasksPageView";
@@ -94,11 +94,30 @@ function RegisteredWalletInventoryView(): JSX.Element {
   if (!registration) {
     return <AppWindowError message="Wallet is not registered in this build." />;
   }
-  const Component = registration.Component;
+  const Component =
+    registration.Component ??
+    (registration.loader
+      ? getAppShellPageLazyComponent(registration.loader)
+      : null);
   if (!Component) {
     return <AppWindowError message="Wallet is not available in this window." />;
   }
   return <Component />;
+}
+
+const appShellPageLazyComponentCache = new WeakMap<
+  NonNullable<ReturnType<typeof listAppShellPages>[number]["loader"]>,
+  ComponentType<Record<string, unknown>>
+>();
+
+function getAppShellPageLazyComponent(
+  loader: NonNullable<ReturnType<typeof listAppShellPages>[number]["loader"]>,
+): ComponentType<Record<string, unknown>> {
+  const existing = appShellPageLazyComponentCache.get(loader);
+  if (existing) return existing;
+  const created = lazy(loader);
+  appShellPageLazyComponentCache.set(loader, created);
+  return created;
 }
 
 function RegisteredAppShellPageView({
@@ -126,8 +145,16 @@ function renderInternalToolTab(tab: Tab): JSX.Element | null {
       return <SkillsView />;
     case "trajectories":
       return <TrajectoriesView />;
-    case "relationships":
-      return <RelationshipsView />;
+    case "relationships": {
+      const registration = listAppShellPages().find(
+        (entry) => entry.id === "relationships",
+      );
+      return registration ? (
+        <RegisteredAppShellPageView registration={registration} />
+      ) : (
+        <AppWindowError message="Relationships is not registered in this build." />
+      );
+    }
     case "memories":
       return <MemoryViewerView />;
     case "runtime":
@@ -149,10 +176,13 @@ function renderInternalToolTab(tab: Tab): JSX.Element | null {
 
 function AppWindowError({ message }: { message: string }): JSX.Element {
   return (
-    <div className="flex h-dvh min-h-0 w-full flex-col items-center justify-center gap-3 bg-bg px-6 text-center text-txt">
+    <Card
+      variant="appWindowState"
+      className="flex h-dvh min-h-0 w-full flex-col items-center justify-center gap-3 px-6 text-center"
+    >
       <div className="text-base font-semibold">Could not open app</div>
       <p className="max-w-md text-sm text-muted">{message}</p>
-    </div>
+    </Card>
   );
 }
 
@@ -160,7 +190,7 @@ function AppWindowSpinner({ label }: { label: string }): JSX.Element {
   const { t } = useApp();
   return (
     <div className="flex h-dvh min-h-0 w-full flex-col items-center justify-center gap-2 bg-bg text-txt">
-      <div className="size-6 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+      <Spinner className="size-6" />
       <div className="text-sm text-muted">
         {t("appwindow.Launching", {
           defaultValue: "Launching {{label}}…",
@@ -414,21 +444,27 @@ function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
 
   if (runState.status === "error") {
     return (
-      <div className="flex h-dvh min-h-0 w-full flex-col items-center justify-center gap-3 bg-bg px-6 text-center text-txt">
+      <Card
+        variant="appWindowState"
+        className="flex h-dvh min-h-0 w-full flex-col items-center justify-center gap-3 px-6 text-center"
+      >
         <div className="text-base font-semibold">
           Could not launch {displayName}
         </div>
         {runState.message ? (
           <p className="max-w-md text-sm text-muted">{runState.message}</p>
         ) : null}
-        <button
+        <Button
           type="button"
-          className="rounded-full border border-border/60 bg-card/70 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-muted transition-colors hover:border-accent hover:text-foreground"
+          variant="outline"
+          size="sm"
+          shape="circle"
+          className="text-xs font-semibold uppercase tracking-[0.16em]"
           onClick={() => setRetryCounter((n) => n + 1)}
         >
           Retry
-        </button>
-      </div>
+        </Button>
+      </Card>
     );
   }
 

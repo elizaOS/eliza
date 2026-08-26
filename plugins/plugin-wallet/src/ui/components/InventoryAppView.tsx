@@ -18,10 +18,16 @@ import type {
   WalletTradingProfileResponse,
   WalletTradingProfileWindow,
 } from "@elizaos/shared";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+  Badge,
+  Button,
+} from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client, isApiError } from "@elizaos/ui/api";
 import { shellLocalStorage } from "@elizaos/ui/bridge";
-import { Button } from "@elizaos/ui/components";
 import { type ActivityEvent, useActivityEvents } from "@elizaos/ui/hooks";
 import type { InventoryChainFilters } from "@elizaos/ui/state";
 import { useAppSelectorShallow } from "@elizaos/ui/state";
@@ -496,33 +502,29 @@ function ChainLogoBadge({
   className?: string;
   testId?: string;
 }) {
-  const [errored, setErrored] = useState(false);
-  const logoUrl = errored ? null : getNativeLogoUrl(chain);
+  const logoUrl = getNativeLogoUrl(chain);
 
   return (
-    <span
-      className={cn(
-        "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-bg ring-2 ring-bg",
-        className,
-      )}
-      style={{ width: size, height: size }}
-      title={chain}
-      role="img"
-      aria-label={chain}
-      data-testid={testId}
-    >
-      {logoUrl ? (
-        <img
-          src={logoUrl}
-          alt=""
-          className="h-full w-full object-cover"
-          onError={() => setErrored(true)}
-        />
-      ) : (
-        <span className="font-mono text-[0.58rem] font-bold uppercase text-muted">
+    <span className={className} style={{ width: size, height: size }}>
+      <Avatar
+        presentation="walletLogo"
+        size={size}
+        title={chain}
+        role="img"
+        aria-label={chain}
+        data-testid={testId}
+      >
+        {logoUrl ? (
+          <AvatarImage
+            src={logoUrl}
+            alt=""
+            className="h-full w-full object-cover"
+          />
+        ) : null}
+        <AvatarFallback className="font-mono text-[0.58rem] font-bold uppercase text-muted">
           {chain.charAt(0)}
-        </span>
-      )}
+        </AvatarFallback>
+      </Avatar>
     </span>
   );
 }
@@ -556,18 +558,6 @@ function TokenIdentityIcon({
   );
 }
 
-function allocationToneClass(index: number): string {
-  return index === 0
-    ? "bg-accent"
-    : index === 1
-      ? "bg-accent/70"
-      : index === 2
-        ? "bg-accent/45"
-        : index === 3
-          ? "bg-muted/60"
-          : "bg-muted/35";
-}
-
 function AssetAllocationStrip({
   rows,
   compact = false,
@@ -581,21 +571,29 @@ function AssetAllocationStrip({
 
   return (
     <div className={cn("space-y-2", compact && "space-y-3")}>
-      <div
-        className={cn(
-          "flex overflow-hidden rounded-full bg-border/40",
-          compact ? "h-2.5" : "h-2",
-        )}
+      <Badge
+        asChild
+        variant="chainDot"
+        tone="muted"
+        className={cn("flex overflow-hidden", compact ? "h-2.5" : "h-2")}
       >
-        {allocationRows.map((row, index) => (
-          <span
-            key={tokenId(row)}
-            className={cn("h-full", allocationToneClass(index))}
-            style={{ width: `${(row.valueUsd / total) * 100}%` }}
-            title={`${row.symbol}: ${formatUsd(row.valueUsd)}`}
-          />
-        ))}
-      </div>
+        <div>
+          {allocationRows.map((row, index) => (
+            <Badge
+              asChild
+              variant="chainDot"
+              tone={index < 3 ? "accent" : "muted"}
+              key={tokenId(row)}
+              className="h-full"
+            >
+              <span
+                style={{ width: `${(row.valueUsd / total) * 100}%` }}
+                title={`${row.symbol}: ${formatUsd(row.valueUsd)}`}
+              />
+            </Badge>
+          ))}
+        </div>
+      </Badge>
       {compact ? (
         <div className="flex flex-wrap gap-2">
           {allocationRows.slice(0, 3).map((row, index) => (
@@ -603,12 +601,14 @@ function AssetAllocationStrip({
               key={tokenId(row)}
               className="inline-flex items-center gap-1.5 text-[0.68rem] font-medium text-txt"
             >
-              <span
-                className={cn(
-                  "size-1.5 rounded-full",
-                  allocationToneClass(index),
-                )}
-              />
+              <Badge
+                asChild
+                variant="chainDot"
+                tone={index < 3 ? "accent" : "muted"}
+                className="size-1.5"
+              >
+                <span />
+              </Badge>
               <span>{row.symbol}</span>
             </div>
           ))}

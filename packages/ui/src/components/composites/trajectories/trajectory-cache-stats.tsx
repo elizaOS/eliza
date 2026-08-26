@@ -5,6 +5,7 @@
  */
 import type * as React from "react";
 
+import { Card } from "../../ui/card";
 import { PagePanel } from "../page-panel";
 
 export interface TrajectoryCacheMetric {
@@ -31,9 +32,7 @@ export function TrajectoryCacheStats({
         {heading}
       </div>
       {metrics.length === 0 ? (
-        <div className="rounded-sm border border-dashed border-border/50 px-4 py-6 text-sm text-muted">
-          {emptyLabel}
-        </div>
+        <Card variant="dashedEmpty">{emptyLabel}</Card>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {metrics.map((metric) => (

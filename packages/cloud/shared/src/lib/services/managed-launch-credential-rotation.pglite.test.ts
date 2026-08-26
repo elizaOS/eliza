@@ -87,6 +87,7 @@ async function seedLaunchableAgent(): Promise<{ organizationId: string; userId: 
     organization_id: org.id,
     user_id: user.id,
     agent_name: "Managed Launch Agent",
+    execution_tier: "dedicated-always",
     status: "running",
     sandbox_id: "managed-launch-sandbox",
     node_id: "managed-launch-node",

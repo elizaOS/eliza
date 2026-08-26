@@ -12,8 +12,8 @@ const migrations = [
   "0275_remote_sessions_first_class_expiry",
   "0305_secure_remote_hosts",
   "0306_secure_remote_command_relay",
-  "0322_remote_host_managed_network",
-  "0323_remote_target_initiated_pairing",
+  "0331_remote_host_managed_network",
+  "0332_remote_target_initiated_pairing",
 ] as const;
 
 async function apply(database: PGlite, name: string): Promise<void> {
@@ -144,10 +144,10 @@ describe("secure remote relay migrations", () => {
       const recentEntries = journal.entries.slice(-5);
       expect(recentEntries.map((entry) => entry.tag)).toEqual([
         "0320_personal_shared_multi_principal_consent",
-        "0321_remote_session_two_phase_activation",
-        "0322_remote_host_managed_network",
-        "0323_remote_target_initiated_pairing",
-        "0324_remote_host_connection_mode_check",
+        "0330_remote_session_two_phase_activation",
+        "0331_remote_host_managed_network",
+        "0332_remote_target_initiated_pairing",
+        "0333_remote_host_connection_mode_check",
       ]);
       expect(recentEntries.map((entry) => entry.idx)).toEqual([303, 304, 305, 306, 307]);
       expect(recentEntries[1]!.when).toBeGreaterThan(recentEntries[0]!.when);

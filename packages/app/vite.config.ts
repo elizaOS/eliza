@@ -1141,6 +1141,7 @@ function androidCloudRendererPolicyPlugin(): Plugin {
 }
 
 const ANDROID_CLOUD_CURATED_PUBLIC_ASSETS = Object.freeze([
+  "THIRD_PARTY_NOTICES.txt",
   "bg-sunset.webp",
   "wallpapers/canopy.webp",
   "wallpapers/dusk-dunes.webp",
@@ -1149,22 +1150,32 @@ const ANDROID_CLOUD_CURATED_PUBLIC_ASSETS = Object.freeze([
   "wallpapers/slate.webp",
 ]);
 
+function readAndroidCloudCuratedAssets(): Array<{
+  type: "asset";
+  fileName: string;
+  source: Buffer;
+}> {
+  return ANDROID_CLOUD_CURATED_PUBLIC_ASSETS.map((fileName) => ({
+    type: "asset" as const,
+    fileName,
+    source: fs.readFileSync(path.join(here, "public", fileName)),
+  }));
+}
+
 /**
  * Packages the canonical app's selectable backgrounds without copying the
  * browser public tree, whose service workers, installers, and local task
  * runner are not capabilities of the Cloud-only Android application.
  */
-function androidCloudCuratedAssetsPlugin(): Plugin {
+export function androidCloudCuratedAssetsPlugin(
+  androidCloudBuild = IS_ANDROID_CLOUD_RENDERER_BUILD,
+): Plugin {
   return {
     name: "android-cloud-curated-assets",
     generateBundle() {
-      if (!IS_ANDROID_CLOUD_RENDERER_BUILD) return;
-      for (const fileName of ANDROID_CLOUD_CURATED_PUBLIC_ASSETS) {
-        this.emitFile({
-          type: "asset",
-          fileName,
-          source: fs.readFileSync(path.join(here, "public", fileName)),
-        });
+      if (!androidCloudBuild) return;
+      for (const asset of readAndroidCloudCuratedAssets()) {
+        this.emitFile(asset);
       }
     },
   };

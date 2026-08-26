@@ -1,5 +1,6 @@
 /** Public package entry: re-exports the plugin, overlay app, views, and register side-effect. */
 export { ContactsAppView } from "./components/ContactsAppView";
+export { ContactsPage } from "./components/ContactsPage";
 export { ContactsView } from "./components/ContactsView";
 export {
   CONTACTS_APP_NAME,

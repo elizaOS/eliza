@@ -13,8 +13,10 @@ import {
 import type { ReactNode } from "react";
 
 import { Badge } from "../../../components/ui/badge";
+import { Card } from "../../../components/ui/card";
 import { Checkbox } from "../../../components/ui/checkbox";
 import { StatusBadge } from "../../../components/ui/status-badge";
+import { TextLink } from "../../../components/ui/text-link";
 import { DashboardDataList } from "./dashboard-data-list";
 import { ListActionMenu } from "./list-action-menu";
 
@@ -86,9 +88,10 @@ export function AppsListView({
   return (
     <DashboardDataList className="grid grid-cols-1 gap-2">
       {apps.map((app) => (
-        <div
+        <Card
           key={app.id}
-          className="group relative min-w-0 overflow-hidden rounded-sm border border-white/10 bg-white/5 transition-all duration-300 hover:border-white/20 hover:bg-white/[0.07]"
+          variant="panel"
+          className="group relative min-w-0 overflow-hidden transition-colors duration-300"
         >
           <div className="px-3 py-2.5">
             <div className="flex items-center justify-between gap-2">
@@ -156,14 +159,15 @@ export function AppsListView({
                           label: "Visit Website",
                           className: "cursor-pointer",
                           child: (
-                            <a
+                            <TextLink
                               href={app.website_url}
                               target="_blank"
                               rel="noopener noreferrer"
+                              className="font-normal text-inherit no-underline"
                             >
                               <ExternalLink className="mr-2  size-4" />
                               Visit Website
-                            </a>
+                            </TextLink>
                           ),
                         },
                       ]
@@ -200,7 +204,7 @@ export function AppsListView({
               </span>
             </div>
           </div>
-        </div>
+        </Card>
       ))}
     </DashboardDataList>
   );
