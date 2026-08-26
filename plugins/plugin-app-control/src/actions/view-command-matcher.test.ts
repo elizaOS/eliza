@@ -20,6 +20,7 @@ describe("matchViewCommand — explicit user examples", () => {
 		["take me to my settings", "settings"],
 		["settings", "settings"],
 		["go home", "chat"],
+		["go homr", "chat"],
 		["home", "chat"],
 		["go back", "chat"],
 		["back to home", "chat"],
@@ -265,6 +266,9 @@ describe("matchViewCommand — precision (must NOT match)", () => {
 		"go back over the paragraph",
 		"go back and explain what changed",
 		"when I go back to school",
+		"go dome",
+		"go hope",
+		"go somewhere",
 		"",
 		"   ",
 	];

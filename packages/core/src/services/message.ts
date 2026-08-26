@@ -10178,6 +10178,27 @@ export async function runV5MessageRuntimeStage1(args: {
 					result.success === true &&
 					result.modelReplyRequired === true
 				) {
+					// An accepted structured receipt already proves the effect and has a
+					// canonical user-facing confirmation. Finish with that grounded text
+					// instead of paying for a redundant post-tool model call. Stage 1's
+					// speculative reply stays buffered: it is not itself tied to the
+					// receipt, so the effect-claim guard must remain free to reject it.
+					const acceptedEffectConfirmation = structuredEffectConfirmation([
+						{ name: toolCall.name, result },
+					]);
+					if (acceptedEffectConfirmation) {
+						return {
+							status: "finished",
+							trajectory: {
+								context: plannerContextAfterEarlyReply,
+								steps: [{ iteration: 0, toolCall, result }],
+								archivedSteps: [],
+								plannedQueue: [],
+								evaluatorOutputs: [],
+							},
+							finalMessage: acceptedEffectConfirmation,
+						};
+					}
 					return runPlannerLoop({
 						runtime: plannerRuntime,
 						context: plannerContextAfterEarlyReply,

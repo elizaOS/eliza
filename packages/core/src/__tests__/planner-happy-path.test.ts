@@ -2109,17 +2109,6 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 	const runDeterministicViewsTurn = async (
 		handlerResult: ActionResult,
 	): Promise<string | undefined> => {
-		const expectedModelReply = (() => {
-			if (handlerResult.modelReplyRequired !== true) return undefined;
-			try {
-				const label = JSON.parse(String(handlerResult.text ?? ""))?.label;
-				return typeof label === "string"
-					? `done — you're on ${label}.`
-					: undefined;
-			} catch {
-				return undefined;
-			}
-		})();
 		const views = makeMockAction({
 			name: "VIEWS",
 			parameters: [
@@ -2163,18 +2152,10 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					body: stage1Response({
 						contexts: ["general"],
 						candidateActionNames: ["VIEWS"],
-						replyText: "Heading there now.",
+						replyText: "Opening Home now.",
 						thought: "The view switch is deterministic.",
 					}),
 				},
-				...(expectedModelReply
-					? [
-							{
-								expectModelType: ModelType.ACTION_PLANNER,
-								body: { text: expectedModelReply, toolCalls: [] },
-							},
-						]
-					: []),
 			],
 		});
 		const result = await runV5MessageRuntimeStage1({
@@ -2184,11 +2165,9 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			responseId: RESPONSE_ID,
 		});
 		expect(result.kind).toBe("planned_reply");
-		expect(getCalls(runtime).map((call) => call.modelType)).toEqual(
-			expectedModelReply
-				? [ModelType.RESPONSE_HANDLER, ModelType.ACTION_PLANNER]
-				: [ModelType.RESPONSE_HANDLER],
-		);
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+		]);
 		return result.kind === "planned_reply"
 			? result.result.responseContent?.text
 			: undefined;
