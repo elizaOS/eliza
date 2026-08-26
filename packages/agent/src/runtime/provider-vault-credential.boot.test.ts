@@ -36,6 +36,65 @@ afterEach(async () => {
 });
 
 describe("selected provider credential boot readiness", () => {
+  it("constructs the runtime from a Vault-only credential without mutating process.env", async () => {
+    stateDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "eliza-provider-vault-"),
+    );
+    process.env.ELIZA_STATE_DIR = stateDir;
+    process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER = "1";
+    delete process.env.CEREBRAS_API_KEY;
+
+    const has = vi.fn(
+      async (key: string) => key === "providers.cerebras.api-key",
+    );
+    const reveal = vi.fn(async () => "vault-only-cerebras-key");
+    setAgentHostBridge({
+      ...defaultAgentHostBridge,
+      sharedVault: () => ({
+        ...defaultAgentHostBridge.sharedVault(),
+        has,
+        reveal,
+      }),
+    });
+    const abort = new AbortController();
+    const onRuntimeCreated = vi.fn(
+      (runtime: { getSetting: (key: string) => unknown }) => {
+        expect(runtime.getSetting("CEREBRAS_API_KEY")).toBe(
+          "vault-only-cerebras-key",
+        );
+        expect(process.env.CEREBRAS_API_KEY).toBeUndefined();
+        abort.abort();
+      },
+    );
+
+    await expect(
+      startEliza({
+        headless: true,
+        abortSignal: abort.signal,
+        onRuntimeCreated,
+        configOverride: {
+          firstRun: false,
+          serviceRouting: {
+            llmText: { backend: "cerebras", transport: "direct" },
+          },
+          agents: {
+            defaults: {
+              workspace: path.join(stateDir, "workspace"),
+            },
+          },
+        } as never,
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+
+    expect(onRuntimeCreated).toHaveBeenCalledOnce();
+    expect(has).toHaveBeenCalledWith("providers.cerebras.api-key");
+    expect(reveal).toHaveBeenCalledWith(
+      "providers.cerebras.api-key",
+      "runtime-boot:selected-provider-credential",
+    );
+    expect(process.env.CEREBRAS_API_KEY).toBeUndefined();
+  });
+
   it("rejects before constructing a chat-ready runtime when Vault lookup fails", async () => {
     stateDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "eliza-provider-vault-"),
