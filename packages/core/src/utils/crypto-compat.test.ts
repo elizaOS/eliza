@@ -22,6 +22,7 @@ import {
 	decryptAsync,
 	encryptAes256Gcm,
 	encryptAsync,
+	sha256Hex,
 } from "./crypto-compat.ts";
 
 const AES_CBC_KEY = new Uint8Array(32).map((_, i) => i + 1);
@@ -116,6 +117,15 @@ describe("createHash", () => {
 		expect(digest).toBeInstanceOf(Uint8Array);
 		expect(Buffer.from(digest).toString("hex")).toBe(
 			nodeDigestHex("sha256", payload),
+		);
+	});
+
+	it("computes sha256 hex string directly with sha256Hex", () => {
+		expect(sha256Hex("hello world")).toBe(
+			nodeDigestHex("sha256", "hello world"),
+		);
+		expect(sha256Hex(new Uint8Array([1, 2, 3]))).toBe(
+			nodeDigestHex("sha256", new Uint8Array([1, 2, 3])),
 		);
 	});
 

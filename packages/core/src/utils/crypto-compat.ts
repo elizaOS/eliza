@@ -317,8 +317,14 @@ export async function createHashAsync(
 ): Promise<Uint8Array> {
 	const bytes =
 		typeof data === "string" ? new TextEncoder().encode(data) : data;
-
 	return webCryptoHash(algorithm, bytes);
+}
+
+/**
+ * Convenience helper to compute sha256 hash directly as a hex string.
+ */
+export function sha256Hex(data: string | Uint8Array): string {
+	return createHash("sha256").update(data).digest("hex");
 }
 
 export function createCipheriv(
