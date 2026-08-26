@@ -848,6 +848,8 @@ describe("App navigate-view event wiring", () => {
     expect(settingsPageContent?.className).toContain(
       "pe-[var(--eliza-chat-side-clearance,0px)]",
     );
+    expect(settingsPageContent?.className).toContain("settings-surface");
+    expect(settingsPageContent?.className).toContain("settings-canvas");
     const routedMain = screen.getByTestId("settings-view").closest("main");
     expect(routedMain?.className).not.toContain("px-2");
     expect(routedMain?.className).not.toContain("pt-[var(--view-pad-top)]");
