@@ -53,6 +53,36 @@ describe("appDevWsBasePlugin", () => {
 });
 
 describe("app shell local connection policy", () => {
+  test("emits manifest icon URLs that resolve to shipped public assets", () => {
+    const emitted: Array<{ fileName?: string; source?: string | Uint8Array }> =
+      [];
+    const hook = appShellMetadataPlugin().generateBundle;
+    if (typeof hook !== "function") {
+      throw new Error("app metadata plugin has no bundle hook");
+    }
+    Reflect.apply(
+      hook,
+      {
+        emitFile(asset: (typeof emitted)[number]) {
+          emitted.push(asset);
+          return asset.fileName ?? "emitted-asset";
+        },
+      },
+      [],
+    );
+
+    const manifestAsset = emitted.find(
+      (asset) => asset.fileName === "site.webmanifest",
+    );
+    const manifest = JSON.parse(String(manifestAsset?.source)) as {
+      icons: Array<{ src: string }>;
+    };
+    expect(manifest.icons.map((icon) => icon.src)).toEqual([
+      "/brand/favicons/android-chrome-192x192.png",
+      "/brand/favicons/android-chrome-512x512.png",
+    ]);
+  });
+
   test("preserves the browser authority through the local API proxy", () => {
     if (typeof appViteConfig !== "function") {
       throw new Error("app Vite config is not callable");
