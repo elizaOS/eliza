@@ -2129,6 +2129,34 @@
       "when": 1794254400011,
       "tag": "0320_personal_shared_multi_principal_consent",
       "breakpoints": true
+    },
+    {
+      "idx": 304,
+      "version": "7",
+      "when": 1794254400012,
+      "tag": "0321_remote_session_two_phase_activation",
+      "breakpoints": true
+    },
+    {
+      "idx": 305,
+      "version": "7",
+      "when": 1794254400013,
+      "tag": "0322_remote_host_managed_network",
+      "breakpoints": true
+    },
+    {
+      "idx": 306,
+      "version": "7",
+      "when": 1794254400014,
+      "tag": "0323_remote_target_initiated_pairing",
+      "breakpoints": true
+    },
+    {
+      "idx": 307,
+      "version": "7",
+      "when": 1794254400015,
+      "tag": "0324_remote_host_connection_mode_check",
+      "breakpoints": true
     }
   ]
 }

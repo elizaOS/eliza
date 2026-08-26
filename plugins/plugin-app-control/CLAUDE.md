@@ -5,7 +5,7 @@ models, active agent profiles, and built-in settings.
 
 ## Purpose / role
 
-This opt-in plugin registers eight actions, no natural-language pre-LLM shortcuts, two evaluators,
+This opt-in plugin registers nine actions, no natural-language pre-LLM shortcuts, two evaluators,
 two providers, and four services. Dashboard operations use authenticated
 loopback HTTP (`/api/apps/*`, `/api/views/*`) discovered through the existing
 port resolver.
@@ -22,6 +22,7 @@ port resolver.
 | `SETTINGS` | `src/actions/settings.ts` | Describe, list, and change built-in settings; mutations use the same semantic routes as the UI. Successful list/set results own canonical reply text and declare a single-operation turn complete once the plan queue is drained, avoiding a redundant evaluator model call on native function-calling backends without suppressing multi-tool evaluation. Owner-gated. |
 | `MODEL_SWITCH` | `src/actions/model-switch.ts` | Select a configured model target through the canonical settings/runtime boundary. |
 | `AGENT_SWITCH` | `src/actions/agent-switch.ts` | Switch the active agent profile through the host-provided agent-switch seam. |
+| `RUNTIMES` | `src/actions/runtime-management.ts` | Owner-gated Devices & Runtimes lifecycle, pairing, revoke, relay, and fingerprint-pinned SSH operations. Mutations require confirmation; secrets stay in the local UI/native credential store. |
 | `CLOSE_VIEW` / `CLOSE_ALL_VIEWS` | `src/actions/views.ts` | Close one shell view or all open views without overloading the broader `VIEWS` dispatcher. |
 
 ### Evaluators

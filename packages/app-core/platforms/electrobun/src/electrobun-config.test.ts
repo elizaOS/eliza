@@ -4,12 +4,28 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   createElectrobunConfig,
+  resolveDesktopAppVersion,
   resolveElectrobunCopyMap,
   resolveLinuxRenderer,
   shouldEmbedRuntimeBundle,
 } from "../electrobun.config";
 
 describe("Electrobun Store packaging", () => {
+  it("uses the package version by default and honors an explicit release override", () => {
+    expect(resolveDesktopAppVersion({}, { version: "2.0.3-beta.7" })).toBe(
+      "2.0.3-beta.7",
+    );
+    expect(
+      resolveDesktopAppVersion(
+        { ELIZA_APP_VERSION: " 2.1.0-rc.1 " },
+        { version: "2.0.3-beta.7" },
+      ),
+    ).toBe("2.1.0-rc.1");
+    expect(() => resolveDesktopAppVersion({}, {})).toThrow(
+      /desktop app version is missing/,
+    );
+  });
+
   it("bundles CEF as the default Linux renderer", () => {
     const config = createElectrobunConfig();
 
