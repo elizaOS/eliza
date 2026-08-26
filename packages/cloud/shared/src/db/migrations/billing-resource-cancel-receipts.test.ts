@@ -6,11 +6,11 @@ import { PGlite } from "@electric-sql/pglite";
 const migration = (
   await Promise.all(
     [
-      "0330_billing_cancel_intent_authority.sql",
-      "0331_billing_cancel_commands.sql",
-      "0332_billing_cancel_command_keys.sql",
-      "0333_billing_cancel_guard_functions.sql",
-      "0334_billing_cancel_guards.sql",
+      "0334_billing_cancel_intent_authority.sql",
+      "0335_billing_cancel_commands.sql",
+      "0336_billing_cancel_command_keys.sql",
+      "0337_billing_cancel_guard_functions.sql",
+      "0338_billing_cancel_guards.sql",
     ].map((name) => Bun.file(new URL(`./${name}`, import.meta.url)).text()),
   )
 ).join("\n--> statement-breakpoint\n");
