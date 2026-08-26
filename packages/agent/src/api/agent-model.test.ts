@@ -173,7 +173,10 @@ describe("detectRuntimeModel — non-cloud branches unaffected", () => {
 
   it("reports env-selected Cerebras only after its text handler registers", () => {
     const env = { ELIZA_PROVIDER: "cerebras" };
-    const config = { serviceRouting: {} };
+    const config = {
+      serviceRouting: {},
+      agents: { defaults: { model: { primary: "openai" } } },
+    };
 
     expect(
       detectRuntimeModel(
@@ -182,7 +185,7 @@ describe("detectRuntimeModel — non-cloud branches unaffected", () => {
         env,
       ),
     ).toBe("cerebras");
-    expect(detectRuntimeModel(makeRuntime(), config, env)).toBeUndefined();
+    expect(detectRuntimeModel(makeRuntime(), config, env)).toBe("openai");
   });
 });
 

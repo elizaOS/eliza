@@ -251,15 +251,13 @@ export function detectRuntimeModel(
     );
   }
 
-  const configModel = normalizeModelSpec(
-    config?.agents?.defaults?.model?.primary,
-  );
-  if (configModel) return configModel;
-
   // A legacy direct desktop launch may select Cerebras through
   // ELIZA_PROVIDER without persisting serviceRouting. Report that selection
-  // only after plugin-openai has registered a live text handler; the env value
-  // alone is configuration intent, not runtime availability.
+  // only after plugin-openai has registered a live text handler. This must
+  // precede the generic agent default model because the OpenAI-compatible
+  // plugin may persist "openai" there even while its live endpoint is
+  // Cerebras; the env value alone is still configuration intent, not runtime
+  // availability.
   if (
     routing === null &&
     normalizeFirstRunProviderId(env.ELIZA_PROVIDER) === "cerebras" &&
@@ -267,6 +265,11 @@ export function detectRuntimeModel(
   ) {
     return "cerebras";
   }
+
+  const configModel = normalizeModelSpec(
+    config?.agents?.defaults?.model?.primary,
+  );
+  if (configModel) return configModel;
 
   const pluginNames = Array.isArray(runtime.plugins)
     ? runtime.plugins
