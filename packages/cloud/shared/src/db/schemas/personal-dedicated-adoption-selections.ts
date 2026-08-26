@@ -2,7 +2,7 @@
 
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import { check, integer, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { check, integer, jsonb, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 import { users } from "./users";
 
@@ -30,6 +30,7 @@ export const personalDedicatedAdoptionSelections = pgTable(
     // backup-row deletion and then fail closed in provisioning.
     activation_backup_id: uuid("activation_backup_id"),
     activation_backup_hash: text("activation_backup_hash"),
+    activation_backup_chain: jsonb("activation_backup_chain"),
     inventory_fingerprint: text("inventory_fingerprint").notNull(),
     candidate_count: integer("candidate_count").notNull(),
     schema_version: integer("schema_version").notNull().default(1),
@@ -64,10 +65,18 @@ export const personalDedicatedAdoptionSelections = pgTable(
         ${table.activation_kind} = 'fresh_boot'
         AND ${table.activation_backup_id} IS NULL
         AND ${table.activation_backup_hash} IS NULL
+        AND ${table.activation_backup_chain} IS NULL
       ) OR (
-        ${table.activation_kind} IN ('legacy_backup', 'catalog_restore_required')
+        ${table.activation_kind} = 'legacy_backup'
         AND ${table.activation_backup_id} IS NOT NULL
         AND ${table.activation_backup_hash} ~ '^[a-f0-9]{64}$'
+        AND jsonb_typeof(${table.activation_backup_chain}) = 'array'
+        AND jsonb_array_length(${table.activation_backup_chain}) > 0
+      ) OR (
+        ${table.activation_kind} = 'catalog_restore_required'
+        AND ${table.activation_backup_id} IS NOT NULL
+        AND ${table.activation_backup_hash} ~ '^[a-f0-9]{64}$'
+        AND ${table.activation_backup_chain} IS NULL
       )`,
     ),
     fingerprint_check: check(

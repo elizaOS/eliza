@@ -33,6 +33,7 @@ import { personalDedicatedAdoptionSelections } from "@/db/schemas/personal-dedic
 import { personalDedicatedUpgradeAuthorities } from "@/db/schemas/personal-dedicated-upgrade-authorities";
 import { users } from "@/db/schemas/users";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
+import { computeStateHash } from "@/lib/services/agent-backup-diff";
 import {
   adoptPersonalDedicatedTargetWithProvision,
   resolvePersonalDedicatedAdoption,
@@ -859,15 +860,18 @@ describe("admin personal Dedicated adoption selection", () => {
 
   test("a selected legacy backup is pinned and worker revalidation blocks hash/status drift", async () => {
     await seedAmbiguousInventory();
+    const state = { memories: [], config: {}, workspaceFiles: {} };
+    const contentHash = computeStateHash(state);
+    const verifiedAt = new Date("2026-08-25T12:00:00.000Z");
     const [backup] = await dbWrite
       .insert(agentSandboxBackups)
       .values({
         sandbox_record_id: RETAINED,
         snapshot_type: "auto",
-        state_data: { memories: [], config: {}, workspaceFiles: {} },
-        content_hash: "a".repeat(64),
+        state_data: state,
+        content_hash: contentHash,
         verification_status: "verified",
-        verified_at: new Date("2026-08-25T12:00:00.000Z"),
+        verified_at: verifiedAt,
         catalog_version: 1,
         catalog_state: "legacy_unmigrated",
         catalog_payload_digest: "b".repeat(64),
@@ -875,6 +879,17 @@ describe("admin personal Dedicated adoption selection", () => {
         catalog_agent_id: RETAINED,
       })
       .returning();
+    const expectedBackupChain = [
+      {
+        backupId: backup!.id,
+        backupKind: "full" as const,
+        parentBackupId: null,
+        contentHash,
+        verifiedAt: verifiedAt.toISOString(),
+        catalogVersion: 1,
+        catalogState: "legacy_unmigrated",
+      },
+    ];
     const preview = await personalDedicatedAdoptionSelectionService.preview({
       organizationId: ORG_A,
       userId: USER_A,
@@ -906,13 +921,24 @@ describe("admin personal Dedicated adoption selection", () => {
       expectedDailyRate: AGENT_PRICING.DAILY_RUNNING_COST,
       expectedMinimumBalance: AGENT_PRICING.UPGRADE_MINIMUM_BALANCE,
       expectedMinimumRunwayDays: AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS,
-      expectedActivationAuthorityKey: `from-legacy-backup:${backup!.id}:${"a".repeat(64)}`,
+      expectedActivationAuthorityKey: `from-legacy-backup:${backup!.id}:${contentHash}:${JSON.stringify(
+        expectedBackupChain.map((entry) => [
+          entry.backupId,
+          entry.backupKind,
+          entry.parentBackupId,
+          entry.contentHash,
+          entry.verifiedAt,
+          entry.catalogVersion,
+          entry.catalogState,
+        ]),
+      )}`,
     });
     expect(result.job?.data).toMatchObject({
       restoreDirective: {
         kind: "from-reviewed-backup",
         backupId: backup!.id,
-        expectedContentHash: "a".repeat(64),
+        expectedContentHash: contentHash,
+        expectedBackupChain,
       },
     });
 
@@ -924,12 +950,13 @@ describe("admin personal Dedicated adoption selection", () => {
       restoreDirective: {
         kind: "from-reviewed-backup" as const,
         backupId: backup!.id,
-        expectedContentHash: "a".repeat(64),
+        expectedContentHash: contentHash,
+        expectedBackupChain,
       },
     };
     await expect(
       resolveReviewedProvisionRestoreDirectiveForExecution(reviewedJobData),
-    ).resolves.toEqual({ kind: "from-backup", backupId: backup!.id });
+    ).resolves.toEqual(reviewedJobData.restoreDirective);
 
     await dbWrite
       .update(agentSandboxBackups)

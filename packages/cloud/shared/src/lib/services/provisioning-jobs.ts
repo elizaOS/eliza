@@ -51,7 +51,6 @@ import {
   type AgentExecutionTier,
   type AgentSandboxPoolStatus,
   type AgentSandboxStatus,
-  agentSandboxBackups,
   agentSandboxes,
   CONTAINER_BACKED_EXECUTION_TIERS,
   UPGRADE_FAILURE_TARGET_MARKER_PREFIX,
@@ -102,11 +101,16 @@ import {
 } from "./eliza-provision-lock";
 import {
   AdminCanaryCleanupExpectationError,
+  assertReviewedProvisionRestoreAuthority,
   type DeleteAuthorization,
   elizaSandboxService,
   SNAPSHOT_ENDPOINT_UNSUPPORTED,
 } from "./eliza-sandbox";
 import { finalizeJobErrorText, jobErrorSummary, jobErrorText } from "./job-error-text";
+import {
+  isPersonalDedicatedReviewedBackupChain,
+  type PersonalDedicatedReviewedBackupChainEntry,
+} from "./personal-dedicated-adoption-provenance";
 import {
   acquireProviderAdmission,
   type ProviderAdmissionAuthority,
@@ -225,7 +229,12 @@ export interface AgentProvisionJobData {
   restoreDirective?:
     | { kind: "from-backup"; backupId: string }
     | { kind: "fresh-boot" }
-    | { kind: "from-reviewed-backup"; backupId: string; expectedContentHash: string };
+    | {
+        kind: "from-reviewed-backup";
+        backupId: string;
+        expectedContentHash: string;
+        expectedBackupChain: PersonalDedicatedReviewedBackupChainEntry[];
+      };
 }
 
 export interface AgentDeleteJobData {
@@ -603,6 +612,9 @@ function isAgentProvisionJobData(value: unknown): value is AgentProvisionJobData
             "string" &&
           /^[a-f0-9]{64}$/.test(
             (restoreDirective as { expectedContentHash: string }).expectedContentHash,
+          ) &&
+          isPersonalDedicatedReviewedBackupChain(
+            (restoreDirective as { expectedBackupChain?: unknown }).expectedBackupChain,
           ))));
   return (
     typeof value === "object" &&
@@ -720,7 +732,9 @@ function sameProvisionRestoreDirective(
   }
   if (left?.kind === "from-reviewed-backup" && right?.kind === "from-reviewed-backup") {
     return (
-      left.backupId === right.backupId && left.expectedContentHash === right.expectedContentHash
+      left.backupId === right.backupId &&
+      left.expectedContentHash === right.expectedContentHash &&
+      JSON.stringify(left.expectedBackupChain) === JSON.stringify(right.expectedBackupChain)
     );
   }
   return true;
@@ -734,39 +748,11 @@ function sameProvisionRestoreDirective(
  */
 export async function resolveReviewedProvisionRestoreDirectiveForExecution(
   data: AgentProvisionJobData,
-): Promise<{ kind: "from-backup"; backupId: string } | { kind: "fresh-boot" } | undefined> {
+): Promise<AgentProvisionJobData["restoreDirective"]> {
   const directive = data.restoreDirective;
   if (directive?.kind !== "from-reviewed-backup") return directive;
-
-  const [backup] = await dbWrite
-    .select({ id: agentSandboxBackups.id })
-    .from(agentSandboxBackups)
-    .where(
-      and(
-        eq(agentSandboxBackups.id, directive.backupId),
-        eq(agentSandboxBackups.sandbox_record_id, data.agentId),
-        eq(agentSandboxBackups.content_hash, directive.expectedContentHash),
-        eq(agentSandboxBackups.verification_status, "verified"),
-        isNotNull(agentSandboxBackups.verified_at),
-        isNull(agentSandboxBackups.catalog_deleted_at),
-        or(
-          isNull(agentSandboxBackups.catalog_version),
-          and(
-            eq(agentSandboxBackups.catalog_version, 1),
-            eq(agentSandboxBackups.catalog_state, "legacy_unmigrated"),
-          ),
-        ),
-      ),
-    )
-    .limit(1);
-  if (!backup) {
-    throw new ApiError(
-      409,
-      "session_not_ready",
-      "Reviewed backup authority changed before Dedicated provisioning",
-    );
-  }
-  return { kind: "from-backup", backupId: directive.backupId };
+  await assertReviewedProvisionRestoreAuthority(data.agentId, directive);
+  return directive;
 }
 
 function readAgentDeleteJobData(job: Job): AgentDeleteJobData {

@@ -28,6 +28,7 @@ import {
   PRE_DELETE_BACKUP_RETENTION_MS,
   type ProvisioningAdmissionCapture,
   prepareAgentBackupInsertData,
+  reconstructStoredAgentSandboxBackupChain,
 } from "../../db/repositories/agent-sandboxes";
 import { userCharactersRepository } from "../../db/repositories/characters";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
@@ -112,6 +113,7 @@ import {
   prepareManagedElizaSharedEnvironment,
 } from "./managed-eliza-config";
 import { prepareManagedElizaEnvironment } from "./managed-eliza-env";
+import type { PersonalDedicatedReviewedBackupChainEntry } from "./personal-dedicated-adoption-provenance";
 import { EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES, JOB_TYPES } from "./provisioning-job-types";
 import { applyRemoteDockerRuntimeMode } from "./remote-docker-runtime-mode";
 import { mergeRuntimeAgentSecretsFromEnv } from "./runtime-agent-secrets";
@@ -465,7 +467,24 @@ export type ProvisionRestoreOverride =
       requireRestoreEndpoint: true;
       expectedAdmission: ProvisioningAdmissionCapture;
     }
+  | {
+      kind: "from-reviewed-backup";
+      backupId: string;
+      expectedContentHash: string;
+      expectedBackupChain: PersonalDedicatedReviewedBackupChainEntry[];
+    }
   | { kind: "fresh-boot" };
+
+type ReviewedProvisionRestoreOverride = Extract<
+  ProvisionRestoreOverride,
+  { kind: "from-reviewed-backup" }
+>;
+
+function isExplicitBackupRestore(
+  override: ProvisionRestoreOverride | undefined,
+): override is Exclude<ProvisionRestoreOverride, { kind: "fresh-boot" }> {
+  return override?.kind === "from-backup" || override?.kind === "from-reviewed-backup";
+}
 
 export type DeleteAgentResult =
   | { success: true; rowDeleted: true; deletedSandbox: AgentSandbox }
@@ -722,6 +741,82 @@ function storedRestoreChainStillCanonical(
     const candidate = currentById.get(row.id);
     return candidate !== undefined && storedRestorePointStillCanonical(candidate, row);
   });
+}
+
+function storedRestoreChainMatchesReviewedAuthority(
+  storedChain: readonly StoredAgentSandboxBackup[],
+  sandboxRecordId: string,
+  directive: ReviewedProvisionRestoreOverride,
+): boolean {
+  if (
+    storedChain.length !== directive.expectedBackupChain.length ||
+    directive.expectedBackupChain[0]?.backupId !== directive.backupId ||
+    directive.expectedBackupChain[0]?.contentHash !== directive.expectedContentHash
+  ) {
+    return false;
+  }
+  const expectedById = new Map(
+    directive.expectedBackupChain.map((entry) => [entry.backupId, entry]),
+  );
+  return storedChain.every((stored) => {
+    const expected = expectedById.get(stored.id);
+    return (
+      expected !== undefined &&
+      stored.id === expected.backupId &&
+      stored.sandbox_record_id === sandboxRecordId &&
+      stored.backup_kind === expected.backupKind &&
+      stored.parent_backup_id === expected.parentBackupId &&
+      stored.content_hash === expected.contentHash &&
+      stored.verification_status === "verified" &&
+      stored.verified_at?.toISOString() === expected.verifiedAt &&
+      stored.catalog_version === expected.catalogVersion &&
+      stored.catalog_state === expected.catalogState &&
+      stored.catalog_deleted_at === null
+    );
+  });
+}
+
+interface PreparedReviewedProvisionRestore {
+  storedChain: StoredAgentSandboxBackup[];
+  backup: AgentSandboxBackup;
+  state: AgentBackupStateData;
+}
+
+/**
+ * Read, authenticate, decrypt, and reconstruct the exact reviewed chain before
+ * provider admission. A second capture closes DB/R2 read races; the provision
+ * path repeats this after the job-level check and carries the materialized
+ * state to the final locked push rather than downgrading to a mutable id.
+ */
+export async function assertReviewedProvisionRestoreAuthority(
+  sandboxRecordId: string,
+  directive: ReviewedProvisionRestoreOverride,
+): Promise<PreparedReviewedProvisionRestore> {
+  try {
+    const storedChain = await captureStoredRestoreChain(directive.backupId, sandboxRecordId);
+    if (
+      !storedChain ||
+      !storedRestoreChainMatchesReviewedAuthority(storedChain, sandboxRecordId, directive)
+    ) {
+      throw new Error(RESTORE_BACKUP_CHANGED);
+    }
+    const reconstructed = await reconstructStoredAgentSandboxBackupChain(storedChain);
+    const confirmedChain = await captureStoredRestoreChain(directive.backupId, sandboxRecordId);
+    if (
+      !confirmedChain ||
+      !storedRestoreChainStillCanonical(confirmedChain, storedChain) ||
+      !storedRestoreChainMatchesReviewedAuthority(confirmedChain, sandboxRecordId, directive)
+    ) {
+      throw new Error(RESTORE_BACKUP_CHANGED);
+    }
+    return { storedChain, backup: reconstructed.target, state: reconstructed.state };
+  } catch {
+    throw new ApiError(
+      409,
+      "session_not_ready",
+      "Reviewed backup authority changed before Dedicated provisioning",
+    );
+  }
 }
 
 /**
@@ -3304,6 +3399,17 @@ export class ElizaSandboxService {
     orgId: string,
     restoreOverride?: ProvisionRestoreOverride,
   ): Promise<ProvisionResult> {
+    let reviewedRestore: PreparedReviewedProvisionRestore | undefined;
+    if (restoreOverride?.kind === "from-reviewed-backup") {
+      try {
+        reviewedRestore = await assertReviewedProvisionRestoreAuthority(agentId, restoreOverride);
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Reviewed backup authority changed",
+        };
+      }
+    }
     const expectedAdmission =
       restoreOverride?.kind === "from-backup" && restoreOverride.requireRestoreEndpoint
         ? restoreOverride.expectedAdmission
@@ -3374,7 +3480,7 @@ export class ElizaSandboxService {
       const lock = await agentSandboxesRepository.trySetProvisioning(candidate.id);
       if (!lock) {
         if (candidate.status === "running" && candidate.bridge_url && candidate.health_url) {
-          if (restoreOverride?.kind === "from-backup") {
+          if (isExplicitBackupRestore(restoreOverride)) {
             return {
               success: false,
               sandboxRecord: candidate,
@@ -3775,11 +3881,12 @@ export class ElizaSandboxService {
           });
         } else {
           try {
-            backup =
-              restoreOverride?.kind === "from-backup"
+            backup = reviewedRestore
+              ? reviewedRestore.backup
+              : restoreOverride?.kind === "from-backup"
                 ? await agentSandboxesRepository.getBackupById(restoreOverride.backupId)
                 : await agentSandboxesRepository.getLatestBackup(rec.id);
-            if (restoreOverride?.kind === "from-backup") {
+            if (isExplicitBackupRestore(restoreOverride)) {
               // Cross-sandbox ids are rejected here as defense in depth; the
               // wake gate and route already enforce ownership.
               if (!backup || backup.sandbox_record_id !== rec.id) {
@@ -3788,10 +3895,12 @@ export class ElizaSandboxService {
                 );
               }
             }
-            restoreState = backup
-              ? await agentSandboxesRepository.getReconstructedBackupState(backup.id)
-              : undefined;
-            if (restoreOverride?.kind === "from-backup" && !restoreState) {
+            restoreState = reviewedRestore
+              ? reviewedRestore.state
+              : backup
+                ? await agentSandboxesRepository.getReconstructedBackupState(backup.id)
+                : undefined;
+            if (isExplicitBackupRestore(restoreOverride) && !restoreState) {
               // The exact row can disappear or leave the legacy-visible lane
               // between lookup and chain reconstruction. An explicit restore
               // must fail closed instead of booting a reachable empty runtime.
@@ -3827,7 +3936,7 @@ export class ElizaSandboxService {
                 },
               );
             }
-            if (restoreOverride?.kind === "from-backup") throw error;
+            if (isExplicitBackupRestore(restoreOverride)) throw error;
             if (!isUnrecoverableSnapshotError(error)) throw error;
             await this.degradeUnrecoverableSnapshot(rec.id, backup?.id, error);
             backup = undefined;
@@ -3836,10 +3945,47 @@ export class ElizaSandboxService {
         }
         if (restoreState) {
           try {
-            await this.pushState(handle.bridgeUrl, restoreState, {
-              trusted: true,
-              authRec: rec,
-            });
+            if (reviewedRestore && restoreOverride?.kind === "from-reviewed-backup") {
+              await dbWrite.transaction(async (tx) => {
+                const lockedRestoreChain = await tx
+                  .select()
+                  .from(agentSandboxBackups)
+                  .where(
+                    and(
+                      inArray(
+                        agentSandboxBackups.id,
+                        reviewedRestore.storedChain.map((row) => row.id),
+                      ),
+                      eq(agentSandboxBackups.sandbox_record_id, rec.id),
+                    ),
+                  )
+                  .orderBy(asc(agentSandboxBackups.id))
+                  .for("update")
+                  .execute();
+                if (
+                  !storedRestoreChainStillCanonical(
+                    lockedRestoreChain,
+                    reviewedRestore.storedChain,
+                  ) ||
+                  !storedRestoreChainMatchesReviewedAuthority(
+                    lockedRestoreChain,
+                    rec.id,
+                    restoreOverride,
+                  )
+                ) {
+                  throw new Error(RESTORE_BACKUP_CHANGED);
+                }
+                await this.pushState(handle.bridgeUrl, restoreState, {
+                  trusted: true,
+                  authRec: rec,
+                });
+              });
+            } else {
+              await this.pushState(handle.bridgeUrl, restoreState, {
+                trusted: true,
+                authRec: rec,
+              });
+            }
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             const missingCustomRestoreEndpoint =
@@ -3863,8 +4009,10 @@ export class ElizaSandboxService {
                 },
               );
             } else if (
-              restoreOverride?.kind === "from-backup" &&
-              (restoreOverride.requireRestoreEndpoint || !missingCustomRestoreEndpoint)
+              isExplicitBackupRestore(restoreOverride) &&
+              (restoreOverride.kind === "from-reviewed-backup" ||
+                restoreOverride.requireRestoreEndpoint ||
+                !missingCustomRestoreEndpoint)
             ) {
               // Same no-silent-fresh-boot rule as the fetch above: an explicit
               // restore point that cannot be pushed fails the provision. A

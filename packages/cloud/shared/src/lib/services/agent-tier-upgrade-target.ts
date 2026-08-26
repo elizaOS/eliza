@@ -246,6 +246,7 @@ async function selectionReceiptMatchesInventory(params: {
     params.receipt.activation_kind,
     params.receipt.activation_backup_id,
     params.receipt.activation_backup_hash,
+    params.receipt.activation_backup_chain,
   );
   if (
     params.receipt.state_disposition !==
@@ -390,6 +391,7 @@ function attachSelectionActivationAuthority(
     receipt.activation_kind,
     receipt.activation_backup_id,
     receipt.activation_backup_hash,
+    receipt.activation_backup_chain,
   );
   if (!authority) return { state: "unavailable" };
   return {
@@ -997,6 +999,7 @@ export async function adoptPersonalDedicatedTargetWithProvision(
                 kind: "from-reviewed-backup",
                 backupId: activationAuthority.backupId,
                 expectedContentHash: activationAuthority.backupHash,
+                expectedBackupChain: activationAuthority.backupChain,
               } as const)
             : undefined;
 
