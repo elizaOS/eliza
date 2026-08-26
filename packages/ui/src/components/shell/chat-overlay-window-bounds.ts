@@ -33,7 +33,7 @@ export interface ChatOverlayWindowBoundsCoordinator {
 }
 
 export const CHAT_OVERLAY_RESTING_WINDOW_WIDTH = 64;
-export const CHAT_OVERLAY_RESTING_WINDOW_HEIGHT = 12;
+export const CHAT_OVERLAY_RESTING_WINDOW_HEIGHT = 44;
 export const CHAT_OVERLAY_EXPANDED_WINDOW_WIDTH = 600;
 export const CHAT_OVERLAY_EXPANDED_WINDOW_HEIGHT = 820;
 
