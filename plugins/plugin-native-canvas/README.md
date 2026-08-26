@@ -134,7 +134,7 @@ await Canvas.destroy({ canvasId });
 ## Notes
 
 - `snapshot()` only works with `placement: "inline"` or `"fullscreen"`. Cross-origin iframes render an unavailable frame.
-- `eval()` requires the loaded page to handle `eliza:eval` postMessages and reply with `eliza:evalResult`; times out after 5 seconds.
+- `eval()` requires the loaded page to handle `eliza:eval` postMessages and reply with `eliza:evalResult`; times out after 5 seconds. Each `eliza:eval` carries a `messageId`; echo it back on the `eliza:evalResult` reply so concurrent `eval()` calls correlate to their own results per call. Replies that omit it fall back to in-order FIFO matching (oldest pending call wins).
 - `a2uiPush` and `a2uiReset` prefer the `window.elizaA2UI` bridge when present; otherwise fall back to `postMessage`.
 - Call `attach()` before calling `setTouchEnabled()` — touch handlers are wired on attach.
 - Layer canvases are absolute-positioned siblings of the base canvas element; the host container should be `position: relative`.

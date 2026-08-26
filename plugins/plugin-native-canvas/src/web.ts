@@ -6,12 +6,14 @@
  * z-ordering follows CSS `z-index`) and backs the embedded web view with an
  * iframe (inline/fullscreen) or a `window.open` popup, including the
  * `eliza://` deep-link intercept and the A2UI postMessage bridge. Eval
- * replies are accepted only from the web-view window that received the script,
- * and each reply is correlated back to its own call by a per-call `messageId`
- * (with an in-order FIFO fallback for responders that do not echo the id), so
- * concurrent `eval()` calls never cross-resolve to another script's result —
+ * replies are accepted only from the web-view window that received the script.
+ * When the responder echoes the per-call `messageId`, each reply resolves
+ * exactly its own call, so concurrent `eval()` calls never cross-resolve —
  * matching the per-call correlation the native iOS `evaluateJavaScript` and
  * Android `evaluateJavascript` completion handlers provide intrinsically.
+ * Responders that omit the id fall back to in-order FIFO matching (the
+ * pre-existing oldest-pending-call-wins behaviour), which can still cross-
+ * resolve when scripts finish out of order — no worse than before the id.
  */
 
 import { WebPlugin } from "@capacitor/core";
