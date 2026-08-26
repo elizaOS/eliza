@@ -97,9 +97,8 @@ mock.module("./api-keys", () => ({
   isMobileApiKeySecret: () => false,
 }));
 const { resolveInferenceAuthContext } = await import("./inference-auth-context");
-const { hashApiKey, invalidateInferenceAuthContextByKeyHash } = await import(
-  "./inference-auth-cache"
-);
+const { hashApiKey, invalidateInferenceAuthContextByKeyHash, writeInferenceApiKeyAuthRejection } =
+  await import("./inference-auth-cache");
 const { cache } = await import("../cache/client");
 
 const KEY = "eliza_bench_key";
@@ -203,5 +202,30 @@ describe("inference hot-path benchmark", () => {
     expect(revocationBoundaryCalls).toBe(N);
 
     getSpy.mockRestore();
+  });
+
+  test("bad standing is explained from the same single cache read", async () => {
+    const keyHash = hashApiKey(KEY);
+    await writeInferenceApiKeyAuthRejection(keyHash, "rejected", 403, "organization_inactive");
+
+    const getSpy = spyOn(cache, "getWithOutcome");
+    const setSpy = spyOn(cache, "setWithOutcome");
+    authChainCalls = 0;
+    moderationCalls = 0;
+    revocationBoundaryCalls = 0;
+
+    expect(await resolveInferenceAuthContext(req())).toEqual({
+      kind: "rejected",
+      status: 403,
+      reason: "organization_inactive",
+    });
+    expect(getSpy).toHaveBeenCalledTimes(1);
+    expect(setSpy).toHaveBeenCalledTimes(0);
+    expect(authChainCalls).toBe(0);
+    expect(moderationCalls).toBe(0);
+    expect(revocationBoundaryCalls).toBe(0);
+
+    getSpy.mockRestore();
+    setSpy.mockRestore();
   });
 });

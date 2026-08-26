@@ -69,7 +69,26 @@ export interface InferenceApiKeyAuthRejection {
   keyHash: string;
   decision: "rejected" | "suspended";
   status: 401 | 403;
+  /** Bounded account-standing category safe to return without a DB read. */
+  reason?: InferenceAuthRejectionReason;
 }
+
+export type InferenceAuthRejectionReason =
+  | "credential_invalid"
+  | "credential_inactive"
+  | "account_inactive"
+  | "organization_inactive"
+  | "membership_missing"
+  | "moderation_blocked";
+
+const INFERENCE_AUTH_REJECTION_REASONS = new Set<InferenceAuthRejectionReason>([
+  "credential_invalid",
+  "credential_inactive",
+  "account_inactive",
+  "organization_inactive",
+  "membership_missing",
+  "moderation_blocked",
+]);
 
 /**
  * A cached, fully-authorized Steward session identity. The JWT is still
@@ -92,6 +111,7 @@ export interface InferenceSessionAuthRejection {
   stewardUserId: string;
   decision: "rejected" | "suspended";
   status: 401 | 403;
+  reason?: InferenceAuthRejectionReason;
 }
 
 export type InferenceSessionAuthDecision =
@@ -132,6 +152,7 @@ export type InferenceAuthCacheReadOutcome =
       kind: "rejected";
       decision: "rejected" | "suspended";
       status: 401 | 403;
+      reason?: InferenceAuthRejectionReason;
       backend: CacheBackendKind;
     }
   | {
@@ -199,7 +220,15 @@ function isInferenceApiKeyAuthRejection(value: unknown): value is InferenceApiKe
     typeof v.keyHash === "string" &&
     /^[0-9a-f]{64}$/.test(v.keyHash) &&
     (v.decision === "rejected" || v.decision === "suspended") &&
-    (v.status === 401 || v.status === 403)
+    (v.status === 401 || v.status === 403) &&
+    (v.reason === undefined || isInferenceAuthRejectionReason(v.reason))
+  );
+}
+
+function isInferenceAuthRejectionReason(value: unknown): value is InferenceAuthRejectionReason {
+  return (
+    typeof value === "string" &&
+    INFERENCE_AUTH_REJECTION_REASONS.has(value as InferenceAuthRejectionReason)
   );
 }
 
@@ -238,7 +267,8 @@ function isInferenceSessionAuthRejection(value: unknown): value is InferenceSess
     typeof v.stewardUserId === "string" &&
     v.stewardUserId.length > 0 &&
     (v.decision === "rejected" || v.decision === "suspended") &&
-    (v.status === 401 || v.status === 403)
+    (v.status === 401 || v.status === 403) &&
+    (v.reason === undefined || isInferenceAuthRejectionReason(v.reason))
   );
 }
 
@@ -293,6 +323,7 @@ export async function readInferenceAuthContextWithOutcome(
       kind: "rejected",
       decision: outcome.value.decision,
       status: outcome.value.status,
+      reason: outcome.value.reason,
       backend: outcome.backend,
     };
   }
@@ -321,6 +352,7 @@ export async function writeInferenceApiKeyAuthRejection(
   keyHash: string,
   decision: "rejected" | "suspended",
   status: 401 | 403,
+  reason?: InferenceAuthRejectionReason,
 ): Promise<CacheWriteOutcome> {
   return await cache.setWithOutcome(
     CacheKeys.inference.authContext(keyHash),
@@ -330,6 +362,7 @@ export async function writeInferenceApiKeyAuthRejection(
       keyHash,
       decision,
       status,
+      ...(reason ? { reason } : {}),
     } satisfies InferenceApiKeyAuthRejection,
     CacheTTL.inference.authContext,
     { keyClass: "inference_auth" },
@@ -534,19 +567,18 @@ export async function lowerOrgBalanceHint(
 }
 
 /**
- * Publish an AUTHORITATIVE balance snapshot as the gate hint without ever
- * raising the gate above a lower value another writer already published.
+ * Publish one authoritative post-debit balance snapshot with a single cache
+ * write and no cache readback.
  *
- * Unlike {@link lowerOrgBalanceHint} this seeds an entry when none exists,
- * which is what the post-debit settlers need: the committed debit's
- * `onCreditMutation` DELETES the hint, and a lower-only repair is a no-op on an
- * absent key, so the next Worker turn hit a `cacheOnly` miss and fail-closed
- * with a user-visible cache-warming 503.
- *
- * The min-clamp preserves the over-admit bound: a concurrent debit that
- * committed and lowered the hint between this caller's authoritative read and
- * its write must not be undone. Equal-or-higher cached values are replaced,
- * since the authoritative snapshot is the source of truth for those.
+ * Unlike {@link lowerOrgBalanceHint}, this seeds an entry after the committed
+ * debit's invalidation deletes the old hint, preventing the next Worker turn
+ * from failing closed on an avoidable cache miss. The projection is not the
+ * monetary authority: Worker provider dispatch is serialized by the
+ * revision-aware InferenceAdmissionGate Durable Object. Non-Worker paths use
+ * the atomic DB-ledger admission or reserve credits synchronously; the legacy
+ * KV lane cannot dispatch from this projection. A delayed projection write can
+ * therefore be stale, but it cannot authorize spend by itself; the next Durable
+ * Object admission applies only a newer revision and accounts for active holds.
  */
 export async function republishOrgBalanceHint(
   orgId: string,
@@ -554,11 +586,5 @@ export async function republishOrgBalanceHint(
   balanceAt: number,
   balanceRevision: string,
 ): Promise<void> {
-  const existing = await readOrgBalanceHint(orgId);
-  if (existing && existing.balanceUsd < balanceUsd) {
-    // A concurrent debit already published a stricter gate. Keep it — but keep
-    // it PRESENT, which is the whole point of republishing.
-    return;
-  }
   await writeOrgBalanceHint(orgId, balanceUsd, balanceAt, balanceRevision);
 }

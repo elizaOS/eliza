@@ -282,13 +282,36 @@ export async function requireGenerativeRouteCaller(
     );
   }
   if (resolution.kind === "suspended") {
-    throw new ApiError(403, "access_denied", "Account suspended");
+    const reason = resolution.reason;
+    const message =
+      reason === "moderation_blocked"
+        ? "Account access is blocked by policy moderation"
+        : reason === "organization_inactive"
+          ? "Organization is inactive"
+          : reason === "account_inactive"
+            ? "Account is inactive"
+            : "Account suspended";
+    throw new ApiError(403, "access_denied", message, {
+      reason: reason ?? "account_suspended",
+    });
   }
   if (resolution.kind === "rejected") {
+    const reason = resolution.reason;
     throw new ApiError(
       resolution.status,
       resolution.status === 403 ? "access_denied" : "authentication_required",
-      resolution.status === 403 ? "Forbidden" : "Authentication required",
+      reason === "organization_inactive"
+        ? "Organization is inactive"
+        : reason === "account_inactive"
+          ? "Account is inactive"
+          : reason === "credential_inactive"
+            ? "API key is inactive"
+            : reason === "membership_missing"
+              ? "Account is not associated with an active organization"
+              : resolution.status === 403
+                ? "Forbidden"
+                : "Authentication required",
+      { reason: reason ?? "authentication_rejected" },
     );
   }
 

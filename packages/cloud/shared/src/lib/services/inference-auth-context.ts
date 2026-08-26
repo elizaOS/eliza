@@ -35,6 +35,7 @@ import { contentModerationService } from "./content-moderation";
 import { loadInferenceAdmissionSnapshot } from "./inference-admission-snapshot";
 import { requireInferenceApiKeyWithOrg } from "./inference-api-key-auth";
 import { loadInferenceAppKeyScope } from "./inference-app-key-scope";
+import type { InferenceAuthRejectionReason } from "./inference-auth-cache";
 import {
   hashApiKey,
   INFERENCE_AUTH_CONTEXT_VERSION,
@@ -139,6 +140,8 @@ export interface ResolveInferenceAuthOptions {
   cacheOnly?: boolean;
   /** Internal background refresh: bypass the combined decision and revalidate. */
   forceAuthoritative?: boolean;
+  /** Internal hook preserving a bounded authoritative standing reason. */
+  onAuthoritativeRejection?(reason: InferenceAuthRejectionReason): void;
 }
 
 interface MutableInferenceAuthTrace {
@@ -161,6 +164,8 @@ interface MutableInferenceAuthTrace {
   };
 }
 
+type InferenceStandingDecisionSource = "authoritative" | "cache" | "session_resolution";
+
 const apiKeyHydrations = new Map<string, Promise<void>>();
 const AUTH_CONTEXT_REFRESH_AFTER_MS = 30_000;
 const DEFAULT_HYDRATION_DEADLINE_MS = 10_000;
@@ -176,6 +181,23 @@ function boundedTraceId(traceId: string | undefined): string {
 
 function durationSince(startedAt: number): number {
   return Math.round((performance.now() - startedAt) * 100) / 100;
+}
+
+function rejectionReasonForRevocation(reason: string): InferenceAuthRejectionReason {
+  switch (reason) {
+    case "organization_disabled":
+      return "organization_inactive";
+    case "subject_account_disabled":
+      return "account_inactive";
+    case "subject_membership_disabled":
+      return "membership_missing";
+    case "subject_moderation_disabled":
+      return "moderation_blocked";
+    case "credential_revoked":
+      return "credential_inactive";
+    default:
+      return "credential_invalid";
+  }
 }
 
 function controlledProbeDiscriminator(req: Request): string | null {
@@ -244,8 +266,8 @@ export type InferenceAuthResolution =
       ctx: ResolvedInferenceAuthContext;
       source: "cache" | "origin";
     }
-  | { kind: "suspended"; userId?: string }
-  | { kind: "rejected"; status: 401 | 403 }
+  | { kind: "suspended"; userId?: string; reason?: InferenceAuthRejectionReason }
+  | { kind: "rejected"; status: 401 | 403; reason?: InferenceAuthRejectionReason }
   | { kind: "warming"; hydration?: Promise<unknown> }
   | { kind: "slow_path"; reason: "mobile_api_key" | "non_api_key" };
 
@@ -351,6 +373,8 @@ function getOrCreateApiKeyHydration(
   const existing = apiKeyHydrations.get(keyHash);
   if (existing) return existing;
 
+  let authoritativeRejectionReason: InferenceAuthRejectionReason | undefined;
+
   // The outer Worker waitUntil retains this whole operation, so the
   // authoritative resolver intentionally runs without an execution context:
   // it must finish the cache write before releasing the single-flight slot.
@@ -358,10 +382,18 @@ function getOrCreateApiKeyHydration(
     traceId,
     cacheOnly: false,
     forceAuthoritative: true,
+    onAuthoritativeRejection: (reason) => {
+      authoritativeRejectionReason = reason;
+    },
   })
     .then(async (result) => {
       if (result.kind === "suspended") {
-        const write = await writeInferenceApiKeyAuthRejection(keyHash, "suspended", 403);
+        const write = await writeInferenceApiKeyAuthRejection(
+          keyHash,
+          "suspended",
+          403,
+          result.reason ?? "moderation_blocked",
+        );
         if (write.kind !== "written") {
           throw new Error(`Suspended inference-auth decision cache write failed: ${write.kind}`);
         }
@@ -371,7 +403,8 @@ function getOrCreateApiKeyHydration(
     .catch(async (error) => {
       const status = getErrorStatusCode(error);
       if (status === 401 || status === 403) {
-        const write = await writeInferenceApiKeyAuthRejection(keyHash, "rejected", status);
+        const reason = authoritativeRejectionReason ?? "credential_invalid";
+        const write = await writeInferenceApiKeyAuthRejection(keyHash, "rejected", status, reason);
         if (write.kind !== "written") {
           logger.warn("[InferenceAuth] rejected decision cache write failed", {
             traceId: boundedTraceId(traceId),
@@ -457,6 +490,28 @@ export async function resolveInferenceAuthContext(
       cacheWriteMs: null,
     },
   };
+  let standingDenialLogged = false;
+  let authoritativeStandingReason: InferenceAuthRejectionReason | undefined;
+  const logStandingDenial = (params: {
+    status: 401 | 403;
+    reason: unknown;
+    source: InferenceStandingDecisionSource;
+  }): void => {
+    standingDenialLogged = true;
+    const reason =
+      typeof params.reason === "string" && /^[a-z0-9_:-]{1,64}$/.test(params.reason)
+        ? params.reason
+        : "unavailable";
+    logger.error("[InferenceAuth] account standing denied inference", {
+      traceId: boundedTraceId(options.traceId),
+      status: params.status,
+      reason,
+      authSource: trace.authSource,
+      cacheBackend: trace.cacheBackend,
+      cacheRead: trace.cacheRead,
+      source: params.source,
+    });
+  };
 
   try {
     const authCacheEnabled = isInferenceAuthCacheEnabled();
@@ -490,10 +545,20 @@ export async function resolveInferenceAuthContext(
       if (session.kind === "suspended") {
         trace.cacheRead = "hit";
         trace.result = "suspended";
+        logStandingDenial({
+          status: 403,
+          reason: session.reason,
+          source: "session_resolution",
+        });
         return session;
       }
       trace.cacheRead = "hit";
       trace.result = "rejected";
+      logStandingDenial({
+        status: session.status,
+        reason: session.reason,
+        source: "session_resolution",
+      });
       return session;
     }
     trace.authSource = credential.source;
@@ -530,9 +595,15 @@ export async function resolveInferenceAuthContext(
         } catch (error) {
           if (error instanceof InferenceCredentialRevokedError) {
             trace.result = error.reason === "credential_revoked" ? "rejected" : "suspended";
+            const reason = rejectionReasonForRevocation(error.reason);
+            logStandingDenial({
+              status: error.reason === "credential_revoked" ? 401 : 403,
+              reason,
+              source: "authoritative",
+            });
             return error.reason === "credential_revoked"
-              ? { kind: "rejected", status: 401 }
-              : { kind: "suspended", userId: cached.ctx.userId };
+              ? { kind: "rejected", status: 401, reason }
+              : { kind: "suspended", userId: cached.ctx.userId, reason };
           }
           throw error;
         }
@@ -561,9 +632,14 @@ export async function resolveInferenceAuthContext(
       }
       if (cached.kind === "rejected") {
         trace.result = cached.decision === "suspended" ? "suspended" : "rejected";
+        logStandingDenial({
+          status: cached.status,
+          reason: cached.reason,
+          source: "cache",
+        });
         return cached.decision === "suspended"
-          ? { kind: "suspended" }
-          : { kind: "rejected", status: cached.status };
+          ? { kind: "suspended", reason: cached.reason }
+          : { kind: "rejected", status: cached.status, reason: cached.reason };
       }
     } else {
       trace.cacheRead = "unavailable";
@@ -608,7 +684,9 @@ export async function resolveInferenceAuthContext(
           trace.timings.userOrgLookupMs = Math.round(durationMs * 100) / 100;
         },
       },
-      rejected: () => {
+      rejected: (reason) => {
+        authoritativeStandingReason = reason;
+        options.onAuthoritativeRejection?.(reason);
         trace.authoritative = "rejected";
         trace.result = "rejected";
       },
@@ -624,7 +702,12 @@ export async function resolveInferenceAuthContext(
     if (suspended) {
       trace.authoritative = "suspended";
       trace.result = "suspended";
-      return { kind: "suspended", userId: user.id };
+      logStandingDenial({
+        status: 403,
+        reason: "moderation_blocked",
+        source: "authoritative",
+      });
+      return { kind: "suspended", userId: user.id, reason: "moderation_blocked" };
     }
 
     const [admission, appScopeId] = authCacheEnabled
@@ -652,9 +735,15 @@ export async function resolveInferenceAuthContext(
     } catch (error) {
       if (error instanceof InferenceCredentialRevokedError) {
         trace.result = error.reason === "credential_revoked" ? "rejected" : "suspended";
+        const reason = rejectionReasonForRevocation(error.reason);
+        logStandingDenial({
+          status: error.reason === "credential_revoked" ? 401 : 403,
+          reason,
+          source: "authoritative",
+        });
         return error.reason === "credential_revoked"
-          ? { kind: "rejected", status: 401 }
-          : { kind: "suspended", userId: ctx.userId };
+          ? { kind: "rejected", status: 401, reason }
+          : { kind: "suspended", userId: ctx.userId, reason };
       }
       throw error;
     }
@@ -682,6 +771,27 @@ export async function resolveInferenceAuthContext(
       trace.cacheBackend = write.backend;
     }
     return { kind: "authorized", ctx, source: "origin" };
+  } catch (error) {
+    if (authoritativeStandingReason && !standingDenialLogged) {
+      const status = getErrorStatusCode(error);
+      logStandingDenial({
+        status: status === 401 ? 401 : 403,
+        reason: authoritativeStandingReason,
+        source: "authoritative",
+      });
+    }
+    if (!standingDenialLogged) {
+      logger.error("[InferenceAuth] authorization flow failed", {
+        traceId: boundedTraceId(options.traceId),
+        authSource: trace.authSource,
+        cacheBackend: trace.cacheBackend,
+        cacheRead: trace.cacheRead,
+        authoritative: trace.authoritative,
+        result: trace.result,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    throw error;
   } finally {
     const telemetry = freezeTrace(options.traceId, trace, totalStartedAt);
     logger.info("[InferenceAuth] trace", telemetry);

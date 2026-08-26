@@ -906,6 +906,44 @@ describe("requireGenerativeRouteCaller", () => {
     });
   });
 
+  test("returns the cached account-standing reason without another lookup", async () => {
+    const { c } = workerContext();
+    resolveInferenceAuthContext.mockResolvedValueOnce({
+      kind: "rejected",
+      status: 403,
+      reason: "organization_inactive",
+    });
+    await expect(
+      requireGenerativeRouteCaller(c as never),
+    ).rejects.toMatchObject({
+      status: 403,
+      code: "access_denied",
+      message: "Organization is inactive",
+      details: { reason: "organization_inactive" },
+    });
+    expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
+    expect(requireAuthOrApiKeyWithOrg).not.toHaveBeenCalled();
+  });
+
+  test("explains an inactive cached API key without another lookup", async () => {
+    const { c } = workerContext();
+    resolveInferenceAuthContext.mockResolvedValueOnce({
+      kind: "rejected",
+      status: 403,
+      reason: "credential_inactive",
+    });
+    await expect(
+      requireGenerativeRouteCaller(c as never),
+    ).rejects.toMatchObject({
+      status: 403,
+      code: "access_denied",
+      message: "API key is inactive",
+      details: { reason: "credential_inactive" },
+    });
+    expect(resolveInferenceAuthContext).toHaveBeenCalledTimes(1);
+    expect(requireAuthOrApiKeyWithOrg).not.toHaveBeenCalled();
+  });
+
   test("falls through slow_path to raw compatibility auth", async () => {
     const { c } = workerContext();
     resolveInferenceAuthContext.mockResolvedValueOnce({

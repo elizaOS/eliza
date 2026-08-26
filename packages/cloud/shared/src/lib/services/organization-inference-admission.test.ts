@@ -755,3 +755,17 @@ test("non-Worker affiliate admission keeps synchronous reservation compatibility
   expect(pairReads).toBe(0);
   expect(affiliateReads).toBe(0);
 });
+
+test("non-Worker KV-ledger admission reserves instead of trusting a balance projection", async () => {
+  const model = nextModel();
+  const admission = await admitOrganizationInference({
+    ...admissionParams(model, []),
+    executionCtx: undefined,
+  });
+
+  expect(admission.mode).toBe("synchronous_reservation");
+  expect(reserveCredits).toHaveBeenCalledTimes(1);
+  expect(writePendingInferenceCharge).not.toHaveBeenCalled();
+  expect(admitInferenceChargeViaLedger).not.toHaveBeenCalled();
+  expect(isOptimisticEligible).not.toHaveBeenCalled();
+});

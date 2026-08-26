@@ -477,6 +477,9 @@ export class InferenceAdmissionGate {
   private ledger: GateLedger | undefined;
   private rateLimitWindows: RateLimitWindows | undefined;
   private operationQueue: Promise<void> = Promise.resolve();
+  // Credential decisions and lifecycle fences must remain ordered with each
+  // other, but may not wait behind slower billing lease or settlement work.
+  private revocationOperationQueue: Promise<void> = Promise.resolve();
   // This queue orders calls within a rate-only identity. Cross-lane isolation
   // comes from the distinct Durable Object identity selected by the caller.
   private rateLimitOperationQueue: Promise<void> = Promise.resolve();
@@ -671,10 +674,26 @@ export class InferenceAdmissionGate {
     return Response.json({ cutoverAt });
   }
 
-  private async serialize<T>(operation: () => Promise<T>): Promise<T> {
+  protected async serialize<T>(operation: () => Promise<T>): Promise<T> {
     const previous = this.operationQueue;
     let release: () => void = () => undefined;
     this.operationQueue = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
+  }
+
+  protected async serializeRevocation<T>(
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const previous = this.revocationOperationQueue;
+    let release: () => void = () => undefined;
+    this.revocationOperationQueue = new Promise<void>((resolve) => {
       release = resolve;
     });
     await previous;
@@ -1281,32 +1300,32 @@ export class InferenceAdmissionGate {
       );
     }
     if (path === "/credential/check") {
-      return await this.serialize(() =>
+      return await this.serializeRevocation(() =>
         this.credentialCheck(body as CredentialCheckRequest),
       );
     }
     if (path === "/credential/revoke") {
-      return await this.serialize(() =>
+      return await this.serializeRevocation(() =>
         this.revokeCredential(body as CredentialRevokeRequest),
       );
     }
     if (path === "/subject/set-active") {
-      return await this.serialize(() =>
+      return await this.serializeRevocation(() =>
         this.setSubjectActive(body as SubjectStateRequest),
       );
     }
     if (path === "/session/revoke-through") {
-      return await this.serialize(() =>
+      return await this.serializeRevocation(() =>
         this.revokeSessionsThrough(body as SessionRevokeRequest),
       );
     }
     if (path === "/session/set-binding-active") {
-      return await this.serialize(() =>
+      return await this.serializeRevocation(() =>
         this.setSessionBindingActive(body as SessionBindingStateRequest),
       );
     }
     if (path === "/organization/set-active") {
-      return await this.serialize(() =>
+      return await this.serializeRevocation(() =>
         this.setOrganizationActive(body as OrganizationStateRequest),
       );
     }

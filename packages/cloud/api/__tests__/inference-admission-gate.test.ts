@@ -182,6 +182,21 @@ function createGate(
   return new InferenceAdmissionGate(state, env as never);
 }
 
+class QueueTestGate extends InferenceAdmissionGate {
+  runBillingQueueOperation(operation: () => Promise<void>): Promise<void> {
+    return this.serialize(operation);
+  }
+
+  runRevocationQueueOperation(operation: () => Promise<void>): Promise<void> {
+    return this.serializeRevocation(operation);
+  }
+}
+
+function createQueueTestGate(storage = new TestStorage()): QueueTestGate {
+  const state = { storage } as unknown as DurableObjectState;
+  return new QueueTestGate(state, {} as never);
+}
+
 function post(
   gate: InferenceAdmissionGate,
   path:
@@ -193,7 +208,13 @@ function post(
     | "/rate-limit"
     | "/rate-limit-v2-cutover"
     | "/rate-limit-warm"
-    | "/rate-limit-handoff",
+    | "/rate-limit-handoff"
+    | "/credential/check"
+    | "/credential/revoke"
+    | "/subject/set-active"
+    | "/session/revoke-through"
+    | "/session/set-binding-active"
+    | "/organization/set-active",
   body: Record<string, unknown>,
 ): Promise<Response> {
   const payload =
@@ -318,6 +339,71 @@ describe("InferenceAdmissionGate", () => {
   afterAll(() => {
     recoverExpiredLease.mockRestore();
     getOrganizationBalanceSnapshot.mockRestore();
+  });
+
+  test("credential checks do not wait behind a blocked billing operation", async () => {
+    const gate = createQueueTestGate();
+    let enterBilling: () => void = () => undefined;
+    const billingEntered = new Promise<void>((resolve) => {
+      enterBilling = resolve;
+    });
+    let releaseBilling: () => void = () => undefined;
+    const billingReleased = new Promise<void>((resolve) => {
+      releaseBilling = resolve;
+    });
+    const blockedBilling = gate.runBillingQueueOperation(async () => {
+      enterBilling();
+      await billingReleased;
+    });
+    await billingEntered;
+
+    const response = await Promise.race([
+      post(gate, "/credential/check", {
+        organizationId: "org-a",
+        kind: "api_key",
+        credentialId: "key-a",
+        userId: "user-a",
+      }),
+      new Promise<never>((_, reject) => {
+        setTimeout(
+          () => reject(new Error("credential check waited behind billing")),
+          100,
+        );
+      }),
+    ]);
+    expect(response.status).toBe(200);
+
+    releaseBilling();
+    await blockedBilling;
+  });
+
+  test("revocation reads and writes retain one ordered queue", async () => {
+    const gate = createQueueTestGate();
+    const order: string[] = [];
+    let enterFirst: () => void = () => undefined;
+    const firstEntered = new Promise<void>((resolve) => {
+      enterFirst = resolve;
+    });
+    let releaseFirst: () => void = () => undefined;
+    const firstReleased = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const first = gate.runRevocationQueueOperation(async () => {
+      order.push("first:start");
+      enterFirst();
+      await firstReleased;
+      order.push("first:end");
+    });
+    await firstEntered;
+    const second = gate.runRevocationQueueOperation(async () => {
+      order.push("second");
+    });
+    await Promise.resolve();
+    expect(order).toEqual(["first:start"]);
+
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(order).toEqual(["first:start", "first:end", "second"]);
   });
 
   test("serializes and persists an exact fixed endpoint window", async () => {

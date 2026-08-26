@@ -41,9 +41,12 @@ import { republishOrgBalanceHint } from "./inference-auth-cache";
  * next request's critical path, and it keeps the revision fresh rather than
  * preserving a stale one.
  *
- * The write is min-clamped (`republishOrgBalanceHint`) so the #9899 over-admit
- * bound survives: a concurrent debit that published a STRICTER gate while this
- * snapshot was in flight is never raised back up.
+ * Republication is one write with no cache readback. The cache is a projection,
+ * not the monetary authority: Worker dispatch is fenced by the serialized,
+ * revision-aware InferenceAdmissionGate Durable Object. Non-Worker callers use
+ * the atomic DB-ledger admission or reserve synchronously; the legacy KV lane
+ * is never allowed to dispatch from this projection. Older snapshots therefore
+ * cannot reopen an active gate even if concurrent writers reach Redis out of order.
  */
 export async function republishOrgBalanceHintAfterDebit(organizationId: string): Promise<void> {
   // Captured BEFORE the authoritative read, matching `refreshOrgBalanceHint`:

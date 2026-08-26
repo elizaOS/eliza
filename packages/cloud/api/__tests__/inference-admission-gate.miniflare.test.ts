@@ -246,6 +246,34 @@ describe("Miniflare Durable Object integration", () => {
     expect([first.status, second.status].sort()).toEqual([200, 402]);
   }, 120_000);
 
+  test("credential checks bypass a blocked billing queue on the same object", async () => {
+    expect((await post("/test-block-billing-queue", {})).status).toBe(202);
+    const credentialCheck = await Promise.race([
+      post("/credential/check", {
+        organizationId: "org-miniflare",
+        kind: "api_key",
+        credentialId: "00000000-0000-0000-0000-000000000104",
+        userId: "00000000-0000-0000-0000-000000000204",
+      }),
+      new Promise<never>((_, reject) => {
+        setTimeout(
+          () => reject(new Error("credential check waited behind billing")),
+          500,
+        );
+      }),
+    ]);
+    expect(credentialCheck.status).toBe(200);
+    expect((await post("/test-release-billing-queue", {})).status).toBe(204);
+  });
+
+  test("the revocation queue preserves read-write ordering", async () => {
+    const response = await post("/test-revocation-queue-order", {});
+    expect(response.status).toBe(200);
+    expect(JSON.parse(await response.text())).toEqual({
+      order: ["first:start", "first:end", "second"],
+    });
+  });
+
   test("independent callers observe API-key revocation immediately", async () => {
     const credential = {
       organizationId: "org-miniflare",

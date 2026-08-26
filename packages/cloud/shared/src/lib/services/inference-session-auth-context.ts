@@ -23,6 +23,7 @@ import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { adminService } from "./admin";
 import { loadInferenceAdmissionSnapshot } from "./inference-admission-snapshot";
+import type { InferenceAuthRejectionReason } from "./inference-auth-cache";
 import {
   INFERENCE_AUTH_CONTEXT_VERSION,
   type InferenceSessionAuthContext,
@@ -52,8 +53,8 @@ export type InferenceSessionAuthResolution =
       ctx: InferenceSessionAuthContext;
       source: "cache" | "origin";
     }
-  | { kind: "suspended"; userId?: string }
-  | { kind: "rejected"; status: 401 | 403 }
+  | { kind: "suspended"; userId?: string; reason?: InferenceAuthRejectionReason }
+  | { kind: "rejected"; status: 401 | 403; reason?: InferenceAuthRejectionReason }
   | {
       kind: "warming";
       hydration?: Promise<InferenceSessionAuthDecision | undefined>;
@@ -77,13 +78,18 @@ export function extractInferenceSessionCredential(req: Request): string | null {
   return readStewardAccessCookieFromHeader(req.headers.get("cookie"), env.ENVIRONMENT) ?? null;
 }
 
-function rejection(stewardUserId: string, status: 401 | 403): InferenceSessionAuthDecision {
+function rejection(
+  stewardUserId: string,
+  status: 401 | 403,
+  reason?: InferenceAuthRejectionReason,
+): InferenceSessionAuthDecision {
   return {
     v: INFERENCE_AUTH_CONTEXT_VERSION,
     cachedAt: Date.now(),
     stewardUserId,
     decision: "rejected",
     status,
+    ...(reason ? { reason } : {}),
   };
 }
 
@@ -104,12 +110,12 @@ async function hydrateAuthoritativeDecision(params: {
     });
   }
   if (!user) return rejection(params.stewardUserId, 401);
-  if (!user.is_active) return rejection(params.stewardUserId, 403);
+  if (!user.is_active) return rejection(params.stewardUserId, 403, "account_inactive");
   if (!user.organization_id || !user.organization) {
-    return rejection(params.stewardUserId, 403);
+    return rejection(params.stewardUserId, 403, "membership_missing");
   }
   if (!user.organization.is_active) {
-    return rejection(params.stewardUserId, 403);
+    return rejection(params.stewardUserId, 403, "organization_inactive");
   }
   if (await adminService.shouldBlockUser(user.id)) {
     return {
@@ -118,6 +124,7 @@ async function hydrateAuthoritativeDecision(params: {
       stewardUserId: params.stewardUserId,
       decision: "suspended",
       status: 403,
+      reason: "moderation_blocked",
     };
   }
   return {
@@ -138,9 +145,9 @@ function toResolution(
     return { kind: "authorized", ctx: decision, source };
   }
   if (decision.decision === "suspended") {
-    return { kind: "suspended" };
+    return { kind: "suspended", reason: decision.reason };
   }
-  return { kind: "rejected", status: decision.status };
+  return { kind: "rejected", status: decision.status, reason: decision.reason };
 }
 
 async function enforceStrongSessionBoundary(
