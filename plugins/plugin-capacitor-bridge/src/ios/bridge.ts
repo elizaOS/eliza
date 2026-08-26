@@ -12,6 +12,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import process from "node:process";
 import { Readable } from "node:stream";
+import { fileURLToPath } from "node:url";
 import {
 	ChannelType,
 	compareMemoryIds,
@@ -577,7 +578,12 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
 		(process.env.HOME
 			? `${process.env.HOME}/Library/Application Support/Eliza/workspace`
 			: "/tmp/eliza-workspace");
-	installMobileFsShim(mobileWorkspaceRoot);
+	const packagedPublicDir = argvEnv.bundlePath
+		? path.dirname(path.dirname(argvEnv.bundlePath))
+		: path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+	installMobileFsShim(mobileWorkspaceRoot, {
+		readOnlyRoots: [packagedPublicDir],
+	});
 
 	(
 		globalThis as { __ELIZA_DISABLE_DIRECT_RUN?: boolean }
