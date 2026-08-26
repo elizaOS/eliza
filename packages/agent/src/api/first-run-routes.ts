@@ -270,13 +270,26 @@ export interface FirstRunServerState {
   chatConnectionPromise: Promise<void> | null;
 }
 
-function restoreProcessEnvironment(snapshot: NodeJS.ProcessEnv): void {
-  for (const key of Object.keys(process.env)) {
-    if (!Object.hasOwn(snapshot, key)) delete process.env[key];
-  }
-  for (const [key, value] of Object.entries(snapshot)) {
-    if (value === undefined) delete process.env[key];
-    else process.env[key] = value;
+function restoreProcessEnvironment(
+  snapshot: NodeJS.ProcessEnv,
+  ownedSnapshot: NodeJS.ProcessEnv,
+): void {
+  const keys = new Set([
+    ...Object.keys(snapshot),
+    ...Object.keys(ownedSnapshot),
+  ]);
+  for (const key of keys) {
+    const currentPresent = Object.hasOwn(process.env, key);
+    const ownedPresent = Object.hasOwn(ownedSnapshot, key);
+    if (
+      currentPresent !== ownedPresent ||
+      (currentPresent && process.env[key] !== ownedSnapshot[key])
+    ) {
+      continue;
+    }
+    const previous = snapshot[key];
+    if (previous === undefined) delete process.env[key];
+    else process.env[key] = previous;
   }
 }
 
@@ -558,26 +571,6 @@ export async function handleFirstRunRoutes(
       );
     const firstRunAccountCredential = explicitCredentialInputs?.llmApiKey;
     let firstRunAdoption: FirstRunDirectAccountAdoption | undefined;
-    if (
-      (firstRunDirectAccountProvider === "openrouter-api" ||
-        firstRunDirectAccountProvider === "xai-api") &&
-      firstRunAccountCredential
-    ) {
-      try {
-        // Authenticate and adopt before any onboarding side effect can make an
-        // invalid paid-provider credential look accepted.
-        firstRunAdoption = await adoptFirstRunDirectAccount({
-          providerId: firstRunDirectAccountProvider,
-          apiKey: firstRunAccountCredential,
-        });
-      } catch (err) {
-        // error-policy:J1 first-run is the HTTP boundary: an unproven paid
-        // credential leaves neither config nor account state committed.
-        const message = err instanceof Error ? err.message : String(err);
-        error(res, message, 400);
-        return true;
-      }
-    }
 
     // ── Sandbox mode (from first-run runtime setup: off / light / standard / max)
     const sandboxMode = (body.sandboxMode as string) || "off";
@@ -798,6 +791,28 @@ export async function handleFirstRunRoutes(
     config.meta.firstRunComplete = true;
 
     migrateLegacyRuntimeConfig(config as Record<string, unknown>);
+    let ownedEnvironment = { ...process.env };
+    if (
+      (firstRunDirectAccountProvider === "openrouter-api" ||
+        firstRunDirectAccountProvider === "xai-api") &&
+      firstRunAccountCredential
+    ) {
+      try {
+        // Stage all fallible onboarding preparation before adopting the paid
+        // credential. A rejected probe then has no account state to unwind.
+        firstRunAdoption = await adoptFirstRunDirectAccount({
+          providerId: firstRunDirectAccountProvider,
+          apiKey: firstRunAccountCredential,
+        });
+      } catch (err) {
+        // error-policy:J1 first-run is the HTTP boundary: an unproven paid
+        // credential leaves neither config nor transaction-owned env committed.
+        restoreProcessEnvironment(preCommitEnvironment, ownedEnvironment);
+        const message = err instanceof Error ? err.message : String(err);
+        error(res, message, 400);
+        return true;
+      }
+    }
     if (firstRunAdoption) {
       try {
         await syncDirectProviderCredentials(
@@ -818,7 +833,7 @@ export async function handleFirstRunRoutes(
           >,
           firstRunAdoption.account.providerId,
         );
-        restoreProcessEnvironment(preCommitEnvironment);
+        restoreProcessEnvironment(preCommitEnvironment, ownedEnvironment);
         error(
           res,
           err instanceof Error ? err.message : "Account activation failed",
@@ -826,6 +841,7 @@ export async function handleFirstRunRoutes(
         );
         return true;
       }
+      ownedEnvironment = { ...process.env };
     }
     try {
       ctx.saveElizaConfig(config);
@@ -842,7 +858,7 @@ export async function handleFirstRunRoutes(
           firstRunAdoption.account.providerId,
         );
       }
-      restoreProcessEnvironment(preCommitEnvironment);
+      restoreProcessEnvironment(preCommitEnvironment, ownedEnvironment);
       logger.error(`[eliza-api] Failed to save config after first-run: ${err}`);
       error(res, "Failed to save configuration", 500);
       return true;
@@ -861,7 +877,7 @@ export async function handleFirstRunRoutes(
           firstRunAdoption.account.providerId,
         );
       }
-      restoreProcessEnvironment(preCommitEnvironment);
+      restoreProcessEnvironment(preCommitEnvironment, ownedEnvironment);
       logger.error(
         `[eliza-api] Config file does not exist after save — first-run data will be lost on restart`,
       );

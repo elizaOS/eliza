@@ -699,6 +699,51 @@ describe("accounts routes", () => {
     expect(runtime.getSetting("OPENROUTER_API_KEY")).toBeNull();
   });
 
+  it("revokes the runtime setting when a disable sync retracts env and then fails", async () => {
+    const runtime = new AgentRuntime({
+      character: {
+        name: "account-route-runtime-fail-closed",
+        secrets: { OPENROUTER_API_KEY: "revoked-token" },
+      },
+      settings: { OPENROUTER_API_KEY: "revoked-token" },
+    });
+    fakes.poolAccounts = [
+      {
+        ...linkedAccount,
+        id: "account-1",
+        providerId: "openrouter-api",
+        enabled: true,
+      },
+    ];
+    process.env.OPENROUTER_API_KEY = "revoked-token";
+    process.env.OPENAI_API_KEY = "revoked-token";
+    process.env.OPENAI_BASE_URL = "https://openrouter.ai/api/v1";
+    fakes.applyAccountPoolApiCredentials.mockImplementationOnce(async () => {
+      delete process.env.OPENROUTER_API_KEY;
+      delete process.env.OPENAI_API_KEY;
+      delete process.env.OPENAI_BASE_URL;
+      throw new Error("credential read failed");
+    });
+    const disabled = makeContext(
+      "PATCH",
+      "/api/accounts/openrouter-api/account-1",
+      { enabled: false },
+    );
+    disabled.ctx.state.runtime = runtime;
+    disabled.ctx.state.config = {
+      serviceRouting: { llmText: { backend: "openrouter" } },
+    } as AccountsRouteContext["state"]["config"];
+
+    await expect(handleAccountsRoutes(disabled.ctx)).rejects.toThrow(
+      "credential read failed",
+    );
+
+    expect(fakes.poolAccounts[0]?.enabled).toBe(false);
+    expect(runtime.getSetting("OPENROUTER_API_KEY")).toBeNull();
+    expect(runtime.getSetting("OPENAI_API_KEY")).toBeNull();
+    expect(runtime.getSetting("OPENAI_BASE_URL")).toBeNull();
+  });
+
   it("rejects an unverified OpenRouter credential without persisting it", async () => {
     fakes.probeDirectApiKey.mockResolvedValueOnce({
       ok: false,
