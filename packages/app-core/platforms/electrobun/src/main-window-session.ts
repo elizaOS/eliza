@@ -107,7 +107,19 @@ export function shouldUseIsolatedMainView({
     return true;
   }
 
-  return forceMainWindowCef && buildInfo.availableRenderers.includes("cef");
+  if (!buildInfo.availableRenderers.includes("cef")) {
+    return false;
+  }
+
+  // The pinned Linux Electrobun preflight patches BrowserWindow to forward its
+  // partition to the implicit BrowserView. Keep Linux on that single-view path:
+  // creating and removing an unpartitioned bootstrap CEF view can race the
+  // partitioned replacement and write storage to the wrong profile.
+  if (platform === "linux") {
+    return false;
+  }
+
+  return forceMainWindowCef;
 }
 
 export function resolveBootstrapShellRenderer(buildInfo: BuildInfo): Renderer {

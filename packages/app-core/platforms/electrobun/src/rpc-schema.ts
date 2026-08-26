@@ -16,6 +16,7 @@ import type { JsonValue } from "@elizaos/core";
 import type {
   EncryptedRemoteControlEnvelope,
   RemoteCommandAction,
+  RemoteControllerPlatform,
   RemoteControllerPublicIdentity,
   RemoteJsonValue,
   RemoteTargetPublicIdentity,
@@ -552,7 +553,7 @@ export interface SshRuntimeStartParams extends SshHostInspectParams {
   remoteApiPort: number;
   expectedFingerprint: string;
   identityFile?: string;
-  credentialRef?: string;
+  credentialRef: string;
 }
 
 export interface SshRuntimeRequestParams extends RuntimeCredentialParams {
@@ -600,6 +601,8 @@ export interface RemoteTargetEnrollParams {
   ownerId: string;
   ownerAccessToken: string;
   displayName: string;
+  platform: "macos" | "windows" | "linux";
+  managedNetwork?: boolean;
 }
 
 export interface RemoteTargetRunnerStatusResponse {
@@ -2222,6 +2225,8 @@ export type ElizaDesktopRPCSchema = {
           running: boolean;
           localPort: number | null;
           startedAt: number | null;
+          reconnectState: "stopped" | "running" | "blocked";
+          lastError: string | null;
         };
       };
       sshRuntimeRequest: {
@@ -2290,13 +2295,89 @@ export type ElizaDesktopRPCSchema = {
         params: Record<string, never>;
         response: { enrolled: boolean; identity?: RemoteTargetPublicIdentity };
       };
+      remoteTargetCreatePairingChallenge: {
+        params: Record<string, never>;
+        response: {
+          sessionId: string;
+          code: string;
+          expiresAt: number;
+          capabilities: string[];
+          status: "pending";
+        };
+      };
+      remoteTargetReadPairingChallenge: {
+        params: { sessionId: string };
+        response: {
+          sessionId: string;
+          status: "pending" | "claimed" | "denied" | "expired";
+          expiresAt: number;
+          capabilities: string[];
+          controller?: {
+            deviceId: string;
+            keyId: string;
+            displayName: string;
+            platform: RemoteControllerPlatform;
+          };
+        };
+      };
+      remoteTargetConfirmPairing: {
+        params: { sessionId: string };
+        response:
+          | {
+              sessionId: string;
+              status: "active";
+              controllerDisplayName: string;
+              grantExpiresAt: number;
+            }
+          | {
+              sessionId: string;
+              status: "compensation_required";
+              errorCode: "REMOTE_ACTIVATION_COMPENSATION_REQUIRED";
+              retryRpc: "remoteTargetCompensateActivation";
+            }
+          | {
+              sessionId: string;
+              status: "commit_required";
+              errorCode: "REMOTE_ACTIVATION_COMMIT_REQUIRED";
+              retryRpc: "remoteTargetCommitActivation";
+            };
+      };
       remoteTargetActivate: {
-        params: { sessionId: string; code: string };
+        params: { sessionId?: string; code: string };
+        response:
+          | {
+              sessionId: string;
+              status: "active";
+              controllerDisplayName: string;
+              grantExpiresAt: number;
+            }
+          | {
+              sessionId: string;
+              status: "compensation_required";
+              errorCode: "REMOTE_ACTIVATION_COMPENSATION_REQUIRED";
+              retryRpc: "remoteTargetCompensateActivation";
+            }
+          | {
+              sessionId: string;
+              status: "commit_required";
+              errorCode: "REMOTE_ACTIVATION_COMMIT_REQUIRED";
+              retryRpc: "remoteTargetCommitActivation";
+            };
+      };
+      remoteTargetCompensateActivation: {
+        params: { sessionId: string };
+        response: {
+          sessionId: string;
+          status: "denied" | "revoked";
+          alreadyCompensated: boolean;
+        };
+      };
+      remoteTargetCommitActivation: {
+        params: { sessionId: string };
         response: {
           sessionId: string;
           status: "active";
-          controllerDisplayName: string;
-          grantExpiresAt: number;
+          alreadyCommitted: boolean;
         };
       };
       remoteTargetStart: {
@@ -2967,7 +3048,12 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "remoteController:acknowledgeEnqueue": "remoteControllerAcknowledgeEnqueue",
   "remoteTarget:enroll": "remoteTargetEnroll",
   "remoteTarget:getIdentity": "remoteTargetGetIdentity",
+  "remoteTarget:createPairingChallenge": "remoteTargetCreatePairingChallenge",
+  "remoteTarget:readPairingChallenge": "remoteTargetReadPairingChallenge",
+  "remoteTarget:confirmPairing": "remoteTargetConfirmPairing",
   "remoteTarget:activate": "remoteTargetActivate",
+  "remoteTarget:compensateActivation": "remoteTargetCompensateActivation",
+  "remoteTarget:commitActivation": "remoteTargetCommitActivation",
   "remoteTarget:start": "remoteTargetStart",
   "remoteTarget:stop": "remoteTargetStop",
   "remoteTarget:status": "remoteTargetStatus",

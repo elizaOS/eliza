@@ -36,6 +36,8 @@ export interface RemoteTargetStoredSession {
   lastSequence: number;
   nonces: Record<string, number>;
   stoppedAt: number | null;
+  /** Absent legacy rows are committed; new two-phase rows stage explicitly. */
+  activationState?: "staged" | "active";
 }
 
 export interface RemoteTargetStoredCommand {
@@ -134,7 +136,10 @@ function assertState(
       ) ||
       (session.stoppedAt !== null &&
         (!Number.isSafeInteger(session.stoppedAt) ||
-          (session.stoppedAt as number) <= 0))
+          (session.stoppedAt as number) <= 0)) ||
+      (session.activationState !== undefined &&
+        session.activationState !== "staged" &&
+        session.activationState !== "active")
     ) {
       throw new Error("Remote target journal is corrupt.");
     }
