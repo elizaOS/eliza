@@ -611,4 +611,35 @@ describe("Matrix service hardening", () => {
       vi.useRealTimers();
     }
   });
+
+  it("leaveRoom terminates the membership scope before reporting success", async () => {
+    const { service, state } = createService();
+    const markScopeUnavailable = vi.fn().mockResolvedValue(undefined);
+    Object.assign(state, { membershipAuthority: { markScopeUnavailable } });
+    (state.client as { leave: ReturnType<typeof vi.fn> }).leave = vi
+      .fn()
+      .mockResolvedValue(undefined);
+
+    await service.leaveRoom("!ops:example");
+
+    expect(state.client.leave).toHaveBeenCalledWith("!ops:example");
+    // The homeserver confirmed the leave: the scope must be tombstoned NOW,
+    // not left authorizing until an SDK membership event arrives.
+    expect(markScopeUnavailable).toHaveBeenCalledWith({
+      roomId: "!ops:example",
+      reason: "bot_left_explicit",
+    });
+  });
+
+  it("leaveRoom propagates the leave error without terminating the scope", async () => {
+    const { service, state } = createService();
+    const markScopeUnavailable = vi.fn().mockResolvedValue(undefined);
+    Object.assign(state, { membershipAuthority: { markScopeUnavailable } });
+    (state.client as { leave: ReturnType<typeof vi.fn> }).leave = vi
+      .fn()
+      .mockRejectedValue(new Error("homeserver 403"));
+
+    await expect(service.leaveRoom("!ops:example")).rejects.toThrow("homeserver 403");
+    expect(markScopeUnavailable).not.toHaveBeenCalled();
+  });
 });

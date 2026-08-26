@@ -61,9 +61,37 @@ function createAuthorityService(
 ) {
   const commands: RecordedCommand[] = [];
   let scopeHealth: MembershipScopeHealth | null = null;
+  // Mirrors SqlMembershipService: one binding per scope, and every evidence
+  // command must match the registered publisher instance/generation/mode with
+  // exact cursor continuity. This is what makes the snapshot->delta lifecycle
+  // tests below meaningful against the real authority contract.
+  const bindings = new Map<
+    string,
+    {
+      publisherInstanceId: string;
+      publisherGeneration: number;
+      evidenceMode: string;
+      sourceVersion: number;
+      sourceCursor: string | null;
+      seenKeys: Set<string>;
+    }
+  >();
+  const authorityError = (code: string, message: string) => {
+    const err = new Error(`MEMBERSHIP_${code}: ${message}`);
+    (err as Error & { code?: string }).code = `MEMBERSHIP_${code}`;
+    return err;
+  };
   const service: MembershipService = {
     registerPublisher: vi.fn(async (command) => {
       commands.push({ op: "registerPublisher", command: command as never });
+      bindings.set(`${command.agentId}:${command.connectorAccountId}:${command.externalRoomId}`, {
+        publisherInstanceId: command.publisherInstanceId,
+        publisherGeneration: command.publisherGeneration,
+        evidenceMode: command.evidenceMode,
+        sourceVersion: -1,
+        sourceCursor: null,
+        seenKeys: new Set(),
+      });
       return {
         contractVersion: 1,
         operation: "publisher",
@@ -73,6 +101,26 @@ function createAuthorityService(
       } satisfies MembershipMutationReceipt;
     }),
     applyCompleteSnapshot: vi.fn(async (command) => {
+      const binding = bindings.get(
+        `${command.agentId}:${command.connectorAccountId}:${command.externalRoomId}`
+      );
+      if (!binding) throw authorityError("SCOPE_NOT_FOUND", "no publisher registered");
+      if (
+        binding.publisherInstanceId !== command.publisherInstanceId ||
+        binding.publisherGeneration !== command.publisherGeneration ||
+        binding.evidenceMode !== command.evidenceMode
+      )
+        throw authorityError("PUBLISHER_MISMATCH", "mode or publisher generation changed");
+      if (binding.seenKeys.has(command.idempotencyKey))
+        throw authorityError("IDEMPOTENCY_CONFLICT", "key already used for different bytes");
+      if (
+        command.sourceVersion !== binding.sourceVersion + 1 ||
+        command.previousSourceCursor !== binding.sourceCursor
+      )
+        throw authorityError("CURSOR_DISCONTINUITY", "evidence is not the next cursor");
+      binding.seenKeys.add(command.idempotencyKey);
+      binding.sourceVersion = command.sourceVersion;
+      binding.sourceCursor = command.sourceCursor;
       commands.push({ op: "applyCompleteSnapshot", command: command as never });
       return {
         contractVersion: 1,
@@ -95,6 +143,28 @@ function createAuthorityService(
       } satisfies MembershipMutationReceipt;
     }),
     applyMembership: vi.fn(async (command) => {
+      const binding = bindings.get(
+        `${command.agentId}:${command.connectorAccountId}:${command.externalRoomId}`
+      );
+      if (!binding) throw authorityError("SCOPE_NOT_FOUND", "no publisher registered");
+      if (
+        binding.publisherInstanceId !== command.publisherInstanceId ||
+        binding.publisherGeneration !== command.publisherGeneration ||
+        binding.evidenceMode !== command.evidenceMode
+      )
+        throw authorityError("PUBLISHER_MISMATCH", "mode or publisher generation changed");
+      if (binding.evidenceMode === "ordered_delta" && binding.sourceVersion < 0)
+        throw authorityError("SNAPSHOT_REQUIRED", "deltas need a complete baseline first");
+      if (binding.seenKeys.has(command.idempotencyKey))
+        throw authorityError("IDEMPOTENCY_CONFLICT", "key already used for different bytes");
+      if (
+        command.sourceVersion !== binding.sourceVersion + 1 ||
+        command.previousSourceCursor !== binding.sourceCursor
+      )
+        throw authorityError("CURSOR_DISCONTINUITY", "evidence is not the next cursor");
+      binding.seenKeys.add(command.idempotencyKey);
+      binding.sourceVersion = command.sourceVersion;
+      binding.sourceCursor = command.sourceCursor;
       commands.push({ op: "applyMembership", command: command as never });
       return {
         contractVersion: 1,
@@ -137,6 +207,24 @@ function createAuthority(
     connectorAccountId: ACCOUNT_ID,
     service,
   });
+}
+
+/** Publishes a one-member complete baseline for ROOM on the authority. */
+async function publishBaseline(authority: MatrixMembershipAuthority): Promise<void> {
+  const published = await authority.publishSnapshot({
+    roomId: ROOM,
+    observedAt: "2026-08-26T00:00:00.000Z",
+    members: [
+      {
+        canonicalPrincipalId: PRINCIPAL_A,
+        roles: ["member"],
+        permissionSnapshot: { membership: "join" },
+        runtime: { worldId: null, roomId: null, entityId: PRINCIPAL_A },
+      },
+    ],
+    idempotencyKey: "baseline-0",
+  });
+  expect(published).toBe(true);
 }
 
 describe("matrix membership scope and mapping", () => {
@@ -214,7 +302,10 @@ describe("MatrixMembershipAuthority snapshots", () => {
       | { completeness?: string; evidenceMode?: string; members?: unknown[] }
       | undefined;
     expect(command?.completeness).toBe("complete");
-    expect(command?.evidenceMode).toBe("complete_snapshot");
+    // Single publisher mode per scope (the SQL authority requires every
+    // command's mode to equal the registered mode): snapshots are the
+    // complete baseline of an ordered_delta publisher.
+    expect(command?.evidenceMode).toBe("ordered_delta");
     expect(command?.members?.length).toBe(1);
   });
 
@@ -236,9 +327,10 @@ describe("MatrixMembershipAuthority snapshots", () => {
 });
 
 describe("MatrixMembershipAuthority transitions", () => {
-  it("records a join transition as ordered-delta evidence keyed by the event id", async () => {
+  it("records a join transition as ordered-delta evidence after a snapshot baseline", async () => {
     const { service, commands } = createAuthorityService();
     const authority = createAuthority(service);
+    await publishBaseline(authority);
     await authority.recordTransition({
       roomId: ROOM,
       canonicalPrincipalId: PRINCIPAL_A,
@@ -256,6 +348,26 @@ describe("MatrixMembershipAuthority transitions", () => {
     expect(applied?.command.state).toBe("active");
     expect(applied?.command.reason).toBe("joined");
     expect(applied?.command.idempotencyKey).toContain("$m1");
+  });
+
+  it("drops a delta when no snapshot baseline exists (real authority requires one)", async () => {
+    const { service, commands } = createAuthorityService();
+    const authority = createAuthority(service);
+    // No publishSnapshot first: the SQL authority rejects an ordered_delta
+    // without a current complete baseline, so the evidence is dropped and the
+    // denial stands — never a fabricated success.
+    await authority.recordTransition({
+      roomId: ROOM,
+      canonicalPrincipalId: PRINCIPAL_A,
+      transition: "join",
+      roles: ["member"],
+      permissionSnapshot: {},
+      runtime: { worldId: null, roomId: null, entityId: PRINCIPAL_A },
+      eventId: "$no-baseline",
+      matrixUserId: "@alice:example",
+      observedAt: "2026-08-26T00:00:01.000Z",
+    });
+    expect(commands.some((c) => c.op === "applyMembership")).toBe(false);
   });
 
   it("skips an out-of-order redelivery that would resurrect a committed revocation", async () => {
@@ -285,8 +397,10 @@ describe("MatrixMembershipAuthority transitions", () => {
     const { service, commands } = createAuthorityService();
     const authority = createAuthority(service);
     await authority.markScopeUnavailable({ roomId: ROOM, reason: "bot_left" });
+    // No persisted scope row exists yet: degradation is local (the tombstone
+    // below); setScopeHealth only runs when there is a scope to degrade.
     const degrade = commands.find((c) => c.op === "setScopeHealth");
-    expect(degrade?.command.health).toBe("unavailable");
+    expect(degrade).toBeUndefined();
     // Post-leave evidence is tombstoned.
     const published = await authority.publishSnapshot({
       roomId: ROOM,
@@ -371,7 +485,9 @@ describe("MatrixMembershipMessageGate", () => {
     ];
     const { service, commands } = createAuthorityService();
     (service as { authorize: unknown }).authorize = vi.fn(async () => decisions[call++]);
-    const gate = gateWith(createAuthority(service));
+    const authority = createAuthority(service);
+    await publishBaseline(authority);
+    const gate = gateWith(authority);
     const allowed = await gate.authorizeMessage({
       roomId: ROOM,
       isDirectRoom: false,
@@ -395,6 +511,20 @@ describe("MatrixMembershipMessageGate", () => {
       getJoinedMemberIds: () => [],
     });
     expect(allowed).toBe(true);
+  });
+
+  it("fails closed for every room once the gate is marked broken", async () => {
+    const { service } = createAuthorityService();
+    const gate = gateWith(createAuthority(service));
+    gate.markBroken();
+    const allowed = await gate.authorizeMessage({
+      roomId: ROOM,
+      isDirectRoom: false,
+      principalEntityId: PRINCIPAL_A,
+      matrixUserId: "@alice:example",
+      getJoinedMemberIds: () => ["@alice:example"],
+    });
+    expect(allowed).toBe(false);
   });
 
   it("fails closed when no authority is configured but enforcement is strict", async () => {
