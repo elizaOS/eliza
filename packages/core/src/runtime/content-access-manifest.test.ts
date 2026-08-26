@@ -225,6 +225,32 @@ describe("deriveCompactionContentManifest", () => {
 		expect(manifest.contentRefs[0]?.reference.ref).toBe("opaque-file");
 	});
 
+	it("skips falsy traversal siblings without losing later references", () => {
+		const manifest = deriveCompactionContentManifest(
+			{
+				archivedSteps: [],
+				steps: [
+					{
+						iteration: 1,
+						result: {
+							success: true,
+							promptData: {
+								object: [readView(0, 10), false, 0, ""],
+								array: [false, 0, "", readView(10, 20)],
+							},
+						},
+					},
+				],
+			},
+			{ lastUsedAt: "2026-08-22T12:00:00.000Z" },
+		);
+
+		expect(manifest.contentRefs[0]?.rangesUsed).toEqual([
+			{ unit: "byte", start: 0, end: 10 },
+			{ unit: "byte", start: 10, end: 20 },
+		]);
+	});
+
 	it("excludes references whose owning action cannot resolve them after restart", () => {
 		const nonResumable = {
 			...readView(0, 20),
