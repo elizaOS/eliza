@@ -36,6 +36,7 @@ import {
   savePersistedActiveServer,
 } from "../state/persistence";
 import {
+  getBuildConfiguredRemoteApiBaseUrl,
   isTrustedCloudApiBaseUrl,
   isTrustedRestoreApiBaseUrl,
 } from "../state/runtime-url-trust";
@@ -867,6 +868,7 @@ export class ElizaClient {
   private _baseUrl: string;
   private _userSetBase: boolean;
   private _token: string | null;
+  private readonly pinnedRemoteApiBase = getBuildConfiguredRemoteApiBaseUrl();
   /** Last cloud agent base released after an agent-gone 404 (idempotency). */
   private _releasedGoneAgentBase: string | null = null;
   private personalElizaRuntimeRepoint: Promise<boolean> | null = null;
@@ -937,7 +939,6 @@ export class ElizaClient {
 
   constructor(baseUrl?: string, token?: string) {
     this.clientId = ElizaClient.generateClientId();
-    this._token = token?.trim() || null;
 
     const bootBase = getBootConfig().apiBase;
     const injectedBase = getElizaApiBase();
@@ -953,13 +954,23 @@ export class ElizaClient {
       ? null
       : storedBaseRaw;
 
-    this._userSetBase = baseUrl != null;
-
     // Priority: explicit arg > boot config > desktop injection > session storage > same origin.
     // `client.setBaseUrl()` updates the boot config, so it must beat the
     // shell-injected local default once the user has chosen a different
     // server. Injection still beats stale session state from prior sessions.
-    this._baseUrl = baseUrl ?? bootBase ?? injectedBase ?? storedBase ?? "";
+    const initialBase = normalizeBaseUrl(
+      baseUrl ?? bootBase ?? injectedBase ?? storedBase ?? "",
+    );
+    this._userSetBase = this.pinnedRemoteApiBase !== null || baseUrl != null;
+    this._baseUrl = this.pinnedRemoteApiBase ?? initialBase;
+    const initialToken = token?.trim() || null;
+    this._token =
+      !initialToken ||
+      !this.pinnedRemoteApiBase ||
+      (initialBase === this.pinnedRemoteApiBase &&
+        this.isPinnedRemoteCredential(initialToken))
+        ? initialToken
+        : null;
   }
 
   /**
@@ -987,6 +998,16 @@ export class ElizaClient {
 
   get apiToken(): string | null {
     if (this._token) return this._token;
+    if (this.pinnedRemoteApiBase) {
+      const activeServer = loadPersistedActiveServer();
+      if (
+        activeServer?.kind === "remote" &&
+        activeServer.apiBase?.replace(/\/+$/, "") === this.pinnedRemoteApiBase
+      ) {
+        return activeServer.accessToken?.trim() || null;
+      }
+      return null;
+    }
     const bootToken = getBootConfig().apiToken;
     if (typeof bootToken === "string" && bootToken.trim())
       return bootToken.trim();
@@ -1014,7 +1035,28 @@ export class ElizaClient {
   }
 
   setToken(token: string | null): void {
+    if (
+      this.pinnedRemoteApiBase &&
+      token?.trim() &&
+      !this.isPinnedRemoteCredential(token)
+    ) {
+      logger.warn(
+        "[ElizaClient] ignored a credential not bound to the build-pinned remote target",
+      );
+      return;
+    }
     this.installToken(token, true);
+  }
+
+  /** A pinned build accepts a bearer only after durable exact-origin binding. */
+  private isPinnedRemoteCredential(token: string): boolean {
+    if (!this.pinnedRemoteApiBase) return true;
+    const activeServer = loadPersistedActiveServer();
+    return (
+      activeServer?.kind === "remote" &&
+      activeServer.apiBase?.replace(/\/+$/, "") === this.pinnedRemoteApiBase &&
+      activeServer.accessToken?.trim() === token.trim()
+    );
   }
 
   /**
@@ -1047,6 +1089,12 @@ export class ElizaClient {
 
   setBaseUrl(baseUrl: string | null, options?: { persist?: boolean }): void {
     const normalized = normalizeBaseUrl(baseUrl);
+    if (this.pinnedRemoteApiBase && normalized !== this.pinnedRemoteApiBase) {
+      logger.warn(
+        "[ElizaClient] ignored a base change outside the build-pinned remote target",
+      );
+      return;
+    }
     const persist = options?.persist !== false;
     this._userSetBase = normalized.length > 0;
     this._baseUrl = normalized;
@@ -1170,6 +1218,22 @@ export class ElizaClient {
   repointBaseUrl(baseUrl: string, token?: string | null): void {
     const normalized = normalizeBaseUrl(baseUrl);
     if (!normalized) return;
+    if (this.pinnedRemoteApiBase && normalized !== this.pinnedRemoteApiBase) {
+      logger.warn(
+        "[ElizaClient] ignored a repoint outside the build-pinned remote target",
+      );
+      return;
+    }
+    if (
+      this.pinnedRemoteApiBase &&
+      token?.trim() &&
+      !this.isPinnedRemoteCredential(token)
+    ) {
+      logger.warn(
+        "[ElizaClient] ignored a repoint credential not bound to the build-pinned remote target",
+      );
+      return;
+    }
     // Quietly drop the old socket. We intentionally do NOT call disconnectWs():
     // it sets connectionState = "disconnected" and emits, which would surface a
     // visible "reconnecting" flicker mid-handoff. Suppress onclose (which would

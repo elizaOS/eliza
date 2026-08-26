@@ -31,15 +31,14 @@ function configuredRemoteFallbackApiBase(): string | undefined {
 }
 
 /**
- * Trust one exact HTTPS origin compiled into a dedicated remote-fallback app.
- * The configured value is a root origin only: credentials, custom ports,
- * query/fragment state, and path-scoped targets are rejected.
+ * Return the exact root HTTPS origin compiled into a dedicated remote build.
+ * Invalid build input fails closed so callers can use a non-null result as the
+ * runtime-lock contract, not merely as a restore allow-list entry.
  */
-export function isTrustedBuildConfiguredRemoteApiBaseUrl(
-  apiBase: string | undefined,
+export function getBuildConfiguredRemoteApiBaseUrl(
   configuredBase = configuredRemoteFallbackApiBase(),
-): boolean {
-  if (!apiBase || !configuredBase?.trim()) return false;
+): string | null {
+  if (!configuredBase?.trim()) return null;
 
   try {
     const configured = new URL(configuredBase.trim());
@@ -52,9 +51,30 @@ export function isTrustedBuildConfiguredRemoteApiBaseUrl(
       configured.hash ||
       configured.pathname.replace(/\/+$/, "") !== ""
     ) {
-      return false;
+      return null;
     }
+    return configured.origin;
+  } catch {
+    // error-policy:J3 malformed build input cannot authorize or pin a target.
+    return null;
+  }
+}
 
+/**
+ * Trust one exact HTTPS origin compiled into a dedicated remote-fallback app.
+ * The configured value is a root origin only: credentials, custom ports,
+ * query/fragment state, and path-scoped targets are rejected.
+ */
+export function isTrustedBuildConfiguredRemoteApiBaseUrl(
+  apiBase: string | undefined,
+  configuredBase = configuredRemoteFallbackApiBase(),
+): boolean {
+  if (!apiBase) return false;
+
+  const configuredOrigin = getBuildConfiguredRemoteApiBaseUrl(configuredBase);
+  if (!configuredOrigin) return false;
+
+  try {
     const candidate = new URL(apiBase);
     return (
       candidate.protocol === "https:" &&
@@ -64,7 +84,7 @@ export function isTrustedBuildConfiguredRemoteApiBaseUrl(
       !candidate.search &&
       !candidate.hash &&
       candidate.pathname.replace(/\/+$/, "") === "" &&
-      candidate.origin === configured.origin
+      candidate.origin === configuredOrigin
     );
   } catch {
     // error-policy:J3 malformed build/runtime URL input is never trusted.

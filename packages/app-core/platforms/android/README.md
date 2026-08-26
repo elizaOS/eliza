@@ -233,11 +233,16 @@ credential-free root HTTPS origin through
 `VITE_ELIZA_REMOTE_FALLBACK_API_BASE`; the build fails before Android tooling
 starts when the origin is absent or widened. Before React mounts, the
 app replaces any stale Cloud/local target with that exact remote server and
-marks remote setup complete. A paired bearer is retained only when it already
-belongs to the compiled origin; switching the compiled origin drops it and
-requires pairing again. The origin is a fetch target, not an extra Capacitor
-WebView navigation host. No pairing code, bearer, SSH address, or other
-credential is compiled into the APK.
+marks remote setup complete. The compiled origin remains authoritative for the
+lifetime of the app: live client repoints and active-server writes targeting
+Cloud, local, or a different remote are rejected, including their accompanying
+credentials. The target is also written through the awaited native storage
+bridge before first render so a stale native Cloud record cannot rehydrate on
+the next cold launch. A paired bearer is retained only when it already belongs
+to the compiled origin; switching the compiled origin drops it and requires
+pairing again. The origin is a fetch target, not an extra Capacitor WebView
+navigation host. No pairing code, bearer, SSH address, or other credential is
+compiled into the APK.
 
 The build flag alone cannot activate the guard. On a Light/TLP301 device, the
 operator must grant the declared privileged permission, then send the explicit

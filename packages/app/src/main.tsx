@@ -3615,7 +3615,7 @@ async function main(): Promise<void> {
   // with this wait.
   await initializeStorageBridge();
   if (isAndroid) {
-    installMobileRemoteFallback();
+    await installMobileRemoteFallback(undefined, client);
   }
   if (isIOS) {
     initializeCapacitorBridge();
