@@ -82,6 +82,11 @@ const executeResume = mock(async () => {
   lifecycleOperationOrder.push("resume");
   return { success: true };
 });
+const enqueueAgentResumeOnce = mock(async () => ({
+  job: { id: "resume-job-1", status: "pending" },
+  created: true,
+}));
+const triggerImmediate = mock(async () => undefined);
 
 const snapshot = mock(async () => {
   lifecycleOperationOrder.push("snapshot");
@@ -179,6 +184,8 @@ mock.module("@/lib/services/eliza-agent-config", () => ({
 mock.module("@/lib/services/provisioning-jobs", () => ({
   provisioningJobService: {
     enqueueAgentProvisionOnce: mock(async () => ({ job: { id: "job-1" } })),
+    enqueueAgentResumeOnce,
+    triggerImmediate,
   },
 }));
 
@@ -273,6 +280,12 @@ describe("compat agent resume/restart/launch credit gate", () => {
     getAgentForWrite.mockClear();
     getAgentForWrite.mockResolvedValue(defaultWritableAgent);
     executeResume.mockClear();
+    enqueueAgentResumeOnce.mockClear();
+    enqueueAgentResumeOnce.mockResolvedValue({
+      job: { id: "resume-job-1", status: "pending" },
+      created: true,
+    });
+    triggerImmediate.mockClear();
     executeRestart.mockClear();
     snapshot.mockClear();
     lifecycleOperationOrder.length = 0;
@@ -291,6 +304,7 @@ describe("compat agent resume/restart/launch credit gate", () => {
     expect(getAgentForWrite).toHaveBeenCalledWith("agent-1", "org-1");
     expect(checkAgentCreditGate).toHaveBeenCalledWith("org-1");
     expect(executeResume).not.toHaveBeenCalled();
+    expect(enqueueAgentResumeOnce).not.toHaveBeenCalled();
   });
 
   test("blocks compat restart before snapshot and execution when the org has insufficient credits", async () => {
@@ -434,7 +448,7 @@ describe("compat agent resume/restart/launch credit gate", () => {
     expect(executeRestart).not.toHaveBeenCalled();
   });
 
-  test("allows every canonical container tier to reach resume and ordered restart operations", async () => {
+  test("queues every canonical compat resume and preserves ordered restart operations", async () => {
     checkAgentCreditGate.mockResolvedValue({
       allowed: true,
       balance: 5,
@@ -463,25 +477,50 @@ describe("compat agent resume/restart/launch credit gate", () => {
         lifecycleRequest(agentId, "restart"),
       );
 
-      expect(resumeResponse.status).toBe(200);
+      expect(resumeResponse.status).toBe(202);
       expect(restartResponse.status).toBe(200);
-      expect(executeResume).toHaveBeenCalledWith(agentId, "org-1");
+      expect(enqueueAgentResumeOnce).toHaveBeenCalledWith({
+        agentId,
+        organizationId: "org-1",
+        userId: "user-1",
+      });
       expect(snapshot).toHaveBeenCalledWith(agentId, "org-1");
       expect(executeRestart).toHaveBeenCalledWith(agentId, "org-1");
     }
 
     expect(getAgentForWrite).toHaveBeenCalledTimes(6);
     expect(checkAgentCreditGate).toHaveBeenCalledTimes(6);
-    expect(executeResume).toHaveBeenCalledTimes(3);
+    expect(enqueueAgentResumeOnce).toHaveBeenCalledTimes(3);
+    expect(triggerImmediate).toHaveBeenCalledTimes(3);
+    expect(executeResume).not.toHaveBeenCalled();
     expect(snapshot).toHaveBeenCalledTimes(3);
     expect(executeRestart).toHaveBeenCalledTimes(3);
     expect(lifecycleOperationOrder).toEqual(
-      CONTAINER_BACKED_EXECUTION_TIERS.flatMap(() => [
-        "resume",
-        "snapshot",
-        "restart",
-      ]),
+      CONTAINER_BACKED_EXECUTION_TIERS.flatMap(() => ["snapshot", "restart"]),
     );
+  });
+
+  test("does not call the compat provider after deletion fences during enqueue", async () => {
+    checkAgentCreditGate.mockResolvedValue({
+      allowed: true,
+      balance: 5,
+      error: "",
+    });
+    let deletionFenceCommitted = false;
+    enqueueAgentResumeOnce.mockImplementationOnce(async () => {
+      deletionFenceCommitted = true;
+      return {
+        job: { id: "resume-job-race", status: "pending" },
+        created: true,
+      };
+    });
+
+    const response = await app.fetch(lifecycleRequest("agent-1", "resume"));
+
+    expect(response.status).toBe(202);
+    expect(deletionFenceCommitted).toBe(true);
+    expect(enqueueAgentResumeOnce).toHaveBeenCalledTimes(1);
+    expect(executeResume).not.toHaveBeenCalled();
   });
 
   test("allows funded compat launch to reach launchManagedElizaAgent", async () => {

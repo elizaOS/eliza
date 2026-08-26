@@ -16,6 +16,7 @@ import {
 } from "@/lib/api/compat-envelope";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { logger } from "@/lib/utils/logger";
 import { requireCompatAuth } from "../../../_lib/auth";
 import { handleCompatCorsOptions, withCompatCors } from "../../../_lib/cors";
@@ -26,6 +27,7 @@ const CORS_METHODS = "POST, OPTIONS";
 async function __hono_POST(
   request: Request,
   { params }: RouteContext<{ id: string }>,
+  env: AppEnv["Bindings"],
 ) {
   try {
     const { user } = await requireCompatAuth(request);
@@ -114,28 +116,36 @@ async function __hono_POST(
 
     logger.info("[compat] Resume requested", { agentId });
 
-    const result = await elizaSandboxService.executeResume(
+    const enqueueResult = await provisioningJobService.enqueueAgentResumeOnce({
       agentId,
-      user.organization_id,
-    );
-    if (!result.success) {
-      const status =
-        result.error === "Agent is already being provisioned"
-          ? 409
-          : result.error ===
-              "Insufficient credits to settle accrued agent compute charges"
-            ? 402
-            : 500;
-      return withCompatCors(
-        Response.json(errorEnvelope(result.error ?? "Resume failed"), {
-          status,
-        }),
-        CORS_METHODS,
-      );
+      organizationId: user.organization_id,
+      userId: user.id,
+    });
+    if (enqueueResult.created) {
+      void provisioningJobService.triggerImmediate(env).catch((error) => {
+        // error-policy:J7 the durable job remains visible to the polling worker.
+        logger.warn("[compat] Resume worker nudge failed", {
+          agentId,
+          jobId: enqueueResult.job.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
     }
 
     return withCompatCors(
-      Response.json(envelope(toCompatOpResult(agentId, "resume", true))),
+      Response.json(
+        envelope({
+          ...toCompatOpResult(agentId, "resume", true),
+          jobId: enqueueResult.job.id,
+          status: enqueueResult.job.status,
+          alreadyInProgress: !enqueueResult.created,
+          polling: {
+            endpoint: `/api/v1/jobs/${enqueueResult.job.id}`,
+            intervalMs: 5_000,
+          },
+        }),
+        { status: 202 },
+      ),
       CORS_METHODS,
     );
   } catch (err) {
@@ -146,8 +156,12 @@ async function __hono_POST(
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCompatCorsOptions(CORS_METHODS));
 __hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, {
-    params: Promise.resolve({ id: c.req.param("id") as string }),
-  }),
+  __hono_POST(
+    c.req.raw,
+    {
+      params: Promise.resolve({ id: c.req.param("id") as string }),
+    },
+    c.env,
+  ),
 );
 export default __hono_app;

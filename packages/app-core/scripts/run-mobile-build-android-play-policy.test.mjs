@@ -12,6 +12,7 @@ import {
   ANDROID_CLOUD_STRIPPED_PERMISSIONS,
   ANDROID_CLOUD_STRIPPED_RESOURCE_FILES,
   ANDROID_CLOUD_STRIPPED_RESOURCE_VALUES,
+  ANDROID_PLAY_ALLOWED_COMPONENTS,
   ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES,
   ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES,
   ANDROID_PLAY_ALLOWED_PERMISSIONS,
@@ -62,6 +63,21 @@ const AAPT_MANIFEST = `
 `;
 
 describe("Android Play manifest policy", () => {
+  it("keeps the unused native Google identity stack out of Android source", () => {
+    const androidSourceDir = new URL(
+      "../platforms/android/app/src/main/java/ai/elizaos/app/",
+      import.meta.url,
+    );
+
+    expect(APP_BUILD_GRADLE).not.toMatch(/androidx\.credentials|googleid/);
+    expect(
+      fs.readFileSync(new URL("MainActivity.java", androidSourceDir), "utf8"),
+    ).not.toContain("GoogleIdentityPlugin");
+    expect(
+      fs.existsSync(new URL("GoogleIdentityPlugin.java", androidSourceDir)),
+    ).toBe(false);
+  });
+
   it("stamps only generated Cloud projects for direct Gradle and IDE use", () => {
     const base = "org.gradle.jvmargs=-Xmx4g\nelizaCloudBuild=false\n";
     const cloud = applyAndroidGeneratedBuildTargetProperties(base, {
@@ -157,6 +173,18 @@ describe("Android Play manifest policy", () => {
     expect(ANDROID_PLAY_ALLOWED_PERMISSIONS).toContain(
       "android.permission.MODIFY_AUDIO_SETTINGS",
     );
+    expect(ANDROID_PLAY_ALLOWED_PERMISSIONS).not.toContain(
+      "android.permission.USE_BIOMETRIC",
+    );
+    expect(ANDROID_PLAY_ALLOWED_PERMISSIONS).not.toContain(
+      "android.permission.USE_FINGERPRINT",
+    );
+    expect(ANDROID_PLAY_ALLOWED_COMPONENTS).not.toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("androidx.credentials"),
+        expect.stringContaining("com.google.android.gms"),
+      ]),
+    );
     expect(ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES).toEqual([
       "agent",
       "runners",
@@ -231,13 +259,30 @@ describe("Android Play manifest policy", () => {
     );
   });
 
-  it("rejects local routing and credential material in packaged text assets", () => {
+  it("rejects active development routing and credential material in packaged text assets", () => {
     expect(
       findAndroidPlayTextAssetFindings(
         ["base/assets/public/app.js"],
-        [Buffer.from("http://127.0.0.1:31337")],
+        [Buffer.from("connect to 10.0.2.2 through adb reverse")],
       ),
-    ).toEqual(["base/assets/public/app.js: local routing marker 31337"]);
+    ).toEqual([
+      "base/assets/public/app.js: local routing marker 10.0.2.2",
+      "base/assets/public/app.js: local routing marker adb reverse",
+    ]);
+    expect(
+      findAndroidPlayTextAssetFindings(
+        ["assets/public/sw-registration.js"],
+        [Buffer.from('navigator.serviceWorker.register("/sw.js")')],
+      ),
+    ).toEqual([
+      "assets/public/sw-registration.js: local routing marker navigator.serviceWorker",
+    ]);
+    expect(
+      findAndroidPlayTextAssetFindings(
+        ["assets/public/app.js"],
+        [Buffer.from("Dormant cross-platform labels: 31337 remote-mac")],
+      ),
+    ).toEqual([]);
     expect(
       findAndroidPlayTextAssetFindings(
         ["assets/public/app.js"],
