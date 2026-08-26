@@ -781,13 +781,29 @@ export class MatrixMembershipAuthority {
 
   /**
    * Clears a recorded incompleteness once the caller has independently
-   * established complete state (a fully resolved roster in a fresh sync).
-   * Scoped to ONE reason at a time so a caller may only clear the flag it
-   * just disproved — never blanket-clear flags other observers set.
+   * established complete state. Scoped to ONE reason at a time so a caller
+   * may only clear the flag it just disproved — never blanket-clear flags
+   * other observers set.
    */
   clearRoomIncomplete(roomId: string, reason: string): boolean {
     const recorded = this.incompleteReasons.get(roomId);
     if (recorded !== reason) {
+      return false;
+    }
+    this.incompleteRooms.delete(roomId);
+    this.incompleteReasons.delete(roomId);
+    return true;
+  }
+
+  /**
+   * Clears every TRANSIENT incompleteness reason after the caller performed
+   * a genuinely fresh server-side member fetch that returned a full roster
+   * (client.members, not the SDK's one-shot cached loadMembersIfNeeded).
+   * A verified fresh fetch disproves member_load_failed, empty_roster,
+   * member_list_incomplete, and limited_sync_timeline_reset at once.
+   */
+  clearTransientRoomIncompleteness(roomId: string): boolean {
+    if (!this.incompleteRooms.has(roomId)) {
       return false;
     }
     this.incompleteRooms.delete(roomId);
