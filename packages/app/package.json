@@ -270,6 +270,10 @@
   "elizaos": {
     "app": {
       "defaults": {
+        "computeruse": {
+          "enabled": false,
+          "requiredForReady": true
+        },
         "personal-assistant": {
           "enabled": true,
           "requiredForReady": true
