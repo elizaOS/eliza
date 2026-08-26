@@ -1115,12 +1115,14 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
 			body?: string;
 			roomId?: string;
 			thread?: string;
+			messageId?: string;
 		},
 	): Promise<ActionResult> {
 		const result = await messageAction.handler(
 			runtime,
 			{
 				...message,
+				id: overrides?.messageId ?? message.id,
 				content: { text, source: "discord" },
 				// #25284: the harness world (which grants this sender ADMIN)
 				// is resolved from the discord world-id metadata key.
@@ -1163,7 +1165,10 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
 		expect(first.data).toMatchObject({ awaitingUserInput: true });
 		expect(sends).toHaveLength(0);
 
-		const second = await send(runtime, "yes");
+		// A distinct later user turn carries the affirmative.
+		const second = await send(runtime, "yes", {
+			messageId: "00000000-0000-0000-0000-0000000000a2",
+		});
 		expect(second.success).toBe(true);
 		expect(sends).toHaveLength(1);
 		expect(sends[0].target).toMatchObject({ entityId: STRANGER_PLATFORM_ID });
@@ -1172,7 +1177,9 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
 	it("a declined confirmation cancels the send", async () => {
 		const { runtime, sends } = harness({ known: false });
 		await send(runtime, "message fuzzymatch saying hey");
-		const second = await send(runtime, "no, don't do that");
+		const second = await send(runtime, "no, don't do that", {
+			messageId: "00000000-0000-0000-0000-0000000000a2",
+		});
 
 		expect(second.success).toBe(false);
 		expect(second.data).toMatchObject({ cancelled: true });
@@ -1242,6 +1249,7 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
 		const second = await send(runtime, "yes", {
 			body: "substituted hostile bytes",
 			roomId: "00000000-0000-0000-0000-0000000000e1",
+			messageId: "00000000-0000-0000-0000-0000000000a2",
 		});
 
 		// Fail-closed: cache miss re-arms a fresh confirmation for the NEW
@@ -1259,6 +1267,7 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
 
 		const second = await send(runtime, "yes", {
 			body: "substituted hostile bytes",
+			messageId: "00000000-0000-0000-0000-0000000000a2",
 		});
 
 		expect(sends).toHaveLength(0);
@@ -1277,6 +1286,7 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
 
 		const second = await send(runtime, "yes", {
 			thread: "00000000-0000-0000-0000-0000000000f2",
+			messageId: "00000000-0000-0000-0000-0000000000a2",
 		});
 
 		expect(sends).toHaveLength(0);
@@ -1289,19 +1299,58 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
 	it("a re-prompted confirmation of the substituted payload proceeds (loop terminates)", async () => {
 		// After a mismatch re-prompt (above), the substituted payload's OWN
 		// confirmation record is armed; the user deliberately confirming THOSE
-		// bytes sends exactly those bytes — nothing else.
+		// bytes on a distinct later message sends exactly those bytes.
 		const { runtime, sends } = harness({ known: false });
 		await send(runtime, "message fuzzymatch saying hey"); // arm original bytes
 		const rePrompt = await send(runtime, "yes", {
 			body: "re-prompted and deliberately confirmed",
-		}); // mismatch → arms record for the new payload
+			messageId: "00000000-0000-0000-0000-0000000000a2",
+		}); // mismatch → re-arms for the new payload
 		expect(rePrompt.data).toMatchObject({ awaitingUserInput: true });
 
 		const confirmed = await send(runtime, "yes", {
 			body: "re-prompted and deliberately confirmed",
+			messageId: "00000000-0000-0000-0000-0000000000a3",
 		});
 		expect(confirmed.success).toBe(true);
 		expect(sends).toHaveLength(1);
 		expect(sends[0].target).toMatchObject({ entityId: STRANGER_PLATFORM_ID });
+	});
+
+	it("an affirmative cannot be consumed by a re-invocation of the SAME message that armed it (#25284 review: distinct-turn bound)", async () => {
+		// Same-message self-consumption: the planner re-invoking the action
+		// for the same yes-shaped user message must not treat that message
+		// as both the arming request and its confirmation.
+		const { runtime, sends } = harness({ known: false });
+		const first = await send(runtime, "message fuzzymatch saying hey");
+		expect(first.data).toMatchObject({ awaitingUserInput: true });
+
+		// Identical message id re-invoked with an explicit send param.
+		const reInvoke = await send(runtime, "message fuzzymatch saying hey");
+		expect(sends).toHaveLength(0);
+		expect(reInvoke.data).toMatchObject({ awaitingUserInput: true });
+	});
+
+	it("a stale armed preview cannot be selected after a newer operation re-armed the slot (#25284 review: single slot)", async () => {
+		// Preview A arms; substitute B re-arms the slot (overwrites A); the
+		// user says yes (intending B). A planner re-supplying A's exact bytes
+		// must find the slot describes B — not the stale A record.
+		const { runtime, sends } = harness({ known: false });
+		await send(runtime, "message fuzzymatch saying hey"); // arm A
+		const rePrompt = await send(runtime, "yes", {
+			body: "operation B bytes",
+			messageId: "00000000-0000-0000-0000-0000000000a2",
+		}); // consumes A (digest mismatch → re-arms slot for B)
+		expect(rePrompt.data).toMatchObject({ awaitingUserInput: true });
+
+		// Planner now supplies A's bytes on the SAME message that said yes to B.
+		const stale = await send(runtime, "yes", {
+			messageId: "00000000-0000-0000-0000-0000000000a2",
+		}); // slot describes B → digest mismatch for A → re-arm + pending
+		expect(sends).toHaveLength(0);
+		expect(stale.data).toMatchObject({
+			confirmationRequired: true,
+			awaitingUserInput: true,
+		});
 	});
 });
