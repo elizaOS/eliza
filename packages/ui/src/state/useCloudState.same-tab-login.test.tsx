@@ -24,7 +24,7 @@ import {
   prepareDesktopCloudLoginSession,
 } from "./cloud-login-launch";
 import { registerStewardLoginLauncher } from "./cloud-steward-login";
-import { useCloudState } from "./useCloudState";
+import { canPollCloudStatus, useCloudState } from "./useCloudState";
 
 const DEVICE_CODE_SENTINEL = "device-code-flow-reached";
 const originalBootConfig = structuredClone(getBootConfig());
@@ -961,6 +961,10 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
 // These pin that snapshot application: connected+balance, auth-rejected, and
 // the disconnected reset — never a fabricated healthy-empty.
 describe("useCloudState — pollCloudCredits status snapshot", () => {
+  it("does not poll Cloud billing for a build-pinned remote runtime", () => {
+    expect(canPollCloudStatus("https://bot.nubs.site")).toBe(false);
+  });
+
   let getCloudStatusSpy: ReturnType<typeof vi.spyOn>;
   let getCloudCreditsSpy: ReturnType<typeof vi.spyOn>;
 

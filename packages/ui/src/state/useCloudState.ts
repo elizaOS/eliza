@@ -97,6 +97,7 @@ import {
   scrubPersistedActiveServerToken,
 } from "./persistence";
 import { isPrivateNetworkHost } from "./private-network-host";
+import { getBuildConfiguredRemoteApiBaseUrl } from "./runtime-url-trust";
 import { clearManagedCloudAccountBinding } from "./shared-cloud-account-binding";
 import type { CloudLoginOptions } from "./types";
 
@@ -414,7 +415,14 @@ function hasCloudLoginBackend(): boolean {
   return isSameOriginLocalHttpBackend();
 }
 
-function canPollCloudStatus(): boolean {
+export function canPollCloudStatus(
+  configuredRemoteApiBase = getBuildConfiguredRemoteApiBaseUrl(),
+): boolean {
+  // A dedicated remote build gets models and voice from its paired runtime.
+  // Polling that runtime's optional Cloud billing integration misclassifies an
+  // unrelated server credential as the mobile app's own authentication state.
+  if (configuredRemoteApiBase) return false;
+
   const explicitBase =
     typeof client.getBaseUrl === "function" ? client.getBaseUrl().trim() : "";
   if (isCapacitorNativeRuntime() || isElectrobunRuntime()) return true;
