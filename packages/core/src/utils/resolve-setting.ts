@@ -43,10 +43,7 @@ export function resolveSetting(
 ): string | undefined {
 	const fromRuntime = runtime?.getSetting(key);
 	if (fromRuntime !== undefined && fromRuntime !== null) {
-		const str = String(fromRuntime).trim();
-		if (str.length > 0) {
-			return str;
-		}
+		return String(fromRuntime);
 	}
 	return readEnv(key, options);
 }
