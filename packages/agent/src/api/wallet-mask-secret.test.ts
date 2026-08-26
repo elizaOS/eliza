@@ -26,6 +26,13 @@ describe("maskSecret", () => {
     expect(maskSecret("0xABCDEF0123456789")).toBe("0xAB...6789");
   });
 
+
+  it("preserves well-formed Unicode when secret boundary straddles surrogate pairs", () => {
+    const secret = "abc🚀SECRETMIDDLE🚀xyz";
+    const masked = maskSecret(secret);
+    expect(masked.isWellFormed()).toBe(true);
+    expect(masked).not.toContain("SECRETMIDDLE");
+  });
   it("never reveals the middle of a long secret", () => {
     const secret = `sk-${"M".repeat(40)}END`; // "sk-" + 40×M + "END"
     const masked = maskSecret(secret);
