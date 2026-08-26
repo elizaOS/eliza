@@ -91,7 +91,10 @@ import {
   resolveRouteForWorkdir,
   resolveSpawnWorkdir,
 } from "../services/task-agent-routing.js";
-import { requireTaskAgentAccess } from "../services/task-policy.js";
+import {
+  requireOwnerTaskReadAccess,
+  requireTaskAgentAccess,
+} from "../services/task-policy.js";
 import {
   type AgentType,
   type PromptResult,
@@ -4662,12 +4665,19 @@ function dateString(value: Date | string | number): string {
 
 async function runListAgents(
   runtime: IAgentRuntime,
-  _message: Memory,
+  message: Memory,
   _state: State | undefined,
   _params: Record<string, unknown>,
   _content: Record<string, unknown>,
   _callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
+  // Same owner-private inventory as history (session labels, workdirs,
+  // status), and this runner previously had NO access check at all — gate it
+  // identically before any service state is touched.
+  const ownerRead = await requireOwnerTaskReadAccess(runtime, message);
+  if (!ownerRead.allowed) {
+    return ownerPrivateDenialResult("TASKS:list_agents", ownerRead);
+  }
   const service = getAcpService(runtime);
   if (!service) {
     // Planner-facing only (see runSend): the evaluator voices unavailability.
@@ -5566,6 +5576,22 @@ function taskPolicyDenialResult(
   });
 }
 
+/**
+ * Owner-private read denial. The reason string is the same
+ * "Owner-private disclosure denied: owner_mismatch" pattern the
+ * owner-reminders executor emits, and like taskPolicyDenialResult it stays
+ * planner-facing: the planner phrases the decline, the inventory text never
+ * exists on the turn.
+ */
+function ownerPrivateDenialResult(
+  actionName: string,
+  access: { reason: string },
+): ActionResult {
+  return failureResult(actionName, "FORBIDDEN", access.reason, {
+    reason: "owner_private",
+  });
+}
+
 async function runHistory(
   runtime: IAgentRuntime,
   message: Memory,
@@ -5574,6 +5600,16 @@ async function runHistory(
   content: Record<string, unknown>,
   _callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
+  // The history listing is the owner's full orchestrator queue — task titles,
+  // statuses, workspaces. A guest in a shared group channel asking "show me
+  // logs of whats goin on" received all 32 of the owner's tasks through this
+  // runner (tj-d1df35675bf5ad): the connector policy below is operator-tunable
+  // and defaults GUEST-permissive, so the owner-privacy gate runs first and
+  // is not relaxable.
+  const ownerRead = await requireOwnerTaskReadAccess(runtime, message);
+  if (!ownerRead.allowed) {
+    return ownerPrivateDenialResult("TASKS:history", ownerRead);
+  }
   const access = await requireTaskAgentAccess(runtime, message, "interact");
   if (!access.allowed) {
     return taskPolicyDenialResult("TASKS:history", access);

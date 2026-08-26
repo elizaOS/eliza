@@ -15,6 +15,11 @@
  * Triggers are persisted as runtime Tasks tagged with TRIGGER_TASK_TAGS and
  * carry a {@link TriggerConfig} in their metadata. Workbench tasks (TASK
  * action) and trigger tasks share a table but are kept distinct via tag.
+ *
+ * Every op is owner-private: validate and the handler both resolve the sender
+ * through the canonical owner/role machinery (mirroring OWNER_REMINDERS), and
+ * non-owners get the owner-private denial instead of the owner's reminder
+ * inventory.
  */
 import crypto from "node:crypto";
 import {
@@ -27,6 +32,7 @@ import {
   type HandlerOptions,
   type IAgentRuntime,
   type Memory,
+  privacyDenialReplyForReasons,
   resolveMessageTimeZone,
   type State,
   stringToUuid,
@@ -41,6 +47,7 @@ import {
   validateUuid,
 } from "@elizaos/core";
 import { textStatesExplicitRecurrence } from "@elizaos/shared";
+import { hasOwnerAccess } from "../security/access.ts";
 import {
   describeCronSchedule,
   describeIntervalMs,
@@ -188,6 +195,52 @@ function failed(
     values: { op, error: error ?? code },
     data: { actionName: TRIGGER_ACTION, op, error: error ?? code, ...data },
   };
+}
+
+// Owner-privacy gate. Triggers are the owner's reminder store: `list` reads it
+// back verbatim and update/delete/toggle/run mutate it, with no per-creator
+// scoping anywhere in the op set. Mirrors the OWNER_REMINDERS surface
+// (hasLifeOpsAccess): identity-based canonical-owner resolution, NOT the
+// destination-based owner-exclusive disclosure gate — the owner legitimately
+// sets reminders from group channels (see the validate note below), which a
+// destination gate would deny with a misleading "ask me in a DM". Live leak
+// this closes: a GUEST webhook user asked "list my reminders and triggers"
+// and TRIGGER_LIST returned the owner's trigger inventory — the ADMIN
+// roleGate alone did not hold on that surface.
+const OWNER_PRIVATE_DENIAL_REASON = "owner_mismatch";
+const OWNER_PRIVATE_DENIAL_TEXT = `Owner-private disclosure denied: ${OWNER_PRIVATE_DENIAL_REASON}`;
+
+async function hasTriggerOwnerAccess(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<boolean> {
+  // Same fail-closed prelude as hasLifeOpsAccess: a message without a sender
+  // identity must never reach owner-private trigger state.
+  if (
+    !runtime ||
+    typeof runtime.agentId !== "string" ||
+    !message ||
+    typeof message.entityId !== "string" ||
+    message.entityId.length === 0
+  ) {
+    return false;
+  }
+  // Canonical role/entity resolution: agent-self (the autonomy loop firing
+  // its own triggers), the configured/world canonical owner, or an
+  // OWNER-ranked sender all pass; everyone else is denied.
+  return hasOwnerAccess(runtime, message);
+}
+
+function ownerPrivateDenied(op: string): ActionResult {
+  return failed(
+    op,
+    OWNER_PRIVATE_DENIAL_TEXT,
+    "TRIGGER_FORBIDDEN",
+    { reason: OWNER_PRIVATE_DENIAL_REASON },
+    // The exact polite decline the reminders surface gives a non-owner, so
+    // the two surfaces cannot drift apart in what a guest is told.
+    privacyDenialReplyForReasons([OWNER_PRIVATE_DENIAL_REASON]),
+  );
 }
 
 function ok(
@@ -1156,8 +1209,8 @@ export const triggerAction: Action = {
   suppressPostActionContinuation: true,
 
   validate: async (
-    _runtime: IAgentRuntime,
-    _message: Memory,
+    runtime: IAgentRuntime,
+    message: Memory,
     _state?: State,
     options?: HandlerOptions,
   ): Promise<boolean> => {
@@ -1169,8 +1222,13 @@ export const triggerAction: Action = {
     // in 3 minutes" had no reminder tool because TRIGGER validate-rejected
     // at collection). Available when uncalled; op validity is enforced when
     // a concrete call arrives.
-    if (op === undefined && Object.keys(params).length === 0) return true;
-    return op !== undefined && isTriggerOp(op);
+    if (op !== undefined && !isTriggerOp(op)) return false;
+    if (op === undefined && Object.keys(params).length !== 0) return false;
+    // Owner-privacy: the trigger store is owner-private state (see the gate
+    // note above), so a non-owner never sees TRIGGER as a planner tool at
+    // all — the same collection-time behavior OWNER_REMINDERS gets from
+    // hasLifeOpsAccess. The handler re-checks for forced/explicit calls.
+    return hasTriggerOwnerAccess(runtime, message);
   },
 
   handler: async (
@@ -1192,6 +1250,15 @@ export const triggerAction: Action = {
       );
     }
     const op: TriggerOp = opRaw;
+
+    // Owner-privacy gate on EVERY op — list reads the owner's reminder
+    // inventory back verbatim, and update/delete/run/toggle would let a
+    // non-owner mutate it conversationally. Defense in depth over the
+    // validate-time check: a forced or planner-cached tool call must fail
+    // here too, with the same denial the reminders surface gives.
+    if (!(await hasTriggerOwnerAccess(runtime, message))) {
+      return ownerPrivateDenied(op);
+    }
 
     // The handler never emits user-visible text itself: every outcome reaches
     // the planner through the ActionResult. A mid-turn callback here

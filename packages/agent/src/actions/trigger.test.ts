@@ -41,8 +41,14 @@ import { triggerAction } from "./trigger.ts";
 
 const AGENT_ID = stringToUuid("trigger-create-test-agent");
 const USER_ID = stringToUuid("trigger-create-test-user");
+// Second authorized sender for the dedupe suite. TRIGGER is owner-gated
+// (mirroring OWNER_REMINDERS), so both identities carry manual OWNER role
+// grants in the stub world below; the dedupe contract they pin (per-creator
+// delivery isolation) is unchanged by the gate.
+const OTHER_USER_ID = stringToUuid("trigger-create-other-user");
 const CHAT_ROOM_ID = stringToUuid("trigger-create-chat-room");
 const AUTONOMY_ROOM_ID = stringToUuid("trigger-create-autonomy-room");
+const WORLD_ID = stringToUuid("trigger-create-test-world");
 
 interface CreatedTask {
   name: string;
@@ -68,6 +74,17 @@ function makeRuntime(opts: { enableAutonomy: boolean; timeZone?: string }): {
     },
     getSetting: (key: string) =>
       key === "TIMEZONE" ? opts.timeZone : undefined,
+    // Owner-gate support: real core role machinery resolves both test users
+    // to OWNER through this world's manual role grants.
+    getRoom: vi.fn(async (roomId: UUID) => ({ id: roomId, worldId: WORLD_ID })),
+    getWorld: vi.fn(async () => ({
+      id: WORLD_ID,
+      metadata: {
+        roles: { [USER_ID]: "OWNER", [OTHER_USER_ID]: "OWNER" },
+        roleSources: { [USER_ID]: "manual", [OTHER_USER_ID]: "manual" },
+      },
+    })),
+    reportError: vi.fn(),
     getService: (name: string) =>
       name === AUTONOMY_SERVICE_TYPE
         ? { getAutonomousRoomId: () => AUTONOMY_ROOM_ID }
@@ -971,7 +988,12 @@ describe("TRIGGER update / delete / toggle — lifecycle ops (#16863)", () => {
         error: vi.fn(),
         debug: vi.fn(),
       },
-      getSetting: (key: string) => (key === "TIMEZONE" ? timeZone : undefined),
+      getSetting: (key: string) =>
+        key === "TIMEZONE"
+          ? timeZone
+          : key === "ELIZA_ADMIN_ENTITY_ID"
+            ? String(USER_ID)
+            : undefined,
       getService: () => null,
       getTask: vi.fn(async (id: UUID) => tasks.find((t) => t.id === id)),
       getTasks: vi.fn(async () => tasks),
@@ -1356,7 +1378,8 @@ describe("TRIGGER effect receipts — completion-claim grounding", () => {
     const runtime = {
       agentId: AGENT_ID,
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-      getSetting: () => undefined,
+      getSetting: (key: string) =>
+        key === "ELIZA_ADMIN_ENTITY_ID" ? String(USER_ID) : undefined,
       getService: () => null,
       getTask: async (id: UUID) => (id === taskId ? task : null),
       getTasks: async () => [task],
@@ -1381,7 +1404,6 @@ describe("TRIGGER effect receipts — completion-claim grounding", () => {
 });
 
 describe("TRIGGER dedupe — replay key is the complete delivery identity", () => {
-  const OTHER_USER_ID = stringToUuid("trigger-create-other-user");
   const OTHER_ROOM_ID = stringToUuid("trigger-create-other-room");
 
   function storeTasks(

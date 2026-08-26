@@ -155,7 +155,9 @@ describe("TASKS effect receipts", () => {
     const callback = vi.fn(async () => []);
     const result = await tasksAction.handler(
       runtime,
-      message(),
+      // Self-originated: list_agents is owner-gated (owner-private inventory),
+      // and an agent-internal turn passes that gate without a roles backend.
+      { ...message(), entityId: runtime.agentId } as Memory,
       undefined as unknown as State,
       { parameters: { action: "list_agents" } },
       callback,

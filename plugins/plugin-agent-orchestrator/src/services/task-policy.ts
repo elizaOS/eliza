@@ -3,11 +3,15 @@
  * gates create/interact abilities per connector against the caller's role,
  * reading operator-declared policy over a conservative default that only lets
  * admins spawn or drive agents from third-party connectors.
+ * `requireOwnerTaskReadAccess` is the separate, non-configurable owner-privacy
+ * gate for the read surfaces that disclose the owner's full task inventory
+ * (history, list_agents).
  */
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
+  hasRoleAccess,
   type IAgentRuntime,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
@@ -349,4 +353,49 @@ export async function requireTaskAgentAccess(
     requiredRole,
     actualRole,
   };
+}
+
+/**
+ * Model-facing denial for an owner-private task read, matching the pattern the
+ * owner-reminders surface emits so the planner phrases the same
+ * permission-truthful decline on both surfaces.
+ */
+export const OWNER_PRIVATE_TASK_READ_DENIAL =
+  "Owner-private disclosure denied: owner_mismatch";
+
+export type OwnerTaskReadAccess =
+  | { allowed: true }
+  | { allowed: false; reason: string };
+
+/**
+ * Owner-privacy gate for TASKS reads that return the owner's whole task
+ * inventory (`history`, `list_agents`). Unlike the connector-configurable
+ * create/interact policy above — whose permissive GUEST default let a guest in
+ * a shared group channel run `history` and receive the owner's private
+ * orchestrator queue (app names, 32 tasks; live 2026-08-24) — this gate is
+ * identity-based and not operator-relaxable: tasks carry no per-requester
+ * creator entity, so the inventory cannot be scoped down and non-owners are
+ * denied outright. Resolution mirrors the owner-reminders surface via core
+ * `hasRoleAccess(..., "OWNER")`: agent-self (internal orchestration turns),
+ * the configured/world canonical owner, and OWNER-ranked senders pass; a
+ * message without a sender identity fails closed.
+ */
+export async function requireOwnerTaskReadAccess(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<OwnerTaskReadAccess> {
+  if (
+    !runtime ||
+    typeof runtime.agentId !== "string" ||
+    runtime.agentId.length === 0 ||
+    !message ||
+    typeof message.entityId !== "string" ||
+    message.entityId.length === 0
+  ) {
+    return { allowed: false, reason: OWNER_PRIVATE_TASK_READ_DENIAL };
+  }
+  if (await hasRoleAccess(runtime, message, "OWNER")) {
+    return { allowed: true };
+  }
+  return { allowed: false, reason: OWNER_PRIVATE_TASK_READ_DENIAL };
 }
