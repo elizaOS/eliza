@@ -581,7 +581,13 @@ async function readMessagesForTarget(
   if (live.length > 0) {
     return live;
   }
-  return readStoredMessageMemories(runtime, createUniqueUuid(runtime, matrixRoomId), limit);
+  // Account-scoped key, matching how matrixMessageToMemory persists inbound
+  // memories since the account-scoping change.
+  return readStoredMessageMemories(
+    runtime,
+    createUniqueUuid(runtime, `${accountId}:${matrixRoomId}`),
+    limit
+  );
 }
 
 function filterMemoriesByQuery(
@@ -1156,8 +1162,11 @@ export class MatrixService extends Service implements IMatrixService {
         );
       } else if (syncState === "ERROR" || syncState === "RECONNECTING") {
         // Connection trouble: room evidence may be stale. Degrade every
-        // currently-tracked room scope to unavailable so admission fails
-        // closed until a fresh PREPARED re-publishes complete state.
+        // currently-tracked room scope to STALE (fail-closed admission, no
+        // tombstone) so a fresh PREPARED can re-publish complete state and
+        // restore admission. Unavailable+tombstone is reserved for bot
+        // self-leave/ban, where only an explicit rejoin may clear it — a
+        // transient reconnect must never permanently kill a scope.
         if (state.membershipAuthority) {
           void this.degradeAllMembershipScopes(state, `sync_${syncState.toLowerCase()}`).catch(
             (err) =>
@@ -1234,8 +1243,30 @@ export class MatrixService extends Service implements IMatrixService {
     }
     const rooms = state.client.getRooms().filter((room) => room.getMyMembership() === "join");
     for (const room of rooms) {
+      // Lazy loading: until the out-of-band member list resolves, the SDK's
+      // roster is partial AND the joined-member count is unreliable (a large
+      // room can transiently look like a 1-member "direct" room). Load members
+      // FIRST, then classify the room — never publish or skip on a partial
+      // roster.
+      let membersReady = true;
+      if (typeof room.loadMembersIfNeeded === "function") {
+        try {
+          await room.loadMembersIfNeeded();
+        } catch {
+          membersReady = false;
+        }
+      }
+      if (!membersReady) {
+        await authority.reportIncomplete({
+          roomId: room.roomId,
+          reason: "member_load_failed",
+          observedAt: new Date().toISOString(),
+        });
+        continue;
+      }
+      // Direct rooms are not membership-governed (assessed after the member
+      // list resolved, so a lazily-loaded group is never misclassified).
       if (room.getJoinedMemberCount() <= 2) {
-        // Direct rooms are not membership-governed.
         continue;
       }
       if (authority.isRoomIncomplete(room.roomId)) {
@@ -1246,22 +1277,11 @@ export class MatrixService extends Service implements IMatrixService {
         });
         continue;
       }
-      // Lazy loading: until the out-of-band member list resolves, the SDK's
-      // roster is partial. Wait for it (bounded) before publishing; a timeout
-      // is incompleteness, not emptiness.
-      let membersReady = true;
-      if (typeof room.loadMembersIfNeeded === "function") {
-        try {
-          await room.loadMembersIfNeeded();
-        } catch {
-          membersReady = false;
-        }
-      }
       const joinedMembers = room.getJoinedMembers();
-      if (!membersReady || joinedMembers.length === 0) {
+      if (joinedMembers.length === 0) {
         await authority.reportIncomplete({
           roomId: room.roomId,
-          reason: membersReady ? "empty_roster" : "member_load_failed",
+          reason: "empty_roster",
           observedAt: new Date().toISOString(),
         });
         continue;
@@ -1315,9 +1335,9 @@ export class MatrixService extends Service implements IMatrixService {
   }
 
   /**
-   * Degrade every tracked room scope for an account to unavailable (sync
-   * trouble). Used on ERROR/RECONNECTING so admission fails closed until a
-   * fresh PREPARED re-publishes.
+   * Degrade every tracked room scope for an account to STALE (transient sync
+   * trouble): admission fails closed until a fresh PREPARED re-publishes, and
+   * NO tombstone is installed so the re-publish is accepted.
    */
   private async degradeAllMembershipScopes(
     state: MatrixAccountState,
@@ -1329,7 +1349,7 @@ export class MatrixService extends Service implements IMatrixService {
     }
     for (const room of state.client.getRooms().filter((r) => r.getMyMembership() === "join")) {
       if (room.getJoinedMemberCount() <= 2) continue;
-      await authority.markScopeUnavailable({ roomId: room.roomId, reason });
+      await authority.markScopeStale({ roomId: room.roomId, reason });
     }
   }
 
