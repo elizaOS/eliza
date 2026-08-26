@@ -131,6 +131,11 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
   publicExact("auth.login.password", "POST", "/api/auth/login/password"),
   publicExact("auth.status", "GET", "/api/auth/status"),
   publicExact("auth.pair", "POST", "/api/auth/pair"),
+  // Public at the gate only: the handler itself discloses the code solely to
+  // trusted-loopback callers (auth-pairing-routes.ts) — remote callers get its
+  // 403, never the code. Without this entry the default-deny 401 fires before
+  // that self-gate ever runs.
+  publicExact("auth.pair-code", "GET", "/api/auth/pair-code"),
   publicExact("embed.auth", "POST", "/api/embed/auth"),
   publicExact("tts.elevenlabs-passthrough", "POST", "/api/tts/elevenlabs"),
   // The handler itself rejects non-GET methods with 405 + Allow. Keep every
