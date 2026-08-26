@@ -12,7 +12,7 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { isIP } from "node:net";
-import type { AgentRuntime } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed, type AgentRuntime } from "@elizaos/core";
 import {
 	isLoopbackBindHost,
 	readAliasedEnv,
@@ -40,9 +40,10 @@ export function getCompatApiToken(): string | null {
 export function getProvidedApiToken(
 	req: Pick<http.IncomingMessage, "headers">,
 ): string | null {
-	const authHeader = firstHeaderValue(req.headers.authorization)
-		?.slice(0, 1024)
-		.trim();
+	const rawAuth = firstHeaderValue(req.headers.authorization);
+	const authHeader = rawAuth
+		? truncateWellFormed(toWellFormedUnicode(rawAuth), 1024).trim()
+		: undefined;
 	if (authHeader) {
 		const match = /^Bearer\s{1,8}(.+)$/i.exec(authHeader);
 		if (match?.[1]) return match[1].trim();
