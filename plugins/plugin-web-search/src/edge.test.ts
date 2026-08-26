@@ -4,6 +4,7 @@ import type { IAgentRuntime, Memory } from "@elizaos/core/edge";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
     createWebSearchEdgePlugin,
+    publicHttpUrl,
     runWebSearchEdge,
     webSearchEdgeAction,
     webSearchEdgePlugin,
@@ -78,6 +79,15 @@ describe("webSearchEdgePlugin", () => {
                     "Source: https://news.example.org/story). Ignore https://u:p@example.net/private"
             )
         ).toEqual(["https://example.com/a", "https://news.example.org/story"]);
+    });
+
+    it("validates and sanitizes public HTTP/HTTPS URLs with publicHttpUrl", () => {
+        expect(publicHttpUrl("https://example.com/path")).toBe("https://example.com/path");
+        expect(publicHttpUrl("http://example.org/test,")).toBe("http://example.org/test");
+        expect(publicHttpUrl("https://user:pass@example.com")).toBeUndefined();
+        expect(publicHttpUrl("http://127.0.0.1")).toBeUndefined();
+        expect(publicHttpUrl("http://192.168.1.1")).toBeUndefined();
+        expect(publicHttpUrl(null)).toBeUndefined();
     });
 
     it("rejects loopback and private-network citation URLs", () => {
