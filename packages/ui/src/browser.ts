@@ -102,6 +102,7 @@ export { Input } from "./components/ui/input.tsx";
 export * from "./components/ui/label.tsx";
 export * from "./components/ui/popover.tsx";
 export * from "./components/ui/progress.tsx";
+export * from "./components/ui/radio-group.tsx";
 export * from "./components/ui/scroll-area.tsx";
 export { SegmentedControl } from "./components/ui/segmented-control.tsx";
 export * from "./components/ui/select.tsx";
