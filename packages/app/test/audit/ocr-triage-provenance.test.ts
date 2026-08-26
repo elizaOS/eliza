@@ -68,7 +68,11 @@ function ocrLine(viewport: string, slug: string, text: string): string {
 
 const CURRENT_ROWS: ReportEntry[] = [
   { slug: "builtin-chat", viewport: "desktop-landscape", verdict: "good" },
-  { slug: "builtin-phone", viewport: "desktop-landscape", verdict: "good" },
+  {
+    slug: "plugin-phone-gui",
+    viewport: "desktop-landscape",
+    verdict: "good",
+  },
 ];
 const CHAT_OCR = "Mostly clear Today";
 const PHONE_OCR = "Phone call-blocked recent";
@@ -143,9 +147,44 @@ describe("semantic OCR attempt selection", () => {
       { expectation: { requireAll: ["Misty Forest", "Desert Dusk"] } },
     );
 
-    expect(selection.record.selectedMode).toBe("auto");
+    expect(selection.record.selectedMode).toBe("auto+sparse-high-contrast");
     expect(selection.finding.errorLeaks).toContain("[object Object]");
     expect(selection.finding.verdict).toBe("broken");
+  });
+
+  it("prefers proving every required label over an optional alternative", () => {
+    const selection = selectSemanticallyBestOcrAttempt(
+      {
+        ok: true,
+        text: "Computer sessions Linux sandbox Rescarch browser",
+        lines: ["Computer sessions", "Linux sandbox", "Rescarch browser"],
+        words: 6,
+        meanConfidence: 0.89,
+        selectedMode: "sparse-high-contrast",
+        pixelBlank: false,
+        pixelBlankReasons: [],
+        attempts: [
+          {
+            mode: "auto",
+            ok: true,
+            text: "Computer sessions Research browser Browser chrome-profile",
+            words: 7,
+            chars: 58,
+            meanConfidence: 0.58,
+          },
+        ],
+      },
+      {
+        expectation: {
+          requireAll: ["Computer sessions", "Research browser"],
+          requireAny: ["Linux sandbox", "Sequence 12"],
+        },
+      },
+    );
+
+    expect(selection.record.selectedMode).toBe("sparse-high-contrast+auto");
+    expect(selection.finding.verdict).toBe("verified");
+    expect(selection.finding.missingRequired).toEqual([]);
   });
 });
 
@@ -161,7 +200,7 @@ describe("authorizedShots (report-authoritative selection)", () => {
     const shots = authorizedShots(dir, CURRENT_ROWS);
     expect(shots.map((s) => s.key).sort()).toEqual([
       "builtin-chat::desktop-landscape",
-      "builtin-phone::desktop-landscape",
+      "plugin-phone-gui::desktop-landscape",
     ]);
   });
 
@@ -176,9 +215,9 @@ describe("authorizedShots (report-authoritative selection)", () => {
 
   it("fails fast when a report row has no screenshot", () => {
     shot(dir, "desktop-landscape", "builtin-chat");
-    // builtin-phone.png intentionally absent.
+    // plugin-phone-gui.png intentionally absent.
     expect(() => authorizedShots(dir, CURRENT_ROWS)).toThrow(
-      /screenshot is missing: builtin-phone::desktop-landscape/,
+      /screenshot is missing: plugin-phone-gui::desktop-landscape/,
     );
   });
 
@@ -225,7 +264,7 @@ describe("audit directory resolution (#17128)", () => {
     // A populated default directory from an earlier run. If resolution ever
     // falls back here while ELIZA_AUDIT_APP_DIR is set, the assertions below
     // catch the false evidence binding.
-    seedCapture(staleDefault, "builtin-phone", PHONE_OCR);
+    seedCapture(staleDefault, "plugin-phone-gui", PHONE_OCR);
     previousCwd = process.cwd();
     previousEnv = process.env.ELIZA_AUDIT_APP_DIR;
     process.chdir(root);
@@ -275,7 +314,7 @@ describe("audit directory resolution (#17128)", () => {
     ]);
 
     expect(result.entries.map((entry) => entry.slug)).toEqual([
-      "builtin-phone",
+      "plugin-phone-gui",
     ]);
     expect(existsSync(join(staleDefault, "ocr-triage.json"))).toBe(true);
   });
@@ -323,7 +362,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
         verdict: "good",
       },
       {
-        slug: "builtin-phone",
+        slug: "plugin-phone-gui",
         viewport: "ipad-portrait",
         verdict: "needs-eyeball",
       },
@@ -337,12 +376,12 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
         ocrLine(
           "mobile-portrait",
           "plugin-cloud-gui",
-          "Settings Wallet Projects",
+          "Eliza Cloud Credits",
         ),
         ocrLine(
           "ipad-portrait",
-          "builtin-phone",
-          "Phone TypeError Cannot read properties",
+          "plugin-phone-gui",
+          "Phone recent TypeError Cannot read properties",
         ),
       ].join("\n"),
     );
@@ -365,7 +404,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
       newRegressions: 1,
     });
     expect(result.entries.map((entry) => entry.slug)).toEqual([
-      "builtin-phone",
+      "plugin-phone-gui",
       "builtin-settings",
       "plugin-cloud-gui",
     ]);
@@ -437,7 +476,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
       join(dir, "ocr.ndjson"),
       [
         ocrLine("desktop-landscape", "builtin-chat", CHAT_OCR),
-        ocrLine("desktop-landscape", "builtin-phone", PHONE_OCR),
+        ocrLine("desktop-landscape", "plugin-phone-gui", PHONE_OCR),
         ocrLine("desktop-landscape", STALE_SLUG, "Retired plugin screenshot"),
       ].join("\n"),
     );
@@ -465,7 +504,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
       ocrLine("desktop-landscape", "builtin-chat", CHAT_OCR),
     );
     const phone = JSON.parse(
-      ocrLine("desktop-landscape", "builtin-phone", PHONE_OCR),
+      ocrLine("desktop-landscape", "plugin-phone-gui", PHONE_OCR),
     );
     const stale = JSON.parse(
       ocrLine("desktop-landscape", STALE_SLUG, "Retired plugin screenshot"),
@@ -473,14 +512,14 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
 
     expect(() =>
       validateImportedOcrRecords(dir, "ocr.ndjson", shots, [chat]),
-    ).toThrow(/builtin-phone::desktop-landscape has no OCR record/);
+    ).toThrow(/plugin-phone-gui::desktop-landscape has no OCR record/);
     expect(() =>
       validateImportedOcrRecords(dir, "ocr.ndjson", shots, [
         chat,
         phone,
         phone,
       ]),
-    ).toThrow(/duplicate OCR record builtin-phone::desktop-landscape/);
+    ).toThrow(/duplicate OCR record plugin-phone-gui::desktop-landscape/);
     expect(() =>
       validateImportedOcrRecords(dir, "ocr.ndjson", shots, [
         chat,
@@ -520,7 +559,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
     writeFileSync(
       join(dir, "ocr.ndjson"),
       [
-        ocrLine("desktop-landscape", "builtin-phone", PHONE_OCR),
+        ocrLine("desktop-landscape", "plugin-phone-gui", PHONE_OCR),
         ocrLine("desktop-landscape", "builtin-chat", CHAT_OCR),
       ].join("\n"),
     );
@@ -535,7 +574,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
     ]);
     const chat = result.entries.find((entry) => entry.slug === "builtin-chat");
     const phone = result.entries.find(
-      (entry) => entry.slug === "builtin-phone",
+      (entry) => entry.slug === "plugin-phone-gui",
     );
     if (!chat || !phone) throw new Error("expected current audit entries");
     expect(chat.pixelBlank).toBe(true);
@@ -549,7 +588,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
       join(dir, "ocr.ndjson"),
       [
         ocrLine("desktop-landscape", "builtin-chat", CHAT_OCR),
-        ocrLine("desktop-landscape", "builtin-phone", PHONE_OCR),
+        ocrLine("desktop-landscape", "plugin-phone-gui", PHONE_OCR),
         ocrLine("desktop-landscape", STALE_SLUG, "Retired plugin screenshot"),
       ].join("\n"),
     );
@@ -571,7 +610,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
 
   it("exits non-zero when a report row's screenshot is missing", async () => {
     shot(dir, "desktop-landscape", "builtin-chat");
-    // builtin-phone.png absent → incomplete capture.
+    // plugin-phone-gui.png absent -> incomplete capture.
     writeFileSync(join(dir, "report.json"), JSON.stringify(CURRENT_ROWS));
     writeFileSync(
       join(dir, "ocr.ndjson"),
@@ -587,12 +626,12 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
         join(dir, "ocr-triage.json"),
       ]),
     ).rejects.toThrow(
-      /screenshot is missing: builtin-phone::desktop-landscape/,
+      /screenshot is missing: plugin-phone-gui::desktop-landscape/,
     );
     const { status, stderr } = run();
     expect(status).not.toBe(0);
     expect(stderr).toMatch(
-      /screenshot is missing: builtin-phone::desktop-landscape/,
+      /screenshot is missing: plugin-phone-gui::desktop-landscape/,
     );
   });
 
