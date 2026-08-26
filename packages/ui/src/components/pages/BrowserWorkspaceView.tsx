@@ -29,6 +29,7 @@ import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
 import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { usesAndroidLp3SharedBrowserStorage } from "../../platform/android-runtime";
 import { useAppSelectorShallow } from "../../state";
 import { deriveSurfacePlacement } from "../../surface/native-surface-shell";
 import { useMobileNativeTabSurfaces } from "../../surface/use-mobile-native-tab-surfaces";
@@ -127,7 +128,17 @@ const BROWSER_NATIVE_SURFACE_PLACEMENT = deriveSurfacePlacement(
 );
 const BROWSER_NATIVE_SURFACE_POLICY =
   BROWSER_NATIVE_SURFACE_PLACEMENT.target === "native-surface"
-    ? BROWSER_NATIVE_SURFACE_PLACEMENT.policy
+    ? {
+        ...BROWSER_NATIVE_SURFACE_PLACEMENT.policy,
+        // LP3's WebView 113 has an out-of-app renderer but no multi-profile
+        // API. The dedicated fallback build therefore explicitly requests the
+        // plugin's supported shared Browser profile. This is not a native
+        // silent downgrade: every other build keeps the manifest-derived
+        // isolated storage policy and still fails closed when unsupported.
+        storage: usesAndroidLp3SharedBrowserStorage()
+          ? ("shared" as const)
+          : BROWSER_NATIVE_SURFACE_PLACEMENT.policy.storage,
+      }
     : (() => {
         throw new Error(
           "Browser surface manifest must declare native-webview isolation to host native mobile tab surfaces",
