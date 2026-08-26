@@ -12,6 +12,15 @@ import {
 // current process lifetime. The bridge is idempotent on disk, but cookie jar
 // writes are cheap and we don't need to repeat them on every status tick.
 let desktopSessionPrimed = false;
+let desktopSessionGeneration = 0;
+let desktopSessionPrimeInFlight: Promise<void> | null = null;
+let desktopSessionPendingPrime: DesktopSessionPrimeRequest | null = null;
+
+interface DesktopSessionPrimeRequest {
+  apiBase: string;
+  rendererOrigin: string;
+  generation: number;
+}
 
 /**
  * Reset the primed flag so the next call to primeDesktopSessionAuth() re-runs
@@ -20,23 +29,14 @@ let desktopSessionPrimed = false;
  */
 export function markDesktopSessionStale(): void {
   desktopSessionPrimed = false;
+  desktopSessionGeneration += 1;
 }
 
-/**
- * Best-effort: mint a loopback-only desktop session and install the
- * cookies into the main window's session jar so the renderer's first /api
- * request is already authenticated. Failure is silent — the renderer falls
- * back to the standard login flow.
- *
- * Loopback-only enforcement is implemented server-side: the auth-context
- * resolver MUST refuse a session marked loopback-only on a non-loopback
- * request. The bridge does not — and cannot — be that boundary.
- */
-export async function primeDesktopSessionAuth(
+async function runDesktopSessionPrime(
   apiBase: string,
   rendererOrigin: string,
+  generation: number,
 ): Promise<void> {
-  if (desktopSessionPrimed) return;
   let session: DesktopSession | null;
   try {
     // A persisted session can outlive the embedded backend process that owns
@@ -73,7 +73,9 @@ export async function primeDesktopSessionAuth(
       apiOrigin: apiBase,
       rendererOrigin,
     });
-    desktopSessionPrimed = true;
+    if (generation === desktopSessionGeneration) {
+      desktopSessionPrimed = true;
+    }
     logger.info(
       `[Main] Desktop loopback session primed on ${touched.join(", ") || "<no targets>"}`,
     );
@@ -82,4 +84,60 @@ export async function primeDesktopSessionAuth(
       `[Main] Desktop auth cookie install failed: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+}
+
+async function drainDesktopSessionPrimes(
+  initialRequest: DesktopSessionPrimeRequest,
+): Promise<void> {
+  let request = initialRequest;
+  for (;;) {
+    await runDesktopSessionPrime(
+      request.apiBase,
+      request.rendererOrigin,
+      request.generation,
+    );
+    const pending = desktopSessionPendingPrime;
+    desktopSessionPendingPrime = null;
+    if (!pending) return;
+    if (
+      desktopSessionPrimed &&
+      pending.generation === desktopSessionGeneration
+    ) {
+      return;
+    }
+    request = pending;
+  }
+}
+
+/**
+ * Best-effort: mint a loopback-only desktop session and install the
+ * cookies into the main window's session jar so the renderer's first /api
+ * request is already authenticated. Failure is silent — the renderer falls
+ * back to the standard login flow.
+ *
+ * Loopback-only enforcement is implemented server-side: the auth-context
+ * resolver MUST refuse a session marked loopback-only on a non-loopback
+ * request. The bridge does not — and cannot — be that boundary.
+ */
+export async function primeDesktopSessionAuth(
+  apiBase: string,
+  rendererOrigin: string,
+): Promise<void> {
+  if (desktopSessionPrimed) return;
+  const request = {
+    apiBase,
+    rendererOrigin,
+    generation: desktopSessionGeneration,
+  };
+  if (desktopSessionPrimeInFlight) {
+    desktopSessionPendingPrime = request;
+  } else {
+    desktopSessionPrimeInFlight = drainDesktopSessionPrimes(request).finally(
+      () => {
+        desktopSessionPendingPrime = null;
+        desktopSessionPrimeInFlight = null;
+      },
+    );
+  }
+  await desktopSessionPrimeInFlight;
 }
