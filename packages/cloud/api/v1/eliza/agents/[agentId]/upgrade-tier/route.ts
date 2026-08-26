@@ -188,6 +188,7 @@ async function dedicatedQuote(
   const balanceUsd = credit.balance;
   const reattachWithoutStartingCompute = Boolean(
     existingTarget &&
+      existingTarget.status !== "error" &&
       existingTarget.status !== "stopped" &&
       existingTarget.status !== "sleeping",
   );
@@ -255,7 +256,7 @@ function invalidUpgradeSource(source: UpgradeSource): Response | null {
  * returned another request's committed target. Running and
  * already-provisioning targets reattach without a second credit gate: nothing
  * new starts billing. Resuming a stopped/sleeping target does start compute
- * again, so that path must prove the same dedicated runway as a fresh upgrade
+ * again, so stopped/sleeping/error paths must prove the same dedicated runway as a fresh upgrade
  * before it may enqueue work. The enqueue is safe from any state because a
  * committed target's environment was fully prepared at creation — re-arming a
  * dead job never re-mints credentials.
@@ -289,7 +290,11 @@ async function respondToLiveTarget(
       },
     });
   }
-  if (target.status === "stopped" || target.status === "sleeping") {
+  if (
+    target.status === "error" ||
+    target.status === "stopped" ||
+    target.status === "sleeping"
+  ) {
     const resumeCreditCheck = await checkAgentTierUpgradeCreditGate(
       user.organization_id,
     );
@@ -325,7 +330,7 @@ async function respondToLiveTarget(
       );
     }
   }
-  // pending/provisioning (or stopped/sleeping after an interrupted boot):
+  // pending/provisioning (or error/stopped/sleeping after an interrupted boot):
   // hand back the active provision job — enqueue reuses an in-flight job
   // and only mints a new one when the previous attempt died.
   const reattach = await provisioningJobService.enqueueAgentProvisionOnce({
