@@ -462,6 +462,46 @@ export async function verifyLiveMobileAppAuthConfig(
   }
 }
 
+/**
+ * Keep this release script runnable directly with Node. Importing the Cloud
+ * workspace's source-only db/client module here makes Node traverse its
+ * extensionless TypeScript imports and fails before PostgreSQL is contacted.
+ * This small copy preserves the same fail-closed TLS contract without pulling
+ * the Worker database runtime into the deployment preflight.
+ */
+export function mobileAppAuthDatabaseConnection(databaseUrl: string): {
+  url: string;
+  ssl: { rejectUnauthorized: boolean } | undefined;
+} {
+  let parsed: URL;
+  try {
+    parsed = new URL(databaseUrl);
+  } catch {
+    fail("DATABASE_URL must be a valid PostgreSQL URL");
+  }
+  if (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:") {
+    fail("DATABASE_URL must use the postgres or postgresql scheme");
+  }
+  const isLocal =
+    parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost";
+  if (isLocal) return { url: databaseUrl, ssl: undefined };
+
+  const sslmode = parsed.searchParams.get("sslmode");
+  if (sslmode === "disable" || sslmode === "allow") {
+    fail("Remote DATABASE_URL must require TLS");
+  }
+  const skipVerify =
+    process.env.DATABASE_SSL_NO_VERIFY === "true" ||
+    sslmode === "no-verify";
+  if (!sslmode) {
+    parsed.searchParams.set("sslmode", skipVerify ? "no-verify" : "require");
+  }
+  return {
+    url: parsed.toString(),
+    ssl: { rejectUnauthorized: !skipVerify },
+  };
+}
+
 async function closeDatabaseClient(client: pg.Client): Promise<void> {
   try {
     await client.end();
@@ -481,10 +521,7 @@ export async function verifyDatabaseMobileAppAuthRegistration(
   let row: MobileAppAuthRegistrationRow | undefined;
 
   try {
-    const { enforceTlsForRemote } = await import(
-      "@elizaos/cloud-shared/db/client"
-    );
-    const { url, ssl } = enforceTlsForRemote(databaseUrl);
+    const { url, ssl } = mobileAppAuthDatabaseConnection(databaseUrl);
     const connectedClient = new Client({
       connectionString: url,
       ...(ssl ? { ssl } : {}),
