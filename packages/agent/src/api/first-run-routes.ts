@@ -26,6 +26,7 @@ import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   asRecord,
   type DeploymentTargetConfig,
+  getDirectAccountProviderForFirstRunProvider,
   isCloudInferenceSelectedInConfig,
   migrateLegacyRuntimeConfig,
   normalizeDeploymentTargetConfig,
@@ -38,6 +39,11 @@ import {
 import type { ElizaConfig } from "../config/config.ts";
 import { configFileExists, loadElizaConfig } from "../config/config.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
+import { syncDirectProviderCredentials } from "./accounts-routes.ts";
+import {
+  adoptFirstRunDirectAccount,
+  type FirstRunDirectAccountAdoption,
+} from "./first-run-direct-account.ts";
 import {
   applyCanonicalFirstRunConfig,
   applyFirstRunCredentialPersistence,
@@ -536,6 +542,32 @@ export async function handleFirstRunRoutes(
       normalizedCanonicalRuntimeConfig.deploymentTarget;
     const normalizedServiceRouting =
       normalizedCanonicalRuntimeConfig.serviceRouting;
+    const firstRunDirectAccountProvider =
+      getDirectAccountProviderForFirstRunProvider(
+        normalizedServiceRouting?.llmText?.backend,
+      );
+    const firstRunAccountCredential = explicitCredentialInputs?.llmApiKey;
+    let firstRunAdoption: FirstRunDirectAccountAdoption | undefined;
+    if (
+      (firstRunDirectAccountProvider === "openrouter-api" ||
+        firstRunDirectAccountProvider === "xai-api") &&
+      firstRunAccountCredential
+    ) {
+      try {
+        // Authenticate and adopt before any onboarding side effect can make an
+        // invalid paid-provider credential look accepted.
+        firstRunAdoption = await adoptFirstRunDirectAccount({
+          providerId: firstRunDirectAccountProvider,
+          apiKey: firstRunAccountCredential,
+        });
+      } catch (err) {
+        // error-policy:J1 first-run is the HTTP boundary: an unproven paid
+        // credential leaves neither config nor account state committed.
+        const message = err instanceof Error ? err.message : String(err);
+        error(res, message, 400);
+        return true;
+      }
+    }
 
     // ── Sandbox mode (from first-run runtime setup: off / light / standard / max)
     const sandboxMode = (body.sandboxMode as string) || "off";
@@ -811,15 +843,60 @@ export async function handleFirstRunRoutes(
     state.config = config;
     state.agentName = (body.name as string) ?? state.agentName;
     migrateLegacyRuntimeConfig(config as Record<string, unknown>);
+    if (firstRunAdoption) {
+      try {
+        await syncDirectProviderCredentials(
+          { state } as Pick<
+            import("./accounts-routes.ts").AccountsRouteContext,
+            "state"
+          >,
+          firstRunAdoption.account.providerId,
+        );
+      } catch (err) {
+        // error-policy:J1 the account must become the live billing authority
+        // before config commit; otherwise retract it and fail onboarding.
+        await firstRunAdoption.rollback();
+        error(
+          res,
+          err instanceof Error ? err.message : "Account activation failed",
+          500,
+        );
+        return true;
+      }
+    }
     try {
       ctx.saveElizaConfig(config);
     } catch (err) {
+      // error-policy:J6 config commit failed after account adoption; remove the
+      // not-yet-authoritative account so retry starts from a clean boundary.
+      await firstRunAdoption?.rollback();
+      if (firstRunAdoption) {
+        await syncDirectProviderCredentials(
+          { state } as Pick<
+            import("./accounts-routes.ts").AccountsRouteContext,
+            "state"
+          >,
+          firstRunAdoption.account.providerId,
+        );
+      }
       logger.error(`[eliza-api] Failed to save config after first-run: ${err}`);
       error(res, "Failed to save configuration", 500);
       return true;
     }
 
     if (!configFileExists()) {
+      // error-policy:J6 the save helper returned without producing its durable
+      // artifact, so roll back the paired account adoption as well.
+      await firstRunAdoption?.rollback();
+      if (firstRunAdoption) {
+        await syncDirectProviderCredentials(
+          { state } as Pick<
+            import("./accounts-routes.ts").AccountsRouteContext,
+            "state"
+          >,
+          firstRunAdoption.account.providerId,
+        );
+      }
       logger.error(
         `[eliza-api] Config file does not exist after save — first-run data will be lost on restart`,
       );
