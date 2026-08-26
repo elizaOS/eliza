@@ -42,6 +42,7 @@ interface ScheduleArg {
     id: number;
     title: string;
     body: string;
+    isExactNotification?: boolean;
     channelId?: string;
     extra?: Record<string, unknown>;
   }>;
@@ -96,6 +97,7 @@ describe("showNativeNotification (android channels)", () => {
     );
     const scheduled = local.schedule.mock.calls[0]?.[0]?.notifications[0];
     expect(scheduled?.channelId).toBe("eliza_alerts");
+    expect(scheduled?.isExactNotification).toBe(false);
   });
 
   it("routes low to the quiet channel (no heads-up, no sound)", async () => {

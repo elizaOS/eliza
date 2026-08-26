@@ -126,14 +126,19 @@ export function resolvePrimingSet(
   opts: ResolvePrimingOptions = {},
 ): PermissionId[] {
   const platform = opts.platform ?? getFrontendPlatform();
-  // The Play/Cloud artifact intentionally omits the generic permission
-  // plugins. Voice owns its narrower RECORD_AUDIO request when the user invokes
-  // it, so onboarding must not advertise permissions this APK cannot request.
-  if (platform === "android" && isAndroidCloudBuild()) return [];
   const base = opts.only ?? PRIMING_SETS[platform] ?? [];
-  return base.filter(
+  const supported = base.filter(
     (id): id is PermissionId => PRIMING_COPY[id] !== undefined,
   );
+  // The Cloud APK proves notification and foreground-location bridges. Voice
+  // deliberately keeps its narrower RECORD_AUDIO request at the moment the
+  // user starts talking, rather than priming through a generic microphone API.
+  if (platform === "android" && isAndroidCloudBuild()) {
+    return supported.filter(
+      (id) => id === "notifications" || id === "location",
+    );
+  }
+  return supported;
 }
 
 /** localStorage key for the shown-once flag. */

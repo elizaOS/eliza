@@ -86,7 +86,14 @@ export function NotificationsShellBoot(): null {
   useEffect(() => {
     // Native-only, gated on granted permission, guarded against double-register.
     // The token POST is what makes the server's APNs/FCM stack a live pipeline.
-    void initPushRegistration();
+    void initPushRegistration().catch((error: unknown) => {
+      // error-policy:J1 push registration is an OS/provider transport boundary;
+      // a missing distributor Firebase configuration must not crash the shell.
+      logger.error(
+        { src: "push-registration", error },
+        "[push-registration] native registration unavailable",
+      );
+    });
     const refreshAuthority = (force = false) => {
       void refreshPushRegistrationAuthority(undefined, force).catch(
         (error: unknown) => {
