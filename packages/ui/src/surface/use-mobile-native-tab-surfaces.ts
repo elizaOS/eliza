@@ -267,6 +267,17 @@ function parseCornerRadius(value: string): number | null {
     : null;
 }
 
+function firstParsedCornerRadius(
+  ...values: ReadonlyArray<string | undefined>
+): number {
+  for (const value of values) {
+    if (value === undefined) continue;
+    const radius = parseCornerRadius(value);
+    if (radius !== null) return radius;
+  }
+  return 0;
+}
+
 const ZERO_CORNER_RADII: SurfaceCornerRadii = {
   topLeft: 0,
   topRight: 0,
@@ -386,14 +397,19 @@ export function collectSurfaceOcclusionRects(
       y: roundedCssPixel(rect.top),
       width: roundedCssPixel(rect.width),
       height: roundedCssPixel(rect.height),
-      cornerRadius:
-        parseCornerRadius(
-          element.style.borderTopLeftRadius ||
-            element.style.borderRadius ||
-            style?.borderTopLeftRadius ||
-            style?.borderRadius ||
-            "0",
-        ) ?? 0,
+      // Motion-driven chat chrome writes `border-radius` as a CSS variable
+      // (`var(--chat-sheet-radius)`). The inline token is intentionally not a
+      // number, while computed style contains the resolved pixel radius. Keep
+      // explicit numeric inline geometry authoritative, but continue through
+      // unparseable inline tokens to their computed values; otherwise Android
+      // receives radius 0 and cuts a square native-WebView hole behind the
+      // rounded chat sheet.
+      cornerRadius: firstParsedCornerRadius(
+        element.style.borderTopLeftRadius,
+        element.style.borderRadius,
+        style?.borderTopLeftRadius,
+        style?.borderRadius,
+      ),
     });
   }
   // A native mask represents the union of these regions. Nested portal/status
