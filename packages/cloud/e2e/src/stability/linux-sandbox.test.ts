@@ -5,13 +5,7 @@
 
 import { expect, test } from "bun:test";
 import { spawn, spawnSync } from "node:child_process";
-import {
-  closeSync,
-  mkdtempSync,
-  openSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { closeSync, mkdtempSync, openSync, writeFileSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -29,6 +23,7 @@ test("credential-minimal child environment rejects ambient runner secrets", () =
       PATH: "/bin",
       GITHUB_TOKEN: "runner-token",
       OPENAI_API_KEY: "provider-key",
+      OPENAI_BASE_URL: "http://127.0.0.1:4311",
       DATABASE_PASSWORD: "database-secret",
       NODE_ENV: "test",
       SAFE_SETTING: "discarded",
@@ -38,6 +33,7 @@ test("credential-minimal child environment rejects ambient runner secrets", () =
   expect(environment).toEqual({
     NODE_ENV: "test",
     OPENAI_API_KEY: "sandbox-proxy-credential",
+    OPENAI_BASE_URL: "http://127.0.0.1:4311",
   });
 });
 
@@ -267,10 +263,6 @@ console.log(JSON.stringify({
       expect(accessControl.status).toBe(0);
       expect(accessControl.stdout).not.toContain(`user:${String(result.uid)}:`);
 
-      const missingTools = mkdtempSync(
-        path.join(tmpdir(), "sandbox-missing-tools-"),
-      );
-      symlinkSync("/usr/bin/id", path.join(missingTools, "id"));
       const setupScript = path.join(
         repoRoot,
         "packages/cloud/e2e/scripts/stability-linux-sandbox.sh",
@@ -279,8 +271,17 @@ console.log(JSON.stringify({
         "sudo",
         [
           "-n",
-          "env",
-          `PATH=${missingTools}`,
+          "/usr/bin/bwrap",
+          "--ro-bind",
+          "/",
+          "/",
+          "--dev",
+          "/dev",
+          "--proc",
+          "/proc",
+          "--ro-bind",
+          "/dev/null",
+          "/usr/bin/bwrap",
           "/bin/bash",
           setupScript,
           "setup",
@@ -289,13 +290,21 @@ console.log(JSON.stringify({
       );
       expect(missingBwrap.status).not.toBe(0);
       expect(missingBwrap.stderr).toContain("missing required command: bwrap");
-      symlinkSync("/usr/bin/bwrap", path.join(missingTools, "bwrap"));
       const missingIptables = spawnSync(
         "sudo",
         [
           "-n",
-          "env",
-          `PATH=${missingTools}`,
+          "/usr/bin/bwrap",
+          "--ro-bind",
+          "/",
+          "/",
+          "--dev",
+          "/dev",
+          "--proc",
+          "/proc",
+          "--ro-bind",
+          "/dev/null",
+          "/usr/sbin/iptables",
           "/bin/bash",
           setupScript,
           "setup",
@@ -306,7 +315,6 @@ console.log(JSON.stringify({
       expect(missingIptables.stderr).toContain(
         "missing required command: iptables",
       );
-      await rm(missingTools, { recursive: true, force: true });
     } finally {
       delete process.env.PROBE_PARENT_CREDENTIAL;
       allowed.close();
