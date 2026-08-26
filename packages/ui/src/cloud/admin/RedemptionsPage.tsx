@@ -7,6 +7,7 @@
  * role gate; this body assumes it is past the gate.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -324,7 +325,16 @@ export default function RedemptionsPage(): React.JSX.Element {
 
   const truncateAddress = (address: string) => {
     if (!address) return "-";
-    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+    const wellFormed = toWellFormedUnicode(address);
+    if (wellFormed.length <= 10) return wellFormed;
+    const start = truncateWellFormed(wellFormed, 6);
+    let endCut = wellFormed.length - 4;
+    const code = wellFormed.charCodeAt(endCut);
+    if (code >= 0xdc00 && code <= 0xdfff) {
+      endCut += 1;
+    }
+    const end = wellFormed.slice(endCut);
+    return `${start}...${end}`;
   };
 
   return (

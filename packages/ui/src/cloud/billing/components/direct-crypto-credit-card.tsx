@@ -3,6 +3,7 @@
 /**
  * Direct-crypto credit-card entry card for the cloud billing flow.
  */
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   Button,
   Card,
@@ -115,7 +116,16 @@ const NETWORK_LABELS: Record<DirectNetwork, string> = {
 
 function formatAddress(value: string | null | undefined) {
   if (!value) return "";
-  return `${value.slice(0, 6)}...${value.slice(-4)}`;
+  const wellFormed = toWellFormedUnicode(value);
+  if (wellFormed.length <= 10) return wellFormed;
+  const start = truncateWellFormed(wellFormed, 6);
+  let endCut = wellFormed.length - 4;
+  const code = wellFormed.charCodeAt(endCut);
+  if (code >= 0xdc00 && code <= 0xdfff) {
+    endCut += 1;
+  }
+  const end = wellFormed.slice(endCut);
+  return `${start}...${end}`;
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
