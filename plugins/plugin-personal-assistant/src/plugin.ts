@@ -812,6 +812,10 @@ const rawPersonalAssistantPlugin: Plugin = {
         "Connect, seed, inspect, and recover Gmail, Google Calendar, and Apple Calendar.",
       icon: "Cable",
       path: "/lifeops/connections",
+      responseContext: {
+        primaryContext: "connectors",
+        secondaryContexts: ["email", "calendar"],
+      },
       modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       surface: { header: "fullscreen", capabilities: ["agent-surface"] },

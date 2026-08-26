@@ -341,6 +341,10 @@ export const elizaOSCloudPlugin: Plugin = {
         "Your Eliza Cloud account — credits, hosted agents, API keys, and billing",
       icon: "Cloud",
       path: "/cloud",
+      responseContext: {
+        primaryContext: "admin",
+        secondaryContexts: ["settings"],
+      },
       // Plain array literal on purpose: plugin.ts is not part of the view
       // bundle, and a core runtime export reaching the bundle build breaks it
       // (the wallet-ui lesson).

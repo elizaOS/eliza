@@ -246,6 +246,10 @@ export const schedulingPlugin: Plugin = {
         "Connect your model and accounts, then run a real LifeOps validation and watch it fire.",
       icon: "FlaskConical",
       path: "/lifeops-live-test",
+      responseContext: {
+        primaryContext: "automation",
+        secondaryContexts: ["calendar"],
+      },
       modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       // First-party instrumented view (data-agent-id controls): grant the
