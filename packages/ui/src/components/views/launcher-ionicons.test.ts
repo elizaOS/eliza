@@ -89,6 +89,20 @@ describe("launcher Ionicons resolver", () => {
     expect(genericCatalogIcon).toEqual(semanticResolution);
   });
 
+  it.each([
+    ["chat", "Chat", "MessageSquare", "chatbubble-ellipses"],
+    ["settings", "Settings", "LayoutGrid", "settings"],
+    ["release-calendar", "Trading Calendar", "CalendarDays", "calendar"],
+    ["marketplace-view", "Trading Desk", undefined, "trending-up"],
+  ])(
+    "keeps representative destination %s on the approved %s asset",
+    (id, label, icon, expectedName) => {
+      expect(resolveLauncherIconAsset({ id, label, icon }).name).toBe(
+        expectedName,
+      );
+    },
+  );
+
   it("returns one stable family fallback for unrelated unknown entries", () => {
     const first = resolveLauncherIconAsset({
       id: "acme",
@@ -102,5 +116,6 @@ describe("launcher Ionicons resolver", () => {
 
     expect(first.kind).toBe("ionicon");
     expect(first).toEqual(second);
+    expect(first.name).toBe("apps");
   });
 });

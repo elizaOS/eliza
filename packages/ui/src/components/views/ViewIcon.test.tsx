@@ -51,6 +51,21 @@ describe("ViewIcon lucide glyphs", () => {
     expect(svg?.classList.contains("size-7")).toBe(true);
   });
 
+  it.each([
+    ["CalendarDays", "lucide-calendar-days"],
+    ["Cloud", "lucide-cloud"],
+    ["Grid3x3", "lucide-grid-3x3"],
+    ["Map", "lucide-map"],
+    ["MonitorUp", "lucide-monitor-up"],
+    ["TerminalSquare", "lucide-square-terminal"],
+  ])("resolves maintained registered-page glyph %s", (icon, expectedClass) => {
+    const { container } = render(
+      <ViewIcon icon={icon} label="Registered page" />,
+    );
+
+    expect(container.querySelector(`svg.${expectedClass}`)).toBeTruthy();
+  });
+
   it("honors a registered-page icon before conflicting label inference", () => {
     const registered = render(
       <ViewIcon icon="CalendarDays" label="Crypto Wallet" />,

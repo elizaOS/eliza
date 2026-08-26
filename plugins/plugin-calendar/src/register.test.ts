@@ -23,7 +23,7 @@ describe("Calendar app registration", () => {
       {
         id: "calendar",
         label: "Calendar",
-        icon: expect.any(String),
+        icon: "CalendarDays",
         path: "/calendar",
         viewKind: "release",
       },

@@ -30,6 +30,18 @@ describe("LauncherAppIcon", () => {
     expect(glyph.draggable).toBe(false);
   });
 
+  it("keeps Chat on the approved filled message glyph", () => {
+    const { container } = render(
+      <LauncherAppIcon
+        entry={{ id: "chat", label: "Chat", icon: "MessageSquare" }}
+      />,
+    );
+
+    expect(renderedGlyph(container).dataset.ionicon).toBe(
+      "chatbubble-ellipses",
+    );
+  });
+
   it("preserves a third-party image URL without presenting it to assistive technology", () => {
     const src = "https://cdn.example.com/partner.png";
     const { container } = render(
