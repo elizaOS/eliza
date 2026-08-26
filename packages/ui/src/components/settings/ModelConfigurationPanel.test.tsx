@@ -246,6 +246,12 @@ describe("catalog load states", () => {
     );
     render(<ModelConfigurationPanel />);
     expect(screen.getByText("Loading model catalog…")).toBeTruthy();
+    const scaffold = screen.getByTestId("model-configuration-loading");
+    expect(scaffold.querySelectorAll('[aria-current="false"]')).toHaveLength(0);
+    expect(screen.getAllByText("Small model")).toHaveLength(1);
+    expect(screen.getAllByText("Large model")).toHaveLength(1);
+    expect(screen.getAllByText("Coding sub-agent")).toHaveLength(1);
+    expect(scaffold.querySelectorAll("[aria-hidden]")).not.toHaveLength(0);
     await act(async () => {
       resolveCatalog({ providers: {}, catalog: fixtureCatalog() });
     });
