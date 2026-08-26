@@ -15,7 +15,14 @@
  * companion bridge. Mounted in `App.tsx` under the `browser` route key.
  */
 import { Capacitor } from "@capacitor/core";
-import { ExternalLink, Globe, Plus, RefreshCw, X } from "lucide-react";
+import {
+  EllipsisVertical,
+  ExternalLink,
+  Globe,
+  Plus,
+  RefreshCw,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import {
@@ -46,6 +53,12 @@ import { ViewBackButton } from "../shared/ViewHeader";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { useConfirm } from "../ui/confirm-dialog.hooks";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 import { Input } from "../ui/input";
 import { TooltipHint } from "../ui/tooltip";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
@@ -2389,7 +2402,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   });
 
   const navNode = (
-    <div className="grid grid-cols-[2.75rem_2.75rem_minmax(0,1fr)_repeat(3,2.75rem)] items-center gap-1 px-1.5 py-1 md:grid-cols-[2.75rem_minmax(10rem,4fr)_repeat(3,2.75rem)_minmax(10rem,5fr)_repeat(2,2.75rem)] md:gap-1.5 md:px-2 md:py-1.5 lg:gap-2 lg:px-3 lg:py-2">
+    <div className="flex items-center gap-1 p-1 md:grid md:grid-cols-[2.75rem_minmax(10rem,4fr)_repeat(3,2.75rem)_minmax(10rem,5fr)_repeat(2,2.75rem)] md:gap-1.5 md:px-2 md:py-1.5 lg:gap-2 lg:px-3 lg:py-2">
       <TooltipHint
         content={t("common.backToLauncher", {
           defaultValue: "Back to launcher",
@@ -2453,7 +2466,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="order-5 size-11 md:order-none"
+        className="hidden size-11 md:inline-flex"
         aria-label={t("common.refresh", { defaultValue: "Refresh" })}
         disabled={!selectedTab || busyAction !== null}
         onClick={() =>
@@ -2527,7 +2540,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         })}
         data-testid="browser-workspace-address-input"
         disabled={busyAction !== null || selectedTabIsInternal}
-        className="order-3 h-11 min-w-0 flex-1 rounded-full border-transparent bg-card/70 px-3 text-sm text-txt shadow-inset md:order-none md:min-w-[10rem] md:px-4"
+        className="h-11 min-w-0 flex-1 rounded-full border-transparent bg-card/70 px-3 text-sm text-txt shadow-inset md:col-span-1 md:min-w-[10rem] md:px-4"
       />
       <BrowserNavButton
         agentId="go"
@@ -2571,7 +2584,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="order-6 size-11 md:order-none"
+        className="hidden size-11 md:inline-flex"
         aria-label={t("browserworkspace.OpenExternal", {
           defaultValue: "Open external",
         })}
@@ -2585,6 +2598,82 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       >
         <ExternalLink className="size-4" />
       </BrowserNavButton>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-11 shrink-0 md:hidden"
+            aria-label={t("browserworkspace.MoreActions", {
+              defaultValue: "More browser actions",
+            })}
+            data-testid="browser-workspace-mobile-more"
+          >
+            <EllipsisVertical className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-52 md:hidden">
+          <DropdownMenuItem
+            className="min-h-12 gap-3"
+            disabled={busyAction !== null}
+            onSelect={() =>
+              void runBrowserWorkspaceAction("open:new", async () => {
+                await openNewBrowserWorkspaceTab(
+                  newBrowserWorkspaceTabSeedUrl,
+                  "user",
+                );
+              })
+            }
+          >
+            <Plus className="size-4" />
+            {newTabLabel}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="min-h-12 gap-3"
+            disabled={!selectedTab || busyAction !== null}
+            onSelect={() =>
+              void runBrowserWorkspaceAction("reload:selected", async () => {
+                await reloadSelectedBrowserWorkspaceTab();
+              })
+            }
+          >
+            <RefreshCw className="size-4" />
+            {t("common.refresh", { defaultValue: "Refresh" })}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="min-h-12 gap-3"
+            disabled={
+              busyAction !== null ||
+              !workspace.tabs.some((tab) => !isInternalBrowserWorkspaceTab(tab))
+            }
+            onSelect={() =>
+              void runBrowserWorkspaceAction("close:all", async () => {
+                await closeAllBrowserWorkspaceTabs();
+              })
+            }
+          >
+            <X className="size-4" />
+            {t("browserworkspace.CloseAllTabs", {
+              defaultValue: "Close all tabs",
+            })}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="min-h-12 gap-3"
+            disabled={!selectedTab || busyAction !== null}
+            onSelect={() =>
+              void runBrowserWorkspaceAction("open:external", async () => {
+                if (!selectedTab) return;
+                await openExternalUrl(selectedTab.url);
+              })
+            }
+          >
+            <ExternalLink className="size-4" />
+            {t("browserworkspace.OpenExternal", {
+              defaultValue: "Open external",
+            })}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 
