@@ -5,7 +5,6 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
-import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
@@ -245,21 +244,15 @@ public class GatewayConnectionService extends Service {
     /** Start the foreground service (safe to call repeatedly). */
     public static void start(Context context) {
         Intent intent = new Intent(context, GatewayConnectionService.class);
-        if (context instanceof Activity) {
-            context.startService(intent);
-            return;
-        }
         try {
             context.startForegroundService(intent);
         } catch (IllegalStateException error) {
             // error-policy:J1 process boundary — background FGS starts are
-            // disallowed while the app is force-stopped / freshly replaced
+            // disallowed after foreground eligibility is lost
             // (ForegroundServiceStartNotAllowedException extends
-            // IllegalStateException; pre-API-31 throws the base class).
-            // A boot/package-replace receiver hitting this must not crash
-            // the whole process ("Eliza has stopped" right after an APK
-            // update); the service starts on the next foreground entry via
-            // MainActivity instead.
+            // IllegalStateException; pre-API-31 throws the base class). A
+            // receiver or lifecycle race must not crash the app; MainActivity
+            // retries from its next visible-to-background transition.
             Log.w(TAG, "Deferred GatewayConnectionService start; background FGS not allowed now: " + error.getMessage());
         }
     }

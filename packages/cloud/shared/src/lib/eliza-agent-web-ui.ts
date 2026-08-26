@@ -17,6 +17,16 @@ export interface ElizaAgentWebUiUrlOptions {
   path?: string;
 }
 
+const INTERNAL_HOSTNAME_SUFFIXES = [
+  ".corp",
+  ".home",
+  ".internal",
+  ".lan",
+  ".local",
+  ".localhost",
+  ".private",
+] as const;
+
 /** Resolved base domain for the current deployment (e.g. "cloud.eliza.app"). */
 export function getAgentBaseDomain(): string {
   return (
@@ -36,6 +46,52 @@ function normalizeAgentBaseDomain(baseDomain?: string | null): string | null {
     .replace(/\.+$/, "");
 
   return normalizedDomain || null;
+}
+
+function normalizeConfiguredPublicBaseDomain(baseDomain: string | null | undefined): string | null {
+  const raw = baseDomain?.trim();
+  if (!raw) return null;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`);
+  } catch {
+    // error-policy:J3 deployment configuration is untrusted at the response boundary.
+    return null;
+  }
+
+  if (
+    (parsed.protocol !== "https:" && parsed.protocol !== "http:") ||
+    parsed.username ||
+    parsed.password ||
+    parsed.port ||
+    (parsed.pathname !== "/" && parsed.pathname !== "") ||
+    parsed.search ||
+    parsed.hash
+  ) {
+    return null;
+  }
+
+  const hostname = parsed.hostname.replace(/\.+$/, "").toLowerCase();
+  const labels = hostname.split(".");
+  if (
+    labels.length < 2 ||
+    hostname.length > 253 ||
+    hostname.includes(":") ||
+    /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname) ||
+    INTERNAL_HOSTNAME_SUFFIXES.some(
+      (suffix) => hostname === suffix.slice(1) || hostname.endsWith(suffix),
+    ) ||
+    labels.some((label) => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))
+  ) {
+    return null;
+  }
+
+  return hostname;
+}
+
+function isAgentHostnameLabel(agentId: string): boolean {
+  return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(agentId);
 }
 
 function applyPath(baseUrl: string, path = "/"): string {
@@ -86,6 +142,24 @@ export function getElizaAgentPublicWebUiUrl(
     normalizeAgentBaseDomain(process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN) ??
     DEFAULT_AGENT_BASE_DOMAIN;
 
+  return applyPath(`https://${sandbox.id}.${normalizedDomain}`, options.path);
+}
+
+/**
+ * Canonical ownership-scoped HTTPS gateway for a deployment-provided domain.
+ *
+ * Unlike {@link getElizaAgentPublicWebUiUrl}, this response-boundary helper has
+ * no environment or production-domain fallback. It also rejects IP literals,
+ * internal DNS suffixes, ports, credentials, paths, and invalid agent labels so
+ * persisted infrastructure coordinates cannot become browser-visible URLs.
+ */
+export function getConfiguredElizaAgentPublicWebUiUrl(
+  sandbox: Pick<AgentSandbox, "id">,
+  baseDomain: string | null | undefined,
+  options: Pick<ElizaAgentWebUiUrlOptions, "path"> = {},
+): string | null {
+  const normalizedDomain = normalizeConfiguredPublicBaseDomain(baseDomain);
+  if (!normalizedDomain || !isAgentHostnameLabel(sandbox.id)) return null;
   return applyPath(`https://${sandbox.id}.${normalizedDomain}`, options.path);
 }
 

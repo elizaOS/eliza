@@ -880,8 +880,8 @@ export interface DmSendTarget {
  * `user.send(...)` with a longer body (e.g. a multi-day recall digest) is
  * rejected outright, so the reply never arrives. This routes DM text through
  * `chunkDiscordText` — the fence-aware chunker every other outbound Discord
- * path already uses — with the shared `MAX_MESSAGE_LENGTH` (1900) headroom
- * budget, and sends the chunks sequentially so ordering is preserved.
+ * path already uses — with the shared 2,000-character provider budget
+ * and sends the chunks sequentially so ordering is preserved.
  *
  * Attachments and interactive components ride the LAST chunk, mirroring
  * `sendMessageInChunks`, so widgets sit directly under the end of the answer.

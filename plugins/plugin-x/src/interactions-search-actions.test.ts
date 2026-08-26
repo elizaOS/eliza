@@ -55,6 +55,7 @@ interface TwitterClientMock {
   likeTweet: ReturnType<typeof vi.fn>;
   retweet: ReturnType<typeof vi.fn>;
   sendQuoteTweet: ReturnType<typeof vi.fn>;
+  sendTweet: ReturnType<typeof vi.fn>;
   getTweetsV2: ReturnType<typeof vi.fn>;
 }
 
@@ -142,6 +143,7 @@ function createTwitterClientMock(): TwitterClientMock {
     likeTweet: vi.fn(async () => undefined),
     retweet: vi.fn(async () => undefined),
     sendQuoteTweet: vi.fn(async () => ({ id: "quote-1" })),
+    sendTweet: vi.fn(async () => ({ id: "quote-2" })),
     getTweetsV2: vi.fn(async () => []),
   };
 }
@@ -195,6 +197,7 @@ describe("Twitter search engagement actions", () => {
   });
 
   it("quote tweets a search-discovered tweet with generated commentary", async () => {
+    const completeQuote = "sharp take, agreed ".repeat(20);
     const runtime = createRuntime("[QUOTE]", {
       TWITTER_ENABLE_REPLIES: "false",
       TWITTER_TARGET_USERS: "alice",
@@ -202,7 +205,7 @@ describe("Twitter search engagement actions", () => {
     // First useModel call returns the action decision; second returns the quote JSON.
     runtime.useModel
       .mockResolvedValueOnce("[QUOTE]")
-      .mockResolvedValueOnce('{"post":"sharp take, agreed"}');
+      .mockResolvedValueOnce(JSON.stringify({ post: completeQuote }));
     const twitterClient = createTwitterClientMock();
     const clientBase = createClient(twitterClient, runtime);
     const client = new TwitterInteractionClient(
@@ -213,14 +216,26 @@ describe("Twitter search engagement actions", () => {
 
     await runTargetUserEngagement(client, clientBase, tweet());
 
+    expect(
+      [
+        twitterClient.sendQuoteTweet.mock.calls[0]?.[0],
+        ...twitterClient.sendTweet.mock.calls.map((call) => call[0]),
+      ].join(""),
+    ).toBe(completeQuote);
     expect(twitterClient.sendQuoteTweet).toHaveBeenCalledWith(
-      "sharp take, agreed",
+      expect.any(String),
       "500",
     );
-    expect(clientBase.requestQueue.add).toHaveBeenCalledWith(
-      expect.any(Function),
-      NO_REQUEST_RETRY,
+    expect(twitterClient.sendTweet).toHaveBeenCalledWith(
+      expect.any(String),
+      "quote-1",
     );
+    expect(clientBase.requestQueue.add).toHaveBeenCalledTimes(2);
+    expect(
+      vi
+        .mocked(clientBase.requestQueue.add)
+        .mock.calls.every((call) => call[1] === NO_REQUEST_RETRY),
+    ).toBe(true);
     expect(twitterClient.likeTweet).not.toHaveBeenCalled();
     expect(twitterClient.retweet).not.toHaveBeenCalled();
     expect(runtime.reportError).not.toHaveBeenCalled();
