@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "../../utils/well-formed";
 /**
  * Persists runtime trajectories, step indexes, model calls, and reward metadata
  * for replay, UI inspection, export, and training-data collection.
@@ -1122,8 +1123,9 @@ export class TrajectoriesService extends Service {
 		// (30s grace, then 120s). The age names the class directly.
 		const age =
 			typeof ageMs === "number" ? `${Math.round(ageMs / 1000)}s` : "unknown";
+		const safeStepId = truncateWellFormed(toWellFormedUnicode(stepId), 12);
 		const error = new ElizaError(
-			`Trajectory capture arrived after terminalization (step=${stepId.slice(0, 12)} type=${captureType} age=${age})`,
+			`Trajectory capture arrived after terminalization (step=${safeStepId} type=${captureType} age=${age})`,
 			{
 				code: "TRAJECTORY_OWNER_CLOSED",
 				context: { stepId, captureType, ageMs },
@@ -1131,7 +1133,7 @@ export class TrajectoriesService extends Service {
 		);
 		logger.warn(
 			{ err: error, stepId, captureType, ageMs },
-			`[trajectory-logger] Rejected late trajectory capture (step=${stepId.slice(0, 12)} type=${captureType} age=${age})`,
+			`[trajectory-logger] Rejected late trajectory capture (step=${safeStepId} type=${captureType} age=${age})`,
 		);
 		this.runtime.reportError("TrajectoriesService.lateCapture", error, {
 			stepId,
@@ -3387,8 +3389,11 @@ export class TrajectoriesService extends Service {
 	}
 
 	private sanitizeZipFolderName(value: string): string {
-		const trimmed = value.trim();
-		const safe = trimmed.length > 256 ? trimmed.slice(0, 256) : trimmed;
+		const wellFormed = toWellFormedUnicode(value.trim());
+		const safe =
+			wellFormed.length > 256
+				? truncateWellFormed(wellFormed, 256)
+				: wellFormed;
 		const sanitized = safe
 			.replace(/[^a-zA-Z0-9._-]+/g, "_")
 			.replace(/^_+|_+$/g, "");
