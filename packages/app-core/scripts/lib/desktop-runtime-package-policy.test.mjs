@@ -1,10 +1,10 @@
-/** Verifies the desktop packager always rebuilds both server authorities. */
+/** Verifies the desktop packager always rebuilds its server authorities. */
 
 import { describe, expect, it } from "vitest";
 import { canReuseDesktopRuntimePackage } from "./desktop-runtime-package-policy.mjs";
 
 describe("desktop runtime package reuse", () => {
-  it.each(["@elizaos/app-core", "@elizaos/agent"])(
+  it.each(["@elizaos/app-core", "@elizaos/agent", "@elizaos/plugin-sql"])(
     "rebuilds %s even when its dist looks fresh",
     (packageName) => {
       expect(
