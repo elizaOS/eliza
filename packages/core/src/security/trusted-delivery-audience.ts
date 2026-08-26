@@ -90,6 +90,20 @@ export type TrustedApiPrincipal =
 	| {
 			kind: "service_gateway";
 			principalId: string;
+			/**
+			 * Present only when the HTTP boundary authenticated a revocable,
+			 * DB-backed machine session (device pairing) whose boundary role is
+			 * USER-rank or above. Typed as the literal "USER" so this seam can
+			 * carry exactly one non-owner tier — it structurally cannot mint
+			 * ADMIN/OWNER attribution. Absent for unauthenticated callers,
+			 * shared-server-gateway tokens, and principal-only (non-session)
+			 * authorities. Consumers may use it to grant the minted external
+			 * entity USER world membership; the principal stays external for
+			 * audience attestation (owner-only disclosure is unaffected).
+			 */
+			sessionRole?: "USER";
+			/** Auth-identity id backing `sessionRole` — the grant's audit ref. */
+			sessionIdentityId?: string;
 	  };
 
 export type OwnerExclusiveDisclosureDenial =
