@@ -142,6 +142,17 @@ export interface AgentHostBridge {
     options: AgentHttpRequestAuthorizationOptions,
   ): Promise<AgentHttpRequestAuthorization> | AgentHttpRequestAuthorization;
   /**
+   * Resolve a bare session-id bearer presented outside an HTTP request —
+   * the WebSocket auth paths, where device pairing hands the client a
+   * revocable machine-session id instead of the static connection key
+   * (#13985). Only a live host session may resolve `ok`; hostless agents
+   * have no session store, so absence means deny.
+   */
+  resolveSessionTokenAuthorization?(
+    token: string,
+    runtime: AgentRuntime | null,
+  ): Promise<AgentHttpRequestAuthorization> | AgentHttpRequestAuthorization;
+  /**
    * Cloud-SSO popup handoff (`GET /pair?token=…`). Owned by the host; a
    * local-only agent never legitimately serves it, so absence is a no-op that
    * falls through to the normal request pipeline.

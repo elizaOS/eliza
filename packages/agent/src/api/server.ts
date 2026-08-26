@@ -1316,6 +1316,7 @@ import {
   clearPairing as _clearPairing,
   ensureApiTokenForBindHost as _ensureApiTokenForBindHost,
   ensurePairingCode as _ensurePairingCode,
+  extractWebSocketHandshakeToken as _extractWebSocketHandshakeToken,
   getConfiguredApiToken as _getConfiguredApiToken,
   getPairingExpiresAt as _getPairingExpiresAt,
   isAllowedHost as _isAllowedHost,
@@ -1326,6 +1327,9 @@ import {
   isSharedTerminalClientId as _isSharedTerminalClientId,
   isTrustedLocalRequest as _isTrustedLocalRequest,
   isWebSocketAuthorized as _isWebSocketAuthorized,
+  isWebSocketSessionTokenAuthorized as _isWebSocketSessionTokenAuthorized,
+  isWebSocketUpgradeSessionAuthorized as _isWebSocketUpgradeSessionAuthorized,
+  markWebSocketUpgradeSessionAuthorized as _markWebSocketUpgradeSessionAuthorized,
   normalizePairingCode as _normalizePairingCode,
   normalizeWsClientId as _normalizeWsClientId,
   pairingEnabled as _pairingEnabled,
@@ -1380,6 +1384,12 @@ const resolveTerminalRunRejection = _resolveTerminalRunRejection;
 const resolveWebSocketUpgradeRejection = _resolveWebSocketUpgradeRejection;
 const rejectWebSocketUpgrade = _rejectWebSocketUpgrade;
 const isWebSocketAuthorized = _isWebSocketAuthorized;
+const extractWebSocketHandshakeToken = _extractWebSocketHandshakeToken;
+const isWebSocketSessionTokenAuthorized = _isWebSocketSessionTokenAuthorized;
+const isWebSocketUpgradeSessionAuthorized =
+  _isWebSocketUpgradeSessionAuthorized;
+const markWebSocketUpgradeSessionAuthorized =
+  _markWebSocketUpgradeSessionAuthorized;
 const tryAcquirePendingWebSocket = _tryAcquirePendingWebSocket;
 const releasePendingWebSocket = _releasePendingWebSocket;
 const getConfiguredApiToken = _getConfiguredApiToken;
@@ -4201,7 +4211,10 @@ export async function startApiServer(opts?: {
   };
 
   // Handle upgrade requests for WebSocket
-  server.on("upgrade", (request, socket, head) => {
+  // Async: the handshake-bearer session lookup below awaits the host's
+  // session store. Every throw lands inside the try/catch, so the listener's
+  // returned promise never rejects unobserved.
+  server.on("upgrade", async (request, socket, head) => {
     // The raw upgrade socket can emit 'error' (client RST mid-handshake) before
     // a WebSocket — and its error handler — exists. Unhandled, it crashes the
     // process. Attach a no-op-ish guard for the whole upgrade window.
@@ -4228,9 +4241,34 @@ export async function startApiServer(opts?: {
       ) {
         return;
       }
-      const rejection = resolveWebSocketUpgradeRejection(request, wsUrl);
+      let rejection = resolveWebSocketUpgradeRejection(request, wsUrl);
+      if (rejection?.status === 401) {
+        // Device pairing mints a revocable machine-session id as the client's
+        // bearer — never the static connection key (#13985) — so the static
+        // check above cannot recognize a paired device. Before letting the
+        // 401 stand, resolve the presented handshake bearer through the same
+        // host-bridge session seam REST uses. Fail-closed: an absent token or
+        // an unknown/expired/revoked session keeps the rejection.
+        const handshakeToken = extractWebSocketHandshakeToken(request, wsUrl);
+        if (
+          handshakeToken &&
+          (await isWebSocketSessionTokenAuthorized(
+            handshakeToken,
+            state.runtime,
+          ))
+        ) {
+          markWebSocketUpgradeSessionAuthorized(request);
+          rejection = null;
+        }
+      }
       if (rejection) {
         rejectWebSocketUpgrade(socket, rejection.status, rejection.reason);
+        return;
+      }
+      // The session lookup above yields to the event loop; the client may
+      // have gone away in the meantime. Bail before reserving a pre-auth
+      // slot that no connection handler would ever release.
+      if (socket.destroyed) {
         return;
       }
       // W5-015: an upgrade without handshake credentials is allowed so the
@@ -4239,7 +4277,10 @@ export async function startApiServer(opts?: {
       // DoS. The slot releases when the socket authenticates or closes (see
       // the connection handler), or in the catch below if the upgrade fails.
       let pendingWsPeer: string | null | undefined;
-      if (!isWebSocketAuthorized(request, wsUrl)) {
+      if (
+        !isWebSocketAuthorized(request, wsUrl) &&
+        !isWebSocketUpgradeSessionAuthorized(request)
+      ) {
         const peer = request.socket.remoteAddress ?? null;
         if (!tryAcquirePendingWebSocket(peer)) {
           rejectWebSocketUpgrade(
@@ -4299,7 +4340,9 @@ export async function startApiServer(opts?: {
       wsUrl = new URL("ws://localhost/ws");
     }
 
-    let isAuthenticated = isWebSocketAuthorized(request, wsUrl);
+    let isAuthenticated =
+      isWebSocketAuthorized(request, wsUrl) ||
+      isWebSocketUpgradeSessionAuthorized(request);
 
     // W5-015: the upgrade handler reserved a pre-auth slot for this socket's
     // peer. It releases on post-open authentication or on close — whichever
@@ -4454,12 +4497,29 @@ export async function startApiServer(opts?: {
         const msg = JSON.parse(String(data));
         if (!isAuthenticated) {
           const expected = getConfiguredApiToken();
-          if (
-            expected &&
-            msg.type === "auth" &&
-            typeof msg.token === "string" &&
-            tokenMatches(expected, msg.token.trim())
-          ) {
+          const providedToken =
+            msg.type === "auth" && typeof msg.token === "string"
+              ? msg.token.trim()
+              : "";
+          let authorized = Boolean(
+            expected && providedToken && tokenMatches(expected, providedToken),
+          );
+          if (!authorized && providedToken) {
+            // A paired remote client's bearer is a revocable machine-session
+            // id, never the static connection key (#13985). Resolve it through
+            // the same host-bridge session seam REST uses; unknown, expired,
+            // and revoked sessions fall through to the fail-closed 1008.
+            authorized = await isWebSocketSessionTokenAuthorized(
+              providedToken,
+              state.runtime,
+            );
+            if (isAuthenticated) {
+              // Another frame authenticated this socket while the session
+              // lookup was in flight; this pre-auth frame is spent either way.
+              return;
+            }
+          }
+          if (authorized) {
             isAuthenticated = true;
             clearAuthGraceTimer();
             releasePendingSlot();

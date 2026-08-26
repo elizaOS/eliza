@@ -19,7 +19,10 @@ import {
 } from "@elizaos/agent/runtime/host-bridge";
 import { getBuildVariant, isStoreBuild } from "@elizaos/core";
 import { getAccountPoolBrokerSnapshot } from "../api/account-pool-broker-routes";
-import { resolveAuthorizedRouteRole } from "../api/auth";
+import {
+  resolveAuthorizedRouteRole,
+  resolveSessionTokenRole,
+} from "../api/auth";
 import { handleCloudPairRoute } from "../api/cloud-pair-route";
 import {
   captureWalletEnvBootBaseline,
@@ -60,6 +63,25 @@ export function installAgentHostBridge(): void {
         }
       : { ok: false, role: "NONE" };
   };
+  // WebSocket bearer resolution (#13985): paired devices authenticate the
+  // realtime socket with the same revocable machine-session id REST accepts,
+  // resolved through the identical session-store machinery. Fail-closed:
+  // an unknown/expired/revoked session or an unavailable store denies.
+  const resolveSessionTokenAuthorization: NonNullable<
+    AgentHostBridge["resolveSessionTokenAuthorization"]
+  > = async (token, runtime) => {
+    const resolved = await resolveSessionTokenRole(token, {
+      state: { current: runtime },
+      scope: "hostBridge/sessionTokenAuthorization",
+    });
+    return resolved
+      ? {
+          ok: true,
+          role: resolved.role,
+          ...(resolved.identityId ? { identityId: resolved.identityId } : {}),
+        }
+      : { ok: false, role: "NONE" };
+  };
   const bridge: AgentHostBridge = {
     captureWalletEnvBootBaseline,
     hydrateWalletKeysFromNodePlatformSecureStore,
@@ -83,6 +105,7 @@ export function installAgentHostBridge(): void {
     isStoreBuild,
     handleCloudPairRoute,
     resolveHttpRequestAuthorization,
+    resolveSessionTokenAuthorization,
     isHttpRequestAuthorized: async (req, runtime) =>
       (
         await resolveHttpRequestAuthorization(req, runtime, {
