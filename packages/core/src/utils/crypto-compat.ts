@@ -521,6 +521,10 @@ export function createDecipheriv(
 			if (finalized) {
 				throw new Error("Unsupported state");
 			}
+			// Consume the state once finalization begins: node:crypto rejects
+			// update() and repeated final() even when the finalization itself
+			// fails (truncated ciphertext, invalid padding).
+			finalized = true;
 			const encoder = lockOutputEncoding(encoding);
 			if (pending.length === 0 || pending.length % AES_BLOCK_SIZE !== 0) {
 				throw new Error("Invalid ciphertext length for AES-CBC payload.");
@@ -532,7 +536,6 @@ export function createDecipheriv(
 			);
 			pending = new Uint8Array(0);
 			const unpadded = removePkcs7Padding(decryptedTail);
-			finalized = true;
 			return encoder.flush(unpadded);
 		},
 	};

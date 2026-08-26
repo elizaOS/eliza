@@ -354,6 +354,43 @@ describe("createCipheriv / createDecipheriv AES-256-CBC", () => {
 		);
 	});
 
+	it("consumes state on failed final (truncated ciphertext) like node:crypto", () => {
+		const hex = concatCipherHex(AES_CBC_KEY, AES_CBC_IV, PLAINTEXT);
+		const truncated = hex.slice(0, hex.length - 4); // not block-multiple
+		const decipher = createDecipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
+		decipher.update(truncated, "hex", "utf8");
+		expect(() => decipher.final("utf8")).toThrow(
+			/Invalid ciphertext length for AES-CBC payload\./,
+		);
+		// node:crypto rejects any further use after a failed finalization
+		expect(() => decipher.update("00", "hex", "utf8")).toThrow(
+			/Trying to add data in unsupported state/,
+		);
+		expect(() => decipher.final("utf8")).toThrow(/Unsupported state/);
+	});
+
+	it("consumes state on failed final (invalid padding) like node:crypto", () => {
+		// Build a block-aligned ciphertext whose final block decrypts to
+		// garbage padding (wrong key for the last block only is hard; instead
+		// encrypt with a DIFFERENT key entirely so padding check fails).
+		const wrongKey = new Uint8Array(32).fill(7);
+		const nodeCipher = nodeCreateCipheriv(
+			"aes-256-cbc",
+			Buffer.from(wrongKey),
+			Buffer.from(AES_CBC_IV),
+		);
+		const hex =
+			nodeCipher.update("pad-breaking payload", "utf8", "hex") +
+			nodeCipher.final("hex");
+		const decipher = createDecipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
+		decipher.update(hex, "hex", "utf8");
+		expect(() => decipher.final("utf8")).toThrow();
+		expect(() => decipher.update("00", "hex", "utf8")).toThrow(
+			/Trying to add data in unsupported state/,
+		);
+		expect(() => decipher.final("utf8")).toThrow(/Unsupported state/);
+	});
+
 	it("throws on double final like node:crypto (decipher)", () => {
 		const hex = concatCipherHex(AES_CBC_KEY, AES_CBC_IV, PLAINTEXT);
 		const decipher = createDecipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
