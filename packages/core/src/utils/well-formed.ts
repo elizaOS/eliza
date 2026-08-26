@@ -73,6 +73,9 @@ function replaceLoneSurrogates(text: string): string {
  * without allocating).
  */
 export function toWellFormedUnicode(text: string): string {
+	if (typeof text !== "string") {
+		return "";
+	}
 	if (nativeToWellFormed) {
 		return nativeToWellFormed.call(text);
 	}
@@ -89,7 +92,11 @@ export function toWellFormedUnicode(text: string): string {
  * sanitizing malformed input is {@link toWellFormedUnicode}'s job.
  */
 export function truncateWellFormed(text: string, maxLength: number): string {
-	if (!Number.isFinite(maxLength) || maxLength <= 0) {
+	if (
+		typeof text !== "string" ||
+		!Number.isFinite(maxLength) ||
+		maxLength <= 0
+	) {
 		return "";
 	}
 	if (text.length <= maxLength) {
@@ -109,7 +116,11 @@ export function truncateWellFormed(text: string, maxLength: number): string {
  * {@link truncateWellFormed}).
  */
 export function tailWellFormed(text: string, maxLength: number): string {
-	if (!Number.isFinite(maxLength) || maxLength <= 0) {
+	if (
+		typeof text !== "string" ||
+		!Number.isFinite(maxLength) ||
+		maxLength <= 0
+	) {
 		return "";
 	}
 	if (text.length <= maxLength) {
@@ -120,7 +131,7 @@ export function tailWellFormed(text: string, maxLength: number): string {
 		isLowSurrogate(text.charCodeAt(start)) &&
 		isHighSurrogate(text.charCodeAt(start - 1))
 	) {
-		start++;
+		start += 1;
 	}
 	return text.slice(start);
 }
