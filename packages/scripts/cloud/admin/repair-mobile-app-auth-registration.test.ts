@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import {
   databaseFailureInvariant,
   diagnose,
+  missingRegistrationTableInvariant,
+  REQUIRED_REGISTRATION_TABLES,
   type RegistrationRepairClient,
   repairRegistrationTransaction,
 } from "./repair-mobile-app-auth-registration.ts";
@@ -110,6 +112,23 @@ class FakeClient implements RegistrationRepairClient {
 }
 
 describe("privacy-safe diagnosis", () => {
+  test("schema probes and reported invariants are a fixed allowlist", () => {
+    expect(REQUIRED_REGISTRATION_TABLES).toEqual([
+      "apps",
+      "organizations",
+      "users",
+      "api_keys",
+    ]);
+    expect(
+      REQUIRED_REGISTRATION_TABLES.map(missingRegistrationTableInvariant),
+    ).toEqual([
+      "schema.missing_apps",
+      "schema.missing_organizations",
+      "schema.missing_users",
+      "schema.missing_api_keys",
+    ]);
+  });
+
   test("classifies allow-listed SQLSTATE values and redacts other failures", () => {
     expect(databaseFailureInvariant({ code: "42703", detail: "secret" })).toBe(
       "database.42703",

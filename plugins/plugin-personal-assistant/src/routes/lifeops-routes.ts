@@ -61,6 +61,7 @@ import type {
   CreateLifeOpsGoalRequest,
   CreateLifeOpsWorkflowRequest,
   CreateLifeOpsXPostRequest,
+  DisconnectLifeOpsGoogleConnectorRequest,
   GetLifeOpsGmailRecommendationsRequest,
   GetLifeOpsGmailSearchRequest,
   GetLifeOpsGmailSpamReviewRequest,
@@ -77,14 +78,17 @@ import type {
   LifeOpsOccurrenceView,
   ManageLifeOpsGmailMessagesRequest,
   ProcessLifeOpsRemindersRequest,
+  PurgeLifeOpsGmailImportedDataRequest,
   RelockLifeOpsWebsiteAccessRequest,
   ResolveLifeOpsWebsiteAccessCallbackRequest,
   RunLifeOpsWorkflowRequest,
+  SeedLifeOpsGmailRequest,
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
   SetLifeOpsReminderPreferenceRequest,
   SnoozeLifeOpsOccurrenceRequest,
+  StartLifeOpsGoogleConnectorRequest,
   UpdateLifeOpsDefinitionRequest,
   UpdateLifeOpsGmailSpamReviewItemRequest,
   UpdateLifeOpsGoalRequest,
@@ -224,6 +228,9 @@ const LIFEOPS_RATE_LIMITS = {
   task_create: { maxRequests: 30, windowMs: 60_000 },
   task_update: { maxRequests: 30, windowMs: 60_000 },
   gmail_draft: { maxRequests: 20, windowMs: 60_000 },
+  // A range seed walks every provider page for up to 90 days of mail; keep
+  // the burst small so a retry loop cannot hammer the Gmail quota.
+  gmail_seed: { maxRequests: 4, windowMs: 60_000 },
   // Tightened from 5/min: composing and sending email is the most sensitive
   // outbound action LifeOps takes; cap the burst at 2/min so a bug or a
   // confused operator cannot machine-gun the user's contacts.
@@ -234,6 +241,7 @@ const LIFEOPS_RATE_LIMITS = {
   calendar_source_read: { maxRequests: 120, windowMs: 60_000 },
   calendar_source_write: { maxRequests: 20, windowMs: 60_000 },
   calendar_source_sync: { maxRequests: 30, windowMs: 60_000 },
+  calendar_imported_data_purge: { maxRequests: 10, windowMs: 60_000 },
   // OAuth + connector lifecycle: tight cap because these mutate stored
   // credentials or initiate consent flows.
   oauth_init: { maxRequests: 5, windowMs: 60_000 },
@@ -1388,6 +1396,92 @@ export async function handleLifeOpsRoutes(
         grantId: url.searchParams.get("grantId") ?? undefined,
       };
       json(res, await service.getGmailTriage(url, request));
+    });
+  }
+
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/connectors/google/status"
+  ) {
+    if (rateLimitRequest(ctx, "google_api_read")) return true;
+    return runRoute(ctx, async (service) => {
+      json(res, {
+        accounts: await service.getGoogleConnectorAccounts(
+          url,
+          parseConnectorSideQuery(url.searchParams.get("side")),
+        ),
+      });
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/google/connect"
+  ) {
+    if (rateLimitRequest(ctx, "connector_write")) return true;
+    const body = await ctx.readJsonBody<StartLifeOpsGoogleConnectorRequest>(
+      req,
+      res,
+    );
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.startGoogleConnector(body, url));
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/google/disconnect"
+  ) {
+    if (rateLimitRequest(ctx, "connector_write")) return true;
+    const body =
+      await ctx.readJsonBody<DisconnectLifeOpsGoogleConnectorRequest>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.disconnectGoogleConnector(body, url));
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/gmail/sync-health") {
+    if (rateLimitRequest(ctx, "google_api_read")) return true;
+    return runRoute(ctx, async (service) => {
+      const grantId = url.searchParams.get("grantId");
+      if (!grantId?.trim()) {
+        ctx.error(res, "grantId is required", 400);
+        return;
+      }
+      json(
+        res,
+        await service.getGmailSyncHealth(url, {
+          mode: parseConnectorModeQuery(url.searchParams.get("mode")),
+          side: parseConnectorSideQuery(url.searchParams.get("side")),
+          grantId,
+        }),
+      );
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/gmail/seed") {
+    if (rateLimitRequest(ctx, "gmail_seed")) return true;
+    const body = await ctx.readJsonBody<SeedLifeOpsGmailRequest>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.seedGmailMessages(url, body));
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/gmail/imported-data/purge"
+  ) {
+    if (rateLimitRequest(ctx, "google_api_write")) return true;
+    const body = await ctx.readJsonBody<PurgeLifeOpsGmailImportedDataRequest>(
+      req,
+      res,
+    );
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.purgeGmailImportedData(url, body));
     });
   }
 

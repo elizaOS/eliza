@@ -33,7 +33,11 @@ import {
   resolveGoogleConnectorAccount,
 } from "../google-plugin-delegates.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
-import { fail, normalizeOptionalString } from "../service-normalize.js";
+import {
+  fail,
+  normalizeOptionalBoolean,
+  normalizeOptionalString,
+} from "../service-normalize.js";
 import {
   normalizeGoogleCapabilityRequest,
   normalizeOptionalConnectorMode,
@@ -562,7 +566,18 @@ export class GoogleDomain {
       ? new URL(servedOrigin).origin
       : undefined;
 
-    const requestedAccountId = googleAccountIdFromGrantId(request.grantId);
+    const createNewGrant =
+      normalizeOptionalBoolean(request.createNewGrant, "createNewGrant") ??
+      false;
+    if (createNewGrant && request.grantId) {
+      fail(
+        400,
+        "createNewGrant cannot be combined with an existing Google grant id.",
+      );
+    }
+    const requestedAccountId = createNewGrant
+      ? null
+      : googleAccountIdFromGrantId(request.grantId);
     const flow = await manager.startOAuth("google", {
       accountId: requestedAccountId ?? undefined,
       scopes: requestedScopesForCapabilities(requestedCapabilities),
@@ -645,12 +660,19 @@ export class GoogleDomain {
       }
       return this.getGoogleConnectorStatus(requestUrl, "local", side);
     }
+    const purgeImportedData =
+      normalizeOptionalBoolean(
+        request.purgeImportedData,
+        "purgeImportedData",
+      ) ?? false;
     const grant = googleGrantFromAccount({
       account,
       agentId: this.ctx.agentId(),
     });
     await manager.deleteAccount("google", account.id);
-    await this.clearGoogleGrantData(grant);
+    if (purgeImportedData) {
+      await this.clearGoogleGrantData(grant);
+    }
     await this.ctx.recordConnectorAudit(
       "google:connector-account",
       "google connector account disconnected",
@@ -658,7 +680,7 @@ export class GoogleDomain {
         connectorAccountId: account.id,
         side: googleSideForAccount(account),
       },
-      { disconnected: true },
+      { disconnected: true, purgedImportedData: purgeImportedData },
     );
     return this.getGoogleConnectorStatus(
       requestUrl,

@@ -26,6 +26,7 @@ import {
 } from "./codesign-mas.mjs";
 import { resolveElizaWorkspaceRootFromImportMeta } from "./lib/repo-root.mjs";
 import {
+  findForbiddenPrivateComponents,
   findMachOFiles,
   isMachO,
   mayOmitChildEntitlements,
@@ -161,6 +162,46 @@ test("only non-executable dynamic libraries may omit child entitlements", () => 
   assert.equal(mayOmitChildEntitlements("libhelper.so"), true);
   assert.equal(mayOmitChildEntitlements("Contents/MacOS/bspatch"), false);
   assert.equal(mayOmitChildEntitlements("Contents/MacOS/zig-zstd"), false);
+});
+
+test("Store artifact scan rejects the direct-only helper and private ABI markers", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "mas-smoke-private-"));
+  try {
+    const helper = path.join(
+      root,
+      "Contents",
+      "Resources",
+      "app",
+      "computeruse-exact-window-helper",
+    );
+    mkdirSync(path.dirname(helper), { recursive: true });
+    writeFileSync(helper, "binary-prefix SLEventPostToPid binary-suffix");
+    const findings = findForbiddenPrivateComponents(root);
+    assert.equal(
+      findings.some(
+        ({ marker }) => marker === "computeruse-exact-window-helper",
+      ),
+      true,
+    );
+    assert.equal(
+      findings.some(({ marker }) => marker === "SLEventPostToPid"),
+      true,
+    );
+  } finally {
+    removePathRecursive(root);
+  }
+});
+
+test("Store artifact scan accepts an ordinary synthetic bundle", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "mas-smoke-public-"));
+  try {
+    const asset = path.join(root, "Contents", "Resources", "app", "asset.txt");
+    mkdirSync(path.dirname(asset), { recursive: true });
+    writeFileSync(asset, "ordinary renderer asset");
+    assert.deepEqual(findForbiddenPrivateComponents(root), []);
+  } finally {
+    removePathRecursive(root);
+  }
 });
 
 // Bytes for a 64-bit little-endian Mach-O magic (0xfeedfacf in big-endian wire order).
