@@ -200,6 +200,7 @@ validation or exposing the key.
 | Queue lanes | compatibility sidecar could claim every job type | Fixed: same lane resolver as daemon |
 | Worker deploy | CI required missing Headscale metadata before it could validate preserved host authority | Fixed in workflow as described above |
 | Live acceptance | the Dedicated canary's workflow contract omitted the newer `group-chat` suite, so its preflight failed before executing the canary | Fixed: the contract now matches the dispatch inventory; failed run `33018915061` created no agent |
+| Staging admission | the credentialed Dedicated canary is below the server-owned hosting-runway threshold | Operational blocker: exact-head run `33020269187` received 402 with zero agents/jobs; restore staging test credit through the billing authority |
 | Warm pool | enablement and live ready-count are host/DB state, not observable from public health | Operational proof still required |
 | Deployment capacity | earlier production deploys queued/cancelled on unavailable runner labels | Partially cleared: run `33017962389` deployed the worker/router successfully; it predates this fix and is not a Dedicated canary |
 | Staging secrets | staging environment metadata lacks provisioning host/key inventory | Credential/config blocker; cannot repair from repository code |
@@ -261,6 +262,19 @@ the workflow had gained the `group-chat` selector while the canary test still
 asserted the older option list. The live step was skipped, no evidence artifact
 was produced, and no agent was created. This change updates that contract; a
 new exact-head dispatch is still required for platform acceptance.
+
+The repaired exact-head workflow then ran as `33020269187`. It passed the
+workflow contracts and artifact privacy gate, but the real create boundary
+returned HTTP 402. Its sanitized artifact records staging commit
+`02f45de149dad7c82dc7a67aa68f66d1e33a3521`, zero created agents, zero chat
+requests, cleanup `not-required`, and no possible orphan. This proves the
+current failure occurs before queue insertion, warm-pool claim, node selection,
+or Docker startup: the staging canary identity lacks the server-required
+hosting credit/runway. The canary now classifies this as
+`insufficient_hosting_credit` instead of the generic `unexpected_http_402`.
+Restoring that staging test balance is a billing-authority operation, not a
+Hetzner repair, and must be followed by a fresh canary after this SHA is
+deployed to staging.
 
 Required acceptance evidence is: one non-cancelled exact-SHA worker deploy;
 systemd active identity and effective env-name audit; matching API/daemon DB
