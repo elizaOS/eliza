@@ -619,6 +619,10 @@ describe("native protected-storage bridge contract", () => {
   it("does not finish active-server teardown before native deletion commits", async () => {
     const bridge = await import("./storage-bridge");
     const persistence = await import("../state/persistence");
+    // Production installs the native storage proxy before any auth/runtime
+    // state is published. Model that boot boundary so synchronous persistence
+    // readers observe the verified secure-store cache rather than raw disk.
+    await bridge.initializeStorageBridge();
     await bridge.setStorageValue(
       "elizaos:active-server",
       JSON.stringify({
