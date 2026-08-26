@@ -10,13 +10,14 @@
  * Depth/node/cycle fail-closed replaces that with typed CONFIG_SECRET_FILTER_UNBOUNDED.
  */
 import { ElizaError } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   CONFIG_SECRET_FILTER_UNBOUNDED,
   isSafeResetStateDir,
   MAX_CONFIG_SECRET_FILTER_DEPTH,
   redactConfigSecrets,
   stripRedactedPlaceholderValuesDeep,
+  validateSkillId,
 } from "./server-helpers-config";
 
 describe("isSafeResetStateDir", () => {
@@ -157,3 +158,19 @@ describe("redactConfigSecrets fail-closed walk", () => {
     });
   });
 });
+
+describe("validateSkillId surrogate safety", () => {
+  it("preserves well-formed Unicode when reporting invalid overlong skill IDs", () => {
+    const res = {
+      setHeader: vi.fn(),
+      end: vi.fn(),
+    } as any;
+    const overlongWithSurrogate = "invalid!" + "a".repeat(70) + "🚀" + "tail";
+    const result = validateSkillId(overlongWithSurrogate, res);
+    expect(result).toBeNull();
+    expect(res.statusCode).toBe(400);
+    const responsePayload = JSON.parse(res.end.mock.calls[0][0]);
+    expect(responsePayload.error.isWellFormed?.()).not.toBe(false);
+  });
+});
+
