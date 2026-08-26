@@ -225,7 +225,8 @@ export async function resolveAddressedTargets(
 
 	if (names.length > 0) {
 		const participants = await runtime.getEntitiesForRoom(message.roomId);
-		const normalize = (value: string) => value.trim().toLowerCase();
+		const normalize = (value: string) =>
+			value.trim().toLowerCase().replace(/^@/, "");
 		const byName = new Map<string, UUID>();
 		const agentName = runtime.character.name;
 		if (agentName) {
