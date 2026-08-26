@@ -9,9 +9,15 @@ interface ReloadableDesktopWindow {
 
 interface DesktopSessionRendererReadyOptions {
   sessionPrimed: boolean;
+  backendGeneration: string;
   window: ReloadableDesktopWindow | null;
   resolveRendererUrl: () => Promise<string>;
 }
+
+const reloadedGenerationByWindow = new WeakMap<
+  ReloadableDesktopWindow,
+  string
+>();
 
 /**
  * Give the already-created renderer one authoritative boot after the native
@@ -21,10 +27,19 @@ interface DesktopSessionRendererReadyOptions {
  */
 export async function reloadRendererAfterDesktopSessionPrime({
   sessionPrimed,
+  backendGeneration,
   window,
   resolveRendererUrl,
 }: DesktopSessionRendererReadyOptions): Promise<boolean> {
   if (!sessionPrimed || !window) return false;
+  if (reloadedGenerationByWindow.get(window) === backendGeneration) {
+    return false;
+  }
+
+  // Reserve before the asynchronous URL lookup. Embedded startup has both a
+  // direct start caller and a status listener; they may converge on the same
+  // ready generation before either reload completes.
+  reloadedGenerationByWindow.set(window, backendGeneration);
 
   try {
     const rendererUrl = await resolveRendererUrl();
@@ -34,6 +49,9 @@ export async function reloadRendererAfterDesktopSessionPrime({
     );
     return true;
   } catch (error) {
+    if (reloadedGenerationByWindow.get(window) === backendGeneration) {
+      reloadedGenerationByWindow.delete(window);
+    }
     // error-policy:J4 The authenticated backend remains usable while the
     // renderer visibly retains its standard unavailable/login state.
     logger.warn(
