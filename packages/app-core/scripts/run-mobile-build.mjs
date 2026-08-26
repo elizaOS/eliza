@@ -6503,14 +6503,6 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
         return getContext().getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE);
     }
 
-    private String preferenceKey(PluginCall call) {
-        String slot = call.getString("slot", "credential");
-        if ("credential".equals(slot)) return CREDENTIAL_CIPHERTEXT;
-        if ("pending_login".equals(slot)) return PENDING_LOGIN_CIPHERTEXT;
-        call.reject("The secure credential slot is invalid.", "SECURE_CREDENTIAL_INVALID");
-        return null;
-    }
-
     private SecretKey loadOrCreateKey() throws GeneralSecurityException {
         KeyStore keyStore = KeyStore.getInstance(ANDROID_KEYSTORE);
         try {
