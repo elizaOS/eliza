@@ -1159,7 +1159,11 @@ export const ChatMessage = memo(function ChatMessage({
             hasActionLane &&
               "transition-[padding-bottom] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:duration-100",
             hasActionLane &&
-              (supportsHover ? "pb-6" : accessoryVisible ? "pb-9" : "pb-0"),
+              (supportsHover
+                ? "pb-6"
+                : accessoryVisible
+                  ? "pb-6 pointer-coarse:pb-11"
+                  : "pb-0"),
             isFirstRun
               ? "max-w-[22rem] items-start"
               : isUser
