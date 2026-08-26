@@ -7,10 +7,62 @@ export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
 die() { echo "[cloud-stability-sandbox] $*" >&2; exit 1; }
 require_root() { [ "$(/usr/bin/id -u)" -eq 0 ] || die "must run through sudo -n"; }
 
+SANDBOX_USER=""
+SANDBOX_UID=""
+SANDBOX_CHAIN=""
+SANDBOX_OUTPUT_DIR=""
+SANDBOX_ROOT=""
+SANDBOX_IPV4_CHAIN=0
+SANDBOX_IPV4_JUMP=0
+SANDBOX_IPV6_CHAIN=0
+SANDBOX_IPV6_JUMP=0
+SANDBOX_CLEANED=1
+SANDBOX_CLEANUP_STATUS=0
+
+sandbox_cleanup() {
+  [ "$SANDBOX_CLEANED" -eq 0 ] || return "$SANDBOX_CLEANUP_STATUS"
+  SANDBOX_CLEANED=1
+  set +e
+  if [[ "$SANDBOX_UID" =~ ^[1-9][0-9]*$ ]]; then
+    /usr/bin/pkill -KILL -u "$SANDBOX_UID" 2>/dev/null
+    for _ in $(/usr/bin/seq 1 100); do
+      /usr/bin/pgrep -u "$SANDBOX_UID" >/dev/null 2>&1 || break
+      /bin/sleep 0.02
+    done
+    if /usr/bin/pgrep -u "$SANDBOX_UID" >/dev/null 2>&1; then
+      echo "[cloud-stability-sandbox] sandbox UID retained a process" >&2
+      SANDBOX_CLEANUP_STATUS=1
+    fi
+  fi
+  if [ "$SANDBOX_IPV4_JUMP" -eq 1 ] && ! /usr/sbin/iptables -w 5 -D OUTPUT -m owner --uid-owner "$SANDBOX_UID" -j "$SANDBOX_CHAIN"; then SANDBOX_CLEANUP_STATUS=1; fi
+  if [ "$SANDBOX_IPV4_CHAIN" -eq 1 ]; then
+    /usr/sbin/iptables -w 5 -F "$SANDBOX_CHAIN" 2>/dev/null || SANDBOX_CLEANUP_STATUS=1
+    /usr/sbin/iptables -w 5 -X "$SANDBOX_CHAIN" 2>/dev/null || SANDBOX_CLEANUP_STATUS=1
+  fi
+  if [ "$SANDBOX_IPV6_JUMP" -eq 1 ] && ! /usr/sbin/ip6tables -w 5 -D OUTPUT -m owner --uid-owner "$SANDBOX_UID" -j "$SANDBOX_CHAIN"; then SANDBOX_CLEANUP_STATUS=1; fi
+  if [ "$SANDBOX_IPV6_CHAIN" -eq 1 ]; then
+    /usr/sbin/ip6tables -w 5 -F "$SANDBOX_CHAIN" 2>/dev/null || SANDBOX_CLEANUP_STATUS=1
+    /usr/sbin/ip6tables -w 5 -X "$SANDBOX_CHAIN" 2>/dev/null || SANDBOX_CLEANUP_STATUS=1
+  fi
+  if [ -n "$SANDBOX_OUTPUT_DIR" ]; then
+    local acl_state=""
+    /usr/bin/setfacl -R -x "u:${SANDBOX_UID}" "$SANDBOX_OUTPUT_DIR" 2>/dev/null
+    /usr/bin/find "$SANDBOX_OUTPUT_DIR" -type d -exec /usr/bin/setfacl -x "d:u:${SANDBOX_UID}" {} + 2>/dev/null
+    if ! acl_state="$(/usr/bin/getfacl -R -p "$SANDBOX_OUTPUT_DIR" 2>/dev/null)"; then
+      SANDBOX_CLEANUP_STATUS=1
+    elif /usr/bin/grep -Eq "^(default:)?user:${SANDBOX_UID}:" <<<"$acl_state"; then
+      SANDBOX_CLEANUP_STATUS=1
+    fi
+  fi
+  if [ -n "$SANDBOX_USER" ]; then /usr/sbin/userdel "$SANDBOX_USER" 2>/dev/null || SANDBOX_CLEANUP_STATUS=1; fi
+  if [[ "$SANDBOX_ROOT" = /var/tmp/eliza-stability-sandbox.* ]]; then /bin/rm -rf -- "$SANDBOX_ROOT" || SANDBOX_CLEANUP_STATUS=1; fi
+  return "$SANDBOX_CLEANUP_STATUS"
+}
+
 setup() {
   require_root
   [ "$(/usr/bin/uname -m)" = "x86_64" ] || die "seccomp policy requires x86_64"
-  for command in bwrap iptables ip6tables iptables-save ip6tables-save prlimit setfacl useradd userdel pkill pgrep python3; do
+  for command in bwrap getfacl grep iptables ip6tables iptables-save ip6tables-save prlimit setfacl setpriv useradd userdel pkill pgrep python3; do
     command -v "$command" >/dev/null 2>&1 || die "missing required command: $command"
   done
   printf 'ready\n'
@@ -55,49 +107,30 @@ run() {
     die "fresh sandbox UID already owns a process"
   fi
 
-  local chain="ELIZA_SBX_${$}_$RANDOM" ipv4_jump=0 ipv6_jump=0 sandbox_root="" cleaned=0 cleanup_status=0
+  local chain="ELIZA_SBX_${$}_$RANDOM" sandbox_root=""
   chain="${chain:0:27}"
-  cleanup() {
-    [ "$cleaned" -eq 0 ] || return "$cleanup_status"
-    cleaned=1
-    set +e
-    # Keep the deny rules installed until every process under the untrusted UID
-    # is dead; otherwise a signal-resistant descendant gets a teardown egress window.
-    /usr/bin/pkill -KILL -u "$uid" 2>/dev/null
-    for _ in $(/usr/bin/seq 1 100); do
-      /usr/bin/pgrep -u "$uid" >/dev/null 2>&1 || break
-      /bin/sleep 0.02
-    done
-    if /usr/bin/pgrep -u "$uid" >/dev/null 2>&1; then
-      echo "[cloud-stability-sandbox] sandbox UID retained a process" >&2
-      cleanup_status=1
-    fi
-    if [ "$ipv4_jump" -eq 1 ]; then /usr/sbin/iptables -w 5 -D OUTPUT -m owner --uid-owner "$uid" -j "$chain"; fi
-    /usr/sbin/iptables -w 5 -F "$chain" 2>/dev/null
-    /usr/sbin/iptables -w 5 -X "$chain" 2>/dev/null
-    if [ "$ipv6_jump" -eq 1 ]; then /usr/sbin/ip6tables -w 5 -D OUTPUT -m owner --uid-owner "$uid" -j "$chain"; fi
-    /usr/sbin/ip6tables -w 5 -F "$chain" 2>/dev/null
-    /usr/sbin/ip6tables -w 5 -X "$chain" 2>/dev/null
-    /usr/bin/setfacl -R -x "u:${uid}" "$output_dir" 2>/dev/null
-    /usr/bin/find "$output_dir" -type d -exec /usr/bin/setfacl -x "d:u:${uid}" {} + 2>/dev/null
-    /usr/sbin/userdel "$sandbox_user" 2>/dev/null || cleanup_status=1
-    if [[ "$sandbox_root" = /var/tmp/eliza-stability-sandbox.* ]]; then /bin/rm -rf -- "$sandbox_root"; fi
-    return "$cleanup_status"
-  }
-  trap cleanup EXIT INT TERM HUP
+  SANDBOX_USER="$sandbox_user"
+  SANDBOX_UID="$uid"
+  SANDBOX_CHAIN="$chain"
+  SANDBOX_OUTPUT_DIR="$output_dir"
+  SANDBOX_CLEANED=0
+  trap sandbox_cleanup EXIT INT TERM HUP
 
   /usr/sbin/iptables -w 5 -N "$chain"
+  SANDBOX_IPV4_CHAIN=1
   /usr/sbin/iptables -w 5 -A "$chain" -o lo -d 127.0.0.0/8 -p tcp -m multiport --dports "$allowed_ports" -j ACCEPT
   /usr/sbin/iptables -w 5 -A "$chain" -j REJECT --reject-with icmp-port-unreachable
   /usr/sbin/iptables -w 5 -I OUTPUT 1 -m owner --uid-owner "$uid" -j "$chain"
-  ipv4_jump=1
+  SANDBOX_IPV4_JUMP=1
   /usr/sbin/ip6tables -w 5 -N "$chain"
+  SANDBOX_IPV6_CHAIN=1
   /usr/sbin/ip6tables -w 5 -A "$chain" -j REJECT --reject-with icmp6-port-unreachable
   /usr/sbin/ip6tables -w 5 -I OUTPUT 1 -m owner --uid-owner "$uid" -j "$chain"
-  ipv6_jump=1
+  SANDBOX_IPV6_JUMP=1
 
   /usr/bin/setfacl -m "u:${uid}:rwx" -m "d:u:${uid}:rwx" -m "d:u:${caller_uid}:rwx" "$output_dir"
   sandbox_root="$(/usr/bin/mktemp -d /var/tmp/eliza-stability-sandbox.XXXXXX)"
+  SANDBOX_ROOT="$sandbox_root"
   /bin/chown "$uid:$uid" "$sandbox_root"
   /bin/chmod 0700 "$sandbox_root"
   local runtime="$1"
@@ -127,16 +160,27 @@ PY
     if [ -f "$candidate" ]; then masks+=(--ro-bind /dev/null "$candidate"); fi
   done
 
+  local execution_status cleanup_status
+  set +e
   /usr/bin/prlimit --nproc=512 --nofile=1024 --fsize=1073741824 --cpu=240 -- \
     /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin "${child_environment[@]}" \
-      /usr/bin/bwrap --die-with-parent --new-session --unshare-pid --unshare-ipc --unshare-uts \
+      /usr/bin/setpriv --reuid "$uid" --regid "$uid" --clear-groups -- \
+      /usr/bin/bwrap --die-with-parent --new-session --unshare-user --unshare-pid --unshare-ipc --unshare-uts \
         --ro-bind / / --tmpfs /run --chmod 0700 /run \
         --tmpfs /tmp --chmod 1777 /tmp --tmpfs /var/tmp --chmod 1777 /var/tmp \
         --dir "$output_dir" --bind "$output_dir" "$output_dir" \
         --dir "$sandbox_root" --bind "$sandbox_root" "$sandbox_root" \
         "${masks[@]}" --proc /proc --dev /dev --chdir "$repo_root" --setenv HOME "$sandbox_root" \
-        --uid "$uid" --gid "$uid" --cap-drop ALL --seccomp 3 \
+        --setenv ELIZA_STABILITY_SANDBOX_HOST_UID "$uid" \
+        --uid 0 --gid 0 --cap-drop ALL --seccomp 3 \
         "$sandbox_root/runtime" "$@" 3<"$sandbox_root/socket-domain.bpf"
+  execution_status=$?
+  sandbox_cleanup
+  cleanup_status=$?
+  trap - EXIT INT TERM HUP
+  set -e
+  if [ "$cleanup_status" -ne 0 ]; then return "$cleanup_status"; fi
+  return "$execution_status"
 }
 
 case "${1:-}" in

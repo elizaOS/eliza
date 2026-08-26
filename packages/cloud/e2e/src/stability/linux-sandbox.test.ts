@@ -66,6 +66,17 @@ test("sandbox launcher resolves from the Cloud e2e workspace root", () => {
     ).name,
   ).toBe("@elizaos/cloud-e2e");
   expect(existsSync(sandboxLauncherPath)).toBe(true);
+  const launcher = readFileSync(sandboxLauncherPath, "utf8");
+  expect(launcher).toContain(
+    '/usr/bin/setpriv --reuid "$uid" --regid "$uid" --clear-groups --',
+  );
+  expect(launcher).toContain(
+    "/usr/bin/bwrap --die-with-parent --new-session --unshare-user",
+  );
+  expect(launcher).toContain(
+    '--setenv ELIZA_STABILITY_SANDBOX_HOST_UID "$uid"',
+  );
+  expect(launcher).toContain("--uid 0 --gid 0 --cap-drop ALL --seccomp 3");
 });
 
 test("credential-minimal child environment rejects ambient runner secrets", () => {
@@ -288,6 +299,7 @@ console.log(JSON.stringify({
   fdSecretReadable,
   hostTmpReadable,
   uid: process.getuid?.(),
+  hostUid: Number(process.env.ELIZA_STABILITY_SANDBOX_HOST_UID),
   allowed: await tcp("127.0.0.1", Number(process.env.PROBE_ALLOWED_PORT)),
   blockedLoopback: await tcp("127.0.0.1", Number(process.env.PROBE_BLOCKED_PORT)),
   blockedIpv6: await tcp("::1", Number(process.env.PROBE_BLOCKED_IPV6_PORT)),
@@ -355,13 +367,15 @@ console.log(JSON.stringify({
       expect(stderr).toBe("");
       expect(code).toBe(0);
       const result = JSON.parse(stdout.trim()) as Record<string, unknown>;
-      expect(result.uid).not.toBe(process.getuid?.());
-      expect({ ...result, uid: undefined }).toEqual({
+      expect(result.uid).toBe(0);
+      expect(result.hostUid).not.toBe(process.getuid?.());
+      expect({ ...result, uid: undefined, hostUid: undefined }).toEqual({
         secretPresent: false,
         procReadable: false,
         fdSecretReadable: false,
         hostTmpReadable: false,
         uid: undefined,
+        hostUid: undefined,
         allowed: true,
         blockedLoopback: false,
         blockedIpv6: false,
@@ -392,7 +406,7 @@ console.log(JSON.stringify({
       expect(firewall.status).toBe(0);
       expect(firewall.stdout).not.toContain("ELIZA_SBX_");
       expect(
-        spawnSync("pgrep", ["-u", String(result.uid)], {
+        spawnSync("pgrep", ["-u", String(result.hostUid)], {
           stdio: "ignore",
         }).status,
       ).not.toBe(0);
@@ -400,7 +414,9 @@ console.log(JSON.stringify({
         encoding: "utf8",
       });
       expect(accessControl.status).toBe(0);
-      expect(accessControl.stdout).not.toContain(`user:${String(result.uid)}:`);
+      expect(accessControl.stdout).not.toContain(
+        `user:${String(result.hostUid)}:`,
+      );
 
       const setupScript = path.join(
         repoRoot,
@@ -470,6 +486,114 @@ console.log(JSON.stringify({
 );
 
 test.skipIf(!hostedLinux)(
+  "early bwrap failure removes the sandbox identity and kernel state",
+  async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "cloud-sandbox-early-failure-"),
+    );
+    const fakeBwrapPath = path.join(directory, "failing-bwrap");
+    await writeFile(fakeBwrapPath, "#!/bin/sh\n/bin/sleep 1\nexit 91\n", {
+      mode: 0o755,
+    });
+    const environmentPath = await writeSandboxEnvironment(
+      directory,
+      scenarioChildEnvironment(process.env, {}),
+    );
+    const launch = sandboxCommand({
+      enabled: true,
+      allowedPorts: "9",
+      repoRoot,
+      outputDir: directory,
+      environmentPath,
+      callerHome: process.env.HOME ?? "",
+      callerUid: process.getuid?.() ?? 0,
+      runtime: "/bin/true",
+      args: [],
+    });
+    const child = spawn(
+      launch.command,
+      [
+        "-n",
+        "/usr/bin/bwrap",
+        "--bind",
+        "/",
+        "/",
+        "--dev-bind",
+        "/dev",
+        "/dev",
+        "--proc",
+        "/proc",
+        "--ro-bind",
+        fakeBwrapPath,
+        "/usr/bin/bwrap",
+        ...launch.args.slice(1),
+      ],
+      {
+        cwd: repoRoot,
+        env: { PATH: process.env.PATH },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+    try {
+      let sandboxUid: number | undefined;
+      const identityDeadline = Date.now() + 5_000;
+      while (sandboxUid === undefined && Date.now() < identityDeadline) {
+        const passwd = spawnSync("getent", ["passwd"], { encoding: "utf8" });
+        if (passwd.status !== 0) throw new Error("getent passwd failed");
+        const record = passwd.stdout
+          .split("\n")
+          .find((line) => line.startsWith("eliza-sbx-"));
+        if (record) sandboxUid = Number(record.split(":")[2]);
+        if (sandboxUid === undefined) await Bun.sleep(10);
+      }
+      const code = await new Promise<number | null>((resolve, reject) => {
+        child.once("error", reject);
+        child.once("close", resolve);
+      });
+      expect(Number.isSafeInteger(sandboxUid)).toBe(true);
+      expect(stdout).toBe("");
+      expect(stderr).not.toContain("unbound variable");
+      expect(code).toBe(91);
+      expect(existsSync(environmentPath)).toBe(false);
+      expect(
+        spawnSync("pgrep", ["-u", String(sandboxUid)], {
+          stdio: "ignore",
+        }).status,
+      ).not.toBe(0);
+      expect(
+        spawnSync("getent", ["passwd", String(sandboxUid)], {
+          stdio: "ignore",
+        }).status,
+      ).not.toBe(0);
+      const accessControl = spawnSync("getfacl", ["-R", directory], {
+        encoding: "utf8",
+      });
+      expect(accessControl.status).toBe(0);
+      expect(accessControl.stdout).not.toContain(`user:${sandboxUid}:`);
+      const firewall = spawnSync(
+        "sudo",
+        ["-n", "sh", "-c", "iptables-save; ip6tables-save"],
+        { encoding: "utf8" },
+      );
+      expect(firewall.status).toBe(0);
+      expect(firewall.stdout).not.toContain("ELIZA_SBX_");
+    } finally {
+      child.kill("SIGKILL");
+      await rm(directory, { recursive: true, force: true });
+    }
+  },
+  30_000,
+);
+
+test.skipIf(!hostedLinux)(
   "forced teardown kills signal-resistant descendants and removes kernel state",
   async () => {
     const directory = await mkdtemp(
@@ -490,6 +614,7 @@ const descendant = spawn(process.execPath, ["-e", "process.on('SIGTERM', () => {
 process.on("SIGTERM", () => {});
 writeFileSync(process.env.TEARDOWN_READY_PATH, JSON.stringify({
   uid: process.getuid?.(),
+  hostUid: Number(process.env.ELIZA_STABILITY_SANDBOX_HOST_UID),
   pid: process.pid,
   descendantPid: descendant.pid,
 }));
@@ -522,7 +647,7 @@ setInterval(() => {}, 1000);
       });
       if (!child.pid) throw new Error("sandbox teardown probe omitted PGID");
       let ready:
-        | { uid: number; pid: number; descendantPid: number }
+        | { uid: number; hostUid: number; pid: number; descendantPid: number }
         | undefined;
       const readyDeadline = Date.now() + 15_000;
       while (!ready && Date.now() < readyDeadline) {
@@ -543,6 +668,8 @@ setInterval(() => {}, 1000);
       }
       if (!ready)
         throw new Error("sandbox teardown probe did not become ready");
+      expect(ready.uid).toBe(0);
+      expect(ready.hostUid).not.toBe(process.getuid?.());
       expect(
         spawnSync("sudo", ["-n", "kill", "-TERM", `-${child.pid}`], {
           stdio: "ignore",
@@ -557,12 +684,12 @@ setInterval(() => {}, 1000);
       ]);
       expect(closed).toBe(true);
       expect(
-        spawnSync("pgrep", ["-u", String(ready.uid)], {
+        spawnSync("pgrep", ["-u", String(ready.hostUid)], {
           stdio: "ignore",
         }).status,
       ).not.toBe(0);
       expect(
-        spawnSync("getent", ["passwd", String(ready.uid)], {
+        spawnSync("getent", ["passwd", String(ready.hostUid)], {
           stdio: "ignore",
         }).status,
       ).not.toBe(0);
@@ -570,7 +697,7 @@ setInterval(() => {}, 1000);
         encoding: "utf8",
       });
       expect(accessControl.status).toBe(0);
-      expect(accessControl.stdout).not.toContain(`user:${ready.uid}:`);
+      expect(accessControl.stdout).not.toContain(`user:${ready.hostUid}:`);
       const firewall = spawnSync(
         "sudo",
         ["-n", "sh", "-c", "iptables-save; ip6tables-save"],
