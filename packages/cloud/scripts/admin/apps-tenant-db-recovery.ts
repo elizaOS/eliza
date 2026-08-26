@@ -517,7 +517,7 @@ function expiryGuardSql(expiresAtEpochMs: number): string {
       "capability expiry is not a safe positive epoch-millisecond value",
     );
   }
-  return `SELECT (floor(extract(epoch from (clock_timestamp() AT TIME ZONE 'utc'))) * 1000) <= ${expiresAtEpochMs} AS eliza_capability_live \\gset
+  return `SELECT (extract(epoch FROM clock_timestamp()) * 1000) <= ${expiresAtEpochMs} AS eliza_capability_live \\gset
 \\if :eliza_capability_live
 \\else
 \\echo 'restore capability has expired on the server clock'
@@ -1370,10 +1370,15 @@ export function acquireDrillLock(
       // A refused lock must NOT fall through to the hold-sleep: the refusal
       // sentinel is not a SQL error, so ON_ERROR_STOP does not stop psql and
       // the second --command WOULD execute — leaking a 24h pg_sleep backend
-      // with no lock to its name (#23453 review r4). The 1/0 division aborts
-      // the refused holder deterministically.
+      // with no lock to its name (#23453 review r4). A CASE cannot mix
+      // pg_sleep (void) with 1/0 (integer) — PG rejects "CASE types integer
+      // and void cannot be matched" and the holder would die even on
+      // SUCCESS, releasing the lock while the drill still relied on it
+      // (#23453 review r5). The DO block type-checks on both paths: it
+      // re-proves this session holds the advisory lock (aborting a refused
+      // holder before any sleep) and then holds it for the bounded window.
       "--command",
-      `SELECT CASE WHEN (SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND classid = 0 AND objid = ${DRILL_ADVISORY_LOCK_KEY} AND objsubid = 1 AND pid = pg_backend_pid()) = 1 THEN pg_sleep(${DRILL_LOCK_MAX_SECONDS}) ELSE 1/0 END;`,
+      `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND classid = 0 AND objid = ${DRILL_ADVISORY_LOCK_KEY} AND objsubid = 1 AND pid = pg_backend_pid()) THEN RAISE EXCEPTION 'drill lock lost before hold'; END IF; PERFORM pg_sleep(${DRILL_LOCK_MAX_SECONDS}); END $$;`,
     ],
     { stdio: ["ignore", outFd, "pipe"] },
   );
@@ -2170,22 +2175,57 @@ function claimProvisionLock(lockPath: string): ProvisionLockHandle {
     if (attempt > 0) {
       break;
     }
+    // Stale takeover by unique-target rename: the stale source and the
+    // unique destination form a claim on exactly ONE inode. If a competing
+    // provisioner renamed the same stale lock aside first, its rename
+    // removed the shared path's link and our rename fails ENOENT — no
+    // second contender can move (and later unlink) a FRESH lock, because a
+    // fresh lock at the shared path is young, never re-stale within this
+    // claim, and cannot be the source of a second rename while the age
+    // check holds. Rename over a non-empty directory or an existing
+    // destination fails with ENOTEMPTY/EEXIST, which also just breaks out
+    // to the held-lock refusal (#23453 review r5).
+    // error-policy:J6 a stale lock from a crashed holder is moved aside.
     const stale = statSync(lockPath, { throwIfNoEntry: false });
     if (
-      stale === undefined ||
-      Date.now() - stale.mtimeMs <= PROVISION_LOCK_STALE_MS
+      stale !== undefined &&
+      Date.now() - stale.mtimeMs > PROVISION_LOCK_STALE_MS
     ) {
-      break;
-    }
-    // Take the stale lock out of the way by renaming it aside: the rename
-    // is atomic and cannot remove a concurrently recreated lock at this
-    // path. The sidecar is left for the operator; it proves a crashed
-    // holder was superseded.
-    // error-policy:J6 a stale lock from a crashed holder is moved aside.
-    try {
-      renameSync(lockPath, `${lockPath}.stale-${Date.now()}`);
-    } catch {
-      // error-policy:J6 takeover failure surfaces as a held lock below.
+      let staleName = "";
+      try {
+        staleName = `${lockPath}.stale-${process.pid}-${Date.now()}`;
+        renameSync(lockPath, staleName);
+        // The renamed inode is provably the stale one we measured: a
+        // competing takeover that renamed the shared path first makes our
+        // rename fail; a FRESH lock created between our stat and rename
+        // cannot be our rename source because rename targets the path and
+        // the fresh lock would have to be >120s old to be re-classified
+        // stale — it is not.
+        const moved = statSync(staleName, { throwIfNoEntry: false });
+        if (
+          moved === undefined ||
+          moved.dev !== stale.dev ||
+          moved.ino !== stale.ino
+        ) {
+          // Someone else's file ended up at our unique destination —
+          // impossible by construction; refuse loudly rather than proceed.
+          throw new RecoveryDrillError(
+            "PROVISION_LOCK_FAILED",
+            "provision lock takeover moved an unexpected inode",
+          );
+        }
+        rmSync(staleName, { force: true });
+      } catch (error) {
+        const code = (error as { code?: string }).code;
+        if (code === "ENOENT" || code === "ENOTEMPTY" || code === "EEXIST") {
+          // A competing provisioner won the takeover race; our retry (or
+          // the held-lock refusal below) is correct.
+          break;
+        }
+        // error-policy:J6 other takeover failures surface as a held lock.
+        break;
+      }
+    } else {
       break;
     }
   }
@@ -2202,13 +2242,23 @@ function claimProvisionLock(lockPath: string): ProvisionLockHandle {
  */
 function releaseProvisionLock(handle: ProvisionLockHandle): void {
   try {
-    const current = statSync(handle.lockPath, { throwIfNoEntry: false });
+    // Identity-atomic release: rename the shared path to a name unique to
+    // this claim, then verify the moved inode is ours before discarding it.
+    // The rename claims exactly one inode — a successor's fresh lock at the
+    // shared path is a different inode; if the rename moved it (successor
+    // recreated the path between our checks), the inode mismatch below
+    // leaves the successor's lock parked at the unique name for recovery
+    // rather than deleting it, and the successor's own release (by ITS
+    // inode) never unlinks ours (#23453 review r5).
+    const movedName = `${handle.lockPath}.release-${process.pid}-${Date.now()}`;
+    renameSync(handle.lockPath, movedName);
+    const moved = statSync(movedName, { throwIfNoEntry: false });
     if (
-      current !== undefined &&
-      current.dev === handle.dev &&
-      current.ino === handle.ino
+      moved !== undefined &&
+      moved.dev === handle.dev &&
+      moved.ino === handle.ino
     ) {
-      rmSync(handle.lockPath, { force: true });
+      rmSync(movedName, { force: true });
     }
   } catch {
     // error-policy:J6 lock release must not mask the provisioning outcome.
