@@ -24,6 +24,8 @@ import {
 	logInboundDrop,
 	type Media,
 	type Memory,
+	toWellFormedUnicode,
+	truncateWellFormed,
 	MemoryType,
 	type MessageConnectorChatContext,
 	type MessageConnectorCreateThreadParams,
@@ -3279,7 +3281,7 @@ export class DiscordService extends Service implements IDiscordService {
 				`Discord channel ${channel.id} does not support thread creation.`,
 			);
 		}
-		const name = (params.name ?? "thread").slice(0, 100);
+		const name = truncateWellFormed(toWellFormedUnicode(params.name ?? "thread"), 100);
 		let startMessage: Message | undefined;
 		if (params.parentMessageId) {
 			try {
