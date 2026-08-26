@@ -436,7 +436,7 @@ async function consumeResponseStream(
         payload = JSON.parse(next.value.data);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        const preview = truncateWellFormed(next.value.data, 200);
+        const preview = truncateWellFormed(toWellFormedUnicode(next.value.data), 200);
         logger.debug(
           `[codex-cli] dropped malformed SSE event: ${message} preview=${preview}`,
         );
