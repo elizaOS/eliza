@@ -1,13 +1,15 @@
 /**
  * Real-PostgreSQL proof for the membership TTL post-schema guard. Independent
  * pools exercise concurrent process startup, durable restart no-op behavior,
- * and transactional rollback when the one-time repair fails.
+ * and transactional rollback when the one-time repair fails. Destructive DDL
+ * is admitted only in a named, empty database owned by the connected user.
  */
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { applyMembershipAuthorityTtlConstraints } from "../../membership-authority-ttl-constraints";
+import { admitMembershipTtlPostgresScratch } from "./membership-authority-ttl-postgres-test-admission";
 
 interface SnapshotRow extends Record<string, unknown> {
   authority_constraint_id: number;
@@ -22,10 +24,11 @@ interface SnapshotRow extends Record<string, unknown> {
 const postgresUrl = process.env.POSTGRES_URL;
 
 describe.skipIf(!postgresUrl)("membership authority TTL PostgreSQL concurrency", () => {
-  const firstPool = new Pool({ connectionString: postgresUrl, max: 4 });
-  const secondPool = new Pool({ connectionString: postgresUrl, max: 4 });
-  const firstDb = drizzle(firstPool);
-  const secondDb = drizzle(secondPool);
+  let firstPool: Pool;
+  let secondPool: Pool;
+  let firstDb: ReturnType<typeof drizzle>;
+  let secondDb: ReturnType<typeof drizzle>;
+  let admitted = false;
 
   async function installLegacySchema(): Promise<void> {
     await firstDb.execute(sql`
@@ -111,6 +114,25 @@ describe.skipIf(!postgresUrl)("membership authority TTL PostgreSQL concurrency",
   }
 
   beforeAll(async () => {
+    const poolOptions = {
+      connectionString: postgresUrl,
+      max: 4,
+      options: "-c search_path=public,pg_catalog",
+    };
+    firstPool = new Pool(poolOptions);
+    try {
+      await admitMembershipTtlPostgresScratch(process.env, (text, values) =>
+        firstPool.query(text, [...values])
+      );
+      admitted = true;
+    } catch (error) {
+      await firstPool.end();
+      throw error;
+    }
+
+    secondPool = new Pool(poolOptions);
+    firstDb = drizzle(firstPool);
+    secondDb = drizzle(secondPool);
     await Promise.all([
       firstDb.execute(sql`SET statement_timeout = '15s'; SET lock_timeout = '10s'`),
       secondDb.execute(sql`SET statement_timeout = '15s'; SET lock_timeout = '10s'`),
@@ -118,13 +140,17 @@ describe.skipIf(!postgresUrl)("membership authority TTL PostgreSQL concurrency",
   });
 
   afterAll(async () => {
-    await firstDb.execute(sql`
-      DROP TABLE IF EXISTS membership_authority CASCADE;
-      DROP TABLE IF EXISTS membership_authority_scopes CASCADE;
-      DROP FUNCTION IF EXISTS slow_membership_ttl_upgrade();
-      DROP FUNCTION IF EXISTS reject_membership_ttl_upgrade()
-    `);
-    await Promise.all([firstPool.end(), secondPool.end()]);
+    if (!admitted) return;
+    try {
+      await firstDb.execute(sql`
+          DROP TABLE IF EXISTS membership_authority CASCADE;
+          DROP TABLE IF EXISTS membership_authority_scopes CASCADE;
+          DROP FUNCTION IF EXISTS slow_membership_ttl_upgrade();
+          DROP FUNCTION IF EXISTS reject_membership_ttl_upgrade()
+        `);
+    } finally {
+      await Promise.all([firstPool.end(), secondPool.end()]);
+    }
   });
 
   it("serializes concurrent startups and makes every later startup a durable no-op", async () => {
