@@ -352,7 +352,7 @@ function isMicPermissionDenialError(err: unknown): boolean {
   );
 }
 
-function describeCaptureFailure(err: unknown): string {
+export function describeCaptureFailure(err: unknown): string {
   const name =
     typeof err === "object" &&
     err !== null &&
@@ -364,6 +364,12 @@ function describeCaptureFailure(err: unknown): string {
   const haystack = `${name} ${message}`.toLowerCase();
   if (isMicPermissionDenialError(err)) {
     return "Microphone access was denied. Enable microphone permission in your browser or system settings to use voice.";
+  }
+  // A capture that opened successfully but contained no usable samples proves
+  // the microphone path exists. Classify that as an empty utterance before the
+  // broader "no microphone" device matcher sees the recorder's error text.
+  if (haystack.includes("no microphone audio was captured")) {
+    return "Didn't catch that — no voice audio was captured. Try again.";
   }
   if (
     haystack.includes("notfound") ||
@@ -380,7 +386,7 @@ function describeCaptureFailure(err: unknown): string {
     haystack.includes("cloudstterror") ||
     haystack.includes("cloud asr") ||
     haystack.includes("transcri") ||
-    haystack.includes("no microphone audio was captured")
+    haystack.includes("empty transcript")
   ) {
     return "Didn't catch that — voice transcription failed. Try again.";
   }
