@@ -17,8 +17,8 @@
 export function replaceNameTokens(text: string, name: string): string {
 	if (!text) return text;
 	return text
-		.replace(/\{{2,3}\s*name\s*\}{2,3}/gi, () => name)
-		.replace(/\{{2,3}\s*agent(?:_?name)?\s*\}{2,3}/gi, () => name);
+		.replace(/\{\{\s*name\s*\}\}/g, () => name)
+		.replace(/\{\{\s*agentName\s*\}\}/g, () => name);
 }
 
 /**
@@ -40,7 +40,7 @@ export function replaceIndexedNameTokens(
 ): string {
 	if (!text) return text;
 	return text.replace(
-		/\{{2,3}\s*(?:name|user)(\d+)\s*\}{2,3}/gi,
+		/\{\{\s*(?:name|user)(\d+)\s*\}\}/g,
 		(match, slot: string) => {
 			const name = names[Number(slot) - 1];
 			return name === undefined ? match : name;

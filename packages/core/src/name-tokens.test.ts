@@ -20,12 +20,6 @@ describe("replaceNameTokens (canonical core impl)", () => {
 		expect(replaceNameTokens("Hi {{name}}, aka {{agentName}}.", "Momo")).toBe(
 			"Hi Momo, aka Momo.",
 		);
-		expect(replaceNameTokens("Hi {{{name}}}, aka {{{AgentName}}}.", "Momo")).toBe(
-			"Hi Momo, aka Momo.",
-		);
-		expect(replaceNameTokens("Hi {{NAME}}, aka {{agent_name}}.", "Momo")).toBe(
-			"Hi Momo, aka Momo.",
-		);
 	});
 
 	it("tolerates whitespace inside the braces", () => {
@@ -33,7 +27,6 @@ describe("replaceNameTokens (canonical core impl)", () => {
 		// the shared copy did not. The reconciled impl accepts both.
 		expect(replaceNameTokens("Hi {{ name }}!", "Momo")).toBe("Hi Momo!");
 		expect(replaceNameTokens("yo {{  agentName  }}", "Momo")).toBe("yo Momo");
-		expect(replaceNameTokens("yo {{{  Agent_Name  }}}", "Momo")).toBe("yo Momo");
 	});
 
 	it("inserts names containing $-sequences literally", () => {
