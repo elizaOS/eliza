@@ -1,7 +1,7 @@
 /** Lifecycle, retry, cancellation, timeout, and replay tests for the daemon. */
 
 import { describe, expect, mock, spyOn, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { AgentBackupCatalogRuntimeSummary } from "@elizaos/cloud-shared/lib/services/agent-backup-catalog-runtime";
@@ -13,6 +13,7 @@ import {
   runBackupCatalogWorker,
   safeBackupCatalogConfigurationNames,
   waitForShutdownBound,
+  writeBackupCatalogWorkerHealth,
 } from "./backup-catalog-worker";
 
 const ENTRYPOINT_TEST_TIMEOUT_MS = 30_000;
@@ -216,6 +217,51 @@ describe("backup catalogue worker config", () => {
       },
     });
     expect(safeBackupCatalogConfigurationNames(throwingMessage)).toEqual([]);
+  });
+
+  test("classifies health publication failures without reflecting filesystem coordinates", async () => {
+    const proofDirectory = await mkdtemp(
+      path.join(tmpdir(), "eliza-backup-catalog-health-failure-"),
+    );
+    const blockedDirectory = path.join(
+      proofDirectory,
+      "DO_NOT_LEAK_HEALTH_COORDINATE",
+    );
+    await writeFile(blockedDirectory, "not-a-directory");
+    let failure: unknown;
+    try {
+      await writeBackupCatalogWorkerHealth(
+        path.join(blockedDirectory, "health.json"),
+        {
+          format: "elizaos.agent-backup.catalog-worker-health.v1",
+          state: "idle",
+          enabled: true,
+          pid: process.pid,
+          updatedAt: "2026-08-26T00:00:00.000Z",
+          startedAt: "2026-08-26T00:00:00.000Z",
+          cycles: 0,
+          failures: 0,
+          lastCycleStartedAt: null,
+          lastCycleCompletedAt: null,
+          lastDurationMs: null,
+          lastAlertCodes: [],
+          lastCycleMetrics: null,
+        },
+      );
+    } catch (error) {
+      failure = error;
+    } finally {
+      await rm(proofDirectory, { recursive: true, force: true });
+    }
+    expect(failure).toMatchObject({
+      code: "AGENT_BACKUP_CATALOG_HEALTH_WRITE_FAILED",
+    });
+    expect(formatBackupCatalogFatalMessage(failure)).toBe(
+      "[backup-catalog-worker] fatal: AGENT_BACKUP_CATALOG_HEALTH_WRITE_FAILED\n",
+    );
+    expect(formatBackupCatalogFatalMessage(failure)).not.toContain(
+      "DO_NOT_LEAK_HEALTH_COORDINATE",
+    );
   });
 });
 

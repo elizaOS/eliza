@@ -117,6 +117,7 @@ const MAX_HEALTH_COUNTER = 1_000_000_000;
 
 const SAFE_BACKUP_CATALOG_ERROR_CODES = new Set([
   "AGENT_BACKUP_CATALOG_CYCLE_FAILED",
+  "AGENT_BACKUP_CATALOG_HEALTH_WRITE_FAILED",
   "AGENT_BACKUP_V2_CAPTURE_ABORTED",
   "AGENT_BACKUP_V2_CAPTURE_DEADLINE_EXCEEDED",
   "AGENT_BACKUP_V2_PIPELINE_ABORTED",
@@ -287,12 +288,12 @@ export async function writeBackupCatalogWorkerHealth(
   health: Readonly<BackupCatalogWorkerHealth>,
 ): Promise<void> {
   const directory = path.dirname(filePath);
-  await mkdir(directory, { recursive: true, mode: 0o700 });
   const temporary = path.join(
     directory,
     `.${path.basename(filePath)}.${process.pid}.tmp`,
   );
   try {
+    await mkdir(directory, { recursive: true, mode: 0o700 });
     await writeFile(temporary, `${JSON.stringify(health)}\n`, { mode: 0o600 });
     await rename(temporary, filePath);
   } catch (cause) {
@@ -303,7 +304,16 @@ export async function writeBackupCatalogWorkerHealth(
     } catch {
       // error-policy:J6 cleanup cannot replace the health publication failure.
     }
-    throw cause;
+    // error-policy:J2 health is the deployment authority for this daemon, so
+    // preserve its failure while exposing only a closed code at the process
+    // boundary. Paths and filesystem messages may contain host coordinates.
+    // This boundary intentionally avoids a top-level @elizaos/core import: the
+    // disabled-first entrypoint must run from a clean source checkout without
+    // initializing or building the enabled dependency graph.
+    throw Object.assign(
+      new Error("Backup catalogue health publication failed", { cause }),
+      { code: "AGENT_BACKUP_CATALOG_HEALTH_WRITE_FAILED" as const },
+    );
   }
 }
 
