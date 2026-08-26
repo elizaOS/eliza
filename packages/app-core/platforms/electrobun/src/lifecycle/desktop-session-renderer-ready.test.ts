@@ -127,6 +127,40 @@ describe("desktop session renderer readiness", () => {
     expect(window.webview.loadURL).toHaveBeenCalledTimes(1);
   });
 
+  it("ignores a pending reload after a newer backend generation wins", async () => {
+    const window = createWindow();
+    const rendererUrl = "http://127.0.0.1:5174/chat";
+    let resolveOlderUrl!: (url: string) => void;
+    const olderUrl = new Promise<string>((resolve) => {
+      resolveOlderUrl = resolve;
+    });
+
+    const olderReload = reloadRendererAfterDesktopSessionPrime({
+      sessionPrimed: true,
+      backendGeneration: "31337:old",
+      window,
+      resolveRendererUrl: () => olderUrl,
+    });
+    const newerReload = reloadRendererAfterDesktopSessionPrime({
+      sessionPrimed: true,
+      backendGeneration: "31337:new",
+      window,
+      resolveRendererUrl: async () => rendererUrl,
+    });
+
+    await expect(newerReload).resolves.toBe(true);
+    expect(window.webview.loadURL).toHaveBeenCalledTimes(1);
+    expect(window.webview.loadURL).toHaveBeenLastCalledWith(rendererUrl);
+
+    resolveOlderUrl(rendererUrl);
+    await expect(olderReload).resolves.toBe(false);
+
+    expect(window.webview.loadURL).toHaveBeenCalledTimes(1);
+    expect(window.webview.loadURL).toHaveBeenLastCalledWith(rendererUrl);
+    expect(loggerState.info).toHaveBeenCalledTimes(1);
+    expect(loggerState.warn).not.toHaveBeenCalled();
+  });
+
   it("reloads the same window once for each backend generation", async () => {
     const window = createWindow();
     const resolveRendererUrl = vi.fn(async () => "http://127.0.0.1:5174/chat");

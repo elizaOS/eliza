@@ -43,6 +43,9 @@ export async function reloadRendererAfterDesktopSessionPrime({
 
   try {
     const rendererUrl = await resolveRendererUrl();
+    if (reloadedGenerationByWindow.get(window) !== backendGeneration) {
+      return false;
+    }
     window.webview.loadURL(rendererUrl);
     logger.info(
       "[Main] Reloaded desktop renderer after loopback session prime",
