@@ -210,16 +210,16 @@
       },
       "ELIZAOS_CLOUD_LARGE_MODEL": {
         "type": "string",
-        "description": "Large/powerful model for complex tasks (overrides LARGE_MODEL). Default: zai-glm-4.7",
+        "description": "Large/powerful model for complex tasks (overrides LARGE_MODEL). Default: gemma-4-31b",
         "required": false,
-        "default": "zai-glm-4.7",
+        "default": "gemma-4-31b",
         "sensitive": false
       },
       "LARGE_MODEL": {
         "type": "string",
         "description": "Fallback identifier for the large language model if ELIZAOS_CLOUD_LARGE_MODEL is not set.",
         "required": false,
-        "default": "zai-glm-4.7",
+        "default": "gemma-4-31b",
         "sensitive": false
       },
       "ELIZAOS_CLOUD_MEGA_MODEL": {
