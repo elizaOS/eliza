@@ -51,6 +51,7 @@ import {
   resolveAgentProfileByQuery,
 } from "./agent-profiles";
 import {
+  type LoadConversationMessagesResult,
   loadAvatarIndex,
   normalizeAvatarIndex,
   parseAgentStatusEvent,
@@ -64,6 +65,11 @@ export interface HydratingDeps {
   setStartupError: (v: null) => void;
   setFirstRunLoading: (v: boolean) => void;
   hydrateInitialConversationState: () => Promise<string | null>;
+  activeConversationIdRef: React.RefObject<string | null>;
+  loadedConversationIdRef: React.RefObject<string | null>;
+  loadConversationMessages: (
+    convId: string,
+  ) => Promise<LoadConversationMessagesResult>;
   requestGreetingWhenRunningRef: React.RefObject<
     (convId: string) => Promise<void>
   >;
@@ -82,6 +88,15 @@ export interface HydratingDeps {
   setTab: (t: Tab) => void;
   setTabRaw: (t: Tab) => void;
   initialTabSetRef: React.MutableRefObject<boolean>;
+}
+
+const ACTIVE_CONVERSATION_STORAGE_KEY = "eliza:chat:activeConversationId";
+const DIRECT_CLOUD_HYDRATION_RETRY_MS = 500;
+
+function waitForDirectCloudHydrationRetry(): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, DIRECT_CLOUD_HYDRATION_RETRY_MS);
+  });
 }
 
 export interface ReadyPhaseDeps {
@@ -184,6 +199,52 @@ export async function runHydrating(
       void deps.requestGreetingWhenRunningRef.current(greetConvId);
     }
   };
+  const reconcileDirectCloudConversation = async (): Promise<void> => {
+    const persistedConversationId = window.localStorage.getItem(
+      ACTIVE_CONVERSATION_STORAGE_KEY,
+    );
+    let initialHydrationFailed = false;
+    try {
+      await hydrateConversation();
+    } catch (error) {
+      initialHydrationFailed = true;
+      warn("conversation history", error);
+    }
+
+    if (
+      initialHydrationFailed ||
+      (!deps.activeConversationIdRef.current && persistedConversationId)
+    ) {
+      await waitForDirectCloudHydrationRetry();
+      await hydrateConversation();
+    }
+
+    const activeConversationId = deps.activeConversationIdRef.current;
+    if (
+      !activeConversationId ||
+      deps.loadedConversationIdRef.current === activeConversationId
+    ) {
+      return;
+    }
+
+    const firstLoad = await deps.loadConversationMessages(activeConversationId);
+    if (
+      firstLoad.ok ||
+      deps.activeConversationIdRef.current !== activeConversationId ||
+      deps.loadedConversationIdRef.current === activeConversationId
+    ) {
+      return;
+    }
+
+    await waitForDirectCloudHydrationRetry();
+    const retryConversationId = deps.activeConversationIdRef.current;
+    if (
+      retryConversationId &&
+      deps.loadedConversationIdRef.current !== retryConversationId
+    ) {
+      await deps.loadConversationMessages(retryConversationId);
+    }
+  };
 
   if (appShellRoutesSupported) {
     await hydrateConversation();
@@ -192,7 +253,7 @@ export async function runHydrating(
     // then fetch messages. The active conversation ID is persisted locally, so
     // history restoration is not required to paint a usable chat shell. Keep
     // restoring the exact same state, but do it behind first paint.
-    void hydrateConversation().catch((err: unknown) => {
+    void reconcileDirectCloudConversation().catch((err: unknown) => {
       warn("conversation history", err);
     });
   }

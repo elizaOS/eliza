@@ -21,6 +21,7 @@ interface AppWebConfig {
 }
 
 interface AppIdentityEnv {
+  readonly [key: string]: string | undefined;
   ELIZA_ANDROID_VPS_SIDECAR?: string;
 }
 
