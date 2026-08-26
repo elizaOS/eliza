@@ -1,6 +1,7 @@
 // Exercises cloud admin daemons provisioning worker.test automation behavior with deterministic script fixtures.
 import { describe, expect, it, mock } from "bun:test";
 import {
+  allowsOrphanReconciliation,
   assertKmsBackendDurable,
   assertProvisioningWorkerPreflight,
   closeOpenHandles,
@@ -654,6 +655,39 @@ describe("evaluateDbLiveness (#16160 — split vs idle discrimination)", () => {
         now,
       }).verdict,
     ).toBe("split");
+  });
+
+  it("authorizes destructive orphan reconciliation only for a proven live API database", () => {
+    const healthy = evaluateDbLiveness({
+      jobs: freshJobs,
+      heartbeatAt: null,
+      heartbeatMaxAgeMinutes: 15,
+      now,
+    });
+    const idle = evaluateDbLiveness({
+      jobs: staleJobs,
+      heartbeatAt: new Date("2026-07-06T11:58:00Z"),
+      heartbeatMaxAgeMinutes: 15,
+      now,
+    });
+    const split = evaluateDbLiveness({
+      jobs: staleJobs,
+      heartbeatAt: new Date("2026-07-06T10:00:00Z"),
+      heartbeatMaxAgeMinutes: 15,
+      now,
+    });
+    const unknown = evaluateDbLiveness({
+      jobs: staleJobs,
+      heartbeatAt: null,
+      heartbeatMaxAgeMinutes: 15,
+      now,
+    });
+
+    expect(allowsOrphanReconciliation(healthy)).toBe(true);
+    expect(allowsOrphanReconciliation(idle)).toBe(true);
+    expect(allowsOrphanReconciliation(split)).toBe(false);
+    expect(allowsOrphanReconciliation(unknown)).toBe(false);
+    expect(allowsOrphanReconciliation(undefined)).toBe(false);
   });
 });
 
