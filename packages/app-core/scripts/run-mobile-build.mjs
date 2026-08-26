@@ -8512,7 +8512,7 @@ export async function runAndroidBuild(
     ANDROID_SOURCE_AUDITS,
     "auditSourceKey",
     "post-gradle",
-    { env: resolvedEnv },
+    { env: targetEnv },
   );
   if (target.artifactAuditKey === "cloud") {
     resolvedEnv[ANDROID_BUNDLETOOL_JAR_ENV] = await ensureAndroidBundletoolJar({

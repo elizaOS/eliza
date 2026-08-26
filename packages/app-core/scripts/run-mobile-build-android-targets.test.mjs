@@ -252,6 +252,9 @@ describe("Android mobile build target table", () => {
       'runAndroidTargetPhase(target, ANDROID_SOURCE_STRIPS, "stripSourceKey", {\n    env: targetEnv,',
     );
     expect(runMobileBuildSource).toContain(
+      '"post-gradle",\n    { env: targetEnv },',
+    );
+    expect(runMobileBuildSource).toContain(
       "MainActivity does not hide the gesture navigation bar with transient swipe recovery.",
     );
   });
