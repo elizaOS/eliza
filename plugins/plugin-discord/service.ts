@@ -13,6 +13,7 @@
 import nodePath from "node:path";
 import {
 	ChannelType,
+	truncateWellFormed,
 	type Character,
 	type Content,
 	createUniqueUuid,
@@ -3279,7 +3280,7 @@ export class DiscordService extends Service implements IDiscordService {
 				`Discord channel ${channel.id} does not support thread creation.`,
 			);
 		}
-		const name = (params.name ?? "thread").slice(0, 100);
+		const name = truncateWellFormed(params.name ?? "thread", 100);
 		let startMessage: Message | undefined;
 		if (params.parentMessageId) {
 			try {
