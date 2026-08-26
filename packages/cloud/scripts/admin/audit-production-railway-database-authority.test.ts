@@ -314,6 +314,11 @@ describe("read-only database audit", () => {
     }
     expect(protectedClient.statements[0]).toContain("READ ONLY");
     expect(canonicalClient.statements[0]).toContain("READ ONLY");
+    const relationQuery = canonicalClient.statements.find((statement) =>
+      statement.includes("to_regclass('public.apps')"),
+    );
+    expect(relationQuery).toContain("to_regclass('public.jobs')");
+    expect(relationQuery).toContain("to_regclass('public.agent_sandboxes')");
   });
 
   test("distinguishes a wrong protected target from a healthy canonical target", async () => {
@@ -361,6 +366,22 @@ describe("read-only database audit", () => {
     }
   });
 
+  test("fails when the protected provisioning jobs relation is missing", async () => {
+    const presence = allPresent();
+    presence["public.jobs"] = false;
+    const report = await audit(
+      new FakeClient(identity(), presence),
+      new FakeClient(identity()),
+    );
+    expect(report.verdict).toBe("fail");
+    expect(report.requiredTables.protected["public.jobs"]).toBe("missing");
+    expect(report.requiredTables.canonical["public.jobs"]).toBe("present");
+    expect(report.migrationLedger).toEqual({
+      canonical: "current",
+      protected: "current",
+    });
+  });
+
   test("reports fixed table presence and pending ledger status", async () => {
     const presence = allPresent();
     presence["public.mobile_app_auth_grants"] = false;
@@ -394,6 +415,27 @@ describe("read-only database audit", () => {
       protected: "diverged",
     });
     expect(JSON.stringify(report)).not.toContain("private-wrong-hash");
+  });
+
+  test("fails when the canonical sandbox inventory relation is missing", async () => {
+    const canonicalPresence = allPresent();
+    canonicalPresence["public.agent_sandboxes"] = false;
+    const report = await audit(
+      new FakeClient(identity()),
+      new FakeClient(identity(), canonicalPresence),
+    );
+    expect(report.verdict).toBe("fail");
+    expect(report.checks.protectedDatabaseAuthority).toBe("match");
+    expect(report.requiredTables.canonical["public.agent_sandboxes"]).toBe(
+      "missing",
+    );
+    expect(report.requiredTables.protected["public.agent_sandboxes"]).toBe(
+      "present",
+    );
+    expect(report.migrationLedger).toEqual({
+      canonical: "current",
+      protected: "current",
+    });
   });
 
   test("reports canonical schema and ledger drift independently", async () => {
