@@ -73,15 +73,27 @@ export async function diagnoseRequiredRegistrationSchema(
   const client = new Client({ connectionString: url, ...(ssl ? { ssl } : {}) });
   try {
     await client.connect();
+    const presence: Array<{
+      exists: boolean;
+      table: (typeof REQUIRED_REGISTRATION_TABLES)[number];
+    }> = [];
     for (const table of REQUIRED_REGISTRATION_TABLES) {
       const result = await client.query<{ exists: boolean }>(
         "SELECT to_regclass($1) IS NOT NULL AS exists",
         [`public.${table}`],
       );
-      if (result.rows[0]?.exists !== true) {
-        fail(missingRegistrationTableInvariant(table));
-      }
+      presence.push({ exists: result.rows[0]?.exists === true, table });
     }
+    console.log(
+      `[MobileAppAuthSchema] ${presence
+        .map(
+          ({ exists, table }) => `${table}=${exists ? "present" : "missing"}`,
+        )
+        .join(" ")}`,
+    );
+    const firstMissing = presence.find(({ exists }) => !exists);
+    if (firstMissing)
+      fail(missingRegistrationTableInvariant(firstMissing.table));
   } catch (error) {
     if (error instanceof RegistrationRepairError) throw error;
     fail(databaseFailureInvariant(error));
