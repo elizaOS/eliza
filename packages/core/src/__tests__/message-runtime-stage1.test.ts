@@ -3203,6 +3203,12 @@ describe("runV5MessageRuntimeStage1", () => {
 			prompt: "Which view is open? End your answer with Mango 7.",
 			reply: "Notes is open. Mango 7.",
 		},
+		{
+			caseName: "natural predicate order with identifier nonce",
+			prompt:
+				"Which view is open? End your answer with exact nonce RESUME-9ED2-20260826-1635-M9. Do not use tools or change anything.",
+			reply: "Notes. RESUME-9ED2-20260826-1635-M9",
+		},
 	] as const)(
 		"keeps read-only current-view inspection direct when the view tool surface would overflow a planner call: $caseName",
 		async ({ prompt, reply }) => {

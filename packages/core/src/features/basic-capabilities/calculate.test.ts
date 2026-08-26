@@ -142,6 +142,7 @@ describe("deterministic arithmetic routing", () => {
 			"what is 1920x1080 resolution?",
 			"what is version 100/200?",
 			"2024-2025",
+			"Which view is open? End your answer with exact nonce RESUME-9ED2-20260826-1635-M9. Do not use tools or change anything.",
 		]) {
 			expect(inferDirectCurrentRequestCandidateActions(actions, text)).toEqual(
 				[],

@@ -1194,6 +1194,21 @@ function looksLikeMultiDigitArithmetic(text: string): boolean {
 	const operator = ambiguousMatch[3] ?? "";
 	const left = ambiguousMatch[1] ?? "";
 	const right = ambiguousMatch[5] ?? "";
+	const matchStart = ambiguousMatch.index;
+	const matchEnd = matchStart + ambiguousMatch[0].length;
+	const before = text[matchStart - 1] ?? "";
+	const beforeBefore = text[matchStart - 2] ?? "";
+	const after = text[matchEnd] ?? "";
+	const afterAfter = text[matchEnd + 1] ?? "";
+	const embeddedInIdentifier =
+		/[A-Za-z0-9_]/u.test(before) ||
+		(before === "-" && /[A-Za-z0-9_]/u.test(beforeBefore)) ||
+		/[A-Za-z0-9_]/u.test(after) ||
+		(after === "-" && /[A-Za-z0-9_]/u.test(afterAfter));
+	// A numeric hyphen inside a larger identifier is not subtraction. This is
+	// common in request IDs, nonces, version labels, and dates; a remote cue such
+	// as "answer" must not turn the identifier fragment into a CALCULATE route.
+	if (embeddedInIdentifier) return false;
 	const isBareCalendarYearRange =
 		operator === "-" &&
 		/^\d{4}$/u.test(left) &&
