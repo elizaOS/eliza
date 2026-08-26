@@ -32,6 +32,22 @@ describe("resolveMobileRendererFeatureEnv", () => {
     });
   });
 
+  it("permanently hides Stream only in the dedicated LP3 VPS fallback", () => {
+    expect(
+      resolveMobileRendererFeatureEnv({
+        platform: "android-cloud-debug",
+        env: {
+          ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED: "1",
+          ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED: "yes",
+        },
+      }),
+    ).toEqual({
+      VITE_VOICE_REALTIME_WS: "1",
+      VITE_VOICE_REALTIME_FORCE: "1",
+      VITE_ENABLE_STREAM: "false",
+    });
+  });
+
   it("does not change ordinary Android cloud-debug builds", () => {
     expect(
       resolveMobileRendererFeatureEnv({
