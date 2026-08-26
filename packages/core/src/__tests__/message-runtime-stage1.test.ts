@@ -231,6 +231,7 @@ function makeRuntime(
 		providers: [],
 		getService: vi.fn(() => null),
 		getRoom: vi.fn(async () => null),
+		getModelRegistrations: vi.fn(() => []),
 		composeState: vi.fn(async () => makeState()),
 		runActionsByMode: vi.fn(async () => undefined),
 		emitEvent: vi.fn(async () => undefined),
@@ -6598,6 +6599,134 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(result.result.responseContent).toBeNull();
 			expect(result.result.responseMessages).toEqual([]);
 		}
+	});
+
+	it("reconciles the exact Computer Use fallback candidates before planner selection", async () => {
+		const delivered = "Telegram launch dispatched through Computer Use.";
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["browser", "automation"],
+				intents: ["open telegram using computer use"],
+				candidateActionNames: ["BROWSER_NAVIGATE", "AUTOMATION_TRIGGER"],
+				replyText: "On it.",
+				extra: { requiresTool: true },
+			}),
+			{
+				thought: "Use the requested host-control capability.",
+				toolCalls: [
+					{
+						id: "computer-use-1",
+						name: "COMPUTER_USE",
+						args: { action: "launch", app: "Telegram" },
+					},
+				],
+			},
+		]);
+		const computerUseHandler = vi.fn(
+			async (_runtime, _message, _state, _options, callback) => {
+				await callback?.({
+					text: delivered,
+					source: "action",
+					action: "COMPUTER_USE",
+				});
+				return {
+					success: true,
+					text: delivered,
+					userFacingText: delivered,
+					verifiedUserFacing: true,
+					turnComplete: true,
+					data: {
+						actionName: "COMPUTER_USE",
+						action: "launch",
+						app: "Telegram",
+					},
+				};
+			},
+		);
+		runtime.actions = [
+			{
+				name: "COMPUTER_USE",
+				tags: [
+					"domain:computer-use",
+					"capability:desktop-control",
+					"effect:host-action",
+				],
+				description: "Control native applications on the owner's computer.",
+				contexts: ["browser", "automation", "admin"],
+				suppressPostActionContinuation: true,
+				parameters: [
+					{
+						name: "action",
+						description: "Desktop action",
+						required: true,
+						schema: { type: "string", enum: ["launch"] },
+					},
+					{
+						name: "app",
+						description: "Application name",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				validate: async () => true,
+				handler: computerUseHandler,
+			},
+		] as never;
+		registerDirectActionRoutingRule(runtime, {
+			id: "test.computer-use.explicit-host-control",
+			actionNames: ["COMPUTER_USE"],
+			replacesActionNames: [
+				"BROWSER",
+				"BROWSER_NAVIGATE",
+				"AUTOMATION_TRIGGER",
+				"TRIGGER",
+				"VIEWS",
+			],
+			requiredActionTags: [
+				"domain:computer-use",
+				"capability:desktop-control",
+				"effect:host-action",
+			],
+			contexts: ["automation", "admin"],
+			matches: (text) => /\bcomputer[\s_-]*use\s+to\b/iu.test(text),
+		});
+		const directRouteEvaluator = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+			(evaluator) =>
+				evaluator.name === "core.direct_registered_capability_request",
+		);
+		if (!directRouteEvaluator)
+			throw new Error("direct route evaluator missing");
+		runtime.responseHandlerEvaluators = [directRouteEvaluator];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "can u use computer use to open telegram",
+			}),
+			state: {
+				...makeState(),
+				values: {
+					availableContexts: "general, browser, automation, admin",
+				},
+			},
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(result.messageHandler.plan.candidateActions).toEqual([
+			"COMPUTER_USE",
+		]);
+		expect(result.messageHandler.plan.candidateActions).not.toContain(
+			"BROWSER_NAVIGATE",
+		);
+		expect(result.messageHandler.plan.candidateActions).not.toContain(
+			"AUTOMATION_TRIGGER",
+		);
+		expect(computerUseHandler).toHaveBeenCalledTimes(1);
+		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+		]);
 	});
 
 	it("reconciles the owner reminder route without dropping a compound Stage-1 candidate", async () => {

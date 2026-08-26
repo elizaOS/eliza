@@ -231,6 +231,82 @@ describe("resolvePlugins manifest discovery", () => {
       await rm(workspace, { recursive: true, force: true });
     }
   }, 120_000);
+
+  it("registers explicitly enabled packaged Computer Use before chat readiness", async () => {
+    const pluginName = "@elizaos/plugin-computeruse";
+    const appPackagePath = path.resolve(
+      import.meta.dirname,
+      "../../../app/package.json",
+    );
+    const appPackage = JSON.parse(
+      await fs.readFile(appPackagePath, "utf8"),
+    ) as {
+      elizaos?: {
+        app?: {
+          defaults?: Record<
+            string,
+            { enabled?: boolean; requiredForReady?: boolean }
+          >;
+        };
+      };
+    };
+    expect(appPackage.elizaos?.app?.defaults?.computeruse).toEqual({
+      enabled: false,
+      requiredForReady: true,
+    });
+
+    const previousCwd = process.cwd();
+    const workspace = await mkdtemp(
+      path.join(tmpdir(), "eliza-computeruse-ready-"),
+    );
+    const previousStaticPlugin = STATIC_ELIZA_PLUGINS[pluginName];
+
+    try {
+      await writeFile(
+        path.join(workspace, "package.json"),
+        JSON.stringify({
+          name: "computeruse-ready-host-fixture",
+          elizaos: appPackage.elizaos,
+        }),
+        "utf8",
+      );
+      STATIC_ELIZA_PLUGINS[pluginName] = {
+        default: {
+          name: pluginName,
+          description: "Computer Use readiness fixture.",
+          services: [],
+        },
+      };
+      process.chdir(workspace);
+      const config: ElizaConfig = {
+        plugins: {
+          allow: [],
+          entries: { computeruse: { enabled: true } },
+        },
+      } as ElizaConfig;
+
+      const blocking = await resolvePlugins(config, {
+        quiet: true,
+        phase: "blocking",
+      });
+      expect(blocking.map((plugin) => plugin.name)).toContain(pluginName);
+      expect(config.plugins?.entries?.computeruse).toEqual({ enabled: true });
+
+      const deferred = await resolvePlugins(config, {
+        quiet: true,
+        phase: "deferred",
+      });
+      expect(deferred.map((plugin) => plugin.name)).not.toContain(pluginName);
+    } finally {
+      process.chdir(previousCwd);
+      if (previousStaticPlugin === undefined) {
+        delete STATIC_ELIZA_PLUGINS[pluginName];
+      } else {
+        STATIC_ELIZA_PLUGINS[pluginName] = previousStaticPlugin;
+      }
+      await rm(workspace, { recursive: true, force: true });
+    }
+  }, 120_000);
 });
 
 describe("resolvePlugins boot-phase split for model providers (#14038)", () => {
