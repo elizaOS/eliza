@@ -15,13 +15,8 @@ function browserEnvBag(): EnvBag {
   const g = globalThis as {
     window?: { ENV?: EnvBag };
     __ENV__?: EnvBag;
-    ENV?: EnvBag;
   };
-  return {
-    ...(g.window?.ENV ?? {}),
-    ...(g.__ENV__ ?? {}),
-    ...(g.ENV ?? {}),
-  };
+  return { ...(g.window?.ENV ?? {}), ...(g.__ENV__ ?? {}) };
 }
 
 const isNode =
@@ -31,9 +26,6 @@ const isNode =
 
 /** Read an environment variable as a string, or `undefined` when unset. */
 export function getEnv(key: string, defaultValue?: string): string | undefined {
-  if (typeof key !== "string" || !key) {
-    return defaultValue;
-  }
   if (isNode) {
     return process.env[key] ?? defaultValue;
   }
