@@ -156,7 +156,17 @@ async function createPrivateAttempt(prefix: string) {
     encoding: "utf8",
   });
   if (acl.status !== 0) throw new Error(`getfacl failed: ${acl.stderr}`);
-  return { attempt, outputRoot, outputRootAcl: acl.stdout };
+  const attemptAcl = spawnSync("getfacl", ["-cpn", attempt], {
+    encoding: "utf8",
+  });
+  if (attemptAcl.status !== 0)
+    throw new Error(`getfacl failed: ${attemptAcl.stderr}`);
+  return {
+    attempt,
+    attemptAcl: attemptAcl.stdout,
+    outputRoot,
+    outputRootAcl: acl.stdout,
+  };
 }
 
 function expectAclRestored(directory: string, expected: string) {
@@ -172,6 +182,7 @@ test.skipIf(!hostedLinux)(
   async () => {
     const {
       attempt: directory,
+      attemptAcl,
       outputRoot,
       outputRootAcl,
     } = await createPrivateAttempt("cloud-sandbox-proof-");
@@ -511,6 +522,7 @@ console.log(JSON.stringify({
       abstractUnix.close();
       datagramServer.kill("SIGKILL");
       await rm(hostTmpDirectory, { recursive: true, force: true });
+      expectAclRestored(directory, attemptAcl);
       expectAclRestored(outputRoot, outputRootAcl);
       await rm(outputRoot, { recursive: true, force: true });
     }
@@ -523,6 +535,7 @@ test.skipIf(!hostedLinux)(
   async () => {
     const {
       attempt: directory,
+      attemptAcl,
       outputRoot,
       outputRootAcl,
     } = await createPrivateAttempt("cloud-sandbox-early-failure-");
@@ -620,6 +633,7 @@ test.skipIf(!hostedLinux)(
       );
       expect(firewall.status).toBe(0);
       expect(firewall.stdout).not.toContain("ELIZA_SBX_");
+      expectAclRestored(directory, attemptAcl);
       expectAclRestored(outputRoot, outputRootAcl);
     } finally {
       child.kill("SIGKILL");
@@ -634,6 +648,7 @@ test.skipIf(!hostedLinux)(
   async () => {
     const {
       attempt: directory,
+      attemptAcl,
       outputRoot,
       outputRootAcl,
     } = await createPrivateAttempt("cloud-sandbox-teardown-");
@@ -744,6 +759,7 @@ setInterval(() => {}, 1000);
       expect(firewall.status).toBe(0);
       expect(firewall.stdout).not.toContain("ELIZA_SBX_");
     } finally {
+      expectAclRestored(directory, attemptAcl);
       expectAclRestored(outputRoot, outputRootAcl);
       await rm(outputRoot, { recursive: true, force: true });
     }
