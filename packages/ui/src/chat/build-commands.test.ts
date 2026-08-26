@@ -27,7 +27,6 @@ function args(over: Partial<BuildCommandsArgs> = {}): BuildCommandsArgs {
     loadSkills: vi.fn(),
     loadLogs: vi.fn(),
     loadWorkbench: vi.fn(),
-    handleChatClear: vi.fn(),
     openBugReport: vi.fn(),
     desktopRuntime: false,
     focusDesktopMainWindow: vi.fn(),
@@ -39,6 +38,14 @@ function args(over: Partial<BuildCommandsArgs> = {}): BuildCommandsArgs {
 }
 
 describe("buildCommands — palette launcher (#8792)", () => {
+  it("does not expose a second-chat or clear-thread action", () => {
+    const commands = buildCommands(args());
+    expect(commands.some((command) => command.id === "chat-clear")).toBe(false);
+    expect(
+      commands.some((command) => /new chat|clear chat/i.test(command.label)),
+    ).toBe(false);
+  });
+
   it("opens Desktop Workspace through the full managed-shell launcher", () => {
     const openDesktopWorkspaceWindow = vi.fn();
     const openDesktopSettingsWindow = vi.fn();

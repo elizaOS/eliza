@@ -1,8 +1,7 @@
 /**
  * Loads the universal slash-command catalog for the chat composer and exposes
- * the app-level side effects the menu needs (navigation, clear, palette). The
- * overlay combines these with its own conversation-scoped effects (send,
- * new-conversation, fullscreen) to run a command.
+ * the app-level side effects the menu needs (navigation and palette). The
+ * overlay combines these with its own conversation-scoped send behavior.
  */
 
 import { logger } from "@elizaos/logger";
@@ -41,6 +40,14 @@ import {
 
 /** The surface the dashboard chat composer renders on. */
 const GUI_SURFACE = "gui" as const;
+
+function isConversationResetCommand(command: SlashCommandCatalogItem): boolean {
+  return (
+    command.target.kind === "client" &&
+    (command.target.clientAction === "clear-chat" ||
+      command.target.clientAction === "new-conversation")
+  );
+}
 
 /** Event the App shell listens for to open settings at a specific section. */
 export const NAVIGATE_SETTINGS_EVENT = "eliza:navigate:settings";
@@ -275,9 +282,8 @@ export function useSlashCommandController(
   options: SlashCommandControllerOptions = {},
 ): SlashCommandController {
   const { isAuthorized = false, isElevated = false } = options;
-  const { setTab, handleChatClear } = useAppSelectorShallow((s) => ({
+  const { setTab } = useAppSelectorShallow((s) => ({
     setTab: s.setTab,
-    handleChatClear: s.handleChatClear,
   }));
   const { views } = useAvailableViews();
   const [serverCommands, setServerCommands] = React.useState<
@@ -440,7 +446,7 @@ export function useSlashCommandController(
         surface: GUI_SURFACE,
         isAuthorized,
         isElevated,
-      }),
+      }).filter((command) => !isConversationResetCommand(command)),
     [serverCommands, customCommands, isAuthorized, isElevated],
   );
   // Natural language belongs to the agent model. Client-side shortcuts are
@@ -501,9 +507,9 @@ export function useSlashCommandController(
     [],
   );
 
-  const clearChat = React.useCallback(() => {
-    void handleChatClear();
-  }, [handleChatClear]);
+  // The canonical GUI is one continuous conversation. Keep this compatibility
+  // callback inert so legacy command executors cannot open a second thread.
+  const clearChat = React.useCallback(() => {}, []);
 
   const openCommandPalette = React.useCallback(() => {
     if (typeof document === "undefined") return;
