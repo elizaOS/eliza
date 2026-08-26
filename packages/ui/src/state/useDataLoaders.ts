@@ -332,7 +332,6 @@ function resolvedLocalOverlayServerIndexes(
   return resolvedServerIndexes;
 }
 
-const NEWEST_HISTORY_WINDOW_SIZE = 200;
 // A single newest-history response can still trail a terminal direct reply.
 // Keep an unchanged overlay through two consecutive omissions; the third
 // independent snapshot is the bounded confirmation that the row was removed.
@@ -448,11 +447,6 @@ function reconcileConversationMessagesWithOverlay(
         ? ownedMessage
         : { ...ownedMessage, clientRenderId: lineage };
   };
-  const oldestServerTimestamp =
-    serverMessages.length === NEWEST_HISTORY_WINDOW_SIZE
-      ? Math.min(...serverMessages.map((message) => message.timestamp))
-      : null;
-
   for (const [lineage, record] of overlay) {
     const message = record.message;
     if (!message) continue;
@@ -506,16 +500,9 @@ function reconcileConversationMessagesWithOverlay(
       continue;
     }
 
-    // A complete 200-row newest window gives a strict lower bound. A missing
-    // local row older than that bound cannot belong in the visible window.
-    if (
-      oldestServerTimestamp !== null &&
-      message.timestamp < oldestServerTimestamp
-    ) {
-      overlay.delete(lineage);
-      continue;
-    }
-
+    // Client timestamps are not comparable with the server window and retries
+    // deliberately retain the original turn timestamp. Only repeated newest
+    // responses that began after this exact revision may retire it.
     record.consecutiveNewestMisses += 1;
     if (
       record.consecutiveNewestMisses >= OVERLAY_NEWEST_MISS_RETIREMENT_COUNT
@@ -758,9 +745,9 @@ export function useDataLoaders(deps: DataLoadersDeps) {
 
   // ── Conversations ───────────────────────────────────────────────────
 
-  // Only authoritative server snapshots participate in the navigation LRU.
-  // Local overlays live in a separate registry below: warming 17+ neighbors
-  // must never evict a completed turn that history has not observed yet.
+  // Cache the exact visible merge for each conversation. The overlay registry
+  // remains the ownership/retirement authority, while the cache guarantees an
+  // A -> B -> A paint never flashes the stale server-only snapshot.
   const conversationMessageCacheRef = useRef<
     Map<string, ConversationMessage[]>
   >(new Map());
@@ -942,6 +929,22 @@ export function useDataLoaders(deps: DataLoadersDeps) {
             targetOverlay?.get(lineage)?.message === message,
         );
 
+      if (
+        previousOwner === null &&
+        conversationId !== null &&
+        visibleConversationMessagesContentOwnerRef.current === null &&
+        conversationMessagesRef.current.length > 0 &&
+        !targetOwnsVisibleRegisteredRows
+      ) {
+        // A cold send can still be waiting for createConversation while the
+        // user selects an existing room. Preserve its explicitly registered
+        // unowned lineage, but retire its bytes from the shared visible store
+        // synchronously so they never paint under the selected conversation.
+        conversationMessagesRef.current = [];
+        setConversationMessages([]);
+        visibleConversationMessagesContentOwnerRef.current = undefined;
+      }
+
       // Same-id persisted claims are resyncs, not navigation. Keep the owner
       // token stable so an async command or greeting already scoped to this
       // conversation remains valid while the reload gets its own request token.
@@ -998,6 +1001,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       activeConversationIdRef,
       captureVisibleConversationMessageOverlay,
       invalidateConversationMessageFence,
+      setConversationMessages,
     ],
   );
 
@@ -1483,7 +1487,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         if (currentOverlay?.size === 0) {
           conversationMessageOverlayRef.current.delete(convId);
         }
-        cacheConversationMessages(convId, serverMessages, cacheRequestToken);
+        cacheConversationMessages(convId, nextMessages, cacheRequestToken);
         clearSettledPendingChatTurns(convId, serverMessages);
         greetingFiredRef.current =
           hasConversationBootstrapMessage(nextMessages);

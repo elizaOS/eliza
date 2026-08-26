@@ -428,7 +428,7 @@ describe("useDataLoaders — conversation message prefetch cache", () => {
     ).toHaveLength(1);
   });
 
-  it("does not append durable rekeyed rows omitted by the bounded 200-message history window", async () => {
+  it("retires durable rekeyed rows beyond the bounded 200-message window after three scoped misses", async () => {
     const completeHistory = Array.from({ length: 202 }, (_, index) => ({
       ...userMsg(`server-${index}`),
       text: `message ${index}`,
@@ -437,6 +437,8 @@ describe("useDataLoaders — conversation message prefetch cache", () => {
     const boundedHistory = completeHistory.slice(-200);
     mocks.client.getConversationMessages
       .mockResolvedValueOnce({ messages: completeHistory })
+      .mockResolvedValueOnce({ messages: boundedHistory })
+      .mockResolvedValueOnce({ messages: boundedHistory })
       .mockResolvedValueOnce({ messages: boundedHistory });
     const {
       deps,
@@ -465,6 +467,21 @@ describe("useDataLoaders — conversation message prefetch cache", () => {
         completeHistory.map((_, index) => `temp-${index}`),
       );
     });
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+
+    expect(conversationMessagesRef.current).toHaveLength(202);
+    expect(
+      conversationMessagesRef.current.slice(0, 2).map((message) => message.id),
+    ).toEqual(["server-0", "server-1"]);
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+
+    expect(conversationMessagesRef.current).toHaveLength(202);
 
     await act(async () => {
       await result.current.loadConversationMessages("conv-a");
@@ -1052,6 +1069,52 @@ describe("useDataLoaders — conversation message prefetch cache", () => {
       await result.current.loadConversationMessages("conv-a");
     });
     expect(conversationMessagesRef.current).toEqual([]);
+  });
+
+  it("does not retire a freshly rekeyed retry from one full-window response with newer server timestamps", async () => {
+    const boundedHistory = Array.from({ length: 200 }, (_, index) => ({
+      ...userMsg(`server-${index}`),
+      text: `server message ${index}`,
+      timestamp: 1_000 + index,
+    }));
+    mocks.client.getConversationMessages
+      .mockResolvedValueOnce({ messages: [] })
+      .mockResolvedValueOnce({ messages: boundedHistory });
+    const {
+      deps,
+      setConversationMessages,
+      conversationMessagesRef,
+      activeConversationIdRef,
+    } = makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    const retry = {
+      ...userMsg("temp-retried-user"),
+      clientRenderId: "temp-retried-user",
+      text: "retry me",
+      timestamp: 1,
+    };
+    act(() => {
+      setConversationMessages([retry]);
+      result.current.registerConversationMessageOverlay("conv-a", [
+        retry.clientRenderId,
+      ]);
+      setConversationMessages([{ ...retry, id: "durable-retried-user" }]);
+    });
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+
+    expect(
+      conversationMessagesRef.current.some(
+        (message) => message.id === "durable-retried-user",
+      ),
+    ).toBe(true);
   });
 
   it("keeps a newer local revision when a full GET returns the same durable id from an older fence", async () => {

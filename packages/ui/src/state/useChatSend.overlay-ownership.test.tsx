@@ -310,6 +310,7 @@ describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
       result.current.loaders.claimConversationMessagesOwnership("conv-b");
       harness.activeConversationIdRef.current = "conv-b";
     });
+    expect(harness.conversationMessagesRef.current).toEqual([]);
     await act(async () => {
       await result.current.loaders.loadConversationMessages("conv-b");
     });
@@ -536,6 +537,7 @@ describe("useChatSend + useDataLoaders explicit overlay ownership", () => {
       result.current.loaders.claimConversationMessagesOwnership("conv-b");
       harness.activeConversationIdRef.current = "conv-b";
     });
+    expect(harness.conversationMessagesRef.current).toEqual([]);
     await act(async () => {
       await result.current.loaders.loadConversationMessages("conv-b");
       resolveCreate?.({ conversation: conversation("conv-a") });
