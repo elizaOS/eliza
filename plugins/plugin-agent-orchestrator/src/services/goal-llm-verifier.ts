@@ -42,6 +42,7 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
+import { EVIDENCE_INCOMPLETE_MARKER } from "./completion-evidence.js";
 import type { EvidenceCapabilities } from "./producible-evidence.js";
 
 /** Stable identifier the verifier stamps onto the `validateTask` payload so
@@ -295,6 +296,17 @@ export interface GoalVerificationResult {
    *  when `passed` is true. Used by the orchestrator to compose a
    *  corrective follow-up prompt. */
   missing: string[];
+  /** Criteria the judge could not decide because the evidence for them was
+   *  CUT by the orchestrator (typed {@link EVIDENCE_INCOMPLETE_MARKER}) or the
+   *  whole prompt was rejected typed at the provider boundary. Distinct from
+   *  `missing`: an unverifiable criterion is NOT the worker's failure and must
+   *  never drive a defect-blaming correction. */
+  unverifiable: string[];
+  /** True when nothing was proven AND nothing was disproven — every undecided
+   *  criterion is `unverifiable` (incomplete evidence / typed overflow), none
+   *  is `missing`. Callers route this to the inconclusive re-engage path, not
+   *  the failed-verdict grill. */
+  inconclusive: boolean;
   /** Raw model response text, kept for the audit log and for tests. */
   rawResponse: string;
 }
@@ -306,18 +318,6 @@ const EMPTY_EVIDENCE_SUMMARY =
 const MALFORMED_RESPONSE_SUMMARY =
   "Verifier returned a response that could not be parsed; defaulting to fail.";
 
-// Sized to admit the full evidence bundle (24KB cap) — trimming the middle
-// of it was cutting FS-VERIFIED FILE CONTENTS exactly where content criteria
-// were judged (velvet-moth live park).
-const MAX_EVIDENCE_CHARS = 28_000;
-
-function trimEvidence(evidence: string): string {
-  if (evidence.length <= MAX_EVIDENCE_CHARS) return evidence;
-  const headSlice = Math.floor(MAX_EVIDENCE_CHARS * 0.6);
-  const tailSlice = MAX_EVIDENCE_CHARS - headSlice - 32;
-  return `${evidence.slice(0, headSlice)}\n\n[…evidence truncated…]\n\n${evidence.slice(-tailSlice)}`;
-}
-
 function bulletList(items: readonly string[]): string {
   return items.map((item, index) => `${index + 1}. ${item}`).join("\n");
 }
@@ -325,10 +325,19 @@ function bulletList(items: readonly string[]): string {
 /** The judge prompt. Kept deliberately small and structured so a small
  *  model can produce parseable JSON reliably, but written as a demanding,
  *  evidence-first manager: each criterion must be backed by CONCRETE PROOF in
- *  the evidence, not a plausible-sounding claim. */
+ *  the evidence, not a plausible-sounding claim.
+ *
+ *  PROMPT-INTEGRITY: the evidence is embedded COMPLETE — this builder never
+ *  truncates it (a middle-cut here shipped the judge a silent prefix, and a
+ *  provider's context limit is the real protocol boundary). Oversize prompts
+ *  are rejected TYPED at the provider dispatch boundary and
+ *  {@link verifyGoalCompletion} converts that rejection into an inconclusive
+ *  verdict. Where the ASSEMBLER had to cut (its own last-resort budget), the
+ *  cut arrives as the typed {@link EVIDENCE_INCOMPLETE_MARKER} and the
+ *  evidence-integrity rules below forbid judging the elided content. */
 export function buildVerificationPrompt(input: GoalVerificationInput): string {
   const criteria = bulletList(input.acceptanceCriteria);
-  const evidence = trimEvidence(input.completionEvidence.trim());
+  const evidence = input.completionEvidence.trim();
   return [
     "You are a demanding engineering manager doing final sign-off on a coding sub-agent's work before the parent agent marks the task done. Your job is to be skeptical, not agreeable: a task passes ONLY when the evidence PROVES every acceptance criterion, not when the sub-agent merely claims it.",
     "",
@@ -356,11 +365,17 @@ export function buildVerificationPrompt(input: GoalVerificationInput): string {
     "- Do not give the benefit of the doubt. When in doubt, mark it missing.",
     "- A criterion satisfied by inputs the sub-agent MANUFACTURED ITSELF FAILS: if the evidence shows it created or wrote the very file, config, dataset, or endpoint the task said to READ / FETCH / USE (or rewrote the program to consume a stand-in it made), the output is fabricated — mark the output criterion missing and say so in the summary.",
     "",
-    "Respond with a SINGLE JSON object and nothing else. Do not wrap it in ```. Schema:",
-    '{ "passed": <true|false>, "summary": "<one sentence under 200 chars>", "missing": ["<criterion text that was NOT proven>", ...] }',
+    `Evidence integrity — the evidence may contain the typed marker ${EVIDENCE_INCOMPLETE_MARKER} (or legacy cut markers such as "… [truncated]", "… [diff truncated]", "(changeset truncated)"). Each one means the ORCHESTRATOR cut the content there for size: the elided remainder exists but was not shown to you. Apply these rules strictly:`,
+    "- NEVER describe content that ends at a cut marker as malformed, broken, incomplete, or missing — you have not seen the remainder. A file, diff, or script that stops at a marker is NOT evidence of a syntax error, an unclosed tag, or absent code.",
+    "- NEVER fail a criterion because the proof for it would live in the elided content, and never invent a defect from a cut. Such a criterion is UNVERIFIABLE, not failed: list it in `unverifiable` and do NOT repeat it in `missing`.",
+    "- Criteria that the COMPLETE portions of the evidence do prove or disprove are judged normally.",
     "",
-    "`passed` MUST be false whenever `missing` is non-empty.",
-    "If and only if every criterion is backed by concrete proof in the evidence, `missing` must be an empty array and `passed` true.",
+    "Respond with a SINGLE JSON object and nothing else. Do not wrap it in ```. Schema:",
+    '{ "passed": <true|false>, "summary": "<one sentence under 200 chars>", "missing": ["<criterion text that was NOT proven>", ...], "unverifiable": ["<criterion text whose proof was cut from the evidence by the orchestrator>", ...] }',
+    "",
+    "`passed` MUST be false whenever `missing` or `unverifiable` is non-empty.",
+    "List a criterion in `unverifiable` ONLY when a cut marker actually hides the content that would decide it; omit the field or leave it empty otherwise.",
+    "If and only if every criterion is backed by concrete proof in the evidence, `missing` and `unverifiable` must be empty and `passed` true.",
   ].join("\n");
 }
 
@@ -368,6 +383,21 @@ interface ParsedJudgeResponse {
   passed: boolean;
   summary: string;
   missing: string[];
+  unverifiable: string[];
+  inconclusive: boolean;
+}
+
+/** Normalize a judge-reported criteria array: strings only, trimmed, deduped,
+ *  empties dropped. */
+function criteriaList(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return [
+    ...new Set(
+      raw
+        .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+        .filter((entry) => entry.length > 0),
+    ),
+  ];
 }
 
 function findFirstJsonObject(raw: string): string | null {
@@ -389,52 +419,50 @@ export function parseJudgeResponse(
   raw: string,
   acceptanceCriteria: readonly string[],
 ): ParsedJudgeResponse {
+  const malformed: ParsedJudgeResponse = {
+    passed: false,
+    summary: MALFORMED_RESPONSE_SUMMARY,
+    missing: [...acceptanceCriteria],
+    unverifiable: [],
+    inconclusive: false,
+  };
   const text = raw.trim();
   const jsonSlice = findFirstJsonObject(text);
-  if (!jsonSlice) {
-    return {
-      passed: false,
-      summary: MALFORMED_RESPONSE_SUMMARY,
-      missing: [...acceptanceCriteria],
-    };
-  }
+  if (!jsonSlice) return malformed;
   let parsed: unknown;
   try {
     parsed = JSON.parse(jsonSlice);
   } catch {
     // error-policy:J3 untrusted-input sanitizing — an unparseable model verdict
     // fails closed (passed:false, all criteria unmet), never a fake-valid pass.
-    return {
-      passed: false,
-      summary: MALFORMED_RESPONSE_SUMMARY,
-      missing: [...acceptanceCriteria],
-    };
+    return malformed;
   }
-  if (parsed === null || typeof parsed !== "object") {
-    return {
-      passed: false,
-      summary: MALFORMED_RESPONSE_SUMMARY,
-      missing: [...acceptanceCriteria],
-    };
-  }
+  if (parsed === null || typeof parsed !== "object") return malformed;
   const record = parsed as Record<string, unknown>;
   const passedRaw = record.passed;
   const summaryRaw = record.summary;
-  const missingRaw = record.missing;
-  const missing = Array.isArray(missingRaw)
-    ? missingRaw
-        .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-        .filter((entry) => entry.length > 0)
-    : [];
-  // Enforce the schema invariant: missing non-empty ⇒ passed false.
-  const passed = passedRaw === true && missing.length === 0;
+  const unverifiable = criteriaList(record.unverifiable);
+  // A criterion cannot be both undecidable-for-lack-of-evidence AND a proven
+  // gap — the unverifiable classification wins, so an incomplete-evidence
+  // criterion never feeds the defect-blaming correction loop.
+  const missing = criteriaList(record.missing).filter(
+    (entry) => !unverifiable.includes(entry),
+  );
+  // Enforce the schema invariant: missing or unverifiable non-empty ⇒ passed
+  // false (incomplete evidence never auto-passes either).
+  const passed =
+    passedRaw === true && missing.length === 0 && unverifiable.length === 0;
+  const inconclusive =
+    !passed && missing.length === 0 && unverifiable.length > 0;
   const summary =
     typeof summaryRaw === "string" && summaryRaw.trim().length > 0
       ? truncateWellFormed(toWellFormedUnicode(summaryRaw.trim()), 280)
       : passed
         ? "All acceptance criteria confirmed by verifier."
-        : "Verifier did not confirm every acceptance criterion.";
-  return { passed, summary, missing };
+        : inconclusive
+          ? "Verification inconclusive: the evidence for some criteria was incomplete (orchestrator cut); no criterion was judged as failed."
+          : "Verifier did not confirm every acceptance criterion.";
+  return { passed, summary, missing, unverifiable, inconclusive };
 }
 
 /**
@@ -453,6 +481,43 @@ export function parseJudgeResponse(
  * (live 2026-08-19). The abort is transient (the aborting turn ends in
  * seconds); one delayed retry answers it. Any other failure propagates.
  */
+/**
+ * Conservative typed context-overflow classifier for the verifier's one model
+ * call. Mirrors core's `utils/model-errors` taxonomy (not on the public
+ * `@elizaos/core` export surface): the planner-loop's typed
+ * `PROVIDER_CONTEXT_OVERFLOW` code wins outright, with the same unambiguous
+ * provider length-rejection phrases as the message fallback. Walks a bounded
+ * `cause` chain; ordinary 400s, schema errors, and rate limits never classify.
+ */
+const CONTEXT_OVERFLOW_PATTERNS: readonly RegExp[] = [
+  /reduce the length of the (?:messages|prompt|completion|input)/i,
+  /context_length_exceeded/i,
+  /maximum context length/i,
+  /prompt is too long/i,
+  /input (?:length|tokens?)[\s\S]{0,80}?exceed/i,
+];
+
+function isContextOverflowRejection(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  let node: unknown = error;
+  while (typeof node === "object" && node !== null && !seen.has(node)) {
+    seen.add(node);
+    if (seen.size > 12) return false;
+    const rec = node as { code?: unknown; message?: unknown; cause?: unknown };
+    if (rec.code === "PROVIDER_CONTEXT_OVERFLOW") return true;
+    if (
+      typeof rec.message === "string" &&
+      CONTEXT_OVERFLOW_PATTERNS.some((pattern) =>
+        pattern.test(rec.message as string),
+      )
+    ) {
+      return true;
+    }
+    node = rec.cause;
+  }
+  return false;
+}
+
 async function verifierModelCallWithAbortRetry(
   runtime: IAgentRuntime,
   prompt: string,
@@ -485,6 +550,8 @@ export async function verifyGoalCompletion(
       passed: true,
       summary: EMPTY_CRITERIA_SUMMARY,
       missing: [],
+      unverifiable: [],
+      inconclusive: false,
       rawResponse: "",
     };
   }
@@ -493,6 +560,8 @@ export async function verifyGoalCompletion(
       passed: false,
       summary: EMPTY_EVIDENCE_SUMMARY,
       missing: [...input.acceptanceCriteria],
+      unverifiable: [],
+      inconclusive: false,
       rawResponse: "",
     };
   }
@@ -502,6 +571,22 @@ export async function verifyGoalCompletion(
   try {
     raw = await verifierModelCallWithAbortRetry(runtime, prompt);
   } catch (err) {
+    if (isContextOverflowRejection(err)) {
+      // error-policy:J1 boundary translation — PROMPT-INTEGRITY: the prompt
+      // carries the evidence COMPLETE and the provider dispatch boundary owns
+      // oversize rejection. A typed overflow means NO criterion was judged at
+      // all, so the verdict is inconclusive (every criterion unverifiable) —
+      // never a defect-blaming fail fabricated from evidence nobody saw.
+      return {
+        passed: false,
+        summary:
+          "Verification inconclusive: the assembled evidence exceeded the verifier model's context limit, so no criterion was judged (typed overflow — not a worker failure).",
+        missing: [],
+        unverifiable: [...input.acceptanceCriteria],
+        inconclusive: true,
+        rawResponse: "",
+      };
+    }
     // error-policy:J1 boundary translation — a failed verifier model call
     // becomes a structured fail verdict naming the error, never a fake pass.
     const detail = err instanceof Error ? err.message : String(err);
@@ -509,6 +594,8 @@ export async function verifyGoalCompletion(
       passed: false,
       summary: `Verifier model call failed: ${truncateWellFormed(toWellFormedUnicode(detail), 200)}`,
       missing: [...input.acceptanceCriteria],
+      unverifiable: [],
+      inconclusive: false,
       rawResponse: "",
     };
   }

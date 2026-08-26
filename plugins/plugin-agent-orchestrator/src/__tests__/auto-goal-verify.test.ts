@@ -290,6 +290,48 @@ describe("auto goal verification on task_complete", () => {
     expect(doc?.task.status).not.toBe("done");
   });
 
+  it("routes an unverifiable-only judge verdict to the inconclusive path, never the defect grill (tj-92080304431050)", async () => {
+    // Live regression: the judge saw a diff cut mid-script and fabricated
+    // "malformed HTML". The verdict contract now forbids failing a criterion
+    // on absent evidence — an unverifiable-only verdict is inconclusive and
+    // must produce the non-blaming re-report request, not the failure grill.
+    const fake = makeFakeAcp();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId, sessionId } = await seedTaskWithSession(store, [
+      "the page shows a word counter",
+    ]);
+    const runtime = makeRuntime(fake.service, () =>
+      JSON.stringify({
+        passed: false,
+        summary: "The changeset was cut before the decisive content.",
+        missing: [],
+        unverifiable: ["the page shows a word counter"],
+      }),
+    );
+    const service = new OrchestratorTaskService(runtime as never, { store });
+    await service.start();
+
+    fake.emit(sessionId, "task_complete", { response: "built the page" });
+    await vi.waitFor(() => {
+      expect(fake.service.sendToSession).toHaveBeenCalled();
+    });
+    const lastSent = fake.sent.at(-1);
+    expect(lastSent?.text).toMatch(/INCONCLUSIVE/);
+    expect(lastSent?.text).toContain("- the page shows a word counter");
+    expect(lastSent?.text).toMatch(/NOTHING was judged as failed/);
+    // The defect-blaming failure grill must NOT fire.
+    expect(lastSent?.text).not.toMatch(/did not confirm the task is complete/);
+    expect(lastSent?.text).not.toMatch(/Evidence checklist/i);
+    const doc = await store.getTask(taskId);
+    expect(doc?.task.status).toBe("active");
+    expect(
+      doc?.events.some((e) => e.eventType === "auto_verify_inconclusive"),
+    ).toBe(true);
+    expect(doc?.events.some((e) => e.eventType === "auto_verify_failed")).toBe(
+      false,
+    );
+  });
+
   it("escalates the corrective tone on the second failure (attempt 2)", async () => {
     const fake = makeFakeAcp();
     const store = new OrchestratorTaskStore({ backend: "memory" });

@@ -158,12 +158,12 @@ describe("buildEvidenceStringFromInput (legacy signal-mining assembler)", () => 
       })),
       artifacts: [{ artifactType: "screenshot", title: "s", ref: "/x.png" }],
     });
-    // #21240 raised MAX_EVIDENCE_CHARS to 24_000 (plus the truncation marker).
-    // Oversized individual fields are clamped per-section ("[truncated]")
-    // before the global "[evidence truncated]" cap can fire, so assert the
-    // bound plus the per-section marker this fixture actually trips.
-    expect(evidence.length).toBeLessThanOrEqual(24_100);
-    expect(evidence).toContain("[truncated]");
+    // The evidence budget is a generous last resort (48_000) and every cut it
+    // makes is TYPED: the per-section clamp emits the [EVIDENCE-INCOMPLETE]
+    // marker the judge contract keys on, never a bare silent-prefix marker.
+    expect(evidence.length).toBeLessThanOrEqual(48_400);
+    expect(evidence).toContain("[EVIDENCE-INCOMPLETE]");
+    expect(evidence).not.toContain("… [truncated]");
   });
 });
 
@@ -233,13 +233,12 @@ describe("buildCompletionEvidenceString (typed bundle, #8894)", () => {
     expect(evidence).toContain("## GROUND TRUTH");
   });
 
-  it("keeps an oversized appended section inside the evidence cap", () => {
-    // #21240 raised MAX_EVIDENCE_CHARS to 24_000; oversize accordingly so the
-    // clamp is actually exercised.
+  it("keeps an oversized appended section inside the evidence cap, cut typed", () => {
     const evidence = appendCompletionEvidenceSection(
       "existing",
-      "x".repeat(40_000),
+      "x".repeat(80_000),
     );
-    expect(evidence.length).toBeLessThanOrEqual(24_000);
+    expect(evidence.length).toBeLessThanOrEqual(48_000);
+    expect(evidence).toContain("[EVIDENCE-INCOMPLETE]");
   });
 });

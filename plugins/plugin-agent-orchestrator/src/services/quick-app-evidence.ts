@@ -16,6 +16,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { clamp } from "./completion-evidence.js";
 import type { WorkdirRouteUrlMapping } from "./task-agent-routing.js";
 
 const MAX_CANDIDATE_PATHS = 64;
@@ -280,8 +281,10 @@ export function detectCheckSurfaces(
 
 const MAX_CONTENT_FILES = 3;
 // Typical quick-app files run 6-8KB; a 2KB cap cut them exactly where the
-// judged content lived (velvet-moth live park). 8KB covers the class whole.
-const MAX_CONTENT_CHARS = 8_000;
+// judged content lived (velvet-moth live park). 12KB covers the class whole,
+// and any remaining cut is TYPED via completion-evidence's clamp marker so
+// the judge never mistakes a prefix for the full file (tj-92080304431050).
+const MAX_CONTENT_CHARS = 12_000;
 /** Text-asset extensions worth showing the judge verbatim. */
 const TEXT_CONTENT_RE = /\.(?:html?|css|js|svg|md|txt|json)$/i;
 
@@ -319,10 +322,9 @@ export function readFsVerifiedContents(
     if (content === undefined) continue;
     out.push({
       path: relative,
-      content:
-        content.length > MAX_CONTENT_CHARS
-          ? `${content.slice(0, MAX_CONTENT_CHARS)}\n… [truncated]`
-          : content,
+      // clamp declares any cut with the typed [EVIDENCE-INCOMPLETE] marker
+      // (whole-line boundary), so a cut file can never read as malformed.
+      content: clamp(content, MAX_CONTENT_CHARS),
     });
   }
   return out;

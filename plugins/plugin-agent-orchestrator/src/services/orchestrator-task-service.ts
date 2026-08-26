@@ -6193,6 +6193,31 @@ export class OrchestratorTaskService extends Service {
         return;
       }
 
+      if (verdict.inconclusive) {
+        // Typed-incomplete evidence or a provider context overflow: NO
+        // criterion was judged as failed — grilling the worker over the
+        // orchestrator's own evidence cut fabricates blame (live
+        // tj-92080304431050: a diff cut mid-script was judged "malformed
+        // HTML"). Route through the shared inconclusive path instead: a
+        // bounded non-blaming re-report request, parking at the cap.
+        await this.reEngageOrEscalate({
+          taskId,
+          sessionId,
+          correction: [
+            "Automatic verification was INCONCLUSIVE — the orchestrator could not fit enough evidence into the verifier to judge these criteria (its own size limits cut the evidence; NOTHING was judged as failed):",
+            ...verdict.unverifiable.map((criterion) => `- ${criterion}`),
+            "",
+            "Re-report your completion with the DECISIVE proof per criterion pasted inline and kept concise — the passing test/build summary line, the deliverable file path, the reachable URL — not full transcripts, so the evidence fits and can be judged.",
+          ].join("\n"),
+          eventType: "auto_verify_inconclusive",
+          verifier: LLM_GOAL_VERIFIER_NAME,
+          summary: verdict.summary,
+          missing: verdict.unverifiable,
+          attempt: attempts,
+        });
+        return;
+      }
+
       await this.reEngageOrEscalate({
         taskId,
         sessionId,

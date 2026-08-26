@@ -24,9 +24,15 @@
  *     task/session, so UI and agent-behavior criteria have something to cite.
  *
  * Pure (no IO): the caller gathers the inputs (durable store + live ACP session
- * metadata) and hands them in. The whole assembly is null-safe and size-capped
- * so it can be fed straight into the verifier without blowing the prompt
- * budget.
+ * metadata) and hands them in. The whole assembly is null-safe.
+ *
+ * PROMPT-INTEGRITY: evidence ships COMPLETE. The generous last-resort size
+ * guards exist only for genuinely pathological inputs, and every cut they make
+ * is declared with the typed {@link EVIDENCE_INCOMPLETE_MARKER} — never a
+ * silent prefix. The verifier's prompt contract keys on that marker: a
+ * criterion whose proof was elided is judged unverifiable (inconclusive), not
+ * failed, and NEVER read as a defect in the work (live tj-92080304431050: a
+ * diff cut mid-`<script>` was judged "malformed HTML" — the file was fine).
  *
  * @module services/completion-evidence
  */
@@ -154,18 +160,48 @@ export interface CompletionEvidenceBundle {
   trajectoryPath?: string;
 }
 
-/** Total cap for the assembled evidence string. Sits under the verifier's own
- *  {@link trimEvidence} budget so the section structure survives intact. */
-const MAX_EVIDENCE_CHARS = 24_000;
-const MAX_DIFF_CHARS = 3_000;
-const MAX_DELIVERABLE_CHARS = 1_500;
-const MAX_REPLY_CHARS = 1_500;
+/**
+ * Total cap for the assembled evidence string. PROMPT-INTEGRITY: verifier
+ * evidence ships COMPLETE — the provider dispatch boundary owns oversize
+ * rejection (typed context-overflow), so this local cap is a last-resort guard
+ * sized far above any realistic bundle, and every cut it (or a per-section cap)
+ * makes is declared with the typed {@link EVIDENCE_INCOMPLETE_MARKER}, never a
+ * silent prefix a judge could mistake for the whole artifact (live
+ * tj-92080304431050: a diff cut mid-`<script>` was judged "malformed HTML").
+ */
+const MAX_EVIDENCE_CHARS = 48_000;
+/** Sized ABOVE workspace-diff's capture cap (6_000) so the renderer never
+ *  re-cuts a diff the capture layer already shipped whole — the only diff cut
+ *  left is capture's own, which arrives typed via `changeSet.truncated`. */
+const MAX_DIFF_CHARS = 12_000;
+const MAX_DELIVERABLE_CHARS = 6_000;
+const MAX_REPLY_CHARS = 6_000;
 const MAX_SIGNAL_LINES = 40;
 const MAX_SIGNAL_CHARS = 2_000;
 const MAX_URLS = 12;
 const MAX_ARTIFACTS = 20;
 /** Per-tool-output-field cap (test/build/lint/raw each). */
-const MAX_TOOL_OUTPUT_CHARS = 2_000;
+const MAX_TOOL_OUTPUT_CHARS = 6_000;
+/** Cap for the raw session-output tail section. */
+const MAX_RUN_OUTPUT_CHARS = 8_000;
+
+/**
+ * Typed evidence-incompleteness marker (PROMPT-INTEGRITY). Whenever the
+ * orchestrator cannot ship a piece of evidence COMPLETE, the cut is declared
+ * with this exact token so the judge knows the elided remainder is the
+ * ORCHESTRATOR'S size budget — never the sub-agent's omission, and never a
+ * property of the work itself. The goal verifier's prompt contract keys on it:
+ * criteria whose proof would live in elided content are reported as
+ * `unverifiable` (an inconclusive verdict), never failed and never described
+ * as defective.
+ */
+export const EVIDENCE_INCOMPLETE_MARKER = "[EVIDENCE-INCOMPLETE]";
+
+/** One-line typed incompleteness note for a specific cut, in the exact shape
+ *  the verifier prompt contract describes. */
+export function evidenceIncompleteNote(what: string): string {
+  return `${EVIDENCE_INCOMPLETE_MARKER} ${what} — the orchestrator withheld the remainder for size; the elided content is unknown to the judge and MUST NOT be treated as missing work or as a defect.`;
+}
 
 /**
  * Append a verifier-produced section without replacing the evidence assembled
@@ -185,11 +221,11 @@ export function appendCompletionEvidenceSection(
     return `${base}${separator}${addition}`;
   }
   if (addition.length >= MAX_EVIDENCE_CHARS) {
-    const marker = "\n… [truncated]";
+    const marker = `\n${evidenceIncompleteNote("appended section cut at the evidence budget")}`;
     const wellFormedAddition = toWellFormedUnicode(addition);
     return `${truncateWellFormed(wellFormedAddition, MAX_EVIDENCE_CHARS - marker.length)}${marker}`;
   }
-  const marker = "\n… [evidence truncated]";
+  const marker = `\n${evidenceIncompleteNote("older evidence above cut to fit the appended section")}`;
   const available = Math.max(
     0,
     MAX_EVIDENCE_CHARS - addition.length - separator.length - marker.length,
@@ -222,7 +258,17 @@ export function clamp(text: string, max: number): string {
   const trimmed = text.trim();
   const wellFormed = toWellFormedUnicode(trimmed);
   if (wellFormed.length <= max) return wellFormed;
-  return `${truncateWellFormed(wellFormed, max)}\n… [truncated]`;
+  let head = truncateWellFormed(wellFormed, max);
+  // Prefer a whole-line cut: a mid-line prefix reads like broken source and a
+  // judge has fabricated a defect from one (live tj-92080304431050 — a diff
+  // cut at `document.` was judged "malformed HTML, missing closing brackets").
+  const lastNewline = head.lastIndexOf("\n");
+  if (lastNewline > 0 && lastNewline >= max - 400) {
+    head = head.slice(0, lastNewline);
+  }
+  return `${head}\n${evidenceIncompleteNote(
+    `content cut after ${head.length} of ${wellFormed.length} characters`,
+  )}`;
 }
 
 /** Markers that class a signal as TEST output (vitest/jest run, suite result). */
@@ -277,7 +323,9 @@ export function classifyToolOutput(
     for (const match of signal.text.matchAll(
       /\[tool output:[^\]]*\]([\s\S]*?)\[\/tool output\]/g,
     )) {
-      const inner = (match[1] ?? "").trim().slice(0, 2_000);
+      // Typed cut, not a silent prefix: this is verbatim tool stdout the
+      // judge treats as ground truth, so any elision must be declared.
+      const inner = clamp((match[1] ?? "").trim(), MAX_TOOL_OUTPUT_CHARS);
       if (inner && !seen.has(inner)) {
         seen.add(inner);
         buckets.raw.push(inner);
@@ -340,7 +388,16 @@ export function renderChangeSetBody(changeSet: WorkspaceChangeSet): string {
     lines.push("diff:");
     lines.push(clamp(changeSet.diff, MAX_DIFF_CHARS));
   }
-  if (changeSet.truncated) lines.push("(changeset truncated)");
+  if (changeSet.truncated) {
+    // The capture layer (workspace-diff) could not ship the change set whole —
+    // surface that as the TYPED incompleteness marker the judge contract keys
+    // on, not a bare parenthetical a model can read past.
+    lines.push(
+      evidenceIncompleteNote(
+        "changeset incomplete — the diff/file list above was capped at capture",
+      ),
+    );
+  }
   return lines.join("\n");
 }
 
@@ -472,7 +529,7 @@ export function buildCompletionEvidenceString(
     sections.push(
       [
         "## RUN OUTPUT (raw session output captured by the orchestrator)",
-        clamp(runOutput, 4_000),
+        clamp(runOutput, MAX_RUN_OUTPUT_CHARS),
       ].join("\n"),
     );
     hasRicherSection = true;
@@ -599,7 +656,7 @@ export function buildCompletionEvidenceString(
   const assembled = sections.join("\n\n");
   const wellFormed = toWellFormedUnicode(assembled);
   return wellFormed.length > MAX_EVIDENCE_CHARS
-    ? `${truncateWellFormed(wellFormed, MAX_EVIDENCE_CHARS)}\n… [evidence truncated]`
+    ? `${truncateWellFormed(wellFormed, MAX_EVIDENCE_CHARS)}\n${evidenceIncompleteNote("evidence bundle cut at the total budget")}`
     : wellFormed;
 }
 
@@ -681,6 +738,6 @@ export function buildEvidenceStringFromInput(
 
   const assembled = sections.join("\n\n");
   return assembled.length > MAX_EVIDENCE_CHARS
-    ? `${assembled.slice(0, MAX_EVIDENCE_CHARS)}\n… [evidence truncated]`
+    ? `${truncateWellFormed(toWellFormedUnicode(assembled), MAX_EVIDENCE_CHARS)}\n${evidenceIncompleteNote("evidence cut at the total budget")}`
     : assembled;
 }

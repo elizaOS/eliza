@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  buildIndependentVerifierPrompt,
   shouldRunIndependentVerify,
   verdictFromEnvelope,
 } from "../../src/services/independent-verifier.js";
@@ -12,6 +13,31 @@ import {
 // agent's self-reported completion. Pin the verdict logic + the enable gate.
 const env = (o: Record<string, unknown>) =>
   o as unknown as Parameters<typeof verdictFromEnvelope>[0];
+
+describe("buildIndependentVerifierPrompt", () => {
+  it("tells the verifier the claimed-change excerpt may be cut and to judge the real diff", () => {
+    // PROMPT-INTEGRITY: the diffSummary can carry typed cut markers; the
+    // verifier must never report a defect that exists only because the
+    // excerpt ends early — it has the workspace and judges by execution.
+    const prompt = buildIndependentVerifierPrompt({
+      goal: "ship it",
+      acceptanceCriteria: ["tests pass"],
+      diffSummary: "diffstat: 1 file changed\ndiff:\n+const x = 1;",
+    });
+    expect(prompt).toContain("--- Claimed change ---");
+    expect(prompt).toMatch(/this excerpt may be cut for size/i);
+    expect(prompt).toMatch(/NEVER report a defect that exists only because/i);
+  });
+
+  it("omits the excerpt caveat when there is no claimed change", () => {
+    const prompt = buildIndependentVerifierPrompt({
+      goal: "ship it",
+      acceptanceCriteria: ["tests pass"],
+    });
+    expect(prompt).not.toContain("--- Claimed change ---");
+    expect(prompt).not.toMatch(/excerpt may be cut/i);
+  });
+});
 
 describe("verdictFromEnvelope", () => {
   it("passes only when every criterion is met and every command is green", () => {

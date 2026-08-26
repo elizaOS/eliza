@@ -8,6 +8,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { EVIDENCE_INCOMPLETE_MARKER } from "../../src/services/completion-evidence.js";
 import {
   buildAutoVerifyCorrection,
   buildVerificationPrompt,
@@ -78,17 +79,34 @@ describe("buildVerificationPrompt", () => {
     expect(prompt).toMatch(/"passed": <true\|false>/);
   });
 
-  it("truncates very long completion evidence to keep the prompt bounded", () => {
-    // #21240 raised the verifier evidence budget to 28_000 chars; oversize
-    // beyond it so head+tail truncation actually fires.
-    const longEvidence = "X".repeat(40_000);
+  it("embeds oversize evidence COMPLETE — no local truncation (provider boundary owns oversize)", () => {
+    // PROMPT-INTEGRITY: the old head+tail middle-cut shipped the judge a
+    // silent prefix (live tj-92080304431050 fabricated "malformed HTML" from
+    // one). The builder must never cut; a genuinely oversize prompt is
+    // rejected TYPED at the provider dispatch boundary instead.
+    const middle = `MIDDLE-SENTINEL-${"m".repeat(50)}`;
+    const longEvidence = `${"X".repeat(20_000)}\n${middle}\n${"Y".repeat(20_000)}\nEND-SENTINEL`;
     const prompt = buildVerificationPrompt({
       goal: "X",
       acceptanceCriteria: ["c"],
       completionEvidence: longEvidence,
     });
-    expect(prompt).toMatch(/\[…evidence truncated…\]/);
-    expect(prompt.length).toBeLessThan(40_000);
+    expect(prompt).toContain(middle);
+    expect(prompt).toContain("END-SENTINEL");
+    expect(prompt).toContain(longEvidence);
+    expect(prompt).not.toMatch(/\[…evidence truncated…\]/);
+  });
+
+  it("carries evidence-integrity rules for the typed incomplete marker", () => {
+    const prompt = buildVerificationPrompt({
+      goal: "X",
+      acceptanceCriteria: ["c"],
+      completionEvidence: "e",
+    });
+    expect(prompt).toContain(EVIDENCE_INCOMPLETE_MARKER);
+    expect(prompt).toMatch(/NEVER describe content that ends at a cut marker/);
+    expect(prompt).toMatch(/UNVERIFIABLE, not failed/);
+    expect(prompt).toMatch(/list it in `unverifiable`/);
   });
 
   it("demands concrete proof per criterion and rejects unproven claims", () => {
@@ -126,7 +144,7 @@ describe("buildVerificationPrompt", () => {
     expect(prompt).toMatch(/localhost \/ 127\.0\.0\.1 \/ ::1 do NOT count/);
   });
 
-  it("preserves the existing {passed,summary,missing} JSON schema unchanged", () => {
+  it("declares the {passed,summary,missing,unverifiable} JSON schema", () => {
     const prompt = buildVerificationPrompt({
       goal: "X",
       acceptanceCriteria: ["c"],
@@ -135,9 +153,10 @@ describe("buildVerificationPrompt", () => {
     expect(prompt).toMatch(/"passed": <true\|false>/);
     expect(prompt).toMatch(/"summary":/);
     expect(prompt).toMatch(/"missing":/);
+    expect(prompt).toMatch(/"unverifiable":/);
     expect(prompt).toMatch(/SINGLE JSON object/);
     expect(prompt).toMatch(
-      /`passed` MUST be false whenever `missing` is non-empty/,
+      /`passed` MUST be false whenever `missing` or `unverifiable` is non-empty/,
     );
   });
 });
@@ -361,6 +380,51 @@ describe("parseJudgeResponse", () => {
     );
     expect(parsed.summary.length).toBe(280);
   });
+
+  it("an unverifiable-only verdict is inconclusive, not a failed criterion", () => {
+    // The tj-92080304431050 regression contract: incomplete evidence must
+    // route to the inconclusive path, never to the defect-blaming grill.
+    const parsed = parseJudgeResponse(
+      '{"passed": false, "summary": "diff was cut", "missing": [], "unverifiable": ["the page shows a word counter"]}',
+      ["the page shows a word counter"],
+    );
+    expect(parsed.passed).toBe(false);
+    expect(parsed.inconclusive).toBe(true);
+    expect(parsed.missing).toEqual([]);
+    expect(parsed.unverifiable).toEqual(["the page shows a word counter"]);
+  });
+
+  it("unverifiable wins when the model lists a criterion in both arrays", () => {
+    const parsed = parseJudgeResponse(
+      '{"passed": false, "summary": "s", "missing": ["c1", "c2"], "unverifiable": ["c1"]}',
+      ["c1", "c2"],
+    );
+    expect(parsed.missing).toEqual(["c2"]);
+    expect(parsed.unverifiable).toEqual(["c1"]);
+    // A real proven gap remains — the verdict is a genuine fail, not inconclusive.
+    expect(parsed.inconclusive).toBe(false);
+    expect(parsed.passed).toBe(false);
+  });
+
+  it("treats passed=true + non-empty unverifiable as not passed (no auto-pass on incomplete evidence)", () => {
+    const parsed = parseJudgeResponse(
+      '{"passed": true, "summary": "s", "missing": [], "unverifiable": ["c1"]}',
+      ["c1"],
+    );
+    expect(parsed.passed).toBe(false);
+    expect(parsed.inconclusive).toBe(true);
+  });
+
+  it("a response without the unverifiable field parses exactly as before", () => {
+    const parsed = parseJudgeResponse(
+      '{"passed": false, "summary": "no proof", "missing": ["c1"]}',
+      ["c1"],
+    );
+    expect(parsed.passed).toBe(false);
+    expect(parsed.missing).toEqual(["c1"]);
+    expect(parsed.unverifiable).toEqual([]);
+    expect(parsed.inconclusive).toBe(false);
+  });
 });
 
 describe("verifyGoalCompletion (orchestration paths)", () => {
@@ -441,6 +505,45 @@ describe("verifyGoalCompletion (orchestration paths)", () => {
     expect(result.summary).toMatch(/provider down/);
     expect(result.missing).toEqual(["c1"]);
     expect(result.rawResponse).toBe("");
+    expect(result.inconclusive).toBe(false);
+  });
+
+  it("a typed provider context-overflow rejection yields an inconclusive verdict, never criterion blame", async () => {
+    // PROMPT-INTEGRITY: complete evidence in the prompt; the provider dispatch
+    // boundary owns oversize rejection. When it rejects, nothing was judged —
+    // failing criteria here would fabricate blame from evidence nobody saw.
+    const overflow = new Error(
+      "prompt is too long: 210021 tokens > 204698 maximum",
+    );
+    const runtime = makeMockRuntime({ shouldThrow: overflow });
+    const result = await verifyGoalCompletion(runtime, {
+      goal: "x",
+      acceptanceCriteria: ["c1", "c2"],
+      completionEvidence: "e".repeat(100),
+    });
+    expect(result.passed).toBe(false);
+    expect(result.inconclusive).toBe(true);
+    expect(result.missing).toEqual([]);
+    expect(result.unverifiable).toEqual(["c1", "c2"]);
+    expect(result.summary).toMatch(/inconclusive/i);
+    expect(result.summary).toMatch(/context limit/i);
+  });
+
+  it("classifies the planner-loop's typed PROVIDER_CONTEXT_OVERFLOW code, including on the cause chain", async () => {
+    const inner = Object.assign(new Error("model call failed"), {
+      code: "PROVIDER_CONTEXT_OVERFLOW",
+    });
+    const wrapped = new Error("useModel failed");
+    (wrapped as { cause?: unknown }).cause = inner;
+    const runtime = makeMockRuntime({ shouldThrow: wrapped });
+    const result = await verifyGoalCompletion(runtime, {
+      goal: "x",
+      acceptanceCriteria: ["c1"],
+      completionEvidence: "evidence",
+    });
+    expect(result.inconclusive).toBe(true);
+    expect(result.missing).toEqual([]);
+    expect(result.unverifiable).toEqual(["c1"]);
   });
 
   it("returns a passed verdict on a clean model response", async () => {

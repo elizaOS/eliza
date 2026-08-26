@@ -35,7 +35,16 @@ export function buildIndependentVerifierPrompt(input: {
     "",
     "--- Goal ---",
     input.goal.trim(),
-    ...(input.diffSummary ? ["--- Claimed change ---", input.diffSummary] : []),
+    ...(input.diffSummary
+      ? [
+          "--- Claimed change ---",
+          input.diffSummary,
+          // PROMPT-INTEGRITY: the excerpt above may carry typed cut markers
+          // (e.g. "[EVIDENCE-INCOMPLETE]"). This verifier has the workspace —
+          // the excerpt is orientation only, never the object under judgment.
+          "Note: this excerpt may be cut for size. Verify against the REAL `git diff` and files in the workspace — NEVER report a defect that exists only because the excerpt above ends early.",
+        ]
+      : []),
     "--- Acceptance Criteria ---",
     criteria,
     "",

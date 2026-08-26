@@ -167,7 +167,7 @@ describe("readFsVerifiedContents (reed-marsh content criteria)", () => {
         path.join(appDir, "style.css"),
         "body { background: linear-gradient(#3aa8a0, #0f2f2c); }",
       );
-      fs.writeFileSync(path.join(appDir, "big.css"), "x".repeat(9000));
+      fs.writeFileSync(path.join(appDir, "big.css"), "x".repeat(13000));
       fs.writeFileSync(path.join(appDir, "img.png"), "notreally");
 
       const contents = readFsVerifiedContents(workdir, [
@@ -181,8 +181,9 @@ describe("readFsVerifiedContents (reed-marsh content criteria)", () => {
         "data/apps/reed-marsh/big.css",
       ]);
       expect(contents[0]?.content).toContain("linear-gradient(#3aa8a0");
-      expect(contents[1]?.content).toContain("[truncated]");
-      expect(contents[1]?.content.length).toBeLessThan(8200);
+      // Any cut is declared with the TYPED marker the judge contract keys on.
+      expect(contents[1]?.content).toContain("[EVIDENCE-INCOMPLETE]");
+      expect(contents[1]?.content.length).toBeLessThan(12_400);
       // A typical 6-8KB quick-app file must survive whole (velvet-moth park).
       const typical = path.join(appDir, "typical.js");
       fs.writeFileSync(typical, "y".repeat(7000));
@@ -190,7 +191,7 @@ describe("readFsVerifiedContents (reed-marsh content criteria)", () => {
         "data/apps/reed-marsh/typical.js",
       ]);
       expect(whole?.content).toHaveLength(7000);
-      expect(whole?.content).not.toContain("[truncated]");
+      expect(whole?.content).not.toContain("[EVIDENCE-INCOMPLETE]");
     } finally {
       fs.rmSync(workdir, { recursive: true, force: true });
     }

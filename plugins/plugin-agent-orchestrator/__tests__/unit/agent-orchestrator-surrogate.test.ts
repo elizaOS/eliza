@@ -87,7 +87,8 @@ describe("agent-orchestrator surrogate safety", () => {
       const text = `${"a".repeat(99)}🦊${"b".repeat(20)}`;
       const clamped = clamp(text, 100);
       expect(clamped.isWellFormed()).toBe(true);
-      expect(clamped).toContain(`${"a".repeat(99)}\n… [truncated]`);
+      // Cuts are declared with the typed incompleteness marker.
+      expect(clamped).toContain(`${"a".repeat(99)}\n[EVIDENCE-INCOMPLETE]`);
     });
 
     it("preserves well-formed Unicode in buildEvidenceStringFromInput", () => {

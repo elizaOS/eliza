@@ -52,7 +52,34 @@ describe("renderChangeSetBody", () => {
     expect(out).not.toContain("diff:");
   });
 
-  it("appends a truncation marker when the changeset was truncated", () => {
+  it("renders a ~4KB single-file diff WHOLE — no renderer re-cut (tj-92080304431050 regression)", () => {
+    // Live incident: a 3.9KB word-counter diff was re-cut at the renderer's
+    // old 3_000 cap, mid-<script> ("const wordCountEl = document."), and the
+    // judge fabricated "malformed HTML (missing closing brackets)". The
+    // renderer allowance now sits above the capture cap, so anything capture
+    // shipped whole stays whole.
+    const script =
+      "+        const wordCountEl = document.getElementById('wordCount');\n".repeat(
+        60,
+      );
+    const diff = `diff --git a/index.html b/index.html\n${script}+    </script>\n+</body>\n+</html>`;
+    expect(diff.length).toBeGreaterThan(3_000);
+    const out = renderChangeSetBody(
+      cs({
+        changedFiles: ["index.html"],
+        diffStat: "1 file changed",
+        diff,
+        truncated: false,
+      }),
+    );
+    expect(out).toContain("+</html>");
+    expect(out).not.toContain("[EVIDENCE-INCOMPLETE]");
+  });
+
+  it("appends the typed incompleteness marker when the changeset was truncated", () => {
+    // PROMPT-INTEGRITY: a capture-layer cut must reach the judge as the typed
+    // [EVIDENCE-INCOMPLETE] marker its prompt contract keys on, not a bare
+    // parenthetical it can read past.
     const out = renderChangeSetBody(
       cs({
         changedFiles: ["a.ts"],
@@ -61,6 +88,11 @@ describe("renderChangeSetBody", () => {
         truncated: true,
       }),
     );
-    expect(out.endsWith("(changeset truncated)")).toBe(true);
+    const lastLine = out.split("\n").at(-1) ?? "";
+    expect(lastLine.startsWith("[EVIDENCE-INCOMPLETE]")).toBe(true);
+    expect(lastLine).toContain("changeset incomplete");
+    expect(lastLine).toMatch(
+      /MUST NOT be treated as missing work or as a defect/,
+    );
   });
 });
