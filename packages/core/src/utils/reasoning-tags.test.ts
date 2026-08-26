@@ -15,6 +15,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	extractReasoningBlocks,
 	findNextCloseTag,
 	findNextOpenTag,
 	hasReasoningResidue,
@@ -169,5 +170,44 @@ describe("malformed-residue scanning stays bounded", () => {
 		expect(stripPairedTagBlocks(hostile, ALT)).toBe(hostile);
 		expect(hasReasoningResidue(hostile)).toBe(true);
 		expect(Date.now() - started).toBeLessThan(2_000);
+	});
+});
+
+describe("extractReasoningBlocks", () => {
+	it("extracts reasoning blocks and separates clean text", () => {
+		const text = "Hello <think>internal reasoning step</think> World!";
+		const result = extractReasoningBlocks(text);
+		expect(result).toEqual({
+			reasoning: ["internal reasoning step"],
+			cleanText: "Hello  World!",
+		});
+	});
+
+	it("extracts multiple reasoning blocks", () => {
+		const text =
+			"<thought>Step 1</thought>First part <reflection>Step 2</reflection>Second part";
+		const result = extractReasoningBlocks(text);
+		expect(result.reasoning).toEqual(["Step 1", "Step 2"]);
+		expect(result.cleanText).toBe("First part Second part");
+	});
+
+	it("returns empty reasoning when no tags are present", () => {
+		const text = "Plain text response";
+		const result = extractReasoningBlocks(text);
+		expect(result).toEqual({
+			reasoning: [],
+			cleanText: "Plain text response",
+		});
+	});
+
+	it("safely handles empty or non-string inputs", () => {
+		expect(extractReasoningBlocks("")).toEqual({
+			reasoning: [],
+			cleanText: "",
+		});
+		expect(extractReasoningBlocks(null as unknown as string)).toEqual({
+			reasoning: [],
+			cleanText: "",
+		});
 	});
 });

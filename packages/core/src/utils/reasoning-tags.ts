@@ -215,3 +215,48 @@ export function stripReasoningPrefixes(text: string): string {
 export function hasReasoningResidue(text: string): boolean {
 	return REASONING_TAG_PREFIX_TEST_RE.test(text);
 }
+
+/**
+ * Extracts inner reasoning content from tagged blocks and returns the cleaned text.
+ */
+export function extractReasoningBlocks(
+	text: string,
+	tagAlternation: string = REASONING_TAG_ALTERNATION,
+): { reasoning: string[]; cleanText: string } {
+	if (typeof text !== "string" || !text) {
+		return { reasoning: [], cleanText: "" };
+	}
+	const reasoning: string[] = [];
+	let lastCloseEnd = -1;
+	for (
+		let close = findNextCloseTag(text, 0, tagAlternation);
+		close;
+		close = findNextCloseTag(text, close.end, tagAlternation)
+	) {
+		lastCloseEnd = close.end;
+	}
+
+	if (lastCloseEnd < 0) {
+		return { reasoning: [], cleanText: text };
+	}
+
+	let cleanText = "";
+	let cursor = 0;
+	let pos = 0;
+	while (pos < lastCloseEnd) {
+		const open = findNextOpenTag(text, pos, tagAlternation);
+		if (!open || open.start >= lastCloseEnd) break;
+		const close = findNextCloseTag(text, open.end, tagAlternation);
+		if (!close || close.end > lastCloseEnd) break;
+
+		cleanText += text.slice(cursor, open.start);
+		const blockContent = text.slice(open.end, close.start).trim();
+		if (blockContent) {
+			reasoning.push(blockContent);
+		}
+		cursor = close.end;
+		pos = close.end;
+	}
+	cleanText += text.slice(cursor);
+	return { reasoning, cleanText: cleanText.trim() };
+}
