@@ -45,11 +45,14 @@ const DEFAULT_MAX_TOKENS_PER_PHRASE = 30;
 function parsePositiveMs(raw: string | undefined): number | null {
 	if (!raw) return null;
 	const trimmed = raw.trim();
-	// Strict full-string decimal parse. Number.parseInt accepts partial
-	// matches ("1e3" → 1, "700ms" → 700, "0x10" → 0), silently shrinking the
-	// flush budget (or disabling it) on a typo'd env var and fragmenting
-	// TTS output into word-sized phrases.
-	if (!/^\d+(?:\.\d+)?$/.test(trimmed)) return null;
+	// Strict full-string parse. Number.parseInt accepts partial matches
+	// ("1e3" → 1, "700ms" → 700, "0x10" → 0), silently shrinking the flush
+	// budget (or disabling it) on a typo'd env var and fragmenting TTS
+	// output into word-sized phrases. A canonical positive-integer grammar
+	// also rejects fractional values ("0.1"): the first-budget path derives
+	// `ceil(full/2)` from it, so a sub-millisecond budget would flush the
+	// opening of every reply near-instantly instead of merely being short.
+	if (!/^\d+$/.test(trimmed)) return null;
 	const v = Number(trimmed);
 	return Number.isFinite(v) && v > 0 ? v : null;
 }

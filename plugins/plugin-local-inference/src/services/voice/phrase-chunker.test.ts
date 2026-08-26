@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { chunkTokens, PhraseChunker } from "./phrase-chunker";
 
 type Clock = () => number;
@@ -125,6 +125,28 @@ describe("PhraseChunker time-budget flush (injected clock)", () => {
 		expect(chunker.msUntilTimeBudget()).toBe(Number.POSITIVE_INFINITY);
 	});
 
+	it("resets the first-phrase gate on reset() so each reply gets fast first audio", () => {
+		const { clock, set } = makeClock();
+		const chunker = new PhraseChunker({ maxAccumulationMs: 700 }, null, clock);
+		chunker.push({ text: "a", index: 0, acceptedAt: 0 });
+		set(350);
+		expect(chunker.flushIfTimeBudgetExceeded()?.text).toBe("a");
+
+		chunker.push({ text: "b", index: 1, acceptedAt: 0 });
+		set(351);
+		expect(chunker.flushIfTimeBudgetExceeded()).toBeNull();
+		set(1050);
+		expect(chunker.flushIfTimeBudgetExceeded()?.text).toBe("b");
+
+		// After reset(), the next reply starts on the shorter first budget again.
+		chunker.reset();
+		chunker.push({ text: "c", index: 0, acceptedAt: 0 });
+		set(1399);
+		expect(chunker.flushIfTimeBudgetExceeded()).toBeNull();
+		set(1400);
+		expect(chunker.flushIfTimeBudgetExceeded()?.text).toBe("c");
+	});
+
 	it("reports ms until budget via msUntilTimeBudget", () => {
 		const { clock, set } = makeClock();
 		const chunker = new PhraseChunker(
@@ -202,6 +224,10 @@ describe("chunkTokens static helper", () => {
 });
 
 describe("ELIZA_PHRASE_FLUSH_MS env parsing (strict numeric)", () => {
+	beforeEach(() => {
+		vi.resetModules();
+	});
+
 	afterEach(() => {
 		vi.unstubAllEnvs();
 		vi.resetModules();
@@ -230,7 +256,28 @@ describe("ELIZA_PHRASE_FLUSH_MS env parsing (strict numeric)", () => {
 	});
 
 	it("falls back to 700 for suffix-mixed garbage", async () => {
-		vi.stubEnv("ELIZA_PHRASE_FLUSH_MS", "700ms");
+		vi.stubEnv("ELIZA_PHRASE_FLUSH_MS", "1200ms");
+		const { PhraseChunker: FreshChunker } = await fresh();
+		const { clock, set } = makeClock();
+		const chunker = new FreshChunker(
+			{ firstPhraseMaxAccumulationMs: 700 },
+			null,
+			clock,
+		);
+		chunker.push({ text: "a", index: 0, acceptedAt: 0 });
+		// A suffix-swallowing parse would install a 1200ms budget; the strict
+		// full-string parse falls back to the 700ms default instead.
+		set(699);
+		expect(chunker.flushIfTimeBudgetExceeded()).toBeNull();
+		set(700);
+		expect(chunker.flushIfTimeBudgetExceeded()?.terminator).toBe("max-cap");
+	});
+
+	it("falls back to 700 for a sub-millisecond fractional value", async () => {
+		// "0.1" previously passed the decimal grammar; the first-budget path
+		// derived ceil(0.1/2)=1ms from it, so the opening of every reply
+		// flushed near-instantly and fragmented spoken output in production.
+		vi.stubEnv("ELIZA_PHRASE_FLUSH_MS", "0.1");
 		const { PhraseChunker: FreshChunker } = await fresh();
 		const { clock, set } = makeClock();
 		const chunker = new FreshChunker(
@@ -245,7 +292,7 @@ describe("ELIZA_PHRASE_FLUSH_MS env parsing (strict numeric)", () => {
 		expect(chunker.flushIfTimeBudgetExceeded()?.terminator).toBe("max-cap");
 	});
 
-	it("accepts a valid decimal value", async () => {
+	it("accepts a valid positive integer value", async () => {
 		vi.stubEnv("ELIZA_PHRASE_FLUSH_MS", "1500");
 		const { PhraseChunker: FreshChunker } = await fresh();
 		const { clock, set } = makeClock();
@@ -263,6 +310,10 @@ describe("ELIZA_PHRASE_FLUSH_MS env parsing (strict numeric)", () => {
 });
 
 describe("ELIZA_PHRASE_FLUSH_FIRST_MS env parsing (strict numeric)", () => {
+	beforeEach(() => {
+		vi.resetModules();
+	});
+
 	afterEach(() => {
 		vi.unstubAllEnvs();
 		vi.resetModules();
@@ -276,6 +327,21 @@ describe("ELIZA_PHRASE_FLUSH_FIRST_MS env parsing (strict numeric)", () => {
 		// "1e3" parses to 1 — first audio would flush after 1ms, fragmenting
 		// the opening of every reply.
 		vi.stubEnv("ELIZA_PHRASE_FLUSH_FIRST_MS", "1e3");
+		const { PhraseChunker: FreshChunker } = await fresh();
+		const { clock, set } = makeClock();
+		const chunker = new FreshChunker({ maxAccumulationMs: 700 }, null, clock);
+		chunker.push({ text: "a", index: 0, acceptedAt: 0 });
+		set(2);
+		expect(chunker.flushIfTimeBudgetExceeded()).toBeNull();
+		set(350);
+		expect(chunker.flushIfTimeBudgetExceeded()?.terminator).toBe("max-cap");
+	});
+
+	it("falls back to the default first-phrase budget for a fractional value", async () => {
+		// A 0.1ms first budget would flush the opening of the reply before
+		// the first word finishes streaming — the exact fragmentation the
+		// time-budget path exists to avoid.
+		vi.stubEnv("ELIZA_PHRASE_FLUSH_FIRST_MS", "0.1");
 		const { PhraseChunker: FreshChunker } = await fresh();
 		const { clock, set } = makeClock();
 		const chunker = new FreshChunker({ maxAccumulationMs: 700 }, null, clock);
