@@ -5,8 +5,9 @@ models, active agent profiles, and built-in settings.
 
 ## Purpose / role
 
-This opt-in plugin registers nine actions, no natural-language pre-LLM shortcuts, two evaluators,
-two providers, and four services. Dashboard operations use authenticated
+This opt-in plugin registers nine actions, no `shortcuts` entries, three evaluators
+(including a deterministic exact-command pre-planner evaluator), two providers,
+and four services. Dashboard operations use authenticated
 loopback HTTP (`/api/apps/*`, `/api/views/*`) discovered through the existing
 port resolver.
 
