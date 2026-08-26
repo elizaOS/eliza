@@ -5,8 +5,11 @@
  * that contain no source content. File parsing and pipeline orchestration live
  * at the CLI/driver boundary; this module accepts JSON/YAML-decoded data.
  */
-import { createHash } from "node:crypto";
 import { z } from "zod";
+import {
+  canonicalJsonDeletion as canonicalJson,
+  sha256,
+} from "../canonical.ts";
 import {
   type CorpusMessage,
   type CorpusPlatform,
@@ -356,22 +359,6 @@ interface MutableReviewGroup {
   messageIds: Set<string>;
   rules: Map<string, DeletionRule>;
   sensitiveTerms: Set<string>;
-}
-
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (typeof value === "object" && value !== null) {
-    return `{${Object.entries(value)
-      .filter(([, child]) => child !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, child]) => `${JSON.stringify(key)}:${canonicalJson(child)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
-}
-
-function sha256(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
 }
 
 export function canonicalDeletionArtifactSha256(value: unknown): string {
