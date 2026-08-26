@@ -11,6 +11,11 @@ describe("core string boundary scanners", () => {
 		expect(trimEndWhitespace("answer \t\n")).toBe("answer");
 	});
 
+	it("preserves well-formed Unicode when trimming whitespace and surrogate pairs", () => {
+		expect(trimEndWhitespace("hello 🤖  ")).toBe("hello 🤖");
+		expect(trimEndCharacters("hello 🤖///", "/")).toBe("hello 🤖");
+	});
+
 	it("handles 100k-character suffixes in linear time", () => {
 		expect(trimEndCharacters(`root${"/".repeat(100_000)}`, "/")).toBe("root");
 		expect(trimEndWhitespace(`root${"\t".repeat(100_000)}`)).toBe("root");
