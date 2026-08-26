@@ -3,6 +3,7 @@
  * Adapted from openclaw/src/security/skill-scanner.ts.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { LineRule, SkillScanFinding, SourceRule } from "./types";
 import { truncateEvidence } from "./types";
 
@@ -137,7 +138,7 @@ export function scanCodeSource(
 		}
 		if (matchLine === 0) {
 			matchLine = 1;
-			matchEvidence = source.slice(0, 120);
+			matchEvidence = truncateWellFormed(toWellFormedUnicode(source), 120);
 		}
 
 		findings.push({
