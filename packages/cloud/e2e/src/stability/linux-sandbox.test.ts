@@ -13,7 +13,14 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -68,8 +75,11 @@ test("sandbox launcher resolves from the Cloud e2e workspace root", () => {
   expect(existsSync(sandboxLauncherPath)).toBe(true);
   const launcher = readFileSync(sandboxLauncherPath, "utf8");
   expect(launcher).toContain(
-    '/usr/bin/setpriv --reuid "$uid" --regid "$uid" --clear-groups --',
+    '/usr/bin/setpriv --reuid "$uid" --regid "$gid" --clear-groups --',
   );
+  expect(launcher).toContain('/usr/bin/setfacl -n -m "u:');
+  expect(launcher).toContain(':--x,m::--x"');
+  expect(launcher).toContain("/usr/bin/setfacl --set-file=-");
   expect(launcher).toContain(
     "/usr/bin/bwrap --die-with-parent --new-session --unshare-user",
   );
@@ -137,12 +147,34 @@ const hostedLinux =
   process.platform === "linux" &&
   process.env.ELIZA_STABILITY_LINUX_SANDBOX === "1";
 
+async function createPrivateAttempt(prefix: string) {
+  const outputRoot = await mkdtemp(path.join(tmpdir(), prefix));
+  await chmod(outputRoot, 0o700);
+  const attempt = path.join(outputRoot, "attempt-1");
+  await mkdir(attempt, { mode: 0o700 });
+  const acl = spawnSync("getfacl", ["-cpn", outputRoot], {
+    encoding: "utf8",
+  });
+  if (acl.status !== 0) throw new Error(`getfacl failed: ${acl.stderr}`);
+  return { attempt, outputRoot, outputRootAcl: acl.stdout };
+}
+
+function expectAclRestored(directory: string, expected: string) {
+  const acl = spawnSync("getfacl", ["-cpn", directory], {
+    encoding: "utf8",
+  });
+  expect(acl.status).toBe(0);
+  expect(acl.stdout).toBe(expected);
+}
+
 test.skipIf(!hostedLinux)(
   "kernel boundary blocks proc, fd, network, AF_UNIX, socketpair, and io_uring escapes",
   async () => {
-    const directory = await mkdtemp(
-      path.join(tmpdir(), "cloud-sandbox-proof-"),
-    );
+    const {
+      attempt: directory,
+      outputRoot,
+      outputRootAcl,
+    } = await createPrivateAttempt("cloud-sandbox-proof-");
     const hostTmpDirectory = await mkdtemp(
       path.join(tmpdir(), "cloud-sandbox-host-ipc-"),
     );
@@ -479,7 +511,8 @@ console.log(JSON.stringify({
       abstractUnix.close();
       datagramServer.kill("SIGKILL");
       await rm(hostTmpDirectory, { recursive: true, force: true });
-      await rm(directory, { recursive: true, force: true });
+      expectAclRestored(outputRoot, outputRootAcl);
+      await rm(outputRoot, { recursive: true, force: true });
     }
   },
   30_000,
@@ -488,9 +521,11 @@ console.log(JSON.stringify({
 test.skipIf(!hostedLinux)(
   "early bwrap failure removes the sandbox identity and kernel state",
   async () => {
-    const directory = await mkdtemp(
-      path.join(tmpdir(), "cloud-sandbox-early-failure-"),
-    );
+    const {
+      attempt: directory,
+      outputRoot,
+      outputRootAcl,
+    } = await createPrivateAttempt("cloud-sandbox-early-failure-");
     const fakeBwrapPath = path.join(directory, "failing-bwrap");
     await writeFile(fakeBwrapPath, "#!/bin/sh\n/bin/sleep 1\nexit 91\n", {
       mode: 0o755,
@@ -585,9 +620,10 @@ test.skipIf(!hostedLinux)(
       );
       expect(firewall.status).toBe(0);
       expect(firewall.stdout).not.toContain("ELIZA_SBX_");
+      expectAclRestored(outputRoot, outputRootAcl);
     } finally {
       child.kill("SIGKILL");
-      await rm(directory, { recursive: true, force: true });
+      await rm(outputRoot, { recursive: true, force: true });
     }
   },
   30_000,
@@ -596,9 +632,11 @@ test.skipIf(!hostedLinux)(
 test.skipIf(!hostedLinux)(
   "forced teardown kills signal-resistant descendants and removes kernel state",
   async () => {
-    const directory = await mkdtemp(
-      path.join(tmpdir(), "cloud-sandbox-teardown-"),
-    );
+    const {
+      attempt: directory,
+      outputRoot,
+      outputRootAcl,
+    } = await createPrivateAttempt("cloud-sandbox-teardown-");
     const readyPath = path.join(directory, "ready.json");
     const probePath = path.join(directory, "teardown-probe.ts");
     try {
@@ -706,7 +744,8 @@ setInterval(() => {}, 1000);
       expect(firewall.status).toBe(0);
       expect(firewall.stdout).not.toContain("ELIZA_SBX_");
     } finally {
-      await rm(directory, { recursive: true, force: true });
+      expectAclRestored(outputRoot, outputRootAcl);
+      await rm(outputRoot, { recursive: true, force: true });
     }
   },
   30_000,
