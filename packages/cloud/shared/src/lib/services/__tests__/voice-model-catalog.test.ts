@@ -244,6 +244,14 @@ describe("fingerprintPublicKey", () => {
     // contract above — a mistyped key must be rejected, not silently
     // decoded).
     expect(() => fingerprintPublicKey(`${rawB64}!`)).toThrow(/Invalid base64/);
+    // A final quantum with non-zero discarded slack bits (here the last
+    // char bumped so the two unused bits are set — decodes to the same
+    // 32 bytes) is a hand-mangled spelling, not a legitimate one: it
+    // must throw rather than silently canonicalize.
+    const mangledTail = `${rawB64.slice(0, -2)}B=`;
+    if (mangledTail !== rawB64) {
+      expect(() => fingerprintPublicKey(mangledTail)).toThrow(/Invalid base64/);
+    }
   });
 
   test("rejects wrong-length public keys", () => {
