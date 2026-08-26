@@ -20,14 +20,53 @@ import {
 } from "../utils/cloud-agent-base";
 
 const REMOTE_FALLBACK_API_BASE_ENV_KEY = "VITE_ELIZA_REMOTE_FALLBACK_API_BASE";
+const REMOTE_FALLBACK_RUNTIME_GLOBAL =
+  "__ELIZA_BUILD_CONFIGURED_REMOTE_API_BASE__";
+
+type RemoteFallbackRuntimeGlobal = typeof globalThis & {
+  __ELIZA_BUILD_CONFIGURED_REMOTE_API_BASE__?: unknown;
+};
 
 function configuredRemoteFallbackApiBase(): string | undefined {
+  // `@elizaos/ui` can be consumed as a pre-built package. In that shape Vite
+  // does not necessarily rewrite `import.meta.env` inside this module even
+  // though the app entrypoint sees the build variable. The app therefore
+  // installs the already-validated origin here before React renders, keeping
+  // every runtime trust/persistence gate on the same immutable build target.
+  const runtimeValue = (globalThis as RemoteFallbackRuntimeGlobal)[
+    REMOTE_FALLBACK_RUNTIME_GLOBAL
+  ];
+  if (typeof runtimeValue === "string") return runtimeValue;
+
   const env =
     typeof import.meta !== "undefined"
       ? (import.meta as { env?: Record<string, unknown> }).env
       : undefined;
   const value = env?.[REMOTE_FALLBACK_API_BASE_ENV_KEY];
   return typeof value === "string" ? value : undefined;
+}
+
+/**
+ * Publish the app-entrypoint's validated remote origin to pre-built UI code.
+ * A second, different target is rejected so late runtime code cannot repoint a
+ * dedicated build after its bootstrap contract has been established.
+ */
+export function installBuildConfiguredRemoteApiBaseUrl(apiBase: string): void {
+  const resolved = getBuildConfiguredRemoteApiBaseUrl(apiBase);
+  if (!resolved) {
+    throw new Error(
+      "[runtime-url-trust] build-configured remote target must be a root HTTPS origin",
+    );
+  }
+
+  const runtime = globalThis as RemoteFallbackRuntimeGlobal;
+  const current = runtime[REMOTE_FALLBACK_RUNTIME_GLOBAL];
+  if (typeof current === "string" && current !== resolved) {
+    throw new Error(
+      "[runtime-url-trust] build-configured remote target is already locked",
+    );
+  }
+  runtime[REMOTE_FALLBACK_RUNTIME_GLOBAL] = resolved;
 }
 
 /**
