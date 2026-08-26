@@ -13,6 +13,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { StrictMode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -202,6 +203,16 @@ function renderSection(initialEntry = "/login") {
   );
 }
 
+function renderSectionInStrictMode(initialEntry: string) {
+  return render(
+    <StrictMode>
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <StewardLoginSection />
+      </MemoryRouter>
+    </StrictMode>,
+  );
+}
+
 const originalLocationDescriptor = Object.getOwnPropertyDescriptor(
   window,
   "location",
@@ -294,11 +305,21 @@ describe("StewardLoginSection OAuth launch", () => {
   });
 
   it("auto-launches a validated native provider intent once in the browser", async () => {
-    const replaceState = vi.spyOn(window.history, "replaceState");
+    const replaceState = vi
+      .spyOn(window.history, "replaceState")
+      .mockImplementation((_data, _unused, url) => {
+        const next = new URL(String(url), window.location.origin);
+        Object.assign(window.location, {
+          hash: next.hash,
+          href: next.toString(),
+          pathname: next.pathname,
+          search: next.search,
+        });
+      });
     stubHostedLoginLocation(
       "https://cloud.eliza.app/login?returnTo=%2Fapp-auth%2Fauthorize%3Fstate%3Douter-state&nativeProvider=google",
     );
-    renderSection(
+    renderSectionInStrictMode(
       "/login?returnTo=%2Fapp-auth%2Fauthorize%3Fstate%3Douter-state&nativeProvider=google",
     );
 

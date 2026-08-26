@@ -1675,7 +1675,12 @@ export default function StewardLoginSection() {
   );
 
   useEffect(() => {
-    const requestedProvider = searchParams.get("nativeProvider");
+    // React Router does not observe raw history.replaceState calls. Read the
+    // live address bar so Strict Mode's second effect setup sees the marker
+    // removed by the first setup instead of launching a competing PKCE flow.
+    const requestedProvider = new URLSearchParams(window.location.search).get(
+      "nativeProvider",
+    );
     if (!requestedProvider || !providersLoaded) return;
 
     // Consume the marker before starting any async work so reloads, provider
@@ -1694,7 +1699,7 @@ export default function StewardLoginSection() {
     );
     if (!provider) return;
     void handleOAuth(provider);
-  }, [enabledOAuthProviders, handleOAuth, providersLoaded, searchParams]);
+  }, [enabledOAuthProviders, handleOAuth, providersLoaded]);
 
   function handleTelegramError(message: string) {
     setError(message);
