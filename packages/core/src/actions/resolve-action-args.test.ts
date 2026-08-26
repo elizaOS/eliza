@@ -106,6 +106,41 @@ describe("resolveActionArgs", () => {
 		expect(runtime.useModel).toHaveBeenCalled();
 	});
 
+	it.each([null, ""])(
+		"uses extracted parameters when the planner supplied an absent value (%j)",
+		async (plannerTitle) => {
+			const modelOutput = JSON.stringify({
+				action: "CREATE",
+				params: { title: "Buy groceries" },
+				missing: [],
+				confidence: 0.95,
+			});
+
+			const runtime = makeMockRuntime(modelOutput);
+			const message = makeMessage("create a task to buy groceries");
+
+			const result = await resolveActionArgs<TaskSubactions>({
+				runtime,
+				message,
+				actionName: "TASK",
+				subactions: taskSubactions,
+				options: {
+					parameters: {
+						action: "CREATE",
+						title: plannerTitle,
+					},
+				},
+			});
+
+			expect(result).toEqual({
+				ok: true,
+				subaction: "CREATE",
+				params: { title: "Buy groceries" },
+			});
+			expect(runtime.useModel).toHaveBeenCalled();
+		},
+	);
+
 	it("returns clarification failure when required parameters cannot be extracted", async () => {
 		const modelOutput = JSON.stringify({
 			action: "DELETE",
