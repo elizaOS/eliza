@@ -10,6 +10,7 @@ import { link, mkdir, open, rmdir, unlink } from "node:fs/promises";
 import path from "node:path";
 import {
   assertScenarioStabilityBoundedJson,
+  assertScenarioStabilityExecutedCellCoherence,
   createScenarioStabilityPlan,
   deriveScenarioStabilityExecutionAttemptIdentities,
   deriveScenarioStabilityFailureClusters,
@@ -509,9 +510,6 @@ function parseExecutedAttempt(value: unknown, index: number) {
           record.failureClassification,
           `${label} failureClassification`,
         );
-  if (execution.passed !== (classification === null)) {
-    throw new Error(`${label} pass and failure classification disagree`);
-  }
   return {
     ...execution,
     attemptNumber,
@@ -557,15 +555,6 @@ function parseExecutedCell(value: unknown, index: number) {
     record.firstAttemptPassed,
     `${label} firstAttemptPassed`,
   );
-  const actualPassed = attempts.filter((attempt) => attempt.passed).length;
-  if (
-    passedAttempts !== actualPassed ||
-    tier !== `${actualPassed}/3` ||
-    strictPassed !== (actualPassed === 3) ||
-    firstAttemptPassed !== attempts[0]?.passed
-  ) {
-    throw new Error(`${label} summary does not match its attempts`);
-  }
   const baselineInitialStateHash =
     record.baselineInitialStateHash === null
       ? null
@@ -573,9 +562,6 @@ function parseExecutedCell(value: unknown, index: number) {
           record.baselineInitialStateHash,
           `${label} baselineInitialStateHash`,
         );
-  if (baselineInitialStateHash !== attempts[0]?.initialStateHash) {
-    throw new Error(`${label} baseline does not match its first attempt`);
-  }
   return {
     scenarioId: boundedString(record.scenarioId, `${label} scenarioId`),
     model: {
@@ -686,6 +672,9 @@ function parseCloudStabilityExecutionReport(
   const cells = strictArray(record.cells, "stability report cells").map(
     parseExecutedCell,
   );
+  for (const cell of cells) {
+    assertScenarioStabilityExecutedCellCoherence(cell);
+  }
   const focusList = strictArray(
     record.focusList,
     "stability report focusList",
