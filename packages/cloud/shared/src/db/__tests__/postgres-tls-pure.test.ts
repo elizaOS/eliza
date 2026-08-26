@@ -27,8 +27,7 @@ describe("dependency-light PostgreSQL TLS policy", () => {
   });
 
   test("keeps encryption while allowing the explicit Railway CA opt-out", () => {
-    const url =
-      "postgresql://u:p@switchback.proxy.rlwy.net:49295/db?sslmode=no-verify";
+    const url = "postgresql://u:p@switchback.proxy.rlwy.net:49295/db?sslmode=no-verify";
     expect(shouldSkipTlsVerification(url)).toBe(true);
     expect(enforceTlsForRemote(url).ssl).toEqual({
       rejectUnauthorized: false,
@@ -37,17 +36,14 @@ describe("dependency-light PostgreSQL TLS policy", () => {
 
   test("rejects remote modes that permit plaintext", () => {
     for (const mode of ["disable", "allow"]) {
-      expect(() =>
-        enforceTlsForRemote(`postgresql://u:p@host.example/db?sslmode=${mode}`),
-      ).toThrow(/must use TLS/i);
+      expect(() => enforceTlsForRemote(`postgresql://u:p@host.example/db?sslmode=${mode}`)).toThrow(
+        /must use TLS/i,
+      );
     }
   });
 
   test("is re-exported by the full client without importing it", () => {
-    const clientSource = readFileSync(
-      new URL("../client.ts", import.meta.url),
-      "utf8",
-    );
+    const clientSource = readFileSync(new URL("../client.ts", import.meta.url), "utf8");
     expect(clientSource).toContain('from "./postgres-tls"');
     expect(clientSource).toContain("shouldSkipTlsVerification");
     expect(clientSource).toContain("enforceTlsForRemote");

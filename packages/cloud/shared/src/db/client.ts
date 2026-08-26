@@ -9,21 +9,12 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import type {
-  NodePgDatabase,
-  NodePgTransaction,
-} from "drizzle-orm/node-postgres";
+import type { NodePgDatabase, NodePgTransaction } from "drizzle-orm/node-postgres";
 import { drizzle as drizzleNode } from "drizzle-orm/node-postgres";
-import {
-  drizzle as drizzlePGlite,
-  type PgliteDatabase,
-} from "drizzle-orm/pglite";
+import { drizzle as drizzlePGlite, type PgliteDatabase } from "drizzle-orm/pglite";
 import type { ExtractTablesWithRelations } from "drizzle-orm/relations";
 import { Pool as PgPool, type PoolConfig } from "pg";
-import {
-  getCloudAwareEnv,
-  getCloudBinding,
-} from "../lib/runtime/cloud-bindings";
+import { getCloudAwareEnv, getCloudBinding } from "../lib/runtime/cloud-bindings";
 import { logger } from "../lib/utils/logger";
 import { applyDatabaseUrlFallback } from "./database-url";
 import { disableLocalPreparedStatements } from "./local-pg-query";
@@ -52,10 +43,7 @@ type DatabaseCloser = () => Promise<void> | void;
 
 const databaseClosers = new WeakMap<Database, DatabaseCloser>();
 
-function registerDatabaseCloser(
-  database: Database,
-  closer: DatabaseCloser,
-): Database {
+function registerDatabaseCloser(database: Database, closer: DatabaseCloser): Database {
   databaseClosers.set(database, closer);
   return database;
 }
@@ -112,8 +100,7 @@ let pgliteClientForTests: import("@electric-sql/pglite").PGlite | null = null;
  * on the Workers runtime.
  */
 function createPGliteClient(dataDir: string): Database {
-  const { PGlite } =
-    require("@electric-sql/pglite") as typeof import("@electric-sql/pglite");
+  const { PGlite } = require("@electric-sql/pglite") as typeof import("@electric-sql/pglite");
   const { vector } =
     require("@electric-sql/pglite/vector") as typeof import("@electric-sql/pglite/vector");
   const client = new PGlite({
@@ -121,19 +108,13 @@ function createPGliteClient(dataDir: string): Database {
     extensions: { vector },
   });
   pgliteClientForTests = client;
-  const database: PgliteDatabase<typeof schema> = drizzlePGlite({
-    client,
-    schema,
-  });
+  const database: PgliteDatabase<typeof schema> = drizzlePGlite({ client, schema });
   return registerDatabaseCloser(database as Database, async () => {
     await client.close();
   });
 }
 
-function parsePositiveInteger(
-  value: string | undefined,
-  fallback: number,
-): number {
+function parsePositiveInteger(value: string | undefined, fallback: number): number {
   if (!value) {
     return fallback;
   }
@@ -190,9 +171,7 @@ function createPgPool(url: string, hyperdriveUrl?: string): PgPool {
   const isLocalTcp = isLocalTcpPostgresUrl(url);
   // Hyperdrive proxies to the origin (pooling + TLS); the Worker connects to its
   // local plaintext endpoint, so bypass the remote-TLS enforcement.
-  const tls = hyperdriveUrl
-    ? { url: hyperdriveUrl, ssl: undefined }
-    : enforceTlsForRemote(url);
+  const tls = hyperdriveUrl ? { url: hyperdriveUrl, ssl: undefined } : enforceTlsForRemote(url);
   const options: PoolConfig = { connectionString: tls.url };
   // A remote Node daemon must fail a saturated pool checkout instead of
   // waiting forever behind a leaked transaction while outer job timers merely
@@ -268,9 +247,7 @@ function createPgPool(url: string, hyperdriveUrl?: string): PgPool {
 function createConnection(url: string): Database {
   if (url.startsWith("pglite://")) {
     if (isCloudflareWorkerRuntime()) {
-      throw new Error(
-        "pglite:// URLs are local-only and cannot run inside a Cloudflare Worker.",
-      );
+      throw new Error("pglite:// URLs are local-only and cannot run inside a Cloudflare Worker.");
     }
     return createPGliteClient(parsePGliteDataDir(url));
   }
@@ -285,20 +262,14 @@ function createConnection(url: string): Database {
   // terminates mid-query on workerd (#8629). If we're in a Worker reaching a
   // remote origin without a Hyperdrive binding, refuse loudly instead of
   // silently opening a doomed per-request connection.
-  if (
-    isCloudflareWorkerRuntime() &&
-    !hyperdriveUrl &&
-    !isLocalTcpPostgresUrl(url)
-  ) {
+  if (isCloudflareWorkerRuntime() && !hyperdriveUrl && !isLocalTcpPostgresUrl(url)) {
     throw new Error(
       "Refusing direct node-pg to external Postgres from a Worker: HYPERDRIVE binding missing. " +
         "Bind [[hyperdrive]] in wrangler.toml so the Worker proxies to the origin (see #8629).",
     );
   }
   const pool = createPgPool(url, hyperdriveUrl);
-  return registerDatabaseCloser(drizzleNode(pool, { schema }) as Database, () =>
-    pool.end(),
-  );
+  return registerDatabaseCloser(drizzleNode(pool, { schema }) as Database, () => pool.end());
 }
 
 // ============================================================================
