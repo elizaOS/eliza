@@ -168,7 +168,6 @@ import {
 import { setChatComposerAccessoryBarHidden } from "./ios-chat-accessory-bar";
 import { LIQUID_GLASS_SHEEN, liquidGlassEdgeShadow } from "./liquid-glass";
 import { withPressLatch } from "./press-latch";
-import { RestingPillButton } from "./RestingPillButton";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
 import {
   filterRenderableShellMessages,
@@ -1099,18 +1098,15 @@ export function PillHandle({
             : {}),
         }}
       >
-        <RestingPillButton
+        <Button
+          variant="transparent"
+          size="content"
+          shape="circle"
           data-testid="chat-pill"
-          markTestId="chat-pill-mark"
           aria-label="open chat"
-          breathing={breathing}
-          markClassName="h-3 w-16"
           style={{
             width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
             height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
-          }}
-          onClick={(event) => {
-            if (event.detail === 0) onOpen();
           }}
           onKeyDown={(event) => {
             if (
@@ -1129,10 +1125,20 @@ export function PillHandle({
           tabIndex={pilled ? 0 : -1}
           aria-hidden={pilled ? undefined : true}
           className={cn(
-            "cursor-grab touch-none select-none active:cursor-grabbing",
+            "shrink-0 cursor-grab touch-none select-none active:scale-95 active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-inverse/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
             pilled ? "pointer-events-auto" : "pointer-events-none",
           )}
-        />
+        >
+          <span
+            aria-hidden="true"
+            data-testid="chat-pill-mark"
+            className={cn(
+              "pointer-events-none h-3 w-16 rounded-full opacity-100",
+              breathing && "eliza-chat-handle-breathe",
+            )}
+            style={{ backgroundColor: HANDLE_BAR_COLOR }}
+          />
+        </Button>
       </motion.div>
     );
   }
