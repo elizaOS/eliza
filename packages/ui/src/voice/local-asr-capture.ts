@@ -2,6 +2,7 @@
  * Mic-capture recorder for local ASR: records mono PCM16, exposes a live analyser
  * for amplitude visualization, and stops/cancels the audio context cleanly.
  */
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { voiceCaptureDebug } from "../utils/voice-capture-debug";
 import {
   DEFAULT_POST_TTS_COOLDOWN_MS,
@@ -445,10 +446,10 @@ export async function startLocalAsrRecorder(
   } catch (err) {
     voiceCaptureDebug("gum:err", {
       name: err instanceof Error ? err.name : "Error",
-      reason:
-        err instanceof Error
-          ? err.message.slice(0, 80)
-          : String(err).slice(0, 80),
+      reason: truncateWellFormed(
+        toWellFormedUnicode(err instanceof Error ? err.message : String(err)),
+        80,
+      ),
     });
     throw err;
   }

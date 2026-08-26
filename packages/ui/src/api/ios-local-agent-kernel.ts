@@ -4,6 +4,7 @@
  * is not reachable, using the shared market-provider helpers.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { logger } from "@elizaos/logger";
 import {
   asRecord,
@@ -4037,7 +4038,7 @@ export async function handleIosLocalAgentRequest(
       };
       conversation.messages.push(userMessage);
       if (conversation.title === "New chat") {
-        conversation.title = text.slice(0, 60) || conversation.title;
+        conversation.title = truncateWellFormed(toWellFormedUnicode(text), 60) || conversation.title;
       }
       const reply = await generateLocalReply(conversation, text);
       const assistantMessage: LocalMessage = {

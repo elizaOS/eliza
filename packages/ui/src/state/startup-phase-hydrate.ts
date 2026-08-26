@@ -4,7 +4,7 @@
  * after the shell can paint, then releases them when the phase is torn down.
  */
 
-import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
+import { MESSAGE_SOURCE_CLIENT_CHAT, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { logger } from "@elizaos/logger";
 import {
   isRuntimeManagementOperation,
@@ -956,7 +956,7 @@ export function bindReadyPhase(
                     ...s,
                     status: "tool_running" as const,
                     toolDescription: td,
-                    lastActivity: `Running ${td}`.slice(0, 60),
+                    lastActivity: truncateWellFormed(toWellFormedUnicode(`Running ${td}`), 60),
                   }
                 : s,
             );
@@ -970,7 +970,7 @@ export function bindReadyPhase(
                     status: "active" as const,
                     toolDescription: undefined,
                     lastActivity: p
-                      ? `Approved: ${p}`.slice(0, 60)
+                      ? truncateWellFormed(toWellFormedUnicode(`Approved: ${p}`), 60)
                       : "Approved",
                   }
                 : s,
@@ -985,12 +985,12 @@ export function bindReadyPhase(
                     ...s,
                     status: "active" as const,
                     toolDescription: undefined,
-                    lastActivity: (esc
+                    lastActivity: truncateWellFormed(toWellFormedUnicode(esc
                       ? `Escalated: ${r}`
                       : r
                         ? `Responded: ${r}`
                         : "Responded"
-                    ).slice(0, 60),
+                    ), 60),
                   }
                 : s,
             );
@@ -1013,7 +1013,7 @@ export function bindReadyPhase(
                 ? {
                     ...s,
                     status: "error" as const,
-                    lastActivity: `Error: ${em}`.slice(0, 60),
+                    lastActivity: truncateWellFormed(toWellFormedUnicode(`Error: ${em}`), 60),
                   }
                 : s,
             );
