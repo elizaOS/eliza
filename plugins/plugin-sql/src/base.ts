@@ -2791,6 +2791,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     roomId?: UUID;
     worldId?: UUID;
     textContains?: string;
+    /**
+     * JSONB containment filter over `memory.metadata`. Documented on the core
+     * `IDatabaseAdapter.getMemories` contract and honored by the reference
+     * `InMemoryDatabaseAdapter` (see `memoryMatchesMetadata`). Previously this
+     * key was accepted but dropped here, so SQL callers received a superset of
+     * rows (issue #29069). Applied identically to `countMemories` so their
+     * totals cannot drift.
+     */
+    metadata?: Record<string, unknown>;
     orderBy?: "createdAt";
     orderDirection?: "asc" | "desc";
     /**
@@ -2883,6 +2892,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
       if (agentId) {
         conditions.push(eq(memoryTable.agentId, agentId));
+      }
+
+      // Honor the documented `metadata` filter with JSONB whole-object
+      // containment, matching `countMemories` so get/count totals cannot drift
+      // and mirroring the in-memory reference adapter's top-level equality. An
+      // empty object is a no-op (would otherwise match every row).
+      if (params.metadata && Object.keys(params.metadata).length > 0) {
+        conditions.push(sql`${memoryTable.metadata} @> ${JSON.stringify(params.metadata)}::jsonb`);
       }
 
       if (textContains) {
