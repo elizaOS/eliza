@@ -104,7 +104,7 @@ export class EntityTracker {
       return matchedEntity;
     } else {
       // Create new entity
-      const entityId = `person-${timestamp}-${Math.random().toString(36).substr(2, 9)}`;
+      const entityId = `person-${timestamp}-${Math.random().toString(36).substring(2, 11)}`;
       const newEntity: TrackedEntity = {
         id: entityId,
         entityType: "person",
@@ -156,7 +156,7 @@ export class EntityTracker {
       return matchedEntity;
     } else {
       // Create new entity
-      const entityId = `object-${timestamp}-${Math.random().toString(36).substr(2, 9)}`;
+      const entityId = `object-${timestamp}-${Math.random().toString(36).substring(2, 11)}`;
       const newEntity: TrackedEntity = {
         id: entityId,
         entityType: "object",
