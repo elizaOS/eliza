@@ -10,6 +10,7 @@
  * the current state.
  */
 
+import { toError } from "@elizaos/core";
 import { useCallback, useState } from "react";
 
 export type ModalState =
@@ -23,16 +24,6 @@ export interface ModalApi {
   open: () => void;
   close: () => void;
   submit: <T>(fn: () => Promise<T>) => Promise<T | undefined>;
-}
-
-function toError(value: unknown): Error {
-  if (value instanceof Error) return value;
-  if (typeof value === "string") return new Error(value);
-  return new Error(
-    typeof value === "object" && value !== null
-      ? JSON.stringify(value)
-      : String(value),
-  );
 }
 
 export function useModalState(): ModalApi {

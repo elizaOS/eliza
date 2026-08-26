@@ -245,7 +245,7 @@ export * from "./utils/deterministic";
 // Export browser-compatible utilities
 export * from "./utils/environment";
 export { getEnv } from "./utils/environment";
-export { formatError } from "./utils/format-error";
+export { formatError, toError } from "./utils/format-error";
 export * from "./utils/html-raw-text";
 export * from "./utils/project-memory-scope";
 export * from "./utils/read-env";

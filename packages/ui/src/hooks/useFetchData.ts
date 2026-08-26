@@ -13,6 +13,7 @@
  * never surfaces today.
  */
 
+import { toError } from "@elizaos/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export type FetchState<T> =
@@ -42,16 +43,6 @@ function isAbortError(value: unknown): boolean {
     return true;
   }
   return false;
-}
-
-function toError(value: unknown): Error {
-  if (value instanceof Error) return value;
-  if (typeof value === "string") return new Error(value);
-  return new Error(
-    typeof value === "object" && value !== null
-      ? JSON.stringify(value)
-      : String(value),
-  );
 }
 
 function isUpdaterFn<T>(value: T | ((prev: T) => T)): value is (prev: T) => T {

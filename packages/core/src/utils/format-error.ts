@@ -1,6 +1,7 @@
 /**
- * Canonical error-message extractor. Returns an `Error`'s `.message` and
- * `String(value)` for everything else.
+ * Canonical error-message extractor and Error normalizer. Returns an `Error`'s
+ * `.message` or formats unknown values into safe strings and standard Error
+ * instances, preserving underlying cause context.
  *
  * Both `error.message` and `String(error)` can throw: `String()` raises
  * `TypeError: Cannot convert object to primitive value` on a null-prototype
@@ -29,8 +30,11 @@ export function formatError(error: unknown): string {
 }
 
 /**
- * Normalizes an unknown value into an Error instance, preserving existing Errors
- * or creating a new Error with the formatted message.
+ * Normalizes an unknown value into a standard Error instance, preserving existing Errors
+ * or creating a new Error with formatted message and preserved cause.
+ *
+ * @param error The value to normalize.
+ * @param fallbackMessage Fallback message when error produces a blank or degenerate message.
  */
 export function toError(
 	error: unknown,
@@ -39,6 +43,17 @@ export function toError(
 	if (error instanceof Error) {
 		return error;
 	}
-	const message = formatError(error);
-	return new Error(message || fallbackMessage);
+	if (error === null || error === undefined) {
+		return new Error(fallbackMessage);
+	}
+	if (typeof error === "string") {
+		const trimmed = error.trim();
+		return new Error(trimmed.length > 0 ? trimmed : fallbackMessage, {
+			cause: error,
+		});
+	}
+	const message = formatError(error).trim();
+	return new Error(message.length > 0 ? message : fallbackMessage, {
+		cause: error,
+	});
 }
