@@ -6498,6 +6498,7 @@ import androidx.activity.OnBackPressedCallback;
     @Override
     public void onResume() {
         super.onResume();
+        keepScreenAwake();
         // Only a managed-device owner may contain the launcher task. Android's
         // unmanaged screen-pinning mode blocks the secure browser that Google
         // OAuth requires, preventing the callback from ever reaching the app.
@@ -6516,17 +6517,29 @@ import androidx.activity.OnBackPressedCallback;
     }
 `
     : "";
+  const resumeHandler = launcherKiosk
+    ? ""
+    : `
+    @Override
+    protected void onResume() {
+        super.onResume();
+        keepScreenAwake();
+    }
+`;
   const navigationBarPolicy = immersiveNavigation
     ? `            systemBars.hide(WindowInsetsCompat.Type.navigationBars());
             systemBars.setSystemBarsBehavior(
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);`
     : "            systemBars.setAppearanceLightNavigationBars(false);";
-  const focusHandler = immersiveNavigation
-    ? `
+  const focusHandler = `
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (!hasFocus) return;
+        keepScreenAwake();
+${
+  immersiveNavigation
+    ? `
         WindowInsetsControllerCompat controller =
             WindowCompat.getInsetsController(
                 getWindow(), getWindow().getDecorView());
@@ -6535,9 +6548,10 @@ import androidx.activity.OnBackPressedCallback;
             controller.setSystemBarsBehavior(
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
         }
-    }
 `
-    : "";
+    : ""
+}    }
+`;
   const safePushRegistration = safePushNotifications
     ? `
         // Capacitor discovers the community push plugin before Firebase is
@@ -6555,6 +6569,7 @@ import android.os.Bundle;
 import android.content.Intent;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.view.WindowManager;
 
 import androidx.core.splashscreen.SplashScreen;
 import androidx.core.view.WindowCompat;
@@ -6588,6 +6603,7 @@ ${launcherConstants}
         registerPlugin(ElizaPlaySettingsPlugin.class);
 
         super.onCreate(savedInstanceState);
+        keepScreenAwake();
 ${safePushRegistration}
 
 ${launcherSetup}
@@ -6617,7 +6633,12 @@ ${navigationBarPolicy}
 ${launcherKiosk ? "        restoreBundledRendererAfterAuthCallback(intent);" : ""}
     }
 ${launcherMethods}
+${resumeHandler}
 ${focusHandler}
+
+    private void keepScreenAwake() {
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
 
 }
 `;
