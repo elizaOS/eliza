@@ -14,6 +14,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableFrame,
   TableHead,
   TableHeader,
   TableRow,
@@ -150,15 +151,15 @@ export function ResultsGrid({
 }) {
   const t = useAppSelector((s) => s.t);
   return (
-    <div
-      className="overflow-auto border border-border/40 bg-card/95 rounded-sm "
-      style={{ maxHeight: "calc(100vh - 340px)" }}
-    >
+    <TableFrame style={{ maxHeight: "calc(100vh - 340px)" }}>
       <Table density="compact" className="font-mono">
-        <TableHeader className="sticky top-0 z-10 bg-bg/95 border-b border-border/40 ">
+        <TableHeader variant="sticky">
           <TableRow>
             {/* Row number column */}
-            <TableHead className="w-[50px] min-w-[50px] px-3 py-2.5 text-2xs text-muted font-medium text-right border-r border-border/40">
+            <TableHead
+              divider="subtle"
+              className="w-[50px] min-w-[50px] px-3 py-2.5 text-2xs text-muted font-medium text-right"
+            >
               #
             </TableHead>
             {columns.map((col) => {
@@ -167,7 +168,9 @@ export function ResultsGrid({
               return (
                 <TableHead
                   key={col}
-                  className="px-4 py-2.5 text-left border-r border-border/40 whitespace-nowrap cursor-pointer select-none hover:bg-bg-hover transition-colors group"
+                  divider="subtle"
+                  interactive
+                  className="px-4 py-2.5 text-left whitespace-nowrap select-none group"
                   onClick={() => onSort?.(col)}
                 >
                   <div className="flex items-center gap-2">
@@ -203,11 +206,11 @@ export function ResultsGrid({
           {rows.map((row, i) => {
             const rowKey = buildResultsGridRowKey(columns, row, i, columnMeta);
             return (
-              <TableRow
-                key={rowKey}
-                className="border-b border-border/20 hover:bg-bg-hover transition-colors group"
-              >
-                <TableCell className="px-3 py-2 text-2xs text-muted text-right border-r border-border/30 bg-bg/20 tabular-nums group-hover:text-txt/70 transition-colors">
+              <TableRow key={rowKey} variant="subtle" className="group">
+                <TableCell
+                  variant="rowNumber"
+                  className="px-3 py-2 text-2xs text-muted text-right tabular-nums group-hover:text-txt/70 transition-colors"
+                >
                   {i + 1}
                 </TableCell>
                 {columns.map((col) => {
@@ -218,7 +221,8 @@ export function ResultsGrid({
                   return (
                     <TableCell
                       key={col}
-                      className="px-4 py-2 border-r border-border/20 max-w-[280px] truncate cursor-default transition-colors"
+                      variant="divided"
+                      className="px-4 py-2 max-w-[280px] truncate cursor-default transition-colors"
                       title={display}
                       onClick={() => {
                         if (isExpandable) onCellClick(display);
@@ -248,7 +252,7 @@ export function ResultsGrid({
           })}
         </TableBody>
       </Table>
-    </div>
+    </TableFrame>
   );
 }
 

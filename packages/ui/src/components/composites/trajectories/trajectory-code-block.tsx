@@ -6,6 +6,7 @@
 import * as React from "react";
 
 import { Button } from "../../ui/button";
+import { CodeBlock } from "../../ui/code-block";
 import { PagePanel } from "../page-panel";
 
 export interface TrajectoryCodeBlockProps {
@@ -43,7 +44,7 @@ export function TrajectoryCodeBlock({
         heading={label}
         description={linesLabel}
         actions={
-          <PagePanel.ActionRail className="rounded-sm p-1">
+          <PagePanel.ActionRail className="p-1">
             {lines > 20 ? (
               <Button
                 variant="outline"
@@ -66,14 +67,14 @@ export function TrajectoryCodeBlock({
           </PagePanel.ActionRail>
         }
       />
-      <section
-        // biome-ignore lint/a11y/noNoninteractiveTabindex: overflowing code must be keyboard-scrollable
+      <CodeBlock
+        value={displayContent}
+        presentation="attachment"
+        wrap
         tabIndex={0}
         aria-label={typeof label === "string" ? label : "Trajectory content"}
-        className="max-h-[28rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words p-4 text-xs leading-6 text-txt"
-      >
-        <pre>{displayContent}</pre>
-      </section>
+        className="max-h-112 break-words p-4"
+      />
     </PagePanel>
   );
 }

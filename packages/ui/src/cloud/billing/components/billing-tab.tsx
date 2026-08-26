@@ -74,7 +74,12 @@ const DirectCryptoCreditCard = lazy(() =>
   })),
 );
 
+import { Alert } from "../../../components/ui/alert";
+import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
+import { SemanticForm } from "../../../components/ui/semantic-form";
+import { Skeleton } from "../../../components/ui/skeleton";
 
 interface BillingTabProps {
   user: BillingUser;
@@ -120,12 +125,12 @@ function BalanceValue({ state }: { state: BillingSnapshotViewState }) {
 
   if (state.kind === "loading") {
     return (
-      <span
+      <Skeleton
         role="status"
         aria-label={t("cloud.billing.compute.balanceLoading", {
           defaultValue: "Loading balance",
         })}
-        className="inline-block h-12 w-44 max-w-full animate-pulse bg-bg-accent motion-reduce:animate-none"
+        className="inline-block h-12 w-44 max-w-full motion-reduce:animate-none"
       />
     );
   }
@@ -664,7 +669,7 @@ export function BillingTab({
 
         <div className="relative z-10 space-y-6">
           <div className="flex items-center gap-2">
-            <div className="size-2 rounded-full bg-muted" />
+            <Badge variant="mutedDot" />
             <h3 className="text-base font-mono text-txt uppercase">
               {t("cloud.billingTab.creditBalance", {
                 defaultValue: "Credit Balance",
@@ -674,7 +679,10 @@ export function BillingTab({
 
           <div className="flex flex-col lg:flex-row gap-6 w-full">
             <div className="w-full lg:w-[400px] flex">
-              <div className="bg-surface border border-brand-surface flex-1 flex items-center justify-center py-6 lg:py-8">
+              <Card
+                variant="brandSurface"
+                className="flex flex-1 items-center justify-center py-6 lg:py-8"
+              >
                 <div className="flex flex-col items-center justify-center gap-1 px-4">
                   <div
                     aria-live="polite"
@@ -707,7 +715,7 @@ export function BillingTab({
                     </Button>
                   ) : null}
                 </div>
-              </div>
+              </Card>
             </div>
 
             <div className="flex-1 flex flex-col gap-6 lg:justify-center">
@@ -762,7 +770,7 @@ export function BillingTab({
                   </div>
                 )}
 
-                <form
+                <SemanticForm
                   onSubmit={handleSubmitBuy}
                   className="flex flex-col sm:flex-row items-stretch sm:items-start gap-4"
                 >
@@ -840,9 +848,9 @@ export function BillingTab({
                     !cryptoStatus?.directWallet?.enabled) && (
                     <BrandButton
                       type="submit"
-                      variant="primary"
+                      variant="primaryBilling"
                       disabled={isProcessingCheckout}
-                      className="h-11 px-6 w-full sm:w-auto shrink-0 font-mono text-base whitespace-nowrap sm:mt-[26px] disabled:border disabled:border-border disabled:bg-surface disabled:text-muted disabled:opacity-100"
+                      className="h-11 px-6 w-full sm:w-auto shrink-0 font-mono text-base whitespace-nowrap sm:mt-[26px]"
                     >
                       {isProcessingCheckout ? (
                         <>
@@ -865,21 +873,22 @@ export function BillingTab({
                       )}
                     </BrandButton>
                   )}
-                </form>
+                </SemanticForm>
 
                 {cardCheckoutError ? (
-                  <div
+                  <Alert
+                    variant="dashboardError"
                     id={CARD_CHECKOUT_ERROR_ID}
                     role="alert"
                     aria-live="assertive"
-                    className="flex max-w-2xl items-start gap-2 border border-destructive/40 bg-destructive-subtle p-3 text-sm text-destructive"
+                    className="flex max-w-2xl items-start gap-2"
                   >
                     <AlertCircle
                       className="mt-0.5 size-4 shrink-0"
                       aria-hidden="true"
                     />
                     <span className="font-mono">{cardCheckoutError}</span>
-                  </div>
+                  </Alert>
                 ) : null}
 
                 {isValidAmount && purchaseAmount && amountValue !== null && (
@@ -934,7 +943,7 @@ export function BillingTab({
         <div className="relative z-10 space-y-6">
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
-              <div className="size-2 rounded-full bg-muted" />
+              <Badge variant="mutedDot" />
               <h3 className="text-base font-mono text-txt uppercase">
                 {t("cloud.billingTab.invoices", { defaultValue: "Invoices" })}
               </h3>
@@ -951,40 +960,48 @@ export function BillingTab({
               320px and only lay out as columns from `sm` up. */}
           <div className="w-full">
             <div className="hidden sm:flex w-full">
-              <div className="bg-surface border border-brand-surface flex-[1.5] p-3 md:p-4">
+              <Card variant="brandSurface" className="flex-[1.5] p-3 md:p-4">
                 <p className="text-xs md:text-sm font-mono font-bold text-txt-strong uppercase">
                   {t("cloud.billingTab.colDateTime", {
                     defaultValue: "Date & Time",
                   })}
                 </p>
-              </div>
-              <div className="bg-surface border-t border-r border-b border-brand-surface flex-1 p-3 md:p-4">
+              </Card>
+              <Card variant="brandSurface" className="flex-1 p-3 md:p-4">
                 <p className="text-xs md:text-sm font-mono font-bold text-txt-strong uppercase">
                   {t("cloud.billingTab.colTotal", { defaultValue: "Total" })}
                 </p>
-              </div>
-              <div className="bg-surface border-t border-r border-b border-brand-surface flex-1 p-3 md:p-4">
+              </Card>
+              <Card variant="brandSurface" className="flex-1 p-3 md:p-4">
                 <p className="text-xs md:text-sm font-mono font-bold text-txt-strong uppercase">
                   {t("cloud.billingTab.colStatus", {
                     defaultValue: "Status",
                   })}
                 </p>
-              </div>
-              <div className="bg-surface border-t border-r border-b border-brand-surface flex-1 p-3 md:p-4">
+              </Card>
+              <Card variant="brandSurface" className="flex-1 p-3 md:p-4">
                 <p className="text-xs md:text-sm font-mono font-bold text-txt-strong uppercase">
                   {t("cloud.billingTab.colActions", {
                     defaultValue: "Actions",
                   })}
                 </p>
-              </div>
+              </Card>
             </div>
 
             {loadingInvoices ? (
-              <div className="flex items-center justify-center p-8 border border-brand-surface sm:border-t-0">
+              <Card
+                variant="brandSurface"
+                surface="card"
+                className="flex items-center justify-center p-8"
+              >
                 <Loader2 className="size-6 animate-spin text-muted" />
-              </div>
+              </Card>
             ) : invoicesError ? (
-              <div className="flex items-start gap-3 p-8 border border-brand-surface sm:border-t-0 bg-destructive-subtle/50">
+              <Card
+                surface="destructiveSubtle"
+                border="standard"
+                className="flex items-start gap-3 p-8"
+              >
                 <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
                 <div className="space-y-1">
                   <p className="text-xs md:text-sm text-destructive font-mono">
@@ -996,26 +1013,36 @@ export function BillingTab({
                     {invoicesError}
                   </p>
                 </div>
-              </div>
+              </Card>
             ) : invoices.length === 0 ? (
-              <div className="flex items-center justify-center p-8 border border-brand-surface sm:border-t-0">
+              <Card
+                variant="brandSurface"
+                surface="card"
+                className="flex items-center justify-center p-8"
+              >
                 <p className="text-xs md:text-sm text-muted-strong font-mono">
                   {t("cloud.billingTab.noInvoices", {
                     defaultValue: "No invoices yet",
                   })}
                 </p>
-              </div>
+              </Card>
             ) : (
               invoices.map((invoice) => {
                 const { Icon: StatusIcon, className: statusClassName } =
                   getInvoiceStatusPresentation(invoice.status);
                 return (
-                  <div
+                  <Card
+                    variant="brandSurface"
+                    surface="card"
                     key={invoice.id}
                     data-testid="invoice-row"
-                    className="flex flex-col sm:flex-row w-full border border-brand-surface sm:border-t-0"
+                    className="flex w-full flex-col sm:flex-row"
                   >
-                    <div className="flex-[1.5] p-3 md:p-4 flex items-center justify-between gap-3 border-b border-brand-surface sm:border-b-0">
+                    <Card
+                      surface="transparent"
+                      radius="none"
+                      className="flex flex-[1.5] items-center justify-between gap-3 p-3 md:p-4"
+                    >
                       <span className="sm:hidden text-xs font-mono font-bold uppercase text-muted-strong">
                         {t("cloud.billingTab.colDateTime", {
                           defaultValue: "Date & Time",
@@ -1024,8 +1051,12 @@ export function BillingTab({
                       <p className="text-xs md:text-sm font-mono text-txt-strong tabular-nums text-right sm:text-left">
                         {invoice.date}
                       </p>
-                    </div>
-                    <div className="flex-1 p-3 md:p-4 flex items-center justify-between gap-3 border-b border-brand-surface sm:border-b-0 sm:border-l">
+                    </Card>
+                    <Card
+                      variant="brandSurface"
+                      surface="transparent"
+                      className="flex flex-1 items-center justify-between gap-3 p-3 md:p-4"
+                    >
                       <span className="sm:hidden text-xs font-mono font-bold uppercase text-muted-strong">
                         {t("cloud.billingTab.colTotal", {
                           defaultValue: "Total",
@@ -1034,8 +1065,12 @@ export function BillingTab({
                       <p className="text-xs md:text-sm font-mono text-txt-strong uppercase tabular-nums">
                         {invoice.total}
                       </p>
-                    </div>
-                    <div className="flex-1 p-3 md:p-4 flex items-center justify-between gap-3 border-b border-brand-surface sm:border-b-0 sm:border-l">
+                    </Card>
+                    <Card
+                      variant="brandSurface"
+                      surface="transparent"
+                      className="flex flex-1 items-center justify-between gap-3 p-3 md:p-4"
+                    >
                       <span className="sm:hidden text-xs font-mono font-bold uppercase text-muted-strong">
                         {t("cloud.billingTab.colStatus", {
                           defaultValue: "Status",
@@ -1050,8 +1085,12 @@ export function BillingTab({
                         />
                         <span>{invoice.status}</span>
                       </span>
-                    </div>
-                    <div className="flex-1 p-3 md:p-4 flex items-center justify-between gap-3 sm:border-l border-brand-surface">
+                    </Card>
+                    <Card
+                      surface="transparent"
+                      radius="none"
+                      className="flex flex-1 items-center justify-between gap-3 p-3 md:p-4"
+                    >
                       <span className="sm:hidden text-xs font-mono font-bold uppercase text-muted-strong">
                         {t("cloud.billingTab.colActions", {
                           defaultValue: "Actions",
@@ -1064,8 +1103,8 @@ export function BillingTab({
                       >
                         {t("cloud.billingTab.view", { defaultValue: "View" })}
                       </Button>
-                    </div>
-                  </div>
+                    </Card>
+                  </Card>
                 );
               })
             )}

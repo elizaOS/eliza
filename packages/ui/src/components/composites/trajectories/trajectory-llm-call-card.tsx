@@ -6,6 +6,7 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import * as React from "react";
 
+import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
 import { PagePanel } from "../page-panel";
 import { TrajectoryCodeBlock } from "./trajectory-code-block";
@@ -106,12 +107,14 @@ export function TrajectoryLlmCallCard({
             {tags?.length ? (
               <div className="flex flex-wrap gap-2">
                 {tags.map((tag) => (
-                  <span
+                  <Badge
                     key={tag}
-                    className="rounded-sm border border-border/50 bg-bg/60 px-2.5 py-1 text-xs-tight font-medium text-muted"
+                    variant="secondary"
+                    tone="muted"
+                    className="py-1 text-xs-tight font-medium"
                   >
                     {tag}
-                  </span>
+                  </Badge>
                 ))}
               </div>
             ) : null}

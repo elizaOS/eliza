@@ -39,6 +39,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
+import { Button } from "../../components/ui/button";
 import { CopyButton } from "../../components/ui/copy-button";
 import {
   Dialog,
@@ -49,6 +50,7 @@ import {
   DialogTitle,
 } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
+import { SemanticForm } from "../../components/ui/semantic-form";
 import { ApiError, apiFetch } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import type { ApiKeyRecord } from "./use-api-keys";
@@ -219,7 +221,7 @@ export function ApiKeysView({ keys }: ApiKeysViewProps) {
               })}
             </DialogTitle>
           </DialogHeader>
-          <form onSubmit={(event) => void handleCreateKey(event)}>
+          <SemanticForm onSubmit={(event) => void handleCreateKey(event)}>
             <div className="grid gap-2">
               <label
                 htmlFor="api-key-name"
@@ -259,7 +261,7 @@ export function ApiKeysView({ keys }: ApiKeysViewProps) {
                     })}
               </BrandButton>
             </DialogFooter>
-          </form>
+          </SemanticForm>
         </DialogContent>
       </Dialog>
 
@@ -282,14 +284,16 @@ export function ApiKeysView({ keys }: ApiKeysViewProps) {
             </DialogHeader>
             <div className="flex items-center gap-2">
               <Input variant="config" value={createdKey.plainKey} readOnly />
-              <CopyButton
-                value={createdKey.plainKey}
-                feedbackDuration={1500}
-                copyLabel={t("cloud.apiKeys.created.copyAria", {
-                  defaultValue: "Copy API key",
-                })}
-                className="size-10 shrink-0 justify-center rounded-sm border border-border bg-bg-elevated"
-              />
+              <Button asChild variant="outline" size="icon">
+                <CopyButton
+                  value={createdKey.plainKey}
+                  feedbackDuration={1500}
+                  copyLabel={t("cloud.apiKeys.created.copyAria", {
+                    defaultValue: "Copy API key",
+                  })}
+                  className="shrink-0"
+                />
+              </Button>
             </div>
             <DialogFooter>
               <BrandButton
@@ -325,12 +329,11 @@ export function ApiKeysView({ keys }: ApiKeysViewProps) {
             <AlertDialogCancel>
               {t("cloud.apiKeys.cancel", { defaultValue: "Cancel" })}
             </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => void handleRevokeKey()}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {t("cloud.apiKeys.confirm", { defaultValue: "Revoke key" })}
-            </AlertDialogAction>
+            <Button asChild variant="destructive">
+              <AlertDialogAction onClick={() => void handleRevokeKey()}>
+                {t("cloud.apiKeys.confirm", { defaultValue: "Revoke key" })}
+              </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

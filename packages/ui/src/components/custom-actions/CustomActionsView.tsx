@@ -222,7 +222,8 @@ export function CustomActionsView() {
           </p>
           <Button
             variant="outlineMuted"
-            size="toolbar"
+            size="wide"
+            className="px-3"
             onClick={() => void loadActions()}
           >
             {t("common.retry", { defaultValue: "Retry" })}
@@ -329,20 +330,26 @@ export function CustomActionsView() {
             <Button
               asChild
               variant="outlineMuted"
-              size="toolbar"
-              className="cursor-pointer"
+              size="wide"
+              className="cursor-pointer px-3"
             >
               <label htmlFor={importInputId}>{t("settings.import")}</label>
             </Button>
             <Button
               variant="outlineMuted"
-              size="toolbar"
+              size="wide"
+              className="px-3"
               onClick={handleExport}
               disabled={actions.length === 0}
             >
               {t("common.export")}
             </Button>
-            <Button variant="default" size="toolbar" onClick={handleCreate}>
+            <Button
+              variant="default"
+              size="wide"
+              className="px-3"
+              onClick={handleCreate}
+            >
               {t("customactionsview.CreateAction")}
             </Button>
           </div>

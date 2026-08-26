@@ -51,7 +51,7 @@ export function ModelBreakdown({ models }: ModelBreakdownProps) {
 
   if (models.length === 0) {
     return (
-      <Card className="border-border/70 bg-background/85">
+      <Card variant="reportPanel">
         <CardHeader className="p-6 pb-5">
           <CardTitle className="text-base font-semibold">
             {t("cloud.analytics.modelBreakdown.title", {
@@ -78,7 +78,7 @@ export function ModelBreakdown({ models }: ModelBreakdownProps) {
   );
 
   return (
-    <Card className="border-border/70 bg-background/85">
+    <Card variant="reportPanel">
       <CardHeader className="flex flex-col gap-3 p-6 pb-5">
         <div className="flex items-center gap-3">
           <CardTitle className="text-base font-semibold">

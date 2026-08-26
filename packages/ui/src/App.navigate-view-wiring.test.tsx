@@ -8,6 +8,7 @@
  */
 
 import { Capacitor } from "@capacitor/core";
+import type { PluginAppNavTab } from "@elizaos/core";
 import {
   createNavigateViewEvent,
   NAVIGATE_VIEW_EVENT,
@@ -36,6 +37,10 @@ const appState = vi.hoisted(() => ({
   setTab: vi.fn(),
   startupPhase: "ready",
   tab: "chat",
+  plugins: [] as Array<{
+    id: string;
+    app?: { navTabs?: PluginAppNavTab[] };
+  }>,
 }));
 
 const authStatusMock = vi.hoisted(() => ({
@@ -570,6 +575,7 @@ describe("App navigate-view event wiring", () => {
     appState.firstRunComplete = true;
     appState.startupPhase = "ready";
     appState.tab = "chat";
+    appState.plugins = [];
     authStatusMock.phase = "authenticated";
     cloudOriginMock.agentless = false;
     mediaQueryState.matches = false;
@@ -642,6 +648,94 @@ describe("App navigate-view event wiring", () => {
     });
     expect(appState.setTab).toHaveBeenCalledTimes(2);
     expect(desktopTabsMock.openTab).not.toHaveBeenCalled();
+  });
+
+  it("preserves plugin nav surface layout as the active cross-host contract", async () => {
+    appState.plugins = [
+      {
+        id: "@local/plugin-layout",
+        app: {
+          navTabs: [
+            {
+              id: "plugin-layout",
+              label: "Plugin layout",
+              path: "/plugin-layout",
+              surface: {
+                header: "fullscreen",
+                layout: {
+                  kind: "workspace",
+                  width: "full",
+                  scroll: "view",
+                },
+              },
+            },
+          ],
+        },
+      },
+    ];
+    appState.tab = "plugin-layout";
+    window.history.replaceState(null, "", "/plugin-layout");
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(getActiveSurfaceRealmScope()?.viewId).toBe("plugin-layout");
+    });
+    expect(getActiveSurfaceRealmScope()?.manifest.layout).toEqual({
+      kind: "workspace",
+      topology: "framed",
+      width: "full",
+      scroll: "view",
+    });
+    const frame = document.querySelector('[data-page-kind="workspace"]');
+    expect(frame?.getAttribute("data-page-width")).toBe("full");
+    expect(frame?.getAttribute("data-scroll-owner")).toBe("view");
+    expect(document.querySelectorAll("main")).toHaveLength(1);
+  });
+
+  it("renders inventory with one shell-owned page-frame scroller", async () => {
+    appState.tab = "inventory";
+    window.history.replaceState(null, "", "/wallet");
+
+    const { container } = render(<App />);
+
+    await waitFor(() => {
+      expect(
+        container.querySelector('[data-scroll-owner="shell"]'),
+      ).not.toBeNull();
+    });
+    expect(container.querySelectorAll("[data-scroll-owner]")).toHaveLength(1);
+    expect(container.querySelectorAll("main")).toHaveLength(1);
+    expect(
+      container
+        .querySelector('[data-scroll-owner="shell"]')
+        ?.className.includes("overflow-y-auto"),
+    ).toBe(true);
+  });
+
+  it("keeps the ambient chat route outside canonical page framing", () => {
+    appState.tab = "chat";
+    window.history.replaceState(null, "", "/chat");
+
+    const { container } = render(<App />);
+
+    expect(container.querySelectorAll("[data-page-kind]")).toHaveLength(0);
+    expect(container.querySelectorAll("[data-scroll-owner]")).toHaveLength(0);
+  });
+
+  it("frames the immersive background editor exactly once", async () => {
+    appState.tab = "background";
+    window.history.replaceState(null, "", "/background");
+
+    const { container } = render(<App />);
+
+    await waitFor(() => {
+      expect(
+        container.querySelector('[data-page-kind="immersive"]'),
+      ).not.toBeNull();
+    });
+    expect(container.querySelectorAll("[data-page-kind]")).toHaveLength(1);
+    expect(container.querySelectorAll("[data-scroll-owner]")).toHaveLength(1);
   });
 
   it("acknowledges a cancelable completed-action handoff only after handling it", () => {
@@ -768,12 +862,12 @@ describe("App navigate-view event wiring", () => {
     );
     expect(
       container
-        .querySelector('[data-shell-content-region="true"]')
+        .querySelector('[data-shell-content-region="true"] [data-page-content]')
         ?.className.includes("pb-[var(--eliza-chat-clearance"),
     ).toBe(true);
     expect(
       container
-        .querySelector('[data-shell-content-region="true"]')
+        .querySelector('[data-shell-content-region="true"] [data-page-content]')
         ?.className.includes("pe-[var(--eliza-chat-side-clearance"),
     ).toBe(true);
     expect(getByTestId("app-opaque-background")).toBeTruthy();
@@ -990,12 +1084,12 @@ describe("App navigate-view event wiring", () => {
     expect(queryByTestId("view-header")).toBeNull();
     expect(
       container
-        .querySelector('[data-shell-content-region="true"]')
+        .querySelector('[data-shell-content-region="true"] [data-page-content]')
         ?.className.includes("pb-[var(--eliza-chat-clearance"),
     ).toBe(false);
     expect(
       container
-        .querySelector('[data-shell-content-region="true"]')
+        .querySelector('[data-shell-content-region="true"] [data-page-content]')
         ?.className.includes("pe-[var(--eliza-chat-side-clearance"),
     ).toBe(false);
     expect(
@@ -1151,6 +1245,8 @@ describe("App navigate-view event wiring", () => {
       "agent-surface",
     );
     expect(loaders[1]?.getAttribute("data-surface-capabilities")).toBe("");
+    expect(document.querySelectorAll("[data-page-kind]")).toHaveLength(1);
+    expect(document.querySelectorAll("[data-scroll-owner]")).toHaveLength(1);
     expect(desktopTabsMock.openTab).toHaveBeenCalledWith(
       projectBoardAgentSurfaceView,
       {

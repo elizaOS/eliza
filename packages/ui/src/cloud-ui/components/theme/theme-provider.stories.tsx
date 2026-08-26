@@ -41,7 +41,7 @@ function ThemeConsumer() {
         <Button
           type="button"
           variant={theme === "light" ? "default" : "outline"}
-          size="short"
+          size="regularCompact"
           onClick={() => setTheme("light")}
         >
           Light
@@ -49,7 +49,7 @@ function ThemeConsumer() {
         <Button
           type="button"
           variant={theme === "dark" ? "default" : "outline"}
-          size="short"
+          size="regularCompact"
           onClick={() => setTheme("dark")}
         >
           Dark
@@ -57,7 +57,7 @@ function ThemeConsumer() {
         <Button
           type="button"
           variant={theme === "system" ? "default" : "outline"}
-          size="short"
+          size="regularCompact"
           onClick={() => setTheme("system")}
         >
           System

@@ -25,7 +25,9 @@ import {
   WALLPAPER_FLOAT_SHADOW,
   WALLPAPER_TEXT,
 } from "../shell/wallpaper-idiom";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Skeleton } from "../ui/skeleton";
 import {
   LauncherAppIcon,
   LauncherAppIconSkeleton,
@@ -126,13 +128,14 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
             className="size-16 [@media(orientation:landscape)_and_(max-height:520px)]:h-14 [@media(orientation:landscape)_and_(max-height:520px)]:w-14"
           />
           {badge ? (
-            <span
-              data-testid={`launcher-kind-${entry.id}`}
-              title={badge.title}
-              className="pointer-events-none absolute -left-1.5 -bottom-1 max-w-[3.75rem] truncate rounded-full bg-white/90 px-1.5 py-0.5 text-2xs font-semibold uppercase leading-none text-neutral-900"
-            >
-              {badge.label}
-            </span>
+            <Badge asChild variant="outline" presentation="launcherKind">
+              <span
+                data-testid={`launcher-kind-${entry.id}`}
+                title={badge.title}
+              >
+                {badge.label}
+              </span>
+            </Badge>
           ) : null}
         </div>
         {/* 5.5rem, not the icon's 4rem: the narrowest grid cell (4 cols on a
@@ -212,7 +215,7 @@ export function Launcher({
                     className="flex flex-col items-center gap-1.5 opacity-60"
                   >
                     <LauncherAppIconSkeleton className="size-16" />
-                    <div className="h-2.5 w-12 rounded-full bg-white/25" />
+                    <Skeleton className="h-2.5 w-12" />
                   </div>
                 ))}
               </div>

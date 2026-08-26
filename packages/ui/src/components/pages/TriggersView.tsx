@@ -33,9 +33,11 @@ import { SidebarContent } from "../composites/sidebar/sidebar-content";
 import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
 import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
+import { Alert } from "../ui/alert";
 import { Button } from "../ui/button";
 import { FieldLabel } from "../ui/field";
 import { NewActionButton } from "../ui/new-action-button";
+import { Spinner } from "../ui/spinner";
 import { StatusDot } from "../ui/status-badge";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { TriggerForm } from "./TriggerForm";
@@ -689,11 +691,7 @@ function TriggersLayout() {
             </SidebarContent.Notice>
           )}
           {triggersLoading && (
-            <SidebarContent.Notice
-              icon={
-                <div className="size-4 animate-spin rounded-full border-2 border-muted/30 border-t-muted/80" />
-              }
-            >
+            <SidebarContent.Notice icon={<Spinner className="size-4" />}>
               {t("common.loading")}
             </SidebarContent.Notice>
           )}
@@ -826,7 +824,7 @@ function TriggersLayout() {
   return (
     <ShellViewAgentSurface viewId="triggers">
       <PageLayout
-        className="h-full bg-transparent"
+        className="h-full"
         data-testid="trigger-shell"
         sidebar={triggersSidebar}
         contentInnerClassName="mx-auto w-full max-w-[96rem]"
@@ -1049,7 +1047,7 @@ function TriggersLayout() {
 
                 {!hasLoadedSelectedRuns ? (
                   <div className="flex items-center gap-2 py-6 text-sm text-muted">
-                    <div className="size-4 animate-spin rounded-full border-2 border-muted/30 border-t-muted/80" />
+                    <Spinner className="size-4" />
                     {t("appsview.Loading")}
                   </div>
                 ) : selectedRuns.length === 0 ? (
@@ -1078,9 +1076,12 @@ function TriggersLayout() {
                           </span>
                         </div>
                         {run.error ? (
-                          <div className="mt-2 whitespace-pre-wrap rounded-sm border border-danger/20 bg-danger/10 p-2 font-mono text-xs text-danger/90">
+                          <Alert
+                            variant="inlineDangerCompact"
+                            className="mt-2 whitespace-pre-wrap"
+                          >
                             {run.error}
-                          </div>
+                          </Alert>
                         ) : null}
                       </div>
                     ))}

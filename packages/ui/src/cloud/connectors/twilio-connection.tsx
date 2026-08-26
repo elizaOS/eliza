@@ -21,8 +21,10 @@ import {
 } from "../../cloud-ui/components/connection-card";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { TextLink } from "../../components/ui/text-link";
 import { ApiError, api } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { useConnectionStatus } from "./use-connection-status";
@@ -277,17 +279,17 @@ export function TwilioConnection() {
             <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
               <li>
                 {t("cloud.twilio.instructGoTo", { defaultValue: "Go to" })}{" "}
-                <a
+                <TextLink
                   href="https://console.twilio.com"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-accent hover:underline inline-flex items-center gap-1"
+                  className="inline-flex items-center gap-1"
                 >
                   {t("cloud.twilio.console", {
                     defaultValue: "Twilio Console",
                   })}
                   <ExternalLink className="size-3" />
-                </a>
+                </TextLink>
               </li>
               <li>
                 {t("cloud.twilio.instructSignIn", {
@@ -370,7 +372,7 @@ export function TwilioConnection() {
             </div>
           </div>
 
-          <div className="p-4 bg-muted rounded-sm">
+          <Card variant="flatPadded">
             <h4 className="font-medium mb-2">
               {t("cloud.twilio.whatYouCanDo", {
                 defaultValue: "What you can do with Twilio:",
@@ -398,7 +400,7 @@ export function TwilioConnection() {
                 })}
               </li>
             </ul>
-          </div>
+          </Card>
 
           <Button
             onClick={handleConnect}

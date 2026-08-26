@@ -9,8 +9,10 @@
 import * as React from "react";
 
 import { cn } from "../../../lib/utils";
+import { Alert } from "../../ui/alert";
 import { Button } from "../../ui/button";
-import { navActiveClassVertical } from "./nav-active";
+import { Card } from "../../ui/card";
+import { StatusDot } from "../../ui/status-badge";
 
 function assignRef<T>(ref: React.ForwardedRef<T>, value: T | null): void {
   if (typeof ref === "function") {
@@ -75,17 +77,20 @@ export function SidebarEmptyState({
   ...props
 }: SidebarEmptyStateProps) {
   return (
-    <div
+    <Card
+      asChild
+      surface="backgroundSubtle"
+      padding="comfortable"
+      tone="muted"
       data-sidebar-empty-state
       className={cn(
-        "rounded-sm px-4 py-8 text-center text-sm",
-        variant === "game-modal"
-          ? "bg-black/15 font-medium italic text-[color:var(--first-run-text-muted)]"
-          : "bg-bg-muted/50 text-muted",
+        "py-8 text-center text-sm",
+        variant === "game-modal" && "font-medium italic",
         className,
       )}
-      {...props}
-    />
+    >
+      <div {...props} />
+    </Card>
   );
 }
 
@@ -103,20 +108,15 @@ export function SidebarNotice({
   ...props
 }: SidebarNoticeProps) {
   return (
-    <div
+    <Alert
       data-sidebar-notice
-      className={cn(
-        "flex items-center gap-2 rounded-sm border p-3 text-sm",
-        tone === "danger"
-          ? "border-danger/30 bg-danger/10 text-danger"
-          : "border-border/40 bg-bg/35 text-muted",
-        className,
-      )}
+      variant={tone === "danger" ? "sidebarDanger" : "sidebar"}
+      className={cn("flex items-center gap-2 p-3 text-sm", className)}
       {...props}
     >
       {icon}
       {children}
-    </div>
+    </Alert>
   );
 }
 
@@ -176,26 +176,36 @@ export const SidebarItem = React.forwardRef<HTMLElement, SidebarItemProps>(
     { active = false, as = "button", variant = "default", className, ...props },
     ref,
   ) {
-    const sharedClassName = cn(
-      "group flex h-auto w-full min-w-0 items-start justify-start gap-3 rounded-sm px-3.5 py-3 text-left transition-[background-color,color,box-shadow,transform] duration-150   ",
-      active
-        ? navActiveClassVertical
-        : variant === "accent-soft"
-          ? "bg-accent/5 text-muted hover:bg-accent/10 hover:text-txt"
-          : variant === "dashed"
-            ? "border border-dashed border-border/40 text-muted hover:border-border hover:bg-bg-hover hover:text-txt"
-            : "text-muted hover:bg-bg-hover hover:text-txt",
-      className,
-    );
-
+    const sharedLayoutClassName =
+      "group flex h-auto w-full min-w-0 items-start justify-start gap-3 px-3.5 py-3 text-left transition-[background-color,color,box-shadow,transform] duration-150";
     if (as === "div") {
       return (
-        <div
-          ref={(node) => assignRef(ref, node)}
-          data-sidebar-item
-          className={sharedClassName}
-          {...props}
-        />
+        <Card
+          asChild
+          variant={
+            active
+              ? "sidebarItemActive"
+              : variant === "dashed"
+                ? "dashed"
+                : undefined
+          }
+          surface={
+            !active && variant === "accent-soft"
+              ? "accentSubtle"
+              : !active && variant === "default"
+                ? "transparent"
+                : undefined
+          }
+          tone={!active && variant === "accent-soft" ? "muted" : undefined}
+          border={!active && variant === "accent-soft" ? "accent" : undefined}
+        >
+          <div
+            ref={(node) => assignRef(ref, node)}
+            data-sidebar-item
+            className={cn(sharedLayoutClassName, className)}
+            {...props}
+          />
+        </Card>
       );
     }
 
@@ -232,15 +242,18 @@ export function SidebarItemIcon({
   ...props
 }: SidebarItemIconProps) {
   return (
-    <span
+    <Card
+      asChild
+      variant={active ? "sidebarIconActive" : "sidebarIcon"}
+      tone={active ? "strong" : undefined}
       data-sidebar-item-icon
       className={cn(
-        "mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-sm p-2",
-        active ? "bg-accent/18 text-txt-strong" : "bg-bg-accent/80 text-muted",
+        "mt-0.5 flex size-10 shrink-0 items-center justify-center p-2",
         className,
       )}
-      {...props}
-    />
+    >
+      <span {...props} />
+    </Card>
   );
 }
 
@@ -265,15 +278,20 @@ export const SidebarItemButton = React.forwardRef<
   SidebarItemButtonProps
 >(function SidebarItemButton({ className, ...props }, ref) {
   return (
-    <Button
-      ref={ref}
-      variant="transparent"
-      size="rowContent"
-      align="start"
-      data-sidebar-item-button
-      className={cn("flex min-w-0 flex-1 self-stretch items-start", className)}
-      {...props}
-    />
+    <Card asChild variant="sidebarRail">
+      <Button
+        ref={ref}
+        variant="transparent"
+        size="rowContent"
+        align="start"
+        data-sidebar-item-button
+        className={cn(
+          "flex min-w-0 flex-1 self-stretch items-start",
+          className,
+        )}
+        {...props}
+      />
+    </Card>
   );
 });
 
@@ -348,30 +366,30 @@ export const SidebarRailItem = React.forwardRef<
   ref,
 ) {
   return (
-    <Button
-      ref={ref}
-      variant="transparent"
-      size="icon-lg"
-      data-state={active ? "on" : "off"}
-      data-sidebar-rail-item
-      className={cn(
-        "relative shrink-0 border border-border/24 bg-card text-xs font-semibold tracking-[0.02em] text-muted-strong transition-[border-color,background-color,color,box-shadow,transform] duration-150 hover:border-border/38 hover:bg-surface hover:text-txt active:scale-[0.98] data-[state=on]:border-accent data-[state=on]:bg-accent-subtle data-[state=on]:text-txt",
-        className,
-      )}
-      {...props}
-    >
-      <span className="inline-flex items-center justify-center truncate px-1 [&_img]:h-4 [&_img]:w-4 [&_svg]:h-4 [&_svg]:w-4">
-        {children}
-      </span>
-      {indicatorTone ? (
-        <span
-          className={cn(
-            "absolute right-1.5 top-1.5 size-2 rounded-full",
-            indicatorTone === "accent" ? "bg-accent" : "bg-muted/70",
-          )}
-        />
-      ) : null}
-    </Button>
+    <Card asChild variant="sidebarRail">
+      <Button
+        ref={ref}
+        variant="transparent"
+        size="icon-lg"
+        data-state={active ? "on" : "off"}
+        data-sidebar-rail-item
+        className={cn(
+          "relative shrink-0 text-xs font-semibold tracking-[0.02em] transition-[border-color,background-color,color,box-shadow,transform] duration-150 active:scale-[0.98]",
+          className,
+        )}
+        {...props}
+      >
+        <span className="inline-flex items-center justify-center truncate px-1 [&_img]:h-4 [&_img]:w-4 [&_svg]:h-4 [&_svg]:w-4">
+          {children}
+        </span>
+        {indicatorTone ? (
+          <StatusDot
+            tone={indicatorTone === "accent" ? "accent" : "muted"}
+            className="absolute right-1.5 top-1.5 size-2"
+          />
+        ) : null}
+      </Button>
+    </Card>
   );
 });
 
@@ -384,11 +402,11 @@ export function SidebarItemAction({
 }: SidebarItemActionProps) {
   return (
     <Button
-      variant="transparent"
+      variant="dangerGhost"
       size="micro"
       data-sidebar-item-action
       className={cn(
-        "absolute right-1.5 top-1.5 bg-bg/80 text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-danger/10 hover:text-danger",
+        "absolute right-1.5 top-1.5 opacity-0 transition-opacity group-hover:opacity-100",
         className,
       )}
       {...props}

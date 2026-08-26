@@ -16,6 +16,7 @@ import { describe, expect, it } from "vitest";
 import {
   BUILTIN_TAB_METADATA,
   resolveBuiltinBackgroundPolicy,
+  resolveBuiltinPageLayout,
   resolveBuiltinRoutedViewManifest,
   resolveBuiltinSurfaceManifest,
   resolveBuiltinTabId,
@@ -63,6 +64,16 @@ describe("builtin-tab-registry: table integrity", () => {
         expect(resolveBuiltinTabId(alias)).toBe(entry.id);
       }
     }
+  });
+
+  it("classifies every canonical entry and inherits aliases from its owner", () => {
+    for (const entry of BUILTIN_TAB_METADATA) {
+      expect(resolveBuiltinPageLayout(entry.id)).toBe(entry.layout);
+      for (const alias of entry.aliases ?? []) {
+        expect(resolveBuiltinPageLayout(alias)).toBe(entry.layout);
+      }
+    }
+    expect(resolveBuiltinPageLayout("some-plugin-tab")).toBeNull();
   });
 });
 
@@ -162,6 +173,7 @@ describe("resolveBuiltinRoutedViewManifest: routed-content manifests only", () =
     expect(manifest?.header).toBe("fullscreen");
     expect(manifest?.isolation).toBe("native-webview");
     expect(manifest?.background).toBe("opaque");
+    expect(manifest?.layout).toBe(resolveBuiltinPageLayout("browser"));
   });
 
   it("excludes the immersive wallpaper surfaces (structural shell branches)", () => {
@@ -203,7 +215,7 @@ describe("App.tsx drift guard: legacy central enumerations removed", () => {
     const fnStart = appSource.indexOf("function renderStaticViewRouterTab(");
     expect(fnStart).toBeGreaterThan(-1);
     const fnBody = appSource.slice(fnStart, fnStart + 900);
-    expect(fnBody).toContain("resolveBuiltinTabId");
+    expect(fnBody).toContain("resolveBuiltinRouteDescriptor");
     expect(fnBody).toContain("buildStaticTabRenderers()");
     // The alias / special-surface if-chain that lived at the tail of the old
     // renderStaticViewRouterTab is gone from its body.

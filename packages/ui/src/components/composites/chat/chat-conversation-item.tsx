@@ -13,6 +13,8 @@ import { useClickSuppression, usePressAndHold } from "../../../gestures";
 // Tailwind v4 cannot detect classes built from runtime template literals,
 // so the value is kept inline so the scanner emits the utility.
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
+import { StatusDot } from "../../ui/status-badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
 import type {
   ChatConversationLabels,
@@ -156,21 +158,18 @@ export const ChatConversationItem = memo(function ChatConversationItem({
   const renderedTitle = displayTitle ?? conversation.title;
   const showInlineActions = isGameModal;
   return (
-    <div
+    <Card
+      variant={
+        isActive ? "insetCompact" : isGameModal ? "panel" : "transparent"
+      }
+      flow={isGameModal ? "none" : "row"}
+      gap={isGameModal ? "none" : "compact"}
       data-testid="conv-item"
       data-active={isActive || undefined}
       className={
         isGameModal
-          ? `group relative flex w-full items-start gap-2 rounded-sm border p-2.5 transition-all sm:gap-3 ${
-              isActive
-                ? "border-[color:var(--first-run-accent-border)] bg-[color:var(--first-run-accent-bg)] "
-                : "border-transparent bg-transparent hover:border-white/10 hover:bg-white/5"
-            }`
-          : `group relative flex w-full items-center gap-2 px-2.5 py-1 text-left transition-colors duration-100 ${
-              isActive
-                ? "rounded-sm border border-accent/35 bg-[color:color-mix(in_srgb,var(--accent-subtle)_70%,var(--bg)_30%)] text-txt"
-                : "rounded-sm border border-transparent bg-[color:color-mix(in_srgb,var(--card)_82%,var(--text)_10%)] text-[color:color-mix(in_srgb,var(--text-strong)_78%,var(--text)_22%)] hover:border-border/45 hover:bg-[color:color-mix(in_srgb,var(--card)_76%,var(--text)_16%)] hover:text-txt"
-            }`
+          ? "group relative flex w-full items-start gap-2 transition-all sm:gap-3"
+          : "group relative w-full px-2.5 py-1 text-left transition-colors duration-100"
       }
     >
       <Button
@@ -188,12 +187,14 @@ export const ChatConversationItem = memo(function ChatConversationItem({
         {...pressAndHold}
       >
         {isUnread ? (
-          <span
+          <StatusDot
+            tone="success"
             className={
               isGameModal
-                ? "absolute left-3 top-3 z-[1] h-2 w-2 shrink-0 rounded-full bg-accent animate-pulse"
-                : "h-1.5 w-1.5 shrink-0 rounded-full bg-accent "
+                ? "absolute left-3 top-3 z-[1] animate-pulse"
+                : "shrink-0"
             }
+            aria-label="Unread"
           />
         ) : null}
 
@@ -255,7 +256,7 @@ export const ChatConversationItem = memo(function ChatConversationItem({
       ) : null}
 
       {isConfirmingDelete ? (
-        <div className="flex shrink-0 items-center gap-1.5 rounded-sm border border-danger/30 bg-destructive-subtle p-2">
+        <Card variant="insetCompact" flow="row" gap="tight">
           <span className="text-2xs font-medium text-txt-strong">
             {labels.deleteConfirm ?? "Delete?"}
           </span>
@@ -275,8 +276,8 @@ export const ChatConversationItem = memo(function ChatConversationItem({
           >
             {labels.deleteNo ?? "No"}
           </Button>
-        </div>
+        </Card>
       ) : null}
-    </div>
+    </Card>
   );
 });

@@ -21,8 +21,11 @@ import {
   ConnectionInstructions,
 } from "../../cloud-ui/components/connection-card";
 import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
+import { CodeBlock } from "../../components/ui/code-block";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { TextLink } from "../../components/ui/text-link";
 import { ApiError, api } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { useConnectionStatus } from "./use-connection-status";
@@ -273,20 +276,21 @@ export function TelegramConnection() {
                 {t("cloud.telegram.instructSearch", {
                   defaultValue: "Open Telegram and search for",
                 })}{" "}
-                <a
+                <TextLink
                   href="https://t.me/BotFather"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-accent hover:underline"
                 >
                   @BotFather
-                </a>
+                </TextLink>
               </li>
               <li>
                 {t("cloud.telegram.instructSendBefore", {
                   defaultValue: "Send",
                 })}{" "}
-                <code className="bg-background px-1 rounded-sm">/newbot</code>{" "}
+                <CodeBlock variant="inline" className="px-1">
+                  /newbot
+                </CodeBlock>{" "}
                 {t("cloud.telegram.instructSendAfter", {
                   defaultValue: "command",
                 })}
@@ -344,7 +348,7 @@ export function TelegramConnection() {
             </p>
           </div>
 
-          <div className="p-4 bg-muted rounded-sm">
+          <Card variant="flatPadded">
             <h4 className="font-medium mb-2">
               {t("cloud.telegram.whatYouCanDo", {
                 defaultValue: "What you can do with Telegram automation:",
@@ -372,7 +376,7 @@ export function TelegramConnection() {
                 })}
               </li>
             </ul>
-          </div>
+          </Card>
 
           <Button
             onClick={handleConnect}

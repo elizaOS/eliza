@@ -107,10 +107,10 @@ export function isRenderTelemetryEnabled(): boolean {
   }
 
   const explicit = readEnvValue("VITE_ELIZA_RENDER_TELEMETRY");
-  if (explicit === false || explicit === "0" || explicit === "false") {
+  if (explicit === "0" || explicit === "false") {
     return false;
   }
-  if (explicit === true || explicit === "1" || explicit === "true") {
+  if (explicit === "1" || explicit === "true") {
     return true;
   }
 
@@ -118,9 +118,11 @@ export function isRenderTelemetryEnabled(): boolean {
     typeof process !== "undefined" ? process.env.NODE_ENV : undefined;
   const meta = import.meta as ImportMetaWithEnv;
   const mode = meta.env?.MODE;
+  const viteDev = readEnvValue("DEV");
 
   return (
-    meta.env?.DEV === true ||
+    viteDev === true ||
+    viteDev === "true" ||
     mode === "development" ||
     mode === "test" ||
     nodeEnv === "development" ||

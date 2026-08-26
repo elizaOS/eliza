@@ -1051,6 +1051,7 @@ export class SharedRuntimeConversation {
           },
         );
       },
+      checkpointPending: () => this.pendingHistoryCheckpoint,
       merge: async (agentId, channelId, messages) => {
         const key = pendingKey(agentId, channelId);
         const pending = this.pendingHistory.get(key) ?? [];

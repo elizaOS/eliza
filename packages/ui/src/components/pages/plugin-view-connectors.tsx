@@ -40,6 +40,7 @@ import {
 } from "../connectors/connector-mode-registry";
 import { getBrandIcon } from "../conversations/brand-icons";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import {
   Select,
   SelectContent,
@@ -110,6 +111,7 @@ interface ConnectorPluginGroupsProps {
     options?: {
       className?: string;
       emojiClassName?: string;
+      imageSize?: number;
     },
   ) => ReactNode;
   t: TranslateFn;
@@ -841,22 +843,22 @@ function ConnectorPluginCard({
 
   const BrandIcon = getBrandIcon(plugin.id);
   const connectorHeaderMedia = (
-    <span
-      className={`mt-0.5 flex size-11 shrink-0 items-center justify-center rounded-sm border p-2.5 ${
-        isSelected
-          ? "border-accent/30 bg-accent/18 text-txt-strong"
-          : "border-border/50 bg-bg-accent/80 text-muted"
-      }`}
+    <Card
+      variant={isSelected ? "sidebarIconActive" : "sidebarIcon"}
+      border={isSelected ? "accent" : "subtle"}
+      padding="compact"
+      className="mt-0.5 flex size-11 shrink-0 items-center justify-center"
     >
       {BrandIcon ? (
         <BrandIcon className="size-5 shrink-0" />
       ) : (
         renderResolvedIcon(plugin, {
-          className: "size-4 shrink-0 rounded-sm object-contain",
+          className: "size-4 shrink-0",
           emojiClassName: "text-base",
+          imageSize: 16,
         })
       )}
-    </span>
+    </Card>
   );
   const connectorHeaderHeading = (
     <div className="min-w-0">
@@ -979,7 +981,6 @@ function ConnectorPluginCard({
         data-testid={`connector-card-${plugin.id}`}
         expanded={isExpanded}
         expandOnCollapsedSurfaceClick
-        className="border-transparent transition-all"
         onExpandedChange={(nextExpanded) =>
           handleConnectorExpandedChange(plugin.id, nextExpanded)
         }
@@ -1046,7 +1047,8 @@ function ConnectorPluginCard({
                   >
                     <SelectTrigger
                       ref={managedDiscordAgentSelect.ref}
-                      className="h-9 min-w-[14rem] rounded-sm border-border/40 bg-bg/80 text-sm"
+                      variant="connectorLocal"
+                      className="min-w-[14rem]"
                       {...managedDiscordAgentSelect.agentProps}
                     >
                       <SelectValue

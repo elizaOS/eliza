@@ -715,6 +715,13 @@ describe("capability router", () => {
 											label: "Weather",
 											path: "/weather",
 											backgroundPolicy: "shared",
+											surface: {
+												layout: {
+													kind: "content",
+													width: "reading",
+													scroll: "shell",
+												},
+											},
 										},
 									],
 								},
@@ -854,6 +861,13 @@ describe("capability router", () => {
 								label: "Weather",
 								path: "/weather",
 								backgroundPolicy: "shared",
+								surface: {
+									layout: {
+										kind: "content",
+										width: "reading",
+										scroll: "shell",
+									},
+								},
 							},
 						],
 					},

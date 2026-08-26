@@ -14,8 +14,30 @@ const alertVariants = cva(
     variants: {
       variant: {
         default: "border-border bg-card text-txt",
+        warning: "border-warn/30 bg-warn/5 text-txt",
         destructive:
           "border-destructive/30 bg-destructive-subtle text-destructive [&>svg]:text-current *:data-[slot=alert-description]:text-destructive/90",
+        sidebar: "border-border/40 bg-bg/35 text-muted",
+        sidebarDanger: "border-danger/30 bg-danger/10 text-danger",
+        inlineDanger:
+          "block border-danger/35 bg-danger/10 p-2.5 font-mono text-xs text-danger",
+        inlineDangerCompact:
+          "block border-danger/35 bg-danger/10 p-2 font-mono text-xs text-danger",
+        warningStrong: "border-warn/30 bg-warn/10 text-txt",
+        warningDiff: "border-warn/30 bg-warn/5 text-xs text-warning",
+        warningCompact:
+          "border-warn/30 bg-warn/10 px-3 py-1.5 text-2xs text-warn",
+        dashboardInfo:
+          "border-status-info/35 bg-status-info-bg text-status-info",
+        dashboardSuccess:
+          "border-status-success/30 bg-status-success-bg text-status-success",
+        dashboardWarning:
+          "border-status-warning/30 bg-status-warning-bg text-status-warning",
+        dashboardError:
+          "border-destructive/40 bg-destructive-subtle text-destructive",
+        dangerConfirm: "border-danger/50 bg-destructive-subtle text-danger",
+        inlineDestructive:
+          "rounded-sm border border-destructive/40 bg-destructive/10 text-destructive",
       },
     },
     defaultVariants: {

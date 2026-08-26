@@ -13,6 +13,7 @@ import { cn } from "../../../lib/utils";
 import { useAppSelector } from "../../../state";
 import { Button } from "../../ui/button";
 import { ErrorBoundary } from "../../ui/error-boundary";
+import { Skeleton } from "../../ui/skeleton";
 import {
   CloudAccountMenu,
   type CloudAccountNavigationState,
@@ -53,9 +54,9 @@ function SectionLoading({ label }: { label: string }) {
       role="status"
     >
       <span className="sr-only">Loading {label}</span>
-      <div className="h-4 w-2/5 animate-pulse rounded-sm bg-bg-muted motion-reduce:animate-none" />
-      <div className="h-11 w-full animate-pulse rounded-sm bg-bg-muted motion-reduce:animate-none" />
-      <div className="h-11 w-full animate-pulse rounded-sm bg-bg-muted motion-reduce:animate-none" />
+      <Skeleton className="h-4 w-2/5 motion-reduce:animate-none" />
+      <Skeleton className="h-11 w-full motion-reduce:animate-none" />
+      <Skeleton className="h-11 w-full motion-reduce:animate-none" />
     </div>
   );
 }

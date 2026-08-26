@@ -1,17 +1,29 @@
 /** Accessible single-selection controls with canonical focus and checked-state presentation. */
 import * as RadioGroupPrimitive from "@radix-ui/react-radio-group";
+import { cva, type VariantProps } from "class-variance-authority";
 import { Circle } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "../../lib/utils";
 
+const radioGroupVariants = cva("grid gap-2", {
+  variants: {
+    variant: {
+      default: "",
+      backupList: "gap-0 overflow-hidden rounded-sm border border-border bg-bg",
+    },
+  },
+  defaultVariants: { variant: "default" },
+});
+
 const RadioGroup = React.forwardRef<
   React.ElementRef<typeof RadioGroupPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof RadioGroupPrimitive.Root>
->(({ className, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof RadioGroupPrimitive.Root> &
+    VariantProps<typeof radioGroupVariants>
+>(({ className, variant, ...props }, ref) => (
   <RadioGroupPrimitive.Root
     ref={ref}
-    className={cn("grid gap-2", className)}
+    className={cn(radioGroupVariants({ variant }), className)}
     {...props}
   />
 ));

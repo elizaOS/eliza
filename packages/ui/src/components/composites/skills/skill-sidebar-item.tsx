@@ -6,6 +6,7 @@
 import type * as React from "react";
 
 import { ActionListRow } from "../../shared/ActionListRow";
+import { Card } from "../../ui/card";
 import { StatusBadge } from "../../ui/status-badge";
 
 export interface SkillSidebarItemProps {
@@ -51,15 +52,13 @@ export function SkillSidebarItem({
       aria-current={active ? "page" : undefined}
       onClick={onSelect}
       leading={
-        <span
-          className={
-            active
-              ? "flex size-10 items-center justify-center rounded-sm bg-accent/18 p-2 text-txt-strong"
-              : "flex size-10 items-center justify-center rounded-sm bg-bg-accent/80 p-2 text-muted"
-          }
+        <Card
+          asChild
+          variant={active ? "sidebarIconActive" : "sidebarIcon"}
+          className="flex size-10 items-center justify-center p-2"
         >
-          {icon}
-        </span>
+          <span>{icon}</span>
+        </Card>
       }
       title={name}
       description={description}

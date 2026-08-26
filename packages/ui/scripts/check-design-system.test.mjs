@@ -8,19 +8,380 @@ import {
   assertCanonicalRecipeContractsSeen,
   assertRegisteredAdaptersUsed,
   auditCanonicalTokenRoles,
+  buildCardVariantMigrationInventory,
   buildComplianceReport,
   compareToBaseline,
   compareToTightBaseline,
   extractButtonAxisDefinitions,
+  extractCardVariantDefinitions,
   findUnderusedButtonAxes,
+  findUnderusedCardVariants,
+  indexPaintedCssClasses,
   RULES,
   renderComplianceMarkdown,
   resolvesToCanonical,
   scanButtonAxisUsages,
+  scanCardVariantUsages,
   scanSourceText,
   validateAdapterRegistry,
   validateExceptions,
 } from "./check-design-system.mjs";
+
+test("named CSS cannot hide paint on a canonical atom", () => {
+  const paintedCssClasses = indexPaintedCssClasses([
+    {
+      file: "packages/ui/src/styles/scanner.css",
+      source:
+        ".one-off-painted-surface { background: red; border-radius: 12px; }",
+    },
+  ]);
+  const findings = scanSourceText({
+    file: new URL(
+      "../src/components/__scanner-css-paint__.tsx",
+      import.meta.url,
+    ).pathname,
+    paintedCssClasses,
+    source: `
+      import { Card } from "@elizaos/ui";
+      export function HiddenPaint() {
+        return <Card className="one-off-painted-surface layout-only">Painted</Card>;
+      }
+    `,
+  });
+  assert.deepEqual(
+    findings.filter((finding) => finding.rule === "visual-override"),
+    [
+      {
+        detail:
+          "Canonical visual state is hidden in painted CSS class one-off-painted-surface; move that paint into the atom's typed contract.",
+        file: "packages/ui/src/components/__scanner-css-paint__.tsx",
+        line: 4,
+        rule: "visual-override",
+        symbol: "Card",
+      },
+    ],
+  );
+});
+
+test("stateful CSS selectors index only the painted selector subject", () => {
+  const paintedCssClasses = indexPaintedCssClasses([
+    {
+      file: "packages/ui/src/styles/scanner-state.css",
+      source: `
+        .hoverPaint:hover { background: red; }
+        .statePaint[data-state="open"] { border-color: red; }
+        .ancestorPaint .descendantPaint:hover { box-shadow: 0 0 1px red; }
+        :where(.wherePaint) { background: red; }
+        :is(.isPaint) { color: red; }
+        :global(.globalPaint) { outline-color: red; }
+        .functionalAncestor :where(.functionalChild) { background: red; }
+      `,
+    },
+  ]);
+  const findings = scanSourceText({
+    file: new URL(
+      "../src/components/__scanner-css-state-paint__.tsx",
+      import.meta.url,
+    ).pathname,
+    paintedCssClasses,
+    source: `
+      import { Card } from "@elizaos/ui";
+      export function StatefulPaint() {
+        return <>
+          <Card className="hoverPaint">Hover</Card>
+          <Card className="statePaint" data-state="open">Open</Card>
+          <Card className="ancestorPaint">Ancestor only</Card>
+          <Card className="descendantPaint">Painted descendant</Card>
+          <Card className="wherePaint">Where subject</Card>
+          <Card className="isPaint">Is subject</Card>
+          <Card className="globalPaint">Global subject</Card>
+          <Card className="functionalAncestor">Functional ancestor</Card>
+          <Card className="functionalChild">Functional child</Card>
+        </>;
+      }
+    `,
+  });
+
+  assert.deepEqual(
+    findings
+      .filter((finding) => finding.rule === "visual-override")
+      .map(({ line, symbol }) => ({ line, symbol })),
+    [
+      { line: 5, symbol: "Card" },
+      { line: 6, symbol: "Card" },
+      { line: 8, symbol: "Card" },
+      { line: 9, symbol: "Card" },
+      { line: 10, symbol: "Card" },
+      { line: 11, symbol: "Card" },
+      { line: 13, symbol: "Card" },
+    ],
+  );
+});
+
+test("helper-returned JSX spreads cannot hide canonical visual overrides", () => {
+  const findings = scanSourceText({
+    file: new URL(
+      "../src/components/__scanner-helper-visual-spread__.tsx",
+      import.meta.url,
+    ).pathname,
+    source: `
+      import { Card } from "@elizaos/ui/card";
+      import { importedProps } from "./opaque-card-props";
+      function paintedClassProps() {
+        return { className: "bg-surface" };
+      }
+      function paintedStyleProps() {
+        return { style: { borderColor: "white" } };
+      }
+      const helperObject = {
+        props() {
+          return { className: "border-border" };
+        },
+      };
+      const nestedHelpers = {
+        nested: {
+          props() {
+            return { className: "bg-card" };
+          },
+        },
+      };
+      export function HelperVisualSpread() {
+        return <>
+          <Card {...paintedClassProps()} />
+          <Card {...paintedStyleProps()} />
+          <Card {...helperObject.props()} />
+          <Card {...nestedHelpers.nested.props()} />
+          <Card {...importedProps} />
+        </>;
+      }
+    `,
+  });
+
+  assert.deepEqual(
+    findings
+      .filter((finding) => finding.rule === "visual-override")
+      .map(({ line, symbol }) => ({ line, symbol })),
+    [
+      { line: 24, symbol: "Card" },
+      { line: 25, symbol: "Card" },
+      { line: 26, symbol: "Card" },
+      { line: 27, symbol: "Card" },
+      { line: 28, symbol: "Card" },
+    ],
+  );
+});
+
+test("maintained React factory files inspect canonical atom props", () => {
+  const paintedCssClasses = indexPaintedCssClasses([
+    {
+      file: "packages/ui/src/styles/scanner-factory.css",
+      source: ".factoryPaint { background: red; }",
+    },
+  ]);
+  const findings = scanSourceText({
+    file: new URL(
+      "../src/components/__scanner-react-factory__.ts",
+      import.meta.url,
+    ).pathname,
+    paintedCssClasses,
+    source: `
+      import React from "react";
+      import { Card } from "@elizaos/ui/card";
+      export function FactoryCard() {
+        return React.createElement(Card, { className: "factoryPaint" });
+      }
+      export function BrowserElement() {
+        return document.createElement(Card, { className: "factoryPaint" });
+      }
+    `,
+  });
+  const javascriptFindings = scanSourceText({
+    file: new URL(
+      "../src/components/__scanner-react-factory__.js",
+      import.meta.url,
+    ).pathname,
+    paintedCssClasses,
+    source: `
+      import { createElement } from "react";
+      import { Card } from "@elizaos/ui/card";
+      export function FactoryCard() {
+        return createElement(Card, { className: "factoryPaint" });
+      }
+    `,
+  });
+
+  assert.deepEqual(
+    [...findings, ...javascriptFindings].filter(
+      (finding) => finding.rule === "visual-override",
+    ),
+    [
+      {
+        detail:
+          "Canonical visual state is hidden in painted CSS class factoryPaint; move that paint into the atom's typed contract.",
+        file: "packages/ui/src/components/__scanner-react-factory__.ts",
+        line: 5,
+        rule: "visual-override",
+        symbol: "Card",
+      },
+      {
+        detail:
+          "Canonical visual state is hidden in painted CSS class factoryPaint; move that paint into the atom's typed contract.",
+        file: "packages/ui/src/components/__scanner-react-factory__.js",
+        line: 5,
+        rule: "visual-override",
+        symbol: "Card",
+      },
+    ],
+  );
+});
+
+test("namespace atoms and aliased React factories cannot bypass visual checks", () => {
+  const findings = scanSourceText({
+    file: new URL(
+      "../src/components/__scanner-react-aliases__.tsx",
+      import.meta.url,
+    ).pathname,
+    source: `
+      import React from "react";
+      import * as UI from "@elizaos/ui";
+      import * as kit from "@elizaos/ui";
+      import { Card } from "@elizaos/ui/card";
+      const localKit = { Card };
+      const renamedKit = { Surface: Card };
+      const Surface = Card;
+      const { createElement: h } = React;
+      const bracketFactory = React["createElement"];
+      export function AliasCards() {
+        return <>
+          <UI.Card className="bg-card" />
+          <kit.Card className="border-border" />
+          <localKit.Card className="bg-card" />
+          <renamedKit.Surface className="border-border" />
+          <Surface className="bg-card" />
+          {h(UI.Card, { className: "bg-card" })}
+          {bracketFactory(kit.Card, { style: { borderColor: "white" } })}
+          {React.createElement(localKit.Card, { className: "bg-card" })}
+          {React.createElement(renamedKit.Surface, { className: "border-border" })}
+          {React.createElement(Surface, { className: "bg-card" })}
+        </>;
+      }
+    `,
+  });
+
+  assert.deepEqual(
+    findings
+      .filter((finding) => finding.rule === "visual-override")
+      .map(({ line, symbol }) => ({ line, symbol })),
+    [
+      { line: 13, symbol: "Card" },
+      { line: 14, symbol: "Card" },
+      { line: 15, symbol: "Card" },
+      { line: 16, symbol: "Card" },
+      { line: 17, symbol: "Card" },
+      { line: 18, symbol: "Card" },
+      { line: 19, symbol: "Card" },
+      { line: 20, symbol: "Card" },
+      { line: 21, symbol: "Card" },
+      { line: 22, symbol: "Card" },
+    ],
+  );
+});
+
+test("Card visualStyle rejects raw literals but preserves token and runtime values", () => {
+  const findings = scanSourceText({
+    file: new URL(
+      "../src/components/__scanner-card-visual-style__.tsx",
+      import.meta.url,
+    ).pathname,
+    source: `
+      import { Card } from "@elizaos/ui/card";
+      const runtimeColor = getRuntimeColor();
+      function localPaint() { return "rgb(255 255 255)"; }
+      function localToken() { return "var(--bg-muted)"; }
+      export function CardVisualStyle() {
+        return <>
+          <Card visualStyle={{ backgroundColor: "#fff" }} />
+          <Card visualStyle={{ borderRadius: 12 }} />
+          <Card visualStyle={{ backgroundColor: "var(--bg-muted)" }} />
+          <Card visualStyle={{ backgroundColor: runtimeColor }} />
+          <Card visualStyle={{ backgroundColor: localPaint() }} />
+          <Card visualStyle={{ backgroundColor: "rgb(" + "255 255 255)" }} />
+          <Card visualStyle={{ borderRadius: \`\${12}px\` }} />
+          <Card visualStyle={{ backgroundColor: localToken() }} />
+        </>;
+      }
+    `,
+  });
+
+  assert.deepEqual(
+    findings
+      .filter((finding) => finding.rule === "visual-override")
+      .map(({ line, symbol }) => ({ line, symbol })),
+    [
+      { line: 8, symbol: "Card" },
+      { line: 9, symbol: "Card" },
+      { line: 12, symbol: "Card" },
+      { line: 13, symbol: "Card" },
+      { line: 14, symbol: "Card" },
+    ],
+  );
+});
+
+test("Card tokenStyle accepts only canonical CSS variable keys", () => {
+  const findings = scanSourceText({
+    file: new URL(
+      "../src/components/__scanner-card-token-style__.tsx",
+      import.meta.url,
+    ).pathname,
+    source: `
+      import { Card } from "@elizaos/ui/card";
+      import { runtimeToken } from "./runtime-token";
+      const localPaint = "rgb(255 0 0)";
+      export function CardTokenStyle() {
+        return <>
+          <Card tokenStyle={{ "--bg": "var(--runtime-bg)" }} visualStyle={{ background: "var(--bg)" }} />
+          <Card tokenStyle={{ "--escape": "rgb(255 0 0)" }} visualStyle={{ background: "var(--escape)" }} />
+          <Card tokenStyle={{ "--bg": "rgb(255 0 0)" }} />
+          <Card tokenStyle={{ "--bg": runtimeToken }} />
+          <Card tokenStyle={{ "--bg": localPaint }} />
+        </>;
+      }
+    `,
+  });
+
+  assert.deepEqual(
+    findings
+      .filter((finding) => finding.rule === "visual-override")
+      .map(({ line, symbol }) => ({ line, symbol })),
+    [
+      { line: 8, symbol: "Card" },
+      { line: 9, symbol: "Card" },
+      { line: 11, symbol: "Card" },
+    ],
+  );
+});
+
+test("opaque function-parameter spreads fail closed on canonical atoms", () => {
+  const findings = scanSourceText({
+    file: new URL(
+      "../src/components/__scanner-forwarded-spread__.tsx",
+      import.meta.url,
+    ).pathname,
+    source: `
+      import { Card } from "@elizaos/ui/card";
+      export function ForwardedCard(props) {
+        return <Card {...props} />;
+      }
+    `,
+  });
+
+  assert.deepEqual(
+    findings
+      .filter((finding) => finding.rule === "visual-override")
+      .map(({ line, symbol }) => ({ line, symbol })),
+    [{ line: 4, symbol: "Card" }],
+  );
+});
 
 test("registered adapters own local recipes without creating a caller escape hatch", () => {
   const file = new URL(
@@ -65,12 +426,60 @@ test("registered adapters own local recipes without creating a caller escape hat
   assert.equal(findings.at(-1)?.line, 8);
 });
 
+test("raw flat and outlined card recipes are independently order-normalized", () => {
+  const file = new URL(
+    "../src/components/__scanner-card-recipe__.tsx",
+    import.meta.url,
+  ).pathname;
+  const findings = scanSourceText({
+    file,
+    source: `
+      export function RawCards() {
+        return <>
+          <section className="space-y-4 p-4 bg-card rounded-sm">Duplicate</section>
+          <section className="rounded-sm border border-border bg-card p-4">Distinct outlined surface</section>
+          <Card className="bg-background/85 border-border/70">Repainted report panel</Card>
+          <aside className="py-2 border-border bg-surface px-3 border rounded-sm">Raw compact inset</aside>
+        </>;
+      }
+    `,
+  });
+
+  const duplicates = findings.filter(
+    (finding) => finding.rule === "raw-card-recipe",
+  );
+  assert.equal(duplicates.length, 1);
+  assert.equal(duplicates[0]?.symbol, "section");
+  const outlinedDuplicates = findings.filter(
+    (finding) => finding.rule === "raw-outlined-card-recipe",
+  );
+  assert.equal(outlinedDuplicates.length, 1);
+  assert.equal(outlinedDuplicates[0]?.symbol, "section");
+  assert.equal(
+    findings.filter((finding) => finding.rule === "card-report-panel-override")
+      .length,
+    1,
+  );
+  assert.equal(
+    findings.filter((finding) => finding.rule === "raw-inset-card-recipe")
+      .length,
+    1,
+  );
+});
+
 test("token roles reject raw colors, wrong channels, and unconstrained transitions", () => {
   assert.deepEqual(
     analyzeTokenRoleClasses({
       className:
         "bg-card text-txt border-border rounded-sm px-3 hover:bg-surface",
       role: "action",
+    }),
+    [],
+  );
+  assert.deepEqual(
+    analyzeTokenRoleClasses({
+      className: "bg-launcher-icon-sheen",
+      role: "surface",
     }),
     [],
   );
@@ -286,6 +695,205 @@ test("Button axes require two maintained call sites", () => {
   );
 });
 
+test("Card variants require reuse instead of storing molecule-local paint", () => {
+  const cardFile = new URL(
+    "../src/components/ui/__scanner-card__.tsx",
+    import.meta.url,
+  ).pathname;
+  const { definitions, defaults } = extractCardVariantDefinitions({
+    file: cardFile,
+    source: `
+      const cardVariants = cva("base", {
+        variants: {
+          variant: { default: "default", shared: "shared", oneOff: "one-off" },
+          stack: { none: "" },
+          flow: { none: "" },
+          gap: { none: "" },
+          padding: { none: "" },
+          tone: { default: "" },
+          surface: { default: "" },
+          border: { default: "" },
+          radius: { default: "" },
+          shadow: { default: "" },
+        },
+        defaultVariants: {
+          variant: "default",
+          stack: "none",
+          flow: "none",
+          gap: "none",
+          padding: "none",
+          tone: "default",
+          surface: "default",
+          border: "default",
+          radius: "default",
+          shadow: "default",
+        },
+      });
+    `,
+  });
+  const callerFile = new URL(
+    "../src/components/__scanner-card-caller__.tsx",
+    import.meta.url,
+  ).pathname;
+  const usages = scanCardVariantUsages({
+    defaults,
+    file: callerFile,
+    source: `
+      import { Card, cardVariants } from "@elizaos/ui/card";
+      const appearance = active ? "shared" : "oneOff";
+      function sharedAppearance() { return "shared"; }
+      export function Fixture() {
+        return <><Card variant={appearance} /><Card />{cardVariants({ variant: sharedAppearance() })}</>;
+      }
+    `,
+  });
+
+  const underusedVariants = findUnderusedCardVariants({
+    definitions,
+    usages,
+  }).filter((entry) => entry.axis === "variant");
+  assert.deepEqual(
+    underusedVariants.map(({ callerCount, value }) => ({ callerCount, value })),
+    [
+      { callerCount: 1, value: "default" },
+      { callerCount: 1, value: "shared" },
+      { callerCount: 1, value: "oneOff" },
+    ],
+  );
+
+  const migration = buildCardVariantMigrationInventory(underusedVariants);
+  assert.deepEqual(migration.byDomain, {
+    "ui/components": ["default", "shared", "oneOff"],
+  });
+  assert.deepEqual(migration.entries[2], {
+    callerCount: 1,
+    callers: [
+      {
+        file: "packages/ui/src/components/__scanner-card-caller__.tsx",
+        line: 6,
+      },
+    ],
+    domains: ["ui/components"],
+    file: "packages/ui/src/components/ui/__scanner-card__.tsx",
+    line: 4,
+    recipe: "one-off",
+    suggestedAxes: {},
+    suggestedOwner: "ui/components molecule",
+    value: "oneOff",
+  });
+});
+
+test("Card axis inventory follows helper-returned JSX spreads", () => {
+  const file = new URL(
+    "../src/components/__scanner-card-spread__.tsx",
+    import.meta.url,
+  ).pathname;
+  const usages = scanCardVariantUsages({
+    defaults: {
+      border: "default",
+      flow: "none",
+      gap: "none",
+      padding: "none",
+      radius: "default",
+      shadow: "default",
+      stack: "none",
+      surface: "default",
+      tone: "default",
+      variant: "default",
+    },
+    file,
+    source: `
+      import { Card } from "@elizaos/ui/card";
+      function cardProps() {
+        return { variant: "shared", surface: "card", radius: "large" };
+      }
+      export function SpreadCard() { return <Card {...cardProps()} />; }
+    `,
+  });
+
+  assert.deepEqual(
+    usages
+      .filter((usage) => ["variant", "surface", "radius"].includes(usage.axis))
+      .map(({ axis, owner, value }) => ({ axis, owner, value })),
+    [
+      { axis: "variant", owner: "SpreadCard", value: "shared" },
+      { axis: "surface", owner: "SpreadCard", value: "card" },
+      { axis: "radius", owner: "SpreadCard", value: "large" },
+    ],
+  );
+});
+
+test("Card reuse credit excludes stories and private dead owners", () => {
+  const defaults = {
+    border: "default",
+    flow: "none",
+    gap: "none",
+    padding: "none",
+    radius: "default",
+    shadow: "default",
+    stack: "none",
+    surface: "default",
+    tone: "default",
+    variant: "default",
+  };
+  const storyFile = new URL(
+    "../src/components/__scanner-card__.stories.tsx",
+    import.meta.url,
+  ).pathname;
+  const storySource = `
+      import { Card } from "@elizaos/ui/card";
+      export function StoryOnly() { return <Card variant="shared" />; }
+    `;
+  const sourceFile = new URL(
+    "../src/components/__scanner-card-live-owner__.tsx",
+    import.meta.url,
+  ).pathname;
+  const source = `
+      import { Card } from "@elizaos/ui/card";
+      function DeadOwner() { return <Card variant="shared" />; }
+      function VoidOnly() { return <Card variant="shared" />; }
+      function LiveHelper() { return <Card variant="shared" />; }
+      export function PublicOwner() { void VoidOnly; return <LiveHelper />; }
+    `;
+  const storyUsages = scanCardVariantUsages({
+    defaults,
+    file: storyFile,
+    source: storySource,
+  });
+  const sourceUsages = scanCardVariantUsages({
+    defaults,
+    file: sourceFile,
+    source,
+  });
+  const integratedUsages = [];
+  scanSourceText({
+    cardDefaults: defaults,
+    cardUsages: integratedUsages,
+    file: storyFile,
+    source: storySource,
+  });
+  scanSourceText({
+    cardDefaults: defaults,
+    cardUsages: integratedUsages,
+    file: sourceFile,
+    source,
+  });
+
+  assert.deepEqual(storyUsages, []);
+  assert.deepEqual(
+    sourceUsages
+      .filter((usage) => usage.axis === "variant")
+      .map(({ owner, value }) => ({ owner, value })),
+    [{ owner: "LiveHelper", value: "shared" }],
+  );
+  assert.deepEqual(
+    integratedUsages
+      .filter((usage) => usage.axis === "variant")
+      .map(({ owner, value }) => ({ owner, value })),
+    [{ owner: "LiveHelper", value: "shared" }],
+  );
+});
+
 test("dynamic class expressions cannot hide canonical visual overrides", () => {
   const file = new URL("../src/__scanner-fixture__.tsx", import.meta.url)
     .pathname;
@@ -314,6 +922,29 @@ test("dynamic class expressions cannot hide canonical visual overrides", () => {
     ).length,
     3,
   );
+});
+
+test("canonical atom className permits caller layout and typography but rejects paint", () => {
+  const file = new URL("../src/__scanner-fixture__.tsx", import.meta.url)
+    .pathname;
+  const findings = scanSourceText({
+    file,
+    source: `
+      import { Button } from "@elizaos/ui";
+      export function Fixture() {
+        return (<>
+          <Button className="p-4 h-10 gap-2 text-center text-sm">Layout</Button>
+          <Button className="bg-surface text-txt">Paint</Button>
+        </>);
+      }
+    `,
+  });
+
+  const overrides = findings.filter(
+    (finding) => finding.rule === "visual-override",
+  );
+  assert.equal(overrides.length, 1);
+  assert.equal(overrides[0].line, 6);
 });
 
 test("compliance inventory is deterministic and covers every governed rule", {
@@ -370,6 +1001,20 @@ test("supported UI barrels resolve to canonical atoms without relying on debt", 
       true,
     );
   }
+  assert.deepEqual(
+    scanCardVariantUsages({
+      defaults: { variant: "default" },
+      file: new URL(
+        "../src/cloud/analytics/_components/chart.tsx",
+        import.meta.url,
+      ).pathname,
+      source: `
+        import { Card } from "../../../cloud-ui";
+        export function Chart() { return <Card variant="reportPanel" />; }
+      `,
+    }).map(({ value }) => value),
+    ["reportPanel"],
+  );
 });
 
 test("baseline comparison rejects increases and permits reductions", {
@@ -468,6 +1113,17 @@ test("exceptions must be valid, current, exact, and used", () => {
         {
           ...valid,
           exceptions: [{ ...valid.exceptions[0], rule: "button-axis-reuse" }],
+        },
+        now,
+      ),
+    /Invalid design-system exception/,
+  );
+  assert.throws(
+    () =>
+      validateExceptions(
+        {
+          ...valid,
+          exceptions: [{ ...valid.exceptions[0], rule: "card-variant-reuse" }],
         },
         now,
       ),

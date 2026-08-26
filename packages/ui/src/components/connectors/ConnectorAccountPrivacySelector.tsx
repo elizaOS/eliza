@@ -9,6 +9,7 @@ import { useId, useMemo, useState } from "react";
 import type { ConnectorAccountPrivacy } from "../../api/client-agent";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { Checkbox } from "../ui/checkbox";
 import {
   Dialog,
@@ -140,7 +141,8 @@ export function ConnectorAccountPrivacySelector({
                 : t("connectorprivacy.label", { defaultValue: "Privacy" })
             }
             id={id}
-            className="h-8 w-[150px] rounded-sm border border-border bg-card text-xs"
+            variant="connectorCompact"
+            className="w-[150px]"
           >
             <SelectValue />
           </SelectTrigger>
@@ -192,7 +194,7 @@ export function ConnectorAccountPrivacySelector({
           </DialogHeader>
 
           <div className="space-y-3">
-            <div className="rounded-sm border border-border/50 bg-bg-accent/40 px-3 py-2 text-xs text-muted">
+            <Card variant="connectorInset">
               <span className="font-medium text-txt">
                 {accountLabel ??
                   t("connectorprivacy.defaultLabel", {
@@ -206,7 +208,7 @@ export function ConnectorAccountPrivacySelector({
                 {pendingOption?.label ?? pendingValue}
               </span>
               .
-            </div>
+            </Card>
             <div className="space-y-1.5">
               <label
                 htmlFor={confirmInputId}
