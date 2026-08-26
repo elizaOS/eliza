@@ -1,0 +1,474 @@
+/**
+ * Deterministic tests for the Matrix membership authority wiring: complete
+ * PREPARED snapshots vs incomplete (limited-sync/lazy-load) rosters, join/
+ * invite/leave/ban transition consumption, bot self-leave scope termination,
+ * account-scoped UUID derivation, and fail-closed message admission. All
+ * authority and SDK surfaces are in-memory test doubles — no live homeserver.
+ */
+
+import type {
+  IAgentRuntime,
+  MembershipAuthorizationDecision,
+  MembershipMutationReceipt,
+  MembershipRecord,
+  MembershipScopeHealth,
+  MembershipService,
+  UUID,
+} from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
+
+import {
+  classifyMatrixTransition,
+  MatrixMembershipAuthority,
+  type MatrixMembershipTransition,
+  matrixMemberRoles,
+  matrixMembershipScope,
+  matrixTransitionToMembership,
+} from "../membership.js";
+import { MatrixMembershipMessageGate } from "../membership-gate.js";
+
+const AGENT_ID = "00000000-0000-0000-0000-000000000001" as UUID;
+const ACCOUNT_ID = "00000000-0000-0000-0000-0000000000a1" as UUID;
+const PRINCIPAL_A = "00000000-0000-0000-0000-0000000000aa" as UUID;
+const _PRINCIPAL_B = "00000000-0000-0000-0000-0000000000bb" as UUID;
+const ROOM = "!ops:example";
+
+function createRuntime(overrides: Record<string, unknown> = {}): IAgentRuntime {
+  return {
+    agentId: AGENT_ID,
+    reportError: vi.fn(),
+    getCache: vi.fn().mockResolvedValue(undefined),
+    setCache: vi.fn().mockResolvedValue(true),
+    deleteCache: vi.fn().mockResolvedValue(true),
+    ...overrides,
+  } as unknown as IAgentRuntime;
+}
+
+interface RecordedCommand {
+  op: string;
+  command: Record<string, unknown>;
+}
+
+function createAuthorityService(
+  membership: MembershipRecord | null = null,
+  decision: MembershipAuthorizationDecision = {
+    decision: "allowed",
+    reason: "active_membership",
+    generation: 1,
+    health: "current",
+    membership: {} as MembershipRecord,
+  }
+) {
+  const commands: RecordedCommand[] = [];
+  let scopeHealth: MembershipScopeHealth | null = null;
+  const service: MembershipService = {
+    registerPublisher: vi.fn(async (command) => {
+      commands.push({ op: "registerPublisher", command: command as never });
+      return {
+        contractVersion: 1,
+        operation: "publisher",
+        idempotentReplay: false,
+        committedGeneration: (command.expectedGeneration ?? 0) + 1,
+        health: {} as MembershipScopeHealth,
+      } satisfies MembershipMutationReceipt;
+    }),
+    applyCompleteSnapshot: vi.fn(async (command) => {
+      commands.push({ op: "applyCompleteSnapshot", command: command as never });
+      return {
+        contractVersion: 1,
+        operation: "snapshot",
+        idempotentReplay: false,
+        committedGeneration: command.expectedGeneration + 1,
+        health: {} as MembershipScopeHealth,
+        memberships: [],
+        revokedPrincipalIds: [],
+      } satisfies MembershipMutationReceipt;
+    }),
+    reportIncompleteSnapshot: vi.fn(async (command) => {
+      commands.push({ op: "reportIncompleteSnapshot", command: command as never });
+      return {
+        contractVersion: 1,
+        operation: "health",
+        idempotentReplay: false,
+        committedGeneration: command.expectedGeneration,
+        health: {} as MembershipScopeHealth,
+      } satisfies MembershipMutationReceipt;
+    }),
+    applyMembership: vi.fn(async (command) => {
+      commands.push({ op: "applyMembership", command: command as never });
+      return {
+        contractVersion: 1,
+        operation: "membership",
+        idempotentReplay: false,
+        committedGeneration: command.expectedGeneration + 1,
+        membership: {} as MembershipRecord,
+      } satisfies MembershipMutationReceipt;
+    }),
+    setScopeHealth: vi.fn(async (command) => {
+      commands.push({ op: "setScopeHealth", command: command as never });
+      return {
+        contractVersion: 1,
+        operation: "health",
+        idempotentReplay: false,
+        committedGeneration: command.expectedGeneration,
+        health: {} as MembershipScopeHealth,
+      } satisfies MembershipMutationReceipt;
+    }),
+    authorize: vi.fn(async () => decision),
+    getMembership: vi.fn(async () => membership),
+    getScopeHealth: vi.fn(async () => scopeHealth),
+    registerInvalidator: vi.fn(() => () => {}),
+  } as unknown as MembershipService;
+  return {
+    service,
+    commands,
+    setScopeHealth: (health: MembershipScopeHealth | null) => {
+      scopeHealth = health;
+    },
+  };
+}
+
+function createAuthority(
+  service: MembershipService,
+  runtime: IAgentRuntime = createRuntime()
+): MatrixMembershipAuthority {
+  return new MatrixMembershipAuthority({
+    runtime,
+    connectorAccountId: ACCOUNT_ID,
+    service,
+  });
+}
+
+describe("matrix membership scope and mapping", () => {
+  it("scopes externalWorldId and externalRoomId to the raw Matrix room id under connector matrix", () => {
+    const scope = matrixMembershipScope({
+      agentId: AGENT_ID,
+      connectorAccountId: ACCOUNT_ID,
+      roomId: ROOM,
+    });
+    expect(scope.connectorId).toBe("matrix");
+    expect(scope.externalWorldId).toBe(ROOM);
+    expect(scope.externalRoomId).toBe(ROOM);
+    expect(scope.connectorAccountId).toBe(ACCOUNT_ID);
+  });
+
+  it("maps every membership transition to the correct authority state and reason", () => {
+    expect(matrixTransitionToMembership("join")).toEqual({
+      state: "active",
+      reason: "joined",
+    });
+    // An invite is not admission.
+    expect(matrixTransitionToMembership("invite")).toEqual({
+      state: "revoked",
+      reason: "left",
+    });
+    expect(matrixTransitionToMembership("leave")).toEqual({
+      state: "revoked",
+      reason: "left",
+    });
+    expect(matrixTransitionToMembership("ban")).toEqual({
+      state: "revoked",
+      reason: "banned",
+    });
+  });
+
+  it("classifies raw SDK membership strings into transitions", () => {
+    expect(classifyMatrixTransition("join", undefined)).toBe<MatrixMembershipTransition>("join");
+    expect(classifyMatrixTransition("invite", undefined)).toBe<MatrixMembershipTransition>(
+      "invite"
+    );
+    expect(classifyMatrixTransition("leave", "join")).toBe<MatrixMembershipTransition>("leave");
+    expect(classifyMatrixTransition("ban", "join")).toBe<MatrixMembershipTransition>("ban");
+    // An unban resets membership to leave: still not active.
+    expect(classifyMatrixTransition("leave", "ban")).toBe<MatrixMembershipTransition>("leave");
+  });
+
+  it("derives roles from power levels", () => {
+    expect(matrixMemberRoles(100)).toContain("owner");
+    expect(matrixMemberRoles(50)).toContain("administrator");
+    expect(matrixMemberRoles(0)).toEqual(["member"]);
+  });
+});
+
+describe("MatrixMembershipAuthority snapshots", () => {
+  it("publishes a complete snapshot for complete state", async () => {
+    const { service, commands } = createAuthorityService();
+    const authority = createAuthority(service);
+    const published = await authority.publishSnapshot({
+      roomId: ROOM,
+      observedAt: "2026-08-26T00:00:00.000Z",
+      members: [
+        {
+          canonicalPrincipalId: PRINCIPAL_A,
+          roles: ["member"],
+          permissionSnapshot: { membership: "join" },
+          runtime: { worldId: null, roomId: null, entityId: PRINCIPAL_A },
+        },
+      ],
+      idempotencyKey: `mx:${ACCOUNT_ID}:${ROOM}:prepared:first:1`,
+    });
+    expect(published).toBe(true);
+    const snapshot = commands.find((c) => c.op === "applyCompleteSnapshot");
+    expect(snapshot).toBeDefined();
+    const command = snapshot?.command as
+      | { completeness?: string; evidenceMode?: string; members?: unknown[] }
+      | undefined;
+    expect(command?.completeness).toBe("complete");
+    expect(command?.evidenceMode).toBe("complete_snapshot");
+    expect(command?.members?.length).toBe(1);
+  });
+
+  it("reports incomplete instead of publishing an empty roster", async () => {
+    const { service, commands } = createAuthorityService();
+    const authority = createAuthority(service);
+    await authority.reportIncomplete({
+      roomId: ROOM,
+      reason: "member_list_incomplete",
+      observedAt: "2026-08-26T00:00:00.000Z",
+    });
+    expect(commands.some((c) => c.op === "applyCompleteSnapshot")).toBe(false);
+    const report = commands.find((c) => c.op === "reportIncompleteSnapshot");
+    expect(report?.command.completeness).toBe("incomplete");
+    expect(report?.command.reason).toBe("member_list_incomplete");
+    // A room marked incomplete refuses later snapshots until complete state.
+    expect(authority.isRoomIncomplete(ROOM)).toBe(true);
+  });
+});
+
+describe("MatrixMembershipAuthority transitions", () => {
+  it("records a join transition as ordered-delta evidence keyed by the event id", async () => {
+    const { service, commands } = createAuthorityService();
+    const authority = createAuthority(service);
+    await authority.recordTransition({
+      roomId: ROOM,
+      canonicalPrincipalId: PRINCIPAL_A,
+      transition: "join",
+      roles: ["member"],
+      permissionSnapshot: {},
+      runtime: { worldId: null, roomId: null, entityId: PRINCIPAL_A },
+      eventId: "$m1",
+      matrixUserId: "@alice:example",
+      observedAt: "2026-08-26T00:00:01.000Z",
+    });
+    const applied = commands.find((c) => c.op === "applyMembership");
+    expect(applied).toBeDefined();
+    expect(applied?.command.evidenceMode).toBe("ordered_delta");
+    expect(applied?.command.state).toBe("active");
+    expect(applied?.command.reason).toBe("joined");
+    expect(applied?.command.idempotencyKey).toContain("$m1");
+  });
+
+  it("skips an out-of-order redelivery that would resurrect a committed revocation", async () => {
+    const revoked: MembershipRecord = {
+      contractVersion: 1,
+      state: "revoked",
+      reason: "left",
+      observedAt: "2026-08-26T00:00:05.000Z",
+    } as unknown as MembershipRecord;
+    const { service, commands } = createAuthorityService(revoked);
+    const authority = createAuthority(service);
+    await authority.recordTransition({
+      roomId: ROOM,
+      canonicalPrincipalId: PRINCIPAL_A,
+      // Same instant as the committed leave: an equal-stamp join must not
+      // resurrect.
+      transition: "join",
+      eventId: "$old-join",
+      matrixUserId: "@alice:example",
+      observedAt: "2026-08-26T00:00:05.000Z",
+      runtime: { worldId: null, roomId: null, entityId: PRINCIPAL_A },
+    });
+    expect(commands.some((c) => c.op === "applyMembership")).toBe(false);
+  });
+
+  it("terminates the scope on bot self-leave and refuses later evidence", async () => {
+    const { service, commands } = createAuthorityService();
+    const authority = createAuthority(service);
+    await authority.markScopeUnavailable({ roomId: ROOM, reason: "bot_left" });
+    const degrade = commands.find((c) => c.op === "setScopeHealth");
+    expect(degrade?.command.health).toBe("unavailable");
+    // Post-leave evidence is tombstoned.
+    const published = await authority.publishSnapshot({
+      roomId: ROOM,
+      observedAt: "2026-08-26T00:00:10.000Z",
+      members: [],
+      idempotencyKey: "after-leave",
+    });
+    expect(published).toBe(false);
+    expect(commands.some((c) => c.op === "applyCompleteSnapshot")).toBe(false);
+  });
+});
+
+describe("MatrixMembershipMessageGate", () => {
+  function gateWith(
+    authority: MatrixMembershipAuthority | null,
+    runtime = createRuntime()
+  ): MatrixMembershipMessageGate {
+    return new MatrixMembershipMessageGate({ runtime, authority });
+  }
+
+  it("allows direct rooms without consulting the authority", async () => {
+    const { service } = createAuthorityService();
+    const authorize = vi.fn();
+    (service as { authorize: unknown }).authorize = authorize;
+    const gate = gateWith(createAuthority(service));
+    const allowed = await gate.authorizeMessage({
+      roomId: ROOM,
+      isDirectRoom: true,
+      principalEntityId: PRINCIPAL_A,
+      matrixUserId: "@alice:example",
+      getJoinedMemberIds: () => [],
+    });
+    expect(allowed).toBe(true);
+    expect(authorize).not.toHaveBeenCalled();
+  });
+
+  it("allows group messages on an allowed authority decision", async () => {
+    const { service } = createAuthorityService();
+    const gate = gateWith(createAuthority(service));
+    const allowed = await gate.authorizeMessage({
+      roomId: ROOM,
+      isDirectRoom: false,
+      principalEntityId: PRINCIPAL_A,
+      matrixUserId: "@alice:example",
+      getJoinedMemberIds: () => ["@alice:example"],
+    });
+    expect(allowed).toBe(true);
+  });
+
+  it("fails closed when the authority denies and the roster does not contain the sender", async () => {
+    const denied: MembershipAuthorizationDecision = {
+      decision: "denied",
+      reason: "no_membership",
+      generation: null,
+      health: null,
+    };
+    const { service, commands } = createAuthorityService(null, denied);
+    const gate = gateWith(createAuthority(service));
+    const allowed = await gate.authorizeMessage({
+      roomId: ROOM,
+      isDirectRoom: false,
+      principalEntityId: PRINCIPAL_A,
+      matrixUserId: "@alice:example",
+      getJoinedMemberIds: () => ["@someone-else:example"],
+    });
+    expect(allowed).toBe(false);
+    // Roster-miss: no reconciled evidence recorded.
+    expect(commands.some((c) => c.op === "applyMembership")).toBe(false);
+  });
+
+  it("reconciles a roster-present sender and re-authorizes", async () => {
+    let call = 0;
+    const decisions: MembershipAuthorizationDecision[] = [
+      { decision: "denied", reason: "no_membership", generation: null, health: null },
+      {
+        decision: "allowed",
+        reason: "active_membership",
+        generation: 2,
+        health: "current",
+        membership: {} as MembershipRecord,
+      },
+    ];
+    const { service, commands } = createAuthorityService();
+    (service as { authorize: unknown }).authorize = vi.fn(async () => decisions[call++]);
+    const gate = gateWith(createAuthority(service));
+    const allowed = await gate.authorizeMessage({
+      roomId: ROOM,
+      isDirectRoom: false,
+      principalEntityId: PRINCIPAL_A,
+      matrixUserId: "@alice:example",
+      getJoinedMemberIds: () => ["@alice:example"],
+    });
+    expect(allowed).toBe(true);
+    // The reconcile recorded reconciled_present evidence.
+    const applied = commands.find((c) => c.op === "applyMembership");
+    expect(applied?.command.reason).toBe("joined");
+  });
+
+  it("degrades to allow with a warning when no authority service is configured", async () => {
+    const gate = gateWith(null);
+    const allowed = await gate.authorizeMessage({
+      roomId: ROOM,
+      isDirectRoom: false,
+      principalEntityId: PRINCIPAL_A,
+      matrixUserId: "@alice:example",
+      getJoinedMemberIds: () => [],
+    });
+    expect(allowed).toBe(true);
+  });
+
+  it("fails closed when no authority is configured but enforcement is strict", async () => {
+    process.env.MATRIX_MEMBERSHIP_ENFORCE = "1";
+    try {
+      const gate = gateWith(null);
+      const allowed = await gate.authorizeMessage({
+        roomId: ROOM,
+        isDirectRoom: false,
+        principalEntityId: PRINCIPAL_A,
+        matrixUserId: "@alice:example",
+        getJoinedMemberIds: () => [],
+      });
+      expect(allowed).toBe(false);
+    } finally {
+      delete process.env.MATRIX_MEMBERSHIP_ENFORCE;
+    }
+  });
+});
+
+describe("MatrixMembershipAuthority fencing", () => {
+  function fencedService(fenceError: Error & { code?: string }) {
+    const { service, commands } = createAuthorityService();
+    let calls = 0;
+    (service as { applyMembership: unknown }).applyMembership = vi.fn(async (command) => {
+      calls += 1;
+      if (calls === 1) throw fenceError;
+      commands.push({ op: "applyMembership", command: command as never });
+      return {
+        contractVersion: 1,
+        operation: "membership",
+        idempotentReplay: false,
+        committedGeneration: command.expectedGeneration + 1,
+        membership: {} as MembershipRecord,
+      } satisfies MembershipMutationReceipt;
+    });
+    return { service, commands };
+  }
+
+  it("re-adopts after a cursor-discontinuity fence failure and commits", async () => {
+    const fenceError = new Error("MEMBERSHIP_CURSOR_DISCONTINUITY");
+    fenceError.code = "MEMBERSHIP_CURSOR_DISCONTINUITY";
+    const { service, commands } = fencedService(fenceError);
+    const authority = createAuthority(service);
+    await authority.recordTransition({
+      roomId: ROOM,
+      canonicalPrincipalId: PRINCIPAL_A,
+      transition: "join",
+      eventId: "$fenced",
+      matrixUserId: "@alice:example",
+      observedAt: "2026-08-26T00:00:02.000Z",
+      runtime: { worldId: null, roomId: null, entityId: PRINCIPAL_A },
+    });
+    expect(commands.some((c) => c.op === "applyMembership")).toBe(true);
+  });
+
+  it("treats an idempotency conflict as a benign duplicate", async () => {
+    const { service, commands } = createAuthorityService();
+    const conflict = new Error("MEMBERSHIP_IDEMPOTENCY_CONFLICT");
+    conflict.code = "MEMBERSHIP_IDEMPOTENCY_CONFLICT";
+    (service as { applyMembership: unknown }).applyMembership = vi.fn(async () => {
+      throw conflict;
+    });
+    const authority = createAuthority(service);
+    await authority.recordTransition({
+      roomId: ROOM,
+      canonicalPrincipalId: PRINCIPAL_A,
+      transition: "join",
+      eventId: "$dup",
+      matrixUserId: "@alice:example",
+      observedAt: "2026-08-26T00:00:03.000Z",
+      runtime: { worldId: null, roomId: null, entityId: PRINCIPAL_A },
+    });
+    // Benign duplicate: no evidence command committed, not thrown.
+    expect(commands.some((c) => c.op === "applyMembership")).toBe(false);
+  });
+});
