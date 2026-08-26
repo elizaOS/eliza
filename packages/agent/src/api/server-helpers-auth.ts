@@ -4,7 +4,7 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   isCloudProvisionedContainer,
   isLoopbackBindHost,
@@ -515,7 +515,15 @@ export function ensureApiTokenForBindHost(host: string): void {
       `[eliza-api] ELIZA_API_BIND=${host} is non-loopback and ELIZA_API_TOKEN is unset.`,
     );
   }
-  const tokenFingerprint = `${generated.slice(0, 4)}...${generated.slice(-4)}`;
+  const wellFormed = toWellFormedUnicode(generated);
+  const start = truncateWellFormed(wellFormed, 4);
+  let endCut = wellFormed.length - 4;
+  const code = wellFormed.charCodeAt(endCut);
+  if (code >= 0xdc00 && code <= 0xdfff) {
+    endCut += 1;
+  }
+  const end = wellFormed.slice(endCut);
+  const tokenFingerprint = `${start}...${end}`;
   logger.warn(
     `[eliza-api] Generated temporary API token (${tokenFingerprint}) for this process. Set ELIZA_API_TOKEN explicitly to override.`,
   );

@@ -20,7 +20,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
-import type { RouteRequestContext } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed, type RouteRequestContext } from "@elizaos/core";
 import {
   type AgentRuntime,
   attestAuthenticatedApiDeliveryAudience,
@@ -2713,19 +2713,29 @@ function parseMessageSearchTime(
 
 /** A `…keyword…` excerpt around the first match, or a head-truncated fallback. */
 function buildMessageSearchSnippet(text: string, query: string): string {
-  const normalizedText = text.replace(/\s+/g, " ").trim();
+  const normalizedText = toWellFormedUnicode(text.replace(/\s+/g, " ").trim());
   if (!normalizedText) return "";
   const index = normalizedText.toLowerCase().indexOf(query.toLowerCase());
   if (index < 0) {
     return normalizedText.length <= MESSAGE_SEARCH_SNIPPET_RADIUS * 2
       ? normalizedText
-      : `${normalizedText.slice(0, MESSAGE_SEARCH_SNIPPET_RADIUS * 2).trimEnd()}...`;
+      : `${truncateWellFormed(normalizedText, MESSAGE_SEARCH_SNIPPET_RADIUS * 2).trimEnd()}...`;
   }
-  const start = Math.max(0, index - MESSAGE_SEARCH_SNIPPET_RADIUS);
-  const end = Math.min(
+  let start = Math.max(0, index - MESSAGE_SEARCH_SNIPPET_RADIUS);
+  const startCode = normalizedText.charCodeAt(start);
+  if (startCode >= 0xdc00 && startCode <= 0xdfff) {
+    start += 1;
+  }
+  let end = Math.min(
     normalizedText.length,
     index + query.length + MESSAGE_SEARCH_SNIPPET_RADIUS,
   );
+  if (end > 0) {
+    const endLead = normalizedText.charCodeAt(end - 1);
+    if (endLead >= 0xd800 && endLead <= 0xdbff) {
+      end -= 1;
+    }
+  }
   const prefix = start > 0 ? "..." : "";
   const suffix = end < normalizedText.length ? "..." : "";
   return `${prefix}${normalizedText.slice(start, end).trim()}${suffix}`;
