@@ -264,12 +264,24 @@ describe("Matrix service hardening", () => {
     expect(dispatched("please email me later")).toBe(false);
     expect(dispatched("we need to maintain the server")).toBe(false);
 
+    // A non-ASCII letter abutting the localpart is the same class of false
+    // positive: JS `\w` is ASCII-only, so an accented neighbour must still be
+    // treated as a word character, not a boundary.
+    expect(dispatched("aié means nothing")).toBe(false);
+
+    // The localpart appearing inside a *different* MXID must not match: neither
+    // a longer localpart ending in it nor a homeserver part starting with it.
+    expect(dispatched("ping @bobai:matrix.org")).toBe(false);
+    expect(dispatched("ping @bob:ai.example.com")).toBe(false);
+
     // Genuine mentions in their various surface forms MUST dispatch.
     expect(dispatched("hey @ai can you help")).toBe(true);
     expect(dispatched("ai: status report please")).toBe(true);
     expect(dispatched("thanks @ai, that worked")).toBe(true);
     expect(dispatched("can ai take a look")).toBe(true);
     expect(dispatched("@ai")).toBe(true);
+    // The bot's own full MXID must still register as a mention.
+    expect(dispatched("ping @ai:matrix.org please")).toBe(true);
   });
 
   it("trims room aliases before resolving and sending messages", async () => {

@@ -1278,7 +1278,17 @@ export class MatrixService extends Service implements IMatrixService {
       // is required rather than any bare substring. Without this, a short/common
       // localpart like `ai` matched inside unrelated words (e.g. "wait") and
       // defeated requireMention, dispatching the full inbound path unprompted.
-      const mentionPattern = new RegExp(`(^|[^\\w@])@?${escapeRegExp(localpart)}(?!\\w)`, "i");
+      // The Unicode property escapes under the `u` flag make the boundary
+      // aware of non-Latin letters (JS `\w` is ASCII-only, so `(?!\w)` would
+      // still admit `ai` in `aié`), and `:` in the preceding set stops the
+      // localpart from matching inside a full MXID's homeserver part
+      // (`@bob:ai.example.com`). The lookbehind expresses "preceded by" without
+      // consuming a character, so `@ai:matrix.org` still matches (the optional
+      // `@` is consumed and the lookbehind inspects the space before it).
+      const mentionPattern = new RegExp(
+        `(?<![\\p{L}\\p{N}_@:])@?${escapeRegExp(localpart)}(?![\\p{L}\\p{N}_])`,
+        "iu"
+      );
       if (!mentionPattern.test(message.content)) {
         return;
       }
