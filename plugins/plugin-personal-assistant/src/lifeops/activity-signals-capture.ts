@@ -309,6 +309,9 @@ export function startLifeOpsActivitySignalCapture(
     error.status === 503 &&
     error.path === "/api/lifeops/activity-signals";
 
+  const isRateLimitedError = (error: unknown): boolean =>
+    isApiError(error) && error.kind === "http" && error.status === 429;
+
   const isExpectedTransientError = (error: unknown): boolean =>
     isApiError(error) && (error.kind === "network" || error.kind === "timeout");
 
@@ -343,6 +346,10 @@ export function startLifeOpsActivitySignalCapture(
       return;
     }
     if (isRuntimeUnavailableError(error)) {
+      standDownActivitySignals();
+      return;
+    }
+    if (isRateLimitedError(error)) {
       standDownActivitySignals();
       return;
     }
@@ -446,6 +453,10 @@ export function startLifeOpsActivitySignalCapture(
         return null;
       }
       if (isRuntimeUnavailableError(error)) {
+        standDownActivitySignals();
+        return null;
+      }
+      if (isRateLimitedError(error)) {
         standDownActivitySignals();
         return null;
       }
