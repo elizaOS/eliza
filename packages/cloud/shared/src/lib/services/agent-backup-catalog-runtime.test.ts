@@ -2,7 +2,11 @@
 
 import { describe, expect, test } from "bun:test";
 import { ElizaError } from "@elizaos/core";
-import type { AgentBackupOperationClaim } from "../../db/repositories/agent-backup-catalog";
+import {
+  AGENT_BACKUP_ADMISSION_CONTENDED_CODE,
+  AgentBackupAdmissionContendedError,
+  type AgentBackupOperationClaim,
+} from "../../db/repositories/agent-backup-catalog";
 import type { AgentBackupGcClaim } from "../../db/repositories/agent-backup-gc";
 import type { AgentBackupObjectStoreRegistry } from "../storage/agent-backup-object-store";
 import {
@@ -548,6 +552,31 @@ describe("agent backup catalogue runtime scheduling", () => {
         "BACKUP_DELETION_FINALIZE_RECONCILE_REQUIRED",
       ]),
     );
+  });
+
+  test("reports operation admission contention instead of treating it as no work", async () => {
+    const contention = new AgentBackupAdmissionContendedError();
+    expect(contention).toMatchObject({
+      code: AGENT_BACKUP_ADMISSION_CONTENDED_CODE,
+      context: {
+        operation: "claim",
+        retryAction: "retry-operation-claim",
+      },
+      severity: "ephemeral",
+    });
+    const summary = await runAgentBackupCatalogRuntimeCycle({
+      config: ENABLED_CONFIG,
+      registry: UNUSED_REGISTRY,
+      dependencies: dependencies({
+        claimOperations: async () => {
+          throw contention;
+        },
+      }),
+    });
+
+    expect(summary.operationClaimed).toBe(0);
+    expect(summary.operationIndeterminate).toBe(1);
+    expect(summary.alertCodes).toContain(AGENT_BACKUP_ADMISSION_CONTENDED_CODE);
   });
 
   test("defers a failed admission without inventing success and fences response loss", async () => {

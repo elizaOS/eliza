@@ -61,6 +61,7 @@ import type {
   AgentBackupOperationExecution,
 } from "../agent-backup-catalog";
 import {
+  AgentBackupAdmissionContendedError,
   agentBackupObjectInventoryDigest,
   buildAgentBackupObjectKey,
   claimDueAgentBackupOperations,
@@ -1772,12 +1773,13 @@ describe("agent backup catalogue on primary PGlite", () => {
       FOR EACH ROW EXECUTE FUNCTION test_contend_backup_claim_cursor()
     `);
     try {
-      const claims = await claimDueAgentBackupOperations({
-        ownerId: "contended-cursor-claim-worker",
-        limit: 1,
-        leaseMs: 60_000,
-      });
-      expect(claims).toEqual([]);
+      await expect(
+        claimDueAgentBackupOperations({
+          ownerId: "contended-cursor-claim-worker",
+          limit: 1,
+          leaseMs: 60_000,
+        }),
+      ).rejects.toBeInstanceOf(AgentBackupAdmissionContendedError);
       const [persistedBackup] = await dbWrite
         .select({
           owner: agentSandboxBackups.catalog_lease_owner,
