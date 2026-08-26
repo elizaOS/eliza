@@ -243,6 +243,47 @@ regressions introduced by this merge. The new multipart contracts above pass.
 No source-owner branch was changed, no native bundle was built or launched, no
 final port was bound, and the shadow branch was not pushed.
 
+## Truthful Linux accessibility develop refresh
+
+`origin/develop` advanced by one merge commit from
+`59dd400ddc0252f73f42da5d09466674f83db8c6` to exact
+`83fbbde566959386cbf7c37f37699a74d5cc1b86` through PR #28874,
+`fix(computeruse): report only implemented Linux a11y capability`. The three-file
+delta changes the Linux availability predicate from `python3 || gdbus` to the
+actually implemented Python AT-SPI lane, updates its focused regression, and
+adds that test to the existing CI slice. It has no changed-path overlap with
+the recorded desktop preflight, Computer Use, Devices, iOS, or Shared feature
+inputs.
+
+The merge was conflict-free. Its rehearsed tree and executed tree are both
+`d8ee3c579ed8929f9b4cdd22d4bbee1141844bfe`; the pre-receipt source composite
+is `8a3bd8600f36c40ff0f36378edcaaf341c14c5d7`. Exact constituent heads remain
+ancestors:
+
+- Desktop preflight PR #28826:
+  `eb74d871f652a550205f297f48617d97bf519aad`.
+- Computer Use PR #27215:
+  `888d3d74e567b25f98d29ecb8ca7d0b9c2bcc3af`.
+- Devices PR #25427: `0425fc53469cbc2cd68f331f19a4aa54c4aea006`.
+- iOS PR #27216: `e5b4d076f4f064163ac45a1c14c17f0f5f894fb6`.
+- Shared PR #27103: `91c1cd94bcf16661a04c3f5273efd3e151538cea`.
+- Current develop: `83fbbde566959386cbf7c37f37699a74d5cc1b86`.
+
+Focused proof after the exact develop merge:
+
+- Linux accessibility capability regression: 10/10.
+- Pointer-free route, coordinator, and macOS exact-window contracts: 21/21.
+- Exact current CI screenshot/browser/a11y slice: 16/16.
+- Computer Use strict typecheck: passed.
+- Computer Use source and view production builds: passed.
+- Scoped Biome and `git diff --check`: passed.
+- Computer Use package dry run: 122 files, 4,595,892 bytes unpacked,
+  1,040,839-byte archive estimate.
+
+No source-owner branch was changed or pushed, no native bundle was built or
+launched, no final port was bound, no credential/TCC surface was opened, and
+no physical-pointer action occurred.
+
 ## Frozen inputs
 
 - Base `origin/develop`: `69c0291954942c9ae375fe5aacc82729a24bac6f`
