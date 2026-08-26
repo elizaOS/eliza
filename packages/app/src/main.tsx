@@ -883,6 +883,7 @@ function buildAppBootConfig(): AppBootConfig {
       (import.meta.env.VITE_ASSET_BASE_URL as string | undefined)?.trim() ||
       undefined,
     cloudApiBase: IOS_RUNTIME_ENV_CONFIG.cloudApiBase,
+    autoUpgradeSharedToDedicated: true,
     vrmAssets: APP_VRM_ASSETS,
     firstRunStyles: APP_STYLE_PRESETS,
     codingAgentTasksPanel: CodingAgentTasksPanel,
