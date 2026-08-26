@@ -655,16 +655,10 @@ export async function bindCloudAgent(
     clearPendingCloudHandoff();
   }
 
-  // Shared→dedicated cloud-agent handoff (background) — only fires when the
-  // host has EXPLICITLY opted in via `autoUpgradeSharedToDedicated` (#18204).
-  //
-  // The default shared-first onboarding path (`preferSharedCloudTier: true`
-  // with `autoUpgradeSharedToDedicated` left at its default `false`) lands the
-  // user on a shared agent and creates ZERO billable dedicated mutation. The
-  // user upgrades to a dedicated container only through the explicit Settings
-  // confirmation flow with pricing/credit guard (#15355). This restores the
-  // price/confirmation contract and the #18076 staging boundary that dedicated
-  // provisioning must remain separately opt-in.
+  // Legacy Shared→Dedicated recovery — new signed-in onboarding never enters
+  // this path because Shared-first defaults are retired. A host restoring an
+  // older Shared profile must explicitly enable both compatibility switches;
+  // the pricing/credit boundary still owns the billable mutation (#15355).
   //
   // When the host does opt in, the handoff fires for a NEWLY created shared
   // agent AND for a REUSED one (`created:false`, e.g. re-login after a failed

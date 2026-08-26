@@ -21,14 +21,22 @@ allocation, and a lifecycle job.
 
 ## Signed-in app/Cloud flow
 
-All signed-in entry points now converge on
+Account-native signed-in entry points now converge on
 `ensurePersonalDedicatedEliza` in `packages/ui/src/api/client-cloud.ts`:
 
 - direct desktop/Cloud login: `bind-direct-cloud-login.ts`;
 - `/join` and app-mode entry: `run-join-flow.ts`;
-- first-run Cloud onboarding: `listOrAutoProvisionCloudAgent`; and
 - a stale Shared client receiving the `personal_eliza_dedicated` routing
   rejection: the retry/repoint boundary in `client-base.ts`.
+
+First-run Cloud onboarding uses the older generic
+`selectOrProvisionCloudAgent` boundary, but its Shared preference was removed:
+it reuses only Dedicated rows or creates a Dedicated row and waits for the
+provision job and running container before persistence. A repository-wide
+caller audit found no production caller of `getPersonalSharedEliza` outside
+`ensurePersonalDedicatedEliza`, and no production boot configuration that
+forces `preferSharedTier`, `preferSharedCloudTier`, or the legacy automatic
+Shared handoff switches on.
 
 The full sequence is:
 
