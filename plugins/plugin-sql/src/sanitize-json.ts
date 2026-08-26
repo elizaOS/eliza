@@ -193,104 +193,111 @@ function sanitizeJsonValue(value: unknown, context: SanitizeContext, depth: numb
       return null;
     }
     context.seen.add(value);
-
-    let dateTimestamp: number | undefined;
     try {
-      // Native Date brand checking is constant-work. `instanceof Date` would
-      // walk an arbitrarily deep caller-controlled prototype chain per node.
-      dateTimestamp = Date.prototype.getTime.call(value);
-    } catch {
-      // error-policy:J3 an incompatible native receiver is simply not a Date;
-      // no caller code or Proxy getPrototypeOf trap is invoked by this probe.
-      dateTimestamp = undefined;
-    }
-    if (dateTimestamp !== undefined) {
-      if (!Number.isFinite(dateTimestamp)) {
-        chargeBytes(context, 4, "invalid-date");
-        return null;
+      let dateTimestamp: number | undefined;
+      try {
+        // Native Date brand checking is constant-work. `instanceof Date` would
+        // walk an arbitrarily deep caller-controlled prototype chain per node.
+        dateTimestamp = Date.prototype.getTime.call(value);
+      } catch {
+        // error-policy:J3 an incompatible native receiver is simply not a Date;
+        // no caller code or Proxy getPrototypeOf trap is invoked by this probe.
+        dateTimestamp = undefined;
       }
-      const iso = Date.prototype.toISOString.call(value);
-      chargeBytes(
-        context,
-        measureJsonStringBytes(iso, MAX_SQL_JSON_SANITIZE_STRING_BYTES, "date-bytes"),
-        "date"
-      );
-      return iso;
-    }
+      if (dateTimestamp !== undefined) {
+        if (!Number.isFinite(dateTimestamp)) {
+          chargeBytes(context, 4, "invalid-date");
+          return null;
+        }
+        const iso = Date.prototype.toISOString.call(value);
+        chargeBytes(
+          context,
+          measureJsonStringBytes(iso, MAX_SQL_JSON_SANITIZE_STRING_BYTES, "date-bytes"),
+          "date"
+        );
+        return iso;
+      }
 
-    if (reflectOrFail(() => Array.isArray(value), "array-check")) {
-      const lengthDescriptor = reflectOrFail(
-        () => Object.getOwnPropertyDescriptor(value, "length"),
-        "array-length-descriptor"
-      );
-      const length = lengthDescriptor?.value;
-      if (
-        !Number.isSafeInteger(length) ||
-        length < 0 ||
-        length > MAX_SQL_JSON_SANITIZE_NODES - context.visits
-      ) {
+      if (reflectOrFail(() => Array.isArray(value), "array-check")) {
+        const lengthDescriptor = reflectOrFail(
+          () => Object.getOwnPropertyDescriptor(value, "length"),
+          "array-length-descriptor"
+        );
+        const length = lengthDescriptor?.value;
+        if (
+          !Number.isSafeInteger(length) ||
+          length < 0 ||
+          length > MAX_SQL_JSON_SANITIZE_NODES - context.visits
+        ) {
+          failUnbounded({
+            reason: "array-length",
+            length: typeof length === "number" ? length : "invalid",
+            max: MAX_SQL_JSON_SANITIZE_NODES,
+          });
+        }
+        const result: unknown[] = [];
+        chargeBytes(context, 2 + Math.max(0, length - 1), "array-syntax");
+        for (let index = 0; index < length; index += 1) {
+          const descriptor = reflectOrFail(
+            () => Object.getOwnPropertyDescriptor(value, String(index)),
+            "array-item-descriptor"
+          );
+          if (descriptor && ("get" in descriptor || "set" in descriptor)) {
+            failUnbounded({ reason: "array-accessor", index });
+          }
+          result.push(sanitizeJsonValue(descriptor?.value, context, depth + 1));
+        }
+        return result;
+      }
+
+      const keys = reflectOrFail(() => Reflect.ownKeys(value), "object-keys");
+      if (keys.length > MAX_SQL_JSON_SANITIZE_NODES - context.visits) {
         failUnbounded({
-          reason: "array-length",
-          length: typeof length === "number" ? length : "invalid",
+          reason: "object-keys",
+          keys: keys.length,
           max: MAX_SQL_JSON_SANITIZE_NODES,
         });
       }
-      const result: unknown[] = [];
-      chargeBytes(context, 2 + Math.max(0, length - 1), "array-syntax");
-      for (let index = 0; index < length; index += 1) {
+      const result = Object.create(null) as Record<string, unknown>;
+      chargeBytes(context, 2, "object-syntax");
+      let serializedProperties = 0;
+      for (const key of keys) {
+        if (typeof key !== "string") continue;
         const descriptor = reflectOrFail(
-          () => Object.getOwnPropertyDescriptor(value, String(index)),
-          "array-item-descriptor"
+          () => Object.getOwnPropertyDescriptor(value, key),
+          "object-property-descriptor"
         );
-        if (descriptor && ("get" in descriptor || "set" in descriptor)) {
-          failUnbounded({ reason: "array-accessor", index });
+        if (!descriptor?.enumerable) continue;
+        if ("get" in descriptor || "set" in descriptor) {
+          failUnbounded({ reason: "object-accessor" });
         }
-        result.push(sanitizeJsonValue(descriptor?.value, context, depth + 1));
+        chargeBytes(
+          context,
+          measureJsonStringBytes(key, MAX_SQL_JSON_SANITIZE_KEY_BYTES, "key-bytes") +
+            1 +
+            (serializedProperties > 0 ? 1 : 0),
+          "object-property-syntax"
+        );
+        serializedProperties += 1;
+        const sanitizedKey = key.includes(NUL) ? key.replaceAll(NUL, "") : key;
+        const sanitizedValue = sanitizeJsonValue(descriptor.value, context, depth + 1);
+        if (sanitizedKey === "toJSON" && typeof sanitizedValue === "function") {
+          failUnbounded({ reason: "custom-toJSON" });
+        }
+        if (Object.hasOwn(result, sanitizedKey)) {
+          failUnbounded({ reason: "key-collision" });
+        }
+        Object.defineProperty(result, sanitizedKey, {
+          value: sanitizedValue,
+          enumerable: true,
+          configurable: true,
+          writable: true,
+        });
       }
       return result;
+    } finally {
+      context.seen.delete(value);
     }
-
-    const keys = reflectOrFail(() => Reflect.ownKeys(value), "object-keys");
-    if (keys.length > MAX_SQL_JSON_SANITIZE_NODES - context.visits) {
-      failUnbounded({ reason: "object-keys", keys: keys.length, max: MAX_SQL_JSON_SANITIZE_NODES });
-    }
-    const result = Object.create(null) as Record<string, unknown>;
-    chargeBytes(context, 2, "object-syntax");
-    let serializedProperties = 0;
-    for (const key of keys) {
-      if (typeof key !== "string") continue;
-      const descriptor = reflectOrFail(
-        () => Object.getOwnPropertyDescriptor(value, key),
-        "object-property-descriptor"
-      );
-      if (!descriptor?.enumerable) continue;
-      if ("get" in descriptor || "set" in descriptor) {
-        failUnbounded({ reason: "object-accessor" });
-      }
-      chargeBytes(
-        context,
-        measureJsonStringBytes(key, MAX_SQL_JSON_SANITIZE_KEY_BYTES, "key-bytes") +
-          1 +
-          (serializedProperties > 0 ? 1 : 0),
-        "object-property-syntax"
-      );
-      serializedProperties += 1;
-      const sanitizedKey = key.includes(NUL) ? key.replaceAll(NUL, "") : key;
-      const sanitizedValue = sanitizeJsonValue(descriptor.value, context, depth + 1);
-      if (sanitizedKey === "toJSON" && typeof sanitizedValue === "function") {
-        failUnbounded({ reason: "custom-toJSON" });
-      }
-      if (Object.hasOwn(result, sanitizedKey)) {
-        failUnbounded({ reason: "key-collision" });
-      }
-      Object.defineProperty(result, sanitizedKey, {
-        value: sanitizedValue,
-        enumerable: true,
-        configurable: true,
-        writable: true,
-      });
-    }
-    return result;
   }
 
   // JSON.stringify omits these values in objects and writes null in arrays.
