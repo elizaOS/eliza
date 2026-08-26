@@ -409,4 +409,35 @@ describe("run-live-test-with-artifacts", () => {
     },
     20_000,
   );
+
+  test("preserves multibyte UTF-8 across stream chunk boundaries", () => {
+    const reportRoot = mkdtempSync(path.join(tmpdir(), "live-artifacts-"));
+    try {
+      const childScript = `
+        process.stdout.write(Buffer.from([0xf0, 0x9f]));
+        setTimeout(() => {
+          process.stdout.write(Buffer.concat([Buffer.from([0x8c, 0x9f]), Buffer.from(" done")]));
+        }, 20);
+        setTimeout(() => process.exit(0), 50);
+      `;
+      const result = runWithArtifacts(reportRoot, [
+        "--label",
+        "multibyte-chunk",
+        "--",
+        NODE_BIN,
+        "-e",
+        childScript,
+      ]);
+      expect(result.status).toBe(0);
+      const runDirectory = onlyRunDirectory(reportRoot);
+      const report = readReport(runDirectory);
+      expect(report.stdout).toContain("🌟");
+      expect(report.stdout).toContain(" done");
+      expect(report.stdout).not.toContain("�");
+      expect(report.stdoutBytes).toBe(Buffer.byteLength(report.stdout));
+      expectCompleteBundle(runDirectory);
+    } finally {
+      rmSync(reportRoot, { recursive: true, force: true });
+    }
+  });
 });
