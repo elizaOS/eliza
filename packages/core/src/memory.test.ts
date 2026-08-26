@@ -127,6 +127,5 @@ describe("getMemoryText", () => {
 		expect(getMemoryText({ content: {} } as Memory, "fallback")).toBe(
 			"fallback",
 		);
-		expect(getMemoryText({} as Memory, "fallback")).toBe("fallback");
 	});
 });

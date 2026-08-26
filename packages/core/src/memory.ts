@@ -129,10 +129,9 @@ export function isFragmentMemory(
  */
 export function isMessageMemory(
 	memory: Memory,
-): memory is MessageMemory {
+): memory is Memory & { metadata: MessageMetadata } {
 	return (
-		memory.metadata !== undefined &&
-		memory.metadata.type === MemoryType.MESSAGE
+		memory.metadata !== undefined && memory.metadata.type === MemoryType.MESSAGE
 	);
 }
 
@@ -149,5 +148,5 @@ export function isDescriptionMemory(
 }
 
 export function getMemoryText(memory: Memory, defaultValue = ""): string {
-	return memory.content?.text ?? defaultValue;
+	return memory.content.text ?? defaultValue;
 }
