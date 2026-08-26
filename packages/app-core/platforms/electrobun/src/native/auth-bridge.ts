@@ -41,6 +41,7 @@ const PERSISTED_SCHEMA_VERSION = 1;
 const SOCKET_CONNECT_TIMEOUT_MS = 5_000;
 const HTTP_REQUEST_TIMEOUT_MS = 10_000;
 const SECRET_BYTES = 32;
+const DB_UNAVAILABLE_RETRY_DELAYS_MS = [100, 250, 500, 1_000, 1_500] as const;
 /** Refuse to reuse an existing session if it expires within this window. */
 const EXPIRY_SAFETY_MARGIN_MS = 60_000;
 
@@ -379,6 +380,10 @@ function buildBootstrapUrl(apiBase: string): string {
   return `${trimmed}${DESKTOP_BOOTSTRAP_ENDPOINT}`;
 }
 
+function waitForBootstrapRetry(delayMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
 function isLoopbackBase(apiBase: string): boolean {
   try {
     const url = new URL(apiBase);
@@ -466,19 +471,27 @@ export async function bootstrapDesktopSession(
 
   let body: DesktopBootstrapResponseBody | null = null;
   try {
-    const response = await fetchImpl(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({ socketPath: socketHandle.socketPath }),
-      signal: requestSignal,
-    });
+    let response: Response | null = null;
+    for (let attempt = 0; ; attempt += 1) {
+      response = await fetchImpl(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ socketPath: socketHandle.socketPath }),
+        signal: requestSignal,
+      });
 
-    if (!response.ok) {
-      // 404 means the backend doesn't implement the endpoint yet — flag in
-      // logs but stay silent in the UX so the renderer can still log in.
+      if (response.ok) break;
+      const retryDelay = DB_UNAVAILABLE_RETRY_DELAYS_MS[attempt];
+      if (response.status === 503 && retryDelay !== undefined) {
+        await waitForBootstrapRetry(retryDelay);
+        continue;
+      }
+
+      // Authentication/proof failures are never retried. Only transient
+      // startup database unavailability can reuse this still-unconsumed socket.
       warnAuthBridge("Desktop auth bootstrap endpoint failed", {
         url,
         status: response.status,

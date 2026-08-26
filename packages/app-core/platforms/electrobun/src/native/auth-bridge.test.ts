@@ -115,4 +115,71 @@ describe("desktop auth bridge", () => {
     });
     expect(loadPersistedSession(env)?.sessionId).toBe("fresh-session");
   });
+
+  it("retries transient database startup without replacing the proof socket", async () => {
+    const stateDir = createStateDir();
+    const env = { ELIZA_STATE_DIR: stateDir };
+    const socketPaths: string[] = [];
+    let attempts = 0;
+
+    const fresh = await loadOrCreateDesktopSession({
+      apiBase: "http://127.0.0.1:31337",
+      env,
+      reusePersistedSession: false,
+      generateSecret: () => Buffer.alloc(32, 9),
+      fetchImpl: async (_input, init) => {
+        attempts += 1;
+        const body = JSON.parse(String(init?.body)) as { socketPath: string };
+        socketPaths.push(body.socketPath);
+        if (attempts === 1) {
+          return Response.json({ error: "db_unavailable" }, { status: 503 });
+        }
+        await new Promise<void>((resolve, reject) => {
+          const socket = net.createConnection(body.socketPath);
+          socket.once("error", reject);
+          socket.on("data", () => undefined);
+          socket.once("end", resolve);
+        });
+        return Response.json({
+          sessionId: "retry-session",
+          csrfToken: "retry-csrf",
+          expiresAt: Date.now() + 86_400_000,
+        });
+      },
+    });
+
+    expect(fresh?.sessionId).toBe("retry-session");
+    expect(attempts).toBe(2);
+    expect(new Set(socketPaths).size).toBe(1);
+    expect(logger.warn).not.toHaveBeenCalledWith(
+      "[DesktopAuthBridge] Desktop auth bootstrap endpoint failed",
+      expect.objectContaining({ status: 503 }),
+    );
+  });
+
+  it("does not retry a rejected desktop proof", async () => {
+    const stateDir = createStateDir();
+    let attempts = 0;
+
+    const session = await loadOrCreateDesktopSession({
+      apiBase: "http://127.0.0.1:31337",
+      env: { ELIZA_STATE_DIR: stateDir },
+      reusePersistedSession: false,
+      generateSecret: () => Buffer.alloc(32, 11),
+      fetchImpl: async () => {
+        attempts += 1;
+        return Response.json(
+          { error: "desktop_bootstrap_proof_failed" },
+          { status: 403 },
+        );
+      },
+    });
+
+    expect(session).toBeNull();
+    expect(attempts).toBe(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      "[DesktopAuthBridge] Desktop auth bootstrap endpoint failed",
+      expect.objectContaining({ status: 403 }),
+    );
+  });
 });

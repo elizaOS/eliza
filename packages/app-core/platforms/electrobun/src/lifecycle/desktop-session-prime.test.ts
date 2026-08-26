@@ -119,6 +119,7 @@ const ENV_KEYS = [
 ] as const;
 
 const LOOPBACK_API = "http://127.0.0.1:31337";
+const REBOUND_LOOPBACK_API = "http://127.0.0.1:31338";
 const RENDERER_ORIGIN = "http://127.0.0.1:5173";
 
 const originalEnv = new Map<string, string | undefined>();
@@ -221,6 +222,72 @@ describe("desktop-session-prime", () => {
     expect(electrobunState.defaultCookies).toHaveLength(2);
   });
 
+  it("coalesces concurrent prime calls onto one socket proof", async () => {
+    let resolveSession:
+      | ((session: ReturnType<typeof seedPersistedSession>) => void)
+      | null = null;
+    authBridgeState.loadOrCreateDesktopSession.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSession = resolve;
+        }),
+    );
+
+    const first = primeDesktopSessionAuth(LOOPBACK_API, LOOPBACK_API);
+    const second = primeDesktopSessionAuth(LOOPBACK_API, LOOPBACK_API);
+
+    expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledTimes(1);
+    resolveSession?.({
+      sessionId: "coalesced-session",
+      csrfToken: "coalesced-csrf",
+      expiresAt: Date.now() + 86_400_000,
+    });
+    await Promise.all([first, second]);
+
+    expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledTimes(1);
+    expect(electrobunState.defaultCookies).toHaveLength(2);
+  });
+
+  it("re-proves once when a generation turns stale during an in-flight prime", async () => {
+    let resolveFirst:
+      | ((session: ReturnType<typeof seedPersistedSession>) => void)
+      | null = null;
+    authBridgeState.loadOrCreateDesktopSession
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({
+        sessionId: "fresh-generation-session",
+        csrfToken: "fresh-generation-csrf",
+        expiresAt: Date.now() + 86_400_000,
+      });
+
+    const first = primeDesktopSessionAuth(LOOPBACK_API, LOOPBACK_API);
+    markDesktopSessionStale();
+    const second = primeDesktopSessionAuth(
+      REBOUND_LOOPBACK_API,
+      REBOUND_LOOPBACK_API,
+    );
+    resolveFirst?.({
+      sessionId: "stale-generation-session",
+      csrfToken: "stale-generation-csrf",
+      expiresAt: Date.now() + 86_400_000,
+    });
+    await Promise.all([first, second]);
+
+    expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledTimes(2);
+    expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenLastCalledWith(
+      {
+        apiBase: REBOUND_LOOPBACK_API,
+        reusePersistedSession: false,
+      },
+    );
+    expect(electrobunState.defaultCookies).toHaveLength(4);
+  });
+
   it("re-runs the bridge after markDesktopSessionStale", async () => {
     seedPersistedSession();
 
@@ -251,7 +318,7 @@ describe("desktop-session-prime", () => {
   });
 
   it("warns with the Error message when the bridge throws and stays unprimed", async () => {
-    authBridgeState.loadOrCreateDesktopSession.mockRejectedValueOnce(
+    authBridgeState.loadOrCreateDesktopSession.mockRejectedValue(
       new Error("disk exploded"),
     );
 
