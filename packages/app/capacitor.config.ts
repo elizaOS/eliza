@@ -22,6 +22,17 @@ export function resolveAndroidCapacitorPlugins(
     .sort();
 }
 
+export function resolveCapacitorHttpEnabled(
+  target: string | undefined,
+  androidRuntimeMode: string | undefined,
+  androidCloudBuild: string | undefined = undefined,
+): boolean {
+  return !(
+    androidCloudBuild === "1" ||
+    (target === "android" && androidRuntimeMode === "cloud")
+  );
+}
+
 function isIosStoreBuild(): boolean {
   return (
     process.env.ELIZA_CAPACITOR_BUILD_TARGET === "ios" &&
@@ -139,6 +150,11 @@ const androidProjectPath = resolveAndroidProjectPath(
   process.env.ELIZA_ANDROID_USE_APP_DIR,
   appConfig.appId,
 );
+const capacitorHttpEnabled = resolveCapacitorHttpEnabled(
+  process.env.ELIZA_CAPACITOR_BUILD_TARGET,
+  process.env.VITE_ELIZA_ANDROID_RUNTIME_MODE,
+  process.env.ELIZA_ANDROID_CLOUD_BUILD,
+);
 
 const config: CapacitorConfig = {
   appId: appConfig.appId,
@@ -161,12 +177,12 @@ const config: CapacitorConfig = {
       resize: "body",
       resizeOnFullScreen: true,
     },
-    // Patches `fetch`/`XMLHttpRequest` on native platforms to use the
-    // native HTTP stack (CFNetwork on iOS). Required for cross-origin
-    // requests like `https://api.eliza.app/api/auth/cli-session` —
-    // those fail under WKWebView's CORS check from `capacitor://localhost`.
+    // iOS requires CFNetwork for cross-origin Cloud requests. The Android
+    // Cloud API publishes the required CORS contract, so its WebView uses
+    // browser fetch directly; routing through CapacitorHttp can leave the
+    // hosted-login metadata request pending indefinitely on Custom Tab hosts.
     CapacitorHttp: {
-      enabled: true,
+      enabled: capacitorHttpEnabled,
     },
     BackgroundRunner: {
       label: "eliza-tasks",
