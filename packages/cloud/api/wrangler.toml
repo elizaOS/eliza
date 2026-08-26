@@ -247,6 +247,9 @@ PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED = "false"
 NEXT_PUBLIC_APP_URL = "https://cloud.eliza.app"
 NEXT_PUBLIC_API_URL = "https://api.eliza.app"
 ELIZA_CLOUD_URL = "https://api.eliza.app"
+# Native Android PKCE is a committed product capability. The endpoint fails
+# closed unless this public environment flag is exactly "true" or "false".
+ELIZA_MOBILE_APP_AUTH_ENABLED = "true"
 ELIZA_CLOUD_AGENT_BASE_DOMAIN = "cloud.eliza.app"
 ELIZA_FRONTEND_HOST_SUFFIX = "sites.eliza.app"
 # Internal Worker-to-agent calls must target the control-plane origin directly;
@@ -616,9 +619,8 @@ ELIZA_ONBOARDING_APP_URL = "https://cloud-staging.eliza.app"
 # bindings immediately before deployment and restores their staging value if
 # that deployment fails. The committed var is the steady-state authority.
 ELIZA_ONBOARDING_LOGIN_APP_URL = "https://staging.eliza.app"
-# Mobile app auth is staged behind an explicit environment gate and a fixed
-# registered app identity. Production remains disabled until physical-device
-# hosted PKCE and session persistence are accepted against this environment.
+# Mobile app auth is gated explicitly and bound to a fixed registered app
+# identity. The protected deployment workflow verifies both before publishing.
 ELIZA_MOBILE_APP_AUTH_ENABLED = "true"
 ELIZA_MOBILE_APP_AUTH_APP_ID = "689a1597-85e7-43ca-b000-8c6392d79465"
 NEXT_PUBLIC_NETWORK = "base"
@@ -872,6 +874,7 @@ APPS_DEPLOY_ALLOWED_ORG_IDS = "*"
 NEXT_PUBLIC_APP_URL = "https://cloud.eliza.app"
 NEXT_PUBLIC_API_URL = "https://api.eliza.app"
 ELIZA_CLOUD_URL = "https://api.eliza.app"
+ELIZA_MOBILE_APP_AUTH_ENABLED = "true"
 ELIZA_CLOUD_AGENT_BASE_DOMAIN = "cloud.eliza.app"
 ELIZA_FRONTEND_HOST_SUFFIX = "sites.eliza.app"
 # OpenID Connect provider — see the staging block for why these are vars, not
