@@ -183,10 +183,3 @@ function getDateTimestamp(value: object): number | undefined {
 export function toMultilineText(value: unknown): string {
 	return flattenTextValues(value).join("\n");
 }
-
-/**
- * Convert a mixed nested value into a comma-separated text line.
- */
-export function toCommaSeparatedText(value: unknown): string {
-	return flattenTextValues(value).join(", ");
-}
