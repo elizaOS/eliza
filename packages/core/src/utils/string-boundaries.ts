@@ -21,3 +21,25 @@ export function trimEndWhitespace(value: string): string {
 	while (end > 0 && /\s/u.test(value[end - 1])) end -= 1;
 	return end === value.length ? value : value.slice(0, end);
 }
+
+export function trimStartCharacters(value: string, characters: string): string {
+	const accepted = new Set(characters);
+	let start = 0;
+	while (start < value.length) {
+		let end = start + 1;
+		const first = value.charCodeAt(start);
+		if (first >= 0xd800 && first <= 0xdbff && end < value.length) {
+			const next = value.charCodeAt(end);
+			if (next >= 0xdc00 && next <= 0xdfff) end += 1;
+		}
+		if (!accepted.has(value.slice(start, end))) break;
+		start = end;
+	}
+	return start === 0 ? value : value.slice(start);
+}
+
+export function trimStartWhitespace(value: string): string {
+	let start = 0;
+	while (start < value.length && /\s/u.test(value[start])) start += 1;
+	return start === 0 ? value : value.slice(start);
+}
