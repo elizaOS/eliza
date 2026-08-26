@@ -6,16 +6,28 @@
 import { type ContactSummary, Contacts } from "@elizaos/capacitor-contacts";
 
 export function matchesQuery(contact: ContactSummary, q: string): boolean {
-  if (q.length === 0) return true;
-  const needle = q.toLowerCase();
-  if (contact.displayName.toLowerCase().includes(needle)) return true;
+  if (typeof q !== "string" || q.trim().length === 0) return true;
+  if (!contact) return false;
+  const needle = q.trim().toLowerCase();
   if (
-    contact.phoneNumbers.some((p: string) => p.toLowerCase().includes(needle))
+    typeof contact.displayName === "string" &&
+    contact.displayName.toLowerCase().includes(needle)
   ) {
     return true;
   }
   if (
-    contact.emailAddresses.some((e: string) => e.toLowerCase().includes(needle))
+    Array.isArray(contact.phoneNumbers) &&
+    contact.phoneNumbers.some(
+      (p: string) => typeof p === "string" && p.toLowerCase().includes(needle),
+    )
+  ) {
+    return true;
+  }
+  if (
+    Array.isArray(contact.emailAddresses) &&
+    contact.emailAddresses.some(
+      (e: string) => typeof e === "string" && e.toLowerCase().includes(needle),
+    )
   ) {
     return true;
   }
