@@ -82,6 +82,7 @@ import {
   useAppSelectorShallow,
 } from "../state";
 import { useConversationMessages } from "../state/ConversationMessagesContext.hooks";
+import { consumeCloudAuthFirstScreenGreeting } from "../state/cloud-auth-first-screen";
 import {
   claimCloudLoginWindow,
   prepareDesktopCloudLoginSession,
@@ -523,6 +524,7 @@ export function useFirstRunConductor(): void {
   // genuinely interactive or genuinely slow must render: a REAL provisioning
   // status, the multi-agent selector, a sign-in retry ask, or an error turn.
   const silentCloudEntryRef = React.useRef(false);
+  const greetAfterCloudAuthRef = React.useRef(false);
   // Monotonic id source for typed-text turns: guarantees a unique user/reply id
   // per send even when two land in the same millisecond, so `seedTurn`'s id
   // dedup never silently swallows an acknowledged message.
@@ -620,7 +622,15 @@ export function useFirstRunConductor(): void {
     // already signed in and their agent already exists — land straight in chat
     // with no wrap-up turn. A create/wake path cleared the ref on its first
     // real provisioning status, so its wrap-up still renders.
-    if (!silentCloudEntryRef.current) {
+    if (greetAfterCloudAuthRef.current) {
+      greetAfterCloudAuthRef.current = false;
+      seedTurn(
+        makeTurn(
+          "first-run:cloud-welcome",
+          `${FIRST_RUN_GREETING} ${CLOUD_ONLY_DONE}`,
+        ),
+      );
+    } else if (!silentCloudEntryRef.current) {
       seedTurn(makeTurn("first-run:cloud-done", CLOUD_ONLY_DONE));
     }
     completeFirstRun("chat");
@@ -1614,6 +1624,7 @@ export function useFirstRunConductor(): void {
       document.addEventListener(APP_RESUME_EVENT, onNativeResume);
       document.addEventListener("visibilitychange", onVisibilityChange);
       if (elizaCloudConnectedRef.current || hasUsableStoredStewardToken()) {
+        greetAfterCloudAuthRef.current = consumeCloudAuthFirstScreenGreeting();
         silentCloudEntryRef.current = true;
         runCloudResumeRef.current("cloud");
       } else if (typeof window !== "undefined" && hasStewardAuthedCookie()) {
@@ -1666,6 +1677,8 @@ export function useFirstRunConductor(): void {
               // error-policy:J6 best-effort nudge — consumers re-read the
               // stored token on their next tick regardless.
             }
+            greetAfterCloudAuthRef.current =
+              consumeCloudAuthFirstScreenGreeting();
             runCloudResumeRef.current("cloud");
             return;
           }

@@ -247,6 +247,8 @@ export interface GuildManagementContext {
 	agentName?: string;
 	/** Audit-log reason prefix for every write. */
 	reasonPrefix?: string;
+	/** Revalidates destination authorization before each Discord API write. */
+	beforeMutation?: () => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -669,6 +671,12 @@ function auditReason(
 	return extra ? `${prefix}: ${extra}`.slice(0, 512) : prefix;
 }
 
+async function authorizeMutation(
+	context: GuildManagementContext,
+): Promise<void> {
+	await context.beforeMutation?.();
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -815,6 +823,7 @@ async function createChannelOp(
 			`Dry run: would create ${kind} "${name}" in "${guild.name}".`,
 		);
 	}
+	await authorizeMutation(context);
 	const created = await guild.channels.create({
 		name,
 		type,
@@ -878,6 +887,7 @@ async function editChannelOp(
 			`Dry run: would update channel "${channel.name}" (${Object.keys(changes).join(", ")}).`,
 		);
 	}
+	await authorizeMutation(context);
 	const updated = await channel.edit({
 		...changes,
 		reason: auditReason(context, request),
@@ -926,6 +936,7 @@ async function deleteChannelOp(
 			`Dry run: would delete channel "${channel.name}" (${channel.id}).`,
 		);
 	}
+	await authorizeMutation(context);
 	await channel.delete(auditReason(context, request));
 	return receipt(
 		context,
@@ -967,6 +978,7 @@ async function createRoleOp(
 			`Dry run: would create role "${name}" in "${guild.name}".`,
 		);
 	}
+	await authorizeMutation(context);
 	const created = await guild.roles.create({
 		name,
 		...(color !== undefined ? { color } : {}),
@@ -1035,6 +1047,7 @@ async function editRoleOp(
 			`Dry run: would update role "${role.name}" (${Object.keys(changes).join(", ")}).`,
 		);
 	}
+	await authorizeMutation(context);
 	const updated = await role.edit({
 		...changes,
 		reason: auditReason(context, request),
@@ -1084,6 +1097,7 @@ async function deleteRoleOp(
 			`Dry run: would delete role "${role.name}" (${role.id}).`,
 		);
 	}
+	await authorizeMutation(context);
 	await role.delete(auditReason(context, request));
 	return receipt(
 		context,
@@ -1174,6 +1188,7 @@ async function editPermissionsOp(
 	const options: Record<string, boolean | null> = {};
 	for (const name of allow) options[name] = true;
 	for (const name of deny) options[name] = false;
+	await authorizeMutation(context);
 	await channel.permissionOverwrites.edit(subject, options, {
 		reason: auditReason(context, request),
 	});
@@ -1265,8 +1280,10 @@ async function memberRoleOp(
 		);
 	}
 	if (operation === "assign_role") {
+		await authorizeMutation(context);
 		await member.roles.add(role.id, auditReason(context, request));
 	} else {
+		await authorizeMutation(context);
 		await member.roles.remove(role.id, auditReason(context, request));
 	}
 	return receipt(
@@ -1330,6 +1347,7 @@ async function createInviteOp(
 			`Dry run: would create an invite for "${channel.name}" (maxAge ${maxAge}s, maxUses ${maxUses || "unlimited"}).`,
 		);
 	}
+	await authorizeMutation(context);
 	const invite = await channel.createInvite({
 		maxAge,
 		maxUses,
@@ -1408,6 +1426,7 @@ async function moderationOp(
 	}
 	const reason = auditReason(context, request);
 	if (operation === "unban") {
+		await authorizeMutation(context);
 		await guild.bans.remove(userId, reason);
 		return receipt(
 			context,
@@ -1430,6 +1449,7 @@ async function moderationOp(
 			Math.max(Math.floor(request.deleteMessageSeconds ?? 0), 0),
 			7 * 24 * 60 * 60,
 		);
+		await authorizeMutation(context);
 		await guild.bans.create(userId, {
 			reason,
 			...(deleteMessageSeconds ? { deleteMessageSeconds } : {}),
@@ -1449,6 +1469,7 @@ async function moderationOp(
 				`Member ${userId} is not kickable by the bot (role hierarchy).`,
 			);
 		}
+		await authorizeMutation(context);
 		await member.kick(reason);
 		return receipt(
 			context,
@@ -1467,6 +1488,7 @@ async function moderationOp(
 		Math.max(Math.floor(request.durationMinutes ?? 10), 1),
 		MAX_TIMEOUT_MINUTES,
 	);
+	await authorizeMutation(context);
 	await member.timeout(minutes * 60 * 1000, reason);
 	return receipt(
 		context,
@@ -1681,6 +1703,7 @@ async function reconcileRoles(
 				});
 				continue;
 			}
+			await authorizeMutation(context);
 			const created = await guild.roles.create({
 				name: renderedName,
 				...(color !== undefined ? { color } : {}),
@@ -1743,6 +1766,7 @@ async function reconcileRoles(
 			continue;
 		}
 		requireRoleBelowBot(guild, existing, "apply_template role update");
+		await authorizeMutation(context);
 		await existing.edit({ ...drift, reason: options.reason });
 		entries.push({
 			kind: "role",
@@ -1812,6 +1836,7 @@ async function reconcileCategories(
 				});
 				continue;
 			}
+			await authorizeMutation(context);
 			const created = await guild.channels.create({
 				name: renderedName,
 				type: ChannelType.GuildCategory,
@@ -1841,6 +1866,7 @@ async function reconcileCategories(
 				});
 				continue;
 			}
+			await authorizeMutation(context);
 			await existing.edit({ name: renderedName, reason: options.reason });
 			entries.push({
 				kind: "category",
@@ -1916,6 +1942,7 @@ async function reconcileChannels(
 				});
 				continue;
 			}
+			await authorizeMutation(context);
 			const created = await guild.channels.create({
 				name: renderedName,
 				type,
@@ -1973,6 +2000,7 @@ async function reconcileChannels(
 			});
 			continue;
 		}
+		await authorizeMutation(context);
 		await existing.edit({ ...drift, reason: options.reason });
 		entries.push({
 			kind: "channel",
@@ -2094,6 +2122,7 @@ async function reconcileOverwrites(
 				continue;
 			}
 			const optionsMap = exactOverwriteOptions(existing, allow, deny);
+			await authorizeMutation(context);
 			await channel.permissionOverwrites.edit(subjectId, optionsMap, {
 				reason: options.reason,
 			});

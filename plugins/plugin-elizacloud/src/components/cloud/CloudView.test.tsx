@@ -9,8 +9,8 @@
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { CloudViewFetchers } from "./CloudView.tsx";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { CloudViewFetchers, CloudViewInteractions } from "./CloudView.tsx";
 import { CloudView } from "./CloudView.tsx";
 
 const CONNECTED_STATUS = {
@@ -48,7 +48,9 @@ const AGENT = {
   last_heartbeat_at: null,
 };
 
-function fetchers(overrides: Partial<CloudViewFetchers> = {}): CloudViewFetchers {
+function fetchers(
+  overrides: Partial<CloudViewFetchers> = {},
+): CloudViewFetchers {
   return {
     fetchStatus: async () => CONNECTED_STATUS,
     fetchCredits: async () => CREDITS,
@@ -69,10 +71,21 @@ function fetchers(overrides: Partial<CloudViewFetchers> = {}): CloudViewFetchers
   };
 }
 
+function interactions(
+  overrides: Partial<CloudViewInteractions> = {},
+): CloudViewInteractions {
+  return {
+    navigateInternal: vi.fn(),
+    openExternal: vi.fn(async () => true),
+    ...overrides,
+  };
+}
+
 let container: HTMLDivElement;
 let root: Root;
 
 beforeEach(() => {
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -85,9 +98,12 @@ afterEach(async () => {
   container.remove();
 });
 
-async function render(seam: CloudViewFetchers) {
+async function render(
+  seam: CloudViewFetchers,
+  interactionSeam: CloudViewInteractions = interactions(),
+) {
   await act(async () => {
-    root.render(<CloudView fetchers={seam} />);
+    root.render(<CloudView fetchers={seam} interactions={interactionSeam} />);
   });
   // Let the async account load settle.
   await act(async () => {
@@ -103,20 +119,50 @@ describe("CloudView", () => {
   it("shows the loading state while the account load is in flight", async () => {
     const never = new Promise<typeof CONNECTED_STATUS>(() => {});
     await act(async () => {
-      root.render(<CloudView fetchers={fetchers({ fetchStatus: () => never })} />);
+      root.render(
+        <CloudView fetchers={fetchers({ fetchStatus: () => never })} />,
+      );
     });
     expect(testId("cloud-loading")).not.toBeNull();
     expect(container.textContent).toContain("Loading your Eliza Cloud account");
   });
 
   it("renders the designed signed-out state with a connect CTA", async () => {
+    const interactionSeam = interactions();
     await render(
-      fetchers({ fetchStatus: async () => ({ connected: false, enabled: true }) }),
+      fetchers({
+        fetchStatus: async () => ({ connected: false, enabled: true }),
+      }),
+      interactionSeam,
     );
     expect(testId("cloud-signed-out")).not.toBeNull();
-    expect(container.textContent).toContain("Connect your Eliza Cloud account");
+    expect(container.textContent).toContain("Connect to view credits");
+    expect(container.textContent).not.toContain("Connected");
     expect(container.querySelector("button")?.textContent).toContain(
       "Connect in Settings",
+    );
+    await act(async () => {
+      container.querySelector("button")?.click();
+    });
+    expect(interactionSeam.navigateInternal).toHaveBeenCalledWith("/settings");
+  });
+
+  it("shows a visible failure when internal navigation is denied", async () => {
+    await render(
+      fetchers({
+        fetchStatus: async () => ({ connected: false, enabled: true }),
+      }),
+      interactions({
+        navigateInternal: () => {
+          throw new Error("scope denied");
+        },
+      }),
+    );
+    await act(async () => {
+      container.querySelector("button")?.click();
+    });
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      "Navigation is unavailable",
     );
   });
 
@@ -145,7 +191,7 @@ describe("CloudView", () => {
     await render(fetchers());
     expect(testId("cloud-ready")).not.toBeNull();
     expect(testId("cloud-credit-balance")?.textContent).toBe("$12.34");
-    expect(testId("cloud-org-id")?.textContent).toBe("org-1");
+    expect(container.textContent).toContain("Connected");
     expect(testId("cloud-agent-list")?.textContent).toContain("alpha");
     expect(testId("cloud-agent-list")?.textContent).toContain("running");
     expect(testId("cloud-api-key-count")?.textContent).toBe("2 API keys");
@@ -153,9 +199,52 @@ describe("CloudView", () => {
     expect(container.textContent).toContain("Top up");
   });
 
+  it("opens server-provided links only through the host interaction boundary", async () => {
+    const openExternal = vi.fn(async () => true);
+    await render(fetchers(), interactions({ openExternal }));
+    const topUp = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent === "Top up",
+    );
+    const manage = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent === "Manage",
+    );
+    await act(async () => {
+      topUp?.click();
+      manage?.click();
+      await Promise.resolve();
+    });
+    expect(openExternal).toHaveBeenCalledWith(CREDITS.topUpUrl);
+    expect(openExternal).toHaveBeenCalledWith(
+      "https://cloud.eliza.app/cloud/api-keys",
+    );
+    expect(container.querySelector('a[target="_blank"]')).toBeNull();
+  });
+
+  it.each([
+    ["rejected", async () => false],
+    ["failed", async () => Promise.reject(new Error("browser unavailable"))],
+  ])(
+    "shows a visible failure when an external URL is %s",
+    async (_name, open) => {
+      await render(fetchers(), interactions({ openExternal: open }));
+      const topUp = [...container.querySelectorAll("button")].find(
+        (button) => button.textContent === "Top up",
+      );
+      await act(async () => {
+        topUp?.click();
+        await Promise.resolve();
+      });
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+        "could not be opened safely",
+      );
+    },
+  );
+
   it("renders the designed empty state when there are no hosted agents", async () => {
-    await render(fetchers({ fetchAgents: async () => ({ success: true, data: [] }) }));
-    expect(container.textContent).toContain("No hosted agents yet");
+    await render(
+      fetchers({ fetchAgents: async () => ({ success: true, data: [] }) }),
+    );
+    expect(container.textContent).toContain("No hosted agents.");
   });
 
   it("degrades a failing section to its unavailable note without faking empty", async () => {
@@ -169,7 +258,9 @@ describe("CloudView", () => {
     // Still ready — credits render…
     expect(testId("cloud-credit-balance")?.textContent).toBe("$12.34");
     // …but the agents card is a designed unavailable note, not an empty list.
-    expect(container.textContent).toContain("Agents are unavailable right now.");
+    expect(container.textContent).toContain(
+      "Agents are unavailable right now.",
+    );
     expect(container.textContent).not.toContain("No hosted agents yet");
   });
 
@@ -184,6 +275,8 @@ describe("CloudView", () => {
       }),
     );
     expect(testId("cloud-api-key-count")).toBeNull();
-    expect(container.textContent).toContain("signed-in session");
+    expect(container.textContent).toContain(
+      "Open the console to view API keys",
+    );
   });
 });

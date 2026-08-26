@@ -30,6 +30,11 @@ import { createUniqueUuid } from "./entities";
 import { ElizaError } from "./errors.ts";
 import { logger } from "./logger";
 import type { IAgentRuntime, Memory, UUID, World } from "./types";
+import type {
+	IDatabaseAdapter,
+	WorldMetadataCompareAndSwapParams,
+	WorldMetadataMutationResult,
+} from "./types/database";
 import type { PrincipalService } from "./types/identity";
 import {
 	MESSAGE_SOURCE_AGENT_GREETING,
@@ -37,6 +42,7 @@ import {
 	MESSAGE_SOURCE_CODING_AGENT,
 	MESSAGE_SOURCE_SUB_AGENT,
 } from "./types/message-source";
+import type { Metadata } from "./types/primitives";
 import { ServiceType } from "./types/service";
 import { formatError } from "./utils/format-error";
 import { asRecordOrUndefined as asRecord } from "./utils/type-guards";
@@ -1009,6 +1015,19 @@ export function canModifyRole(
 	return false;
 }
 
+export async function resolveWorldById(
+	runtime: IAgentRuntime,
+	worldId: UUID,
+): Promise<{
+	world: Awaited<ReturnType<IAgentRuntime["getWorld"]>>;
+	metadata: RolesWorldMetadata;
+} | null> {
+	const world = await runtime.getWorld(worldId);
+	if (!world) return null;
+	const metadata = (world.metadata ?? {}) as RolesWorldMetadata;
+	return { world, metadata };
+}
+
 export async function resolveWorldForMessage(
 	runtime: IAgentRuntime,
 	message: Memory,
@@ -1335,4 +1354,188 @@ export async function setEntityRole(
 		world as Parameters<IAgentRuntime["updateWorld"]>[0],
 	);
 	return { ...metadata.roles };
+}
+
+/**
+ * Typed outcome of one atomic role-write attempt (#23100). `conflict` means a
+ * concurrent metadata write landed between the caller's authorized read and
+ * the compare-and-swap; the caller must re-resolve and re-authorize before
+ * retrying — never retry with the original snapshot.
+ */
+export type EntityRoleCasResult =
+	| {
+			status: "committed";
+			roles: Record<string, RoleName>;
+	  }
+	| { status: "conflict" }
+	| { status: "world_not_found" }
+	| { status: "unauthorized" };
+
+/** Bounded retries before a persistently contended role write gives up. */
+export const ROLE_WRITE_CAS_MAX_ATTEMPTS = 3;
+
+function requireWorldMetadataCasCapability(
+	adapter: IAgentRuntime["adapter"],
+): asserts adapter is IAgentRuntime["adapter"] & {
+	compareAndSwapWorldMetadata: (
+		params: WorldMetadataCompareAndSwapParams,
+	) => Promise<WorldMetadataMutationResult>;
+} {
+	if (
+		typeof (
+			adapter as Partial<IDatabaseAdapter> & {
+				compareAndSwapWorldMetadata?: unknown;
+			}
+		).compareAndSwapWorldMetadata === "function"
+	) {
+		return;
+	}
+	// Fail closed: authorization writes never fall back to the blind
+	// whole-world overwrite, which can resurrect revoked authority.
+	throw new ElizaError(
+		"Database adapter must implement compareAndSwapWorldMetadata for atomic role writes",
+		{
+			code: "WORLD_METADATA_CAS_CAPABILITY_REQUIRED",
+			context: {
+				adapter: adapter?.constructor?.name ?? "unknown",
+				migrationGuide:
+					"Implement IDatabaseAdapter.compareAndSwapWorldMetadata on every adapter that persists worlds; role writes fail closed until then.",
+			},
+			severity: "fatal",
+		},
+	);
+}
+
+/**
+ * Atomically set one entity's world role under compare-and-swap (#23100).
+ *
+ * Unlike {@link setEntityRole} (a blind read-merge-write of whole-world
+ * metadata), this resolves the world fresh on EVERY attempt, re-invokes the
+ * caller's `authorize` predicate against that fresh state, applies the grant
+ * via {@link recordRoleGrant}, and commits through
+ * `adapter.compareAndSwapWorldMetadata`, which compares the exact prior
+ * metadata snapshot in the same transaction that writes the replacement and
+ * inserts the durable `role_audit` log row. A concurrent writer therefore
+ * turns into a typed `conflict` the caller can retry after re-authorizing,
+ * instead of being silently overwritten (the revoked-ADMIN resurrection
+ * hazard named in #23100 and the #24243 review).
+ *
+ * The `authorize` predicate is re-evaluated on every attempt against the
+ * freshly resolved world — never trust an authorization verdict computed
+ * against an earlier snapshot. The audit row uses the originating
+ * `message.roomId` — a real room the request came from — and is committed in
+ * the same adapter transaction as the metadata replacement, so a committed
+ * authority change is never separable from its audit record.
+ */
+export async function setEntityRoleCas(
+	runtime: IAgentRuntime,
+	message: Memory,
+	targetEntityId: string,
+	newRole: RoleName,
+	options: {
+		source?: RoleGrantSource;
+		/**
+		 * Resolve this explicit world instead of the message room's world.
+		 * The trust ROLE handler resolves the configured `WORLD_ID` setting,
+		 * which may differ from the room the message arrived in — its CAS
+		 * must write that world, not the room's.
+		 */
+		worldId?: UUID;
+		/** Max CAS attempts before reporting conflict exhaustion. */
+		maxAttempts?: number;
+		/**
+		 * Per-attempt authorization against the FRESH world state. Re-checked
+		 * before every CAS write, so a concurrent revocation of the requester
+		 * cannot be outrun by a retry. Deny surfaces as
+		 * {@link EntityRoleCasOutcome} `unauthorized` — never a write.
+		 */
+		authorize?: (
+			fresh: Awaited<ReturnType<typeof resolveWorldForMessage>>,
+		) => boolean | Promise<boolean>;
+		/** Additional authority metadata committed in the same audited CAS. */
+		mutateMetadata?: (replacement: RolesWorldMetadata) => void;
+	} = {},
+): Promise<EntityRoleCasResult> {
+	const source = options.source ?? "manual";
+	const maxAttempts = options.maxAttempts ?? ROLE_WRITE_CAS_MAX_ATTEMPTS;
+	if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
+		// Fail closed: a zero/negative/fractional bound would turn the
+		// documented bounded-retry contract into "never attempt" or an
+		// unbounded loop.
+		throw new ElizaError("Role write CAS maxAttempts must be an integer >= 1", {
+			code: "INVALID_ROLE_CAS_MAX_ATTEMPTS",
+			context: { maxAttempts },
+		});
+	}
+	requireWorldMetadataCasCapability(runtime.adapter);
+	// Fail closed on malformed target ids BEFORE any attempt: an audit row
+	// must never carry a null targetEntityId silently smuggled through the
+	// `as UUID` casts on caller-supplied action params.
+	const targetUuid = validateUuid(targetEntityId);
+	if (!targetUuid) {
+		throw new ElizaError("Role write target is not a valid entity UUID", {
+			code: "INVALID_ROLE_TARGET_ENTITY_ID",
+			context: { targetEntityId },
+		});
+	}
+
+	for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+		// Re-resolve per attempt: every retry re-reads the world and re-runs
+		// the caller's authorization against CURRENT state, never the
+		// original possibly-stale read.
+		const resolved = options.worldId
+			? await resolveWorldById(runtime, options.worldId)
+			: await resolveWorldForMessage(runtime, message);
+		if (!resolved?.world) return { status: "world_not_found" };
+		const { world } = resolved;
+		// Freeze an independent snapshot the moment the world is resolved:
+		// the memory adapters return LIVE stored objects, so a legacy
+		// whole-world writer mutating metadata in place during the awaited
+		// authorize predicate would otherwise change both sides of the CAS
+		// comparison together and the concurrent write would go undetected.
+		// Authorization evaluates against this SAME frozen view — the
+		// authorize predicate and the CAS comparison must never observe
+		// different metadata states for one attempt.
+		const resolvedWorld = structuredClone(world);
+		const expectedSnapshot = (resolvedWorld.metadata ??
+			{}) as RolesWorldMetadata;
+		const authorizeView: typeof resolved = {
+			world: resolvedWorld,
+			metadata: expectedSnapshot,
+		};
+
+		if (options.authorize && !(await options.authorize(authorizeView))) {
+			return { status: "unauthorized" };
+		}
+
+		const previousRole = normalizeRole(
+			expectedSnapshot.roles?.[targetEntityId],
+		);
+		const replacement: RolesWorldMetadata = structuredClone(expectedSnapshot);
+		recordRoleGrant(replacement, targetEntityId, newRole, source);
+		options.mutateMetadata?.(replacement);
+
+		const result = await runtime.adapter.compareAndSwapWorldMetadata({
+			worldId: world.id,
+			expectedMetadata: expectedSnapshot as unknown as Metadata,
+			replacementMetadata: replacement as unknown as Metadata,
+			audit: {
+				actorEntityId: message.entityId,
+				targetEntityId: targetUuid,
+				previousRole,
+				newRole,
+				source,
+				roomId: message.roomId,
+			},
+		});
+		if (result.status === "updated") {
+			return { status: "committed", roles: { ...replacement.roles } };
+		}
+		if (result.status === "not_found") return { status: "world_not_found" };
+		// conflict: loop to re-read, re-authorize, and re-apply
+	}
+	// Persistently contended: surface conflict exhaustion to the caller; the
+	// batch caller reports it as an explicit skipped failure, never a silent
+	// success or overwrite.
+	return { status: "conflict" };
 }

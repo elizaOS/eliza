@@ -16,6 +16,11 @@ import { pushSchema } from "drizzle-kit/api";
 import { eq } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../client";
 import { organizationBalanceRevisionSequence, organizations } from "../schemas/organizations";
+import {
+  personalSharedGroupBindings,
+  personalSharedGroupJoinChallenges,
+  personalSharedGroupParticipants,
+} from "../schemas/personal-shared-groups";
 import { userIdentities } from "../schemas/user-identities";
 import { users } from "../schemas/users";
 import { usersRepository } from "./users";
@@ -57,6 +62,9 @@ beforeAll(async () => {
         organizations,
         users,
         userIdentities,
+        personalSharedGroupBindings,
+        personalSharedGroupParticipants,
+        personalSharedGroupJoinChallenges,
       } as never,
       dbWrite as never,
     );

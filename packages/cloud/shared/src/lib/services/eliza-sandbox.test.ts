@@ -39,9 +39,22 @@ import { runWithCloudBindings } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
 import { DockerSSHClient } from "./docker-ssh";
+import {
+  AGENT_CHARACTER_OWNERSHIP_KEY,
+  AGENT_MANAGED_DISCORD_GATEWAY_KEY,
+  AGENT_MANAGED_DISCORD_KEY,
+  AGENT_MANAGED_GITHUB_KEY,
+  AGENT_PERSONAL_CUTOVER_KEY,
+  AGENT_UPGRADED_FROM_KEY,
+} from "./eliza-agent-config";
 import { provisioningJobService } from "./provisioning-jobs";
 import { resolveSandboxContainerLaunchConfig } from "./sandbox-container-launch-config";
-import type { SandboxCreateConfig, SandboxHandle, SandboxProvider } from "./sandbox-provider-types";
+import {
+  type SandboxCreateConfig,
+  type SandboxHandle,
+  type SandboxProvider,
+  SandboxReplacementCleanupUnresolvedError,
+} from "./sandbox-provider-types";
 
 // Drive the real core KMS stack so the errors the snapshot-degrade
 // path classifies are genuine (`AeadError`, `KeyNotFoundError`) — not hand-rolled
@@ -1201,6 +1214,72 @@ describe("ElizaSandboxService shared runtime bridge", () => {
       }
     },
   );
+
+  test("wake canonical→Shared checkpoint race performs no integrity stamp or provision", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const initial: AgentSandbox = {
+      ...customSandbox(),
+      status: "sleeping",
+      sandbox_id: null,
+      node_id: null,
+      container_name: null,
+      bridge_url: null,
+      health_url: null,
+    };
+    const shared: AgentSandbox = { ...initial, execution_tier: "shared" };
+    type WakeRaceService = {
+      executeWake(
+        agentId: string,
+        orgId: string,
+      ): Promise<{
+        success: boolean;
+        reprovisioned: boolean;
+        error?: string;
+      }>;
+      getAgentForWrite(agentId: string, orgId: string): Promise<AgentSandbox | undefined>;
+      lockLifecycle(tx: unknown, agentId: string, orgId: string): Promise<void>;
+      getAgentForLifecycleMutation(
+        tx: unknown,
+        agentId: string,
+        orgId: string,
+      ): Promise<AgentSandbox | undefined>;
+      provision(agentId: string, orgId: string): Promise<unknown>;
+    };
+    const svc = new ElizaSandboxService() as unknown as WakeRaceService;
+    const primary = spyOn(svc, "getAgentForWrite").mockResolvedValue(initial);
+    const lock = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const lockedRead = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(shared);
+    const stamp = spyOn(agentSandboxesRepository, "stampBackupVerification");
+    const latest = spyOn(agentSandboxesRepository, "getLatestStoredBackup");
+    const provision = spyOn(svc, "provision");
+    let rawWrites = 0;
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async () => {
+          rawWrites += 1;
+          return { rows: [] };
+        },
+      });
+    try {
+      await expect(svc.executeWake(initial.id, initial.organization_id)).resolves.toEqual({
+        success: false,
+        reprovisioned: false,
+        error: "Agent lifecycle changed before wake restore validation",
+      });
+      expect(stamp).not.toHaveBeenCalled();
+      expect(latest).not.toHaveBeenCalled();
+      expect(provision).not.toHaveBeenCalled();
+      expect(rawWrites).toBe(0);
+    } finally {
+      upgradeTransactionImpl = null;
+      primary.mockRestore();
+      lock.mockRestore();
+      lockedRead.mockRestore();
+      stamp.mockRestore();
+      latest.mockRestore();
+      provision.mockRestore();
+    }
+  });
 });
 
 describe("ElizaSandboxService wake", () => {
@@ -1340,6 +1419,12 @@ describe("ElizaSandboxService wake", () => {
           updated_at: now,
         }),
       );
+      const gateAuthority = spyOn(
+        ElizaSandboxService.prototype as unknown as {
+          revalidateContainerBackedLifecycleGeneration: () => Promise<AgentSandbox | undefined>;
+        },
+        "revalidateContainerBackedLifecycleGeneration",
+      ).mockResolvedValue(sleepingSandbox);
 
       try {
         const result = await new ElizaSandboxService(provider).executeWake(
@@ -1369,6 +1454,7 @@ describe("ElizaSandboxService wake", () => {
         agentSandboxesRepository.getReconstructedBackupState = originalGetReconstructedBackupState;
         createForAgentSpy.mockRestore();
         updateSpy.mockRestore();
+        gateAuthority.mockRestore();
       }
     },
   );
@@ -1700,6 +1786,142 @@ describe("ElizaSandboxService shutdown fails closed without a current capture (#
       fetchSnap.mockRestore();
     }
   });
+
+  test("a Shared tier observed under the lifecycle lock cannot stop or write", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const initial: AgentSandbox = {
+      ...customSandbox(),
+      status: "stopped",
+      bridge_url: null,
+      health_url: null,
+    };
+    const locked: AgentSandbox = { ...initial, execution_tier: "shared" };
+    const provider: SandboxProvider = {
+      create: mock(async () => {
+        throw new Error("must not create");
+      }),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    };
+    type LockedShutdownService = {
+      shutdown(agentId: string, orgId: string): Promise<{ success: boolean; error?: string }>;
+      getAgentForWrite(agentId: string, orgId: string): Promise<AgentSandbox | undefined>;
+      lockLifecycle(tx: unknown, agentId: string, orgId: string): Promise<void>;
+      getAgentForLifecycleMutation(
+        tx: unknown,
+        agentId: string,
+        orgId: string,
+      ): Promise<AgentSandbox | undefined>;
+    };
+    const service = new ElizaSandboxService(provider) as unknown as LockedShutdownService;
+    const primaryRead = spyOn(service, "getAgentForWrite").mockResolvedValue(initial);
+    const lockLifecycle = spyOn(service, "lockLifecycle").mockResolvedValue(undefined);
+    const lockedRead = spyOn(service, "getAgentForLifecycleMutation").mockResolvedValue(locked);
+    let writeCalled = false;
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async () => {
+          writeCalled = true;
+          return { rows: [] };
+        },
+      });
+    try {
+      await expect(service.shutdown(initial.id, initial.organization_id)).resolves.toEqual({
+        success: false,
+        error: "Agent shutdown requires a container-backed execution tier",
+      });
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+      expect(writeCalled).toBe(false);
+    } finally {
+      upgradeTransactionImpl = null;
+      primaryRead.mockRestore();
+      lockLifecycle.mockRestore();
+      lockedRead.mockRestore();
+    }
+  });
+
+  test("a capture from generation A cannot be persisted onto or stop generation B that reuses its bridge URL", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const captured: AgentSandbox = {
+      ...customSandbox(),
+      lifecycle_revision: 41,
+      environment_revision: 7,
+    };
+    const replacement: AgentSandbox = {
+      ...captured,
+      // Deliberately retain the bridge URL: this is the ABA shape the former
+      // URL-only correlation admitted after the remote snapshot returned.
+      sandbox_id: "sandbox-generation-b",
+      node_id: "node-generation-b",
+      container_name: "agent-generation-b",
+      environment_revision: 8,
+      lifecycle_revision: 42,
+    };
+    const provider: SandboxProvider = {
+      create: mock(async () => {
+        throw new Error("must not create");
+      }),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    };
+    type ShutdownGenerationService = {
+      shutdown(agentId: string, orgId: string): Promise<{ success: boolean; error?: string }>;
+      getAgentForWrite(agentId: string, orgId: string): Promise<AgentSandbox | undefined>;
+      fetchSnapshotState(rec: AgentSandbox): Promise<{
+        stateData: { memories: unknown[]; config: Record<string, unknown>; workspaceFiles: object };
+        sizeBytes: number;
+        bridgeUrl: string;
+      }>;
+      lockLifecycle(tx: unknown, agentId: string, orgId: string): Promise<void>;
+      getAgentForLifecycleMutation(
+        tx: unknown,
+        agentId: string,
+        orgId: string,
+      ): Promise<AgentSandbox | undefined>;
+      persistSnapshotWithinTransaction(...args: unknown[]): Promise<unknown>;
+    };
+    const service = new ElizaSandboxService(provider) as unknown as ShutdownGenerationService;
+    const primaryRead = spyOn(service, "getAgentForWrite").mockResolvedValue(captured);
+    const fetchSnapshot = spyOn(service, "fetchSnapshotState").mockResolvedValue({
+      stateData: { memories: [], config: {}, workspaceFiles: {} },
+      sizeBytes: 2,
+      bridgeUrl: captured.bridge_url!,
+    });
+    const lockLifecycle = spyOn(service, "lockLifecycle").mockResolvedValue(undefined);
+    const lockedRead = spyOn(service, "getAgentForLifecycleMutation").mockResolvedValue(
+      replacement,
+    );
+    const persistSnapshot = spyOn(service, "persistSnapshotWithinTransaction");
+    const writes: unknown[] = [];
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async (query) => {
+          writes.push(query);
+          return { rows: [] };
+        },
+      });
+
+    try {
+      await expect(service.shutdown(captured.id, captured.organization_id)).resolves.toEqual({
+        success: false,
+        error:
+          "Refusing to stop: the agent's lifecycle generation moved after the pre-stop capture; retry the shutdown.",
+      });
+      expect(fetchSnapshot).toHaveBeenCalledWith(captured);
+      expect(persistSnapshot).not.toHaveBeenCalled();
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+      expect(writes).toHaveLength(0);
+    } finally {
+      upgradeTransactionImpl = null;
+      primaryRead.mockRestore();
+      fetchSnapshot.mockRestore();
+      lockLifecycle.mockRestore();
+      lockedRead.mockRestore();
+      persistSnapshot.mockRestore();
+    }
+  });
 });
 
 describe("ElizaSandboxService shutdown state-loss-acknowledged override (#18228)", () => {
@@ -1911,11 +2133,15 @@ describe("ElizaSandboxService sleep refuses an unproven fallback backup (#17180 
       [] as never,
     );
     const updateSpy = spyOn(agentSandboxesRepository, "update");
+    const svc = new ElizaSandboxService(provider);
+    const authority = spyOn(
+      svc as unknown as {
+        revalidateContainerBackedLifecycleGeneration: () => Promise<AgentSandbox | undefined>;
+      },
+      "revalidateContainerBackedLifecycleGeneration",
+    ).mockResolvedValue(rec);
     try {
-      const result = await new ElizaSandboxService(provider).executeSleep(
-        rec.id,
-        rec.organization_id,
-      );
+      const result = await svc.executeSleep(rec.id, rec.organization_id);
 
       expect(result.success).toBe(false);
       expect(result.containerRemoved).toBe(false);
@@ -1929,6 +2155,7 @@ describe("ElizaSandboxService sleep refuses an unproven fallback backup (#17180 
       stamp.mockRestore();
       listMeta.mockRestore();
       updateSpy.mockRestore();
+      authority.mockRestore();
     }
   });
 });
@@ -1963,12 +2190,16 @@ describe("ElizaSandboxService sleep", () => {
     ).mockResolvedValue(undefined);
     const createBackupSpy = spyOn(agentSandboxesRepository, "createBackup");
     const updateSpy = spyOn(agentSandboxesRepository, "update");
+    const svc = new ElizaSandboxService(provider);
+    const authority = spyOn(
+      svc as unknown as {
+        revalidateContainerBackedLifecycleGeneration: () => Promise<AgentSandbox | undefined>;
+      },
+      "revalidateContainerBackedLifecycleGeneration",
+    ).mockResolvedValue(rec);
 
     try {
-      const result = await new ElizaSandboxService(provider).executeSleep(
-        rec.id,
-        rec.organization_id,
-      );
+      const result = await svc.executeSleep(rec.id, rec.organization_id);
 
       expect(result).toEqual({
         success: false,
@@ -1985,6 +2216,7 @@ describe("ElizaSandboxService sleep", () => {
       storedBackupSpy.mockRestore();
       createBackupSpy.mockRestore();
       updateSpy.mockRestore();
+      authority.mockRestore();
     }
   });
 });
@@ -2286,10 +2518,55 @@ describe("ElizaSandboxService recoverDisconnected", () => {
     return { ...customSandbox(), status: "disconnected" };
   }
 
+  test("a forged Shared row is rejected before bridge, SSH, or write effects", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox: AgentSandbox = {
+      ...disconnectedSandbox(),
+      execution_tier: "shared",
+    };
+    const primarySpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      sandbox,
+    );
+    const replicaSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg");
+    const casSpy = spyOn(
+      agentSandboxesRepository,
+      "markReconnectedFromDisconnected",
+    ).mockResolvedValue(undefined);
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockResolvedValue(
+      undefined as never,
+    );
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(undefined);
+    const sshSpy = spyOn(DockerSSHClient, "getClient").mockReturnValue({
+      exec: mock(async () => "must not execute"),
+    } as unknown as DockerSSHClient);
+    const bridgeFetch = mock(async () => new Response("must not probe", { status: 200 }));
+    globalThis.fetch = bridgeFetch;
+
+    try {
+      await expect(
+        new ElizaSandboxService().recoverDisconnected(sandbox.id, sandbox.organization_id),
+      ).resolves.toBe("gone");
+      expect(primarySpy).toHaveBeenCalledTimes(1);
+      expect(replicaSpy).not.toHaveBeenCalled();
+      expect(bridgeFetch).not.toHaveBeenCalled();
+      expect(nodeSpy).not.toHaveBeenCalled();
+      expect(sshSpy).not.toHaveBeenCalled();
+      expect(casSpy).not.toHaveBeenCalled();
+      expect(updateSpy).not.toHaveBeenCalled();
+    } finally {
+      primarySpy.mockRestore();
+      replicaSpy.mockRestore();
+      casSpy.mockRestore();
+      updateSpy.mockRestore();
+      nodeSpy.mockRestore();
+      sshSpy.mockRestore();
+    }
+  });
+
   test("recovers a reachable disconnected agent via guarded compare-and-set", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const sandbox = disconnectedSandbox();
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockImplementation(
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockImplementation(
       async () => sandbox,
     );
     const casSpy = spyOn(
@@ -2305,7 +2582,7 @@ describe("ElizaSandboxService recoverDisconnected", () => {
       );
       expect(result).toBe("recovered");
       expect(casSpy).toHaveBeenCalledTimes(1);
-      expect(casSpy.mock.calls[0]?.[0]).toBe(sandbox.id);
+      expect(casSpy.mock.calls[0]).toEqual([sandbox]);
     } finally {
       findSpy.mockRestore();
       casSpy.mockRestore();
@@ -2320,7 +2597,7 @@ describe("ElizaSandboxService recoverDisconnected", () => {
       error_message: null,
       previous_image_digest: "sha256:old",
     };
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockImplementation(
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockImplementation(
       async () => sandbox,
     );
     const casSpy = spyOn(
@@ -2336,7 +2613,7 @@ describe("ElizaSandboxService recoverDisconnected", () => {
       );
       expect(result).toBe("recovered");
       expect(casSpy).toHaveBeenCalledTimes(1);
-      expect(casSpy.mock.calls[0]).toEqual([sandbox.id, "error"]);
+      expect(casSpy.mock.calls[0]).toEqual([sandbox]);
     } finally {
       findSpy.mockRestore();
       casSpy.mockRestore();
@@ -2346,7 +2623,7 @@ describe("ElizaSandboxService recoverDisconnected", () => {
   test("does NOT revive when the row left disconnected mid-probe (CAS loses -> gone)", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const sandbox = disconnectedSandbox();
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockImplementation(
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockImplementation(
       async () => sandbox,
     );
     // Probe succeeds, but the agent was deleted/stopped/re-provisioned during the
@@ -2373,7 +2650,7 @@ describe("ElizaSandboxService recoverDisconnected", () => {
   test("reports unreachable without writing when the bridge does not answer", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const sandbox = disconnectedSandbox();
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockImplementation(
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockImplementation(
       async () => sandbox,
     );
     const casSpy = spyOn(
@@ -2401,7 +2678,7 @@ describe("ElizaSandboxService recoverDisconnected", () => {
 
   test("reports gone (and never probes) when the row is no longer disconnected", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockImplementation(
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockImplementation(
       async () => ({
         ...customSandbox(),
         status: "running",
@@ -2430,6 +2707,78 @@ describe("ElizaSandboxService recoverDisconnected", () => {
       casSpy.mockRestore();
     }
   });
+});
+
+describe("ElizaSandboxService unresolved replacement fence authority", () => {
+  for (const executionTier of ["shared", "future-container-tier"] as const) {
+    test(`rejects ${executionTier} observed under the lock before enrichment CAS`, async () => {
+      const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+      const current: AgentSandbox = {
+        ...customSandbox(),
+        execution_tier: executionTier as AgentSandbox["execution_tier"],
+        replacement_cleanup_sandbox_id: "replacement-sandbox",
+        replacement_cleanup_node_id: "replacement-node",
+        replacement_cleanup_container_name: "replacement-container",
+        replacement_cleanup_attempt_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        replacement_cleanup_container_id: null,
+        replacement_cleanup_vpn_node_id: null,
+        replacement_cleanup_vpn_node_name: null,
+        replacement_cleanup_preserved_vpn_node_id: null,
+        replacement_cleanup_vpn_registration_started_at: null,
+        replacement_cleanup_allocation_counted: true,
+        replacement_cleanup_created_at: new Date("2026-08-24T00:00:00.000Z"),
+      };
+      const unresolved = new SandboxReplacementCleanupUnresolvedError(
+        {
+          sandboxId: "replacement-sandbox",
+          nodeId: "replacement-node",
+          containerName: "replacement-container",
+          replacementAttemptId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          containerId: "sha256:resolved-after-error",
+          allocationCounted: true,
+        },
+        new Error("node transport unresolved"),
+      );
+      type FenceService = {
+        persistUnresolvedReplacementCleanupFence(
+          agentId: string,
+          orgId: string,
+          error: SandboxReplacementCleanupUnresolvedError,
+        ): Promise<void>;
+        lockLifecycle(tx: unknown, agentId: string, orgId: string): Promise<void>;
+        getAgentForLifecycleMutation(
+          tx: unknown,
+          agentId: string,
+          orgId: string,
+        ): Promise<AgentSandbox | undefined>;
+      };
+      const svc = new ElizaSandboxService() as unknown as FenceService;
+      const lock = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+      const read = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(current);
+      let rawWrites = 0;
+      upgradeTransactionImpl = async (fn) =>
+        fn({
+          execute: async () => {
+            rawWrites += 1;
+            return { rows: [] };
+          },
+        });
+      try {
+        await expect(
+          svc.persistUnresolvedReplacementCleanupFence(
+            current.id,
+            current.organization_id,
+            unresolved,
+          ),
+        ).rejects.toThrow("requires a container-backed execution tier");
+        expect(rawWrites).toBe(0);
+      } finally {
+        upgradeTransactionImpl = null;
+        lock.mockRestore();
+        read.mockRestore();
+      }
+    });
+  }
 });
 
 describe("ElizaSandboxService heartbeat", () => {
@@ -2922,12 +3271,14 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
   const NEW_IP = "100.64.0.11";
   const STALE_BRIDGE = `http://${OLD_IP}:3000`;
   const REPAIRED_BRIDGE = `http://${NEW_IP}:3000`;
+  const STALE_HEALTH = `http://${OLD_IP}:3000/api`;
+  const REPAIRED_HEALTH = `http://${NEW_IP}:3000/api`;
 
   function staleIpSandbox(overrides: Partial<AgentSandbox> = {}): AgentSandbox {
     return {
       ...customSandbox(),
       bridge_url: STALE_BRIDGE,
-      health_url: `${STALE_BRIDGE}/api`,
+      health_url: STALE_HEALTH,
       headscale_ip: OLD_IP,
       // 200s ago > 120s grace — the reconcile path only runs past grace.
       last_heartbeat_at: new Date(Date.now() - 200_000),
@@ -3007,6 +3358,7 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
       expect(id).toBe(sandbox.id);
       expect(patch.headscale_ip).toBe(NEW_IP);
       expect(patch.bridge_url).toBe(REPAIRED_BRIDGE);
+      expect(patch.health_url).toBe(REPAIRED_HEALTH);
       expect(patch.last_heartbeat_at).toBeInstanceOf(Date);
       expect(patch.error_count).toBe(0);
       // The row must NOT be disconnected — the whole point is no reprovision.
@@ -3080,6 +3432,44 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
     }
   }, 20_000);
 
+  test("(c2) heartbeat: only repairs a coherent prior tailnet generation", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const invalidGenerations: Partial<AgentSandbox>[] = [
+      { headscale_ip: null },
+      { health_url: "http://100.64.0.12:3000/api" },
+      { health_url: `http://${OLD_IP}:3001/api` },
+    ];
+
+    for (const invalidGeneration of invalidGenerations) {
+      const sandbox = staleIpSandbox(invalidGeneration);
+      const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockResolvedValue(
+        sandbox,
+      );
+      const updateSpy = spyOn(agentSandboxesRepository, "update").mockResolvedValue(
+        undefined as never,
+      );
+      const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(nodeRecord());
+      const { getClientSpy } = mockNodeSsh({ health: "healthy", tailscaleIp: NEW_IP });
+      fetchAliveOnlyOnNewIp();
+
+      try {
+        const ok = await new ElizaSandboxService().heartbeat(sandbox.id, sandbox.organization_id);
+        expect(ok).toBe(false);
+        expect(updateSpy).toHaveBeenCalledTimes(1);
+        const [, patch] = updateSpy.mock.calls[0] as [string, Record<string, unknown>];
+        expect(patch.status).toBe("disconnected");
+        expect(patch.headscale_ip).toBeUndefined();
+        expect(patch.bridge_url).toBeUndefined();
+        expect(patch.health_url).toBeUndefined();
+      } finally {
+        findSpy.mockRestore();
+        updateSpy.mockRestore();
+        nodeSpy.mockRestore();
+        getClientSpy.mockRestore();
+      }
+    }
+  }, 30_000);
+
   test("(d) heartbeat: docker-healthy + IP unresolvable guards error_count and escalates to disconnected on the 3rd cycle", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     // error_count evolves across cycles the way the guard writes it.
@@ -3134,7 +3524,9 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
   test("(e) recoverDisconnected: repaired IP + live re-probe → recovered with columns updated, no reprovision", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const sandbox = staleIpSandbox({ status: "disconnected" });
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(sandbox);
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      sandbox,
+    );
     const casSpy = spyOn(
       agentSandboxesRepository,
       "markReconnectedFromDisconnected",
@@ -3153,12 +3545,18 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
       );
       expect(result).toBe("recovered");
       expect(casSpy).toHaveBeenCalledTimes(1);
-      expect(casSpy.mock.calls[0]).toEqual([sandbox.id, "disconnected"]);
-      expect(updateSpy).toHaveBeenCalledTimes(1);
-      const [id, patch] = updateSpy.mock.calls[0] as [string, Record<string, unknown>];
-      expect(id).toBe(sandbox.id);
-      expect(patch.headscale_ip).toBe(NEW_IP);
-      expect(patch.bridge_url).toBe(REPAIRED_BRIDGE);
+      expect(casSpy.mock.calls[0]).toEqual([
+        sandbox,
+        {
+          headscaleIp: NEW_IP,
+          bridgeUrl: REPAIRED_BRIDGE,
+          healthUrl: REPAIRED_HEALTH,
+          errorCount: 0,
+        },
+      ]);
+      // Repaired ingress is part of the same generation CAS. A second generic
+      // update could otherwise write A's URL/IP onto a stopped or replaced B.
+      expect(updateSpy).not.toHaveBeenCalled();
     } finally {
       findSpy.mockRestore();
       casSpy.mockRestore();
@@ -3171,7 +3569,9 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
   test("(f) recoverDisconnected: repaired IP still dead → unreachable (reprovision path), nothing written", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const sandbox = staleIpSandbox({ status: "disconnected" });
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(sandbox);
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      sandbox,
+    );
     const casSpy = spyOn(
       agentSandboxesRepository,
       "markReconnectedFromDisconnected",
@@ -3806,13 +4206,20 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       backupId?: string;
       error?: string;
     }>;
-    prepareSuspendBackupGate(
-      rec: AgentSandbox,
-    ): Promise<
+    prepareSuspendBackupGate(rec: AgentSandbox): Promise<
       | { outcome: "skip" }
-      | { outcome: "proceed"; backupId?: string; capturedFresh: boolean }
+      | {
+          outcome: "proceed";
+          backupId?: string;
+          capturedFresh: boolean;
+          pendingSnapshot?: { stateData: unknown; sizeBytes: number };
+        }
       | { outcome: "refuse"; error: string }
     >;
+    revalidateContainerBackedLifecycleGeneration(
+      rec: AgentSandbox,
+      action: string,
+    ): Promise<AgentSandbox | undefined>;
     getAgentForWrite(agentId: string, orgId: string): Promise<AgentSandbox | undefined>;
     fetchSnapshotState(
       rec: AgentSandbox,
@@ -3824,6 +4231,14 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       orgId: string,
     ): Promise<AgentSandbox | undefined>;
     hasActiveProvisionJobTx(tx: unknown, agentId: string, orgId: string): Promise<boolean>;
+    persistSnapshotWithinTransaction(
+      tx: unknown,
+      sandboxRecordId: string,
+      organizationId: string,
+      type: string,
+      stateData: unknown,
+      sizeBytes: number,
+    ): Promise<{ backupId: string; lifecycleRevision: number }>;
   };
 
   function bridgedRunningRow(): AgentSandbox {
@@ -3834,13 +4249,18 @@ describe("replacement lifecycle teardown is absence-proof", () => {
     };
   }
 
-  async function suspendSvc(rec: AgentSandbox, provider: SandboxProvider) {
+  async function suspendSvc(
+    rec: AgentSandbox,
+    provider: SandboxProvider,
+    lockedRec: AgentSandbox = rec,
+  ) {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const svc = new ElizaSandboxService(provider) as unknown as SuspendGateSvc;
     const spies = [
       spyOn(svc, "getAgentForWrite").mockResolvedValue(rec),
+      spyOn(svc, "revalidateContainerBackedLifecycleGeneration").mockResolvedValue(rec),
       spyOn(svc, "lockLifecycle").mockResolvedValue(undefined),
-      spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(rec),
+      spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(lockedRec),
       spyOn(svc, "hasActiveProvisionJobTx").mockResolvedValue(false),
     ];
     return { svc, restore: () => spies.forEach((s) => s.mockRestore()) };
@@ -3868,9 +4288,11 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       sizeBytes: 42,
       bridgeUrl: rec.bridge_url as string,
     });
-    const createSpy = spyOn(agentSandboxesRepository, "createBackup").mockResolvedValue({
-      id: "backup-fresh",
-    } as AgentSandboxBackup);
+    const persistSpy = spyOn(svc, "persistSnapshotWithinTransaction").mockResolvedValue({
+      backupId: "backup-fresh",
+      lifecycleRevision: rec.lifecycle_revision + 1,
+    });
+    const createSpy = spyOn(agentSandboxesRepository, "createBackup");
     const pruneSpy = spyOn(agentSandboxesRepository, "pruneBackups").mockResolvedValue(undefined);
     const writes: SQL[] = [];
     upgradeTransactionImpl = async (fn) =>
@@ -3884,9 +4306,15 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       const result = await svc.executeSuspend(AGENT, ORG, SUSPEND_JOB);
       expect(result).toEqual({ success: true, containerStopped: true, backupId: "backup-fresh" });
       expect(provider.stopForReplacement).toHaveBeenCalledWith(rec.sandbox_id);
-      expect(createSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ sandbox_record_id: rec.id, snapshot_type: "pre-shutdown" }),
+      expect(persistSpy).toHaveBeenCalledWith(
+        expect.anything(),
+        rec.id,
+        rec.organization_id,
+        "pre-shutdown",
+        { memories: [] },
+        42,
       );
+      expect(createSpy).not.toHaveBeenCalled();
       expect(pruneSpy).toHaveBeenCalledWith(AGENT, 10);
       expect(writes).toHaveLength(1);
       const rendered = new PgDialect().sqlToQuery(writes[0]).sql;
@@ -3894,6 +4322,7 @@ describe("replacement lifecycle teardown is absence-proof", () => {
     } finally {
       upgradeTransactionImpl = null;
       fetchSpy.mockRestore();
+      persistSpy.mockRestore();
       createSpy.mockRestore();
       pruneSpy.mockRestore();
       restore();
@@ -4091,6 +4520,118 @@ describe("replacement lifecycle teardown is absence-proof", () => {
     }
   });
 
+  test.each([
+    ["status", "disconnected"],
+    ["node_id", "replacement-node"],
+    ["container_name", "replacement-container"],
+    ["health_url", "https://replacement.example/api"],
+  ] as const)(
+    "suspend refuses when %s changes between capture and lock",
+    async (field, replacement) => {
+      const rec = bridgedRunningRow();
+      const provider = stoppableProvider();
+      const { svc, restore } = await suspendSvc(rec, provider, {
+        ...rec,
+        [field]: replacement,
+      });
+      const gateSpy = spyOn(svc, "prepareSuspendBackupGate").mockResolvedValue({
+        outcome: "proceed",
+        backupId: "backup-fresh",
+        capturedFresh: true,
+      });
+      const writes: SQL[] = [];
+      upgradeTransactionImpl = async (fn) =>
+        fn({
+          execute: async (query) => {
+            writes.push(query as SQL);
+            return { rows: [] };
+          },
+        });
+      try {
+        await expect(svc.executeSuspend(AGENT, ORG, SUSPEND_JOB)).resolves.toEqual({
+          success: false,
+          containerStopped: false,
+          error: "Agent lifecycle changed while the suspend backup was prepared",
+        });
+        expect(provider.stopForReplacement).not.toHaveBeenCalled();
+        expect(writes).toHaveLength(0);
+      } finally {
+        upgradeTransactionImpl = null;
+        gateSpy.mockRestore();
+        restore();
+      }
+    },
+  );
+
+  test("suspend rejects a Shared tier under the lock before provider stop or write", async () => {
+    const rec = { ...bridgedRunningRow(), status: "stopped" as const, bridge_url: null };
+    const locked = { ...rec, execution_tier: "shared" as const };
+    const provider = stoppableProvider();
+    const { svc, restore } = await suspendSvc(rec, provider, locked);
+    let writeCalled = false;
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async () => {
+          writeCalled = true;
+          return { rows: [] };
+        },
+      });
+    try {
+      await expect(svc.executeSuspend(AGENT, ORG, SUSPEND_JOB)).resolves.toEqual({
+        success: false,
+        containerStopped: false,
+        error: "Agent suspend requires a container-backed execution tier",
+      });
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+      expect(writeCalled).toBe(false);
+    } finally {
+      upgradeTransactionImpl = null;
+      restore();
+    }
+  });
+
+  test("suspend running→Shared checkpoint race performs no capture, backup stamp, provider stop, or write", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const initial = bridgedRunningRow();
+    const shared: AgentSandbox = { ...initial, execution_tier: "shared" };
+    const provider = stoppableProvider();
+    const svc = new ElizaSandboxService(provider) as unknown as SuspendGateSvc;
+    const primary = spyOn(svc, "getAgentForWrite").mockResolvedValue(initial);
+    const lock = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const lockedRead = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(shared);
+    const capture = spyOn(svc, "fetchSnapshotState");
+    const createBackup = spyOn(agentSandboxesRepository, "createBackup");
+    const stamp = spyOn(agentSandboxesRepository, "stampBackupVerification");
+    let rawWrites = 0;
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async () => {
+          rawWrites += 1;
+          return { rows: [] };
+        },
+      });
+    try {
+      await expect(svc.executeSuspend(AGENT, ORG, SUSPEND_JOB)).resolves.toEqual({
+        success: false,
+        containerStopped: false,
+        error: "Agent lifecycle changed while the suspend backup was prepared",
+      });
+      expect(capture).not.toHaveBeenCalled();
+      expect(createBackup).not.toHaveBeenCalled();
+      expect(stamp).not.toHaveBeenCalled();
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+      expect(rawWrites).toBe(0);
+    } finally {
+      upgradeTransactionImpl = null;
+      primary.mockRestore();
+      lock.mockRestore();
+      lockedRead.mockRestore();
+      capture.mockRestore();
+      createBackup.mockRestore();
+      stamp.mockRestore();
+    }
+  });
+
   test("suspend gate skips shared-tier and container-less rows", async () => {
     const provider = stoppableProvider();
     const { svc, restore } = await suspendSvc(claimedPendingRow(), provider);
@@ -4147,6 +4688,53 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       });
     return { lockLifecycle, getForMutation, activeReplacement, writes };
   }
+
+  test("sleep running→Shared checkpoint race performs no capture, backup stamp, provider stop, or write", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const initial = bridgedRunningRow();
+    const shared: AgentSandbox = { ...initial, execution_tier: "shared" };
+    const provider = stoppableProvider();
+    const svc = new ElizaSandboxService(provider) as unknown as SleepSvc;
+    const primary = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      initial,
+    );
+    const lock = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const lockedRead = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(shared);
+    const capture = spyOn(
+      svc as unknown as { fetchSnapshotState: () => Promise<unknown> },
+      "fetchSnapshotState",
+    );
+    const createBackup = spyOn(agentSandboxesRepository, "createBackup");
+    const stamp = spyOn(agentSandboxesRepository, "stampBackupVerification");
+    let rawWrites = 0;
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async () => {
+          rawWrites += 1;
+          return { rows: [] };
+        },
+      });
+    try {
+      await expect(svc.executeSleep(AGENT, ORG)).resolves.toEqual({
+        success: false,
+        containerRemoved: false,
+        error: "Agent lifecycle changed while sleep was prepared",
+      });
+      expect(capture).not.toHaveBeenCalled();
+      expect(createBackup).not.toHaveBeenCalled();
+      expect(stamp).not.toHaveBeenCalled();
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+      expect(rawWrites).toBe(0);
+    } finally {
+      upgradeTransactionImpl = null;
+      primary.mockRestore();
+      lock.mockRestore();
+      lockedRead.mockRestore();
+      capture.mockRestore();
+      createBackup.mockRestore();
+      stamp.mockRestore();
+    }
+  });
 
   test("sleep on an unreachable old node retains compute locators for retry", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
@@ -4385,6 +4973,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       ).resolves.toEqual({ success: false, error: "halted by test after capture phase" });
       expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, "user_request", {
         snapshot: null,
+        captureAuthority: rec,
         captureWaiverGeneration: {
           bridgeUrl: rec.bridge_url,
           environmentRevision: rec.environment_revision,
@@ -4441,6 +5030,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       ).resolves.toEqual({ success: false, error: "halted by test after capture phase" });
       expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, "user_request", {
         snapshot: null,
+        captureAuthority: rec,
         captureWaiverGeneration: {
           bridgeUrl: rec.bridge_url,
           environmentRevision: rec.environment_revision,
@@ -4483,6 +5073,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       expect(fetchSnap).not.toHaveBeenCalled();
       expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, undefined, {
         snapshot: null,
+        captureAuthority: null,
         captureWaiverGeneration: null,
         captureWaiverAlreadyPersisted: true,
         existingBackup: null,
@@ -4528,6 +5119,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
           }
         ).prepareAgentDelete(live.id, live.organization_id, "user_request", {
           snapshot: null,
+          captureAuthority: null,
           captureWaiverGeneration: null,
           captureWaiverAlreadyPersisted: true,
           existingBackup: null,
@@ -4593,6 +5185,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       expect(fetchSnap).not.toHaveBeenCalled();
       expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, undefined, {
         snapshot: null,
+        captureAuthority: null,
         captureWaiverGeneration: null,
         captureWaiverAlreadyPersisted: false,
         existingBackup: null,
@@ -4618,6 +5211,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       expect(fetchSnap).not.toHaveBeenCalled();
       expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, undefined, {
         snapshot: null,
+        captureAuthority: null,
         captureWaiverGeneration: null,
         captureWaiverAlreadyPersisted: false,
         existingBackup: null,
@@ -4694,6 +5288,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       expect(fetchSnap).not.toHaveBeenCalled();
       expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, "user_request", {
         snapshot: null,
+        captureAuthority: null,
         captureWaiverGeneration: null,
         captureWaiverAlreadyPersisted: false,
         existingBackup: {
@@ -4730,6 +5325,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       expect(fetchSnap).not.toHaveBeenCalled();
       expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, undefined, {
         snapshot: null,
+        captureAuthority: null,
         captureWaiverGeneration: null,
         captureWaiverAlreadyPersisted: false,
         existingBackup: null,
@@ -4759,6 +5355,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       expect(fetchSnap).not.toHaveBeenCalled();
       expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, "account_deletion", {
         snapshot: null,
+        captureAuthority: null,
         captureWaiverGeneration: null,
         captureWaiverAlreadyPersisted: false,
         existingBackup: null,
@@ -4804,6 +5401,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       expect(fetchSnap).toHaveBeenCalledTimes(1);
       expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, undefined, {
         snapshot,
+        captureAuthority: rec,
         captureWaiverGeneration: null,
         captureWaiverAlreadyPersisted: false,
         existingBackup: null,
@@ -4842,6 +5440,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
             sizeBytes: 12,
             bridgeUrl: "https://a-different-generation.example",
           },
+          captureAuthority: live,
           captureWaiverGeneration: null,
           captureWaiverAlreadyPersisted: false,
           existingBackup: null,
@@ -4862,6 +5461,65 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       persist.mockRestore();
     }
   });
+
+  test.each([
+    ["status", "disconnected"],
+    ["node_id", "replacement-node"],
+    ["container_name", "replacement-container"],
+    ["health_url", "https://replacement.example/api"],
+  ] as const)(
+    "prepareAgentDelete refuses when captured %s changes under the lifecycle lock",
+    async (field, replacement) => {
+      const { svc, spyTarget } = await makeCaptureSvc();
+      const captured = customSandbox();
+      const locked = { ...captured, [field]: replacement };
+      const lockLifecycle = spyOn(spyTarget, "lockLifecycle").mockResolvedValue(undefined);
+      const getForMutation = spyOn(spyTarget, "getAgentForLifecycleMutation").mockResolvedValue(
+        locked,
+      );
+      const activeProvision = spyOn(spyTarget, "hasActiveProvisionJobTx").mockResolvedValue(false);
+      const activeReplacement = spyOn(spyTarget, "hasActiveReplacementJobTx").mockResolvedValue(
+        false,
+      );
+      const persist = spyOn(spyTarget, "persistSnapshotWithinTransaction");
+      const update = mock(() => ({
+        set: mock(() => ({ where: mock(() => ({ returning: mock(async () => []) })) })),
+      }));
+      upgradeTransactionImpl = async (fn) => fn({ execute: async () => ({ rows: [] }), update });
+      try {
+        await expect(
+          (
+            svc as unknown as {
+              prepareAgentDelete: (...args: unknown[]) => Promise<unknown>;
+            }
+          ).prepareAgentDelete(captured.id, captured.organization_id, "user_request", {
+            snapshot: {
+              stateData: { tables: {} },
+              sizeBytes: 12,
+              bridgeUrl: captured.bridge_url,
+            },
+            captureAuthority: captured,
+            captureWaiverGeneration: null,
+            captureWaiverAlreadyPersisted: false,
+            existingBackup: null,
+          }),
+        ).resolves.toEqual({
+          ok: false,
+          error:
+            "Refusing to delete: the agent's lifecycle generation moved after the pre-deletion capture; retry the delete.",
+        });
+        expect(persist).not.toHaveBeenCalled();
+        expect(update).not.toHaveBeenCalled();
+      } finally {
+        upgradeTransactionImpl = null;
+        lockLifecycle.mockRestore();
+        getForMutation.mockRestore();
+        activeProvision.mockRestore();
+        activeReplacement.mockRestore();
+        persist.mockRestore();
+      }
+    },
+  );
 
   test("prepareAgentDelete persists the pre-delete snapshot inside the deletion transaction", async () => {
     const { svc, spyTarget } = await makeCaptureSvc();
@@ -4906,6 +5564,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
         }
       ).prepareAgentDelete(live.id, live.organization_id, "user_request", {
         snapshot: { stateData, sizeBytes: 34, bridgeUrl: live.bridge_url as string },
+        captureAuthority: live,
         captureWaiverGeneration: null,
         captureWaiverAlreadyPersisted: false,
         existingBackup: null,
@@ -4960,6 +5619,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
         }
       ).prepareAgentDelete(live.id, live.organization_id, "user_request", {
         snapshot: null,
+        captureAuthority: live,
         captureWaiverGeneration: {
           bridgeUrl: live.bridge_url,
           environmentRevision: live.environment_revision,
@@ -5032,6 +5692,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
           }
         ).prepareAgentDelete(live.id, live.organization_id, "user_request", {
           snapshot: null,
+          captureAuthority: null,
           captureWaiverGeneration: null,
           captureWaiverAlreadyPersisted: false,
           existingBackup: { id: backupId, deletionAttemptId },
@@ -5204,6 +5865,7 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
             sizeBytes: 1,
             bridgeUrl: live.bridge_url,
           },
+          captureAuthority: live,
           captureWaiverGeneration: null,
           captureWaiverAlreadyPersisted: false,
           existingBackup: null,
@@ -8480,7 +9142,9 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       warm_claim_credential_state: "pending" as const,
       warm_claim_source_pool_id: "44444444-4444-4444-8444-444444444444",
     };
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      agent,
+    );
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId");
     try {
       const res = await new ElizaSandboxService().executeUpgrade(
@@ -8505,7 +9169,9 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
   test("(a) blue health-check FAILS → blue torn down, row stays on OLD, rolled-back error", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const agent = liveAgentRow();
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      agent,
+    );
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
     const { provider, create, checkHealth, stop, stopOnSpecificNode } = await makeDockerProvider({
       create: async () => blueHandle(TO_DIGEST),
@@ -8554,7 +9220,9 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
   test("(b) blue digest MISMATCH → blue torn down, NO swap", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const agent = liveAgentRow();
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      agent,
+    );
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
     const WRONG_DIGEST = "sha256:dededededededededededededededededededededededededededededede0000";
     const { provider, create, checkHealth, stop, stopOnSpecificNode } = await makeDockerProvider({
@@ -8603,7 +9271,9 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
   test("(b2) blue runtime readiness gate FAILS → blue torn down, NO snapshot or swap", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const agent = liveAgentRow();
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      agent,
+    );
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
     const { provider, create, checkHealth, stop, stopOnSpecificNode } = await makeDockerProvider({
       create: async () => blueHandle(TO_DIGEST),
@@ -8673,7 +9343,9 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
     test(`upgrade runtime readiness fails closed when ${missing} structure is missing`, async () => {
       const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
       const agent = liveAgentRow();
-      const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+      const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+        agent,
+      );
       const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
       const { provider, stop, stopOnSpecificNode } = await makeDockerProvider({
         create: async () => blueHandle(TO_DIGEST),
@@ -8739,7 +9411,9 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       ...liveAgentRow(),
       execution_tier: "dedicated-always",
     };
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      agent,
+    );
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
     const { provider, create, checkHealth, stop, stopOnSpecificNode, runtimeFetch } =
       await makeDockerProvider({
@@ -8838,7 +9512,9 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
         ELIZA_CLOUD_PAIR_DIRECT_RELAY: "1",
       },
     };
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      agent,
+    );
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
     const { provider, create, stopOnSpecificNode } = await makeDockerProvider({
       create: async () => blueHandle(TO_DIGEST, "old-live-node-7"),
@@ -8912,7 +9588,9 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
   test("(h2) rolled-back upgrade never deletes the preserved live node (#16565)", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const agent = liveAgentRow();
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      agent,
+    );
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
     const { provider, stop, stopOnSpecificNode } = await makeDockerProvider({
       create: async () => blueHandle(TO_DIGEST, "old-live-node-7"),
@@ -8948,7 +9626,9 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
   test("(c2) pre-upgrade snapshot failure → blue torn down, NO swap", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const agent = liveAgentRow();
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      agent,
+    );
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
     const { provider, create, checkHealth, stop, stopOnSpecificNode } = await makeDockerProvider({
       create: async () => blueHandle(TO_DIGEST),
@@ -8996,7 +9676,9 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
   test("(d) CAS guard: row moved under us → returns false → throws 'changed during upgrade', tears down orphaned blue", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const agent = liveAgentRow();
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      agent,
+    );
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
     const { provider, create, checkHealth, stop, stopOnSpecificNode } = await makeDockerProvider({
       create: async () => blueHandle(TO_DIGEST),
@@ -9071,7 +9753,9 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
   // in-transaction CAS read, and report whether the swap UPDATE was issued.
   async function runSwapWithRow(agentRow: AgentSandbox, casRow: AgentSandbox = agentRow) {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agentRow);
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      agentRow,
+    );
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
     const { provider, stop, stopOnSpecificNode } = await makeDockerProvider({
       create: async () => blueHandle(TO_DIGEST),
@@ -9732,7 +10416,9 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
   test("no previous_image_digest → refuses, never touches the live agent", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const agent: AgentSandbox = { ...upgradedAgentRow(), previous_image_digest: null };
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      agent,
+    );
     const { provider, create } = await makeDockerProvider({
       create: async () => blueHandle(PREV_DIGEST),
       checkHealth: async () => true,
@@ -10138,7 +10824,9 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
         ELIZA_CLOUD_PAIR_DIRECT_RELAY: "1",
       },
     };
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      agent,
+    );
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(curNode());
     // The pre-upgrade restore point + its reconstruction.
     const preUpgradeBackup = {
@@ -10433,7 +11121,7 @@ describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () =
 
   function installLifecycleUpdateTransaction(
     existing: AgentSandbox | undefined,
-    options: { persist?: boolean } = {},
+    options: { persist?: boolean; authority?: Record<string, unknown> } = {},
   ) {
     let whereClause: SQL | undefined;
     const updateSet = mock((values: Record<string, unknown>) => ({
@@ -10451,6 +11139,13 @@ describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () =
     const update = mock(() => ({ set: updateSet }));
     const handle = {
       execute: async () => ({ rows: [] }),
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: async () => (options.authority ? [options.authority] : []),
+          }),
+        }),
+      }),
       update,
     } as unknown as UpgradeTx;
     upgradeTransactionImpl = async (fn) => fn(handle);
@@ -10495,6 +11190,78 @@ describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () =
       const query = new PgDialect().sqlToQuery(whereClause);
       expect(query.sql.toLowerCase()).toContain("deletion_attempt_id");
       expect(query.sql.toLowerCase()).toContain("is null");
+    } finally {
+      upgradeTransactionImpl = null;
+      lock.mockRestore();
+      read.mockRestore();
+    }
+  });
+
+  test("updateAgentProfile purges unverified existing markers while rejecting caller replacements", async () => {
+    const managedDiscord = { mode: "cloud-managed", guildId: "server-owned" };
+    const managedDiscordGateway = { gatewayId: "server-owned" };
+    const managedGithub = { installationId: "server-owned" };
+    const existing = {
+      ...customSandbox(),
+      agent_config: {
+        system: "old system",
+        [AGENT_CHARACTER_OWNERSHIP_KEY]: "reuse-existing",
+        [AGENT_MANAGED_DISCORD_KEY]: managedDiscord,
+        [AGENT_MANAGED_DISCORD_GATEWAY_KEY]: managedDiscordGateway,
+        [AGENT_MANAGED_GITHUB_KEY]: managedGithub,
+        [AGENT_UPGRADED_FROM_KEY]: "personal:real-owner",
+        [AGENT_PERSONAL_CUTOVER_KEY]: { mode: "dedicated", sourceAgentId: "personal:real-owner" },
+      },
+    };
+    const tx = installLifecycleUpdateTransaction(existing);
+    const { svc, lock, read } = await makeMutableService(existing);
+    try {
+      await svc.updateAgentProfile(existing.id, existing.organization_id, {
+        agentConfig: {
+          system: "new system",
+          [AGENT_MANAGED_DISCORD_KEY]: { mode: "caller-forged" },
+          [AGENT_UPGRADED_FROM_KEY]: "personal:attacker",
+          [AGENT_PERSONAL_CUTOVER_KEY]: null,
+        },
+      });
+      expect(tx.updateSet).toHaveBeenCalledWith({
+        agent_config: {
+          system: "new system",
+          [AGENT_CHARACTER_OWNERSHIP_KEY]: "reuse-existing",
+          [AGENT_MANAGED_DISCORD_KEY]: managedDiscord,
+          [AGENT_MANAGED_DISCORD_GATEWAY_KEY]: managedDiscordGateway,
+          [AGENT_MANAGED_GITHUB_KEY]: managedGithub,
+        },
+        updated_at: expect.any(Date),
+      });
+    } finally {
+      upgradeTransactionImpl = null;
+      lock.mockRestore();
+      read.mockRestore();
+    }
+  });
+
+  test("updateAgentProfile name-only edits preserve unrelated server-owned config", async () => {
+    const managedDiscord = { mode: "cloud-managed", guildId: "server-owned" };
+    const existing = {
+      ...customSandbox(),
+      agent_config: {
+        system: "old system",
+        [AGENT_CHARACTER_OWNERSHIP_KEY]: "reuse-existing",
+        [AGENT_MANAGED_DISCORD_KEY]: managedDiscord,
+      },
+    };
+    const tx = installLifecycleUpdateTransaction(existing);
+    const { svc, lock, read } = await makeMutableService(existing);
+    try {
+      await svc.updateAgentProfile(existing.id, existing.organization_id, {
+        agentName: "Renamed",
+      });
+      expect(tx.updateSet).toHaveBeenCalledWith({
+        agent_name: "Renamed",
+        agent_config: existing.agent_config,
+        updated_at: expect.any(Date),
+      });
     } finally {
       upgradeTransactionImpl = null;
       lock.mockRestore();
@@ -10716,6 +11483,37 @@ describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () =
       revoke.mockRestore();
     }
   });
+
+  for (const executionTier of ["shared", "future-container-tier"] as const) {
+    test(`managed launch rejects ${executionTier} under the lock before mint or environment CAS`, async () => {
+      const existing: AgentSandbox = {
+        ...customSandbox(),
+        execution_tier: executionTier as AgentSandbox["execution_tier"],
+      };
+      const tx = installLifecycleUpdateTransaction(existing);
+      const { svc, lock, read } = await makeMutableService(existing);
+      const mint = spyOn(apiKeysService, "createForAgent");
+      const revoke = spyOn(apiKeysService, "revokeForAgent");
+      try {
+        await expect(
+          svc.prepareManagedLaunchEnvironment({
+            agentId: existing.id,
+            organizationId: existing.organization_id,
+            userId: existing.user_id,
+          }),
+        ).rejects.toThrow("requires a container-backed execution tier");
+        expect(mint).not.toHaveBeenCalled();
+        expect(revoke).not.toHaveBeenCalled();
+        expect(tx.update).not.toHaveBeenCalled();
+      } finally {
+        upgradeTransactionImpl = null;
+        lock.mockRestore();
+        read.mockRestore();
+        mint.mockRestore();
+        revoke.mockRestore();
+      }
+    });
+  }
 });
 
 // Snapshot fetch error-body excerpt (#18228 / #18336).

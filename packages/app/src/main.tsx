@@ -30,6 +30,10 @@ import "./web-ws-base-fix";
  */
 import { ErrorBoundary } from "@elizaos/ui";
 import "@elizaos/ui/styles";
+// Relationships owns the canonical /apps/relationships route. Its registration
+// metadata is tiny and must be available before the first route capture; the
+// page component itself remains lazy-loaded by the plugin registration.
+import "@elizaos/plugin-relationships/register";
 // Native-only (ios/android/desktop): register the Eliza Cloud Applications
 // dashboard as an in-process app-shell page (`/cloud-apps`) that mounts the
 // self-contained NativeAppsStudio. No-op on web, where CloudRouterShell serves
@@ -304,6 +308,13 @@ function importAppTaskCoordinatorRegister() {
   return cachedDynamicImport(
     "@elizaos/plugin-task-coordinator/register",
     () => import("@elizaos/plugin-task-coordinator/register"),
+  );
+}
+
+function importAppRelationshipsRegister() {
+  return cachedDynamicImport(
+    "@elizaos/plugin-relationships/register",
+    () => import("@elizaos/plugin-relationships/register"),
   );
 }
 
@@ -896,6 +907,10 @@ const BOOT_CONFIG_DEFERRED_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] 
     {
       key: "@elizaos/plugin-task-coordinator/register",
       load: importAppTaskCoordinatorRegister,
+    },
+    {
+      key: "@elizaos/plugin-relationships/register",
+      load: importAppRelationshipsRegister,
     },
     { key: "@elizaos/plugin-phone", load: importAppPhone },
   ];
@@ -3478,6 +3493,11 @@ function initVisionBridgesIfEnabled(): void {
 
 async function main(): Promise<void> {
   markStartup("main-start");
+  markStartup("app-modules:start");
+  await initializeAppModules();
+  markStartup("app-modules:end");
+  measureStartup("app-modules", "app-modules:start", "app-modules:end");
+
   if (__ELIZA_SERVICE_WORKER__ === true) {
     const { registerViewServiceWorker } = await import("./sw-registration");
     registerViewServiceWorker();
@@ -3504,10 +3524,6 @@ async function main(): Promise<void> {
     return;
   }
 
-  markStartup("app-modules:start");
-  await initializeAppModules();
-  markStartup("app-modules:end");
-  measureStartup("app-modules", "app-modules:start", "app-modules:end");
   setupPlatformStyles();
   applyBuildTimeIosConnection();
 

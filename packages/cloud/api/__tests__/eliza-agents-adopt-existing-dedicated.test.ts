@@ -29,9 +29,13 @@ import type {
   AgentSandboxStatus,
 } from "@/db/schemas/agent-sandboxes";
 import * as realAuth from "@/lib/auth";
+import * as realWorkersAuth from "@/lib/auth/workers-hono-auth";
+import { buildRedisClient } from "@/lib/cache/redis-factory";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
+import { PROVISIONING_WORKER_HEARTBEAT_KEY } from "@/lib/services/provisioning-worker-health";
 import { personalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import * as dbHelpersActual from "../../shared/src/db/helpers";
 
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_B = "22222222-2222-4222-8222-222222222222";
@@ -61,7 +65,34 @@ const currentUser = {
 };
 
 const realAuthSnapshot = { ...realAuth };
+const realWorkersAuthSnapshot = { ...realWorkersAuth };
+const dbHelpersSnapshot = { ...dbHelpersActual };
 const ENV = { NODE_ENV: "test" } as AppEnv["Bindings"];
+
+let commitAckLossCountdown = 0;
+
+function installCommitAckSeam(): void {
+  const realDbWrite = dbHelpersSnapshot.dbWrite;
+  const wrappedDbWrite = new Proxy(realDbWrite, {
+    get(target, prop, receiver) {
+      if (prop === "transaction" && commitAckLossCountdown > 0) {
+        return async (...args: Parameters<typeof realDbWrite.transaction>) => {
+          commitAckLossCountdown -= 1;
+          const committed = await target.transaction(...args);
+          if (commitAckLossCountdown === 0) {
+            throw new Error("simulated adoption commit-acknowledgment loss");
+          }
+          return committed;
+        };
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+  });
+  mock.module("../../shared/src/db/helpers", () => ({
+    ...dbHelpersSnapshot,
+    dbWrite: wrappedDbWrite,
+  }));
+}
 
 let pgliteReady = true;
 let closeDb: (() => Promise<void>) | undefined;
@@ -70,6 +101,8 @@ let dbWrite: typeof import("@/db/client").dbWrite;
 let agentSandboxes: typeof import("@/db/schemas/agent-sandboxes").agentSandboxes;
 let jobs: typeof import("@/db/schemas/jobs").jobs;
 let organizations: typeof import("@/db/schemas/organizations").organizations;
+let personalDedicatedAdoptionSelections: typeof import("@/db/schemas/personal-dedicated-adoption-selections").personalDedicatedAdoptionSelections;
+let personalDedicatedUpgradeAuthorities: typeof import("@/db/schemas/personal-dedicated-upgrade-authorities").personalDedicatedUpgradeAuthorities;
 
 beforeAll(async () => {
   try {
@@ -77,6 +110,11 @@ beforeAll(async () => {
       ...realAuthSnapshot,
       requireAuthOrApiKeyWithOrg: mock(async () => ({ user: currentUser })),
     }));
+    mock.module("@/lib/auth/workers-hono-auth", () => ({
+      ...realWorkersAuthSnapshot,
+      requireUserOrApiKeyWithOrg: mock(async () => currentUser),
+    }));
+    installCommitAckSeam();
 
     const client = await import("@/db/client");
     dbWrite = client.dbWrite;
@@ -85,6 +123,12 @@ beforeAll(async () => {
     const { users } = await import("@/db/schemas/users");
     ({ agentSandboxes } = await import("@/db/schemas/agent-sandboxes"));
     ({ jobs } = await import("@/db/schemas/jobs"));
+    ({ personalDedicatedUpgradeAuthorities } = await import(
+      "@/db/schemas/personal-dedicated-upgrade-authorities"
+    ));
+    ({ personalDedicatedAdoptionSelections } = await import(
+      "@/db/schemas/personal-dedicated-adoption-selections"
+    ));
 
     const { TIER_UPGRADE_TEST_TABLES } = await import(
       "@/lib/services/__tests__/tier-upgrade-pglite-schema"
@@ -132,6 +176,9 @@ beforeAll(async () => {
       "/api/v1/eliza/agents/:agentId/upgrade-tier/adopt-existing",
       route,
     );
+    const profileRoute = (await import("../v1/eliza/agents/[agentId]/route"))
+      .default;
+    app.route("/api/v1/eliza/agents/:agentId", profileRoute);
   } catch (error) {
     pgliteReady = false;
     console.error(
@@ -143,11 +190,17 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   if (!pgliteReady) return;
+  commitAckLossCountdown = 0;
   currentUser.id = USER_A;
   currentUser.email = "owner-a@test.test";
   currentUser.organization_id = ORG_A;
   currentUser.organization = { id: ORG_A, name: "Org A", is_active: true };
+  ENV.NODE_ENV = "test";
+  delete process.env.REQUIRE_PROVISIONING_WORKER;
+  await buildRedisClient(process.env)?.del(PROVISIONING_WORKER_HEARTBEAT_KEY);
   await dbWrite.delete(jobs);
+  await dbWrite.delete(personalDedicatedUpgradeAuthorities);
+  await dbWrite.delete(personalDedicatedAdoptionSelections);
   await dbWrite.delete(agentSandboxes);
   await dbWrite
     .update(organizations)
@@ -159,6 +212,8 @@ afterAll(async () => {
   if (closeDb) await closeDb();
   mock.restore();
   mock.module("@/lib/auth", () => realAuthSnapshot);
+  mock.module("@/lib/auth/workers-hono-auth", () => realWorkersAuthSnapshot);
+  mock.module("../../shared/src/db/helpers", () => dbHelpersSnapshot);
 });
 
 async function seedCandidate(options: {
@@ -193,6 +248,15 @@ async function seedCandidate(options: {
   return id;
 }
 
+async function seedAuthority(targetId: string, sourceAgentId = PERSONAL_A) {
+  await dbWrite.insert(personalDedicatedUpgradeAuthorities).values({
+    organization_id: ORG_A,
+    user_id: USER_A,
+    source_agent_id: sourceAgentId,
+    dedicated_agent_id: targetId,
+  });
+}
+
 function quote(agentId = PERSONAL_A) {
   return app.request(
     `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/upgrade-tier/adopt-existing`,
@@ -208,6 +272,18 @@ function confirm(quoteId: string, agentId = PERSONAL_A) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "adopt_existing_dedicated", quoteId }),
+    },
+    ENV,
+  );
+}
+
+function patchProfile(agentConfig: Record<string, unknown>) {
+  return app.request(
+    `/api/v1/eliza/agents/${TARGET_A}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agentConfig }),
     },
     ENV,
   );
@@ -291,7 +367,7 @@ describe("GET/POST adopt-existing Dedicated", () => {
     expect(await targetJobs(TARGET_B)).toHaveLength(0);
   });
 
-  test("fails closed when multiple rows already claim the same personal source", async () => {
+  test("quarantines multiple pre-rollout marker claims instead of blessing either", async () => {
     expect(pgliteReady).toBe(true);
     await seedCandidate({
       id: TARGET_A,
@@ -305,26 +381,30 @@ describe("GET/POST adopt-existing Dedicated", () => {
     });
 
     const response = await quote();
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(404);
     expect(await response.json()).toMatchObject({
-      code: "dedicated_adoption_ambiguous",
+      code: "dedicated_adoption_unavailable",
     });
     expect(await dbWrite.select().from(jobs)).toHaveLength(0);
   });
 
-  test("fails closed when one adopted row and one unmarked row are both eligible", async () => {
+  test("keeps one canonical adopted row authoritative when an unrelated stale row remains", async () => {
     expect(pgliteReady).toBe(true);
     await seedCandidate({
       id: TARGET_A,
       status: "error",
       agentConfig: { __agentUpgradedFrom: PERSONAL_A },
     });
+    await seedAuthority(TARGET_A);
     await seedCandidate({ id: TARGET_B, status: "stopped" });
 
     const response = await quote();
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      code: "dedicated_adoption_ambiguous",
+      data: {
+        dedicatedAgentId: TARGET_A,
+        adoptionState: "adopted",
+      },
     });
     expect(await dbWrite.select().from(jobs)).toHaveLength(0);
   });
@@ -408,6 +488,136 @@ describe("GET/POST adopt-existing Dedicated", () => {
     expect(await dbWrite.select().from(jobs)).toHaveLength(0);
   });
 
+  test("treats present JSON-null or malformed server markers as ineligible", async () => {
+    expect(pgliteReady).toBe(true);
+    const configs = [
+      { __agentUpgradedFrom: null },
+      { __agentUpgradedFrom: { sourceAgentId: PERSONAL_A } },
+      { __agentPersonalCutover: null },
+      { __agentPersonalCutover: "malformed" },
+    ];
+    for (const [index, agentConfig] of configs.entries()) {
+      await seedCandidate({
+        id: `cccccccc-5000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+        agentConfig,
+      });
+    }
+
+    const response = await quote();
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({
+      code: "dedicated_adoption_unavailable",
+    });
+    expect(await dbWrite.select().from(jobs)).toHaveLength(0);
+  });
+
+  test("profile PATCH cannot forge adoption or cutover authority to bypass the stopped-target credit gate", async () => {
+    expect(pgliteReady).toBe(true);
+    await seedCandidate({ status: "stopped" });
+    await dbWrite
+      .update(organizations)
+      .set({ credit_balance: "0.5" })
+      .where(eq(organizations.id, ORG_A));
+
+    const patched = await patchProfile({
+      system: "ordinary caller edit",
+      __agentUpgradedFrom: PERSONAL_A,
+      __agentPersonalCutover: {
+        mode: "dedicated",
+        sourceAgentId: PERSONAL_A,
+        cutoverToken: "caller-forged-token",
+      },
+    });
+    expect(patched.status).toBe(200);
+    const [target] = await rows();
+    expect(target?.agent_config).toEqual({ system: "ordinary caller edit" });
+
+    const quoted = await quote();
+    expect(quoted.status).toBe(200);
+    const quoteBody = (await quoted.json()) as {
+      data: {
+        quoteId: string;
+        adoptionState: string;
+        startsCompute: boolean;
+        canAdopt: boolean;
+      };
+    };
+    expect(quoteBody.data).toMatchObject({
+      adoptionState: "available",
+      startsCompute: true,
+      canAdopt: false,
+    });
+
+    const blocked = await confirm(quoteBody.data.quoteId);
+    expect(blocked.status).toBe(402);
+    expect(await targetJobs(TARGET_A)).toHaveLength(0);
+    const [unchanged] = await rows();
+    expect(unchanged?.agent_config).toEqual({ system: "ordinary caller edit" });
+  });
+
+  test("an ordinary edit purges pre-rollout forged markers and never treats them as adopted or active", async () => {
+    expect(pgliteReady).toBe(true);
+    await seedCandidate({
+      status: "running",
+      agentConfig: {
+        character: { name: "Existing" },
+        __agentUpgradedFrom: PERSONAL_A,
+        __agentPersonalCutover: {
+          mode: "dedicated",
+          sourceAgentId: PERSONAL_A,
+          conversationId: PERSONAL_A,
+          cutoverToken: `personal-cutover:${PERSONAL_A}:${TARGET_A}`,
+          sharedMessageCount: 0,
+          sharedScheduledTaskCount: 0,
+          sharedTodoCount: 0,
+          sharedTodoMutationCount: 0,
+          sharedTodoDigest: "0".repeat(64),
+          activatedAt: "2026-08-25T12:00:00.000Z",
+        },
+      },
+    });
+    const {
+      findActivePersonalDedicatedTarget,
+      resolvePersonalDedicatedAdoption,
+    } = await import("@/lib/services/agent-tier-upgrade-target");
+    expect(
+      await resolvePersonalDedicatedAdoption({
+        organizationId: ORG_A,
+        userId: USER_A,
+        sourceAgentId: PERSONAL_A,
+      }),
+    ).toEqual({ state: "unavailable" });
+    await expect(
+      findActivePersonalDedicatedTarget(ORG_A, USER_A, PERSONAL_A),
+    ).rejects.toMatchObject({
+      code: "PERSONAL_DEDICATED_AUTHORITY_UNVERIFIED",
+    });
+
+    const patched = await patchProfile({ system: "safe ordinary edit" });
+    expect(patched.status).toBe(200);
+    const [target] = await rows();
+    expect(target?.agent_config).toEqual({
+      character: { name: "Existing" },
+      system: "safe ordinary edit",
+    });
+    expect(
+      await dbWrite.select().from(personalDedicatedUpgradeAuthorities),
+    ).toHaveLength(0);
+    expect(
+      await findActivePersonalDedicatedTarget(ORG_A, USER_A, PERSONAL_A),
+    ).toBeNull();
+    const quoted = await quote();
+    expect(quoted.status).toBe(200);
+    expect(await quoted.json()).toMatchObject({
+      data: {
+        adoptionState: "available",
+        startsCompute: false,
+        requiresConfirmation: true,
+      },
+    });
+    expect(await targetJobs(TARGET_A)).toHaveLength(0);
+  });
+
   for (const status of ["error", "stopped"] as const) {
     test(`adopts and provisions the same ${status} row only after exact confirmation`, async () => {
       expect(pgliteReady).toBe(true);
@@ -461,6 +671,49 @@ describe("GET/POST adopt-existing Dedicated", () => {
     });
   }
 
+  test("does not require a versioned worker for an unselected legacy-compatible provision", async () => {
+    expect(pgliteReady).toBe(true);
+    await seedCandidate({ status: "error" });
+    const quoteId = await currentQuoteId();
+
+    const redis = buildRedisClient(process.env);
+    if (!redis) throw new Error("mock Redis is not configured");
+    // A bare timestamp is the legacy daemon's healthy heartbeat. It advertises
+    // no reviewed-restore capability, but this ordinary one-row path carries
+    // no new directive and remains compatible with that daemon.
+    await redis.set(
+      PROVISIONING_WORKER_HEARTBEAT_KEY,
+      new Date().toISOString(),
+    );
+    process.env.REQUIRE_PROVISIONING_WORKER = "true";
+    try {
+      const response = await confirm(quoteId);
+      expect(response.status).toBe(202);
+      expect(await targetJobs(TARGET_A)).toHaveLength(1);
+    } finally {
+      delete process.env.REQUIRE_PROVISIONING_WORKER;
+      await redis.del(PROVISIONING_WORKER_HEARTBEAT_KEY);
+    }
+  });
+
+  test("retains the generic worker-liveness gate for an unselected provision", async () => {
+    expect(pgliteReady).toBe(true);
+    await seedCandidate({ status: "error" });
+    const quoteId = await currentQuoteId();
+    process.env.REQUIRE_PROVISIONING_WORKER = "true";
+    try {
+      const response = await confirm(quoteId);
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({
+        success: false,
+        code: "PROVISIONING_WORKER_UNHEALTHY",
+      });
+      expect(await targetJobs(TARGET_A)).toHaveLength(0);
+    } finally {
+      delete process.env.REQUIRE_PROVISIONING_WORKER;
+    }
+  });
+
   test("adopts a running row without starting another provision job", async () => {
     expect(pgliteReady).toBe(true);
     await seedCandidate({ status: "running" });
@@ -487,12 +740,72 @@ describe("GET/POST adopt-existing Dedicated", () => {
     ).toBeUndefined();
   });
 
+  test("rejects a running target while any exclusive lifecycle job is active", async () => {
+    expect(pgliteReady).toBe(true);
+    await seedCandidate({ status: "running" });
+    await dbWrite.insert(jobs).values({
+      type: "agent_suspend",
+      status: "pending",
+      data: {
+        agentId: TARGET_A,
+        organizationId: ORG_A,
+        userId: USER_A,
+      },
+      agent_id: TARGET_A,
+      organization_id: ORG_A,
+      user_id: USER_A,
+    });
+    const quoteId = await currentQuoteId();
+
+    const response = await confirm(quoteId);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      code: "dedicated_adoption_quote_changed",
+    });
+    const [target] = await rows();
+    expect(target?.agent_config).toEqual({});
+    expect(await targetJobs(TARGET_A)).toHaveLength(1);
+  });
+
+  test("recovers a lost COMMIT acknowledgment and still nudges the durable provision job", async () => {
+    expect(pgliteReady).toBe(true);
+    await seedCandidate({ status: "error" });
+    const quoteId = await currentQuoteId();
+    const { provisioningJobService } = await import(
+      "@/lib/services/provisioning-jobs"
+    );
+    const trigger = spyOn(
+      provisioningJobService,
+      "triggerImmediate",
+    ).mockResolvedValue();
+    commitAckLossCountdown = 1;
+    try {
+      const response = await confirm(quoteId);
+      expect(response.status).toBe(202);
+      expect(await response.json()).toMatchObject({
+        success: true,
+        data: { dedicatedAgentId: TARGET_A },
+      });
+      expect(trigger).toHaveBeenCalledTimes(1);
+      const [target] = await rows();
+      expect(
+        (target?.agent_config as Record<string, unknown> | undefined)
+          ?.__agentUpgradedFrom,
+      ).toBe(PERSONAL_A);
+      expect(await targetJobs(TARGET_A)).toHaveLength(1);
+    } finally {
+      trigger.mockRestore();
+      commitAckLossCountdown = 0;
+    }
+  });
+
   test("reattaches idempotently to an already-adopted error row under concurrency", async () => {
     expect(pgliteReady).toBe(true);
     await seedCandidate({
       status: "error",
       agentConfig: { __agentUpgradedFrom: PERSONAL_A },
     });
+    await seedAuthority(TARGET_A);
     const quoteId = await currentQuoteId();
 
     const responses = await Promise.all([
@@ -665,6 +978,7 @@ describe("GET/POST adopt-existing Dedicated", () => {
       expectedDailyRate: AGENT_PRICING.DAILY_RUNNING_COST,
       expectedMinimumBalance: AGENT_PRICING.UPGRADE_MINIMUM_BALANCE,
       expectedMinimumRunwayDays: AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS,
+      expectedActivationAuthorityKey: "unreviewed-auto",
     };
 
     await expect(
@@ -702,6 +1016,7 @@ describe("GET/POST adopt-existing Dedicated", () => {
       status: "stopped",
       agentConfig: { __agentUpgradedFrom: PERSONAL_A },
     });
+    await seedAuthority(TARGET_A);
     const { adoptPersonalDedicatedTargetWithProvision } = await import(
       "@/lib/services/agent-tier-upgrade-target"
     );
@@ -719,6 +1034,7 @@ describe("GET/POST adopt-existing Dedicated", () => {
         expectedDailyRate: AGENT_PRICING.DAILY_RUNNING_COST,
         expectedMinimumBalance: AGENT_PRICING.UPGRADE_MINIMUM_BALANCE,
         expectedMinimumRunwayDays: AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS,
+        expectedActivationAuthorityKey: "unreviewed-auto",
       }),
     ).rejects.toMatchObject({
       code: "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
@@ -778,7 +1094,208 @@ describe("GET/POST adopt-existing Dedicated", () => {
       "@/lib/services/agent-tier-upgrade-target"
     );
     expect(
-      await findActivePersonalDedicatedTarget(ORG_A, PERSONAL_A),
+      await findActivePersonalDedicatedTarget(ORG_A, USER_A, PERSONAL_A),
     ).toBeNull();
+  });
+
+  test("active personal lookup requires exact user ownership as well as org and markers", async () => {
+    expect(pgliteReady).toBe(true);
+    await seedCandidate({
+      status: "running",
+      userId: USER_B,
+      agentConfig: {
+        __agentUpgradedFrom: PERSONAL_A,
+        __agentPersonalCutover: {
+          mode: "dedicated",
+          sourceAgentId: PERSONAL_A,
+          conversationId: PERSONAL_A,
+          cutoverToken: "server-cutover-token",
+          sharedMessageCount: 0,
+          sharedScheduledTaskCount: 0,
+          sharedTodoCount: 0,
+          sharedTodoMutationCount: 0,
+          sharedTodoDigest: "0".repeat(64),
+          activatedAt: "2026-08-25T12:00:00.000Z",
+        },
+      },
+    });
+    const { findActivePersonalDedicatedTarget } = await import(
+      "@/lib/services/agent-tier-upgrade-target"
+    );
+    expect(
+      await findActivePersonalDedicatedTarget(ORG_A, USER_A, PERSONAL_A),
+    ).toBeNull();
+  });
+
+  test("a canonical cutover receipt overrides stale JSON and recovers legacy seals with exact user authority", async () => {
+    expect(pgliteReady).toBe(true);
+    await seedCandidate({
+      status: "running",
+      agentConfig: {
+        character: { name: "Receipt-backed" },
+        __agentUpgradedFrom: "caller-forged-source",
+        __agentPersonalCutover: null,
+      },
+    });
+    await dbWrite.insert(personalDedicatedUpgradeAuthorities).values({
+      organization_id: ORG_A,
+      user_id: USER_A,
+      source_agent_id: PERSONAL_A,
+      dedicated_agent_id: TARGET_A,
+      cutover_token: `personal-cutover:${PERSONAL_A}:${TARGET_A}`,
+      shared_message_count: 7,
+      shared_scheduled_task_count: 3,
+      shared_todo_count: 2,
+      shared_todo_mutation_count: 4,
+      shared_todo_digest: "a".repeat(64),
+      cutover_activated_at: new Date("2026-08-25T12:00:00.000Z"),
+    });
+    const {
+      findActivePersonalDedicatedTarget,
+      resolvePersonalDedicatedCutoverRecovery,
+    } = await import("@/lib/services/agent-tier-upgrade-target");
+    const active = await findActivePersonalDedicatedTarget(
+      ORG_A,
+      USER_A,
+      PERSONAL_A,
+    );
+    expect(active?.id).toBe(TARGET_A);
+    expect(active?.agent_config).toMatchObject({
+      character: { name: "Receipt-backed" },
+      __agentUpgradedFrom: PERSONAL_A,
+      __agentPersonalCutover: {
+        sourceAgentId: PERSONAL_A,
+        sharedMessageCount: 7,
+        sharedScheduledTaskCount: 3,
+        sharedTodoCount: 2,
+        sharedTodoMutationCount: 4,
+        sharedTodoDigest: "a".repeat(64),
+      },
+    });
+    const legacy = await resolvePersonalDedicatedCutoverRecovery({
+      organizationId: ORG_A,
+      sourceAgentId: PERSONAL_A,
+      dedicatedAgentId: TARGET_A,
+    });
+    expect(legacy).toMatchObject({ state: "committed", userId: USER_A });
+    expect(
+      await resolvePersonalDedicatedCutoverRecovery({
+        organizationId: ORG_A,
+        userId: USER_B,
+        sourceAgentId: PERSONAL_A,
+        dedicatedAgentId: TARGET_A,
+      }),
+    ).toEqual({ state: "conflict" });
+    expect(
+      await resolvePersonalDedicatedCutoverRecovery({
+        organizationId: ORG_A,
+        sourceAgentId: PERSONAL_A,
+        dedicatedAgentId: TARGET_B,
+      }),
+    ).toEqual({ state: "conflict" });
+  });
+
+  test("malformed or version-drifted receipts fail closed without trusting matching JSON", async () => {
+    expect(pgliteReady).toBe(true);
+    await seedCandidate({
+      status: "running",
+      agentConfig: { __agentUpgradedFrom: PERSONAL_A },
+    });
+    await dbWrite.insert(personalDedicatedUpgradeAuthorities).values({
+      organization_id: ORG_A,
+      user_id: USER_A,
+      source_agent_id: PERSONAL_A,
+      dedicated_agent_id: TARGET_A,
+      schema_version: 2,
+      cutover_token: `personal-cutover:${PERSONAL_A}:${TARGET_A}`,
+      shared_message_count: 0,
+      shared_scheduled_task_count: 0,
+      shared_todo_count: 0,
+      shared_todo_mutation_count: 0,
+      shared_todo_digest: "b".repeat(64),
+      cutover_activated_at: new Date("2026-08-25T12:00:00.000Z"),
+    });
+    const {
+      findActivePersonalDedicatedTarget,
+      resolvePersonalDedicatedAdoption,
+      resolvePersonalDedicatedCutoverRecovery,
+    } = await import("@/lib/services/agent-tier-upgrade-target");
+    await expect(
+      findActivePersonalDedicatedTarget(ORG_A, USER_A, PERSONAL_A),
+    ).rejects.toMatchObject({ code: "PERSONAL_DEDICATED_AUTHORITY_INVALID" });
+    expect(
+      await resolvePersonalDedicatedAdoption({
+        organizationId: ORG_A,
+        userId: USER_A,
+        sourceAgentId: PERSONAL_A,
+      }),
+    ).toEqual({ state: "unavailable" });
+    expect(
+      await resolvePersonalDedicatedCutoverRecovery({
+        organizationId: ORG_A,
+        sourceAgentId: PERSONAL_A,
+        dedicatedAgentId: TARGET_A,
+      }),
+    ).toEqual({ state: "conflict" });
+    const edit = await patchProfile({ system: "must not bless drift" });
+    expect(edit.status).toBe(500);
+    const [unchanged] = await rows();
+    expect(unchanged?.agent_config).toEqual({
+      __agentUpgradedFrom: PERSONAL_A,
+    });
+  });
+
+  test("cutover commits history authority and profile edits rehydrate only that exact receipt", async () => {
+    expect(pgliteReady).toBe(true);
+    await seedCandidate({
+      status: "running",
+      agentConfig: { character: { name: "Eliza" } },
+    });
+    await seedAuthority(TARGET_A);
+    const { finalizePersonalTierUpgradeCutover } = await import(
+      "@/lib/services/agent-tier-upgrade-target"
+    );
+    const cutoverToken = `personal-cutover:${PERSONAL_A}:${TARGET_A}`;
+    await finalizePersonalTierUpgradeCutover({
+      organizationId: ORG_A,
+      userId: USER_A,
+      sourceAgentId: PERSONAL_A,
+      dedicatedAgentId: TARGET_A,
+      cutoverToken,
+      sharedMessageCount: 9,
+      sharedScheduledTaskCount: 2,
+      sharedTodoCount: 1,
+      sharedTodoMutationCount: 3,
+      sharedTodoDigest: "c".repeat(64),
+    });
+    const [receipt] = await dbWrite
+      .select()
+      .from(personalDedicatedUpgradeAuthorities);
+    expect(receipt).toMatchObject({
+      source_agent_id: PERSONAL_A,
+      dedicated_agent_id: TARGET_A,
+      cutover_token: cutoverToken,
+      shared_message_count: 9,
+      shared_scheduled_task_count: 2,
+      shared_todo_count: 1,
+      shared_todo_mutation_count: 3,
+      shared_todo_digest: "c".repeat(64),
+    });
+    const edit = await patchProfile({
+      system: "receipt survives ordinary edit",
+      __agentUpgradedFrom: "forged",
+      __agentPersonalCutover: null,
+    });
+    expect(edit.status).toBe(200);
+    const [target] = await rows();
+    expect(target?.agent_config).toMatchObject({
+      system: "receipt survives ordinary edit",
+      __agentUpgradedFrom: PERSONAL_A,
+      __agentPersonalCutover: {
+        cutoverToken,
+        sharedMessageCount: 9,
+        sharedTodoDigest: "c".repeat(64),
+      },
+    });
   });
 });

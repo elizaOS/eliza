@@ -553,6 +553,11 @@ jobs:
 
       - name: Build
         working-directory: ${{ env.CHECKOUT_DIR }}
+        env:
+          # TypeScript's Worker graph now exceeds V8's 4 GiB default heap on
+          # hosted release runners. Keep the deploy gate fail-closed while
+          # matching the repository's canonical CI heap budget.
+          NODE_OPTIONS: "--max-old-space-size=8192"
         run: bun run --cwd packages/cloud/api build
 
       - name: Resolve deploy environment

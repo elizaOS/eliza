@@ -15,7 +15,7 @@ registerAppShellPage({
     capabilities: ["agent-surface"],
   },
   loader: () =>
-    import("./components/MapsView.tsx").then((module) => ({
-      default: module.MapsView,
+    import("./components/MapsPage.tsx").then((module) => ({
+      default: module.MapsPage,
     })),
 });

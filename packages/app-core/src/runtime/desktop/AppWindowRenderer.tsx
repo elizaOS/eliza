@@ -46,7 +46,6 @@ import { DatabasePageView } from "@elizaos/ui/components/pages/DatabasePageView"
 import { LogsView } from "@elizaos/ui/components/pages/LogsView";
 import { MemoryViewerView } from "@elizaos/ui/components/pages/MemoryViewerView";
 import { PluginsPageView } from "@elizaos/ui/components/pages/PluginsPageView";
-import { RelationshipsView } from "@elizaos/ui/components/pages/RelationshipsView";
 import { RuntimeView } from "@elizaos/ui/components/pages/RuntimeView";
 import { SkillsView } from "@elizaos/ui/components/pages/SkillsView";
 import { TasksPageView } from "@elizaos/ui/components/pages/TasksPageView";
@@ -94,11 +93,30 @@ function RegisteredWalletInventoryView(): JSX.Element {
   if (!registration) {
     return <AppWindowError message="Wallet is not registered in this build." />;
   }
-  const Component = registration.Component;
+  const Component =
+    registration.Component ??
+    (registration.loader
+      ? getAppShellPageLazyComponent(registration.loader)
+      : null);
   if (!Component) {
     return <AppWindowError message="Wallet is not available in this window." />;
   }
   return <Component />;
+}
+
+const appShellPageLazyComponentCache = new WeakMap<
+  NonNullable<ReturnType<typeof listAppShellPages>[number]["loader"]>,
+  ComponentType<Record<string, unknown>>
+>();
+
+function getAppShellPageLazyComponent(
+  loader: NonNullable<ReturnType<typeof listAppShellPages>[number]["loader"]>,
+): ComponentType<Record<string, unknown>> {
+  const existing = appShellPageLazyComponentCache.get(loader);
+  if (existing) return existing;
+  const created = lazy(loader);
+  appShellPageLazyComponentCache.set(loader, created);
+  return created;
 }
 
 function RegisteredAppShellPageView({
@@ -126,8 +144,16 @@ function renderInternalToolTab(tab: Tab): JSX.Element | null {
       return <SkillsView />;
     case "trajectories":
       return <TrajectoriesView />;
-    case "relationships":
-      return <RelationshipsView />;
+    case "relationships": {
+      const registration = listAppShellPages().find(
+        (entry) => entry.id === "relationships",
+      );
+      return registration ? (
+        <RegisteredAppShellPageView registration={registration} />
+      ) : (
+        <AppWindowError message="Relationships is not registered in this build." />
+      );
+    }
     case "memories":
       return <MemoryViewerView />;
     case "runtime":
