@@ -6,6 +6,7 @@
  */
 import {
   type DesktopRuntimeModeResolution,
+  normalizeApiBase,
   type PersistedDeployment,
   resolveDesktopRuntimeMode,
   resolveDesktopRuntimeModeWithDeployment,
@@ -17,6 +18,54 @@ export type ExternalReachabilityProbe = (
   base: string,
   accessToken?: string,
 ) => Promise<boolean>;
+
+export interface QualifiedExternalAccess {
+  origin: string;
+  token: string;
+}
+
+export interface DesktopRuntimeBootResolution
+  extends DesktopRuntimeModeResolution {
+  qualifiedAccess?: QualifiedExternalAccess;
+  externalReachability?: "verified" | "unavailable";
+}
+
+export function resolveQualifiedExternalToken(
+  resolution: DesktopRuntimeBootResolution,
+  targetBase: string | null | undefined,
+): string | undefined {
+  const targetOrigin = normalizeApiBase(targetBase ?? undefined);
+  return targetOrigin && resolution.qualifiedAccess?.origin === targetOrigin
+    ? resolution.qualifiedAccess.token
+    : undefined;
+}
+
+export function resolveDesktopApiRequestToken(options: {
+  resolution: DesktopRuntimeBootResolution;
+  targetUrl: string;
+  configuredToken?: string | null;
+}): string | undefined {
+  const configuredToken = options.configuredToken?.trim() || undefined;
+  if (options.resolution.mode === "local") {
+    return configuredToken;
+  }
+  if (options.resolution.mode !== "external") {
+    return undefined;
+  }
+
+  const targetOrigin = normalizeApiBase(options.targetUrl);
+  const externalOrigin = normalizeApiBase(
+    options.resolution.externalApi.base ?? undefined,
+  );
+  if (!targetOrigin || !externalOrigin || targetOrigin !== externalOrigin) {
+    return undefined;
+  }
+
+  return (
+    configuredToken ??
+    resolveQualifiedExternalToken(options.resolution, options.targetUrl)
+  );
+}
 
 function hasExplicitExternalTarget(
   env: Record<string, string | undefined>,
@@ -57,6 +106,7 @@ async function fetchJson(
   const response = await fetch(url, {
     method: "GET",
     headers,
+    redirect: "error",
     signal,
   });
   if (response.status !== 200) return null;
@@ -73,7 +123,7 @@ export async function probeExternalAgent(
     const health = await fetchJson(
       `${normalizedBase}/api/health`,
       signal,
-      accessToken,
+      undefined,
     );
     if (!isReadyHealth(health)) return false;
 
@@ -97,7 +147,7 @@ export async function resolveDesktopRuntimeForBoot(options: {
   env: Record<string, string | undefined>;
   deployment: PersistedDeployment | null;
   probe?: ExternalReachabilityProbe;
-}): Promise<DesktopRuntimeModeResolution> {
+}): Promise<DesktopRuntimeBootResolution> {
   const { env, deployment, probe = probeExternalAgent } = options;
   const resolved = resolveDesktopRuntimeModeWithDeployment(env, deployment);
 
@@ -109,19 +159,23 @@ export async function resolveDesktopRuntimeForBoot(options: {
     return resolved;
   }
 
-  // A runtime-less package cannot recover to an agent it does not ship.
   const envOnly = resolveDesktopRuntimeMode(env);
-  if (envOnly.mode === "disabled") {
-    return resolved;
+  const token = deployment?.remoteAccessToken?.trim() || undefined;
+  if (await probe(resolved.externalApi.base, token)) {
+    return token
+      ? {
+          ...resolved,
+          externalReachability: "verified",
+          qualifiedAccess: { origin: resolved.externalApi.base, token },
+        }
+      : { ...resolved, externalReachability: "verified" };
   }
 
-  if (
-    await probe(
-      resolved.externalApi.base,
-      deployment?.remoteAccessToken?.trim() || undefined,
-    )
-  ) {
-    return resolved;
+  // A runtime-less package cannot recover to an agent it does not ship. Keep
+  // the persisted topology external but unqualified so callers render an
+  // unavailable external runtime instead of silently inventing a local one.
+  if (envOnly.mode === "disabled") {
+    return { ...resolved, externalReachability: "unavailable" };
   }
 
   return envOnly;
