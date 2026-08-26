@@ -130,6 +130,25 @@ describe("AndroidCloudSettings", () => {
     );
   });
 
+  it("keeps account lifecycle controls visible in the embedded Settings route", async () => {
+    render(
+      <AndroidCloudSettings
+        embedded
+        lifecycle={lifecycle()}
+        onDeletionReserved={vi.fn()}
+        openExternal={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("Privacy & data")).toBeTruthy();
+    const deleteButton = screen.getByRole("button", {
+      name: "Delete account & data",
+    }) as HTMLButtonElement;
+    await waitFor(() => expect(deleteButton.disabled).toBe(false));
+    expect(screen.queryByText("Voice & app permissions")).toBeNull();
+    expect(screen.queryByText("Account")).toBeNull();
+  });
+
   it("loads an existing request once before starting bounded status polling", async () => {
     const existing = request();
     const getAvailability = vi.fn(async () => ({
