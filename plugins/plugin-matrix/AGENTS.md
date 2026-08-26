@@ -43,6 +43,13 @@ plugins/plugin-matrix/
                                         + MATRIX_ACCOUNTS JSON); exports resolveMatrixAccountSettings,
                                         listMatrixAccountIds, normalizeMatrixAccountId, readMatrixAccountId
     connector-account-provider.ts     ConnectorAccountProvider adapter for ConnectorAccountManager
+  src/membership.ts                   MatrixMembershipAuthority — publisher-discipline client for the
+                                       canonical MembershipService: complete PREPARED/join roster snapshots
+                                       (incomplete rosters reported incomplete, never empty), ordered
+                                       join/invite/leave/ban deltas, bot self-leave scope termination,
+                                       fenced retries, idempotent evidence keys
+  src/membership-gate.ts              Connector-account bootstrap + per-account admission gate for group
+                                       rooms; DMs bypass; fail-closed under MATRIX_MEMBERSHIP_ENFORCE=1
     types.ts                          MatrixSettings, MatrixMessage, MatrixRoom, IMatrixService,
                                         MatrixEventTypes enum, error classes, utility functions
     fake-indexeddb-auto.d.ts          Type shim for fake-indexeddb used in tests

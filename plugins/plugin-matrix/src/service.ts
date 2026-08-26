@@ -52,6 +52,13 @@ import {
 } from "./accounts.js";
 import { waitForMatrixPrepared } from "./matrix-sync.js";
 import {
+  classifyMatrixTransition,
+  type MatrixMembershipAuthority,
+  matrixMemberRoles,
+  matrixObservedAt,
+} from "./membership.js";
+import { createMatrixMembershipGate, MatrixMembershipMessageGate } from "./membership-gate.js";
+import {
   getMatrixLocalpart,
   type IMatrixService,
   isValidMatrixRoomAlias,
@@ -184,6 +191,10 @@ type MatrixAccountState = {
   connected: boolean;
   syncing: boolean;
   cryptoSnapshotTimer?: ReturnType<typeof setInterval>;
+  /** Membership-authority gate for this account; null when absent/failed. */
+  membershipGate?: MatrixMembershipMessageGate;
+  /** Authority handle for evidence publication; null when absent. */
+  membershipAuthority?: MatrixMembershipAuthority;
 };
 
 /**
@@ -834,6 +845,28 @@ export class MatrixService extends Service implements IMatrixService {
       await this.initCrypto(state);
       this.startCryptoSnapshot(state);
       this.setupEventHandlers(state);
+      // Membership-authority gate: null when the authority service is absent
+      // (legacy ungated mode); a broken bootstrap records a fail-closed gate.
+      const gate = await createMatrixMembershipGate({
+        runtime,
+        matrixAccountId: state.accountId,
+        matrixUserId: settings.userId,
+        personal: settings.personal,
+      }).catch((err) => {
+        runtime.reportError("matrix:membership-bootstrap", err, {
+          accountId: state.accountId,
+        });
+        return null;
+      });
+      if (gate) {
+        state.membershipAuthority = gate.authority;
+        state.membershipGate = new MatrixMembershipMessageGate({
+          runtime,
+          authority: gate.authority,
+        });
+      } else {
+        state.membershipGate = new MatrixMembershipMessageGate({ runtime, authority: null });
+      }
       await this.connect(state);
       MatrixService.registerSendHandlers(runtime, this, state.accountId);
 
@@ -1099,7 +1132,7 @@ export class MatrixService extends Service implements IMatrixService {
    */
   private setupEventHandlers(state: MatrixAccountState): void {
     // Sync events
-    state.client.on(sdk.ClientEvent.Sync, (syncState) => {
+    state.client.on(sdk.ClientEvent.Sync, (syncState, _prevState, syncData) => {
       if (syncState === "PREPARED") {
         state.syncing = true;
         logger.info("Matrix sync complete");
@@ -1107,6 +1140,38 @@ export class MatrixService extends Service implements IMatrixService {
           runtime: this.runtime,
           accountId: state.accountId,
         } as EventPayload);
+        // First PREPARED after start (oldSyncToken null/undefined): publish
+        // complete membership snapshots for joined rooms. Later PREPAREDs
+        // (reconnects) re-publish from the SDK's accumulated state, which is
+        // complete for rooms already synced.
+        void this.publishMembershipSnapshots(state, syncData?.oldSyncToken == null).catch((err) =>
+          logger.error(
+            `Matrix membership snapshot publication failed: ${err instanceof Error ? err.message : String(err)}`
+          )
+        );
+      } else if (syncState === "ERROR" || syncState === "RECONNECTING") {
+        // Connection trouble: room evidence may be stale. Degrade every
+        // currently-tracked room scope to unavailable so admission fails
+        // closed until a fresh PREPARED re-publishes complete state.
+        if (state.membershipAuthority) {
+          void this.degradeAllMembershipScopes(state, `sync_${syncState.toLowerCase()}`).catch(
+            (err) =>
+              logger.error(
+                `Matrix membership scope degrade failed: ${err instanceof Error ? err.message : String(err)}`
+              )
+          );
+        }
+      }
+    });
+
+    // Limited-sync gaps: the SDK resets the live timeline when a sync response
+    // is limited, which means state events (including m.room.member) may be
+    // missing from the accumulated room state. The roster can no longer be
+    // trusted as complete for this room until the next full sync — record
+    // incompleteness, never publish the partial roster as complete.
+    state.client.on(sdk.RoomEvent.TimelineReset, (room) => {
+      if (room) {
+        state.membershipAuthority?.markRoomIncomplete(room.roomId);
       }
     });
 
@@ -1121,7 +1186,7 @@ export class MatrixService extends Service implements IMatrixService {
       if (event.isEncrypted() && event.getType() === "m.room.encrypted") {
         event.once(sdk.MatrixEventEvent.Decrypted, () => {
           if (event.getType() === "m.room.message") {
-            this.handleRoomMessage(state, event, room);
+            void this.handleRoomMessage(state, event, room);
           } else if (event.isDecryptionFailure()) {
             logger.warn(
               `Matrix could not decrypt event ${event.getId()} in ${event.getRoomId()} — the sender has not shared the megolm key with this device yet.`
@@ -1132,25 +1197,244 @@ export class MatrixService extends Service implements IMatrixService {
       }
 
       if (event.getType() !== "m.room.message") return;
-      this.handleRoomMessage(state, event, room);
+      void this.handleRoomMessage(state, event, room);
     });
 
     // Room membership events
-    state.client.on(sdk.RoomMemberEvent.Membership, (event, member) => {
-      if (member.userId !== state.settings.userId) return;
-
-      if (member.membership === "invite" && state.settings.autoJoin) {
-        const roomId = event.getRoomId();
-        if (roomId) {
-          logger.info(`Auto-joining room ${roomId}`);
-          state.client.joinRoom(roomId).catch((err) => {
-            logger.error(`Failed to auto-join room: ${err.message}`);
-          });
-        }
-      }
+    state.client.on(sdk.RoomMemberEvent.Membership, (event, member, oldMembership) => {
+      void this.handleMembershipTransition(state, event, member, oldMembership).catch((err) =>
+        logger.error(
+          `Matrix membership transition handling failed: ${err instanceof Error ? err.message : String(err)}`
+        )
+      );
     });
 
     this.setupVerificationAutoAccept(state);
+  }
+
+  /**
+   * Publish complete membership snapshots for every joined room of an
+   * account. Only called for known-complete state: the first PREPARED sync
+   * (after lazy-loaded member lists resolve) or an explicit join. Rooms whose
+   * member list is marked incomplete are reported incomplete instead — never
+   * as empty or complete.
+   */
+  private async publishMembershipSnapshots(
+    state: MatrixAccountState,
+    firstSync: boolean
+  ): Promise<void> {
+    const authority = state.membershipAuthority;
+    if (!authority) {
+      return;
+    }
+    const rooms = state.client.getRooms().filter((room) => room.getMyMembership() === "join");
+    for (const room of rooms) {
+      if (room.getJoinedMemberCount() <= 2) {
+        // Direct rooms are not membership-governed.
+        continue;
+      }
+      if (authority.isRoomIncomplete(room.roomId)) {
+        await authority.reportIncomplete({
+          roomId: room.roomId,
+          reason: "member_list_incomplete",
+          observedAt: new Date().toISOString(),
+        });
+        continue;
+      }
+      // Lazy loading: until the out-of-band member list resolves, the SDK's
+      // roster is partial. Wait for it (bounded) before publishing; a timeout
+      // is incompleteness, not emptiness.
+      let membersReady = true;
+      if (typeof room.loadMembersIfNeeded === "function") {
+        try {
+          await room.loadMembersIfNeeded();
+        } catch {
+          membersReady = false;
+        }
+      }
+      const joinedMembers = room.getJoinedMembers();
+      if (!membersReady || joinedMembers.length === 0) {
+        await authority.reportIncomplete({
+          roomId: room.roomId,
+          reason: membersReady ? "empty_roster" : "member_load_failed",
+          observedAt: new Date().toISOString(),
+        });
+        continue;
+      }
+      // Snapshot members must reference existing entity/room/world rows; the
+      // gate path creates them lazily, and PREPARED rooms may carry members
+      // the runtime has never seen — bootstrap rows before publishing.
+      const worldId = createUniqueUuid(this.runtime, `${state.accountId}:${room.roomId}`);
+      await this.runtime.createWorld({
+        id: worldId,
+        name: room.name || room.roomId,
+        agentId: this.runtime.agentId,
+        metadata: { source: MATRIX_SERVICE_NAME, accountId: state.accountId, roomId: room.roomId },
+      });
+      await this.runtime.createRoom({
+        id: worldId,
+        name: room.name || room.roomId,
+        source: MATRIX_SERVICE_NAME,
+        type: ChannelType.GROUP,
+        channelId: room.roomId,
+        worldId,
+      });
+      const memberRecords = [];
+      for (const member of joinedMembers) {
+        const entityId = createUniqueUuid(this.runtime, `${state.accountId}:${member.userId}`);
+        await this.runtime.createEntity({
+          id: entityId,
+          agentId: this.runtime.agentId,
+          names: [`matrix-${getMatrixLocalpart(member.userId)}`],
+          metadata: { source: MATRIX_SERVICE_NAME, matrixUserId: member.userId },
+        });
+        memberRecords.push({
+          canonicalPrincipalId: entityId,
+          roles: matrixMemberRoles(member.powerLevel),
+          permissionSnapshot: { membership: "join" },
+          runtime: { worldId, roomId: worldId, entityId },
+        });
+      }
+      const published = await authority.publishSnapshot({
+        roomId: room.roomId,
+        observedAt: new Date().toISOString(),
+        members: memberRecords,
+        idempotencyKey: `mx:${state.accountId}:${room.roomId}:prepared:${firstSync ? "first" : "resync"}:${rooms.length}`,
+      });
+      if (published) {
+        logger.debug(
+          `Matrix membership snapshot published for ${room.roomId}: ${memberRecords.length} members`
+        );
+      }
+    }
+  }
+
+  /**
+   * Degrade every tracked room scope for an account to unavailable (sync
+   * trouble). Used on ERROR/RECONNECTING so admission fails closed until a
+   * fresh PREPARED re-publishes.
+   */
+  private async degradeAllMembershipScopes(
+    state: MatrixAccountState,
+    reason: string
+  ): Promise<void> {
+    const authority = state.membershipAuthority;
+    if (!authority) {
+      return;
+    }
+    for (const room of state.client.getRooms().filter((r) => r.getMyMembership() === "join")) {
+      if (room.getJoinedMemberCount() <= 2) continue;
+      await authority.markScopeUnavailable({ roomId: room.roomId, reason });
+    }
+  }
+
+  /**
+   * Consume one m.room.member transition: record authority evidence for the
+   * subject; self-transitions (the bot's own membership) additionally manage
+   * the scope lifecycle (leave/ban terminates the publisher with a tombstone;
+   * join clears it and publishes a fresh complete snapshot).
+   */
+  private async handleMembershipTransition(
+    state: MatrixAccountState,
+    event: sdk.MatrixEvent,
+    member: sdk.RoomMember,
+    oldMembership: string | undefined
+  ): Promise<void> {
+    const authority = state.membershipAuthority;
+    const roomId = event.getRoomId();
+    if (!authority || !roomId) {
+      // No authority configured: preserve the legacy self-invite auto-join
+      // behavior even in ungated deployments.
+      if (
+        roomId &&
+        member.userId === state.settings.userId &&
+        member.membership === "invite" &&
+        state.settings.autoJoin
+      ) {
+        logger.info(`Auto-joining room ${roomId}`);
+        state.client.joinRoom(roomId).catch((err) => {
+          logger.error(`Failed to auto-join room: ${err.message}`);
+        });
+      }
+      return;
+    }
+    const room = state.client.getRoom(roomId);
+    if (room && room.getJoinedMemberCount() <= 2 && member.membership !== "join") {
+      // Direct rooms are not membership-governed; only bot-join lifecycle
+      // (which can grow a DM out of a group) is tracked below.
+    }
+    // Bot self-transitions own the scope lifecycle.
+    if (member.userId === state.settings.userId) {
+      if (member.membership === "leave" || member.membership === "ban") {
+        const reason =
+          member.membership === "ban"
+            ? "bot_banned"
+            : oldMembership === "invite"
+              ? "invite_declined"
+              : "bot_left";
+        await authority.markScopeUnavailable({ roomId, reason });
+        logger.info(`Matrix membership scope terminated for ${roomId} (${reason})`);
+        return;
+      }
+      if (member.membership === "join" && oldMembership !== "join") {
+        authority.clearScopeRemoval({ roomId });
+        await this.publishMembershipSnapshots(state, false).catch((err) =>
+          logger.error(
+            `Matrix membership snapshot after join failed: ${err instanceof Error ? err.message : String(err)}`
+          )
+        );
+        return;
+      }
+      if (member.membership === "invite" && state.settings.autoJoin) {
+        logger.info(`Auto-joining room ${roomId}`);
+        state.client.joinRoom(roomId).catch((err) => {
+          logger.error(`Failed to auto-join room: ${err.message}`);
+        });
+      }
+      return;
+    }
+    // Other members' transitions become ordered-delta evidence.
+    if (room && room.getJoinedMemberCount() <= 2 && member.membership === "join") {
+      // Direct rooms are not membership-governed.
+      return;
+    }
+    const transition = classifyMatrixTransition(member.membership, oldMembership);
+    const matrixUserId = member.userId || event.getSender() || "unknown";
+    const entityId = createUniqueUuid(this.runtime, `${state.accountId}:${matrixUserId}`);
+    const worldId = createUniqueUuid(this.runtime, `${state.accountId}:${roomId}`);
+    // Evidence requires entity/room/world rows: bootstrap them for members the
+    // runtime has never seen (idempotent creates).
+    await this.runtime.createEntity({
+      id: entityId,
+      agentId: this.runtime.agentId,
+      names: [`matrix-${getMatrixLocalpart(matrixUserId)}`],
+      metadata: { source: MATRIX_SERVICE_NAME, matrixUserId },
+    });
+    await this.runtime.createWorld({
+      id: worldId,
+      name: roomId,
+      agentId: this.runtime.agentId,
+      metadata: { source: MATRIX_SERVICE_NAME, accountId: state.accountId, roomId },
+    });
+    await this.runtime.createRoom({
+      id: worldId,
+      name: roomId,
+      source: MATRIX_SERVICE_NAME,
+      type: ChannelType.GROUP,
+      channelId: roomId,
+      worldId,
+    });
+    await authority.recordTransition({
+      roomId,
+      canonicalPrincipalId: entityId,
+      transition,
+      roles: matrixMemberRoles(member.powerLevel),
+      permissionSnapshot: { membership: member.membership ?? "unknown" },
+      runtime: { worldId, roomId: worldId, entityId },
+      eventId: event.getId() || `${roomId}:${event.getTs()}`,
+      matrixUserId,
+      observedAt: matrixObservedAt(event.getTs()),
+    });
   }
 
   /**
@@ -1257,11 +1541,11 @@ export class MatrixService extends Service implements IMatrixService {
   /**
    * Handle an incoming room message.
    */
-  private handleRoomMessage(
+  private async handleRoomMessage(
     state: MatrixAccountState,
     event: sdk.MatrixEvent,
     room: sdk.Room | undefined
-  ): void {
+  ): Promise<void> {
     if (!room) return;
 
     const message = buildMatrixMessage(event, room);
@@ -1299,6 +1583,21 @@ export class MatrixService extends Service implements IMatrixService {
       `Matrix message from ${message.senderInfo.displayName || message.sender} in ${room.name || roomId}: ${truncateWellFormed(toWellFormedUnicode(message.content), 50)}...`
     );
 
+    // Membership admission (group rooms only; DMs bypass). Fail-closed when
+    // the authority is configured but cannot produce fresh evidence.
+    if (state.membershipGate) {
+      const allowed = await state.membershipGate.authorizeMessage({
+        roomId,
+        isDirectRoom,
+        principalEntityId: createUniqueUuid(this.runtime, `${state.accountId}:${message.sender}`),
+        matrixUserId: message.sender,
+        getJoinedMemberIds: () => room.getJoinedMembers().map((m) => m.userId),
+      });
+      if (!allowed) {
+        return;
+      }
+    }
+
     // Plugin-local event other code may listen for (the MatrixMessage/MatrixRoom payload).
     this.runtime.emitEvent(MatrixEventTypes.MESSAGE_RECEIVED, {
       message,
@@ -1328,9 +1627,14 @@ export class MatrixService extends Service implements IMatrixService {
     room: MatrixRoom
   ): Promise<void> {
     const roomId = room.roomId;
-    const entityId = createUniqueUuid(this.runtime, message.sender || roomId);
-    const coreRoomId = createUniqueUuid(this.runtime, roomId);
-    const worldId = createUniqueUuid(this.runtime, roomId);
+    // Account-scoped derivations: two Matrix accounts on one runtime observing
+    // the same room must never share room/world/entity UUIDs (the authority
+    // scopes membership per connector account, and cross-account memory
+    // blending is a privacy violation).
+    const scoped = (seed: string) => createUniqueUuid(this.runtime, `${state.accountId}:${seed}`);
+    const entityId = scoped(message.sender || roomId);
+    const coreRoomId = scoped(roomId);
+    const worldId = scoped(roomId);
     // Member count is the reliable DM signal (m.direct account data is often
     // unset for a bot) and matches the mention-gate check in handleRoomMessage.
     const channelType = room.memberCount <= 2 ? ChannelType.DM : ChannelType.GROUP;
