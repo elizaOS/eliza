@@ -134,6 +134,20 @@ const serverUrl = resolveServerUrl(process.env.ELIZA_CAPACITOR_SERVER_URL);
 function isFlagEnabled(value: string | undefined): boolean {
   return /^(1|true|yes|on)$/i.test((value ?? "").trim());
 }
+
+/**
+ * The direct-install launcher is intentionally debuggable so adb can verify
+ * the HOME-role handoff, but Capacitor's default debug logging serializes
+ * native plugin results into logcat. That includes the Keystore-backed Cloud
+ * credential returned by ElizaSecureCredentials.get(). Keep the launcher
+ * debuggable without ever logging bridge payloads.
+ */
+export function resolveCapacitorLoggingBehavior(
+  env: NodeJS.ProcessEnv = process.env,
+): "debug" | "none" {
+  return isFlagEnabled(env.ELIZA_ANDROID_LAUNCHER_BUILD) ? "none" : "debug";
+}
+
 const webViewDebuggingEnabled =
   !isIosStoreBuild() && isFlagEnabled(process.env.ELIZA_WEBVIEW_DEBUG);
 
@@ -160,6 +174,7 @@ const config: CapacitorConfig = {
   appId: appConfig.appId,
   appName: appConfig.appName,
   webDir: "dist",
+  loggingBehavior: resolveCapacitorLoggingBehavior(),
   server: {
     androidScheme: "https",
     iosScheme: "https",
