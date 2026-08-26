@@ -28,6 +28,7 @@ import type { ClientBase } from "./base";
 import type { AuthenticatedTwitterSession } from "./client/auth";
 import { checkTwitterDmAccess, resolveTwitterDmPolicy } from "./dm-policy";
 import { parseTwitterInterval } from "./environment";
+import { XMembershipPublisher, xMembershipPrincipal } from "./membership";
 import type { TwitterClientState } from "./types";
 import { resolveCloudApiKeyForXEndpoint } from "./utils/cloud-credential-boundary";
 import { createMemorySafe, reconcileTwitterWorld } from "./utils/memory";
@@ -107,6 +108,18 @@ export class TwitterDirectMessageClient {
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
   private pollInFlight = false;
   private readonly isDryRun: boolean;
+  /**
+   * Membership-evidence publisher (#24372): observed-only point-query proofs
+   * from DM timeline events into the canonical MembershipService authority.
+   * Degrade-only — a null authority never touches the message path.
+   */
+  private readonly membership = new XMembershipPublisher(this.runtime);
+  /**
+   * Conversation ids whose own-account membership has been published this
+   * process, so the account's own participation is proven once per
+   * conversation instead of on every event.
+   */
+  private readonly ownMembershipPublished = new Set<string>();
 
   constructor(
     private readonly client: ClientBase,
@@ -256,7 +269,10 @@ export class TwitterDirectMessageClient {
       ],
       "user.fields": ["id", "username", "name"],
       expansions: ["sender_id"],
-      event_types: ["MessageCreate"],
+      // Membership evidence (#24372): join/leave events are roster-observable
+      // facts in the DM timeline; without them participant departures are
+      // invisible and stale active evidence would keep authorizing.
+      event_types: ["MessageCreate", "ParticipantsJoin", "ParticipantsLeave"],
     })) as DirectMessagePage;
 
     const collectEvents = () =>
@@ -307,6 +323,21 @@ export class TwitterDirectMessageClient {
     );
     for (const event of events) {
       if (compareEventIds(event.id, cursor) <= 0) continue;
+      if (
+        event.event_type === "ParticipantsJoin" ||
+        event.event_type === "ParticipantsLeave"
+      ) {
+        // Membership evidence (#24372): observed-only join/leave proofs.
+        // Event-anchored idempotency keys absorb redelivery; a publish
+        // failure must not hold the poll cursor (degrade-only evidence), so
+        // the cursor advances regardless.
+        await this.publishMembershipFromRosterEvent(
+          event as DirectMessageEvent & { id: string },
+          ownUserId,
+        );
+        await this.runtime.setCache(cursorKey, event.id);
+        continue;
+      }
       if (event.event_type && event.event_type !== "MessageCreate") {
         await this.runtime.setCache(cursorKey, event.id);
         continue;
@@ -316,6 +347,12 @@ export class TwitterDirectMessageClient {
         event.sender_id === ownUserId ||
         !event.text?.trim()
       ) {
+        // A self-sent message still proves the account's own participation
+        // in the conversation; the sender renewal below is skipped for the
+        // own account there, so publish own membership here.
+        if (event.sender_id && event.dm_conversation_id) {
+          await this.publishOwnMembership(event.dm_conversation_id, ownUserId);
+        }
         await this.runtime.setCache(cursorKey, event.id);
         continue;
       }
@@ -408,6 +445,15 @@ export class TwitterDirectMessageClient {
     }
 
     const conversationId = event.dm_conversation_id ?? senderId;
+    // Membership evidence (#24372): the policy-accepted sender's presence in
+    // this conversation is itself the observation; renew their evidence
+    // before the reply loop runs so an authorization read mid-turn sees it.
+    await this.renewSenderMembership(
+      event,
+      conversationId,
+      ownUserId,
+      username,
+    );
     // DMs and public interactions share the sender's canonical X world. Older
     // connector builds already attached DM rooms to this world, so reusing it
     // also repairs their raw platform-id ownership metadata on the next poll.
@@ -655,6 +701,260 @@ export class TwitterDirectMessageClient {
     return this.client.twitterClient.isAuthenticatedSessionCurrent(session);
   }
 
+  /**
+   * Publish membership evidence for one ParticipantsJoin/ParticipantsLeave
+   * event (#24372). Observed-only per-participant point queries: X's DM
+   * roster events name the participants the event is about, but never prove
+   * the absence of unlisted members, so `participant_ids` never becomes a
+   * completeness claim. The account's own removal degrades the scope (the
+   * account can no longer observe the conversation) instead of revoking its
+   * own membership row.
+   */
+  private async publishMembershipFromRosterEvent(
+    event: DirectMessageEvent & { id: string },
+    ownUserId: string,
+  ): Promise<void> {
+    try {
+      const conversationId = event.dm_conversation_id?.trim();
+      if (!conversationId) return;
+      const scope = await this.membership.scopeForConversation({
+        conversationId,
+        accountKey: this.client.accountId,
+        ownUserId,
+      });
+      if (!scope) return;
+      const isJoin = event.event_type === "ParticipantsJoin";
+      const participants = (event.participant_ids ?? []).filter(
+        (id) => typeof id === "string" && id.trim(),
+      );
+      // Without participant_ids there is no principal to publish; the event
+      // still advanced the poll cursor, so record the miss for diagnosis
+      // rather than guessing a sender.
+      if (participants.length === 0) {
+        logger.debug(
+          {
+            src: "plugin:x",
+            accountId: this.client.accountId,
+            conversationId,
+            eventType: event.event_type,
+            eventId: event.id,
+          },
+          "X DM roster event carried no participant_ids; no membership evidence published",
+        );
+        return;
+      }
+      const anchoredAt = event.created_at
+        ? Date.parse(event.created_at)
+        : undefined;
+      const worldId = createUniqueUuid(this.runtime, conversationId);
+      const roomId = createUniqueUuid(
+        this.runtime,
+        `x-dm:${this.client.accountId}:${conversationId}`,
+      );
+      const keyFor = (kind: "join" | "left" | "own-left", pid: string) =>
+        membershipObservationKey({
+          kind: kind === "own-left" ? "left" : kind,
+          conversationId,
+          participantId: pid,
+          eventId: event.id,
+        });
+      for (const participantId of participants) {
+        if (!isJoin && participantId === ownUserId) {
+          // The account itself was removed: revoke own membership (honesty —
+          // own active evidence was published, so its removal is published
+          // too) AND degrade the whole scope so authorization fails closed
+          // and backlogged redeliveries cannot resurrect an unobservable
+          // conversation.
+          const { principalId: ownPrincipal } = await xMembershipPrincipal(
+            this.runtime,
+            this.client.accountId,
+            ownUserId,
+          );
+          await this.membership.publishLeave({
+            scope,
+            principalId: ownPrincipal,
+            worldId,
+            roomId,
+            reason: "left",
+            idempotencyKey: keyFor("own-left", ownUserId),
+            eventAnchoredAt: anchoredAt,
+          });
+          await this.membership.degradeScope({
+            scope,
+            health: "unavailable",
+            reason: "own_account_removed_from_conversation",
+          });
+          continue;
+        }
+        const { principalId } = await xMembershipPrincipal(
+          this.runtime,
+          this.client.accountId,
+          participantId,
+        );
+        const key = keyFor(isJoin ? "join" : "left", participantId);
+        if (isJoin) {
+          await this.publishOwnMembership(conversationId, ownUserId);
+          await this.membership.publishJoin({
+            scope,
+            principalId,
+            worldId,
+            roomId,
+            roles: ["participant"],
+            // sender_id on a ParticipantsJoin is the INVITER (X data
+            // dictionary), not the joiner — context only, never proof.
+            permissionSnapshot: {
+              observed: true,
+              invitedBy: event.sender_id ?? null,
+            },
+            idempotencyKey: key,
+            eventAnchoredAt: anchoredAt,
+          });
+        } else {
+          await this.membership.publishLeave({
+            scope,
+            principalId,
+            worldId,
+            roomId,
+            reason: "left",
+            idempotencyKey: key,
+            eventAnchoredAt: anchoredAt,
+          });
+        }
+      }
+    } catch (error) {
+      // error-policy:J4 Membership evidence is a degrade-only side surface of
+      // the poll path; failures are logged, never propagated into the loop.
+      logger.debug(
+        {
+          src: "plugin:x",
+          accountId: this.client.accountId,
+          eventId: event.id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "X DM membership evidence publish failed",
+      );
+    }
+  }
+
+  /**
+   * Prove the account's own participation in a conversation once per process.
+   * The account's ability to read the conversation's DM events is itself the
+   * observation; a ParticipantsJoin carrying the account proves it too, but
+   * 1:1 conversations have no join events, so the first observed event
+   * publishes own membership directly.
+   */
+  private async publishOwnMembership(
+    conversationId: string,
+    ownUserId: string,
+  ): Promise<void> {
+    if (this.ownMembershipPublished.has(conversationId)) return;
+    try {
+      const scope = await this.membership.scopeForConversation({
+        conversationId,
+        accountKey: this.client.accountId,
+        ownUserId,
+      });
+      if (!scope) return;
+      const { principalId } = await xMembershipPrincipal(
+        this.runtime,
+        this.client.accountId,
+        ownUserId,
+      );
+      const worldId = createUniqueUuid(this.runtime, conversationId);
+      const roomId = createUniqueUuid(
+        this.runtime,
+        `x-dm:${this.client.accountId}:${conversationId}`,
+      );
+      await this.membership.publishJoin({
+        scope,
+        principalId,
+        worldId,
+        roomId,
+        roles: ["participant", "self"],
+        permissionSnapshot: { observed: true, self: true },
+        idempotencyKey: membershipObservationKey({
+          kind: "own",
+          conversationId,
+          participantId: ownUserId,
+        }),
+      });
+      this.ownMembershipPublished.add(conversationId);
+    } catch (error) {
+      // error-policy:J4 degrade-only side surface; never break the poll path.
+      logger.debug(
+        {
+          src: "plugin:x",
+          accountId: this.client.accountId,
+          conversationId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "X DM own-membership publish failed",
+      );
+    }
+  }
+
+  /**
+   * Renew the sender's membership evidence after a policy-accepted inbound
+   * message: the sender's presence in the conversation is itself the
+   * observation (#24372). Event-anchored on the DM event id so cursor
+   * redelivery after a crash journals as an idempotent replay.
+   */
+  private async renewSenderMembership(
+    event: DirectMessageEvent & { id: string; sender_id: string },
+    conversationId: string,
+    ownUserId: string,
+    username: string | undefined,
+  ): Promise<void> {
+    try {
+      const scope = await this.membership.scopeForConversation({
+        conversationId,
+        accountKey: this.client.accountId,
+        ownUserId,
+      });
+      if (!scope) return;
+      const { principalId } = await xMembershipPrincipal(
+        this.runtime,
+        this.client.accountId,
+        event.sender_id,
+      );
+      const worldId = createUniqueUuid(this.runtime, conversationId);
+      const roomId = createUniqueUuid(
+        this.runtime,
+        `x-dm:${this.client.accountId}:${conversationId}`,
+      );
+      await this.publishOwnMembership(conversationId, ownUserId);
+      await this.membership.renewSender({
+        scope,
+        principalId,
+        worldId,
+        roomId,
+        roles: ["participant"],
+        permissionSnapshot: { observed: true, username: username ?? null },
+        idempotencyKey: membershipObservationKey({
+          kind: "renew",
+          conversationId,
+          participantId: event.sender_id,
+          eventId: event.id,
+        }),
+        eventAnchoredAt: event.created_at
+          ? Date.parse(event.created_at)
+          : undefined,
+      });
+    } catch (error) {
+      // error-policy:J4 degrade-only side surface; never break the reply path.
+      logger.debug(
+        {
+          src: "plugin:x",
+          accountId: this.client.accountId,
+          conversationId,
+          senderId: event.sender_id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "X DM sender membership renewal failed",
+      );
+    }
+  }
+
   private sessionRotationError(phase: string): ElizaError {
     return new ElizaError(`X credentials rotated ${phase}`, {
       code: "X_AUTH_SESSION_ROTATED",
@@ -690,4 +990,28 @@ function isExplicitTwitterRejection(error: unknown): boolean {
     status >= 400 &&
     status < 500
   );
+}
+
+/**
+ * Deterministic idempotency key for one DM membership observation (#24372).
+ * Event-anchored keys (join/leave/renew carry the DM event id) make cursor
+ * redelivery after a crash journal as an idempotent replay; the "own" key is
+ * process-stable so the once-per-conversation own-membership publish is also
+ * replay-safe across restarts.
+ */
+function membershipObservationKey(options: {
+  kind: "join" | "left" | "renew" | "own";
+  conversationId: string;
+  participantId: string;
+  eventId?: string;
+}): string {
+  const parts = [
+    "x",
+    options.kind,
+    options.conversationId,
+    options.participantId,
+  ];
+  if (options.eventId) parts.push(options.eventId);
+  const key = parts.join(":");
+  return key.length > 1_000 ? key.slice(0, 1_000) : key;
 }
