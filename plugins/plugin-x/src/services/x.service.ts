@@ -45,7 +45,7 @@ import { TwitterInteractionClient } from "../interactions";
 import { TwitterPostClient } from "../post";
 import { TwitterTimelineClient } from "../timeline";
 import type { ITwitterClient, TwitterClientState } from "../types";
-import { splitTweetContent } from "../utils";
+import { splitTweetContent, splitXDirectMessageContent } from "../utils";
 import { normalizeXReceiptId } from "../utils/provider-receipt";
 import { getSetting } from "../utils/settings";
 import { getEpochMs } from "../utils/time";
@@ -752,7 +752,12 @@ export class XService extends Service {
   async sendDirectMessageForAccount(
     accountId: string,
     params: { participantId: string; text: string },
-  ): Promise<{ ok: true; status: number; messageId: string | null }> {
+  ): Promise<{
+    ok: true;
+    status: number;
+    messageId: string | null;
+    messageIds: string[];
+  }> {
     const text = params.text;
     if (!text.trim()) {
       throw new Error("X DM connector requires non-empty text content.");
@@ -774,6 +779,7 @@ export class XService extends Service {
       ok: true,
       status: 201,
       messageId: sent.messageId,
+      messageIds: sent.messageIds,
     };
   }
 
@@ -1302,12 +1308,17 @@ export class XService extends Service {
     session: AuthenticatedTwitterSession,
     recipient: string,
     text: string,
-  ): Promise<{ messageId: string | null }> {
-    this.assertDmSessionCurrent(base, session);
-    const result = await session.client.v2.sendDmToParticipant(recipient, {
-      text,
-    });
-    return { messageId: normalizeXReceiptId(result.dm_event_id) ?? null };
+  ): Promise<{ messageId: string | null; messageIds: string[] }> {
+    const messageIds: string[] = [];
+    for (const chunk of splitXDirectMessageContent(text)) {
+      this.assertDmSessionCurrent(base, session);
+      const result = await session.client.v2.sendDmToParticipant(recipient, {
+        text: chunk,
+      });
+      const messageId = normalizeXReceiptId(result.dm_event_id);
+      if (messageId) messageIds.push(messageId);
+    }
+    return { messageId: messageIds[0] ?? null, messageIds };
   }
 
   private async withDmSession<T>(

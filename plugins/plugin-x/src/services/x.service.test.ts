@@ -367,10 +367,15 @@ describe("XService trusted account routing", () => {
     );
   });
 
-  it("ignores spoofed content account metadata in the unscoped send handler", async () => {
+  it("ignores spoofed account metadata and delivers a complete oversized DM", async () => {
     const runtime = runtimeWithSettings({});
     const service = new XService(runtime);
-    const sendDmToParticipant = vi.fn(async () => ({ dm_event_id: "dm-1" }));
+    let nextDmId = 1;
+    const sendDmToParticipant = vi.fn(
+      async (_recipient: string, _payload: { text: string }) => ({
+        dm_event_id: `dm-${nextDmId++}`,
+      }),
+    );
     const session = dmSession("current-user", { sendDmToParticipant });
     const withAuthenticatedSession = vi.fn(
       async <T>(
@@ -394,20 +399,25 @@ describe("XService trusted account routing", () => {
       )
       .mockResolvedValue({ client: base });
 
+    const completeText = `${"a".repeat(10_000)}🙂`;
     await service.handleSendMessage(
       runtime,
       { source: "x", entityId: "123456" } as TargetInfo,
       {
-        text: "hello",
+        text: completeText,
         metadata: { accountId: "secondary" },
       } as Content,
     );
 
     expect(getClient).toHaveBeenCalledWith("default");
     expect(withAuthenticatedSession).toHaveBeenCalledOnce();
-    expect(sendDmToParticipant).toHaveBeenCalledWith("123456", {
-      text: "hello",
-    });
+    const sentChunks = sendDmToParticipant.mock.calls.map(
+      ([, payload]) => payload.text,
+    );
+    expect(sentChunks.map((chunk) => Array.from(chunk).length)).toEqual([
+      10_000, 1,
+    ]);
+    expect(sentChunks.join("")).toBe(completeText);
   });
 
   it("ignores spoofed content account metadata in the post handler", async () => {

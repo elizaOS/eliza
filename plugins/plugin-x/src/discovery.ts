@@ -17,11 +17,11 @@ import {
 import type { ClientBase, TwitterAccountSession } from "./base";
 import type { Client, Tweet } from "./client/index";
 import { SearchMode } from "./client/index";
-import { TWEET_MAX_LENGTH } from "./constants";
 import { getRandomInterval } from "./environment";
-import { countTwitterWeightedLength } from "./tweet-length";
 import type { TwitterClientState } from "./types";
+import { sendTextAsTweetThread } from "./utils";
 import { createMemorySafe, ensureTwitterContext } from "./utils/memory";
+import { extractXWriteReceiptId } from "./utils/provider-receipt";
 import { getSetting } from "./utils/settings";
 
 interface DiscoveryConfig {
@@ -79,23 +79,26 @@ function extractDraftText(result: string | GenerateTextResult): string {
 }
 
 function validateCompleteDraft(result: string | GenerateTextResult): string {
-  const text = extractDraftText(result).trim();
-  if (text.length === 0) {
+  const text = extractDraftText(result);
+  if (text.trim().length === 0) {
     throw new ElizaError("X draft generation returned no complete text", {
       code: "X_DISCOVERY_DRAFT_EMPTY",
     });
   }
-  const weightedLength = countTwitterWeightedLength(text);
-  if (weightedLength > TWEET_MAX_LENGTH) {
-    throw new ElizaError(
-      `Generated X draft exceeds ${TWEET_MAX_LENGTH} weighted characters; received ${weightedLength}`,
-      {
-        code: "X_DISCOVERY_DRAFT_LENGTH_EXCEEDED",
-        context: { weightedLength, maxWeightedLength: TWEET_MAX_LENGTH },
-      },
-    );
-  }
   return text;
+}
+
+async function requireDiscoveryWriteReceipt(result: unknown): Promise<{
+  id: string;
+}> {
+  const id = await extractXWriteReceiptId(result);
+  if (!id) {
+    throw new ElizaError("X returned no usable discovery post receipt", {
+      code: "X_POST_RECEIPT_INDETERMINATE",
+      context: { providerAccepted: true, retrySafe: false },
+    });
+  }
+  return { id };
 }
 
 interface ScoredTweet {
@@ -934,9 +937,15 @@ export class TwitterDiscoveryClient {
               );
             } else {
               this.assertCurrentSession(session);
-              await this.twitterClient.sendTweet(
+              await sendTextAsTweetThread(
                 replyText,
-                scoredTweet.tweet.id,
+                async (chunk, previousTweetId) =>
+                  requireDiscoveryWriteReceipt(
+                    await this.twitterClient.sendTweet(
+                      chunk,
+                      previousTweetId ?? scoredTweet.tweet.id,
+                    ),
+                  ),
               );
               logger.info(`Replied to tweet: ${scoredTweet.tweet.id}`);
             }
@@ -951,9 +960,20 @@ export class TwitterDiscoveryClient {
               );
             } else {
               this.assertCurrentSession(session);
-              await this.twitterClient.sendQuoteTweet(
+              await sendTextAsTweetThread(
                 quoteText,
-                scoredTweet.tweet.id,
+                async (chunk, previousTweetId, index) =>
+                  requireDiscoveryWriteReceipt(
+                    index === 0
+                      ? await this.twitterClient.sendQuoteTweet(
+                          chunk,
+                          scoredTweet.tweet.id,
+                        )
+                      : await this.twitterClient.sendTweet(
+                          chunk,
+                          previousTweetId,
+                        ),
+                  ),
               );
               logger.info(`Quoted tweet: ${scoredTweet.tweet.id}`);
             }
