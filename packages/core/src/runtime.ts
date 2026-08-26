@@ -4899,6 +4899,7 @@ export class AgentRuntime implements IAgentRuntime {
 	/** Ensures a world exists while preserving persisted metadata and revision. */
 	async ensureWorldExists({ id, name, messageServerId, metadata }: World) {
 		let world: World | null = null;
+		let completed = false;
 		for (let attempt = 0; attempt < 3; attempt += 1) {
 			world = (await this.adapter.getWorldsByIds([id]))[0] ?? null;
 			const mergedMetadata = world
@@ -4914,6 +4915,7 @@ export class AgentRuntime implements IAgentRuntime {
 				world.name === (name ?? world.name) &&
 				world.messageServerId === (messageServerId ?? world.messageServerId)
 			) {
+				completed = true;
 				break;
 			}
 			try {
@@ -4927,18 +4929,28 @@ export class AgentRuntime implements IAgentRuntime {
 						metadata: mergedMetadata as World["metadata"],
 					},
 				]);
+				completed = true;
 				break;
 			} catch (error) {
 				if (
 					!(error instanceof ElizaError) ||
-					error.code !== "WORLD_METADATA_STALE_WRITE" ||
-					attempt === 2
+					!(
+						["WORLD_METADATA_STALE_WRITE", "WORLD_ALREADY_EXISTS"] as const
+					).includes(
+						error.code as "WORLD_METADATA_STALE_WRITE" | "WORLD_ALREADY_EXISTS",
+					)
 				) {
 					throw error;
 				}
-				// error-policy:J2 — retry against a fresh snapshot after a
-				// concurrent legacy writer advances the metadata revision.
+				// error-policy:J2 — retry against a fresh snapshot after a concurrent
+				// creator wins the unique insert or a legacy writer advances revision.
 			}
+		}
+		if (!completed) {
+			throw new ElizaError("World ensure retries were exhausted", {
+				code: "WORLD_ENSURE_CONFLICT_EXHAUSTED",
+				context: { worldId: id, attempts: 3 },
+			});
 		}
 
 		this.logger.debug(

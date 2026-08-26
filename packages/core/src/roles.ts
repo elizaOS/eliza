@@ -1452,6 +1452,8 @@ export async function setEntityRoleCas(
 		authorize?: (
 			fresh: Awaited<ReturnType<typeof resolveWorldForMessage>>,
 		) => boolean | Promise<boolean>;
+		/** Additional authority metadata committed in the same audited CAS. */
+		mutateMetadata?: (replacement: RolesWorldMetadata) => void;
 	} = {},
 ): Promise<EntityRoleCasResult> {
 	const source = options.source ?? "manual";
@@ -1511,6 +1513,7 @@ export async function setEntityRoleCas(
 		);
 		const replacement: RolesWorldMetadata = structuredClone(expectedSnapshot);
 		recordRoleGrant(replacement, targetEntityId, newRole, source);
+		options.mutateMetadata?.(replacement);
 
 		const result = await runtime.adapter.compareAndSwapWorldMetadata({
 			worldId: world.id,

@@ -2,7 +2,8 @@
  * Exercises the #23100 world-metadata compare-and-swap against real SQL
  * storage (PGlite, or Postgres when POSTGRES_URL is set): snapshot match and
  * mismatch, jsonb value equality with key order differences, audit-row
- * atomicity (the log row rides the CAS transaction), and world-not-found.
+ * atomicity, authority-ledger retention after actor/room deletion, and
+ * world-not-found.
  * Real adapter, real migration system, no mocked storage.
  */
 import {
@@ -12,8 +13,10 @@ import {
   WORLD_METADATA_REVISION_KEY,
   type World,
 } from "@elizaos/core";
+import { eq } from "drizzle-orm";
 import { v4 } from "uuid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { worldRoleAuditTable } from "../../schema/worldRoleAudit";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
 const WORLD_ID = v4() as UUID;
@@ -224,5 +227,35 @@ describe("compareAndSwapWorldMetadata (real SQL parity)", () => {
       replacementMetadata: {} as never,
     });
     expect(result).toEqual({ status: "not_found" });
+  });
+
+  it("retains the authority ledger after its operational actor and room are deleted", async () => {
+    const db = adapter.getDatabase();
+    const before = await db
+      .select()
+      .from(worldRoleAuditTable)
+      .where(eq(worldRoleAuditTable.worldId, WORLD_ID));
+    expect(before).toHaveLength(1);
+
+    await adapter.deleteRooms([ROOM_ID]);
+    await adapter.deleteEntities([ACTOR_ID, TARGET_ID]);
+
+    const retained = await db
+      .select()
+      .from(worldRoleAuditTable)
+      .where(eq(worldRoleAuditTable.worldId, WORLD_ID));
+    expect(retained).toHaveLength(1);
+    expect(retained[0]).toMatchObject({
+      actorEntityId: ACTOR_ID,
+      targetEntityId: TARGET_ID,
+      roomId: ROOM_ID,
+      previousRole: "USER",
+      newRole: "ADMIN",
+      grantSource: "manual",
+    });
+
+    // The general diagnostic log is lifecycle-bound by design; the authority
+    // ledger above is the retained record and must remain independently true.
+    expect(await adapter.getLogs({ type: ROLE_WRITE_AUDIT_LOG_TYPE })).toHaveLength(0);
   });
 });

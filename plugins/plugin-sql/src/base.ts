@@ -102,6 +102,7 @@ import {
   worldMetadataValueEquals,
 } from "@elizaos/core";
 import { sanitizeJsonObject } from "./sanitize-json";
+import { worldRoleAuditTable } from "./schema/worldRoleAudit";
 import {
   readTaskDueAt,
   serializeTaskDueAt,
@@ -5162,7 +5163,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       );
       const newWorldId = normalizedWorld.id as UUID;
 
-      await this.db.insert(worldTable).values(normalizedWorld);
+      try {
+        await this.db.insert(worldTable).values(normalizedWorld);
+      } catch (error) {
+        if (isDuplicateKeyError(error)) {
+          throw new ElizaError("World already exists", {
+            code: "WORLD_ALREADY_EXISTS",
+            cause: error,
+            context: { worldId: newWorldId, agentId: this.agentId },
+          });
+        }
+        throw error;
+      }
       return newWorldId;
     });
   }
@@ -5270,6 +5282,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
       if (params.audit) {
         const audit = params.audit;
+        await tx.insert(worldRoleAuditTable).values({
+          agentId: this.agentId,
+          worldId: params.worldId,
+          actorEntityId: audit.actorEntityId,
+          targetEntityId: audit.targetEntityId,
+          roomId: audit.roomId,
+          previousRole: audit.previousRole,
+          newRole: audit.newRole,
+          grantSource: audit.source,
+        });
         const sanitizedBody = sanitizeJsonObject({
           source: "role-write-cas",
           metadata: {
