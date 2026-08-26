@@ -302,9 +302,9 @@
       },
       "TWITTER_MAX_TWEET_LENGTH": {
         "type": "number",
-        "description": "Maximum tweet length (supports long-form tweets up to 4000 characters).",
+        "description": "Legacy compatibility setting; complete text is delivered as an ordered thread of provider-sized posts.",
         "required": false,
-        "default": 4000,
+        "default": 280,
         "sensitive": false
       },
       "TWITTER_MAX_INTERACTIONS_PER_RUN": {
