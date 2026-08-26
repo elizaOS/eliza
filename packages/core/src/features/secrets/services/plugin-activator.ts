@@ -85,6 +85,10 @@ export class PluginActivatorService extends Service {
 	private pluginSecretMapping: Map<string, Set<string>> = new Map();
 	private pollingInterval: ReturnType<typeof setInterval> | null = null;
 	private activePoll: Promise<void> | null = null;
+	// Set before stop() awaits its drains. Work suspended when shutdown began
+	// resumes with its pending entry still identity-equal, so the identity
+	// guards alone cannot tell "still wanted" from "stopped while I slept".
+	private stopping = false;
 	private activationPromises: Map<string, Promise<boolean>> = new Map();
 	private unsubscribeSecretChanges: (() => void) | null = null;
 
@@ -134,6 +138,7 @@ export class PluginActivatorService extends Service {
 	 */
 	private async initialize(): Promise<void> {
 		logger.info("[PluginActivator] Initializing");
+		this.stopping = false;
 
 		// Try to get secrets service synchronously first
 		this.secretsService =
@@ -224,6 +229,9 @@ export class PluginActivatorService extends Service {
 	 * Stop the service
 	 */
 	async stop(): Promise<void> {
+		// First statement: invalidate suspended work before the awaits below give
+		// it a chance to resume and re-enter activation.
+		this.stopping = true;
 		logger.info("[PluginActivator] Stopping");
 
 		if (this.pollingInterval) {
@@ -264,6 +272,13 @@ export class PluginActivatorService extends Service {
 	): Promise<boolean> {
 		const pluginId = plugin.name;
 
+		if (this.stopping) {
+			logger.debug(
+				`[PluginActivator] Refusing registration of ${pluginId} after stop`,
+			);
+			return false;
+		}
+
 		if (this.activatedPlugins.has(pluginId)) {
 			logger.debug(`[PluginActivator] Plugin ${pluginId} already activated`);
 			return true;
@@ -294,6 +309,16 @@ export class PluginActivatorService extends Service {
 
 		// Check current secret status
 		const status = await this.checkPluginRequirements(plugin);
+
+		// This await can span stop(). Undo the registeredPlugins entry written
+		// above so an aborted registration cannot repopulate cleared state.
+		if (this.stopping) {
+			this.registeredPlugins.delete(pluginId);
+			logger.debug(
+				`[PluginActivator] Abandoning registration of ${pluginId}; stop was requested`,
+			);
+			return false;
+		}
 
 		if (status.ready) {
 			// All secrets available, activate now
@@ -370,11 +395,20 @@ export class PluginActivatorService extends Service {
 	): Promise<boolean> {
 		const existingActivation = this.activationPromises.get(pluginId);
 		if (existingActivation) {
+			// An attempt already in flight is joined and drained even during
+			// stop(); only brand-new attempts are refused below.
 			return existingActivation;
 		}
 
 		if (this.activatedPlugins.has(pluginId)) {
 			return Promise.resolve(true);
+		}
+
+		if (this.stopping) {
+			logger.debug(
+				`[PluginActivator] Refusing new activation of ${pluginId} after stop`,
+			);
+			return Promise.resolve(false);
 		}
 
 		// Defer the callback until after the promise is registered so concurrent
@@ -559,7 +593,7 @@ export class PluginActivatorService extends Service {
 
 				// Check if all required secrets are now available
 				const missing = await this.getMissingSecrets(pending.requiredSecrets);
-				if (this.pendingPlugins.get(pluginId) !== pending) {
+				if (this.stopping || this.pendingPlugins.get(pluginId) !== pending) {
 					continue;
 				}
 				if (missing.length === 0) {
@@ -752,7 +786,7 @@ export class PluginActivatorService extends Service {
 
 			// Check if secrets are now available
 			const missing = await this.getMissingSecrets(pending.requiredSecrets);
-			if (this.pendingPlugins.get(pluginId) !== pending) {
+			if (this.stopping || this.pendingPlugins.get(pluginId) !== pending) {
 				continue;
 			}
 			if (missing.length === 0) {
