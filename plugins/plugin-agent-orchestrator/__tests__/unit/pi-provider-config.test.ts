@@ -56,7 +56,14 @@ describe("Pi provider routes", () => {
       const home = result.env.PI_CODING_AGENT_DIR;
       const models = await readFile(path.join(home, "models.json"), "utf8");
       const settings = await readFile(path.join(home, "settings.json"), "utf8");
-      expect(models).toContain("ELIZA_PI_ROUTE_API_KEY");
+      const parsedModels = JSON.parse(models) as {
+        providers: Record<
+          string,
+          { apiKey: string; models?: Array<{ id: string }> }
+        >;
+      };
+      const provider = parsedModels.providers[result.summary.piProviderId];
+      expect(provider?.apiKey).toBe("$ELIZA_PI_ROUTE_API_KEY");
       expect(models).not.toContain(`secret-${providerId}`);
       expect(settings).not.toContain(`secret-${providerId}`);
       expect((await stat(home)).mode & 0o777).toBe(0o700);
@@ -64,8 +71,42 @@ describe("Pi provider routes", () => {
         0o600,
       );
       expect(result.summary.accountProviderId).toBe(providerId);
+      if (typed === "openrouter-api") {
+        expect(provider?.models).toEqual([
+          {
+            id: "anthropic/claude-sonnet-4.5",
+            name: "anthropic/claude-sonnet-4.5",
+          },
+        ]);
+      } else {
+        expect(provider).not.toHaveProperty("models");
+      }
     },
   );
+
+  it("uses Pi built-ins without replacing their model capability metadata", async () => {
+    for (const providerId of [
+      "zai-coding",
+      "kimi-coding",
+      "deepseek-api",
+      "zai-api",
+      "moonshot-api",
+      "xai-api",
+    ] as const) {
+      const result = await prepare(providerId);
+      const raw = await readFile(
+        path.join(result.env.PI_CODING_AGENT_DIR, "models.json"),
+        "utf8",
+      );
+      const config = JSON.parse(raw) as {
+        providers: Record<string, { models?: unknown }>;
+      };
+      expect(result.summary.builtIn).toBe(true);
+      expect(config.providers[result.summary.piProviderId]).not.toHaveProperty(
+        "models",
+      );
+    }
+  });
 
   it("supports an arbitrary OpenRouter model with truthful billing", async () => {
     const result = await prepare("openrouter-api", "moonshotai/kimi-k2.5");

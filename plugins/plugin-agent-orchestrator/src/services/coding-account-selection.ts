@@ -16,6 +16,7 @@ import {
   type CodingAgentSelection,
   type CodingAgentSelectorBridge,
   type CodingProviderAvailability,
+  ElizaError,
   getCodingAgentSelectorBridge,
   logger,
 } from "@elizaos/core";
@@ -95,7 +96,8 @@ function toMeta(selection: CodingAccountSelection): CodingAccountMeta {
 /**
  * Pick an account for a coding sub-agent. Returns null (single-account
  * fallback) when the bridge is absent, the agent type is not multi-account, or
- * no eligible account exists. Never throws.
+ * no eligible account exists. By default bridge errors degrade to null; routed
+ * callers can request a typed failure instead of an ambient-auth fallback.
  */
 export async function selectCodingAccount(
   agentType: string,
@@ -107,15 +109,28 @@ export async function selectCodingAccount(
     accountIds?: string[];
     /** Requested model/display name for model-scoped weekly buckets. */
     model?: string;
+    /** Refuse an ambient-credential fallback when the bridge itself faults. */
+    failClosedOnError?: boolean;
   } = {},
 ): Promise<ResolvedCodingAccount | null> {
   if (!isMultiAccountAgentType(agentType)) return null;
   const bridge = getCodingAccountBridge();
   if (!bridge) return null;
+  const { failClosedOnError, ...selectionOptions } = opts;
   let selection: CodingAccountSelection | null = null;
   try {
-    selection = await bridge.select(agentType, opts);
-  } catch {
+    selection = await bridge.select(agentType, selectionOptions);
+  } catch (cause) {
+    // error-policy:J2 routed children require a typed selection failure;
+    // legacy callers retain the documented J4 single-account degradation.
+    if (failClosedOnError) {
+      throw new ElizaError("Coding account selection failed", {
+        code: "CODING_ACCOUNT_SELECTION_FAILED",
+        cause,
+        context: { agentType },
+        severity: "ephemeral",
+      });
+    }
     // error-policy:J4 designed degrade — a select fault degrades to
     // single-account (null); the degraded-vs-benign distinction is surfaced to
     // operators by diagnoseCodingAccountFallback (#9960), not swallowed here.
@@ -123,6 +138,27 @@ export async function selectCodingAccount(
   }
   if (!selection) return null;
   return { selection, meta: toMeta(selection) };
+}
+
+/** Count connected pooled accounts without exposing their credentials. */
+export function connectedCodingAccountCount(agentType: string): number {
+  if (!isMultiAccountAgentType(agentType)) return 0;
+  const bridge = getCodingAccountBridge();
+  if (!bridge) return 0;
+  let rows: CodingProviderAvailability[];
+  try {
+    rows = bridge.describe()[agentType.toLowerCase()] ?? [];
+  } catch (cause) {
+    // error-policy:J2 availability is an authority check for routed children;
+    // preserve the bridge failure instead of treating it as zero accounts.
+    throw new ElizaError("Coding account availability check failed", {
+      code: "CODING_ACCOUNT_AVAILABILITY_FAILED",
+      cause,
+      context: { agentType },
+      severity: "ephemeral",
+    });
+  }
+  return rows.reduce((sum, row) => sum + row.total, 0);
 }
 
 /**

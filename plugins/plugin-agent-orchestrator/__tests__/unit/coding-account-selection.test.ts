@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   accountMetaFromSessionMetadata,
   classifyAccountFailure,
+  connectedCodingAccountCount,
   diagnoseCodingAccountFallback,
   getCodingAccountBridge,
   isMultiAccountAgentType,
@@ -143,6 +144,23 @@ describe("selectCodingAccount", () => {
       }),
     };
     expect(await selectCodingAccount("codex", {})).toBeNull();
+  });
+
+  it("fails closed on a bridge fault when a routed child requires it", async () => {
+    (globalThis as Record<symbol, unknown>)[BRIDGE_SYMBOL] = {
+      describe: () => ({
+        "pi-agent": [
+          { providerId: "deepseek-api", total: 1, enabled: 1, healthy: 1 },
+        ],
+      }),
+      select: vi.fn(async () => {
+        throw new Error("pool exploded");
+      }),
+    };
+    await expect(
+      selectCodingAccount("pi-agent", { failClosedOnError: true }),
+    ).rejects.toMatchObject({ code: "CODING_ACCOUNT_SELECTION_FAILED" });
+    expect(connectedCodingAccountCount("pi-agent")).toBe(1);
   });
 });
 
