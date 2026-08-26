@@ -37,6 +37,21 @@ function Resolve-ShortcutTarget([string]$ShortcutPath) {
   }
 }
 
+function Get-CurrentUserDefaultRegistryValue([string]$RegistryKey) {
+  $subKey = $RegistryKey -replace '^HKCU\\', ''
+  $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($subKey, $false)
+  if ($null -eq $key) { return $null }
+  try {
+    return $key.GetValue(
+      $null,
+      $null,
+      [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames
+    )
+  } finally {
+    $key.Dispose()
+  }
+}
+
 $resolvedArtifactsDir = (Resolve-Path $ArtifactsDir).Path
 $resolvedBuildDir = $null
 try {
@@ -57,6 +72,8 @@ $summary = [ordered]@{
   installer = $null
   installerSizeBytes = 0
   launcherPath = $null
+  browserNativeHostPath = $null
+  browserRegistrationManifests = @()
   startMenuShortcut = $null
   shortcutTarget = $null
   uninstallerPath = $null
@@ -64,10 +81,13 @@ $summary = [ordered]@{
     installerExecuted = $false
     installRootExists = $false
     launcherExists = $false
+    browserHelpersExist = $false
+    browserRegistrationsInstalled = $false
     shortcutExists = $false
     backendReachable = $false
     uninstallExecuted = $false
     uninstallCleanup = $false
+    browserRegistrationsRemoved = $false
   }
   notes = @()
 }
@@ -122,6 +142,56 @@ try {
   }
   $summary.launcherPath = $launcher.FullName
   $summary.checks.launcherExists = $true
+
+  $nativeHost = Get-ChildItem -Path $ProofInstallDir -Recurse -File -Filter "browser-bridge-native-host.exe" -ErrorAction SilentlyContinue |
+    Sort-Object FullName |
+    Select-Object -First 1
+  $secretHelper = Get-ChildItem -Path $ProofInstallDir -Recurse -File -Filter "browser-bridge-secret.ps1" -ErrorAction SilentlyContinue |
+    Sort-Object FullName |
+    Select-Object -First 1
+  $unregisterHelper = Get-ChildItem -Path $ProofInstallDir -Recurse -File -Filter "browser-bridge-unregister.ps1" -ErrorAction SilentlyContinue |
+    Sort-Object FullName |
+    Select-Object -First 1
+  if (-not $nativeHost -or -not $secretHelper -or -not $unregisterHelper) {
+    throw "Installed browser bridge host or Windows lifecycle helper is missing"
+  }
+  $summary.browserNativeHostPath = $nativeHost.FullName
+  $summary.checks.browserHelpersExist = $true
+
+  $browserRegistrations = @(
+    @{
+      RegistryKey = "HKCU\Software\Google\Chrome\NativeMessagingHosts\ai.elizaos.browserbridge"
+      ManifestPath = Join-Path $env:LOCALAPPDATA "elizaOS\BrowserBridge\chrome\ai.elizaos.browserbridge.json"
+    },
+    @{
+      RegistryKey = "HKCU\Software\Mozilla\NativeMessagingHosts\ai.elizaos.browserbridge"
+      ManifestPath = Join-Path $env:LOCALAPPDATA "elizaOS\BrowserBridge\firefox\ai.elizaos.browserbridge.json"
+    }
+  )
+  foreach ($registration in $browserRegistrations) {
+    $registeredManifestPath = Get-CurrentUserDefaultRegistryValue $registration.RegistryKey
+    if (
+      $null -eq $registeredManifestPath -or
+      -not [System.String]::Equals(
+        [System.IO.Path]::GetFullPath([string]$registeredManifestPath),
+        [System.IO.Path]::GetFullPath($registration.ManifestPath),
+        [System.StringComparison]::OrdinalIgnoreCase
+      ) -or
+      -not (Test-Path -LiteralPath $registration.ManifestPath)
+    ) {
+      throw "Browser native-host registration was not installed: $($registration.RegistryKey)"
+    }
+    $manifest = Get-Content -LiteralPath $registration.ManifestPath -Raw | ConvertFrom-Json
+    if (-not [System.String]::Equals(
+      [System.IO.Path]::GetFullPath([string]$manifest.path),
+      [System.IO.Path]::GetFullPath($nativeHost.FullName),
+      [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+      throw "Browser native-host manifest points at the wrong executable: $($registration.ManifestPath)"
+    }
+    $summary.browserRegistrationManifests += $registration.ManifestPath
+  }
+  $summary.checks.browserRegistrationsInstalled = $true
 
   $startMenuRoots = @(
     (Join-Path $env:APPDATA "Microsoft\\Windows\\Start Menu\\Programs"),
@@ -183,6 +253,14 @@ try {
   }
 
   $summary.checks.uninstallCleanup = $true
+
+  foreach ($registration in $browserRegistrations) {
+    & reg.exe query $registration.RegistryKey /ve 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0 -or (Test-Path -LiteralPath $registration.ManifestPath)) {
+      throw "Uninstall left a browser native-host registration behind: $($registration.RegistryKey)"
+    }
+  }
+  $summary.checks.browserRegistrationsRemoved = $true
   $summary.status = "passed"
   $summary.notes += "Windows clean installer proof completed successfully."
 } catch {

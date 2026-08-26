@@ -100,6 +100,27 @@ export default defineConfig({
         ),
       },
       {
+        find: "@elizaos/ui/native-select",
+        replacement: path.resolve(
+          __dirname,
+          "../ui/src/components/ui/native-select.tsx",
+        ),
+      },
+      {
+        find: "@elizaos/ui/native-dialog",
+        replacement: path.resolve(
+          __dirname,
+          "../ui/src/components/ui/native-dialog.tsx",
+        ),
+      },
+      {
+        find: "@elizaos/ui/textarea",
+        replacement: path.resolve(
+          __dirname,
+          "../ui/src/components/ui/textarea.tsx",
+        ),
+      },
+      {
         find: "@elizaos/ui/i18n/region",
         replacement: path.resolve(__dirname, "../ui/src/i18n/region.ts"),
       },

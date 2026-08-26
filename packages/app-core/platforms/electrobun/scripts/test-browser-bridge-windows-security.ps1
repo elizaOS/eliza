@@ -4,15 +4,26 @@ $secretHelper = Join-Path $PSScriptRoot "browser-bridge-secret.ps1"
 $pipeHelper = Join-Path $PSScriptRoot "browser-bridge-pipe-host.ps1"
 $tempRoot = Join-Path $env:TEMP ("eliza-browser-bridge-" + [Guid]::NewGuid().ToString("N"))
 $secretPath = Join-Path $tempRoot "state\browser-bridge\broker-secret"
-function Read-Exact([System.IO.Stream]$Stream, [int]$Count) {
+function Read-Exact(
+  [System.IO.Stream]$Stream,
+  [int]$Count,
+  [System.Diagnostics.Process]$ChildProcess = $null
+) {
   $buffer = [byte[]]::new($Count)
   $offset = 0
   while ($offset -lt $Count) {
     $read = $Stream.Read($buffer, $offset, $Count - $offset)
-    if ($read -eq 0) { throw "probe stream closed" }
+    if ($read -eq 0) {
+      if ($null -ne $ChildProcess) {
+        [void]$ChildProcess.WaitForExit(1000)
+        $childError = $ChildProcess.StandardError.ReadToEnd().Trim()
+        throw "probe stream closed (helper exit $($ChildProcess.ExitCode)): $childError"
+      }
+      throw "probe stream closed"
+    }
     $offset += $read
   }
-  return $buffer
+  return ,$buffer
 }
 function Invoke-SecurePipeRoundTrip {
   $pipeName = "eliza-probe-" + [Guid]::NewGuid().ToString("N")
@@ -27,7 +38,17 @@ function Invoke-SecurePipeRoundTrip {
   $start.RedirectStandardError = $true
   $process = New-Object System.Diagnostics.Process
   $process.StartInfo = $start
-  if (-not $process.Start()) { throw "secure pipe helper did not start" }
+  # Windows PowerShell 5.1 has no ProcessStartInfo.StandardInputEncoding.
+  # Process.StandardInput inherits Console.InputEncoding when it constructs its
+  # writer, so make that encoding BOM-free before accessing BaseStream.
+  $previousInputEncoding = [Console]::InputEncoding
+  [Console]::InputEncoding = New-Object System.Text.UTF8Encoding($false)
+  try {
+    if (-not $process.Start()) { throw "secure pipe helper did not start" }
+    $processInput = $process.StandardInput.BaseStream
+  } finally {
+    [Console]::InputEncoding = $previousInputEncoding
+  }
   $client = $null
   try {
     $readyLine = $process.StandardError.ReadLine()
@@ -46,23 +67,32 @@ function Invoke-SecurePipeRoundTrip {
     $client.Write($requestHeader, 0, 4)
     $client.Write($request, 0, $request.Length)
     $client.Flush()
-    $forwardedHeader = Read-Exact $process.StandardOutput.BaseStream 4
+    $forwardedHeader = Read-Exact $process.StandardOutput.BaseStream 4 $process
     $forwardedLength = [BitConverter]::ToUInt32($forwardedHeader, 0)
-    $forwarded = Read-Exact $process.StandardOutput.BaseStream $forwardedLength
+    $forwarded = Read-Exact $process.StandardOutput.BaseStream $forwardedLength $process
     if ([Text.Encoding]::UTF8.GetString($forwarded) -ne '{"probe":"request"}') {
       throw "secure pipe request forwarding mismatch"
     }
     $response = [Text.Encoding]::UTF8.GetBytes('{"probe":"response"}')
     $responseHeader = [BitConverter]::GetBytes([uint32]$response.Length)
-    $process.StandardInput.BaseStream.Write($responseHeader, 0, 4)
-    $process.StandardInput.BaseStream.Write($response, 0, $response.Length)
-    $process.StandardInput.BaseStream.Flush()
+    $processInput.Write($responseHeader, 0, 4)
+    $processInput.Write($response, 0, $response.Length)
+    $processInput.Flush()
     $receivedHeader = Read-Exact $client 4
     $receivedLength = [BitConverter]::ToUInt32($receivedHeader, 0)
     $received = Read-Exact $client $receivedLength
     if ([Text.Encoding]::UTF8.GetString($received) -ne '{"probe":"response"}') {
       throw "secure pipe response forwarding mismatch"
     }
+  } catch {
+    if (-not $process.HasExited) {
+      [void]$process.WaitForExit(2000)
+    }
+    if ($process.HasExited) {
+      $helperError = $process.StandardError.ReadToEnd()
+      throw "secure pipe helper exited with code $($process.ExitCode): $helperError $($_.Exception.Message)"
+    }
+    throw
   } finally {
     if ($null -ne $client) { $client.Dispose() }
     if (-not $process.HasExited) { $process.Kill() }

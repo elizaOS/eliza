@@ -36,10 +36,7 @@ export function CostInsightsCard({
       <div className="flex flex-col gap-2 p-6 pb-4">
         <div className="flex items-center gap-3">
           <h3 className="text-base font-semibold text-white">Cost outlook</h3>
-          <Badge
-            variant="outline"
-            className="border-border bg-bg-muted text-xs font-medium text-txt-strong"
-          >
+          <Badge variant="outline" tone="muted">
             {costTrending.burnChangePercent > 0 ? "+" : ""}
             {costTrending.burnChangePercent.toFixed(1)}%
           </Badge>

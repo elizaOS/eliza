@@ -1,6 +1,6 @@
 """Multi-turn project simulator for synth trajectory generation.
 
-Today's synth (`drive_eliza.py`, `together_synth.py`) is one-shot: each
+The basic `together_synth.py` path is one-shot: each
 scenario → one model call → one record. Real users drive *projects* —
 multi-step goals where each turn depends on the previous response. The
 fine-tuning corpus needs trajectories that look like that.
@@ -28,7 +28,7 @@ the same loop run against:
 
   - fixture models (for unit/e2e tests, no network),
   - Together / Anthropic / OpenAI-compatible HTTP endpoints,
-  - the eliza benchmark server (`drive_eliza.py` semantics).
+  - an operator-supplied Eliza agent transport.
 
 The agent transport is supplied by the caller — this file does not own
 HTTP code, on purpose.  Privacy filtering is NOT this module's concern
@@ -161,7 +161,7 @@ class TurnDecider(Protocol):
 
 
 def load_seed_records(seed_path: Path) -> list[dict[str, Any]]:
-    """Read a JSONL seed file (scenario shape; see drive_eliza.py)."""
+    """Read a JSONL seed file containing scenario-shaped objects."""
     out: list[dict[str, Any]] = []
     with seed_path.open() as f:
         for line in f:
@@ -551,8 +551,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--seed-file",
         type=Path,
         required=True,
-        help="JSONL of seed scenarios (one project per line; "
-        "see drive_eliza.py for the scenario shape).",
+        help="JSONL of seed scenarios (one project per line).",
     )
     ap.add_argument(
         "--turns",
@@ -590,9 +589,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def _default_agent_client() -> AgentClient:
     """The CLI default uses a fixture echo client. Production callers
-    construct their own AgentClient (HTTP / Together / Anthropic) and
-    drive ``ProjectSimulator`` directly — see ``together_synth.py`` for
-    the pattern. The CLI keeps no business logic."""
+    construct their own AgentClient (HTTP / Together / Anthropic) and drive
+    ``ProjectSimulator`` directly. The CLI keeps no business logic."""
     return EchoAgentClient()
 
 

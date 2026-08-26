@@ -85,6 +85,7 @@ export interface ChatToolCallEvent {
  * - `persistence_error` — save boundary failed; not a generic Retry affordance.
  * - `local_inference` — local model path issue; may recover after load/retry.
  * - `coding_mutation_unverified` — coding changes lack successful verification.
+ * - `coding_verification_failed` — coding verification still fails after repair.
  * - `coding_tool_failure` — a coding tool failed without narrower provenance.
  */
 export const CHAT_FAILURE_KINDS = [
@@ -99,6 +100,7 @@ export const CHAT_FAILURE_KINDS = [
   "persistence_error",
   "local_inference",
   "coding_mutation_unverified",
+  "coding_verification_failed",
   "coding_tool_failure",
 ] as const;
 

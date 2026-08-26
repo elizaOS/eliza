@@ -61,6 +61,7 @@ import { CodeBlock } from "../ui/code-block";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { Input } from "../ui/input";
 import { AccountConnectBlock } from "./AccountConnectBlock";
+import { CapabilityHandoffBlock } from "./CapabilityHandoffBlock";
 import {
   connectorWidgetModes,
   defaultConnectorWidgetModeId,
@@ -568,24 +569,22 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
           {modes.map((mode) => {
             const active = mode.id === selectedModeId;
             return (
-              <button
+              <Button
                 key={mode.id}
                 type="button"
                 aria-pressed={active}
                 title={mode.description}
                 data-testid={`inline-plugin-config-mode-${mode.id}`}
+                variant="selection"
+                size="tiny"
+                data-state={active ? "on" : "off"}
                 onClick={() => {
                   setModeChoice(mode.id);
                   setError(null);
                 }}
-                className={`px-3 py-1 h-7 text-2xs font-medium border transition-colors ${
-                  active
-                    ? "border-accent text-accent bg-accent/10"
-                    : "border-border text-muted hover:text-txt hover:border-txt/40"
-                }`}
               >
                 {mode.label}
-              </button>
+              </Button>
             );
           })}
         </div>
@@ -597,8 +596,7 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
         <div className="py-1.5" data-testid="inline-plugin-config-oauth">
           <Button
             variant="default"
-            size="sm"
-            className="px-4 py-1.5 h-8 text-xs bg-accent text-accent-fg hover:opacity-90 disabled:opacity-40"
+            size="denseWide"
             onClick={() => void handleOAuthSignIn()}
             disabled={signingIn}
             data-testid="inline-plugin-config-oauth-btn"
@@ -613,19 +611,21 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
                 })}
           </Button>
           {apiKeyModeId && (
-            <button
+            <Button
               type="button"
               onClick={() => {
                 setModeChoice(apiKeyModeId);
                 setError(null);
               }}
               data-testid="inline-plugin-config-use-apikey"
-              className="mt-2 block text-2xs text-muted underline hover:text-txt"
+              variant="mutedLink"
+              size="content"
+              className="mt-2 block"
             >
               {t("messagecontent.OAuthUseApiKey", {
                 defaultValue: "Use an API key / local setup instead",
               })}
-            </button>
+            </Button>
           )}
         </div>
       )}
@@ -641,8 +641,7 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
           )}
           <Button
             variant="default"
-            size="sm"
-            className="px-4 py-1.5 h-8 text-xs bg-accent text-accent-fg hover:opacity-90 disabled:opacity-40"
+            size="denseWide"
             onClick={() => void handleLocalSignIn()}
             disabled={signingIn}
             data-testid="inline-plugin-config-local-btn"
@@ -692,8 +691,7 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
         {showConfigForm && (
           <Button
             variant="default"
-            size="sm"
-            className="px-4 py-1.5 h-7 text-xs bg-accent text-accent-fg hover:opacity-90 disabled:opacity-40"
+            size="tinyWide"
             onClick={handleSave}
             disabled={saving || enabling || Object.keys(values).length === 0}
           >
@@ -707,9 +705,8 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
 
         {!isEnabled ? (
           <Button
-            variant="outline"
-            size="sm"
-            className="px-4 py-1.5 h-7 text-xs border-ok/50 text-ok bg-ok/5 hover:bg-ok/10 hover:text-ok disabled:opacity-40"
+            variant="outlineAccent"
+            size="tinyWide"
             onClick={() => void handleToggle(true)}
             disabled={enabling || saving}
           >
@@ -723,9 +720,8 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
           </Button>
         ) : (
           <Button
-            variant="outline"
-            size="sm"
-            className="px-4 py-1.5 h-7 text-xs text-muted hover:border-danger hover:text-danger disabled:opacity-40"
+            variant="dangerOutline"
+            size="tinyWide"
             onClick={() => void handleToggle(false)}
             disabled={enabling || saving}
           >
@@ -858,9 +854,8 @@ export function MessageUiSpecBlock({
           {t("messagecontent.InteractiveUI")}
         </span>
         <Button
-          variant="link"
-          size="sm"
-          className="h-auto p-0 text-2xs text-txt hover:underline decoration-accent/50 underline-offset-2"
+          variant="mutedLink"
+          size="content"
           onClick={() => setShowRaw((v) => !v)}
         >
           {showRaw
@@ -896,13 +891,13 @@ export function MessageUiSpecBlock({
               <span className="font-semibold text-destructive">
                 Couldn't render this widget.
               </span>{" "}
-              <button
+              <Button
                 type="button"
                 className="underline underline-offset-2"
                 onClick={() => setShowRaw((v) => !v)}
               >
                 {showRaw ? "Hide JSON" : "View JSON"}
-              </button>
+              </Button>
             </div>
           )}
         >
@@ -1092,7 +1087,8 @@ export function SensitiveRequestBlock({
                     id={inputId}
                     aria-label={label}
                     data-testid={`sensitive-request-file-${field.name}`}
-                    className="border-border bg-bg px-2 py-1.5 text-sm"
+                    variant="secret"
+                    density="short"
                     type="file"
                     accept={accept}
                     // Mobile: prefer the rear camera for image capture (2FA QR/seed).
@@ -1145,7 +1141,8 @@ export function SensitiveRequestBlock({
                 <Input
                   id={inputId}
                   aria-label={label}
-                  className="border-border bg-bg px-2 py-1.5 text-sm"
+                  variant="secret"
+                  density="short"
                   type={field.input === "secret" ? "password" : "text"}
                   value={values[field.name] ?? ""}
                   onChange={(event) => {
@@ -1415,6 +1412,17 @@ export function MessageContent({
 
   if (message.accountConnect) {
     return <AccountConnectBlock request={message.accountConnect} />;
+  }
+
+  if (message.capabilityHandoff) {
+    return (
+      <div className="space-y-2">
+        {message.text.trim() ? (
+          <MessageTextBody text={message.text} boldSlashCommand={false} />
+        ) : null}
+        <CapabilityHandoffBlock request={message.capabilityHandoff} />
+      </div>
+    );
   }
 
   if (

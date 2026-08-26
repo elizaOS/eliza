@@ -224,7 +224,7 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(screen.queryByTestId("view-header")).toBeNull();
   });
 
-  it("omits Browser Bridge administration while preserving session approvals", async () => {
+  it("keeps bridge recovery reachable without adding idle administration UI", async () => {
     walletStateHarness.plugins.push({ name: "@elizaos/plugin-browser" });
     render(<BrowserWorkspaceView />);
 
@@ -234,6 +234,18 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(
       await screen.findByTestId("browser-session-policy-error"),
     ).not.toBeNull();
+  });
+
+  it("keeps bridge recovery reachable while a browser tab is open", async () => {
+    walletStateHarness.plugins.push({ name: "@elizaos/plugin-browser" });
+    vi.mocked(client.getBrowserWorkspace).mockResolvedValue(GOOGLE_WORKSPACE);
+    render(<BrowserWorkspaceView />);
+
+    expect(await screen.findByTitle("Google")).not.toBeNull();
+    expect(
+      await screen.findByTestId("browser-session-policy-error"),
+    ).not.toBeNull();
+    expect(screen.getByTestId("browser-session-policy-dock")).not.toBeNull();
   });
 
   it("floats the navigation toolbar as its own glass panel above the web surface", async () => {

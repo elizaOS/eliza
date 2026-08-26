@@ -50,7 +50,11 @@ import {
   isAndroidMobile,
   isCodingAgentBackend,
 } from "@elizaos/shared";
-import { getHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
+import {
+  applyHostToolchainExecutionBaseline,
+  getHostExecutionBaseline,
+  HOST_EXECUTION_BASELINE_ENV_MIRROR_KEYS,
+} from "@elizaos/shared/host-execution-env";
 import { NativeAcpClient, splitCommandLine } from "./acp-native-transport.js";
 import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
 import {
@@ -73,6 +77,11 @@ import {
   selectCodingAccount,
 } from "./coding-account-selection.js";
 import { readConfigEnvKey, readConfigMcpServers } from "./config-env.js";
+import {
+  CREDENTIAL_BRIDGE_TOKEN_ENV,
+  CREDENTIAL_BRIDGE_TOKEN_HASH_METADATA,
+  createCredentialBridgeToken,
+} from "./credential-bridge-auth.js";
 import {
   applyCredentialProxyEnv,
   resolveOrchestratorCredentialProxyConfig,
@@ -238,7 +247,6 @@ type RunResult = {
   durationMs: number;
 };
 
-const STDERR_CAP_BYTES = 64 * 1024;
 const KILL_GRACE_MS = 5_000;
 // TTL for a per-spawn model lease when neither the spawn nor the service config
 // a timeout — mirrors ACPX_DEFAULT_TIMEOUT_MS (per-prompt) so a lease outlives a
@@ -1951,6 +1959,7 @@ export class AcpService extends Service {
   async spawnSession(opts: SpawnOptions): Promise<SpawnResult> {
     this.ensureStarted();
     const id = randomUUID();
+    const credentialBridgeToken = createCredentialBridgeToken();
     const name = opts.name?.trim() || id;
     const agentType =
       normalizeTaskAgentAdapter(opts.agentType ?? this.defaultAgent) ??
@@ -2071,6 +2080,7 @@ export class AcpService extends Service {
       const sessionEnv: Record<string, string> = {
         ...(opts.env ?? {}),
         ...(gitIndexIsolation?.env ?? {}),
+        [CREDENTIAL_BRIDGE_TOKEN_ENV]: credentialBridgeToken.token,
       };
       const spawnModel =
         agentType === "claude"
@@ -2143,6 +2153,7 @@ export class AcpService extends Service {
         ...(resolvedAccount ? { account: resolvedAccount.meta } : {}),
         [ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY]:
           this.getOrchestratorOwnedArtifacts(id),
+        [CREDENTIAL_BRIDGE_TOKEN_HASH_METADATA]: credentialBridgeToken.hash,
         ...(spawnModel ? { [ACP_METADATA_SPAWN_MODEL]: spawnModel } : {}),
         transportMode: this.transportMode,
         slotClass,
@@ -3153,13 +3164,18 @@ export class AcpService extends Service {
     return () => undefined;
   }
 
-  async getSessionOutput(sessionId: string, lines = 200): Promise<string> {
-    return (this.outputBuffers.get(sessionId) ?? []).slice(-lines).join("");
+  async getSessionOutput(sessionId: string, lines?: number): Promise<string> {
+    const output = this.outputBuffers.get(sessionId) ?? [];
+    return (lines === undefined ? output : output.slice(-lines)).join("");
   }
 
   /** Output captured during the most recent prompt turn only. */
-  async getSessionTurnOutput(sessionId: string, lines = 200): Promise<string> {
-    return (this.turnOutputBuffers.get(sessionId) ?? []).slice(-lines).join("");
+  async getSessionTurnOutput(
+    sessionId: string,
+    lines?: number,
+  ): Promise<string> {
+    const output = this.turnOutputBuffers.get(sessionId) ?? [];
+    return (lines === undefined ? output : output.slice(-lines)).join("");
   }
 
   private baseArgs(opts: {
@@ -3529,7 +3545,9 @@ export class AcpService extends Service {
           opts.session,
         );
         builtEnv.PATH = trustedExecutionPath;
-        delete builtEnv.ELIZA_HOST_EXECUTION_BASELINE_PATH;
+        for (const key of HOST_EXECUTION_BASELINE_ENV_MIRROR_KEYS) {
+          delete builtEnv[key];
+        }
         this.configureNativeClientForSession(warm.client, opts.session, {
           env: builtEnv,
           timeoutMs: opts.timeoutMs,
@@ -3542,7 +3560,9 @@ export class AcpService extends Service {
         // PATH is separate claim authority: the child never accepts an
         // arbitrary environment entry as executable-search authority.
         delete claimEnv.PATH;
-        delete claimEnv.ELIZA_HOST_EXECUTION_BASELINE_PATH;
+        for (const key of HOST_EXECUTION_BASELINE_ENV_MIRROR_KEYS) {
+          delete claimEnv[key];
+        }
         const nativeSession = await warm.client.createSession(
           opts.session.workdir,
           {
@@ -4166,9 +4186,7 @@ export class AcpService extends Service {
           // from EventEmitter's data listener would crash the host process.
           protocolError = errorMessage(err);
           stopReason = "error";
-          record.stderr = capStderr(
-            `${record.stderr}\nACP protocol error: ${protocolError}`,
-          );
+          record.stderr = `${record.stderr}\nACP protocol error: ${protocolError}`;
           this.log("warn", "invalid acpx prompt result", {
             sessionId: opts.sessionId,
             error: protocolError,
@@ -4200,14 +4218,14 @@ export class AcpService extends Service {
       });
 
       proc.stderr.on("data", (chunk: Buffer) => {
-        record.stderr = capStderr(record.stderr + chunk.toString("utf8"));
+        record.stderr += chunk.toString("utf8");
       });
 
       proc.on("error", (err: NodeJS.ErrnoException) => {
-        record.stderr = capStderr(record.stderr + errorMessage(err));
+        record.stderr += errorMessage(err);
         if (err.code === "ENOENT") {
           const message = `acpx CLI not found at ${this.cliPath}. Set ELIZA_ACP_CLI or npm install -g acpx@latest.`;
-          record.stderr = capStderr(`${record.stderr}\n${message}`);
+          record.stderr = `${record.stderr}\n${message}`;
           if (opts.sessionId)
             this.emitSessionEvent(opts.sessionId, "error", {
               message,
@@ -5069,7 +5087,7 @@ export class AcpService extends Service {
     // forwardableSubAgentEnv / canonicalForwardedEnvKey — Bun on Windows reports
     // OS vars like `Path` with native casing, which a child must not inherit
     // alongside an uppercase duplicate).
-    const env: NodeJS.ProcessEnv = forwardableSubAgentEnv(process.env);
+    let env: NodeJS.ProcessEnv = forwardableSubAgentEnv(process.env);
     // #14118: the raw owner cloud key is broker-gated by default. When an
     // operator opts INTO forwarding it and a key actually landed in the child
     // env, surface it — an autonomous child now holds the owner's Cloud bearer,
@@ -5113,6 +5131,10 @@ export class AcpService extends Service {
       }
       env[canonicalForwardedEnvKey(key)] = value;
     }
+    // Runtime/caller inputs may name Go's cache variables or the internal
+    // cross-module mirrors. Rebuild those values only from the boot-captured
+    // authority, while preserving the separately validated session PATH.
+    env = applyHostToolchainExecutionBaseline(env);
     if (model) {
       const normalizedModel =
         agentType === "claude" ? normalizeClaudeAcpModelId(model) : model;
@@ -5597,14 +5619,10 @@ export class AcpService extends Service {
   private appendOutput(sessionId: string, text: string): void {
     const buffer = this.outputBuffers.get(sessionId) ?? [];
     buffer.push(text);
-    if (buffer.length > 2_000) buffer.splice(0, buffer.length - 2_000);
     this.outputBuffers.set(sessionId, buffer);
     const turnBuffer = this.turnOutputBuffers.get(sessionId);
     if (turnBuffer) {
       turnBuffer.push(text);
-      if (turnBuffer.length > 2_000) {
-        turnBuffer.splice(0, turnBuffer.length - 2_000);
-      }
     }
   }
 
@@ -5880,6 +5898,36 @@ interface SessionEventTrailEntry {
 
 const EVENT_TRAIL_MAX_ENTRIES = 15;
 const EVENT_TRAIL_HINT_MAX_CHARS = 120;
+// Reserving 32 UTF-16 units for each untrusted receipt field keeps the complete
+// fixed outcome prefix and both field labels within EVENT_TRAIL_HINT_MAX_CHARS.
+const EVENT_TRAIL_FAILURE_FIELD_MAX_CHARS = 32;
+
+/** Keep untrusted diagnostic fields on one physical log line. */
+function oneLineEventTrailValue(value: string): string {
+  let withoutControls = "";
+  for (const char of value) {
+    const codePoint = char.codePointAt(0) ?? 0;
+    const isControl =
+      codePoint <= 0x1f ||
+      (codePoint >= 0x7f && codePoint <= 0x9f) ||
+      codePoint === 0x2028 ||
+      codePoint === 0x2029;
+    withoutControls += isControl ? " " : char;
+  }
+  return withoutControls.replace(/\s+/gu, " ").trim();
+}
+
+/** Bound an untrusted receipt field without splitting a Unicode code point. */
+function boundedEventTrailFailureValue(value: string): string {
+  let bounded = "";
+  for (const char of oneLineEventTrailValue(value)) {
+    if (bounded.length + char.length > EVENT_TRAIL_FAILURE_FIELD_MAX_CHARS) {
+      break;
+    }
+    bounded += char;
+  }
+  return bounded;
+}
 
 /**
  * Distills a session-event payload into a one-line forensic hint for the
@@ -5891,6 +5939,21 @@ const EVENT_TRAIL_HINT_MAX_CHARS = 120;
 function eventTrailHint(data: unknown): string | undefined {
   const record = asRecord(data);
   if (!record) return undefined;
+  const terminalFailure = asRecord(record.terminalFailure);
+  if (
+    record.type === "parent_agent_failure" &&
+    typeof terminalFailure?.kind === "string" &&
+    typeof terminalFailure.transient === "boolean" &&
+    typeof record.delivered === "boolean"
+  ) {
+    const kind = boundedEventTrailFailureValue(terminalFailure.kind);
+    const normalizedCode =
+      typeof terminalFailure.code === "string"
+        ? boundedEventTrailFailureValue(terminalFailure.code)
+        : "";
+    const code = normalizedCode.length > 0 ? ` code=${normalizedCode}` : "";
+    return `transient=${terminalFailure.transient} delivered=${record.delivered} kind=${kind || "unknown"}${code}`;
+  }
   const toolCall = asRecord(record.toolCall);
   const candidates = [
     toolCall?.title,
@@ -5904,7 +5967,10 @@ function eventTrailHint(data: unknown): string | undefined {
     (candidate): candidate is string =>
       typeof candidate === "string" && candidate.trim().length > 0,
   );
-  return hint?.trim().slice(0, EVENT_TRAIL_HINT_MAX_CHARS);
+  const normalizedHint = hint ? oneLineEventTrailValue(hint) : "";
+  return normalizedHint
+    ? normalizedHint.slice(0, EVENT_TRAIL_HINT_MAX_CHARS)
+    : undefined;
 }
 
 export interface NormalizedUsage {
@@ -6126,8 +6192,8 @@ export function normalizeToolOutput(rawOutput: unknown): string {
 
 /**
  * Render a Codex exec record (`{ call_id, command, exit_code, … }`) as a compact
- * one-liner: `$ <command joined> → exit <exit_code>` plus a capped stdout/stderr
- * tail when present. Returns undefined for anything that is not an exec record
+ * one-liner: `$ <command joined> → exit <exit_code>` plus complete stdout/stderr
+ * when present. Returns undefined for anything that is not an exec record
  * (must have BOTH call_id AND command), so non-record output is unaffected.
  */
 function execRecordOneLiner(value: unknown): string | undefined {
@@ -6224,11 +6290,6 @@ function isAuthText(text: string): boolean {
   return /authenticate|unauthorized|\b401\b|login|required auth|api key|invalid_grant/i.test(
     text,
   );
-}
-
-function capStderr(text: string): string {
-  if (Buffer.byteLength(text, "utf8") <= STDERR_CAP_BYTES) return text;
-  return text.slice(-STDERR_CAP_BYTES);
 }
 
 function preview(text: string): string {

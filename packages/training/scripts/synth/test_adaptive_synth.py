@@ -3,12 +3,11 @@
 CPU-only. No network. Mocked author + fixture agent → deterministic
 output. Covers:
 
-  - Fixture failure set (JSON artifacts + a tiny SQLite ResultsStore
-    written in-test) → loaded by both source implementations.
+  - Fixture failure JSON artifacts are loaded through the production source.
   - Mocked author → variations generated + tagged with
     ``derived_from`` + ``synth_kind='failure_derived'``.
   - No silent drops: author exceptions land in the report, not stdout.
-  - CLI smoke (--source json end-to-end).
+  - CLI smoke through the JSON-artifact boundary.
   - ``--since`` parsing for ISO-8601, dates, and bare unix-ms.
 """
 
@@ -16,7 +15,6 @@ from __future__ import annotations
 
 import json
 import random
-import sqlite3
 import sys
 from pathlib import Path
 from typing import Any
@@ -41,7 +39,6 @@ from synth.adaptive_synth import (  # noqa: E402
     CallableVariationAuthor,
     FixtureVariationAuthor,
     JsonArtifactFailureSource,
-    ResultsStoreFailureSource,
     _extract_failed_tasks,
     _parse_since,
     main as cli_main,
@@ -137,9 +134,7 @@ def test_fixture_author_uses_failed_task_prompts():
         )
     )
     rng = random.Random(0)
-    projects = FixtureVariationAuthor().author_variations(
-        failure=f, n=3, rng=rng
-    )
+    projects = FixtureVariationAuthor().author_variations(failure=f, n=3, rng=rng)
     assert len(projects) == 3
     # variation 0 picks the first candidate, 1 the second, 2 wraps.
     assert "summarize the doc" in projects[0].initial_user_text
@@ -207,9 +202,7 @@ def test_callable_author_rejects_wrong_count():
 
     author = CallableVariationAuthor(liar)
     with pytest.raises(ValueError, match="returned 1 variations but 3"):
-        author.author_variations(
-            failure=_failure(), n=3, rng=random.Random(0)
-        )
+        author.author_variations(failure=_failure(), n=3, rng=random.Random(0))
 
 
 def test_callable_author_rejects_empty_field():
@@ -218,9 +211,7 @@ def test_callable_author_rejects_empty_field():
 
     author = CallableVariationAuthor(bad)
     with pytest.raises(ValueError, match="empty fields"):
-        author.author_variations(
-            failure=_failure(), n=2, rng=random.Random(0)
-        )
+        author.author_variations(failure=_failure(), n=2, rng=random.Random(0))
 
 
 def test_callable_author_rejects_non_tuple():
@@ -229,9 +220,7 @@ def test_callable_author_rejects_non_tuple():
 
     author = CallableVariationAuthor(malformed)
     with pytest.raises(ValueError, match="not a"):
-        author.author_variations(
-            failure=_failure(), n=1, rng=random.Random(0)
-        )
+        author.author_variations(failure=_failure(), n=1, rng=random.Random(0))
 
 
 # ─────────────────────────── JsonArtifactFailureSource ────────────────────────────
@@ -302,9 +291,7 @@ def test_json_source_loads_jsonl_lines(tmp_path):
     f = tmp_path / "runs.jsonl"
     f.write_text("\n".join(json.dumps(line) for line in lines) + "\n")
     src = JsonArtifactFailureSource(root=tmp_path)
-    out = src.list_failures(
-        since_ts_ms=1_700_000_000_000, threshold=0.5
-    )
+    out = src.list_failures(since_ts_ms=1_700_000_000_000, threshold=0.5)
     assert [x.run_id for x in out] == ["run-a"]
 
 
@@ -338,10 +325,20 @@ def test_json_source_skips_records_missing_required_fields(tmp_path):
 
 def test_json_source_handles_list_of_runs_in_one_file(tmp_path):
     blob = [
-        {"id": "x", "model_id": "m", "benchmark": "b",
-         "score": 0.1, "ts": 1_700_000_000_000},
-        {"id": "y", "model_id": "m", "benchmark": "b",
-         "score": 0.4, "ts": 1_700_000_000_001},
+        {
+            "id": "x",
+            "model_id": "m",
+            "benchmark": "b",
+            "score": 0.1,
+            "ts": 1_700_000_000_000,
+        },
+        {
+            "id": "y",
+            "model_id": "m",
+            "benchmark": "b",
+            "score": 0.4,
+            "ts": 1_700_000_000_001,
+        },
     ]
     _write_json(tmp_path / "multi.json", blob)
     src = JsonArtifactFailureSource(root=tmp_path)
@@ -373,128 +370,6 @@ def test_json_source_skips_malformed_jsonl_lines(tmp_path):
     src = JsonArtifactFailureSource(root=tmp_path)
     out = src.list_failures(since_ts_ms=0, threshold=0.5)
     assert {f.run_id for f in out} == {"ok", "ok2"}
-
-
-# ─────────────────────────── ResultsStoreFailureSource ────────────────────────────
-
-
-def _make_results_db(tmp_path: Path, rows: list[dict[str, Any]]) -> Path:
-    db_path = tmp_path / "results.db"
-    conn = sqlite3.connect(str(db_path))
-    conn.executescript(
-        """
-        CREATE TABLE benchmark_runs (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            model_id        TEXT    NOT NULL,
-            benchmark       TEXT    NOT NULL,
-            score           REAL    NOT NULL,
-            ts              INTEGER NOT NULL,
-            dataset_version TEXT    NOT NULL,
-            code_commit     TEXT    NOT NULL,
-            raw_json        TEXT    NOT NULL
-        );
-        """
-    )
-    for r in rows:
-        conn.execute(
-            "INSERT INTO benchmark_runs(model_id, benchmark, score, ts, "
-            "dataset_version, code_commit, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (
-                r["model_id"],
-                r["benchmark"],
-                float(r["score"]),
-                int(r["ts"]),
-                r.get("dataset_version", "v1"),
-                r.get("code_commit", "abc"),
-                json.dumps(r.get("raw", {}), sort_keys=True),
-            ),
-        )
-    conn.commit()
-    conn.close()
-    return db_path
-
-
-def test_results_store_source_reads_failures(tmp_path):
-    db = _make_results_db(
-        tmp_path,
-        [
-            # passes threshold — excluded
-            {"model_id": "m", "benchmark": "b1", "score": 0.9, "ts": 2_000},
-            # below threshold — included
-            {
-                "model_id": "m",
-                "benchmark": "b1",
-                "score": 0.2,
-                "ts": 3_000,
-                "raw": {
-                    "failed_tasks": [
-                        {"task_id": "t1", "user_text": "please do x"}
-                    ]
-                },
-            },
-            # too old — excluded
-            {"model_id": "m", "benchmark": "b1", "score": 0.1, "ts": 500},
-        ],
-    )
-    src = ResultsStoreFailureSource(db_path=db)
-    out = src.list_failures(since_ts_ms=1_000, threshold=0.5)
-    assert len(out) == 1
-    f = out[0]
-    assert f.run_id.startswith("run-")
-    assert f.score == 0.2
-    assert f.failed_tasks[0]["user_text"] == "please do x"
-
-
-def test_results_store_source_orders_newest_first(tmp_path):
-    db = _make_results_db(
-        tmp_path,
-        [
-            {"model_id": "m", "benchmark": "b", "score": 0.1, "ts": 1_000},
-            {"model_id": "m", "benchmark": "b", "score": 0.2, "ts": 3_000},
-            {"model_id": "m", "benchmark": "b", "score": 0.3, "ts": 2_000},
-        ],
-    )
-    src = ResultsStoreFailureSource(db_path=db)
-    out = src.list_failures(since_ts_ms=0, threshold=0.5)
-    assert [f.ts for f in out] == [3_000, 2_000, 1_000]
-
-
-def test_results_store_source_skips_malformed_raw_json(tmp_path):
-    db_path = tmp_path / "results.db"
-    conn = sqlite3.connect(str(db_path))
-    conn.executescript(
-        """
-        CREATE TABLE benchmark_runs (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            model_id        TEXT    NOT NULL,
-            benchmark       TEXT    NOT NULL,
-            score           REAL    NOT NULL,
-            ts              INTEGER NOT NULL,
-            dataset_version TEXT    NOT NULL,
-            code_commit     TEXT    NOT NULL,
-            raw_json        TEXT    NOT NULL
-        );
-        """
-    )
-    # Bypass record_run's validation to inject a broken row.
-    conn.execute(
-        "INSERT INTO benchmark_runs(model_id, benchmark, score, ts, "
-        "dataset_version, code_commit, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        ("m", "b", 0.2, 1_000, "v", "c", "not-json"),
-    )
-    conn.execute(
-        "INSERT INTO benchmark_runs(model_id, benchmark, score, ts, "
-        "dataset_version, code_commit, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        ("m", "b", 0.3, 2_000, "v", "c", "{}"),
-    )
-    conn.commit()
-    conn.close()
-
-    src = ResultsStoreFailureSource(db_path=db_path)
-    out = src.list_failures(since_ts_ms=0, threshold=0.5)
-    # Malformed row is skipped (logged), but the good row is returned.
-    assert len(out) == 1
-    assert out[0].score == 0.3
 
 
 # ─────────────────────────── AdaptiveSynth orchestration ────────────────────────────
@@ -761,8 +636,8 @@ def test_parse_since_garbage_raises():
 # ─────────────────────────── CLI smoke ────────────────────────────
 
 
-def test_cli_smoke_with_json_source(tmp_path):
-    """End-to-end: --source json + fixture author + echo agent → JSONL out."""
+def test_cli_smoke_with_json_artifacts(tmp_path):
+    """End-to-end: artifact import + fixture author + echo agent → JSONL out."""
     artifacts = tmp_path / "artifacts"
     artifacts.mkdir()
     _write_json(
@@ -779,14 +654,20 @@ def test_cli_smoke_with_json_source(tmp_path):
     out_dir = tmp_path / "out"
     rc = cli_main(
         [
-            "--since", "2020-01-01",
-            "--variations", "2",
-            "--threshold", "0.5",
-            "--turns", "1",
-            "--output-dir", str(out_dir),
-            "--source", "json",
-            "--artifacts-dir", str(artifacts),
-            "--seed", "1",
+            "--since",
+            "2020-01-01",
+            "--variations",
+            "2",
+            "--threshold",
+            "0.5",
+            "--turns",
+            "1",
+            "--output-dir",
+            str(out_dir),
+            "--artifacts-dir",
+            str(artifacts),
+            "--seed",
+            "1",
         ]
     )
     assert rc == 0
@@ -812,14 +693,16 @@ def test_cli_smoke_with_json_source(tmp_path):
     assert "elapsed_ms" in rep_blob
 
 
-def test_cli_requires_artifacts_dir_with_json_source(tmp_path):
-    with pytest.raises(SystemExit, match="--artifacts-dir"):
+def test_cli_requires_artifacts_dir(tmp_path):
+    with pytest.raises(SystemExit):
         cli_main(
             [
-                "--since", "2020-01-01",
-                "--variations", "1",
-                "--output-dir", str(tmp_path / "out"),
-                "--source", "json",
+                "--since",
+                "2020-01-01",
+                "--variations",
+                "1",
+                "--output-dir",
+                str(tmp_path / "out"),
             ]
         )
 
@@ -827,11 +710,14 @@ def test_cli_requires_artifacts_dir_with_json_source(tmp_path):
 def test_cli_rejects_bad_since(tmp_path):
     rc = cli_main(
         [
-            "--since", "garbage",
-            "--variations", "1",
-            "--output-dir", str(tmp_path / "out"),
-            "--source", "json",
-            "--artifacts-dir", str(tmp_path),
+            "--since",
+            "garbage",
+            "--variations",
+            "1",
+            "--output-dir",
+            str(tmp_path / "out"),
+            "--artifacts-dir",
+            str(tmp_path),
         ]
     )
     assert rc == 2
@@ -840,11 +726,14 @@ def test_cli_rejects_bad_since(tmp_path):
 def test_cli_rejects_missing_artifacts(tmp_path):
     rc = cli_main(
         [
-            "--since", "2020-01-01",
-            "--variations", "1",
-            "--output-dir", str(tmp_path / "out"),
-            "--source", "json",
-            "--artifacts-dir", str(tmp_path / "does-not-exist"),
+            "--since",
+            "2020-01-01",
+            "--variations",
+            "1",
+            "--output-dir",
+            str(tmp_path / "out"),
+            "--artifacts-dir",
+            str(tmp_path / "does-not-exist"),
         ]
     )
     assert rc == 2
@@ -859,8 +748,6 @@ def test_report_to_dict_round_trips():
     r.add_error(run_id="run-1", stage="author", message="boom")
     d = r.to_dict()
     assert d["failures_seen"] == 2
-    assert d["errors"] == [
-        {"run_id": "run-1", "stage": "author", "message": "boom"}
-    ]
+    assert d["errors"] == [{"run_id": "run-1", "stage": "author", "message": "boom"}]
     # JSON-serializable
     json.dumps(d)

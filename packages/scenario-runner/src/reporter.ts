@@ -1050,11 +1050,10 @@ function readJsonlFile(filePath: string, maxRows = 5_000): unknown[] {
   }
 }
 
-function collectFiles(rootDir: string, maxFiles = 500): string[] {
+function collectFiles(rootDir: string): string[] {
   if (!existsSync(rootDir)) return [];
   const out: string[] = [];
   const walk = (dir: string): void => {
-    if (out.length >= maxFiles) return;
     for (const name of readdirSync(dir).sort()) {
       const full = path.join(dir, name);
       let stat: ReturnType<typeof statSync>;
@@ -1068,7 +1067,6 @@ function collectFiles(rootDir: string, maxFiles = 500): string[] {
         continue;
       }
       if (stat.isFile()) out.push(full);
-      if (out.length >= maxFiles) return;
     }
   };
   walk(rootDir);

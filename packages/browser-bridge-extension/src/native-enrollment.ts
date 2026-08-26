@@ -76,6 +76,19 @@ export type NativeEnrollmentRequest = {
   profileId: string;
 };
 
+export type NativeRevokeRequest = Omit<NativeEnrollmentRequest, "type"> & {
+  type: "browser_bridge.revoke";
+  companionId: string;
+};
+
+export type NativeRevokeResult = {
+  v: 1;
+  type: "browser_bridge.revoke_result";
+  requestId: string;
+  nonce: string;
+  revoked: true;
+};
+
 export type NativeEnrollmentResult = {
   v: 1;
   type: "browser_bridge.enroll_result";
@@ -96,6 +109,62 @@ export type NativeEnrollmentFailure = {
 export type NativeEnrollmentResponse =
   | NativeEnrollmentResult
   | NativeEnrollmentFailure;
+
+export async function revokeNativeCompanion(options: {
+  config: BrowserBridgeCompanionConfig;
+  extensionId: string;
+  extensionVersion: string;
+  send: (request: NativeRevokeRequest) => Promise<unknown>;
+  randomUUID?: () => string;
+  randomBytes?: (length: number) => Uint8Array;
+}): Promise<void> {
+  const requestId = (options.randomUUID ?? (() => crypto.randomUUID()))();
+  const nonce = base64Url(
+    (
+      options.randomBytes ??
+      ((length) => crypto.getRandomValues(new Uint8Array(length)))
+    )(32),
+  );
+  const request: NativeRevokeRequest = {
+    v: 1,
+    type: "browser_bridge.revoke",
+    requestId,
+    nonce,
+    extensionId: validateBinding(options.extensionId, "extensionId"),
+    extensionVersion: validateBinding(
+      options.extensionVersion,
+      "extensionVersion",
+    ),
+    browser: options.config.browser,
+    profileId: validateUuid(options.config.profileId, "profileId"),
+    companionId: validateBinding(options.config.companionId, "companionId"),
+  };
+  if (!UUID_PATTERN.test(requestId) || !NONCE_PATTERN.test(nonce)) {
+    throw new NativeEnrollmentError(
+      "Native revoke request entropy is invalid.",
+      "invalid_native_request",
+      false,
+    );
+  }
+  enforceMessageSize(request);
+  const response = await options.send(request);
+  enforceMessageSize(response);
+  if (
+    !isRecord(response) ||
+    !hasExactKeys(response, ["v", "type", "requestId", "nonce", "revoked"]) ||
+    response.v !== 1 ||
+    response.type !== "browser_bridge.revoke_result" ||
+    response.requestId !== request.requestId ||
+    response.nonce !== request.nonce ||
+    response.revoked !== true
+  ) {
+    throw new NativeEnrollmentError(
+      "Native revoke response is invalid or does not match its request.",
+      "invalid_native_response",
+      false,
+    );
+  }
+}
 
 export type NativeEnrollmentSuppressionReason =
   | "owner_disconnected"
@@ -489,6 +558,14 @@ export class NativeEnrollmentCoordinator {
   private readonly randomUUID: () => string;
   private readonly randomBytes: (length: number) => Uint8Array;
   private readonly timeoutMs: number;
+  private generation = 0;
+  private readonly pendingNativeRequests = new Set<
+    Promise<NativeEnrollmentResult>
+  >();
+  private readonly uncommittedConfigs = new Map<
+    string,
+    BrowserBridgeCompanionConfig
+  >();
 
   constructor(private readonly dependencies: NativeEnrollmentDependencies) {
     this.now = dependencies.now ?? Date.now;
@@ -514,7 +591,8 @@ export class NativeEnrollmentCoordinator {
       }
       return await this.inFlight.promise;
     }
-    const promise = this.runEnrollment(bindings, options);
+    const generation = this.generation;
+    const promise = this.runEnrollment(bindings, options, generation);
     this.inFlight = { key, promise };
     try {
       return await promise;
@@ -523,11 +601,47 @@ export class NativeEnrollmentCoordinator {
     }
   }
 
+  /**
+   * Fences enrollment and awaits every underlying native request, including a
+   * request whose public timeout already fired. Broker-issued configs that
+   * were not confirmed in durable storage are returned for owner revocation.
+   */
+  async cancel(): Promise<readonly BrowserBridgeCompanionConfig[]> {
+    this.generation += 1;
+    const active = this.inFlight?.promise ?? null;
+    const pendingNativeRequests = [...this.pendingNativeRequests];
+    this.inFlight = null;
+    const pending = active
+      ? [active, ...pendingNativeRequests]
+      : pendingNativeRequests;
+    if (pending.length > 0) await Promise.allSettled(pending);
+    const abandoned = [...this.uncommittedConfigs.values()];
+    this.uncommittedConfigs.clear();
+    return abandoned;
+  }
+
+  /** Removes a broker-issued config only after durable extension storage succeeds. */
+  confirmPersisted(companionId: string): void {
+    this.uncommittedConfigs.delete(companionId);
+  }
+
+  private assertCurrent(generation: number): void {
+    if (generation !== this.generation) {
+      throw new NativeEnrollmentError(
+        "Native enrollment was cancelled.",
+        "native_enrollment_cancelled",
+        false,
+      );
+    }
+  }
+
   private async runEnrollment(
     bindings: EnrollmentBindings,
     options: { bypassBackoff?: boolean },
+    generation: number,
   ): Promise<BrowserBridgeCompanionConfig> {
     const state = await this.dependencies.loadState();
+    this.assertCurrent(generation);
     if (state.suppressedReason) {
       throw new NativeEnrollmentError(
         "Automatic browser enrollment is disabled after an explicit disconnect or revocation.",
@@ -571,16 +685,28 @@ export class NativeEnrollmentCoordinator {
           );
         }, this.timeoutMs);
       });
-      const rawResponse = await Promise.race([
-        this.dependencies.send(request),
-        timeout,
-      ]);
-      const response = validateNativeEnrollmentResponse(
-        rawResponse,
-        request,
-        this.now(),
-      );
+      const nativeResponse = this.dependencies.send(request).then((raw) => {
+        const response = validateNativeEnrollmentResponse(
+          raw,
+          request,
+          this.now(),
+        );
+        this.uncommittedConfigs.set(
+          response.config.companionId,
+          response.config,
+        );
+        return response;
+      });
+      this.pendingNativeRequests.add(nativeResponse);
+      void nativeResponse
+        .finally(() => this.pendingNativeRequests.delete(nativeResponse))
+        .catch(() => {
+          // error-policy:J5 runEnrollment or cancel observes this same native rejection.
+        });
+      const response = await Promise.race([nativeResponse, timeout]);
+      this.assertCurrent(generation);
       await this.dependencies.saveState({ ...EMPTY_NATIVE_ENROLLMENT_STATE });
+      this.assertCurrent(generation);
       return response.config;
     } catch (error) {
       // error-policy:J1 Enrollment is the native-protocol boundary. It records
@@ -593,6 +719,9 @@ export class NativeEnrollmentCoordinator {
               "native_host_unavailable",
               true,
             );
+      if (normalized.code === "native_enrollment_cancelled") {
+        throw normalized;
+      }
       const failures = Math.min(state.consecutiveFailures + 1, 32);
       await this.dependencies.saveState({
         consecutiveFailures: failures,

@@ -22,10 +22,7 @@ import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
 import type { WidgetProps } from "../../../widgets/types";
 import { Button } from "../../ui/button";
-import {
-  HOME_WIDGET_SOLID_TILE_CLASS,
-  useWidgetNavigation,
-} from "./home-widget-card";
+import { useWidgetNavigation } from "./home-widget-card";
 import {
   type PricedHolding,
   selectDefaultPriceRows,
@@ -179,19 +176,22 @@ export function WalletBalanceWidget(
 
   if (displayState.status === "unavailable") {
     return (
-      <Button
-        data-testid="chat-widget-wallet-unavailable"
-        aria-label="Wallet data unavailable. Open wallet."
-        onClick={() => nav.openView("/wallet", "wallet")}
-        variant="ghost"
-        className={`${spanClassName} ${HOME_WIDGET_SOLID_TILE_CLASS} items-center justify-between gap-3 px-3 py-2.5 font-normal transition-[background-color,border-color,opacity] hover:border-[color:color-mix(in_srgb,var(--brand-white)_34%,var(--brand-black))] hover:bg-[var(--brand-black)] hover:opacity-90`}
-      >
-        <span className="flex items-center gap-2 text-xs text-[color:color-mix(in_srgb,var(--brand-white)_68%,transparent)] [&>svg]:h-3.5 [&>svg]:w-3.5">
-          <Wallet />
-          Wallet
-        </span>
-        <span className="text-xs text-[var(--brand-white)]">Unavailable</span>
-      </Button>
+      <div className={spanClassName}>
+        <Button
+          data-testid="chat-widget-wallet-unavailable"
+          aria-label="Wallet data unavailable. Open wallet."
+          onClick={() => nav.openView("/wallet", "wallet")}
+          variant="surface"
+          size="row"
+          align="start"
+        >
+          <span className="flex items-center gap-2 text-xs text-[color:color-mix(in_srgb,var(--brand-white)_68%,transparent)] [&>svg]:h-3.5 [&>svg]:w-3.5">
+            <Wallet />
+            Wallet
+          </span>
+          <span className="text-xs text-[var(--brand-white)]">Unavailable</span>
+        </Button>
+      </div>
     );
   }
 
@@ -199,43 +199,47 @@ export function WalletBalanceWidget(
   if (holdings.length === 0) return null;
 
   return (
-    <Button
-      data-testid="chat-widget-wallet-prices"
-      aria-label={`Wallet prices: ${holdings
-        .map((h) => `${h.symbol} ${formatPrice(h.priceUsd)}`)
-        .join(", ")}. Open wallet.`}
-      onClick={() => nav.openView("/wallet", "wallet")}
-      variant="ghost"
-      className={`${spanClassName} ${HOME_WIDGET_SOLID_TILE_CLASS} flex-col items-stretch gap-1 px-3 py-2.5 font-normal transition-[background-color,border-color,opacity] hover:border-[color:color-mix(in_srgb,var(--brand-white)_34%,var(--brand-black))] hover:bg-[var(--brand-black)] hover:opacity-90`}
-    >
-      <span className="flex items-center gap-2 text-xs text-[color:color-mix(in_srgb,var(--brand-white)_68%,transparent)] [&>svg]:h-3.5 [&>svg]:w-3.5">
-        <Wallet />
-        Wallet
-      </span>
-      {holdings.map((h) => {
-        const change = formatChange(h.change24hPct);
-        return (
-          <span
-            key={h.symbol}
-            data-testid={`wallet-price-row-${h.symbol}`}
-            className="flex items-baseline justify-between gap-2 text-sm"
-          >
-            <span className="truncate font-medium text-[var(--brand-white)]">
-              {h.symbol}
-            </span>
-            <span className="flex shrink-0 items-baseline gap-1.5">
-              <span className="tabular-nums text-[var(--brand-white)]">
-                {formatPrice(h.priceUsd)}
+    <div className={spanClassName}>
+      <Button
+        data-testid="chat-widget-wallet-prices"
+        aria-label={`Wallet prices: ${holdings
+          .map((h) => `${h.symbol} ${formatPrice(h.priceUsd)}`)
+          .join(", ")}. Open wallet.`}
+        onClick={() => nav.openView("/wallet", "wallet")}
+        variant="surface"
+        size="card"
+        align="start"
+        className="w-full"
+      >
+        <span className="flex items-center gap-2 text-xs text-[color:color-mix(in_srgb,var(--brand-white)_68%,transparent)] [&>svg]:h-3.5 [&>svg]:w-3.5">
+          <Wallet />
+          Wallet
+        </span>
+        {holdings.map((h) => {
+          const change = formatChange(h.change24hPct);
+          return (
+            <span
+              key={h.symbol}
+              data-testid={`wallet-price-row-${h.symbol}`}
+              className="flex items-baseline justify-between gap-2 text-sm"
+            >
+              <span className="truncate font-medium text-[var(--brand-white)]">
+                {h.symbol}
               </span>
-              {change ? (
-                <span className="tabular-nums text-xs text-[color:color-mix(in_srgb,var(--brand-white)_82%,transparent)]">
-                  {change}
+              <span className="flex shrink-0 items-baseline gap-1.5">
+                <span className="tabular-nums text-[var(--brand-white)]">
+                  {formatPrice(h.priceUsd)}
                 </span>
-              ) : null}
+                {change ? (
+                  <span className="tabular-nums text-xs text-[color:color-mix(in_srgb,var(--brand-white)_82%,transparent)]">
+                    {change}
+                  </span>
+                ) : null}
+              </span>
             </span>
-          </span>
-        );
-      })}
-    </Button>
+          );
+        })}
+      </Button>
+    </div>
   );
 }

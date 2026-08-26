@@ -724,6 +724,14 @@ export interface ProviderResult {
 	/** Human-readable text for LLM prompt inclusion */
 	text?: string;
 
+	/**
+	 * Complete, explicit retrieval representation used only when the primary
+	 * text cannot fit the selected model's input boundary. This must describe
+	 * how the omitted bodies can be retrieved losslessly; it is an atomic
+	 * alternative to `text`, never a truncated prefix or summary of it.
+	 */
+	overflowText?: string;
+
 	/** Key-value pairs for template variable substitution */
 	values?: Record<string, ProviderValue>;
 

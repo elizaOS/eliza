@@ -331,13 +331,13 @@ def synthesize_for_action(
             simple=(not chain_reply and len(actions_list) == 1),
         )
 
-        key = stable_id(name, prompt[:120], mem_len)
+        key = stable_id(name, prompt, mem_len)
         if key in seen:
             continue
         seen.add(key)
 
         rec = build(
-            roomName=stable_id("action-planner", name, prompt[:120], mem_len),
+            roomName=stable_id("action-planner", name, prompt, mem_len),
             agentId=agent.lower(),
             memoryEntries=memory,
             currentMessage=current,

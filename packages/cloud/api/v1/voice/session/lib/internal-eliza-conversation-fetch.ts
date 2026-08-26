@@ -353,6 +353,7 @@ async function dispatchInternalElizaConversationFetch(
     },
     body,
     origin: headers.get("origin"),
+    responseMode: "buffered",
     namespace: runtime.namespace,
     executionCtx: runtime.executionCtx,
   });

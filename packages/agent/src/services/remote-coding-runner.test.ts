@@ -5,8 +5,30 @@
  * host↔sandbox path mapping, and cloud coding-container provisioning. Uses fake
  * sandbox factories and fetch-mocked remote-runner / cloud HTTP servers.
  */
-import { CapabilityError, type IAgentRuntime, type UUID } from "@elizaos/core";
+import { execFile } from "node:child_process";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+import { promisify } from "node:util";
+import {
+  AgentRuntime,
+  CAPABILITY_ROUTER_SERVICE_TYPE,
+  CapabilityError,
+  type IAgentRuntime,
+  type JsonValue,
+  type Memory,
+  RuntimeBrokerCapabilityRouter,
+  type UUID,
+  type WorkspaceDeltaReceipt,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+import codingToolsPlugin, {
+  SANDBOX_SERVICE,
+  SandboxService,
+  SESSION_CWD_SERVICE,
+  SessionCwdService,
+} from "../../../../plugins/plugin-coding-tools/src/index.ts";
+import { __codingMutationRequiresVerificationForTests } from "../../../core/src/runtime/planner-loop.ts";
 import {
   DEFAULT_ELIZA_CLOUD_API_BASE_URL,
   RemoteCodingCapabilityRouterService,
@@ -17,6 +39,8 @@ import {
   type SandboxCommandResult,
   type SandboxEntryInfo,
 } from "./remote-coding-runner.ts";
+
+const execFileAsync = promisify(execFile);
 
 class FakeFiles {
   readonly listCalls: string[] = [];
@@ -86,10 +110,108 @@ class FakeSandbox implements RemoteRunnerClient {
   }
 }
 
+class LocalProcessSandbox implements RemoteRunnerClient {
+  readonly sandboxId: string;
+  readonly workspacePrepared = true;
+
+  constructor(
+    readonly root: string,
+    sandboxId = `local-${path.basename(root)}`,
+  ) {
+    this.sandboxId = sandboxId;
+  }
+
+  readonly commands = {
+    run: async (
+      cmd: string,
+      opts: {
+        cwd?: string;
+        timeoutMs?: number;
+        envs?: Record<string, string>;
+      } = {},
+    ): Promise<SandboxCommandResult> => {
+      try {
+        const result = await execFileAsync(
+          "/bin/bash",
+          ["--noprofile", "--norc", "-o", "pipefail", "-c", cmd],
+          {
+            cwd: opts.cwd ?? this.root,
+            env: { ...process.env, ...opts.envs },
+            encoding: "utf8",
+            timeout: opts.timeoutMs,
+            maxBuffer: 4 * 1024 * 1024,
+          },
+        );
+        return { exitCode: 0, stdout: result.stdout, stderr: result.stderr };
+      } catch (error) {
+        const failure = error as Error & {
+          code?: number | string;
+          stdout?: string;
+          stderr?: string;
+          killed?: boolean;
+        };
+        return {
+          exitCode:
+            typeof failure.code === "number"
+              ? failure.code
+              : failure.killed
+                ? 137
+                : 1,
+          stdout: failure.stdout ?? "",
+          stderr: failure.stderr ?? failure.message,
+          timedOut: failure.killed === true,
+        };
+      }
+    },
+  };
+
+  readonly files = {
+    list: async (target: string): Promise<SandboxEntryInfo[]> => {
+      const directory = await fs.opendir(target);
+      const entries: SandboxEntryInfo[] = [];
+      for await (const item of directory) {
+        const absolute = path.join(target, item.name);
+        const stat = await fs.lstat(absolute);
+        entries.push({
+          path: absolute,
+          name: item.name,
+          type: item.isFile()
+            ? "file"
+            : item.isDirectory()
+              ? "dir"
+              : item.isSymbolicLink()
+                ? "symlink"
+                : "other",
+          size: stat.size,
+          mode: stat.mode,
+          modifiedTime: stat.mtime,
+          ...(item.isSymbolicLink()
+            ? { symlinkTarget: await fs.readlink(absolute) }
+            : {}),
+        });
+      }
+      return entries;
+    },
+    read: async (
+      target: string,
+      opts?: { format?: "text" | "bytes" },
+    ): Promise<string | Uint8Array> =>
+      opts?.format === "bytes"
+        ? new Uint8Array(await fs.readFile(target))
+        : await fs.readFile(target, "utf8"),
+    write: async (target: string, data: string) => {
+      await fs.writeFile(target, data);
+      return { path: target, name: path.basename(target) };
+    },
+  };
+
+  readonly kill = vi.fn(async () => {});
+}
+
 class FakeFactory implements RemoteRunnerFactory {
   readonly configs: RemoteCodingRunnerConfig[] = [];
 
-  constructor(readonly sandbox = new FakeSandbox()) {}
+  constructor(readonly sandbox: RemoteRunnerClient = new FakeSandbox()) {}
 
   async create(config: RemoteCodingRunnerConfig): Promise<RemoteRunnerClient> {
     this.configs.push(config);
@@ -674,10 +796,435 @@ describe("RemoteCodingCapabilityRouterService", () => {
       timedOut: false,
     });
     expect(result.output).toContain("ran npm 'test'");
-    expect(sandbox.commands.runCalls[1]).toMatchObject({
+    expect(
+      sandbox.commands.runCalls.find((call) => call.cmd === "npm 'test'"),
+    ).toMatchObject({
       cmd: "npm 'test'",
       cwd: "/workspace/src",
     });
+  });
+
+  it("observes the canonical remote Git root through the production PTY endpoint", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "remote-observer-"));
+    try {
+      await execFileAsync("git", ["init", "-q"], { cwd: root });
+      await fs.writeFile(path.join(root, "tracked.txt"), "before\n");
+      await fs.mkdir(path.join(root, "nested"));
+      await execFileAsync("git", ["add", "."], { cwd: root });
+      await execFileAsync(
+        "git",
+        [
+          "-c",
+          "user.name=test",
+          "-c",
+          "user.email=test@example.com",
+          "commit",
+          "-qm",
+          "initial",
+        ],
+        { cwd: root },
+      );
+      const sandbox = new LocalProcessSandbox(root);
+      const service = new RemoteCodingCapabilityRouterService(
+        makeRuntime(),
+        makeConfig({ workdir: root, hostWorkspaceRoot: root }),
+        new FakeFactory(sandbox),
+      );
+
+      const changed = await service.pty.runCommand({
+        command: "printf 'after\\n' > ../tracked.txt",
+        cwd: path.join(root, "nested"),
+      });
+      const unchanged = await service.pty.runCommand({
+        command: "true",
+        cwd: path.join(root, "nested"),
+      });
+
+      expect(changed.workspaceDeltaReceipt).toMatchObject({
+        outcome: "changed",
+        scope: changed.workspaceExecution,
+      });
+      expect(unchanged.workspaceDeltaReceipt).toMatchObject({
+        outcome: "unchanged",
+        scope: changed.workspaceExecution,
+      });
+      expect(changed.workspaceExecution).toMatchObject({
+        root: await fs.realpath(root),
+        rootId: expect.stringMatching(/^[a-f0-9]{64}$/),
+        executionDomainId: expect.stringMatching(/^[a-f0-9]{64}$/),
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("detects remote index exceptions, nested symlinks, modes, and dirty submodules", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "remote-special-"));
+    const child = await fs.mkdtemp(path.join(os.tmpdir(), "remote-submodule-"));
+    const commit = async (cwd: string, message: string) => {
+      await execFileAsync("git", ["add", "."], { cwd });
+      await execFileAsync(
+        "git",
+        [
+          "-c",
+          "user.name=test",
+          "-c",
+          "user.email=test@example.com",
+          "commit",
+          "-qm",
+          message,
+        ],
+        { cwd },
+      );
+    };
+    try {
+      await execFileAsync("git", ["init", "-q"], { cwd: root });
+      await fs.writeFile(path.join(root, "tracked.txt"), "initial\n");
+      await fs.writeFile(path.join(root, "verify.js"), "export {};\n");
+      await commit(root, "initial");
+      const service = new RemoteCodingCapabilityRouterService(
+        makeRuntime(),
+        makeConfig({ workdir: root, hostWorkspaceRoot: root }),
+        new FakeFactory(new LocalProcessSandbox(root)),
+      );
+
+      await execFileAsync(
+        "git",
+        ["update-index", "--assume-unchanged", "tracked.txt"],
+        { cwd: root },
+      );
+      expect(
+        (
+          await service.pty.runCommand({
+            command: "printf assume > tracked.txt",
+            cwd: root,
+          })
+        ).workspaceDeltaReceipt,
+      ).toMatchObject({ outcome: "changed" });
+      await execFileAsync(
+        "git",
+        ["update-index", "--no-assume-unchanged", "tracked.txt"],
+        { cwd: root },
+      );
+      await execFileAsync("git", ["checkout", "--", "tracked.txt"], {
+        cwd: root,
+      });
+
+      await execFileAsync(
+        "git",
+        ["update-index", "--skip-worktree", "tracked.txt"],
+        { cwd: root },
+      );
+      expect(
+        (
+          await service.pty.runCommand({
+            command: "printf skip > tracked.txt",
+            cwd: root,
+          })
+        ).workspaceDeltaReceipt,
+      ).toMatchObject({ outcome: "changed" });
+      await execFileAsync(
+        "git",
+        ["update-index", "--no-skip-worktree", "tracked.txt"],
+        { cwd: root },
+      );
+      await execFileAsync("git", ["checkout", "--", "tracked.txt"], {
+        cwd: root,
+      });
+
+      await fs.mkdir(path.join(root, "untracked", "nested"), {
+        recursive: true,
+      });
+      await fs.writeFile(
+        path.join(root, "untracked", "nested", "mode.txt"),
+        "mode\n",
+      );
+      await fs.symlink(
+        "mode.txt",
+        path.join(root, "untracked", "nested", "link"),
+      );
+      expect(
+        (
+          await service.pty.runCommand({
+            command:
+              "chmod 700 untracked/nested/mode.txt && ln -snf ../mode.txt untracked/nested/link",
+            cwd: root,
+          })
+        ).workspaceDeltaReceipt,
+      ).toMatchObject({ outcome: "changed" });
+
+      await execFileAsync("git", ["init", "-q"], { cwd: child });
+      await fs.writeFile(path.join(child, "child.txt"), "initial\n");
+      await commit(child, "child");
+      await execFileAsync(
+        "git",
+        [
+          "-c",
+          "protocol.file.allow=always",
+          "submodule",
+          "add",
+          "-q",
+          child,
+          "submodule",
+        ],
+        { cwd: root },
+      );
+      await commit(root, "submodule");
+      await fs.writeFile(
+        path.join(root, "submodule", "child.txt"),
+        "dirty-before\n",
+      );
+      expect(
+        (
+          await service.pty.runCommand({
+            command: "printf dirty-after > submodule/child.txt",
+            cwd: root,
+          })
+        ).workspaceDeltaReceipt,
+      ).toMatchObject({ outcome: "changed" });
+    } finally {
+      await Promise.all([
+        fs.rm(root, { recursive: true, force: true }),
+        fs.rm(child, { recursive: true, force: true }),
+      ]);
+    }
+  });
+
+  it.each([
+    ["file bytes", { maxFileBytes: 1 }, "OBSERVATION_BYTE_BUDGET_EXCEEDED"],
+    [
+      "Git output",
+      { maxGitOutputBytes: 1 },
+      "OBSERVATION_OUTPUT_BUDGET_EXCEEDED",
+    ],
+    [
+      "directory entries",
+      { maxDirectoryEntries: 1 },
+      "OBSERVATION_BYTE_BUDGET_EXCEEDED",
+    ],
+    [
+      "directory names",
+      { maxDirectoryNameBytes: 1 },
+      "OBSERVATION_BYTE_BUDGET_EXCEEDED",
+    ],
+    ["wall clock", { maxObservationMs: 1 }, "OBSERVATION_TIME_BUDGET_EXCEEDED"],
+  ] as const)(
+    "fails closed at the remote %s observation budget",
+    async (_name, limits, reasonCode) => {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), "remote-budget-"));
+      try {
+        await execFileAsync("git", ["init", "-q"], { cwd: root });
+        const embedded = path.join(root, "embedded");
+        await fs.mkdir(embedded);
+        await execFileAsync("git", ["init", "-q"], { cwd: embedded });
+        await fs.writeFile(
+          path.join(embedded, "long-entry-one.txt"),
+          "payload\n",
+        );
+        await fs.writeFile(
+          path.join(embedded, "long-entry-two.txt"),
+          "payload\n",
+        );
+        const service = new RemoteCodingCapabilityRouterService(
+          makeRuntime(),
+          makeConfig({ workdir: root, hostWorkspaceRoot: root }),
+          new FakeFactory(new LocalProcessSandbox(root)),
+          limits,
+        );
+        const result = await service.pty.runCommand({
+          command: "true",
+          cwd: root,
+        });
+        expect(result.workspaceDeltaReceipt).toMatchObject({
+          outcome: "indeterminate",
+          reasonCode,
+        });
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("carries production endpoint receipts through RuntimeBroker, SHELL, and planner scope matching", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "remote-receipt-e2e-"),
+    );
+    try {
+      await execFileAsync("git", ["init", "-q"], { cwd: root });
+      await fs.writeFile(path.join(root, "tracked.txt"), "initial\n");
+      await fs.writeFile(path.join(root, "verify.js"), "export {};\n");
+      await execFileAsync("git", ["add", "."], { cwd: root });
+      await execFileAsync(
+        "git",
+        [
+          "-c",
+          "user.name=test",
+          "-c",
+          "user.email=test@example.com",
+          "commit",
+          "-qm",
+          "initial",
+        ],
+        { cwd: root },
+      );
+      const sandbox = new LocalProcessSandbox(root, "conformance-sandbox");
+      const endpoint = new RemoteCodingCapabilityRouterService(
+        makeRuntime(),
+        makeConfig({ hostWorkspaceRoot: root, workdir: root }),
+        new FakeFactory(sandbox),
+      );
+      let brokerMode: "normal" | "unavailable" | "malformed" | "mismatch" =
+        "normal";
+      const router = new RuntimeBrokerCapabilityRouter({
+        environment: endpoint.environment,
+        invokeRuntime: async (method, params) => {
+          if (method !== "pty.command.run") {
+            throw new Error(`Unexpected broker method: ${method}`);
+          }
+          if (brokerMode === "unavailable") {
+            throw new CapabilityError({
+              code: "CAPABILITY_UNAVAILABLE",
+              capability: "pty",
+              method: "pty.command.run",
+              message: "exercise local fallback",
+            });
+          }
+          const produced = await endpoint.pty.runCommand(params as never);
+          if (brokerMode === "malformed") {
+            return {
+              ...produced,
+              workspaceDeltaReceipt: {
+                ...produced.workspaceDeltaReceipt,
+                unexpected: true,
+              },
+            } as unknown as JsonValue;
+          }
+          if (brokerMode === "mismatch") {
+            return {
+              ...produced,
+              workspaceExecution: produced.workspaceExecution
+                ? {
+                    ...produced.workspaceExecution,
+                    rootId: "f".repeat(64),
+                  }
+                : undefined,
+            } as unknown as JsonValue;
+          }
+          return produced as unknown as JsonValue;
+        },
+      });
+      const action = codingToolsPlugin.actions?.find(
+        (candidate) => candidate.name === "SHELL",
+      );
+      if (!action?.handler) throw new Error("SHELL action unavailable");
+      const owner = new AgentRuntime({
+        character: { name: "remote-receipt-conformance" } as never,
+      });
+      const services = new Map<string, unknown>();
+      const runtime = {
+        agentId: owner.agentId,
+        runtimeInstanceId: "55555555-5555-4555-8555-555555555555" as UUID,
+        actions: [action],
+        character: owner.character,
+        getSetting: (key: string) =>
+          key === "CODING_TOOLS_WORKSPACE_ROOTS" ? root : undefined,
+        getService: <T>(type: string) => (services.get(type) as T) ?? null,
+        redactSecrets: (text: string) => text,
+        locateConfiguredSecretFragmentTaint:
+          owner.locateConfiguredSecretFragmentTaint.bind(owner),
+        logger: owner.logger,
+      } as IAgentRuntime;
+      const sandboxService = await SandboxService.start(runtime);
+      const sessionService = await SessionCwdService.start(runtime);
+      services.set(SANDBOX_SERVICE, sandboxService);
+      services.set(SESSION_CWD_SERVICE, sessionService);
+      services.set(CAPABILITY_ROUTER_SERVICE_TYPE, router);
+      const roomId = "22222222-2222-2222-2222-222222222222" as UUID;
+      sessionService.setCwd(String(roomId), root);
+      const message = {
+        id: "33333333-3333-3333-3333-333333333333" as UUID,
+        roomId,
+        entityId: "44444444-4444-4444-4444-444444444444" as UUID,
+        content: { text: "mutate and verify" },
+      } as Memory;
+      const run = async (command: string) =>
+        await action.handler?.(runtime, message, undefined, { command });
+      const changed = await run("printf mutate > remote.txt");
+      brokerMode = "malformed";
+      const malformed = await run("node --check verify.js");
+      brokerMode = "mismatch";
+      const mismatch = await run("node --check verify.js");
+      brokerMode = "unavailable";
+      const local = await run("true");
+      brokerMode = "normal";
+      const remoteUnchanged = await run("node --check verify.js");
+      const commands = [
+        "printf mutate > remote.txt",
+        "node --check verify.js",
+        "node --check verify.js",
+        "true",
+        "node --check verify.js",
+      ];
+      const steps = [changed, malformed, mismatch, local, remoteUnchanged].map(
+        (result, index) => ({
+          toolCall: {
+            name: "SHELL",
+            params: { command: commands[index] },
+          },
+          result,
+        }),
+      );
+      const trajectorySteps = [steps[0]];
+      const trajectory = {
+        steps: trajectorySteps,
+        archivedSteps: [],
+      } as unknown as Parameters<
+        typeof __codingMutationRequiresVerificationForTests
+      >[0];
+      const changedReceipt = changed?.data?.workspaceDeltaReceipt as
+        | WorkspaceDeltaReceipt
+        | undefined;
+      expect(changedReceipt).toMatchObject({
+        outcome: "changed",
+      });
+      if (!changedReceipt) throw new Error("changed receipt unavailable");
+      expect(malformed?.data?.workspaceDeltaReceipt).toMatchObject({
+        outcome: "indeterminate",
+        reasonCode: "REMOTE_EXECUTION_UNOBSERVED",
+      });
+      expect(mismatch?.data?.workspaceDeltaReceipt).toMatchObject({
+        outcome: "indeterminate",
+        reasonCode: "REMOTE_EXECUTION_UNOBSERVED",
+      });
+      for (const negative of [steps[1], steps[2]]) {
+        const negativeTrajectory = {
+          steps: [steps[0], negative, steps[4]],
+          archivedSteps: [],
+        } as unknown as Parameters<
+          typeof __codingMutationRequiresVerificationForTests
+        >[0];
+        expect(
+          __codingMutationRequiresVerificationForTests(negativeTrajectory),
+        ).toBe(true);
+      }
+      expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(
+        true,
+      );
+      trajectorySteps.push(steps[3]);
+      expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(
+        true,
+      );
+      trajectorySteps.push(steps[4]);
+      expect(remoteUnchanged?.data?.workspaceDeltaReceipt).toMatchObject({
+        outcome: "unchanged",
+        scope: changedReceipt.scope,
+      });
+      expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(
+        false,
+      );
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
   });
 
   it("retries runner creation after a transient failure instead of caching the rejection", async () => {
@@ -804,7 +1351,11 @@ describe("RemoteCodingCapabilityRouterService", () => {
     });
 
     expect(result.operation.status).toBe("completed");
-    expect(sandbox.commands.runCalls.at(-1)).toMatchObject({
+    expect(
+      sandbox.commands.runCalls.find(
+        (call) => call.cmd === "git 'status' '--short'",
+      ),
+    ).toMatchObject({
       cmd: "git 'status' '--short'",
       cwd: "/workspace",
     });
@@ -929,6 +1480,10 @@ describe("RemoteCodingCapabilityRouterService", () => {
           "/v1/fs/entries",
           "/v1/fs/file",
           "/v1/fs/file",
+          "/v1/processes/run",
+          "/v1/processes/run",
+          "/v1/processes/run",
+          "/v1/processes/run",
           "/v1/processes/run",
           "/v1/processes/run",
         ]);

@@ -73,9 +73,6 @@ const CONTACT_ACTION = "CONTACT";
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const ACTIVITY_DEFAULT_LIMIT = 50;
-const ACTIVITY_MAX_LIMIT = 100;
-
 interface ContactParams {
   action?: ContactOp;
   subaction?: ContactOp;
@@ -258,11 +255,11 @@ function fail(text: string, error: string, op?: ContactOp): ActionResult {
   };
 }
 
-function clampActivityLimit(value: number | undefined): number {
+function requestedActivityLimit(value: number | undefined): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 1) {
-    return ACTIVITY_DEFAULT_LIMIT;
+    return undefined;
   }
-  return Math.min(Math.trunc(value), ACTIVITY_MAX_LIMIT);
+  return Math.trunc(value);
 }
 
 function clampActivityOffset(value: number | undefined): number {
@@ -492,7 +489,7 @@ async function handleSearch(
 
   const query = readString(enriched.query) ?? readString(enriched.searchTerm);
   const platform = readString(enriched.platform);
-  const limit = Math.min(Math.max(1, enriched.limit ?? 10), 25);
+  const limit = requestedActivityLimit(enriched.limit);
 
   if (!query || query.length === 0) {
     return fail(
@@ -515,7 +512,7 @@ async function handleSearch(
     const snapshot = await graphService.getGraphSnapshot({
       search: query,
       platform: platform ?? null,
-      limit,
+      ...(limit === undefined ? {} : { limit }),
     });
 
     if (!snapshot || snapshot.people.length === 0) {
@@ -648,45 +645,37 @@ async function handleRead(
       : undefined;
 
     if (!resolvedEntityId && name) {
-      const matchLimit = 5;
       const snapshot = await graphService.getGraphSnapshot({
         search: name,
-        limit: matchLimit + 1,
       });
       if (snapshot && snapshot.people.length > 0) {
         if (snapshot.people.length > 1) {
-          const hasMore = snapshot.people.length > matchLimit;
-          const matches = snapshot.people
-            .slice(0, matchLimit)
-            .map((person) => ({
-              entityId: person.primaryEntityId,
-              displayName: person.displayName,
-            }));
+          const matches = snapshot.people.map((person) => ({
+            entityId: person.primaryEntityId,
+            displayName: person.displayName,
+          }));
           const choices = matches
             .map(
               (person) =>
                 `${person.displayName} (entityId: ${person.entityId})`,
             )
             .join(", ");
-          const count = hasMore
-            ? `at least ${snapshot.people.length}`
-            : String(snapshot.people.length);
           const queryLabel = describeUserReference(name, "that name");
           return {
             success: false,
-            text: `${queryLabel} matched ${count} contacts: ${choices}${hasMore ? ", and more" : ""}. Ask which contact they mean, then retry with that entityId. No person's private details were read.`,
+            text: `${queryLabel} matched ${snapshot.people.length} contacts: ${choices}. Ask which contact they mean, then retry with that entityId. No person's private details were read.`,
             values: {
               success: false,
               error: "AMBIGUOUS_CONTACT",
               matchCount: snapshot.people.length,
-              matchCountCapped: hasMore,
+              matchCountCapped: false,
             },
             data: {
               actionName: CONTACT_ACTION,
               op: "read",
               error: "AMBIGUOUS_CONTACT",
               matches,
-              hasMore,
+              hasMore: false,
             },
             error: "AMBIGUOUS_CONTACT",
           };
@@ -1412,7 +1401,7 @@ async function handleActivity(
   runtime: IAgentRuntime,
   params: ContactParams,
 ): Promise<ActionResult> {
-  const limit = clampActivityLimit(params.limit);
+  const limit = requestedActivityLimit(params.limit);
   const offset = clampActivityOffset(params.offset);
 
   const graphService = await getGraphService(runtime);
@@ -1472,7 +1461,6 @@ async function handleActivity(
     const recentFacts = await runtime.getMemories({
       agentId: runtime.agentId,
       tableName: "facts",
-      limit: 200,
     });
     for (const fact of recentFacts) {
       const text =
@@ -1522,29 +1510,36 @@ async function handleActivity(
     });
 
     const total = activity.length;
-    const slice = activity.slice(offset, offset + limit);
-    const lines = slice.map((item, i) => {
+    const page =
+      limit === undefined
+        ? activity.slice(offset)
+        : activity.slice(offset, offset + limit);
+    const lines = page.map((item, i) => {
       const ts = item.timestamp ? ` · ${item.timestamp.slice(0, 19)}` : "";
       const detail = item.detail ? ` — ${item.detail}` : "";
       return `${String(offset + i + 1).padStart(3, " ")} | [${item.type}] ${item.summary}${detail}${ts}`;
     });
 
-    const header = `Relationships activity | ${slice.length}/${total} items shown (offset ${offset}, limit ${limit})`;
+    const pageDescription =
+      limit === undefined
+        ? `offset ${offset}`
+        : `offset ${offset}, limit ${limit}`;
+    const header = `Relationships activity | ${page.length}/${total} items shown (${pageDescription})`;
     const body = lines.length > 0 ? lines.join("\n") : "(no activity yet)";
 
     return {
       text: `${header}\n${"─".repeat(60)}\n${body}`,
       success: true,
-      values: { success: true, total, count: slice.length, offset, limit },
+      values: { success: true, total, count: page.length, offset, limit },
       data: {
         actionName: CONTACT_ACTION,
         op: "activity",
-        activity: slice,
+        activity: page,
         total,
-        count: slice.length,
+        count: page.length,
         offset,
         limit,
-        hasMore: offset + limit < total,
+        hasMore: limit !== undefined && offset + limit < total,
       },
     };
   } catch (err) {

@@ -29,12 +29,15 @@ import { cn } from "../lib/utils";
 import { BrandButton, BrandCard } from "./brand";
 
 type BadgeVariant = React.ComponentProps<typeof Badge>["variant"];
+type BadgeTone = React.ComponentProps<typeof Badge>["tone"];
+type BadgeSize = React.ComponentProps<typeof Badge>["size"];
 
 export interface LogViewerBadge {
   key?: string;
   label: React.ReactNode;
   variant?: BadgeVariant;
-  className?: string;
+  tone?: BadgeTone;
+  size?: BadgeSize;
 }
 
 export interface LogViewerSelectOption {
@@ -127,9 +130,10 @@ function getDefaultLineClassName(line: string): string {
     normalized.includes("fatal") ||
     normalized.includes("panic")
   ) {
-    return "border-l-red-500 text-red-300";
+    return "border-l-destructive text-destructive";
   }
-  if (normalized.includes("warn")) return "border-l-yellow-500 text-yellow-300";
+  if (normalized.includes("warn"))
+    return "border-l-status-warning text-status-warning";
   if (normalized.includes("info"))
     return "border-l-status-info text-status-info";
   return "border-l-neutral-700 text-neutral-300";
@@ -151,9 +155,9 @@ function getDefaultEntryLevelVariant(level: string): BadgeVariant {
 function getDefaultEntryClassName(entry: LogViewerStructuredEntry): string {
   switch (entry.level) {
     case "error":
-      return "text-red-500";
+      return "text-destructive";
     case "warn":
-      return "text-yellow-500";
+      return "text-status-warning";
     case "info":
       return "text-status-info";
     case "debug":
@@ -248,7 +252,8 @@ export function LogViewer({
                 <Badge
                   key={badge.key ?? String(badge.label)}
                   variant={badge.variant ?? "outline"}
-                  className={badge.className}
+                  tone={badge.tone}
+                  size={badge.size}
                 >
                   {badge.label}
                 </Badge>
@@ -354,11 +359,12 @@ export function LogViewer({
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/60" />
                 <Input
+                  variant="config"
+                  adornment="leading"
                   aria-label={search.placeholder ?? "Search logs"}
                   placeholder={search.placeholder ?? "Search logs..."}
                   value={search.value}
                   onChange={(event) => search.onChange(event.target.value)}
-                  className="rounded-none border-border bg-black/40 pl-9 text-white placeholder:text-white/60 "
                   style={{ fontFamily: "var(--font-roboto-mono)" }}
                 />
               </div>
@@ -409,7 +415,7 @@ export function LogViewer({
           <div className="py-8 text-center">
             <Terminal className="mx-auto mb-3 size-8 text-neutral-600" />
             <p
-              className="mb-1 text-sm font-medium text-red-400"
+              className="mb-1 text-sm font-medium text-destructive"
               style={{ fontFamily: "var(--font-roboto-mono)" }}
             >
               {errorTitle}
@@ -492,7 +498,8 @@ export function LogViewer({
                   {entry.level && (
                     <Badge
                       variant={entryLevelVariant(entry.level)}
-                      className="h-5 shrink-0 rounded-none font-mono text-xs"
+                      size="compact"
+                      className="shrink-0"
                     >
                       {entry.level.toUpperCase()}
                     </Badge>
@@ -539,8 +546,8 @@ export function LogViewer({
           >
             {streaming.active ? (
               <>
-                <Wifi className="size-3 text-green-500" />
-                <span className="text-green-500">
+                <Wifi className="size-3 text-status-success" />
+                <span className="text-status-success">
                   {streaming.activeLabel ??
                     streaming.label ??
                     "Live streaming enabled"}

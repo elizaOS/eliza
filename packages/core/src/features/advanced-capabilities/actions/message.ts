@@ -15,9 +15,11 @@
 import { searchCanonicalConversationMemories } from "../../../access-control/provenance-envelope.ts";
 import { getConnectorAccountManager } from "../../../connectors/account-manager.ts";
 import { createUniqueUuid, findEntityByName } from "../../../entities.ts";
+import { ElizaError } from "../../../errors.ts";
 import { getActionSpec } from "../../../generated/spec-helpers.ts";
 import { getVerifiedRelatedEntityIds } from "../../../identity-clusters.ts";
 import { logger } from "../../../logger.ts";
+import { authorizeManageServerDestination } from "../../../messaging/manage-server-authorization.ts";
 import {
 	deterministicOwnerEntityId,
 	resolveCanonicalOwnerIdForMessage,
@@ -43,6 +45,8 @@ import type {
 	Media,
 	Memory,
 	MessageConnector,
+	MessageConnectorManageServerAuthorization,
+	MessageConnectorManageServerDestination,
 	MessageConnectorQueryContext,
 	MessageConnectorTarget,
 	MessageTargetKind,
@@ -112,6 +116,7 @@ export const MESSAGE_OPS = [
 	"delete",
 	"pin",
 	"get_user",
+	"manage_server",
 	// Inbox / triage / draft ops (delegated to triage actions)
 	"triage",
 	"list_inbox",
@@ -135,9 +140,9 @@ const MESSAGE_CONTEXTS = [
 ];
 
 const MESSAGE_DESCRIPTION =
-	"Addressed messaging action: DMs, groups, channels, rooms, threads, servers, users, inboxes, drafts, and authorized cross-world continuity. Use list_worlds to discover durable worlds shared by the verified requester and this agent, list_rooms to inspect the current or an authorized worldId, and read_message to page an exact provider message or email body. Public feed publishing uses POST.";
+	"Addressed messaging action: DMs, groups, channels, rooms, threads, servers, users, inboxes, drafts, and authorized cross-world continuity. Use list_worlds to discover durable worlds shared by the verified requester and this agent, list_rooms to inspect the current or an authorized worldId, and read_message to page an exact provider message or email body. Use manage_server for structural server administration on a connector that supports it (create/edit/delete channels, categories, and roles, permission overwrites, member roles, invites, moderation, guild templates) — gated by connector configuration. Public feed publishing uses POST.";
 const MESSAGE_COMPRESSED =
-	"primary message action send read_channel read_with_contact read_message search list_channels list_servers list_connections list_worlds list_rooms join leave react edit delete pin get_user triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server world inbox draft connections platforms reachable";
+	"primary message action send read_channel read_with_contact read_message search list_channels list_servers list_connections list_worlds list_rooms join leave react edit delete pin get_user manage_server triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server world inbox draft connections platforms reachable";
 
 // ---------------------------------------------------------------------------
 // Param coercion / op normalization
@@ -173,13 +178,8 @@ function numberParam(value: unknown): number | undefined {
 	return undefined;
 }
 
-function clampLimit(
-	value: number | undefined,
-	fallback: number,
-	max: number,
-): number {
-	const base = value ?? fallback;
-	return Math.max(1, Math.min(max, Math.floor(base)));
+function requestedLimit(value: number | undefined): number | undefined {
+	return value === undefined ? undefined : Math.max(1, Math.floor(value));
 }
 
 function normalizeComparable(value: unknown): string {
@@ -283,6 +283,31 @@ const OP_ALIASES: Record<string, MessageOperation> = {
 	unsubscribe: "manage",
 	block_sender: "manage",
 	mark_read: "manage",
+	// Structural server management verbs route to manage_server; the concrete
+	// verb is preserved via params.operation (or the raw action string).
+	manage_guild: "manage_server",
+	server_management: "manage_server",
+	guild_management: "manage_server",
+	create_channel: "manage_server",
+	create_category: "manage_server",
+	edit_channel: "manage_server",
+	delete_channel: "manage_server",
+	create_role: "manage_server",
+	edit_role: "manage_server",
+	delete_role: "manage_server",
+	edit_permissions: "manage_server",
+	edit_channel_permissions: "manage_server",
+	assign_role: "manage_server",
+	remove_role: "manage_server",
+	create_invite: "manage_server",
+	kick_member: "manage_server",
+	ban_member: "manage_server",
+	unban_member: "manage_server",
+	timeout_member: "manage_server",
+	apply_template: "manage_server",
+	apply_server_template: "manage_server",
+	list_templates: "manage_server",
+	list_server_templates: "manage_server",
 };
 
 function normalizeOp(value: unknown): MessageOperation | undefined {
@@ -331,7 +356,7 @@ type ConnectorWithHooks = MessageConnector & {
 		context: MessageConnectorQueryContext,
 		opts: {
 			target: TargetInfo;
-			limit: number;
+			limit?: number;
 			cursor?: string;
 			before?: string;
 			after?: string;
@@ -342,7 +367,7 @@ type ConnectorWithHooks = MessageConnector & {
 		opts: {
 			query: string;
 			target?: TargetInfo;
-			limit: number;
+			limit?: number;
 			cursor?: string;
 			before?: string;
 			after?: string;
@@ -406,6 +431,24 @@ type ConnectorWithHooks = MessageConnector & {
 		runtime: IAgentRuntime,
 		query: { userId?: string; username?: string; handle?: string },
 	) => Promise<unknown> | unknown;
+	resolveManageServerDestination?: (
+		runtime: IAgentRuntime,
+		params: { target?: TargetInfo; serverId: string },
+	) =>
+		| Promise<MessageConnectorManageServerDestination>
+		| MessageConnectorManageServerDestination;
+	manageServerHandler?: (
+		runtime: IAgentRuntime,
+		payload: {
+			target?: TargetInfo;
+			operation: string;
+			serverId?: string;
+			authorization: MessageConnectorManageServerAuthorization;
+			params?: Record<string, unknown>;
+		},
+	) =>
+		| Promise<{ summary: string; data?: Record<string, unknown> }>
+		| { summary: string; data?: Record<string, unknown> };
 	contentShaping?: {
 		postProcess?: (text: string) => string;
 		constraints?: { maxLength?: number };
@@ -2998,11 +3041,6 @@ async function handleSend(
 //      from the channel/source params (covers the original read-channel leaf behavior).
 // ---------------------------------------------------------------------------
 
-const CHANNEL_READ_DEFAULT_LIMIT = 50;
-const CHANNEL_READ_MAX_LIMIT = 200;
-const MEMORY_READ_DEFAULT_BYTES = 4096;
-const MEMORY_READ_MAX_BYTES = 64 * 1024;
-
 function memoryReadFailure(
 	code: string,
 	text: string,
@@ -3056,13 +3094,11 @@ function memoryScopeAllowsSameRoomRead(
 function safeMemoryReadInteger(
 	value: number | undefined,
 	label: "offset" | "limit",
-	fallback: number,
+	fallback?: number,
 ): number | undefined {
 	if (value === undefined) return fallback;
 	if (!Number.isSafeInteger(value) || value < 0) return undefined;
-	if (label === "limit" && (value < 1 || value > MEMORY_READ_MAX_BYTES)) {
-		return undefined;
-	}
+	if (label === "limit" && value < 1) return undefined;
 	return value;
 }
 
@@ -3127,15 +3163,14 @@ async function handleReadStoredMemory(
 	}
 
 	const offset = safeMemoryReadInteger(numberParam(params.offset), "offset", 0);
-	const limit = safeMemoryReadInteger(
-		numberParam(params.limit),
-		"limit",
-		MEMORY_READ_DEFAULT_BYTES,
-	);
-	if (offset === undefined || limit === undefined) {
+	const limit = safeMemoryReadInteger(numberParam(params.limit), "limit");
+	if (
+		offset === undefined ||
+		(params.limit !== undefined && limit === undefined)
+	) {
 		return memoryReadFailure(
 			"MESSAGE_MEMORY_INVALID_RANGE",
-			`Stored-message offset must be a nonnegative safe integer and limit must be 1-${MEMORY_READ_MAX_BYTES} bytes.`,
+			"Stored-message offset must be a nonnegative safe integer and limit must be a positive safe integer when supplied.",
 		);
 	}
 
@@ -3148,7 +3183,8 @@ async function handleReadStoredMemory(
 			{ totalBytes: bytes.length },
 		);
 	}
-	let end = Math.min(offset + limit, bytes.length);
+	let end =
+		limit === undefined ? bytes.length : Math.min(offset + limit, bytes.length);
 	while (end > offset && !isUtf8Boundary(bytes, end)) end--;
 	if (end === offset && offset < bytes.length) {
 		return memoryReadFailure(
@@ -3220,11 +3256,11 @@ function parseDateParam(value: string | undefined): number | undefined {
 function connectorReadRequest(
 	target: TargetInfo,
 	params: ParamRecord,
-	limit: number,
+	limit: number | undefined,
 ) {
 	return {
 		target,
-		limit,
+		...(limit === undefined ? {} : { limit }),
 		cursor: textParam(params.cursor),
 		before: textParam(params.before),
 		after: textParam(params.after),
@@ -3235,7 +3271,7 @@ async function fetchRecentMessagesFromConnector(
 	connector: ConnectorWithHooks,
 	context: MessageConnectorQueryContext,
 	params: ParamRecord,
-	limit: number,
+	limit: number | undefined,
 ): Promise<Memory[]> {
 	if (!connector.fetchMessages || !connector.listRecentTargets) return [];
 	const recent = await connector.listRecentTargets(context);
@@ -3299,11 +3335,7 @@ async function handleReadChannel(
 	const source = sourceFromParams(params, message);
 	const accountId = accountIdFromParams(params, message);
 	const channel = textParam(params.channel) ?? textParam(params.target);
-	const limit = clampLimit(
-		numberParam(params.limit),
-		CHANNEL_READ_DEFAULT_LIMIT,
-		CHANNEL_READ_MAX_LIMIT,
-	);
+	const limit = requestedLimit(numberParam(params.limit));
 	const range = textParam(params.range);
 
 	// Prefer in-process connector fetchMessages when available.
@@ -3360,7 +3392,8 @@ async function handleReadChannel(
 					params,
 					limit,
 				);
-				memories = memories.sort(compareMemoryByCreatedAtDesc).slice(0, limit);
+				memories = memories.sort(compareMemoryByCreatedAtDesc);
+				if (limit !== undefined) memories = memories.slice(0, limit);
 			}
 			return opSuccess(
 				"read_channel",
@@ -3420,7 +3453,7 @@ async function handleReadChannel(
 			});
 		}
 		memories.sort(compareMemoryByCreatedAtDesc);
-		const limited = memories.slice(0, limit);
+		const limited = limit === undefined ? memories : memories.slice(0, limit);
 		return opSuccess(
 			"read_channel",
 			limited.length
@@ -3453,7 +3486,7 @@ async function handleReadChannel(
 		const queryParams: Parameters<IAgentRuntime["getMemories"]>[0] = {
 			tableName: "messages",
 			roomId: room.id,
-			count: limit,
+			...(limit === undefined ? {} : { count: limit }),
 			...(range === "dates"
 				? {
 						start: parseDateParam(textParam(params.from)),
@@ -3467,7 +3500,9 @@ async function handleReadChannel(
 		} as Parameters<IAgentRuntime["getMemories"]>[0];
 
 		const raw = (await runtime.getMemories(queryParams)) as Memory[];
-		const memories = raw.slice(0, limit).reverse();
+		const memories = (
+			limit === undefined ? raw : raw.slice(0, limit)
+		).reverse();
 		return opSuccess(
 			"read_channel",
 			`Read ${memories.length} messages from ${(room as Room & { name?: string }).name ?? channel}.`,
@@ -3496,9 +3531,6 @@ async function handleReadChannel(
 // graph snapshot) and aggregates their conversations from all rooms the
 // person participates in, regardless of platform.
 // ---------------------------------------------------------------------------
-
-const READ_WITH_CONTACT_DEFAULT_LIMIT = 15;
-const READ_WITH_CONTACT_MAX_LIMIT = 50;
 
 type RelationshipsPersonSummary = {
 	primaryEntityId: UUID;
@@ -3545,11 +3577,7 @@ async function handleReadWithContact(
 	const contact = textParam(params.contact);
 	const entityId = textParam(params.entityId);
 	const platform = textParam(params.platform);
-	const limit = clampLimit(
-		numberParam(params.limit),
-		READ_WITH_CONTACT_DEFAULT_LIMIT,
-		READ_WITH_CONTACT_MAX_LIMIT,
-	);
+	const limit = requestedLimit(numberParam(params.limit));
 
 	if (!contact && !entityId) {
 		return opFailure(
@@ -3572,7 +3600,6 @@ async function handleReadWithContact(
 	try {
 		const snapshot = await relationships.getGraphSnapshot({
 			search: (entityId ?? contact ?? "").trim(),
-			limit: 5,
 		});
 		const candidates = snapshot.people;
 		if (entityId) {
@@ -3630,7 +3657,7 @@ async function handleReadWithContact(
 				const memories = (await runtime.getMemories({
 					tableName: "messages",
 					roomId: room.id,
-					count: limit,
+					...(limit === undefined ? {} : { count: limit }),
 				} as Parameters<IAgentRuntime["getMemories"]>[0])) as Memory[];
 				if (memories.length === 0) continue;
 				const last = memories[0];
@@ -3684,8 +3711,6 @@ async function handleReadWithContact(
 // op=search — connector passthrough OR semantic conversation search.
 // ---------------------------------------------------------------------------
 
-const SEARCH_DEFAULT_LIMIT = 20;
-const SEARCH_MAX_LIMIT = 50;
 const SEARCH_MATCH_THRESHOLD = 0.6;
 
 const CONVERSATION_SEARCH_CATEGORY: SearchCategoryRegistration = {
@@ -3758,11 +3783,7 @@ async function handleSearch(
 			"INVALID_PARAMETERS",
 			"MESSAGE op=search requires a query.",
 		);
-	const limit = clampLimit(
-		numberParam(params.limit),
-		SEARCH_DEFAULT_LIMIT,
-		SEARCH_MAX_LIMIT,
-	);
+	const limit = requestedLimit(numberParam(params.limit));
 	const source = sourceFromParams(params, message);
 	const entityId = textParam(params.entityId);
 
@@ -3814,7 +3835,7 @@ async function handleSearch(
 				const memories = (await searchMessages(context, {
 					query,
 					target: resolved.target,
-					limit,
+					...(limit === undefined ? {} : { limit }),
 					cursor: textParam(params.cursor),
 					before: textParam(params.before),
 					after: textParam(params.after),
@@ -3854,16 +3875,17 @@ async function handleSearch(
 			query,
 			agentId: runtime.agentId,
 			deliveryMessage: message,
-			count: limit + 10,
+			...(limit === undefined ? {} : { count: limit + 10 }),
 			matchThreshold: SEARCH_MATCH_THRESHOLD,
 			...(entityId ? { entityId: entityId as UUID } : {}),
 			source,
 		});
 
-		const results = recall.items
+		const matchingResults = recall.items
 			.map((item) => item.memory)
-			.filter((m) => m.content.text)
-			.slice(0, limit);
+			.filter((m) => m.content.text);
+		const results =
+			limit === undefined ? matchingResults : matchingResults.slice(0, limit);
 		return opSuccess(
 			"search",
 			conversationSearchText(query, results.length, recall.availability),
@@ -4590,6 +4612,197 @@ async function handleMessageMutation(
 }
 
 // ---------------------------------------------------------------------------
+// op=manage_server
+// ---------------------------------------------------------------------------
+
+/**
+ * Raw `action` strings that alias to manage_server while naming a concrete
+ * management verb. Preserved as the connector operation so `action:
+ * "create_channel"` works without a separate `operation` param.
+ */
+const MANAGE_SERVER_GENERIC_ALIASES = new Set([
+	"manage_server",
+	"manage_guild",
+	"server_management",
+	"guild_management",
+]);
+
+const MANAGE_SERVER_OPERATION_RENAMES: Record<string, string> = {
+	kick_member: "kick",
+	ban_member: "ban",
+	unban_member: "unban",
+	timeout_member: "timeout",
+	edit_channel_permissions: "edit_permissions",
+	apply_server_template: "apply_template",
+	list_server_templates: "list_templates",
+};
+
+function manageServerOperation(params: ParamRecord): string | undefined {
+	const explicit = textParam(params.operation) ?? textParam(params.op);
+	if (explicit) {
+		const normalized = explicit.toLowerCase().replace(/[-\s]+/g, "_");
+		return MANAGE_SERVER_OPERATION_RENAMES[normalized] ?? normalized;
+	}
+	const raw = textParam(params.action);
+	if (!raw) return undefined;
+	const normalized = raw.toLowerCase().replace(/[-\s]+/g, "_");
+	if (MANAGE_SERVER_GENERIC_ALIASES.has(normalized)) return undefined;
+	return MANAGE_SERVER_OPERATION_RENAMES[normalized] ?? normalized;
+}
+
+/** Bounded param names forwarded verbatim to the connector. */
+const MANAGE_SERVER_FORWARDED_PARAMS = [
+	"channelId",
+	"parentId",
+	"roleId",
+	"userId",
+	"name",
+	"topic",
+	"channelType",
+	"color",
+	"hoist",
+	"mentionable",
+	"permissions",
+	"allow",
+	"deny",
+	"overwriteId",
+	"reason",
+	"durationMinutes",
+	"deleteMessageSeconds",
+	"maxAgeSeconds",
+	"maxUses",
+	"unique",
+	"template",
+	"templateSpec",
+	"variables",
+	"dryRun",
+] as const;
+
+async function handleManageServer(
+	runtime: IAgentRuntime,
+	message: Memory,
+	state: State | undefined,
+	params: ParamRecord,
+): Promise<ActionResult> {
+	const op: MessageOperation = "manage_server";
+	const operation = manageServerOperation(params);
+	if (!operation) {
+		return opFailure(
+			op,
+			"INVALID_PARAMETERS",
+			'MESSAGE op=manage_server requires an operation (e.g. operation: "create_channel").',
+		);
+	}
+	const connectors = connectorsWithHook(runtime, "manageServerHandler");
+	const selection = selectConnectorForOp(
+		connectors,
+		sourceFromParams(params, message),
+		trustedConnectorSource(message),
+		op,
+		accountIdFromParams(params, message),
+	);
+	if ("error" in selection) return selection.error;
+	const connector = selection.connector;
+	if (!connector.accountId) {
+		return opFailure(
+			op,
+			"ACCOUNT_ID_REQUIRED",
+			"Server management requires an explicitly account-scoped connector.",
+		);
+	}
+	const selectedAccountId = connector.accountId;
+	const handler = connector.manageServerHandler;
+	const resolveDestination = connector.resolveManageServerDestination;
+	if (
+		typeof handler !== "function" ||
+		typeof resolveDestination !== "function"
+	) {
+		return opFailure(
+			op,
+			"NOT_SUPPORTED",
+			`Server management is not supported for ${connector.label}.`,
+		);
+	}
+	const resolved = await resolveOptionalTarget(
+		connector,
+		runtime,
+		message,
+		state,
+		params,
+		op,
+	);
+	if (resolved.error) return resolved.error;
+	const forwarded: Record<string, unknown> = {};
+	for (const key of MANAGE_SERVER_FORWARDED_PARAMS) {
+		if (params[key] !== undefined) forwarded[key] = params[key];
+	}
+	let serverId =
+		textParam(params.serverId) ??
+		textParam(params.server) ??
+		textParam(params.guildId) ??
+		resolved.target?.serverId;
+	if (!serverId) {
+		const currentRoom = await runtime.getRoom(message.roomId);
+		serverId =
+			currentRoom?.source === connector.source
+				? currentRoom.serverId
+				: undefined;
+	}
+	if (!serverId) {
+		return opFailure(
+			op,
+			"SERVER_ID_REQUIRED",
+			"MESSAGE op=manage_server requires an exact platform serverId or a current room with an exact persisted server binding.",
+		);
+	}
+	try {
+		const destination = await resolveDestination(runtime, {
+			target: resolved.target,
+			serverId,
+		});
+		if (
+			destination.source !== connector.source ||
+			destination.accountId !== selectedAccountId ||
+			destination.target.accountId !== selectedAccountId
+		) {
+			return opFailure(
+				op,
+				"DESTINATION_CONNECTOR_MISMATCH",
+				"The resolved server destination does not match the selected connector source and account.",
+			);
+		}
+		const authorization = await authorizeManageServerDestination(
+			runtime,
+			message.entityId,
+			destination,
+		);
+		const result = await handler(runtime, {
+			target: destination.target,
+			operation,
+			serverId: destination.serverId,
+			authorization,
+			params: forwarded,
+		});
+		return opSuccess(op, result.summary, {
+			source: connector.source,
+			operation,
+			...(result.data ? { receipt: result.data } : {}),
+		});
+	} catch (error) {
+		// error-policy:J1 Connector failures become structured action failures.
+		if (error instanceof ElizaError) {
+			logger.error(`[MESSAGE/${op}] ${error.message}`);
+			return opFailure(
+				op,
+				error.code,
+				`MESSAGE op=${op} failed: ${error.message}`,
+			);
+		}
+		return opErrorWrap(op, error);
+	}
+}
+
+// ---------------------------------------------------------------------------
 // op=get_user
 // ---------------------------------------------------------------------------
 
@@ -4820,6 +5033,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 			"delete",
 			"pin",
 			"get_user",
+			"manage_server",
 			"triage",
 			"list_inbox",
 			"search_inbox",
@@ -4967,6 +5181,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 			"delete",
 			"pin",
 			"draft_followup",
+			"manage_server",
 		],
 		schema: { type: "string" },
 	},
@@ -4999,6 +5214,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 			"edit",
 			"delete",
 			"pin",
+			"manage_server",
 		],
 		schema: { type: "string" },
 	},
@@ -5016,6 +5232,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 			"delete",
 			"pin",
 			"get_user",
+			"manage_server",
 		],
 		schema: { type: "string" },
 	},
@@ -5513,6 +5730,108 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 		subactions: ["read_channel", "search"],
 		schema: { type: "string" },
 	},
+	{
+		name: "operation",
+		description:
+			"Server-management verb for op=manage_server: create_category, create_channel, edit_channel, delete_channel, create_role, edit_role, delete_role, edit_permissions, assign_role, remove_role, create_invite, kick, ban, unban, timeout, list_templates, apply_template. Connector configuration gates every write (fail closed).",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "string" },
+	},
+	{
+		name: "name",
+		description:
+			"Name for created/edited channels, categories, and roles (manage_server).",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "string" },
+	},
+	{
+		name: "topic",
+		description: "Channel topic for manage_server create/edit channel.",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "string" },
+	},
+	{
+		name: "channelType",
+		description:
+			"Channel type for manage_server create_channel: text, voice, announcement, forum, stage.",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "string" },
+	},
+	{
+		name: "parentId",
+		description:
+			"Parent category channel id for manage_server create/edit channel.",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "string" },
+	},
+	{
+		name: "roleId",
+		description:
+			"Role id for manage_server edit_role, delete_role, assign_role, remove_role.",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "string" },
+	},
+	{
+		name: "permissions",
+		description:
+			"Named permission list for manage_server create_role/edit_role (Administrator is always rejected).",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "array", items: { type: "string" } },
+	},
+	{
+		name: "allow",
+		description:
+			"Permissions to allow in a manage_server edit_permissions overwrite.",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "array", items: { type: "string" } },
+	},
+	{
+		name: "deny",
+		description:
+			"Permissions to deny in a manage_server edit_permissions overwrite.",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "array", items: { type: "string" } },
+	},
+	{
+		name: "overwriteId",
+		description:
+			'Overwrite subject for manage_server edit_permissions: a role id, user id, or "@everyone".',
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "string" },
+	},
+	{
+		name: "template",
+		description:
+			"Registered template id for manage_server apply_template (see list_templates).",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "string" },
+	},
+	{
+		name: "dryRun",
+		description:
+			"For manage_server: report the plan (would_create/would_update) without writing.",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "boolean" },
+	},
+	{
+		name: "reason",
+		description: "Audit-log reason for manage_server writes.",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "string" },
+	},
 ];
 
 // ---------------------------------------------------------------------------
@@ -5633,6 +5952,8 @@ export const messageAction: Action = {
 				return handleMessageMutation(runtime, message, state, params, op);
 			case "get_user":
 				return handleGetUser(runtime, message, state, params);
+			case "manage_server":
+				return handleManageServer(runtime, message, state, params);
 			case "triage":
 			case "list_inbox":
 			case "search_inbox":

@@ -801,4 +801,35 @@ describe("trajectory cost aggregation", () => {
     expect(report.totalCostUsd).toBeCloseTo(0.0421, 10);
     expect(report.totals.costUsd).toBeCloseTo(0.0421, 10);
   });
+
+  it("includes every trajectory in aggregate cost and viewer data beyond 500 files", () => {
+    const runDir = makeTempDir("scenario-cost-many-");
+    for (let index = 0; index < 600; index += 1) {
+      writeTrajectory(runDir, `agent-1/trajectory-${index}.json`, {
+        trajectoryId: `trajectory-${index}`,
+        scenarioId: "todos.create-basic",
+        metrics: { totalCostUsd: 0.01 },
+        stages: [],
+      });
+    }
+
+    const report = buildAggregate(
+      [{ ...aggregateReport().scenarios[0] }],
+      "anthropic-claude",
+      "2026-05-23T00:00:00.000Z",
+      "2026-05-23T00:01:00.000Z",
+      "run-many-trajectories",
+      runDir,
+    );
+    const { viewerData } = writeScenarioRunViewer(report, runDir);
+    const data = readFileSync(viewerData, "utf-8");
+    const payload = JSON.parse(
+      data.replace(/^window\.SCENARIO_RUN_DATA = /, "").replace(/;\n?$/, ""),
+    );
+
+    expect(report.totalCostUsd).toBeCloseTo(6, 6);
+    expect(report.totals.costUsd).toBeCloseTo(6, 6);
+    expect(payload.trajectories.files).toHaveLength(600);
+    expect(payload.trajectories.summaries).toHaveLength(600);
+  });
 });

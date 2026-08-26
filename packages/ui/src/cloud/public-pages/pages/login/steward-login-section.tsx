@@ -1214,14 +1214,16 @@ export default function StewardLoginSection() {
 
   function isPasskeyAlreadyRegistered(e: unknown): boolean {
     const msg = getErrorMessage(e, "").toLowerCase();
-    if (
-      e instanceof StewardApiError &&
-      e.status === 409 &&
-      (msg.includes("passkey already") ||
-        msg.includes("credential already") ||
-        msg.includes("already registered"))
-    ) {
-      return true;
+    if (e instanceof StewardApiError && e.status === 409) {
+      const data = e.data;
+      if (
+        typeof data === "object" &&
+        data !== null &&
+        "code" in data &&
+        data.code === "passkey_already_registered"
+      ) {
+        return true;
+      }
     }
     if (!isBrowserOwnedWebAuthnFailure(e, msg)) return false;
     return (
@@ -1702,6 +1704,8 @@ export default function StewardLoginSection() {
             })}
           </label>
           <Input
+            variant="form"
+            density="relaxed"
             id="sms-sign-in-code"
             type="text"
             inputMode="numeric"
@@ -1717,16 +1721,16 @@ export default function StewardLoginSection() {
               if (event.key === "Enter") handleVerifySms();
             }}
             disabled={loading !== null}
-            className="hosted-signin-focus-emphasis w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-center text-2xl font-semibold tracking-[0.45em] text-txt outline-none transition-colors placeholder:tracking-normal placeholder:text-muted hover:border-border-strong disabled:opacity-50"
+            className="hosted-signin-focus-emphasis"
           />
         </div>
 
         <Button
-          variant="ghost"
+          variant="default"
           type="button"
           onClick={handleVerifySms}
           disabled={loading !== null || smsCode.length !== 6}
-          className="hosted-signin-focus-emphasis flex w-full min-h-touch items-center justify-center gap-2 rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover hover:text-accent-foreground active:scale-[0.99] disabled:pointer-events-none disabled:bg-accent/80 disabled:text-accent-foreground"
+          className="hosted-signin-focus-emphasis w-full"
         >
           {loading === "sms" ? (
             <Spinner />
@@ -1740,9 +1744,9 @@ export default function StewardLoginSection() {
 
         <div className="flex items-center justify-between text-sm">
           <Button
-            variant="ghost"
+            variant="ghostMuted"
             type="button"
-            className="hosted-signin-focus-emphasis inline-flex min-h-touch items-center rounded-md border border-transparent px-3 font-medium text-muted transition-colors hover:text-txt active:scale-[0.98] disabled:pointer-events-none disabled:text-muted"
+            className="hosted-signin-focus-emphasis"
             onClick={handleSendSms}
             disabled={resendDisabled}
           >
@@ -1753,9 +1757,9 @@ export default function StewardLoginSection() {
                 })}
           </Button>
           <Button
-            variant="ghost"
+            variant="ghostMuted"
             type="button"
-            className="hosted-signin-focus-emphasis inline-flex min-h-touch items-center rounded-md border border-transparent px-3 font-medium text-muted transition-colors hover:text-txt active:scale-[0.98]"
+            className="hosted-signin-focus-emphasis"
             onClick={cancelSmsLogin}
           >
             {t("cloud.login.backToLogin", { defaultValue: "Back to login" })}
@@ -1788,7 +1792,7 @@ export default function StewardLoginSection() {
           </p>
           <Button
             type="button"
-            className="hosted-signin-focus-emphasis min-h-touch w-full rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground hover:bg-accent-hover hover:text-accent-foreground"
+            className="hosted-signin-focus-emphasis w-full"
             onClick={() =>
               setRedirectTo(
                 externalSuccessDestination ??
@@ -1871,10 +1875,10 @@ export default function StewardLoginSection() {
           !showUndeclaredCodeEntry &&
           emailCheckState === "pending" && (
             <Button
-              variant="ghost"
+              variant="ghostMuted"
               type="button"
               onClick={() => setShowUndeclaredCodeEntry(true)}
-              className="inline-flex min-h-touch items-center rounded-md px-3 text-sm font-medium text-muted transition-colors hover:text-txt active:scale-[0.98]"
+              className=""
             >
               {t("cloud.login.emailCode.haveCode", {
                 defaultValue: "My email includes a six-digit code",
@@ -1893,6 +1897,8 @@ export default function StewardLoginSection() {
               })}
             </label>
             <Input
+              variant="form"
+              density="relaxed"
               id="email-sign-in-code"
               type="text"
               inputMode="numeric"
@@ -1909,7 +1915,6 @@ export default function StewardLoginSection() {
                 if (e.key === "Enter") handleVerifyEmailCode();
               }}
               disabled={loading !== null || emailCheckState !== "pending"}
-              className="w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-center text-2xl font-semibold tracking-[0.45em] text-txt outline-none transition-colors placeholder:tracking-normal placeholder:text-muted hover:border-border-strong disabled:opacity-50"
             />
             <p
               id="email-sign-in-code-hint"
@@ -1925,7 +1930,7 @@ export default function StewardLoginSection() {
 
         {showCodeEntry && (
           <Button
-            variant="ghost"
+            variant="default"
             type="button"
             onClick={handleVerifyEmailCode}
             disabled={
@@ -1933,7 +1938,7 @@ export default function StewardLoginSection() {
               emailCode.length !== 6 ||
               emailCheckState !== "pending"
             }
-            className="flex w-full min-h-touch items-center justify-center gap-2 rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover hover:text-accent-foreground active:scale-[0.99] disabled:pointer-events-none disabled:bg-accent/80 disabled:text-accent-foreground"
+            className="w-full"
           >
             {loading === "email" ? <Spinner /> : <EmailIcon />}{" "}
             {t("cloud.login.emailCode.verify", {
@@ -1964,9 +1969,9 @@ export default function StewardLoginSection() {
         )}
 
         <Button
-          variant="ghost"
+          variant="ghostMuted"
           type="button"
-          className="inline-flex min-h-touch items-center rounded-md px-3 text-sm font-medium text-muted transition-colors hover:text-txt active:scale-[0.98] disabled:pointer-events-none disabled:text-muted"
+          className=""
           onClick={handleEmail}
           disabled={resendDisabled}
         >
@@ -1977,9 +1982,9 @@ export default function StewardLoginSection() {
               })}
         </Button>
         <Button
-          variant="ghost"
+          variant="ghostMuted"
           type="button"
-          className="inline-flex min-h-touch items-center rounded-md px-3 text-sm font-medium text-muted transition-colors hover:text-txt active:scale-[0.98]"
+          className=""
           onClick={cancelEmailLogin}
         >
           {t("cloud.login.backToLogin", { defaultValue: "Back to login" })}
@@ -2013,6 +2018,8 @@ export default function StewardLoginSection() {
         )}
 
         <Input
+          variant="form"
+          density="relaxed"
           type="text"
           inputMode="numeric"
           autoComplete="one-time-code"
@@ -2027,15 +2034,14 @@ export default function StewardLoginSection() {
             if (e.key === "Enter") handleVerifyOtpAndRegister();
           }}
           disabled={loading !== null}
-          className="w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-center text-lg tracking-[0.5em] text-txt outline-none transition-colors placeholder:tracking-normal placeholder:text-muted hover:border-border-strong disabled:opacity-50"
         />
 
         <Button
-          variant="ghost"
+          variant="default"
           type="button"
           onClick={handleVerifyOtpAndRegister}
           disabled={loading !== null || otpCode.trim().length < 4}
-          className="flex w-full min-h-touch items-center justify-center gap-2 rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover hover:text-accent-foreground active:scale-[0.99] disabled:pointer-events-none disabled:bg-accent/80 disabled:text-accent-foreground"
+          className="w-full"
         >
           {loading === "passkey" ? <Spinner /> : <PasskeyIcon />}{" "}
           {t("cloud.login.otp.createPasskey", {
@@ -2058,11 +2064,11 @@ export default function StewardLoginSection() {
             </p>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <Button
-                variant="ghost"
+                variant="outlineMuted"
                 type="button"
                 onClick={handleEnrollmentExistingPasskey}
                 disabled={loading !== null}
-                className="min-h-touch rounded-md border border-border-strong px-3 py-2.5 text-sm font-semibold text-txt hover:border-border-hover hover:bg-bg-hover"
+                className=""
               >
                 {t("cloud.login.button.existingPasskey", {
                   defaultValue: "Use existing passkey",
@@ -2070,11 +2076,11 @@ export default function StewardLoginSection() {
               </Button>
               {providers.email !== false && (
                 <Button
-                  variant="ghost"
+                  variant="outlineMuted"
                   type="button"
                   onClick={handleEmail}
                   disabled={loading !== null}
-                  className="min-h-touch rounded-md border border-border-strong px-3 py-2.5 text-sm font-semibold text-txt hover:border-border-hover hover:bg-bg-hover"
+                  className=""
                 >
                   {t("cloud.login.passkeyRecovery.magicLink", {
                     defaultValue: "Use Magic Link",
@@ -2087,9 +2093,9 @@ export default function StewardLoginSection() {
 
         <div className="flex items-center justify-between text-sm">
           <Button
-            variant="ghost"
+            variant="ghostMuted"
             type="button"
-            className="inline-flex min-h-touch items-center rounded-md px-2 font-medium text-muted transition-colors hover:text-txt active:scale-[0.98]"
+            className=""
             onClick={() => {
               setStep("idle");
               setOtpCode("");
@@ -2102,9 +2108,9 @@ export default function StewardLoginSection() {
             ← {t("cloud.login.back", { defaultValue: "Back" })}
           </Button>
           <Button
-            variant="ghost"
+            variant="ghostMuted"
             type="button"
-            className="inline-flex min-h-touch items-center rounded-md px-2 font-medium text-muted transition-colors hover:text-txt active:scale-[0.98] disabled:pointer-events-none disabled:text-muted"
+            className=""
             disabled={loading !== null}
             onClick={startPasskeySignup}
           >
@@ -2157,7 +2163,7 @@ export default function StewardLoginSection() {
             type="button"
             onClick={handleLocalDedicatedSignIn}
             disabled={isLoading}
-            className="hosted-signin-focus-emphasis min-h-touch w-full rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover hover:text-accent-foreground active:scale-[0.99] disabled:pointer-events-none disabled:bg-accent/80"
+            className="hosted-signin-focus-emphasis w-full"
           >
             {loading === "local" ? <Spinner /> : null}
             {loading === "local"
@@ -2215,6 +2221,8 @@ export default function StewardLoginSection() {
                 </SelectContent>
               </Select>
               <Input
+                variant="embeddedSearch"
+                density="relaxed"
                 id="steward-login-phone"
                 type="tel"
                 name="phone"
@@ -2229,16 +2237,16 @@ export default function StewardLoginSection() {
                   if (event.key === "Enter") handleSendSms();
                 }}
                 disabled={isLoading}
-                className="hosted-signin-focus-emphasis min-h-touch min-w-0 flex-1 rounded-none border-0 bg-transparent px-4 py-3 text-txt outline-none placeholder:text-muted disabled:opacity-50"
+                className="hosted-signin-focus-emphasis flex-1"
               />
             </div>
           </div>
           <Button
-            variant="ghost"
+            variant="default"
             type="button"
             onClick={handleSendSms}
             disabled={isLoading}
-            className="hosted-signin-focus-emphasis flex w-full min-h-touch items-center justify-center gap-2 rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover hover:text-accent-foreground active:scale-[0.99] disabled:pointer-events-none disabled:bg-accent/80 disabled:text-accent-foreground"
+            className="hosted-signin-focus-emphasis w-full"
           >
             {loading === "sms" ? (
               <Spinner />
@@ -2267,6 +2275,8 @@ export default function StewardLoginSection() {
           {t("cloud.login.emailLabel", { defaultValue: "Email" })}
         </label>
         <Input
+          variant="form"
+          density="relaxed"
           ref={emailInputRef}
           id="steward-login-email"
           type="email"
@@ -2290,7 +2300,7 @@ export default function StewardLoginSection() {
             }
           }}
           disabled={isLoading}
-          className="hosted-signin-focus-emphasis w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-txt outline-none transition-colors placeholder:text-muted hover:border-border-strong disabled:opacity-50"
+          className="hosted-signin-focus-emphasis"
           // Do NOT add the "webauthn" autocomplete token here. It arms browser
           // conditional-mediation passkey autofill, which prompts for an
           // EXISTING account's discoverable credential the moment a brand-new
@@ -2304,11 +2314,11 @@ export default function StewardLoginSection() {
       <div className="flex gap-2">
         {showPasskey && (
           <Button
-            variant="ghost"
+            variant="default"
             type="button"
             onClick={handlePasskey}
             disabled={isLoading}
-            className="flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-transparent bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,border-color,transform] hover:bg-accent-hover hover:text-accent-foreground active:scale-[0.99] disabled:pointer-events-none disabled:bg-accent/80 disabled:text-accent-foreground"
+            className="flex-1"
           >
             {loading === "passkey" ? <Spinner /> : <PasskeyIcon />}{" "}
             {t("cloud.login.button.passkey", { defaultValue: "Passkey" })}
@@ -2316,11 +2326,11 @@ export default function StewardLoginSection() {
         )}
         {providers.email !== false && (
           <Button
-            variant="ghost"
+            variant="outlineMuted"
             type="button"
             onClick={handleEmail}
             disabled={isLoading}
-            className="hosted-signin-focus-emphasis flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-3 font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
+            className="hosted-signin-focus-emphasis flex-1"
           >
             {loading === "email" ? <Spinner /> : <EmailIcon />}{" "}
             {t("cloud.login.button.magicLink", { defaultValue: "Magic Link" })}
@@ -2330,11 +2340,11 @@ export default function StewardLoginSection() {
 
       {showPasskey && (
         <Button
-          variant="ghost"
+          variant="ghostMuted"
           type="button"
           onClick={handleExistingPasskey}
           disabled={isLoading}
-          className="hosted-signin-focus-emphasis flex w-full min-h-touch items-center justify-center rounded-md px-3 py-2 text-sm font-medium text-muted transition-[color,background-color,transform] hover:bg-bg-hover hover:text-txt active:scale-[0.99] disabled:pointer-events-none disabled:text-muted"
+          className="hosted-signin-focus-emphasis w-full"
         >
           {t("cloud.login.button.existingPasskey", {
             defaultValue: "Use an existing passkey",
@@ -2377,11 +2387,11 @@ export default function StewardLoginSection() {
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {providers.email !== false && (
               <Button
-                variant="ghost"
+                variant="outlineMuted"
                 type="button"
                 onClick={handleEmail}
                 disabled={isLoading}
-                className="hosted-signin-focus-emphasis min-h-touch rounded-md border border-border-strong bg-bg-elevated px-3 py-2.5 text-sm font-semibold text-txt hover:border-border-hover hover:bg-bg-hover"
+                className="hosted-signin-focus-emphasis"
               >
                 {t("cloud.login.passkeyRecovery.magicLink", {
                   defaultValue: "Use Magic Link",
@@ -2392,7 +2402,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={startPasskeySignup}
               disabled={isLoading}
-              className="hosted-signin-focus-emphasis min-h-touch rounded-md bg-accent px-3 py-2.5 text-sm font-semibold text-accent-foreground hover:bg-accent-hover hover:text-accent-foreground"
+              className="hosted-signin-focus-emphasis"
             >
               {t("cloud.login.passkeyRecovery.setup", {
                 defaultValue: "Set up passkey",
@@ -2407,12 +2417,12 @@ export default function StewardLoginSection() {
           {enabledOAuthProviders.map((provider) => (
             <Button
               key={provider}
-              variant="ghost"
+              variant="outlineMuted"
               type="button"
               aria-label={stewardOAuthProviderLabel(provider)}
               onClick={() => handleOAuth(provider)}
               disabled={isLoading}
-              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
+              className="hosted-signin-focus-emphasis"
             >
               {loading === provider ? (
                 <Spinner />
@@ -2427,7 +2437,7 @@ export default function StewardLoginSection() {
           {providers.telegram && (
             <Button
               ref={telegramIntentButtonRef}
-              variant="ghost"
+              variant="outlineMuted"
               type="button"
               aria-expanded={telegramIntent}
               aria-controls="steward-telegram-login-widget"
@@ -2436,7 +2446,7 @@ export default function StewardLoginSection() {
                 setTelegramIntent(true);
               }}
               disabled={isLoading || telegramIntent}
-              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
+              className="hosted-signin-focus-emphasis"
             >
               {loading === "telegram" ? (
                 <Spinner />
@@ -2477,7 +2487,7 @@ export default function StewardLoginSection() {
             </Alert>
           )}
           <Button
-            variant="ghost"
+            variant="ghostMuted"
             type="button"
             onClick={() => {
               setTelegramIntent(false);
@@ -2490,7 +2500,7 @@ export default function StewardLoginSection() {
               );
             }}
             disabled={isLoading}
-            className="min-h-touch w-full rounded-md px-3 text-sm font-medium text-muted hover:text-txt"
+            className="w-full"
           >
             {t("cloud.login.button.cancelTelegram", {
               defaultValue: "Use another sign-in method",
@@ -2502,13 +2512,13 @@ export default function StewardLoginSection() {
       {showWallets && (
         <>
           <Button
-            variant="ghost"
+            variant="outlineMuted"
             type="button"
             aria-expanded={showWalletOptions || walletButtonsMounted}
             aria-controls="steward-wallet-options"
             onClick={() => setShowWalletOptions((v) => !v)}
             disabled={isLoading || walletButtonsMounted}
-            className="hosted-signin-focus-emphasis flex min-h-touch w-full items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
+            className="hosted-signin-focus-emphasis w-full"
           >
             {walletButtonsMounted
               ? t("cloud.login.walletOptions", {
@@ -2568,11 +2578,11 @@ export default function StewardLoginSection() {
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {providers.siwe && (
                     <Button
-                      variant="ghost"
+                      variant="outlineMuted"
                       type="button"
                       onClick={() => handleWalletIntent("ethereum")}
                       disabled={isLoading}
-                      className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
+                      className="hosted-signin-focus-emphasis"
                     >
                       {t("cloud.login.wallet.evm", {
                         defaultValue: "EVM wallet",
@@ -2581,11 +2591,11 @@ export default function StewardLoginSection() {
                   )}
                   {providers.siws && (
                     <Button
-                      variant="ghost"
+                      variant="outlineMuted"
                       type="button"
                       onClick={() => handleWalletIntent("solana")}
                       disabled={isLoading}
-                      className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
+                      className="hosted-signin-focus-emphasis"
                     >
                       {t("cloud.login.wallet.solana", {
                         defaultValue: "Solana wallet",

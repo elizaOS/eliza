@@ -23,6 +23,7 @@ export * from "./channel-config";
 // Chat pre-handler contract (generic pre-action dispatch extension point);
 // the concrete registry lives in ../runtime/chat-pre-handler-registry.
 export * from "./chat-pre-handler";
+export * from "./coding";
 // Chat-command contract (CommandDefinition + CommandRegistryService); the
 // concrete registry lives in @elizaos/plugin-commands and re-exports these.
 export * from "./commands";
@@ -123,3 +124,4 @@ export {
 	VIEW_KIND_META,
 	VIEW_KINDS,
 } from "./view-kind";
+export * from "./workspace-delta";

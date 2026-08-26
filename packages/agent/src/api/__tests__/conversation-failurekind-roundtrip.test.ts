@@ -349,13 +349,13 @@ describe("conversation failureKind round-trip", () => {
     const state = createState([
       userMemory(),
       assistantMemory({
-        text: "Shell execution failed.",
-        failureKind: "coding_tool_failure",
+        text: "Typecheck still fails after repair.",
+        failureKind: "coding_verification_failed",
         terminalFailure: {
-          kind: "coding_tool_failure",
-          message: "Shell execution failed.",
-          transient: true,
-          code: "SHELL_UNAVAILABLE",
+          kind: "coding_verification_failed",
+          message: "Typecheck still fails after repair.",
+          transient: false,
+          code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
         },
       }),
     ]);
@@ -375,10 +375,13 @@ describe("conversation failureKind round-trip", () => {
     };
     const assistant = payload.messages.find((m) => m.role === "assistant");
     expect(assistant?.terminalFailure).toEqual({
-      kind: "coding_tool_failure",
-      message: "Shell execution failed.",
-      transient: true,
-      code: "SHELL_UNAVAILABLE",
+      kind: "coding_verification_failed",
+      message: "Typecheck still fails after repair.",
+      transient: false,
+      code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
+    });
+    expect(assistant).toMatchObject({
+      failureKind: "coding_verification_failed",
     });
   });
 

@@ -27,6 +27,10 @@ import { InMemoryLRUCache } from "../../cache/in-memory-lru-cache";
 import { CacheTTL } from "../../cache/keys";
 import { enforceOrgRateLimit, OrgRateLimitCacheNotReadyError } from "../../middleware/rate-limit";
 import { getProviderFromModel } from "../../pricing";
+import {
+  collectVideoProviderApiKeys,
+  getConfiguredVideoProviderCandidates,
+} from "../../providers/video/registry";
 import { getCloudAwareEnv, getCloudBinding } from "../../runtime/cloud-bindings";
 import type { PublicObjectBindings } from "../../storage/r2-public-object";
 import { logger } from "../../utils/logger";
@@ -40,10 +44,12 @@ import {
   recordUsageAnalytics,
 } from "../ai-billing";
 import { aiBillingRecordsService } from "../ai-billing-records";
-import { DEFAULT_IMAGE_MODEL_ID } from "../ai-pricing-definitions";
+import { getSupportedVideoModelDefinition } from "../ai-pricing-definitions";
 import { chatSseFrame } from "../chat-sse-frames";
+import { contentSafetyService } from "../content-safety";
 import type { CreditReconciliationResult, CreditReservation } from "../credits";
 import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
+import { generationsService } from "../generations";
 import {
   executeImageGeneration,
   imageProviderKeysFromCloudEnvironment,
@@ -63,6 +69,12 @@ import {
 } from "../inference-provider-outcome";
 import { admitOrganizationInference } from "../organization-inference-admission";
 import { isCanonicalPersonalSharedAgent } from "./personal-shared-identity";
+import {
+  estimatePersonalSharedSeedanceCostUsd,
+  PERSONAL_SHARED_IMAGE_VIDEO_MODEL_ID,
+  PERSONAL_SHARED_TEXT_VIDEO_MODEL_ID,
+  resolvePersonalSharedSeedanceOptions,
+} from "./personal-shared-seedance";
 import {
   type RunSharedAgentTurnInput,
   type RunSharedAgentTurnResult,
@@ -107,12 +119,32 @@ import {
   type SharedTurnSummaryResult,
 } from "./shared-turn-trace-recorder";
 
+function retainedVoiceHistoryProvenance(
+  channelId: string,
+  history: readonly SharedTurnMessage[],
+  channel: SharedRuntimeChatOptions["channel"],
+) {
+  if (channel?.type !== ChannelType.VOICE_DM) return undefined;
+  return {
+    channelId,
+    channelType: String(channel.type),
+    channelSource: channel.source === undefined ? null : String(channel.source),
+    messages: history.map((message) => ({
+      id: message.id ?? null,
+      role: message.role,
+      createdAt: message.createdAt ?? null,
+      interrupted: message.interrupted === true,
+    })),
+  };
+}
+
 export { sharedTurnClientMessageId } from "./shared-turn-client-message-id";
 
 const SSE_TRANSPORT_READY_COMMENT = ": ready\n\n";
 const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
 const PROVIDER_CANCELLATION_OBSERVE_MS = 5_000;
 const PERSONAL_SHARED_RATE_LIMIT = { windowMs: 60_000, maxRequests: 60 } as const;
+const PERSONAL_SHARED_IMAGE_MODEL_ID = "fal-ai/flux/schnell";
 const linkedCharacterMemoryCache = new InMemoryLRUCache<UserCharacter>(256, 60_000);
 
 function elapsedTurnMs(startedAt: number): number {
@@ -139,6 +171,12 @@ export type BridgeExecutionContext = {
 
 export interface SharedRuntimeHistoryStore {
   load(agentId: string, channelId: string, queryText?: string): Promise<SharedTurnMessage[]>;
+  /**
+   * Makes a terminal turn visible to later room requests before asynchronous
+   * durability work finishes. Implementations that serialize on durable
+   * writes may omit this hook.
+   */
+  stagePending?(agentId: string, channelId: string, messages: SharedTurnMessage[]): void;
   merge(
     agentId: string,
     channelId: string,
@@ -147,9 +185,9 @@ export interface SharedRuntimeHistoryStore {
 }
 
 /**
- * P5 sampled turn trace, recorded strictly off the response path. The recorder
- * self-gates on SHARED_TURN_TRACES_ENABLED + deterministic trace-id sampling
- * and never throws, so this adds zero turn latency and zero failure surface.
+ * Turn trace recorded strictly off the response path. The recorder self-gates
+ * on SHARED_TURN_TRACES_ENABLED, samples ordinary chat, and retains
+ * authenticated voice turns so incident diagnosis does not depend on sampling.
  */
 function recordTurnTraceOffPath(
   executionCtx: BridgeExecutionContext | undefined,
@@ -159,7 +197,10 @@ function recordTurnTraceOffPath(
   startedAt: number,
   result: SharedTurnSummaryResult,
   terminalTiming?: SharedRuntimeTimingReceipt,
+  history: readonly SharedTurnMessage[] = [],
+  channel?: SharedRuntimeChatOptions["channel"],
 ): void {
+  const historyProvenance = retainedVoiceHistoryProvenance(channelId, history, channel);
   void settleOffResponsePath(executionCtx, async () => {
     const summary = buildTurnSummary({
       result,
@@ -176,21 +217,29 @@ function recordTurnTraceOffPath(
       {
         ...summary,
         ...(terminalTiming ? { terminalTiming } : {}),
+        ...(historyProvenance ? { historyProvenance } : {}),
       },
+      { forceRecord: channel?.type === ChannelType.VOICE_DM },
     );
   });
 }
 
-/** Persist error/abort receipts through the same durable sampled trace row. */
+/** Persist error/abort receipts through the same durable turn trace row. */
 function recordFailedTurnTraceOffPath(
   executionCtx: BridgeExecutionContext | undefined,
   agent: SharedRuntimeAgent,
   channelId: string,
+  traceId: string,
   model: string,
   startedAt: number,
   terminalTiming: SharedRuntimeTimingReceipt | undefined,
+  history: readonly SharedTurnMessage[] = [],
+  channel?: SharedRuntimeChatOptions["channel"],
+  fallbackFinishReason: "aborted" | "error" = "error",
 ): void {
-  if (!terminalTiming) return;
+  const retainVoiceTrace = channel?.type === ChannelType.VOICE_DM;
+  if (!terminalTiming && !retainVoiceTrace) return;
+  const historyProvenance = retainedVoiceHistoryProvenance(channelId, history, channel);
   void settleOffResponsePath(executionCtx, async () => {
     const completedAt = Date.now();
     await recordSharedTurnTrace(
@@ -200,7 +249,7 @@ function recordFailedTurnTraceOffPath(
         userId: agent.user_id,
         agentId: agent.id,
         channelId,
-        traceId: terminalTiming.traceId,
+        traceId: terminalTiming?.traceId ?? traceId,
         startedAt,
         // The bounded runtime offset can be null when the measurement is
         // unavailable or rejected. The trace row still has an honest wall
@@ -208,10 +257,12 @@ function recordFailedTurnTraceOffPath(
         // failure.
         latencyMs: Math.max(0, Math.round(completedAt - startedAt)),
         model,
-        finishReason: terminalTiming.outcome === "aborted" ? "aborted" : "error",
+        finishReason: terminalTiming?.outcome === "aborted" ? "aborted" : fallbackFinishReason,
         stages: [{ name: "runtime" }],
-        terminalTiming,
+        ...(terminalTiming ? { terminalTiming } : {}),
+        ...(historyProvenance ? { historyProvenance } : {}),
       },
+      { forceRecord: retainVoiceTrace },
     );
   });
 }
@@ -335,11 +386,10 @@ function imageDimensionsFromMediaSize(size: string | undefined): {
   return { width, height };
 }
 
-function personalSharedImagePort(
+function personalSharedMediaPort(
   agent: SharedRuntimeAgent,
   roomId: string,
   turnKey: string | undefined,
-  executionCtx: BridgeExecutionContext | undefined,
 ): SharedMediaGenerationPort | undefined {
   const blob = getCloudBinding<PublicObjectBindings["BLOB"]>("BLOB");
   const providerKeys = imageProviderKeysFromCloudEnvironment();
@@ -349,44 +399,29 @@ function personalSharedImagePort(
     BLOB: blob,
     ...(cloudEnv.R2_PUBLIC_HOST ? { R2_PUBLIC_HOST: cloudEnv.R2_PUBLIC_HOST } : {}),
   };
-  if (!isImageGenerationConfigured(DEFAULT_IMAGE_MODEL_ID, bindings, providerKeys)) {
+  const videoKeys = collectVideoProviderApiKeys(cloudEnv as unknown as Record<string, unknown>);
+  const videoConfigured = Boolean(videoKeys.FAL_KEY || videoKeys.FAL_API_KEY);
+  const imageConfigured = isImageGenerationConfigured(
+    PERSONAL_SHARED_IMAGE_MODEL_ID,
+    bindings,
+    providerKeys,
+  );
+  if (!imageConfigured && !videoConfigured) {
     return undefined;
   }
 
   const turnIdentity = turnKey ?? crypto.randomUUID();
   let actionOrdinal = 0;
   return {
-    canGenerateMedia: ({ mediaType }) => mediaType === "image",
+    canGenerateMedia: ({ mediaType }) =>
+      mediaType === "image" ? imageConfigured : mediaType === "video" && videoConfigured,
     generateMedia: async (request) => {
-      if (request.mediaType !== "image") {
-        throw new Error("Personal Shared media generation supports images only");
-      }
       const ordinal = actionOrdinal;
       actionOrdinal += 1;
-      let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
-      if (executionCtx) {
-        try {
-          admissionSnapshot = await getInferenceAdmissionSnapshotCacheOnly(
-            agent.organization_id,
-            executionCtx,
-          );
-        } catch (error) {
-          // error-policy:J1 translate the cache-only admission boundary into
-          // the Shared runtime's single retryable warming signal.
-          if (error instanceof InferenceAdmissionSnapshotCacheWarmingError) {
-            throw new SharedRuntimeCacheWarmingError(
-              "Image billing authorization is warming. Retry shortly.",
-            );
-          }
-          throw error;
-        }
-      }
       let rateLimited: Response | null;
       try {
         rateLimited = await enforceOrgRateLimit(agent.organization_id, "strict", {
-          cacheOnly: Boolean(executionCtx),
-          executionCtx,
-          config: inferenceRateLimitConfig(admissionSnapshot, "strict"),
+          config: PERSONAL_SHARED_RATE_LIMIT,
         });
       } catch (error) {
         // error-policy:J1 translate the cache-only rate-limit boundary into
@@ -411,10 +446,97 @@ function personalSharedImagePort(
         );
       }
 
+      if (request.mediaType === "video") {
+        const model = request.imageUrl
+          ? PERSONAL_SHARED_IMAGE_VIDEO_MODEL_ID
+          : PERSONAL_SHARED_TEXT_VIDEO_MODEL_ID;
+        const definition = getSupportedVideoModelDefinition(model);
+        if (!definition) throw new Error(`Personal Shared video model is unsupported: ${model}`);
+        const candidate = getConfiguredVideoProviderCandidates([definition], videoKeys)[0];
+        if (!candidate) throw new Error("fal.ai video generation is not configured");
+        const options = resolvePersonalSharedSeedanceOptions(request);
+        const costUsd = estimatePersonalSharedSeedanceCostUsd(options);
+        await contentSafetyService.assertSafeForPublicUse({
+          surface: "media_generation_prompt",
+          organizationId: agent.organization_id,
+          userId: agent.user_id,
+          text: request.prompt,
+          imageUrls: request.imageUrl ? [request.imageUrl] : undefined,
+          metadata: { type: "video", model, source: "personal-shared" },
+        });
+        const generated = await candidate.provider.generate({
+          model,
+          prompt: request.prompt,
+          referenceUrl: request.imageUrl,
+          durationSeconds: options.durationSeconds,
+          resolution: options.resolution,
+          audio: options.audio,
+          aspectRatio: options.aspectRatio,
+          seed: options.seed,
+          endUserId: agent.user_id,
+          apiKeys: videoKeys,
+        });
+        if (generated.hasNsfwConcepts?.some(Boolean)) {
+          throw new Error("Generated video failed safety review");
+        }
+        const generationId = stableUuid(
+          `shared-video:${agent.id}:${roomId}:${turnIdentity}:${ordinal}`,
+        );
+        await generationsService.create({
+          id: generationId,
+          organization_id: agent.organization_id,
+          user_id: agent.user_id,
+          type: "video",
+          model,
+          provider: definition.provider,
+          prompt: request.prompt,
+          result: {
+            requestId: generated.requestId,
+            seed: generated.seed,
+            timings: generated.timings,
+            billingSource: definition.billingSource,
+            source: "personal-shared",
+            funding: "platform",
+          },
+          status: "completed",
+          storage_url: generated.video.url,
+          thumbnail_url: generated.video.url,
+          file_size: generated.video.file_size ? BigInt(generated.video.file_size) : undefined,
+          mime_type: generated.video.content_type ?? "video/mp4",
+          parameters: {
+            referenceUrl: request.imageUrl,
+            durationSeconds: options.durationSeconds,
+            resolution: options.resolution,
+            aspectRatio: options.aspectRatio,
+            audio: options.audio,
+            seed: options.seed,
+          },
+          dimensions: {
+            width: generated.video.width,
+            height: generated.video.height,
+            duration: options.durationSeconds,
+          },
+          cost: String(costUsd),
+          credits: "0",
+          job_id: generated.requestId,
+          completed_at: new Date(),
+        });
+        return {
+          mediaType: "video",
+          url: generated.video.url,
+          videoUrl: generated.video.url,
+          mimeType: generated.video.content_type ?? "video/mp4",
+          duration: options.durationSeconds,
+          provider: definition.provider,
+        };
+      }
+      if (request.mediaType !== "image") {
+        throw new Error(`Personal Shared media generation does not support ${request.mediaType}`);
+      }
       const outcome = await executeImageGeneration({
         input: {
           prompt: request.prompt,
-          model: DEFAULT_IMAGE_MODEL_ID,
+          model: PERSONAL_SHARED_IMAGE_MODEL_ID,
           numImages: 1,
           aspectRatio: request.aspectRatio,
           stylePreset: request.style,
@@ -439,18 +561,7 @@ function personalSharedImagePort(
         },
         bindings,
         providerKeys,
-        admit: async ({ context, cost }) => ({
-          kind: "organization" as const,
-          admission: await admitOrganizationInference({
-            context,
-            apiKeyId: null,
-            estimatedInputTokens: 0,
-            estimatedOutputTokens: 0,
-            flatCost: cost,
-            executionCtx,
-            admissionSnapshot,
-          }),
-        }),
+        admit: async () => ({ kind: "platform" as const }),
       });
       const image = outcome.images[0];
       if (!image) throw new Error("Canonical Cloud image generation returned no artifact");
@@ -481,9 +592,7 @@ function sharedElizaRuntimeExecution(
     source: personalShared ? MESSAGE_SOURCE_CLIENT_CHAT : "shared-runtime",
   };
   const reminderDelivery = personalShared ? trustedReminderDelivery(params) : undefined;
-  const media = personalShared
-    ? personalSharedImagePort(agent, roomId, turnKey, executionCtx)
-    : undefined;
+  const media = personalShared ? personalSharedMediaPort(agent, roomId, turnKey) : undefined;
   return {
     agentKey: agent.id,
     roomKey: roomId,
@@ -623,7 +732,7 @@ async function sharedTurnFactsContext(
 ): Promise<string | undefined> {
   if (!store || !sharedFactsEnabled()) return undefined;
   try {
-    const facts = await store.listFacts(Number.MAX_SAFE_INTEGER);
+    const facts = await store.listFacts();
     return buildSharedFactsContext(facts) ?? undefined;
   } catch (error) {
     // error-policy:J4 knowledge loss degrades to a facts-free turn; the warn is
@@ -672,7 +781,7 @@ function extractSharedTurnFactsOffPath(
         await Promise.all([
           import("ai"),
           import("../../providers/language-model"),
-          store.listFacts(Number.MAX_SAFE_INTEGER),
+          store.listFacts(),
         ]);
       const facts = await extractSharedTurnFacts({
         agentName: character.name,
@@ -840,7 +949,6 @@ async function mergeHistory(
     agentId,
     roomId,
     valid,
-    Number.MAX_SAFE_INTEGER,
   )) as SharedTurnMessage[];
 }
 
@@ -1379,9 +1487,12 @@ export class SharedRuntimeChatService {
         options.executionCtx,
         agent,
         roomId,
+        options.traceId ?? messageIds.assistant,
         character.model?.trim() || "shared-runtime",
         turnStartedAtEpochMs,
         terminalTiming,
+        history,
+        options.channel,
       );
       await settleFailedProviderWorkOffPath(
         agent,
@@ -1401,6 +1512,8 @@ export class SharedRuntimeChatService {
       turnStartedAtEpochMs,
       turn,
       terminalTiming,
+      history,
+      options.channel,
     );
     if (!turn.degraded && turn.responded !== false && messageRole === "user") {
       extractSharedTurnFactsOffPath(options.executionCtx, memoryStore, character, text, turn.reply);
@@ -1609,9 +1722,12 @@ export class SharedRuntimeChatService {
         options.executionCtx,
         agent,
         roomId,
+        options.traceId ?? messageIds.assistant,
         character.model?.trim() || "shared-runtime",
         streamTurnStartedAtEpochMs,
         streamTerminalTiming,
+        history,
+        options.channel,
       );
       detachRequestAbort();
       await settleFailedProviderWorkOffPath(
@@ -1635,6 +1751,8 @@ export class SharedRuntimeChatService {
         streamTurnStartedAtEpochMs,
         turn,
         streamTerminalTiming,
+        history,
+        options.channel,
       );
       const reply = turn.reply?.trim() ?? "";
       if (!reply) return sseError("Shared runtime is unavailable");
@@ -1714,16 +1832,16 @@ export class SharedRuntimeChatService {
       interrupted: boolean,
       afterWrite?: () => Promise<void>,
       grounding?: SharedTurnMessage["grounding"],
+      stagePending = false,
     ): Promise<void> => {
       if (finalized) return finalizationPromise ?? Promise.resolve();
       if (finalizationPromise) return finalizationPromise;
+      const messages = makeTurnMessages(reply, interrupted, grounding);
+      if (stagePending) {
+        options.historyStore?.stagePending?.(agent.id, roomId, messages);
+      }
       finalizationPromise = (async () => {
-        await mergeHistory(
-          agent.id,
-          roomId,
-          makeTurnMessages(reply, interrupted, grounding),
-          options.historyStore,
-        );
+        await mergeHistory(agent.id, roomId, messages, options.historyStore);
         if (streamMemoryStore && !isProviderFreeTurn(turn)) {
           // The long-term-memory mirror is secondary to the durability boundary
           // above (merged history) and the claim completion below: a stalled
@@ -1979,15 +2097,21 @@ export class SharedRuntimeChatService {
                 ...(turn.capabilityWall ? { capabilityWall: turn.capabilityWall } : {}),
               },
               streamTerminalTiming,
+              history,
+              options.channel,
             );
           } else {
             recordFailedTurnTraceOffPath(
               options.executionCtx,
               agent,
               roomId,
+              options.traceId ?? messageIds.assistant,
               turn.model,
               streamTurnStartedAtEpochMs,
               streamTerminalTiming,
+              history,
+              options.channel,
+              consumerCanceled || generationAbort.signal.aborted ? "aborted" : "error",
             );
           }
           detachRequestAbort();
@@ -2010,12 +2134,22 @@ export class SharedRuntimeChatService {
           .then(() => undefined);
         observeProviderCancellationOffPath(agent.id, providerCancellation, options.executionCtx);
 
-        // The room may advance only after interrupted history is durable. It
-        // must not wait for provider teardown: abort is already signalled and
-        // consumerCanceled fences all late output from persistence/delivery.
-        await finalizeMessages(interruptedReply, true, () =>
-          settleInterruptedTurn("consumer canceled stream"),
+        // Stage the exact interrupted pair synchronously before the consumer's
+        // cancel promise can release room admission. Durable history, billing,
+        // and provider teardown may then finish off the room queue without
+        // hiding context from the next turn.
+        const finalization = finalizeMessages(
+          interruptedReply,
+          true,
+          () => settleInterruptedTurn("consumer canceled stream"),
+          undefined,
+          true,
         );
+        if (options.executionCtx) {
+          options.executionCtx.waitUntil(finalization);
+          return;
+        }
+        await finalization;
       },
     });
     return withTurnTimingHeaders(

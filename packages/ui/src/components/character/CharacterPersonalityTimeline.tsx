@@ -91,8 +91,7 @@ function TimelineEntry({ entry }: { entry: CharacterPersonalityHistoryItem }) {
           <div>
             <Button
               variant="ghost"
-              size="sm"
-              className="h-auto p-0 text-2xs font-medium text-accent hover:bg-transparent hover:underline"
+              size="content"
               onClick={() => {
                 setOpen((o) => !o);
               }}

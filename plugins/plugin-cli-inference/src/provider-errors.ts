@@ -3,8 +3,9 @@
  * CLI and SDK handlers. `ProviderApiError` carries the upstream status so
  * `useModel` / AccountPool failover classify 429/529/5xx as retryable.
  * `parseProviderApiErrorText` recognizes the SDK's own streamed error envelope
- * ("API Error: <status> …") that Claude Code emits as assistant text, so a leaked
- * error string is thrown to failover instead of relayed to the user as a reply.
+ * ("API Error: <status> ...", optionally prefixed by Claude's fixed
+ * "Failed to authenticate." label) that Claude Code emits as assistant text,
+ * so a leaked error string is thrown to failover instead of relayed as a reply.
  */
 
 export class ProviderApiError extends Error {
@@ -46,10 +47,12 @@ export function parseProviderApiErrorText(
   const trimmed = text.trim();
   // The SDK also emits NON-numeric envelopes ("API Error: Request was
   // aborted.", "API Error: Usage credits required for 1M context · …") — the
-  // CLI's own detector anchors on `startsWith("API Error")`, so match any
-  // "API Error"-prefixed envelope and parse the 3-digit status when present.
-  if (!/^API Error(:|$)/i.test(trimmed)) return null;
-  const status = /^API Error:\s*(\d{3})\b/i.exec(trimmed);
+  // Claude prefixes authentication failures with a fixed sentence before the
+  // ordinary API envelope. Keep both alternatives start-anchored so genuine
+  // model prose that quotes an error later in its answer remains valid output.
+  const envelope = /^(?:Failed to authenticate\.\s*)?API Error(?::|$)/i.exec(trimmed);
+  if (!envelope) return null;
+  const status = /^(?:Failed to authenticate\.\s*)?API Error:\s*(\d{3})\b/i.exec(trimmed);
   return {
     statusCode: status ? Number.parseInt(status[1], 10) : undefined,
     message: trimmed,

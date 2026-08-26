@@ -363,7 +363,6 @@ export function AutoTopUpCard() {
             type="button"
             variant="outline"
             size="sm"
-            className="min-h-touch shrink-0 font-mono"
             disabled={loading}
             aria-busy={loading}
             onClick={() => void load()}
@@ -516,7 +515,6 @@ export function AutoTopUpCard() {
             onClick={handleSave}
             disabled={saving || !!noPaymentMethod}
             aria-busy={saving}
-            className="bg-txt hover:bg-txt/90 text-bg font-mono"
           >
             {saving ? (
               <Loader2

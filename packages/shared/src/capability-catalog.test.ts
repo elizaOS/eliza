@@ -1,60 +1,78 @@
-/** Unit tests for the runtime-neutral capability catalog projection. */
+/** Exercises the runtime capability-handoff contract against malformed, hostile, and valid browser-bound receipts. */
 
 import { describe, expect, it } from "vitest";
 import {
-  type AgentCapabilityCatalog,
-  findAgentCapability,
-  formatAgentCapabilityCatalog,
-} from "./capability-catalog.js";
+  capabilityHandoffTargetAgentId,
+  parsePersonalWorkspaceCapabilityHandoff,
+} from "./capability-catalog";
 
-const catalog: AgentCapabilityCatalog = {
+const valid = {
   version: 1,
-  tier: "shared",
-  transport: "web",
-  capabilities: [
-    {
-      id: "web-search",
-      label: "Public web research",
-      examples: ["Find current information"],
-      availability: "available",
-      currentTier: "shared",
-      requiredTier: "shared",
-      transports: ["web"],
-      prerequisites: [],
-      consequence: "read_only",
-      requiresConfirmation: false,
-      nextAction: "none",
-    },
-    {
-      id: "calendar",
-      label: "Calendar",
-      examples: ["Check tomorrow"],
-      availability: "needs_workspace",
-      currentTier: "shared",
-      requiredTier: "personal",
-      transports: ["web"],
-      prerequisites: [
-        { kind: "workspace", id: "personal", label: "Personal workspace" },
-      ],
-      consequence: "consequential",
-      requiresConfirmation: true,
-      nextAction: "upgrade_workspace",
-    },
-  ],
+  kind: "capability_handoff",
+  capabilityId: "calendar",
+  label: "Calendar",
+  availability: "needs_workspace",
+  reason: "Calendar needs setup.",
+  currentTier: "shared",
+  requiredTier: "personal",
+  nextAction: "upgrade_workspace",
+  requiresConfirmation: true,
+  cta: { label: "Set up", href: "/cloud/agents/personal%3Aone" },
+  continuation: { originalIntent: "Move tomorrow's meeting." },
 };
 
-describe("capability catalog", () => {
-  it("finds structured capability state", () => {
-    expect(findAgentCapability(catalog, "calendar")).toMatchObject({
-      availability: "needs_workspace",
-      requiredTier: "personal",
-    });
+describe("personal workspace capability handoff", () => {
+  it("preserves a valid contained review receipt", () => {
+    expect(
+      parsePersonalWorkspaceCapabilityHandoff(valid, "personal:one"),
+    ).toEqual(valid);
+    expect(capabilityHandoffTargetAgentId(valid.cta.href)).toBe("personal:one");
   });
 
-  it("projects only concise availability context", () => {
-    const text = formatAgentCapabilityCatalog(catalog);
-    expect(text).toContain("Available now: Public web research.");
-    expect(text).toContain("Calendar (needs workspace)");
-    expect(text).not.toContain("Check tomorrow");
+  it.each([
+    { ...valid, version: 2 },
+    { ...valid, availability: "needs_connection" },
+    { ...valid, nextAction: "connect_account" },
+    { ...valid, requiresConfirmation: false },
+    { ...valid, cta: { label: "Set up", href: "https://evil.test" } },
+    { ...valid, cta: { label: "Set up", href: "//evil.test/cloud/agents/a" } },
+    { ...valid, cta: { label: "Set up", href: "/cloud/agents/a/../b" } },
+    { ...valid, cta: { label: "Set up", href: "/cloud/agents/%2e%2e" } },
+    { ...valid, cta: { label: "Set up", href: "/cloud/agents/%2F" } },
+    { ...valid, cta: { label: "Set up", href: "/cloud/agents/%5c" } },
+    { ...valid, cta: { label: "Set up", href: "/cloud/agents/%252e%252e" } },
+    { ...valid, cta: { label: "Set up", href: "/cloud/agents/%00agent" } },
+    { ...valid, capabilityId: "conversation" },
+    { ...valid, continuation: 1 },
+    { ...valid, continuation: { originalIntent: 1 } },
+    { ...valid, continuation: { clientMessageId: false } },
+    Object.assign(Object.create({ version: 1 }), valid, { version: 2 }),
+  ])("rejects an invalid or hostile receipt", (candidate) => {
+    expect(parsePersonalWorkspaceCapabilityHandoff(candidate)).toBeNull();
+  });
+
+  it("preserves a long original intent without changing model context", () => {
+    const originalIntent = "x".repeat(16_001);
+    expect(
+      parsePersonalWorkspaceCapabilityHandoff({
+        ...valid,
+        continuation: { originalIntent },
+      })?.continuation?.originalIntent,
+    ).toBe(originalIntent);
+  });
+
+  it("binds the receipt to the expected agent", () => {
+    expect(
+      parsePersonalWorkspaceCapabilityHandoff(valid, "another"),
+    ).toBeNull();
+  });
+
+  it("fails closed when hostile object access throws", () => {
+    const hostile = new Proxy(valid, {
+      get() {
+        throw new Error("hostile getter");
+      },
+    });
+    expect(parsePersonalWorkspaceCapabilityHandoff(hostile)).toBeNull();
   });
 });

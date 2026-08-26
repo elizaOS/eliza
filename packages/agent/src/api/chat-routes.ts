@@ -56,7 +56,6 @@ import {
   timeInferenceSpan,
   toWellFormedUnicode,
   trackPostDeliveryTask,
-  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import type {
@@ -454,16 +453,6 @@ function readRuntimeStringSetting(
   return typeof env === "string" && env.trim().length > 0 ? env.trim() : null;
 }
 
-function readPositiveIntegerSetting(
-  runtime: AgentRuntime,
-  key: string,
-  fallback: number,
-): number {
-  const raw = readRuntimeStringSetting(runtime, key);
-  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
-}
-
 function isAndroidLocalDirectChatRuntime(runtime: AgentRuntime): boolean {
   const optIn = readRuntimeStringSetting(
     runtime,
@@ -801,17 +790,11 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
     userText,
   });
   if (!prompt) return null;
-  const maxTokens = readPositiveIntegerSetting(
-    args.runtime,
-    "ELIZA_MOBILE_LOCAL_DIRECT_REPLY_MAX_TOKENS",
-    128,
-  );
   const startedAt = Date.now();
   args.runtime.logger.info(
     {
       src: "eliza-api",
       promptChars: prompt.length,
-      maxTokens,
       messageId: args.message.id,
     },
     "[eliza-api] Android local direct chat fast path start",
@@ -844,7 +827,6 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
   };
   const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, {
     prompt,
-    maxTokens,
     stopSequences: ["<end_of_turn>", "<start_of_turn>"],
     temperature: 0,
     providerOptions: {
@@ -880,7 +862,6 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
     mode: "api_fast_path",
     latencyMs,
     promptChars: prompt.length,
-    maxTokens,
     streamedChunks,
   } satisfies LocalInferenceChatMetadata;
   const responseContent = {
@@ -1919,32 +1900,45 @@ function walletActionMatchesIntent(
   return attributedOperations.length > 0;
 }
 
-function sanitizeActionResultValue(value: unknown, depth = 0): unknown {
+function sanitizeActionResultValue(
+  value: unknown,
+  ancestors: WeakSet<object> = new WeakSet(),
+): unknown {
   if (value === null) return null;
   if (typeof value === "boolean") return value;
   if (typeof value === "number")
     return Number.isFinite(value) ? value : undefined;
   if (typeof value === "string") {
-    const wellFormed = toWellFormedUnicode(value);
-    return wellFormed.length > 1000
-      ? `${truncateWellFormed(wellFormed, 997)}...`
-      : wellFormed;
+    return toWellFormedUnicode(value);
   }
   if (Array.isArray(value)) {
-    if (depth >= 2) return undefined;
-    return value
-      .slice(0, 20)
-      .map((entry) => sanitizeActionResultValue(entry, depth + 1))
-      .filter((entry) => entry !== undefined);
+    if (ancestors.has(value)) {
+      throw new Error("Action result contains a circular array");
+    }
+    ancestors.add(value);
+    try {
+      return value
+        .map((entry) => sanitizeActionResultValue(entry, ancestors))
+        .filter((entry) => entry !== undefined);
+    } finally {
+      ancestors.delete(value);
+    }
   }
   if (value && typeof value === "object") {
-    if (depth >= 2) return undefined;
-    const output: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(value).slice(0, 20)) {
-      const safe = sanitizeActionResultValue(entry, depth + 1);
-      if (safe !== undefined) output[key] = safe;
+    if (ancestors.has(value)) {
+      throw new Error("Action result contains a circular object");
     }
-    return output;
+    ancestors.add(value);
+    try {
+      const output: Record<string, unknown> = {};
+      for (const [key, entry] of Object.entries(value)) {
+        const safe = sanitizeActionResultValue(entry, ancestors);
+        if (safe !== undefined) output[key] = safe;
+      }
+      return output;
+    } finally {
+      ancestors.delete(value);
+    }
   }
   return undefined;
 }
@@ -1955,7 +1949,7 @@ function sanitizeActionResultValues(
   if (!values || typeof values !== "object" || Array.isArray(values))
     return undefined;
   const output: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(values).slice(0, 20)) {
+  for (const [key, value] of Object.entries(values)) {
     const safe = sanitizeActionResultValue(value);
     if (safe !== undefined) output[key] = safe;
   }
@@ -1997,7 +1991,7 @@ function summarizeActionResultForClient(
   };
 }
 
-function summarizeRuntimeActionResults(
+export function summarizeRuntimeActionResults(
   runtime: AgentRuntime,
   messageId: UUID | undefined,
   turnActionResults?: unknown[],
@@ -2008,8 +2002,7 @@ function summarizeRuntimeActionResults(
       : readRuntimeActionResults(runtime, messageId);
   return actionResults
     .map(summarizeActionResultForClient)
-    .filter((entry): entry is ChatActionResultSummary => Boolean(entry))
-    .slice(-8);
+    .filter((entry): entry is ChatActionResultSummary => Boolean(entry));
 }
 
 function resolveFinalTranscriptVisibility(
@@ -4567,7 +4560,6 @@ Title:`;
 
   const title = await runtime.useModel(modelClass, {
     prompt,
-    maxTokens: 20,
     temperature: 0.7,
     signal: options?.signal,
   });

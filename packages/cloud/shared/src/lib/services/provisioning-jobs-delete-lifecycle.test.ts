@@ -66,7 +66,11 @@ beforeAll(async () => {
     ...realHelpers,
     dbWrite: lifecycleDbWrite,
   }));
-  ({ provisioningJobService } = await import("./provisioning-jobs.ts?delete-lifecycle-harness"));
+  const module = await import("./provisioning-jobs.ts?delete-lifecycle-harness");
+  provisioningJobService = new module.ProvisioningJobService({
+    acquireProviderAdmission: async () => true,
+    releaseProviderAdmission: async () => undefined,
+  });
 });
 
 afterAll(() => {
@@ -155,7 +159,11 @@ function withClaimedJob(type: ProvisioningJobType, extraData: Record<string, unk
   const retryLaterSpy = spyOn(
     jobsRepository,
     "retryLaterWithoutIncrementingAttempts",
-  ).mockResolvedValue(job);
+  ).mockImplementation(async (retrySnapshot) => ({
+    ...retrySnapshot,
+    status: "pending",
+    retryable_requeues: retrySnapshot.retryable_requeues + 1,
+  }));
   return {
     job,
     claimSpy,
@@ -274,8 +282,13 @@ describe("ProvisioningJobService — retryable readiness transport does not burn
         expect.any(String),
       );
       expect(ctx.retryLaterSpy).toHaveBeenCalledTimes(1);
-      expect(ctx.retryLaterSpy.mock.calls[0]?.[0]).toBe(ctx.job);
-      expect(ctx.retryLaterSpy.mock.calls[0]?.[1]).toBe("readiness probe transport_unresolved");
+      expect(ctx.retryLaterSpy.mock.calls[0]?.[0]).toMatchObject({
+        id: ctx.job.id,
+        result: expect.objectContaining({ error: "readiness probe transport_unresolved" }),
+      });
+      expect(ctx.retryLaterSpy.mock.calls[0]?.[1]).toContain(
+        "readiness probe transport_unresolved",
+      );
       expect(ctx.incrementSpy).not.toHaveBeenCalled();
       expect(ctx.updateStatusSpy).not.toHaveBeenCalledWith(ctx.job, "completed", expect.anything());
     } finally {

@@ -1423,6 +1423,32 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes()).not.toContain("speaking_start");
   });
 
+  test("speaks an explicit recovery prompt for punctuation-only model output", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["?"]),
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "answer me");
+    await flush();
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(cartesia.sentText()).toBe(
+      "Sorry, I couldn't form a response. Could you say that again?",
+    );
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({
+        t: "error",
+        code: "unspeakable_llm_reply",
+        retryable: true,
+      }),
+    );
+    expect(client.controlTypes()).toContain("speaking_start");
+  });
+
   test("starts TTS after 24 chars before an unpunctuated LLM stream completes", async () => {
     let aborted = false;
     const client = new FakeClientSocket();

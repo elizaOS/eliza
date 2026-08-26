@@ -6721,10 +6721,10 @@ export class LifeOpsRepository {
     },
     side?: LifeOpsConnectorSide,
   ): Promise<LifeOpsGmailSpamReviewItem[]> {
-    const limit =
+    const limitClause =
       options?.maxResults !== undefined && Number.isFinite(options.maxResults)
-        ? options.maxResults
-        : 100;
+        ? `LIMIT ${sqlInteger(options.maxResults)}`
+        : "";
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
     const statusClause = options?.status
       ? `AND status = ${sqlQuote(options.status)}`
@@ -6742,7 +6742,7 @@ export class LifeOpsRepository {
           ${statusClause}
           ${grantClause}
         ORDER BY updated_at DESC, received_at DESC
-        LIMIT ${sqlInteger(limit)}`,
+        ${limitClause}`,
     );
     return rows.map(parseGmailSpamReviewItem);
   }
@@ -7948,7 +7948,24 @@ export class LifeOpsRepository {
                 connection_state = 'disconnected',
                 updated_at = ${sqlQuote(args.revokedAt)}
           WHERE agent_id = ${sqlQuote(args.agentId)}
-            AND id = ${sqlQuote(args.companion.id)}`,
+            AND browser = ${sqlQuote(args.companion.browser)}`,
+      );
+      await executeRawSqlTx(
+        tx,
+        `UPDATE app_lifeops.life_workflow_browser_sessions
+            SET status = 'failed',
+                result_json = (result_json::jsonb || ${sqlJson({
+                  code: "browser_companion_revoked",
+                  error: "Browser companion was disconnected",
+                })}::jsonb)::text,
+                metadata_json = (metadata_json::jsonb - 'browserActionAttempt')::text,
+                updated_at = ${sqlQuote(args.revokedAt)},
+                finished_at = ${sqlQuote(args.revokedAt)}
+          WHERE agent_id = ${sqlQuote(args.agentId)}
+            AND browser = ${sqlQuote(args.companion.browser)}
+            AND subject_type = 'owner'
+            AND subject_id = ${sqlQuote(args.ownerEntityId)}
+            AND status IN ('queued', 'running', 'awaiting_confirmation')`,
       );
       await executeRawSqlTx(
         tx,
@@ -8410,11 +8427,10 @@ export class LifeOpsRepository {
     agentId: string,
     opts: { conversationId?: string; limit?: number } = {},
   ): Promise<LifeOpsXDm[]> {
-    const DEFAULT_LIMIT = 100;
-    const limit =
+    const limitClause =
       opts.limit !== undefined && Number.isFinite(opts.limit)
-        ? opts.limit
-        : DEFAULT_LIMIT;
+        ? `LIMIT ${sqlInteger(opts.limit)}`
+        : "";
     const conversationClause = opts.conversationId
       ? `AND conversation_id = ${sqlQuote(opts.conversationId)}`
       : "";
@@ -8425,7 +8441,7 @@ export class LifeOpsRepository {
         WHERE agent_id = ${sqlQuote(agentId)}
           ${conversationClause}
         ORDER BY received_at DESC
-        LIMIT ${sqlInteger(limit)}`,
+        ${limitClause}`,
     );
     return rows.map(parseXDm);
   }
@@ -8465,11 +8481,10 @@ export class LifeOpsRepository {
     feedType: LifeOpsXFeedType,
     opts: { limit?: number } = {},
   ): Promise<LifeOpsXFeedItem[]> {
-    const DEFAULT_LIMIT = 100;
-    const limit =
+    const limitClause =
       opts.limit !== undefined && Number.isFinite(opts.limit)
-        ? opts.limit
-        : DEFAULT_LIMIT;
+        ? `LIMIT ${sqlInteger(opts.limit)}`
+        : "";
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -8477,7 +8492,7 @@ export class LifeOpsRepository {
         WHERE agent_id = ${sqlQuote(agentId)}
           AND feed_type = ${sqlQuote(feedType)}
         ORDER BY created_at_source DESC
-        LIMIT ${sqlInteger(limit)}`,
+        ${limitClause}`,
     );
     return rows.map(parseXFeedItem);
   }

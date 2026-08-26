@@ -96,13 +96,7 @@ function ConnectionConnectedBadge({
   className?: string;
 }) {
   return (
-    <Badge
-      variant="outline"
-      className={cn(
-        "bg-status-success-bg text-status-success border-status-success/30",
-        className,
-      )}
-    >
+    <Badge variant="outline" tone="success" className={className}>
       <CheckCircle className="size-3 mr-1" />
       {label}
     </Badge>
@@ -170,11 +164,9 @@ const calloutToneClassName: Record<
   // Brand rule: blue is banned. Existing `tone="blue"` call sites now
   // render as a neutral informational callout instead.
   blue: "bg-white/5 border-white/15 text-foreground dark:text-white/80",
-  green:
-    "bg-green-500/10 border-green-500/30 text-green-700 dark:text-green-400",
-  red: "bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-400",
-  yellow:
-    "bg-yellow-500/10 border-yellow-500/30 text-yellow-700 dark:text-yellow-400",
+  green: "bg-status-success-bg border-status-success/30 text-status-success",
+  red: "bg-destructive-subtle border-destructive/30 text-destructive",
+  yellow: "bg-status-warning-bg border-status-warning/30 text-status-warning",
   muted: "bg-bg-muted border-transparent text-foreground",
 };
 
@@ -226,13 +218,7 @@ function ConnectionInstructions({
   return (
     <Collapsible open={open} onOpenChange={onOpenChange}>
       <CollapsibleTrigger asChild>
-        <Button
-          variant="ghost"
-          className={cn(
-            "w-full justify-between p-4 h-auto bg-bg-muted",
-            triggerClassName,
-          )}
-        >
+        <Button variant="sectionToggle" className={triggerClassName}>
           <span className="font-medium">{title}</span>
           <ChevronDown
             className={cn("size-4 transition-transform", open && "rotate-180")}
@@ -311,12 +297,7 @@ function ConnectionDisconnectAction({
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="text-red-500 hover:text-red-400"
-          disabled={isDisconnecting}
-        >
+        <Button variant="dangerOutline" size="sm" disabled={isDisconnecting}>
           {isDisconnecting ? (
             <Loader2 className="size-4 animate-spin mr-1" />
           ) : (
@@ -334,7 +315,7 @@ function ConnectionDisconnectAction({
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction
             onClick={onDisconnect}
-            className="bg-red-600 hover:bg-red-700"
+            className="bg-destructive text-destructive-fg hover:bg-destructive/85"
           >
             {confirmLabel}
           </AlertDialogAction>

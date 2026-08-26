@@ -312,7 +312,7 @@ export interface InboxGmailGateway {
   searchGmail(args: {
     grant: LifeOpsConnectorGrant;
     query: string;
-    maxResults: number;
+    maxResults?: number;
     includeSpamTrash?: boolean;
     now?: Date;
   }): Promise<LifeOpsGmailSearchFeed>;
@@ -379,7 +379,7 @@ export function createInboxGmailGateway(
       const googleMessages = await searchMessages({
         accountId: accountIdForGrant(args.grant),
         query,
-        limit: args.maxResults,
+        ...(args.maxResults === undefined ? {} : { limit: args.maxResults }),
       });
       const messages = googleMessages.map((message) =>
         gmailMessageFromGoogle({

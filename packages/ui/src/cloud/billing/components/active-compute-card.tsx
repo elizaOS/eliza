@@ -255,9 +255,9 @@ function RetryButton({
     <Button
       type="button"
       variant="outline"
+      size="touch"
       onClick={onRetry}
       disabled={retrying}
-      className="min-h-11 min-w-11 gap-2 font-mono"
     >
       <RefreshCw
         className={`size-4 motion-reduce:animate-none ${retrying ? "animate-spin" : ""}`}
@@ -283,14 +283,14 @@ function LoadingCard({ t }: { t: Translator }) {
       <div className="relative z-10 space-y-5">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-2">
-            <Skeleton className="h-5 w-36 motion-reduce:animate-none" />
-            <Skeleton className="h-3 w-64 max-w-full motion-reduce:animate-none" />
+            <Skeleton className="h-5 w-36" />
+            <Skeleton className="h-3 w-64 max-w-full" />
           </div>
-          <Skeleton className="h-8 w-28 motion-reduce:animate-none" />
+          <Skeleton className="h-8 w-28" />
         </div>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          <Skeleton className="h-40 w-full motion-reduce:animate-none" />
-          <Skeleton className="h-40 w-full motion-reduce:animate-none" />
+          <Skeleton className="h-40 w-full" />
+          <Skeleton className="h-40 w-full" />
         </div>
       </div>
     </BrandCard>

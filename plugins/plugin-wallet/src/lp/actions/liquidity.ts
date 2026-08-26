@@ -119,7 +119,7 @@ const formatPools = (pools: PoolInfo[]): string => {
   }
 
   let response = "LP pools:\n";
-  pools.slice(0, 10).forEach((pool, index) => {
+  pools.forEach((pool, index) => {
     const tokenA = tokenLabel(pool.tokenA) || "tokenA";
     const tokenB = tokenLabel(pool.tokenB) || "tokenB";
     response +=
@@ -129,9 +129,6 @@ const formatPools = (pools: PoolInfo[]): string => {
       `   TVL: ${pool.tvl !== undefined ? `$${pool.tvl.toLocaleString()}` : "N/A"}\n`;
   });
 
-  if (pools.length > 10) {
-    response += `\nShowing 10 of ${pools.length} pools.`;
-  }
   return response;
 };
 

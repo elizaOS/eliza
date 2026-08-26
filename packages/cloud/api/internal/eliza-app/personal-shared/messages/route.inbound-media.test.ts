@@ -29,9 +29,13 @@ const resolvePersonalDelivery = mock(async () => ({
   isNew: false,
   resolution: "single-query-repeat" as const,
 }));
-const sharedRestMessageSend = mock(async (..._args: unknown[]) => ({
-  text: "hello from Eliza",
-}));
+const sharedRestMessageSend = mock(
+  async (
+    ..._args: unknown[]
+  ): Promise<{ text: string; mediaUrls?: string[] }> => ({
+    text: "hello from Eliza",
+  }),
+);
 const prewarmPersonalSharedAgentTurnCaches = mock(async () => undefined);
 const findActivePersonalDedicatedTarget = mock(async () => activeTarget);
 const bridge = mock(
@@ -304,6 +308,24 @@ describe("blooio inbound media enrichment at the messaging route", () => {
     expect(deliveredMessage()).toBe("hey eliza");
   });
 
+  test("returns generated media URLs as structured connector output", async () => {
+    sharedRestMessageSend.mockResolvedValueOnce({
+      text: "here's your image.\nhttps://media.example.com/dog.png",
+      mediaUrls: ["https://media.example.com/dog.png"],
+    });
+    const response = await request(
+      blooioDelivery({ mediaUrls: undefined, message: "generate a dog image" }),
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data?: { reply?: string; mediaUrls?: string[] };
+    };
+    expect(body.data).toMatchObject({
+      reply: "here's your image.\nhttps://media.example.com/dog.png",
+      mediaUrls: ["https://media.example.com/dog.png"],
+    });
+  });
+
   test("a dark flag keeps the raw media text without touching the ledger", async () => {
     const response = await request(blooioDelivery(), {
       ELIZA_APP_INBOUND_MEDIA_VISION: undefined,
@@ -329,7 +351,8 @@ describe("blooio inbound media enrichment at the messaging route", () => {
     expect(response.status).toBe(200);
     expect(deliveredMessage()).toBe(
       `${RAW_MEDIA_MESSAGE}\n\n[Attached image description]\n` +
-        "A tabby cat sitting on a mechanical keyboard.",
+        "A tabby cat sitting on a mechanical keyboard.\n\n[Attached image URL]\n" +
+        MEDIA_URL,
     );
     expect(deliveredCapabilityText()).toBeUndefined();
     expect(ledgerAdmit).toHaveBeenCalledTimes(1);
@@ -357,7 +380,8 @@ describe("blooio inbound media enrichment at the messaging route", () => {
     expect(response.status).toBe(200);
     expect(deliveredMessage()).toBe(
       `${RAW_MEDIA_MESSAGE}\n\n[Attached image description]\n` +
-        "A tabby cat sitting on a mechanical keyboard.",
+        "A tabby cat sitting on a mechanical keyboard.\n\n[Attached image URL]\n" +
+        MEDIA_URL,
     );
     expect(describeInboundImageMedia).not.toHaveBeenCalled();
     expect(ledgerComplete).not.toHaveBeenCalled();

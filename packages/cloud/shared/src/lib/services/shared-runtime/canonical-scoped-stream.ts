@@ -10,9 +10,13 @@ import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-
 import { InsufficientCreditsError, RateLimitError } from "../../api/errors";
 import { logger } from "../../utils/logger";
 import { chatSseFrame } from "../chat-sse-frames";
-import type { BridgeRequest } from "../eliza-sandbox-bridge";
+import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
 import { applyCorsHeaders } from "../proxy/cors";
-import { coordinateSharedStream } from "./conversation-coordinator";
+import {
+  coordinateSharedBridge,
+  coordinateSharedStream,
+  type SharedConversationCoordinatorOptions,
+} from "./conversation-coordinator";
 import type { SharedRuntimeChannel } from "./run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { BridgeExecutionContext } from "./shared-runtime-chat";
@@ -54,6 +58,64 @@ export interface CanonicalScopedStreamRequest {
   body: unknown;
   origin?: string | null;
   timings?: Record<string, number>;
+  /**
+   * Realtime phone sessions buffer the fast model turn inside the coordinator,
+   * then expose the complete result as SSE. This avoids making the phone's
+   * response path depend on a second, nested Durable Object response stream.
+   */
+  responseMode?: "stream" | "buffered";
+}
+
+function bufferedBridgeSse(response: BridgeResponse): Response {
+  if (response.error) {
+    return new Response(
+      chatSseFrame("error", {
+        message: response.error.message || "Shared runtime turn failed",
+      }),
+      { headers: STREAM_HEADERS },
+    );
+  }
+  const result = (response.result ?? {}) as {
+    text?: unknown;
+    responded?: unknown;
+    messageId?: unknown;
+    userMessageId?: unknown;
+    actionResults?: unknown;
+    timing?: unknown;
+  };
+  const text = typeof result.text === "string" ? result.text : "";
+  const responded = result.responded !== false;
+  if (!text && responded) {
+    return new Response(
+      chatSseFrame("error", {
+        message: "Shared runtime produced no response",
+      }),
+      { headers: STREAM_HEADERS },
+    );
+  }
+  const messageId = typeof result.messageId === "string" ? result.messageId : crypto.randomUUID();
+  const userMessageId =
+    typeof result.userMessageId === "string" ? result.userMessageId : crypto.randomUUID();
+  const done = {
+    messageId,
+    userMessageId,
+    text,
+    fullText: text,
+    ...(responded ? {} : { responded: false }),
+    ...(Array.isArray(result.actionResults) ? { actionResults: result.actionResults } : {}),
+    ...(result.timing && typeof result.timing === "object" ? { timing: result.timing } : {}),
+  };
+  const body = text
+    ? chatSseFrame("chunk", {
+        messageId,
+        userMessageId,
+        chunk: text,
+        text,
+        fullText: text,
+        timestamp: Date.now(),
+      }) + chatSseFrame("done", done)
+    : chatSseFrame("done", done);
+  return new Response(body, { headers: STREAM_HEADERS });
 }
 
 function nowMs(): number {
@@ -150,7 +212,7 @@ export async function handleCanonicalScopedAgentStream(
   let upstream: Response;
   const bridgeStartedAt = nowMs();
   try {
-    upstream = await coordinateSharedStream(request.agent, rpc, {
+    const coordinatorOptions: SharedConversationCoordinatorOptions = {
       abortSignal: request.abortSignal,
       namespace: request.namespace,
       executionCtx: request.executionCtx,
@@ -164,7 +226,11 @@ export async function handleCanonicalScopedAgentStream(
       traceId: request.traceId,
       trustedHistoryCutoffAt,
       transientInput,
-    });
+    };
+    upstream =
+      request.responseMode === "buffered"
+        ? bufferedBridgeSse(await coordinateSharedBridge(request.agent, rpc, coordinatorOptions))
+        : await coordinateSharedStream(request.agent, rpc, coordinatorOptions);
     timings.bridge = elapsedMs(bridgeStartedAt);
   } catch (error) {
     timings.bridge = elapsedMs(bridgeStartedAt);

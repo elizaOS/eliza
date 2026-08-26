@@ -321,8 +321,8 @@ export function extractAuthToken(req: http.IncomingMessage): string | null {
     typeof req.headers.authorization === "string"
       ? req.headers.authorization
       : "";
-  const auth =
-    rawAuth.length > 8192 ? rawAuth.slice(0, 8192).trim() : rawAuth.trim();
+  if (rawAuth.length > 8192) return null;
+  const auth = rawAuth.trim();
   if (
     auth &&
     auth.length >= 7 &&

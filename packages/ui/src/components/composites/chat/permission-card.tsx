@@ -275,11 +275,11 @@ export function PermissionCard({
           </Button>
         ) : null}
         <Button
-          variant="ghost"
-          size="sm"
+          variant="mutedLink"
+          size="content"
           onClick={handleDismiss}
           data-testid="permission-card-dismiss"
-          className="ml-auto h-auto px-0 text-xs text-muted hover:bg-transparent hover:text-txt-strong"
+          className="ml-auto"
         >
           {labels.notNow ?? "Not now"}
         </Button>

@@ -39,6 +39,11 @@ on:
           - ios
           - linux
           - windows
+      android_release_minify_smoke:
+        description: Build, install, and launch a debug-signed minified Android release APK
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: device-e2e-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.ref }}
@@ -71,6 +76,7 @@ jobs:
       # self-hosted device runners.
       ELIZA_ANDROID_BACKEND: "host"
       ELIZA_DEVICE_BUNDLE_ROOT: ${{ github.workspace }}/device-e2e-artifacts
+      ELIZA_ANDROID_RELEASE_MINIFY_SMOKE: ${{ github.event_name == 'workflow_dispatch' && inputs.android_release_minify_smoke && '1' || '0' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -117,7 +123,9 @@ jobs:
           ram-size: 6144M
           # avx2/fma passthrough so the (x86) on-device agent doesn't SIGILL.
           emulator-options: -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect -qemu -cpu qemu64,+avx,+avx2,+f16c,+fma
-          script: node packages/app/scripts/android-e2e.mjs --build --skip-local-chat --no-emulator-boot --start-host-agent --host-emulator-probes --output "$ELIZA_DEVICE_BUNDLE_ROOT/android"
+          # The runner invokes each physical line separately, so keep the
+          # branch on one line and delegate the focused proof to a script.
+          script: if [ "$ELIZA_ANDROID_RELEASE_MINIFY_SMOKE" = "1" ]; then bash packages/app/scripts/android-release-minify-smoke.sh; else node packages/app/scripts/android-e2e.mjs --build --skip-local-chat --no-emulator-boot --start-host-agent --host-emulator-probes --output "$ELIZA_DEVICE_BUNDLE_ROOT/android"; fi
 
       - name: Upload Android device bundle
         if: always()
@@ -376,6 +384,30 @@ jobs:
             ${{ runner.temp }}/openbox.log
           if-no-files-found: error
           retention-days: 14
+
+  windows-runtime-installation-identity:
+    name: Windows runtime installation identity
+    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'windows'
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install workspace
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Prove Windows identity storage fails closed
+        run: bunx vitest run packages/agent/src/runtime/runtime-installation-id.test.ts --config packages/agent/vitest.config.ts -t "real Windows"
 
   windows-computeruse-evidence:
     name: Windows computer-use evidence

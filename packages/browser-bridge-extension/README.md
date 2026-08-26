@@ -63,8 +63,11 @@ On startup and before sync, the extension asks the registered
 `ai.elizaos.browserbridge` native-messaging host for a short-lived companion
 credential. The desktop broker authenticates the current OS user and is the
 authority for the API origin and credential. A loopback page or server cannot
-enroll an extension. Explicit disconnects and server revocations suppress
-automatic enrollment. The normal popup never displays or imports pairing
+enroll an extension. Explicit Disconnect uses the same authenticated native
+channel so the desktop broker, not the pairing bearer token, performs the
+owner-cookie and CSRF revocation. Owner credentials never enter extension
+storage. Explicit disconnects and server revocations suppress automatic
+enrollment. The normal popup never displays or imports pairing
 credentials. Its explicit Reconnect action clears extension-local suppression
 and retries the native broker; a revoked browser remains blocked until the
 owner resets the durable revocation in authenticated Eliza settings.

@@ -129,7 +129,7 @@ export function describeSyncError(error: unknown): string {
   if (constraint) parts.push(`constraint=${constraint}`);
   if (detail) parts.push(`detail=${detail}`);
   if (!code && error instanceof Error && error.stack) {
-    parts.push(`stack=${error.stack.split("\n").slice(0, 4).join(" | ")}`);
+    parts.push(`stack=${error.stack.split("\n").join(" | ")}`);
   }
   return parts.join(" ");
 }

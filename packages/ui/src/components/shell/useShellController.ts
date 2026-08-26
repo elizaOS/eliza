@@ -176,6 +176,8 @@ export interface ShellController {
       clientMessageId?: string;
     },
   ) => void;
+  /** Route onboarding free text to the first-run conductor, never the agent. */
+  sendFirstRunText?: (text: string) => void;
   /** Show the agent the screen: sends a vision-intent turn so the agent runs its
    *  plugin-vision screen-capture action. Backs the bottom-bar VISION button. */
   captureVision: () => void;
@@ -439,6 +441,7 @@ const selectShellController = (s: AppContextValue) => ({
   tab: s.tab,
   chatFirstTokenReceived: s.chatFirstTokenReceived,
   sendChatText: s.sendChatText,
+  sendActionMessage: s.sendActionMessage,
   agentStatus: s.agentStatus,
   characterData: s.characterData,
   uiLanguage: s.uiLanguage,
@@ -462,6 +465,7 @@ export function useShellController(): ShellController {
     tab,
     chatFirstTokenReceived,
     sendChatText,
+    sendActionMessage,
     agentStatus,
     characterData,
     uiLanguage,
@@ -1007,6 +1011,7 @@ export function useShellController(): ShellController {
         cached.terminalFailure === message.terminalFailure &&
         (cached.reasoning || undefined) === (message.reasoning || undefined) &&
         cached.secretRequest === message.secretRequest &&
+        cached.capabilityHandoff === message.capabilityHandoff &&
         // Tool-event merges return a NEW array reference each step, so a
         // reference compare busts the cache exactly on a new/updated tool row.
         cached.toolEvents === message.toolEvents &&
@@ -1035,6 +1040,9 @@ export function useShellController(): ShellController {
           : {}),
         ...(message.secretRequest
           ? { secretRequest: message.secretRequest }
+          : {}),
+        ...(message.capabilityHandoff
+          ? { capabilityHandoff: message.capabilityHandoff }
           : {}),
         ...(message.topics?.length ? { topics: message.topics } : {}),
       };
@@ -1103,6 +1111,14 @@ export function useShellController(): ShellController {
       void sendChatText(trimmed);
     },
     [sendChatText],
+  );
+  const sendFirstRunText = React.useCallback(
+    (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      void sendActionMessage(trimmed);
+    },
+    [sendActionMessage],
   );
 
   const stopCaptureAndDrain = React.useCallback(
@@ -2664,6 +2680,7 @@ export function useShellController(): ShellController {
     close,
     isOpen,
     send,
+    sendFirstRunText,
     captureVision,
     visionCapturing,
     toggleRecording,

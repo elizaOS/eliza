@@ -18,6 +18,13 @@ describe("isDeniedSubAgentEnvKey (customCredentials deny-list)", () => {
       "TERMINAL_RUN_TOKEN",
       "ELIZA_TERMINAL_RUN_TOKEN",
       "ELIZA_ACP_WARM_CLAIM_TOKEN",
+      "GOPATH",
+      "gomodcache",
+      "GoCache",
+      "ELIZA_HOST_EXECUTION_BASELINE_PATH",
+      "eliza_host_execution_baseline_gopath",
+      "ELIZA_HOST_EXECUTION_BASELINE_GOMODCACHE",
+      "Eliza_Host_Execution_Baseline_Gocache",
     ]) {
       expect(isDeniedSubAgentEnvKey(key)).toBe(true);
     }

@@ -34,11 +34,31 @@ function sessionService() {
     frameProvider: async () => ({ mimeType: "image/png", data: "cG5n" }),
   });
   return {
+    listApps: async () => [
+      { id: "fixture.app", name: "Fixture", pid: 42, active: true },
+    ],
+    getAppState: async (app: string, options?: { disableDiff?: boolean }) => ({
+      stateId: `${app}:state-1`,
+      app: { id: app, name: "Fixture", pid: 42, active: true },
+      capturedAt: "2026-08-23T00:00:00.000Z",
+      permission: "ready" as const,
+      elements: [],
+      axText: "fixture AX tree",
+      ...(options?.disableDiff ? {} : { diff: undefined }),
+    }),
+    getAppControlReadiness: () => ({
+      available: true,
+      adapter: "fixture-ax",
+      permission: "ready",
+    }),
     createSession: (input: CreateComputerUseSessionInput) =>
       manager.create(input),
     listSessions: () => manager.list(),
     getSession: (sessionId: string) => manager.get(sessionId),
     closeSession: (sessionId: string) => manager.close(sessionId),
+    pauseSession: (sessionId: string) => manager.pause(sessionId),
+    resumeSession: (sessionId: string) => manager.resume(sessionId),
+    stopSession: (sessionId: string) => manager.stop(sessionId),
     renewSessionLease: (sessionId: string, leaseTtlMs?: number) =>
       manager.renewHostLease(sessionId, leaseTtlMs),
     executeSessionAction: (
@@ -51,6 +71,20 @@ function sessionService() {
     subscribeSessions: (
       listener: Parameters<ComputerUseSessionManager["subscribe"]>[0],
     ) => manager.subscribe(listener),
+    getCapabilities: () => ({
+      screenshot: { available: true, tool: "fixture-capture" },
+      computerUse: { available: true, tool: "fixture-input" },
+      windowList: { available: true, tool: "fixture-window" },
+      browser: { available: true, tool: "fixture-browser" },
+      terminal: { available: false, tool: "disabled" },
+      fileSystem: { available: false, tool: "disabled" },
+      clipboard: { available: false, tool: "disabled" },
+    }),
+    getApprovalSnapshot: () => ({
+      mode: "smart_approve" as const,
+      pendingCount: 0,
+      pendingApprovals: [],
+    }),
   };
 }
 
@@ -101,6 +135,35 @@ async function request(options: {
 }
 
 describe("computer-use session compatibility routes", () => {
+  it("lists apps and returns a no-store app accessibility state", async () => {
+    const service = sessionService();
+    const apps = await request({
+      path: "/api/computer-use/apps",
+      method: "GET",
+      service,
+    });
+    expect(apps).toMatchObject({
+      status: 200,
+      body: { apps: [{ id: "fixture.app", pid: 42 }] },
+    });
+
+    const state = await request({
+      path: "/api/computer-use/apps/state?app=fixture.app&disableDiff=true",
+      method: "GET",
+      service,
+    });
+    expect(state).toMatchObject({
+      status: 200,
+      body: {
+        state: {
+          stateId: "fixture.app:state-1",
+          permission: "ready",
+          axText: "fixture AX tree",
+        },
+      },
+    });
+  });
+
   it("creates, lists, executes, and closes a host session", async () => {
     const service = sessionService();
     const created = await request({
@@ -112,6 +175,17 @@ describe("computer-use session compatibility routes", () => {
     expect(created.status).toBe(201);
     const session = created.body.session as { id: string; sequence: number };
 
+    const observed = await request({
+      path: `/api/computer-use/sessions/${session.id}/frame`,
+      method: "GET",
+      service,
+    });
+    const provenance = (
+      observed.body.frame as {
+        provenance: { observationId: string; sequence: number };
+      }
+    ).provenance;
+
     const actionResult = await request({
       path: `/api/computer-use/sessions/${session.id}/actions`,
       method: "POST",
@@ -120,6 +194,8 @@ describe("computer-use session compatibility routes", () => {
         expectedSequence: 0,
         command: "mouse_move",
         parameters: { coordinate: [20, 30] },
+        observationId: provenance.observationId,
+        observationSequence: provenance.sequence,
       },
       service,
     });
@@ -147,6 +223,14 @@ describe("computer-use session compatibility routes", () => {
     expect(listed.body.sessions).toEqual([
       expect.objectContaining({ id: session.id, sequence: 1 }),
     ]);
+    expect(listed.body).toMatchObject({
+      readiness: {
+        capture: { available: true, tool: "fixture-capture" },
+        input: { available: true, tool: "fixture-input" },
+        approvalMode: "smart_approve",
+      },
+      events: expect.any(Array),
+    });
 
     const closed = await request({
       path: `/api/computer-use/sessions/${session.id}`,
