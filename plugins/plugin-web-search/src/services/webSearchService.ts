@@ -246,13 +246,23 @@ function decodeHtmlEntities(text: string): string {
         ndash: "–",
         mdash: "—",
         hellip: "…",
+        lsquo: "‘",
+        rsquo: "’",
+        ldquo: "“",
+        rdquo: "”",
         copy: "©",
         reg: "®",
         trade: "™",
+        times: "×",
+        bull: "•",
+        middot: "·",
+        deg: "°",
+        euro: "€",
+        pound: "£",
         "#39": "'",
     };
     return text.replace(
-        /&(amp|lt|gt|quot|apos|nbsp|ndash|mdash|hellip|copy|reg|trade|#39|#\d+|#x[0-9a-fA-F]+);/g,
+        /&(amp|lt|gt|quot|apos|nbsp|ndash|mdash|hellip|lsquo|rsquo|ldquo|rdquo|copy|reg|trade|times|bull|middot|deg|euro|pound|#39|#\d+|#x[0-9a-fA-F]+);/g,
         (entity, name: string) => {
             if (name.startsWith("#x")) {
                 return decodeNumericEntity(entity, name.slice(2), 16);
@@ -343,8 +353,8 @@ async function readBoundedPageHtml(response: Response): Promise<string> {
 function extractTitle(content: string, fallbackUrl: string): string {
     const match = content.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
     if (!match?.[1]) return fallbackUrl;
-    const cleanText = match[1].replace(/<[^>]+>/g, "").trim();
-    return cleanText ? decodeHtmlEntities(cleanText) : fallbackUrl;
+    const decoded = decodeHtmlEntities(match[1].replace(/<[^>]+>/g, "")).trim();
+    return decoded ? decoded : fallbackUrl;
 }
 
 function extractMetaTags(content: string): {
@@ -362,11 +372,12 @@ function extractMetaTags(content: string): {
         const contentMatch = attrString.match(/content=["']([^"']*)["']/i);
         if (keyMatch && contentMatch) {
             const key = keyMatch[1].trim();
-            const val = decodeHtmlEntities(contentMatch[1].trim());
+            const val = decodeHtmlEntities(contentMatch[1]).trim();
             metadata[key] = val;
             const lowerKey = key.toLowerCase();
             if (
                 !description &&
+                val &&
                 (lowerKey === "description" ||
                     lowerKey === "og:description" ||
                     lowerKey === "twitter:description")

@@ -379,8 +379,8 @@ describe("WebSearchService", () => {
         expect(pageInfo.title).toBe("&lt;literal&gt; &#65;");
     });
 
-    it("decodes typography and symbol named entities", async () => {
-        const html = `<title>elizaOS&nbsp;&mdash;&nbsp;Framework&hellip; &copy; 2026 &reg; &trade; &ndash; Docs</title>`;
+    it("decodes typography, quotes, and symbol named entities", async () => {
+        const html = `<title>&lsquo;Single&rsquo; &ldquo;Double&rdquo; elizaOS&nbsp;&mdash;&nbsp;Framework&hellip; &copy; 2026 &reg; &trade; &ndash; Docs 5&times;10 &bull; &middot; 25&deg; &euro;100 &pound;50</title>`;
         setPageInfoHttpTransportForTests({
             fetchImpl: vi.fn(async () => new Response(html)),
         });
@@ -388,7 +388,21 @@ describe("WebSearchService", () => {
 
         const pageInfo = await service.getPageInfo("https://example.test/named-entities");
 
-        expect(pageInfo.title).toBe("elizaOS — Framework… © 2026 ® ™ – Docs");
+        expect(pageInfo.title).toBe(
+            "‘Single’ “Double” elizaOS — Framework… © 2026 ® ™ – Docs 5×10 • · 25° €100 £50"
+        );
+    });
+
+    it("falls back to URL when title consists solely of whitespace entities or tags", async () => {
+        const html = `<title>&nbsp; &nbsp;<b>&nbsp;</b> </title>`;
+        setPageInfoHttpTransportForTests({
+            fetchImpl: vi.fn(async () => new Response(html)),
+        });
+        const service = await WebSearchService.start(runtime({ TAVILY_API_KEY: "tvly-test" }));
+
+        const pageInfo = await service.getPageInfo("https://example.test/fallback-url");
+
+        expect(pageInfo.title).toBe("https://example.test/fallback-url");
     });
 
     it("accepts page HTML exactly at the byte limit", async () => {
