@@ -23,6 +23,7 @@ import {
 } from "../actions/to-tool";
 import { evaluateConnectorAccountPolicies } from "../connectors/account-manager";
 import { createUniqueUuid } from "../entities";
+import { truncateWellFormed } from "../utils/well-formed";
 import { ElizaError } from "../errors";
 import {
 	formatTaskCompletionStatus,
@@ -12711,7 +12712,7 @@ export function wrapSingleTurnVisibleCallback(
 		if (typeof response?.text === "string" && response.text.trim()) {
 			if (nearDuplicateOfDeliveredThisTurn(response.text)) {
 				fullRuntime.logger?.debug?.(
-					{ actionName, text: response.text.slice(0, 120) },
+					{ actionName, text: truncateWellFormed(response.text, 120) },
 					"[message] suppressed near-duplicate delivery within the turn",
 				);
 				recordDeliveredVisibleText?.(response.text);
