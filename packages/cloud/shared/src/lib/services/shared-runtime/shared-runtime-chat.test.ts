@@ -14,6 +14,7 @@ let turn: Record<string, unknown>;
 let streamTurn: Record<string, unknown>;
 let turnError: Error | null;
 let streamTurnError: Error | null;
+let streamTurnSetupGate: Promise<void> | null;
 let turnCalls = 0;
 let lastTurnInput: Record<string, unknown> | undefined;
 const turnInputs: Record<string, unknown>[] = [];
@@ -264,6 +265,7 @@ mock.module("./run-shared-agent-turn", () => ({
     streamTurnInputs.push(input);
     if (streamTurnError) throw streamTurnError;
     streamAbortSignal = input.abortSignal;
+    if (streamTurnSetupGate) await streamTurnSetupGate;
     return streamTurn;
   },
 }));
@@ -493,6 +495,7 @@ beforeEach(() => {
   billError = null;
   turnError = null;
   streamTurnError = null;
+  streamTurnSetupGate = null;
   turnCalls = 0;
   lastTurnInput = undefined;
   turnInputs.length = 0;
@@ -1359,6 +1362,79 @@ describe("SharedRuntimeChatService", () => {
     await reader?.cancel();
   });
 
+  test("terminates a silent provider stream before the outer room watchdog", async () => {
+    let providerNextStarted = false;
+    streamTurn = {
+      degraded: false,
+      parts: {
+        [Symbol.asyncIterator]() {
+          return {
+            next: async () => {
+              providerNextStarted = true;
+              return await new Promise<IteratorResult<never>>(() => {});
+            },
+          };
+        },
+      },
+    };
+
+    const service = new SharedRuntimeChatService(20);
+    const h = harness([]);
+    const body = await (await service.stream(agent, rpc, h)).text();
+
+    expect(providerNextStarted).toBe(true);
+    expect(body.startsWith(": ready\n\n")).toBe(true);
+    expect(body).toContain("event: error");
+    expect(body).not.toContain("event: done");
+    expect(streamAbortSignal?.aborted).toBe(true);
+    expect(h.history()).toEqual([expect.objectContaining({ role: "user", content: "hello" })]);
+    await Promise.all(h.background);
+    expect(settleUnknownCalls).toBe(1);
+  });
+
+  test("returns a terminal SSE timeout when provider setup never resolves", async () => {
+    streamTurnSetupGate = new Promise<void>(() => {});
+    const service = new SharedRuntimeChatService(20);
+    const h = harness([]);
+
+    const body = await (await service.stream(agent, rpc, h)).text();
+
+    expect(body).toContain("event: error");
+    expect(body).toContain("Shared runtime stream timed out");
+    expect(streamAbortSignal?.aborted).toBe(true);
+    expect(h.history()).toEqual([]);
+    await Promise.all(h.background);
+    expect(settleUnknownCalls).toBe(1);
+  });
+
+  test("lands partial provider output as interrupted when the terminal deadline expires", async () => {
+    streamTurn = {
+      degraded: false,
+      parts: (async function* () {
+        yield { type: "text-delta", text: "partial" };
+        await new Promise<void>(() => {});
+      })(),
+    };
+
+    const service = new SharedRuntimeChatService(20);
+    const h = harness([]);
+    const body = await (await service.stream(agent, rpc, h)).text();
+
+    expect(body).toContain("event: chunk");
+    expect(body).toContain("event: error");
+    expect(body).not.toContain("event: done");
+    expect(h.history()).toEqual([
+      expect.objectContaining({ role: "user", content: "hello" }),
+      expect.objectContaining({
+        role: "assistant",
+        content: "partial",
+        interrupted: true,
+      }),
+    ]);
+    await Promise.all(h.background);
+    expect(settleUnknownCalls).toBe(1);
+  });
+
   test("a failed long-term-memory mirror is reported without failing the landed turn (#25689)", async () => {
     process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
     recordTurnPair.mockImplementationOnce(async () => {
@@ -1656,6 +1732,7 @@ describe("SharedRuntimeChatService", () => {
     const response = await service.stream(agent, rpc, h);
     const reader = response.body!.getReader();
     await reader.read();
+    await reader.read();
     await reader.cancel("barge-in");
     await Promise.all(h.background);
 
@@ -1694,6 +1771,7 @@ describe("SharedRuntimeChatService", () => {
 
     const response = await service.stream(agent, rpc, h);
     const reader = response.body!.getReader();
+    await reader.read();
     await reader.read();
     await reader.cancel("barge-in");
     releaseProviderStream();
@@ -1760,6 +1838,7 @@ describe("SharedRuntimeChatService", () => {
 
     const response = await service.stream(agent, rpc, h);
     const reader = response.body!.getReader();
+    await reader.read();
     await reader.read();
     await expect(reader.cancel("first cancel")).resolves.toBeUndefined();
     expect(staged).toMatchObject([

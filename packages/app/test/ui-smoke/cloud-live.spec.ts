@@ -698,10 +698,9 @@ test.describe("real cloud login + personal identity + chat", () => {
     // A protected blank start can reach /chat before its persisted transcript
     // has painted. Sending into that window lets the late initial history GET
     // replace the optimistic turn, so a successful streamed reply disappears
-    // from the rendered proof. Wait for the real history response, then require
-    // the rendered row set to remain unchanged across three observations before
-    // starting the measured turn. This works for both empty and populated
-    // histories and keeps the liveness assertion bound to the product UI.
+    // from the rendered proof. The renderer exposes one content-free marker
+    // only after the response body has passed its ownership fence and committed
+    // the active transcript; response headers or an empty DOM cannot satisfy it.
     await expect
       .poll(
         async () =>
@@ -713,37 +712,18 @@ test.describe("real cloud login + personal identity + chat", () => {
         },
       )
       .toBeGreaterThan(0);
-    let previousHydrationRowSignature = "";
-    let stableHydrationObservations = 0;
-    await expect
-      .poll(
-        async () => {
-          const signature = await page.evaluate(() =>
-            [
-              document.querySelectorAll(
-                '[data-testid="thread-line"][data-role="user"]',
-              ).length,
-              document.querySelectorAll(
-                '[data-testid="thread-line"][data-role="assistant"]',
-              ).length,
-            ].join(":"),
-          );
-          if (signature === previousHydrationRowSignature) {
-            stableHydrationObservations += 1;
-          } else {
-            previousHydrationRowSignature = signature;
-            stableHydrationObservations = 1;
-          }
-          return stableHydrationObservations;
-        },
-        {
-          timeout: 30_000,
-          intervals: [250],
-          message:
-            "initial cloud transcript finished painting before live send",
-        },
-      )
-      .toBeGreaterThanOrEqual(3);
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-conversation-history-applied",
+      "true",
+      { timeout: 30_000 },
+    );
+    await chatComposer(page).click();
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
     const turnAnchorToken = randomBytes(8).toString("hex");
     primaryAudit.setHistoryAnchorToken(turnAnchorToken);
     const turnPrompt = `In one short sentence, say hello. Unique turn marker: ${turnAnchorToken}`;

@@ -143,6 +143,7 @@ export { sharedTurnClientMessageId } from "./shared-turn-client-message-id";
 const SSE_TRANSPORT_READY_COMMENT = ": ready\n\n";
 const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
 const PROVIDER_CANCELLATION_OBSERVE_MS = 5_000;
+const SHARED_STREAM_TERMINAL_DEADLINE_MS = 75_000;
 const PERSONAL_SHARED_RATE_LIMIT = { windowMs: 60_000, maxRequests: 60 } as const;
 const PERSONAL_SHARED_IMAGE_MODEL_ID = "fal-ai/flux/schnell";
 const linkedCharacterMemoryCache = new InMemoryLRUCache<UserCharacter>(256, 60_000);
@@ -1336,6 +1337,8 @@ function sseError(message: string): Response {
 }
 
 export class SharedRuntimeChatService {
+  constructor(private readonly streamTerminalDeadlineMs = SHARED_STREAM_TERMINAL_DEADLINE_MS) {}
+
   async recordLifecycleEvent(
     agentId: string,
     roomId: string,
@@ -1668,6 +1671,27 @@ export class SharedRuntimeChatService {
     timings.turn_admission = elapsedTurnMs(admissionStartedAt);
     const messageIds = turnMessageIds(agent.id, roomId, claimKey);
     const generationAbort = new AbortController();
+    let turnTimedOut = false;
+    let terminalDeadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    const terminalDeadline = new Promise<never>((_resolve, reject) => {
+      terminalDeadlineTimer = setTimeout(() => {
+        turnTimedOut = true;
+        const error = new ElizaError("Shared runtime turn exceeded its terminal deadline", {
+          code: "SHARED_RUNTIME_TURN_DEADLINE_EXCEEDED",
+          context: { timeoutMs: this.streamTerminalDeadlineMs },
+        });
+        generationAbort.abort(error);
+        reject(error);
+      }, this.streamTerminalDeadlineMs);
+    });
+    const clearTerminalDeadline = () => {
+      if (terminalDeadlineTimer !== undefined) {
+        clearTimeout(terminalDeadlineTimer);
+        terminalDeadlineTimer = undefined;
+      }
+    };
+    const withinTerminalDeadline = <T>(work: PromiseLike<T>): Promise<T> =>
+      Promise.race([Promise.resolve(work), terminalDeadline]);
     const abortFromRequest = () => {
       generationAbort.abort(options.abortSignal?.reason);
     };
@@ -1691,33 +1715,36 @@ export class SharedRuntimeChatService {
     let streamTerminalTiming: SharedRuntimeTimingReceipt | undefined;
     const providerSetupStartedAt = performance.now();
     try {
-      turn = await runSharedAgentTurnStream({
-        abortSignal: generationAbort.signal,
-        character,
-        history,
-        message: text,
-        ...(streamRecallContext ? { recallContext: streamRecallContext } : {}),
-        ...(options.trustedUserUtterance ? { capabilityText: options.trustedUserUtterance } : {}),
-        messageRole,
-        messageIds,
-        ...(claimKey ? { originClientMessageId: claimKey } : {}),
-        onProviderDispatch: billing?.markProviderDispatched,
-        traceId: options.traceId ?? messageIds.assistant,
-        onRuntimeTiming: (receipt) => {
-          streamTerminalTiming = receipt;
-        },
-        execution: sharedElizaRuntimeExecution(
-          agent,
-          roomId,
-          claimKey,
-          params,
-          options.funding,
-          options.executionCtx,
-          options.mobilePushDispatch,
-          options.channel,
-        ),
-      });
+      turn = await withinTerminalDeadline(
+        runSharedAgentTurnStream({
+          abortSignal: generationAbort.signal,
+          character,
+          history,
+          message: text,
+          ...(streamRecallContext ? { recallContext: streamRecallContext } : {}),
+          ...(options.trustedUserUtterance ? { capabilityText: options.trustedUserUtterance } : {}),
+          messageRole,
+          messageIds,
+          ...(claimKey ? { originClientMessageId: claimKey } : {}),
+          onProviderDispatch: billing?.markProviderDispatched,
+          traceId: options.traceId ?? messageIds.assistant,
+          onRuntimeTiming: (receipt) => {
+            streamTerminalTiming = receipt;
+          },
+          execution: sharedElizaRuntimeExecution(
+            agent,
+            roomId,
+            claimKey,
+            params,
+            options.funding,
+            options.executionCtx,
+            options.mobilePushDispatch,
+            options.channel,
+          ),
+        }),
+      );
     } catch (error) {
+      clearTerminalDeadline();
       recordFailedTurnTraceOffPath(
         options.executionCtx,
         agent,
@@ -1737,10 +1764,14 @@ export class SharedRuntimeChatService {
         error,
         "stream setup failed after admission",
       );
+      if (turnTimedOut) {
+        return withTurnTimingHeaders(sseError("Shared runtime stream timed out"), timings);
+      }
       throw error;
     }
     timings.turn_provider_setup = elapsedTurnMs(providerSetupStartedAt);
     if (turn.degraded) {
+      clearTerminalDeadline();
       detachRequestAbort();
       await billing?.settle(0);
       recordTurnTraceOffPath(
@@ -1780,6 +1811,7 @@ export class SharedRuntimeChatService {
       );
     }
     if (!turn.parts) {
+      clearTerminalDeadline();
       detachRequestAbort();
       await settleAmbiguousProviderWorkOffPath(
         agent,
@@ -1891,11 +1923,17 @@ export class SharedRuntimeChatService {
       start: async (controller) => {
         let finished = false;
         try {
+          const iterator = turn.parts![Symbol.asyncIterator]();
+          let pendingNext = iterator.next();
           // Flush one valid SSE comment before provider text so Workerd exposes
           // the Durable Object response headers independently of model latency.
           // Consumers ignore comments; the complete reply remains unchanged.
           controller.enqueue(encoder.encode(SSE_TRANSPORT_READY_COMMENT));
-          for await (const part of turn.parts!) {
+          while (true) {
+            const next = await withinTerminalDeadline(pendingNext);
+            if (next.done) break;
+            pendingNext = iterator.next();
+            const part = next.value;
             if (part.type === "text-delta") {
               streamedReply += part.text;
               if (consumerCanceled) continue;
@@ -2080,6 +2118,7 @@ export class SharedRuntimeChatService {
             );
           }
         } finally {
+          clearTerminalDeadline();
           // Runtime timing is emitted only when the provider iterator reaches
           // its terminal success/error/abort path. Persist it with the turn's
           // one durable trace row and therefore one deterministic sample.
@@ -2111,7 +2150,9 @@ export class SharedRuntimeChatService {
               streamTerminalTiming,
               history,
               options.channel,
-              consumerCanceled || generationAbort.signal.aborted ? "aborted" : "error",
+              !turnTimedOut && (consumerCanceled || generationAbort.signal.aborted)
+                ? "aborted"
+                : "error",
             );
           }
           detachRequestAbort();
