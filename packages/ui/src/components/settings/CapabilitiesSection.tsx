@@ -20,7 +20,10 @@ import {
 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { client } from "../../api/client";
-import { invalidateWeatherCache } from "../../hooks/useWeather";
+import {
+  invalidateWeatherCache,
+  rememberPreciseLocationGrant,
+} from "../../hooks/useWeather";
 import { useAppSelector, useAppSelectorShallow } from "../../state";
 import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
@@ -738,6 +741,7 @@ function DeviceLocationGroup() {
       () => {
         setRequesting(false);
         setPermission("granted");
+        rememberPreciseLocationGrant();
         // Drop the cached (approximate) reading so the widget refetches
         // precise conditions on its next revalidate instead of after the TTL.
         invalidateWeatherCache();

@@ -65,6 +65,8 @@ const WEATHER_TTL_MS = 30 * 60_000; // refetch at most every 30 min
 // v2: cache entries carry `approximate`; the bump discards v1 entries that lack it.
 const WEATHER_CACHE_KEY = "eliza:weather:v2";
 const GEO_TIMEOUT_MS = 8_000;
+const PRECISE_LOCATION_GRANTED_FLAG_KEY =
+  "eliza:weather:precise-location-granted:v1";
 /** Posted-once guard for the approximate-location notification. A stable
  *  groupKey makes a duplicate POST collapse server-side, but after the user
  *  DISMISSES the row a re-post would resurrect it — this flag makes the nag
@@ -182,16 +184,46 @@ function writeCache(value: CachedWeather): void {
  *  allowed; otherwise {@link resolveCoords} falls back to the server's coarse
  *  IP-based coordinates. */
 async function geolocationAlreadyGranted(): Promise<boolean> {
+  const rememberedGrant = () => {
+    try {
+      return (
+        localStorage.getItem(PRECISE_LOCATION_GRANTED_FLAG_KEY) === "granted"
+      );
+    } catch {
+      return false;
+    }
+  };
   try {
     const perms = navigator.permissions;
-    if (!perms?.query) return false;
+    if (!perms?.query) return rememberedGrant();
     const status = await perms.query({ name: "geolocation" });
     return status.state === "granted";
   } catch {
-    // error-policy:J3 Permissions API unsupported (older WebKit) reads as
-    // "not granted" — the widget uses the IP-based approximate fallback
-    // instead of prompting.
-    return false;
+    // Android System WebView may provide geolocation but reject Permissions API
+    // queries. Only reuse a grant that was established by a successful,
+    // explicit user action; without that marker the no-prompt home-load rule
+    // still falls back to approximate location.
+    return rememberedGrant();
+  }
+}
+
+/** Remember only a grant proven by a successful user-initiated geolocation
+ * request. This lets older Android WebViews reuse precise location without
+ * prompting again even though their Permissions API cannot report the grant. */
+export function rememberPreciseLocationGrant(): void {
+  try {
+    shellLocalStorage.setItem(PRECISE_LOCATION_GRANTED_FLAG_KEY, "granted");
+  } catch {
+    // error-policy:J4 persistence is an optimization; the explicit request
+    // still succeeds for the current session when storage is unavailable.
+  }
+}
+
+function forgetPreciseLocationGrant(): void {
+  try {
+    shellLocalStorage.removeItem(PRECISE_LOCATION_GRANTED_FLAG_KEY);
+  } catch {
+    // error-policy:J4 a stale marker is self-healing on the next failed read.
   }
 }
 
@@ -243,7 +275,10 @@ async function resolveCoords(signal: AbortSignal): Promise<ResolvedCoords> {
       navigator.geolocation.getCurrentPosition(
         (pos) =>
           settle({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
-        () => settle(null),
+        () => {
+          forgetPreciseLocationGrant();
+          settle(null);
+        },
         { timeout: GEO_TIMEOUT_MS, maximumAge: WEATHER_TTL_MS },
       );
     });
@@ -255,19 +290,65 @@ async function resolveCoords(signal: AbortSignal): Promise<ResolvedCoords> {
 
 const WEATHER_JSON_TIMEOUT_MS = 15_000;
 
+/**
+ * Android System WebView versions used by the Light Phone III expose
+ * `AbortSignal.timeout()` but not the newer `AbortSignal.any()`. Compose the
+ * caller cancellation and weather deadline manually on those WebViews so a
+ * valid location tap does not fail before the Open-Meteo request starts.
+ */
+function weatherRequestSignal(signal: AbortSignal): {
+  signal: AbortSignal;
+  cleanup: () => void;
+} {
+  const deadline = AbortSignal.timeout(WEATHER_JSON_TIMEOUT_MS);
+  const abortSignalWithAny = (
+    AbortSignal as typeof AbortSignal & {
+      any?: (signals: AbortSignal[]) => AbortSignal;
+    }
+  ).any;
+  if (typeof abortSignalWithAny === "function") {
+    return {
+      signal: abortSignalWithAny.call(AbortSignal, [signal, deadline]),
+      cleanup: () => {},
+    };
+  }
+
+  const controller = new AbortController();
+  const sources = [signal, deadline];
+  const listeners = sources.map((source) => {
+    const onAbort = () => {
+      if (!controller.signal.aborted) controller.abort(source.reason);
+    };
+    if (source.aborted) onAbort();
+    else source.addEventListener("abort", onAbort, { once: true });
+    return { source, onAbort };
+  });
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      for (const { source, onAbort } of listeners) {
+        source.removeEventListener("abort", onAbort);
+      }
+    },
+  };
+}
+
 async function fetchWeatherAt(
   coords: Coords,
   approximate: boolean,
   signal: AbortSignal,
 ): Promise<Weather> {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=temperature_2m,weather_code&temperature_unit=${TEMPERATURE_UNIT.param}`;
-  const response = await globalThis.fetch(url, {
-    method: "GET",
-    signal: AbortSignal.any([
-      signal,
-      AbortSignal.timeout(WEATHER_JSON_TIMEOUT_MS),
-    ]),
-  });
+  const request = weatherRequestSignal(signal);
+  let response: Response;
+  try {
+    response = await globalThis.fetch(url, {
+      method: "GET",
+      signal: request.signal,
+    });
+  } finally {
+    request.cleanup();
+  }
   if (!response.ok) throw new Error(`open-meteo ${response.status}`);
   const data = (await response.json()) as {
     current?: { temperature_2m?: number; weather_code?: number };
@@ -492,7 +573,10 @@ export function useWeather(): WeatherState {
     const controller = new AbortController();
     activeRequestRef.current = controller;
     void promptForCoords(controller.signal)
-      .then((coords) => fetchWeatherAt(coords, false, controller.signal))
+      .then((coords) => {
+        rememberPreciseLocationGrant();
+        return fetchWeatherAt(coords, false, controller.signal);
+      })
       .then((next) => {
         if (!mountedRef.current || controller.signal.aborted) return;
         setWeather(next);

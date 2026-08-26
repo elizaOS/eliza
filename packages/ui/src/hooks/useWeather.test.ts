@@ -29,8 +29,14 @@ const originalVisibilityDescriptor = Object.getOwnPropertyDescriptor(
   document,
   "visibilityState",
 );
+const originalAbortSignalAnyDescriptor = Object.getOwnPropertyDescriptor(
+  AbortSignal,
+  "any",
+);
 const WEATHER_CACHE_KEY = "eliza:weather:v2";
 const LOCATION_NOTICE_FLAG_KEY = "eliza:weather:location-notice:v1";
+const PRECISE_LOCATION_GRANTED_FLAG_KEY =
+  "eliza:weather:precise-location-granted:v1";
 const originalAgentBase = client.getBaseUrl();
 
 function jsonResponse(data: unknown, status = 200): Response {
@@ -132,6 +138,15 @@ afterEach(() => {
     );
   } else {
     Reflect.deleteProperty(document, "visibilityState");
+  }
+  if (originalAbortSignalAnyDescriptor) {
+    Object.defineProperty(
+      AbortSignal,
+      "any",
+      originalAbortSignalAnyDescriptor,
+    );
+  } else {
+    Reflect.deleteProperty(AbortSignal, "any");
   }
   localStorage.clear();
   client.setBaseUrl(originalAgentBase, { persist: false });
@@ -376,6 +391,9 @@ describe("useWeather", () => {
     expect(result.current.status).toBe("ready");
     expect(getCurrentPosition).toHaveBeenCalledTimes(1);
     expect(result.current.temp).toBe(19);
+    expect(localStorage.getItem(PRECISE_LOCATION_GRANTED_FLAG_KEY)).toBe(
+      "granted",
+    );
     // The precise Open-Meteo request carries the device coordinates + the
     // locale-derived unit param.
     const preciseUrl = calls
@@ -383,6 +401,69 @@ describe("useWeather", () => {
       .at(-1);
     expect(preciseUrl).toContain("latitude=37.7");
     expect(preciseUrl).toMatch(/temperature_unit=(celsius|fahrenheit)/);
+  });
+
+  it("loads weather when Android WebView does not implement AbortSignal.any", async () => {
+    Object.defineProperty(AbortSignal, "any", {
+      configurable: true,
+      value: undefined,
+    });
+    const getCurrentPosition = vi.fn((success: PositionCallback) =>
+      success({
+        coords: { latitude: 40.7, longitude: -74.0 },
+      } as GeolocationPosition),
+    );
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: { query: vi.fn().mockResolvedValue({ state: "denied" }) },
+    });
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: { getCurrentPosition },
+    });
+    const { calls } = installFetchRouter();
+
+    const { result } = renderHook(() => useWeather());
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    act(() => result.current.requestLocation());
+    await waitFor(() => expect(result.current.approximate).toBe(false));
+
+    expect(result.current.status).toBe("ready");
+    expect(getCurrentPosition).toHaveBeenCalledTimes(1);
+    expect(calls.some((url) => url.includes("api.open-meteo.com"))).toBe(true);
+  });
+
+  it("reuses an explicit grant when Android WebView cannot query permissions", async () => {
+    const getCurrentPosition = vi.fn((success: PositionCallback) =>
+      success({
+        coords: { latitude: 40.7, longitude: -74.0 },
+      } as GeolocationPosition),
+    );
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: { query: vi.fn().mockRejectedValue(new TypeError("unsupported")) },
+    });
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: { getCurrentPosition },
+    });
+    installFetchRouter();
+
+    const first = renderHook(() => useWeather());
+    await waitFor(() => expect(first.result.current.status).toBe("ready"));
+    expect(first.result.current.approximate).toBe(true);
+    expect(getCurrentPosition).not.toHaveBeenCalled();
+
+    act(() => first.result.current.requestLocation());
+    await waitFor(() => expect(first.result.current.approximate).toBe(false));
+    first.unmount();
+    localStorage.removeItem(WEATHER_CACHE_KEY);
+
+    const relaunched = renderHook(() => useWeather());
+    await waitFor(() => expect(relaunched.result.current.status).toBe("ready"));
+    expect(relaunched.result.current.approximate).toBe(false);
+    expect(relaunched.result.current.status).toBe("ready");
+    expect(getCurrentPosition).toHaveBeenCalledTimes(2);
   });
 
   it("makes a foreground weather deadline an explicit unavailable state", async () => {
