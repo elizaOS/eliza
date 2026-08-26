@@ -31,6 +31,7 @@ describe("parseDurationMs", () => {
     expect(parseDurationMs("250")).toBe(250); // default ms
     expect(parseDurationMs("5", { defaultUnit: "s" })).toBe(5000);
     expect(parseDurationMs("5s", { defaultUnit: "m" })).toBe(5000); // suffix wins
+    expect(parseDurationMs("5 s", { defaultUnit: "m" })).toBe(5000); // spaced suffix wins
   });
 
   it("throws on empty / malformed / negative input", () => {
@@ -41,6 +42,19 @@ describe("parseDurationMs", () => {
     expect(() => parseDurationMs("abc")).toThrow();
     expect(() => parseDurationMs("10x")).toThrow();
     expect(() => parseDurationMs("-5s")).toThrow();
+  });
+
+  it("rejects unsupported calendar and near-miss unit spellings", () => {
+    expect(() => parseDurationMs("1 month")).toThrow("invalid duration");
+    expect(() => parseDurationMs("1 months")).toThrow("invalid duration");
+    expect(() => parseDurationMs("3 mo")).toThrow("invalid duration");
+    expect(() => parseDurationMs("5 weeks")).toThrow("invalid duration");
+    expect(() => parseDurationMs("1w")).toThrow("invalid duration");
+    expect(() => parseDurationMs("1 year")).toThrow("invalid duration");
+    expect(() => parseDurationMs("2 y")).toThrow("invalid duration");
+    expect(() => parseDurationMs("1 secondz")).toThrow("invalid duration");
+    expect(() => parseDurationMs("5 hourss")).toThrow("invalid duration");
+    expect(() => parseDurationMs("5 m s")).toThrow("invalid duration");
   });
 
   it.each(["s", "m", "h", "d"] as const)(
