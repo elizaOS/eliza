@@ -639,6 +639,18 @@ export function evaluateDbLiveness(deps: {
 }
 
 /**
+ * Destructive orphan reconciliation is safe only when this daemon can prove
+ * it is reading the Cloud API's live database. A split or pre-heartbeat
+ * database can make every real container appear rowless; treating that as
+ * cleanup authority would delete another environment's healthy workloads.
+ */
+export function allowsOrphanReconciliation(
+  assessment: DbLivenessAssessment | undefined,
+): boolean {
+  return assessment?.verdict === "healthy" || assessment?.verdict === "idle";
+}
+
+/**
  * Host portion of a database URL for log messages — never the credentials.
  * `new URL` drops user:pass with `.host`; pglite:// URLs have no host, so
  * fall back to the pathname (the local data dir). Exported for unit testing.
@@ -1656,7 +1668,7 @@ async function runBoundedPhase<T>(
   phase: () => Promise<T>,
   onResult: (result: T) => void,
   timeoutMs: number = PHASE_TIMEOUT_MS,
-): Promise<void> {
+): Promise<T | undefined> {
   const { withTimeout } = await loadDeps();
   try {
     const result = await withTimeout(
@@ -1665,10 +1677,12 @@ async function runBoundedPhase<T>(
       `[provisioning-worker] ${label}`,
     );
     onResult(result);
+    return result;
   } catch (error) {
     logger.error(`[provisioning-worker] ${label} failed`, {
       error: formatErrorWithCause(error),
     });
+    return undefined;
   }
 }
 
@@ -1894,12 +1908,13 @@ export async function runInfraMaintenanceCycle(
   // once at boot and going silent. First so a dragging SSH sweep can't
   // starve it. Runs BEFORE the health check touches docker_nodes, so it is
   // a pure read.
-  await runBoundedPhase(
+  const dbLiveness = await runBoundedPhase(
     logger,
     "db liveness check cycle",
     () => processDbLivenessCheckCycle(config),
     (assessment) => logJobsTableLiveness(logger, assessment),
   );
+  const orphanReconciliationAllowed = allowsOrphanReconciliation(dbLiveness);
 
   await runBoundedPhase(
     logger,
@@ -2151,7 +2166,7 @@ export async function runInfraMaintenanceCycle(
   // node-status from the health check above — the reconciler only touches
   // HEALTHY nodes, so a node that just failed its probe is excluded and a
   // transient SSH blip never reaps live containers. Gated OFF by default.
-  if (config.orphanReconcilerEnabled) {
+  if (config.orphanReconcilerEnabled && orphanReconciliationAllowed) {
     await runBoundedPhase(
       logger,
       "orphan reconciler cycle",
@@ -2185,6 +2200,14 @@ export async function runInfraMaintenanceCycle(
             reapFailed: result.reapFailed,
           },
         );
+      },
+    );
+  } else if (config.orphanReconcilerEnabled) {
+    logger.warn(
+      "[provisioning-worker] orphan reconciliation skipped: live Cloud API database authority is not proven",
+      {
+        event: "orphan_reconciler.database_authority_unproven",
+        dbLivenessVerdict: dbLiveness?.verdict ?? "check_failed",
       },
     );
   }
