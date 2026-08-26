@@ -5963,7 +5963,7 @@ export function sanitizeAndroidCloudCapacitorConfig(
     appId: APP.appId,
     appName: APP.appName,
     webDir: "dist",
-    ...(launcherKiosk ? { loggingBehavior: "none" } : {}),
+    loggingBehavior: "none",
     server: {
       androidScheme: "https",
       ...(allowInAppAuthNavigation
@@ -6273,10 +6273,12 @@ export const ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS =
     (permission) => !ANDROID_SMS_GATEWAY_PERMISSIONS.has(permission),
   );
 
-export const ANDROID_SMS_GATEWAY_STRIPPED_JAVA_FILES =
-  ANDROID_CLOUD_STRIPPED_JAVA_FILES.filter(
+export const ANDROID_SMS_GATEWAY_STRIPPED_JAVA_FILES = [
+  ...ANDROID_CLOUD_STRIPPED_JAVA_FILES.filter(
     (file) => !ANDROID_SMS_GATEWAY_COMPONENTS.has(file.replace(/\.java$/, "")),
-  );
+  ),
+  "SafePushNotificationsPlugin.java",
+];
 
 export const ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS = [
   ...ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
@@ -6348,7 +6350,11 @@ export function findAndroidCloudPackagedRuntimeOffenders(entries) {
 
 export function cloudSafeMainActivityJava(
   androidPackage,
-  { launcherKiosk = false, immersiveNavigation = false } = {},
+  {
+    launcherKiosk = false,
+    immersiveNavigation = false,
+    safePushNotifications = true,
+  } = {},
 ) {
   const launcherImports = launcherKiosk
     ? `import android.app.admin.DevicePolicyManager;
@@ -6455,6 +6461,17 @@ import androidx.activity.OnBackPressedCallback;
     }
 `
     : "";
+  const safePushRegistration = safePushNotifications
+    ? `
+        // Capacitor discovers the community push plugin before Firebase is
+        // available in builds without google-services.json. Replace it after
+        // bridge creation so registration reports unavailable instead of
+        // terminating the process when the renderer requests notifications.
+        if (getBridge() != null) {
+            getBridge().registerPlugin(SafePushNotificationsPlugin.class);
+        }
+`
+    : "";
   return `package ${androidPackage};
 
 import android.os.Bundle;
@@ -6494,6 +6511,7 @@ ${launcherConstants}
         registerPlugin(ElizaPlaySettingsPlugin.class);
 
         super.onCreate(savedInstanceState);
+${safePushRegistration}
 
 ${launcherSetup}
 
@@ -7387,7 +7405,11 @@ public class ElizaTasksWorker extends Worker {
 function rewriteCloudJavaSources(
   javaRoots,
   androidPackage,
-  { launcherKiosk = false, immersiveNavigation = false } = {},
+  {
+    launcherKiosk = false,
+    immersiveNavigation = false,
+    safePushNotifications = true,
+  } = {},
 ) {
   let touched = 0;
   for (const root of javaRoots) {
@@ -7399,6 +7421,7 @@ function rewriteCloudJavaSources(
         cloudSafeMainActivityJava(androidPackage, {
           launcherKiosk,
           immersiveNavigation,
+          safePushNotifications,
         }),
         "utf8",
       );
@@ -8451,7 +8474,9 @@ function stripAndroidForSmsGateway() {
       `[mobile-build] Removed ${removedJavaRootCount} inactive Android Java source root(s).`,
     );
   }
-  rewriteCloudJavaSources(javaRoots, androidPackage);
+  rewriteCloudJavaSources(javaRoots, androidPackage, {
+    safePushNotifications: false,
+  });
 
   const resRoot = path.join(androidDir, "app", "src", "main", "res");
   for (const relPath of ANDROID_CLOUD_STRIPPED_RESOURCE_FILES) {

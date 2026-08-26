@@ -136,16 +136,18 @@ function isFlagEnabled(value: string | undefined): boolean {
 }
 
 /**
- * The direct-install launcher is intentionally debuggable so adb can verify
- * the HOME-role handoff, but Capacitor's default debug logging serializes
- * native plugin results into logcat. That includes the Keystore-backed Cloud
- * credential returned by ElizaSecureCredentials.get(). Keep the launcher
- * debuggable without ever logging bridge payloads.
+ * Android Cloud clients retain Keystore-backed credentials across sessions,
+ * while Capacitor's default debug logging serializes native plugin results
+ * into logcat. Suppress bridge payload logging for every Cloud-derived target,
+ * including the launcher and SMS gateway, without disabling debug signing.
  */
 export function resolveCapacitorLoggingBehavior(
   env: NodeJS.ProcessEnv = process.env,
 ): "debug" | "none" {
-  return isFlagEnabled(env.ELIZA_ANDROID_LAUNCHER_BUILD) ? "none" : "debug";
+  return isFlagEnabled(env.ELIZA_ANDROID_CLOUD_BUILD) ||
+    isFlagEnabled(env.ELIZA_ANDROID_LAUNCHER_BUILD)
+    ? "none"
+    : "debug";
 }
 
 const webViewDebuggingEnabled =
@@ -160,8 +162,34 @@ export function resolveAndroidProjectPath(
     : "../app-core/platforms/android";
 }
 
-const androidProjectPath = resolveAndroidProjectPath(
-  process.env.ELIZA_ANDROID_USE_APP_DIR,
+export function resolveCapacitorAppId(
+  appIdOverride: string | undefined,
+  iosAppIdOverride: string | undefined,
+  configuredAppId: string,
+): string {
+  return appIdOverride?.trim() || iosAppIdOverride?.trim() || configuredAppId;
+}
+
+export function resolveCapacitorAndroidIdentity(
+  env: NodeJS.ProcessEnv,
+  configuredAppId: string,
+): { appId: string; projectPath: string } {
+  const appId = resolveCapacitorAppId(
+    env.ELIZA_APP_ID,
+    env.ELIZA_IOS_APP_ID,
+    configuredAppId,
+  );
+  return {
+    appId,
+    projectPath: resolveAndroidProjectPath(
+      env.ELIZA_ANDROID_USE_APP_DIR,
+      appId,
+    ),
+  };
+}
+
+const capacitorAndroidIdentity = resolveCapacitorAndroidIdentity(
+  process.env,
   appConfig.appId,
 );
 const capacitorHttpEnabled = resolveCapacitorHttpEnabled(
@@ -171,7 +199,7 @@ const capacitorHttpEnabled = resolveCapacitorHttpEnabled(
 );
 
 const config: CapacitorConfig = {
-  appId: appConfig.appId,
+  appId: capacitorAndroidIdentity.appId,
   appName: appConfig.appName,
   webDir: "dist",
   loggingBehavior: resolveCapacitorLoggingBehavior(),
@@ -244,7 +272,7 @@ const config: CapacitorConfig = {
     // Keep `cap sync` pointed at the same Android tree run-mobile-build will
     // package. Upstream elizaOS owns the shared app-core tree; white-label or
     // explicitly isolated builds use the app-local ignored android/ project.
-    path: androidProjectPath,
+    path: capacitorAndroidIdentity.projectPath,
     // Android owns the fused app runtime. Keep iOS's llama-cpp-capacitor
     // dependency out of raw Android sync while discovering every declared
     // Capacitor plugin, including the embedded Bun host, from package metadata.
