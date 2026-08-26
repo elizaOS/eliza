@@ -114,6 +114,13 @@ export default defineConfig({
           "../../plugins/plugin-task-coordinator/src/register.ts",
         ),
       },
+      {
+        find: /^@elizaos\/plugin-relationships\/register$/,
+        replacement: path.join(
+          here,
+          "../../plugins/plugin-relationships/src/register.ts",
+        ),
+      },
       ...(Array.isArray(baseConfig.resolve?.alias)
         ? baseConfig.resolve.alias
         : []),

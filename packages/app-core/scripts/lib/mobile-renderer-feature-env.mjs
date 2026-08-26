@@ -3,12 +3,15 @@
  * Local iOS artifacts expose the existing runtime chooser so a sideload can
  * select its bundled agent without Cloud authentication. Every iOS renderer
  * also compiles the optional APNs transport gate, which is recorded in the
- * renderer manifest. LP3 debug artifacts enable the realtime voice client.
+ * renderer manifest. Cloud-only Android artifacts enable the realtime voice
+ * client without forcing eligibility; the server and normal client gates stay
+ * authoritative.
  * Lanes with feature values that remain unstamped start from a fresh renderer,
  * and explicit reuse requires a stale-risk acknowledgement.
  */
 
 const ANDROID_CLOUD_DEBUG = "android-cloud-debug";
+const ANDROID_CLOUD = "android-cloud";
 
 export function resolveMobileRendererFeatureEnv({ platform, env = {} } = {}) {
   if (typeof platform !== "string" || platform.length === 0) {
@@ -20,10 +23,12 @@ export function resolveMobileRendererFeatureEnv({ platform, env = {} } = {}) {
   if (platform === "android-launcher") {
     return { VITE_ELIZA_ANDROID_LAUNCHER_BUILD: "1" };
   }
+  const cloudAndroid =
+    platform === ANDROID_CLOUD || platform === ANDROID_CLOUD_DEBUG;
   const isLp3Debug =
     platform === ANDROID_CLOUD_DEBUG &&
     env.ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED === "1";
-  if (!isLp3Debug) return {};
+  if (!cloudAndroid) return {};
   const isLp3RemoteFallback = ["1", "true", "yes"].includes(
     String(env.ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED ?? "")
       .trim()
@@ -31,8 +36,11 @@ export function resolveMobileRendererFeatureEnv({ platform, env = {} } = {}) {
   );
   return {
     VITE_VOICE_REALTIME_WS: "1",
-    VITE_VOICE_REALTIME_FORCE: "1",
-    ...(isLp3RemoteFallback
+    // Never inherit an ambient debug-force flag into a device artifact. A
+    // Cloud mobile build may use realtime only when the normal eligibility
+    // contract and server gate both pass.
+    VITE_VOICE_REALTIME_FORCE: "0",
+    ...(isLp3Debug && isLp3RemoteFallback
       ? {
           VITE_ENABLE_STREAM: "false",
           VITE_ELIZA_ANDROID_LP3_SHARED_BROWSER_STORAGE: "1",
@@ -46,6 +54,7 @@ export function mobileRendererRequiresFreshBuild({ platform } = {}) {
     throw new Error("mobileRendererRequiresFreshBuild: platform is required");
   }
   return (
+    platform === ANDROID_CLOUD ||
     platform === ANDROID_CLOUD_DEBUG ||
     platform === "android-launcher" ||
     platform === "ios" ||
@@ -65,6 +74,9 @@ export function mobileRendererUnstampedFeatureProblem({ platform } = {}) {
   }
   if (platform === ANDROID_CLOUD_DEBUG) {
     return "dist cannot prove the Android cloud-debug realtime voice flags because they are not stamped";
+  }
+  if (platform === ANDROID_CLOUD) {
+    return "dist cannot prove the Android cloud realtime voice flags because they are not stamped";
   }
   if (platform === "android-launcher") {
     return "dist cannot prove the Android launcher in-app auth contract because it is not stamped";
