@@ -251,47 +251,55 @@ function validateKeyAndIv(key: Uint8Array, iv: Uint8Array): void {
 }
 
 /**
- * Byte length of the UTF-8 sequence led by `byte` (0 when not a lead byte).
+ * Stateful output encoder mirroring how `node:crypto` streams cipher and
+ * decipher output: node pipes every emitted chunk through ONE decoder for the
+ * chosen output encoding, so per-chunk encoding is only correct when the
+ * encoding is stateless. `hex` is stateless (2 chars/byte). `base64` must hold
+ * back bytes until they form complete 3-byte groups — encoding each chunk
+ * independently emits `=` padding mid-stream, producing a concatenation that
+ * is not the base64 of the whole output and cannot be decoded as one string.
+ * `utf8` must hold back a trailing incomplete multibyte sequence until it
+ * completes; `TextDecoder`'s own streaming mode provides exactly node's
+ * semantics (including the `0xF8`–`0xFF` lead-byte rejection node enforces,
+ * which a hand-rolled lead-byte table would have to replicate).
  */
-function utf8SequenceLength(byte: number): number {
-	if (byte >= 0xf0) return 4;
-	if (byte >= 0xe0) return 3;
-	if (byte >= 0xc0) return 2;
-	return 0;
+interface StreamingOutputEncoder {
+	encode(chunk: Uint8Array): string;
+	flush(finalChunk: Uint8Array): string;
 }
 
-/**
- * Split a trailing incomplete UTF-8 sequence off a plaintext chunk.
- *
- * `node:crypto`'s decipher streams UTF-8 output statefully: a multibyte
- * character whose bytes land in different `update()` chunks is held back
- * until complete. Decoding each chunk with a fresh `TextDecoder` instead
- * would emit U+FFFD at every block boundary — silently corrupting any
- * non-ASCII secret that straddles a 16-byte block edge. Only a lead byte
- * whose sequence is cut short at the end of the chunk is retained; complete
- * sequences, ASCII tails, and orphaned continuation bytes (invalid UTF-8,
- * which decoders replace anyway) all pass through unchanged.
- */
-function splitTrailingPartialUtf8(bytes: Uint8Array): {
-	decode: OwnedUint8Array;
-	holdback: OwnedUint8Array;
-} {
-	for (
-		let leadIdx = bytes.length - 1;
-		leadIdx >= 0 && leadIdx >= bytes.length - 3;
-		leadIdx--
-	) {
-		const seqLength = utf8SequenceLength(bytes[leadIdx] ?? 0);
-		if (seqLength === 0) continue;
-		if (leadIdx + seqLength > bytes.length) {
-			return {
-				decode: sliceBytes(bytes, 0, leadIdx),
-				holdback: sliceBytes(bytes, leadIdx),
-			};
-		}
-		return { decode: toOwnedUint8Array(bytes), holdback: new Uint8Array(0) };
+function createStreamingOutputEncoder(
+	encoding: BufferEncodingName,
+): StreamingOutputEncoder {
+	if (encoding === "base64") {
+		let carry = new Uint8Array(0);
+		return {
+			encode(chunk: Uint8Array) {
+				const combined = concatBytes(carry, chunk);
+				const encodableLength = combined.length - (combined.length % 3);
+				carry = sliceBytes(combined, encodableLength);
+				return encodableLength === 0
+					? ""
+					: toEncodedString(sliceBytes(combined, 0, encodableLength), "base64");
+			},
+			flush(finalChunk: Uint8Array) {
+				const combined = concatBytes(carry, finalChunk);
+				carry = new Uint8Array(0);
+				return toEncodedString(combined, "base64");
+			},
+		};
 	}
-	return { decode: toOwnedUint8Array(bytes), holdback: new Uint8Array(0) };
+	if (encoding === "utf8") {
+		const decoder = new TextDecoder("utf-8");
+		return {
+			encode: (chunk: Uint8Array) => decoder.decode(chunk, { stream: true }),
+			flush: (finalChunk: Uint8Array) => decoder.decode(finalChunk),
+		};
+	}
+	return {
+		encode: (chunk: Uint8Array) => toEncodedString(chunk, "hex"),
+		flush: (finalChunk: Uint8Array) => toEncodedString(finalChunk, "hex"),
+	};
 }
 
 /**
@@ -383,21 +391,23 @@ export function createCipheriv(
 	const normalizedKey = Uint8Array.from(key);
 	let currentIv = Uint8Array.from(iv);
 	let pending = new Uint8Array(0);
+	let outputEncoder: StreamingOutputEncoder | undefined;
 	let outputEncoding: BufferEncodingName | undefined;
-	const lockOutputEncoding = (encoding: string): BufferEncodingName => {
+	const lockOutputEncoding = (encoding: string): StreamingOutputEncoder => {
 		const normalized = normalizeEncoding(encoding);
 		if (outputEncoding === undefined) {
 			outputEncoding = normalized;
+			outputEncoder = createStreamingOutputEncoder(normalized);
 		} else if (outputEncoding !== normalized) {
 			// node:crypto rejects mid-stream output-encoding changes on the
 			// cipher exactly like the decipher.
 			throw new Error("Cannot change encoding");
 		}
-		return normalized;
+		return outputEncoder as StreamingOutputEncoder;
 	};
 	return {
 		update(data, inputEncoding, outEncArg) {
-			const outEnc = lockOutputEncoding(outEncArg);
+			const encoder = lockOutputEncoding(outEncArg);
 			const incoming = toUint8Array(data, normalizeEncoding(inputEncoding));
 			pending = concatBytes(pending, incoming);
 			const fullBlockLength =
@@ -414,17 +424,17 @@ export function createCipheriv(
 				encryptedChunk,
 				encryptedChunk.length - AES_BLOCK_SIZE,
 			);
-			return toEncodedString(encryptedChunk, outEnc);
+			return encoder.encode(encryptedChunk);
 		},
 		final(encoding) {
-			const outEnc = lockOutputEncoding(encoding);
+			const encoder = lockOutputEncoding(encoding);
 			const encryptedTail = Uint8Array.from(
 				cbc(normalizedKey, currentIv, { disablePadding: true }).encrypt(
 					applyPkcs7Padding(pending),
 				),
 			);
 			pending = new Uint8Array(0);
-			return toEncodedString(encryptedTail, outEnc);
+			return encoder.flush(encryptedTail);
 		},
 	};
 }
@@ -447,22 +457,23 @@ export function createDecipheriv(
 	const normalizedKey = Uint8Array.from(key);
 	let currentIv = Uint8Array.from(iv);
 	let pending = new Uint8Array(0);
-	let utf8Holdback = new Uint8Array(0);
+	let outputEncoder: StreamingOutputEncoder | undefined;
 	let outputEncoding: BufferEncodingName | undefined;
-	const lockOutputEncoding = (encoding: string): BufferEncodingName => {
+	const lockOutputEncoding = (encoding: string): StreamingOutputEncoder => {
 		const normalized = normalizeEncoding(encoding);
 		if (outputEncoding === undefined) {
 			outputEncoding = normalized;
+			outputEncoder = createStreamingOutputEncoder(normalized);
 		} else if (outputEncoding !== normalized) {
 			// node:crypto rejects mid-stream output-encoding changes; honoring
-			// them instead would silently drop the held-back UTF-8 bytes.
+			// them instead would silently drop the held-back bytes.
 			throw new Error("Cannot change encoding");
 		}
-		return normalized;
+		return outputEncoder as StreamingOutputEncoder;
 	};
 	return {
 		update(data, inputEncoding, outEncArg) {
-			const outEnc = lockOutputEncoding(outEncArg);
+			const encoder = lockOutputEncoding(outEncArg);
 			const incoming = toUint8Array(data, normalizeEncoding(inputEncoding));
 			pending = concatBytes(pending, incoming);
 			const decryptableLength =
@@ -483,20 +494,13 @@ export function createDecipheriv(
 				ciphertextChunk,
 				ciphertextChunk.length - AES_BLOCK_SIZE,
 			);
-			if (outEnc !== "utf8") {
-				return toEncodedString(plaintextChunk, outEnc);
-			}
-			// Hold back a trailing partial UTF-8 sequence so multibyte characters
-			// split across update() chunks decode once, complete — node:crypto
-			// streams its output through one stateful decoder.
-			const split = splitTrailingPartialUtf8(
-				concatBytes(utf8Holdback, plaintextChunk),
-			);
-			utf8Holdback = split.holdback;
-			return toEncodedString(split.decode, "utf8");
+			// Stream the chunk through the one stateful output encoder — this
+			// holds back trailing incomplete UTF-8 sequences and partial base64
+			// 3-byte groups exactly like node:crypto's own decoder.
+			return encoder.encode(plaintextChunk);
 		},
 		final(encoding) {
-			const outEnc = lockOutputEncoding(encoding);
+			const encoder = lockOutputEncoding(encoding);
 			if (pending.length === 0 || pending.length % AES_BLOCK_SIZE !== 0) {
 				throw new Error("Invalid ciphertext length for AES-CBC payload.");
 			}
@@ -507,12 +511,7 @@ export function createDecipheriv(
 			);
 			pending = new Uint8Array(0);
 			const unpadded = removePkcs7Padding(decryptedTail);
-			if (outEnc !== "utf8") {
-				return toEncodedString(unpadded, outEnc);
-			}
-			const complete = concatBytes(utf8Holdback, unpadded);
-			utf8Holdback = new Uint8Array(0);
-			return toEncodedString(complete, "utf8");
+			return encoder.flush(unpadded);
 		},
 	};
 }

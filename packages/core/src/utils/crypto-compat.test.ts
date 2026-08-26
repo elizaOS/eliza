@@ -4,8 +4,8 @@
  * AES-256-GCM is already pinned in crypto-compat.aes-gcm.test.ts. This file
  * drives the remaining public helpers against independent oracles (node:crypto
  * and Web Crypto) rather than mocked return values: sync hashes, Web Crypto
- * hashes, AES-256-CBC cipher/decipher (including PKCS#7 and chunking), and
- * the async AES-CBC wrappers.
+ * hashes, AES-256-CBC cipher/decipher (PKCS#7, chunking, stateful UTF-8/base64
+ * output streaming, encoding locks), and the async AES-CBC wrappers.
  */
 import {
 	createCipheriv as nodeCreateCipheriv,
@@ -365,6 +365,211 @@ describe("createCipheriv / createDecipheriv AES-256-CBC", () => {
 		);
 		decipherBad.update(tampered.toString("hex"), "hex", "utf8");
 		expect(() => decipherBad.final("utf8")).toThrow(/Invalid PKCS#7 padding\./);
+	});
+
+	it("decodes a multibyte UTF-8 character split across the update()/final() boundary", () => {
+		// "€" is E2 82 AC; starting it at byte 15 puts its lead byte at the end
+		// of the first plaintext block, so the sequence straddles the last
+		// update() chunk and the final() tail. Regression pin (#28947):
+		// per-chunk decoding emitted U+FFFD here while node:crypto streamed it
+		// through one stateful decoder.
+		const plaintext = `${"a".repeat(15)}€tail`;
+		const hex = nodeEncryptHex(AES_CBC_KEY, AES_CBC_IV, plaintext);
+		const decipher = createDecipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
+		expect(decipher.update(hex, "hex", "utf8") + decipher.final("utf8")).toBe(
+			plaintext,
+		);
+	});
+
+	it("decodes multibyte UTF-8 split across two update() chunks and hands the held-back sequence between output-producing updates", () => {
+		// 29 a's + 🚀 (F0 9F 9A 80) + "cd" = 35 bytes -> 48-byte ciphertext (3
+		// blocks). Feeding update() 32 bytes of ciphertext at a time makes the
+		// second update emit plaintext ending MID-EMOJI (the sequence starts at
+		// byte 29), so it completes in a later chunk than its lead byte.
+		const emoji = `${"a".repeat(29)}🚀cd`;
+		const emojiHex = nodeEncryptHex(AES_CBC_KEY, AES_CBC_IV, emoji);
+		const d1 = createDecipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
+		expect(
+			d1.update(emojiHex.slice(0, 64), "hex", "utf8") +
+				d1.update(emojiHex.slice(64), "hex", "utf8") +
+				d1.final("utf8"),
+		).toBe(emoji);
+
+		// 14 b's put the €'s E2 at byte 14, 82 at 15 (block 1), AC at 16
+		// (block 2): the first output-producing update must emit exactly the
+		// 14 b's and hold the partial sequence back for the next update.
+		const straddling = `${"b".repeat(14)}€${"c".repeat(50)}`;
+		const straddlingHex = nodeEncryptHex(AES_CBC_KEY, AES_CBC_IV, straddling);
+		const d2 = createDecipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
+		const out1 = d2.update(straddlingHex.slice(0, 64), "hex", "utf8");
+		expect(out1).toBe("b".repeat(14));
+		const rest =
+			d2.update(straddlingHex.slice(64, 128), "hex", "utf8") +
+			d2.update(straddlingHex.slice(128), "hex", "utf8") +
+			d2.final("utf8");
+		expect(out1 + rest).toBe(straddling);
+	});
+
+	it("round-trips a non-ASCII secret against node:crypto ciphertext", () => {
+		const secret = "ключ-космос-鍵-🔐-secreto"; // 2/3/4-byte sequences
+		const hex = nodeEncryptHex(AES_CBC_KEY, AES_CBC_IV, secret);
+		const decipher = createDecipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
+		expect(decipher.update(hex, "hex", "utf8") + decipher.final("utf8")).toBe(
+			secret,
+		);
+	});
+
+	it("rejects changing the output encoding mid-stream like node:crypto (cipher and decipher)", () => {
+		const hex = concatCipherHex(AES_CBC_KEY, AES_CBC_IV, PLAINTEXT);
+
+		// decipher: update utf8 -> final hex
+		const d1 = createDecipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
+		d1.update(hex, "hex", "utf8");
+		expect(() => d1.final("hex")).toThrow(/Cannot change encoding/);
+		// decipher: update utf8 -> update hex
+		const d2 = createDecipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
+		d2.update(hex.slice(0, 32), "hex", "utf8");
+		expect(() => d2.update(hex.slice(32), "hex", "hex")).toThrow(
+			/Cannot change encoding/,
+		);
+
+		// cipher: update hex -> update base64
+		const c1 = createCipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
+		c1.update(PLAINTEXT, "utf8", "hex");
+		expect(() => c1.update("tail", "utf8", "base64")).toThrow(
+			/Cannot change encoding/,
+		);
+		// cipher: update hex -> final base64
+		const c2 = createCipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
+		c2.update(PLAINTEXT, "utf8", "hex");
+		expect(() => c2.final("base64")).toThrow(/Cannot change encoding/);
+
+		// the alias pair utf8/utf-8 stays one encoding on both directions
+		const d3 = createDecipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
+		d3.update(hex.slice(0, 32), "hex", "utf8");
+		expect(
+			() => d3.update(hex.slice(32), "hex", "utf-8") + d3.final("utf8"),
+		).not.toThrow();
+		const c3 = createCipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
+		c3.update("a".repeat(32), "utf8", "utf8");
+		expect(
+			() => c3.update("b", "utf8", "utf-8") + c3.final("utf8"),
+		).not.toThrow();
+	});
+
+	it("streams base64 output in 3-byte groups so every call shape matches node:crypto's one-shot base64", () => {
+		// node:crypto pipes cipher output through one stateful base64 decoder:
+		// its per-call outputs concatenate to the base64 of the WHOLE
+		// ciphertext. Encoding each chunk independently would emit "=" padding
+		// mid-stream — a concatenation that is not valid single base64.
+		// Regression pin (review of #28971): the pre-fix shim diverged even on
+		// a plain update()+final() pair.
+		const plaintext = `${PLAINTEXT}0123456789abcdefg`; // 2+ blocks
+		const nodeCipher = nodeCreateCipheriv(
+			"aes-256-cbc",
+			Buffer.from(AES_CBC_KEY),
+			Buffer.from(AES_CBC_IV),
+		);
+		const nodeOneShot =
+			nodeCipher.update(plaintext, "utf8", "base64") +
+			nodeCipher.final("base64");
+
+		const oneShot = createCipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
+		expect(
+			oneShot.update(plaintext, "utf8", "base64") + oneShot.final("base64"),
+		).toBe(nodeOneShot);
+
+		for (const split of [1, 7, 16, 17, 33]) {
+			if (split >= plaintext.length) continue;
+			const cipher = createCipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
+			const streamed =
+				cipher.update(plaintext.slice(0, split), "utf8", "base64") +
+				cipher.update(plaintext.slice(split), "utf8", "base64") +
+				cipher.final("base64");
+			expect(streamed).toBe(nodeOneShot);
+		}
+
+		// Decipher side: base64-out streaming must also concatenate to the
+		// base64 of the whole plaintext (node parity for the reverse shape).
+		// Feed the ciphertext hex in two uneven chunks so the first update
+		// holds back a partial block and the second crosses a 3-byte group
+		// boundary before final() flushes the remainder.
+		const fullHex = nodeEncryptHex(AES_CBC_KEY, AES_CBC_IV, plaintext);
+		const nodeDecipher = nodeCreateDecipheriv(
+			"aes-256-cbc",
+			Buffer.from(AES_CBC_KEY),
+			Buffer.from(AES_CBC_IV),
+		);
+		const nodePlainB64 =
+			nodeDecipher.update(fullHex.slice(0, 20), "hex", "base64") +
+			nodeDecipher.update(fullHex.slice(20), "hex", "base64") +
+			nodeDecipher.final("base64");
+		const decipherStreamed = createDecipheriv(
+			"aes-256-cbc",
+			AES_CBC_KEY,
+			AES_CBC_IV,
+		);
+		const plainB64 =
+			decipherStreamed.update(fullHex.slice(0, 20), "hex", "base64") +
+			decipherStreamed.update(fullHex.slice(20), "hex", "base64") +
+			decipherStreamed.final("base64");
+		expect(plainB64).toBe(nodePlainB64);
+		expect(Buffer.from(plainB64, "base64").toString("utf8")).toBe(plaintext);
+
+		// Hex output stays stateless-parity across every split.
+		for (const split of [1, 7, 16, 17, 33]) {
+			if (split >= plaintext.length) continue;
+			const cipher = createCipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
+			const hexStream =
+				cipher.update(plaintext.slice(0, split), "utf8", "hex") +
+				cipher.update(plaintext.slice(split), "utf8", "hex") +
+				cipher.final("hex");
+			expect(hexStream).toBe(
+				nodeEncryptHex(AES_CBC_KEY, AES_CBC_IV, plaintext),
+			);
+		}
+	});
+
+	it("throws when the pad length byte is valid but interior pad bytes are wrong", () => {
+		// Final byte says "3 bytes of padding" but the preceding pad byte is
+		// 0x07, not 0x03 — pins the full interior-byte validation loop, not
+		// just the length range check.
+		const hex = concatCipherHex(AES_CBC_KEY, AES_CBC_IV, PLAINTEXT);
+		const last = Buffer.from(hex, "hex").subarray(-16);
+		const ecb = nodeCreateCipheriv(
+			"aes-256-cbc",
+			Buffer.from(AES_CBC_KEY),
+			last,
+		);
+		ecb.setAutoPadding(false);
+		const forgedBlock = Buffer.alloc(16, 0x41);
+		forgedBlock[14] = 0x07; // wrong interior pad byte
+		forgedBlock[15] = 0x03; // valid-looking pad length
+		const appended = ecb.update(forgedBlock);
+		const tampered = Buffer.concat([Buffer.from(hex, "hex"), appended]);
+		const decipher = createDecipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
+		expect(
+			() =>
+				decipher.update(tampered.toString("hex"), "hex", "utf8") +
+				decipher.final("utf8"),
+		).toThrow(/Invalid PKCS#7 padding/);
+	});
+
+	it("decrypting under the wrong key never yields the plaintext", () => {
+		const hex = nodeEncryptHex(AES_CBC_KEY, AES_CBC_IV, PLAINTEXT);
+		const wrongKey = new Uint8Array(32).fill(0xab);
+		const decipher = createDecipheriv("aes-256-cbc", wrongKey, AES_CBC_IV);
+		const attempt = () =>
+			decipher.update(hex, "hex", "utf8") + decipher.final("utf8");
+		// Wrong key garbles every block; padding almost always rejects. If it
+		// happens to validate, the plaintext is still garbage — never PLAINTEXT.
+		let result: string | undefined;
+		try {
+			result = attempt();
+		} catch {
+			result = undefined;
+		}
+		expect(result === undefined || result !== PLAINTEXT).toBe(true);
 	});
 });
 
