@@ -133,6 +133,20 @@ describe("Android Play manifest policy", () => {
       /eliza\.app|localhost|127\.0\.0\.1|BackgroundRunner|bun-runtime|includePlugins/,
     );
     expect(sanitized).not.toHaveProperty("ios");
+    expect(sanitized).not.toHaveProperty("loggingBehavior");
+  });
+
+  it("preserves launcher-only logging suppression and opt-in WebView inspection", () => {
+    const sanitized = sanitizeAndroidCloudCapacitorConfig(
+      {
+        loggingBehavior: "debug",
+        android: { webContentsDebuggingEnabled: false },
+      },
+      { launcherKiosk: true, webViewDebugging: true },
+    );
+
+    expect(sanitized.loggingBehavior).toBe("none");
+    expect(sanitized.android.webContentsDebuggingEnabled).toBe(true);
   });
 
   it("keeps the unused native Google identity stack out of Android source", () => {

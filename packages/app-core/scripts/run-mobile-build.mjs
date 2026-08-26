@@ -5846,7 +5846,10 @@ function isJsonRecord(value) {
 }
 
 /** Returns the minimal runtime config that is safe to package in a Play APK/AAB. */
-export function sanitizeAndroidCloudCapacitorConfig(value) {
+export function sanitizeAndroidCloudCapacitorConfig(
+  value,
+  { launcherKiosk = false, webViewDebugging = false } = {},
+) {
   if (!isJsonRecord(value)) {
     throw new Error(
       "android-cloud capacitor.config.json must contain an object",
@@ -5863,6 +5866,7 @@ export function sanitizeAndroidCloudCapacitorConfig(value) {
     appId: APP.appId,
     appName: APP.appName,
     webDir: "dist",
+    ...(launcherKiosk ? { loggingBehavior: "none" } : {}),
     server: {
       androidScheme: "https",
     },
@@ -5874,12 +5878,12 @@ export function sanitizeAndroidCloudCapacitorConfig(value) {
           : "#000000",
       allowMixedContent: false,
       captureInput: sourceAndroid.captureInput === true,
-      webContentsDebuggingEnabled: false,
+      webContentsDebuggingEnabled: launcherKiosk && webViewDebugging,
     },
   };
 }
 
-function sanitizeAndroidCloudPackagedConfig() {
+function sanitizeAndroidCloudPackagedConfig(env = process.env) {
   const configPath = path.join(
     androidDir,
     "app",
@@ -5903,7 +5907,10 @@ function sanitizeAndroidCloudPackagedConfig() {
       }`,
     );
   }
-  const sanitized = sanitizeAndroidCloudCapacitorConfig(parsed);
+  const sanitized = sanitizeAndroidCloudCapacitorConfig(parsed, {
+    launcherKiosk: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
+    webViewDebugging: env.ELIZA_WEBVIEW_DEBUG === "1",
+  });
   fs.writeFileSync(configPath, `${JSON.stringify(sanitized, null, "\t")}\n`);
   console.log(
     "[mobile-build] Rewrote capacitor.config.json to the restricted Play runtime contract.",
@@ -8064,7 +8071,7 @@ function stripAndroidForCloud({ env = process.env } = {}) {
   //    libeliza_*.so jniLibs disguise.
   removeCloudNativeArtifacts();
   stripAndroidCloudNativePlugins();
-  sanitizeAndroidCloudPackagedConfig();
+  sanitizeAndroidCloudPackagedConfig(env);
 }
 
 function stripAndroidForSmsGateway() {
