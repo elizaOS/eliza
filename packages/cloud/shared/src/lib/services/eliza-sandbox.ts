@@ -46,6 +46,7 @@ import {
 } from "../../db/schemas/agent-sandboxes";
 import { dockerNodes } from "../../db/schemas/docker-nodes";
 import { jobs } from "../../db/schemas/jobs";
+import { personalDedicatedAdoptionSelections } from "../../db/schemas/personal-dedicated-adoption-selections";
 import { personalDedicatedUpgradeAuthorities } from "../../db/schemas/personal-dedicated-upgrade-authorities";
 import { imageRepo, repinImageDigest } from "../../db/utils/docker-image-ref";
 import type { RuntimeDurableObjectNamespace } from "../../types/cloud-worker-env";
@@ -113,7 +114,13 @@ import {
   prepareManagedElizaSharedEnvironment,
 } from "./managed-eliza-config";
 import { prepareManagedElizaEnvironment } from "./managed-eliza-env";
-import type { PersonalDedicatedReviewedBackupChainEntry } from "./personal-dedicated-adoption-provenance";
+import {
+  type PersonalDedicatedReviewedBackupChainEntry,
+  personalDedicatedActivationAuthority,
+  personalDedicatedActivationAuthorityFromReceipt,
+  personalDedicatedActivationAuthorityKey,
+  personalDedicatedBackupProvenanceFromStored,
+} from "./personal-dedicated-adoption-provenance";
 import { EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES, JOB_TYPES } from "./provisioning-job-types";
 import { applyRemoteDockerRuntimeMode } from "./remote-docker-runtime-mode";
 import { mergeRuntimeAgentSecretsFromEnv } from "./runtime-agent-secrets";
@@ -469,10 +476,12 @@ export type ProvisionRestoreOverride =
     }
   | {
       kind: "from-reviewed-backup";
+      selectionId: string;
       backupId: string;
       expectedContentHash: string;
       expectedBackupChain: PersonalDedicatedReviewedBackupChainEntry[];
     }
+  | { kind: "reviewed-fresh-boot"; selectionId: string }
   | { kind: "fresh-boot" };
 
 type ReviewedProvisionRestoreOverride = Extract<
@@ -480,9 +489,19 @@ type ReviewedProvisionRestoreOverride = Extract<
   { kind: "from-reviewed-backup" }
 >;
 
+type ReviewedProvisionAuthorityOverride = Extract<
+  ProvisionRestoreOverride,
+  { kind: "from-reviewed-backup" | "reviewed-fresh-boot" }
+>;
+
+interface ElizaSandboxServiceTestHooks {
+  afterReviewedRestorePreflight?: () => Promise<void>;
+  afterReviewedRestoreFence?: () => Promise<void>;
+}
+
 function isExplicitBackupRestore(
   override: ProvisionRestoreOverride | undefined,
-): override is Exclude<ProvisionRestoreOverride, { kind: "fresh-boot" }> {
+): override is Extract<ProvisionRestoreOverride, { kind: "from-backup" | "from-reviewed-backup" }> {
   return override?.kind === "from-backup" || override?.kind === "from-reviewed-backup";
 }
 
@@ -768,12 +787,191 @@ function storedRestoreChainMatchesReviewedAuthority(
       stored.parent_backup_id === expected.parentBackupId &&
       stored.content_hash === expected.contentHash &&
       stored.verification_status === "verified" &&
-      stored.verified_at?.toISOString() === expected.verifiedAt &&
+      stored.verified_at !== null &&
       stored.catalog_version === expected.catalogVersion &&
       stored.catalog_state === expected.catalogState &&
       stored.catalog_deleted_at === null
     );
   });
+}
+
+function reviewedProvisionAuthorityHash(directive: ReviewedProvisionAuthorityOverride): string {
+  return crypto.createHash("sha256").update(JSON.stringify(directive)).digest("hex");
+}
+
+async function assertReviewedSelectionReceipt(
+  sandboxRecordId: string,
+  directive: ReviewedProvisionAuthorityOverride,
+): Promise<typeof personalDedicatedAdoptionSelections.$inferSelect> {
+  const [selection] = await dbWrite
+    .select()
+    .from(personalDedicatedAdoptionSelections)
+    .where(
+      and(
+        eq(personalDedicatedAdoptionSelections.id, directive.selectionId),
+        eq(personalDedicatedAdoptionSelections.dedicated_agent_id, sandboxRecordId),
+        eq(personalDedicatedAdoptionSelections.schema_version, 1),
+      ),
+    )
+    .limit(1);
+  if (!selection) throw new Error(RESTORE_BACKUP_CHANGED);
+  const receiptAuthority = personalDedicatedActivationAuthorityFromReceipt(
+    selection.activation_kind,
+    selection.activation_backup_id,
+    selection.activation_backup_hash,
+    selection.activation_backup_chain,
+  );
+  if (directive.kind === "reviewed-fresh-boot") {
+    if (receiptAuthority?.kind !== "fresh-boot") throw new Error(RESTORE_BACKUP_CHANGED);
+    return selection;
+  }
+  if (
+    receiptAuthority?.kind !== "from-legacy-backup" ||
+    personalDedicatedActivationAuthorityKey(receiptAuthority) !==
+      personalDedicatedActivationAuthorityKey({
+        kind: "from-legacy-backup",
+        backupId: directive.backupId,
+        backupHash: directive.expectedContentHash,
+        backupChain: directive.expectedBackupChain,
+      })
+  ) {
+    throw new Error(RESTORE_BACKUP_CHANGED);
+  }
+  return selection;
+}
+
+export async function assertReviewedFreshBootAuthority(
+  sandboxRecordId: string,
+  directive: Extract<ProvisionRestoreOverride, { kind: "reviewed-fresh-boot" }>,
+): Promise<void> {
+  try {
+    const selection = await assertReviewedSelectionReceipt(sandboxRecordId, directive);
+    const backups = await dbWrite
+      .select()
+      .from(agentSandboxBackups)
+      .where(eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId))
+      .orderBy(asc(agentSandboxBackups.id));
+    if (
+      personalDedicatedActivationAuthority(
+        selection.organization_id,
+        sandboxRecordId,
+        backups.map(personalDedicatedBackupProvenanceFromStored),
+      ).kind !== "fresh-boot"
+    ) {
+      throw new Error(RESTORE_BACKUP_CHANGED);
+    }
+  } catch {
+    throw new ApiError(
+      409,
+      "session_not_ready",
+      "Reviewed fresh-boot authority changed before Dedicated provisioning",
+    );
+  }
+}
+
+interface ReviewedProvisionAdmissionFence {
+  selectionId: string;
+  hash: string;
+  reviewedRestore?: PreparedReviewedProvisionRestore;
+}
+
+async function releaseReviewedProvisionAdmissionFence(
+  fence: ReviewedProvisionAdmissionFence,
+): Promise<void> {
+  await dbWrite
+    .update(personalDedicatedAdoptionSelections)
+    .set({ restore_fence_hash: null, restore_fence_started_at: null, updated_at: new Date() })
+    .where(
+      and(
+        eq(personalDedicatedAdoptionSelections.id, fence.selectionId),
+        eq(personalDedicatedAdoptionSelections.restore_fence_hash, fence.hash),
+      ),
+    );
+}
+
+async function acquireReviewedProvisionAdmissionFence(
+  sandboxRecordId: string,
+  organizationId: string,
+  directive: ReviewedProvisionAuthorityOverride,
+): Promise<ReviewedProvisionAdmissionFence> {
+  const hash = reviewedProvisionAuthorityHash(directive);
+  await dbWrite.transaction(async (tx) => {
+    await configureElizaLifecycleTransaction(tx);
+    await tx.execute(elizaProvisionAdvisoryLockSql(organizationId, sandboxRecordId));
+    const [agent] = await tx
+      .select({ id: agentSandboxes.id })
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.id, sandboxRecordId),
+          eq(agentSandboxes.organization_id, organizationId),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!agent) throw new Error(RESTORE_AUTHORITY_CHANGED);
+    const [selection] = await tx
+      .select()
+      .from(personalDedicatedAdoptionSelections)
+      .where(
+        and(
+          eq(personalDedicatedAdoptionSelections.id, directive.selectionId),
+          eq(personalDedicatedAdoptionSelections.organization_id, organizationId),
+          eq(personalDedicatedAdoptionSelections.dedicated_agent_id, sandboxRecordId),
+          eq(personalDedicatedAdoptionSelections.schema_version, 1),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!selection || (selection.restore_fence_hash && selection.restore_fence_hash !== hash)) {
+      throw new Error(RESTORE_BACKUP_CHANGED);
+    }
+    const receiptAuthority = personalDedicatedActivationAuthorityFromReceipt(
+      selection.activation_kind,
+      selection.activation_backup_id,
+      selection.activation_backup_hash,
+      selection.activation_backup_chain,
+    );
+    const expectedAuthority =
+      directive.kind === "reviewed-fresh-boot"
+        ? ({ kind: "fresh-boot" } as const)
+        : ({
+            kind: "from-legacy-backup",
+            backupId: directive.backupId,
+            backupHash: directive.expectedContentHash,
+            backupChain: directive.expectedBackupChain,
+          } as const);
+    if (
+      personalDedicatedActivationAuthorityKey(receiptAuthority) !==
+      personalDedicatedActivationAuthorityKey(expectedAuthority)
+    ) {
+      throw new Error(RESTORE_BACKUP_CHANGED);
+    }
+    await tx
+      .update(personalDedicatedAdoptionSelections)
+      .set({
+        restore_fence_hash: hash,
+        restore_fence_started_at: new Date(),
+        updated_at: new Date(),
+      })
+      .where(eq(personalDedicatedAdoptionSelections.id, selection.id));
+  });
+
+  const fence: ReviewedProvisionAdmissionFence = { selectionId: directive.selectionId, hash };
+  try {
+    if (directive.kind === "from-reviewed-backup") {
+      fence.reviewedRestore = await assertReviewedProvisionRestoreAuthority(
+        sandboxRecordId,
+        directive,
+      );
+    } else {
+      await assertReviewedFreshBootAuthority(sandboxRecordId, directive);
+    }
+    return fence;
+  } catch (error) {
+    await releaseReviewedProvisionAdmissionFence(fence);
+    throw error;
+  }
 }
 
 interface PreparedReviewedProvisionRestore {
@@ -793,6 +991,7 @@ export async function assertReviewedProvisionRestoreAuthority(
   directive: ReviewedProvisionRestoreOverride,
 ): Promise<PreparedReviewedProvisionRestore> {
   try {
+    await assertReviewedSelectionReceipt(sandboxRecordId, directive);
     const storedChain = await captureStoredRestoreChain(directive.backupId, sandboxRecordId);
     if (
       !storedChain ||
@@ -1451,10 +1650,13 @@ export class ElizaSandboxService {
   private _provider?: SandboxProvider;
   private _providerPromise?: Promise<SandboxProvider>;
 
-  constructor(provider?: SandboxProvider) {
+  private readonly testHooks?: ElizaSandboxServiceTestHooks;
+
+  constructor(provider?: SandboxProvider, testHooks?: ElizaSandboxServiceTestHooks) {
     if (provider) {
       this._provider = provider;
     }
+    this.testHooks = testHooks;
   }
 
   private async getProvider(): Promise<SandboxProvider> {
@@ -3409,6 +3611,21 @@ export class ElizaSandboxService {
           error: error instanceof Error ? error.message : "Reviewed backup authority changed",
         };
       }
+    } else if (restoreOverride?.kind === "reviewed-fresh-boot") {
+      try {
+        await assertReviewedFreshBootAuthority(agentId, restoreOverride);
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Reviewed fresh-boot authority changed",
+        };
+      }
+    }
+    if (
+      restoreOverride?.kind === "from-reviewed-backup" ||
+      restoreOverride?.kind === "reviewed-fresh-boot"
+    ) {
+      await this.testHooks?.afterReviewedRestorePreflight?.();
     }
     const expectedAdmission =
       restoreOverride?.kind === "from-backup" && restoreOverride.requireRestoreEndpoint
@@ -3503,6 +3720,37 @@ export class ElizaSandboxService {
       rec = lock;
     }
 
+    let reviewedAdmissionFence: ReviewedProvisionAdmissionFence | undefined;
+    if (
+      restoreOverride?.kind === "from-reviewed-backup" ||
+      restoreOverride?.kind === "reviewed-fresh-boot"
+    ) {
+      try {
+        reviewedAdmissionFence = await acquireReviewedProvisionAdmissionFence(
+          rec.id,
+          rec.organization_id,
+          restoreOverride,
+        );
+        reviewedRestore = reviewedAdmissionFence.reviewedRestore;
+        await this.testHooks?.afterReviewedRestoreFence?.();
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Reviewed restore authority changed";
+        if (reviewedAdmissionFence) {
+          await releaseReviewedProvisionAdmissionFence(reviewedAdmissionFence);
+          reviewedAdmissionFence = undefined;
+        }
+        await this.markError(rec, message);
+        return {
+          success: false,
+          sandboxRecord: await agentSandboxesRepository.findById(rec.id),
+          error: message,
+        };
+      }
+    }
+
+    // biome-ignore format: keep the existing provision body stable while this guard owns fence cleanup.
+    try {
     // 1. Database
     let dbUri = rec.database_uri;
     if (rec.database_status !== "ready" || !dbUri) {
@@ -3613,10 +3861,13 @@ export class ElizaSandboxService {
             : null;
         if (retryHandle) {
           handle = retryHandle;
-          logger.info("[agent-sandbox] Re-probing persisted provisioning container before create", {
-            agentId: rec.id,
-            sandboxId: handle.sandboxId,
-          });
+          logger.info(
+            "[agent-sandbox] Re-probing persisted provisioning container before create",
+            {
+              agentId: rec.id,
+              sandboxId: handle.sandboxId,
+            },
+          );
         } else {
           // 2. Sandbox (via provider)
           const callerEnv = materializedEnv;
@@ -3870,7 +4121,10 @@ export class ElizaSandboxService {
         let restoreState: Awaited<
           ReturnType<typeof agentSandboxesRepository.getReconstructedBackupState>
         >;
-        if (restoreOverride?.kind === "fresh-boot") {
+        if (
+          restoreOverride?.kind === "fresh-boot" ||
+          restoreOverride?.kind === "reviewed-fresh-boot"
+        ) {
           // Explicit opt-in (wake forceFreshBoot): the caller accepted the
           // data loss, so no backup is read, degraded, or pruned — the stored
           // chain stays intact for a later explicit restore.
@@ -4171,6 +4425,11 @@ export class ElizaSandboxService {
       sandboxRecord: await agentSandboxesRepository.findById(rec.id),
       error: lastError,
     };
+    } finally {
+      if (reviewedAdmissionFence) {
+        await releaseReviewedProvisionAdmissionFence(reviewedAdmissionFence);
+      }
+    }
   }
 
   private async getSafeBridgeEndpoint(

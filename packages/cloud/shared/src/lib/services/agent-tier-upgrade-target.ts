@@ -310,6 +310,7 @@ export type PersonalDedicatedAdoptionResolution =
       state: "available" | "adopted";
       agent: AgentSandbox;
       selectionActivationAuthority?: PersonalDedicatedActivationAuthority;
+      selectionActivationReceiptId?: string;
     };
 
 export class PersonalDedicatedAdoptionError extends ElizaError {
@@ -397,6 +398,7 @@ function attachSelectionActivationAuthority(
   return {
     ...resolution,
     selectionActivationAuthority: authority,
+    selectionActivationReceiptId: receipt.id,
   };
 }
 
@@ -993,10 +995,14 @@ export async function adoptPersonalDedicatedTargetWithProvision(
 
       const restoreDirective =
         activationAuthority?.kind === "fresh-boot"
-          ? ({ kind: "fresh-boot" } as const)
+          ? ({
+              kind: "reviewed-fresh-boot",
+              selectionId: resolution.selectionActivationReceiptId!,
+            } as const)
           : activationAuthority?.kind === "from-legacy-backup"
             ? ({
                 kind: "from-reviewed-backup",
+                selectionId: resolution.selectionActivationReceiptId!,
                 backupId: activationAuthority.backupId,
                 expectedContentHash: activationAuthority.backupHash,
                 expectedBackupChain: activationAuthority.backupChain,

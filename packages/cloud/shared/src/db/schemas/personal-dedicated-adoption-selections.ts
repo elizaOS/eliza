@@ -31,6 +31,8 @@ export const personalDedicatedAdoptionSelections = pgTable(
     activation_backup_id: uuid("activation_backup_id"),
     activation_backup_hash: text("activation_backup_hash"),
     activation_backup_chain: jsonb("activation_backup_chain"),
+    restore_fence_hash: text("restore_fence_hash"),
+    restore_fence_started_at: timestamp("restore_fence_started_at", { withTimezone: true }),
     inventory_fingerprint: text("inventory_fingerprint").notNull(),
     candidate_count: integer("candidate_count").notNull(),
     schema_version: integer("schema_version").notNull().default(1),
@@ -82,6 +84,16 @@ export const personalDedicatedAdoptionSelections = pgTable(
     fingerprint_check: check(
       "personal_dedicated_adoption_selections_fingerprint_check",
       sql`${table.inventory_fingerprint} ~ '^[a-f0-9]{64}$'`,
+    ),
+    restore_fence_check: check(
+      "personal_dedicated_adoption_selections_restore_fence_check",
+      sql`(
+        ${table.restore_fence_hash} IS NULL
+        AND ${table.restore_fence_started_at} IS NULL
+      ) OR (
+        ${table.restore_fence_hash} ~ '^[a-f0-9]{64}$'
+        AND ${table.restore_fence_started_at} IS NOT NULL
+      )`,
     ),
     candidate_count_check: check(
       "personal_dedicated_adoption_selections_candidate_count_check",
