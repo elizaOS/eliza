@@ -2112,6 +2112,87 @@ export const NO_REPORTABLE_TOOL_OUTCOME_MESSAGE =
 
 const ASYNC_HANDOFF_ACK_MESSAGE = "on it, working on that now.";
 
+/**
+ * Structured machine effect parsed from a tool result's receipt `text` — the
+ * shape actions emit as an internal-visibility JSON receipt when the effect
+ * has already been applied out-of-band (plugin-app-control's
+ * `view_navigation`: `{"effect","status","viewId","label",...}`). `effect`
+ * and `status` are the family contract; `label` is the optional human name of
+ * the affected thing.
+ */
+interface StructuredToolEffect {
+	effect: string;
+	status: string;
+	label?: string;
+}
+
+function structuredEffectFromToolResult(
+	result: PlannerToolResult,
+): StructuredToolEffect | undefined {
+	const raw = result.text?.trim();
+	if (!raw?.startsWith("{")) return undefined;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		// error-policy:J3 a tool's diagnostic text is untrusted input for this
+		// projection; non-JSON text is explicitly "no structured effect" —
+		// never a fake-valid effect — and the caller keeps its fallback.
+		return undefined;
+	}
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		return undefined;
+	}
+	const { effect, status, label } = parsed as {
+		effect?: unknown;
+		status?: unknown;
+		label?: unknown;
+	};
+	if (typeof effect !== "string" || effect.trim().length === 0) {
+		return undefined;
+	}
+	if (typeof status !== "string" || status.trim().length === 0) {
+		return undefined;
+	}
+	return {
+		effect: effect.trim(),
+		status: status.trim(),
+		...(typeof label === "string" && label.trim().length > 0
+			? { label: label.trim() }
+			: {}),
+	};
+}
+
+/**
+ * Deterministic confirmation for the most recent successful tool result whose
+ * receipt carries an accepted structured effect. An internal-visibility
+ * success with no `userFacingText` used to fall through to the no-result
+ * apology even though the effect verifiably happened (live tj-a835d4c6da235f:
+ * a deterministic VIEWS navigation accepted `viewId:"chat"`, label "Home",
+ * and the turn closed with "finished without producing a result"). The old
+ * action-owned reply composer ("Opened Notes.") was deleted in the
+ * effect-receipt migration, so this is the one effect→text renderer; wording
+ * stays in the lowercase persona voice of the other canned replies. Only an
+ * `accepted` status may claim completion — pending/unconfirmed/unsupported
+ * receipts keep the honest no-result fallback.
+ */
+export function structuredEffectConfirmation(
+	settled: ReadonlyArray<{ name: string; result: PlannerToolResult }>,
+): string | undefined {
+	for (let index = settled.length - 1; index >= 0; index--) {
+		const entry = settled[index];
+		if (entry?.result.success !== true) continue;
+		if (isTerminalPlannerToolName(entry.name)) continue;
+		const effect = structuredEffectFromToolResult(entry.result);
+		if (effect?.status !== "accepted") continue;
+		if (effect.effect === "view_navigation" && effect.label) {
+			return `done — you're on ${effect.label}.`;
+		}
+		return effect.label ? `done — ${effect.label}.` : "done.";
+	}
+	return undefined;
+}
+
 function preservedVerifiedFailure(
 	settled: ReadonlyArray<{ name: string; result: PlannerToolResult }>,
 	deliveredVisibleTexts: ReadonlySet<string>,
@@ -2183,6 +2264,13 @@ export function answerlessToolTurnReport(args: {
 	if (candidateActionsIncludeAsyncHandoff(args.actions, acceptedActionNames)) {
 		return args.stageOneAck || ASYNC_HANDOFF_ACK_MESSAGE;
 	}
+	// An accepted structured effect IS the turn's result — the effect receipt
+	// proves the work happened, so report it instead of apologizing for a
+	// missing result. Genuinely empty successes still fall through below.
+	const effectConfirmation = structuredEffectConfirmation(
+		args.settledToolResults,
+	);
+	if (effectConfirmation) return effectConfirmation;
 	return NO_REPORTABLE_TOOL_OUTCOME_MESSAGE;
 }
 

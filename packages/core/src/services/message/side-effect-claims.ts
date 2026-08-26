@@ -86,6 +86,14 @@ const READ_NAVIGATION_ONLY_SENTENCE_PATTERN = new RegExp(
 		"|" +
 		String.raw`(?:the\s+|your\s+)?(?:\d+\s+)?(?:notes?|reminders?|tasks?|todos?|to[- ]dos?|goals?|habits?|appointments?|calendar|settings)(?:\s+view)?\s+` +
 		String.raw`(?:is|are)\s+(?:now\s+)?(?:loaded|visible|shown|displayed|open|rendered|onscreen|on\s+screen|in\s+view|pulled\s+up|brought\s+up|highlighted)` +
+		"|" +
+		// "done — you're on Settings." is the deterministic view-navigation
+		// confirmation the runtime synthesizes from an accepted
+		// view_navigation effect receipt; when the destination view's label
+		// collides with a tracked-work noun (Settings, Notes, Calendar) the
+		// sentence must still read as navigation, not as a committed mutation.
+		String.raw`(?:you['’]re|you\s+are)\s+(?:now\s+)?(?:back\s+)?(?:on|in|at)\s+` +
+		String.raw`(?:the\s+|your\s+)?(?:notes?|reminders?|tasks?|todos?|to[- ]dos?|goals?|habits?|appointments?|calendar|settings)(?:\s+view)?(?:\s+now)?` +
 		String.raw`)[\s…✅🎉]*$`,
 	"iu",
 );
