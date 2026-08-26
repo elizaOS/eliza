@@ -51,6 +51,7 @@ import {
   type AgentExecutionTier,
   type AgentSandboxPoolStatus,
   type AgentSandboxStatus,
+  agentSandboxBackups,
   agentSandboxes,
   CONTAINER_BACKED_EXECUTION_TIERS,
   UPGRADE_FAILURE_TARGET_MARKER_PREFIX,
@@ -221,7 +222,10 @@ export interface AgentProvisionJobData {
   organizationId: string;
   userId: string;
   agentName: string;
-  restoreDirective?: { kind: "from-backup"; backupId: string } | { kind: "fresh-boot" };
+  restoreDirective?:
+    | { kind: "from-backup"; backupId: string }
+    | { kind: "fresh-boot" }
+    | { kind: "from-reviewed-backup"; backupId: string; expectedContentHash: string };
 }
 
 export interface AgentDeleteJobData {
@@ -592,7 +596,14 @@ function isAgentProvisionJobData(value: unknown): value is AgentProvisionJobData
       (((restoreDirective as { kind?: unknown }).kind === "fresh-boot" &&
         !("backupId" in restoreDirective)) ||
         ((restoreDirective as { kind?: unknown }).kind === "from-backup" &&
-          typeof (restoreDirective as { backupId?: unknown }).backupId === "string")));
+          typeof (restoreDirective as { backupId?: unknown }).backupId === "string") ||
+        ((restoreDirective as { kind?: unknown }).kind === "from-reviewed-backup" &&
+          typeof (restoreDirective as { backupId?: unknown }).backupId === "string" &&
+          typeof (restoreDirective as { expectedContentHash?: unknown }).expectedContentHash ===
+            "string" &&
+          /^[a-f0-9]{64}$/.test(
+            (restoreDirective as { expectedContentHash: string }).expectedContentHash,
+          ))));
   return (
     typeof value === "object" &&
     value !== null &&
@@ -707,7 +718,55 @@ function sameProvisionRestoreDirective(
   if (left?.kind === "from-backup" && right?.kind === "from-backup") {
     return left.backupId === right.backupId;
   }
+  if (left?.kind === "from-reviewed-backup" && right?.kind === "from-reviewed-backup") {
+    return (
+      left.backupId === right.backupId && left.expectedContentHash === right.expectedContentHash
+    );
+  }
   return true;
+}
+
+/**
+ * Revalidate the immutable payload authority selected before the asynchronous
+ * worker may cross into provider compute. The backup row is deliberately read
+ * at execution time: a verifier downgrade, reassignment, deletion, or digest
+ * change after quote/adoption must fail without calling the sandbox provider.
+ */
+export async function resolveReviewedProvisionRestoreDirectiveForExecution(
+  data: AgentProvisionJobData,
+): Promise<{ kind: "from-backup"; backupId: string } | { kind: "fresh-boot" } | undefined> {
+  const directive = data.restoreDirective;
+  if (directive?.kind !== "from-reviewed-backup") return directive;
+
+  const [backup] = await dbWrite
+    .select({ id: agentSandboxBackups.id })
+    .from(agentSandboxBackups)
+    .where(
+      and(
+        eq(agentSandboxBackups.id, directive.backupId),
+        eq(agentSandboxBackups.sandbox_record_id, data.agentId),
+        eq(agentSandboxBackups.content_hash, directive.expectedContentHash),
+        eq(agentSandboxBackups.verification_status, "verified"),
+        isNotNull(agentSandboxBackups.verified_at),
+        isNull(agentSandboxBackups.catalog_deleted_at),
+        or(
+          isNull(agentSandboxBackups.catalog_version),
+          and(
+            eq(agentSandboxBackups.catalog_version, 1),
+            eq(agentSandboxBackups.catalog_state, "legacy_unmigrated"),
+          ),
+        ),
+      ),
+    )
+    .limit(1);
+  if (!backup) {
+    throw new ApiError(
+      409,
+      "session_not_ready",
+      "Reviewed backup authority changed before Dedicated provisioning",
+    );
+  }
+  return { kind: "from-backup", backupId: directive.backupId };
 }
 
 function readAgentDeleteJobData(job: Job): AgentDeleteJobData {
@@ -6132,10 +6191,11 @@ export class ProvisioningJobService {
     });
 
     await this.assertExecutionMutationLease(job);
+    const restoreDirective = await resolveReviewedProvisionRestoreDirectiveForExecution(data);
     const provResult = await elizaSandboxService.provision(
       data.agentId,
       data.organizationId,
-      data.restoreDirective,
+      restoreDirective,
     );
 
     if (await this.completeIfAgentGone(job, provResult, data.agentId)) return;

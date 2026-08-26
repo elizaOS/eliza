@@ -201,6 +201,7 @@ const adoptionBackupProjection = {
   stateDataStorage: agentSandboxBackups.state_data_storage,
   stateDataKey: agentSandboxBackups.state_data_key,
   backupKind: agentSandboxBackups.backup_kind,
+  parentBackupId: agentSandboxBackups.parent_backup_id,
   contentHash: agentSandboxBackups.content_hash,
   verificationStatus: agentSandboxBackups.verification_status,
   verifiedAt: agentSandboxBackups.verified_at,
@@ -244,6 +245,7 @@ async function selectionReceiptMatchesInventory(params: {
   const receiptActivationAuthority = personalDedicatedActivationAuthorityFromReceipt(
     params.receipt.activation_kind,
     params.receipt.activation_backup_id,
+    params.receipt.activation_backup_hash,
   );
   if (
     params.receipt.state_disposition !==
@@ -387,6 +389,7 @@ function attachSelectionActivationAuthority(
   const authority = personalDedicatedActivationAuthorityFromReceipt(
     receipt.activation_kind,
     receipt.activation_backup_id,
+    receipt.activation_backup_hash,
   );
   if (!authority) return { state: "unavailable" };
   return {
@@ -990,7 +993,11 @@ export async function adoptPersonalDedicatedTargetWithProvision(
         activationAuthority?.kind === "fresh-boot"
           ? ({ kind: "fresh-boot" } as const)
           : activationAuthority?.kind === "from-legacy-backup"
-            ? ({ kind: "from-backup", backupId: activationAuthority.backupId } as const)
+            ? ({
+                kind: "from-reviewed-backup",
+                backupId: activationAuthority.backupId,
+                expectedContentHash: activationAuthority.backupHash,
+              } as const)
             : undefined;
 
       const enqueue = await provisioningJobService.enqueueAgentProvisionOnceInTx(tx, {

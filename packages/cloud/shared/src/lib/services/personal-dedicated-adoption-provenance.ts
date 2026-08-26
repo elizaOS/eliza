@@ -10,8 +10,8 @@ export type PersonalDedicatedStateDisposition =
 
 export type PersonalDedicatedActivationAuthority =
   | { kind: "fresh-boot" }
-  | { kind: "from-legacy-backup"; backupId: string }
-  | { kind: "catalog-restore-required"; backupId: string };
+  | { kind: "from-legacy-backup"; backupId: string; backupHash: string }
+  | { kind: "catalog-restore-required"; backupId: string; backupHash: string };
 
 export interface PersonalDedicatedBackupProvenance {
   id: string;
@@ -20,6 +20,7 @@ export interface PersonalDedicatedBackupProvenance {
   stateDataStorage: string;
   stateDataKey: string | null;
   backupKind: string;
+  parentBackupId: string | null;
   contentHash: string | null;
   verificationStatus: string | null;
   verifiedAt: Date | null;
@@ -184,9 +185,20 @@ export function personalDedicatedActivationAuthority(
 
   const selected = restorable[0];
   if (!selected) return { kind: "fresh-boot" };
-  return selected.catalogVersion === 2
-    ? { kind: "catalog-restore-required", backupId: selected.id }
-    : { kind: "from-legacy-backup", backupId: selected.id };
+  if (selected.catalogVersion === 2) {
+    // The restorable catalogue predicate above requires this digest.
+    return {
+      kind: "catalog-restore-required",
+      backupId: selected.id,
+      backupHash: selected.catalogPayloadDigest!,
+    };
+  }
+  // The restorable legacy predicate above requires this digest.
+  return {
+    kind: "from-legacy-backup",
+    backupId: selected.id,
+    backupHash: selected.contentHash!,
+  };
 }
 
 export function personalDedicatedStateDisposition(
@@ -206,32 +218,42 @@ export function personalDedicatedActivationAuthorityKey(
   if (!authority) return "unreviewed-auto";
   return authority.kind === "fresh-boot"
     ? authority.kind
-    : `${authority.kind}:${authority.backupId}`;
+    : `${authority.kind}:${authority.backupId}:${authority.backupHash}`;
 }
 
 export function personalDedicatedActivationAuthorityFromReceipt(
   activationKind: string,
   backupId: string | null,
+  backupHash: string | null,
 ): PersonalDedicatedActivationAuthority | undefined {
   if (activationKind === "fresh_boot" && backupId === null) return { kind: "fresh-boot" };
-  if (activationKind === "legacy_backup" && backupId) {
-    return { kind: "from-legacy-backup", backupId };
+  if (activationKind === "legacy_backup" && backupId && backupHash) {
+    return { kind: "from-legacy-backup", backupId, backupHash };
   }
-  if (activationKind === "catalog_restore_required" && backupId) {
-    return { kind: "catalog-restore-required", backupId };
+  if (activationKind === "catalog_restore_required" && backupId && backupHash) {
+    return { kind: "catalog-restore-required", backupId, backupHash };
   }
   return undefined;
 }
 
 export function personalDedicatedActivationAuthorityReceiptColumns(
   authority: PersonalDedicatedActivationAuthority,
-): { activation_kind: string; activation_backup_id: string | null } {
+): {
+  activation_kind: string;
+  activation_backup_id: string | null;
+  activation_backup_hash: string | null;
+} {
   if (authority.kind === "fresh-boot") {
-    return { activation_kind: "fresh_boot", activation_backup_id: null };
+    return {
+      activation_kind: "fresh_boot",
+      activation_backup_id: null,
+      activation_backup_hash: null,
+    };
   }
   return {
     activation_kind:
       authority.kind === "from-legacy-backup" ? "legacy_backup" : "catalog_restore_required",
     activation_backup_id: authority.backupId,
+    activation_backup_hash: authority.backupHash,
   };
 }
