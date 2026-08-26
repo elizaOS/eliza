@@ -119,10 +119,8 @@ describe("evaluateMailSecurity", () => {
   it("accepts a case-variant Workspace include", () => {
     // Mechanism names and domains are case-insensitive (RFC 7208 s4.6.1).
     expect(
-      check(
-        baseline({ txt: ["v=spf1 Include:_SPF.Google.com ~all"] }),
-        "spf",
-      ).ok,
+      check(baseline({ txt: ["v=spf1 Include:_SPF.Google.com ~all"] }), "spf")
+        .ok,
     ).toBe(true);
   });
 
@@ -132,11 +130,67 @@ describe("evaluateMailSecurity", () => {
     expect(
       check(
         baseline({
-          txt: ["v=spf1 include:_spf.google.com ~all include:evil.example +all"],
+          txt: [
+            "v=spf1 include:_spf.google.com ~all include:evil.example +all",
+          ],
         }),
         "spf",
       ).ok,
     ).toBe(false);
+  });
+
+  it("fails a leading +all even when a ~all trails it", () => {
+    // First-match semantics (RFC 7208 s4.6.2): the first `all` authorizes
+    // every sender, so a leading +all opens the domain and the trailing ~all
+    // is dead. Inspecting only the terminal mechanism would miss this.
+    const found = check(
+      baseline({ txt: ["v=spf1 +all include:_spf.google.com ~all"] }),
+      "spf",
+    );
+    expect(found.ok).toBe(false);
+    expect(found.detail).toContain("must end in ~all or -all");
+  });
+
+  it("fails a +all placed before the terminal ~all", () => {
+    // The +all matches first and authorizes the whole internet; the ~all
+    // after it never evaluates (RFC 7208 s5.1).
+    const found = check(
+      baseline({ txt: ["v=spf1 include:_spf.google.com +all ~all"] }),
+      "spf",
+    );
+    expect(found.ok).toBe(false);
+    expect(found.detail).toContain("not ?all or +all");
+  });
+
+  it("fails a leading ?all neutral qualifier before a terminal -all", () => {
+    // ?all is neutral, not a hard fail; as the first `all` it makes the
+    // record permissive regardless of the unreachable trailing -all.
+    expect(
+      check(
+        baseline({ txt: ["v=spf1 ?all include:_spf.google.com -all"] }),
+        "spf",
+      ).ok,
+    ).toBe(false);
+  });
+
+  it("fails a bare `all` mechanism, which defaults to +all", () => {
+    // An unqualified `all` means `+all` (RFC 7208 s4.6.2), so a leading bare
+    // all is as open as an explicit +all.
+    expect(
+      check(
+        baseline({ txt: ["v=spf1 all include:_spf.google.com -all"] }),
+        "spf",
+      ).ok,
+    ).toBe(false);
+  });
+
+  it("passes a record whose only `all` is a terminal ~all", () => {
+    // The legitimate posture: the first (and only) `all` is the terminal
+    // ~all softfail, so the control must stay green.
+    expect(
+      check(baseline({ txt: ["v=spf1 include:_spf.google.com ~all"] }), "spf")
+        .ok,
+    ).toBe(true);
   });
 
   it("treats a revoked DKIM key (empty p=) as a failure", () => {
