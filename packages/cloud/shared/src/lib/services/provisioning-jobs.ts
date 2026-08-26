@@ -699,6 +699,17 @@ function readAgentProvisionJobData(job: Job): AgentProvisionJobData {
   return job.data;
 }
 
+function sameProvisionRestoreDirective(
+  left: AgentProvisionJobData["restoreDirective"],
+  right: AgentProvisionJobData["restoreDirective"],
+): boolean {
+  if (left?.kind !== right?.kind) return false;
+  if (left?.kind === "from-backup" && right?.kind === "from-backup") {
+    return left.backupId === right.backupId;
+  }
+  return true;
+}
+
 function readAgentDeleteJobData(job: Job): AgentDeleteJobData {
   if (!isAgentDeleteJobData(job.data)) {
     throw new Error(`Invalid agent delete job data for job ${job.id}`);
@@ -1894,6 +1905,24 @@ export class ProvisioningJobService {
               }
             }
           : undefined,
+      // A reviewed adoption pins either one exact backup or an explicit fresh
+      // boot. Reusing an ordinary provision job would silently discard that
+      // authority and could activate different state, so directive-bearing
+      // callers only converge with an identical durable job payload.
+      validateReuse: params.restoreDirective
+        ? (existing) => {
+            const active = readAgentProvisionJobData(existing);
+            if (sameProvisionRestoreDirective(active.restoreDirective, params.restoreDirective)) {
+              return;
+            }
+            throw new ApiError(
+              409,
+              "session_not_ready",
+              `Provision job ${existing.id} is already ${existing.status} for this agent with different restore authority`,
+              { conflictingJobId: existing.id },
+            );
+          }
+        : undefined,
     };
   }
 

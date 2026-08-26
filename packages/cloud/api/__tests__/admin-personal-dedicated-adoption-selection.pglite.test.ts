@@ -38,6 +38,7 @@ import {
   resolvePersonalDedicatedAdoption,
 } from "@/lib/services/agent-tier-upgrade-target";
 import { personalDedicatedAdoptionSelectionService } from "@/lib/services/personal-dedicated-adoption-selection";
+import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { personalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { TIER_UPGRADE_TEST_TABLES } from "../../shared/src/lib/services/__tests__/tier-upgrade-pglite-schema";
@@ -57,16 +58,18 @@ const SOURCE_A = personalSharedAgentId({
 const ENV = {} as AppEnv["Bindings"];
 
 let role: "super_admin" | "moderator" = "super_admin";
+let adminIdentity = {
+  id: ADMIN,
+  email: "admin@example.test",
+  organization_id: ORG_B,
+  organization: { id: ORG_B, name: "Admin Org", is_active: true },
+};
 type RouteDependencies = NonNullable<
   Parameters<typeof createAdminPersonalDedicatedSelectionRoute>[0]
 >;
 const route = createAdminPersonalDedicatedSelectionRoute({
   requireAdmin: (async () => ({
-    user: {
-      id: ADMIN,
-      organization_id: ORG_B,
-      organization: { id: ORG_B, name: "Admin Org", is_active: true },
-    },
+    user: adminIdentity,
     role,
   })) as RouteDependencies["requireAdmin"],
   selectionService: personalDedicatedAdoptionSelectionService,
@@ -212,6 +215,12 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   role = "super_admin";
+  adminIdentity = {
+    id: ADMIN,
+    email: "admin@example.test",
+    organization_id: ORG_B,
+    organization: { id: ORG_B, name: "Admin Org", is_active: true },
+  };
   await dbWrite.delete(jobs);
   await dbWrite.delete(agentSandboxBackups);
   await dbWrite.delete(personalDedicatedUpgradeAuthorities);
@@ -261,6 +270,27 @@ describe("admin personal Dedicated adoption selection", () => {
     expect(
       await dbWrite.select().from(personalDedicatedAdoptionSelections),
     ).toHaveLength(0);
+  });
+
+  test("the synthetic local admin records nullable attribution instead of violating the user FK", async () => {
+    await seedAmbiguousInventory();
+    adminIdentity = {
+      id: "00000000-0000-4000-8000-000000000001",
+      email: "local-dev-admin@localhost",
+      organization_id: "00000000-0000-4000-8000-000000000002",
+      organization: {
+        id: "00000000-0000-4000-8000-000000000002",
+        name: "Local Dev",
+        is_active: true,
+      },
+    };
+    const fingerprint = await previewFingerprint();
+    const response = await post(requestBody(false, fingerprint));
+    expect(response.status).toBe(200);
+    const [selection] = await dbWrite
+      .select()
+      .from(personalDedicatedAdoptionSelections);
+    expect(selection?.selected_by_user_id).toBeNull();
   });
 
   test("wrong organization, wrong owner, and excluded retained rows are indistinguishable 404s", async () => {
@@ -771,6 +801,57 @@ describe("admin personal Dedicated adoption selection", () => {
     expect(retry.job?.data).toMatchObject({
       restoreDirective: { kind: "fresh-boot" },
     });
+  });
+
+  test("adoption rejects an active provision job with different restore authority without partial marker writes", async () => {
+    await seedAmbiguousInventory();
+    const fingerprint = await previewFingerprint();
+    await personalDedicatedAdoptionSelectionService.execute({
+      organizationId: ORG_A,
+      userId: USER_A,
+      sourceAgentId: SOURCE_A,
+      retainedAgentId: RETAINED,
+      selectedByUserId: ADMIN,
+      reason: "duplicate_owned_dedicated_inventory",
+      expectedInventoryFingerprint: fingerprint,
+      expectedStateDisposition: "fresh_boot_no_verified_backup",
+    });
+    const active = await provisioningJobService.enqueueAgentProvisionOnce({
+      agentId: RETAINED,
+      organizationId: ORG_A,
+      userId: USER_A,
+      agentName: "Retained",
+    });
+    expect(active.job.data).not.toHaveProperty("restoreDirective");
+
+    await expect(
+      adoptPersonalDedicatedTargetWithProvision({
+        organizationId: ORG_A,
+        userId: USER_A,
+        sourceAgentId: SOURCE_A,
+        expectedTargetId: RETAINED,
+        expectedLifecycleRevision: 5749,
+        expectedStatus: "error",
+        expectedBalance: 100,
+        expectedHourlyRate: AGENT_PRICING.RUNNING_HOURLY_RATE,
+        expectedDailyRate: AGENT_PRICING.DAILY_RUNNING_COST,
+        expectedMinimumBalance: AGENT_PRICING.UPGRADE_MINIMUM_BALANCE,
+        expectedMinimumRunwayDays: AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS,
+        expectedActivationAuthorityKey: "fresh-boot",
+      }),
+    ).rejects.toThrow("different restore authority");
+
+    expect(
+      await dbWrite.select().from(personalDedicatedUpgradeAuthorities),
+    ).toHaveLength(0);
+    const [retained] = await dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, RETAINED));
+    expect(retained?.agent_config).toEqual({});
+    const [persistedJob] = await dbWrite.select().from(jobs);
+    expect(persistedJob?.id).toBe(active.job.id);
+    expect(persistedJob?.data).not.toHaveProperty("restoreDirective");
   });
 
   test("a selected verified legacy backup is pinned into the provision job", async () => {

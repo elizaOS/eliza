@@ -48,7 +48,7 @@ export interface PersonalDedicatedSelectionInput {
   userId: string;
   sourceAgentId: string;
   retainedAgentId: string;
-  selectedByUserId: string;
+  selectedByUserId: string | null;
   reason: PersonalDedicatedSelectionReason;
 }
 

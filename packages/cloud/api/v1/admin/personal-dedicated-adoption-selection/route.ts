@@ -44,6 +44,8 @@ const executeRequestSchema = z
   .strict();
 
 const requestSchema = z.union([previewRequestSchema, executeRequestSchema]);
+const LOCAL_DEV_ADMIN_USER_ID = "00000000-0000-4000-8000-000000000001";
+const LOCAL_DEV_ADMIN_EMAIL = "local-dev-admin@localhost";
 
 interface AdminPersonalDedicatedSelectionRouteDependencies {
   requireAdmin: typeof requireAdmin;
@@ -98,6 +100,8 @@ export function createAdminPersonalDedicatedSelectionRoute(
       try {
         body = await c.req.json();
       } catch {
+        // error-policy:J3 malformed request bytes are an explicit invalid
+        // request and can never be interpreted as an operator confirmation.
         return c.json(
           { success: false, error: "Request body must be valid JSON" },
           400,
@@ -121,7 +125,14 @@ export function createAdminPersonalDedicatedSelectionRoute(
         userId: input.targetOwnerUserId,
         sourceAgentId,
         retainedAgentId: input.retainedAgentId,
-        selectedByUserId: user.id,
+        // The loopback-only development admin is intentionally synthetic and
+        // has no users row. Preserve nullable audit attribution instead of
+        // violating the receipt FK; real authenticated admins stay attributed.
+        selectedByUserId:
+          user.id === LOCAL_DEV_ADMIN_USER_ID &&
+          user.email === LOCAL_DEV_ADMIN_EMAIL
+            ? null
+            : user.id,
         reason: input.reason,
       };
       const result = input.dryRun
