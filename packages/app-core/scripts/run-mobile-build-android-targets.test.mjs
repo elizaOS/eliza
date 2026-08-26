@@ -135,7 +135,7 @@ describe("Android mobile build target table", () => {
     });
     expect(ANDROID_BUILD_TARGETS["android-launcher"]).toMatchObject({
       target: "android-launcher",
-      webTarget: "android-cloud-debug",
+      webTarget: "android-launcher",
       env: {
         ELIZA_ANDROID_CLOUD_BUILD: "1",
         ELIZA_ANDROID_LAUNCHER_BUILD: "1",

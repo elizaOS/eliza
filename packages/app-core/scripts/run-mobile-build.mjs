@@ -5840,13 +5840,20 @@ export const ANDROID_PLAY_ALLOWED_CAPACITOR_CONFIG_PLUGINS = Object.freeze([
   "Keyboard",
   "SplashScreen",
 ]);
+export const ANDROID_LAUNCHER_IN_APP_AUTH_HOSTS = Object.freeze([
+  "cloud.eliza.app",
+  "cloud-staging.eliza.app",
+]);
 
 function isJsonRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 /** Returns the minimal runtime config that is safe to package in a Play APK/AAB. */
-export function sanitizeAndroidCloudCapacitorConfig(value) {
+export function sanitizeAndroidCloudCapacitorConfig(
+  value,
+  { allowInAppAuthNavigation = false } = {},
+) {
   if (!isJsonRecord(value)) {
     throw new Error(
       "android-cloud capacitor.config.json must contain an object",
@@ -5866,6 +5873,9 @@ export function sanitizeAndroidCloudCapacitorConfig(value) {
     ...(value.loggingBehavior === "none" ? { loggingBehavior: "none" } : {}),
     server: {
       androidScheme: "https",
+      ...(allowInAppAuthNavigation
+        ? { allowNavigation: [...ANDROID_LAUNCHER_IN_APP_AUTH_HOSTS] }
+        : {}),
     },
     plugins,
     android: {
@@ -5880,7 +5890,9 @@ export function sanitizeAndroidCloudCapacitorConfig(value) {
   };
 }
 
-function sanitizeAndroidCloudPackagedConfig() {
+function sanitizeAndroidCloudPackagedConfig({
+  allowInAppAuthNavigation = false,
+} = {}) {
   const configPath = path.join(
     androidDir,
     "app",
@@ -5904,7 +5916,9 @@ function sanitizeAndroidCloudPackagedConfig() {
       }`,
     );
   }
-  const sanitized = sanitizeAndroidCloudCapacitorConfig(parsed);
+  const sanitized = sanitizeAndroidCloudCapacitorConfig(parsed, {
+    allowInAppAuthNavigation,
+  });
   fs.writeFileSync(configPath, `${JSON.stringify(sanitized, null, "\t")}\n`);
   console.log(
     "[mobile-build] Rewrote capacitor.config.json to the restricted Play runtime contract.",
@@ -6206,7 +6220,8 @@ export function cloudSafeMainActivityJava(
   { launcherKiosk = false, immersiveNavigation = false } = {},
 ) {
   const launcherImports = launcherKiosk
-    ? `import android.util.Log;
+    ? `import android.net.Uri;
+import android.util.Log;
 import android.view.KeyEvent;
 
 import androidx.activity.OnBackPressedCallback;
@@ -6239,6 +6254,25 @@ import androidx.activity.OnBackPressedCallback;
     : "";
   const launcherMethods = launcherKiosk
     ? `
+    private boolean isCloudAuthCallback(Intent intent) {
+        Uri data = intent == null ? null : intent.getData();
+        return data != null
+            && "elizaos".equalsIgnoreCase(data.getScheme())
+            && "auth".equalsIgnoreCase(data.getHost())
+            && "/callback".equals(data.getPath());
+    }
+
+    private void restoreBundledRendererAfterAuthCallback(Intent intent) {
+        if (!isCloudAuthCallback(intent)
+                || getBridge() == null
+                || getBridge().getWebView() == null) {
+            return;
+        }
+        WebView webView = getBridge().getWebView();
+        String localUrl = getBridge().getLocalUrl();
+        webView.post(() -> webView.loadUrl(localUrl));
+    }
+
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         // Keep hardware keyboards and accessibility navigation from moving the
@@ -6336,6 +6370,7 @@ ${navigationBarPolicy}
     protected void onNewIntent(Intent intent) {
         DeepLinkBufferPlugin.captureIntent(this, intent);
         super.onNewIntent(intent);
+${launcherKiosk ? "        restoreBundledRendererAfterAuthCallback(intent);" : ""}
     }
 ${launcherMethods}
 ${focusHandler}
@@ -7682,7 +7717,9 @@ function auditAndroidCloudSource(
   } else {
     try {
       const config = JSON.parse(fs.readFileSync(capacitorConfigPath, "utf8"));
-      const expected = sanitizeAndroidCloudCapacitorConfig(config);
+      const expected = sanitizeAndroidCloudCapacitorConfig(config, {
+        allowInAppAuthNavigation: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
+      });
       if (JSON.stringify(config) !== JSON.stringify(expected)) {
         failures.push(
           "capacitor.config.json differs from the restricted Play runtime contract",
@@ -7744,6 +7781,18 @@ function auditAndroidLauncherSource(phase, options = {}) {
   if (mainActivity.includes("hide(WindowInsetsCompat.Type.statusBars())")) {
     throw new Error(
       `[mobile-build] android-launcher ${phase} source audit failed: MainActivity must keep the status bar visible.`,
+    );
+  }
+  if (
+    !mainActivity.includes("isCloudAuthCallback(Intent intent)") ||
+    !mainActivity.includes('"elizaos".equalsIgnoreCase(data.getScheme())') ||
+    !mainActivity.includes('"auth".equalsIgnoreCase(data.getHost())') ||
+    !mainActivity.includes('"/callback".equals(data.getPath())') ||
+    !mainActivity.includes("getBridge().getLocalUrl()") ||
+    !mainActivity.includes("webView.loadUrl(localUrl)")
+  ) {
+    throw new Error(
+      `[mobile-build] android-launcher ${phase} source audit failed: MainActivity does not restore the bundled renderer after the exact in-app auth callback.`,
     );
   }
   console.log(`[mobile-build] android-launcher ${phase} audit passed.`);
@@ -8119,7 +8168,9 @@ function stripAndroidForCloud({ env = process.env } = {}) {
   //    libeliza_*.so jniLibs disguise.
   removeCloudNativeArtifacts();
   stripAndroidCloudNativePlugins();
-  sanitizeAndroidCloudPackagedConfig();
+  sanitizeAndroidCloudPackagedConfig({
+    allowInAppAuthNavigation: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
+  });
 }
 
 function stripAndroidForSmsGateway() {
@@ -9884,6 +9935,21 @@ function auditAndroidLauncherArtifact({
         context: {
           artifact,
           loggingBehavior: runtimeConfig.loggingBehavior ?? null,
+        },
+      },
+    );
+  }
+  if (
+    JSON.stringify(runtimeConfig.server?.allowNavigation) !==
+    JSON.stringify(ANDROID_LAUNCHER_IN_APP_AUTH_HOSTS)
+  ) {
+    throw mobileBuildError(
+      "[mobile-build] android-launcher must keep WebView navigation pinned to the canonical Eliza hosted-auth origins.",
+      {
+        code: "ANDROID_LAUNCHER_AUTH_NAVIGATION_INVALID",
+        context: {
+          allowNavigation: runtimeConfig.server?.allowNavigation ?? null,
+          artifact,
         },
       },
     );

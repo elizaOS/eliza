@@ -12,6 +12,9 @@ const harness = vi.hoisted(() => ({
   })),
   browserFinished: null as null | (() => void),
   cancel: vi.fn(async () => true),
+  externalOpen: vi.fn(async () => true),
+  inAppNavigate: vi.fn(() => true),
+  launcher: false,
   sequence: 0,
   stewardToken: null as string | null,
   api: {
@@ -50,6 +53,7 @@ vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => {
 
 vi.mock("../platform/android-runtime", () => ({
   isAndroidCloudBuild: () => true,
+  isAndroidLauncherBuild: () => harness.launcher,
 }));
 
 vi.mock("../api", () => ({ client: harness.api }));
@@ -59,6 +63,7 @@ vi.mock("../android-cloud/android-cloud-auth", () => ({
   ANDROID_CLOUD_AUTH_STARTED_EVENT: "eliza:android-cloud-auth-started",
   beginAndroidCloudSignIn: harness.begin,
   cancelAndroidCloudSignIn: harness.cancel,
+  navigateAndroidCloudSignInInApp: harness.inAppNavigate,
   hasPendingAndroidCloudSignIn: vi.fn(async () => {
     throw new Error("pending cleanup record unavailable");
   }),
@@ -76,7 +81,7 @@ vi.mock("../utils", async (importOriginal) => {
         harness.browserFinished = null;
       };
     }),
-    openExternalUrl: vi.fn(async () => true),
+    openExternalUrl: harness.externalOpen,
   };
 });
 
@@ -95,6 +100,9 @@ describe("useCloudState Android hosted auth", () => {
     vi.useFakeTimers();
     harness.browserFinished = null;
     harness.cancel.mockClear();
+    harness.externalOpen.mockClear();
+    harness.inAppNavigate.mockClear();
+    harness.launcher = false;
     harness.begin.mockReset();
     harness.begin.mockImplementation(async () => {
       harness.sequence += 1;
@@ -106,6 +114,22 @@ describe("useCloudState Android hosted auth", () => {
     harness.sequence = 0;
     harness.stewardToken = null;
     for (const method of Object.values(harness.api)) method.mockClear();
+  });
+
+  it("navigates the launcher WebView without opening Chrome", async () => {
+    harness.launcher = true;
+    const { result } = renderHook(() => useCloudState(params()));
+
+    await act(async () => {
+      await result.current.handleCloudLogin();
+    });
+
+    expect(harness.inAppNavigate).toHaveBeenCalledWith(
+      "https://cloud.eliza.app/login",
+    );
+    expect(harness.externalOpen).not.toHaveBeenCalled();
+    expect(harness.browserFinished).toBeNull();
+    expect(harness.cancel).not.toHaveBeenCalled();
   });
 
   afterEach(() => {

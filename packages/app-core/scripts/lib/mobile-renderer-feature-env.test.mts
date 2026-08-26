@@ -50,6 +50,15 @@ describe("resolveMobileRendererFeatureEnv", () => {
     ).toEqual({});
   });
 
+  it("marks only the launcher renderer for in-app authentication", () => {
+    expect(
+      resolveMobileRendererFeatureEnv({ platform: "android-launcher" }),
+    ).toEqual({ VITE_ELIZA_ANDROID_LAUNCHER_BUILD: "1" });
+    expect(
+      resolveMobileRendererFeatureEnv({ platform: "android-cloud" }),
+    ).toEqual({});
+  });
+
   it("requires an explicit platform", () => {
     expect(() => resolveMobileRendererFeatureEnv()).toThrow(
       /platform is required/,
@@ -62,7 +71,7 @@ describe("mobileRendererRequiresFreshBuild", () => {
     expect(
       mobileRendererRequiresFreshBuild({ platform: "android-cloud-debug" }),
     ).toBe(true);
-    for (const platform of ["ios", "ios-local"]) {
+    for (const platform of ["android-launcher", "ios", "ios-local"]) {
       expect(mobileRendererRequiresFreshBuild({ platform })).toBe(true);
     }
     for (const platform of ["android", "android-cloud", "ios-overlay"]) {
@@ -81,6 +90,9 @@ describe("mobileRendererUnstampedFeatureProblem", () => {
         platform: "android-cloud-debug",
       }),
     ).toContain("realtime voice flags");
+    expect(
+      mobileRendererUnstampedFeatureProblem({ platform: "android-launcher" }),
+    ).toContain("in-app auth contract");
     for (const platform of ["ios", "ios-overlay", "android", "android-cloud"]) {
       expect(mobileRendererUnstampedFeatureProblem({ platform })).toBeNull();
     }

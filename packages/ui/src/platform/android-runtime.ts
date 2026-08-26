@@ -67,6 +67,24 @@ export function isAndroidCloudBuild(): boolean {
 }
 
 /**
+ * Returns true only for the direct-install HOME/launcher artifact. The Play
+ * cloud client deliberately keeps the system-browser OAuth handoff, while the
+ * pinned launcher must keep authentication inside its own task.
+ */
+export function resolveAndroidLauncherBuild(env: RuntimeEnv): boolean {
+  return readString(env, ["VITE_ELIZA_ANDROID_LAUNCHER_BUILD"]) === "1";
+}
+
+export function isAndroidLauncherBuild(): boolean {
+  const env =
+    typeof import.meta !== "undefined" &&
+    (import.meta as { env?: RuntimeEnv }).env
+      ? ((import.meta as { env: RuntimeEnv }).env as RuntimeEnv)
+      : {};
+  return resolveAndroidLauncherBuild(env);
+}
+
+/**
  * True on the Android builds that ship the on-device agent runtime
  * (`android` sideload / `android-system`): a native Android shell that is not
  * the cloud-locked Play-Store variant. These builds' whole point is the local
