@@ -317,6 +317,7 @@ export async function createHashAsync(
 ): Promise<Uint8Array> {
 	const bytes =
 		typeof data === "string" ? new TextEncoder().encode(data) : data;
+
 	return webCryptoHash(algorithm, bytes);
 }
 

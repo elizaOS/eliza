@@ -46,7 +46,7 @@ import type { ActionResult } from "./types/components";
 import type { ContextEvent, ContextObject } from "./types/context-object";
 import { isTextGenerationModelType } from "./types/model";
 import type { IAgentRuntime } from "./types/runtime";
-import { createHash } from "./utils/crypto-compat";
+import { sha256Hex } from "./utils/crypto-compat";
 
 export type TrajectoryFinalStatus =
 	| "completed"
@@ -594,7 +594,7 @@ function getLlmInputSubstringAttestationContextManager(): LlmInputSubstringAttes
 }
 
 function sha256Text(value: string): string {
-	return createHash("sha256").update(value).digest("hex");
+	return sha256Hex(value);
 }
 
 function countExactSubstring(haystack: string, needle: string): number {
