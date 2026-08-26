@@ -670,6 +670,90 @@ describe("handlePushTokenRoute", () => {
       );
     });
 
+    it("concurrent PUTs for one principal serialize to distinct monotonic versions (no lost opt-out)", async () => {
+      // Two PUTs in flight through the REAL route handler + real service and
+      // store, with the store's FIRST cache read blocked until both requests
+      // are queued — without per-principal serialization both would load the
+      // same absent row and both report version 1, silently losing one
+      // opt-out.
+      const cache = new Map<string, unknown>();
+      let resolveFirstRead: (() => void) | undefined;
+      const firstRead = new Promise<void>((resolve) => {
+        resolveFirstRead = resolve;
+      });
+      let reads = 0;
+      const baseRuntime = createMockRuntime({
+        agentId: "00000000-0000-0000-0000-0000000000aa",
+        getCache: async <T>(key: string): Promise<T | undefined> => {
+          reads += 1;
+          if (reads === 1) await firstRead;
+          return cache.get(key) as T | undefined;
+        },
+        setCache: async <T>(key: string, value: T): Promise<boolean> => {
+          cache.set(key, value);
+          return true;
+        },
+        getService: () => null,
+      });
+      const service = (await NotificationPushService.start(
+        baseRuntime,
+      )) as NotificationPushService;
+      const gatedState = {
+        runtime: {
+          getService: (t: string) =>
+            t === NotificationPushService.serviceType ? service : null,
+          getSetting: (key: string) =>
+            key === "ELIZA_ADMIN_ENTITY_ID" ? OWNER : ("" as string),
+        },
+      };
+
+      const put = (pushEnabled: boolean) => {
+        const helpers = makeHelpers();
+        helpers.readJsonBody.mockResolvedValue({ pushEnabled });
+        return handlePushTokenRoute(
+          req(POLICY_PATH),
+          res,
+          POLICY_PATH,
+          "PUT",
+          gatedState,
+          helpers,
+        ).then(() => {
+          const payload = helpers.json.mock.calls[0]?.[1] as {
+            policy: { pushEnabled: boolean; version: number };
+          };
+          return payload.policy;
+        });
+      };
+
+      const enable = put(true);
+      const disable = put(false);
+      resolveFirstRead?.();
+      const [enabledPolicy, disabledPolicy] = await Promise.all([
+        enable,
+        disable,
+      ]);
+      // The route routes PUT through PushPolicyStore.update: distinct
+      // monotonic versions (1 then 2) prove the two requests serialized and
+      // neither opt-out was lost to a same-version overwrite.
+      expect(enabledPolicy.version).toBe(1);
+      expect(disabledPolicy.version).toBe(2);
+
+      const get = makeHelpers();
+      await handlePushTokenRoute(
+        req(POLICY_PATH),
+        res,
+        POLICY_PATH,
+        "GET",
+        gatedState,
+        get,
+      );
+      const read = get.json.mock.calls[0][1] as {
+        policy: { pushEnabled: boolean; version: number };
+      };
+      expect(read.policy.pushEnabled).toBe(false);
+      expect(read.policy.version).toBe(2);
+    });
+
     it("fails closed with 409 when no canonical recipient is configured", async () => {
       const helpers = makeHelpers();
       const bare = { runtime: { ...runtime, getSetting: undefined } };

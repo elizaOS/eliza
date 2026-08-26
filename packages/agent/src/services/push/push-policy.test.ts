@@ -171,3 +171,285 @@ describe("PushPolicyStore (durable per-principal store)", () => {
     });
   });
 });
+
+describe("PushPolicyStore.update (serialized per-principal bump)", () => {
+  const RUNTIME_AGENT_ID = "00000000-0000-0000-0000-0000000000aa";
+
+  function makeStore(overrides?: {
+    getCache?: <T>(key: string) => Promise<T | undefined>;
+    setCache?: (key: string, value: unknown) => Promise<boolean>;
+  }): {
+    store: PushPolicyStore;
+    cache: Map<string, unknown>;
+  } {
+    const cache = new Map<string, unknown>();
+    const storeRuntime = {
+      agentId: RUNTIME_AGENT_ID,
+      getCache:
+        overrides?.getCache ??
+        (async <T>(key: string): Promise<T | undefined> =>
+          cache.get(key) as T | undefined),
+      setCache:
+        overrides?.setCache ??
+        (async (key: string, value: unknown): Promise<boolean> => {
+          cache.set(key, value);
+          return true;
+        }),
+    };
+    return { store: new PushPolicyStore(storeRuntime), cache };
+  }
+
+  it("bumps from absent to version 1 and applies the requested setting", async () => {
+    const { store } = makeStore();
+    const first = await store.update("owner-1", true);
+    expect(first).toEqual({
+      pushEnabled: true,
+      version: 1,
+      updatedAt: expect.any(Number),
+    });
+    const second = await store.update("owner-1", false);
+    expect(second.pushEnabled).toBe(false);
+    expect(second.version).toBe(2);
+  });
+
+  it("serializes concurrent same-principal updates: every PUT gets a distinct monotonic version (no lost update)", async () => {
+    // Delay the FIRST cache read so both queued updates are in flight before
+    // either critical section runs — without serialization both would compute
+    // version 1 from the same absent row and one opt-out would be lost.
+    let resolveFirstRead: (() => void) | undefined;
+    const firstRead = new Promise<void>((resolve) => {
+      resolveFirstRead = resolve;
+    });
+    let reads = 0;
+    const { store, cache } = makeStore({
+      getCache: async <T>(key: string): Promise<T | undefined> => {
+        reads += 1;
+        if (reads === 1) await firstRead;
+        return cache.get(key) as T | undefined;
+      },
+    });
+
+    const enable = store.update("owner-1", true);
+    const disable = store.update("owner-1", false);
+    // Both updates are now queued; release the first critical section.
+    resolveFirstRead?.();
+
+    const [enabledPolicy, disabledPolicy] = await Promise.all([
+      enable,
+      disable,
+    ]);
+    // Distinct monotonic versions prove serialization: the second update
+    // re-loaded the first's durable row inside its own critical section.
+    expect(enabledPolicy.version).toBe(1);
+    expect(disabledPolicy.version).toBe(2);
+    // Last-writer-wins by QUEUING ORDER (disable was queued second) — the
+    // final durable row is the disable, with no overwritten opt-out.
+    const final = await store.load("owner-1");
+    expect(final).toEqual({
+      pushEnabled: false,
+      version: 2,
+      updatedAt: disabledPolicy.updatedAt,
+    });
+  });
+
+  it("does not let one principal's failed update poison another principal's queue", async () => {
+    const { store, cache } = makeStore({
+      setCache: async (key: string, value: unknown): Promise<boolean> => {
+        const policy = value as { pushEnabled: boolean };
+        if (policy.pushEnabled === false) return false; // disable writes fail
+        cache.set(key, value);
+        return true;
+      },
+    });
+    await expect(store.update("owner-1", false)).rejects.toThrow(
+      /rejected the push-policy write/,
+    );
+    // The queue recovers: a later update for a DIFFERENT principal proceeds.
+    const ok = await store.update("owner-2", true);
+    expect(ok.pushEnabled).toBe(true);
+    expect(ok.version).toBe(1);
+  });
+
+  it("keeps the queue live after a failed same-principal update (no wedge)", async () => {
+    let writes = 0;
+    const cache = new Map<string, unknown>();
+    const { store } = makeStore({
+      getCache: async <T>(key: string): Promise<T | undefined> =>
+        cache.get(key) as T | undefined,
+      setCache: async (key: string, value: unknown): Promise<boolean> => {
+        writes += 1;
+        if (writes === 1) return false; // first durable write fails
+        cache.set(key, value);
+        return true;
+      },
+    });
+    await expect(store.update("owner-1", true)).rejects.toThrow(
+      /rejected the push-policy write/,
+    );
+    const recovered = await store.update("owner-1", true);
+    expect(recovered.version).toBe(1); // failed write never landed
+    const next = await store.update("owner-1", false);
+    expect(next.version).toBe(2);
+  });
+
+  it("serializes per principal: unrelated principals do not wait on each other", async () => {
+    const cache = new Map<string, unknown>();
+    let owner1Reads = 0;
+    let releaseOwner1: (() => void) | undefined;
+    const owner1Gate = new Promise<void>((resolve) => {
+      releaseOwner1 = resolve;
+    });
+    const { store } = makeStore({
+      getCache: async <T>(key: string): Promise<T | undefined> => {
+        if (key.endsWith(":owner-1")) {
+          owner1Reads += 1;
+          if (owner1Reads === 1) await owner1Gate;
+        }
+        return cache.get(key) as T | undefined;
+      },
+      setCache: async (key: string, value: unknown): Promise<boolean> => {
+        cache.set(key, value);
+        return true;
+      },
+    });
+    let blocked: Promise<PushDeliveryPolicy> | undefined;
+    try {
+      blocked = store.update("owner-1", true);
+      const other = store.update("owner-2", true);
+      // owner-2's update must complete WITHOUT waiting on owner-1's gate.
+      const winner = await Promise.race([
+        other.then(() => "owner-2" as const),
+        new Promise<"owner-1">((resolve) =>
+          setTimeout(() => resolve("owner-1"), 50),
+        ),
+      ]);
+      expect(winner).toBe("owner-2");
+    } finally {
+      releaseOwner1?.();
+      await blocked;
+    }
+  });
+
+  it("drops a settled tail so the queue map tracks in-flight work only", async () => {
+    const { store } = makeStore();
+    await store.update("owner-1", true);
+    await store.update("owner-1", false);
+    // The settle-cleanup rides its own microtask chain after the caller's
+    // await resolves; cross a macrotask boundary so it has certainly run.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Both updates settled and no later update chained: the tail entry is
+    // removed, so the map cannot grow with every principal ever seen.
+    expect(tailSizeFor(store)).toBe(0);
+    // A fresh update re-seeds the tail and still serializes correctly.
+    const third = await store.update("owner-1", true);
+    expect(third.version).toBe(3);
+  });
+
+  it("keeps the newer tail when updates chain (identity-checked cleanup)", async () => {
+    // Discriminating construction: the SECOND update's durable read is gated
+    // AFTER the first update fully settles (so the first tail's cleanup has
+    // run). If cleanup deleted the map entry unconditionally — instead of by
+    // identity — the map would lose the second update's tail and the THIRD
+    // update could enter its critical section before the second completes,
+    // reading the same base row and duplicating its version.
+    const cache = new Map<string, unknown>();
+    let resolveSecondRead: (() => void) | undefined;
+    const secondGate = new Promise<void>((resolve) => {
+      resolveSecondRead = resolve;
+    });
+    // Resolves the moment the SECOND update enters its gated cache read. The
+    // second update's critical section only starts after the first update's
+    // recovered tail settles, and the first cleanup is registered on that
+    // same promise BEFORE the second's continuation — so second-read-entry
+    // guarantees the first cleanup has already run.
+    let markSecondReadEntered: (() => void) | undefined;
+    const secondReadEntered = new Promise<void>((resolve) => {
+      markSecondReadEntered = resolve;
+    });
+    let owner1Loads = 0;
+    const { store } = makeStore({
+      getCache: async <T>(key: string): Promise<T | undefined> => {
+        if (key.endsWith(":owner-1")) {
+          owner1Loads += 1;
+          if (owner1Loads === 2) {
+            markSecondReadEntered?.();
+            await secondGate; // gate the second update
+          }
+        }
+        return cache.get(key) as T | undefined;
+      },
+      setCache: async (key: string, value: unknown): Promise<boolean> => {
+        cache.set(key, value);
+        return true;
+      },
+    });
+
+    const first = store.update("owner-1", true);
+    const second = store.update("owner-1", false);
+    const firstPolicy = await first; // first settles
+    expect(firstPolicy.version).toBe(1);
+    // Wait until the second update is INSIDE its gated read — by then the
+    // first tail's cleanup has certainly run, so an unconditional delete
+    // would already have emptied the map before we enqueue the third.
+    await secondReadEntered;
+    // The third update must chain BEHIND the gated second: with the identity
+    // check the map still holds the second's tail; an unconditional cleanup
+    // would have dropped it and the third would run CONCURRENTLY, reading the
+    // same base row and duplicating a version.
+    const third = store.update("owner-1", true);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    // Nothing else may have completed while the second update is gated.
+    const inFlight = await Promise.race([
+      Promise.race([second, third]).then(
+        (policy) => `completed-early:v${policy.version}`,
+      ),
+      new Promise<string>((resolve) =>
+        setTimeout(() => resolve("still-queued"), 20),
+      ),
+    ]);
+    expect(inFlight).toBe("still-queued");
+
+    resolveSecondRead?.();
+    const [secondPolicy, thirdPolicy] = await Promise.all([second, third]);
+    // Distinct monotonic versions prove the chain held through cleanup.
+    expect(secondPolicy.version).toBe(2);
+    expect(thirdPolicy.version).toBe(3);
+    const final = await store.load("owner-1");
+    expect(final?.version).toBe(3);
+    expect(final?.pushEnabled).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(tailSizeFor(store)).toBe(0);
+  });
+
+  it("refuses to persist a version the fail-closed parser would reject (MAX_SAFE_INTEGER guard)", async () => {
+    const cache = new Map<string, unknown>();
+    cache.set("push-policy:00000000-0000-0000-0000-0000000000aa:owner-1", {
+      pushEnabled: true,
+      version: Number.MAX_SAFE_INTEGER,
+      updatedAt: 1,
+    });
+    const { store } = makeStore({
+      getCache: async <T>(key: string): Promise<T | undefined> =>
+        cache.get(key) as T | undefined,
+    });
+    // The guarded bump refuses instead of writing MAX_SAFE_INTEGER + 1 (a
+    // value the boundary parser fails closed on, degrading the principal to
+    // policy_corrupt on every later load).
+    await expect(store.update("owner-1", false)).rejects.toMatchObject({
+      code: PUSH_POLICY_PERSIST_FAILED_CODE,
+    });
+    // The existing row is untouched.
+    const row = await store.load("owner-1");
+    expect(row?.version).toBe(Number.MAX_SAFE_INTEGER);
+  });
+});
+
+/** Test-only view of the store's pending-tail count (bounded-memory contract). */
+function tailSizeFor(store: PushPolicyStore): number {
+  const tails = (
+    store as unknown as {
+      updateTails: Map<string, Promise<void>>;
+    }
+  ).updateTails;
+  return tails.size;
+}

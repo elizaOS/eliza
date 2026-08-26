@@ -184,14 +184,13 @@ export async function handlePushTokenRoute(
       helpers.error(res, "pushEnabled must be a boolean", 400);
       return true;
     }
-    const existing = await policies.load(principalId);
-    const next: PushDeliveryPolicy = {
-      pushEnabled: body.pushEnabled,
-      version: (existing?.version ?? 0) + 1,
-      updatedAt: Date.now(),
-    };
+    // Serialized per-principal load→bump→save (PushPolicyStore.update): two
+    // concurrent PUTs for one principal cannot both observe version N and
+    // both write N+1 — each update persists a distinct monotonic version, so
+    // a concurrent opt-out is never silently overwritten.
+    let next: PushDeliveryPolicy;
     try {
-      await policies.save(principalId, next);
+      next = await policies.update(principalId, body.pushEnabled);
     } catch (err) {
       // error-policy:J1 boundary translation — the HTTP boundary converts a
       // durable policy-write failure into a structured 503 (never a fabricated

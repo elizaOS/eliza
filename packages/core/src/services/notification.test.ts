@@ -355,7 +355,9 @@ describe("NotificationService", () => {
 		expect(stored).toHaveLength(301);
 		expect(stored?.[0]?.title).toBe("Existing 0");
 		expect(stored?.at(-1)?.title).toBe("Must not evict");
-		expect(stored?.at(-1)?.title).toBe("Existing 299");
+		// The append preserved every pre-existing row in order: the row just
+		// before the appended one is still the last "Existing" notification.
+		expect(stored?.at(-2)?.title).toBe("Existing 299");
 	});
 
 	it("still records when no event bus is present", async () => {

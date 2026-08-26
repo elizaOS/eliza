@@ -146,6 +146,9 @@ export function decidePushDelivery(
  * persistence pattern as PushTokenRegistry. One key per (agent, recipient).
  */
 export class PushPolicyStore {
+  /** Per-principal update tails serializing `update()` calls (see its doc). */
+  private readonly updateTails = new Map<string, Promise<void>>();
+
   constructor(private readonly runtime: PushPolicyRuntime) {}
 
   private cacheKey(recipientId: string): string {
@@ -166,6 +169,88 @@ export class PushPolicyStore {
       );
     }
     return parsed;
+  }
+
+  /**
+   * Serialize a principal's policy advance — load, apply `pushEnabled`, bump
+   * the version, durably save — per principal, so two concurrent
+   * enable/disable requests can never both observe the same base version and
+   * silently overwrite an opt-out: each update persists a distinct monotonic
+   * version, giving every accepted write an auditable position in the
+   * principal's ordering. Returns the persisted record.
+   *
+   * Concurrency scope: same-principal writes are serialized and failure-atomic
+   * within a single process, mirroring `PushTokenRegistry`'s documented scope —
+   * the runtime cache contract exposes no compare-and-swap primitive
+   * (`getCache`/`setCache` only). Known limitation: during a managed
+   * blue/green upgrade two container generations briefly share the durable
+   * cache, so an in-flight write from the retiring container can interleave
+   * with the new container's first write (the same exposure the token
+   * registry carries).
+   */
+  update(
+    recipientId: string,
+    pushEnabled: boolean,
+  ): Promise<PushDeliveryPolicy> {
+    // Queue on the principal's own tail, not a shared one: unrelated principals
+    // never delay each other. Keys are recipient ids; a settled tail is removed
+    // below, so the map tracks in-flight work, not every principal seen.
+    const previous = this.updateTails.get(recipientId) ?? Promise.resolve();
+    const pending = previous.then(() =>
+      this.bumpAndSave(recipientId, pushEnabled),
+    );
+    // error-policy:J5 the caller observes `pending`; this recovery keeps one
+    // failed persistence attempt from poisoning every later policy update.
+    const recovered = pending.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.updateTails.set(recipientId, recovered);
+    // Settle-cleanup: when this tail is still the END of the principal's queue
+    // (no later update chained onto it), drop it so the map stays bounded by
+    // active work. The identity check keeps a newer queued update's tail.
+    void recovered.then(() => {
+      if (this.updateTails.get(recipientId) === recovered) {
+        this.updateTails.delete(recipientId);
+      }
+    });
+    return pending;
+  }
+
+  /**
+   * One serialized step: re-load the durable row inside the critical section
+   * (so it reflects every earlier queued update), apply the new setting, and
+   * persist. The version is `loaded + 1` — strictly monotonic across successive
+   * updates through this store. A corrupt row parses as absent per the
+   * fail-closed parse contract, so the sequence restarts at version 1 rather
+   * than trusting an unreadable prior version. A row already at the safe
+   * integer ceiling rejects the bump: persisting `version + 1` would store a
+   * record this store's own parser fails closed on, so the write is refused
+   * instead of planting a row every later load treats as corrupt.
+   */
+  private async bumpAndSave(
+    recipientId: string,
+    pushEnabled: boolean,
+  ): Promise<PushDeliveryPolicy> {
+    const existing = await this.load(recipientId);
+    const baseVersion = existing?.version ?? 0;
+    if (baseVersion >= Number.MAX_SAFE_INTEGER) {
+      throw new ElizaError(
+        "[PushPolicyStore] policy version exhausted the safe-integer range",
+        {
+          code: PUSH_POLICY_PERSIST_FAILED_CODE,
+          context: { recipientId: recipientId.length, baseVersion },
+          severity: "ephemeral",
+        },
+      );
+    }
+    const next: PushDeliveryPolicy = {
+      pushEnabled,
+      version: baseVersion + 1,
+      updatedAt: Date.now(),
+    };
+    await this.save(recipientId, next);
+    return next;
   }
 
   /**
