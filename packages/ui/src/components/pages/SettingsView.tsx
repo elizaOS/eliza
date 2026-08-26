@@ -28,6 +28,7 @@ import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { useAppSelector, useAppSelectorShallow } from "../../state";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { PermissionPrimingModal } from "../permissions/PermissionPrimingModal";
+import { resolvePrimingSet } from "../permissions/permission-priming";
 import { CloudSettingsPanel } from "../settings/cloud-panel/CloudSettingsPanel";
 import { DesktopSettingsNavigation } from "../settings/DesktopSettingsNavigation";
 import { SettingsHubList } from "../settings/SettingsHubList";
@@ -396,7 +397,8 @@ function LegacySettingsView({
       if (navigateSequence > 0) setPrimePermission(null);
       return;
     }
-    setPrimePermission(permission);
+    const [supportedPermission] = resolvePrimingSet({ only: [permission] });
+    setPrimePermission(supportedPermission ?? null);
   }, [navigatePayload, navigateSequence]);
 
   useEffect(() => {
