@@ -1160,7 +1160,7 @@ async function handleCreateApiKeyAccount(
  * retracts the previously exported value. No route writes provider keys
  * directly.
  */
-async function syncDirectProviderCredentials(
+export async function syncDirectProviderCredentials(
   ctx: Pick<AccountsRouteContext, "state">,
   providerId: string,
 ): Promise<void> {

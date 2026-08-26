@@ -413,6 +413,33 @@ describe("Cerebras direct-account wiring", () => {
   });
 });
 
+describe("first-run account-pool credential ownership", () => {
+  it.each([
+    ["openrouter", "OPENROUTER_API_KEY"],
+    ["grok", "XAI_API_KEY"],
+  ] as const)(
+    "keeps %s credentials out of raw config and env",
+    async (provider, envKey) => {
+      delete process.env[envKey];
+      const config: Partial<ElizaConfig> = {};
+
+      await applyFirstRunConnectionConfig(config, {
+        kind: "local-provider",
+        provider,
+        apiKey: `secret-${provider}`,
+      });
+
+      const serialized = JSON.stringify(config);
+      expect(serialized).not.toContain(`secret-${provider}`);
+      expect(process.env[envKey]).toBeUndefined();
+      expect(config.serviceRouting?.llmText).toMatchObject({
+        backend: provider,
+        transport: "direct",
+      });
+    },
+  );
+});
+
 describe("applyFirstRunConnectionConfig (Cerebras local provider)", () => {
   const CEREBRAS_ENV = [
     "CEREBRAS_API_KEY",
