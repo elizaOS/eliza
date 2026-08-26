@@ -26,8 +26,12 @@ import {
 	type ToolDiagnosticTextRedactor,
 } from "../security/tool-diagnostics";
 import {
+	factEvidenceUserText,
+	factsEvidenceLineForClaimTopic,
 	replyAcknowledgesWorkNotFinished,
 	replyClaimsFinishedDelegatedWork,
+	replyClaimsNoStoredRecordOfTopic,
+	type StoredRecordAbsenceClaim,
 	toolEvidenceReportsTerminalFailure,
 	toolEvidenceReportsVerifiedCompletion,
 } from "../services/message/side-effect-claims";
@@ -315,7 +319,7 @@ interface RawPlannerOutput {
 }
 
 /**
- * Public planner-loop entry: runs the iteration loop, then enforces three
+ * Public planner-loop entry: runs the iteration loop, then enforces four
  * reply guarantees. Failed turns get the honest-failure guarantee — a turn that
  * would ship the generic failed-step sentence gets ONE forced no-tools
  * synthesis pass whose instruction names the failed step and its scrubbed
@@ -327,7 +331,11 @@ interface RawPlannerOutput {
  * results (#16935). Finished turns get the evidence-grounded completion
  * guarantee — a final reply asserting delegated work finished while the turn's
  * tool evidence reports a terminal failure/interrupted status gets ONE forced
- * failure-grounded synthesis (or the typed honest fallback). Deliberate
+ * failure-grounded synthesis (or the typed honest fallback). Finished turns
+ * also get the evidence-grounded memory-recall guarantee — a final reply
+ * denying any stored record of a topic while the turn's in-prompt FACTS
+ * evidence contains a fact about it gets ONE forced grounded synthesis
+ * quoting the evidence (or the typed grounded fallback). Deliberate
  * silence (STOP/IGNORE, suppressPlannerReply) is flagged by the loop and
  * respected.
  */
@@ -362,7 +370,11 @@ export async function runPlannerLoop(
 		trackedParams,
 		final,
 	);
-	return { ...grounded, modelUsage: usage };
+	const recallGrounded = await ensureEvidenceGroundedMemoryRecallClaim(
+		trackedParams,
+		grounded,
+	);
+	return { ...recallGrounded, modelUsage: usage };
 }
 
 async function runPlannerLoopIterations(
@@ -5343,6 +5355,182 @@ async function ensureEvidenceGroundedCompletionClaim(
 		terminalOnly: true,
 	});
 	return { ...result, finalMessage: CONTRADICTED_COMPLETION_FALLBACK_MESSAGE };
+}
+
+/**
+ * Deterministic honest degrade for the evidence-grounded memory-recall
+ * guarantee below: when the forced grounded synthesis itself fails or still
+ * denies the record, the stored fact ships verbatim instead — the denial must
+ * never ship while the turn's own FACTS evidence contradicts it.
+ */
+export function contradictedMemoryRecallFallbackMessage(
+	factText: string,
+): string {
+	return `Correction — I do still have this on file: ${factText}`;
+}
+
+/**
+ * Concatenated text of the FACTS provider events in the turn's context — the
+ * exact evidence block the reply model saw as `provider:FACTS:`. Scoped to
+ * FACTS by name: other providers (RECENT_MESSAGES, KNOWLEDGE) carry prose
+ * where a bracketed line is not a stored-fact assertion.
+ */
+function factsProviderEvidenceText(context: ContextObject): string {
+	const events = Array.isArray(context.events) ? context.events : [];
+	const parts: string[] = [];
+	for (const event of events) {
+		if (event.type !== "provider") continue;
+		if (event.name.toUpperCase() !== "FACTS") continue;
+		if (typeof event.text === "string" && event.text.trim()) {
+			parts.push(event.text);
+		}
+	}
+	return parts.join("\n");
+}
+
+/**
+ * The first stored-record absence claim in `claims` that a FACTS evidence
+ * line contradicts, with that line. Shared by the trigger and the
+ * regeneration re-check so both apply the identical standard.
+ */
+function factContradictionForAbsenceClaims(
+	factsText: string,
+	claims: readonly StoredRecordAbsenceClaim[],
+): { claim: StoredRecordAbsenceClaim; evidenceLine: string } | undefined {
+	for (const claim of claims) {
+		const evidenceLine = factsEvidenceLineForClaimTopic(
+			factsText,
+			claim.topicTokens,
+		);
+		if (evidenceLine) return { claim, evidenceLine };
+	}
+	return undefined;
+}
+
+// Memory-store tool-name shape (MEMORY, MEMORY_DELETE, FORGET_MEMORY,
+// SEARCH_MEMORIES, MEMORIZE, …). A SUCCESSFUL call to any of these stands the
+// memory-recall guarantee down: a completed mutation makes the turn-start
+// FACTS block legitimately stale ("forget X" → "done, no record of X
+// anymore" is honest), and a completed read means the denial may be grounded
+// in that tool's own result rather than fabricated. Failed calls do not
+// stand it down — the live incident chain started with a FAILED
+// MEMORY_DELETE that deleted nothing.
+const MEMORY_STORE_TOOL_NAME_PATTERN = /MEMOR/i;
+
+function turnTouchedMemoryStore(trajectory: PlannerTrajectory): boolean {
+	for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
+		if (!step.toolCall || step.result?.success !== true) continue;
+		if (MEMORY_STORE_TOOL_NAME_PATTERN.test(step.toolCall.name)) return true;
+	}
+	return false;
+}
+
+/**
+ * Evidence-grounded memory-recall guarantee (post-pass of
+ * {@link runPlannerLoop}, the read-side twin of
+ * {@link ensureEvidenceGroundedCompletionClaim}). A finished turn whose final
+ * reply ASSERTS that no record of a topic is stored, while the SAME turn's
+ * in-prompt FACTS evidence contains a stored fact about that topic, gets ONE
+ * forced no-tools grounded synthesis pass whose instruction quotes the
+ * evidence line and bans the denial. Live incident (2026-08-21,
+ * tj-8f5d420d19288f): the prompt's FACTS block carried "[durable.preference
+ * conf=0.95] user's favorite planet is saturn" and the reply shipped "i
+ * don't have a record of a favorite planet for you anymore." — a fabricated
+ * deletion (the prior turn's MEMORY_DELETE had failed without removing
+ * anything). Turns where a memory-store tool call SUCCEEDED are exempt: a
+ * completed in-turn mutation makes the turn-start FACTS block legitimately
+ * stale, and a completed read grounds the denial in tool evidence this pass
+ * has no authority over. An unusable or still-denying synthesis degrades to
+ * the typed grounded fallback quoting the stored fact — keeping the original
+ * reply would ship the fabricated denial.
+ */
+async function ensureEvidenceGroundedMemoryRecallClaim(
+	params: PlannerLoopParams,
+	result: PlannerLoopResult,
+): Promise<PlannerLoopResult> {
+	if (result.status !== "finished") return result;
+	if (result.endedWithDeliberateSilence === true) return result;
+	// Coding/full-surface mode is exempt for the same reason as the other
+	// reply guarantees: its result feeds the orchestrator, not the chat user.
+	if (isCodingFullSurfaceMode()) return result;
+	const finalMessage = result.finalMessage?.trim();
+	if (!finalMessage) return result;
+	const claims = replyClaimsNoStoredRecordOfTopic(finalMessage);
+	if (claims.length === 0) return result;
+	if (turnTouchedMemoryStore(result.trajectory)) return result;
+	const factsText = factsProviderEvidenceText(
+		result.trajectory.context ?? params.context,
+	);
+	if (!factsText) return result;
+	const contradiction = factContradictionForAbsenceClaims(factsText, claims);
+	if (!contradiction) return result;
+	const factText = factEvidenceUserText(contradiction.evidenceLine);
+	const iteration = result.trajectory.steps.length + 1;
+	const instruction =
+		"The draft final reply denies having any stored record of a topic, but " +
+		"this turn's FACTS context contains a stored fact about it. " +
+		`Stored fact: ${contradiction.evidenceLine}. ` +
+		"No tool call in this turn deleted or changed that record, so it still " +
+		"stands. Do not call any tool. Write the final reply to the user now, " +
+		"in your own conversational voice: answer directly from that stored " +
+		"fact, quoting what it says. Do not deny having the record, and do not " +
+		"invent a deletion, expiry, or update that no tool result in this " +
+		"trajectory contains. Never include file paths, internal ids, or raw " +
+		"logs.";
+	try {
+		const synthesized = await finishWithForcedSynthesis({
+			loop: params,
+			config: mergeChainingLoopConfig(params.config),
+			trajectory: result.trajectory,
+			iteration,
+			instruction,
+			failureAware: true,
+			onUsage: params.onModelUsage,
+		});
+		const message = synthesized.finalMessage?.trim();
+		const synthesizedUsable =
+			message !== undefined &&
+			message !== "" &&
+			message !== HANDLED_STEP_FALLBACK_MESSAGE &&
+			message !== FAILED_TOOL_FALLBACK_MESSAGE &&
+			factContradictionForAbsenceClaims(
+				factsText,
+				replyClaimsNoStoredRecordOfTopic(message),
+			) === undefined;
+		params.runtime.logger?.warn?.(
+			{
+				iteration,
+				topicTokens: contradiction.claim.topicTokens.join(" "),
+				synthesizedUsable,
+			},
+			"[planner-loop] final reply denied a stored record present in this turn's FACTS evidence; forced an evidence-grounded synthesis pass",
+		);
+		if (synthesizedUsable) {
+			return {
+				...result,
+				trajectory: synthesized.trajectory,
+				finalMessage: synthesized.finalMessage,
+			};
+		}
+	} catch (err) {
+		// error-policy:J4 explicit user-facing degrade — a model failure in the
+		// forced synthesis must not ship the fabricated denial, so the typed
+		// grounded fallback below ships instead and the failure is logged for
+		// diagnosis.
+		params.runtime.logger?.warn?.(
+			{ err: err instanceof Error ? err.message : String(err) },
+			"[planner-loop] evidence-grounded memory-recall synthesis failed; shipping the typed grounded fallback",
+		);
+	}
+	const fallback = contradictedMemoryRecallFallbackMessage(factText);
+	result.trajectory.steps.push({
+		iteration: result.trajectory.steps.length + 1,
+		thought:
+			"evidence-grounded memory-recall guarantee: contradicted absence claim replaced with the typed grounded fallback",
+		terminalMessage: fallback,
+		terminalOnly: true,
+	});
+	return { ...result, finalMessage: fallback };
 }
 
 /** Newest successful excerpts fed to the rescue synthesis, and the per-excerpt

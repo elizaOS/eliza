@@ -83,6 +83,18 @@ function makeRuntime(options?: {
       const index = rows.findIndex((row) => row.memory.id === memoryId);
       if (index >= 0) rows.splice(index, 1);
     },
+    // The multi-record forget path requires the atomic batch delete; the SQL
+    // adapters expose it, so the mock must too or every multi-row delete test
+    // exercises the MEMORY_ATOMIC_DELETE_UNAVAILABLE refusal instead.
+    deleteMemories: async (memoryIds: UUID[]) => {
+      for (const memoryId of memoryIds) {
+        assertUuidOrThrowLikeDrizzle(memoryId, "id");
+      }
+      for (const memoryId of memoryIds) {
+        const index = rows.findIndex((row) => row.memory.id === memoryId);
+        if (index >= 0) rows.splice(index, 1);
+      }
+    },
   } as unknown as IAgentRuntime;
   return { runtime, rows };
 }
@@ -544,6 +556,90 @@ describe("MEMORY op:delete by query", () => {
     );
     expect(result.text).toContain(idA);
     expect(result.text).toContain(idB);
+    // The named recovery is machine-readable: the ids ride in data so the
+    // planner's next call (delete by memoryId) is mechanical.
+    const matches = (
+      result.data as {
+        matches: Array<{ memoryId: string; type: string; text: string }>;
+      }
+    ).matches;
+    expect(matches.map((m) => m.memoryId).sort()).toEqual([idA, idB].sort());
+    expect(matches.every((m) => m.type === "facts")).toBe(true);
+    expect(rows).toHaveLength(2);
+  });
+
+  it("completes the delete across dual-written subject-marker duplicates (live tj-8f314c64ce480e)", async () => {
+    // The live broken forget: MEMORY_CREATE stored "user's favorite planet
+    // is saturn" and the facts extractor dual-wrote "favorite planet is
+    // saturn" (tj-8eb1703b3d7208). Both are ONE fact in the requester's own
+    // scope — the ambiguity is storage-internal, so the delete must complete
+    // across both rows instead of failing MEMORY_AMBIGUOUS_QUERY.
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "user's favorite planet is saturn",
+      entityId: USER_ID,
+    });
+    seedFact(rows, { text: "favorite planet is saturn", entityId: USER_ID });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "favorite planet is saturn",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect((result.values as { deletedCount: number }).deletedCount).toBe(2);
+    expect(rows).toHaveLength(0);
+  });
+
+  it("collapses case and punctuation variants of one fact into one delete", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, { text: "Nubs plays guitar.", entityId: USER_ID });
+    seedFact(rows, { text: "nubs plays guitar", entityId: USER_ID });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "delete",
+      query: "nubs plays guitar",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect((result.values as { deletedCount: number }).deletedCount).toBe(2);
+    expect(rows).toHaveLength(0);
+  });
+
+  it("keeps subject-marker lookalikes ambiguous across different entities on an entity-less invocation", async () => {
+    // The duplicate collapse is trusted only inside ONE entity scope. An
+    // internal invocation with no requester entity scans unscoped, where the
+    // same-looking text can belong to two different users — that stays an
+    // ambiguity (with the ids in data), never a two-user delete.
+    const { runtime, rows } = makeRuntime();
+    const idA = seedFact(rows, {
+      text: "user's favorite planet is saturn",
+      entityId: USER_ID,
+    });
+    const idB = seedFact(rows, {
+      text: "favorite planet is saturn",
+      entityId: OTHER_USER_ID,
+    });
+    const message = {
+      ...makeMessage(),
+      entityId: undefined,
+    } as unknown as Memory;
+
+    const result = await runAction(runtime, message, {
+      action: "delete",
+      query: "favorite planet is saturn",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(false);
+    expect((result.data as { error: string }).error).toBe(
+      "MEMORY_AMBIGUOUS_QUERY",
+    );
+    const matches = (result.data as { matches: Array<{ memoryId: string }> })
+      .matches;
+    expect(matches.map((m) => m.memoryId).sort()).toEqual([idA, idB].sort());
     expect(rows).toHaveLength(2);
   });
 

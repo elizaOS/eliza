@@ -902,3 +902,226 @@ export function toolEvidenceReportsVerifiedCompletion(text: string): boolean {
 		pattern.test(text),
 	);
 }
+
+// ── Stored-record absence-claim recognizers ──────────────────────────────
+//
+// Fourth fabricated-state family: a reply ASSERTING that the agent holds no
+// stored record of a topic, on a turn whose own in-prompt FACTS evidence
+// contains a fact about exactly that topic. Observed live (2026-08-21,
+// tj-8f5d420d19288f): the prompt's FACTS block carried "[durable.preference
+// conf=0.95] user's favorite planet is saturn" and the final reply shipped
+// "i don't have a record of a favorite planet for you anymore." — the denial
+// fabricated a deletion that never happened (the prior turn's MEMORY_DELETE
+// had failed MEMORY_AMBIGUOUS_QUERY without removing anything). The
+// planner-loop's evidence-grounded memory-recall post-pass
+// (runtime/planner-loop.ts) consumes these; they live here so every honesty
+// boundary shares ONE claim grammar instead of growing parallel dialects.
+
+// Stored-record nouns an absence claim can attach to. Deliberately narrower
+// than the tracked-work nouns above: "I don't have a record/memory/note OF X"
+// is a claim about the agent's own store, while "I don't have your tasks" is
+// the empty-tracked-work family's territory.
+const STORED_RECORD_NOUN = `(?:record|memory|note|fact|entry|entries|preference)s?`;
+
+// Optional hedging adverbs an absence claim may carry without changing its
+// assertive force ("i really don't have any record of X"). Deliberately a
+// closed list — an open gap would let a negator or subject flip slip in
+// unread (mirrors FINISHED_WORK_ADVERB above).
+const ABSENCE_CLAIM_ADVERB = String.raw`(?:really\s+|actually\s+|honestly\s+|truly\s+|just\s+|simply\s+|still\s+|currently\s+)?`;
+
+// Each pattern captures the claimed-absent topic phrase as the named group
+// `topic`. The capture is bounded to the containing sentence (no terminator
+// crossing), and the extractor below reduces it to content tokens — a capture
+// that reduces to zero content tokens ("a record of that") never fires.
+const NO_STORED_RECORD_CLAIM_PATTERNS: readonly RegExp[] = [
+	// "i don't have a record of X", "i have no memory of X", "we no longer
+	// have a note about X", "i really don't have any record of X anymore"
+	new RegExp(
+		String.raw`\b(?:i|we)\s+${ABSENCE_CLAIM_ADVERB}(?:don['’]t\s+have|do\s+not\s+have|no\s+longer\s+have|have\s+no|haven['’]t\s+got|['’]ve\s+got\s+no)\s+(?:a\s+|an\s+|any\s+)?(?:stored\s+|saved\s+)?${STORED_RECORD_NOUN}\s+(?:of|about|on|for)\s+(?<topic>[^.!?\n]+)`,
+		"giu",
+	),
+	// "there's no record of X", "there is no saved memory of X"
+	new RegExp(
+		String.raw`\bthere(?:['’]s|\s+(?:is|are))\s+no\s+(?:stored\s+|saved\s+)?${STORED_RECORD_NOUN}\s+(?:of|about|on|for)\s+(?<topic>[^.!?\n]+)`,
+		"giu",
+	),
+	// "nothing saved about X", "nothing is stored on X", "nothing on file
+	// for X"
+	/\bnothing\s+(?:is\s+|was\s+)?(?:saved|stored|recorded|on\s+file|in\s+my\s+(?:memory|notes))\s+(?:about|for|on|regarding)\s+(?<topic>[^.!?\n]+)/giu,
+];
+
+// Function words, hedges, and store vocabulary stripped from a captured topic
+// phrase before evidence matching: "a favorite planet for you anymore"
+// reduces to ["favorite", "planet"]. The store nouns are stripped too so a
+// nested phrasing ("any record of a note about my dog") still reduces to the
+// subject. Anything surviving is a content token the evidence must contain.
+const CLAIM_TOPIC_STOPWORDS = new Set([
+	"a",
+	"an",
+	"the",
+	"any",
+	"some",
+	"of",
+	"about",
+	"on",
+	"for",
+	"to",
+	"in",
+	"at",
+	"from",
+	"with",
+	"and",
+	"or",
+	"my",
+	"your",
+	"yours",
+	"you",
+	"me",
+	"i",
+	"we",
+	"us",
+	"user",
+	"users",
+	"s",
+	"that",
+	"this",
+	"it",
+	"them",
+	"their",
+	"his",
+	"her",
+	"is",
+	"are",
+	"was",
+	"were",
+	"be",
+	"been",
+	"being",
+	"have",
+	"having",
+	"anymore",
+	"longer",
+	"currently",
+	"now",
+	"right",
+	"yet",
+	"still",
+	"moment",
+	"all",
+	"either",
+	"record",
+	"records",
+	"memory",
+	"memories",
+	"note",
+	"notes",
+	"fact",
+	"facts",
+	"entry",
+	"entries",
+	"preference",
+	"preferences",
+	"saved",
+	"stored",
+	"file",
+]);
+
+/** Topic phrases longer than this are prose, not a record subject. */
+const CLAIM_TOPIC_MAX_TOKENS = 8;
+
+function claimTopicTokens(rawTopic: string): string[] {
+	const tokens = rawTopic
+		.toLowerCase()
+		.replace(/[^\p{L}\p{N}]+/gu, " ")
+		.trim()
+		.split(/\s+/u)
+		.filter((token) => token.length > 0 && !CLAIM_TOPIC_STOPWORDS.has(token));
+	if (tokens.length === 0 || tokens.length > CLAIM_TOPIC_MAX_TOKENS) return [];
+	return tokens;
+}
+
+/** One stored-record absence claim found in a reply. */
+export interface StoredRecordAbsenceClaim {
+	/** The claim's matched text, for diagnostics. */
+	claim: string;
+	/** Content tokens of the claimed-absent topic, stopword-stripped. */
+	topicTokens: string[];
+}
+
+/**
+ * Stored-record absence claims ASSERTED by a reply ("i don't have a record of
+ * a favorite planet for you anymore."), each with the content tokens of its
+ * claimed-absent topic. Questions ("do I have a record of your birthday?"),
+ * conditionals ("if there's no record of it…"), and topic-less pronoun claims
+ * ("I don't have a record of that") pass through — only assertions with a
+ * checkable topic fire, mirroring the assertion-only contract of the other
+ * claim families in this module.
+ */
+export function replyClaimsNoStoredRecordOfTopic(
+	reply: string,
+): StoredRecordAbsenceClaim[] {
+	const text = reply.trim();
+	if (!text) return [];
+	const claims: StoredRecordAbsenceClaim[] = [];
+	for (const pattern of NO_STORED_RECORD_CLAIM_PATTERNS) {
+		for (const match of text.matchAll(pattern)) {
+			const index = match.index ?? 0;
+			const prefix = text.slice(0, index);
+			if (CONDITIONAL_EMPTY_CLAIM_LEAD_PATTERN.test(prefix)) continue;
+			if (sideEffectClaimSentenceIsQuestion(text, index)) continue;
+			const topicTokens = claimTopicTokens(match.groups?.topic ?? "");
+			if (topicTokens.length === 0) continue;
+			claims.push({ claim: match[0], topicTokens });
+		}
+	}
+	return claims;
+}
+
+// A fact line as the FACTS provider renders it: "[durable.<category>
+// conf=<n>] <text>" / "[current.<category> since <t> conf=<n>] <text>"
+// (features/advanced-capabilities/providers/facts.ts). Gating evidence on
+// this marker keeps prose lines in the provider block (headers, room notes)
+// and arbitrary fetched content from masquerading as a stored fact.
+const FACT_EVIDENCE_LINE_MARKER_PATTERN =
+	/^\s*\[(?:durable|current)\.[^\]\n]{0,160}\]\s*/i;
+
+/**
+ * When the FACTS provider text contains a stored-fact line about the claimed
+ * topic — every topic token present as a whole word in the line's fact text —
+ * returns that (trimmed, capped) line; the evidence-grounded memory-recall
+ * post-pass quotes it into the forced-synthesis instruction. Only lines
+ * carrying the provider's `[durable.…]` / `[current.…]` marker are evidence.
+ */
+export function factsEvidenceLineForClaimTopic(
+	factsText: string,
+	topicTokens: readonly string[],
+): string | undefined {
+	if (topicTokens.length === 0) return undefined;
+	for (const rawLine of factsText.split("\n")) {
+		const marker = FACT_EVIDENCE_LINE_MARKER_PATTERN.exec(rawLine);
+		if (!marker) continue;
+		const body = rawLine.slice(marker[0].length);
+		const normalized = ` ${body
+			.toLowerCase()
+			.replace(/[^\p{L}\p{N}]+/gu, " ")
+			.trim()} `;
+		if (topicTokens.every((token) => normalized.includes(` ${token} `))) {
+			const line = rawLine.trim();
+			return line.length > EVIDENCE_LINE_MAX_CHARS
+				? `${line.slice(0, EVIDENCE_LINE_MAX_CHARS)}…`
+				: line;
+		}
+	}
+	return undefined;
+}
+
+/**
+ * The user-facing projection of a stored-fact evidence line: the fact text
+ * with the provider's bracketed provenance marker stripped ("[durable.
+ * preference conf=0.95] user's favorite planet is saturn" → "user's favorite
+ * planet is saturn"). Safe to quote back to the user — it is their own
+ * stored fact, which the FACTS provider already surfaces on every turn.
+ */
+export function factEvidenceUserText(line: string): string {
+	return line.replace(FACT_EVIDENCE_LINE_MARKER_PATTERN, "").trim();
+}

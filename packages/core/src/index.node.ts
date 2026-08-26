@@ -266,6 +266,11 @@ export {
 	registerDirectActionRoutingRule,
 } from "./runtime/direct-action-routing";
 export * from "./runtime/execute-planned-tool-call";
+// Canonical fact-text equality key, exported so memory actions (the MEMORY
+// delete-by-query duplicate collapse in @elizaos/agent) share ONE
+// canonicalization with the write-time fact dedupe instead of growing a
+// parallel dialect.
+export { normalizeFactTextKey } from "./runtime/fact-write-dedupe";
 export {
 	detectLocaleFromText,
 	type ResolveOwnerLocaleOptions,

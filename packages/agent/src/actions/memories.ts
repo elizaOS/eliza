@@ -19,6 +19,7 @@ import {
   getRelatedEntityIds,
   logger,
   ModelType,
+  normalizeFactTextKey,
   toWellFormedUnicode,
   validateUuid,
 } from "@elizaos/core";
@@ -589,13 +590,38 @@ async function doDelete(
   return doDeleteByQuery(runtime, message, params, query);
 }
 
+// Leading subject marker on the CANONICAL (normalizeFactTextKey) form of a
+// fact text. The two fact write paths phrase the same claim differently:
+// MEMORY_CREATE persists the model's "user's X" / "the user's X" wording
+// while the reflection extractor writes the bare "X" (and user-dictated
+// texts arrive as "my X"). Canonicalization turns "user's" into "user s",
+// hence the split alternative. Stripped ONCE, only at the start — this is an
+// equality key for duplicate detection, never a rewrite of stored text.
+const STORAGE_SUBJECT_MARKER_PREFIX =
+  /^(?:the\s+)?(?:user(?:\s+s)?|users|my|your)\s+/;
+
+/**
+ * Equality key under which two stored fact texts are one fact recorded by
+ * different scribes: case/punctuation/whitespace-insensitive
+ * (normalizeFactTextKey — the same canonical form the write-time fact dedupe
+ * uses) plus the leading subject marker stripped, so "user's favorite planet
+ * is saturn" and "favorite planet is saturn" collapse. An empty key never
+ * matches anything (mirrors the normalizeFactTextKey contract).
+ */
+function storageDuplicateFactKey(text: string): string {
+  return normalizeFactTextKey(text).replace(STORAGE_SUBJECT_MARKER_PREFIX, "");
+}
+
 /**
  * Delete-by-query: "remove that fact" carries no memoryId, so resolve the
  * memory through the same cluster-expanded read scope search uses, then
  * delete. Reflection dedup failures leave several rows with identical text —
- * one logical fact — so all rows of the single matched text are removed.
- * A query that strongly matches more than one distinct text is ambiguous:
- * refuse and list the candidates so the model can delete by exact id.
+ * one logical fact — so all rows of the single matched text are removed, and
+ * near-identical texts that collapse under storageDuplicateFactKey (the
+ * dual-write shapes) count as that single text. A query that strongly
+ * matches more than one genuinely distinct text is ambiguous: refuse, list
+ * the candidates, and return their ids in `data.matches` so the model can
+ * delete by exact id mechanically.
  *
  * The read is pinned to the requesting entity's identity cluster: a text-only
  * match in a multi-user room would also hit another user's identical-text
@@ -700,23 +726,57 @@ async function doDeleteByQuery(
     );
   }
 
-  const normalize = (c: MemoryCandidate) =>
-    ((c.memory.content as { text?: string } | undefined)?.text ?? "")
-      .trim()
-      .toLowerCase();
-  const distinctTexts = new Set(matched.map(normalize));
+  const candidateText = (c: MemoryCandidate) =>
+    (c.memory.content as { text?: string } | undefined)?.text ?? "";
+  const distinctTexts = new Set(
+    matched.map((c) => candidateText(c).trim().toLowerCase()),
+  );
   if (distinctTexts.size > 1) {
-    const lines = matched
-      .map((c) => toListItem(c.memory, c.type))
-      .map((m) => `- [${m.type}] ${m.id}: ${toWellFormedUnicode(m.text)}`);
-    return {
-      success: false,
-      text: [
-        `Query "${query}" matches ${distinctTexts.size} distinct memories. Delete by memoryId instead:`,
-        ...lines,
-      ].join("\n"),
-      data: { error: "MEMORY_AMBIGUOUS_QUERY" },
-    };
+    // Storage-internal duplicate collapse before declaring ambiguity. The two
+    // fact scribes disagree on a leading subject marker — MEMORY_CREATE
+    // persists the model's phrasing ("user's favorite planet is saturn")
+    // while the facts extractor writes the bare claim ("favorite planet is
+    // saturn") — so one dual-written fact (live tj-8eb1703b3d7208) read back
+    // as "2 distinct memories" and broke the forget (live tj-8f314c64ce480e).
+    // Rows whose texts collapse to one storageDuplicateFactKey are the SAME
+    // fact stored twice, not a semantic ambiguity, and the delete completes
+    // across all of them. The collapse is only trusted when the matched set
+    // is pinned to one entity scope: the requester's identity cluster (the
+    // scan above already filtered to it), or one shared entityId on
+    // entity-less internal invocations. Same-looking text across DIFFERENT
+    // users stays ambiguous.
+    const duplicateKeys = new Set(
+      matched.map((c) => storageDuplicateFactKey(candidateText(c))),
+    );
+    const singleEntityScope =
+      scopeEntityId !== undefined ||
+      new Set(matched.map((c) => c.memory.entityId ?? null)).size === 1;
+    const storageInternalDuplicates =
+      duplicateKeys.size === 1 && !duplicateKeys.has("") && singleEntityScope;
+    if (!storageInternalDuplicates) {
+      const items = matched.map((c) => toListItem(c.memory, c.type));
+      const lines = items.map(
+        (m) => `- [${m.type}] ${m.id}: ${toWellFormedUnicode(m.text)}`,
+      );
+      return {
+        success: false,
+        text: [
+          `Query "${query}" matches ${distinctTexts.size} distinct memories. Delete by memoryId instead:`,
+          ...lines,
+        ].join("\n"),
+        data: {
+          error: "MEMORY_AMBIGUOUS_QUERY",
+          // The named recovery, machine-readable: the caller's next call is
+          // delete by memoryId, so hand it the ids as data instead of making
+          // it re-parse them out of the prose above.
+          matches: items.map((m) => ({
+            memoryId: m.id,
+            type: m.type,
+            text: m.text,
+          })),
+        },
+      };
+    }
   }
 
   const deletable = matched.filter(
