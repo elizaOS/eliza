@@ -1,10 +1,12 @@
 /**
- * Seeded deterministic helpers: an FNV-1a string hash, a reproducible PRNG, and
- * seed-driven shuffle/sample/pick plus example-name generation, all keyed by a
- * string or number seed so the same seed always yields the same result. Also
- * provides stableStringify — key-order-independent JSON for stable hashing/IDs.
+ * Seeded deterministic helpers: an FNV-1a string hash, a reproducible PRNG,
+ * bounded integer generation, and seed-driven shuffle/sample/pick plus
+ * example-name generation, all keyed by a string or number seed so the same
+ * seed always yields the same result. Also provides stableStringify —
+ * key-order-independent JSON for stable hashing/IDs.
  */
 
+import { ElizaError } from "../errors.ts";
 import { EXAMPLE_NAMES } from "./example-names";
 
 const UINT32_MAX = 0x100000000;
@@ -55,9 +57,6 @@ export function deterministicShuffle<T>(
 	items: readonly T[],
 	seed: string | number,
 ): T[] {
-	if (!items || !Array.isArray(items) || items.length === 0) {
-		return [];
-	}
 	const random = createDeterministicRandom(seed);
 	const shuffled = [...items];
 	for (let i = shuffled.length - 1; i > 0; i -= 1) {
@@ -72,7 +71,7 @@ export function deterministicSample<T>(
 	count: number,
 	seed: string | number,
 ): T[] {
-	if (count <= 0 || !items || !Array.isArray(items) || items.length === 0) {
+	if (count <= 0 || items.length === 0) {
 		return [];
 	}
 
@@ -89,12 +88,25 @@ export function deterministicPick<T>(
 	return deterministicSample(items, 1, seed)[0];
 }
 
-/** Generate a deterministic integer between min and max (inclusive) from a seed. */
+/**
+ * Generate a deterministic integer between min and max (inclusive) from a seed.
+ *
+ * @throws {ElizaError} If `min` or `max` is not a safe integer, or if `min > max`.
+ */
 export function deterministicInt(
 	min: number,
 	max: number,
 	seed: string | number,
 ): number {
+	if (!Number.isSafeInteger(min) || !Number.isSafeInteger(max) || min > max) {
+		throw new ElizaError(
+			`deterministicInt bounds must be safe integers with min <= max (received min=${min}, max=${max})`,
+			{
+				code: "INVALID_BOUNDS",
+				context: { min, max },
+			},
+		);
+	}
 	const random = createDeterministicRandom(seed);
 	return Math.floor(random() * (max - min + 1)) + min;
 }

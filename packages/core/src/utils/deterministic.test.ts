@@ -5,6 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { isElizaError } from "../errors.ts";
 import {
 	buildDeterministicSeed,
 	createDeterministicRandom,
@@ -68,24 +69,56 @@ describe("shuffle / sample / pick", () => {
 		expect(deterministicSample(items, 2, "s")).toEqual(two);
 	});
 
-	it("handles non-array inputs safely", () => {
-		expect(deterministicShuffle(null as unknown as readonly unknown[], "s")).toEqual([]);
-		expect(deterministicSample(null as unknown as readonly unknown[], 2, "s")).toEqual([]);
-	});
-
 	it("deterministicPick returns one reproducible element", () => {
 		const p = deterministicPick(items, "s");
 		expect(items).toContain(p);
 		expect(deterministicPick(items, "s")).toBe(p);
 		expect(deterministicPick([], "s")).toBeUndefined();
 	});
+});
 
-	it("deterministicInt produces reproducible integers in the requested range", () => {
-		const n1 = deterministicInt(1, 10, "seed-123");
-		const n2 = deterministicInt(1, 10, "seed-123");
-		expect(n1).toBe(n2);
-		expect(n1).toBeGreaterThanOrEqual(1);
-		expect(n1).toBeLessThanOrEqual(10);
+describe("deterministicInt", () => {
+	it("produces reproducible integers pinned to fixed seed outputs within inclusive range", () => {
+		const v1 = deterministicInt(1, 10, "seed-123");
+		const v2 = deterministicInt(1, 10, "seed-123");
+		expect(v1).toBe(v2);
+		expect(v1).toBe(5);
+
+		const v3 = deterministicInt(0, 100, "fixed-seed-456");
+		expect(v3).toBe(57);
+
+		expect(deterministicInt(5, 5, "any-seed")).toBe(5);
+	});
+
+	it("throws ElizaError with INVALID_BOUNDS on non-integer, NaN, or inverted bounds", () => {
+		expect(() => deterministicInt(10, 1, "s")).toThrowError(
+			/deterministicInt bounds must be safe integers with min <= max/,
+		);
+		expect(() => deterministicInt(0, 2.5, "s")).toThrowError(
+			/deterministicInt bounds must be safe integers with min <= max/,
+		);
+		expect(() => deterministicInt(1.5, 3, "s")).toThrowError(
+			/deterministicInt bounds must be safe integers with min <= max/,
+		);
+		expect(() => deterministicInt(Number.NaN, 5, "s")).toThrowError(
+			/deterministicInt bounds must be safe integers with min <= max/,
+		);
+		expect(() =>
+			deterministicInt(0, Number.POSITIVE_INFINITY, "s"),
+		).toThrowError(
+			/deterministicInt bounds must be safe integers with min <= max/,
+		);
+
+		try {
+			deterministicInt(10, 1, "s");
+			expect.unreachable("should have thrown");
+		} catch (err: unknown) {
+			expect(isElizaError(err)).toBe(true);
+			if (isElizaError(err)) {
+				expect(err.code).toBe("INVALID_BOUNDS");
+				expect(err.context).toEqual({ min: 10, max: 1 });
+			}
+		}
 	});
 });
 
