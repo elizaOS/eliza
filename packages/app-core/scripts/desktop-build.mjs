@@ -23,6 +23,7 @@ import {
   hasElectrobunViewExport,
   isSupportedBunVersion,
 } from "./lib/desktop-preflight.mjs";
+import { canReuseDesktopRuntimePackage } from "./lib/desktop-runtime-package-policy.mjs";
 import { hardenElectrobunRpcSockets } from "./lib/electrobun-loopback-hardening.mjs";
 import { hardenLinuxArtifactPermissions } from "./lib/linux-artifact-permissions.mjs";
 import { appIdentityEnv } from "./lib/read-app-identity.mjs";
@@ -214,6 +215,7 @@ const PLUGIN_AGENT_ORCHESTRATOR_PACKAGE_DIR = resolveWorkspacePluginDir(
 const PLUGIN_LOCAL_INFERENCE_PACKAGE_DIR = resolveWorkspacePluginDir(
   "plugin-local-inference",
 );
+const PLUGIN_SQL_PACKAGE_DIR = resolveWorkspacePluginDir("plugin-sql");
 const SHARED_PACKAGE_DIR = resolveWorkspacePackageDir("shared");
 const UI_PACKAGE_DIR = resolveWorkspacePackageDir("ui");
 const VAULT_PACKAGE_DIR = resolveWorkspacePackageDir("vault");
@@ -961,8 +963,11 @@ function ensureWorkspaceRuntimePackageBuilt(packageName, packageDir) {
   }
 
   if (
-    process.env.ELIZA_DESKTOP_REBUILD_RUNTIME_PACKAGES !== "1" &&
-    workspaceRuntimePackageLooksBuilt(packageName, packageDir)
+    canReuseDesktopRuntimePackage({
+      packageName,
+      forceRebuild: process.env.ELIZA_DESKTOP_REBUILD_RUNTIME_PACKAGES === "1",
+      looksBuilt: workspaceRuntimePackageLooksBuilt(packageName, packageDir),
+    })
   ) {
     console.log(
       `[desktop-build] Reusing existing ${packageName} runtime package`,
@@ -1037,6 +1042,10 @@ function ensureWorkspaceRuntimePackagesBuilt() {
   ensureWorkspaceRuntimePackageBuilt(
     "@elizaos/plugin-local-inference",
     PLUGIN_LOCAL_INFERENCE_PACKAGE_DIR,
+  );
+  ensureWorkspaceRuntimePackageBuilt(
+    "@elizaos/plugin-sql",
+    PLUGIN_SQL_PACKAGE_DIR,
   );
   ensureWorkspaceRuntimePackageBuilt("@elizaos/agent", AGENT_PACKAGE_DIR);
   ensureWorkspaceRuntimePackageBuilt("@elizaos/app-core", APP_CORE_PACKAGE_DIR);

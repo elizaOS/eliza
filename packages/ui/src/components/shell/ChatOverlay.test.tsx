@@ -15,6 +15,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { motionValue } from "motion/react";
 import {
   afterEach,
   beforeAll,
@@ -120,7 +121,7 @@ import {
 } from "../../state/useStreamingText";
 import { setViewChatBinding } from "../../state/view-chat-binding";
 import { copyTextToClipboard } from "../../utils/clipboard";
-import { ChatOverlay } from "./ChatOverlay";
+import { ChatOverlay, PillHandle } from "./ChatOverlay";
 import type { ShellMessage } from "./shell-state";
 import {
   buildConversationNav,
@@ -3197,6 +3198,23 @@ describe("ChatOverlay", () => {
     expect(pill.getAttribute("tabindex")).toBeNull();
   });
 
+  it("centers 64x12 resting material in a 64x44 detached desktop hit target", () => {
+    render(<ChatOverlay controller={makeController()} fillHostAtHalf />);
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
+
+    const pill = screen.getByTestId("chat-pill");
+    const mark = screen.getByTestId("chat-pill-mark");
+    expect(pill.style.width).toBe("64px");
+    expect(pill.style.height).toBe("44px");
+    expect(pill.className).not.toContain("pt-10");
+    expect(pill.className).not.toContain("px-8");
+    expect(mark.className).toContain("chat-handle-bar-surface");
+    expect(mark.className).toContain("h-3");
+  });
+
   it("steps a pill tap to the INPUT bar — never the thread detent, never the keyboard", () => {
     // A pill tap is ONE step up the continuum: it forms the bare input bar.
     // Even with a conversation to show it must NOT jump to half (the grabber
@@ -3258,6 +3276,33 @@ describe("ChatOverlay", () => {
     expect(sheet.getAttribute("data-detent")).toBe("pill");
     fireEvent.keyDown(screen.getByTestId("chat-pill"), { key: "Enter" });
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+  });
+
+  it("opens exactly once when native keyboard activation emits a compatibility click", () => {
+    const onOpen = vi.fn();
+    const handler = vi.fn();
+    render(
+      <PillHandle
+        binding={{
+          onPointerDown: handler,
+          onPointerMove: handler,
+          onPointerUp: handler,
+          onPointerCancel: handler,
+          onLostPointerCapture: handler,
+        }}
+        counterScale={motionValue(1)}
+        onOpen={onOpen}
+        breathing={false}
+        pilled
+        desktopOverlayHost
+      />,
+    );
+
+    const pill = screen.getByRole("button", { name: "open chat" });
+    fireEvent.keyDown(pill, { key: "Enter" });
+    fireEvent.click(pill, { detail: 0 });
+
+    expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
   it("flicks UP from the pill to recover the input", () => {

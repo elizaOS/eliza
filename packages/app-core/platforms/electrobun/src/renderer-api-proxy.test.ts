@@ -54,6 +54,29 @@ describe("renderer API proxy", () => {
     expect((init.headers as Headers).get("host")).toBeNull();
   });
 
+  it("preserves desktop session and csrf authority on renderer POSTs", () => {
+    const req = new Request("http://127.0.0.1:5174/api/interactions/composer", {
+      method: "POST",
+      headers: {
+        cookie: "eliza_session=opaque; eliza_csrf=opaque-csrf",
+        "content-type": "application/json",
+        "x-eliza-csrf": "opaque-csrf",
+      },
+      body: JSON.stringify({ state: "ready" }),
+    });
+
+    const init = createRendererApiProxyRequestInit(
+      req,
+      new URL("http://127.0.0.1:31337/api/interactions/composer"),
+    );
+    const headers = init.headers as Headers;
+
+    expect(headers.get("cookie")).toBe(
+      "eliza_session=opaque; eliza_csrf=opaque-csrf",
+    );
+    expect(headers.get("x-eliza-csrf")).toBe("opaque-csrf");
+  });
+
   it("proxies only to a reachable HTTP(S) api base, never the IPC scheme", () => {
     // Local mode with the port exposed (ELIZA_API_EXPOSE_PORT=1) / external /
     // cloud modes keep an HTTP listener the static server can forward to.

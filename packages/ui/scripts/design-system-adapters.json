@@ -53,7 +53,7 @@
       "role": "action",
       "owner": "UI shell chat overlay",
       "reason": "Owns the collapsed chat pill's pull target and keyboard activation lifecycle.",
-      "matchCount": 1
+      "matchCount": 2
     },
     {
       "file": "packages/ui/src/components/shell/glass-composer.tsx",
