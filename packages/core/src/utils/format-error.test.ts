@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { formatError } from "./format-error.ts";
+import { formatError, toError } from "./format-error.ts";
 
 describe("formatError", () => {
 	it("returns an Error's message", () => {
@@ -88,5 +88,26 @@ describe("formatError", () => {
 			out = formatError(circular);
 		}).not.toThrow();
 		expect(out).toBe("[object Object]");
+	});
+});
+
+describe("toError", () => {
+	it("returns existing Error instances unmodified", () => {
+		const orig = new Error("existing error");
+		expect(toError(orig)).toBe(orig);
+	});
+
+	it("converts strings and primitives into Error instances", () => {
+		const errString = toError("something broke");
+		expect(errString).toBeInstanceOf(Error);
+		expect(errString.message).toBe("something broke");
+
+		const errNum = toError(500);
+		expect(errNum.message).toBe("500");
+	});
+
+	it("handles empty or unstringifiable errors with fallback message", () => {
+		const errEmpty = toError("", "Custom fallback");
+		expect(errEmpty.message).toBe("Custom fallback");
 	});
 });

@@ -27,3 +27,18 @@ export function formatError(error: unknown): string {
 		}
 	}
 }
+
+/**
+ * Normalizes an unknown value into an Error instance, preserving existing Errors
+ * or creating a new Error with the formatted message.
+ */
+export function toError(
+	error: unknown,
+	fallbackMessage = "Unknown error",
+): Error {
+	if (error instanceof Error) {
+		return error;
+	}
+	const message = formatError(error);
+	return new Error(message || fallbackMessage);
+}
