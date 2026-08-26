@@ -103,6 +103,30 @@ describe("runtime mutation confirmation", () => {
 		expect(isBoundRuntimeManagementConfirmation(runtimeManagementConfirmationText(directA), directB)).toBe(false);
 	});
 
+	it("binds SSH fingerprint and identity path independently", () => {
+		const base = {
+			op: "connect_ssh" as const,
+			runtimeId: "prod",
+			target: "admin@good.example",
+			sshPort: 22,
+			remoteApiPort: 2138,
+			expectedFingerprint: "SHA256:GOOD",
+			identityFile: "/Users/me/.ssh/good",
+		};
+		expect(
+			isBoundRuntimeManagementConfirmation(
+				runtimeManagementConfirmationText(base),
+				{ ...base, expectedFingerprint: "SHA256:OTHER" },
+			),
+		).toBe(false);
+		expect(
+			isBoundRuntimeManagementConfirmation(
+				runtimeManagementConfirmationText(base),
+				{ ...base, identityFile: "/tmp/other-key" },
+			),
+		).toBe(false);
+	});
+
 	it("distinguishes managed-network opt-in and rejects incomplete enrollment", () => {
 		const managed = {
 			op: "enroll_host" as const,
