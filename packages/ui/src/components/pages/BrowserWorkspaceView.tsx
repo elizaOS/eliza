@@ -1137,6 +1137,11 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   );
 
   const refreshWorkspaceInBackground = useCallback(async () => {
+    // Native-mobile tabs are authoritative client state: the remote agent's
+    // workspace endpoint deliberately has no matching native WebView tabs.
+    // Polling that empty server snapshot would erase a tab (and its permanent
+    // capability/error recovery surface) moments after the user opened it.
+    if (browserTabRenderPath === "native-mobile-webview") return;
     if (
       backgroundWorkspaceRefreshInFlightRef.current ||
       foregroundWorkspaceLoadsRef.current > 0 ||
@@ -1154,7 +1159,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     } finally {
       backgroundWorkspaceRefreshInFlightRef.current = false;
     }
-  }, [loadWorkspace, selectedTabId]);
+  }, [browserTabRenderPath, loadWorkspace, selectedTabId]);
 
   const loadSelectedBrowserWorkspaceSnapshot = useCallback(
     async (tabId: string, mode: BrowserWorkspaceSnapshot["mode"]) => {

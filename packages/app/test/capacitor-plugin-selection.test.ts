@@ -26,6 +26,22 @@ describe("Android Capacitor plugin selection", () => {
     ]);
   });
 
+  it("excludes FCM from the LP3 VPS fallback without dropping local notifications", () => {
+    const selected = resolveAndroidCapacitorPlugins(
+      {
+        "@capacitor/local-notifications": "8.0.0",
+        "@capacitor/push-notifications": "8.1.2",
+        "@elizaos/capacitor-location": "workspace:*",
+      },
+      true,
+    );
+
+    expect(selected).toEqual([
+      "@capacitor/local-notifications",
+      "@elizaos/capacitor-location",
+    ]);
+  });
+
   it("uses WebView fetch for the Android Cloud build only", () => {
     expect(resolveCapacitorHttpEnabled("android", "cloud")).toBe(false);
     expect(resolveCapacitorHttpEnabled("android", undefined, "1")).toBe(false);
