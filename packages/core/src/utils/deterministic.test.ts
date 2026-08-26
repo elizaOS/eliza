@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
 	buildDeterministicSeed,
 	createDeterministicRandom,
+	deterministicInt,
 	deterministicPick,
 	deterministicSample,
 	deterministicShuffle,
@@ -67,11 +68,24 @@ describe("shuffle / sample / pick", () => {
 		expect(deterministicSample(items, 2, "s")).toEqual(two);
 	});
 
+	it("handles non-array inputs safely", () => {
+		expect(deterministicShuffle(null as unknown as readonly unknown[], "s")).toEqual([]);
+		expect(deterministicSample(null as unknown as readonly unknown[], 2, "s")).toEqual([]);
+	});
+
 	it("deterministicPick returns one reproducible element", () => {
 		const p = deterministicPick(items, "s");
 		expect(items).toContain(p);
 		expect(deterministicPick(items, "s")).toBe(p);
 		expect(deterministicPick([], "s")).toBeUndefined();
+	});
+
+	it("deterministicInt produces reproducible integers in the requested range", () => {
+		const n1 = deterministicInt(1, 10, "seed-123");
+		const n2 = deterministicInt(1, 10, "seed-123");
+		expect(n1).toBe(n2);
+		expect(n1).toBeGreaterThanOrEqual(1);
+		expect(n1).toBeLessThanOrEqual(10);
 	});
 });
 

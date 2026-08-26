@@ -55,6 +55,9 @@ export function deterministicShuffle<T>(
 	items: readonly T[],
 	seed: string | number,
 ): T[] {
+	if (!items || !Array.isArray(items) || items.length === 0) {
+		return [];
+	}
 	const random = createDeterministicRandom(seed);
 	const shuffled = [...items];
 	for (let i = shuffled.length - 1; i > 0; i -= 1) {
@@ -69,7 +72,7 @@ export function deterministicSample<T>(
 	count: number,
 	seed: string | number,
 ): T[] {
-	if (count <= 0 || items.length === 0) {
+	if (count <= 0 || !items || !Array.isArray(items) || items.length === 0) {
 		return [];
 	}
 
@@ -84,6 +87,16 @@ export function deterministicPick<T>(
 	seed: string | number,
 ): T | undefined {
 	return deterministicSample(items, 1, seed)[0];
+}
+
+/** Generate a deterministic integer between min and max (inclusive) from a seed. */
+export function deterministicInt(
+	min: number,
+	max: number,
+	seed: string | number,
+): number {
+	const random = createDeterministicRandom(seed);
+	return Math.floor(random() * (max - min + 1)) + min;
 }
 
 export function getDeterministicNames(
