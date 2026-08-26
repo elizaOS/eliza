@@ -70,6 +70,34 @@ function touchPoint(clientX: number, clientY: number) {
 }
 
 describe("ChatMessage tap-to-reveal vs transcript scroll", () => {
+  it("pulls only flat-assistant actions toward their message text", () => {
+    const { rerender } = render(
+      <ChatMessage
+        appearance="glass"
+        message={makeMessage()}
+        onCopy={vi.fn()}
+      />,
+    );
+    expect(
+      screen
+        .getByTestId("thread-line-actions")
+        .querySelector('[data-slot="message-footer"]')?.className,
+    ).toContain("-translate-y-2");
+
+    rerender(
+      <ChatMessage
+        appearance="glass"
+        message={makeMessage({ role: "user" })}
+        onCopy={vi.fn()}
+      />,
+    );
+    expect(
+      screen
+        .getByTestId("thread-line-actions")
+        .querySelector('[data-slot="message-footer"]')?.className,
+    ).not.toContain("-translate-y-2");
+  });
+
   it("a clean tap toggles the action rail on and off", () => {
     render(<ChatMessage message={makeMessage()} onCopy={vi.fn()} />);
     const article = getArticle();
