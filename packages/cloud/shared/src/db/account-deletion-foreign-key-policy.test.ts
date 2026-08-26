@@ -47,6 +47,24 @@ describe("account deletion full-schema foreign-key policy", () => {
     );
   });
 
+  test("requires provider reconciliation before deleting sandbox replacement attempts", () => {
+    const replacementAttempt = listAccountDeletionForeignKeys().find(
+      ({ sourceTable, sourceColumns }) =>
+        sourceTable === "agent_sandbox_replacement_attempts" && sourceColumns === "organization_id",
+    );
+
+    expect(replacementAttempt).toEqual({
+      sourceTable: "agent_sandbox_replacement_attempts",
+      sourceColumns: "organization_id",
+      targetTable: "organizations",
+      targetColumns: "id",
+      onDelete: "cascade",
+    });
+    expect(classifyAccountDeletionForeignKey(replacementAttempt!)).toBe(
+      "reconcile_external_resource",
+    );
+  });
+
   test("rejects an unknown restrictive relationship", () => {
     let failure: unknown;
     try {
