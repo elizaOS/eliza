@@ -1128,7 +1128,13 @@ export class FinancesRepository {
       onlyDebits?: boolean | null;
     } = {},
   ): Promise<LifeOpsPaymentTransaction[]> {
-    const limit = Math.max(1, Math.min(5000, Math.trunc(args.limit ?? 500)));
+    const limit =
+      args.limit === undefined || args.limit === null
+        ? null
+        : Math.trunc(args.limit);
+    if (limit !== null && (!Number.isFinite(limit) || limit < 1)) {
+      throw new Error("payment transaction limit must be a positive integer");
+    }
     const sourceClause = args.sourceId
       ? `AND source_id = ${sqlQuote(args.sourceId)}`
       : "";
@@ -1155,7 +1161,7 @@ export class FinancesRepository {
           ${merchantClause}
           ${directionClause}
         ORDER BY posted_at DESC
-        LIMIT ${limit}`,
+        ${limit === null ? "" : `LIMIT ${limit}`}`,
     );
     return rows.map(parsePaymentTransaction);
   }

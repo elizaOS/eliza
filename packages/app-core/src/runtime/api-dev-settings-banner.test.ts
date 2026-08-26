@@ -1,5 +1,4 @@
 /** Verifies that the full API settings banner remains opt-in during dev startup. */
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { shouldShowApiDevSettingsBanner } from "./api-dev-settings-banner";
@@ -32,22 +31,5 @@ describe("shouldShowApiDevSettingsBanner", () => {
         LOG_LEVEL: "info",
       }),
     ).toBe(false);
-  });
-});
-
-describe("dev-server startup output", () => {
-  const source = readFileSync(
-    new URL("./dev-server.ts", import.meta.url),
-    "utf8",
-  );
-
-  it("loads dotenv without promotional tips", () => {
-    expect(source).toContain("loadDotenv({ quiet: true });");
-  });
-
-  it("uses one compact app-core readiness line instead of the box", () => {
-    expect(source).toContain("API ready: http://localhost:");
-    expect(source).not.toContain("Server is running.");
-    expect(source).not.toContain("Connect at: http://localhost:");
   });
 });

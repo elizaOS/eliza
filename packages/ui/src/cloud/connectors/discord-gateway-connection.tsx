@@ -46,6 +46,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../components/ui/select";
+import { StatusBadge } from "../../components/ui/status-badge";
 import { ApiError, api, apiFetch } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
 
@@ -156,40 +157,48 @@ function getStatusBadge(status: DiscordGatewayConnection["status"], t: TFn) {
   switch (status) {
     case "connected":
       return (
-        <Badge variant="default" className="bg-green-500">
-          <CheckCircle className="size-3 mr-1" />
-          {t("cloud.discord.statusConnected", { defaultValue: "Connected" })}
-        </Badge>
+        <StatusBadge
+          status="success"
+          icon={<CheckCircle />}
+          label={t("cloud.discord.statusConnected", {
+            defaultValue: "Connected",
+          })}
+        />
       );
     case "connecting":
       return (
-        <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-600">
-  <Loader2 className="size-3 mr-1 animate-spin"/>
-          {t("cloud.discord.statusConnecting", { defaultValue: "Connecting" })}
-        </Badge>
+        <StatusBadge
+          status="processing"
+          label={t("cloud.discord.statusConnecting", {
+            defaultValue: "Connecting",
+          })}
+        />
       );
     case "pending":
       return (
-        <Badge variant="secondary" className="bg-surface text-txt">
-          <Clock className="size-3 mr-1" />
-          {t("cloud.discord.statusPending", { defaultValue: "Pending" })}
-        </Badge>
+        <StatusBadge
+          status="muted"
+          icon={<Clock />}
+          label={t("cloud.discord.statusPending", { defaultValue: "Pending" })}
+        />
       );
     case "disconnected":
       return (
-        <Badge variant="secondary" className="bg-gray-500/20 text-gray-500">
-          <XCircle className="size-3 mr-1" />
-          {t("cloud.discord.statusDisconnected", {
+        <StatusBadge
+          status="muted"
+          icon={<XCircle />}
+          label={t("cloud.discord.statusDisconnected", {
             defaultValue: "Disconnected",
           })}
-        </Badge>
+        />
       );
     case "error":
       return (
-        <Badge variant="destructive">
-          <AlertCircle className="size-3 mr-1" />
-          {t("cloud.discord.statusError", { defaultValue: "Error" })}
-        </Badge>
+        <StatusBadge
+          status="danger"
+          icon={<AlertCircle />}
+          label={t("cloud.discord.statusError", { defaultValue: "Error" })}
+        />
       );
   }
 }
@@ -671,7 +680,7 @@ export function DiscordGatewayConnection() {
                                 defaultValue: "Character: {{name}}",
                               })
                             ) : (
-                              <span className="text-yellow-600">
+                              <span className="text-status-warning">
                                 {t("cloud.discord.noCharacterLinked", {
                                   defaultValue: "No character linked",
                                 })}
@@ -710,7 +719,7 @@ export function DiscordGatewayConnection() {
                             </span>
                           </div>
                           {conn.errorMessage && (
-                            <div className="text-sm text-red-500 mt-1">
+                            <div className="text-sm text-destructive mt-1">
                               {conn.errorMessage}
                             </div>
                           )}
@@ -1515,7 +1524,7 @@ export function DiscordGatewayConnection() {
         </Button>
 
         {characters.length === 0 && (
-          <p className="text-sm text-center text-yellow-600">
+          <p className="text-sm text-center text-status-warning">
             {t("cloud.discord.needCharacterFirst", {
               defaultValue:
                 "You need to create a character first before connecting a Discord bot.",

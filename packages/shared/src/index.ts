@@ -59,11 +59,7 @@ export * from "./config/types.eliza.js";
 // names; the canonical shapes remain in `./contracts`.
 export type {
   AgentBinding,
-  AgentCompactionConfig,
-  AgentCompactionMemoryFlushConfig,
-  AgentCompactionMode,
   AgentConfig,
-  AgentContextPruningConfig,
   AgentDefaultsConfig,
   AgentModelConfig,
   AgentModelEntryConfig,

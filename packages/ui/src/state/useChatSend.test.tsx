@@ -19,6 +19,11 @@ import type {
   ImageAttachment,
 } from "../api";
 import { StreamGenerationError } from "../api/client-base";
+import {
+  markPendingCapabilityReady,
+  readPendingCapabilityReadyAgentId,
+  rememberPendingCapabilityHandoff,
+} from "../capability-handoff";
 import { CLOUD_HANDOFF_PHASE_EVENT, NAVIGATE_VIEW_EVENT } from "../events";
 import { onViewEvent } from "../views/view-event-bus";
 import { VIEW_EVENTS } from "../views/view-event-types";
@@ -37,6 +42,20 @@ import {
 
 const SHARED_BASE = "https://api.elizacloud.ai/api/v1/eliza/agents/agent-123";
 const DEDICATED_BASE = "https://agent-456.elizacloud.ai";
+const PENDING_CALENDAR_HANDOFF = {
+  version: 1 as const,
+  kind: "capability_handoff" as const,
+  capabilityId: "calendar" as const,
+  label: "Calendar",
+  availability: "needs_workspace" as const,
+  reason: "Calendar access needs your personal workspace.",
+  currentTier: "shared" as const,
+  requiredTier: "personal" as const,
+  nextAction: "upgrade_workspace" as const,
+  requiresConfirmation: true,
+  cta: { label: "Set up workspace", href: "/cloud/agents/agent-123" },
+  continuation: { originalIntent: "Move tomorrow's meeting to 3pm" },
+};
 
 function dispatchHandoffPhase(phase: string): void {
   window.dispatchEvent(
@@ -593,6 +612,7 @@ function mockStream404() {
 describe("useChatSend 404 recovery", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.sessionStorage.clear();
     mocks.client.getBaseUrl.mockReturnValue("");
   });
 
@@ -862,6 +882,7 @@ describe("useChatSend always streams (#9174)", () => {
 describe("useChatSend action handoff", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.sessionStorage.clear();
     mocks.client.getBaseUrl.mockReturnValue("");
     mocks.client.renameConversation.mockResolvedValue(undefined);
     window.history.replaceState(null, "", "/chat");
@@ -869,6 +890,68 @@ describe("useChatSend action handoff", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("renders and retains an action-only capability receipt from the matching Shared agent", async () => {
+    mocks.client.getBaseUrl.mockReturnValue(SHARED_BASE);
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "",
+      completed: true,
+      messageId: "persisted-capability-receipt",
+      actionResults: [
+        {
+          actionName: "REQUEST_PERSONAL_WORKSPACE",
+          success: false,
+          values: {
+            capabilityHandoff: {
+              version: 1,
+              kind: "capability_handoff",
+              capabilityId: "calendar",
+              label: "Calendar",
+              availability: "needs_workspace",
+              reason: "Calendar access needs your personal workspace.",
+              currentTier: "shared",
+              requiredTier: "personal",
+              nextAction: "upgrade_workspace",
+              requiresConfirmation: true,
+              cta: {
+                label: "Set up workspace",
+                href: "/cloud/agents/agent-123",
+              },
+              continuation: {
+                clientMessageId: "client-calendar-1",
+                originalIntent: "Move tomorrow's meeting to 3pm",
+              },
+            },
+          },
+        },
+      ],
+    });
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("move tomorrow's meeting", {
+        conversationId: "conv-1",
+      });
+    });
+
+    const receipt = deps.conversationMessagesRef.current.find(
+      (message) => message.id === "persisted-capability-receipt",
+    );
+    expect(receipt?.capabilityHandoff).toMatchObject({
+      capabilityId: "calendar",
+      cta: { href: "/cloud/agents/agent-123" },
+      continuation: { originalIntent: "Move tomorrow's meeting to 3pm" },
+    });
+    expect(
+      window.sessionStorage.getItem(
+        "eliza:capability-handoff:message:persisted-capability-receipt",
+      ),
+    ).toContain('"kind":"capability_handoff"');
   });
 
   it("opens the completed action target without a WebSocket frame or global-state fetch", async () => {
@@ -1697,8 +1780,32 @@ describe("useChatSend non-404 send failures", () => {
 describe("useChatSend freeze-on-shared during handoff (PR2)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.sessionStorage.clear();
     mocks.client.getBaseUrl.mockReturnValue(SHARED_BASE);
     mocks.client.renameConversation.mockResolvedValue(undefined);
+  });
+
+  it("retains a ready continuation until first-run releases the composer", async () => {
+    rememberPendingCapabilityHandoff(PENDING_CALENDAR_HANDOFF);
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    let firstRunComplete = false;
+    const view = renderHook(() => useChatSend({ ...deps, firstRunComplete }));
+
+    expect(markPendingCapabilityReady("agent-123")).toBe(true);
+
+    expect(deps.setChatInput).not.toHaveBeenCalled();
+    expect(readPendingCapabilityReadyAgentId()).toBe("agent-123");
+
+    firstRunComplete = true;
+    await act(async () => view.rerender());
+
+    expect(deps.setChatInput).toHaveBeenCalledWith(
+      "Move tomorrow's meeting to 3pm",
+    );
+    expect(readPendingCapabilityReadyAgentId()).toBeNull();
   });
 
   it("paints two accepted user turns immediately, then drains each matching assistant placeholder FIFO exactly once", async () => {

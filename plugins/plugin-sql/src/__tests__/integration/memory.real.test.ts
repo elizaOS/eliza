@@ -845,6 +845,30 @@ describe("Memory Integration Tests", () => {
       expect(results[0].similarity).toBeGreaterThan(0.99);
     });
 
+    it("returns every matching memory when no result limit is requested", async () => {
+      const embedding = Array.from({ length: 384 }, (_, index) => (index === 0 ? 1 : 0));
+      for (let index = 0; index < 12; index += 1) {
+        await adapter.createMemory(
+          {
+            id: v4() as UUID,
+            content: { text: `complete ${index}` },
+            createdAt: Date.now() + index,
+            embedding,
+            agentId: testAgentId,
+            roomId: testRoomId,
+            entityId: testEntityId,
+          } as Memory,
+          "search-complete"
+        );
+      }
+
+      const results = await adapter.searchMemoriesByEmbedding(embedding, {
+        tableName: "search-complete",
+      });
+
+      expect(results).toHaveLength(12);
+    });
+
     it("pages embedding results after stable similarity ordering", async () => {
       const query = Array.from({ length: 384 }, (_, index) => (index === 0 ? 1 : 0));
       const vectors = [0.1, 0.2, 0.3].map((tilt) =>

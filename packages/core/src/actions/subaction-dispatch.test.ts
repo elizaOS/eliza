@@ -104,8 +104,26 @@ describe("subaction-dispatch", () => {
 
 	it("exports canonical and default subaction keys", () => {
 		expect(CANONICAL_SUBACTION_KEY).toBe("action");
-		expect(DEFAULT_SUBACTION_KEYS).toContain("action");
-		expect(DEFAULT_SUBACTION_KEYS).toContain("subaction");
-		expect(DEFAULT_SUBACTION_KEYS).toContain("op");
+		expect(DEFAULT_SUBACTION_KEYS).toEqual([
+			"action",
+			"subaction",
+			"op",
+			"operation",
+			"verb",
+			"subAction",
+			"__subaction",
+		]);
+	});
+
+	it("prefers action over legacy aliases when multiple are present", () => {
+		const allowed = ["list", "create"] as const;
+		expect(
+			readSubaction(
+				{ action: "list", subaction: "create", op: "create" },
+				{ allowed },
+			),
+		).toBe("list");
+		expect(readSubaction({ operation: "create" }, { allowed })).toBe("create");
+		expect(readSubaction({ verb: "create" }, { allowed })).toBe("create");
 	});
 });

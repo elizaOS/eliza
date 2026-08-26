@@ -290,6 +290,7 @@ function createRuntime(options: {
       settings: {
         ELIZA_CANONICAL_LLM_TEXT_ENABLED: true,
         ELIZA_CANONICAL_EMBEDDINGS_ENABLED: false,
+        ...(options.mediaPlugin ? { ELIZA_VIDEO_GENERATION_ENABLED: true } : {}),
       },
     },
     adapter: options.adapter,
@@ -809,7 +810,10 @@ async function executeMeasuredSharedElizaRuntimeTurn(
           ),
         }
       : {}),
-    transport: sharedCapabilityTransportForSource(input.execution.channel.source),
+    transport: sharedCapabilityTransportForSource(
+      input.execution.channel.source,
+      input.execution.channel.type,
+    ),
     mediaPlugin,
     reminderPlugin,
     todoPlugin,

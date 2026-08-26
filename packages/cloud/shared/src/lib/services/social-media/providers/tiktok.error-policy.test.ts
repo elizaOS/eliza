@@ -133,6 +133,24 @@ describe("tiktokProvider.getAccountAnalytics — internal failure propagates", (
 });
 
 describe("tiktokProvider J1 boundaries — upstream failure becomes a structured failure DTO", () => {
+  it("rejects an oversized video caption before dispatch instead of posting a prefix", async () => {
+    let fetchCalls = 0;
+    fetchImpl = async () => {
+      fetchCalls++;
+      return upstream({});
+    };
+
+    const result = await tiktokProvider.createPost(CREDS, {
+      text: "x".repeat(2_201),
+      media: [{ type: "video", url: "https://example.com/v.mp4" }],
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("2200 Unicode code points");
+    expect(result.error).toContain("nothing was posted");
+    expect(fetchCalls).toBe(0);
+  });
+
   it("createPost returns {success:false} (the refund flow depends on this, not a throw)", async () => {
     fetchImpl = async () =>
       upstream({ error: { code: "spam_risk_too_many_posts", message: "post rejected" } });
@@ -157,7 +175,7 @@ describe("tiktokProvider J1 boundaries — upstream failure becomes a structured
 });
 
 describe("tiktokFetch — bounded hops fail closed and keep caller signals", () => {
-  test("aborts a hung TikTok API hop at the timeout", async () => {
+  it("aborts a hung TikTok API hop at the timeout", async () => {
     globalThis.fetch = mock(
       (_input: RequestInfo | URL, init?: RequestInit) =>
         new Promise<Response>((_resolve, reject) => {
@@ -174,7 +192,7 @@ describe("tiktokFetch — bounded hops fail closed and keep caller signals", () 
     expect(Date.now() - start).toBeLessThan(5_000);
   });
 
-  test("composes a caller-provided abort signal with the hop deadline", async () => {
+  it("composes a caller-provided abort signal with the hop deadline", async () => {
     let seen: AbortSignal | undefined;
     globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
       seen = init?.signal;

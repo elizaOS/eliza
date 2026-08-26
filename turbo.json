@@ -100,6 +100,7 @@
     "@elizaos/prompts#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": [
+        "dist/**",
         "specs/actions/plugins.generated.json",
         "$TURBO_ROOT$/packages/core/src/generated/action-docs.ts"
       ],

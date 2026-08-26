@@ -1,11 +1,12 @@
 /**
  * Covers the GENERATE_MEDIA action's validate/handler: provider gating (media
- * service vs IMAGE-model fallback), missing-URL failure, attachment delivery,
- * and i18n-safe media-kind routing (#10471). Runs against a deterministic mock
- * runtime (vi.fn media service, no live model).
+ * service vs IMAGE-model fallback), model-facing Seedance controls, missing-URL
+ * failure, attachment delivery, and i18n-safe media-kind routing (#10471). Runs
+ * against a deterministic mock runtime (vi.fn media service, no live model).
  */
 
 import { describe, expect, it, vi } from "vitest";
+import { actionToTool } from "../../../actions/to-tool.ts";
 import { ModelType, ServiceType } from "../../../types/index.ts";
 import { generateMediaAction } from "./generateMedia.ts";
 
@@ -34,6 +35,24 @@ function runtimeWithMediaService(
 }
 
 describe("generateMediaAction availability", () => {
+	it("publishes every Seedance and attachment input in the planner tool schema", () => {
+		const tool = actionToTool(generateMediaAction);
+		expect(tool.function.parameters).toMatchObject({
+			type: "object",
+			properties: {
+				duration: { type: "number" },
+				aspectRatio: {
+					type: "string",
+					enum: ["auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"],
+				},
+				resolution: { type: "string", enum: ["480p", "720p"] },
+				audio: { type: "boolean" },
+				seed: { type: "number" },
+				imageUrl: { type: "string" },
+			},
+		});
+	});
+
 	it("is hidden when the media service reports no configured provider", async () => {
 		await expect(
 			generateMediaAction.validate?.(
@@ -124,6 +143,66 @@ describe("generateMediaAction availability", () => {
 				{ parameters: { mediaType: "video", prompt: "glass lighthouse" } },
 			),
 		).resolves.toBe(true);
+	});
+
+	it("forwards the exact source image URL and Seedance controls for image-to-video", async () => {
+		const generateMedia = vi.fn(async () => ({
+			mediaType: "video",
+			videoUrl: "https://cdn.example.com/generated/clip.mp4",
+		}));
+		await generateMediaAction.handler?.(
+			runtimeWithMediaService(true, generateMedia),
+			message,
+			undefined,
+			{
+				parameters: {
+					mediaType: "video",
+					prompt: "Make the dog wag its tail",
+					imageUrl: "https://media.blooio.com/files/dog.png",
+					duration: 12,
+					resolution: "480p",
+					aspectRatio: "9:16",
+					audio: false,
+					seed: 42,
+				},
+			},
+			vi.fn(),
+		);
+
+		expect(generateMedia).toHaveBeenCalledWith(
+			expect.objectContaining({
+				mediaType: "video",
+				imageUrl: "https://media.blooio.com/files/dog.png",
+				duration: 12,
+				resolution: "480p",
+				aspectRatio: "9:16",
+				audio: false,
+				seed: 42,
+			}),
+		);
+	});
+
+	it("does not silently remove explicit video controls after a provider rejection", async () => {
+		const generateMedia = vi.fn(async () => {
+			throw new Error(
+				"Seedance 2.5 duration must be a whole number from 4 to 30 seconds",
+			);
+		});
+		const result = await generateMediaAction.handler?.(
+			runtimeWithMediaService(true, generateMedia),
+			message,
+			undefined,
+			{
+				parameters: {
+					mediaType: "video",
+					prompt: "Make a clip",
+					duration: 3,
+				},
+			},
+		);
+
+		expect(generateMedia).toHaveBeenCalledTimes(1);
+		expect(result).toEqual(expect.objectContaining({ success: false }));
 	});
 
 	it("returns MEDIA_GENERATION_MISSING_URL when video service omits videoUrl", async () => {

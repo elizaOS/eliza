@@ -269,6 +269,24 @@ export {
 	resolveDiscordUserProfile,
 	resolveStoredDiscordEntityProfile,
 } from "./discord-profiles";
+export {
+	executeGuildManagement,
+	GUILD_MANAGEMENT_OPERATIONS,
+	GuildManagementError,
+	type GuildManagementGates,
+	type GuildManagementOperation,
+	type GuildManagementReceipt,
+	type GuildManagementRequest,
+	normalizeGuildManagementOperation,
+	resolveGuildManagementGates,
+} from "./guild-management";
+export {
+	BUILT_IN_GUILD_TEMPLATES,
+	type GuildTemplate,
+	type GuildTemplateChannel,
+	type GuildTemplateRole,
+	validateGuildTemplate,
+} from "./guild-templates";
 // Messaging utilities exports
 export {
 	buildChannelLink,

@@ -12,8 +12,6 @@ import { Card, CardContent, CardHeader } from "../ui/card";
 
 const OVERLAY_SHELL_CLASS =
   "fixed inset-0 z-[1001] flex min-h-screen w-full items-center justify-center overflow-hidden bg-bg/80 px-4 py-6 font-body text-txt  sm:px-6";
-const OVERLAY_CARD_CLASS =
-  "relative z-10 w-full max-w-[640px] overflow-hidden border border-border/60 bg-card/95 ";
 
 export function ConnectionLostOverlay() {
   const { backendConnection, relaunchDesktop, retryBackendConnection, t } =
@@ -57,7 +55,7 @@ export function ConnectionLostOverlay() {
       aria-labelledby="connection-lost-title"
       className={OVERLAY_SHELL_CLASS}
     >
-      <Card className={OVERLAY_CARD_CLASS}>
+      <Card variant="overlayMedium">
         <CardHeader className="bg-danger/5 pb-6 pt-6">
           <div className="flex flex-col gap-4">
             <div className="space-y-2">

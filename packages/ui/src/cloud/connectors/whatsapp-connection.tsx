@@ -184,7 +184,7 @@ export function WhatsAppConnection() {
         name={t("cloud.whatsapp.cardName", {
           defaultValue: "WhatsApp Business",
         })}
-        icon={<MessageSquare className="text-green-500" />}
+        icon={<MessageSquare className="text-accent" />}
         description={t("cloud.whatsapp.cardDescription", {
           defaultValue: "Connect WhatsApp Business for AI-powered automation",
         })}
@@ -198,7 +198,7 @@ export function WhatsAppConnection() {
       name={t("cloud.whatsapp.cardName", {
         defaultValue: "WhatsApp Business",
       })}
-      icon={<MessageSquare className="text-green-500" />}
+      icon={<MessageSquare className="text-accent" />}
       description={t("cloud.whatsapp.cardDescription", {
         defaultValue: "Connect WhatsApp Business for AI-powered automation",
       })}
@@ -220,8 +220,8 @@ export function WhatsAppConnection() {
       connectedContent={
         <div className="space-y-4">
           <ConnectionIdentityPanel
-            icon={<Phone className="size-6 text-green-600" />}
-            iconClassName="bg-green-100"
+            icon={<Phone className="size-6 text-accent" />}
+            iconClassName="bg-accent-subtle"
             title={
               status?.businessPhone ||
               t("cloud.whatsapp.cardName", {
@@ -361,7 +361,7 @@ export function WhatsAppConnection() {
                   href="https://developers.facebook.com"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-green-600 hover:underline inline-flex items-center gap-1"
+                  className="text-accent hover:underline inline-flex items-center gap-1"
                 >
                   developers.facebook.com
                   <ExternalLink className="size-3" />
@@ -526,7 +526,7 @@ export function WhatsAppConnection() {
               !phoneNumberId.trim() ||
               !appSecret.trim()
             }
-            className="w-full bg-green-600 hover:bg-green-700"
+            className="w-full"
           >
             {isConnecting ? (
               <>

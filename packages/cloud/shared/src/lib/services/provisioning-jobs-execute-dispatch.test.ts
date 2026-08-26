@@ -18,7 +18,12 @@ import { jobsRepository, StaleJobExecutionError } from "../../db/repositories/jo
 import type { Job } from "../../db/schemas/jobs";
 import { elizaSandboxService } from "./eliza-sandbox";
 import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
-import { provisioningJobService } from "./provisioning-jobs";
+import { ProvisioningJobService } from "./provisioning-jobs";
+
+const provisioningJobService = new ProvisioningJobService({
+  acquireProviderAdmission: async () => true,
+  releaseProviderAdmission: async () => undefined,
+});
 
 const ORG = "22222222-2222-4222-8222-222222222222";
 const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
@@ -88,9 +93,9 @@ function makeJob(
  * building — but not invoking — the permanent-failure writeback, matching the
  * daemon's mid-retry behavior.
  */
-function harness(job: Job) {
+function harness(job: Job, service = provisioningJobService) {
   const conflictSpy = spyOn(
-    provisioningJobService as unknown as {
+    service as unknown as {
       assertNoConflictingLifecycleExecution(job: Job): Promise<void>;
     },
     "assertNoConflictingLifecycleExecution",
@@ -156,8 +161,8 @@ afterEach(() => {
   for (const s of serviceSpies.splice(0)) s.mockRestore();
 });
 
-async function run(type: string) {
-  return provisioningJobService.processPendingJobs(1, {
+async function run(type: string, service = provisioningJobService) {
+  return service.processPendingJobs(1, {
     jobTypes: [type as ProvisioningJobType],
   });
 }
@@ -1292,6 +1297,111 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
       ctx.retryLaterSpy.mockRestore();
     }
   });
+
+  test("agent_provision keeps deletion fenced after provider resolution until job settlement commits", async () => {
+    let admissionLive = false;
+    let markSettlementStarted: (() => void) | undefined;
+    let commitSettlement: (() => void) | undefined;
+    const settlementStarted = new Promise<void>((resolve) => {
+      markSettlementStarted = resolve;
+    });
+    const settlementCommitted = new Promise<void>((resolve) => {
+      commitSettlement = resolve;
+    });
+    const service = new ProvisioningJobService({
+      acquireProviderAdmission: async () => {
+        admissionLive = true;
+        return true;
+      },
+      releaseProviderAdmission: async () => {
+        admissionLive = false;
+      },
+    });
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_PROVISION), service);
+    ctx.updateStatusSpy.mockImplementation(async () => {
+      markSettlementStarted?.();
+      await settlementCommitted;
+      return true;
+    });
+    const provisionSpy = spyOn(elizaSandboxService, "provision").mockResolvedValue({
+      success: true,
+      sandboxRecord: { id: AGENT, organization_id: ORG, user_id: USER, status: "running" },
+      bridgeUrl: "https://bridge.invalid",
+      healthUrl: "https://health.invalid",
+    } as never);
+    serviceSpies.push(provisionSpy);
+    const activateDeletion = () => (admissionLive ? "provider_work_in_flight" : "activated");
+
+    try {
+      const processing = run(JOB_TYPES.AGENT_PROVISION, service);
+      await settlementStarted;
+      expect(activateDeletion()).toBe("provider_work_in_flight");
+      commitSettlement?.();
+      await expect(processing).resolves.toMatchObject({ succeeded: 1, failed: 0 });
+      expect(activateDeletion()).toBe("activated");
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  for (const jobType of [JOB_TYPES.AGENT_RESUME, JOB_TYPES.AGENT_WAKE] as const) {
+    test(`${jobType} keeps deletion fenced through provider response and durable settlement`, async () => {
+      const arm = AGENT_ARMS.find((candidate) => candidate.type === jobType);
+      if (!arm) throw new Error(`Missing dispatch fixture for ${jobType}`);
+      let admissionLive = false;
+      let markSettlementStarted: (() => void) | undefined;
+      let commitSettlement: (() => void) | undefined;
+      const settlementStarted = new Promise<void>((resolve) => {
+        markSettlementStarted = resolve;
+      });
+      const settlementCommitted = new Promise<void>((resolve) => {
+        commitSettlement = resolve;
+      });
+      const service = new ProvisioningJobService({
+        acquireProviderAdmission: async (authority) => {
+          expect(authority).toEqual({
+            organizationId: ORG,
+            operationKind: "agent_lifecycle",
+            operationId: "44444444-4444-4444-8444-444444444444",
+          });
+          admissionLive = true;
+          return true;
+        },
+        releaseProviderAdmission: async () => {
+          admissionLive = false;
+        },
+      });
+      const ctx = harness(makeJob(jobType, arm.data), service);
+      ctx.updateStatusSpy.mockImplementation(async () => {
+        markSettlementStarted?.();
+        await settlementCommitted;
+        return true;
+      });
+      const providerSpy = stub(arm.method, arm.success);
+
+      try {
+        const processing = run(jobType, service);
+        await settlementStarted;
+        expect(providerSpy).toHaveBeenCalledTimes(1);
+        expect(admissionLive).toBe(true);
+        commitSettlement?.();
+        await expect(processing).resolves.toMatchObject({ succeeded: 1, failed: 0 });
+        expect(admissionLive).toBe(false);
+      } finally {
+        ctx.claimSpy.mockRestore();
+        ctx.recoverSpy.mockRestore();
+        ctx.updateStatusSpy.mockRestore();
+        ctx.updateSpy.mockRestore();
+        ctx.incrementSpy.mockRestore();
+        ctx.retryLaterSpy.mockRestore();
+      }
+    });
+  }
 
   test("organization-id mismatch between payload and column fails before any transport call", async () => {
     const ctx = harness(

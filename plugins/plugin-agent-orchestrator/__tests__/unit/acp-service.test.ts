@@ -18,6 +18,7 @@ import {
 import {
   captureHostExecutionBaseline,
   getHostExecutionBaseline,
+  HOST_EXECUTION_BASELINE_ENV_MIRROR_KEYS,
 } from "@elizaos/shared/host-execution-env";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -1069,6 +1070,7 @@ describe("AcpService", () => {
   });
 
   it("uses the native TypeScript transport by default", async () => {
+    const baseline = getHostExecutionBaseline();
     const service = new AcpService(
       runtime({
         ELIZA_ACP_TRANSPORT: undefined,
@@ -1081,6 +1083,16 @@ describe("AcpService", () => {
       name: "default-native",
       agentType: "codex",
       workdir: "/tmp/acp-test",
+      env: {
+        gopath: "/caller/go",
+        GOMODCACHE: "/caller/go-mod",
+        ELIZA_HOST_EXECUTION_BASELINE_GOCACHE: "/caller/go-build-mirror",
+      },
+      customCredentials: {
+        GoCache: "/caller/go-build",
+        eliza_host_execution_baseline_gopath: "/caller/go-mirror",
+        ELIZA_HOST_EXECUTION_BASELINE_GOMODCACHE: "/caller/go-mod-mirror",
+      },
     });
 
     expect(spawned.status).toBe("ready");
@@ -1092,6 +1104,17 @@ describe("AcpService", () => {
     expect(
       nativeClientMock.instances[0]?.opts.env?.ORCHESTRATOR_SESSION_ID,
     ).toBe(spawned.sessionId);
+    expect(nativeClientMock.instances[0]?.opts.env).toMatchObject({
+      GOPATH: baseline.goPath,
+      GOMODCACHE: baseline.goModCache,
+      GOCACHE: baseline.goCache,
+      ELIZA_HOST_EXECUTION_BASELINE_PATH: baseline.path,
+      ELIZA_HOST_EXECUTION_BASELINE_GOPATH: baseline.goPath,
+      ELIZA_HOST_EXECUTION_BASELINE_GOMODCACHE: baseline.goModCache,
+      ELIZA_HOST_EXECUTION_BASELINE_GOCACHE: baseline.goCache,
+    });
+    expect(nativeClientMock.instances[0]?.opts.env?.gopath).toBeUndefined();
+    expect(nativeClientMock.instances[0]?.opts.env?.GoCache).toBeUndefined();
   });
 
   it("single-claims warm elizaos children without credentials at process spawn", async () => {
@@ -1124,6 +1147,12 @@ describe("AcpService", () => {
           OPENAI_API_KEY: "lease-a",
           ELIZA_ACP_WARM_CLAIM_TOKEN: "caller-injected-token",
           PATH: "/caller-controlled/bin",
+          GOPATH: "/caller/go",
+          GOMODCACHE: "/caller/go-mod",
+          GOCACHE: "/caller/go-build",
+          ELIZA_HOST_EXECUTION_BASELINE_GOPATH: "/caller/go-mirror",
+          ELIZA_HOST_EXECUTION_BASELINE_GOMODCACHE: "/caller/go-mod-mirror",
+          ELIZA_HOST_EXECUTION_BASELINE_GOCACHE: "/caller/go-build-mirror",
         },
       });
       expect(firstWarm?.createSession).toHaveBeenCalledTimes(1);
@@ -1140,9 +1169,14 @@ describe("AcpService", () => {
       const firstClaim = firstWarm?.createSession.mock.calls[0]?.[1];
       expect(firstClaim?.env?.ELIZA_ACP_WARM_CLAIM_TOKEN).toBeUndefined();
       expect(firstClaim?.env?.PATH).toBeUndefined();
-      expect(
-        firstClaim?.env?.ELIZA_HOST_EXECUTION_BASELINE_PATH,
-      ).toBeUndefined();
+      for (const key of HOST_EXECUTION_BASELINE_ENV_MIRROR_KEYS) {
+        expect(firstClaim?.env?.[key]).toBeUndefined();
+      }
+      expect(firstClaim?.env).toMatchObject({
+        GOPATH: getHostExecutionBaseline().goPath,
+        GOMODCACHE: getHostExecutionBaseline().goModCache,
+        GOCACHE: getHostExecutionBaseline().goCache,
+      });
       expect(firstClaim?.executionPath).toBe(getHostExecutionBaseline().path);
 
       await waitForNativeClients(2);
@@ -3687,6 +3721,29 @@ describe("AcpService", () => {
     );
   });
 
+  it("preserves complete subprocess stderr in a failed prompt result", async () => {
+    const create = nextProc();
+    const service = new AcpService(runtime());
+    await service.start();
+    const spawned = service.spawnSession({
+      name: "complete-stderr",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+
+    const prompt = nextProc();
+    const sent = service.sendPrompt(sessionId, "hi");
+    await waitForSpawn(prompt);
+    const completeStderr = `STDERR-BEGIN-${"x".repeat(100_000)}-STDERR-END`;
+    prompt.proc.stderr.emit("data", Buffer.from(completeStderr));
+    prompt.proc.emit("close", 2, null);
+
+    await expect(sent).resolves.toMatchObject({ error: completeStderr });
+  });
+
   it("types a Claude injected-token expiry without misclassifying Codex refresh expiry", async () => {
     const service = new AcpService(runtime());
     const classify = (
@@ -3904,6 +3961,32 @@ describe("AcpService.runHealthCheck state_lost guards", () => {
 
     expect(await service.getSession(id)).toBeUndefined();
     expect(turnOutputBuffers.has(id)).toBe(false);
+  });
+
+  it("retains complete session and turn output beyond the former event ceiling", async () => {
+    const service = new AcpService(runtime());
+    const sessionId = "00000000-0000-0000-0000-0000000000a4";
+    const turnOutputBuffers = Reflect.get(service, "turnOutputBuffers") as Map<
+      string,
+      string[]
+    >;
+    turnOutputBuffers.set(sessionId, []);
+    const appendOutput = Reflect.get(service, "appendOutput").bind(service) as (
+      id: string,
+      text: string,
+    ) => void;
+
+    for (let index = 0; index < 2_001; index += 1) {
+      appendOutput(sessionId, `${index}\n`);
+    }
+
+    const complete = Array.from(
+      { length: 2_001 },
+      (_, index) => `${index}\n`,
+    ).join("");
+    expect(await service.getSessionOutput(sessionId)).toBe(complete);
+    expect(await service.getSessionTurnOutput(sessionId)).toBe(complete);
+    expect(await service.getSessionOutput(sessionId, 2)).toBe("1999\n2000\n");
   });
 
   it("enforces ELIZA_ACP_MAX_SESSIONS atomically under concurrent spawns", async () => {

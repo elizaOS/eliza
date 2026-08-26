@@ -20,6 +20,7 @@ import { osc52 } from "./lib/clipboard.js";
 import { getCwd, setCwd } from "./lib/cwd.js";
 import { FilteringTerminal } from "./lib/filtering-terminal.js";
 import { getCodeTaskService } from "./lib/get-code-task-service.js";
+import { sendInteractiveCodingTurn } from "./lib/interactive-coding-turn.js";
 import { useStore } from "./lib/store.js";
 import {
   actionNameFromPayload,
@@ -1222,11 +1223,10 @@ During a turn: Enter queues the message, Esc/Ctrl+C aborts (queued messages are 
       const agentClient = getAgentClient();
       const placeholder = state.addMessage(roomId, "assistant", "", undefined);
       placeholderId = placeholder.id;
-      const response = await agentClient.sendMessage({
+      const response = await sendInteractiveCodingTurn(agentClient, {
         room,
         text,
         identity: state.identity,
-        codingMode: true,
         abortSignal: turnAbortController.signal,
         onDelta: (delta) => {
           if (turnAbortController.signal.aborted) return;

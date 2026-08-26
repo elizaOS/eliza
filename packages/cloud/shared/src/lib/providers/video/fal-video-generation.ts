@@ -19,7 +19,9 @@ function isDefinitiveFalRejection(error: unknown): error is InstanceType<typeof 
 }
 
 function falKey(apiKeys: Record<string, string | undefined>): string | null {
-  const key = apiKeys.FAL_KEY ?? apiKeys.FAL_API_KEY;
+  // FAL_API_KEY is the canonical deployment secret; retain FAL_KEY only as a
+  // backwards-compatible fallback for older local environments.
+  const key = apiKeys.FAL_API_KEY ?? apiKeys.FAL_KEY;
   return typeof key === "string" && key.trim() ? key.trim() : null;
 }
 
@@ -100,20 +102,24 @@ export function normalizeFalVideoResult(result: unknown, requestId?: string): Ge
 
 export function buildFalVideoInput(request: VideoGenerationRequest): Record<string, unknown> {
   const input: Record<string, unknown> = { prompt: request.prompt };
+  const isSeedance25 = request.model.startsWith("bytedance/seedance-2.5/");
   if (request.referenceUrl) {
     input.image_url = request.referenceUrl;
   }
   if (request.durationSeconds) {
-    input.duration = request.durationSeconds;
-    input.duration_seconds = request.durationSeconds;
+    input.duration = isSeedance25 ? String(request.durationSeconds) : request.durationSeconds;
+    if (!isSeedance25) input.duration_seconds = request.durationSeconds;
   }
   if (request.resolution) {
     input.resolution = request.resolution;
   }
   if (request.audio !== undefined) {
-    input.audio = request.audio;
+    if (!isSeedance25) input.audio = request.audio;
     input.generate_audio = request.audio;
   }
+  if (request.aspectRatio) input.aspect_ratio = request.aspectRatio;
+  if (request.seed !== undefined) input.seed = request.seed;
+  if (request.endUserId) input.end_user_id = request.endUserId;
   if (request.voiceControl !== undefined) {
     input.voice_control = request.voiceControl;
   }

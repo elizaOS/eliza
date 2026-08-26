@@ -638,7 +638,7 @@ def extract_source_task(sample: dict[str, Any], row: dict[str, Any] | None = Non
             role = str(message.get("role") or message.get("from") or "").lower()
             content = str(message.get("content") or message.get("value") or "").strip()
             if role in {"user", "human"} and content and not content.lstrip().startswith("TOOLS"):
-                return sanitize_task_text(content[:600])
+                return sanitize_task_text(content)
 
     if row:
         request = row.get("request") if isinstance(row.get("request"), dict) else {}
@@ -648,10 +648,10 @@ def extract_source_task(sample: dict[str, Any], row: dict[str, Any] | None = Non
                 if isinstance(message, dict) and message.get("role") == "user":
                     content = str(message.get("content") or "").strip()
                     if content:
-                        return sanitize_task_text(content[:600])
+                        return sanitize_task_text(content)
         prompt = request.get("prompt")
         if isinstance(prompt, str) and prompt.strip():
-            return sanitize_task_text(prompt.strip()[:600])
+            return sanitize_task_text(prompt.strip())
 
     for fragment in fragments:
         if "_read_error" not in fragment and len(fragment) > 12:

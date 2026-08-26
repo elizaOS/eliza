@@ -11,7 +11,7 @@ import type {
   ModelProviderConfig,
 } from "./types.ts";
 
-export const DEFAULT_MODEL_CONTEXT_WINDOW = 128_000;
+export const DEFAULT_MODEL_CONTEXT_WINDOW = 1_000_000;
 
 const DEFAULT_MODEL_INPUT: ModelDefinitionConfig["input"] = ["text"];
 const DEFAULT_MODEL_COST: ModelDefinitionConfig["cost"] = {

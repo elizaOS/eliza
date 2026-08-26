@@ -178,7 +178,7 @@ function VoiceProfileLifecycleEditor({
             <Button
               type="button"
               variant="secondary"
-              className="min-h-11"
+              size="touch"
               disabled={!mergeIntoId || pending}
               onClick={() =>
                 void dispatch({
@@ -235,7 +235,8 @@ function VoiceProfileLifecycleEditor({
           <Button
             type="button"
             variant="secondary"
-            className="min-h-11 justify-self-start"
+            size="touch"
+            className="justify-self-start"
             disabled={!canSplit || pending}
             onClick={() =>
               void dispatch({
@@ -289,7 +290,8 @@ function VoiceProfileLifecycleEditor({
           <Button
             type="button"
             variant="secondary"
-            className="min-h-11 justify-self-start"
+            size="touch"
+            className="justify-self-start"
             disabled={!canBind || pending}
             onClick={() => {
               const label = entityLabel.trim();
@@ -318,7 +320,7 @@ function VoiceProfileLifecycleEditor({
             <Button
               type="button"
               variant="secondary"
-              className="min-h-11"
+              size="touch"
               disabled={pending}
               onClick={() => void dispatch({ type: "unbind", id: profile.id })}
               data-testid={`voice-profile-unbind-${profile.id}`}
@@ -456,6 +458,8 @@ const VoiceProfileRow = React.memo(function VoiceProfileRow({
             <Input
               ref={renameInputRef}
               type="text"
+              variant="config"
+              density="relaxed"
               value={renameValue}
               onChange={(event) => setRenameValue(event.target.value)}
               onBlur={() => {
@@ -476,7 +480,6 @@ const VoiceProfileRow = React.memo(function VoiceProfileRow({
                 }
               }}
               autoFocus
-              className="h-11 rounded-md border-border bg-surface text-sm"
               data-testid={`voice-profile-rename-input-${profile.id}`}
               aria-label={t("voiceprofile.renameAria", {
                 defaultValue: "Rename voice profile",
@@ -490,9 +493,9 @@ const VoiceProfileRow = React.memo(function VoiceProfileRow({
                 setRenameId(profile.id);
                 setRenameValue(profile.displayName);
               }}
-              variant="ghost"
-              size="sm"
-              className="min-h-11 justify-start p-0 text-left text-sm font-medium hover:bg-transparent hover:underline"
+              variant="link"
+              size="content"
+              align="start"
               data-testid={`voice-profile-name-${profile.id}`}
               {...nameAgentProps}
             >
@@ -944,8 +947,7 @@ export function VoiceProfileSection({
           <Button
             ref={exportRef}
             variant="ghost"
-            size="sm"
-            className="min-h-11"
+            size="touch"
             onClick={() => void onExport()}
             data-testid="voice-profile-export"
             aria-label={t("voiceprofile.exportAria", {
@@ -959,8 +961,7 @@ export function VoiceProfileSection({
           <Button
             ref={resetRef}
             variant="ghost"
-            size="sm"
-            className="min-h-11"
+            size="touch"
             onClick={() => void onDeleteAll()}
             data-testid="voice-profile-delete-all"
             aria-label={t("voiceprofile.resetAria", {

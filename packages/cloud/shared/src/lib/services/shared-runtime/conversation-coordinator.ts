@@ -124,6 +124,7 @@ export interface SharedCutoverSeal {
   token: string;
   leaseMs: number;
   organizationId: string;
+  userId: string;
   dedicatedAgentId: string;
 }
 
@@ -317,6 +318,7 @@ export async function coordinateSharedBridge(
           : {}),
         ...(options.channel ? { channel: options.channel } : {}),
       }),
+      ...(options.abortSignal ? { signal: options.abortSignal } : {}),
     },
   );
   await requireCoordinatorResponse(response, "conversation");
@@ -454,6 +456,7 @@ export async function coordinateSharedCutoverSeal(
         token: seal.token,
         leaseMs: seal.leaseMs,
         organizationId: seal.organizationId,
+        userId: seal.userId,
         dedicatedAgentId: seal.dedicatedAgentId,
       }),
     },

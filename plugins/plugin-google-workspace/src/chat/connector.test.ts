@@ -3,13 +3,13 @@
  * routes outbound sends correctly, against a mocked runtime — no Google API
  * calls.
  */
-import type { Content, IAgentRuntime, TargetInfo } from "@elizaos/core";
+import type { Content, IAgentRuntime, Memory, TargetInfo, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { GoogleChatService } from "./service.js";
 import {
   GoogleChatApiError,
   GoogleChatConfigurationError,
-  MAX_GOOGLE_CHAT_MESSAGE_LENGTH,
+  MAX_GOOGLE_CHAT_MESSAGE_BYTES,
   splitMessageForGoogleChat,
 } from "./types.js";
 
@@ -194,6 +194,31 @@ describe("Google Chat message connector", () => {
     expect(recent).toHaveLength(12);
   });
 
+  it("returns complete stored history when no limit was requested", async () => {
+    const roomId = "00000000-0000-4000-8000-000000000001" as UUID;
+    const memories = Array.from({ length: 501 }, (_, index) => ({
+      id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      roomId,
+      content: { text: `message ${index}` },
+      createdAt: index,
+    })) as Memory[];
+    const getMemories = vi.fn(async () => memories);
+    const runtimeInstance = runtime({ getMemories });
+    const service = serviceWithState();
+
+    GoogleChatService.registerSendHandlers(runtimeInstance, service, "workspace");
+    const registration = vi.mocked(runtimeInstance.registerMessageConnector).mock.calls[0][0];
+    const result = await registration.fetchMessages?.(
+      { runtime: runtimeInstance, target: { source: "google-chat", roomId } as TargetInfo },
+      {}
+    );
+
+    expect(result).toHaveLength(501);
+    expect(getMemories).toHaveBeenCalledWith(
+      expect.not.objectContaining({ limit: expect.anything() })
+    );
+  });
+
   it("registers account-scoped connectors and routes sends through the requested account", async () => {
     const runtimeInstance = runtime({ getSetting: vi.fn() });
     const service = Object.create(GoogleChatService.prototype) as GoogleChatService;
@@ -333,7 +358,7 @@ describe("Google Chat message connector", () => {
       requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
       return Response.json({ name: `spaces/AAA/messages/${requests.length}` });
     });
-    const text = "🙂".repeat(2_500);
+    const text = "🙂".repeat(10_000);
 
     const result = await service.sendMessage({
       accountId: "workspace",
@@ -346,7 +371,11 @@ describe("Google Chat message connector", () => {
     expect(requests).toHaveLength(2);
     const sentText = requests.map((request) => String(request.text));
     expect(sentText.join("")).toBe(text);
-    expect(sentText.every((chunk) => chunk.length <= 4_000)).toBe(true);
+    expect(
+      sentText.every(
+        (chunk) => new TextEncoder().encode(chunk).byteLength <= MAX_GOOGLE_CHAT_MESSAGE_BYTES
+      )
+    ).toBe(true);
     expect(sentText.every((chunk) => chunk.isWellFormed())).toBe(true);
     expect(requests.map((request) => request.thread)).toEqual([
       { name: "spaces/AAA/threads/T1" },
@@ -370,7 +399,7 @@ describe("Google Chat message connector", () => {
       service.sendMessage({
         accountId: "workspace",
         space: "spaces/AAA",
-        text: "🙂".repeat(4_500),
+        text: "🙂".repeat(17_000),
       })
     ).rejects.toBeInstanceOf(GoogleChatApiError);
 
@@ -403,15 +432,17 @@ describe("Google Chat message connector", () => {
   });
 });
 
-describe("splitMessageForGoogleChat surrogate pair safety", () => {
-  it("keeps a surrogate pair (emoji) intact instead of splitting it across chunks", () => {
-    const text = `a${"🙂".repeat(MAX_GOOGLE_CHAT_MESSAGE_LENGTH)}`;
+describe("splitMessageForGoogleChat provider boundary", () => {
+  it("measures emoji in UTF-8 bytes and keeps every chunk well formed", () => {
+    const text = `a${"🙂".repeat(MAX_GOOGLE_CHAT_MESSAGE_BYTES)}`;
 
     const chunks = splitMessageForGoogleChat(text);
 
     expect(chunks.length).toBeGreaterThan(1);
     for (const chunk of chunks) {
-      expect(chunk.length).toBeLessThanOrEqual(MAX_GOOGLE_CHAT_MESSAGE_LENGTH);
+      expect(new TextEncoder().encode(chunk).byteLength).toBeLessThanOrEqual(
+        MAX_GOOGLE_CHAT_MESSAGE_BYTES
+      );
       expect(chunk.isWellFormed()).toBe(true);
     }
   });
@@ -421,29 +452,44 @@ describe("splitMessageForGoogleChat surrogate pair safety", () => {
   });
 
   it("keeps the exact provider boundary and chunks one unit beyond it", () => {
-    const exact = "a".repeat(MAX_GOOGLE_CHAT_MESSAGE_LENGTH);
+    const exact = "a".repeat(MAX_GOOGLE_CHAT_MESSAGE_BYTES);
     expect(splitMessageForGoogleChat(exact)).toEqual([exact]);
 
     const over = `${exact}b`;
     const chunks = splitMessageForGoogleChat(over);
-    expect(chunks.map((chunk) => chunk.length)).toEqual([4_000, 1]);
+    expect(chunks.map((chunk) => chunk.length)).toEqual([32_000, 1]);
     expect(chunks.join("")).toBe(over);
   });
 
   it("does not let a whitespace break exceed the provider limit", () => {
-    const chunks = splitMessageForGoogleChat(`${"a".repeat(MAX_GOOGLE_CHAT_MESSAGE_LENGTH)} b`);
-    expect(chunks.every((chunk) => chunk.length <= 4_000)).toBe(true);
-    expect(chunks).toEqual(["a".repeat(4_000), "b"]);
+    const source = `${"a".repeat(MAX_GOOGLE_CHAT_MESSAGE_BYTES)} b`;
+    const chunks = splitMessageForGoogleChat(source);
+    expect(
+      chunks.every(
+        (chunk) => new TextEncoder().encode(chunk).byteLength <= MAX_GOOGLE_CHAT_MESSAGE_BYTES
+      )
+    ).toBe(true);
+    expect(chunks).toEqual(["a".repeat(32_000), " b"]);
+    expect(chunks.join("")).toBe(source);
   });
 
   it.each([1, 0, -1, 2.5, Number.NaN, Number.POSITIVE_INFINITY])(
     "rejects an invalid maxLength %s instead of stalling",
     (maxLength) => {
       expect(() => splitMessageForGoogleChat("🙂x", maxLength)).toThrow(
-        "maxLength must be an integer of at least 2"
+        "maxBytes must be an integer of at least 4"
       );
     }
   );
+
+  it("uses the full byte budget for multibyte text and reassembles exactly", () => {
+    const source = `${"🙂".repeat(8_000)} tail\n`;
+    const chunks = splitMessageForGoogleChat(source);
+
+    expect(chunks.length).toBe(2);
+    expect(new TextEncoder().encode(chunks[0]).byteLength).toBe(32_000);
+    expect(chunks.join("")).toBe(source);
+  });
 
   it("replaces pre-existing lone surrogates before returning wire text", () => {
     const chunks = splitMessageForGoogleChat(`\uD83Dvalid\uDC00`);

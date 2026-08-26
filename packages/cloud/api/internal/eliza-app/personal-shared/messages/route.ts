@@ -138,6 +138,11 @@ const groupFields = {
   invocation: z.enum(["mention", "command", "reply", "ambient"]),
   replyToMessageId: z.string().trim().min(1).max(160).optional(),
 };
+const blooioGroupMediaUrls = z
+  .array(z.string().url().refine(isAllowedBlooioMediaUrl))
+  .min(1)
+  .max(MAX_INBOUND_MEDIA_IMAGES)
+  .optional();
 
 const sharedMessageSchema = z.union([
   z.object({
@@ -259,6 +264,7 @@ const sharedMessageSchema = z.union([
     platform: z.literal("blooio"),
     chatType: z.literal("group"),
     ...groupFields,
+    mediaUrls: blooioGroupMediaUrls,
   }),
 ]);
 
@@ -896,6 +902,7 @@ app.post("/", async (c) => {
     if (dedicated === undefined) {
       dedicated = await findActivePersonalDedicatedTarget(
         account.organizationId,
+        account.userId,
         agent.id,
       );
     }
@@ -965,7 +972,6 @@ app.post("/", async (c) => {
     // shared runtime (text-only) will answer.
     if (
       parsed.data.platform === "blooio" &&
-      !isGroupMessage(parsed.data) &&
       parsed.data.mediaUrls &&
       !dedicated
     ) {
@@ -988,7 +994,7 @@ app.post("/", async (c) => {
         mediaUrls: parsed.data.mediaUrls,
       });
       if (enrichment.kind === "described") {
-        deliveryMessage = `${deliveryMessage}\n\n[Attached image description]\n${enrichment.description}`;
+        deliveryMessage = `${deliveryMessage}\n\n[Attached image description]\n${enrichment.description}\n\n[Attached image URL]\n${parsed.data.mediaUrls.join("\n")}`;
       }
     }
     if (deliveryMessage && groupActorLabel) {
@@ -1311,6 +1317,7 @@ app.post("/", async (c) => {
           organizationId: account.organizationId,
         },
         reply: guardGroupReply(result.text, groupParticipantRoster),
+        ...(result.mediaUrls ? { mediaUrls: result.mediaUrls } : {}),
         ...(groupDeliveryAuthority
           ? {
               groupDelivery: {

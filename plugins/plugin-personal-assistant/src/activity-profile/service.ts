@@ -5,8 +5,8 @@
  * signals, invokes the analyzer, and exposes the fired-log accessor over the
  * PROACTIVE_AGENT task metadata where the profile is persisted.
  */
-import type { IAgentRuntime, UUID } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import type { LifeOpsActivitySignal } from "../contracts/index.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import {
@@ -45,10 +45,7 @@ function isStringArray(value: unknown): value is string[] {
 
 const PROFILE_MAX_AGE_MS = 60 * 60 * 1000; // 60 min full rebuild threshold
 const MESSAGES_WINDOW_DAYS = 7;
-const MESSAGES_LIMIT = 500;
-const MAX_ROOMS = 50;
-const ACTIVITY_SIGNALS_WINDOW_LIMIT = 500;
-const CURRENT_ACTIVITY_SIGNAL_LIMIT = 32;
+const MESSAGE_PAGE_SIZE = 500;
 
 let screenContextSampler: LifeOpsScreenContextSampler | null = null;
 
@@ -97,7 +94,6 @@ async function loadWindowActivitySignals(
   ).toISOString();
   const signals = await lifeOpsService.listActivitySignals({
     sinceAt,
-    limit: ACTIVITY_SIGNALS_WINDOW_LIMIT,
   });
   return signals
     .map(mapActivitySignalRecord)
@@ -108,12 +104,47 @@ async function loadRecentActivitySignals(
   runtime: IAgentRuntime,
 ): Promise<ActivitySignalRecord[]> {
   const lifeOpsService = new LifeOpsService(runtime);
-  const signals = await lifeOpsService.listActivitySignals({
-    limit: CURRENT_ACTIVITY_SIGNAL_LIMIT,
-  });
+  const signals = await lifeOpsService.listActivitySignals();
   return signals
     .map(mapActivitySignalRecord)
     .filter((signal) => Number.isFinite(signal.observedAt));
+}
+
+/** Load every message for the supplied rooms through lossless offset pages. */
+export async function loadAllRoomMessagesForActivityProfile(
+  runtime: IAgentRuntime,
+  roomIds: UUID[],
+): Promise<Memory[]> {
+  const messages: Memory[] = [];
+  const seenMemoryIds = new Set<UUID>();
+
+  for (let offset = 0; ; offset += MESSAGE_PAGE_SIZE) {
+    const page = await runtime.getMemoriesByRoomIds({
+      tableName: "messages",
+      roomIds,
+      limit: MESSAGE_PAGE_SIZE,
+      offset,
+    });
+    if (page.length === MESSAGE_PAGE_SIZE) {
+      const pageIds = page.map((memory) => memory.id);
+      if (
+        pageIds.some((id) => !id) ||
+        pageIds.every((id) => seenMemoryIds.has(id as UUID))
+      ) {
+        throw new ElizaError(
+          "Activity profile message pagination made no progress",
+          {
+            code: "ACTIVITY_PROFILE_MESSAGE_PAGINATION_STALLED",
+            context: { offset, pageSize: MESSAGE_PAGE_SIZE },
+            severity: "fatal",
+          },
+        );
+      }
+      for (const id of pageIds) seenMemoryIds.add(id as UUID);
+    }
+    messages.push(...page);
+    if (page.length < MESSAGE_PAGE_SIZE) return messages;
+  }
 }
 
 function mergeScreenContext(
@@ -153,12 +184,11 @@ export async function buildActivityProfile(
 
   // 1. Get all rooms the owner participates in
   const roomIds = await runtime.getRoomsForParticipant(ownerEntityId as UUID);
-  const limitedRoomIds = roomIds.slice(0, MAX_ROOMS);
 
   // 2. Build room → source map
   const roomSourceMap = new Map<string, string>();
   await Promise.all(
-    limitedRoomIds.map(async (roomId) => {
+    roomIds.map(async (roomId) => {
       try {
         const room = await runtime.getRoom(roomId);
         if (room?.source) {
@@ -178,12 +208,11 @@ export async function buildActivityProfile(
 
   // 3. Fetch messages
   const messages: MessageRecord[] = [];
-  if (limitedRoomIds.length > 0) {
-    const memories = await runtime.getMemoriesByRoomIds({
-      tableName: "messages",
-      roomIds: limitedRoomIds,
-      limit: MESSAGES_LIMIT,
-    });
+  if (roomIds.length > 0) {
+    const memories = await loadAllRoomMessagesForActivityProfile(
+      runtime,
+      roomIds,
+    );
     for (const mem of memories) {
       messages.push({
         entityId: mem.entityId,
@@ -244,14 +273,13 @@ export async function refreshCurrentState(
 ): Promise<ActivityProfile> {
   const currentTime = now ?? new Date();
   const roomIds = await runtime.getRoomsForParticipant(ownerEntityId as UUID);
-  const limitedRoomIds = roomIds.slice(0, MAX_ROOMS);
   const screenContext = await sampleScreenContext(currentTime);
   const activitySignals = await loadRecentActivitySignals(runtime);
 
   const roomSourceMap = new Map<string, string>();
-  if (limitedRoomIds.length > 0) {
+  if (roomIds.length > 0) {
     await Promise.all(
-      limitedRoomIds.map(async (roomId) => {
+      roomIds.map(async (roomId) => {
         try {
           const room = await runtime.getRoom(roomId);
           if (room?.source) {
@@ -269,12 +297,11 @@ export async function refreshCurrentState(
 
   let lastSeenAt = profile.lastSeenAt;
   let lastSeenPlatform = profile.lastSeenPlatform;
-  if (limitedRoomIds.length > 0) {
-    const memories = await runtime.getMemoriesByRoomIds({
-      tableName: "messages",
-      roomIds: limitedRoomIds,
-      limit: 10,
-    });
+  if (roomIds.length > 0) {
+    const memories = await loadAllRoomMessagesForActivityProfile(
+      runtime,
+      roomIds,
+    );
 
     for (const memory of memories) {
       const createdAt = memory.createdAt ?? 0;

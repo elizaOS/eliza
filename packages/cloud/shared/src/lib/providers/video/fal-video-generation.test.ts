@@ -55,6 +55,32 @@ describe("FAL video provider", () => {
     });
   });
 
+  test("maps Seedance 2.5 controls to its exact fal schema", () => {
+    expect(
+      buildFalVideoInput({
+        model: "bytedance/seedance-2.5/image-to-video",
+        prompt: "the puppy looks up and wags its tail",
+        referenceUrl: "https://example.com/puppy.png",
+        durationSeconds: 5,
+        resolution: "720p",
+        audio: true,
+        aspectRatio: "auto",
+        seed: 42,
+        endUserId: "user-123",
+        apiKeys: { FAL_KEY: "fal-key" },
+      }),
+    ).toEqual({
+      prompt: "the puppy looks up and wags its tail",
+      image_url: "https://example.com/puppy.png",
+      duration: "5",
+      resolution: "720p",
+      generate_audio: true,
+      aspect_ratio: "auto",
+      seed: 42,
+      end_user_id: "user-123",
+    });
+  });
+
   test("normalizes FAL video responses with request id fallback", () => {
     expect(
       normalizeFalVideoResult(
@@ -129,6 +155,25 @@ describe("FAL video provider", () => {
       timings: null,
       hasNsfwConcepts: undefined,
       seed: undefined,
+    });
+  });
+
+  test("prefers the canonical FAL_API_KEY when both deployment keys exist", async () => {
+    createFalClient.mockClear();
+    subscribe.mockImplementationOnce(async () => ({
+      request_id: "canonical-key-result",
+      video: { url: "https://fal.media/canonical.mp4" },
+    }));
+
+    await generateFalVideo({
+      model: "fal-ai/veo3",
+      prompt: "a lighthouse",
+      apiKeys: { FAL_KEY: "stale-legacy-key", FAL_API_KEY: "canonical-key" },
+    });
+
+    expect(createFalClient).toHaveBeenCalledWith({
+      credentials: "canonical-key",
+      suppressLocalCredentialsWarning: true,
     });
   });
 

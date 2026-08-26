@@ -1,17 +1,10 @@
-/*
- * face_nms.c — IoU-based non-maximum suppression for face detections.
+/**
+ * Applies confidence-ordered hard suppression to single-class face detections.
  *
- * Mirrors the structure of `packages/native-plugins/yolo-cpp/src/yolo_nms.c`
- * but operates on `face_detection` records (which carry landmarks
- * in addition to the bbox + confidence).
- *
- * BlazeFace's MediaPipe reference uses weighted-NMS (overlapping
- * boxes are averaged rather than discarded). For the first pass we
- * use plain IoU NMS to match the original `face-detector-mediapipe.ts`
- * post-processing which also used hard NMS. The
- * `min_suppression_threshold` from BlazeFace is 0.3.
- *
- * Single-class NMS — every face_detection is the same class.
+ * The operation compacts records in place without changing the bounding box,
+ * confidence, or landmark data of retained detections. A candidate is removed
+ * only when its intersection-over-union with an earlier, higher-confidence
+ * detection exceeds the caller-provided threshold.
  */
 
 #include "face_internal.h"

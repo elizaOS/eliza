@@ -18,8 +18,8 @@ import {
   BrowserBridgeNativeProtocolError,
   encodeNativeMessage,
   NativeMessageDecoder,
-  parseNativeEnrollmentRequest,
   parseNativeHostLaunchCaller,
+  parseNativeRequest,
 } from "./browser-bridge-native-protocol";
 
 export const FIREFOX_BROWSER_BRIDGE_EXTENSION_ID = "browser-bridge@elizaos.ai";
@@ -209,7 +209,7 @@ export async function runBrowserBridgeNativeHostStdio(options: {
       let response: unknown;
       try {
         if (!host) {
-          const request = parseNativeEnrollmentRequest(message);
+          const request = parseNativeRequest(message);
           response = externalError(request.requestId, "app_not_running");
         } else {
           response = await host.handle(message);

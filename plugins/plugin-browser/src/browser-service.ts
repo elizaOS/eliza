@@ -57,7 +57,7 @@ import {
   BROWSER_BRIDGE_ROUTE_SERVICE_TYPE,
   type BrowserBridgeRouteService,
 } from "./service.js";
-import { BRIDGE_SUPPORTED_SUBACTIONS } from "./targets/bridge-target.js";
+import { bridgeSupports } from "./targets/bridge-target.js";
 import { maybeCreateStagehandTarget } from "./targets/stagehand-target.js";
 import {
   ensureBrowserWorkspaceDefaultTabWithRetry,
@@ -683,7 +683,7 @@ async function maybeCreateBridgeTarget(
     // handles a read-mostly subset of subactions. Declaring it here lets the
     // dispatcher skip the bridge for unsupported commands *before* dispatch
     // instead of discovering it via a thrown error.
-    supports: (command) => BRIDGE_SUPPORTED_SUBACTIONS.has(command.subaction),
+    supports: bridgeSupports,
     available: async () => {
       try {
         const companions = await service.listBrowserCompanions();

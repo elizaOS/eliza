@@ -2,6 +2,16 @@
  * Renders orchestrator status and task-inspector controls while preserving task mutation boundaries.
  */
 
+import {
+  Button,
+  Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Textarea,
+} from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type {
   ChangeSetData,
@@ -25,16 +35,6 @@ import {
   AlertDialogTrigger,
   DiffReviewPanel,
 } from "@elizaos/ui/components";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@elizaos/ui/components/ui/select";
-import { Textarea } from "@elizaos/ui/components/ui/textarea";
 import {
   Archive,
   Check,
@@ -311,10 +311,10 @@ export function WorkbenchHeader({
   const accountsToggle = (
     <Button
       ref={accountsRef}
-      variant="ghost"
-      size="sm"
+      variant="ghostMuted"
+      size="icon-sm"
       onClick={onToggleAccounts}
-      className="size-7 shrink-0 p-0"
+      className="shrink-0"
       aria-label={accountsLabel}
       aria-pressed={accountsOpen}
       title={accountsLabel}
@@ -332,11 +332,10 @@ export function WorkbenchHeader({
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
         {status?.activeTaskCount ? (
           <Button
-            variant="ghost"
-            size="sm"
+            variant="ghostMuted"
+            size="icon-sm"
             disabled={busy}
             onClick={onPauseAll}
-            className="size-7 p-0"
             aria-label={pauseAllLabel}
             title={pauseAllLabel}
             data-testid="orchestrator-pause-all"
@@ -348,11 +347,10 @@ export function WorkbenchHeader({
         ) : null}
         {status?.pausedTaskCount ? (
           <Button
-            variant="ghost"
-            size="sm"
+            variant="ghostMuted"
+            size="icon-sm"
             disabled={busy}
             onClick={onResumeAll}
-            className="size-7 p-0"
             aria-label={resumeAllLabel}
             title={resumeAllLabel}
             data-testid="orchestrator-resume-all"
@@ -439,11 +437,11 @@ function SubAgentCard({
           {session.label}
         </span>
         <Button
-          unstyled
+          variant="ghostMuted"
+          size="micro"
           ref={inspectRef}
           type="button"
           onClick={() => onInspect(session.sessionId)}
-          className="flex items-center gap-0.5 px-1 py-0.5 text-2xs text-muted transition-colors hover:text-txt"
           data-testid="orchestrator-inspect-session"
           aria-label={inspectLabel}
           title={inspectLabel}
@@ -453,11 +451,11 @@ function SubAgentCard({
         </Button>
         {stoppable ? (
           <Button
-            unstyled
+            variant="dangerGhost"
+            size="micro"
             type="button"
             disabled={busy}
             onClick={() => onStop(session.sessionId)}
-            className="flex items-center gap-0.5 px-1 py-0.5 text-2xs text-muted transition-colors hover:text-danger disabled:opacity-50"
             data-testid="orchestrator-stop-agent"
             aria-label={stopLabel}
             data-agent-authority="human"
@@ -615,12 +613,13 @@ function EditedPlanRestartSection({
           </span>
         </div>
         <Button
-          unstyled
+          variant="ghostMuted"
+          size="tiny"
           ref={toggleRef}
           type="button"
           disabled={busy}
           onClick={() => setOpen((prev) => !prev)}
-          className="inline-flex h-7 shrink-0 items-center gap-1.5 px-1 text-2xs font-semibold text-muted transition-colors hover:text-txt disabled:opacity-50"
+          className="shrink-0"
           data-testid="orchestrator-plan-edit-toggle"
           {...toggleAgentProps}
         >
@@ -638,9 +637,10 @@ function EditedPlanRestartSection({
             <FieldLabel>{summaryLabel}</FieldLabel>
             <Input
               id="orchestrator-plan-edit-summary"
+              variant="embeddedSearch"
+              density="compact"
               value={summary}
               onChange={(event) => setSummary(event.target.value)}
-              className={FIELD_CLASS}
               placeholder={t("orchestrator.planEdit.summaryPlaceholder", {
                 defaultValue: "What changed",
               })}
@@ -651,10 +651,11 @@ function EditedPlanRestartSection({
             <FieldLabel>{draftLabel}</FieldLabel>
             <Textarea
               id="orchestrator-plan-draft"
+              variant="documentEditor"
+              density="compact"
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               rows={8}
-              className={`${FIELD_CLASS} resize-y font-mono leading-relaxed`}
               spellCheck={false}
               data-testid="orchestrator-plan-draft"
             />
@@ -663,10 +664,9 @@ function EditedPlanRestartSection({
           <div className="flex justify-end">
             <Button
               type="button"
-              size="sm"
+              size="tiny"
               disabled={busy}
               onClick={submit}
-              className="h-7 gap-1.5 px-2.5 text-xs-tight"
               data-testid="orchestrator-plan-restart"
               data-agent-authority="human"
               data-agent-human-id="inspector-restart-edited-plan"
@@ -795,9 +795,6 @@ export function UsageSection({
     </InspectorSection>
   );
 }
-
-const FIELD_CLASS =
-  "w-full border-border/35 border-b bg-transparent px-1 py-1.5 text-xs text-txt outline-none transition-colors placeholder:text-muted focus:border-accent/60";
 
 function FieldLabel({ children }: { children: ReactNode }) {
   return (
@@ -931,9 +928,10 @@ function AddAgentForm({
     <div className="mt-1.5 space-y-1.5">
       <Input
         ref={labelRef}
+        variant="embeddedSearch"
+        density="compact"
         value={label}
         onChange={(event) => setLabel(event.target.value)}
-        className={FIELD_CLASS}
         placeholder={fieldLabels.label}
         aria-label={fieldLabels.label}
         data-testid="orchestrator-add-agent-label"
@@ -942,18 +940,20 @@ function AddAgentForm({
       <div className="flex gap-1.5">
         <Input
           ref={frameworkRef}
+          variant="embeddedSearch"
+          density="compact"
           value={framework}
           onChange={(event) => setFramework(event.target.value)}
-          className={FIELD_CLASS}
           placeholder={fieldLabels.framework}
           aria-label={fieldLabels.framework}
           {...frameworkAgentProps}
         />
         <Input
           ref={modelRef}
+          variant="embeddedSearch"
+          density="compact"
           value={model}
           onChange={(event) => setModel(event.target.value)}
-          className={FIELD_CLASS}
           placeholder={fieldLabels.model}
           aria-label={fieldLabels.model}
           {...modelAgentProps}
@@ -961,28 +961,31 @@ function AddAgentForm({
       </div>
       <Input
         ref={workdirRef}
+        variant="embeddedSearch"
+        density="compact"
         value={workdir}
         onChange={(event) => setWorkdir(event.target.value)}
-        className={FIELD_CLASS}
         placeholder={fieldLabels.workdir}
         aria-label={fieldLabels.workdir}
         {...workdirAgentProps}
       />
       <Input
         ref={repoRef}
+        variant="embeddedSearch"
+        density="compact"
         value={repo}
         onChange={(event) => setRepo(event.target.value)}
-        className={FIELD_CLASS}
         placeholder={fieldLabels.repo}
         aria-label={fieldLabels.repo}
         {...repoAgentProps}
       />
       <Textarea
         ref={taskRef}
+        variant="documentEditor"
+        density="compact"
         value={task}
         onChange={(event) => setTask(event.target.value)}
         rows={2}
-        className={`${FIELD_CLASS} resize-none`}
         placeholder={fieldLabels.task}
         aria-label={fieldLabels.task}
         {...taskAgentProps}
@@ -991,18 +994,16 @@ function AddAgentForm({
         <Button
           ref={cancelRef}
           variant="secondary"
-          size="sm"
+          size="micro"
           onClick={onClose}
-          className="h-6 px-2 text-2xs"
           {...cancelAgentProps}
         >
           {cancelLabel}
         </Button>
         <Button
-          size="sm"
+          size="micro"
           disabled={busy}
           onClick={spawn}
-          className="h-6 px-2 text-2xs"
           data-testid="orchestrator-add-agent-submit"
           data-agent-authority="human"
           data-agent-human-id="add-agent-spawn"
@@ -1035,17 +1036,13 @@ function ControlButton({
 }) {
   return (
     <Button
-      unstyled
+      variant={tone === "danger" ? "dangerGhost" : "ghostMuted"}
+      size="icon-sm"
       type="button"
       disabled={disabled}
       onClick={onClick}
       aria-label={label}
       title={label}
-      className={`flex items-center justify-center p-1.5 transition-colors disabled:opacity-50 ${
-        tone === "danger"
-          ? "text-muted hover:text-danger"
-          : "text-muted hover:text-txt"
-      }`}
       data-testid={testId}
       data-agent-authority="human"
       data-agent-human-id={agentId}
@@ -1082,14 +1079,14 @@ function AgentLocalControlButton({
   });
   return (
     <Button
-      unstyled
+      variant="ghostMuted"
+      size="icon-sm"
       ref={ref}
       type="button"
       disabled={disabled}
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="flex items-center justify-center p-1.5 text-muted transition-colors hover:text-txt disabled:opacity-50"
       data-testid={testId}
       {...agentProps}
     >
@@ -1117,11 +1114,11 @@ export function RecoveryActionButton({
 }) {
   return (
     <Button
-      unstyled
+      variant="dangerGhost"
+      size="tiny"
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="inline-flex h-7 items-center gap-1.5 px-1 text-2xs font-semibold text-muted transition-colors hover:text-txt disabled:opacity-50"
       data-testid={testId}
       data-agent-authority="human"
       data-agent-human-id={agentId}
@@ -1158,7 +1155,7 @@ function AgentDeleteDialogConfirm({
   return (
     <AlertDialogAction
       onClick={onDelete}
-      className="bg-red-600 hover:bg-red-700"
+      className="bg-destructive text-destructive-fg hover:bg-destructive/85"
       data-agent-authority="human"
       data-agent-human-id="inspector-delete-confirm"
     >
@@ -1281,11 +1278,12 @@ export function TaskInspector({
             {t("orchestrator.inspector.title", { defaultValue: "Details" })}
           </h3>
           <Button
-            unstyled
+            variant="ghostMuted"
+            size="icon-sm"
             ref={closeRef}
             type="button"
             onClick={onClose}
-            className="-mr-1 p-1 text-muted transition-colors hover:text-txt"
+            className="-mr-1"
             aria-label={closeDetailsLabel}
             data-testid="orchestrator-close-inspector"
             {...closeAgentProps}

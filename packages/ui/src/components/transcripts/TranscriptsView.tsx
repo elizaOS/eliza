@@ -330,14 +330,13 @@ function TranscriptRow({
     <Button
       ref={ref}
       {...agentProps}
-      variant="ghost"
+      variant="selection"
+      size="row"
+      align="start"
+      data-state={active ? "on" : "off"}
       data-testid={`transcript-row-${summary.id}`}
       data-active={active ? "true" : undefined}
       onClick={() => onSelect(summary.id)}
-      className={cn(
-        "h-auto w-full justify-start rounded-sm px-3 py-2 text-left font-normal text-txt transition-colors",
-        active ? "bg-bg-muted/30" : "hover:bg-bg-muted/20",
-      )}
     >
       <div className="flex items-center gap-2">
         <span className="min-w-0 truncate font-medium">{summary.title}</span>

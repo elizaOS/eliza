@@ -28,6 +28,7 @@ import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { useAppSelector, useAppSelectorShallow } from "../../state";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { PermissionPrimingModal } from "../permissions/PermissionPrimingModal";
+import { resolvePrimingSet } from "../permissions/permission-priming";
 import { CloudSettingsPanel } from "../settings/cloud-panel/CloudSettingsPanel";
 import { DesktopSettingsNavigation } from "../settings/DesktopSettingsNavigation";
 import { SettingsHubList } from "../settings/SettingsHubList";
@@ -172,10 +173,10 @@ function SettingsSectionFallback({
         {error.message}
       </p>
       <Button
-        variant="outline"
-        size="sm"
+        variant="outlineAccent"
+        size="regularCompact"
         onClick={onRetry}
-        className="mt-1 h-9 rounded-md border-border bg-card px-3 text-xs font-medium text-txt transition-colors hover:border-accent hover:text-accent"
+        className="mt-1"
       >
         {t("settings.sectionRetry", { defaultValue: "Retry" })}
       </Button>
@@ -209,7 +210,7 @@ function SettingsSectionSurfaceAnchor({
     onActivate: () => onSelect(section.id),
   });
   return (
-    <button
+    <Button
       ref={ref}
       type="button"
       aria-hidden
@@ -305,6 +306,7 @@ function LegacySettingsView({
   const visibleSections = getAllSettingsSections().filter((section) => {
     if (section.id === "wallet-rpc" && walletEnabled === false) return false;
     if (section.cloudOnly && !managedCloudRuntime) return false;
+    if (section.androidCloudOnly && !isAndroidCloudBuild()) return false;
     if (section.hideOnManagedCloud && managedCloudRuntime) return false;
     if (!isViewVisible(section, enabledKinds)) return false;
     if (section.hideOnCloud && isAndroidCloudBuild()) return false;
@@ -396,7 +398,8 @@ function LegacySettingsView({
       if (navigateSequence > 0) setPrimePermission(null);
       return;
     }
-    setPrimePermission(permission);
+    const [supportedPermission] = resolvePrimingSet({ only: [permission] });
+    setPrimePermission(supportedPermission ?? null);
   }, [navigatePayload, navigateSequence]);
 
   useEffect(() => {
@@ -427,12 +430,16 @@ function LegacySettingsView({
   // against the full registry, not just the visible hub rows: hidden sections
   // stay registered exactly so their deep-links keep working (the mvp-hidden
   // contract). The hub itself only lists visible sections.
+  const registeredActiveSection = activeSection
+    ? (getAllSettingsSections().find(
+        (section) => section.id === activeSection,
+      ) ?? null)
+    : null;
   const activeSectionDef: SettingsSectionDef | null = activeSection
     ? (visibleSections.find((section) => section.id === activeSection) ??
-      getAllSettingsSections().find(
-        (section) => section.id === activeSection,
-      ) ??
-      null)
+      (registeredActiveSection?.androidCloudOnly && !isAndroidCloudBuild()
+        ? null
+        : registeredActiveSection))
     : null;
   // A desktop workspace always has useful content beside its persistent rail.
   // This presentational default does not write a hash, so the mobile root still
@@ -482,6 +489,9 @@ function LegacySettingsView({
     <ShellViewAgentSurface viewId="settings">
       <ContentLayout
         inModal={inModal}
+        className={cn(
+          !inModal && !isDesktop && "mb-[var(--eliza-chat-clearance,5.25rem)]",
+        )}
         contentClassName={isDesktop ? "px-0 pt-0" : "max-sm:pt-1"}
         sidebar={desktopSidebar}
         sidebarCollapsible={false}
@@ -489,8 +499,10 @@ function LegacySettingsView({
         <div
           data-testid="settings-shell"
           className={cn(
-            "flex min-h-full w-full",
-            isDesktop ? "flex-row" : "flex-col",
+            "flex w-full",
+            isDesktop
+              ? "min-h-full flex-row"
+              : "h-full min-h-0 flex-col overflow-hidden",
           )}
         >
           {/* Agent-surface anchors: the agent addresses every section by
@@ -507,7 +519,14 @@ function LegacySettingsView({
             ))}
           </div>
 
-          <div className="min-w-0 flex-1 pb-32">
+          <div
+            className={cn(
+              "min-w-0 flex-1",
+              isDesktop
+                ? "pb-32"
+                : "eliza-chat-scroll max-h-[calc(100dvh-var(--eliza-chat-clearance,5.25rem)-5rem)] min-h-0 overflow-y-auto pb-4",
+            )}
+          >
             {isDesktop ? (
               <main
                 data-testid="desktop-settings-work-area"

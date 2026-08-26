@@ -89,7 +89,7 @@ function PipelineNodeButton({
 }) {
   const Icon = node.icon;
 
-  const statusClasses = {
+  const _statusClasses = {
     active: selected
       ? "border-primary/40 bg-primary/5   "
       : "border-border/40 hover:border-border/60 ",
@@ -102,29 +102,33 @@ function PipelineNodeButton({
   };
 
   const iconColor = {
-    active: selected ? "text-primary" : "text-muted-strong",
+    active: selected ? "text-accent-fg" : "text-muted-strong",
     skipped: "text-muted/50",
     error: "text-danger/80",
   };
 
   const countBg = {
-    active: selected ? "bg-primary/15 text-primary" : "bg-muted/10 text-txt/60",
+    active: selected
+      ? "bg-accent-fg/15 text-accent-fg"
+      : "bg-muted/10 text-txt/60",
     skipped: "bg-muted/8 text-muted/40",
     error: "bg-danger/10 text-danger/70",
   };
 
   return (
     <Button
-      variant="ghost"
+      variant="choice"
+      size="card"
+      data-state={selected ? "on" : "off"}
       onClick={onClick}
-      className={`
-        h-auto min-w-[90px] flex-col items-center gap-1.5 rounded-sm border
-        px-3 py-2.5 transition-all duration-150 cursor-pointer select-none
-        ${statusClasses[node.status]}
-      `}
+      className="min-w-[90px] items-center"
     >
       <Icon className={`size-5 ${iconColor[node.status]}`} />
-      <span className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted-strong whitespace-nowrap">
+      <span
+        className={`text-2xs font-semibold uppercase tracking-[0.12em] whitespace-nowrap ${
+          selected ? "text-accent-fg" : "text-muted-strong"
+        }`}
+      >
         {node.label}
       </span>
       <span

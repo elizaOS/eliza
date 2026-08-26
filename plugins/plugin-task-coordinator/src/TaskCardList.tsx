@@ -1,9 +1,9 @@
 // Shared visual task-card language for the /orchestrator and /task-coordinator
 // single-pane landings. Both views render the same card medallion + chips so the
 // two surfaces read as one product. Pure presentation — no data fetching.
+
+import { Button, Input } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
 import {
   Archive,
   Circle,
@@ -210,10 +210,12 @@ export function TaskSearchInput({
         ref={inputRef}
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        variant="embeddedSearch"
+        density="short"
+        adornment="leading"
         placeholder={placeholder}
         aria-label={placeholder}
         data-testid={testId}
-        className="h-full w-full bg-transparent pl-7 pr-1 text-sm text-txt outline-none placeholder:text-muted"
         {...agentProps}
       />
     </div>
@@ -263,12 +265,14 @@ export function TaskCard({
   });
   return (
     <Button
-      unstyled
+      variant="selection"
+      size="eventRow"
+      align="start"
       ref={ref}
       type="button"
       onClick={() => onOpen(id)}
       data-testid="task-card"
-      className="group relative flex w-full items-start gap-2 px-1 py-2 text-left transition-colors hover:bg-bg-hover/30"
+      className="group relative"
       {...agentProps}
     >
       <TaskStatusMedallion status={status} />
@@ -395,12 +399,12 @@ export function BackChip({
   });
   return (
     <Button
-      unstyled
+      variant="ghostMuted"
+      size="micro"
       ref={ref}
       type="button"
       onClick={onClick}
       data-testid={testId}
-      className="inline-flex items-center gap-1.5 py-1 text-xs font-medium text-muted transition-colors hover:text-txt"
       {...agentProps}
     >
       <span aria-hidden>←</span>

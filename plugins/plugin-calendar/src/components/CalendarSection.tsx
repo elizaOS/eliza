@@ -454,7 +454,10 @@ function AllDayBandCell({
         const selected = event.id === selectedEventId;
         return (
           <Button
-            unstyled
+            variant="selection"
+            size="micro"
+            align="start"
+            data-state={selected ? "on" : "off"}
             key={event.id}
             type="button"
             onClick={() => onSelectEvent(event)}
@@ -462,7 +465,7 @@ function AllDayBandCell({
               mouseEvent.preventDefault();
               onSelectEvent(event);
             }}
-            className="block w-full truncate px-1.5 py-0.5 text-left text-[10px] font-medium"
+            className="block w-full truncate"
             style={{
               background: selected ? color.bg : color.softBg,
               color: selected ? color.text : color.softText,
@@ -566,7 +569,9 @@ function DayColumnGrid({
         const isSelected = event.id === selectedEventId;
         return (
           <Button
-            unstyled
+            variant="selection"
+            size="content"
+            data-state={isSelected ? "on" : "off"}
             key={event.id}
             type="button"
             onClick={() => onSelectEvent(event)}
@@ -575,7 +580,7 @@ function DayColumnGrid({
               onSelectEvent(event);
             }}
             aria-pressed={isSelected}
-            className={`group absolute overflow-hidden border px-1.5 py-1 text-left transition-transform ${isSelected ? "ring-2 ring-accent z-10" : "hover:translate-y-[-1px]"}`}
+            className="group absolute overflow-hidden"
             style={{
               top: `calc(${position.topPct}% + 0.1rem)`,
               height: `calc(${position.heightPct}% - 0.2rem)`,
@@ -807,7 +812,10 @@ function MonthGrid({
                   const isSelected = event.id === selectedEventId;
                   return (
                     <Button
-                      unstyled
+                      variant="selection"
+                      size="micro"
+                      align="start"
+                      data-state={isSelected ? "on" : "off"}
                       key={event.id}
                       type="button"
                       onClick={() => onSelectEvent(event)}
@@ -815,7 +823,7 @@ function MonthGrid({
                         mouseEvent.preventDefault();
                         onSelectEvent(event);
                       }}
-                      className="flex min-w-0 items-center gap-1 px-1.5 py-0.5 text-left text-[10px] font-medium"
+                      className="min-w-0"
                       style={{
                         background: isSelected ? color.bg : color.softBg,
                         color: isSelected ? color.text : color.softText,
@@ -837,11 +845,7 @@ function MonthGrid({
                 {dayEvents.length > 3 ? (
                   <Popover>
                     <PopoverTrigger asChild>
-                      <Button
-                        unstyled
-                        type="button"
-                        className="px-1 text-left text-[10px] font-medium text-muted hover:text-txt"
-                      >
+                      <Button variant="mutedLink" type="button" align="start">
                         +{dayEvents.length - 3} more
                       </Button>
                     </PopoverTrigger>
@@ -858,11 +862,12 @@ function MonthGrid({
                           const overflowColor = paletteFor(event);
                           return (
                             <Button
-                              unstyled
+                              variant="ghostMuted"
+                              size="eventRow"
+                              align="start"
                               key={`overflow-${event.id}`}
                               type="button"
                               onClick={() => onSelectEvent(event)}
-                              className="flex w-full items-start gap-2 px-3 py-1.5 text-left hover:bg-bg-hover/40"
                             >
                               <span
                                 aria-hidden
@@ -915,7 +920,9 @@ function AgendaEventButton({
   });
   return (
     <Button
-      unstyled
+      variant="selection"
+      size="eventRow"
+      data-state={isSelected ? "on" : "off"}
       ref={ref}
       type="button"
       onClick={() => onSelectEvent(event)}
@@ -924,9 +931,6 @@ function AgendaEventButton({
         onSelectEvent(event);
       }}
       aria-pressed={isSelected}
-      className={`flex w-full items-start gap-3 px-2 py-3 text-left transition-colors ${
-        isSelected ? "bg-accent/8" : "hover:bg-bg-muted/40"
-      }`}
       {...agentProps}
     >
       <span
@@ -1170,10 +1174,10 @@ export function CalendarSection({
           <div className="flex min-w-0 items-center gap-2">
             <div className="flex overflow-hidden">
               <Button
-                unstyled
+                variant="ghostMuted"
+                size="icon-sm"
                 ref={prevNav.ref}
                 type="button"
-                className="flex size-8 items-center justify-center text-muted hover:text-txt"
                 aria-label={t("lifeopsCalendar.previous", {
                   defaultValue: "Previous",
                 })}
@@ -1183,20 +1187,20 @@ export function CalendarSection({
                 <ChevronLeft className="size-4" aria-hidden />
               </Button>
               <Button
-                unstyled
+                variant="ghostMuted"
+                size="dense"
                 ref={todayNav.ref}
                 type="button"
-                className="h-8 px-2.5 text-xs font-medium text-txt hover:text-accent"
                 onClick={calendar.goToToday}
                 {...todayNav.agentProps}
               >
                 {t("lifeopsCalendar.today", { defaultValue: "Today" })}
               </Button>
               <Button
-                unstyled
+                variant="ghostMuted"
+                size="icon-sm"
                 ref={nextNav.ref}
                 type="button"
-                className="flex size-8 items-center justify-center text-muted hover:text-txt"
                 aria-label={t("lifeopsCalendar.next", {
                   defaultValue: "Next",
                 })}
@@ -1225,8 +1229,8 @@ export function CalendarSection({
             />
             <Button
               ref={newEvent.ref}
-              size="sm"
-              className="h-8 shrink-0 gap-1 px-2 text-xs font-semibold"
+              size="dense"
+              className="shrink-0"
               onClick={() => {
                 setCreateDefaultDate(new Date(calendar.windowStart));
                 setCreateOpen(true);

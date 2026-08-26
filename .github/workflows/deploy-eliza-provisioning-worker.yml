@@ -187,10 +187,9 @@ jobs:
       # compatibility window.
       AGENT_ROUTER_PUBLIC_HOST: ${{ needs.determine-env.outputs.environment == 'production' && 'eliza-production-1.eliza.app' || 'eliza-staging-1.eliza.app' }}
       LEGACY_AGENT_ROUTER_PUBLIC_HOST: ${{ needs.determine-env.outputs.environment == 'production' && 'eliza-production-1.elizacloud.ai' || 'eliza-staging-1.elizacloud.ai' }}
-      # Non-secret backup catalogue inputs document the future activation
-      # contract while both merge-time gates remain forced off. The five backup
-      # credentials are intentionally not sourced or transported in this
-      # dormant changeset; a reviewed activation must add that authority.
+      # Non-secret backup catalogue inputs serve the deletion-only authority;
+      # capture and scheduling remain independently forced off below. Provider
+      # credentials are sourced only into the dedicated root-owned allowlist.
       AGENT_BACKUP_CATALOG_WORKER_ID: ${{ vars.AGENT_BACKUP_CATALOG_WORKER_ID }}
       AGENT_BACKUP_R2_ENDPOINT_ALIAS: ${{ vars.AGENT_BACKUP_R2_ENDPOINT_ALIAS }}
       AGENT_BACKUP_R2_ACCOUNT_ID: ${{ vars.AGENT_BACKUP_R2_ACCOUNT_ID }}
@@ -471,6 +470,10 @@ jobs:
           SANDBOX_REGISTRY_REDIS_URL: ${{ secrets.SANDBOX_REGISTRY_REDIS_URL }}
           DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
           SECRETS_MASTER_KEY: ${{ secrets.SECRETS_MASTER_KEY }}
+          AGENT_BACKUP_R2_ACCESS_KEY_ID: ${{ secrets.AGENT_BACKUP_R2_ACCESS_KEY_ID }}
+          AGENT_BACKUP_R2_SECRET_ACCESS_KEY: ${{ secrets.AGENT_BACKUP_R2_SECRET_ACCESS_KEY }}
+          AGENT_BACKUP_HETZNER_ACCESS_KEY_ID: ${{ secrets.AGENT_BACKUP_HETZNER_ACCESS_KEY_ID }}
+          AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY: ${{ secrets.AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY }}
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
           host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
@@ -480,7 +483,7 @@ jobs:
           # wait without weakening the preflight's own eight-minute fail-closed
           # fence near the end of this remote script.
           command_timeout: 40m
-          envs: DEPLOY_BRANCH,DEPLOY_SHA,SYSTEMD_UNIT,BACKUP_SYSTEMD_UNIT,SYSTEMD_ENVIRONMENT_HELPER_SHA256,BACKUP_SYSTEMD_UNIT_SHA256,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,CONTAINERS_SSH_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,DATABASE_SSL_NO_VERIFY,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE,WARM_POOL_ENABLED,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,LEGACY_AGENT_ROUTER_PUBLIC_HOST,AGENT_BACKUP_CATALOG_WORKER_ID,AGENT_BACKUP_R2_ENDPOINT_ALIAS,AGENT_BACKUP_R2_ACCOUNT_ID,AGENT_BACKUP_R2_ENDPOINT,AGENT_BACKUP_R2_BUCKET,AGENT_BACKUP_R2_REGION,AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS,AGENT_BACKUP_HETZNER_ACCOUNT_ID,AGENT_BACKUP_HETZNER_ENDPOINT,AGENT_BACKUP_HETZNER_BUCKET,AGENT_BACKUP_HETZNER_REGION,AGENT_BACKUP_STEWARD_KMS_BASE_URL,AGENT_BACKUP_AGENT_SCHEMA_VERSION,AGENT_BACKUP_DATABASE_SCHEMA_VERSION,AGENT_BACKUP_RUNTIME_PLUGINS_JSON,AGENT_BACKUP_LEGACY_WRITER_DRAIN_DEPLOYMENT_ID,AGENT_BACKUP_LEGACY_WRITER_DRAINED_AT,AGENT_BACKUP_STORAGE_SCOPE,AGENT_BACKUP_SPOOL_MAX_BYTES,AGENT_BACKUP_SPOOL_MIN_FREE_BYTES,AGENT_BACKUP_SPOOL_CLEANUP_BATCH_SIZE,AGENT_BACKUP_CAPTURE_DEADLINE_MS,AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS,AGENT_BACKUP_SCHEDULE_BATCH_SIZE,AGENT_BACKUP_SCHEDULE_LEASE_MS,AGENT_BACKUP_SCHEDULE_RETRY_MS,AGENT_BACKUP_OPERATION_BATCH_SIZE,AGENT_BACKUP_OPERATION_LEASE_MS,AGENT_BACKUP_OPERATION_RETRY_BASE_MS,AGENT_BACKUP_OPERATION_RETRY_MAX_MS,AGENT_BACKUP_GC_BATCH_SIZE,AGENT_BACKUP_GC_LEASE_MS,AGENT_BACKUP_GC_RETRY_BASE_MS,AGENT_BACKUP_GC_RETRY_MAX_MS,AGENT_BACKUP_DELETION_BATCH_SIZE,AGENT_BACKUP_CATALOG_WORKER_INTERVAL_MS,AGENT_BACKUP_CATALOG_WORKER_RETRY_MS,AGENT_BACKUP_CATALOG_WORKER_SHUTDOWN_TIMEOUT_MS
+          envs: DEPLOY_BRANCH,DEPLOY_SHA,SYSTEMD_UNIT,BACKUP_SYSTEMD_UNIT,SYSTEMD_ENVIRONMENT_HELPER_SHA256,BACKUP_SYSTEMD_UNIT_SHA256,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,CONTAINERS_SSH_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,DATABASE_SSL_NO_VERIFY,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE,WARM_POOL_ENABLED,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,LEGACY_AGENT_ROUTER_PUBLIC_HOST,AGENT_BACKUP_CATALOG_WORKER_ID,AGENT_BACKUP_R2_ENDPOINT_ALIAS,AGENT_BACKUP_R2_ACCOUNT_ID,AGENT_BACKUP_R2_ENDPOINT,AGENT_BACKUP_R2_BUCKET,AGENT_BACKUP_R2_REGION,AGENT_BACKUP_R2_ACCESS_KEY_ID,AGENT_BACKUP_R2_SECRET_ACCESS_KEY,AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS,AGENT_BACKUP_HETZNER_ACCOUNT_ID,AGENT_BACKUP_HETZNER_ENDPOINT,AGENT_BACKUP_HETZNER_BUCKET,AGENT_BACKUP_HETZNER_REGION,AGENT_BACKUP_HETZNER_ACCESS_KEY_ID,AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY,AGENT_BACKUP_STEWARD_KMS_BASE_URL,AGENT_BACKUP_AGENT_SCHEMA_VERSION,AGENT_BACKUP_DATABASE_SCHEMA_VERSION,AGENT_BACKUP_RUNTIME_PLUGINS_JSON,AGENT_BACKUP_LEGACY_WRITER_DRAIN_DEPLOYMENT_ID,AGENT_BACKUP_LEGACY_WRITER_DRAINED_AT,AGENT_BACKUP_STORAGE_SCOPE,AGENT_BACKUP_SPOOL_MAX_BYTES,AGENT_BACKUP_SPOOL_MIN_FREE_BYTES,AGENT_BACKUP_SPOOL_CLEANUP_BATCH_SIZE,AGENT_BACKUP_CAPTURE_DEADLINE_MS,AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS,AGENT_BACKUP_SCHEDULE_BATCH_SIZE,AGENT_BACKUP_SCHEDULE_LEASE_MS,AGENT_BACKUP_SCHEDULE_RETRY_MS,AGENT_BACKUP_OPERATION_BATCH_SIZE,AGENT_BACKUP_OPERATION_LEASE_MS,AGENT_BACKUP_OPERATION_RETRY_BASE_MS,AGENT_BACKUP_OPERATION_RETRY_MAX_MS,AGENT_BACKUP_GC_BATCH_SIZE,AGENT_BACKUP_GC_LEASE_MS,AGENT_BACKUP_GC_RETRY_BASE_MS,AGENT_BACKUP_GC_RETRY_MAX_MS,AGENT_BACKUP_DELETION_BATCH_SIZE,AGENT_BACKUP_CATALOG_WORKER_INTERVAL_MS,AGENT_BACKUP_CATALOG_WORKER_RETRY_MS,AGENT_BACKUP_CATALOG_WORKER_SHUTDOWN_TIMEOUT_MS
           script: |
             set -euo pipefail
 
@@ -704,6 +707,23 @@ jobs:
             # `FATAL ERROR: ... JavaScript heap out of memory` (exit 134). Raise
             # the heap ceiling to match the repo's typecheck lane (8 GB).
             export NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=8192"
+
+            # The systemd daemons execute through Node/tsx as well as Bun.
+            # `packages/core/src/prompts.ts` re-exports `@elizaos/prompts`, and
+            # default-condition resolution therefore requires the prompts
+            # package's dist entrypoint. The host deliberately preserves
+            # node_modules between deploys, so an old real directory can also
+            # mask the workspace link that `bun install` would normally create.
+            # Reconcile this one declared workspace dependency explicitly;
+            # `build:core` does not include the prompts package because its full
+            # build has a deliberate reverse action-doc dependency on core.
+            mkdir -p packages/core/node_modules/@elizaos
+            rm -rf packages/core/node_modules/@elizaos/prompts
+            ln -s ../../../prompts packages/core/node_modules/@elizaos/prompts
+            test "$(realpath packages/core/node_modules/@elizaos/prompts)" = \
+              /opt/eliza/packages/prompts
+            bun run --cwd packages/prompts build:package
+            test -f packages/core/node_modules/@elizaos/prompts/dist/index.js
             bun run build:core
             mkdir -p plugins/plugin-sql/node_modules/@elizaos
             rm -rf plugins/plugin-sql/node_modules/@elizaos/core
@@ -819,9 +839,10 @@ jobs:
             # and fresh staging agents never receive a headscale_ip (#15347).
             remove_environment_setting \
               "$ENV_REPLACEMENTS" AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK
-            # The manifest-v3 catalogue ships dormant. Remove stale host edits
-            # and append the two gates exactly once. Its systemd unit reads only
-            # the dedicated allowlisted file assembled below.
+            # Capture and scheduling remain dormant. Account deletion receives
+            # an independent always-on backup/spool authority in the dedicated
+            # allowlisted systemd environment assembled below.
+            ACCOUNT_DELETION_BACKUP_AUTHORITY_GATE=1
             BACKUP_CATALOG_RUNTIME_GATE=0
             BACKUP_RPO_SCHEDULER_GATE=0
             BACKUP_SPOOL_STATE_DIRECTORY=/var/lib/eliza-backup-catalog/spool
@@ -829,6 +850,9 @@ jobs:
             BACKUP_WORKER_INTERVAL_MS="${AGENT_BACKUP_CATALOG_WORKER_INTERVAL_MS:-60000}"
             BACKUP_WORKER_RETRY_MS="${AGENT_BACKUP_CATALOG_WORKER_RETRY_MS:-5000}"
             BACKUP_WORKER_SHUTDOWN_TIMEOUT_MS="${AGENT_BACKUP_CATALOG_WORKER_SHUTDOWN_TIMEOUT_MS:-25000}"
+            append_environment_setting \
+              "$ENV_REPLACEMENTS" "$ENV_ASSIGNMENTS" \
+              ACCOUNT_DELETION_BACKUP_AUTHORITY_ENABLED 0
             append_environment_setting \
               "$ENV_REPLACEMENTS" "$ENV_ASSIGNMENTS" \
               AGENT_BACKUP_CATALOG_RUNTIME_ENABLED "$BACKUP_CATALOG_RUNTIME_GATE"
@@ -918,11 +942,12 @@ jobs:
                 "$ENV_REPLACEMENTS" "$ENV_ASSIGNMENTS" "$key" "$val"
             done
 
-            # The backup daemon receives a separate exact allowlist. While the
-            # merge-time gates remain hardcoded off, this plan contains only
-            # gates, cadence, spool, and health paths: no database, encryption,
-            # provider, KMS, SSH, Headscale, or registry authority can leak in
-            # from the shared host file or a stale previous deployment.
+            # The backup daemon receives a separate exact allowlist. Deletion
+            # gets database, two-store, and spool authority; capture, scheduler,
+            # KMS, SSH, Headscale, and provisioning authority remain excluded.
+            append_environment_setting \
+              "$BACKUP_REPLACEMENTS" "$BACKUP_ASSIGNMENTS" \
+              ACCOUNT_DELETION_BACKUP_AUTHORITY_ENABLED "$ACCOUNT_DELETION_BACKUP_AUTHORITY_GATE"
             append_environment_setting \
               "$BACKUP_REPLACEMENTS" "$BACKUP_ASSIGNMENTS" \
               AGENT_BACKUP_CATALOG_RUNTIME_ENABLED "$BACKUP_CATALOG_RUNTIME_GATE"
@@ -945,17 +970,11 @@ jobs:
               "$BACKUP_REPLACEMENTS" "$BACKUP_ASSIGNMENTS" \
               AGENT_BACKUP_CATALOG_WORKER_HEALTH_FILE "$BACKUP_WORKER_HEALTH_FILE"
 
-            # Activation remains impossible in this changeset because both gate
-            # variables above are literal zero. Gate 1 stays blocked until the
-            # backup worker has a separate trust domain (an identity without
-            # deploy's sudo/docker authority, or a dedicated host) plus verified
-            # artifact integrity. Only then may a separately reviewed activation
-            # populate this explicit protected authority allowlist.
-            if [ "$BACKUP_CATALOG_RUNTIME_GATE" = "1" ]; then
-              enabled_backup_names=(
+            if [ "$ACCOUNT_DELETION_BACKUP_AUTHORITY_GATE" = "1" ] \
+              || [ "$BACKUP_CATALOG_RUNTIME_GATE" = "1" ]; then
+              authority_backup_names=(
                 DATABASE_URL
                 SECRETS_MASTER_KEY
-                AGENT_BACKUP_CATALOG_WORKER_ID
                 AGENT_BACKUP_R2_ENDPOINT_ALIAS
                 AGENT_BACKUP_R2_ACCOUNT_ID
                 AGENT_BACKUP_R2_ENDPOINT
@@ -970,6 +989,23 @@ jobs:
                 AGENT_BACKUP_HETZNER_REGION
                 AGENT_BACKUP_HETZNER_ACCESS_KEY_ID
                 AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY
+                AGENT_BACKUP_SPOOL_MAX_BYTES
+                AGENT_BACKUP_SPOOL_MIN_FREE_BYTES
+              )
+              for name in "${authority_backup_names[@]}"; do
+                val="${!name-}"
+                if [ -z "$val" ]; then
+                  echo "::error::Account deletion backup authority is missing required protected setting name: $name"
+                  exit 1
+                fi
+                append_environment_setting \
+                  "$BACKUP_REPLACEMENTS" "$BACKUP_ASSIGNMENTS" "$name" "$val"
+                unset val
+              done
+            fi
+            if [ "$BACKUP_CATALOG_RUNTIME_GATE" = "1" ]; then
+              runtime_backup_names=(
+                AGENT_BACKUP_CATALOG_WORKER_ID
                 AGENT_BACKUP_STEWARD_KMS_BASE_URL
                 AGENT_BACKUP_STEWARD_KMS_TOKEN
                 AGENT_BACKUP_AGENT_SCHEMA_VERSION
@@ -978,13 +1014,11 @@ jobs:
                 AGENT_BACKUP_LEGACY_WRITER_DRAIN_DEPLOYMENT_ID
                 AGENT_BACKUP_LEGACY_WRITER_DRAINED_AT
                 AGENT_BACKUP_STORAGE_SCOPE
-                AGENT_BACKUP_SPOOL_MAX_BYTES
-                AGENT_BACKUP_SPOOL_MIN_FREE_BYTES
                 AGENT_BACKUP_SPOOL_CLEANUP_BATCH_SIZE
                 AGENT_BACKUP_CAPTURE_DEADLINE_MS
                 AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS
               )
-              for name in "${enabled_backup_names[@]}"; do
+              for name in "${runtime_backup_names[@]}"; do
                 val="${!name-}"
                 if [ -z "$val" ]; then
                   echo "::error::Backup catalogue activation input is missing required protected setting name: $name"
@@ -1076,6 +1110,8 @@ jobs:
               exit 1
             fi
             require_environment_setting_equals \
+              "$BACKUP_ENV_FILE" ACCOUNT_DELETION_BACKUP_AUTHORITY_ENABLED 1
+            require_environment_setting_equals \
               "$BACKUP_ENV_FILE" AGENT_BACKUP_CATALOG_RUNTIME_ENABLED 0
             require_environment_setting_equals \
               "$BACKUP_ENV_FILE" AGENT_BACKUP_RPO_SCHEDULER_ENABLED 0
@@ -1117,10 +1153,18 @@ jobs:
             fi
             echo "Verified required provisioning-host setting names; values were not printed."
 
-            # Verify the dormant gate contract without disclosing the file. If
-            # a future reviewed change enables the runtime, this same block
-            # immediately promotes every production-composition name to a
-            # required preflight input.
+            # Capture and scheduling remain off in both files. Only the
+            # dedicated daemon receives deletion backup authority.
+            if ! require_environment_setting_equals \
+              "$ENV_FILE" ACCOUNT_DELETION_BACKUP_AUTHORITY_ENABLED 0; then
+              echo "::error::Shared provisioning environment must not receive deletion backup authority"
+              exit 1
+            fi
+            if ! require_environment_setting_equals \
+              "$BACKUP_ENV_FILE" ACCOUNT_DELETION_BACKUP_AUTHORITY_ENABLED 1; then
+              echo "::error::Dedicated backup daemon deletion authority gate is invalid"
+              exit 1
+            fi
             for gate_name in AGENT_BACKUP_CATALOG_RUNTIME_ENABLED AGENT_BACKUP_RPO_SCHEDULER_ENABLED; do
               if ! require_environment_setting_equals "$ENV_FILE" "$gate_name" 0; then
                 echo "::error::Backup catalogue merge-time gate contract is invalid for $gate_name"
@@ -1135,12 +1179,11 @@ jobs:
               echo "::error::Dedicated backup catalogue EnvironmentFile ownership or mode is invalid"
               exit 1
             fi
-            BACKUP_GATE="$BACKUP_CATALOG_RUNTIME_GATE"
-            if [ "$BACKUP_GATE" = "1" ]; then
+            if [ "$ACCOUNT_DELETION_BACKUP_AUTHORITY_GATE" = "1" ] \
+              || [ "$BACKUP_CATALOG_RUNTIME_GATE" = "1" ]; then
               required_backup_settings=(
                 DATABASE_URL
                 SECRETS_MASTER_KEY
-                AGENT_BACKUP_CATALOG_WORKER_ID
                 AGENT_BACKUP_R2_ENDPOINT_ALIAS
                 AGENT_BACKUP_R2_ACCOUNT_ID
                 AGENT_BACKUP_R2_ENDPOINT
@@ -1155,6 +1198,13 @@ jobs:
                 AGENT_BACKUP_HETZNER_REGION
                 AGENT_BACKUP_HETZNER_ACCESS_KEY_ID
                 AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY
+                AGENT_BACKUP_SPOOL_STATE_DIRECTORY
+                AGENT_BACKUP_SPOOL_MAX_BYTES
+                AGENT_BACKUP_SPOOL_MIN_FREE_BYTES
+              )
+              if [ "$BACKUP_CATALOG_RUNTIME_GATE" = "1" ]; then
+                required_backup_settings+=(
+                AGENT_BACKUP_CATALOG_WORKER_ID
                 AGENT_BACKUP_STEWARD_KMS_BASE_URL
                 AGENT_BACKUP_STEWARD_KMS_TOKEN
                 AGENT_BACKUP_AGENT_SCHEMA_VERSION
@@ -1163,13 +1213,11 @@ jobs:
                 AGENT_BACKUP_LEGACY_WRITER_DRAIN_DEPLOYMENT_ID
                 AGENT_BACKUP_LEGACY_WRITER_DRAINED_AT
                 AGENT_BACKUP_STORAGE_SCOPE
-                AGENT_BACKUP_SPOOL_STATE_DIRECTORY
-                AGENT_BACKUP_SPOOL_MAX_BYTES
-                AGENT_BACKUP_SPOOL_MIN_FREE_BYTES
                 AGENT_BACKUP_SPOOL_CLEANUP_BATCH_SIZE
                 AGENT_BACKUP_CAPTURE_DEADLINE_MS
                 AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS
-              )
+                )
+              fi
               missing_backup_settings=()
               for name in "${required_backup_settings[@]}"; do
                 if ! require_environment_settings "$BACKUP_ENV_FILE" "$name"; then
@@ -1181,11 +1229,12 @@ jobs:
                 exit 1
               fi
             fi
-            echo "Verified disabled backup-catalogue gate and configuration names; values were not printed."
+            echo "Verified deletion-only backup authority and disabled capture/scheduler gates; values were not printed."
 
             /usr/bin/env -i \
               PATH="$SAFE_CHILD_PATH" \
               HOME=/home/deploy \
+              ACCOUNT_DELETION_BACKUP_AUTHORITY_ENABLED=0 \
               AGENT_BACKUP_CATALOG_RUNTIME_ENABLED=0 \
               AGENT_BACKUP_RPO_SCHEDULER_ENABLED=0 \
               AGENT_BACKUP_SPOOL_STATE_DIRECTORY=/var/lib/eliza-backup-catalog/spool \
@@ -1422,7 +1471,7 @@ jobs:
               sudo systemctl status eliza-agent-router.service --no-pager || true
               sudo journalctl -u eliza-agent-router.service --since "$HEALTH_SINCE_TS" -n 200 --no-pager || true
             }
-            validate_disabled_backup_health() {
+            validate_deletion_authority_backup_health() {
               # DynamicUser owns the mode-0700 RuntimeDirectory and mode-0600
               # snapshot. Validate it as root with a fixed path, bounded bytes,
               # empty inherited environment, and no stdout value channel.
@@ -1436,8 +1485,10 @@ jobs:
                   const valid =
                     parsed &&
                     parsed.format === "elizaos.agent-backup.catalog-worker-health.v1" &&
-                    parsed.state === "disabled" &&
-                    parsed.enabled === false;
+                    parsed.state === "idle" &&
+                    parsed.enabled === true &&
+                    Number.isSafeInteger(parsed.cycles) &&
+                    parsed.cycles >= 1;
                   process.exit(valid ? 0 : 1);
                 } catch {
                   // error-policy:J1 missing, malformed, or hostile health bytes
@@ -1471,7 +1522,7 @@ jobs:
             }
             for attempt in $(seq 1 18); do
               if ! sudo systemctl is-active --quiet "$BACKUP_SYSTEMD_UNIT"; then
-                echo "Health check attempt $attempt/18: dormant backup worker not active yet."
+                echo "Health check attempt $attempt/18: deletion backup authority worker not active yet."
                 sleep 5
                 continue
               fi
@@ -1481,8 +1532,8 @@ jobs:
                 echo "$BACKUP_JOURNAL" | tail -n 50
                 exit 1
               fi
-              if ! validate_disabled_backup_health; then
-                echo "Health check attempt $attempt/18: backup health is unavailable or not the exact disabled contract yet."
+              if ! validate_deletion_authority_backup_health; then
+                echo "Health check attempt $attempt/18: backup health is unavailable or has not completed an authority cycle yet."
                 sleep 5
                 continue
               fi

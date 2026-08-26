@@ -137,6 +137,7 @@ export type MessageConnectorCapability =
 	| "webhook_identity"
 	| "rich_components"
 	| "rich_embed"
+	| "manage_server"
 	| (string & {});
 
 export type PostConnectorCapability =
@@ -366,6 +367,56 @@ export interface MessageConnectorPostToThreadParams {
 	identity?: ConnectorPostIdentity;
 }
 
+/**
+ * Structural server/guild management request forwarded to a connector
+ * (create/edit/delete channels and roles, permission overwrites, member role
+ * assignment, invites, moderation, template reconcile). The connector owns
+ * validation, its own configuration gating (fail closed), and platform
+ * hierarchy checks; `operation` and `params` are treated as untrusted input.
+ */
+export interface MessageConnectorManageServerParams {
+	target?: TargetInfo;
+	/** Connector-defined management verb, e.g. "create_channel". */
+	operation: string;
+	/** Platform server/guild id the operation applies to. */
+	serverId?: string;
+	/** Trusted authorization minted by core for the exact destination binding. */
+	authorization: MessageConnectorManageServerAuthorization;
+	/** Bounded operation arguments; the connector validates every field. */
+	params?: Record<string, unknown>;
+}
+
+/** Exact connector destination resolved before any server-management write. */
+export interface MessageConnectorManageServerDestination {
+	source: string;
+	accountId: string;
+	serverId: string;
+	messageServerId: UUID;
+	destinationWorldId: UUID;
+	target: TargetInfo;
+}
+
+/**
+ * Trusted destination authorization carried from core to the connector. The
+ * connector must independently revalidate this envelope immediately before
+ * mutation; it is provenance, not a reusable capability grant.
+ */
+export interface MessageConnectorManageServerAuthorization
+	extends MessageConnectorManageServerDestination {
+	requesterEntityId: UUID;
+	authorizedEntityId: UUID;
+	role: "ADMIN" | "OWNER";
+	bindingRoomIds: UUID[];
+}
+
+/** Structured result of a connector server-management operation. */
+export interface MessageConnectorManageServerResult {
+	/** Human-readable receipt line for the acting agent. */
+	summary: string;
+	/** Structured receipt (created/updated/unchanged/skipped entities). */
+	data?: Record<string, unknown>;
+}
+
 export interface MessageConnector {
 	source: string;
 	accountId?: string;
@@ -468,6 +519,16 @@ export interface MessageConnector {
 		runtime: IAgentRuntime,
 		params: MessageConnectorPostToThreadParams,
 	) => Promise<Memory | undefined>;
+	resolveManageServerDestination?: (
+		runtime: IAgentRuntime,
+		params: { target?: TargetInfo; serverId: string },
+	) =>
+		| Promise<MessageConnectorManageServerDestination>
+		| MessageConnectorManageServerDestination;
+	manageServerHandler?: (
+		runtime: IAgentRuntime,
+		params: MessageConnectorManageServerParams,
+	) => Promise<MessageConnectorManageServerResult>;
 	contentShaping?: ConnectorContentShaping;
 }
 
@@ -873,6 +934,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 		name,
 		source,
 		channelId,
+		serverId,
 		messageServerId,
 		type,
 		worldId,
@@ -886,6 +948,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 		worldName?: string;
 		source?: string;
 		channelId?: string;
+		serverId?: string;
 		messageServerId?: UUID;
 		type?: ChannelType | string;
 		worldId?: UUID;

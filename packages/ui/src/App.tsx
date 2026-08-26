@@ -143,7 +143,7 @@ import {
   PUSH_TO_TALK_TOGGLE_EVENT,
   type PushToTalkHoldDetail,
 } from "./events";
-import { adoptRemoteAgentFirstRun } from "./first-run/adopt-remote-first-run";
+import { completeRemoteAgentFirstRun } from "./first-run/adopt-remote-first-run";
 import { persistMobileRuntimeModeForServerTarget } from "./first-run/mobile-runtime-mode";
 import { BootRecoveryConductorMount } from "./first-run/use-boot-recovery-conductor";
 import { FirstRunConductorMount } from "./first-run/use-first-run-conductor";
@@ -1175,13 +1175,13 @@ function ViewLayoutSurface({
             </span>
           </div>
           <Button
-            variant="ghost"
+            variant="ghostMuted"
             size="icon-sm"
             aria-label="Close layout"
             title="Close layout"
             data-testid="view-layout-close"
             onClick={onClear}
-            className="inline-flex size-7 shrink-0 items-center justify-center rounded-sm text-muted transition-colors hover:bg-border/35 hover:text-txt    "
+            className="shrink-0"
           >
             <X className="size-4" aria-hidden />
           </Button>
@@ -2441,12 +2441,15 @@ function AppContent() {
         setState("firstRunRemoteConnected", true);
         setState("firstRunRemoteError", null);
         if (shouldCompleteFirstRun) {
-          await adoptRemoteAgentFirstRun(client, {
-            apiBase: connection.apiBase,
-            token: connection.token,
-            uiLanguage,
-          });
-          completeFirstRun();
+          await completeRemoteAgentFirstRun(
+            client,
+            {
+              apiBase: connection.apiBase,
+              token: connection.token,
+              uiLanguage,
+            },
+            completeFirstRun,
+          );
         }
         setActionNotice("Connected to remote backend.", "success", 4200);
         retryStartup();
@@ -2486,6 +2489,45 @@ function AppContent() {
       (isAgentlessCloudOrigin &&
         firstRunOwnsLoginSurface(startupCoordinator.phase, firstRunComplete)),
   });
+  // A retry from the auth-unavailable screen restarts the entire startup
+  // coordinator. During that restart the shell's default chat tab can commit
+  // `/chat` before the requested deep route remounts, discarding the user's
+  // return intent (observed after OAuth on `/cloud/agents`). Capture only a
+  // same-origin relative location and restore it once both startup and auth are
+  // ready. Fragments are excluded on normal web hosts so an OAuth callback
+  // code can never be retained by this recovery seam.
+  const authStartupRetryReturnLocationRef = useRef<string | null>(null);
+  const retryAuthStartup = useCallback(() => {
+    if (typeof window !== "undefined") {
+      const navigationPath = getWindowNavigationPath();
+      authStartupRetryReturnLocationRef.current = isRouteRootPath(
+        navigationPath,
+      )
+        ? null
+        : shouldUseHashNavigation()
+          ? `${window.location.pathname}${window.location.search}${window.location.hash}`
+          : `${window.location.pathname}${window.location.search}`;
+    }
+    refetchAuth();
+    retryStartup();
+  }, [refetchAuth, retryStartup]);
+  useEffect(() => {
+    if (
+      startupCoordinator.phase !== "ready" ||
+      authState.phase !== "authenticated"
+    ) {
+      return;
+    }
+    const returnLocation = authStartupRetryReturnLocationRef.current;
+    if (!returnLocation || typeof window === "undefined") return;
+    authStartupRetryReturnLocationRef.current = null;
+    const currentLocation = shouldUseHashNavigation()
+      ? `${window.location.pathname}${window.location.search}${window.location.hash}`
+      : `${window.location.pathname}${window.location.search}`;
+    if (currentLocation === returnLocation) return;
+    shellHistory.replaceState(null, "", returnLocation);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, [authState.phase, startupCoordinator.phase]);
   // The first-run chat must survive its completion edge. Completion starts an
   // auth probe, but replacing the already-painted shell with StartupScreen
   // remounts ChatOverlay and loses its first-run -> FULL transition state. Remember
@@ -3173,8 +3215,7 @@ function AppContent() {
               // whose reducer has no RETRY arm. Re-probe auth so a transient
               // outage (agent restart, phone network blip) actually recovers,
               // and still kick the startup retry for the mixed case.
-              refetchAuth();
-              retryStartup();
+              retryAuthStartup();
             }}
           />
           <BugReportModal />

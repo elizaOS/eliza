@@ -580,7 +580,12 @@ export async function sharedRestMessageSend(
   trustedDelivery?: SharedReminderDelivery,
   trustedUserUtterance?: string,
   trustedChannel?: SharedRuntimeChannel,
-): Promise<{ text: string; agentName: string; timing?: SharedProviderTimingReceipt }> {
+): Promise<{
+  text: string;
+  agentName: string;
+  timing?: SharedProviderTimingReceipt;
+  mediaUrls?: string[];
+}> {
   const rpc: BridgeRequest = {
     jsonrpc: "2.0",
     id: clientMessageId ?? crypto.randomUUID(),
@@ -615,8 +620,21 @@ export async function sharedRestMessageSend(
     }
     throw new Error(response.error.message || "shared message.send failed");
   }
-  const result = (response.result ?? {}) as { text?: unknown; timing?: unknown };
+  const result = (response.result ?? {}) as {
+    text?: unknown;
+    timing?: unknown;
+    actionResults?: unknown;
+  };
   const replyText = typeof result.text === "string" ? result.text : "";
+  const mediaUrls = Array.isArray(result.actionResults)
+    ? result.actionResults.flatMap((entry) => {
+        if (!entry || typeof entry !== "object") return [];
+        const data = (entry as { data?: unknown }).data;
+        if (!data || typeof data !== "object") return [];
+        const mediaUrl = (data as { mediaUrl?: unknown }).mediaUrl;
+        return typeof mediaUrl === "string" && mediaUrl.trim() ? [mediaUrl.trim()] : [];
+      })
+    : [];
   const timing = parseSharedProviderTimingReceipt(result.timing);
   if (result.timing !== undefined && timing === undefined) {
     logger.warn("[shared-runtime REST] message.send returned an invalid timing receipt", {
@@ -627,6 +645,7 @@ export async function sharedRestMessageSend(
   return {
     text: replyText,
     agentName: agentName || "Eliza",
+    ...(mediaUrls.length > 0 ? { mediaUrls } : {}),
     ...(timing ? { timing } : {}),
   };
 }

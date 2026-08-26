@@ -16,8 +16,8 @@ import { ProviderApiError } from "../src/provider-errors";
  * session from the account pool when one is present — an app-connected
  * subscription is used immediately, not stored-but-unused until a limit error;
  * ambient stays the fallback when the pool is empty — and (2) rotate to the
- * next healthy pooled account on a subscription limit, and ONLY on a
- * subscription limit — a non-limit error must fall straight through to the
+ * next healthy pooled account on a subscription limit or a typed 401/403 from
+ * a selected credential. Other failures must fall straight through to the
  * caller's provider-failover chain.
  *
  * These drive the pure rotation logic with a FAKE coding-agent selector bridge
@@ -32,6 +32,7 @@ const BRIDGE_SYMBOL = CODING_AGENT_SELECTOR_BRIDGE_SYMBOL;
 interface FakeBridge {
   select: ReturnType<typeof vi.fn>;
   markRateLimited: ReturnType<typeof vi.fn>;
+  markNeedsReauth: ReturnType<typeof vi.fn>;
   recordUsage: ReturnType<typeof vi.fn>;
 }
 
@@ -44,6 +45,7 @@ function installFakeBridge(selections: Array<RotationAccountSelection | null>): 
       return next;
     }),
     markRateLimited: vi.fn(async () => undefined),
+    markNeedsReauth: vi.fn(async () => undefined),
     recordUsage: vi.fn(async () => undefined),
   };
   (globalThis as Record<symbol, unknown>)[BRIDGE_SYMBOL] = bridge;
@@ -324,6 +326,48 @@ describe("withAccountRotation", () => {
       if (savedKey === undefined) delete process.env.ANTHROPIC_API_KEY;
       else process.env.ANTHROPIC_API_KEY = savedKey;
     }
+  });
+
+  it("marks a pooled 401 for reauthentication and retries on the next account", async () => {
+    const bridge = installFakeBridge([account("b"), account("c")]);
+    let calls = 0;
+    const attempt = vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) {
+        throw new ProviderApiError("upstream API Error: 401 Invalid bearer token", {
+          statusCode: 401,
+        });
+      }
+      return "answer-on-account-c";
+    });
+    const c = ctx();
+
+    await expect(withAccountRotation(attempt, c as never)).resolves.toBe("answer-on-account-c");
+    expect(attempt).toHaveBeenCalledTimes(2);
+    expect(bridge.markNeedsReauth).toHaveBeenCalledWith(
+      "anthropic-subscription",
+      "b",
+      expect.any(String)
+    );
+    expect(bridge.markRateLimited).not.toHaveBeenCalled();
+    expect(bridge.select.mock.calls[1][1].exclude).toContain("b");
+    expect(c.onRotate).toHaveBeenCalledTimes(2);
+  });
+
+  it("rethrows an ambient 401 without marking or retrying an account", async () => {
+    const bridge = installFakeBridge([null]);
+    const attempt = vi.fn(async () => {
+      throw new ProviderApiError("upstream API Error: 401 Invalid bearer token", {
+        statusCode: 401,
+      });
+    });
+
+    await expect(withAccountRotation(attempt, ctx() as never)).rejects.toMatchObject({
+      statusCode: 401,
+    });
+    expect(attempt).toHaveBeenCalledTimes(1);
+    expect(bridge.select).toHaveBeenCalledTimes(1);
+    expect(bridge.markNeedsReauth).not.toHaveBeenCalled();
   });
 
   it("reuses a selected subprocess env on later turns without reselecting or mutating process.env", async () => {

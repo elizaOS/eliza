@@ -61,8 +61,10 @@ describe("splitTelegramMessage surrogate-safe chunking", () => {
     expect(chunks.every((chunk) => chunk.toWellFormed() === chunk)).toBe(true);
   });
 
-  test("still splits ASCII lines at the default Telegram limit", () => {
-    const chunks = splitTelegramMessage(`${"a".repeat(4096)}\nb`);
-    expect(chunks).toEqual(["a".repeat(4096), "b"]);
+  test("preserves newlines and whitespace exactly at the Telegram limit", () => {
+    const text = `${"a".repeat(4096)}\n\n  b  `;
+    const chunks = splitTelegramMessage(text);
+    expect(chunks.join("")).toBe(text);
+    expect(chunks.every((chunk) => chunk.length <= 4096)).toBe(true);
   });
 });
