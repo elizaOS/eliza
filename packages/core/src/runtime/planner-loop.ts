@@ -2784,13 +2784,22 @@ function toolResultTranscriptChars(result: PlannerToolResult): number {
  * truncation — the complete result was never partially shown to the model; the
  * dispatch was rejected whole at the provider's context boundary, and the
  * substitute states exactly that so the planner can react (request a smaller
- * range, narrower output). Mutates the step in place; results that are already
- * overflow substitutions are never re-substituted. Returns null when the
- * transcript holds no substitutable tool result.
+ * range, narrower output). Mutates the step in place and rewrites EVERY
+ * model-facing projection of the result: the step itself (live
+ * `trajectoryStepsToMessages` renders), the cached `trajectory.modelHistory`
+ * tool message (the projection planner AND evaluator renders actually prefer
+ * since the cache-locality work in #28125), and the diagnostic `tool_result`
+ * context event (renders that fall back to `trajectory.context`). Results
+ * that are already overflow substitutions are never re-substituted. Returns
+ * null when the transcript holds no substitutable tool result.
  */
 function substituteLargestToolResultForOverflow(
 	trajectory: PlannerTrajectory,
 	error: unknown,
+	options: {
+		redactText: ToolDiagnosticTextRedactor;
+		logger?: PlannerRuntime["logger"];
+	},
 ): { actionName: string; replacedChars: number; limitTokens?: number } | null {
 	let largest: PlannerStep | undefined;
 	let largestChars = 0;
@@ -2820,7 +2829,18 @@ function substituteLargestToolResultForOverflow(
 		data: { providerContextOverflow: true },
 	};
 	largest.result = replacement;
-	substituteToolResultContextEvent(trajectory, largest, replacement);
+	substituteToolResultModelHistoryMessage(
+		trajectory,
+		largest,
+		options.redactText,
+		options.logger,
+	);
+	substituteToolResultContextEvent(
+		trajectory,
+		largest,
+		replacement,
+		options.logger,
+	);
 	return {
 		actionName,
 		replacedChars: largestChars,
@@ -2828,19 +2848,114 @@ function substituteLargestToolResultForOverflow(
 	};
 }
 
+/** toolCallId of a tool message's `tool-result` content part, if present. */
+function toolResultPartCallId(
+	message: ChatMessage | undefined,
+): string | undefined {
+	if (!message || !Array.isArray(message.content)) return undefined;
+	for (const part of message.content) {
+		if (part && typeof part === "object" && part.type === "tool-result") {
+			const id = (part as { toolCallId?: unknown }).toolCallId;
+			if (typeof id === "string") return id;
+		}
+	}
+	return undefined;
+}
+
+/** Serialized size of a tool message's `tool-result` output projection. */
+function toolResultPartOutputChars(message: ChatMessage): number {
+	if (!Array.isArray(message.content)) return 0;
+	let chars = 0;
+	for (const part of message.content) {
+		if (part && typeof part === "object" && part.type === "tool-result") {
+			try {
+				chars +=
+					JSON.stringify((part as { output?: unknown }).output)?.length ?? 0;
+			} catch {
+				// error-policy:J3 a non-serializable output cannot be the huge text
+				// projection we are hunting; size it as zero and keep selecting.
+			}
+		}
+	}
+	return chars;
+}
+
 /**
- * The complete tool result is rendered into the planner input twice: as the
- * step's native tool message AND as the diagnostic `tool_result` context event
- * appended at execution. The substitution must rewrite both projections or the
- * retried call re-dispatches the rejected content through the event render.
- * Matches by `toolCallId` when the call carried one; otherwise by the
- * `tool-result:<name>:` id prefix with the LONGEST serialized result — the
- * same largest-content selection used for the step itself.
+ * Rewrite the cached model-history projection of a substituted tool result.
+ * Since the planner cache-locality work (#28125), `trajectory.modelHistory` is
+ * the append-only assistant/tool message suffix that BOTH the planner render
+ * (`renderPlannerModelInput`) and the evaluator render prefer over re-deriving
+ * messages from `trajectory.steps` — so an in-place step substitution is
+ * invisible to the retry unless the cached tool message is rewritten too.
+ * Re-renders the substituted step through the same `trajectoryStepsToMessages`
+ * pipeline that appended it (identical redaction and deterministic toolCallId
+ * derivation), then replaces the matching cached tool message in place —
+ * matched by toolCallId; ties broken by the LONGEST serialized output, the
+ * same largest-content selection used for the step itself. In place on
+ * purpose: dispatch holds `trajectory.modelHistory` by reference across the
+ * retry.
+ */
+function substituteToolResultModelHistoryMessage(
+	trajectory: PlannerTrajectory,
+	step: PlannerStep,
+	redactText: ToolDiagnosticTextRedactor,
+	logger?: PlannerRuntime["logger"],
+): void {
+	const history = trajectory.modelHistory;
+	if (!history) return;
+	const rendered = trajectoryStepsToMessages([step], { redactText });
+	const renderedTool = rendered.find((message) => message.role === "tool");
+	const toolCallId = toolResultPartCallId(renderedTool);
+	if (!renderedTool || toolCallId === undefined) {
+		// error-policy:J3 an unprojectable substitution must not silently leave
+		// the rejected content in the cached history; warn so a re-overflow on
+		// the retry is diagnosable instead of mysterious.
+		logger?.warn?.(
+			{ tool: step.toolCall?.name },
+			"[planner-loop] overflow substitution could not re-render the tool message for the cached model history; the retry may still carry the rejected content",
+		);
+		return;
+	}
+	let targetIndex = -1;
+	let targetChars = -1;
+	for (let index = 0; index < history.length; index++) {
+		const message = history[index];
+		if (message?.role !== "tool") continue;
+		if (toolResultPartCallId(message) !== toolCallId) continue;
+		const chars = toolResultPartOutputChars(message);
+		if (chars > targetChars) {
+			targetIndex = index;
+			targetChars = chars;
+		}
+	}
+	if (targetIndex === -1) {
+		// error-policy:J3 same rationale as above: a matcher miss means the
+		// cached history still holds the rejected content — never fail silent.
+		logger?.warn?.(
+			{ tool: step.toolCall?.name, toolCallId },
+			"[planner-loop] overflow substitution found no cached model-history tool message to rewrite; the retry may still carry the rejected content",
+		);
+		return;
+	}
+	history[targetIndex] = renderedTool;
+}
+
+/**
+ * The tool result is also projected as the diagnostic `tool_result` context
+ * event appended at execution. Since #28125 the planner/evaluator renders read
+ * the immutable `modelBaseContext`, so this event is a secondary projection —
+ * but renders that fall back to `trajectory.context` (externally constructed
+ * trajectories without `modelBaseContext`) still dispatch it, so the
+ * substitution rewrites it as well. Matches by `toolCallId` when the call
+ * carried one; otherwise by the `tool-result:<name>:` id prefix with the
+ * LONGEST serialized result — the same largest-content selection used for the
+ * step itself.
  */
 function substituteToolResultContextEvent(
 	trajectory: PlannerTrajectory,
 	step: PlannerStep,
 	replacement: PlannerToolResult,
+	logger?: PlannerRuntime["logger"],
 ): void {
 	const events = trajectory.context.events;
 	if (!Array.isArray(events) || !step.toolCall) return;
@@ -2863,7 +2978,16 @@ function substituteToolResultContextEvent(
 			targetChars = chars;
 		}
 	}
-	if (!target) return;
+	if (!target) {
+		// error-policy:J3 a matcher miss against a changed event schema must be
+		// visible: the context-event projection would still carry the rejected
+		// content for any render that reads `trajectory.context`.
+		logger?.warn?.(
+			{ tool: step.toolCall.name, toolCallId },
+			"[planner-loop] overflow substitution found no tool_result context event to rewrite",
+		);
+		return;
+	}
 	const substitutedEvent = {
 		...target,
 		metadata: {
@@ -2909,6 +3033,20 @@ function providerContextOverflowFailure(
  * overflows again, throw the typed PROVIDER_CONTEXT_OVERFLOW ElizaError so the
  * message boundary can answer honestly instead of surfacing a raw provider
  * 400. All planner-iteration call sites route through here.
+ *
+ * COMPOSITION with the pre-emptive input budget (model-input-budget.ts +
+ * `ProviderResult.overflowText` in services/message.ts): that mechanism is
+ * estimation-driven and runs BEFORE dispatch — when the utf8-upper-bound
+ * estimate crosses the dispatch threshold, Stage-1 composition swaps provider
+ * blocks for their explicitly declared lossless `overflowText` retrieval
+ * forms, and `buildModelInputBudget` stamps diagnostics into providerOptions.
+ * It never rewrites tool results. This boundary is rejection-driven and runs
+ * AT dispatch: the provider's actual length rejection is ground truth for
+ * what the estimator missed (tool results land after provider composition and
+ * estimation is heuristic), and it only rewrites tool results — never
+ * provider text. Disjoint targets, ordered stages: the estimator shrinks the
+ * odds of hitting this boundary; this boundary is the typed backstop when it
+ * hits anyway.
  */
 async function callPlanner(
 	params: Parameters<typeof dispatchPlannerModelCall>[0],
@@ -2922,6 +3060,10 @@ async function callPlanner(
 		const substituted = substituteLargestToolResultForOverflow(
 			params.trajectory,
 			error,
+			{
+				redactText: composeToolDiagnosticRedactor(params.runtime),
+				logger: params.runtime.logger,
+			},
 		);
 		if (!substituted) {
 			throw providerContextOverflowFailure(error, {

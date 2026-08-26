@@ -114,6 +114,11 @@ function makeFailingRuntime(
 		getModel: vi.fn(() => async () => {
 			throw failure;
 		}),
+		// Upstream's pre-emptive input budget (responseHandlerContextWindow) reads
+		// the model registry unconditionally before Stage 1 dispatches. An empty
+		// registry means no advertised context window — the budget path stands
+		// down and the provider rejection stays the boundary under test.
+		getModelRegistrations: vi.fn(() => []),
 		// Stage 1 dies at the provider context boundary, and every failure-reply
 		// fallback slot fails the same way — the canned cause default must land.
 		useModel: vi.fn(async () => {
