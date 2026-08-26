@@ -1235,6 +1235,7 @@ test("a cutover seal snapshots history and blocks new Shared turns until release
     token: "cutover-1",
     leaseMs: 60_000,
     organizationId: personalAgent.organization_id,
+    userId: personalAgent.user_id,
     dedicatedAgentId: "dedicated-agent-1",
   });
   expect(sealed.status).toBe(200);
@@ -1265,6 +1266,7 @@ test("a cutover seal snapshots history and blocks new Shared turns until release
     token: "cutover-2",
     leaseMs: 60_000,
     organizationId: personalAgent.organization_id,
+    userId: personalAgent.user_id,
     dedicatedAgentId: "dedicated-agent-1",
   }).then((response) => response.json());
   const committedSeal = await request({
@@ -1416,6 +1418,7 @@ test("target convergence reservation and Dedicated cutover serialize onto one wi
     token: "personal-cutover:target:dedicated",
     leaseMs: 60_000,
     organizationId: "00000000-0000-4000-8000-000000000001",
+    userId: "00000000-0000-4000-8000-000000000003",
     dedicatedAgentId: "00000000-0000-4000-8000-000000000002",
   };
   const race = async (

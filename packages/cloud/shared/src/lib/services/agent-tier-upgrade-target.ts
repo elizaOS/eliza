@@ -68,7 +68,7 @@ import {
 } from "./eliza-provision-lock";
 import { assertOrgAgentQuota, buildAgentSandboxInsertValues } from "./eliza-sandbox";
 import { prepareManagedElizaSharedEnvironment } from "./managed-eliza-config";
-import { JOB_TYPES } from "./provisioning-job-types";
+import { EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES, JOB_TYPES } from "./provisioning-job-types";
 import { provisioningJobService } from "./provisioning-jobs";
 
 /**
@@ -124,6 +124,11 @@ function liveTargetWhere(organizationId: string, sourceAgentId: string) {
   );
 }
 
+/** A reserved JSON key is absent only when it is not present at all. */
+function agentConfigKeyAbsent(key: string) {
+  return sql`NOT (COALESCE(${agentSandboxes.agent_config}, '{}'::jsonb) ? ${key})`;
+}
+
 function adoptableUnmarkedTargetWhere(organizationId: string, userId: string) {
   return and(
     eq(agentSandboxes.organization_id, organizationId),
@@ -133,8 +138,10 @@ function adoptableUnmarkedTargetWhere(organizationId: string, userId: string) {
     isNull(agentSandboxes.pool_status),
     isNull(agentSandboxes.deleted_at),
     isNull(agentSandboxes.deletion_attempt_id),
-    isNull(sql`${agentSandboxes.agent_config} ->> ${AGENT_UPGRADED_FROM_KEY}`),
-    isNull(sql`${agentSandboxes.agent_config} -> ${AGENT_PERSONAL_CUTOVER_KEY}`),
+    // Presence is authority-bearing even when a corrupted/caller-forged value
+    // is JSON null or has the wrong shape. Only truly absent keys are eligible.
+    agentConfigKeyAbsent(AGENT_UPGRADED_FROM_KEY),
+    agentConfigKeyAbsent(AGENT_PERSONAL_CUTOVER_KEY),
   );
 }
 
@@ -258,6 +265,27 @@ export interface AdoptPersonalDedicatedTargetResult {
   jobCreated: boolean;
 }
 
+async function findActiveExclusiveLifecycleJobInTx(
+  tx: DbTransaction,
+  organizationId: string,
+  agentId: string,
+): Promise<Job | null> {
+  const [job] = await tx
+    .select()
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.organization_id, organizationId),
+        eq(jobs.agent_id, agentId),
+        inArray(jobs.type, [...EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES]),
+        sql`${jobs.status} IN ('pending', 'in_progress')`,
+      ),
+    )
+    .orderBy(desc(jobs.created_at))
+    .limit(1);
+  return job ?? null;
+}
+
 function adoptionError(
   code:
     | "PERSONAL_DEDICATED_ADOPTION_UNAVAILABLE"
@@ -285,158 +313,268 @@ function adoptionError(
 export async function adoptPersonalDedicatedTargetWithProvision(
   params: AdoptPersonalDedicatedTargetParams,
 ): Promise<AdoptPersonalDedicatedTargetResult> {
-  return dbWrite.transaction(async (tx) => {
-    await configureElizaLifecycleTransaction(tx);
-    await tx.execute(elizaAgentCreateAdvisoryLockSql(params.organizationId));
+  let attemptedResult: AdoptPersonalDedicatedTargetResult | undefined;
+  try {
+    return await dbWrite.transaction(async (tx) => {
+      await configureElizaLifecycleTransaction(tx);
+      await tx.execute(elizaAgentCreateAdvisoryLockSql(params.organizationId));
+      await tx.execute(
+        elizaAgentTierUpgradeAdvisoryLockSql(params.organizationId, params.sourceAgentId),
+      );
 
-    // Lock the billing authority before the per-source/per-agent lifecycle
-    // locks. This makes quote confirmation serial with balance mutations and
-    // preserves the global org -> source -> agent lock order.
-    const [organization] = await tx
-      .select({ creditBalance: organizations.credit_balance })
-      .from(organizations)
-      .where(eq(organizations.id, params.organizationId))
-      .for("update")
-      .limit(1);
-    if (!organization) {
-      throw adoptionError(
-        "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
-        "The Dedicated adoption billing authority is unavailable",
-        params,
-      );
-    }
-
-    await tx.execute(
-      elizaAgentTierUpgradeAdvisoryLockSql(params.organizationId, params.sourceAgentId),
-    );
-
-    const preview = await previewPersonalDedicatedAdoptionInTx(tx, params);
-    if (preview.state === "unavailable") {
-      throw adoptionError(
-        "PERSONAL_DEDICATED_ADOPTION_UNAVAILABLE",
-        "No eligible existing Dedicated target is available",
-        params,
-      );
-    }
-    if (preview.state === "ambiguous") {
-      throw adoptionError(
-        "PERSONAL_DEDICATED_ADOPTION_AMBIGUOUS",
-        "More than one existing Dedicated target is eligible",
-        params,
-      );
-    }
-    if (preview.agent.id !== params.expectedTargetId) {
-      throw adoptionError(
-        "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
-        "The eligible Dedicated target changed after quoting",
-        params,
-      );
-    }
-
-    await tx.execute(elizaProvisionAdvisoryLockSql(params.organizationId, preview.agent.id));
-    const resolution = await resolvePersonalDedicatedAdoptionInTx(tx, params);
-    if (
-      resolution.state === "unavailable" ||
-      resolution.state === "ambiguous" ||
-      resolution.agent.id !== params.expectedTargetId
-    ) {
-      throw adoptionError(
-        "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
-        "The eligible Dedicated target changed while acquiring lifecycle authority",
-        params,
-      );
-    }
-
-    let currentBalance: number;
-    try {
-      currentBalance = parseGateCreditBalance(organization.creditBalance);
-    } catch {
-      // error-policy:J1 a corrupt locked billing value must fail closed before
-      // either the ownership marker or provisioning job is written.
-      throw adoptionError(
-        "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
-        "The Dedicated adoption billing quote can no longer be verified",
-        params,
-      );
-    }
-    const quoteStillCurrent =
-      currentBalance.toFixed(6) === params.expectedBalance.toFixed(6) &&
-      AGENT_PRICING.RUNNING_HOURLY_RATE.toFixed(6) === params.expectedHourlyRate.toFixed(6) &&
-      AGENT_PRICING.DAILY_RUNNING_COST.toFixed(6) === params.expectedDailyRate.toFixed(6) &&
-      AGENT_PRICING.UPGRADE_MINIMUM_BALANCE.toFixed(6) ===
-        params.expectedMinimumBalance.toFixed(6) &&
-      AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS === params.expectedMinimumRunwayDays;
-    if (!quoteStillCurrent) {
-      throw adoptionError(
-        "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
-        "The Dedicated adoption billing quote changed while acquiring lifecycle authority",
-        params,
-      );
-    }
-
-    let target = resolution.agent;
-    const alreadyAdopted = resolution.state === "adopted";
-    if (
-      target.lifecycle_revision !== params.expectedLifecycleRevision ||
-      target.status !== params.expectedStatus
-    ) {
-      throw adoptionError(
-        "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
-        "The eligible Dedicated target state changed after quoting",
-        params,
-      );
-    }
-    if (!alreadyAdopted) {
-      const [updated] = await tx
-        .update(agentSandboxes)
-        .set({
-          agent_config: {
-            ...((target.agent_config as Record<string, unknown> | null) ?? {}),
-            [AGENT_UPGRADED_FROM_KEY]: params.sourceAgentId,
-          },
-          updated_at: new Date(),
-        })
-        .where(
-          and(
-            eq(agentSandboxes.id, target.id),
-            eq(agentSandboxes.organization_id, params.organizationId),
-            eq(agentSandboxes.user_id, params.userId),
-            eq(agentSandboxes.lifecycle_revision, params.expectedLifecycleRevision),
-            eq(agentSandboxes.status, params.expectedStatus),
-            isNull(agentSandboxes.pool_status),
-            isNull(agentSandboxes.deleted_at),
-            isNull(agentSandboxes.deletion_attempt_id),
-            isNull(sql`${agentSandboxes.agent_config} ->> ${AGENT_UPGRADED_FROM_KEY}`),
-          ),
-        )
-        .returning();
-      if (!updated) {
+      const preview = await previewPersonalDedicatedAdoptionInTx(tx, params);
+      if (preview.state === "unavailable") {
         throw adoptionError(
-          "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
-          "The eligible Dedicated target changed while adopting",
+          "PERSONAL_DEDICATED_ADOPTION_UNAVAILABLE",
+          "No eligible existing Dedicated target is available",
           params,
         );
       }
-      target = updated;
-    }
+      if (preview.state === "ambiguous") {
+        throw adoptionError(
+          "PERSONAL_DEDICATED_ADOPTION_AMBIGUOUS",
+          "More than one existing Dedicated target is eligible",
+          params,
+        );
+      }
+      if (preview.agent.id !== params.expectedTargetId) {
+        throw adoptionError(
+          "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
+          "The eligible Dedicated target changed after quoting",
+          params,
+        );
+      }
 
-    if (target.status === "running") {
-      return { agent: target, alreadyAdopted, jobCreated: false };
-    }
+      await tx.execute(elizaProvisionAdvisoryLockSql(params.organizationId, preview.agent.id));
+      const resolution = await resolvePersonalDedicatedAdoptionInTx(tx, params);
+      if (
+        resolution.state === "unavailable" ||
+        resolution.state === "ambiguous" ||
+        resolution.agent.id !== params.expectedTargetId
+      ) {
+        throw adoptionError(
+          "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
+          "The eligible Dedicated target changed while acquiring lifecycle authority",
+          params,
+        );
+      }
 
-    const enqueue = await provisioningJobService.enqueueAgentProvisionOnceInTx(tx, {
-      agentId: target.id,
-      organizationId: params.organizationId,
-      userId: params.userId,
-      agentName: target.agent_name ?? target.id,
+      // Hourly billing locks sandbox -> organization. Adoption must do the
+      // same: reversing these row locks creates a real two-transaction cycle.
+      const [organization] = await tx
+        .select({ creditBalance: organizations.credit_balance })
+        .from(organizations)
+        .where(eq(organizations.id, params.organizationId))
+        .for("update")
+        .limit(1);
+      if (!organization) {
+        throw adoptionError(
+          "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
+          "The Dedicated adoption billing authority is unavailable",
+          params,
+        );
+      }
+
+      let currentBalance: number;
+      try {
+        currentBalance = parseGateCreditBalance(organization.creditBalance);
+      } catch {
+        // error-policy:J1 a corrupt locked billing value must fail closed before
+        // either the ownership marker or provisioning job is written.
+        throw adoptionError(
+          "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
+          "The Dedicated adoption billing quote can no longer be verified",
+          params,
+        );
+      }
+      const quoteStillCurrent =
+        currentBalance.toFixed(6) === params.expectedBalance.toFixed(6) &&
+        AGENT_PRICING.RUNNING_HOURLY_RATE.toFixed(6) === params.expectedHourlyRate.toFixed(6) &&
+        AGENT_PRICING.DAILY_RUNNING_COST.toFixed(6) === params.expectedDailyRate.toFixed(6) &&
+        AGENT_PRICING.UPGRADE_MINIMUM_BALANCE.toFixed(6) ===
+          params.expectedMinimumBalance.toFixed(6) &&
+        AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS === params.expectedMinimumRunwayDays;
+      if (!quoteStillCurrent) {
+        throw adoptionError(
+          "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
+          "The Dedicated adoption billing quote changed while acquiring lifecycle authority",
+          params,
+        );
+      }
+
+      let target = resolution.agent;
+      const alreadyAdopted = resolution.state === "adopted";
+      if (
+        target.lifecycle_revision !== params.expectedLifecycleRevision ||
+        target.status !== params.expectedStatus
+      ) {
+        throw adoptionError(
+          "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
+          "The eligible Dedicated target state changed after quoting",
+          params,
+        );
+      }
+      if (target.status === "running") {
+        const conflict = await findActiveExclusiveLifecycleJobInTx(
+          tx,
+          params.organizationId,
+          target.id,
+        );
+        if (conflict) {
+          throw adoptionError(
+            "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
+            `The existing Dedicated target has an active ${conflict.type} lifecycle job`,
+            params,
+          );
+        }
+      }
+      if (!alreadyAdopted) {
+        const [updated] = await tx
+          .update(agentSandboxes)
+          .set({
+            agent_config: {
+              ...((target.agent_config as Record<string, unknown> | null) ?? {}),
+              [AGENT_UPGRADED_FROM_KEY]: params.sourceAgentId,
+            },
+            updated_at: new Date(),
+          })
+          .where(
+            and(
+              eq(agentSandboxes.id, target.id),
+              eq(agentSandboxes.organization_id, params.organizationId),
+              eq(agentSandboxes.user_id, params.userId),
+              eq(agentSandboxes.lifecycle_revision, params.expectedLifecycleRevision),
+              eq(agentSandboxes.status, params.expectedStatus),
+              isNull(agentSandboxes.pool_status),
+              isNull(agentSandboxes.deleted_at),
+              isNull(agentSandboxes.deletion_attempt_id),
+              agentConfigKeyAbsent(AGENT_UPGRADED_FROM_KEY),
+            ),
+          )
+          .returning();
+        if (!updated) {
+          throw adoptionError(
+            "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
+            "The eligible Dedicated target changed while adopting",
+            params,
+          );
+        }
+        target = updated;
+      }
+
+      if (target.status === "running") {
+        attemptedResult = { agent: target, alreadyAdopted, jobCreated: false };
+        return attemptedResult;
+      }
+
+      const enqueue = await provisioningJobService.enqueueAgentProvisionOnceInTx(tx, {
+        agentId: target.id,
+        organizationId: params.organizationId,
+        userId: params.userId,
+        agentName: target.agent_name ?? target.id,
+      });
+      attemptedResult = {
+        agent: target,
+        alreadyAdopted,
+        job: enqueue.job,
+        jobCreated: enqueue.created,
+      };
+      return attemptedResult;
     });
-    return {
-      agent: target,
-      alreadyAdopted,
-      job: enqueue.job,
-      jobCreated: enqueue.created,
-    };
-  });
+  } catch (error) {
+    // error-policy:J1 the transaction boundary classifies a rejection against
+    // fresh durable state before deciding whether to recover or rethrow it.
+    const recovered = await resolveAdoptionOutcomeAfterBoundaryRejection(
+      params,
+      attemptedResult,
+      error,
+    );
+    if (recovered) return recovered;
+    throw error;
+  }
+}
+
+/**
+ * Recover a lost COMMIT acknowledgement only after a fresh durable read proves
+ * this exact owner target now carries the server marker. The callback result
+ * preserves whether this transaction created the job, so a recovered commit
+ * still receives the same immediate-worker nudge as an acknowledged commit.
+ */
+async function resolveAdoptionOutcomeAfterBoundaryRejection(
+  params: AdoptPersonalDedicatedTargetParams,
+  attemptedResult: AdoptPersonalDedicatedTargetResult | undefined,
+  rejection: unknown,
+): Promise<AdoptPersonalDedicatedTargetResult | null> {
+  if (!attemptedResult) return null;
+  let durable: PersonalDedicatedAdoptionResolution;
+  try {
+    durable = await resolvePersonalDedicatedAdoption(params);
+  } catch (verificationError) {
+    // error-policy:J2 the original boundary rejection remains authoritative;
+    // record why its commit state could not be classified on a fresh read.
+    logger.error("[agent-tier-adoption] Could not verify durability after a boundary rejection", {
+      sourceAgentId: params.sourceAgentId,
+      dedicatedAgentId: params.expectedTargetId,
+      orgId: params.organizationId,
+      rejection: rejection instanceof Error ? rejection.message : String(rejection),
+      verificationError:
+        verificationError instanceof Error ? verificationError.message : String(verificationError),
+    });
+    return null;
+  }
+  if (
+    durable.state !== "adopted" ||
+    durable.agent.id !== params.expectedTargetId ||
+    durable.agent.user_id !== params.userId
+  ) {
+    return null;
+  }
+
+  let durableJob: Job | null = null;
+  if (attemptedResult.job) {
+    try {
+      durableJob = await findTierUpgradeProvisionJobById(
+        params.organizationId,
+        params.expectedTargetId,
+        attemptedResult.job.id,
+      );
+    } catch (verificationError) {
+      // error-policy:J2 preserve the original boundary rejection when the job
+      // half of the atomic commit cannot be verified on the fresh connection.
+      logger.error(
+        "[agent-tier-adoption] Could not verify the durable provision job after a boundary rejection",
+        {
+          sourceAgentId: params.sourceAgentId,
+          dedicatedAgentId: params.expectedTargetId,
+          jobId: attemptedResult.job.id,
+          orgId: params.organizationId,
+          rejection: rejection instanceof Error ? rejection.message : String(rejection),
+          verificationError:
+            verificationError instanceof Error
+              ? verificationError.message
+              : String(verificationError),
+        },
+      );
+      return null;
+    }
+    if (!durableJob) return null;
+  }
+  logger.warn(
+    "[agent-tier-adoption] Boundary transaction rejected after a durable commit; recovered adoption",
+    {
+      sourceAgentId: params.sourceAgentId,
+      dedicatedAgentId: params.expectedTargetId,
+      orgId: params.organizationId,
+      jobId: durableJob?.id ?? null,
+      triggerImmediate: attemptedResult.jobCreated,
+      rejection: rejection instanceof Error ? rejection.message : String(rejection),
+    },
+  );
+  return {
+    ...attemptedResult,
+    agent: durable.agent,
+    ...(durableJob ? { job: durableJob } : {}),
+  };
 }
 
 async function findLiveTargetInTx(
@@ -480,6 +618,7 @@ export async function findLiveTierUpgradeTarget(
  */
 export async function findActivePersonalDedicatedTarget(
   organizationId: string,
+  userId: string,
   sourceAgentId: string,
 ): Promise<AgentSandbox | null> {
   const [target] = await dbWrite
@@ -488,6 +627,7 @@ export async function findActivePersonalDedicatedTarget(
     .where(
       and(
         eq(agentSandboxes.organization_id, organizationId),
+        eq(agentSandboxes.user_id, userId),
         eq(agentSandboxes.execution_tier, "dedicated-always"),
         sql`${agentSandboxes.agent_config} ->> ${AGENT_UPGRADED_FROM_KEY} = ${sourceAgentId}`,
       ),
@@ -733,6 +873,27 @@ async function findActiveTierUpgradeProvisionJob(
       ),
     )
     .orderBy(desc(jobs.created_at))
+    .limit(1);
+  return job ?? null;
+}
+
+/** Exact durable job read used when a COMMIT acknowledgement is ambiguous. */
+async function findTierUpgradeProvisionJobById(
+  organizationId: string,
+  agentId: string,
+  jobId: string,
+): Promise<Job | null> {
+  const [job] = await dbWrite
+    .select()
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.id, jobId),
+        eq(jobs.type, JOB_TYPES.AGENT_PROVISION),
+        eq(jobs.organization_id, organizationId),
+        eq(jobs.agent_id, agentId),
+      ),
+    )
     .limit(1);
   return job ?? null;
 }

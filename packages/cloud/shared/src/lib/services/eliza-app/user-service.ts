@@ -297,6 +297,7 @@ class ElizaAppUserService {
         } else {
           dedicatedTarget = await findActivePersonalDedicatedTarget(
             reusable.organizationId,
+            reusable.userId,
             personalAgentId,
           );
           resolution = "exact-dedicated-fallback";
@@ -348,6 +349,7 @@ class ElizaAppUserService {
     });
     const dedicatedTarget = await findActivePersonalDedicatedTarget(
       result.organization.id,
+      result.user.id,
       personalAgentId,
     );
     logger.info(

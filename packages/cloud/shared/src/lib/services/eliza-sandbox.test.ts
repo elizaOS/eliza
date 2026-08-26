@@ -39,6 +39,7 @@ import { runWithCloudBindings } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
 import { DockerSSHClient } from "./docker-ssh";
+import { AGENT_PERSONAL_CUTOVER_KEY, AGENT_UPGRADED_FROM_KEY } from "./eliza-agent-config";
 import { provisioningJobService } from "./provisioning-jobs";
 import { resolveSandboxContainerLaunchConfig } from "./sandbox-container-launch-config";
 import type { SandboxCreateConfig, SandboxHandle, SandboxProvider } from "./sandbox-provider-types";
@@ -10495,6 +10496,45 @@ describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () =
       const query = new PgDialect().sqlToQuery(whereClause);
       expect(query.sql.toLowerCase()).toContain("deletion_attempt_id");
       expect(query.sql.toLowerCase()).toContain("is null");
+    } finally {
+      upgradeTransactionImpl = null;
+      lock.mockRestore();
+      read.mockRestore();
+    }
+  });
+
+  test("updateAgentProfile preserves server markers when caller config attempts to forge or clear them", async () => {
+    const cutover = {
+      mode: "dedicated",
+      sourceAgentId: "personal:real-owner",
+      cutoverToken: "server-token",
+    };
+    const existing = {
+      ...customSandbox(),
+      agent_config: {
+        system: "old system",
+        [AGENT_UPGRADED_FROM_KEY]: "personal:real-owner",
+        [AGENT_PERSONAL_CUTOVER_KEY]: cutover,
+      },
+    };
+    const tx = installLifecycleUpdateTransaction(existing);
+    const { svc, lock, read } = await makeMutableService(existing);
+    try {
+      await svc.updateAgentProfile(existing.id, existing.organization_id, {
+        agentConfig: {
+          system: "new system",
+          [AGENT_UPGRADED_FROM_KEY]: "personal:attacker",
+          [AGENT_PERSONAL_CUTOVER_KEY]: null,
+        },
+      });
+      expect(tx.updateSet).toHaveBeenCalledWith({
+        agent_config: {
+          system: "new system",
+          [AGENT_UPGRADED_FROM_KEY]: "personal:real-owner",
+          [AGENT_PERSONAL_CUTOVER_KEY]: cutover,
+        },
+        updated_at: expect.any(Date),
+      });
     } finally {
       upgradeTransactionImpl = null;
       lock.mockRestore();

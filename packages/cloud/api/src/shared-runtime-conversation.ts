@@ -111,6 +111,7 @@ type ConversationRequest =
       token: string;
       leaseMs: number;
       organizationId: string;
+      userId: string;
       dedicatedAgentId: string;
     }
   | { operation: "cutover-release"; token: string }
@@ -234,6 +235,7 @@ interface StoredCutoverSeal {
   expiresAt: number;
   committed: boolean;
   organizationId?: string;
+  userId?: string;
   sourceAgentId?: string;
   dedicatedAgentId?: string;
 }
@@ -1159,8 +1161,14 @@ export class SharedRuntimeConversation {
     // crashes or loses the acknowledgement between those two durable writes,
     // an expired lease must recover the server-owned marker rather than
     // reopening Shared and splitting later turns into the archived log.
-    if (seal.organizationId && seal.sourceAgentId && seal.dedicatedAgentId) {
+    if (
+      seal.organizationId &&
+      seal.userId &&
+      seal.sourceAgentId &&
+      seal.dedicatedAgentId
+    ) {
       const organizationId = seal.organizationId;
+      const userId = seal.userId;
       const sourceAgentId = seal.sourceAgentId;
       const active = await this.runWithBindings(async () => {
         const { findActivePersonalDedicatedTarget } = await import(
@@ -1168,6 +1176,7 @@ export class SharedRuntimeConversation {
         );
         return await findActivePersonalDedicatedTarget(
           organizationId,
+          userId,
           sourceAgentId,
         );
       });
@@ -1732,6 +1741,7 @@ export class SharedRuntimeConversation {
         expiresAt: Date.now() + payload.leaseMs,
         committed: existing?.committed ?? false,
         organizationId: payload.organizationId,
+        userId: payload.userId,
         sourceAgentId: payload.agentId,
         dedicatedAgentId: payload.dedicatedAgentId,
       };

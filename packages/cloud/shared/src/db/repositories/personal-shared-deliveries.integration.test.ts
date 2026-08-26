@@ -181,6 +181,41 @@ describe("Telegram personal Shared repeat delivery", () => {
     });
   });
 
+  test("does not project another user's marked Dedicated row from the same organization", async () => {
+    const input = telegramInput("714700109");
+    const account = await elizaAppUserService.resolvePersonalDelivery(input);
+    const sourceAgentId = personalSharedAgentId({
+      userId: account.userId,
+      organizationId: account.organizationId,
+    });
+    const otherUserId = "aaaaaaaa-9999-4999-8999-999999999999";
+    await dbWrite.insert(users).values({
+      id: otherUserId,
+      email: "other-user@test.test",
+      organization_id: account.organizationId,
+      role: "member",
+      steward_user_id: `steward-${otherUserId}`,
+    });
+    await dbWrite.insert(agentSandboxes).values({
+      organization_id: account.organizationId,
+      user_id: otherUserId,
+      execution_tier: "dedicated-always",
+      status: "running",
+      agent_config: {
+        [AGENT_UPGRADED_FROM_KEY]: sourceAgentId,
+        [AGENT_PERSONAL_CUTOVER_KEY]: cutoverFor(sourceAgentId),
+      },
+    });
+
+    const replayed = await elizaAppUserService.resolvePersonalDelivery(input);
+    expect(replayed).toMatchObject({
+      userId: account.userId,
+      organizationId: account.organizationId,
+      dedicatedTarget: null,
+      resolution: "single-query-repeat",
+    });
+  });
+
   test("falls back to exact marker authority when another org target is newer", async () => {
     const input = telegramInput("714700105");
     const account = await elizaAppUserService.resolvePersonalDelivery(input);

@@ -304,6 +304,7 @@ app.post("/", async (c) => {
     const reminderReservationToken = `${sealToken}:reminders:${crypto.randomUUID()}`;
     const active = await findActivePersonalDedicatedTarget(
       user.organization_id,
+      user.id,
       sourceAgentId,
     );
     if (
@@ -467,6 +468,7 @@ app.post("/", async (c) => {
         token: sealToken,
         leaseMs: CUTOVER_SEAL_LEASE_MS,
         organizationId: user.organization_id,
+        userId: user.id,
         dedicatedAgentId: target.id,
       },
       { namespace: conversationNamespace },

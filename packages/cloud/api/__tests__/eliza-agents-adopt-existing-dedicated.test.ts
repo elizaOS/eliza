@@ -32,6 +32,7 @@ import * as realAuth from "@/lib/auth";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
 import { personalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import * as dbHelpersActual from "../../shared/src/db/helpers";
 
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_B = "22222222-2222-4222-8222-222222222222";
@@ -61,7 +62,33 @@ const currentUser = {
 };
 
 const realAuthSnapshot = { ...realAuth };
+const dbHelpersSnapshot = { ...dbHelpersActual };
 const ENV = { NODE_ENV: "test" } as AppEnv["Bindings"];
+
+let commitAckLossCountdown = 0;
+
+function installCommitAckSeam(): void {
+  const realDbWrite = dbHelpersSnapshot.dbWrite;
+  const wrappedDbWrite = new Proxy(realDbWrite, {
+    get(target, prop, receiver) {
+      if (prop === "transaction" && commitAckLossCountdown > 0) {
+        return async (...args: Parameters<typeof realDbWrite.transaction>) => {
+          commitAckLossCountdown -= 1;
+          const committed = await target.transaction(...args);
+          if (commitAckLossCountdown === 0) {
+            throw new Error("simulated adoption commit-acknowledgment loss");
+          }
+          return committed;
+        };
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+  });
+  mock.module("../../shared/src/db/helpers", () => ({
+    ...dbHelpersSnapshot,
+    dbWrite: wrappedDbWrite,
+  }));
+}
 
 let pgliteReady = true;
 let closeDb: (() => Promise<void>) | undefined;
@@ -77,6 +104,7 @@ beforeAll(async () => {
       ...realAuthSnapshot,
       requireAuthOrApiKeyWithOrg: mock(async () => ({ user: currentUser })),
     }));
+    installCommitAckSeam();
 
     const client = await import("@/db/client");
     dbWrite = client.dbWrite;
@@ -143,6 +171,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   if (!pgliteReady) return;
+  commitAckLossCountdown = 0;
   currentUser.id = USER_A;
   currentUser.email = "owner-a@test.test";
   currentUser.organization_id = ORG_A;
@@ -159,6 +188,7 @@ afterAll(async () => {
   if (closeDb) await closeDb();
   mock.restore();
   mock.module("@/lib/auth", () => realAuthSnapshot);
+  mock.module("../../shared/src/db/helpers", () => dbHelpersSnapshot);
 });
 
 async function seedCandidate(options: {
@@ -408,6 +438,29 @@ describe("GET/POST adopt-existing Dedicated", () => {
     expect(await dbWrite.select().from(jobs)).toHaveLength(0);
   });
 
+  test("treats present JSON-null or malformed server markers as ineligible", async () => {
+    expect(pgliteReady).toBe(true);
+    const configs = [
+      { __agentUpgradedFrom: null },
+      { __agentUpgradedFrom: { sourceAgentId: PERSONAL_A } },
+      { __agentPersonalCutover: null },
+      { __agentPersonalCutover: "malformed" },
+    ];
+    for (const [index, agentConfig] of configs.entries()) {
+      await seedCandidate({
+        id: `cccccccc-5000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+        agentConfig,
+      });
+    }
+
+    const response = await quote();
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({
+      code: "dedicated_adoption_unavailable",
+    });
+    expect(await dbWrite.select().from(jobs)).toHaveLength(0);
+  });
+
   for (const status of ["error", "stopped"] as const) {
     test(`adopts and provisions the same ${status} row only after exact confirmation`, async () => {
       expect(pgliteReady).toBe(true);
@@ -485,6 +538,65 @@ describe("GET/POST adopt-existing Dedicated", () => {
       (target?.agent_config as Record<string, unknown> | undefined)
         ?.__agentPersonalCutover,
     ).toBeUndefined();
+  });
+
+  test("rejects a running target while any exclusive lifecycle job is active", async () => {
+    expect(pgliteReady).toBe(true);
+    await seedCandidate({ status: "running" });
+    await dbWrite.insert(jobs).values({
+      type: "agent_suspend",
+      status: "pending",
+      data: {
+        agentId: TARGET_A,
+        organizationId: ORG_A,
+        userId: USER_A,
+      },
+      agent_id: TARGET_A,
+      organization_id: ORG_A,
+      user_id: USER_A,
+    });
+    const quoteId = await currentQuoteId();
+
+    const response = await confirm(quoteId);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      code: "dedicated_adoption_quote_changed",
+    });
+    const [target] = await rows();
+    expect(target?.agent_config).toEqual({});
+    expect(await targetJobs(TARGET_A)).toHaveLength(1);
+  });
+
+  test("recovers a lost COMMIT acknowledgment and still nudges the durable provision job", async () => {
+    expect(pgliteReady).toBe(true);
+    await seedCandidate({ status: "error" });
+    const quoteId = await currentQuoteId();
+    const { provisioningJobService } = await import(
+      "@/lib/services/provisioning-jobs"
+    );
+    const trigger = spyOn(
+      provisioningJobService,
+      "triggerImmediate",
+    ).mockResolvedValue();
+    commitAckLossCountdown = 1;
+    try {
+      const response = await confirm(quoteId);
+      expect(response.status).toBe(202);
+      expect(await response.json()).toMatchObject({
+        success: true,
+        data: { dedicatedAgentId: TARGET_A },
+      });
+      expect(trigger).toHaveBeenCalledTimes(1);
+      const [target] = await rows();
+      expect(
+        (target?.agent_config as Record<string, unknown> | undefined)
+          ?.__agentUpgradedFrom,
+      ).toBe(PERSONAL_A);
+      expect(await targetJobs(TARGET_A)).toHaveLength(1);
+    } finally {
+      trigger.mockRestore();
+      commitAckLossCountdown = 0;
+    }
   });
 
   test("reattaches idempotently to an already-adopted error row under concurrency", async () => {
@@ -778,7 +890,36 @@ describe("GET/POST adopt-existing Dedicated", () => {
       "@/lib/services/agent-tier-upgrade-target"
     );
     expect(
-      await findActivePersonalDedicatedTarget(ORG_A, PERSONAL_A),
+      await findActivePersonalDedicatedTarget(ORG_A, USER_A, PERSONAL_A),
+    ).toBeNull();
+  });
+
+  test("active personal lookup requires exact user ownership as well as org and markers", async () => {
+    expect(pgliteReady).toBe(true);
+    await seedCandidate({
+      status: "running",
+      userId: USER_B,
+      agentConfig: {
+        __agentUpgradedFrom: PERSONAL_A,
+        __agentPersonalCutover: {
+          mode: "dedicated",
+          sourceAgentId: PERSONAL_A,
+          conversationId: PERSONAL_A,
+          cutoverToken: "server-cutover-token",
+          sharedMessageCount: 0,
+          sharedScheduledTaskCount: 0,
+          sharedTodoCount: 0,
+          sharedTodoMutationCount: 0,
+          sharedTodoDigest: "0".repeat(64),
+          activatedAt: "2026-08-25T12:00:00.000Z",
+        },
+      },
+    });
+    const { findActivePersonalDedicatedTarget } = await import(
+      "@/lib/services/agent-tier-upgrade-target"
+    );
+    expect(
+      await findActivePersonalDedicatedTarget(ORG_A, USER_A, PERSONAL_A),
     ).toBeNull();
   });
 });

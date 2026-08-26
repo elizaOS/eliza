@@ -1550,7 +1550,8 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         "@/lib/services/agent-tier-upgrade-target"
       );
       expect(
-        (await findActivePersonalDedicatedTarget(ORG_C, PERSONAL_C))?.id,
+        (await findActivePersonalDedicatedTarget(ORG_C, USER_C, PERSONAL_C))
+          ?.id,
       ).toBe(CUTOVER_TARGET);
       expect(
         (await dbWrite.select().from(agentSandboxes)).some(

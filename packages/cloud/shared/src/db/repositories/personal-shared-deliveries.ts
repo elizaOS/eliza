@@ -132,6 +132,7 @@ export async function findReusablePersonalDelivery(
           candidate.agent_config
         FROM ${agentSandboxes} candidate
         WHERE candidate.organization_id = organization.id
+          AND candidate.user_id = canonical.id
           AND candidate.execution_tier = 'dedicated-always'
           AND candidate.agent_config ->> ${AGENT_UPGRADED_FROM_KEY} LIKE ${"personal:%"}
         ORDER BY candidate.created_at DESC

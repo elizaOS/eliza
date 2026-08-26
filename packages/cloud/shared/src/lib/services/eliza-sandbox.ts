@@ -2128,7 +2128,14 @@ export class ElizaSandboxService {
           !Array.isArray(rec.agent_config)
             ? (rec.agent_config as Record<string, unknown>)
             : {};
-        updates.agent_config = { ...existing, ...input.agentConfig };
+        // Caller edits may change ordinary character/config fields, but the
+        // reserved namespace remains owned by lifecycle services. Sanitizing
+        // at this shared write boundary protects every route that delegates
+        // here while preserving markers already present on the row.
+        updates.agent_config = {
+          ...existing,
+          ...stripReservedElizaConfigKeys(input.agentConfig),
+        };
       }
       if (Object.keys(updates).length === 0) return rec;
 
