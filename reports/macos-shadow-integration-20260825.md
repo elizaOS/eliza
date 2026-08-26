@@ -352,6 +352,42 @@ No source-owner branch was changed or pushed, no native bundle was built or
 launched, no final port was bound, no credential/TCC surface was opened, and
 no physical-pointer action occurred.
 
+## Complete-trajectory scenario-runner develop refresh
+
+Starting from clean tagged pre-Account receipt
+`06a41157eb6e69ad7dc2f31de5ff52b990bf3f43`, `origin/develop` advanced by one
+commit from `7099dd568a83dd6b330428ecade0b84a62ed229d` to exact
+`5723e0964cca15996e1664ff74448897d4e288a7` through PR #28815. Its delta is
+limited to `packages/scenario-runner/src/reporter.ts` and its focused test. The
+change removes the 500-file collection ceiling so aggregate cost and viewer
+data include every recorded trajectory.
+
+The shadow had no pre-existing delta in either path. Rehearsal and the executed
+merge were conflict-free and produced the same tree
+`4585f1fb7349ab431145eb6b871886ef3285f40b`. The pre-receipt source composite
+is `fec3bfd30e5ab2c6b22e33d7e130737e8e3bdec6`. Exact `5723e096...`, Devices
+`e0c05729...`, Shared `460ba16c...`, Computer `888d3d74...`, iOS
+`e5b4d076...`, desktop preflight `eb74d871...`, merged Vault `a982a071...`, and
+merged Auth `c61c7f72...` remain ancestors.
+
+Focused proof:
+
+- Scenario reporter regression: 21/21, including a 600-trajectory fixture.
+- Scenario Runner production build: passed.
+- Scoped Biome and `git diff --check`: passed.
+- Scenario Runner package dry run: 189 files, 1,785,212 bytes unpacked,
+  370,572-byte archive estimate.
+- The broad strict typecheck was attempted and remains unavailable in the
+  existing dependency state because unrelated optional plugin and LifeOps
+  declarations are not built; the focused reporter test and package build both
+  compile the changed boundary successfully.
+
+Account Deletion placeholder `378c4c5a` remains intentionally unmerged and its
+owned provision/resume conflicts remain reserved for its replacement head.
+No source-owner branch was changed or pushed, no native bundle was built or
+launched, no final port was bound, no credential/TCC surface was opened, and
+no physical-pointer action occurred.
+
 ## Frozen inputs
 
 - Base `origin/develop`: `69c0291954942c9ae375fe5aacc82729a24bac6f`
