@@ -532,15 +532,15 @@ DO $$ BEGIN RAISE EXCEPTION 'restore capability has expired on the server clock'
  * still be present and exactly equal (supplied via psql --set variables at
  * invocation), and the server clock must still be inside the capability
  * window, so every destructive session of the drill is individually
- * authority-checked with no local-check/SQL-execution TOCTOU.
+ * authority-checked with no local-check/SQL-execution TOCTOU. The expiry is
+ * a REQUIRED parameter (#23453 review r8): the server-clock check is a
+ * property of this function's type signature, not of its call sites, so a
+ * destructive session cannot be constructed without it and each guarded
+ * script carries the expiry guard exactly once (guardedPsqlFile executes
+ * scripts as written and never re-wraps).
  */
-export function guardPsqlScript(
-  sql: string,
-  expiresAtEpochMs?: number,
-): string {
-  const expiry =
-    expiresAtEpochMs === undefined ? "" : expiryGuardSql(expiresAtEpochMs);
-  return `${TARGET_GUARD_SQL}${expiry}${sql}`;
+export function guardPsqlScript(sql: string, expiresAtEpochMs: number): string {
+  return `${TARGET_GUARD_SQL}${expiryGuardSql(expiresAtEpochMs)}${sql}`;
 }
 
 /**
@@ -552,7 +552,7 @@ export function guardPsqlScript(
  * NOT consume the settings — the disposable target stays recoverable for an
  * idempotent re-run inside the capability TTL.
  */
-export function guardedConsumeAuthoritySql(expiresAtEpochMs?: number): string {
+export function guardedConsumeAuthoritySql(expiresAtEpochMs: number): string {
   return guardPsqlScript(CONSUME_AUTHORITY_SQL, expiresAtEpochMs);
 }
 
@@ -1552,19 +1552,19 @@ export function releaseDrillLock(lock: DrillLock): void {
   }
 }
 
+/**
+ * Execute an already-guarded script file against the target with the twin
+ * settings supplied as psql --set variables. The script must have been
+ * built through guardPsqlScript at construction time (#23453 review r8);
+ * this executor never re-wraps, so every guarded script carries the
+ * twin-settings and expiry guards exactly once.
+ */
 function guardedPsqlFile(
   targetDsn: string,
   targetId: string,
   capability: string,
   script: string,
-  expiresAtEpochMs?: number,
 ): void {
-  if (expiresAtEpochMs !== undefined) {
-    // Re-guard the already-written script with the server-clock expiry check
-    // by prefixing it (guardPsqlScript composes the same way).
-    const body = readFileSync(script, "utf-8");
-    writeFileSync(script, guardPsqlScript(body, expiresAtEpochMs));
-  }
   run("psql", [
     "--no-psqlrc",
     "--set",
@@ -1759,7 +1759,6 @@ export function executeDrill(options: CliOptions): DrillReport {
         options.targetId,
         capabilityEnvelope,
         claimScript,
-        capability.expiresAtEpochMs,
       );
       const dbMap = parseDbMap(readFileSync(join(work, "dbmap.tsv"), "utf-8"));
       if (dbMap.length !== manifest.databaseCount) {
@@ -1819,7 +1818,6 @@ export function executeDrill(options: CliOptions): DrillReport {
         options.targetId,
         capabilityEnvelope,
         guardedGlobals,
-        capability.expiresAtEpochMs,
       );
       for (const entry of dbMap) {
         const dumpFile = join(work, "dumps", `${entry.dumpId}.dump`);
@@ -1845,6 +1843,7 @@ export function executeDrill(options: CliOptions): DrillReport {
               `GRANT CONNECT ON DATABASE ${databaseIdentifier} TO ${ownerIdentifier};`,
               "",
             ].join("\n"),
+            capability.expiresAtEpochMs,
           ),
         );
         guardedPsqlFile(
@@ -1852,7 +1851,6 @@ export function executeDrill(options: CliOptions): DrillReport {
           options.targetId,
           capabilityEnvelope,
           guardedDrop,
-          capability.expiresAtEpochMs,
         );
         const rawRestore = join(work, `${entry.dumpId}.restore.sql`);
         run("pg_restore", ["--file", rawRestore, dumpFile]);

@@ -5,8 +5,9 @@
  * server-side twin setting before any destructive SQL and both are consumed
  * in one guarded transaction, so a substituted archive cannot ride a
  * correctly nonced target and a replayed capability is dead. Payload bytes
- * are the canonical JSON envelope `v1.eliza.restore|targetId|archiveSha256|`
- * `expiresAtEpochMs`; the signature is HMAC-SHA256 over those exact bytes.
+ * are the canonical envelope `v1.eliza.restore|targetId|archiveSha256|`
+ * `issuedAtEpochMs|expiresAtEpochMs`; the signature is HMAC-SHA256 over
+ * those exact bytes.
  */
 
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
@@ -242,6 +243,20 @@ export function assertRecoveryPointConsistency(input: {
   manifestCreatedAt: Date;
   nowEpochMs: number;
 }): void {
+  // Unparseable timestamps must fail closed, not pass by NaN comparison:
+  // Math.abs(NaN) > WINDOW and NaN > now are both false, so an Invalid Date
+  // on either side would otherwise slip both checks (#23453 review r8). The
+  // production path rejects unparseable timestamps earlier (requireIsoDate);
+  // this guard keeps the exported function's contract independent of it.
+  if (
+    !Number.isFinite(input.sidecarCreatedAt.getTime()) ||
+    !Number.isFinite(input.manifestCreatedAt.getTime())
+  ) {
+    throw new RestoreCapabilityError(
+      "REFUSED_RECOVERY_POINT",
+      "sidecar/manifest created_at is not a parseable timestamp",
+    );
+  }
   const driftMs = Math.abs(
     input.sidecarCreatedAt.getTime() - input.manifestCreatedAt.getTime(),
   );
