@@ -238,8 +238,7 @@ describe("createCipheriv / createDecipheriv AES-256-CBC", () => {
 		const nodeOut =
 			nodeDecipher.update(hex, "hex", "utf8") + nodeDecipher.final("utf8");
 		const decipher = createDecipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
-		const ourOut =
-			decipher.update(hex, "hex", "utf8") + decipher.final("utf8");
+		const ourOut = decipher.update(hex, "hex", "utf8") + decipher.final("utf8");
 		expect(ourOut).toBe(nodeOut);
 		expect(ourOut.startsWith("\ufeff")).toBe(true);
 	});
@@ -255,8 +254,7 @@ describe("createCipheriv / createDecipheriv AES-256-CBC", () => {
 			Buffer.from(AES_CBC_IV),
 		);
 		const hex =
-			nodeCipher.update(bomPlaintext, "utf8", "hex") +
-			nodeCipher.final("hex");
+			nodeCipher.update(bomPlaintext, "utf8", "hex") + nodeCipher.final("hex");
 		const buf = Buffer.from(hex, "hex");
 		const nodeDecipher = nodeCreateDecipheriv(
 			"aes-256-cbc",
