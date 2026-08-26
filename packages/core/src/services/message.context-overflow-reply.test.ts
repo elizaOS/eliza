@@ -5,8 +5,8 @@
  * must not die to the generic "something went wrong" template: the classified
  * `context_overflow` cause delivers the honest "needed more context than my
  * model can take in one call" reply, both for a raw provider rejection and for
- * the typed PROVIDER_CONTEXT_OVERFLOW ElizaError the planner loop throws once
- * its substitution recovery is exhausted.
+ * the typed PROVIDER_CONTEXT_OVERFLOW ElizaError thrown by the planner's
+ * terminal integrity boundary.
  *
  * Deterministic — drives the real `DefaultMessageService.handleMessage`
  * pipeline with a mocked runtime whose `useModel` always throws the failure
@@ -56,11 +56,11 @@ function makeLiveOverflowError(): Error {
 	);
 }
 
-/** The typed error the planner loop throws when substitution recovery fails. */
+/** The typed error the planner loop throws at the terminal overflow boundary. */
 function makeTypedOverflowError(): ElizaError {
 	return new ElizaError(
 		"Planner model input exceeded the provider's context limit and could not " +
-			"be recovered by tool-result substitution.",
+			"be recovered losslessly.",
 		{ code: PROVIDER_CONTEXT_OVERFLOW, cause: makeLiveOverflowError() },
 	);
 }
@@ -181,11 +181,18 @@ async function runTurn(
 }
 
 describe("connector turn failing on a provider context overflow", () => {
+	let previousTrajectoryRecording: string | undefined;
+
 	beforeEach(() => {
-		vi.stubEnv("ELIZA_TRAJECTORY_RECORDING", "0");
+		previousTrajectoryRecording = process.env.ELIZA_TRAJECTORY_RECORDING;
+		process.env.ELIZA_TRAJECTORY_RECORDING = "0";
 	});
 	afterEach(() => {
-		vi.unstubAllEnvs();
+		if (previousTrajectoryRecording === undefined) {
+			delete process.env.ELIZA_TRAJECTORY_RECORDING;
+		} else {
+			process.env.ELIZA_TRAJECTORY_RECORDING = previousTrajectoryRecording;
+		}
 	});
 
 	it("delivers the honest smaller-range reply for the raw live rejection", async () => {

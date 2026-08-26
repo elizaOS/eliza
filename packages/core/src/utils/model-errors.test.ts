@@ -2,7 +2,7 @@
  * Unit tests for the structural model-error classifiers: `isModelProviderError`
  * (gates the planner-loop post-tool relay), provider status extraction, typed
  * rejection of incomplete model output, and the provider context-overflow
- * classifier that gates the planner loop's lossless substitution recovery.
+ * classifier that gates the planner loop's typed terminal boundary.
  * Deterministic — plain constructed error shapes, no live model.
  */
 import { describe, expect, it } from "vitest";

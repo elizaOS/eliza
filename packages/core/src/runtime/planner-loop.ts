@@ -2819,10 +2819,9 @@ function providerContextOverflowFailure(
  * It never rewrites tool results. This boundary is rejection-driven and runs
  * AT dispatch: the provider's actual length rejection is ground truth for
  * what the estimator missed (tool results land after provider composition and
- * estimation is heuristic), and it only rewrites tool results — never
- * provider text. Disjoint targets, ordered stages: the estimator shrinks the
- * odds of hitting this boundary; this boundary is the typed backstop when it
- * hits anyway.
+ * estimation is heuristic). It preserves every projection and terminates the
+ * turn with a typed error. Ordered stages: the estimator lowers the odds of
+ * hitting this boundary; this boundary is the integrity-preserving backstop.
  */
 async function callPlanner(
 	params: Parameters<typeof dispatchPlannerModelCall>[0],
@@ -4505,19 +4504,6 @@ function latestUnresolvedFailedNonTerminalToolStep(
 			step.result.success === false &&
 			(step.result.data as { coachingFailure?: unknown } | undefined)
 				?.coachingFailure === true
-		) {
-			continue;
-		}
-		// A provider context-overflow substitution preserves the producing
-		// result's own success value (the swap is a lossless retrieval form, not
-		// a failure label), so this branch only matters when the producing result
-		// was itself a failure that carried a retrieval contract. Even then the
-		// substitution is a protocol notice steering the model toward a narrower
-		// read, not a new failed operation — same authority rule.
-		if (
-			step.result.success === false &&
-			(step.result.data as { providerContextOverflow?: unknown } | undefined)
-				?.providerContextOverflow === true
 		) {
 			continue;
 		}

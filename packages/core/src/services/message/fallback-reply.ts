@@ -314,8 +314,8 @@ export function isModelProviderFallbackError(
  * - `planner_exhaustion` — the planner ran out of budget (tool calls,
  *   repeated failures, token budget) before finishing. Retrying may help.
  * - `context_overflow` — the provider rejected the model call at its
- *   documented context limit and the planner's lossless substitution recovery
- *   could not absorb it. Retrying the identical request cannot help; the
+ *   documented context limit and the planner terminated without rewriting
+ *   completed results. Retrying the identical request cannot help; the
  *   honest reply asks for a smaller range or narrower request.
  * - `transient` — a model/provider/infrastructure error; the pre-existing
  *   generic path.

@@ -10726,8 +10726,8 @@ export async function runV5MessageRuntimeStage1(args: {
 	} catch (err) {
 		// error-policy:J2 Preserve the failing status for trajectory diagnostics,
 		// then rethrow the original failure to the message boundary. A provider
-		// context-overflow rejection that in-loop substitution could not absorb
-		// is the exception: the message boundary converts it into a designed
+		// context-overflow rejection classified by the planner boundary is the
+		// exception: the message boundary converts it into a designed
 		// honest reply, so the trajectory FINISHES with that outcome instead of
 		// recording a dead errored turn.
 		endStatus = isProviderContextOverflowFailure(err) ? "finished" : "errored";
