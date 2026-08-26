@@ -17,6 +17,11 @@ beforeEach(() => {
 
 afterEach(() => {
   localStorage.clear();
+  delete (
+    globalThis as typeof globalThis & {
+      __ELIZA_BUILD_CONFIGURED_REMOTE_API_BASE__?: unknown;
+    }
+  ).__ELIZA_BUILD_CONFIGURED_REMOTE_API_BASE__;
 });
 
 describe("resolveMobileRemoteFallbackApiBase", () => {
@@ -95,6 +100,18 @@ describe("resolveMobileRemoteFallbackApiBase", () => {
 
     expect(client.setBaseUrl).toHaveBeenCalledWith(FALLBACK_BASE);
     expect(client.setToken).toHaveBeenCalledWith(null);
+  });
+
+  it("publishes the build target to pre-built UI trust gates", async () => {
+    await installMobileRemoteFallback(FALLBACK_ENV);
+
+    expect(
+      (
+        globalThis as typeof globalThis & {
+          __ELIZA_BUILD_CONFIGURED_REMOTE_API_BASE__?: unknown;
+        }
+      ).__ELIZA_BUILD_CONFIGURED_REMOTE_API_BASE__,
+    ).toBe(FALLBACK_BASE);
   });
 
   it("replaces a stale active Cloud profile instead of copying its token", async () => {
