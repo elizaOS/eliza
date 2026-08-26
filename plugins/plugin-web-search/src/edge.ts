@@ -57,7 +57,7 @@ const SOURCE_URL_KEYS = new Set(["url", "source_url", "sourceUrl"]);
 const HTTP_URL = /https?:\/\/[^\s<>"']+/giu;
 const SOURCE_TEXT_ARRAY_KEYS = new Set(["excerpts"]);
 
-export function publicHttpUrl(value: unknown): string | undefined {
+function publicHttpUrl(value: unknown): string | undefined {
     if (typeof value !== "string") return undefined;
     try {
         const parsed = new URL(value.replace(/[),.;]+$/u, ""));
