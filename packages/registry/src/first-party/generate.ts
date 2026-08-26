@@ -25,7 +25,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join, resolve } from "node:path";
+import path, { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type RegistryEntry, registryEntrySchema } from "./schema";
 
@@ -374,8 +374,21 @@ function scanRegistrationSites(pluginDir: string): ExtractedRegistration[] {
   return sites.sort((a, b) => a.site.localeCompare(b.site));
 }
 
-function pathRelativeToRepoRoot(file: string): string {
-  return file.replace(`${REPO_ROOT}/`, "");
+/**
+ * Repository-relative site-path conversion. `relative` + separator
+ * normalization keeps emitted site paths repository-relative on every
+ * platform: a literal `${REPO_ROOT}/` replace never matches Windows
+ * `\`-joined paths and would commit machine-specific absolute paths into
+ * connector-truth-inventory.json. The path-module and root parameters exist
+ * so the regression test can pin Windows (`path.win32`) semantics on any
+ * host lane against THIS production function.
+ */
+export function pathRelativeToRepoRoot(
+  file: string,
+  pathModule: typeof path = path,
+  root: string = REPO_ROOT,
+): string {
+  return pathModule.relative(root, file).split(pathModule.sep).join("/");
 }
 
 /** Target kinds that imply group-scope conversation surfaces. */
