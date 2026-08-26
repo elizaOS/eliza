@@ -304,7 +304,7 @@ const MemoryCard = memo(function MemoryCard({
 
   return (
     <Button
-      variant="selection"
+      variant="selectionNeutral"
       size="card"
       align="start"
       aria-expanded={expanded}
@@ -1020,7 +1020,7 @@ const PeoplePicker = memo(function PeoplePicker({
         <div className="max-h-56 overflow-auto">
           <Button
             type="button"
-            variant="selection"
+            variant="selectionNeutral"
             size="touch"
             align="start"
             data-state={selectedId === null ? "on" : "off"}
@@ -1038,7 +1038,7 @@ const PeoplePicker = memo(function PeoplePicker({
               <Button
                 key={person.groupId}
                 type="button"
-                variant="selection"
+                variant="selectionNeutral"
                 size="touch"
                 align="start"
                 data-state={active ? "on" : "off"}

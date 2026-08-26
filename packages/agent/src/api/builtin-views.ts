@@ -21,6 +21,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/camera",
     order: 3,
     tags: ["camera", "photo", "capture", "video", "vision"],
+    responseContext: { primaryContext: "media" },
     visibleInManager: true,
     desktopTabEnabled: true,
     platforms: ["android"],
@@ -35,6 +36,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     icon: "Flashlight",
     order: 4,
     tags: ["device", "flashlight", "torch", "hardware"],
+    responseContext: { primaryContext: "system" },
     capabilities: [
       {
         id: "set-flashlight",
@@ -65,6 +67,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/chat",
     order: 1,
     tags: ["messaging", "conversation", "agent"],
+    responseContext: { primaryContext: "general" },
     anticipatoryIntent:
       "Offer to pick up the most recent thread or surface anything the user left unfinished, and ask what they want to work on next.",
     visibleInManager: true,
@@ -80,6 +83,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/browser",
     order: 2,
     tags: ["browser", "web", "internet", "research", "tabs"],
+    responseContext: { primaryContext: "browser" },
     relatedActions: ["BROWSER"],
     visibleInManager: false,
     desktopTabEnabled: true,
@@ -96,6 +100,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/character",
     order: 50,
     tags: ["identity", "personality", "character"],
+    responseContext: { primaryContext: "character" },
     // CHARACTER/PERSONALITY are the semantic twins of the editor's field
     // writes; the scoped actions below add view-targeted fill/click verbs.
     relatedActions: ["CHARACTER", "PERSONALITY"],
@@ -197,6 +202,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
       "media",
       "attachments",
     ],
+    responseContext: { primaryContext: "documents" },
     // OWNER_DOCUMENTS is the personal-assistant signature/portal umbrella;
     // DOCUMENT (core documents feature) is the CRUD twin of the view's
     // upload/delete controls (#14369 guard mapping).
@@ -216,6 +222,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/automations",
     order: 55,
     tags: ["automation", "tasks", "scheduling"],
+    responseContext: { primaryContext: "automation" },
     // SCHEDULED_TASKS is the umbrella over the one scheduler (workflows are
     // ScheduledTask records); TRIGGER pairs the trigger editor (#14369).
     relatedActions: ["SCHEDULED_TASKS", "TRIGGER"],
@@ -233,6 +240,10 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/cloud-apps",
     order: 58,
     tags: ["cloud", "apps", "applications", "deploy", "monetize"],
+    responseContext: {
+      primaryContext: "connectors",
+      secondaryContexts: ["admin"],
+    },
     // The renderer registers the native studio in-process under this same id
     // and path. Keeping it in the server registry makes VIEWS/show resolve the
     // Projects Apps-segment navigation row instead of claiming an action that
@@ -258,6 +269,10 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
       "configuration",
       "extensions",
     ],
+    responseContext: {
+      primaryContext: "connectors",
+      secondaryContexts: ["settings"],
+    },
     // PLUGIN is the install/enable/configure twin of the plugin browser's
     // controls (#14369 guard mapping); RUNTIME stays per #13589.
     relatedActions: ["RUNTIME", "PLUGIN"],
@@ -276,6 +291,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/apps/trajectories",
     order: 70,
     tags: ["training", "logs", "trajectories"],
+    responseContext: { primaryContext: "agent_internal" },
     visibleInManager: true,
   },
   {
@@ -293,6 +309,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/apps/transcripts",
     order: 71,
     tags: ["transcript", "voice", "recording", "audio", "meeting"],
+    responseContext: { primaryContext: "documents" },
     anticipatoryIntent:
       "Offer to summarize or extract action items from the most recent voice transcripts, grounded in the recent-transcript count.",
     visibleInManager: false,
@@ -308,12 +325,55 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/apps/memories",
     order: 72,
     tags: ["memory", "knowledge"],
+    responseContext: { primaryContext: "memory" },
     // MEMORY (op:create|search|update|delete) is the chat twin of the viewer's
     // browse/prune controls (#14366 closed it; #14369 pins the affinity).
     relatedActions: ["MEMORY"],
     anticipatoryIntent:
       "Offer to search, review, or prune the agent's stored memories, and point to what's worth revisiting.",
     visibleInManager: true,
+  },
+  {
+    id: "files",
+    viewKind: "system",
+    label: "Files",
+    description: "Stored files and attachments",
+    icon: "FolderOpen",
+    path: "/apps/files",
+    order: 73,
+    tags: ["files", "attachments", "uploads"],
+    responseContext: { primaryContext: "documents" },
+    visibleInManager: false,
+    desktopTabEnabled: true,
+  },
+  {
+    id: "stream",
+    viewKind: "system",
+    label: "Stream",
+    description: "Live activity and media stream",
+    icon: "Radio",
+    path: "/stream",
+    order: 74,
+    tags: ["stream", "live", "activity"],
+    responseContext: {
+      primaryContext: "media",
+      secondaryContexts: ["system"],
+    },
+    visibleInManager: false,
+    desktopTabEnabled: true,
+  },
+  {
+    id: "pendant-transcript",
+    viewKind: "system",
+    label: "Pendant transcript",
+    description: "Live pendant voice transcript",
+    icon: "AudioLines",
+    path: "/pendant/transcript",
+    order: 75,
+    tags: ["pendant", "transcript", "voice"],
+    responseContext: { primaryContext: "documents" },
+    visibleInManager: false,
+    desktopTabEnabled: true,
   },
   {
     id: "database",
@@ -326,6 +386,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/apps/database",
     order: 80,
     tags: ["database", "data", "debug"],
+    responseContext: { primaryContext: "system" },
     visibleInManager: true,
   },
   {
@@ -339,6 +400,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/apps/logs",
     order: 81,
     tags: ["logs", "debug", "runtime"],
+    responseContext: { primaryContext: "system" },
     visibleInManager: true,
   },
   {
@@ -359,6 +421,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
       "connected accounts",
       "password manager",
     ],
+    responseContext: { primaryContext: "secrets" },
     relatedActions: ["SECRETS"],
     anticipatoryIntent:
       "Offer to inventory or safely configure the exact credential the user needs without exposing secret values, and distinguish local Vault entries from Eliza Cloud organization credentials.",
@@ -377,6 +440,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/settings",
     order: 90,
     tags: ["configuration", "preferences", "plugins"],
+    responseContext: { primaryContext: "system" },
     // SETTINGS is the consolidated section write action (#14364); RUNTIME
     // stays for the runtime/status affinity the #13589 stub migration pinned.
     relatedActions: ["RUNTIME", "SETTINGS"],
@@ -396,6 +460,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/background",
     order: 92,
     tags: ["background", "wallpaper", "color", "theme", "appearance", "image"],
+    responseContext: { primaryContext: "system" },
     // BACKGROUND is the one-write-two-triggers exemplar: the view controls and
     // the action drive the same store (#14369 pins the affinity).
     relatedActions: ["BACKGROUND"],

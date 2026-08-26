@@ -158,6 +158,33 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
     ]);
   });
 
+  it("filters conversation-reset commands from the one-thread GUI catalog", async () => {
+    listCommands.mockResolvedValue([
+      cmd({
+        key: "settings",
+        target: { kind: "navigate", tab: "settings", path: "/settings" },
+      }),
+      cmd({
+        key: "clear",
+        target: { kind: "client", clientAction: "clear-chat" },
+      }),
+      cmd({
+        key: "new",
+        target: { kind: "client", clientAction: "new-conversation" },
+      }),
+    ]);
+
+    const { result } = renderHook(() =>
+      useSlashCommandController({ isAuthorized: true, isElevated: true }),
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.commands.map((command) => command.key)).toEqual([
+      "settings",
+    ]);
+    expect(result.current.clearChat).toBeTypeOf("function");
+  });
+
   it("still hides auth-gated commands for an unauthorized sender", async () => {
     listCommands.mockResolvedValue([
       cmd({ key: "open", requiresAuth: false }),

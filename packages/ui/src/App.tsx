@@ -133,6 +133,7 @@ import { Button } from "./components/ui/button";
 import { KeepAliveViewHost } from "./components/views/KeepAliveViewHost";
 import { ShellViewAgentSurface } from "./components/views/ShellViewAgentSurface";
 import { ViewErrorBoundary } from "./components/views/ViewErrorBoundary";
+import { ViewUnavailableState } from "./components/views/ViewStatusStates";
 import { AppWorkspaceContent } from "./components/workspace/AppWorkspaceContent";
 import { useBootConfig } from "./config/boot-config-react.hooks";
 import { useBranding } from "./config/branding";
@@ -1334,21 +1335,33 @@ function ViewLayoutSurface({
  * inline ChatView — so an unavailable view falls back to the Launcher page
  * of the retained Home/Launcher surface, not a chat surface.
  */
-function ViewUnavailableFallback(): ReactNode {
-  return <HomeScreenMount initialSection="apps" />;
+function ViewUnavailableFallback({
+  viewId,
+  pageLayout,
+}: {
+  viewId: string;
+  pageLayout?: PageLayoutManifest;
+}): ReactNode {
+  const { refresh } = useAvailableViews();
+  return (
+    <AppWorkspaceContent pageLayout={pageLayout}>
+      <ViewUnavailableState viewId={viewId} onRetry={refresh} />
+    </AppWorkspaceContent>
+  );
 }
 
 function renderPhoneSurface(
   enabled: boolean,
   Component: ComponentType,
   pageLayout: PageLayoutManifest,
+  viewId: string,
 ): ReactNode {
   return enabled ? (
     <AppWorkspaceContent pageLayout={pageLayout}>
       <Component />
     </AppWorkspaceContent>
   ) : (
-    <ViewUnavailableFallback />
+    <ViewUnavailableFallback viewId={viewId} pageLayout={pageLayout} />
   );
 }
 
@@ -1356,7 +1369,9 @@ function renderAppsSurface(
   navigationPath: string,
   pageLayout: PageLayoutManifest,
 ): ReactNode {
-  if (!APPS_ENABLED) return <ViewUnavailableFallback />;
+  if (!APPS_ENABLED) {
+    return <ViewUnavailableFallback viewId="apps" pageLayout={pageLayout} />;
+  }
   const appSlug = getAppSlugFromPath(navigationPath);
   if (!appSlug) {
     return (
@@ -1433,7 +1448,7 @@ function buildStaticTabRenderers(): Record<
       </AppWorkspaceContent>
     );
   return {
-    chat: () => <ViewUnavailableFallback />,
+    chat: () => <HomeScreenMount initialSection="apps" />,
     browser: wrapOverlayAware(<LazyBrowserWorkspaceView />),
     stream: wrap(<LazyStreamView />),
     "pendant-transcript": wrapOverlayAware(<LazyPendantTranscriptView />),
@@ -1446,10 +1461,14 @@ function buildStaticTabRenderers(): Record<
     // Relationships is plugin-owned. Its app-shell registration claims the
     // route and supplies the page chrome; an absent plugin is an unavailable
     // feature rather than a host-side duplicate implementation.
-    relationships: () => <ViewUnavailableFallback />,
+    relationships: ({ pageLayout }) => (
+      <ViewUnavailableFallback viewId="relationships" pageLayout={pageLayout} />
+    ),
     // Knowledge is plugin-owned. If the document plugin is unavailable, the
     // registered-page resolver renders its explicit unavailable state.
-    documents: () => <ViewUnavailableFallback />,
+    documents: ({ pageLayout }) => (
+      <ViewUnavailableFallback viewId="documents" pageLayout={pageLayout} />
+    ),
     experience: ({ characterNav, pageLayout }) => (
       <AppWorkspaceContent nav={characterNav} pageLayout={pageLayout}>
         <LazyCharacterExperienceView />
@@ -1506,10 +1525,21 @@ function buildStaticTabRenderers(): Record<
     // marker as the home tile, so a deep-link off the fork falls back to
     // "unavailable" instead of rendering on web/desktop/iOS/Play-Store Android.
     camera: ({ pageLayout }) =>
-      renderPhoneSurface(isAospShellEnabled(), LazyCameraPageView, pageLayout),
-    phone: () => <ViewUnavailableFallback />,
-    messages: () => <ViewUnavailableFallback />,
-    contacts: () => <ViewUnavailableFallback />,
+      renderPhoneSurface(
+        isAospShellEnabled(),
+        LazyCameraPageView,
+        pageLayout,
+        "camera",
+      ),
+    phone: ({ pageLayout }) => (
+      <ViewUnavailableFallback viewId="phone" pageLayout={pageLayout} />
+    ),
+    messages: ({ pageLayout }) => (
+      <ViewUnavailableFallback viewId="messages" pageLayout={pageLayout} />
+    ),
+    contacts: ({ pageLayout }) => (
+      <ViewUnavailableFallback viewId="contacts" pageLayout={pageLayout} />
+    ),
     views: ({ navigationPath, pageLayout }) =>
       renderAppsSurface(navigationPath, pageLayout),
     apps: ({ navigationPath, pageLayout }) =>
@@ -1584,7 +1614,7 @@ function renderStaticViewRouterTab({
       characterNav,
     });
   }
-  return <ViewUnavailableFallback />;
+  return <ViewUnavailableFallback viewId={tab} />;
 }
 
 function renderViewRouterContent({

@@ -41,15 +41,24 @@ describe("resolveChatViewRouting", () => {
   });
 
   it("does not invent capabilities for plugin routes without declarations", () => {
-    expect(resolveChatViewRouting("views", "/wallet")).toMatchObject({
+    expect(resolveChatViewRouting("views", "/weather-map")).toMatchObject({
+      view: "weather-map",
+      capabilities: [],
+    });
+  });
+
+  it("does not invent Wallet capabilities before the registry declares them", () => {
+    expect(resolveChatViewRouting("views", "/wallet")).toEqual({
       view: "wallet",
+      primaryContext: "wallet",
+      secondaryContexts: [],
       capabilities: [],
     });
     expect(resolveChatViewRouting("inventory", "/")).toEqual({
       view: "wallet",
       primaryContext: "wallet",
-      secondaryContexts: ["documents"],
-      capabilities: ["wallet", "portfolio", "transactions"],
+      secondaryContexts: [],
+      capabilities: [],
     });
   });
 

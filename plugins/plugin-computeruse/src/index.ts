@@ -176,6 +176,10 @@ export const computerUsePlugin: Plugin = {
         "Live host, browser, sandbox, and remote-guest computer-use sessions",
       icon: "MonitorUp",
       path: "/computer-use-sessions",
+      responseContext: {
+        primaryContext: "system",
+        secondaryContexts: ["browser"],
+      },
       modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       surface: { capabilities: ["agent-surface"] },

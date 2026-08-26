@@ -80,6 +80,7 @@ export const healthPlugin: Plugin = {
         "Sleep, circadian, screen-time, activity, and connector status.",
       icon: "Heart",
       path: "/health",
+      responseContext: { primaryContext: "health" },
       modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       // First-party instrumented view (data-agent-id controls): grant the
