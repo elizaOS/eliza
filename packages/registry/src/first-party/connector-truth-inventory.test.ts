@@ -13,7 +13,7 @@ import channelPluginMap from "./channel-plugin-map.json" with { type: "json" };
 import truthInventory from "./connector-truth-inventory.json" with {
   type: "json",
 };
-import { generateFirstPartyRegistry } from "./generate";
+import { generateFirstPartyRegistry, pathRelativeToRepoRoot } from "./generate";
 import generatedRegistry from "./generated.json" with { type: "json" };
 import { connectorEntrySchema, pluginEntrySchema } from "./schema";
 
@@ -234,6 +234,60 @@ describe("connector truth inventory (#24373)", () => {
       new Set(
         truthInventory.connectors.map((r: InventoryRow) => r.packageName),
       ),
+    );
+  });
+
+  it("emits repository-relative POSIX site paths on every platform", () => {
+    // `pathRelativeToRepoRoot` must use `path.relative` + separator
+    // normalization: a literal `${REPO_ROOT}/` replace never matches Windows
+    // `\`-joined paths, so writer mode would commit machine-specific
+    // `C:\Users\...` paths and check mode would fail on a pristine Windows
+    // checkout. The invariant runs against BOTH the committed artifact and
+    // the freshly generated inventory — asserting only the committed JSON
+    // would not regression-test the generator on POSIX lanes.
+    const assertRepoRelativeSites = (inventory: {
+      connectors: InventoryRow[];
+    }) => {
+      for (const row of inventory.connectors) {
+        expect(row.registrationSites.length).toBeGreaterThan(0);
+        for (const site of row.registrationSites) {
+          expect(
+            path.isAbsolute(site),
+            `${row.plugin}: registration site "${site}" must be repository-relative, not absolute`,
+          ).toBe(false);
+          expect(
+            site,
+            `${row.plugin}: registration site "${site}" must not contain a Windows separator`,
+          ).not.toContain("\\");
+          expect(
+            /^[A-Za-z]:/.test(site),
+            `${row.plugin}: registration site "${site}" must not carry a drive prefix`,
+          ).toBe(false);
+          expect(
+            site.startsWith("../") || site === "..",
+            `${row.plugin}: registration site "${site}" must stay inside the repository root`,
+          ).toBe(false);
+        }
+      }
+    };
+    assertRepoRelativeSites(truthInventory);
+    assertRepoRelativeSites(JSON.parse(generateFirstPartyRegistry().inventory));
+  });
+
+  it("normalizes site paths under Windows path semantics", () => {
+    // Pins the exact defect mashingaan reported: a literal
+    // `${REPO_ROOT}/` prefix replace silently leaves Windows-joined absolute
+    // paths untouched. Injecting `path.win32` proves the shipped helper
+    // normalizes them deterministically on every host lane.
+    const winRoot = "C:\\repo\\eliza";
+    const winFile = "C:\\repo\\eliza\\plugins\\plugin-discord\\src\\service.ts";
+    expect(pathRelativeToRepoRoot(winFile, path.win32, winRoot)).toBe(
+      "plugins/plugin-discord/src/service.ts",
+    );
+    // Host (POSIX) semantics emit the same repository-relative spelling.
+    const posixFile = "/repo/eliza/plugins/plugin-discord/src/service.ts";
+    expect(pathRelativeToRepoRoot(posixFile, path.posix, "/repo/eliza")).toBe(
+      "plugins/plugin-discord/src/service.ts",
     );
   });
 
