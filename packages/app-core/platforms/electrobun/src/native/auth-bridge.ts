@@ -275,6 +275,8 @@ export function clearPersistedSession(
 
 interface BootstrapSocket {
   socketPath: string;
+  /** Resolves only after bind succeeds and the socket inode is owner-only. */
+  ready: Promise<void>;
   /** Resolves once a peer has connected, read the secret, and disconnected. */
   consumed: Promise<void>;
   /** True as soon as the one permitted peer has connected. */
@@ -331,6 +333,20 @@ function openBootstrapSocket(
     rejectConsumed = rej;
   });
 
+  let resolveReady: () => void = () => {};
+  let rejectReady: (err: Error) => void = () => {};
+  const ready = new Promise<void>((res, rej) => {
+    resolveReady = res;
+    rejectReady = rej;
+  });
+  let readySettled = false;
+  const settleReady = (err?: Error) => {
+    if (readySettled) return;
+    readySettled = true;
+    if (err) rejectReady(err);
+    else resolveReady();
+  };
+
   let connectionAccepted = false;
   const server = net.createServer((conn) => {
     if (connectionAccepted) {
@@ -349,23 +365,33 @@ function openBootstrapSocket(
     conn.once("error", (err) => rejectConsumed(err));
   });
 
-  server.on("error", (err) => rejectConsumed(err));
-  server.listen(socketPath);
-
-  // chmod the socket inode itself so only the owner can connect. On Linux this
-  // is enforced; on macOS UDS permissions are advisory but still useful.
-  try {
-    fs.chmodSync(socketPath, 0o600);
-  } catch (err) {
-    warnAuthBridge("Failed to chmod desktop auth socket", {
-      socketPath,
-      mode: "0600",
-      error: errorMessage(err),
-    });
-  }
+  server.on("error", (err) => {
+    settleReady(err);
+    rejectConsumed(err);
+  });
+  server.listen(socketPath, () => {
+    // The API must not receive the pathname until bind has completed and the
+    // socket inode is owner-only. Posting earlier races the backend's connect
+    // and turns a healthy same-user proof into a spurious 403.
+    try {
+      fs.chmodSync(socketPath, 0o600);
+      settleReady();
+    } catch (err) {
+      const failure = err instanceof Error ? err : new Error(String(err));
+      warnAuthBridge("Failed to chmod desktop auth socket", {
+        socketPath,
+        mode: "0600",
+        error: errorMessage(err),
+      });
+      settleReady(failure);
+      rejectConsumed(failure);
+      server.close();
+    }
+  });
 
   return {
     socketPath,
+    ready,
     consumed,
     wasConnected: () => connectionAccepted,
     close: () => {
@@ -532,7 +558,6 @@ export async function bootstrapDesktopSession(
   }
 
   const url = buildBootstrapUrl(deps.apiBase);
-  const requestSignal = AbortSignal.timeout(timing.httpRequestTimeoutMs);
   const observedConsumption = socketHandle.consumed;
   // error-policy:J5 a socket-server rejection is awaited after a 2xx response;
   // this observer covers early HTTP exits without changing that result.
@@ -544,6 +569,8 @@ export async function bootstrapDesktopSession(
 
   let body: DesktopBootstrapResponseBody | null = null;
   try {
+    await socketHandle.ready;
+    const requestSignal = AbortSignal.timeout(timing.httpRequestTimeoutMs);
     let response: Response | null = null;
     for (let attempt = 0; ; attempt += 1) {
       response = await fetchImpl(url, {
