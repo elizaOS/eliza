@@ -613,11 +613,20 @@ function makeDesktopRequest(options: {
   remoteAddress: string;
   host: string;
   bearer?: boolean;
+  headers?: http.IncomingHttpHeaders;
 }): http.IncomingMessage {
   const req = makeReq(
     options.bearer
-      ? { authorization: `Bearer ${SESSION_ID}`, host: options.host }
-      : { cookie: `${SESSION_COOKIE_NAME}=${SESSION_ID}`, host: options.host },
+      ? {
+          ...options.headers,
+          authorization: `Bearer ${SESSION_ID}`,
+          host: options.host,
+        }
+      : {
+          ...options.headers,
+          cookie: `${SESSION_COOKIE_NAME}=${SESSION_ID}`,
+          host: options.host,
+        },
   );
   Object.defineProperty(req.socket, "remoteAddress", {
     value: options.remoteAddress,
@@ -684,6 +693,26 @@ describe("desktop loopback browser sessions", () => {
       ),
     ).resolves.toBeNull();
   });
+
+  it.each([
+    ["x-forwarded-for", { "x-forwarded-for": "203.0.113.9" }],
+    ["forwarded", { forwarded: "for=198.51.100.7" }],
+    ["x-real-ip", { "x-real-ip": "192.0.2.4" }],
+  ])(
+    "rejects a marked session when %s reports a non-loopback client",
+    async (_name, headers) => {
+      await expect(
+        resolveDesktopSession(
+          session({ scopes: [DESKTOP_LOOPBACK_SESSION_SCOPE] }),
+          makeDesktopRequest({
+            remoteAddress: "127.0.0.1",
+            host: "127.0.0.1:31337",
+            headers,
+          }),
+        ),
+      ).resolves.toBeNull();
+    },
+  );
 
   it("does not change ordinary browser-session routing", async () => {
     await expect(
