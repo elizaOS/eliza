@@ -64,6 +64,7 @@ export function resolveChatMetadataView(
   const candidatePath = normalizeViewPath(metadata.uiViewPath);
   if (candidatePath) {
     const byPath = views
+      .filter((view) => view.available !== false)
       .flatMap((view) => {
         const registeredPath = normalizeViewPath(view.path);
         return registeredPath && viewPathMatches(candidatePath, registeredPath)
@@ -76,7 +77,10 @@ export function resolveChatMetadataView(
 
   const candidateId = asString(metadata.uiView);
   if (!candidateId) return null;
-  return views.find((view) => view.id === candidateId) ?? null;
+  return (
+    views.find((view) => view.id === candidateId && view.available !== false) ??
+    null
+  );
 }
 
 /**
@@ -110,8 +114,13 @@ export function enrichChatUiViewMetadata(
 
   const view = resolveChatMetadataView(metadata, views);
   if (!view) {
-    const { uiViewCapabilities: _callerCapabilities, ...unresolvedMetadata } =
-      metadataWithoutActionNames;
+    const {
+      uiView: _callerView,
+      uiViewPath: _callerViewPath,
+      uiViewCapabilities: _callerCapabilities,
+      __responseContext: _callerResponseContext,
+      ...unresolvedMetadata
+    } = metadataWithoutActionNames;
     return unresolvedMetadata;
   }
 
@@ -124,9 +133,21 @@ export function enrichChatUiViewMetadata(
     ...(view.relatedActions ?? []),
     ...(view.scopedActions ?? []).map((action) => action.name),
   ]);
+  const declaredResponseContext = view.responseContext
+    ? {
+        primaryContext: view.responseContext.primaryContext,
+        secondaryContexts: uniqueStrings(
+          view.responseContext.secondaryContexts ?? [],
+        ),
+      }
+    : undefined;
+  const {
+    __responseContext: _callerResponseContext,
+    ...metadataWithoutResponseContext
+  } = metadataWithoutActionNames;
 
   return {
-    ...metadataWithoutActionNames,
+    ...metadataWithoutResponseContext,
     uiView: view.id,
     uiViewPath:
       normalizeViewPath(metadata.uiViewPath) ?? view.path ?? undefined,
@@ -135,5 +156,8 @@ export function enrichChatUiViewMetadata(
     // names become planner facts for actions the server cannot execute.
     uiViewCapabilities: declaredCapabilities,
     uiViewActionNames: viewActionNames,
+    ...(declaredResponseContext
+      ? { __responseContext: declaredResponseContext }
+      : {}),
   };
 }

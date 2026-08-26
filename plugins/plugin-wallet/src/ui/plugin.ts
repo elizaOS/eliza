@@ -40,6 +40,7 @@ export const walletAppPlugin: Plugin = {
       description: "Non-custodial wallet inventory and token balances",
       icon: "Wallet",
       path: "/wallet",
+      responseContext: { primaryContext: "wallet" },
       modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       // First-party instrumented view (data-agent-id controls): grant the

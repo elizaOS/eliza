@@ -71,6 +71,7 @@ export const calendarPlugin: Plugin = {
       },
       componentExport: "CalendarView",
       tags: ["calendar", "schedule", "events"],
+      responseContext: { primaryContext: "calendar" },
       relatedActions: ["CALENDAR", "CALENDAR_SOURCES", "CONFLICT_DETECT"],
       visibleInManager: true,
       desktopTabEnabled: true,
