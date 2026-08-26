@@ -123,8 +123,8 @@ describe("AES-256-CBC streaming semantics (hold-back buffer + IV chaining)", () 
 	);
 
 	it("decrypt side mirrors the same chunked hold-back across update() calls", () => {
-		const ciphertextHex = nodeCiphertextHex(SECRET + "0123456789abcde"); // 47 bytes
-		const expected = SECRET + "0123456789abcde";
+		const ciphertextHex = nodeCiphertextHex(`${SECRET}0123456789abcde`); // 47 bytes
+		const expected = `${SECRET}0123456789abcde`;
 		for (const split of [16, 31, 32]) {
 			const decipher = createDecipheriv("aes-256-cbc", KEY, IV);
 			const got =
@@ -133,6 +133,44 @@ describe("AES-256-CBC streaming semantics (hold-back buffer + IV chaining)", () 
 				decipher.final("utf8");
 			expect(got).toBe(expected);
 		}
+	});
+
+	it("decodes a multibyte UTF-8 character split across the update()/final() boundary", () => {
+		// "€" is E2 82 AC; starting it at byte 15 puts its lead byte at the end
+		// of the first plaintext block, so the sequence straddles the last
+		// update() chunk and the final() tail. Regression pin: per-chunk
+		// decoding emitted U+FFFD here while node:crypto streamed it through
+		// one stateful decoder (issue #28947).
+		const plaintext = `${"a".repeat(15)}€tail`;
+		const hex = nodeCiphertextHex(plaintext);
+		const decipher = createDecipheriv("aes-256-cbc", KEY, IV);
+		expect(decipher.update(hex, "hex", "utf8") + decipher.final("utf8")).toBe(
+			plaintext,
+		);
+	});
+
+	it("decodes multibyte UTF-8 split across two update() chunks", () => {
+		// 4-byte emoji from byte 13: its sequence crosses the first block's
+		// edge, and the ciphertext is also fed through two update() calls.
+		const plaintext = `${"a".repeat(13)}🚀tail`;
+		const hex = nodeCiphertextHex(plaintext);
+		for (const split of [16, 24]) {
+			const decipher = createDecipheriv("aes-256-cbc", KEY, IV);
+			const got =
+				decipher.update(hex.slice(0, split * 2), "hex", "utf8") +
+				decipher.update(hex.slice(split * 2), "hex", "utf8") +
+				decipher.final("utf8");
+			expect(got).toBe(plaintext);
+		}
+	});
+
+	it("matches node:crypto byte-for-byte on a non-ASCII secret round-trip", () => {
+		const secret = "ключ-космос-鍵-🔐-secreto"; // 2/3/4-byte sequences
+		const hex = nodeCiphertextHex(secret);
+		const decipher = createDecipheriv("aes-256-cbc", KEY, IV);
+		expect(decipher.update(hex, "hex", "utf8") + decipher.final("utf8")).toBe(
+			secret,
+		);
 	});
 
 	it("pads an exact-block plaintext with a full 0x10 block (ciphertext +16 bytes)", () => {
@@ -188,6 +226,26 @@ describe("AES-256-CBC tamper and padding rejection", () => {
 		ecb.setAutoPadding(false);
 		const forcedBigPad = ecb.update(new Uint8Array(16).fill(0x11));
 		const tampered = bytesToHex(joinBytes(hexToBytes(hex), forcedBigPad));
+		const decipher = createDecipheriv("aes-256-cbc", KEY, IV);
+		expect(
+			() => decipher.update(tampered, "hex", "utf8") + decipher.final("utf8"),
+		).toThrow(/Invalid PKCS#7 padding/);
+	});
+
+	it("throws when the pad length byte is valid but interior pad bytes are wrong", () => {
+		// Final byte says "3 bytes of padding" but the preceding pad byte is
+		// 0x07, not 0x03 — pins the full interior-byte validation loop, not
+		// just the length range check.
+		const hex = nodeCiphertextHex(SECRET);
+		const last = hexToBytes((hex.match(/.{32}/g) ?? []).slice(-1)[0] ?? "");
+		const forgedBlock = new Uint8Array(16);
+		forgedBlock.fill(0x41, 0, 14);
+		forgedBlock[14] = 0x07; // wrong interior pad byte
+		forgedBlock[15] = 0x03; // valid-looking pad length
+		const ecb = nodeCipher("aes-256-cbc", KEY, last);
+		ecb.setAutoPadding(false);
+		const appended = ecb.update(forgedBlock);
+		const tampered = bytesToHex(joinBytes(hexToBytes(hex), appended));
 		const decipher = createDecipheriv("aes-256-cbc", KEY, IV);
 		expect(
 			() => decipher.update(tampered, "hex", "utf8") + decipher.final("utf8"),

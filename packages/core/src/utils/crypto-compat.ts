@@ -251,6 +251,50 @@ function validateKeyAndIv(key: Uint8Array, iv: Uint8Array): void {
 }
 
 /**
+ * Byte length of the UTF-8 sequence led by `byte` (0 when not a lead byte).
+ */
+function utf8SequenceLength(byte: number): number {
+	if (byte >= 0xf0) return 4;
+	if (byte >= 0xe0) return 3;
+	if (byte >= 0xc0) return 2;
+	return 0;
+}
+
+/**
+ * Split a trailing incomplete UTF-8 sequence off a plaintext chunk.
+ *
+ * `node:crypto`'s decipher streams UTF-8 output statefully: a multibyte
+ * character whose bytes land in different `update()` chunks is held back
+ * until complete. Decoding each chunk with a fresh `TextDecoder` instead
+ * would emit U+FFFD at every block boundary — silently corrupting any
+ * non-ASCII secret that straddles a 16-byte block edge. Only a lead byte
+ * whose sequence is cut short at the end of the chunk is retained; complete
+ * sequences, ASCII tails, and orphaned continuation bytes (invalid UTF-8,
+ * which decoders replace anyway) all pass through unchanged.
+ */
+function splitTrailingPartialUtf8(bytes: Uint8Array): {
+	decode: OwnedUint8Array;
+	holdback: OwnedUint8Array;
+} {
+	for (
+		let leadIdx = bytes.length - 1;
+		leadIdx >= 0 && leadIdx >= bytes.length - 3;
+		leadIdx--
+	) {
+		const seqLength = utf8SequenceLength(bytes[leadIdx] ?? 0);
+		if (seqLength === 0) continue;
+		if (leadIdx + seqLength > bytes.length) {
+			return {
+				decode: sliceBytes(bytes, 0, leadIdx),
+				holdback: sliceBytes(bytes, leadIdx),
+			};
+		}
+		return { decode: toOwnedUint8Array(bytes), holdback: new Uint8Array(0) };
+	}
+	return { decode: toOwnedUint8Array(bytes), holdback: new Uint8Array(0) };
+}
+
+/**
  * Validate key and IV lengths for AES-256-GCM
  *
  * GCM requires a 32-byte key. The recommended nonce/IV length is 12 bytes.
@@ -389,6 +433,7 @@ export function createDecipheriv(
 	const normalizedKey = Uint8Array.from(key);
 	let currentIv = Uint8Array.from(iv);
 	let pending = new Uint8Array(0);
+	let utf8Holdback = new Uint8Array(0);
 	return {
 		update(data, inputEncoding, outputEncoding) {
 			const incoming = toUint8Array(data, normalizeEncoding(inputEncoding));
@@ -411,7 +456,20 @@ export function createDecipheriv(
 				ciphertextChunk,
 				ciphertextChunk.length - AES_BLOCK_SIZE,
 			);
-			return toEncodedString(plaintextChunk, normalizeEncoding(outputEncoding));
+			if (normalizeEncoding(outputEncoding) !== "utf8") {
+				return toEncodedString(
+					plaintextChunk,
+					normalizeEncoding(outputEncoding),
+				);
+			}
+			// Hold back a trailing partial UTF-8 sequence so multibyte characters
+			// split across update() chunks decode once, complete — node:crypto
+			// streams its output through one stateful decoder.
+			const split = splitTrailingPartialUtf8(
+				concatBytes(utf8Holdback, plaintextChunk),
+			);
+			utf8Holdback = split.holdback;
+			return toEncodedString(split.decode, "utf8");
 		},
 		final(encoding) {
 			if (pending.length === 0 || pending.length % AES_BLOCK_SIZE !== 0) {
@@ -423,10 +481,13 @@ export function createDecipheriv(
 				),
 			);
 			pending = new Uint8Array(0);
-			return toEncodedString(
-				removePkcs7Padding(decryptedTail),
-				normalizeEncoding(encoding),
-			);
+			const unpadded = removePkcs7Padding(decryptedTail);
+			if (normalizeEncoding(encoding) !== "utf8") {
+				return toEncodedString(unpadded, normalizeEncoding(encoding));
+			}
+			const complete = concatBytes(utf8Holdback, unpadded);
+			utf8Holdback = new Uint8Array(0);
+			return toEncodedString(complete, "utf8");
 		},
 	};
 }
