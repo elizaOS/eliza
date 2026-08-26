@@ -29,6 +29,7 @@ import type {
   AgentSandboxStatus,
 } from "@/db/schemas/agent-sandboxes";
 import * as realAuth from "@/lib/auth";
+import * as realWorkersAuth from "@/lib/auth/workers-hono-auth";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
 import { personalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -62,6 +63,7 @@ const currentUser = {
 };
 
 const realAuthSnapshot = { ...realAuth };
+const realWorkersAuthSnapshot = { ...realWorkersAuth };
 const dbHelpersSnapshot = { ...dbHelpersActual };
 const ENV = { NODE_ENV: "test" } as AppEnv["Bindings"];
 
@@ -103,6 +105,10 @@ beforeAll(async () => {
     mock.module("@/lib/auth", () => ({
       ...realAuthSnapshot,
       requireAuthOrApiKeyWithOrg: mock(async () => ({ user: currentUser })),
+    }));
+    mock.module("@/lib/auth/workers-hono-auth", () => ({
+      ...realWorkersAuthSnapshot,
+      requireUserOrApiKeyWithOrg: mock(async () => currentUser),
     }));
     installCommitAckSeam();
 
@@ -160,6 +166,9 @@ beforeAll(async () => {
       "/api/v1/eliza/agents/:agentId/upgrade-tier/adopt-existing",
       route,
     );
+    const profileRoute = (await import("../v1/eliza/agents/[agentId]/route"))
+      .default;
+    app.route("/api/v1/eliza/agents/:agentId", profileRoute);
   } catch (error) {
     pgliteReady = false;
     console.error(
@@ -188,6 +197,7 @@ afterAll(async () => {
   if (closeDb) await closeDb();
   mock.restore();
   mock.module("@/lib/auth", () => realAuthSnapshot);
+  mock.module("@/lib/auth/workers-hono-auth", () => realWorkersAuthSnapshot);
   mock.module("../../shared/src/db/helpers", () => dbHelpersSnapshot);
 });
 
@@ -238,6 +248,18 @@ function confirm(quoteId: string, agentId = PERSONAL_A) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "adopt_existing_dedicated", quoteId }),
+    },
+    ENV,
+  );
+}
+
+function patchProfile(agentConfig: Record<string, unknown>) {
+  return app.request(
+    `/api/v1/eliza/agents/${TARGET_A}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agentConfig }),
     },
     ENV,
   );
@@ -459,6 +481,50 @@ describe("GET/POST adopt-existing Dedicated", () => {
       code: "dedicated_adoption_unavailable",
     });
     expect(await dbWrite.select().from(jobs)).toHaveLength(0);
+  });
+
+  test("profile PATCH cannot forge adoption or cutover authority to bypass the stopped-target credit gate", async () => {
+    expect(pgliteReady).toBe(true);
+    await seedCandidate({ status: "stopped" });
+    await dbWrite
+      .update(organizations)
+      .set({ credit_balance: "0.5" })
+      .where(eq(organizations.id, ORG_A));
+
+    const patched = await patchProfile({
+      system: "ordinary caller edit",
+      __agentUpgradedFrom: PERSONAL_A,
+      __agentPersonalCutover: {
+        mode: "dedicated",
+        sourceAgentId: PERSONAL_A,
+        cutoverToken: "caller-forged-token",
+      },
+    });
+    expect(patched.status).toBe(200);
+    const [target] = await rows();
+    expect(target?.agent_config).toEqual({ system: "ordinary caller edit" });
+
+    const quoted = await quote();
+    expect(quoted.status).toBe(200);
+    const quoteBody = (await quoted.json()) as {
+      data: {
+        quoteId: string;
+        adoptionState: string;
+        startsCompute: boolean;
+        canAdopt: boolean;
+      };
+    };
+    expect(quoteBody.data).toMatchObject({
+      adoptionState: "available",
+      startsCompute: true,
+      canAdopt: false,
+    });
+
+    const blocked = await confirm(quoteBody.data.quoteId);
+    expect(blocked.status).toBe(402);
+    expect(await targetJobs(TARGET_A)).toHaveLength(0);
+    const [unchanged] = await rows();
+    expect(unchanged?.agent_config).toEqual({ system: "ordinary caller edit" });
   });
 
   for (const status of ["error", "stopped"] as const) {
