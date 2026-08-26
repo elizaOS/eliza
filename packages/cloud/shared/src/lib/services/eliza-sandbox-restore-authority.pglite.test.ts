@@ -1024,6 +1024,63 @@ describe("ElizaSandboxService stopped restore-point pinning", () => {
     expect(reactivateBilling).not.toHaveBeenCalled();
   });
 
+  test("rejects a newer verified backup after worker review before provider or billing admission", async () => {
+    const sandbox = await seedSandbox({
+      status: "error",
+      execution_tier: "dedicated-always",
+      sandbox_id: null,
+      node_id: null,
+      container_name: null,
+      bridge_url: null,
+      health_url: null,
+      headscale_ip: null,
+      database_status: "ready",
+      database_uri: "postgres://restore-authority.example/newer-backup-race",
+    });
+    const chain = await seedReviewedIncrementalChain(sandbox.id);
+    await expect(
+      resolveReviewedProvisionRestoreDirectiveForExecution({
+        agentId: sandbox.id,
+        organizationId: sandbox.organization_id,
+        userId: sandbox.user_id,
+        agentName: sandbox.agent_name ?? sandbox.id,
+        restoreDirective: chain.directive,
+      }),
+    ).resolves.toEqual(chain.directive);
+    const newerState = state("newer-reviewed-state");
+    await dbWrite.insert(agentSandboxBackups).values({
+      sandbox_record_id: sandbox.id,
+      snapshot_type: "auto",
+      state_data: newerState,
+      state_data_storage: "inline",
+      size_bytes: Buffer.byteLength(JSON.stringify(newerState), "utf8"),
+      backup_kind: "full",
+      content_hash: computeStateHash(newerState),
+      verification_status: "verified",
+      verified_at: new Date("2026-08-25T13:00:00.000Z"),
+      created_at: new Date("2026-08-25T13:00:00.000Z"),
+    });
+    const create = mock(async () => {
+      throw new Error("provider create must not restore an obsolete reviewed backup");
+    });
+    const reactivateBilling = spyOn(
+      agentBillingRepository,
+      "reactivateSandboxBillingAfterFunding",
+    ).mockResolvedValue(undefined);
+    const service = new ElizaSandboxService({
+      create,
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    });
+
+    await expect(
+      service.provision(sandbox.id, sandbox.organization_id, chain.directive),
+    ).resolves.toMatchObject({ success: false });
+    expect(create).not.toHaveBeenCalled();
+    expect(reactivateBilling).not.toHaveBeenCalled();
+  });
+
   test("the durable fence blocks backup mutation through provider and billing admission", async () => {
     const sandbox = await seedSandbox({
       status: "error",

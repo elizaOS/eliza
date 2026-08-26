@@ -30,7 +30,9 @@ import type {
 } from "@/db/schemas/agent-sandboxes";
 import * as realAuth from "@/lib/auth";
 import * as realWorkersAuth from "@/lib/auth/workers-hono-auth";
+import { buildRedisClient } from "@/lib/cache/redis-factory";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
+import { PROVISIONING_WORKER_HEARTBEAT_KEY } from "@/lib/services/provisioning-worker-health";
 import { personalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import * as dbHelpersActual from "../../shared/src/db/helpers";
@@ -194,6 +196,8 @@ beforeEach(async () => {
   currentUser.organization_id = ORG_A;
   currentUser.organization = { id: ORG_A, name: "Org A", is_active: true };
   ENV.NODE_ENV = "test";
+  delete process.env.REQUIRE_PROVISIONING_WORKER;
+  await buildRedisClient(process.env)?.del(PROVISIONING_WORKER_HEARTBEAT_KEY);
   await dbWrite.delete(jobs);
   await dbWrite.delete(personalDedicatedUpgradeAuthorities);
   await dbWrite.delete(personalDedicatedAdoptionSelections);
@@ -672,19 +676,42 @@ describe("GET/POST adopt-existing Dedicated", () => {
     await seedCandidate({ status: "error" });
     const quoteId = await currentQuoteId();
 
-    // Production mode with no Redis capability evidence would 503 if this
-    // request crossed the reviewed-directive gate. This ordinary one-row path
-    // carries no new directive and remains compatible with the legacy daemon.
-    ENV.NODE_ENV = "production";
-    let response: Response;
+    const redis = buildRedisClient(process.env);
+    if (!redis) throw new Error("mock Redis is not configured");
+    // A bare timestamp is the legacy daemon's healthy heartbeat. It advertises
+    // no reviewed-restore capability, but this ordinary one-row path carries
+    // no new directive and remains compatible with that daemon.
+    await redis.set(
+      PROVISIONING_WORKER_HEARTBEAT_KEY,
+      new Date().toISOString(),
+    );
+    process.env.REQUIRE_PROVISIONING_WORKER = "true";
     try {
-      response = await confirm(quoteId);
+      const response = await confirm(quoteId);
+      expect(response.status).toBe(202);
+      expect(await targetJobs(TARGET_A)).toHaveLength(1);
     } finally {
-      ENV.NODE_ENV = "test";
+      delete process.env.REQUIRE_PROVISIONING_WORKER;
+      await redis.del(PROVISIONING_WORKER_HEARTBEAT_KEY);
     }
+  });
 
-    expect(response.status).toBe(202);
-    expect(await targetJobs(TARGET_A)).toHaveLength(1);
+  test("retains the generic worker-liveness gate for an unselected provision", async () => {
+    expect(pgliteReady).toBe(true);
+    await seedCandidate({ status: "error" });
+    const quoteId = await currentQuoteId();
+    process.env.REQUIRE_PROVISIONING_WORKER = "true";
+    try {
+      const response = await confirm(quoteId);
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({
+        success: false,
+        code: "PROVISIONING_WORKER_UNHEALTHY",
+      });
+      expect(await targetJobs(TARGET_A)).toHaveLength(0);
+    } finally {
+      delete process.env.REQUIRE_PROVISIONING_WORKER;
+    }
   });
 
   test("adopts a running row without starting another provision job", async () => {

@@ -23,6 +23,7 @@ import { personalDedicatedActivationAuthorityKey } from "@/lib/services/personal
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import {
   checkProvisioningWorkerCapability,
+  checkProvisioningWorkerHealth,
   provisioningWorkerFailureBody,
   REVIEWED_BACKUP_RESTORE_CAPABILITY,
 } from "@/lib/services/provisioning-worker-health";
@@ -348,10 +349,12 @@ async function __hono_POST(
       );
     }
 
-    if (quote.startsCompute && resolved.selectionActivationAuthority) {
-      const workerHealth = await checkProvisioningWorkerCapability(
-        REVIEWED_BACKUP_RESTORE_CAPABILITY,
-      );
+    if (quote.startsCompute) {
+      const workerHealth = resolved.selectionActivationAuthority
+        ? await checkProvisioningWorkerCapability(
+            REVIEWED_BACKUP_RESTORE_CAPABILITY,
+          )
+        : await checkProvisioningWorkerHealth();
       if (!workerHealth.ok) {
         logger.warn(
           "[agent-tier-adoption] Adoption blocked: provisioning worker unavailable",

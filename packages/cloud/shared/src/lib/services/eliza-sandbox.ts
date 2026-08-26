@@ -845,27 +845,45 @@ export async function assertReviewedFreshBootAuthority(
   directive: Extract<ProvisionRestoreOverride, { kind: "reviewed-fresh-boot" }>,
 ): Promise<void> {
   try {
-    const selection = await assertReviewedSelectionReceipt(sandboxRecordId, directive);
-    const backups = await dbWrite
-      .select()
-      .from(agentSandboxBackups)
-      .where(eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId))
-      .orderBy(asc(agentSandboxBackups.id));
-    if (
-      personalDedicatedActivationAuthority(
-        selection.organization_id,
-        sandboxRecordId,
-        backups.map(personalDedicatedBackupProvenanceFromStored),
-      ).kind !== "fresh-boot"
-    ) {
-      throw new Error(RESTORE_BACKUP_CHANGED);
-    }
+    await assertReviewedSelectionActivationAuthority(sandboxRecordId, directive);
   } catch {
     throw new ApiError(
       409,
       "session_not_ready",
       "Reviewed fresh-boot authority changed before Dedicated provisioning",
     );
+  }
+}
+
+async function assertReviewedSelectionActivationAuthority(
+  sandboxRecordId: string,
+  directive: ReviewedProvisionAuthorityOverride,
+): Promise<void> {
+  const selection = await assertReviewedSelectionReceipt(sandboxRecordId, directive);
+  const backups = await dbWrite
+    .select()
+    .from(agentSandboxBackups)
+    .where(eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId))
+    .orderBy(asc(agentSandboxBackups.id));
+  const currentAuthority = personalDedicatedActivationAuthority(
+    selection.organization_id,
+    sandboxRecordId,
+    backups.map(personalDedicatedBackupProvenanceFromStored),
+  );
+  const reviewedAuthority =
+    directive.kind === "reviewed-fresh-boot"
+      ? ({ kind: "fresh-boot" } as const)
+      : ({
+          kind: "from-legacy-backup",
+          backupId: directive.backupId,
+          backupHash: directive.expectedContentHash,
+          backupChain: directive.expectedBackupChain,
+        } as const);
+  if (
+    personalDedicatedActivationAuthorityKey(currentAuthority) !==
+    personalDedicatedActivationAuthorityKey(reviewedAuthority)
+  ) {
+    throw new Error(RESTORE_BACKUP_CHANGED);
   }
 }
 
@@ -991,7 +1009,7 @@ export async function assertReviewedProvisionRestoreAuthority(
   directive: ReviewedProvisionRestoreOverride,
 ): Promise<PreparedReviewedProvisionRestore> {
   try {
-    await assertReviewedSelectionReceipt(sandboxRecordId, directive);
+    await assertReviewedSelectionActivationAuthority(sandboxRecordId, directive);
     const storedChain = await captureStoredRestoreChain(directive.backupId, sandboxRecordId);
     if (
       !storedChain ||
