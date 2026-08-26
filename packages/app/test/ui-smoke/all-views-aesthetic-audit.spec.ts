@@ -1607,7 +1607,15 @@ test.describe("all-views aesthetic audit (#8796)", () => {
       `audit BUILTIN_TAB_PATHS path drift vs navigation: ${mismatched.join(", ")}`,
     ).toEqual([]);
 
-    const uncovered = [...navDistinctPaths].filter((p) => !inlinedPaths.has(p));
+    const pluginOwnedAliases = new Set([
+      "/apps/relationships",
+      "/phone",
+      "/messages",
+      "/contacts",
+    ]);
+    const uncovered = [...navDistinctPaths].filter(
+      (p) => !inlinedPaths.has(p) && !pluginOwnedAliases.has(p),
+    );
     expect(
       uncovered,
       `navigation TAB_PATHS adds routes the audit does not cover: ${uncovered.join(", ")}`,
