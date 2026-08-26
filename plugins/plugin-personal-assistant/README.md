@@ -85,9 +85,9 @@ The runner pattern-matches **only** on the structural fields above
 `subject`, `priority`, `respectsGlobalPause`). It never inspects
 `promptInstructions` content. This is non-negotiable.
 
-The frozen contract is defined in `src/lifeops/scheduled-task/types.ts`
+The frozen contract is defined in `@elizaos/plugin-scheduling`
 (the runner imports `ScheduledTask` from there). `src/lifeops/wave1-types.ts`
-is a slightly diverged copy consumed only by the `first-run` module.
+re-exports the canonical contracts from `@elizaos/plugin-scheduling` for the `first-run` module.
 
 ### No-reply semantics
 
