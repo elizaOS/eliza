@@ -347,15 +347,13 @@ describe("gmail send handler", () => {
     });
     expect(sendGmailMessage).not.toHaveBeenCalled();
   });
-});
-
 
   it("preserves surrogate pairs when truncating long subject lines", async () => {
     const { runtime, sendGmailMessage } = runtimeStub({
       accounts: [CONNECTED_ACCOUNT],
     });
     const registration = createGmailMessageConnector(runtime);
-    const longText = "A".repeat(74) + "🎯" + " rest of the message";
+    const longText = `${"A".repeat(74)}🎯 rest of the message`;
 
     await invokeSend(
       registration,
@@ -366,10 +364,11 @@ describe("gmail send handler", () => {
 
     expect(sendGmailMessage).toHaveBeenCalledWith(
       expect.objectContaining({
-        subject: "A".repeat(74) + "...",
+        subject: `${"A".repeat(74)}...`,
       })
     );
   });
+});
 
 describe("isEmailAddress", () => {
   it("accepts literal addresses and rejects names/handles", () => {
