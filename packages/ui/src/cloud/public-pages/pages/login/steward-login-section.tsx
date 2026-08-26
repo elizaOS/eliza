@@ -300,6 +300,8 @@ const DEFAULT_PROVIDERS: StewardProviders = {
   oauth: [],
 };
 
+const STEWARD_PROVIDER_DISCOVERY_TIMEOUT_MS = 15_000;
+
 type LoginTranslator = ReturnType<typeof useCloudT>;
 
 function requireCompletedAuth(
@@ -443,6 +445,12 @@ function describeEmailLoginError(error: unknown, fallback: string): string {
 
 let cachedStewardProviders: StewardProviders | null = null;
 let stewardProvidersPromise: Promise<StewardProviders> | null = null;
+let stewardProvidersRequestGeneration = 0;
+
+function discardStewardProvidersRequest(): void {
+  stewardProvidersRequestGeneration += 1;
+  stewardProvidersPromise = null;
+}
 
 // The provider set is effectively static per deployment, but each SPA load —
 // notably the post-OAuth return leg, a second full cold load — used to block
@@ -539,13 +547,44 @@ function loadStewardProviders(auth: {
   getProviders: () => Promise<StewardProviders>;
 }): Promise<StewardProviders> {
   if (cachedStewardProviders) return Promise.resolve(cachedStewardProviders);
-  stewardProvidersPromise ??= auth.getProviders().then((loadedProviders) => {
-    cachedStewardProviders = loadedProviders;
-    stewardProvidersPromise = null;
-    writeSessionCachedProviders(loadedProviders);
-    return loadedProviders;
-  });
+  const requestGeneration = stewardProvidersRequestGeneration;
+  stewardProvidersPromise ??= auth.getProviders().then(
+    (loadedProviders) => {
+      if (requestGeneration === stewardProvidersRequestGeneration) {
+        cachedStewardProviders = loadedProviders;
+        stewardProvidersPromise = null;
+        writeSessionCachedProviders(loadedProviders);
+      }
+      return loadedProviders;
+    },
+    (error: unknown) => {
+      if (requestGeneration === stewardProvidersRequestGeneration) {
+        stewardProvidersPromise = null;
+      }
+      throw error;
+    },
+  );
   return stewardProvidersPromise;
+}
+
+function loadStewardProvidersWithTimeout(auth: {
+  getProviders: () => Promise<StewardProviders>;
+}): Promise<StewardProviders> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      reject(
+        new Error(
+          "Steward provider discovery timed out. Check your connection and retry.",
+        ),
+      );
+    }, STEWARD_PROVIDER_DISCOVERY_TIMEOUT_MS);
+
+    void loadStewardProviders(auth)
+      .then(resolve, reject)
+      .finally(() => {
+        window.clearTimeout(timeoutId);
+      });
+  });
 }
 
 export default function StewardLoginSection() {
@@ -662,11 +701,15 @@ export default function StewardLoginSection() {
       cachedStewardProviders !== null ||
       readSessionCachedProviders() !== null,
   );
-  const [providers, setProviders] = useState<StewardProviders>(
+  const [providerDiscoveryError, setProviderDiscoveryError] = useState<
+    string | null
+  >(null);
+  const [providerDiscoveryAttempt, setProviderDiscoveryAttempt] = useState(0);
+  const [providers, setProviders] = useState<StewardProviders | null>(
     () =>
       cachedStewardProviders ??
       readSessionCachedProviders() ??
-      DEFAULT_PROVIDERS,
+      (PLAYWRIGHT_TEST_AUTH_ENABLED ? DEFAULT_PROVIDERS : null),
   );
   const [passkeyCapability, setPasskeyCapability] =
     useState<WebPasskeyCapability | null>(
@@ -675,14 +718,20 @@ export default function StewardLoginSection() {
         : null,
     );
 
-  const enabledOAuthProviders = STEWARD_OAUTH_PROVIDERS.filter((provider) =>
-    isStewardOAuthProviderEnabled(providers, provider),
-  );
+  const enabledOAuthProviders =
+    providers === null
+      ? []
+      : STEWARD_OAUTH_PROVIDERS.filter((provider) =>
+          isStewardOAuthProviderEnabled(providers, provider),
+        );
   const hasIdentityProviders =
-    enabledOAuthProviders.length > 0 || providers.telegram === true;
-  const showWallets = hasAnyWalletProvider(providers);
+    enabledOAuthProviders.length > 0 || providers?.telegram === true;
+  const emailEnabled = providers !== null && providers.email !== false;
+  const showWallets = providers !== null && hasAnyWalletProvider(providers);
   const showPasskey =
-    providers.passkey !== false && passkeyCapability?.usable === true;
+    providers !== null &&
+    providers.passkey !== false &&
+    passkeyCapability?.usable === true;
 
   const abortSharedEmailSessionRecovery = useCallback(() => {
     const pending = sharedSessionRecoveryRef.current;
@@ -772,19 +821,22 @@ export default function StewardLoginSection() {
     // effect re-runs, so the retry surface still gets live discovery.
     if (completingCallback) return;
     let cancelled = false;
-    loadStewardProviders(auth)
+    loadStewardProvidersWithTimeout(auth)
       .then((loadedProviders) => {
-        if (!cancelled) setProviders(loadedProviders);
+        if (!cancelled) {
+          setProviderDiscoveryError(null);
+          setProviders(loadedProviders);
+        }
       })
       .catch((providerError: unknown) => {
-        stewardProvidersPromise = null;
+        discardStewardProvidersRequest();
         if (cancelled) return;
         // error-policy:J4 with a session-cached provider set already rendered,
         // a failed background reconcile keeps the usable cached form instead
         // of blasting an error over working sign-in options; a first-load
         // failure (nothing rendered yet) still surfaces the error.
         if (readSessionCachedProviders() === null) {
-          setError(
+          setProviderDiscoveryError(
             getErrorMessage(providerError, "Steward provider discovery failed"),
           );
         }
@@ -795,7 +847,16 @@ export default function StewardLoginSection() {
     return () => {
       cancelled = true;
     };
-  }, [auth, completingCallback]);
+  }, [auth, completingCallback, providerDiscoveryAttempt]);
+
+  const retryProviderDiscovery = useCallback(() => {
+    // Return to the reserved loading geometry and trigger a fresh server query;
+    // never render a fabricated subset of sign-in methods.
+    discardStewardProvidersRequest();
+    setProviderDiscoveryError(null);
+    setProvidersLoaded(false);
+    setProviderDiscoveryAttempt((attempt) => attempt + 1);
+  }, []);
 
   useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
@@ -1251,7 +1312,7 @@ export default function StewardLoginSection() {
 
   function validatePasskeyIntent(): boolean {
     if (!showPasskey) {
-      if (providers.email !== false) {
+      if (emailEnabled) {
         void handleEmail();
         return false;
       }
@@ -2075,7 +2136,7 @@ export default function StewardLoginSection() {
                   defaultValue: "Use existing passkey",
                 })}
               </Button>
-              {providers.email !== false && (
+              {emailEnabled && (
                 <Button
                   variant="outlineMuted"
                   type="button"
@@ -2141,6 +2202,52 @@ export default function StewardLoginSection() {
           })}
         </span>
       </div>
+    );
+  }
+
+  // A fresh browser has no authoritative provider set to render when discovery
+  // fails. Showing DEFAULT_PROVIDERS here used to make the same Steward login
+  // look like a second email/passkey-only product and could hide enabled OAuth
+  // methods. Fail visibly and retry discovery instead. A valid session-cached
+  // set takes the separate background-reconcile path above and remains usable.
+  if (providerDiscoveryError || providers === null) {
+    return (
+      <ReservedLoginFrame>
+        <div
+          className="flex flex-col items-center gap-4 text-center"
+          role="alert"
+        >
+          <div className="flex size-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+            <AlertCircle className="size-5" aria-hidden="true" />
+          </div>
+          <div className="space-y-1">
+            <p className="text-base font-semibold text-txt-strong">
+              {t("cloud.login.providerDiscovery.title", {
+                defaultValue: "Sign-in options couldn't load",
+              })}
+            </p>
+            <p className="text-sm text-muted">
+              {providerDiscoveryError ??
+                "Steward returned no authoritative sign-in options."}
+            </p>
+            <p className="text-xs leading-relaxed text-muted">
+              {t("cloud.login.providerDiscovery.message", {
+                defaultValue:
+                  "Retry to load the sign-in methods enabled for this Eliza Cloud account.",
+              })}
+            </p>
+          </div>
+          <Button
+            type="button"
+            className="hosted-signin-focus-emphasis w-full"
+            onClick={retryProviderDiscovery}
+          >
+            {t("cloud.login.providerDiscovery.retry", {
+              defaultValue: "Retry sign-in options",
+            })}
+          </Button>
+        </div>
+      </ReservedLoginFrame>
     );
   }
 
