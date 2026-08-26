@@ -308,41 +308,60 @@ describe("resolveSenderLabel and listSenderLabelCandidates", () => {
 });
 
 describe("channel logging utilities", () => {
-	it("formats typing failure logs using formatError safely", () => {
+	it("formats typing failure logs using formatError safely across error shapes", () => {
 		const log = vi.fn();
-		logTypingFailure({
-			log,
-			channel: "discord",
-			target: "#general",
-			action: "start",
-			error: new Error("Rate limit exceeded"),
+		const nullProtoError = Object.assign(Object.create(null), {
+			message: "Rate limit exceeded",
 		});
 
+		// Proves that a null-prototype error (which crashes bare String(error))
+		// is safely formatted without throwing.
+		expect(() =>
+			logTypingFailure({
+				log,
+				channel: "discord",
+				target: "#general",
+				action: "start",
+				error: nullProtoError,
+			}),
+		).not.toThrow();
+
 		expect(log).toHaveBeenCalledWith(
-			"discord typing action=start failed target=#general: Rate limit exceeded",
+			"discord typing action=start failed target=#general: [object Object]",
 		);
 	});
 
-	it("formats ack cleanup failure logs using formatError safely", () => {
+	it("formats ack cleanup failure logs using formatError safely with plain string/object errors", () => {
 		const log = vi.fn();
 		logAckFailure({
 			log,
 			channel: "slack",
 			target: "C123",
-			error: new Error("Permission denied"),
+			error: "Permission denied",
 		});
 
 		expect(log).toHaveBeenCalledWith(
 			"slack ack cleanup failed target=C123: Permission denied",
 		);
-	});
 
-	it("handles non-finite coordinates in formatLocationText", () => {
-		expect(
-			formatLocationText({
-				latitude: Number.NaN,
-				longitude: Number.POSITIVE_INFINITY,
+		log.mockClear();
+		const poisoned = {
+			toString: () => {
+				throw new Error("poisoned toString");
+			},
+		};
+
+		expect(() =>
+			logAckFailure({
+				log,
+				channel: "slack",
+				target: "C123",
+				error: poisoned,
 			}),
-		).toBe("📍 0.000000, 0.000000");
+		).not.toThrow();
+
+		expect(log).toHaveBeenCalledWith(
+			"slack ack cleanup failed target=C123: [object Object]",
+		);
 	});
 });

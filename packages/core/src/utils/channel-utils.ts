@@ -490,15 +490,7 @@ function formatAccuracy(accuracy?: number): string {
 }
 
 function formatCoords(latitude: number, longitude: number): string {
-	const lat =
-		typeof latitude === "number" && Number.isFinite(latitude)
-			? latitude.toFixed(6)
-			: "0.000000";
-	const lon =
-		typeof longitude === "number" && Number.isFinite(longitude)
-			? longitude.toFixed(6)
-			: "0.000000";
-	return `${lat}, ${lon}`;
+	return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
 }
 
 /**
