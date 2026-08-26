@@ -119,7 +119,11 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
         key: "settings",
         target: { kind: "navigate", tab: "settings", path: "/settings" },
       }),
-      cmd({ key: "clear", requiresAuth: true }),
+      cmd({
+        key: "clear",
+        requiresAuth: true,
+        target: { kind: "client", clientAction: "clear-chat" },
+      }),
       cmd({ key: "admin", requiresElevated: true }),
     ]);
 
@@ -136,13 +140,21 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
     expect(result.current.isElevated).toBe(false);
   });
 
-  it("shows auth- and elevation-gated commands once the caller passes the sender's authority (#12087 Item 20)", async () => {
+  it("shows authorized commands but never exposes conversation-reset commands", async () => {
     listCommands.mockResolvedValue([
       cmd({
         key: "settings",
         target: { kind: "navigate", tab: "settings", path: "/settings" },
       }),
-      cmd({ key: "clear", requiresAuth: true }),
+      cmd({
+        key: "clear",
+        requiresAuth: true,
+        target: { kind: "client", clientAction: "clear-chat" },
+      }),
+      cmd({
+        key: "new",
+        target: { kind: "client", clientAction: "new-conversation" },
+      }),
       cmd({ key: "admin", requiresElevated: true }),
     ]);
 
@@ -153,7 +165,6 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.commands.map((c) => c.key)).toEqual([
       "settings",
-      "clear",
       "admin",
     ]);
   });
