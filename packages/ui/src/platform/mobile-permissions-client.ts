@@ -26,6 +26,7 @@ import {
   getMessagesPlugin,
   getMobileSignalsPlugin,
   getPhonePlugin,
+  getPlaySettingsPlugin,
   getPushNotificationsPlugin,
   getScreenCapturePlugin,
   getSystemPlugin,
@@ -41,6 +42,7 @@ import {
   type MobileSignalsSettingsTarget,
   type MobileSignalsSetupAction,
   type PhonePermissionStatus,
+  type PlaySettingsPluginLike,
   type PushNotificationPermissionStatus,
   type PushNotificationsPluginLike,
   type ScreenCapturePermissionStatus,
@@ -223,8 +225,39 @@ function stateFromLocation(
   const reason =
     id === "wifi"
       ? "Android exposes Wi-Fi scan results only after Location access is allowed."
-      : undefined;
+      : permissions.location === "granted" && permissions.accuracy
+        ? `Android location is enabled with ${permissions.accuracy} accuracy.`
+        : undefined;
   return stateFromPromptLike(id, permissions.location, reason);
+}
+
+async function verifyForegroundLocationRead(
+  state: PermissionState,
+  locationPlugin: LocationPluginLike,
+): Promise<PermissionState> {
+  if (
+    state.status !== "granted" ||
+    typeof locationPlugin.getCurrentPosition !== "function"
+  ) {
+    return state;
+  }
+
+  try {
+    await locationPlugin.getCurrentPosition({
+      accuracy: "medium",
+      maxAge: 300_000,
+      timeout: 10_000,
+    });
+    return state;
+  } catch {
+    // error-policy:J4 Permission remains granted even when Android Location
+    // Services cannot produce a fix; surface that distinction to the user.
+    return {
+      ...state,
+      reason:
+        "Location permission is enabled, but Android could not provide a current location. Check Location Services and try again.",
+    };
+  }
 }
 
 function stateFromScreenCapture(
@@ -506,6 +539,7 @@ export async function openMobilePermissionSettings(
   id: PermissionId,
   plugin: MobileSignalsPluginLike = getMobileSignalsPlugin(),
   systemPlugin: SystemPluginLike = getSystemPlugin(),
+  playSettingsPlugin: PlaySettingsPluginLike = getPlaySettingsPlugin(),
 ): Promise<MobileSignalsOpenSettingsResult | undefined> {
   if (
     id === "write-settings" &&
@@ -516,6 +550,19 @@ export async function openMobilePermissionSettings(
       opened: true,
       target: "deviceSettings",
       actualTarget: "deviceSettings",
+      reason: null,
+    };
+  }
+  if (
+    (id === "notifications" || id === "location") &&
+    typeof playSettingsPlugin.openPermissionSettings === "function"
+  ) {
+    await playSettingsPlugin.openPermissionSettings({ permission: id });
+    const target = mobileSettingsTargetFor(id);
+    return {
+      opened: true,
+      target,
+      actualTarget: target,
       reason: null,
     };
   }
@@ -827,6 +874,12 @@ export function createMobileSignalsPermissionsRegistry(
             id,
             await native.location.requestPermissions(),
           );
+          if (id === "location") {
+            requestedState = await verifyForegroundLocationRead(
+              requestedState,
+              native.location,
+            );
+          }
         } else {
           await openMobilePermissionSettings(id, plugin, native.system);
         }
@@ -905,9 +958,19 @@ export function createMobileSignalsPermissionsRegistry(
         await plugin.requestPermissions({ target: "health" });
       }
 
-      const next = requestedState ?? (await checkMobilePermission(id));
+      let next = requestedState ?? (await checkMobilePermission(id));
       if (id === "notifications" && next.status === "granted") {
-        await initPushRegistrationAfterGrant();
+        try {
+          await initPushRegistrationAfterGrant();
+        } catch {
+          // error-policy:J4 Local notifications remain usable when an APK has
+          // no Firebase configuration or remote registration is unavailable.
+          next = {
+            ...next,
+            reason:
+              "Notifications are enabled on this device, but remote push registration is currently unavailable.",
+          };
+        }
       }
       return commit({
         ...next,

@@ -9,8 +9,10 @@ import type {
   AppleCalendarPluginLike,
   CameraPluginLike,
   ContactsPluginLike,
+  LocationPluginLike,
   MobileSignalsPermissionStatus,
   MobileSignalsPluginLike,
+  PlaySettingsPluginLike,
   PushNotificationPermissionStatus,
   PushNotificationsPluginLike,
   SystemPluginLike,
@@ -570,6 +572,108 @@ describe("createMobileSignalsPermissionsRegistry", () => {
     expect(initPushRegistration).not.toHaveBeenCalled();
   });
 
+  it("keeps local notifications granted when remote push registration is unavailable", async () => {
+    const initPushRegistration = vi.fn(async () => {
+      throw new Error("push-unavailable: Firebase is not configured");
+    });
+    const registry = createMobileSignalsPermissionsRegistry(
+      plugin(),
+      undefined,
+      appleCalendarPlugin(),
+      pushNotificationsPlugin(),
+      {},
+      initPushRegistration,
+    );
+
+    const state = await registry.request("notifications", {
+      reason: "Send reminder prompts.",
+      feature: { app: "lifeops", action: "reminders.notify" },
+    });
+
+    expect(state).toMatchObject({
+      id: "notifications",
+      status: "granted",
+      reason:
+        "Notifications are enabled on this device, but remote push registration is currently unavailable.",
+    });
+  });
+
+  it("proves a granted foreground location permission with a real fix read", async () => {
+    const location = {
+      checkPermissions: vi.fn(async () => ({
+        location: "prompt" as const,
+        accuracy: "none" as const,
+      })),
+      requestPermissions: vi.fn(async () => ({
+        location: "granted" as const,
+        accuracy: "approximate" as const,
+      })),
+      getCurrentPosition: vi.fn(async () => ({
+        coords: { latitude: 0, longitude: 0, accuracy: 100 },
+        timestamp: 1,
+        cached: false,
+      })),
+    } as unknown as LocationPluginLike;
+    const registry = createMobileSignalsPermissionsRegistry(
+      plugin(),
+      undefined,
+      appleCalendarPlugin(),
+      pushNotificationsPlugin(),
+      { location },
+    );
+
+    const state = await registry.request("location", {
+      reason: "Use nearby context.",
+      feature: { app: "chat", action: "location.read" },
+    });
+
+    expect(location.getCurrentPosition).toHaveBeenCalledWith({
+      accuracy: "medium",
+      maxAge: 300_000,
+      timeout: 10_000,
+    });
+    expect(state).toMatchObject({
+      id: "location",
+      status: "granted",
+      reason: "Android location is enabled with approximate accuracy.",
+    });
+  });
+
+  it("distinguishes a granted location permission from an unavailable fix", async () => {
+    const location = {
+      checkPermissions: vi.fn(async () => ({
+        location: "prompt" as const,
+        accuracy: "none" as const,
+      })),
+      requestPermissions: vi.fn(async () => ({
+        location: "granted" as const,
+        accuracy: "precise" as const,
+      })),
+      getCurrentPosition: vi.fn(async () => {
+        throw new Error("location services disabled");
+      }),
+    } as unknown as LocationPluginLike;
+    const registry = createMobileSignalsPermissionsRegistry(
+      plugin(),
+      undefined,
+      appleCalendarPlugin(),
+      pushNotificationsPlugin(),
+      { location },
+    );
+
+    const state = await registry.request("location", {
+      reason: "Use nearby context.",
+      feature: { app: "chat", action: "location.read" },
+    });
+
+    expect(state).toMatchObject({
+      id: "location",
+      status: "granted",
+      reason:
+        "Location permission is enabled, but Android could not provide a current location. Check Location Services and try again.",
+    });
+  });
+
   it("opens notification settings when native notifications cannot prompt", async () => {
     const native = plugin();
     const registry = createMobileSignalsPermissionsRegistry(native);
@@ -683,4 +787,26 @@ describe("openMobilePermissionSettings", () => {
       target: "notification",
     });
   });
+
+  it.each(["notifications", "location"] as const)(
+    "uses the Play-safe %s settings bridge when it is available",
+    async (permission) => {
+      const native = plugin();
+      const playSettings = {
+        openPermissionSettings: vi.fn(async () => ({ opened: true })),
+      } as unknown as PlaySettingsPluginLike;
+
+      await openMobilePermissionSettings(
+        permission,
+        native,
+        {} as SystemPluginLike,
+        playSettings,
+      );
+
+      expect(playSettings.openPermissionSettings).toHaveBeenCalledWith({
+        permission,
+      });
+      expect(native.openSettings).not.toHaveBeenCalled();
+    },
+  );
 });

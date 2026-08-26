@@ -44,6 +44,9 @@ const MISSING = "dddddddd-9999-4999-8999-999999999999";
 const ORG_FULL = "33333333-3333-4333-8333-333333333333";
 const USER_FULL = "bbbbbbbb-2222-4222-8222-222222222222";
 const SHARED_FULL = "cccccccc-ffff-4fff-8fff-ffffffffffff";
+const SHARED_SELECTED = "cccccccc-f111-4f11-8f11-111111111111";
+const SELECTED_EXISTING = "dddddddd-f111-4f11-8f11-111111111111";
+const SELECTED_STALE = "dddddddd-f222-4f22-8f22-222222222222";
 const PERSONAL_A = personalSharedAgentId({
   userId: USER_A,
   organizationId: ORG_A,
@@ -489,11 +492,100 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     );
   });
 
+  test("normal activation cannot bypass a durable same-row selection or mint a third target", async () => {
+    expect(pgliteReady).toBe(true);
+    const { dbWrite } = await import("@/db/client");
+    const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+    const { jobs } = await import("@/db/schemas/jobs");
+    const { personalDedicatedAdoptionSelections } = await import(
+      "@/db/schemas/personal-dedicated-adoption-selections"
+    );
+    await setOrgBalance(ORG_A, "10");
+    await dbWrite.insert(agentSandboxes).values([
+      {
+        id: SHARED_SELECTED,
+        organization_id: ORG_A,
+        user_id: USER_A,
+        agent_name: "Selection source",
+        execution_tier: "shared",
+        status: "running",
+        database_status: "none",
+      },
+      {
+        id: SELECTED_EXISTING,
+        organization_id: ORG_A,
+        user_id: USER_A,
+        agent_name: "Selected existing",
+        execution_tier: "dedicated-always",
+        status: "error",
+        database_status: "ready",
+      },
+      {
+        id: SELECTED_STALE,
+        organization_id: ORG_A,
+        user_id: USER_A,
+        agent_name: "Preserved stale",
+        execution_tier: "dedicated-always",
+        status: "error",
+        database_status: "ready",
+      },
+    ]);
+    await dbWrite.insert(personalDedicatedAdoptionSelections).values({
+      organization_id: ORG_A,
+      user_id: USER_A,
+      source_agent_id: SHARED_SELECTED,
+      dedicated_agent_id: SELECTED_EXISTING,
+      selection_reason: "duplicate_owned_dedicated_inventory",
+      state_disposition: "fresh_boot_no_verified_backup",
+      activation_kind: "fresh_boot",
+      activation_backup_id: null,
+      inventory_fingerprint: "a".repeat(64),
+      candidate_count: 2,
+    });
+
+    const before = await dbWrite.select().from(agentSandboxes);
+    const quoted = await quote(SHARED_SELECTED);
+    const quoteBody = (await quoted.json()) as { data: { quoteId: string } };
+    const response = await app.request(
+      `/api/v1/eliza/agents/${SHARED_SELECTED}/upgrade-tier`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "activate_dedicated",
+          quoteId: quoteBody.data.quoteId,
+        }),
+      },
+      ENV,
+    );
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: "dedicated_adoption_selection_required",
+    });
+    expect(await dbWrite.select().from(agentSandboxes)).toEqual(before);
+    expect(
+      await dbWrite
+        .select()
+        .from(jobs)
+        .where(eq(jobs.agent_id, SELECTED_EXISTING)),
+    ).toHaveLength(0);
+
+    await dbWrite.delete(personalDedicatedAdoptionSelections);
+    for (const id of [SHARED_SELECTED, SELECTED_EXISTING, SELECTED_STALE]) {
+      await dbWrite.delete(agentSandboxes).where(eq(agentSandboxes.id, id));
+    }
+    await setOrgBalance(ORG_A, "0.50");
+  });
+
   test("error, stopped, and sleeping targets cannot restart below the hosting runway", async () => {
     expect(pgliteReady).toBe(true);
     const { dbWrite } = await import("@/db/client");
     const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
     const { jobs } = await import("@/db/schemas/jobs");
+    const { personalDedicatedUpgradeAuthorities } = await import(
+      "@/db/schemas/personal-dedicated-upgrade-authorities"
+    );
     await dbWrite.insert(agentSandboxes).values({
       id: SHARED_RESUME,
       organization_id: ORG_A,
@@ -519,6 +611,12 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         status,
         database_status: "none",
       });
+      await dbWrite.insert(personalDedicatedUpgradeAuthorities).values({
+        organization_id: ORG_A,
+        user_id: USER_A,
+        source_agent_id: SHARED_RESUME,
+        dedicated_agent_id: targetId,
+      });
 
       const res = await upgrade(SHARED_RESUME);
       expect(res.status).toBe(402);
@@ -530,6 +628,11 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         .where(eq(jobs.agent_id, targetId));
       expect(targetJobs).toHaveLength(0);
 
+      await dbWrite
+        .delete(personalDedicatedUpgradeAuthorities)
+        .where(
+          eq(personalDedicatedUpgradeAuthorities.dedicated_agent_id, targetId),
+        );
       await dbWrite
         .delete(agentSandboxes)
         .where(eq(agentSandboxes.id, targetId));
@@ -970,6 +1073,9 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     );
     const { users } = await import("@/db/schemas/users");
     const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+    const { personalDedicatedUpgradeAuthorities } = await import(
+      "@/db/schemas/personal-dedicated-upgrade-authorities"
+    );
     await dbWrite.insert(organizations).values({
       id: ORG_C,
       name: "Cutover Org",
@@ -995,6 +1101,12 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       database_status: "none",
       bridge_url: "https://dedicated-cutover.test/chat",
       environment_vars: { ELIZA_API_TOKEN: "agent_cutover_transport" },
+    });
+    await dbWrite.insert(personalDedicatedUpgradeAuthorities).values({
+      organization_id: ORG_C,
+      user_id: USER_C,
+      source_agent_id: PERSONAL_C,
+      dedicated_agent_id: CUTOVER_TARGET,
     });
 
     const originalFetch = globalThis.fetch;
@@ -1511,10 +1623,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       cutoverCoordinatorOperations.length = 0;
       const recoveredAfterCommit = await cutover(PERSONAL_C, CUTOVER_TARGET);
       expect(recoveredAfterCommit.status).toBe(200);
-      expect(cutoverCoordinatorOperations).toEqual([
-        "cutover-seal",
-        "cutover-commit",
-      ]);
+      expect(cutoverCoordinatorOperations).toEqual(["cutover-commit"]);
       const [afterCommittedRecovery] = await dbWrite
         .select()
         .from(agentSandboxes)
@@ -1550,7 +1659,8 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         "@/lib/services/agent-tier-upgrade-target"
       );
       expect(
-        (await findActivePersonalDedicatedTarget(ORG_C, PERSONAL_C))?.id,
+        (await findActivePersonalDedicatedTarget(ORG_C, USER_C, PERSONAL_C))
+          ?.id,
       ).toBe(CUTOVER_TARGET);
       expect(
         (await dbWrite.select().from(agentSandboxes)).some(

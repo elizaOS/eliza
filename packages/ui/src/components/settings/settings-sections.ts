@@ -152,6 +152,11 @@ const CloudAgentsSection = lazy(() =>
     default: m.CloudAgentsSection,
   })),
 );
+const AndroidAccountLifecycleSection = lazy(() =>
+  import("../../android-cloud/AndroidAccountLifecycleSection").then((m) => ({
+    default: m.AndroidAccountLifecycleSection,
+  })),
+);
 const DevicesRuntimesContainer = lazy(() =>
   import("./DevicesRuntimesContainer").then((m) => ({
     default: m.DevicesRuntimesContainer,
@@ -239,6 +244,8 @@ interface BuiltinSectionDefinition {
   developerOnly?: boolean;
   /** Hide on the cloud mobile build (no host machine). */
   hideOnCloud?: boolean;
+  /** Show only in the standard Android Cloud/Play build. */
+  androidCloudOnly?: boolean;
   /** Hide when Eliza Cloud owns the active runtime configuration. */
   hideOnManagedCloud?: boolean;
   /** Show only for a managed Eliza Cloud runtime target. */
@@ -547,6 +554,19 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     cloudOnly: true,
     Component: CloudAgentsSection,
   },
+  {
+    ...nonCatalogMeta("android-account-lifecycle"),
+    catalog: false,
+    icon: User,
+    tone: "warn",
+    hue: "amber",
+    labelKey: "settings.sections.androidAccountLifecycle.label",
+    titleKey: "settings.sections.androidAccountLifecycle.title",
+    defaultTitle: "Account & Privacy",
+    order: 16.5,
+    androidCloudOnly: true,
+    Component: AndroidAccountLifecycleSection,
+  },
   // Devices & Runtimes — local / Cloud / relay / verified SSH management.
   {
     ...nonCatalogMeta("my-runtimes"),
@@ -589,6 +609,7 @@ function toSettingsSectionDef(
     bodyClassName: def.bodyClassName,
     developerOnly: def.developerOnly,
     hideOnCloud: def.hideOnCloud,
+    androidCloudOnly: def.androidCloudOnly,
     hideOnManagedCloud: def.hideOnManagedCloud,
     cloudOnly: def.cloudOnly,
     order: def.order ?? order,

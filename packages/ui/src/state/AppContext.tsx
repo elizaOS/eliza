@@ -968,6 +968,13 @@ function AppProviderInner({
     loadConversationMessages,
     loadConversationMessagesAround,
     prefetchConversationMessages,
+    claimConversationMessagesOwnership,
+    isConversationMessagesOwnershipCurrent,
+    getConversationMessagesOwnershipGeneration,
+    registerConversationMessageOverlay,
+    applyConversationMessageOverlayModification,
+    removeConversationMessageStateMessages,
+    discardConversationMessageState,
     loadedConversationIdRef,
     getBscTradePreflight,
     getBscTradeQuote,
@@ -1059,6 +1066,13 @@ function AppProviderInner({
     loadConversations,
     loadConversationMessages,
     prefetchConversationMessages,
+    claimConversationMessagesOwnership,
+    isConversationMessagesOwnershipCurrent,
+    getConversationMessagesOwnershipGeneration,
+    registerConversationMessageOverlay,
+    applyConversationMessageOverlayModification,
+    removeConversationMessageStateMessages,
+    discardConversationMessageState,
     loadedConversationIdRef,
     loadPlugins,
     elizaCloudEnabled,
@@ -1201,11 +1215,17 @@ function AppProviderInner({
   // Track whether the last active-conversation change came from another window
   // so applying it doesn't echo straight back out and loop between tabs.
   const tabSyncActiveConvRef = useRef<string | null>(null);
+  const tabSyncActiveConvPendingRef = useRef(false);
+  const tabSyncMirrorInitializedRef = useRef(false);
   const tabSync = useTabSync({
     onActiveConversation: (id) => {
       tabSyncActiveConvRef.current = id;
+      tabSyncActiveConvPendingRef.current = true;
       if (id === null) {
-        setActiveConversationId(null);
+        // Use the canonical draft transition so remote null selection also
+        // interrupts streaming/queued work and resets composer, reply, status,
+        // ownership, and the server-side active conversation coherently.
+        void handleStartDraftConversation();
         return;
       }
       // Apply the switch through the real selection handler so this window's
@@ -1225,9 +1245,16 @@ function AppProviderInner({
   // Mirror this window's active conversation to the other windows. Suppress the
   // mirror when the change itself arrived via sync (no echo).
   useEffect(() => {
-    if (tabSyncActiveConvRef.current === activeConversationId) {
-      tabSyncActiveConvRef.current = null;
+    // Mount begins at null before hydration. Publishing that transient value
+    // would clear an already-active sibling window, so only mirror changes
+    // after this effect has observed the initial state.
+    if (!tabSyncMirrorInitializedRef.current) {
+      tabSyncMirrorInitializedRef.current = true;
       return;
+    }
+    if (tabSyncActiveConvPendingRef.current) {
+      tabSyncActiveConvPendingRef.current = false;
+      if (tabSyncActiveConvRef.current === activeConversationId) return;
     }
     tabSync.publishActiveConversation(activeConversationId);
   }, [activeConversationId, tabSync]);
@@ -1556,6 +1583,11 @@ function AppProviderInner({
         return;
       }
 
+      // Conversation ids are authority-local. Purge both canonical snapshots
+      // and optimistic overlays before the live client can repoint or hydrate
+      // the same id from another profile/account.
+      discardConversationMessageState();
+
       // Conversation ids are per-account, so saved drafts from the old
       // profile would re-attach to whatever conversation happens to land
       // on the same id after the switch. Wipe them only after the durable
@@ -1591,7 +1623,11 @@ function AppProviderInner({
         target: target as RuntimeTarget,
       });
     },
-    [setActionNotice, startupCoordinatorDispatch],
+    [
+      discardConversationMessageState,
+      setActionNotice,
+      startupCoordinatorDispatch,
+    ],
   );
 
   useAgentGreetingEffects({

@@ -28,16 +28,22 @@ import { DEFAULT_BOOT_CONFIG, setBootConfig } from "./config/boot-config";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 import { resetUiRegistryHostForTests } from "./registry-host";
 import { getActiveSurfaceRealmScope } from "./surface-realm-broker";
+import { shellHistory } from "./surface-realm-channel";
 
 const appState = vi.hoisted(() => ({
   firstRunComplete: true,
+  retryStartup: vi.fn(),
   setTab: vi.fn(),
   startupPhase: "ready",
   tab: "chat",
 }));
 
 const authStatusMock = vi.hoisted(() => ({
-  phase: "authenticated" as "authenticated" | "unauthenticated",
+  phase: "authenticated" as
+    | "authenticated"
+    | "unauthenticated"
+    | "server_unavailable",
+  refetch: vi.fn(),
   use: vi.fn(),
 }));
 
@@ -176,6 +182,17 @@ const notesFullscreenView = {
   viewType: "gui" as const,
 };
 
+const modalView = {
+  id: "modal-tool",
+  label: "Modal Tool",
+  available: true,
+  pluginName: "@local/plugin-modal-tool",
+  path: "/apps/modal-tool",
+  bundleUrl: "/api/views/modal-tool/bundle.js",
+  surface: { header: "modal" as const },
+  viewType: "gui" as const,
+};
+
 const sharedCanvasView = {
   id: "shared-canvas",
   label: "Shared Canvas",
@@ -287,7 +304,7 @@ vi.mock("./hooks/useAuthStatus", () => ({
     authStatusMock.use(options);
     return {
       state: { phase: authStatusMock.phase },
-      refetch: vi.fn(),
+      refetch: authStatusMock.refetch,
     };
   },
   // Home widgets gate their loaders on this (#11084); the mounted App renders
@@ -341,6 +358,7 @@ vi.mock("./hooks", () => ({
   BugReportProvider: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
   ),
+  useOptionalBugReport: () => null,
   useBugReportState: () => ({}),
   useContextMenu: () => ({
     closeSaveCommandModal: vi.fn(),
@@ -382,7 +400,7 @@ vi.mock("./state", async () => {
     firstRunName: "",
     ownerName: "Test Owner",
     plugins: [],
-    retryStartup: vi.fn(),
+    retryStartup: appState.retryStartup,
     setActionNotice: vi.fn(),
     setState: vi.fn(),
     setTab: appState.setTab,
@@ -559,7 +577,9 @@ describe("App navigate-view event wiring", () => {
     desktopTabsState.tabs = [];
     resetMockAvailableViews();
     appState.setTab.mockClear();
+    appState.retryStartup.mockClear();
     authStatusMock.use.mockClear();
+    authStatusMock.refetch.mockClear();
     desktopTabsMock.openTab.mockClear();
     desktopTabsMock.closeTab.mockClear();
     desktopBridgeMock.invokeDesktopBridgeRequest.mockClear();
@@ -588,6 +608,27 @@ describe("App navigate-view event wiring", () => {
     );
     expect(screen.getByTestId("first-run-conductor-mount")).toBeTruthy();
     expect(screen.queryByText("Open this agent from Eliza Cloud")).toBeNull();
+  });
+
+  it("restores a deep route after an auth-startup retry commits the default chat path", async () => {
+    window.history.replaceState(null, "", "/cloud/agents");
+    authStatusMock.phase = "server_unavailable";
+
+    const rendered = render(<App />);
+    fireEvent.click(screen.getByTestId("startup-retry"));
+
+    expect(authStatusMock.refetch).toHaveBeenCalledTimes(1);
+    expect(appState.retryStartup).toHaveBeenCalledTimes(1);
+
+    // Reproduce the startup shell's intermediate default-tab commit observed
+    // in the real hosted browser before auth/startup settle.
+    shellHistory.replaceState(null, "", "/chat");
+    authStatusMock.phase = "authenticated";
+    rendered.rerender(<App />);
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/cloud/agents");
+    });
   });
 
   it("routes view-manager events through the mounted App listener", async () => {
@@ -722,7 +763,9 @@ describe("App navigate-view event wiring", () => {
     );
     expect(loader.getAttribute("data-view-id")).toBe("remote-ledger");
     expect(loader.getAttribute("data-view-type")).toBe("gui");
-    expect(queryByTestId("view-header")).toBeNull();
+    expect(queryByTestId("view-header")?.textContent).toContain(
+      "Remote Ledger",
+    );
     expect(
       container
         .querySelector('[data-shell-content-region="true"]')
@@ -735,6 +778,44 @@ describe("App navigate-view event wiring", () => {
     ).toBe(true);
     expect(getByTestId("app-opaque-background")).toBeTruthy();
     expect(queryByTestId("app-background-shader")).toBeNull();
+  });
+
+  it("renders the same shell-owned header for an in-process normal page", async () => {
+    registerAppShellPage({
+      id: "signed-normal",
+      pluginId: "@local/plugin-signed-normal",
+      label: "Signed Normal",
+      path: "/apps/signed-normal",
+      Component: () => <div data-testid="signed-normal-content" />,
+    });
+    appState.tab = "apps";
+    window.history.replaceState(null, "", "/apps/signed-normal");
+
+    const { getByTestId, getAllByTestId } = render(<App />);
+
+    await waitFor(() => getByTestId("signed-normal-content"));
+    expect(getAllByTestId("view-header")).toHaveLength(1);
+    expect(getByTestId("view-header").textContent).toContain("Signed Normal");
+  });
+
+  it("keeps modal remote pages headerless without treating them as fullscreen", async () => {
+    mockAvailableViews.push(modalView);
+    appState.tab = "apps";
+    window.history.replaceState(null, "", modalView.path);
+
+    const { container, getByTestId, queryByTestId } = render(<App />);
+
+    await waitFor(() => getByTestId("dynamic-view-loader"));
+    expect(queryByTestId("view-header")).toBeNull();
+    expect(
+      container
+        .querySelector('[data-shell-content-region="true"]')
+        ?.className.includes("pb-[var(--eliza-chat-clearance"),
+    ).toBe(true);
+    expect(
+      container.querySelector<HTMLElement>("[data-app-shell-root]")?.style
+        .paddingTop,
+    ).not.toBe("0px");
   });
 
   it("prefers an exact remote plugin route over its native wallet fallback", async () => {
@@ -891,6 +972,7 @@ describe("App navigate-view event wiring", () => {
 
       await waitFor(() => getByTestId("signed-notes"));
       expect(queryByTestId("dynamic-view-loader")).toBeNull();
+      expect(queryByTestId("view-header")).toBeNull();
       expect(dynamicViewLoaderMock.render).not.toHaveBeenCalled();
     } finally {
       platform.mockRestore();
@@ -902,9 +984,10 @@ describe("App navigate-view event wiring", () => {
     appState.tab = "views";
     window.history.replaceState(null, "", "/notes");
 
-    const { container, getByTestId } = render(<App />);
+    const { container, getByTestId, queryByTestId } = render(<App />);
 
     await waitFor(() => getByTestId("dynamic-view-loader"));
+    expect(queryByTestId("view-header")).toBeNull();
     expect(
       container
         .querySelector('[data-shell-content-region="true"]')

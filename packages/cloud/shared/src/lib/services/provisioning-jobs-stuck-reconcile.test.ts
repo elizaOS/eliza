@@ -27,10 +27,19 @@ function stuckRec(id: string, over: Partial<AgentSandbox> = {}): AgentSandbox {
     user_id: `user-${id}`,
     agent_name: `Agent ${id}`,
     status: "provisioning",
+    execution_tier: "dedicated-always",
     sandbox_id: `sandbox-${id}`,
+    node_id: `node-${id}`,
+    container_name: `container-${id}`,
     bridge_url: "http://10.0.0.9:2138",
     health_url: "http://10.0.0.9:2138/api",
     headscale_ip: "100.64.0.9",
+    environment_revision: 3,
+    lifecycle_revision: 11,
+    lifecycle_job_id: null,
+    lifecycle_execution_generation: null,
+    deleted_at: null,
+    deletion_attempt_id: null,
     ...over,
   } as unknown as AgentSandbox;
 }
@@ -49,8 +58,9 @@ function providerWithHealth(outcome: { ready: boolean; verdict: string }): Sandb
 describe("elizaSandboxService.reconcileStuckProvisioning (service seam)", () => {
   test("container re-probes healthy → CAS-flips the row to running → 'recovered'", async () => {
     const svc = elizaSandboxService;
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(
-      stuckRec("a1"),
+    const rec = stuckRec("a1");
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      rec,
     );
     const getProvider = spyOn(
       svc as unknown as { getProvider: () => Promise<SandboxProvider> },
@@ -65,7 +75,7 @@ describe("elizaSandboxService.reconcileStuckProvisioning (service seam)", () => 
       const outcome = await svc.reconcileStuckProvisioning("a1", ORG);
       expect(outcome).toBe("recovered");
       expect(flipSpy).toHaveBeenCalledTimes(1);
-      expect(flipSpy.mock.calls[0]?.[0]).toBe("a1");
+      expect(flipSpy.mock.calls[0]?.[0]).toBe(rec);
     } finally {
       findSpy.mockRestore();
       getProvider.mockRestore();
@@ -75,7 +85,7 @@ describe("elizaSandboxService.reconcileStuckProvisioning (service seam)", () => 
 
   test("container re-probes NOT healthy → 'unresolved', row is NOT flipped (never condemned here)", async () => {
     const svc = elizaSandboxService;
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
       stuckRec("a2"),
     );
     const getProvider = spyOn(
@@ -100,7 +110,7 @@ describe("elizaSandboxService.reconcileStuckProvisioning (service seam)", () => 
 
   test("row moved on (no longer provisioning) → 'gone', no probe, no flip", async () => {
     const svc = elizaSandboxService;
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
       stuckRec("a3", { status: "running" }),
     );
     const getProvider = spyOn(
@@ -123,7 +133,7 @@ describe("elizaSandboxService.reconcileStuckProvisioning (service seam)", () => 
 
   test("row lost its container (no sandbox_id) → 'gone'", async () => {
     const svc = elizaSandboxService;
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
       stuckRec("a4", { sandbox_id: null }),
     );
     try {
@@ -136,7 +146,7 @@ describe("elizaSandboxService.reconcileStuckProvisioning (service seam)", () => 
 
   test("probe THROWS → 'unresolved' (no signal; never condemn or resurrect on an errored probe)", async () => {
     const svc = elizaSandboxService;
-    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
       stuckRec("a5"),
     );
     const getProvider = spyOn(

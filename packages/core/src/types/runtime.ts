@@ -627,6 +627,7 @@ type RuntimeDatabaseAdapterSurface = Omit<
 	| "updateDocumentDirectGrants"
 	| "replaceDocumentRevision"
 	| "deleteDocumentWithSnapshot"
+	| "compareAndSwapWorldMetadata"
 >;
 
 export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {

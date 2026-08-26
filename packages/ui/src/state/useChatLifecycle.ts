@@ -182,6 +182,9 @@ export interface UseChatLifecycleDeps {
     v: Conversation[] | ((prev: Conversation[]) => Conversation[]),
   ) => void;
   activeConversationIdRef: MutableRefObject<string | null>;
+  conversationHydrationEpochRef: MutableRefObject<number>;
+  claimConversationMessagesOwnership: (conversationId: string | null) => void;
+  discardConversationMessageState: (conversationId?: string) => void;
 
   // Cloud state
   elizaCloudPreferDisconnectedUntilLoginRef: MutableRefObject<boolean>;
@@ -259,6 +262,9 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     setConversationMessages,
     setConversations,
     activeConversationIdRef,
+    conversationHydrationEpochRef,
+    claimConversationMessagesOwnership,
+    discardConversationMessageState,
     elizaCloudPreferDisconnectedUntilLoginRef,
     setElizaCloudEnabled,
     setElizaCloudConnected,
@@ -302,7 +308,12 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
 
   const handleStartDraftConversation = useCallback(async () => {
     const restoredQueuedDraft = interruptActiveChatPipelineWithDraft();
+    claimConversationMessagesOwnership(null);
     resetConversationDraftState();
+    client.sendWsMessage({
+      type: "active-conversation",
+      conversationId: null,
+    });
     if (restoredQueuedDraft.text) {
       setChatInput(restoredQueuedDraft.text);
     }
@@ -310,6 +321,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       setChatPendingImages(restoredQueuedDraft.images);
     }
   }, [
+    claimConversationMessagesOwnership,
     interruptActiveChatPipelineWithDraft,
     resetConversationDraftState,
     setChatInput,
@@ -398,9 +410,17 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
         state: "restarting",
       });
       // Server restart clears in-memory conversations — reset client state
+      conversationHydrationEpochRef.current += 1;
+      claimConversationMessagesOwnership(null);
+      discardConversationMessageState();
       setActiveConversationId(null);
+      activeConversationIdRef.current = null;
       setConversationMessages([]);
       setConversations([]);
+      client.sendWsMessage({
+        type: "active-conversation",
+        conversationId: null,
+      });
       const s = await client.restartAndWait(120_000);
       setAgentStatus(s);
       const greetConvId = await hydrateInitialConversationState();
@@ -430,6 +450,10 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
   }, [
     agentStatus,
     beginLifecycleAction,
+    activeConversationIdRef,
+    claimConversationMessagesOwnership,
+    conversationHydrationEpochRef,
+    discardConversationMessageState,
     finishLifecycleAction,
     setActionNotice,
     hydrateInitialConversationState,
@@ -701,10 +725,17 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
           setCustomBackgroundUrl("");
         },
         clearConversationLists: () => {
+          conversationHydrationEpochRef.current += 1;
+          claimConversationMessagesOwnership(null);
+          discardConversationMessageState();
           setConversationMessages([]);
           setActiveConversationId(null);
           activeConversationIdRef.current = null;
           setConversations([]);
+          client.sendWsMessage({
+            type: "active-conversation",
+            conversationId: null,
+          });
           setPlugins([]);
           setSkills([]);
           setLogs([]);
@@ -717,6 +748,9 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     },
     [
       setAgentStatus,
+      claimConversationMessagesOwnership,
+      conversationHydrationEpochRef,
+      discardConversationMessageState,
       setFirstRunComplete,
       setFirstRunLoading,
       setFirstRunOptions,
@@ -800,10 +834,17 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
         }
       }
       client.resetConnection();
+      conversationHydrationEpochRef.current += 1;
+      claimConversationMessagesOwnership(null);
+      discardConversationMessageState();
       setConversationMessages([]);
       setActiveConversationId(null);
       activeConversationIdRef.current = null;
       setConversations([]);
+      client.sendWsMessage({
+        type: "active-conversation",
+        conversationId: null,
+      });
       setPlugins([]);
       setSkills([]);
       setLogs([]);
@@ -813,6 +854,9 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     },
     [
       activeConversationIdRef,
+      claimConversationMessagesOwnership,
+      conversationHydrationEpochRef,
+      discardConversationMessageState,
       loadPlugins,
       setActiveConversationId,
       setAgentStatus,

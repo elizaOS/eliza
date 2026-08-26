@@ -306,10 +306,8 @@ export const documentsPlugin: Plugin = {
   name: "@elizaos/plugin-documents-routes",
   description: "Document management, fragment listing, and search routes",
   routes: documentsRoutes,
-  // OWNER_DOCUMENTS is still host-adapted by plugin-personal-assistant.
-  // Do not register the scaffold action from this route plugin. The app shell's
-  // built-in Knowledge view is the only first-party document UI; declaring a
-  // second plugin view here previously collided on the `documents` id while
-  // presenting a smaller duplicate surface at `/documents`.
+  // OWNER_DOCUMENTS remains host-adapted by plugin-personal-assistant. The
+  // registered Knowledge renderer is declared by src/register.ts so the
+  // runtime route plugin stays free of React imports.
   actions: [],
 };
