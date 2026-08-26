@@ -289,4 +289,10 @@ describe("describeAppReference / appReferenceLogView — reference display seam"
     expect(view).toBe(`${"a".repeat(120)}…`);
     expect(view.length).toBe(121);
   });
+  it("appReferenceLogView preserves well-formed Unicode when clamping references containing surrogate pairs", () => {
+    const longRefWithSurrogate = "a".repeat(119) + "🚀" + "tail";
+    const view = appReferenceLogView(longRefWithSurrogate);
+    expect(view.isWellFormed?.()).not.toBe(false);
+    expect(view.endsWith("…")).toBe(true);
+  });
 });

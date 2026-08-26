@@ -13,7 +13,7 @@
 import type { AppDto } from "@elizaos/cloud-sdk";
 import { ElizaCloudClient } from "@elizaos/cloud-sdk";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { unwrapUserMessageText } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed, unwrapUserMessageText } from "@elizaos/core";
 
 /** Default Eliza Cloud API base URL (matches the cloud runtime default). */
 export const DEFAULT_CLOUD_API_BASE_URL = "https://api.eliza.app/api/v1";
@@ -403,8 +403,8 @@ export function describeAppReference(
  * whitespace to one line and clamp to 120 chars with a trailing ellipsis.
  */
 export function appReferenceLogView(reference: string): string {
-  const collapsed = reference.replace(/\s+/g, " ").trim();
-  return collapsed.length > 120 ? `${collapsed.slice(0, 120)}…` : collapsed;
+  const collapsed = toWellFormedUnicode(reference.replace(/\s+/g, " ").trim());
+  return collapsed.length > 120 ? `${truncateWellFormed(collapsed, 120)}…` : collapsed;
 }
 
 export interface ResolvedApp {
