@@ -52,6 +52,7 @@ export interface NativeAppSnapshot {
   elements: NativeAppElement[];
   axText: string;
   focusedWindowBounds?: AppElementBounds;
+  focusedWindowId?: number;
 }
 
 export interface AppStateDiff {
@@ -74,6 +75,7 @@ export interface AppState {
   elements: AppElement[];
   axText: string;
   diff?: AppStateDiff;
+  focusedWindowId?: number;
 }
 
 export type AppActionKind =
@@ -101,6 +103,8 @@ export interface AppActionRequest {
   secondaryAction?: string;
   /** Canonical policy must explicitly permit the last-resort pointer path. */
   allowPhysicalFallback?: boolean;
+  /** Explicit opt-in for the direct-only exact-window experiment. */
+  allowExperimentalExactWindow?: boolean;
 }
 
 export type AppActionExecutionMode =
@@ -108,7 +112,34 @@ export type AppActionExecutionMode =
   | "set_of_marks"
   | "ocr"
   | "guarded_physical"
-  | "agent_overlay";
+  | "agent_overlay"
+  | "experimental_direct_exact_window";
+
+export interface AppExactWindowDispatchResult {
+  success: boolean;
+  route: "experimental_direct_exact_window";
+  observationId: string;
+  targetPid: number;
+  targetWindowId: number;
+  targetWindowBounds: AppElementBounds;
+  pointerBefore: { x: number; y: number };
+  pointerAfter: { x: number; y: number };
+  error?: string;
+}
+
+export interface AppExactWindowPointerDispatcher {
+  available(): boolean;
+  dispatch(
+    input: {
+      app: AppDescriptor;
+      state: AppState;
+      element: NativeAppElement;
+      request: AppActionRequest;
+      expectedWindowId: number;
+    },
+    signal?: AbortSignal,
+  ): Promise<AppExactWindowDispatchResult>;
+}
 
 export interface NativeAppActionResult {
   success: boolean;
@@ -125,6 +156,19 @@ export interface AppActionReceipt {
   executionMode: AppActionExecutionMode;
   element_index?: number;
   completedAt: string;
+  /** Whether the requested effect was semantically observed or only posted. */
+  effectStatus: "confirmed" | "posted_unconfirmed";
+  /** Diagnostic retained when a posted effect cannot be semantically confirmed. */
+  effectDiagnostic?: {
+    code:
+      | "POST_DISPATCH_POINTER_UNAVAILABLE"
+      | "POST_DISPATCH_POINTER_CHANGED"
+      | "POST_DISPATCH_RECEIPT_UNVERIFIED"
+      | "POST_DISPATCH_STATE_UNAVAILABLE"
+      | "POST_DISPATCH_TARGET_UNCONFIRMED";
+    message: string;
+    cause?: string;
+  };
   changed: boolean;
   physicalPointerMoved: boolean;
   clipboardRestored?: boolean;
@@ -174,6 +218,10 @@ export interface PhysicalPointerDriver {
     direction: "up" | "down" | "left" | "right",
     amount: number,
   ): Promise<void>;
+}
+
+export interface PhysicalPointerObserver {
+  position(): Promise<{ x: number; y: number }>;
 }
 
 export interface AppStateCapture {
