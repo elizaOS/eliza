@@ -6,6 +6,7 @@ import {
   resolveCapacitorAndroidIdentity,
   resolveCapacitorHttpEnabled,
   resolveCapacitorLoggingBehavior,
+  resolveRemoteFallbackNavigationHost,
 } from "../capacitor.config";
 
 describe("Android Capacitor plugin selection", () => {
@@ -88,5 +89,24 @@ describe("Capacitor logging behavior", () => {
 
   it("retains debug-only logging for other lanes", () => {
     expect(resolveCapacitorLoggingBehavior({})).toBe("debug");
+  });
+});
+
+describe("remote fallback navigation", () => {
+  it("returns only the hostname from a strict root HTTPS origin", () => {
+    expect(
+      resolveRemoteFallbackNavigationHost("https://fallback.example.test/"),
+    ).toBe("fallback.example.test");
+  });
+
+  it.each([
+    "http://fallback.example.test",
+    "https://fallback.example.test:8443",
+    "https://fallback.example.test/api",
+    "https://user:pass@fallback.example.test",
+  ])("rejects widened fallback navigation: %s", (value) => {
+    expect(() => resolveRemoteFallbackNavigationHost(value)).toThrow(
+      /root HTTPS origin/,
+    );
   });
 });

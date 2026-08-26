@@ -232,6 +232,10 @@ import {
   createMobileLifecycle,
   type MobileLifecycle,
 } from "./mobile-lifecycle";
+import {
+  getMobileRemoteFallbackApiBase,
+  installMobileRemoteFallback,
+} from "./mobile-remote-fallback";
 import { installNativeTranscriptPlatformBridge } from "./native-transcript-bridge";
 import { installPackagedShellStorageTestBridge } from "./packaged-shell-storage-test-bridge";
 import {
@@ -454,11 +458,15 @@ const APP_BRANDING: Partial<BrandingConfig> = {
   // opted into cloud-only mode, which remains authoritative over a loopback base.
   cloudOnly: resolveAppCloudOnlyBranding({
     isDev: import.meta.env.DEV ?? false,
-    bootApiBase: getBootConfig().apiBase,
+    bootApiBase:
+      getBootConfig().apiBase ?? getMobileRemoteFallbackApiBase() ?? undefined,
     legacyInjectedApiBase:
       typeof window === "undefined" ? undefined : getLegacyInjectedAppApiBase(),
     isNativePlatform: Capacitor.isNativePlatform(),
-    nativeRuntimeMode: isAndroidCloudBuild() ? "cloud" : undefined,
+    nativeRuntimeMode:
+      isAndroidCloudBuild() && !getMobileRemoteFallbackApiBase()
+        ? "cloud"
+        : undefined,
     desktopRuntimeMode: getInjectedDesktopRuntimeMode(),
   }),
 };
@@ -3581,6 +3589,9 @@ async function main(): Promise<void> {
   // hydration lands. The voice chunk (kicked off above) downloads in parallel
   // with this wait.
   await initializeStorageBridge();
+  if (isAndroid) {
+    installMobileRemoteFallback();
+  }
   if (isIOS) {
     initializeCapacitorBridge();
     installIosLocalAgentNativeRequestBridge();
