@@ -1605,6 +1605,105 @@ export function shouldSkipResponseMemoryPersistence(memory: Memory): boolean {
 	);
 }
 
+/**
+ * Connector-owned delivery-record reconciliation for the simple final-reply
+ * path (live 2026-08-26, tj-4c746c562d1b27: every recap/final-callback reply
+ * appeared in the room record TWICE — RECENT_MESSAGES prior_message blocks and
+ * CHANNEL_RECAP both rendered the agent posting the identical summary as two
+ * adjacent messages). Connectors that persist their own memory of each message
+ * they deliver (Discord's response callback stores one row per accepted
+ * platform message, keyed by the platform message id and carrying the
+ * delivered content, including its `responseId`) return those persisted rows
+ * from the delivery callback. The simple-path persist stores the SAME reply
+ * again under the runtime's `responseId` row, so one user-visible delivery
+ * became two stored agent messages.
+ *
+ * The connector's row is the ground-truth delivery record — it names the
+ * platform message id that reactions/edits/replies resolve against and holds
+ * the exact text the platform accepted — so when a FULFILLED delivery returned
+ * a connector row provably in storage and linked to this response
+ * (`content.responseId` === the core row's id), the core's duplicate row is
+ * removed and its id is dropped from the persisted-id set handed back to
+ * transports. Verification re-reads the row by id: a callback that returns
+ * constructed-but-unpersisted memories (the plain HTTP/conversation callbacks
+ * return `[]` or transient objects) must never cause the only stored copy of
+ * the reply to be deleted. Rows without a text body (attachment-only records)
+ * never count as the reply's record. Runs strictly after BOTH the delivery and
+ * the persist settled and before the pending-reply-persist barrier releases,
+ * so a same-room follow-up composes against exactly one stored copy.
+ */
+async function removeResponseRowsDuplicatedByConnectorDelivery(args: {
+	runtime: IAgentRuntime;
+	roomId: UUID;
+	/** The delivery callback's fulfilled return value (untyped at this seam). */
+	deliveredMemories: unknown;
+	/** Ids the simple persist pass durably wrote this turn (mutated on removal). */
+	persistedResponseMessageIds: Set<UUID>;
+	/** Early-reply rows are their own deliveries and are never reconciled here. */
+	persistedEarlyReplyIds: ReadonlySet<string>;
+}): Promise<void> {
+	const { runtime, roomId, deliveredMemories } = args;
+	if (!Array.isArray(deliveredMemories) || deliveredMemories.length === 0) {
+		return;
+	}
+	const duplicatedResponseIds = new Set<UUID>();
+	for (const candidate of deliveredMemories) {
+		if (!candidate || typeof candidate !== "object") continue;
+		const memory = candidate as Memory;
+		if (!memory.id || memory.roomId !== roomId) continue;
+		const linkedResponseId =
+			memory.content && typeof memory.content === "object"
+				? (memory.content as { responseId?: unknown }).responseId
+				: undefined;
+		if (typeof linkedResponseId !== "string") continue;
+		const responseId = linkedResponseId as UUID;
+		// The core row echoed back verbatim is not a separate connector record.
+		if (memory.id === responseId) continue;
+		if (!args.persistedResponseMessageIds.has(responseId)) continue;
+		if (args.persistedEarlyReplyIds.has(responseId)) continue;
+		if (duplicatedResponseIds.has(responseId)) continue;
+		try {
+			const stored = await runtime.getMemoryById(memory.id);
+			const storedText =
+				typeof stored?.content?.text === "string"
+					? stored.content.text.trim()
+					: "";
+			if (stored && storedText.length > 0) {
+				duplicatedResponseIds.add(responseId);
+			}
+		} catch (err) {
+			// error-policy:J6 best-effort duplicate-row cleanup — an unverifiable
+			// connector row keeps the core copy (the pre-reconciliation behavior,
+			// one extra transcript row) instead of risking deletion of the only
+			// stored reply; surfaced for diagnosis, never fails a delivered turn.
+			runtime.reportError(
+				"MessageService.connectorDeliveryRecordVerification",
+				err,
+				{ agentId: runtime.agentId, roomId, memoryId: memory.id },
+			);
+		}
+	}
+	for (const responseId of duplicatedResponseIds) {
+		try {
+			await runtime.deleteMemory(responseId);
+			args.persistedResponseMessageIds.delete(responseId);
+			runtime.logger.debug(
+				{ src: "service:message", agentId: runtime.agentId, responseId },
+				"Removed duplicate response row - connector delivery callback persisted the delivered message",
+			);
+		} catch (err) {
+			// error-policy:J6 best-effort duplicate-row cleanup — a failed delete
+			// leaves the duplicate transcript row (the pre-reconciliation state);
+			// the delivered turn itself already succeeded and must not fail here.
+			runtime.reportError("MessageService.removeDuplicateResponseRow", err, {
+				agentId: runtime.agentId,
+				roomId,
+				responseId,
+			});
+		}
+	}
+}
+
 export {
 	buildFailureReplyPrompt,
 	classifyStructuredFailureCause,
@@ -15019,6 +15118,22 @@ export class DefaultMessageService implements IMessageService {
 									),
 								);
 							}
+						}
+						// One stored agent message per delivery: when the connector's
+						// callback persisted its own record of this reply (returned
+						// rows linked via content.responseId), drop the core duplicate
+						// before the persist barrier releases (see the helper's prose).
+						if (
+							deliveryOutcome.status === "fulfilled" &&
+							persistOutcome.status === "fulfilled"
+						) {
+							await removeResponseRowsDuplicatedByConnectorDelivery({
+								runtime,
+								roomId: message.roomId,
+								deliveredMemories: deliveryOutcome.value,
+								persistedResponseMessageIds,
+								persistedEarlyReplyIds,
+							});
 						}
 						if (persistOutcome.status === "rejected") {
 							// The persist failure (data loss) outranks the delivery

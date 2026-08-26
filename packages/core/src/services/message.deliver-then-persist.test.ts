@@ -570,3 +570,97 @@ describe("simple-path deliver-then-persist ordering", () => {
 		expect(h.order).toContain("persist:reply");
 	});
 });
+
+describe("connector-owned delivery record (one stored reply per delivery)", () => {
+	// Live regression tj-4c746c562d1b27 (2026-08-26): a Discord-style connector
+	// callback persists its own memory of every message it delivers (keyed by
+	// the platform message id, carrying the delivered content including
+	// `responseId`) and returns that row. The simple path also persisted its
+	// own responseId row, so one delivered recap reply landed in the room
+	// record twice and every transcript render showed the agent posting the
+	// identical summary as two adjacent messages.
+	it("keeps exactly one stored reply when the callback persisted its own record of the delivery", async () => {
+		const h = await createHarness();
+		let connectorRowId: UUID | undefined;
+		let coreResponseId: string | undefined;
+
+		const result = await h.service.handleMessage(
+			h.runtime,
+			h.makeMessage(),
+			async (content) => {
+				// Connector-style delivery: send accepted by the platform, then a
+				// connector-owned memory row persisted under the platform id with
+				// the delivered content (responseId link included via the spread).
+				coreResponseId =
+					typeof content.responseId === "string"
+						? content.responseId
+						: undefined;
+				const platformRow: Memory = {
+					id: asUUID(v4()),
+					entityId: h.runtime.agentId,
+					agentId: h.runtime.agentId,
+					roomId: h.roomId,
+					content: {
+						...content,
+						source: "connector-test",
+					},
+					createdAt: Date.now(),
+				};
+				connectorRowId = platformRow.id;
+				await h.runtime.createMemory(platformRow, "messages");
+				return [platformRow];
+			},
+		);
+
+		expect(result.didRespond).toBe(true);
+		expect(result.mode).toBe("simple");
+		expect(connectorRowId).toBeDefined();
+		if (coreResponseId === undefined) {
+			throw new Error("delivered content carried no responseId");
+		}
+
+		// Exactly ONE stored copy of the reply survives — the connector's row
+		// (the platform-id-keyed ground-truth record), not the core duplicate.
+		const replies = await h.storedReplies();
+		expect(replies).toHaveLength(1);
+		expect(replies[0].id).toBe(connectorRowId);
+		const coreRow = await h.runtime.getMemoryById(asUUID(coreResponseId));
+		expect(coreRow).toBeNull();
+
+		// The persisted-id contract stays truthful: the removed core row is not
+		// reported as durably committed.
+		expect(result.persistedResponseMessageIds ?? []).not.toContain(
+			coreResponseId,
+		);
+	});
+
+	it("never deletes the core reply row for callback-returned memories that were not actually persisted", async () => {
+		const h = await createHarness();
+
+		const result = await h.service.handleMessage(
+			h.runtime,
+			h.makeMessage(),
+			async (content) => {
+				// A callback that RETURNS constructed memories without persisting
+				// them (transient transport objects) must not take ownership: the
+				// core row is the only durable copy and deleting it would lose the
+				// reply from history entirely.
+				const transientRow: Memory = {
+					id: asUUID(v4()),
+					entityId: h.runtime.agentId,
+					agentId: h.runtime.agentId,
+					roomId: h.roomId,
+					content: { ...content, source: "connector-test" },
+					createdAt: Date.now(),
+				};
+				return [transientRow];
+			},
+		);
+
+		expect(result.didRespond).toBe(true);
+		const replies = await h.storedReplies();
+		expect(replies).toHaveLength(1);
+		expect(result.persistedResponseMessageIds).toHaveLength(1);
+		expect(replies[0].id).toBe(result.persistedResponseMessageIds?.[0]);
+	});
+});
