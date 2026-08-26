@@ -311,43 +311,46 @@ export function AndroidCloudSettings({
   const [error, setError] = useState<string | null>(null);
   const [admissionCode, setAdmissionCode] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    if (!lifecycle) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const nextAvailability = request
-        ? await lifecycle
-            .getStatus()
-            .then(
-              (nextRequest): AccountDeletionAvailabilityDto =>
-                nextRequest
-                  ? { state: "existing_request", request: nextRequest }
-                  : { state: "available", request: null },
-            )
-        : lifecycle.getAvailability
-          ? await lifecycle.getAvailability()
-          : await lifecycle
+  const refresh = useCallback(
+    async (hasExistingRequest: boolean) => {
+      if (!lifecycle) return;
+      setLoading(true);
+      setError(null);
+      try {
+        const nextAvailability = hasExistingRequest
+          ? await lifecycle
               .getStatus()
               .then(
                 (nextRequest): AccountDeletionAvailabilityDto =>
                   nextRequest
                     ? { state: "existing_request", request: nextRequest }
                     : { state: "available", request: null },
-              );
-      setAvailability(nextAvailability);
-      setRequest(nextAvailability.request);
-    } catch (cause) {
-      // error-policy:J4 Status failures render explicitly; the server remains
-      // authoritative if the user later retries an account action.
-      setError(errorMessage(cause));
-    } finally {
-      setLoading(false);
-    }
-  }, [lifecycle, request]);
+              )
+          : lifecycle.getAvailability
+            ? await lifecycle.getAvailability()
+            : await lifecycle
+                .getStatus()
+                .then(
+                  (nextRequest): AccountDeletionAvailabilityDto =>
+                    nextRequest
+                      ? { state: "existing_request", request: nextRequest }
+                      : { state: "available", request: null },
+                );
+        setAvailability(nextAvailability);
+        setRequest(nextAvailability.request);
+      } catch (cause) {
+        // error-policy:J4 Status failures render explicitly; the server remains
+        // authoritative if the user later retries an account action.
+        setError(errorMessage(cause));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [lifecycle],
+  );
 
   useEffect(() => {
-    if (!initialRequest) void refresh();
+    if (!initialRequest) void refresh(false);
   }, [initialRequest, refresh]);
 
   useEffect(() => {
@@ -355,7 +358,7 @@ export function AndroidCloudSettings({
     if (request.nextAction === "none") return;
     let active = true;
     let timer = window.setTimeout(async function poll() {
-      await refresh();
+      await refresh(true);
       if (active) timer = window.setTimeout(poll, 5_000);
     }, 5_000);
     return () => {

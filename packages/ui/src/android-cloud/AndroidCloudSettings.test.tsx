@@ -130,6 +130,31 @@ describe("AndroidCloudSettings", () => {
     );
   });
 
+  it("loads an existing request once before starting bounded status polling", async () => {
+    const existing = request();
+    const getAvailability = vi.fn(async () => ({
+      state: "existing_request" as const,
+      request: existing,
+    }));
+    const getStatus = vi.fn(async () => existing);
+    render(
+      <AndroidCloudSettings
+        lifecycle={lifecycle({ getAvailability, getStatus })}
+        onBack={vi.fn()}
+        onDeletionReserved={vi.fn()}
+        onSignOut={vi.fn()}
+        openExternal={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("Deletion requested")).toBeTruthy();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(getAvailability).toHaveBeenCalledTimes(1);
+    expect(getStatus).not.toHaveBeenCalled();
+  });
+
   it("requires acknowledgement plus exact DELETE before reserving deletion", async () => {
     const reserved = request();
     const adapter = lifecycle({
