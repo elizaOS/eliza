@@ -1854,10 +1854,6 @@ function packageDesktopBuild() {
     patchElectrobunLinuxCefProfile({ requireNative: true });
   }
 
-  if (process.platform === "darwin") {
-    verifyPackagedNativeActivityTrackerBinary(findLatestMacAppBundle());
-  }
-
   // The Electrobun CLI downloads its platform core lazily. If that happened
   // during the first build, harden the new copy and package once more so the
   // artifact cannot retain the dependency's wildcard RPC listener.
@@ -1876,6 +1872,12 @@ function packageDesktopBuild() {
   }
 
   hardenPackagedLinuxArtifacts();
+
+  // Verify after every possible package pass so this gate covers the final
+  // bundle rather than an intermediate bundle that may have been replaced.
+  if (process.platform === "darwin") {
+    verifyPackagedNativeActivityTrackerBinary(findLatestMacAppBundle());
+  }
 
   // The legacy compatibility path (APP_DIR/electrobun) is not read by any
   // production code — only docs and this mirror fn reference it (the inno
