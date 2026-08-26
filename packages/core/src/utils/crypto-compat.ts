@@ -434,8 +434,21 @@ export function createDecipheriv(
 	let currentIv = Uint8Array.from(iv);
 	let pending = new Uint8Array(0);
 	let utf8Holdback = new Uint8Array(0);
+	let outputEncoding: BufferEncodingName | undefined;
+	const lockOutputEncoding = (encoding: string): BufferEncodingName => {
+		const normalized = normalizeEncoding(encoding);
+		if (outputEncoding === undefined) {
+			outputEncoding = normalized;
+		} else if (outputEncoding !== normalized) {
+			// node:crypto rejects mid-stream output-encoding changes; honoring
+			// them instead would silently drop the held-back UTF-8 bytes.
+			throw new Error("Cannot change encoding");
+		}
+		return normalized;
+	};
 	return {
-		update(data, inputEncoding, outputEncoding) {
+		update(data, inputEncoding, outEncArg) {
+			const outEnc = lockOutputEncoding(outEncArg);
 			const incoming = toUint8Array(data, normalizeEncoding(inputEncoding));
 			pending = concatBytes(pending, incoming);
 			const decryptableLength =
@@ -456,11 +469,8 @@ export function createDecipheriv(
 				ciphertextChunk,
 				ciphertextChunk.length - AES_BLOCK_SIZE,
 			);
-			if (normalizeEncoding(outputEncoding) !== "utf8") {
-				return toEncodedString(
-					plaintextChunk,
-					normalizeEncoding(outputEncoding),
-				);
+			if (outEnc !== "utf8") {
+				return toEncodedString(plaintextChunk, outEnc);
 			}
 			// Hold back a trailing partial UTF-8 sequence so multibyte characters
 			// split across update() chunks decode once, complete — node:crypto
@@ -472,6 +482,7 @@ export function createDecipheriv(
 			return toEncodedString(split.decode, "utf8");
 		},
 		final(encoding) {
+			const outEnc = lockOutputEncoding(encoding);
 			if (pending.length === 0 || pending.length % AES_BLOCK_SIZE !== 0) {
 				throw new Error("Invalid ciphertext length for AES-CBC payload.");
 			}
@@ -482,8 +493,8 @@ export function createDecipheriv(
 			);
 			pending = new Uint8Array(0);
 			const unpadded = removePkcs7Padding(decryptedTail);
-			if (normalizeEncoding(encoding) !== "utf8") {
-				return toEncodedString(unpadded, normalizeEncoding(encoding));
+			if (outEnc !== "utf8") {
+				return toEncodedString(unpadded, outEnc);
 			}
 			const complete = concatBytes(utf8Holdback, unpadded);
 			utf8Holdback = new Uint8Array(0);
