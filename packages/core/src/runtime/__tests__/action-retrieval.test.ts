@@ -9,6 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { promoteSubactionsToActions } from "../../actions/promote-subactions";
+import { messageAction } from "../../features/advanced-capabilities/actions/message";
 import { searchMessagesAction } from "../../features/messaging/triage/actions/searchMessages";
 import { buildActionCatalog } from "../action-catalog";
 import {
@@ -1314,5 +1315,170 @@ describe("F21 aliases survive production retrieval topology filtering", () => {
 
 		expect(response.query.parentActionHints).toEqual(["EMAIL"]);
 		expect(response.results[0]).toMatchObject({ name: "EMAIL" });
+	});
+});
+
+describe("guild/server management natural-language routing (regression 2026-08-25)", () => {
+	// The live topology that mis-routed: the real MESSAGE action (which owns
+	// op=manage_server) competing against the coding/admin/state/personality/
+	// file/views decoys the covenant deployment exposed. On clean develop the
+	// owner's exact ask ranked PERSONALITY/TASKS/FILE above MESSAGE because the
+	// action.message keyword entry carried no guild/template/channel vocabulary,
+	// and the structural verb aliases (CREATE_CHANNEL, APPLY_SERVER_TEMPLATE, …)
+	// routed to VIEWS / nothing. Eliza then answered "no template exists".
+	const decoyParents = [
+		{
+			name: "TASKS",
+			description:
+				"Delegate coding and repository tasks to worker agents: clone, edit code, commit, open pull requests, apply code templates and scaffolds.",
+			similes: ["CREATE_TASK", "CODING_TASK"],
+			contexts: ["code", "automation"],
+		},
+		{
+			name: "ADMIN",
+			description: "Administer runtime plugins and configuration.",
+			similes: ["MANAGE_PLUGINS"],
+			contexts: ["admin"],
+		},
+		{
+			name: "WORKFLOW",
+			description: "Create and manage multi-step automation workflows.",
+			contexts: ["automation"],
+		},
+		{
+			name: "STATE",
+			description: "Inspect and report agent state.",
+			contexts: ["state"],
+		},
+		{
+			name: "RUNTIME_STATUS",
+			description: "Report runtime status and health.",
+			contexts: ["system"],
+		},
+		{
+			name: "PERSONALITY",
+			description:
+				"Adjust the agent personality: tone, style, and behaviour changes; show only the differences.",
+			contexts: ["character"],
+		},
+		{
+			name: "FILE",
+			description: "Read and write files; apply file templates and scaffolds.",
+			similes: ["READ_FILE", "WRITE_FILE"],
+			contexts: ["files"],
+		},
+		{
+			name: "VIEWS",
+			description: "Open, close, split, and arrange windows and app views.",
+			contexts: ["state"],
+		},
+	];
+
+	function liveCatalog() {
+		// biome-ignore lint/suspicious/noExplicitAny: test catalog uses the real action shape
+		return buildActionCatalog([messageAction as any, ...decoyParents]);
+	}
+
+	const EXACT_LIVE_PHRASE =
+		"apply the code-ops template to this server as a dry run only. do not make changes. show me the plan.";
+
+	it("ranks MESSAGE first for the exact live guild-template phrase (keyword-only, no candidate hint)", () => {
+		const response = retrieveActions({
+			catalog: liveCatalog(),
+			messageText: EXACT_LIVE_PHRASE,
+		});
+		// Bidirectional proof: this assertion FAILS on clean develop (MESSAGE was
+		// out-ranked by PERSONALITY) and PASSES with the guild keyword fix.
+		expect(response.results[0]?.name).toBe("MESSAGE");
+	});
+
+	it.each([
+		"apply the code-ops template to this discord server as a dry run",
+		"tf, i mean discord template",
+		"create a channel called builds under code ops",
+		"list the discord server templates",
+		"set up the server structure with categories and channels",
+	])("routes the guild-management phrase %j to MESSAGE (top 1)", (phrase) => {
+		const response = retrieveActions({
+			catalog: liveCatalog(),
+			messageText: phrase,
+		});
+		expect(response.results[0]?.name).toBe("MESSAGE");
+	});
+
+	it.each([
+		["APPLY_SERVER_TEMPLATE", EXACT_LIVE_PHRASE],
+		["CREATE_CHANNEL", "create a channel called builds under code ops"],
+		["LIST_SERVER_TEMPLATES", "list the discord server templates"],
+		["MANAGE_SERVER", "set up the server structure"],
+		["CREATE_ROLE", "create a moderator role on the server"],
+	])(
+		"binds structural candidate %s to MESSAGE (op=manage_server) — not VIEWS/nothing",
+		(candidate, phrase) => {
+			expect(parentAliasesForCandidateAction(candidate)).toContain("MESSAGE");
+			const response = retrieveActions({
+				catalog: liveCatalog(),
+				messageText: phrase,
+				candidateActions: [candidate],
+			});
+			expect(response.query.parentActionHints).toContain("MESSAGE");
+			expect(response.results[0]?.name).toBe("MESSAGE");
+		},
+	);
+
+	it.each([
+		"APPLY_TEMPLATE",
+		"LIST_TEMPLATES",
+		"EDIT_PERMISSIONS",
+		"APPLY_FILE_TEMPLATE",
+		"CREATE_FILE",
+		"CODE_TEMPLATE",
+		"APPLY_CODE_TEMPLATE",
+		"CREATE_TASK",
+		"CREATE_PROJECT_TEMPLATE",
+	])(
+		"does NOT bind generic file/code candidate %s to MESSAGE (no guild misroute)",
+		(candidate) => {
+			expect(parentAliasesForCandidateAction(candidate)).not.toContain(
+				"MESSAGE",
+			);
+		},
+	);
+
+	it("keeps generic app permissions on SETTINGS instead of MESSAGE", () => {
+		const catalog = buildActionCatalog([
+			messageAction,
+			{
+				name: "SETTINGS",
+				description:
+					"Manage application settings, operating-system permissions, and network access.",
+				similes: ["SET_APP_NETWORK_PERMISSION"],
+				contexts: ["settings"],
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "edit network permissions for the weather app",
+			candidateActions: ["EDIT_PERMISSIONS"],
+		});
+		expect(response.results[0]?.name).toBe("SETTINGS");
+	});
+
+	it("keeps a generic file-template ask off MESSAGE as the top result", () => {
+		const response = retrieveActions({
+			catalog: liveCatalog(),
+			messageText: "apply the vite template to this file and scaffold it",
+			candidateActions: ["APPLY_FILE_TEMPLATE"],
+		});
+		expect(response.results[0]?.name).not.toBe("MESSAGE");
+	});
+
+	it("keeps a code-task ask on TASKS, not MESSAGE", () => {
+		const response = retrieveActions({
+			catalog: liveCatalog(),
+			messageText: "create a new task to fix the readme and open a pr",
+			candidateActions: ["CREATE_TASK"],
+		});
+		expect(response.results[0]?.name).toBe("TASKS");
 	});
 });

@@ -1,7 +1,7 @@
 /**
- * Proves all reconciliation paths serialize with lifecycle work on real
- * PostgreSQL, and that timed-out attempts cannot retry or settle until their
- * exact execution generation acknowledges quiescence.
+ * Proves cloud lifecycle and sandbox-replacement authorities serialize on
+ * real PostgreSQL, including reconciliation, execution quiescence, and the
+ * sandbox-to-attempt-to-node lock order used by replacement attempts.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -14,8 +14,17 @@ import {
   acquireEphemeralPostgres,
   type EphemeralPostgres,
 } from "../../../lib/services/tenant-db/__tests__/ephemeral-postgres";
-import { agentSandboxes } from "../../schemas/agent-sandboxes";
+import type { DbTransaction } from "../../client";
+import { agentBackupRestoreLeases } from "../../schemas/agent-backup-catalog";
+import { agentNodeIncarnationHistories } from "../../schemas/agent-node-incarnation-histories";
+import { agentSandboxReplacementAttempts } from "../../schemas/agent-sandbox-replacement-attempts";
+import {
+  agentBackupCatalogAuthorities,
+  agentSandboxBackups,
+  agentSandboxes,
+} from "../../schemas/agent-sandboxes";
 import { apiKeys } from "../../schemas/api-keys";
+import { dockerNodes } from "../../schemas/docker-nodes";
 import { generations } from "../../schemas/generations";
 import { jobExecutionLeases } from "../../schemas/job-execution-leases";
 import { jobs } from "../../schemas/jobs";
@@ -23,9 +32,15 @@ import { organizations } from "../../schemas/organizations";
 import { usageRecords } from "../../schemas/usage-records";
 import { userCharacters } from "../../schemas/user-characters";
 import { users } from "../../schemas/users";
+import type {
+  AgentSandboxReplacementAttemptReference,
+  AgentSandboxReplacementLocatorInput,
+  CommitAgentSandboxReplacementLifecycleAdoptionInput,
+  StartAgentSandboxReplacementAttemptInput,
+} from "../agent-sandbox-replacement-attempts";
 
 const SKIP_REASON =
-  "[stuck provisioning lock] SKIPPED - no real PostgreSQL available. " +
+  "[cloud lifecycle locks] SKIPPED - no real PostgreSQL available. " +
   "Set APPS_TENANT_DB_EPHEMERAL=1 with Docker, or provide APPS_TENANT_DB_TEST_DSN.";
 const ORIGINAL_ENV = {
   DATABASE_URL: process.env.DATABASE_URL,
@@ -54,6 +69,9 @@ let ProvisioningJobService:
   | typeof import("../../../lib/services/provisioning-jobs").ProvisioningJobService
   | undefined;
 let jobsRepository: typeof import("../jobs").jobsRepository | undefined;
+let replacementAttemptsRepository:
+  | typeof import("../agent-sandbox-replacement-attempts")
+  | undefined;
 
 function restoreEnv(name: keyof typeof ORIGINAL_ENV, value: string | undefined): void {
   if (value === undefined) {
@@ -108,6 +126,354 @@ async function waitForAdvisoryWaiters(observer: Client, minimum: number): Promis
   throw new Error(`Timed out waiting for ${minimum} advisory-lock waiter(s)`);
 }
 
+interface BlockingRelation {
+  waiterApplicationName: string;
+  blockerApplicationName: string;
+}
+
+interface ActivityLockRow {
+  pid: number;
+  application_name: string;
+  wait_event_type: string | null;
+  wait_event: string | null;
+  blocking_pids: number[];
+}
+
+async function waitForApplicationBlockingRelations(
+  observer: Client,
+  relations: readonly BlockingRelation[],
+): Promise<void> {
+  const applicationNames = [
+    ...new Set(
+      relations.flatMap(({ waiterApplicationName, blockerApplicationName }) => [
+        waiterApplicationName,
+        blockerApplicationName,
+      ]),
+    ),
+  ];
+  const deadline = Date.now() + 8_000;
+  let lastRows: ActivityLockRow[] = [];
+  while (Date.now() < deadline) {
+    const result = await observer.query<ActivityLockRow>(
+      `SELECT pid, application_name, wait_event_type, wait_event,
+              pg_blocking_pids(pid) AS blocking_pids
+       FROM pg_stat_activity
+       WHERE datname = current_database()
+         AND application_name = ANY($1::text[])`,
+      [applicationNames],
+    );
+    lastRows = result.rows;
+    const byApplicationName = new Map(lastRows.map((row) => [row.application_name, row]));
+    if (
+      relations.every(({ waiterApplicationName, blockerApplicationName }) => {
+        const waiter = byApplicationName.get(waiterApplicationName);
+        const blocker = byApplicationName.get(blockerApplicationName);
+        return (
+          waiter?.wait_event_type === "Lock" &&
+          blocker !== undefined &&
+          waiter.blocking_pids.includes(blocker.pid)
+        );
+      })
+    ) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(
+    `Timed out observing PostgreSQL blocking relations: ${JSON.stringify({ relations, lastRows })}`,
+  );
+}
+
+interface DirectTransactionBlockRow {
+  waiting_transaction_id: string;
+  blocker_transaction_id: string;
+}
+
+async function waitForDirectTransactionIdBlock(
+  observer: Client,
+  waiterApplicationName: string,
+  blockerApplicationName: string,
+): Promise<void> {
+  const deadline = Date.now() + 8_000;
+  let lastRows: DirectTransactionBlockRow[] = [];
+  while (Date.now() < deadline) {
+    const result = await observer.query<DirectTransactionBlockRow>(
+      `SELECT waiting.transactionid::text AS waiting_transaction_id,
+              blocker.backend_xid::text AS blocker_transaction_id
+       FROM pg_stat_activity AS waiter
+       JOIN pg_locks AS waiting
+         ON waiting.pid = waiter.pid
+        AND NOT waiting.granted
+       JOIN pg_stat_activity AS blocker
+         ON blocker.datid = waiter.datid
+        AND blocker.application_name = $2
+       WHERE waiter.datname = current_database()
+         AND waiter.application_name = $1
+         AND waiter.wait_event_type = 'Lock'
+         AND waiter.wait_event = 'transactionid'
+         AND waiting.locktype = 'transactionid'
+         AND waiting.mode = 'ShareLock'
+         AND waiting.transactionid = blocker.backend_xid`,
+      [waiterApplicationName, blockerApplicationName],
+    );
+    lastRows = result.rows;
+    if (lastRows.length > 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(
+    `Timed out observing a direct PostgreSQL transaction-ID block: ${JSON.stringify({ waiterApplicationName, blockerApplicationName, lastRows })}`,
+  );
+}
+
+async function grantedRelationWriteLocks(
+  observer: Client,
+  applicationName: string,
+  relationName: string,
+): Promise<Array<{ relation_name: string; mode: string }>> {
+  const result = await observer.query<{ relation_name: string; mode: string }>(
+    `SELECT relation_class.relname AS relation_name, relation_lock.mode
+     FROM pg_stat_activity AS activity
+     JOIN pg_locks AS relation_lock
+       ON relation_lock.pid = activity.pid
+      AND relation_lock.locktype = 'relation'
+      AND relation_lock.granted
+     JOIN pg_class AS relation_class ON relation_class.oid = relation_lock.relation
+     WHERE activity.datname = current_database()
+       AND activity.application_name = $1
+       AND relation_class.oid = to_regclass($2)
+       AND relation_lock.mode IN (
+         'RowExclusiveLock',
+         'ShareRowExclusiveLock',
+         'ExclusiveLock',
+         'AccessExclusiveLock'
+       )`,
+    [applicationName, relationName],
+  );
+  return result.rows;
+}
+
+interface ApplicationTargetLock {
+  locktype: string;
+  mode: string;
+  granted: boolean;
+}
+
+async function applicationLocksTargetingRelation(
+  observer: Client,
+  applicationName: string,
+  relationName: string,
+): Promise<ApplicationTargetLock[]> {
+  const result = await observer.query<ApplicationTargetLock>(
+    `SELECT target_lock.locktype, target_lock.mode, target_lock.granted
+     FROM pg_stat_activity AS activity
+     JOIN pg_locks AS target_lock ON target_lock.pid = activity.pid
+     WHERE activity.datname = current_database()
+       AND activity.application_name = $1
+       AND target_lock.database = activity.datid
+       AND target_lock.relation = to_regclass($2)
+     ORDER BY target_lock.locktype, target_lock.mode, target_lock.granted`,
+    [applicationName, relationName],
+  );
+  return result.rows;
+}
+
+async function connectNamedClient(dsn: string, applicationName: string): Promise<Client> {
+  const client = new Client({ connectionString: dsn });
+  try {
+    await client.connect();
+    await client.query("SELECT set_config('application_name', $1, false)", [applicationName]);
+    return client;
+  } catch (error) {
+    // error-policy:J6 Failed test setup still releases any opened client.
+    await client.end().catch(() => undefined);
+    throw error;
+  }
+}
+
+async function connectNamedClients<const Names extends readonly string[]>(
+  dsn: string,
+  applicationNames: Names,
+): Promise<{ [Index in keyof Names]: Client }> {
+  const clients: Client[] = [];
+  try {
+    for (const applicationName of applicationNames) {
+      clients.push(await connectNamedClient(dsn, applicationName));
+    }
+    return clients as { [Index in keyof Names]: Client };
+  } catch (error) {
+    // error-policy:J6 A later setup failure still closes every earlier client.
+    await Promise.all(clients.map((client) => client.end().catch(() => undefined)));
+    throw error;
+  }
+}
+
+async function rollbackQuietly(client: Client): Promise<void> {
+  // error-policy:J6 Teardown tolerates an already-ended or aborted transaction.
+  await client.query("ROLLBACK").catch(() => undefined);
+}
+
+async function endQuietly(client: Client): Promise<void> {
+  // error-policy:J6 Teardown continues after an already-closed test connection.
+  await client.end().catch(() => undefined);
+}
+
+async function inNamedTransaction<T>(
+  applicationName: string,
+  operation: (tx: DbTransaction) => Promise<T>,
+): Promise<T> {
+  if (!dbWrite) throw new Error("real PostgreSQL harness was not initialized");
+  return await dbWrite.transaction(async (tx) => {
+    await tx.execute(sql`SELECT set_config('application_name', ${applicationName}, true)`);
+    return await operation(tx);
+  });
+}
+
+interface ReplacementAttemptFixture {
+  organizationId: string;
+  agentId: string;
+  nodeRecordId: string;
+  startInput: StartAgentSandboxReplacementAttemptInput;
+  locator: AgentSandboxReplacementLocatorInput;
+}
+
+async function createReplacementAttemptFixture(): Promise<ReplacementAttemptFixture> {
+  if (!dbWrite) throw new Error("real PostgreSQL harness was not initialized");
+  const organizationId = randomUUID();
+  const userId = randomUUID();
+  const agentId = randomUUID();
+  const nodeRecordId = randomUUID();
+  const attemptId = randomUUID();
+  const activationGeneration = randomUUID();
+  const lifecycleJobId = randomUUID();
+  const lifecycleExecutionGeneration = randomUUID();
+  const suffix = randomUUID();
+  const nodeId = `replacement-node-${suffix}`;
+  const nodeHostname = `replacement-${suffix}.internal`;
+  const nodeHostKeyFingerprint = `SHA256:replacement-${suffix}`;
+  const containerName = `agent-${agentId}`;
+
+  await dbWrite.insert(organizations).values({
+    id: organizationId,
+    name: "Replacement lock proof",
+    slug: `replacement-lock-${suffix}`,
+  });
+  await dbWrite.insert(users).values({
+    id: userId,
+    organization_id: organizationId,
+    steward_user_id: `replacement-lock-${suffix}`,
+  });
+  await dbWrite.insert(agentSandboxes).values({
+    id: agentId,
+    organization_id: organizationId,
+    user_id: userId,
+    status: "provisioning",
+    lifecycle_job_id: lifecycleJobId,
+    lifecycle_execution_generation: lifecycleExecutionGeneration,
+    activation_generation: activationGeneration,
+    activation_lifecycle_revision: 7n,
+    activation_purpose: "provision",
+    activation_phase: "container_pending",
+    activation_token_hash: "1".repeat(64),
+    activation_token_ciphertext: "test-only-replacement-activation-token",
+    execution_tier: "dedicated-always",
+    sandbox_id: `old-sandbox-${suffix}`,
+    node_id: `old-node-${suffix}`,
+    container_name: `old-container-${suffix}`,
+    lifecycle_revision: 7,
+  });
+  await dbWrite.insert(dockerNodes).values({
+    id: nodeRecordId,
+    node_id: nodeId,
+    hostname: nodeHostname,
+    ssh_port: 22,
+    capacity: 8,
+    allocated_count: 1,
+    status: "healthy",
+    ssh_user: "root",
+    host_key_fingerprint: nodeHostKeyFingerprint,
+  });
+
+  return {
+    organizationId,
+    agentId,
+    nodeRecordId,
+    startInput: {
+      attemptId,
+      organizationId,
+      agentId,
+      operationKind: "upgrade",
+      lifecycleRevision: "7",
+      activationGeneration,
+      lifecycleJobId,
+      lifecycleExecutionGeneration,
+      restoreAuthority: null,
+    },
+    locator: {
+      replacementAttemptId: attemptId,
+      sandboxId: containerName,
+      nodeId,
+      containerName,
+      nodeRecordId,
+      nodeHostname,
+      nodeSshPort: 22,
+      nodeSshUser: "root",
+      nodeHostKeyFingerprint,
+      replacementSecretCleanupVersion: 1,
+      allocationCounted: true,
+      vpnNodeName: containerName,
+      vpnRegistrationStartedAt: "2026-08-24T12:00:00.000Z",
+      previousVpnNodeId: "41",
+      containerId: "a".repeat(64),
+      vpnNodeId: "42",
+    },
+  };
+}
+
+function replacementReference(
+  input: StartAgentSandboxReplacementAttemptInput,
+): AgentSandboxReplacementAttemptReference {
+  return {
+    attemptId: input.attemptId,
+    organizationId: input.organizationId,
+    agentId: input.agentId,
+  };
+}
+
+async function seedProviderSucceededReplacementAttempt(
+  fixture: ReplacementAttemptFixture,
+): Promise<void> {
+  if (!dbWrite || !replacementAttemptsRepository) {
+    throw new Error("real PostgreSQL harness was not initialized");
+  }
+  const reference = replacementReference(fixture.startInput);
+  await dbWrite.transaction((tx) =>
+    replacementAttemptsRepository!.startAgentSandboxReplacementAttemptInTransaction(
+      tx,
+      fixture.startInput,
+    ),
+  );
+  await dbWrite.transaction((tx) =>
+    replacementAttemptsRepository!.recordAgentSandboxReplacementIntentInTransaction(tx, reference, {
+      ...fixture.locator,
+      containerId: null,
+      vpnNodeId: null,
+    }),
+  );
+  await replacementAttemptsRepository.recordAgentSandboxReplacementCreated(reference, {
+    ...fixture.locator,
+    vpnNodeId: null,
+  });
+  await replacementAttemptsRepository.recordAgentSandboxReplacementVpnRegistered(
+    reference,
+    fixture.locator,
+  );
+  await replacementAttemptsRepository.recordAgentSandboxReplacementProviderSucceeded(
+    reference,
+    fixture.locator,
+    "b".repeat(64),
+  );
+}
+
 if (!postgres) {
   console.warn(SKIP_REASON);
 } else {
@@ -119,18 +485,21 @@ if (!postgres) {
   process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
   process.env.MOCK_REDIS = "1";
 
-  const [clientModule, repositoryModule, jobModule, jobsModule] = await Promise.all([
-    import("../../client"),
-    import("../agent-sandboxes"),
-    import("../../../lib/services/provisioning-jobs"),
-    import("../jobs"),
-  ]);
+  const [clientModule, repositoryModule, jobModule, jobsModule, replacementAttemptsModule] =
+    await Promise.all([
+      import("../../client"),
+      import("../agent-sandboxes"),
+      import("../../../lib/services/provisioning-jobs"),
+      import("../jobs"),
+      import("../agent-sandbox-replacement-attempts"),
+    ]);
   closeDatabaseConnectionsForTests = clientModule.closeDatabaseConnectionsForTests;
   dbWrite = clientModule.dbWrite;
   agentSandboxesRepository = repositoryModule.agentSandboxesRepository;
   provisioningJobService = jobModule.provisioningJobService;
   ProvisioningJobService = jobModule.ProvisioningJobService;
   jobsRepository = jobsModule.jobsRepository;
+  replacementAttemptsRepository = replacementAttemptsModule;
 }
 
 // 60s like the schema-push beforeAll: teardown drains live pool connections,
@@ -152,7 +521,7 @@ afterAll(async () => {
 
 const realPostgres = postgres ? describe : describe.skip;
 
-realPostgres("stuck provisioning lifecycle lock", () => {
+realPostgres("cloud lifecycle lock proofs", () => {
   beforeAll(async () => {
     if (!dbWrite) throw new Error("isolated database was not initialized");
     const schema = {
@@ -160,6 +529,12 @@ realPostgres("stuck provisioning lifecycle lock", () => {
       users,
       userCharacters,
       agentSandboxes,
+      agentNodeIncarnationHistories,
+      dockerNodes,
+      agentSandboxBackups,
+      agentBackupCatalogAuthorities,
+      agentBackupRestoreLeases,
+      agentSandboxReplacementAttempts,
       apiKeys,
       usageRecords,
       generations,
@@ -540,6 +915,388 @@ realPostgres("stuck provisioning lifecycle lock", () => {
     } finally {
       await lock.query("ROLLBACK");
       await lock.end();
+    }
+  }, 30_000);
+
+  test("two replacement starts wait on the sandbox row and admit exactly one effect", async () => {
+    if (!isolatedDsn || !dbWrite || !replacementAttemptsRepository) {
+      throw new Error("real PostgreSQL harness was not initialized");
+    }
+    const fixture = await createReplacementAttemptFixture();
+    const tag = randomUUID().slice(0, 8);
+    const holderApplicationName = `s1-sandbox-holder-${tag}`;
+    const firstStartApplicationName = `s1-start-a-${tag}`;
+    const secondStartApplicationName = `s1-start-b-${tag}`;
+    const [holder, observer] = await connectNamedClients(isolatedDsn, [
+      holderApplicationName,
+      `s1-observer-${tag}`,
+    ]);
+    let startPromises: Promise<unknown>[] = [];
+    try {
+      await holder.query("BEGIN");
+      const held = await holder.query(
+        `SELECT id FROM agent_sandboxes
+         WHERE id = $1 AND organization_id = $2
+         FOR SHARE`,
+        [fixture.agentId, fixture.organizationId],
+      );
+      expect(held.rowCount).toBe(1);
+
+      const firstInput = fixture.startInput;
+      const secondInput = { ...fixture.startInput, attemptId: randomUUID() };
+      startPromises = [
+        inNamedTransaction(firstStartApplicationName, (tx) =>
+          replacementAttemptsRepository!.startAgentSandboxReplacementAttemptInTransaction(
+            tx,
+            firstInput,
+          ),
+        ),
+      ];
+      await waitForApplicationBlockingRelations(observer, [
+        {
+          waiterApplicationName: firstStartApplicationName,
+          blockerApplicationName: holderApplicationName,
+        },
+      ]);
+      expect(
+        await grantedRelationWriteLocks(
+          observer,
+          firstStartApplicationName,
+          "agent_sandbox_replacement_attempts",
+        ),
+      ).toEqual([]);
+      startPromises.push(
+        inNamedTransaction(secondStartApplicationName, (tx) =>
+          replacementAttemptsRepository!.startAgentSandboxReplacementAttemptInTransaction(
+            tx,
+            secondInput,
+          ),
+        ),
+      );
+      await waitForApplicationBlockingRelations(observer, [
+        {
+          waiterApplicationName: firstStartApplicationName,
+          blockerApplicationName: holderApplicationName,
+        },
+        {
+          waiterApplicationName: secondStartApplicationName,
+          blockerApplicationName: firstStartApplicationName,
+        },
+      ]);
+
+      await holder.query("COMMIT");
+      const results = await Promise.allSettled(startPromises);
+      expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+      expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+      expect(results.find((result) => result.status === "rejected")).toMatchObject({
+        status: "rejected",
+        reason: { code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" },
+      });
+      const attempts = await dbWrite
+        .select({
+          id: agentSandboxReplacementAttempts.id,
+          state: agentSandboxReplacementAttempts.state,
+        })
+        .from(agentSandboxReplacementAttempts)
+        .where(
+          and(
+            eq(agentSandboxReplacementAttempts.organization_id, fixture.organizationId),
+            eq(agentSandboxReplacementAttempts.agent_id, fixture.agentId),
+          ),
+        );
+      expect(attempts).toHaveLength(1);
+      expect(attempts[0]?.state).toBe("in_flight_unresolved");
+    } finally {
+      await rollbackQuietly(holder);
+      await Promise.allSettled(startPromises);
+      await Promise.all([endQuietly(holder), endQuietly(observer)]);
+    }
+  }, 30_000);
+
+  test("cleanup and the next replacement start preserve sandbox-to-attempt lock order", async () => {
+    if (!isolatedDsn || !dbWrite || !replacementAttemptsRepository) {
+      throw new Error("real PostgreSQL harness was not initialized");
+    }
+    const fixture = await createReplacementAttemptFixture();
+    await dbWrite.transaction((tx) =>
+      replacementAttemptsRepository!.startAgentSandboxReplacementAttemptInTransaction(
+        tx,
+        fixture.startInput,
+      ),
+    );
+    const tag = randomUUID().slice(0, 8);
+    const attemptHolderApplicationName = `s1-attempt-holder-${tag}`;
+    const cleanupApplicationName = `s1-cleanup-${tag}`;
+    const nextStartApplicationName = `s1-next-start-${tag}`;
+    const [holder, observer, sandboxProbe] = await connectNamedClients(isolatedDsn, [
+      attemptHolderApplicationName,
+      `s1-observer-${tag}`,
+      `s1-sandbox-probe-${tag}`,
+    ]);
+    let cleanupPromise: Promise<unknown> | undefined;
+    let nextStartPromise: Promise<unknown> | undefined;
+    try {
+      await holder.query("BEGIN");
+      const held = await holder.query(
+        `SELECT id FROM agent_sandbox_replacement_attempts
+         WHERE id = $1 AND organization_id = $2 AND agent_id = $3
+         FOR SHARE`,
+        [fixture.startInput.attemptId, fixture.organizationId, fixture.agentId],
+      );
+      expect(held.rowCount).toBe(1);
+
+      cleanupPromise = inNamedTransaction(cleanupApplicationName, (tx) =>
+        replacementAttemptsRepository!.recordAgentSandboxReplacementCleanupProvenInTransaction(
+          tx,
+          replacementReference(fixture.startInput),
+          "d".repeat(64),
+        ),
+      );
+      await waitForDirectTransactionIdBlock(
+        observer,
+        cleanupApplicationName,
+        attemptHolderApplicationName,
+      );
+
+      await sandboxProbe.query("BEGIN");
+      let sandboxNowaitError: unknown;
+      try {
+        await sandboxProbe.query(
+          `SELECT id FROM agent_sandboxes
+           WHERE id = $1 AND organization_id = $2
+           FOR KEY SHARE NOWAIT`,
+          [fixture.agentId, fixture.organizationId],
+        );
+      } catch (error) {
+        // error-policy:J1 The test boundary retains PostgreSQL's exact NOWAIT code.
+        sandboxNowaitError = error;
+      } finally {
+        await rollbackQuietly(sandboxProbe);
+      }
+      expect(sandboxNowaitError).toMatchObject({ code: "55P03" });
+
+      const nextStartInput = { ...fixture.startInput, attemptId: randomUUID() };
+      nextStartPromise = inNamedTransaction(nextStartApplicationName, (tx) =>
+        replacementAttemptsRepository!.startAgentSandboxReplacementAttemptInTransaction(
+          tx,
+          nextStartInput,
+        ),
+      );
+      await waitForDirectTransactionIdBlock(
+        observer,
+        nextStartApplicationName,
+        cleanupApplicationName,
+      );
+      // pg_blocking_pids() may report cleanup as a soft blocker ahead in the
+      // attempt-row queue. The direct XID wait above plus this complete relation
+      // footprint rules out that attempt-first counterexample.
+      expect(
+        await applicationLocksTargetingRelation(
+          observer,
+          nextStartApplicationName,
+          "agent_sandbox_replacement_attempts",
+        ),
+      ).toEqual([]);
+      expect(
+        await applicationLocksTargetingRelation(
+          observer,
+          nextStartApplicationName,
+          "agent_sandboxes",
+        ),
+      ).toContainEqual({ locktype: "relation", mode: "RowShareLock", granted: true });
+
+      await holder.query("COMMIT");
+      const [cleanupResult, nextStartResult] = await Promise.allSettled([
+        cleanupPromise,
+        nextStartPromise,
+      ]);
+      expect(cleanupResult).toMatchObject({
+        status: "fulfilled",
+        value: { replayed: false, attempt: { state: "cleanup_proven" } },
+      });
+      expect(nextStartResult).toMatchObject({
+        status: "fulfilled",
+        value: { replayed: false, attempt: { state: "in_flight_unresolved" } },
+      });
+      const attempts = await dbWrite
+        .select({
+          id: agentSandboxReplacementAttempts.id,
+          state: agentSandboxReplacementAttempts.state,
+        })
+        .from(agentSandboxReplacementAttempts)
+        .where(
+          and(
+            eq(agentSandboxReplacementAttempts.organization_id, fixture.organizationId),
+            eq(agentSandboxReplacementAttempts.agent_id, fixture.agentId),
+          ),
+        );
+      expect(attempts.find(({ id }) => id === fixture.startInput.attemptId)?.state).toBe(
+        "cleanup_proven",
+      );
+      expect(attempts.find(({ id }) => id === nextStartInput.attemptId)?.state).toBe(
+        "in_flight_unresolved",
+      );
+    } finally {
+      await rollbackQuietly(holder);
+      await Promise.allSettled(
+        [cleanupPromise, nextStartPromise].filter(
+          (promise): promise is Promise<unknown> => promise !== undefined,
+        ),
+      );
+      await Promise.all([endQuietly(holder), endQuietly(observer), endQuietly(sandboxProbe)]);
+    }
+  }, 30_000);
+
+  test("lifecycle adoption holds sandbox then attempt while waiting on node authority", async () => {
+    if (!isolatedDsn || !dbWrite || !replacementAttemptsRepository) {
+      throw new Error("real PostgreSQL harness was not initialized");
+    }
+    const fixture = await createReplacementAttemptFixture();
+    await seedProviderSucceededReplacementAttempt(fixture);
+    const adoptionInput: CommitAgentSandboxReplacementLifecycleAdoptionInput = {
+      ...fixture.startInput,
+      locator: fixture.locator,
+      providerReceiptDigest: "b".repeat(64),
+      lifecycleReceiptDigest: "c".repeat(64),
+    };
+    const tag = randomUUID().slice(0, 8);
+    const nodeHolderApplicationName = `s1-node-holder-${tag}`;
+    const attemptHolderApplicationName = `s1-attempt-holder-${tag}`;
+    const adoptionApplicationName = `s1-adoption-${tag}`;
+    const sameGenerationStartApplicationName = `s1-same-gen-start-${tag}`;
+    const [nodeHolder, attemptHolder, observer, nowait] = await connectNamedClients(isolatedDsn, [
+      nodeHolderApplicationName,
+      attemptHolderApplicationName,
+      `s1-observer-${tag}`,
+      `s1-nowait-${tag}`,
+    ]);
+    let adoptionPromise: Promise<unknown> | undefined;
+    let sameGenerationStartPromise: Promise<unknown> | undefined;
+    try {
+      await nodeHolder.query("BEGIN");
+      const held = await nodeHolder.query(
+        `SELECT id FROM docker_nodes
+         WHERE id = $1
+         FOR SHARE`,
+        [fixture.nodeRecordId],
+      );
+      expect(held.rowCount).toBe(1);
+
+      await attemptHolder.query("BEGIN");
+      const heldAttempt = await attemptHolder.query(
+        `SELECT id FROM agent_sandbox_replacement_attempts
+         WHERE id = $1 AND organization_id = $2 AND agent_id = $3
+         FOR SHARE`,
+        [fixture.startInput.attemptId, fixture.organizationId, fixture.agentId],
+      );
+      expect(heldAttempt.rowCount).toBe(1);
+
+      adoptionPromise = inNamedTransaction(adoptionApplicationName, (tx) =>
+        replacementAttemptsRepository!.commitAgentSandboxReplacementLifecycleAdoptionInTransaction(
+          tx,
+          adoptionInput,
+        ),
+      );
+      await waitForApplicationBlockingRelations(observer, [
+        {
+          waiterApplicationName: adoptionApplicationName,
+          blockerApplicationName: attemptHolderApplicationName,
+        },
+      ]);
+
+      const sameGenerationStartInput = { ...fixture.startInput, attemptId: randomUUID() };
+      sameGenerationStartPromise = inNamedTransaction(sameGenerationStartApplicationName, (tx) =>
+        replacementAttemptsRepository!.startAgentSandboxReplacementAttemptInTransaction(
+          tx,
+          sameGenerationStartInput,
+        ),
+      );
+      await waitForApplicationBlockingRelations(observer, [
+        {
+          waiterApplicationName: adoptionApplicationName,
+          blockerApplicationName: attemptHolderApplicationName,
+        },
+        {
+          waiterApplicationName: sameGenerationStartApplicationName,
+          blockerApplicationName: adoptionApplicationName,
+        },
+      ]);
+
+      await attemptHolder.query("COMMIT");
+      await waitForApplicationBlockingRelations(observer, [
+        {
+          waiterApplicationName: adoptionApplicationName,
+          blockerApplicationName: nodeHolderApplicationName,
+        },
+        {
+          waiterApplicationName: sameGenerationStartApplicationName,
+          blockerApplicationName: adoptionApplicationName,
+        },
+      ]);
+
+      await nowait.query("BEGIN");
+      let nowaitError: unknown;
+      try {
+        await nowait.query(
+          `SELECT id FROM agent_sandbox_replacement_attempts
+           WHERE id = $1 AND organization_id = $2 AND agent_id = $3
+           FOR UPDATE NOWAIT`,
+          [fixture.startInput.attemptId, fixture.organizationId, fixture.agentId],
+        );
+      } catch (error) {
+        // error-policy:J1 The test boundary retains PostgreSQL's exact NOWAIT code.
+        nowaitError = error;
+      } finally {
+        await rollbackQuietly(nowait);
+      }
+      expect(nowaitError).toMatchObject({ code: "55P03" });
+
+      await nodeHolder.query("COMMIT");
+      const [adoptionResult, sameGenerationStartResult] = await Promise.allSettled([
+        adoptionPromise,
+        sameGenerationStartPromise,
+      ]);
+      expect(adoptionResult).toMatchObject({
+        status: "fulfilled",
+        value: { replayed: false, attempt: { state: "lifecycle_committed" } },
+      });
+      expect(sameGenerationStartResult).toMatchObject({
+        status: "rejected",
+        reason: { code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" },
+      });
+      if (sameGenerationStartResult.status === "rejected") {
+        expect((sameGenerationStartResult.reason as { code?: string }).code).not.toBe("40P01");
+      }
+      const attempts = await dbWrite
+        .select({
+          id: agentSandboxReplacementAttempts.id,
+          state: agentSandboxReplacementAttempts.state,
+        })
+        .from(agentSandboxReplacementAttempts)
+        .where(
+          and(
+            eq(agentSandboxReplacementAttempts.organization_id, fixture.organizationId),
+            eq(agentSandboxReplacementAttempts.agent_id, fixture.agentId),
+          ),
+        );
+      expect(attempts).toEqual([
+        { id: fixture.startInput.attemptId, state: "lifecycle_committed" },
+      ]);
+    } finally {
+      await rollbackQuietly(nodeHolder);
+      await rollbackQuietly(attemptHolder);
+      await rollbackQuietly(nowait);
+      await Promise.allSettled(
+        [adoptionPromise, sameGenerationStartPromise].filter(
+          (promise): promise is Promise<unknown> => promise !== undefined,
+        ),
+      );
+      await Promise.all([
+        endQuietly(nodeHolder),
+        endQuietly(attemptHolder),
+        endQuietly(observer),
+        endQuietly(nowait),
+      ]);
     }
   }, 30_000);
 
