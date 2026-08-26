@@ -145,7 +145,52 @@ function containsExpectedText(haystack: string, label: string): boolean {
   // Tesseract sometimes joins adjacent words ("New note" → "Newnote"). Six
   // real characters is enough specificity that removing spaces cannot make
   // the needle match inside an unrelated word.
-  return haystack.replaceAll(" ", "").includes(compactNeedle);
+  if (haystack.replaceAll(" ", "").includes(compactNeedle)) return true;
+
+  // Tesseract also swaps a single glyph inside a long word ("Research" →
+  // "Rescarch", "browser" → "browscr") while keeping the word length and
+  // order. An exact match can then miss a label the pixels provably show.
+  // Tolerate that bounded noise only: each label word must appear in order
+  // with at most one differing character, and only for words long enough
+  // that a single substitution cannot collide with an unrelated short token.
+  return containsWithOneGlyphTolerance(haystack, needle);
+}
+
+/**
+ * Ordered word-wise match where every word of the expected label appears in
+ * the OCR haystack either verbatim or with exactly one differing character
+ * at equal length. Word order is preserved so "Research browser" cannot be
+ * satisfied by a scrambled "browser Research". Words shorter than six
+ * characters must match verbatim: a one-glyph tolerance there would let a
+ * garbled "esol" stand in for "SOL", the exact low-confidence collision the
+ * token-boundary rule above exists to prevent.
+ */
+function containsWithOneGlyphTolerance(
+  haystack: string,
+  needle: string,
+): boolean {
+  const hayTokens = haystack.split(" ");
+  const needleTokens = needle.split(" ");
+  let hayIndex = 0;
+  for (const needleToken of needleTokens) {
+    const found = hayTokens.slice(hayIndex).findIndex((token) => {
+      if (needleToken.length < 6) return token === needleToken;
+      return oneGlyphSubstitution(token, needleToken);
+    });
+    if (found === -1) return false;
+    hayIndex += found + 1;
+  }
+  return true;
+}
+
+/** Equal-length words differing in at most one character. */
+function oneGlyphSubstitution(word: string, expected: string): boolean {
+  if (word.length !== expected.length) return false;
+  let differences = 0;
+  for (let i = 0; i < word.length; i++) {
+    if (word[i] !== expected[i] && ++differences > 1) return false;
+  }
+  return true;
 }
 
 /**
