@@ -16,6 +16,7 @@
  * mounts only after the user chooses a chain (#19217).
  */
 
+import { Capacitor } from "@capacitor/core";
 import {
   buildStewardOAuthAuthorizeUrl as buildStewardOAuthAuthorizeUrlCore,
   generateStewardOAuthState,
@@ -63,6 +64,7 @@ import {
   SelectItem,
   SelectTrigger,
 } from "../../../../components/ui/select";
+import { openExternalUrl } from "../../../../utils/openExternalUrl";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import {
   configuredStewardTenantId,
@@ -725,12 +727,15 @@ export default function StewardLoginSection() {
         : null,
     );
 
-  const enabledOAuthProviders =
-    providers === null
-      ? []
-      : STEWARD_OAUTH_PROVIDERS.filter((provider) =>
-          isStewardOAuthProviderEnabled(providers, provider),
-        );
+  const enabledOAuthProviders = useMemo(
+    () =>
+      providers === null
+        ? []
+        : STEWARD_OAUTH_PROVIDERS.filter((provider) =>
+            isStewardOAuthProviderEnabled(providers, provider),
+          ),
+    [providers],
+  );
   const hasIdentityProviders =
     enabledOAuthProviders.length > 0 || providers?.telegram === true;
   const emailEnabled = providers !== null && providers.email !== false;
@@ -1592,52 +1597,104 @@ export default function StewardLoginSection() {
     setLoading(null);
   }
 
-  async function handleOAuth(provider: StewardOAuthProvider) {
-    // This component is the sole hosted /login surface. Keep OAuth in its
-    // current document so the callback returns to the same authority that
-    // owns loading/error state and consumes the one-time code. A sibling
-    // popup leaves this form permanently disabled when that window is closed,
-    // blocked, or completes without notifying its opener (#20334).
-    setLoading(provider);
-    setError(null);
-    const host = window.location.hostname.toLowerCase();
-    const oauthOrigin = host.endsWith(".pages.dev")
-      ? "https://staging.eliza.app"
-      : window.location.origin;
-    let codeChallenge: string;
-    let state: string;
-    try {
-      const pkce = await createStewardPkcePair();
-      state = generateStewardOAuthState();
-      // Verifier and state are stashed together: the callback requires the
-      // `?state=` echo to match AND the verifier to survive, so a harvested
-      // callback URL cannot be replayed in another browser.
-      if (!storeStewardPkceVerifier(pkce.verifier, state)) {
-        setError(
-          "Could not start sign-in. Browser storage is unavailable. Enable cookies / site data and try again.",
-        );
+  const handleOAuth = useCallback(
+    async (provider: StewardOAuthProvider) => {
+      if (Capacitor.isNativePlatform()) {
+        // Keep the provider's PKCE verifier, OAuth state, and pending outer
+        // mobile-auth return path in one browser storage authority. Starting
+        // PKCE in this WebView and externalizing only Steward's /authorize URL
+        // strands those values here, so Chrome cannot finish the callback.
+        setLoading(provider);
+        setError(null);
+        try {
+          const browserLoginUrl = new URL(window.location.href);
+          browserLoginUrl.searchParams.set("nativeProvider", provider);
+          const opened = await openExternalUrl(browserLoginUrl.toString());
+          if (!opened) {
+            setError("Could not open the secure sign-in window. Try again.");
+          }
+        } catch (launchError: unknown) {
+          setError(
+            getErrorMessage(
+              launchError,
+              "Could not open the secure sign-in window. Try again.",
+            ),
+          );
+        } finally {
+          setLoading(null);
+        }
+        return;
+      }
+
+      // This component is the sole hosted /login surface. Keep OAuth in its
+      // current document so the callback returns to the same authority that
+      // owns loading/error state and consumes the one-time code. A sibling
+      // popup leaves this form permanently disabled when that window is closed,
+      // blocked, or completes without notifying its opener (#20334).
+      setLoading(provider);
+      setError(null);
+      const host = window.location.hostname.toLowerCase();
+      const oauthOrigin = host.endsWith(".pages.dev")
+        ? "https://staging.eliza.app"
+        : window.location.origin;
+      let codeChallenge: string;
+      let state: string;
+      try {
+        const pkce = await createStewardPkcePair();
+        state = generateStewardOAuthState();
+        // Verifier and state are stashed together: the callback requires the
+        // `?state=` echo to match AND the verifier to survive, so a harvested
+        // callback URL cannot be replayed in another browser.
+        if (!storeStewardPkceVerifier(pkce.verifier, state)) {
+          setError(
+            "Could not start sign-in. Browser storage is unavailable. Enable cookies / site data and try again.",
+          );
+          setLoading(null);
+          return;
+        }
+        codeChallenge = pkce.challenge;
+      } catch (e: unknown) {
+        setError(getErrorMessage(e, "Could not start sign-in"));
         setLoading(null);
         return;
       }
-      codeChallenge = pkce.challenge;
-    } catch (e: unknown) {
-      setError(getErrorMessage(e, "Could not start sign-in"));
-      setLoading(null);
-      return;
-    }
-    storePendingOAuthReturnTo(searchParams);
-    const authorizeUrl = buildStewardOAuthAuthorizeUrlCore(
-      provider,
-      buildStewardOAuthRedirectUri(oauthOrigin),
-      {
-        stewardApiUrl,
-        stewardTenantId: STEWARD_TENANT_ID,
-        codeChallenge,
-        state,
-      },
+      storePendingOAuthReturnTo(searchParams);
+      const authorizeUrl = buildStewardOAuthAuthorizeUrlCore(
+        provider,
+        buildStewardOAuthRedirectUri(oauthOrigin),
+        {
+          stewardApiUrl,
+          stewardTenantId: STEWARD_TENANT_ID,
+          codeChallenge,
+          state,
+        },
+      );
+      window.location.href = authorizeUrl;
+    },
+    [searchParams, stewardApiUrl],
+  );
+
+  useEffect(() => {
+    const requestedProvider = searchParams.get("nativeProvider");
+    if (!requestedProvider || !providersLoaded) return;
+
+    // Consume the marker before starting any async work so reloads, provider
+    // failures, and back/forward restoration cannot auto-launch repeatedly.
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete("nativeProvider");
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`,
     );
-    window.location.href = authorizeUrl;
-  }
+
+    if (Capacitor.isNativePlatform()) return;
+    const provider = enabledOAuthProviders.find(
+      (candidate) => candidate === requestedProvider,
+    );
+    if (!provider) return;
+    void handleOAuth(provider);
+  }, [enabledOAuthProviders, handleOAuth, providersLoaded, searchParams]);
 
   function handleTelegramError(message: string) {
     setError(message);
