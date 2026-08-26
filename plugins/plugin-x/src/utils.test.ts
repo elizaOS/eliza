@@ -2,6 +2,7 @@
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { ClientBase, type TwitterProfile } from "./base";
+import { countTwitterWeightedLength } from "./tweet-length";
 import type { TwitterClientState } from "./types";
 import { sendChunkedTweet, sendTweet } from "./utils";
 
@@ -343,9 +344,10 @@ describe("sendTweet", () => {
       sendTweet: send,
     } as unknown as ClientBase["twitterClient"];
 
+    const completeText = `https://example.com${")".repeat(300)}`;
     const memories = await sendChunkedTweet(
       client,
-      { text: `${"a".repeat(280)}\n\n${"b".repeat(20)}` },
+      { text: completeText },
       "00000000-0000-0000-0000-000000000002" as UUID,
       "stale-caller-username",
       "parent",
@@ -360,8 +362,13 @@ describe("sendTweet", () => {
       "https://x.com/captured-a/status/202",
     ]);
     expect(memories.map((memory) => memory.content.text).join("")).toBe(
-      `${"a".repeat(280)}\n\n${"b".repeat(20)}`,
+      completeText,
     );
+    expect(
+      send.mock.calls.every(
+        (call) => countTwitterWeightedLength(String(call[0])) <= 280,
+      ),
+    ).toBe(true);
   });
 
   it("aborts a chunked thread before another egress when its captured session rotates", async () => {
