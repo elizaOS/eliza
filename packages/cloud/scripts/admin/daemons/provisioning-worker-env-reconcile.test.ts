@@ -36,13 +36,33 @@ const FIELD_ENCRYPTION_KEY = "SECRETS_MASTER_KEY";
 const BRIDGE_FALLBACK_KEY = "AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK";
 const AGENT_BASE_DOMAIN_KEY = "ELIZA_CLOUD_AGENT_BASE_DOMAIN";
 const CONTAINERS_SSH_KEY = "CONTAINERS_SSH_KEY";
-const DORMANT_BACKUP_SECRET_NAMES = [
+const DELETION_AUTHORITY_SECRET_NAMES = [
   "AGENT_BACKUP_R2_ACCESS_KEY_ID",
   "AGENT_BACKUP_R2_SECRET_ACCESS_KEY",
   "AGENT_BACKUP_HETZNER_ACCESS_KEY_ID",
   "AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY",
-  "AGENT_BACKUP_STEWARD_KMS_TOKEN",
 ] as const;
+const FULL_RUNTIME_SECRET_NAMES = ["AGENT_BACKUP_STEWARD_KMS_TOKEN"] as const;
+const DELETION_AUTHORITY_DEFAULTS: Readonly<Record<string, string>> = {
+  DATABASE_URL: "postgresql://backup:test@database.example.test/eliza",
+  SECRETS_MASTER_KEY: "a".repeat(64),
+  AGENT_BACKUP_R2_ENDPOINT_ALIAS: "r2-primary",
+  AGENT_BACKUP_R2_ACCOUNT_ID: "r2-account",
+  AGENT_BACKUP_R2_ENDPOINT: "https://r2.example.test",
+  AGENT_BACKUP_R2_BUCKET: "r2-bucket",
+  AGENT_BACKUP_R2_REGION: "auto",
+  AGENT_BACKUP_R2_ACCESS_KEY_ID: "r2-access",
+  AGENT_BACKUP_R2_SECRET_ACCESS_KEY: "r2-secret",
+  AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS: "hetzner-secondary",
+  AGENT_BACKUP_HETZNER_ACCOUNT_ID: "hetzner-account",
+  AGENT_BACKUP_HETZNER_ENDPOINT: "https://object-storage.example.test",
+  AGENT_BACKUP_HETZNER_BUCKET: "hetzner-bucket",
+  AGENT_BACKUP_HETZNER_REGION: "fsn1",
+  AGENT_BACKUP_HETZNER_ACCESS_KEY_ID: "hetzner-access",
+  AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY: "hetzner-secret",
+  AGENT_BACKUP_SPOOL_MAX_BYTES: String(8 * 1024 ** 3),
+  AGENT_BACKUP_SPOOL_MIN_FREE_BYTES: String(1024 ** 3),
+};
 
 function workflowEnvs(): string[] {
   const envsLine = workflow
@@ -253,8 +273,13 @@ function runAtomicReconcile(options: {
     writeFileSync(backupFile, options.seedBackupFile);
   }
   const values = options.values ?? {};
-  const assignments = loopEnvironmentNames.map(
-    (name) => `${name}=${shellLiteral(values[name] ?? "")}`,
+  const assignmentNames = new Set([
+    ...loopEnvironmentNames,
+    ...Object.keys(DELETION_AUTHORITY_DEFAULTS),
+  ]);
+  const assignments = [...assignmentNames].map(
+    (name) =>
+      `${name}=${shellLiteral(values[name] ?? DELETION_AUTHORITY_DEFAULTS[name] ?? "")}`,
   );
   const script = [
     "set -euo pipefail",
@@ -445,7 +470,9 @@ describe("provisioning deployment EnvironmentFile wiring", () => {
   it("keeps activation inputs complete without reading host secrets into the shell", () => {
     const forwarded = workflowEnvs();
     const activationPlan = workflow.slice(
-      workflow.indexOf('if [ "$BACKUP_CATALOG_RUNTIME_GATE" = "1" ]; then'),
+      workflow.indexOf(
+        'if [ "$ACCOUNT_DELETION_BACKUP_AUTHORITY_GATE" = "1" ]',
+      ),
       workflow.indexOf(
         "# An EnvironmentFile replacement cannot revoke authority",
       ),
@@ -470,7 +497,11 @@ describe("provisioning deployment EnvironmentFile wiring", () => {
       expect(workflow).toContain(`${name}: \${{ vars.${name} }}`);
       expect(activationPlan).toContain(`                ${name}`);
     }
-    for (const name of DORMANT_BACKUP_SECRET_NAMES) {
+    for (const name of DELETION_AUTHORITY_SECRET_NAMES) {
+      expect(forwarded).toContain(name);
+      expect(workflow).toContain(`${name}: \${{ secrets.${name} }}`);
+    }
+    for (const name of FULL_RUNTIME_SECRET_NAMES) {
       expect(forwarded).not.toContain(name);
     }
     expect(workflow).toContain(
@@ -585,6 +616,12 @@ describe("atomic workflow block (executed verbatim)", () => {
     expect(result.host).not.toContain("AGENT_BACKUP_R2_SECRET_ACCESS_KEY");
     expect(result.host).not.toContain("AGENT_BACKUP_OPERATION_LEASE_MS");
     expect(
+      lookupSystemdEnvironmentValue(
+        result.host,
+        "ACCOUNT_DELETION_BACKUP_AUTHORITY_ENABLED",
+      ),
+    ).toBe("0");
+    expect(
       [...result.host.matchAll(/^AGENT_BACKUP_[A-Z0-9_]+=/gm)].map((match) =>
         match[0].slice(0, -1),
       ),
@@ -594,7 +631,15 @@ describe("atomic workflow block (executed verbatim)", () => {
       "AGENT_BACKUP_SPOOL_STATE_DIRECTORY",
       "AGENT_BACKUP_CATALOG_WORKER_HEALTH_FILE",
     ]);
-    expect(result.backup).not.toContain("DATABASE_URL");
+    expect(lookupSystemdEnvironmentValue(result.backup, "DATABASE_URL")).toBe(
+      DELETION_AUTHORITY_DEFAULTS.DATABASE_URL,
+    );
+    expect(
+      lookupSystemdEnvironmentValue(
+        result.backup,
+        "ACCOUNT_DELETION_BACKUP_AUTHORITY_ENABLED",
+      ),
+    ).toBe("1");
     expect(
       lookupSystemdEnvironmentValue(
         result.backup,
@@ -607,7 +652,7 @@ describe("atomic workflow block (executed verbatim)", () => {
         "AGENT_BACKUP_RPO_SCHEDULER_ENABLED",
       ),
     ).toBe("0");
-    expect(result.backup.split("\n").filter(Boolean)).toHaveLength(7);
+    expect(result.backup).not.toContain("AGENT_BACKUP_STEWARD_KMS_TOKEN");
     expect(result.events).toEqual([
       "backup-load-check",
       "backup-disable-now",
@@ -627,6 +672,12 @@ describe("atomic workflow block (executed verbatim)", () => {
       "backup-safe-off",
       "shared-reconcile",
     ]);
+    expect(
+      lookupSystemdEnvironmentValue(
+        result.backup,
+        "ACCOUNT_DELETION_BACKUP_AUTHORITY_ENABLED",
+      ),
+    ).toBe("1");
     expect(
       lookupSystemdEnvironmentValue(
         result.backup,

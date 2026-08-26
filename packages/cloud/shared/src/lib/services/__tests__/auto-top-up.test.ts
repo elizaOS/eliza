@@ -274,6 +274,19 @@ function service(
   stripe: ReturnType<typeof stripeHarness>,
   ids: string[] = ["candidate-id", "lease-token"],
   rolloutEnabled: () => boolean = () => true,
+  lifecycleAuthority: NonNullable<ServiceDependencies["lifecycleAuthority"]> = async () => ({
+    state: "active",
+    revision: 0,
+    active: true,
+    deletionRequestId: null,
+  }),
+  admission: {
+    acquire: NonNullable<ServiceDependencies["acquireProviderAdmission"]>;
+    release: NonNullable<ServiceDependencies["releaseProviderAdmission"]>;
+  } = {
+    acquire: mock(async () => true),
+    release: mock(async () => undefined),
+  },
 ): InstanceType<typeof AutoTopUpService> {
   let index = 0;
   return new AutoTopUpService({
@@ -282,6 +295,9 @@ function service(
     now: () => new Date(NOW),
     randomUUID: () => ids[index++] ?? `generated-${index}`,
     rolloutEnabled,
+    lifecycleAuthority,
+    acquireProviderAdmission: admission.acquire,
+    releaseProviderAdmission: admission.release,
   });
 }
 
@@ -366,6 +382,88 @@ beforeEach(() => {
 });
 
 describe("AutoTopUpService durable provider recovery", () => {
+  test("cancels before provider authorization when account deletion fenced the organization", async () => {
+    const candidate = attempt({
+      status: "payment_pending",
+      providerRequestStartedAt: null,
+    });
+    const leased = attempt({
+      ...candidate,
+      leaseToken: "lease-token",
+      leaseExpiresAt: new Date(NOW.getTime() + 120_000),
+    });
+    const canceled = attempt({
+      ...leased,
+      status: "canceled",
+      canceledAt: NOW,
+      lastError: "Account lifecycle fenced auto top-up before provider authorization",
+    });
+    const durableRepository = repository({
+      claimEligibleAttempt: mock(async () => ({
+        outcome: "created" as const,
+        attempt: candidate,
+      })),
+      claimDueLease: mock(async () => leased),
+      markCanceled: mock(async () => canceled),
+    });
+    const stripe = stripeHarness();
+
+    const result = await service(durableRepository, stripe, undefined, undefined, async () => ({
+      state: "deletion_recovery",
+      revision: 1,
+      active: false,
+      deletionRequestId: "deletion-request-1",
+    })).executeAutoTopUpForOrganization(ORG_ID, { source: "manual" });
+
+    expect(result.status).toBe("canceled");
+    expect(durableRepository.authorizeProviderRequest).not.toHaveBeenCalled();
+    expect(stripe.provide).not.toHaveBeenCalled();
+  });
+
+  test("does not call Stripe when lifecycle revision changes after durable authorization", async () => {
+    const candidate = attempt({
+      status: "payment_pending",
+      providerRequestStartedAt: null,
+    });
+    const leased = attempt({
+      ...candidate,
+      leaseToken: "lease-token",
+      leaseExpiresAt: new Date(NOW.getTime() + 120_000),
+    });
+    const reviewed = attempt({
+      ...leased,
+      status: "manual_review",
+      manualReviewAt: NOW,
+      lastError:
+        "Account lifecycle changed after provider authorization; no payment request was sent",
+    });
+    const durableRepository = repository({
+      claimEligibleAttempt: mock(async () => ({
+        outcome: "created" as const,
+        attempt: candidate,
+      })),
+      claimDueLease: mock(async () => leased),
+      authorizeProviderRequest: mock(async () => ({
+        outcome: "authorized" as const,
+        attempt: leased,
+      })),
+      markManualReview: mock(async () => reviewed),
+    });
+    const stripe = stripeHarness();
+    let reads = 0;
+
+    const result = await service(durableRepository, stripe, undefined, undefined, async () => ({
+      state: "active",
+      revision: reads++,
+      active: true,
+      deletionRequestId: null,
+    })).executeAutoTopUpForOrganization(ORG_ID, { source: "manual" });
+
+    expect(result.status).toBe("manual_review");
+    expect(durableRepository.authorizeProviderRequest).toHaveBeenCalledTimes(1);
+    expect(stripe.provide).not.toHaveBeenCalled();
+  });
+
   test("enables new claims only for the exact Worker binding value true", async () => {
     const durableRepository = repository();
     const stripe = stripeHarness();
@@ -749,24 +847,67 @@ describe("AutoTopUpService durable provider recovery", () => {
   });
 
   test("retrieves a known PaymentIntent even after the unknown-response deadline", async () => {
+    const events: string[] = [];
     const durable = attempt({
       stripePaymentIntentId: "pi_known",
       recoveryDeadlineAt: new Date(NOW.getTime() - 1),
     });
-    const durableRepository = processingRepository(durable);
+    const durableRepository = processingRepository(durable, events);
     const stripe = stripeHarness();
-    stripe.retrieve.mockResolvedValue(paymentIntent(durable, "processing", { id: "pi_known" }));
+    stripe.retrieve.mockImplementation(async () => {
+      events.push("provider-call");
+      return paymentIntent(durable, "processing", { id: "pi_known" });
+    });
+    const acquire = mock(async () => {
+      events.push("provider-admitted");
+      return true;
+    });
+    const release = mock(async () => {
+      events.push("provider-released");
+    });
 
-    const result = await service(durableRepository, stripe).executeAutoTopUpForOrganization(
-      ORG_ID,
-      { source: "recovery" },
-    );
+    const result = await service(durableRepository, stripe, undefined, undefined, undefined, {
+      acquire,
+      release,
+    }).executeAutoTopUpForOrganization(ORG_ID, { source: "recovery" });
 
     expect(result.status).toBe("payment_pending");
     expect(result.recovered).toBe(true);
     expect(stripe.retrieve).toHaveBeenCalledWith("pi_known");
     expect(stripe.create).not.toHaveBeenCalled();
     expect(durableRepository.markManualReview).not.toHaveBeenCalled();
+    expect(events).toEqual([
+      "lease-due",
+      "provider-admitted",
+      "provider-call",
+      "record-payment-intent",
+      "schedule-retry",
+      "provider-released",
+    ]);
+  });
+
+  test("does not enter Stripe when deletion wins the durable admission race", async () => {
+    const durable = attempt({ stripePaymentIntentId: "pi_known" });
+    const durableRepository = processingRepository(durable);
+    const stripe = stripeHarness();
+    const acquire = mock(async () => false);
+    const release = mock(async () => undefined);
+
+    await service(durableRepository, stripe, undefined, undefined, undefined, {
+      acquire,
+      release,
+    }).executeAutoTopUpForOrganization(ORG_ID, { source: "recovery" });
+
+    expect(acquire).toHaveBeenCalledWith(
+      {
+        organizationId: ORG_ID,
+        operationKind: "auto_top_up",
+        operationId: ATTEMPT_ID,
+      },
+      NOW,
+    );
+    expect(stripe.provide).not.toHaveBeenCalled();
+    expect(release).not.toHaveBeenCalled();
   });
 
   test("retries a concurrent in-flight Stripe idempotency request without disabling", async () => {
