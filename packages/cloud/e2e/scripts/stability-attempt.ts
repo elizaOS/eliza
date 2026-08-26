@@ -6,7 +6,7 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { createHash, createHmac } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
@@ -25,10 +25,11 @@ import {
 } from "../src/stability/parent-network-guard.ts";
 import { readRealModelBootstrap } from "../src/stability/real-model-bootstrap.ts";
 import {
-  linuxSandboxUid,
+  linuxSandboxEnabled,
   loopbackPorts,
   sandboxCommand,
   scenarioChildEnvironment,
+  writeSandboxEnvironment,
 } from "../src/stability/linux-sandbox.ts";
 
 const required = (name: string): string => {
@@ -47,7 +48,7 @@ const outputDir = required("ELIZA_STABILITY_OUTPUT_DIR");
 const mode = required("ELIZA_STABILITY_MODEL_MODE");
 const provider = required("ELIZA_STABILITY_PROVIDER");
 const model = required("ELIZA_STABILITY_MODEL");
-const sandboxUid = linuxSandboxUid(mode);
+const sandboxEnabled = linuxSandboxEnabled(mode);
 const initialStateHash = required(
   "ELIZA_STABILITY_AUTHORITY_INITIAL_STATE_HASH",
 );
@@ -230,7 +231,7 @@ async function startMockAuditProxy(
 }
 
 function processGroupExists(pid: number): boolean {
-  if (sandboxUid) {
+  if (sandboxEnabled) {
     return (
       spawnSync("sudo", ["-n", "kill", "-0", `-${pid}`], {
         stdio: "ignore",
@@ -255,7 +256,7 @@ function processGroupExists(pid: number): boolean {
 }
 
 function signalGroup(pid: number, signal: NodeJS.Signals): void {
-  if (sandboxUid) {
+  if (sandboxEnabled) {
     const result = spawnSync("sudo", ["-n", "kill", `-${signal}`, `-${pid}`], {
       stdio: "ignore",
     });
@@ -357,6 +358,7 @@ let cliStdout = "";
 let cliStderr = "";
 let cliCode: number | null = null;
 let cliClosedAt = 0;
+let sandboxEnvironmentPath: string | undefined;
 try {
   const args = [
     "--conditions=eliza-source",
@@ -403,8 +405,11 @@ try {
     ELIZA_SCENARIO_USE_DETERMINISTIC_MODEL:
       mode === "deterministic-mock" ? "1" : "0",
   });
+  sandboxEnvironmentPath = sandboxEnabled
+    ? await writeSandboxEnvironment(outputDir, childEnvironment)
+    : undefined;
   const launch = sandboxCommand({
-    uid: sandboxUid,
+    enabled: sandboxEnabled,
     allowedPorts: loopbackPorts([
       cloudApiProxy.url,
       stack.urls.controlPlane,
@@ -414,6 +419,9 @@ try {
     ]),
     repoRoot,
     outputDir,
+    environmentPath: sandboxEnvironmentPath ?? "",
+    callerHome: process.env.HOME ?? "",
+    callerUid: process.getuid?.() ?? 0,
     runtime: process.execPath,
     args,
   });
@@ -422,7 +430,7 @@ try {
     detached: true,
     shell: false,
     stdio: ["ignore", "pipe", "pipe"],
-    env: childEnvironment,
+    env: sandboxEnabled ? { PATH: process.env.PATH } : childEnvironment,
   });
   if (!child.pid) throw new Error("scenario CLI omitted its process-group id");
   const childProcessGroupId = child.pid;
@@ -457,6 +465,10 @@ try {
   if (escalation) clearTimeout(escalation);
   await terminateGroup(childProcessGroupId);
 } finally {
+  if (sandboxEnvironmentPath) {
+    // error-policy:J6 The privileged launcher normally consumes this file; forced teardown removes a pre-exec remainder.
+    await rm(sandboxEnvironmentPath, { force: true });
+  }
   if (modelProxy) await modelProxy.stop();
   await cloudApiProxy.stop();
   await hetznerProxy.stop();

@@ -57,8 +57,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes acl bubblewrap iptables
-          uid="$(sudo -n packages/cloud/e2e/scripts/stability-linux-sandbox.sh setup)"
-          echo "ELIZA_STABILITY_LINUX_SANDBOX_UID=$uid" >> "$GITHUB_ENV"
+          sudo -n /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+            /bin/bash packages/cloud/e2e/scripts/stability-linux-sandbox.sh setup
+          echo "ELIZA_STABILITY_LINUX_SANDBOX=1" >> "$GITHUB_ENV"
       - name: Prove Linux containment against adversarial escapes
         run: bun run --cwd packages/cloud/e2e test:containment
       - name: Run exact-three keyless AgentRuntime scenario
@@ -104,20 +105,33 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes acl bubblewrap iptables
-          uid="$(sudo -n packages/cloud/e2e/scripts/stability-linux-sandbox.sh setup)"
-          echo "ELIZA_STABILITY_LINUX_SANDBOX_UID=$uid" >> "$GITHUB_ENV"
+          sudo -n /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+            /bin/bash packages/cloud/e2e/scripts/stability-linux-sandbox.sh setup
+          echo "ELIZA_STABILITY_LINUX_SANDBOX=1" >> "$GITHUB_ENV"
       - name: Prove Linux containment against adversarial escapes
         run: bun run --cwd packages/cloud/e2e test:containment
       - name: Run exact-three real-model scenario over mock services
         env:
           OPENAI_API_KEY: ${{ (github.event_name == 'schedule' || inputs.provider == 'openai') && secrets.OPENAI_API_KEY || '' }}
           ANTHROPIC_API_KEY: ${{ inputs.provider == 'anthropic' && secrets.ANTHROPIC_API_KEY || '' }}
-        run: >-
-          bun run --cwd packages/cloud/e2e stability:real --
-          --provider ${{ github.event_name == 'schedule' && 'openai' || inputs.provider }}
-          ${{ inputs.model && format('--model {0}', inputs.model) || '' }}
-          --run-id cloud-real-${{ github.run_id }}-${{ github.run_attempt }}
-          --output ${{ github.workspace }}/artifacts/cloud-stability/real
+          STABILITY_PROVIDER: ${{ github.event_name == 'schedule' && 'openai' || inputs.provider }}
+          STABILITY_INPUT_MODEL: ${{ inputs.model || '' }}
+          STABILITY_RUN_ID: cloud-real-${{ github.run_id }}-${{ github.run_attempt }}
+          STABILITY_OUTPUT: ${{ github.workspace }}/artifacts/cloud-stability/real
+        run: |
+          args=(
+            bun run --cwd packages/cloud/e2e stability:real --
+            --provider "$STABILITY_PROVIDER"
+          )
+          if [ -n "$STABILITY_INPUT_MODEL" ]; then
+            if [[ ! "$STABILITY_INPUT_MODEL" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$ ]]; then
+              echo "::error::model must match the bounded provider model identifier grammar"
+              exit 1
+            fi
+            args+=(--model "$STABILITY_INPUT_MODEL")
+          fi
+          args+=(--run-id "$STABILITY_RUN_ID" --output "$STABILITY_OUTPUT")
+          "${args[@]}"
       - name: Upload real-model trajectories and mock-service ledgers
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

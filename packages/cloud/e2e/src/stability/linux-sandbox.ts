@@ -4,22 +4,40 @@
  * only explicit loopback ports and a credential-minimal environment cross in.
  */
 
+import { randomBytes } from "node:crypto";
+import { writeFile } from "node:fs/promises";
 import path from "node:path";
 
-const credentialName =
-  /(?:^|_)(?:AUTH|AUTHORIZATION|CREDENTIAL|KEY|PASSWORD|SECRET|TOKEN)(?:_|$)/u;
+const admittedSourceNames = new Set([
+  "BUN_OPTIONS",
+  "CI",
+  "CLOUD_E2E",
+  "CONTROL_PLANE_TICK_MS",
+  "LANG",
+  "MOCK_HETZNER_ACTION_MS",
+  "MOCK_HETZNER_LATENCY",
+  "MOCK_REDIS",
+  "NODE_ENV",
+  "TZ",
+]);
 
-export function linuxSandboxUid(mode: string): string | undefined {
-  const uid = process.env.ELIZA_STABILITY_LINUX_SANDBOX_UID;
-  if (process.platform === "linux" && mode === "real-llm" && !uid) {
+function assertEnvironmentEntry(name: string, value: string | undefined): void {
+  if (!/^[A-Z_][A-Z0-9_]*$/u.test(name) || value?.includes("\0")) {
+    throw new Error(`invalid explicit sandbox environment entry: ${name}`);
+  }
+}
+
+export function linuxSandboxEnabled(mode: string): boolean {
+  const enabled = process.env.ELIZA_STABILITY_LINUX_SANDBOX === "1";
+  if (process.platform === "linux" && mode === "real-llm" && !enabled) {
     throw new Error(
-      "real-model stability on Linux requires ELIZA_STABILITY_LINUX_SANDBOX_UID",
+      "real-model stability on Linux requires ELIZA_STABILITY_LINUX_SANDBOX=1",
     );
   }
-  if (uid && !/^[1-9][0-9]*$/u.test(uid)) {
-    throw new Error("ELIZA_STABILITY_LINUX_SANDBOX_UID must be a non-root UID");
+  if (process.env.ELIZA_STABILITY_LINUX_SANDBOX && !enabled) {
+    throw new Error("ELIZA_STABILITY_LINUX_SANDBOX must be exactly 1");
   }
-  return uid;
+  return process.platform === "linux" && enabled;
 }
 
 export function scenarioChildEnvironment(
@@ -28,11 +46,37 @@ export function scenarioChildEnvironment(
 ): NodeJS.ProcessEnv {
   const environment: NodeJS.ProcessEnv = {};
   for (const [name, value] of Object.entries(source)) {
-    if (value === undefined || credentialName.test(name)) continue;
+    if (value === undefined || !admittedSourceNames.has(name)) continue;
     environment[name] = value;
   }
-  Object.assign(environment, additions);
+  for (const [name, value] of Object.entries(additions)) {
+    assertEnvironmentEntry(name, value);
+    if (value !== undefined) environment[name] = value;
+  }
   return environment;
+}
+
+export async function writeSandboxEnvironment(
+  outputDir: string,
+  environment: NodeJS.ProcessEnv,
+): Promise<string> {
+  const environmentPath = path.join(
+    outputDir,
+    `.sandbox-environment-${randomBytes(12).toString("hex")}.bin`,
+  );
+  const records = Object.entries(environment)
+    .filter((entry): entry is [string, string] => entry[1] !== undefined)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([name, value]) => {
+      assertEnvironmentEntry(name, value);
+      return `${name}=${value}\0`;
+    });
+  await writeFile(environmentPath, records.join(""), {
+    encoding: "utf8",
+    flag: "wx",
+    mode: 0o600,
+  });
+  return environmentPath;
 }
 
 export function loopbackPorts(urls: string[]): string {
@@ -57,28 +101,39 @@ export function loopbackPorts(urls: string[]): string {
 }
 
 export function sandboxCommand(options: {
-  uid: string | undefined;
+  enabled: boolean;
   allowedPorts: string;
   repoRoot: string;
   outputDir: string;
+  environmentPath: string;
+  callerHome: string;
+  callerUid: number;
   runtime: string;
   args: string[];
 }): { command: string; args: string[] } {
-  if (!options.uid) return { command: options.runtime, args: options.args };
+  if (!options.enabled) return { command: options.runtime, args: options.args };
+  if (!Number.isSafeInteger(options.callerUid) || options.callerUid <= 0) {
+    throw new Error("sandbox caller UID must be a positive safe integer");
+  }
   return {
     command: "sudo",
     args: [
       "-n",
-      "--preserve-env",
+      "/usr/bin/env",
+      "-i",
+      "PATH=/usr/sbin:/usr/bin:/sbin:/bin",
+      "/bin/bash",
       path.join(
         options.repoRoot,
         "packages/cloud/e2e/scripts/stability-linux-sandbox.sh",
       ),
       "run",
-      options.uid,
       options.allowedPorts,
       options.repoRoot,
       options.outputDir,
+      options.callerHome,
+      String(options.callerUid),
+      options.environmentPath,
       options.runtime,
       ...options.args,
     ],
