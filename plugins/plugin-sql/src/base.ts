@@ -4301,7 +4301,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this.withDatabase(async () => {
       const cleanVector = embedding.map((n) => (Number.isFinite(n) ? Number(n.toFixed(6)) : 0));
       const activeColumn = embeddingTable[this.embeddingDimension];
-      const count = params.count ?? 10;
+      // An absent count means the caller asked for the COMPLETE eligible
+      // result, not a default page; a silent top-10 cap would drop eligible
+      // matches with no signal to the caller.
+      const count = params.count ?? Number.MAX_SAFE_INTEGER;
 
       // SCOPE eligibility lives INSIDE the ordered scan: every scope predicate
       // (type, agent, room, world, entity, uniqueness) is part of the WHERE of

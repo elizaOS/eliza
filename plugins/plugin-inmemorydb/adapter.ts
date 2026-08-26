@@ -1573,16 +1573,21 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }): Promise<Memory[]> {
     return this.withDocumentMutationLock(async () => {
       const threshold = params.match_threshold ?? 0.5;
-      const limit = params.count ?? params.limit ?? 10;
+      // An absent count/limit means the caller asked for the COMPLETE eligible
+      // result, not a default page: silently capping it would drop eligible
+      // matches without any signal to the caller.
+      const requestedLimit = params.count ?? params.limit;
       const offset = params.offset ?? 0;
       if (!Number.isSafeInteger(offset) || offset < 0) {
         throw new Error("searchMemories offset must be a non-negative safe integer");
       }
-      if (!Number.isSafeInteger(limit) || limit < 0) {
-        throw new Error("searchMemories limit must be a non-negative safe integer");
-      }
-      if (offset > Number.MAX_SAFE_INTEGER - limit) {
-        throw new Error("searchMemories page boundary is not representable");
+      if (requestedLimit !== undefined) {
+        if (!Number.isSafeInteger(requestedLimit) || requestedLimit < 0) {
+          throw new Error("searchMemories limit must be a non-negative safe integer");
+        }
+        if (offset > Number.MAX_SAFE_INTEGER - requestedLimit) {
+          throw new Error("searchMemories page boundary is not representable");
+        }
       }
 
       // Scope eligibility must be applied BEFORE the top-K cut so the result is
@@ -1621,6 +1626,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       const memoriesById = new Map(
         readableMemories.flatMap((memory) => (memory.id ? [[memory.id, memory] as const] : []))
       );
+      const limit = requestedLimit ?? memoriesById.size;
       const results = await this.vectorIndex.searchExact(
         params.embedding,
         offset + limit,
