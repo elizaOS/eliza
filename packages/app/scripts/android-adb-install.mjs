@@ -262,23 +262,7 @@ if (shouldLaunch) {
 }
 
 if (launcherMode) {
-  const picker = run(
-    "adb",
-    adbArgs(["shell", "am", "start", "-a", "android.settings.HOME_SETTINGS"]),
-    { stdio: "inherit" },
-  );
-  if (picker.status !== 0) {
-    fail("installed launcher, but could not open Android's Home-app picker");
-  }
-
-  console.log(
-    `Select ${appId} as the Home app on the device; waiting up to ${Math.ceil(homeTimeoutMs / 1000)} seconds for verification.`,
-  );
-  const deadline = Date.now() + homeTimeoutMs;
-  let homeVerified = false;
-  let roleOutput = "";
-  let resolverOutput = "";
-  while (Date.now() < deadline) {
+  const readHomeState = () => {
     const role = run(
       "adb",
       adbArgs([
@@ -305,33 +289,59 @@ if (launcherMode) {
         "android.intent.category.HOME",
       ]),
     );
-    roleOutput = `${role.stdout ?? ""}${role.stderr ?? ""}`.trim();
-    resolverOutput = `${resolver.stdout ?? ""}${resolver.stderr ?? ""}`.trim();
-    if (
-      role.status === 0 &&
-      resolver.status === 0 &&
-      roleOutput.split(/\s+/).includes(appId) &&
-      resolverOutput.includes(`${appId}/`)
-    ) {
-      const home = run("adb", adbArgs(["shell", "input", "keyevent", "HOME"]), {
-        stdio: "inherit",
-      });
-      if (home.status !== 0)
-        fail("HOME role verified, but sending HOME failed");
-      console.log(
-        `Android HOME verified for ${appId}: role holder and intent resolver agree.`,
-      );
-      homeVerified = true;
-      break;
+    const roleOutput = `${role.stdout ?? ""}${role.stderr ?? ""}`.trim();
+    const resolverOutput =
+      `${resolver.stdout ?? ""}${resolver.stderr ?? ""}`.trim();
+    return {
+      roleOutput,
+      resolverOutput,
+      verified:
+        role.status === 0 &&
+        resolver.status === 0 &&
+        roleOutput.split(/\s+/).includes(appId) &&
+        resolverOutput.includes(`${appId}/`),
+    };
+  };
+
+  let homeState = readHomeState();
+  if (!homeState.verified) {
+    const picker = run(
+      "adb",
+      adbArgs(["shell", "am", "start", "-a", "android.settings.HOME_SETTINGS"]),
+      { stdio: "inherit" },
+    );
+    if (picker.status !== 0) {
+      homeState = readHomeState();
+      if (!homeState.verified) {
+        fail(
+          "installed launcher, but could not open Android's Home-app picker",
+        );
+      }
     }
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000);
-  }
-  if (!homeVerified) {
-    fail(
-      `timed out waiting for ${appId} to become the Home app`,
-      `ROLE_HOME: ${roleOutput || "<empty>"}\nHOME resolver: ${resolverOutput || "<empty>"}`,
+    console.log(
+      `Select ${appId} as the Home app on the device; waiting up to ${Math.ceil(homeTimeoutMs / 1000)} seconds for verification.`,
     );
   }
+
+  const deadline = Date.now() + homeTimeoutMs;
+  while (!homeState.verified && Date.now() < deadline) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000);
+    homeState = readHomeState();
+  }
+  if (!homeState.verified) {
+    fail(
+      `timed out waiting for ${appId} to become the Home app`,
+      `ROLE_HOME: ${homeState.roleOutput || "<empty>"}\nHOME resolver: ${homeState.resolverOutput || "<empty>"}`,
+    );
+  }
+
+  const home = run("adb", adbArgs(["shell", "input", "keyevent", "HOME"]), {
+    stdio: "inherit",
+  });
+  if (home.status !== 0) fail("HOME role verified, but sending HOME failed");
+  console.log(
+    `Android HOME verified for ${appId}: role holder and intent resolver agree.`,
+  );
 }
 
 console.log(`Android install verified for ${appId}.`);
