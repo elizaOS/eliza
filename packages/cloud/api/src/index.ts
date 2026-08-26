@@ -14,12 +14,19 @@
 import "./worker-polyfills";
 
 import {
+  isPlaywrightTestAuthEnabled,
+  PLAYWRIGHT_TEST_SESSION_COOKIE_NAME,
+} from "@elizaos/cloud-shared/lib/auth/playwright-test-session";
+import { readStewardAccessCookieFromHeader } from "@elizaos/cloud-shared/lib/auth/steward-cookies";
+import { corsMiddleware } from "@elizaos/cloud-shared/lib/cors/cloud-api-hono-cors";
+import { getCookieValueFromHeader } from "@elizaos/cloud-shared/lib/http/cookie-header";
+import {
   canonicalCloudPathForLegacyDashboard,
   canonicalElizaServiceHostname,
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
 } from "@elizaos/shared/elizacloud";
-import type { Hono, ExecutionContext as HonoExecutionContext } from "hono";
+import { Hono, type ExecutionContext as HonoExecutionContext } from "hono";
 import {
   cloneRequestWithScheduledCronMetadata,
   makeCronHandler,
@@ -78,6 +85,69 @@ let cliSessionThinAppPromise: Promise<Hono<AppEnv>> | undefined;
 let webhookAppPromise: Promise<Hono<AppEnv>> | undefined;
 /** Lazy authenticated Discord shell that avoids the generated application router. */
 let discordGatewayAppPromise: Promise<Hono<AppEnv>> | undefined;
+
+const CRYPTO_PAYMENT_CONFIRM_PATH_RE =
+  /^\/api\/crypto\/payments\/[^/]+\/confirm\/?$/;
+const STRUCTURAL_JWT_RE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+
+// Preserve the full app's credentialed CORS policy without loading the route
+// shard for a browser preflight. The CORS middleware completes OPTIONS itself.
+const cryptoPaymentConfirmPreflightApp = new Hono<AppEnv>();
+cryptoPaymentConfirmPreflightApp.use("*", corsMiddleware);
+
+async function handleCryptoPaymentConfirmBeforeShard(
+  request: Request,
+  env: AppEnv["Bindings"],
+  ctx: ExecutionContext | HonoExecutionContext,
+): Promise<Response | null> {
+  const url = new URL(request.url);
+  if (!CRYPTO_PAYMENT_CONFIRM_PATH_RE.test(url.pathname)) {
+    return null;
+  }
+  if (request.method === "OPTIONS") {
+    return cryptoPaymentConfirmPreflightApp.fetch(request, env, ctx);
+  }
+  if (request.method !== "POST") return null;
+
+  const authorization = request.headers.get("authorization")?.trim() ?? "";
+  const bearer = authorization.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() ?? "";
+  const hasApiKey =
+    Boolean(request.headers.get("x-api-key")?.trim()) ||
+    bearer.startsWith("eliza_");
+  if (hasApiKey) {
+    return Response.json(
+      {
+        success: false,
+        error: "A signed-in user session is required to confirm a payment.",
+        code: "session_auth_required",
+      },
+      { status: 401, headers: { "cache-control": "no-store" } },
+    );
+  }
+
+  const hasPossibleSession = Boolean(
+    readStewardAccessCookieFromHeader(
+      request.headers.get("cookie"),
+      env.ENVIRONMENT,
+    ) ||
+      STRUCTURAL_JWT_RE.test(bearer) ||
+      (isPlaywrightTestAuthEnabled(env) &&
+        getCookieValueFromHeader(
+          request.headers.get("cookie"),
+          PLAYWRIGHT_TEST_SESSION_COOKIE_NAME,
+        )),
+  );
+  if (hasPossibleSession) return null;
+
+  return Response.json(
+    {
+      success: false,
+      error: "Unauthorized",
+      code: "authentication_required",
+    },
+    { status: 401, headers: { "cache-control": "no-store" } },
+  );
+}
 
 const STAGING_SESSION_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -268,6 +338,13 @@ export async function dispatchFullApp(
   ctx: ExecutionContext | HonoExecutionContext,
   loadFullApp?: () => Promise<Hono<AppEnv>>,
 ): Promise<Response> {
+  // Payment confirmation is session-only and money-moving. Reject an absent
+  // or explicitly API-key credential before constructing the route shard, so
+  // a cold module/init failure cannot turn the auth boundary into a 500.
+  const cryptoConfirmAuthRejection =
+    await handleCryptoPaymentConfirmBeforeShard(request, env, ctx);
+  if (cryptoConfirmAuthRejection) return cryptoConfirmAuthRejection;
+
   const startedAt = performance.now();
   const requestPathname = new URL(request.url).pathname;
   const moduleWasInitialized = loadFullApp
