@@ -237,13 +237,30 @@ describe("Android Play manifest policy", () => {
     );
   });
 
-  it("rejects local routing and credential material in packaged text assets", () => {
+  it("rejects active development routing and credential material in packaged text assets", () => {
     expect(
       findAndroidPlayTextAssetFindings(
         ["base/assets/public/app.js"],
-        [Buffer.from("http://127.0.0.1:31337")],
+        [Buffer.from("connect to 10.0.2.2 through adb reverse")],
       ),
-    ).toEqual(["base/assets/public/app.js: local routing marker 31337"]);
+    ).toEqual([
+      "base/assets/public/app.js: local routing marker 10.0.2.2",
+      "base/assets/public/app.js: local routing marker adb reverse",
+    ]);
+    expect(
+      findAndroidPlayTextAssetFindings(
+        ["assets/public/sw-registration.js"],
+        [Buffer.from('navigator.serviceWorker.register("/sw.js")')],
+      ),
+    ).toEqual([
+      "assets/public/sw-registration.js: local routing marker navigator.serviceWorker",
+    ]);
+    expect(
+      findAndroidPlayTextAssetFindings(
+        ["assets/public/app.js"],
+        [Buffer.from("Dormant cross-platform labels: 31337 remote-mac")],
+      ),
+    ).toEqual([]);
     expect(
       findAndroidPlayTextAssetFindings(
         ["assets/public/app.js"],

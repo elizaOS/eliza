@@ -1,7 +1,10 @@
 /** Verifies platform-specific native plugin ownership before raw Capacitor sync. */
 
 import { describe, expect, it } from "vitest";
-import { resolveAndroidCapacitorPlugins } from "../capacitor.config";
+import {
+  resolveAndroidCapacitorPlugins,
+  resolveCapacitorHttpEnabled,
+} from "../capacitor.config";
 
 describe("Android Capacitor plugin selection", () => {
   it("includes the Bun host and excludes the iOS-only llama bridge (#17465)", () => {
@@ -19,5 +22,13 @@ describe("Android Capacitor plugin selection", () => {
       "@elizaos/capacitor-bun-runtime",
       "@elizaos/capacitor-talkmode",
     ]);
+  });
+
+  it("uses WebView fetch for the Android Cloud build only", () => {
+    expect(resolveCapacitorHttpEnabled("android", "cloud")).toBe(false);
+    expect(resolveCapacitorHttpEnabled("android", undefined, "1")).toBe(false);
+    expect(resolveCapacitorHttpEnabled(undefined, undefined, "1")).toBe(false);
+    expect(resolveCapacitorHttpEnabled("android", "local")).toBe(true);
+    expect(resolveCapacitorHttpEnabled("ios", "cloud")).toBe(true);
   });
 });

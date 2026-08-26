@@ -5879,15 +5879,12 @@ export const ANDROID_PLAY_ALLOWED_QUERY_ACTIONS = Object.freeze([
 export const ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES = Object.freeze([]);
 
 export const ANDROID_PLAY_FORBIDDEN_ASSET_MARKERS = Object.freeze([
-  "31337",
-  "31338",
   "32437",
   "32438",
   "10.0.2.2",
   "adb reverse",
-  "eliza-local-agent:",
   "__ELIZA_ANDROID_IPC_FETCH_BRIDGE__",
-  "remote-mac",
+  "navigator.serviceWorker",
 ]);
 
 export const ANDROID_PLAY_FORBIDDEN_INDEX_HTML_MARKERS = Object.freeze([
@@ -7815,7 +7812,9 @@ export async function runAndroidBuild(
   if (target.buildMobileAgentBundle) await buildMobileAgentBundle();
   await ensurePlatform("android");
   await ensureRendererDistMatchesLane(target.webTarget);
-  await runCapacitor(["sync", "android"]);
+  await runCapacitor(["sync", "android"], {
+    env: { ...process.env, ...target.env },
+  });
   normalizeCapacitorSettingsFile(
     path.join(androidDir, "capacitor.settings.gradle"),
   );
