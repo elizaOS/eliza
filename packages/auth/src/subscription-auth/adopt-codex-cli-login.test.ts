@@ -449,13 +449,13 @@ describe("two-process concurrency", () => {
 
 describe("validateAccountId surrogate safety", () => {
   it("preserves well-formed Unicode in error context when accountId contains surrogate pairs", async () => {
-    const invalidWithSurrogate = "invalid!" + "a".repeat(70) + "🚀" + "tail";
+    const invalidWithSurrogate = "invalid!" + "a".repeat(71) + "🚀" + "tail";
     const error = await expectAdoptError(
       async () => adoptCodexCliLogin({ accountId: invalidWithSurrogate }),
       "adopt_codex.invalid_account_id",
     );
     const accountContext = String(error.context?.accountId);
-    expect(accountContext.isWellFormed?.()).not.toBe(false);
+    expect(accountContext.isWellFormed()).toBe(true);
   });
 });
 
