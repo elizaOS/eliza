@@ -155,6 +155,7 @@ describe("restore target authority is one-use after completion", () => {
         Date.now(),
       );
     } catch (error) {
+      // The expected refusal itself is captured, not swallowed.
       reuseError = error;
     }
     expect(reuseError).toBeDefined();
@@ -195,6 +196,7 @@ describe("restore target authority is one-use after completion", () => {
         Date.now(),
       );
     } catch (error) {
+      // The expected refusal itself is captured, not swallowed.
       mismatchError = error;
     }
     expect((mismatchError as { code?: string }).code).toBe(

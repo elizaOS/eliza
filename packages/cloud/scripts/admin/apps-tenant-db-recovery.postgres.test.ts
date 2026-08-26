@@ -90,30 +90,46 @@ async function buildBackupFixture(
   databaseName: string,
   tenantRole: string,
 ): Promise<Fixture> {
+  return buildMultiTenantBackupFixture([
+    { sourceDb, databaseName, tenantRole },
+  ]);
+}
+
+/**
+ * Multi-tenant variant: one real pg_dump per tenant database, one shared
+ * archive, one globals.sql with a distinct role per tenant. Drives the
+ * scaled (multi-database) drill path — linear own-connect per tenant plus
+ * the sampled cross-reject pair (#23453 review r2).
+ */
+async function buildMultiTenantBackupFixture(
+  tenants: { sourceDb: string; databaseName: string; tenantRole: string }[],
+): Promise<Fixture> {
+  const first = tenants[0];
   const setDir = mkdtempSync(join(tmpdir(), "drill-set-"));
   const dumpsDir = join(setDir, "dumps");
   mkdirSync(dumpsDir);
-  const dumpId = "a1b2c3d4e5f6".slice(0, 12);
-  const dumpFile = join(dumpsDir, `${dumpId}.dump`);
+  const dumpIds = tenants.map((_, i) => `${"a1b2c3d4e5f6".slice(0, 11)}${i}`);
 
-  // Real pg_dump of the seeded source database.
+  // Real pg_dump of every seeded source database.
   const url = new URL(BASE_URL);
-  sh(
-    `pg_dump --format=custom --no-owner --no-privileges --dbname=${sourceDb} --file=${dumpFile}`,
-    {
-      env: {
-        PGHOST: url.hostname,
-        PGPORT: url.port || "5432",
-        PGPASSWORD: url.password ?? "",
+  for (let i = 0; i < tenants.length; i++) {
+    sh(
+      `pg_dump --format=custom --no-owner --no-privileges --dbname=${tenants[i].sourceDb} --file=${join(dumpsDir, `${dumpIds[i]}.dump`)}`,
+      {
+        env: {
+          PGHOST: url.hostname,
+          PGPORT: url.port || "5432",
+          PGPASSWORD: url.password ?? "",
+        },
       },
-    },
-  );
+    );
+  }
 
   const manifest = {
     schema_version: 1,
     kind: "tenant-db-backup",
     created_at: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
-    database_count: 1,
+    database_count: tenants.length,
     globals: "globals.sql",
     dbmap: "dbmap.tsv",
     checksums: "checksums.sha256",
@@ -123,9 +139,17 @@ async function buildBackupFixture(
   // options that the harness's strict parser rejects.
   writeFileSync(
     join(setDir, "globals.sql"),
-    `CREATE ROLE ${tenantRole};\nALTER ROLE ${tenantRole} WITH LOGIN PASSWORD 'tenantpw23453';\n`,
+    `${tenants
+      .map(
+        (t) =>
+          `CREATE ROLE ${t.tenantRole};\nALTER ROLE ${t.tenantRole} WITH LOGIN PASSWORD 'tenantpw23453';`,
+      )
+      .join("\n")}\n`,
   );
-  writeFileSync(join(setDir, "dbmap.tsv"), `${dumpId}\t${databaseName}\n`);
+  writeFileSync(
+    join(setDir, "dbmap.tsv"),
+    `${tenants.map((t, i) => `${dumpIds[i]}\t${t.databaseName}`).join("\n")}\n`,
+  );
   sh(
     `sha256sum manifest.json globals.sql dbmap.tsv dumps/* > checksums.sha256`,
     {
@@ -134,9 +158,7 @@ async function buildBackupFixture(
   );
   sh(
     `tar -czf backup.tar.gz manifest.json checksums.sha256 globals.sql dbmap.tsv dumps`,
-    {
-      cwd: setDir,
-    },
+    { cwd: setDir },
   );
   const passphraseFile = join(setDir, "..", `pass-${Date.now()}`);
   writeFileSync(passphraseFile, PASSPHRASE);
@@ -155,7 +177,7 @@ async function buildBackupFixture(
     archive: "backup.tar.gz.enc",
     archive_sha256: archiveSha256,
     archive_bytes: readFileSync(join(setDir, "backup.tar.gz.enc")).length,
-    database_count: 1,
+    database_count: tenants.length,
     cipher: "aes-256-cbc-pbkdf2-210000",
   };
   writeFileSync(join(setDir, "backup.json"), JSON.stringify(sidecar));
@@ -165,9 +187,11 @@ async function buildBackupFixture(
     probesFile,
     JSON.stringify({
       schema_version: 1,
-      tenants: [
-        { dump_id: dumpId, role: tenantRole, password_env: "DRILL_TENANT_PW" },
-      ],
+      tenants: tenants.map((t, i) => ({
+        dump_id: dumpIds[i],
+        role: t.tenantRole,
+        password_env: "DRILL_TENANT_PW",
+      })),
     }),
   );
 
@@ -177,9 +201,9 @@ async function buildBackupFixture(
     passphraseFile,
     capabilityFile: "",
     probesFile,
-    tenantRole,
+    tenantRole: first.tenantRole,
     tenantPassword: "tenantpw23453",
-    databaseName,
+    databaseName: first.databaseName,
   };
   return fixture;
 }
@@ -212,17 +236,24 @@ let pgbouncerDir: string | undefined;
  */
 const POOLER_ENABLED = ENABLED;
 
-function startPgbouncer(databases: string[]): void {
+function startPgbouncer(): void {
   pgbouncerDir = mkdtempSync(join(tmpdir(), "drill-pgbouncer-"));
   const ini = join(pgbouncerDir, "pgbouncer.ini");
   const users = join(pgbouncerDir, "users.txt");
-  const dbLines = databases
-    .map((d) => `${d} = host=127.0.0.1 port=5432 dbname=${d}`)
-    .join("\n");
+  // Production-representative routing (#23453 review r2): the tenant-db
+  // cloud-init configures pgbouncer with the WILDCARD database mapping
+  // `* = host=127.0.0.1 port=5432` + auth_file — any requested database
+  // routes to the local Postgres and the credential gates CONNECT. The
+  // harness mirrors that shape (wildcard, not per-database lines) so the
+  // drill's pooler-surface own-connect proves routing through the SAME
+  // configuration production uses. Plain auth stands in for production
+  // SCRAM-via-auth_query — the property under test is routing, not the
+  // auth backend; a mapping that pointed tenant A at tenant B's database
+  // fails the drill's identity check either way.
   writeFileSync(
     ini,
     `[databases]
-${dbLines}
+* = host=127.0.0.1 port=${new URL(BASE_URL).port || "5432"}
 
 [pgbouncer]
 listen_addr = 127.0.0.1
@@ -234,7 +265,7 @@ pool_mode = transaction
   );
   writeFileSync(
     users,
-    `"drill23453test_tenant_a" "tenantpw23453"\n"drill23453test_tenant_b" "tenantpw23453"\n`,
+    `"drill23453test_tenant_a" "tenantpw23453"\n"drill23453test_tenant_b" "tenantpw23453"\n"drill23453test_tenant_c" "tenantpw23453"\n"drill23453test_mt_a" "tenantpw23453"\n"drill23453test_mt_b" "tenantpw23453"\n"drill23453test_mt_c" "tenantpw23453"\n`,
   );
   const child = execFileCb(
     "/opt/homebrew/opt/pgbouncer/bin/pgbouncer",
@@ -301,7 +332,7 @@ describe.if(ENABLED)(
         await admin.query(`DROP ROLE IF EXISTS ${row.rolname}`);
       }
       if (POOLER_ENABLED) {
-        startPgbouncer([`${TEST_PREFIX}tenant_a`, `${TEST_PREFIX}tenant_b`]);
+        startPgbouncer();
       }
     });
 
@@ -426,6 +457,103 @@ describe.if(ENABLED)(
       );
       expect(roleConn.rows).toHaveLength(1);
     }, 120_000);
+
+    test("multi-tenant drill: three tenants, own-connect through pooler and direct, sampled cross-reject", async () => {
+      // Scaled isolation proof (#23453 review r2): three tenants exercise the
+      // linear own-connect per tenant on BOTH surfaces (direct + pooler with
+      // the production wildcard routing shape), the sampled cross-reject
+      // pair, and the per-database ACL assertion — the same guarantee the
+      // O(n^2) pairwise probe gave, at linear cost.
+      const tenants = ["a", "b", "c"].map((suffix) => ({
+        sourceDb: `${TEST_PREFIX}mt_src_${suffix}`,
+        databaseName: `${TEST_PREFIX}mt_${suffix}`,
+        tenantRole: `${TEST_PREFIX}mt_${suffix}`,
+      }));
+      const targetDb = `${TEST_PREFIX}mt_target`;
+      for (const t of tenants) {
+        await admin.query(`CREATE DATABASE ${t.sourceDb}`);
+        const src = new Client({ connectionString: dbUrl(t.sourceDb) });
+        await src.connect();
+        await src.query(`CREATE TABLE evidence (id int, note text)`);
+        await src.query(
+          `INSERT INTO evidence VALUES (1, 'mt-data-${t.tenantRole}')`,
+        );
+        await src.end();
+      }
+      cleanups.push(() =>
+        spawnSync("psql", [
+          "-c",
+          `DROP DATABASE IF EXISTS ${targetDb} WITH (FORCE)`,
+        ]),
+      );
+
+      const fixture = await buildMultiTenantBackupFixture(tenants);
+      // Every probe role must reach the pooler's auth_file: the roles are
+      // drill23453test_*-prefixed, but the production wildcard routing
+      // accepts ANY database name and defers to credentials — the same
+      // shape under test.
+      fixture.capabilityFile = mintCapabilityFile(fixture.archiveSha256);
+      await admin.query(`CREATE DATABASE ${targetDb}`);
+      await provisionTarget(targetDb, fixture.capabilityFile);
+
+      const result = spawnSync(
+        "bun",
+        [
+          "packages/cloud/scripts/admin/apps-tenant-db-recovery.ts",
+          "--set-dir",
+          fixture.setDir,
+          "--target-dsn",
+          dbUrl(targetDb),
+          "--target-id",
+          TARGET_ID,
+          "--capability-file",
+          fixture.capabilityFile,
+          "--pooler-endpoint",
+          "127.0.0.1:6432",
+          "--tenant-probes-file",
+          fixture.probesFile,
+          "--passphrase-file",
+          fixture.passphraseFile,
+          "--rpo-hours",
+          "26",
+          "--rto-minutes",
+          "60",
+        ],
+        {
+          encoding: "utf-8",
+          env: {
+            ...process.env,
+            ELIZA_RESTORE_CAPABILITY_KEY: SIGNING_KEY,
+            DRILL_TENANT_PW: fixture.tenantPassword,
+          },
+          maxBuffer: 64 * 1024 * 1024,
+        },
+      );
+      if (result.status !== 0) {
+        throw new Error(
+          `drill exited ${result.status}\n--- stdout ---\n${result.stdout}\n--- stderr ---\n${result.stderr}`,
+        );
+      }
+      const report = JSON.parse(result.stdout);
+      expect(report.databaseCount).toBe(3);
+      expect(report.isolation.plan).toBe("linear");
+      // 3 own-connects + 1 cross-reject sample, each on 2 surfaces, + 3 ACL
+      // assertions = 11 executed probes, all passing.
+      expect(report.isolation.total).toBe(11);
+      expect(report.isolation.passed).toBe(report.isolation.total);
+      expect(report.objectives.met).toBe(true);
+
+      // Every tenant's restored data is real and reachable by its own role.
+      for (const t of tenants) {
+        const check = new Client({ connectionString: dbUrl(t.databaseName) });
+        await check.connect();
+        const rows = await check.query(
+          `SELECT note FROM evidence WHERE id = 1`,
+        );
+        expect(rows.rows[0]?.note).toBe(`mt-data-${t.tenantRole}`);
+        await check.end();
+      }
+    }, 180_000);
 
     test("substituted archive is refused even with a valid nonce", async () => {
       const sourceDb = `${TEST_PREFIX}src2`;
@@ -597,6 +725,7 @@ describe.if(ENABLED)(
           Date.now(),
         );
       } catch (error) {
+        // The expected refusal's typed code is captured, not swallowed.
         code = (error as { code?: string }).code ?? "";
       }
       expect(code).toBe("REFUSED_TARGET_AUTHORITY");
