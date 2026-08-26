@@ -1289,6 +1289,8 @@ export const DRILL_LOCK_REFUSED = "drill-lock-refused";
 export interface DrillLock {
   child: ChildProcess;
   handshakePath: string;
+  targetDsn: string;
+  backendPid?: number;
 }
 
 /**
@@ -1328,7 +1330,7 @@ export function acquireDrillLock(
       "--dbname",
       targetDsn,
       "--command",
-      `SELECT CASE WHEN pg_try_advisory_lock(${DRILL_ADVISORY_LOCK_KEY}) THEN '${DRILL_LOCK_HANDSHAKE}' ELSE '${DRILL_LOCK_REFUSED}' END;`,
+      `SELECT CASE WHEN pg_try_advisory_lock(${DRILL_ADVISORY_LOCK_KEY}) THEN '${DRILL_LOCK_HANDSHAKE}:' || pg_backend_pid() ELSE '${DRILL_LOCK_REFUSED}' END;`,
       "--command",
       `SELECT pg_sleep(${DRILL_LOCK_MAX_SECONDS});`,
     ],
@@ -1343,6 +1345,7 @@ export function acquireDrillLock(
     stderrTail = `${stderrTail}${String(chunk)}`.slice(-500);
   });
   let acquired = false;
+  let backendPid: number | undefined;
   while (Date.now() < deadline) {
     Atomics.wait(
       new Int32Array(new SharedArrayBuffer(4)),
@@ -1359,6 +1362,17 @@ export function acquireDrillLock(
     }
     if (observed.includes(DRILL_LOCK_HANDSHAKE)) {
       acquired = true;
+      // The sentinel carries the holder's backend pid: pg_terminate_backend
+      // releases the session lock deterministically at release time. A
+      // client-side SIGKILL alone does NOT reach a backend blocked in
+      // pg_sleep — the backend notices the dropped client only at its next
+      // socket read/write, so the lock would stay pinned for the whole
+      // DRILL_LOCK_MAX_SECONDS sleep and refuse the documented idempotent
+      // re-run within the capability TTL.
+      const pidMatch = observed.match(
+        new RegExp(`${DRILL_LOCK_HANDSHAKE}:(\\d+)`),
+      );
+      backendPid = pidMatch?.[1] ? Number(pidMatch[1]) : undefined;
       break;
     }
     if (observed.includes(DRILL_LOCK_REFUSED)) {
@@ -1389,7 +1403,7 @@ export function acquireDrillLock(
       `drill lock acquisition was not confirmed within the settle window: ${stderrTail.trim().slice(0, 200)}`,
     );
   }
-  return { child, handshakePath };
+  return { child, handshakePath, targetDsn, backendPid };
 }
 
 /**
@@ -1421,7 +1435,37 @@ export function assertDrillLockHeld(lock: DrillLock): void {
 }
 
 export function releaseDrillLock(lock: DrillLock): void {
-  // SIGKILL drops the server session, which releases the session-level lock.
+  // Server-side release: terminate the holder's backend so the session lock
+  // drops immediately. SIGKILL on the client alone does not interrupt a
+  // backend blocked in pg_sleep — it only notices the closed socket at its
+  // next read/write, so the lock would stay held for the full
+  // DRILL_LOCK_MAX_SECONDS sleep and refuse every idempotent re-run within
+  // the capability TTL (proven by the claim-order regression test: a failed
+  // first invocation must leave the target retryable, not lock-pinned).
+  if (lock.backendPid !== undefined) {
+    const terminated = spawnSync(
+      "psql",
+      [
+        "--no-psqlrc",
+        "--quiet",
+        "--dbname",
+        lock.targetDsn,
+        "--command",
+        `SELECT pg_terminate_backend(${lock.backendPid}) WHERE pg_backend_pid() <> ${lock.backendPid};`,
+      ],
+      { encoding: "utf-8" },
+    );
+    if (terminated.status !== 0) {
+      // error-policy:J4 the SIGKILL fallback below still drops the client;
+      // termination is best-effort so a completed drill's report is never
+      // masked by a cleanup failure.
+      process.stderr.write(
+        `drill lock backend termination failed: ${terminated.stderr?.slice(-200) ?? "unknown"}\n`,
+      );
+    }
+  }
+  // Client-side kill: drops the local process and its socket even when the
+  // backend pid could not be parsed from the sentinel.
   lock.child.kill("SIGKILL");
   try {
     // error-policy:J6 best-effort cleanup of the handshake file.
