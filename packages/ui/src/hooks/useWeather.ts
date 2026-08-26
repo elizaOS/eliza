@@ -344,31 +344,32 @@ async function fetchWeatherAt(
 ): Promise<Weather> {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current=temperature_2m,weather_code&temperature_unit=${TEMPERATURE_UNIT.param}`;
   const request = weatherRequestSignal(signal);
-  let response: Response;
   try {
-    response = await globalThis.fetch(url, {
+    const response = await globalThis.fetch(url, {
       method: "GET",
       signal: request.signal,
     });
+    if (!response.ok) throw new Error(`open-meteo ${response.status}`);
+    const data = (await response.json()) as {
+      current?: { temperature_2m?: number; weather_code?: number };
+    };
+    const tempRaw = data.current?.temperature_2m;
+    const code = data.current?.weather_code ?? 3;
+    if (typeof tempRaw !== "number") throw new Error("open-meteo: no temp");
+    const { kind, condition } = describeWeatherCode(code);
+    return {
+      status: "ready",
+      temp: Math.round(tempRaw),
+      unit: TEMPERATURE_UNIT.label,
+      condition,
+      kind,
+      approximate,
+    };
   } finally {
+    // Keep the composed deadline alive through body consumption; fetch can
+    // resolve after headers while response.json() is still stalled.
     request.cleanup();
   }
-  if (!response.ok) throw new Error(`open-meteo ${response.status}`);
-  const data = (await response.json()) as {
-    current?: { temperature_2m?: number; weather_code?: number };
-  };
-  const tempRaw = data.current?.temperature_2m;
-  const code = data.current?.weather_code ?? 3;
-  if (typeof tempRaw !== "number") throw new Error("open-meteo: no temp");
-  const { kind, condition } = describeWeatherCode(code);
-  return {
-    status: "ready",
-    temp: Math.round(tempRaw),
-    unit: TEMPERATURE_UNIT.label,
-    condition,
-    kind,
-    approximate,
-  };
 }
 
 async function fetchWeather(signal: AbortSignal): Promise<Weather> {
