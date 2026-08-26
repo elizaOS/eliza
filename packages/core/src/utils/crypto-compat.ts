@@ -290,7 +290,9 @@ function createStreamingOutputEncoder(
 		};
 	}
 	if (encoding === "utf8") {
-		const decoder = new TextDecoder("utf-8");
+		// ignoreBOM keeps a leading U+FEFF in the output exactly like
+		// node:crypto's StringDecoder, which preserves it.
+		const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 		return {
 			encode: (chunk: Uint8Array) => decoder.decode(chunk, { stream: true }),
 			flush: (finalChunk: Uint8Array) => decoder.decode(finalChunk),
