@@ -88,3 +88,66 @@ describe("processBody edge handling", () => {
     expect(JSON.stringify(parsed)).not.toContain("hidden");
   });
 });
+
+// Regression: the thinking-parameter strip must never leave a dangling comma,
+// regardless of the key's position. Production defaults keep the strip enabled,
+// and a request that already carries a `system` array (prompt caching) plus
+// `metadata` (user_id) leaves `thinking` as the first key, so neither the
+// billing nor metadata injector prepends ahead of it. Before the fix, the
+// first-key case produced `{,"system":...}` — malformed JSON rejected by
+// api.anthropic.com (400 invalid JSON), silently breaking extended-thinking
+// requests. See issue #29164.
+describe("processBody thinking-parameter strip position invariance", () => {
+  const prodDefaults: Partial<ProcessBodyConfig> = {
+    stripSystemConfig: true,
+    stripToolDescriptions: true,
+    injectCCSyntheticTools: true,
+    stripThinkingBlocks: true,
+  };
+  const thinking = { type: "enabled", budget_tokens: 2000 };
+
+  const positions: Array<[string, Record<string, unknown>]> = [
+    [
+      "first key (system array + metadata already present)",
+      {
+        thinking,
+        system: [{ type: "text", text: "sys" }],
+        metadata: { user_id: "u" },
+        model: "claude-opus-4-1",
+        messages: [{ role: "user", content: "hi" }],
+      },
+    ],
+    [
+      "middle key",
+      {
+        model: "claude-opus-4-1",
+        thinking,
+        messages: [{ role: "user", content: "hi" }],
+      },
+    ],
+    [
+      "last key",
+      {
+        model: "claude-opus-4-1",
+        messages: [{ role: "user", content: "hi" }],
+        thinking,
+      },
+    ],
+    ["sole key", { thinking }],
+  ];
+
+  for (const [label, body] of positions) {
+    it(`produces valid JSON with the thinking param removed when it is the ${label}`, () => {
+      const result = processBody(JSON.stringify(body), { ...baseConfig, ...prodDefaults });
+
+      // Must be parseable — the first-key case throws before the fix.
+      const parsed = JSON.parse(result.body) as Record<string, unknown>;
+      expect("thinking" in parsed).toBe(false);
+      expect(result.stats.thinkingParamsStripped).toBe(1);
+      // No dangling separator anywhere in the rewritten body.
+      expect(result.body).not.toContain("{,");
+      expect(result.body).not.toContain(",,");
+      expect(result.body).not.toContain(",}");
+    });
+  }
+});

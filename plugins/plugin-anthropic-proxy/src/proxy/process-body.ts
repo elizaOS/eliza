@@ -75,9 +75,21 @@ function stripThinkingParameters(value: string): {
     }
     const objectEnd = value.indexOf("}", objectStart + 1);
     if (objectEnd < 0) break;
-    const removalStart = keyStart > cursor && value[keyStart - 1] === "," ? keyStart - 1 : keyStart;
+    // Consume the leading comma when present; otherwise (first key of the
+    // object) consume the trailing comma so removal never leaves a dangling
+    // separator such as `{,"system":...}` that api.anthropic.com rejects.
+    const hasLeadingComma = keyStart > cursor && value[keyStart - 1] === ",";
+    const removalStart = hasLeadingComma ? keyStart - 1 : keyStart;
+    let removalEnd = objectEnd + 1;
+    if (!hasLeadingComma) {
+      let trailing = removalEnd;
+      while (trailing < value.length && value[trailing]?.trim() === "") {
+        trailing += 1;
+      }
+      if (value[trailing] === ",") removalEnd = trailing + 1;
+    }
     out.push(value.slice(cursor, removalStart));
-    cursor = objectEnd + 1;
+    cursor = removalEnd;
     count += 1;
   }
   out.push(value.slice(cursor));
