@@ -3204,7 +3204,7 @@ function AppContent() {
     !isAuxiliaryAppWindow &&
     !cloudPairToken &&
     (branding.cloudOnly === true ||
-      isAndroidCloudBuild() ||
+      (isAndroidCloudBuild() && branding.cloudOnly !== false) ||
       isElizaCloudRuntimeLocked());
   const hasUsableCloudSession =
     elizaCloudConnected ||

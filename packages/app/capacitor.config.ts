@@ -150,7 +150,8 @@ export function resolveCapacitorLoggingBehavior(
 ): "debug" | "none" {
   return isFlagEnabled(env.ELIZA_ANDROID_CLOUD_BUILD) ||
     isFlagEnabled(env.ELIZA_ANDROID_LAUNCHER_BUILD) ||
-    isFlagEnabled(env.ELIZA_ANDROID_CLOUD_HYBRID_BUILD)
+    isFlagEnabled(env.ELIZA_ANDROID_CLOUD_HYBRID_BUILD) ||
+    isFlagEnabled(env.ELIZA_ANDROID_VPS_SIDECAR)
     ? "none"
     : "debug";
 }
@@ -288,7 +289,8 @@ const config: CapacitorConfig = {
     // in-app/local notifications and the LP3 display-guard notification remain.
     includePlugins: resolveAndroidCapacitorPlugins(
       appPackage.dependencies,
-      isFlagEnabled(process.env.ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED),
+      isFlagEnabled(process.env.ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED) ||
+        isFlagEnabled(process.env.ELIZA_ANDROID_VPS_SIDECAR),
     ),
     backgroundColor: "#000000",
     allowMixedContent: false,

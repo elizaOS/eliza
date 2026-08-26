@@ -145,6 +145,29 @@ export interface StartupCoordinatorHandle {
   phase: StartupState["phase"];
 }
 
+type StartupRunnerName = "session restoration" | "backend connection";
+
+/** Surface an unexpected phase-runner rejection instead of leaving boot stuck. */
+export function surfaceUnexpectedStartupRunnerError(
+  runner: StartupRunnerName,
+  err: unknown,
+  deps: Pick<StartupCoordinatorDeps, "setStartupError" | "setFirstRunLoading">,
+  dispatch: (event: StartupEvent) => void,
+  cancelled: { current: boolean },
+): void {
+  if (cancelled.current) return;
+  const detail = err instanceof Error ? err.message : String(err);
+  const message = `Startup ${runner} failed unexpectedly. ${detail}`;
+  deps.setStartupError({
+    reason: "agent-error",
+    phase: "starting-backend",
+    message,
+    detail,
+  });
+  deps.setFirstRunLoading(false);
+  dispatch({ type: "AGENT_ERROR", message });
+}
+
 function detectPlatformPolicy(): PlatformPolicy {
   if (isElectrobunRuntime()) {
     return createDesktopPolicy({
@@ -226,14 +249,19 @@ export function useStartupCoordinator(
     // boot in onboarding instead of polling an agent the native gate refuses
     // to start. No-op on web/desktop and on capable devices.
     enforceDeviceRamPolicyOnPersistedRuntimeModeAtBoot();
-    // error-policy:J5 expected failures are dispatched to the state machine
-    // inside the runner; this catch only keeps an unexpected runner bug from
-    // becoming an unhandled rejection, logged so a wedged boot phase is
-    // diagnosable instead of silent.
+    // error-policy:J4 expected failures are dispatched inside the runner; an
+    // unexpected rejection is translated to the visible startup error card.
     runRestoringSession(d, dispatch, _ctx, cancelled).catch((err: unknown) => {
       logger.error(
         { err },
         "[useStartupCoordinator] restoring-session phase runner threw",
+      );
+      surfaceUnexpectedStartupRunnerError(
+        "session restoration",
+        err,
+        d,
+        dispatch,
+        cancelled,
       );
     });
 
@@ -249,8 +277,15 @@ export function useStartupCoordinator(
   }, [state.phase]);
 
   // ── Phase: polling-backend ──────────────────────────────────────
+  const pollingBackendTarget: RuntimeTarget | null =
+    state.phase === "polling-backend" ? state.target : null;
   useEffect(() => {
-    if (state.phase !== "polling-backend" || !depsReady) return;
+    if (
+      state.phase !== "polling-backend" ||
+      !pollingBackendTarget ||
+      !depsReady
+    )
+      return;
     const currentDeps = depsRef.current;
     if (!currentDeps) return;
     effectRunRef.current += 1;
@@ -267,12 +302,20 @@ export function useStartupCoordinator(
       effectRunRef,
       cancelled,
       tidRef,
+      pollingBackendTarget,
     ).catch((err: unknown) => {
-      // error-policy:J5 expected failures are dispatched to the state machine
-      // inside the runner; log unexpected runner bugs instead of dropping them.
+      // error-policy:J4 expected failures are dispatched inside the runner; an
+      // unexpected rejection is translated to the visible startup error card.
       logger.error(
         { err },
         "[useStartupCoordinator] polling-backend phase runner threw",
+      );
+      surfaceUnexpectedStartupRunnerError(
+        "backend connection",
+        err,
+        currentDeps,
+        dispatch,
+        cancelled,
       );
     });
 
@@ -280,7 +323,13 @@ export function useStartupCoordinator(
       cancelled.current = true;
       if (tidRef.current) clearTimeout(tidRef.current);
     };
-  }, [state.phase, policy.backendTimeoutMs, depsReady, policy]);
+  }, [
+    state.phase,
+    pollingBackendTarget,
+    policy.backendTimeoutMs,
+    depsReady,
+    policy,
+  ]);
 
   // ── Phase: starting-runtime ─────────────────────────────────────
   // The runtime target is fixed for a given starting-runtime entry (it is

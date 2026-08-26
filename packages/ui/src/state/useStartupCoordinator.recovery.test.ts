@@ -7,6 +7,7 @@ import { startupReducer } from "./startup-coordinator";
 import {
   recoverTerminalStartupError,
   type StartupCoordinatorDeps,
+  surfaceUnexpectedStartupRunnerError,
 } from "./useStartupCoordinator";
 
 const clientMock = vi.hoisted(() => ({
@@ -150,5 +151,50 @@ describe("startupReducer stale error recovery transitions", () => {
         { type: "BACKEND_REACHED", firstRunComplete: false },
       ),
     ).toEqual({ phase: "first-run-required", serverReachable: true });
+  });
+});
+
+describe("unexpected startup runner failures", () => {
+  it.each(["session restoration", "backend connection"] as const)(
+    "dispatches a visible AGENT_ERROR when %s rejects unexpectedly",
+    (runner) => {
+      const deps = createDeps();
+      const dispatch = vi.fn();
+
+      surfaceUnexpectedStartupRunnerError(
+        runner,
+        new Error("runner exploded"),
+        deps,
+        dispatch,
+        { current: false },
+      );
+
+      expect(deps.setStartupError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reason: "agent-error",
+          message: expect.stringContaining("runner exploded"),
+        }),
+      );
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "AGENT_ERROR",
+        message: expect.stringContaining("runner exploded"),
+      });
+    },
+  );
+
+  it("does not dispatch after the runner effect was cancelled", () => {
+    const deps = createDeps();
+    const dispatch = vi.fn();
+
+    surfaceUnexpectedStartupRunnerError(
+      "backend connection",
+      new Error("late rejection"),
+      deps,
+      dispatch,
+      { current: true },
+    );
+
+    expect(deps.setStartupError).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalled();
   });
 });

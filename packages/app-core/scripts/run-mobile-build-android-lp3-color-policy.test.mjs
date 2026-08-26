@@ -25,10 +25,13 @@ import {
   ANDROID_LP3_COLOR_POLICY_JAVA_FILES,
   ANDROID_LP3_COLOR_POLICY_PERMISSIONS,
   ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS,
+  createAndroidPlayManifestPolicy,
   enforceAndroidLp3ColorPolicyBuildPolicy,
   enforceAndroidLp3RemoteFallbackBuildPolicy,
   isAndroidLp3ColorPolicyEnabled,
   isAndroidLp3RemoteFallbackRequired,
+  isAndroidVpsSidecarBuild,
+  resolveAndroidCloudAllowedNativeLibraries,
   resolveAndroidCloudAllowedNativePluginPackages,
   resolveAndroidCloudStripPolicy,
   resolveAndroidLp3ColorPolicyBuildEnv,
@@ -87,6 +90,35 @@ describe("LP3 direct Cloud build flag", () => {
         },
       }),
     ).not.toThrow();
+  });
+
+  it("supports an isolated Firebase-independent Pixel VPS sidecar profile", () => {
+    const sidecarEnv = {
+      ELIZA_ANDROID_VPS_SIDECAR: "1",
+      VITE_ELIZA_REMOTE_FALLBACK_API_BASE: "https://agent.example.test/",
+    };
+    expect(isAndroidVpsSidecarBuild(sidecarEnv)).toBe(true);
+    expect(() =>
+      enforceAndroidLp3RemoteFallbackBuildPolicy({
+        targetName: "android-cloud-debug",
+        env: sidecarEnv,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      enforceAndroidLp3RemoteFallbackBuildPolicy({
+        targetName: "android-cloud",
+        env: sidecarEnv,
+      }),
+    ).toThrow("restricted to android-cloud-debug");
+    expect(() =>
+      enforceAndroidLp3RemoteFallbackBuildPolicy({
+        targetName: "android-cloud-debug",
+        env: {
+          ...sidecarEnv,
+          ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED: "1",
+        },
+      }),
+    ).toThrow("must not enable the LP3 color policy");
   });
 
   it.each([
@@ -167,6 +199,31 @@ describe("LP3 direct Cloud build flag", () => {
     expect(
       resolveAndroidCloudStripPolicy(fallbackEnv).safePushNotifications,
     ).toBe(false);
+  });
+
+  it("omits native FCM from a Firebase-independent VPS sidecar", () => {
+    const sidecarEnv = { ELIZA_ANDROID_VPS_SIDECAR: "1" };
+    expect(
+      resolveAndroidCloudAllowedNativePluginPackages(sidecarEnv),
+    ).not.toContain("@capacitor/push-notifications");
+    expect(resolveAndroidCloudStripPolicy(sidecarEnv).javaFiles).toContain(
+      "SafePushNotificationsPlugin.java",
+    );
+    expect(
+      resolveAndroidCloudStripPolicy(sidecarEnv).safePushNotifications,
+    ).toBe(false);
+    expect(resolveAndroidCloudAllowedNativeLibraries(sidecarEnv)).toEqual([]);
+    const manifestPolicy = createAndroidPlayManifestPolicy({
+      debug: true,
+      firebaseIndependent: true,
+    });
+    expect(manifestPolicy.permissions).not.toContain(
+      "com.google.android.c2dm.permission.RECEIVE",
+    );
+    expect(manifestPolicy.components).not.toContain(
+      "service:com.capacitorjs.plugins.pushnotifications.MessagingService",
+    );
+    expect(manifestPolicy.application.debuggable).toBe("true");
   });
 
   it("normalizes the passed build environment without consulting process.env", () => {
