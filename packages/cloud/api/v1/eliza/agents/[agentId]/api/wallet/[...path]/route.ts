@@ -11,8 +11,11 @@ import {
   requireUserOrApiKeyWithOrg,
 } from "@/lib/auth/workers-hono-auth";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
-import { isPersonalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
+import {
+  isPersonalSharedAgentId,
+  personalSharedAgentId,
+} from "@/lib/services/shared-runtime/personal-shared-agent";
 import { createStewardClient } from "@/lib/services/steward-client";
 import { parseClampedLimit, parseClampedOffset } from "@/lib/utils/clamp-limit";
 import { logger } from "@/lib/utils/logger";
@@ -185,6 +188,8 @@ async function resolveStewardAgentIdForProxy(
       await client.getAgent(sandboxAgentId);
       return sandboxAgentId;
     } catch {
+      // error-policy:J4 Steward treats an unknown Personal id as unavailable;
+      // preserve the route's indistinguishable-not-found contract.
       return null;
     }
   }
@@ -371,13 +376,27 @@ export async function handleDirectWalletRequest(
   // intended behavior runs. Route Personal wallet requests straight to the
   // account-scoped Steward resolution instead (#28500).
   const isPersonal = isPersonalSharedAgentId(agentId);
-  if (!isPersonal) {
+  if (isPersonal) {
+    const expectedPersonalId = personalSharedAgentId({
+      userId: user.id,
+      organizationId: user.organization_id,
+    });
+    if (agentId !== expectedPersonalId) {
+      return json(
+        { success: false, error: "Agent not found" },
+        { status: 404 },
+      );
+    }
+  } else {
     const agent = await elizaSandboxService.getAgent(
       agentId,
       user.organization_id,
     );
     if (!agent) {
-      return json({ success: false, error: "Agent not found" }, { status: 404 });
+      return json(
+        { success: false, error: "Agent not found" },
+        { status: 404 },
+      );
     }
   }
 

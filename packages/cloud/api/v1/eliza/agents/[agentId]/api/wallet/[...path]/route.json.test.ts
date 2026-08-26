@@ -62,6 +62,9 @@ mock.module("@/lib/utils/logger", () => ({
 }));
 
 const { handleDirectWalletRequest } = await import("./route");
+const { personalSharedAgentId } = await import(
+  "@/lib/services/shared-runtime/personal-shared-agent"
+);
 
 function context(bodyText: string) {
   return {
@@ -111,5 +114,46 @@ describe("wallet-path malformed JSON", () => {
     );
     expect(response.status).toBe(200);
     expect(approveTransaction).toHaveBeenCalled();
+  });
+
+  test("canonical Personal id bypasses the UUID-backed sandbox repository", async () => {
+    getAgent.mockClear();
+    const personalId = personalSharedAgentId({
+      userId: "user-1",
+      organizationId: "org-1",
+    });
+    const response = await handleDirectWalletRequest(
+      context(""),
+      Promise.resolve({ agentId: personalId, path: ["addresses"] }),
+      "GET",
+    );
+    expect(response.status).toBe(200);
+    expect(getAgent).not.toHaveBeenCalled();
+  });
+
+  test("mismatched Personal id is indistinguishable from a missing agent", async () => {
+    getAgent.mockClear();
+    const otherAccountId = personalSharedAgentId({
+      userId: "other-user",
+      organizationId: "org-1",
+    });
+    const response = await handleDirectWalletRequest(
+      context(""),
+      Promise.resolve({ agentId: otherAccountId, path: ["addresses"] }),
+      "GET",
+    );
+    expect(response.status).toBe(404);
+    expect(getAgent).not.toHaveBeenCalled();
+  });
+
+  test("normal sandbox id keeps the sandbox ownership lookup", async () => {
+    getAgent.mockClear();
+    const response = await handleDirectWalletRequest(
+      context(""),
+      Promise.resolve({ agentId: "sandbox-agent-1", path: ["addresses"] }),
+      "GET",
+    );
+    expect(response.status).toBe(200);
+    expect(getAgent).toHaveBeenCalledWith("sandbox-agent-1", "org-1");
   });
 });
