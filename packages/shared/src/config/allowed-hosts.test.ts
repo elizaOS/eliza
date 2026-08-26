@@ -4,6 +4,8 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  isHostAllowed,
+  matchesAllowedHost,
   parseAllowedHostEnv,
   toCapacitorAllowNavigation,
   toViteAllowedHosts,
@@ -123,5 +125,26 @@ describe("allowed-host consumer transforms", () => {
     expect(() =>
       toCapacitorAllowNavigation(undefined as unknown as readonly never[]),
     ).toThrow();
+  });
+});
+
+describe("matchesAllowedHost and isHostAllowed", () => {
+  it("matches exact host and subdomain patterns", () => {
+    const patterns = parseAllowedHostEnv("localhost, *.elizaos.ai, api.test.com");
+    expect(isHostAllowed("localhost", patterns)).toBe(true);
+    expect(isHostAllowed("localhost:3000", patterns)).toBe(true);
+    expect(isHostAllowed("app.elizaos.ai", patterns)).toBe(true);
+    expect(isHostAllowed("deep.sub.elizaos.ai:8080", patterns)).toBe(true);
+    expect(isHostAllowed("api.test.com", patterns)).toBe(true);
+    expect(isHostAllowed("other.test.com", patterns)).toBe(false);
+    expect(isHostAllowed("evil.com", patterns)).toBe(false);
+  });
+
+  it("handles empty or invalid host inputs safely", () => {
+    const patterns = parseAllowedHostEnv("localhost");
+    expect(isHostAllowed("", patterns)).toBe(false);
+    expect(isHostAllowed("   ", patterns)).toBe(false);
+    expect(isHostAllowed(null as unknown as string, patterns)).toBe(false);
+    expect(isHostAllowed("localhost", [])).toBe(false);
   });
 });

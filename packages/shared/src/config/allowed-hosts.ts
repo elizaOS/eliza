@@ -126,3 +126,36 @@ export function toCapacitorAllowNavigation(
     entry.includeSubdomains ? `*.${entry.host}` : entry.host,
   );
 }
+
+export function matchesAllowedHost(
+  host: string,
+  pattern: AllowedHostPattern,
+): boolean {
+  if (typeof host !== "string" || !pattern?.host) {
+    return false;
+  }
+  const cleanHost = host.trim().toLowerCase().replace(/:\d+$/, "");
+  const patternHost = pattern.host.toLowerCase();
+  if (cleanHost === patternHost) {
+    return true;
+  }
+  if (pattern.includeSubdomains) {
+    return cleanHost.endsWith(`.${patternHost}`);
+  }
+  return false;
+}
+
+export function isHostAllowed(
+  host: string,
+  patterns: readonly AllowedHostPattern[],
+): boolean {
+  if (
+    typeof host !== "string" ||
+    !host.trim() ||
+    !patterns ||
+    patterns.length === 0
+  ) {
+    return false;
+  }
+  return patterns.some((pattern) => matchesAllowedHost(host, pattern));
+}
