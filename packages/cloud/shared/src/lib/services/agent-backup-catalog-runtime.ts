@@ -44,6 +44,7 @@ import {
 } from "../storage/agent-backup-object-store";
 import type { RuntimeR2Bucket } from "../storage/r2-runtime-binding";
 import { isTrustedAgentBackupCaptureV2TerminalDisposition } from "./agent-backup-capture-v2-failure-disposition";
+import { isResolvedAgentBackupCaptureV3RuntimeAuthorityStale } from "./agent-backup-capture-v3-runtime-context";
 import type {
   AgentBackupCaptureV3SpoolCleanupJanitor,
   AgentBackupCaptureV3SpoolCleanupSummary,
@@ -77,6 +78,7 @@ const SCHEDULE_RETRY_CODE = "BACKUP_SCHEDULE_RESERVATION_RETRY";
 const SCHEDULE_RECONCILE_CODE = "BACKUP_SCHEDULE_RECONCILE_REQUIRED";
 const SCHEDULE_RPO_OVERDUE_CODE = "BACKUP_SCHEDULE_RPO_OVERDUE";
 const OPERATION_CAPTURE_RETRY_CODE = "BACKUP_CAPTURE_V2_RETRY_SCHEDULED";
+const OPERATION_CAPTURE_STALE_AUTHORITY_CODE = "AGENT_BACKUP_V3_RUNTIME_AUTHORITY_STALE";
 const OPERATION_CAPTURE_TERMINAL_CODE = "BACKUP_CAPTURE_V2_TERMINAL";
 const OPERATION_PUBLICATION_RETRY_CODE = "BACKUP_PUBLICATION_RETRY_SCHEDULED";
 const OPERATION_RECONCILE_CODE = "BACKUP_OPERATION_RECONCILE_REQUIRED";
@@ -559,12 +561,19 @@ function isCaptureOperationClaim(claim: Readonly<AgentBackupOperationClaim>): bo
 
 interface CaptureFailureDisposition {
   terminal: boolean;
+  retryErrorCode?: typeof OPERATION_CAPTURE_STALE_AUTHORITY_CODE;
   terminalSpoolCleanup?: Parameters<
     AgentBackupCaptureV3SpoolCleanupJanitor["stageTerminalFailure"]
   >[0]["authority"];
 }
 
 function classifyCaptureFailure(error: unknown): CaptureFailureDisposition {
+  if (isResolvedAgentBackupCaptureV3RuntimeAuthorityStale(error)) {
+    return {
+      terminal: false,
+      retryErrorCode: OPERATION_CAPTURE_STALE_AUTHORITY_CODE,
+    };
+  }
   if (!isTrustedAgentBackupCaptureV2TerminalDisposition(error)) return { terminal: false };
   // A stale runtime generation is irreversible only after the concrete
   // pipeline opened a spool and attached the exact cleanup authority. Stale
@@ -873,6 +882,9 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
         }
         const disposition = classifyCaptureFailure(error);
         const terminal = disposition.terminal;
+        const failureCode = terminal
+          ? OPERATION_CAPTURE_TERMINAL_CODE
+          : (disposition.retryErrorCode ?? OPERATION_CAPTURE_RETRY_CODE);
         if (terminal && disposition.terminalSpoolCleanup) {
           if (!params.spoolCleanupJanitor) {
             summary.operationIndeterminate += 1;
@@ -906,10 +918,12 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
             expectedState: "capturing",
             terminal,
             error: {
-              code: terminal ? OPERATION_CAPTURE_TERMINAL_CODE : OPERATION_CAPTURE_RETRY_CODE,
+              code: failureCode,
               message: terminal
                 ? "Capture-v2 returned deterministic authority, format, or replay-conflict evidence"
-                : "Capture-v2 did not reach a confirmed recordCaptured boundary; retry remains safe",
+                : disposition.retryErrorCode
+                  ? "Reserved capture runtime authority is stale; retry requires exact-source reconciliation"
+                  : "Capture-v2 did not reach a confirmed recordCaptured boundary; retry remains safe",
             },
             ...(terminal
               ? {}
@@ -931,7 +945,7 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
             alertCodes.add(OPERATION_CAPTURE_TERMINAL_CODE);
           } else {
             summary.operationCaptureRetryScheduled += 1;
-            alertCodes.add(OPERATION_CAPTURE_RETRY_CODE);
+            alertCodes.add(failureCode);
           }
         } catch {
           throwIfAborted();
