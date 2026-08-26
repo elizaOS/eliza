@@ -17,27 +17,29 @@ interface AppWebConfig {
   themeColor: string;
   backgroundColor: string;
   shareImagePath: string;
+  iconBackgroundColor?: string;
 }
 
 const config = {
-  appName: "Eliza",
-  appId: "ai.elizaos.app",
+  appName: "Eliza VPS",
+  appId: "ai.elizaos.app.vps",
   orgName: "elizaos",
   repoName: "eliza",
   cliName: "eliza",
   description:
     "Eliza manages your digital life so you can focus on what matters.",
   envPrefix: "ELIZA",
-  namespace: "eliza",
+  namespace: "eliza-vps",
   defaultApps: ["@elizaos/plugin-personal-assistant"],
 
   desktop: {
-    bundleId: "ai.elizaos.app",
-    urlScheme: "elizaos",
+    bundleId: "ai.elizaos.app.vps",
+    urlScheme: "elizavps",
   },
 
   web: {
-    shortName: "Eliza",
+    shortName: "Eliza VPS",
+    iconBackgroundColor: "#202124",
     // Launch/loading surface used by manifest theme_color + background_color,
     // <meta name="theme-color">, and PWA launch surfaces. Matches the default
     // home background base (#000000 = DEFAULT_BACKGROUND_COLOR, the black
@@ -55,7 +57,7 @@ const config = {
   },
 
   branding: {
-    appName: "Eliza",
+    appName: "Eliza VPS",
     orgName: "elizaos",
     repoName: "eliza",
     docsUrl: EXTERNAL_URLS.docs,
