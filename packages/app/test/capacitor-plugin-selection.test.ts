@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import {
   resolveAndroidCapacitorPlugins,
+  resolveCapacitorAndroidIdentity,
   resolveCapacitorHttpEnabled,
   resolveCapacitorLoggingBehavior,
 } from "../capacitor.config";
@@ -32,13 +33,50 @@ describe("Android Capacitor plugin selection", () => {
     expect(resolveCapacitorHttpEnabled("android", "local")).toBe(true);
     expect(resolveCapacitorHttpEnabled("ios", "cloud")).toBe(true);
   });
+
+  it("keeps the emitted identity and Android project selection aligned", () => {
+    const stagingIdentity = resolveCapacitorAndroidIdentity(
+      {
+        ELIZA_APP_ID: " ai.elizaos.app.staging ",
+        ELIZA_IOS_APP_ID: "ai.elizaos.app.ios",
+      },
+      "ai.elizaos.app",
+    );
+
+    expect(stagingIdentity).toEqual({
+      appId: "ai.elizaos.app.staging",
+      projectPath: "android",
+    });
+    expect(
+      resolveCapacitorAndroidIdentity({ ELIZA_APP_ID: " " }, "ai.elizaos.app"),
+    ).toEqual({
+      appId: "ai.elizaos.app",
+      projectPath: "../app-core/platforms/android",
+    });
+    expect(
+      resolveCapacitorAndroidIdentity(
+        { ELIZA_IOS_APP_ID: "ai.elizaos.app.ios" },
+        "ai.elizaos.app",
+      ),
+    ).toEqual({ appId: "ai.elizaos.app.ios", projectPath: "android" });
+  });
 });
 
 describe("Capacitor logging behavior", () => {
-  it("suppresses native bridge payloads in the debuggable launcher lane", () => {
+  it("suppresses native bridge payloads in every Android Cloud lane", () => {
     expect(
       resolveCapacitorLoggingBehavior({
         ELIZA_ANDROID_LAUNCHER_BUILD: "1",
+      }),
+    ).toBe("none");
+    expect(
+      resolveCapacitorLoggingBehavior({
+        ELIZA_ANDROID_CLOUD_BUILD: "1",
+      }),
+    ).toBe("none");
+    expect(
+      resolveCapacitorLoggingBehavior({
+        ELIZA_ANDROID_CLOUD_BUILD: "true",
       }),
     ).toBe("none");
   });
