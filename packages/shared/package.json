@@ -313,6 +313,16 @@
       "import": "./dist/contracts/pendant-session-sync.js",
       "default": "./dist/contracts/pendant-session-sync.js"
     },
+    "./contracts/remote-control": {
+      "types": "./dist/contracts/remote-control.d.ts",
+      "eliza-source": {
+        "types": "./src/contracts/remote-control.ts",
+        "import": "./src/contracts/remote-control.ts",
+        "default": "./src/contracts/remote-control.ts"
+      },
+      "import": "./dist/contracts/remote-control.js",
+      "default": "./dist/contracts/remote-control.js"
+    },
     "./contracts/scheduled-task-execution": {
       "types": "./dist/contracts/scheduled-task-execution.d.ts",
       "eliza-source": {

@@ -43,6 +43,7 @@ Run from the repo root with `--cwd packages/app`, or from inside the package dir
 
 ```bash
 bun run dev            # Vite dev server (renderer only; UI port from ELIZA_UI_PORT, default 2138)
+bun run dev:cloud-only # Vite renderer with hosted Cloud onboarding policy
 bun run build          # Full app build (scripts/build.mjs)
 bun run build:web      # Vite build only (no Capacitor sync)
 bun run plugin:build   # Plugin-only build
@@ -77,6 +78,25 @@ grants still cover the target instead of minting another profile.
 
 The desktop shell is built by Electrobun from the repo root (`bun run dev:desktop`),
 not from inside this package â `packages/app` only produces the renderer.
+
+### Cloud-only renderer development
+
+The ordinary `bun run dev` command intentionally retains the local/cloud/remote
+runtime chooser for local-agent development. Use `bun run dev:cloud-only` when
+you need the same hosted Cloud sign-in policy as a production Cloud surface.
+This explicit lane starts the canonical Vite development server with the
+existing `VITE_ELIZA_DESKTOP_RUNTIME_MODE=cloud` policy; it does not introduce a
+separate renderer or change the default development experience.
+
+To compose the lane against staging, provide the public Cloud and Steward
+configuration without embedding credentials:
+
+```bash
+VITE_ELIZA_CLOUD_BASE=https://cloud-staging.eliza.app \
+VITE_STEWARD_API_URL=https://staging.eliza.app/steward \
+VITE_STEWARD_TENANT_ID=elizacloud-staging \
+bun run --cwd packages/app dev:cloud-only
+```
 
 ## Config
 

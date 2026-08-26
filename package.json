@@ -61,6 +61,7 @@
     "dev:prepare": "node packages/scripts/run-turbo.mjs run build --filter=@elizaos/app... --filter=!@elizaos/app",
     "dev": "node packages/app-core/scripts/ensure-shared-i18n-data.mjs && bun --no-install --conditions=eliza-source packages/app-core/scripts/dev-ui.mjs",
     "dev:ui": "node packages/app-core/scripts/ensure-shared-i18n-data.mjs && bun --no-install --conditions=eliza-source packages/app-core/scripts/dev-ui.mjs --ui-only",
+    "dev:cloud-only": "node packages/app-core/scripts/ensure-shared-i18n-data.mjs && bun run --cwd packages/app dev:cloud-only",
     "dev:desktop": "ELIZA_DEV_SOURCE=1 ELIZA_NAMESPACE=eliza bun --conditions=eliza-source packages/app-core/scripts/dev-platform.mjs",
     "dev:desktop:watch": "ELIZA_DEV_SOURCE=1 ELIZA_NAMESPACE=eliza ELIZA_DESKTOP_VITE_WATCH=1 bun --conditions=eliza-source packages/app-core/scripts/dev-platform.mjs",
     "desktop:stack-status": "bun --conditions=eliza-source packages/app-core/scripts/desktop-stack-status.mjs",

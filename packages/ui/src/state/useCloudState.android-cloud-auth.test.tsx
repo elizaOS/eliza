@@ -50,6 +50,7 @@ vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => {
 
 vi.mock("../platform/android-runtime", () => ({
   isAndroidCloudBuild: () => true,
+  isAndroidLauncherBuild: () => false,
 }));
 
 vi.mock("../api", () => ({ client: harness.api }));

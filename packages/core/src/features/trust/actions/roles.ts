@@ -11,6 +11,7 @@
 
 import dedent from "dedent";
 import { logger } from "../../../logger.ts";
+import { type RoleName, setEntityRoleCas } from "../../../roles.ts";
 import {
 	type ActionResult,
 	ChannelType,
@@ -282,22 +283,69 @@ export async function updateRoleHandler(
 			continue;
 		}
 
-		world.metadata.roles[assignment.entityId] = assignment.newRole;
-
-		worldUpdated = true;
-		updatedRoles.push({
-			entityName: targetEntity.names[0] || "Unknown",
-			entityId: assignment.entityId,
-			newRole: assignment.newRole,
-		});
-
-		summaryLines.push(
-			`Updated ${targetEntity.names[0]}'s role to ${assignment.newRole}.`,
+		// #23100: commit through the atomic compare-and-swap path instead of
+		// the former whole-world blind write — a concurrent metadata writer
+		// becomes a typed conflict (re-read + re-check per attempt inside the
+		// CAS loop) rather than being silently overwritten. The write targets
+		// THIS handler's resolved world (the configured WORLD_ID setting may
+		// differ from the message room's world), and there is deliberately NO
+		// trailing runtime.updateWorld(world): the handler's pre-loop world
+		// object is stale by then and a blind overwrite would clobber the
+		// committed CAS results it is reporting success for.
+		const casResult = await setEntityRoleCas(
+			runtime,
+			message,
+			assignment.entityId,
+			assignment.newRole === Role.NONE
+				? "GUEST"
+				: (assignment.newRole as RoleName),
+			{
+				worldId: world.id as UUID,
+				authorize: (fresh) => {
+					if (!fresh) return false;
+					const freshRoles = fresh.metadata.roles ?? {};
+					// The local canModifyRole is typed on the message-loop Role
+					// vocabulary; the metadata stores RoleName strings whose
+					// ranks agree (MEMBER ≡ USER), so compare normalized.
+					const freshRequesterRole = normalizeRole(
+						freshRoles[message.entityId],
+					);
+					const freshTargetRole = normalizeRole(
+						freshRoles[assignment.entityId],
+					);
+					if (freshRequesterRole === freshTargetRole) return false;
+					return freshRequesterRole === "OWNER";
+				},
+			},
 		);
+		if (casResult.status === "committed") {
+			worldUpdated = true;
+			updatedRoles.push({
+				entityName: targetEntity.names[0] || "Unknown",
+				entityId: assignment.entityId,
+				newRole: assignment.newRole,
+			});
+			summaryLines.push(
+				`Updated ${targetEntity.names[0]}'s role to ${assignment.newRole}.`,
+			);
+		} else if (casResult.status === "world_not_found") {
+			summaryLines.push(
+				`Could not update ${targetEntity.names[0]}'s role; the world is gone.`,
+			);
+		} else if (casResult.status === "unauthorized") {
+			// Authorization was re-checked against fresh state and denied —
+			// report the permission loss, not a phantom concurrency retry.
+			summaryLines.push(
+				`Could not update ${targetEntity.names[0]}'s role; permission was revoked while processing. Ask an OWNER to retry.`,
+			);
+		} else {
+			summaryLines.push(
+				`Could not update ${targetEntity.names[0]}'s role due to a concurrent change; retry.`,
+			);
+		}
 	}
 
 	if (worldUpdated) {
-		await runtime.updateWorld(world);
 		logger.info(`Updated roles in world metadata for server ${serverId}`);
 	}
 

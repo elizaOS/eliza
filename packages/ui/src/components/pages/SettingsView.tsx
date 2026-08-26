@@ -306,6 +306,7 @@ function LegacySettingsView({
   const visibleSections = getAllSettingsSections().filter((section) => {
     if (section.id === "wallet-rpc" && walletEnabled === false) return false;
     if (section.cloudOnly && !managedCloudRuntime) return false;
+    if (section.androidCloudOnly && !isAndroidCloudBuild()) return false;
     if (section.hideOnManagedCloud && managedCloudRuntime) return false;
     if (!isViewVisible(section, enabledKinds)) return false;
     if (section.hideOnCloud && isAndroidCloudBuild()) return false;
@@ -429,12 +430,16 @@ function LegacySettingsView({
   // against the full registry, not just the visible hub rows: hidden sections
   // stay registered exactly so their deep-links keep working (the mvp-hidden
   // contract). The hub itself only lists visible sections.
+  const registeredActiveSection = activeSection
+    ? (getAllSettingsSections().find(
+        (section) => section.id === activeSection,
+      ) ?? null)
+    : null;
   const activeSectionDef: SettingsSectionDef | null = activeSection
     ? (visibleSections.find((section) => section.id === activeSection) ??
-      getAllSettingsSections().find(
-        (section) => section.id === activeSection,
-      ) ??
-      null)
+      (registeredActiveSection?.androidCloudOnly && !isAndroidCloudBuild()
+        ? null
+        : registeredActiveSection))
     : null;
   // A desktop workspace always has useful content beside its persistent rail.
   // This presentational default does not write a hash, so the mobile root still

@@ -16,6 +16,7 @@ import {
   type SurfaceManifestBearer,
   type ViewKind,
 } from "@elizaos/core";
+import { hasStewardAuthedCookie } from "@elizaos/shared/steward-session-client";
 import { X } from "lucide-react";
 import "./components/chat/chat-source-registration";
 import {
@@ -46,19 +47,14 @@ import {
   LazyCharacterEditor,
   LazyCharacterExperienceView,
   LazyCharacterSkillsView,
-  LazyContactsPageView,
   LazyDatabasePageView,
   LazyDesktopWorkspaceSection,
   LazyFilesView,
-  LazyKnowledgeView,
   LazyLiveMeetingPageView,
   LazyLogsView,
   LazyMemoryViewerView,
-  LazyMessagesPageView,
   LazyPendantTranscriptView,
-  LazyPhonePageView,
   LazyPluginsPageView,
-  LazyRelationshipsView,
   LazyRuntimeView,
   LazySettingsView,
   LazySkillsView,
@@ -121,6 +117,7 @@ import { useShellControllerContext } from "./components/shell/ShellControllerCon
 import { ShellOverlays } from "./components/shell/ShellOverlays";
 import { StartupFailureView } from "./components/shell/StartupFailureView";
 import { StartupScreen } from "./components/shell/StartupScreen";
+import { StartupShell } from "./components/shell/StartupShell";
 import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
 import { TrayLauncher } from "./components/shell/TrayLauncher";
 import { useBarSurfaceWindows } from "./components/shell/useBarSurfaceWindows";
@@ -132,6 +129,7 @@ import { ShellViewAgentSurface } from "./components/views/ShellViewAgentSurface"
 import { ViewErrorBoundary } from "./components/views/ViewErrorBoundary";
 import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
 import { useBootConfig } from "./config/boot-config-react.hooks";
+import { useBranding } from "./config/branding";
 import {
   CHAT_OPEN_EVENT,
   dispatchNavigateViewEvent,
@@ -144,7 +142,10 @@ import {
   type PushToTalkHoldDetail,
 } from "./events";
 import { completeRemoteAgentFirstRun } from "./first-run/adopt-remote-first-run";
-import { persistMobileRuntimeModeForServerTarget } from "./first-run/mobile-runtime-mode";
+import {
+  isElizaCloudRuntimeLocked,
+  persistMobileRuntimeModeForServerTarget,
+} from "./first-run/mobile-runtime-mode";
 import { BootRecoveryConductorMount } from "./first-run/use-boot-recovery-conductor";
 import { FirstRunConductorMount } from "./first-run/use-first-run-conductor";
 import { ModelStatusConductorMount } from "./first-run/use-model-status-conductor";
@@ -172,6 +173,7 @@ import {
   titleForTab,
 } from "./navigation";
 import { applyLaunchConnection } from "./platform";
+import { isAndroidCloudBuild } from "./platform/android-runtime";
 import {
   type AppShellMode,
   resolveAppShellMode,
@@ -188,6 +190,11 @@ import {
   useChatComposer,
   useChatInputRef,
 } from "./state/ChatComposerContext.hooks";
+import {
+  clearCloudAuthFirstScreenGreeting,
+  markCloudAuthFirstScreenGreeting,
+} from "./state/cloud-auth-first-screen";
+import { hasUsableStoredStewardToken } from "./state/cloud-steward-login";
 import { isAuthoritativeFirstRunOpen } from "./state/first-run-chat-release";
 import {
   authProbeShouldHoldShell,
@@ -486,6 +493,34 @@ function surfaceOwnsViewport(
 ): boolean {
   const header = resolveSurfaceManifest(declaration).header;
   return header === "fullscreen" || header === "immersive";
+}
+
+function ViewSurfaceFrame({
+  children,
+  declaration,
+  nav,
+  title,
+}: {
+  children: ReactNode;
+  declaration: SurfaceManifestBearer | null | undefined;
+  nav?: ReactNode;
+  title: string;
+}) {
+  const manifest = resolveSurfaceManifest(declaration);
+  const showHeader = manifest.header === "normal" && nav === undefined;
+  return (
+    <TabContentView
+      nav={nav}
+      reserveChatClearance={!surfaceOwnsViewport(declaration)}
+    >
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        {showHeader ? <ViewHeader title={title} /> : null}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          {children}
+        </div>
+      </div>
+    </TabContentView>
+  );
 }
 
 interface ResolvedDynamicPage {
@@ -1064,27 +1099,18 @@ function findRemoteViewForRoute(
 
 function renderRemoteView(view: ViewRegistryEntry, nav?: ReactNode): ReactNode {
   if (!view.bundleUrl && !view.frameUrl) return null;
-  // Plugin views own their canvas and stay flush with the shell. Repeating a
-  // route title above every plugin wasted the narrowest part of mobile screens
-  // and duplicated view-owned headings; navigation remains available from the
-  // persistent chat-actions menu and the browser/OS back affordance.
-  const manifest = resolveSurfaceManifest(view);
-  const ownsViewport =
-    manifest.header === "fullscreen" || manifest.header === "immersive";
   return (
-    <TabContentView nav={nav} reserveChatClearance={!ownsViewport}>
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <DynamicViewLoader
-          bundleUrl={view.bundleUrl}
-          frameUrl={view.frameUrl}
-          componentExport={view.componentExport}
-          viewId={view.id}
-          viewType={view.viewType}
-          reserveChatClearance={false}
-          surface={view.surface}
-        />
-      </div>
-    </TabContentView>
+    <ViewSurfaceFrame declaration={view} nav={nav} title={view.label}>
+      <DynamicViewLoader
+        bundleUrl={view.bundleUrl}
+        frameUrl={view.frameUrl}
+        componentExport={view.componentExport}
+        viewId={view.id}
+        viewType={view.viewType}
+        reserveChatClearance={false}
+        surface={view.surface}
+      />
+    </ViewSurfaceFrame>
   );
 }
 
@@ -1326,15 +1352,13 @@ function buildStaticTabRenderers(): Record<
     skills: withHeader("skills", <LazySkillsView />),
     trajectories: withHeader("trajectories", <LazyTrajectoriesView />),
     transcripts: wrap(<LazyLiveMeetingPageView />),
-    // Relationships is a Character-family section: the shared CharacterSectionNav
-    // (passed as `nav`) owns the "Character" header + strip, so the view renders
-    // headerless.
-    relationships: ({ characterNav }) => (
-      <TabContentView nav={characterNav}>
-        <LazyRelationshipsView hideHeader={Boolean(characterNav)} />
-      </TabContentView>
-    ),
-    documents: wrap(<LazyKnowledgeView />),
+    // Relationships is plugin-owned. Its app-shell registration claims the
+    // route and supplies the page chrome; an absent plugin is an unavailable
+    // feature rather than a host-side duplicate implementation.
+    relationships: () => <ViewUnavailableFallback />,
+    // Knowledge is plugin-owned. If the document plugin is unavailable, the
+    // registered-page resolver renders its explicit unavailable state.
+    documents: () => <ViewUnavailableFallback />,
     experience: ({ characterNav }) => (
       <TabContentView nav={characterNav}>
         <LazyCharacterExperienceView />
@@ -1379,12 +1403,9 @@ function buildStaticTabRenderers(): Record<
     // marker as the home tile, so a deep-link off the fork falls back to
     // "unavailable" instead of rendering on web/desktop/iOS/Play-Store Android.
     camera: () => renderPhoneSurface(isAospShellEnabled(), LazyCameraPageView),
-    phone: ({ nativeOsSurfaceEnabled }) =>
-      renderPhoneSurface(nativeOsSurfaceEnabled, LazyPhonePageView),
-    messages: ({ nativeOsSurfaceEnabled }) =>
-      renderPhoneSurface(nativeOsSurfaceEnabled, LazyMessagesPageView),
-    contacts: ({ nativeOsSurfaceEnabled }) =>
-      renderPhoneSurface(nativeOsSurfaceEnabled, LazyContactsPageView),
+    phone: () => <ViewUnavailableFallback />,
+    messages: () => <ViewUnavailableFallback />,
+    contacts: () => <ViewUnavailableFallback />,
     views: ({ navigationPath }) => renderAppsSurface(navigationPath),
     apps: ({ navigationPath }) => renderAppsSurface(navigationPath),
     // Rendered directly (no opaque TabContentView chrome) so the live app
@@ -1479,13 +1500,27 @@ function renderViewRouterContent({
   const walletNav = isWalletSectionPath(navigationPath) ? (
     <WalletSectionNav activePath={navigationPath} />
   ) : undefined;
-  // The AOSP system surfaces are host-owned because they coordinate privileged
-  // device APIs beyond the narrower plugin views. Keep them stable when remote
-  // metadata or a late in-process registration for the same path arrives.
+  // Native-OS feature surfaces are plugin-owned. Prefer the plugin's bundled
+  // registration when it is present; retain the legacy renderer only as a
+  // compatibility fallback while older builds finish migrating their plugin.
   if (
     nativeOsSurfaceEnabled &&
     (NATIVE_OS_VIEW_IDS as readonly string[]).includes(resolveBuiltinTabId(tab))
   ) {
+    const nativeRegistration = listAppShellPages().find(
+      (entry) =>
+        entry.tabAffinity === resolveBuiltinTabId(tab) &&
+        appShellPageMatchesPath(entry, navigationPath),
+    );
+    if (nativeRegistration) {
+      return (
+        <TabContentView
+          reserveChatClearance={!surfaceOwnsViewport(nativeRegistration)}
+        >
+          <RegisteredAppShellPage registration={nativeRegistration} />
+        </TabContentView>
+      );
+    }
     return renderStaticViewRouterTab({
       tab,
       nativeOsSurfaceEnabled,
@@ -1502,12 +1537,13 @@ function renderViewRouterContent({
     managedCloudRuntime,
   );
   const renderAppShellPage = (registration: AppShellPageRegistration) => (
-    <TabContentView
+    <ViewSurfaceFrame
+      declaration={registration}
       nav={walletNav}
-      reserveChatClearance={!surfaceOwnsViewport(registration)}
+      title={registration.label}
     >
       <RegisteredAppShellPage registration={registration} />
-    </TabContentView>
+    </ViewSurfaceFrame>
   );
 
   // Restricted native renderers cannot execute an agent-served bundle. Prefer
@@ -1532,20 +1568,22 @@ function renderViewRouterContent({
 
   if (visibleDynamicPage(dynamicPage, enabledKinds, managedCloudRuntime)) {
     return (
-      <TabContentView
-        reserveChatClearance={!surfaceOwnsViewport(dynamicPage.registration)}
+      <ViewSurfaceFrame
+        declaration={dynamicPage.registration}
+        title={dynamicPage.registration?.label ?? dynamicPage.id}
       >
         <DynamicPluginPage resolved={dynamicPage} />
-      </TabContentView>
+      </ViewSurfaceFrame>
     );
   }
   if (visibleDynamicPage(dynamicAppPage, enabledKinds, managedCloudRuntime)) {
     return (
-      <TabContentView
-        reserveChatClearance={!surfaceOwnsViewport(dynamicAppPage.registration)}
+      <ViewSurfaceFrame
+        declaration={dynamicAppPage.registration}
+        title={dynamicAppPage.registration?.label ?? dynamicAppPage.id}
       >
         <DynamicPluginPage resolved={dynamicAppPage} />
-      </TabContentView>
+      </ViewSurfaceFrame>
     );
   }
 
@@ -2322,6 +2360,7 @@ function HomeScreenMount({
 }
 
 function AppContent() {
+  const branding = useBranding();
   const {
     startupError,
     startupCoordinator,
@@ -2341,6 +2380,9 @@ function AppContent() {
     uiShellMode,
     uiLanguage,
     t,
+    elizaCloudConnected,
+    elizaCloudLoginBusy,
+    elizaCloudLoginError,
   } = useAppSelectorShallow((s) => ({
     startupError: s.startupError,
     startupCoordinator: s.startupCoordinator,
@@ -2360,6 +2402,9 @@ function AppContent() {
     uiShellMode: s.uiShellMode,
     uiLanguage: s.uiLanguage,
     t: s.t,
+    elizaCloudConnected: s.elizaCloudConnected,
+    elizaCloudLoginBusy: s.elizaCloudLoginBusy,
+    elizaCloudLoginError: s.elizaCloudLoginError,
   }));
   const isPopout = useIsPopout();
   const isAuxiliaryAppWindow = isAppWindowRoute();
@@ -3008,6 +3053,52 @@ function AppContent() {
   const bugReport = useBugReportState();
   // Loading is handled entirely by StartupScreen.
 
+  const cloudAuthFirstScreenOwnsSurface =
+    shellMode === "full" &&
+    !isPopout &&
+    !isAuxiliaryAppWindow &&
+    !cloudPairToken &&
+    (branding.cloudOnly === true ||
+      isAndroidCloudBuild() ||
+      isElizaCloudRuntimeLocked());
+  const hasUsableCloudSession =
+    elizaCloudConnected ||
+    hasUsableStoredStewardToken() ||
+    (typeof window !== "undefined" && hasStewardAuthedCookie());
+  const startCloudAuthFirstScreen = useCallback(async () => {
+    if (firstRunComplete !== true) {
+      markCloudAuthFirstScreenGreeting();
+    }
+    try {
+      await handleCloudLoginRecovery({ requireClientAuth: true });
+    } catch (error) {
+      clearCloudAuthFirstScreenGreeting();
+      throw error;
+    }
+  }, [firstRunComplete, handleCloudLoginRecovery]);
+  const cloudAuthAutoStartedRef = useRef(false);
+  useEffect(() => {
+    if (
+      !cloudAuthFirstScreenOwnsSurface ||
+      hasUsableCloudSession ||
+      elizaCloudLoginBusy ||
+      elizaCloudLoginError ||
+      cloudAuthAutoStartedRef.current
+    ) {
+      return;
+    }
+    cloudAuthAutoStartedRef.current = true;
+    void startCloudAuthFirstScreen().catch(() => {
+      // error-policy:J4 the full-screen retry surface renders the hook's error.
+    });
+  }, [
+    cloudAuthFirstScreenOwnsSurface,
+    elizaCloudLoginBusy,
+    elizaCloudLoginError,
+    hasUsableCloudSession,
+    startCloudAuthFirstScreen,
+  ]);
+
   useEffect(() => {
     // Safety-net watchdog: the coordinator has its own timeouts per phase, but
     // this catches any edge case where the coordinator gets stuck in a loading
@@ -3106,6 +3197,44 @@ function AppContent() {
   // Self-contained (its own ElizaClient + AudioContext); no app chrome / gate.
   if (shellMode === "voice-workbench") {
     return <VoiceWorkbenchShell />;
+  }
+
+  // Cloud account auth owns the primary viewport before chat exists. Hosted
+  // web redirects to Steward in this tab; the Android launcher keeps Eliza's
+  // hosted page in-app and uses the secure browser only for providers such as
+  // Google that reject embedded WebViews.
+  if (cloudAuthFirstScreenOwnsSurface && !hasUsableCloudSession) {
+    return (
+      <BugReportProvider value={bugReport}>
+        {elizaCloudLoginError ? (
+          <StartupFailureView
+            error={{
+              reason: "unknown",
+              phase: "starting-backend",
+              message: "Eliza Cloud sign-in could not be completed.",
+              detail: elizaCloudLoginError,
+            }}
+            onRetry={() => {
+              void startCloudAuthFirstScreen().catch(() => {
+                // error-policy:J4 the same retry surface receives the error.
+              });
+            }}
+          />
+        ) : (
+          <StartupShell
+            view={{
+              kind: "loading",
+              phase: "initializing-agent",
+              status: "Opening secure sign in…",
+            }}
+            onRetry={() => {
+              void startCloudAuthFirstScreen();
+            }}
+          />
+        )}
+        <BugReportModal />
+      </BugReportProvider>
+    );
   }
 
   // OS chat-overlay window — render JUST the floating assistant pill +

@@ -3,6 +3,7 @@
 import { BlooioApiResponseError, blooioAdapter } from "./adapters/blooio";
 import { TelegramApiResponseError, telegramAdapter } from "./adapters/telegram";
 import type { ChatEvent } from "./adapters/types";
+import { resolveConnectorAccountId } from "./connector-account";
 import { logger } from "./logger";
 import type { GatewayRedis } from "./redis";
 import { resolveSharedWebhookConfig } from "./webhook-config";
@@ -15,7 +16,9 @@ type InternalWebhookDelivery =
   | {
       platform: "telegram";
       project: string;
+      connectorAccountId: string;
       chatId: string;
+      providerThreadId?: string;
       text: string;
       idempotencyKey: string;
     }
@@ -29,6 +32,7 @@ type InternalWebhookDelivery =
   | {
       platform: "blooio";
       project: string;
+      connectorAccountId: string;
       chatId: string;
       text: string;
       idempotencyKey: string;
@@ -93,19 +97,31 @@ function parseDelivery(value: unknown): InternalWebhookDelivery | undefined {
   }
   if (
     input.platform === "telegram" &&
+    typeof input.connectorAccountId === "string" &&
+    input.connectorAccountId.trim().length >= 3 &&
+    input.connectorAccountId.length <= 160 &&
     typeof input.chatId === "string" &&
-    /^-?\d{1,20}$/.test(input.chatId)
+    /^-?\d{1,20}$/.test(input.chatId) &&
+    (input.providerThreadId === undefined ||
+      (typeof input.providerThreadId === "string" &&
+        /^[1-9]\d{0,15}$/.test(input.providerThreadId) &&
+        Number.isSafeInteger(Number(input.providerThreadId))))
   ) {
     return {
       platform: "telegram",
       project: input.project,
+      connectorAccountId: input.connectorAccountId,
       chatId: input.chatId,
+      ...(typeof input.providerThreadId === "string"
+        ? { providerThreadId: input.providerThreadId }
+        : {}),
       text: input.text.trim(),
       idempotencyKey: input.idempotencyKey,
     };
   }
   if (
     input.platform === "blooio" &&
+    input.providerThreadId === undefined &&
     typeof input.phoneNumber === "string" &&
     /^\+[1-9]\d{6,14}$/.test(input.phoneNumber)
   ) {
@@ -121,12 +137,17 @@ function parseDelivery(value: unknown): InternalWebhookDelivery | undefined {
   // sends it through `/v4/chats/{id}/messages` with no `to`/`from` pair.
   if (
     input.platform === "blooio" &&
+    input.providerThreadId === undefined &&
+    typeof input.connectorAccountId === "string" &&
+    input.connectorAccountId.trim().length >= 3 &&
+    input.connectorAccountId.length <= 160 &&
     typeof input.chatId === "string" &&
     /^chat_[A-Za-z0-9_-]{1,120}$/i.test(input.chatId)
   ) {
     return {
       platform: "blooio",
       project: input.project,
+      connectorAccountId: input.connectorAccountId,
       chatId: input.chatId,
       text: input.text.trim(),
       idempotencyKey: input.idempotencyKey,
@@ -157,6 +178,33 @@ export async function deliverInternalMessage(
     );
   }
 
+  const config = resolveSharedWebhookConfig(
+    delivery.platform,
+    delivery.project,
+  );
+  const configuredConnectorAccountId = resolveConnectorAccountId(
+    delivery.platform,
+    config,
+  );
+  if (
+    !configuredConnectorAccountId ||
+    ("connectorAccountId" in delivery &&
+      delivery.connectorAccountId !== configuredConnectorAccountId)
+  ) {
+    return Response.json(
+      {
+        success: false,
+        error: "connector account mismatch",
+        retryable: false,
+        acceptance: "not_accepted",
+      },
+      { status: 422 },
+    );
+  }
+
+  // Keep the pre-account key as the monotonic replay fence. Changing this key
+  // during rollout would strand complete/indeterminate receipts and could
+  // resend a reminder that the provider already accepted.
   const dedupeKey = `internal-delivery:${delivery.platform}:${delivery.project}:${delivery.idempotencyKey}`;
   let existingValue: string | null;
   try {
@@ -231,10 +279,6 @@ export async function deliverInternalMessage(
 
   let connectorAttempted = false;
   try {
-    const config = resolveSharedWebhookConfig(
-      delivery.platform,
-      delivery.project,
-    );
     const recipientId =
       "chatId" in delivery ? delivery.chatId : delivery.phoneNumber;
     const event: ChatEvent = {
@@ -242,11 +286,17 @@ export async function deliverInternalMessage(
       messageId: delivery.idempotencyKey,
       chatId: recipientId,
       chatType:
-        delivery.platform === "blooio" && "chatId" in delivery
-          ? "group"
+        "chatId" in delivery &&
+        (delivery.platform === "blooio" || delivery.chatId.startsWith("-"))
+          ? delivery.platform === "telegram"
+            ? "supergroup"
+            : "group"
           : "private",
       senderId: recipientId,
       text: delivery.text,
+      ...(delivery.platform === "telegram" && delivery.providerThreadId
+        ? { providerThreadId: delivery.providerThreadId }
+        : {}),
       rawPayload: { source: "shared-reminder" },
     };
     const adapter =

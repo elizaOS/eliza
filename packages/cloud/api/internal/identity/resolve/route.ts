@@ -87,6 +87,7 @@ app.post("/", async (c) => {
     const personalDedicated = usesPersonalRuntime
       ? await findActivePersonalDedicatedTarget(
           organizationId,
+          user.id,
           personalSourceId,
         )
       : null;
