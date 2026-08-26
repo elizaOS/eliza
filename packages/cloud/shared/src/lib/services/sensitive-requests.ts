@@ -12,7 +12,7 @@ import {
   type SensitiveRequestSecretTarget,
   type SensitiveRequestStatus,
   type SensitiveRequestTarget,
-} from "@elizaos/core";
+} from "@elizaos/core/edge";
 import {
   type SensitiveRequest as DbSensitiveRequest,
   type SensitiveRequestEvent as DbSensitiveRequestEvent,

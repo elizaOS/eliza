@@ -4,7 +4,7 @@
  * The provider lookup is read-only and every mismatch fails closed.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import type Stripe from "stripe";
 import { z } from "zod";
 import { isProductionDeployment } from "../config/deployment-environment";

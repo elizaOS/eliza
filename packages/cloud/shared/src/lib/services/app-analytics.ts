@@ -4,7 +4,7 @@
  * Handles tracking and aggregation of app usage analytics
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { type AppRequest, appsRepository, type NewAppAnalytics } from "../../db/repositories/apps";
 import type { App } from "../types";
 import { logger } from "../utils/logger";

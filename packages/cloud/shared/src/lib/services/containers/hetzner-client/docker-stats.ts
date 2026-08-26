@@ -6,7 +6,7 @@
  * and binary (KiB, MiB) suffixes that Docker emits.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core/edge";
 import { type ContainerMetricsSnapshot, HetznerClientError } from "./types";
 
 /** Parse the output of `docker stats --no-stream --format ...`. */

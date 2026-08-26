@@ -4,7 +4,7 @@
  * Includes Redis caching for validation to reduce database load on high-traffic APIs.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import crypto from "crypto";
 import { and, eq, gt, isNull, notExists, or, sql } from "drizzle-orm";
 import { type DbTransaction, dbWrite } from "../../db/client";

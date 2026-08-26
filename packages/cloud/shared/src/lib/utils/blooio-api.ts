@@ -4,7 +4,7 @@
  * Shared constants and helpers for Blooio iMessage/SMS API interactions.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import crypto from "crypto";
 import { z } from "zod";
 import { ownedBoundedFetch } from "./owned-bounded-fetch";

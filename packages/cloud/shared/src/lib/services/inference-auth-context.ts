@@ -24,7 +24,7 @@
  */
 
 import { createHash, timingSafeEqual } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { getErrorStatusCode } from "../api/errors";
 import { type CacheBackendKind, cache } from "../cache/client";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";

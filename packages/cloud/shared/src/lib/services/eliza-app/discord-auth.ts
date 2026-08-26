@@ -5,7 +5,7 @@
  * See: https://discord.com/developers/docs/topics/oauth2
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core/edge";
 import { discordFetch } from "../../utils/discord-api";
 import { logger } from "../../utils/logger";
 import { elizaAppConfig } from "./config";

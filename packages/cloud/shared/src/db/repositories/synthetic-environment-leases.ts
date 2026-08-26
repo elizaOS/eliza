@@ -4,7 +4,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import type {
   AcquireSyntheticEnvironmentLeaseInput,
   GuardedSyntheticEnvironmentWriteResult,

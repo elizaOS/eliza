@@ -1,6 +1,6 @@
 /** Persists durable deletion receipts and generation-fenced worker state transitions. */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import {
   and,
   asc,

@@ -1,5 +1,5 @@
 // Defines the shared runtime history Drizzle table shape used by cloud repositories and services.
-import type { KeylessWebSearchProvider } from "@elizaos/core";
+import type { KeylessWebSearchProvider } from "@elizaos/core/edge";
 import { jsonb, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
 
 /** Bounded public-read authority retained so a follow-up honors success or unavailability. */

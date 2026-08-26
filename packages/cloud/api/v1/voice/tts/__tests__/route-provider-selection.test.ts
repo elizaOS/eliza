@@ -14,7 +14,7 @@ import {
   mock,
   test,
 } from "bun:test";
-import * as workerCoreStub from "../../../../src/stubs/elizaos-core";
+import * as workerCoreStub from "@elizaos/core/edge";
 import * as coreTestContract from "../../../../src/stubs/elizaos-core-test-contract";
 
 const requireAuthOrApiKeyWithOrg = mock(async () => ({
@@ -135,6 +135,7 @@ mock.module("@elizaos/shared/voice/first-sentence-snip", () => ({
 }));
 
 mock.module("@elizaos/core", () => ({
+  ...coreTestContract,
   canRequesterMutateDocument: coreTestContract.canRequesterMutateDocument,
   ChannelType: coreTestContract.ChannelType,
   DatabaseAdapter: coreTestContract.DatabaseAdapter,

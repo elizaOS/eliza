@@ -4,7 +4,7 @@
  * eligibility predicate so scheduling never counts a row it cannot transfer.
  */
 import { randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import {
   MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   SnapshotPayloadTooLargeError,

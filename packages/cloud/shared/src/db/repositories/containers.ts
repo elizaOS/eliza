@@ -3,7 +3,7 @@
  * billing, lifecycle, and deployment-log boundaries.
  */
 import { randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import Decimal from "decimal.js";
 import {
   and,

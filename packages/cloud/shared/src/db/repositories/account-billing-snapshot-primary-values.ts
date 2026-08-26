@@ -4,7 +4,7 @@
  * distinguishable primary-source failures instead of becoming business data.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 
 const CUSTOMER_BINDING_AUTHORITY_SOURCE = "stripe_customer_binding_authority";
 const CUSTOMER_BINDING_AUTHORITY_FIELD = "stripe_customer_binding_is_authoritative.authoritative";

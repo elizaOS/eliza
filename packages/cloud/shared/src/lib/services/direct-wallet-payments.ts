@@ -1,5 +1,5 @@
 /** Coordinates verified direct-wallet settlement, crediting, invoicing, and durable sweeping. */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import {
   createAssociatedTokenAccountInstruction,
   createTransferCheckedInstruction,

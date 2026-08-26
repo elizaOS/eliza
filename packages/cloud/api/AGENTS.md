@@ -46,9 +46,10 @@ src/
   steward/embedded.ts      Embedded Steward (auth provider) handler, mounted at /steward*.
   lib/mcp/                 mcps-transport-gateway.ts (createMcpsTransportApp factory).
   lib/apps-deploy-gate.ts  Gate logic for app deploy triggers; used by bootstrap-app.ts.
-  stubs/                   Build-time stand-ins for node-only deps unavailable in workerd
-                           (elizaos-core, ssh2, undici, plugin-sql, plugin-elevenlabs,
-                           s3 adapter) — wired via wrangler.toml alias/define.
+  stubs/                   Narrow build-time stand-ins for host-only dependencies
+                           unavailable in workerd (Core documents, ssh2, undici,
+                           plugin-sql, plugin-elevenlabs, s3 adapter). Core runtime
+                           and contracts use the canonical `@elizaos/core/edge` entry.
 
 <resource>/.../route.ts    Route handlers live in top-level resource dirs (NOT under src/):
                            v1/, auth/, agents/, billing/, stripe/, mcp/, mcps/, a2a/,
@@ -115,7 +116,7 @@ Add an endpoint:
 - `index.ts` must stay thin. Anything heavy belongs in `bootstrap-app.ts`/routes so it loads lazily — eager work at module top level risks Cloudflare startup error 10021.
 - `/api/health` is answered directly in `index.ts` (never boots the full app) — keep it dependency-free.
 - The global auth middleware allowlists public paths in `middleware/auth.ts`; programmatic auth (`X-API-Key`, `Bearer eliza_*`) passes through and is validated per-route, not by the gate.
-- `src/stubs/*` exist because workerd lacks some node-only deps; they are wired via `wrangler.toml` aliases/`[define]`, not by direct import. Don't import node-only modules in route code.
+- `src/stubs/*` are narrow fail-loud boundaries for specific host-only leaves. Do not add a blanket package mirror: use canonical worker-safe exports such as `@elizaos/core/edge`, and add one exact leaf trap only when a host-only capability must remain visible to shared composition.
 - Special-cased routes registered manually in `bootstrap-app.ts` (root `/`, `/steward*`, legacy birdeye 308 redirect, jwks, OIDC discovery + OIDC jwks) bypass the codegen tree — keep that list in sync when touching those surfaces. Connector webhooks, including Blooio, are owned only by the generated route tree. The OIDC pair must stay root-mounted: relying parties derive `/.well-known/openid-configuration` from the issuer origin and never look under `/api`.
 - This is the only `@elizaos/*` package with no published consumers; treat `wrangler.toml` + `index.ts` as the contract.
 

@@ -135,6 +135,16 @@
 			"import": "./dist/node/errors.js",
 			"default": "./dist/node/errors.js"
 		},
+		"./documents": {
+			"types": "./dist/features/documents/index.d.ts",
+			"eliza-source": {
+				"types": "./src/documents.ts",
+				"import": "./src/documents.ts",
+				"default": "./src/documents.ts"
+			},
+			"import": "./dist/node/documents.js",
+			"default": "./dist/node/documents.js"
+		},
 		"./raw-sql": {
 			"types": "./dist/database/raw-sql.d.ts",
 			"eliza-source": {

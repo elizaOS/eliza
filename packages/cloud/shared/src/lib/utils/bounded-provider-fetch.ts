@@ -10,7 +10,7 @@
  * caller may read it normally after the bound has been proven.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 
 const MAX_TIMER_MS = 2_147_483_647;
 

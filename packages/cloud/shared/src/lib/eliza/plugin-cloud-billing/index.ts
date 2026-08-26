@@ -10,7 +10,7 @@
  * - Credit deduction tracking
  */
 
-import { type Plugin } from "@elizaos/core";
+import { type Plugin } from "@elizaos/core/edge";
 import { agentCreditsProvider } from "../providers/agent-credits-provider";
 
 export const cloudBillingPlugin: Plugin = {

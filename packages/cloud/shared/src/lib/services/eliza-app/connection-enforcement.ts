@@ -6,7 +6,7 @@
  * steer the user toward connecting Google, Microsoft, or X.
  */
 
-import { assertModelOutputComplete } from "@elizaos/core";
+import { assertModelOutputComplete } from "@elizaos/core/edge";
 import { generateText } from "ai";
 import { cache } from "../../cache/client";
 import { getLanguageModel } from "../../providers/language-model";

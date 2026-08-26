@@ -1,5 +1,5 @@
 // Coordinates cloud service room title behavior behind route handlers.
-import { assertModelOutputComplete } from "@elizaos/core";
+import { assertModelOutputComplete } from "@elizaos/core/edge";
 import { generateText } from "ai";
 import { memoriesRepository, roomsRepository } from "../../db/repositories";
 import { getLanguageModel } from "../providers/language-model";

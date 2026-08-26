@@ -3,7 +3,7 @@
  * organization-credit purchase. The durable webhook row is also the callback
  * outbox; process-local listeners never decide whether money was fulfilled.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import Decimal from "decimal.js";
 import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { writeTransaction } from "../../db/helpers";

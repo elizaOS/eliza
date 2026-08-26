@@ -7,7 +7,7 @@
  * strategy, affinity, and health semantics local to cloud-shared without a
  * runtime dependency on app-core.
  */
-import type { LinkedAccountConfig } from "@elizaos/core";
+import type { LinkedAccountConfig } from "@elizaos/core/edge";
 import type {
   AccountPool,
   AccountPoolDeps,

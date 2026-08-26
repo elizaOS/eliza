@@ -814,7 +814,6 @@ export async function buildNode(
 				`${TS_SRC}/index.node.ts`,
 				`${TS_SRC}/errors.ts`,
 				`${TS_SRC}/roles.ts`,
-				`${TS_SRC}/raw-sql.ts`,
 				`${TS_SRC}/client-public.ts`,
 				`${TS_SRC}/security/kms/index.ts`,
 				`${TS_SRC}/security/mcp-server-config.ts`,
@@ -831,8 +830,26 @@ export async function buildNode(
 			selfPackageName: "@elizaos/core", // Exclude self from externals to avoid self-referential imports
 		},
 	});
+	// These public leaves must be emitted directly under dist/node. Keeping
+	// them in a separate build gives Bun a common source root of src/ instead
+	// of preserving the src/ directory used by the nested Node entrypoints.
+	const runNodeLeaves = runnerFactory({
+		...sharedConfig,
+		buildOptions: {
+			entrypoints: [`${TS_SRC}/documents.ts`, `${TS_SRC}/raw-sql.ts`],
+			outdir: "dist/node",
+			target: "node",
+			format: "esm",
+			external: nodeExternals,
+			sourcemap: true,
+			minify: false,
+			generateDts: false,
+			skipClean: true,
+			selfPackageName: "@elizaos/core",
+		},
+	});
 
-	await runNode();
+	await Promise.all([runNode(), runNodeLeaves()]);
 
 	const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 	console.log(`✅ Node.js build complete in ${duration}s`);

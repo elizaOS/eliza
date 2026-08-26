@@ -1,5 +1,5 @@
 /** Derives per-request MCP server configuration for hosted Eliza runtimes. */
-import { elizaLogger } from "@elizaos/core";
+import { elizaLogger } from "@elizaos/core/edge";
 import { getCloudAwareEnv, getCloudBinding } from "../../runtime/cloud-bindings";
 import { getRequestContext } from "../../services/entity-settings/request-context";
 import type { UserContext } from "../user-context";

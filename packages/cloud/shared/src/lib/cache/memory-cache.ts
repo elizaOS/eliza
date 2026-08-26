@@ -2,7 +2,7 @@
  * Memory cache for Eliza agent memories and conversation contexts.
  */
 
-import type { Memory, UUID } from "@elizaos/core";
+import type { Memory, UUID } from "@elizaos/core/edge";
 import { logger } from "../utils/logger";
 import { cache } from "./client";
 import { CacheKeys, CacheTTL } from "./keys";

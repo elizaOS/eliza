@@ -10,7 +10,7 @@
 
 import type { ElevenLabs } from "@elevenlabs/elevenlabs-js";
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { logger } from "../utils/logger";
 
 /**

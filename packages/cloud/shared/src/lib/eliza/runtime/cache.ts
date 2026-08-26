@@ -1,6 +1,6 @@
 // Wires hosted Eliza agent cache behavior for cloud runtime services.
 import { createHash } from "node:crypto";
-import { type AgentRuntime, elizaLogger, type UUID } from "@elizaos/core";
+import { type AgentRuntime, elizaLogger, type UUID } from "@elizaos/core/edge";
 import type { DbAdapterPool } from "./database/adapter-pool";
 import { safeClose, stopRuntimeServices } from "./lifecycle";
 import { stableSerialize } from "./stable-serialize";

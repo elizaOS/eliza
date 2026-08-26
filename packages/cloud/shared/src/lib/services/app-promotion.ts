@@ -1,5 +1,5 @@
 // Coordinates cloud service app promotion behavior behind route handlers.
-import { assertModelOutputComplete } from "@elizaos/core";
+import { assertModelOutputComplete } from "@elizaos/core/edge";
 import { generateText } from "ai";
 import type { App } from "../../db/repositories";
 // Note: When ANTHROPIC_COT_BUDGET is set and model is Anthropic, temperature is silently dropped

@@ -18,7 +18,7 @@ import {
   type ConnectedAccountStatus,
   normalizeConnectedAccount,
   PROVIDER_INTEGRATION_CONTRACT_VERSION,
-} from "@elizaos/core";
+} from "@elizaos/core/edge";
 import type { discordConnections } from "../../../db/schemas/discord-connections";
 import type { phoneGatewayDevices } from "../../../db/schemas/phone-gateway-devices";
 import type { platformCredentials } from "../../../db/schemas/platform-credentials";

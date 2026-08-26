@@ -2,7 +2,7 @@
  * Users service for managing user accounts and organization relationships.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import {
   apiKeysRepository,
   type NewUser,

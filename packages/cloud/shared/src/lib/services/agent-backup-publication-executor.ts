@@ -5,7 +5,7 @@
  * chunk inventory already persisted by recordCaptured.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import {
   type AgentBackupOperationClaim,
   type AgentBackupOperationExecution,

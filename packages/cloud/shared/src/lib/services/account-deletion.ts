@@ -1,7 +1,7 @@
 /** Coordinates fail-closed account-deletion requests and fenced worker claims. */
 
 import { createHash, randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { accountDeletionRequestsRepository } from "../../db/repositories/account-deletion-requests";
 import type { AccountDeletionExport } from "../../db/schemas/account-deletion-exports";
 import type { AccountDeletionRequest } from "../../db/schemas/account-deletion-requests";

@@ -2,7 +2,7 @@
  * Implements the versioned LinkedIn Marketing API advertising provider.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { logger } from "../../../utils/logger";
 import { downloadAdMedia, mediaFileName } from "../media-utils";
 import type {

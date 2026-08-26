@@ -4,7 +4,7 @@
  * canonical and cleanup-fenced physical container names because warm claims
  * and blue/green swaps can make either name differ from the sandbox row ID.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { ensureAgentSandboxSchema } from "../../db/ensure-agent-sandbox-schema";
 import { dbRead, dbWrite } from "../../db/helpers";

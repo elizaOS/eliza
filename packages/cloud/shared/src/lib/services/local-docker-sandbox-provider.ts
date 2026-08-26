@@ -16,7 +16,7 @@ import { isIP } from "node:net";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { fetchWithSsrfGuard } from "@elizaos/core/network";
 
 import { containersEnv } from "../config/containers-env";

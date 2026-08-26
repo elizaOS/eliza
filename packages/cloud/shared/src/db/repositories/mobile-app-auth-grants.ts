@@ -5,7 +5,7 @@
  * cleanup are transactional so a response loss or concurrent request cannot
  * strand an active credential or mint two credentials for one code.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { and, asc, count, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
 import { dbWrite } from "../client";
 import { buildMobileAppAuthCredentialProvenance } from "../mobile-app-auth-credential-policy";

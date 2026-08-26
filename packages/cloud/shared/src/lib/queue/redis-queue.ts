@@ -12,7 +12,7 @@
  * Wadis locally) and circuit-breaker behavior.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core/edge";
 import { cache } from "../cache/client";
 import { logger } from "../utils/logger";
 

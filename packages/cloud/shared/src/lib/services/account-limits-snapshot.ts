@@ -9,7 +9,7 @@
  * become plausible prices, entitlements, or zero usage.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import Decimal from "decimal.js";
 import { DrizzleError, DrizzleQueryError } from "drizzle-orm";
 import type {

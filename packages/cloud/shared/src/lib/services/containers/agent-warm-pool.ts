@@ -16,7 +16,7 @@
  * them to repository + Hetzner client I/O.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { agentSandboxesRepository } from "../../../db/repositories/agent-sandboxes";
 import { dockerNodesRepository } from "../../../db/repositories/docker-nodes";
 import { jobsRepository } from "../../../db/repositories/jobs";

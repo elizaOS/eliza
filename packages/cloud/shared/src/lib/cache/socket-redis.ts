@@ -14,7 +14,7 @@
  * a thin `node:net`/`node:tls` shim — same client, two transports.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 
 type SocketLike = {
   readable: ReadableStream<Uint8Array>;

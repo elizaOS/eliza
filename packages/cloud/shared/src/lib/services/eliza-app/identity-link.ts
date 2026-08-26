@@ -11,7 +11,7 @@
  * reports `already_used`. Cross-account takeovers fail closed at both the
  * owner check and the database uniqueness constraints.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { and, eq, lt } from "drizzle-orm";
 import { dbWrite } from "../../../db/client";
 import { usersRepository } from "../../../db/repositories/users";

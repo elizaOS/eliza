@@ -11,7 +11,7 @@
  * - {{credits.canAfford}} - Whether agent can afford typical operations
  */
 
-import type { IAgentRuntime, Provider } from "@elizaos/core";
+import type { IAgentRuntime, Provider } from "@elizaos/core/edge";
 import { agentBudgetService } from "../../services/agent-budgets";
 import { organizationsService } from "../../services/organizations";
 import { logger } from "../../utils/logger";

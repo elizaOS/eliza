@@ -1,12 +1,13 @@
 // Wires hosted Eliza agent agent loader behavior for cloud runtime services.
+
+import { documentsPluginCore } from "@elizaos/core/documents";
 import {
   type Action,
   type Character,
-  documentsPluginCore,
   type Plugin,
   type Provider,
   parseCharacter,
-} from "@elizaos/core";
+} from "@elizaos/core/edge";
 import { memoriesRepository } from "../../db/repositories/agents/memories";
 import { charactersService } from "../services/characters/characters";
 import type { ElizaCharacter } from "../types/eliza-character";

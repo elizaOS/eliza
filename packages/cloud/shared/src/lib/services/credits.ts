@@ -2,7 +2,7 @@
  * Credits service for managing organization credit balances and transactions.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import Decimal from "decimal.js";
 import { sql } from "drizzle-orm";
 import { type SqlExecutor, sqlRows } from "../../db/execute-helpers";

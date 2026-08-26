@@ -8,7 +8,7 @@
  * plugin does not import server-only database services.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import type { MeetingBillingState, MeetingEndReason } from "@elizaos/shared";
 import { type CreditReservation, creditsService, InsufficientCreditsError } from "./credits";
 

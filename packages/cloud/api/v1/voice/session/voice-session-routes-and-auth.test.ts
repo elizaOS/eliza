@@ -5,6 +5,7 @@
  */
 
 import { afterAll, describe, expect, mock, test } from "bun:test";
+import * as realCore from "@elizaos/core";
 import { Hono } from "hono";
 // Capture the REAL surface of every shared module a sibling changed-test also
 // imports for real (jwt, session-registry, voice-usage-meter). The coverage
@@ -19,7 +20,6 @@ import * as realVoiceUsageMeter from "@/lib/services/voice-usage-meter";
 import * as realJwt from "@/lib/voice-session/jwt";
 import * as realSessionRegistry from "@/lib/voice-session/session-registry";
 import type { AppEnv } from "@/types/cloud-worker-env";
-import * as workerCoreStub from "../../../src/stubs/elizaos-core";
 import * as coreTestContract from "../../../src/stubs/elizaos-core-test-contract";
 
 const realCloudWorkerErrorsExports = { ...realCloudWorkerErrors };
@@ -55,7 +55,8 @@ const apiRoot = new URL("../../../src", import.meta.url).href;
 // `getCurrentUser`; stub `@elizaos/core` so that graph never has to resolve in
 // the DB-free unit lane (matches the sibling mint-consent route test).
 mock.module("@elizaos/core", () => ({
-  ...workerCoreStub,
+  ...realCore,
+  ...coreTestContract,
   canRequesterMutateDocument: coreTestContract.canRequesterMutateDocument,
   ChannelType: coreTestContract.ChannelType,
   DatabaseAdapter: coreTestContract.DatabaseAdapter,
@@ -67,16 +68,16 @@ mock.module("@elizaos/core", () => ({
   documentRoleHasGlobalVisibility:
     coreTestContract.documentRoleHasGlobalVisibility,
   encryptedCharacter: coreTestContract.encryptedCharacter,
-  ElizaError: workerCoreStub.ElizaError,
-  isElizaError: workerCoreStub.isElizaError,
+  ElizaError: realCore.ElizaError,
+  isElizaError: realCore.isElizaError,
   isSensitiveKeyName: () => false,
   logger: coreTestContract.logger,
   normalizePairingPageOptions: coreTestContract.normalizePairingPageOptions,
   redactLogArgs: (a: unknown) => a,
-  redactSensitiveText: workerCoreStub.redactSensitiveText,
+  redactSensitiveText: realCore.redactSensitiveText,
   Service: coreTestContract.Service,
-  toWellFormedUnicode: workerCoreStub.toWellFormedUnicode,
-  truncateWellFormed: workerCoreStub.truncateWellFormed,
+  toWellFormedUnicode: realCore.toWellFormedUnicode,
+  truncateWellFormed: realCore.truncateWellFormed,
   validateDocumentFragmentQueryParams:
     coreTestContract.validateDocumentFragmentQueryParams,
   validateDocumentListQueryParams:

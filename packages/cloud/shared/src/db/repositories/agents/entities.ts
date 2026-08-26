@@ -4,7 +4,7 @@
  * Handles all database operations for entities without spinning up runtime.
  */
 
-import type { Entity, UUID } from "@elizaos/core";
+import type { Entity, UUID } from "@elizaos/core/edge";
 import { eq, inArray, sql } from "drizzle-orm";
 import { sqlRows } from "../../execute-helpers";
 import { dbRead, dbWrite } from "../../helpers";

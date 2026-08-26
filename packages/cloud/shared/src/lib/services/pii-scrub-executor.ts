@@ -29,7 +29,7 @@ import {
   type PiiMatch,
   PiiScrubFabricationError,
   type PiiScrubResult,
-} from "@elizaos/core";
+} from "@elizaos/core/edge";
 
 /** Marker `model_id` recorded when tier-0 fully covered an item. */
 export const PII_SCRUB_TIER0_MODEL_ID = "tier0";

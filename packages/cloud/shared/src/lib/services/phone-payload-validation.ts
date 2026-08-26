@@ -1,6 +1,6 @@
 /** Validates phone metadata and media payloads before they cross the JSONB boundary. */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { isPhoneLosslessJsonNumber } from "./phone-lossless-json";
 
 export const PHONE_MESSAGE_METADATA_INVALID = "PHONE_MESSAGE_METADATA_INVALID";
