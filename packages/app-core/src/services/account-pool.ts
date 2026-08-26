@@ -1450,7 +1450,8 @@ export interface DirectProviderCredentialExportDeps {
 
 /**
  * Tracks which env values the export pass wrote so a later pass can retract
- * exactly those values. Operator-provided launch env is never touched.
+ * exactly those values. A displaced operator value is restored when pool
+ * ownership ends; an operator edit made during ownership is left untouched.
  */
 export type DirectProviderEnvLedger = Map<
   DirectAccountProvider,
@@ -1458,6 +1459,65 @@ export type DirectProviderEnvLedger = Map<
 >;
 
 const defaultDirectProviderEnvLedger: DirectProviderEnvLedger = new Map();
+
+type DisplacedEnvValue = { present: false } | { present: true; value: string };
+
+/**
+ * Baselines are scoped to a ledger so tests and alternate hosts do not share
+ * authority state. A WeakMap keeps the public ledger wire shape compatible
+ * while retaining the operator values displaced by a live pool export.
+ */
+const displacedDirectProviderEnv = new WeakMap<
+  DirectProviderEnvLedger,
+  Map<string, DisplacedEnvValue>
+>();
+const directProviderExportGeneration = new WeakMap<
+  DirectProviderEnvLedger,
+  number
+>();
+
+function nextDirectProviderExportGeneration(
+  ledger: DirectProviderEnvLedger,
+): number {
+  const generation = (directProviderExportGeneration.get(ledger) ?? 0) + 1;
+  directProviderExportGeneration.set(ledger, generation);
+  return generation;
+}
+
+function assignExportedEnv(
+  env: NodeJS.ProcessEnv,
+  ledger: DirectProviderEnvLedger,
+  key: string,
+  value: string,
+): void {
+  let displaced = displacedDirectProviderEnv.get(ledger);
+  if (!displaced) {
+    displaced = new Map();
+    displacedDirectProviderEnv.set(ledger, displaced);
+  }
+  if (!displaced.has(key)) {
+    const previous = env[key];
+    displaced.set(
+      key,
+      previous === undefined
+        ? { present: false }
+        : { present: true, value: previous },
+    );
+  }
+  env[key] = value;
+}
+
+function restoreExportedEnv(
+  env: NodeJS.ProcessEnv,
+  ledger: DirectProviderEnvLedger,
+  key: string,
+  ownedValue: string,
+): void {
+  if (env[key] !== ownedValue) return;
+  const displaced = displacedDirectProviderEnv.get(ledger)?.get(key);
+  if (displaced?.present) env[key] = displaced.value;
+  else delete env[key];
+}
 
 function retractExportedDirectProviderEnv(
   providerId: DirectAccountProvider,
@@ -1468,27 +1528,33 @@ function retractExportedDirectProviderEnv(
   if (!previous) return;
   ledger.delete(providerId);
   const envKey = DIRECT_ACCOUNT_PROVIDER_ENV[providerId];
-  if (env[envKey] === previous.token) delete env[envKey];
+  restoreExportedEnv(env, ledger, envKey, previous.token);
   if (providerId === "zai-api" && env.Z_AI_API_KEY === previous.token) {
-    delete env.Z_AI_API_KEY;
+    restoreExportedEnv(env, ledger, "Z_AI_API_KEY", previous.token);
   }
-  if (previous.openAiCompat && env.OPENAI_API_KEY === previous.token) {
-    delete env.OPENAI_API_KEY;
-    if (
-      env.OPENAI_BASE_URL === OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER[providerId]
-    ) {
-      delete env.OPENAI_BASE_URL;
-    }
+  const openAiCompatBase = OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER[providerId];
+  if (previous.openAiCompat && openAiCompatBase) {
+    restoreExportedEnv(env, ledger, "OPENAI_API_KEY", previous.token);
+    restoreExportedEnv(env, ledger, "OPENAI_BASE_URL", openAiCompatBase);
   }
 }
 
-export function retractAllExportedDirectProviderEnv(
+function retractAllExportedDirectProviderEnvInternal(
   env: NodeJS.ProcessEnv,
   ledger: DirectProviderEnvLedger,
 ): void {
   for (const providerId of DIRECT_ACCOUNT_PROVIDER_IDS) {
     retractExportedDirectProviderEnv(providerId, env, ledger);
   }
+  displacedDirectProviderEnv.delete(ledger);
+}
+
+export function retractAllExportedDirectProviderEnv(
+  env: NodeJS.ProcessEnv,
+  ledger: DirectProviderEnvLedger,
+): void {
+  nextDirectProviderExportGeneration(ledger);
+  retractAllExportedDirectProviderEnvInternal(env, ledger);
 }
 
 /**
@@ -1506,6 +1572,7 @@ export async function applyDirectProviderCredentialsToEnv(
   deps: DirectProviderCredentialExportDeps,
 ): Promise<void> {
   const { pool, env, ledger } = deps;
+  const generation = nextDirectProviderExportGeneration(ledger);
   const activeProvider = activeBackend
     ? DIRECT_PROVIDER_BY_BACKEND[activeBackend]
     : undefined;
@@ -1526,17 +1593,24 @@ export async function applyDirectProviderCredentialsToEnv(
     if (account && token) selected.set(providerId, token);
   }
 
+  // A newer mutation began a sync while this pass was resolving credentials.
+  // Its view of account eligibility is authoritative; an older snapshot must
+  // never re-export a credential after the newer pass disabled or deleted it.
+  if (directProviderExportGeneration.get(ledger) !== generation) return;
+
   // Resolve every selection before mutating the environment, then retract the
   // complete previous export as one synchronous transition. This prevents a
   // native OpenAI token from being paired with a stale OpenRouter/xAI base URL
   // while switching routes, and lets a disabled/revoked selection fail closed.
-  retractAllExportedDirectProviderEnv(env, ledger);
+  retractAllExportedDirectProviderEnvInternal(env, ledger);
 
   for (const [providerId, token] of selected) {
     const envKey = DIRECT_ACCOUNT_PROVIDER_ENV[providerId];
-    env[envKey] = token;
+    assignExportedEnv(env, ledger, envKey, token);
     if (providerId === "zai-api") {
-      env.Z_AI_API_KEY ??= token;
+      if (!env.Z_AI_API_KEY) {
+        assignExportedEnv(env, ledger, "Z_AI_API_KEY", token);
+      }
     }
     ledger.set(providerId, {
       token,
@@ -1565,8 +1639,8 @@ export async function applyDirectProviderCredentialsToEnv(
     ? OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER[activeProvider]
     : undefined;
   if (openAiCompatibleBase && activeProviderToken) {
-    env.OPENAI_API_KEY = activeProviderToken;
-    env.OPENAI_BASE_URL = openAiCompatibleBase;
+    assignExportedEnv(env, ledger, "OPENAI_API_KEY", activeProviderToken);
+    assignExportedEnv(env, ledger, "OPENAI_BASE_URL", openAiCompatibleBase);
     const exported = activeProvider ? ledger.get(activeProvider) : undefined;
     if (exported) exported.openAiCompat = true;
   }
