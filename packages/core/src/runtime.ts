@@ -207,6 +207,7 @@ import {
 	type Content,
 	type ControlMessage,
 	type CreateOAuthFlowStateParams,
+	type DeleteConnectorAccountCredentialRefsParams,
 	type DeleteConnectorAccountParams,
 	type DeleteOAuthFlowStateParams,
 	type Entity,
@@ -13491,6 +13492,12 @@ ${section_end}`;
 		params: ListConnectorAccountCredentialRefsParams,
 	): Promise<ConnectorAccountCredentialRefRecord[]> {
 		return this.adapter.listConnectorAccountCredentialRefs(params);
+	}
+
+	async deleteConnectorAccountCredentialRefs(
+		params: DeleteConnectorAccountCredentialRefsParams,
+	): Promise<number> {
+		return this.adapter.deleteConnectorAccountCredentialRefs(params);
 	}
 
 	async appendConnectorAccountAuditEvent(

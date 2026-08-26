@@ -27,6 +27,13 @@ const unsupported = {
 } as const;
 
 export class AppleCalendarWeb extends WebPlugin implements AppleCalendarPlugin {
+  async addListener(
+    _eventName: "calendarStoreChanged",
+    _listener: (event: { observedAt: string }) => void,
+  ): Promise<{ remove: () => Promise<void> }> {
+    return { remove: async () => undefined };
+  }
+
   async checkPermissions(): Promise<AppleCalendarPermissionStatus> {
     return {
       calendar: "restricted",
