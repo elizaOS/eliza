@@ -14,6 +14,9 @@ describe("Computer Use direct routing", () => {
     "Use Computer-Use to take a screenshot",
     "please use my computer to open Finder",
     "use the computer and show me the desktop",
+    "Hey, can you use computer use to open Telegram?",
+    "I need you to use computer use to take a screenshot",
+    "I want u to use my computer to open Finder",
   ])("recognizes an explicit host-control request: %s", (text) => {
     expect(looksLikeExplicitComputerUseRequest(text)).toBe(true);
   });
@@ -49,7 +52,7 @@ describe("Computer Use direct routing", () => {
       contexts: ["automation", "admin"],
       unavailable: {
         code: "COMPUTER_USE_UNAVAILABLE",
-        reply: expect.stringContaining("Computer Use is unavailable"),
+        reply: expect.stringContaining("restart the app session"),
       },
     });
   });

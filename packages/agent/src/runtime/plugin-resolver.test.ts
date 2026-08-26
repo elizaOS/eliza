@@ -335,6 +335,25 @@ describe("resolvePlugins manifest discovery", () => {
       expect(enabledDeferred.map((plugin) => plugin.name)).not.toContain(
         pluginName,
       );
+
+      STATIC_ELIZA_PLUGINS[pluginName] = {
+        default: {
+          name: pluginName,
+          description: "Invalid routing-only fixture without init.",
+          services: [],
+        } as Plugin,
+      };
+      const missingInitConfig: ElizaConfig = {
+        plugins: { allow: [], entries: {} },
+      } as ElizaConfig;
+      await expect(
+        resolvePlugins(missingInitConfig, {
+          quiet: true,
+          phase: "blocking",
+        }),
+      ).rejects.toMatchObject({
+        code: "PLUGIN_ROUTING_ONLY_INIT_MISSING",
+      });
     } finally {
       process.chdir(previousCwd);
       if (previousStaticPlugin === undefined) {

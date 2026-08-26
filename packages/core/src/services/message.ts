@@ -4668,11 +4668,13 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					messageHandler.plan.requiresTool === true ||
 					nonSimpleContexts.length > 0
 				) {
-					return matchingRules.some((rule) =>
-						routeReplacesStage1Candidate(
-							rule,
-							messageHandler.plan.candidateActions,
-						),
+					return matchingRules.some(
+						(rule) =>
+							rule.unavailable !== undefined ||
+							routeReplacesStage1Candidate(
+								rule,
+								messageHandler.plan.candidateActions,
+							),
 					);
 				}
 				return true;
@@ -4696,6 +4698,9 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 						),
 					),
 				);
+				const authoritativeRules = new Set(
+					matchingRules.filter((rule) => rule.unavailable !== undefined),
+				);
 				const unavailablePatch = (rule: DirectActionRoutingRule) => {
 					const unavailable = rule.unavailable;
 					if (!unavailable) return undefined;
@@ -4718,10 +4723,9 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 				});
 				if (routes.length === 0) {
 					const unavailableRule =
+						[...authoritativeRules].find((rule) => rule.unavailable) ??
 						[...declaredReplacementRules].find((rule) => rule.unavailable) ??
-						(messageHandler.plan.requiresTool !== true
-							? matchingRules.find((rule) => rule.unavailable)
-							: undefined);
+						matchingRules.find((rule) => rule.unavailable);
 					return unavailableRule
 						? unavailablePatch(unavailableRule)
 						: undefined;
@@ -4734,6 +4738,18 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					declaredReplacementRules.size > 0
 						? routes.filter(({ rule }) => declaredReplacementRules.has(rule))
 						: [];
+				const authoritativeRoutes =
+					authoritativeRules.size > 0
+						? routes.filter(({ rule }) => authoritativeRules.has(rule))
+						: [];
+				if (authoritativeRules.size > 0 && authoritativeRoutes.length === 0) {
+					const unavailableRule = [...authoritativeRules].find(
+						(rule) => rule.unavailable,
+					);
+					return unavailableRule
+						? unavailablePatch(unavailableRule)
+						: undefined;
+				}
 				if (declaredReplacementRules.size > 0 && replacingRoutes.length === 0) {
 					const unavailableRule = [...declaredReplacementRules].find(
 						(rule) => rule.unavailable,
@@ -4743,18 +4759,25 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 						: undefined;
 				}
 				const selectedRoutes =
-					replacingRoutes.length > 0 ? replacingRoutes : routes;
+					authoritativeRoutes.length > 0
+						? authoritativeRoutes
+						: replacingRoutes.length > 0
+							? replacingRoutes
+							: routes;
 				const replacedActionNames = new Set(
 					replacingRoutes.flatMap(({ rule }) =>
 						(rule.replacesActionNames ?? []).map(normalizeActionIdentifier),
 					),
 				);
-				const retainedStage1Candidates = (
-					messageHandler.plan.candidateActions ?? []
-				).filter(
-					(candidate) =>
-						!replacedActionNames.has(normalizeActionIdentifier(candidate)),
-				);
+				const retainedStage1Candidates =
+					authoritativeRoutes.length > 0
+						? []
+						: (messageHandler.plan.candidateActions ?? []).filter(
+								(candidate) =>
+									!replacedActionNames.has(
+										normalizeActionIdentifier(candidate),
+									),
+							);
 				const candidateActions = uniqueActionNames([
 					...retainedStage1Candidates,
 					...selectedRoutes.map(({ action }) => action.name),
@@ -4766,7 +4789,7 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					requiresTool: true,
 					addContexts: contexts,
 					addCandidateActions: candidateActions,
-					...(replacingRoutes.length > 0
+					...(replacingRoutes.length > 0 || authoritativeRoutes.length > 0
 						? { clearCandidateActions: true }
 						: {}),
 					// A deterministic read route must not emit Stage-1's speculative

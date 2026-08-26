@@ -6,7 +6,7 @@ import type { DirectActionRoutingRule } from "@elizaos/core";
 
 const QUOTED_SEGMENT = /`[^`]*`|"[^"]*"|“[^”]*”|‘[^’]*’/gu;
 const EXPLICIT_COMPUTER_USE_REQUEST =
-  /^(?:(?:please|kindly)\s+)?(?:(?:can|could|would|will)\s+(?:you|u)\s+)?use\s+(?:computer[\s_-]*use|(?:my|the)\s+computer)\b/iu;
+  /^(?:(?:hey|hi)\s*,?\s+)?(?:(?:please|kindly)\s+|(?:can|could|would|will)\s+(?:you|u)\s+(?:please\s+)?|i\s+(?:want|need)\s+(?:you|u)\s+to\s+)?use\s+(?:computer[\s_-]*use|(?:my|the)\s+computer)\b/iu;
 
 /**
  * Match only an explicit request for the Computer Use capability. Generic
@@ -43,7 +43,7 @@ export function createComputerUseDirectRoutingRule(): DirectActionRoutingRule {
     unavailable: {
       code: "COMPUTER_USE_UNAVAILABLE",
       reply:
-        "Computer Use is unavailable in this app session. Enable Computer Use and try again. (COMPUTER_USE_UNAVAILABLE)",
+        "Computer Use is unavailable in this app session. Enable Computer Use, restart the app session, and try again. (COMPUTER_USE_UNAVAILABLE)",
     },
     matches: looksLikeExplicitComputerUseRequest,
   };

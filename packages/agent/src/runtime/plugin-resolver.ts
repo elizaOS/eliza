@@ -2813,6 +2813,15 @@ export async function resolvePlugins(
         );
         return { name: pluginName, plugin: wrappedPlugin };
       } else {
+        if (routingOnlyPluginNames.has(pluginName)) {
+          throw new ElizaError(
+            `Routing-only plugin ${pluginName} did not export a valid Plugin object`,
+            {
+              code: "PLUGIN_ROUTING_ONLY_EXPORT_MISSING",
+              context: { pluginName },
+            },
+          );
+        }
         const msg = `[eliza] Plugin ${pluginName} did not export a valid Plugin object`;
         failedPlugins.push({
           name: pluginName,
@@ -2826,6 +2835,17 @@ export async function resolvePlugins(
         return null;
       }
     } catch (err) {
+      if (routingOnlyPluginNames.has(pluginName)) {
+        if (err instanceof ElizaError) throw err;
+        throw new ElizaError(
+          `Required routing-only plugin ${pluginName} failed to load`,
+          {
+            code: "PLUGIN_ROUTING_ONLY_LOAD_FAILED",
+            cause: err,
+            context: { pluginName },
+          },
+        );
+      }
       // error-policy:J4 plugin resolution records the unavailable plugin in
       // failedPlugins; required core-plugin validation fails boot afterward.
       const msg = formatError(err);
