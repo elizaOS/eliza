@@ -7,7 +7,7 @@ import {
 	normalizeDiscordToken,
 	resolveDiscordAccount,
 	resolveDiscordToken,
-} from "./discord-accounts";
+} from "../accounts";
 
 interface RuntimeLike {
 	character?: { settings?: { discord?: Record<string, unknown> } };
