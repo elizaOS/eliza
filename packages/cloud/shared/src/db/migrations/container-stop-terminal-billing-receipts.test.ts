@@ -1,10 +1,10 @@
-/** Applies migration 0335 to PGlite and proves terminal billing exactly-once. */
+/** Applies migration 0339 to PGlite and proves terminal billing exactly-once. */
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { PGlite } from "@electric-sql/pglite";
 
 const migration = await Bun.file(
-  new URL("./0335_container_stop_terminal_billing_receipts.sql", import.meta.url),
+  new URL("./0339_container_stop_terminal_billing_receipts.sql", import.meta.url),
 ).text();
 const schema = await Bun.file(new URL("../schemas/containers.ts", import.meta.url)).text();
 const databases: PGlite[] = [];
@@ -34,7 +34,7 @@ afterEach(async () => {
   await Promise.all(databases.splice(0).map((db) => db.close()));
 });
 
-describe("0335 container stop terminal billing receipts", () => {
+describe("0339 container stop terminal billing receipts", () => {
   test("makes success and uncollected mutually exclusive in either order", async () => {
     const db = await database();
     await db.exec(migration);

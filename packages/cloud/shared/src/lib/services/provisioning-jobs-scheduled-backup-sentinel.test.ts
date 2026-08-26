@@ -358,6 +358,10 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
     const { agentId, orgId, userId, lifecycleRevision } = await seedAgent({
       executionTier: "dedicated-always",
     });
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ billing_status: "shutdown_pending", scheduled_shutdown_at: new Date(0) })
+      .where(eq(agentSandboxes.id, agentId));
     const first = await provisioningJobService.enqueueAgentSuspendOnce({
       agentId,
       organizationId: orgId,
@@ -380,22 +384,37 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
       .update(agentComputeStopIntents)
       .set({ status: "terminal_attention", attempts: 3, next_attempt_at: new Date(0) })
       .where(eq(agentComputeStopIntents.id, intent.id));
-    const recovery = await listRecoverableAgentComputeStopIntents(new Date());
+    const recoveryAt = new Date();
+    const recovery = await listRecoverableAgentComputeStopIntents(recoveryAt);
     expect(recovery.map((row) => row.id)).toContain(intent.id);
 
-    const replay = await provisioningJobService.enqueueAgentSuspendOnce({
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ billing_status: "active", scheduled_shutdown_at: null })
+      .where(eq(agentSandboxes.id, agentId));
+    expect(
+      (await listRecoverableAgentComputeStopIntents(recoveryAt)).map((row) => row.id),
+    ).not.toContain(intent.id);
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ billing_status: "shutdown_pending", scheduled_shutdown_at: new Date(0) })
+      .where(eq(agentSandboxes.id, agentId));
+
+    const rearmed = await rearmRecoverableAgentComputeStopIntentOnce({
+      intentId: intent.id,
       agentId,
       organizationId: orgId,
-      userId,
-      authorization: "billing_request",
+      lifecycleRevision,
+      now: recoveryAt,
     });
-    expect(replay.created).toBe(true);
-    expect(replay.job.id).not.toBe(first.job.id);
+    expect(rearmed).toEqual({ id: first.job.id, rearmed: true });
+    const [rearmedJob] = await dbWrite.select().from(jobs).where(eq(jobs.id, first.job.id));
+    expect(rearmedJob).toMatchObject({ status: "pending", attempts: 0 });
     const [rebound] = await dbWrite
       .select()
       .from(agentComputeStopIntents)
       .where(eq(agentComputeStopIntents.id, intent.id));
-    expect(rebound).toMatchObject({ status: "pending", job_id: replay.job.id, attempts: 0 });
+    expect(rebound).toMatchObject({ status: "pending", job_id: first.job.id, attempts: 0 });
   });
 
   test("billing suspend retains terminal provider failure until provider-confirmed replay", async () => {
@@ -920,14 +939,28 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
     const { agentId, orgId, userId } = await seedAgent({
       executionTier: "dedicated-always",
     });
+    const periodStart = new Date(Date.now() - 60 * 60 * 1000);
     await dbWrite
       .update(organizations)
       .set({ credit_balance: "10.000000" })
       .where(eq(organizations.id, orgId));
     await dbWrite
       .update(agentSandboxes)
-      .set({ sandbox_id: `sandbox-${agentId}`, billing_status: "active" })
+      .set({
+        sandbox_id: `sandbox-${agentId}`,
+        billing_status: "active",
+        last_billed_at: periodStart,
+      })
       .where(eq(agentSandboxes.id, agentId));
+    await dbWrite.insert(computeBillingRateSegments).values({
+      organization_id: orgId,
+      workload_kind: "agent",
+      workload_id: agentId,
+      lifecycle_revision: 0,
+      billing_state: "running",
+      rate_per_hour: "0.010000",
+      effective_at: periodStart,
+    });
     const [current] = await dbWrite
       .select({ lifecycleRevision: agentSandboxes.lifecycle_revision })
       .from(agentSandboxes)
@@ -993,6 +1026,7 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
     const { agentId, orgId, userId } = await seedAgent({
       executionTier: "dedicated-always",
     });
+    const periodStart = new Date(Date.now() - 60 * 60 * 1000);
     await dbWrite
       .update(agentSandboxes)
       .set({
@@ -1001,10 +1035,20 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
         sandbox_id: `sandbox-${agentId}`,
         bridge_url: REACHABLE_BRIDGE,
         health_url: "http://10.0.0.5:8081",
+        last_billed_at: periodStart,
         scheduled_shutdown_at: new Date(0),
         shutdown_warning_sent_at: new Date(0),
       })
       .where(eq(agentSandboxes.id, agentId));
+    await dbWrite.insert(computeBillingRateSegments).values({
+      organization_id: orgId,
+      workload_kind: "agent",
+      workload_id: agentId,
+      lifecycle_revision: 0,
+      billing_state: "running",
+      rate_per_hour: "0.010000",
+      effective_at: periodStart,
+    });
     const [stoppedBeforeAdmission] = await dbWrite
       .select({ lifecycleRevision: agentSandboxes.lifecycle_revision })
       .from(agentSandboxes)
