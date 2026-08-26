@@ -6,11 +6,14 @@
  * Reads app identity from the host's app.config.ts so web, desktop, and
  * native builds share one canonical app contract.
  *
- * Usage: node scripts/run-mobile-build.mjs <android|android-host-e2e|android-cloud-hybrid|android-sms-gateway|android-cloud|android-cloud-audit [aab-path]|android-cloud-debug|android-system|ios|ios-local|ios-overlay>
+ * Usage: node scripts/run-mobile-build.mjs <android|android-launcher|android-host-e2e|android-cloud-hybrid|android-sms-gateway|android-cloud|android-cloud-audit [aab-path]|android-cloud-debug|android-system|ios|ios-local|ios-overlay>
  *
  * Android targets:
  *   - android         Sideload-only debug APK with the on-device agent runtime
  *                     and AOSP/system-only permissions. NOT Play-Store-shippable.
+ *   - android-launcher
+ *                     Direct-install cloud-client APK that qualifies for the
+ *                     stock Android HOME role. Not a Play release artifact.
  *   - android-host-e2e
  *                     Debug APK for hosted emulator evidence. Keeps the real
  *                     Android renderer and native bridge but omits the unused
@@ -1040,6 +1043,7 @@ export function applyIosAppIdentity({
 export function resolveMobileBuildPolicy(platform) {
   const capacitorTarget =
     platform === "android-system" ||
+    platform === "android-launcher" ||
     platform === "android-cloud" ||
     platform === "android-cloud-debug" ||
     platform === "android-cloud-hybrid"
@@ -1053,7 +1057,9 @@ export function resolveMobileBuildPolicy(platform) {
   // is the default sideload/AOSP behavior. Surfaced to the renderer via
   // VITE_ELIZA_ANDROID_RUNTIME_MODE so it can hide the Local picker option.
   const androidRuntimeMode =
-    platform === "android-cloud" || platform === "android-cloud-debug"
+    platform === "android-cloud" ||
+    platform === "android-cloud-debug" ||
+    platform === "android-launcher"
       ? "cloud"
       : platform === "android-cloud-hybrid"
         ? "cloud-hybrid"
@@ -1069,7 +1075,9 @@ export function resolveMobileBuildPolicy(platform) {
           ? "cloud"
           : null;
   const runtimeExecutionMode =
-    platform === "android-cloud" || platform === "android-cloud-debug"
+    platform === "android-cloud" ||
+    platform === "android-cloud-debug" ||
+    platform === "android-launcher"
       ? "cloud"
       : platform === "android" ||
           platform === "android-system" ||
@@ -1095,7 +1103,8 @@ export function resolveMobileBuildPolicy(platform) {
             ? "apple-app-store"
             : platform === "ios-local"
               ? "developer-toolchain"
-              : platform === "android-cloud-debug"
+              : platform === "android-cloud-debug" ||
+                  platform === "android-launcher"
                 ? "developer-debug"
                 : "developer-toolchain";
   return {
@@ -1568,13 +1577,13 @@ function removeIosLocalExecutionAssets() {
 
 // ── Phase 3: Capacitor sync ────────────────────────────────────────────
 
-async function ensurePlatform(platform) {
+async function ensurePlatform(platform, { env = process.env } = {}) {
   const dir = platform === "android" ? androidDir : iosDir;
   if (!fs.existsSync(dir)) {
     const copied = syncPlatformTemplateFiles(platform);
     if (copied.length === 0) {
       console.log(`[mobile-build] Adding Capacitor ${platform} platform...`);
-      await runCapacitor(["add", platform]);
+      await runCapacitor(["add", platform], { env });
     }
   }
   if (!isCapacitorPlatformReady(platform)) {
@@ -2928,7 +2937,10 @@ export function ensureElizaBootReceiverManifest(xml, androidPackage) {
   );
 }
 
-function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
+function overlayAndroid({
+  includeAospRoleLaunchers = false,
+  includeHomeRole = includeAospRoleLaunchers,
+} = {}) {
   assertSharedTreeOnlyForEliza("overlay Java sources");
   const templateJavaRoot = path.join(
     platformsDir,
@@ -3137,7 +3149,7 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       '    <uses-feature android:name="android.hardware.telephony" android:required="false" />',
     );
     const withElizaOsActivityFilters = ensureElizaOsActivityFilters(xml, {
-      enabled: includeAospRoleLaunchers,
+      enabled: includeHomeRole,
     });
     if (withElizaOsActivityFilters !== xml) {
       xml = withElizaOsActivityFilters;
@@ -6188,7 +6200,53 @@ export function findAndroidCloudPackagedRuntimeOffenders(entries) {
   });
 }
 
-export function cloudSafeMainActivityJava(androidPackage) {
+export function cloudSafeMainActivityJava(
+  androidPackage,
+  { launcherKiosk = false } = {},
+) {
+  const launcherImports = launcherKiosk
+    ? `import android.util.Log;
+import android.view.KeyEvent;
+
+import androidx.activity.OnBackPressedCallback;
+`
+    : "";
+  const launcherConstants = launcherKiosk
+    ? '    private static final String TAG = "ElizaMainActivity";\n'
+    : "";
+  const launcherSetup = launcherKiosk
+    ? `
+        // The launcher owns the device surface. Keep Back from finishing the
+        // root activity, then enter Android lock-task mode. A managed device
+        // owner can allowlist this package for silent kiosk; an unmanaged
+        // Pixel receives Android's recoverable screen-pinning confirmation.
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                // Intentionally stay on the launcher root.
+            }
+        });
+        try {
+            startLockTask();
+        } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
+            Log.w(TAG, "Unable to enter launcher lock-task mode", e);
+        }
+`
+    : "";
+  const launcherMethods = launcherKiosk
+    ? `
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        // Keep hardware keyboards and accessibility navigation from moving the
+        // launcher WebView forward through browser history.
+        if (event.getKeyCode() == KeyEvent.KEYCODE_FORWARD
+                || event.getKeyCode() == KeyEvent.KEYCODE_NAVIGATE_NEXT) {
+            return true;
+        }
+        return super.dispatchKeyEvent(event);
+    }
+`
+    : "";
   return `package ${androidPackage};
 
 import android.os.Bundle;
@@ -6199,12 +6257,14 @@ import android.webkit.WebView;
 import androidx.core.splashscreen.SplashScreen;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
+${launcherImports}
 
 import com.getcapacitor.BridgeActivity;
 
 import ${androidPackage}.BuildConfig;
 
 public class MainActivity extends BridgeActivity {
+${launcherConstants}
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -6226,6 +6286,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ElizaPlaySettingsPlugin.class);
 
         super.onCreate(savedInstanceState);
+${launcherSetup}
 
         // Draw the canonical Cloud renderer behind transparent system bars while
         // keeping both bars visible and user-controlled. This uses only the
@@ -6251,6 +6312,7 @@ public class MainActivity extends BridgeActivity {
         DeepLinkBufferPlugin.captureIntent(this, intent);
         super.onNewIntent(intent);
     }
+${launcherMethods}
 
 }
 `;
@@ -7106,7 +7168,11 @@ public class ElizaTasksWorker extends Worker {
 `;
 }
 
-function rewriteCloudJavaSources(javaRoots, androidPackage) {
+function rewriteCloudJavaSources(
+  javaRoots,
+  androidPackage,
+  { launcherKiosk = false } = {},
+) {
   let touched = 0;
   for (const root of javaRoots) {
     if (!fs.existsSync(root)) continue;
@@ -7114,7 +7180,7 @@ function rewriteCloudJavaSources(javaRoots, androidPackage) {
     if (fs.existsSync(mainActivity)) {
       fs.writeFileSync(
         mainActivity,
-        cloudSafeMainActivityJava(androidPackage),
+        cloudSafeMainActivityJava(androidPackage, { launcherKiosk }),
         "utf8",
       );
       touched += 1;
@@ -7320,7 +7386,10 @@ function stripAndroidCloudNativePlugins() {
   );
 }
 
-function auditAndroidCloudSource(phase, { env = process.env } = {}) {
+function auditAndroidCloudSource(
+  phase,
+  { allowHomeRole = false, env = process.env } = {},
+) {
   const failures = [];
   const lp3ColorPolicyEnabled = isAndroidLp3ColorPolicyEnabled(env);
   const stripPolicy = resolveAndroidCloudStripPolicy(env);
@@ -7374,7 +7443,7 @@ function auditAndroidCloudSource(phase, { env = process.env } = {}) {
       );
     }
     for (const forbidden of [
-      "android.intent.category.HOME",
+      ...(allowHomeRole ? [] : ["android.intent.category.HOME"]),
       "com.google.android.apps.healthdata",
       "android.hardware.telephony",
       "android.hardware.bluetooth_le",
@@ -7614,6 +7683,24 @@ function auditAndroidCloudSource(phase, { env = process.env } = {}) {
     );
   }
   console.log(`[mobile-build] android-cloud ${phase} audit passed.`);
+}
+
+function auditAndroidLauncherSource(phase, options = {}) {
+  auditAndroidCloudSource(phase, { ...options, allowHomeRole: true });
+  const manifestPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "AndroidManifest.xml",
+  );
+  const manifest = fs.existsSync(manifestPath)
+    ? fs.readFileSync(manifestPath, "utf8")
+    : "";
+  assertAndroidLauncherManifest(manifest, {
+    label: `android-launcher ${phase} source`,
+  });
+  console.log(`[mobile-build] android-launcher ${phase} audit passed.`);
 }
 
 function auditAndroidSmsGatewaySource(phase) {
@@ -7931,7 +8018,9 @@ function stripAndroidForCloud({ env = process.env } = {}) {
       `[mobile-build] Removed ${removedJavaRootCount} inactive Android Java source root(s).`,
     );
   }
-  rewriteCloudJavaSources(javaRoots, androidPackage);
+  rewriteCloudJavaSources(javaRoots, androidPackage, {
+    launcherKiosk: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
+  });
 
   const testJavaRoots = [
     path.join(
@@ -8133,6 +8222,7 @@ const ANDROID_SOURCE_STRIPS = Object.freeze({
 
 const ANDROID_SOURCE_AUDITS = Object.freeze({
   cloud: auditAndroidCloudSource,
+  launcher: auditAndroidLauncherSource,
   smsGateway: auditAndroidSmsGatewaySource,
   system: auditAndroidSystemSource,
 });
@@ -8143,6 +8233,8 @@ const ANDROID_ARTIFACT_AUDITS = Object.freeze({
   cloud: ({ env, javaHome }) => auditAndroidCloudArtifact({ env, javaHome }),
   cloudDebug: ({ env, javaHome }) =>
     auditAndroidCloudArtifact({ debug: true, env, javaHome }),
+  launcher: ({ androidSdkRoot, env, javaHome }) =>
+    auditAndroidLauncherArtifact({ androidSdkRoot, env, javaHome }),
   smsGateway: ({ androidSdkRoot, javaHome }) =>
     auditAndroidSmsGatewayArtifact({ androidSdkRoot, javaHome }),
   system: ({ androidSdkRoot, javaHome }) =>
@@ -8237,6 +8329,7 @@ export async function runAndroidBuild(
 ) {
   const resolvedEnv = resolveAndroidLp3ColorPolicyBuildEnv(env);
   const target = resolveAndroidBuildTarget(targetName, { debug });
+  const targetEnv = { ...resolvedEnv, ...target.env };
   enforceAndroidLp3ColorPolicyBuildPolicy({
     targetName: target.target,
     env: resolvedEnv,
@@ -8262,11 +8355,9 @@ export async function runAndroidBuild(
 
   await buildWeb(target.webTarget);
   if (target.buildMobileAgentBundle) await buildMobileAgentBundle();
-  await ensurePlatform("android");
+  await ensurePlatform("android", { env: targetEnv });
   await ensureRendererDistMatchesLane(target.webTarget);
-  await runCapacitor(["sync", "android"], {
-    env: { ...process.env, ...target.env },
-  });
+  await runCapacitor(["sync", "android"], { env: targetEnv });
   normalizeCapacitorSettingsFile(
     path.join(androidDir, "capacitor.settings.gradle"),
   );
@@ -8288,7 +8379,7 @@ export async function runAndroidBuild(
     });
   }
   runAndroidTargetPhase(target, ANDROID_SOURCE_STRIPS, "stripSourceKey", {
-    env: resolvedEnv,
+    env: targetEnv,
   });
   runAndroidTargetPhase(
     target,
@@ -9652,6 +9743,110 @@ export function auditAndroidCloudArtifact(
   return artifact;
 }
 
+export function assertAndroidLauncherManifest(
+  manifestText,
+  { label = "android-launcher artifact" } = {},
+) {
+  const requiredMarkers = [
+    "android.intent.action.MAIN",
+    "android.intent.category.HOME",
+    "android.intent.category.DEFAULT",
+  ];
+  const sourceFilters = [
+    ...manifestText.matchAll(
+      /<intent-filter\b[^>]*>([\s\S]*?)<\/intent-filter>/g,
+    ),
+  ].map((match) => match[1]);
+  const aaptLines = manifestText.split(/\r?\n/);
+  const aaptFilters = [];
+  for (let index = 0; index < aaptLines.length; index += 1) {
+    const match = aaptLines[index].match(/^(\s*)E: intent-filter\b/);
+    if (!match) continue;
+    const indent = match[1].length;
+    const block = [aaptLines[index]];
+    for (let next = index + 1; next < aaptLines.length; next += 1) {
+      const nextLine = aaptLines[next];
+      const nextElement = nextLine.match(/^(\s*)E: /);
+      if (nextElement && nextElement[1].length <= indent) break;
+      block.push(nextLine);
+    }
+    aaptFilters.push(block.join("\n"));
+  }
+  const intentFilters = sourceFilters.length > 0 ? sourceFilters : aaptFilters;
+  if (
+    intentFilters.some((filter) =>
+      requiredMarkers.every((marker) => filter.includes(marker)),
+    )
+  ) {
+    return;
+  }
+
+  const missingMarkers = requiredMarkers.filter(
+    (marker) => !manifestText.includes(marker),
+  );
+  const detail =
+    missingMarkers.length > 0
+      ? `missing ${missingMarkers.join(", ")}`
+      : "MAIN, HOME, and DEFAULT are not declared together in one intent-filter";
+  throw mobileBuildError(
+    `[mobile-build] ${label} does not qualify for ROLE_HOME: ${detail}`,
+  );
+}
+
+function auditAndroidLauncherArtifact({
+  androidSdkRoot,
+  env = process.env,
+  javaHome,
+} = {}) {
+  const artifact = auditAndroidCloudArtifact({
+    debug: true,
+    env,
+    javaHome,
+  });
+  const aapt = resolveAndroidBuildTool(androidSdkRoot, "aapt");
+  if (!aapt) {
+    throw mobileBuildError(
+      "[mobile-build] Could not find aapt under Android SDK build-tools for android-launcher artifact audit.",
+    );
+  }
+  assertAndroidLauncherManifest(dumpAndroidArtifactManifest(aapt, artifact));
+  const [runtimeConfigBytes] = readAndroidArtifactEntryBuffers(
+    artifact,
+    ["assets/capacitor.config.json"],
+    javaHome,
+    { label: "android-launcher Capacitor runtime config" },
+  );
+  let runtimeConfig;
+  try {
+    runtimeConfig = JSON.parse(runtimeConfigBytes.toString("utf8"));
+  } catch (cause) {
+    throw mobileBuildError(
+      `[mobile-build] android-launcher capacitor.config.json is invalid JSON: ${cause instanceof Error ? cause.message : String(cause)}`,
+      {
+        cause,
+        code: "ANDROID_LAUNCHER_RUNTIME_CONFIG_INVALID",
+        context: { artifact },
+      },
+    );
+  }
+  if (runtimeConfig.loggingBehavior !== "none") {
+    throw mobileBuildError(
+      "[mobile-build] android-launcher must package Capacitor loggingBehavior=none so native bridge results never reach logcat.",
+      {
+        code: "ANDROID_LAUNCHER_RUNTIME_LOGGING_ENABLED",
+        context: {
+          artifact,
+          loggingBehavior: runtimeConfig.loggingBehavior ?? null,
+        },
+      },
+    );
+  }
+  console.log(
+    `[mobile-build] android-launcher HOME-role artifact audit passed: ${artifact}`,
+  );
+  return artifact;
+}
+
 function auditAndroidSmsGatewayArtifact({ androidSdkRoot, javaHome } = {}) {
   const artifact = findAndroidCloudDebugApk();
   if (!artifact) {
@@ -10306,6 +10501,7 @@ export async function main(argv = process.argv.slice(2)) {
   const target = argv[0];
   if (
     target !== "android" &&
+    target !== "android-launcher" &&
     target !== "android-host-e2e" &&
     target !== "android-cloud-hybrid" &&
     target !== "android-sms-gateway" &&
@@ -10318,12 +10514,14 @@ export async function main(argv = process.argv.slice(2)) {
     target !== "ios-overlay"
   ) {
     console.error(
-      "Usage: node scripts/run-mobile-build.mjs <android|android-host-e2e|android-cloud-hybrid|android-sms-gateway|android-cloud|android-cloud-audit [aab-path]|android-cloud-debug|android-system|ios|ios-local|ios-overlay>",
+      "Usage: node scripts/run-mobile-build.mjs <android|android-launcher|android-host-e2e|android-cloud-hybrid|android-sms-gateway|android-cloud|android-cloud-audit [aab-path]|android-cloud-debug|android-system|ios|ios-local|ios-overlay>",
     );
     process.exit(1);
   }
   if (target === "android") {
     await buildAndroid();
+  } else if (target === "android-launcher") {
+    await runAndroidBuild("android-launcher");
   } else if (target === "android-host-e2e") {
     await runAndroidBuild("android-host-e2e");
   } else if (target === "android-cloud-hybrid") {
