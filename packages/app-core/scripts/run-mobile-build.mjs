@@ -5750,24 +5750,41 @@ export function isAndroidLp3RemoteFallbackRequired(env = process.env) {
   );
 }
 
+export function isAndroidVpsSidecarBuild(env = process.env) {
+  return isTruthyEnv(env.ELIZA_ANDROID_VPS_SIDECAR);
+}
+
 export function enforceAndroidLp3RemoteFallbackBuildPolicy({
   targetName,
   env = process.env,
 }) {
-  const required = isAndroidLp3RemoteFallbackRequired(env);
-  if (!required) return;
-  if (
-    targetName !== "android-cloud-debug" ||
-    !isAndroidLp3ColorPolicyEnabled(env)
-  ) {
+  const lp3Required = isAndroidLp3RemoteFallbackRequired(env);
+  const sidecarRequired = isAndroidVpsSidecarBuild(env);
+  if (!lp3Required && !sidecarRequired) return;
+  if (lp3Required && sidecarRequired) {
+    throw new Error(
+      "[mobile-build] LP3 and VPS sidecar remote profiles are mutually exclusive.",
+    );
+  }
+  if (targetName !== "android-cloud-debug") {
+    throw new Error(
+      "[mobile-build] remote fallback profiles are restricted to android-cloud-debug.",
+    );
+  }
+  if (lp3Required && !isAndroidLp3ColorPolicyEnabled(env)) {
     throw new Error(
       "[mobile-build] ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED is restricted to the LP3 android-cloud-debug direct profile.",
+    );
+  }
+  if (sidecarRequired && isAndroidLp3ColorPolicyEnabled(env)) {
+    throw new Error(
+      "[mobile-build] ELIZA_ANDROID_VPS_SIDECAR must not enable the LP3 color policy.",
     );
   }
   const raw = String(env.VITE_ELIZA_REMOTE_FALLBACK_API_BASE ?? "").trim();
   if (!raw) {
     throw new Error(
-      "[mobile-build] the LP3 VPS profile requires VITE_ELIZA_REMOTE_FALLBACK_API_BASE",
+      "[mobile-build] the remote fallback profile requires VITE_ELIZA_REMOTE_FALLBACK_API_BASE",
     );
   }
   let parsed;
@@ -5827,8 +5844,7 @@ export function enforceAndroidLp3ColorPolicyBuildPolicy({
 
 function isAndroidFirebaseIndependentRemoteBuild(env = process.env) {
   return (
-    isAndroidLp3RemoteFallbackRequired(env) ||
-    env.ELIZA_ANDROID_VPS_SIDECAR === "1"
+    isAndroidLp3RemoteFallbackRequired(env) || isAndroidVpsSidecarBuild(env)
   );
 }
 

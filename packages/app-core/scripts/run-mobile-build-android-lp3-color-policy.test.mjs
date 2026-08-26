@@ -30,6 +30,7 @@ import {
   enforceAndroidLp3RemoteFallbackBuildPolicy,
   isAndroidLp3ColorPolicyEnabled,
   isAndroidLp3RemoteFallbackRequired,
+  isAndroidVpsSidecarBuild,
   resolveAndroidCloudAllowedNativeLibraries,
   resolveAndroidCloudAllowedNativePluginPackages,
   resolveAndroidCloudStripPolicy,
@@ -89,6 +90,35 @@ describe("LP3 direct Cloud build flag", () => {
         },
       }),
     ).not.toThrow();
+  });
+
+  it("supports an isolated Firebase-independent Pixel VPS sidecar profile", () => {
+    const sidecarEnv = {
+      ELIZA_ANDROID_VPS_SIDECAR: "1",
+      VITE_ELIZA_REMOTE_FALLBACK_API_BASE: "https://agent.example.test/",
+    };
+    expect(isAndroidVpsSidecarBuild(sidecarEnv)).toBe(true);
+    expect(() =>
+      enforceAndroidLp3RemoteFallbackBuildPolicy({
+        targetName: "android-cloud-debug",
+        env: sidecarEnv,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      enforceAndroidLp3RemoteFallbackBuildPolicy({
+        targetName: "android-cloud",
+        env: sidecarEnv,
+      }),
+    ).toThrow("restricted to android-cloud-debug");
+    expect(() =>
+      enforceAndroidLp3RemoteFallbackBuildPolicy({
+        targetName: "android-cloud-debug",
+        env: {
+          ...sidecarEnv,
+          ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED: "1",
+        },
+      }),
+    ).toThrow("must not enable the LP3 color policy");
   });
 
   it.each([
