@@ -19,20 +19,22 @@ test.skip(
 
 async function fulfillJson(
   route: Route,
-  status: number,
   body: Record<string, unknown>,
 ): Promise<void> {
   await route.fulfill({
-    status,
+    status: 200,
     contentType: "application/json",
     body: JSON.stringify(body),
   });
 }
 
-async function routeFreshFirstRun(page: Page): Promise<void> {
+async function routeFreshFirstRun(
+  page: Page,
+): Promise<{ loginStarts: number }> {
+  const state = { loginStarts: 0 };
   await page.route("**/api/auth/status", async (route) => {
     if (route.request().method() !== "GET") return route.fallback();
-    await fulfillJson(route, 200, {
+    await fulfillJson(route, {
       required: false,
       authenticated: true,
       loginRequired: false,
@@ -44,17 +46,41 @@ async function routeFreshFirstRun(page: Page): Promise<void> {
   });
   await page.route("**/api/first-run/status", async (route) => {
     if (route.request().method() !== "GET") return route.fallback();
-    await fulfillJson(route, 200, { complete: false, cloudProvisioned: false });
+    await fulfillJson(route, { complete: false, cloudProvisioned: false });
   });
+  await page.route("**/api/first-run/options", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    await fulfillJson(route, {
+      names: [],
+      styles: [],
+      providers: [],
+      cloudProviders: [],
+      models: [],
+      inventoryProviders: [],
+      sharedStyleRules: "",
+      githubOAuthAvailable: false,
+    });
+  });
+  await page.route("**/api/cloud/login", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    state.loginStarts += 1;
+    await fulfillJson(route, {
+      ok: true,
+      sessionId: "cloud-only-dev-smoke",
+      browserUrl: "https://www.elizacloud.ai/device/cloud-only-dev-smoke",
+    });
+  });
+  await page.route("**/api/cloud/login/status**", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    await fulfillJson(route, { status: "pending" });
+  });
+  return state;
 }
 
-async function expectCloudOnlyGreeting(page: Page): Promise<void> {
-  await expect(
-    page.getByText("Sign in to Eliza Cloud", { exact: true }),
-  ).toBeVisible({ timeout: 20_000 });
-  await expect(
-    page.getByTestId("choice-__first_run__:runtime:cloud"),
-  ).toBeVisible();
+async function expectCloudOnlyAuth(page: Page): Promise<void> {
+  await expect(page.getByText("Opening secure sign in…")).toBeVisible({
+    timeout: 20_000,
+  });
   await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
   for (const runtime of ["local", "remote"]) {
     await expect(
@@ -72,19 +98,14 @@ test("explicit cloud-only Vite development skips the runtime chooser", async ({
 }, testInfo) => {
   await installRenderTelemetryGuard(page);
   await installDefaultAppRoutes(page);
-  await routeFreshFirstRun(page);
-  await page.addInitScript(() => {
-    const win = window as unknown as Record<string, unknown>;
-    win.__ELIZA_APP_API_BASE__ = window.location.origin;
-    win.__ELIZAOS_APP_BOOT_CONFIG__ = { apiBase: window.location.origin };
-    win.__electrobunWindowId = 1;
-  });
+  const routeState = await routeFreshFirstRun(page);
   await seedAppStorage(page, {
     "eliza:first-run-complete": "",
   });
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expectCloudOnlyGreeting(page);
+  await expectCloudOnlyAuth(page);
+  expect(routeState.loginStarts).toBeGreaterThan(0);
   expect(
     await page.evaluate(() =>
       localStorage.getItem("eliza:enable-runtime-chooser"),
@@ -102,7 +123,7 @@ test("explicit cloud-only Vite development skips the runtime chooser", async ({
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload({ waitUntil: "domcontentloaded" });
-  await expectCloudOnlyGreeting(page);
+  await expectCloudOnlyAuth(page);
   await expectNoRenderTelemetryErrors(
     page,
     "cloud-only Vite development mobile reload",
