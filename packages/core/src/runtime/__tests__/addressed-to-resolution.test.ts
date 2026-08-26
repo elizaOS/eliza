@@ -16,10 +16,13 @@ const AGENT_ID = "00000000-0000-4000-8000-000000000001" as UUID;
 const SPEAKER_ID = "00000000-0000-4000-8000-000000000002" as UUID;
 const OTHER_ID = "00000000-0000-4000-8000-000000000003" as UUID;
 const BYSTANDER_ID = "00000000-0000-4000-8000-000000000004" as UUID;
+const AT_ELIZA_ID = "00000000-0000-4000-8000-000000000006" as UUID;
 const ROOM_ID = "00000000-0000-4000-8000-000000000005" as UUID;
 const MESSAGE_ID = "00000000-0000-4000-8000-00000000000f" as UUID;
 
 const AGENT_NAME = "Eliza";
+/** Platform handle stored on the agent's entity, as connectors persist it. */
+const AGENT_HANDLE = "eliza_bot";
 
 function makeEntity(id: UUID, names: string[]): Entity {
 	return { id, names } as Entity;
@@ -38,6 +41,7 @@ interface Harness {
 	runtime: IAgentRuntime;
 	relationships: Relationship[];
 	roomLookups: number;
+	writeCalls: number;
 }
 
 /**
@@ -50,11 +54,15 @@ function makeHarness(participants: Entity[]): Harness {
 	const relationships: Relationship[] = [];
 	const entities = [...participants];
 	if (!entities.some((e) => e.id === AGENT_ID)) {
-		entities.push(makeEntity(AGENT_ID, [AGENT_NAME]));
+		// The agent's entity carries its platform handle, not the character
+		// name — "eliza" then resolves only through the resolver's dedicated
+		// character-name mapping, which is the path the suite is meant to pin.
+		entities.push(makeEntity(AGENT_ID, [AGENT_HANDLE]));
 	}
 	const harness: Harness = {
 		relationships,
 		roomLookups: 0,
+		writeCalls: 0,
 		runtime: undefined as unknown as IAgentRuntime,
 	};
 	harness.runtime = {
@@ -77,6 +85,7 @@ function makeHarness(participants: Entity[]): Harness {
 			tags?: string[];
 			metadata?: Record<string, unknown>;
 		}) => {
+			harness.writeCalls += 1;
 			relationships.push({
 				id: `rel-${relationships.length + 1}` as UUID,
 				...input,
@@ -84,6 +93,7 @@ function makeHarness(participants: Entity[]): Harness {
 			return relationships[relationships.length - 1];
 		},
 		updateRelationship: async (rel: Relationship) => {
+			harness.writeCalls += 1;
 			const index = relationships.findIndex((r) => r.id === rel.id);
 			if (index === -1) throw new Error("relationship not found");
 			relationships[index] = rel;
@@ -94,7 +104,14 @@ function makeHarness(participants: Entity[]): Harness {
 
 function defaultRoom(): Entity[] {
 	return [
-		makeEntity(AGENT_ID, [AGENT_NAME]),
+		// A participant stored under "@Eliza" with its own id: today the
+		// leading-@ store spelling is a distinct key from "eliza", so it
+		// must NOT capture the character-name lookup. If the resolver's
+		// normalize ever strips a leading @ from STORED names (the #29189
+		// direction), that participant's entry overwrites the dedicated
+		// character-name mapping — written earlier — and the
+		// character-name test below goes red.
+		makeEntity(AT_ELIZA_ID, ["@Eliza"]),
 		makeEntity(SPEAKER_ID, ["nubilio"]),
 		makeEntity(OTHER_ID, ["sol"]),
 		makeEntity(BYSTANDER_ID, ["shaw"]),
@@ -225,7 +242,8 @@ describe("applyAddressedTo (relationship upsert)", () => {
 	});
 
 	it("writes nothing when nothing resolves (unresolvable names only)", async () => {
-		const { runtime, relationships } = makeHarness(defaultRoom());
+		const harness = makeHarness(defaultRoom());
+		const { runtime, relationships } = harness;
 		const result = await applyAddressedTo({
 			runtime,
 			message: makeMessage(),
@@ -233,10 +251,14 @@ describe("applyAddressedTo (relationship upsert)", () => {
 		});
 		expect(result).toEqual({ created: 0, updated: 0, resolved: [] });
 		expect(relationships).toHaveLength(0);
+		// A no-op must never touch a write method: an implementation that
+		// writes and rolls back is distinguishable from one that never writes.
+		expect(harness.writeCalls).toBe(0);
 	});
 
 	it("returns an explicit empty result for empty addressedTo", async () => {
-		const { runtime, relationships } = makeHarness(defaultRoom());
+		const harness = makeHarness(defaultRoom());
+		const { runtime, relationships } = harness;
 		const result = await applyAddressedTo({
 			runtime,
 			message: makeMessage(),
@@ -244,5 +266,6 @@ describe("applyAddressedTo (relationship upsert)", () => {
 		});
 		expect(result).toEqual({ created: 0, updated: 0, resolved: [] });
 		expect(relationships).toHaveLength(0);
+		expect(harness.writeCalls).toBe(0);
 	});
 });
