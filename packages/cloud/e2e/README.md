@@ -102,6 +102,9 @@ OpenAI or Anthropic usage remains the authoritative postflight count. Missing,
 malformed, over-budget, oversized, or unmetered responses fail closed.
 Accepted request evidence binds the exact canonical upstream byte length and
 SHA-256; rejected requests retain structural evidence without a forwarded hash.
+The trusted attempt harness signs the complete real-model receipt with a
+parent-owned, per-attempt HMAC key that is removed before any stack or scenario
+child starts; the outer adapter verifies that attestation before accepting it.
 
 Attempts retain trajectories, tool receipts, transitions, bounded logs,
 network and mock-service ledgers, and authority hashes. The aggregate retains

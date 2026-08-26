@@ -14,12 +14,30 @@ import { executeScenarioStability } from "./stability-executor.ts";
 import { ScenarioStabilitySubprocessAdapter } from "./stability-subprocess-adapter.ts";
 
 const CHILD_SCRIPT = `
+const { createHmac } = require("node:crypto");
+const meterAttestationKey = process.env.ELIZA_STABILITY_METER_ATTESTATION_KEY;
+delete process.env.ELIZA_STABILITY_METER_ATTESTATION_KEY;
+const canonical = (value) => {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return "[" + value.map(canonical).join(",") + "]";
+  return "{" + Object.keys(value).sort().map((key) => JSON.stringify(key) + ":" + canonical(value[key])).join(",") + "}";
+};
+const attest = (receipt) => {
+  if (process.env.ELIZA_TEST_ACCEPTED_AFTER_REJECT === "1") {
+    receipt.requestEnvelopes = [{ ...receipt.requestEnvelopes[0], requestNumber: 2, forwardedBodyBytes: null, forwardedBodySha256: null, accepted: false, failureCode: "STABILITY_MODEL_REQUEST_BUDGET_EXCEEDED" }, receipt.requestEnvelopes[0]];
+  }
+  const key = process.env.ELIZA_TEST_WRONG_ATTESTATION_KEY === "1" ? "wrong-attestation-key" : meterAttestationKey;
+  const signed = { ...receipt, attestation: createHmac("sha256", key).update(canonical(receipt)).digest("hex") };
+  if (process.env.ELIZA_TEST_FORGE_AFTER_ATTESTATION === "1") signed.requestEnvelopes[0].forwardedBodySha256 = "b".repeat(64);
+  return signed;
+};
+if (process.env.ELIZA_STABILITY_METER_ATTESTATION_KEY) process.exit(93);
 if (process.env.ELIZA_STABILITY_MODEL_MODE === "deterministic-mock" && process.env.OPENAI_API_KEY) {
   process.exit(91);
 }
 if (process.env.ELIZA_REQUIRE_MOCK_SERVICES !== "1") process.exit(92);
 if (process.env.ELIZA_TEST_PRINT_SECRETS === "1") {
-  process.stderr.write(String(process.env.ELIZA_SYNTHETIC_CONTROL_TOKEN) + " " + String(process.env.OPENAI_API_KEY || ""));
+  process.stderr.write(String(process.env.ELIZA_SYNTHETIC_CONTROL_TOKEN) + " " + String(process.env.OPENAI_API_KEY || "") + " " + String(meterAttestationKey || ""));
 }
 const hash = process.env.ELIZA_STABILITY_AUTHORITY_INITIAL_STATE_HASH;
 const meterFailureCode = process.env.ELIZA_TEST_METER_FAILURE;
@@ -52,7 +70,7 @@ process.stdout.write(JSON.stringify({
       ambiguousCalls: 0,
       unusedRequiredFixtures: 0,
       overconsumedFixtures: 1
-    }] : [])] : [{
+    }] : [])] : [attest({
       receiptType: "eliza.stability.real-llm.v1",
       provider: process.env.ELIZA_TEST_WRONG_REAL === "1" ? "wrong-provider" : process.env.ELIZA_STABILITY_PROVIDER,
       model: process.env.ELIZA_STABILITY_MODEL,
@@ -93,7 +111,7 @@ process.stdout.write(JSON.stringify({
       generation: Number(process.env.ELIZA_SYNTHETIC_GENERATION),
       unexpectedRealServiceCalls: 0,
       unexpectedNetworkCalls: 0
-    }],
+    })],
     judgeVerdicts: [{ passed: true }]
   },
   stateDiff: { sent: true },
@@ -408,6 +426,9 @@ describe("scenario stability subprocess adapter", () => {
       "bad-envelope-bytes",
       "bad-envelope-sequence",
       "extra-envelope-key",
+      "wrong-attestation-key",
+      "post-attestation-forgery",
+      "accepted-after-reject",
       "zero-metering",
       "over-request-cap",
     ] as const) {
@@ -456,6 +477,15 @@ describe("scenario stability subprocess adapter", () => {
           ...(failure === "extra-envelope-key"
             ? { ELIZA_TEST_EXTRA_ENVELOPE_KEY: "1" }
             : {}),
+          ...(failure === "wrong-attestation-key"
+            ? { ELIZA_TEST_WRONG_ATTESTATION_KEY: "1" }
+            : {}),
+          ...(failure === "post-attestation-forgery"
+            ? { ELIZA_TEST_FORGE_AFTER_ATTESTATION: "1" }
+            : {}),
+          ...(failure === "accepted-after-reject"
+            ? { ELIZA_TEST_ACCEPTED_AFTER_REJECT: "1" }
+            : {}),
           ...(failure === "zero-metering" ? { ELIZA_TEST_ZERO_REAL: "1" } : {}),
           ...(failure === "over-request-cap"
             ? { ELIZA_TEST_OVER_CAP_REAL: "1" }
@@ -500,6 +530,7 @@ describe("scenario stability subprocess adapter", () => {
           );
           expect(stderr).not.toContain("dummy-model-key");
           expect(stderr).not.toContain("control-secret");
+          expect(stderr).not.toMatch(/[a-f0-9]{64}/u);
         }
       } else {
         expect(report.cells[0]?.attempts[0]?.error).toContain(
