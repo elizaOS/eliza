@@ -54,6 +54,7 @@ import type { RuntimeDurableObjectNamespace } from "../../types/cloud-worker-env
 import { ApiError } from "../api/cloud-worker-errors";
 import { InsufficientCreditsError as InsufficientCreditsApiError } from "../api/errors";
 import { containersEnv } from "../config/containers-env";
+import { AGENT_PRICING } from "../constants/agent-pricing";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { getCloudAwareEnv, getCloudBinding } from "../runtime/cloud-bindings";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
@@ -541,6 +542,15 @@ export type DeleteAgentResult =
   | { success: false; error: string; retryable?: true };
 
 export type DeleteAuthorization = "user_request" | "billing_request" | "account_deletion";
+
+export interface AgentSuspendExecutionResult {
+  success: boolean;
+  containerStopped: boolean;
+  backupId?: string;
+  error?: string;
+  skipped?: true;
+  reason?: "lifecycle_changed" | "stop_intent_superseded" | "billing_recovered";
+}
 
 /**
  * Outcome of the bounded container teardown attempted during `deleteAgent`:
@@ -9670,8 +9680,86 @@ export class ElizaSandboxService {
     agentId: string,
     orgId: string,
     jobId: string,
-    authorization: "user_request" | "billing_request",
-  ): Promise<{ success: boolean; containerStopped: boolean; backupId?: string; error?: string }> {
+    authorization: "user_request" | "billing_request" = "user_request",
+    expectedLifecycleRevision?: number,
+  ): Promise<AgentSuspendExecutionResult> {
+    // Modern jobs carry their exact intent generation. Check it before the
+    // backup gate so a lifecycle-stale queued request is a terminal no-op and
+    // cannot touch either the snapshot bridge or the compute provider.
+    if (expectedLifecycleRevision !== undefined) {
+      const preflight = await dbWrite.transaction(async (tx) => {
+        await this.lockLifecycle(tx, agentId, orgId);
+        const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+        if (!rec || rec.deletion_attempt_id || this.isAwaitingDeletion(rec.status)) {
+          return {
+            success: false,
+            containerStopped: false,
+            error: "Agent not found",
+          } as const;
+        }
+        const [intent] = await tx
+          .select()
+          .from(agentComputeStopIntents)
+          .where(
+            and(
+              eq(agentComputeStopIntents.agent_id, agentId),
+              eq(agentComputeStopIntents.organization_id, orgId),
+              eq(agentComputeStopIntents.job_id, jobId),
+            ),
+          )
+          .for("update")
+          .limit(1);
+        if (!intent) {
+          return {
+            success: false,
+            containerStopped: false,
+            error: "Agent stop intent is missing or bound to a different job",
+          } as const;
+        }
+        if (intent.lifecycle_revision !== expectedLifecycleRevision) {
+          return {
+            success: false,
+            containerStopped: false,
+            error: "Agent suspend job and stop intent lifecycle revisions do not match",
+          } as const;
+        }
+        if (intent.status === "provider_confirmed") {
+          return { success: true, containerStopped: true } as const;
+        }
+        if (intent.status === "superseded") {
+          return {
+            success: true,
+            containerStopped: false,
+            skipped: true,
+            reason:
+              intent.last_error === "lifecycle_changed" || intent.last_error === "billing_recovered"
+                ? intent.last_error
+                : "stop_intent_superseded",
+          } as const;
+        }
+        if (rec.lifecycle_revision !== intent.lifecycle_revision) {
+          const supersededAt = new Date();
+          await tx
+            .update(agentComputeStopIntents)
+            .set({
+              status: "superseded",
+              last_error: "lifecycle_changed",
+              superseded_at: supersededAt,
+              updated_at: supersededAt,
+            })
+            .where(eq(agentComputeStopIntents.id, intent.id));
+          return {
+            success: true,
+            containerStopped: false,
+            skipped: true,
+            reason: "lifecycle_changed",
+          } as const;
+        }
+        return undefined;
+      });
+      if (preflight) return preflight;
+    }
+
     // The backup is captured without holding the lifecycle lock (an HTTP
     // round-trip must not pin a write transaction); the lifecycle generation
     // is revalidated under the lock before the stop.
@@ -9751,57 +9839,78 @@ export class ElizaSandboxService {
           error: "Agent provisioning is in progress",
         } as const;
       }
-      const [stopIntent] =
-        authorization === "billing_request"
-          ? await tx
-              .select()
-              .from(agentComputeStopIntents)
-              .where(
-                and(
-                  eq(agentComputeStopIntents.agent_id, agentId),
-                  eq(agentComputeStopIntents.organization_id, orgId),
-                  inArray(agentComputeStopIntents.status, [
-                    "pending",
-                    "dispatching",
-                    "retry",
-                    "terminal_attention",
-                  ]),
-                ),
-              )
-              .for("update")
-              .limit(1)
-          : [undefined];
-      if (authorization === "billing_request" && (!stopIntent || stopIntent.job_id !== jobId)) {
+      const requiresBoundIntent =
+        expectedLifecycleRevision !== undefined || authorization === "billing_request";
+      const [stopIntent] = requiresBoundIntent
+        ? await tx
+            .select()
+            .from(agentComputeStopIntents)
+            .where(
+              and(
+                eq(agentComputeStopIntents.agent_id, agentId),
+                eq(agentComputeStopIntents.organization_id, orgId),
+                eq(agentComputeStopIntents.job_id, jobId),
+              ),
+            )
+            .for("update")
+            .limit(1)
+        : [undefined];
+      if (requiresBoundIntent && !stopIntent) {
         return {
           success: false,
           containerStopped: false,
-          error: "Agent billing stop intent is missing or bound to a different job",
+          error:
+            authorization === "billing_request"
+              ? "Agent billing stop intent is missing or bound to a different job"
+              : "Agent stop intent is missing or bound to a different job",
+        } as const;
+      }
+      if (
+        stopIntent &&
+        expectedLifecycleRevision !== undefined &&
+        stopIntent.lifecycle_revision !== expectedLifecycleRevision
+      ) {
+        return {
+          success: false,
+          containerStopped: false,
+          error: "Agent suspend job and stop intent lifecycle revisions do not match",
+        } as const;
+      }
+      const effectiveAuthorization = stopIntent?.authorization ?? authorization;
+      if (stopIntent?.status === "provider_confirmed") {
+        return { success: true, containerStopped: true } as const;
+      }
+      if (stopIntent?.status === "superseded") {
+        return {
+          success: true,
+          containerStopped: false,
+          skipped: true,
+          reason:
+            stopIntent.last_error === "lifecycle_changed" ||
+            stopIntent.last_error === "billing_recovered"
+              ? stopIntent.last_error
+              : "stop_intent_superseded",
         } as const;
       }
       if (stopIntent && stopIntent.lifecycle_revision !== rec.lifecycle_revision) {
         const supersededAt = new Date();
         await tx
           .update(agentComputeStopIntents)
-          .set({ status: "superseded", superseded_at: supersededAt, updated_at: supersededAt })
+          .set({
+            status: "superseded",
+            last_error: "lifecycle_changed",
+            superseded_at: supersededAt,
+            updated_at: supersededAt,
+          })
           .where(eq(agentComputeStopIntents.id, stopIntent.id));
-        return { success: true, containerStopped: false } as const;
+        return {
+          success: true,
+          containerStopped: false,
+          skipped: true,
+          reason: "lifecycle_changed",
+        } as const;
       }
-      if (rec.status === "stopped") {
-        if (stopIntent) {
-          const confirmedAt = new Date();
-          await tx
-            .update(agentComputeStopIntents)
-            .set({
-              status: "provider_confirmed",
-              provider_confirmed_at: confirmedAt,
-              updated_at: confirmedAt,
-            })
-            .where(eq(agentComputeStopIntents.id, stopIntent.id));
-        }
-        return { success: true, containerStopped: true } as const;
-      }
-
-      if (authorization === "billing_request") {
+      if (effectiveAuthorization === "billing_request") {
         const fundedAt = new Date();
         const settlement =
           await agentBillingRepository.settleAccruedBillingBeforeLifecycleInTransaction(
@@ -9813,7 +9922,12 @@ export class ElizaSandboxService {
         if (settlement.status !== "insufficient_credits") {
           await tx
             .update(agentComputeStopIntents)
-            .set({ status: "superseded", superseded_at: fundedAt, updated_at: fundedAt })
+            .set({
+              status: "superseded",
+              last_error: "billing_recovered",
+              superseded_at: fundedAt,
+              updated_at: fundedAt,
+            })
             .where(eq(agentComputeStopIntents.id, stopIntent!.id));
           await tx
             .update(agentSandboxes)
@@ -9824,8 +9938,56 @@ export class ElizaSandboxService {
               updated_at: fundedAt,
             })
             .where(and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.organization_id, orgId)));
-          return { success: true, containerStopped: false } as const;
+          return {
+            success: true,
+            containerStopped: false,
+            skipped: true,
+            reason: "billing_recovered",
+          } as const;
         }
+      }
+
+      // A stopped sandbox with a durable backup remains billable storage. A
+      // billing stop queued before a top-up must therefore settle and observe
+      // the restored funding above before this physical-state fast path can
+      // suspend billing permanently. Explicit user stops remain unconditional.
+      if (rec.status === "stopped") {
+        const confirmedAt = new Date();
+        if (effectiveAuthorization === "user_request") {
+          await agentBillingRepository.settleAccruedBillingBeforeLifecycleInTransaction(
+            tx,
+            agentId,
+            orgId,
+            confirmedAt,
+          );
+        }
+        const retainedBackupBilling = rec.last_backup_at !== null;
+        await tx
+          .update(agentSandboxes)
+          .set({
+            billing_status: retainedBackupBilling ? "active" : "suspended",
+            scheduled_shutdown_at: null,
+            shutdown_warning_sent_at: null,
+            bridge_url: null,
+            health_url: null,
+            updated_at: confirmedAt,
+          })
+          .where(and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.organization_id, orgId)));
+        if (stopIntent) {
+          await tx
+            .update(agentComputeStopIntents)
+            .set({
+              status: "provider_confirmed",
+              provider_confirmed_at: confirmedAt,
+              retained_backup_billing: retainedBackupBilling,
+              retained_backup_rate_per_hour: retainedBackupBilling
+                ? String(AGENT_PRICING.IDLE_HOURLY_RATE)
+                : null,
+              updated_at: confirmedAt,
+            })
+            .where(eq(agentComputeStopIntents.id, stopIntent.id));
+        }
+        return { success: true, containerStopped: true } as const;
       }
 
       // The gate captured against snapshotSource's generation; a moved
@@ -9891,12 +10053,23 @@ export class ElizaSandboxService {
         containerStopped = true;
       }
 
+      const confirmedAt = new Date();
+      if (effectiveAuthorization === "user_request") {
+        await agentBillingRepository.settleAccruedBillingBeforeLifecycleInTransaction(
+          tx,
+          agentId,
+          orgId,
+          confirmedAt,
+        );
+      }
+      const retainedBackupBilling = backupCapturedFresh || rec.last_backup_at !== null;
       // The lifecycle row remains FOR UPDATE from the locked tier check through
       // provider stop and persistence, so this final allowlist cannot become a
       // zero-row tier race. It mirrors the guard in SQL as defense in depth.
       await tx.execute(sql`
         UPDATE ${agentSandboxes}
-        SET status = 'stopped', billing_status = 'suspended',
+        SET status = 'stopped',
+            billing_status = ${retainedBackupBilling ? "active" : "suspended"},
             scheduled_shutdown_at = NULL, shutdown_warning_sent_at = NULL,
             bridge_url = NULL, health_url = NULL, updated_at = NOW()
             ${backupCapturedFresh ? sql`, last_backup_at = NOW()` : sql``}
@@ -9905,12 +10078,15 @@ export class ElizaSandboxService {
           AND ${inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS])}
       `);
       if (stopIntent) {
-        const confirmedAt = new Date();
         await tx
           .update(agentComputeStopIntents)
           .set({
             status: "provider_confirmed",
             provider_confirmed_at: confirmedAt,
+            retained_backup_billing: retainedBackupBilling,
+            retained_backup_rate_per_hour: retainedBackupBilling
+              ? String(AGENT_PRICING.IDLE_HOURLY_RATE)
+              : null,
             updated_at: confirmedAt,
           })
           .where(eq(agentComputeStopIntents.id, stopIntent.id));

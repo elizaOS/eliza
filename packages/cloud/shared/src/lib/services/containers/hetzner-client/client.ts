@@ -530,7 +530,7 @@ export class HetznerContainersClient {
     containerId: string,
     organizationId: string,
     expectedLifecycleRevision: number,
-  ): Promise<{ nodeId: string | null }> {
+  ): Promise<{ nodeId: string | null; alreadyAbsent: boolean }> {
     const row = await containersRepository.findById(containerId, organizationId);
     if (!row) {
       throw new HetznerClientError("container_not_found", `container ${containerId} not found`);
@@ -548,6 +548,7 @@ export class HetznerContainersClient {
         `container ${containerId} is missing valid Hetzner provider metadata`,
       );
     }
+    let alreadyAbsent = false;
     await this.execOnNode(meta, async (ssh) => {
       // error-policy:J6 graceful stop is best effort; rm -f is the provider
       // absence proof and its failure propagates to durable recovery.
@@ -567,9 +568,10 @@ export class HetznerContainersClient {
           containerId,
           containerName: meta.containerName,
         });
+        alreadyAbsent = true;
       }
     });
-    return { nodeId: meta.nodeId };
+    return { nodeId: meta.nodeId, alreadyAbsent };
   }
 
   /**

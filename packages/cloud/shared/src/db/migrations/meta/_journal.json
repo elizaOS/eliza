@@ -2220,6 +2220,48 @@
       "when": 1794254400024,
       "tag": "0333_remote_host_connection_mode_check",
       "breakpoints": true
+    },
+    {
+      "idx": 317,
+      "version": "7",
+      "when": 1794254400025,
+      "tag": "0334_billing_cancel_intent_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 318,
+      "version": "7",
+      "when": 1794254400026,
+      "tag": "0335_billing_cancel_commands",
+      "breakpoints": true
+    },
+    {
+      "idx": 319,
+      "version": "7",
+      "when": 1794254400027,
+      "tag": "0336_billing_cancel_command_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 320,
+      "version": "7",
+      "when": 1794254400028,
+      "tag": "0337_billing_cancel_guard_functions",
+      "breakpoints": true
+    },
+    {
+      "idx": 321,
+      "version": "7",
+      "when": 1794254400029,
+      "tag": "0338_billing_cancel_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 322,
+      "version": "7",
+      "when": 1794254400030,
+      "tag": "0339_container_stop_terminal_billing_receipts",
+      "breakpoints": true
     }
   ]
 }

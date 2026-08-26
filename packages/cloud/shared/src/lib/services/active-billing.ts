@@ -5,10 +5,12 @@
  * one primary-database observation boundary.
  */
 
-import { and, desc, eq, inArray, isNotNull, isNull, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, ne, or } from "drizzle-orm";
 import { type Database, dbRead, dbWrite } from "../../db/client";
+import { agentComputeStopIntents } from "../../db/schemas/agent-compute-stop-intents";
 import { agentSandboxes, CONTAINER_BACKED_EXECUTION_TIERS } from "../../db/schemas/agent-sandboxes";
-import { containers } from "../../db/schemas/containers";
+import { containerComputeStopIntents } from "../../db/schemas/compute-stop-intents";
+import { containers, TERMINAL_CONTAINER_STATUS } from "../../db/schemas/containers";
 import { creditTransactions } from "../../db/schemas/credit-transactions";
 import type { AppEnv } from "../../types/cloud-worker-env";
 import { ApiError } from "../api/cloud-worker-errors";
@@ -19,6 +21,10 @@ import {
   parseActiveBillingNonNegativeNumber,
   parseActiveBillingNumber,
 } from "./active-billing-numeric";
+import {
+  billingResourceCancellationsService,
+  type RequestBillingCancellationOptions,
+} from "./billing-resource-cancellations";
 import { provisioningJobService } from "./provisioning-jobs";
 
 export type BillableResourceType = "container" | "agent_sandbox";
@@ -30,6 +36,8 @@ export interface ActiveBillableResource {
   name: string;
   status: string;
   billingStatus: string;
+  /** Compare-and-set generation required by the version-2 durable stop contract. */
+  lifecycleRevision: number;
   unitPrice: number;
   billingInterval: BillableInterval;
   lastBilledAt: string | null;
@@ -79,6 +87,22 @@ function addMs(date: Date, ms: number): Date {
 
 function cancelEndpoint(resource: BillableResourceType, id: string): string {
   return `/api/v1/billing/resources/${id}/cancel?resourceType=${resource}`;
+}
+
+function compatibilityCancellationRevision(
+  status: string,
+  currentLifecycleRevision: number,
+  latestProviderConfirmedRevision: number | null,
+): number {
+  if (
+    status === "stopped" &&
+    latestProviderConfirmedRevision !== null &&
+    (latestProviderConfirmedRevision === currentLifecycleRevision ||
+      latestProviderConfirmedRevision === currentLifecycleRevision - 1)
+  ) {
+    return latestProviderConfirmedRevision;
+  }
+  return currentLifecycleRevision;
 }
 
 /** Canonical authority for user-owned compute that this billing surface may mutate. */
@@ -172,6 +196,7 @@ class ActiveBillingService {
         name: container.name,
         status: container.status,
         billingStatus: container.billing_status,
+        lifecycleRevision: container.lifecycle_revision,
         unitPrice,
         billingInterval: "day",
         lastBilledAt: iso(container.last_billed_at),
@@ -210,6 +235,7 @@ class ActiveBillingService {
         name: agent.agent_name ?? agent.id,
         status: agent.status,
         billingStatus: agent.billing_status,
+        lifecycleRevision: agent.lifecycle_revision,
         unitPrice,
         billingInterval: "hour",
         lastBilledAt: iso(agent.last_billed_at),
@@ -266,6 +292,153 @@ class ActiveBillingService {
     });
   }
 
+  /** Version-2 durable, replay-safe cancellation admission. */
+  async requestCancellation(options: RequestBillingCancellationOptions) {
+    return await billingResourceCancellationsService.request(options);
+  }
+
+  /**
+   * Compatibility-only lookup for clients published before the durable
+   * cancellation contract exposed resource type and lifecycle revision.
+   *
+   * The durable request still repeats target locking and revision validation
+   * in its write transaction. A lifecycle change after this primary read is
+   * therefore a normal 409, never authority for a stale provider effect.
+   * Stopped/suspended rows intentionally remain resolvable so a client that
+   * lost the accepted response can replay the original durable command. A
+   * provider-confirmed user stop may have advanced the row by one revision;
+   * only that exact proof can reconcile the compatibility request back to the
+   * admitted revision. Running rows always use their current generation.
+   */
+  async resolveCancellationTarget(
+    organizationId: string,
+    resourceId: string,
+    resourceType?: BillableResourceType,
+    database: Pick<Database, "select"> = dbWrite,
+  ): Promise<{
+    resourceType: BillableResourceType;
+    lifecycleRevision: number;
+  }> {
+    const findContainer = async () => {
+      const [row] = await database
+        .select({
+          lifecycleRevision: containers.lifecycle_revision,
+          status: containers.status,
+        })
+        .from(containers)
+        .where(
+          and(
+            eq(containers.id, resourceId),
+            eq(containers.organization_id, organizationId),
+            ne(containers.status, TERMINAL_CONTAINER_STATUS),
+          ),
+        )
+        .limit(1);
+      const [latestProviderConfirmedIntent] =
+        row?.status === "stopped"
+          ? await database
+              .select({
+                lifecycleRevision: containerComputeStopIntents.lifecycle_revision,
+              })
+              .from(containerComputeStopIntents)
+              .where(
+                and(
+                  eq(containerComputeStopIntents.organization_id, organizationId),
+                  eq(containerComputeStopIntents.container_id, resourceId),
+                  eq(containerComputeStopIntents.authorization, "user_request"),
+                  isNotNull(containerComputeStopIntents.provider_confirmed_at),
+                ),
+              )
+              .orderBy(
+                desc(containerComputeStopIntents.lifecycle_revision),
+                desc(containerComputeStopIntents.created_at),
+              )
+              .limit(1)
+          : [];
+      return row
+        ? ({
+            resourceType: "container",
+            lifecycleRevision: compatibilityCancellationRevision(
+              row.status,
+              row.lifecycleRevision,
+              latestProviderConfirmedIntent?.lifecycleRevision ?? null,
+            ),
+          } as const)
+        : null;
+    };
+    const findAgent = async () => {
+      const [row] = await database
+        .select({
+          lifecycleRevision: agentSandboxes.lifecycle_revision,
+          status: agentSandboxes.status,
+        })
+        .from(agentSandboxes)
+        .where(
+          and(
+            eq(agentSandboxes.id, resourceId),
+            eq(agentSandboxes.organization_id, organizationId),
+            activeBillingAgentAuthorityPredicate(),
+          ),
+        )
+        .limit(1);
+      const [latestProviderConfirmedIntent] =
+        row?.status === "stopped"
+          ? await database
+              .select({
+                lifecycleRevision: agentComputeStopIntents.lifecycle_revision,
+              })
+              .from(agentComputeStopIntents)
+              .where(
+                and(
+                  eq(agentComputeStopIntents.organization_id, organizationId),
+                  eq(agentComputeStopIntents.agent_id, resourceId),
+                  eq(agentComputeStopIntents.authorization, "user_request"),
+                  isNotNull(agentComputeStopIntents.provider_confirmed_at),
+                ),
+              )
+              .orderBy(
+                desc(agentComputeStopIntents.lifecycle_revision),
+                desc(agentComputeStopIntents.created_at),
+              )
+              .limit(1)
+          : [];
+      return row
+        ? ({
+            resourceType: "agent_sandbox",
+            lifecycleRevision: compatibilityCancellationRevision(
+              row.status,
+              row.lifecycleRevision,
+              latestProviderConfirmedIntent?.lifecycleRevision ?? null,
+            ),
+          } as const)
+        : null;
+    };
+
+    const matches = resourceType
+      ? [resourceType === "container" ? await findContainer() : await findAgent()]
+      : await Promise.all([findContainer(), findAgent()]);
+    const present = matches.filter(
+      (
+        match,
+      ): match is {
+        resourceType: BillableResourceType;
+        lifecycleRevision: number;
+      } => match !== null,
+    );
+    if (present.length === 0) {
+      throw new ApiError(404, "resource_not_found", "Billable resource not found");
+    }
+    if (present.length > 1) {
+      throw new ApiError(
+        409,
+        "billing_state_conflict",
+        "Resource id is ambiguous; retry with resourceType",
+        { resourceId },
+      );
+    }
+    return present[0]!;
+  }
+
   async cancelResource(options: CancelBillableResourceOptions): Promise<{
     resource: ActiveBillableResource;
     stoppedBilling: boolean;
@@ -307,6 +480,7 @@ class ActiveBillingService {
             resource: {
               resourceType: "container",
               resourceId: container.id,
+              lifecycleRevision: container.lifecycle_revision,
               name: container.name,
               status: "deleted",
               billingStatus: "suspended",
@@ -358,6 +532,7 @@ class ActiveBillingService {
           resource: {
             resourceType: "container",
             resourceId: updated.id,
+            lifecycleRevision: updated.lifecycle_revision,
             name: updated.name,
             status: updated.status,
             billingStatus: updated.billing_status,
@@ -422,6 +597,7 @@ class ActiveBillingService {
             resource: {
               resourceType: "agent_sandbox",
               resourceId: agent.id,
+              lifecycleRevision: agent.lifecycle_revision,
               name: agent.agent_name ?? agent.id,
               status: "deleted",
               billingStatus: "suspended",
@@ -495,6 +671,7 @@ class ActiveBillingService {
             resource: {
               resourceType: "agent_sandbox",
               resourceId: agent.id,
+              lifecycleRevision: agent.lifecycle_revision,
               name: agent.agent_name ?? agent.id,
               status: "deleted",
               billingStatus: "suspended",
@@ -526,6 +703,7 @@ class ActiveBillingService {
           resource: {
             resourceType: "agent_sandbox",
             resourceId: updated.id,
+            lifecycleRevision: updated.lifecycle_revision,
             name: updated.agent_name ?? updated.id,
             status: updated.status,
             billingStatus: updated.billing_status,

@@ -142,6 +142,13 @@ jobs:
           test -n "${APPS_TENANT_DB_TEST_DSN:-}" &&
           bun test --config=/dev/null --isolate
           packages/cloud/shared/src/db/repositories/__tests__/containers-project-intent-postgres.integration.test.ts
+      - name: Run PostgreSQL compute stop concurrency tests
+        env:
+          APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
+          COMPUTE_STOP_CONCURRENCY_REQUIRED: "1"
+        run: >-
+          bun test --config=/dev/null --isolate
+          packages/cloud/shared/src/db/repositories/__tests__/compute-stop-concurrency.integration.test.ts
       - name: Run cloud e2e tests
         run: bun run test:cloud:e2e
 

@@ -42,7 +42,11 @@ import {
 } from "@/lib/cron/cloudflare-cron";
 import { safeFetch } from "@/lib/security/safe-fetch";
 import { emailService } from "@/lib/services/email";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+import {
+  listRecoverableAgentComputeStopIntents,
+  provisioningJobService,
+  rearmRecoverableAgentComputeStopIntentOnce,
+} from "@/lib/services/provisioning-jobs";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -73,6 +77,73 @@ interface RunIdentity {
   triggerKind: "scheduled" | "manual";
   schedule: string | null;
   scheduledAt: Date | null;
+}
+
+interface AgentStopRecoverySummary {
+  status: "succeeded" | "degraded";
+  scanned: number;
+  rearmed: number;
+  failures: number;
+}
+
+async function recoverAgentStops(
+  now: Date,
+  env: AppEnv["Bindings"],
+): Promise<AgentStopRecoverySummary> {
+  const summary: AgentStopRecoverySummary = {
+    status: "succeeded",
+    scanned: 0,
+    rearmed: 0,
+    failures: 0,
+  };
+  let recoverableStopIntents: Awaited<
+    ReturnType<typeof listRecoverableAgentComputeStopIntents>
+  > = [];
+  try {
+    recoverableStopIntents = await listRecoverableAgentComputeStopIntents(now);
+    summary.scanned = recoverableStopIntents.length;
+  } catch (error) {
+    // error-policy:J1 boundary translation — the cron response exposes the
+    // recovery-lane failure while billing continues independently.
+    summary.status = "degraded";
+    summary.failures += 1;
+    logger.error("[Agent Billing] Failed to scan recoverable agent stops", {
+      error,
+    });
+  }
+  for (const intent of recoverableStopIntents) {
+    try {
+      await rearmRecoverableAgentComputeStopIntentOnce({
+        intentId: intent.id,
+        agentId: intent.agent_id,
+        organizationId: intent.organization_id,
+        lifecycleRevision: intent.lifecycle_revision,
+        now,
+      });
+      summary.rearmed += 1;
+    } catch (error) {
+      // error-policy:J1 boundary translation — stopRecovery exposes this
+      // poisoned item's failure without fabricating a successful rearm.
+      summary.status = "degraded";
+      summary.failures += 1;
+      logger.error("[Agent Billing] Failed to rearm recoverable agent stop", {
+        intentId: intent.id,
+        agentId: intent.agent_id,
+        organizationId: intent.organization_id,
+        error,
+      });
+    }
+  }
+  if (summary.rearmed > 0) {
+    // error-policy:J5 fire-and-forget daemon kick — the provisioning worker's
+    // own cron observes and retries an unavailable immediate trigger.
+    void provisioningJobService.triggerImmediate(env).catch((error) => {
+      logger.warn("[Agent Billing] Immediate recovery trigger failed", {
+        error,
+      });
+    });
+  }
+  return summary;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -618,7 +689,11 @@ function terminalStatus(
 function responseForRun(
   c: AppContext,
   run: AgentBillingRun,
-  options: { replayed: boolean; results?: BillingResult[] } = {
+  options: {
+    replayed: boolean;
+    results?: BillingResult[];
+    stopRecovery?: AgentStopRecoverySummary;
+  } = {
     replayed: false,
   },
 ): Response {
@@ -641,6 +716,7 @@ function responseForRun(
     duration: run.duration_ms,
     completedAt: run.completed_at?.toISOString() ?? null,
     replayed: options.replayed,
+    ...(options.stopRecovery ? { stopRecovery: options.stopRecovery } : {}),
     ...(options.results
       ? {
           resultsTruncated: options.results.length > MAX_RESULT_DETAILS,
@@ -671,6 +747,19 @@ function responseForRun(
             ? "Agent billing run completed with sandbox failures"
             : "Agent billing run failed",
         code: "agent_billing_run_failed",
+        runId: run.id,
+        invocationKey: run.invocation_key,
+        data,
+      },
+      500,
+    );
+  }
+  if (options.stopRecovery?.status === "degraded") {
+    return c.json(
+      {
+        success: false,
+        error: "Agent stop recovery completed with failures",
+        code: "agent_stop_recovery_degraded",
         runId: run.id,
         invocationKey: run.invocation_key,
         data,
@@ -757,7 +846,15 @@ async function handleAgentBilling(c: AppContext): Promise<Response> {
       leaseDurationMs: AGENT_BILLING_RUN_LEASE_MS,
     });
     run = claim.run;
-    if (!claim.claimed) return responseForRun(c, run, { replayed: true });
+    if (!claim.claimed) {
+      if (run.status === "started")
+        return responseForRun(c, run, { replayed: true });
+      const stopRecovery = await recoverAgentStops(
+        run.billing_cutoff_at,
+        c.env,
+      );
+      return responseForRun(c, run, { replayed: true, stopRecovery });
+    }
     leaseToken = claim.leaseToken;
     if (!leaseToken) {
       throw new ElizaError(
@@ -783,6 +880,7 @@ async function handleAgentBilling(c: AppContext): Promise<Response> {
       recovered: claim.recovered,
       attemptCount: run.attempt_count,
     });
+    const stopRecovery = await recoverAgentStops(now, c.env);
     const suspendedFailedSandboxes =
       await agentBillingRepository.suspendFailedSandboxBilling(now);
     if (suspendedFailedSandboxes > 0) {
@@ -971,7 +1069,7 @@ async function handleAgentBilling(c: AppContext): Promise<Response> {
       c,
       run,
       completion.completedByCaller
-        ? { replayed: false, results }
+        ? { replayed: false, results, stopRecovery }
         : { replayed: true },
     );
   } catch (error) {

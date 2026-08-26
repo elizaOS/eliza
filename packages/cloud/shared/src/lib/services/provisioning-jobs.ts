@@ -18,6 +18,7 @@ import {
   and,
   desc,
   eq,
+  getTableColumns,
   inArray,
   isNotNull,
   isNull,
@@ -57,6 +58,7 @@ import {
   WARM_POOL_ORG_ID,
 } from "../../db/schemas/agent-sandboxes";
 import { apps } from "../../db/schemas/apps";
+import { billingCancelCommands } from "../../db/schemas/billing-cancel-commands";
 import { containers } from "../../db/schemas/containers";
 import { jobExecutionLeases } from "../../db/schemas/job-execution-leases";
 import { jobs } from "../../db/schemas/jobs";
@@ -258,6 +260,8 @@ export interface AgentSuspendJobData {
   organizationId: string;
   userId: string;
   authorization: "user_request" | "billing_request";
+  /** Exact sandbox generation captured by the durable stop intent. */
+  lifecycleRevision?: number;
 }
 
 type PersistedAgentSuspendJobData = Omit<AgentSuspendJobData, "authorization"> & {
@@ -407,6 +411,10 @@ export interface AgentSuspendJobResult {
   containerStopped: boolean;
   /** Backup proven or captured by the pre-suspend gate before the stop. */
   backupId?: string;
+  /** Terminal success that intentionally made no provider mutation. */
+  skipped?: true;
+  /** Stable machine-readable explanation for a terminal no-op. */
+  reason?: "lifecycle_changed" | "stop_intent_superseded" | "billing_recovered";
   error?: string;
 }
 
@@ -779,6 +787,7 @@ function readAgentDeleteJobData(job: Job): AgentDeleteJobData {
 
 function isAgentSuspendJobData(value: unknown): value is PersistedAgentSuspendJobData {
   const authorization = (value as { authorization?: unknown } | null)?.authorization;
+  const lifecycleRevision = (value as { lifecycleRevision?: unknown } | null)?.lifecycleRevision;
   return (
     typeof value === "object" &&
     value !== null &&
@@ -787,7 +796,11 @@ function isAgentSuspendJobData(value: unknown): value is PersistedAgentSuspendJo
     typeof (value as { userId?: unknown }).userId === "string" &&
     (authorization === undefined ||
       authorization === "user_request" ||
-      authorization === "billing_request")
+      authorization === "billing_request") &&
+    (lifecycleRevision === undefined ||
+      (typeof lifecycleRevision === "number" &&
+        Number.isSafeInteger(lifecycleRevision) &&
+        lifecycleRevision >= 0))
   );
 }
 
@@ -798,30 +811,52 @@ function readAgentSuspendJobData(job: Job): PersistedAgentSuspendJobData {
   return job.data;
 }
 
-/** Resolve pre-authority suspend jobs from their exact durable billing binding. */
-export async function resolveAgentSuspendAuthorization(
-  job: Job,
-): Promise<AgentSuspendJobData["authorization"]> {
+interface ResolvedAgentSuspendAuthority {
+  authorization: AgentSuspendJobData["authorization"];
+  lifecycleRevision?: number;
+  intentBound: boolean;
+}
+
+/**
+ * Resolve modern jobs from their exact durable intent. Legacy user-request
+ * jobs predate intent binding, so their inline authorization remains a
+ * compatibility fallback only.
+ */
+async function resolveAgentSuspendAuthority(job: Job): Promise<ResolvedAgentSuspendAuthority> {
   const data = readAgentSuspendJobData(job);
-  if (data.authorization) return data.authorization;
   const [boundIntent] = await dbWrite
-    .select({ id: agentComputeStopIntents.id })
+    .select({
+      authorization: agentComputeStopIntents.authorization,
+      lifecycleRevision: agentComputeStopIntents.lifecycle_revision,
+    })
     .from(agentComputeStopIntents)
     .where(
       and(
         eq(agentComputeStopIntents.organization_id, job.organization_id),
         eq(agentComputeStopIntents.agent_id, data.agentId),
         eq(agentComputeStopIntents.job_id, job.id),
-        inArray(agentComputeStopIntents.status, [
-          "pending",
-          "dispatching",
-          "retry",
-          "terminal_attention",
-        ]),
       ),
     )
     .limit(1);
-  return boundIntent ? "billing_request" : "user_request";
+  if (boundIntent) {
+    return {
+      authorization: boundIntent.authorization,
+      lifecycleRevision: boundIntent.lifecycleRevision,
+      intentBound: true,
+    };
+  }
+  return {
+    authorization: data.authorization ?? "user_request",
+    lifecycleRevision: data.lifecycleRevision,
+    intentBound: false,
+  };
+}
+
+/** Resolve pre-authority suspend jobs without changing the public helper contract. */
+export async function resolveAgentSuspendAuthorization(
+  job: Job,
+): Promise<AgentSuspendJobData["authorization"]> {
+  return (await resolveAgentSuspendAuthority(job)).authorization;
 }
 
 function isAgentResumeJobData(value: unknown): value is AgentResumeJobData {
@@ -1164,6 +1199,12 @@ interface LifecycleJobOptions<TData extends object> {
    * provision's lifecycle-revision race check).
    */
   validateSandbox?: (sandbox: LifecycleSandboxRow) => void;
+  /**
+   * Resolve a durable operation replay before validating the sandbox's
+   * current generation. A completed request must remain replayable after its
+   * own lifecycle mutation advances that generation.
+   */
+  resolveReplay?: (tx: DbTransaction, sandbox: LifecycleSandboxRow) => Promise<Job | undefined>;
   deleteAuthorization?: DeleteAuthorization;
   /**
    * Called with the hydrated existing job when an active pending/in_progress
@@ -1587,6 +1628,28 @@ function assertRecoveryHealthy(
   throw new ProvisioningRecoveryDegradedError(phase, summary);
 }
 
+/**
+ * Acquire the lifecycle target before an explicit billing cancellation takes
+ * organization/user authority locks. Validation and durable intent/job writes
+ * stay in enqueueAgentSuspendOnceInTransaction; its repeated advisory and row
+ * locks are transaction-reentrant.
+ */
+export async function lockAgentSuspendTargetInTx(
+  tx: DbTransaction,
+  p: { agentId: string; organizationId: string },
+): Promise<void> {
+  await configureElizaLifecycleTransaction(tx);
+  await tx.execute(elizaProvisionAdvisoryLockSql(p.organizationId, p.agentId));
+  await tx
+    .select({ id: agentSandboxes.id })
+    .from(agentSandboxes)
+    .where(
+      and(eq(agentSandboxes.id, p.agentId), eq(agentSandboxes.organization_id, p.organizationId)),
+    )
+    .for("update")
+    .limit(1);
+}
+
 export class ProvisioningJobService {
   private readonly executionOverride?: (job: Job) => Promise<void>;
   private readonly executionTimeoutMs: (jobType: string) => number;
@@ -1623,6 +1686,15 @@ export class ProvisioningJobService {
     ) {
       throw new Error("Execution lease heartbeat must be positive and shorter than the lease");
     }
+  }
+
+  /**
+   * Keep durable suspend-authority resolution behind the service boundary so
+   * dispatch harnesses can replace that one read per test without swapping the
+   * process-wide DB helper module used by composed PGlite suites.
+   */
+  private async resolveAgentSuspendAuthority(job: Job): Promise<ResolvedAgentSuspendAuthority> {
+    return resolveAgentSuspendAuthority(job);
   }
 
   /**
@@ -1766,6 +1838,17 @@ export class ProvisioningJobService {
         sandbox.status === "deletion_failed")
     ) {
       throw new ApiError(409, "session_not_ready", `Agent ${opts.agentId} deletion is in progress`);
+    }
+
+    const replay = await opts.resolveReplay?.(tx, sandbox);
+    if (replay) {
+      logger.info(`[provisioning-jobs] Replaying durable ${opts.logName} job`, {
+        jobId: replay.id,
+        agentId: opts.agentId,
+        orgId: opts.organizationId,
+        ...(opts.logExtras ?? {}),
+      });
+      return { job: await hydrateJob(replay), created: false };
     }
 
     opts.validateSandbox?.(sandbox);
@@ -2284,14 +2367,78 @@ export class ProvisioningJobService {
     userId: string;
     authorization: "user_request" | "billing_request";
     webhookUrl?: string;
+    expectedLifecycleRevision?: number;
   }): Promise<EnqueueAgentSuspendResult> {
-    return this.enqueueLifecycleJob<AgentSuspendJobData>({
+    return this.enqueueLifecycleJob<AgentSuspendJobData>(this.agentSuspendLifecycleOptions(params));
+  }
+
+  /**
+   * Transaction-scoped suspend enqueue for a caller that must commit its own
+   * receipt and the exact intent/job binding atomically. Webhooks are excluded
+   * because their URL validation performs network work outside transactions.
+   */
+  async enqueueAgentSuspendOnceInTransaction(
+    tx: DbTransaction,
+    params: {
+      agentId: string;
+      organizationId: string;
+      userId: string;
+      authorization: "user_request" | "billing_request";
+      expectedLifecycleRevision?: number;
+    },
+  ): Promise<EnqueueAgentSuspendResult> {
+    return this.enqueueLifecycleJobInTx<AgentSuspendJobData>(
+      tx,
+      this.agentSuspendLifecycleOptions(params),
+    );
+  }
+
+  /** Short compatibility alias for other transaction-scoped service helpers. */
+  async enqueueAgentSuspendOnceInTx(
+    tx: DbTransaction,
+    params: {
+      agentId: string;
+      organizationId: string;
+      userId: string;
+      authorization: "user_request" | "billing_request";
+      expectedLifecycleRevision?: number;
+    },
+  ): Promise<EnqueueAgentSuspendResult> {
+    return this.enqueueAgentSuspendOnceInTransaction(tx, params);
+  }
+
+  private agentSuspendLifecycleOptions(params: {
+    agentId: string;
+    organizationId: string;
+    userId: string;
+    authorization: "user_request" | "billing_request";
+    webhookUrl?: string;
+    expectedLifecycleRevision?: number;
+  }): LifecycleJobOptions<AgentSuspendJobData> {
+    let intentIdToBind: string | undefined;
+    const expectedLifecycleRevision = params.expectedLifecycleRevision;
+    const validateTarget = (sandbox: LifecycleSandboxRow): void => {
+      if (sandbox.pool_status !== null || sandbox.deleted_at !== null) {
+        throw new ApiError(404, "resource_not_found", "Agent not found");
+      }
+      if (
+        expectedLifecycleRevision !== undefined &&
+        sandbox.lifecycle_revision !== expectedLifecycleRevision
+      ) {
+        throw new ApiError(409, "session_not_ready", "Agent lifecycle changed before suspend", {
+          expectedLifecycleRevision,
+          currentLifecycleRevision: sandbox.lifecycle_revision,
+        });
+      }
+    };
+    return {
       jobType: JOB_TYPES.AGENT_SUSPEND,
       jobData: {
         agentId: params.agentId,
         organizationId: params.organizationId,
         userId: params.userId,
         authorization: params.authorization,
+        lifecycleRevision: expectedLifecycleRevision,
       },
       toRecord: agentSuspendJobDataToRecord,
       agentId: params.agentId,
@@ -2303,71 +2450,207 @@ export class ProvisioningJobService {
       logName: "agent_suspend",
       idempotencyPredicates:
         params.authorization === "user_request"
-          ? [sql`${jobs.data}->>'authorization' = 'user_request'`]
+          ? [
+              sql`${jobs.data}->>'authorization' = 'user_request'`,
+              ...(expectedLifecycleRevision === undefined
+                ? []
+                : [sql`${jobs.data}->>'lifecycleRevision' = ${String(expectedLifecycleRevision)}`]),
+            ]
           : [],
-      beforeInsert:
-        params.authorization === "billing_request"
-          ? async (tx, sandbox) => {
-              const [existing] = await tx
-                .select()
-                .from(agentComputeStopIntents)
-                .where(
-                  and(
-                    eq(agentComputeStopIntents.organization_id, params.organizationId),
-                    eq(agentComputeStopIntents.agent_id, params.agentId),
+      resolveReplay: async (tx, sandbox) => {
+        const targetRevision = expectedLifecycleRevision ?? sandbox.lifecycle_revision;
+        const [exactIntent] = await tx
+          .select()
+          .from(agentComputeStopIntents)
+          .where(
+            and(
+              eq(agentComputeStopIntents.organization_id, params.organizationId),
+              eq(agentComputeStopIntents.agent_id, params.agentId),
+              eq(agentComputeStopIntents.lifecycle_revision, targetRevision),
+              eq(agentComputeStopIntents.authorization, "user_request"),
+              ...(params.authorization === "billing_request"
+                ? [
                     inArray(agentComputeStopIntents.status, [
                       "pending",
                       "dispatching",
                       "retry",
                       "terminal_attention",
                     ]),
-                  ),
-                )
-                .for("update")
-                .limit(1);
-              if (existing) {
-                await tx
-                  .update(agentComputeStopIntents)
-                  .set({
-                    lifecycle_revision: sandbox.lifecycle_revision,
-                    status: "pending",
-                    job_id: null,
-                    attempts: 0,
-                    last_error: null,
-                    provider_started_at: null,
-                    next_attempt_at: new Date(),
-                    updated_at: new Date(),
-                  })
-                  .where(eq(agentComputeStopIntents.id, existing.id));
-              } else {
-                await tx.insert(agentComputeStopIntents).values({
-                  organization_id: params.organizationId,
-                  agent_id: params.agentId,
-                  lifecycle_revision: sandbox.lifecycle_revision,
-                });
-              }
-            }
-          : undefined,
-      afterInsert:
-        params.authorization === "billing_request"
-          ? async (tx, _sandbox, job) => {
-              const bound = await tx
-                .update(agentComputeStopIntents)
-                .set({ job_id: job.id, updated_at: new Date() })
-                .where(
-                  and(
-                    eq(agentComputeStopIntents.organization_id, params.organizationId),
-                    eq(agentComputeStopIntents.agent_id, params.agentId),
-                    inArray(agentComputeStopIntents.status, ["pending", "retry"]),
-                  ),
-                )
-                .returning({ id: agentComputeStopIntents.id });
-              if (bound.length !== 1) {
-                throw new Error("Agent billing stop intent was not atomically bound to its job");
-              }
-            }
-          : undefined,
-    });
+                  ]
+                : []),
+            ),
+          )
+          .for("update")
+          .limit(1);
+        if (exactIntent) {
+          if (!exactIntent.job_id) {
+            throw new Error("Agent user stop intent is not bound to a job");
+          }
+          const [exactJob] = await tx
+            .select()
+            .from(jobs)
+            .where(
+              and(
+                eq(jobs.id, exactIntent.job_id),
+                eq(jobs.type, JOB_TYPES.AGENT_SUSPEND),
+                eq(jobs.organization_id, params.organizationId),
+                eq(jobs.agent_id, params.agentId),
+              ),
+            )
+            .for("update")
+            .limit(1);
+          if (!exactJob) {
+            throw new Error("Agent user stop intent references a missing job");
+          }
+          return exactJob;
+        }
+        if (params.authorization === "billing_request") return undefined;
+
+        // Exact durable replay deliberately precedes this gate, because
+        // the accepted stop may itself have advanced the generation.
+        // A first-time request must validate the currently locked row
+        // before it can promote any older billing authority.
+        validateTarget(sandbox);
+
+        // An unconditional user stop monotonically strengthens a queued
+        // billing stop. Reuse the same operation instead of leaving an
+        // independent billing job that can be superseded by a top-up.
+        const [billingIntent] = await tx
+          .select()
+          .from(agentComputeStopIntents)
+          .where(
+            and(
+              eq(agentComputeStopIntents.organization_id, params.organizationId),
+              eq(agentComputeStopIntents.agent_id, params.agentId),
+              eq(agentComputeStopIntents.lifecycle_revision, targetRevision),
+              eq(agentComputeStopIntents.authorization, "billing_request"),
+              inArray(agentComputeStopIntents.status, [
+                "pending",
+                "dispatching",
+                "retry",
+                "terminal_attention",
+              ]),
+            ),
+          )
+          .for("update")
+          .limit(1);
+        if (!billingIntent?.job_id) return undefined;
+        const [billingJob] = await tx
+          .select()
+          .from(jobs)
+          .where(
+            and(
+              eq(jobs.id, billingIntent.job_id),
+              eq(jobs.type, JOB_TYPES.AGENT_SUSPEND),
+              eq(jobs.organization_id, params.organizationId),
+              eq(jobs.agent_id, params.agentId),
+              sql`${jobs.status} IN ('pending', 'in_progress')`,
+            ),
+          )
+          .for("update")
+          .limit(1);
+        if (!billingJob) return undefined;
+        const now = new Date();
+        await tx
+          .update(agentComputeStopIntents)
+          .set({ authorization: "user_request", updated_at: now })
+          .where(eq(agentComputeStopIntents.id, billingIntent.id));
+        // Do not rewrite the claimed job envelope. An executor may
+        // already hold its hydrated snapshot and settlement CAS; the
+        // locked intent is the monotonic authority boundary.
+        return billingJob;
+      },
+      validateSandbox: validateTarget,
+      beforeInsert: async (tx, sandbox) => {
+        const targetRevision = expectedLifecycleRevision ?? sandbox.lifecycle_revision;
+        const [activeIntent] = await tx
+          .select()
+          .from(agentComputeStopIntents)
+          .where(
+            and(
+              eq(agentComputeStopIntents.organization_id, params.organizationId),
+              eq(agentComputeStopIntents.agent_id, params.agentId),
+              inArray(agentComputeStopIntents.status, [
+                "pending",
+                "dispatching",
+                "retry",
+                "terminal_attention",
+              ]),
+            ),
+          )
+          .for("update")
+          .limit(1);
+
+        if (activeIntent && activeIntent.lifecycle_revision !== targetRevision) {
+          const supersededAt = new Date();
+          await tx
+            .update(agentComputeStopIntents)
+            .set({
+              status: "superseded",
+              last_error: "lifecycle_changed",
+              superseded_at: supersededAt,
+              updated_at: supersededAt,
+            })
+            .where(eq(agentComputeStopIntents.id, activeIntent.id));
+        }
+
+        if (activeIntent && activeIntent.lifecycle_revision === targetRevision) {
+          const now = new Date();
+          const authorization =
+            activeIntent.authorization === "user_request" ? "user_request" : params.authorization;
+          const [rearmed] = await tx
+            .update(agentComputeStopIntents)
+            .set({
+              authorization,
+              status: "pending",
+              job_id: null,
+              attempts: 0,
+              last_error: null,
+              provider_started_at: null,
+              provider_confirmed_at: null,
+              superseded_at: null,
+              next_attempt_at: now,
+              updated_at: now,
+            })
+            .where(eq(agentComputeStopIntents.id, activeIntent.id))
+            .returning({ id: agentComputeStopIntents.id });
+          intentIdToBind = rearmed?.id;
+        } else {
+          const [inserted] = await tx
+            .insert(agentComputeStopIntents)
+            .values({
+              organization_id: params.organizationId,
+              agent_id: params.agentId,
+              lifecycle_revision: targetRevision,
+              authorization: params.authorization,
+            })
+            .returning({ id: agentComputeStopIntents.id });
+          intentIdToBind = inserted?.id;
+        }
+        if (!intentIdToBind) {
+          throw new Error("Agent stop intent was not durably claimed");
+        }
+      },
+      afterInsert: async (tx, _sandbox, job) => {
+        if (!intentIdToBind) {
+          throw new Error("Agent stop intent binding was lost before job insertion");
+        }
+        const bound = await tx
+          .update(agentComputeStopIntents)
+          .set({ job_id: job.id, updated_at: new Date() })
+          .where(
+            and(
+              eq(agentComputeStopIntents.id, intentIdToBind),
+              eq(agentComputeStopIntents.status, "pending"),
+              isNull(agentComputeStopIntents.job_id),
+            ),
+          )
+          .returning({ id: agentComputeStopIntents.id });
+        if (bound.length !== 1) {
+          throw new Error("Agent stop intent was not atomically bound to its job");
+        }
+      },
+    };
   }
 
   /**
@@ -4841,7 +5124,9 @@ export class ProvisioningJobService {
       // is pointless churn, and a completed row is the clean terminal state.
       case JOB_TYPES.CONTAINER_STOP: {
         await this.assertExecutionMutationLease(job);
-        const outcome = await dispatchContainerStopJob(job);
+        const outcome = await dispatchContainerStopJob(job, {
+          executionOwnerId: this.executionOwnerId,
+        });
         await this.settleClaimedExecution(job, "completed", {
           result: { stopped: outcome.stopped, reason: outcome.reason ?? null },
           completed_at: new Date(),
@@ -4938,7 +5223,7 @@ export class ProvisioningJobService {
 
   private async executeAgentSuspend(job: Job): Promise<void> {
     const data = readAgentSuspendJobData(job);
-    const authorization = await resolveAgentSuspendAuthorization(job);
+    const authority = await this.resolveAgentSuspendAuthority(job);
 
     if (data.organizationId !== job.organization_id) {
       throw new Error(
@@ -4956,7 +5241,8 @@ export class ProvisioningJobService {
       data.agentId,
       data.organizationId,
       job.id,
-      authorization,
+      authority.authorization,
+      authority.lifecycleRevision,
     );
 
     if (await this.completeIfAgentGone(job, result, data.agentId)) return;
@@ -4976,6 +5262,7 @@ export class ProvisioningJobService {
       cloudAgentId: data.agentId,
       containerStopped: result.containerStopped,
       backupId: result.backupId,
+      ...(result.skipped ? { skipped: true as const, reason: result.reason } : {}),
     };
 
     await this.settleClaimedExecution(job, "completed", {
@@ -4992,6 +5279,8 @@ export class ProvisioningJobService {
       agentId: data.agentId,
       containerStopped: result.containerStopped,
       backupId: result.backupId,
+      skipped: result.skipped ?? false,
+      reason: result.reason,
     });
   }
 
@@ -6696,18 +6985,299 @@ export interface ProcessingResult {
   errors: Array<{ jobId: string; error: string }>;
 }
 
-/** Operator recovery/alert scan for billing stop intents, including terminal failures. */
+/** Find due agent-stop intents whose exact bound worker job is absent or terminal. */
 export async function listRecoverableAgentComputeStopIntents(now: Date, limit = 100) {
-  return await dbWrite
-    .select()
-    .from(agentComputeStopIntents)
-    .where(
-      and(
-        inArray(agentComputeStopIntents.status, ["pending", "retry", "terminal_attention"]),
-        lte(agentComputeStopIntents.next_attempt_at, now),
-      ),
-    )
-    .limit(limit);
+  if (!Number.isSafeInteger(limit) || limit <= 0) return [];
+  type RecoveryCursor = { nextAttemptAtText: string; id: string };
+  const recoverable: Array<typeof agentComputeStopIntents.$inferSelect> = [];
+  const pageSize = Math.max(100, Math.min(limit, 500));
+  let cursor: RecoveryCursor | null = null;
+
+  while (recoverable.length < limit) {
+    const candidates = await dbWrite
+      .select({
+        intent: { ...getTableColumns(agentComputeStopIntents) },
+        cursorNextAttemptAtText: sql<string>`${agentComputeStopIntents.next_attempt_at}::text`,
+        sandbox: {
+          userId: agentSandboxes.user_id,
+          status: agentSandboxes.status,
+          billingStatus: agentSandboxes.billing_status,
+          scheduledShutdownAt: agentSandboxes.scheduled_shutdown_at,
+          executionTier: agentSandboxes.execution_tier,
+          poolStatus: agentSandboxes.pool_status,
+          deletionAttemptId: agentSandboxes.deletion_attempt_id,
+          deletedAt: agentSandboxes.deleted_at,
+          replacementCleanupSandboxId: agentSandboxes.replacement_cleanup_sandbox_id,
+        },
+        boundJob: {
+          id: jobs.id,
+          type: jobs.type,
+          status: jobs.status,
+          organizationId: jobs.organization_id,
+          agentId: jobs.agent_id,
+          userId: jobs.user_id,
+          dataStorage: jobs.data_storage,
+          dataKey: jobs.data_key,
+          data: jobs.data,
+        },
+      })
+      .from(agentComputeStopIntents)
+      .innerJoin(
+        agentSandboxes,
+        and(
+          eq(agentSandboxes.id, agentComputeStopIntents.agent_id),
+          eq(agentSandboxes.organization_id, agentComputeStopIntents.organization_id),
+          eq(agentSandboxes.lifecycle_revision, agentComputeStopIntents.lifecycle_revision),
+        ),
+      )
+      .leftJoin(jobs, eq(jobs.id, agentComputeStopIntents.job_id))
+      .where(
+        and(
+          inArray(agentComputeStopIntents.status, ["pending", "retry", "terminal_attention"]),
+          lte(agentComputeStopIntents.next_attempt_at, now),
+          cursor
+            ? sql`(${agentComputeStopIntents.next_attempt_at}, ${agentComputeStopIntents.id}) >
+              (${cursor.nextAttemptAtText}::timestamptz, ${cursor.id}::uuid)`
+            : undefined,
+          eq(agentSandboxes.status, "running"),
+          isNull(agentSandboxes.pool_status),
+          isNull(agentSandboxes.deletion_attempt_id),
+          isNull(agentSandboxes.deleted_at),
+          isNull(agentSandboxes.replacement_cleanup_sandbox_id),
+          inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+          or(
+            eq(agentComputeStopIntents.authorization, "user_request"),
+            and(
+              eq(agentComputeStopIntents.authorization, "billing_request"),
+              eq(agentSandboxes.billing_status, "shutdown_pending"),
+              isNotNull(agentSandboxes.scheduled_shutdown_at),
+              lte(agentSandboxes.scheduled_shutdown_at, now),
+            ),
+          ),
+          or(
+            isNull(agentComputeStopIntents.job_id),
+            isNull(jobs.id),
+            and(
+              eq(jobs.status, "failed"),
+              eq(jobs.type, JOB_TYPES.AGENT_SUSPEND),
+              eq(jobs.organization_id, agentComputeStopIntents.organization_id),
+              eq(jobs.data_storage, "inline"),
+              isNull(jobs.data_key),
+            ),
+          ),
+        ),
+      )
+      .orderBy(agentComputeStopIntents.next_attempt_at, agentComputeStopIntents.id)
+      .limit(pageSize);
+
+    if (candidates.length === 0) break;
+    for (const { intent, sandbox, boundJob } of candidates) {
+      let safelyRearmable = !boundJob?.id;
+      if (boundJob?.id) {
+        try {
+          const data = readAgentSuspendJobData({ id: boundJob.id, data: boundJob.data } as Job);
+          safelyRearmable =
+            boundJob.type === JOB_TYPES.AGENT_SUSPEND &&
+            boundJob.status === "failed" &&
+            boundJob.organizationId === intent.organization_id &&
+            boundJob.userId === sandbox.userId &&
+            data.agentId === intent.agent_id &&
+            data.organizationId === intent.organization_id &&
+            data.userId === sandbox.userId &&
+            (data.lifecycleRevision === undefined ||
+              data.lifecycleRevision === intent.lifecycle_revision) &&
+            data.authorization !== undefined &&
+            !(
+              intent.authorization === "billing_request" && data.authorization !== "billing_request"
+            );
+        } catch {
+          // error-policy:J3 untrusted-input sanitizing — malformed persisted jobs
+          // are excluded from autonomous recovery instead of being treated as valid.
+          safelyRearmable = false;
+        }
+      }
+      if (safelyRearmable) recoverable.push(intent);
+      if (recoverable.length >= limit) break;
+    }
+    const last = candidates.at(-1);
+    if (!last || candidates.length < pageSize) break;
+    cursor = { nextAttemptAtText: last.cursorNextAttemptAtText, id: last.intent.id };
+  }
+  return recoverable;
+}
+
+/** Rearm one exact failed AGENT_SUSPEND job under the canonical lifecycle lock. */
+export async function rearmRecoverableAgentComputeStopIntentOnce(p: {
+  intentId: string;
+  agentId: string;
+  organizationId: string;
+  lifecycleRevision: number;
+  now: Date;
+}): Promise<{ id: string; rearmed: boolean }> {
+  return await dbWrite.transaction(async (tx) => {
+    await configureElizaLifecycleTransaction(tx);
+    await tx.execute(elizaProvisionAdvisoryLockSql(p.organizationId, p.agentId));
+    const [sandbox] = await tx
+      .select({
+        userId: agentSandboxes.user_id,
+        status: agentSandboxes.status,
+        billingStatus: agentSandboxes.billing_status,
+        scheduledShutdownAt: agentSandboxes.scheduled_shutdown_at,
+        lifecycleRevision: agentSandboxes.lifecycle_revision,
+        executionTier: agentSandboxes.execution_tier,
+        poolStatus: agentSandboxes.pool_status,
+        deletionAttemptId: agentSandboxes.deletion_attempt_id,
+        deletedAt: agentSandboxes.deleted_at,
+        replacementCleanupSandboxId: agentSandboxes.replacement_cleanup_sandbox_id,
+      })
+      .from(agentSandboxes)
+      .where(
+        and(eq(agentSandboxes.id, p.agentId), eq(agentSandboxes.organization_id, p.organizationId)),
+      )
+      .for("update")
+      .limit(1);
+    if (
+      !sandbox ||
+      sandbox.userId === null ||
+      sandbox.status !== "running" ||
+      sandbox.lifecycleRevision !== p.lifecycleRevision ||
+      !isContainerBackedExecutionTier(sandbox.executionTier) ||
+      sandbox.poolStatus !== null ||
+      sandbox.deletionAttemptId !== null ||
+      sandbox.deletedAt !== null ||
+      sandbox.replacementCleanupSandboxId !== null
+    ) {
+      throw new Error("Recoverable agent stop intent lost its live lifecycle fence");
+    }
+
+    const [intent] = await tx
+      .select()
+      .from(agentComputeStopIntents)
+      .where(
+        and(
+          eq(agentComputeStopIntents.id, p.intentId),
+          eq(agentComputeStopIntents.organization_id, p.organizationId),
+          eq(agentComputeStopIntents.agent_id, p.agentId),
+          eq(agentComputeStopIntents.lifecycle_revision, p.lifecycleRevision),
+          inArray(agentComputeStopIntents.status, ["pending", "retry", "terminal_attention"]),
+          lte(agentComputeStopIntents.next_attempt_at, p.now),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!intent) throw new Error("Agent stop intent is no longer due for recovery");
+    if (
+      intent.authorization === "billing_request" &&
+      (sandbox.billingStatus !== "shutdown_pending" ||
+        !sandbox.scheduledShutdownAt ||
+        sandbox.scheduledShutdownAt > p.now)
+    ) {
+      throw new Error("Billing agent stop recovery lost its shutdown authority");
+    }
+
+    const [boundJob] = intent.job_id
+      ? await tx.select().from(jobs).where(eq(jobs.id, intent.job_id)).for("update").limit(1)
+      : [undefined];
+    let jobId: string;
+    if (boundJob) {
+      const data = readAgentSuspendJobData(boundJob);
+      if (
+        boundJob.status !== "failed" ||
+        boundJob.type !== JOB_TYPES.AGENT_SUSPEND ||
+        boundJob.organization_id !== p.organizationId ||
+        boundJob.user_id !== sandbox.userId ||
+        boundJob.data_storage !== "inline" ||
+        boundJob.data_key !== null ||
+        data.agentId !== p.agentId ||
+        data.organizationId !== p.organizationId ||
+        data.userId !== sandbox.userId ||
+        (data.lifecycleRevision !== undefined && data.lifecycleRevision !== p.lifecycleRevision) ||
+        data.authorization === undefined ||
+        (intent.authorization === "billing_request" && data.authorization !== "billing_request")
+      ) {
+        throw new Error("Failed agent stop job does not match its durable intent");
+      }
+      await tx.delete(jobExecutionLeases).where(eq(jobExecutionLeases.job_id, boundJob.id));
+      const [rearmed] = await tx
+        .update(jobs)
+        .set({
+          status: "pending",
+          attempts: 0,
+          execution_interruptions: 0,
+          retryable_requeues: 0,
+          estimated_completion_at: new Date(p.now.getTime() + 30_000),
+          scheduled_for: p.now,
+          started_at: null,
+          execution_generation: null,
+          execution_quiesced_at: null,
+          completed_at: null,
+          updated_at: p.now,
+        })
+        .where(and(eq(jobs.id, boundJob.id), eq(jobs.status, "failed")))
+        .returning({ id: jobs.id });
+      if (!rearmed) throw new Error("Failed agent stop job lost its rearm fence");
+      jobId = rearmed.id;
+    } else {
+      const [command] = await tx
+        .select({ id: billingCancelCommands.id })
+        .from(billingCancelCommands)
+        .where(
+          and(
+            eq(billingCancelCommands.organization_id, p.organizationId),
+            eq(billingCancelCommands.resource_type, "agent_sandbox"),
+            eq(billingCancelCommands.resource_id, p.agentId),
+            eq(billingCancelCommands.expected_lifecycle_revision, p.lifecycleRevision),
+          ),
+        )
+        .limit(1);
+      if (command) {
+        throw new Error("Immutable billing cancellation command lost its agent stop job");
+      }
+      const [created] = await tx
+        .insert(jobs)
+        .values(
+          await prepareJobInsertData({
+            type: JOB_TYPES.AGENT_SUSPEND,
+            status: "pending",
+            data: {
+              agentId: p.agentId,
+              organizationId: p.organizationId,
+              userId: sandbox.userId,
+              authorization: intent.authorization,
+              lifecycleRevision: p.lifecycleRevision,
+            },
+            data_storage: "inline",
+            agent_id: p.agentId,
+            organization_id: p.organizationId,
+            user_id: sandbox.userId,
+            max_attempts: 3,
+            estimated_completion_at: new Date(p.now.getTime() + 30_000),
+            scheduled_for: p.now,
+          }),
+        )
+        .returning({ id: jobs.id });
+      if (!created) throw new Error("Agent stop recovery job insert returned no row");
+      jobId = created.id;
+    }
+
+    await tx
+      .update(agentComputeStopIntents)
+      .set(
+        intent.provider_confirmed_at
+          ? { status: "retry", job_id: jobId, next_attempt_at: p.now, updated_at: p.now }
+          : {
+              status: "pending",
+              job_id: jobId,
+              attempts: 0,
+              last_error: null,
+              provider_started_at: null,
+              next_attempt_at: p.now,
+              updated_at: p.now,
+            },
+      )
+      .where(eq(agentComputeStopIntents.id, intent.id));
+    return { id: jobId, rearmed: true };
+  });
 }
 
 // Singleton
