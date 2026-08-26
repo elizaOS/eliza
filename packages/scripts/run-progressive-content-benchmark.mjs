@@ -2,7 +2,7 @@
 /** Runs the fixed six-family progressive-content benchmark matrix in fresh child processes. */
 
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import * as fs from "node:fs/promises";
 import os from "node:os";
@@ -202,6 +202,7 @@ async function benchmarkResources(target, authoritativeStore) {
 }
 
 async function runWorker(options) {
+  const processInstanceId = randomUUID();
   const manifest = await readManifestUnchecked(options.corpusRoot);
   const object = selectProgressiveContentBenchmarkObject(
     manifest,
@@ -239,6 +240,7 @@ async function runWorker(options) {
     sourceBytes: options.sourceBytes,
     repetition: options.repetition,
     processId: process.pid,
+    processInstanceId,
     freshProcess: true,
     createTarget: () =>
       createProgressiveContentProductionTarget({

@@ -61,6 +61,7 @@ export interface ProgressiveContentBenchmarkProcessSample {
 	readonly sourceBytes: number;
 	readonly repetition: number;
 	readonly processId: number;
+	readonly processInstanceId: string;
 	readonly freshProcess: boolean;
 	readonly setupGrowth: ProgressiveContentBenchmarkResourceSample;
 	readonly cold: ProgressiveContentBenchmarkPhaseSample;
@@ -256,6 +257,7 @@ export async function runProgressiveContentBenchmarkProcessSample(input: {
 	readonly sourceBytes: number;
 	readonly repetition: number;
 	readonly processId?: number;
+	readonly processInstanceId?: string;
 	readonly freshProcess: boolean;
 	readonly createTarget: () => Promise<ProgressiveContentTarget>;
 	readonly measureResources: (
@@ -307,6 +309,9 @@ export async function runProgressiveContentBenchmarkProcessSample(input: {
 			sourceBytes: input.sourceBytes,
 			repetition: input.repetition,
 			processId: input.processId ?? process.pid,
+			processInstanceId:
+				input.processInstanceId ??
+				`${input.processId ?? process.pid}:${performance.timeOrigin}`,
 			freshProcess: input.freshProcess,
 			setupGrowth: growth(beforeSetup, afterSetup),
 			cold,
@@ -373,12 +378,13 @@ export function buildProgressiveContentBenchmarkReport(input: {
 		}
 	}
 	const identities = new Set<string>();
-	const processIds = new Set<number>();
+	const processInstances = new Set<string>();
 	for (const sample of input.samples) {
 		const identity = `${sample.family}:${sample.sourceBytes}:${sample.repetition}`;
 		if (
 			!Number.isSafeInteger(sample.processId) ||
 			sample.processId <= 0 ||
+			!sample.processInstanceId ||
 			!sample.adapterId ||
 			!sample.productionMethod
 		)
@@ -388,9 +394,9 @@ export function buildProgressiveContentBenchmarkReport(input: {
 		identities.add(identity);
 		if (!sample.freshProcess)
 			failures.push(`sample ${identity} was not process-isolated`);
-		if (processIds.has(sample.processId))
-			failures.push(`process ${sample.processId} was reused`);
-		processIds.add(sample.processId);
+		if (processInstances.has(sample.processInstanceId))
+			failures.push(`process instance ${sample.processInstanceId} was reused`);
+		processInstances.add(sample.processInstanceId);
 		for (const phase of [sample.cold, sample.warm]) {
 			if (
 				phase.bytesReturned !== sample.sourceBytes ||
@@ -462,7 +468,7 @@ export function buildProgressiveContentBenchmarkReport(input: {
 		families: [...families],
 		sourceSizes: [...sourceSizes],
 		repetitions,
-		processCount: processIds.size,
+		processCount: processInstances.size,
 		cases,
 		samples: input.samples,
 		failures,

@@ -75,6 +75,7 @@ describe("progressive content benchmark", () => {
 			sourceBytes: fixture.object.byteLength,
 			repetition: 1,
 			processId: 101,
+			processInstanceId: "worker-101",
 			freshProcess: true,
 			createTarget: async () => target(),
 			measureResources: () => ({
@@ -120,7 +121,7 @@ describe("progressive content benchmark", () => {
 		});
 	});
 
-	it("rejects missing, duplicate, reused-process, and non-isolated samples", () => {
+	it("rejects missing, duplicate, reused-instance, and non-isolated samples", () => {
 		const phase = {
 			phase: "cold" as const,
 			elapsedMs: 1,
@@ -140,6 +141,7 @@ describe("progressive content benchmark", () => {
 			sourceBytes: 1,
 			repetition: 1,
 			processId: 7,
+			processInstanceId: "worker-7",
 			freshProcess: false,
 			setupGrowth: stable,
 			cold: phase,
@@ -157,7 +159,7 @@ describe("progressive content benchmark", () => {
 			expect.arrayContaining([
 				"sample file:1:1 was not process-isolated",
 				"duplicate sample file:1:1",
-				"process 7 was reused",
+				"process instance worker-7 was reused",
 				"missing sample file:1:2",
 				"missing sample file:2:1",
 				"missing sample file:2:2",
