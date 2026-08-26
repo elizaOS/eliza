@@ -45,10 +45,11 @@ export interface BatchQueueOptions<T> {
 	/**
 	 * Optional batched processor. When provided, a drain calls this ONCE with the
 	 * whole dequeued slice (so a provider that supports a batched request — e.g.
-	 * embeddings — sends one call instead of N). If it throws, the drain falls
-	 * back to the per-item {@link process} path, so all retry / `onExhausted`
-	 * semantics are preserved for failures. Existing per-item callers that don't
-	 * set this are completely unaffected.
+	 * embeddings — sends one call instead of N). If it throws, the whole drain
+	 * falls back to the per-item {@link process} path. Failed item outcomes are
+	 * likewise retried through that path, so all retry / `onExhausted` semantics
+	 * are preserved. Existing per-item callers that don't set this are completely
+	 * unaffected.
 	 */
 	processBatch?: (items: T[]) => Promise<BatchItemOutcome<T>[]>;
 	maxParallel?: number;
@@ -151,6 +152,17 @@ export class BatchQueue<T> {
 			if (this.options.processBatch) {
 				try {
 					outcomes = await this.options.processBatch(batch);
+					const failedItems = outcomes
+						.filter((outcome) => !outcome.success)
+						.map((outcome) => outcome.item);
+					if (failedItems.length > 0) {
+						const retriedOutcomes =
+							await this.batchProcessor.processBatch(failedItems);
+						let retriedIndex = 0;
+						outcomes = outcomes.map((outcome) =>
+							outcome.success ? outcome : retriedOutcomes[retriedIndex++],
+						);
+					}
 				} catch (error) {
 					// error-policy:J4 A batch-wide provider failure degrades to
 					// the per-item retry path and remains observable.
