@@ -114,6 +114,7 @@ const backupProvenanceProjection = {
   stateDataStorage: agentSandboxBackups.state_data_storage,
   stateDataKey: agentSandboxBackups.state_data_key,
   backupKind: agentSandboxBackups.backup_kind,
+  parentBackupId: agentSandboxBackups.parent_backup_id,
   contentHash: agentSandboxBackups.content_hash,
   verificationStatus: agentSandboxBackups.verification_status,
   verifiedAt: agentSandboxBackups.verified_at,
@@ -331,6 +332,7 @@ export async function previewPersonalDedicatedSelection(
     const receiptActivationAuthority = personalDedicatedActivationAuthorityFromReceipt(
       existing.activation_kind,
       existing.activation_backup_id,
+      existing.activation_backup_hash,
     );
     if (
       currentFingerprint !== existing.inventory_fingerprint ||
@@ -493,6 +495,7 @@ export async function executePersonalDedicatedSelection(
         const receiptActivationAuthority = personalDedicatedActivationAuthorityFromReceipt(
           existing.activation_kind,
           existing.activation_backup_id,
+          existing.activation_backup_hash,
         );
         if (
           currentFingerprint !== existing.inventory_fingerprint ||

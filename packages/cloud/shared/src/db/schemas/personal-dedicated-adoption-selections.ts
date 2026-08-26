@@ -29,6 +29,7 @@ export const personalDedicatedAdoptionSelections = pgTable(
     // Deliberately not an FK: a reviewed exact restore directive must survive
     // backup-row deletion and then fail closed in provisioning.
     activation_backup_id: uuid("activation_backup_id"),
+    activation_backup_hash: text("activation_backup_hash"),
     inventory_fingerprint: text("inventory_fingerprint").notNull(),
     candidate_count: integer("candidate_count").notNull(),
     schema_version: integer("schema_version").notNull().default(1),
@@ -62,9 +63,11 @@ export const personalDedicatedAdoptionSelections = pgTable(
       sql`(
         ${table.activation_kind} = 'fresh_boot'
         AND ${table.activation_backup_id} IS NULL
+        AND ${table.activation_backup_hash} IS NULL
       ) OR (
         ${table.activation_kind} IN ('legacy_backup', 'catalog_restore_required')
         AND ${table.activation_backup_id} IS NOT NULL
+        AND ${table.activation_backup_hash} ~ '^[a-f0-9]{64}$'
       )`,
     ),
     fingerprint_check: check(

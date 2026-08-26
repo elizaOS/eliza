@@ -321,6 +321,7 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   "state_disposition" text NOT NULL,
   "activation_kind" text NOT NULL,
   "activation_backup_id" uuid,
+  "activation_backup_hash" text,
   "inventory_fingerprint" text NOT NULL,
   "candidate_count" integer NOT NULL,
   "schema_version" integer NOT NULL DEFAULT 1,
@@ -338,9 +339,11 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   CONSTRAINT "personal_dedicated_adoption_selections_selected_by_user_id_fk"
     FOREIGN KEY ("selected_by_user_id") REFERENCES "users"("id") ON DELETE SET NULL,
   CONSTRAINT "personal_dedicated_adoption_selections_activation_check"
-    CHECK (("activation_kind" = 'fresh_boot' AND "activation_backup_id" IS NULL)
+    CHECK (("activation_kind" = 'fresh_boot' AND "activation_backup_id" IS NULL
+        AND "activation_backup_hash" IS NULL)
       OR ("activation_kind" IN ('legacy_backup', 'catalog_restore_required')
-        AND "activation_backup_id" IS NOT NULL))
+        AND "activation_backup_id" IS NOT NULL
+        AND "activation_backup_hash" ~ '^[a-f0-9]{64}$'))
 )`,
   `CREATE TABLE IF NOT EXISTS "agent_sandbox_backups" (
   "id" uuid NOT NULL DEFAULT gen_random_uuid(),

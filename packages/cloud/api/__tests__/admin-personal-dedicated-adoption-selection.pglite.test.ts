@@ -38,7 +38,10 @@ import {
   resolvePersonalDedicatedAdoption,
 } from "@/lib/services/agent-tier-upgrade-target";
 import { personalDedicatedAdoptionSelectionService } from "@/lib/services/personal-dedicated-adoption-selection";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+import {
+  provisioningJobService,
+  resolveReviewedProvisionRestoreDirectiveForExecution,
+} from "@/lib/services/provisioning-jobs";
 import { personalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { TIER_UPGRADE_TEST_TABLES } from "../../shared/src/lib/services/__tests__/tier-upgrade-pglite-schema";
@@ -854,7 +857,7 @@ describe("admin personal Dedicated adoption selection", () => {
     expect(persistedJob?.data).not.toHaveProperty("restoreDirective");
   });
 
-  test("a selected verified legacy backup is pinned into the provision job", async () => {
+  test("a selected legacy backup is pinned and worker revalidation blocks hash/status drift", async () => {
     await seedAmbiguousInventory();
     const [backup] = await dbWrite
       .insert(agentSandboxBackups)
@@ -903,11 +906,52 @@ describe("admin personal Dedicated adoption selection", () => {
       expectedDailyRate: AGENT_PRICING.DAILY_RUNNING_COST,
       expectedMinimumBalance: AGENT_PRICING.UPGRADE_MINIMUM_BALANCE,
       expectedMinimumRunwayDays: AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS,
-      expectedActivationAuthorityKey: `from-legacy-backup:${backup!.id}`,
+      expectedActivationAuthorityKey: `from-legacy-backup:${backup!.id}:${"a".repeat(64)}`,
     });
     expect(result.job?.data).toMatchObject({
-      restoreDirective: { kind: "from-backup", backupId: backup!.id },
+      restoreDirective: {
+        kind: "from-reviewed-backup",
+        backupId: backup!.id,
+        expectedContentHash: "a".repeat(64),
+      },
     });
+
+    const reviewedJobData = {
+      agentId: RETAINED,
+      organizationId: ORG_A,
+      userId: USER_A,
+      agentName: "Retained",
+      restoreDirective: {
+        kind: "from-reviewed-backup" as const,
+        backupId: backup!.id,
+        expectedContentHash: "a".repeat(64),
+      },
+    };
+    await expect(
+      resolveReviewedProvisionRestoreDirectiveForExecution(reviewedJobData),
+    ).resolves.toEqual({ kind: "from-backup", backupId: backup!.id });
+
+    await dbWrite
+      .update(agentSandboxBackups)
+      .set({ verification_status: "failed" })
+      .where(eq(agentSandboxBackups.id, backup!.id));
+    await expect(
+      resolveReviewedProvisionRestoreDirectiveForExecution(reviewedJobData),
+    ).rejects.toMatchObject({ status: 409, code: "session_not_ready" });
+
+    await dbWrite
+      .update(agentSandboxBackups)
+      .set({ verification_status: "verified", content_hash: "f".repeat(64) })
+      .where(eq(agentSandboxBackups.id, backup!.id));
+    await expect(
+      resolveReviewedProvisionRestoreDirectiveForExecution(reviewedJobData),
+    ).rejects.toMatchObject({ status: 409, code: "session_not_ready" });
+    expect(await dbWrite.select().from(jobs)).toHaveLength(1);
+    const [organization] = await dbWrite
+      .select({ creditBalance: organizations.credit_balance })
+      .from(organizations)
+      .where(eq(organizations.id, ORG_A));
+    expect(Number(organization?.creditBalance)).toBe(100);
   });
 
   test("a selected catalogue-v2 backup fails closed before marker or provision job", async () => {
@@ -957,7 +1001,7 @@ describe("admin personal Dedicated adoption selection", () => {
         expectedDailyRate: AGENT_PRICING.DAILY_RUNNING_COST,
         expectedMinimumBalance: AGENT_PRICING.UPGRADE_MINIMUM_BALANCE,
         expectedMinimumRunwayDays: AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS,
-        expectedActivationAuthorityKey: `catalog-restore-required:${backup!.id}`,
+        expectedActivationAuthorityKey: `catalog-restore-required:${backup!.id}:${"c".repeat(64)}`,
       }),
     ).rejects.toMatchObject({
       code: "PERSONAL_DEDICATED_ADOPTION_CATALOG_RESTORE_REQUIRED",

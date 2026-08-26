@@ -11,6 +11,7 @@ CREATE TABLE "personal_dedicated_adoption_selections" (
   "state_disposition" text NOT NULL,
   "activation_kind" text NOT NULL,
   "activation_backup_id" uuid,
+  "activation_backup_hash" text,
   "inventory_fingerprint" text NOT NULL,
   "candidate_count" integer NOT NULL,
   "schema_version" integer DEFAULT 1 NOT NULL,
@@ -33,9 +34,11 @@ CREATE TABLE "personal_dedicated_adoption_selections" (
   CONSTRAINT "personal_dedicated_adoption_selections_state_disposition_check"
     CHECK ("state_disposition" IN ('verified_backup_present', 'fresh_boot_no_verified_backup')),
   CONSTRAINT "personal_dedicated_adoption_selections_activation_check"
-    CHECK (("activation_kind" = 'fresh_boot' AND "activation_backup_id" IS NULL)
+    CHECK (("activation_kind" = 'fresh_boot' AND "activation_backup_id" IS NULL
+        AND "activation_backup_hash" IS NULL)
       OR ("activation_kind" IN ('legacy_backup', 'catalog_restore_required')
-        AND "activation_backup_id" IS NOT NULL)),
+        AND "activation_backup_id" IS NOT NULL
+        AND "activation_backup_hash" ~ '^[a-f0-9]{64}$')),
   CONSTRAINT "personal_dedicated_adoption_selections_fingerprint_check"
     CHECK ("inventory_fingerprint" ~ '^[a-f0-9]{64}$'),
   CONSTRAINT "personal_dedicated_adoption_selections_candidate_count_check"
