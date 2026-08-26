@@ -3198,6 +3198,45 @@ describe("ChatOverlay", () => {
     expect(pill.getAttribute("tabindex")).toBeNull();
   });
 
+  it("shows the live turn phase while a response runs behind the collapsed pill", () => {
+    const { rerender } = render(<ChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
+    expect(sheet.getAttribute("data-detent")).toBe("pill");
+
+    rerender(
+      <ChatOverlay
+        controller={makeController({
+          phase: "responding",
+          responding: true,
+          turnStatus: {
+            kind: "running_action",
+            actionName: "VIEWS",
+          },
+        })}
+      />,
+    );
+
+    const status = screen.getByTestId("chat-pill-turn-status");
+    expect(status.className).toContain("pointer-events-none");
+    expect(screen.getByTestId("turn-status-label").textContent).toBe(
+      "Running Views",
+    );
+  });
+
+  it("keeps the collapsed pill quiet when no response is active", () => {
+    render(<ChatOverlay controller={makeController()} />);
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
+
+    expect(screen.queryByTestId("chat-pill-turn-status")).toBeNull();
+  });
+
   it("centers 64x12 resting material in a 64x44 detached desktop hit target", () => {
     render(<ChatOverlay controller={makeController()} fillHostAtHalf />);
     const grabber = screen.getByTestId("chat-sheet-grabber");
