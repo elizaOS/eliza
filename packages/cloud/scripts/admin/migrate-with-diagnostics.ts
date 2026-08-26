@@ -9,14 +9,18 @@
  * including the deploy pipeline's migrate-db gate; enforces TLS for remote
  * databases.
  */
-import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { enforceTlsForRemote } from "@elizaos/cloud-shared/db/client";
 import { convergeAgentSandboxSchema } from "@elizaos/cloud-shared/db/ensure-agent-sandbox-schema";
 import { createMigrationClientSandboxExecutor } from "@elizaos/cloud-shared/db/migration-sandbox-schema-executor";
 import pg from "pg";
+import {
+  type AppliedMigration,
+  assertAppliedLedgerHasCanonicalRelations,
+  createdAtValue,
+  loadCanonicalMigrations,
+  type Migration,
+  validateAppliedMigrationLedger,
+} from "./canonical-migration-ledger";
 import {
   type CleanupFailure,
   runCleanupSteps,
@@ -30,6 +34,19 @@ import {
   runDatabaseIdentityPreflight,
 } from "./preflight-database-identity";
 
+export type {
+  AppliedMigration,
+  JournalEntry,
+  Migration,
+  ValidatedMigrationLedger,
+} from "./canonical-migration-ledger";
+export {
+  assertAppliedLedgerHasCanonicalRelations,
+  createdAtValue,
+  loadCanonicalMigrations,
+  validateAppliedMigrationLedger,
+} from "./canonical-migration-ledger";
+
 const { Client } = pg;
 
 const MIGRATIONS_SCHEMA = "drizzle";
@@ -39,41 +56,6 @@ const DEFAULT_LOCK_TIMEOUT_MS = 5_000;
 const DEFAULT_LOCK_MAX_ATTEMPTS = 5;
 const DEFAULT_LOCK_RETRY_BASE_MS = 250;
 const DEFAULT_LOCK_RETRY_MAX_MS = 2_000;
-const MIGRATIONS_DIR =
-  [
-    path.join(process.cwd(), "packages/cloud/shared/src/db/migrations"),
-    path.join(process.cwd(), "src/db/migrations"),
-  ].find((candidate) =>
-    existsSync(path.join(candidate, "meta/_journal.json")),
-  ) ?? path.join(process.cwd(), "packages/cloud/shared/src/db/migrations");
-const JOURNAL_PATH = path.join(MIGRATIONS_DIR, "meta/_journal.json");
-
-interface JournalEntry {
-  idx: number;
-  version: string;
-  when: number;
-  tag: string;
-  breakpoints: boolean;
-}
-
-interface Journal {
-  version: string;
-  dialect: string;
-  entries: JournalEntry[];
-}
-
-interface Migration {
-  entry: JournalEntry;
-  hash: string;
-  statements: string[];
-}
-
-interface AppliedMigration {
-  id: number;
-  hash: string;
-  created_at: string | number | bigint | null;
-}
-
 interface DatabaseError extends Error {
   code?: string;
   position?: string;
@@ -90,10 +72,6 @@ interface LockRetryOptions {
   maxAttempts: number;
   baseDelayMs: number;
   maxDelayMs: number;
-}
-
-interface ValidatedMigrationLedger {
-  lastAppliedJournalIndex: number;
 }
 
 type IdentityResultReporter = (
@@ -116,12 +94,6 @@ export async function convergeAgentSandboxSchemaOnMigrationClient(
   );
 }
 
-// Historical SQL files were edited after deployment, so their stored hashes
-// and some deployed schemas have no matching ledger row. The catalog-guard
-// migration is the first immutable checkpoint owned by this runner; hash,
-// order, and completeness identity are enforced from this entry forward.
-const HASH_IDENTITY_ENFORCEMENT_TAG =
-  "0194_job_execution_interruptions_catalog_guard";
 const USAGE_QUOTAS_RELEASE_BARRIER_TAGS = [
   "0282_drop_unused_usage_quotas_table",
   "0282_01_restore_usage_quotas_compatibility",
@@ -130,31 +102,6 @@ const USAGE_QUOTAS_RELEASE_BARRIER_TAGS = [
 type MigrationReleaseBarrierDecision =
   | { action: "continue"; atomicPairStartIndex?: number }
   | { action: "pause"; stopBeforeJournalIndex: number };
-
-async function readJournal(): Promise<Journal> {
-  return JSON.parse(await readFile(JOURNAL_PATH, "utf8")) as Journal;
-}
-
-async function readMigration(entry: JournalEntry): Promise<Migration> {
-  const migrationPath = path.join(MIGRATIONS_DIR, `${entry.tag}.sql`);
-  const sql = await readFile(migrationPath, "utf8");
-
-  return {
-    entry,
-    hash: createHash("sha256").update(sql).digest("hex"),
-    statements: sql
-      .split("--> statement-breakpoint")
-      .map((statement) => statement.trim())
-      .filter(Boolean),
-  };
-}
-
-function createdAtValue(migration: AppliedMigration): number | null {
-  if (migration.created_at === null) return null;
-
-  const value = Number(migration.created_at);
-  return Number.isFinite(value) ? value : null;
-}
 
 function readPositiveInteger(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -351,155 +298,6 @@ async function assertEmptyLedgerDatabaseIsFresh(
       "Migration ledger is empty but the database contains application relations; refusing to replay historical migrations",
     );
   }
-}
-
-const CANONICAL_CLOUD_RELATIONS = [
-  "apps",
-  "organizations",
-  "users",
-  "api_keys",
-] as const;
-
-/**
- * A complete/non-empty ledger cannot authorize a schema with missing baseline
- * application relations. This catches a wrong DATABASE_URL and destructive
- * schema drift before pending-count success can impersonate a healthy target.
- */
-export async function assertAppliedLedgerHasCanonicalRelations(
-  client: MigrationClient,
-): Promise<void> {
-  const result = await client.query<Record<string, boolean>>(`
-    SELECT
-      to_regclass('public.apps') IS NOT NULL AS apps,
-      to_regclass('public.organizations') IS NOT NULL AS organizations,
-      to_regclass('public.users') IS NOT NULL AS users,
-      to_regclass('public.api_keys') IS NOT NULL AS api_keys
-  `);
-  const row = result.rows[0];
-  const presence = CANONICAL_CLOUD_RELATIONS.map((relation) => ({
-    present: row?.[relation] === true,
-    relation,
-  }));
-  console.log(
-    `[db:migrate] canonical relation presence: ${presence
-      .map(
-        ({ present, relation }) =>
-          `${relation}=${present ? "present" : "missing"}`,
-      )
-      .join(" ")}`,
-  );
-  if (presence.some(({ present }) => !present)) {
-    throw new Error(
-      "Migration ledger is non-empty but canonical application relations are missing",
-    );
-  }
-}
-
-export function validateAppliedMigrationLedger(
-  applied: AppliedMigration[],
-  migrations: Migration[],
-): ValidatedMigrationLedger {
-  if (applied.length > migrations.length) {
-    throw new Error(
-      `Migration ledger contains ${applied.length} rows but this checkout defines only ${migrations.length}`,
-    );
-  }
-
-  const migrationByCreatedAt = new Map<
-    number,
-    { journalIndex: number; migration: Migration }
-  >();
-  for (const [journalIndex, migration] of migrations.entries()) {
-    const createdAt = migration.entry.when;
-    if (migrationByCreatedAt.has(createdAt)) {
-      throw new Error(
-        `Migration journal contains duplicate created_at=${createdAt}`,
-      );
-    }
-    migrationByCreatedAt.set(createdAt, { journalIndex, migration });
-  }
-
-  const seenCreatedAt = new Set<number>();
-  const appliedJournalIndexes = new Set<number>();
-  const hashIdentityEnforcementIndex = migrations.findIndex(
-    (migration) => migration.entry.tag === HASH_IDENTITY_ENFORCEMENT_TAG,
-  );
-  if (hashIdentityEnforcementIndex === -1) {
-    throw new Error(
-      `Migration journal is missing hash enforcement checkpoint ${HASH_IDENTITY_ENFORCEMENT_TAG}`,
-    );
-  }
-  let lastAppliedJournalIndex = -1;
-  let lastEnforcedJournalIndex = hashIdentityEnforcementIndex - 1;
-  let hashEnforcementStarted = false;
-  for (const row of applied) {
-    const createdAt = createdAtValue(row);
-    if (createdAt === null) {
-      throw new Error(
-        `Migration ledger row id=${row.id} has an invalid created_at value`,
-      );
-    }
-    if (seenCreatedAt.has(createdAt)) {
-      throw new Error(
-        `Migration ledger contains duplicate created_at=${createdAt}`,
-      );
-    }
-    seenCreatedAt.add(createdAt);
-
-    const matched = migrationByCreatedAt.get(createdAt);
-    if (!matched) {
-      throw new Error(
-        `Migration ledger row id=${row.id} has no matching journal entry for created_at=${createdAt}`,
-      );
-    }
-    if (
-      matched.journalIndex >= hashIdentityEnforcementIndex &&
-      row.hash !== matched.migration.hash
-    ) {
-      throw new Error(
-        `Migration ledger hash mismatch for ${matched.migration.entry.tag}: expected ${matched.migration.hash}, found ${row.hash}`,
-      );
-    }
-    // Historical deployments used both journal-order and timestamp-order
-    // runners, so row id cannot authenticate ordering before the checkpoint.
-    // From the checkpoint forward this runner owns a single append-only order.
-    if (matched.journalIndex >= hashIdentityEnforcementIndex) {
-      if (matched.journalIndex <= lastEnforcedJournalIndex) {
-        throw new Error(
-          `Migration ledger is out of immutable journal order at row id=${row.id}: ${matched.migration.entry.tag} follows journal index ${lastEnforcedJournalIndex}`,
-        );
-      }
-      hashEnforcementStarted = true;
-      lastEnforcedJournalIndex = matched.journalIndex;
-    } else if (hashEnforcementStarted) {
-      throw new Error(
-        `Historical migration ${matched.migration.entry.tag} appears after hash enforcement checkpoint ${HASH_IDENTITY_ENFORCEMENT_TAG}`,
-      );
-    }
-    appliedJournalIndexes.add(matched.journalIndex);
-    lastAppliedJournalIndex = Math.max(
-      lastAppliedJournalIndex,
-      matched.journalIndex,
-    );
-  }
-
-  for (
-    let journalIndex = hashIdentityEnforcementIndex;
-    journalIndex <= lastAppliedJournalIndex;
-    journalIndex++
-  ) {
-    const migration = migrations[journalIndex];
-    if (!migration) {
-      throw new Error(`Migration journal is missing index ${journalIndex}`);
-    }
-    if (!appliedJournalIndexes.has(journalIndex)) {
-      throw new Error(
-        `Migration ledger is missing required journal entry ${migration.entry.tag}`,
-      );
-    }
-  }
-
-  return { lastAppliedJournalIndex };
 }
 
 /**
@@ -901,10 +699,7 @@ async function main(): Promise<void> {
     throw new Error("DATABASE_URL is required to run database migrations.");
   }
 
-  const journal = await readJournal();
-  const migrations = await Promise.all(
-    journal.entries.map((entry) => readMigration(entry)),
-  );
+  const migrations = await loadCanonicalMigrations();
   const retryOptions = lockRetryOptions();
   const configuredIdentityMode =
     environment.DATABASE_IDENTITY_GATE_MODE?.trim().toLowerCase();

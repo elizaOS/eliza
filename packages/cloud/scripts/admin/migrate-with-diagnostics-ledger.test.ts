@@ -11,7 +11,7 @@ import path from "node:path";
 import {
   assertAppliedLedgerHasCanonicalRelations,
   validateAppliedMigrationLedger,
-} from "./migrate-with-diagnostics";
+} from "./canonical-migration-ledger";
 
 const CHECKPOINT_TAG = "0194_job_execution_interruptions_catalog_guard";
 const STAGING_RESTORE_OPERATION = {
