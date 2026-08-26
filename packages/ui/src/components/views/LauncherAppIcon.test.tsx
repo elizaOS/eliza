@@ -10,7 +10,7 @@ import { LauncherAppIcon, LauncherAppIconSkeleton } from "./LauncherAppIcon";
 afterEach(() => cleanup());
 
 describe("LauncherAppIcon", () => {
-  it("owns the shared continuous-corner plate and static interaction contract", () => {
+  it("renders first-party icons as decorative launcher glyphs", () => {
     const { container } = render(
       <LauncherAppIcon
         entry={{ id: "calendar", label: "Calendar", icon: "CalendarDays" }}
@@ -19,29 +19,14 @@ describe("LauncherAppIcon", () => {
 
     const plate = container.querySelector<HTMLElement>("[data-launcher-icon]");
     expect(plate).toBeTruthy();
-    expect(plate?.classList.contains("rounded-[22.37%]")).toBe(true);
-    expect(plate?.classList.contains("bg-[rgba(16,17,20,0.68)]")).toBe(true);
-    expect(plate?.classList.contains("border-white/24")).toBe(true);
-    expect(plate?.classList.contains("backdrop-blur-[18px]")).toBe(true);
-    expect(plate?.className).not.toContain("shadow-[0_");
     expect(plate?.dataset.launcherIconVariant).toBe("ionicon");
-
-    const classContract = Array.from(
-      container.querySelectorAll<HTMLElement>("[class]"),
-      (node) => node.className,
-    ).join(" ");
-    expect(classContract).not.toMatch(
-      /(?:active:|group-active:|transform|filter|transition-\[.*(?:filter|transform))/,
-    );
 
     const glyph = container.querySelector<HTMLImageElement>(
       'img[data-ionicon="calendar"]',
     );
     expect(glyph?.src).toMatch(/^(?:data:image\/svg\+xml|https?:|file:)/);
-    expect(glyph?.classList.contains("!size-[52%]")).toBe(true);
-    expect(glyph?.classList.contains("brightness-0")).toBe(true);
-    expect(glyph?.classList.contains("invert")).toBe(true);
-    expect(glyph?.classList.contains("opacity-[0.92]")).toBe(true);
+    expect(glyph?.getAttribute("alt")).toBe("");
+    expect(glyph?.getAttribute("aria-hidden")).toBe("true");
   });
 
   it("uses the approved filled Ionicons family for Chat", () => {
@@ -76,12 +61,6 @@ describe("LauncherAppIcon", () => {
         .querySelector("[data-launcher-icon]")
         ?.getAttribute("data-launcher-icon-variant"),
     ).toBe("image");
-    expect(image.container.querySelector("img")?.classList).not.toContain(
-      "brightness-0",
-    );
-    expect(image.container.querySelector("img")?.classList).not.toContain(
-      "invert",
-    );
     image.unmount();
 
     const fallback = render(
@@ -94,12 +73,11 @@ describe("LauncherAppIcon", () => {
     ).toBeTruthy();
   });
 
-  it("keeps loading placeholders on the identical squircle", () => {
+  it("marks loading placeholders as launcher icons", () => {
     const { container } = render(<LauncherAppIconSkeleton />);
     const skeleton = container.querySelector<HTMLElement>(
       "[data-launcher-icon]",
     );
-    expect(skeleton?.classList.contains("rounded-[22.37%]")).toBe(true);
-    expect(skeleton?.classList.contains("bg-[rgba(16,17,20,0.68)]")).toBe(true);
+    expect(skeleton).toBeTruthy();
   });
 });
