@@ -4,6 +4,7 @@ import {
   AUTH_GATE_BOTTOM_BAR_HEIGHT,
   AUTH_GATE_BOTTOM_BAR_WIDTH,
   appendChatOverlayShellModeParam,
+  BOTTOM_BAR_BOTTOM_INSET,
   computeBottomBarFrame,
   computeBottomBarSurfaceFrame,
   DEFAULT_BOTTOM_BAR_HEIGHT,
@@ -23,8 +24,10 @@ import {
 
 describe("desktop bottom-bar config", () => {
   describe("shouldStartBottomBar", () => {
-    it("is ON by default (#10350: bottom bar is the resting desktop surface)", () => {
-      expect(shouldStartBottomBar({}, [])).toBe(true);
+    it("defaults to the assistant on macOS and Workspace elsewhere", () => {
+      expect(shouldStartBottomBar({}, [], "darwin")).toBe(true);
+      expect(shouldStartBottomBar({}, [], "win32")).toBe(false);
+      expect(shouldStartBottomBar({}, [], "linux")).toBe(false);
     });
 
     it("stays ON for unset / empty / truthy values", () => {
@@ -87,7 +90,9 @@ describe("desktop bottom-bar config", () => {
       expect(frame.width).toBe(DEFAULT_BOTTOM_BAR_WIDTH);
       expect(frame.height).toBe(DEFAULT_BOTTOM_BAR_HEIGHT);
       expect(frame.x).toBe((1920 - DEFAULT_BOTTOM_BAR_WIDTH) / 2);
-      expect(frame.y).toBe(1080 - DEFAULT_BOTTOM_BAR_HEIGHT);
+      expect(frame.y).toBe(
+        1080 - DEFAULT_BOTTOM_BAR_HEIGHT - BOTTOM_BAR_BOTTOM_INSET,
+      );
     });
 
     it("respects work-area origin (multi-monitor offset)", () => {
@@ -99,7 +104,9 @@ describe("desktop bottom-bar config", () => {
       });
       expect(frame.x).toBe(1920 + (1440 - DEFAULT_BOTTOM_BAR_WIDTH) / 2);
       expect(frame.width).toBe(DEFAULT_BOTTOM_BAR_WIDTH);
-      expect(frame.y).toBe(24 + 900 - DEFAULT_BOTTOM_BAR_HEIGHT);
+      expect(frame.y).toBe(
+        24 + 900 - DEFAULT_BOTTOM_BAR_HEIGHT - BOTTOM_BAR_BOTTOM_INSET,
+      );
     });
 
     it("centers custom dimensions inside an optional margin", () => {
@@ -110,7 +117,7 @@ describe("desktop bottom-bar config", () => {
       expect(frame.x).toBe(200);
       expect(frame.width).toBe(600);
       expect(frame.height).toBe(100);
-      expect(frame.y).toBe(800 - 100 - 20);
+      expect(frame.y).toBe(800 - 100 - 20 - BOTTOM_BAR_BOTTOM_INSET);
     });
 
     it("preserves the painted resting-pill height as the safety floor", () => {
@@ -165,7 +172,12 @@ describe("desktop bottom-bar config", () => {
             height: EXPANDED_BOTTOM_BAR_HEIGHT,
           },
         ),
-      ).toEqual({ x: 420, y: 104, width: 600, height: 820 });
+      ).toEqual({
+        x: 420,
+        y: 104 - BOTTOM_BAR_BOTTOM_INSET,
+        width: 600,
+        height: 820,
+      });
     });
   });
 
@@ -190,7 +202,7 @@ describe("desktop bottom-bar config", () => {
     it("keeps the composer width and bottom anchor while making room above for its menu", () => {
       expect(computeBottomBarSurfaceFrame(workArea, "INPUT_MENU")).toEqual({
         x: 760,
-        y: 704,
+        y: 704 - BOTTOM_BAR_BOTTOM_INSET,
         width: 600,
         height: 320,
       });
@@ -198,11 +210,21 @@ describe("desktop bottom-bar config", () => {
 
     it("opens centered phone-width sheets at under-half and half-or-over heights", () => {
       expect(computeBottomBarSurfaceFrame(workArea, "OPEN_UNDER_HALF")).toEqual(
-        { x: 740, y: 604, width: 640, height: 420 },
+        {
+          x: 740,
+          y: 604 - BOTTOM_BAR_BOTTOM_INSET,
+          width: 640,
+          height: 420,
+        },
       );
       expect(
         computeBottomBarSurfaceFrame(workArea, "OPEN_HALF_OR_OVER"),
-      ).toEqual({ x: 740, y: 404, width: 640, height: 620 });
+      ).toEqual({
+        x: 740,
+        y: 404 - BOTTOM_BAR_BOTTOM_INSET,
+        width: 640,
+        height: 620,
+      });
     });
 
     it("gives MAXIMIZED the complete usable work area", () => {
@@ -220,13 +242,13 @@ describe("desktop bottom-bar config", () => {
   });
 
   describe("resolveDesktopShellWindowPresentation", () => {
-    it("keeps the bottom-bar host transparent on every desktop platform", () => {
+    it("defaults to the assistant only on macOS", () => {
       expect(resolveDesktopShellWindowPresentation({}, [], "win32")).toEqual({
-        mode: "bottom-bar",
-        titleBarStyle: "hidden",
-        transparent: true,
-        nativeShadow: false,
-        nativeInteractiveChrome: false,
+        mode: "default",
+        titleBarStyle: "default",
+        transparent: false,
+        nativeShadow: true,
+        nativeInteractiveChrome: true,
       });
       expect(resolveDesktopShellWindowPresentation({}, [], "darwin")).toEqual({
         mode: "bottom-bar",
@@ -236,6 +258,22 @@ describe("desktop bottom-bar config", () => {
         nativeInteractiveChrome: false,
       });
       expect(resolveDesktopShellWindowPresentation({}, [], "linux")).toEqual({
+        mode: "default",
+        titleBarStyle: "default",
+        transparent: false,
+        nativeShadow: true,
+        nativeInteractiveChrome: true,
+      });
+    });
+
+    it("allows an explicit bottom-bar override on non-macOS desktop", () => {
+      expect(
+        resolveDesktopShellWindowPresentation(
+          { ELIZA_DESKTOP_BOTTOM_BAR: "1" },
+          [],
+          "linux",
+        ),
+      ).toEqual({
         mode: "bottom-bar",
         titleBarStyle: "hidden",
         transparent: true,

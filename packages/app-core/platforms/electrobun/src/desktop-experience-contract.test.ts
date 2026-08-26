@@ -19,7 +19,7 @@ import {
  */
 describe("desktop experience contract — chat-first launch", () => {
   it("launches into the chromeless chat bottom bar by default", () => {
-    expect(shouldStartBottomBar({}, [])).toBe(true);
+    expect(shouldStartBottomBar({}, [], "darwin")).toBe(true);
   });
 
   it("honors the ELIZA_DESKTOP_BOTTOM_BAR kill switch", () => {
@@ -35,9 +35,9 @@ describe("desktop experience contract — chat-first launch", () => {
     // native host to full while onboarding is active, then returns it through
     // half/input to the resting pill. Starting the legacy full dashboard host
     // makes every later Dock/tray reopen repaint the wallpaper window.
-    expect(shouldStartBottomBar({ ELIZA_DESKTOP_CLOUD_ONLY: "1" }, [])).toBe(
-      true,
-    );
+    expect(
+      shouldStartBottomBar({ ELIZA_DESKTOP_CLOUD_ONLY: "1" }, [], "darwin"),
+    ).toBe(true);
   });
 
   it("kiosk mode overrides the bottom bar (env and argv)", () => {
@@ -52,26 +52,24 @@ describe("desktop experience contract — chat-first launch", () => {
     expect(tagged).toContain("shellMode=chat-overlay");
   });
 
-  it("presents the default window as a transparent, frameless bottom bar on every desktop", () => {
-    for (const platform of ["darwin", "win32", "linux"] as const) {
-      const presentation = resolveDesktopShellWindowPresentation(
-        {},
-        [],
-        platform,
-      );
-      expect(presentation.mode).toBe("bottom-bar");
-      expect(presentation.titleBarStyle).toBe("hidden");
-      expect(presentation.transparent).toBe(true);
-      expect(presentation.nativeShadow).toBe(false);
-      expect(presentation.nativeInteractiveChrome).toBe(false);
-    }
-  });
-
-  it("presents the Linux chat pill over a transparent native window", () => {
-    const presentation = resolveDesktopShellWindowPresentation({}, [], "linux");
+  it("presents the macOS assistant as a transparent frameless bottom bar", () => {
+    const presentation = resolveDesktopShellWindowPresentation(
+      {},
+      [],
+      "darwin",
+    );
     expect(presentation.mode).toBe("bottom-bar");
     expect(presentation.titleBarStyle).toBe("hidden");
     expect(presentation.transparent).toBe(true);
+    expect(presentation.nativeShadow).toBe(false);
+    expect(presentation.nativeInteractiveChrome).toBe(false);
+  });
+
+  it("keeps Linux on the ordinary Workspace unless explicitly overridden", () => {
+    const presentation = resolveDesktopShellWindowPresentation({}, [], "linux");
+    expect(presentation.mode).toBe("default");
+    expect(presentation.titleBarStyle).toBe("default");
+    expect(presentation.transparent).toBe(false);
   });
 
   it("keeps the full dashboard window opaque on macOS — transparency is the pill only (#12184)", () => {

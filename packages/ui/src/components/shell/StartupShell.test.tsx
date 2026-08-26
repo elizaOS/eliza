@@ -56,6 +56,7 @@ function advance(ms: number) {
 beforeEach(() => {
   vi.useFakeTimers();
   __resetStartupTraceForTests();
+  window.history.replaceState({}, "", "/");
 });
 
 afterEach(() => {
@@ -65,6 +66,32 @@ afterEach(() => {
 });
 
 describe("StartupShell — delayed loading splash", () => {
+  it.each(["workspace", "settings"])(
+    "never paints branded loading over a managed %s window",
+    (desktopSurface) => {
+      window.history.replaceState({}, "", `/?desktopSurface=${desktopSurface}`);
+
+      render(<StartupShell view={loadingView} onRetry={vi.fn()} />);
+      advance(STARTUP_SPLASH_DELAY_MS * 2);
+
+      expect(queryLoading()).toBeNull();
+      expect(hasStartupMark(FIRST_PAINT_MARK)).toBe(false);
+    },
+  );
+
+  it("retains the normal delayed loading contract for the chat overlay", () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/?shellMode=chat-overlay&desktopSurface=chat-overlay",
+    );
+    render(<StartupShell view={loadingView} onRetry={vi.fn()} />);
+
+    advance(STARTUP_SPLASH_DELAY_MS);
+
+    expect(queryLoading()).not.toBeNull();
+  });
+
   it("does NOT render the splash before the delay threshold elapses", () => {
     render(<StartupShell view={loadingView} onRetry={vi.fn()} />);
 
