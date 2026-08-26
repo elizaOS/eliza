@@ -238,13 +238,7 @@ describe("FinancesView — states", () => {
         })}
       />,
     );
-    await screen.findByText("Finances");
-    expect(
-      screen.getByText(
-        "Connect a payment source to see balances, transactions, and recurring charges.",
-      ),
-    ).toBeTruthy();
-    expect(screen.getByText("Connect a source")).toBeTruthy();
+    await screen.findByText("None");
     expect(agent("connect")).toBeTruthy();
     // No fabricated balance surfaces in the disconnected state.
     expect(screen.queryByText("$2,765.50")).toBeNull();
@@ -258,7 +252,7 @@ describe("FinancesView — states", () => {
         })}
       />,
     );
-    await screen.findByText("Finances");
+    await screen.findByText("None");
     fireEvent.click(agent("connect"));
     expect(sendChatMessage).toHaveBeenCalledTimes(1);
   });

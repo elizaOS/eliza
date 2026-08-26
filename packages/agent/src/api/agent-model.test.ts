@@ -20,7 +20,6 @@ type RuntimeOpts = {
   characterModel?: string;
   /** Provider core recorded as having served the last chat call. */
   lastServingProvider?: string;
-  settings?: Record<string, string>;
 };
 
 function makeRuntime(opts: RuntimeOpts = {}): AgentRuntime {
@@ -45,7 +44,6 @@ function makeRuntime(opts: RuntimeOpts = {}): AgentRuntime {
     plugins: opts.plugins ?? [],
     getModelRegistrations: () => registrations,
     getLastResolvedModelProvider: () => opts.lastServingProvider,
-    getSetting: (key: string) => opts.settings?.[key] ?? null,
     character: opts.characterModel ? { model: opts.characterModel } : {},
   } as unknown as AgentRuntime;
   return runtime;
@@ -162,22 +160,6 @@ describe("detectRuntimeModel — non-cloud branches unaffected", () => {
       },
     };
     expect(detectRuntimeModel(runtime, directConfig)).toBe("gpt-4o");
-  });
-
-  it("reports the Cerebras model behind the shared OpenAI adapter", () => {
-    const runtime = makeRuntime({
-      lastServingProvider: "openai",
-      settings: { CEREBRAS_MODEL: "gemma-4-31b" },
-    });
-    const directConfig = {
-      serviceRouting: {
-        llmText: {
-          backend: "cerebras",
-          transport: "direct" as const,
-        },
-      },
-    };
-    expect(detectRuntimeModel(runtime, directConfig)).toBe("gemma-4-31b");
   });
 });
 

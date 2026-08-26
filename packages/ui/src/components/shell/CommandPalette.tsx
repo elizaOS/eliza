@@ -1,7 +1,7 @@
 /**
  * Cmd/Ctrl+K command palette for the app shell: a search-as-you-type dialog
- * that lists agent lifecycle actions (start/stop/restart), a bug report, and a
- * nav entry for every registered, user-visible GUI view —
+ * that lists agent lifecycle actions (start/stop/restart), a clear-chat entry,
+ * a bug report, and a nav entry for every registered, user-visible GUI view —
  * so it doubles as a complete cross-plugin launcher. Command construction lives
  * in `buildCommands` (../../chat); this component owns the dialog, the query
  * filter, keyboard navigation, and dispatch.
@@ -67,6 +67,7 @@ export function CommandPalette() {
     loadSkills,
     loadLogs,
     loadWorkbench,
+    handleChatClear,
     activeGameViewerUrl,
     setState,
     setActionNotice,
@@ -84,6 +85,7 @@ export function CommandPalette() {
     loadSkills: s.loadSkills,
     loadLogs: s.loadLogs,
     loadWorkbench: s.loadWorkbench,
+    handleChatClear: s.handleChatClear,
     activeGameViewerUrl: s.activeGameViewerUrl,
     setState: s.setState,
     setActionNotice: s.setActionNotice,
@@ -144,6 +146,7 @@ export function CommandPalette() {
       loadSkills,
       loadLogs,
       loadWorkbench,
+      handleChatClear,
       openBugReport,
       desktopRuntime,
       focusDesktopMainWindow: () => {
@@ -194,6 +197,7 @@ export function CommandPalette() {
     loadSkills,
     loadLogs,
     loadWorkbench,
+    handleChatClear,
     setActionNotice,
     openBugReport,
     desktopRuntime,

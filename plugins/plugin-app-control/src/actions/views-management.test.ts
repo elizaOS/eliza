@@ -4305,14 +4305,12 @@ describe("view management actions", () => {
 			viewId: "settings",
 			capability: "get-state",
 		});
-		expect(callback).not.toHaveBeenCalled();
-		expect(result).toMatchObject({
-			transcriptVisibility: "internal",
-			modelReplyRequired: true,
-			turnComplete: false,
-			data: { result: { theme: "dark", language: "en" } },
-		});
-		expect(result).not.toHaveProperty("userFacingText");
+		expect(callback).toHaveBeenCalledWith(
+			expect.objectContaining({
+				text: 'Interacted with view "settings" — capability "get-state" (returned theme, language).',
+			}),
+		);
+		expect(callback.mock.calls[0]?.[0]?.text).not.toContain("{");
 	});
 
 	it('splits a single mentioned view "next to" the current view', async () => {

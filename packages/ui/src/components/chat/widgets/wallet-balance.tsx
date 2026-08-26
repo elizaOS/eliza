@@ -179,7 +179,7 @@ export function WalletBalanceWidget(
       <div className={spanClassName}>
         <Button
           data-testid="chat-widget-wallet-unavailable"
-          aria-label="Market prices unavailable. Wallet data may still be available. Open wallet."
+          aria-label="Wallet data unavailable. Open wallet."
           onClick={() => nav.openView("/wallet", "wallet")}
           variant="surface"
           size="row"
@@ -187,7 +187,7 @@ export function WalletBalanceWidget(
         >
           <span className="flex items-center gap-2 text-xs text-[color:color-mix(in_srgb,var(--brand-white)_68%,transparent)] [&>svg]:h-3.5 [&>svg]:w-3.5">
             <Wallet />
-            Market prices
+            Wallet
           </span>
           <span className="text-xs text-[var(--brand-white)]">Unavailable</span>
         </Button>

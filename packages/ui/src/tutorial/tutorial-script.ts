@@ -7,10 +7,11 @@
  * A "Next" choice always remains as the manual fallback, so a step can never
  * strand the user on a detection that doesn't fire on their device.
  *
- * The old spotlight tour's chat controls collapse into five conversational
- * turns here. The canonical experience is one continuous conversation, so the
- * tutorial teaches messaging, voice, and navigation without introducing chat
- * switching or reset concepts.
+ * The old spotlight tour's eight frames (welcome, open-chat, resize-chat,
+ * ask-to-navigate, use-voice, new-chat, swipe-between-chats, done) collapse
+ * into six conversational turns here: open/resize fold into the send-message
+ * copy and swipe folds into new-chat, because the chat is already open when
+ * the tour runs inside it.
  */
 
 export type TutorialStepId =
@@ -18,13 +19,15 @@ export type TutorialStepId =
   | "send-message"
   | "voice"
   | "navigate"
+  | "new-chat"
   | "done";
 
 /** Observations the conductor can watch to auto-advance a step. */
 export type TutorialStepCompletion =
   | "user-message"
   | "voice-transcript"
-  | "navigate-settings";
+  | "navigate-settings"
+  | "new-conversation";
 
 export interface TutorialScriptStep {
   id: TutorialStepId;
@@ -41,6 +44,7 @@ export const TUTORIAL_STEP_IDS: readonly TutorialStepId[] = [
   "send-message",
   "voice",
   "navigate",
+  "new-chat",
   "done",
 ];
 
@@ -75,6 +79,13 @@ export function buildTutorialScript(appName = "Eliza"): TutorialScriptStep[] {
       text: `You never have to hunt through menus — just ask. Try sending "open settings" and I'll take you there. It works for any screen: "go home", "show my tasks", "open the launcher".`,
       voiceLine: "You can go anywhere by asking. Try: open settings.",
       completeOn: "navigate-settings",
+    },
+    {
+      id: "new-chat",
+      text: `Need a clean slate? Tap the new-chat button to start a fresh conversation — your old ones stay saved, and you can swipe left or right across the chat to move between them.`,
+      voiceLine:
+        "Tap new chat to start a fresh conversation. Your old ones stay saved.",
+      completeOn: "new-conversation",
     },
     {
       id: "done",

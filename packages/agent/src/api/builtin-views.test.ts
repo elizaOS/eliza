@@ -13,7 +13,6 @@ const SOURCE_ORDER_IDS = [
   "device-control",
   "chat",
   "browser",
-  "wallet.inventory",
   "character",
   "documents",
   "automations",
@@ -72,7 +71,6 @@ describe("BUILTIN_VIEWS", () => {
       "browser",
       "camera",
       "device-control",
-      "wallet.inventory",
       "character",
       "documents",
       "automations",
@@ -182,14 +180,11 @@ describe("BUILTIN_VIEWS", () => {
     expect(withScoped.map((view) => view.id)).toEqual(["character"]);
   });
 
-  it("declares server capabilities only on device-control and Wallet", () => {
+  it("declares server capabilities only on device-control", () => {
     const withCapabilities = BUILTIN_VIEWS.filter(
       (view) => (view.capabilities?.length ?? 0) > 0,
     );
-    expect(withCapabilities.map((view) => view.id)).toEqual([
-      "device-control",
-      "wallet.inventory",
-    ]);
+    expect(withCapabilities.map((view) => view.id)).toEqual(["device-control"]);
   });
 
   it("describes the camera preview surface", () => {
@@ -256,20 +251,6 @@ describe("BUILTIN_VIEWS", () => {
       platforms: ["web", "desktop", "ios", "android"],
       surface: { isolation: "native-webview", background: "opaque" },
     });
-  });
-
-  it("registers the built-in Wallet route with truthful read/setup capabilities", () => {
-    expect(requireView("wallet.inventory")).toMatchObject({
-      viewKind: "system",
-      label: "Wallet",
-      path: "/wallet",
-      order: 30,
-      capabilities: [{ id: "inspect-wallet" }, { id: "configure-wallet-rpc" }],
-      visibleInManager: true,
-      desktopTabEnabled: true,
-      platforms: ["web", "desktop", "ios", "android"],
-    });
-    expect(requireView("wallet.inventory").relatedActions).toBeUndefined();
   });
 
   it("declares Character scoped actions against always-mounted element ids", () => {

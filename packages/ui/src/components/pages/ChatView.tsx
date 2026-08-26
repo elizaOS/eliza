@@ -1000,10 +1000,10 @@ export function ChatView({
   } as const;
 
   // The user-facing reset-to-fresh-thread control (#8930) was removed with the
-  // chat redesign (#13532/#13539): the infinite-scroll transcript is the one
-  // canonical conversation, so clearing, creating, and switching threads are
-  // intentionally not exposed here. Internal reset machinery used by first-run
-  // and recovery remains separate from the product chat model.
+  // chat-redesign (#13532/#13539): the infinite-scroll transcript makes
+  // "clear the thread" an anti-pattern, and new-conversation flows remain
+  // reachable via the conversation switcher. The shared handleNewConversation /
+  // RESET_DRAFT machinery that first-run / wipe / switch depend on is untouched.
 
   const composerNode = hideComposer ? null : isGameModal ? (
     <ChatComposerShell

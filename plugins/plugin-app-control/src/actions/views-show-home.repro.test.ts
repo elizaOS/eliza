@@ -31,8 +31,12 @@ const coreMock = vi.hoisted(() => ({
 vi.mock("@elizaos/core", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@elizaos/core")>();
 	return {
-		...actual,
 		...coreMock,
+		ElizaError: actual.ElizaError,
+		findCodingDelegationActionName: actual.findCodingDelegationActionName,
+		getUserMessageText: actual.getUserMessageText,
+		resolveStateDir: actual.resolveStateDir,
+		unwrapUserMessageText: actual.unwrapUserMessageText,
 	};
 });
 

@@ -215,6 +215,7 @@ export interface BuildCommandsArgs {
   loadSkills: () => void;
   loadLogs: () => void;
   loadWorkbench: () => void;
+  handleChatClear: () => void;
   openBugReport: () => void;
   desktopRuntime: boolean;
   focusDesktopMainWindow: () => void;
@@ -279,6 +280,7 @@ export function buildCommands(args: BuildCommandsArgs): CommandItem[] {
     loadSkills,
     loadLogs,
     loadWorkbench,
+    handleChatClear,
     openBugReport,
     desktopRuntime,
     focusDesktopMainWindow,
@@ -411,12 +413,20 @@ export function buildCommands(args: BuildCommandsArgs): CommandItem[] {
   );
 
   // Utility
-  commands.push({
-    id: "report-bug",
-    label: "Report Bug",
-    category: "utility",
-    action: openBugReport,
-  });
+  commands.push(
+    {
+      id: "chat-clear",
+      label: "Clear Chat",
+      category: "utility",
+      action: handleChatClear,
+    },
+    {
+      id: "report-bug",
+      label: "Report Bug",
+      category: "utility",
+      action: openBugReport,
+    },
+  );
 
   return commands;
 }

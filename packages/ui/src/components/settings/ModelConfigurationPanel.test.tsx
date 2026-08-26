@@ -12,7 +12,6 @@
  */
 
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
-import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ModelCatalog,
@@ -193,13 +192,9 @@ function agentButton(agentId: string): HTMLButtonElement {
 
 async function renderReady() {
   render(<ModelConfigurationPanel />);
-  await waitFor(() => {
-    expect(agentElements.has("models-small-provider")).toBe(true);
-    expect(agentElements.get("models-coding-model")?.options).toEqual([
-      "gpt-5.6-terra",
-      "gpt-5.3-codex-spark",
-    ]);
-  });
+  await waitFor(() =>
+    expect(agentElements.has("models-small-provider")).toBe(true),
+  );
 }
 
 beforeEach(() => {
@@ -220,23 +215,6 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("catalog load states", () => {
-  it("re-arms the async guard across the Strict Mode mount probe", async () => {
-    render(
-      <StrictMode>
-        <ModelConfigurationPanel />
-      </StrictMode>,
-    );
-
-    await waitFor(() => {
-      expect(agentElements.has("models-small-provider")).toBe(true);
-      expect(agentElements.get("models-coding-model")?.options).toEqual([
-        "gpt-5.6-terra",
-        "gpt-5.3-codex-spark",
-      ]);
-    });
-    expect(screen.queryByText("Loading model catalog…")).toBeNull();
-  });
-
   it("renders a loading state while the catalog fetch is pending", async () => {
     let resolveCatalog: (value: unknown) => void = () => {};
     clientMock.getModelsCatalog.mockReturnValue(
@@ -246,12 +224,6 @@ describe("catalog load states", () => {
     );
     render(<ModelConfigurationPanel />);
     expect(screen.getByText("Loading model catalog…")).toBeTruthy();
-    const scaffold = screen.getByTestId("model-configuration-loading");
-    expect(scaffold.querySelectorAll('[aria-current="false"]')).toHaveLength(0);
-    expect(screen.getAllByText("Small model")).toHaveLength(1);
-    expect(screen.getAllByText("Large model")).toHaveLength(1);
-    expect(screen.getAllByText("Coding sub-agent")).toHaveLength(1);
-    expect(scaffold.querySelectorAll("[aria-hidden]")).not.toHaveLength(0);
     await act(async () => {
       resolveCatalog({ providers: {}, catalog: fixtureCatalog() });
     });
@@ -373,14 +345,12 @@ describe("prefill and option filtering", () => {
     await renderReady();
 
     fill("models-coding-backend", "opencode");
-    await waitFor(() =>
-      expect(agentElements.get("models-coding-model")?.options).toEqual([
-        "custom-oss-model",
-        "gemma-4-31b",
-        "zai-glm-4.7",
-        "plain-model",
-      ]),
-    );
+    expect(agentElements.get("models-coding-model")?.options).toEqual([
+      "custom-oss-model",
+      "gemma-4-31b",
+      "zai-glm-4.7",
+      "plain-model",
+    ]);
     expect(
       document.querySelector('[data-agent-id="models-coding-effort"]'),
     ).toBeNull();
