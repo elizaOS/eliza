@@ -1,41 +1,10 @@
 #!/usr/bin/env node
-// eliza/packages/app-core/scripts/aosp/stage-default-models.mjs —
-// fetch and stage the default Eliza-1 GGUF models into the
-// privileged AOSP system app's android assets so a fresh install
-// boots straight into a working chat without needing network access.
-//
-// Why bundle, not download-on-first-run:
-//   The intended UX is "boot the AOSP image → chat works". Download-
-//   on-first-run requires (a) network at first boot, (b) a UI prompt
-//   the user must satisfy, (c) an extra ~400 MB transfer that will be
-//   re-downloaded for every fresh image. Bundling pays the size cost
-//   once at APK build time, then every install is offline-capable.
-//
-// Output (per ABI is unnecessary — GGUF files are arch-independent):
-//   packages/app-core/platforms/android/app/src/main/assets/agent/models/<file>.gguf
-//   packages/app-core/platforms/android/app/src/main/assets/agent/models/manifest.json
-//
-// On-device: ElizaAgentService (or any white-label fork's equivalent)
-// extracts assets/agent/models/* into the per-user state dir's
-// `local-inference/models/`, then the runtime's first-run bootstrap
-// scans the directory and registers each file in the local-inference
-// registry tagged with the manifest's `source` field, which the
-// staging step writes from `app.config.ts > aosp.modelSourceLabel`
-// (e.g. `"acme-download"` for a fork named "AcmeOS").
-//
-// APK size impact (Q4_K_M quants):
-//   eliza-1-2B                   ~1.2 GB
-//   kokoro voice + preset        ~0.2 GB
-//   --------------------------------------
-//   total                          ~1.4 GB
-//
-// Opt out for builders who want to download at runtime instead:
-//   --skip-bundled-models       (passed by build-aosp.mjs)
-//   ELIZA_SKIP_BUNDLED_MODELS=1 (env var, also respected)
-//
-// Idempotent: re-running with the same files on disk and matching size
-// is a no-op. A size mismatch triggers a re-download. The script never
-// deletes other files in the assets/agent/models/ dir.
+/**
+ * Stages the published first-run chat and voice artifacts into Android assets.
+ * The manifest identifies each architecture-independent file for extraction
+ * into the local-inference state directory. Builders can opt out when the
+ * roughly 4.8 GiB offline payload is unsuitable for their image contract.
+ */
 
 import { createHash } from "node:crypto";
 import fsSync, { createWriteStream } from "node:fs";
@@ -50,14 +19,14 @@ import {
 } from "./lib/load-variant-config.mjs";
 
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+const FIRST_RUN_BUNDLE_SLUG = "e2b";
 
 /**
  * Models to bundle. IDs match `MODEL_CATALOG` entries in
  * eliza/packages/app-core/src/services/local-inference/catalog.ts so the
  * runtime registry treats them as known catalog models, not orphans.
  *
- * The Android image bundles the 2B chat tier — the smallest/entry tier and the
- * small-phone floor — so first boot has a local chat model on tight RAM.
+ * The Android image bundles the entry chat tier so first boot can work offline.
  *
  * Sizes are sanity-checked at download time. If HuggingFace serves
  * a smaller file (e.g. partial download, repo deleted, replaced) the
@@ -67,10 +36,10 @@ const CHAT_MODEL_ELIZA_1_MOBILE = {
   id: "eliza-1-2b",
   displayName: "eliza-1-2B",
   hfRepo: "elizaos/eliza-1",
-  hfPath: "bundles/2b/text/eliza-1-2b-128k.gguf",
-  ggufFile: "text/eliza-1-2b-128k.gguf",
-  expectedMinBytes: 900 * 1024 * 1024,
-  expectedMaxBytes: 1700 * 1024 * 1024,
+  hfPath: `bundles/${FIRST_RUN_BUNDLE_SLUG}/text/eliza-1-${FIRST_RUN_BUNDLE_SLUG}-128k.gguf`,
+  ggufFile: `text/eliza-1-${FIRST_RUN_BUNDLE_SLUG}-128k.gguf`,
+  expectedMinBytes: 4_500_000_000,
+  expectedMaxBytes: 5_500_000_000,
   role: "chat",
 };
 
@@ -85,7 +54,7 @@ const VOICE_MODEL_KOKORO = {
   id: "eliza-1-kokoro",
   displayName: "Eliza-1 Voice (Kokoro)",
   hfRepo: "elizaos/eliza-1",
-  hfPath: "bundles/2b/tts/kokoro/kokoro-82m-v1_0.gguf",
+  hfPath: `bundles/${FIRST_RUN_BUNDLE_SLUG}/tts/kokoro/kokoro-82m-v1_0.gguf`,
   ggufFile: "tts/kokoro/kokoro-82m-v1_0.gguf",
   expectedMinBytes: 150 * 1024 * 1024,
   expectedMaxBytes: 200 * 1024 * 1024,
