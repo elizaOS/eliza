@@ -6,7 +6,12 @@
  * z-ordering follows CSS `z-index`) and backs the embedded web view with an
  * iframe (inline/fullscreen) or a `window.open` popup, including the
  * `eliza://` deep-link intercept and the A2UI postMessage bridge. Eval
- * replies are accepted only from the web-view window that received the script.
+ * replies are accepted only from the web-view window that received the script,
+ * and each reply is correlated back to its own call by a per-call `messageId`
+ * (with an in-order FIFO fallback for responders that do not echo the id), so
+ * concurrent `eval()` calls never cross-resolve to another script's result —
+ * matching the per-call correlation the native iOS `evaluateJavaScript` and
+ * Android `evaluateJavascript` completion handlers provide intrinsically.
  */
 
 import { WebPlugin } from "@capacitor/core";
@@ -74,6 +79,18 @@ interface WebViewIncomingMessage {
 interface BoundTouchHandler {
   eventName: keyof HTMLElementEventMap;
   handler: EventListener;
+}
+
+// One in-flight `eval()` call. `target` and `targetOrigin` are captured at
+// dispatch so a reply is only ever matched to a call whose web-view window and
+// navigation origin it actually came from, and `messageId` correlates the
+// reply back to exactly this call when the responder echoes it.
+interface PendingEval {
+  messageId: string;
+  target: Window;
+  targetOrigin: string;
+  resolve: (result: EvalResult) => void;
+  timeout: ReturnType<typeof setTimeout>;
 }
 
 interface ManagedCanvas {
@@ -192,6 +209,14 @@ export class CanvasWeb extends WebPlugin {
   private webViewPopup: Window | null = null;
   private webViewOrigin: string | null = null;
   private messageListenerBound = false;
+  // In-flight eval() calls awaiting their `eliza:evalResult` reply, ordered by
+  // dispatch time so a responder that omits the correlation id can still be
+  // matched FIFO. A single shared listener drains this queue; per-call
+  // listeners cannot exist here because the first-registered one would swallow
+  // every reply regardless of which script produced it.
+  private pendingEvals: PendingEval[] = [];
+  private evalResultListenerBound = false;
+  private nextEvalMessageId = 1;
 
   async create(options: {
     size: CanvasSize;
@@ -1279,36 +1304,76 @@ export class CanvasWeb extends WebPlugin {
   ): Promise<EvalResult> {
     return new Promise<EvalResult>((resolve, reject) => {
       const targetOrigin = this.getWebViewTargetOrigin();
+      const messageId = `eval_${this.nextEvalMessageId++}`;
       const timeoutMs = 5000;
       const timeout = setTimeout(() => {
-        window.removeEventListener("message", handler);
+        this.removePendingEval(messageId);
         reject(new Error("eval timed out waiting for response from web view"));
       }, timeoutMs);
 
-      const handler = (event: MessageEvent) => {
-        // A WindowProxy keeps its identity when its document navigates. Check
-        // both source and origin so a later cross-origin document cannot
-        // complete an eval intended for the original navigation origin.
-        if (
-          event.source !== target ||
-          !this.messageOriginMatches(targetOrigin, event.origin)
-        ) {
-          return;
-        }
-        const data = event.data;
-        if (!data || typeof data !== "object") return;
-        const msg = data as WebViewIncomingMessage;
-        if (msg.type === "eliza:evalResult" && msg.result !== undefined) {
-          clearTimeout(timeout);
-          window.removeEventListener("message", handler);
-          resolve({ result: String(msg.result) });
-        }
-      };
-
-      window.addEventListener("message", handler);
-      target.postMessage({ type: "eliza:eval", script }, targetOrigin);
+      this.pendingEvals.push({
+        messageId,
+        target,
+        targetOrigin,
+        resolve,
+        timeout,
+      });
+      this.ensureEvalResultListener();
+      target.postMessage(
+        { type: "eliza:eval", script, messageId },
+        targetOrigin,
+      );
     });
   }
+
+  private removePendingEval(messageId: string): PendingEval | undefined {
+    const index = this.pendingEvals.findIndex(
+      (entry) => entry.messageId === messageId,
+    );
+    if (index === -1) return undefined;
+    const [entry] = this.pendingEvals.splice(index, 1);
+    return entry;
+  }
+
+  private ensureEvalResultListener(): void {
+    if (this.evalResultListenerBound) return;
+    this.evalResultListenerBound = true;
+    window.addEventListener("message", this.handleEvalResult);
+  }
+
+  // A single shared handler drains `pendingEvals`. A reply is eligible for a
+  // pending call only when it arrives from that call's target WindowProxy at
+  // its navigation origin: a WindowProxy keeps its identity across navigation,
+  // so both source and origin are checked to stop a later cross-origin
+  // document from completing an eval intended for the original origin. Among
+  // eligible entries, an echoed `messageId` selects exactly its own call;
+  // otherwise the oldest still-pending eligible call is resolved (FIFO), which
+  // preserves correctness for legacy responders that do not echo the id.
+  private handleEvalResult = (event: MessageEvent): void => {
+    const data = event.data;
+    if (!data || typeof data !== "object") return;
+    const msg = data as WebViewIncomingMessage;
+    if (msg.type !== "eliza:evalResult" || msg.result === undefined) return;
+
+    const isEligible = (entry: PendingEval): boolean =>
+      event.source === entry.target &&
+      this.messageOriginMatches(entry.targetOrigin, event.origin);
+
+    let index: number;
+    if (typeof msg.messageId === "string") {
+      const id = msg.messageId;
+      index = this.pendingEvals.findIndex(
+        (entry) => entry.messageId === id && isEligible(entry),
+      );
+    } else {
+      index = this.pendingEvals.findIndex(isEligible);
+    }
+    if (index === -1) return;
+
+    const [entry] = this.pendingEvals.splice(index, 1);
+    clearTimeout(entry.timeout);
+    entry.resolve({ result: String(msg.result) });
+  };
 
   private ensureMessageListener(): void {
     if (this.messageListenerBound) return;
