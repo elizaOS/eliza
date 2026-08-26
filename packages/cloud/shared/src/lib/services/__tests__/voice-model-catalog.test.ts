@@ -197,25 +197,27 @@ describe("signVoiceModelCatalog", () => {
     );
   });
 
-  test("documents the decode boundary: non-base64 characters are ignored by the decoder, so length is the fail-closed gate", async () => {
-    // Buffer-based base64 decoding is lenient: junk characters are
-    // dropped, so a padded 44-char base64 seed with one appended invalid
-    // character still decodes to the same 32 bytes and signs. Pinning that
-    // boundary makes any future move to strict decoding a deliberate,
-    // visible change rather than a silent one.
-    //
-    // Note on the helper name: `decodeBase64Strict` in the module is
-    // aspirational — "strict" refers to the 32-byte length gate it
-    // enforces after decoding, NOT to character-level strictness. Node's
-    // Buffer base64 decoder ignores non-base64 characters (see the
-    // canonicalization tests in the fingerprintPublicKey block below for
-    // the observable leniency). The pinned behavior is the lenient
-    // decode; treat this comment, not the helper name, as the contract.
+  test("fails closed on malformed signing keys: junk characters are rejected, not silently discarded", async () => {
+    // A corrupted or mistyped signing secret (e.g. a `!` pasted in, or an
+    // interior space) must throw before any signing, rather than being
+    // silently dropped by a lenient decoder and signing with "some" bytes:
+    // the operator would believe a broken credential is working. This pins
+    // the strict half of the decode contract — the flip side of the
+    // whitespace-trim convenience asserted in the canonicalization tests.
     const { privateKey } = generateKeyPairSync("ed25519");
     const seedB64 = seedFromPkcs8PrivateKey(privateKey);
+    await expect(
+      signVoiceModelCatalog({ bodyText: "{}", secretKeyBase64: `${seedB64}!` }),
+    ).rejects.toThrow(/Invalid base64/);
+    await expect(
+      signVoiceModelCatalog({ bodyText: "{}", secretKeyBase64: `ab cd` }),
+    ).rejects.toThrow(/Invalid base64/);
+    // The explicit operator convenience: surrounding whitespace (a key
+    // read from a file routinely carries a trailing newline) is trimmed,
+    // and the key still signs.
     const signatureB64 = await signVoiceModelCatalog({
       bodyText: "{}",
-      secretKeyBase64: `${seedB64}!`,
+      secretKeyBase64: `${seedB64}\n`,
     });
     expect(b64ToBytes(signatureB64).byteLength).toBe(64);
   });
@@ -223,21 +225,25 @@ describe("signVoiceModelCatalog", () => {
 
 describe("fingerprintPublicKey", () => {
   test("canonicalizes non-canonical base64 spellings to the same fingerprint", () => {
-    // Buffer-based base64 decoding is lenient: trailing whitespace or an
-    // appended invalid character decodes to the same 32 bytes, and
-    // re-encoding emits the canonical spelling. This is the realistic
-    // input class — a key pasted from a file routinely carries a
-    // trailing newline — and the case that proves the function does
-    // something a passthrough (return the input after the length check)
-    // would not: the passthrough returns the newline-terminated spelling.
+    // Surrounding whitespace is trimmed and unpadded spellings decode to
+    // the same 32 bytes, so re-encoding emits the canonical spelling. This
+    // is the realistic input class — a key pasted from a file routinely
+    // carries a trailing newline — and the case that proves the function
+    // does something a passthrough (return the input after the length
+    // check) would not: the passthrough returns the newline-terminated
+    // spelling.
     const raw = crypto.getRandomValues(new Uint8Array(32));
     const rawB64 = Buffer.from(raw).toString("base64");
     expect(fingerprintPublicKey(`${rawB64}\n`)).toBe(rawB64);
     expect(fingerprintPublicKey(` ${rawB64}`)).toBe(rawB64);
-    expect(fingerprintPublicKey(`${rawB64}!`)).toBe(rawB64);
     // 43-char unpadded spelling of the same 32 bytes also canonicalizes
     // to the padded form.
     expect(fingerprintPublicKey(rawB64.replaceAll("=", ""))).toBe(rawB64);
+    // Non-base64 junk is NOT a spelling of the same bytes: it throws
+    // rather than canonicalizing (mirrors the signing-key fail-closed
+    // contract above — a mistyped key must be rejected, not silently
+    // decoded).
+    expect(() => fingerprintPublicKey(`${rawB64}!`)).toThrow(/Invalid base64/);
   });
 
   test("rejects wrong-length public keys", () => {

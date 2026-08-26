@@ -120,12 +120,32 @@ function toArrayBufferView(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
   return copy;
 }
 
+/**
+ * Decode a base64 credential, failing closed on malformed input.
+ *
+ * Surrounding ASCII whitespace is trimmed first — keys pasted from files
+ * routinely carry a trailing newline — but any remaining character outside
+ * the canonical base64 alphabet (including interior whitespace) throws
+ * instead of being silently discarded by the lenient Buffer decoder: a
+ * corrupted or mistyped signing secret must never decode to "some" bytes.
+ * Unpadded final quanta are accepted (a legitimate spelling of the same
+ * bytes); `=` padding anywhere but the tail still throws.
+ */
+const CANONICAL_BASE64 =
+  /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{2,3})?$/;
+
 function decodeBase64Strict(input: string): Uint8Array {
+  const trimmed = input.trim();
+  if (!CANONICAL_BASE64.test(trimmed)) {
+    throw new Error(
+      `Invalid base64: input contains characters outside the canonical base64 alphabet after trimming surrounding whitespace`,
+    );
+  }
   if (typeof Buffer !== "undefined") {
-    const buf = Buffer.from(input, "base64");
+    const buf = Buffer.from(trimmed, "base64");
     return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
   }
-  const bin = atob(input);
+  const bin = atob(trimmed);
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
