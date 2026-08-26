@@ -214,14 +214,19 @@ describe("withinCreatedAtWindow", () => {
 	it("rejects undefined, NaN, and non-finite timestamps when any bound is active", () => {
 		expect(withinCreatedAtWindow(undefined, 1000)).toBe(false);
 		expect(withinCreatedAtWindow(Number.NaN, 1000, 2000)).toBe(false);
-		expect(withinCreatedAtWindow(Number.POSITIVE_INFINITY, 1000, 2000)).toBe(false);
-		expect(withinCreatedAtWindow(Number.NEGATIVE_INFINITY, 1000, 2000)).toBe(false);
+		expect(withinCreatedAtWindow(Number.POSITIVE_INFINITY, 1000, 2000)).toBe(
+			false,
+		);
+		expect(withinCreatedAtWindow(Number.NEGATIVE_INFINITY, 1000, 2000)).toBe(
+			false,
+		);
 	});
 
 	it("rejects non-finite bounds", () => {
 		expect(withinCreatedAtWindow(1500, Number.NaN, 2000)).toBe(false);
 		expect(withinCreatedAtWindow(1500, 1000, Number.NaN)).toBe(false);
-		expect(withinCreatedAtWindow(1500, Number.POSITIVE_INFINITY, 2000)).toBe(false);
+		expect(withinCreatedAtWindow(1500, Number.POSITIVE_INFINITY, 2000)).toBe(
+			false,
+		);
 	});
 });
-
