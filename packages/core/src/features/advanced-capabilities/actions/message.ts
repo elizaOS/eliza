@@ -75,6 +75,7 @@ import { hasActionContext } from "../../../utils/action-validation.ts";
 import { requireConfirmation } from "../../../utils/confirmation.ts";
 import { getActiveRoutingContextsForTurn } from "../../../utils/context-routing.ts";
 import { createHash } from "../../../utils/crypto-compat.ts";
+import { stableStringify } from "../../../utils/deterministic.ts";
 import { isObjectRecord as isRecord } from "../../../utils/type-guards.ts";
 import { toWellFormedUnicode } from "../../../utils/well-formed.ts";
 import { stringToUuid } from "../../../utils.ts";
@@ -3103,40 +3104,6 @@ async function handleSend(
 		return gate;
 	}
 
-	// A direct-to-person delivery resolved from an unvetted source (connector
-	// fuzzy match / raw explicit target) must be a known recipient — present in
-	// this room or relationship-backed — or explicitly confirmed by the user.
-	if (isUnvettedDirectUserCandidate(selected)) {
-		const known = await recipientIsKnownEntity(runtime, message, target);
-		if (!known) {
-			const decision = await requireConfirmation({
-				runtime,
-				message,
-				actionName: "MESSAGE",
-				pendingKey: `send:${selected.connector.source}:${String(target.entityId)}`,
-				prompt: `Send this via ${selected.connector.label} to ${selected.label}? They are not in this room, your contacts, or your relationship graph.`,
-			});
-			if (decision.status !== "confirmed") {
-				const pending = decision.status === "pending";
-				return {
-					success: pending,
-					text: pending
-						? `"${selected.label}" on ${selected.connector.label} is not in this room or the user's relationship graph. Ask the user to confirm sending to this recipient (yes/no) before the message is delivered; nothing was sent.`
-						: "The user declined sending to this recipient; nothing was sent.",
-					data: {
-						actionName: "MESSAGE",
-						operation: "send",
-						confirmationRequired: pending,
-						awaitingUserInput: pending,
-						cancelled: !pending,
-						source: selected.connector.source,
-						targetLabel: selected.label,
-					},
-				};
-			}
-		}
-	}
-
 	// Room-first member delivery: the utterance lands in the shared channel, so
 	// address the intended member by name unless the text already does.
 	const outboundMessage =
@@ -3159,6 +3126,51 @@ async function handleSend(
 		};
 	}
 	const content = applyContentShaping(selected.connector, builtContent);
+
+	// A direct-to-person delivery resolved from an unvetted source (connector
+	// fuzzy match / raw explicit target) must be a known recipient — present in
+	// this room or relationship-backed — or explicitly confirmed by the user.
+	if (isUnvettedDirectUserCandidate(selected)) {
+		const known = await recipientIsKnownEntity(runtime, message, target);
+		if (!known) {
+			// Turn-bound (#27932 review): the pending record keys on the source
+			// room and a SHA-256 digest of the complete effective send
+			// operation — the outbound Content AND the full resolved TargetInfo
+			// (thread/room/channel/server/account routing fields) — so a
+			// confirmation armed by a safe preview can never authorize later
+			// planner-supplied bytes, a different thread, or a `yes` issued
+			// from a different room. Any change is a cache miss and re-prompts.
+			const confirmationFingerprint = createHash("sha256")
+				.update(stableStringify({ target, content }))
+				.digest("hex")
+				.slice(0, 32);
+			const decision = await requireConfirmation({
+				runtime,
+				message,
+				actionName: "MESSAGE",
+				pendingKey: `send:${selected.connector.source}:${String(target.entityId)}:${message.roomId}:${confirmationFingerprint}`,
+				prompt: `Send this via ${selected.connector.label} to ${selected.label}? They are not in this room, your contacts, or your relationship graph.`,
+			});
+			if (decision.status !== "confirmed") {
+				const pending = decision.status === "pending";
+				return {
+					success: pending,
+					text: pending
+						? `"${selected.label}" on ${selected.connector.label} is not in this room or the user's relationship graph. Ask the user to confirm sending to this recipient (yes/no) before the message is delivered; nothing was sent.`
+						: "The user declined sending to this recipient; nothing was sent.",
+					data: {
+						actionName: "MESSAGE",
+						operation: "send",
+						confirmationRequired: pending,
+						awaitingUserInput: pending,
+						cancelled: !pending,
+						source: selected.connector.source,
+						targetLabel: selected.label,
+					},
+				};
+			}
+		}
+	}
 
 	let persisted: Memory | undefined;
 	let providerMessageId: string | undefined;

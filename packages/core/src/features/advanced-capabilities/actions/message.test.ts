@@ -1111,6 +1111,11 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
 	async function send(
 		runtime: IAgentRuntime,
 		text: string,
+		overrides?: {
+			body?: string;
+			roomId?: string;
+			thread?: string;
+		},
 	): Promise<ActionResult> {
 		const result = await messageAction.handler(
 			runtime,
@@ -1120,6 +1125,7 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
 				// #25284: the harness world (which grants this sender ADMIN)
 				// is resolved from the discord world-id metadata key.
 				metadata: { discordServerId: "00000000-0000-0000-0000-0000000000dd" },
+				...(overrides?.roomId ? { roomId: overrides.roomId } : {}),
 			} as Memory,
 			undefined,
 			{
@@ -1128,7 +1134,8 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
 					persist: false,
 					target: "fuzzymatch",
 					targetKind: "user",
-					message: "hey there",
+					message: overrides?.body ?? "hey there",
+					...(overrides?.thread ? { thread: overrides.thread } : {}),
 				},
 			},
 			undefined,
@@ -1221,5 +1228,80 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
 		expect(result.data).not.toMatchObject({ confirmationRequired: true });
 		expect(sends).toHaveLength(1);
 		expect(sends[0].target).toMatchObject({ entityId: KNOWN_PLATFORM_ID });
+	});
+
+	it("does not authorize substituted bytes from another room (#25284 review: confirmation is turn-bound)", async () => {
+		// ss251's adversarial case: a safe preview in room A arms the pending
+		// record; a later planner turn answering `yes` from room B with
+		// different outbound bytes must NOT consume that confirmation.
+		const { runtime, sends } = harness({ known: false });
+		const first = await send(runtime, "message fuzzymatch saying hey");
+		expect(first.data).toMatchObject({ awaitingUserInput: true });
+		expect(sends).toHaveLength(0);
+
+		const second = await send(runtime, "yes", {
+			body: "substituted hostile bytes",
+			roomId: "00000000-0000-0000-0000-0000000000e1",
+		});
+
+		// Fail-closed: cache miss re-arms a fresh confirmation for the NEW
+		// room+payload instead of delivering anything.
+		expect(sends).toHaveLength(0);
+		expect(second.data).toMatchObject({
+			confirmationRequired: true,
+			awaitingUserInput: true,
+		});
+	});
+
+	it("does not authorize substituted bytes in the same room (#25284 review: payload is bound)", async () => {
+		const { runtime, sends } = harness({ known: false });
+		await send(runtime, "message fuzzymatch saying hey");
+
+		const second = await send(runtime, "yes", {
+			body: "substituted hostile bytes",
+		});
+
+		expect(sends).toHaveLength(0);
+		expect(second.data).toMatchObject({
+			confirmationRequired: true,
+			awaitingUserInput: true,
+		});
+	});
+
+	it("does not authorize a send retargeted to a different thread (#25284 review: target is bound)", async () => {
+		// The confirmation digest covers the full resolved TargetInfo, so a
+		// `yes` carrying a different threadId is a cache miss and re-prompts
+		// instead of delivering to the substituted thread.
+		const { runtime, sends } = harness({ known: false });
+		await send(runtime, "message fuzzymatch saying hey"); // arm thread X
+
+		const second = await send(runtime, "yes", {
+			thread: "00000000-0000-0000-0000-0000000000f2",
+		});
+
+		expect(sends).toHaveLength(0);
+		expect(second.data).toMatchObject({
+			confirmationRequired: true,
+			awaitingUserInput: true,
+		});
+	});
+
+	it("a re-prompted confirmation of the substituted payload proceeds (loop terminates)", async () => {
+		// After a mismatch re-prompt (above), the substituted payload's OWN
+		// confirmation record is armed; the user deliberately confirming THOSE
+		// bytes sends exactly those bytes — nothing else.
+		const { runtime, sends } = harness({ known: false });
+		await send(runtime, "message fuzzymatch saying hey"); // arm original bytes
+		const rePrompt = await send(runtime, "yes", {
+			body: "re-prompted and deliberately confirmed",
+		}); // mismatch → arms record for the new payload
+		expect(rePrompt.data).toMatchObject({ awaitingUserInput: true });
+
+		const confirmed = await send(runtime, "yes", {
+			body: "re-prompted and deliberately confirmed",
+		});
+		expect(confirmed.success).toBe(true);
+		expect(sends).toHaveLength(1);
+		expect(sends[0].target).toMatchObject({ entityId: STRANGER_PLATFORM_ID });
 	});
 });
