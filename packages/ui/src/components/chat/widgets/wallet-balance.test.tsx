@@ -288,7 +288,7 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
     const unavailable = await screen.findByTestId(
       "chat-widget-wallet-unavailable",
     );
-    expect(unavailable.textContent).toContain("Market prices");
+    expect(unavailable.textContent).toContain("Wallet");
     expect(unavailable.textContent).toContain("Unavailable");
     expect(screen.queryAllByTestId(/^wallet-price-row-/)).toHaveLength(0);
   });

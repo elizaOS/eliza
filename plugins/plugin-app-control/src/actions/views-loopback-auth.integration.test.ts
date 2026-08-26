@@ -454,18 +454,16 @@ describe("authenticated view loopback requests", () => {
 			},
 		);
 
-		expect(callbackTexts).toEqual([]);
+		expect(callbackTexts).toEqual(["interaction complete"]);
 		expect(result).toMatchObject({
 			success: true,
 			text: "interaction complete",
-			transcriptVisibility: "internal",
-			modelReplyRequired: true,
-			modelReplyFallback: "interaction complete",
-			turnComplete: false,
+			userFacingText: "interaction complete",
+			verifiedUserFacing: true,
+			turnComplete: true,
 			effectReceipts: [LOOPBACK_EFFECT_RECEIPT],
 			userFacingEffectReceiptIds: [LOOPBACK_EFFECT_RECEIPT.receiptId],
 		});
-		expect(result).not.toHaveProperty("userFacingText");
 		expect(server.requests.at(-1)).toMatchObject({
 			method: "POST",
 			pathname: "/api/views/notes/interact",

@@ -262,7 +262,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           })
         : t("providerswitcher.cloudTileUnsignedDescription", {
             defaultValue:
-              "Sign in to use managed models. Your current chat provider stays active until you switch.",
+              "Sign in to use managed models. Chat replies use Local until then.",
           })
       : t("providerswitcher.localTileDescription", {
           defaultValue:
@@ -310,8 +310,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           </div>
         ) : null}
 
-        {bootstrap.routingConfigResolved &&
-        visibleProviderPanelId === "__local__" &&
+        {visibleProviderPanelId === "__local__" &&
         !selection.cloudRuntimeLocked ? (
           <LocalProviderPanel
             cloudCallsDisabled={
@@ -323,8 +322,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           />
         ) : null}
 
-        {bootstrap.routingConfigResolved &&
-        visibleProviderPanelId === "__cloud__" &&
+        {visibleProviderPanelId === "__cloud__" &&
         !selection.cloudRuntimeLocked ? (
           <CloudPanel
             cloudCallsDisabled={selection.cloudCallsDisabled}
