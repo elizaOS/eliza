@@ -1,11 +1,20 @@
 // Persists user sessions records for cloud services through the shared DB boundary.
-import { and, desc, eq, isNull, type SQL, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, type SQL, sql } from "drizzle-orm";
 import { mutateRowCount } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import { type NewUserSession, type UserSession, userSessions } from "../schemas/user-sessions";
 import { jsonbParam } from "../utils/jsonb";
 
 export type { NewUserSession, UserSession };
+
+/**
+ * A session is considered active (for telemetry aggregation) only when it
+ * has not ended AND its most recent activity is within this idle window.
+ * Abandoned sessions with null `ended_at` (no logout ran) stop counting
+ * toward current-session stats after the window elapses, without trusting
+ * client logout (#28584).
+ */
+export const ACTIVE_SESSION_IDLE_MS = 30 * 60 * 1000;
 
 type UserSessionMetricsUpdate = {
   last_activity_at: Date;
@@ -75,8 +84,16 @@ export class UserSessionsRepository {
     requests_made: number;
     tokens_consumed: number;
   } | null> {
+    const idleCutoff = new Date(Date.now() - ACTIVE_SESSION_IDLE_MS);
     const activeSessions = await dbRead.query.userSessions.findMany({
-      where: and(eq(userSessions.user_id, userId), isNull(userSessions.ended_at)),
+      where: and(
+        eq(userSessions.user_id, userId),
+        isNull(userSessions.ended_at),
+        // Exclude abandoned telemetry rows that outlived the idle window:
+        // without this, /sessions/current reports lifetime usage from
+        // sessions the user walked away from (#28584).
+        gt(userSessions.last_activity_at, idleCutoff),
+      ),
     });
 
     if (activeSessions.length === 0) {
@@ -248,7 +265,10 @@ export class UserSessionsRepository {
   }
 
   /**
-   * Deletes sessions that ended more than specified days ago.
+   * Deletes sessions that ended more than specified days ago, plus
+   * stale null-ended (abandoned) sessions whose last activity is older
+   * than the retention window — telemetry rows must not accumulate
+   * forever when logout never ran (#28584).
    *
    * @param daysOld - Minimum age in days for sessions to be deleted (default: 30).
    * @returns Number of sessions deleted.
@@ -259,7 +279,9 @@ export class UserSessionsRepository {
 
     const result = await dbWrite
       .delete(userSessions)
-      .where(sql`${userSessions.ended_at} < ${cutoffDate}`);
+      .where(
+        sql`${userSessions.ended_at} < ${cutoffDate} OR (${userSessions.ended_at} IS NULL AND ${userSessions.last_activity_at} < ${cutoffDate})`,
+      );
 
     return mutateRowCount(result);
   }
