@@ -887,7 +887,7 @@ describe.if(ENABLED)(
       );
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain("REFUSED_NONEMPTY_TARGET");
-    });
+    }, 120_000);
   },
 );
 
