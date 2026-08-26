@@ -30,15 +30,21 @@ interface TrustedDirectory {
 }
 
 interface TrustedParentDirectory {
-  handle: FileHandle;
+  handle?: FileHandle;
   path: string;
   stat: FileStat;
+  validation: "descriptor" | "android-platform";
 }
 
 interface TrustedLexicalEntry {
   handle?: FileHandle;
   path: string;
   stat: FileStat;
+  validation: "descriptor" | "symlink" | "android-platform";
+}
+
+interface AndroidStateBoundary {
+  appDataDirectory: string;
 }
 
 export class RuntimeInstallationIdentityUnsupportedError extends Error {
@@ -118,11 +124,64 @@ function ancestorPaths(directory: string): string[] {
   return paths;
 }
 
+function isSameOrDescendant(candidate: string, directory: string): boolean {
+  const relative = path.relative(directory, candidate);
+  return (
+    relative === "" ||
+    (!relative.startsWith("..") && !path.isAbsolute(relative))
+  );
+}
+
+function resolveAndroidStateBoundary(
+  stateDirectory: string,
+): AndroidStateBoundary | undefined {
+  if (process.env.ELIZA_PLATFORM?.trim().toLowerCase() !== "android") {
+    return undefined;
+  }
+  const configured = process.env.ELIZA_ANDROID_APP_DATA_DIR?.trim();
+  if (!configured || !path.isAbsolute(configured)) {
+    throw new Error(
+      "Android runtime installation identity requires an absolute ELIZA_ANDROID_APP_DATA_DIR.",
+    );
+  }
+  const appDataDirectory = path.resolve(configured);
+  if (!isSameOrDescendant(path.resolve(stateDirectory), appDataDirectory)) {
+    throw new Error(
+      "Android runtime state directory must remain inside ELIZA_ANDROID_APP_DATA_DIR.",
+    );
+  }
+  return { appDataDirectory };
+}
+
+function isAndroidPlatformAncestor(
+  entryPath: string,
+  boundary: AndroidStateBoundary | undefined,
+): boolean {
+  return (
+    boundary !== undefined &&
+    entryPath !== boundary.appDataDirectory &&
+    isSameOrDescendant(boundary.appDataDirectory, entryPath)
+  );
+}
+
+function assertAndroidPlatformAncestorStat(stat: FileStat): void {
+  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+    throw new Error("Android app-data ancestor must be a real directory.");
+  }
+}
+
+function isDescriptorParent(
+  entry: TrustedParentDirectory,
+): entry is TrustedParentDirectory & { handle: FileHandle } {
+  return entry.validation === "descriptor" && entry.handle !== undefined;
+}
+
 async function closeAncestors(
   ancestors: TrustedParentDirectory[],
 ): Promise<void> {
   let failure: unknown;
   for (const ancestor of [...ancestors].reverse()) {
+    if (!ancestor.handle) continue;
     try {
       await ancestor.handle.close();
     } catch (error) {
@@ -157,18 +216,28 @@ function assertTrustedSymlinkStat(stat: FileStat): void {
 
 async function openTrustedLexicalChain(
   directory: string,
+  androidBoundary: AndroidStateBoundary | undefined,
 ): Promise<TrustedLexicalEntry[]> {
   const paths = ancestorPaths(directory);
   const trusted: TrustedLexicalEntry[] = [];
   try {
     for (const [index, entryPath] of paths.entries()) {
       const stat = await fs.lstat(entryPath);
+      if (isAndroidPlatformAncestor(entryPath, androidBoundary)) {
+        assertAndroidPlatformAncestorStat(stat);
+        trusted.push({
+          path: entryPath,
+          stat,
+          validation: "android-platform",
+        });
+        continue;
+      }
       if (stat.isSymbolicLink()) {
         if (index === paths.length - 1) {
           throw new Error("Runtime state parent must be a real directory.");
         }
         assertTrustedSymlinkStat(stat);
-        trusted.push({ path: entryPath, stat });
+        trusted.push({ path: entryPath, stat, validation: "symlink" });
         continue;
       }
       assertTrustedParentDirectoryStat(stat);
@@ -176,7 +245,12 @@ async function openTrustedLexicalChain(
         entryPath,
         constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
       );
-      trusted.push({ path: entryPath, stat, handle });
+      trusted.push({
+        path: entryPath,
+        stat,
+        handle,
+        validation: "descriptor",
+      });
     }
     await revalidateLexicalChain(trusted);
     return trusted;
@@ -194,9 +268,16 @@ async function revalidateLexicalChain(
     if (!sameIdentity(pathStat, ancestor.stat)) {
       throw new Error("Runtime state lexical path changed during validation.");
     }
-    if (!ancestor.handle) {
+    if (ancestor.validation === "android-platform") {
+      assertAndroidPlatformAncestorStat(pathStat);
+      continue;
+    }
+    if (ancestor.validation === "symlink") {
       assertTrustedSymlinkStat(pathStat);
       continue;
+    }
+    if (!ancestor.handle) {
+      throw new Error("Runtime state lexical descriptor is unavailable.");
     }
     assertTrustedParentDirectoryStat(pathStat);
     const descriptorStat = await ancestor.handle.stat();
@@ -216,10 +297,18 @@ async function revalidateAncestorChain(
 async function revalidateParentPath(
   trusted: TrustedParentDirectory,
 ): Promise<void> {
-  const [pathStat, descriptorStat] = await Promise.all([
-    fs.lstat(trusted.path),
-    trusted.handle.stat(),
-  ]);
+  const pathStat = await fs.lstat(trusted.path);
+  if (trusted.validation === "android-platform") {
+    assertAndroidPlatformAncestorStat(pathStat);
+    if (!sameIdentity(pathStat, trusted.stat)) {
+      throw new Error("Runtime state parent changed during validation.");
+    }
+    return;
+  }
+  if (!trusted.handle) {
+    throw new Error("Runtime state parent descriptor is unavailable.");
+  }
+  const descriptorStat = await trusted.handle.stat();
   assertTrustedParentDirectoryStat(pathStat);
   assertTrustedParentDirectoryStat(descriptorStat);
   if (
@@ -248,21 +337,39 @@ async function revalidateDirectoryPath(
 async function openTrustedStateDirectory(
   stateDirectory: string,
   lexicalAncestors: TrustedLexicalEntry[],
+  androidBoundary: AndroidStateBoundary | undefined,
 ): Promise<TrustedDirectory> {
   const parentPath = path.dirname(stateDirectory);
   const ancestors: TrustedParentDirectory[] = [];
   try {
     for (const ancestorPath of ancestorPaths(parentPath)) {
       const ancestorStat = await fs.lstat(ancestorPath);
+      if (isAndroidPlatformAncestor(ancestorPath, androidBoundary)) {
+        assertAndroidPlatformAncestorStat(ancestorStat);
+        ancestors.push({
+          path: ancestorPath,
+          stat: ancestorStat,
+          validation: "android-platform",
+        });
+        continue;
+      }
       assertTrustedParentDirectoryStat(ancestorStat);
       const handle = await fs.open(
         ancestorPath,
         constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
       );
-      ancestors.push({ path: ancestorPath, stat: ancestorStat, handle });
+      ancestors.push({
+        path: ancestorPath,
+        stat: ancestorStat,
+        handle,
+        validation: "descriptor",
+      });
     }
     const parent = ancestors.at(-1);
     if (!parent) throw new Error("Runtime state parent chain is empty.");
+    if (!isDescriptorParent(parent)) {
+      throw new Error("Runtime state parent must have a trusted descriptor.");
+    }
     await revalidateAncestorChain(ancestors);
     try {
       await fs.mkdir(stateDirectory, { mode: 0o700 });
@@ -499,8 +606,12 @@ async function loadOrCreateRuntimeInstallationIdImpl(
   stateDirectory: string,
 ): Promise<UUID> {
   const requestedStateDirectory = path.resolve(stateDirectory);
+  const androidBoundary = resolveAndroidStateBoundary(requestedStateDirectory);
   const requestedParent = path.dirname(requestedStateDirectory);
-  const lexicalAncestors = await openTrustedLexicalChain(requestedParent);
+  const lexicalAncestors = await openTrustedLexicalChain(
+    requestedParent,
+    androidBoundary,
+  );
   let trustedDirectory: TrustedDirectory;
   let resolvedStateDirectory: string;
   try {
@@ -508,9 +619,21 @@ async function loadOrCreateRuntimeInstallationIdImpl(
       await fs.realpath(requestedParent),
       path.basename(requestedStateDirectory),
     );
+    if (
+      androidBoundary &&
+      !isSameOrDescendant(
+        resolvedStateDirectory,
+        androidBoundary.appDataDirectory,
+      )
+    ) {
+      throw new Error(
+        "Resolved Android runtime state directory escaped ELIZA_ANDROID_APP_DATA_DIR.",
+      );
+    }
     trustedDirectory = await openTrustedStateDirectory(
       resolvedStateDirectory,
       lexicalAncestors,
+      androidBoundary,
     );
   } catch (error) {
     await closeLexicalAncestors(lexicalAncestors);
