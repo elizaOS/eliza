@@ -35,6 +35,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { z } from "zod";
 import type { AnalyzerExecutor } from "../analyzers/index.ts";
 import { analyzeArtifacts } from "../analyzers/runner.ts";
@@ -269,11 +270,14 @@ export const spawnRunAllTests: MatrixRunner = ({ repoRoot, io, args = [] }) => {
       env: process.env,
     });
     let buffer = "";
-    const capture = (chunk: Buffer) => {
-      buffer += chunk.toString("utf8");
-    };
-    child.stdout.on("data", capture);
-    child.stderr.on("data", capture);
+    const stdoutDecoder = new StringDecoder("utf8");
+    const stderrDecoder = new StringDecoder("utf8");
+    child.stdout.on("data", (chunk: Buffer) => {
+      buffer += stdoutDecoder.write(chunk);
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      buffer += stderrDecoder.write(chunk);
+    });
     child.on("error", (error) => {
       // error-policy:J2 context-adding rethrow — a runner that cannot even
       // launch is an environment failure the certifier must see, not a lane
@@ -287,6 +291,8 @@ export const spawnRunAllTests: MatrixRunner = ({ repoRoot, io, args = [] }) => {
       );
     });
     child.on("close", (code) => {
+      buffer += stdoutDecoder.end();
+      buffer += stderrDecoder.end();
       const passed = code === 0 ? 1 : 0;
       const failed = code === 0 ? 0 : 1;
       resolve({
