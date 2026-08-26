@@ -1493,6 +1493,8 @@ function AppProviderInner({
     setFirstRunRemoteToken,
     setFirstRunCloudProvisionedContainer,
     hydrateInitialConversationState,
+    loadedConversationIdRef,
+    loadConversationMessages,
     loadWorkbench,
     loadPlugins,
     loadSkills,

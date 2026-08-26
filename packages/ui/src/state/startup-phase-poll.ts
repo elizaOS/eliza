@@ -707,7 +707,17 @@ export async function runPollingBackend(
    */
   const boundedProbe = <T>(promise: Promise<T>): Promise<T> => {
     const remainingMs = Math.max(0, deadline - Date.now());
-    const capMs = Math.max(1, Math.min(PROBE_REQUEST_TIMEOUT_MS, remainingMs));
+    // Remote native targets have no local boot process that benefits from the
+    // generic 12s per-request allowance. Cap the first request by the same
+    // short budget as its visible error state so one hung transport cannot
+    // consume the entire failure budget before the streak is evaluated.
+    const remoteNativeProbeCapMs =
+      isCapacitorNative() &&
+      target !== "embedded-local" &&
+      !isMobileLocalAgentIpcBase(client.getBaseUrl())
+        ? remoteNativeFailureBudgetMs
+        : PROBE_REQUEST_TIMEOUT_MS;
+    const capMs = Math.max(1, Math.min(remoteNativeProbeCapMs, remainingMs));
     return new Promise<T>((resolve, reject) => {
       const hangTid = setTimeout(() => {
         reject(

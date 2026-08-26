@@ -229,7 +229,7 @@ describe("hydrateInitialConversation — chat always has a chat (#1)", () => {
     // Restored, but its messages were NEVER loaded — the [] in the thread is a
     // placeholder. Binding it to "c1" would let the select/new-chat cleanup
     // judge a possibly-real conversation as an empty draft and delete it.
-    expect(result).toBe("c1");
+    expect(result).toBeNull();
     expect(loadedConversationIdRef.current).toBeNull();
     expect(document.documentElement.dataset.conversationHistoryApplied).toBe(
       "false",

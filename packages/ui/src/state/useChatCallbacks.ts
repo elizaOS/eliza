@@ -341,7 +341,9 @@ export async function hydrateInitialConversation(
           : null;
         setConversationMessages(nextMessages);
         markConversationHistoryApplied(messagesLoaded);
-        return nextMessages.length === 0 && seedSyntheticGreeting
+        return messagesLoaded &&
+          nextMessages.length === 0 &&
+          seedSyntheticGreeting
           ? restoredConversation.id
           : null;
       } catch {
@@ -354,7 +356,7 @@ export async function hydrateInitialConversation(
         conversationMessagesRef.current = [];
         loadedConversationIdRef.current = null;
         setConversationMessages([]);
-        return restoredConversation.id;
+        return null;
       }
     }
 
