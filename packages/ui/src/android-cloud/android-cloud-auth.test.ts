@@ -63,6 +63,30 @@ describe("Android Cloud native auth handoff", () => {
     vi.restoreAllMocks();
   });
 
+  it("keeps launcher login on the first-party HTTPS WebView surface", async () => {
+    const auth = await import("./android-cloud-auth");
+    const navigate = vi.fn();
+
+    expect(
+      auth.navigateAndroidCloudSignInInApp(
+        "https://cloud.eliza.app/login?returnTo=%2Fapp-auth%2Fauthorize",
+        navigate,
+      ),
+    ).toBe(true);
+    expect(navigate).toHaveBeenCalledWith(
+      "https://cloud.eliza.app/login?returnTo=%2Fapp-auth%2Fauthorize",
+    );
+
+    for (const url of [
+      "http://cloud.eliza.app/login",
+      "https://cloud.eliza.app.evil.example/login",
+      "javascript:alert(1)",
+    ]) {
+      expect(auth.navigateAndroidCloudSignInInApp(url, navigate)).toBe(false);
+    }
+    expect(navigate).toHaveBeenCalledTimes(1);
+  });
+
   it("single-flights concurrent and sequential delivery of one callback", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
