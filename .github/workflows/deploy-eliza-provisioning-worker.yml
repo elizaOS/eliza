@@ -134,7 +134,10 @@ jobs:
       # hand-edited headscale URL/key again. The daemon API URL is derived from
       # the protected environment below and stays loopback-only; it is not an
       # operator variable that can redirect the protected bearer key.
-      HEADSCALE_PUBLIC_URL: ${{ vars.HEADSCALE_PUBLIC_URL }}
+      # Canonical per-environment routing is repository-owned, not an optional
+      # environment variable. Keeping the value here also lets a deploy repair
+      # a missing/stale host entry when the GitHub variable inventory is empty.
+      HEADSCALE_PUBLIC_URL: ${{ needs.determine-env.outputs.environment == 'production' && 'https://headscale.eliza.app' || 'https://headscale-staging.eliza.app' }}
       # Base64 private key used by the daemon to reach dedicated-agent nodes.
       # Keep this in the protected environment instead of relying on a
       # hand-copied file that can drift or disappear when the CP host is rebuilt.
@@ -248,7 +251,6 @@ jobs:
             DEPLOY_HOST
             DEPLOY_SSH_KEY
             HEADSCALE_PUBLIC_URL
-            HEADSCALE_API_KEY
             DATABASE_URL
           )
           missing=()

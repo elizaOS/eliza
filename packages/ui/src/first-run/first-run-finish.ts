@@ -531,10 +531,6 @@ export async function bindCloudAgent(
     ...(opts.preferAgentId ? { preferAgentId: opts.preferAgentId } : {}),
     ...(opts.forceCreate ? { forceCreate: true } : {}),
     ...(opts.knownAgents ? { knownAgents: opts.knownAgents } : {}),
-    preferStewardAgentAdapter: Boolean(getBootConfig().preferSharedCloudTier),
-    ...(getBootConfig().preferSharedCloudTier
-      ? { preferSharedTier: true }
-      : {}),
     onProgress: (status, detail) => ports.onStatus?.(detail ?? status, status),
   });
   // The remote agent now exists/was selected; every step after this point

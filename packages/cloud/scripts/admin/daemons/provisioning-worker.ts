@@ -409,6 +409,43 @@ export function formatErrorWithCause(error: unknown): string {
 }
 
 /**
+ * Refuse to start a deployed provisioning daemon without the same remote
+ * PostgreSQL authority used by the API. A missing URL otherwise falls through
+ * to local defaults and the daemon can publish a healthy heartbeat while
+ * polling an empty queue forever, leaving every dedicated agent pending.
+ */
+export function assertProvisioningWorkerDatabaseConfigured(
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  const nodeEnv = env.NODE_ENV;
+  if (nodeEnv === "test" || nodeEnv === "development") return;
+  const raw = env.DATABASE_URL?.trim();
+  if (!raw) {
+    throw new Error(
+      "Provisioning worker DATABASE_URL is required outside test/development; refusing to advertise liveness against a local or implicit database.",
+    );
+  }
+  if (/^pglite:\/\//i.test(raw)) {
+    throw new Error(
+      "Provisioning worker DATABASE_URL must be a remote PostgreSQL URL outside test/development; pglite:// is local-only and cannot own the cloud jobs queue.",
+    );
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error(
+      "Provisioning worker DATABASE_URL is malformed; expected a postgresql:// or postgres:// URL.",
+    );
+  }
+  if (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:") {
+    throw new Error(
+      "Provisioning worker DATABASE_URL must use postgres:// or postgresql:// outside test/development.",
+    );
+  }
+}
+
+/**
  * One-shot latch so the active KMS backend is logged once at startup, not on
  * every poll cycle (the preflight re-runs each cycle to gate the hb_signal).
  * Reset only for tests.
@@ -2273,6 +2310,7 @@ async function main(): Promise<void> {
     dbLivenessMaxAgeHours: config.dbLivenessMaxAgeHours,
   });
 
+  assertProvisioningWorkerDatabaseConfigured();
   await assertProvisioningWorkerPreflight({ logger });
 
   // Fail-fast on a missing SSH key BEFORE the first heartbeat for remote-node

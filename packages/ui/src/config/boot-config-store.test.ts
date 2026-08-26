@@ -6,8 +6,8 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_BOOT_CONFIG } from "./boot-config-store";
 
 describe("DEFAULT_BOOT_CONFIG", () => {
-  it("defaults preferSharedCloudTier ON so a fresh signup chats instantly from the shared runtime while the dedicated container boots (#15518 decision; regression of the 90s+ provisioning wall)", () => {
-    expect(DEFAULT_BOOT_CONFIG.preferSharedCloudTier).toBe(true);
+  it("defaults signed-in Cloud onboarding away from the legacy Shared tier", () => {
+    expect(DEFAULT_BOOT_CONFIG.preferSharedCloudTier).toBe(false);
   });
 
   it("defaults autoUpgradeSharedToDedicated OFF so onboarding stays shared-only with zero billable dedicated mutation (#18204)", () => {

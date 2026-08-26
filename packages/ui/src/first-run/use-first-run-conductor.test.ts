@@ -50,7 +50,7 @@ const mocks = vi.hoisted(() => ({
         activeAgentId: PERSONAL_ELIZA_ID,
         agentName: "Eliza Cloud",
         apiBase: PERSONAL_ELIZA_API_BASE,
-        runtime: "shared" as const,
+        runtime: "dedicated" as const,
       }),
     ),
     submitFirstRun: vi.fn(async () => undefined),
@@ -84,6 +84,10 @@ const mocks = vi.hoisted(() => ({
     | import("./device-ram-tier").DeviceRamTierAssessment
     | null,
 }));
+
+Object.assign(mocks.client, {
+  ensurePersonalDedicatedEliza: mocks.client.getPersonalSharedEliza,
+});
 
 vi.mock("../api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api/client")>();
@@ -332,7 +336,7 @@ beforeEach(() => {
     activeAgentId: PERSONAL_ELIZA_ID,
     agentName: "Eliza Cloud",
     apiBase: PERSONAL_ELIZA_API_BASE,
-    runtime: "shared" as const,
+    runtime: "dedicated" as const,
   });
   mocks.client.getCloudCompatAgents.mockResolvedValue({
     success: true,
@@ -1023,7 +1027,7 @@ describe("useFirstRunConductor", () => {
       activeAgentId: string;
       agentName: string;
       apiBase: string;
-      runtime: "shared";
+      runtime: "dedicated";
     }) => void = () => {};
     mocks.client.getPersonalSharedEliza.mockImplementation(
       () =>
@@ -1056,7 +1060,7 @@ describe("useFirstRunConductor", () => {
       activeAgentId: PERSONAL_ELIZA_ID,
       agentName: "Eliza Cloud",
       apiBase: PERSONAL_ELIZA_API_BASE,
-      runtime: "shared",
+      runtime: "dedicated",
     });
     await waitForTurn(turn, "first-run:tutorial");
     expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(1);
@@ -1683,7 +1687,7 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     // attempt cancel this request without changing that server-side policy.
     expect(
       Object.keys(mocks.client.getPersonalSharedEliza.mock.calls[0][0]).sort(),
-    ).toEqual(["authToken", "cloudApiBase", "signal"]);
+    ).toEqual(["authToken", "cloudApiBase", "onProgress", "signal"]);
     expect(
       mocks.client.getPersonalSharedEliza.mock.calls[0][0]?.signal,
     ).toBeInstanceOf(AbortSignal);
@@ -2589,7 +2593,7 @@ describe("bounded cloud sign-in wait (#19255)", () => {
       activeAgentId: PERSONAL_ELIZA_ID,
       agentName: "Eliza Cloud",
       apiBase: PERSONAL_ELIZA_API_BASE,
-      runtime: "shared" as const,
+      runtime: "dedicated" as const,
     };
     const resolveJoin: Array<(value: typeof personalEliza) => void> = [];
     mocks.client.getPersonalSharedEliza.mockImplementation(

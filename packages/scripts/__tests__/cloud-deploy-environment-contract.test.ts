@@ -616,13 +616,16 @@ describe("canonical cloud deployment environment contract", () => {
       "DEPLOY_HOST",
       "DEPLOY_SSH_KEY",
       "HEADSCALE_PUBLIC_URL",
-      "HEADSCALE_API_KEY",
       "DATABASE_URL",
     ]) {
       expect(requiredManifest).toContain(`\n  ${name}\n`);
     }
     expect(requiredManifest).not.toContain("CONTAINERS_SSH_KEY");
     expect(requiredManifest).not.toContain("SECRETS_MASTER_KEY");
+    // The Headscale key may predate GitHub inventory. Empty CI preserves the
+    // host value, and the remote required_host_settings preflight still fails
+    // closed before restart if that preserved value is absent.
+    expect(requiredManifest).not.toContain("HEADSCALE_API_KEY");
     expect(preflight.run).toContain(
       "Missing required provisioning settings for GitHub environment $TARGET_ENVIRONMENT",
     );
