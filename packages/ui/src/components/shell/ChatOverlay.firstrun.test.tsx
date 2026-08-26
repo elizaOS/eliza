@@ -138,7 +138,7 @@ describe("ChatOverlay first-run gating", () => {
 
     const input = screen.getByLabelText("message") as HTMLTextAreaElement;
     expect(input.disabled).toBe(false);
-    expect(input.placeholder).toBe("Tell me what’s on your plate");
+    expect(input.placeholder).toBe("Hey Eliza…");
     expect(input.getAttribute("aria-describedby")).toBe("cc-first-run-hint");
     expect(screen.getByText(/answer stays in setup/i)).toBeTruthy();
 
@@ -172,6 +172,25 @@ describe("ChatOverlay first-run gating", () => {
 
     const input = screen.getByLabelText("message") as HTMLTextAreaElement;
     expect(input.placeholder).toBe("Connecting to Eliza Cloud…");
+  });
+
+  it("does not describe a failed Cloud connection as still connecting", () => {
+    const controller = makeController({
+      messages: [
+        {
+          id: "first-run:cloud-error",
+          role: "assistant",
+          content:
+            "I couldn't finish setting up your agent: Couldn't connect to Eliza Cloud: session expired.",
+          createdAt: 2,
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+
+    render(<ChatOverlay controller={controller} firstRunOpen />);
+
+    const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+    expect(input.placeholder).toBe("Hey Eliza…");
   });
 
   it("ignores external prefill during onboarding while direct typing stays local", () => {
@@ -559,6 +578,11 @@ describe("ChatOverlay first-run gating", () => {
       expect(
         screen.getByTestId("choice-__first_run__:runtime:cloud"),
       ).toBeTruthy();
+      const composer = screen.getByTestId(
+        "chat-composer-textarea",
+      ) as HTMLTextAreaElement;
+      expect(composer.disabled).toBe(true);
+      expect(composer.placeholder).toBe("Sign in to get started");
     } finally {
       vi.useRealTimers();
     }
