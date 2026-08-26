@@ -410,16 +410,22 @@ type ScheduledWorkflowRunner = {
  * scheduler tick (#29068). `status` is the delivery state, not the report
  * state: `delivered` means a delivery surface accepted the message AND the
  * report row was persisted; `skipped_already_sent` is the deterministic
- * same-local-day dedupe; `disconnected` is a typed delivery failure where
- * nothing was persisted — previously a log line inside an all-green tick.
+ * same-local-day dedupe; every other value mirrors the connector-level
+ * `DispatchResult` failure reason verbatim (extracted from the type so the
+ * tick summary can never mislabel a typed transport failure as
+ * `disconnected`) and means the report was NOT persisted.
  */
+export type SleepCycleCheckinDispatchFailure = Extract<
+  DispatchResult,
+  { ok: false }
+>["reason"];
+
 export interface SleepCycleCheckinDeliveryReport {
   kind: "morning" | "night";
   status:
     | "delivered"
     | "skipped_already_sent"
-    | "disconnected"
-    | "unknown_recipient";
+    | SleepCycleCheckinDispatchFailure;
   reportId: string | null;
   messageId: string | null;
   reason: string | null;
@@ -5869,13 +5875,13 @@ export class RemindersDomain {
     // subsystem-isolation contract still holds — the tick completes and the
     // failure is typed in the summary — but the owning scenario (or operator
     // reading the scheduler task result) can no longer see 16/16 green while
-    // a morning check-in silently vanished. Both delivery-rejection statuses
-    // count (a mislabeled failure is as invisible as an unlabeled one);
+    // a morning check-in silently vanished. Every connector failure reason
+    // counts (a mislabeled failure is as invisible as an unlabeled one);
     // `skipped_already_sent` is the deterministic day-dedupe and stays green.
     for (const checkin of sleepCycleCheckins) {
       if (
-        checkin.status === "disconnected" ||
-        checkin.status === "unknown_recipient"
+        checkin.status !== "delivered" &&
+        checkin.status !== "skipped_already_sent"
       ) {
         subsystemFailures.push({
           subsystem: "sleep_cycle_checkins",
@@ -6094,25 +6100,12 @@ export class RemindersDomain {
             message: delivery.message,
           },
         );
-        // Status mirrors the typed dispatch reason; `disconnected` is not a
-        // catch-all — `unknown_recipient` and future typed reasons surface
-        // as themselves so the tick summary never mislabels a failure (#29068).
-        if (
-          delivery.reason !== "disconnected" &&
-          delivery.reason !== "unknown_recipient"
-        ) {
-          this.ctx.logLifeOpsWarn(
-            "sleep_cycle_checkin_delivery",
-            "[lifeops] Sleep-cycle check-in delivery failed with an unmapped dispatch reason; reporting it generically.",
-            { kind, reason: delivery.reason },
-          );
-        }
+        // `status` mirrors the connector-level DispatchResult failure reason
+        // verbatim — the tick summary never invents its own failure label
+        // (#29068).
         return {
           kind,
-          status:
-            delivery.reason === "unknown_recipient"
-              ? "unknown_recipient"
-              : "disconnected",
+          status: delivery.reason,
           reportId: report.reportId,
           messageId: null,
           reason: delivery.reason,
