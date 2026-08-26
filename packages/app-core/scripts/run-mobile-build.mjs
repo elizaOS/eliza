@@ -5863,6 +5863,7 @@ export function sanitizeAndroidCloudCapacitorConfig(value) {
     appId: APP.appId,
     appName: APP.appName,
     webDir: "dist",
+    ...(value.loggingBehavior === "none" ? { loggingBehavior: "none" } : {}),
     server: {
       androidScheme: "https",
     },

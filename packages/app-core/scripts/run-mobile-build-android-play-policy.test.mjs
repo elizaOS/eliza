@@ -95,6 +95,7 @@ describe("Android Play manifest policy", () => {
       appId: "ai.elizaos.app",
       appName: "Eliza",
       webDir: "dist",
+      loggingBehavior: "none",
       server: {
         androidScheme: "http",
         allowNavigation: ["localhost", "127.0.0.1", "*.elizacloud.ai"],
@@ -122,6 +123,7 @@ describe("Android Play manifest policy", () => {
     expect(sanitized.server).toEqual({
       androidScheme: "https",
     });
+    expect(sanitized.loggingBehavior).toBe("none");
     expect(sanitized.server).not.toHaveProperty("allowNavigation");
     expect(sanitized.android).toEqual({
       backgroundColor: "#000000",
