@@ -275,6 +275,7 @@ Native transport is covered by unit tests under `__tests__/unit/acp-native-trans
 | `bun run build` / `bun run build:ts` | Build Node ESM, CJS, and declaration outputs. |
 | `bun run dev` | Rebuild in watch mode. |
 | `bun run typecheck` | Run TypeScript without emitting files. |
+| `bun run typecheck:live-harness` | Type-check the guarded live wrapper and its cross-package core harness. |
 | `bun run test` | Run the plugin vitest suite. |
 | `bun run test:unit` | Run unit tests only. |
 | `bun run test:e2e:manual` | Run the manual `acp-codex-smoke.mjs` smoke against installed/authenticated `acpx` + Codex. |

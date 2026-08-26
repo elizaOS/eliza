@@ -17,6 +17,7 @@ import { describe, it } from "vitest";
 
 const RUN_LIVE = process.env.ORCHESTRATOR_LIVE === "1";
 const RUN_WEB_LIVE = process.env.ORCHESTRATOR_LIVE_WEB === "1";
+type Framework = "claude" | "codex";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..", "..", "..", "..");
 const runNodeTsxScript = path.join(
