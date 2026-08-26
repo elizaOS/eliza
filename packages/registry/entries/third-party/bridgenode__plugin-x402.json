@@ -4,6 +4,13 @@
   "kind": "plugin",
   "description": "Pay-per-request LLM inference via x402 on Solana USDC — no API keys, no accounts, gas sponsored",
   "homepage": "https://github.com/bridgenode-ai/elizaos-plugin-x402",
-  "version": "0.1.4",
-  "tags": ["x402", "solana", "usdc", "llm", "inference", "payment"]
+  "version": "0.1.5",
+  "tags": [
+    "x402",
+    "solana",
+    "usdc",
+    "llm",
+    "inference",
+    "payment"
+  ]
 }
