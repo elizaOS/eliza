@@ -176,7 +176,14 @@ describe("generateOpenAPISpec — parameter and request-body mapping", () => {
     ]);
   });
 
-  it("builds a JSON request body whose required list matches required body params", () => {
+  it("builds a JSON request body carrying every catalog body parameter, optional included", () => {
+    // Two contracts in one walk: the `required` list mirrors required-only
+    // derivation, and the `properties` map contains EVERY body parameter —
+    // generated clients read `properties` to know which fields they may send,
+    // so a generator that silently drops optional fields (e.g. only assigning
+    // inside `if (param.required)`) corrupts every client while JSON/YAML
+    // round-trips and required-list checks stay green.
+    let sawOptionalBodyParam = false;
     for (const endpoint of API_ENDPOINTS) {
       const body = endpoint.parameters?.body;
       const operation =
@@ -195,7 +202,38 @@ describe("generateOpenAPISpec — parameter and request-body mapping", () => {
       expect(operation.requestBody?.required, endpoint.id).toBe(
         expectedRequired.length > 0,
       );
+      // The properties key-set must equal the full parameter name set.
+      expect(
+        Object.keys(schema?.properties ?? {}).sort(),
+        `${endpoint.id}: request-body properties must carry every body parameter`,
+      ).toEqual(body.map((p) => p.name).sort());
+      sawOptionalBodyParam ||= body.some((p) => !p.required);
     }
+    // The catalog must actually exercise the optional-body-parameter rule for
+    // the key-set assertion to guard the reviewer's mutation class.
+    expect(sawOptionalBodyParam).toBe(true);
+  });
+
+  it("keeps concrete optional body fields usable by generated clients", () => {
+    // Named instances of the class above: fields a generated client can send
+    // today and would lose if optional properties were dropped.
+    const userUpdate =
+      spec.paths["/api/v1/user"]?.patch.requestBody?.content["application/json"]
+        ?.schema;
+    expect(userUpdate?.properties).toMatchObject({
+      name: { type: "string" },
+      avatar: { type: "string" },
+    });
+
+    const createKey =
+      spec.paths["/api/v1/api-keys"]?.post.requestBody?.content[
+        "application/json"
+      ]?.schema;
+    expect(createKey?.properties).toMatchObject({
+      description: { type: "string" },
+      permissions: { type: "array" },
+      rate_limit: { type: "number" },
+    });
   });
 
   it("propagates numeric bounds onto the generated schema", () => {
