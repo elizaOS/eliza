@@ -41,8 +41,14 @@ function stubIdTokenVerification(payload: Record<string, unknown>) {
 }
 
 function runtime() {
+  const vault = new Map<string, string>();
   return {
     agentId: "agent-1",
+    adapter: {
+      listConnectorAccountCredentialRefs: vi.fn(async () => []),
+      deleteConnectorAccountCredentialRefs: vi.fn(async () => 0),
+      setConnectorAccountCredentialRef: vi.fn(async () => undefined),
+    },
     getSetting: (key: string) =>
       ({
         GOOGLE_CLIENT_ID: "client-id",
@@ -50,7 +56,18 @@ function runtime() {
         GOOGLE_REDIRECT_URI: "http://127.0.0.1:31437/api/connectors/google/oauth/callback",
       })[key],
     getService: (serviceType: string) =>
-      serviceType === "vault" ? { set: vi.fn(async () => undefined) } : null,
+      serviceType === "vault"
+        ? {
+            set: vi.fn(async (key: string, value: string) => {
+              vault.set(key, value);
+            }),
+            get: vi.fn(async (key: string) => vault.get(key) ?? null),
+            has: vi.fn(async (key: string) => vault.has(key)),
+            remove: vi.fn(async (key: string) => {
+              vault.delete(key);
+            }),
+          }
+        : null,
   } as never;
 }
 
@@ -153,6 +170,7 @@ function stubTokenAndUserInfo(
           headers: { "content-type": "application/json" },
         })
       )
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
   );
 }
 
