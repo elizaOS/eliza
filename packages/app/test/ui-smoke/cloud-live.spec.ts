@@ -693,7 +693,57 @@ test.describe("real cloud login + personal identity + chat", () => {
     // following assistant row without treating verbatim code echo as a model
     // liveness requirement.
     await enterTrajectoryPhase("live-chat");
+    const chatHydrationAuditBefore = await primaryAudit.snapshot();
     await openAppPath(page, "/chat");
+    // A protected blank start can reach /chat before its persisted transcript
+    // has painted. Sending into that window lets the late initial history GET
+    // replace the optimistic turn, so a successful streamed reply disappears
+    // from the rendered proof. Wait for the real history response, then require
+    // the rendered row set to remain unchanged across three observations before
+    // starting the measured turn. This works for both empty and populated
+    // histories and keeps the liveness assertion bound to the product UI.
+    await expect
+      .poll(
+        async () =>
+          (await primaryAudit.snapshot()).successfulHistoryGetCount -
+          chatHydrationAuditBefore.successfulHistoryGetCount,
+        {
+          timeout: 240_000,
+          message: "initial cloud chat history GET completed before live send",
+        },
+      )
+      .toBeGreaterThan(0);
+    let previousHydrationRowSignature = "";
+    let stableHydrationObservations = 0;
+    await expect
+      .poll(
+        async () => {
+          const signature = await page.evaluate(() =>
+            [
+              document.querySelectorAll(
+                '[data-testid="thread-line"][data-role="user"]',
+              ).length,
+              document.querySelectorAll(
+                '[data-testid="thread-line"][data-role="assistant"]',
+              ).length,
+            ].join(":"),
+          );
+          if (signature === previousHydrationRowSignature) {
+            stableHydrationObservations += 1;
+          } else {
+            previousHydrationRowSignature = signature;
+            stableHydrationObservations = 1;
+          }
+          return stableHydrationObservations;
+        },
+        {
+          timeout: 30_000,
+          intervals: [250],
+          message:
+            "initial cloud transcript finished painting before live send",
+        },
+      )
+      .toBeGreaterThanOrEqual(3);
     const turnAnchorToken = randomBytes(8).toString("hex");
     primaryAudit.setHistoryAnchorToken(turnAnchorToken);
     const turnPrompt = `In one short sentence, say hello. Unique turn marker: ${turnAnchorToken}`;
