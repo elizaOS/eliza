@@ -266,7 +266,7 @@ describe("StewardLoginSection email magic-link companion code", () => {
       ?.signal as AbortSignal;
 
     // Abandon the email-A challenge while its recovery is still pending.
-    fireEvent.click(screen.getByRole("button", { name: /Back to login/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Change email/i }));
     expect(emailASignal.aborted).toBe(true);
 
     // Start a fresh challenge for a different account.
@@ -453,7 +453,7 @@ describe("StewardLoginSection email magic-link companion code", () => {
     expect(sessionSpies.sync).not.toHaveBeenCalled();
   });
 
-  it("stays link-only when Steward does not declare code delivery, revealing code entry only on request", async () => {
+  it("shows the companion-code input by default when Steward does not declare delivery mode", async () => {
     // Today's Steward send response: polling credentials, no delivery contract.
     emailLoginSpies.start.mockResolvedValue({
       expiresAt: Date.now() + 600_000,
@@ -466,20 +466,10 @@ describe("StewardLoginSection email magic-link companion code", () => {
     fireEvent.click(screen.getByRole("button", { name: /Magic Link/i }));
     await screen.findByText("Check your email");
 
-    // The waiting copy must not assert a code the email may not contain.
     expect(
-      screen.getByText("Check your inbox and open the magic link to sign in."),
+      screen.getByText("Open the link, or enter your six-digit code"),
     ).toBeTruthy();
-    expect(screen.queryByLabelText("Six-digit code")).toBeNull();
-    expect(screen.getByText("Waiting for the link.")).toBeTruthy();
-
-    // The non-asserting disclosure reveals a working code entry.
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: /My email includes a six-digit code/i,
-      }),
-    );
-    const codeInput = await screen.findByLabelText("Six-digit code");
+    const codeInput = screen.getByLabelText("Six-digit code");
     expect(screen.getByText("Waiting for the link or code.")).toBeTruthy();
     fireEvent.change(codeInput, { target: { value: "123456" } });
     fireEvent.click(screen.getByRole("button", { name: /Verify code/i }));
@@ -505,9 +495,7 @@ describe("StewardLoginSection email magic-link companion code", () => {
     fireEvent.click(screen.getByRole("button", { name: /Magic Link/i }));
     await screen.findByText("Check your email");
 
-    expect(
-      screen.getByText("Check your inbox and open the magic link to sign in."),
-    ).toBeTruthy();
+    expect(screen.getByText("Open the link we sent to sign in.")).toBeTruthy();
     expect(screen.queryByLabelText("Six-digit code")).toBeNull();
     expect(
       screen.queryByRole("button", {
@@ -526,9 +514,7 @@ describe("StewardLoginSection email magic-link companion code", () => {
     renderSection();
     await startEmailLogin();
     expect(
-      screen.getByText(
-        "Open the link on this device or enter the six-digit code we sent.",
-      ),
+      screen.getByText("Open the link, or enter your six-digit code"),
     ).toBeTruthy();
     expect(
       screen.queryByRole("button", {

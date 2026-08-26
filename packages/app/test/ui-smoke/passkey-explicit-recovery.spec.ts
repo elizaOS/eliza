@@ -3,12 +3,12 @@
  * route and Steward SDK run against Chromium's virtual platform authenticator;
  * only Steward HTTP responses are fixed at the network boundary.
  *
- * A typed email with no device-local passkey hint goes directly to verified
- * enrollment without querying Steward or invoking WebAuthn. Returning users on
- * a new device can deliberately choose the separate existing-passkey action;
- * canonical constant-shaped options then reach the browser ceremony without an
- * account-existence signal. The accent button retains its accessible text token
- * on hover, and a same-mounted retry ending in a hard 500 clears recovery.
+ * The primary action first asks Steward for email-scoped login options. A 404
+ * reaches verified enrollment without invoking WebAuthn; a credential response
+ * reaches the browser ceremony even when local storage is empty. The setup
+ * screen keeps an explicit existing-passkey escape path, the accent button
+ * retains its accessible text token on hover, and a same-mounted retry ending
+ * in a hard 500 clears recovery.
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { expect, type Page, type TestInfo, test } from "@playwright/test";
@@ -157,7 +157,7 @@ for (const viewport of VIEWPORTS) {
       });
     });
 
-    let optionsMode: "discoverable" | "server-error" = "discoverable";
+    let optionsMode: "missing" | "discoverable" | "server-error" = "missing";
     let optionsRequestCount = 0;
     await page.route("**/auth/passkey/login/options", (route) => {
       optionsRequestCount += 1;
@@ -169,6 +169,13 @@ for (const viewport of VIEWPORTS) {
             ok: false,
             error: "User verification service unavailable",
           }),
+        });
+      }
+      if (optionsMode === "missing") {
+        return route.fulfill({
+          status: 404,
+          contentType: "application/json",
+          body: JSON.stringify({ ok: false, error: "No passkey found" }),
         });
       }
       return route.fulfill({
@@ -234,8 +241,8 @@ for (const viewport of VIEWPORTS) {
     await expect(page.getByText("Set up your passkey")).toBeVisible();
     expect(
       optionsRequestCount,
-      "an unhinted email must not query passkey options or invoke WebAuthn",
-    ).toBe(0);
+      "the primary action must probe email-scoped passkey options",
+    ).toBe(1);
     expect(
       await page.evaluate(
         () =>
@@ -245,7 +252,7 @@ for (const viewport of VIEWPORTS) {
             }
           ).__passkeyCredentialGetCount ?? 0,
       ),
-      "an unhinted email must make zero navigator.credentials.get calls",
+      "a missing-credential 404 must make zero navigator.credentials.get calls",
     ).toBe(0);
     expect(otpSendCount, "an unhinted Passkey action sends one setup OTP").toBe(
       1,
@@ -253,11 +260,14 @@ for (const viewport of VIEWPORTS) {
     expect(magicLinkSendCount).toBe(0);
     await screenshot(page, testInfo, `${viewport.name}-1-unhinted-setup-otp`);
 
-    await page.reload();
-    await page.getByPlaceholder("you@example.com").fill(EMAIL);
+    optionsMode = "discoverable";
     await page.getByRole("button", { name: "Use an existing passkey" }).click();
 
-    await expect(page.getByText("Passkey not completed")).toBeVisible();
+    const recoveryRegion = page.getByRole("region", {
+      name: "Passkey not completed",
+    });
+    await expect(recoveryRegion).toBeVisible();
+    await expect(recoveryRegion).toBeFocused();
     await expect(
       page.getByText(
         "No passkey was available, or the request was cancelled. Choose how you want to continue.",
@@ -271,11 +281,11 @@ for (const viewport of VIEWPORTS) {
       magicLinkSendCount,
       "ambiguous WebAuthn failure must not send a magic link",
     ).toBe(0);
-    expect(optionsRequestCount).toBe(1);
+    expect(optionsRequestCount).toBe(2);
     await screenshot(page, testInfo, `${viewport.name}-2-explicit-recovery`);
 
     optionsMode = "server-error";
-    await page.getByRole("button", { name: "Use an existing passkey" }).click();
+    await page.getByRole("button", { name: /^Passkey$/ }).click();
     await expect(
       page.getByText("User verification service unavailable"),
     ).toBeVisible();
@@ -299,7 +309,7 @@ for (const viewport of VIEWPORTS) {
     optionsMode = "discoverable";
     await page.reload();
     await page.getByPlaceholder("you@example.com").fill(EMAIL);
-    await page.getByRole("button", { name: "Use an existing passkey" }).click();
+    await page.getByRole("button", { name: /^Passkey$/ }).click();
     await page.getByRole("button", { name: "Set up passkey" }).click();
     await expect(page.getByText("Set up your passkey")).toBeVisible();
     expect(otpSendCount, "explicit setup intent sends one additional OTP").toBe(
@@ -312,7 +322,7 @@ for (const viewport of VIEWPORTS) {
     await page.reload();
     const emailForMagicLink = page.getByPlaceholder("you@example.com");
     await emailForMagicLink.fill(EMAIL);
-    await page.getByRole("button", { name: "Use an existing passkey" }).click();
+    await page.getByRole("button", { name: /^Passkey$/ }).click();
     await page.getByRole("button", { name: "Use Magic Link" }).click();
     await expect(page.getByText("Check your email")).toBeVisible();
     expect(magicLinkSendCount, "explicit Magic Link intent sends once").toBe(1);

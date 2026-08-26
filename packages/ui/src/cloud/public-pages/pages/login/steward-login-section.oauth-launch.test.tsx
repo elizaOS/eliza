@@ -361,7 +361,7 @@ describe("StewardLoginSection OAuth launch", () => {
     expect(oauthState.storedVerifierArgs).toEqual([]);
   });
 
-  it("keeps X as the accessible name without repeating it beside the logo", async () => {
+  it("keeps X as the accessible name without repeating it beside the icon", async () => {
     renderSection();
 
     const xButton = await screen.findByRole("button", { name: "X" });

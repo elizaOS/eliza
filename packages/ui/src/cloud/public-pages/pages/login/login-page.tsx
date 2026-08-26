@@ -180,19 +180,25 @@ function PublicLoginPage(): React.JSX.Element {
           {t("cloud.login.agreePrefix", {
             defaultValue: "By signing in, you agree to the",
           })}{" "}
-          <Link
-            to="/terms-of-service"
-            className="hosted-signin-focus-emphasis inline-flex min-h-touch min-w-touch items-center justify-center rounded-sm border border-transparent px-2 font-medium text-txt underline-offset-4 transition-[opacity,background-color,border-color,color] hover:underline hover:opacity-80"
-          >
-            {t("cloud.login.termsLink", { defaultValue: "Terms" })}
-          </Link>{" "}
-          {t("cloud.login.and", { defaultValue: "and" })}{" "}
-          <Link
-            to="/privacy-policy"
-            className="hosted-signin-focus-emphasis inline-flex min-h-touch min-w-touch items-center justify-center rounded-sm border border-transparent px-2 font-medium text-txt underline-offset-4 transition-[opacity,background-color,border-color,color] hover:underline hover:opacity-80"
-          >
-            {t("cloud.login.privacyPolicy", { defaultValue: "Privacy Policy" })}
-          </Link>
+          <span className="inline-flex max-w-full flex-wrap items-center justify-center align-middle">
+            <Link
+              to="/terms-of-service"
+              className="hosted-signin-focus-emphasis inline-flex min-h-touch min-w-touch items-center justify-center rounded-sm border border-transparent px-1.5 font-medium text-txt underline-offset-4 transition-[opacity,background-color,border-color,color] hover:underline hover:opacity-80"
+            >
+              {t("cloud.login.termsLink", { defaultValue: "Terms" })}
+            </Link>{" "}
+            <span className="inline-flex min-h-touch items-center px-0.5">
+              {t("cloud.login.and", { defaultValue: "and" })}
+            </span>{" "}
+            <Link
+              to="/privacy-policy"
+              className="hosted-signin-focus-emphasis inline-flex min-h-touch min-w-touch items-center justify-center rounded-sm border border-transparent px-1.5 font-medium text-txt underline-offset-4 transition-[opacity,background-color,border-color,color] hover:underline hover:opacity-80"
+            >
+              {t("cloud.login.privacyPolicy", {
+                defaultValue: "Privacy Policy",
+              })}
+            </Link>
+          </span>
         </p>
       </main>
     </LoginBackground>

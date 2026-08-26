@@ -25,16 +25,6 @@ vi.mock("./passkey-capability", () => ({
   resolveWebPasskeyCapability: () => Promise.resolve(capabilityRef),
 }));
 
-const passkeyHintSpies = vi.hoisted(() => ({
-  has: vi.fn(),
-  remember: vi.fn(),
-}));
-
-vi.mock("./passkey-device-hints", () => ({
-  hasPasskeyDeviceHint: passkeyHintSpies.has,
-  rememberPasskeyDeviceHint: passkeyHintSpies.remember,
-}));
-
 const stewardAuthSpies = vi.hoisted(() => ({
   getProviders: vi.fn(),
   getSession: vi.fn(),
@@ -138,6 +128,12 @@ vi.mock("../../lib/login-return-to", () => ({
 import { StewardApiError } from "@stwd/sdk";
 import StewardLoginSection from "./steward-login-section";
 
+function rejectNextPasskeyLoginAsMissing() {
+  stewardAuthSpies.signInWithPasskey.mockRejectedValueOnce(
+    new StewardApiError("No passkey found", 404),
+  );
+}
+
 function renderSection() {
   return render(
     <MemoryRouter initialEntries={["/login"]}>
@@ -176,8 +172,6 @@ describe("StewardLoginSection passkey capability gating", () => {
       token: "registered-token",
       refreshToken: null,
     });
-    passkeyHintSpies.has.mockResolvedValue(false);
-    passkeyHintSpies.remember.mockResolvedValue(true);
     emailLoginSpies.start.mockResolvedValue({
       expiresAt: "2026-07-17T12:10:00.000Z",
       challengeId: "challenge-1",
@@ -241,9 +235,17 @@ describe("StewardLoginSection passkey capability gating", () => {
     expect(stewardAuthSpies.signInWithPasskey).not.toHaveBeenCalled();
   });
 
-  it("routes an unhinted email to OTP without passkey lookup or WebAuthn", async () => {
+  it("routes an email with no server-side passkey to OTP and keeps existing-passkey recovery available", async () => {
     capabilityRef.usable = true;
     capabilityRef.reason = "available";
+    stewardAuthSpies.signInWithPasskey
+      .mockRejectedValueOnce(new StewardApiError("No passkey found", 404))
+      .mockRejectedValueOnce(
+        new StewardApiError(
+          "WebAuthn authentication cancelled or failed: NotAllowedError",
+          0,
+        ),
+      );
 
     renderSection();
 
@@ -253,13 +255,14 @@ describe("StewardLoginSection passkey capability gating", () => {
     // token. That token arms browser conditional-mediation autofill, which
     // prompts for an existing account's discoverable credential when a
     // brand-new email is typed and hijacks signup. The primary Passkey action
-    // uses only the device-local hint and routes a new email to verified setup.
+    // first probes email-scoped login options; only the server's 404 routes a
+    // new email to verified setup without opening a WebAuthn prompt.
     expect(input.getAttribute("autocomplete")).toBe("email");
     expect(input.getAttribute("autocomplete")).not.toContain("webauthn");
     expect(screen.getByRole("button", { name: /^Passkey$/i })).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Use an existing passkey" }),
-    ).toBeTruthy();
+      screen.queryByRole("button", { name: "Use an existing passkey" }),
+    ).toBeNull();
     expect(
       screen.queryByText("New here? Passkey sets up your account in seconds."),
     ).toBeNull();
@@ -268,17 +271,36 @@ describe("StewardLoginSection passkey capability gating", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Passkey$/i }));
 
     expect(await screen.findByText("Set up your passkey")).toBeTruthy();
-    expect(passkeyHintSpies.has).toHaveBeenCalledWith("person@example.com");
+    expect(stewardAuthSpies.signInWithPasskey).toHaveBeenCalledWith(
+      "person@example.com",
+      { fallbackToRegistration: false },
+    );
     expect(stewardAuthSpies.sendEmailOtp).toHaveBeenCalledWith(
       "person@example.com",
     );
-    expect(stewardAuthSpies.signInWithPasskey).not.toHaveBeenCalled();
     expect(emailLoginSpies.start).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Use an existing passkey" }),
+    );
+    await waitFor(() =>
+      expect(stewardAuthSpies.signInWithPasskey).toHaveBeenCalledWith(
+        "person@example.com",
+        { fallbackToRegistration: false },
+      ),
+    );
+    const recovery = await screen.findByRole("region", {
+      name: "Passkey not completed",
+    });
+    await waitFor(() => expect(document.activeElement).toBe(recovery));
   });
 
-  it("routes Enter through the same unhinted OTP gate", async () => {
+  it("routes Enter through the same server-side passkey probe", async () => {
     capabilityRef.usable = true;
     capabilityRef.reason = "available";
+    stewardAuthSpies.signInWithPasskey.mockRejectedValueOnce(
+      new StewardApiError("No passkey found", 404),
+    );
 
     renderSection();
 
@@ -287,17 +309,18 @@ describe("StewardLoginSection passkey capability gating", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(await screen.findByText("Set up your passkey")).toBeTruthy();
-    expect(passkeyHintSpies.has).toHaveBeenCalledWith("person@example.com");
+    expect(stewardAuthSpies.signInWithPasskey).toHaveBeenCalledWith(
+      "person@example.com",
+      { fallbackToRegistration: false },
+    );
     expect(stewardAuthSpies.sendEmailOtp).toHaveBeenCalledWith(
       "person@example.com",
     );
-    expect(stewardAuthSpies.signInWithPasskey).not.toHaveBeenCalled();
   });
 
-  it("uses scoped passkey login for a locally hinted email and marks only after success", async () => {
+  it("uses scoped passkey login without relying on local storage", async () => {
     capabilityRef.usable = true;
     capabilityRef.reason = "available";
-    passkeyHintSpies.has.mockResolvedValue(true);
 
     renderSection();
 
@@ -311,25 +334,47 @@ describe("StewardLoginSection passkey capability gating", () => {
         { fallbackToRegistration: false },
       ),
     );
-    expect(passkeyHintSpies.remember).toHaveBeenCalledWith(
-      "PERSON@EXAMPLE.COM",
+    expect(stewardAuthSpies.sendEmailOtp).not.toHaveBeenCalled();
+  });
+
+  it("does not let an OTP outage block a synced passkey on a new device", async () => {
+    capabilityRef.usable = true;
+    capabilityRef.reason = "available";
+    stewardAuthSpies.sendEmailOtp.mockRejectedValue(
+      new StewardApiError("Email service unavailable", 503),
+    );
+
+    renderSection();
+
+    const input = await screen.findByPlaceholderText("you@example.com");
+    fireEvent.change(input, { target: { value: "person@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Passkey$/i }));
+
+    await waitFor(() =>
+      expect(stewardAuthSpies.signInWithPasskey).toHaveBeenCalledWith(
+        "person@example.com",
+        { fallbackToRegistration: false },
+      ),
     );
     expect(stewardAuthSpies.sendEmailOtp).not.toHaveBeenCalled();
   });
 
-  it("requires an email before invoking passkey sign-in", async () => {
+  it("focuses the email field without showing an error when Passkey is clicked empty", async () => {
     capabilityRef.usable = true;
     capabilityRef.reason = "available";
 
     renderSection();
 
-    const passkeyButton = await screen.findByRole("button", {
+    const input = await screen.findByPlaceholderText("you@example.com");
+    const passkeyButton = screen.getByRole("button", {
       name: /^Passkey$/i,
     });
     fireEvent.click(passkeyButton);
 
-    expect(await screen.findByText("Enter your email first")).toBeTruthy();
+    expect(document.activeElement).toBe(input);
+    expect(screen.queryByText("Enter your email first")).toBeNull();
     expect(stewardAuthSpies.signInWithPasskey).not.toHaveBeenCalled();
+    expect(stewardAuthSpies.sendEmailOtp).not.toHaveBeenCalled();
   });
 
   it("offers recovery without sending mail, then enrolls only after explicit setup intent", async () => {
@@ -354,9 +399,7 @@ describe("StewardLoginSection passkey capability gating", () => {
 
     const input = await screen.findByPlaceholderText("you@example.com");
     fireEvent.change(input, { target: { value: "person@example.com" } });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Use an existing passkey" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /^Passkey$/i }));
 
     expect(await screen.findByText("Passkey not completed")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Use Magic Link" })).toBeTruthy();
@@ -390,9 +433,6 @@ describe("StewardLoginSection passkey capability gating", () => {
         { emailGrant: "grant-1" },
       ),
     );
-    expect(passkeyHintSpies.remember).toHaveBeenCalledWith(
-      "person@example.com",
-    );
   });
 
   it("keeps a deliberate existing-passkey failure distinct from enrollment", async () => {
@@ -406,9 +446,7 @@ describe("StewardLoginSection passkey capability gating", () => {
 
     const input = await screen.findByPlaceholderText("you@example.com");
     fireEvent.change(input, { target: { value: "person@example.com" } });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Use an existing passkey" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /^Passkey$/i }));
 
     expect(
       await screen.findByText("Passkey sign-in is unavailable"),
@@ -418,7 +456,6 @@ describe("StewardLoginSection passkey capability gating", () => {
       { fallbackToRegistration: false },
     );
     expect(stewardAuthSpies.sendEmailOtp).not.toHaveBeenCalled();
-    expect(passkeyHintSpies.remember).not.toHaveBeenCalled();
     expect(screen.queryByText("Passkey not completed")).toBeNull();
     expect(screen.queryByRole("button", { name: "Use Magic Link" })).toBeNull();
     expect(emailLoginSpies.start).not.toHaveBeenCalled();
@@ -441,11 +478,13 @@ describe("StewardLoginSection passkey capability gating", () => {
       "you@example.com",
     )) as HTMLInputElement;
     await user.type(input, "first@example.com");
-    await user.click(
-      screen.getByRole("button", { name: "Use an existing passkey" }),
-    );
+    await user.click(screen.getByRole("button", { name: /^Passkey$/i }));
 
     expect(await screen.findByText("Passkey not completed")).toBeTruthy();
+    const recovery = screen.getByRole("region", {
+      name: "Passkey not completed",
+    });
+    await waitFor(() => expect(document.activeElement).toBe(recovery));
 
     await user.clear(input);
     await user.type(input, "complete@example.com");
@@ -473,9 +512,7 @@ describe("StewardLoginSection passkey capability gating", () => {
 
     const input = await screen.findByPlaceholderText("you@example.com");
     fireEvent.change(input, { target: { value: "person@example.com" } });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Use an existing passkey" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /^Passkey$/i }));
 
     // Error is surfaced; no OTP email is sent, no signup flow is entered.
     await waitFor(() =>
@@ -510,16 +547,13 @@ describe("StewardLoginSection passkey capability gating", () => {
 
       const input = await screen.findByPlaceholderText("you@example.com");
       fireEvent.change(input, { target: { value: "person@example.com" } });
-      fireEvent.click(
-        screen.getByRole("button", { name: "Use an existing passkey" }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: /^Passkey$/i }));
 
       expect(await screen.findByText(passkeyError.message)).toBeTruthy();
       expect(screen.queryByText("Passkey not completed")).toBeNull();
       expect(screen.queryByText("Set up your passkey")).toBeNull();
       expect(stewardAuthSpies.sendEmailOtp).not.toHaveBeenCalled();
       expect(emailLoginSpies.start).not.toHaveBeenCalled();
-      expect(passkeyHintSpies.remember).not.toHaveBeenCalled();
     },
   );
 
@@ -541,17 +575,13 @@ describe("StewardLoginSection passkey capability gating", () => {
 
     const input = await screen.findByPlaceholderText("you@example.com");
     fireEvent.change(input, { target: { value: "person@example.com" } });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Use an existing passkey" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /^Passkey$/i }));
 
     expect(await screen.findByText("Passkey not completed")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Use Magic Link" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Set up passkey" })).toBeTruthy();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Use an existing passkey" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /^Passkey$/i }));
 
     expect(
       await screen.findByText("User verification service unavailable"),
@@ -582,9 +612,7 @@ describe("StewardLoginSection passkey capability gating", () => {
 
     const input = await screen.findByPlaceholderText("you@example.com");
     fireEvent.change(input, { target: { value: "person@example.com" } });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Use an existing passkey" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /^Passkey$/i }));
 
     expect(
       await screen.findByText(
@@ -598,6 +626,7 @@ describe("StewardLoginSection passkey capability gating", () => {
   it("reuses the verified email grant after a cancelled passkey ceremony", async () => {
     capabilityRef.usable = true;
     capabilityRef.reason = "available";
+    rejectNextPasskeyLoginAsMissing();
     stewardAuthSpies.sendEmailOtp.mockResolvedValue(undefined);
     stewardAuthSpies.verifyEmailOtp.mockResolvedValue({
       emailGrant: "grant-1",
@@ -634,7 +663,7 @@ describe("StewardLoginSection passkey capability gating", () => {
       ),
     ).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Use existing passkey" }),
+      screen.getByRole("button", { name: "Use an existing passkey" }),
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Use Magic Link" })).toBeTruthy();
 
@@ -682,6 +711,7 @@ describe("StewardLoginSection passkey capability gating", () => {
     async (_label, duplicateError) => {
       capabilityRef.usable = true;
       capabilityRef.reason = "available";
+      rejectNextPasskeyLoginAsMissing();
       stewardAuthSpies.verifyEmailOtp.mockResolvedValue({
         emailGrant: "grant-existing",
       });
@@ -703,9 +733,6 @@ describe("StewardLoginSection passkey capability gating", () => {
           { fallbackToRegistration: false },
         );
       });
-      expect(passkeyHintSpies.remember).toHaveBeenCalledWith(
-        "person@example.com",
-      );
       expect(stewardAuthSpies.verifyEmailOtp).toHaveBeenCalledTimes(1);
       expect(stewardAuthSpies.addPasskey).toHaveBeenCalledTimes(1);
       expect(
@@ -719,6 +746,7 @@ describe("StewardLoginSection passkey capability gating", () => {
   it("does not treat an untyped server conflict as an existing passkey", async () => {
     capabilityRef.usable = true;
     capabilityRef.reason = "available";
+    rejectNextPasskeyLoginAsMissing();
     stewardAuthSpies.verifyEmailOtp.mockResolvedValue({
       emailGrant: "grant-conflict",
     });
@@ -744,13 +772,14 @@ describe("StewardLoginSection passkey capability gating", () => {
         "A passkey already exists for this email. Sign in with it instead.",
       ),
     ).toBeTruthy();
-    expect(stewardAuthSpies.signInWithPasskey).not.toHaveBeenCalled();
+    expect(stewardAuthSpies.signInWithPasskey).toHaveBeenCalledTimes(1);
     expect(stewardAuthSpies.addPasskey).toHaveBeenCalledTimes(1);
   });
 
   it("clears the cached email grant when the user resends the OTP", async () => {
     capabilityRef.usable = true;
     capabilityRef.reason = "available";
+    rejectNextPasskeyLoginAsMissing();
     stewardAuthSpies.verifyEmailOtp
       .mockResolvedValueOnce({ emailGrant: "grant-1" })
       .mockResolvedValueOnce({ emailGrant: "grant-2" });
@@ -832,7 +861,7 @@ describe("StewardLoginSection passkey capability gating", () => {
     expect(codeInput.getAttribute("autocomplete")).toBe("one-time-code");
     expect(codeInput.getAttribute("maxlength")).toBe("6");
 
-    fireEvent.click(screen.getByRole("button", { name: /Back to login/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Change email/i }));
     expect(await screen.findByPlaceholderText("you@example.com")).toBeTruthy();
   });
 });

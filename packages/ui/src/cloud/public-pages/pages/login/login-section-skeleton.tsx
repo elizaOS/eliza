@@ -5,12 +5,13 @@
  * each used to render a short spinner block, so the card visibly jumped when
  * the real options arrived (#18256). Every placeholder here mirrors the final
  * stack's exact row structure (44px `h-touch` rows, identical gaps and
- * responsive grids), so the card keeps one height and position across states.
+ * responsive grids), so production-default loading stays visually stable.
  *
  * The skeleton mirrors the fully-enabled provider layout (email field,
- * passkey/magic-link row, OAuth grid, wallet grid) — the effective shape of the
- * production tenants. A tenant with fewer providers gets a loading card
- * slightly taller than its final form rather than a mid-load jump.
+ * passkey/magic-link row, and the six-action provider icon grid) — the effective
+ * shape of the production tenant. Provider policies are discovered at runtime,
+ * so tenants that disable SMS or expose a seventh method resize once when that
+ * authoritative configuration arrives.
  */
 
 import type { ReactNode } from "react";
@@ -42,32 +43,32 @@ export function LoginOptionsSkeleton({
 }) {
   return (
     <div className="space-y-4">
-      {/* Email label + input (label text-sm = 20px, input resolves to 44px). */}
-      <div className="space-y-2">
-        <GhostRow animated={animated} className="h-5 w-16" />
-        <GhostRow animated={animated} className="h-touch w-full" />
+      {/* Phone field, SMS action, and phone-to-email divider. */}
+      <div className="flex h-11 overflow-hidden">
+        <GhostRow animated={animated} className="h-touch w-24" />
+        <GhostRow animated={animated} className="h-touch min-w-0 flex-1" />
       </div>
+      <GhostRow animated={animated} className="h-touch w-full" />
+      <GhostRow animated={animated} className="h-px w-full" />
+      {/* Email input. Its accessible label is visually hidden. */}
+      <GhostRow animated={animated} className="h-touch w-full" />
       {/* Passkey / Magic Link row. */}
-      <div className="flex gap-2">
+      <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-2">
         <GhostRow animated={animated} className="h-touch flex-1" />
         <GhostRow animated={animated} className="h-touch flex-1" />
       </div>
-      {/* Signup hint line (text-xs = 16px). */}
-      <GhostRow animated={animated} className="mx-auto h-4 w-3/4" />
-      {/* "or continue with" divider row. */}
-      <GhostRow animated={animated} className="mx-auto h-4 w-32" />
-      {/* OAuth grid: one compact row on wide cards, stacked on mobile. */}
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-        <GhostRow animated={animated} className="h-touch" />
-        <GhostRow animated={animated} className="h-touch" />
-        <GhostRow animated={animated} className="h-touch" />
-      </div>
-      {/* "or sign in with a wallet" divider row. */}
-      <GhostRow animated={animated} className="mx-auto h-4 w-32" />
-      {/* EVM + Solana wallet row. */}
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <GhostRow animated={animated} className="h-touch" />
-        <GhostRow animated={animated} className="h-touch" />
+      {/* Unlabelled divider between direct and federated sign-in. */}
+      <GhostRow animated={animated} className="h-px w-full" />
+      {/* OAuth, Telegram, and Wallet: two rows of compact icon controls. */}
+      <div
+        data-testid="login-provider-skeleton-grid"
+        className="grid grid-cols-[repeat(3,2.75rem)] justify-center gap-x-4 gap-y-2"
+      >
+        {["google", "discord", "github", "twitter", "telegram", "wallet"].map(
+          (provider) => (
+            <GhostRow key={provider} animated={animated} className="size-11" />
+          ),
+        )}
       </div>
     </div>
   );

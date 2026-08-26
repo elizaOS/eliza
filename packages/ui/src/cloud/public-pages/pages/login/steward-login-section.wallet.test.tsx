@@ -7,14 +7,15 @@
  * The wallet branch renders ONLY when the live `auth.getProviders()` flags
  * serve `siwe`/`siws` (the bounded port from `cloud-frontend@4056e0e868`).
  * These tests pin the gate in both directions:
- *  - flags on  → the "Continue with a wallet" toggle renders collapsed; the
- *    per-chain intent buttons appear only after expanding (EVM for `siwe`,
- *    Solana for `siws`), WITHOUT loading the wallet libs (they lazy-mount on
- *    click).
- *  - flags off → no wallet UI at all (no toggle or buttons).
+ *  - flags on  → the accessible Wallet icon opens a focused network chooser;
+ *    the per-chain intent buttons appear in that dialog (Ethereum for `siwe`,
+ *    Solana for `siws`) WITHOUT loading the wallet libs (they lazy-mount only
+ *    after a network is selected).
+ *  - flags off → no wallet UI at all (no tile or buttons).
  */
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -49,9 +50,10 @@ vi.mock("@stwd/sdk", () => ({
         siwe: providerFlags.siwe,
         siws: providerFlags.siws,
         google: true,
-        discord: false,
-        github: false,
-        twitter: false,
+        discord: true,
+        github: true,
+        twitter: true,
+        telegram: true,
         oauth: ["google"],
       });
     }
@@ -96,25 +98,48 @@ vi.mock("../../lib/login-return-to", () => ({
   storePendingOAuthReturnTo: () => undefined,
 }));
 
-// The section module-caches the providers fetch (`cachedStewardProviders`),
-// so each test must import a FRESH module instance or the first test's flags
-// leak into the rest.
+// The section normalizes and module-caches provider discovery. Import a fresh
+// module for every case so each flag combination reaches the component rather
+// than inheriting the first test's normalized snapshot.
 async function renderSection() {
   vi.resetModules();
   const { default: StewardLoginSection } = await import(
     "./steward-login-section"
   );
-  return render(
+  const rendered = render(
     <MemoryRouter initialEntries={["/login"]}>
       <StewardLoginSection />
     </MemoryRouter>,
   );
+  await act(async () => {
+    await Promise.resolve();
+  });
+  return rendered;
+}
+
+async function walletProviderTile(): Promise<HTMLButtonElement> {
+  const providerGroup = await screen.findByRole("group", {
+    name: "or continue with",
+  });
+  const providerButtons = within(providerGroup).getAllByRole("button");
+  const wallet = within(providerGroup).getByRole<HTMLButtonElement>("button", {
+    name: "Continue with a wallet",
+  });
+
+  expect(providerButtons).toHaveLength(6);
+  expect(providerButtons[5]).toBe(wallet);
+  expect(wallet.getAttribute("aria-label")).toBe("Continue with a wallet");
+  expect(wallet.getAttribute("title")).toBe("Continue with a wallet");
+  expect(wallet.textContent?.trim()).toBe("");
+  expect(wallet.querySelector("svg")).not.toBeNull();
+  return wallet;
 }
 
 describe("StewardLoginSection — wallet sign-in gating (SIWE/SIWS port)", () => {
   beforeEach(() => {
     providerFlags.siwe = false;
     providerFlags.siws = false;
+    window.sessionStorage.clear();
   });
 
   afterEach(() => {
@@ -122,58 +147,60 @@ describe("StewardLoginSection — wallet sign-in gating (SIWE/SIWS port)", () =>
     vi.clearAllMocks();
   });
 
-  it("renders the wallet toggle collapsed, then both chain intent buttons without a repeated divider", async () => {
+  it("opens both network choices in a focused wallet dialog", async () => {
     providerFlags.siwe = true;
     providerFlags.siws = true;
 
     await renderSection();
 
-    // The toggle renders collapsed — no wallet buttons visible yet.
-    const walletToggle = await screen.findByRole("button", {
-      name: /Continue with a wallet/i,
+    // The tile renders closed — no wallet dialog or network buttons yet.
+    const walletToggle = await walletProviderTile();
+    expect(walletToggle.getAttribute("aria-expanded")).toBe("false");
+    expect(walletToggle.getAttribute("aria-haspopup")).toBe("dialog");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Ethereum" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Solana" })).toBeNull();
+
+    // Opening the modal preserves the compact card and presents both choices.
+    fireEvent.click(walletToggle);
+    const dialog = await screen.findByRole("dialog", {
+      name: "Continue with a wallet",
     });
-    const otherMethods = screen.getByRole("group", {
-      name: "or continue with",
-    });
+    const controlledDialogId = walletToggle.getAttribute("aria-controls");
+    expect(controlledDialogId).toBeTruthy();
+    expect(document.getElementById(controlledDialogId ?? "")).toBe(dialog);
     expect(
-      within(otherMethods).getByRole("button", { name: "Google" }),
+      within(dialog).getByText("Choose a network to connect."),
     ).toBeTruthy();
     expect(
-      within(otherMethods).getByRole("button", {
-        name: /Continue with a wallet/i,
-      }),
-    ).toBe(walletToggle);
-    expect(walletToggle.getAttribute("aria-expanded")).toBe("false");
-    expect(screen.queryByRole("button", { name: /EVM wallet/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Solana wallet/i })).toBeNull();
-
-    // Expanding updates the disclosure label and reveals the chain buttons
-    // without repeating the sign-in divider.
-    fireEvent.click(walletToggle);
+      within(dialog).getByRole("button", { name: "Ethereum" }),
+    ).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Solana" })).toBeTruthy();
     expect(
-      await screen.findByRole("button", { name: /Collapse wallet options/i }),
+      within(dialog).getByText(
+        "Connecting is free. You’ll only be asked to sign a message.",
+      ),
     ).toBeTruthy();
     expect(screen.queryByText("or sign in with a wallet")).toBeNull();
-    expect(screen.getByRole("button", { name: /EVM wallet/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Solana wallet/i })).toBeTruthy();
-  });
+  }, 20_000);
 
-  it("renders only the served chain's button (siwe only → EVM, no Solana) after expanding", async () => {
+  it("renders only the served network in the wallet dialog", async () => {
     providerFlags.siwe = true;
 
     await renderSection();
 
-    // Expand the collapsed wallet disclosure first.
-    const walletToggle = await screen.findByRole("button", {
-      name: /Continue with a wallet/i,
-    });
+    // Open the wallet dialog first.
+    const walletToggle = await walletProviderTile();
     fireEvent.click(walletToggle);
 
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /EVM wallet/i })).toBeTruthy(),
-    );
-    expect(screen.queryByRole("button", { name: /Solana wallet/i })).toBeNull();
-  });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Continue with a wallet",
+    });
+    expect(
+      within(dialog).getByRole("button", { name: "Ethereum" }),
+    ).toBeTruthy();
+    expect(within(dialog).queryByRole("button", { name: "Solana" })).toBeNull();
+  }, 20_000);
 
   it("renders NO wallet UI when neither siwe nor siws is served", async () => {
     await renderSection();
@@ -183,7 +210,7 @@ describe("StewardLoginSection — wallet sign-in gating (SIWE/SIWS port)", () =>
       expect(screen.getByRole("button", { name: /Google/i })).toBeTruthy(),
     );
     expect(
-      screen.queryByRole("button", { name: /Continue with a wallet/i }),
+      screen.queryByRole("button", { name: "Continue with a wallet" }),
     ).toBeNull();
     expect(screen.queryByText("or sign in with a wallet")).toBeNull();
     expect(screen.queryByRole("button", { name: /EVM wallet/i })).toBeNull();

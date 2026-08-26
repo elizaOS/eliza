@@ -1,18 +1,21 @@
-/** Verifies StewardLoginSection button label contrast through the package's configured test harness. */
+/** Verifies StewardLoginSection button contrast through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**
- * Regression coverage for the invisible-label login buttons. The primary CTAs
- * pass `variant="ghost"` plus a `bg-accent` className; the ghost variant's
- * `text-txt-strong` (white on .theme-cloud, where --accent is ALSO white)
- * combined with a blanket `disabled:opacity-50` rendered the labels as a flat
- * washed-out bar — only the loading spinner was legible. These tests pin the
- * merged class list: the accent fill must keep `text-accent-foreground` in
- * idle/hover/disabled (never the ghost variant's `text-txt-strong`, never
- * `disabled:opacity-50`), and the idle button must render its label enabled.
+ * Regression coverage for the invisible-label login buttons. Primary CTAs use
+ * the canonical default variant, whose accent fill must keep `text-accent-fg`
+ * in idle and disabled states. Secondary provider icons use `outlineMuted`,
+ * keep their stronger muted label contrast, and never inherit a blanket
+ * `disabled:opacity-50`. The idle controls must render their labels enabled.
  */
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -40,12 +43,13 @@ vi.mock("@stwd/sdk", () => ({
       return Promise.resolve({
         passkey: false,
         email: true,
-        siwe: false,
+        siwe: true,
         siws: false,
         google: true,
-        discord: false,
-        github: false,
-        twitter: false,
+        discord: true,
+        github: true,
+        twitter: true,
+        telegram: true,
         oauth: [],
       });
     }
@@ -169,14 +173,35 @@ describe("StewardLoginSection button label contrast", () => {
     expect(magicLink.className).not.toContain("disabled:opacity-50");
   });
 
-  it("keeps OAuth button labels legible without a blanket disabled fade", async () => {
+  it("keeps all six compact provider actions accessible by icon", async () => {
     renderSection();
-    const google = await screen.findByRole<HTMLButtonElement>("button", {
-      name: /Google/i,
+    const providerGroup = await screen.findByRole("group", {
+      name: "or continue with",
     });
-    expect(google.textContent).toContain("Google");
-    expect(google.className).toMatch(/(^| )text-muted-strong( |$)/);
-    expect(google.className).not.toContain("disabled:opacity-50");
+    expect(providerGroup.tagName).toBe("FIELDSET");
+
+    const providerButtons = within(providerGroup).getAllByRole("button");
+    expect(providerButtons).toHaveLength(6);
+
+    const providerNames = [
+      "Google",
+      "Discord",
+      "GitHub",
+      "X",
+      "Telegram",
+      "Continue with a wallet",
+    ];
+    for (const accessibleName of providerNames) {
+      const button = within(providerGroup).getByRole<HTMLButtonElement>(
+        "button",
+        { name: accessibleName },
+      );
+      expect(button.getAttribute("aria-label")).toBe(accessibleName);
+      expect(button.getAttribute("title")).toBe(accessibleName);
+      expect(button.textContent?.trim()).toBe("");
+      expect(button.querySelector("span")).toBeNull();
+      expect(button.querySelector("svg")).not.toBeNull();
+    }
   });
 
   it("renders the email-sent Verify button with accent-contrast label classes in idle and disabled states", async () => {

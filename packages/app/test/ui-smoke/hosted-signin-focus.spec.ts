@@ -9,7 +9,10 @@ import { expect, type Locator, type Page, test } from "@playwright/test";
 const VIEWPORTS = [
   { name: "desktop", width: 1440, height: 900 },
   { name: "mobile", width: 390, height: 844 },
+  { name: "compact", width: 431, height: 788 },
 ] as const;
+
+const NARROW_VIEWPORT = { name: "narrow-es", width: 320, height: 844 } as const;
 
 const PROVIDERS = {
   passkey: false,
@@ -19,7 +22,8 @@ const PROVIDERS = {
   google: true,
   discord: true,
   github: true,
-  twitter: false,
+  twitter: true,
+  telegram: true,
   oauth: [],
 };
 
@@ -44,6 +48,41 @@ async function readFocusStyle(locator: Locator): Promise<FocusStyle> {
   });
 }
 
+async function expectKeyboardFocusDelta(
+  locator: Locator,
+  focus: () => Promise<void>,
+): Promise<void> {
+  // Wait for the target's prior focus transition to settle before capturing
+  // its resting colors. This is needed when walking backward through a dialog,
+  // without coupling the test to a fixed transition delay.
+  await expect
+    .poll(() =>
+      locator.evaluate((element) =>
+        element
+          .getAnimations({ subtree: true })
+          .every((animation) => animation.playState === "finished"),
+      ),
+    )
+    .toBe(true);
+  const resting = await readFocusStyle(locator);
+  await focus();
+  await expect(locator).toBeFocused();
+  await expect(locator).toHaveCSS("border-color", /.+/);
+
+  expect(
+    await locator.evaluate((element) => element.matches(":focus-visible")),
+  ).toBe(true);
+  await expect
+    .poll(async () => {
+      const settled = await readFocusStyle(locator);
+      return {
+        backgroundChanged: settled.backgroundColor !== resting.backgroundColor,
+        borderChanged: settled.borderColor !== resting.borderColor,
+      };
+    })
+    .toEqual({ backgroundChanged: true, borderChanged: true });
+}
+
 async function installProviderFixture(
   page: Page,
   providers: Record<string, unknown> = PROVIDERS,
@@ -57,6 +96,146 @@ async function installProviderFixture(
   });
 }
 
+async function expectCompactLoginGeometry(
+  page: Page,
+  viewport: { width: number; height: number },
+): Promise<void> {
+  const providerGroup = page.getByRole("group", {
+    name: "or continue with",
+  });
+  const providerButtons = providerGroup.getByRole("button");
+  await expect(providerButtons).toHaveCount(6);
+
+  const main = page.getByRole("main");
+  const card = main.locator("..");
+  const cardBox = await card.boundingBox();
+  expect(cardBox).not.toBeNull();
+  if (!cardBox) throw new Error("Login card did not produce a layout box");
+  expect(cardBox.y).toBeGreaterThanOrEqual(0);
+  expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(viewport.height + 1);
+
+  const documentGeometry = await page.evaluate(() => ({
+    bodyScrollHeight: document.body.scrollHeight,
+    documentScrollHeight: document.documentElement.scrollHeight,
+    viewportHeight: window.innerHeight,
+  }));
+  expect(documentGeometry.bodyScrollHeight).toBeLessThanOrEqual(
+    documentGeometry.viewportHeight + 1,
+  );
+  expect(documentGeometry.documentScrollHeight).toBeLessThanOrEqual(
+    documentGeometry.viewportHeight + 1,
+  );
+
+  const boxes = await providerButtons.evaluateAll((buttons) =>
+    buttons.map((button) => {
+      const box = button.getBoundingClientRect();
+      return { x: box.x, y: box.y, width: box.width, height: box.height };
+    }),
+  );
+  for (const box of boxes) {
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+  }
+  expect(boxes.slice(0, 3).every((box) => box.y === boxes[0]?.y)).toBe(true);
+  expect(boxes.slice(3).every((box) => box.y === boxes[3]?.y)).toBe(true);
+  expect(boxes[3]?.y).toBeGreaterThan(boxes[0]?.y ?? 0);
+
+  const termsBox = await page
+    .getByRole("link", { name: "Terms", exact: true })
+    .boundingBox();
+  const privacyBox = await page
+    .getByRole("link", { name: "Privacy Policy" })
+    .boundingBox();
+  expect(termsBox).not.toBeNull();
+  expect(privacyBox).not.toBeNull();
+  if (!termsBox || !privacyBox) {
+    throw new Error("Login legal links did not produce layout boxes");
+  }
+  const legalLinkVerticalOverlap =
+    Math.min(termsBox.y + termsBox.height, privacyBox.y + privacyBox.height) -
+    Math.max(termsBox.y, privacyBox.y);
+  expect(legalLinkVerticalOverlap).toBeGreaterThan(0);
+  expect(privacyBox.x).toBeGreaterThan(termsBox.x);
+}
+
+test("passkey actions stay contained and keyboard-visible at the 320px locale floor", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize(NARROW_VIEWPORT);
+  await installProviderFixture(page, { ...PROVIDERS, passkey: true });
+  await page.route("**/auth/passkey/login/options", (route) =>
+    route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: false, error: "No passkey found" }),
+    }),
+  );
+  await page.route("**/auth/email/otp**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true }),
+    }),
+  );
+
+  await page.goto("/login?lang=es");
+  const email = page.getByPlaceholder("tu@ejemplo.com");
+  const passkey = page.getByRole("button", { name: "Passkey", exact: true });
+  const magicLink = page.getByRole("button", {
+    name: "Enlace mágico",
+    exact: true,
+  });
+  await expect(email).toBeVisible();
+  await expect(magicLink).toBeVisible();
+
+  const card = page.getByRole("main").locator("..");
+  const [cardBox, passkeyBox, magicLinkBox] = await Promise.all([
+    card.boundingBox(),
+    passkey.boundingBox(),
+    magicLink.boundingBox(),
+  ]);
+  expect(cardBox).not.toBeNull();
+  expect(passkeyBox).not.toBeNull();
+  expect(magicLinkBox).not.toBeNull();
+  if (!cardBox || !passkeyBox || !magicLinkBox) {
+    throw new Error("Narrow login actions did not produce layout boxes");
+  }
+  for (const actionBox of [passkeyBox, magicLinkBox]) {
+    expect(actionBox.x).toBeGreaterThanOrEqual(cardBox.x);
+    expect(actionBox.x + actionBox.width).toBeLessThanOrEqual(
+      cardBox.x + cardBox.width + 1,
+    );
+  }
+  expect(magicLinkBox.y).toBeGreaterThan(passkeyBox.y);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(NARROW_VIEWPORT.width);
+
+  await email.fill("persona@example.com");
+  await email.focus();
+  await expectKeyboardFocusDelta(passkey, () => page.keyboard.press("Tab"));
+  await page.keyboard.press("Enter");
+
+  const code = page.getByPlaceholder("123456");
+  await expect(code).toBeVisible();
+  await code.fill("123456");
+  await code.focus();
+  const createPasskey = page.getByRole("button", { name: "Create passkey" });
+  const existingPasskey = page.getByRole("button", {
+    name: "Usar una clave de acceso existente",
+  });
+  const back = page.getByRole("button", { name: /Back$/ });
+  const resend = page.getByRole("button", { name: "Resend code" });
+  for (const target of [createPasskey, existingPasskey, back, resend]) {
+    await expectKeyboardFocusDelta(target, () => page.keyboard.press("Tab"));
+  }
+
+  await page.screenshot({
+    path: testInfo.outputPath("narrow-es-passkey-focus.png"),
+    fullPage: true,
+  });
+});
+
 for (const viewport of VIEWPORTS) {
   test(`phone country menu stays opaque and scrollable at ${viewport.name}`, async ({
     page,
@@ -65,6 +244,7 @@ for (const viewport of VIEWPORTS) {
     await installProviderFixture(page, { ...PROVIDERS, sms: true });
 
     await page.goto("/login");
+    await expectCompactLoginGeometry(page, viewport);
     const countryTrigger = page.getByRole("combobox", {
       name: "Country calling code",
     });
@@ -143,65 +323,80 @@ for (const viewport of VIEWPORTS) {
     await page.goto("/login");
     await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
 
-    // Wallet methods are collapsed behind the single "Continue with a wallet"
-    // toggle (#19217): the EVM/Solana peer buttons only join the tab order once
-    // the toggle expands. The walk stays purely keyboard-driven — clicking the
-    // toggle would move the sequential-focus start point past the top of the
-    // form — so the toggle entry expands itself with Space AFTER its own focus
-    // delta is asserted, and the walk continues into the revealed buttons.
+    // The wallet icon opens a trapped network chooser. The walk remains purely
+    // keyboard-driven and proves the modal loop separately before Escape
+    // restores focus to the trigger and the main document walk resumes.
     const walletToggle = page.getByRole("button", {
       name: "Continue with a wallet",
     });
-    const targets: Array<{ locator: Locator; expandsWalletOptions?: boolean }> =
-      [
-        { locator: page.getByRole("textbox", { name: "Email" }) },
-        { locator: page.getByRole("button", { name: "Magic Link" }) },
-        { locator: page.getByRole("button", { name: "Google" }) },
-        { locator: page.getByRole("button", { name: "Discord" }) },
-        { locator: page.getByRole("button", { name: "GitHub" }) },
-        { locator: walletToggle, expandsWalletOptions: true },
-        { locator: page.getByRole("button", { name: "EVM", exact: true }) },
-        { locator: page.getByRole("button", { name: "Solana", exact: true }) },
-        { locator: page.getByRole("link", { name: "Terms", exact: true }) },
-        { locator: page.getByRole("link", { name: "Privacy Policy" }) },
-      ];
+    const mainTargets = [
+      page.getByRole("textbox", { name: "Email" }),
+      page.getByRole("button", { name: "Magic Link" }),
+      page.getByRole("button", { name: "Google" }),
+      page.getByRole("button", { name: "Discord" }),
+      page.getByRole("button", { name: "GitHub" }),
+      page.getByRole("button", { name: "X" }),
+      page.getByRole("button", { name: "Telegram" }),
+      walletToggle,
+    ];
+    const termsLink = page.getByRole("link", { name: "Terms", exact: true });
+    const privacyLink = page.getByRole("link", { name: "Privacy Policy" });
 
-    await expect(targets[targets.length - 1].locator).toBeVisible();
+    await expect(privacyLink).toBeVisible();
+    await expectCompactLoginGeometry(page, viewport);
     await page.waitForTimeout(500);
     await page.screenshot({
       path: testInfo.outputPath(`${viewport.name}-rest.png`),
       fullPage: true,
     });
 
-    for (const { locator: target, expandsWalletOptions } of targets) {
-      const resting = await readFocusStyle(target);
-      await page.keyboard.press("Tab");
-      await expect(target).toBeFocused();
-      await expect(target).toHaveCSS("border-color", /.+/);
-      await page.waitForTimeout(200);
-
-      const focused = await readFocusStyle(target);
-      expect(
-        await target.evaluate((element) => element.matches(":focus-visible")),
-      ).toBe(true);
-      expect(
-        focused.borderColor,
-        "focus must change the rendered border",
-      ).not.toBe(resting.borderColor);
-      expect(
-        focused.backgroundColor,
-        "focus must change the rendered background",
-      ).not.toBe(resting.backgroundColor);
-
-      if (expandsWalletOptions) {
-        // Keyboard activation keeps focus on the toggle, so the next Tab lands
-        // on the first revealed wallet button.
-        await page.keyboard.press("Space");
-        await page
-          .getByRole("button", { name: "EVM", exact: true })
-          .waitFor({ timeout: 15_000 });
-      }
+    for (const target of mainTargets) {
+      await expectKeyboardFocusDelta(target, () => page.keyboard.press("Tab"));
     }
+
+    await page.keyboard.press("Space");
+    const walletDialog = page.getByRole("dialog", {
+      name: "Continue with a wallet",
+    });
+    const ethereum = walletDialog.getByRole("button", {
+      name: "Ethereum",
+      exact: true,
+    });
+    const solana = walletDialog.getByRole("button", {
+      name: "Solana",
+      exact: true,
+    });
+    const close = walletDialog.getByRole("button", { name: "Close" });
+    await expect(walletDialog).toBeVisible();
+    await expect(ethereum).toBeFocused();
+    const dialogBox = await walletDialog.boundingBox();
+    expect(dialogBox).not.toBeNull();
+    if (!dialogBox) throw new Error("Wallet dialog did not produce a box");
+    expect(dialogBox.x).toBeGreaterThanOrEqual(0);
+    expect(dialogBox.y).toBeGreaterThanOrEqual(0);
+    expect(dialogBox.x + dialogBox.width).toBeLessThanOrEqual(
+      viewport.width + 1,
+    );
+    expect(dialogBox.y + dialogBox.height).toBeLessThanOrEqual(
+      viewport.height + 1,
+    );
+
+    // Move off the auto-focused first choice, then prove each modal target's
+    // focus delta and the trapped order: Ethereum → Solana → Close.
+    await page.keyboard.press("Tab");
+    await expectKeyboardFocusDelta(ethereum, () =>
+      page.keyboard.press("Shift+Tab"),
+    );
+    await expectKeyboardFocusDelta(solana, () => page.keyboard.press("Tab"));
+    await expectKeyboardFocusDelta(close, () => page.keyboard.press("Tab"));
+
+    await page.keyboard.press("Escape");
+    await expect(walletDialog).toBeHidden();
+    await expect(walletToggle).toBeFocused();
+    await expectKeyboardFocusDelta(termsLink, () => page.keyboard.press("Tab"));
+    await expectKeyboardFocusDelta(privacyLink, () =>
+      page.keyboard.press("Tab"),
+    );
 
     await page.screenshot({
       path: testInfo.outputPath(`${viewport.name}-privacy-focused.png`),
