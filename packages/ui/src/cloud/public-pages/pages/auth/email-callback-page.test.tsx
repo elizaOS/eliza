@@ -85,6 +85,7 @@ vi.mock("../../../shell/steward-url", () => ({
   resolveBrowserStewardApiUrl: () => "https://api.example.test/steward",
 }));
 vi.mock("../../../../cloud-ui/components/auth/authorize-return", () => ({
+  APP_AUTHORIZE_PATH: "/app-auth/authorize",
   readStoredAppAuthorizeReturnTo: () => null,
   clearStoredAppAuthorizeReturnTo: () => {},
 }));
@@ -98,6 +99,7 @@ vi.mock("../../../../cloud-ui/components/brand/brand-button", () => ({
 
 import { storePendingOAuthReturnTo } from "../../lib/login-return-to";
 import EmailCallbackPage, {
+  classifyEmailCallbackDestination,
   resolveEmailCallbackDestination,
 } from "./email-callback-page";
 
@@ -386,6 +388,40 @@ describe("EmailCallbackPage", () => {
     ).toBe("/app-auth/authorize?id=1");
   });
 
+  it("classifies an app-authorization destination explicitly", () => {
+    const { isAppAuthorization, isJoinFallback } =
+      classifyEmailCallbackDestination("/app-auth/authorize?id=1");
+    expect(isAppAuthorization).toBe(true);
+    expect(isJoinFallback).toBe(false);
+  });
+
+  it("classifies the ordinary login fallback as /join, not authorization", () => {
+    const { isAppAuthorization, isJoinFallback } =
+      classifyEmailCallbackDestination("/join");
+    expect(isAppAuthorization).toBe(false);
+    expect(isJoinFallback).toBe(true);
+  });
+
+  it("classifies a neutral same-origin target as neither", () => {
+    const { isAppAuthorization, isJoinFallback } =
+      classifyEmailCallbackDestination("/get-started");
+    expect(isAppAuthorization).toBe(false);
+    expect(isJoinFallback).toBe(false);
+  });
+
+  it("does not treat an embedded or lookalike authorization path as app authorization", () => {
+    for (const destination of [
+      "/continue/app-auth/authorize",
+      "/app-auth/authorize-extra",
+      "/get-started?next=/app-auth/authorize",
+    ]) {
+      expect(classifyEmailCallbackDestination(destination)).toEqual({
+        isAppAuthorization: false,
+        isJoinFallback: false,
+      });
+    }
+  });
+
   it("continues to a same-origin return path without replacing the document", async () => {
     const user = userEvent.setup();
     storePendingOAuthReturnTo(
@@ -411,7 +447,7 @@ describe("EmailCallbackPage", () => {
 
     await user.click(
       await screen.findByRole("button", {
-        name: "Continue to app authorization",
+        name: "Continue",
       }),
     );
 
