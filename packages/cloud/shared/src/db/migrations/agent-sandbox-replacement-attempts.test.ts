@@ -22,6 +22,14 @@ const migrationUrls = [
 const journalUrl = new URL("./meta/_journal.json", import.meta.url);
 const databases: PGlite[] = [];
 
+function migrationTag(url: URL): string {
+  const filename = url.pathname.split("/").at(-1);
+  if (!filename) {
+    throw new Error(`Migration URL has no filename: ${url.href}`);
+  }
+  return filename.replace(/\.sql$/, "");
+}
+
 const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000001";
 const AGENT_ID = "20000000-0000-4000-8000-000000000001";
 const OTHER_AGENT_ID = "20000000-0000-4000-8000-000000000002";
@@ -375,12 +383,7 @@ describe("0321-0328 agent sandbox replacement attempts", () => {
       tag: "0328_agent_sandbox_replacement_attempt_state_guard",
     });
     expect(journal.entries.slice(-8).map(({ tag }) => tag)).toEqual(
-      migrationUrls.map(({ pathname }) =>
-        pathname
-          .split("/")
-          .at(-1)
-          ?.replace(/\.sql$/, ""),
-      ),
+      migrationUrls.map(migrationTag),
     );
 
     const db = await database();
