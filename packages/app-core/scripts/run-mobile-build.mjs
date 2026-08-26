@@ -6233,15 +6233,22 @@ import androidx.activity.OnBackPressedCallback;
                 // Intentionally stay on the launcher root.
             }
         });
+`
+    : "";
+  const launcherMethods = launcherKiosk
+    ? `
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Browser-based identity providers temporarily cover the launcher.
+        // Re-enter containment whenever their deep-link callback returns.
         try {
             startLockTask();
         } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
             Log.w(TAG, "Unable to enter launcher lock-task mode", e);
         }
-`
-    : "";
-  const launcherMethods = launcherKiosk
-    ? `
+    }
+
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         // Keep hardware keyboards and accessibility navigation from moving the

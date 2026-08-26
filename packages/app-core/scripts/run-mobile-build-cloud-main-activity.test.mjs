@@ -68,6 +68,8 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).toContain("KeyEvent.KEYCODE_FORWARD");
     expect(source).toContain("KeyEvent.KEYCODE_NAVIGATE_NEXT");
     expect(source).toContain("startLockTask();");
+    expect(source).toContain("protected void onResume()");
+    expect(source).toContain("super.onResume();");
     expect(source).toContain(
       "IllegalArgumentException | IllegalStateException | SecurityException",
     );
