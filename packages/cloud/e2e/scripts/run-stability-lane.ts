@@ -39,6 +39,14 @@ function modeOption(): CloudStabilityMode {
   return value;
 }
 
+function modelOption(defaultModel: string): string {
+  const model = option("model") ?? defaultModel;
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/u.test(model)) {
+    throw new Error("--model must be a bounded provider model identifier");
+  }
+  return model;
+}
+
 async function startAuthority(
   namespace: string,
   token: string,
@@ -249,7 +257,7 @@ function realModel(mode: CloudStabilityMode): {
   }
   return {
     provider,
-    model: option("model") ?? route.defaultModel,
+    model: modelOption(route.defaultModel),
     modelMode: {
       kind: "real-llm",
       credentialEnv: route.credentialEnv,
@@ -324,6 +332,12 @@ try {
     cwd: outputRoot,
     modelMode: selected.modelMode,
     env: {
+      ...(process.env.ELIZA_STABILITY_LINUX_SANDBOX
+        ? {
+            ELIZA_STABILITY_LINUX_SANDBOX:
+              process.env.ELIZA_STABILITY_LINUX_SANDBOX,
+          }
+        : {}),
       ELIZA_STABILITY_SCENARIO_FINGERPRINT: manifest.scenarioFingerprint,
       ELIZA_STABILITY_WORLD_FINGERPRINT: manifest.worldFingerprint,
       ELIZA_STABILITY_MAX_INPUT_TOKENS: String(manifest.maxInputTokens),
