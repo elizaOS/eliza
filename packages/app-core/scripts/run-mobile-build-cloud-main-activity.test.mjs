@@ -61,6 +61,8 @@ describe("cloudSafeMainActivityJava", () => {
       launcherKiosk: true,
     });
 
+    expect(source).toContain("public void onResume()");
+    expect(source).not.toContain("protected void onResume()");
     expect(source).toContain("import android.view.KeyEvent;");
     expect(source).toContain("import androidx.activity.OnBackPressedCallback;");
     expect(source).toContain("new OnBackPressedCallback(true)");

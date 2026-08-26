@@ -6356,7 +6356,7 @@ import androidx.activity.OnBackPressedCallback;
   const launcherMethods = launcherKiosk
     ? `
     @Override
-    protected void onResume() {
+    public void onResume() {
         super.onResume();
         // Browser-based identity providers temporarily cover the launcher.
         // Re-enter containment whenever their deep-link callback returns.
