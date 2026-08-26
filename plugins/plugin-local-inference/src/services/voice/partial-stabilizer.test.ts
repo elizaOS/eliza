@@ -10,6 +10,14 @@ describe("PartialStabilizer (LocalAgreement-n)", () => {
 		expect(out.pending).toBe("the cat");
 	});
 
+	it("preserves UTF-16 surrogate pairs and never severs them at agreement boundary", () => {
+		const s = new PartialStabilizer();
+		s.feed("hello 🤖 world");
+		const out = s.feed("hello 🤖 friends");
+		expect(out.stable).toBe("hello 🤖 ");
+		expect(out.pending).toBe("friends");
+	});
+
 	it("commits the common prefix once a second partial agrees", () => {
 		const s = new PartialStabilizer();
 		s.feed("the cat sa");
