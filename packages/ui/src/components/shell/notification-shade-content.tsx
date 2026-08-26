@@ -17,6 +17,7 @@ import {
 } from "react";
 import { useSharedNow } from "../../hooks/useSharedNow";
 import { cn } from "../../lib/utils";
+import { categoryIcon } from "../../state/notifications/category-icon";
 import { formatRelativeTimeShort } from "../../utils/format";
 import { NOTIFICATION_PRIORITY_RANK } from "../../widgets/home-priority";
 import {
@@ -24,6 +25,7 @@ import {
   hasChatSourceMeta,
   normalizeChatSourceKey,
 } from "../composites/chat/chat-source.helpers";
+import { getBrandIcon } from "../conversations/brand-icons";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { notificationPullRevealStyle } from "./notification-shade-presentation";
@@ -163,11 +165,13 @@ export function ClearConfirmationContent({
 }
 
 function NotificationSourceIcon({
+  category,
   count,
   countVisibility = 1,
   decorative = false,
   source,
 }: {
+  category: NotificationCategory;
   count?: number;
   countVisibility?: number;
   decorative?: boolean;
@@ -176,18 +180,14 @@ function NotificationSourceIcon({
   const meta = getChatSourceMeta(source);
   const Icon = meta.Icon;
   const registered = hasChatSourceMeta(source);
+  const BrandIcon = registered ? null : getBrandIcon(source);
   const glyph = registered ? (
     <Icon className="size-5" />
-  ) : decorative ? (
-    <span
-      data-notification-stack-preview-source-initial={
-        meta.label.trim().charAt(0).toUpperCase() || "E"
-      }
-      className="text-sm font-semibold text-white/85"
-    />
+  ) : BrandIcon ? (
+    <BrandIcon className="size-5" />
   ) : (
-    <span aria-hidden className="text-sm font-semibold text-white/85">
-      {meta.label.trim().charAt(0).toUpperCase() || "E"}
+    <span aria-hidden className="flex size-5 items-center justify-center">
+      {categoryIcon(category)}
     </span>
   );
   const counter =
@@ -229,6 +229,11 @@ function NotificationSourceIcon({
         {
           "data-testid": decorative ? undefined : "notification-source-icon",
           "data-source": normalizeChatSourceKey(source) ?? undefined,
+          "data-notification-source-visual": registered
+            ? "registered"
+            : BrandIcon
+              ? "brand"
+              : "category",
           role: "img",
           "aria-hidden": decorative ? true : undefined,
           "aria-label": decorative
@@ -238,8 +243,7 @@ function NotificationSourceIcon({
               : meta.label,
           title: decorative ? undefined : meta.label,
           className: cn(
-            "eliza-notif-source-icon relative flex size-10 shrink-0 items-center justify-center",
-            registered && meta.iconClassName,
+            "eliza-notif-source-icon relative flex size-10 shrink-0 items-center justify-center text-white",
           ),
         },
         glyph,
@@ -270,6 +274,7 @@ function NotificationStackPreviewContent({
       className="pointer-events-none flex min-h-touch min-w-0 items-center gap-3 px-3 py-2 text-left"
     >
       <NotificationSourceIcon
+        category={notification.category}
         source={notification.source}
         count={stackCount}
         decorative
@@ -590,6 +595,7 @@ export const NotificationRow = memo(function NotificationRow({
           className="eliza-notif-row-content min-w-0"
         >
           <NotificationSourceIcon
+            category={notification.category}
             source={notification.source}
             count={stackCount}
             countVisibility={stackCountVisibility}
