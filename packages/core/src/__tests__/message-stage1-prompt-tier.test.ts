@@ -127,6 +127,7 @@ function makeState(): State {
 function makeRuntime(
 	stage1ResponseBody: unknown,
 	settings: Record<string, string> = {},
+	characterName = "Test Agent",
 ): IAgentRuntime {
 	const responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
 	for (const evaluator of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) {
@@ -134,7 +135,7 @@ function makeRuntime(
 	}
 	return {
 		agentId: "00000000-0000-0000-0000-000000000003" as UUID,
-		character: { name: "Test Agent", system: "You are concise." },
+		character: { name: characterName, system: "You are concise." },
 		actions: [],
 		providers: [],
 		getRoom: vi.fn(async () => null),
@@ -166,12 +167,13 @@ async function renderedSystemPrompt(
 		replyText: "Hello.",
 	}),
 	settings: Record<string, string> = {},
+	characterName?: string,
 ): Promise<{
 	systemContent: string;
 	outcome: Awaited<ReturnType<typeof runV5MessageRuntimeStage1>>;
 	runtime: IAgentRuntime;
 }> {
-	const runtime = makeRuntime(stage1ResponseBody, settings);
+	const runtime = makeRuntime(stage1ResponseBody, settings, characterName);
 	const outcome = await runV5MessageRuntimeStage1({
 		runtime,
 		message,
@@ -323,17 +325,37 @@ describe("Stage-1 prompt tiering", () => {
 		expect(systemContent).toContain("Sticky Notes -> NOTES");
 	});
 
-	it("a single TOKEN of a multi-word agent name counts as addressed (live 2026-08-22)", async () => {
+	it("a single distinctive TOKEN of a multi-word agent name counts as addressed (live 2026-08-22)", async () => {
 		// "nubilio whats the setting …" was classified ambient because only the
-		// full phrase "remilio nubilio" matched; any distinctive name token
-		// (>= 4 chars) must structurally address the agent.
+		// full phrase "remilio nubilio" matched; a distinctive name token must
+		// structurally address the agent. Pinned with the incident's own name:
+		// since the name-token distinctiveness refactor (agent-name-match.ts
+		// NON_DISTINCTIVE_NAME_TOKENS, 564b01d1543), generic role words
+		// ("agent", "assistant", "test") deliberately never count as an
+		// identity signal on their own — they would match ordinary prose — so
+		// this suite's default "Test Agent" name cannot carry the token pin.
 		const { systemContent } = await renderedSystemPrompt(
+			makeMessage({
+				channelType: String(ChannelType.GROUP),
+				text: "nubilio whats the setting we use to make u always respond",
+			}),
+			undefined,
+			{},
+			"Remilio Nubilio",
+		);
+		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
+
+		// The closed-class guard half of the same contract: a generic role
+		// token of the multi-word name ("Agent" of "Test Agent") does NOT
+		// structurally address the agent, so the compact tier renders.
+		const generic = await renderedSystemPrompt(
 			makeMessage({
 				channelType: String(ChannelType.GROUP),
 				text: "Agent whats the setting we use to make u always respond",
 			}),
 		);
-		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
+		expect(generic.systemContent).toContain(GROUP_TRIAGE_MARKER);
+		expect(generic.systemContent).not.toContain(FULL_TEMPLATE_MARKER);
 	});
 
 	it("renders the full rule block when channel type is missing (fail-open)", async () => {

@@ -5184,8 +5184,10 @@ describe("runV5MessageRuntimeStage1", () => {
 				});
 				const calls = useModelCalls(runtime);
 				return (
-					calls[0]?.[1] as { messages?: Array<{ content?: string }> }
-				).messages
+					calls[0]?.[1] as
+						| { messages?: Array<{ content?: string }> }
+						| undefined
+				)?.messages
 					?.map((m) => m.content ?? "")
 					.join("\n");
 			};
@@ -6280,6 +6282,13 @@ describe("runV5MessageRuntimeStage1", () => {
 	});
 
 	it("reconciles the owner reminder route without dropping a compound Stage-1 candidate", async () => {
+		// The compound ask declares TWO intents (remind, then send the update),
+		// so the unserved-declared-intents guarantee (runtime/evaluator.ts
+		// repairFinishWithUnservedDeclaredIntents, live 2026-08-18) coerces the
+		// first single-op FINISH into one CONTINUE: a FINISH that leaves a
+		// declared intent unserved is a broken promise. The model script
+		// therefore serves BOTH intents — reminder, coerced continue, message
+		// send — before the terminal FINISH sticks.
 		const runtime = makeRuntime([
 			stage1Response({
 				contexts: ["tasks", "messaging"],
@@ -6297,16 +6306,38 @@ describe("runV5MessageRuntimeStage1", () => {
 					},
 				],
 			},
+			// First FINISH after only one of two declared intents: the
+			// evaluator guard coerces it to CONTINUE, so the loop plans again.
 			JSON.stringify({
 				success: true,
 				decision: "FINISH",
 				thought: "The owner reminder route completed.",
 				messageToUser: "The reminder route completed.",
 			}),
+			{
+				thought: "Now send the owner-approved update.",
+				toolCalls: [
+					{
+						id: "owner-update-1",
+						name: "MESSAGE_SEND",
+						args: {},
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "Both declared intents are served.",
+				messageToUser: "Reminder created and the update was sent.",
+			}),
 		]);
 		const ownerHandler = vi.fn(async () => ({
 			success: true,
 			text: "Reminder created.",
+		}));
+		const messageSendHandler = vi.fn(async () => ({
+			success: true,
+			text: "Message sent.",
 		}));
 		runtime.actions = [
 			{
@@ -6328,7 +6359,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				description: "Send an owner-approved message.",
 				contexts: ["messaging"],
 				validate: async () => true,
-				handler: async () => ({ success: true, text: "Message sent." }),
+				handler: messageSendHandler,
 			},
 		] as never;
 		registerDirectActionRoutingRule(runtime, {
@@ -6380,6 +6411,14 @@ describe("runV5MessageRuntimeStage1", () => {
 			"TRIGGER_CREATE",
 		);
 		expect(ownerHandler).toHaveBeenCalledTimes(1);
+		// The coerced CONTINUE forced the second declared intent to actually
+		// run: the update was sent, and the terminal reply reports both.
+		expect(messageSendHandler).toHaveBeenCalledTimes(1);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Reminder created and the update was sent.",
+			);
+		}
 	});
 
 	it("does not treat a tasks-context CHOOSE_OPTION action as a recap reader", async () => {

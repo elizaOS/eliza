@@ -76,6 +76,19 @@ export type TierActionResultsInput = {
 	 */
 	narrowToCandidateActions?: readonly string[];
 	/**
+	 * When true, the candidate narrow is EXCLUSIVE: a response-handler
+	 * evaluator cleared the Stage-1 candidate route and set its own from
+	 * richer runtime state, so the retrieval-override carve-outs below
+	 * (absolute rank-one winner, dominant lexical/contextual agreement) stand
+	 * down. Those carve-outs exist to rescue actions the Stage-1 MODEL
+	 * forgot; an evaluator-established route is a deterministic authority,
+	 * not a model guess, and a top-scoring off-route parent (SHELL for "run
+	 * ls") surviving it re-opens exactly the generic route the evaluator
+	 * replaced. No-op without `narrowToCandidateActions`; the no-op safety
+	 * for candidates matching nothing still applies.
+	 */
+	exclusiveCandidateNarrow?: boolean;
+	/**
 	 * Cap on sub-actions exposed as first-class planner tools per tier-A
 	 * parent (parents themselves are capped by `maxTierAParents`). Children
 	 * are ranked against the turn's Stage-1 signals: candidate-named children
@@ -290,10 +303,13 @@ export function tierActionResults(
 			highestAbsoluteOverrides[0]?.result.rank === 1
 				? highestAbsoluteOverrides[0]
 				: undefined;
-		const retrievalOverride =
-			absoluteRankOneOverride ??
-			unambiguousLexicalOverride ??
-			unambiguousContextualOverride;
+		// An evaluator-cleared candidate route admits NO retrieval override:
+		// the carve-outs rescue model omissions, and this route is not one.
+		const retrievalOverride = input.exclusiveCandidateNarrow
+			? undefined
+			: (absoluteRankOneOverride ??
+				unambiguousLexicalOverride ??
+				unambiguousContextualOverride);
 		for (const parent of tierAParents) {
 			// Keep a parent the candidates named, OR the absolute near-certain
 			// retrieval winner. When the winner is already a candidate, only one

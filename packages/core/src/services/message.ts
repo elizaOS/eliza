@@ -3494,6 +3494,12 @@ function buildV5PlannerActionSurface(params: {
 	// `buildActionCatalog` so the planner sees localized `ActionExample`
 	// pairs at catalog-build time.
 	localizedExamples?: LocalizedActionExampleResolver;
+	// True when a response-handler evaluator CLEARED the Stage-1 candidate
+	// route and set its own. That route is a deterministic runtime authority,
+	// so the tiering narrow runs exclusively: retrieval-override carve-outs
+	// (built to rescue actions the Stage-1 MODEL forgot) must not re-expose a
+	// generic off-route parent the evaluator deliberately replaced.
+	exclusiveCandidateRoute?: boolean;
 }): V5PlannerActionSurface {
 	const candidateActions = getMessageHandlerCandidateActions(
 		params.messageHandler,
@@ -3595,6 +3601,7 @@ function buildV5PlannerActionSurface(params: {
 		catalog,
 		results: retrieval.results,
 		narrowToCandidateActions: candidateActions,
+		exclusiveCandidateNarrow: params.exclusiveCandidateRoute === true,
 		// Message-text + candidate tokens rank children WITHIN each tier-A
 		// parent so a hot parent exposes its turn-relevant children instead of
 		// its whole namespace (maxTierAChildrenPerParent).
@@ -9650,6 +9657,13 @@ export async function runV5MessageRuntimeStage1(args: {
 			logger: args.runtime.logger,
 			reportError: args.runtime.reportError.bind(args.runtime),
 			localizedExamples: localizedExamples ?? undefined,
+			// An evaluator that cleared Stage-1 candidates established an
+			// authoritative route from richer runtime state (same authority the
+			// text-heuristic re-add gate above honors); the tiering narrow must
+			// not let a retrieval-override carve-out re-expose the generic
+			// parent that route replaced.
+			exclusiveCandidateRoute:
+				responseHandlerEvaluation.candidateActionsClearedByEvaluators,
 		});
 		const exposedPlannerActions = plannerCandidateActions.filter((action) =>
 			actionSurface.exposedActionNames.has(
