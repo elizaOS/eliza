@@ -69,6 +69,15 @@ function unavailableError() {
 	});
 }
 
+/** Every validation guard shares one typed error code; pin it on each so a
+ * regression to a plain Error with matching prose cannot pass. */
+function invalidProfileError(message?: RegExp) {
+	return expect.objectContaining({
+		code: "INVALID_INTERACTION_CAPABILITY_PROFILE",
+		...(message ? { message: expect.stringMatching(message) } : {}),
+	});
+}
+
 describe("signed-hosted URL safety contract", () => {
 	it("refuses plain-HTTP hosted URLs even after host signature verification", () => {
 		expect(() =>
@@ -127,7 +136,7 @@ describe("signed-hosted URL safety contract", () => {
 		).toThrowError(unavailableError());
 	});
 
-	it("accepts a verified HTTPS hosted URL and keeps query strings", () => {
+	it("accepts a verified HTTPS hosted URL with a query string", () => {
 		expect(
 			negotiateInteractionDelivery(choice, signedHostedOnlyChoice(), {
 				signedHostedUrl: "https://example.test/form/a?session=1",
@@ -183,7 +192,9 @@ describe("secret-flow isolation contract", () => {
 		expect(() =>
 			normalizeConnectorInteractionCapabilityProfile(invalid),
 		).toThrowError(
-			/Secret interactions must use only the sensitive-request flow/,
+			invalidProfileError(
+				/Secret interactions must use only the sensitive-request flow/,
+			),
 		);
 	});
 
@@ -193,8 +204,35 @@ describe("secret-flow isolation contract", () => {
 		expect(() =>
 			normalizeConnectorInteractionCapabilityProfile(invalid),
 		).toThrowError(
-			/Ordinary interaction blocks cannot use the sensitive-request mode/,
+			// The message distinguishes this guard from the unknown-mode guard,
+			// which shares the typed error code.
+			invalidProfileError(
+				/Ordinary interaction blocks cannot use the sensitive-request mode/,
+			),
 		);
+	});
+
+	it("rejects nonSecretFallbacks that offer the sensitive-request flow", () => {
+		// Typed as non-secret modes; an untrusted connector payload arrives as
+		// parsed JSON, so the runtime guard is probed via a deliberate cast.
+		const invalid = structuredClone(profile());
+		invalid.nonSecretFallbacks = [
+			"native",
+			"conversational",
+			"signed-hosted",
+			"sensitive-request" as never,
+		];
+		expect(() =>
+			normalizeConnectorInteractionCapabilityProfile(invalid),
+		).toThrowError(invalidProfileError(/not a non-secret fallback/));
+	});
+
+	it("rejects profiles whose sensitiveFallback is not the sensitive-request flow", () => {
+		const invalid = structuredClone(profile());
+		invalid.sensitiveFallback = "conversational" as never;
+		expect(() =>
+			normalizeConnectorInteractionCapabilityProfile(invalid),
+		).toThrowError(invalidProfileError(/must use the sensitive-request flow/));
 	});
 
 	it("rejects profiles whose block modes lack a declared non-secret fallback", () => {
@@ -203,7 +241,11 @@ describe("secret-flow isolation contract", () => {
 		invalid.nonSecretFallbacks = ["conversational"];
 		expect(() =>
 			normalizeConnectorInteractionCapabilityProfile(invalid),
-		).toThrowError(/choice declares a mode missing from non-secret fallbacks/);
+		).toThrowError(
+			invalidProfileError(
+				/choice declares a mode missing from non-secret fallbacks/,
+			),
+		);
 	});
 
 	it("rejects unknown and repeated delivery modes", () => {
@@ -213,12 +255,12 @@ describe("secret-flow isolation contract", () => {
 		unknown.blocks.choice.modes = ["telepathy" as never];
 		expect(() =>
 			normalizeConnectorInteractionCapabilityProfile(unknown),
-		).toThrowError(/unknown choice mode/);
+		).toThrowError(invalidProfileError(/unknown choice mode/));
 
 		const repeated = structuredClone(profile());
 		repeated.blocks.choice.modes = ["native", "native"];
 		expect(() =>
 			normalizeConnectorInteractionCapabilityProfile(repeated),
-		).toThrowError(/repeats a choice mode/);
+		).toThrowError(invalidProfileError(/repeats a choice mode/));
 	});
 });
