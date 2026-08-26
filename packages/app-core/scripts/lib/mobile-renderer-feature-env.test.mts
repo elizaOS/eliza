@@ -41,6 +41,12 @@ describe("resolveMobileRendererFeatureEnv", () => {
     ).toEqual({});
   });
 
+  it("stamps the launcher-only in-app auth renderer contract", () => {
+    expect(
+      resolveMobileRendererFeatureEnv({ platform: "android-launcher" }),
+    ).toEqual({ VITE_ELIZA_ANDROID_LAUNCHER_BUILD: "1" });
+  });
+
   it("does not leak LP3 renderer flags into another lane", () => {
     expect(
       resolveMobileRendererFeatureEnv({
@@ -62,7 +68,7 @@ describe("mobileRendererRequiresFreshBuild", () => {
     expect(
       mobileRendererRequiresFreshBuild({ platform: "android-cloud-debug" }),
     ).toBe(true);
-    for (const platform of ["ios", "ios-local"]) {
+    for (const platform of ["android-launcher", "ios", "ios-local"]) {
       expect(mobileRendererRequiresFreshBuild({ platform })).toBe(true);
     }
     for (const platform of ["android", "android-cloud", "ios-overlay"]) {
@@ -81,6 +87,9 @@ describe("mobileRendererUnstampedFeatureProblem", () => {
         platform: "android-cloud-debug",
       }),
     ).toContain("realtime voice flags");
+    expect(
+      mobileRendererUnstampedFeatureProblem({ platform: "android-launcher" }),
+    ).toContain("in-app auth contract");
     for (const platform of ["ios", "ios-overlay", "android", "android-cloud"]) {
       expect(mobileRendererUnstampedFeatureProblem({ platform })).toBeNull();
     }

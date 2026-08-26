@@ -17,6 +17,9 @@ export function resolveMobileRendererFeatureEnv({ platform, env = {} } = {}) {
   if (platform === "ios-local") {
     return { VITE_ELIZA_ENABLE_RUNTIME_CHOOSER: "1" };
   }
+  if (platform === "android-launcher") {
+    return { VITE_ELIZA_ANDROID_LAUNCHER_BUILD: "1" };
+  }
   const isLp3Debug =
     platform === ANDROID_CLOUD_DEBUG &&
     env.ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED === "1";
@@ -33,6 +36,7 @@ export function mobileRendererRequiresFreshBuild({ platform } = {}) {
   }
   return (
     platform === ANDROID_CLOUD_DEBUG ||
+    platform === "android-launcher" ||
     platform === "ios" ||
     platform === "ios-local"
   );
@@ -50,6 +54,9 @@ export function mobileRendererUnstampedFeatureProblem({ platform } = {}) {
   }
   if (platform === ANDROID_CLOUD_DEBUG) {
     return "dist cannot prove the Android cloud-debug realtime voice flags because they are not stamped";
+  }
+  if (platform === "android-launcher") {
+    return "dist cannot prove the Android launcher in-app auth contract because it is not stamped";
   }
   return null;
 }

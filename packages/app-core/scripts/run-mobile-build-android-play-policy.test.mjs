@@ -12,6 +12,7 @@ import {
   ANDROID_CLOUD_STRIPPED_PERMISSIONS,
   ANDROID_CLOUD_STRIPPED_RESOURCE_FILES,
   ANDROID_CLOUD_STRIPPED_RESOURCE_VALUES,
+  ANDROID_LAUNCHER_IN_APP_AUTH_HOSTS,
   ANDROID_PLAY_ALLOWED_CAPACITOR_CONFIG_PLUGINS,
   ANDROID_PLAY_ALLOWED_COMPONENTS,
   ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES,
@@ -26,7 +27,7 @@ import {
   findAndroidCloudPackagedRuntimeOffenders,
   findAndroidPlayIndexHtmlFindings,
   findAndroidPlayTextAssetFindings,
-  resolveAndroidCloudAuditCapacitorConfig,
+  resolveAndroidCloudCapacitorConfigPolicy,
   sanitizeAndroidCloudCapacitorConfig,
 } from "./run-mobile-build.mjs";
 
@@ -190,23 +191,35 @@ describe("Android Play manifest policy", () => {
     expect(sanitized.android.webContentsDebuggingEnabled).toBe(true);
   });
 
-  it("audits launcher configs against the launcher-only kiosk contract", () => {
-    const config = {
-      loggingBehavior: "none",
-      android: { webContentsDebuggingEnabled: true },
-    };
+  it("allows only canonical hosted-auth navigation in launcher config", () => {
+    expect(resolveAndroidCloudCapacitorConfigPolicy({})).toEqual({
+      allowInAppAuthNavigation: false,
+      launcherKiosk: false,
+      webViewDebugging: false,
+    });
+    expect(
+      resolveAndroidCloudCapacitorConfigPolicy({
+        ELIZA_ANDROID_LAUNCHER_BUILD: "1",
+        ELIZA_WEBVIEW_DEBUG: "1",
+      }),
+    ).toEqual({
+      allowInAppAuthNavigation: true,
+      launcherKiosk: true,
+      webViewDebugging: true,
+    });
+    const launcher = sanitizeAndroidCloudCapacitorConfig(
+      { plugins: {}, android: {} },
+      { allowInAppAuthNavigation: true, launcherKiosk: true },
+    );
+    const play = sanitizeAndroidCloudCapacitorConfig({
+      plugins: {},
+      android: {},
+    });
 
-    expect(
-      resolveAndroidCloudAuditCapacitorConfig(config, {
-        allowHomeRole: true,
-        env: { ELIZA_WEBVIEW_DEBUG: "1" },
-      }),
-    ).toMatchObject(config);
-    expect(
-      resolveAndroidCloudAuditCapacitorConfig(config, {
-        env: { ELIZA_WEBVIEW_DEBUG: "1" },
-      }),
-    ).not.toHaveProperty("loggingBehavior");
+    expect(launcher.server.allowNavigation).toEqual([
+      ...ANDROID_LAUNCHER_IN_APP_AUTH_HOSTS,
+    ]);
+    expect(play.server.allowNavigation).toBeUndefined();
   });
 
   it("keeps the unused native Google identity stack out of Android source", () => {

@@ -130,7 +130,7 @@ describe("Android mobile build target table", () => {
     });
     expect(ANDROID_BUILD_TARGETS["android-launcher"]).toMatchObject({
       target: "android-launcher",
-      webTarget: "android-cloud-debug",
+      webTarget: "android-launcher",
       env: {
         ELIZA_ANDROID_CLOUD_BUILD: "1",
         ELIZA_ANDROID_LAUNCHER_BUILD: "1",
@@ -242,6 +242,12 @@ describe("Android mobile build target table", () => {
     expect(runMobileBuildSource).toContain('target !== "android-launcher"');
     expect(runMobileBuildSource).toContain(
       'await runAndroidBuild("android-launcher")',
+    );
+    expect(runMobileBuildSource).toMatch(
+      /ANDROID_SOURCE_AUDITS,[\s\S]*?"auditSourceKey",[\s\S]*?"pre-gradle",[\s\S]*?\{ env: targetEnv \}/,
+    );
+    expect(runMobileBuildSource).toMatch(
+      /ANDROID_SOURCE_AUDITS,[\s\S]*?"auditSourceKey",[\s\S]*?"post-gradle",[\s\S]*?\{ env: targetEnv \}/,
     );
   });
 

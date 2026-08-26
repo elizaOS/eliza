@@ -5919,6 +5919,20 @@ export const ANDROID_PLAY_ALLOWED_CAPACITOR_CONFIG_PLUGINS = Object.freeze([
   "Keyboard",
   "SplashScreen",
 ]);
+export const ANDROID_LAUNCHER_IN_APP_AUTH_HOSTS = Object.freeze([
+  "cloud.eliza.app",
+  "cloud-staging.eliza.app",
+]);
+
+/** Resolves the one sanitizer policy shared by write-time and source audits. */
+export function resolveAndroidCloudCapacitorConfigPolicy(env = process.env) {
+  const launcherKiosk = env.ELIZA_ANDROID_LAUNCHER_BUILD === "1";
+  return {
+    allowInAppAuthNavigation: launcherKiosk,
+    launcherKiosk,
+    webViewDebugging: launcherKiosk && env.ELIZA_WEBVIEW_DEBUG === "1",
+  };
+}
 
 function isJsonRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -5927,7 +5941,11 @@ function isJsonRecord(value) {
 /** Returns the minimal runtime config that is safe to package in a Play APK/AAB. */
 export function sanitizeAndroidCloudCapacitorConfig(
   value,
-  { launcherKiosk = false, webViewDebugging = false } = {},
+  {
+    allowInAppAuthNavigation = false,
+    launcherKiosk = false,
+    webViewDebugging = false,
+  } = {},
 ) {
   if (!isJsonRecord(value)) {
     throw new Error(
@@ -5948,6 +5966,9 @@ export function sanitizeAndroidCloudCapacitorConfig(
     ...(launcherKiosk ? { loggingBehavior: "none" } : {}),
     server: {
       androidScheme: "https",
+      ...(allowInAppAuthNavigation
+        ? { allowNavigation: [...ANDROID_LAUNCHER_IN_APP_AUTH_HOSTS] }
+        : {}),
     },
     plugins,
     android: {
@@ -5960,17 +5981,6 @@ export function sanitizeAndroidCloudCapacitorConfig(
       webContentsDebuggingEnabled: launcherKiosk && webViewDebugging,
     },
   };
-}
-
-export function resolveAndroidCloudAuditCapacitorConfig(
-  value,
-  { allowHomeRole = false, env = process.env } = {},
-) {
-  return sanitizeAndroidCloudCapacitorConfig(value, {
-    launcherKiosk: allowHomeRole,
-    webViewDebugging:
-      allowHomeRole && env.ELIZA_WEBVIEW_DEBUG === "1",
-  });
 }
 
 function sanitizeAndroidCloudPackagedConfig(env = process.env) {
@@ -5997,10 +6007,10 @@ function sanitizeAndroidCloudPackagedConfig(env = process.env) {
       }`,
     );
   }
-  const sanitized = sanitizeAndroidCloudCapacitorConfig(parsed, {
-    launcherKiosk: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
-    webViewDebugging: env.ELIZA_WEBVIEW_DEBUG === "1",
-  });
+  const sanitized = sanitizeAndroidCloudCapacitorConfig(
+    parsed,
+    resolveAndroidCloudCapacitorConfigPolicy(env),
+  );
   fs.writeFileSync(configPath, `${JSON.stringify(sanitized, null, "\t")}\n`);
   console.log(
     "[mobile-build] Rewrote capacitor.config.json to the restricted Play runtime contract.",
@@ -6341,7 +6351,9 @@ export function cloudSafeMainActivityJava(
   { launcherKiosk = false } = {},
 ) {
   const launcherImports = launcherKiosk
-    ? `import android.util.Log;
+    ? `import android.app.admin.DevicePolicyManager;
+import android.net.Uri;
+import android.util.Log;
 import android.view.KeyEvent;
 
 import androidx.activity.OnBackPressedCallback;
@@ -6366,16 +6378,44 @@ import androidx.activity.OnBackPressedCallback;
     : "";
   const launcherMethods = launcherKiosk
     ? `
-    @Override
-    protected void onResume() {
-        super.onResume();
-        // Browser-based identity providers temporarily cover the launcher.
-        // Re-enter containment whenever their deep-link callback returns.
+    private void enterManagedLockTaskIfPermitted() {
+        DevicePolicyManager policy = getSystemService(DevicePolicyManager.class);
+        if (policy == null || !policy.isLockTaskPermitted(getPackageName())) {
+            return;
+        }
         try {
             startLockTask();
         } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
-            Log.w(TAG, "Unable to enter launcher lock-task mode", e);
+            Log.w(TAG, "Unable to enter managed launcher lock-task mode", e);
         }
+    }
+
+    private boolean isCloudAuthCallback(Intent intent) {
+        Uri data = intent == null ? null : intent.getData();
+        return data != null
+            && "elizaos".equalsIgnoreCase(data.getScheme())
+            && "auth".equalsIgnoreCase(data.getHost())
+            && "/callback".equals(data.getPath());
+    }
+
+    private void restoreBundledRendererAfterAuthCallback(Intent intent) {
+        if (!isCloudAuthCallback(intent)
+                || getBridge() == null
+                || getBridge().getWebView() == null) {
+            return;
+        }
+        WebView webView = getBridge().getWebView();
+        String localUrl = getBridge().getLocalUrl();
+        webView.post(() -> webView.loadUrl(localUrl));
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        // Only a managed-device owner may contain the launcher task. Android's
+        // unmanaged screen-pinning mode blocks the secure browser that Google
+        // OAuth requires, preventing the callback from ever reaching the app.
+        enterManagedLockTaskIfPermitted();
     }
 
     @Override
@@ -6430,11 +6470,6 @@ ${launcherConstants}
 
         super.onCreate(savedInstanceState);
 
-        // Push registration must be guarded when a distributor omits Firebase
-        // configuration. Permission checks and local notifications still work;
-        // register() then returns a typed configuration failure instead of
-        // crashing Android's activity startup.
-        getBridge().registerPlugin(SafePushNotificationsPlugin.class);
 ${launcherSetup}
 
         // Draw the canonical Cloud renderer behind transparent system bars while
@@ -6460,6 +6495,7 @@ ${launcherSetup}
     protected void onNewIntent(Intent intent) {
         DeepLinkBufferPlugin.captureIntent(this, intent);
         super.onNewIntent(intent);
+${launcherKiosk ? "        restoreBundledRendererAfterAuthCallback(intent);" : ""}
     }
 ${launcherMethods}
 
@@ -7867,10 +7903,10 @@ function auditAndroidCloudSource(
   } else {
     try {
       const config = JSON.parse(fs.readFileSync(capacitorConfigPath, "utf8"));
-      const expected = resolveAndroidCloudAuditCapacitorConfig(config, {
-        allowHomeRole,
-        env,
-      });
+      const expected = sanitizeAndroidCloudCapacitorConfig(
+        config,
+        resolveAndroidCloudCapacitorConfigPolicy(env),
+      );
       if (JSON.stringify(config) !== JSON.stringify(expected)) {
         failures.push(
           "capacitor.config.json differs from the restricted Play runtime contract",
@@ -7909,6 +7945,30 @@ function auditAndroidLauncherSource(phase, options = {}) {
   assertAndroidLauncherManifest(manifest, {
     label: `android-launcher ${phase} source`,
   });
+  const mainActivityPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "java",
+    packageNameToPath(APP.appId),
+    "MainActivity.java",
+  );
+  const mainActivity = fs.existsSync(mainActivityPath)
+    ? fs.readFileSync(mainActivityPath, "utf8")
+    : "";
+  if (
+    !mainActivity.includes("isCloudAuthCallback(Intent intent)") ||
+    !mainActivity.includes('"elizaos".equalsIgnoreCase(data.getScheme())') ||
+    !mainActivity.includes('"auth".equalsIgnoreCase(data.getHost())') ||
+    !mainActivity.includes('"/callback".equals(data.getPath())') ||
+    !mainActivity.includes("getBridge().getLocalUrl()") ||
+    !mainActivity.includes("webView.loadUrl(localUrl)")
+  ) {
+    throw new Error(
+      `[mobile-build] android-launcher ${phase} source audit failed: MainActivity does not restore the bundled renderer after the exact in-app auth callback.`,
+    );
+  }
   console.log(`[mobile-build] android-launcher ${phase} audit passed.`);
 }
 
@@ -8603,7 +8663,7 @@ export async function runAndroidBuild(
     ANDROID_SOURCE_AUDITS,
     "auditSourceKey",
     "pre-gradle",
-    { env: resolvedEnv },
+    { env: targetEnv },
   );
 
   const buildEnv = createAndroidBuildEnv(target, {
@@ -8631,7 +8691,7 @@ export async function runAndroidBuild(
     ANDROID_SOURCE_AUDITS,
     "auditSourceKey",
     "post-gradle",
-    { env: resolvedEnv },
+    { env: targetEnv },
   );
   if (target.artifactAuditKey === "cloud") {
     resolvedEnv[ANDROID_BUNDLETOOL_JAR_ENV] = await ensureAndroidBundletoolJar({
@@ -10069,6 +10129,21 @@ function auditAndroidLauncherArtifact({
         context: {
           artifact,
           loggingBehavior: runtimeConfig.loggingBehavior ?? null,
+        },
+      },
+    );
+  }
+  if (
+    JSON.stringify(runtimeConfig.server?.allowNavigation) !==
+    JSON.stringify(ANDROID_LAUNCHER_IN_APP_AUTH_HOSTS)
+  ) {
+    throw mobileBuildError(
+      "[mobile-build] android-launcher must keep WebView navigation pinned to the canonical Eliza hosted-auth origins.",
+      {
+        code: "ANDROID_LAUNCHER_AUTH_NAVIGATION_INVALID",
+        context: {
+          allowNavigation: runtimeConfig.server?.allowNavigation ?? null,
+          artifact,
         },
       },
     );
