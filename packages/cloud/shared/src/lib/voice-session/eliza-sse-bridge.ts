@@ -56,7 +56,8 @@ const SERVER_TIMING_PROVIDERS = [
   "other",
   "unknown",
 ] as const;
-const ACTION_PROGRESS_TEXT = /^(?:on it\b|checking\b|fetching\b|gathering\b|looking\s+(?:up|into)\b|running\b|working\s+on\b|one\s+moment\b)/iu;
+const ACTION_PROGRESS_TEXT =
+  /^(?:on it\b|checking\b|fetching\b|gathering\b|looking\s+(?:up|into)\b|running\b|working\s+on\b|one\s+moment\b)/iu;
 
 export type ElizaServerTimingMetric = (typeof SERVER_TIMING_METRICS)[number];
 export type ElizaServerTimingProvider = (typeof SERVER_TIMING_PROVIDERS)[number];

@@ -514,24 +514,35 @@ resolution was required. The existing Devices authority over runtime-management
 security/effects and the intentional iOS transport/login deltas remain
 unchanged.
 
-During the read-only live audit, `origin/develop` advanced once beyond the
+During the read-only live audit, `origin/develop` first advanced beyond the
 handoff to `2431f2e2ada693c0e4cc07e0f8d6dc9dad903950` through PR #28757. That
 commit changes only `packages/shared/src/utils/streaming-text.ts` and its test;
-it has zero changed-path overlap with every f809 constituent delta. The shadow
-therefore records the supplied f809 wave first, then layers this exact
-conflict-free live-develop commit so draft PR #28889 remains genuinely current.
+it has zero changed-path overlap with every f809 constituent delta. Before
+publication, Shared also advanced to
+`39c4727e1fd1055d9e0947be8d8a7d47ad8ea745`, retaining supplied head
+`7cc1baf6...` and exact `2431f2e2...` as parents while adding canonical URL
+metadata and public job-error safety coverage. Live develop then advanced to
+`49910af7e6243450ffbc6c537ec873f8fc6e0796` through a cancellable voice-action
+progress change. Both rehearsals were conflict-free. The shadow records the
+supplied f809 wave first, then the exact later Shared and develop heads so draft
+PR #28889 does not knowingly publish a stale composite.
 
 The pre-receipt composite is
-`0ce0e41e4ebca862bfb5f05ea7123d89c39b1f1f`, tree
-`78622b04a822de066ace9d4f7f412717d6745d07`. Every exact SHA above is an
-ancestor.
+`38091fc960adffc44378a5e2fa2f9088df999962`, tree
+`1908c2d078e0f81a573b544718b72ed4b5a50f14`. Every supplied SHA above, current
+Shared `39c4727e...`, and live develop `49910af7...` are ancestors. One
+integration-owned mechanical Biome wrap is applied to the new voice bridge;
+it changes no behavior and closes the exact static gate before publication.
 
-Bounded verification of the 13-file byte delta from the v12 receipt:
+Bounded verification of the 21-file byte delta from the v12 receipt:
 
 - Shared streaming-text regression: 16/16.
 - Core hosted-model pricing regression: 45/45.
 - iOS local model-grind regression: 14/14.
 - Develop/workflow/build-on-install discovery contracts: 17/17.
+- Cloud API agent-detail error boundary: 15/15.
+- Cloud API auto-provision contract: 30/30.
+- Cloud Shared public-job-error and cancellable voice-SSE contracts: 75/75.
 - Shared strict typecheck and dist build: passed; package dry run contains
   1,131 entries, 6,717,053 unpacked bytes, and a 2,023,206-byte archive
   estimate.
@@ -541,8 +552,10 @@ Bounded verification of the 13-file byte delta from the v12 receipt:
 - Capacitor Bridge strict typecheck and production build: passed; package dry
   run contains 57 entries, 347,977 unpacked bytes, and an 85,326-byte archive
   estimate.
+- Cloud API Worker production bundle dry run: passed; no deployment occurred.
 - Release launch-QA plan dry run: passed; no command from the plan executed.
-- Scoped Biome: 11 changed source files checked with no findings.
+- Scoped Biome: the original 11 changed source files and the 7 later
+  Shared/Cloud files checked with no findings after the mechanical wrap.
 - Cloud router codegen second run, `git diff --check`, and generated keyword
   checks produced no tracked source drift.
 - Redacted Gitleaks on the source refresh range: no leaks.
