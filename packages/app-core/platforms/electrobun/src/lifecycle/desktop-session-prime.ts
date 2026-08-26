@@ -22,6 +22,37 @@ interface DesktopSessionPrimeRequest {
   generation: number;
 }
 
+interface DesktopSessionBackendStatus {
+  state: string;
+  port: number | null;
+  startedAt: number | null;
+}
+
+/**
+ * Track the backend generation that owns loopback browser-session rows.
+ * Metadata-only status emissions keep the same port and start timestamp, so
+ * they must not invalidate cookies or fan out new one-shot proof sockets.
+ */
+export function createDesktopSessionGenerationTracker(): (
+  status: DesktopSessionBackendStatus,
+) => boolean {
+  let port: number | null = null;
+  let startedAt: number | null = null;
+  return (status) => {
+    if (
+      status.state !== "running" ||
+      status.port === null ||
+      status.startedAt === null
+    ) {
+      return false;
+    }
+    if (status.port === port && status.startedAt === startedAt) return false;
+    port = status.port;
+    startedAt = status.startedAt;
+    return true;
+  };
+}
+
 /**
  * Reset the primed flag so the next call to primeDesktopSessionAuth() re-runs
  * the bridge. Used when the embedded agent rebinds to a new loopback port —
