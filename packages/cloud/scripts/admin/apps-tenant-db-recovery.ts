@@ -910,7 +910,12 @@ export function parseCliArgs(argv: string[]): CliOptions {
 function run(
   command: string,
   args: string[],
-  opts: { env?: Record<string, string>; input?: string } = {},
+  opts: {
+    env?: Record<string, string>;
+    input?: string;
+    /** Treat a relation-does-not-exist failure as empty output instead of an error. */
+    allowMissingTable?: boolean;
+  } = {},
 ): string {
   const result = spawnSync(command, args, {
     encoding: "utf-8",
@@ -925,6 +930,14 @@ function run(
     );
   }
   if (result.status !== 0) {
+    // error-policy:J3 a missing relation is an explicit benign-absence case
+    // for the caller that opted in; every other failure stays an error.
+    if (
+      opts.allowMissingTable === true &&
+      /relation ".+" does not exist/.test(result.stderr)
+    ) {
+      return "0";
+    }
     throw new RecoveryDrillError(
       "TOOL_FAILED",
       `${command} exited ${result.status}`,
@@ -1210,17 +1223,21 @@ export function targetHasDrillClaim(
   capabilityEnvelope: string,
 ): boolean {
   const claimId = createHash("sha256").update(capabilityEnvelope).digest("hex");
-  const out = run("psql", [
-    "--no-psqlrc",
-    "--tuples-only",
-    "--no-align",
-    "--set",
-    "ON_ERROR_STOP=1",
-    "--dbname",
-    targetDsn,
-    "--command",
-    `SELECT count(*) FROM public.eliza_restore_drill_claim WHERE capability_sha256 = '${claimId}'`,
-  ]).trim();
+  // A missing claim table (fresh target) is not an error: it simply means no
+  // capability ever claimed this target. Every other failure still throws.
+  const out = run(
+    "psql",
+    [
+      "--no-psqlrc",
+      "--tuples-only",
+      "--no-align",
+      "--dbname",
+      targetDsn,
+      "--command",
+      `SELECT count(*) FROM public.eliza_restore_drill_claim WHERE capability_sha256 = '${claimId}'`,
+    ],
+    { allowMissingTable: true },
+  ).trim();
   return Number(out) > 0;
 }
 
@@ -1291,6 +1308,7 @@ export function acquireDrillLock(
       targetDsn,
       "--command",
       `SELECT CASE WHEN pg_try_advisory_lock(${DRILL_ADVISORY_LOCK_KEY}) THEN '${DRILL_LOCK_HANDSHAKE}' ELSE '${DRILL_LOCK_REFUSED}' END;`,
+      "--command",
       `SELECT pg_sleep(${DRILL_LOCK_MAX_SECONDS});`,
     ],
     { stdio: ["ignore", outFd, "pipe"] },
@@ -1422,8 +1440,11 @@ export function executeDrill(options: CliOptions): DrillReport {
       `--capability-file could not be read: ${(cause as Error).message}`,
     );
   }
-  const capability = parseRestoreCapability(capabilityText);
-  verifyRestoreCapability(capability, signingKey, Date.now());
+  const parsed = parseRestoreCapability(capabilityText);
+  // verifyRestoreCapability returns the fields re-derived from the SIGNED
+  // bytes; every downstream use goes through this authenticated value, so a
+  // divergent mutable field on the parsed object can never reach the drill.
+  let capability = verifyRestoreCapability(parsed, signingKey, Date.now());
   if (capability.targetId !== options.targetId) {
     throw new RecoveryDrillError(
       "REFUSED_TARGET_AUTHORITY",
@@ -1498,13 +1519,21 @@ export function executeDrill(options: CliOptions): DrillReport {
     try {
       // Expiry rechecked at the destructive boundary, immediately after the
       // lock is proven held: a capability that expired during archive
-      // verification/hashing must not arm destructive SQL.
-      verifyRestoreCapability(capability, signingKey, Date.now());
+      // verification/hashing must not arm destructive SQL. The returned
+      // object is the signed-bytes-derived view, so this re-assignment also
+      // drops any field divergence from the originally parsed envelope.
+      capability = verifyRestoreCapability(capability, signingKey, Date.now());
       assertDrillLockHeld(drillLock);
       // Transactional exclusivity: refuse a different capability on this target
-      // before any destructive statement runs. A durable claim record for
-      // THIS capability also marks the target as a same-capability retry, so
-      // role remnants from a failed prior run are exempted below.
+      // before any destructive statement runs. Whether THIS capability already
+      // claimed the target is read BEFORE the claim transaction runs — the
+      // claim script upserts the row, so asking after it would always answer
+      // true and exempt archive-named roles on fresh targets too.
+      const capabilityEnvelopeLocal = serializeRestoreCapability(capability);
+      const isSameCapabilityRetry = targetHasDrillClaim(
+        options.targetDsn,
+        capabilityEnvelopeLocal,
+      );
       const claimScript = join(work, "claim-exclusivity.sql");
       writeFileSync(claimScript, buildClaimExclusivitySql(capability));
       guardedPsqlFile(
@@ -1512,10 +1541,6 @@ export function executeDrill(options: CliOptions): DrillReport {
         options.targetId,
         capabilityEnvelope,
         claimScript,
-      );
-      const isSameCapabilityRetry = targetHasDrillClaim(
-        options.targetDsn,
-        serializeRestoreCapability(capability),
       );
 
       run("openssl", [
@@ -1601,6 +1626,10 @@ export function executeDrill(options: CliOptions): DrillReport {
       }
 
       const restoreStart = Date.now();
+      // Lock liveness is re-proven before each destructive phase: if the
+      // session-lock holder dies mid-run, exclusivity no longer holds and the
+      // remaining destructive statements must not run (#23453 review).
+      assertDrillLockHeld(drillLock);
       const guardedGlobals = join(work, "guarded-globals.sql");
       writeFileSync(
         guardedGlobals,
@@ -1623,6 +1652,7 @@ export function executeDrill(options: CliOptions): DrillReport {
         }
         const databaseIdentifier = quoteSqlIdentifier(entry.databaseName);
         const ownerIdentifier = quoteSqlIdentifier(probe.role);
+        assertDrillLockHeld(drillLock);
         const guardedDrop = join(work, `${entry.dumpId}.drop.sql`);
         writeFileSync(
           guardedDrop,
