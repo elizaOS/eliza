@@ -113,7 +113,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64]
     needs: determine-env
     concurrency:
-      group: deploy-eliza-provisioning-worker-mutate-${{ needs.determine-env.outputs.environment }}
+      group: deploy-eliza-provisioning-worker-mutate-recovery-${{ github.run_id }}
       cancel-in-progress: false
       queue: max
     environment: ${{ needs.determine-env.outputs.environment }}
