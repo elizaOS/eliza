@@ -13,6 +13,8 @@ SANDBOX_GID=""
 SANDBOX_CALLER_UID=""
 SANDBOX_CHAIN=""
 SANDBOX_OUTPUT_DIR=""
+SANDBOX_OUTPUT_ACL_SNAPSHOT=""
+SANDBOX_OUTPUT_ACL_CAPTURED=0
 SANDBOX_ROOT=""
 SANDBOX_IPV4_CHAIN=0
 SANDBOX_IPV4_JUMP=0
@@ -94,6 +96,13 @@ sandbox_cleanup() {
       SANDBOX_CLEANUP_STATUS=1
     elif /usr/bin/grep -Eq "^(default:)?user:${SANDBOX_UID}:" <<<"$acl_state"; then
       SANDBOX_CLEANUP_STATUS=1
+    fi
+    if [ "$SANDBOX_OUTPUT_ACL_CAPTURED" -eq 1 ]; then
+      if ! /usr/bin/printf '%s\n' "$SANDBOX_OUTPUT_ACL_SNAPSHOT" | /usr/bin/setfacl --set-file=- "$SANDBOX_OUTPUT_DIR"; then
+        SANDBOX_CLEANUP_STATUS=1
+      elif ! acl_state="$(/usr/bin/getfacl -cpn "$SANDBOX_OUTPUT_DIR" 2>/dev/null)" || [ "$acl_state" != "$SANDBOX_OUTPUT_ACL_SNAPSHOT" ]; then
+        SANDBOX_CLEANUP_STATUS=1
+      fi
     fi
   fi
   local acl_index restored_acl
@@ -187,6 +196,8 @@ run() {
   /usr/sbin/ip6tables -w 5 -I OUTPUT 1 -m owner --uid-owner "$uid" -j "$chain"
   SANDBOX_IPV6_JUMP=1
 
+  SANDBOX_OUTPUT_ACL_SNAPSHOT="$(/usr/bin/getfacl -cpn "$output_dir")" || die "failed to snapshot output ACL"
+  SANDBOX_OUTPUT_ACL_CAPTURED=1
   /usr/bin/setfacl -m "u:${uid}:rwx" -m "d:u:${uid}:rwx" -m "d:u:${caller_uid}:rwx" "$output_dir"
   grant_output_search_acls
   sandbox_root="$(/usr/bin/mktemp -d /var/tmp/eliza-stability-sandbox.XXXXXX)"
