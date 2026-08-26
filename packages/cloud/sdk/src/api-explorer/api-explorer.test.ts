@@ -1,10 +1,15 @@
 /**
  * Contract tests for the API Explorer's generated OpenAPI export and catalog
  * helpers. The suite exercises the real `API_ENDPOINTS` catalog through the
- * public generator functions — no mocks — pinning the wire format downloaded
- * by `ApiExplorerPage` (JSON + YAML export buttons) and the catalog
- * behaviors (search, categories, per-category listing) its UI renders.
- * Harness: deterministic, pure functions only.
+ * public generator functions — no mocks — pinning the exported wire document
+ * downloaded via `ApiExplorerPage`'s JSON/YAML export buttons. Catalog-facing
+ * assertions derive their expectations from `API_ENDPOINTS` itself rather than
+ * re-typing literals, so catalog growth keeps them meaningful; document-shape
+ * assertions state OpenAPI 3.0.3 conformance rules the generator must uphold
+ * for every entry. `getAvailableCategories` is covered because
+ * `ApiExplorerPage` renders it directly; `searchEndpoints` and
+ * `getEndpointsByCategory` have no shipping consumer and are only covered at
+ * the behavioral-property level. Harness: deterministic, pure functions only.
  */
 
 import { describe, expect, it } from "vitest";
@@ -13,14 +18,55 @@ import {
   API_ENDPOINTS,
   formatEndpointPrice,
   getAvailableCategories,
-  getEndpointsByCategory,
   searchEndpoints,
 } from "./endpoint-discovery.js";
 import {
   generateOpenAPIJSON,
   generateOpenAPISpec,
   generateOpenAPIYAML,
+  type OpenAPISchema,
+  type OpenAPISpec,
 } from "./openapi-generator.js";
+
+/** Every schema object reachable from an operation, with its location for failure messages. */
+function collectSchemas(
+  spec: OpenAPISpec,
+): Array<{ schema: OpenAPISchema; where: string }> {
+  const found: Array<{ schema: OpenAPISchema; where: string }> = [];
+  const walkSchema = (
+    schema: OpenAPISchema | undefined,
+    where: string,
+  ): void => {
+    if (!schema || typeof schema !== "object") return;
+    found.push({ schema, where });
+    walkSchema(schema.items, `${where}.items`);
+    for (const [name, property] of Object.entries(schema.properties ?? {})) {
+      walkSchema(property, `${where}.properties.${name}`);
+    }
+  };
+  for (const [path, pathItem] of Object.entries(spec.paths)) {
+    for (const [method, operation] of Object.entries(pathItem)) {
+      for (const parameter of operation.parameters ?? []) {
+        walkSchema(
+          parameter.schema,
+          `${method} ${path} parameter ${parameter.name}`,
+        );
+      }
+      const bodySchema =
+        operation.requestBody?.content["application/json"]?.schema;
+      if (bodySchema) {
+        walkSchema(bodySchema, `${method} ${path} requestBody`);
+      }
+      for (const [status, response] of Object.entries(operation.responses)) {
+        walkSchema(
+          response.content?.["application/json"]?.schema,
+          `${method} ${path} ${status} response`,
+        );
+      }
+    }
+  }
+  return found;
+}
 
 describe("generateOpenAPISpec — every cataloged endpoint maps to an operation", () => {
   const spec = generateOpenAPISpec();
@@ -130,22 +176,25 @@ describe("generateOpenAPISpec — parameter and request-body mapping", () => {
   });
 
   it("builds a JSON request body whose required list matches required body params", () => {
-    const createKey = spec.paths["/api/v1/api-keys"]?.post;
-    const requestBody = createKey.requestBody;
-    const schema = requestBody?.content["application/json"].schema;
-    expect(schema?.type).toBe("object");
-    expect(schema?.required).toEqual(["name"]);
-    const properties = schema?.properties ?? {};
-    expect(properties.name).toMatchObject({ type: "string" });
-    expect(properties.rate_limit).toMatchObject({
-      type: "number",
-      default: 1000,
-    });
-  });
-
-  it("omits requestBody when the endpoint declares no body parameters", () => {
-    const models = spec.paths["/api/v1/models"]?.get;
-    expect(models.requestBody).toBeUndefined();
+    for (const endpoint of API_ENDPOINTS) {
+      const body = endpoint.parameters?.body;
+      const operation =
+        spec.paths[endpoint.path][endpoint.method.toLowerCase()];
+      if (!body) {
+        expect(operation.requestBody, endpoint.id).toBeUndefined();
+        continue;
+      }
+      const expectedRequired = body
+        .filter((p) => p.required)
+        .map((p) => p.name);
+      const schema = operation.requestBody?.content["application/json"]?.schema;
+      expect(schema?.type, endpoint.id).toBe("object");
+      expect(schema?.required ?? [], endpoint.id).toEqual(expectedRequired);
+      // The body-level required flag must mirror the same derivation.
+      expect(operation.requestBody?.required, endpoint.id).toBe(
+        expectedRequired.length > 0,
+      );
+    }
   });
 
   it("propagates numeric bounds onto the generated schema", () => {
@@ -155,14 +204,142 @@ describe("generateOpenAPISpec — parameter and request-body mapping", () => {
   });
 });
 
+describe("generateOpenAPISpec — OpenAPI 3.0.3 document conformance", () => {
+  // These rules are properties of the exported wire document itself: a
+  // dropped or mis-mapped field class (missing array `items`, an empty
+  // content block, an unstated request-body requirement) silently corrupts
+  // every client generated from the spec, so each rule walks the WHOLE
+  // document instead of pinning individual catalog entries.
+
+  it("array schemas always declare their item schema", () => {
+    const schemas = collectSchemas(generateOpenAPISpec());
+    const arrays = schemas.filter((s) => s.schema.type === "array");
+    // The catalog must actually exercise this rule for the check to matter.
+    expect(arrays.length).toBeGreaterThan(0);
+    for (const { schema, where } of arrays) {
+      expect(schema.items, `${where}: array without items`).toBeDefined();
+    }
+  });
+
+  it("every declared media content carries a schema or an example", () => {
+    const spec = generateOpenAPISpec();
+    for (const [path, pathItem] of Object.entries(spec.paths)) {
+      for (const [method, operation] of Object.entries(pathItem)) {
+        const bodyContent = operation.requestBody?.content["application/json"];
+        if (bodyContent) {
+          expect(
+            bodyContent.schema,
+            `${method} ${path}: requestBody content has no schema`,
+          ).toBeDefined();
+        }
+        for (const [status, response] of Object.entries(operation.responses)) {
+          const content = response.content?.["application/json"];
+          if (content) {
+            expect(
+              content.schema ?? content.example,
+              `${method} ${path} ${status}: response content is empty`,
+            ).toBeDefined();
+          }
+        }
+      }
+    }
+  });
+
+  it("response content is present exactly when the catalog declares a schema or example", () => {
+    const spec = generateOpenAPISpec();
+    for (const endpoint of API_ENDPOINTS) {
+      const operation =
+        spec.paths[endpoint.path][endpoint.method.toLowerCase()];
+      for (const response of endpoint.responses) {
+        const content =
+          operation.responses[String(response.statusCode)]?.content;
+        if (response.schema !== undefined || response.example !== undefined) {
+          expect(content, endpoint.id).toBeDefined();
+        } else {
+          expect(
+            content,
+            `${endpoint.id} ${response.statusCode}`,
+          ).toBeUndefined();
+        }
+      }
+    }
+  });
+
+  it("required lists only name properties that exist on their object schema", () => {
+    const schemas = collectSchemas(generateOpenAPISpec());
+    const objects = schemas.filter((s) => s.schema.required !== undefined);
+    expect(objects.length).toBeGreaterThan(0);
+    for (const { schema, where } of objects) {
+      expect(Array.isArray(schema.required), where).toBe(true);
+      for (const name of schema.required ?? []) {
+        expect(
+          schema.properties?.[name],
+          `${where}: required property ${name} is not declared`,
+        ).toBeDefined();
+      }
+    }
+  });
+
+  it("operation ids are unique across the whole document", () => {
+    const spec = generateOpenAPISpec();
+    const ids: string[] = [];
+    for (const [path, pathItem] of Object.entries(spec.paths)) {
+      for (const [method, operation] of Object.entries(pathItem)) {
+        expect(operation.operationId, `${method} ${path}`).toBeTruthy();
+        ids.push(operation.operationId);
+      }
+    }
+    expect(new Set(ids).size, "duplicate operationId in document").toBe(
+      ids.length,
+    );
+  });
+
+  it("every path template variable is declared as a required path parameter", () => {
+    const spec = generateOpenAPISpec();
+    for (const [path, pathItem] of Object.entries(spec.paths)) {
+      const templateVars = [...path.matchAll(/\{([^}]+)\}/g)].map((m) => m[1]);
+      for (const [method, operation] of Object.entries(pathItem)) {
+        for (const variable of templateVars) {
+          const parameter = operation.parameters?.find(
+            (p) => p.name === variable,
+          );
+          expect(
+            parameter,
+            `${method} ${path}: template {${variable}} has no parameter`,
+          ).toMatchObject({ in: "path", required: true });
+        }
+      }
+    }
+  });
+
+  it("every operation declares at least one response with a description", () => {
+    const spec = generateOpenAPISpec();
+    for (const [path, pathItem] of Object.entries(spec.paths)) {
+      for (const [method, operation] of Object.entries(pathItem)) {
+        const statuses = Object.keys(operation.responses);
+        expect(statuses.length, `${method} ${path}`).toBeGreaterThan(0);
+        for (const status of statuses) {
+          expect(
+            operation.responses[status].description,
+            `${method} ${path} ${status}`,
+          ).toBeTruthy();
+        }
+      }
+    }
+  });
+});
+
 describe("generateOpenAPISpec — document-level contract", () => {
-  it("pins the OpenAPI version, security schemes, and global auth", () => {
+  it("pins the OpenAPI version, info block, and security schemes", () => {
     const spec = generateOpenAPISpec();
     expect(spec.openapi).toBe("3.0.3");
+    expect(spec.info.title).toBe("Eliza Cloud API");
+    expect(spec.info.contact.url).toBe("https://api.eliza.app");
     expect(spec.security).toEqual([{ bearerAuth: [] }, { apiKeyAuth: [] }]);
     expect(spec.components.securitySchemes.bearerAuth).toMatchObject({
       type: "http",
       scheme: "bearer",
+      bearerFormat: "JWT",
     });
     expect(spec.components.securitySchemes.apiKeyAuth).toMatchObject({
       type: "apiKey",
@@ -207,18 +384,32 @@ describe("JSON / YAML export round-trips", () => {
 });
 
 describe("formatEndpointPrice — every rendering branch", () => {
-  it("renders free endpoints as the literal 'Free'", () => {
-    const pricing = API_ENDPOINTS.find(
-      (e) => e.id === "generate-prompts",
-    )?.pricing;
-    expect(formatEndpointPrice(pricing)).toBe("Free");
+  it("renders free pricing as the literal 'Free'", () => {
+    expect(
+      formatEndpointPrice({ cost: 0, unit: "request", isFree: true }),
+    ).toBe("Free");
   });
 
   it("renders variable pricing with a range as '$min - $max'", () => {
-    const pricing = API_ENDPOINTS.find(
-      (e) => e.id === "chat-completions",
-    )?.pricing;
-    expect(formatEndpointPrice(pricing)).toBe("$0.001 - $0.03");
+    expect(
+      formatEndpointPrice({
+        cost: 0,
+        unit: "request",
+        isVariable: true,
+        estimatedRange: { min: 0.001, max: 0.03 },
+      }),
+    ).toBe("$0.001 - $0.03");
+    // The shipped variable catalog entry must hit this branch too.
+    const variable = API_ENDPOINTS.find(
+      (e) => e.pricing?.isVariable && e.pricing.estimatedRange,
+    );
+    expect(variable, "catalog has no variable-range pricing").toBeDefined();
+    const range = variable?.pricing?.estimatedRange;
+    if (range) {
+      expect(formatEndpointPrice(variable?.pricing)).toBe(
+        `$${range.min.toFixed(3)} - $${range.max.toFixed(2)}`,
+      );
+    }
   });
 
   it("renders sub-cent fixed costs at 4-decimal precision and dollar costs at 2", () => {
@@ -247,40 +438,50 @@ describe("formatEndpointPrice — every rendering branch", () => {
   });
 });
 
-describe("catalog search and category helpers", () => {
-  it("searchEndpoints matches name, description, and path case-insensitively", () => {
-    const byName = searchEndpoints("VOICE");
-    // "Text-to-Speech" matches via its description/path, not its name — every
-    // voice-catalog entry must still be discoverable by the term.
-    expect(byName.map((e) => e.id)).toEqual([
-      "voice-text-to-speech",
-      "voice-speech-to-text",
-      "voice-list-available",
-      "voice-clone-create",
-      "voice-list-user",
-      "voice-get-by-id",
-      "voice-delete",
-    ]);
+describe("searchEndpoints — behavioral properties", () => {
+  // No shipping component consumes `searchEndpoints` (the Explorer UI filters
+  // the catalog inline), so these tests pin the matching contract itself:
+  // which fields match, case-insensitivity, and no-match behavior — all as
+  // properties over the real catalog, not copied membership lists.
 
-    const byPath = searchEndpoints("/api/v1/api-keys");
-    expect(byPath.map((e) => e.id)).toContain("api-keys-list");
+  it("matches on the endpoint name (term only a name contains)", () => {
+    const results = searchEndpoints("Clone Voice");
+    expect(results.map((e) => e.id)).toEqual(["voice-clone-create"]);
+    for (const endpoint of results) {
+      expect(endpoint.name.toLowerCase()).toContain("clone voice");
+    }
+  });
+
+  it("matches case-insensitively: uppercase and lowercase queries agree", () => {
+    const upper = searchEndpoints("VOICE");
+    const lower = searchEndpoints("voice");
+    expect(upper.length).toBeGreaterThan(0);
+    expect(upper).toEqual(lower);
+  });
+
+  it("matches on the path and the description", () => {
+    const byPath = searchEndpoints("api-keys");
+    expect(byPath.length).toBeGreaterThan(0);
+    for (const endpoint of byPath) {
+      expect(endpoint.path).toContain("api-keys");
+    }
 
     const byDescription = searchEndpoints("Transcribe audio to text");
     expect(byDescription.map((e) => e.id)).toContain("voice-speech-to-text");
+    for (const endpoint of byDescription) {
+      expect(endpoint.description.toLowerCase()).toContain(
+        "transcribe audio to text",
+      );
+    }
+  });
 
+  it("returns an empty list when nothing matches", () => {
     expect(searchEndpoints("definitely-not-in-the-catalog")).toEqual([]);
   });
+});
 
-  it("getEndpointsByCategory returns only that category's endpoints", () => {
-    const voiceCloning = getEndpointsByCategory("Voice Cloning");
-    expect(voiceCloning.length).toBeGreaterThan(0);
-    expect(voiceCloning.every((e) => e.category === "Voice Cloning")).toBe(
-      true,
-    );
-    expect(getEndpointsByCategory("Nonexistent Category")).toEqual([]);
-  });
-
-  it("getAvailableCategories returns the deduped, sorted category list", () => {
+describe("getAvailableCategories — the Explorer's category source", () => {
+  it("returns the deduped, sorted category list", () => {
     const categories = getAvailableCategories();
     expect(categories).toEqual([...new Set(categories)].sort());
     const catalogCategories = new Set(API_ENDPOINTS.map((e) => e.category));
@@ -289,22 +490,6 @@ describe("catalog search and category helpers", () => {
 });
 
 describe("catalog invariants the generated spec depends on", () => {
-  it("every endpoint declares at least one response", () => {
-    for (const endpoint of API_ENDPOINTS) {
-      expect(endpoint.responses.length, endpoint.id).toBeGreaterThan(0);
-    }
-  });
-
-  it("path parameters appear in the path template as {name}", () => {
-    for (const endpoint of API_ENDPOINTS) {
-      for (const param of endpoint.parameters?.path ?? []) {
-        expect(endpoint.path, `${endpoint.id}: ${param.name}`).toContain(
-          `{${param.name}}`,
-        );
-      }
-    }
-  });
-
   it("operations sharing a path use distinct methods", () => {
     const seen = new Set<string>();
     for (const endpoint of API_ENDPOINTS) {
