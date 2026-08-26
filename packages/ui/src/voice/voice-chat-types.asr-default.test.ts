@@ -1,7 +1,7 @@
 /** Verifies resolveEffectiveVoiceConfig - ASR provider default through the package's configured test harness. */
 import { describe, expect, it } from "vitest";
 import type { VoiceConfig } from "../api/client-types-config";
-import { resolveEffectiveVoiceConfig } from "./voice-chat-types";
+import { describeTtsFetchTargetForDebug, resolveEffectiveVoiceConfig } from "./voice-chat-types";
 
 /**
  * Regression coverage for the ASR-provider default in
@@ -105,3 +105,12 @@ describe("resolveEffectiveVoiceConfig - ASR provider default", () => {
     ).toBeNull();
   });
 });
+
+describe("describeTtsFetchTargetForDebug surrogate safety", () => {
+  it("preserves well-formed Unicode when clamping unparseable URLs containing surrogate pairs", () => {
+    const invalidWithSurrogate = "http://" + "a".repeat(110) + "🚀" + "tail";
+    const result = describeTtsFetchTargetForDebug(invalidWithSurrogate);
+    expect(result.isWellFormed?.()).not.toBe(false);
+  });
+});
+

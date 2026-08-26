@@ -6,6 +6,7 @@ import type { VoiceConfig, VoiceMode } from "../api/client";
 import { resolveApiUrl } from "../utils";
 import { ttsDebug } from "../utils/tts-debug";
 import type { Emotion } from "./emotion";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 // ── Speech Recognition types ──────────────────────────────────────────
 
@@ -466,7 +467,7 @@ export function describeTtsFetchTargetForDebug(target: string): string {
       return `${new URL(target).origin} (absolute)`;
     } catch {
       // error-policy:J3 unparseable target — show the raw string (debug-only)
-      return target.slice(0, 120);
+      return truncateWellFormed(toWellFormedUnicode(target), 120);
     }
   }
   const origin =

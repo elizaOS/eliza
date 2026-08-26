@@ -23,6 +23,7 @@ import {
   type RuntimeServiceOrderItem,
 } from "../../api";
 import { getCached, setCached } from "../../hooks/resource-cache";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useAppSelector } from "../../state";
@@ -87,7 +88,7 @@ const SECTION_TAB_KEYS: Array<{
 function nodeSummary(value: unknown): string {
   if (value === null) return "null";
   if (typeof value === "string") {
-    const compact = value.length > 100 ? `${value.slice(0, 100)}...` : value;
+    const compact = value.length > 100 ? `${truncateWellFormed(toWellFormedUnicode(value), 100)}...` : value;
     return JSON.stringify(compact);
   }
   if (typeof value === "number" || typeof value === "boolean") {
