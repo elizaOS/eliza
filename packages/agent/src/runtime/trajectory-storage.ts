@@ -22,6 +22,8 @@ import {
   recordedStageToSemanticStage,
   Service,
   sanitizeTrajectoryJsonObject,
+  toWellFormedUnicode,
+  truncateWellFormed,
   type TrajectorySemanticStageRecord,
 } from "@elizaos/core";
 import type {
@@ -183,7 +185,7 @@ function reportLateTrajectoryCapture(
   entry.rejects += 1;
   const ageMs = Date.now() - entry.closedAt;
   const age = `${Math.round(ageMs / 1000)}s`;
-  const detail = `step=${stepId.slice(0, 12)} type=${captureType} purpose=${purpose ?? "unknown"} age=${age}`;
+  const detail = `step=${truncateWellFormed(toWellFormedUnicode(stepId), 12)} type=${captureType} purpose=${purpose ?? "unknown"} age=${age}`;
   // The voice-gate rephrase races its own turn's terminalization by design
   // (delivery does not wait for the diagnostic copy); a same-instant reject
   // is expected once per racy turn and had the overnight watch paging on

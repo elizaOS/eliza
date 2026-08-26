@@ -155,6 +155,8 @@ import {
   subAgentCredentialsPlugin,
   type TargetInfo,
   type UUID,
+  toWellFormedUnicode,
+  truncateWellFormed,
   warnOnUnmatchedActionRolePolicyKeys,
 } from "@elizaos/core";
 import {
@@ -2348,7 +2350,8 @@ export function bindCloudGithubTokenToRuntime(
 export function cloudApiKeyFingerprint(value: string | undefined): string {
   const v = value?.trim();
   if (!v) return "(none)";
-  return `${v.slice(0, 6)}…(len ${v.length})`;
+  const wellFormed = toWellFormedUnicode(v);
+  return `${truncateWellFormed(wellFormed, 6)}…(len ${wellFormed.length})`;
 }
 
 /**
