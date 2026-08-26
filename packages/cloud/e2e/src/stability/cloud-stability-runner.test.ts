@@ -246,6 +246,17 @@ describe("Cloud stability manifest", () => {
       verifyCloudStabilityArtifacts(absentBaselineRoot),
     ).resolves.toMatchObject({ report: absentBaseline });
 
+    const unavailableSentinelAsBaseline = structuredClone(absentBaseline);
+    unavailableSentinelAsBaseline.cells[0].baselineInitialStateHash =
+      "unavailable";
+    await resealCloudStabilityReport(
+      absentBaselineRoot,
+      unavailableSentinelAsBaseline,
+    );
+    await expect(
+      verifyCloudStabilityArtifacts(absentBaselineRoot),
+    ).rejects.toThrow(/baseline does not match.*admitted passing attempts/);
+
     const ordinarySuccessRoot = await mkdtemp(
       path.join(tmpdir(), "cloud-stability-ordinary-baseline-test-"),
     );

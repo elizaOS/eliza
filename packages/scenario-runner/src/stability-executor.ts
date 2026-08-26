@@ -657,8 +657,11 @@ export function assertScenarioStabilityExecutedCellCoherence(
     }
   } else {
     if (
+      cell.baselineInitialStateHash === "unavailable" ||
       !cell.attempts.some(
-        (attempt) => attempt.initialStateHash === cell.baselineInitialStateHash,
+        (attempt) =>
+          attempt.initialStateHash !== "unavailable" &&
+          attempt.initialStateHash === cell.baselineInitialStateHash,
       ) ||
       cell.attempts.some(
         (attempt) =>
