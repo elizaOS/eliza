@@ -135,9 +135,11 @@ describe("runCapabilityRouterConnect", () => {
     );
   });
 
-  it("treats blank env values as unset and uses the documented default api base", async () => {
-    process.env.ELIZA_API_BASE_URL = "";
-    process.env.ELIZA_API_PORT = "";
+  it("treats blank and whitespace env values as unset and uses the documented default api base", async () => {
+    process.env.ELIZA_API_BASE_URL = "   ";
+    process.env.ELIZA_API_BASE = "";
+    process.env.ELIZA_API_PORT = "  ";
+    process.env.ELIZA_PORT = "";
     const fetchMock = mockFetch({
       success: true,
       endpoint: { id: "tools", baseUrl: "https://capability.example.test" },
@@ -156,9 +158,10 @@ describe("runCapabilityRouterConnect", () => {
     );
   });
 
-  it("skips a blank ELIZA_API_PORT in favor of the next env candidate", async () => {
-    process.env.ELIZA_API_BASE_URL = "";
-    process.env.ELIZA_API_PORT = "";
+  it("skips blank and whitespace candidates in favor of the next valid env candidate", async () => {
+    process.env.ELIZA_API_BASE_URL = " \t ";
+    process.env.ELIZA_API_BASE = "";
+    process.env.ELIZA_API_PORT = " ";
     process.env.ELIZA_PORT = "4599";
     const fetchMock = mockFetch({
       success: true,
