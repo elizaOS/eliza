@@ -902,6 +902,7 @@ app.post("/", async (c) => {
     if (dedicated === undefined) {
       dedicated = await findActivePersonalDedicatedTarget(
         account.organizationId,
+        account.userId,
         agent.id,
       );
     }
