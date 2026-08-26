@@ -24,6 +24,87 @@
 
 import { redactSensitiveText } from "@elizaos/core";
 
+const PUBLIC_INTERNAL_ERROR =
+  "The operation failed. Retry from Eliza Cloud or contact support if it continues.";
+const NETWORK_URL_PATTERN =
+  /\b(?:https?|wss?):\/\/(?:\[[0-9a-f:.%]+\]|[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)(?::\d{1,5})?(?:[/?#][^\s'"`<>[\]]*)?/giu;
+const FILE_URL_PATTERN = /\bfile:\/\//iu;
+const DRIVE_PATH_PATTERN = /(?:^|[^A-Za-z0-9_.~%-])[A-Za-z]:[\\/][^\s'"`<>]*/u;
+const UNC_PATH_PATTERN = /(?:^|[^A-Za-z0-9_.~%-])\\\\[^\\\s'"`<>]+\\[^\s'"`<>]*/u;
+const POSIX_PATH_PATTERN = /(?:^|[^A-Za-z0-9_.~%-])\/+[^\s'"`<>]+/u;
+const PUBLIC_URL_METADATA_PATH_PATTERN = /^\/(?:v1\/chat|callback)$/iu;
+const ABSOLUTE_HOST_PATH_PATTERN = /^(?:\/{1,2}|[A-Za-z]:[\\/]|\\\\)/u;
+const LEADING_URL_METADATA_PADDING_PATTERN = /^[\p{White_Space}\p{Cc}\p{Cf}]+/u;
+
+function decodeUrlMetadata(value: string): string | null {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    // error-policy:J3 malformed percent encoding is an explicit unsafe result.
+    return null;
+  }
+}
+
+/** Detect host-path syntax carried inside otherwise public URL metadata. */
+function networkUrlContainsHostPath(urlToken: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(urlToken);
+  } catch {
+    // error-policy:J3 a malformed URL-shaped token fails closed at this public boundary.
+    return true;
+  }
+
+  // The URL pathname is public route data; only query and fragment metadata
+  // can carry an adjacent host path that must be withheld.
+  const queryMetadata = [...url.searchParams.entries()].flat();
+  const candidates = [url.hash.slice(1), ...queryMetadata];
+  return candidates.some((candidate) => {
+    const decoded = decodeUrlMetadata(candidate);
+    if (decoded === null) return true;
+    const canonical = decoded.replace(LEADING_URL_METADATA_PADDING_PATTERN, "");
+    if (PUBLIC_URL_METADATA_PATH_PATTERN.test(canonical)) return false;
+    return (
+      FILE_URL_PATTERN.test(canonical) ||
+      DRIVE_PATH_PATTERN.test(canonical) ||
+      UNC_PATH_PATTERN.test(canonical) ||
+      ABSOLUTE_HOST_PATH_PATTERN.test(canonical)
+    );
+  });
+}
+
+/**
+ * Stored diagnostics may put a host path in the error message itself, before
+ * any stack frame. Those strings are useful to operators but are not a public
+ * contract. Prefer a bounded generic message to an incomplete path scrubber:
+ * path syntax has too many quoting and escaping forms to safely rewrite while
+ * preserving arbitrary operator text.
+ */
+function containsAbsolutePath(text: string): boolean {
+  if (FILE_URL_PATTERN.test(text) || DRIVE_PATH_PATTERN.test(text) || UNC_PATH_PATTERN.test(text)) {
+    return true;
+  }
+
+  // A network URL contains `//` and path slashes but is not itself a host
+  // filesystem path. Inspect canonical decoded query keys, values, and fragment
+  // metadata before masking the URL: public route values such as `/v1/chat`
+  // remain valid, while host roots and drive/UNC forms fail closed. The
+  // authority grammar deliberately
+  // stops before adjacent `(`, `[`, or `,` host-path delimiters.
+  let embeddedHostPath = false;
+  const withoutNetworkUrls = text.replace(NETWORK_URL_PATTERN, (urlToken) => {
+    if (networkUrlContainsHostPath(urlToken)) embeddedHostPath = true;
+    return "network:";
+  });
+  if (embeddedHostPath) return true;
+
+  return (
+    POSIX_PATH_PATTERN.test(withoutNetworkUrls) ||
+    DRIVE_PATH_PATTERN.test(withoutNetworkUrls) ||
+    UNC_PATH_PATTERN.test(withoutNetworkUrls)
+  );
+}
+
 /** Classify an untrusted throw without allowing Proxy reflection to escape. */
 function safeError(value: unknown): Error | undefined {
   try {
@@ -171,9 +252,10 @@ export function jobErrorSummary(error: unknown): string {
 
 /**
  * What the jobs API may return to a caller. The stored text is an operator
- * diagnostic: even redacted it discloses absolute server paths and internal
- * module layout, which a non-admin job owner has no business reading. Keep the
- * first line — the failure summary — and drop the frames.
+ * diagnostic: even redacted it may disclose absolute server paths and internal
+ * module layout, which a non-admin job owner has no business reading. Drop
+ * frames, and fail closed to a stable public message when the remaining error
+ * body itself contains an absolute path.
  */
 export function publicJobErrorSummary(storedError: string | null | undefined): string | null {
   if (typeof storedError !== "string") return null;
@@ -181,5 +263,6 @@ export function publicJobErrorSummary(storedError: string | null | undefined): s
   // can itself be multi-line ("Provisioning failed:\nnode: …\nreason: …") and
   // the owner needs that body — it is the frames that disclose server layout.
   const summary = (storedError.split(/\n\s+at /, 1)[0] ?? "").trim();
-  return summary.length > 0 ? summary : null;
+  if (summary.length === 0) return null;
+  return containsAbsolutePath(summary) ? PUBLIC_INTERNAL_ERROR : summary;
 }

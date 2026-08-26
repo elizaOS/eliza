@@ -56,12 +56,14 @@ test("cloud session survives a mid-suite JWT expiry by renewing the token", asyn
   });
 
   let refreshRequests = 0;
+  let refreshRequestHeaders: Record<string, string> | null = null;
   await page.route(STEWARD_REFRESH_ENDPOINT, async (route) => {
     if (route.request().method() !== "POST") {
       await route.fallback();
       return;
     }
     refreshRequests += 1;
+    refreshRequestHeaders = route.request().headers();
     await fulfillJson(route, 200, { token: renewedToken, expiresIn: 3_600 });
   });
 
@@ -114,6 +116,8 @@ test("cloud session survives a mid-suite JWT expiry by renewing the token", asyn
   await expect
     .poll(() => refreshRequests, { timeout: 30_000 })
     .toBeGreaterThan(0);
+  expect(refreshRequestHeaders?.["x-eliza-csrf"]).toBe("1");
+  expect(refreshRequestHeaders?.["content-type"]).toBe("application/json");
   await expect
     .poll(
       () =>

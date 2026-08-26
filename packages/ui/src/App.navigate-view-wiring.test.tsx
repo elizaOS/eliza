@@ -28,16 +28,22 @@ import { DEFAULT_BOOT_CONFIG, setBootConfig } from "./config/boot-config";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 import { resetUiRegistryHostForTests } from "./registry-host";
 import { getActiveSurfaceRealmScope } from "./surface-realm-broker";
+import { shellHistory } from "./surface-realm-channel";
 
 const appState = vi.hoisted(() => ({
   firstRunComplete: true,
+  retryStartup: vi.fn(),
   setTab: vi.fn(),
   startupPhase: "ready",
   tab: "chat",
 }));
 
 const authStatusMock = vi.hoisted(() => ({
-  phase: "authenticated" as "authenticated" | "unauthenticated",
+  phase: "authenticated" as
+    | "authenticated"
+    | "unauthenticated"
+    | "server_unavailable",
+  refetch: vi.fn(),
   use: vi.fn(),
 }));
 
@@ -287,7 +293,7 @@ vi.mock("./hooks/useAuthStatus", () => ({
     authStatusMock.use(options);
     return {
       state: { phase: authStatusMock.phase },
-      refetch: vi.fn(),
+      refetch: authStatusMock.refetch,
     };
   },
   // Home widgets gate their loaders on this (#11084); the mounted App renders
@@ -341,6 +347,7 @@ vi.mock("./hooks", () => ({
   BugReportProvider: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
   ),
+  useOptionalBugReport: () => null,
   useBugReportState: () => ({}),
   useContextMenu: () => ({
     closeSaveCommandModal: vi.fn(),
@@ -382,7 +389,7 @@ vi.mock("./state", async () => {
     firstRunName: "",
     ownerName: "Test Owner",
     plugins: [],
-    retryStartup: vi.fn(),
+    retryStartup: appState.retryStartup,
     setActionNotice: vi.fn(),
     setState: vi.fn(),
     setTab: appState.setTab,
@@ -559,7 +566,9 @@ describe("App navigate-view event wiring", () => {
     desktopTabsState.tabs = [];
     resetMockAvailableViews();
     appState.setTab.mockClear();
+    appState.retryStartup.mockClear();
     authStatusMock.use.mockClear();
+    authStatusMock.refetch.mockClear();
     desktopTabsMock.openTab.mockClear();
     desktopTabsMock.closeTab.mockClear();
     desktopBridgeMock.invokeDesktopBridgeRequest.mockClear();
@@ -588,6 +597,27 @@ describe("App navigate-view event wiring", () => {
     );
     expect(screen.getByTestId("first-run-conductor-mount")).toBeTruthy();
     expect(screen.queryByText("Open this agent from Eliza Cloud")).toBeNull();
+  });
+
+  it("restores a deep route after an auth-startup retry commits the default chat path", async () => {
+    window.history.replaceState(null, "", "/cloud/agents");
+    authStatusMock.phase = "server_unavailable";
+
+    const rendered = render(<App />);
+    fireEvent.click(screen.getByTestId("startup-retry"));
+
+    expect(authStatusMock.refetch).toHaveBeenCalledTimes(1);
+    expect(appState.retryStartup).toHaveBeenCalledTimes(1);
+
+    // Reproduce the startup shell's intermediate default-tab commit observed
+    // in the real hosted browser before auth/startup settle.
+    shellHistory.replaceState(null, "", "/chat");
+    authStatusMock.phase = "authenticated";
+    rendered.rerender(<App />);
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/cloud/agents");
+    });
   });
 
   it("routes view-manager events through the mounted App listener", async () => {

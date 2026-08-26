@@ -158,13 +158,65 @@ describe("publicJobErrorSummary — API boundary", () => {
     expect(summary).not.toMatch(/\n\s+at /);
   });
 
-  test("a path inside the message itself is preserved — only frames are cut", () => {
-    // Honest scope: this summary is not a path scrubber. An ENOENT message
-    // names the file the operator asked about; the redactor handles secrets.
-    const stored = jobErrorText(
-      new Error("ENOENT: no such file, open '/srv/eliza/agents/9c1/config.json'"),
+  test.each([
+    "ENOENT: no such file, open '/srv/eliza/agents/9c1/config.json'",
+    "ENOENT [/srv/eliza/agents/9c1/config.json]",
+    "ENOENT: //srv/eliza/agents/9c1/config.json",
+    "failed to create /tmp",
+    "failed to read C:\\eliza\\agents\\9c1\\config.json",
+    "failed to read \\\\internal-host\\agents\\9c1\\config.json",
+    "failed to read file:///srv/eliza/agents/9c1/config.json",
+  ])("withholds a first-line absolute path from the owner: %s", (message) => {
+    const stored = jobErrorText(new Error(message));
+    const summary = publicJobErrorSummary(stored) ?? "";
+    expect(summary).toBe(
+      "The operation failed. Retry from Eliza Cloud or contact support if it continues.",
     );
-    expect(publicJobErrorSummary(stored)).toContain("/srv/eliza/agents/9c1");
+    expect(summary).not.toContain("9c1");
+  });
+
+  test.each([
+    "Provider failed at https://api.eliza.app/v1/chat",
+    "Provider failed at https://api.eliza.app/callback?next=/v1/chat",
+    "Provider failed at https://api.eliza.app/v1//chat",
+    "Socket closed at wss://agent.example.test/chat",
+  ])("does not mistake a public network URL for a host path: %s", (message) => {
+    const stored = jobErrorText(new Error(message));
+    expect(publicJobErrorSummary(stored)).toBe(`Error: ${message}`);
+  });
+
+  test("still finds a formatted host path adjacent to a public URL", () => {
+    const stored = jobErrorText(
+      new Error("Provider https://api.eliza.app[/srv/eliza/agents/9c1/config.json]"),
+    );
+    expect(publicJobErrorSummary(stored)).toBe(
+      "The operation failed. Retry from Eliza Cloud or contact support if it continues.",
+    );
+  });
+
+  test.each([
+    "Provider https://api.eliza.app?debug=/srv/eliza/agents/9c1/config.json",
+    "Provider https://api.eliza.app?debug=/workspace/eliza/agents/9c1/config.json",
+    "Provider https://api.eliza.app?debug=/app/eliza/agents/9c1/config.json",
+    "Provider https://api.eliza.app?debug=/data/agents/9c1/config.json",
+    "Provider https://api.eliza.app?debug=/nix/store/secret/agents/9c1/config.json",
+    "Provider https://api.eliza.app?debug=//internal-host/agents/9c1/config.json",
+    "Provider https://api.eliza.app?debug=/callback/eliza/agents/9c1/config.json",
+    "Provider https://api.eliza.app?debug=/v1/chat/private/agents/9c1/config.json",
+    "Provider https://api.eliza.app(/srv/eliza/agents/9c1/config.json)",
+    "Provider https://api.eliza.app,C:\\eliza\\agents\\9c1\\config.json",
+    "Provider https://api.eliza.app?debug=%2Fsrv%2Feliza%2Fagents%2F9c1%2Fconfig.json",
+    "Provider https://api.eliza.app?debug=%20%2Fsrv%2Feliza%2Fagents%2F9c1%2Fconfig.json",
+    "Provider https://api.eliza.app?debug=%09%2Fworkspace%2Feliza%2Fagents%2F9c1%2Fconfig.json",
+    "Provider https://api.eliza.app?%2Fsrv%2Feliza%2Fagents%2F9c1%2Fconfig.json=debug",
+    "Provider https://api.eliza.app?debug=%E0%A4%A/srv/eliza/agents/9c1/config.json",
+  ])("withholds a host path carried beside or inside a public URL: %s", (message) => {
+    const stored = jobErrorText(new Error(message));
+    const summary = publicJobErrorSummary(stored) ?? "";
+    expect(summary).toBe(
+      "The operation failed. Retry from Eliza Cloud or contact support if it continues.",
+    );
+    expect(summary).not.toContain("9c1");
   });
 
   test("null and empty stay null", () => {
