@@ -109,16 +109,6 @@ export class UnionFind<T> {
 		return grouped;
 	}
 
-	/** Total number of distinct connected components. */
-	get componentCount(): number {
-		return this.groups().size;
-	}
-
-	/** Return all canonical root elements. */
-	roots(): T[] {
-		return Array.from(this.groups().keys());
-	}
-
 	/** Return the members of the component containing `value`. */
 	componentOf(value: T): T[] {
 		if (!this.parent.has(value)) {

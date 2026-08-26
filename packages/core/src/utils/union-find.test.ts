@@ -56,8 +56,6 @@ describe("UnionFind", () => {
 
 		const groups = uf.groups();
 		expect(groups.size).toBe(2);
-		expect(uf.componentCount).toBe(2);
-		expect(uf.roots().length).toBe(2);
 	});
 
 	it("resolves a chain-shaped component far deeper than the JS call stack", () => {
