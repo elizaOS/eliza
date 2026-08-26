@@ -1,3 +1,5 @@
+/** Hardens packaged Electrobun renderer RPC listeners and exclusive port leases. */
+
 import fs from "node:fs";
 import path from "node:path";
 
