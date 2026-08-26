@@ -1431,6 +1431,11 @@ describe("ChatOverlay", () => {
       expect(cls).toContain("pointer-coarse:min-w-touch");
       expect(cls).not.toContain("before:-inset-0.5");
     }
+    const plusClassName = screen.getByTestId("chat-composer-plus").className;
+    expect(plusClassName).toContain("hover:bg-transparent");
+    expect(plusClassName).toContain("hover:text-txt");
+    expect(plusClassName).toContain("data-[state=open]:bg-transparent");
+    expect(plusClassName).not.toContain("hover:bg-surface");
     unmount();
 
     // Active (hands-free): distinguishable via its stop glyph and pressed state,
