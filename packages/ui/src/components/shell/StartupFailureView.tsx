@@ -7,6 +7,7 @@
  */
 
 import { AlertCircle } from "lucide-react";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { useBranding } from "../../config/branding";
 import { type BugReportDraft, useOptionalBugReport } from "../../hooks";
 import { startFreshFirstRunReload } from "../../platform";
@@ -70,7 +71,7 @@ function buildStartupBugReportDraft(
     .join("\n");
 
   return {
-    description: `${reasonLabel}: ${error.message}`.slice(0, 80),
+    description: truncateWellFormed(toWellFormedUnicode(`${reasonLabel}: ${error.message}`), 80),
     stepsToReproduce:
       "1. Launch the desktop app.\n2. Wait for startup to fail.\n3. Observe the startup failure screen.",
     expectedBehavior: "The app should finish startup and show the main shell.",
