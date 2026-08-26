@@ -207,6 +207,7 @@ validation or exposing the key.
 | Worker DB | daemon could publish liveness against implicit PGlite/wrong DB | Fixed: deployed startup requires a valid PostgreSQL `DATABASE_URL` |
 | Queue lanes | compatibility sidecar could claim every job type | Fixed: same lane resolver as daemon |
 | Worker deploy | CI required missing Headscale metadata before it could validate preserved host authority | Fixed in workflow as described above |
+| Worker deploy tests | deletion-only backup authority was enabled in the Hetzner workflow while four tests still asserted the retired dormant/disabled contract | Fixed: contracts now require the dedicated R2/Hetzner allowlist and live deletion-cycle health while excluding KMS, Headscale, SSH, capture, and scheduler authority |
 | Live acceptance | the Dedicated canary's workflow contract omitted the newer `group-chat` suite, so its preflight failed before executing the canary | Fixed: the contract now matches the dispatch inventory; failed run `33018915061` created no agent |
 | Staging admission | the credentialed Dedicated canary is below the server-owned hosting-runway threshold | Operational blocker: exact-head run `33020269187` received 402 with zero agents/jobs; restore staging test credit through the billing authority |
 | Warm pool | enablement and live ready-count are host/DB state, not observable from public health | Operational proof still required |
