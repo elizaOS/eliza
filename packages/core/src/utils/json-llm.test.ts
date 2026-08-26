@@ -35,6 +35,32 @@ describe("extractAndParseJSONObjectFromText", () => {
 		).toEqual({ ok: true });
 	});
 
+	it("extracts JSON from ```jsonc and ```js fenced blocks", () => {
+		expect(
+			extractAndParseJSONObjectFromText(
+				'```jsonc\n{\n  // comment\n  "result": 42\n}\n```',
+			),
+		).toEqual({ result: 42 });
+		expect(
+			extractAndParseJSONObjectFromText(
+				'```js\n{\n  status: "success"\n}\n```',
+			),
+		).toEqual({ status: "success" });
+	});
+
+	it("extracts embedded JSON from surrounding prose without code fences", () => {
+		expect(
+			extractAndParseJSONObjectFromText(
+				'Here is the response data: {"active":true,"count":5} Let me know if you need anything else!',
+			),
+		).toEqual({ active: true, count: 5 });
+		expect(
+			extractAndParseJSONObjectFromText(
+				'Result list: [{"id":1},{"id":2}] done',
+			),
+		).toEqual([{ id: 1 }, { id: 2 }]);
+	});
+
 	it("accepts JSON5 leniency (unquoted keys, single quotes, trailing comma)", () => {
 		expect(extractAndParseJSONObjectFromText("{ a: 1, b: 'two', }")).toEqual({
 			a: 1,
