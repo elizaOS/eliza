@@ -99,6 +99,12 @@ export interface GoalPromptInput {
   goal: string;
   /** The concrete first instruction. Defaults to {@link GoalPromptInput.goal}. */
   task?: string;
+  /** The user's VERBATIM request (`task.originalRequest`). Rendered complete in
+   * its own section when the goal/task text does not already carry it, so a
+   * worker spawned from a planner's short label still sees every asked
+   * feature the verifier will grade against (live 2026-08-21, demo-hello:
+   * "gradient and the current date" never reached the builder). */
+  originalRequest?: string;
   acceptanceCriteria?: string[];
   /** Task-wide room for status, final handoff, and questions to the creator. */
   taskRoomId?: string;
@@ -143,10 +149,28 @@ export interface GoalFollowUpInput {
   acceptanceCriteria?: string[];
   reason?: GoalFollowUpReason;
   taskRoomId?: string;
+  /** The user's VERBATIM request (`task.originalRequest`). Rendered COMPLETE
+   * in an "--- Original Request ---" section so a validation-failed retry
+   * re-reads exactly what was asked instead of only the goal's short label
+   * (live 2026-08-21, demo-hello: every retry rebuilt the label, never the
+   * asked gradient/date, and the task parked). */
+  originalRequest?: string;
+  /** The verifier's newest concrete findings (summary + unmet criteria from
+   * `metadata.attemptReflections`). Rendered COMPLETE in a
+   * "--- Verifier Findings ---" section so the retry knows EXACTLY what to
+   * fix — without it the worker re-passes its own blind check every lap. */
+  verifierFindings?: string;
 }
 
 function bulletList(items: string[]): string {
   return items.map((item) => `- ${item}`).join("\n");
+}
+
+/** Whitespace-insensitive, case-insensitive containment for prompt text. */
+function textuallyContains(haystack: string, needle: string): boolean {
+  const squash = (text: string): string =>
+    text.replace(/\s+/g, " ").trim().toLowerCase();
+  return squash(haystack).includes(squash(needle));
 }
 
 const COMPLETION_CONTRACT: readonly string[] = [
@@ -184,6 +208,23 @@ export function buildGoalPrompt(input: GoalPromptInput): string {
     `You are ${input.agentName.trim()}, an autonomous coding sub-agent working as part of a swarm on a durable orchestrator task. Keep working until the goal is met or you are genuinely blocked.`,
     input.goal.trim(),
   ];
+
+  // The verbatim ask, COMPLETE, whenever the goal/task text does not already
+  // carry it. The verifier grades against the stored originalRequest, so a
+  // worker that only ever saw the planner's short label is set up to fail
+  // (live 2026-08-21, demo-hello). Skipped when redundant so direct asks
+  // (goal === request) do not double-render.
+  const originalRequest = input.originalRequest?.trim();
+  if (
+    originalRequest &&
+    !textuallyContains(`${input.goal}\n${task}`, originalRequest)
+  ) {
+    sections.push(
+      "--- Original Request ---",
+      "The user's verbatim request. The finished work must satisfy it in full:",
+      originalRequest,
+    );
+  }
 
   if (input.acceptanceCriteria && input.acceptanceCriteria.length > 0) {
     sections.push(
@@ -291,10 +332,34 @@ export function buildGoalFollowUp(input: GoalFollowUpInput): string {
     input.goal.trim(),
   ];
 
+  // The verbatim ask, COMPLETE — a validation-failed retry must re-read what
+  // the user actually asked for, not just the goal's (possibly short) label.
+  // Rendered whenever it adds information beyond the goal text.
+  const originalRequest = input.originalRequest?.trim();
+  if (originalRequest && !textuallyContains(input.goal, originalRequest)) {
+    sections.push(
+      "--- Original Request ---",
+      "The user's verbatim request. The finished work must satisfy it in full:",
+      originalRequest,
+    );
+  }
+
   if (input.acceptanceCriteria && input.acceptanceCriteria.length > 0) {
     sections.push(
       "--- Acceptance Criteria ---",
       bulletList(input.acceptanceCriteria),
+    );
+  }
+
+  // The verifier's newest concrete findings, COMPLETE. Without them each
+  // retry re-ran the builder's own blind checklist and re-failed on the same
+  // unstated gaps until the task parked (live 2026-08-21, demo-hello).
+  const verifierFindings = input.verifierFindings?.trim();
+  if (verifierFindings) {
+    sections.push(
+      "--- Verifier Findings ---",
+      "The verifier's findings from your previous completion attempt. Fix exactly these gaps before re-reporting done:",
+      verifierFindings,
     );
   }
 

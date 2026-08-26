@@ -21,3 +21,46 @@ export function userTaskFromInitialTask(raw: string | undefined): string {
   const next = after.search(SECTION_HEADER_RE);
   return (next >= 0 ? after.slice(0, next) : after).trim();
 }
+
+/** Whitespace-insensitive, case-insensitive containment for prompt text. */
+function squash(text: string): string {
+  return text.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/** Framing line that introduces the verbatim ask inside a User Task body. */
+export const VERBATIM_REQUEST_HEADING =
+  "Original user request (verbatim, authoritative):";
+
+/**
+ * Compose the User Task section BODY from the planner's task text and the
+ * user's verbatim request. The planner routinely hands the spawn path a short
+ * label ("demo-hello page") instead of the ask; the child then builds the
+ * label while the verifier grades against the stored verbatim
+ * `originalRequest` and fails it for features it was never told about (live
+ * 2026-08-21, task 5c6d85c0: "gradient and the current date" never reached
+ * the builder; three verify laps burned, task parked).
+ *
+ * - No verbatim request (or blank): the task text stands alone.
+ * - Either text already contains the other (whitespace/case-insensitive):
+ *   the longer, information-complete one stands alone — never duplicated.
+ * - Otherwise the short task text PREFIXES the verbatim ask (the label keeps
+ *   deriving titles/slugs from the body's first line), with the verbatim
+ *   request emitted COMPLETE below it under {@link VERBATIM_REQUEST_HEADING}.
+ *
+ * The composed body must live INSIDE the "--- User Task ---" section so
+ * {@link userTaskFromInitialTask} hands successors the same complete ask.
+ */
+export function composeUserTaskBody(
+  task: string,
+  verbatimRequest: string | undefined,
+): string {
+  const base = (task ?? "").trim();
+  const verbatim = (verbatimRequest ?? "").trim();
+  if (!verbatim) return base;
+  if (!base) return verbatim;
+  const squashedBase = squash(base);
+  const squashedVerbatim = squash(verbatim);
+  if (squashedBase.includes(squashedVerbatim)) return base;
+  if (squashedVerbatim.includes(squashedBase)) return verbatim;
+  return `${base}\n\n${VERBATIM_REQUEST_HEADING}\n${verbatim}`;
+}

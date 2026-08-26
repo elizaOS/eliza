@@ -102,7 +102,10 @@ import {
   type SpawnResult,
   TERMINAL_SESSION_STATUSES,
 } from "../services/types.js";
-import { userTaskFromInitialTask } from "../services/user-task-text.js";
+import {
+  composeUserTaskBody,
+  userTaskFromInitialTask,
+} from "../services/user-task-text.js";
 import type {
   AuthPromptCallback,
   CodingWorkspaceService,
@@ -1805,9 +1808,27 @@ async function runCreateLegacy(
           );
         }
       }
+      // The child's User Task body carries the user's VERBATIM ask, not just
+      // the planner's short label — the verifier grades against the stored
+      // originalRequest, so a builder that only ever saw "demo-hello page"
+      // was set up to fail "gradient and current date" it was never told
+      // about (live 2026-08-21, task 5c6d85c0; three verify laps burned,
+      // task parked). The short `task` keeps deriving the label/slug/workdir
+      // above; only the child-facing body widens. Multi-part fan-outs and
+      // lane launches keep their part text (each lane owns a SLICE of the
+      // request — the whole verbatim ask would tell every lane to build
+      // everything, regressing the 2026-08-22 lane-scope fix), and synthetic
+      // sub-agent respawns already carry their stored task text.
+      const laneTaskBody =
+        tasks.length === 1 &&
+        !partVoicePart &&
+        !syntheticRespawnInbound &&
+        content.source !== MESSAGE_SOURCE_SUB_AGENT
+          ? composeUserTaskBody(task, requestText(message))
+          : task;
       const groundedCreateTask = createAssignedAppDir
-        ? retargetPlannerAppPaths(task, createAssignedAppDir)
-        : task;
+        ? retargetPlannerAppPaths(laneTaskBody, createAssignedAppDir)
+        : laneTaskBody;
       const createTaskForChild =
         createProvisionedWorkspaceId && createRequestedRepo
           ? withProvisionedRepoContract(groundedCreateTask, createRequestedRepo)
@@ -3625,10 +3646,19 @@ async function runSpawnAgent(
         );
       }
     }
+    // Same verbatim-ask contract as the create path: the child's User Task
+    // body carries the user's actual words, not just the planner's short
+    // `task` label (which still drives label/slug/workdir above). Synthetic
+    // sub-agent respawns keep their stored task text — their root turn
+    // already composed the full body.
+    const spawnTaskBody =
+      content.source === MESSAGE_SOURCE_SUB_AGENT
+        ? task
+        : composeUserTaskBody(task, text);
     const spawnTaskForChild =
       provisionedWorkspaceId && requestedRepo
-        ? withProvisionedRepoContract(task, requestedRepo)
-        : task;
+        ? withProvisionedRepoContract(spawnTaskBody, requestedRepo)
+        : spawnTaskBody;
     const taskWithRouteHints = taskWithResolvedRoute(
       spawnTaskForChild,
       provisionedWorkspaceId ? undefined : effectiveRoute,

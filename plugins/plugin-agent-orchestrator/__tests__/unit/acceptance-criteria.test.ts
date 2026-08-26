@@ -246,4 +246,170 @@ describe("generateDefaultAcceptanceCriteria", () => {
     );
     expect(criteria.length).toBeLessThanOrEqual(5);
   });
+
+  it("hands the refine prompt the verbatim request for coding goals", async () => {
+    const runtime = runtimeWithModel(JSON.stringify({ criteria: [] }));
+    await generateDefaultAcceptanceCriteria(
+      "Improve parser resilience",
+      "coding",
+      runtime,
+      {
+        verbatimRequest:
+          "make the parser survive empty input and add a regression test",
+      },
+    );
+    const prompt = String(
+      (runtime.useModel as ReturnType<typeof vi.fn>).mock.calls[0]?.[1]?.prompt,
+    );
+    expect(prompt).toContain("User's verbatim request");
+    expect(prompt).toContain(
+      "make the parser survive empty input and add a regression test",
+    );
+  });
+});
+
+// Fix for live 2026-08-21, task 5c6d85c0 "demo-hello": the app-build template
+// alone told the verifier nothing about the asked gradient/current date, so
+// the builder passed its own blind check while the verifier failed the task
+// three times. The template stays the FLOOR (#20794's serve-focused rationale
+// stands); a CONSTRAINED refinement layers request-specific, serve-observable
+// content criteria from the VERBATIM request on top.
+describe("generateDefaultAcceptanceCriteria app-build content specialization", () => {
+  const VERBATIM =
+    "build a tiny app called demo-hello: a page that says hello with a nice gradient and the current date, deploy it";
+  const TEMPLATE = [...DEFAULT_CRITERIA_TEMPLATES["app-build"]];
+
+  it("receives the verbatim request in the constrained refine prompt", async () => {
+    const runtime = runtimeWithModel(JSON.stringify({ criteria: [] }));
+    await generateDefaultAcceptanceCriteria(
+      "demo-hello app",
+      "app-build",
+      runtime,
+      { verbatimRequest: VERBATIM },
+    );
+    const prompt = String(
+      (runtime.useModel as ReturnType<typeof vi.fn>).mock.calls[0]?.[1]?.prompt,
+    );
+    expect(prompt).toContain("User's verbatim request:");
+    // PROMPT-INTEGRITY: the whole ask, not a summary.
+    expect(prompt).toContain(VERBATIM);
+    expect(prompt).toContain("observable property of the served page");
+  });
+
+  it("layers serve-observable content specifics on top of the intact template floor", async () => {
+    const runtime = runtimeWithModel(
+      JSON.stringify({
+        criteria: [
+          "the page shows a gradient background",
+          "the page shows the current date",
+        ],
+      }),
+    );
+    const criteria = await generateDefaultAcceptanceCriteria(
+      "demo-hello app",
+      "app-build",
+      runtime,
+      { verbatimRequest: VERBATIM },
+    );
+    // Floor first and intact…
+    expect(criteria.slice(0, TEMPLATE.length)).toEqual(TEMPLATE);
+    // …with the asked features named behind it.
+    expect(criteria).toContain("the page shows a gradient background");
+    expect(criteria).toContain("the page shows the current date");
+    expect(criteria.length).toBeLessThanOrEqual(5);
+  });
+
+  it("drops runtime-behavior demands and keeps the pure template when nothing survives", async () => {
+    const runtime = runtimeWithModel(
+      JSON.stringify({
+        criteria: [
+          "clicking the button updates the DOM",
+          "the browser console shows zero errors",
+          "the countdown timer changes its value every second",
+        ],
+      }),
+    );
+    const criteria = await generateDefaultAcceptanceCriteria(
+      "demo-hello app",
+      "app-build",
+      runtime,
+      { verbatimRequest: VERBATIM },
+    );
+    expect(criteria).toEqual(TEMPLATE);
+  });
+
+  it("keeps only the static-content specific when the model mixes shapes", async () => {
+    const runtime = runtimeWithModel(
+      JSON.stringify({
+        criteria: [
+          "clicking the gradient updates the displayed date",
+          "the page shows the current date",
+        ],
+      }),
+    );
+    const criteria = await generateDefaultAcceptanceCriteria(
+      "demo-hello app",
+      "app-build",
+      runtime,
+      { verbatimRequest: VERBATIM },
+    );
+    expect(criteria).toContain("the page shows the current date");
+    expect(criteria).not.toContain(
+      "clicking the gradient updates the displayed date",
+    );
+  });
+
+  it("degrades to the pure template on model failure or garbage", async () => {
+    const throwing = runtimeWithModel(async () => {
+      throw new Error("model exploded");
+    });
+    expect(
+      await generateDefaultAcceptanceCriteria(
+        "demo-hello app",
+        "app-build",
+        throwing,
+        { verbatimRequest: VERBATIM },
+      ),
+    ).toEqual(TEMPLATE);
+    const garbage = runtimeWithModel("not json");
+    expect(
+      await generateDefaultAcceptanceCriteria(
+        "demo-hello app",
+        "app-build",
+        garbage,
+        { verbatimRequest: VERBATIM },
+      ),
+    ).toEqual(TEMPLATE);
+  });
+
+  it("keeps script-run purely deterministic", async () => {
+    const runtime = runtimeWithModel(
+      JSON.stringify({ criteria: ["a test suite passes"] }),
+    );
+    const criteria = await generateDefaultAcceptanceCriteria(
+      "write a python script that picks a random dinner idea and run it",
+      "script-run",
+      runtime,
+      { verbatimRequest: "write me a dinner-idea script and run it" },
+    );
+    expect(criteria).toEqual([...DEFAULT_CRITERIA_TEMPLATES["script-run"]]);
+    expect(runtime.useModel).not.toHaveBeenCalled();
+  });
+
+  it("detects app-build from the verbatim request when the goal is a bare label", async () => {
+    // The planner's goal ("demo-hello deliverable") carries no app phrasing;
+    // detection must read the verbatim ask, same both-texts rule as
+    // taskTypeHintFor. (A "deploy it" tail would classify deploy instead —
+    // the create path pins kind "app-build" for those, so the hint wins.)
+    const criteria = await generateDefaultAcceptanceCriteria(
+      "demo-hello deliverable",
+      undefined,
+      undefined,
+      {
+        verbatimRequest:
+          "build a tiny app called demo-hello: a page that says hello with a nice gradient and the current date",
+      },
+    );
+    expect(criteria).toEqual(TEMPLATE);
+  });
 });

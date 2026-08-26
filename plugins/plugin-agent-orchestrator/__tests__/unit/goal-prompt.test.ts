@@ -139,3 +139,96 @@ describe("buildGoalFollowUp", () => {
     expect(out).toContain("room-task");
   });
 });
+
+// Live 2026-08-21, task 5c6d85c0 "demo-hello": the goal was the planner's
+// short label and the verifier's findings never reached the builder, so every
+// validation-failed retry rebuilt the bare label and re-parked. The follow-up
+// must carry the verbatim ask and the newest findings COMPLETE.
+describe("buildGoalFollowUp original request + verifier findings", () => {
+  const VERBATIM =
+    "build a tiny app called demo-hello: a page that says hello with a nice gradient and the current date, deploy it";
+  const FINDINGS = [
+    "The deliverable lacks both the requested gradient and the current date.",
+    "Unmet criteria:",
+    "- the page serves the requested content",
+  ].join("\n");
+
+  it("renders the verbatim original request and the verifier findings as sections", () => {
+    const out = buildGoalFollowUp({
+      goal: "demo-hello app",
+      message: "Automatic verification did not confirm the task is complete.",
+      acceptanceCriteria: ["the live URL is reachable"],
+      reason: "validation_failed",
+      originalRequest: VERBATIM,
+      verifierFindings: FINDINGS,
+    });
+    expect(out).toContain("--- Original Request ---");
+    // PROMPT-INTEGRITY: complete, verbatim, no truncation.
+    expect(out).toContain(VERBATIM);
+    expect(out).toContain("--- Verifier Findings ---");
+    expect(out).toContain(
+      "The deliverable lacks both the requested gradient and the current date.",
+    );
+    expect(out).toContain("- the page serves the requested content");
+    // Ordering: request before criteria, findings after criteria, both before
+    // the raw correction message.
+    expect(out.indexOf("--- Original Request ---")).toBeLessThan(
+      out.indexOf("--- Acceptance Criteria ---"),
+    );
+    expect(out.indexOf("--- Acceptance Criteria ---")).toBeLessThan(
+      out.indexOf("--- Verifier Findings ---"),
+    );
+    expect(out.indexOf("--- Verifier Findings ---")).toBeLessThan(
+      out.indexOf("--- Message ---"),
+    );
+  });
+
+  it("omits both sections when the inputs are absent", () => {
+    const out = buildGoalFollowUp({
+      goal: "demo-hello app",
+      message: "keep going",
+      reason: "validation_failed",
+    });
+    expect(out).not.toContain("--- Original Request ---");
+    expect(out).not.toContain("--- Verifier Findings ---");
+  });
+
+  it("skips the request section when the goal already carries the verbatim ask", () => {
+    const out = buildGoalFollowUp({
+      goal: `Deliver this: ${VERBATIM}`,
+      message: "continue",
+      reason: "validation_failed",
+      originalRequest: VERBATIM,
+    });
+    expect(out).not.toContain("--- Original Request ---");
+  });
+});
+
+describe("buildGoalPrompt original request", () => {
+  const VERBATIM =
+    "build a tiny app called demo-hello: a page that says hello with a nice gradient and the current date, deploy it";
+
+  it("renders the verbatim ask when the goal/task only carry the short label", () => {
+    const out = buildGoalPrompt({
+      agentName: "Chen",
+      goal: "demo-hello app",
+      task: "demo-hello page",
+      originalRequest: VERBATIM,
+    });
+    expect(out).toContain("--- Original Request ---");
+    expect(out).toContain(VERBATIM);
+    expect(out.indexOf("--- Original Request ---")).toBeLessThan(
+      out.indexOf("--- Task ---"),
+    );
+  });
+
+  it("skips the section when the task text already contains the verbatim ask", () => {
+    const out = buildGoalPrompt({
+      agentName: "Chen",
+      goal: "demo-hello app",
+      task: `demo-hello page\n\n${VERBATIM}`,
+      originalRequest: VERBATIM,
+    });
+    expect(out).not.toContain("--- Original Request ---");
+  });
+});

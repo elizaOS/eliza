@@ -863,6 +863,29 @@ function readAttemptReflections(
   return out;
 }
 
+/**
+ * Render the NEWEST verifier post-mortem as the follow-up's
+ * "--- Verifier Findings ---" body: the full summary plus every unmet
+ * criterion, COMPLETE and untruncated. The reflections were persisted for the
+ * next respawn (#8899) but the validation-failed re-engagement never sent
+ * them, so each retry re-passed its own blind check on the same gaps (live
+ * 2026-08-21, demo-hello: "lacks gradient and current date" stayed in
+ * metadata while three retries rebuilt the bare label).
+ */
+function renderLatestVerifierFindings(
+  metadata: Record<string, unknown> | undefined,
+): string | undefined {
+  const latest = readAttemptReflections(metadata).at(-1);
+  if (!latest) return undefined;
+  const lines: string[] = [];
+  const summary = latest.summary.trim();
+  if (summary) lines.push(summary);
+  if (latest.missing.length > 0) {
+    lines.push("Unmet criteria:", ...latest.missing.map((m) => `- ${m}`));
+  }
+  return lines.length > 0 ? lines.join("\n") : undefined;
+}
+
 function truncate(text: string, max = 2000): string {
   const wellFormed = toWellFormedUnicode(text);
   return wellFormed.length > max
@@ -4144,10 +4167,16 @@ export class OrchestratorTaskService extends Service {
     if (!isNonTrivialGoal(input.goal)) return input;
 
     const hint = this.taskTypeHintFor(input);
+    // The verbatim request is passed EXPLICITLY (not concatenated into the
+    // goal) so refinement can specialize criteria to the actual asked
+    // features — "the page shows a gradient background" instead of only the
+    // generic template (live 2026-08-21, demo-hello). Type detection inside
+    // still reads both texts, so classification is unchanged.
     const generated = await generateDefaultAcceptanceCriteria(
-      `${input.goal}\n${input.originalRequest ?? ""}`,
+      input.goal,
       hint,
       this.runtime,
+      { verbatimRequest: input.originalRequest },
     );
     if (generated.length === 0) return input;
     this.log(
@@ -7257,6 +7286,11 @@ export class OrchestratorTaskService extends Service {
       agentName,
       goal: doc.task.goal,
       task: opts.task ?? doc.task.goal,
+      // The verbatim ask rides along whenever the goal/task text does not
+      // already carry it — the verifier grades against originalRequest, so a
+      // (re)spawn seeded only with the planner's short goal label is set up
+      // to fail (live 2026-08-21, demo-hello).
+      originalRequest: doc.task.originalRequest,
       acceptanceCriteria: doc.task.acceptanceCriteria,
       taskRoomId: doc.task.taskRoomId ?? doc.task.roomId,
       workdir,
@@ -7747,6 +7781,17 @@ export class OrchestratorTaskService extends Service {
       acceptanceCriteria: doc.task.acceptanceCriteria,
       reason,
       taskRoomId: doc.task.taskRoomId ?? doc.task.roomId,
+      // A validation-failed retry gets the FULL picture: the user's verbatim
+      // request and the verifier's newest concrete findings (persisted just
+      // before this send by reEngageOrEscalate). Without them the retry only
+      // ever saw the goal label + generic criteria and re-failed on the same
+      // unstated gaps until the task parked (live 2026-08-21, demo-hello).
+      ...(reason === "validation_failed"
+        ? {
+            originalRequest: doc.task.originalRequest,
+            verifierFindings: renderLatestVerifierFindings(doc.task.metadata),
+          }
+        : {}),
     });
     await this.recordMessage(taskId, {
       content: message,

@@ -36,6 +36,11 @@ class FakeAcp {
   static serviceType = AcpService.serviceType;
   readonly sessions = new Map<string, SessionInfo>();
   readonly stopped: string[] = [];
+  /** Every spawnSession opts, in order — the initial goal prompt rides on
+   * `initialTask`, which SessionInfo does not retain. */
+  readonly spawnOpts: SpawnOptions[] = [];
+  /** Every prompt relayed into a session, in order. */
+  readonly sent: Array<{ sessionId: string; prompt: string }> = [];
   /** Snapshot of each session's metadata AT THE MOMENT stopSession ran, so
    * the test can assert the admin-stop stamp landed BEFORE the stop. */
   readonly metadataAtStop = new Map<string, Record<string, unknown>>();
@@ -44,6 +49,7 @@ class FakeAcp {
   private counter = 0;
 
   async spawnSession(opts: SpawnOptions): Promise<SpawnResult> {
+    this.spawnOpts.push(opts);
     const id = `sess-${++this.counter}`;
     const now = new Date();
     const session: SessionInfo = {
@@ -104,8 +110,9 @@ class FakeAcp {
     if (s) s.status = "stopped";
   }
 
-  async sendToSession(_id: string, _prompt: string): Promise<void> {
+  async sendToSession(id: string, prompt: string): Promise<void> {
     if (this.sendToSessionError) throw this.sendToSessionError;
+    this.sent.push({ sessionId: id, prompt });
   }
 
   onSessionEvent(cb: EventHandler): () => void {
@@ -299,6 +306,106 @@ describe("reEngageOrEscalate verifyParkedAt stamps", () => {
 
     const doc = await store.getTask(taskId);
     expect(typeof doc?.task.metadata?.verifyParkedAt).toBe("string");
+  });
+});
+
+// Live 2026-08-21, task 5c6d85c0 "demo-hello": the verifier's findings sat in
+// metadata.attemptReflections while every validation-failed retry received
+// only the goal label + generic criteria, so the builder re-passed its own
+// blind check three times and the task parked. The retry follow-up must carry
+// the VERBATIM original request and the newest findings, complete.
+describe("validation-failed re-engagement context (demo-hello shape)", () => {
+  const VERBATIM =
+    "build a tiny app called demo-hello: a page that says hello with a nice gradient and the current date, deploy it";
+  const SUMMARY =
+    "The deliverable lacks both the requested gradient and the current date";
+
+  it("sends the retry the original request and the newest verifier findings, verbatim", async () => {
+    const { acp, store, service } = await harness();
+    const detail = await store.createTask({
+      title: "demo-hello",
+      goal: "demo-hello app",
+      originalRequest: VERBATIM,
+      roomId: ROOM,
+    });
+    const taskId = detail.task.id;
+    await service.spawnAgentForTask(taskId);
+    const sessionId = acp.listSessions()[0]?.id as string;
+
+    await (service as unknown as PrivateSurface).reEngageOrEscalate({
+      taskId,
+      sessionId,
+      correction:
+        "Automatic verification did not confirm the task is complete.",
+      eventType: "auto_verify_failed",
+      verifier: "llm",
+      summary: SUMMARY,
+      missing: ["the page serves the requested content"],
+      attempt: 0,
+    });
+
+    const sent = acp.sent.at(-1)?.prompt ?? "";
+    expect(sent).toContain(
+      "Validation of your previous completion did not pass",
+    );
+    expect(sent).toContain("--- Original Request ---");
+    // PROMPT-INTEGRITY: complete and verbatim, no truncation.
+    expect(sent).toContain(VERBATIM);
+    expect(sent).toContain("--- Verifier Findings ---");
+    expect(sent).toContain(SUMMARY);
+    expect(sent).toContain("- the page serves the requested content");
+  });
+
+  it("spawn prompt carries the verbatim request when the goal is only a short label", async () => {
+    const { acp, store, service } = await harness();
+    const detail = await store.createTask({
+      title: "demo-hello",
+      goal: "demo-hello app",
+      originalRequest: VERBATIM,
+      roomId: ROOM,
+    });
+    await service.spawnAgentForTask(detail.task.id);
+    const initialTask = String(acp.spawnOpts.at(-1)?.initialTask ?? "");
+    expect(initialTask).toContain("--- Original Request ---");
+    expect(initialTask).toContain(VERBATIM);
+  });
+
+  it("createTask hands criteria refinement the verbatim request and layers the asked features", async () => {
+    process.env.ELIZA_REQUIRE_GOAL_CONTRACT = "1";
+    const prompts: string[] = [];
+    const useModel = vi.fn(async (_type: string, params: unknown) => {
+      prompts.push(String((params as { prompt?: string }).prompt ?? ""));
+      return JSON.stringify({
+        criteria: [
+          "the page shows a gradient background",
+          "the page shows the current date",
+        ],
+      });
+    });
+    const { service } = await harness({ useModel });
+
+    const detail = await service.createTask({
+      title: "demo-hello",
+      goal: "demo-hello app",
+      kind: "app-build",
+      originalRequest: VERBATIM,
+    });
+
+    // The refinement saw the user's actual words…
+    expect(prompts.join("\n")).toContain(VERBATIM);
+    // …the serve-focused template floor is intact…
+    expect(detail.acceptanceCriteria.slice(0, 3)).toEqual([
+      "the live URL is reachable",
+      "the deliverable file exists in the workdir",
+      "the page serves the requested content",
+    ]);
+    // …and the asked features are named for the verifier AND the builder.
+    expect(detail.acceptanceCriteria).toContain(
+      "the page shows a gradient background",
+    );
+    expect(detail.acceptanceCriteria).toContain(
+      "the page shows the current date",
+    );
   });
 });
 

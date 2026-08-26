@@ -197,12 +197,16 @@ export function staticAcceptanceCriteria(
   return [...DEFAULT_CRITERIA_TEMPLATES[type]];
 }
 
-/** Build the refinement prompt: hand the model the goal + the static template
- *  and ask it to return 3-5 concrete, measurable criteria as a JSON object. */
+/** Build the refinement prompt: hand the model the goal + the user's verbatim
+ *  request + the static template and ask it to return 3-5 concrete,
+ *  measurable criteria as a JSON object. The verbatim request is rendered as
+ *  its own block because the goal is often a planner rewrite that drops the
+ *  asked features the verifier will later grade against. */
 function buildRefinePrompt(
   goal: string,
   type: OrchestratorTaskType,
   template: readonly string[],
+  verbatimRequest?: string,
 ): string {
   return [
     "You are setting the acceptance criteria a coding sub-agent must PROVE before its task is accepted.",
@@ -213,12 +217,63 @@ function buildRefinePrompt(
     `Detected task type: ${type}`,
     "Goal:",
     goal.trim() || "(no goal text)",
+    ...(verbatimRequest?.trim()
+      ? [
+          "",
+          "User's verbatim request (authoritative — criteria must name the features it actually asks for):",
+          verbatimRequest.trim(),
+        ]
+      : []),
     "",
     "Baseline criteria for this task type (keep the ones that still apply, specialize them to the goal, and add any goal-specific ones):",
     template.map((c, i) => `${i + 1}. ${c}`).join("\n"),
     "",
     'Respond with a SINGLE JSON object and nothing else, no markdown fences. Schema: { "criteria": ["<criterion>", "<criterion>", ...] }',
     `Return between ${MIN_CRITERIA} and ${MAX_CRITERIA} criteria.`,
+  ].join("\n");
+}
+
+/** At most this many request-specific content criteria are layered onto the
+ *  app-build template floor (3 template + 2 specifics ≤ {@link MAX_CRITERIA}). */
+const MAX_APP_BUILD_SPECIFICS = 2;
+
+/** A content specific must be an observable property of the SERVED page… */
+const SERVE_OBSERVABLE_RE =
+  /\b(?:page|site|app|html|css|content|deliverable|heading|title|text|background)\b[\s\S]*\b(?:shows?|showing|displays?|displaying|contains?|containing|includes?|including|serves?|serving|renders?|says?|reads?|presents?|features?|has|have|uses?|styled)\b|\b(?:shows?|displays?|contains?|includes?|serves?|renders?|features?)\b[\s\S]*\b(?:page|site|app|html|css|content|heading|title|text|background)\b/i;
+
+/** …and must not smuggle back the runtime/check demands the app-build
+ *  template exists to avoid (#20794; four live parks 2026-08-19). */
+const NON_STATIC_DEMAND_RE =
+  /\b(?:click(?:s|ing)?|hover(?:s|ing)?|input|keyboard|drag(?:s|ging)?|scroll(?:s|ing)?|interact\w*|animat\w*|transition\w*|update(?:s|d|ing)?|chang(?:es|ed|ing)|refresh\w*|every\s+(?:second|minute)|real[- ]?time|live[- ]?updat\w*|console|devtools|error[- ]?free|no\s+(?:js\s+|javascript\s+)?errors?|typecheck|lint|tests?|coverage|performance|lighthouse|responsive|cross-browser)\b/i;
+
+/** Whether a refined app-build criterion is a static, serve-observable content
+ *  claim the evidence pipeline can actually prove from the deliverable. */
+function isServeObservableContentCriterion(criterion: string): boolean {
+  return (
+    SERVE_OBSERVABLE_RE.test(criterion) && !NON_STATIC_DEMAND_RE.test(criterion)
+  );
+}
+
+/** Build the CONSTRAINED app-build refinement prompt: extract only concrete,
+ *  visible page content the request explicitly asks for, phrased as
+ *  properties of the served page. */
+function buildAppBuildContentPrompt(
+  requestText: string,
+  template: readonly string[],
+): string {
+  return [
+    "You are specializing acceptance criteria for a static web page/app build.",
+    `From the user's request below, extract up to ${MAX_APP_BUILD_SPECIFICS} criteria that each name ONE concrete piece of requested page content, phrased as an observable property of the served page (e.g. "the page shows a gradient background", "the page shows the current date").`,
+    "Only content observable in the served page's HTML/CSS/JS source qualifies. NEVER demand runtime behavior, interactions, animations in motion, browser-console state, performance, responsiveness, tests, lint, or typecheck, and never invent file paths or features the request does not ask for.",
+    "If the request names no concrete visible content beyond a working page, return an empty list.",
+    "",
+    "User's verbatim request:",
+    requestText.trim(),
+    "",
+    "Baseline criteria already covered (do NOT restate them):",
+    template.map((c, i) => `${i + 1}. ${c}`).join("\n"),
+    "",
+    `Respond with a SINGLE JSON object and nothing else, no markdown fences. Schema: { "criteria": ["<criterion>", ...] } (0-${MAX_APP_BUILD_SPECIFICS} entries).`,
   ].join("\n");
 }
 
@@ -236,6 +291,16 @@ function extractCriteriaArray(parsed: Record<string, unknown>): string[] {
     .filter((entry) => entry.length > 0);
 }
 
+/** Optional inputs for {@link generateDefaultAcceptanceCriteria}. */
+export interface GenerateCriteriaOptions {
+  /** The user's VERBATIM request (`task.originalRequest`). The goal is often a
+   * planner rewrite/short label; the verbatim text is what the verifier will
+   * grade against, so refinement must see it to name the actual asked
+   * features (live 2026-08-21, demo-hello: generic template criteria while
+   * the verifier failed "gradient and current date" three times). */
+  verbatimRequest?: string;
+}
+
 /**
  * Generate default acceptance criteria for a goal.
  *
@@ -246,6 +311,8 @@ function extractCriteriaArray(parsed: Record<string, unknown>): string[] {
  *   falls back to the static template — it NEVER throws.
  * - When `runtime` is omitted, returns the static template directly (the
  *   deterministic path the unit tests pin).
+ * - `opts.verbatimRequest` feeds refinement (and type detection when no hint
+ *   is given) so generated criteria name the actually-asked features.
  *
  * Always returns ≥{@link MIN_CRITERIA} criteria for a non-trivial goal.
  */
@@ -253,26 +320,73 @@ export async function generateDefaultAcceptanceCriteria(
   goal: string,
   taskTypeHint?: OrchestratorTaskType,
   runtime?: IAgentRuntime,
+  opts?: GenerateCriteriaOptions,
 ): Promise<string[]> {
-  const type = taskTypeHint ?? detectTaskType(goal);
+  const verbatim = opts?.verbatimRequest?.trim() ?? "";
+  // Detection reads BOTH texts: the planner's goal often drops the request's
+  // app/script phrasing (same both-texts rule as taskTypeHintFor).
+  const detectionText = [goal, verbatim].filter((t) => t.trim()).join("\n");
+  const type = taskTypeHint ?? detectTaskType(detectionText);
   const fallback = [...DEFAULT_CRITERIA_TEMPLATES[type]];
 
-  // Static app builds keep the deterministic serve-focused template with NO
-  // model refine: every refine pass invented runtime-behavior demands in new
-  // phrasings ("browser console shows zero errors", "interaction updates the
-  // DOM", "timer changes its value") that no headless pipeline can evidence,
-  // and each parked a live, working page (2026-08-19, four distinct parks).
-  // The template criteria — reachable URL, files on disk, served content —
-  // are exactly what the evidence pipeline can prove.
-  if (type === "app-build") return fallback;
-  // Same purity rule for script-run: refinement re-invents the lint/test-suite
-  // demands the template exists to avoid.
+  const hasModel = Boolean(runtime && typeof runtime.useModel === "function");
+
+  // Static app builds keep the serve-focused template as the FLOOR — its
+  // three lines are exactly what the evidence pipeline can prove, and the
+  // free-form refine pass that once replaced them invented runtime-behavior
+  // demands no headless pipeline can evidence (2026-08-19, four distinct
+  // parks; #20794). What the floor alone cannot do is name the asked
+  // features: "the page serves the requested content" told the verifier
+  // nothing about the requested gradient/current date, so the builder passed
+  // its own blind check while the verifier failed the task (2026-08-21,
+  // demo-hello). A CONSTRAINED refinement now layers up to
+  // {@link MAX_APP_BUILD_SPECIFICS} serve-observable content criteria from
+  // the verbatim request on top of the intact template — filtered hard
+  // (invented paths, uncollectable evidence, non-static demands) and
+  // degrading to the pure template on any model failure.
+  if (type === "app-build") {
+    const requestText = verbatim || goal.trim();
+    if (!hasModel || !requestText || !runtime) return fallback;
+    try {
+      const prompt = buildAppBuildContentPrompt(requestText, fallback);
+      const result = await runtime.useModel(ModelType.TEXT_SMALL, {
+        prompt,
+        stopSequences: [],
+      });
+      const raw = typeof result === "string" ? result : String(result ?? "");
+      const parsed = parseJsonObjectResponse(raw);
+      if (!parsed) return fallback;
+      const specifics = stripUncollectableEvidenceCriteria(
+        stripInventedArtifactCriteria(extractCriteriaArray(parsed), requestText)
+          .kept,
+        type,
+      )
+        .kept.filter(isServeObservableContentCriterion)
+        .slice(0, MAX_APP_BUILD_SPECIFICS);
+      if (specifics.length === 0) return fallback;
+      // Template first — the floor stays intact and deduped; specifics layer
+      // on behind it within the MAX_CRITERIA cap.
+      return normalizeCriteria([...fallback, ...specifics], fallback);
+    } catch {
+      // error-policy:J4 optional model refinement of an external dep; any failure degrades to the designed deterministic static template
+      return fallback;
+    }
+  }
+  // Script-run keeps the pure deterministic template: refinement re-invents
+  // the lint/test-suite demands the template exists to avoid, and its
+  // "captured run output contains the requested result" line is already
+  // request-anchored for the verifier.
   if (type === "script-run") return fallback;
 
-  if (!runtime || typeof runtime.useModel !== "function") return fallback;
+  if (!hasModel || !runtime) return fallback;
 
   try {
-    const prompt = buildRefinePrompt(goal, type, fallback);
+    const prompt = buildRefinePrompt(
+      goal,
+      type,
+      fallback,
+      verbatim && verbatim !== goal.trim() ? verbatim : undefined,
+    );
     const result = await runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
       stopSequences: [],
@@ -283,10 +397,10 @@ export async function generateDefaultAcceptanceCriteria(
     const candidates = extractCriteriaArray(parsed);
     if (candidates.length === 0) return fallback;
     // The prompt forbids invented paths, but the filter is the enforcement:
-    // a criterion pinning a path the goal never named is unsatisfiable by
+    // a criterion pinning a path the request never named is unsatisfiable by
     // design (#20794), so it is dropped and the template tops the set back up.
     const producible = stripUncollectableEvidenceCriteria(
-      stripInventedArtifactCriteria(candidates, goal).kept,
+      stripInventedArtifactCriteria(candidates, detectionText).kept,
       type,
     ).kept;
     const refined = normalizeCriteria(producible, fallback);
