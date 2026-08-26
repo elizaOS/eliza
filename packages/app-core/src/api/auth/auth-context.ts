@@ -16,6 +16,7 @@ import type http from "node:http";
 import {
   isLoopbackBindHost,
   isLoopbackRemoteAddress,
+  proxyClientHeaderBlocksLocalTrust,
   type RuntimeEnvRecord,
 } from "@elizaos/shared";
 import type {
@@ -62,6 +63,7 @@ function sessionAllowedForRequest(
 ): boolean {
   if (!session.scopes.includes(DESKTOP_LOOPBACK_SESSION_SCOPE)) return true;
   if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) return false;
+  if (proxyClientHeaderBlocksLocalTrust(req.headers)) return false;
   const host = firstHeaderValue(req.headers.host);
   return host !== null && isLoopbackBindHost(host);
 }
