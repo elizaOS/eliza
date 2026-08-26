@@ -383,8 +383,21 @@ export function createCipheriv(
 	const normalizedKey = Uint8Array.from(key);
 	let currentIv = Uint8Array.from(iv);
 	let pending = new Uint8Array(0);
+	let outputEncoding: BufferEncodingName | undefined;
+	const lockOutputEncoding = (encoding: string): BufferEncodingName => {
+		const normalized = normalizeEncoding(encoding);
+		if (outputEncoding === undefined) {
+			outputEncoding = normalized;
+		} else if (outputEncoding !== normalized) {
+			// node:crypto rejects mid-stream output-encoding changes on the
+			// cipher exactly like the decipher.
+			throw new Error("Cannot change encoding");
+		}
+		return normalized;
+	};
 	return {
-		update(data, inputEncoding, outputEncoding) {
+		update(data, inputEncoding, outEncArg) {
+			const outEnc = lockOutputEncoding(outEncArg);
 			const incoming = toUint8Array(data, normalizeEncoding(inputEncoding));
 			pending = concatBytes(pending, incoming);
 			const fullBlockLength =
@@ -401,16 +414,17 @@ export function createCipheriv(
 				encryptedChunk,
 				encryptedChunk.length - AES_BLOCK_SIZE,
 			);
-			return toEncodedString(encryptedChunk, normalizeEncoding(outputEncoding));
+			return toEncodedString(encryptedChunk, outEnc);
 		},
 		final(encoding) {
+			const outEnc = lockOutputEncoding(encoding);
 			const encryptedTail = Uint8Array.from(
 				cbc(normalizedKey, currentIv, { disablePadding: true }).encrypt(
 					applyPkcs7Padding(pending),
 				),
 			);
 			pending = new Uint8Array(0);
-			return toEncodedString(encryptedTail, normalizeEncoding(encoding));
+			return toEncodedString(encryptedTail, outEnc);
 		},
 	};
 }

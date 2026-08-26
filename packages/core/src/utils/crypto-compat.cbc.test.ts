@@ -198,11 +198,29 @@ describe("AES-256-CBC streaming semantics (hold-back buffer + IV chaining)", () 
 		);
 		// the alias pair utf8/utf-8 stays one encoding
 		const d3 = createDecipheriv("aes-256-cbc", KEY, IV);
-		const out = d3.update(hex.slice(0, 32), "hex", "utf8");
+		d3.update(hex.slice(0, 32), "hex", "utf8");
 		expect(
 			() => d3.update(hex.slice(32), "hex", "utf-8") + d3.final("utf8"),
 		).not.toThrow();
-		expect(out.length + 1).toBeGreaterThan(0); // shape smoke
+	});
+
+	it("cipher rejects changing the output encoding mid-stream like node:crypto", () => {
+		// update hex -> update base64
+		const c1 = createCipheriv("aes-256-cbc", KEY, IV);
+		c1.update(SECRET, "utf8", "hex");
+		expect(() => c1.update("tail", "utf8", "base64")).toThrow(
+			/Cannot change encoding/,
+		);
+		// update hex -> final base64
+		const c2 = createCipheriv("aes-256-cbc", KEY, IV);
+		c2.update(SECRET, "utf8", "hex");
+		expect(() => c2.final("base64")).toThrow(/Cannot change encoding/);
+		// the alias pair utf8/utf-8 stays one encoding
+		const c3 = createCipheriv("aes-256-cbc", KEY, IV);
+		c3.update("a".repeat(32), "utf8", "utf8");
+		expect(
+			() => c3.update("b", "utf8", "utf-8") + c3.final("utf8"),
+		).not.toThrow();
 	});
 
 	it("matches node:crypto byte-for-byte on a non-ASCII secret round-trip", () => {
