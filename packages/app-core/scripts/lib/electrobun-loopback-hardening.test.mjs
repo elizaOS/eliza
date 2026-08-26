@@ -1,3 +1,5 @@
+/** Deterministically verifies Electrobun renderer RPC source hardening. */
+
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
