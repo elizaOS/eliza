@@ -4450,6 +4450,8 @@ export function ChatOverlay({
         navigateTab: slash.navigateTab,
         navigateSettings: slash.navigateSettings,
         navigateView: slash.navigateView,
+        // One continuous thread: reset plumbing remains available to internal
+        // recovery flows, but slash/client actions cannot create or switch chats.
         clearChat: () => {},
         newConversation: () => {},
         toggleFullscreen: () => {},
@@ -5873,9 +5875,9 @@ export function ChatOverlay({
             data-chat-state={chatState}
             data-header-shown={headerVisible ? "true" : "false"}
             data-theme="dark"
-            // The active conversation id + its position in the most-recent-first
-            // list, surfaced so flows like the tutorial can observe a new-chat or a
-            // swipe-between-chats without reaching into controller internals.
+            // Preserve the active conversation identity for diagnostics and
+            // persistence without exposing thread creation or switching in the
+            // canonical one-conversation UI.
             data-conversation-id={conversationNav.activeId ?? undefined}
             data-conversation-index={conversationNav.index}
             // ONE persistent element across pill ↔ input ↔ chat (never remounts —
@@ -6679,7 +6681,7 @@ export function ChatOverlay({
                             }}
                             // Same responsive real target and 20px mark as the
                             // SoftButton controls, so the row reads as one family.
-                            className="relative shrink-0 data-[state=open]:text-txt [&_svg]:size-5"
+                            className="relative shrink-0 hover:bg-transparent data-[state=open]:text-txt [&_svg]:size-5"
                           >
                             <Glyph d={PLUS_GLYPH} className="size-5" />
                           </Button>
