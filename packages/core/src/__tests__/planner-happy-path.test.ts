@@ -2108,7 +2108,12 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 	// honest confirmation instead of falling through to the no-result apology.
 	const runDeterministicViewsTurn = async (
 		handlerResult: ActionResult,
+		options: {
+			stageOneReply?: string;
+			postToolReply?: string;
+		} = {},
 	): Promise<string | undefined> => {
+		const stageOneReply = options.stageOneReply ?? "Opening Home now.";
 		const views = makeMockAction({
 			name: "VIEWS",
 			parameters: [
@@ -2152,10 +2157,18 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					body: stage1Response({
 						contexts: ["general"],
 						candidateActionNames: ["VIEWS"],
-						replyText: "Opening Home now.",
+						replyText: stageOneReply,
 						thought: "The view switch is deterministic.",
 					}),
 				},
+				...(options.postToolReply
+					? [
+							{
+								expectModelType: ModelType.ACTION_PLANNER,
+								body: { text: options.postToolReply, toolCalls: [] },
+							},
+						]
+					: []),
 			],
 		});
 		const result = await runV5MessageRuntimeStage1({
@@ -2165,15 +2178,17 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			responseId: RESPONSE_ID,
 		});
 		expect(result.kind).toBe("planned_reply");
-		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
-			ModelType.RESPONSE_HANDLER,
-		]);
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual(
+			options.postToolReply
+				? [ModelType.RESPONSE_HANDLER, ModelType.ACTION_PLANNER]
+				: [ModelType.RESPONSE_HANDLER],
+		);
 		return result.kind === "planned_reply"
 			? result.result.responseContent?.text
 			: undefined;
 	};
 
-	it("confirms a deterministic VIEWS success from its accepted effect receipt instead of the no-result apology", async () => {
+	it("releases the model-authored view reply after the accepted effect receipt without another inference", async () => {
 		const text = await runDeterministicViewsTurn({
 			success: true,
 			text: JSON.stringify({
@@ -2186,23 +2201,70 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			transcriptVisibility: "internal",
 			modelReplyRequired: true,
 		});
-		expect(text).toBe("done — you're on Home.");
+		expect(text).toBe("Opening Home now.");
 	});
 
-	it("keeps the effect confirmation through reply egress when the view label collides with a tracked-work noun", async () => {
-		const text = await runDeterministicViewsTurn({
-			success: true,
-			text: JSON.stringify({
-				effect: "view_navigation",
-				status: "accepted",
-				viewId: "settings",
-				label: "Settings",
-				path: "/settings",
-			}),
-			transcriptVisibility: "internal",
-			modelReplyRequired: true,
-		});
-		expect(text).toBe("done — you're on Settings.");
+	it("keeps a natural navigation acknowledgement through reply egress when the label is a tracked-work noun", async () => {
+		const text = await runDeterministicViewsTurn(
+			{
+				success: true,
+				text: JSON.stringify({
+					effect: "view_navigation",
+					status: "accepted",
+					viewId: "settings",
+					label: "Settings",
+					path: "/settings",
+				}),
+				transcriptVisibility: "internal",
+				modelReplyRequired: true,
+			},
+			{ stageOneReply: "You're in Settings now." },
+		);
+		expect(text).toBe("You're in Settings now.");
+	});
+
+	it("uses post-tool synthesis when Stage 1 supplied no user-facing prose", async () => {
+		const text = await runDeterministicViewsTurn(
+			{
+				success: true,
+				text: JSON.stringify({
+					effect: "view_navigation",
+					status: "accepted",
+					viewId: "notes",
+					label: "Notes",
+					path: "/notes",
+				}),
+				transcriptVisibility: "internal",
+				modelReplyRequired: true,
+			},
+			{
+				stageOneReply: "",
+				postToolReply: "Notes are open whenever you're ready.",
+			},
+		);
+		expect(text).toBe("Notes are open whenever you're ready.");
+	});
+
+	it("uses post-tool synthesis instead of releasing an unrelated mutation claim", async () => {
+		const text = await runDeterministicViewsTurn(
+			{
+				success: true,
+				text: JSON.stringify({
+					effect: "view_navigation",
+					status: "accepted",
+					viewId: "notes",
+					label: "Notes",
+					path: "/notes",
+				}),
+				transcriptVisibility: "internal",
+				modelReplyRequired: true,
+			},
+			{
+				stageOneReply: "Done — I saved your note and opened Notes.",
+				postToolReply: "Notes are open. I didn't change any of them.",
+			},
+		);
+		expect(text).toBe("Notes are open. I didn't change any of them.");
 	});
 
 	it("keeps the no-result fallback for a deterministic success with no receipt at all", async () => {
