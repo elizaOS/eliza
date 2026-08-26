@@ -141,7 +141,7 @@ describe("Cloud CF atomic Worker secrets deploy", () => {
   test("keeps post-deploy session activation separate from the atomic payload", () => {
     const prepare = step("Prepare Worker secrets for atomic deploy");
     const activation = step(
-      "Activate and verify staging session exchange after deploy proof",
+      "Activate and verify staging session exchange configuration after deploy proof",
     );
     expect(prepare.run).not.toContain(
       "wrangler secret put STAGING_SESSION_EXCHANGE_ENABLED",
@@ -150,7 +150,9 @@ describe("Cloud CF atomic Worker secrets deploy", () => {
       "wrangler secret put STAGING_SESSION_EXCHANGE_ENABLED --env staging",
     );
     expect(index("Verify deployed API commit")).toBeLessThan(
-      index("Activate and verify staging session exchange after deploy proof"),
+      index(
+        "Activate and verify staging session exchange configuration after deploy proof",
+      ),
     );
   });
 });
