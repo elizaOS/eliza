@@ -1,6 +1,8 @@
 /** Verifies app-shell WebSocket origins for dev proxies and native remotes. */
 
 import { describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { runInNewContext } from "node:vm";
 import appViteConfig, {
   ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS,
@@ -81,6 +83,9 @@ describe("app shell local connection policy", () => {
       "/brand/favicons/android-chrome-192x192.png",
       "/brand/favicons/android-chrome-512x512.png",
     ]);
+    for (const icon of manifest.icons) {
+      expect(existsSync(join(import.meta.dir, "public", icon.src))).toBe(true);
+    }
   });
 
   test("preserves the browser authority through the local API proxy", () => {
