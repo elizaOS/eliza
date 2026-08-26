@@ -56,11 +56,16 @@ export type InternalElizaConversationFetchFactory = (
 ) => InternalElizaConversationFetch;
 
 interface InternalVoiceSharedRuntime {
+  dedicatedFetch?: typeof fetch;
   executionCtx?: BridgeExecutionContext;
   namespace?: RuntimeDurableObjectNamespace;
   readCachedAgent(): Promise<SharedRuntimeAgent | null>;
   scheduleHydration(): boolean;
 }
+
+type OwnedDedicatedVoiceConversationResolution =
+  | { kind: "not_dedicated" }
+  | { kind: "dedicated"; fetch: typeof fetch };
 
 function isCachedVoiceAgent(
   agent: SharedRuntimeAgent | null,
@@ -112,6 +117,10 @@ export function createInternalElizaConversationFetchFactory(
       claims.agentId,
     );
     let hydrationPromise: Promise<void> | null = null;
+    let dedicatedResolution: OwnedDedicatedVoiceConversationResolution | null =
+      null;
+    let dedicatedResolutionPromise: Promise<OwnedDedicatedVoiceConversationResolution> | null =
+      null;
 
     const personalAgent = isPersonalSharedAgentId(claims.agentId)
       ? personalSharedAgent({
@@ -120,9 +129,14 @@ export function createInternalElizaConversationFetchFactory(
         })
       : null;
     const readCachedAgent = async (): Promise<SharedRuntimeAgent | null> => {
-      if (personalAgent?.id === claims.agentId) return personalAgent;
+      if (personalAgent?.id === claims.agentId) {
+        dedicatedResolution ??= { kind: "not_dedicated" };
+        return personalAgent;
+      }
       const cached = await cache.get<SharedRuntimeAgent>(cacheKey);
-      return isCachedVoiceAgent(cached, claims) ? cached : null;
+      const agent = isCachedVoiceAgent(cached, claims) ? cached : null;
+      if (agent) dedicatedResolution ??= { kind: "not_dedicated" };
+      return agent;
     };
 
     const scheduleHydration = (): boolean => {
@@ -151,15 +165,36 @@ export function createInternalElizaConversationFetchFactory(
       return true;
     };
 
+    const resolveDedicatedConversation =
+      async (): Promise<OwnedDedicatedVoiceConversationResolution> => {
+        if (dedicatedResolution) return dedicatedResolution;
+        if (dedicatedResolutionPromise) return dedicatedResolutionPromise;
+
+        const resolution = import("../../../../src/dedicated-agent-proxy")
+          .then(({ createOwnedDedicatedVoiceConversationFetch }) =>
+            createOwnedDedicatedVoiceConversationFetch(env, claims),
+          )
+          .then((target) => {
+            dedicatedResolution = target;
+            return target;
+          })
+          .finally(() => {
+            if (dedicatedResolutionPromise === resolution) {
+              dedicatedResolutionPromise = null;
+            }
+          });
+        dedicatedResolutionPromise = resolution;
+        return resolution;
+      };
+
     const prewarm = async (): Promise<void> => {
       const namespace = env.SHARED_RUNTIME_CONVERSATIONS;
-      if (!namespace || !executionCtx) return;
       await runWithCloudBindingsAsync(
         env as unknown as Record<string, unknown>,
         async () => {
           let agent = await readCachedAgent();
           let conversationPrewarmAttemptedByHydration = false;
-          if (!agent) {
+          if (!agent && namespace && executionCtx) {
             scheduleHydration();
             // Capture before awaiting: the hydration's finally block clears the
             // shared slot. Joining this exact promise lets the first voice turn
@@ -171,12 +206,21 @@ export function createInternalElizaConversationFetchFactory(
             }
             agent = await readCachedAgent();
           }
-          if (!agent || conversationPrewarmAttemptedByHydration) return;
-          await coordinateSharedConversationPrewarm(
-            agent.id,
-            claims.conversationId,
-            { namespace },
-          );
+          if (agent) {
+            if (!namespace || conversationPrewarmAttemptedByHydration) return;
+            await coordinateSharedConversationPrewarm(
+              agent.id,
+              claims.conversationId,
+              { namespace },
+            );
+            return;
+          }
+
+          // A Shared miss can be an owned Dedicated sandbox. Resolve it under
+          // a fresh request-local DB context while the caller is beginning to
+          // speak, then retain only its scoped transport closure for this
+          // short-lived voice session.
+          await resolveDedicatedConversation();
         },
       );
     };
@@ -190,18 +234,65 @@ export function createInternalElizaConversationFetchFactory(
         env as unknown as Record<string, unknown>,
         async () => {
           try {
-            const response = await dispatchInternalElizaConversationFetch(
+            const runtime: InternalVoiceSharedRuntime = {
+              executionCtx,
+              namespace: env.SHARED_RUNTIME_CONVERSATIONS,
+              readCachedAgent,
+              scheduleHydration,
+              ...(dedicatedResolution?.kind === "dedicated"
+                ? { dedicatedFetch: dedicatedResolution.fetch }
+                : {}),
+            };
+            let response = await dispatchInternalElizaConversationFetch(
               env,
               claims,
               input,
               init,
-              {
-                executionCtx,
-                namespace: env.SHARED_RUNTIME_CONVERSATIONS,
-                readCachedAgent,
-                scheduleHydration,
-              },
+              runtime,
             );
+            let sharedScopeWarming = false;
+            if (response.status === 503 && !runtime.dedicatedFetch) {
+              try {
+                const body = (await response.clone().json()) as {
+                  code?: unknown;
+                };
+                sharedScopeWarming = body.code === "agent_cache_warming";
+              } catch {
+                // error-policy:J3 a non-JSON 503 is not the typed scope-miss
+                // signal and must not trigger an authoritative tier lookup.
+              }
+            }
+            if (
+              response.status === 503 &&
+              dedicatedResolution?.kind !== "not_dedicated" &&
+              !runtime.dedicatedFetch &&
+              (sharedScopeWarming || dedicatedResolutionPromise !== null)
+            ) {
+              try {
+                const target = await resolveDedicatedConversation();
+                if (target.kind === "dedicated") {
+                  response = await dispatchInternalElizaConversationFetch(
+                    env,
+                    claims,
+                    input,
+                    init,
+                    { ...runtime, dedicatedFetch: target.fetch },
+                  );
+                }
+              } catch (error) {
+                // error-policy:J7 retain the typed Shared warming response;
+                // its bounded retry gives a transient authoritative lookup a
+                // chance to recover without exposing repository failures.
+                logger.warn(
+                  "[voice-sse-context] dedicated scope resolution failed",
+                  {
+                    agentId: claims.agentId,
+                    error:
+                      error instanceof Error ? error.message : String(error),
+                  },
+                );
+              }
+            }
             logger.info("[voice-sse-context] before response", {
               cloudBindingsContext: hasCloudBindingsContext(),
               status: response.status,
@@ -222,6 +313,7 @@ export function createInternalElizaConversationFetchFactory(
     }) as InternalElizaConversationFetch;
     fetchImpl.prewarm = prewarm;
     fetchImpl.recordLifecycleEvent = async (event) => {
+      if (dedicatedResolution?.kind === "dedicated") return;
       const namespace = env.SHARED_RUNTIME_CONVERSATIONS;
       if (!namespace) {
         throw new Error(
@@ -303,6 +395,10 @@ async function dispatchInternalElizaConversationFetch(
       { success: false, error: "Agent not found", code: "agent_not_found" },
       { status: 404 },
     );
+  }
+
+  if (runtime?.dedicatedFetch) {
+    return runtime.dedicatedFetch(request);
   }
 
   if (!runtime?.namespace || !runtime.executionCtx) {

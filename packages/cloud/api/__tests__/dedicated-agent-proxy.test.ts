@@ -150,6 +150,7 @@ afterAll(() => {
 
 const {
   handleDedicatedAgentProxy,
+  createOwnedDedicatedVoiceConversationFetch,
   dedicatedProxyOriginHeadersTimeoutMs,
   __dedicatedProxyTestHooks,
 } = await import("../src/dedicated-agent-proxy");
@@ -247,6 +248,102 @@ beforeEach(() => {
   rateLimitResult = { success: true };
   rateLimitError = null;
   rateLimitKeys.length = 0;
+});
+
+describe("dedicated-agent-proxy — scoped voice conversation transport", () => {
+  const ORGANIZATION_ID = "22222222-2222-4222-8222-222222222222";
+  const USER_ID = "33333333-3333-4333-8333-333333333333";
+  const CONVERSATION_ID = "44444444-4444-4444-8444-444444444444";
+  const claims = {
+    agentId: AGENT,
+    conversationId: CONVERSATION_ID,
+    organizationId: ORGANIZATION_ID,
+    userId: USER_ID,
+  };
+
+  test("reuses the owned agent-router stream and swaps every Cloud credential", async () => {
+    sandboxResult = {
+      ...runningDedicated,
+      organization_id: ORGANIZATION_ID,
+      user_id: USER_ID,
+    };
+    const resolved = await createOwnedDedicatedVoiceConversationFetch(
+      {
+        AGENT_ROUTER_ORIGIN_HOST: "cp.example.test",
+        ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud.eliza.app",
+      } as never,
+      claims,
+    );
+    expect(resolved.kind).toBe("dedicated");
+    if (resolved.kind !== "dedicated") {
+      throw new Error("expected an owned Dedicated voice transport");
+    }
+
+    const response = await resolved.fetch(
+      `https://voice.internal/api/v1/eliza/agents/${AGENT}/api/conversations/${CONVERSATION_ID}/messages/stream`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer voice-service",
+          Cookie: "cloud-session=secret",
+          "Content-Type": "application/json",
+          "X-API-Key": "cloud-api-key",
+          "X-Eliza-Csrf": "cloud-csrf",
+        },
+        body: JSON.stringify({ text: "go to settings" }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    const upstream = requireCapturedRequest();
+    expect(upstream.url).toBe(
+      `https://cp.example.test/api/conversations/${CONVERSATION_ID}/messages/stream`,
+    );
+    expect(upstream.headers.get("authorization")).toBe(
+      "Bearer agent-secret-token",
+    );
+    expect(upstream.headers.get("x-forwarded-host")).toBe(
+      `${AGENT}.cloud.eliza.app`,
+    );
+    expect(upstream.headers.get("cookie")).toBeNull();
+    expect(upstream.headers.get("x-api-key")).toBeNull();
+    expect(upstream.headers.get("x-eliza-csrf")).toBeNull();
+    await expect(upstream.json()).resolves.toEqual({
+      text: "go to settings",
+    });
+  });
+
+  test("falls through only for the exact owned Shared tier", async () => {
+    sandboxResult = {
+      ...runningDedicated,
+      organization_id: ORGANIZATION_ID,
+      user_id: USER_ID,
+      execution_tier: "shared",
+    };
+    await expect(
+      createOwnedDedicatedVoiceConversationFetch(ENV, claims),
+    ).resolves.toEqual({ kind: "not_dedicated" });
+
+    sandboxResult = {
+      ...runningDedicated,
+      organization_id: ORGANIZATION_ID,
+      user_id: "different-user",
+    };
+    const denied = await createOwnedDedicatedVoiceConversationFetch(
+      ENV,
+      claims,
+    );
+    expect(denied.kind).toBe("dedicated");
+    if (denied.kind !== "dedicated") {
+      throw new Error("expected a terminal scoped response");
+    }
+    const response = await denied.fetch("https://voice.internal/ignored");
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "agent_not_found",
+    });
+    expect(captured).toBeNull();
+  });
 });
 
 function executePairHandoff(html: string): {
