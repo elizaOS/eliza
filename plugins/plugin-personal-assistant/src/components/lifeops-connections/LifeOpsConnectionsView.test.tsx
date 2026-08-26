@@ -338,7 +338,9 @@ describe("LifeOpsConnectionsView", () => {
     render(<LifeOpsConnectionsView adapter={localAdapter} />);
     await screen.findByText("owner@example.test");
 
-    fireEvent.click(screen.getByRole("radio", { name: "7 days" }));
+    const sevenDays = screen.getByRole("button", { name: "7 days" });
+    fireEvent.click(sevenDays);
+    expect(sevenDays.getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(
       screen.getByRole("button", { name: "Seed selected context" }),
     );
