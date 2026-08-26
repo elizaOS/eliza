@@ -7,12 +7,13 @@
  * off every window's first-paint graph; PluginsPageView is imported statically
  * because App.tsx already eager-loads it, so a lazy edge here buys nothing.
  */
+
+import { listAppShellPages } from "@elizaos/ui/app-shell-registry";
 import type { PageScope } from "@elizaos/ui/components/pages/page-scoped-conversations";
 import { PairingView } from "@elizaos/ui/components/shell/PairingView";
 import { StartupFailureView } from "@elizaos/ui/components/shell/StartupFailureView";
 import { AppWorkspaceChrome } from "@elizaos/ui/components/workspace/AppWorkspaceChrome";
 import { getBootConfig } from "@elizaos/ui/config/boot-config-store";
-import { listAppShellPages } from "@elizaos/ui/app-shell-registry";
 import {
   resolveDetachedShellTarget,
   type WindowShellRoute,
