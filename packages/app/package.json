@@ -175,7 +175,7 @@
     "@capacitor/preferences": "8.0.1",
     "@capacitor/push-notifications": "8.1.2",
     "@capacitor/share": "^8.0.0",
-    "@capacitor/status-bar": "8.0.2",
+    "@capacitor/status-bar": "8.0.3",
     "@elizaos/app-core": "workspace:*",
     "@elizaos/capacitor-agent": "workspace:*",
     "@elizaos/capacitor-appblocker": "workspace:*",
