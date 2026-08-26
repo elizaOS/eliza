@@ -47,11 +47,16 @@
  *   bun packages/cloud/scripts/admin/apps-tenant-db-recovery.ts mint \
  *     --target-id drill-... --archive-sha256 <sha256> --ttl-minutes 120
  *
- * Target provisioning (operator, on the DISPOSABLE target only): set both
- * twin settings before the drill, e.g.
- *   ALTER SYSTEM SET eliza.restore_target_id = 'drill-...';
- *   ALTER SYSTEM SET eliza.restore_capability = '<serialized capability>';
- *   SELECT pg_reload_conf();
+ * Target provisioning (operator, on the DISPOSABLE target only): the
+ * `provision` subcommand verifies a minted capability file and installs both
+ * twin settings. PostgreSQL 14 rejects ALTER SYSTEM SET for undeclared
+ * custom GUCs, so provisioning writes postgresql.auto.conf directly (the
+ * exact file ALTER SYSTEM SET itself writes), reloads, and verifies through
+ * a fresh session:
+ *   ELIZA_RESTORE_CAPABILITY_KEY=... \
+ *   bun packages/cloud/scripts/admin/apps-tenant-db-recovery.ts provision \
+ *     --target-dsn postgresql://postgres:***@127.0.0.1:5433/postgres \
+ *     --target-id drill-... --capability-file /path/to/capability.txt
  */
 
 import type { ChildProcess } from "node:child_process";
@@ -1524,6 +1529,17 @@ export function executeDrill(options: CliOptions): DrillReport {
       // drops any field divergence from the originally parsed envelope.
       capability = verifyRestoreCapability(capability, signingKey, Date.now());
       assertDrillLockHeld(drillLock);
+      // Expiry is re-proven before every destructive phase boundary, not
+      // once up front: a drill that outlives its capability must stop
+      // instead of continuing destructive work after expiry (#23453
+      // review).
+      const assertCapabilityLive = (): void => {
+        capability = verifyRestoreCapability(
+          capability,
+          signingKey,
+          Date.now(),
+        );
+      };
       // Transactional exclusivity: refuse a different capability on this target
       // before any destructive statement runs. Whether THIS capability already
       // claimed the target is read BEFORE the claim transaction runs — the
@@ -1630,6 +1646,7 @@ export function executeDrill(options: CliOptions): DrillReport {
       // session-lock holder dies mid-run, exclusivity no longer holds and the
       // remaining destructive statements must not run (#23453 review).
       assertDrillLockHeld(drillLock);
+      assertCapabilityLive();
       const guardedGlobals = join(work, "guarded-globals.sql");
       writeFileSync(
         guardedGlobals,
@@ -1653,6 +1670,7 @@ export function executeDrill(options: CliOptions): DrillReport {
         const databaseIdentifier = quoteSqlIdentifier(entry.databaseName);
         const ownerIdentifier = quoteSqlIdentifier(probe.role);
         assertDrillLockHeld(drillLock);
+        assertCapabilityLive();
         const guardedDrop = join(work, `${entry.dumpId}.drop.sql`);
         writeFileSync(
           guardedDrop,
@@ -1724,14 +1742,11 @@ export function executeDrill(options: CliOptions): DrillReport {
           );
         }
         for (const surface of surfaces) {
-          // Own-connect is proven on the direct surface only: the drill target
-          // is disposable, so its databases are deliberately absent from the
-          // pooler's routing config and an own-connect through the pooler can
-          // never succeed by design. The pooler surface still carries the
-          // cross-reject sample, which is the property it exists to prove.
-          if (check.kind === "own-connect" && surface.name !== "direct") {
-            continue;
-          }
+          // Own-connect runs through BOTH surfaces for every tenant: through
+          // the isolated pooler it doubles as the per-tenant routing
+          // assertion — a pooler mapping that pointed tenant A at tenant B's
+          // database (or a force_user mistake) fails the identity check even
+          // though the credentials are correct (#23453 review).
           const env = tenantConnectionEnv(
             surface.endpoint,
             objectDb,
@@ -1806,16 +1821,10 @@ export function executeDrill(options: CliOptions): DrillReport {
         },
       );
 
-      // Executed probe count: own-connect runs once (direct surface only);
-      // each cross-reject sample runs once per surface (direct + pooler);
-      // plus one admin-side ACL assertion per restored database.
-      const ownConnectCount = checks.filter(
-        (c) => c.kind === "own-connect",
-      ).length;
-      const total =
-        ownConnectCount +
-        (checks.length - ownConnectCount) * surfaces.length +
-        dbMap.length;
+      // Executed probe count: every own-connect and every cross-reject
+      // sample runs once per surface (direct + pooler); plus one admin-side
+      // ACL assertion per restored database.
+      const total = checks.length * surfaces.length + dbMap.length;
       const report: DrillReport = {
         schemaVersion: REPORT_SCHEMA_VERSION,
         startedAt: startedAt.toISOString(),
@@ -1839,6 +1848,11 @@ export function executeDrill(options: CliOptions): DrillReport {
 
       // Success path only: spend the authority so the completed drill cannot
       // be replayed. A failed drill above leaves the target recoverable.
+      // Consuming the authority is itself a destructive, irrevocable act on
+      // the target: it must be authorized by a still-live capability and a
+      // still-held lock, exactly like every other destructive phase.
+      assertDrillLockHeld(drillLock);
+      assertCapabilityLive();
       consumeRestoreAuthority(
         options.targetDsn,
         options.targetId,
@@ -1900,11 +1914,115 @@ export function runMintCommand(argv: string[]): string {
   return serializeRestoreCapability(minted);
 }
 
+/**
+ * Provision the twin settings on the DISPOSABLE drill target from a minted
+ * capability file. PostgreSQL 14 rejects ALTER SYSTEM SET for undeclared
+ * custom GUCs ("unrecognized configuration parameter"), so this writes both
+ * settings to postgresql.auto.conf — the exact file ALTER SYSTEM SET itself
+ * writes — and reloads. The write is idempotent (prior eliza.* lines are
+ * replaced) and verified through a FRESH session afterwards: a session
+ * opened before the reload may still hold the previous (unset) placeholder
+ * value.
+ */
+export function runProvisionCommand(
+  targetDsn: string,
+  targetId: string,
+  capabilityFile: string,
+): void {
+  const capabilityText = readFileSync(capabilityFile, "utf-8").trim();
+  const capability = verifyRestoreCapability(
+    parseRestoreCapability(capabilityText),
+    readSigningKey(),
+    Date.now(),
+  );
+  if (capability.targetId !== targetId) {
+    throw new RecoveryDrillError(
+      "INVALID_ARGS",
+      "capability target id does not match --target-id",
+    );
+  }
+  const dataDir = run("psql", [
+    "--no-psqlrc",
+    "--tuples-only",
+    "--no-align",
+    "--set",
+    "ON_ERROR_STOP=1",
+    "--dbname",
+    targetDsn,
+    "--command",
+    "SHOW data_directory",
+  ]).trim();
+  const autoConf = join(dataDir, "postgresql.auto.conf");
+  const current = readFileSync(autoConf, "utf-8");
+  const kept = current
+    .split("\n")
+    .filter(
+      (line: string) =>
+        !line.startsWith("eliza.restore_target_id") &&
+        !line.startsWith("eliza.restore_capability"),
+    );
+  kept.push(`eliza.restore_target_id = '${targetId}'`);
+  // The serialized capability contains no single quotes (pipe-delimited
+  // envelope over UUID/hex ids and a hex signature), so this literal is safe.
+  kept.push(`eliza.restore_capability = '${capabilityText}'`);
+  writeFileSync(autoConf, `${kept.join("\n").trimEnd()}\n`);
+  run("psql", [
+    "--no-psqlrc",
+    "--set",
+    "ON_ERROR_STOP=1",
+    "--dbname",
+    targetDsn,
+    "--command",
+    "SELECT pg_reload_conf()",
+  ]);
+  // Verify through a FRESH session: current_setting of an unset custom
+  // placeholder returns an empty string, so equality proves the reload
+  // landed for every future session, not just the pre-reload ones.
+  const observed = run("psql", [
+    "--no-psqlrc",
+    "--tuples-only",
+    "--no-align",
+    "--set",
+    "ON_ERROR_STOP=1",
+    "--dbname",
+    targetDsn,
+    "--command",
+    `SELECT COALESCE(current_setting('${SETTING_TARGET_ID}', true), '') || '|' || COALESCE(current_setting('${SETTING_CAPABILITY}', true), '')`,
+  ]).trim();
+  const expected = `${targetId}|${capabilityText}`;
+  if (observed !== expected) {
+    throw new RecoveryDrillError(
+      "REFUSED_TARGET_AUTHORITY",
+      "twin settings did not apply after reload (fresh-session verification failed)",
+    );
+  }
+}
+
 if (import.meta.main) {
   const argv = process.argv.slice(2);
   if (argv[0] === "mint") {
     const serialized = runMintCommand(argv.slice(1));
     process.stdout.write(`${serialized}\n`);
+  } else if (argv[0] === "provision") {
+    const { values } = parseArgs({
+      args: argv.slice(1),
+      options: {
+        "target-dsn": { type: "string" },
+        "target-id": { type: "string" },
+        "capability-file": { type: "string" },
+      },
+    });
+    const targetDsn = values["target-dsn"];
+    const targetId = values["target-id"];
+    const capabilityFile = values["capability-file"];
+    if (!targetDsn || !targetId || !capabilityFile) {
+      throw new RecoveryDrillError(
+        "INVALID_ARGS",
+        "provision requires --target-dsn, --target-id, and --capability-file",
+      );
+    }
+    runProvisionCommand(targetDsn, targetId, capabilityFile);
+    process.stderr.write("twin settings provisioned and verified\n");
   } else {
     const options = parseCliArgs(argv);
     const report = executeDrill(options);
