@@ -31,7 +31,7 @@
  * (AGENTS.md §3 + §9).
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, toWellFormedUnicode } from "@elizaos/core";
 
 import type {
 	ElizaInferenceContextHandle,
@@ -680,8 +680,8 @@ function concatFloat32(a: Float32Array, b: Float32Array): Float32Array {
  * both sides clearly continue the same token-ish run.
  */
 function joinTranscriptParts(head: string, tail: string): string {
-	const h = head.trimEnd();
-	const t = tail.trimStart();
+	const h = toWellFormedUnicode(head).trimEnd();
+	const t = toWellFormedUnicode(tail).trimStart();
 	if (!h) return t;
 	if (!t) return h;
 	// If `tail` starts with a continuation of `head`'s last word, prefer
