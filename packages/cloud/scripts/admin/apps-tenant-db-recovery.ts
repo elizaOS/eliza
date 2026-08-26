@@ -2166,7 +2166,13 @@ function withProvisionLock(targetDsn: string, body: () => void): void {
     `eliza-provision-lock-${process.pid}-${Date.now()}.txt`,
   );
   const lock = acquireSessionAdvisoryLock(
-    targetDsn,
+    // Advisory locks are DATABASE-local, but postgresql.auto.conf is
+    // CLUSTER-wide: two provisioners connected to different maintenance
+    // databases on the same cluster would each hold their own lock and
+    // race on the file anyway. Canonicalize every caller onto the
+    // postgres database so the lock is one cluster-wide registry
+    // (#23453 review r7).
+    targetDatabaseDsn(targetDsn, "postgres"),
     handshakePath,
     PROVISION_ADVISORY_LOCK_KEY,
   );
