@@ -1326,6 +1326,8 @@ export interface DrillLock {
   child: ChildProcess;
   handshakePath: string;
   targetDsn: string;
+  /** Advisory-lock key this holder session owns (drill or provision). */
+  lockKey: number;
   backendPid?: number;
 }
 
@@ -1350,6 +1352,27 @@ export function acquireDrillLock(
   targetDsn: string,
   handshakePath: string,
 ): DrillLock {
+  return acquireSessionAdvisoryLock(
+    targetDsn,
+    handshakePath,
+    DRILL_ADVISORY_LOCK_KEY,
+  );
+}
+
+/**
+ * Acquire a session-held advisory lock under an arbitrary key with the same
+ * proven file handshake as the drill lock. Used by the drill itself and by
+ * the postgresql.auto.conf provisioner, whose exclusivity must not depend
+ * on pathname-rename races a crashed holder cannot clean up (#23453
+ * review r6: POSIX rename is not conditional on a previously observed
+ * inode, so a stale-takeover or a late release can destroy a successor's
+ * fresh claim; a held server session cannot be stolen by another process).
+ */
+export function acquireSessionAdvisoryLock(
+  targetDsn: string,
+  handshakePath: string,
+  lockKey: number,
+): DrillLock {
   // stdout of the holder is redirected to the handshake file: the sentinel
   // row lands on disk the moment the lock is granted, independent of the
   // node event loop.
@@ -1366,7 +1389,7 @@ export function acquireDrillLock(
       "--dbname",
       targetDsn,
       "--command",
-      `SELECT CASE WHEN pg_try_advisory_lock(${DRILL_ADVISORY_LOCK_KEY}) THEN '${DRILL_LOCK_HANDSHAKE}:' || pg_backend_pid() ELSE '${DRILL_LOCK_REFUSED}' END;`,
+      `SELECT CASE WHEN pg_try_advisory_lock(${lockKey}) THEN '${DRILL_LOCK_HANDSHAKE}:' || pg_backend_pid() ELSE '${DRILL_LOCK_REFUSED}' END;`,
       // A refused lock must NOT fall through to the hold-sleep: the refusal
       // sentinel is not a SQL error, so ON_ERROR_STOP does not stop psql and
       // the second --command WOULD execute — leaking a 24h pg_sleep backend
@@ -1378,7 +1401,7 @@ export function acquireDrillLock(
       // re-proves this session holds the advisory lock (aborting a refused
       // holder before any sleep) and then holds it for the bounded window.
       "--command",
-      `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND classid = 0 AND objid = ${DRILL_ADVISORY_LOCK_KEY} AND objsubid = 1 AND pid = pg_backend_pid()) THEN RAISE EXCEPTION 'drill lock lost before hold'; END IF; PERFORM pg_sleep(${DRILL_LOCK_MAX_SECONDS}); END $$;`,
+      `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND classid = 0 AND objid = ${lockKey} AND objsubid = 1 AND pid = pg_backend_pid()) THEN RAISE EXCEPTION 'drill lock lost before hold'; END IF; PERFORM pg_sleep(${DRILL_LOCK_MAX_SECONDS}); END $$;`,
     ],
     { stdio: ["ignore", outFd, "pipe"] },
   );
@@ -1449,7 +1472,7 @@ export function acquireDrillLock(
       `drill lock acquisition was not confirmed within the settle window: ${stderrTail.trim().slice(0, 200)}`,
     );
   }
-  return { child, handshakePath, targetDsn, backendPid };
+  return { child, handshakePath, targetDsn, lockKey, backendPid };
 }
 
 /**
@@ -1504,7 +1527,7 @@ export function releaseDrillLock(lock: DrillLock): void {
         "--dbname",
         lock.targetDsn,
         "--command",
-        `SELECT CASE WHEN EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND classid = 0 AND objid = ${DRILL_ADVISORY_LOCK_KEY} AND objsubid = 1 AND pid = ${lock.backendPid} AND pid <> pg_backend_pid()) THEN pg_terminate_backend(${lock.backendPid}) ELSE false END;`,
+        `SELECT CASE WHEN EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND classid = 0 AND objid = ${lock.lockKey} AND objsubid = 1 AND pid = ${lock.backendPid} AND pid <> pg_backend_pid()) THEN pg_terminate_backend(${lock.backendPid}) ELSE false END;`,
       ],
       { encoding: "utf-8" },
     );
@@ -2125,143 +2148,32 @@ export function runMintCommand(argv: string[]): string {
  * opened before the reload may still hold the previous (unset) placeholder
  * value.
  */
-/** How long a provision lock may age before a crashed holder is presumed dead. */
-const PROVISION_LOCK_STALE_MS = 120_000;
+/** Advisory-lock key for the postgresql.auto.conf provision critical section. */
+export const PROVISION_ADVISORY_LOCK_KEY = 0x4552_5a50;
 
 /**
- * Handle over a claimed provision lock: the stat identifies THIS claim's
- * lock-file inode (dev+ino), so release can only unlink a file this claim
- * created — never a successor's lock after a stale takeover (#23453
- * review r4).
+ * Serialize the postgresql.auto.conf provision critical section with a
+ * held PostgreSQL session advisory lock (#23453 review r6): a server-held
+ * session cannot be stolen or destroyed by another process's pathname
+ * operations, so there is no stale-takeover TOCTOU at all. A crashed
+ * provisioner's backend dies with it, releasing the lock; the
+ * handshake-file sentinel and client-side SIGKILL in acquire/
+ * releaseSessionAdvisoryLock cover liveness proof and cleanup.
  */
-interface ProvisionLockHandle {
-  lockPath: string;
-  dev: number;
-  ino: number;
-}
-
-/**
- * Atomically claim the provision lock (O_EXCL). A lock older than the
- * staleness window is presumed crashed and taken over by RENAMING it aside
- * (the rename is atomic and unlinks exactly one file) and retrying the
- * O_EXCL create once. Takeover never unlinks the shared lock path directly,
- * so two provisioners racing on a stale lock cannot remove each other's
- * fresh claims: only the rename winner recreates the lock, and the loser's
- * next O_EXCL fails against the winner's lock (#23453 review r4). This is
- * a takeover, not a lease: the critical section is seconds-long and the
- * window only bounds how long a crashed holder can block the next
- * provisioner.
- */
-function claimProvisionLock(lockPath: string): ProvisionLockHandle {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const fd = openSync(lockPath, "wx");
-      try {
-        writeSync(fd, `${process.pid}\n`);
-      } finally {
-        closeSync(fd);
-      }
-      const own = statSync(lockPath);
-      return { lockPath, dev: own.dev, ino: own.ino };
-    } catch (error) {
-      const code = (error as { code?: string }).code;
-      if (code !== "EEXIST") {
-        throw new RecoveryDrillError(
-          "PROVISION_LOCK_FAILED",
-          `could not claim the provision lock: ${code ?? "unknown error"}`,
-        );
-      }
-    }
-    if (attempt > 0) {
-      break;
-    }
-    // Stale takeover by unique-target rename: the stale source and the
-    // unique destination form a claim on exactly ONE inode. If a competing
-    // provisioner renamed the same stale lock aside first, its rename
-    // removed the shared path's link and our rename fails ENOENT — no
-    // second contender can move (and later unlink) a FRESH lock, because a
-    // fresh lock at the shared path is young, never re-stale within this
-    // claim, and cannot be the source of a second rename while the age
-    // check holds. Rename over a non-empty directory or an existing
-    // destination fails with ENOTEMPTY/EEXIST, which also just breaks out
-    // to the held-lock refusal (#23453 review r5).
-    // error-policy:J6 a stale lock from a crashed holder is moved aside.
-    const stale = statSync(lockPath, { throwIfNoEntry: false });
-    if (
-      stale !== undefined &&
-      Date.now() - stale.mtimeMs > PROVISION_LOCK_STALE_MS
-    ) {
-      let staleName = "";
-      try {
-        staleName = `${lockPath}.stale-${process.pid}-${Date.now()}`;
-        renameSync(lockPath, staleName);
-        // The renamed inode is provably the stale one we measured: a
-        // competing takeover that renamed the shared path first makes our
-        // rename fail; a FRESH lock created between our stat and rename
-        // cannot be our rename source because rename targets the path and
-        // the fresh lock would have to be >120s old to be re-classified
-        // stale — it is not.
-        const moved = statSync(staleName, { throwIfNoEntry: false });
-        if (
-          moved === undefined ||
-          moved.dev !== stale.dev ||
-          moved.ino !== stale.ino
-        ) {
-          // Someone else's file ended up at our unique destination —
-          // impossible by construction; refuse loudly rather than proceed.
-          throw new RecoveryDrillError(
-            "PROVISION_LOCK_FAILED",
-            "provision lock takeover moved an unexpected inode",
-          );
-        }
-        rmSync(staleName, { force: true });
-      } catch (error) {
-        const code = (error as { code?: string }).code;
-        if (code === "ENOENT" || code === "ENOTEMPTY" || code === "EEXIST") {
-          // A competing provisioner won the takeover race; our retry (or
-          // the held-lock refusal below) is correct.
-          break;
-        }
-        // error-policy:J6 other takeover failures surface as a held lock.
-        break;
-      }
-    } else {
-      break;
-    }
-  }
-  throw new RecoveryDrillError(
-    "PROVISION_LOCK_HELD",
-    "another provisioner holds the postgresql.auto.conf lock",
+function withProvisionLock(targetDsn: string, body: () => void): void {
+  const handshakePath = join(
+    tmpdir(),
+    `eliza-provision-lock-${process.pid}-${Date.now()}.txt`,
   );
-}
-
-/**
- * Release the provision lock by identity: unlink only when the path still
- * resolves to THIS claim's inode. A successor's recreated lock at the same
- * path is a different inode and is never removed (#23453 review r4).
- */
-function releaseProvisionLock(handle: ProvisionLockHandle): void {
+  const lock = acquireSessionAdvisoryLock(
+    targetDsn,
+    handshakePath,
+    PROVISION_ADVISORY_LOCK_KEY,
+  );
   try {
-    // Identity-atomic release: rename the shared path to a name unique to
-    // this claim, then verify the moved inode is ours before discarding it.
-    // The rename claims exactly one inode — a successor's fresh lock at the
-    // shared path is a different inode; if the rename moved it (successor
-    // recreated the path between our checks), the inode mismatch below
-    // leaves the successor's lock parked at the unique name for recovery
-    // rather than deleting it, and the successor's own release (by ITS
-    // inode) never unlinks ours (#23453 review r5).
-    const movedName = `${handle.lockPath}.release-${process.pid}-${Date.now()}`;
-    renameSync(handle.lockPath, movedName);
-    const moved = statSync(movedName, { throwIfNoEntry: false });
-    if (
-      moved !== undefined &&
-      moved.dev === handle.dev &&
-      moved.ino === handle.ino
-    ) {
-      rmSync(movedName, { force: true });
-    }
-  } catch {
-    // error-policy:J6 lock release must not mask the provisioning outcome.
+    body();
+  } finally {
+    releaseDrillLock(lock);
   }
 }
 
@@ -2336,18 +2248,15 @@ export function runProvisionCommand(
   // SYSTEM can still race — the fresh-session verification below proves OUR
   // settings landed, and the lock closes the provisioner-vs-provisioner
   // lost-update race entirely.
-  // Neither Node nor Bun exposes flock(2), so the lock is an O_EXCL lock
-  // file: creation is atomic, so exactly one provisioner can hold it. A
-  // crash while holding leaves a stale lock; it is superseded after
-  // PROVISION_LOCK_STALE_MS by an atomic rename-aside takeover — a live
-  // holder finishes well inside the window, so the bound only matters for
-  // crashed holders.
-  const lockHandle = claimProvisionLock(`${autoConf}.eliza-provision.lock`);
-  try {
+  // A POSIX O_EXCL lock file cannot be taken over safely: rename is not
+  // conditional on a previously observed inode, so stale takeover and late
+  // release can each destroy a successor's fresh claim (#23453 reviews
+  // r4-r6). Exclusivity therefore lives in the server: a held advisory
+  // session released only by this process exiting or terminating its own
+  // backend.
+  withProvisionLock(targetDsn, () => {
     writeAutoConfAtomic(autoConf, targetId, capabilityText);
-  } finally {
-    releaseProvisionLock(lockHandle);
-  }
+  });
   run("psql", [
     "--no-psqlrc",
     "--set",
