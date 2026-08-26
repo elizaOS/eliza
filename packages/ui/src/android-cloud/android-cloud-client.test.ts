@@ -40,6 +40,34 @@ describe("AndroidCloudClient", () => {
     ).toBe("https://api.eliza.app");
   });
 
+  it("preserves the browser receiver when using the native fetch", async () => {
+    const browserFetch = vi.fn(function (
+      this: unknown,
+      _input: RequestInfo | URL,
+      _init?: RequestInit,
+    ): Promise<Response> {
+      if (this !== globalThis) {
+        throw new TypeError("Illegal invocation");
+      }
+      return Promise.resolve(
+        json(200, {
+          success: true,
+          clientId: "ai.elizaos.app",
+          environment: "production",
+          redirectUri: "https://eliza.app/auth/callback",
+          codeChallengeMethod: "S256",
+        }),
+      );
+    });
+    vi.stubGlobal("fetch", browserFetch);
+
+    await expect(new AndroidCloudClient().beginLogin()).resolves.toMatchObject({
+      browserUrl: expect.stringContaining("https://cloud.eliza.app/login"),
+      state: expect.any(String),
+    });
+    expect(browserFetch).toHaveBeenCalledOnce();
+  });
+
   it("accepts only the canonical API or UUID-shaped managed runtime hosts", () => {
     expect(
       resolveAndroidCloudChatAuthority(

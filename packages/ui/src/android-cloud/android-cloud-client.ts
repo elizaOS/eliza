@@ -377,7 +377,7 @@ export class AndroidCloudClient {
 
   constructor(options: AndroidCloudClientOptions = {}) {
     this.apiBase = resolveCanonicalDirectCloudApiBase(options.cloudApiBase);
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
     this.credentialStore = options.credentialStore ?? browserCredentialStore;
     this.pendingLoginStore =
       options.pendingLoginStore ?? browserPendingLoginStore;
