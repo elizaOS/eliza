@@ -63,3 +63,4 @@ export { serverTable } from "./server";
 export { sessionSummaries } from "./sessionSummaries";
 export { taskTable } from "./tasks";
 export { worldTable } from "./world";
+export { worldRoleAuditTable } from "./worldRoleAudit";

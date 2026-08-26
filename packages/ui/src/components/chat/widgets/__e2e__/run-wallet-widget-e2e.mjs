@@ -112,6 +112,14 @@ await writeFile(
 // The UI registry-host shim re-exports through the @elizaos/shared barrel;
 // resolve it straight to the self-contained shared source module instead.
 const registryHostSource = join(here, "../../../../../../shared/src/registry-host.ts");
+const sharedOverlayRegistrySource = join(
+  here,
+  "../../../../../../shared/src/apps/overlay-app-registry.ts",
+);
+const sharedAppsContractSource = join(
+  here,
+  "../../../../../../shared/src/contracts/apps.ts",
+);
 
 const stubModules = {
   name: "stub-wallet-deps",
@@ -126,6 +134,24 @@ const stubModules = {
     b.onResolve({ filter: /\/registry-host$/ }, () => ({
       path: registryHostSource,
     }));
+    // app-shell-registry needs two browser-safe shared exports. Keep their real
+    // implementations while bypassing the package root, whose server exports
+    // intentionally reach Node builtins that do not belong in this fixture.
+    b.onResolve({ filter: /^@elizaos\/shared$/ }, () => ({
+      path: "wallet-shared-app-shell",
+      namespace: "wallet-shared",
+    }));
+    b.onLoad(
+      { filter: /.*/, namespace: "wallet-shared" },
+      () => ({
+        contents: [
+          `export { getAllOverlayApps } from ${JSON.stringify(sharedOverlayRegistrySource)};`,
+          `export { packageNameToAppRouteSlug } from ${JSON.stringify(sharedAppsContractSource)};`,
+        ].join("\n"),
+        loader: "js",
+        resolveDir: here,
+      }),
+    );
   },
 };
 

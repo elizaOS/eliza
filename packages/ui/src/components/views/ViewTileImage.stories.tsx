@@ -18,11 +18,11 @@ const entry = {
 const meta = {
   title: "Views/ViewTileImage",
   component: ViewTileImage,
-  parameters: { layout: "centered" },
+  parameters: { layout: "centered", backgrounds: { default: "dark" } },
   args: {
     entry,
     source: "launcher",
-    containerClassName: "h-20 w-20 rounded-2xl",
+    containerClassName: "h-20 w-20",
     glyphClassName: "h-8 w-8",
   },
 } satisfies Meta<typeof ViewTileImage>;

@@ -166,7 +166,7 @@
         "type": "string",
         "description": "Eliza Cloud X broker base URL; override only for a self-hosted cloud API.",
         "required": false,
-        "default": "https://cloud.eliza.app/api/v1/twitter",
+        "default": "https://api.eliza.app/api/v1/twitter",
         "sensitive": false
       },
       "TWITTER_BROKER_TOKEN": {

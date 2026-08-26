@@ -12,7 +12,7 @@ registerAppShellPage({
   id: "calendar",
   pluginId: "@elizaos/plugin-calendar",
   label: "Calendar",
-  icon: "Calendar",
+  icon: "CalendarDays",
   path: "/calendar",
   order: 910,
   viewKind: "release",

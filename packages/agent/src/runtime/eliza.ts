@@ -4538,12 +4538,9 @@ export async function startEliza(
       logger.info(
         `[provider-vault] hydrated selected provider=${providerCredential.providerId} env=${providerCredential.envKey} key=${providerCredential.vaultKey}`,
       );
-    } else if (
-      providerCredential.status === "missing" ||
-      providerCredential.status === "unavailable"
-    ) {
+    } else if (providerCredential.status === "missing") {
       logger.warn(
-        `[provider-vault] selected provider=${providerCredential.providerId} credential=${providerCredential.status} env=${providerCredential.envKey}`,
+        `[provider-vault] selected provider=${providerCredential.providerId} credential=missing env=${providerCredential.envKey}`,
       );
     }
   }

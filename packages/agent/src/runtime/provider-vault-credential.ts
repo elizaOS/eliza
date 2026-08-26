@@ -6,6 +6,7 @@
  * child processes never inherit a Vault-only provider secret.
  */
 
+import { ElizaError } from "@elizaos/core";
 import {
   getFirstRunProviderOption,
   normalizeFirstRunProviderId,
@@ -23,7 +24,7 @@ export type ProviderVaultCredentialHydration =
       vaultKey: string;
     }
   | {
-      status: "already-configured" | "missing" | "unavailable";
+      status: "already-configured" | "missing";
       providerId: string;
       envKey: string;
     }
@@ -31,6 +32,29 @@ export type ProviderVaultCredentialHydration =
 
 const PROVIDER_CREDENTIAL_BOOT_CALLER =
   "runtime-boot:selected-provider-credential";
+
+function providerCredentialUnavailable(
+  providerId: string,
+  envKey: string,
+  stage: "lookup" | "reveal",
+  cause: unknown,
+  vaultKey?: string,
+): ElizaError {
+  return new ElizaError(
+    `Selected provider credential for ${providerId} is unavailable from Vault`,
+    {
+      code: "SELECTED_PROVIDER_CREDENTIAL_UNAVAILABLE",
+      severity: "fatal",
+      context: {
+        providerId,
+        envKey,
+        stage,
+        ...(vaultKey ? { vaultKey } : {}),
+      },
+      cause,
+    },
+  );
+}
 
 /** Project one selected provider credential into runtime settings. */
 export async function hydrateSelectedProviderCredentialFromVault(args: {
@@ -59,9 +83,10 @@ export async function hydrateSelectedProviderCredentialFromVault(args: {
     } else if (await args.vault.has(envKey)) {
       selectedVaultKey = envKey;
     }
-  } catch {
-    // error-policy:J4 Storage failures keep the selected provider visibly unavailable.
-    return { status: "unavailable", providerId, envKey };
+  } catch (error) {
+    // error-policy:J2 A selected provider's Vault is required boot input. Keep
+    // the storage cause and stop before a runtime can advertise chat readiness.
+    throw providerCredentialUnavailable(providerId, envKey, "lookup", error);
   }
 
   if (!selectedVaultKey) {
@@ -83,8 +108,15 @@ export async function hydrateSelectedProviderCredentialFromVault(args: {
       envKey,
       vaultKey: selectedVaultKey,
     };
-  } catch {
-    // error-policy:J4 An unreadable canonical credential never falls back to legacy.
-    return { status: "unavailable", providerId, envKey };
+  } catch (error) {
+    // error-policy:J2 An unreadable selected credential is not equivalent to
+    // an absent one and must never fall back to a different protected value.
+    throw providerCredentialUnavailable(
+      providerId,
+      envKey,
+      "reveal",
+      error,
+      selectedVaultKey,
+    );
   }
 }

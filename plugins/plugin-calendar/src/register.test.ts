@@ -12,9 +12,10 @@ describe("Calendar app registration", () => {
     );
 
     expect(
-      pages.map(({ id, label, path, viewKind }) => ({
+      pages.map(({ id, label, icon, path, viewKind }) => ({
         id,
         label,
+        icon,
         path,
         viewKind,
       })),
@@ -22,6 +23,7 @@ describe("Calendar app registration", () => {
       {
         id: "calendar",
         label: "Calendar",
+        icon: "CalendarDays",
         path: "/calendar",
         viewKind: "release",
       },
