@@ -30,9 +30,9 @@ describe("getActionResultActionName", () => {
 		expect(
 			getActionResultActionName(result({ data: { actionName: "FOO" } })),
 		).toBe("FOO");
-		expect(
-			getActionResultActionName(result({ data: { action: "BAR" } })),
-		).toBe("BAR");
+		expect(getActionResultActionName(result({ data: { action: "BAR" } }))).toBe(
+			"BAR",
+		);
 		expect(
 			getActionResultActionName(
 				result({ actionName: "BAZ" } as Partial<ActionResult>),
@@ -47,6 +47,44 @@ describe("getActionResultActionName", () => {
 			getActionResultActionName(result({ data: { actionName: "  " } })),
 		).toBe("Unknown Action");
 		expect(getActionResultActionName(result({}))).toBe("Unknown Action");
+	});
+
+	it("falls through blank and non-string candidates to valid lower-priority fields", () => {
+		expect(
+			getActionResultActionName(
+				result({
+					data: { actionName: "   ", action: "SEARCH_WEB" },
+				}),
+			),
+		).toBe("SEARCH_WEB");
+
+		expect(
+			getActionResultActionName(
+				result({
+					data: { actionName: 123 as unknown as string, action: "SEARCH_WEB" },
+				}),
+			),
+		).toBe("SEARCH_WEB");
+
+		expect(
+			getActionResultActionName(
+				result({
+					data: { actionName: "", action: "  " },
+					actionName: "TOP_LEVEL_ACTION",
+				} as Partial<ActionResult>),
+			),
+		).toBe("TOP_LEVEL_ACTION");
+	});
+
+	it("respects candidate precedence when multiple valid fields are present", () => {
+		expect(
+			getActionResultActionName(
+				result({
+					data: { actionName: "PRIMARY", action: "SECONDARY" },
+					actionName: "TERTIARY",
+				} as Partial<ActionResult>),
+			),
+		).toBe("PRIMARY");
 	});
 });
 
