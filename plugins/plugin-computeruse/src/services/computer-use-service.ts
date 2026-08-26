@@ -370,6 +370,7 @@ export class ComputerUseService extends Service {
     capture: new WindowRegionCapture(),
     grounder: new RegisteredVisualGrounder(),
     pointer: guardedPhysicalPointer,
+    pointerObserver: { position: () => driverGetCursorPosition() },
     exactWindowPointer: new MacosExperimentalExactWindowDispatcher(),
   });
   private displayIdDeprecationWarned = false;

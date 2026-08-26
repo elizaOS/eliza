@@ -9,6 +9,7 @@ import type {
   AppExactWindowPointerDispatcher,
   NativeAppSnapshot,
   PhysicalPointerDriver,
+  PhysicalPointerObserver,
 } from "./types.js";
 
 const app = {
@@ -48,6 +49,7 @@ function fixture(
     permission?: NativeAppSnapshot["permission"];
     grounder?: AppControlGrounder;
     pointer?: PhysicalPointerDriver;
+    pointerObserver?: PhysicalPointerObserver;
     exactWindowPointer?: AppExactWindowPointerDispatcher;
   } = {},
 ) {
@@ -93,6 +95,11 @@ function fixture(
     },
     grounder: options.grounder,
     pointer: options.pointer,
+    pointerObserver:
+      options.pointerObserver ??
+      ({
+        position: vi.fn(async () => ({ x: 10, y: 20 })),
+      } satisfies PhysicalPointerObserver),
     exactWindowPointer: options.exactWindowPointer,
     now: () => Date.parse("2026-08-23T00:00:01.000Z"),
     idFactory: () => `id-${++id}`,
@@ -192,6 +199,22 @@ describe("AppControlCoordinator", () => {
     expect(dispatch).not.toHaveBeenCalled();
   });
 
+  it("never invokes exact-window when semantic AX succeeds, even with opt-in", async () => {
+    const dispatch = vi.fn();
+    const snapshots = [nativeSnapshot(), nativeSnapshot()];
+    for (const snapshot of snapshots) snapshot.focusedWindowId = 17;
+    const { coordinator } = fixture({
+      snapshots,
+      exactWindowPointer: { available: () => true, dispatch },
+    });
+    const before = await coordinator.getAppState(app.id);
+    const outcome = await coordinator.act(
+      action(before.stateId, { allowExperimentalExactWindow: true }),
+    );
+    expect(outcome.receipt?.executionMode).toBe("semantic_ax");
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
   it("selects exact-window only for a fully gated opt-in and preserves its receipt", async () => {
     const dispatch = vi.fn(async (input) => ({
       success: true,
@@ -207,7 +230,11 @@ describe("AppControlCoordinator", () => {
       available: () => true,
       dispatch,
     };
-    const snapshots = [nativeSnapshot(), nativeSnapshot()];
+    const snapshots = [
+      nativeSnapshot(),
+      nativeSnapshot(),
+      nativeSnapshot("Saved"),
+    ];
     for (const snapshot of snapshots) snapshot.focusedWindowId = 17;
     const { coordinator } = fixture({
       snapshots,
@@ -219,10 +246,128 @@ describe("AppControlCoordinator", () => {
       action(before.stateId, { allowExperimentalExactWindow: true }),
     );
     expect(dispatch).toHaveBeenCalledOnce();
+    expect(dispatch.mock.calls[0]?.[0].state.stateId).not.toBe(before.stateId);
     expect(outcome.receipt).toMatchObject({
       executionMode: "experimental_direct_exact_window",
       physicalPointerMoved: false,
     });
+  });
+
+  it("refuses changed targets before exact-window side effects", async () => {
+    const dispatch = vi.fn();
+    const replaced = nativeSnapshot("Replaced");
+    const replacedElement = replaced.elements[0];
+    if (!replacedElement) throw new Error("fixture target is required");
+    replacedElement.bounds = {
+      x: 141,
+      y: 240,
+      width: 80,
+      height: 40,
+    };
+    const snapshots = [nativeSnapshot(), replaced];
+    for (const snapshot of snapshots) snapshot.focusedWindowId = 17;
+    const { coordinator } = fixture({
+      snapshots,
+      exactWindowPointer: { available: () => true, dispatch },
+      performSuccess: false,
+    });
+    const before = await coordinator.getAppState(app.id);
+    const outcome = await coordinator.act(
+      action(before.stateId, { allowExperimentalExactWindow: true }),
+    );
+    expect(outcome.success).toBe(false);
+    expect(outcome.error).toContain("changed during pre-dispatch recapture");
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("requires independent cursor provenance before exact-window dispatch", async () => {
+    const dispatch = vi.fn();
+    const snapshots = [nativeSnapshot(), nativeSnapshot()];
+    for (const snapshot of snapshots) snapshot.focusedWindowId = 17;
+    const { coordinator } = fixture({
+      snapshots,
+      pointerObserver: {
+        position: vi.fn(async () => {
+          throw new Error("cursor unavailable");
+        }),
+      },
+      exactWindowPointer: { available: () => true, dispatch },
+      performSuccess: false,
+    });
+    const before = await coordinator.getAppState(app.id);
+    const outcome = await coordinator.act(
+      action(before.stateId, { allowExperimentalExactWindow: true }),
+    );
+    expect(outcome.success).toBe(false);
+    expect(outcome.error).toContain("pointer provenance");
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("refuses when independent cursor provenance changes", async () => {
+    const positions = [
+      { x: 10, y: 20 },
+      { x: 11, y: 20 },
+    ];
+    const exactWindowPointer: AppExactWindowPointerDispatcher = {
+      available: () => true,
+      dispatch: vi.fn(async (input) => ({
+        success: true,
+        route: "experimental_direct_exact_window" as const,
+        observationId: input.state.stateId,
+        targetPid: app.pid,
+        targetWindowId: 17,
+        targetWindowBounds: { x: 100, y: 200, width: 800, height: 600 },
+        pointerBefore: { x: 10, y: 20 },
+        pointerAfter: { x: 10, y: 20 },
+      })),
+    };
+    const snapshots = [nativeSnapshot(), nativeSnapshot()];
+    for (const snapshot of snapshots) snapshot.focusedWindowId = 17;
+    const { coordinator } = fixture({
+      snapshots,
+      pointerObserver: {
+        position: vi.fn(async () => positions.shift() ?? { x: 11, y: 20 }),
+      },
+      exactWindowPointer,
+      performSuccess: false,
+    });
+    const before = await coordinator.getAppState(app.id);
+    const outcome = await coordinator.act(
+      action(before.stateId, { allowExperimentalExactWindow: true }),
+    );
+    expect(outcome.success).toBe(false);
+    expect(outcome.error).toContain("failed validation");
+  });
+
+  it("does not accept unrelated post-state as target readback", async () => {
+    const exactWindowPointer: AppExactWindowPointerDispatcher = {
+      available: () => true,
+      dispatch: vi.fn(async (input) => ({
+        success: true,
+        route: "experimental_direct_exact_window" as const,
+        observationId: input.state.stateId,
+        targetPid: app.pid,
+        targetWindowId: 17,
+        targetWindowBounds: { x: 100, y: 200, width: 800, height: 600 },
+        pointerBefore: { x: 10, y: 20 },
+        pointerAfter: { x: 10, y: 20 },
+      })),
+    };
+    const unrelated = nativeSnapshot();
+    unrelated.axText = `${unrelated.axText}\nUnrelated sibling changed`;
+    const snapshots = [nativeSnapshot(), nativeSnapshot(), unrelated];
+    for (const snapshot of snapshots) snapshot.focusedWindowId = 17;
+    const { coordinator } = fixture({
+      snapshots,
+      exactWindowPointer,
+      performSuccess: false,
+    });
+    const before = await coordinator.getAppState(app.id);
+    const outcome = await coordinator.act(
+      action(before.stateId, { allowExperimentalExactWindow: true }),
+    );
+    expect(outcome.success).toBe(false);
+    expect(outcome.error).toContain("action-specific target readback");
   });
 
   it("refuses an exact-window receipt with mismatched action target bounds", async () => {

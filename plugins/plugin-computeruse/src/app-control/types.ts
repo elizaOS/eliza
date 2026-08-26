@@ -207,6 +207,10 @@ export interface PhysicalPointerDriver {
   ): Promise<void>;
 }
 
+export interface PhysicalPointerObserver {
+  position(): Promise<{ x: number; y: number }>;
+}
+
 export interface AppStateCapture {
   capture(
     snapshot: NativeAppSnapshot,
