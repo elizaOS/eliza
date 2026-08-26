@@ -6,6 +6,7 @@
 import { sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { ElizaError } from "../../errors";
+import { toWellFormedUnicode, truncateWellFormed } from "../../utils/well-formed";
 import { logger } from "../../logger";
 import { serializeTrajectoryExport } from "../../services/trajectory-export";
 import {
@@ -1122,8 +1123,9 @@ export class TrajectoriesService extends Service {
 		// (30s grace, then 120s). The age names the class directly.
 		const age =
 			typeof ageMs === "number" ? `${Math.round(ageMs / 1000)}s` : "unknown";
+		const safeStep = truncateWellFormed(toWellFormedUnicode(stepId), 12);
 		const error = new ElizaError(
-			`Trajectory capture arrived after terminalization (step=${stepId.slice(0, 12)} type=${captureType} age=${age})`,
+			`Trajectory capture arrived after terminalization (step=${safeStep} type=${captureType} age=${age})`,
 			{
 				code: "TRAJECTORY_OWNER_CLOSED",
 				context: { stepId, captureType, ageMs },
@@ -1131,7 +1133,7 @@ export class TrajectoriesService extends Service {
 		);
 		logger.warn(
 			{ err: error, stepId, captureType, ageMs },
-			`[trajectory-logger] Rejected late trajectory capture (step=${stepId.slice(0, 12)} type=${captureType} age=${age})`,
+			`[trajectory-logger] Rejected late trajectory capture (step=${safeStep} type=${captureType} age=${age})`,
 		);
 		this.runtime.reportError("TrajectoriesService.lateCapture", error, {
 			stepId,
@@ -3387,8 +3389,8 @@ export class TrajectoriesService extends Service {
 	}
 
 	private sanitizeZipFolderName(value: string): string {
-		const trimmed = value.trim();
-		const safe = trimmed.length > 256 ? trimmed.slice(0, 256) : trimmed;
+		const wellFormed = toWellFormedUnicode(value.trim());
+		const safe = truncateWellFormed(wellFormed, 256);
 		const sanitized = safe
 			.replace(/[^a-zA-Z0-9._-]+/g, "_")
 			.replace(/^_+|_+$/g, "");
