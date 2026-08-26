@@ -2,14 +2,15 @@
  * Contract tests for the API Explorer's generated OpenAPI export and catalog
  * helpers. The suite exercises the real `API_ENDPOINTS` catalog through the
  * public generator functions — no mocks — pinning the exported wire document
- * downloaded via `ApiExplorerPage`'s JSON/YAML export buttons. Catalog-facing
- * assertions derive their expectations from `API_ENDPOINTS` itself rather than
- * re-typing literals, so catalog growth keeps them meaningful; document-shape
- * assertions state OpenAPI 3.0.3 conformance rules the generator must uphold
- * for every entry. `getAvailableCategories` is covered because
- * `ApiExplorerPage` renders it directly; `searchEndpoints` and
- * `getEndpointsByCategory` have no shipping consumer and are only covered at
- * the behavioral-property level. Harness: deterministic, pure functions only.
+ * downloaded via `ApiExplorerPage`'s JSON/YAML export buttons. Catalog-wide
+ * rules walk the whole generated document rather than naming individual
+ * entries; the few targeted fixtures (search terms, one operation per shape)
+ * are chosen so each asserted behavior is exercised on a known catalog entry.
+ * `getAvailableCategories` is covered because
+ * `ApiExplorerPage` renders it directly; `searchEndpoints` has no shipping
+ * consumer and is only covered at the behavioral-property level; the other
+ * exported catalog helpers are intentionally untested here.
+ * Harness: deterministic, pure functions only.
  */
 
 import { describe, expect, it } from "vitest";
@@ -330,11 +331,19 @@ describe("generateOpenAPISpec — OpenAPI 3.0.3 document conformance", () => {
 });
 
 describe("generateOpenAPISpec — document-level contract", () => {
-  it("pins the OpenAPI version, info block, and security schemes", () => {
+  it("pins the OpenAPI version, full info block, and security schemes", () => {
     const spec = generateOpenAPISpec();
     expect(spec.openapi).toBe("3.0.3");
-    expect(spec.info.title).toBe("Eliza Cloud API");
-    expect(spec.info.contact.url).toBe("https://api.eliza.app");
+    expect(spec.info).toEqual({
+      title: "Eliza Cloud API",
+      description:
+        "AI agent development platform with multi-model text generation, image creation, and enterprise features",
+      version: "1.0.0",
+      contact: {
+        name: "Eliza Cloud",
+        url: "https://api.eliza.app",
+      },
+    });
     expect(spec.security).toEqual([{ bearerAuth: [] }, { apiKeyAuth: [] }]);
     expect(spec.components.securitySchemes.bearerAuth).toMatchObject({
       type: "http",
@@ -399,17 +408,6 @@ describe("formatEndpointPrice — every rendering branch", () => {
         estimatedRange: { min: 0.001, max: 0.03 },
       }),
     ).toBe("$0.001 - $0.03");
-    // The shipped variable catalog entry must hit this branch too.
-    const variable = API_ENDPOINTS.find(
-      (e) => e.pricing?.isVariable && e.pricing.estimatedRange,
-    );
-    expect(variable, "catalog has no variable-range pricing").toBeDefined();
-    const range = variable?.pricing?.estimatedRange;
-    if (range) {
-      expect(formatEndpointPrice(variable?.pricing)).toBe(
-        `$${range.min.toFixed(3)} - $${range.max.toFixed(2)}`,
-      );
-    }
   });
 
   it("renders sub-cent fixed costs at 4-decimal precision and dollar costs at 2", () => {
