@@ -112,8 +112,10 @@ namespace with no capabilities, a read-only repository, bounded resources,
 AF_INET/AF_INET6-only seccomp, and owner-scoped firewall rules admitting only
 declared loopback proxy ports. The root launcher clears its environment and
 consumes only a strict caller-owned environment file before deleting it. The
-pinned-Bun preload remains application-level diagnostics; the kernel boundary
-rejects direct TCP, UDP, DNS, raw-socket, and host AF_UNIX bypasses.
+pinned-Bun preload remains application-level diagnostics; private `/run`,
+`/tmp`, and `/var/tmp` mounts plus syscall denial for `socketpair` and all
+io_uring entry points close host AF_UNIX delegation paths. The kernel boundary
+also rejects direct TCP, UDP, DNS, and raw-socket bypasses.
 
 Attempts retain trajectories, tool receipts, transitions, bounded logs,
 network and mock-service ledgers, and authority hashes. The aggregate retains
