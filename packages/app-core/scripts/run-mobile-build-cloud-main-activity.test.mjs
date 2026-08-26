@@ -108,6 +108,11 @@ describe("cloudSafeMainActivityJava", () => {
     });
 
     expect(source).toContain("import androidx.core.view.WindowInsetsCompat;");
+    expect(
+      source.match(
+        /import androidx\.core\.view\.WindowInsetsControllerCompat;/g,
+      ),
+    ).toHaveLength(1);
     expect(source).toContain(
       "controller.hide(WindowInsetsCompat.Type.navigationBars())",
     );
