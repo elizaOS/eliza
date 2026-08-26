@@ -142,15 +142,10 @@ function readString(value: unknown): string | undefined {
 
 function readBoolean(value: unknown): boolean | undefined {
   if (typeof value === "boolean") return value;
-  if (typeof value === "number" && Number.isFinite(value)) {
-    if (value === 1) return true;
-    if (value === 0) return false;
-    return undefined;
-  }
   if (typeof value === "string") {
     const v = value.trim().toLowerCase();
-    if (v === "true" || v === "1" || v === "yes" || v === "on") return true;
-    if (v === "false" || v === "0" || v === "no" || v === "off") return false;
+    if (v === "true" || v === "1" || v === "yes") return true;
+    if (v === "false" || v === "0" || v === "no") return false;
   }
   return undefined;
 }
