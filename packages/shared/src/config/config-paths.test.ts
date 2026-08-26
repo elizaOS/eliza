@@ -13,15 +13,15 @@ describe("config path helpers", () => {
   it("sets, reads, checks presence, and removes an own nested value", () => {
     const root: Record<string, unknown> = {};
 
-    expect(
-      hasConfigValueAtPath(root, ["providers", "openai", "enabled"]),
-    ).toBe(false);
+    expect(hasConfigValueAtPath(root, ["providers", "openai", "enabled"])).toBe(
+      false,
+    );
 
     setConfigValueAtPath(root, ["providers", "openai", "enabled"], true);
 
-    expect(
-      hasConfigValueAtPath(root, ["providers", "openai", "enabled"]),
-    ).toBe(true);
+    expect(hasConfigValueAtPath(root, ["providers", "openai", "enabled"])).toBe(
+      true,
+    );
     expect(getConfigValueAtPath(root, ["providers", "openai", "enabled"])).toBe(
       true,
     );
@@ -29,6 +29,17 @@ describe("config path helpers", () => {
       unsetConfigValueAtPath(root, ["providers", "openai", "enabled"]),
     ).toBe(true);
     expect(root).toEqual({});
+  });
+
+  it("identifies own property presence even when leaf value is undefined", () => {
+    const root: Record<string, unknown> = {};
+    setConfigValueAtPath(root, ["models", "primary"], undefined);
+
+    expect(getConfigValueAtPath(root, ["models", "primary"])).toBeUndefined();
+    expect(hasConfigValueAtPath(root, ["models", "primary"])).toBe(true);
+    expect(hasConfigValueAtPath(root, ["models", "nonexistent"])).toBe(false);
+    expect(unsetConfigValueAtPath(root, ["models", "primary"])).toBe(true);
+    expect(hasConfigValueAtPath(root, ["models", "primary"])).toBe(false);
   });
 
   it.each(["__proto__", "prototype", "constructor"])(
@@ -40,6 +51,9 @@ describe("config path helpers", () => {
         setConfigValueAtPath(root, [segment, "polluted"], true),
       ).toThrow("unsafe segment");
       expect(() => getConfigValueAtPath(root, [segment])).toThrow(
+        "unsafe segment",
+      );
+      expect(() => hasConfigValueAtPath(root, [segment])).toThrow(
         "unsafe segment",
       );
       expect(() => unsetConfigValueAtPath(root, [segment])).toThrow(
@@ -63,6 +77,9 @@ describe("config path helpers", () => {
     expect(() => getConfigValueAtPath(root, ["profile", "enabled"])).toThrow(
       "unsafe segment",
     );
+    expect(() => hasConfigValueAtPath(root, ["profile", "enabled"])).toThrow(
+      "unsafe segment",
+    );
     expect(() =>
       setConfigValueAtPath(root, ["profile", "enabled"], false),
     ).toThrow("unsafe segment");
@@ -84,12 +101,18 @@ describe("config path helpers", () => {
         getConfigValueAtPath(root, ["inheritedConfigProfile", "enabled"]),
       ).toBeUndefined();
       expect(
+        hasConfigValueAtPath(root, ["inheritedConfigProfile", "enabled"]),
+      ).toBe(false);
+      expect(
         unsetConfigValueAtPath(root, ["inheritedConfigProfile", "enabled"]),
       ).toBe(false);
       setConfigValueAtPath(root, ["inheritedConfigProfile", "enabled"], true);
 
       expect(
         getConfigValueAtPath(root, ["inheritedConfigProfile", "enabled"]),
+      ).toBe(true);
+      expect(
+        hasConfigValueAtPath(root, ["inheritedConfigProfile", "enabled"]),
       ).toBe(true);
       expect(inherited.enabled).toBe(false);
     } finally {
@@ -107,18 +130,27 @@ describe("config path helpers", () => {
     expect(() => getConfigValueAtPath(root, ["profile", "enabled"])).toThrow(
       "unsafe segment",
     );
+    expect(() => hasConfigValueAtPath(root, ["profile", "enabled"])).toThrow(
+      "unsafe segment",
+    );
   });
 
   it("bounds raw and direct paths before traversal", () => {
     expect(parseConfigPath(`${"a.".repeat(40)}z`).ok).toBe(false);
     expect(parseConfigPath("a".repeat(129)).ok).toBe(false);
-    expect(parseConfigPath(null as unknown as string).ok).toBe(false);
+    expect(parseConfigPath(null as unknown as string)).toEqual({
+      ok: false,
+      error: "Path must be a string.",
+    });
     expect(() =>
       setConfigValueAtPath(
         {},
         [...Array.from({ length: 33 }, () => "a")],
         true,
       ),
+    ).toThrow("unsafe segment");
+    expect(() =>
+      setConfigValueAtPath({}, ["a", "b".repeat(129)], true),
     ).toThrow("unsafe segment");
   });
 });

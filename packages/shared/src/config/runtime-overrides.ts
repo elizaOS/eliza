@@ -5,6 +5,7 @@
  */
 import { isPlainObject } from "../type-guards.js";
 import {
+  hasConfigValueAtPath,
   parseConfigPath,
   setConfigValueAtPath,
   unsetConfigValueAtPath,
@@ -35,6 +36,14 @@ export function getConfigOverrides(): OverrideTree {
 
 export function resetConfigOverrides(): void {
   overrides = {};
+}
+
+export function hasConfigOverride(pathRaw: string): boolean {
+  const parsed = parseConfigPath(pathRaw);
+  if (!parsed.ok || !parsed.path) {
+    return false;
+  }
+  return hasConfigValueAtPath(overrides, parsed.path);
 }
 
 export function setConfigOverride(

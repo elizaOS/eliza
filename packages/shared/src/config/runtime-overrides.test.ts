@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   applyConfigOverrides,
   getConfigOverrides,
+  hasConfigOverride,
   resetConfigOverrides,
   setConfigOverride,
   unsetConfigOverride,
@@ -23,22 +24,38 @@ beforeEach(() => {
   resetConfigOverrides();
 });
 
-describe("setConfigOverride / unsetConfigOverride", () => {
+describe("setConfigOverride / unsetConfigOverride / hasConfigOverride", () => {
   it("stores a value at a dotted path", () => {
+    expect(hasConfigOverride("a.b.c")).toBe(false);
     expect(setConfigOverride("a.b.c", 1)).toEqual({ ok: true });
+    expect(hasConfigOverride("a.b.c")).toBe(true);
     expect(getConfigOverrides()).toMatchObject({ a: { b: { c: 1 } } });
+  });
+
+  it("identifies presence of overrides with undefined values", () => {
+    expect(hasConfigOverride("features.voice")).toBe(false);
+    setConfigOverride("features.voice", undefined);
+    expect(hasConfigOverride("features.voice")).toBe(true);
+    expect(hasConfigOverride("features.nonexistent")).toBe(false);
+    expect(unsetConfigOverride("features.voice")).toEqual({
+      ok: true,
+      removed: true,
+    });
+    expect(hasConfigOverride("features.voice")).toBe(false);
   });
 
   it("rejects an empty or malformed path without mutating state", () => {
     const result = setConfigOverride("   ", 1);
     expect(result.ok).toBe(false);
     expect(result.error).toBeTruthy();
+    expect(hasConfigOverride("   ")).toBe(false);
     expect(Object.keys(getConfigOverrides())).toHaveLength(0);
   });
 
   it("rejects a path segment that could reach Object.prototype", () => {
     const result = setConfigOverride("__proto__.polluted", true);
     expect(result.ok).toBe(false);
+    expect(hasConfigOverride("__proto__.polluted")).toBe(false);
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
     expect(Object.keys(getConfigOverrides())).toHaveLength(0);
   });
@@ -58,6 +75,7 @@ describe("setConfigOverride / unsetConfigOverride", () => {
   it("resetConfigOverrides clears every stored override", () => {
     setConfigOverride("a.b", 1);
     resetConfigOverrides();
+    expect(hasConfigOverride("a.b")).toBe(false);
     expect(Object.keys(getConfigOverrides())).toHaveLength(0);
   });
 });
