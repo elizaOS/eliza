@@ -273,6 +273,11 @@
   "elizaos": {
     "app": {
       "defaults": {
+        "computeruse": {
+          "enabled": false,
+          "requiredForReady": true,
+          "routingOnlyWhenDisabled": true
+        },
         "personal-assistant": {
           "enabled": true,
           "requiredForReady": true

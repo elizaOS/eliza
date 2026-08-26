@@ -4668,11 +4668,13 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					messageHandler.plan.requiresTool === true ||
 					nonSimpleContexts.length > 0
 				) {
-					return matchingRules.some((rule) =>
-						routeReplacesStage1Candidate(
-							rule,
-							messageHandler.plan.candidateActions,
-						),
+					return matchingRules.some(
+						(rule) =>
+							rule.unavailable !== undefined ||
+							routeReplacesStage1Candidate(
+								rule,
+								messageHandler.plan.candidateActions,
+							),
 					);
 				}
 				return true;
@@ -4685,23 +4687,49 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 				userRoles,
 			}) => {
 				const text = getActionInferenceMessageText(message);
+				const matchingRules = getDirectActionRoutingRules(runtime).filter(
+					(rule) => rule.matches(text),
+				);
 				const declaredReplacementRules = new Set(
-					getDirectActionRoutingRules(runtime).filter(
-						(rule) =>
-							rule.matches(text) &&
-							routeReplacesStage1Candidate(
-								rule,
-								messageHandler.plan.candidateActions,
-							),
+					matchingRules.filter((rule) =>
+						routeReplacesStage1Candidate(
+							rule,
+							messageHandler.plan.candidateActions,
+						),
 					),
 				);
+				const authoritativeRules = new Set(
+					matchingRules.filter((rule) => rule.unavailable !== undefined),
+				);
+				const unavailablePatch = (rule: DirectActionRoutingRule) => {
+					const unavailable = rule.unavailable;
+					if (!unavailable) return undefined;
+					return {
+						requiresTool: false,
+						setContexts: [SIMPLE_CONTEXT_ID],
+						clearCandidateActions: true,
+						clearReply: true,
+						reply: unavailable.reply,
+						debug: [
+							`direct route unavailable: ${rule.id} (${unavailable.code})`,
+						],
+					};
+				};
 				const routes = await resolveEligibleDirectActionRoutes({
 					runtime,
 					message,
 					state,
 					userRoles,
 				});
-				if (routes.length === 0) return undefined;
+				if (routes.length === 0) {
+					const unavailableRule =
+						[...authoritativeRules].find((rule) => rule.unavailable) ??
+						[...declaredReplacementRules].find((rule) => rule.unavailable) ??
+						matchingRules.find((rule) => rule.unavailable);
+					return unavailableRule
+						? unavailablePatch(unavailableRule)
+						: undefined;
+				}
 				// A declared owner keeps exclusive reconciliation authority even when
 				// its action is unavailable. Falling through to a second text-matching
 				// direct route could execute adjacent work now instead of preserving the
@@ -4710,22 +4738,46 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					declaredReplacementRules.size > 0
 						? routes.filter(({ rule }) => declaredReplacementRules.has(rule))
 						: [];
+				const authoritativeRoutes =
+					authoritativeRules.size > 0
+						? routes.filter(({ rule }) => authoritativeRules.has(rule))
+						: [];
+				if (authoritativeRules.size > 0 && authoritativeRoutes.length === 0) {
+					const unavailableRule = [...authoritativeRules].find(
+						(rule) => rule.unavailable,
+					);
+					return unavailableRule
+						? unavailablePatch(unavailableRule)
+						: undefined;
+				}
 				if (declaredReplacementRules.size > 0 && replacingRoutes.length === 0) {
-					return undefined;
+					const unavailableRule = [...declaredReplacementRules].find(
+						(rule) => rule.unavailable,
+					);
+					return unavailableRule
+						? unavailablePatch(unavailableRule)
+						: undefined;
 				}
 				const selectedRoutes =
-					replacingRoutes.length > 0 ? replacingRoutes : routes;
+					authoritativeRoutes.length > 0
+						? authoritativeRoutes
+						: replacingRoutes.length > 0
+							? replacingRoutes
+							: routes;
 				const replacedActionNames = new Set(
 					replacingRoutes.flatMap(({ rule }) =>
 						(rule.replacesActionNames ?? []).map(normalizeActionIdentifier),
 					),
 				);
-				const retainedStage1Candidates = (
-					messageHandler.plan.candidateActions ?? []
-				).filter(
-					(candidate) =>
-						!replacedActionNames.has(normalizeActionIdentifier(candidate)),
-				);
+				const retainedStage1Candidates =
+					authoritativeRoutes.length > 0
+						? []
+						: (messageHandler.plan.candidateActions ?? []).filter(
+								(candidate) =>
+									!replacedActionNames.has(
+										normalizeActionIdentifier(candidate),
+									),
+							);
 				const candidateActions = uniqueActionNames([
 					...retainedStage1Candidates,
 					...selectedRoutes.map(({ action }) => action.name),
@@ -4737,7 +4789,7 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					requiresTool: true,
 					addContexts: contexts,
 					addCandidateActions: candidateActions,
-					...(replacingRoutes.length > 0
+					...(replacingRoutes.length > 0 || authoritativeRoutes.length > 0
 						? { clearCandidateActions: true }
 						: {}),
 					// A deterministic read route must not emit Stage-1's speculative
