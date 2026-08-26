@@ -60,7 +60,7 @@ async function installProviderFixture(
 for (const viewport of VIEWPORTS) {
   test(`phone country menu stays opaque and scrollable at ${viewport.name}`, async ({
     page,
-  }) => {
+  }, testInfo) => {
     await page.setViewportSize(viewport);
     await installProviderFixture(page, { ...PROVIDERS, sms: true });
 
@@ -72,6 +72,13 @@ for (const viewport of VIEWPORTS) {
 
     const countryMenu = page.getByRole("listbox");
     await expect(countryMenu).toBeVisible();
+    const menuBox = await countryMenu.boundingBox();
+    expect(menuBox).not.toBeNull();
+    if (!menuBox) {
+      throw new Error("Country menu did not produce a layout box");
+    }
+    expect(menuBox.x).toBeGreaterThanOrEqual(16);
+    expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(viewport.width - 16);
     const menuStyle = await countryMenu.evaluate((element) => {
       const style = getComputedStyle(element);
       const scroller = element.querySelector<HTMLElement>(
@@ -97,6 +104,10 @@ for (const viewport of VIEWPORTS) {
     expect(menuStyle.scrollerScrollHeight).toBeGreaterThan(
       menuStyle.scrollerClientHeight,
     );
+    await page.screenshot({
+      path: testInfo.outputPath(`${viewport.name}-country-menu-open.png`),
+      fullPage: true,
+    });
 
     await page.keyboard.press("Home");
     await expect(countryMenu.getByRole("option").first()).toHaveAttribute(
@@ -156,6 +167,7 @@ for (const viewport of VIEWPORTS) {
       ];
 
     await expect(targets[targets.length - 1].locator).toBeVisible();
+    await page.waitForTimeout(500);
     await page.screenshot({
       path: testInfo.outputPath(`${viewport.name}-rest.png`),
       fullPage: true,
