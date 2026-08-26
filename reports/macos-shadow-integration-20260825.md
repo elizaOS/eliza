@@ -388,6 +388,91 @@ No source-owner branch was changed or pushed, no native bundle was built or
 launched, no final port was bound, no credential/TCC surface was opened, and
 no physical-pointer action occurred.
 
+## Stabilized Account head and publication-ready shadow refresh
+
+Account Deletion PR #27213 stabilized at exact pushed head
+`d8d8d916916cbbed8aa84f1c01d9934729a787c1`. Its exact-head Source static
+smoke, Windows security contract, and aggregate checks are terminal green in
+run `32916192417`. The PR remains draft and carries changes-requested review
+state, so this shadow is evidence only and does not treat the constituent as
+approved or mergeable for production.
+
+The Account head merged into the shadow in
+`0916d807b75302b1ad21626929e5697207b7ae46`. The replacement head resolved the
+earlier source-owned provision/resume conflicts upstream. Two integration-only
+conflicts remained:
+
+- Root `STATUS.md`: the existing shadow status stays visible in the composite;
+  the Account owner's full status remains immutable and reviewable at the exact
+  Account parent SHA rather than being rewritten into another lane's root
+  status file.
+- `packages/cloud/api/src/_router.generated.ts`: no generated code was
+  hand-edited. `bun run codegen` regenerated the router from the merged source,
+  producing 705 mounts and 127 shards. The resulting union includes the public
+  and authenticated account-deletion routes while retaining the Devices
+  device-bus/remote routes already present in the shadow. A second codegen run
+  was byte-stable.
+
+After that merge, Computer Use PR #27215 advanced to exact head
+`c2ed8d47769055ab31a550ff8bdabceaa3f3d621`, and iOS PR #27216 advanced to
+exact head `12b70bfff605b187106fe54108f19270d6b955d7`. Each is a two-parent
+current-develop restack whose prior frozen head and exact develop
+`5723e0964cca15996e1664ff74448897d4e288a7` were already represented. Both
+merge rehearsals and executed merges were byte-neutral, preserving the
+Devices-authoritative runtime-management resolutions unchanged.
+
+The pre-receipt composite is
+`3d05946b795702f131391a5b5951412a767c763f`, tree
+`261e6172058a4a60faf35a5565da9a28643e1d57`. Its exact inputs are:
+
+- `origin/develop`: `5723e0964cca15996e1664ff74448897d4e288a7`.
+- Computer Use PR #27215:
+  `c2ed8d47769055ab31a550ff8bdabceaa3f3d621`.
+- Devices PR #25427: `e0c05729f9f30a79ef6b3108e885848cf3fe7ef0`.
+- iOS PR #27216: `12b70bfff605b187106fe54108f19270d6b955d7`.
+- Shared PR #27103: `460ba16c41fb8337fed74bfd7eb745750c103bca`.
+- Account Deletion PR #27213:
+  `d8d8d916916cbbed8aa84f1c01d9934729a787c1`.
+- Desktop preflight PR #28826:
+  `eb74d871f652a550205f297f48617d97bf519aad`.
+- Merged Vault: `a982a071b66f4688809ca49c5fb83284f54912dc`.
+- Merged Auth: `c61c7f72123c722f7a14cfd0355f13123ba6c237`.
+
+Bounded exact-composite verification:
+
+- Cloud API account-deletion routes: 17/17 across three isolated files.
+- Cloud Shared recent-auth, lifecycle, saga, and provisioning admission
+  contracts: 17/17 across five files.
+- UI deletion client/dialog/panels: 35/35 across four Vitest files.
+- Cloud Shared strict typecheck: passed.
+- UI strict typecheck: passed.
+- Cloud API Worker production bundle dry run: passed; 27,644.87 KiB upload,
+  6,696.46 KiB gzip estimate, with no deployment.
+- Release launch-QA plan dry run: passed; no command from the plan executed.
+- Cloud API's combined strict typecheck remains blocked in this existing
+  disposable dependency layout by the previously recorded missing local
+  `@elizaos/plugin-doordash` declaration. The Worker dry run passes, the
+  importing initializer is unchanged from develop, and exact Account CI is
+  green; no full typecheck pass is claimed.
+- Scoped Biome: 85/85 files checked with no findings.
+- `git diff --check`: passed; regenerated source remained stable and the tree
+  was clean.
+- Redacted Gitleaks on the composed local range: no leaks.
+
+This receipt is explicitly nonproduction and contains unreviewed constituent
+heads. PR #26870 was not used or reopened. PR #28826 remains a separate narrow
+desktop-preflight review and is not duplicated by this integration evidence.
+No native bundle was built or launched, no runtime or PGlite writer was opened,
+ports `50001`, `5174`, `31337`, and `31338` remained unused, and no signing,
+deployment, pairing, credential/TCC access, provider traffic, or physical
+pointer action occurred.
+
+Remaining gates are constituent approval and CI/review closure, proper
+dependency-complete release contracts, hosted disposable Account lifecycle
+acceptance (including destructive-provider boundaries), one final exact native
+package build, and Nubs-supervised pill/tray/Vault/Computer Use/provider manual
+QA. This shadow must not be merged or promoted directly.
+
 ## Frozen inputs
 
 - Base `origin/develop`: `69c0291954942c9ae375fe5aacc82729a24bac6f`
