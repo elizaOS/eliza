@@ -256,10 +256,17 @@ const LOCAL_UNRESOLVED_ROLE_SOURCES = new Set([
 	MESSAGE_SOURCE_CODING_AGENT,
 	MESSAGE_SOURCE_AGENT_GREETING,
 	"api",
+	// Owner-app client surfaces (packages/app-core owner-app adapters'
+	// OWNER_APP_SOURCES): an app sender is the account owner on a local,
+	// no-world control surface, so it keeps the USER floor rather than
+	// dropping to GUEST before any world role can resolve.
+	"app",
 	"benchmark",
 	"dashboard",
 	"deep-link",
+	"eliza_app",
 	"event",
+	"in_app",
 	"ios-local",
 	"local-voice",
 	"owner_app",
