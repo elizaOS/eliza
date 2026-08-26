@@ -4,7 +4,7 @@
   "kind": "plugin",
   "description": "OpenAI-compatible LLM inference (DeepSeek V4 Flash, Kimi K2.6, MiniMax M2.7) paid per request in USDC via x402 on Solana + Base. Agent's wallet signs micropayment per call — no signup, no API keys, no subscriptions.",
   "homepage": "https://github.com/GitVova999/openrelay-eliza-plugin",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "tags": [
     "x402",
     "model-provider",
