@@ -220,4 +220,54 @@ describe("desktop auth bridge", () => {
       expect.objectContaining({ status: 403 }),
     );
   });
+
+  it("does not retry an unrelated 503 response", async () => {
+    const stateDir = createStateDir();
+    let attempts = 0;
+
+    const session = await loadOrCreateDesktopSession({
+      apiBase: "http://127.0.0.1:31337",
+      env: { ELIZA_STATE_DIR: stateDir },
+      reusePersistedSession: false,
+      generateSecret: () => Buffer.alloc(32, 12),
+      fetchImpl: async () => {
+        attempts += 1;
+        return Response.json({ error: "service_unavailable" }, { status: 503 });
+      },
+    });
+
+    expect(session).toBeNull();
+    expect(attempts).toBe(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      "[DesktopAuthBridge] Desktop auth bootstrap endpoint failed",
+      expect.objectContaining({ status: 503 }),
+    );
+  });
+
+  it("does not retry db_unavailable after the proof was consumed", async () => {
+    const stateDir = createStateDir();
+    let attempts = 0;
+
+    const session = await loadOrCreateDesktopSession({
+      apiBase: "http://127.0.0.1:31337",
+      env: { ELIZA_STATE_DIR: stateDir },
+      reusePersistedSession: false,
+      generateSecret: () => Buffer.alloc(32, 13),
+      fetchImpl: async (_input, init) => {
+        attempts += 1;
+        const body = JSON.parse(String(init?.body)) as { socketPath: string };
+        await new Promise<void>((resolve, reject) => {
+          const socket = net.createConnection(body.socketPath);
+          socket.once("error", reject);
+          socket.on("data", () => undefined);
+          socket.once("close", resolve);
+        });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        return Response.json({ error: "db_unavailable" }, { status: 503 });
+      },
+    });
+
+    expect(session).toBeNull();
+    expect(attempts).toBe(1);
+  });
 });

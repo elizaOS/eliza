@@ -2365,10 +2365,19 @@ export async function resolvePlugins(
     logger.debug(`[eliza] Plugin auto-enable: ${changes.join("; ")}`);
   }
 
+  const forceIncludePluginNames = new Set(
+    (opts?.forceIncludePluginNames ?? []).map(resolvePluginPackageAlias),
+  );
   // Provenance for "why is this package in the load set?" — surfaced when an
   // optional plugin fails to resolve so logs point at config/env, not "eliza broke".
+  // Forced providers enter the collector before its final topology precedence
+  // sweep; they must not bypass cloud/remote/local-only ownership policy.
   const loadReasons: PluginLoadReasons = new Map();
-  const pluginsToLoad = collectPluginNames(config, loadReasons);
+  const pluginsToLoad = collectPluginNames(
+    config,
+    loadReasons,
+    Array.from(forceIncludePluginNames),
+  );
   const corePluginSet = new Set<string>(CORE_PLUGINS);
   const blockingPluginSet = new Set<string>(BLOCKING_CORE_PLUGINS);
   for (const [pluginId, appDefault] of Object.entries(
@@ -2384,10 +2393,6 @@ export async function resolvePlugins(
       );
     }
   }
-  const forceIncludePluginNames = new Set(
-    (opts?.forceIncludePluginNames ?? []).map(resolvePluginPackageAlias),
-  );
-
   // Build a mutable map of install records so we can merge drop-in discoveries
   const installRecords: Record<string, PluginInstallRecord> = {
     ...(config.plugins?.installs ?? {}),
@@ -2400,31 +2405,6 @@ export async function resolvePlugins(
     .filter(Boolean);
   for (const pluginName of envSkipPlugins) {
     denyList.add(pluginName);
-  }
-  const canonicalDenyList = new Set(
-    Array.from(denyList, resolvePluginPackageAlias),
-  );
-  const pluginEntries = config.plugins?.entries as
-    | Record<string, { enabled?: boolean }>
-    | undefined;
-  const isExplicitlyDisabled = (pluginName: string): boolean => {
-    const canonical = resolvePluginPackageAlias(pluginName);
-    const shortId = canonical.includes("/plugin-")
-      ? canonical.slice(canonical.lastIndexOf("/plugin-") + "/plugin-".length)
-      : canonical;
-    return (
-      pluginEntries?.[shortId]?.enabled === false ||
-      pluginEntries?.[canonical]?.enabled === false
-    );
-  };
-  for (const pluginName of forceIncludePluginNames) {
-    if (canonicalDenyList.has(pluginName) || isExplicitlyDisabled(pluginName)) {
-      continue;
-    }
-    pluginsToLoad.add(pluginName);
-    if (!loadReasons.has(pluginName)) {
-      loadReasons.set(pluginName, "host-selected provider");
-    }
   }
   if (envSkipPlugins.length > 0) {
     logger.info(

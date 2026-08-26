@@ -277,6 +277,8 @@ interface BootstrapSocket {
   socketPath: string;
   /** Resolves once a peer has connected, read the secret, and disconnected. */
   consumed: Promise<void>;
+  /** True as soon as the one permitted peer has connected. */
+  wasConnected: () => boolean;
   close: () => void;
 }
 
@@ -329,7 +331,14 @@ function openBootstrapSocket(
     rejectConsumed = rej;
   });
 
+  let connectionAccepted = false;
   const server = net.createServer((conn) => {
+    if (connectionAccepted) {
+      conn.destroy();
+      return;
+    }
+    connectionAccepted = true;
+    server.close();
     // Hand the secret over and tear down. The peer (the API process) is
     // expected to read the bytes and close. We close on our side after a
     // single connection regardless.
@@ -358,9 +367,10 @@ function openBootstrapSocket(
   return {
     socketPath,
     consumed,
+    wasConnected: () => connectionAccepted,
     close: () => {
       try {
-        server.close();
+        if (server.listening) server.close();
       } catch (err) {
         warnAuthBridge("Failed to close desktop auth socket server", {
           socketPath,
@@ -384,6 +394,18 @@ function openBootstrapSocket(
 function buildBootstrapUrl(apiBase: string): string {
   const trimmed = apiBase.replace(/\/+$/, "");
   return `${trimmed}${DESKTOP_BOOTSTRAP_ENDPOINT}`;
+}
+
+async function readBootstrapErrorCode(response: Response): Promise<string> {
+  try {
+    const body = (await response.json()) as unknown;
+    if (!body || typeof body !== "object") return "";
+    const error = (body as Record<string, unknown>).error;
+    return typeof error === "string" ? error : "";
+  } catch {
+    // error-policy:J3 malformed error bodies are explicit non-retryable input.
+    return "";
+  }
 }
 
 function waitForBootstrapRetry(
@@ -511,9 +533,10 @@ export async function bootstrapDesktopSession(
 
   const url = buildBootstrapUrl(deps.apiBase);
   const requestSignal = AbortSignal.timeout(timing.httpRequestTimeoutMs);
+  const observedConsumption = socketHandle.consumed;
   // error-policy:J5 a socket-server rejection is awaited after a 2xx response;
   // this observer covers early HTTP exits without changing that result.
-  socketHandle.consumed.catch((err: unknown) => {
+  observedConsumption.catch((err: unknown) => {
     logger.debug("[DesktopAuthBridge] Bootstrap socket was not consumed", {
       error: errorMessage(err),
     });
@@ -535,7 +558,13 @@ export async function bootstrapDesktopSession(
 
       if (response.ok) break;
       const retryDelay = timing.dbUnavailableRetryDelaysMs[attempt];
-      if (response.status === 503 && retryDelay !== undefined) {
+      const errorCode = await readBootstrapErrorCode(response);
+      if (
+        response.status === 503 &&
+        errorCode === "db_unavailable" &&
+        !socketHandle.wasConnected() &&
+        retryDelay !== undefined
+      ) {
         await waitForBootstrapRetry(retryDelay, requestSignal);
         continue;
       }
@@ -564,7 +593,7 @@ export async function bootstrapDesktopSession(
     // bounded retries must not spend the separate proof-consumption budget.
     // If a backend returns success without consuming the socket, fail closed.
     await waitForSocketConsumption(
-      socketHandle.consumed,
+      observedConsumption,
       timing.socketConnectTimeoutMs,
     );
   } catch (err) {
