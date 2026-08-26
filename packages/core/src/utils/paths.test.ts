@@ -86,4 +86,16 @@ describe("paths", () => {
 		expect(all).toHaveProperty("uploadsAgentsDir");
 		expect(all).toHaveProperty("uploadsChannelsDir");
 	});
+
+	it("falls back to globalThis.ENV when process.env entry is unset", () => {
+		const g = globalThis as { ENV?: Record<string, unknown> };
+		g.ENV = { ELIZA_DATA_DIR: "/global/workspace" };
+		try {
+			resetPaths();
+			expect(getDataDir()).toBe("/global/workspace");
+		} finally {
+			delete g.ENV;
+			resetPaths();
+		}
+	});
 });
