@@ -177,25 +177,6 @@ function validateObject(
 		}
 	}
 
-	// Planner models routinely fill UNUSED optional parameters with the
-	// strings "null"/"undefined"/"" rather than omitting them; a patterned
-	// optional then fails validation and kills an otherwise-valid call (live
-	// 2026-08-24: MEMORY create failed on memoryId:"null" and the turn
-	// claimed success anyway).
-	//
-	// The rule is deliberately narrow: a sentinel counts as "absent" ONLY for
-	// an optional property whose schema cannot accept the literal anyway. For
-	// a free-text optional, "" and the literal "null" are legitimate values a
-	// user may have actually asked to send, and dropping them would be silent
-	// data loss on the model -> action path. So the value is validated first,
-	// and only a value that BOTH fails its schema and reads as a sentinel is
-	// treated as omitted.
-	const requiredKeys = new Set(schema.required ?? []);
-	const readsAsAbsent = (key: string, supplied: unknown): boolean =>
-		!requiredKeys.has(key) &&
-		typeof supplied === "string" &&
-		["", "null", "undefined"].includes(supplied.trim().toLowerCase());
-
 	for (const [key, childSchema] of Object.entries(properties)) {
 		if (hasOwn(value, key) && value[key] !== undefined && value[key] !== null) {
 			const childPath = path ? `${path}.${key}` : key;
@@ -208,15 +189,8 @@ function validateObject(
 			);
 			if (errors.length === before) {
 				output[key] = childValue;
-				continue;
 			}
-			if (readsAsAbsent(key, value[key])) {
-				// Schema-rejected sentinel on an optional property: drop the
-				// rejection with it and fall through to the default/absent path.
-				errors.length = before;
-			} else {
-				continue;
-			}
+			continue;
 		}
 
 		if (
@@ -389,6 +363,32 @@ export function validateSchema(
 	}
 }
 
+function omitDeclaredModelSentinels(
+	action: Action,
+	args: Record<string, unknown>,
+): Record<string, unknown> {
+	let normalized = args;
+	for (const parameter of action.parameters ?? []) {
+		const suppliedValue = args[parameter.name];
+		if (
+			parameter.required ||
+			!hasOwn(args, parameter.name) ||
+			typeof suppliedValue !== "string" ||
+			!parameter.modelOmissionSentinels?.length
+		) {
+			continue;
+		}
+		const supplied = suppliedValue.trim().toLowerCase();
+		const isDeclaredSentinel = parameter.modelOmissionSentinels.some(
+			(sentinel) => sentinel.trim().toLowerCase() === supplied,
+		);
+		if (!isDeclaredSentinel) continue;
+		if (normalized === args) normalized = { ...args };
+		delete normalized[parameter.name];
+	}
+	return normalized;
+}
+
 export function validateToolArgs(
 	action: Action,
 	args: unknown,
@@ -404,8 +404,9 @@ export function validateToolArgs(
 		};
 	}
 
-	const validatedArgs = validateObject(schema, args, "", errors);
-	const invalidParameterNames = Object.keys(args).filter(
+	const normalizedArgs = omitDeclaredModelSentinels(action, args);
+	const validatedArgs = validateObject(schema, normalizedArgs, "", errors);
+	const invalidParameterNames = Object.keys(normalizedArgs).filter(
 		(name) => !Object.hasOwn(validatedArgs, name),
 	);
 
