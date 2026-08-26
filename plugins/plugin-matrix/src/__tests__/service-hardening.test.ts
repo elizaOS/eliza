@@ -611,4 +611,41 @@ describe("Matrix service hardening", () => {
       vi.useRealTimers();
     }
   });
+
+  it("requires a real mention and ignores the localpart as a bare substring", () => {
+    const settings: MatrixSettings = {
+      accountId: "work",
+      homeserver: "https://matrix.example",
+      userId: "@ai:example",
+      accessToken: "token",
+      rooms: [],
+      autoJoin: false,
+      encryption: false,
+      requireMention: true,
+      enabled: true,
+    };
+    const handle = (body: string, runtime: any, state: any, service: any) => {
+      const fn = (service as unknown as { handleRoomMessage: (s: any, e: unknown, r: unknown) => void }).handleRoomMessage.bind(service);
+      const room = createRoom();
+      room.getJoinedMemberCount = (() => 3) as any;
+      fn(state, createEvent({ msgtype: "m.text", body }), room);
+      return runtime.emitEvent;
+    };
+    // unrelated words containing "ai" must NOT dispatch
+    for (const body of ["ok let's wait for the build", "email me later", "maintain the docs", "aié nearby", "@bob:ai.example.com hello"]) {
+      const { runtime, service, state } = createService({ settings });
+      handle(body, runtime, state, service);
+      expect(runtime.emitEvent).not.toHaveBeenCalled();
+    }
+    // genuine mentions must dispatch
+    for (const body of ["hey @ai can you help", "ai: please review", "hey @ai, thanks", "ai help", "@ai:matrix.org hi", "hi @ai"]) {
+      const { runtime, service, state } = createService({ settings });
+      const fn = (service as unknown as { handleRoomMessage: (s: any, e: unknown, r: unknown) => void }).handleRoomMessage.bind(service);
+      const room = createRoom();
+      room.getJoinedMemberCount = (() => 3) as any;
+      fn(state, createEvent({ msgtype: "m.text", body }), room);
+      expect(runtime.emitEvent).toHaveBeenCalledWith(MatrixEventTypes.MESSAGE_RECEIVED, expect.anything());
+    }
+  });
+
 });
