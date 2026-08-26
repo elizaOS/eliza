@@ -402,8 +402,13 @@ function readAppIdentity() {
     process.env.ELIZA_APP_ID?.trim() ||
     process.env.ELIZA_IOS_APP_ID?.trim() ||
     configAppId;
-  const appName = src.match(/appName:\s*["']([^"']+)["']/)?.[1];
-  const urlScheme = src.match(/urlScheme:\s*["']([^"']+)["']/)?.[1] ?? appId;
+  const appName =
+    process.env.ELIZA_APP_NAME?.trim() ||
+    src.match(/appName:\s*["']([^"']+)["']/)?.[1];
+  const urlScheme =
+    process.env.ELIZA_APP_URL_SCHEME?.trim() ||
+    src.match(/urlScheme:\s*["']([^"']+)["']/)?.[1] ||
+    appId;
   if (!appId || !appName) {
     throw new Error("Could not parse appId/appName from app.config.ts");
   }
@@ -5750,24 +5755,41 @@ export function isAndroidLp3RemoteFallbackRequired(env = process.env) {
   );
 }
 
+export function isAndroidVpsSidecarBuild(env = process.env) {
+  return isTruthyEnv(env.ELIZA_ANDROID_VPS_SIDECAR);
+}
+
 export function enforceAndroidLp3RemoteFallbackBuildPolicy({
   targetName,
   env = process.env,
 }) {
-  const required = isAndroidLp3RemoteFallbackRequired(env);
-  if (!required) return;
-  if (
-    targetName !== "android-cloud-debug" ||
-    !isAndroidLp3ColorPolicyEnabled(env)
-  ) {
+  const lp3Required = isAndroidLp3RemoteFallbackRequired(env);
+  const sidecarRequired = isAndroidVpsSidecarBuild(env);
+  if (!lp3Required && !sidecarRequired) return;
+  if (lp3Required && sidecarRequired) {
+    throw new Error(
+      "[mobile-build] LP3 and VPS sidecar remote profiles are mutually exclusive.",
+    );
+  }
+  if (targetName !== "android-cloud-debug") {
+    throw new Error(
+      "[mobile-build] remote fallback profiles are restricted to android-cloud-debug.",
+    );
+  }
+  if (lp3Required && !isAndroidLp3ColorPolicyEnabled(env)) {
     throw new Error(
       "[mobile-build] ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED is restricted to the LP3 android-cloud-debug direct profile.",
+    );
+  }
+  if (sidecarRequired && isAndroidLp3ColorPolicyEnabled(env)) {
+    throw new Error(
+      "[mobile-build] ELIZA_ANDROID_VPS_SIDECAR must not enable the LP3 color policy.",
     );
   }
   const raw = String(env.VITE_ELIZA_REMOTE_FALLBACK_API_BASE ?? "").trim();
   if (!raw) {
     throw new Error(
-      "[mobile-build] the LP3 VPS profile requires VITE_ELIZA_REMOTE_FALLBACK_API_BASE",
+      "[mobile-build] the remote fallback profile requires VITE_ELIZA_REMOTE_FALLBACK_API_BASE",
     );
   }
   let parsed;
@@ -5825,6 +5847,12 @@ export function enforceAndroidLp3ColorPolicyBuildPolicy({
   }
 }
 
+function isAndroidFirebaseIndependentRemoteBuild(env = process.env) {
+  return (
+    isAndroidLp3RemoteFallbackRequired(env) || isAndroidVpsSidecarBuild(env)
+  );
+}
+
 export function resolveAndroidCloudStripPolicy(env = process.env) {
   const stripPolicy = !isAndroidLp3ColorPolicyEnabled(env)
     ? {
@@ -5859,7 +5887,7 @@ export function resolveAndroidCloudStripPolicy(env = process.env) {
         };
       })();
 
-  if (!isAndroidLp3RemoteFallbackRequired(env)) {
+  if (!isAndroidFirebaseIndependentRemoteBuild(env)) {
     return { ...stripPolicy, safePushNotifications: true };
   }
 
@@ -5984,7 +6012,7 @@ export const ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES = Object.freeze([
 export function resolveAndroidCloudAllowedNativePluginPackages(
   env = process.env,
 ) {
-  return isAndroidLp3RemoteFallbackRequired(env)
+  return isAndroidFirebaseIndependentRemoteBuild(env)
     ? ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES.filter(
         (pkg) => pkg !== "@capacitor/push-notifications",
       )
@@ -6178,6 +6206,12 @@ export const ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES = Object.freeze([
   "lib/x86_64/libdatastore_shared_counter.so",
 ]);
 
+export function resolveAndroidCloudAllowedNativeLibraries(env = process.env) {
+  return isAndroidFirebaseIndependentRemoteBuild(env)
+    ? []
+    : [...ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES];
+}
+
 export const ANDROID_PLAY_DATA_EXTRACTION_RULES = `<?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
     <cloud-backup>
@@ -6307,8 +6341,11 @@ export function findAndroidPlayIndexHtmlFindings(entries, buffers) {
   return [...new Set(findings)].sort();
 }
 
-export function createAndroidPlayManifestPolicy({ debug = false } = {}) {
-  return {
+export function createAndroidPlayManifestPolicy({
+  debug = false,
+  firebaseIndependent = false,
+} = {}) {
+  const policy = {
     actions: [...ANDROID_PLAY_ALLOWED_ACTIONS],
     application: {
       allowBackup: "false",
@@ -6321,6 +6358,45 @@ export function createAndroidPlayManifestPolicy({ debug = false } = {}) {
     queryActions: [...ANDROID_PLAY_ALLOWED_QUERY_ACTIONS],
     queryPackages: [],
     targetSdkVersion: "36",
+  };
+  if (!firebaseIndependent) return policy;
+  const firebaseComponents = [
+    "provider:com.google.firebase.provider.FirebaseInitProvider",
+    "receiver:com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver",
+    "receiver:com.google.firebase.iid.FirebaseInstanceIdReceiver",
+    "service:com.capacitorjs.plugins.pushnotifications.MessagingService",
+    "service:com.google.android.datatransport.runtime.backends.TransportBackendDiscovery",
+    "service:com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService",
+    "service:com.google.firebase.components.ComponentDiscoveryService",
+    "service:com.google.firebase.messaging.FirebaseMessagingService",
+  ];
+  const firebaseMetadata = [
+    "backend:com.google.android.datatransport.cct.CctBackendFactory",
+    "com.google.android.gms.cloudmessaging.FINISHED_AFTER_HANDLED",
+    "com.google.firebase.components:com.google.firebase.datatransport.TransportRegistrar",
+    "com.google.firebase.components:com.google.firebase.FirebaseCommonKtxRegistrar",
+    "com.google.firebase.components:com.google.firebase.installations.FirebaseInstallationsKtxRegistrar",
+    "com.google.firebase.components:com.google.firebase.installations.FirebaseInstallationsRegistrar",
+    "com.google.firebase.components:com.google.firebase.messaging.FirebaseMessagingKtxRegistrar",
+    "com.google.firebase.components:com.google.firebase.messaging.FirebaseMessagingRegistrar",
+  ];
+  return {
+    ...policy,
+    actions: policy.actions.filter(
+      (action) =>
+        action !== "com.google.android.c2dm.intent.RECEIVE" &&
+        action !== "com.google.firebase.MESSAGING_EVENT",
+    ),
+    components: policy.components.filter(
+      (component) => !firebaseComponents.includes(component),
+    ),
+    metadataNames: policy.metadataNames.filter(
+      (metadata) => !firebaseMetadata.includes(metadata),
+    ),
+    permissions: policy.permissions.filter(
+      (permission) =>
+        permission !== "com.google.android.c2dm.permission.RECEIVE",
+    ),
   };
 }
 
@@ -9977,7 +10053,7 @@ export function auditAndroidCloudArtifact(
       .sort();
     if (
       JSON.stringify(nativeLibraries) !==
-      JSON.stringify([...ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES].sort())
+      JSON.stringify(resolveAndroidCloudAllowedNativeLibraries(env).sort())
     ) {
       throw mobileBuildError(
         `[mobile-build] android-cloud native libraries differ from the Play allowlist:\n${nativeLibraries
@@ -10119,7 +10195,10 @@ export function auditAndroidCloudArtifact(
         });
         assertAndroidPlayManifestPolicyEvidence(
           androidPlayManifestEvidenceFromAapt(manifestText),
-          createAndroidPlayManifestPolicy({ debug: true }),
+          createAndroidPlayManifestPolicy({
+            debug: true,
+            firebaseIndependent: isAndroidFirebaseIndependentRemoteBuild(env),
+          }),
         );
       }
       auditAndroidArtifactDexLp3Policy(
