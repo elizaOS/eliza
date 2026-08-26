@@ -11,7 +11,7 @@ import {
   persistActiveServerCredential,
   scrubRejectedActiveServerCredential,
 } from "./active-server-credential";
-import { getActiveProfile } from "./agent-profiles";
+import { getActiveProfile, loadAgentProfileRegistry } from "./agent-profiles";
 import {
   createPersistedActiveServer,
   loadPersistedActiveServer,
@@ -52,6 +52,39 @@ describe("persistActiveServerCredential", () => {
       apiBase: "https://runtime.example.test",
       accessToken: "paired-token",
     });
+  });
+
+  it("does not copy a remote pairing bearer into a stale Cloud profile", async () => {
+    savePersistedActiveServer(
+      createPersistedActiveServer({
+        kind: "cloud",
+        id: "cloud:personal:test",
+        label: "Eliza",
+        apiBase: "https://api.eliza.app/api/v1/eliza/agents/personal:test",
+      }),
+    );
+    expect(getActiveProfile()?.kind).toBe("cloud");
+
+    await persistActiveServerCredential(
+      "vps-session",
+      "https://runtime.example.test",
+    );
+
+    expect(loadPersistedActiveServer()).toMatchObject({
+      kind: "remote",
+      apiBase: "https://runtime.example.test",
+      accessToken: "vps-session",
+    });
+    expect(getActiveProfile()).toMatchObject({
+      kind: "remote",
+      apiBase: "https://runtime.example.test",
+      accessToken: "vps-session",
+    });
+    expect(
+      loadAgentProfileRegistry().profiles.find(
+        (profile) => profile.kind === "cloud",
+      )?.accessToken,
+    ).toBeUndefined();
   });
 
   it("scrubs a rejected active credential without dropping the target", async () => {
