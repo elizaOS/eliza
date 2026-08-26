@@ -1948,6 +1948,8 @@
   "cloud.legal.terms.linkToPrivacy": "Privacy Policy",
   "cloud.legal.terms.meta.description": "Terms of Service for Eliza Cloud — read the terms and conditions for using our AI agent development platform.",
   "cloud.legal.terms.meta.title": "Terms of Service | Eliza Cloud",
+  "cloud.login.accountSwitch.retry": "Try again",
+  "cloud.login.accountSwitch.title": "Couldn't switch accounts",
   "cloud.login.backToLogin": "← Back to login",
   "cloud.login.button.discord": "Discord",
   "cloud.login.button.github": "GitHub",

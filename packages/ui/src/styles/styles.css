@@ -175,7 +175,7 @@ html.eliza-chat-overlay-shell #root {
   pointer-events: none;
 }
 
-html.eliza-chat-overlay-shell .shell-assistant-overlay-panel {
+html.eliza-chat-overlay-shell .shell-assistant-overlay-positioner {
   /* Card owns the fixed dark palette and glass paint; this shell selector
      keeps only native-popup placement and animation geometry. */
   top: auto;
