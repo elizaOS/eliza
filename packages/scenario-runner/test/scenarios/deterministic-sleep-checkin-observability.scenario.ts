@@ -156,8 +156,7 @@ function readSleepCycleCheckins(body: unknown): CheckinResultEntry[] | string {
       kind: entry.kind,
       status: entry.status,
       reportId: typeof entry.reportId === "string" ? entry.reportId : null,
-      messageId:
-        typeof entry.messageId === "string" ? entry.messageId : null,
+      messageId: typeof entry.messageId === "string" ? entry.messageId : null,
       reason: typeof entry.reason === "string" ? entry.reason : null,
       persisted: entry.persisted === true,
     });
@@ -185,7 +184,10 @@ function bucketedIso(value: string): string {
   return new Date(Math.round(ms / halfHour) * halfHour).toISOString();
 }
 
-function assertDeliveredTick(_status: number, body: unknown): string | undefined {
+function assertDeliveredTick(
+  _status: number,
+  body: unknown,
+): string | undefined {
   const checkins = readSleepCycleCheckins(body);
   if (typeof checkins === "string") return checkins;
   if (checkins.length !== 1 || checkins[0]?.kind !== "morning") {
@@ -205,9 +207,7 @@ function assertDeliveredTick(_status: number, body: unknown): string | undefined
     return `expected delivery + persistence, saw ${JSON.stringify(checkin)}`;
   }
   if (!checkin.messageId?.startsWith("assistant-stream:")) {
-    return (
-      `expected in-app delivery messageId assistant-stream:<reportId>, saw ${JSON.stringify(checkin.messageId)}`
-    );
+    return `expected in-app delivery messageId assistant-stream:<reportId>, saw ${JSON.stringify(checkin.messageId)}`;
   }
   const sleepFailure = readSubsystemFailures(body).find((subsystem) =>
     subsystem.startsWith("sleep_cycle"),
@@ -234,7 +234,10 @@ function assertDeliveredTick(_status: number, body: unknown): string | undefined
       `the delivered report ${deliveredReportId}`
     );
   }
-  if (event.checkinKind !== "morning" || event.deliveryBasis !== "sleep_cycle") {
+  if (
+    event.checkinKind !== "morning" ||
+    event.deliveryBasis !== "sleep_cycle"
+  ) {
     return (
       "event payload must carry the check-in identity: " +
       JSON.stringify({
@@ -265,9 +268,7 @@ function assertDedupeTick(_status: number, body: unknown): string | undefined {
     );
   }
   if (eventLedger.length !== 1) {
-    return (
-      `the dedupe tick must not emit a second assistant event, saw ${eventLedger.length}`
-    );
+    return `the dedupe tick must not emit a second assistant event, saw ${eventLedger.length}`;
   }
   const sleepFailure = readSubsystemFailures(body).find((subsystem) =>
     subsystem.startsWith("sleep_cycle"),
@@ -287,9 +288,7 @@ async function readCheckinReportRows(
   const { executeRawSql } = await import(
     "@elizaos/plugin-personal-assistant/lifeops/sql"
   );
-  const runtime = ctx.runtime as Parameters<
-    typeof executeRawSql
-  >[0];
+  const runtime = ctx.runtime as Parameters<typeof executeRawSql>[0];
   return executeRawSql(
     runtime,
     "SELECT id, kind, acknowledged_at FROM app_lifeops.life_checkin_reports ORDER BY generated_at_ms",
@@ -458,9 +457,7 @@ export default scenario({
           );
         }
         if (merged.wakeAt !== bucketedIso(WAKE_AT.toISOString())) {
-          return (
-            `expected merged wakeAt ${bucketedIso(WAKE_AT.toISOString())} (seeded instant bucketed to the 30-minute merge grid), saw ${JSON.stringify(merged.wakeAt)}`
-          );
+          return `expected merged wakeAt ${bucketedIso(WAKE_AT.toISOString())} (seeded instant bucketed to the 30-minute merge grid), saw ${JSON.stringify(merged.wakeAt)}`;
         }
         return undefined;
       },

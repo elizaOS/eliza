@@ -50,7 +50,9 @@ interface RuntimeLike {
 let originalGetService: ((serviceType: string) => unknown) | null = null;
 let disconnectedReportId: string | null = null;
 
-function injectAgentEventDisconnection(ctx: ScenarioContext): string | undefined {
+function injectAgentEventDisconnection(
+  ctx: ScenarioContext,
+): string | undefined {
   const runtime = ctx.runtime as
     | (RuntimeLike & { getService?: (serviceType: string) => unknown })
     | undefined;
@@ -71,9 +73,11 @@ function injectAgentEventDisconnection(ctx: ScenarioContext): string | undefined
 }
 
 function restoreAgentEventResolution(): string | undefined {
-  const ctx = currentRuntime as (RuntimeLike & {
-    getService?: (serviceType: string) => unknown;
-  }) | null;
+  const ctx = currentRuntime as
+    | (RuntimeLike & {
+        getService?: (serviceType: string) => unknown;
+      })
+    | null;
   if (ctx && originalGetService) {
     ctx.getService = originalGetService;
   }
@@ -90,7 +94,10 @@ function captureRuntime(ctx: ScenarioContext): string | undefined {
   return undefined;
 }
 
-function assertDisconnectedTick(_status: number, body: unknown): string | undefined {
+function assertDisconnectedTick(
+  _status: number,
+  body: unknown,
+): string | undefined {
   if (!isRecord(body) || body.success !== true) {
     return `expected tick success=true, saw ${JSON.stringify(body)}`;
   }
@@ -108,9 +115,7 @@ function assertDisconnectedTick(_status: number, body: unknown): string | undefi
     );
   }
   if (checkin.status !== "disconnected") {
-    return (
-      `expected typed status=disconnected, saw ${JSON.stringify(checkin.status)}`
-    );
+    return `expected typed status=disconnected, saw ${JSON.stringify(checkin.status)}`;
   }
   if (typeof checkin.reportId !== "string" || checkin.reportId.length === 0) {
     return (
@@ -122,9 +127,7 @@ function assertDisconnectedTick(_status: number, body: unknown): string | undefi
     return `expected reason=disconnected, saw ${JSON.stringify(checkin.reason)}`;
   }
   if (checkin.persisted !== false) {
-    return (
-      `non-persistence must be explicit (persisted=false), saw ${JSON.stringify(checkin.persisted)}`
-    );
+    return `non-persistence must be explicit (persisted=false), saw ${JSON.stringify(checkin.persisted)}`;
   }
   disconnectedReportId = checkin.reportId;
   const failures = Array.isArray(body.subsystemFailures)
