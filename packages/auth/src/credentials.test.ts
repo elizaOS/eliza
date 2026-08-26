@@ -676,7 +676,7 @@ describe("credentials lifecycle, validity checks, and deletion preflight", () =>
     expect(loadCredentials("openai-codex", "to-delete", policy)).toBeNull();
   });
 
-  it("generates deletion plan via preflightProviderCredentialDeletion and commits deletions", () => {
+  it("preflights every provider account without deleting credentials", () => {
     useTempElizaHome();
     const policy = storagePolicy();
 
@@ -699,5 +699,7 @@ describe("credentials lifecycle, validity checks, and deletion preflight", () =>
       "acct-1",
       "acct-2",
     ]);
+    expect(loadCredentials("openai-codex", "acct-1", policy)).not.toBeNull();
+    expect(loadCredentials("openai-codex", "acct-2", policy)).not.toBeNull();
   });
 });
