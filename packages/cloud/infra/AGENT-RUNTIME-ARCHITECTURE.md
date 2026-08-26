@@ -278,7 +278,10 @@ returned HTTP 402. Its sanitized artifact records staging commit
 requests, cleanup `not-required`, and no possible orphan. This proves the
 current failure occurs before queue insertion, warm-pool claim, node selection,
 or Docker startup: the staging canary identity lacks the server-required
-hosting credit/runway. The canary now classifies this as
+hosting credit/runway. The authoritative pricing contract requires a balance
+strictly above `$0.72`, equal to three days at `$0.24/day`; the canary artifact
+does not expose the private current balance or organization identity. The
+canary now classifies this as
 `insufficient_hosting_credit` instead of the generic `unexpected_http_402`.
 Restoring that staging test balance is a billing-authority operation, not a
 Hetzner repair, and must be followed by a fresh canary after this SHA is
