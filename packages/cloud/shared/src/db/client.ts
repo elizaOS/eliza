@@ -9,16 +9,32 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { NodePgDatabase, NodePgTransaction } from "drizzle-orm/node-postgres";
+import type {
+  NodePgDatabase,
+  NodePgTransaction,
+} from "drizzle-orm/node-postgres";
 import { drizzle as drizzleNode } from "drizzle-orm/node-postgres";
-import { drizzle as drizzlePGlite, type PgliteDatabase } from "drizzle-orm/pglite";
+import {
+  drizzle as drizzlePGlite,
+  type PgliteDatabase,
+} from "drizzle-orm/pglite";
 import type { ExtractTablesWithRelations } from "drizzle-orm/relations";
 import { Pool as PgPool, type PoolConfig } from "pg";
-import { getCloudAwareEnv, getCloudBinding } from "../lib/runtime/cloud-bindings";
+import {
+  getCloudAwareEnv,
+  getCloudBinding,
+} from "../lib/runtime/cloud-bindings";
 import { logger } from "../lib/utils/logger";
 import { applyDatabaseUrlFallback } from "./database-url";
 import { disableLocalPreparedStatements } from "./local-pg-query";
+import { enforceTlsForRemote, isLocalTcpPostgresUrl } from "./postgres-tls";
 import * as schema from "./schemas";
+
+export {
+  enforceTlsForRemote,
+  isLocalTcpPostgresUrl,
+  shouldSkipTlsVerification,
+} from "./postgres-tls";
 
 // ============================================================================
 // Types
@@ -36,7 +52,10 @@ type DatabaseCloser = () => Promise<void> | void;
 
 const databaseClosers = new WeakMap<Database, DatabaseCloser>();
 
-function registerDatabaseCloser(database: Database, closer: DatabaseCloser): Database {
+function registerDatabaseCloser(
+  database: Database,
+  closer: DatabaseCloser,
+): Database {
   databaseClosers.set(database, closer);
   return database;
 }
@@ -93,7 +112,8 @@ let pgliteClientForTests: import("@electric-sql/pglite").PGlite | null = null;
  * on the Workers runtime.
  */
 function createPGliteClient(dataDir: string): Database {
-  const { PGlite } = require("@electric-sql/pglite") as typeof import("@electric-sql/pglite");
+  const { PGlite } =
+    require("@electric-sql/pglite") as typeof import("@electric-sql/pglite");
   const { vector } =
     require("@electric-sql/pglite/vector") as typeof import("@electric-sql/pglite/vector");
   const client = new PGlite({
@@ -101,95 +121,24 @@ function createPGliteClient(dataDir: string): Database {
     extensions: { vector },
   });
   pgliteClientForTests = client;
-  const database: PgliteDatabase<typeof schema> = drizzlePGlite({ client, schema });
+  const database: PgliteDatabase<typeof schema> = drizzlePGlite({
+    client,
+    schema,
+  });
   return registerDatabaseCloser(database as Database, async () => {
     await client.close();
   });
 }
 
-function isLocalTcpPostgresUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return (
-      (parsed.protocol === "postgres:" || parsed.protocol === "postgresql:") &&
-      (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost")
-    );
-  } catch {
-    return false;
-  }
-}
-
-function parsePositiveInteger(value: string | undefined, fallback: number): number {
+function parsePositiveInteger(
+  value: string | undefined,
+  fallback: number,
+): number {
   if (!value) {
     return fallback;
   }
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-/**
- * Whether to keep TLS but skip server-certificate verification.
- *
- * Managed providers like Railway terminate the public TCP proxy with a
- * self-signed certificate, so strict CA verification fails even though the
- * connection is fully encrypted. Opt in — per the provider's own guidance —
- * with `DATABASE_SSL_NO_VERIFY=true` or `?sslmode=no-verify` on the URL. The
- * default stays strict; this never disables encryption (only verification).
- */
-export function shouldSkipTlsVerification(url: string): boolean {
-  if (process.env.DATABASE_SSL_NO_VERIFY === "true") {
-    return true;
-  }
-  try {
-    return new URL(url).searchParams.get("sslmode") === "no-verify";
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Enforce TLS on remote Postgres connections (D-2 / SOC2 CC6.7).
- *
- * Local (127.0.0.1 / localhost) connections may run without TLS for dev.
- * Anything else must use TLS — both via the URL `sslmode` parameter (so it
- * survives external connection-pool configs) AND via the `ssl` option on the
- * pg driver (so the handshake is enforced even if the parameter is dropped by
- * a proxy). We fail closed: `sslmode=disable`/`allow` is rejected outright, and
- * certificate verification stays on (`rejectUnauthorized: true`) unless the
- * operator explicitly opts into `no-verify` for a self-signed managed proxy
- * (the connection remains encrypted; only CA verification is relaxed).
- */
-export function enforceTlsForRemote(url: string): {
-  url: string;
-  ssl: PoolConfig["ssl"];
-} {
-  if (isLocalTcpPostgresUrl(url)) {
-    return { url, ssl: undefined };
-  }
-  const skipVerify = shouldSkipTlsVerification(url);
-  let normalized = url;
-  try {
-    const parsed = new URL(url);
-    const sslmode = parsed.searchParams.get("sslmode");
-    if (sslmode === "disable" || sslmode === "allow") {
-      throw new Error(
-        `Refusing to connect: remote DATABASE_URL has sslmode=${sslmode}. Remote Postgres connections must use TLS (SOC2 CC6.7).`,
-      );
-    }
-    if (!sslmode) {
-      parsed.searchParams.set("sslmode", skipVerify ? "no-verify" : "require");
-      normalized = parsed.toString();
-    }
-  } catch (err) {
-    if (err instanceof Error && err.message.startsWith("Refusing to connect")) {
-      throw err;
-    }
-    // URL parse failure — fall through with original string; pg will reject.
-  }
-  return {
-    url: normalized,
-    ssl: { rejectUnauthorized: !skipVerify },
-  };
 }
 
 /**
@@ -241,7 +190,9 @@ function createPgPool(url: string, hyperdriveUrl?: string): PgPool {
   const isLocalTcp = isLocalTcpPostgresUrl(url);
   // Hyperdrive proxies to the origin (pooling + TLS); the Worker connects to its
   // local plaintext endpoint, so bypass the remote-TLS enforcement.
-  const tls = hyperdriveUrl ? { url: hyperdriveUrl, ssl: undefined } : enforceTlsForRemote(url);
+  const tls = hyperdriveUrl
+    ? { url: hyperdriveUrl, ssl: undefined }
+    : enforceTlsForRemote(url);
   const options: PoolConfig = { connectionString: tls.url };
   // A remote Node daemon must fail a saturated pool checkout instead of
   // waiting forever behind a leaked transaction while outer job timers merely
@@ -317,7 +268,9 @@ function createPgPool(url: string, hyperdriveUrl?: string): PgPool {
 function createConnection(url: string): Database {
   if (url.startsWith("pglite://")) {
     if (isCloudflareWorkerRuntime()) {
-      throw new Error("pglite:// URLs are local-only and cannot run inside a Cloudflare Worker.");
+      throw new Error(
+        "pglite:// URLs are local-only and cannot run inside a Cloudflare Worker.",
+      );
     }
     return createPGliteClient(parsePGliteDataDir(url));
   }
@@ -332,14 +285,20 @@ function createConnection(url: string): Database {
   // terminates mid-query on workerd (#8629). If we're in a Worker reaching a
   // remote origin without a Hyperdrive binding, refuse loudly instead of
   // silently opening a doomed per-request connection.
-  if (isCloudflareWorkerRuntime() && !hyperdriveUrl && !isLocalTcpPostgresUrl(url)) {
+  if (
+    isCloudflareWorkerRuntime() &&
+    !hyperdriveUrl &&
+    !isLocalTcpPostgresUrl(url)
+  ) {
     throw new Error(
       "Refusing direct node-pg to external Postgres from a Worker: HYPERDRIVE binding missing. " +
         "Bind [[hyperdrive]] in wrangler.toml so the Worker proxies to the origin (see #8629).",
     );
   }
   const pool = createPgPool(url, hyperdriveUrl);
-  return registerDatabaseCloser(drizzleNode(pool, { schema }) as Database, () => pool.end());
+  return registerDatabaseCloser(drizzleNode(pool, { schema }) as Database, () =>
+    pool.end(),
+  );
 }
 
 // ============================================================================
