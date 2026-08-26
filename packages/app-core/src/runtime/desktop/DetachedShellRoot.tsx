@@ -12,6 +12,7 @@ import { PairingView } from "@elizaos/ui/components/shell/PairingView";
 import { StartupFailureView } from "@elizaos/ui/components/shell/StartupFailureView";
 import { AppWorkspaceChrome } from "@elizaos/ui/components/workspace/AppWorkspaceChrome";
 import { getBootConfig } from "@elizaos/ui/config/boot-config-store";
+import { listAppShellPages } from "@elizaos/ui/app-shell-registry";
 import {
   resolveDetachedShellTarget,
   type WindowShellRoute,
@@ -76,11 +77,13 @@ const ConfigPageView = lazyNamedView(
   () => import("@elizaos/ui/components/pages/ConfigPageView"),
   "ConfigPageView",
 );
-const CloudDashboard = lazyNamedView(
-  () =>
-    import("@elizaos/plugin-elizacloud/components/cloud/ElizaCloudDashboard"),
-  "CloudDashboard",
-);
+const CloudDashboard = lazy(async () => {
+  const registration = listAppShellPages().find((page) => page.id === "cloud");
+  if (!registration?.loader) {
+    throw new Error("Cloud app-shell page is not registered in this build.");
+  }
+  return registration.loader();
+});
 const TriggersView = lazyNamedView(
   () => import("@elizaos/ui/components/pages/TriggersView"),
   "TriggersView",
