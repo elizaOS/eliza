@@ -107,7 +107,6 @@ class CerebrasClient:
         messages: list[dict[str, str]],
         *,
         temperature: float = 0.7,
-        max_tokens: int = 2048,
         top_p: float = 1.0,
         extra: dict[str, Any] | None = None,
     ) -> str:
@@ -115,7 +114,6 @@ class CerebrasClient:
             "model": self.model,
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": max_tokens,
             "top_p": top_p,
         }
         if extra:
@@ -137,7 +135,6 @@ class CerebrasClient:
         messages: list[dict[str, str]],
         *,
         temperature: float = 0.7,
-        max_tokens: int = 4096,
     ) -> list[dict[str, Any]]:
         """Call ``chat`` and parse the response as JSONL (one object per line).
 
@@ -145,7 +142,7 @@ class CerebrasClient:
         when the model genuinely emitted nothing parseable — the caller logs
         and continues; an API failure still raises ``CerebrasError``.
         """
-        raw = self.chat(messages, temperature=temperature, max_tokens=max_tokens)
+        raw = self.chat(messages, temperature=temperature)
         out: list[dict[str, Any]] = []
         for line in _iter_jsonish_lines(raw):
             try:
@@ -185,4 +182,4 @@ if __name__ == "__main__":
 
     c = CerebrasClient()
     prompt = sys.argv[1] if len(sys.argv) > 1 else "Say 'ok' and nothing else."
-    print(c.chat([{"role": "user", "content": prompt}], temperature=0.0, max_tokens=32))
+    print(c.chat([{"role": "user", "content": prompt}], temperature=0.0))

@@ -196,7 +196,7 @@ export interface MessageEventData {
 	userId?: UUID;
 	/** Room ID where the message occurred */
 	roomId?: UUID;
-	/** Message content (may be truncated) */
+	/** Complete message content, when the event carries it. */
 	content?: string;
 	/** Whether the message has attachments */
 	hasAttachments?: boolean;
@@ -261,7 +261,7 @@ export interface ProviderEventData {
 	type: "start" | "complete" | "error" | "cached";
 	/** Provider name */
 	providerName: string;
-	/** Data returned by the provider (may be truncated) */
+	/** Complete data returned by the provider, when the event carries it. */
 	data?: unknown;
 	/** Duration in milliseconds */
 	duration?: number;

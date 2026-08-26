@@ -20,42 +20,11 @@ export type SettingsSelectTriggerVariant =
 
 export type SettingsInputVariant = "compact" | "filter" | "touch";
 
-// 44px-tall, finger-friendly control. This is the default vocabulary for the
-// redesigned settings surface — every editable control inside a SettingsRow
-// uses the "touch" variant so mobile editing has real tap targets.
-const TOUCH_CONTROL_CLASS =
-  "h-11 rounded-md border border-border bg-card px-3.5 text-sm text-txt transition-[border-color,box-shadow,background-color]   ";
-
-function settingsSelectTriggerClassName(
-  variant: SettingsSelectTriggerVariant,
-): string {
-  switch (variant) {
-    case "touch":
-      return `${TOUCH_CONTROL_CLASS} text-left`;
-    case "filter":
-      return "h-10 rounded-sm border border-border/50 bg-bg/80 px-3 py-2 text-left text-sm text-txt transition-[border-color,box-shadow,background-color]   ";
-    case "soft":
-      return "rounded-sm border border-border bg-bg px-2.5 py-1.5 text-xs transition-[border-color,box-shadow,background-color]   ";
-    case "toolbar":
-      return "h-11 rounded-sm border-border/60 bg-bg/70 text-left ";
-    default:
-      return "h-9 rounded-sm border border-border bg-card px-2.5 py-1.5 text-xs transition-[border-color,box-shadow,background-color]   ";
-  }
-}
-
-function settingsInputClassName(variant: SettingsInputVariant): string {
-  switch (variant) {
-    case "touch":
-      return TOUCH_CONTROL_CLASS;
-    case "filter":
-      return "h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt ";
-    default:
-      return "h-9 rounded-sm border border-border bg-card px-3 py-2 text-xs transition-[border-color,box-shadow,background-color]   ";
-  }
-}
-
 export interface SettingsSelectTriggerProps
-  extends React.ComponentPropsWithoutRef<typeof SelectTrigger> {
+  extends Omit<
+    React.ComponentPropsWithoutRef<typeof SelectTrigger>,
+    "variant"
+  > {
   variant?: SettingsSelectTriggerVariant;
   className?: string;
   children?: React.ReactNode;
@@ -71,7 +40,18 @@ export const SettingsSelectTrigger = React.forwardRef<
   return (
     <SelectTrigger
       ref={ref}
-      className={cn(settingsSelectTriggerClassName(variant), className)}
+      variant={
+        variant === "touch"
+          ? "settingsTouch"
+          : variant === "filter"
+            ? "settingsFilter"
+            : variant === "soft"
+              ? "settingsSoft"
+              : variant === "toolbar"
+                ? "settingsToolbar"
+                : "settingsCompact"
+      }
+      className={className}
       {...props}
     />
   );
@@ -88,7 +68,21 @@ export const SettingsInput = React.forwardRef<
   return (
     <Input
       ref={ref}
-      className={cn(settingsInputClassName(variant), className)}
+      variant={
+        variant === "touch"
+          ? "settingsTouch"
+          : variant === "filter"
+            ? "settingsFilter"
+            : "settingsCompact"
+      }
+      density={
+        variant === "touch"
+          ? "relaxed"
+          : variant === "filter"
+            ? "default"
+            : "short"
+      }
+      className={className}
       {...props}
     />
   );
@@ -101,14 +95,7 @@ export const SettingsTextarea = React.forwardRef<
   SettingsTextareaProps
 >(function SettingsTextarea({ className, ...props }, ref) {
   return (
-    <Textarea
-      ref={ref}
-      className={cn(
-        "w-full rounded-sm border border-border/60 bg-bg/55 px-3 py-2 text-xs-tight font-mono transition-[border-color,box-shadow,background-color]   ",
-        className,
-      )}
-      {...props}
-    />
+    <Textarea ref={ref} variant="settings" className={className} {...props} />
   );
 });
 

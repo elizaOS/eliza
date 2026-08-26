@@ -53,15 +53,11 @@ function SkillFilterTab({
   return (
     <Button
       ref={ref}
-      variant="ghost"
-      size="sm"
+      variant="selection"
+      size="badge"
+      data-state={isActive ? "on" : "off"}
       type="button"
       aria-current={isActive ? "true" : undefined}
-      className={`h-8 rounded-full border px-3 text-2xs font-bold tracking-[0.14em] ${
-        isActive
-          ? "border-accent/30 bg-accent/10 text-txt"
-          : "border-border/45 text-muted hover:border-border/70 hover:bg-bg/35 hover:text-txt"
-      }`}
       onClick={onSelect}
       {...agentProps}
     >
@@ -91,7 +87,7 @@ const SkillRowButton = memo(function SkillRowButton({
   attentionLabel?: string;
   onSelect: () => void;
 }) {
-  const { agentProps } = useAgentElement<HTMLDivElement>({
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: `skill-${skill.id}`,
     role: "button",
     label: skill.name,
@@ -101,20 +97,20 @@ const SkillRowButton = memo(function SkillRowButton({
     onActivate: onSelect,
   });
   return (
-    <div {...agentProps}>
-      <SkillSidebarItem
-        active={active}
-        testId={`skill-row-${skill.id}`}
-        enabled={enabled}
-        icon={icon}
-        name={skill.name}
-        description={description}
-        onLabel={onLabel}
-        offLabel={offLabel}
-        onSelect={onSelect}
-        attentionLabel={attentionLabel}
-      />
-    </div>
+    <SkillSidebarItem
+      active={active}
+      testId={`skill-row-${skill.id}`}
+      enabled={enabled}
+      icon={icon}
+      name={skill.name}
+      description={description}
+      onLabel={onLabel}
+      offLabel={offLabel}
+      onSelect={onSelect}
+      attentionLabel={attentionLabel}
+      buttonProps={agentProps}
+      buttonRef={ref}
+    />
   );
 });
 
@@ -411,14 +407,10 @@ function SkillsFullViewContent({
             <SidebarContent.ToolbarPrimary>
               <Button
                 ref={newSkillButton.ref}
-                variant={skillCreateFormOpen ? "outline" : "default"}
-                size="sm"
+                variant={skillCreateFormOpen ? "outlineMuted" : "default"}
+                size="pill"
                 type="button"
-                className={`h-9 w-full rounded-full px-4 text-xs-tight font-bold tracking-[0.12em] ${
-                  skillCreateFormOpen
-                    ? "border-border/50 bg-bg/25 text-txt"
-                    : "text-txt-strong"
-                }`}
+                className="w-full"
                 onClick={() => {
                   setState("skillCreateFormOpen", !skillCreateFormOpen);
                   if (skillCreateFormOpen) {
@@ -436,9 +428,8 @@ function SkillsFullViewContent({
               <Button
                 ref={installButton.ref}
                 variant="outline"
-                size="sm"
+                size="pill"
                 type="button"
-                className="h-9 rounded-full px-4 text-xs-tight font-bold tracking-[0.12em]"
                 onClick={() => setInstallModalOpen(true)}
                 {...installButton.agentProps}
               >
@@ -560,7 +551,7 @@ function SkillsFullViewContent({
                         </span>
                         <Input
                           ref={createNameInput.ref}
-                          className="w-full border-border/50 bg-bg/50 "
+                          variant="form"
                           placeholder={t("skillsview.eGMyAwesomeSkil")}
                           value={skillCreateName}
                           onChange={(event) =>
@@ -584,7 +575,7 @@ function SkillsFullViewContent({
                         </span>
                         <Input
                           ref={createDescriptionInput.ref}
-                          className="w-full border-border/50 bg-bg/50 "
+                          variant="form"
                           placeholder={t("skillsview.BriefDescriptionOf")}
                           value={skillCreateDescription}
                           onChange={(event) =>
@@ -682,9 +673,8 @@ function SkillsFullViewContent({
                     <div className="flex shrink-0 items-center gap-2">
                       {selectedNeedsAttention && !selectedSkillReviewOpen && (
                         <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-auto rounded-full border-warn/35 bg-warn/12 px-3 py-1.5 text-2xs font-bold tracking-[0.14em] text-warn"
+                          variant="warningOutline"
+                          size="badge"
                           onClick={() => handleReviewSkill(selectedSkill.id)}
                         >
                           {t("skillsview.ReviewFindings")}
@@ -692,9 +682,8 @@ function SkillsFullViewContent({
                       )}
                       {selectedNeedsAttention && selectedSkillReviewOpen && (
                         <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-auto rounded-full border-border/50 px-3 py-1.5 text-xs-tight font-semibold text-muted hover:text-txt"
+                          variant="outlineMuted"
+                          size="badge"
                           onClick={handleDismissReview}
                         >
                           {t("common.dismiss")}
@@ -716,8 +705,7 @@ function SkillsFullViewContent({
                       <Button
                         ref={editSourceButton.ref}
                         variant="outline"
-                        size="sm"
-                        className="h-9 rounded-full px-4 text-xs-tight font-bold tracking-[0.12em]"
+                        size="pill"
                         onClick={() => setEditingSkill(selectedSkill)}
                         {...editSourceButton.agentProps}
                       >
@@ -786,8 +774,7 @@ function SkillsFullViewContent({
                         <div className="mt-4 flex gap-2">
                           <Button
                             variant="default"
-                            size="sm"
-                            className="h-9 rounded-full px-4 text-xs-tight font-bold tracking-[0.12em]"
+                            size="pill"
                             onClick={() =>
                               handleAcknowledgeSkill(selectedSkill.id)
                             }
@@ -795,9 +782,8 @@ function SkillsFullViewContent({
                             {t("skillsview.AcknowledgeAmpEn")}
                           </Button>
                           <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-9 rounded-full px-4 text-xs-tight font-bold tracking-[0.12em] text-muted hover:text-txt"
+                            variant="ghostMuted"
+                            size="pill"
                             onClick={handleDismissReview}
                           >
                             {t("common.dismiss")}

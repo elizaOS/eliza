@@ -47,6 +47,21 @@ const headersPath = resolve(__dirname, "../public/_headers");
 const viteConfigPath = resolve(__dirname, "../vite.config.ts");
 const tsconfigPath = resolve(__dirname, "../tsconfig.app.json");
 
+test("package test script collects the consolidated homepage coverage suites", () => {
+  const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+  const testScript = packageJson.scripts.test;
+
+  for (const testFile of [
+    "tests/landing-demo.test.ts",
+    "tests/query-client.test.ts",
+    "tests/siws-session.test.ts",
+    "tests/siws.test.ts",
+    "tests/touch-overlay-size.test.ts",
+  ]) {
+    assert.match(testScript, new RegExp(`(?:^|\\s)${testFile}(?:\\s|$)`));
+  }
+});
+
 test("landing ships its canonical profile assets", () => {
   const avatar = readFileSync(elizaAvatarPath, "utf8");
   assert.match(avatar, /fill="#FF5800"/);

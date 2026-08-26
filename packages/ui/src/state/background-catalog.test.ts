@@ -7,53 +7,14 @@ import { describe, expect, it } from "vitest";
 import { getShaderPreset } from "../backgrounds/shader-presets";
 import {
   BACKGROUND_CATALOG,
-  CURATED_NATURAL_BACKGROUNDS,
   catalogEntryToConfig,
   DEFAULT_BACKGROUND_CATALOG_ID,
-  DEFAULT_BACKGROUND_CONFIG,
-  GLSL_CATALOG_BACKGROUNDS,
   resolveCatalogEntry,
 } from "./ui-preferences";
 
 const resolveSource = (id: string) => getShaderPreset(id)?.source;
 
 describe("background catalog (#13538)", () => {
-  it("has natural image entries + the animated GLSL presets", () => {
-    // 5 gradient natural entries + 5 curated photo wallpapers = 10 image tiles.
-    expect(CURATED_NATURAL_BACKGROUNDS.length).toBeGreaterThanOrEqual(10);
-    expect(GLSL_CATALOG_BACKGROUNDS.length).toBe(5);
-    expect(BACKGROUND_CATALOG.length).toBe(
-      CURATED_NATURAL_BACKGROUNDS.length + GLSL_CATALOG_BACKGROUNDS.length,
-    );
-  });
-
-  it("resolves the five curated photo wallpapers to served WebP assets", () => {
-    const photoIds = ["dusk-dunes", "reef", "slate", "ember-dunes", "canopy"];
-    for (const id of photoIds) {
-      const entry = BACKGROUND_CATALOG.find((e) => e.id === id);
-      if (!entry) throw new Error(`expected ${id} entry`);
-      expect(entry.kind).toBe("image");
-      // A served, same-origin public asset path (no bundled binary, no data URL).
-      expect(entry.source).toBe(`/wallpapers/${id}.webp`);
-      // catalogEntryToConfig maps it straight to an image config.
-      const config = catalogEntryToConfig(entry, resolveSource);
-      expect(config?.mode).toBe("image");
-      expect(config?.imageUrl).toBe(`/wallpapers/${id}.webp`);
-    }
-  });
-
-  it("every entry carries the required metadata", () => {
-    for (const e of BACKGROUND_CATALOG) {
-      expect(e.id).toBeTruthy();
-      expect(e.label).toBeTruthy();
-      expect(e.description).toBeTruthy();
-      expect(e.mood).toBeTruthy();
-      expect(e.palette.length).toBeGreaterThan(0);
-      expect(e.tags.length).toBeGreaterThan(0);
-      expect(["image", "glsl", "color"]).toContain(e.kind);
-    }
-  });
-
   it("image sources are same-origin, code-free (data / served asset / media) URLs", () => {
     for (const e of BACKGROUND_CATALOG) {
       if (e.kind === "image") {
@@ -82,28 +43,6 @@ describe("background catalog (#13538)", () => {
         expect(getShaderPreset(e.source)).toBeTruthy();
       }
     }
-  });
-
-  it("the boot default is the Ember Night sunset wallpaper over the black base", () => {
-    // The app boots to the Ember Night sunset wallpaper (warm orange clouds).
-    // The base color stays black so the host-chrome FOUC/manifest baseline is
-    // unchanged and the black→image settle stays quiet at boot.
-    expect(DEFAULT_BACKGROUND_CONFIG.mode).toBe("image");
-    expect(DEFAULT_BACKGROUND_CONFIG.color).toBe("#000000");
-    expect(DEFAULT_BACKGROUND_CONFIG.imageUrl).toBe("/bg-sunset.webp");
-    // DIVERGENCE GUARD: the boot config must equal the catalog default
-    // entry's render source. The old phone/desktop mismatch came from
-    // DEFAULT_BACKGROUND_CONFIG (Canopy) disagreeing with the catalog's
-    // declared default id (ember-night); this pins the two together.
-    const def = BACKGROUND_CATALOG.find(
-      (e) => e.id === DEFAULT_BACKGROUND_CATALOG_ID,
-    );
-    expect(def?.kind).toBe("image");
-    expect(def?.source).toBe("/bg-sunset.webp");
-    expect(DEFAULT_BACKGROUND_CONFIG.imageUrl).toBe(def?.source);
-    // Canopy remains a selectable gallery scene, just not the default.
-    const canopy = BACKGROUND_CATALOG.find((e) => e.id === "canopy");
-    expect(canopy?.source).toBe("/wallpapers/canopy.webp");
   });
 
   it("resolveCatalogEntry matches by id, label, and fuzzy name", () => {

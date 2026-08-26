@@ -65,11 +65,11 @@ export function ChatAttachmentStrip({
             variant={
               variant === "game-modal" ? "surfaceDestructive" : "destructive"
             }
-            size="icon"
+            size="icon-sm"
             title={removeLabel(item)}
             aria-label={removeLabel(item)}
             onClick={() => onRemove(item.id, index)}
-            className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-sm text-2xs opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
+            className="absolute -right-1.5 -top-1.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
           >
             ×
           </Button>

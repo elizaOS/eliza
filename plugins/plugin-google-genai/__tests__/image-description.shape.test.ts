@@ -10,6 +10,14 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  ElizaError: class extends Error {
+    code: string;
+
+    constructor(message: string, options: { code: string }) {
+      super(message);
+      this.code = options.code;
+    }
+  },
   createGoogleGenAI: vi.fn(),
   generateContent: vi.fn(),
   countTokens: vi.fn(),
@@ -24,6 +32,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@elizaos/core", () => ({
+  ElizaError: mocks.ElizaError,
   logger: mocks.logger,
   recordLlmCall: mocks.recordLlmCall,
 }));
@@ -34,6 +43,7 @@ vi.mock("@elizaos/core", () => ({
 // both specifiers resolve to the same module file, so both mocks must expose
 // the same full mocked surface.
 vi.mock("@elizaos/core/node", () => ({
+  ElizaError: mocks.ElizaError,
   fetchRemoteMedia: mocks.fetchRemoteMedia,
   logger: mocks.logger,
   recordLlmCall: mocks.recordLlmCall,
@@ -114,6 +124,9 @@ describe("Google GenAI image description", () => {
       }),
     );
     expect(mocks.generateContent).toHaveBeenCalledTimes(1);
+    expect(mocks.generateContent.mock.calls[0]?.[0]?.config).not.toHaveProperty(
+      "maxOutputTokens",
+    );
   });
 
   it("parses a title/description out of prose when the model returns non-JSON", async () => {
@@ -218,5 +231,20 @@ describe("Google GenAI image description", () => {
     await expect(
       handleImageDescription(createRuntime(), "https://example.com/blank.png"),
     ).rejects.toThrow("Google GenAI API returned an empty image description");
+  });
+
+  it("rejects a max-token image result instead of returning partial prose", async () => {
+    mockMediaOk();
+    mocks.generateContent.mockResolvedValue({
+      text: "partial description",
+      candidates: [{ finishReason: "MAX_TOKENS" }],
+    });
+
+    await expect(
+      handleImageDescription(
+        createRuntime(),
+        "https://example.com/partial.png",
+      ),
+    ).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
   });
 });

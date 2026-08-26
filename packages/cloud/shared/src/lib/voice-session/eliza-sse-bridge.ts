@@ -56,6 +56,8 @@ const SERVER_TIMING_PROVIDERS = [
   "other",
   "unknown",
 ] as const;
+const ACTION_PROGRESS_TEXT =
+  /^(?:on it\b|checking\b|fetching\b|gathering\b|looking\s+(?:up|into)\b|running\b|working\s+on\b|one\s+moment\b)/iu;
 
 export type ElizaServerTimingMetric = (typeof SERVER_TIMING_METRICS)[number];
 export type ElizaServerTimingProvider = (typeof SERVER_TIMING_PROVIDERS)[number];
@@ -137,6 +139,10 @@ export interface ElizaSseBridgeRequest {
   signal: AbortSignal;
   /** Reports canonical-route ingress timing as soon as response headers land. */
   onResponseHeaders?: (headers: ElizaSseBridgeResponseHeaders) => void | Promise<void>;
+  /** Emits a non-authoritative progress cue while an action-backed turn is pending. */
+  onProgress?: (text: string) => void | Promise<void>;
+  /** Test hook; production uses six seconds between progress cues. */
+  progressIntervalMs?: number;
   /** Injectable fetch for tests; defaults to global fetch. */
   fetchImpl?: typeof fetch;
 }
@@ -313,12 +319,55 @@ export async function streamElizaConversation(
   let eventType = "";
   let emittedText = "";
   let pendingProvisionalText: string | null = null;
+  let progressTimer: ReturnType<typeof setTimeout> | null = null;
+  let progressActive = false;
+  let progressInFlight = false;
+  const progressIntervalMs = request.progressIntervalMs ?? 6_000;
+  const clearProgress = (): void => {
+    progressActive = false;
+    if (progressTimer !== null) {
+      clearTimeout(progressTimer);
+      progressTimer = null;
+    }
+  };
+  const scheduleProgress = (): void => {
+    if (
+      !request.onProgress ||
+      progressActive ||
+      !Number.isFinite(progressIntervalMs) ||
+      progressIntervalMs <= 0
+    )
+      return;
+    progressActive = true;
+    const tick = async (): Promise<void> => {
+      if (!progressActive || request.signal.aborted) return;
+      if (!progressInFlight) {
+        progressInFlight = true;
+        try {
+          await request.onProgress?.("Still working on that.");
+        } catch (error) {
+          // error-policy:J7 progress telemetry/egress must not kill the canonical turn.
+          logger.warn("[eliza-sse-bridge] progress observer failed", {
+            traceId: request.traceId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        } finally {
+          progressInFlight = false;
+        }
+      }
+      if (progressActive && !request.signal.aborted) {
+        progressTimer = setTimeout(() => void tick(), progressIntervalMs);
+      }
+    };
+    progressTimer = setTimeout(() => void tick(), progressIntervalMs);
+  };
   const emitDelta = (text: string): void => {
     if (!text) return;
     emittedText += text;
     onDelta(text);
   };
   const authorizeText = (authoritativeText: string): void => {
+    clearProgress();
     pendingProvisionalText = null;
     if (!authoritativeText.startsWith(emittedText)) {
       throw new ElizaSseBridgeError(
@@ -334,6 +383,7 @@ export async function streamElizaConversation(
         update.kind === "snapshot"
           ? update.text
           : `${pendingProvisionalText ?? emittedText}${update.text}`;
+      if (ACTION_PROGRESS_TEXT.test(update.text.trim())) scheduleProgress();
       return;
     }
 
@@ -406,6 +456,7 @@ export async function streamElizaConversation(
       }
     }
   } finally {
+    clearProgress();
     request.signal.removeEventListener("abort", cancelReaderOnAbort);
     if (abortCancellation) {
       await abortCancellation;

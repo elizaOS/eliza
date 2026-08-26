@@ -329,14 +329,9 @@ function TileButton({
   download?: string;
   children: React.ReactNode;
 }): React.JSX.Element {
-  const cls = cn(
-    "inline-flex size-7 items-center justify-center rounded-full",
-    "bg-scrim text-white transition-colors",
-    "hover:bg-brand-black active:scale-[0.96] motion-reduce:active:scale-100",
-  );
   if (href) {
     return (
-      <Button asChild variant="ghost" size="icon-sm" className={cls}>
+      <Button asChild variant="surface" size="icon-sm" shape="circle">
         <a
           href={href}
           download={download}
@@ -353,11 +348,11 @@ function TileButton({
   }
   return (
     <Button
-      variant="ghost"
+      variant="surface"
       size="icon-sm"
+      shape="circle"
       aria-label={label}
       title={label}
-      className={cls}
       onClick={(e) => {
         e.stopPropagation();
         onClick?.();
@@ -383,9 +378,10 @@ function ImageTile({
   return (
     <div className="group relative inline-block max-w-[min(20rem,100%)] overflow-hidden rounded-lg border border-border bg-card">
       <Button
-        variant="ghost"
+        variant="publicRow"
+        size="content"
         onClick={onExpand}
-        className="block h-auto w-full cursor-zoom-in rounded-none bg-transparent p-0 hover:bg-transparent"
+        className="block cursor-zoom-in"
         aria-label={`Expand image ${label}`}
       >
         <img
@@ -524,11 +520,10 @@ function PdfTile({
     return (
       <Button
         asChild
-        variant="ghost"
-        className={cn(
-          "h-auto min-h-touch max-w-[min(20rem,100%)] justify-start gap-2.5 whitespace-normal rounded-lg border border-border bg-card px-3 py-2.5",
-          "text-txt transition-colors hover:bg-bg-hover hover:border-border-strong active:scale-[0.99] motion-reduce:active:scale-100",
-        )}
+        variant="choice"
+        size="row"
+        align="start"
+        className="max-w-[min(20rem,100%)]"
       >
         <a
           href={src}
@@ -579,9 +574,10 @@ function PdfTile({
       <iframe
         src={src}
         title={frameTitle}
-        // Sandbox the embedded document: allow it to be treated as same-origin
-        // so the native viewer's resources load, but grant no script/forms/etc.
-        sandbox="allow-same-origin"
+        // Chromium's built-in PDF viewer requires scripts. Keep the document
+        // in an opaque origin and grant no forms, navigation, or same-origin
+        // access so PDF bytes cannot reach application state.
+        sandbox="allow-scripts"
         className="block h-[28rem] w-full border-0 bg-brand-white"
       />
     </figure>
@@ -745,11 +741,7 @@ function Model3dTile({
         </span>
       </figcaption>
       {showFallbackBody ? (
-        <Button
-          asChild
-          variant="ghost"
-          className="h-auto min-h-touch w-full justify-start gap-2.5 rounded-none p-3 text-txt transition-colors hover:bg-bg-hover"
-        >
+        <Button asChild variant="sectionToggle" size="content" align="start">
           <a
             href={src}
             target="_blank"
@@ -807,11 +799,10 @@ function CodeTile({
     return (
       <Button
         asChild
-        variant="ghost"
-        className={cn(
-          "h-auto min-h-touch max-w-[min(20rem,100%)] justify-start gap-2.5 whitespace-normal rounded-lg border border-border bg-card px-3 py-2.5",
-          "text-txt transition-colors hover:bg-bg-hover hover:border-border-strong active:scale-[0.99] motion-reduce:active:scale-100",
-        )}
+        variant="choice"
+        size="row"
+        align="start"
+        className="max-w-[min(20rem,100%)]"
       >
         <a
           href={src}
@@ -972,7 +963,7 @@ function Lightbox({
         variant="ghost"
         aria-label="Close preview"
         onClick={onClose}
-        className="absolute inset-0 h-auto w-auto cursor-zoom-out rounded-none bg-scrim p-0 hover:bg-scrim"
+        className="absolute inset-0 cursor-zoom-out"
       />
       <img
         src={src}

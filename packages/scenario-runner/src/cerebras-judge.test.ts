@@ -21,9 +21,13 @@ import {
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
-function mockFetchOnceJson(content: string, status = 200): void {
+function mockFetchOnceJson(
+  content: string,
+  status = 200,
+  finishReason: string | null = "stop",
+): void {
   const body = JSON.stringify({
-    choices: [{ message: { content } }],
+    choices: [{ message: { content }, finish_reason: finishReason }],
   });
   vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
     new Response(body, {
@@ -266,6 +270,14 @@ describe("CerebrasJudge", () => {
       typeof initArg?.body === "string" ? initArg.body : "{}",
     );
     expect(body.response_format).toBeUndefined();
+    expect(body.max_tokens).toBeUndefined();
+    expect(body.max_completion_tokens).toBeUndefined();
+  });
+
+  it("rejects a provider-length result instead of grading partial output", async () => {
+    mockFetchOnceJson('{"score":1,"reason":"partial"}', 200, "length");
+    const judge = new CerebrasJudge();
+    await expect(judge.judge("test prompt")).rejects.toThrow(/partial output/);
   });
 
   it("includes systemPrompt when provided", async () => {

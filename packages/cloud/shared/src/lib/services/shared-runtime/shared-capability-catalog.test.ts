@@ -62,6 +62,10 @@ describe("Shared capability catalog", () => {
     expect(sharedCapabilityTransportForSource("twilio-sms")).toBe("sms");
     expect(sharedCapabilityTransportForSource("twilio-voice")).toBe("voice");
     expect(sharedCapabilityTransportForSource("client-chat")).toBe("app");
+    expect(sharedCapabilityTransportForSource("client_chat", "VOICE_DM")).toBe("voice");
+    expect(sharedCapabilityTransportForSource("whatsapp")).toBe("sms");
+    expect(sharedCapabilityTransportForSource("not-discord")).toBe("api");
+    expect(sharedCapabilityTransportForSource("webhook")).toBe("api");
     expect(sharedCapabilityTransportForSource("unrecognized")).toBe("api");
   });
 });

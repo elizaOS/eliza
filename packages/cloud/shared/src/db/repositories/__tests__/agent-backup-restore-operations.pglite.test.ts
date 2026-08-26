@@ -1336,6 +1336,7 @@ describe("restore operation spine", () => {
           }),
         ).rejects.toThrow("retryDelayMs must be an integer between 0 and 3600000");
       }
+      const completeError = `seeding timed out: ${"diagnostic".repeat(300)}`;
       const failed = await failAgentBackupRestoreOperation({
         operationId: operation.id,
         ownerId: "restore-worker",
@@ -1343,12 +1344,13 @@ describe("restore operation spine", () => {
         retryable: true,
         resumePhase: "reserved",
         errorCode: "VAULT_SEED_TIMEOUT",
-        error: "seeding timed out",
+        error: completeError,
         failureDigest: SHA,
         retryDelayMs: 0,
       });
       expect(failed.phase).toBe("failed_retryable");
       expect(failed.resume_phase).toBe("reserved");
+      expect(failed.last_error).toBe(completeError);
       expect(failed.last_failure_generation).toBe(claim.claimGeneration);
       expect(failed.claim_owner).toBeNull();
 

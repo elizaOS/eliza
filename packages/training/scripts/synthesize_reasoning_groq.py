@@ -89,7 +89,6 @@ CFG = RoundConfig(
         initial_temperature=0.6,
         temperature_step=0.1,
         temperature_floor=None,  # round-1 bumps temp UP on retry
-        max_tokens=250,
     ),
     out_file=DEFAULT_OUT_FILE,
 )

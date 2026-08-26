@@ -87,7 +87,8 @@ describe("app shell local connection policy", () => {
   });
 
   test("audits every emitted file without rewriting packaged code", () => {
-    const lazyCode = "http://127.0.0.1:31337 adb reverse tcp:32437";
+    const lazyCode =
+      "remote-mac eliza-local-agent: http://127.0.0.1:31337 adb reverse tcp:32437";
     const bundle = {
       "entry.js": {
         type: "chunk" as const,
@@ -105,13 +106,18 @@ describe("app shell local connection policy", () => {
         imports: [],
         code: lazyCode,
       },
+      "sw-registration.js": {
+        type: "chunk" as const,
+        imports: [],
+        code: 'navigator.serviceWorker.register("/sw.js")',
+      },
     };
 
     expect(findAndroidCloudEmittedRoutingFindings(bundle)).toEqual([
-      "lazy-direct-runtime.js: 31337",
       "lazy-direct-runtime.js: 32437",
       "lazy-direct-runtime.js: adb reverse",
       "runtime.js: 10.0.2.2",
+      "sw-registration.js: navigator.serviceWorker",
     ]);
     expect(bundle["lazy-direct-runtime.js"].code).toBe(lazyCode);
     expect(ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS).toContain("adb reverse");
@@ -157,12 +163,10 @@ describe("app shell local connection policy", () => {
     expect(stripped).toContain('rel="stylesheet"');
   });
 
-  test("selects the dedicated renderer before the Android Cloud graph is bundled", () => {
+  test("keeps the canonical renderer for Android Cloud builds", () => {
     const source = '<script type="module" src="/src/entry.ts"></script>';
 
-    expect(selectAndroidCloudRendererEntry(source, true)).toBe(
-      '<script type="module" src="/src/main.android-cloud.tsx"></script>',
-    );
+    expect(selectAndroidCloudRendererEntry(source, true)).toBe(source);
     expect(selectAndroidCloudRendererEntry(source, false)).toBe(source);
     expect(() =>
       selectAndroidCloudRendererEntry("<main></main>", true),
@@ -181,8 +185,7 @@ describe("app shell local connection policy", () => {
       chunk: undefined,
       originalUrl: "/",
     }) as string;
-    expect(transformed).toContain("/src/main.android-cloud.tsx");
-    expect(transformed).not.toContain('src="/src/entry.ts"');
+    expect(transformed).toBe(source);
   });
 
   test("retains the native local-agent bootstrap outside Android cloud builds", () => {

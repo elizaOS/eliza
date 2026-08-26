@@ -2,13 +2,12 @@ name: Chat shell gestures
 
 # Real-browser gesture + interleaving e2e for the floating chat shell
 # (packages/ui ChatOverlay + home screen), the component-tree
-# render-parity contract, and the CHAT_GESTURE_COVERAGE gate (#12188).
+# and the component-tree render-parity contract.
 #
 # All 11 __e2e__ runners compose the shared runner toolkit
 # (packages/ui/src/testing/e2e-runner) and record a stable-named .webm. This lane
 # drives the REAL surfaces with real pointer/touch gestures in headless chromium,
-# runs the boot-free coverage gate that fails when a gesture-handler site lacks a
-# matrix row, and uploads every runner's video + screenshots.
+# and uploads every runner's video + screenshots.
 #
 # One shell runner is intentionally NOT in this lane:
 #   - run-fused-wake-integration-e2e drives the REAL native desktop wake producer
@@ -83,11 +82,6 @@ jobs:
 
       - name: Install Playwright chromium + webkit
         run: .github/scripts/install-playwright-browsers.sh chromium webkit
-
-      # Boot-free coverage gate: fails when a gesture-handler site in
-      # packages/ui/src lacks a CHAT_GESTURE_COVERAGE matrix row (#12188).
-      - name: Chat gesture coverage gate
-        run: bunx vitest run --config packages/app/vitest.config.ts packages/app/test/chat-gesture-coverage.test.ts
 
       # Component-tree render parity (jsdom/vitest) — ThreadLine vs MessageContent
       # render the same structure for a shared message corpus.

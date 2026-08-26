@@ -12,6 +12,7 @@ import { ZodError } from "zod";
 export type ApiErrorCode =
   | "authentication_required"
   | "session_auth_required"
+  | "recent_auth_required"
   | "invalid_credentials"
   | "access_denied"
   | "resource_not_found"

@@ -34,7 +34,6 @@ environment:
 
   lookback_hours: 72
   min_actions_per_trajectory: 3
-  max_steps_per_trajectory: 20
   max_token_length: 4096
 
 # =============================================================================
@@ -66,7 +65,6 @@ inference:
   endpoint: "nebius"
   base_url: "${NEBIUS_BASE_URL:-https://api.studio.nebius.ai/v1}"
   api_key: "${NEBIUS_API_KEY}"
-  max_tokens: 512
   temperature: 0.7
   stop_sequences:
     - "<end_of_turn>"

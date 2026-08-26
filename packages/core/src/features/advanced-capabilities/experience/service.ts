@@ -800,25 +800,14 @@ export class ExperienceService extends Service {
 		trackAccess: boolean,
 	): Promise<Experience[]> {
 		let results: Experience[] = [];
-		const limit = query.limit ?? 10;
+		const limit = query.limit;
 
 		if (query.query) {
-			// Semantic search path: over-fetch when filters will reduce the set
-			const hasFilters = !!(
-				query.type ||
-				query.outcome ||
-				query.domain ||
-				(query.tags && query.tags.length > 0) ||
-				query.minConfidence !== undefined ||
-				query.minImportance !== undefined ||
-				query.timeRange
-			);
-			const fetchLimit = hasFilters ? Math.max(limit * 5, 50) : limit;
 			const candidates = this.applyFilters(
-				await this.findSimilarExperiences(query.query, fetchLimit),
+				await this.findSimilarExperiences(query.query),
 				query,
 			);
-			results = candidates.slice(0, limit);
+			results = limit === undefined ? candidates : candidates.slice(0, limit);
 		} else {
 			// Non-semantic path: filter then sort by quality
 			const candidates = this.applyFilters(
@@ -830,7 +819,7 @@ export class ExperienceService extends Service {
 				const scoreB = this.decayManager.getDecayedConfidence(b) * b.importance;
 				return scoreB - scoreA;
 			});
-			results = candidates.slice(0, limit);
+			results = limit === undefined ? candidates : candidates.slice(0, limit);
 		}
 
 		// Include related experiences if requested
@@ -921,7 +910,10 @@ export class ExperienceService extends Service {
 	 *   A minimum similarity threshold filters out noise so quality signals
 	 *   can't promote genuinely irrelevant experiences.
 	 */
-	async findSimilarExperiences(text: string, limit = 5): Promise<Experience[]> {
+	async findSimilarExperiences(
+		text: string,
+		limit?: number,
+	): Promise<Experience[]> {
 		if (!text || this.experiences.size === 0) {
 			return [];
 		}
@@ -998,20 +990,21 @@ export class ExperienceService extends Service {
 
 		// Sort by combined reranking score (highest first)
 		scored.sort((a, b) => b.score - a.score);
-		const results = scored.slice(0, limit).map((item) => item.experience);
+		const ranked = scored.map((item) => item.experience);
+		const results = limit === undefined ? ranked : ranked.slice(0, limit);
 
 		return results;
 	}
 
 	/** Fallback when embeddings are unavailable: sort by decayed confidence * importance. */
-	private fallbackSort(limit: number): Experience[] {
+	private fallbackSort(limit?: number): Experience[] {
 		const all = Array.from(this.experiences.values());
 		all.sort((a, b) => {
 			const sa = this.decayManager.getDecayedConfidence(a) * a.importance;
 			const sb = this.decayManager.getDecayedConfidence(b) * b.importance;
 			return sb - sa;
 		});
-		return all.slice(0, limit);
+		return limit === undefined ? all : all.slice(0, limit);
 	}
 
 	async getExperienceGraph(

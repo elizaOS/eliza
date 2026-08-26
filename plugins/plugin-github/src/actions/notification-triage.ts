@@ -50,7 +50,6 @@ const SUBJECT_TYPE_SCORES: Record<string, number> = {
   Discussion: 8,
 };
 
-const NOTIFICATION_TRIAGE_LIMIT = 25;
 const NOTIFICATION_PAGE_SIZE = 50;
 
 export interface TriagedNotification {
@@ -188,7 +187,7 @@ export const notificationTriageAction: Action = {
   ): Promise<
     GitHubActionResult<{
       notifications: TriagedNotification[];
-      notificationLimit: number;
+      notificationLimit: null;
       totalUnread: number;
       totalUnreadIsLowerBound: boolean;
     }>
@@ -231,10 +230,9 @@ export const notificationTriageAction: Action = {
         };
       });
       triaged.sort(compareTriagedNotifications);
-      const boundedTriaged = triaged.slice(0, NOTIFICATION_TRIAGE_LIMIT);
       await callback?.({
         text: formatTriageSummary(
-          boundedTriaged.length,
+          triaged.length,
           triaged.length,
           totalUnreadIsLowerBound,
         ),
@@ -242,8 +240,8 @@ export const notificationTriageAction: Action = {
       return {
         success: true,
         data: {
-          notifications: boundedTriaged,
-          notificationLimit: NOTIFICATION_TRIAGE_LIMIT,
+          notifications: triaged,
+          notificationLimit: null,
           totalUnread: triaged.length,
           totalUnreadIsLowerBound,
         },

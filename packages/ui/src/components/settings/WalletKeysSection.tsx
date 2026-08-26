@@ -311,7 +311,7 @@ function WalletKeysSectionBody() {
             {...addToggleAgentProps}
             variant="outline"
             size="sm"
-            className="h-9 shrink-0 gap-1 rounded-sm px-3"
+            className="shrink-0"
             onClick={() => setShowAdd((v) => !v)}
             data-testid="wallet-keys-add-toggle"
           >
@@ -366,8 +366,7 @@ function WalletKeysSectionBody() {
               {...addCancelAgentProps}
               type="button"
               variant="ghost"
-              size="sm"
-              className="h-11 rounded-md px-4 text-sm"
+              size="touch"
               onClick={() => setShowAdd(false)}
               disabled={submitting}
             >
@@ -378,8 +377,7 @@ function WalletKeysSectionBody() {
               {...addSaveAgentProps}
               type="submit"
               variant="default"
-              size="sm"
-              className="h-11 gap-1 rounded-md px-4 text-sm"
+              size="touch"
               disabled={submitting || !addKey.trim() || !addValue.trim()}
             >
               {submitting ? (
@@ -493,8 +491,8 @@ function WalletKeyRow({
             ref={revealRef}
             {...revealAgentProps}
             variant="ghost"
-            size="sm"
-            className="size-11 shrink-0 rounded-md p-0 text-muted hover:bg-surface hover:text-txt-strong"
+            size="icon-lg"
+            className="shrink-0"
             aria-label={
               revealed
                 ? t("walletkeys.hide", {
@@ -521,9 +519,9 @@ function WalletKeyRow({
           <Button
             ref={deleteRef}
             {...deleteAgentProps}
-            variant="ghost"
-            size="sm"
-            className="size-11 shrink-0 rounded-md p-0 text-muted hover:bg-surface hover:text-danger"
+            variant="destructive"
+            size="icon-lg"
+            className="shrink-0"
             aria-label={t("walletkeys.delete", {
               key: entryKey,
               defaultValue: "Delete {{key}}",

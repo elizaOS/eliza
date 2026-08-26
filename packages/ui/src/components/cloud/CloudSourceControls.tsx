@@ -28,26 +28,18 @@ export function CloudSourceModeToggle({
     <div className="inline-flex overflow-hidden rounded-sm bg-bg-muted ">
       <Button
         type="button"
-        variant="ghost"
-        size="sm"
-        className={`rounded-sm px-3 py-1.5 text-xs font-semibold transition-colors ${
-          mode === "cloud"
-            ? "bg-accent text-accent-fg hover:bg-accent/90 hover:text-accent-fg"
-            : "bg-transparent text-muted hover:bg-bg-hover hover:text-txt"
-        }`}
+        variant="selection"
+        size="compact"
+        data-state={mode === "cloud" ? "on" : "off"}
         onClick={() => onChange("cloud")}
       >
         {resolvedCloudLabel}
       </Button>
       <Button
         type="button"
-        variant="ghost"
-        size="sm"
-        className={`rounded-sm px-3 py-1.5 text-xs font-semibold transition-colors ${
-          mode === "own-key"
-            ? "bg-accent text-accent-fg hover:bg-accent/90 hover:text-accent-fg"
-            : "bg-transparent text-muted hover:bg-bg-hover hover:text-txt"
-        }`}
+        variant="selection"
+        size="compact"
+        data-state={mode === "own-key" ? "on" : "off"}
         onClick={() => onChange("own-key")}
       >
         {ownKeyLabel}

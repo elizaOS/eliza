@@ -91,7 +91,6 @@ export function TelegramBotSetupPanel() {
           <Button
             variant="outline"
             size="sm"
-            className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
             onClick={() => {
               void disconnect();
             }}
@@ -127,7 +126,6 @@ export function TelegramBotSetupPanel() {
         <Button
           variant="default"
           size="sm"
-          className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
           onClick={() => {
             void validateAndSave();
           }}
@@ -179,13 +177,14 @@ export function TelegramBotSetupPanel() {
 
         <Input
           type="password"
+          variant="config"
+          density="compact"
           value={token}
           onChange={(e) => {
             setToken(e.target.value);
             if (status === "error") setStatus("idle");
           }}
           placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
-          className="h-8 w-full rounded-sm border border-border/50 bg-bg/70 px-3 text-xs-tight text-txt placeholder:text-muted/50"
           onKeyDown={(e) => {
             if (e.key === "Enter") void validateAndSave();
           }}

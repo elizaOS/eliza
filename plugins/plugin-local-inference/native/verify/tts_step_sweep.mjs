@@ -310,7 +310,7 @@ function asrTranscribeFloat32(ffiCtx, ffi, s, samples, sampleRate) {
     pcm16k.byteOffset,
     pcm16k.byteLength,
   );
-  const outBuf = Buffer.alloc(4096);
+  const outBuf = Buffer.alloc(1_048_576);
   const errBuf = Buffer.alloc(8);
   errBuf.fill(0);
   const t0 = performance.now();
@@ -328,6 +328,11 @@ function asrTranscribeFloat32(ffiCtx, ffi, s, samples, sampleRate) {
     throw new Error(
       `asr_transcribe rc=${rc}: ${readErrAndFree(ffi, s, errBuf)}`,
     );
+  if (rc >= outBuf.length - 1 || outBuf.indexOf(0) < 0) {
+    throw new Error(
+      `asr_transcribe reached its ${outBuf.length}-byte capture boundary; refusing partial benchmark evidence`,
+    );
+  }
   return { latencyMs, transcript: outBuf.toString("utf8", 0, rc).trim() };
 }
 

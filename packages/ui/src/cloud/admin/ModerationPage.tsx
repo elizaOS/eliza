@@ -280,352 +280,350 @@ export default function ModerationPage(): React.JSX.Element {
         </div>
       )}
 
-      <Tabs defaultValue="violations" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="violations" onClick={loadViolations}>
-            <AlertTriangle className="mr-2 size-4" />
-            {t("cloud.admin.tab.violations", { defaultValue: "Violations" })}
-          </TabsTrigger>
-          <TabsTrigger value="users" onClick={loadUsers}>
-            <Users className="mr-2 size-4" />
-            {t("cloud.admin.tab.users", { defaultValue: "Users" })}
-          </TabsTrigger>
-          <TabsTrigger value="admins" onClick={loadAdmins}>
-            <Shield className="mr-2 size-4" />
-            {t("cloud.admin.tab.admins", { defaultValue: "Admins" })}
-          </TabsTrigger>
-        </TabsList>
+      <div className="space-y-4">
+        <Tabs defaultValue="violations">
+          <TabsList>
+            <TabsTrigger value="violations" onClick={loadViolations}>
+              <AlertTriangle className="mr-2 size-4" />
+              {t("cloud.admin.tab.violations", { defaultValue: "Violations" })}
+            </TabsTrigger>
+            <TabsTrigger value="users" onClick={loadUsers}>
+              <Users className="mr-2 size-4" />
+              {t("cloud.admin.tab.users", { defaultValue: "Users" })}
+            </TabsTrigger>
+            <TabsTrigger value="admins" onClick={loadAdmins}>
+              <Shield className="mr-2 size-4" />
+              {t("cloud.admin.tab.admins", { defaultValue: "Admins" })}
+            </TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="violations" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                {t("cloud.admin.violations.cardTitle", {
-                  defaultValue: "Recent Violations",
-                })}
-              </CardTitle>
-              <CardDescription>
-                {t("cloud.admin.violations.cardDesc", {
-                  defaultValue:
-                    "Content moderation violations detected by the system",
-                })}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>
-                      {t("cloud.admin.col.time", { defaultValue: "Time" })}
-                    </TableHead>
-                    <TableHead>
-                      {t("cloud.admin.col.user", { defaultValue: "User" })}
-                    </TableHead>
-                    <TableHead>
-                      {t("cloud.admin.col.categories", {
-                        defaultValue: "Categories",
-                      })}
-                    </TableHead>
-                    <TableHead>
-                      {t("cloud.admin.col.action", {
-                        defaultValue: "Action",
-                      })}
-                    </TableHead>
-                    <TableHead>
-                      {t("cloud.admin.col.content", {
-                        defaultValue: "Content",
-                      })}
-                    </TableHead>
-                    <TableHead />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {violations.map((v) => (
-                    <TableRow key={v.id}>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {new Date(v.createdAt).toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {v.userId.slice(0, 8)}...
-                      </TableCell>
-                      <TableCell>
-                        {v.categories.map((c) => (
-                          <Badge
-                            key={c}
-                            variant="destructive"
-                            className="mr-1 text-xs"
-                          >
-                            {c}
-                          </Badge>
-                        ))}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            v.action === "flagged_for_ban"
-                              ? "destructive"
-                              : "secondary"
-                          }
-                        >
-                          {v.action}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="max-w-[200px] truncate text-xs">
-                        {v.messageText}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => loadUserDetail(v.userId)}
-                        >
-                          <Eye className="size-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {violations.length === 0 && (
-                    <TableRow>
-                      <TableCell
-                        colSpan={6}
-                        className="text-center text-muted-foreground"
-                      >
-                        {t("cloud.admin.violations.empty", {
-                          defaultValue: "No violations found",
-                        })}
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="users" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
+          <TabsContent value="violations" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <UserX className="size-5 text-accent" />
-                  {t("cloud.admin.flagged.title", {
-                    defaultValue: "Flagged Users",
+                <CardTitle>
+                  {t("cloud.admin.violations.cardTitle", {
+                    defaultValue: "Recent Violations",
                   })}
                 </CardTitle>
                 <CardDescription>
-                  {t("cloud.admin.flagged.desc", {
-                    defaultValue: "Users with violations requiring review",
+                  {t("cloud.admin.violations.cardDesc", {
+                    defaultValue:
+                      "Content moderation violations detected by the system",
                   })}
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-2">
-                  {flaggedUsers.map((u) => (
-                    <div
-                      key={u.id}
-                      className="flex items-center justify-between rounded-sm border p-3"
-                    >
-                      <div>
-                        <p className="text-sm">{u.userId.slice(0, 12)}...</p>
-                        <div className="flex gap-2 text-xs text-muted-foreground">
-                          <span>
-                            {u.totalViolations}{" "}
-                            {t("cloud.admin.violationsLabel", {
-                              defaultValue: "violations",
-                            })}
-                          </span>
-                          <span>•</span>
-                          <span>
-                            {t("cloud.admin.riskLabel", {
-                              defaultValue: "Risk",
-                            })}
-                            : {u.riskScore}
-                          </span>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>
+                        {t("cloud.admin.col.time", { defaultValue: "Time" })}
+                      </TableHead>
+                      <TableHead>
+                        {t("cloud.admin.col.user", { defaultValue: "User" })}
+                      </TableHead>
+                      <TableHead>
+                        {t("cloud.admin.col.categories", {
+                          defaultValue: "Categories",
+                        })}
+                      </TableHead>
+                      <TableHead>
+                        {t("cloud.admin.col.action", {
+                          defaultValue: "Action",
+                        })}
+                      </TableHead>
+                      <TableHead>
+                        {t("cloud.admin.col.content", {
+                          defaultValue: "Content",
+                        })}
+                      </TableHead>
+                      <TableHead />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {violations.map((v) => (
+                      <TableRow key={v.id}>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {new Date(v.createdAt).toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {v.userId.slice(0, 8)}...
+                        </TableCell>
+                        <TableCell>
+                          {v.categories.map((c) => (
+                            <span key={c} className="mr-1">
+                              <Badge variant="destructive">{c}</Badge>
+                            </span>
+                          ))}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              v.action === "flagged_for_ban"
+                                ? "destructive"
+                                : "secondary"
+                            }
+                          >
+                            {v.action}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="max-w-[200px] truncate text-xs">
+                          {v.messageText}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => loadUserDetail(v.userId)}
+                          >
+                            <Eye className="size-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {violations.length === 0 && (
+                      <TableRow>
+                        <TableCell
+                          colSpan={6}
+                          className="text-center text-muted-foreground"
+                        >
+                          {t("cloud.admin.violations.empty", {
+                            defaultValue: "No violations found",
+                          })}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="users" className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <UserX className="size-5 text-accent" />
+                    {t("cloud.admin.flagged.title", {
+                      defaultValue: "Flagged Users",
+                    })}
+                  </CardTitle>
+                  <CardDescription>
+                    {t("cloud.admin.flagged.desc", {
+                      defaultValue: "Users with violations requiring review",
+                    })}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {flaggedUsers.map((u) => (
+                      <div
+                        key={u.id}
+                        className="flex items-center justify-between rounded-sm border p-3"
+                      >
+                        <div>
+                          <p className="text-sm">{u.userId.slice(0, 12)}...</p>
+                          <div className="flex gap-2 text-xs text-muted-foreground">
+                            <span>
+                              {u.totalViolations}{" "}
+                              {t("cloud.admin.violationsLabel", {
+                                defaultValue: "violations",
+                              })}
+                            </span>
+                            <span>•</span>
+                            <span>
+                              {t("cloud.admin.riskLabel", {
+                                defaultValue: "Risk",
+                              })}
+                              : {u.riskScore}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => loadUserDetail(u.userId)}
+                          >
+                            <Eye className="size-4" />
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() =>
+                              performAction("ban", {
+                                userId: u.userId,
+                                reason: t("cloud.admin.banReasonDefault", {
+                                  defaultValue: "Admin review",
+                                }),
+                              })
+                            }
+                          >
+                            <Ban className="size-4" />
+                          </Button>
                         </div>
                       </div>
-                      <div className="flex gap-2">
+                    ))}
+                    {flaggedUsers.length === 0 && (
+                      <p className="text-center text-sm text-muted-foreground">
+                        {t("cloud.admin.flagged.empty", {
+                          defaultValue: "No flagged users",
+                        })}
+                      </p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Ban className="size-5 text-danger" />
+                    {t("cloud.admin.banned.title", {
+                      defaultValue: "Banned Users",
+                    })}
+                  </CardTitle>
+                  <CardDescription>
+                    {t("cloud.admin.banned.desc", {
+                      defaultValue: "Users currently banned from the platform",
+                    })}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {bannedUsers.map((u) => (
+                      <div
+                        key={u.id}
+                        className="flex items-center justify-between rounded-sm border border-destructive/20 bg-destructive/5 p-3"
+                      >
+                        <div>
+                          <p className="text-sm">{u.userId.slice(0, 12)}...</p>
+                          <p className="text-xs text-muted-foreground">
+                            {u.banReason ??
+                              t("cloud.admin.noReasonProvided", {
+                                defaultValue: "No reason provided",
+                              })}
+                          </p>
+                        </div>
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => loadUserDetail(u.userId)}
-                        >
-                          <Eye className="size-4" />
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
                           onClick={() =>
-                            performAction("ban", {
-                              userId: u.userId,
-                              reason: t("cloud.admin.banReasonDefault", {
-                                defaultValue: "Admin review",
-                              }),
-                            })
+                            performAction("unban", { userId: u.userId })
                           }
                         >
-                          <Ban className="size-4" />
+                          {t("cloud.admin.unban", { defaultValue: "Unban" })}
                         </Button>
                       </div>
-                    </div>
-                  ))}
-                  {flaggedUsers.length === 0 && (
-                    <p className="text-center text-sm text-muted-foreground">
-                      {t("cloud.admin.flagged.empty", {
-                        defaultValue: "No flagged users",
-                      })}
-                    </p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+                    ))}
+                    {bannedUsers.length === 0 && (
+                      <p className="text-center text-sm text-muted-foreground">
+                        {t("cloud.admin.banned.empty", {
+                          defaultValue: "No banned users",
+                        })}
+                      </p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
 
+          <TabsContent value="admins" className="space-y-4">
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Ban className="size-5 text-danger" />
-                  {t("cloud.admin.banned.title", {
-                    defaultValue: "Banned Users",
-                  })}
-                </CardTitle>
-                <CardDescription>
-                  {t("cloud.admin.banned.desc", {
-                    defaultValue: "Users currently banned from the platform",
-                  })}
-                </CardDescription>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>
+                    {t("cloud.admin.adminUsers.title", {
+                      defaultValue: "Admin Users",
+                    })}
+                  </CardTitle>
+                  <CardDescription>
+                    {t("cloud.admin.adminUsers.desc", {
+                      defaultValue: "Manage admin privileges",
+                    })}
+                  </CardDescription>
+                </div>
+                {adminRole === "super_admin" && (
+                  <Button onClick={() => setAddAdminOpen(true)}>
+                    <Plus className="mr-2 size-4" />
+                    {t("cloud.admin.addAdmin", { defaultValue: "Add Admin" })}
+                  </Button>
+                )}
               </CardHeader>
               <CardContent>
-                <div className="space-y-2">
-                  {bannedUsers.map((u) => (
-                    <div
-                      key={u.id}
-                      className="flex items-center justify-between rounded-sm border border-destructive/20 bg-destructive/5 p-3"
-                    >
-                      <div>
-                        <p className="text-sm">{u.userId.slice(0, 12)}...</p>
-                        <p className="text-xs text-muted-foreground">
-                          {u.banReason ??
-                            t("cloud.admin.noReasonProvided", {
-                              defaultValue: "No reason provided",
-                            })}
-                        </p>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          performAction("unban", { userId: u.userId })
-                        }
-                      >
-                        {t("cloud.admin.unban", { defaultValue: "Unban" })}
-                      </Button>
-                    </div>
-                  ))}
-                  {bannedUsers.length === 0 && (
-                    <p className="text-center text-sm text-muted-foreground">
-                      {t("cloud.admin.banned.empty", {
-                        defaultValue: "No banned users",
-                      })}
-                    </p>
-                  )}
-                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>
+                        {t("cloud.admin.col.wallet", {
+                          defaultValue: "Wallet",
+                        })}
+                      </TableHead>
+                      <TableHead>
+                        {t("cloud.admin.col.role", { defaultValue: "Role" })}
+                      </TableHead>
+                      <TableHead>
+                        {t("cloud.admin.col.added", { defaultValue: "Added" })}
+                      </TableHead>
+                      <TableHead>
+                        {t("cloud.admin.col.notes", { defaultValue: "Notes" })}
+                      </TableHead>
+                      <TableHead />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {admins.map((admin) => (
+                      <TableRow key={admin.id}>
+                        <TableCell className="text-sm">
+                          {admin.walletAddress.slice(0, 10)}...
+                          {admin.walletAddress.slice(-8)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              admin.role === "super_admin"
+                                ? "default"
+                                : admin.role === "moderator"
+                                  ? "secondary"
+                                  : "outline"
+                            }
+                          >
+                            {admin.role}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {new Date(admin.createdAt).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {admin.notes ?? "-"}
+                        </TableCell>
+                        <TableCell>
+                          {adminRole === "super_admin" &&
+                            admin.id !== "anvil-default" && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  performAction("revoke_admin", {
+                                    walletAddress: admin.walletAddress,
+                                  })
+                                }
+                              >
+                                <Trash2 className="size-4 text-danger" />
+                              </Button>
+                            )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </CardContent>
             </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="admins" className="space-y-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>
-                  {t("cloud.admin.adminUsers.title", {
-                    defaultValue: "Admin Users",
-                  })}
-                </CardTitle>
-                <CardDescription>
-                  {t("cloud.admin.adminUsers.desc", {
-                    defaultValue: "Manage admin privileges",
-                  })}
-                </CardDescription>
-              </div>
-              {adminRole === "super_admin" && (
-                <Button onClick={() => setAddAdminOpen(true)}>
-                  <Plus className="mr-2 size-4" />
-                  {t("cloud.admin.addAdmin", { defaultValue: "Add Admin" })}
-                </Button>
-              )}
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>
-                      {t("cloud.admin.col.wallet", {
-                        defaultValue: "Wallet",
-                      })}
-                    </TableHead>
-                    <TableHead>
-                      {t("cloud.admin.col.role", { defaultValue: "Role" })}
-                    </TableHead>
-                    <TableHead>
-                      {t("cloud.admin.col.added", { defaultValue: "Added" })}
-                    </TableHead>
-                    <TableHead>
-                      {t("cloud.admin.col.notes", { defaultValue: "Notes" })}
-                    </TableHead>
-                    <TableHead />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {admins.map((admin) => (
-                    <TableRow key={admin.id}>
-                      <TableCell className="text-sm">
-                        {admin.walletAddress.slice(0, 10)}...
-                        {admin.walletAddress.slice(-8)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            admin.role === "super_admin"
-                              ? "default"
-                              : admin.role === "moderator"
-                                ? "secondary"
-                                : "outline"
-                          }
-                        >
-                          {admin.role}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {new Date(admin.createdAt).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {admin.notes ?? "-"}
-                      </TableCell>
-                      <TableCell>
-                        {adminRole === "super_admin" &&
-                          admin.id !== "anvil-default" && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() =>
-                                performAction("revoke_admin", {
-                                  walletAddress: admin.walletAddress,
-                                })
-                              }
-                            >
-                              <Trash2 className="size-4 text-danger" />
-                            </Button>
-                          )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+          </TabsContent>
+        </Tabs>
+      </div>
 
       <Dialog open={addAdminOpen} onOpenChange={setAddAdminOpen}>
         <DialogContent>
@@ -815,11 +813,7 @@ export default function ModerationPage(): React.JSX.Element {
                     <div key={v.id} className="text-sm border-b pb-2">
                       <div className="flex gap-2">
                         {v.categories.map((c) => (
-                          <Badge
-                            key={c}
-                            variant="destructive"
-                            className="text-xs"
-                          >
+                          <Badge key={c} variant="destructive">
                             {c}
                           </Badge>
                         ))}

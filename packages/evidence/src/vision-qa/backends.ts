@@ -29,8 +29,27 @@ export const ANTHROPIC_BASE_URL = "https://api.anthropic.com/v1";
 export const ANTHROPIC_VERSION = "2023-06-01";
 export const OPENAI_BASE_URL = "https://api.openai.com/v1";
 
-/** Output ceiling: enough for a structured answer per question, not prose. */
-const MAX_OUTPUT_TOKENS = 2048;
+/** Anthropic Messages requires a value; map only documented model hard limits. */
+export function anthropicModelOutputLimit(model: string): number {
+  const normalized = model.trim().toLowerCase();
+  if (
+    /claude-(?:(?:fable|mythos)-5|opus-(?:4-[678]|5)|sonnet-(?:4-6|5))(?:-|$)/.test(
+      normalized,
+    )
+  ) {
+    return 128_000;
+  }
+  if (/claude-(?:haiku|sonnet|opus)-4-5(?:-|$)/.test(normalized)) {
+    return 64_000;
+  }
+  throw new EvidenceError(
+    `Anthropic output capability is unknown for ${model}`,
+    {
+      code: "VISION_MODEL_OUTPUT_LIMIT_UNKNOWN",
+      context: { model },
+    },
+  );
+}
 
 /**
  * System rubric shared by every backend and prompt-cacheable on Anthropic. Kept
@@ -190,7 +209,7 @@ export class AnthropicBackend implements VisionBackendClient {
     }
     const body = {
       model: this.model,
-      max_tokens: MAX_OUTPUT_TOKENS,
+      max_tokens: anthropicModelOutputLimit(this.model),
       system: SYSTEM_RUBRIC,
       messages: [{ role: "user", content: userContent }],
     };
@@ -269,7 +288,6 @@ export class OpenAiCompatibleBackend implements VisionBackendClient {
     }
     const body = {
       model: this.model,
-      max_tokens: MAX_OUTPUT_TOKENS,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: SYSTEM_RUBRIC },

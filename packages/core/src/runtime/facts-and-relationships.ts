@@ -432,60 +432,88 @@ async function searchSimilarFacts(
 	candidateFacts: readonly string[],
 ): Promise<Memory[]> {
 	if (candidateFacts.length === 0) return [];
-	if (typeof runtime.getMemories !== "function") return [];
+	if (typeof runtime.getMemories !== "function") {
+		throw new ElizaError("Facts deduplication requires a memory reader", {
+			code: "FACTS_DEDUP_READER_UNAVAILABLE",
+			context: { roomId: message.roomId },
+		});
+	}
 
+	let results: unknown;
 	try {
-		const results = await runtime.getMemories({
+		results = await runtime.getMemories({
 			tableName: "facts",
 			roomId: message.roomId,
 			unique: false,
 		});
-		if (!Array.isArray(results)) return [];
-		return scoreFactKeywordRelevance(candidateFacts.join("\n"), results)
-			.filter((entry) => entry.relevance > 0)
-			.sort((left, right) => right.relevance - left.relevance)
-			.map((entry) => entry.memory);
-	} catch (error) {
-		// error-policy:J7 diagnostics-must-not-kill-the-loop — failing to load
-		// existing facts disables dedup for this turn (risking duplicate facts),
-		// so degrade to no dedup, but surface the read failure via reportError so a
-		// broken `getMemories` pipeline reaches the agent, not just the log.
-		runtime.reportError("FactsAndRelationships.searchSimilarFacts", error, {
-			roomId: message.roomId,
+	} catch (cause) {
+		// error-policy:J2 Preserve the store failure while classifying the dedup read.
+		throw new ElizaError("Failed to read existing facts for deduplication", {
+			code: "FACTS_DEDUP_READ_FAILED",
+			cause,
+			context: { roomId: message.roomId },
 		});
-		return [];
 	}
+	if (!Array.isArray(results)) {
+		throw new ElizaError(
+			"Facts store returned an invalid deduplication result",
+			{
+				code: "FACTS_DEDUP_RESPONSE_INVALID",
+				context: { receivedType: typeof results, roomId: message.roomId },
+			},
+		);
+	}
+	return scoreFactKeywordRelevance(candidateFacts.join("\n"), results)
+		.filter((entry) => entry.relevance > 0)
+		.sort((left, right) => right.relevance - left.relevance)
+		.map((entry) => entry.memory);
 }
 
 async function fetchExistingRelationships(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): Promise<Relationship[]> {
-	if (typeof runtime.getRelationships !== "function") return [];
+	if (typeof runtime.getRelationships !== "function") {
+		throw new ElizaError(
+			"Relationship deduplication requires a relationship reader",
+			{ code: "RELATIONSHIP_DEDUP_READER_UNAVAILABLE" },
+		);
+	}
 	const entityIds = [message.entityId, runtime.agentId].filter(
 		(id): id is `${string}-${string}-${string}-${string}-${string}` =>
 			typeof id === "string" && id.length > 0,
 	);
-	if (entityIds.length === 0) return [];
+	if (entityIds.length === 0) {
+		throw new ElizaError("Relationship deduplication scope is empty", {
+			code: "RELATIONSHIP_DEDUP_SCOPE_INVALID",
+		});
+	}
+	let results: unknown;
 	try {
-		const results = await runtime.getRelationships({
+		results = await runtime.getRelationships({
 			entityIds,
 		});
-		return Array.isArray(results) ? results : [];
-	} catch (error) {
-		// error-policy:J7 diagnostics-must-not-kill-the-loop — failing to load
-		// existing relationships disables dedup for this turn (risking duplicate
-		// relationships), so degrade to no dedup, but surface the read failure via
-		// reportError so a broken `getRelationships` pipeline reaches the agent.
-		runtime.reportError(
-			"FactsAndRelationships.fetchExistingRelationships",
-			error,
+	} catch (cause) {
+		// error-policy:J2 Preserve the store failure while classifying the dedup read.
+		throw new ElizaError(
+			"Failed to read existing relationships for deduplication",
 			{
-				entityIds,
+				code: "RELATIONSHIP_DEDUP_READ_FAILED",
+				cause,
+				context: { entityIds },
 			},
 		);
-		return [];
 	}
+	if (!Array.isArray(results)) {
+		throw new ElizaError(
+			"Relationship store returned an invalid deduplication result",
+			{
+				code: "RELATIONSHIP_DEDUP_RESPONSE_INVALID",
+				context: { receivedType: typeof results, entityIds },
+			},
+		);
+	}
+	return results;
 }
 
 export function parseFactsAndRelationshipsOutput(

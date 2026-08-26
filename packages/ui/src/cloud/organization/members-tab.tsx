@@ -235,7 +235,7 @@ export function MembersTab({ user }: MembersTabProps) {
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirmRemove}
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-destructive text-destructive-fg hover:bg-destructive/85"
             >
               {t("cloud.membersTab.remove", { defaultValue: "Remove" })}
             </AlertDialogAction>

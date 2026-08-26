@@ -157,6 +157,24 @@ describe("consolidated Android release AAB authority", () => {
     ).toContain("needs.android_aab.result");
   });
 
+  test("builds the prompts package before the clean-checkout mobile app bundle", () => {
+    const android = requireJob("android_aab");
+    const dependencies = requireStep(
+      android,
+      "Build mobile package dependencies",
+    );
+    const build = requireStep(
+      android,
+      "Build and audit canonical Android Cloud release AAB",
+    );
+    const steps = android.steps ?? [];
+
+    expect(dependencies.run).toContain(
+      "bun run --cwd packages/prompts build:package",
+    );
+    expect(steps.indexOf(dependencies)).toBeLessThan(steps.indexOf(build));
+  });
+
   test("accepts exact booleans and rejects failed, missing, or malformed selectors", () => {
     const source = requireStep(
       requireJob("android_aab"),

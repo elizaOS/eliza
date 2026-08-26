@@ -1116,7 +1116,6 @@ describe("generateChatResponse token streaming", () => {
       expect.anything(),
       expect.objectContaining({
         stream: true,
-        maxTokens: 128,
         prompt: expect.stringContaining("<think>\n\n</think>\n"),
         stopSequences: ["<end_of_turn>", "<start_of_turn>"],
         providerOptions: expect.objectContaining({
@@ -1131,6 +1130,7 @@ describe("generateChatResponse token streaming", () => {
         onStreamChunk: expect.any(Function),
       }),
     );
+    expect(useModel.mock.calls[0]?.[1]).not.toHaveProperty("maxTokens");
     expect(chunks).toEqual(["Yes", ", locally."]);
     expect(chunks.join("")).toBe("Yes, locally.");
     expect(snapshots).toEqual(["Yes", "Yes, locally."]);
@@ -1936,13 +1936,13 @@ describe("generateConversationTitle", () => {
     expect(useModel).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        maxTokens: 20,
         temperature: 0.7,
         prompt: expect.stringContaining(
           "Can you answer from the local voice backend?",
         ),
       }),
     );
+    expect(useModel.mock.calls[0]?.[1]).not.toHaveProperty("maxTokens");
   });
 
   it("passes caller cancellation into the title model request", async () => {

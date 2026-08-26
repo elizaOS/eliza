@@ -68,7 +68,6 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
           variant="ghost"
           type="button"
           onClick={() => navigate("/settings#cloud-billing")}
-          className="group flex min-h-touch items-center gap-2 font-mono text-sm text-muted hover:text-txt-strong transition-colors"
         >
           <div className="flex items-center justify-center size-8 rounded-sm bg-bg-elevated group-hover:bg-bg-hover transition-colors">
             <ArrowLeft className="size-4" />
@@ -103,7 +102,6 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
                   onClick={() =>
                     invoice.invoice_pdf && openInvoiceUrl(invoice.invoice_pdf)
                   }
-                  className="flex min-h-touch items-center gap-2 text-base font-mono text-txt-strong underline hover:text-accent transition-colors"
                 >
                   <Download className="size-4" />
                   {t("cloud.invoiceDetail.downloadPdf", {
@@ -119,7 +117,6 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
                     invoice.hosted_invoice_url &&
                     openInvoiceUrl(invoice.hosted_invoice_url)
                   }
-                  className="flex min-h-touch items-center gap-2 text-base font-mono text-txt-strong underline hover:text-accent transition-colors"
                 >
                   <ExternalLink className="size-4" />
                   {t("cloud.invoiceDetail.viewInStripe", {

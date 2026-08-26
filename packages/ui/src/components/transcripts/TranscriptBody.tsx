@@ -60,14 +60,12 @@ const TranscriptWord = React.memo(function TranscriptWord({
   return (
     <>
       <Button
-        variant="ghost"
+        variant="selection"
+        size="content"
+        data-state={isActive ? "on" : "off"}
         data-testid={testId}
         data-active={isActive ? "true" : undefined}
         onClick={() => onSeek(startMs)}
-        className={cn(
-          "h-auto rounded px-0.5 py-0 font-normal transition-colors hover:bg-bg-muted/40",
-          isActive && "bg-accent/16 text-txt-strong",
-        )}
       >
         {text}
       </Button>{" "}
@@ -132,10 +130,11 @@ export function TranscriptBody({
                 ))
               ) : (
                 <Button
-                  variant="ghost"
+                  variant="transparent"
+                  size="content"
+                  align="start"
                   data-testid={`transcript-segment-text-${si}`}
                   onClick={() => handleSeek(seg.startMs)}
-                  className="h-auto whitespace-normal rounded-none bg-transparent p-0 text-left font-normal hover:bg-transparent"
                 >
                   {seg.text}
                 </Button>

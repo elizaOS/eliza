@@ -32,6 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
   Skeleton,
+  StatusBadge,
   Table,
   TableBody,
   TableCell,
@@ -106,13 +107,16 @@ interface SystemStatus {
   };
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  pending: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-  approved: "bg-white/10 text-white/80 border-white/20",
-  processing: "bg-accent/20 text-accent border-accent/30",
-  completed: "bg-green-500/20 text-green-400 border-green-500/30",
-  failed: "bg-red-500/20 text-red-400 border-red-500/30",
-  rejected: "bg-red-500/20 text-red-400 border-red-500/30",
+const STATUS_TONES: Record<
+  string,
+  "warning" | "muted" | "accent" | "success" | "danger"
+> = {
+  pending: "warning",
+  approved: "muted",
+  processing: "accent",
+  completed: "success",
+  failed: "danger",
+  rejected: "danger",
 };
 
 const buildStatusOptions = (t: TFn) => [
@@ -334,19 +338,18 @@ export default function RedemptionsPage(): React.JSX.Element {
                 defaultValue: "System Status",
               })}
             </h3>
-            <Badge
-              className={
+            <StatusBadge
+              status={systemStatus?.operational ? "success" : "danger"}
+              label={
                 systemStatus?.operational
-                  ? "bg-green-500/20 text-green-400"
-                  : "bg-red-500/20 text-red-400"
+                  ? t("cloud.redemptions.operational", {
+                      defaultValue: "Operational",
+                    })
+                  : t("cloud.redemptions.limited", {
+                      defaultValue: "Limited",
+                    })
               }
-            >
-              {systemStatus?.operational
-                ? t("cloud.redemptions.operational", {
-                    defaultValue: "Operational",
-                  })
-                : t("cloud.redemptions.limited", { defaultValue: "Limited" })}
-            </Badge>
+            />
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm">
@@ -387,7 +390,7 @@ export default function RedemptionsPage(): React.JSX.Element {
           </h3>
           <div className="grid grid-cols-3 gap-4">
             <div className="text-center">
-              <p className="text-2xl font-bold text-yellow-400">
+              <p className="text-2xl font-bold text-status-warning">
                 {stats?.pending || 0}
               </p>
               <p className="text-xs text-muted-foreground">
@@ -587,9 +590,8 @@ export default function RedemptionsPage(): React.JSX.Element {
                   </TableCell>
                   <TableCell>
                     <Badge
-                      className={
-                        STATUS_COLORS[r.status] || STATUS_COLORS.pending
-                      }
+                      variant="outline"
+                      tone={STATUS_TONES[r.status] ?? "warning"}
                     >
                       {r.status}
                     </Badge>
@@ -610,9 +612,8 @@ export default function RedemptionsPage(): React.JSX.Element {
                       {r.status === "pending" && (
                         <>
                           <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-8 text-green-400 hover:text-green-300"
+                            variant="surfaceAccent"
+                            size="icon-sm"
                             onClick={() => {
                               setSelectedRedemption(r);
                               setShowApproveDialog(true);
@@ -621,9 +622,8 @@ export default function RedemptionsPage(): React.JSX.Element {
                             <Check className="size-4" />
                           </Button>
                           <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-8 text-red-400 hover:text-red-300"
+                            variant="dangerGhost"
+                            size="icon-sm"
                             onClick={() => {
                               setSelectedRedemption(r);
                               setShowRejectDialog(true);
@@ -679,7 +679,10 @@ export default function RedemptionsPage(): React.JSX.Element {
                       defaultValue: "Status",
                     })}
                   </p>
-                  <Badge className={STATUS_COLORS[selectedRedemption.status]}>
+                  <Badge
+                    variant="outline"
+                    tone={STATUS_TONES[selectedRedemption.status] ?? "warning"}
+                  >
                     {selectedRedemption.status}
                   </Badge>
                 </div>
@@ -781,25 +784,25 @@ export default function RedemptionsPage(): React.JSX.Element {
                 </div>
               )}
               {selectedRedemption.failure_reason && (
-                <div className="p-3 rounded-sm bg-red-500/10 border border-red-500/30">
-                  <p className="text-xs text-red-400 mb-1">
+                <div className="p-3 rounded-sm bg-destructive-subtle border border-destructive/30">
+                  <p className="text-xs text-destructive mb-1">
                     {t("cloud.redemptions.labelFailureReason", {
                       defaultValue: "Failure Reason",
                     })}
                   </p>
-                  <p className="text-sm text-red-400">
+                  <p className="text-sm text-destructive">
                     {selectedRedemption.failure_reason}
                   </p>
                 </div>
               )}
               {selectedRedemption.rejection_reason && (
-                <div className="p-3 rounded-sm bg-red-500/10 border border-red-500/30">
-                  <p className="text-xs text-red-400 mb-1">
+                <div className="p-3 rounded-sm bg-destructive-subtle border border-destructive/30">
+                  <p className="text-xs text-destructive mb-1">
                     {t("cloud.redemptions.labelRejectionReason", {
                       defaultValue: "Rejection Reason",
                     })}
                   </p>
-                  <p className="text-sm text-red-400">
+                  <p className="text-sm text-destructive">
                     {selectedRedemption.rejection_reason}
                   </p>
                 </div>
@@ -890,12 +893,13 @@ export default function RedemptionsPage(): React.JSX.Element {
           </DialogHeader>
           <div className="py-4">
             <Textarea
+              variant="config"
+              density="relaxed"
               placeholder={t("cloud.redemptions.rejectReasonPlaceholder", {
                 defaultValue: "Reason for rejection (required)",
               })}
               value={rejectionReason}
               onChange={(e) => setRejectionReason(e.target.value)}
-              className="min-h-[100px]"
             />
           </div>
           <DialogFooter>

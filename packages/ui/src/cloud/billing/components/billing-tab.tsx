@@ -230,14 +230,14 @@ function getInvoiceStatusPresentation(status: string): {
 } {
   const normalized = status.trim().toLowerCase();
   if (["paid", "succeeded", "complete", "completed"].includes(normalized)) {
-    return { Icon: CheckCircle, className: "text-green-400" };
+    return { Icon: CheckCircle, className: "text-status-success" };
   }
   if (
     ["failed", "uncollectible", "void", "canceled", "cancelled"].includes(
       normalized,
     )
   ) {
-    return { Icon: XCircle, className: "text-red-400" };
+    return { Icon: XCircle, className: "text-destructive" };
   }
   if (["pending", "open", "processing", "draft"].includes(normalized)) {
     return { Icon: Clock, className: "text-txt-strong" };
@@ -696,7 +696,6 @@ export function BillingTab({
                         void billingSnapshot.refetch();
                       }}
                       disabled={billingSnapshotState.refreshing}
-                      className="mt-3 min-h-11 min-w-11 font-mono"
                     >
                       {billingSnapshotState.refreshing
                         ? t("cloud.billing.compute.retrying", {
@@ -733,7 +732,7 @@ export function BillingTab({
                 {cryptoStatus?.enabled && (
                   <div className="flex gap-2">
                     <Button
-                      variant="ghost"
+                      variant="choice"
                       type="button"
                       disabled={isProcessingCheckout}
                       onClick={() => {
@@ -741,17 +740,13 @@ export function BillingTab({
                         setCardCheckoutError(null);
                       }}
                       aria-pressed={paymentMethod === "card"}
-                      className={`flex items-center gap-2 px-4 py-2 font-mono text-sm border transition-colors ${
-                        paymentMethod === "card"
-                          ? "bg-txt border-txt text-bg"
-                          : "bg-transparent border-border text-muted hover:border-border-strong"
-                      }`}
+                      data-state={paymentMethod === "card" ? "on" : "off"}
                     >
                       <CreditCard className="size-4" />
                       {t("cloud.billingTab.card", { defaultValue: "Card" })}
                     </Button>
                     <Button
-                      variant="ghost"
+                      variant="choice"
                       type="button"
                       disabled={isProcessingCheckout}
                       onClick={() => {
@@ -759,11 +754,7 @@ export function BillingTab({
                         setCardCheckoutError(null);
                       }}
                       aria-pressed={paymentMethod === "crypto"}
-                      className={`flex items-center gap-2 px-4 py-2 font-mono text-sm border transition-colors ${
-                        paymentMethod === "crypto"
-                          ? "bg-txt border-txt text-bg"
-                          : "bg-transparent border-border text-muted hover:border-border-strong"
-                      }`}
+                      data-state={paymentMethod === "crypto" ? "on" : "off"}
                     >
                       <Wallet className="size-4" />
                       {t("cloud.billingTab.crypto", { defaultValue: "Crypto" })}
@@ -803,7 +794,10 @@ export function BillingTab({
                           // each keystroke. The coordinator rotates atomically
                           // only when a complete different amount is submitted.
                         }}
-                        className="pl-7 bg-surface border border-border text-txt h-11 font-mono tabular-nums"
+                        variant="form"
+                        density="relaxed"
+                        adornment="leading"
+                        className="font-mono tabular-nums"
                         placeholder="0.00"
                         disabled={isProcessingCheckout}
                         aria-describedby={amountDescribedBy}
@@ -814,7 +808,7 @@ export function BillingTab({
                       <div
                         id={AMOUNT_ERROR_ID}
                         role="alert"
-                        className="mt-1.5 flex items-center gap-2 text-sm text-red-400"
+                        className="mt-1.5 flex items-center gap-2 text-sm text-destructive"
                       >
                         <AlertCircle
                           className="size-4 shrink-0"
@@ -878,7 +872,7 @@ export function BillingTab({
                     id={CARD_CHECKOUT_ERROR_ID}
                     role="alert"
                     aria-live="assertive"
-                    className="flex max-w-2xl items-start gap-2 border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300"
+                    className="flex max-w-2xl items-start gap-2 border border-destructive/40 bg-destructive-subtle p-3 text-sm text-destructive"
                   >
                     <AlertCircle
                       className="mt-0.5 size-4 shrink-0"
@@ -889,7 +883,7 @@ export function BillingTab({
                 ) : null}
 
                 {isValidAmount && purchaseAmount && amountValue !== null && (
-                  <div className="flex items-center gap-2 text-sm text-green-400">
+                  <div className="flex items-center gap-2 text-sm text-status-success">
                     <CheckCircle className="size-4" />
                     <span className="font-mono">
                       {t("cloud.billingTab.willBeAdded", {
@@ -990,10 +984,10 @@ export function BillingTab({
                 <Loader2 className="size-6 animate-spin text-muted" />
               </div>
             ) : invoicesError ? (
-              <div className="flex items-start gap-3 p-8 border border-brand-surface sm:border-t-0 bg-red-500/5">
-                <AlertCircle className="mt-0.5 size-4 shrink-0 text-red-400" />
+              <div className="flex items-start gap-3 p-8 border border-brand-surface sm:border-t-0 bg-destructive-subtle/50">
+                <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
                 <div className="space-y-1">
-                  <p className="text-xs md:text-sm text-red-300 font-mono">
+                  <p className="text-xs md:text-sm text-destructive font-mono">
                     {t("cloud.billingTab.invoiceLoadFailed", {
                       defaultValue: "Invoice history could not be loaded",
                     })}
@@ -1067,7 +1061,6 @@ export function BillingTab({
                         variant="ghost"
                         type="button"
                         onClick={() => handleViewInvoice(invoice)}
-                        className="text-xs md:text-sm font-mono text-txt-strong underline uppercase hover:text-txt transition-colors"
                       >
                         {t("cloud.billingTab.view", { defaultValue: "View" })}
                       </Button>

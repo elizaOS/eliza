@@ -20,7 +20,8 @@
  *    (including `.mjs`/`.js` vitest suites) must be reachable by some
  *    vitest*.config.* include glob under the same plugin, or by Vitest's
  *    registered Vitest or native-test runner after its effective excludes are
- *    applied, or be a documented, dated exception.
+ *    applied, or be a documented, dated exception. Nested Git repositories
+ *    own their package manifests and test lanes and are outside this scan.
  *
  * Usage:
  *   bun run ensure-plugin-test-conventions     # apply to all plugins
@@ -48,6 +49,7 @@ import { GUARDED_REAL_LIVE_SUITES } from "./lib/real-live-suites.mjs";
 const ROOT = resolve(import.meta.dirname, "../..");
 const DRY_RUN = process.argv.includes("--dry-run");
 const CHECK = process.argv.includes("--check");
+const NESTED_REPOSITORY_PATHS = readGitSubmodulePaths(ROOT);
 
 const RUST_SKIP_MSG = "Rust tests skipped";
 const PYTHON_SKIP_MSG = "Python tests skipped";
@@ -60,19 +62,41 @@ const REQUIRED_WORKSPACE_SCRIPTS = [
   "format:check",
 ];
 
-function findPackageJsonFiles(dir, list = []) {
+export function readGitSubmodulePaths(rootDir) {
+  const gitmodules = join(rootDir, ".gitmodules");
+  if (!existsSync(gitmodules)) return [];
+  return [
+    ...readFileSync(gitmodules, "utf8").matchAll(/^\s*path\s*=\s*(.+?)\s*$/gm),
+  ]
+    .map((match) => match[1].replace(/^(?:"(.*)"|'(.*)')$/, "$1$2"))
+    .map((submodulePath) => resolve(rootDir, submodulePath));
+}
+
+function isNestedRepository(dir, nestedRepositoryPaths) {
+  const candidate = resolve(dir);
+  return (
+    nestedRepositoryPaths.some((nested) => resolve(nested) === candidate) ||
+    existsSync(join(dir, ".git"))
+  );
+}
+
+export function findPackageJsonFiles(
+  dir,
+  list = [],
+  nestedRepositoryPaths = NESTED_REPOSITORY_PATHS,
+) {
   if (!existsSync(dir)) return list;
   const entries = readdirSync(dir, { withFileTypes: true });
   for (const e of entries) {
     const p = join(dir, e.name);
-    const relPath = p.replace(ROOT + "/", "");
     if (e.name === "node_modules" || e.name === "dist" || e.name === ".git")
       continue;
     if (e.name === "data" || e.name === "stagehand-server") continue;
     if (e.isDirectory()) {
-      findPackageJsonFiles(p, list);
+      if (isNestedRepository(p, nestedRepositoryPaths)) continue;
+      findPackageJsonFiles(p, list, nestedRepositoryPaths);
     } else if (e.name === "package.json") {
-      if (relPath.startsWith("plugins/")) list.push(join(dir, e.name));
+      list.push(join(dir, e.name));
     }
   }
   return list;
@@ -343,6 +367,22 @@ export const ORPHANED_PLUGIN_TEST_EXCEPTIONS = new Map([
   // untriaged finding.
 ]);
 
+function pluginTestStructuralIgnore(
+  pluginDir,
+  nestedRepositoryPaths = NESTED_REPOSITORY_PATHS,
+) {
+  const pluginRoot = `${resolve(pluginDir)}${sep}`;
+  return [
+    ...PLUGIN_TEST_STRUCTURAL_IGNORE,
+    ...nestedRepositoryPaths
+      .map((nested) => resolve(nested))
+      .filter((nested) => nested.startsWith(pluginRoot))
+      .map(
+        (nested) => `${relative(pluginDir, nested).split(sep).join("/")}/**`,
+      ),
+  ];
+}
+
 function findPluginDirectories() {
   const pluginsDir = join(ROOT, "plugins");
   if (!existsSync(pluginsDir)) return [];
@@ -353,11 +393,11 @@ function findPluginDirectories() {
     .sort();
 }
 
-async function findVitestConfigPaths(pluginDir) {
+async function findVitestConfigPaths(pluginDir, structuralIgnore) {
   const matches = await glob(VITEST_CONFIG_GLOB, {
     cwd: pluginDir,
     dot: true,
-    ignore: PLUGIN_TEST_STRUCTURAL_IGNORE,
+    ignore: structuralIgnore,
     expandDirectories: false,
   });
   return matches.map((relPath) => join(pluginDir, relPath)).sort();
@@ -384,11 +424,11 @@ export function isBunTestFile(absPath) {
   return NON_VITEST_HARNESS_IMPORT_RE.test(readFileSync(absPath, "utf8"));
 }
 
-async function findOnDiskPluginTestFiles(pluginDir) {
+async function findOnDiskPluginTestFiles(pluginDir, structuralIgnore) {
   const matches = await glob(PLUGIN_TEST_FILE_INCLUDE, {
     cwd: pluginDir,
     dot: true,
-    ignore: PLUGIN_TEST_STRUCTURAL_IGNORE,
+    ignore: structuralIgnore,
     expandDirectories: false,
   });
   return matches.map((relPath) => join(pluginDir, relPath)).sort();
@@ -554,13 +594,23 @@ async function registeredRootVitestCoverage() {
   return covered;
 }
 
-export async function inspectPluginTestCoverage(pluginDir) {
+export async function inspectPluginTestCoverage(
+  pluginDir,
+  nestedRepositoryPaths = NESTED_REPOSITORY_PATHS,
+) {
   const packageJson = readPluginPackage(pluginDir);
   const pluginRelative = toRepoRelative(pluginDir);
+  const structuralIgnore = pluginTestStructuralIgnore(
+    pluginDir,
+    nestedRepositoryPaths,
+  );
   const testFiles = [];
   const coveredFiles = new Set();
   const configFailures = [];
-  const filesInPlugin = await findOnDiskPluginTestFiles(pluginDir);
+  const filesInPlugin = await findOnDiskPluginTestFiles(
+    pluginDir,
+    structuralIgnore,
+  );
   for (const file of filesInPlugin) {
     const relativeFile = relative(pluginDir, file).split(sep).join("/");
     testFiles.push(relativeFile);
@@ -569,9 +619,9 @@ export async function inspectPluginTestCoverage(pluginDir) {
     }
   }
 
-  const configPaths = (await findVitestConfigPaths(pluginDir)).filter((path) =>
-    isRegisteredPluginConfig(path, pluginDir, packageJson),
-  );
+  const configPaths = (
+    await findVitestConfigPaths(pluginDir, structuralIgnore)
+  ).filter((path) => isRegisteredPluginConfig(path, pluginDir, packageJson));
   for (const configPath of configPaths) {
     try {
       const included = await resolveConfigIncludedFiles(
@@ -598,7 +648,7 @@ export async function inspectPluginTestCoverage(pluginDir) {
     const fallbackMatches = await glob(configDefaults.include, {
       cwd: pluginDir,
       dot: true,
-      ignore: [...PLUGIN_TEST_STRUCTURAL_IGNORE, ...configDefaults.exclude],
+      ignore: [...structuralIgnore, ...configDefaults.exclude],
       expandDirectories: false,
     });
     for (const relativeFile of fallbackMatches) coveredFiles.add(relativeFile);

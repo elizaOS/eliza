@@ -4,7 +4,7 @@
  * failures; `formatModelError` produces a caller-facing message and
  * `sanitizeUrlForLogs` strips secrets from URLs before they reach the logger.
  */
-import { logger } from "@elizaos/core";
+import { isElizaError, logger } from "@elizaos/core";
 
 interface RetryConfig {
   readonly maxRetries: number;
@@ -149,6 +149,9 @@ export async function executeWithRetry<T>(
 }
 
 export function formatModelError(operationName: string, error: unknown): Error {
+  if (isElizaError(error)) {
+    return error;
+  }
   const statusCode = getStatusCode(error);
   const providerMessage = readProviderErrorMessage(error);
   let reason = "An unexpected error occurred while processing the request.";

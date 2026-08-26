@@ -9,6 +9,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { ElizaError } from "@elizaos/core";
 import z from "zod";
 import {
   type AuthorizeAgentBackupProtectedSpoolCleanupInput,
@@ -696,6 +697,183 @@ async function removeIntent(outbox: string, operationId: string): Promise<void> 
     if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
   });
   await fsyncDirectory(outbox);
+}
+
+type AccountDeletionSpoolAuthorityArtifact = {
+  directory: string;
+  operationId: string;
+  organizationId: string;
+};
+
+function accountDeletionSpoolArtifactError(code: string, message: string, cause?: unknown): never {
+  throw new ElizaError(message, { code, cause, severity: "fatal" });
+}
+
+async function existingAuthorityOutbox(
+  stateDirectory: string,
+  directoryName: string,
+): Promise<string | null> {
+  const resolvedState = path.resolve(stateDirectory);
+  if (!path.isAbsolute(stateDirectory) || resolvedState !== stateDirectory) {
+    accountDeletionSpoolArtifactError(
+      "ACCOUNT_DELETION_SPOOL_STATE_DIRECTORY_INVALID",
+      "Account deletion spool authority requires an exact persistent StateDirectory",
+    );
+  }
+  const outbox = path.join(resolvedState, directoryName);
+  let stat: fs.Stats;
+  try {
+    stat = await fs.promises.lstat(outbox);
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return null;
+    // error-policy:J2 preserve the filesystem failure behind a static authority error.
+    accountDeletionSpoolArtifactError(
+      "ACCOUNT_DELETION_SPOOL_OUTBOX_UNAVAILABLE",
+      "Account deletion spool authority could not inspect an outbox",
+      cause,
+    );
+  }
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    accountDeletionSpoolArtifactError(
+      "ACCOUNT_DELETION_SPOOL_OUTBOX_UNSAFE",
+      "Account deletion spool authority encountered an unsafe outbox",
+    );
+  }
+  const real = await fs.promises.realpath(outbox);
+  if (real !== outbox || path.dirname(real) !== resolvedState) {
+    accountDeletionSpoolArtifactError(
+      "ACCOUNT_DELETION_SPOOL_OUTBOX_UNSAFE",
+      "Account deletion spool authority outbox escaped its StateDirectory",
+    );
+  }
+  const entries = await fs.promises.readdir(outbox, { withFileTypes: true });
+  if (entries.some((entry) => OWNED_TEMPORARY_PATTERN.test(entry.name))) {
+    accountDeletionSpoolArtifactError(
+      "ACCOUNT_DELETION_SPOOL_OUTBOX_BUSY",
+      "Account deletion spool authority found an in-flight outbox write",
+    );
+  }
+  return outbox;
+}
+
+async function requireAccountDeletionSpoolStateDirectory(stateDirectory: string): Promise<void> {
+  const resolvedState = path.resolve(stateDirectory);
+  if (!path.isAbsolute(stateDirectory) || resolvedState !== stateDirectory) {
+    accountDeletionSpoolArtifactError(
+      "ACCOUNT_DELETION_SPOOL_STATE_DIRECTORY_INVALID",
+      "Account deletion spool authority requires an exact persistent StateDirectory",
+    );
+  }
+  let stat: fs.Stats;
+  try {
+    stat = await fs.promises.lstat(resolvedState);
+  } catch (cause) {
+    // error-policy:J2 a missing or unmounted authority root cannot prove absence.
+    accountDeletionSpoolArtifactError(
+      "ACCOUNT_DELETION_SPOOL_STATE_DIRECTORY_UNAVAILABLE",
+      "Account deletion spool authority StateDirectory is unavailable",
+      cause,
+    );
+  }
+  const real = await fs.promises.realpath(resolvedState);
+  if (stat.isSymbolicLink() || !stat.isDirectory() || real !== resolvedState) {
+    accountDeletionSpoolArtifactError(
+      "ACCOUNT_DELETION_SPOOL_STATE_DIRECTORY_UNSAFE",
+      "Account deletion spool authority StateDirectory is not an exact directory",
+    );
+  }
+  const realTemporaryDirectory = await fs.promises.realpath(os.tmpdir());
+  const relativeToTemporary = path.relative(realTemporaryDirectory, resolvedState);
+  if (
+    relativeToTemporary === "" ||
+    (!relativeToTemporary.startsWith("..") && !path.isAbsolute(relativeToTemporary))
+  ) {
+    accountDeletionSpoolArtifactError(
+      "ACCOUNT_DELETION_SPOOL_STATE_DIRECTORY_UNSAFE",
+      "Account deletion spool authority StateDirectory must be persistent",
+    );
+  }
+}
+
+async function listAccountDeletionSpoolAuthorityArtifacts(
+  stateDirectory: string,
+): Promise<readonly AccountDeletionSpoolAuthorityArtifact[]> {
+  await requireAccountDeletionSpoolStateDirectory(stateDirectory);
+  const artifacts: AccountDeletionSpoolAuthorityArtifact[] = [];
+  const protectedOutbox = await existingAuthorityOutbox(stateDirectory, OUTBOX_DIRECTORY);
+  if (protectedOutbox) {
+    for (const intent of await listIntents(protectedOutbox, Number.MAX_SAFE_INTEGER)) {
+      artifacts.push({
+        directory: protectedOutbox,
+        operationId: intent.operationId,
+        organizationId: intent.organizationId,
+      });
+    }
+  }
+  const terminalOutbox = await existingAuthorityOutbox(stateDirectory, TERMINAL_OUTBOX_DIRECTORY);
+  if (terminalOutbox) {
+    for (const intent of await listTerminalIntents(terminalOutbox, Number.MAX_SAFE_INTEGER)) {
+      artifacts.push({
+        directory: terminalOutbox,
+        operationId: intent.operationId,
+        organizationId: intent.organizationId,
+      });
+    }
+  }
+  const terminalCandidates = await existingAuthorityOutbox(
+    stateDirectory,
+    TERMINAL_CANDIDATE_DIRECTORY,
+  );
+  if (terminalCandidates) {
+    for (const intent of await listTerminalCandidates(
+      terminalCandidates,
+      Number.MAX_SAFE_INTEGER,
+    )) {
+      artifacts.push({
+        directory: terminalCandidates,
+        operationId: intent.operationId,
+        organizationId: intent.organizationId,
+      });
+    }
+  }
+  return Object.freeze(artifacts);
+}
+
+/** Inspect durable janitor authority files without creating a missing outbox. */
+export async function inspectAgentBackupOrganizationSpoolAuthorityArtifacts(input: {
+  stateDirectory: string;
+  organizationId: string;
+}): Promise<"absent" | "present"> {
+  if (!UUID_PATTERN.test(input.organizationId)) {
+    accountDeletionSpoolArtifactError(
+      "ACCOUNT_DELETION_SPOOL_ORGANIZATION_INVALID",
+      "Account deletion spool authority requires a canonical organization identity",
+    );
+  }
+  return (await listAccountDeletionSpoolAuthorityArtifacts(input.stateDirectory)).some(
+    (artifact) => artifact.organizationId === input.organizationId,
+  )
+    ? "present"
+    : "absent";
+}
+
+/** Remove only janitor authority files already bound to the exact organization. */
+export async function purgeAgentBackupOrganizationSpoolAuthorityArtifacts(input: {
+  stateDirectory: string;
+  organizationId: string;
+}): Promise<void> {
+  if (!UUID_PATTERN.test(input.organizationId)) {
+    accountDeletionSpoolArtifactError(
+      "ACCOUNT_DELETION_SPOOL_ORGANIZATION_INVALID",
+      "Account deletion spool authority requires a canonical organization identity",
+    );
+  }
+  const artifacts = await listAccountDeletionSpoolAuthorityArtifacts(input.stateDirectory);
+  for (const artifact of artifacts) {
+    if (artifact.organizationId === input.organizationId) {
+      await removeIntent(artifact.directory, artifact.operationId);
+    }
+  }
 }
 
 function canonicalAuthorizedAt(now: number): string {

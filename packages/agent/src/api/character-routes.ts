@@ -97,11 +97,13 @@ export interface CharacterRouteContext extends RouteRequestContext {
 }
 
 /** Parse the optional character-history limit without silently truncating input. */
-export function parseCharacterHistoryLimit(raw: string | null): number | null {
-  if (raw === null) return 20;
+export function parseCharacterHistoryLimit(
+  raw: string | null,
+): number | null | undefined {
+  if (raw === null) return undefined;
   if (!/^\d+$/.test(raw)) return null;
   const parsed = Number(raw);
-  return Number.isSafeInteger(parsed) ? parsed : null;
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
 type CharacterMessageExample = {
@@ -741,7 +743,6 @@ export async function handleCharacterRoutes(
     const result = await runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
       temperature: 0.8,
-      maxTokens: 1500,
     });
     json(res, { generated: String(result) });
     return true;

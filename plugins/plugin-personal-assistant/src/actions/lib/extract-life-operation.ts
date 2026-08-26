@@ -12,7 +12,6 @@ import {
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
-import { resolveContextWindow } from "../../lifeops/defaults.js";
 import { UNDATED_TODO_EXTRACTION_GUIDANCE } from "./undated-todo-intent.js";
 
 export const LIFE_OPERATION_VALUES = [
@@ -338,9 +337,7 @@ export async function extractLifeOperationWithLlm(args: {
   intent: string;
 }): Promise<ExtractedLifeOperationPlan> {
   const { runtime, message, state, intent } = args;
-  const recentConversation = stateTextCandidates(state).slice(
-    -resolveContextWindow(),
-  );
+  const recentConversation = stateTextCandidates(state);
   const currentMessage = messageText(message);
   const prompt = [
     "Plan the LifeOps response for the current user request.",
