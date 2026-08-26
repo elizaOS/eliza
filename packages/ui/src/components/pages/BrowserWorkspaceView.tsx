@@ -2695,6 +2695,8 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         nativeTabSurfaces.error ? (
           <div
             role="alert"
+            data-native-surface-error-key={nativeTabSurfaces.error.key}
+            data-native-surface-error-message={nativeTabSurfaces.error.message}
             className="absolute inset-0 flex h-full w-full items-center justify-center bg-bg px-6 text-center"
           >
             <div className="flex max-w-sm flex-col items-center gap-3 rounded-3xl border border-border bg-bg-elevated p-6 shadow-lg">
