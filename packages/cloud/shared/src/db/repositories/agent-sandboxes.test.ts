@@ -3,7 +3,11 @@ import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "b
 import type { SQL, SQLWrapper } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import * as realHelpers from "../helpers";
-import type { ProvisioningAdmissionCapture } from "./agent-sandboxes";
+import type {
+  DisconnectedRecoveryCapture,
+  ProvisioningAdmissionCapture,
+  ProvisioningRecoveryCapture,
+} from "./agent-sandboxes";
 
 let capturedWhere: SQL | undefined;
 
@@ -137,6 +141,42 @@ function restoreProvisioningCapture(
     deleted_at: null,
     deletion_attempt_id: null,
     lifecycle_revision: 47,
+    ...overrides,
+  };
+}
+
+function provisioningRecoveryCapture(
+  overrides: Partial<ProvisioningRecoveryCapture> = {},
+): ProvisioningRecoveryCapture {
+  return {
+    id: "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
+    organization_id: "c21ed7f4-4d97-4b69-a09a-71a6af758591",
+    status: "provisioning",
+    execution_tier: "dedicated-always",
+    sandbox_id: "sandbox-generation-7",
+    node_id: "node-generation-7",
+    container_name: "container-generation-7",
+    bridge_url: "https://bridge-generation-7.example",
+    health_url: "https://bridge-generation-7.example/api/health",
+    headscale_ip: "100.64.0.7",
+    environment_revision: 7,
+    lifecycle_revision: 42,
+    lifecycle_job_id: null,
+    lifecycle_execution_generation: null,
+    pool_status: null,
+    deleted_at: null,
+    deletion_attempt_id: null,
+    ...overrides,
+  };
+}
+
+function disconnectedRecoveryCapture(
+  overrides: Partial<DisconnectedRecoveryCapture> = {},
+): DisconnectedRecoveryCapture {
+  return {
+    ...provisioningRecoveryCapture({ status: "disconnected" }),
+    previous_image_digest: null,
+    error_message: null,
     ...overrides,
   };
 }
@@ -453,19 +493,43 @@ describe("AgentSandboxesRepository", () => {
     const sql = query.sql.toLowerCase();
     // Only running rows are heartbeated...
     expect(sql).toContain("status");
-    // ...and shared-tier rows are filtered out: they run container-free in the
-    // hosted shared runtime, so dialing them over Headscale always fails. The
-    // `<>` keeps that exclusion (NOT just `= 'shared'`).
+    // ...and only the canonical container-backed tiers are admitted. An
+    // unknown future tier must not silently join the heartbeat fleet.
     expect(sql).toContain("execution_tier");
-    expect(sql).toContain("<>");
-    // eq/ne bind their operands, so the values land in `params`, not the SQL.
+    expect(sql).toContain(" in ");
+    // Drizzle binds allowlist values as params.
     expect(query.params).toContain("running");
-    expect(query.params).toContain("shared");
+    expect(query.params).toContain("dedicated-lazy");
+    expect(query.params).toContain("dedicated-always");
+    expect(query.params).toContain("custom");
+    expect(query.params).not.toContain("shared");
+    expect(query.params).not.toContain("future-container-tier");
     // #22548: soft-deleted rows and unclaimed warm-pool rows must never be
     // dialed — both guards are present, matching the sibling predicates.
     expect(sql).toContain("deleted_at");
     expect(sql).toContain("pool_status");
     expect((sql.match(/is null/g) ?? []).length).toBeGreaterThanOrEqual(2);
+  });
+
+  test("single-agent runtime lookup explicitly admits Shared and the three container tiers", async () => {
+    capturedWhere = undefined;
+    useWriteSelectMock = true;
+
+    const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+
+    await new AgentSandboxesRepository().findRunningSandbox(
+      "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
+      "c21ed7f4-4d97-4b69-a09a-71a6af758591",
+    );
+
+    if (!capturedWhere) throw new Error("findRunningSandbox did not build a where clause");
+    const query = new PgDialect().sqlToQuery(capturedWhere);
+    expect(query.sql.toLowerCase()).toContain("execution_tier");
+    expect(query.params).toContain("dedicated-lazy");
+    expect(query.params).toContain("dedicated-always");
+    expect(query.params).toContain("custom");
+    expect(query.params).toContain("shared");
+    expect(query.params).not.toContain("future-container-tier");
   });
 
   test("dedicated fleet census groups by tier AND status over the container-backed fleet (#22548)", async () => {
@@ -551,8 +615,13 @@ describe("AgentSandboxesRepository", () => {
         "node-generation-7",
         "agent-generation-7",
         42,
+        "dedicated-lazy",
+        "dedicated-always",
+        "custom",
       ]),
     );
+    expect(query.params).not.toContain("shared");
+    expect(query.params).not.toContain("future-container-tier");
   });
 
   test("generic repository updates cannot write through a durable deletion owner", async () => {
@@ -661,24 +730,91 @@ describe("AgentSandboxesRepository", () => {
     expect(params).not.toContain("ghcr.io/elizaos/eliza-agent:prod");
   });
 
-  test("markRunningFromProvisioning refuses rows without durable node attribution", async () => {
+  test("markRunningFromProvisioning fences the exact probed generation and active ownership", async () => {
     capturedWhere = undefined;
-    useWriteSelectMock = true;
     useTransactionMock = true;
     useRepositoryTransactionUpdate = true;
-    selectRows = [{ organizationId: "22222222-2222-4222-8222-222222222222" }];
+    executeHandler = () => ({ rows: [{ acquired: true }] });
 
     const { AgentSandboxesRepository } = await import("./agent-sandboxes");
-    await new AgentSandboxesRepository().markRunningFromProvisioning(
-      "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
-    );
+    await new AgentSandboxesRepository().markRunningFromProvisioning(provisioningRecoveryCapture());
 
     if (!capturedWhere) throw new Error("markRunningFromProvisioning did not build a where clause");
-    const sql = new PgDialect().sqlToQuery(capturedWhere).sql.toLowerCase();
+    const query = new PgDialect().sqlToQuery(capturedWhere);
+    const sql = query.sql.toLowerCase();
     expect(sql).toContain("sandbox_id");
     expect(sql).toContain("node_id");
-    expect(sql).toContain("is not null");
-    expect(sql).toContain("<> ''");
+    expect(sql).toContain("container_name");
+    expect(sql).toContain("execution_tier");
+    expect(sql.match(/is not distinct from/g)).toHaveLength(6);
+    expect(sql).toContain("environment_revision");
+    expect(sql).toContain("lifecycle_revision");
+    expect(sql).toContain("lifecycle_job_id");
+    expect(sql).toContain("lifecycle_execution_generation");
+    expect(sql).toContain("pool_status");
+    expect(sql).toContain("not exists");
+    expect(sql).toContain("deleted_at");
+    expect(sql).toContain("deletion_attempt_id");
+    expect(query.params).toEqual(
+      expect.arrayContaining([
+        "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
+        "c21ed7f4-4d97-4b69-a09a-71a6af758591",
+        "provisioning",
+        "dedicated-always",
+        "sandbox-generation-7",
+        "node-generation-7",
+        "container-generation-7",
+        "https://bridge-generation-7.example",
+        "https://bridge-generation-7.example/api/health",
+        "100.64.0.7",
+        7,
+        42,
+      ]),
+    );
+  });
+
+  test("reconnection CAS fences the exact generation and applies repaired ingress atomically", async () => {
+    capturedWhere = undefined;
+    set.mockClear();
+    useTransactionMock = true;
+    useRepositoryTransactionUpdate = true;
+    executeHandler = () => ({ rows: [{ acquired: true }] });
+
+    const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+    await new AgentSandboxesRepository().markReconnectedFromDisconnected(
+      disconnectedRecoveryCapture(),
+      {
+        headscaleIp: "100.64.0.8",
+        bridgeUrl: "https://bridge-generation-8.example",
+        healthUrl: "https://bridge-generation-8.example/api/health",
+        errorCount: 0,
+      },
+    );
+
+    if (!capturedWhere) {
+      throw new Error("markReconnectedFromDisconnected did not build a where clause");
+    }
+    const query = new PgDialect().sqlToQuery(capturedWhere);
+    const sql = query.sql.toLowerCase();
+    expect(sql).toContain("execution_tier");
+    expect(sql).toContain(" in (");
+    expect(query.params).toContain("dedicated-lazy");
+    expect(query.params).toContain("dedicated-always");
+    expect(query.params).toContain("custom");
+    expect(query.params).not.toContain("shared");
+    expect(sql.match(/is not distinct from/g)).toHaveLength(8);
+    expect(sql).toContain("environment_revision");
+    expect(sql).toContain("lifecycle_revision");
+    expect(sql).toContain("not exists");
+    expect(sql).toContain("pool_status");
+    const capturedSet = set.mock.calls.at(-1)?.[0];
+    expect(capturedSet).toMatchObject({
+      status: "running",
+      headscale_ip: "100.64.0.8",
+      bridge_url: "https://bridge-generation-8.example",
+      health_url: "https://bridge-generation-8.example/api/health",
+      error_count: 0,
+    });
   });
 
   test("fleet-upgrade candidates re-arm on a NEW target after a rollback-safe upgrade failure (#15357)", async () => {
