@@ -3,17 +3,25 @@
 import { describe, expect, it } from "vitest";
 import {
   getConfigValueAtPath,
+  hasConfigValueAtPath,
   parseConfigPath,
   setConfigValueAtPath,
   unsetConfigValueAtPath,
 } from "./config-paths";
 
 describe("config path helpers", () => {
-  it("sets, reads, and removes an own nested value", () => {
+  it("sets, reads, checks presence, and removes an own nested value", () => {
     const root: Record<string, unknown> = {};
+
+    expect(
+      hasConfigValueAtPath(root, ["providers", "openai", "enabled"]),
+    ).toBe(false);
 
     setConfigValueAtPath(root, ["providers", "openai", "enabled"], true);
 
+    expect(
+      hasConfigValueAtPath(root, ["providers", "openai", "enabled"]),
+    ).toBe(true);
     expect(getConfigValueAtPath(root, ["providers", "openai", "enabled"])).toBe(
       true,
     );
@@ -104,6 +112,7 @@ describe("config path helpers", () => {
   it("bounds raw and direct paths before traversal", () => {
     expect(parseConfigPath(`${"a.".repeat(40)}z`).ok).toBe(false);
     expect(parseConfigPath("a".repeat(129)).ok).toBe(false);
+    expect(parseConfigPath(null as unknown as string).ok).toBe(false);
     expect(() =>
       setConfigValueAtPath(
         {},

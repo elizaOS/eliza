@@ -95,6 +95,12 @@ export function parseConfigPath(raw: string): {
   path?: string[];
   error?: string;
 } {
+  if (typeof raw !== "string") {
+    return {
+      ok: false,
+      error: "Invalid path. Use dot notation (e.g. foo.bar).",
+    };
+  }
   const trimmed = raw.trim();
   if (!trimmed || trimmed.length > MAX_CONFIG_PATH_LENGTH) {
     return {
@@ -228,4 +234,8 @@ export function getConfigValueAtPath(root: PathNode, path: string[]): unknown {
     cursor = next.value;
   }
   return cursor;
+}
+
+export function hasConfigValueAtPath(root: PathNode, path: string[]): boolean {
+  return getConfigValueAtPath(root, path) !== undefined;
 }
