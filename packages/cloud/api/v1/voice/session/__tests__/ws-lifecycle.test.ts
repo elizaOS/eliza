@@ -1170,6 +1170,71 @@ describe("voice-session WS lifecycle", () => {
     }
   });
 
+  test("concurrent Dedicated prewarm and lifecycle start never writes into Shared history", async () => {
+    const claims = {
+      organizationId: "55555555-5555-4555-8555-555555555555",
+      userId: "66666666-6666-4666-8666-666666666666",
+      agentId: "77777777-7777-4777-8777-777777777777",
+      conversationId: "88888888-8888-4888-8888-888888888888",
+    };
+    dedicatedVoiceSandbox = {
+      id: claims.agentId,
+      organization_id: claims.organizationId,
+      user_id: claims.userId,
+      execution_tier: "dedicated-always",
+      status: "running",
+      headscale_ip: "100.64.0.22",
+      bridge_url: null,
+      health_url: null,
+      environment_vars: { ELIZA_API_TOKEN: "agent-runtime-token" },
+    };
+
+    const previousMockRedis = process.env.MOCK_REDIS;
+    process.env.MOCK_REDIS = "1";
+    let sharedCoordinatorCalls = 0;
+    try {
+      const { createInternalElizaConversationFetch } = await import(
+        "../lib/internal-eliza-conversation-fetch"
+      );
+      const elizaFetch = createInternalElizaConversationFetch(
+        {
+          CACHE_ENABLED: "true",
+          DATABASE_URL: "postgresql://must-not-connect.invalid/eliza",
+          VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer eliza-server",
+          AGENT_ROUTER_ORIGIN_HOST: "cp.example.test",
+          ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud.eliza.app",
+          SHARED_RUNTIME_CONVERSATIONS: {
+            getByName() {
+              return {
+                async fetch() {
+                  sharedCoordinatorCalls += 1;
+                  return new Response(null, { status: 204 });
+                },
+              };
+            },
+          },
+        } as unknown as Parameters<
+          typeof createInternalElizaConversationFetch
+        >[0],
+        claims,
+      );
+
+      await Promise.all([
+        elizaFetch.prewarm(),
+        elizaFetch.recordLifecycleEvent({
+          id: "twilio-call:CA-dedicated:started",
+          content: "Call lifecycle event: the phone call started.",
+          createdAt: Date.now(),
+        }),
+      ]);
+
+      expect(sharedCoordinatorCalls).toBe(0);
+    } finally {
+      if (previousMockRedis === undefined) delete process.env.MOCK_REDIS;
+      else process.env.MOCK_REDIS = previousMockRedis;
+    }
+  });
+
   test("forwards a successful terminal VIEWS handoff without exposing arbitrary actions", async () => {
     const client = new FakeClientSocket();
     await connectSession({

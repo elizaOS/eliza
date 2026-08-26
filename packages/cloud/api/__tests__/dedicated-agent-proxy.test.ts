@@ -344,6 +344,30 @@ describe("dedicated-agent-proxy — scoped voice conversation transport", () => 
     });
     expect(captured).toBeNull();
   });
+
+  test("fails closed for an unrecognized non-container execution tier", async () => {
+    sandboxResult = {
+      ...runningDedicated,
+      organization_id: ORGANIZATION_ID,
+      user_id: USER_ID,
+      execution_tier: "future-runtime-tier",
+    };
+    const denied = await createOwnedDedicatedVoiceConversationFetch(
+      ENV,
+      claims,
+    );
+    expect(denied.kind).toBe("dedicated");
+    if (denied.kind !== "dedicated") {
+      throw new Error("expected a terminal fail-closed response");
+    }
+
+    const response = await denied.fetch("https://voice.internal/ignored");
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "agent_unavailable",
+    });
+    expect(captured).toBeNull();
+  });
 });
 
 function executePairHandoff(html: string): {
@@ -987,16 +1011,19 @@ describe("dedicated-agent-proxy — unified auth", () => {
     expect(captured).toBeNull();
   });
 
-  test("shared-tier row on a dedicated host → 403 at the edge, no injection", async () => {
+  test("non-container row on a dedicated host → 403 at the edge, no injection", async () => {
     authResult = { user: { id: "u1", organization_id: "org1" } };
-    sandboxResult = {
-      ...runningDedicated,
-      execution_tier: "shared",
-    };
-    const r = makeRequest("cloud-token");
-    const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
-    expect(res.status).toBe(403);
-    expect(captured).toBeNull();
+    for (const executionTier of ["shared", "future-runtime-tier"]) {
+      captured = null;
+      sandboxResult = {
+        ...runningDedicated,
+        execution_tier: executionTier,
+      };
+      const r = makeRequest("cloud-token");
+      const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+      expect(res.status).toBe(403);
+      expect(captured).toBeNull();
+    }
   });
 
   test("static asset pass-through strips parent-domain Cloud cookies", async () => {

@@ -37,6 +37,7 @@ import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { getPairingTokenService } from "@/lib/services/pairing-token";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { checkProvisioningWorkerHealth } from "@/lib/services/provisioning-worker-health";
+import { isContainerBackedExecutionTier } from "@/lib/services/sandbox-provider-types";
 import {
   dedicatedAgentTransportToken,
   personalDedicatedAgentApiBase,
@@ -477,6 +478,16 @@ export async function createOwnedDedicatedVoiceConversationFetch(
     }
     if (sandbox.execution_tier === "shared") {
       return { kind: "not_dedicated" };
+    }
+    if (!isContainerBackedExecutionTier(sandbox.execution_tier)) {
+      return fixedOwnedDedicatedVoiceResponse(
+        {
+          success: false,
+          code: "agent_unavailable",
+          error: "Dedicated agent connection is unavailable",
+        },
+        503,
+      );
     }
     if (sandbox.status !== "running") {
       return fixedOwnedDedicatedVoiceResponse(
@@ -1085,7 +1096,7 @@ async function proxyDedicatedAgent(
       agentId,
       orgId,
     );
-    if (!sandbox || sandbox.execution_tier === "shared") {
+    if (!sandbox || !isContainerBackedExecutionTier(sandbox.execution_tier)) {
       return Response.json(
         {
           success: false,

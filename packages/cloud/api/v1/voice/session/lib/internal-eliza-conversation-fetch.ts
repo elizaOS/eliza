@@ -187,6 +187,26 @@ export function createInternalElizaConversationFetchFactory(
         return resolution;
       };
 
+    const resolveConversationRuntime =
+      async (): Promise<OwnedDedicatedVoiceConversationResolution> => {
+        if (dedicatedResolutionPromise) return dedicatedResolutionPromise;
+        if (dedicatedResolution) return dedicatedResolution;
+
+        // Preserve the rowless personal agent and hot Shared cache paths before
+        // consulting the sandbox row. A concurrent prewarm may start the
+        // authoritative lookup while this cache read is in flight; join it
+        // before trusting a stale Shared result.
+        const agent = await readCachedAgent();
+        if (dedicatedResolutionPromise) return dedicatedResolutionPromise;
+        if (dedicatedResolution) return dedicatedResolution;
+        if (agent) {
+          const shared = { kind: "not_dedicated" } as const;
+          dedicatedResolution = shared;
+          return shared;
+        }
+        return resolveDedicatedConversation();
+      };
+
     const prewarm = async (): Promise<void> => {
       const namespace = env.SHARED_RUNTIME_CONVERSATIONS;
       await runWithCloudBindingsAsync(
@@ -313,22 +333,29 @@ export function createInternalElizaConversationFetchFactory(
     }) as InternalElizaConversationFetch;
     fetchImpl.prewarm = prewarm;
     fetchImpl.recordLifecycleEvent = async (event) => {
-      if (dedicatedResolution?.kind === "dedicated") return;
-      const namespace = env.SHARED_RUNTIME_CONVERSATIONS;
-      if (!namespace) {
-        throw new Error(
-          "Shared runtime conversation coordinator is unavailable.",
-        );
-      }
       await runWithCloudBindingsAsync(
         env as unknown as Record<string, unknown>,
-        () =>
-          coordinateSharedLifecycleEvent(
+        async () => {
+          // Twilio starts prewarm and lifecycle persistence concurrently. The
+          // lifecycle decision must join or establish tier authority before it
+          // can write, otherwise a cold Dedicated call deposits its start
+          // marker into an orphaned Shared conversation.
+          const target = await resolveConversationRuntime();
+          if (target.kind === "dedicated") return;
+
+          const namespace = env.SHARED_RUNTIME_CONVERSATIONS;
+          if (!namespace) {
+            throw new Error(
+              "Shared runtime conversation coordinator is unavailable.",
+            );
+          }
+          await coordinateSharedLifecycleEvent(
             claims.agentId,
             claims.conversationId,
             event,
             { namespace },
-          ),
+          );
+        },
       );
     };
     return fetchImpl;
