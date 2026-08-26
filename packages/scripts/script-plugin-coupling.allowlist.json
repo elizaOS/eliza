@@ -230,6 +230,11 @@
     "reason": "HITL credential dashboard reports the concrete plugin-github credential lane used by operators"
   },
   {
+    "file": "scripts/portable-linux-fused-inference.mjs",
+    "tokens": ["plugins/plugin-local-inference"],
+    "reason": "the portable fused-inference builder is intentionally coupled to the local-inference native source tree and its tracked ABI verification files"
+  },
+  {
     "file": "scripts/training-harvest/build-manifest.mjs",
     "tokens": ["@elizaos/plugin-cli-inference"],
     "reason": "the harvest manifest names the CLI-inference provider plugin that supplies its authenticated live-model execution seam"
