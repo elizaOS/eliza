@@ -26,6 +26,7 @@ import {
   findAndroidCloudPackagedRuntimeOffenders,
   findAndroidPlayIndexHtmlFindings,
   findAndroidPlayTextAssetFindings,
+  resolveAndroidCloudAuditCapacitorConfig,
   sanitizeAndroidCloudCapacitorConfig,
 } from "./run-mobile-build.mjs";
 
@@ -187,6 +188,25 @@ describe("Android Play manifest policy", () => {
 
     expect(sanitized.loggingBehavior).toBe("none");
     expect(sanitized.android.webContentsDebuggingEnabled).toBe(true);
+  });
+
+  it("audits launcher configs against the launcher-only kiosk contract", () => {
+    const config = {
+      loggingBehavior: "none",
+      android: { webContentsDebuggingEnabled: true },
+    };
+
+    expect(
+      resolveAndroidCloudAuditCapacitorConfig(config, {
+        allowHomeRole: true,
+        env: { ELIZA_WEBVIEW_DEBUG: "1" },
+      }),
+    ).toMatchObject(config);
+    expect(
+      resolveAndroidCloudAuditCapacitorConfig(config, {
+        env: { ELIZA_WEBVIEW_DEBUG: "1" },
+      }),
+    ).not.toHaveProperty("loggingBehavior");
   });
 
   it("keeps the unused native Google identity stack out of Android source", () => {

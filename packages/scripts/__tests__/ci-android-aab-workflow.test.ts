@@ -148,10 +148,13 @@ describe("consolidated Android release AAB authority", () => {
     expect(changes.uses).toContain("classify-paths.yml");
     expect(android.name).toBe("Android release AAB");
     expect(android.needs).toBe("changes");
-    expect(android.if).toBe("always()");
+    expect(android.if).toContain("always()");
+    expect(android.if).toContain("!cancelled()");
     expect(android["runs-on"]).toBe("ubuntu-24.04");
     expect(android["runs-on"]).not.toContain("self-hosted");
     expect(required.needs).toContain("android_aab");
+    expect(required.if).toContain("always()");
+    expect(required.if).toContain("!cancelled()");
     expect(
       requireStep(required, "Require every CI job to succeed").env?.RESULTS,
     ).toContain("needs.android_aab.result");
@@ -229,12 +232,15 @@ describe("consolidated Android release AAB authority", () => {
 
     expect(verify.id).toBe("release-aab-evidence");
     expect(verify.if).toContain("always()");
+    expect(verify.if).toContain("!cancelled()");
     expect(upload.if).toContain("release-aab-evidence.outcome == 'success'");
+    expect(upload.if).toContain("!cancelled()");
     expect(upload.with?.["if-no-files-found"]).toBe("error");
     expect(String(upload.with?.path).trim().split(/\r?\n/)).toHaveLength(4);
     expect(diagnostics.if).toContain(
       "release-aab-evidence.outcome != 'success'",
     );
+    expect(diagnostics.if).toContain("!cancelled()");
     expect(diagnostics.with?.["if-no-files-found"]).toBe("warn");
 
     if (!verify.run) throw new Error("AAB verifier has no executable body");

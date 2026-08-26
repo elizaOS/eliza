@@ -3478,6 +3478,11 @@ function initVisionBridgesIfEnabled(): void {
 
 async function main(): Promise<void> {
   markStartup("main-start");
+  markStartup("app-modules:start");
+  await initializeAppModules();
+  markStartup("app-modules:end");
+  measureStartup("app-modules", "app-modules:start", "app-modules:end");
+
   if (__ELIZA_SERVICE_WORKER__ === true) {
     const { registerViewServiceWorker } = await import("./sw-registration");
     registerViewServiceWorker();
@@ -3504,10 +3509,6 @@ async function main(): Promise<void> {
     return;
   }
 
-  markStartup("app-modules:start");
-  await initializeAppModules();
-  markStartup("app-modules:end");
-  measureStartup("app-modules", "app-modules:start", "app-modules:end");
   setupPlatformStyles();
   applyBuildTimeIosConnection();
 

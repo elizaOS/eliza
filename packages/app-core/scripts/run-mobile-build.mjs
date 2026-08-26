@@ -5962,6 +5962,17 @@ export function sanitizeAndroidCloudCapacitorConfig(
   };
 }
 
+export function resolveAndroidCloudAuditCapacitorConfig(
+  value,
+  { allowHomeRole = false, env = process.env } = {},
+) {
+  return sanitizeAndroidCloudCapacitorConfig(value, {
+    launcherKiosk: allowHomeRole,
+    webViewDebugging:
+      allowHomeRole && env.ELIZA_WEBVIEW_DEBUG === "1",
+  });
+}
+
 function sanitizeAndroidCloudPackagedConfig(env = process.env) {
   const configPath = path.join(
     androidDir,
@@ -7856,7 +7867,10 @@ function auditAndroidCloudSource(
   } else {
     try {
       const config = JSON.parse(fs.readFileSync(capacitorConfigPath, "utf8"));
-      const expected = sanitizeAndroidCloudCapacitorConfig(config);
+      const expected = resolveAndroidCloudAuditCapacitorConfig(config, {
+        allowHomeRole,
+        env,
+      });
       if (JSON.stringify(config) !== JSON.stringify(expected)) {
         failures.push(
           "capacitor.config.json differs from the restricted Play runtime contract",
