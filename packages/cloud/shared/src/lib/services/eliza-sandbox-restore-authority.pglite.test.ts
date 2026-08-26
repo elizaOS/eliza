@@ -35,9 +35,12 @@ import { jobs } from "../../db/schemas/jobs";
 import { organizations } from "../../db/schemas/organizations";
 import { users } from "../../db/schemas/users";
 import { PROVISIONING_JOB_TEST_TABLES } from "./__tests__/tier-upgrade-pglite-schema";
+import { applyBackupDelta, computeStateHash } from "./agent-backup-diff";
 import { apiKeysService } from "./api-keys";
 import { ElizaSandboxService, type ProvisionRestoreOverride } from "./eliza-sandbox";
+import type { PersonalDedicatedReviewedBackupChainEntry } from "./personal-dedicated-adoption-provenance";
 import { JOB_TYPES } from "./provisioning-job-types";
+import { resolveReviewedProvisionRestoreDirectiveForExecution } from "./provisioning-jobs";
 import type { SandboxProvider } from "./sandbox-provider";
 
 const AMBIENT_DATABASE_URL_VALUE = process.env.DATABASE_URL;
@@ -203,6 +206,93 @@ async function seedIncrementalBackup(
     .returning();
   if (!backup) throw new Error("Restore authority incremental seed failed");
   return backup;
+}
+
+async function seedReviewedIncrementalChain(sandboxRecordId: string): Promise<{
+  parent: StoredAgentSandboxBackup;
+  target: StoredAgentSandboxBackup;
+  state: AgentBackupStateData;
+  directive: Extract<ProvisionRestoreOverride, { kind: "from-reviewed-backup" }>;
+}> {
+  const parentState = state(unique("reviewed-parent"));
+  const parentVerifiedAt = new Date("2026-08-25T10:00:00.000Z");
+  const [parent] = await dbWrite
+    .insert(agentSandboxBackups)
+    .values({
+      sandbox_record_id: sandboxRecordId,
+      snapshot_type: "manual",
+      state_data: parentState,
+      state_data_storage: "inline",
+      size_bytes: Buffer.byteLength(JSON.stringify(parentState), "utf8"),
+      backup_kind: "full",
+      content_hash: computeStateHash(parentState),
+      verification_status: "verified",
+      verified_at: parentVerifiedAt,
+      created_at: new Date("2026-08-25T10:00:00.000Z"),
+    })
+    .returning();
+  if (!parent) throw new Error("Reviewed parent seed failed");
+
+  const delta: AgentBackupDeltaData = {
+    filesChanged: { "reviewed-target.txt": "target" },
+    filesRemoved: [],
+    configChanged: { restoreAuthority: "reviewed-target" },
+    configRemoved: [],
+    memoriesBaseCount: 0,
+    memoriesAppended: [],
+  };
+  const targetState = applyBackupDelta(parentState, delta);
+  const targetVerifiedAt = new Date("2026-08-25T11:00:00.000Z");
+  const [target] = await dbWrite
+    .insert(agentSandboxBackups)
+    .values({
+      sandbox_record_id: sandboxRecordId,
+      snapshot_type: "manual",
+      state_data: delta,
+      state_data_storage: "inline",
+      size_bytes: Buffer.byteLength(JSON.stringify(delta), "utf8"),
+      backup_kind: "incremental",
+      parent_backup_id: parent.id,
+      base_backup_id: parent.id,
+      content_hash: computeStateHash(targetState),
+      verification_status: "verified",
+      verified_at: targetVerifiedAt,
+      created_at: new Date("2026-08-25T11:00:00.000Z"),
+    })
+    .returning();
+  if (!target) throw new Error("Reviewed target seed failed");
+
+  const expectedBackupChain: PersonalDedicatedReviewedBackupChainEntry[] = [
+    {
+      backupId: target.id,
+      backupKind: "incremental",
+      parentBackupId: parent.id,
+      contentHash: target.content_hash!,
+      verifiedAt: targetVerifiedAt.toISOString(),
+      catalogVersion: null,
+      catalogState: null,
+    },
+    {
+      backupId: parent.id,
+      backupKind: "full",
+      parentBackupId: null,
+      contentHash: parent.content_hash!,
+      verifiedAt: parentVerifiedAt.toISOString(),
+      catalogVersion: null,
+      catalogState: null,
+    },
+  ];
+  return {
+    parent,
+    target,
+    state: targetState,
+    directive: {
+      kind: "from-reviewed-backup",
+      backupId: target.id,
+      expectedContentHash: target.content_hash!,
+      expectedBackupChain,
+    },
+  };
 }
 
 async function durableGeneration(agentId: string): Promise<{
@@ -764,6 +854,219 @@ describe("ElizaSandboxService stopped restore-point pinning", () => {
     expect(genericAdmission).toHaveBeenCalledWith(sandbox.id);
     expect(exactAdmission).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("carries a canonical reviewed incremental payload through the final locked restore", async () => {
+    const sandbox = await seedSandbox({
+      status: "error",
+      execution_tier: "custom",
+      sandbox_id: null,
+      node_id: null,
+      container_name: null,
+      bridge_url: null,
+      health_url: null,
+      bridge_port: null,
+      web_ui_port: null,
+      headscale_ip: null,
+      database_status: "ready",
+      database_uri: "postgres://restore-authority.example/reviewed",
+    });
+    const chain = await seedReviewedIncrementalChain(sandbox.id);
+    const provisioning: AgentSandbox = { ...sandbox, status: "provisioning" };
+    const running: AgentSandbox = {
+      ...provisioning,
+      status: "running",
+      sandbox_id: "reviewed-restored-sandbox",
+      bridge_url: "http://127.0.0.1:3000",
+      health_url: "http://127.0.0.1:3000/health",
+    };
+    const create = mock(async () => ({
+      sandboxId: running.sandbox_id!,
+      bridgeUrl: running.bridge_url!,
+      healthUrl: running.health_url!,
+      metadata: {},
+    }));
+    const service = new ElizaSandboxService({
+      create,
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    });
+    spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(sandbox);
+    spyOn(agentSandboxesRepository, "findById").mockResolvedValue(sandbox);
+    spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue(provisioning);
+    spyOn(agentSandboxesRepository, "update").mockImplementation(async (_id, data) => ({
+      ...sandbox,
+      ...data,
+    }));
+    spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+      id: "55555555-5555-4555-8555-555555555555",
+      plainKey: "eliza_reviewed_restore_key",
+      prefix: "eliza_reviewed",
+    });
+    spyOn(agentBillingRepository, "reactivateSandboxBillingAfterFunding").mockResolvedValue(
+      undefined,
+    );
+    spyOn(
+      service as unknown as { ensureRuntimeAgentStarted(rec: AgentSandbox): Promise<unknown> },
+      "ensureRuntimeAgentStarted",
+    ).mockResolvedValue(null);
+    spyOn(
+      service as unknown as {
+        transferReplacementToPrimary(
+          agentId: string,
+          orgId: string,
+          handle: unknown,
+          expectedEnvironmentRevision: number,
+          updateData: Partial<AgentSandbox>,
+        ): Promise<AgentSandbox>;
+      },
+      "transferReplacementToPrimary",
+    ).mockResolvedValue(running);
+    const fetchMock = installRestoreFetch({ expectedState: chain.state });
+    globalThis.fetch = fetchMock;
+
+    const result = await service.provision(sandbox.id, sandbox.organization_id, chain.directive);
+
+    expect(result).toMatchObject({ success: true, sandboxRecord: { id: sandbox.id } });
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("reviewed incremental authority rejects every selected and ancestor drift before provider compute", async () => {
+    const create = mock(async () => {
+      throw new Error("provider create must not run after reviewed-backup drift");
+    });
+    const service = new ElizaSandboxService({
+      create,
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    });
+    const driftCases = [
+      {
+        name: "content hash",
+        mutate: async (id: string) => {
+          await dbWrite
+            .update(agentSandboxBackups)
+            .set({ content_hash: "f".repeat(64) })
+            .where(eq(agentSandboxBackups.id, id));
+        },
+      },
+      {
+        name: "verification status",
+        mutate: async (id: string) => {
+          await dbWrite
+            .update(agentSandboxBackups)
+            .set({ verification_status: "failed" })
+            .where(eq(agentSandboxBackups.id, id));
+        },
+      },
+      {
+        name: "verified timestamp",
+        mutate: async (id: string) => {
+          await dbWrite
+            .update(agentSandboxBackups)
+            .set({ verified_at: new Date("2026-08-25T12:00:00.000Z") })
+            .where(eq(agentSandboxBackups.id, id));
+        },
+      },
+      {
+        name: "sandbox reassignment",
+        mutate: async (id: string) => {
+          const foreign = await seedSandbox({ status: "error" });
+          await dbWrite
+            .update(agentSandboxBackups)
+            .set({ sandbox_record_id: foreign.id })
+            .where(eq(agentSandboxBackups.id, id));
+        },
+      },
+      {
+        name: "row deletion",
+        mutate: async (id: string) => {
+          await dbWrite.delete(agentSandboxBackups).where(eq(agentSandboxBackups.id, id));
+        },
+      },
+      {
+        name: "catalogue state",
+        mutate: async (id: string) => {
+          await dbWrite
+            .update(agentSandboxBackups)
+            .set({ catalog_state: "legacy_unmigrated" })
+            .where(eq(agentSandboxBackups.id, id));
+        },
+      },
+    ];
+
+    for (const position of ["target", "parent"] as const) {
+      for (const drift of driftCases) {
+        const sandbox = await seedSandbox({
+          status: "error",
+          execution_tier: "dedicated-always",
+          sandbox_id: null,
+          node_id: null,
+          container_name: null,
+          bridge_url: null,
+          health_url: null,
+          headscale_ip: null,
+        });
+        const chain = await seedReviewedIncrementalChain(sandbox.id);
+        await drift.mutate(chain[position].id);
+        const result = await service.provision(
+          sandbox.id,
+          sandbox.organization_id,
+          chain.directive,
+        );
+        expect(result, `${position} ${drift.name}`).toMatchObject({
+          success: false,
+          error: "Reviewed backup authority changed before Dedicated provisioning",
+        });
+      }
+    }
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  test("rechecks reviewed chain after the worker check so a check-to-consume race spends nothing", async () => {
+    const sandbox = await seedSandbox({
+      status: "error",
+      execution_tier: "dedicated-always",
+      sandbox_id: null,
+      node_id: null,
+      container_name: null,
+      bridge_url: null,
+      health_url: null,
+      headscale_ip: null,
+    });
+    const chain = await seedReviewedIncrementalChain(sandbox.id);
+    const jobData = {
+      agentId: sandbox.id,
+      organizationId: sandbox.organization_id,
+      userId: sandbox.user_id,
+      agentName: sandbox.agent_name ?? sandbox.id,
+      restoreDirective: chain.directive,
+    };
+    const checked = await resolveReviewedProvisionRestoreDirectiveForExecution(jobData);
+    expect(checked).toEqual(chain.directive);
+
+    await dbWrite
+      .update(agentSandboxBackups)
+      .set({ content_hash: "e".repeat(64) })
+      .where(eq(agentSandboxBackups.id, chain.parent.id));
+    const create = mock(async () => {
+      throw new Error("provider create must not run after check-to-consume drift");
+    });
+    const result = await new ElizaSandboxService({
+      create,
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    }).provision(sandbox.id, sandbox.organization_id, checked);
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "Reviewed backup authority changed before Dedicated provisioning",
+    });
+    expect(create).not.toHaveBeenCalled();
   });
 
   test("rejects every captured authority dimension changed before stopped admission", async () => {

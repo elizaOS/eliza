@@ -333,6 +333,7 @@ export async function previewPersonalDedicatedSelection(
       existing.activation_kind,
       existing.activation_backup_id,
       existing.activation_backup_hash,
+      existing.activation_backup_chain,
     );
     if (
       currentFingerprint !== existing.inventory_fingerprint ||
@@ -496,6 +497,7 @@ export async function executePersonalDedicatedSelection(
           existing.activation_kind,
           existing.activation_backup_id,
           existing.activation_backup_hash,
+          existing.activation_backup_chain,
         );
         if (
           currentFingerprint !== existing.inventory_fingerprint ||

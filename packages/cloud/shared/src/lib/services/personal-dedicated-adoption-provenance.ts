@@ -8,9 +8,24 @@ export type PersonalDedicatedStateDisposition =
   | "verified_backup_present"
   | "fresh_boot_no_verified_backup";
 
+export interface PersonalDedicatedReviewedBackupChainEntry {
+  backupId: string;
+  backupKind: "full" | "incremental";
+  parentBackupId: string | null;
+  contentHash: string;
+  verifiedAt: string;
+  catalogVersion: number | null;
+  catalogState: string | null;
+}
+
 export type PersonalDedicatedActivationAuthority =
   | { kind: "fresh-boot" }
-  | { kind: "from-legacy-backup"; backupId: string; backupHash: string }
+  | {
+      kind: "from-legacy-backup";
+      backupId: string;
+      backupHash: string;
+      backupChain: PersonalDedicatedReviewedBackupChainEntry[];
+    }
   | { kind: "catalog-restore-required"; backupId: string; backupHash: string };
 
 export interface PersonalDedicatedBackupProvenance {
@@ -137,6 +152,48 @@ function backupCreatedAtDescending(
   return right.createdAt.getTime() - left.createdAt.getTime() || right.id.localeCompare(left.id);
 }
 
+function reviewedLegacyBackupChain(
+  selected: PersonalDedicatedBackupProvenance,
+  retainedAgentId: string,
+  backups: PersonalDedicatedBackupProvenance[],
+): PersonalDedicatedReviewedBackupChainEntry[] | undefined {
+  const byId = new Map(backups.map((backup) => [backup.id, backup]));
+  const chain: PersonalDedicatedReviewedBackupChainEntry[] = [];
+  const seen = new Set<string>();
+  let cursor: PersonalDedicatedBackupProvenance | undefined = selected;
+  while (cursor) {
+    if (seen.has(cursor.id) || cursor.sandboxRecordId !== retainedAgentId) return undefined;
+    if (!cursor.contentHash || !/^[a-f0-9]{64}$/.test(cursor.contentHash)) return undefined;
+    if (cursor.backupKind !== "full" && cursor.backupKind !== "incremental") return undefined;
+    if (
+      cursor.verificationStatus !== "verified" ||
+      !(cursor.verifiedAt instanceof Date) ||
+      cursor.catalogDeletedAt !== null ||
+      !(
+        cursor.catalogVersion === null ||
+        (cursor.catalogVersion === 1 && cursor.catalogState === "legacy_unmigrated")
+      )
+    ) {
+      return undefined;
+    }
+    seen.add(cursor.id);
+    chain.push({
+      backupId: cursor.id,
+      backupKind: cursor.backupKind,
+      parentBackupId: cursor.parentBackupId,
+      contentHash: cursor.contentHash,
+      verifiedAt: cursor.verifiedAt.toISOString(),
+      catalogVersion: cursor.catalogVersion,
+      catalogState: cursor.catalogState,
+    });
+    if (chain.length > 100) return undefined;
+    if (cursor.backupKind === "full") return chain;
+    if (!cursor.parentBackupId) return undefined;
+    cursor = byId.get(cursor.parentBackupId);
+  }
+  return undefined;
+}
+
 /**
  * Resolve the exact activation behavior reviewed by the selection receipt.
  * Catalogue-v2 payloads use a separate restore pipeline and therefore fail
@@ -183,9 +240,19 @@ export function personalDedicatedActivationAuthority(
     })
     .sort(backupCreatedAtDescending);
 
-  const selected = restorable[0];
-  if (!selected) return { kind: "fresh-boot" };
-  if (selected.catalogVersion === 2) {
+  for (const selected of restorable) {
+    if (selected.catalogVersion !== 2) {
+      const backupChain = reviewedLegacyBackupChain(selected, retainedAgentId, backups);
+      if (backupChain) {
+        return {
+          kind: "from-legacy-backup",
+          backupId: selected.id,
+          backupHash: selected.contentHash!,
+          backupChain,
+        };
+      }
+      continue;
+    }
     // The restorable catalogue predicate above requires this digest.
     return {
       kind: "catalog-restore-required",
@@ -193,12 +260,7 @@ export function personalDedicatedActivationAuthority(
       backupHash: selected.catalogPayloadDigest!,
     };
   }
-  // The restorable legacy predicate above requires this digest.
-  return {
-    kind: "from-legacy-backup",
-    backupId: selected.id,
-    backupHash: selected.contentHash!,
-  };
+  return { kind: "fresh-boot" };
 }
 
 export function personalDedicatedStateDisposition(
@@ -216,21 +278,95 @@ export function personalDedicatedActivationAuthorityKey(
   authority: PersonalDedicatedActivationAuthority | undefined,
 ): string {
   if (!authority) return "unreviewed-auto";
-  return authority.kind === "fresh-boot"
-    ? authority.kind
-    : `${authority.kind}:${authority.backupId}:${authority.backupHash}`;
+  if (authority.kind === "fresh-boot") return authority.kind;
+  if (authority.kind === "catalog-restore-required") {
+    return `${authority.kind}:${authority.backupId}:${authority.backupHash}`;
+  }
+  return `${authority.kind}:${authority.backupId}:${authority.backupHash}:${JSON.stringify(
+    authority.backupChain.map((entry) => [
+      entry.backupId,
+      entry.backupKind,
+      entry.parentBackupId,
+      entry.contentHash,
+      entry.verifiedAt,
+      entry.catalogVersion,
+      entry.catalogState,
+    ]),
+  )}`;
+}
+
+export function isPersonalDedicatedReviewedBackupChain(
+  value: unknown,
+): value is PersonalDedicatedReviewedBackupChainEntry[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 100) return false;
+  if (
+    !value.every(
+      (entry): entry is PersonalDedicatedReviewedBackupChainEntry =>
+        typeof entry === "object" &&
+        entry !== null &&
+        typeof (entry as { backupId?: unknown }).backupId === "string" &&
+        ((entry as { backupKind?: unknown }).backupKind === "full" ||
+          (entry as { backupKind?: unknown }).backupKind === "incremental") &&
+        ((entry as { parentBackupId?: unknown }).parentBackupId === null ||
+          typeof (entry as { parentBackupId?: unknown }).parentBackupId === "string") &&
+        typeof (entry as { contentHash?: unknown }).contentHash === "string" &&
+        /^[a-f0-9]{64}$/.test((entry as { contentHash: string }).contentHash) &&
+        typeof (entry as { verifiedAt?: unknown }).verifiedAt === "string" &&
+        Number.isFinite(Date.parse((entry as { verifiedAt: string }).verifiedAt)) &&
+        ((entry as { catalogVersion?: unknown }).catalogVersion === null ||
+          (entry as { catalogVersion?: unknown }).catalogVersion === 1) &&
+        ((entry as { catalogState?: unknown }).catalogState === null ||
+          (entry as { catalogState?: unknown }).catalogState === "legacy_unmigrated"),
+    )
+  ) {
+    return false;
+  }
+  const first = value[0];
+  const last = value.at(-1);
+  return (
+    last?.backupKind === "full" &&
+    last.parentBackupId === null &&
+    value.every((entry, index) =>
+      entry.backupKind === "full"
+        ? index === value.length - 1 && entry.parentBackupId === null
+        : entry.parentBackupId === value[index + 1]?.backupId,
+    ) &&
+    new Set(value.map((entry) => entry.backupId)).size === value.length &&
+    Boolean(first)
+  );
 }
 
 export function personalDedicatedActivationAuthorityFromReceipt(
   activationKind: string,
   backupId: string | null,
   backupHash: string | null,
+  backupChain: unknown,
 ): PersonalDedicatedActivationAuthority | undefined {
-  if (activationKind === "fresh_boot" && backupId === null) return { kind: "fresh-boot" };
-  if (activationKind === "legacy_backup" && backupId && backupHash) {
-    return { kind: "from-legacy-backup", backupId, backupHash };
+  if (
+    activationKind === "fresh_boot" &&
+    backupId === null &&
+    backupHash === null &&
+    backupChain === null
+  ) {
+    return { kind: "fresh-boot" };
   }
-  if (activationKind === "catalog_restore_required" && backupId && backupHash) {
+  if (
+    activationKind === "legacy_backup" &&
+    backupId &&
+    backupHash &&
+    isPersonalDedicatedReviewedBackupChain(backupChain)
+  ) {
+    if (backupChain[0]?.backupId !== backupId || backupChain[0]?.contentHash !== backupHash) {
+      return undefined;
+    }
+    return { kind: "from-legacy-backup", backupId, backupHash, backupChain };
+  }
+  if (
+    activationKind === "catalog_restore_required" &&
+    backupId &&
+    backupHash &&
+    backupChain === null
+  ) {
     return { kind: "catalog-restore-required", backupId, backupHash };
   }
   return undefined;
@@ -242,12 +378,14 @@ export function personalDedicatedActivationAuthorityReceiptColumns(
   activation_kind: string;
   activation_backup_id: string | null;
   activation_backup_hash: string | null;
+  activation_backup_chain: PersonalDedicatedReviewedBackupChainEntry[] | null;
 } {
   if (authority.kind === "fresh-boot") {
     return {
       activation_kind: "fresh_boot",
       activation_backup_id: null,
       activation_backup_hash: null,
+      activation_backup_chain: null,
     };
   }
   return {
@@ -255,5 +393,6 @@ export function personalDedicatedActivationAuthorityReceiptColumns(
       authority.kind === "from-legacy-backup" ? "legacy_backup" : "catalog_restore_required",
     activation_backup_id: authority.backupId,
     activation_backup_hash: authority.backupHash,
+    activation_backup_chain: authority.kind === "from-legacy-backup" ? authority.backupChain : null,
   };
 }

@@ -22,8 +22,9 @@ import {
 import { personalDedicatedActivationAuthorityKey } from "@/lib/services/personal-dedicated-adoption-provenance";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import {
-  checkProvisioningWorkerHealth,
+  checkProvisioningWorkerCapability,
   provisioningWorkerFailureBody,
+  REVIEWED_BACKUP_RESTORE_CAPABILITY,
 } from "@/lib/services/provisioning-worker-health";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import {
@@ -348,7 +349,9 @@ async function __hono_POST(
     }
 
     if (quote.startsCompute) {
-      const workerHealth = await checkProvisioningWorkerHealth();
+      const workerHealth = await checkProvisioningWorkerCapability(
+        REVIEWED_BACKUP_RESTORE_CAPABILITY,
+      );
       if (!workerHealth.ok) {
         logger.warn(
           "[agent-tier-adoption] Adoption blocked: provisioning worker unavailable",

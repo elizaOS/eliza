@@ -3,9 +3,11 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { CompatibleRedis } from "../cache/redis-factory";
 import { runWithCloudBindingsAsync } from "../runtime/cloud-bindings";
 import {
+  checkProvisioningWorkerCapability,
   checkProvisioningWorkerHealth,
   PROVISIONING_WORKER_HEARTBEAT_KEY,
   publishProvisioningWorkerHeartbeat,
+  REVIEWED_BACKUP_RESTORE_CAPABILITY,
 } from "./provisioning-worker-health";
 
 const TEST_ENV = {
@@ -82,7 +84,23 @@ describe("provisioning worker health (Redis heartbeat)", () => {
       if (result.ok === true) {
         expect(result.required).toBe(true);
         expect(typeof result.lastHeartbeatAt).toBe("string");
+        expect(result.capabilities).toContain(REVIEWED_BACKUP_RESTORE_CAPABILITY);
       }
+    });
+  });
+
+  it("distinguishes legacy liveness from the reviewed-backup execution capability", async () => {
+    const redis = makeMemoryRedis();
+    await redis.set(PROVISIONING_WORKER_HEARTBEAT_KEY, new Date().toISOString());
+    const legacy = await withEnv({}, () => checkProvisioningWorkerHealth(redis));
+    expect(legacy).toMatchObject({ ok: true, required: true, capabilities: [] });
+    const blocked = await withEnv({}, () =>
+      checkProvisioningWorkerCapability(REVIEWED_BACKUP_RESTORE_CAPABILITY, redis),
+    );
+    expect(blocked).toMatchObject({
+      ok: false,
+      code: "PROVISIONING_WORKER_CAPABILITY_REQUIRED",
+      status: 503,
     });
   });
 
