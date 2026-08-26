@@ -34,6 +34,8 @@ const DRIVE_PATH_PATTERN = /[A-Za-z]:[\\/][^\s'"`<>]*/u;
 const UNC_PATH_PATTERN = /\\\\[^\\\s'"`<>]+\\[^\s'"`<>]*/u;
 const POSIX_PATH_PATTERN = /\/+[^\s'"`<>]+/u;
 const PUBLIC_URL_METADATA_PATH_PATTERN = /^\/(?:v1\/chat|callback)$/iu;
+const URL_PATH_ADJACENT_HOST_PATH_PATTERN =
+  /[()[\]{},;:=][\p{White_Space}\p{Cc}\p{Cf}]*(?:\/{1,2}|[A-Za-z]:[\\/]|\\\\)/u;
 const LEADING_URL_METADATA_PADDING_PATTERN = /^[\p{White_Space}\p{Cc}\p{Cf}]+/u;
 const STACK_FRAME_PATTERN = /\n\s+at\s+/u;
 const BEARER_CREDENTIAL_PATTERN = /\bBearer\s+\S+/iu;
@@ -148,8 +150,14 @@ function networkUrlContainsHostPath(urlToken: string): boolean {
     return true;
   }
 
-  // The URL pathname is public route data; only query and fragment metadata
-  // can carry an adjacent host path that must be withheld.
+  const canonicalPathname = canonicalizeUrlMetadata(url.pathname);
+  if (canonicalPathname === null || URL_PATH_ADJACENT_HOST_PATH_PATTERN.test(canonicalPathname)) {
+    return true;
+  }
+
+  // Ordinary pathname segments are public route data. Query and fragment
+  // metadata receive the stricter recursive host-path classifier because they
+  // are not endpoint labels.
   const queryMetadata = [...url.searchParams.entries()].flat();
   const candidates = [url.hash.slice(1), ...queryMetadata];
   return candidates.some(urlMetadataIsUnsafe);

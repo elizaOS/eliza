@@ -210,12 +210,16 @@ describe("publicJobErrorSummary — API boundary", () => {
   });
 
   test("still finds a formatted host path adjacent to a public URL", () => {
-    const stored = jobErrorText(
-      new Error("Provider https://api.eliza.app[/srv/eliza/agents/9c1/config.json]"),
-    );
-    expect(publicJobErrorSummary(stored)).toBe(
-      "The operation failed. Retry from Eliza Cloud or contact support if it continues.",
-    );
+    for (const stored of [
+      "Provider https://api.eliza.app/v1/chat(/srv/eliza/agents/9c1/config.json)",
+      "Provider https://api.eliza.app/callback[/workspace/eliza/agents/9c1/config.json]",
+      "Provider https://api.eliza.app/v1/chat,%2Fsrv%2Feliza%2Fagents%2F9c1%2Fconfig.json",
+      "Provider https://api.eliza.app/v1/chat;C:%5Celiza%5Cagents%5C9c1%5Cconfig.json",
+    ]) {
+      expect(publicJobErrorSummary(stored)).toBe(
+        "The operation failed. Retry from Eliza Cloud or contact support if it continues.",
+      );
+    }
   });
 
   test.each([
