@@ -180,7 +180,8 @@ describe("ChatOverlay first-run gating", () => {
         {
           id: "first-run:cloud-error",
           role: "assistant",
-          content: "Couldn't connect to Eliza Cloud: session expired.",
+          content:
+            "I couldn't finish setting up your agent: Couldn't connect to Eliza Cloud: session expired.",
           createdAt: 2,
         },
       ],
