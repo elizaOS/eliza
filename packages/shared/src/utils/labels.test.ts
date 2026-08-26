@@ -38,4 +38,25 @@ describe("autoLabel", () => {
     expect(autoLabel("plugin_cli_path", "plugin")).toBe("CLI Path");
     expect(autoLabel("custom_client_secret", "custom")).toBe("Client Secret");
   });
+
+  it("preserves all newly added ecosystem acronyms across key positions", () => {
+    const acronymCases: Array<[string, string]> = [
+      ["plugin_ai_model", "AI Model"],
+      ["plugin_cli_path", "CLI Path"],
+      ["plugin_cpu_limit", "CPU Limit"],
+      ["plugin_db_uri", "DB URI"],
+      ["plugin_gpu_device", "GPU Device"],
+      ["plugin_os_version", "OS Version"],
+      ["plugin_otp_secret", "OTP Secret"],
+      ["plugin_sql_host", "SQL Host"],
+      ["plugin_ui_theme", "UI Theme"],
+      ["plugin_uri_endpoint", "URI Endpoint"],
+      ["plugin_ws_port", "WS Port"],
+      ["plugin_wss_url", "WSS URL"],
+    ];
+
+    for (const [key, expected] of acronymCases) {
+      expect(autoLabel(key, "plugin")).toBe(expected);
+    }
+  });
 });
