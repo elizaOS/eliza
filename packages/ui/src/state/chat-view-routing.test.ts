@@ -53,6 +53,21 @@ describe("resolveChatViewRouting", () => {
     });
   });
 
+  it("keeps Wallet chat and voice turns scoped to available read/setup capabilities", () => {
+    expect(resolveChatViewRouting("views", "/wallet")).toEqual({
+      view: "wallet",
+      primaryContext: "wallet",
+      secondaryContexts: [],
+      capabilities: ["inspect-wallet", "configure-wallet-rpc"],
+    });
+    expect(resolveChatViewRouting("inventory", "/")).toEqual({
+      view: "wallet",
+      primaryContext: "wallet",
+      secondaryContexts: [],
+      capabilities: ["inspect-wallet", "configure-wallet-rpc"],
+    });
+  });
+
   it("routes Projects and Memories by rendered route rather than generic tabs", () => {
     expect(resolveChatViewRouting("apps", "/apps/tasks")).toMatchObject({
       view: "projects",
