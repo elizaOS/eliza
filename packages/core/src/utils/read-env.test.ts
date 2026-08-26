@@ -4,7 +4,12 @@
  * injected env map, not process.env).
  */
 import { describe, expect, it } from "vitest";
-import { readEnv, readEnvBool } from "./read-env.ts";
+import {
+	readEnv,
+	readEnvBool,
+	readEnvFirst,
+	readEnvNumber,
+} from "./read-env.ts";
 
 describe("readEnv", () => {
 	it("reads the canonical key", () => {
@@ -41,5 +46,39 @@ describe("readEnvBool", () => {
 		expect(readEnvBool("ELIZA_FLAG", { env: {}, defaultValue: true })).toBe(
 			true,
 		);
+	});
+});
+
+describe("readEnvNumber", () => {
+	it("parses valid numbers and returns default for invalid/unset values", () => {
+		expect(readEnvNumber("PORT", { env: { PORT: "3000" } })).toBe(3000);
+		expect(
+			readEnvNumber("PORT", { env: { PORT: "invalid" }, defaultValue: 8080 }),
+		).toBe(8080);
+		expect(readEnvNumber("UNSET", { env: {}, defaultValue: 5000 })).toBe(5000);
+		expect(readEnvNumber("UNSET", { env: {} })).toBeUndefined();
+	});
+});
+
+describe("readEnvFirst", () => {
+	it("finds the first set key among ordered aliases", () => {
+		expect(
+			readEnvFirst(["OPENAI_API_KEY", "OPENAI_KEY"], {
+				env: { OPENAI_KEY: "sk-test" },
+			}),
+		).toBe("sk-test");
+
+		expect(
+			readEnvFirst(["PRIMARY", "SECONDARY"], {
+				env: { PRIMARY: "p-val", SECONDARY: "s-val" },
+			}),
+		).toBe("p-val");
+
+		expect(
+			readEnvFirst(["MISSING_1", "MISSING_2"], {
+				env: {},
+				defaultValue: "fallback",
+			}),
+		).toBe("fallback");
 	});
 });

@@ -46,3 +46,30 @@ export function readEnvBool(
 	// to `defaultValue` (default `false`), matching the previous semantics.
 	return parseBooleanValue(raw) ?? options.defaultValue ?? false;
 }
+
+/** Numeric form of {@link readEnv}: returns the parsed finite number or defaultValue. */
+export function readEnvNumber(
+	canonicalKey: string,
+	options: Omit<ReadEnvOptions, "defaultValue"> & {
+		defaultValue?: number;
+	} = {},
+): number | undefined {
+	const raw = readEnv(canonicalKey, { env: options.env });
+	if (raw === undefined) return options.defaultValue;
+	const parsed = Number(raw);
+	return Number.isFinite(parsed) ? parsed : options.defaultValue;
+}
+
+/** Read the first set environment variable among an ordered list of alias keys. */
+export function readEnvFirst(
+	keys: string[],
+	options: ReadEnvOptions = {},
+): string | undefined {
+	for (const key of keys) {
+		const val = readEnv(key, { env: options.env });
+		if (val !== undefined) {
+			return val;
+		}
+	}
+	return options.defaultValue;
+}
