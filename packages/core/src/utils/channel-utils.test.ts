@@ -22,9 +22,18 @@ describe("normalizeChatType", () => {
 	it("folds platform synonyms into direct/group/channel", () => {
 		expect(normalizeChatType("dm")).toBe("direct");
 		expect(normalizeChatType("private")).toBe("direct");
+		expect(normalizeChatType("1on1")).toBe("direct");
+		expect(normalizeChatType("1:1")).toBe("direct");
+		expect(normalizeChatType("p2p")).toBe("direct");
 		expect(normalizeChatType("supergroup")).toBe("group");
+		expect(normalizeChatType("group_dm")).toBe("group");
+		expect(normalizeChatType("room")).toBe("group");
 		expect(normalizeChatType("broadcast")).toBe("channel");
+		expect(normalizeChatType("thread")).toBe("channel");
+		expect(normalizeChatType("forum")).toBe("channel");
+		expect(normalizeChatType("guild_text")).toBe("channel");
 		expect(normalizeChatType(undefined)).toBe("direct");
+		expect(normalizeChatType(null as unknown as string)).toBe("direct");
 		expect(normalizeChatType("weird")).toBe("direct");
 	});
 });
