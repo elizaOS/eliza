@@ -15,6 +15,13 @@ import cloudStabilityScenario from "../scenarios/cloud-stability-agent.scenario.
 import { startCloudStack } from "../src/fixtures/stack.ts";
 import { canonicalCloudStabilitySha256 } from "../src/stability/cloud-stability-runner.ts";
 import {
+  linuxSandboxEnabled,
+  loopbackPorts,
+  sandboxCommand,
+  scenarioChildEnvironment,
+  writeSandboxEnvironment,
+} from "../src/stability/linux-sandbox.ts";
+import {
   liveModelScenarioChildEnvironment,
   type StabilityModelProvider,
   startLiveModelEgressProxy,
@@ -24,13 +31,6 @@ import {
   type StabilityParentNetworkEntry,
 } from "../src/stability/parent-network-guard.ts";
 import { readRealModelBootstrap } from "../src/stability/real-model-bootstrap.ts";
-import {
-  linuxSandboxEnabled,
-  loopbackPorts,
-  sandboxCommand,
-  scenarioChildEnvironment,
-  writeSandboxEnvironment,
-} from "../src/stability/linux-sandbox.ts";
 
 const required = (name: string): string => {
   const value = process.env[name];

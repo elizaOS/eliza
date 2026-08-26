@@ -61,12 +61,8 @@ run() {
     [ "$cleaned" -eq 0 ] || return "$cleanup_status"
     cleaned=1
     set +e
-    if [ "$ipv4_jump" -eq 1 ]; then /usr/sbin/iptables -w 5 -D OUTPUT -m owner --uid-owner "$uid" -j "$chain"; fi
-    /usr/sbin/iptables -w 5 -F "$chain" 2>/dev/null
-    /usr/sbin/iptables -w 5 -X "$chain" 2>/dev/null
-    if [ "$ipv6_jump" -eq 1 ]; then /usr/sbin/ip6tables -w 5 -D OUTPUT -m owner --uid-owner "$uid" -j "$chain"; fi
-    /usr/sbin/ip6tables -w 5 -F "$chain" 2>/dev/null
-    /usr/sbin/ip6tables -w 5 -X "$chain" 2>/dev/null
+    # Keep the deny rules installed until every process under the untrusted UID
+    # is dead; otherwise a signal-resistant descendant gets a teardown egress window.
     /usr/bin/pkill -KILL -u "$uid" 2>/dev/null
     for _ in $(/usr/bin/seq 1 100); do
       /usr/bin/pgrep -u "$uid" >/dev/null 2>&1 || break
@@ -76,6 +72,12 @@ run() {
       echo "[cloud-stability-sandbox] sandbox UID retained a process" >&2
       cleanup_status=1
     fi
+    if [ "$ipv4_jump" -eq 1 ]; then /usr/sbin/iptables -w 5 -D OUTPUT -m owner --uid-owner "$uid" -j "$chain"; fi
+    /usr/sbin/iptables -w 5 -F "$chain" 2>/dev/null
+    /usr/sbin/iptables -w 5 -X "$chain" 2>/dev/null
+    if [ "$ipv6_jump" -eq 1 ]; then /usr/sbin/ip6tables -w 5 -D OUTPUT -m owner --uid-owner "$uid" -j "$chain"; fi
+    /usr/sbin/ip6tables -w 5 -F "$chain" 2>/dev/null
+    /usr/sbin/ip6tables -w 5 -X "$chain" 2>/dev/null
     /usr/bin/setfacl -R -x "u:${uid}" "$output_dir" 2>/dev/null
     /usr/bin/find "$output_dir" -type d -exec /usr/bin/setfacl -x "d:u:${uid}" {} + 2>/dev/null
     /usr/sbin/userdel "$sandbox_user" 2>/dev/null || cleanup_status=1
