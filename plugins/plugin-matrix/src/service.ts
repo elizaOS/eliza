@@ -1335,16 +1335,15 @@ export class MatrixService extends Service implements IMatrixService {
         continue;
       }
       if (authority.isRoomIncomplete(room.roomId)) {
-        // Recovery: a limited-sync gap (timeline reset) is disproved by a
-        // FULLY RESOLVED out-of-band member list in this pass — the SDK just
-        // told us the roster is complete again. Clear exactly that reason and
-        // fall through to publish a fresh complete baseline; other
-        // incompleteness reasons (member load failed, empty roster) still
-        // report incomplete and skip. Without this, one timeline reset would
-        // leave the scope permanently stale.
-        const recovered =
-          membersReady && authority.clearRoomIncomplete(room.roomId, "limited_sync_timeline_reset");
-        if (!recovered) {
+        // Recovery requires a GENUINELY FRESH server-side roster:
+        // loadMembersIfNeeded is one-shot and cached by the SDK, so a cached
+        // resolve does NOT disprove a later timeline-reset gap. Perform a
+        // fresh client.members fetch; a successful full fetch disproves every
+        // transient incompleteness reason (timeline reset, member load
+        // failure, empty roster) at once. On failure the room stays
+        // incomplete — fail closed.
+        const refreshed = await this.fetchFreshServerRoster(state, room.roomId);
+        if (!refreshed) {
           await authority.reportIncomplete({
             roomId: room.roomId,
             reason: "member_list_incomplete",
@@ -1352,9 +1351,32 @@ export class MatrixService extends Service implements IMatrixService {
           });
           continue;
         }
+        authority.clearTransientRoomIncompleteness(room.roomId);
         // Fall through: publish the complete baseline.
       }
       await this.publishSingleRoomMembershipSnapshot(state, room);
+    }
+  }
+
+  /**
+   * Performs a genuinely fresh server-side member fetch for recovery paths.
+   * Room.loadMembersIfNeeded is one-shot and cached by the SDK, so only a
+   * direct client.members call proves the roster is complete NOW (disproving
+   * a timeline-reset gap or a failed member load from an earlier pass).
+   * Returns true when the server returned a usable member map.
+   */
+  private async fetchFreshServerRoster(
+    state: MatrixAccountState,
+    roomId: string
+  ): Promise<boolean> {
+    try {
+      const result = await state.client.members(roomId, "join");
+      return result !== null && typeof result === "object";
+    } catch (err) {
+      logger.error(
+        `Matrix fresh member fetch failed for ${roomId}: ${err instanceof Error ? err.message : String(err)}`
+      );
+      return false;
     }
   }
 
@@ -1449,8 +1471,12 @@ export class MatrixService extends Service implements IMatrixService {
     if (!authority) {
       return;
     }
+    // Degrade EVERY joined room scope: during a reconnect gap the SDK member
+    // count is unreliable (lazy loading can make a group look like a <=2
+    // direct room), so the count must not gate degradation. Rooms that were
+    // never snapshotted (true DMs, unpublished rooms) are skipped inside
+    // degradeScope — no scope row, nothing authorizing.
     for (const room of state.client.getRooms().filter((r) => r.getMyMembership() === "join")) {
-      if (room.getJoinedMemberCount() <= 2) continue;
       await authority.markScopeStale({ roomId: room.roomId, reason });
     }
   }
@@ -1530,9 +1556,10 @@ export class MatrixService extends Service implements IMatrixService {
     // A previously ungoverned (direct) room that grew past two members has NO
     // snapshot baseline, and the SQL authority rejects ordered deltas without
     // one — the delta below would be dropped, leaving the new group
-    // permanently denied. When the room has crossed into group territory and
-    // carries no current scope evidence, publish the complete baseline first;
-    // the transition delta then lands on top of it.
+    // permanently denied. Bootstrap ONLY a scope that does not exist at all;
+    // a scope with stale or degraded health must recover through the
+    // verified-fresh-roster path in the publication pass, never by promoting
+    // possibly-incomplete state to current.
     if (room && room.getJoinedMemberCount() > 2 && member.membership === "join") {
       const health = await authority.scopeHealth({ roomId }).catch((err: unknown) => {
         logger.error(
@@ -1540,12 +1567,21 @@ export class MatrixService extends Service implements IMatrixService {
         );
         return null;
       });
-      if (health?.health !== "current") {
-        await this.publishSingleRoomMembershipSnapshot(state, room).catch((err) =>
-          logger.error(
-            `Matrix membership baseline for grown room failed: ${err instanceof Error ? err.message : String(err)}`
-          )
+      if (health === null && !authority.isRoomIncomplete(roomId)) {
+        const published = await this.publishSingleRoomMembershipSnapshot(state, room).catch(
+          (err) => {
+            logger.error(
+              `Matrix membership baseline for grown room failed: ${err instanceof Error ? err.message : String(err)}`
+            );
+            return false;
+          }
         );
+        if (!published) {
+          // No baseline exists: the delta below would be rejected anyway
+          // (SNAPSHOT_REQUIRED). Return so the failure is visible rather than
+          // falling through as if a baseline existed.
+          return;
+        }
       }
     }
     const transition = classifyMatrixTransition(member.membership, oldMembership);
@@ -2196,6 +2232,21 @@ export class MatrixService extends Service implements IMatrixService {
 
     const response = await state.client.joinRoom(normalizedRoomIdOrAlias);
     const roomId = response.roomId;
+
+    // The homeserver confirmed the join: clear any prior leave tombstone NOW.
+    // Relying solely on the SDK membership event would leave the scope
+    // tombstoned (snapshots rejected) whenever that event is missed.
+    if (state.membershipAuthority) {
+      state.membershipAuthority.clearScopeRemoval({ roomId });
+      // error-policy:J7 post-join publication is diagnostic; the join itself
+      // already succeeded. The publication pass performs verified
+      // complete-state checks before publishing anything.
+      void this.publishMembershipSnapshots(state, false).catch((err) =>
+        logger.error(
+          `Matrix membership snapshot after join failed: ${err instanceof Error ? err.message : String(err)}`
+        )
+      );
+    }
 
     logger.info(`Joined room ${roomId}`);
     this.runtime.emitEvent(MatrixEventTypes.ROOM_JOINED, {
