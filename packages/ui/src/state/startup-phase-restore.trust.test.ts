@@ -6,6 +6,7 @@ import {
   isDedicatedCloudAgentBase,
 } from "../utils/cloud-agent-base";
 import {
+  isTrustedBuildConfiguredRemoteApiBaseUrl,
   isTrustedCloudApiBaseUrl,
   isTrustedRestoreApiBaseUrl,
 } from "./runtime-url-trust";
@@ -18,6 +19,28 @@ import {
  * vs an arbitrary public attacker host (rejected, fail closed).
  */
 describe("isTrustedRestoreApiBaseUrl", () => {
+  it("trusts only the exact HTTPS origin compiled into a fallback build", () => {
+    const configured = "https://fallback.example.test";
+    expect(
+      isTrustedBuildConfiguredRemoteApiBaseUrl(configured, configured),
+    ).toBe(true);
+    expect(
+      isTrustedBuildConfiguredRemoteApiBaseUrl(`${configured}/api`, configured),
+    ).toBe(false);
+    expect(
+      isTrustedBuildConfiguredRemoteApiBaseUrl(
+        "https://other.example.test",
+        configured,
+      ),
+    ).toBe(false);
+    expect(
+      isTrustedBuildConfiguredRemoteApiBaseUrl(
+        configured,
+        "http://fallback.example.test",
+      ),
+    ).toBe(false);
+  });
+
   it("trusts loopback and local-agent hosts", () => {
     expect(isTrustedRestoreApiBaseUrl("http://localhost:31337")).toBe(true);
     expect(isTrustedRestoreApiBaseUrl("http://127.0.0.1:31337")).toBe(true);
