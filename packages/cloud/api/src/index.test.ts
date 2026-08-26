@@ -1174,7 +1174,7 @@ describe("cloud-api worker entrypoint", () => {
     expect(text).not.toContain("never-return-this-webhook-secret");
   });
 
-  test("reports only value-free staging session cutover readiness", async () => {
+  test("reports configuration separately without inferring operational readiness", async () => {
     const response = await cloudApiWorker.fetch(
       new Request("https://api-staging.eliza.app/api/health", {
         headers: { host: "api-staging.eliza.app" },
@@ -1206,8 +1206,9 @@ describe("cloud-api worker entrypoint", () => {
       commit: "cutover-commit",
       environment: "staging",
       stagingSessionExchange: {
+        configured: true,
         enabled: true,
-        ready: true,
+        ready: false,
         version: "v1",
       },
     });
@@ -1237,7 +1238,12 @@ describe("cloud-api worker entrypoint", () => {
       {} as never,
     );
     expect(await malformedResponse.json()).toMatchObject({
-      stagingSessionExchange: { enabled: true, ready: false, version: "v1" },
+      stagingSessionExchange: {
+        configured: false,
+        enabled: true,
+        ready: false,
+        version: "v1",
+      },
     });
 
     const serviceCollisionResponse = await cloudApiWorker.fetch(
@@ -1264,7 +1270,45 @@ describe("cloud-api worker entrypoint", () => {
       {} as never,
     );
     expect(await serviceCollisionResponse.json()).toMatchObject({
-      stagingSessionExchange: { enabled: true, ready: false, version: "v1" },
+      stagingSessionExchange: {
+        configured: false,
+        enabled: true,
+        ready: false,
+        version: "v1",
+      },
+    });
+
+    const disabledConfiguredResponse = await cloudApiWorker.fetch(
+      new Request("https://api-staging.eliza.app/api/health", {
+        headers: { host: "api-staging.eliza.app" },
+      }),
+      {
+        NODE_ENV: "production",
+        ENVIRONMENT: "staging",
+        STAGING_SESSION_EXCHANGE_ENABLED: "false",
+        STAGING_SESSION_EXCHANGE_VERSION: "v1",
+        STAGING_SESSION_EXCHANGE_SIGNING_SECRET:
+          "never-return-this-secret-0123456789abcdef",
+        ELIZA_SERVICE_JWT_SECRET:
+          "separate-service-bridge-secret-0123456789abcdef",
+        STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID: "staging-qa-v1-test",
+        STEWARD_TENANT_ID: "staging-tenant",
+        STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS:
+          "33333333-3333-4333-8333-333333333333",
+        STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS:
+          "11111111-1111-4111-8111-111111111111",
+        STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS:
+          "22222222-2222-4222-8222-222222222222",
+      } as never,
+      {} as never,
+    );
+    expect(await disabledConfiguredResponse.json()).toMatchObject({
+      stagingSessionExchange: {
+        configured: true,
+        enabled: false,
+        ready: false,
+        version: "v1",
+      },
     });
   });
 
