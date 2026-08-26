@@ -6,7 +6,10 @@ import type { DirectActionRoutingRule } from "@elizaos/core";
 
 const QUOTED_SEGMENT = /`[^`]*`|"[^"]*"|“[^”]*”|‘[^’]*’/gu;
 const EXPLICIT_COMPUTER_USE_REQUEST =
-  /^(?:(?:hey|hi)\s*,?\s+)?(?:(?:please|kindly)\s+|(?:can|could|would|will)\s+(?:you|u)\s+(?:please\s+)?|i\s+(?:want|need)\s+(?:you|u)\s+to\s+)?use\s+(?:computer[\s_-]*use|(?:my|the)\s+computer)\b/iu;
+  /^(?:(?:hey|hi)\s*,?\s+)?(?:(?:please|kindly)\s*,?\s+)?(?:(?:can|could|would|will)\s+(?:you|u)\s+(?:please\s+)?|i\s+(?:(?:want|need)\s+(?:you|u)\s+to|would\s+like\s+(?:you|u)\s+to)\s+)?use\s+(?:computer[\s_-]*use|(?:my|the)\s+computer)\b/iu;
+const IMMEDIATE_NEGATED_ACTION = /^\s+to\s+(?:not|never)\b/iu;
+const RETRACTION_CLAUSE =
+  /(?:^|[?!.,;]\s*)(?:(?:but|actually)\s*,?\s*|on\s+second\s+thought\s*,?\s*)(?:please\s+)?(?:do\s+not|don't|never|cancel|stop)\b/iu;
 
 /**
  * Match only an explicit request for the Computer Use capability. Generic
@@ -20,7 +23,13 @@ export function looksLikeExplicitComputerUseRequest(text: string): boolean {
     .replace(QUOTED_SEGMENT, " ")
     .replace(/’/gu, "'")
     .trim();
-  return EXPLICIT_COMPUTER_USE_REQUEST.test(normalized);
+  const explicitRequest = EXPLICIT_COMPUTER_USE_REQUEST.exec(normalized);
+  if (!explicitRequest) return false;
+  const trailingRequest = normalized.slice(explicitRequest[0].length);
+  return (
+    !IMMEDIATE_NEGATED_ACTION.test(trailingRequest) &&
+    !RETRACTION_CLAUSE.test(trailingRequest)
+  );
 }
 
 export function createComputerUseDirectRoutingRule(): DirectActionRoutingRule {

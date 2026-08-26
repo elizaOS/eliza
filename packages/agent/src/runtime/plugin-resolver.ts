@@ -2413,6 +2413,7 @@ export async function resolvePlugins(
   const pluginsToLoad = collectPluginNames(config, loadReasons);
   const corePluginSet = new Set<string>(CORE_PLUGINS);
   const blockingPluginSet = new Set<string>(BLOCKING_CORE_PLUGINS);
+  const routingOwnershipPluginNames = new Set<string>();
   const routingOnlyPluginNames = new Set<string>();
   for (const [pluginId, appDefault] of Object.entries(
     appManifest?.defaults ?? {},
@@ -2423,6 +2424,9 @@ export async function resolvePlugins(
       appDefault.routingOnlyWhenDisabled === true
     ) {
       blockingPluginSet.add(pluginPackageName);
+    }
+    if (appDefault.routingOnlyWhenDisabled === true) {
+      routingOwnershipPluginNames.add(pluginPackageName);
     }
     if (
       appDefault.routingOnlyWhenDisabled === true &&
@@ -2459,6 +2463,21 @@ export async function resolvePlugins(
     );
   }
   for (const pluginName of denyList) {
+    const routingOwnerPackageName = pluginName.includes("/")
+      ? resolvePluginPackageAlias(pluginName)
+      : appManifestPluginPackageName(pluginName);
+    if (routingOwnershipPluginNames.has(routingOwnerPackageName)) {
+      throw new ElizaError(
+        `Plugin ${routingOwnerPackageName} owns required disabled-capability routing and cannot be denied`,
+        {
+          code: "PLUGIN_ROUTING_ONLY_DENIED",
+          context: {
+            pluginName: routingOwnerPackageName,
+            deniedAs: pluginName,
+          },
+        },
+      );
+    }
     pluginsToLoad.delete(pluginName);
     const canonical = resolvePluginPackageAlias(pluginName);
     if (canonical !== pluginName) {

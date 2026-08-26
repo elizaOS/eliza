@@ -239,6 +239,7 @@ describe("resolvePlugins manifest discovery", () => {
       path.join(tmpdir(), "eliza-computeruse-ready-"),
     );
     const previousStaticPlugin = STATIC_ELIZA_PLUGINS[pluginName];
+    const previousSkipPlugins = process.env.ELIZA_SKIP_PLUGINS;
     const init = vi.fn();
     const preflight = vi.fn();
 
@@ -336,6 +337,32 @@ describe("resolvePlugins manifest discovery", () => {
         pluginName,
       );
 
+      await expect(
+        resolvePlugins(
+          {
+            plugins: {
+              allow: [],
+              deny: ["computeruse"],
+              entries: {},
+            },
+          } as ElizaConfig,
+          { quiet: true, phase: "blocking" },
+        ),
+      ).rejects.toMatchObject({ code: "PLUGIN_ROUTING_ONLY_DENIED" });
+
+      process.env.ELIZA_SKIP_PLUGINS = pluginName;
+      await expect(
+        resolvePlugins({ plugins: { allow: [], entries: {} } } as ElizaConfig, {
+          quiet: true,
+          phase: "blocking",
+        }),
+      ).rejects.toMatchObject({ code: "PLUGIN_ROUTING_ONLY_DENIED" });
+      if (previousSkipPlugins === undefined) {
+        delete process.env.ELIZA_SKIP_PLUGINS;
+      } else {
+        process.env.ELIZA_SKIP_PLUGINS = previousSkipPlugins;
+      }
+
       STATIC_ELIZA_PLUGINS[pluginName] = {
         default: {
           name: pluginName,
@@ -360,6 +387,11 @@ describe("resolvePlugins manifest discovery", () => {
         delete STATIC_ELIZA_PLUGINS[pluginName];
       } else {
         STATIC_ELIZA_PLUGINS[pluginName] = previousStaticPlugin;
+      }
+      if (previousSkipPlugins === undefined) {
+        delete process.env.ELIZA_SKIP_PLUGINS;
+      } else {
+        process.env.ELIZA_SKIP_PLUGINS = previousSkipPlugins;
       }
       await rm(workspace, { recursive: true, force: true });
     }
