@@ -38,13 +38,18 @@ const RESPONSE_ID = "00000000-0000-0000-0000-000000000005" as UUID;
 
 function makeMessage(
 	text = "search for eliza and tell me what you found",
+	// The harness has no world store, so the sender role resolves through the
+	// source-aware floor: "test" floors to USER; a non-local source (e.g.
+	// "webhook") floors to GUEST. Lets parity tests model a genuinely
+	// underprivileged sender without faking a world.
+	source = "test",
 ): Memory {
 	return {
 		id: MSG_ID,
 		entityId: SENDER_ID,
 		agentId: AGENT_ID,
 		roomId: ROOM_ID,
-		content: { text, source: "test" },
+		content: { text, source },
 		createdAt: 1,
 	};
 }
@@ -2318,6 +2323,210 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 				/owner|role|permission/i,
 			);
 		}
+	});
+
+	// Authorization-context parity between the two tool-execution paths (the
+	// direct-nav fast path from 4b136d3edd7): a deterministic evaluator call and
+	// a planner-selected call for the SAME message + identity must reach the
+	// canonical role gate with the SAME derived context (userRoles from the
+	// turn's one resolved sender role, via the shared buildV5ExecutorContext)
+	// and settle with the IDENTICAL gate outcome. Pinned in both directions:
+	// allowed at minRole, and denied below it — the invariant is path-equality,
+	// never permissiveness.
+	function parityViewsAction(onRun: () => void): Action {
+		return makeMockAction({
+			name: "VIEWS",
+			parameters: [
+				{
+					name: "action",
+					description: "View operation",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "view",
+					description: "Registered view id",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			roleGate: { minRole: "USER" },
+			suppressEarlyReply: true,
+			handler: async () => {
+				onRun();
+				return { success: true, text: "view_navigation accepted" };
+			},
+		});
+	}
+
+	const parityNavEvaluator = {
+		name: "test.parity_direct_nav",
+		priority: 10,
+		deterministicActions: ["VIEWS"],
+		shouldRun: () => true,
+		evaluate: () => ({
+			requiresTool: true,
+			clearReply: true,
+			clearCandidateActions: true,
+			addCandidateActions: ["VIEWS"],
+			deterministicToolCall: {
+				name: "VIEWS",
+				params: { action: "show", view: "chat" },
+			},
+		}),
+	} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
+
+	async function runParityDeterministicPath(source: string) {
+		let handlerRuns = 0;
+		const runtime = makeRuntime({
+			actions: [parityViewsAction(() => handlerRuns++)],
+			responseHandlerEvaluators: [parityNavEvaluator],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["VIEWS"],
+						replyText: "on it.",
+					}),
+				},
+			],
+		});
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("go home", source),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+		return { result, handlerRuns };
+	}
+
+	async function runParityPlannerPath(source: string) {
+		let handlerRuns = 0;
+		const runtime = makeRuntime({
+			actions: [parityViewsAction(() => handlerRuns++)],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["VIEWS"],
+						replyText: "on it.",
+					}),
+				},
+				// The planner selects the identical call the deterministic route
+				// would force. For the underprivileged case this models a forced or
+				// hallucinated selection — the gate keeps VIEWS off the exposed
+				// surface, and the executor must still deny it identically.
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "opening",
+						toolCalls: [
+							{
+								id: "call-1",
+								name: "VIEWS",
+								args: { action: "show", view: "chat" },
+							},
+						],
+					},
+				},
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "Navigation settled.",
+						messageToUser: "done.",
+					}),
+				},
+			],
+		});
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("go home", source),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+		return { result, handlerRuns };
+	}
+
+	function recordedViewsToolStages(): Array<{
+		success?: boolean;
+		errorText?: string;
+		result?: unknown;
+	}> {
+		const stages: Array<{
+			success?: boolean;
+			errorText?: string;
+			result?: unknown;
+		}> = [];
+		for (const doc of readRecordedTrajectories(AGENT_ID)) {
+			const recorded = doc as {
+				stages?: Array<{
+					kind?: string;
+					tool?: { name?: string; success?: boolean; errorText?: string };
+				}>;
+			};
+			for (const stage of recorded.stages ?? []) {
+				if (stage.kind === "tool" && stage.tool?.name === "VIEWS") {
+					stages.push(stage.tool);
+				}
+			}
+		}
+		return stages;
+	}
+
+	it("executes the same VIEWS call with an identical role-gate outcome on the deterministic and planner paths (parity: allowed)", async () => {
+		const deterministic = await runParityDeterministicPath("test");
+		const planner = await runParityPlannerPath("test");
+
+		expect(deterministic.handlerRuns).toBe(1);
+		expect(planner.handlerRuns).toBe(1);
+		for (const run of [deterministic, planner]) {
+			expect(run.result.kind).toBe("planned_reply");
+			if (run.result.kind === "planned_reply") {
+				expect(run.result.result.actionResults).toMatchObject([
+					{ success: true, text: "view_navigation accepted" },
+				]);
+			}
+		}
+		// Both recorded tool stages settle with the same gate verdict and the
+		// identical result payload — path-equality at the trajectory boundary.
+		const stages = recordedViewsToolStages();
+		expect(stages).toHaveLength(2);
+		expect(stages.map((stage) => stage.success)).toEqual([true, true]);
+		expect(stages[0]?.result).toEqual(stages[1]?.result);
+	});
+
+	it("denies a genuinely-underprivileged sender's VIEWS call identically on the deterministic and planner paths (parity: denied)", async () => {
+		const deterministic = await runParityDeterministicPath("webhook");
+		const planner = await runParityPlannerPath("webhook");
+
+		expect(deterministic.handlerRuns).toBe(0);
+		expect(planner.handlerRuns).toBe(0);
+		const denial = {
+			success: false,
+			error: "Action VIEWS is not allowed for the current role",
+		};
+		for (const run of [deterministic, planner]) {
+			expect(run.result.kind).toBe("planned_reply");
+			if (run.result.kind === "planned_reply") {
+				expect(run.result.result.actionResults).toMatchObject([denial]);
+				// The visible reply never leaks role/permission diagnostics.
+				expect(run.result.result.responseContent?.text).not.toMatch(
+					/role|permission/i,
+				);
+			}
+		}
+		const stages = recordedViewsToolStages();
+		expect(stages).toHaveLength(2);
+		expect(stages.map((stage) => stage.success)).toEqual([false, false]);
+		expect(stages.map((stage) => stage.errorText)).toEqual([
+			"Action VIEWS is not allowed for the current role",
+			"Action VIEWS is not allowed for the current role",
+		]);
+		expect(stages[0]?.result).toEqual(stages[1]?.result);
 	});
 
 	it("fails a deterministic call outside the action context without invoking it", async () => {
