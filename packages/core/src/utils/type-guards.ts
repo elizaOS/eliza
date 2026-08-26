@@ -34,3 +34,19 @@ export function asRecordOrUndefined(
 ): Record<string, unknown> | undefined {
 	return asRecord(value) ?? undefined;
 }
+
+export function isNonEmptyString(value: unknown): value is string {
+	return typeof value === "string" && value.trim().length > 0;
+}
+
+export function isNonEmptyArray<T>(value: unknown): value is [T, ...T[]] {
+	return Array.isArray(value) && value.length > 0;
+}
+
+export function isDefined<T>(value: T | null | undefined): value is T {
+	return value !== null && value !== undefined;
+}
+
+export function isFiniteNumber(value: unknown): value is number {
+	return typeof value === "number" && Number.isFinite(value);
+}

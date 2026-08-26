@@ -6,6 +6,10 @@ import { describe, expect, it } from "vitest";
 import {
 	asRecord,
 	asRecordOrUndefined,
+	isDefined,
+	isFiniteNumber,
+	isNonEmptyArray,
+	isNonEmptyString,
 	isObjectRecord,
 	isPlainObject,
 } from "./type-guards";
@@ -91,5 +95,67 @@ describe("asRecord and asRecordOrUndefined", () => {
 
 		expect(asRecord(undefined)).toBeNull();
 		expect(asRecordOrUndefined(undefined)).toBeUndefined();
+	});
+});
+
+describe("isNonEmptyString", () => {
+	it("returns true for non-empty trimmed strings", () => {
+		expect(isNonEmptyString("hello")).toBe(true);
+		expect(isNonEmptyString("  a  ")).toBe(true);
+	});
+
+	it("returns false for empty strings, whitespace-only strings, or non-strings", () => {
+		expect(isNonEmptyString("")).toBe(false);
+		expect(isNonEmptyString("   ")).toBe(false);
+		expect(isNonEmptyString(null)).toBe(false);
+		expect(isNonEmptyString(undefined)).toBe(false);
+		expect(isNonEmptyString(123)).toBe(false);
+		expect(isNonEmptyString({})).toBe(false);
+	});
+});
+
+describe("isNonEmptyArray", () => {
+	it("returns true for arrays with at least one element", () => {
+		expect(isNonEmptyArray([1])).toBe(true);
+		expect(isNonEmptyArray(["a", "b"])).toBe(true);
+	});
+
+	it("returns false for empty arrays or non-arrays", () => {
+		expect(isNonEmptyArray([])).toBe(false);
+		expect(isNonEmptyArray(null)).toBe(false);
+		expect(isNonEmptyArray(undefined)).toBe(false);
+		expect(isNonEmptyArray("array")).toBe(false);
+	});
+});
+
+describe("isDefined", () => {
+	it("returns true for non-nullish values", () => {
+		expect(isDefined(0)).toBe(true);
+		expect(isDefined(false)).toBe(true);
+		expect(isDefined("")).toBe(true);
+		expect(isDefined([])).toBe(true);
+		expect(isDefined({})).toBe(true);
+	});
+
+	it("returns false for null and undefined", () => {
+		expect(isDefined(null)).toBe(false);
+		expect(isDefined(undefined)).toBe(false);
+	});
+});
+
+describe("isFiniteNumber", () => {
+	it("returns true for finite numbers", () => {
+		expect(isFiniteNumber(0)).toBe(true);
+		expect(isFiniteNumber(-42)).toBe(true);
+		expect(isFiniteNumber(3.14159)).toBe(true);
+	});
+
+	it("returns false for non-numbers and non-finite values", () => {
+		expect(isFiniteNumber(Number.NaN)).toBe(false);
+		expect(isFiniteNumber(Number.POSITIVE_INFINITY)).toBe(false);
+		expect(isFiniteNumber(Number.NEGATIVE_INFINITY)).toBe(false);
+		expect(isFiniteNumber("42")).toBe(false);
+		expect(isFiniteNumber(null)).toBe(false);
+		expect(isFiniteNumber(undefined)).toBe(false);
 	});
 });
