@@ -156,6 +156,10 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).toContain('"accountDeletionRecovery".equals(key)');
     expect(source).toContain('"pending_login".equals(slot)');
     expect(source).toContain('"mobile_login_ciphertext"');
+    expect(
+      source.match(/private String preferenceKey\(PluginCall call\)/g),
+    ).toHaveLength(1);
+    expect(source).not.toContain("CREDENTIAL_CIPHERTEXT");
     expect(source).toContain("putString(preferenceKey, encoded).commit()");
     expect(source).toContain("remove(preferenceKey).commit()");
     expect(source).toContain(
