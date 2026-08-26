@@ -97,10 +97,24 @@ describe("runtime mutation confirmation", () => {
 			expectedFingerprint: "SHA256:GOOD",
 		};
 		const sshB = { ...sshA, target: "admin@good.example-prod" };
-		expect(isBoundRuntimeManagementConfirmation(runtimeManagementConfirmationText(sshA), sshB)).toBe(false);
-		const directA = { op: "add_direct" as const, runtimeId: "prod", apiBase: "https://good.example/a-b" };
+		expect(
+			isBoundRuntimeManagementConfirmation(
+				runtimeManagementConfirmationText(sshA),
+				sshB,
+			),
+		).toBe(false);
+		const directA = {
+			op: "add_direct" as const,
+			runtimeId: "prod",
+			apiBase: "https://good.example/a-b",
+		};
 		const directB = { ...directA, apiBase: "https://good.example/a.b" };
-		expect(isBoundRuntimeManagementConfirmation(runtimeManagementConfirmationText(directA), directB)).toBe(false);
+		expect(
+			isBoundRuntimeManagementConfirmation(
+				runtimeManagementConfirmationText(directA),
+				directB,
+			),
+		).toBe(false);
 	});
 
 	it("binds SSH fingerprint and identity path independently", () => {

@@ -15,7 +15,7 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 - **Plugin overlay actions:** 10
 - **Canonical providers:** 22
 - **Core providers:** 22
-- **Registered runtime actions:** 180
+- **Registered runtime actions:** 182
 
 ## Actions
 
@@ -359,6 +359,7 @@ list. Regenerate this document after changing the registered action surface.
 - `BRIEF` — `plugins/plugin-personal-assistant/src/actions/brief.ts`
 - `BROWSER` — `plugins/plugin-browser/src/actions/browser.ts`
 - `BUY_APP_DOMAIN` — `plugins/plugin-cloud-apps/src/actions/buy-app-domain.ts`
+- `CALCULATE` — `packages/core/src/features/basic-capabilities/actions/calculate.ts`
 - `CALENDAR` — `plugins/plugin-personal-assistant/src/actions/calendar.ts`
 - `CALENDAR_SOURCES` — `plugins/plugin-calendar/src/actions/calendar-sources.ts`
 - `CHARACTER` — `packages/core/src/features/advanced-capabilities/personality/actions/character.ts`
@@ -476,6 +477,7 @@ list. Regenerate this document after changing the registered action surface.
 - `ROLLBACK_FRONTEND` — `plugins/plugin-cloud-apps/src/actions/rollback-frontend.ts`
 - `ROOM` — `packages/core/src/features/advanced-capabilities/actions/room.ts`
 - `RUNTIME` — `packages/agent/src/actions/runtime.ts`
+- `RUNTIMES` — `plugins/plugin-app-control/src/actions/runtime-management.ts`
 - `SCHEDULED_TASKS` — `plugins/plugin-personal-assistant/src/actions/scheduled-task.ts`
 - `SCHOOL_SOURCES` — `plugins/plugin-personal-assistant/src/lifeops/school/action.ts`
 - `SEARCH_CHANNEL_TOPICS` — `packages/core/src/features/basic-capabilities/actions/channel-topic-search.ts`
