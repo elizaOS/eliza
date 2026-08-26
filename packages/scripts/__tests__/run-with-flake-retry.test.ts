@@ -63,6 +63,22 @@ function splitSignatureFlakyChild(counterFile: string): string {
 	`;
 }
 
+function splitMultibyteSignatureFlakyChild(counterFile: string): string {
+  return `
+		const fs = require("node:fs");
+		fs.appendFileSync(${JSON.stringify(counterFile)}, "x");
+		if (fs.readFileSync(${JSON.stringify(counterFile)}, "utf8").length === 1) {
+			process.stdout.write(Buffer.concat([Buffer.from("flake: "), Buffer.from([0xf0, 0x9f])]));
+			setTimeout(() => {
+				process.stdout.write(Buffer.concat([Buffer.from([0x8c, 0x9f]), Buffer.from(" retryable")]));
+				process.exit(1);
+			}, 20);
+		} else {
+			process.exit(0);
+		}
+	`;
+}
+
 function crossStreamNearMatchChild(counterFile: string): string {
   return `
 		const fs = require("node:fs");
@@ -145,6 +161,22 @@ describe("run-with-flake-retry", () => {
       NODE_BIN,
       "-e",
       splitSignatureFlakyChild(counter),
+    ]);
+    expect(result.status).toBe(0);
+    expect(readFileSync(counter, "utf8")).toBe("xx");
+    expect(result.stderr).toContain("matched flake signature");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("matches a multibyte UTF-8 signature split across output chunks", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "flake-retry-"));
+    const counter = path.join(dir, "runs");
+    const result = runWrapper([
+      "flake: 🌟 retryable",
+      "--",
+      NODE_BIN,
+      "-e",
+      splitMultibyteSignatureFlakyChild(counter),
     ]);
     expect(result.status).toBe(0);
     expect(readFileSync(counter, "utf8")).toBe("xx");
