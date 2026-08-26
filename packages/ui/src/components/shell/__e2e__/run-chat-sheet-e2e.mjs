@@ -4241,8 +4241,8 @@ try {
     assert(
       (await p
         .getByTestId("chat-composer-textarea")
-        .getAttribute("placeholder")) === "Tell me what’s on your plate",
-      "ONBOARDING: composer invites a conductor-only intent",
+        .getAttribute("placeholder")) === "Hey Eliza…",
+      "ONBOARDING: composer uses the canonical Eliza prompt",
     );
     // The composer accepts text for the local conductor; it never sends that
     // pre-auth text to the agent. Attachments and voice remain gated.

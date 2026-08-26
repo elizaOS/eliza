@@ -170,7 +170,12 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
 
   sessionExact("auth.password.change", "POST", "/api/auth/password/change"),
   sessionExact("auth.logout", "POST", "/api/auth/logout"),
-  sessionExact("auth.me", "GET", "/api/auth/me"),
+  // The route handler is the auth boundary for this probe: an unauthenticated
+  // remote caller receives only the typed reason + non-secret access metadata
+  // that lets the client choose owner login versus pairing. Pre-gating it as a
+  // session route erased that contract into a generic 401 before the handler
+  // ran, stranding password-configured first-run clients on PairingView.
+  publicExact("auth.me", "GET", "/api/auth/me"),
   sessionExact("auth.sessions", "GET", "/api/auth/sessions"),
   sessionRegex(
     "auth.sessions.revoke",

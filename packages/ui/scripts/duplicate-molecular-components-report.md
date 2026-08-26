@@ -1,6 +1,6 @@
 # Molecular component duplicate inventory
 
-Scanned 929 maintained React files. 68 exported compositions have a recognized molecular role and at least two atomic dependencies.
+Scanned 927 maintained React files. 68 exported compositions have a recognized molecular role and at least two atomic dependencies.
 
 Clusters share both a role and an atomic dependency signature. Detection creates a review queue; this committed report contains only final dispositions based on product behavior, state ownership, and responsive layout.
 
@@ -74,7 +74,7 @@ These owners are fail-closed contracts. The audit fails if an owner disappears, 
 
 ### dialog: button + input
 
-- `AccountDeletionDialog` in `packages/ui/src/cloud/account-security/components/account-deletion-dialog.tsx:30`
+- `AccountDeletionDialog` in `packages/ui/src/cloud/account-security/components/account-deletion-dialog.tsx:21`
 - `SigninSheet` in `packages/ui/src/components/settings/vault-tabs/OverviewTab.tsx:921`
 - Decision: **distinct-domain-compositions** — Account deletion and sign-in are unrelated workflows despite using the same atoms.
 
