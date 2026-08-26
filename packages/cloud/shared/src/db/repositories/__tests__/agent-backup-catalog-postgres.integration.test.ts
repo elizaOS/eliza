@@ -534,10 +534,10 @@ realPostgres("canonical backup catalogue contention", () => {
           : [],
         [
           ...(firstClaimPromise
-            ? [{ label: "settle tenant A claim", run: () => firstClaimPromise }]
+            ? [{ label: "settle tenant A claim", run: async () => { await firstClaimPromise; } }]
             : []),
           ...(secondClaimPromise
-            ? [{ label: "settle tenant B claim", run: () => secondClaimPromise }]
+            ? [{ label: "settle tenant B claim", run: async () => { await secondClaimPromise; } }]
             : []),
         ],
         [
@@ -611,7 +611,7 @@ realPostgres("canonical backup catalogue contention", () => {
         holderOpen
           ? [{ label: "rollback claim clock holder", run: () => holder.query("ROLLBACK") }]
           : [],
-        claimPromise ? [{ label: "settle claim clock operation", run: () => claimPromise }] : [],
+        claimPromise ? [{ label: "settle claim clock operation", run: async () => { await claimPromise; } }] : [],
         [
           { label: "close claim clock holder", run: () => holder.end() },
           { label: "close claim clock observer", run: () => observer.end() },
@@ -711,7 +711,7 @@ realPostgres("canonical backup catalogue contention", () => {
           ? [{ label: "rollback heartbeat clock holder", run: () => holder.query("ROLLBACK") }]
           : [],
         heartbeatPromise
-          ? [{ label: "settle heartbeat clock operation", run: () => heartbeatPromise }]
+          ? [{ label: "settle heartbeat clock operation", run: async () => { await heartbeatPromise; } }]
           : [],
         [
           { label: "close heartbeat clock holder", run: () => holder.end() },
@@ -802,7 +802,7 @@ realPostgres("canonical backup catalogue contention", () => {
           ? [{ label: "rollback heartbeat expiry holder", run: () => holder.query("ROLLBACK") }]
           : [],
         heartbeatPromise
-          ? [{ label: "settle heartbeat expiry operation", run: () => heartbeatPromise }]
+          ? [{ label: "settle heartbeat expiry operation", run: async () => { await heartbeatPromise; } }]
           : [],
         [
           { label: "close heartbeat expiry holder", run: () => holder.end() },
