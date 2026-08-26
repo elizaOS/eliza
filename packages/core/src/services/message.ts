@@ -9570,6 +9570,10 @@ export async function runV5MessageRuntimeStage1(args: {
 			});
 			earlyReplySent = delivered !== false;
 		}
+		// A deterministic tool call skips the planner entirely, so the planner
+		// provider recompose (~600ms of planner-only providers) buys nothing the
+		// executor or the structured-effect confirmation reads — Stage-1 state is
+		// the executor state for that path.
 		const plannerProviderNames = selectV5PlannerStateProviderNames({
 			runtime: args.runtime,
 			message: args.message,
@@ -9577,7 +9581,8 @@ export async function runV5MessageRuntimeStage1(args: {
 			userRoles: [senderRole],
 		});
 		const recomposedPlannerState =
-			typeof args.runtime.composeState === "function"
+			typeof args.runtime.composeState === "function" &&
+			!messageHandler.plan.deterministicToolCall
 				? // Reuse what the Stage-1 compose already ran for this message;
 					// refresh RECENT_MESSAGES only when an early reply actually
 					// changed history. An empty refresh set means maximum reuse;
