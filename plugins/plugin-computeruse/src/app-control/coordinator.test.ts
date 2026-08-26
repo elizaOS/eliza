@@ -370,6 +370,40 @@ describe("AppControlCoordinator", () => {
     expect(outcome.error).toContain("action-specific target readback");
   });
 
+  it("does not accept a sibling-window post-state as target readback", async () => {
+    const exactWindowPointer: AppExactWindowPointerDispatcher = {
+      available: () => true,
+      dispatch: vi.fn(async (input) => ({
+        success: true,
+        route: "experimental_direct_exact_window" as const,
+        observationId: input.state.stateId,
+        targetPid: app.pid,
+        targetWindowId: 17,
+        targetWindowBounds: { x: 100, y: 200, width: 800, height: 600 },
+        pointerBefore: { x: 10, y: 20 },
+        pointerAfter: { x: 10, y: 20 },
+      })),
+    };
+    const initial = nativeSnapshot();
+    initial.focusedWindowId = 17;
+    const fresh = nativeSnapshot();
+    fresh.focusedWindowId = 17;
+    const siblingWindow = nativeSnapshot("Saved");
+    siblingWindow.focusedWindowId = 18;
+    const snapshots = [initial, fresh, siblingWindow];
+    const { coordinator } = fixture({
+      snapshots,
+      exactWindowPointer,
+      performSuccess: false,
+    });
+    const before = await coordinator.getAppState(app.id);
+    const outcome = await coordinator.act(
+      action(before.stateId, { allowExperimentalExactWindow: true }),
+    );
+    expect(outcome.success).toBe(false);
+    expect(outcome.error).toContain("same-window");
+  });
+
   it("refuses an exact-window receipt with mismatched action target bounds", async () => {
     const exactWindowPointer: AppExactWindowPointerDispatcher = {
       available: () => true,

@@ -369,6 +369,9 @@ export class AppControlCoordinator {
       const after = await this.getAppState(request.app, { signal });
       const afterNative = this.states.get(request.app)?.nativeElements;
       if (
+        after.app.pid !== freshState.app.pid ||
+        after.focusedWindowId !== freshState.focusedWindowId ||
+        !sameValue(after.screenshotBounds, freshState.screenshotBounds) ||
         !afterNative ||
         targetReadbackSignature(
           fresh.nativeElements,
@@ -379,7 +382,7 @@ export class AppControlCoordinator {
         return {
           success: false,
           error:
-            "Experimental exact-window dispatch lacked action-specific target readback",
+            "Experimental exact-window dispatch lacked same-window action-specific target readback",
         };
       }
       return {

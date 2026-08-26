@@ -3,6 +3,7 @@
  * persisted shown-state for the onboarding soft-ask flow.
  */
 import type { PermissionId } from "@elizaos/shared/contracts/permissions";
+import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { getFrontendPlatform } from "../../platform/platform-guards";
 import { shellLocalStorage } from "../../surface-realm-channel";
 
@@ -125,6 +126,10 @@ export function resolvePrimingSet(
   opts: ResolvePrimingOptions = {},
 ): PermissionId[] {
   const platform = opts.platform ?? getFrontendPlatform();
+  // The Play/Cloud artifact intentionally omits the generic permission
+  // plugins. Voice owns its narrower RECORD_AUDIO request when the user invokes
+  // it, so onboarding must not advertise permissions this APK cannot request.
+  if (platform === "android" && isAndroidCloudBuild()) return [];
   const base = opts.only ?? PRIMING_SETS[platform] ?? [];
   return base.filter(
     (id): id is PermissionId => PRIMING_COPY[id] !== undefined,
