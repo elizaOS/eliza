@@ -109,13 +109,20 @@ See issue #9146.
 
 | Device profile | Supported? | Reason | Coding backends |
 |---|---|---|---|
-| Desktop / server (Node, non-store) | ✅ | — | all 4 |
-| Android direct/AOSP local-yolo (staged shell) | ✅ | — | all 4 |
+| Desktop / server (Node, non-store) | ✅ | — | all supported backends |
+| Android direct/AOSP local-yolo (staged shell) | ✅ | — | all supported backends |
 | iOS (vanilla mobile runtime) | ❌ | `vanilla_mobile` | none — stub action only |
 | Store build (sandboxed distribution) | ❌ | `store_build` | none — stub action only |
 | Android Play/store build (not local-yolo) | ❌ | `not_local_yolo` | none — stub action only |
 
-Linked-account enrollment and model inference are separate from executable coding-agent spawn. Claude subscription and OpenAI Codex accounts are the only linked-account transports currently bridged into coding sessions. Kimi and Z.AI coding-plan accounts can be enrolled for inference but do not register native spawn adapters; Grok/xAI has no linked-account or native spawn adapter yet. DeepSeek API credentials are inference-only, while its coding subscription remains unavailable. OpenRouter remains a generic model-routing option rather than a coding-account or spawn backend. Native Kimi, Z.AI, and Grok routes are tracked in #24096.
+Linked-account enrollment, model inference, and executable coding-agent spawn
+remain distinct capabilities. Claude subscription and OpenAI Codex accounts
+feed their native backends. Pi consumes isolated child-only routes for Z.AI and
+Kimi coding-plan keys plus DeepSeek, Z.AI, Moonshot, xAI, and OpenRouter API
+accounts. DeepSeek is API PAYG, not a consumer coding subscription; OpenRouter
+retains credits/BYOK billing and requires an explicit model. Native Kimi and
+Grok backends continue to use their provider-owned CLI OAuth state rather than
+these Pi key routes.
 
 Classifier precedence: `store_build` > `vanilla_mobile` (iOS) > `not_local_yolo`
 (Android non-yolo) > missing staged shell. When a device is supported every
@@ -144,7 +151,7 @@ preferred over API key):
 | Backend | Auth modes (preferred → fallback) |
 |---|---|
 | `elizaos` | runtime-routed |
-| `pi-agent` | runtime-routed |
+| `pi-agent` | Z.AI coding plan → Kimi coding plan → DeepSeek API → Z.AI API → Moonshot API → OpenRouter credits/BYOK → xAI API; runtime-routed fallback when no pooled account is selected |
 | `claude` | anthropic-subscription → anthropic-api |
 | `codex` | openai-codex → openai-api |
 | `kimi` | runtime-routed official CLI OAuth (not `kimi-coding` / `moonshot-api`) |
@@ -281,6 +288,7 @@ README → "GitHub credentials".
 | `ELIZA_AGENT_SELECTION_STRATEGY` | `fixed` | Adapter selection policy: `fixed` or `dynamic` |
 | `ELIZA_ELIZAOS_ACP_COMMAND` | `eliza-code-acp` | Native elizaOS ACP command |
 | `ELIZA_PI_AGENT_ACP_COMMAND` | `pi-agent` | Native Pi Agent ACP command |
+| `PI_CODING_AGENT_DIR` | spawn-managed | Private per-session Pi home containing `models.json` and `settings.json`; never configure on the parent runtime. |
 | `ELIZA_CODEX_ACP_COMMAND` | `npx -y @agentclientprotocol/codex-acp@1.1.2` | Native Codex ACP command. The manifest default and the legacy `@zed-industries` default select the isolated managed successor; any other custom command is executed verbatim. |
 | `ELIZA_CODEX_ACP_SANDBOX_MODE` / `ELIZA_CODEX_SANDBOX_MODE` | unset | Optional managed Codex ACP sandbox mode: `read-only`, `workspace-write`, or `danger-full-access`. The successor receives these as `INITIAL_AGENT_MODE`; custom commands are not rewritten. |
 | `ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE` | unset (required when Landlock unavailable) | Codex ACP sandbox mode used when Linux Landlock is unavailable. No default — unset/invalid throws `CODEX_NO_LANDLOCK_NO_FALLBACK` rather than widening to host access. |

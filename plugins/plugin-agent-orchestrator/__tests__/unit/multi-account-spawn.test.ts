@@ -123,7 +123,7 @@ interface FakeSelection {
   providerId: string;
   accountId: string;
   label: string;
-  source: "oauth" | "api-key";
+  source: "oauth" | "api-key" | "coding-plan-key";
   strategy: string;
   envPatch: Record<string, string>;
 }
@@ -277,6 +277,169 @@ describe("multi-account coding-agent spawn", () => {
       (result.metadata as Record<string, unknown>)?.account,
     ).toBeUndefined();
     await service.stop();
+  });
+
+  it("binds a Pi child to one private provider route and strips ambient keys", async () => {
+    const stateRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pi-spawn-route-"));
+    const previous = {
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      XAI_API_KEY: process.env.XAI_API_KEY,
+    };
+    process.env.OPENAI_API_KEY = "ambient-openai-key";
+    process.env.XAI_API_KEY = "ambient-xai-key";
+    installBridge({
+      "pi-agent": {
+        providerId: "deepseek-api",
+        accountId: "deepseek-primary",
+        label: "DeepSeek primary",
+        source: "api-key",
+        strategy: "least-used",
+        envPatch: { DEEPSEEK_API_KEY: "selected-deepseek-key" },
+      },
+    });
+    try {
+      const service = new AcpService(
+        runtime({
+          ELIZA_ACP_STATE_DIR: stateRoot,
+          ELIZA_PI_AGENT_ACP_COMMAND: "test-pi-agent",
+        }),
+      );
+      await service.start();
+      const result = await service.spawnSession({
+        name: "pi-deepseek",
+        agentType: "pi-agent",
+        workdir: "/tmp/acp-test",
+      });
+      const env = firstNativeClient().opts.env ?? {};
+      expect(env.ELIZA_PI_ROUTE_API_KEY).toBe("selected-deepseek-key");
+      expect(env.DEEPSEEK_API_KEY).toBeUndefined();
+      expect(env.OPENAI_API_KEY).toBeUndefined();
+      expect(env.XAI_API_KEY).toBeUndefined();
+      const piHome = env.PI_CODING_AGENT_DIR;
+      if (!piHome) throw new Error("missing private Pi home");
+      const models = fs.readFileSync(path.join(piHome, "models.json"), "utf8");
+      expect(models).toContain("ELIZA_PI_ROUTE_API_KEY");
+      expect(models).not.toContain("selected-deepseek-key");
+      expect(result.metadata).toMatchObject({
+        account: {
+          providerId: "deepseek-api",
+          accountId: "deepseek-primary",
+        },
+        piProvider: {
+          accountProviderId: "deepseek-api",
+          piProviderId: "eliza-deepseek",
+          billingMode: "api-payg",
+          model: "deepseek-chat",
+        },
+      });
+      expect(JSON.stringify(result.metadata)).not.toContain(
+        "selected-deepseek-key",
+      );
+      await service.stop();
+    } finally {
+      fs.rmSync(stateRoot, { recursive: true, force: true });
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
+  it("rematerializes and restamps a Pi route on cross-provider reconnect failover", async () => {
+    const stateRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), "pi-failover-route-"),
+    );
+    const select = vi.fn(
+      async (
+        _agentType: string,
+        opts: { accountIds?: string[]; exclude?: string[] },
+      ) => {
+        if (opts.accountIds?.includes("deepseek-primary")) return null;
+        if (opts.exclude?.includes("deepseek-primary")) {
+          return {
+            providerId: "zai-api",
+            accountId: "zai-secondary",
+            label: "Z.AI secondary",
+            source: "api-key" as const,
+            strategy: "least-used",
+            envPatch: { ZAI_API_KEY: "selected-zai-key" },
+          };
+        }
+        return {
+          providerId: "deepseek-api",
+          accountId: "deepseek-primary",
+          label: "DeepSeek primary",
+          source: "api-key" as const,
+          strategy: "least-used",
+          envPatch: { DEEPSEEK_API_KEY: "selected-deepseek-key" },
+        };
+      },
+    );
+    (globalThis as Record<symbol, unknown>)[BRIDGE_SYMBOL] = {
+      describe: () => ({}),
+      select,
+      markRateLimited: vi.fn(async () => undefined),
+      markNeedsReauth: vi.fn(async () => undefined),
+      recordUsage: vi.fn(async () => undefined),
+    };
+    try {
+      const service = new AcpService(
+        runtime({
+          ELIZA_ACP_STATE_DIR: stateRoot,
+          ELIZA_PI_AGENT_ACP_COMMAND: "test-pi-agent",
+        }),
+      );
+      await service.start();
+      const spawned = await service.spawnSession({
+        name: "pi-failover",
+        agentType: "pi-agent",
+        workdir: "/tmp/acp-test",
+      });
+
+      // Simulate a detached native client. Reconnect must pin the old account,
+      // fail over when it is unavailable, and attach exactly one replacement.
+      const internals = service as unknown as {
+        nativeClients: Map<string, MockNativeClient>;
+      };
+      internals.nativeClients.delete(spawned.sessionId);
+      await service.sendPrompt(spawned.sessionId, "continue");
+
+      expect(nativeClientMock.instances).toHaveLength(2);
+      const reconnectEnv = nativeClientMock.instances[1]?.opts.env ?? {};
+      expect(reconnectEnv.ELIZA_PI_ROUTE_API_KEY).toBe("selected-zai-key");
+      expect(reconnectEnv.ZAI_API_KEY).toBeUndefined();
+      expect(reconnectEnv.DEEPSEEK_API_KEY).toBeUndefined();
+      const piHome = reconnectEnv.PI_CODING_AGENT_DIR;
+      if (!piHome) throw new Error("missing failover Pi home");
+      const models = fs.readFileSync(path.join(piHome, "models.json"), "utf8");
+      expect(models).toContain('"zai"');
+      expect(models).toContain("ELIZA_PI_ROUTE_API_KEY");
+      expect(models).not.toContain("selected-zai-key");
+
+      const session = await service.getSession(spawned.sessionId);
+      expect(session?.metadata).toMatchObject({
+        account: { providerId: "zai-api", accountId: "zai-secondary" },
+        piProvider: {
+          accountProviderId: "zai-api",
+          piProviderId: "zai",
+          model: "glm-5.1",
+        },
+      });
+      expect(JSON.stringify(session?.metadata)).not.toContain(
+        "selected-zai-key",
+      );
+      expect(select).toHaveBeenCalledWith(
+        "pi-agent",
+        expect.objectContaining({ accountIds: ["deepseek-primary"] }),
+      );
+      expect(select).toHaveBeenCalledWith(
+        "pi-agent",
+        expect.objectContaining({ exclude: ["deepseek-primary"] }),
+      );
+      await service.stop();
+    } finally {
+      fs.rmSync(stateRoot, { recursive: true, force: true });
+    }
   });
 
   it("does not consult the bridge for non-multi-account agent types", async () => {

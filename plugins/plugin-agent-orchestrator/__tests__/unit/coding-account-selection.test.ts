@@ -22,15 +22,15 @@ function clearBridge() {
 afterEach(clearBridge);
 
 describe("isMultiAccountAgentType", () => {
-  it("is true for pool-rotated coding agents (claude/codex)", () => {
-    for (const t of ["claude", "codex", "CLAUDE", "Codex"]) {
+  it("is true for pool-rotated coding agents (claude/codex/Pi)", () => {
+    for (const t of ["claude", "codex", "pi-agent", "CLAUDE", "Codex"]) {
       expect(isMultiAccountAgentType(t)).toBe(true);
     }
   });
   it("is false for runtime/local agents and providers without a coding CLI", () => {
-    // elizaos/pi-agent authenticate via their own backend; z.ai/kimi/glm have
-    // no first-party coding CLI to spawn.
-    for (const t of ["elizaos", "pi-agent", "zai", "glm", "kimi", ""]) {
+    // elizaos authenticates through its runtime; provider names are not coding
+    // backends even when Pi can consume their selected accounts.
+    for (const t of ["elizaos", "zai", "glm", "kimi", ""]) {
       expect(isMultiAccountAgentType(t)).toBe(false);
     }
   });

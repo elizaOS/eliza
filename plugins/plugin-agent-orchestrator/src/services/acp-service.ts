@@ -70,6 +70,7 @@ import {
 import {
   accountMetaFromSessionMetadata,
   type CodingAccountMeta,
+  type CodingAccountSelection,
   diagnoseCodingAccountFallback,
   isRefreshTokenExpiryText,
   isTokenExpiryText,
@@ -109,6 +110,11 @@ import {
   isParentAgentBrokerWired,
   PARENT_AGENT_BROKER_MANIFEST_ENTRY,
 } from "./parent-agent-broker.js";
+import {
+  enforcePiProviderCredentialIsolation,
+  type PreparedPiProviderRoute,
+  preparePiProviderRoute,
+} from "./pi-provider-config.js";
 import {
   AcpSessionStore,
   InMemorySessionStore,
@@ -2082,7 +2088,7 @@ export class AcpService extends Service {
         ...(gitIndexIsolation?.env ?? {}),
         [CREDENTIAL_BRIDGE_TOKEN_ENV]: credentialBridgeToken.token,
       };
-      const spawnModel =
+      let spawnModel =
         agentType === "claude"
           ? normalizeClaudeAcpModelId(opts.model)
           : opts.model;
@@ -2094,11 +2100,32 @@ export class AcpService extends Service {
       const accountStrategy = resolveCodingAccountStrategy(
         this.setting("ELIZA_CODING_ACCOUNT_STRATEGY"),
       );
-      const resolvedAccount = await selectCodingAccount(agentType, {
-        sessionKey: id,
-        ...(accountStrategy ? { strategy: accountStrategy } : {}),
-        ...(spawnModel ? { model: spawnModel } : {}),
-      });
+      // A model-gateway route owns Pi billing and credentials, so it must not
+      // also select/stamp a pooled provider account. Without a gateway, a Pi
+      // account is resolved atomically with its private provider config below.
+      const resolvedAccount =
+        agentType === "pi-agent" && resolveModelGatewayConfig()
+          ? null
+          : await selectCodingAccount(agentType, {
+              sessionKey: id,
+              ...(accountStrategy ? { strategy: accountStrategy } : {}),
+              ...(spawnModel ? { model: spawnModel } : {}),
+            });
+      const piProviderRoute =
+        agentType === "pi-agent" && resolvedAccount
+          ? await preparePiProviderRoute({
+              sessionId: id,
+              stateRoot:
+                this.setting("ELIZA_ACP_STATE_DIR") ??
+                join(homedir(), ".eliza", "plugin-acp"),
+              selection: resolvedAccount.selection,
+              model: spawnModel,
+            })
+          : undefined;
+      if (piProviderRoute) {
+        Object.assign(sessionEnv, piProviderRoute.env);
+        spawnModel = piProviderRoute.summary.model;
+      }
       const customCredentials = resolvedAccount
         ? {
             ...(opts.customCredentials ?? {}),
@@ -2151,6 +2178,7 @@ export class AcpService extends Service {
           : {}),
         ...(gitIndexIsolation?.metadata ?? {}),
         ...(resolvedAccount ? { account: resolvedAccount.meta } : {}),
+        ...(piProviderRoute ? { piProvider: piProviderRoute.summary } : {}),
         [ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY]:
           this.getOrchestratorOwnedArtifacts(id),
         [CREDENTIAL_BRIDGE_TOKEN_HASH_METADATA]: credentialBridgeToken.hash,
@@ -5014,7 +5042,13 @@ export class AcpService extends Service {
       sessionKey: session.id,
       accountIds: [meta.accountId],
     });
-    if (pinned) return pinned.selection.envPatch;
+    if (pinned) {
+      const prepared = await this.prepareSessionAccountCredentials(
+        session,
+        pinned.selection,
+      );
+      return prepared.env;
+    }
     // Exclude the dud explicitly: it may still be pool-selectable (only its
     // token resolve failed), and re-picking it here would just re-fail.
     const failover = await selectCodingAccount(session.agentType, {
@@ -5047,8 +5081,58 @@ export class AcpService extends Service {
       now: failover.meta.accountId,
       providerId: failover.meta.providerId,
     });
-    await this.restampSessionAccount(session, failover.meta);
-    return failover.selection.envPatch;
+    // Resolve and materialize the complete route before changing durable
+    // billing attribution. A malformed provider/model/credential therefore
+    // fails closed without stamping a session to credentials no child used.
+    const prepared = await this.prepareSessionAccountCredentials(
+      session,
+      failover.selection,
+    );
+    await this.restampSessionAccount(
+      session,
+      failover.meta,
+      prepared.piProvider,
+    );
+    return prepared.env;
+  }
+
+  /**
+   * Turn a pooled account selection into the exact child credential surface.
+   * Pi is special: every prompt/reconnect must rewrite its session-private
+   * provider files and expose only the generic key those files reference.
+   */
+  private async prepareSessionAccountCredentials(
+    session: SessionInfo,
+    selection: CodingAccountSelection,
+  ): Promise<{
+    env: Record<string, string>;
+    piProvider?: PreparedPiProviderRoute["summary"];
+  }> {
+    if (session.agentType !== "pi-agent") {
+      return { env: selection.envPatch };
+    }
+    const storedModel = session.metadata?.[ACP_METADATA_SPAWN_MODEL];
+    const storedProvider = session.metadata?.piProvider;
+    const sameProvider =
+      typeof storedProvider === "object" &&
+      storedProvider !== null &&
+      "accountProviderId" in storedProvider &&
+      storedProvider.accountProviderId === selection.providerId;
+    const route = await preparePiProviderRoute({
+      sessionId: session.id,
+      stateRoot:
+        this.setting("ELIZA_ACP_STATE_DIR") ??
+        join(homedir(), ".eliza", "plugin-acp"),
+      selection,
+      // Preserve the chosen model while rotating sibling accounts of the same
+      // provider. A cross-provider failover takes the destination's truthful
+      // default instead of sending (for example) a DeepSeek-only id to Z.AI.
+      model:
+        sameProvider && typeof storedModel === "string"
+          ? storedModel
+          : undefined,
+    });
+    return { env: route.env, piProvider: route.summary };
   }
 
   /**
@@ -5062,8 +5146,18 @@ export class AcpService extends Service {
   private async restampSessionAccount(
     session: SessionInfo,
     meta: CodingAccountMeta,
+    piProvider?: PreparedPiProviderRoute["summary"],
   ): Promise<void> {
-    const metadata = { ...(session.metadata ?? {}), account: meta };
+    const metadata = {
+      ...(session.metadata ?? {}),
+      account: meta,
+      ...(piProvider
+        ? {
+            piProvider,
+            [ACP_METADATA_SPAWN_MODEL]: piProvider.model,
+          }
+        : {}),
+    };
     // Durable session and task/billing consumers must agree before credentials
     // for the new account can reach a child process. A partial re-key is a
     // wrong-account billing defect, not a diagnostics-only degradation.
@@ -5290,6 +5384,12 @@ export class AcpService extends Service {
           : undefined,
         excludedProviderKeys: [...MODEL_GATEWAY_EXCLUDED_PROVIDER_KEYS],
       });
+    }
+    // A selected Pi provider must remain the only billable model authority in
+    // the child. The private models.json references ELIZA_PI_ROUTE_API_KEY, so
+    // every ambient provider key can be removed after all env merge steps.
+    if (agentType === "pi-agent") {
+      enforcePiProviderCredentialIsolation(env);
     }
     // Credential-proxy mode (#11536 E3) — the NON-MODEL sibling of the gateway
     // block above. Independent env keys (VCS PATs + GIT_CONFIG_*), so it never

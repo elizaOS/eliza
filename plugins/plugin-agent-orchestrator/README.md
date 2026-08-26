@@ -52,7 +52,16 @@ Adapter packaging decision: this release does not vendor the Codex or Claude ACP
 
 `coding-agent-adapters` is a runtime registry/API dependency used by this plugin's agent inventory and routes; it is not a bundled Codex or Claude ACP adapter executable.
 
-Linked-account enrollment and model inference are separate from executable coding-agent spawn. Claude subscription and OpenAI Codex accounts are the only linked-account transports bridged into coding sessions. Kimi's saved coding-plan key remains inference-only and is separate from the native Kimi CLI OAuth session; Grok likewise uses provider-owned CLI OAuth rather than a linked xAI API credential. DeepSeek and Z.AI credentials remain inference-only. OpenRouter remains a generic model-routing option rather than a coding-account or spawn backend.
+Linked-account enrollment and model inference remain separate from executable
+coding-agent spawn. Claude subscription and OpenAI Codex accounts feed their
+native backends. The Pi backend can instead consume a selected Z.AI or Kimi
+coding-plan key, or a DeepSeek, Z.AI, Moonshot, xAI, or OpenRouter API account.
+Each spawn receives a mode-0700 private Pi home whose config references a
+child-only environment variable; the credential itself is never written to
+disk. Coding-plan endpoints remain pinned to plan quota, DeepSeek and the other
+direct APIs remain PAYG, and OpenRouter remains credits/BYOK with an explicit
+arbitrary model. Native Kimi and Grok adapters still use provider-owned CLI
+OAuth and never reuse these API credentials.
 
 ## Quick start
 
@@ -157,6 +166,7 @@ second credential broker, and child trajectories retain their session join key.
 | `ELIZA_ACP_WARM_SPAWN` | unset | Set to `1` to keep one pre-initialized native `elizaos` child ready. It starts without session credentials, accepts one authenticated environment claim, and is disposed after that session; unclaimed children are recycled after two minutes. |
 | `ELIZA_ELIZAOS_ACP_COMMAND` | `eliza-code-acp` | Native elizaOS ACP command. |
 | `ELIZA_PI_AGENT_ACP_COMMAND` | `pi-agent` | Native Pi Agent ACP command. |
+| `PI_CODING_AGENT_DIR` | spawn-managed | Private per-session Pi home. The orchestrator writes `models.json` and `settings.json`; do not configure it on the parent runtime. |
 | `ELIZA_CODEX_ACP_COMMAND` | `npx -y @agentclientprotocol/codex-acp@1.1.2` | Native Codex ACP command. The manifest default and the legacy `@zed-industries` default select the isolated managed successor; any other custom command is executed verbatim. |
 | `ELIZA_CODEX_ACP_SANDBOX_MODE` / `ELIZA_CODEX_SANDBOX_MODE` | unset | Optional managed Codex ACP sandbox mode: `read-only`, `workspace-write`, or `danger-full-access`. The successor receives these as `INITIAL_AGENT_MODE`; custom commands are not rewritten. |
 | `ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE` | unset (required when Landlock unavailable) | Codex ACP sandbox mode used when Linux Landlock is unavailable. No default — unset/invalid throws `CODEX_NO_LANDLOCK_NO_FALLBACK` rather than widening to host access. |
