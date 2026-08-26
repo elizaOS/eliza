@@ -426,9 +426,10 @@ describeE2E("Group H — POST /api/cron/agent-billing", () => {
 // ─────────────────────────────────────────────────────────────────────────
 describeE2E("Group H — POST /api/crypto/payments/:id/confirm", () => {
   test("auth gate: missing credentials → 401", async () => {
-    const res = await api.post("/api/crypto/payments/missing-id/confirm", {
-      transactionHash: VALID_ETH_TX_HASH,
-    });
+    const res = await api.post(
+      "/api/crypto/payments/00000000-0000-0000-0000-000000000000/confirm",
+      { transactionHash: VALID_ETH_TX_HASH },
+    );
     expect(res.status).toBe(401);
   });
 
@@ -441,6 +442,24 @@ describeE2E("Group H — POST /api/crypto/payments/:id/confirm", () => {
     // requireUserWithOrg is session-based; API keys never satisfy it.
     expect(res.status).toBe(401);
   });
+
+  testSession(
+    "validation: with a session, malformed payment id → 400",
+    async () => {
+      if (!sessionCookie) throw new Error("session cookie missing");
+      const res = await api.post(
+        "/api/crypto/payments/not-a-uuid/confirm",
+        { transactionHash: VALID_ETH_TX_HASH },
+        {
+          headers: sameOriginBrowserHeaders({
+            Cookie: sessionCookie,
+            "Content-Type": "application/json",
+          }),
+        },
+      );
+      expect(res.status).toBe(400);
+    },
+  );
 
   testSession(
     "happy path: with a session, unknown payment id → 404",
