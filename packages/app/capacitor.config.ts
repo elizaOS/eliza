@@ -108,32 +108,6 @@ const iosApiBase = storeSafeAgentApiBase(
   iosRuntimeMode,
 );
 
-export function resolveRemoteFallbackNavigationHost(
-  value: string | undefined,
-): string | null {
-  const trimmed = value?.trim();
-  if (!trimmed) return null;
-  const parsed = new URL(trimmed);
-  if (
-    parsed.protocol !== "https:" ||
-    parsed.username ||
-    parsed.password ||
-    parsed.port ||
-    parsed.search ||
-    parsed.hash ||
-    parsed.pathname.replace(/\/+$/, "") !== ""
-  ) {
-    throw new Error(
-      "VITE_ELIZA_REMOTE_FALLBACK_API_BASE must be a credential-free root HTTPS origin without a custom port",
-    );
-  }
-  return parsed.hostname;
-}
-
-const remoteFallbackNavigationHost = resolveRemoteFallbackNavigationHost(
-  process.env.VITE_ELIZA_REMOTE_FALLBACK_API_BASE,
-);
-
 function resolveServerUrl(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   if (!trimmed || isIosStoreBuild()) return undefined;
@@ -240,7 +214,6 @@ const config: CapacitorConfig = {
       "*.elizacloud.ai",
       "eliza.app",
       "*.eliza.app",
-      ...(remoteFallbackNavigationHost ? [remoteFallbackNavigationHost] : []),
     ],
   },
   plugins: {

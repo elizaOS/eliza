@@ -5742,6 +5742,55 @@ export function resolveAndroidLp3ColorPolicyBuildEnv(env = process.env) {
   };
 }
 
+export function enforceAndroidLp3RemoteFallbackBuildPolicy({
+  targetName,
+  env = process.env,
+}) {
+  const required = ["1", "true", "yes"].includes(
+    String(env.ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED ?? "")
+      .trim()
+      .toLowerCase(),
+  );
+  if (!required) return;
+  if (
+    targetName !== "android-cloud-debug" ||
+    !isAndroidLp3ColorPolicyEnabled(env)
+  ) {
+    throw new Error(
+      "[mobile-build] ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED is restricted to the LP3 android-cloud-debug direct profile.",
+    );
+  }
+  const raw = String(env.VITE_ELIZA_REMOTE_FALLBACK_API_BASE ?? "").trim();
+  if (!raw) {
+    throw new Error(
+      "[mobile-build] the LP3 VPS profile requires VITE_ELIZA_REMOTE_FALLBACK_API_BASE",
+    );
+  }
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch (cause) {
+    // error-policy:J2 preserve the parser cause while adding build-profile context.
+    throw new Error(
+      "[mobile-build] VITE_ELIZA_REMOTE_FALLBACK_API_BASE must be a valid root HTTPS origin",
+      { cause },
+    );
+  }
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.username ||
+    parsed.password ||
+    parsed.port ||
+    parsed.search ||
+    parsed.hash ||
+    parsed.pathname.replace(/\/+$/, "") !== ""
+  ) {
+    throw new Error(
+      "[mobile-build] VITE_ELIZA_REMOTE_FALLBACK_API_BASE must be a credential-free root HTTPS origin without a custom port",
+    );
+  }
+}
+
 // LP3 is an elizaOS direct-debug policy, never a whitelabel capability. Build
 // entrypoints pass their resolved identity explicitly so nested hosts cannot
 // leak ambient branding into these pure policy helpers.
@@ -8663,6 +8712,10 @@ export async function runAndroidBuild(
     targetName: target.target,
     env: resolvedEnv,
     appId: APP.appId,
+  });
+  enforceAndroidLp3RemoteFallbackBuildPolicy({
+    targetName: target.target,
+    env: resolvedEnv,
   });
   runAndroidTargetPhase(target, ANDROID_PREFLIGHTS, "preflightKey", {
     env: resolvedEnv,

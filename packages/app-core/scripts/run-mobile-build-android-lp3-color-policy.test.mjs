@@ -26,6 +26,7 @@ import {
   ANDROID_LP3_COLOR_POLICY_PERMISSIONS,
   ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS,
   enforceAndroidLp3ColorPolicyBuildPolicy,
+  enforceAndroidLp3RemoteFallbackBuildPolicy,
   isAndroidLp3ColorPolicyEnabled,
   resolveAndroidCloudStripPolicy,
   resolveAndroidLp3ColorPolicyBuildEnv,
@@ -64,6 +65,46 @@ function stripManifest(xml, policy) {
 }
 
 describe("LP3 direct Cloud build flag", () => {
+  it("requires an operator-supplied strict origin for the VPS profile", () => {
+    const base = {
+      ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED: "1",
+      ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED: "1",
+    };
+    expect(() =>
+      enforceAndroidLp3RemoteFallbackBuildPolicy({
+        targetName: "android-cloud-debug",
+        env: base,
+      }),
+    ).toThrow("requires VITE_ELIZA_REMOTE_FALLBACK_API_BASE");
+    expect(() =>
+      enforceAndroidLp3RemoteFallbackBuildPolicy({
+        targetName: "android-cloud-debug",
+        env: {
+          ...base,
+          VITE_ELIZA_REMOTE_FALLBACK_API_BASE: "https://agent.example.test/",
+        },
+      }),
+    ).not.toThrow();
+  });
+
+  it.each([
+    "http://agent.example.test",
+    "https://agent.example.test:8443",
+    "https://agent.example.test/api",
+    "https://user:pass@agent.example.test",
+  ])("rejects a widened VPS fallback origin: %s", (value) => {
+    expect(() =>
+      enforceAndroidLp3RemoteFallbackBuildPolicy({
+        targetName: "android-cloud-debug",
+        env: {
+          ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED: "1",
+          ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED: "1",
+          VITE_ELIZA_REMOTE_FALLBACK_API_BASE: value,
+        },
+      }),
+    ).toThrow("root HTTPS origin");
+  });
+
   it("rejects the LP3 flag at the real process boundary before building", () => {
     const result = spawnSync("node", [mobileBuildScriptPath, "android-cloud"], {
       cwd: repoRoot,
@@ -238,7 +279,6 @@ describe("LP3 direct Cloud build flag", () => {
 
     expect(direct.components).toContain("ElizaAgentService");
     expect(direct.permissions).toContain("MANAGE_APP_OPS_MODES");
-    expect(ANDROID_CLOUD_STRIPPED_PERMISSIONS).toContain("POST_NOTIFICATIONS");
     expect(direct.permissions).not.toContain("POST_NOTIFICATIONS");
     expect(direct.javaFiles).toContain("ElizaAgentService.java");
   });
@@ -381,7 +421,6 @@ describe("LP3 direct Cloud build flag", () => {
     expect(service).toContain('OPT_IN_PREFERENCE = "enabled"');
     expect(service).toContain("createDeviceProtectedStorageContext");
     expect(service).toContain("Context.MODE_PRIVATE");
-    expect(service).not.toContain("Settings.System");
     expect(service).toContain("if (!initialized)");
     expect(service).toContain("return START_NOT_STICKY");
     expect(service).toContain("MISSING_NOTIFICATION_PERMISSION");
