@@ -44,6 +44,27 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).not.toContain("SYSTEM_UI_FLAG_");
   });
 
+  it("keeps lock-task and Back suppression out of ordinary Cloud builds", () => {
+    const source = cloudSafeMainActivityJava("ai.elizaos.app");
+
+    expect(source).not.toContain("OnBackPressedCallback");
+    expect(source).not.toContain("startLockTask()");
+  });
+
+  it("pins the launcher task and suppresses Back only in the kiosk launcher", () => {
+    const source = cloudSafeMainActivityJava("ai.elizaos.app", {
+      launcherKiosk: true,
+    });
+
+    expect(source).toContain("import androidx.activity.OnBackPressedCallback;");
+    expect(source).toContain("new OnBackPressedCallback(true)");
+    expect(source).toContain("public void handleOnBackPressed()");
+    expect(source).toContain("startLockTask();");
+    expect(source).toContain(
+      "IllegalArgumentException | IllegalStateException | SecurityException",
+    );
+  });
+
   it("captures cold and warm deep links before Capacitor dispatches them", () => {
     const source = cloudSafeMainActivityJava("ai.elizaos.app");
     const coldCapture = source.indexOf(

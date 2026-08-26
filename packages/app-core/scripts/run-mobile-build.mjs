@@ -6090,7 +6090,33 @@ function cloudBrandUserAgentMarkerLines() {
     .join("\n");
 }
 
-export function cloudSafeMainActivityJava(androidPackage) {
+export function cloudSafeMainActivityJava(
+  androidPackage,
+  { launcherKiosk = false } = {},
+) {
+  const launcherImports = launcherKiosk
+    ? `import androidx.activity.OnBackPressedCallback;
+`
+    : "";
+  const launcherSetup = launcherKiosk
+    ? `
+        // The launcher owns the device surface. Keep Back from finishing the
+        // root activity, then enter Android lock-task mode. A managed device
+        // owner can allowlist this package for silent kiosk; an unmanaged
+        // Pixel receives Android's recoverable screen-pinning confirmation.
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                // Intentionally stay on the launcher root.
+            }
+        });
+        try {
+            startLockTask();
+        } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
+            Log.w(TAG, "Unable to enter launcher lock-task mode", e);
+        }
+`
+    : "";
   return `package ${androidPackage};
 
 import android.os.Build;
@@ -6103,6 +6129,7 @@ import android.webkit.WebView;
 import androidx.core.splashscreen.SplashScreen;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
+${launcherImports}
 
 import com.getcapacitor.BridgeActivity;
 
@@ -6146,8 +6173,9 @@ ${cloudBrandUserAgentMarkerLines()}
         registerPlugin(ElizaPlayVoicePlugin.class);
 
         super.onCreate(savedInstanceState);
+${launcherSetup}
 
-        // Draw the minimal Cloud shell behind transparent system bars while
+        // Draw the Cloud shell behind transparent system bars while
         // keeping both bars visible and user-controlled. This uses only the
         // public AndroidX edge-to-edge API and avoids white-on-white status
         // icons on the signed-out screen.
@@ -6740,7 +6768,11 @@ public class ElizaTasksWorker extends Worker {
 `;
 }
 
-function rewriteCloudJavaSources(javaRoots, androidPackage) {
+function rewriteCloudJavaSources(
+  javaRoots,
+  androidPackage,
+  { launcherKiosk = false } = {},
+) {
   let touched = 0;
   for (const root of javaRoots) {
     if (!fs.existsSync(root)) continue;
@@ -6748,7 +6780,7 @@ function rewriteCloudJavaSources(javaRoots, androidPackage) {
     if (fs.existsSync(mainActivity)) {
       fs.writeFileSync(
         mainActivity,
-        cloudSafeMainActivityJava(androidPackage),
+        cloudSafeMainActivityJava(androidPackage, { launcherKiosk }),
         "utf8",
       );
       touched += 1;
@@ -7502,7 +7534,9 @@ function stripAndroidForCloud({ env = process.env } = {}) {
       `[mobile-build] Removed ${removedJavaRootCount} inactive Android Java source root(s).`,
     );
   }
-  rewriteCloudJavaSources(javaRoots, androidPackage);
+  rewriteCloudJavaSources(javaRoots, androidPackage, {
+    launcherKiosk: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
+  });
 
   const testJavaRoots = [
     path.join(
@@ -7860,7 +7894,7 @@ export async function runAndroidBuild(
     });
   }
   runAndroidTargetPhase(target, ANDROID_SOURCE_STRIPS, "stripSourceKey", {
-    env: resolvedEnv,
+    env: targetEnv,
   });
   runAndroidTargetPhase(
     target,
