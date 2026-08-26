@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const apiWithStatusMock = vi.hoisted(() => vi.fn());
 vi.mock("../../lib/api-client", () => ({
-  apiWithStatus: apiWithStatusMock,
+  apiWithStatusAndHeaders: apiWithStatusMock,
 }));
 
 import {
@@ -28,19 +28,23 @@ function receipt(
 ) {
   const projection = {
     accepted: {
-      billingStopped: false,
+      computeStopped: false,
+      providerStopped: false,
       infrastructureStatus: "queued",
     },
     provider_confirmed: {
-      billingStopped: true,
+      computeStopped: true,
+      providerStopped: true,
       infrastructureStatus: "provider_confirmed",
     },
     conflict: {
-      billingStopped: false,
+      computeStopped: false,
+      providerStopped: false,
       infrastructureStatus: "superseded",
     },
     terminal_attention: {
-      billingStopped: false,
+      computeStopped: false,
+      providerStopped: false,
       infrastructureStatus: "terminal_attention",
     },
   }[status];
@@ -53,6 +57,7 @@ function receipt(
     expectedLifecycleRevision: 7,
     status,
     ...projection,
+    retainedBackupBilling: { status: "not_applicable", ratePerHour: null },
     acceptedAt: "2026-08-23T10:20:30.000Z",
     pollEndpoint: POLL_ENDPOINT,
   };
@@ -82,7 +87,10 @@ describe("requestBillingCancellation", () => {
     expect(result.receipt.status).toBe("accepted");
     expect(apiWithStatusMock).toHaveBeenCalledWith(ENDPOINT, {
       method: "POST",
-      headers: { "Idempotency-Key": "billing-cancel:test-key" },
+      headers: {
+        "Idempotency-Key": "billing-cancel:test-key",
+        "X-Eliza-Billing-Cancel-Version": "2",
+      },
       json: {
         resourceType: "container",
         mode: "stop",
@@ -137,13 +145,34 @@ describe("requestBillingCancellation", () => {
     });
   });
 
-  it("rejects a receipt whose billingStopped claim contradicts status", async () => {
+  it("preserves Retry-After from a rate-limited receipt poll", async () => {
+    apiWithStatusMock.mockResolvedValue({
+      status: 429,
+      data: { code: "rate_limited", error: "Try later" },
+      headers: new Headers({ "Retry-After": "7" }),
+    });
+
+    await expect(
+      readBillingCancellationReceipt(POLL_ENDPOINT, {
+        resourceType: "container",
+        resourceId: RESOURCE_ID,
+        expectedLifecycleRevision: 7,
+        receiptId: RECEIPT_ID,
+      }),
+    ).rejects.toMatchObject({
+      status: 429,
+      retryable: true,
+      retryAfterMs: 7_000,
+    });
+  });
+
+  it("rejects a receipt whose computeStopped claim contradicts status", async () => {
     apiWithStatusMock.mockResolvedValue({
       status: 202,
       data: {
         success: true,
         disposition: "accepted",
-        receipt: { ...receipt(), billingStopped: true },
+        receipt: { ...receipt(), computeStopped: true },
       },
     });
 
@@ -187,8 +216,36 @@ describe("readBillingCancellationReceipt", () => {
     });
     expect(result).toMatchObject({
       status: "provider_confirmed",
-      billingStopped: true,
+      computeStopped: true,
+      providerStopped: true,
       infrastructureStatus: "provider_confirmed",
+    });
+  });
+
+  it("retains the explicit agent backup billing rate after compute stops", async () => {
+    apiWithStatusMock.mockResolvedValue({
+      status: 200,
+      data: {
+        success: true,
+        receipt: {
+          ...receipt("provider_confirmed"),
+          resourceType: "agent_sandbox",
+          retainedBackupBilling: { status: "billable", ratePerHour: 0.0025 },
+        },
+      },
+    });
+
+    await expect(
+      readBillingCancellationReceipt(POLL_ENDPOINT, {
+        resourceType: "agent_sandbox",
+        resourceId: RESOURCE_ID,
+        expectedLifecycleRevision: 7,
+        receiptId: RECEIPT_ID,
+      }),
+    ).resolves.toMatchObject({
+      computeStopped: true,
+      providerStopped: true,
+      retainedBackupBilling: { status: "billable", ratePerHour: 0.0025 },
     });
   });
 

@@ -10,6 +10,7 @@ import { ApiError } from "@/lib/api/cloud-worker-errors";
 const requireCurrentBillingManagerSession = mock();
 const requestCancellation = mock();
 const resolveCancellationTarget = mock();
+const readReceipt = mock();
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireCurrentBillingManagerSession,
@@ -19,12 +20,20 @@ mock.module("@/lib/services/active-billing", () => ({
   activeBillingService: { requestCancellation, resolveCancellationTarget },
 }));
 
+mock.module("@/lib/services/billing-resource-cancellations", () => ({
+  billingResourceCancellationsService: { readReceipt },
+}));
+
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   moneyRateLimit:
     () =>
     async (_context: unknown, next: () => Promise<void>): Promise<void> =>
       await next(),
-  RateLimitPresets: { STANDARD: {} },
+  rateLimit:
+    () =>
+    async (_context: unknown, next: () => Promise<void>): Promise<void> =>
+      await next(),
+  RateLimitPresets: { RELAXED: {}, STANDARD: {} },
 }));
 
 mock.module("@/lib/utils/logger", () => ({
@@ -43,6 +52,7 @@ beforeEach(() => {
     resourceType: "container",
     lifecycleRevision: 7,
   });
+  readReceipt.mockReset();
   requestCancellation.mockResolvedValue({
     disposition: "accepted",
     receipt: {
@@ -61,9 +71,61 @@ beforeEach(() => {
       pollEndpoint: "/api/v1/jobs/00000000-0000-4000-8000-000000000003",
     },
   });
+  readReceipt.mockResolvedValue({
+    receiptId: "00000000-0000-4000-8000-000000000002",
+    jobId: "00000000-0000-4000-8000-000000000003",
+    resourceId: "00000000-0000-4000-8000-000000000001",
+    resourceType: "container",
+    action: "stop",
+    expectedLifecycleRevision: 7,
+    status: "accepted",
+    computeStopped: false,
+    providerStopped: false,
+    retainedBackupBilling: { status: "not_applicable", ratePerHour: null },
+    infrastructureStatus: "queued",
+    acceptedAt: "2026-08-23T00:00:00.000Z",
+    pollEndpoint:
+      "/api/v1/billing/resources/00000000-0000-4000-8000-000000000001/cancel?receiptId=00000000-0000-4000-8000-000000000002",
+  });
 });
 
 describe("billing resource cancellation authorization", () => {
+  test("reads a tenant-scoped version-2 receipt without using the money mutation limiter", async () => {
+    requireCurrentBillingManagerSession.mockResolvedValue({
+      id: "owner-1",
+      organization_id: "org-current",
+      role: "owner",
+      steward_id: "steward-owner",
+    });
+    const response = await app.request(
+      "https://api.test/api/v1/billing/resources/00000000-0000-4000-8000-000000000001/cancel?receiptId=00000000-0000-4000-8000-000000000002",
+      { headers: { "X-Eliza-Billing-Cancel-Version": "2" } },
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("X-Eliza-Billing-Cancel-Version")).toBe("2");
+    expect(readReceipt).toHaveBeenCalledWith({
+      organizationId: "org-current",
+      resourceId: "00000000-0000-4000-8000-000000000001",
+      receiptId: "00000000-0000-4000-8000-000000000002",
+    });
+    expect(requestCancellation).not.toHaveBeenCalled();
+  });
+
+  test("rejects receipt polling without the explicit version-2 contract", async () => {
+    requireCurrentBillingManagerSession.mockResolvedValue({
+      id: "owner-1",
+      organization_id: "org-current",
+      role: "owner",
+      steward_id: "steward-owner",
+    });
+    const response = await app.request(
+      "https://api.test/api/v1/billing/resources/00000000-0000-4000-8000-000000000001/cancel?receiptId=00000000-0000-4000-8000-000000000002",
+    );
+    expect(response.status).toBe(400);
+    expect(readReceipt).not.toHaveBeenCalled();
+  });
+
   test("normalizes the published empty-body and delete contracts to durable stops", async () => {
     requireCurrentBillingManagerSession.mockResolvedValue({
       id: "owner-1",

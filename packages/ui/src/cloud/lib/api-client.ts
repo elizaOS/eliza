@@ -91,6 +91,7 @@ export class ApiError extends Error {
     public readonly code: string,
     message: string,
     public readonly body?: unknown,
+    public readonly responseHeaders?: Headers,
   ) {
     super(message);
     this.name = "ApiError";
@@ -523,7 +524,7 @@ export async function apiFetch(
     }
     const payload = await readPayload(res, false);
     const { code, message } = errorDetails(payload, res.status);
-    throw new ApiError(res.status, code, message, payload);
+    throw new ApiError(res.status, code, message, payload, res.headers);
   }
 
   return res;
@@ -574,6 +575,40 @@ export async function apiWithStatus<T = unknown>(
     // (status 0 URL-policy throws, network TypeErrors) rethrow untouched.
     if (err instanceof ApiError && err.status > 0) {
       return { status: err.status, data: err.body as T };
+    }
+    throw err;
+  }
+}
+
+/** Status-aware API response that retains protocol headers such as Retry-After. */
+export interface ApiStatusWithHeadersResult<T> extends ApiStatusResult<T> {
+  headers: Headers;
+}
+
+/**
+ * Header-preserving variant for protocols whose recovery timing is carried in
+ * response headers. Existing status-only consumers keep the smaller contract.
+ */
+export async function apiWithStatusAndHeaders<T = unknown>(
+  path: string,
+  init: ApiRequestInit = {},
+): Promise<ApiStatusWithHeadersResult<T>> {
+  try {
+    const res = await apiFetch(path, init);
+    return {
+      status: res.status,
+      data: (await readPayload(res, false)) as T,
+      headers: res.headers,
+    };
+  } catch (err) {
+    // error-policy:J1 boundary translation — preserve the real HTTP status,
+    // parsed body, and recovery headers while transport failures still throw.
+    if (err instanceof ApiError && err.status > 0) {
+      return {
+        status: err.status,
+        data: err.body as T,
+        headers: err.responseHeaders ?? new Headers(),
+      };
     }
     throw err;
   }

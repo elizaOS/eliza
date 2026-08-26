@@ -785,7 +785,7 @@ function activeComputeCancellationControl(
   if (
     !Number.isSafeInteger(resource.lifecycleRevision) ||
     resource.lifecycleRevision < 0 ||
-    (resource.cancelAction !== "stop" && resource.cancelAction !== "suspend_billing") ||
+    (resource.cancelAction !== "stop" && resource.cancelAction !== "stop_compute") ||
     typeof resource.cancelEndpoint !== "string" ||
     resource.cancelEndpoint.length === 0
   ) {

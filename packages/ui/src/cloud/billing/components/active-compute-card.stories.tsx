@@ -74,7 +74,7 @@ const SANDBOX: BillingSnapshotResource = {
   nextBillingAt: null,
   estimatedNextBillingAt: "2026-08-23T12:34:56.000Z",
   cancellationControl: {
-    displayAction: "suspend_billing",
+    displayAction: "stop_compute",
     method: "POST",
     mode: "stop",
     endpoint:
@@ -180,6 +180,9 @@ export const CancellationProviderConfirmed: Story = {
       [CONTAINER_CANCELLATION_KEY]: {
         kind: "provider_confirmed",
         receiptId: RECEIPT_ID,
+        computeStopped: true,
+        providerStopped: true,
+        retainedBackupBilling: { status: "not_applicable", ratePerHour: null },
       },
     },
   },

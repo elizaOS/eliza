@@ -64,6 +64,10 @@ class MemoryStorage implements BillingCancelIntentStorage {
   get size(): number {
     return this.values.size;
   }
+
+  entries(): Array<[string, string]> {
+    return [...this.values.entries()];
+  }
 }
 
 class QuotaDeniedStorage extends MemoryStorage {
@@ -473,7 +477,7 @@ describe("billing cancellation receipt compare-and-swap", () => {
 });
 
 describe("billing cancellation persisted schema", () => {
-  it("rejects an unknown persisted field instead of trusting partial state", async () => {
+  it("quarantines corrupt data and reserves a fresh recoverable intent", async () => {
     const storage = new MemoryStorage();
     const key = billingCancelIntentStorageKey(identity());
     storage.setItem(
@@ -493,14 +497,46 @@ describe("billing cancellation persisted schema", () => {
       randomUUID: () => uuid(2),
     });
 
-    await expectCoordinationCode(
-      coordinator.readExact(identity()),
-      "BILLING_CANCEL_COORDINATION_STORAGE_CORRUPT",
-    );
-    await expectCoordinationCode(
-      coordinator.readBoundForResource(identity()),
-      "BILLING_CANCEL_COORDINATION_STORAGE_CORRUPT",
-    );
+    await expect(coordinator.readExact(identity())).resolves.toBeNull();
+    const recovered = await coordinator.reserve(identity());
+    expect(recovered.idempotencyKey).toBe(uuid(2));
+    const quarantine = storage
+      .entries()
+      .find(([storedKey]) => storedKey === `${key}:quarantine:v1`);
+    expect(quarantine).toBeDefined();
+    expect(JSON.parse(quarantine?.[1] ?? "{}")).toMatchObject({
+      version: 1,
+      reason: "BILLING_CANCEL_COORDINATION_STORAGE_CORRUPT",
+    });
     expect(key.startsWith(BILLING_CANCEL_INTENT_STORAGE_PREFIX)).toBe(true);
+  });
+
+  it("quarantines a forward-version slot before creating current schema state", async () => {
+    const storage = new MemoryStorage();
+    const key = billingCancelIntentStorageKey(identity());
+    storage.setItem(
+      key,
+      JSON.stringify({
+        version: 2,
+        ...identity(),
+        idempotencyKey: uuid(1),
+        receiptId: null,
+        pollEndpoint: null,
+      }),
+    );
+    const coordinator = createBillingCancelIntentCoordinator({
+      localStorage: storage,
+      lockManager: new SerialLockManager(),
+      randomUUID: () => uuid(3),
+    });
+
+    await expect(coordinator.reserve(identity())).resolves.toMatchObject({
+      idempotencyKey: uuid(3),
+    });
+    const quarantine = storage.getItem(`${key}:quarantine:v1`);
+    expect(JSON.parse(quarantine ?? "{}")).toMatchObject({
+      version: 1,
+      reason: "BILLING_CANCEL_COORDINATION_STORAGE_FORWARD_VERSION",
+    });
   });
 });

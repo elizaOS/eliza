@@ -120,14 +120,24 @@ function receipt(
     | "terminal_attention" = "accepted",
 ) {
   const projection = {
-    accepted: { billingStopped: false, infrastructureStatus: "queued" },
+    accepted: {
+      computeStopped: false,
+      providerStopped: false,
+      infrastructureStatus: "queued",
+    },
     provider_confirmed: {
-      billingStopped: true,
+      computeStopped: true,
+      providerStopped: true,
       infrastructureStatus: "provider_confirmed",
     },
-    conflict: { billingStopped: false, infrastructureStatus: "superseded" },
+    conflict: {
+      computeStopped: false,
+      providerStopped: false,
+      infrastructureStatus: "superseded",
+    },
     terminal_attention: {
-      billingStopped: false,
+      computeStopped: false,
+      providerStopped: false,
       infrastructureStatus: "terminal_attention",
     },
   }[status];
@@ -140,6 +150,10 @@ function receipt(
     expectedLifecycleRevision: 7,
     status,
     ...projection,
+    retainedBackupBilling: {
+      status: "not_applicable" as const,
+      ratePerHour: null,
+    },
     acceptedAt: OBSERVED_AT,
     pollEndpoint: POLL_ENDPOINT,
   };
@@ -307,7 +321,13 @@ describe("useBillingResourceCancellations", () => {
     await waitFor(() =>
       expect(
         result.current.states[billingCancellationIdentityKey(current)],
-      ).toEqual({ kind: "provider_confirmed", receiptId: RECEIPT_ID }),
+      ).toEqual({
+        kind: "provider_confirmed",
+        receiptId: RECEIPT_ID,
+        computeStopped: true,
+        providerStopped: true,
+        retainedBackupBilling: { status: "not_applicable", ratePerHour: null },
+      }),
     );
     expect(readReceiptMock).toHaveBeenCalledWith(
       POLL_ENDPOINT,
@@ -410,6 +430,45 @@ describe("useBillingResourceCancellations", () => {
     expect(
       result.current.states[billingCancellationIdentityKey(current)],
     ).toEqual({ kind: "receipt_unavailable", receiptId: RECEIPT_ID });
+  });
+
+  it("honors Retry-After before polling a rate-limited receipt again", async () => {
+    vi.useFakeTimers();
+    const { coordinator } = harness();
+    const current = resource();
+    requestMock.mockResolvedValue({
+      disposition: "accepted",
+      receipt: receipt(),
+    });
+    readReceiptMock
+      .mockRejectedValueOnce(
+        new BillingCancellationHttpError(
+          429,
+          "rate_limited",
+          "Try later",
+          true,
+          100,
+        ),
+      )
+      .mockResolvedValueOnce(receipt());
+    const { result } = renderHook(() =>
+      useBillingResourceCancellations({
+        organizationId: "org-a",
+        initiatedByUserId: "user-a",
+        resources: [current],
+        coordinator,
+        onTerminal: vi.fn(),
+        pollIntervalMs: 10,
+      }),
+    );
+
+    await act(async () => result.current.request(current));
+    await act(async () => vi.advanceTimersByTimeAsync(10));
+    expect(readReceiptMock).toHaveBeenCalledTimes(1);
+    await act(async () => vi.advanceTimersByTimeAsync(99));
+    expect(readReceiptMock).toHaveBeenCalledTimes(1);
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+    expect(readReceiptMock).toHaveBeenCalledTimes(2);
   });
 
   it("bounds a hung POST that ignores abort and exposes a safe same-key retry", async () => {
@@ -653,7 +712,13 @@ describe("useBillingResourceCancellations", () => {
 
     expect(
       result.current.states[billingCancellationIdentityKey(current)],
-    ).toEqual({ kind: "provider_confirmed", receiptId: RECEIPT_ID });
+    ).toEqual({
+      kind: "provider_confirmed",
+      receiptId: RECEIPT_ID,
+      computeStopped: true,
+      providerStopped: true,
+      retainedBackupBilling: { status: "not_applicable", ratePerHour: null },
+    });
     expect(onTerminal).toHaveBeenCalledTimes(1);
   });
 
@@ -822,14 +887,26 @@ describe("useBillingResourceCancellations", () => {
     await act(async () => concurrentCheck);
     expect(
       result.current.states[billingCancellationIdentityKey(current)],
-    ).toEqual({ kind: "provider_confirmed", receiptId: RECEIPT_ID });
+    ).toEqual({
+      kind: "provider_confirmed",
+      receiptId: RECEIPT_ID,
+      computeStopped: true,
+      providerStopped: true,
+      retainedBackupBilling: { status: "not_applicable", ratePerHour: null },
+    });
 
     readReceiptMock.mockResolvedValue(receipt("accepted"));
     await act(async () => result.current.checkReceipt(current));
     expect(readReceiptMock).toHaveBeenCalledTimes(1);
     expect(
       result.current.states[billingCancellationIdentityKey(current)],
-    ).toEqual({ kind: "provider_confirmed", receiptId: RECEIPT_ID });
+    ).toEqual({
+      kind: "provider_confirmed",
+      receiptId: RECEIPT_ID,
+      computeStopped: true,
+      providerStopped: true,
+      retainedBackupBilling: { status: "not_applicable", ratePerHour: null },
+    });
   });
 
   it.each([400, 401, 403, 404])(
@@ -974,7 +1051,7 @@ describe("useBillingResourceCancellations", () => {
     ).toEqual({ kind: "accepted", receiptId: RECEIPT_ID });
   });
 
-  it("keeps an accepted old-revision receipt blocking the new revision until terminal refresh", async () => {
+  it("keeps an old-revision terminal receipt visible when refetch resolves with an error", async () => {
     const { coordinator } = harness();
     const revisionSeven = resource(7);
     const revisionEight = resource(8);
@@ -997,7 +1074,7 @@ describe("useBillingResourceCancellations", () => {
     readReceiptMock
       .mockReturnValueOnce(oldPoll.promise)
       .mockReturnValueOnce(migratedPoll.promise);
-    const authoritativeRefresh = deferred<void>();
+    const authoritativeRefresh = deferred<{ isError: true; error: Error }>();
     const onTerminal = vi.fn(() => authoritativeRefresh.promise);
     let resources = [revisionSeven];
     const { result, rerender } = renderHook(() =>
@@ -1030,19 +1107,21 @@ describe("useBillingResourceCancellations", () => {
     );
     expect(onTerminal).toHaveBeenCalledTimes(1);
 
-    authoritativeRefresh.resolve();
-    await waitFor(() =>
-      expect(
-        result.current.states[billingCancellationIdentityKey(revisionEight)],
-      ).toBeUndefined(),
-    );
+    authoritativeRefresh.resolve({
+      isError: true,
+      error: new Error("snapshot refetch failed"),
+    });
+    await act(async () => authoritativeRefresh.promise);
+    expect(
+      result.current.states[billingCancellationIdentityKey(revisionEight)],
+    ).toEqual({ kind: "conflict", receiptId: RECEIPT_ID });
 
     oldPoll.resolve(receipt("accepted"));
     await act(async () => Promise.resolve());
     expect(readReceiptMock).toHaveBeenCalledTimes(2);
     expect(
       result.current.states[billingCancellationIdentityKey(revisionEight)],
-    ).toBeUndefined();
+    ).toEqual({ kind: "conflict", receiptId: RECEIPT_ID });
   });
 
   it("reconciles a delayed POST that binds after the lifecycle revision changes", async () => {

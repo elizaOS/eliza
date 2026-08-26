@@ -208,7 +208,7 @@ function parseResource(value: unknown): BillingSnapshotResource {
   const resourceId = nonEmptyString(record.resourceId);
   const control = asRecord(record.cancellationControl);
   const expectedDisplayAction =
-    resourceType === "container" ? "stop" : "suspend_billing";
+    resourceType === "container" ? "stop" : "stop_compute";
   if (
     control.displayAction !== expectedDisplayAction ||
     control.method !== "POST" ||
