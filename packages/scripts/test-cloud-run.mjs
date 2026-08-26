@@ -18,6 +18,7 @@ import {
   writeSync,
 } from "node:fs";
 import path from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath } from "node:url";
 import { shouldNormalizeBunStatus99 } from "./test-cloud-run-helpers.mjs";
 
@@ -642,6 +643,10 @@ export function runCommandWithWatchdog(
       parentSignalHandlers.clear();
     };
 
+    const stdoutDecoder = new StringDecoder("utf8");
+    const stderrDecoder = new StringDecoder("utf8");
+    const supervisorDecoder = new StringDecoder("utf8");
+
     const releaseDrainedSupervisor = () => {
       if (
         platform === "win32" ||
@@ -659,6 +664,43 @@ export function runCommandWithWatchdog(
 
     const finish = (result) => {
       if (settled) return;
+      // Flush any buffered UTF-8 bytes that straddled the final chunk boundary.
+      // 'end' normally flushes, but a forced termination may close without it.
+      // StringDecoder.end() is idempotent — second call returns "".
+      try {
+        const trailingOut = stdoutDecoder.end();
+        if (trailingOut) {
+          if (
+            stdout.length + trailingOut.length >
+            MAX_CLASSIFICATION_OUTPUT_CHARS
+          ) {
+            outputTruncated = true;
+          }
+          stdout = appendClassificationOutput(stdout, trailingOut);
+          try {
+            writeOut?.(trailingOut);
+          } catch {}
+        }
+      } catch {}
+      try {
+        const trailingErr = stderrDecoder.end();
+        if (trailingErr) {
+          if (
+            stderr.length + trailingErr.length >
+            MAX_CLASSIFICATION_OUTPUT_CHARS
+          ) {
+            outputTruncated = true;
+          }
+          stderr = appendClassificationOutput(stderr, trailingErr);
+          try {
+            writeErr?.(trailingErr);
+          } catch {}
+        }
+      } catch {}
+      try {
+        const trailingSup = supervisorDecoder.end();
+        if (trailingSup) supervisorStatusOutput += trailingSup;
+      } catch {}
       settled = true;
       clearTimeout(watchdog);
       clearTimeout(forceSettleTimer);
@@ -739,7 +781,8 @@ export function runCommandWithWatchdog(
     };
 
     child.stdout?.on("data", (chunk) => {
-      const text = chunk.toString("utf8");
+      const text = stdoutDecoder.write(chunk);
+      if (!text) return;
       if (stdout.length + text.length > MAX_CLASSIFICATION_OUTPUT_CHARS) {
         outputTruncated = true;
       }
@@ -747,11 +790,20 @@ export function runCommandWithWatchdog(
       writeOut(text);
     });
     child.stdout?.once("end", () => {
+      const trailing = stdoutDecoder.end();
+      if (trailing) {
+        if (stdout.length + trailing.length > MAX_CLASSIFICATION_OUTPUT_CHARS) {
+          outputTruncated = true;
+        }
+        stdout = appendClassificationOutput(stdout, trailing);
+        writeOut(trailing);
+      }
       stdoutEnded = true;
       releaseDrainedSupervisor();
     });
     child.stderr?.on("data", (chunk) => {
-      const text = chunk.toString("utf8");
+      const text = stderrDecoder.write(chunk);
+      if (!text) return;
       if (stderr.length + text.length > MAX_CLASSIFICATION_OUTPUT_CHARS) {
         outputTruncated = true;
       }
@@ -759,13 +811,24 @@ export function runCommandWithWatchdog(
       writeErr(text);
     });
     child.stderr?.once("end", () => {
+      const trailing = stderrDecoder.end();
+      if (trailing) {
+        if (stderr.length + trailing.length > MAX_CLASSIFICATION_OUTPUT_CHARS) {
+          outputTruncated = true;
+        }
+        stderr = appendClassificationOutput(stderr, trailing);
+        writeErr(trailing);
+      }
       stderrEnded = true;
       releaseDrainedSupervisor();
     });
     supervisorStatus?.on("data", (chunk) => {
-      supervisorStatusOutput += chunk.toString("utf8");
+      const text = supervisorDecoder.write(chunk);
+      if (text) supervisorStatusOutput += text;
     });
     supervisorStatus?.once("end", () => {
+      const trailing = supervisorDecoder.end();
+      if (trailing) supervisorStatusOutput += trailing;
       commandCompletionObserved = /^\d+\n$/.test(supervisorStatusOutput);
       releaseDrainedSupervisor();
     });
