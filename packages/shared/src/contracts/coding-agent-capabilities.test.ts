@@ -1,6 +1,6 @@
 /**
- * Proves the pure account-to-coding-backend contract, including negative
- * coverage for enrolled inference providers that have no spawn implementation.
+ * Proves the pure account-to-coding-backend contract, including Pi provider
+ * routes and negative coverage for enrollments with no spawn implementation.
  */
 
 import { LINKED_ACCOUNT_PROVIDER_IDS } from "@elizaos/core";
@@ -23,7 +23,17 @@ describe("coding-agent capability mapping", () => {
         codingAgentSpawnCapabilityForProvider(providerId).available,
     );
 
-    expect(mappedProviders).toEqual(["anthropic-subscription", "openai-codex"]);
+    expect(mappedProviders).toEqual([
+      "anthropic-subscription",
+      "openai-codex",
+      "zai-coding",
+      "kimi-coding",
+      "deepseek-api",
+      "zai-api",
+      "moonshot-api",
+      "openrouter-api",
+      "xai-api",
+    ]);
     for (const providerId of mappedProviders) {
       const backend = codingAgentBackendForProvider(providerId);
       expect(CODING_AGENT_BACKENDS).toContain(backend);
@@ -34,12 +44,7 @@ describe("coding-agent capability mapping", () => {
 
   it.each([
     "gemini-cli",
-    "zai-coding",
-    "kimi-coding",
     "deepseek-coding",
-    "deepseek-api",
-    "zai-api",
-    "moonshot-api",
     "anthropic-api",
     "openai-api",
     "cerebras-api",
@@ -149,7 +154,8 @@ describe("coding-agent capability mapping", () => {
         authMode: "coding-plan-key",
         billingMode: "subscription-coding-plan",
         inferenceSupport: true,
-        spawnSupport: false,
+        backend: "pi-agent",
+        spawnSupport: true,
       });
     }
   });
@@ -159,15 +165,15 @@ describe("coding-agent capability mapping", () => {
       accountKind: "api-key",
       billingMode: "api-credits-or-byok",
       inferenceSupport: true,
-      backend: null,
-      spawnSupport: false,
+      backend: "pi-agent",
+      spawnSupport: true,
     });
     expect(CODING_PROVIDER_DESCRIPTORS["xai-api"]).toMatchObject({
       accountKind: "api-key",
       billingMode: "api-payg",
       inferenceSupport: true,
-      backend: null,
-      spawnSupport: false,
+      backend: "pi-agent",
+      spawnSupport: true,
     });
   });
 
