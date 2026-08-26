@@ -1,5 +1,6 @@
 /** Canonical environment-variable reader. */
 
+import { ElizaError } from "../errors.ts";
 import { parseBooleanValue } from "./boolean.js";
 
 /** Process env, or an empty object in non-Node runtimes (browser). */
@@ -47,20 +48,65 @@ export function readEnvBool(
 	return parseBooleanValue(raw) ?? options.defaultValue ?? false;
 }
 
-/** Numeric form of {@link readEnv}: returns the parsed finite number or defaultValue. */
+export interface ReadEnvNumberOptions
+	extends Omit<ReadEnvOptions, "defaultValue"> {
+	/** Default numeric value when the key is unset. */
+	defaultValue?: number;
+	/** Optional lower bound (inclusive). */
+	min?: number;
+	/** Optional upper bound (inclusive). */
+	max?: number;
+}
+
+/**
+ * Numeric form of {@link readEnv}: returns the parsed finite number or defaultValue.
+ *
+ * @throws {ElizaError} If the environment variable is set but cannot be parsed as a finite number,
+ * or falls outside [min, max] bounds.
+ */
 export function readEnvNumber(
 	canonicalKey: string,
-	options: Omit<ReadEnvOptions, "defaultValue"> & {
-		defaultValue?: number;
-	} = {},
+	options: ReadEnvNumberOptions = {},
 ): number | undefined {
 	const raw = readEnv(canonicalKey, { env: options.env });
 	if (raw === undefined) return options.defaultValue;
 	const parsed = Number(raw);
-	return Number.isFinite(parsed) ? parsed : options.defaultValue;
+	if (!Number.isFinite(parsed)) {
+		throw new ElizaError(
+			`Invalid numeric environment variable ${canonicalKey}: "${raw}"`,
+			{
+				code: "INVALID_ENV_VALUE",
+				context: { key: canonicalKey, value: raw },
+			},
+		);
+	}
+	if (options.min !== undefined && parsed < options.min) {
+		throw new ElizaError(
+			`Numeric environment variable ${canonicalKey} (${parsed}) is below minimum ${options.min}`,
+			{
+				code: "INVALID_ENV_VALUE",
+				context: { key: canonicalKey, value: raw, min: options.min },
+			},
+		);
+	}
+	if (options.max !== undefined && parsed > options.max) {
+		throw new ElizaError(
+			`Numeric environment variable ${canonicalKey} (${parsed}) is above maximum ${options.max}`,
+			{
+				code: "INVALID_ENV_VALUE",
+				context: { key: canonicalKey, value: raw, max: options.max },
+			},
+		);
+	}
+	return parsed;
 }
 
-/** Read the first set environment variable among an ordered list of alias keys. */
+/**
+ * Read the first set environment variable among an ordered list of fallback keys.
+ *
+ * Note: this helper does literal key lookups and is NOT intended for brand/white-label
+ * alias resolution (use `resolveAliasedEnvValue` for keys defined in `BRAND_ENV_ALIAS_DEFINITIONS`).
+ */
 export function readEnvFirst(
 	keys: string[],
 	options: ReadEnvOptions = {},
