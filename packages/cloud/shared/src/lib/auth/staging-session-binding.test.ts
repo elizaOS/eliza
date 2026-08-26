@@ -98,6 +98,8 @@ import {
   loadExistingStagingSessionSubjectForMint,
   loadVerifiedStagingSessionUser,
   readStagingSessionSigningConfig,
+  STAGING_SESSION_ISSUER_CLOCK_SKEW_SECONDS,
+  STAGING_SESSION_MAX_TTL_SECONDS,
   type StagingSessionBinding,
   StagingSessionConfigurationError,
   validateStagingSessionBinding,
@@ -154,7 +156,7 @@ function validValidationInput(binding: TestBinding) {
     binding: makeBinding(binding),
     stewardUserId: STEWARD_USER_ID,
     tenantId: TENANT_ID,
-    // token iat must stay inside the 5s issuer clock-skew allowance
+    // token iat must stay inside the issuer clock-skew allowance
     issuedAt: NOW_SECONDS + 2,
     expiration: NOW_SECONDS + 1800,
     now: NOW,
@@ -181,7 +183,7 @@ function makeBinding(overrides: Partial<TestBinding> = {}): StagingSessionBindin
     organizationId: ORG_ID,
     credentialFingerprint: expectedFingerprint(),
     sessionIssuedAt: NOW_SECONDS,
-    sessionMaxExpiresAt: NOW_SECONDS + 3600,
+    sessionMaxExpiresAt: NOW_SECONDS + STAGING_SESSION_MAX_TTL_SECONDS,
     ...overrides,
   };
   return binding as StagingSessionBinding;
@@ -582,9 +584,15 @@ describe("validateStagingSessionBinding", () => {
       "fractional sessionMaxExpiresAt within the TTL",
       makeBinding({ sessionMaxExpiresAt: NOW_SECONDS + 3599.5 }),
     ],
-    ["minted more than 5s in the future", makeBinding({ sessionIssuedAt: NOW_SECONDS + 6 })],
+    [
+      "minted more than the issuer skew allowance in the future",
+      makeBinding({ sessionIssuedAt: NOW_SECONDS + STAGING_SESSION_ISSUER_CLOCK_SKEW_SECONDS + 1 }),
+    ],
     ["empty absolute window", makeBinding({ sessionMaxExpiresAt: NOW_SECONDS })],
-    ["absolute window beyond the 1h max", makeBinding({ sessionMaxExpiresAt: NOW_SECONDS + 3601 })],
+    [
+      "absolute window beyond the max TTL",
+      makeBinding({ sessionMaxExpiresAt: NOW_SECONDS + STAGING_SESSION_MAX_TTL_SECONDS + 1 }),
+    ],
     ["already-expired session bound", makeBinding({ sessionMaxExpiresAt: NOW_SECONDS - 1 })],
   ] as const)(
     "structurally rejects %s before touching primary storage",
@@ -597,10 +605,16 @@ describe("validateStagingSessionBinding", () => {
 
   test.each([
     ["token iat before the session window", { issuedAt: NOW_SECONDS - 1 }],
-    ["token iat more than 5s in the future", { issuedAt: NOW_SECONDS + 36 }],
-    ["fractional token iat", { issuedAt: NOW_SECONDS + 30.5 }],
-    ["token exp not after iat", { issuedAt: NOW_SECONDS + 30, expiration: NOW_SECONDS + 30 }],
-    ["token exp beyond the session bound", { expiration: NOW_SECONDS + 3601 }],
+    [
+      "token iat more than the issuer skew allowance in the future",
+      { issuedAt: NOW_SECONDS + STAGING_SESSION_ISSUER_CLOCK_SKEW_SECONDS + 1 },
+    ],
+    ["fractional token iat inside the skew allowance", { issuedAt: NOW_SECONDS + 2.5 }],
+    ["token exp not after iat", { issuedAt: NOW_SECONDS + 2, expiration: NOW_SECONDS + 2 }],
+    [
+      "token exp beyond the session bound",
+      { expiration: NOW_SECONDS + STAGING_SESSION_MAX_TTL_SECONDS + 1 },
+    ],
     ["fractional token exp", { expiration: NOW_SECONDS + 1800.5 }],
   ] as const)("structurally rejects %s", async (_label, patch) => {
     const { binding } = await mintSubjectBinding();
