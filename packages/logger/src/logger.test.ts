@@ -1142,3 +1142,32 @@ describe("file sink permissions", () => {
     },
   );
 });
+
+describe("chat log surrogate safety", () => {
+  it("preserves well-formed Unicode when truncating incoming and outgoing chat log previews", () => {
+    const longSurrogateIn = "a".repeat(199) + "🚀" + "tail";
+    const lineIn = logChatIn({
+      agentName: "Eliza",
+      agentId: "agent-1",
+      roomId: "room-123456789",
+      messageId: "message-123456789",
+      text: longSurrogateIn,
+    });
+    expect(lineIn.isWellFormed?.()).not.toBe(false);
+    expect(lineIn).toContain(`${"a".repeat(199)}...`);
+
+    const longSurrogateOut = "b".repeat(119) + "🚀" + "tail";
+    const lineOut = logChatOut({
+      agentName: "Eliza",
+      agentId: "agent-1",
+      roomId: "room-123456789",
+      action: "REPLY",
+      text: longSurrogateOut,
+      reasoning: "c".repeat(79) + "🚀" + "tail",
+    });
+    expect(lineOut.isWellFormed?.()).not.toBe(false);
+    expect(lineOut).toContain(`${"b".repeat(119)}...`);
+    expect(lineOut).toContain(`reasoning="${"c".repeat(79)}..."`);
+  });
+});
+
