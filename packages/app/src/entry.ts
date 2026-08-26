@@ -10,6 +10,7 @@ import {
 } from "./web-entry-policy";
 
 declare const __ELIZA_WEB_SHELL__: boolean | undefined;
+declare const __ELIZA_PUBLIC_WEB_ENTRY__: boolean | undefined;
 declare const __ELIZA_CHAT_UI_HARNESS__: boolean | undefined;
 
 type ShellWindow = Window & {
@@ -42,7 +43,9 @@ const entryDecisionInput = {
 };
 
 const useMarketingHomeEntry = shouldUseMarketingHomeEntry(entryDecisionInput);
-const usePublicEntry = shouldUsePublicWebEntry(entryDecisionInput);
+const usePublicEntry =
+  __ELIZA_PUBLIC_WEB_ENTRY__ === true &&
+  shouldUsePublicWebEntry(entryDecisionInput);
 
 const rendererEntry = useMarketingHomeEntry
   ? import("./marketing-home-entry")
