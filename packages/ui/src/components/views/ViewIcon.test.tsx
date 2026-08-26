@@ -50,6 +50,25 @@ describe("ViewIcon lucide glyphs", () => {
     const svg = container.querySelector("svg");
     expect(svg?.classList.contains("size-7")).toBe(true);
   });
+
+  it("resolves every maintained registered-page glyph explicitly", () => {
+    const cases = [
+      ["CalendarDays", "lucide-calendar-days"],
+      ["Cloud", "lucide-cloud"],
+      ["Grid3x3", "lucide-grid-3x3"],
+      ["Map", "lucide-map"],
+      ["MonitorUp", "lucide-monitor-up"],
+      ["TerminalSquare", "lucide-square-terminal"],
+    ] as const;
+
+    for (const [icon, expectedClass] of cases) {
+      const rendered = render(<ViewIcon icon={icon} label="Registered page" />);
+      expect(
+        rendered.container.querySelector(`svg.${expectedClass}`),
+        icon,
+      ).toBeTruthy();
+    }
+  });
 });
 
 describe("ViewIcon keyword inference (no/unknown icon name)", () => {

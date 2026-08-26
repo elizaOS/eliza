@@ -2,63 +2,25 @@
  * Paints launcher and catalog tile imagery with deterministic fallback glyph
  * styling and runtime-safe API URL resolution.
  *
- * Launcher tiles are GLYPH-ONLY: a deterministic branded gradient plate with the
- * crisp Lucide glyph centered on top, never a generated hero image. Painting the
- * per-view generated hero PNG (`entry.imageUrl`) over the glyph is what produced
- * the "icons are slop" report: a cartoon virus for Settings, a ladybug for
- * Memories, etc. The hero art belongs to the larger catalog CARD surface, where a
- * preview reads as a preview; on the small home-grid tile it just muddies the
- * legible glyph. So the launcher branch renders `<ViewIcon>` alone and the
- * catalog branch keeps the image/fallback order.
+ * Launcher tiles delegate to the shared smoked-glass `LauncherAppIcon` system
+ * and never render generated hero art. Painting the per-view generated hero PNG
+ * (`entry.imageUrl`) over the glyph is what produced a cartoon virus for
+ * Settings, a ladybug for Memories, etc. Hero art belongs to the larger catalog
+ * card surface, where a preview reads as a preview; on the small home-grid tile
+ * it only muddies the legible glyph. The catalog branch keeps the image/fallback
+ * order.
  */
-import { type CSSProperties, useState } from "react";
+import { useState } from "react";
 import { client } from "../../api";
 import {
   isLimitedCloudAgentApiResourceUrl,
   supportsFullAppShellRoutes,
 } from "../../api/app-shell-capabilities";
 import type { ViewEntry } from "../../hooks/view-catalog";
-import { cn } from "../../lib/utils";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { emitViewInteraction } from "../../view-telemetry";
+import { LauncherAppIcon } from "./LauncherAppIcon";
 import { ViewIcon } from "./ViewIcon";
-
-// Brand rule: no blue anywhere — the deterministic tile gradients stay in the
-// warm/neutral/green/gold/fuchsia range.
-const LAUNCHER_ICON_PALETTES: ReadonlyArray<{
-  from: string;
-  to: string;
-  foreground: string;
-}> = [
-  { from: "#ff7a1a", to: "#f2c14e", foreground: "#fff7ed" },
-  { from: "#0f766e", to: "#5eead4", foreground: "#ecfeff" },
-  { from: "#a16207", to: "#fde047", foreground: "#fefce8" },
-  { from: "#7c2d12", to: "#fb923c", foreground: "#fff7ed" },
-  { from: "#334155", to: "#94a3b8", foreground: "#f8fafc" },
-  { from: "#be123c", to: "#fda4af", foreground: "#fff1f2" },
-  { from: "#166534", to: "#86efac", foreground: "#f0fdf4" },
-  { from: "#86198f", to: "#f0abfc", foreground: "#fdf4ff" },
-];
-
-function hashText(value: string): number {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < value.length; i++) {
-    hash ^= value.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return hash >>> 0;
-}
-
-function launcherIconStyle(entry: ViewEntry): CSSProperties {
-  const palette =
-    LAUNCHER_ICON_PALETTES[
-      hashText(`${entry.id}:${entry.label}`) % LAUNCHER_ICON_PALETTES.length
-    ];
-  return {
-    background: `linear-gradient(145deg, ${palette.from} 0%, ${palette.to} 100%)`,
-    color: palette.foreground,
-  };
-}
 
 /**
  * Resolve a tile hero URL into one reachable from the renderer. The hero source
@@ -118,34 +80,17 @@ export function ViewTileImage({
   // Launcher tiles never composite a hero image, they read the glyph directly,
   // so the image-URL resolution below is scoped to the catalog card surface.
   if (source === "launcher") {
-    // Glyph-only app icon: the deterministic branded gradient plate + soft
-    // top-corner highlight, with the crisp Lucide glyph centered on top. No
-    // `<img>` hero (that painted a generated cartoon over the real glyph, the
-    // "icons are slop" report); no `entry.imageUrl` probe, no load/error state.
+    // Glyph-only app icon: the shared component owns squircle, plate, and glyph
+    // optics. No decorative per-view palette or `<img>` hero; no
+    // `entry.imageUrl` probe and no hero load/error state. A third-party URL
+    // supplied as the actual `icon` still flows through the shared launcher
+    // resolver, preserving that public contract.
     return (
-      <div
-        className={cn(containerClassName, "relative overflow-hidden")}
-        data-view-visual={entry.id}
-        style={launcherIconStyle(entry)}
-      >
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute -right-4 -top-5 size-14 rounded-full bg-white/25"
-        />
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 bg-[linear-gradient(160deg,rgba(255,255,255,0.36)_0%,rgba(255,255,255,0.08)_42%,rgba(0,0,0,0.2)_100%)]"
-        />
-        <ViewIcon
-          icon={entry.icon}
-          label={entry.label}
-          id={entry.id}
-          className={cn(
-            glyphClassName,
-            "relative z-10 drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]",
-          )}
-        />
-      </div>
+      <LauncherAppIcon
+        entry={entry}
+        className={containerClassName}
+        glyphClassName={glyphClassName}
+      />
     );
   }
 
