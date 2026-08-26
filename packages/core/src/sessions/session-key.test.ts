@@ -80,6 +80,12 @@ describe("normalization", () => {
 		expect(sanitizeAgentId("MyBot")).toBe("mybot"); // alias
 	});
 
+
+	it("preserves well-formed Unicode when normalizing overlong IDs containing surrogate pairs", () => {
+		const longId = "a".repeat(1023) + "🚀" + "tail";
+		const norm = normalizeAgentId(longId);
+		expect(norm.isWellFormed()).toBe(true);
+	});
 	it("normalizeAccountId defaults empty to 'default'", () => {
 		expect(normalizeAccountId("")).toBe("default");
 		expect(normalizeAccountId("Acct1")).toBe("acct1");
