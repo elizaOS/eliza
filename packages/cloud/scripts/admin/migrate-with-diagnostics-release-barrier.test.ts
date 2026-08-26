@@ -579,7 +579,9 @@ describe("usage-quotas migration release barrier", () => {
     ) as { entries?: Array<{ tag?: string }> };
 
     expect(runMigrationsStep).toContain("bun run db:cloud:migrate");
-    expect(deployApiJob).toMatch(/^ {4}needs: migrate-db$/m);
+    expect(deployApiJob).toMatch(
+      /^ {4}needs: \[resolve-pages-environment-config, migrate-db\]$/m,
+    );
     expect(rootPackage.scripts?.["db:cloud:migrate"]).toContain(
       "packages/cloud/scripts/admin/migrate-with-diagnostics.ts",
     );
