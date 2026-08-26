@@ -2,6 +2,14 @@
 
 /**
  * Hook wrapping MediaRecorder capture for the voice-clone surface (start/stop, level, blob).
+ *
+ * Two lifecycle invariants matter here. Chunks are collected in an array local
+ * to each recorder generation, so a stale recorder's asynchronously queued
+ * `dataavailable` can never contaminate a later session's blob. And because
+ * MediaRecorder.stop() flips state to "inactive" synchronously while queueing
+ * its `dataavailable`/`stop` events asynchronously, an explicit stopping phase
+ * keeps `mediaRecorderRef` alive until the terminal `stop` event assembles the
+ * blob — a second stop click in that window is a no-op instead of a discard.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { reportRendererDiagnostic } from "../../../utils/renderer-diagnostics";
@@ -33,12 +41,12 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
   const [error, setError] = useState<string | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
   const startAttemptRef = useRef(0);
   const startPendingRef = useRef(false);
+  const stoppingRef = useRef(false);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) {
@@ -81,6 +89,7 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
 
   const resetRecorderState = useCallback(() => {
     mediaRecorderRef.current = null;
+    stoppingRef.current = false;
     clearTimer();
     stopStream();
     if (mountedRef.current) {
@@ -98,6 +107,7 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
       clearTimer();
       const recorder = mediaRecorderRef.current;
       mediaRecorderRef.current = null;
+      stoppingRef.current = false;
       if (recorder) {
         try {
           if (recorder.state !== "inactive") {
@@ -124,7 +134,6 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
     const attempt = ++startAttemptRef.current;
     setError(null);
     setAudioBlob(null);
-    audioChunksRef.current = [];
 
     let acquiredStream: MediaStream | null = null;
     let createdRecorder: MediaRecorder | null = null;
@@ -175,9 +184,12 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
       streamRef.current = acquiredStream;
       mediaRecorderRef.current = createdRecorder;
 
+      // Chunks are scoped to this recorder generation so a stale recorder's
+      // async-queued dataavailable cannot contaminate a later session's blob.
+      const chunks: Blob[] = [];
       createdRecorder.addEventListener("dataavailable", (event) => {
         if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
+          chunks.push(event.data);
         }
       });
 
@@ -186,7 +198,7 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
         if (mediaRecorderRef.current !== createdRecorder) {
           return;
         }
-        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        const audioBlob = new Blob(chunks, { type: mimeType });
         if (mountedRef.current) {
           setAudioBlob(audioBlob);
         }
@@ -256,15 +268,19 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
 
   const stopRecording = useCallback(() => {
     const recorder = mediaRecorderRef.current;
-    if (!recorder || !isRecording) {
+    if (!recorder || !isRecording || stoppingRef.current) {
       return;
     }
 
     try {
       if (recorder.state === "inactive") {
+        // Fallback for a recorder that never started; a stopping recorder is
+        // also sync-inactive but is covered by the stoppingRef guard above so
+        // its queued stop event can still assemble the blob.
         resetRecorderState();
         return;
       }
+      stoppingRef.current = true;
       recorder.stop();
     } catch (stopError) {
       // error-policy:J4 Stop failures become visible and still release resources.
@@ -318,7 +334,6 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
     setAudioBlob(null);
     setRecordingTime(0);
     setError(null);
-    audioChunksRef.current = [];
   }, []);
 
   return useMemo(

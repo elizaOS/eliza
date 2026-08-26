@@ -15,6 +15,11 @@ vi.mock("../../../utils/renderer-diagnostics", () => ({
 
 type RecorderListener = (event: Event & { data?: Blob }) => void;
 
+/**
+ * Spec-faithful fake: stop() flips state to "inactive" synchronously but, like
+ * a real MediaRecorder, delivers the final `dataavailable` and terminal `stop`
+ * events on a later microtask. `emitData` queues an interim chunk the same way.
+ */
 class FakeMediaRecorder {
   static isTypeSupported(): boolean {
     return true;
@@ -26,15 +31,30 @@ class FakeMediaRecorder {
   readonly listeners = new Map<string, RecorderListener[]>();
   readonly stopCall = vi.fn();
 
+  dispatch(type: string, data?: Blob): void {
+    const event = new Event(type) as Event & { data?: Blob };
+    if (data) {
+      event.data = data;
+    }
+    for (const listener of this.listeners.get(type) ?? []) {
+      listener(event);
+    }
+  }
+
+  emitData(data: Blob): void {
+    queueMicrotask(() => this.dispatch("dataavailable", data));
+  }
+
   stop(): void {
     this.stopCall();
     if (this.state === "inactive") {
       return;
     }
     this.state = "inactive";
-    for (const listener of this.listeners.get("stop") ?? []) {
-      listener(new Event("stop"));
-    }
+    queueMicrotask(() => {
+      this.dispatch("dataavailable", new Blob(["-fin"]));
+      this.dispatch("stop");
+    });
   }
 
   constructor(_stream: MediaStream) {
@@ -95,7 +115,9 @@ describe("useAudioRecorder", () => {
     });
 
     expect(result.current.isRecording).toBe(true);
-    act(() => result.current.stopRecording());
+    await act(async () => {
+      result.current.stopRecording();
+    });
     expect(stopTrack).toHaveBeenCalledOnce();
   });
 
@@ -200,7 +222,7 @@ describe("useAudioRecorder", () => {
     });
     expect(result.current.isRecording).toBe(true);
 
-    act(() => {
+    await act(async () => {
       result.current.stopRecording();
       result.current.stopRecording();
     });
@@ -236,21 +258,22 @@ describe("useAudioRecorder", () => {
     });
     expect(result.current.isRecording).toBe(true);
 
-    act(() => result.current.stopRecording());
+    await act(async () => {
+      result.current.stopRecording();
+    });
     expect(stopTrack).toHaveBeenCalledOnce();
   });
 
   it("ignores a delayed stop event from an older recorder session", async () => {
-    class DelayedStopMediaRecorder extends FakeMediaRecorder {
+    class ThrowingStopMediaRecorder extends FakeMediaRecorder {
       override stop(): void {
         this.stopCall();
         this.state = "inactive";
+        throw new Error("stop failed");
       }
 
       emitStop(): void {
-        for (const listener of this.listeners.get("stop") ?? []) {
-          listener(new Event("stop"));
-        }
+        this.dispatch("stop");
       }
     }
     const firstTrackStop = vi.fn();
@@ -263,18 +286,18 @@ describe("useAudioRecorder", () => {
       const stream = streams.shift();
       if (!stream) throw new Error("unexpected acquisition");
       return stream;
-    }, DelayedStopMediaRecorder);
+    }, ThrowingStopMediaRecorder);
 
     const { result } = renderHook(() => useAudioRecorder());
     await act(async () => {
       await result.current.startRecording();
     });
     const firstRecorder = FakeMediaRecorder
-      .instances[0] as DelayedStopMediaRecorder;
+      .instances[0] as ThrowingStopMediaRecorder;
 
     act(() => result.current.stopRecording());
-    act(() => result.current.stopRecording());
     expect(firstTrackStop).toHaveBeenCalledOnce();
+    expect(result.current.isRecording).toBe(false);
 
     await act(async () => {
       await result.current.startRecording();
@@ -284,5 +307,71 @@ describe("useAudioRecorder", () => {
     act(() => firstRecorder.emitStop());
     expect(result.current.isRecording).toBe(true);
     expect(secondTrackStop).not.toHaveBeenCalled();
+  });
+
+  it("keeps a stale recorder's late dataavailable out of the next session's blob", async () => {
+    const streams = [
+      createStream({ stop: vi.fn() }),
+      createStream({ stop: vi.fn() }),
+    ];
+    installRecorder(async () => {
+      const stream = streams.shift();
+      if (!stream) throw new Error("unexpected acquisition");
+      return stream;
+    });
+
+    const { result } = renderHook(() => useAudioRecorder());
+    await act(async () => {
+      await result.current.startRecording();
+    });
+    const firstRecorder = FakeMediaRecorder.instances[0] as FakeMediaRecorder;
+    await act(async () => {
+      firstRecorder.emitData(new Blob(["r1"]));
+      result.current.stopRecording();
+    });
+    expect(result.current.audioBlob?.size).toBe(6); // "r1" + "-fin"
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+    const secondRecorder = FakeMediaRecorder.instances[1] as FakeMediaRecorder;
+    await act(async () => {
+      secondRecorder.emitData(new Blob(["r2!"]));
+      // A stale chunk from the retired recorder arrives mid-session.
+      firstRecorder.emitData(new Blob(["stale"]));
+    });
+    await act(async () => {
+      result.current.stopRecording();
+    });
+
+    expect(result.current.audioBlob?.size).toBe(7); // "r2!" + "-fin" only
+  });
+
+  it("preserves the recording when stop is clicked again before the async stop event", async () => {
+    const stopTrack = vi.fn();
+    installRecorder(async () => createStream({ stop: stopTrack }));
+
+    const { result } = renderHook(() => useAudioRecorder());
+    await act(async () => {
+      await result.current.startRecording();
+    });
+    const recorder = FakeMediaRecorder.instances[0] as FakeMediaRecorder;
+    await act(async () => {
+      recorder.emitData(new Blob(["take"]));
+    });
+
+    // Both clicks land inside the sync-inactive window: state is already
+    // "inactive" after the first stop() while its events are still queued.
+    act(() => {
+      result.current.stopRecording();
+      expect(recorder.state).toBe("inactive");
+      result.current.stopRecording();
+    });
+    await act(async () => {});
+
+    expect(recorder.stopCall).toHaveBeenCalledOnce();
+    expect(result.current.isRecording).toBe(false);
+    expect(result.current.audioBlob?.size).toBe(8); // "take" + "-fin"
+    expect(stopTrack).toHaveBeenCalledOnce();
   });
 });
