@@ -26,13 +26,21 @@ describe("isDedicatedBootstrapWindow", () => {
     expect(isDedicatedBootstrapWindow(agent({ status: "pending" }))).toBe(true);
   });
 
-  test("true for any dedicated tier in the boot window", () => {
+  test("true for every explicitly container-backed tier in the boot window", () => {
     expect(isDedicatedBootstrapWindow(agent({ execution_tier: "dedicated-lazy" }))).toBe(true);
     expect(isDedicatedBootstrapWindow(agent({ execution_tier: "custom" }))).toBe(true);
   });
 
   test("false for a shared-tier agent (its own path serves it)", () => {
     expect(isDedicatedBootstrapWindow(agent({ execution_tier: "shared" }))).toBe(false);
+  });
+
+  test("false for an unknown future tier even while pending or provisioning", () => {
+    for (const status of ["pending", "provisioning"]) {
+      expect(isDedicatedBootstrapWindow(agent({ execution_tier: "future-tier", status }))).toBe(
+        false,
+      );
+    }
   });
 
   test("false once the container is reachable (bridge_url set) — use the subdomain", () => {
