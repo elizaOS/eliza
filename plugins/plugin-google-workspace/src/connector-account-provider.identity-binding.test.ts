@@ -73,6 +73,8 @@ function runtime() {
 
 function manager(existing: ConnectorAccount | null = null) {
   const setConnectorAccountCredentialRef = vi.fn(async () => undefined);
+  const restoreAccount = vi.fn(async (account: ConnectorAccount) => account);
+  const deleteAccount = vi.fn(async () => true);
   const getAccount = vi.fn(async () => existing);
   const upsertAccount = vi.fn(
     async (
@@ -103,7 +105,11 @@ function manager(existing: ConnectorAccount | null = null) {
     value: {
       getAccount,
       upsertAccount,
-      getStorage: () => ({ setConnectorAccountCredentialRef }),
+      getStorage: () => ({
+        setConnectorAccountCredentialRef,
+        upsertAccount: restoreAccount,
+        deleteAccount,
+      }),
     } as unknown as ConnectorAccountManager,
     getAccount,
     upsertAccount,

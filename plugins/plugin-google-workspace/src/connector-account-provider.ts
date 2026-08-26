@@ -199,8 +199,10 @@ async function compensateOAuthCompletion(args: {
 }): Promise<never> {
   const compensationErrors: unknown[] = [];
   const revocationToken = nonEmptyString(args.tokens.refresh_token) ?? args.tokens.access_token;
+  let grantRevoked = false;
   try {
     await revokeGoogleOAuthGrantWithFetch(revocationToken);
+    grantRevoked = true;
   } catch (error) {
     // error-policy:J2 Retain remote compensation failure alongside the
     // original post-exchange failure so a live grant is never reported as
@@ -218,13 +220,45 @@ async function compensateOAuthCompletion(args: {
     }
   }
 
-  if (args.pendingAccountId) {
+  const rollbackAccountId = args.pendingAccountId ?? args.existingAccount?.id;
+  if (rollbackAccountId) {
     try {
-      await restoreCredentialRefs(args.runtime, args.pendingAccountId, args.priorCredentialRefs);
-      if (args.existingAccount) {
+      if (grantRevoked) {
+        for (const priorRef of args.priorCredentialRefs) {
+          try {
+            await removeCredentialIfPresent(args.runtime, priorRef.vaultRef);
+          } catch (error) {
+            // error-policy:J2 A revoked combined Google authorization makes
+            // every prior token unusable; retain cleanup failures while still
+            // marking the account unavailable and clearing durable refs.
+            compensationErrors.push(error);
+          }
+        }
+        await restoreCredentialRefs(args.runtime, rollbackAccountId, []);
+        if (args.existingAccount) {
+          const metadata = isRecord(args.existingAccount.metadata)
+            ? { ...args.existingAccount.metadata }
+            : {};
+          delete metadata.credentialRefs;
+          delete metadata.oauthCredentialRefs;
+          await args.manager.getStorage().upsertAccount({
+            ...args.existingAccount,
+            status: "error",
+            metadata: {
+              ...metadata,
+              [GOOGLE_OAUTH_REVOKED_AT_METADATA_KEY]: new Date().toISOString(),
+              oauthUnavailableReason: "reauthorization_compensation_revoked_combined_grant",
+            },
+          });
+        } else {
+          await args.manager.getStorage().deleteAccount(GOOGLE_SERVICE_NAME, rollbackAccountId);
+        }
+      } else if (args.existingAccount) {
+        await restoreCredentialRefs(args.runtime, rollbackAccountId, args.priorCredentialRefs);
         await args.manager.getStorage().upsertAccount(args.existingAccount);
       } else {
-        await args.manager.getStorage().deleteAccount(GOOGLE_SERVICE_NAME, args.pendingAccountId);
+        await restoreCredentialRefs(args.runtime, rollbackAccountId, []);
+        await args.manager.getStorage().deleteAccount(GOOGLE_SERVICE_NAME, rollbackAccountId);
       }
     } catch (error) {
       // error-policy:J2 Account/ref restoration failure is retained; callers
@@ -242,7 +276,8 @@ async function compensateOAuthCompletion(args: {
       "Google OAuth completion and compensation failed"
     ),
     context: {
-      accountId: args.pendingAccountId,
+      accountId: rollbackAccountId,
+      grantRevoked,
       compensationFailureCount: compensationErrors.length,
     },
     severity: "fatal",

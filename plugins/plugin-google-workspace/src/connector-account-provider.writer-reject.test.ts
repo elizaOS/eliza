@@ -170,13 +170,30 @@ describe("google provider completion with a rejecting durable credential writer 
     ).rejects.toThrow(/already used|unknown|expired/i);
   });
 
-  it("revokes the new grant and restores a connected account after a reauthorization writer failure", async () => {
+  it("revokes the combined grant and makes the prior account unavailable after a reauthorization writer failure", async () => {
+    const priorVaultRef = "connector.prior.google.account.oauth_tokens";
+    const vault = new Map([
+      [
+        priorVaultRef,
+        JSON.stringify({ access_token: "prior-access", refresh_token: "prior-refresh" }),
+      ],
+    ]);
     const putSecret = vi.fn(async () => {
       throw new Error(WRITER_ERROR);
     });
+    const remove = vi.fn(async (vaultRef: string) => {
+      vault.delete(vaultRef);
+    });
     const adapter = new InMemoryDatabaseAdapter();
     await adapter.initialize();
-    const runtime = makeRuntime(putSecret, adapter);
+    const runtime = makeRuntime(putSecret, adapter, remove, {
+      get: async (key) => {
+        const value = vault.get(key);
+        if (!value) throw new Error(`missing ${key}`);
+        return value;
+      },
+      has: async (key) => vault.has(key),
+    });
     const manager: ConnectorAccountManager = getConnectorAccountManager(runtime);
     manager.registerProvider(createGoogleConnectorAccountProvider(runtime));
     const account = await manager.upsertAccount(
@@ -189,11 +206,18 @@ describe("google provider completion with a rejecting durable credential writer 
         status: "connected",
         externalId: "google-sub-writer-reject",
         label: "Existing Google",
-        metadata: { marker: "must-survive" },
+        metadata: {
+          marker: "must-survive",
+          credentialRefs: [{ credentialType: "oauth.tokens", vaultRef: priorVaultRef }],
+        },
       },
       "acct_google_existing"
     );
-    const before = await manager.getAccount("google", account.id);
+    await adapter.setConnectorAccountCredentialRef({
+      accountId: account.id as never,
+      credentialType: "oauth.tokens",
+      vaultRef: priorVaultRef,
+    });
     const flow = await manager.startOAuth("google", {
       accountId: account.id,
       scopes: ["gmail.read"],
@@ -211,11 +235,21 @@ describe("google provider completion with a rejecting durable credential writer 
       REVOKE_ENDPOINT,
       expect.objectContaining({ body: "token=writer-reject-refresh-token" })
     );
-    const restored = await manager.getAccount("google", account.id);
-    expect(restored).toEqual({ ...before, updatedAt: restored?.updatedAt });
+    await expect(manager.getAccount("google", account.id)).resolves.toMatchObject({
+      status: "error",
+      metadata: {
+        marker: "must-survive",
+        oauthUnavailableReason: "reauthorization_compensation_revoked_combined_grant",
+      },
+    });
+    expect(vault.has(priorVaultRef)).toBe(false);
+    expect(remove).toHaveBeenCalledWith(priorVaultRef);
+    await expect(
+      adapter.listConnectorAccountCredentialRefs({ accountId: account.id as never })
+    ).resolves.toEqual([]);
   });
 
-  it("revokes the new grant and leaves the connected account unchanged after identity validation fails", async () => {
+  it("revokes the combined grant and marks the prior account unavailable after identity validation fails", async () => {
     const putSecret = vi.fn(async () => "should-not-write");
     const adapter = new InMemoryDatabaseAdapter();
     await adapter.initialize();
@@ -236,7 +270,6 @@ describe("google provider completion with a rejecting durable credential writer 
       },
       "acct_google_identity_validation"
     );
-    const before = await manager.getAccount("google", account.id);
     const flow = await manager.startOAuth("google", {
       accountId: account.id,
       scopes: ["gmail.read"],
@@ -252,7 +285,13 @@ describe("google provider completion with a rejecting durable credential writer 
 
     expect(putSecret).not.toHaveBeenCalled();
     expect(fetchStub).toHaveBeenCalledTimes(2);
-    await expect(manager.getAccount("google", account.id)).resolves.toEqual(before);
+    await expect(manager.getAccount("google", account.id)).resolves.toMatchObject({
+      status: "error",
+      metadata: {
+        marker: "identity-validation",
+        oauthUnavailableReason: "reauthorization_compensation_revoked_combined_grant",
+      },
+    });
   });
 
   it("revokes the grant and creates no account when a new-account ID-token validation fails", async () => {
