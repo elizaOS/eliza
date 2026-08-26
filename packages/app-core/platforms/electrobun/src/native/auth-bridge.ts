@@ -70,6 +70,12 @@ export interface DesktopBootstrapDeps {
   fetchImpl?: FetchLike;
   /** Override clock for tests. */
   now?: () => number;
+  /**
+   * Reuse a structurally valid persisted session. The packaged renderer sets
+   * this false at each embedded-agent generation so a restarted backend cannot
+   * inherit an authority row that only existed in the previous process.
+   */
+  reusePersistedSession?: boolean;
 }
 
 interface DesktopBootstrapResponseBody {
@@ -532,8 +538,10 @@ export async function loadOrCreateDesktopSession(
   const env = deps.env ?? process.env;
   const now = deps.now ?? Date.now;
 
-  const existing = loadPersistedSession(env, now);
-  if (existing) return existing;
+  if (deps.reusePersistedSession !== false) {
+    const existing = loadPersistedSession(env, now);
+    if (existing) return existing;
+  }
 
   const fresh = await bootstrapDesktopSession(deps);
   if (!fresh) return null;
@@ -611,7 +619,7 @@ export function installDesktopSessionCookies(
     seen.add(key);
     const secure = parsed.protocol === "https:";
     const url = parsed.origin;
-    installer.set({
+    const sessionInstalled = installer.set({
       name: SESSION_COOKIE_NAME,
       value: session.sessionId,
       domain: parsed.hostname,
@@ -624,7 +632,7 @@ export function installDesktopSessionCookies(
       // `domain` keeps it compatible with both implementations.
       ...({ url } as Record<string, unknown>),
     });
-    installer.set({
+    const csrfInstalled = installer.set({
       name: CSRF_COOKIE_NAME,
       value: session.csrfToken,
       domain: parsed.hostname,
@@ -635,6 +643,11 @@ export function installDesktopSessionCookies(
       expirationDate,
       ...({ url } as Record<string, unknown>),
     });
+    if (!sessionInstalled || !csrfInstalled) {
+      throw new Error(
+        `[DesktopAuthBridge] cookie jar rejected desktop authority for ${key}`,
+      );
+    }
     touched.push(key);
   };
 
