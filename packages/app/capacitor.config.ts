@@ -145,7 +145,8 @@ export function resolveCapacitorLoggingBehavior(
   env: NodeJS.ProcessEnv = process.env,
 ): "debug" | "none" {
   return isFlagEnabled(env.ELIZA_ANDROID_CLOUD_BUILD) ||
-    isFlagEnabled(env.ELIZA_ANDROID_LAUNCHER_BUILD)
+    isFlagEnabled(env.ELIZA_ANDROID_LAUNCHER_BUILD) ||
+    isFlagEnabled(env.ELIZA_ANDROID_CLOUD_HYBRID_BUILD)
     ? "none"
     : "debug";
 }
