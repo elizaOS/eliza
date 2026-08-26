@@ -23,18 +23,19 @@ import { cn } from "../../lib/utils";
 import { emitViewInteraction } from "../../view-telemetry";
 import {
   WALLPAPER_FLOAT_SHADOW,
-  WALLPAPER_GLASS,
   WALLPAPER_TEXT,
 } from "../shell/wallpaper-idiom";
 import { Button } from "../ui/button";
-import { ViewTileImage } from "../views/ViewTileImage";
+import {
+  LauncherAppIcon,
+  LauncherAppIconSkeleton,
+} from "../views/LauncherAppIcon";
 
 const LAUNCHER_RESPONSIVE_CSS = `
 [data-testid="launcher"] { container-type: inline-size; }
 [data-testid="launcher"] [data-launcher-icon] {
   width: clamp(3.5rem, 16cqi, 4.5rem);
   height: clamp(3.5rem, 16cqi, 4.5rem);
-  border-radius: clamp(1rem, 4cqi, 1.25rem);
 }
 [data-testid="launcher"] [data-launcher-label] {
   font-size: clamp(.75rem, calc(.68rem + .25cqi), .875rem);
@@ -120,29 +121,10 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
         className="group relative w-full max-w-[5.5rem] select-none"
       >
         <div className="relative">
-          <div
-            data-launcher-icon=""
-            className={cn(
-              // ViewTileImage renders this surface as an app icon, not as a
-              // cropped catalog preview. The tile stays a generous hit target,
-              // compacting only on short landscape screens so its label clears
-              // chat; the inner visual owns color/glyph. Flat — no border; a
-              // subtle glass wash is the icon plate (neutral resting →
-              // neutral-with-opacity hover).
-              "size-16 overflow-hidden rounded-2xl transition-colors [@media(orientation:landscape)_and_(max-height:520px)]:h-14 [@media(orientation:landscape)_and_(max-height:520px)]:w-14",
-              WALLPAPER_GLASS.iconPlate,
-              // Hovering the label highlights the same icon plate.
-              "group-hover:bg-white/20",
-            )}
-          >
-            <ViewTileImage
-              entry={entry}
-              source="launcher"
-              containerClassName="grid h-full w-full place-items-center"
-              glyphClassName="size-[clamp(1.5rem,7cqi,2rem)]"
-              imageTestId={`launcher-image-${entry.id}`}
-            />
-          </div>
+          <LauncherAppIcon
+            entry={entry}
+            className="size-16 [@media(orientation:landscape)_and_(max-height:520px)]:h-14 [@media(orientation:landscape)_and_(max-height:520px)]:w-14"
+          />
           {badge ? (
             <span
               data-testid={`launcher-kind-${entry.id}`}
@@ -229,10 +211,7 @@ export function Launcher({
                     key={id}
                     className="flex flex-col items-center gap-1.5 opacity-60"
                   >
-                    <div
-                      data-launcher-icon=""
-                      className="size-16 rounded-2xl bg-white/15"
-                    />
+                    <LauncherAppIconSkeleton className="size-16" />
                     <div className="h-2.5 w-12 rounded-full bg-white/25" />
                   </div>
                 ))}

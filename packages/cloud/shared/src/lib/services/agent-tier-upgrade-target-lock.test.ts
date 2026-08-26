@@ -25,6 +25,7 @@ import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import * as helpersActual from "../../db/helpers";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
+import { personalDedicatedAdoptionSelections } from "../../db/schemas/personal-dedicated-adoption-selections";
 import * as loggerActual from "../utils/logger";
 import * as apiKeysActual from "./api-keys";
 import * as managedConfigActual from "./managed-eliza-config";
@@ -64,11 +65,20 @@ function makeTx(txIndex: number) {
       }
       return { rows: [] };
     },
-    select: () => {
-      const state = { table: undefined as unknown, hasOrderBy: false };
+    select: (selection?: Record<string, unknown>) => {
+      const state = {
+        table: undefined as unknown,
+        hasAuthorityJoin: false,
+        hasOrderBy: false,
+        selectsOnlyId: selection ? Object.keys(selection).length === 1 && "id" in selection : false,
+      };
       const chain = {
         from: (table: unknown) => {
           state.table = table;
+          return chain;
+        },
+        innerJoin: () => {
+          state.hasAuthorityJoin = true;
           return chain;
         },
         where: (_clause: SQL | undefined) => chain,
@@ -83,13 +93,21 @@ function makeTx(txIndex: number) {
         limit: () => {
           // The live-target re-check orders by created_at; the enqueue's
           // sandbox-existence probe does not — that distinguishes them.
-          if (state.table === agentSandboxes && state.hasOrderBy) {
+          if (state.table === agentSandboxes && state.hasAuthorityJoin && state.hasOrderBy) {
             events.push({ tx: txIndex, kind: "select-live-target" });
-            return liveTargetRowsForTx(txIndex);
+            return liveTargetRowsForTx(txIndex).map((agent) => ({ agent }));
+          }
+          if (state.table === agentSandboxes && state.selectsOnlyId) {
+            events.push({ tx: txIndex, kind: "select-quarantined-marker" });
+            return [];
           }
           if (state.table === agentSandboxes) {
             events.push({ tx: txIndex, kind: "select-sandbox-for-enqueue" });
             return insertedTarget ? [insertedTarget] : [];
+          }
+          if (state.table === personalDedicatedAdoptionSelections) {
+            events.push({ tx: txIndex, kind: "select-adoption-selection" });
+            return [];
           }
           events.push({ tx: txIndex, kind: "select-active-job" });
           return [];
@@ -222,6 +240,8 @@ describe("tier-upgrade single-flight span (#15943)", () => {
       "lock",
       "lock",
       "select-live-target",
+      "select-quarantined-marker",
+      "select-adoption-selection",
       "select-quota-count",
     ]);
     // Global lock order: the ORG-WIDE agent-create lock is acquired FIRST
@@ -242,6 +262,8 @@ describe("tier-upgrade single-flight span (#15943)", () => {
       "lock",
       "lock",
       "select-live-target",
+      "select-quarantined-marker",
+      "select-adoption-selection",
       "select-quota-count",
       "insert-target",
       "deadline",

@@ -62,3 +62,4 @@ export { roomTable } from "./room";
 export { serverTable } from "./server";
 export { taskTable } from "./tasks";
 export { worldTable } from "./world";
+export { worldRoleAuditTable } from "./worldRoleAudit";

@@ -9,13 +9,14 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { describe, it } from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = join(packageRoot, "../..");
@@ -25,6 +26,72 @@ describe("package consumer contract", () => {
     const { compressPromptDescription } = await import("@elizaos/prompts");
     const payload = "  Bun keeps this complete.\nAnd this line too.  ";
     assert.strictEqual(compressPromptDescription(payload), payload);
+  });
+
+  it("keeps native Node mode conditions on executable dist while module resolves source", () => {
+    const coreRoot = join(repositoryRoot, "packages/core");
+    const resolveProbe =
+      'process.stdout.write(import.meta.resolve("@elizaos/prompts"));';
+    const normalResolution = execFileSync(
+      "node",
+      ["--input-type=module", "--eval", resolveProbe],
+      { cwd: coreRoot, encoding: "utf8" },
+    );
+    const moduleResolution = execFileSync(
+      "node",
+      ["--conditions=module", "--input-type=module", "--eval", resolveProbe],
+      { cwd: coreRoot, encoding: "utf8" },
+    );
+    const developmentResolution = execFileSync(
+      "node",
+      [
+        "--conditions=development",
+        "--input-type=module",
+        "--eval",
+        resolveProbe,
+      ],
+      { cwd: coreRoot, encoding: "utf8" },
+    );
+    const productionResolution = execFileSync(
+      "node",
+      [
+        "--conditions=production",
+        "--input-type=module",
+        "--eval",
+        resolveProbe,
+      ],
+      { cwd: coreRoot, encoding: "utf8" },
+    );
+
+    assert.strictEqual(
+      normalResolution,
+      pathToFileURL(join(publishRoot, "index.js")).href,
+    );
+    assert.strictEqual(
+      moduleResolution,
+      pathToFileURL(join(packageRoot, "src/index.ts")).href,
+    );
+    assert.strictEqual(developmentResolution, normalResolution);
+    assert.strictEqual(productionResolution, normalResolution);
+
+    const runtimeProbe = [
+      'const { compressPromptDescription } = await import("@elizaos/prompts");',
+      'process.stdout.write(compressPromptDescription("native-node-dist"));',
+    ].join("\n");
+    for (const args of [
+      [],
+      ["--conditions=development"],
+      ["--conditions=production"],
+    ]) {
+      assert.strictEqual(
+        execFileSync(
+          "node",
+          [...args, "--input-type=module", "--eval", runtimeProbe],
+          { cwd: coreRoot, encoding: "utf8" },
+        ),
+        "native-node-dist",
+      );
+    }
   });
 
   it("loads the packed build in an isolated native Node consumer", {
@@ -78,6 +145,16 @@ describe("package consumer contract", () => {
       );
       assert.strictEqual(installedManifest.types, "./index.d.ts");
       assert.strictEqual(installedManifest.exports["."].types, "./index.d.ts");
+      assert.deepStrictEqual(installedManifest.exports["."].module, {
+        types: "./index.d.ts",
+        import: "./index.js",
+        default: "./index.js",
+      });
+      assert.deepStrictEqual(installedManifest.exports["."]["eliza-source"], {
+        types: "./index.d.ts",
+        import: "./index.js",
+        default: "./index.js",
+      });
 
       const probe = join(consumerDir, "probe.mjs");
       const payload =
@@ -92,18 +169,37 @@ describe("package consumer contract", () => {
           'if (process.release.name !== "node") process.exit(70);',
           "const value = process.env.ELIZA_PROMPTS_PROBE;",
           "if (compressPromptDescription(value) !== value) process.exit(71);",
-          "process.stdout.write(JSON.stringify({ replyTemplate, value }));",
+          'const resolved = import.meta.resolve("@elizaos/prompts");',
+          "process.stdout.write(JSON.stringify({ replyTemplate, resolved, value }));",
         ].join("\n"),
       );
 
-      const probeOutput = execFileSync("node", [probe], {
-        cwd: consumerDir,
-        encoding: "utf8",
-        env: { ...process.env, ELIZA_PROMPTS_PROBE: payload },
-      });
-      const result = JSON.parse(probeOutput);
-      assert.strictEqual(result.value, payload);
-      assert.strictEqual(result.replyTemplate, workspacePrompts.replyTemplate);
+      const runProbe = (args) =>
+        JSON.parse(
+          execFileSync("node", [...args, probe], {
+            cwd: consumerDir,
+            encoding: "utf8",
+            env: { ...process.env, ELIZA_PROMPTS_PROBE: payload },
+          }),
+        );
+      const expectedResolution = realpathSync(
+        join(sandbox, "node_modules/@elizaos/prompts/index.js"),
+      );
+      const normalResult = runProbe([]);
+      const moduleResult = runProbe(["--conditions=module"]);
+      const sourceConditionResult = runProbe(["--conditions=eliza-source"]);
+      for (const result of [
+        normalResult,
+        moduleResult,
+        sourceConditionResult,
+      ]) {
+        assert.strictEqual(result.value, payload);
+        assert.strictEqual(
+          result.replyTemplate,
+          workspacePrompts.replyTemplate,
+        );
+        assert.strictEqual(fileURLToPath(result.resolved), expectedResolution);
+      }
     } finally {
       rmSync(sandbox, { force: true, recursive: true });
     }
@@ -147,6 +243,43 @@ describe("package consumer contract", () => {
         stdio: "pipe",
       });
       rmSync(sandbox, { force: true, recursive: true });
+    }
+  });
+
+  it("loads core prompt re-exports through Vite without a prebuilt prompts dist", {
+    timeout: 60_000,
+  }, async () => {
+    const sandbox = mkdtempSync(join(tmpdir(), "eliza-prompts-vite-"));
+    let server;
+    try {
+      const { createServer, normalizePath } = await import("vite");
+      rmSync(join(packageRoot, "dist"), { force: true, recursive: true });
+      server = await createServer({
+        appType: "custom",
+        cacheDir: join(sandbox, "cache"),
+        configFile: false,
+        logLevel: "silent",
+        root: repositoryRoot,
+        server: { middlewareMode: true },
+      });
+      const corePrompts = await server.ssrLoadModule(
+        `/@fs/${normalizePath(join(repositoryRoot, "packages/core/src/prompts.ts"))}`,
+      );
+      const payload = "  Vite keeps this complete.\nAnd this line too.  ";
+      assert.strictEqual(
+        corePrompts.compressPromptDescription(payload),
+        payload,
+      );
+    } finally {
+      try {
+        await server?.close();
+      } finally {
+        execFileSync("bun", ["run", "build:package"], {
+          cwd: packageRoot,
+          stdio: "pipe",
+        });
+        rmSync(sandbox, { force: true, recursive: true });
+      }
     }
   });
 });

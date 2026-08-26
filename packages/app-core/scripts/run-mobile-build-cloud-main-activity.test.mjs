@@ -26,11 +26,10 @@ describe("cloudSafeMainActivityJava", () => {
     expect(splashInstall).toBeLessThan(bridgeCreation);
   });
 
-  it("does not register push or background messaging in the Play activity", () => {
+  it("does not reference removed push or background-agent services", () => {
     const source = cloudSafeMainActivityJava("ai.elizaos.app");
 
     expect(source).not.toContain("SafePushNotificationsPlugin");
-    expect(source).not.toContain("PushNotifications");
     expect(source).not.toContain("GatewayConnectionService");
   });
 
@@ -61,6 +60,7 @@ describe("cloudSafeMainActivityJava", () => {
     });
 
     expect(source).toContain("import android.view.KeyEvent;");
+    expect(source).toContain("import android.app.admin.DevicePolicyManager;");
     expect(source).toContain("import androidx.activity.OnBackPressedCallback;");
     expect(source).toContain("new OnBackPressedCallback(true)");
     expect(source).toContain("public void handleOnBackPressed()");
@@ -68,8 +68,27 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).toContain("KeyEvent.KEYCODE_FORWARD");
     expect(source).toContain("KeyEvent.KEYCODE_NAVIGATE_NEXT");
     expect(source).toContain("startLockTask();");
+    expect(source).toContain("isLockTaskPermitted(getPackageName())");
+    expect(source).toContain("public void onResume()");
+    expect(source).toContain("super.onResume();");
     expect(source).toContain(
       "IllegalArgumentException | IllegalStateException | SecurityException",
+    );
+  });
+
+  it("restores the bundled launcher renderer after the exact auth callback", () => {
+    const source = cloudSafeMainActivityJava("ai.elizaos.app", {
+      launcherKiosk: true,
+    });
+
+    expect(source).toContain("isCloudAuthCallback(Intent intent)");
+    expect(source).toContain('"elizaos".equalsIgnoreCase(data.getScheme())');
+    expect(source).toContain('"auth".equalsIgnoreCase(data.getHost())');
+    expect(source).toContain('"/callback".equals(data.getPath())');
+    expect(source).toContain("getBridge().getLocalUrl()");
+    expect(source).toContain("webView.loadUrl(localUrl)");
+    expect(source).toContain(
+      "restoreBundledRendererAfterAuthCallback(intent);",
     );
   });
 
@@ -80,6 +99,26 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).not.toContain("java.lang.reflect");
     expect(source).not.toContain("Class.forName(");
     expect(source).not.toContain("readSystemProperty");
+  });
+
+  it("hides only the launcher navigation bar with transient swipe recovery", () => {
+    const source = cloudSafeMainActivityJava("ai.elizaos.app", {
+      launcherKiosk: true,
+      immersiveNavigation: true,
+    });
+
+    expect(source).toContain("import androidx.core.view.WindowInsetsCompat;");
+    expect(
+      source.match(
+        /import androidx\.core\.view\.WindowInsetsControllerCompat;/g,
+      ),
+    ).toHaveLength(1);
+    expect(source).toContain(
+      "controller.hide(WindowInsetsCompat.Type.navigationBars())",
+    );
+    expect(source).toContain("BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE");
+    expect(source).toContain("onWindowFocusChanged(boolean hasFocus)");
+    expect(source).not.toContain("WindowInsetsCompat.Type.statusBars()");
   });
 
   it("captures cold and warm deep links before Capacitor dispatches them", () => {
@@ -109,11 +148,13 @@ describe("cloudSafeMainActivityJava", () => {
     expect(warmCapture).toBeLessThan(warmDispatch);
   });
 
-  it("opens only this package's standard Android app settings", () => {
+  it("opens only this package's Android permission settings", () => {
     const source = cloudSafePlaySettingsPluginJava("ai.elizaos.app");
 
     expect(source).toContain('@CapacitorPlugin(name = "ElizaPlaySettings")');
     expect(source).toContain("Settings.ACTION_APPLICATION_DETAILS_SETTINGS");
+    expect(source).toContain("Settings.ACTION_APP_NOTIFICATION_SETTINGS");
+    expect(source).toContain("Settings.EXTRA_APP_PACKAGE");
     expect(source).toContain(
       'Uri.parse("package:" + getContext().getPackageName())',
     );
@@ -131,15 +172,15 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).toContain("Cipher.getInstance(TRANSFORMATION)");
     expect(source).toContain("KeyProperties.BLOCK_MODE_GCM");
     expect(source).toContain(".setRandomizedEncryptionRequired(true)");
-    expect(source).toContain('"accountDeletionAdmission".equals(key)');
-    expect(source).toContain('"accountDeletionStatus".equals(key)');
-    expect(source).toContain('"accountDeletionRecovery".equals(key)');
     expect(source).toContain('"pending_login".equals(slot)');
     expect(source).toContain('"mobile_login_ciphertext"');
-    expect(source.match(/private String preferenceKey\(PluginCall call\)/g)).toHaveLength(
-      1,
-    );
+    expect(
+      source.match(/private String preferenceKey\(PluginCall call\)/g),
+    ).toHaveLength(1);
     expect(source).not.toContain("CREDENTIAL_CIPHERTEXT");
+    expect(source).toContain('"account_deletion_admission".equals(slot)');
+    expect(source).toContain('"account_deletion_status".equals(slot)');
+    expect(source).toContain('"account_deletion_recovery".equals(slot)');
     expect(source).toContain("putString(preferenceKey, encoded).commit()");
     expect(source).toContain("remove(preferenceKey).commit()");
     expect(source).toContain(

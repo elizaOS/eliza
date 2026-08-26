@@ -7,9 +7,28 @@
  * register the app.
  */
 
+import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
 import { isElizaOS } from "@elizaos/ui/platform/init";
 import { registerContactsApp } from "./components/contacts-app";
 
 if (isElizaOS()) {
   registerContactsApp();
+  registerAppShellPage({
+    id: "contacts",
+    pluginId: "@elizaos/plugin-contacts",
+    label: "Contacts",
+    icon: "ContactRound",
+    path: "/contacts",
+    tabAffinity: "contacts",
+    order: 901,
+    viewKind: "release",
+    surface: {
+      header: "fullscreen",
+      capabilities: ["agent-surface"],
+    },
+    loader: () =>
+      import("./components/ContactsPage.tsx").then((module) => ({
+        default: module.ContactsPage,
+      })),
+  });
 }

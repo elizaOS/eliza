@@ -1042,6 +1042,7 @@ describe("SharedRuntimeChatService", () => {
         trustedDelivery: {
           platform: "telegram",
           project: "eliza-app",
+          connectorAccountId: "bot:123456789",
           chatId: "123456789",
         },
       },
@@ -1062,6 +1063,7 @@ describe("SharedRuntimeChatService", () => {
         delivery: {
           platform: "telegram",
           project: "eliza-app",
+          connectorAccountId: "bot:123456789",
           chatId: "123456789",
         },
       },

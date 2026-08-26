@@ -26,6 +26,7 @@ import {
   type RoleName,
   resolveCanonicalOwnerId,
   type State,
+  setEntityRoleCas,
 } from "@elizaos/core";
 
 type RolesWorldMetadata = {
@@ -89,28 +90,58 @@ export const roleBackfillProvider: Provider = {
         return empty;
       }
 
-      // Backfill: set OWNER role for the world owner
-      metadata.ownership = { ...(metadata.ownership ?? {}), ownerId };
-      roles[ownerId] = "OWNER";
-      roleSources[ownerId] = "owner";
+      if (
+        currentOwnerRole !== "OWNER" ||
+        needsOwnershipSync ||
+        needsOwnerSourceSync
+      ) {
+        const ownerResult = await setEntityRoleCas(
+          runtime,
+          message,
+          ownerId,
+          "OWNER",
+          {
+            source: "owner",
+            worldId: world.id,
+            mutateMetadata: (replacement) => {
+              replacement.ownership = {
+                ...(replacement.ownership ?? {}),
+                ownerId,
+              };
+            },
+          },
+        );
+        if (ownerResult.status !== "committed") {
+          throw new Error(
+            `OWNER backfill did not commit: ${ownerResult.status}`,
+          );
+        }
+      }
+
       if (configuredOwner) {
         for (const [entityId, role] of Object.entries(roles)) {
-          if (entityId !== ownerId && normalizeRole(role) === "OWNER") {
-            delete roles[entityId];
-            delete roleSources[entityId];
+          if (entityId === ownerId || normalizeRole(role) !== "OWNER") continue;
+          const revokeResult = await setEntityRoleCas(
+            runtime,
+            message,
+            entityId,
+            "GUEST",
+            {
+              source: "owner",
+              worldId: world.id,
+              mutateMetadata: (replacement) => {
+                delete replacement.roles?.[entityId];
+                delete replacement.roleSources?.[entityId];
+              },
+            },
+          );
+          if (revokeResult.status !== "committed") {
+            throw new Error(
+              `stale OWNER revocation did not commit: ${revokeResult.status}`,
+            );
           }
         }
       }
-      const updatedMetadata = {
-        ...metadata,
-        roles,
-        roleSources,
-      };
-
-      await runtime.updateWorld({
-        ...world,
-        metadata: updatedMetadata,
-      } as Parameters<IAgentRuntime["updateWorld"]>[0]);
 
       logger.info(
         `[roles] Backfill: set OWNER role for entity ${ownerId} in world ${world.id}`,

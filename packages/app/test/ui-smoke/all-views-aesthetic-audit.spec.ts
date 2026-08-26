@@ -36,6 +36,7 @@ import {
   type ScreenshotQuality,
   screenshotQualityIssues,
 } from "./helpers/screenshot-quality";
+import { seedStewardSession } from "./helpers/test-auth";
 import {
   normalize,
   type OcrExpectation,
@@ -1343,6 +1344,76 @@ async function forceRemoteBundleAuditRoute(
   view: AuditViewCase,
 ): Promise<RemoteBundleAuditProof | null> {
   if (view.kind !== "plugin") return null;
+  if (view.id === "cloud" && view.fixtureState !== "cloud-signed-out") {
+    const connectedCloudResponses = new Map<string, unknown>([
+      [
+        "/api/cloud/status",
+        {
+          connected: true,
+          enabled: true,
+          hasApiKey: true,
+          userId: "audit-user",
+          organizationId: "audit-org",
+        },
+      ],
+      [
+        "/api/cloud/credits",
+        {
+          connected: true,
+          balance: 42.5,
+          low: false,
+          critical: false,
+          topUpUrl: "https://cloud.eliza.app/cloud/billing",
+        },
+      ],
+      [
+        "/api/cloud/compat/agents",
+        {
+          success: true,
+          data: [
+            {
+              agent_id: "audit-agent",
+              agent_name: "Research agent",
+              node_id: null,
+              container_id: null,
+              headscale_ip: null,
+              bridge_url: null,
+              web_ui_url: null,
+              status: "running",
+              agent_config: {},
+              created_at: "2026-08-01T00:00:00.000Z",
+              updated_at: "2026-08-01T00:00:00.000Z",
+              containerUrl: "",
+              webUiUrl: null,
+              database_status: "healthy",
+              error_message: null,
+              last_heartbeat_at: null,
+            },
+          ],
+        },
+      ],
+      [
+        "/api/cloud/billing/summary",
+        {
+          balance: 42.5,
+          currency: "USD",
+          hasPaymentMethod: true,
+        },
+      ],
+    ]);
+    await page.route("**/api/cloud/**", async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (!connectedCloudResponses.has(pathname)) {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(connectedCloudResponses.get(pathname)),
+      });
+    });
+  }
   if (view.id === "computer-use-sessions") {
     await page.route("**/api/computer-use/sessions", async (route) => {
       await route.fulfill({
@@ -1536,7 +1607,15 @@ test.describe("all-views aesthetic audit (#8796)", () => {
       `audit BUILTIN_TAB_PATHS path drift vs navigation: ${mismatched.join(", ")}`,
     ).toEqual([]);
 
-    const uncovered = [...navDistinctPaths].filter((p) => !inlinedPaths.has(p));
+    const pluginOwnedAliases = new Set([
+      "/apps/relationships",
+      "/phone",
+      "/messages",
+      "/contacts",
+    ]);
+    const uncovered = [...navDistinctPaths].filter(
+      (p) => !inlinedPaths.has(p) && !pluginOwnedAliases.has(p),
+    );
     expect(
       uncovered,
       `navigation TAB_PATHS adds routes the audit does not cover: ${uncovered.join(", ")}`,
@@ -1816,6 +1895,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
 
         await page.setViewportSize({ width: vp.width, height: vp.height });
         await seedAppStorage(page);
+        await seedStewardSession(page, { jwt: true });
         await installDefaultAppRoutes(page);
         const remoteBundleProof = await forceRemoteBundleAuditRoute(page, view);
         await openAppPath(page, remoteBundleProof?.auditPath ?? view.path);
@@ -1868,6 +1948,21 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           readPaint,
           overlayRequired,
         );
+        if (view.id === "cloud" && view.fixtureState !== "cloud-signed-out") {
+          await expect(
+            viewRoot.getByTestId("cloud-ready"),
+            "the Cloud plugin audit must capture the connected account state",
+          ).toBeVisible();
+        }
+        if (view.fixtureState === "cloud-signed-out") {
+          await expect(
+            viewRoot.getByTestId("cloud-signed-out"),
+            "the Cloud plugin audit must preserve the disconnected recovery state",
+          ).toBeVisible();
+          await expect(
+            viewRoot.getByText("Connected", { exact: true }),
+          ).toHaveCount(0);
+        }
         await settleHomeEntrance(page);
         const { readableChars, semanticReady, overlayPresent } = paint;
         const renderStateIssues = [

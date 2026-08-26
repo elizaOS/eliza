@@ -126,6 +126,15 @@ jobs:
           submodules: false
           persist-credentials: false
 
+      - name: Setup Bun release tooling
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          run-postinstall: "false"
+          init-submodules: "false"
+
       - name: Resolve tag to peeled commit
         id: version
         env:
