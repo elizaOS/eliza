@@ -693,7 +693,6 @@ function assertSupportedSecurityPolicy(account: ResolvedSlackAccount): void {
     "historyLimit",
     "dmHistoryLimit",
     "slashCommand",
-    "thread",
   ] as const) {
     if (config[key] !== undefined) unsupported.push(key);
   }

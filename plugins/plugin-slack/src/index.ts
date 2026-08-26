@@ -206,6 +206,17 @@ export {
   stripSlackFormatting,
   truncateText,
 } from "./formatting";
+export type {
+  SlackMembershipReadResult,
+  SlackMembershipSnapshot,
+  SlackMembershipUnavailable,
+  SlackMembershipUnavailableReason,
+} from "./membership";
+export {
+  classifyMembershipFailure,
+  readChannelMembershipSnapshot,
+  SLACK_MEMBERS_PAGE_LIMIT,
+} from "./membership";
 export {
   isSlackChannelIdKey,
   normalizeSlackSlug,
