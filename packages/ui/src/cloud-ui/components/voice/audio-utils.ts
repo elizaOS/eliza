@@ -74,8 +74,9 @@ export function supportsGetUserMedia(): boolean {
   }
 }
 
-export function getSupportedMimeType(): string {
-  const recorder = getMediaRecorderConstructor();
+export function getSupportedMimeType(
+  recorder: typeof MediaRecorder | null = getMediaRecorderConstructor(),
+): string {
   if (!recorder) {
     return "";
   }

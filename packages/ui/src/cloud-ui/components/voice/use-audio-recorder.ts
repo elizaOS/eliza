@@ -155,7 +155,7 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
         return;
       }
 
-      const mimeType = getSupportedMimeType();
+      const mimeType = getSupportedMimeType(MediaRecorderConstructor);
       if (!mimeType) {
         setError("No supported audio format found");
         stopTracks(acquiredStream);

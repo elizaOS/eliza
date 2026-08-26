@@ -140,4 +140,21 @@ describe("getSupportedMimeType", () => {
     vi.stubGlobal("window", { MediaRecorder: ThrowingMediaRecorder });
     expect(getSupportedMimeType()).toBe("");
   });
+
+  it("can probe the already-selected constructor without rereading browser globals", () => {
+    vi.stubGlobal(
+      "window",
+      Object.defineProperty({}, "MediaRecorder", {
+        get: () => {
+          throw new Error("global changed");
+        },
+      }),
+    );
+
+    expect(
+      getSupportedMimeType(
+        SupportedMediaRecorder as unknown as typeof MediaRecorder,
+      ),
+    ).toBe("audio/webm;codecs=opus");
+  });
 });
