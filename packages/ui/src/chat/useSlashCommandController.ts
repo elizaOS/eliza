@@ -275,9 +275,8 @@ export function useSlashCommandController(
   options: SlashCommandControllerOptions = {},
 ): SlashCommandController {
   const { isAuthorized = false, isElevated = false } = options;
-  const { setTab, handleChatClear } = useAppSelectorShallow((s) => ({
+  const { setTab } = useAppSelectorShallow((s) => ({
     setTab: s.setTab,
-    handleChatClear: s.handleChatClear,
   }));
   const { views } = useAvailableViews();
   const [serverCommands, setServerCommands] = React.useState<
@@ -440,7 +439,12 @@ export function useSlashCommandController(
         surface: GUI_SURFACE,
         isAuthorized,
         isElevated,
-      }),
+      }).filter(
+        (command) =>
+          command.target.kind !== "client" ||
+          (command.target.clientAction !== "clear-chat" &&
+            command.target.clientAction !== "new-conversation"),
+      ),
     [serverCommands, customCommands, isAuthorized, isElevated],
   );
   // Natural language belongs to the agent model. Client-side shortcuts are
@@ -501,9 +505,9 @@ export function useSlashCommandController(
     [],
   );
 
-  const clearChat = React.useCallback(() => {
-    void handleChatClear();
-  }, [handleChatClear]);
+  // The canonical product has one continuous conversation. Keep the interface
+  // stable for generic slash execution, but never expose or execute a reset.
+  const clearChat = React.useCallback(() => {}, []);
 
   const openCommandPalette = React.useCallback(() => {
     if (typeof document === "undefined") return;
