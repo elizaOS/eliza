@@ -150,18 +150,59 @@ describe("AES-256-CBC streaming semantics (hold-back buffer + IV chaining)", () 
 	});
 
 	it("decodes multibyte UTF-8 split across two update() chunks", () => {
-		// 4-byte emoji from byte 13: its sequence crosses the first block's
-		// edge, and the ciphertext is also fed through two update() calls.
-		const plaintext = `${"a".repeat(13)}🚀tail`;
+		// 29 a's + 🚀 (F0 9F 9A 80) + "cd" = 35 bytes -> 48-byte ciphertext (3
+		// blocks). Feed update() 32 bytes of ciphertext at a time: the first
+		// update emits plaintext[0:16] (empty here — one block held back for
+		// padding), the second emits plaintext[0:32] which ENDS MID-EMOJI (the
+		// F0 9F 9A 80 sequence starts at byte 29), so the emoji completes in a
+		// LATER chunk than its lead byte — the exact holdback-transfer path.
+		const plaintext = `${"a".repeat(29)}🚀cd`;
 		const hex = nodeCiphertextHex(plaintext);
-		for (const split of [16, 24]) {
-			const decipher = createDecipheriv("aes-256-cbc", KEY, IV);
-			const got =
-				decipher.update(hex.slice(0, split * 2), "hex", "utf8") +
-				decipher.update(hex.slice(split * 2), "hex", "utf8") +
-				decipher.final("utf8");
-			expect(got).toBe(plaintext);
-		}
+		const decipher = createDecipheriv("aes-256-cbc", KEY, IV);
+		const got =
+			decipher.update(hex.slice(0, 64), "hex", "utf8") +
+			decipher.update(hex.slice(64), "hex", "utf8") +
+			decipher.final("utf8");
+		expect(got).toBe(plaintext);
+	});
+
+	it("transfers the UTF-8 holdback between two output-producing update() calls", () => {
+		// Longer plaintext (4 blocks) so the FIRST update() already produces
+		// output ending in a partial character and the SECOND completes it —
+		// pinning holdback hand-off between consecutive updates, not just
+		// update->final. 14 b's put the €'s E2 at byte 14, 82 at 15 (inside
+		// block 1), AC at 16 (block 2): out1 must emit exactly the 14 b's and
+		// hold the partial sequence back.
+		const plaintext = `${"b".repeat(14)}€${"c".repeat(50)}`;
+		const hex = nodeCiphertextHex(plaintext);
+		const decipher = createDecipheriv("aes-256-cbc", KEY, IV);
+		const out1 = decipher.update(hex.slice(0, 64), "hex", "utf8");
+		const out2 = decipher.update(hex.slice(64, 128), "hex", "utf8");
+		const out3 = decipher.update(hex.slice(128), "hex", "utf8");
+		const out4 = decipher.final("utf8");
+		expect(out1).toBe("b".repeat(14));
+		expect(out1 + out2 + out3 + out4).toBe(plaintext);
+	});
+
+	it("rejects changing the output encoding mid-stream like node:crypto", () => {
+		const hex = nodeCiphertextHex(SECRET);
+		// update utf8 -> final hex
+		const d1 = createDecipheriv("aes-256-cbc", KEY, IV);
+		d1.update(hex, "hex", "utf8");
+		expect(() => d1.final("hex")).toThrow(/Cannot change encoding/);
+		// update utf8 -> update hex
+		const d2 = createDecipheriv("aes-256-cbc", KEY, IV);
+		d2.update(hex.slice(0, 32), "hex", "utf8");
+		expect(() => d2.update(hex.slice(32), "hex", "hex")).toThrow(
+			/Cannot change encoding/,
+		);
+		// the alias pair utf8/utf-8 stays one encoding
+		const d3 = createDecipheriv("aes-256-cbc", KEY, IV);
+		const out = d3.update(hex.slice(0, 32), "hex", "utf8");
+		expect(
+			() => d3.update(hex.slice(32), "hex", "utf-8") + d3.final("utf8"),
+		).not.toThrow();
+		expect(out.length + 1).toBeGreaterThan(0); // shape smoke
 	});
 
 	it("matches node:crypto byte-for-byte on a non-ASCII secret round-trip", () => {
