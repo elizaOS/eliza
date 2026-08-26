@@ -473,6 +473,21 @@ acceptance (including destructive-provider boundaries), one final exact native
 package build, and Nubs-supervised pill/tray/Vault/Computer Use/provider manual
 QA. This shadow must not be merged or promoted directly.
 
+### Publication receipt
+
+The recoverable composite was normally pushed (never force-pushed) on branch
+`codex/macos-shadow-integration-20260825`. Draft PR #28889 publishes this
+nonproduction integration/evidence only:
+<https://github.com/elizaOS/eliza/pull/28889>. Its title and opening warning say
+`DO NOT MERGE`, enumerate every exact input SHA and integration-only resolution,
+and retain the remaining review, hosted, package, and Nubs-supervised gates.
+The immutable pre-publication receipt is tagged
+`nubs/macos-shadow-integration-20260825-v11-account-green-draft-evidence`.
+
+PR #28826 remains the separate narrow desktop-preflight review. Historical
+PR #26870 was not used or reopened. Publication changed no runtime, provider,
+production, signing, device, TCC, credential, port, or physical-input state.
+
 ## Frozen inputs
 
 - Base `origin/develop`: `69c0291954942c9ae375fe5aacc82729a24bac6f`
