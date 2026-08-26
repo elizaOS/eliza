@@ -662,6 +662,10 @@ export default function StewardLoginSection() {
       cachedStewardProviders !== null ||
       readSessionCachedProviders() !== null,
   );
+  const [providerDiscoveryError, setProviderDiscoveryError] = useState<
+    string | null
+  >(null);
+  const [providerDiscoveryAttempt, setProviderDiscoveryAttempt] = useState(0);
   const [providers, setProviders] = useState<StewardProviders>(
     () =>
       cachedStewardProviders ??
@@ -771,10 +775,17 @@ export default function StewardLoginSection() {
     // (#18256). If the exchange fails, `completingCallback` clears and this
     // effect re-runs, so the retry surface still gets live discovery.
     if (completingCallback) return;
+    if (providerDiscoveryAttempt > 0) {
+      // A retry must not reuse the rejected process-wide request.
+      stewardProvidersPromise = null;
+    }
     let cancelled = false;
     loadStewardProviders(auth)
       .then((loadedProviders) => {
-        if (!cancelled) setProviders(loadedProviders);
+        if (!cancelled) {
+          setProviderDiscoveryError(null);
+          setProviders(loadedProviders);
+        }
       })
       .catch((providerError: unknown) => {
         stewardProvidersPromise = null;
@@ -784,7 +795,7 @@ export default function StewardLoginSection() {
         // of blasting an error over working sign-in options; a first-load
         // failure (nothing rendered yet) still surfaces the error.
         if (readSessionCachedProviders() === null) {
-          setError(
+          setProviderDiscoveryError(
             getErrorMessage(providerError, "Steward provider discovery failed"),
           );
         }
@@ -795,7 +806,15 @@ export default function StewardLoginSection() {
     return () => {
       cancelled = true;
     };
-  }, [auth, completingCallback]);
+  }, [auth, completingCallback, providerDiscoveryAttempt]);
+
+  const retryProviderDiscovery = useCallback(() => {
+    // Return to the reserved loading geometry and trigger a fresh server query;
+    // never render a fabricated subset of sign-in methods.
+    setProviderDiscoveryError(null);
+    setProvidersLoaded(false);
+    setProviderDiscoveryAttempt((attempt) => attempt + 1);
+  }, []);
 
   useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
@@ -2141,6 +2160,49 @@ export default function StewardLoginSection() {
           })}
         </span>
       </div>
+    );
+  }
+
+  // A fresh browser has no authoritative provider set to render when discovery
+  // fails. Showing DEFAULT_PROVIDERS here used to make the same Steward login
+  // look like a second email/passkey-only product and could hide enabled OAuth
+  // methods. Fail visibly and retry discovery instead. A valid session-cached
+  // set takes the separate background-reconcile path above and remains usable.
+  if (providerDiscoveryError) {
+    return (
+      <ReservedLoginFrame>
+        <div
+          className="flex flex-col items-center gap-4 text-center"
+          role="alert"
+        >
+          <div className="flex size-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+            <AlertCircle className="size-5" aria-hidden="true" />
+          </div>
+          <div className="space-y-1">
+            <p className="text-base font-semibold text-txt-strong">
+              {t("cloud.login.providerDiscovery.title", {
+                defaultValue: "Sign-in options couldn't load",
+              })}
+            </p>
+            <p className="text-sm text-muted">{providerDiscoveryError}</p>
+            <p className="text-xs leading-relaxed text-muted">
+              {t("cloud.login.providerDiscovery.message", {
+                defaultValue:
+                  "Retry to load the sign-in methods enabled for this Eliza Cloud account.",
+              })}
+            </p>
+          </div>
+          <Button
+            type="button"
+            className="hosted-signin-focus-emphasis w-full"
+            onClick={retryProviderDiscovery}
+          >
+            {t("cloud.login.providerDiscovery.retry", {
+              defaultValue: "Retry sign-in options",
+            })}
+          </Button>
+        </div>
+      </ReservedLoginFrame>
     );
   }
 
