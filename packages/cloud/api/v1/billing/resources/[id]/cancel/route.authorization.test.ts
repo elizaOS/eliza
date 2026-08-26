@@ -9,13 +9,14 @@ import { ApiError } from "@/lib/api/cloud-worker-errors";
 
 const requireCurrentBillingManagerSession = mock();
 const requestCancellation = mock();
+const cancelResource = mock();
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireCurrentBillingManagerSession,
 }));
 
 mock.module("@/lib/services/active-billing", () => ({
-  activeBillingService: { requestCancellation },
+  activeBillingService: { requestCancellation, cancelResource },
 }));
 
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
@@ -37,6 +38,17 @@ app.route("/api/v1/billing/resources/:id/cancel", route);
 beforeEach(() => {
   requireCurrentBillingManagerSession.mockReset();
   requestCancellation.mockReset();
+  cancelResource.mockReset();
+  cancelResource.mockResolvedValue({
+    stoppedBilling: true,
+    message: "legacy cancellation completed",
+    infrastructureAction: {
+      attempted: true,
+      status: "deleted",
+      message: "deleted",
+    },
+    resource: { resourceId: "legacy-resource" },
+  });
   requestCancellation.mockResolvedValue({
     disposition: "accepted",
     receipt: {
@@ -47,7 +59,9 @@ beforeEach(() => {
       action: "stop",
       expectedLifecycleRevision: 7,
       status: "accepted",
-      billingStopped: false,
+      computeStopped: false,
+      providerStopped: false,
+      retainedBackupBilling: { status: "not_applicable", ratePerHour: null },
       infrastructureStatus: "queued",
       acceptedAt: "2026-08-23T00:00:00.000Z",
       pollEndpoint: "/api/v1/jobs/00000000-0000-4000-8000-000000000003",
@@ -56,6 +70,44 @@ beforeEach(() => {
 });
 
 describe("billing resource cancellation authorization", () => {
+  test("preserves the published version-1 empty-body and delete contracts", async () => {
+    requireCurrentBillingManagerSession.mockResolvedValue({
+      id: "owner-1",
+      organization_id: "org-current",
+      role: "owner",
+      steward_id: "steward-owner",
+    });
+
+    for (const body of [{}, { mode: "delete" }]) {
+      const response = await app.request(
+        "https://api.test/api/v1/billing/resources/legacy-resource/cancel",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
+      expect(response.status).toBe(200);
+      expect(response.headers.get("Deprecation")).toBe("true");
+    }
+
+    expect(cancelResource).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        resourceId: "legacy-resource",
+        resourceType: undefined,
+      }),
+    );
+    expect(cancelResource).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        resourceId: "legacy-resource",
+        mode: "delete",
+      }),
+    );
+    expect(requestCancellation).not.toHaveBeenCalled();
+  });
+
   test("uses the freshly authorized organization at the final effect boundary", async () => {
     const revalidatedStewardUserIds: string[] = [];
     requestCancellation.mockImplementation(async (options) => {
@@ -72,7 +124,12 @@ describe("billing resource cancellation authorization", () => {
           action: "stop",
           expectedLifecycleRevision: 7,
           status: "accepted",
-          billingStopped: false,
+          computeStopped: false,
+          providerStopped: false,
+          retainedBackupBilling: {
+            status: "not_applicable",
+            ratePerHour: null,
+          },
           infrastructureStatus: "queued",
           acceptedAt: "2026-08-23T00:00:00.000Z",
           pollEndpoint: "/api/v1/jobs/00000000-0000-4000-8000-000000000003",
@@ -94,6 +151,7 @@ describe("billing resource cancellation authorization", () => {
           headers: {
             "content-type": "application/json",
             "Idempotency-Key": "billing-cancel-request-0001",
+            "X-Eliza-Billing-Cancel-Version": "2",
           },
           body: JSON.stringify({
             resourceType: "container",
@@ -145,6 +203,7 @@ describe("billing resource cancellation authorization", () => {
           headers: {
             "content-type": "application/json",
             "Idempotency-Key": "billing-cancel-request-0001",
+            "X-Eliza-Billing-Cancel-Version": "2",
           },
           body: JSON.stringify({
             resourceType: "container",
@@ -181,7 +240,10 @@ describe("billing resource cancellation authorization", () => {
       "https://api.test/api/v1/billing/resources/00000000-0000-4000-8000-000000000001/cancel",
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "X-Eliza-Billing-Cancel-Version": "2",
+        },
         body: JSON.stringify({
           resourceType: "container",
           mode: "stop",

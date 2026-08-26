@@ -558,6 +558,10 @@ const settleLifecycleBillingSpy = spyOn(
   agentBillingRepository,
   "settleAccruedBillingBeforeLifecycle",
 ).mockResolvedValue({ status: "already_billed_recently" });
+const settleLifecycleBillingInTransactionSpy = spyOn(
+  agentBillingRepository,
+  "settleAccruedBillingBeforeLifecycleInTransaction",
+).mockResolvedValue({ status: "already_billed_recently" });
 
 const originalFetch = globalThis.fetch;
 const originalWebSocketPair = Object.getOwnPropertyDescriptor(globalThis, "WebSocketPair");
@@ -4283,7 +4287,7 @@ describe("replacement lifecycle teardown is absence-proof", () => {
 
   const SUSPEND_JOB = "00000000-0000-0000-0000-000000000099";
 
-  test("suspend captures and records a fresh pre-shutdown backup before stopping", async () => {
+  test("a funded user suspend settles compute and keeps its fresh backup billable", async () => {
     const rec = bridgedRunningRow();
     const provider = stoppableProvider();
     const { svc, restore } = await suspendSvc(rec, provider);
@@ -4307,6 +4311,11 @@ describe("replacement lifecycle teardown is absence-proof", () => {
         },
       });
     try {
+      settleLifecycleBillingInTransactionSpy.mockClear();
+      settleLifecycleBillingInTransactionSpy.mockResolvedValueOnce({
+        status: "billed",
+        amount: 0.01,
+      });
       const result = await svc.executeSuspend(AGENT, ORG, SUSPEND_JOB);
       expect(result).toEqual({ success: true, containerStopped: true, backupId: "backup-fresh" });
       expect(provider.stopForReplacement).toHaveBeenCalledWith(rec.sandbox_id);
@@ -4320,9 +4329,17 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       );
       expect(createSpy).not.toHaveBeenCalled();
       expect(pruneSpy).toHaveBeenCalledWith(AGENT, 10);
+      expect(settleLifecycleBillingInTransactionSpy).toHaveBeenCalledWith(
+        expect.anything(),
+        AGENT,
+        ORG,
+        expect.any(Date),
+      );
       expect(writes).toHaveLength(1);
-      const rendered = new PgDialect().sqlToQuery(writes[0]).sql;
+      const query = new PgDialect().sqlToQuery(writes[0]);
+      const rendered = query.sql;
       expect(rendered).toContain("last_backup_at = NOW()");
+      expect(query.params).toContain("active");
     } finally {
       upgradeTransactionImpl = null;
       fetchSpy.mockRestore();
@@ -4660,10 +4677,10 @@ describe("replacement lifecycle teardown is absence-proof", () => {
     };
     const provider = stoppableProvider();
     const { svc, restore } = await suspendSvc(rec, provider);
-    const settle = spyOn(
-      agentBillingRepository,
-      "settleAccruedBillingBeforeLifecycleInTransaction",
-    ).mockResolvedValue({ status: "already_billed_recently" });
+    settleLifecycleBillingInTransactionSpy.mockClear();
+    settleLifecycleBillingInTransactionSpy.mockResolvedValueOnce({
+      status: "already_billed_recently",
+    });
     const updates: Array<Record<string, unknown>> = [];
     upgradeTransactionImpl = async (fn) =>
       fn({
@@ -4704,7 +4721,12 @@ describe("replacement lifecycle teardown is absence-proof", () => {
         skipped: true,
         reason: "billing_recovered",
       });
-      expect(settle).toHaveBeenCalledWith(expect.anything(), AGENT, ORG, expect.any(Date));
+      expect(settleLifecycleBillingInTransactionSpy).toHaveBeenCalledWith(
+        expect.anything(),
+        AGENT,
+        ORG,
+        expect.any(Date),
+      );
       expect(updates).toContainEqual(
         expect.objectContaining({ status: "superseded", last_error: "billing_recovered" }),
       );
@@ -4713,7 +4735,55 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       expect(provider.stopForReplacement).not.toHaveBeenCalled();
     } finally {
       upgradeTransactionImpl = null;
-      settle.mockRestore();
+      restore();
+    }
+  });
+
+  test("an unfunded user stop preserves retained-backup debt and billing authority", async () => {
+    const rec: AgentSandbox = {
+      ...claimedPendingRow(),
+      status: "stopped",
+      billing_status: "active",
+      last_backup_at: new Date("2026-08-20T00:00:00.000Z"),
+    };
+    const provider = stoppableProvider();
+    const { svc, restore } = await suspendSvc(rec, provider);
+    settleLifecycleBillingInTransactionSpy.mockClear();
+    settleLifecycleBillingInTransactionSpy.mockResolvedValueOnce({
+      status: "insufficient_credits",
+    });
+    const updates: Array<Record<string, unknown>> = [];
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        update: () => ({
+          set: (patch: Record<string, unknown>) => {
+            updates.push(patch);
+            return { where: async () => [] };
+          },
+        }),
+      } as never);
+
+    try {
+      await expect(svc.executeSuspend(AGENT, ORG, SUSPEND_JOB)).resolves.toEqual({
+        success: true,
+        containerStopped: true,
+      });
+      expect(settleLifecycleBillingInTransactionSpy).toHaveBeenCalledWith(
+        expect.anything(),
+        AGENT,
+        ORG,
+        expect.any(Date),
+      );
+      expect(updates).toContainEqual(
+        expect.objectContaining({
+          billing_status: "active",
+          scheduled_shutdown_at: null,
+          shutdown_warning_sent_at: null,
+        }),
+      );
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+    } finally {
+      upgradeTransactionImpl = null;
       restore();
     }
   });

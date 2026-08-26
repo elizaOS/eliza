@@ -4,9 +4,11 @@ import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import {
   bigint,
+  boolean,
   check,
   index,
   integer,
+  numeric,
   pgTable,
   text,
   timestamp,
@@ -46,6 +48,11 @@ export const agentComputeStopIntents = pgTable(
     next_attempt_at: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
     provider_started_at: timestamp("provider_started_at", { withTimezone: true }),
     provider_confirmed_at: timestamp("provider_confirmed_at", { withTimezone: true }),
+    retained_backup_billing: boolean("retained_backup_billing").notNull().default(false),
+    retained_backup_rate_per_hour: numeric("retained_backup_rate_per_hour", {
+      precision: 18,
+      scale: 6,
+    }),
     superseded_at: timestamp("superseded_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -67,6 +74,11 @@ export const agentComputeStopIntents = pgTable(
     authorization_check: check(
       "agent_compute_stop_intents_authorization_check",
       sql`${table.authorization} IN ('billing_request', 'user_request')`,
+    ),
+    retained_backup_billing_check: check(
+      "agent_compute_stop_intents_retained_backup_billing_check",
+      sql`(${table.retained_backup_billing} = true AND ${table.retained_backup_rate_per_hour} > 0)
+        OR (${table.retained_backup_billing} = false AND ${table.retained_backup_rate_per_hour} IS NULL)`,
     ),
     attempts_check: check("agent_compute_stop_intents_attempts_check", sql`${table.attempts} >= 0`),
   }),

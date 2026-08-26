@@ -956,6 +956,77 @@ describe("compute billing recovery", () => {
         shutdown_warning_sent_at: null,
         scheduled_shutdown_at: null,
       });
+      const receipts = await dbWrite
+        .select()
+        .from(containerBillingRecords)
+        .where(eq(containerBillingRecords.container_id, containerId));
+      expect(receipts).toHaveLength(1);
+      expect(Number(receipts[0].amount)).toBeGreaterThan(0);
+      const debits = await dbWrite
+        .select()
+        .from(creditTransactions)
+        .where(eq(creditTransactions.organization_id, org.id));
+      expect(debits).toHaveLength(1);
+      expect(Number(debits[0].amount)).toBeLessThan(0);
+      expect(container.last_billed_at?.getTime()).toBeGreaterThan(periodStart.getTime());
+    } finally {
+      providerStop.mockRestore();
+    }
+  });
+
+  test("an unfunded user stop succeeds without forgiving accrued container debt", async () => {
+    const { org, user } = await seed("0.000000");
+    const containerId = crypto.randomUUID();
+    const periodStart = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    await dbWrite.insert(containers).values({
+      id: containerId,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "unfunded-user-stop",
+      project_name: "unfunded-user-stop",
+      status: "running",
+      billing_status: "active",
+      last_billed_at: periodStart,
+      lifecycle_revision: 9,
+      created_at: periodStart,
+      updated_at: periodStart,
+    });
+    await dbWrite.insert(computeBillingRateSegments).values({
+      organization_id: org.id,
+      workload_kind: "container",
+      workload_id: containerId,
+      lifecycle_revision: 9,
+      billing_state: "running",
+      rate_per_hour: "0.027917",
+      effective_at: periodStart,
+    });
+    const requested = await enqueueContainerUserStopOnce({
+      containerId,
+      organizationId: org.id,
+      userId: user.id,
+      expectedLifecycleRevision: 9,
+    });
+    if (!requested.requested) throw new Error("Expected durable user stop request");
+    const [job] = await dbWrite.select().from(jobs).where(eq(jobs.id, requested.jobId));
+    const providerStop = spyOn(
+      getHetznerContainersClient(),
+      "stopContainerRuntimeForBilling",
+    ).mockResolvedValue({ nodeId: null });
+    try {
+      await expect(dispatchContainerStopJob(job)).resolves.toEqual({ stopped: true });
+      const [container] = await dbWrite
+        .select()
+        .from(containers)
+        .where(eq(containers.id, containerId));
+      expect(container).toMatchObject({ status: "stopped", billing_status: "suspended" });
+      expect(container.last_billed_at).toEqual(periodStart);
+      expect(await dbWrite.select().from(containerBillingRecords)).toHaveLength(0);
+      expect(await dbWrite.select().from(creditTransactions)).toHaveLength(0);
+      const [intent] = await dbWrite
+        .select()
+        .from(containerComputeStopIntents)
+        .where(eq(containerComputeStopIntents.id, requested.intentId));
+      expect(intent.status).toBe("provider_confirmed");
     } finally {
       providerStop.mockRestore();
     }
@@ -1005,6 +1076,8 @@ describe("compute billing recovery", () => {
         .from(containers)
         .where(eq(containers.id, containerId));
       expect(container).toMatchObject({ status: "running", billing_status: "active" });
+      expect(await dbWrite.select().from(containerBillingRecords)).toHaveLength(0);
+      expect(await dbWrite.select().from(creditTransactions)).toHaveLength(0);
     } finally {
       providerStop.mockRestore();
     }

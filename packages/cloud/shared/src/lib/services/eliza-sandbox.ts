@@ -54,6 +54,7 @@ import type { RuntimeDurableObjectNamespace } from "../../types/cloud-worker-env
 import { ApiError } from "../api/cloud-worker-errors";
 import { InsufficientCreditsError as InsufficientCreditsApiError } from "../api/errors";
 import { containersEnv } from "../config/containers-env";
+import { AGENT_PRICING } from "../constants/agent-pricing";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { getCloudAwareEnv, getCloudBinding } from "../runtime/cloud-bindings";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
@@ -9952,10 +9953,19 @@ export class ElizaSandboxService {
       // suspend billing permanently. Explicit user stops remain unconditional.
       if (rec.status === "stopped") {
         const confirmedAt = new Date();
+        if (effectiveAuthorization === "user_request") {
+          await agentBillingRepository.settleAccruedBillingBeforeLifecycleInTransaction(
+            tx,
+            agentId,
+            orgId,
+            confirmedAt,
+          );
+        }
+        const retainedBackupBilling = rec.last_backup_at !== null;
         await tx
           .update(agentSandboxes)
           .set({
-            billing_status: "suspended",
+            billing_status: retainedBackupBilling ? "active" : "suspended",
             scheduled_shutdown_at: null,
             shutdown_warning_sent_at: null,
             bridge_url: null,
@@ -9969,6 +9979,10 @@ export class ElizaSandboxService {
             .set({
               status: "provider_confirmed",
               provider_confirmed_at: confirmedAt,
+              retained_backup_billing: retainedBackupBilling,
+              retained_backup_rate_per_hour: retainedBackupBilling
+                ? String(AGENT_PRICING.IDLE_HOURLY_RATE)
+                : null,
               updated_at: confirmedAt,
             })
             .where(eq(agentComputeStopIntents.id, stopIntent.id));
@@ -10039,12 +10053,23 @@ export class ElizaSandboxService {
         containerStopped = true;
       }
 
+      const confirmedAt = new Date();
+      if (effectiveAuthorization === "user_request") {
+        await agentBillingRepository.settleAccruedBillingBeforeLifecycleInTransaction(
+          tx,
+          agentId,
+          orgId,
+          confirmedAt,
+        );
+      }
+      const retainedBackupBilling = backupCapturedFresh || rec.last_backup_at !== null;
       // The lifecycle row remains FOR UPDATE from the locked tier check through
       // provider stop and persistence, so this final allowlist cannot become a
       // zero-row tier race. It mirrors the guard in SQL as defense in depth.
       await tx.execute(sql`
         UPDATE ${agentSandboxes}
-        SET status = 'stopped', billing_status = 'suspended',
+        SET status = 'stopped',
+            billing_status = ${retainedBackupBilling ? "active" : "suspended"},
             scheduled_shutdown_at = NULL, shutdown_warning_sent_at = NULL,
             bridge_url = NULL, health_url = NULL, updated_at = NOW()
             ${backupCapturedFresh ? sql`, last_backup_at = NOW()` : sql``}
@@ -10053,12 +10078,15 @@ export class ElizaSandboxService {
           AND ${inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS])}
       `);
       if (stopIntent) {
-        const confirmedAt = new Date();
         await tx
           .update(agentComputeStopIntents)
           .set({
             status: "provider_confirmed",
             provider_confirmed_at: confirmedAt,
+            retained_backup_billing: retainedBackupBilling,
+            retained_backup_rate_per_hour: retainedBackupBilling
+              ? String(AGENT_PRICING.IDLE_HOURLY_RATE)
+              : null,
             updated_at: confirmedAt,
           })
           .where(eq(agentComputeStopIntents.id, stopIntent.id));

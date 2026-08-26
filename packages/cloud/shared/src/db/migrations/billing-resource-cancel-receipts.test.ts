@@ -1,11 +1,19 @@
-/** Applies migration 0313 to real PGlite and proves its receipt and intent invariants. */
+/** Applies the split billing-cancellation migrations to PGlite and proves their invariants. */
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { PGlite } from "@electric-sql/pglite";
 
-const migration = await Bun.file(
-  new URL("./0313_billing_resource_cancel_receipts.sql", import.meta.url),
-).text();
+const migration = (
+  await Promise.all(
+    [
+      "0330_billing_cancel_intent_authority.sql",
+      "0331_billing_cancel_commands.sql",
+      "0332_billing_cancel_command_keys.sql",
+      "0333_billing_cancel_guard_functions.sql",
+      "0334_billing_cancel_guards.sql",
+    ].map((name) => Bun.file(new URL(`./${name}`, import.meta.url)).text()),
+  )
+).join("\n--> statement-breakpoint\n");
 const databases: PGlite[] = [];
 
 const ORG_A = "10000000-0000-4000-8000-000000000001";
@@ -62,7 +70,7 @@ afterEach(async () => {
   await Promise.all(databases.splice(0).map((db) => db.close()));
 });
 
-describe("0313 billing resource cancellation receipts", () => {
+describe("split billing resource cancellation receipts", () => {
   test("backfills billing authority and enforces one explicit user intent per generation", async () => {
     const db = await database();
     await db.exec(migration);

@@ -132,6 +132,8 @@ beforeAll(async () => {
       next_attempt_at timestamptz NOT NULL DEFAULT now(),
       provider_started_at timestamptz,
       provider_confirmed_at timestamptz,
+      retained_backup_billing boolean NOT NULL DEFAULT false,
+      retained_backup_rate_per_hour numeric(12, 6),
       superseded_at timestamptz,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
@@ -633,7 +635,9 @@ describe("billing cancellation durable receipt authority", () => {
     const confirmedReplay = await request(service);
     expect(confirmedReplay.receipt).toMatchObject({
       status: "provider_confirmed",
-      billingStopped: true,
+      computeStopped: true,
+      providerStopped: true,
+      retainedBackupBilling: { status: "not_applicable", ratePerHour: null },
       infrastructureStatus: "provider_confirmed",
     });
 
@@ -661,7 +665,8 @@ describe("billing cancellation durable receipt authority", () => {
     });
     expect(supersededReplay.receipt).toMatchObject({
       status: "conflict",
-      billingStopped: false,
+      computeStopped: false,
+      providerStopped: false,
       infrastructureStatus: "superseded",
     });
 
@@ -683,7 +688,9 @@ describe("billing cancellation durable receipt authority", () => {
     });
     expect(terminalReplay.receipt).toMatchObject({
       status: "terminal_attention",
-      billingStopped: false,
+      computeStopped: false,
+      providerStopped: false,
+      retainedBackupBilling: { status: "pending" },
       infrastructureStatus: "terminal_attention",
     });
   });
@@ -705,7 +712,12 @@ describe("billing cancellation durable receipt authority", () => {
       .where(eq(containerComputeStopIntents.job_id, container.receipt.jobId));
     await dbWrite
       .update(agentComputeStopIntents)
-      .set({ status: "provider_confirmed", provider_confirmed_at: new Date() })
+      .set({
+        status: "provider_confirmed",
+        provider_confirmed_at: new Date(),
+        retained_backup_billing: true,
+        retained_backup_rate_per_hour: "0.002500",
+      })
       .where(eq(agentComputeStopIntents.job_id, agent.receipt.jobId));
     await dbWrite
       .update(jobs)
@@ -723,16 +735,17 @@ describe("billing cancellation durable receipt authority", () => {
       expectedLifecycleRevision: 3,
       idempotencyKey: "cancel-request-agent-0001",
     });
-    for (const replay of [containerReplay, agentReplay]) {
-      expect(replay.receipt).toMatchObject({
-        status: "provider_confirmed",
-        billingStopped: true,
-        infrastructureStatus: "provider_confirmed",
-      });
-    }
+    expect(containerReplay.receipt).toMatchObject({
+      status: "provider_confirmed",
+      computeStopped: true,
+      providerStopped: true,
+      retainedBackupBilling: { status: "not_applicable", ratePerHour: null },
+      infrastructureStatus: "provider_confirmed",
+    });
     expect(agentReplay.receipt).toMatchObject({
       jobId: originalAgentJobId,
       pollEndpoint: `/api/v1/jobs/${originalAgentJobId}`,
+      retainedBackupBilling: { status: "billable", ratePerHour: 0.0025 },
     });
   });
 
@@ -748,7 +761,8 @@ describe("billing cancellation durable receipt authority", () => {
     const replay = await request(service);
     expect(replay.receipt).toMatchObject({
       status: "terminal_attention",
-      billingStopped: false,
+      computeStopped: false,
+      providerStopped: false,
       infrastructureStatus: "terminal_attention",
     });
   });
@@ -765,7 +779,8 @@ describe("billing cancellation durable receipt authority", () => {
     const replay = await request(service);
     expect(replay.receipt).toMatchObject({
       status: "conflict",
-      billingStopped: false,
+      computeStopped: false,
+      providerStopped: false,
       infrastructureStatus: "superseded",
     });
   });

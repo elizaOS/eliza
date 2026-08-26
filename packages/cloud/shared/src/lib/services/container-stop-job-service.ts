@@ -27,6 +27,7 @@ import { and, asc, desc, eq, inArray, lte, ne, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { dbWrite } from "../../db/helpers";
 import { settleComputeRateSegments } from "../../db/repositories/compute-billing-segments";
+import { containerBillingRepository } from "../../db/repositories/container-billing";
 import { containersRepository } from "../../db/repositories/containers";
 import { containerComputeStopIntents } from "../../db/schemas/compute-stop-intents";
 import { containers } from "../../db/schemas/containers";
@@ -171,6 +172,8 @@ export async function dispatchContainerStopJob(job: {
     // cannot race between the final fence check and docker stop.
     const [container] = await tx
       .select({
+        user_id: containers.user_id,
+        name: containers.name,
         status: containers.status,
         billing_status: containers.billing_status,
         lifecycle_revision: containers.lifecycle_revision,
@@ -181,6 +184,40 @@ export async function dispatchContainerStopJob(job: {
       .where(and(eq(containers.id, containerId), eq(containers.organization_id, organizationId)))
       .for("update")
       .limit(1);
+    const [organization] = await tx
+      .select({
+        credit_balance: organizations.credit_balance,
+        pay_as_you_go_from_earnings: organizations.pay_as_you_go_from_earnings,
+      })
+      .from(organizations)
+      .where(eq(organizations.id, organizationId))
+      .for("update")
+      .limit(1);
+    if (!organization) throw new Error("CONTAINER_STOP billing organization not found");
+
+    let earningsAvailable = new Decimal(0);
+    let earningsSourceUserId: string | null = null;
+    if (organization.pay_as_you_go_from_earnings) {
+      const [sourceUser] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.organization_id, organizationId))
+        .orderBy(desc(sql`${users.role} = 'owner'`), asc(users.created_at), asc(users.id))
+        .limit(1);
+      if (sourceUser) {
+        earningsSourceUserId = sourceUser.id;
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtext(${`redeemable_earnings:${sourceUser.id}`}))`,
+        );
+        const [earnings] = await tx
+          .select({ available_balance: redeemableEarnings.available_balance })
+          .from(redeemableEarnings)
+          .where(eq(redeemableEarnings.user_id, sourceUser.id))
+          .for("update")
+          .limit(1);
+        if (earnings) earningsAvailable = new Decimal(earnings.available_balance);
+      }
+    }
     // Authorization is durable effect authority, so the daemon must branch on
     // the locked intent rather than trusting the job payload. The workload row
     // is locked first, matching every lifecycle writer for this container; a
@@ -229,42 +266,9 @@ export async function dispatchContainerStopJob(job: {
     }
 
     // Billing authority remains conditional on insufficient funding at the
-    // effect boundary. An explicit user request is unconditional: it skips all
-    // funding, earnings, settlement, and reactivation work.
+    // effect boundary. Explicit user cancellation is unconditional, but its
+    // accrued interval is settled only after provider stop succeeds below.
     if (!userRequested) {
-      const [organization] = await tx
-        .select({
-          credit_balance: organizations.credit_balance,
-          pay_as_you_go_from_earnings: organizations.pay_as_you_go_from_earnings,
-        })
-        .from(organizations)
-        .where(eq(organizations.id, organizationId))
-        .for("update")
-        .limit(1);
-      if (!organization) throw new Error("CONTAINER_STOP billing organization not found");
-
-      let earningsAvailable = new Decimal(0);
-      if (organization.pay_as_you_go_from_earnings) {
-        const [sourceUser] = await tx
-          .select({ id: users.id })
-          .from(users)
-          .where(eq(users.organization_id, organizationId))
-          .orderBy(desc(sql`${users.role} = 'owner'`), asc(users.created_at), asc(users.id))
-          .limit(1);
-        if (sourceUser) {
-          await tx.execute(
-            sql`SELECT pg_advisory_xact_lock(hashtext(${`redeemable_earnings:${sourceUser.id}`}))`,
-          );
-          const [earnings] = await tx
-            .select({ available_balance: redeemableEarnings.available_balance })
-            .from(redeemableEarnings)
-            .where(eq(redeemableEarnings.user_id, sourceUser.id))
-            .for("update")
-            .limit(1);
-          if (earnings) earningsAvailable = new Decimal(earnings.available_balance);
-        }
-      }
-
       const settled = await settleComputeRateSegments(tx, {
         organizationId,
         workloadKind: "container",
@@ -318,6 +322,23 @@ export async function dispatchContainerStopJob(job: {
         lifecycleRevision,
       );
       const confirmedAt = new Date();
+      if (userRequested) {
+        await containerBillingRepository.recordSuccessfulDailyBillingInTransaction(
+          tx,
+          {
+            containerId,
+            organizationId,
+            userId: container.user_id,
+            containerName: container.name,
+            dailyRate: 0,
+            earningsSourceUserId,
+            payAsYouGoFromEarnings: organization.pay_as_you_go_from_earnings,
+            newBalance: 0,
+            now: confirmedAt,
+          },
+          { forceLifecycleSettlement: true },
+        );
+      }
       await tx
         .update(containers)
         .set({

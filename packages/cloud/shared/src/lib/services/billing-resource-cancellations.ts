@@ -15,6 +15,7 @@ import {
 import type { BillingCancelResourceType } from "../../db/schemas/billing-cancel-commands";
 import type { AppEnv } from "../../types/cloud-worker-env";
 import { ApiError } from "../api/cloud-worker-errors";
+import { AGENT_PRICING } from "../constants/agent-pricing";
 import { logger } from "../utils/logger";
 import { isValidUUID } from "../utils/validation";
 import {
@@ -39,7 +40,14 @@ export interface BillingCancellationReceipt {
   action: "stop";
   expectedLifecycleRevision: number;
   status: BillingCancellationStatus;
-  billingStopped: boolean;
+  /** True only after the provider has confirmed that live compute is absent. */
+  computeStopped: boolean;
+  /** Provider-side stop acknowledgement; never inferred from job completion alone. */
+  providerStopped: boolean;
+  retainedBackupBilling: {
+    status: "not_applicable" | "pending" | "none" | "billable";
+    ratePerHour: number | null;
+  };
   infrastructureStatus: "queued" | "provider_confirmed" | "superseded" | "terminal_attention";
   acceptedAt: string;
   pollEndpoint: string;
@@ -146,6 +154,19 @@ function projectReceipt(bundle: BillingCancelCommandBundle): BillingCancellation
       : terminalAttention
         ? "terminal_attention"
         : "accepted";
+  const retainedBackupBilling: BillingCancellationReceipt["retainedBackupBilling"] =
+    command.resource_type === "container"
+      ? { status: "not_applicable", ratePerHour: null }
+      : providerConfirmed
+        ? bundle.agentIntent?.retained_backup_billing
+          ? {
+              status: "billable",
+              ratePerHour: Number(
+                bundle.agentIntent.retained_backup_rate_per_hour ?? AGENT_PRICING.IDLE_HOURLY_RATE,
+              ),
+            }
+          : { status: "none", ratePerHour: null }
+        : { status: "pending", ratePerHour: AGENT_PRICING.IDLE_HOURLY_RATE };
   return {
     receiptId: command.id,
     jobId: command.job_id,
@@ -154,7 +175,9 @@ function projectReceipt(bundle: BillingCancelCommandBundle): BillingCancellation
     action: "stop",
     expectedLifecycleRevision: command.expected_lifecycle_revision,
     status,
-    billingStopped: providerConfirmed,
+    computeStopped: providerConfirmed,
+    providerStopped: providerConfirmed,
+    retainedBackupBilling,
     infrastructureStatus: providerConfirmed
       ? "provider_confirmed"
       : superseded
