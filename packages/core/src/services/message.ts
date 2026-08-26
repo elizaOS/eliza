@@ -1246,6 +1246,70 @@ function hasPageScopedRoutingMetadata(message: Memory): boolean {
 }
 
 /**
+ * The first-party app attaches this renderer-owned metadata to chat and voice
+ * turns. It is a relevance signal, never an authority boundary: it can promote
+ * the focused action family, but it must not remove any otherwise authorized
+ * action from the model-facing catalog.
+ */
+function hasUiViewPlannerScope(message: Memory): boolean {
+	const metadataCandidates = [message.content?.metadata, message.metadata];
+	for (const rawMetadata of metadataCandidates) {
+		if (!rawMetadata || typeof rawMetadata !== "object") continue;
+		const metadata = rawMetadata as Record<string, unknown>;
+		if (
+			(typeof metadata.uiView === "string" && metadata.uiView.trim()) ||
+			(typeof metadata.uiViewPath === "string" && metadata.uiViewPath.trim()) ||
+			Array.isArray(metadata.uiViewCapabilities)
+		) {
+			return true;
+		}
+	}
+	return false;
+}
+
+function uiViewActionNames(message: Memory): Set<string> {
+	const actionNames = new Set<string>();
+	const metadataCandidates = [message.content?.metadata, message.metadata];
+	for (const rawMetadata of metadataCandidates) {
+		if (!rawMetadata || typeof rawMetadata !== "object") continue;
+		const rawNames = (rawMetadata as Record<string, unknown>).uiViewActionNames;
+		if (!Array.isArray(rawNames)) continue;
+		for (const rawName of rawNames) {
+			if (typeof rawName !== "string") continue;
+			const normalized = normalizeActionIdentifier(rawName);
+			if (normalized) actionNames.add(normalized);
+		}
+	}
+	return actionNames;
+}
+
+function uiViewActionPriority(
+	action: Action,
+	selectedContexts: readonly AgentContext[] | undefined,
+	viewActionNames: ReadonlySet<string>,
+): number {
+	const actionName = normalizeActionIdentifier(action.name);
+	if (viewActionNames.has(actionName)) return 0;
+
+	const focusedContexts = (selectedContexts ?? [])
+		.map((context) => String(context).trim().toLowerCase())
+		.filter(
+			(context) =>
+				context.length > 0 &&
+				context !== "general" &&
+				!isPageScopedRoutingContext(context),
+		);
+	if (focusedContexts.length === 0) return 2;
+
+	const focused = new Set(focusedContexts);
+	return (action.contexts ?? []).some((context) =>
+		focused.has(String(context).trim().toLowerCase()),
+	)
+		? 1
+		: 2;
+}
+
+/**
  * The provider include list for Stage-1 response-state composition: the core
  * response providers plus always-on plugin providers. Exported for tests.
  */
@@ -3380,8 +3444,32 @@ async function collectV5PlannerCandidateActions(args: {
 		}
 	};
 
-	for (const action of allRuntimeActions) {
-		await appendIfAllowed(action);
+	// View metadata changes ordering only. The complete runtime catalog still
+	// passes through the ordinary role/context/policy gates, so an ambiguous or
+	// cross-view request never loses an otherwise authorized action merely
+	// because Stage 1 did not guess its exact name.
+	const focusedViewActionNames = uiViewActionNames(args.message);
+	const baseRuntimeActions = hasUiViewPlannerScope(args.message)
+		? allRuntimeActions
+				.map((action, index) => ({ action, index }))
+				.sort((left, right) => {
+					const priorityDelta =
+						uiViewActionPriority(
+							left.action,
+							args.selectedContexts,
+							focusedViewActionNames,
+						) -
+						uiViewActionPriority(
+							right.action,
+							args.selectedContexts,
+							focusedViewActionNames,
+						);
+					return priorityDelta || left.index - right.index;
+				})
+				.map(({ action }) => action)
+		: allRuntimeActions;
+	for (const action of baseRuntimeActions) {
+		await appendIfAllowed(action, undefined, args.selectedContexts);
 	}
 
 	const explicitCandidateActions = Array.isArray(args.candidateActions)

@@ -547,7 +547,7 @@ function getAppShellViewEntriesSnapshot(): ViewRegistryEntry[] {
  * — app-shell pages only fill ids the network didn't return, which on mobile is
  * every dynamically-bundled plugin view the route filtered out.
  */
-function mergeViewRegistryEntries(
+export function mergeViewRegistryEntries(
   primaryViews: ViewRegistryEntry[],
   fallbackGroups: ViewRegistryEntry[][],
 ): ViewRegistryEntry[] {
@@ -561,7 +561,31 @@ function mergeViewRegistryEntries(
   for (const group of fallbackGroups) {
     for (const entry of group) {
       const key = `${entry.viewType ?? "gui"}:${entry.id}`;
-      if (!byKey.has(key)) byKey.set(key, entry);
+      const existing = byKey.get(key);
+      if (!existing) {
+        byKey.set(key, entry);
+      } else if (existing.available === false && entry.available === true) {
+        // The runtime may advertise metadata for a plugin whose remote bundle
+        // is unavailable while this signed renderer has an in-process page for
+        // the same id. Use the executable page as the render identity (so the
+        // router does not try the missing remote bundle), while retaining the
+        // runtime's richer presentation metadata.
+        byKey.set(key, {
+          ...existing,
+          ...entry,
+          description: existing.description ?? entry.description,
+          icon: existing.icon ?? entry.icon,
+          heroImageUrl: existing.heroImageUrl ?? entry.heroImageUrl,
+          hasHeroImage: existing.hasHeroImage ?? entry.hasHeroImage,
+          capabilities: existing.capabilities ?? entry.capabilities,
+          tags: existing.tags ?? entry.tags,
+          pluginName: existing.pluginName,
+          bundleUrl: undefined,
+          frameUrl: undefined,
+          componentExport: undefined,
+          available: true,
+        });
+      }
     }
   }
   return [...byKey.values()];

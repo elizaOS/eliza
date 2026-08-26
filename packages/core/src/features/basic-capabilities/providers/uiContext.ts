@@ -46,6 +46,7 @@ export const uiContextProvider: Provider = {
 		const uiTab = asString(metadata?.uiTab);
 		const uiViewPath = asString(metadata?.uiViewPath);
 		const uiViewCapabilities = asStringList(metadata?.uiViewCapabilities);
+		const uiViewActionNames = asStringList(metadata?.uiViewActionNames);
 		const routing = parseContextRoutingMetadata(
 			metadata?.[CONTEXT_ROUTING_METADATA_KEY] ??
 				state.values[CONTEXT_ROUTING_STATE_KEY],
@@ -64,8 +65,13 @@ export const uiContextProvider: Provider = {
 			uiViewCapabilities.length > 0
 				? `view_capabilities: ${uiViewCapabilities.join(", ")}`
 				: null,
+			uiViewActionNames.length > 0
+				? `view_actions: ${uiViewActionNames.join(", ")}`
+				: null,
 			`active_contexts: ${activeContexts.join(", ") || "general"}`,
-			"Use actions and providers that match this UI context first. If the user refers to this focused view or asks to create, update, delete, or inspect something in it, select the VIEWS action instead of replying as though the operation already happened.",
+			"Treat view_capabilities as available context, not as a request to invoke them.",
+			"If the user asks which view is open or what can be done here, answer directly from this UI Context without calling a tool.",
+			"For an actual operation, prefer the focused domain action (for example NOTES for note records or CALENDAR for events). Use VIEWS for navigation, layout, or an explicit declared UI capability that has no dedicated domain action. Never claim an operation happened unless its action succeeded.",
 		].filter((line): line is string => line !== null);
 
 		return {
@@ -75,6 +81,7 @@ export const uiContextProvider: Provider = {
 				uiTab: uiTab ?? "",
 				uiViewPath: uiViewPath ?? "",
 				uiViewCapabilities: uiViewCapabilities.join(", "),
+				uiViewActionNames: uiViewActionNames.join(", "),
 				uiContexts: activeContexts.join(", "),
 			},
 			data: {
@@ -82,6 +89,7 @@ export const uiContextProvider: Provider = {
 				uiTab,
 				uiViewPath,
 				uiViewCapabilities,
+				uiViewActionNames,
 				activeContexts,
 			},
 		};

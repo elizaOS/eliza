@@ -16,7 +16,6 @@
  */
 
 import { type ReactNode, useMemo } from "react";
-import { reportUserViewSwitch } from "../../../chat/useSlashCommandController";
 import { dispatchNavigateViewEvent } from "../../../events";
 import { cn } from "../../../lib/utils";
 import { useAppSelectorShallow } from "../../../state";
@@ -26,9 +25,9 @@ import { StatusDot } from "../../ui/status-badge";
 
 /**
  * Navigation for home widgets: tapping a card opens the relevant full surface.
- * `openView` mirrors the home tile path (the `eliza:navigate:view` rail +
- * proactive-decider report), `openTab` switches a builtin tab. Stable across
- * renders so it never breaks a widget's memoization.
+ * `openView` mirrors the home tile path through the `eliza:navigate:view` rail;
+ * `openTab` switches a builtin tab. The shell reports whichever route actually
+ * renders, so this stays stable and transport-agnostic across widgets.
  */
 export function useWidgetNavigation(): {
   openView: (path: string, viewId?: string) => void;
@@ -38,12 +37,10 @@ export function useWidgetNavigation(): {
   return useMemo(
     () => ({
       openView(path, viewId) {
-        dispatchNavigateViewEvent({ viewPath: path });
-        reportUserViewSwitch(viewId ?? path, path);
+        dispatchNavigateViewEvent({ viewId, viewPath: path });
       },
       openTab(tab) {
         setTab?.(tab as never);
-        reportUserViewSwitch(tab);
       },
     }),
     [setTab],
