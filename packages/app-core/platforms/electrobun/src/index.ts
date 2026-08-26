@@ -70,9 +70,11 @@ import {
 import { publishAgentApiBase } from "./lifecycle/agent-ready-publish";
 import * as apiBaseOwner from "./lifecycle/api-base-owner";
 import {
+  createDesktopSessionGenerationTracker,
   markDesktopSessionStale,
   primeDesktopSessionAuth,
 } from "./lifecycle/desktop-session-prime";
+import { reloadRendererAfterDesktopSessionPrime } from "./lifecycle/desktop-session-renderer-ready";
 import { logger } from "./logger";
 import {
   resolveBootstrapShellRenderer,
@@ -1079,6 +1081,22 @@ async function resolveRendererUrlForCurrentRuntime(): Promise<string> {
   return appendRuntimeChooserTestParam(rendererUrl);
 }
 
+async function resolveMainWindowRendererUrl(): Promise<string> {
+  const presentation = resolveDesktopShellWindowPresentation();
+  const baseRendererUrl = await resolveRendererUrlForCurrentRuntime();
+  const requestedShellMode = readRendererShellMode();
+  if (presentation.mode === "kiosk") {
+    return appendKioskShellModeParam(baseRendererUrl);
+  }
+  if (presentation.mode === "bottom-bar") {
+    return appendChatOverlayShellModeParam(baseRendererUrl);
+  }
+  if (requestedShellMode && requestedShellMode !== "full") {
+    return appendShellModeParam(baseRendererUrl, requestedShellMode);
+  }
+  return baseRendererUrl;
+}
+
 /**
  * Resolve the chromeless bottom-bar window frame from the primary display's
  * usable work area. Falls back to a 1080p estimate if the Screen API is
@@ -1111,15 +1129,7 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
   // bar pinned to the screen bottom that renders the chat-overlay shell only.
   // Opt-in and mutually exclusive with kiosk.
   const bottomBar = presentation.mode === "bottom-bar";
-  const baseRendererUrl = await resolveRendererUrlForCurrentRuntime();
-  const requestedShellMode = readRendererShellMode();
-  const rendererUrl = kiosk
-    ? appendKioskShellModeParam(baseRendererUrl)
-    : bottomBar
-      ? appendChatOverlayShellModeParam(baseRendererUrl)
-      : requestedShellMode && requestedShellMode !== "full"
-        ? appendShellModeParam(baseRendererUrl, requestedShellMode)
-        : baseRendererUrl;
+  const rendererUrl = await resolveMainWindowRendererUrl();
   const buildInfo = await BuildConfig.get();
   const mainWindowPartition = resolveMainWindowPartition(process.env, {
     platform: process.platform,
@@ -2004,7 +2014,10 @@ async function _startAgent(): Promise<void> {
       // renderer to start hitting /api. This is the desktop trust path: if
       // the bridge succeeds, the renderer skips the login UI; if it fails,
       // the renderer behaves like a remote browser (password-required).
-      await primeDesktopSessionAuth(apiBase, rendererBase);
+      const sessionPrimed = await primeDesktopSessionAuth(
+        apiBase,
+        rendererBase,
+      );
       try {
         await startBrowserBridgeDesktopLifecycle({ apiBase });
       } catch (error) {
@@ -2020,6 +2033,12 @@ async function _startAgent(): Promise<void> {
       // windows), then push to every open window.
       publishAgentApiBase(rendererBase, apiToken, collectOpenRendererWindows());
       setAgentReady(true);
+      await reloadRendererAfterDesktopSessionPrime({
+        sessionPrimed,
+        backendGeneration: `${status.port}:${status.startedAt ?? "running"}`,
+        window: currentWindow,
+        resolveRendererUrl: resolveMainWindowRendererUrl,
+      });
       // Sync real OS permission states to the REST API so the renderer
       // can display them and capability toggles can unlock.
       // Pass startup=true so the backend skips scheduling a restart for
@@ -2786,20 +2805,34 @@ async function main(): Promise<void> {
   // settle on a different loopback port than env/static HTML (allocation + stdout).
   // Detached surfaces must not keep a stale boot-config apiBase while the main
   // window was already updated—menu reset, chat, and settings each own a webview.
+  const desktopSessionGenerationChanged =
+    createDesktopSessionGenerationTracker();
   cleanupFns.push(
     getAgentManager().onStatusChange((status) => {
       if (status.port) {
-        // The agent rebound to a different loopback port (or recovered from a
-        // crash) — the cookies we installed during _startAgent were scoped to
-        // the old origin. Re-prime so every renderer's next /api request stays
-        // authenticated, including any open secondary renderer windows.
-        markDesktopSessionStale();
         const apiBase = `http://127.0.0.1:${status.port}`;
         const rendererBase = resolveRendererFacingApiBase(
           process.env as Record<string, string | undefined>,
           status.port,
         );
-        void primeDesktopSessionAuth(apiBase, rendererBase);
+        if (desktopSessionGenerationChanged(status)) {
+          // A real backend generation change invalidates its database-backed
+          // session row. Metadata-only emissions retain authority and must not
+          // fan out one-shot sockets or replace cookies under active requests.
+          const recoveringExistingRenderer = isAgentReady();
+          markDesktopSessionStale();
+          void primeDesktopSessionAuth(apiBase, rendererBase).then(
+            async (sessionPrimed) => {
+              if (!recoveringExistingRenderer) return;
+              await reloadRendererAfterDesktopSessionPrime({
+                sessionPrimed,
+                backendGeneration: `${status.port}:${status.startedAt ?? "running"}`,
+                window: currentWindow,
+                resolveRendererUrl: resolveMainWindowRendererUrl,
+              });
+            },
+          );
+        }
         injectApiBaseIntoOpenRendererWindows();
       }
     }),

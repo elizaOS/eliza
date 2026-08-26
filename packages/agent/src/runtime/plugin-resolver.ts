@@ -2407,10 +2407,19 @@ export async function resolvePlugins(
     logger.debug(`[eliza] Plugin auto-enable: ${changes.join("; ")}`);
   }
 
+  const forceIncludePluginNames = new Set(
+    (opts?.forceIncludePluginNames ?? []).map(resolvePluginPackageAlias),
+  );
   // Provenance for "why is this package in the load set?" — surfaced when an
   // optional plugin fails to resolve so logs point at config/env, not "eliza broke".
+  // Forced providers enter the collector before its final topology precedence
+  // sweep; they must not bypass cloud/remote/local-only ownership policy.
   const loadReasons: PluginLoadReasons = new Map();
-  const pluginsToLoad = collectPluginNames(config, loadReasons);
+  const pluginsToLoad = collectPluginNames(
+    config,
+    loadReasons,
+    Array.from(forceIncludePluginNames),
+  );
   const corePluginSet = new Set<string>(CORE_PLUGINS);
   const blockingPluginSet = new Set<string>(BLOCKING_CORE_PLUGINS);
   const routingOwnershipPluginNames = new Set<string>();
@@ -2442,8 +2451,6 @@ export async function resolvePlugins(
       }
     }
   }
-  const forceIncludePluginNames = new Set(opts?.forceIncludePluginNames ?? []);
-
   // Build a mutable map of install records so we can merge drop-in discoveries
   const installRecords: Record<string, PluginInstallRecord> = {
     ...(config.plugins?.installs ?? {}),

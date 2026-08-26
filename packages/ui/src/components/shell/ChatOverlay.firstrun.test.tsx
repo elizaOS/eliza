@@ -275,7 +275,10 @@ describe("ChatOverlay first-run gating", () => {
     const surface = screen.getByTestId("chat-sheet-surface");
     expect(sheet.getAttribute("data-theme")).toBe("dark");
     expect(sheet.style.colorScheme).toBe("dark");
-    expect(surface.style.backgroundColor).toBe("var(--bg)");
+    expect(surface.style.backgroundColor).toBe("var(--chat-sheet-background)");
+    expect(surface.style.getPropertyValue("--chat-sheet-background")).toBe(
+      "var(--bg)",
+    );
   });
 
   it("fills a desktop bottom-bar host so transparent native pixels cannot block other apps", () => {
