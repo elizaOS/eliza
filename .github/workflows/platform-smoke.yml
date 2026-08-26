@@ -83,7 +83,7 @@ jobs:
         run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Build core
-        run: bun run build:core
+        run: bun run --cwd packages/prompts build:package && bun run build:core
 
       - name: Run core tests
         run: bun run test:core
