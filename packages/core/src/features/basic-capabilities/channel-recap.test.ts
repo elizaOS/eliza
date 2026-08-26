@@ -252,7 +252,7 @@ describe("CHANNEL_RECAP transcript completeness and order", () => {
 		]);
 	});
 
-	it("strips only machinery rows (action results, internal bridge relays)", async () => {
+	it("strips machinery rows (action results, internal bridge relays)", async () => {
 		const stub = makeRuntime({
 			[ROOM_A]: [
 				makeMessage(ROOM_A, 1_000, "human line"),
@@ -293,6 +293,159 @@ describe("CHANNEL_RECAP transcript completeness and order", () => {
 		expect(result.values?.messageCount).toBe(2);
 		expect(result.text).toContain("older dialogue one");
 		expect(result.text).toContain("older dialogue two");
+		expect(stub.getMemories).toHaveBeenCalledTimes(2);
+	});
+});
+
+/**
+ * The recap serves rows through the canonical RECENT_MESSAGES dialogue-
+ * hygiene boundary — the model-exposure contract, not an application cap.
+ * Each leakage class the boundary strips from the prompt transcript must be
+ * equally unreturnable through CHANNEL_RECAP, in the rendered text AND in the
+ * structured data payload, and stripped rows must not consume the requested
+ * depth (real dialogue is back-filled from older pages in their place).
+ */
+describe("CHANNEL_RECAP dialogue-hygiene boundary (canonical RECENT_MESSAGES contract)", () => {
+	const leakedText = (result: ActionResult): string => {
+		const data = result.data as { messages?: Array<{ text: string }> };
+		return `${result.text ?? ""}\n${(data.messages ?? [])
+			.map((row) => row.text)
+			.join("\n")}`;
+	};
+
+	it("cannot return a synthetic assistant failure reply", async () => {
+		const stub = makeRuntime({
+			[ROOM_A]: [
+				makeMessage(ROOM_A, 1_000, "real question from a human"),
+				makeMessage(ROOM_A, 2_000, "Sorry, I'm having a provider issue", {
+					entityId: AGENT_ID,
+				} as Partial<Memory>),
+				makeMessage(ROOM_A, 3_000, "flagged synthetic failure", {
+					entityId: AGENT_ID,
+					content: {
+						text: "flagged synthetic failure",
+						metadata: { elizaSyntheticFailure: true },
+					},
+				} as Partial<Memory>),
+			],
+		});
+		const result = await run(stub, incoming(ROOM_A));
+		const served = leakedText(result);
+		expect(served).toContain("real question from a human");
+		expect(served).not.toContain("provider issue");
+		expect(served).not.toContain("flagged synthetic failure");
+		expect(result.values?.messageCount).toBe(1);
+	});
+
+	it("cannot return a transient orchestrator status post", async () => {
+		const stub = makeRuntime({
+			[ROOM_A]: [
+				makeMessage(ROOM_A, 1_000, "human dialogue line"),
+				makeMessage(ROOM_A, 2_000, "spawning sub-agent, stand by...", {
+					entityId: AGENT_ID,
+					content: {
+						text: "spawning sub-agent, stand by...",
+						metadata: { transient: true },
+					},
+				} as Partial<Memory>),
+			],
+		});
+		const result = await run(stub, incoming(ROOM_A));
+		const served = leakedText(result);
+		expect(served).toContain("human dialogue line");
+		expect(served).not.toContain("spawning sub-agent");
+		expect(result.values?.messageCount).toBe(1);
+	});
+
+	it("cannot return a leaked assistant tool transcript", async () => {
+		const stub = makeRuntime({
+			[ROOM_A]: [
+				makeMessage(ROOM_A, 1_000, "human dialogue line"),
+				makeMessage(
+					ROOM_A,
+					2_000,
+					"[tool output: SHELL]\nnpm ERR! everything\n[/tool output]",
+					{ entityId: AGENT_ID } as Partial<Memory>,
+				),
+			],
+		});
+		const result = await run(stub, incoming(ROOM_A));
+		const served = leakedText(result);
+		expect(served).toContain("human dialogue line");
+		expect(served).not.toContain("[tool output:");
+		expect(served).not.toContain("npm ERR!");
+		expect(result.values?.messageCount).toBe(1);
+	});
+
+	it("cannot return a leaked local-path dump", async () => {
+		const pathDump = [
+			"/home/agent/workspace/project/src/index.ts",
+			"/home/agent/workspace/project/src/utils.ts",
+			"/home/agent/workspace/project/package.json",
+			"/home/agent/workspace/project/README.md",
+			"/home/agent/workspace/project/tsconfig.json",
+		].join("\n");
+		const stub = makeRuntime({
+			[ROOM_A]: [
+				makeMessage(ROOM_A, 1_000, "human dialogue line"),
+				makeMessage(ROOM_A, 2_000, pathDump, {
+					entityId: AGENT_ID,
+				} as Partial<Memory>),
+			],
+		});
+		const result = await run(stub, incoming(ROOM_A));
+		const served = leakedText(result);
+		expect(served).toContain("human dialogue line");
+		expect(served).not.toContain("/home/agent/workspace");
+		expect(result.values?.messageCount).toBe(1);
+	});
+
+	it("applies the same dedup contract as the prompt transcript", async () => {
+		const stub = makeRuntime({
+			[ROOM_A]: [
+				makeMessage(ROOM_A, 1_000, "unique human line"),
+				makeMessage(ROOM_A, 2_000, "repeated agent line", {
+					entityId: AGENT_ID,
+				} as Partial<Memory>),
+				makeMessage(ROOM_A, 3_000, "repeated agent line", {
+					entityId: AGENT_ID,
+				} as Partial<Memory>),
+			],
+		});
+		const result = await run(stub, incoming(ROOM_A));
+		expect(result.values?.messageCount).toBe(2);
+		const data = result.data as { messages: Array<{ text: string }> };
+		expect(
+			data.messages.filter((row) => row.text === "repeated agent line"),
+		).toHaveLength(1);
+	});
+
+	it("hygiene-stripped rows never consume the requested depth: dialogue is back-filled from older pages", async () => {
+		// A full first page of transient agent status noise; the two dialogue
+		// rows the caller asked for sit beyond it. Counting stripped rows toward
+		// the depth would serve nothing.
+		const noise = Array.from({ length: CHANNEL_RECAP_PAGE_SIZE }, (_, index) =>
+			makeMessage(ROOM_A, 100_000 + index * 1_000, `status-${index}`, {
+				entityId: AGENT_ID,
+				content: {
+					text: `status-${index}`,
+					metadata: { transient: true },
+				},
+			} as Partial<Memory>),
+		);
+		const stub = makeRuntime({
+			[ROOM_A]: [
+				makeMessage(ROOM_A, 1_000, "older dialogue one"),
+				makeMessage(ROOM_A, 2_000, "older dialogue two"),
+				...noise,
+			],
+		});
+		const result = await run(stub, incoming(ROOM_A), { count: 2 });
+		expect(result.success).toBe(true);
+		expect(result.values?.messageCount).toBe(2);
+		expect(result.text).toContain("older dialogue one");
+		expect(result.text).toContain("older dialogue two");
+		expect(result.text).not.toContain("status-");
 		expect(stub.getMemories).toHaveBeenCalledTimes(2);
 	});
 });

@@ -18,14 +18,25 @@
  * size/item caps are banned. Storage traversal is exhaustive: keyset pages
  * (createdAt+id cursor) are pulled until the requested dialogue range is
  * satisfied or the store runs out, and store exhaustion is disclosed in the
- * result. Machinery rows are filtered per page BEFORE the count is satisfied,
- * so they can never displace requested dialogue. A range too large to send to
- * the model is NOT this action's problem: the provider's documented context
- * limit is the one real resource boundary, and the dispatch-side overflow
- * boundary owns that rejection.
+ * result. A range too large to send to the model is NOT this action's
+ * problem: the provider's documented context limit is the one real resource
+ * boundary, and the dispatch-side overflow boundary owns that rejection.
+ *
+ * DIALOGUE HYGIENE vs application caps — the distinction matters: rows pass
+ * through the canonical RECENT_MESSAGES dialogue-hygiene boundary
+ * (`isHygienicDialogueMessage` + `dedupeHygienicDialogueMessages`, imported —
+ * never forked — from recentMessages.ts) BEFORE they count toward the
+ * requested depth. That boundary is the repo's model-exposure contract: it
+ * strips what was never legitimate conversation (the agent's own
+ * action_result records, internal bridge relays, synthetic assistant failure
+ * replies, transient status posts, leaked tool transcripts, local-path
+ * dumps) and dedupes assistant noise, so none of it can be laundered back to
+ * the model — or to the user — through a recap. It is NOT an application
+ * size cap: every row that survives hygiene is still served complete and
+ * bounds-free, and hygienic rows are back-filled from older pages so
+ * stripped rows never shrink the delivered range.
  */
 import { getEntityDetails } from "../../../entities.ts";
-import { isInternalBridgeMessage } from "../../../messaging/automated-turns.ts";
 import type {
 	Action,
 	ActionExample,
@@ -39,7 +50,11 @@ import type {
 } from "../../../types/index.ts";
 import { hasActionContext } from "../../../utils/action-validation.ts";
 import { formatMessages } from "../../../utils.ts";
-import { ensureFormattingEntities } from "../providers/recentMessages.ts";
+import {
+	dedupeHygienicDialogueMessages,
+	ensureFormattingEntities,
+	isHygienicDialogueMessage,
+} from "../providers/recentMessages.ts";
 
 export const CHANNEL_RECAP_CONTEXTS = ["general"] satisfies AgentContext[];
 
@@ -165,15 +180,20 @@ export const channelRecapAction: Action = {
 		const requestedDepth = count + offset;
 
 		// Exhaustive newest-first keyset traversal: pull pages until the
-		// requested DIALOGUE range is satisfied or the store runs out. Machinery
-		// rows (the agent's own action_result records and internal bridge relays)
-		// are dropped per page before they can count toward the range, so they
-		// never displace dialogue the caller asked for. This filter is a SUBSET
-		// of the RECENT_MESSAGES one (which additionally strips synthetic failure
-		// replies, transient status posts, leaked tool transcripts, and dedupes):
-		// a recap is a verbatim read-back, so only rows that are never
-		// conversation are removed. Every retained row renders complete.
-		const dialogue: Memory[] = [];
+		// requested DIALOGUE range is satisfied or the store runs out. Every row
+		// passes the canonical RECENT_MESSAGES dialogue-hygiene boundary before
+		// it can count toward the range: machinery (action_result records,
+		// internal bridge relays), synthetic assistant failure replies, transient
+		// status posts, leaked tool transcripts, and local-path dumps are dropped
+		// per page, and the surviving rows are deduped with the same contract the
+		// prompt transcript uses — so stripped rows never displace dialogue the
+		// caller asked for AND can never be served back through a recap. The
+		// dedup helpers operate on chronological adjacency, so the deduped view
+		// is recomputed from the chronological ordering after each page; the
+		// deduped count is monotone in the collected rows, so the loop still
+		// terminates. Every retained row renders complete.
+		const collected: Memory[] = [];
+		let dialogue: Memory[] = [];
 		let scannedRows = 0;
 		let storeExhausted = false;
 		let cursor: { createdAt: number; id: UUID } | undefined;
@@ -187,13 +207,17 @@ export const channelRecapAction: Action = {
 			});
 			scannedRows += page.length;
 			for (const row of page) {
-				if (
-					row.content?.type !== "action_result" &&
-					!isInternalBridgeMessage(row)
-				) {
-					dialogue.push(row);
+				if (isHygienicDialogueMessage(row, runtime.agentId)) {
+					collected.push(row);
 				}
 			}
+			// Dedupe on the chronological (oldest-first) order the transcript
+			// renders, then flip back newest-first so depth counting and offset
+			// slicing stay anchored to the newest message.
+			dialogue = dedupeHygienicDialogueMessages(
+				[...collected].reverse(),
+				runtime.agentId,
+			).reverse();
 			if (page.length < CHANNEL_RECAP_PAGE_SIZE) {
 				storeExhausted = true;
 				break;
