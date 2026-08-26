@@ -89,7 +89,8 @@ describe("generateOpenAPISpec — every cataloged endpoint maps to an operation"
     );
     expect(withExamples.length).toBeGreaterThan(0);
     for (const { endpoint, response } of withExamples) {
-      const operation = spec.paths[endpoint.path][endpoint.method.toLowerCase()];
+      const operation =
+        spec.paths[endpoint.path][endpoint.method.toLowerCase()];
       expect(
         operation.responses[String(response.statusCode)].content?.[
           "application/json"
@@ -313,4 +314,3 @@ describe("catalog invariants the generated spec depends on", () => {
     }
   });
 });
-
