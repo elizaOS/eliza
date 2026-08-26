@@ -24,12 +24,15 @@ export async function sleepWithAbort(
 	ms: number,
 	abortSignal?: AbortSignal,
 ): Promise<void> {
+	if (abortSignal?.aborted) {
+		throw abortSignal.reason ?? new Error("aborted");
+	}
 	if (ms <= 0) {
 		return;
 	}
 	return new Promise((resolve, reject) => {
 		if (abortSignal?.aborted) {
-			return reject(new Error("aborted"));
+			return reject(abortSignal.reason ?? new Error("aborted"));
 		}
 
 		const timeoutId = setTimeout(() => {
@@ -44,7 +47,7 @@ export async function sleepWithAbort(
 			if (abortSignal) {
 				abortSignal.removeEventListener("abort", onAbort);
 			}
-			reject(new Error("aborted"));
+			reject(abortSignal?.reason ?? new Error("aborted"));
 		}
 
 		if (abortSignal) {
