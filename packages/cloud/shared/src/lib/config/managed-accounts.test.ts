@@ -131,6 +131,21 @@ describe("managed-account manifest invariants", () => {
 
 const CONFIGURED = "configured-contract-value";
 
+const WHATSAPP_CREDENTIAL_SETS = [
+  [
+    "WHATSAPP_ACCESS_TOKEN",
+    "WHATSAPP_PHONE_NUMBER_ID",
+    "WHATSAPP_APP_SECRET",
+    "WHATSAPP_VERIFY_TOKEN",
+  ],
+  [
+    "ELIZA_APP_WHATSAPP_ACCESS_TOKEN",
+    "ELIZA_APP_WHATSAPP_PHONE_NUMBER_ID",
+    "ELIZA_APP_WHATSAPP_APP_SECRET",
+    "ELIZA_APP_WHATSAPP_VERIFY_TOKEN",
+  ],
+] as const;
+
 const sample: ManagedAccountSpec = {
   id: "sample",
   name: "Sample",
@@ -232,5 +247,30 @@ describe("verifyManagedAccounts", () => {
   it("never places credential values in a report", () => {
     const { reports } = verifyManagedAccounts({ TELEGRAM_BOT_TOKEN: "secret-token-value" });
     expect(JSON.stringify(reports)).not.toContain("secret-token-value");
+  });
+});
+
+describe("managed WhatsApp 4-of-4 readiness contract", () => {
+  const whatsapp = MANAGED_ACCOUNTS.find((spec) => spec.id === "meta-whatsapp");
+  if (!whatsapp) throw new Error("meta-whatsapp managed account is missing");
+
+  it("classifies all 256 cross-namespace states without accepting split custody", () => {
+    const allNames = WHATSAPP_CREDENTIAL_SETS.flat();
+    const combinations = 1 << allNames.length;
+    for (let mask = 0; mask < combinations; mask += 1) {
+      const env: Record<string, string> = {};
+      for (const [index, name] of allNames.entries()) {
+        if ((mask & (1 << index)) !== 0) env[name] = CONFIGURED;
+      }
+
+      const report = evaluateManagedAccount(whatsapp, env);
+      const hasCompleteAuthority = WHATSAPP_CREDENTIAL_SETS.some((credentialSet) =>
+        credentialSet.every((name) => Boolean(env[name])),
+      );
+      expect(report.state).toBe(
+        hasCompleteAuthority ? "configured" : mask === 0 ? "missing" : "partial",
+      );
+      expect(JSON.stringify(report)).not.toContain(CONFIGURED);
+    }
   });
 });

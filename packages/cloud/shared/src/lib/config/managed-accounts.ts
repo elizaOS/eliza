@@ -238,9 +238,15 @@ export const MANAGED_ACCOUNTS: readonly ManagedAccountSpec[] = [
     category: "social_communications",
     console: "https://developers.facebook.com",
     credentialSets: [
-      ["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_APP_SECRET", "WHATSAPP_VERIFY_TOKEN"],
+      [
+        "WHATSAPP_ACCESS_TOKEN",
+        "WHATSAPP_PHONE_NUMBER_ID",
+        "WHATSAPP_APP_SECRET",
+        "WHATSAPP_VERIFY_TOKEN",
+      ],
       [
         "ELIZA_APP_WHATSAPP_ACCESS_TOKEN",
+        "ELIZA_APP_WHATSAPP_PHONE_NUMBER_ID",
         "ELIZA_APP_WHATSAPP_APP_SECRET",
         "ELIZA_APP_WHATSAPP_VERIFY_TOKEN",
       ],

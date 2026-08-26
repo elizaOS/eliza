@@ -152,8 +152,7 @@ export function validateElizaAppConfig() {
       process.env.ELIZA_APP_WHATSAPP_ACCESS_TOKEN ||
         process.env.ELIZA_APP_WHATSAPP_PHONE_NUMBER_ID ||
         process.env.ELIZA_APP_WHATSAPP_APP_SECRET ||
-        process.env.ELIZA_APP_WHATSAPP_VERIFY_TOKEN ||
-        process.env.ELIZA_APP_WHATSAPP_PHONE_NUMBER,
+        process.env.ELIZA_APP_WHATSAPP_VERIFY_TOKEN,
     );
 
   if (
@@ -161,8 +160,7 @@ export function validateElizaAppConfig() {
     (!process.env.ELIZA_APP_WHATSAPP_ACCESS_TOKEN ||
       !process.env.ELIZA_APP_WHATSAPP_PHONE_NUMBER_ID ||
       !process.env.ELIZA_APP_WHATSAPP_APP_SECRET ||
-      !process.env.ELIZA_APP_WHATSAPP_VERIFY_TOKEN ||
-      !process.env.ELIZA_APP_WHATSAPP_PHONE_NUMBER)
+      !process.env.ELIZA_APP_WHATSAPP_VERIFY_TOKEN)
   ) {
     throw new Error("WhatsApp is enabled but required WhatsApp env vars are not set in production");
   }
