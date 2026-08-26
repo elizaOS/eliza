@@ -24,6 +24,12 @@ describe("parseBooleanValue", () => {
 		}
 	});
 
+	it("parses numeric 1 and 0 representations", () => {
+		expect(parseBooleanValue(1)).toBe(true);
+		expect(parseBooleanValue(0)).toBe(false);
+		expect(parseBooleanValue(-0)).toBe(false);
+	});
+
 	it("returns undefined for unrecognized strings and non-string inputs", () => {
 		expect(parseBooleanValue("maybe")).toBeUndefined();
 		expect(parseBooleanValue("")).toBeUndefined();
@@ -31,6 +37,9 @@ describe("parseBooleanValue", () => {
 		expect(parseBooleanValue(null)).toBeUndefined();
 		expect(parseBooleanValue(undefined)).toBeUndefined();
 		expect(parseBooleanValue(123)).toBeUndefined();
+		expect(parseBooleanValue(-1)).toBeUndefined();
+		expect(parseBooleanValue(Number.NaN)).toBeUndefined();
+		expect(parseBooleanValue(Number.POSITIVE_INFINITY)).toBeUndefined();
 		expect(parseBooleanValue({})).toBeUndefined();
 	});
 

@@ -22,6 +22,7 @@ const TEXT_FALSY = ["no", "n", "false", "f", "0", "off", "disable"] as const;
  *
  * Handles:
  * - Boolean values (passed through)
+ * - Numeric values (1 => true, 0 => false, matching numeric tokens in truthy/falsy sets)
  * - String values ("true", "1", "yes", "on" => true; "false", "0", "no", "off" => false)
  * - Custom truthy/falsy values via options
  *
@@ -32,6 +33,8 @@ const TEXT_FALSY = ["no", "n", "false", "f", "0", "off", "disable"] as const;
  * @example
  * ```ts
  * parseBooleanValue(true) // => true
+ * parseBooleanValue(1) // => true
+ * parseBooleanValue(0) // => false
  * parseBooleanValue("yes") // => true
  * parseBooleanValue("1") // => true
  * parseBooleanValue("false") // => false
@@ -47,11 +50,18 @@ export function parseBooleanValue(
 	if (typeof value === "boolean") {
 		return value;
 	}
-	if (typeof value !== "string") {
-		return undefined;
-	}
-	const normalized = value.trim().toLowerCase();
-	if (!normalized) {
+	let normalized: string;
+	if (typeof value === "number") {
+		if (!Number.isFinite(value)) {
+			return undefined;
+		}
+		normalized = String(value);
+	} else if (typeof value === "string") {
+		normalized = value.trim().toLowerCase();
+		if (!normalized) {
+			return undefined;
+		}
+	} else {
 		return undefined;
 	}
 	const truthy = options.truthy ?? DEFAULT_TRUTHY;
@@ -81,7 +91,7 @@ export function parseBooleanValue(
  * through the shared boolean parser.
  */
 export function parseBooleanText(
-	value: string | boolean | undefined | null,
+	value: string | number | boolean | undefined | null,
 ): boolean {
 	return (
 		parseBooleanValue(value, {
