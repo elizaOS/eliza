@@ -163,6 +163,44 @@ describe("VirtualFilesystemService", () => {
     ]);
   });
 
+  it("sorts valid snapshots newest-first when persisted metadata has an invalid date", async () => {
+    const instants = [
+      new Date("2026-01-01T00:00:00.000Z"),
+      new Date("2026-01-02T00:00:00.000Z"),
+      new Date("2026-01-03T00:00:00.000Z"),
+    ];
+    let clockReads = 0;
+    const vfs = service({
+      now: () => {
+        const instant = instants[Math.floor(clockReads++ / 2)];
+        if (!instant) throw new Error("Snapshot test clock exhausted");
+        return instant;
+      },
+    });
+    const oldest = await vfs.createSnapshot("oldest");
+    const malformed = await vfs.createSnapshot("malformed");
+    const newest = await vfs.createSnapshot("newest");
+    const malformedMetadataPath = path.join(
+      vfs.projectRoot,
+      "snapshots",
+      malformed.id,
+      "snapshot.json",
+    );
+    await fsp.writeFile(
+      malformedMetadataPath,
+      JSON.stringify({ ...malformed, createdAt: "not-a-date" }),
+      "utf-8",
+    );
+
+    const snapshots = await vfs.listSnapshots();
+
+    expect(snapshots.map((snapshot) => snapshot.id)).toEqual([
+      newest.id,
+      oldest.id,
+      malformed.id,
+    ]);
+  });
+
   it("rolls back to a snapshot and records rollback metadata", async () => {
     const vfs = service();
     await vfs.initialize();

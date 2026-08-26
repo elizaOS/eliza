@@ -277,12 +277,12 @@ export class VirtualFilesystemService {
       if (snapshot) snapshots.push(snapshot);
     }
     return snapshots.sort((a, b) => {
-      const aTime = Date.parse(a.createdAt);
-      const bTime = Date.parse(b.createdAt);
-      const aSafe = Number.isFinite(aTime) ? aTime : 0;
-      const bSafe = Number.isFinite(bTime) ? bTime : 0;
-      if (bSafe !== aSafe) return bSafe - aSafe;
-      return a.id.localeCompare(b.id);
+      const aCreatedAt = Date.parse(a.createdAt);
+      const bCreatedAt = Date.parse(b.createdAt);
+      if (!Number.isFinite(aCreatedAt))
+        return Number.isFinite(bCreatedAt) ? 1 : 0;
+      if (!Number.isFinite(bCreatedAt)) return -1;
+      return bCreatedAt - aCreatedAt;
     });
   }
 
