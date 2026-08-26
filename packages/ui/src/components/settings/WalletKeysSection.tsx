@@ -1,3 +1,4 @@
+import { tailWellFormed, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Wallet keys panel for Settings -> Wallet & RPC.
  *
@@ -31,8 +32,12 @@ interface RevealPayload {
 }
 
 function maskValue(value: string): string {
-  if (value.length <= 12) return "*".repeat(value.length);
-  return `${value.slice(0, 6)}…${value.slice(-4)}`;
+  if (!value) return "";
+  const wellFormed = toWellFormedUnicode(value);
+  if (wellFormed.length <= 12) return "*".repeat(wellFormed.length);
+  const start = truncateWellFormed(wellFormed, 6);
+  const end = tailWellFormed(wellFormed, 4);
+  return `${start}…${end}`;
 }
 
 /**

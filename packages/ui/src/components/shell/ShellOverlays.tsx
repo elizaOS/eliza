@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Aggregates the shell's floating overlays into one render slot: the dev perf
  * HUD, command palette, restart banner, bug-report modal, computer-use approval
@@ -89,7 +90,7 @@ export function ShellOverlays({
         setState("chatInput", text);
         return;
       }
-      const preview = text.length > 80 ? `${text.slice(0, 77)}...` : text;
+      const preview = text.length > 80 ? `${truncateWellFormed(toWellFormedUnicode(text), 77)}...` : text;
       setActionNotice(`Shared: ${preview}`, "info", TOAST_TTL_MS.notification);
     };
 

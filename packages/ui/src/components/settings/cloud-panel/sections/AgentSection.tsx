@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Cloud agent management section for the cloud-only settings panel. Lists the
  * signed-in user's Eliza Cloud agents and drives their lifecycle — create,
@@ -93,7 +94,8 @@ function statusDotClass(status: string): string {
 
 /** Truncate an agent id for compact display (first 8 chars + ellipsis). */
 function shortId(id: string): string {
-  return id.length > 12 ? `${id.slice(0, 8)}…` : id;
+  const wellFormed = toWellFormedUnicode(id);
+  return wellFormed.length > 12 ? `${truncateWellFormed(wellFormed, 8)}…` : wellFormed;
 }
 
 /** ISO timestamp → "YYYY-MM-DD" slice, safe for render-time use (no Date math). */

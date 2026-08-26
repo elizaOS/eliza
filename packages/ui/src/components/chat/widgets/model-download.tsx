@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Home widget with a real progress track for the recommended local model's
  * download (see the `ModelDownloadWidget` JSDoc below). `useLocalModelDownloads`
@@ -489,8 +490,8 @@ function ModelProgressCard({
 
 /** Keep the error detail meta tight so it never wraps the naked tile. */
 function truncateDetail(detail: string): string {
-  const trimmed = detail.trim();
-  return trimmed.length > 40 ? `${trimmed.slice(0, 39)}…` : trimmed;
+  const wellFormed = toWellFormedUnicode(detail.trim());
+  return wellFormed.length > 40 ? `${truncateWellFormed(wellFormed, 39)}…` : wellFormed;
 }
 
 /**
