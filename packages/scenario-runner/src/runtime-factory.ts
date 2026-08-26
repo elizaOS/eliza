@@ -280,7 +280,7 @@ const PROVIDER_BASE_URL_ENV_NAMES = new Set([
 function isForbiddenProviderBaseUrl(value: string): boolean {
   try {
     const parsed = new URL(value);
-    const hostname = parsed.hostname.toLowerCase();
+    const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
     return (
       hostname === "localhost" ||
       hostname === "::1" ||
