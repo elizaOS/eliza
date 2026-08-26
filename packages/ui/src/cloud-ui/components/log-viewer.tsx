@@ -1,4 +1,5 @@
 "use client";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 /**
  * Log viewer with copy/download and follow-tail, used by the cloud agent-logs surface.
@@ -230,7 +231,7 @@ export function LogViewer({
       seen.set(line, occurrence);
       return {
         line,
-        key: `${line.slice(0, 120)}:${line.length}:${occurrence}`,
+        key: `${truncateWellFormed(toWellFormedUnicode(line), 120)}:${line.length}:${occurrence}`,
       };
     });
   }, [lines]);
