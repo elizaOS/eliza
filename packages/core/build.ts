@@ -835,7 +835,16 @@ async function rewriteSharedErrorsImports(outdir: string): Promise<void> {
 	const errorsArtifact = join(process.cwd(), outdir, "errors.js");
 	const walk = async (dir: string): Promise<string[]> => {
 		const out: string[] = [];
-		for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+		let entries: Awaited<ReturnType<typeof fs.readdir>>;
+		try {
+			entries = await fs.readdir(dir, { withFileTypes: true });
+		} catch (error) {
+			// error-policy:J3 a missing outdir (stubbed runner factories in unit
+			// tests emit nothing) is explicitly "no bundles to rewrite".
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") return out;
+			throw error;
+		}
+		for (const entry of entries) {
 			const full = path.join(dir, entry.name);
 			if (entry.isDirectory()) out.push(...(await walk(full)));
 			else if (entry.isFile() && full.endsWith(".js")) out.push(full);
