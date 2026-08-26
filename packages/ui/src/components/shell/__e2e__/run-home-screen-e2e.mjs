@@ -121,16 +121,17 @@ const stubResolver = {
   },
 };
 
-// The production launcher resolves packaged PNGs relative to the generated
-// module with `new URL(..., import.meta.url)`. This fixture is intentionally an
-// inline IIFE, where esbuild otherwise replaces import.meta with an empty
-// object and every icon URL throws before React can mount. Preserve the real
-// icon module and assets by binding only that module's import.meta.url to its
-// source file URL during the fixture build.
+// The production launcher resolves packaged PNG and SVG assets relative to its
+// icon modules with `new URL(..., import.meta.url)`. This fixture is
+// intentionally an inline IIFE, where esbuild otherwise replaces import.meta
+// with an empty object and every icon URL throws before React can mount.
+// Preserve the real icon modules and assets by binding their import.meta.url to
+// their source file URLs during the fixture build.
+const fixtureIconModule = /(?:view-icons\.generated|launcher-ionicons)\.ts$/;
 const fixtureViewIconUrls = {
   name: "home-fixture-view-icon-urls",
   setup(b) {
-    b.onLoad({ filter: /view-icons\.generated\.ts$/ }, async (args) => {
+    b.onLoad({ filter: fixtureIconModule }, async (args) => {
       const source = await readFile(args.path, "utf8");
       return {
         contents: source.replaceAll(
