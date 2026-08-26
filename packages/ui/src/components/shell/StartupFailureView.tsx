@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Terminal-state screen shown when startup can't reach the main shell: names the
  * failure reason (backend timeout/unreachable, agent timeout/error, missing
@@ -70,7 +71,7 @@ function buildStartupBugReportDraft(
     .join("\n");
 
   return {
-    description: `${reasonLabel}: ${error.message}`.slice(0, 80),
+    description: truncateWellFormed(toWellFormedUnicode(`${reasonLabel}: ${error.message}`), 80),
     stepsToReproduce:
       "1. Launch the desktop app.\n2. Wait for startup to fail.\n3. Observe the startup failure screen.",
     expectedBehavior: "The app should finish startup and show the main shell.",
