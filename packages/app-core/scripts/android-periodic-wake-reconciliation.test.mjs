@@ -168,6 +168,24 @@ describe("Android periodic wake reconciliation (#17874)", () => {
     expect(worker).not.toContain('"eliza:agent-base"');
   });
 
+  it("binds Android runtime identity validation to app-owned data", () => {
+    const service = source("ElizaAgentService.java");
+    const environmentBody = service.match(
+      /Map<String, String> agentEnv = new LinkedHashMap<>\(\);([\s\S]*?)env\.putAll\(agentEnv\);/,
+    )?.[1];
+
+    expect(environmentBody).toBeDefined();
+    expect(environmentBody).toContain(
+      'agentEnv.put("ELIZA_STATE_DIR", agentStateDir().getAbsolutePath())',
+    );
+    expect(environmentBody).toContain(
+      'agentEnv.put("ELIZA_PLATFORM", "android")',
+    );
+    expect(environmentBody).toMatch(
+      /agentEnv\.put\(\s*"ELIZA_ANDROID_APP_DATA_DIR",\s*getDataDir\(\)\.getAbsolutePath\(\)\s*\)/,
+    );
+  });
+
   it("returns repeated service starts before the cold-boot process lock", () => {
     const service = source("ElizaAgentService.java");
     const requestStartBody = service.match(

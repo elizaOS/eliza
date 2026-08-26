@@ -2080,6 +2080,16 @@ public class ElizaAgentService extends Service {
             agentEnv.put("ELIZA_LOCAL_AGENT_SOCKET", LOCAL_AGENT_SOCKET_NAME);
             agentEnv.put("ELIZA_STATE_DIR", agentStateDir().getAbsolutePath());
             agentEnv.put("ELIZA_PLATFORM", "android");
+            // Android SELinux permits the app to stat platform-owned ancestors
+            // such as / and /data, but deliberately denies opening directory
+            // descriptors for them. Bind the agent's identity validator to the
+            // exact app-owned data boundary so it can retain descriptor-backed
+            // validation from this directory downward without attempting the
+            // forbidden platform ancestor opens.
+            agentEnv.put(
+                "ELIZA_ANDROID_APP_DATA_DIR",
+                getDataDir().getAbsolutePath()
+            );
             agentEnv.put("ELIZA_MOBILE_PLATFORM", "android");
             agentEnv.put("ELIZA_STARTUP_TRACE_ID", ElizaStartupTrace.currentId());
             agentEnv.put("ELIZA_RUNTIME_MODE", "local-yolo");
