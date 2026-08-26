@@ -102,6 +102,7 @@
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check . --no-errors-on-unmatched",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck:live-harness": "tsc --noEmit -p tsconfig.live-harness.json",
     "test": "bunx vitest run --config vitest.config.ts",
     "test:unit": "bunx vitest run --config vitest.config.ts __tests__/unit",
     "test:e2e:manual": "node tests/e2e/acp-codex-smoke.mjs",

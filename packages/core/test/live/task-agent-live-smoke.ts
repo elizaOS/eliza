@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { createServer, type Server } from "node:http";
 import net from "node:net";
 import path from "node:path";
-import type { AgentRuntime } from "@elizaos/core";
+import type { AgentRuntime, RuntimeSettings } from "@elizaos/core";
 import { createTestRuntime } from "../../src/testing/pglite-runtime.ts";
 
 const {
@@ -17,22 +17,32 @@ const {
 
 type Framework = "claude" | "codex";
 type Mode = "sequential" | "web";
+type AcpServiceInstance = InstanceType<typeof AcpService>;
 
 const KEEP_ARTIFACTS = process.env.ELIZA_KEEP_LIVE_ARTIFACTS === "1";
 
-async function createRuntime(settings: Record<string, unknown> = {}): Promise<{
+async function createRuntime(settings: RuntimeSettings = {}): Promise<{
 	runtime: AgentRuntime;
 	cleanup: () => Promise<void>;
 }> {
 	const { runtime, cleanup } = await createTestRuntime({
 		characterName: "TaskAgentLiveSmoke",
+		settings,
 		plugins: [agentOrchestratorPlugin],
 	});
-	const originalGetSetting = runtime.getSetting.bind(runtime);
-	runtime.getSetting = ((key: string) =>
-		settings[key] ??
-		originalGetSetting(key) ??
-		process.env[key]) as typeof runtime.getSetting;
+	const router = (await runtime.getServiceLoadPromise(
+		"ACPX_SUB_AGENT_ROUTER",
+	)) as { isActive?: () => boolean };
+	assert.equal(
+		typeof router?.isActive,
+		"function",
+		"production SubAgentRouter must be registered in the live harness",
+	);
+	assert.equal(
+		router.isActive?.(),
+		false,
+		"ACPX_SUB_AGENT_ROUTER_DISABLED must take effect before plugin startup",
+	);
 	return { runtime, cleanup };
 }
 
@@ -151,7 +161,9 @@ function sawTaskCompletion(
 
 async function waitForTrackedSession(
 	service: {
-		getSession: (id: string) => Promise<{ agentType?: string } | null>;
+		getSession: (
+			id: string,
+		) => Promise<{ agentType?: string } | null | undefined>;
 	},
 	sessionId: string,
 	expectedAgentType: Framework,
@@ -181,7 +193,7 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 	// wrong process and leave the prompt unresolved.
 	const service = (await runtime.getServiceLoadPromise(
 		AcpService.serviceType,
-	)) as AcpService;
+	)) as AcpServiceInstance;
 
 	const events: Array<{ event: string; data: unknown }> = [];
 	const unsubscribe = service.onSessionEvent((_sessionId, event, data) => {
@@ -311,7 +323,7 @@ async function runWebSmoke(agentType: Framework): Promise<void> {
 	});
 	const service = (await runtime.getServiceLoadPromise(
 		AcpService.serviceType,
-	)) as AcpService;
+	)) as AcpServiceInstance;
 
 	const events: Array<{ event: string; data: unknown }> = [];
 	const unsubscribe = service.onSessionEvent((_sessionId, event, data) => {
