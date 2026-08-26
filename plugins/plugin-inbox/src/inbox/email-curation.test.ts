@@ -165,7 +165,10 @@ describe("curateEmailCandidates — destructive-action guardrails", () => {
     const decision = decideOne({ id: "d1" }); // no bodyText anywhere
     expect(decision.degraded).toBe(true);
     expect(decision.mode).toBe("metadata_degraded");
-    expect(decision.confidence).toBeLessThanOrEqual(0.64);
+    // Exact pin (the one documented 0.64 literal): this metadata-only input
+    // is archive-leaning with pre-cap confidence 0.7125, so only the degraded
+    // cap produces 0.64.
+    expect(decision.confidence).toBe(0.64);
     expect(decision.degradationReason).toMatch(/body text was unavailable/i);
   });
 
@@ -369,7 +372,7 @@ describe("curateEmailCandidates — destructive-action guardrails", () => {
     expect(output.decisions[1].action).toBe("archive");
   });
 
-  it("keeps ranking total and deterministic when a decision carries NaN confidence (#25639 regression class)", () => {
+  it("keeps ranking total and deterministic for a non-finite policy-effect input (#25639 regression class)", () => {
     // #25639 fixed a live crash where a NaN confidence poisoned the sort
     // comparator. The ranking comparator's contract (decisionSortScore) is to
     // treat a non-finite score as 0, so ordering stays total even when a
@@ -387,20 +390,9 @@ describe("curateEmailCandidates — destructive-action guardrails", () => {
               },
             ]
           : [];
-    const poisoned = curateEmailCandidates({
-      candidates: [
-        candidate({
-          id: "nan1",
-          fromEmail: "digest@bulk.io",
-          bodyText: SPAM_BODY,
-          labels: ["SPAM"],
-        }),
-      ],
-      policyHook: poisonHook("nan1"),
-    }).decisions[0];
-    // The engine does not sanitize the calibrated value — document that the
-    // comparator's fallback, not upstream clamping, owns ordering safety.
-    expect(Number.isNaN(poisoned.confidence)).toBe(true);
+    // Ordering only: the unsanitized NaN itself is defect #29309, not a
+    // contract to pin. Ranking safety lives in decisionSortScore, which
+    // coerces a non-finite score to 0.
     const mixed = curateEmailCandidates({
       candidates: [
         candidate({
@@ -469,6 +461,8 @@ describe("calibrateEmailCurationConfidence — caps and penalties", () => {
       threadConflict: false,
       policyEffects: [],
     });
+    // Pinned literal: the uncited-semantic cap. Documented calibration
+    // contract — retuning this value must be a deliberate, review-visible act.
     expect(confidence).toBe(0.79);
   });
 
@@ -502,17 +496,26 @@ describe("calibrateEmailCurationConfidence — caps and penalties", () => {
     expect(confidence).toBeGreaterThan(0.79);
   });
 
-  it("caps degraded calibration at 0.64 regardless of score margin", () => {
-    const confidence = calibrateEmailCurationConfidence({
-      action: "save",
+  it("caps degraded calibration below the identical non-degraded input", () => {
+    const input = {
+      action: "save" as const,
       scores: { save: 5, archive: 0, delete: 0, review: 0 },
       evidence: [],
-      degraded: true,
       blockedDelete: false,
       threadConflict: false,
       policyEffects: [],
+    };
+    const undegraded = calibrateEmailCurationConfidence({
+      ...input,
+      degraded: false,
     });
-    expect(confidence).toBeLessThanOrEqual(0.64);
+    const degraded = calibrateEmailCurationConfidence({
+      ...input,
+      degraded: true,
+    });
+    // Cap-binding without a second pinned literal: removing the degraded cap
+    // makes these two identical, so this turns red (mutation-verified).
+    expect(degraded).toBeLessThan(undegraded);
   });
 
   it("applies the prompt-injection confidence penalty of 0.08 in calibration", () => {
@@ -543,7 +546,11 @@ describe("calibrateEmailCurationConfidence — caps and penalties", () => {
       threadConflict: false,
       policyEffects: [],
     });
-    expect(dinged).toBe(base - 0.08);
+    // Direction + magnitude: the penalty lowers confidence by exactly the
+    // documented 0.08 (toBeCloseTo — the engine rounds to two decimals, and
+    // raw double subtraction is not a stable expected side).
+    expect(dinged).toBeLessThan(base);
+    expect(dinged).toBeCloseTo(base - 0.08, 2);
   });
 
   it("applies the thread-conflict penalty", () => {
@@ -565,7 +572,10 @@ describe("calibrateEmailCurationConfidence — caps and penalties", () => {
       threadConflict: true,
       policyEffects: [],
     });
-    expect(conflicted).toBe(base - 0.18);
+    // Direction + magnitude (two-decimal tolerance, same rationale as the
+    // injection penalty).
+    expect(conflicted).toBeLessThan(base);
+    expect(conflicted).toBeCloseTo(base - 0.18, 2);
   });
 
   it("bounds every result to [0, 1] and rounds to two decimals", () => {
@@ -594,6 +604,51 @@ describe("calibrateEmailCurationConfidence — caps and penalties", () => {
     expect(confidence).toBeGreaterThanOrEqual(0);
     expect(confidence).toBeLessThanOrEqual(1);
     expect(confidence).toBe(Number(confidence.toFixed(2)));
+  });
+
+  it("clamps an over-boosting policy effect at the upper bound", () => {
+    // A negative lower_confidence amount RAISES confidence (the engine
+    // subtracts it); a large negative would exceed 1. The clamp must own the
+    // upper bound, mirroring the lower-bound case above.
+    const confidence = calibrateEmailCurationConfidence({
+      action: "archive",
+      scores: { save: 0, archive: 2, delete: 0, review: 0 },
+      evidence: [],
+      degraded: false,
+      blockedDelete: false,
+      threadConflict: false,
+      policyEffects: [
+        {
+          kind: "lower_confidence",
+          amount: -0.9,
+          code: "test_boost",
+          message: "test",
+        },
+      ],
+    });
+    expect(confidence).toBe(1);
+  });
+
+  it("rounds a three-decimal pre-clamp value to two decimals", () => {
+    // review:7 tops the review formula at 0.66; subtracting 0.153 gives
+    // 0.507 pre-round — the rounding step, not the clamps, owns the result.
+    const confidence = calibrateEmailCurationConfidence({
+      action: "review",
+      scores: { save: 0, archive: 0, delete: 0, review: 7 },
+      evidence: [],
+      degraded: false,
+      blockedDelete: false,
+      threadConflict: false,
+      policyEffects: [
+        {
+          kind: "lower_confidence",
+          amount: 0.153,
+          code: "test_round",
+          message: "test",
+        },
+      ],
+    });
+    expect(confidence).toBe(0.51);
   });
 });
 
