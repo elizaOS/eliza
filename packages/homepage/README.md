@@ -23,13 +23,36 @@ cp .env.example .env.local
 | `VITE_ELIZACLOUD_API_URL` | Eliza Cloud backend URL (defaults to `https://api.eliza.app`) |
 | `VITE_TELEGRAM_BOT_USERNAME` | Optional Telegram bot username override (default `ElizaIsNotABot`) |
 | `VITE_TELEGRAM_BOT_ID` | Optional numeric Telegram bot ID override (default `8931353359`) |
-| `VITE_DISCORD_CLIENT_ID` | Optional Discord Application ID override (default `1468649258654630063`) |
+| `VITE_DISCORD_CLIENT_ID` | Discord application snowflake for the public CTA. Staging and pull-request preview builds require a distinct staging application and fail closed if this is absent, blank, malformed, or equal to production `1468649258654630063`. Production may omit it and uses that canonical id. |
+| `VITE_ENVIRONMENT` | Pages deploy identity (`staging` or `production`). Staging never inherits the production Discord fallback. Unset locally. |
 | `WHATSAPP_PUBLIC_ENABLED` | Deployment switch that must be true before the public WhatsApp CTA is built |
 | `VITE_WHATSAPP_PHONE_NUMBER` | Admitted Blooio WhatsApp sender in E.164 format; set to the shared `+18087881821` number |
 
 OAuth provider callback configuration belongs to the unified Cloud auth routes
 and API deployment. Do not register a callback against this source package or
 its optional test-harness port.
+
+### Discord application authority (names only)
+
+The public "Message Eliza on Discord" CTA is a user-install OAuth URL for a
+team-maintained Eliza application. Users do not create their own bot. Git never
+stores the staging snowflake.
+
+Set the GitHub variable **name** `VITE_DISCORD_CLIENT_ID` only:
+
+| Authority | Visibility | Required value |
+| --- | --- | --- |
+| Repository variable | Pull-request Pages previews (`cloud-cf-deploy.yml` has no GitHub Environment) | Staging Discord application snowflake, never `1468649258654630063` |
+| GitHub Environment `staging` | `develop` Pages deploys | Same staging snowflake |
+| GitHub Environment `production` | `main` Pages deploys | Canonical production id `1468649258654630063`, or omit to use that fallback |
+| Cloudflare Pages / Vite | `bun run --cwd packages/app build:web` | Injected as `VITE_DISCORD_CLIENT_ID`; not a Cloudflare dashboard secret |
+| Railway | Not used | This CTA is compiled into the Cloudflare Pages artifact |
+
+If the repository variable is the staging snowflake, the production Environment
+must set `VITE_DISCORD_CLIENT_ID` to the canonical production id. GitHub merges
+repository variables into Environment jobs, and a staging id in production fails
+closed. Deploy logs and step summaries redact the snowflake; the built public
+OAuth `client_id` is the user-visible identity.
 
 ### WhatsApp production activation
 

@@ -32,6 +32,13 @@
         "../ui/src/components/ui/dropdown-menu.tsx"
       ],
       "@elizaos/ui/input": ["../ui/src/components/ui/input.tsx"],
+      "@elizaos/ui/native-dialog": [
+        "../ui/src/components/ui/native-dialog.tsx"
+      ],
+      "@elizaos/ui/native-select": [
+        "../ui/src/components/ui/native-select.tsx"
+      ],
+      "@elizaos/ui/textarea": ["../ui/src/components/ui/textarea.tsx"],
       "@elizaos/ui/i18n/region": ["../ui/src/i18n/region.ts"],
       "@elizaos/ui/product-switcher": [
         "../ui/src/cloud-ui/components/product-switcher.tsx"
