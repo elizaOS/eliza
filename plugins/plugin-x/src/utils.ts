@@ -46,6 +46,21 @@ export interface TweetThreadReceipt {
 /** X direct-message text accepts at most 10,000 Unicode characters per send. */
 export const X_MAX_DM_LENGTH = 10_000;
 
+// The pinned runtimes provide Intl.Segmenter, while this package's ES2020
+// declaration library does not expose its type.
+const GraphemeSegmenter = (
+  Intl as unknown as {
+    Segmenter: new (
+      locale: string,
+      options: { granularity: "grapheme" },
+    ) => { segment(text: string): Iterable<{ segment: string }> };
+  }
+).Segmenter;
+
+const xGraphemeSegmenter = new GraphemeSegmenter("en", {
+  granularity: "grapheme",
+});
+
 /** Split direct-message text on Unicode scalar boundaries without dropping it. */
 export function splitXDirectMessageContent(text: string): string[] {
   const characters = Array.from(text);
@@ -390,7 +405,9 @@ export function splitTweetContent(
   const units: string[] = [];
   let cursor = 0;
   const appendTextUnits = (text: string) => {
-    units.push(...Array.from(text));
+    for (const { segment } of xGraphemeSegmenter.segment(text)) {
+      units.push(segment);
+    }
   };
   for (const entity of twitterText.extractUrlsWithIndices(content)) {
     const [start, end] = entity.indices;
