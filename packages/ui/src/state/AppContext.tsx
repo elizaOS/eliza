@@ -1493,6 +1493,8 @@ function AppProviderInner({
     setFirstRunRemoteToken,
     setFirstRunCloudProvisionedContainer,
     hydrateInitialConversationState,
+    loadedConversationIdRef,
+    loadConversationMessages,
     loadWorkbench,
     loadPlugins,
     loadSkills,
@@ -1662,6 +1664,7 @@ function AppProviderInner({
     chatAbortRef,
     setConversationMessages,
     loadConversationMessages,
+    hydrateInitialConversationState,
   });
 
   // ── Chat composer draft persistence ────────────────────────────────

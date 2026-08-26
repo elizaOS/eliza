@@ -13,6 +13,8 @@ import {
 const clientMock = vi.hoisted(() => ({
   getStatus: vi.fn(),
   getFirstRunStatus: vi.fn(),
+  getBaseUrl: vi.fn(() => "http://127.0.0.1:31337"),
+  listConversations: vi.fn(),
 }));
 
 vi.mock("../api", () => ({
@@ -33,6 +35,8 @@ function createDeps() {
 describe("recoverTerminalStartupError", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clientMock.getBaseUrl.mockReturnValue("http://127.0.0.1:31337");
+    clientMock.listConversations.mockResolvedValue([]);
   });
 
   it("recovers a stale terminal startup error when the agent is running", async () => {
@@ -121,6 +125,95 @@ describe("recoverTerminalStartupError", () => {
     expect(clientMock.getFirstRunStatus).not.toHaveBeenCalled();
     expect(dispatch).not.toHaveBeenCalled();
     expect(deps.setStartupError).not.toHaveBeenCalled();
+  });
+
+  it("keeps direct Cloud in the terminal Retry state while its real adapter is offline", async () => {
+    clientMock.getBaseUrl.mockReturnValue(
+      "https://cloud.eliza.app/api/v1/eliza/agents/personal%3Aowner",
+    );
+    clientMock.getStatus.mockResolvedValue({
+      state: "running",
+      agentName: "Eliza",
+      startup: { phase: "running", attempt: 0 },
+    });
+    clientMock.getFirstRunStatus.mockResolvedValue({ complete: true });
+    clientMock.listConversations.mockRejectedValue(new Error("offline"));
+    const deps = createDeps();
+    const dispatch = vi.fn();
+
+    await expect(
+      recoverTerminalStartupError(deps, dispatch, { current: false }),
+    ).resolves.toBe(false);
+
+    expect(clientMock.listConversations).toHaveBeenCalledTimes(1);
+    expect(deps.setAgentStatus).not.toHaveBeenCalled();
+    expect(deps.setConnected).not.toHaveBeenCalled();
+    expect(deps.setStartupError).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("recovers direct Cloud only after the real adapter answers", async () => {
+    clientMock.getBaseUrl.mockReturnValue(
+      "https://cloud.eliza.app/api/v1/eliza/agents/personal%3Aowner",
+    );
+    clientMock.getStatus.mockResolvedValue({
+      state: "running",
+      agentName: "Eliza",
+      startup: { phase: "running", attempt: 0 },
+    });
+    clientMock.getFirstRunStatus.mockResolvedValue({ complete: true });
+    clientMock.listConversations.mockResolvedValue([{ id: "conversation-1" }]);
+    const deps = createDeps();
+    const dispatch = vi.fn();
+
+    await expect(
+      recoverTerminalStartupError(deps, dispatch, { current: false }),
+    ).resolves.toBe(true);
+
+    expect(clientMock.listConversations).toHaveBeenCalledTimes(1);
+    expect(deps.setConnected).toHaveBeenCalledWith(true);
+    expect(dispatch).toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
+  });
+
+  it("does not probe conversations for an ordinary runtime", async () => {
+    clientMock.getStatus.mockResolvedValue({
+      state: "running",
+      agentName: "Eliza",
+      startup: { phase: "running", attempt: 0 },
+    });
+    clientMock.getFirstRunStatus.mockResolvedValue({ complete: true });
+
+    await recoverTerminalStartupError(createDeps(), vi.fn(), {
+      current: false,
+    });
+
+    expect(clientMock.listConversations).not.toHaveBeenCalled();
+  });
+
+  it("does not mutate recovery state when cancellation arrives during the direct Cloud probe", async () => {
+    clientMock.getBaseUrl.mockReturnValue(
+      "https://cloud.eliza.app/api/v1/eliza/agents/personal%3Aowner",
+    );
+    clientMock.getStatus.mockResolvedValue({
+      state: "running",
+      agentName: "Eliza",
+      startup: { phase: "running", attempt: 0 },
+    });
+    clientMock.getFirstRunStatus.mockResolvedValue({ complete: true });
+    const cancelled = { current: false };
+    clientMock.listConversations.mockImplementation(async () => {
+      cancelled.current = true;
+      return [];
+    });
+    const deps = createDeps();
+    const dispatch = vi.fn();
+
+    await expect(
+      recoverTerminalStartupError(deps, dispatch, cancelled),
+    ).resolves.toBe(false);
+
+    expect(deps.setConnected).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalled();
   });
 });
 
