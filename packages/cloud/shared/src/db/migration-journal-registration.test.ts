@@ -107,6 +107,19 @@ describe("migrations/meta/_journal.json registration", () => {
     expect(new Set(entries.map((e) => e.tag)).size).toBe(entries.length);
   });
 
+  test("keeps the deployed shared-consent 0320 and appends dedicated adoption as 0321", () => {
+    const entries = journalEntries();
+    const sharedConsent = entries.find(
+      ({ tag }) => tag === "0320_personal_shared_multi_principal_consent",
+    );
+    const dedicatedAdoption = entries.find(
+      ({ tag }) => tag === "0321_personal_dedicated_adoption_selections",
+    );
+
+    expect(sharedConsent).toMatchObject({ idx: 303, when: 1794254400011 });
+    expect(dedicatedAdoption).toMatchObject({ idx: 304, when: 1794254400012 });
+  });
+
   test("the catalogue, capture, and restore stack is registered in strict deployment order", () => {
     const entries = journalEntries();
     const firstIndex = entries.findIndex(({ tag }) => tag === BACKUP_CATALOGUE_MIGRATION_TAGS[0]);
