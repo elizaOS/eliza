@@ -297,7 +297,7 @@ export const VIEW_OCR_POLICIES = {
     requireAny: ["Set default SMS", "bridge-only", "compose"],
   }),
   "plugin-maps-gui": expected({
-    requireAll: ["Maps", "Find somewhere worth going"],
+    requireAll: ["Find somewhere worth going"],
     requireAny: ["provider-neutral", "Search a place"],
     forbid: ["Google Maps", "Mapbox"],
   }),

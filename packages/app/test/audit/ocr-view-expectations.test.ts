@@ -12,6 +12,10 @@ import {
   buildAuditViewCases,
 } from "../ui-smoke/aesthetic-audit-view-cases";
 import {
+  evaluateOcrContent,
+  type OcrResult,
+} from "../ui-smoke/ocr-content-rules";
+import {
   resolveViewOcrPolicy,
   VIEW_OCR_POLICIES,
 } from "../ui-smoke/ocr-view-expectations";
@@ -32,6 +36,25 @@ const NAVIGATION_SOURCE = resolve(
   APP_DIR,
   "../ui/src/navigation/builtin-route-descriptors.ts",
 );
+
+function ocr(text: string, over: Partial<OcrResult> = {}): OcrResult {
+  return {
+    ok: true,
+    text,
+    lines: text.split("\n").filter(Boolean),
+    words: text.split(/\s+/).filter(Boolean).length,
+    meanConfidence: 1,
+    ...over,
+  };
+}
+
+function mapsExpectation() {
+  const policy = resolveViewOcrPolicy("plugin-maps-gui");
+  if (policy.kind !== "expectation") {
+    throw new Error("Expected plugin Maps to declare an OCR expectation");
+  }
+  return policy.expectation;
+}
 
 describe("aesthetic audit semantic OCR policy coverage", () => {
   it("declares exactly one policy for every captured view slug", () => {
@@ -141,6 +164,71 @@ describe("aesthetic audit semantic OCR policy coverage", () => {
       "search",
     ]);
   });
+
+  it("accepts the recorded Maps landscape OCR through stable semantic anchors", () => {
+    const finding = evaluateOcrContent({
+      ocr: ocr(
+        "EXPLORE - PROVIDER-NEUTRAL MAP / MOPS Find somewhere worth going",
+        { meanConfidence: 0.71, pixelBlank: false },
+      ),
+      expectation: mapsExpectation(),
+    });
+
+    expect(finding.verdict).toBe("verified");
+    expect(finding.missingRequired).toEqual([]);
+    expect(finding.forbiddenPresent).toEqual([]);
+  });
+
+  it("still rejects blank and wrong-view Maps captures", () => {
+    const blank = evaluateOcrContent({
+      ocr: ocr("", {
+        words: 0,
+        meanConfidence: 0,
+        pixelBlank: true,
+        pixelBlankReasons: ["screenshot is one color"],
+      }),
+      expectation: mapsExpectation(),
+    });
+    expect(blank.verdict).toBe("broken");
+    expect(blank.blankPixels).toBe(true);
+
+    const wrongView = evaluateOcrContent({
+      ocr: ocr("Calendar Upcoming events Today", { pixelBlank: false }),
+      expectation: mapsExpectation(),
+    });
+    expect(wrongView.verdict).toBe("broken");
+    expect(wrongView.missingRequired).toEqual([
+      "Find somewhere worth going",
+      "provider-neutral | Search a place",
+    ]);
+  });
+
+  it("still rejects developer residue in an otherwise healthy Maps capture", () => {
+    const finding = evaluateOcrContent({
+      ocr: ocr(
+        "MOPS Find somewhere worth going provider-neutral [object Object]",
+      ),
+      expectation: mapsExpectation(),
+    });
+
+    expect(finding.verdict).toBe("broken");
+    expect(finding.errorLeaks).toContain("[object Object]");
+  });
+
+  it.each(["Google Maps", "Mapbox"])(
+    "keeps the %s provider leak out of the verified Maps lane",
+    (provider) => {
+      const finding = evaluateOcrContent({
+        ocr: ocr(
+          `MOPS Find somewhere worth going provider-neutral ${provider}`,
+        ),
+        expectation: mapsExpectation(),
+      });
+
+      expect(finding.verdict).toBe("needs-eyeball");
+      expect(finding.forbiddenPresent).toEqual([provider]);
+    },
+  );
 
   it("fails closed for an unknown captured slug", () => {
     expect(() => resolveViewOcrPolicy("plugin-newly-registered-gui")).toThrow(
