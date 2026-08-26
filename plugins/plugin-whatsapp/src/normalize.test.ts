@@ -107,7 +107,7 @@ describe("text chunking", () => {
     const chunks = chunkWhatsAppText(text, { limit: 40 });
     expect(chunks.length).toBeGreaterThan(1);
     expect(chunks.every((c) => c.length <= 40)).toBe(true);
-    expect(chunks.join("\n").replace(/\s+/g, "")).toBe(text.replace(/\s+/g, ""));
+    expect(chunks.join("")).toBe(text);
   });
 
   it("chunkWhatsAppText keeps a surrogate pair (emoji) intact at the hard-break fallback", () => {
@@ -156,6 +156,14 @@ describe("text chunking", () => {
       expect(chunk.length).toBeLessThanOrEqual(2);
       expect(chunk.isWellFormed()).toBe(true);
     }
+    expect(chunks.join("")).toBe(text);
+  });
+
+  it("preserves repeated and leading boundary whitespace exactly", () => {
+    const text = "  hello  world\n\n next line  ";
+    const chunks = chunkWhatsAppText(text, { limit: 10 });
+
+    expect(chunks.every((chunk) => chunk.length <= 10)).toBe(true);
     expect(chunks.join("")).toBe(text);
   });
 });

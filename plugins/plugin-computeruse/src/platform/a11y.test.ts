@@ -45,14 +45,14 @@ describe("isA11yAvailable", () => {
     expect(isA11yAvailable()).toBe(true);
   });
 
-  it("requires python3 or gdbus on Linux", () => {
+  it("requires the implemented python3 AT-SPI lane on Linux", () => {
     mocks.currentPlatform.mockReturnValue("linux");
     mocks.commandExists.mockReturnValue(false);
     expect(isA11yAvailable()).toBe(false);
     mocks.commandExists.mockImplementation((cmd: string) => cmd === "python3");
     expect(isA11yAvailable()).toBe(true);
     mocks.commandExists.mockImplementation((cmd: string) => cmd === "gdbus");
-    expect(isA11yAvailable()).toBe(true);
+    expect(isA11yAvailable()).toBe(false);
   });
 
   it("is unavailable on unsupported platforms", () => {

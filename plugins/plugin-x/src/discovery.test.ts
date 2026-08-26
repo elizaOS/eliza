@@ -9,6 +9,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 import type { ClientBase, TwitterAccountSession } from "./base";
 import { TwitterDiscoveryClient } from "./discovery";
+import { quoteTweetTemplate, replyTweetTemplate } from "./templates";
 import type { TwitterClientState } from "./types";
 
 type DiscoveryHarness = {
@@ -225,8 +226,13 @@ function makeEngagementClient(): {
     nicknames: [],
   };
   const likeTweet = vi.fn(async () => {});
-  const sendTweet = vi.fn(async () => {});
-  const sendQuoteTweet = vi.fn(async () => {});
+  let nextTweetId = 200;
+  const sendTweet = vi.fn(async () => ({
+    data: { id: String(nextTweetId++) },
+  }));
+  const sendQuoteTweet = vi.fn(async () => ({
+    data: { id: String(nextTweetId++) },
+  }));
   const api = { likeTweet, sendTweet, sendQuoteTweet };
   const session = { client: api as never, profile, revision: 1 };
   return {
@@ -323,7 +329,8 @@ describe("TwitterDiscoveryClient engagement dedup (#22710)", () => {
   });
 
   it("replies to a discovered tweet once across cycles", async () => {
-    const { runtime } = makeEngagementRuntime("welcome to the timeline");
+    const completeReply = "welcome ".repeat(50);
+    const { runtime } = makeEngagementRuntime(completeReply);
     const useModel = runtime.useModel as ReturnType<typeof vi.fn>;
     const { client, session, sendTweet, likeTweet } = makeEngagementClient();
     const discovery = new TwitterDiscoveryClient(
@@ -339,11 +346,12 @@ describe("TwitterDiscoveryClient engagement dedup (#22710)", () => {
 
     expect(first).toBe(1);
     expect(second).toBe(0);
-    expect(sendTweet).toHaveBeenCalledTimes(1);
-    expect(sendTweet).toHaveBeenCalledWith(
-      "welcome to the timeline",
-      "1750000000000000001",
+    expect(sendTweet).toHaveBeenCalledTimes(2);
+    expect(sendTweet.mock.calls.map((call) => call[0]).join("")).toBe(
+      completeReply,
     );
+    expect(sendTweet.mock.calls[0]?.[1]).toBe("1750000000000000001");
+    expect(sendTweet.mock.calls[1]?.[1]).toBe("200");
     expect(useModel.mock.calls[0]?.[1]).toMatchObject({
       omitMaxTokens: true,
     });
@@ -377,7 +385,7 @@ describe("TwitterDiscoveryClient engagement dedup (#22710)", () => {
         messages: [
           {
             role: "user",
-            content: expect.stringMatching(/under 280 characters/i),
+            content: expect.not.stringMatching(/(?:under|max) 280 characters/i),
           },
         ],
         omitMaxTokens: true,
@@ -385,6 +393,8 @@ describe("TwitterDiscoveryClient engagement dedup (#22710)", () => {
       expect(request).not.toHaveProperty("prompt");
       expect(request).not.toHaveProperty("maxTokens");
     }
+    expect(quoteTweetTemplate).not.toMatch(/(?:under|max) 280 characters/i);
+    expect(replyTweetTemplate).not.toMatch(/(?:under|max) 280 characters/i);
   });
 
   it.each([
@@ -434,26 +444,6 @@ describe("TwitterDiscoveryClient engagement dedup (#22710)", () => {
     });
     expect(sendTweet).not.toHaveBeenCalled();
     expect(memories).toHaveProperty("size", 0);
-  });
-
-  it("rejects a complete overlength draft instead of clipping it", async () => {
-    const completeDraft = "\u4f60".repeat(141);
-    const { runtime } = makeEngagementRuntime(completeDraft);
-    const useModel = runtime.useModel as ReturnType<typeof vi.fn>;
-    const { client } = makeEngagementClient();
-    const discovery = new TwitterDiscoveryClient(
-      client,
-      runtime,
-      {} as TwitterClientState,
-    ) as unknown as DiscoveryHarness;
-
-    await expect(
-      discovery.generateReply(scoredTweet("reply").tweet),
-    ).rejects.toMatchObject({
-      code: "X_DISCOVERY_DRAFT_LENGTH_EXCEEDED",
-      context: { weightedLength: 282, maxWeightedLength: 280 },
-    });
-    expect(useModel).toHaveBeenCalledTimes(1);
   });
 
   it("sorts discovered tweets safely when relevanceScore contains NaN", () => {

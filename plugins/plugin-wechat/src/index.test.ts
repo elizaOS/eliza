@@ -425,8 +425,9 @@ describe("@elizaos/plugin-wechat", () => {
 
     await dispatcher.sendText("wxid_alice", "hello world");
 
-    expect(client.sendText).toHaveBeenNthCalledWith(1, "wxid_alice", "hello");
-    expect(client.sendText).toHaveBeenNthCalledWith(2, "wxid_alice", "world");
+    const sent = client.sendText.mock.calls.map((call) => call[1]);
+    expect(sent).toEqual(["hello", " worl", "d"]);
+    expect(sent.join("")).toBe("hello world");
   });
 
   it("keeps surrogate pairs intact when chunking text through the proxy client", async () => {
@@ -470,7 +471,7 @@ describe("@elizaos/plugin-wechat", () => {
     expect(client.sendText).not.toHaveBeenCalled();
   });
 
-  it("keeps the established whitespace-boundary policy explicit", async () => {
+  it("preserves whitespace exactly across a natural chunk boundary", async () => {
     const client = {
       sendText: vi.fn(async () => undefined),
     } as unknown as ProxyClient;
@@ -478,9 +479,9 @@ describe("@elizaos/plugin-wechat", () => {
 
     await dispatcher.sendText("wxid_alice", "hello  world");
 
-    expect(
-      vi.mocked(client.sendText).mock.calls.map((call) => call[1]),
-    ).toEqual(["hello ", "world"]);
+    const sent = vi.mocked(client.sendText).mock.calls.map((call) => call[1]);
+    expect(sent).toEqual(["hello ", " world"]);
+    expect(sent.join("")).toBe("hello  world");
   });
 
   it("sanitizes pre-existing lone surrogates before sending", async () => {
