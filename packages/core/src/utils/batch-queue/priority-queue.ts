@@ -93,25 +93,6 @@ export class PriorityQueue<T> {
 		}
 	}
 
-	/** Return true if queue has no items. */
-	isEmpty(): boolean {
-		return this.size === 0;
-	}
-
-	/** Inspect the next item to be dequeued without removing it. */
-	peek(): T | undefined {
-		if (this.highItems.length > 0) return this.highItems[0];
-		if (this.normalItems.length > 0) return this.normalItems[0];
-		if (this.lowItems.length > 0) return this.lowItems[0];
-		return undefined;
-	}
-
-	/** Remove and return the next single item (highest priority first). */
-	dequeue(): T | undefined {
-		const batch = this.dequeueBatch(1);
-		return batch.length > 0 ? batch[0] : undefined;
-	}
-
 	/** Remove up to `n` items from the front (highest priority first). */
 	dequeueBatch(n: number): T[] {
 		if (n <= 0 || this.size === 0) {

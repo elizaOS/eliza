@@ -33,33 +33,12 @@ afterEach(() => {
 });
 
 describe("PriorityQueue", () => {
-	it("starts empty with zeroed stats and isEmpty true", () => {
+	it("starts empty with zeroed stats", () => {
 		const queue = makeQueue();
 		expect(queue.size).toBe(0);
-		expect(queue.isEmpty()).toBe(true);
-		expect(queue.peek()).toBeUndefined();
-		expect(queue.dequeue()).toBeUndefined();
 		expect(queue.stats()).toEqual({ high: 0, normal: 0, low: 0, total: 0 });
 		expect(queue.dequeueBatch(1)).toEqual([]);
 		expect(queue.drain()).toEqual([]);
-	});
-
-	it("peeks without removing and dequeues single item with dequeue()", () => {
-		const queue = makeQueue();
-		const low = item("low", "low");
-		const high = item("high", "high");
-		queue.enqueue(low);
-		queue.enqueue(high);
-
-		expect(queue.isEmpty()).toBe(false);
-		expect(queue.peek()).toBe(high);
-		expect(queue.size).toBe(2);
-
-		expect(queue.dequeue()).toBe(high);
-		expect(queue.peek()).toBe(low);
-		expect(queue.dequeue()).toBe(low);
-		expect(queue.dequeue()).toBeUndefined();
-		expect(queue.isEmpty()).toBe(true);
 	});
 
 	it("enqueues and dequeues a single element by identity", () => {
