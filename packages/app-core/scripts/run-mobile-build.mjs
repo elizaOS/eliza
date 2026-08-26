@@ -5919,6 +5919,10 @@ export const ANDROID_PLAY_ALLOWED_CAPACITOR_CONFIG_PLUGINS = Object.freeze([
   "Keyboard",
   "SplashScreen",
 ]);
+export const ANDROID_LAUNCHER_IN_APP_AUTH_HOSTS = Object.freeze([
+  "cloud.eliza.app",
+  "cloud-staging.eliza.app",
+]);
 
 function isJsonRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -5927,7 +5931,11 @@ function isJsonRecord(value) {
 /** Returns the minimal runtime config that is safe to package in a Play APK/AAB. */
 export function sanitizeAndroidCloudCapacitorConfig(
   value,
-  { launcherKiosk = false, webViewDebugging = false } = {},
+  {
+    allowInAppAuthNavigation = false,
+    launcherKiosk = false,
+    webViewDebugging = false,
+  } = {},
 ) {
   if (!isJsonRecord(value)) {
     throw new Error(
@@ -5948,6 +5956,9 @@ export function sanitizeAndroidCloudCapacitorConfig(
     ...(launcherKiosk ? { loggingBehavior: "none" } : {}),
     server: {
       androidScheme: "https",
+      ...(allowInAppAuthNavigation
+        ? { allowNavigation: [...ANDROID_LAUNCHER_IN_APP_AUTH_HOSTS] }
+        : {}),
     },
     plugins,
     android: {
@@ -5987,6 +5998,7 @@ function sanitizeAndroidCloudPackagedConfig(env = process.env) {
     );
   }
   const sanitized = sanitizeAndroidCloudCapacitorConfig(parsed, {
+    allowInAppAuthNavigation: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
     launcherKiosk: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
     webViewDebugging: env.ELIZA_WEBVIEW_DEBUG === "1",
   });
@@ -6330,7 +6342,8 @@ export function cloudSafeMainActivityJava(
   { launcherKiosk = false } = {},
 ) {
   const launcherImports = launcherKiosk
-    ? `import android.util.Log;
+    ? `import android.net.Uri;
+import android.util.Log;
 import android.view.KeyEvent;
 
 import androidx.activity.OnBackPressedCallback;
@@ -6365,6 +6378,25 @@ import androidx.activity.OnBackPressedCallback;
         } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
             Log.w(TAG, "Unable to enter launcher lock-task mode", e);
         }
+    }
+
+    private boolean isCloudAuthCallback(Intent intent) {
+        Uri data = intent == null ? null : intent.getData();
+        return data != null
+            && "elizaos".equalsIgnoreCase(data.getScheme())
+            && "auth".equalsIgnoreCase(data.getHost())
+            && "/callback".equals(data.getPath());
+    }
+
+    private void restoreBundledRendererAfterAuthCallback(Intent intent) {
+        if (!isCloudAuthCallback(intent)
+                || getBridge() == null
+                || getBridge().getWebView() == null) {
+            return;
+        }
+        WebView webView = getBridge().getWebView();
+        String localUrl = getBridge().getLocalUrl();
+        webView.post(() -> webView.loadUrl(localUrl));
     }
 
     @Override
@@ -6449,6 +6481,7 @@ ${launcherSetup}
     protected void onNewIntent(Intent intent) {
         DeepLinkBufferPlugin.captureIntent(this, intent);
         super.onNewIntent(intent);
+${launcherKiosk ? "        restoreBundledRendererAfterAuthCallback(intent);" : ""}
     }
 ${launcherMethods}
 
@@ -7857,6 +7890,7 @@ function auditAndroidCloudSource(
     try {
       const config = JSON.parse(fs.readFileSync(capacitorConfigPath, "utf8"));
       const expected = sanitizeAndroidCloudCapacitorConfig(config, {
+        allowInAppAuthNavigation: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
         launcherKiosk: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
         webViewDebugging: env.ELIZA_WEBVIEW_DEBUG === "1",
       });
@@ -7898,6 +7932,43 @@ function auditAndroidLauncherSource(phase, options = {}) {
   assertAndroidLauncherManifest(manifest, {
     label: `android-launcher ${phase} source`,
   });
+  const mainActivityPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "java",
+    packageNameToPath(APP.appId),
+    "MainActivity.java",
+  );
+  const mainActivity = fs.existsSync(mainActivityPath)
+    ? fs.readFileSync(mainActivityPath, "utf8")
+    : "";
+  if (
+    !mainActivity.includes("hide(WindowInsetsCompat.Type.navigationBars())") ||
+    !mainActivity.includes("BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE")
+  ) {
+    throw new Error(
+      `[mobile-build] android-launcher ${phase} source audit failed: MainActivity does not hide the gesture navigation bar with transient swipe recovery.`,
+    );
+  }
+  if (mainActivity.includes("hide(WindowInsetsCompat.Type.statusBars())")) {
+    throw new Error(
+      `[mobile-build] android-launcher ${phase} source audit failed: MainActivity must keep the status bar visible.`,
+    );
+  }
+  if (
+    !mainActivity.includes("isCloudAuthCallback(Intent intent)") ||
+    !mainActivity.includes('"elizaos".equalsIgnoreCase(data.getScheme())') ||
+    !mainActivity.includes('"auth".equalsIgnoreCase(data.getHost())') ||
+    !mainActivity.includes('"/callback".equals(data.getPath())') ||
+    !mainActivity.includes("getBridge().getLocalUrl()") ||
+    !mainActivity.includes("webView.loadUrl(localUrl)")
+  ) {
+    throw new Error(
+      `[mobile-build] android-launcher ${phase} source audit failed: MainActivity does not restore the bundled renderer after the exact in-app auth callback.`,
+    );
+  }
   console.log(`[mobile-build] android-launcher ${phase} audit passed.`);
 }
 
@@ -8592,7 +8663,7 @@ export async function runAndroidBuild(
     ANDROID_SOURCE_AUDITS,
     "auditSourceKey",
     "pre-gradle",
-    { env: resolvedEnv },
+    { env: targetEnv },
   );
 
   const buildEnv = createAndroidBuildEnv(target, {
@@ -8620,7 +8691,7 @@ export async function runAndroidBuild(
     ANDROID_SOURCE_AUDITS,
     "auditSourceKey",
     "post-gradle",
-    { env: resolvedEnv },
+    { env: targetEnv },
   );
   if (target.artifactAuditKey === "cloud") {
     resolvedEnv[ANDROID_BUNDLETOOL_JAR_ENV] = await ensureAndroidBundletoolJar({
@@ -10058,6 +10129,21 @@ function auditAndroidLauncherArtifact({
         context: {
           artifact,
           loggingBehavior: runtimeConfig.loggingBehavior ?? null,
+        },
+      },
+    );
+  }
+  if (
+    JSON.stringify(runtimeConfig.server?.allowNavigation) !==
+    JSON.stringify(ANDROID_LAUNCHER_IN_APP_AUTH_HOSTS)
+  ) {
+    throw mobileBuildError(
+      "[mobile-build] android-launcher must keep WebView navigation pinned to the canonical Eliza hosted-auth origins.",
+      {
+        code: "ANDROID_LAUNCHER_AUTH_NAVIGATION_INVALID",
+        context: {
+          allowNavigation: runtimeConfig.server?.allowNavigation ?? null,
+          artifact,
         },
       },
     );

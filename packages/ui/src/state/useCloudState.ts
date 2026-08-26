@@ -30,6 +30,7 @@ import {
   type AndroidCloudAuthResult,
   beginAndroidCloudSignIn,
   cancelAndroidCloudSignIn,
+  navigateAndroidCloudSignInInApp,
   takeLatestAndroidCloudCompletion,
 } from "../android-cloud/android-cloud-auth";
 import { client } from "../api";
@@ -51,7 +52,10 @@ import { signOutFromSsoBridgedHost } from "../cloud/sso-bridge/sso-bridge";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { dispatchElizaCloudStatusUpdated } from "../events";
 import { isElizaCloudRuntimeLocked } from "../first-run/mobile-runtime-mode";
-import { isAndroidCloudBuild } from "../platform/android-runtime";
+import {
+  isAndroidCloudBuild,
+  isAndroidLauncherBuild,
+} from "../platform/android-runtime";
 import { isViteDevUiShell } from "../platform/vite-dev-ui-shell";
 import {
   closeExternalBrowser,
@@ -845,6 +849,16 @@ export function useCloudState({
           });
           const attempt = await beginAndroidCloudSignIn(cloudApiBase);
           attemptId = attempt.state;
+          if (isAndroidLauncherBuild()) {
+            if (!navigateAndroidCloudSignInInApp(attempt.browserUrl)) {
+              await cancelAndroidCloudSignIn(attempt.state);
+              throw new Error("Eliza Cloud returned an invalid sign-in URL.");
+            }
+            // Navigation replaces this renderer. The callback is buffered by
+            // native code, which restores the bundled shell and completes the
+            // Keystore-bound PKCE exchange during the next bootstrap.
+            return loginCompletion;
+          }
           const onCallbackStarted = (event: Event) => {
             const startedAttemptId = (
               event as CustomEvent<{ attemptId?: string }>

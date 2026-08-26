@@ -2,12 +2,14 @@
  * Native Android handoff for the canonical Eliza Cloud sign-in flow.
  *
  * The application keeps its normal first-run chat and full app shell; this
- * module contributes only the PKCE protocol and Keystore-backed pending-login
- * state needed to leave the WebView for hosted authentication and safely
- * resume through an Android deep link.
+ * module contributes the PKCE protocol and Keystore-backed pending-login state
+ * needed to use hosted authentication and safely resume through an Android
+ * deep link. Play builds use a Custom Tab; pinned launcher builds navigate the
+ * same first-party flow inside their own WebView task.
  */
 
 import { registerPlugin } from "@capacitor/core";
+import { isSafeNavigationUrl } from "../utils/navigation-url";
 import {
   AndroidCloudAuthError,
   AndroidCloudClient,
@@ -21,6 +23,10 @@ export const ANDROID_CLOUD_AUTH_RESULT_EVENT =
   "eliza:android-cloud-auth-result" as const;
 export const ANDROID_CLOUD_AUTH_STARTED_EVENT =
   "eliza:android-cloud-auth-started" as const;
+const ANDROID_CLOUD_LOGIN_HOSTS = new Set([
+  "cloud.eliza.app",
+  "cloud-staging.eliza.app",
+]);
 
 export interface AndroidCloudAuthResult {
   apiBase?: string;
@@ -90,6 +96,29 @@ export async function beginAndroidCloudSignIn(
   cloudApiBase?: string,
 ): Promise<AndroidCloudLoginAttempt> {
   return client(cloudApiBase).beginLogin();
+}
+
+/**
+ * Navigates the launcher WebView to the hosted first-party login surface.
+ * Unlike Capacitor Browser this remains inside the launcher's pinned task.
+ * The native callback handler restores the bundled renderer before replaying
+ * the protected PKCE callback.
+ */
+export function navigateAndroidCloudSignInInApp(
+  url: string,
+  navigate: (safeUrl: string) => void = (safeUrl) =>
+    window.location.assign(safeUrl),
+): boolean {
+  if (!isSafeNavigationUrl(url)) return false;
+  const parsed = new URL(url);
+  if (
+    parsed.protocol !== "https:" ||
+    !ANDROID_CLOUD_LOGIN_HOSTS.has(parsed.hostname.toLowerCase())
+  ) {
+    return false;
+  }
+  navigate(parsed.toString());
+  return true;
 }
 
 /**

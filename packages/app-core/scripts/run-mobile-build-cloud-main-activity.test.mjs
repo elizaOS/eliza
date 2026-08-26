@@ -77,6 +77,30 @@ describe("cloudSafeMainActivityJava", () => {
     );
   });
 
+  it("restores the bundled launcher renderer after the exact in-app auth callback", () => {
+    const source = cloudSafeMainActivityJava("ai.elizaos.app", {
+      launcherKiosk: true,
+    });
+
+    expect(source).toContain("import android.net.Uri;");
+    expect(source).toContain("isCloudAuthCallback(Intent intent)");
+    expect(source).toContain('"elizaos".equalsIgnoreCase(data.getScheme())');
+    expect(source).toContain('"auth".equalsIgnoreCase(data.getHost())');
+    expect(source).toContain('"/callback".equals(data.getPath())');
+    expect(source).toContain(
+      "DeepLinkBufferPlugin.captureIntent(this, intent)",
+    );
+    expect(source).toContain("String localUrl = getBridge().getLocalUrl();");
+    expect(source).toContain("webView.post(() -> webView.loadUrl(localUrl));");
+    expect(source).toContain(
+      "restoreBundledRendererAfterAuthCallback(intent);",
+    );
+
+    const playSource = cloudSafeMainActivityJava("ai.elizaos.app");
+    expect(playSource).not.toContain("isCloudAuthCallback");
+    expect(playSource).not.toContain("restoreBundledRendererAfterAuthCallback");
+  });
+
   it("uses no hidden Android system-property API in the Play activity", () => {
     const source = cloudSafeMainActivityJava("ai.elizaos.app");
 

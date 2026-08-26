@@ -189,6 +189,22 @@ describe("Android Play manifest policy", () => {
     expect(sanitized.android.webContentsDebuggingEnabled).toBe(true);
   });
 
+  it("allows only canonical hosted-auth navigation in launcher config", () => {
+    const sanitized = sanitizeAndroidCloudCapacitorConfig(
+      {
+        server: {
+          allowNavigation: ["*", "evil.example", "accounts.google.com"],
+        },
+      },
+      { allowInAppAuthNavigation: true },
+    );
+
+    expect(sanitized.server).toEqual({
+      androidScheme: "https",
+      allowNavigation: ["cloud.eliza.app", "cloud-staging.eliza.app"],
+    });
+  });
+
   it("keeps the unused native Google identity stack out of Android source", () => {
     const androidSourceDir = new URL(
       "../platforms/android/app/src/main/java/ai/elizaos/app/",
