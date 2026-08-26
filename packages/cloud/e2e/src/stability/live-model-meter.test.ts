@@ -53,10 +53,12 @@ describe("live model usage meter", () => {
         {
           OPENAI_API_KEY: "real-openai-secret",
           ANTHROPIC_API_KEY: "real-anthropic-secret",
+          ELIZA_STABILITY_METER_ATTESTATION_KEY: "parent-attestation-secret",
           RETAINED_VALUE: "retained",
         },
       );
       expect(JSON.stringify(environment)).not.toContain("real-");
+      expect(environment.ELIZA_STABILITY_METER_ATTESTATION_KEY).toBeUndefined();
       expect(environment.RETAINED_VALUE).toBe("retained");
       if (provider === "openai") {
         expect(environment.OPENAI_API_KEY).toContain("placeholder");
