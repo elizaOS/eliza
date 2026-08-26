@@ -15,7 +15,7 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 - **Plugin overlay actions:** 10
 - **Canonical providers:** 22
 - **Core providers:** 22
-- **Registered runtime actions:** 180
+- **Registered runtime actions:** 181
 
 ## Actions
 
@@ -359,6 +359,7 @@ list. Regenerate this document after changing the registered action surface.
 - `BRIEF` — `plugins/plugin-personal-assistant/src/actions/brief.ts`
 - `BROWSER` — `plugins/plugin-browser/src/actions/browser.ts`
 - `BUY_APP_DOMAIN` — `plugins/plugin-cloud-apps/src/actions/buy-app-domain.ts`
+- `CALCULATE` — `packages/core/src/features/basic-capabilities/actions/calculate.ts`
 - `CALENDAR` — `plugins/plugin-personal-assistant/src/actions/calendar.ts`
 - `CALENDAR_SOURCES` — `plugins/plugin-calendar/src/actions/calendar-sources.ts`
 - `CHARACTER` — `packages/core/src/features/advanced-capabilities/personality/actions/character.ts`
