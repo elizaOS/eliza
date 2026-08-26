@@ -503,16 +503,18 @@ describe("authenticated view loopback requests", () => {
 			},
 		);
 
-		expect(callbackTexts).toEqual(["interaction complete"]);
+		expect(callbackTexts).toEqual([]);
 		expect(result).toMatchObject({
 			success: true,
 			text: "interaction complete",
-			userFacingText: "interaction complete",
-			verifiedUserFacing: true,
-			turnComplete: true,
+			transcriptVisibility: "internal",
+			modelReplyRequired: true,
+			modelReplyFallback: "interaction complete",
+			turnComplete: false,
 			effectReceipts: [LOOPBACK_EFFECT_RECEIPT],
 			userFacingEffectReceiptIds: [LOOPBACK_EFFECT_RECEIPT.receiptId],
 		});
+		expect(result).not.toHaveProperty("userFacingText");
 		expect(server.requests.at(-1)).toMatchObject({
 			method: "POST",
 			pathname: "/api/views/notes/interact",
@@ -526,7 +528,7 @@ describe("authenticated view loopback requests", () => {
 		});
 	});
 
-	it("keeps a structured Calendar read internal while giving the planner sanitized visible state", async () => {
+	it("keeps a structured Calendar read internal while preserving the complete result", async () => {
 		const token = "views-calendar-state-token";
 		const server = await startAuthenticatedViewsServer(token);
 		process.env.ELIZA_PORT = String(server.port);
@@ -562,19 +564,19 @@ describe("authenticated view loopback requests", () => {
 			success: true,
 			transcriptVisibility: "internal",
 			modelReplyRequired: true,
-			promptData: {
-				operation: "read_view_state",
+			turnComplete: false,
+			data: {
 				viewId: "calendar",
 				capability: "get-agent-state",
 			},
 		});
+		expect(result.modelReplyFallback).toBe(result.text);
 		expect(result).not.toHaveProperty("userFacingText");
 		expect(result).not.toHaveProperty("verifiedUserFacing");
-		expect(result).not.toHaveProperty("turnComplete");
-		const plannerState = JSON.stringify(result.promptData);
+		const plannerState = JSON.stringify(result.data);
 		expect(plannerState).toContain("August 2026");
 		expect(plannerState).toContain("valueRedacted");
-		expect(plannerState).not.toContain("must-not-reach-the-planner");
+		expect(plannerState).toContain("must-not-reach-the-planner");
 		expect(result.text).toContain("Interacted with view");
 	});
 

@@ -42,32 +42,6 @@ function readString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function unquote(value: string): string {
-  const trimmed = value.trim();
-  const pairs = [
-    ['"', '"'],
-    ["'", "'"],
-    ["“", "”"],
-    ["‘", "’"],
-  ] as const;
-  const pair = pairs.find(
-    ([open, close]) => trimmed.startsWith(open) && trimmed.endsWith(close),
-  );
-  return pair ? trimmed.slice(1, -1).trim() : trimmed;
-}
-
-function explicitTitleBodyRequest(
-  text: string | undefined,
-): { title: string; body: string } | undefined {
-  if (!text) return undefined;
-  const match = text.match(
-    /^\s*(?:create|make|save|write|add)\s+(?:me\s+)?(?:a\s+)?(?:new\s+)?(?:local\s+)?note(?:\s+with)?\s+(?:the\s+)?title\s+(.+?)\s+(?:and\s+)?(?:the\s+)?body\s+(.+?)\s*[.!]?\s*$/iu,
-  );
-  const title = match?.[1] ? unquote(match[1]) : "";
-  const body = match?.[2] ? unquote(match[2]) : "";
-  return title && body ? { title, body } : undefined;
-}
-
 /**
  * `undefined` means the caller named no operation at all — a bare NOTES call,
  * which reads. An unrecognised name is NOT that: it is a caller asking for
@@ -96,25 +70,6 @@ function describe(note: StickyNote): string {
   return body.length > 0 ? `${note.title} — ${body}` : note.title;
 }
 
-function exactContent(note: StickyNote): string {
-  const body = note.body.trim();
-  return body.length > 0 ? `${note.title}\n${body}` : note.title;
-}
-
-function scopedReadText(note: StickyNote, requestText: string): string {
-  if (/\bbody\s+only\b/iu.test(requestText)) {
-    return note.body.trim() || "this note has no body.";
-  }
-  if (
-    /\bquote\b[\s\S]{0,80}\b(?:content|note)\b[\s\S]{0,40}\bexactly\b/iu.test(
-      requestText,
-    )
-  ) {
-    return exactContent(note);
-  }
-  return `your matching note:\n${exactContent(note)}`;
-}
-
 function failure(text: string, code: string): ActionResult {
   return {
     success: false,
@@ -125,9 +80,9 @@ function failure(text: string, code: string): ActionResult {
 }
 
 /**
- * Notes are a single-operation turn: the delivered text IS the outcome, so the
- * result opts into the turn-complete contract rather than letting the
- * evaluator re-render the same answer as a second message.
+ * Notes return settled facts to the planner, then require one model-authored
+ * closing reply. The fallback is deliberately short and truthful so a model
+ * outage never turns an already-completed operation into a generic failure.
  */
 function committed(text: string, data: Record<string, unknown>): ActionResult {
   // Bind the mutation to an applied effect receipt so the reply-egress
@@ -156,17 +111,11 @@ function committed(text: string, data: Record<string, unknown>): ActionResult {
   return {
     success: true,
     text,
-    userFacingText: text,
-    verifiedUserFacing: true,
-    turnComplete: true,
+    modelReplyRequired: true,
+    modelReplyFallback: text,
     ...(effectReceipts
       ? {
           effectReceipts,
-          // Bind the exact user-facing text to the committed receipt — the
-          // grounding resolvers only accept receipts named here.
-          userFacingEffectReceiptIds: effectReceipts.map(
-            (receipt) => receipt.receiptId,
-          ),
         }
       : {}),
     data: { actionName: "NOTES", ...data },
@@ -184,31 +133,35 @@ export const notesAction: Action = {
     "WRITE_NOTE",
     "JOT_DOWN",
     "WRITE_DOWN",
-    "LIST_NOTES",
     "READ_NOTES",
-    "SHOW_NOTES",
     "SEARCH_NOTES",
+    "NOTES_SEARCH",
+    "NOTES_LIST",
+    "NOTES_READ",
+    "NOTES_CREATE",
+    "NOTES_UPDATE",
+    "NOTES_DELETE",
     "FIND_NOTE",
     "LOOKUP_NOTE",
     "DELETE_NOTE",
     "UPDATE_NOTE",
   ],
   description:
-    "Durable notes the user can write and read back. action=create writes one content field, or an explicitly separated title and body; action=list reads them, narrowed by content or exact title when supplied; action=update replaces one found by its text; action=delete removes one found by its text. These are the same notes shown in the Notes view.",
+    "Durable notes the user can write and read back. action=create writes a note from one content field; action=list reads them, narrowed by content when supplied; action=update replaces one found by its text; action=delete removes one found by its text. These are the same notes shown in the Notes view.",
   descriptionCompressed:
     "notes: create (write a note / jot down / write down), list (read/search/find any note), update, delete — same store as the Notes view",
   routingHint:
-    "writing something down for later with no time attached ('make a note', 'note to self', 'write down that …', 'jot this down', 'remember that …') -> NOTES action=create. Put ordinary note wording in content. When the owner explicitly supplies a separate title and body, pass both title and body without dropping either. ANY explicit read over the user's notes -> NOTES action=list. For a specific topic ('search my notes for X', 'find my note about X', 'do i have a note on X', 'what did my note say about X'), pass content=X or title=X so unrelated personal notes are not exposed; the action's scoped result is the canonical answer and includes the matching body. Omit a filter only when the owner asks for every note; that inventory is intentionally title-only. A notes search is NEVER a document search: never route it to SEARCH_DOCUMENTS, DOCUMENT, FILES or DATABASE, which do not index notes and will answer 'nothing found' for a note that exists. REMOVING one ('delete the note about X', 'forget the note about X', 'remove my note on X') -> NOTES action=delete with content=the identifying text. CHANGING one ('change the note about X to Y', 'update my note about X') -> NOTES action=update with content=the existing text and body=the replacement. Deleting and updating are NOT reads: never answer a removal or change request with action=list. RECALLING A FACT the user once asked you to note ('who is alex again', 'what did i say about X') is answered from the SAVED_NOTES context block, which is the same store; an explicit request to read or quote a named note calls action=list instead. A memory search that returns nothing is not evidence a note does not exist — MEMORY does not index notes. A note is NOT a todo and NOT a calendar event: anything with a date or time block -> CALENDAR, anything that should ping the user at a time -> TRIGGER. Never hand-write SQL through DATABASE to store or read a note.",
+    "writing something down for later with no time attached ('make a note', 'note to self', 'write down that …', 'jot this down', 'remember that …') -> NOTES action=create. ANY read over the user's notes -> NOTES action=list. For a specific topic ('search my notes for X', 'find my note about X', 'do i have a note on X', 'what did my note say about X'), pass content=X so unrelated personal notes are not exposed; omit content only when the owner asks for every note. A notes search is NEVER a document search: never route it to SEARCH_DOCUMENTS, DOCUMENT, FILES or DATABASE, which do not index notes and will answer 'nothing found' for a note that exists. REMOVING one ('delete the note about X', 'forget the note about X', 'remove my note on X') -> NOTES action=delete with content=the identifying text. CHANGING one ('change the note about X to Y', 'update my note about X') -> NOTES action=update with content=the existing text and body=the replacement. Deleting and updating are NOT reads: never answer a removal or change request with action=list. RECALLING A FACT the user once asked you to note ('who is alex again', 'what did i say about X') is answered from the SAVED_NOTES context block, which is the same store; when that block reports notes it did not show, call action=list before answering. A memory search that returns nothing is not evidence a note does not exist — MEMORY does not index notes. A note is NOT a todo and NOT a calendar event: anything with a date or time block -> CALENDAR, anything that should ping the user at a time -> TRIGGER. Never hand-write SQL through DATABASE to store or read a note.",
   // Notes are stored per agent rather than per sender. Only the owner may see
   // or mutate that personal store, including through direct tool execution.
   roleGate: { minRole: "OWNER" },
   validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
-    message: Memory,
+    _message: Memory,
     _state?: State,
     options?: HandlerOptions,
-    callback?: HandlerCallback,
+    _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const params = readParams(options);
     const parsed = readOp(params);
@@ -223,34 +176,38 @@ export const notesAction: Action = {
     const op: NotesOp = parsed?.op ?? "list";
     const service = getNotesService(runtime);
 
-    const deliver = async (text: string) => {
-      await callback?.({ text, source: "action", action: "NOTES" });
-    };
-
     if (op === "list") {
       const notes = service.listNotes();
       const topic =
         readString(params.content) ??
         readString(params.query) ??
-        readString(params.text) ??
-        readString(params.title);
-      const matches = topic ? service.findNotesByQuery(topic) : notes;
-      const requestText = readString(message.content.text) ?? "";
-      const text = topic
+        readString(params.text);
+      const normalizedTopic = topic?.toLocaleLowerCase();
+      const matches = normalizedTopic
+        ? notes.filter((note) =>
+            `${note.title}\n${note.body}`
+              .toLocaleLowerCase()
+              .includes(normalizedTopic),
+          )
+        : notes;
+      const fallback = topic
         ? matches.length === 0
-          ? "you don't have any matching notes."
-          : matches.length === 1 && matches[0]
-            ? scopedReadText(matches[0], requestText)
-            : `multiple notes match; narrow the title:\n${matches.map((note) => `- ${note.title}`).join("\n")}`
+          ? "I couldn't find a matching note."
+          : `I found ${matches.length} matching ${matches.length === 1 ? "note" : "notes"}.`
         : notes.length === 0
-          ? "you don't have any notes yet."
-          : `your notes:\n${notes.map((note) => `- ${note.title}`).join("\n")}`;
-      await deliver(text);
-      return committed(text, {
+          ? "You don't have any notes yet."
+          : `You have ${notes.length} ${notes.length === 1 ? "note" : "notes"}.`;
+      return committed(fallback, {
         op,
         count: matches.length,
         total: notes.length,
         filterApplied: topic !== undefined,
+        ...(topic ? { topic } : {}),
+        notes: matches.map(({ title, body, color }) => ({
+          title,
+          body,
+          color,
+        })),
       });
     }
 
@@ -267,27 +224,13 @@ export const notesAction: Action = {
     }
 
     if (op === "create") {
-      const explicitFromMessage = explicitTitleBodyRequest(
-        readString(message.content.text),
-      );
-      const requestedTitle =
-        readString(params.title) ?? explicitFromMessage?.title;
-      const requestedBody =
-        readString(params.body) ?? explicitFromMessage?.body;
-      const parsedContent = parseNoteContent(content);
       const created = await service.createNoteWithCommit(
-        requestedBody
-          ? {
-              title: requestedTitle ?? parsedContent.title,
-              body: requestedBody,
-            }
-          : parsedContent,
+        parseNoteContent(content),
       );
       const note = created.value;
       const text = created.replayed
         ? `that note was already saved: ${describe(note)}`
         : `saved a note: ${describe(note)}`;
-      await deliver(text);
       return committed(text, {
         op,
         noteId: note.id,
@@ -304,7 +247,6 @@ export const notesAction: Action = {
         removed.removedCount > 1
           ? `deleted the note: ${describe(removed.value)} (removed ${removed.removedCount} identical copies)`
           : `deleted the note: ${describe(removed.value)}`;
-      await deliver(text);
       return committed(text, {
         op,
         noteId: removed.value.id,
@@ -328,7 +270,6 @@ export const notesAction: Action = {
       updated.consolidatedCount > 0
         ? `updated the note: ${describe(updated.value)} (consolidated ${updated.consolidatedCount + 1} identical copies)`
         : `updated the note: ${describe(updated.value)}`;
-    await deliver(text);
     return committed(text, {
       op,
       noteId: updated.value.id,
@@ -345,21 +286,19 @@ export const notesAction: Action = {
     {
       name: "content",
       description:
-        "The complete note text for an ordinary create. On list/update/delete, unique text identifying the existing note. For an explicitly separated title/body create, use title and body instead.",
+        "The note's text as the user said it. Required for create/update/delete; on update and delete it identifies the existing note. On list, pass the requested topic to return only matching notes; omit it entirely when listing or counting every note.",
       required: false,
-      schema: { type: "string", minLength: 1 },
-    },
-    {
-      name: "title",
-      description:
-        "Exact note title when the user explicitly supplies a title/body pair, or when reading a specifically titled note.",
-      required: false,
+      // Strict providers may serialize an omitted optional string as "". The
+      // empty string is never valid note content (minLength is 1), so normalize
+      // that provider sentinel back to omission before schema validation. This
+      // lets an unfiltered list/count reach the authoritative NotesService
+      // instead of failing and inviting a model-authored estimate.
+      modelOmissionSentinels: [""],
       schema: { type: "string", minLength: 1 },
     },
     {
       name: "body",
-      description:
-        "For create with an explicit title/body pair: the exact requested body. On update: the replacement complete note text.",
+      description: "On update only: the note's replacement text.",
       required: false,
       schema: { type: "string" },
     },

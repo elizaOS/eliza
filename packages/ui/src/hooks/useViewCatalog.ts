@@ -105,6 +105,10 @@ export function useViewCatalog(): UseViewCatalogResult {
 
   const catalog = catalogRes.status === "success" ? catalogRes.data : [];
   const installed = installedRes.status === "success" ? installedRes.data : [];
+  const error =
+    viewsError ??
+    (catalogRes.status === "error" ? catalogRes.error : null) ??
+    (installedRes.status === "error" ? installedRes.error : null);
 
   const entries = useMemo(() => {
     const merged = mergeViewCatalog({
@@ -177,7 +181,7 @@ export function useViewCatalog(): UseViewCatalogResult {
     entries,
     // First paint waits on loaded views; the catalog fills in as it resolves.
     loading: viewsLoading && views.length === 0,
-    error: viewsError,
+    error,
     refresh,
     get,
   };

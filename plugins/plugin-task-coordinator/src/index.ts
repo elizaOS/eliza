@@ -235,6 +235,10 @@ const taskCoordinatorPlugin: Plugin = {
       description: "Coding agent task threads, sessions, and controls",
       icon: "SquareTerminal",
       path: "/task-coordinator",
+      responseContext: {
+        primaryContext: "code",
+        secondaryContexts: ["automation"],
+      },
       modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "TaskCoordinatorView",
@@ -294,6 +298,10 @@ const taskCoordinatorPlugin: Plugin = {
       description: "Multi-agent task orchestration workbench",
       icon: "Layers",
       path: "/orchestrator",
+      responseContext: {
+        primaryContext: "code",
+        secondaryContexts: ["automation", "admin"],
+      },
       modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       // First-party instrumented view (data-agent-id controls): grant the
@@ -318,6 +326,10 @@ const taskCoordinatorPlugin: Plugin = {
       description: "Mobile-first coding cockpit — your agents on one screen",
       icon: "TerminalSquare",
       path: "/cockpit",
+      responseContext: {
+        primaryContext: "code",
+        secondaryContexts: ["automation"],
+      },
       modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       // First-party instrumented view (data-agent-id controls): grant the

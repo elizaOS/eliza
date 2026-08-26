@@ -67,6 +67,8 @@ const buttonVariants = cva(
         dangerOutline:
           "border border-danger/30 bg-transparent text-danger hover:border-danger/50 hover:bg-danger/10 hover:text-danger",
         ghostMuted: "bg-transparent text-muted hover:bg-surface hover:text-txt",
+        selectionNeutral:
+          "bg-transparent text-txt-strong hover:bg-surface data-[state=on]:bg-surface data-[state=on]:text-txt-strong",
         externalLink:
           "h-auto bg-transparent p-0 text-left text-xs font-normal text-accent underline-offset-2 hover:bg-transparent hover:underline",
         sectionToggle:

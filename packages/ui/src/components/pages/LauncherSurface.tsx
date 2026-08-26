@@ -43,7 +43,7 @@ export const LauncherSurface = React.memo(function LauncherSurface({
   layout = "page",
   catalogMode = "all",
 }: LauncherSurfaceProps): React.JSX.Element {
-  const { entries, get, loading } = useViewCatalog();
+  const { entries, get, loading, error, refresh } = useViewCatalog();
   const enabledKinds = useEnabledViewKinds();
   const { appRuns, setActionNotice, setState, setTab, t } =
     useAppSelectorShallow((state) => ({
@@ -195,6 +195,8 @@ export const LauncherSurface = React.memo(function LauncherSurface({
       <Launcher
         entries={page}
         loading={loading}
+        error={error}
+        onRetry={refresh}
         onLaunch={handleLaunch}
         embedded={layout === "embedded"}
       />

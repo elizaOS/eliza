@@ -1,3 +1,8 @@
+/**
+ * Assembles the browser-safe Eliza Cloud plugin surface: inference handlers,
+ * account providers, services, lifecycle hooks, and its app-shell view manifest.
+ */
+
 import type { IAgentRuntime, Plugin, ProcessEnvLike } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 // Cloud account actions
@@ -341,6 +346,10 @@ export const elizaOSCloudPlugin: Plugin = {
         "Your Eliza Cloud account — credits, hosted agents, API keys, and billing",
       icon: "Cloud",
       path: "/cloud",
+      responseContext: {
+        primaryContext: "admin",
+        secondaryContexts: ["settings"],
+      },
       // Plain array literal on purpose: plugin.ts is not part of the view
       // bundle, and a core runtime export reaching the bundle build breaks it
       // (the wallet-ui lesson).

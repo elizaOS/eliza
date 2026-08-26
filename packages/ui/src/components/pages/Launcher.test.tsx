@@ -194,6 +194,43 @@ describe("Launcher", () => {
     ).toBe(0);
   });
 
+  it("distinguishes catalog failure from an intentionally empty launcher", () => {
+    const retry = vi.fn();
+    const { rerender } = render(
+      <Launcher
+        entries={[]}
+        error={new Error("offline")}
+        onRetry={retry}
+        onLaunch={() => {}}
+      />,
+    );
+
+    expect(screen.getByTestId("launcher-error")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(retry).toHaveBeenCalledTimes(1);
+
+    rerender(<Launcher entries={[]} onLaunch={() => {}} />);
+    expect(screen.queryByTestId("launcher-error")).toBeNull();
+    expect(screen.getByTestId("launcher-empty")).toBeTruthy();
+  });
+
+  it("keeps partial catalog failures visible beside available tiles", () => {
+    const retry = vi.fn();
+    render(
+      <Launcher
+        entries={FEW}
+        error={new Error("catalog offline")}
+        onRetry={retry}
+        onLaunch={() => {}}
+      />,
+    );
+
+    expect(screen.getByTestId("launcher-partial-error")).toBeTruthy();
+    expect(screen.getByTestId("launcher-tile-chat")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
   it("drops a tile when its entry is removed on re-render", () => {
     const { rerender } = render(<Launcher entries={FEW} onLaunch={() => {}} />);
     expect(screen.getByTestId("launcher-tile-settings")).toBeTruthy();
