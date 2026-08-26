@@ -8,6 +8,7 @@ import { expect, test } from "bun:test";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { ServiceType } from "@elizaos/core";
 import cloudScenario from "../../scenarios/cloud-stability-agent.scenario.ts";
 
 test("source scenario child exits naturally with zero runtime leaks", async () => {
@@ -16,6 +17,7 @@ test("source scenario child exits naturally with zero runtime leaks", async () =
   );
   try {
     const policy = cloudScenario.contract.syntheticRuntimePolicy;
+    expect(policy.allowedServiceTypes).toContain(ServiceType.MEMBERSHIP);
     const report = path.join(directory, "report.json");
     const quiescence = path.join(directory, "quiescence.json");
     const runtimeLedger = path.join(directory, "runtime.json");
