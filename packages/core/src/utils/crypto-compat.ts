@@ -393,6 +393,7 @@ export function createCipheriv(
 	let pending = new Uint8Array(0);
 	let outputEncoder: StreamingOutputEncoder | undefined;
 	let outputEncoding: BufferEncodingName | undefined;
+	let finalized = false;
 	const lockOutputEncoding = (encoding: string): StreamingOutputEncoder => {
 		const normalized = normalizeEncoding(encoding);
 		if (outputEncoding === undefined) {
@@ -407,6 +408,11 @@ export function createCipheriv(
 	};
 	return {
 		update(data, inputEncoding, outEncArg) {
+			if (finalized) {
+				// node:crypto throws "Trying to add data in unsupported state"
+				// when update() is called after final().
+				throw new Error("Trying to add data in unsupported state");
+			}
 			const encoder = lockOutputEncoding(outEncArg);
 			const incoming = toUint8Array(data, normalizeEncoding(inputEncoding));
 			pending = concatBytes(pending, incoming);
@@ -427,6 +433,9 @@ export function createCipheriv(
 			return encoder.encode(encryptedChunk);
 		},
 		final(encoding) {
+			if (finalized) {
+				throw new Error("Unsupported state");
+			}
 			const encoder = lockOutputEncoding(encoding);
 			const encryptedTail = Uint8Array.from(
 				cbc(normalizedKey, currentIv, { disablePadding: true }).encrypt(
@@ -434,6 +443,7 @@ export function createCipheriv(
 				),
 			);
 			pending = new Uint8Array(0);
+			finalized = true;
 			return encoder.flush(encryptedTail);
 		},
 	};
@@ -459,6 +469,7 @@ export function createDecipheriv(
 	let pending = new Uint8Array(0);
 	let outputEncoder: StreamingOutputEncoder | undefined;
 	let outputEncoding: BufferEncodingName | undefined;
+	let finalized = false;
 	const lockOutputEncoding = (encoding: string): StreamingOutputEncoder => {
 		const normalized = normalizeEncoding(encoding);
 		if (outputEncoding === undefined) {
@@ -473,6 +484,11 @@ export function createDecipheriv(
 	};
 	return {
 		update(data, inputEncoding, outEncArg) {
+			if (finalized) {
+				// node:crypto throws "Trying to add data in unsupported state"
+				// when update() is called after final().
+				throw new Error("Trying to add data in unsupported state");
+			}
 			const encoder = lockOutputEncoding(outEncArg);
 			const incoming = toUint8Array(data, normalizeEncoding(inputEncoding));
 			pending = concatBytes(pending, incoming);
@@ -500,6 +516,9 @@ export function createDecipheriv(
 			return encoder.encode(plaintextChunk);
 		},
 		final(encoding) {
+			if (finalized) {
+				throw new Error("Unsupported state");
+			}
 			const encoder = lockOutputEncoding(encoding);
 			if (pending.length === 0 || pending.length % AES_BLOCK_SIZE !== 0) {
 				throw new Error("Invalid ciphertext length for AES-CBC payload.");
@@ -511,6 +530,7 @@ export function createDecipheriv(
 			);
 			pending = new Uint8Array(0);
 			const unpadded = removePkcs7Padding(decryptedTail);
+			finalized = true;
 			return encoder.flush(unpadded);
 		},
 	};
