@@ -8,12 +8,15 @@
  * without standing up a renderer.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { tailWellFormed, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 export function formatAddressForDisplay(address: string): string {
   if (!address) return "(unknown)";
-  if (address.length <= 12) return address;
-  return `${address.slice(0, 6)}…${address.slice(-4)}`;
+  const wellFormed = toWellFormedUnicode(address);
+  if (wellFormed.length <= 12) return wellFormed;
+  const start = truncateWellFormed(wellFormed, 6);
+  const end = tailWellFormed(wellFormed, 4);
+  return `${start}…${end}`;
 }
 
 const ONE_ETH_WEI = 1_000_000_000_000_000_000n;
