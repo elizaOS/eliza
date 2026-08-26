@@ -146,6 +146,12 @@ async function sandboxStatus(agentId: string): Promise<string> {
   return row.status;
 }
 
+async function sandboxCapture(agentId: string) {
+  const row = await repo.findById(agentId);
+  if (!row) throw new Error(`Sandbox ${agentId} disappeared`);
+  return row;
+}
+
 async function jobStatus(jobId: string): Promise<{
   status: string;
   attempts: number;
@@ -430,14 +436,233 @@ describe("stuck-provisioning owner predicates", () => {
     expect(
       (await repo.listStuckProvisioningWithContainer(SWEEP_CUTOFF, 500)).map((row) => row.id),
     ).not.toContain(agentId);
-    expect(await repo.markRunningFromProvisioning(agentId)).toBeUndefined();
+    expect(await repo.markRunningFromProvisioning(await sandboxCapture(agentId))).toBeUndefined();
 
     await jobsRepository.settleExecution(job, "completed", undefined, EXECUTION_OWNER_ID);
 
     expect(
       (await repo.listStuckProvisioningWithContainer(SWEEP_CUTOFF, 500)).map((row) => row.id),
     ).toContain(agentId);
-    expect((await repo.markRunningFromProvisioning(agentId))?.id).toBe(agentId);
+    expect((await repo.markRunningFromProvisioning(await sandboxCapture(agentId)))?.id).toBe(
+      agentId,
+    );
     expect(await sandboxStatus(agentId)).toBe("running");
+  });
+
+  test("recovery CAS never promotes forged Shared or unknown rows with container locators", async () => {
+    for (const executionTier of ["shared", "future-container-tier"] as const) {
+      const { organizationId, userId } = await seedOrgAndUser();
+      const agentId = await seedProvisioningAgent(organizationId, userId);
+      await dbWrite
+        .update(agentSandboxes)
+        .set({ execution_tier: executionTier as never })
+        .where(eq(agentSandboxes.id, agentId));
+
+      expect(await repo.markRunningFromProvisioning(await sandboxCapture(agentId))).toBeUndefined();
+      expect(await sandboxStatus(agentId)).toBe("provisioning");
+    }
+  });
+
+  test("single-agent runtime lookup admits Shared but rejects an unknown future tier", async () => {
+    const { organizationId, userId } = await seedOrgAndUser();
+    const [sandbox] = await dbWrite
+      .insert(agentSandboxes)
+      .values({
+        organization_id: organizationId,
+        user_id: userId,
+        agent_name: uniq("shared-runtime"),
+        status: "running",
+        execution_tier: "shared",
+      })
+      .returning();
+
+    expect(await repo.findRunningSandbox(sandbox.id, organizationId)).toMatchObject({
+      id: sandbox.id,
+      execution_tier: "shared",
+    });
+
+    // Exercise the real service wiring (no repository mock): character, RPC,
+    // and streaming all depend on this lookup admitting a container-free
+    // Shared row. Blank text stops the stream before history/billing/model I/O.
+    const { ElizaSandboxService } = await import("../../../lib/services/eliza-sandbox");
+    const service = new ElizaSandboxService();
+    expect(await service.getSharedRuntimeCharacter(sandbox.id, organizationId)).toMatchObject({
+      name: sandbox.agent_name,
+    });
+    expect(
+      await service.bridge(sandbox.id, organizationId, {
+        jsonrpc: "2.0",
+        id: "shared-status",
+        method: "status.get",
+      }),
+    ).toMatchObject({
+      result: { status: "running", runtime: "shared" },
+    });
+    const stream = await service.bridgeStream(sandbox.id, organizationId, {
+      jsonrpc: "2.0",
+      id: "shared-stream",
+      method: "message.send",
+      params: { text: "   " },
+    });
+    expect(stream).not.toBeNull();
+    expect(stream?.headers.get("content-type")).toContain("text/event-stream");
+    expect(await stream?.text()).toContain("message.send requires params.text");
+
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ execution_tier: "future-container-tier" as never })
+      .where(eq(agentSandboxes.id, sandbox.id));
+
+    expect(await repo.findRunningSandbox(sandbox.id, organizationId)).toBeUndefined();
+  });
+
+  test("stale provisioning generation A cannot promote replacement generation B", async () => {
+    const { organizationId, userId } = await seedOrgAndUser();
+    const agentId = await seedProvisioningAgent(organizationId, userId);
+    const generationA = await sandboxCapture(agentId);
+
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        sandbox_id: uniq("sandbox-b"),
+        node_id: uniq("node-b"),
+        container_name: uniq("container-b"),
+        bridge_url: "https://bridge-b.example",
+        health_url: "https://bridge-b.example/api/health",
+        headscale_ip: "100.64.0.82",
+        environment_revision: generationA.environment_revision + 1,
+        lifecycle_revision: generationA.lifecycle_revision + 1,
+      })
+      .where(eq(agentSandboxes.id, agentId));
+    const generationB = await sandboxCapture(agentId);
+
+    expect(generationB.lifecycle_revision).toBeGreaterThan(generationA.lifecycle_revision);
+    expect(generationB.environment_revision).toBe(generationA.environment_revision + 1);
+    expect(generationB.sandbox_id).not.toBe(generationA.sandbox_id);
+    expect(await repo.markRunningFromProvisioning(generationA)).toBeUndefined();
+    expect(await sandboxStatus(agentId)).toBe("provisioning");
+
+    expect(await repo.markRunningFromProvisioning(generationB)).toMatchObject({
+      id: agentId,
+      status: "running",
+    });
+  });
+
+  test("reconnect loses to generation B and commits repaired ingress in its winning CAS", async () => {
+    const { organizationId, userId } = await seedOrgAndUser();
+    const agentId = await seedProvisioningAgent(organizationId, userId);
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        status: "disconnected",
+        bridge_url: "https://bridge-a.example",
+        health_url: "https://bridge-a.example/api/health",
+        headscale_ip: "100.64.0.90",
+      })
+      .where(eq(agentSandboxes.id, agentId));
+    const generationA = await sandboxCapture(agentId);
+
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        sandbox_id: uniq("reconnect-sandbox-b"),
+        node_id: uniq("reconnect-node-b"),
+        container_name: uniq("reconnect-container-b"),
+        bridge_url: "https://bridge-b.example",
+        health_url: "https://bridge-b.example/api/health",
+        headscale_ip: "100.64.0.91",
+        error_count: 3,
+        environment_revision: generationA.environment_revision + 1,
+        lifecycle_revision: generationA.lifecycle_revision + 1,
+      })
+      .where(eq(agentSandboxes.id, agentId));
+    const generationB = await sandboxCapture(agentId);
+
+    expect(
+      await repo.markReconnectedFromDisconnected(generationA, {
+        headscaleIp: "100.64.0.99",
+        bridgeUrl: "https://stale-repair.example",
+        healthUrl: "https://stale-repair.example/api/health",
+        errorCount: 0,
+      }),
+    ).toBeUndefined();
+    expect(await sandboxCapture(agentId)).toMatchObject({
+      status: "disconnected",
+      bridge_url: "https://bridge-b.example",
+      health_url: "https://bridge-b.example/api/health",
+      headscale_ip: "100.64.0.91",
+      error_count: 3,
+    });
+
+    expect(
+      await repo.markReconnectedFromDisconnected(generationB, {
+        headscaleIp: "100.64.0.92",
+        bridgeUrl: "https://repaired-b.example",
+        healthUrl: "https://repaired-b.example/api/health",
+        errorCount: 0,
+      }),
+    ).toMatchObject({
+      status: "running",
+      bridge_url: "https://repaired-b.example",
+      health_url: "https://repaired-b.example/api/health",
+      headscale_ip: "100.64.0.92",
+      error_count: 0,
+    });
+  });
+
+  test("stuck-provisioning sweep ignores forged Shared and unknown rows", async () => {
+    for (const executionTier of ["shared", "future-container-tier"] as const) {
+      const { organizationId, userId } = await seedOrgAndUser();
+      const agentId = await seedProvisioningAgent(organizationId, userId);
+      await dbWrite
+        .update(agentSandboxes)
+        .set({ execution_tier: executionTier as never })
+        .where(eq(agentSandboxes.id, agentId));
+
+      const swept = await repo.markStuckProvisioningWithoutActiveJobAsError(SWEEP_CUTOFF);
+      expect(swept.updated.map((row) => row.agentId)).not.toContain(agentId);
+      expect(await sandboxStatus(agentId)).toBe("provisioning");
+    }
+  });
+
+  test("reconnection loses when the execution tier changes to Shared during the bridge probe", async () => {
+    const { organizationId, userId } = await seedOrgAndUser();
+    const agentId = await seedProvisioningAgent(organizationId, userId);
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        status: "disconnected",
+        bridge_url: "https://reconnect-race.example",
+        health_url: "https://reconnect-race.example/api/health",
+        environment_vars: { ELIZA_API_TOKEN: "reconnect-race-token" },
+      })
+      .where(eq(agentSandboxes.id, agentId));
+
+    const originalFetch = globalThis.fetch;
+    let probeCount = 0;
+    globalThis.fetch = (async () => {
+      probeCount += 1;
+      await dbWrite
+        .update(agentSandboxes)
+        .set({ execution_tier: "shared" })
+        .where(eq(agentSandboxes.id, agentId));
+      return new Response("ok", { status: 200 });
+    }) as unknown as typeof fetch;
+
+    try {
+      const { ElizaSandboxService } = await import("../../../lib/services/eliza-sandbox");
+      expect(await new ElizaSandboxService().recoverDisconnected(agentId, organizationId)).toBe(
+        "gone",
+      );
+      expect(probeCount).toBe(1);
+      expect(await repo.findById(agentId)).toEqual(
+        expect.objectContaining({
+          status: "disconnected",
+          execution_tier: "shared",
+        }),
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

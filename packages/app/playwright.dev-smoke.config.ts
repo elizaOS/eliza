@@ -24,6 +24,7 @@ const uiPort = resolvePlaywrightPortEnv(
 const stateDir =
   process.env.ELIZA_DEV_SMOKE_STATE_DIR ||
   path.join(os.tmpdir(), `eliza-dev-smoke-${process.pid}`);
+const cloudOnlyLane = process.env.ELIZA_DEV_SMOKE_CLOUD_ONLY === "1";
 
 process.env.ELIZA_API_PORT = String(apiPort);
 process.env.ELIZA_UI_PORT = String(uiPort);
@@ -54,7 +55,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "bun run dev",
+    command: cloudOnlyLane
+      ? "bun run --cwd packages/app dev:cloud-only"
+      : "bun run dev",
     cwd: repoRoot,
     env: {
       ...process.env,

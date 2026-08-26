@@ -270,7 +270,6 @@ export {
 	resolveStoredDiscordEntityProfile,
 } from "./discord-profiles";
 export {
-	executeGuildManagement,
 	GUILD_MANAGEMENT_OPERATIONS,
 	GuildManagementError,
 	type GuildManagementGates,

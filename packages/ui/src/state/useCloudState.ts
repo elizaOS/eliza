@@ -14,6 +14,7 @@
  * - `t`                      — translation function, used for auth-rejected notice key
  */
 
+import { Capacitor } from "@capacitor/core";
 import { logger } from "@elizaos/logger";
 import { isElizaCloudControlPlaneHostname } from "@elizaos/shared/elizacloud";
 import {
@@ -23,6 +24,15 @@ import {
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ANDROID_CLOUD_AUTH_RESULT_EVENT,
+  ANDROID_CLOUD_AUTH_STARTED_EVENT,
+  type AndroidCloudAuthResult,
+  beginAndroidCloudSignIn,
+  cancelAndroidCloudSignIn,
+  navigateAndroidCloudSignInInApp,
+  takeLatestAndroidCloudCompletion,
+} from "../android-cloud/android-cloud-auth";
 import { client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import {
@@ -42,12 +52,17 @@ import { signOutFromSsoBridgedHost } from "../cloud/sso-bridge/sso-bridge";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { dispatchElizaCloudStatusUpdated } from "../events";
 import { isElizaCloudRuntimeLocked } from "../first-run/mobile-runtime-mode";
+import {
+  isAndroidCloudBuild,
+  isAndroidLauncherBuild,
+} from "../platform/android-runtime";
 import { isViteDevUiShell } from "../platform/vite-dev-ui-shell";
 import {
   closeExternalBrowser,
   confirmDesktopAction,
   isCloudStatusAuthenticated,
   isSafeNavigationUrl,
+  listenForExternalBrowserFinished,
   navigatePreOpenedWindow,
   openExternalUrl,
   yieldHttpAfterNativeMessageBox,
@@ -71,6 +86,7 @@ import {
   hasUsableStoredStewardToken,
   launchStewardLogin,
 } from "./cloud-steward-login";
+
 import { scrubPersistedActiveServerToken } from "./persistence";
 import { isPrivateNetworkHost } from "./private-network-host";
 import type { CloudLoginOptions } from "./types";
@@ -81,6 +97,8 @@ const ELIZA_CLOUD_LOGIN_POLL_INTERVAL_MS = 1000;
 const ELIZA_CLOUD_LOGIN_RETURN_POLL_TIMEOUT_MS = 60_000;
 const ELIZA_CLOUD_LOGIN_TIMEOUT_MS = 300_000;
 const ELIZA_CLOUD_LOGIN_MAX_CONSECUTIVE_ERRORS = 3;
+const ANDROID_CLOUD_AUTH_TIMEOUT_MS = 5 * 60_000;
+const ANDROID_CLOUD_BROWSER_FINISH_GRACE_MS = 1_500;
 const DEFAULT_DIRECT_CLOUD_BASE_URL = "https://eliza.app";
 const ELIZA_CLOUD_LOGIN_COMPLETE_PARAM = "elizaCloudLogin";
 const ELIZA_CLOUD_LOGIN_SESSION_PARAM = "elizaCloudLoginSession";
@@ -651,6 +669,72 @@ export function useCloudState({
     return isConnected;
   }, []);
 
+  const reconcileAndroidCloudSession = useCallback(
+    async (cloudApiBase?: string): Promise<boolean> => {
+      const token = readStoredStewardToken()?.trim();
+      if (!token) return false;
+      const authenticatedCloudApiBase = resolveDirectCloudAuthApiBase(
+        cloudApiBase ??
+          getBootConfig().cloudApiBase ??
+          DEFAULT_DIRECT_CLOUD_BASE_URL,
+      );
+      setBootConfig({
+        ...getBootConfig(),
+        cloudApiBase: authenticatedCloudApiBase,
+      });
+      client.setBaseUrl(authenticatedCloudApiBase, { persist: false });
+      client.setToken(token);
+      const connected = await pollCloudCredits();
+      try {
+        await loadWalletConfig();
+      } catch (err) {
+        // error-policy:J4 Cloud auth is already durable at this boundary;
+        // an unavailable wallet panel stays independently observable and must
+        // not roll back or disguise the authenticated agent session.
+        logger.warn(
+          { err },
+          "[useCloudState] wallet config unavailable after Cloud auth",
+        );
+      }
+      if (!connected) return false;
+      setElizaCloudConnected(true);
+      setElizaCloudLoginError(null);
+      return true;
+    },
+    [loadWalletConfig, pollCloudCredits],
+  );
+
+  useEffect(() => {
+    if (!isAndroidCloudBuild() || !Capacitor.isNativePlatform()) return;
+    let cancelled = false;
+
+    const reconcile = async (apiBase?: string) => {
+      const connected = await reconcileAndroidCloudSession(apiBase);
+      if (!cancelled && !connected && readStoredStewardToken()?.trim()) {
+        setElizaCloudLoginError(
+          "Could not verify your Eliza Cloud session. Please sign in again.",
+        );
+      }
+    };
+    const onResult = (event: Event) => {
+      const result = (event as CustomEvent<AndroidCloudAuthResult>).detail;
+      if (result?.ok) void reconcile(result.apiBase);
+    };
+    window.addEventListener(ANDROID_CLOUD_AUTH_RESULT_EVENT, onResult);
+
+    const completion = takeLatestAndroidCloudCompletion();
+    if (completion) {
+      void reconcile(completion.apiBase);
+    } else if (readStoredStewardToken()?.trim()) {
+      void reconcile();
+    }
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener(ANDROID_CLOUD_AUTH_RESULT_EVENT, onResult);
+    };
+  }, [reconcileAndroidCloudSession]);
+
   const handleCloudLogin = useCallback(
     async (
       prePoppedWindow: Window | null = null,
@@ -719,6 +803,146 @@ export function useCloudState({
         resolveLoginCompletion();
       };
       elizaCloudLoginCompletionRef.current = loginCompletion;
+
+      // The Play build uses the same canonical first-run chat and full app as
+      // every other platform. Only its hosted PKCE handoff is Android-specific:
+      // the verifier stays in Keystore, the hosted Eliza Cloud page owns the
+      // provider chooser, and the deep-link callback publishes the result back
+      // into this already-mounted state machine.
+      if (isAndroidCloudBuild() && Capacitor.isNativePlatform()) {
+        const cloudApiBase =
+          getBootConfig().cloudApiBase ?? DEFAULT_DIRECT_CLOUD_BASE_URL;
+        let androidLoginError: unknown = null;
+        let removeResultListener = () => {};
+        let removeBrowserFinishedListener = async () => {};
+        let browserFinishTimer: number | null = null;
+        let authTimeoutTimer: number | null = null;
+        let callbackIsRetrying = false;
+        let callbackStarted = false;
+        let attemptId: string | null = null;
+        let removeCallbackStartedListener = () => {};
+        try {
+          let resolveAuthResult: (result: AndroidCloudAuthResult) => void =
+            () => {};
+          const authResult = new Promise<AndroidCloudAuthResult>((resolve) => {
+            resolveAuthResult = resolve;
+            const onResult = (event: Event) => {
+              const result = (event as CustomEvent<AndroidCloudAuthResult>)
+                .detail;
+              if (!result || result.attemptId !== attemptId) return;
+              if (result.retryable) {
+                callbackIsRetrying = true;
+                setElizaCloudLoginError(
+                  result.error ??
+                    "Eliza Cloud sign-in was interrupted and is retrying.",
+                );
+                return;
+              }
+              resolve(result);
+            };
+            window.addEventListener(ANDROID_CLOUD_AUTH_RESULT_EVENT, onResult);
+            removeResultListener = () =>
+              window.removeEventListener(
+                ANDROID_CLOUD_AUTH_RESULT_EVENT,
+                onResult,
+              );
+          });
+          const attempt = await beginAndroidCloudSignIn(cloudApiBase);
+          attemptId = attempt.state;
+          if (isAndroidLauncherBuild()) {
+            if (!navigateAndroidCloudSignInInApp(attempt.browserUrl)) {
+              await cancelAndroidCloudSignIn(attempt.state);
+              throw new Error("Eliza Cloud returned an invalid sign-in URL.");
+            }
+            // Navigation replaces this renderer. Native code restores the
+            // bundled shell before replaying the protected callback.
+            return loginCompletion;
+          }
+          const onCallbackStarted = (event: Event) => {
+            const startedAttemptId = (
+              event as CustomEvent<{ attemptId?: string }>
+            ).detail?.attemptId;
+            if (startedAttemptId === attemptId) callbackStarted = true;
+          };
+          window.addEventListener(
+            ANDROID_CLOUD_AUTH_STARTED_EVENT,
+            onCallbackStarted,
+          );
+          removeCallbackStartedListener = () =>
+            window.removeEventListener(
+              ANDROID_CLOUD_AUTH_STARTED_EVENT,
+              onCallbackStarted,
+            );
+          removeBrowserFinishedListener =
+            await listenForExternalBrowserFinished(() => {
+              if (browserFinishTimer !== null) return;
+              browserFinishTimer = window.setTimeout(() => {
+                browserFinishTimer = null;
+                if (callbackStarted || callbackIsRetrying || !attemptId) return;
+                resolveAuthResult({
+                  attemptId,
+                  error: "Eliza Cloud sign-in was cancelled.",
+                  ok: false,
+                });
+              }, ANDROID_CLOUD_BROWSER_FINISH_GRACE_MS);
+            });
+          authTimeoutTimer = window.setTimeout(() => {
+            if (!attemptId) return;
+            resolveAuthResult({
+              attemptId,
+              error: "Eliza Cloud sign-in timed out. Please try again.",
+              ok: false,
+            });
+          }, ANDROID_CLOUD_AUTH_TIMEOUT_MS);
+          const opened = await openExternalUrl(attempt.browserUrl);
+          if (!opened) {
+            await cancelAndroidCloudSignIn(attempt.state);
+            throw new Error("Couldn't open Eliza Cloud sign-in.");
+          }
+          const result = await authResult;
+          if (!result.ok) {
+            await cancelAndroidCloudSignIn(attempt.state);
+            throw new Error(
+              result.error ?? "Eliza Cloud sign-in could not be completed.",
+            );
+          }
+          const connected = await reconcileAndroidCloudSession(
+            result.apiBase ?? cloudApiBase,
+          );
+          if (!connected) {
+            throw new Error(
+              "Could not verify your Eliza Cloud session. Please sign in again.",
+            );
+          }
+        } catch (error) {
+          androidLoginError = error;
+          setElizaCloudLoginError(
+            error instanceof Error ? error.message : "Eliza Cloud login failed",
+          );
+        } finally {
+          if (browserFinishTimer !== null) {
+            window.clearTimeout(browserFinishTimer);
+          }
+          if (authTimeoutTimer !== null) window.clearTimeout(authTimeoutTimer);
+          removeResultListener();
+          removeCallbackStartedListener();
+          void removeBrowserFinishedListener();
+          void closeExternalBrowser();
+          closePrePoppedWindow();
+          elizaCloudLoginBusyRef.current = false;
+          setElizaCloudLoginBusy(false);
+          completeLogin();
+        }
+        // First-run and native recovery explicitly require a renderer-held
+        // credential before they can continue. Preserve the rejected promise
+        // at that boundary so their existing in-chat/recovery error surfaces
+        // replace the waiting state instead of treating a failed handoff as a
+        // completed login with no token.
+        if (androidLoginError && options.requireClientAuth) {
+          throw androidLoginError;
+        }
+        return loginCompletion;
+      }
 
       // Zero-interaction wallet SIWE (#13377) is the E2E HARNESS path ONLY.
       // A real browser wallet (Phantom, MetaMask, …) injects window.ethereum
@@ -1193,6 +1417,7 @@ export function useCloudState({
       setActionNotice,
       pollCloudCredits,
       loadWalletConfig,
+      reconcileAndroidCloudSession,
     ],
   );
 

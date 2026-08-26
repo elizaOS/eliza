@@ -6,7 +6,7 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
-import com.google.firebase.FirebaseApp;
+import com.google.firebase.messaging.FirebaseMessaging;
 
 /**
  * Firebase-guarded replacement for the community PushNotifications plugin.
@@ -23,9 +23,8 @@ import com.google.firebase.FirebaseApp;
  *
  * This subclass rejects the call cleanly when no FirebaseApp exists and
  * defers to the stock behavior otherwise. MainActivity registers it directly
- * on the bridge AFTER super.onCreate(), which wins the plugin-name slot from
- * the auto-registered stock plugin (Bridge.registerPlugin is a plain
- * map.put — last registration wins).
+ * on the live bridge after super.onCreate(), which wins the plugin-name slot
+ * from the auto-registered stock plugin.
  */
 @CapacitorPlugin(
     name = "PushNotifications",
@@ -38,7 +37,8 @@ public class SafePushNotificationsPlugin extends PushNotificationsPlugin {
 
     private boolean firebaseAvailable() {
         try {
-            return !FirebaseApp.getApps(getContext()).isEmpty();
+            FirebaseMessaging.getInstance();
+            return true;
         } catch (RuntimeException error) {
             return false;
         }

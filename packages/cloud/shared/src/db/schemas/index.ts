@@ -4,6 +4,8 @@
  * Central export point for all database table schemas.
  */
 
+export * from "./account-deletion-exports";
+export * from "./account-deletion-phase-receipts";
 export * from "./account-deletion-requests";
 export * from "./ad-accounts";
 export * from "./ad-audience-segments";
@@ -98,6 +100,8 @@ export * from "./organizations";
 export * from "./payment-request-receipts";
 export * from "./payment-requests";
 export * from "./personal-account-convergences";
+export * from "./personal-dedicated-adoption-selections";
+export * from "./personal-dedicated-upgrade-authorities";
 export * from "./personal-shared-groups";
 export * from "./personal-shared-inbound-media";
 export * from "./phone-gateway-devices";
@@ -105,6 +109,7 @@ export * from "./pii-scrub-markers";
 export * from "./platform-credentials";
 export * from "./pooled-credentials";
 export * from "./press-releases";
+export * from "./provider-admissions";
 export * from "./provider-health";
 export * from "./redeemable-earnings";
 export * from "./referrals";

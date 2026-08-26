@@ -30,6 +30,10 @@ import "./web-ws-base-fix";
  */
 import { ErrorBoundary } from "@elizaos/ui";
 import "@elizaos/ui/styles";
+// Relationships owns the canonical /apps/relationships route. Its registration
+// metadata is tiny and must be available before the first route capture; the
+// page component itself remains lazy-loaded by the plugin registration.
+import "@elizaos/plugin-relationships/register";
 // Native-only (ios/android/desktop): register the Eliza Cloud Applications
 // dashboard as an in-process app-shell page (`/cloud-apps`) that mounts the
 // self-contained NativeAppsStudio. No-op on web, where CloudRouterShell serves
@@ -64,6 +68,8 @@ import {
   isCloudPairLoopbackOrigin,
 } from "@elizaos/shared/contracts";
 import { isElizaDedicatedAgentHostname } from "@elizaos/shared/elizacloud";
+import { completeAndroidCloudSignIn } from "@elizaos/ui/android-cloud/android-cloud-auth";
+import { shouldAcknowledgeAndroidCloudCallback } from "@elizaos/ui/android-cloud/android-cloud-client";
 import { client } from "@elizaos/ui/api";
 import { installAndroidNativeAgentFetchBridge } from "@elizaos/ui/api/android-native-agent-transport";
 import {
@@ -240,7 +246,6 @@ import {
   applyRuntimeChooserOverrideFromUrl,
   removeUrlParameter,
 } from "./runtime-chooser-override";
-import { registerViewServiceWorker } from "./sw-registration";
 import {
   isElizaCloudSharedHost,
   isTrustedCloudOnlyApiBaseUrl,
@@ -251,6 +256,7 @@ declare const __ELIZA_BUILD_VARIANT__: string | undefined;
 // for Capacitor mobile builds so the entire cloud router shell + Steward/wallet
 // + public-page chunks tree-shake out of the native bundle.
 declare const __ELIZA_WEB_SHELL__: boolean | undefined;
+declare const __ELIZA_SERVICE_WORKER__: boolean | undefined;
 declare const __ELIZA_CHAT_UI_HARNESS__: boolean | undefined;
 
 declare global {
@@ -302,6 +308,13 @@ function importAppTaskCoordinatorRegister() {
   return cachedDynamicImport(
     "@elizaos/plugin-task-coordinator/register",
     () => import("@elizaos/plugin-task-coordinator/register"),
+  );
+}
+
+function importAppRelationshipsRegister() {
+  return cachedDynamicImport(
+    "@elizaos/plugin-relationships/register",
+    () => import("@elizaos/plugin-relationships/register"),
   );
 }
 
@@ -445,6 +458,7 @@ const APP_BRANDING: Partial<BrandingConfig> = {
     legacyInjectedApiBase:
       typeof window === "undefined" ? undefined : getLegacyInjectedAppApiBase(),
     isNativePlatform: Capacitor.isNativePlatform(),
+    nativeRuntimeMode: isAndroidCloudBuild() ? "cloud" : undefined,
     desktopRuntimeMode: getInjectedDesktopRuntimeMode(),
   }),
 };
@@ -893,6 +907,10 @@ const BOOT_CONFIG_DEFERRED_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] 
     {
       key: "@elizaos/plugin-task-coordinator/register",
       load: importAppTaskCoordinatorRegister,
+    },
+    {
+      key: "@elizaos/plugin-relationships/register",
+      load: importAppRelationshipsRegister,
     },
     { key: "@elizaos/plugin-phone", load: importAppPhone },
   ];
@@ -2144,7 +2162,20 @@ async function handleAuthCallbackDeepLink(
   parsed: URL,
   path: string,
   url: string,
-): Promise<void> {
+): Promise<boolean> {
+  if (isAndroid && isAndroidCloudBuild()) {
+    try {
+      await completeAndroidCloudSignIn(url);
+      return true;
+    } catch (error) {
+      console.warn(
+        `${APP_LOG_PREFIX} Android Cloud sign-in callback failed:`,
+        error instanceof Error ? error.message : error,
+      );
+      if (shouldAcknowledgeAndroidCloudCallback(error)) return true;
+      throw error;
+    }
+  }
   const outcome = rejectOsDeliveredAuthCallback();
   let activeServerBefore = "";
   try {
@@ -2166,7 +2197,7 @@ async function handleAuthCallbackDeepLink(
       code: parsed.searchParams.get("code") ?? "",
       query: Object.fromEntries(parsed.searchParams.entries()),
     });
-    return;
+    return true;
   }
 
   await recordIosAuthCallbackSmoke(
@@ -2176,6 +2207,7 @@ async function handleAuthCallbackDeepLink(
     outcome,
     activeServerBefore,
   );
+  return true;
 }
 
 /**
@@ -2217,8 +2249,7 @@ function handleDeepLink(url: string): undefined | Promise<boolean> {
     ? parsed.pathname.replace(/^\/+|\/+$/g, "")
     : getDeepLinkPath(parsed);
   if (path === "auth/callback") {
-    void handleAuthCallbackDeepLink(parsed, path, url);
-    return;
+    return handleAuthCallbackDeepLink(parsed, path, url);
   }
 
   if (path === "first-run/runtime/remote") {
@@ -3462,7 +3493,15 @@ function initVisionBridgesIfEnabled(): void {
 
 async function main(): Promise<void> {
   markStartup("main-start");
-  registerViewServiceWorker();
+  markStartup("app-modules:start");
+  await initializeAppModules();
+  markStartup("app-modules:end");
+  measureStartup("app-modules", "app-modules:start", "app-modules:end");
+
+  if (__ELIZA_SERVICE_WORKER__ === true) {
+    const { registerViewServiceWorker } = await import("./sw-registration");
+    registerViewServiceWorker();
+  }
 
   // #9947: when served at /embed inside a Telegram Mini App / Discord Activity
   // iframe, exchange the platform's signed launch payload for a scoped session
@@ -3485,10 +3524,6 @@ async function main(): Promise<void> {
     return;
   }
 
-  markStartup("app-modules:start");
-  await initializeAppModules();
-  markStartup("app-modules:end");
-  measureStartup("app-modules", "app-modules:start", "app-modules:end");
   setupPlatformStyles();
   applyBuildTimeIosConnection();
 

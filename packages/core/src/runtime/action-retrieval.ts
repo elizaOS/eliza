@@ -327,6 +327,51 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	SET_HABIT: ["OWNER_ROUTINES", "TRIGGER"],
 	TRACK_HABIT: ["OWNER_ROUTINES", "TRIGGER"],
 	CROSS_CHANNEL_SEARCH: ["MESSAGE"],
+	// Structural server/guild management binds to the MESSAGE umbrella (op=
+	// manage_server), never the VIEWS window surface. Stage-1 invents these
+	// verb-first spellings for Discord/guild administration ("apply the code-ops
+	// template to this server" -> APPLY_SERVER_TEMPLATE; "add a channel called
+	// builds" -> CREATE_CHANNEL). Without the explicit hint the CREATE/DELETE/
+	// LIST + CHANNEL/ROLE tokens trip looksLikeViewCandidateAction and route the
+	// structural write to the VIEWS catalog, so op=manage_server never reaches the
+	// planner and the turn falsely reports no template / no server tools (live
+	// 2026-08-25: "apply the code-ops template to this server as a dry run"
+	// wandered RUNTIME_STATUS/PERSONALITY/WORKFLOW/FILE and answered
+	// "no template exists"). explicitParentAliasesForCandidateAction runs before
+	// the view/app heuristics, so these entries win. Admission still passes
+	// through appendIfAllowed's role/context gates and the connector's own
+	// structural-action config gates (channels/roles/permissions/moderation).
+	MANAGE_SERVER: ["MESSAGE"],
+	MANAGE_GUILD: ["MESSAGE"],
+	SERVER_MANAGEMENT: ["MESSAGE"],
+	GUILD_MANAGEMENT: ["MESSAGE"],
+	APPLY_SERVER_TEMPLATE: ["MESSAGE"],
+	APPLY_DISCORD_TEMPLATE: ["MESSAGE"],
+	LIST_SERVER_TEMPLATES: ["MESSAGE"],
+	SERVER_TEMPLATE: ["MESSAGE"],
+	SERVER_TEMPLATES: ["MESSAGE"],
+	GUILD_TEMPLATE: ["MESSAGE"],
+	CREATE_CHANNEL: ["MESSAGE"],
+	EDIT_CHANNEL: ["MESSAGE"],
+	DELETE_CHANNEL: ["MESSAGE"],
+	CREATE_CATEGORY: ["MESSAGE"],
+	EDIT_CATEGORY: ["MESSAGE"],
+	DELETE_CATEGORY: ["MESSAGE"],
+	CREATE_INVITE: ["MESSAGE"],
+	EDIT_CHANNEL_PERMISSIONS: ["MESSAGE"],
+	KICK_MEMBER: ["MESSAGE"],
+	BAN_MEMBER: ["MESSAGE"],
+	UNBAN_MEMBER: ["MESSAGE"],
+	TIMEOUT_MEMBER: ["MESSAGE"],
+	// Structural role LIFECYCLE (create/edit/delete a connector role) is
+	// manage_server, distinct from the ROLE action's world-role ASSIGNMENT
+	// (ASSIGN_ROLE/SET_ROLE/REVOKE_ROLE are ROLE similes and stay there). These
+	// creation/deletion spellings are claimed by no parent's similes, so hinting
+	// MESSAGE steals nothing; without it CREATE_ROLE's CREATE+ROLE tokens route to
+	// VIEWS.
+	CREATE_ROLE: ["MESSAGE"],
+	EDIT_ROLE: ["MESSAGE"],
+	DELETE_ROLE: ["MESSAGE"],
 	CREATE_GOAL: ["OWNER_GOALS"],
 	CREATE_SAVINGS_PLAN: ["OWNER_GOALS"],
 	GOAL_CREATE: ["OWNER_GOALS"],
@@ -1183,6 +1228,15 @@ function explicitParentAliasesForCandidateAction(actionName: string): string[] {
 		)
 	) {
 		return ["CALCULATE"];
+	}
+	// Recap/summary-shaped inventions are open-ended — Stage 1 produces a fresh
+	// spelling per turn (live 2026-08-23: TASKS_RECAP_DAY, then RECAP_DAY, then
+	// GET_TASKS_SUMMARY for the same ask), so exact-name aliases cannot keep
+	// up. Any candidate whose name carries the recap/summary stem hints the
+	// room-transcript reader plus the TASKS umbrella (tracked-work day recaps);
+	// admission still passes through appendIfAllowed's role/context gates.
+	if (/RECAP|SUMMAR/.test(normalized)) {
+		return ["CHANNEL_RECAP", "TASKS"];
 	}
 	return [];
 }

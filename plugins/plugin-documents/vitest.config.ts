@@ -12,8 +12,8 @@ const baseAliases = Array.isArray(baseConfig.resolve?.alias)
   : [];
 
 // Live/real e2e suites need running services + env; the unit suite below covers
-// the route handler (test/routes.test.ts) and the DocumentsView render +
-// tab-switch interaction (test/documents-view.test.tsx, jsdom via per-file
+// the route handler (test/routes.test.ts) and the DocumentsView/Knowledge
+// render + tab-switch interaction suites (jsdom via per-file
 // directive). The base config supplies the @elizaos/* source aliases that
 // routes.test.ts needs; the React aliases below pin a single React copy so
 // jsdom does not mix the workspace and hoisted peers.

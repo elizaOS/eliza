@@ -34,6 +34,7 @@
 			"import": "./dist/user-account-scraper/index.js",
 			"default": "./dist/user-account-scraper/index.js"
 		},
+		"./guild-management": null,
 		"./*": {
 			"types": "./dist/*.d.ts",
 			"eliza-source": {

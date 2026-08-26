@@ -9,8 +9,26 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 export const PERSONAL_TELEGRAM_DELIVERY_PATH = "/v1/delivery";
+// Epoch 1 omitted the connector account from both routing boundaries. Epoch 2
+// is intentionally disjoint because those historical owners cannot be inferred.
+export const PERSONAL_TELEGRAM_DELIVERY_EPOCH = 2;
+/**
+ * Temporary rolling-upgrade bridge for an older Gateway that neither sends
+ * the connector-account edge header nor account-scoped epoch-2 reconciliation.
+ * It is deliberately exact-true and off when absent.
+ */
+export function isPersonalTelegramDeliveryEpoch1CompatEnabled(
+  env: Pick<
+    AppEnv["Bindings"],
+    "PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED"
+  >,
+): boolean {
+  return env.PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED === "true";
+}
+// This also bounds the quarantine window for account-independent epoch 1 state.
+export const PERSONAL_TELEGRAM_DELIVERY_TOMBSTONE_TTL_MS =
+  30 * 24 * 60 * 60_000;
 const PROCESSING_TTL_MS = 120_000;
-const DELIVERY_TTL_MS = 30 * 24 * 60 * 60_000;
 const MESSAGE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,199}$/;
 const PROVIDER_MESSAGE_ID_RE = /^\d{1,32}$/;
 
@@ -205,7 +223,8 @@ export class PersonalTelegramDelivery {
           plan: plansEqual(existing, chunkDigests) ? "prepared" : "conflict",
         });
       }
-      const expiresAt = Date.now() + DELIVERY_TTL_MS;
+      const expiresAt =
+        Date.now() + PERSONAL_TELEGRAM_DELIVERY_TOMBSTONE_TTL_MS;
       await this.state.storage.put(storageKey, {
         value: chunkDigests,
         expiresAt,
@@ -240,7 +259,8 @@ export class PersonalTelegramDelivery {
       if (input.operation === "claim_chunk") {
         const existing = await this.readExpiring<DeliveryState>(storageKey);
         if (existing) return Response.json({ claimed: false });
-        const expiresAt = Date.now() + DELIVERY_TTL_MS;
+        const expiresAt =
+          Date.now() + PERSONAL_TELEGRAM_DELIVERY_TOMBSTONE_TTL_MS;
         await this.state.storage.put(storageKey, {
           value: "uncertain",
           expiresAt,
@@ -248,7 +268,8 @@ export class PersonalTelegramDelivery {
         await this.scheduleCleanup(expiresAt);
         return Response.json({ claimed: true });
       }
-      const expiresAt = Date.now() + DELIVERY_TTL_MS;
+      const expiresAt =
+        Date.now() + PERSONAL_TELEGRAM_DELIVERY_TOMBSTONE_TTL_MS;
       const delivered = {
         value: "delivered",
         expiresAt,
@@ -283,7 +304,7 @@ export class PersonalTelegramDelivery {
     const requested =
       input.operation === "mark_uncertain" ? "uncertain" : "delivered";
     const value = existing === "delivered" ? "delivered" : requested;
-    const expiresAt = Date.now() + DELIVERY_TTL_MS;
+    const expiresAt = Date.now() + PERSONAL_TELEGRAM_DELIVERY_TOMBSTONE_TTL_MS;
     await this.state.storage.put(deliveryStorageKey, {
       value,
       expiresAt,

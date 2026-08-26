@@ -66,6 +66,7 @@ import { safeFetch } from "../security/safe-fetch";
 import { logger } from "../utils/logger";
 import { isValidUUID } from "../utils/validation";
 import { OperationTimeoutError, withTimeout } from "../utils/with-timeout";
+import { AccountLifecycleFencedError } from "./account-lifecycle-authority";
 import {
   ADMIN_CANARY_MAX_RUNNING_JOBS,
   ADMIN_CANARY_MAX_TARGETS,
@@ -100,11 +101,26 @@ import {
 } from "./eliza-provision-lock";
 import {
   AdminCanaryCleanupExpectationError,
+  assertReviewedFreshBootAuthority,
+  assertReviewedProvisionRestoreAuthority,
   type DeleteAuthorization,
   elizaSandboxService,
   SNAPSHOT_ENDPOINT_UNSUPPORTED,
 } from "./eliza-sandbox";
 import { finalizeJobErrorText, jobErrorSummary, jobErrorText } from "./job-error-text";
+import {
+  isPersonalDedicatedReviewedBackupChain,
+  type PersonalDedicatedReviewedBackupChainEntry,
+} from "./personal-dedicated-adoption-provenance";
+import {
+  acquireProviderAdmission,
+  type ProviderAdmissionAuthority,
+  releaseProviderAdmission,
+} from "./provider-admission";
+import {
+  executeProvisioningWithAccountLifecycleAdmission,
+  prepareProvisioningWithAccountLifecycleFence,
+} from "./provisioning-account-lifecycle-fence";
 import {
   AGENT_JOB_TYPES,
   COLD_BOOT_JOB_TYPES,
@@ -211,6 +227,17 @@ export interface AgentProvisionJobData {
   organizationId: string;
   userId: string;
   agentName: string;
+  restoreDirective?:
+    | { kind: "from-backup"; backupId: string }
+    | { kind: "fresh-boot" }
+    | { kind: "reviewed-fresh-boot"; selectionId: string }
+    | {
+        kind: "from-reviewed-backup";
+        selectionId: string;
+        backupId: string;
+        expectedContentHash: string;
+        expectedBackupChain: PersonalDedicatedReviewedBackupChainEntry[];
+      };
 }
 
 export interface AgentDeleteJobData {
@@ -570,13 +597,39 @@ function agentSnapshotJobResultToRecord(result: AgentSnapshotJobResult): Record<
 }
 
 function isAgentProvisionJobData(value: unknown): value is AgentProvisionJobData {
+  const restoreDirective =
+    typeof value === "object" && value !== null
+      ? (value as { restoreDirective?: unknown }).restoreDirective
+      : undefined;
+  const validRestoreDirective =
+    restoreDirective === undefined ||
+    (typeof restoreDirective === "object" &&
+      restoreDirective !== null &&
+      (((restoreDirective as { kind?: unknown }).kind === "fresh-boot" &&
+        !("backupId" in restoreDirective)) ||
+        ((restoreDirective as { kind?: unknown }).kind === "reviewed-fresh-boot" &&
+          typeof (restoreDirective as { selectionId?: unknown }).selectionId === "string") ||
+        ((restoreDirective as { kind?: unknown }).kind === "from-backup" &&
+          typeof (restoreDirective as { backupId?: unknown }).backupId === "string") ||
+        ((restoreDirective as { kind?: unknown }).kind === "from-reviewed-backup" &&
+          typeof (restoreDirective as { selectionId?: unknown }).selectionId === "string" &&
+          typeof (restoreDirective as { backupId?: unknown }).backupId === "string" &&
+          typeof (restoreDirective as { expectedContentHash?: unknown }).expectedContentHash ===
+            "string" &&
+          /^[a-f0-9]{64}$/.test(
+            (restoreDirective as { expectedContentHash: string }).expectedContentHash,
+          ) &&
+          isPersonalDedicatedReviewedBackupChain(
+            (restoreDirective as { expectedBackupChain?: unknown }).expectedBackupChain,
+          ))));
   return (
     typeof value === "object" &&
     value !== null &&
     typeof (value as { agentId?: unknown }).agentId === "string" &&
     typeof (value as { organizationId?: unknown }).organizationId === "string" &&
     typeof (value as { userId?: unknown }).userId === "string" &&
-    typeof (value as { agentName?: unknown }).agentName === "string"
+    typeof (value as { agentName?: unknown }).agentName === "string" &&
+    validRestoreDirective
   );
 }
 
@@ -673,6 +726,48 @@ function readAgentProvisionJobData(job: Job): AgentProvisionJobData {
     throw new Error(`Invalid agent provision job data for job ${job.id}`);
   }
   return job.data;
+}
+
+function sameProvisionRestoreDirective(
+  left: AgentProvisionJobData["restoreDirective"],
+  right: AgentProvisionJobData["restoreDirective"],
+): boolean {
+  if (left?.kind !== right?.kind) return false;
+  if (left?.kind === "from-backup" && right?.kind === "from-backup") {
+    return left.backupId === right.backupId;
+  }
+  if (left?.kind === "from-reviewed-backup" && right?.kind === "from-reviewed-backup") {
+    return (
+      left.selectionId === right.selectionId &&
+      left.backupId === right.backupId &&
+      left.expectedContentHash === right.expectedContentHash &&
+      JSON.stringify(left.expectedBackupChain) === JSON.stringify(right.expectedBackupChain)
+    );
+  }
+  if (left?.kind === "reviewed-fresh-boot" && right?.kind === "reviewed-fresh-boot") {
+    return left.selectionId === right.selectionId;
+  }
+  return true;
+}
+
+/**
+ * Revalidate the immutable payload authority selected before the asynchronous
+ * worker may cross into provider compute. The backup row is deliberately read
+ * at execution time: a verifier downgrade, reassignment, deletion, or digest
+ * change after quote/adoption must fail without calling the sandbox provider.
+ */
+export async function resolveReviewedProvisionRestoreDirectiveForExecution(
+  data: AgentProvisionJobData,
+): Promise<AgentProvisionJobData["restoreDirective"]> {
+  const directive = data.restoreDirective;
+  if (directive?.kind === "from-reviewed-backup") {
+    await assertReviewedProvisionRestoreAuthority(data.agentId, directive);
+  } else if (directive?.kind === "reviewed-fresh-boot") {
+    await assertReviewedFreshBootAuthority(data.agentId, directive);
+  } else {
+    return directive;
+  }
+  return directive;
 }
 
 function readAgentDeleteJobData(job: Job): AgentDeleteJobData {
@@ -1385,6 +1480,19 @@ const SHARED_IMAGE_CHANGE_JOB_TYPES: ProvisioningJobType[] = [
   JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
 ];
 
+const ACCOUNT_LIFECYCLE_FENCED_AGENT_JOB_TYPES: readonly ProvisioningJobType[] = [
+  JOB_TYPES.AGENT_PROVISION,
+  JOB_TYPES.AGENT_RESUME,
+  JOB_TYPES.AGENT_WAKE,
+  JOB_TYPES.AGENT_RESTART,
+  JOB_TYPES.AGENT_UPGRADE,
+  JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+  JOB_TYPES.AGENT_DOWNGRADE,
+  JOB_TYPES.AGENT_LOGS,
+  JOB_TYPES.AGENT_MESSAGE,
+  JOB_TYPES.AGENT_SNAPSHOT,
+];
+
 /**
  * Job types whose permanent failure has to settle a dependent status row. This
  * list and the arms of `buildPermanentFailureWriteback` are ONE mapping; the
@@ -1486,6 +1594,8 @@ export class ProvisioningJobService {
   private readonly executionLeaseMs: number;
   private readonly executionLeaseHeartbeatMs: number;
   private readonly settlementRetryBaseMs: number;
+  private readonly acquireProviderAdmission: typeof acquireProviderAdmission;
+  private readonly releaseProviderAdmission: typeof releaseProviderAdmission;
 
   constructor(options?: {
     executeJob?: (job: Job) => Promise<void>;
@@ -1494,6 +1604,8 @@ export class ProvisioningJobService {
     executionLeaseMs?: number;
     executionLeaseHeartbeatMs?: number;
     settlementRetryBaseMs?: number;
+    acquireProviderAdmission?: typeof acquireProviderAdmission;
+    releaseProviderAdmission?: typeof releaseProviderAdmission;
   }) {
     this.executionOverride = options?.executeJob;
     this.executionTimeoutMs = options?.executionTimeoutMs ?? resolvePerJobTimeoutMs;
@@ -1502,6 +1614,8 @@ export class ProvisioningJobService {
     this.executionLeaseHeartbeatMs =
       options?.executionLeaseHeartbeatMs ?? EXECUTION_LEASE_HEARTBEAT_MS;
     this.settlementRetryBaseMs = options?.settlementRetryBaseMs ?? SETTLEMENT_RETRY_BASE_MS;
+    this.acquireProviderAdmission = options?.acquireProviderAdmission ?? acquireProviderAdmission;
+    this.releaseProviderAdmission = options?.releaseProviderAdmission ?? releaseProviderAdmission;
     if (
       this.executionLeaseMs < 1 ||
       this.executionLeaseHeartbeatMs < 1 ||
@@ -1781,6 +1895,7 @@ export class ProvisioningJobService {
     agentName: string;
     webhookUrl?: string;
     expectedLifecycleRevision?: number;
+    restoreDirective?: AgentProvisionJobData["restoreDirective"];
   }): Promise<EnqueueAgentProvisionResult> {
     return this.enqueueLifecycleJob<AgentProvisionJobData>(
       this.agentProvisionLifecycleOptions(params),
@@ -1806,6 +1921,7 @@ export class ProvisioningJobService {
       organizationId: string;
       userId: string;
       agentName: string;
+      restoreDirective?: AgentProvisionJobData["restoreDirective"];
     },
   ): Promise<EnqueueAgentProvisionResult> {
     return this.enqueueLifecycleJobInTx<AgentProvisionJobData>(
@@ -1821,6 +1937,7 @@ export class ProvisioningJobService {
     agentName: string;
     webhookUrl?: string;
     expectedLifecycleRevision?: number;
+    restoreDirective?: AgentProvisionJobData["restoreDirective"];
   }): LifecycleJobOptions<AgentProvisionJobData> {
     const expected = params.expectedLifecycleRevision;
     return {
@@ -1830,6 +1947,7 @@ export class ProvisioningJobService {
         organizationId: params.organizationId,
         userId: params.userId,
         agentName: params.agentName,
+        ...(params.restoreDirective ? { restoreDirective: params.restoreDirective } : {}),
       },
       toRecord: agentProvisionJobDataToRecord,
       agentId: params.agentId,
@@ -1847,6 +1965,24 @@ export class ProvisioningJobService {
               }
             }
           : undefined,
+      // A reviewed adoption pins either one exact backup or an explicit fresh
+      // boot. Reusing an ordinary provision job would silently discard that
+      // authority and could activate different state, so directive-bearing
+      // callers only converge with an identical durable job payload.
+      validateReuse: params.restoreDirective
+        ? (existing) => {
+            const active = readAgentProvisionJobData(existing);
+            if (sameProvisionRestoreDirective(active.restoreDirective, params.restoreDirective)) {
+              return;
+            }
+            throw new ApiError(
+              409,
+              "session_not_ready",
+              `Provision job ${existing.id} is already ${existing.status} for this agent with different restore authority`,
+              { conflictingJobId: existing.id },
+            );
+          }
+        : undefined,
     };
   }
 
@@ -3802,7 +3938,9 @@ export class ProvisioningJobService {
               () => stopLeaseHeartbeat(),
               async (executionError) => {
                 try {
-                  await this.handleExecutionFailure(job, executionError);
+                  if (await this.handleExecutionFailure(job, executionError)) {
+                    await this.releaseProviderAdmissionAfterRecordedFailure(job);
+                  }
                 } finally {
                   stopLeaseHeartbeat();
                 }
@@ -3818,7 +3956,9 @@ export class ProvisioningJobService {
           continue;
         }
         try {
-          await this.handleExecutionFailure(job, err, result);
+          if (await this.handleExecutionFailure(job, err, result)) {
+            await this.releaseProviderAdmissionAfterRecordedFailure(job);
+          }
         } finally {
           stopLeaseHeartbeat();
         }
@@ -3830,7 +3970,7 @@ export class ProvisioningJobService {
     job: Job,
     err: unknown,
     result?: ProcessingResult,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const appCacheError = safeErrorKind(err, AppCacheInvalidationRetryError) ? err : undefined;
     const retryableTransportError = safeErrorKind(err, RetryableProvisionTransportError)
       ? err
@@ -3864,7 +4004,7 @@ export class ProvisioningJobService {
           error: errorMsg,
         });
       }
-      return;
+      return outcome === "rejected" || outcome === "already-terminal";
     }
 
     if (retryableTransportError) {
@@ -3909,7 +4049,7 @@ export class ProvisioningJobService {
           error: errorMsg,
         });
       }
-      return;
+      return transition !== undefined;
     }
 
     // When retries are exhausted (permanent failure) the dependent
@@ -3962,7 +4102,7 @@ export class ProvisioningJobService {
             acknowledgingUserId: readAgentDeleteJobData(transition).stateLossAcknowledgedByUserId,
           },
         );
-        return;
+        return true;
       }
     }
     if (result) result.failed++;
@@ -3982,6 +4122,7 @@ export class ProvisioningJobService {
         logger.warn("[provisioning-jobs] App cache invalidation failed; retry scheduled", context);
       }
     }
+    return updated !== undefined;
   }
 
   /**
@@ -4398,25 +4539,27 @@ export class ProvisioningJobService {
       throw new Error(`Claimed lifecycle job ${job.id} has no execution generation`);
     }
     await this.assertExecutionMutationLease(job);
-    await dbWrite.transaction(async (tx) => {
-      await configureElizaLifecycleTransaction(tx);
-      // PGlite's TCP bridge does not release transaction-scoped advisory locks
-      // reliably at commit. Local Docker still has the exact job-generation,
-      // lease, conflict, and sandbox-row fences below; remote providers retain
-      // the cross-process PostgreSQL advisory lock.
-      if (!usesLocalDockerSandboxProvider()) {
-        await tx.execute(elizaProvisionAdvisoryLockSql(identity.organizationId, identity.agentId));
-      }
-      const [currentJob] = await tx
-        .select({ id: jobs.id })
-        .from(jobs)
-        .where(
-          and(
-            eq(jobs.id, job.id),
-            eq(jobs.status, "in_progress"),
-            sql`${jobs.execution_generation} IS NOT DISTINCT FROM ${job.execution_generation}`,
-            isNull(jobs.execution_quiesced_at),
-            sql`EXISTS (
+    const prepare = async (): Promise<void> => {
+      await dbWrite.transaction(async (tx) => {
+        await configureElizaLifecycleTransaction(tx);
+        // PGlite's TCP bridge does not release transaction-scoped advisory
+        // locks reliably at commit. Local Docker retains the exact job,
+        // generation, lease, conflict, and sandbox-row fences below.
+        if (!usesLocalDockerSandboxProvider()) {
+          await tx.execute(
+            elizaProvisionAdvisoryLockSql(identity.organizationId, identity.agentId),
+          );
+        }
+        const [currentJob] = await tx
+          .select({ id: jobs.id })
+          .from(jobs)
+          .where(
+            and(
+              eq(jobs.id, job.id),
+              eq(jobs.status, "in_progress"),
+              sql`${jobs.execution_generation} IS NOT DISTINCT FROM ${job.execution_generation}`,
+              isNull(jobs.execution_quiesced_at),
+              sql`EXISTS (
               SELECT 1
               FROM ${jobExecutionLeases}
               WHERE ${jobExecutionLeases.job_id} = ${job.id}
@@ -4424,118 +4567,20 @@ export class ProvisioningJobService {
                 AND ${jobExecutionLeases.owner_id} = ${this.executionOwnerId}
                 AND ${jobExecutionLeases.expires_at} > NOW()
             )`,
-          ),
-        )
-        .limit(1);
-      if (!currentJob) {
-        throw new Error(`Lifecycle execution generation is no longer current: ${job.id}`);
-      }
-
-      const [sandboxAuthority] = await tx
-        .select({
-          executionTier: agentSandboxes.execution_tier,
-          pool_status: agentSandboxes.pool_status,
-          deleted_at: agentSandboxes.deleted_at,
-          deletion_attempt_id: agentSandboxes.deletion_attempt_id,
-        })
-        .from(agentSandboxes)
-        .where(
-          and(
-            eq(agentSandboxes.id, identity.agentId),
-            eq(agentSandboxes.organization_id, identity.organizationId),
-          ),
-        )
-        .for("update")
-        .limit(1);
-      if (
-        requiresContainerBackedTarget(job.type) &&
-        (!sandboxAuthority || !isContainerBackedExecutionTier(sandboxAuthority.executionTier))
-      ) {
-        throw new RejectedAgentExecutionError(
-          `${CONTAINER_BACKED_TARGET_REQUIRED_MESSAGE}: ${job.type}`,
-          {
-            jobId: job.id,
-            jobType: job.type,
-            columnAgentId: job.agent_id,
-            columnOrganizationId: job.organization_id,
-            payloadAgentId: identity.agentId,
-            payloadOrganizationId: identity.organizationId,
-            executionTier: sandboxAuthority?.executionTier ?? "missing",
-          },
-        );
-      }
-
-      if (job.type === JOB_TYPES.AGENT_SNAPSHOT && sandboxAuthority) {
-        const rejection = snapshotAuthorityRejection(sandboxAuthority);
-        if (rejection) {
-          throw new RejectedAgentExecutionError(rejection, {
-            jobId: job.id,
-            jobType: job.type,
-            columnAgentId: job.agent_id,
-            columnOrganizationId: job.organization_id,
-            payloadAgentId: identity.agentId,
-            payloadOrganizationId: identity.organizationId,
-            executionTier: sandboxAuthority.executionTier,
-          });
-        }
-      }
-
-      if (!EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES.includes(job.type as ProvisioningJobType)) return;
-
-      const [conflict] = await tx
-        .select({ id: jobs.id, type: jobs.type, status: jobs.status })
-        .from(jobs)
-        .where(
-          and(
-            eq(jobs.organization_id, job.organization_id),
-            eq(jobs.agent_id, identity.agentId),
-            inArray(jobs.type, EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES),
-            ne(jobs.id, job.id),
-            sql`${jobs.status} IN ('pending', 'in_progress')`,
-            // A manual suspend may be a durable follow-up to an already claimed
-            // billing suspend. Both executions serialize on the sandbox row in
-            // executeSuspend; treating them as a conflict would strand the
-            // unconditional follow-up behind the stale hydrated billing job.
-            or(ne(jobs.type, job.type), ne(jobs.type, JOB_TYPES.AGENT_SUSPEND)),
-          ),
-        )
-        .orderBy(desc(jobs.created_at))
-        .limit(1);
-      if (conflict) {
-        throw new ApiError(
-          409,
-          "session_not_ready",
-          `Agent ${job.agent_id} has conflicting ${conflict.type} job ${conflict.id}`,
-          {
-            conflictingJobId: conflict.id,
-            conflictingJobType: conflict.type,
-            conflictingJobStatus: conflict.status,
-          },
-        );
-      }
-      const [claimedSandbox] = await tx
-        .update(agentSandboxes)
-        .set({
-          lifecycle_job_id: job.id,
-          lifecycle_execution_generation: job.execution_generation,
-        })
-        .where(
-          and(
-            eq(agentSandboxes.id, identity.agentId),
-            eq(agentSandboxes.organization_id, identity.organizationId),
-            or(
-              isNull(agentSandboxes.lifecycle_execution_generation),
-              and(
-                eq(agentSandboxes.lifecycle_job_id, job.id),
-                sql`${agentSandboxes.lifecycle_execution_generation} IS NOT DISTINCT FROM ${job.execution_generation}`,
-              ),
             ),
-          ),
-        )
-        .returning({ id: agentSandboxes.id });
-      if (!claimedSandbox) {
-        const [existingSandbox] = await tx
-          .select({ id: agentSandboxes.id })
+          )
+          .limit(1);
+        if (!currentJob) {
+          throw new Error(`Lifecycle execution generation is no longer current: ${job.id}`);
+        }
+
+        const [sandboxAuthority] = await tx
+          .select({
+            executionTier: agentSandboxes.execution_tier,
+            pool_status: agentSandboxes.pool_status,
+            deleted_at: agentSandboxes.deleted_at,
+            deletion_attempt_id: agentSandboxes.deletion_attempt_id,
+          })
           .from(agentSandboxes)
           .where(
             and(
@@ -4543,12 +4588,131 @@ export class ProvisioningJobService {
               eq(agentSandboxes.organization_id, identity.organizationId),
             ),
           )
+          .for("update")
           .limit(1);
-        if (existingSandbox) {
-          throw new Error(`Agent lifecycle resource generation is already owned: ${job.agent_id}`);
+        if (
+          requiresContainerBackedTarget(job.type) &&
+          (!sandboxAuthority || !isContainerBackedExecutionTier(sandboxAuthority.executionTier))
+        ) {
+          throw new RejectedAgentExecutionError(
+            `${CONTAINER_BACKED_TARGET_REQUIRED_MESSAGE}: ${job.type}`,
+            {
+              jobId: job.id,
+              jobType: job.type,
+              columnAgentId: job.agent_id,
+              columnOrganizationId: job.organization_id,
+              payloadAgentId: identity.agentId,
+              payloadOrganizationId: identity.organizationId,
+              executionTier: sandboxAuthority?.executionTier ?? "missing",
+            },
+          );
         }
-      }
-    });
+
+        if (job.type === JOB_TYPES.AGENT_SNAPSHOT && sandboxAuthority) {
+          const rejection = snapshotAuthorityRejection(sandboxAuthority);
+          if (rejection) {
+            throw new RejectedAgentExecutionError(rejection, {
+              jobId: job.id,
+              jobType: job.type,
+              columnAgentId: job.agent_id,
+              columnOrganizationId: job.organization_id,
+              payloadAgentId: identity.agentId,
+              payloadOrganizationId: identity.organizationId,
+              executionTier: sandboxAuthority.executionTier,
+            });
+          }
+        }
+
+        if (!EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES.includes(job.type as ProvisioningJobType)) return;
+
+        const [conflict] = await tx
+          .select({ id: jobs.id, type: jobs.type, status: jobs.status })
+          .from(jobs)
+          .where(
+            and(
+              eq(jobs.organization_id, job.organization_id),
+              eq(jobs.agent_id, identity.agentId),
+              inArray(jobs.type, EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES),
+              ne(jobs.id, job.id),
+              sql`${jobs.status} IN ('pending', 'in_progress')`,
+              // A manual suspend may be a durable follow-up to an already claimed
+              // billing suspend. Both executions serialize on the sandbox row in
+              // executeSuspend; treating them as a conflict would strand the
+              // unconditional follow-up behind the stale hydrated billing job.
+              or(ne(jobs.type, job.type), ne(jobs.type, JOB_TYPES.AGENT_SUSPEND)),
+            ),
+          )
+          .orderBy(desc(jobs.created_at))
+          .limit(1);
+        if (conflict) {
+          throw new ApiError(
+            409,
+            "session_not_ready",
+            `Agent ${job.agent_id} has conflicting ${conflict.type} job ${conflict.id}`,
+            {
+              conflictingJobId: conflict.id,
+              conflictingJobType: conflict.type,
+              conflictingJobStatus: conflict.status,
+            },
+          );
+        }
+        const [claimedSandbox] = await tx
+          .update(agentSandboxes)
+          .set({
+            lifecycle_job_id: job.id,
+            lifecycle_execution_generation: job.execution_generation,
+          })
+          .where(
+            and(
+              eq(agentSandboxes.id, identity.agentId),
+              eq(agentSandboxes.organization_id, identity.organizationId),
+              or(
+                isNull(agentSandboxes.lifecycle_execution_generation),
+                and(
+                  eq(agentSandboxes.lifecycle_job_id, job.id),
+                  sql`${agentSandboxes.lifecycle_execution_generation} IS NOT DISTINCT FROM ${job.execution_generation}`,
+                ),
+              ),
+            ),
+          )
+          .returning({ id: agentSandboxes.id });
+        if (!claimedSandbox) {
+          const [existingSandbox] = await tx
+            .select({ id: agentSandboxes.id })
+            .from(agentSandboxes)
+            .where(
+              and(
+                eq(agentSandboxes.id, identity.agentId),
+                eq(agentSandboxes.organization_id, identity.organizationId),
+              ),
+            )
+            .limit(1);
+          if (existingSandbox) {
+            throw new Error(
+              `Agent lifecycle resource generation is already owned: ${job.agent_id}`,
+            );
+          }
+        }
+      });
+    };
+    if (!ACCOUNT_LIFECYCLE_FENCED_AGENT_JOB_TYPES.includes(job.type as ProvisioningJobType)) {
+      await prepare();
+      return;
+    }
+    try {
+      await prepareProvisioningWithAccountLifecycleFence(identity.organizationId, prepare);
+    } catch (error) {
+      if (!(error instanceof AccountLifecycleFencedError)) throw error;
+      throw new RejectedAgentExecutionError(`Account lifecycle fenced provisioning job ${job.id}`, {
+        jobId: job.id,
+        jobType: job.type,
+        columnAgentId: job.agent_id,
+        columnOrganizationId: job.organization_id,
+        payloadAgentId: identity.agentId,
+        payloadOrganizationId: identity.organizationId,
+        cause: "account_lifecycle_fenced_or_stale",
+      });
+    }
   }
 
   private async executeJob(job: Job): Promise<void> {
@@ -4557,6 +4721,53 @@ export class ProvisioningJobService {
       await this.executionOverride(job);
       return;
     }
+    const providerAdmission = this.providerAdmissionForJob(job);
+    if (!providerAdmission) {
+      await this.executeJobDispatch(job);
+      return;
+    }
+    try {
+      await executeProvisioningWithAccountLifecycleAdmission({
+        authority: providerAdmission,
+        acquire: this.acquireProviderAdmission,
+        release: this.releaseProviderAdmission,
+        execute: () => this.executeJobDispatch(job),
+      });
+    } catch (error) {
+      if (!(error instanceof AccountLifecycleFencedError)) throw error;
+      const identity = this.assertAgentJobIdentity(job);
+      throw new RejectedAgentExecutionError(
+        `Account lifecycle fenced provider admission ${job.id}`,
+        {
+          jobId: job.id,
+          jobType: job.type,
+          columnAgentId: job.agent_id,
+          columnOrganizationId: job.organization_id,
+          payloadAgentId: identity?.agentId,
+          payloadOrganizationId: identity?.organizationId,
+          cause: "account_lifecycle_fenced_or_stale",
+        },
+      );
+    }
+  }
+
+  private providerAdmissionForJob(job: Job): ProviderAdmissionAuthority | undefined {
+    if (!ACCOUNT_LIFECYCLE_FENCED_AGENT_JOB_TYPES.includes(job.type as ProvisioningJobType)) {
+      return undefined;
+    }
+    return {
+      organizationId: job.organization_id,
+      operationKind: "agent_lifecycle",
+      operationId: job.id,
+    };
+  }
+
+  private async releaseProviderAdmissionAfterRecordedFailure(job: Job): Promise<void> {
+    const authority = this.providerAdmissionForJob(job);
+    if (authority) await this.releaseProviderAdmission(authority);
+  }
+
+  private async executeJobDispatch(job: Job): Promise<void> {
     switch (job.type) {
       case JOB_TYPES.AGENT_PROVISION:
         await this.executeAgentProvision(job);
@@ -5981,7 +6192,12 @@ export class ProvisioningJobService {
     });
 
     await this.assertExecutionMutationLease(job);
-    const provResult = await elizaSandboxService.provision(data.agentId, data.organizationId);
+    const restoreDirective = await resolveReviewedProvisionRestoreDirectiveForExecution(data);
+    const provResult = await elizaSandboxService.provision(
+      data.agentId,
+      data.organizationId,
+      restoreDirective,
+    );
 
     if (await this.completeIfAgentGone(job, provResult, data.agentId)) return;
 

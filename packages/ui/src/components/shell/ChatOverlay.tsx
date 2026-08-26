@@ -1291,6 +1291,9 @@ export function ChatOverlay({
     if (/waiting for sign-in/i.test(latestStatus)) {
       return "Waiting for sign-in…";
     }
+    if (/couldn['’]t connect to eliza cloud/i.test(latestStatus)) {
+      return "Hey Eliza…";
+    }
     if (
       /opening your personal eliza|setting up your agent|connecting to eliza cloud/i.test(
         latestStatus,
@@ -1298,7 +1301,7 @@ export function ChatOverlay({
     ) {
       return "Connecting to Eliza Cloud…";
     }
-    return "Tell me what’s on your plate";
+    return "Hey Eliza…";
   }, [messages]);
   // Local text-model readiness (#12178 WI-4). While it `blocksSend`, the
   // composer stays usable and the in-chat model-status card carries progress +
@@ -2050,6 +2053,16 @@ export function ChatOverlay({
     renderableMessages,
     renderWindow.windowSize,
   ]);
+  const cloudSignInRequired = React.useMemo(
+    () =>
+      firstRunOpen &&
+      visibleMessages.some((message) =>
+        message.content.includes(
+          "__first_run__:runtime:cloud=Sign in to Eliza Cloud",
+        ),
+      ),
+    [firstRunOpen, visibleMessages],
+  );
   // Automatic realtime speech belongs to the composer-wide voice state. Only
   // user-selected playback belongs to a message row; binding automatic TTS to
   // the newest row would reveal Reply/Copy/Play as each response starts.
@@ -6590,9 +6603,10 @@ export function ChatOverlay({
                   ref={inputRef}
                   rows={1}
                   value={draft}
-                  // Free text reaches the local conductor during onboarding;
-                  // only the external sign-in wait makes the field read-only.
-                  disabled={false}
+                  // Hosted Cloud onboarding has one action: the transcript's
+                  // sign-in CTA. Muting the composer avoids presenting a second,
+                  // inert route while local/remote setup can still accept text.
+                  disabled={cloudSignInRequired}
                   readOnly={cloudLoginWaiting}
                   onChange={(e) => {
                     const nextDraft = e.target.value;
@@ -6655,18 +6669,20 @@ export function ChatOverlay({
                   placeholder={
                     compactLanding
                       ? "Message"
-                      : firstRunOpen
-                        ? firstRunComposerPlaceholder
-                        : noProviderConfigured
-                          ? "Connect a model provider in Settings to chat"
-                          : modelBlocksSend
-                            ? modelStatus?.kind === "downloading"
-                              ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
-                              : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
-                            : booting
-                              ? `Message ${agentName} — waking up…`
-                              : (viewChatBinding?.placeholder ??
-                                `Message ${agentName}`)
+                      : cloudSignInRequired
+                        ? "Sign in to get started"
+                        : firstRunOpen
+                          ? firstRunComposerPlaceholder
+                          : noProviderConfigured
+                            ? "Connect a model provider in Settings to chat"
+                            : modelBlocksSend
+                              ? modelStatus?.kind === "downloading"
+                                ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
+                                : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
+                              : booting
+                                ? `Message ${agentName} — waking up…`
+                                : (viewChatBinding?.placeholder ??
+                                  `Message ${agentName}`)
                   }
                   aria-label="message"
                   data-testid="chat-composer-textarea"
@@ -6683,10 +6699,9 @@ export function ChatOverlay({
                   {...comboboxAria}
                   // The floating composer is the primary chat affordance on the
                   // ambient home surface, so its placeholder must stay readable
-                  // even when the glass pill sits over dark wallpaper. During
-                  // onboarding `disabled:opacity-100` prevents the browser from
-                  // dimming the locked cue.
-                  className="scrollbar-hide min-w-0 flex-1 resize-none self-center leading-relaxed disabled:pointer-events-none disabled:opacity-100"
+                  // even when the glass pill sits over dark wallpaper. A locked
+                  // Cloud composer is intentionally muted beneath the live CTA.
+                  className="scrollbar-hide min-w-0 flex-1 resize-none self-center leading-relaxed disabled:pointer-events-none disabled:opacity-60"
                 />
               )}
               {!transcriptionComposerActive &&

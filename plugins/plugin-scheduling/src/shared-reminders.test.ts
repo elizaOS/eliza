@@ -130,6 +130,7 @@ function harness(): {
       delivery: {
         platform: "telegram",
         project: "eliza-app",
+        connectorAccountId: "bot:123456789",
         chatId: "123456",
       },
       now: () => new Date(NOW),
@@ -139,6 +140,26 @@ function harness(): {
 
 describe("Shared reminders edge plugin", () => {
   it("accepts only trusted private Telegram, Blooio, and Discord destinations", () => {
+    expect(
+      parseSharedReminderDelivery({
+        platform: "telegram",
+        project: "eliza-app",
+        connectorAccountId: "bot:123456789",
+        chatId: "123456",
+      }),
+    ).toEqual({
+      platform: "telegram",
+      project: "eliza-app",
+      connectorAccountId: "bot:123456789",
+      chatId: "123456",
+    });
+    expect(
+      parseSharedReminderDelivery({
+        platform: "telegram",
+        project: "eliza-app",
+        chatId: "123456",
+      }),
+    ).toBeUndefined();
     expect(
       parseSharedReminderDelivery({
         platform: "blooio",
@@ -210,6 +231,7 @@ describe("Shared reminders edge plugin", () => {
         delivery: {
           platform: "telegram",
           project: "eliza-app",
+          connectorAccountId: "bot:123456789",
           chatId: "123456",
         },
       },

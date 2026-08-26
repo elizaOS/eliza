@@ -275,7 +275,12 @@ This package mostly reads config injected by the host, not raw env vars:
   variant to the canonical component, or a composition on top of it.
 - **Add a nav tab at runtime:** call `registerAppShellPage(registration)`
   (`app-shell-registry.ts`) from the host/plugin; the shell + `navigation/`
-  pick it up.
+  pick it up. The default/explicit `surface.header: "normal"` receives exactly
+  one shell-owned `ViewHeader` for both in-process and remote renderers; the
+  plugin renders only its body. Declare `fullscreen`, `immersive`, or `modal`
+  only when the page intentionally owns or omits that framing. Shared chrome is
+  available from `@elizaos/ui/components/shared`; settings layout primitives
+  are available from `@elizaos/ui/components/composites/settings`.
 - **Make a view agent-controllable:** use `useAgentElement` — see
   `src/agent-surface/README.md` for ids/roles/controlled-component rules.
 - **Add a mutating control to a builtin view:** every on-screen mutation in

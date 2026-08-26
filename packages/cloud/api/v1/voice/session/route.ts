@@ -146,6 +146,7 @@ app.post("/", async (c) => {
       body.conversationId === canonicalPersonalId
         ? await findActivePersonalDedicatedTarget(
             auth.organization_id,
+            auth.id,
             canonicalPersonalId,
           )
         : null;
