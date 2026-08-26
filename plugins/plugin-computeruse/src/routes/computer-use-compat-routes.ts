@@ -9,7 +9,7 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
-import { ModelType, resolveAliasedEnvValue } from "@elizaos/core";
+import { ModelType, resolveAliasedEnvValue, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { AppDescriptor, AppState } from "../app-control/types.js";
 import { ComputerUseSessionError } from "../sessions/session-manager.js";
 import type {
@@ -52,9 +52,10 @@ function getCompatApiToken(): string | null {
 function getProvidedApiToken(
   req: Pick<http.IncomingMessage, "headers">,
 ): string | null {
-  const authHeader = firstHeaderValue(req.headers.authorization)
-    ?.slice(0, 1024)
-    ?.trim();
+  const rawAuth = firstHeaderValue(req.headers.authorization);
+  const authHeader = rawAuth
+    ? truncateWellFormed(toWellFormedUnicode(rawAuth), 1024).trim()
+    : null;
   if (authHeader) {
     const match = /^Bearer\s{1,8}(.+)$/i.exec(authHeader);
     if (match?.[1]) return match[1].trim();
