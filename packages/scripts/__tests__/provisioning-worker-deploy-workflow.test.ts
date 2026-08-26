@@ -311,6 +311,11 @@ describe("provisioning worker deployment contract", () => {
   });
 
   it("serializes the SSH mutation on the target host after runner cancellation", () => {
+    expect(workflow).toContain(
+      "group: deploy-eliza-provisioning-worker-mutate-$" +
+        "{{ needs.determine-env.outputs.environment }}-$" +
+        "{{ format('run-{0}', github.run_id) }}",
+    );
     const lock = "exec 9>/tmp/eliza-provisioning-worker-deploy.lock";
     expect(workflow).toContain(lock);
     expect(workflow).toContain("flock -w 1200 9");
