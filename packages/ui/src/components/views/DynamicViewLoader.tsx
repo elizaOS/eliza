@@ -552,6 +552,8 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@elizaos/ui/utils": () => import("../../utils/index.ts"),
   "@elizaos/ui/components/composites/page-panel": () =>
     import("../composites/page-panel/index.ts"),
+  "@elizaos/ui/components/composites/settings": () =>
+    import("../composites/settings/index.ts"),
   "@elizaos/ui/components/composites/sidebar/sidebar-content": () =>
     import("../composites/sidebar/sidebar-content.tsx"),
   "@elizaos/ui/components/composites/sidebar/sidebar-panel": () =>
@@ -564,6 +566,7 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
     import("../pages/vector-browser-utils.ts"),
   "@elizaos/ui/components/shared/AppPageSidebar": () =>
     import("../shared/AppPageSidebar.tsx"),
+  "@elizaos/ui/components/shared": () => import("../shared/index.ts"),
   "@elizaos/ui/components/ui/button": () => import("../ui/button.tsx"),
   "@elizaos/ui/components/ui/input": () => import("../ui/input.tsx"),
   "@elizaos/ui/components/ui/select": () => import("../ui/select.tsx"),
