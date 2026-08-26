@@ -20,6 +20,56 @@
 
 static NSString *const kElectrobunVibrancyViewIdentifier =
 	@"ElectrobunVibrancyView";
+
+static std::atomic<uint32_t> elizaCalendarStoreGeneration{0};
+static id elizaCalendarStoreObserver = nil;
+static EKEventStore *elizaObservedCalendarStore = nil;
+
+static void elizaRunOnMainThreadSync(dispatch_block_t block) {
+	if ([NSThread isMainThread]) {
+		block();
+	} else {
+		dispatch_sync(dispatch_get_main_queue(), block);
+	}
+}
+
+extern "C" bool elizaCalendarStoreChangesStart(void) {
+	__block BOOL started = NO;
+	elizaRunOnMainThreadSync(^{
+		@synchronized([EKEventStore class]) {
+			if (elizaCalendarStoreObserver == nil) {
+				elizaObservedCalendarStore = [[EKEventStore alloc] init];
+				elizaCalendarStoreObserver = [[NSNotificationCenter defaultCenter]
+					addObserverForName:EKEventStoreChangedNotification
+					object:nil
+					queue:[NSOperationQueue mainQueue]
+					usingBlock:^(__unused NSNotification *notification) {
+						elizaCalendarStoreGeneration.fetch_add(1,
+							std::memory_order_release);
+					}];
+			}
+			started = elizaCalendarStoreObserver != nil;
+		}
+	});
+	return started;
+}
+
+extern "C" uint32_t elizaCalendarStoreChangesPoll(void) {
+	return elizaCalendarStoreGeneration.load(std::memory_order_acquire);
+}
+
+extern "C" void elizaCalendarStoreChangesStop(void) {
+	elizaRunOnMainThreadSync(^{
+		@synchronized([EKEventStore class]) {
+			if (elizaCalendarStoreObserver != nil) {
+				[[NSNotificationCenter defaultCenter]
+					removeObserver:elizaCalendarStoreObserver];
+				elizaCalendarStoreObserver = nil;
+			}
+			elizaObservedCalendarStore = nil;
+		}
+	});
+}
 static NSString *const kElectrobunNativeDragViewIdentifier =
 	@"ElectrobunNativeDragView";
 static NSString *const kElectrobunNativeDragTitleViewIdentifier =

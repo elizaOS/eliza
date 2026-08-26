@@ -11,7 +11,7 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as appleCalendarBridgePolicyImport from "@elizaos/capacitor-calendar/macos-bridge-policy";
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import type {
   CreateLifeOpsCalendarEventAttendee,
   CreateLifeOpsCalendarEventRequest,
@@ -182,6 +182,9 @@ type MacCalendarBridge = {
   createEvent(payloadJson: string): string | null;
   updateEvent(eventId: string, payloadJson: string): string | null;
   deleteEvent(eventId: string): string | null;
+  addChangeListener(
+    listener: (event: { observedAt: string }) => void,
+  ): Promise<{ remove: () => Promise<void> }>;
 };
 
 let macCalendarBridge: MacCalendarBridge | null | undefined;
@@ -283,8 +286,23 @@ async function loadMacCalendarBridge(): Promise<MacCalendarBridge | null> {
           args: [FFIType.ptr],
           returns: FFIType.ptr,
         },
+        elizaCalendarStoreChangesStart: { args: [], returns: FFIType.bool },
+        elizaCalendarStoreChangesPoll: { args: [], returns: FFIType.i32 },
+        elizaCalendarStoreChangesStop: { args: [], returns: FFIType.void },
         freeNativeCString: { args: [FFIType.ptr], returns: FFIType.void },
       });
+
+      const changeListeners = new Set<
+        (event: { observedAt: string }) => void
+      >();
+      let changePollTimer: ReturnType<typeof setInterval> | null = null;
+      let lastChangeGeneration = 0;
+
+      const stopChangePolling = () => {
+        if (changePollTimer) clearInterval(changePollTimer);
+        changePollTimer = null;
+        lib.symbols.elizaCalendarStoreChangesStop();
+      };
 
       const takeNativeString = (value: unknown): string | null => {
         if (!value) return null;
@@ -327,6 +345,59 @@ async function loadMacCalendarBridge(): Promise<MacCalendarBridge | null> {
           return takeNativeString(
             lib.symbols.deleteAppleCalendarEventJson(ptr(id)),
           );
+        },
+        async addChangeListener(listener) {
+          changeListeners.add(listener);
+          if (!changePollTimer) {
+            if (!lib.symbols.elizaCalendarStoreChangesStart()) {
+              changeListeners.delete(listener);
+              throw new ElizaError(
+                "Native EventKit change observation could not be registered.",
+                {
+                  code: "APPLE_CALENDAR_CHANGE_OBSERVER_REGISTRATION_FAILED",
+                  severity: "ephemeral",
+                },
+              );
+            }
+            lastChangeGeneration = lib.symbols.elizaCalendarStoreChangesPoll();
+            changePollTimer = setInterval(() => {
+              try {
+                const generation = lib.symbols.elizaCalendarStoreChangesPoll();
+                if (generation === lastChangeGeneration) return;
+                lastChangeGeneration = generation;
+                const event = { observedAt: new Date().toISOString() };
+                for (const current of [...changeListeners]) {
+                  try {
+                    current(event);
+                  } catch (error) {
+                    // error-policy:J7 One consumer failure must not suppress
+                    // delivery to the remaining calendar-change listeners.
+                    logger.warn(
+                      { error },
+                      "[AppleCalendar] Native change listener failed",
+                    );
+                  }
+                }
+              } catch (error) {
+                // error-policy:J7 Native change diagnostics must not kill the
+                // desktop loop; retain the listener for the next poll.
+                logger.warn(
+                  { error },
+                  "[AppleCalendar] Native change poll failed",
+                );
+              }
+            }, 250);
+            changePollTimer.unref?.();
+          }
+          let removed = false;
+          return {
+            remove: async () => {
+              if (removed) return;
+              removed = true;
+              changeListeners.delete(listener);
+              if (changeListeners.size === 0) stopChangePolling();
+            },
+          };
         },
       };
       return macCalendarBridge;
@@ -503,6 +574,9 @@ async function loadNativeCalendarBridge(): Promise<NativeCalendarBridge | null> 
     },
     async deleteEvent(eventId) {
       return parseNativePayload(macBridge.deleteEvent(eventId));
+    },
+    async addListener(_eventName, listener) {
+      return macBridge.addChangeListener(listener);
     },
   };
 }
@@ -964,6 +1038,10 @@ export const __testing = {
   },
   setMacCalendarBridgeForTest(bridge: MacCalendarBridge | null): void {
     macCalendarBridgeOverride = bridge;
+  },
+  resetMacCalendarBridgeForTest(): void {
+    macCalendarBridgeOverride = undefined;
+    macCalendarBridge = undefined;
   },
   nativeDylibCandidates,
 };
