@@ -39,6 +39,12 @@ export const REMOTE_COMMAND_ACTIONS = [
   "agent.status",
 ] as const;
 
+/** Narrow initial ceiling shown on both sides of target-initiated pairing. */
+export const REMOTE_TARGET_PAIRING_CAPABILITIES = [
+  "agent.status",
+  "agent.request",
+] as const satisfies readonly RemoteCommandAction[];
+
 export type RemoteCommandAction = (typeof REMOTE_COMMAND_ACTIONS)[number];
 
 export const REMOTE_CONTROL_MESSAGE_KINDS = [

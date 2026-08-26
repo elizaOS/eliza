@@ -38,12 +38,19 @@ Execution uses these durable phases:
 5. terminal result persisted: resend the identical encrypted result until the
    relay acknowledges it or reports a terminal claim outcome.
 
-The target has no generic shell, filesystem, URL, or HTTP proxy. The current
-allowlist is deliberately demo-safe: `agent.status` with an empty payload, or
-`agent.request` containing an exact `GET /api/health` or `GET /api/status`
-request with no body or caller headers. The native executor injects the real
-loopback agent bearer and an execution id. Other actions are signed as rejected
-without reaching the local API.
+The target has no generic shell, filesystem, URL, or HTTP proxy. The shared
+controller/target allowlist admits readiness plus the minimum selected-runtime
+conversation surface: exact health/status and conversation-list GETs,
+conversation creation, UUID-scoped bounded history reads, and UUID-scoped
+SSE-compatible message sends buffered into the signed terminal result. Methods,
+query parameters, headers, JSON fields, metadata depth/nodes, and
+request/response bytes are bounded at both ends.
+Chat sends require the app's durable `clientMessageId`, so the agent's
+idempotency store and the remote runner's no-retry-after-start boundary compose
+instead of permitting a duplicated turn. Attachments, deletion, arbitrary
+plugin routes, caller authorization headers, and every other action remain
+rejected before loopback. The native executor injects the real loopback bearer
+and an execution id after validation.
 
 ## Revocation and cleanup
 
@@ -56,9 +63,18 @@ authority is already gone and the operation is idempotent for retry.
 
 ## Evidence boundary
 
-Focused tests use real P-256 signatures, ECDH/HKDF/AES-GCM envelopes, durable
-runner recreation, streamed HTTP bodies, and an in-memory OS-store substitute.
-They prove protocol and crash-state behavior, not a live Cloud deployment or a
-physical second device. A production demo still requires deployed migrations,
-two signed-in devices, a real Secret Service session, and observed loopback
-health execution through the packaged Linux app.
+The same-host integration test exercises the real
+`DesktopRemoteTargetService` and `RemoteTargetVault` with a faithful injected
+secret-store boundary, the atomic journal, real P-256 signatures,
+ECDH/HKDF/AES-GCM envelopes, and an authenticated loopback target. It destroys
+and recreates the service mid-session, resumes the journal, proves an
+acknowledged command is dispatched exactly once, then revokes the host and
+proves restart cannot resurrect authority. Focused suites also cover streamed
+HTTP bounds and the remaining crash phases.
+
+That is process/runtime evidence on one host. It is not proof of a live Linux
+Secret Service implementation, deployed Cloud/PGlite migrations, WAN behavior,
+or a physical second device. A release demo still requires two signed-in
+machines, real keyring persistence, the deployed relay, changed-host-key and
+disconnect/reconnect exercises, and observed loopback execution through the
+packaged Linux app.

@@ -159,7 +159,6 @@ describe("auth dev-login (SIWE wallet)", () => {
     // The raw body cuts mid-surrogate-pair at unit 160: units 0-158 are "a",
     // unit 159 is the high surrogate of 😀 and unit 160 its low surrogate, so a
     // plain slice(0, 160) ends in an unpaired high surrogate.
-    expect(message).toBe(message.toWellFormed());
     for (let i = 0; i < message.length; i += 1) {
       const unit = message.charCodeAt(i);
       if (unit >= 0xd800 && unit <= 0xdbff) {

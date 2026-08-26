@@ -77,7 +77,7 @@ beforeAll(async () => {
   ).text();
   await database.exec(leaseMigration);
   const attemptsMigration = await Bun.file(
-    new URL("../migrations/0312_personal_shared_group_delivery_attempts.sql", import.meta.url),
+    new URL("../migrations/0314_personal_shared_group_delivery_attempts.sql", import.meta.url),
   ).text();
   await database.exec(attemptsMigration);
 });
