@@ -1,31 +1,18 @@
 /**
- * Covers the planner loop's provider context-overflow boundary contract: a
- * hard provider length rejection (live: Cerebras 400 "Please reduce the
- * length of the messages or completion. Current length is 202427 while limit
- * is 131072") TERMINATES the turn with the typed PROVIDER_CONTEXT_OVERFLOW
- * ElizaError — trajectory, cached model history, and context events all
- * byte-intact — UNLESS the largest completed tool result declares a lossless
- * retrieval contract (a recoverable-content locator `ReadView` in its
- * data/promptData). Only then is the oversized projection swapped for its
- * declared retrieval form, preserving the result's own success value, and the
- * iteration retried exactly once; a second overflow is terminal. A successful
- * result is NEVER rewritten to a failure: the reviewed regression (FETCH
- * succeeds, gets erased to a fabricated failure, SUMMARIZE runs without the
- * transcript, turn finishes with an invented recap) is pinned impossible
- * here. Deterministic — vitest-mocked `useModel` throwing the live error
- * shape + injected `executeToolCall`/`evaluate`; no live model.
+ * Covers the planner loop's terminal provider context-overflow boundary. A
+ * provider rejection becomes a typed error without rewriting successful tool
+ * history or allowing an unverified retrieval/FINISH continuation.
  */
 import { describe, expect, it, vi } from "vitest";
 import type { ElizaError } from "../../errors";
 import { PROVIDER_CONTEXT_OVERFLOW } from "../../utils/model-errors";
 import { runPlannerLoop } from "../planner-loop";
-import type { PlannerTrajectory } from "../planner-types";
+import type { PlannerToolResult, PlannerTrajectory } from "../planner-types";
 
 const LIVE_CEREBRAS_MESSAGE =
 	"Bad Request: Please reduce the length of the messages or completion. " +
 	"Current length is 202427 while limit is 131072";
 
-/** The AI_APICallError shape from the live incident (statusCode + flat body). */
 function liveOverflowError(): Error {
 	return Object.assign(new Error(LIVE_CEREBRAS_MESSAGE), {
 		name: "AI_APICallError",
@@ -36,36 +23,30 @@ function liveOverflowError(): Error {
 	});
 }
 
-const HUGE_MARKER = "HUGE-RECAP-RESULT";
+const HUGE_MARKER = "HUGE-DOCUMENT-RESULT";
 const HUGE_TEXT = `${HUGE_MARKER}${"x".repeat(200_000)}`;
-const LOCATOR_REF = "tool-result:fetch-recap-1";
+const DOCUMENT_ID = "00000000-0000-0000-0000-000000000123";
 
-/**
- * A valid progressive-read ReadView: the repo's canonical lossless-retrieval
- * contract (recoverable-content locator + caller-requested pagination via
- * nextOffset). Shape-checked by validateReadView at the boundary.
- */
-function losslessRetrievalReadView() {
+function nestedDocumentReadView() {
 	return {
 		reference: {
-			kind: "tool-result" as const,
-			ref: LOCATOR_REF,
-			revision: "r1",
+			kind: "document" as const,
+			ref: `document:${DOCUMENT_ID}`,
+			revision: "rev-1",
 		},
 		slice: {
-			range: { unit: "byte" as const, start: 0, end: 4096, total: 200_017 },
+			range: { unit: "line" as const, start: 0, end: 500, total: 500 },
 			hasPrevious: false,
-			hasMore: true,
-			nextOffset: 4096,
-			revision: "r1",
-			completeness: "partial-recoverable" as const,
+			hasMore: false,
+			revision: "rev-1",
+			completeness: "complete" as const,
 			sliceSha256: "a".repeat(64),
 		},
 	};
 }
 
 describe("planner-loop — provider context-overflow boundary", () => {
-	it("terminates typed on overflow when the largest result declares no retrieval contract — history byte-intact, no retry", async () => {
+	it("terminates typed with a successful result and every projection byte-intact", async () => {
 		const runtime = {
 			useModel: vi.fn(async () => {
 				const turn = runtime.useModel.mock.calls.length;
@@ -73,176 +54,55 @@ describe("planner-loop — provider context-overflow boundary", () => {
 					return {
 						text: "",
 						toolCalls: [
-							{ id: "c1", name: "FETCH", arguments: { range: "all" } },
+							{
+								id: "document-read",
+								name: "DOCUMENT",
+								arguments: { action: "read", documentId: DOCUMENT_ID },
+							},
 						],
 					};
 				}
-				throw liveOverflowError();
+				if (turn === 2) throw liveOverflowError();
+				return {
+					text: "Here is the summary.",
+					toolCalls: [{ id: "summarize", name: "SUMMARIZE", arguments: {} }],
+				};
 			}),
 			logger: { debug: vi.fn(), warn: vi.fn() },
+		};
+		const originalResult: PlannerToolResult = {
+			success: true,
+			text: HUGE_TEXT,
+			data: {
+				actionName: "DOCUMENT",
+				subaction: "read",
+				documentId: DOCUMENT_ID,
+				readView: nestedDocumentReadView(),
+			},
+			promptData: {
+				actionName: "DOCUMENT",
+				subaction: "read",
+				documentId: DOCUMENT_ID,
+				readView: nestedDocumentReadView(),
+			},
 		};
 		let capturedTrajectory: PlannerTrajectory | undefined;
 		const executeToolCall = vi.fn(
 			async (
-				_toolCall: { name: string },
+				toolCall: { name: string },
 				context: { trajectory: PlannerTrajectory },
 			) => {
 				capturedTrajectory = context.trajectory;
-				return { success: true, text: HUGE_TEXT };
+				if (toolCall.name !== "DOCUMENT") {
+					throw new Error(`unexpected recovery action: ${toolCall.name}`);
+				}
+				return originalResult;
 			},
 		);
-
-		let thrown: ElizaError | undefined;
-		try {
-			await runPlannerLoop({
-				runtime,
-				context: { id: "ctx" },
-				tools: [{ name: "FETCH", description: "Fetch a transcript range." }],
-				executeToolCall,
-				evaluate: vi.fn(async () => ({
-					success: true,
-					decision: "CONTINUE" as const,
-					thought: "Keep going.",
-				})),
-			});
-		} catch (error) {
-			thrown = error as ElizaError;
-		}
-		expect(thrown?.code).toBe(PROVIDER_CONTEXT_OVERFLOW);
-		expect(thrown?.context?.recovery).toBe("no_lossless_retrieval_contract");
-		expect(thrown?.context?.largestResultAction).toBe("FETCH");
-		// No substitution, no retry: the overflowing call is the last one.
-		expect(runtime.useModel).toHaveBeenCalledTimes(2);
-
-		// The successful result is still present and unmodified — success flag,
-		// complete text, and absence of any substitution marker.
-		const fetchStep = capturedTrajectory?.steps.find(
-			(step) => step.toolCall?.name === "FETCH",
-		);
-		expect(fetchStep?.result).toEqual({ success: true, text: HUGE_TEXT });
-		// Every model-facing projection still carries the complete result.
-		expect(JSON.stringify(capturedTrajectory?.modelHistory ?? [])).toContain(
-			HUGE_MARKER,
-		);
-		const toolResultEvent = capturedTrajectory?.context.events.find(
-			(event) => event.type === "tool_result",
-		);
-		expect(toolResultEvent?.metadata?.status).toBe("completed");
-		expect(String(toolResultEvent?.metadata?.result)).toContain(HUGE_MARKER);
-	});
-
-	it("swaps the oversized result for its declared lossless retrieval form and retries once", async () => {
-		const seenMessages: unknown[][] = [];
-		const runtime = {
-			useModel: vi.fn(
-				async (_modelType: unknown, params: { messages: unknown[] }) => {
-					seenMessages.push(params.messages);
-					const turn = runtime.useModel.mock.calls.length;
-					if (turn === 1) {
-						return {
-							text: "",
-							toolCalls: [
-								{ id: "c1", name: "FETCH", arguments: { range: "all" } },
-							],
-						};
-					}
-					if (turn === 2) throw liveOverflowError();
-					return {
-						text: "",
-						toolCalls: [{ id: "c2", name: "SUMMARIZE", arguments: {} }],
-					};
-				},
-			),
-			logger: { debug: vi.fn(), warn: vi.fn() },
-		};
-		const executed: string[] = [];
-		const executeToolCall = vi.fn(async (toolCall: { name: string }) => {
-			executed.push(toolCall.name);
-			if (toolCall.name === "FETCH") {
-				return {
-					success: true,
-					text: HUGE_TEXT,
-					data: { readView: losslessRetrievalReadView() },
-				};
-			}
-			return { success: true, text: "summary ready" };
-		});
-		const evaluate = vi.fn(async () => {
-			if (executed.includes("SUMMARIZE")) {
-				return {
-					success: true,
-					decision: "FINISH" as const,
-					messageToUser: "Here is the short version.",
-				};
-			}
-			return {
-				success: true,
-				decision: "CONTINUE" as const,
-				thought: "Now condense it.",
-			};
-		});
-
-		const result = await runPlannerLoop({
-			runtime,
-			context: { id: "ctx" },
-			tools: [
-				{ name: "FETCH", description: "Fetch a transcript range." },
-				{ name: "SUMMARIZE", description: "Summarize fetched content." },
-			],
-			executeToolCall,
-			evaluate,
-		});
-
-		expect(result.status).toBe("finished");
-		expect(result.finalMessage).toContain("short version");
-		expect(executed).toEqual(["FETCH", "SUMMARIZE"]);
-		// One overflow + one successful retry: 3 planner calls total.
-		expect(runtime.useModel).toHaveBeenCalledTimes(3);
-
-		// The FETCH step keeps its tool call AND its success — the swap is the
-		// declared retrieval form, never a fabricated failure label.
-		const fetchStep = result.trajectory.steps.find(
-			(step) => step.toolCall?.name === "FETCH",
-		);
-		expect(fetchStep?.result?.success).toBe(true);
-		expect(fetchStep?.result?.text).toMatch(
-			/FETCH completed, but its \d+-character result could not be dispatched within the provider context boundary \(limit ~131072 tokens\)/,
-		);
-		expect(fetchStep?.result?.text).toContain(LOCATOR_REF);
-		expect(fetchStep?.result?.data?.providerContextOverflow).toBe(true);
-		expect(fetchStep?.result?.data?.readView).toEqual(
-			losslessRetrievalReadView(),
-		);
-
-		// The retried planner call sees the declared retrieval form (still a
-		// successful result), never the huge text.
-		const retryMessages = JSON.stringify(seenMessages[2] ?? []);
-		expect(retryMessages).toContain(LOCATOR_REF);
-		expect(retryMessages).toContain(
-			"could not be dispatched within the provider context boundary",
-		);
-		expect(retryMessages).not.toContain(HUGE_MARKER);
-		expect(retryMessages).not.toContain('\\"success\\":false');
-	});
-
-	it("throws the typed error when the retry after a lossless swap overflows again", async () => {
-		const runtime = {
-			useModel: vi.fn(async () => {
-				const turn = runtime.useModel.mock.calls.length;
-				if (turn === 1) {
-					return {
-						text: "",
-						toolCalls: [{ id: "c1", name: "FETCH", arguments: {} }],
-					};
-				}
-				throw liveOverflowError();
-			}),
-			logger: { debug: vi.fn(), warn: vi.fn() },
-		};
-		const executeToolCall = vi.fn(async () => ({
+		const evaluate = vi.fn(async () => ({
 			success: true,
-			text: HUGE_TEXT,
-			data: { readView: losslessRetrievalReadView() },
+			decision: "CONTINUE" as const,
+			thought: "Retrieve a narrower source before finishing.",
 		}));
 
 		let thrown: ElizaError | undefined;
@@ -250,82 +110,144 @@ describe("planner-loop — provider context-overflow boundary", () => {
 			await runPlannerLoop({
 				runtime,
 				context: { id: "ctx" },
-				tools: [{ name: "FETCH", description: "Fetch a transcript range." }],
+				tools: [
+					{
+						name: "DOCUMENT",
+						description: "Read a document page by id and range.",
+					},
+					{
+						name: "SUMMARIZE",
+						description: "Summarize retrieved source text.",
+					},
+				],
 				executeToolCall,
-				evaluate: vi.fn(async () => ({
-					success: true,
-					decision: "CONTINUE" as const,
-					thought: "Keep going.",
-				})),
+				evaluate,
 			});
 		} catch (error) {
 			thrown = error as ElizaError;
 		}
+
 		expect(thrown?.code).toBe(PROVIDER_CONTEXT_OVERFLOW);
-		expect(thrown?.context?.recovery).toBe(
-			"retry_after_substitution_overflowed",
+		expect(thrown?.context?.recovery).toBe("typed_boundary_terminal");
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		expect(executeToolCall).toHaveBeenCalledTimes(1);
+		expect(evaluate).toHaveBeenCalledTimes(1);
+
+		const documentStep = capturedTrajectory?.steps.find(
+			(step) => step.toolCall?.name === "DOCUMENT",
 		);
-		// Tool-call turn + overflow + failed retry: exactly one retry, no loop.
-		expect(runtime.useModel).toHaveBeenCalledTimes(3);
+		expect(documentStep?.result).toEqual(originalResult);
+		expect(documentStep?.result?.promptData).toMatchObject({
+			actionName: "DOCUMENT",
+			subaction: "read",
+			documentId: DOCUMENT_ID,
+		});
+		const modelHistory = JSON.stringify(capturedTrajectory?.modelHistory ?? []);
+		expect(modelHistory).toContain(HUGE_MARKER);
+		expect(modelHistory).toContain(DOCUMENT_ID);
+		expect(modelHistory).toContain("subaction");
+		const toolResultEvent = capturedTrajectory?.context.events.find(
+			(event) => event.type === "tool_result",
+		);
+		expect(toolResultEvent?.metadata?.status).toBe("completed");
+		expect(String(toolResultEvent?.metadata?.result)).toContain(HUGE_MARKER);
+		expect(String(toolResultEvent?.metadata?.result)).toContain(DOCUMENT_ID);
 	});
 
-	it("throws the typed error when no tool result exists to substitute", async () => {
+	it("does not treat a nested ReadView plus an exposed resolver as an invocable whole-result contract", async () => {
+		const runtime = {
+			useModel: vi.fn(async () => {
+				if (runtime.useModel.mock.calls.length === 1) {
+					return {
+						text: "",
+						toolCalls: [{ id: "fetch", name: "FETCH", arguments: {} }],
+					};
+				}
+				throw liveOverflowError();
+			}),
+			logger: { debug: vi.fn(), warn: vi.fn() },
+		};
+		const executeToolCall = vi.fn(async (toolCall: { name: string }) => {
+			if (toolCall.name === "READ_TOOL_RESULT") {
+				return { success: true, text: "resolved narrow source" };
+			}
+			return {
+				success: true,
+				text: HUGE_TEXT,
+				promptData: { nested: { readView: nestedDocumentReadView() } },
+			};
+		});
+
+		await expect(
+			runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				tools: [
+					{ name: "FETCH", description: "Fetch the full source." },
+					{
+						name: "READ_TOOL_RESULT",
+						description: "Resolve a declared tool-result page.",
+					},
+				],
+				executeToolCall,
+				evaluate: vi.fn(async () => ({
+					success: true,
+					decision: "CONTINUE" as const,
+					thought: "Resolve the source before finishing.",
+				})),
+			}),
+		).rejects.toMatchObject({ code: PROVIDER_CONTEXT_OVERFLOW });
+		expect(executeToolCall).toHaveBeenCalledTimes(1);
+		expect(executeToolCall.mock.calls[0]?.[0]).toMatchObject({ name: "FETCH" });
+	});
+
+	it("terminates typed when the initial planner input itself overflows", async () => {
 		const runtime = {
 			useModel: vi.fn(async () => {
 				throw liveOverflowError();
 			}),
 			logger: { debug: vi.fn(), warn: vi.fn() },
 		};
-
-		let thrown: ElizaError | undefined;
-		try {
-			await runPlannerLoop({
+		await expect(
+			runPlannerLoop({
 				runtime,
 				context: { id: "ctx" },
 				executeToolCall: vi.fn(),
 				evaluate: vi.fn(),
-			});
-		} catch (error) {
-			thrown = error as ElizaError;
-		}
-		expect(thrown?.code).toBe(PROVIDER_CONTEXT_OVERFLOW);
-		expect(thrown?.context?.recovery).toBe("no_substitutable_tool_result");
-		// Nothing substitutable — no blind retry against the same boundary.
+			}),
+		).rejects.toMatchObject({
+			code: PROVIDER_CONTEXT_OVERFLOW,
+			context: { recovery: "typed_boundary_terminal" },
+		});
 		expect(runtime.useModel).toHaveBeenCalledTimes(1);
 	});
 
-	it("propagates an ordinary 400 untouched — no substitution, no retry", async () => {
+	it("propagates an ordinary provider 400 untouched", async () => {
 		const runtime = {
 			useModel: vi.fn(async () => {
-				const turn = runtime.useModel.mock.calls.length;
-				if (turn === 1) {
+				if (runtime.useModel.mock.calls.length === 1) {
 					return {
 						text: "",
-						toolCalls: [{ id: "c1", name: "FETCH", arguments: {} }],
+						toolCalls: [{ id: "fetch", name: "FETCH", arguments: {} }],
 					};
 				}
 				throw Object.assign(new Error("Bad Request"), { statusCode: 400 });
 			}),
 			logger: { debug: vi.fn(), warn: vi.fn() },
 		};
-		const executeToolCall = vi.fn(async () => ({
-			success: true,
-			text: HUGE_TEXT,
-			data: { readView: losslessRetrievalReadView() },
-		}));
-		const evaluate = vi.fn(async () => ({
-			success: true,
-			decision: "CONTINUE" as const,
-			thought: "Keep going.",
-		}));
-
 		await expect(
 			runPlannerLoop({
 				runtime,
 				context: { id: "ctx" },
-				tools: [{ name: "FETCH", description: "Fetch a transcript range." }],
-				executeToolCall,
-				evaluate,
+				tools: [{ name: "FETCH", description: "Fetch source." }],
+				executeToolCall: vi.fn(async () => ({
+					success: true,
+					text: HUGE_TEXT,
+				})),
+				evaluate: vi.fn(async () => ({
+					success: true,
+					decision: "CONTINUE" as const,
+				})),
 			}),
 		).rejects.toThrow("Bad Request");
 		expect(runtime.useModel).toHaveBeenCalledTimes(2);

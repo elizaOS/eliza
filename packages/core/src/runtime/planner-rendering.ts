@@ -12,7 +12,7 @@ import {
 	type ToolDiagnosticTextRedactor,
 } from "../security/tool-diagnostics";
 import type { ActionResult } from "../types/components";
-import { isReadView, type ReadView } from "../types/content";
+import { isReadView } from "../types/content";
 import type { ChatMessage, ChatMessageContentPart } from "../types/model";
 import type { JsonValue } from "../types/primitives.ts";
 import { getActionResultActionName } from "../utils/action-results";
@@ -223,28 +223,14 @@ export function toolMessageContent(result: PlannerToolResult): string {
 	return stringifyForModel(projectToolResultForModel(result));
 }
 
-/**
- * Depth-first search for the repo's canonical lossless-retrieval marker: a
- * valid progressive-read {@link ReadView} (opaque content reference + slice)
- * anywhere inside a tool result's `data`/`promptData`. Returns the first
- * locator found. This is the tool-result sibling of the
- * `ProviderResult.overflowText` declared-retrieval contract: a result that
- * carries a locator has explicitly promised that its complete content can be
- * re-served losslessly by the locator's owning service, so the dispatch-side
- * provider context-overflow boundary may swap the oversized projection for
- * the declared retrieval form. Results without a locator make no such
- * promise and must never be rewritten.
- */
-export function findRecoverableContentLocator(
-	value: unknown,
-): ReadView | undefined {
+function hasRecoverableContentLocator(value: unknown): boolean {
 	const pending: unknown[] = [value];
 	const visited = new WeakSet<object>();
 	while (pending.length > 0) {
 		const current = pending.pop();
 		if (!current) break;
 		if (isReadView(current)) {
-			return current;
+			return true;
 		}
 		if (current === null || typeof current !== "object") {
 			continue;
@@ -260,7 +246,7 @@ export function findRecoverableContentLocator(
 				current as Record<string, unknown>,
 			)) {
 				if (key === "readView") {
-					if (isReadView(child)) return child;
+					if (isReadView(child)) return true;
 					continue;
 				}
 				children.push(child);
@@ -270,11 +256,7 @@ export function findRecoverableContentLocator(
 			pending.push(child);
 		}
 	}
-	return undefined;
-}
-
-function hasRecoverableContentLocator(value: unknown): boolean {
-	return findRecoverableContentLocator(value) !== undefined;
+	return false;
 }
 
 /**

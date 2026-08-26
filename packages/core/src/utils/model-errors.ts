@@ -304,6 +304,33 @@ const PROVIDER_CONTEXT_OVERFLOW_PATTERNS: readonly RegExp[] = [
 	/input (?:length|tokens?)[\s\S]{0,80}?exceed/i,
 ];
 
+const PROVIDER_API_ERROR_NAMES = new Set([
+	"AI_APICallError",
+	"APICallError",
+	"AI_RetryError",
+	"RetryError",
+]);
+
+const PROVIDER_CONTEXT_OVERFLOW_CODES = new Set([
+	"context_length_exceeded",
+	"context_window_exceeded",
+	"input_too_long",
+]);
+
+function hasProviderOverflowEvidence(node: object): boolean {
+	const status = readHttpStatus(node);
+	if (status !== undefined && status >= 400) return true;
+	const name = (node as { name?: unknown }).name;
+	if (typeof name === "string" && PROVIDER_API_ERROR_NAMES.has(name)) {
+		return true;
+	}
+	const code = (node as { code?: unknown }).code;
+	return (
+		typeof code === "string" &&
+		PROVIDER_CONTEXT_OVERFLOW_CODES.has(code.trim().toLowerCase())
+	);
+}
+
 function nodeOverflowTexts(node: object): string[] {
 	const texts: string[] = [];
 	const message = (node as { message?: unknown }).message;
@@ -320,11 +347,17 @@ function nodeOverflowTexts(node: object): string[] {
  * as {@link modelProviderErrorStatus} and scans `message` and `responseBody`
  * (the AI SDK masks flat error bodies to a bare "Bad Request" statusText, so
  * the actionable phrase often lives only on the body). Conservative: matches
- * only unambiguous length-rejection phrases; ordinary 400s, schema errors, and
+ * only unambiguous length-rejection phrases AND structural provider evidence
+ * somewhere in the bounded chain: an HTTP error status, an AI SDK API-error
+ * type, or a provider context-overflow code. Message text alone is never
+ * authority — a status-less TypeError that happens to contain the same phrase
+ * remains a programmer error and propagates. Ordinary 400s, schema errors, and
  * rate limits never classify.
  */
 export function isProviderContextOverflowError(error: unknown): boolean {
-	for (const node of modelErrorChain(error)) {
+	const nodes = [...modelErrorChain(error)];
+	if (!nodes.some(hasProviderOverflowEvidence)) return false;
+	for (const node of nodes) {
 		for (const text of nodeOverflowTexts(node)) {
 			if (
 				PROVIDER_CONTEXT_OVERFLOW_PATTERNS.some((pattern) => pattern.test(text))

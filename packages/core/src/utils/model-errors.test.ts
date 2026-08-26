@@ -244,6 +244,27 @@ describe("isProviderContextOverflowError", () => {
 		).toBe(true);
 	});
 
+	it("requires structural provider evidence instead of trusting message text", () => {
+		expect(
+			isProviderContextOverflowError(new TypeError(LIVE_CEREBRAS_MESSAGE)),
+		).toBe(false);
+		expect(
+			isProviderContextOverflowError(new Error(LIVE_CEREBRAS_MESSAGE)),
+		).toBe(false);
+	});
+
+	it("accepts AI SDK identity or a typed provider code without an HTTP status", () => {
+		const aiSdkError = Object.assign(new Error(LIVE_CEREBRAS_MESSAGE), {
+			name: "AI_APICallError",
+		});
+		expect(isProviderContextOverflowError(aiSdkError)).toBe(true);
+
+		const codedError = Object.assign(new Error("context_length_exceeded"), {
+			code: "context_length_exceeded",
+		});
+		expect(isProviderContextOverflowError(codedError)).toBe(true);
+	});
+
 	it("classifies a masked statusText whose phrase lives on responseBody", () => {
 		// The AI SDK derives message from the OpenAI envelope only; Cerebras's
 		// flat body leaves message as bare "Bad Request".

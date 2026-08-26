@@ -61,7 +61,6 @@ import {
 	isProviderContextOverflowError,
 	modelProviderErrorDetail,
 	PROVIDER_CONTEXT_OVERFLOW,
-	providerContextOverflowLimitTokens,
 } from "../utils/model-errors";
 import {
 	hasReasoningResidue,
@@ -104,7 +103,6 @@ import {
 } from "./model-input-budget";
 import {
 	cacheProviderOptions,
-	findRecoverableContentLocator,
 	trajectoryStepsToMessages,
 } from "./planner-rendering";
 import type {
@@ -699,6 +697,16 @@ async function runPlannerLoopIterations(
 					onUsage: observePlannerUsage,
 				});
 			} catch (err) {
+				// A context overflow is a terminal integrity boundary even after a
+				// successful action. Relaying the action-owned fallback would hide that
+				// the planner never saw the complete result and could not verify a final
+				// answer from it.
+				if (
+					err instanceof ElizaError &&
+					err.code === PROVIDER_CONTEXT_OVERFLOW
+				) {
+					throw err;
+				}
 				// error-policy:J4 the sole tool already committed; an expected model
 				// provider outage degrades to its vetted action-owned fallback without replay.
 				if (!synthesizingRequiredModelReply || !isModelProviderError(err)) {
@@ -2768,299 +2776,6 @@ async function dispatchPlannerModelCall(params: {
 	return parsed;
 }
 
-/** Serialized size of the model-facing projection of a completed tool result. */
-function toolResultTranscriptChars(result: PlannerToolResult): number {
-	try {
-		return JSON.stringify(result)?.length ?? 0;
-	} catch {
-		// error-policy:J3 a non-serializable result still renders its text; size
-		// by the text so the largest-result selection stays deterministic.
-		return result.text?.length ?? 0;
-	}
-}
-
-/**
- * Outcome of the overflow-recovery attempt. Only "substituted" mutates the
- * trajectory; both terminal outcomes leave every projection byte-intact so
- * the typed PROVIDER_CONTEXT_OVERFLOW termination reports over unfalsified
- * history.
- */
-type OverflowSubstitutionOutcome =
-	| {
-			outcome: "substituted";
-			actionName: string;
-			replacedChars: number;
-			limitTokens?: number;
-	  }
-	| { outcome: "no_tool_result" }
-	| {
-			outcome: "no_retrieval_contract";
-			actionName: string;
-			resultChars: number;
-	  };
-
-/**
- * Overflow recovery, permitted ONLY under a declared lossless retrieval
- * contract. When the provider rejects the planner input at its context
- * boundary, the LARGEST completed tool result is examined: if its
- * `data`/`promptData` carries the repo's canonical recoverable-content
- * locator — a progressive-read `ReadView` (opaque content reference + slice;
- * see {@link findRecoverableContentLocator}), the tool-result sibling of the
- * `ProviderResult.overflowText` declared-retrieval contract — the oversized
- * text is swapped for that declared retrieval form. The swap is lossless BY
- * CONTRACT: the locator's owning service re-serves the identical bytes on
- * demand, and caller-requested pagination continues from the slice the
- * locator names. The result keeps its own `success` value — nothing is
- * relabeled a failure — and the locator rides along in the replacement so
- * the planner can continue with a narrower read.
- *
- * A largest result WITHOUT such a contract is NOT substitutable. Rewriting a
- * successful result the model already acted on would let the planner continue
- * over falsified history (reviewed regression: FETCH succeeds, its transcript
- * is erased to a fabricated failure, SUMMARIZE runs without the transcript,
- * and the turn finishes with an invented "short version"). The caller must
- * terminate with the typed PROVIDER_CONTEXT_OVERFLOW instead, leaving the
- * trajectory, cached model history, and context events untouched.
- *
- * A substitution mutates the step in place and rewrites EVERY model-facing
- * projection of the result: the step itself (live `trajectoryStepsToMessages`
- * renders), the cached `trajectory.modelHistory` tool message (the projection
- * planner AND evaluator renders actually prefer since the cache-locality work
- * in #28125), and the diagnostic `tool_result` context event (renders that
- * fall back to `trajectory.context`). Results that are already overflow
- * substitutions are never re-substituted.
- */
-function substituteLargestToolResultForOverflow(
-	trajectory: PlannerTrajectory,
-	error: unknown,
-	options: {
-		redactText: ToolDiagnosticTextRedactor;
-		logger?: PlannerRuntime["logger"];
-	},
-): OverflowSubstitutionOutcome {
-	let largest: PlannerStep | undefined;
-	let largestChars = 0;
-	for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
-		if (!step.toolCall || !step.result) continue;
-		if (step.result.data?.providerContextOverflow === true) continue;
-		const chars = toolResultTranscriptChars(step.result);
-		if (chars > largestChars) {
-			largest = step;
-			largestChars = chars;
-		}
-	}
-	if (!largest?.toolCall || !largest.result || largestChars === 0) {
-		return { outcome: "no_tool_result" };
-	}
-	const actionName = largest.toolCall.name;
-	const locator =
-		findRecoverableContentLocator(largest.result.promptData) ??
-		findRecoverableContentLocator(largest.result.data);
-	if (!locator) {
-		return {
-			outcome: "no_retrieval_contract",
-			actionName,
-			resultChars: largestChars,
-		};
-	}
-	const limitTokens = providerContextOverflowLimitTokens(error);
-	const limitClause =
-		limitTokens !== undefined
-			? `limit ~${limitTokens} tokens`
-			: "provider context limit";
-	const replacement: PlannerToolResult = {
-		success: largest.result.success,
-		text:
-			`${actionName} completed, but its ${largestChars}-character result ` +
-			`could not be dispatched within the provider context boundary ` +
-			`(${limitClause}). Nothing was lost: the complete content is served ` +
-			`losslessly by its declared content reference below — continue by ` +
-			`re-reading a narrower slice (offset/limit) through it.\n` +
-			stringifyForModel({ readView: locator }),
-		data: { providerContextOverflow: true, readView: locator },
-	};
-	largest.result = replacement;
-	substituteToolResultModelHistoryMessage(
-		trajectory,
-		largest,
-		options.redactText,
-		options.logger,
-	);
-	substituteToolResultContextEvent(
-		trajectory,
-		largest,
-		replacement,
-		options.logger,
-	);
-	return {
-		outcome: "substituted",
-		actionName,
-		replacedChars: largestChars,
-		...(limitTokens !== undefined ? { limitTokens } : {}),
-	};
-}
-
-/** toolCallId of a tool message's `tool-result` content part, if present. */
-function toolResultPartCallId(
-	message: ChatMessage | undefined,
-): string | undefined {
-	if (!message || !Array.isArray(message.content)) return undefined;
-	for (const part of message.content) {
-		if (part && typeof part === "object" && part.type === "tool-result") {
-			const id = (part as { toolCallId?: unknown }).toolCallId;
-			if (typeof id === "string") return id;
-		}
-	}
-	return undefined;
-}
-
-/** Serialized size of a tool message's `tool-result` output projection. */
-function toolResultPartOutputChars(message: ChatMessage): number {
-	if (!Array.isArray(message.content)) return 0;
-	let chars = 0;
-	for (const part of message.content) {
-		if (part && typeof part === "object" && part.type === "tool-result") {
-			try {
-				chars +=
-					JSON.stringify((part as { output?: unknown }).output)?.length ?? 0;
-			} catch {
-				// error-policy:J3 a non-serializable output cannot be the huge text
-				// projection we are hunting; size it as zero and keep selecting.
-			}
-		}
-	}
-	return chars;
-}
-
-/**
- * Rewrite the cached model-history projection of a substituted tool result.
- * Since the planner cache-locality work (#28125), `trajectory.modelHistory` is
- * the append-only assistant/tool message suffix that BOTH the planner render
- * (`renderPlannerModelInput`) and the evaluator render prefer over re-deriving
- * messages from `trajectory.steps` — so an in-place step substitution is
- * invisible to the retry unless the cached tool message is rewritten too.
- * Re-renders the substituted step through the same `trajectoryStepsToMessages`
- * pipeline that appended it (identical redaction and deterministic toolCallId
- * derivation), then replaces the matching cached tool message in place —
- * matched by toolCallId; ties broken by the LONGEST serialized output, the
- * same largest-content selection used for the step itself. In place on
- * purpose: dispatch holds `trajectory.modelHistory` by reference across the
- * retry.
- */
-function substituteToolResultModelHistoryMessage(
-	trajectory: PlannerTrajectory,
-	step: PlannerStep,
-	redactText: ToolDiagnosticTextRedactor,
-	logger?: PlannerRuntime["logger"],
-): void {
-	const history = trajectory.modelHistory;
-	if (!history) return;
-	const rendered = trajectoryStepsToMessages([step], { redactText });
-	const renderedTool = rendered.find((message) => message.role === "tool");
-	const toolCallId = toolResultPartCallId(renderedTool);
-	if (!renderedTool || toolCallId === undefined) {
-		// error-policy:J3 an unprojectable substitution must not silently leave
-		// the rejected content in the cached history; warn so a re-overflow on
-		// the retry is diagnosable instead of mysterious.
-		logger?.warn?.(
-			{ tool: step.toolCall?.name },
-			"[planner-loop] overflow substitution could not re-render the tool message for the cached model history; the retry may still carry the rejected content",
-		);
-		return;
-	}
-	let targetIndex = -1;
-	let targetChars = -1;
-	for (let index = 0; index < history.length; index++) {
-		const message = history[index];
-		if (message?.role !== "tool") continue;
-		if (toolResultPartCallId(message) !== toolCallId) continue;
-		const chars = toolResultPartOutputChars(message);
-		if (chars > targetChars) {
-			targetIndex = index;
-			targetChars = chars;
-		}
-	}
-	if (targetIndex === -1) {
-		// error-policy:J3 same rationale as above: a matcher miss means the
-		// cached history still holds the rejected content — never fail silent.
-		logger?.warn?.(
-			{ tool: step.toolCall?.name, toolCallId },
-			"[planner-loop] overflow substitution found no cached model-history tool message to rewrite; the retry may still carry the rejected content",
-		);
-		return;
-	}
-	history[targetIndex] = renderedTool;
-}
-
-/**
- * The tool result is also projected as the diagnostic `tool_result` context
- * event appended at execution. Since #28125 the planner/evaluator renders read
- * the immutable `modelBaseContext`, so this event is a secondary projection —
- * but renders that fall back to `trajectory.context` (externally constructed
- * trajectories without `modelBaseContext`) still dispatch it, so the
- * substitution rewrites it as well. Matches by `toolCallId` when the call
- * carried one; otherwise by the `tool-result:<name>:` id prefix with the
- * LONGEST serialized result — the same largest-content selection used for the
- * step itself.
- */
-function substituteToolResultContextEvent(
-	trajectory: PlannerTrajectory,
-	step: PlannerStep,
-	replacement: PlannerToolResult,
-	logger?: PlannerRuntime["logger"],
-): void {
-	const events = trajectory.context.events;
-	if (!Array.isArray(events) || !step.toolCall) return;
-	const toolCallId = step.toolCall.id;
-	const idPrefix = `tool-result:${toolCallId ?? step.toolCall.name}:`;
-	let target: ContextObject["events"][number] | undefined;
-	let targetChars = -1;
-	for (const event of events) {
-		if (event.type !== "tool_result") continue;
-		if (toolCallId !== undefined) {
-			if (event.metadata?.toolCallId !== toolCallId) continue;
-			target = event;
-			break;
-		}
-		if (!event.id.startsWith(idPrefix)) continue;
-		const serialized = event.metadata?.result;
-		const chars = typeof serialized === "string" ? serialized.length : 0;
-		if (chars > targetChars) {
-			target = event;
-			targetChars = chars;
-		}
-	}
-	if (!target) {
-		// error-policy:J3 a matcher miss against a changed event schema must be
-		// visible: the context-event projection would still carry the rejected
-		// content for any render that reads `trajectory.context`.
-		logger?.warn?.(
-			{ tool: step.toolCall.name, toolCallId },
-			"[planner-loop] overflow substitution found no tool_result context event to rewrite",
-		);
-		return;
-	}
-	const substitutedEvent = {
-		...target,
-		metadata: {
-			...(target.metadata ?? {}),
-			result: stringifyForModel(replacement),
-			// Mirror the execution-time stamp: the substitution preserves the
-			// result's own success value (a lossless retrieval swap is not a
-			// failure), so the event status tracks it rather than forcing "failed".
-			status: replacement.success
-				? ("completed" as const)
-				: ("failed" as const),
-		},
-	};
-	// In-place on purpose: the dispatch call captured `context` by reference at
-	// the call site, and the synthesis path aliases the same context on a copied
-	// trajectory. Preserving array identity is the only way every capture sees
-	// the substituted projection on the retry.
-	const mutableEvents = events as (typeof events)[number][];
-	mutableEvents[mutableEvents.indexOf(target)] = substitutedEvent;
-}
-
 /** Typed terminal error for an unrecoverable provider context overflow. */
 function providerContextOverflowFailure(
 	cause: unknown,
@@ -3085,16 +2800,15 @@ function providerContextOverflowFailure(
  * provider length rejection (live: Cerebras 400 "Please reduce the length of
  * the messages or completion. Current length is 202427 while limit is
  * 131072") TERMINATES the turn with the typed PROVIDER_CONTEXT_OVERFLOW
- * ElizaError — history untouched — UNLESS the largest completed tool result
- * declares a lossless retrieval contract (recoverable-content locator /
- * caller-requested pagination; see
- * {@link substituteLargestToolResultForOverflow}). Only then is the oversized
- * projection swapped for its declared retrieval form and the iteration
- * retried exactly once; a second overflow after the swap is terminal. The
- * typed error lets the message boundary answer honestly ("that needed more
- * context — want a smaller range?") instead of surfacing a raw provider 400,
- * and instead of ever letting the planner continue over falsified history.
- * All planner-iteration call sites route through here.
+ * ElizaError with every completed result and model-facing projection byte-
+ * intact. A nested ReadView is only a content locator; it neither proves the
+ * complete ActionResult can be reconstructed nor names an invocable resolver.
+ * Continuing from such a locator allowed the planner to skip retrieval and
+ * falsely FINISH after source data and action metadata had been removed. Until
+ * a whole-result recovery protocol can execute and verify a resolver before
+ * any completion path, overflow is terminal. The typed error lets the message
+ * boundary answer honestly ("that needed more context — want a smaller
+ * range?") instead of surfacing a raw provider 400 or falsifying history.
  *
  * COMPOSITION with the pre-emptive input budget (model-input-budget.ts +
  * `ProviderResult.overflowText` in services/message.ts): that mechanism is
@@ -3116,61 +2830,13 @@ async function callPlanner(
 	try {
 		return await dispatchPlannerModelCall(params);
 	} catch (error) {
-		// error-policy:J2 only a classified provider length rejection engages the
-		// lossless-retrieval recovery; every other failure propagates intact.
+		// error-policy:J2 only a structurally classified provider length rejection
+		// is translated; every other failure propagates intact.
 		if (!isProviderContextOverflowError(error)) throw error;
-		const substitution = substituteLargestToolResultForOverflow(
-			params.trajectory,
-			error,
-			{
-				redactText: composeToolDiagnosticRedactor(params.runtime),
-				logger: params.runtime.logger,
-			},
-		);
-		if (substitution.outcome !== "substituted") {
-			// A hard overflow with no declared lossless retrieval contract is
-			// terminal for this turn: substituting anything else would falsify a
-			// completed result and let the planner continue over history that never
-			// happened. No substitution, no retry — every projection stays intact
-			// for the message boundary's honest context_overflow reply.
-			throw providerContextOverflowFailure(error, {
-				iteration: params.iteration,
-				recovery:
-					substitution.outcome === "no_tool_result"
-						? "no_substitutable_tool_result"
-						: "no_lossless_retrieval_contract",
-				...(substitution.outcome === "no_retrieval_contract"
-					? {
-							largestResultAction: substitution.actionName,
-							largestResultChars: substitution.resultChars,
-						}
-					: {}),
-			});
-		}
-		params.runtime.logger?.warn?.(
-			{
-				iteration: params.iteration,
-				action: substitution.actionName,
-				replacedChars: substitution.replacedChars,
-				...(substitution.limitTokens !== undefined
-					? { limitTokens: substitution.limitTokens }
-					: {}),
-			},
-			"[planner-loop] provider rejected the planner input at its context boundary; swapped the largest tool result for its declared lossless retrieval form and retrying once",
-		);
-		try {
-			return await dispatchPlannerModelCall(params);
-		} catch (retryError) {
-			// error-policy:J2 a second overflow after the lossless swap is terminal
-			// for this turn; wrap it typed so the boundary reply can be honest.
-			if (!isProviderContextOverflowError(retryError)) throw retryError;
-			throw providerContextOverflowFailure(retryError, {
-				iteration: params.iteration,
-				recovery: "retry_after_substitution_overflowed",
-				substitutedAction: substitution.actionName,
-				substitutedChars: substitution.replacedChars,
-			});
-		}
+		throw providerContextOverflowFailure(error, {
+			iteration: params.iteration,
+			recovery: "typed_boundary_terminal",
+		});
 	}
 }
 
