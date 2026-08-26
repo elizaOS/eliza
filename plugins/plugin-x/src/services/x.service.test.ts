@@ -3,6 +3,7 @@ import type { Content, IAgentRuntime, TargetInfo } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { ClientBase } from "../base";
 import type { AuthenticatedTwitterSession } from "../client/auth";
+import { countTwitterWeightedLength } from "../tweet-length";
 import type { TwitterClientState } from "../types";
 import { TwitterPostService } from "./PostService";
 import { TwitterClientInstance, XService } from "./x.service";
@@ -516,25 +517,62 @@ describe("XService trusted account routing", () => {
     );
   });
 
-  it("rejects CJK text that exceeds the X weighted 280 cap before egress", async () => {
+  it("delivers oversized content completely as an ordered thread", async () => {
     const runtime = runtimeWithSettings({});
     const service = new XService(runtime);
-    const getClient = vi.spyOn(
+    const profile = {
+      id: "account-owner",
+      username: "account-owner",
+      screenName: "Account Owner",
+      bio: "",
+      nicknames: [],
+    };
+    const base = {
+      profile,
+      withAuthenticatedSession: async <T>(
+        operation: (session: {
+          client: never;
+          profile: typeof profile;
+          revision: number;
+        }) => Promise<T>,
+      ) => operation({ client: {} as never, profile, revision: 1 }),
+    } as unknown as ClientBase;
+    vi.spyOn(
       service as unknown as {
         getTwitterClientForAccount: () => Promise<{ client: ClientBase }>;
       },
       "getTwitterClientForAccount",
-    );
+    ).mockResolvedValue({ client: base });
+    let nextId = 1;
+    const createPost = vi
+      .spyOn(TwitterPostService.prototype, "createPost")
+      .mockImplementation(async (options) => ({
+        id: `thread-${nextId++}`,
+        agentId: runtime.agentId,
+        roomId: options.roomId,
+        userId: profile.id,
+        username: profile.username,
+        text: options.text,
+        timestamp: nextId,
+        inReplyTo: options.inReplyTo,
+      }));
+    createPost.mockClear();
+    const completeText = `${"你".repeat(141)}\n\n keep this spacing `;
 
-    await expect(
-      service.handleSendPost(runtime, {
-        text: "你".repeat(141),
-      } as Content),
-    ).rejects.toMatchObject({
-      code: "X_POST_LENGTH_EXCEEDED",
-      context: { weightedLength: 282, maxWeightedLength: 280 },
-    });
-    expect(getClient).not.toHaveBeenCalled();
+    const receipts = await service.handleSendPost(runtime, {
+      text: completeText,
+    } as Content);
+
+    const calls = createPost.mock.calls.map(([options]) => options);
+    expect(calls.length).toBeGreaterThan(1);
+    expect(calls.map((options) => options.text).join("")).toBe(completeText);
+    expect(calls[1]?.inReplyTo).toBe("thread-1");
+    expect(receipts.map((memory) => memory.content.text).join("")).toBe(
+      completeText,
+    );
+    expect(
+      calls.every((options) => countTwitterWeightedLength(options.text) <= 280),
+    ).toBe(true);
   });
 
   it("admits 140 CJK characters and 280 Latin characters", async () => {
