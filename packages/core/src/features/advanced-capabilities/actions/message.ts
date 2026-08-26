@@ -3133,25 +3133,71 @@ async function handleSend(
 	if (isUnvettedDirectUserCandidate(selected)) {
 		const known = await recipientIsKnownEntity(runtime, message, target);
 		if (!known) {
-			// Turn-bound (#27932 review): the pending record keys on the source
-			// room and a SHA-256 digest of the complete effective send
-			// operation — the outbound Content AND the full resolved TargetInfo
-			// (thread/room/channel/server/account routing fields) — so a
-			// confirmation armed by a safe preview can never authorize later
-			// planner-supplied bytes, a different thread, or a `yes` issued
-			// from a different room. Any change is a cache miss and re-prompts.
+			// Turn-bound (#27932 review): one pending record per actor+action
+			// per connector+recipient+room (single slot — a new operation
+			// OVERWRITES any prior armed preview, so a stale record can never
+			// be selected). The record carries a SHA-256 digest of the complete
+			// effective send operation — the outbound Content AND the full
+			// resolved TargetInfo — and the arming message id; consumption
+			// requires a DIFFERENT, later user message whose recomputed digest
+			// matches byte-for-byte. Substituted bytes, a different thread or
+			// target, a different room, a same-message re-invocation, or a
+			// planner re-emit across two turns all re-prompt instead of
+			// sending; the provider call stays at zero on every mismatch.
 			const confirmationFingerprint = createHash("sha256")
 				.update(stableStringify({ target, content }))
 				.digest("hex")
 				.slice(0, 32);
-			const decision = await requireConfirmation({
+			const armArgs = {
 				runtime,
 				message,
-				actionName: "MESSAGE",
-				pendingKey: `send:${selected.connector.source}:${String(target.entityId)}:${message.roomId}:${confirmationFingerprint}`,
+				actionName: "MESSAGE" as const,
+				pendingKey: `send:${selected.connector.source}:${String(target.entityId)}:${message.roomId}`,
 				prompt: `Send this via ${selected.connector.label} to ${selected.label}? They are not in this room, your contacts, or your relationship graph.`,
-			});
-			if (decision.status !== "confirmed") {
+				metadata: {
+					confirmationFingerprint,
+					armedByMessageId: String(message.id ?? ""),
+				},
+			};
+			let decision = await requireConfirmation(armArgs);
+			let metadata = (decision.metadata ?? {}) as {
+				confirmationFingerprint?: string;
+				armedByMessageId?: string;
+			};
+			let digestMatches =
+				metadata.confirmationFingerprint === confirmationFingerprint;
+			// Same-message self-consumption guard: the arming invocation
+			// itself can never confirm (or cancel) its own record — only a
+			// distinct later user message may consume it.
+			let distinctTurn = metadata.armedByMessageId !== String(message.id ?? "");
+			if (
+				(decision.status === "confirmed" || decision.status === "cancelled") &&
+				!distinctTurn
+			) {
+				// This same message armed the record, so its reply shape is its
+				// own request text, not a later user's affirmative: fail closed
+				// and re-arm (idempotent retry of the preview).
+				decision = await requireConfirmation(armArgs);
+				metadata = (decision.metadata ?? {}) as typeof metadata;
+				digestMatches =
+					metadata.confirmationFingerprint === confirmationFingerprint;
+				distinctTurn = metadata.armedByMessageId !== String(message.id ?? "");
+			}
+			if (
+				decision.status === "confirmed" &&
+				(!digestMatches || !distinctTurn)
+			) {
+				// The consumed record described a DIFFERENT operation: the
+				// affirmative did not authorize THESE bytes. Fail closed and
+				// re-arm for the current operation so the user can
+				// deliberately confirm it on a later message.
+				decision = await requireConfirmation(armArgs);
+				metadata = (decision.metadata ?? {}) as typeof metadata;
+				digestMatches =
+					metadata.confirmationFingerprint === confirmationFingerprint;
+				distinctTurn = metadata.armedByMessageId !== String(message.id ?? "");
+			}
+			if (decision.status !== "confirmed" || !digestMatches || !distinctTurn) {
 				const pending = decision.status === "pending";
 				return {
 					success: pending,
