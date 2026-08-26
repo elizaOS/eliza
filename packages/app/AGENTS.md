@@ -94,6 +94,7 @@ Common scripts from this package's `package.json`:
 
 ```bash
 bun run --cwd packages/app dev                        # Vite dev server (renderer only; UI port from ELIZA_UI_PORT, default 2138)
+bun run --cwd packages/app dev:cloud-only             # Vite renderer with hosted Cloud onboarding policy
 bun run --cwd packages/app dev:shared                 # Shared long-lived Vite server on deterministic worktree port
 bun run --cwd packages/app dev:status                 # List running shared dev servers (port, worktree, pid)
 bun run --cwd packages/app dev:rebuild                # Trigger explicit Vite full reload for this worktree
@@ -274,7 +275,11 @@ All env vars use the `ELIZA_` prefix (set in `app.config.ts` → `envPrefix: "EL
 | `ELIZA_TTS_DEBUG` | Enable TTS trace logs |
 | `ELIZA_SETTINGS_DEBUG` | Enable settings debug panel |
 | `VITE_ASSET_BASE_URL` | Override asset base URL for CDN hosting |
-| `VITE_ELIZA_DESKTOP_RUNTIME_MODE` | `"cloud"` forces cloud-only branding on desktop |
+| `VITE_ELIZA_CLOUD_BASE` | Hosted Cloud origin used by public-web boot and Cloud runtime configuration |
+| `VITE_ELIZA_DESKTOP_RUNTIME_MODE` | `"cloud"` forces hosted Cloud sign-in policy; `dev:cloud-only` sets it automatically |
+| `VITE_ELIZA_ENABLE_RUNTIME_CHOOSER` | `"1"` opts production/test builds into the local/cloud/remote chooser; ordinary Vite dev enables it by default |
+| `VITE_STEWARD_API_URL` | Optional public Steward API base URL override |
+| `VITE_STEWARD_TENANT_ID` | Steward tenant identifier for the selected Cloud environment |
 | `ELIZA_CAPACITOR_BUILD_TARGET` | `"ios"` or `"android"` — set during mobile builds |
 | `ELIZA_BUILD_VARIANT` | `"store"` for App Store / Play Store builds |
 | `ELIZA_RELEASE_AUTHORITY` | `"apple-app-store"` for iOS store builds (tightens CSP) |
