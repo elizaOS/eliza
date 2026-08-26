@@ -1104,6 +1104,7 @@ export function PillHandle({
           markTestId="chat-pill-mark"
           aria-label="open chat"
           breathing={breathing}
+          markClassName="h-3 w-16"
           style={{
             width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
             height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,

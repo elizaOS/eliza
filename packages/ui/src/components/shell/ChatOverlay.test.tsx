@@ -3196,7 +3196,7 @@ describe("ChatOverlay", () => {
     expect(pill.getAttribute("tabindex")).toBeNull();
   });
 
-  it("uses visible-only 64x12 resting material for the detached desktop host", () => {
+  it("centers 64x12 resting material in a 64x44 detached desktop hit target", () => {
     render(<ChatOverlay controller={makeController()} fillHostAtHalf />);
     const grabber = screen.getByTestId("chat-sheet-grabber");
     fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
@@ -3206,10 +3206,11 @@ describe("ChatOverlay", () => {
     const pill = screen.getByTestId("chat-pill");
     const mark = screen.getByTestId("chat-pill-mark");
     expect(pill.style.width).toBe("64px");
-    expect(pill.style.height).toBe("12px");
+    expect(pill.style.height).toBe("44px");
     expect(pill.className).not.toContain("pt-10");
     expect(pill.className).not.toContain("px-8");
     expect(mark.style.backgroundColor).toBe("rgba(255, 255, 255, 0.96)");
+    expect(mark.className).toContain("h-3");
   });
 
   it("steps a pill tap to the INPUT bar — never the thread detent, never the keyboard", () => {
