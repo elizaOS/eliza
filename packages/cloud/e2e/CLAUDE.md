@@ -81,6 +81,8 @@ token hidden-overhead reserve; this is not provider tokenization, so returned
 OpenAI or Anthropic usage remains the authoritative postflight count. Missing,
 malformed, over-budget, oversized, or unmetered responses fail closed, and the
 manifest's 16-request ceiling remains binding.
+Accepted request evidence binds the exact canonical upstream byte length and
+SHA-256; rejected requests retain structural evidence without a forwarded hash.
 
 Attempts retain trajectories, tool receipts, transitions, bounded logs,
 network and mock-service ledgers, and authority hashes. The aggregate retains
