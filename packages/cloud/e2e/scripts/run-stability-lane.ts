@@ -332,6 +332,12 @@ try {
     cwd: outputRoot,
     modelMode: selected.modelMode,
     env: {
+      ...(process.env.ELIZA_STABILITY_LINUX_SANDBOX
+        ? {
+            ELIZA_STABILITY_LINUX_SANDBOX:
+              process.env.ELIZA_STABILITY_LINUX_SANDBOX,
+          }
+        : {}),
       ELIZA_STABILITY_SCENARIO_FINGERPRINT: manifest.scenarioFingerprint,
       ELIZA_STABILITY_WORLD_FINGERPRINT: manifest.worldFingerprint,
       ELIZA_STABILITY_MAX_INPUT_TOKENS: String(manifest.maxInputTokens),
