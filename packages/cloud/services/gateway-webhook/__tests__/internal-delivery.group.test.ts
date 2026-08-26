@@ -154,6 +154,65 @@ describe("internal proactive group delivery", () => {
     ]);
   });
 
+  test("keeps a Telegram group reminder inside its forum topic", async () => {
+    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    const redis = new MemoryRedis();
+    const bodies: Array<Record<string, unknown>> = [];
+    globalThis.fetch = mock(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const outgoing = new Request(input, init);
+        expect(outgoing.url).toBe(
+          "https://api.telegram.org/bottelegram-test-token/sendMessage",
+        );
+        bodies.push((await outgoing.json()) as Record<string, unknown>);
+        return Response.json({ ok: true, result: { message_id: 72 } });
+      },
+    ) as typeof fetch;
+
+    const response = await deliverInternalMessage(
+      request({
+        platform: "telegram",
+        chatId: "-100123456789",
+        providerThreadId: "909",
+      }),
+      { redis },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      providerMessageIds: ["72"],
+    });
+    expect(bodies).toEqual([
+      {
+        chat_id: "-100123456789",
+        message_thread_id: 909,
+        text: "Reminder for this group from Nubs: pay the rent",
+        parse_mode: "Markdown",
+      },
+    ]);
+  });
+
+  test("rejects invalid Telegram topic ids before egress", async () => {
+    const redis = new MemoryRedis();
+    globalThis.fetch = mock(async () => {
+      throw new Error("egress must not run");
+    }) as typeof fetch;
+
+    for (const providerThreadId of ["0", "0909", "topic", "9999999999999999"]) {
+      const response = await deliverInternalMessage(
+        request({
+          platform: "telegram",
+          chatId: "-100123456789",
+          providerThreadId,
+        }),
+        { redis },
+      );
+      expect(response.status).toBe(400);
+    }
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
   test("rejects malformed group recipients before egress", async () => {
     const redis = new MemoryRedis();
     globalThis.fetch = mock(async () => {
@@ -165,6 +224,7 @@ describe("internal proactive group delivery", () => {
       { chatId: "chat_" },
       { chatId: "chat_../escape" },
       { chatId: "+15551234567" },
+      { providerThreadId: "909" },
     ]) {
       const response = await deliverInternalMessage(request(overrides), {
         redis,

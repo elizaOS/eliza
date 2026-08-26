@@ -9,6 +9,10 @@ import {
   resolvePersonalDeliveryProjection,
 } from "@/api-app/personal-delivery-projection";
 import {
+  type PersonalSharedGroupConsentStatus,
+  personalSharedGroupConsentRepository,
+} from "@/db/repositories/personal-shared-group-consent";
+import {
   type GroupParticipantIdentity,
   personalSharedGroupParticipantsRepository,
 } from "@/db/repositories/personal-shared-group-participants";
@@ -54,15 +58,21 @@ const DEFAULT_WHISPER_MODEL = "Systran/faster-whisper-small";
 const FAILURE_STAGE_HEADER = "X-Eliza-Failure-Stage";
 const FAILURE_NAME_HEADER = "X-Eliza-Failure-Name";
 const GROUP_CLAIM_TTL_MS = 10 * 60_000;
+const GROUP_JOIN_CHALLENGE_TTL_MS = 10 * 60_000;
 const GROUP_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+const GROUP_CLAIM_CODE_LENGTH = 8;
+const GROUP_JOIN_CODE_LENGTH = 12;
 const GROUP_SOURCE_MESSAGE_ID_MAX_LENGTH = 240;
 const GENERATED_MEDIA_ONLY_MESSAGE = /^\[media: https?:\/\/[^\r\n]+\]$/u;
+const GROUP_RELAY_DISCLOSURE =
+  "Privacy note: plaintext messages and attachments transit the configured relay provider; Eliza does not make that relay end-to-end encrypted.";
 
 type DeliveryStage =
   | "authentication"
   | "validation"
   | "worker_context"
   | "account_resolution"
+  | "consent"
   | "voice_transcription"
   | "media_description"
   | "account_claim"
@@ -97,6 +107,14 @@ function isGroupDeliveryPendingError(error: unknown): boolean {
   );
 }
 
+function isIndependentGroupOwnerAuthenticationError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error as { code?: unknown }).code ===
+      "PERSONAL_SHARED_GROUP_OWNER_INDEPENDENT_AUTHENTICATION_REQUIRED"
+  );
+}
+
 const telegramVoiceNoteSchema = z.object({
   bytesBase64: z.string().min(1).max(MAX_TELEGRAM_VOICE_BASE64_LENGTH),
   mimeType: z.literal("audio/ogg"),
@@ -127,6 +145,7 @@ const groupDeliveryAuthoritySchema = z.object({
   ownerUserId: z.string().uuid(),
   personalAgentId: z.string().trim().min(1).max(160),
   version: z.number().int().positive(),
+  requiresAllAdultsConsent: z.boolean().optional(),
 });
 const groupFields = {
   project: projectSchema,
@@ -227,6 +246,12 @@ const sharedMessageSchema = z.union([
     platform: z.literal("telegram"),
     chatType: z.enum(["group", "supergroup"]),
     ...groupFields,
+    providerThreadId: z
+      .string()
+      .trim()
+      .regex(/^[1-9]\d{0,15}$/)
+      .refine((value) => Number.isSafeInteger(Number(value)))
+      .optional(),
   }),
   z.object({
     platform: z.literal("discord"),
@@ -279,16 +304,25 @@ interface GroupDeliveryAuthority {
   ownerUserId: string;
   personalAgentId: string;
   version: number;
+  requiresAllAdultsConsent?: boolean;
 }
 
 const GROUP_CONTROL_DELIVERY = { kind: "control" as const };
+type GroupBindingDeliveryPurpose = "control" | "capability";
 
-function groupBindingDelivery(binding: {
-  id: string;
-  owner_user_id: string;
-  personal_agent_id: string;
-  authority_version: number;
-}): { kind: "binding"; authority: GroupDeliveryAuthority } {
+function groupBindingDelivery(
+  binding: {
+    id: string;
+    owner_user_id: string;
+    personal_agent_id: string;
+    authority_version: number;
+    consent_mode?: "single_owner" | "all_adults";
+  },
+  purpose: GroupBindingDeliveryPurpose,
+): {
+  kind: "binding";
+  authority: GroupDeliveryAuthority;
+} {
   return {
     kind: "binding",
     authority: {
@@ -296,6 +330,9 @@ function groupBindingDelivery(binding: {
       ownerUserId: binding.owner_user_id,
       personalAgentId: binding.personal_agent_id,
       version: binding.authority_version,
+      ...(binding.consent_mode === "all_adults"
+        ? { requiresAllAdultsConsent: purpose === "capability" }
+        : {}),
     },
   };
 }
@@ -318,11 +355,34 @@ function isGroupMessage(message: SharedMessage): message is GroupMessage {
   return "chatType" in message;
 }
 
+function providerThreadIdForGroup(message: GroupMessage): string | null {
+  return message.platform === "telegram"
+    ? (message.providerThreadId ?? null)
+    : null;
+}
+
 function groupClaimCommand(message: string): string | null {
   const match = message.match(
     /^(?:\/eliza_link(?:@[a-z0-9_]{5,32})?|eliza\s+link)\s+([2-9A-HJ-NP-Z]{8})$/i,
   );
   return match?.[1]?.toUpperCase() ?? null;
+}
+
+function groupJoinCodeCommand(message: string): string | null {
+  const match = message.match(
+    /^(?:\/eliza_join(?:@[a-z0-9_]{5,32})?|eliza\s+join)\s+((?:[2-9A-HJ-NP-Z]{8}|[2-9A-HJ-NP-Z]{12}))$/i,
+  );
+  return match?.[1]?.toUpperCase() ?? null;
+}
+
+function isGroupJoinRequest(message: string): boolean {
+  return /^(?:\/eliza_join(?:@[a-z0-9_]{5,32})?|eliza\s+join)$/i.test(message);
+}
+
+function isGroupConsentStatusCommand(message: string): boolean {
+  return /^(?:\/eliza_consent_status(?:@[a-z0-9_]{5,32})?|eliza\s+consent\s+status)$/i.test(
+    message,
+  );
 }
 
 function groupPolicyCommand(
@@ -341,16 +401,126 @@ function isGroupLeaveCommand(message: string): boolean {
   );
 }
 
-function isGroupClaimRequest(message: string): boolean {
-  return /^(?:\/group(?:@[a-z0-9_]{5,32})?|eliza\s+group)$/i.test(message);
+interface GroupClaimRequest {
+  consentMode: "single_owner" | "all_adults";
+  requiredPrincipalCount: number;
 }
 
-function createGroupClaimCode(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(8));
+function groupClaimRequest(message: string): GroupClaimRequest | null {
+  if (/^(?:\/group(?:@[a-z0-9_]{5,32})?|eliza\s+group)$/i.test(message)) {
+    return { consentMode: "single_owner", requiredPrincipalCount: 1 };
+  }
+  const match = message.match(
+    /^(?:\/group(?:@[a-z0-9_]{5,32})?\s+all-adults|eliza\s+group\s+all\s+adults)(?:\s+([0-9]{1,2}))?$/i,
+  );
+  if (!match) return null;
+  const requiredPrincipalCount = match[1] ? Number(match[1]) : 2;
+  if (
+    !Number.isInteger(requiredPrincipalCount) ||
+    requiredPrincipalCount < 2 ||
+    requiredPrincipalCount > 32
+  ) {
+    return null;
+  }
+  return { consentMode: "all_adults", requiredPrincipalCount };
+}
+
+function isInvalidAllAdultsGroupClaimRequest(message: string): boolean {
+  return /^(?:\/group(?:@[a-z0-9_]{5,32})?\s+all-adults|eliza\s+group\s+all\s+adults)\s+\d+$/i.test(
+    message,
+  );
+}
+
+function createGroupCode(length: number): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(length));
   return Array.from(
     bytes,
     (byte) => GROUP_CODE_ALPHABET[byte % GROUP_CODE_ALPHABET.length],
   ).join("");
+}
+
+function createGroupClaimCode(): string {
+  return createGroupCode(GROUP_CLAIM_CODE_LENGTH);
+}
+
+function personalSharedJoinCodeSecret(env: AppEnv["Bindings"]): string | null {
+  const secret = env.ELIZA_APP_PERSONAL_SHARED_JOIN_CODE_SECRET;
+  return typeof secret === "string" &&
+    new TextEncoder().encode(secret).byteLength >= 32
+    ? secret
+    : null;
+}
+
+async function deriveGroupJoinCode(
+  secret: string,
+  stage: "authenticate" | "confirm",
+  source: readonly string[],
+  avoid?: string,
+): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const canonical = JSON.stringify([
+    "personal-shared-group-join/v1",
+    stage,
+    ...source,
+    avoid === undefined ? 0 : 1,
+  ]);
+  const digest = new Uint8Array(
+    await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(canonical)),
+  );
+  const code = Array.from(
+    digest.subarray(0, GROUP_JOIN_CODE_LENGTH),
+    (byte) => GROUP_CODE_ALPHABET[byte & 31],
+  ).join("");
+  return code === avoid
+    ? deriveGroupJoinCode(secret, stage, [...source, "collision"], avoid)
+    : code;
+}
+
+function groupConsentSummary(status: PersonalSharedGroupConsentStatus): string {
+  if (status.gate === "enabled") {
+    return `Consent is enabled: ${status.consentedParticipantCount} of ${status.requiredPrincipalCount} required participants have independently linked and consented.`;
+  }
+  return `Consent is restricted: ${status.consentedParticipantCount} of ${status.requiredPrincipalCount} required participants have independently linked and consented.`;
+}
+
+function groupJoinFailureReply(
+  status:
+    | "invalid"
+    | "expired"
+    | "already_used"
+    | "wrong_sender"
+    | "wrong_scope"
+    | "stale"
+    | "actor_not_registered"
+    | "account_not_authenticated"
+    | "already_linked",
+): string {
+  switch (status) {
+    case "expired":
+      return "That join code expired. In the original group, have the same participant say `Eliza join` for a fresh code.";
+    case "already_used":
+      return "That join code was already used. In the original group, say `Eliza join` to restart the consent flow.";
+    case "wrong_sender":
+      return "That join code belongs to a different participant. The exact participant who requested it must use the code from their own direct chat with Eliza.";
+    case "wrong_scope":
+      return "That join code was used in the wrong chat. Authenticate codes belong in the requesting participant's direct chat with Eliza; confirm codes belong in the original group.";
+    case "stale":
+      return "This group's consent state changed before that join completed. In the original group, say `Eliza join` to restart.";
+    case "actor_not_registered":
+      return "Eliza has not registered this participant in the group yet. In the original group, have that participant say `Eliza join`.";
+    case "account_not_authenticated":
+      return "This direct chat is not connected to a mature, independently authenticated Eliza account. Sign in to that account first, then restart with `Eliza join` in the original group.";
+    case "already_linked":
+      return "This participant is already linked to the group. Say `Eliza consent status` in the group for the redacted status.";
+    default:
+      return "That join code is invalid. In the original group, have the same participant say `Eliza join` for a fresh code.";
+  }
 }
 
 function decodeTelegramVoiceNote(
@@ -577,6 +747,86 @@ app.post("/", async (c) => {
       | undefined;
     let isNewPersonalAccount = false;
     if (isGroupMessage(parsed.data)) {
+      // In all-adults mode a join confirmation must be consumed before the
+      // owner-link parser. Single-owner groups retain their existing handling
+      // for the same ordinary text shape.
+      const joinConfirmCode = groupJoinCodeCommand(parsed.data.message);
+      if (joinConfirmCode) {
+        const binding = await personalSharedGroupsRepository.resolveBinding({
+          platform: parsed.data.platform,
+          project: parsed.data.project,
+          connectorAccountId: parsed.data.connectorAccountId,
+          providerChatId: parsed.data.chatId,
+        });
+        if (binding?.consent_mode === "all_adults") {
+          if (binding.state !== "active") {
+            return c.json({
+              success: true,
+              data: {
+                code: "group_binding_suspended",
+                reply:
+                  "This group link is inactive. The owner can DM Eliza `/group` to reconnect it.",
+                groupDelivery: GROUP_CONTROL_DELIVERY,
+              },
+            });
+          }
+          await personalSharedGroupParticipantsRepository.recordTurn({
+            bindingId: binding.id,
+            platformUserId: parsed.data.actor.platformUserId,
+            displayName: parsed.data.actor.displayName,
+          });
+          stage = "consent";
+          const joined =
+            await personalSharedGroupConsentRepository.consumeJoinConfirmChallenge(
+              {
+                codeHash: await sha256Hex(joinConfirmCode),
+                sourceMessageId: parsed.data.messageId,
+                bindingId: binding.id,
+                platform: parsed.data.platform,
+                project: parsed.data.project,
+                connectorAccountId: parsed.data.connectorAccountId,
+                providerChatId: parsed.data.chatId,
+                providerThreadId: providerThreadIdForGroup(parsed.data),
+                actorPlatformUserId: parsed.data.actor.platformUserId,
+              },
+            );
+          if (joined.status !== "consented") {
+            const consentStatus =
+              await personalSharedGroupConsentRepository.deriveConsentStatus({
+                bindingId: binding.id,
+              });
+            return c.json({
+              success: true,
+              data: {
+                code: `group_join_${joined.status}`,
+                reply: `${groupJoinFailureReply(joined.status)} ${GROUP_RELAY_DISCLOSURE}`,
+                ...(consentStatus ? { consentStatus } : {}),
+                groupDelivery: groupBindingDelivery(binding, "control"),
+              },
+            });
+          }
+          const currentBinding =
+            await personalSharedGroupsRepository.resolveBinding({
+              platform: parsed.data.platform,
+              project: parsed.data.project,
+              connectorAccountId: parsed.data.connectorAccountId,
+              providerChatId: parsed.data.chatId,
+            });
+          return c.json({
+            success: true,
+            data: {
+              code: "group_join_consented",
+              reply: `${groupConsentSummary(joined.consent)} ${GROUP_RELAY_DISCLOSURE}`,
+              consentStatus: joined.consent,
+              groupDelivery:
+                currentBinding?.state === "active"
+                  ? groupBindingDelivery(currentBinding, "control")
+                  : GROUP_CONTROL_DELIVERY,
+            },
+          });
+        }
+      }
+
       const claimCode = groupClaimCommand(parsed.data.message);
       if (claimCode) {
         if (
@@ -594,8 +844,11 @@ app.post("/", async (c) => {
             },
           });
         }
-        const claimed =
-          await personalSharedGroupsRepository.consumeClaimAndBind({
+        let claimed: Awaited<
+          ReturnType<typeof personalSharedGroupsRepository.consumeClaimAndBind>
+        >;
+        try {
+          claimed = await personalSharedGroupsRepository.consumeClaimAndBind({
             codeHash: await sha256Hex(claimCode),
             platform: parsed.data.platform,
             project: parsed.data.project,
@@ -603,6 +856,18 @@ app.post("/", async (c) => {
             providerChatId: parsed.data.chatId,
             actorPlatformUserId: parsed.data.actor.platformUserId,
           });
+        } catch (error) {
+          if (!isIndependentGroupOwnerAuthenticationError(error)) throw error;
+          return c.json({
+            success: true,
+            data: {
+              code: "group_claim_authentication_required",
+              reply:
+                "All-adults groups require the owner to finish signing in to their own Eliza account, then retry this exact unexpired link command.",
+              groupDelivery: GROUP_CONTROL_DELIVERY,
+            },
+          });
+        }
         if (claimed.status !== "bound") {
           return c.json({
             success: true,
@@ -620,6 +885,30 @@ app.post("/", async (c) => {
             },
           });
         }
+        if (claimed.binding.consent_mode === "all_adults") {
+          stage = "consent";
+          const consentStatus =
+            await personalSharedGroupConsentRepository.deriveConsentStatus({
+              bindingId: claimed.binding.id,
+            });
+          return c.json({
+            success: true,
+            data: {
+              code: "group_bound",
+              identity: {
+                id: claimed.binding.personal_agent_id,
+                runtime: "shared" as const,
+              },
+              account: {
+                userId: claimed.binding.owner_user_id,
+                organizationId: claimed.binding.organization_id,
+              },
+              reply: `Eliza is linked to this group in all-adults consent mode. The configured ${claimed.binding.required_principal_count} adult principals must each say \`Eliza join\` here, authenticate from their own direct chat, then confirm here before Eliza capabilities are enabled. ${consentStatus ? groupConsentSummary(consentStatus) : "Consent remains restricted until the required participants join."} ${GROUP_RELAY_DISCLOSURE}`,
+              ...(consentStatus ? { consentStatus } : {}),
+              groupDelivery: groupBindingDelivery(claimed.binding, "control"),
+            },
+          });
+        }
         return c.json({
           success: true,
           data: {
@@ -634,7 +923,7 @@ app.post("/", async (c) => {
             },
             reply:
               "Eliza is linked to this group. I respond to explicit mentions, commands, and replies by default. The owner can say `Eliza ambient on`, `Eliza ambient off`, or `Eliza leave`.",
-            groupDelivery: groupBindingDelivery(claimed.binding),
+            groupDelivery: groupBindingDelivery(claimed.binding, "control"),
           },
         });
       }
@@ -661,20 +950,137 @@ app.post("/", async (c) => {
         });
       }
 
-      const requestedPolicy = groupPolicyCommand(parsed.data.message);
-      const ownerControl =
-        requestedPolicy !== null || isGroupLeaveCommand(parsed.data.message);
+      const isAllAdultsBinding = binding.consent_mode === "all_adults";
+      const groupActor = parsed.data.actor;
+      let recordedParticipants:
+        | Awaited<
+            ReturnType<
+              typeof personalSharedGroupParticipantsRepository.recordTurn
+            >
+          >
+        | undefined;
+      const recordActor = async () => {
+        recordedParticipants ??=
+          await personalSharedGroupParticipantsRepository.recordTurn({
+            bindingId: binding.id,
+            platformUserId: groupActor.platformUserId,
+            displayName: groupActor.displayName,
+          });
+        return recordedParticipants;
+      };
+
+      if (isAllAdultsBinding && isGroupJoinRequest(parsed.data.message)) {
+        await recordActor();
+        stage = "consent";
+        const joinCodeSecret = personalSharedJoinCodeSecret(c.env);
+        if (!joinCodeSecret) {
+          return c.json({
+            success: true,
+            data: {
+              code: "group_join_unavailable",
+              reply:
+                "Multi-principal group joining is temporarily unavailable. No join challenge was created.",
+              groupDelivery: groupBindingDelivery(binding, "control"),
+            },
+          });
+        }
+        // A source webhook can be reopened after provider egress when only the
+        // receipt response is lost. Deriving from a secret and the immutable
+        // source scope makes that replay return the same high-entropy code,
+        // while the database still stores only its hash.
+        const authenticateCode = await deriveGroupJoinCode(
+          joinCodeSecret,
+          "authenticate",
+          [
+            parsed.data.platform,
+            parsed.data.project,
+            parsed.data.connectorAccountId,
+            parsed.data.chatId,
+            providerThreadIdForGroup(parsed.data) ?? "",
+            parsed.data.actor.platformUserId,
+            parsed.data.messageId,
+          ],
+        );
+        const issued =
+          await personalSharedGroupConsentRepository.issueJoinAuthenticateChallenge(
+            {
+              codeHash: await sha256Hex(authenticateCode),
+              sourceMessageId: parsed.data.messageId,
+              bindingId: binding.id,
+              platform: parsed.data.platform,
+              project: parsed.data.project,
+              connectorAccountId: parsed.data.connectorAccountId,
+              providerChatId: parsed.data.chatId,
+              providerThreadId: providerThreadIdForGroup(parsed.data),
+              actorPlatformUserId: parsed.data.actor.platformUserId,
+              expiresAt: new Date(Date.now() + GROUP_JOIN_CHALLENGE_TTL_MS),
+            },
+          );
+        const consentStatus =
+          await personalSharedGroupConsentRepository.deriveConsentStatus({
+            bindingId: binding.id,
+          });
+        if (issued.status !== "issued") {
+          return c.json({
+            success: true,
+            data: {
+              code: `group_join_${issued.status}`,
+              reply: `${groupJoinFailureReply(issued.status)} ${GROUP_RELAY_DISCLOSURE}`,
+              ...(consentStatus ? { consentStatus } : {}),
+              groupDelivery: groupBindingDelivery(binding, "control"),
+            },
+          });
+        }
+        return c.json({
+          success: true,
+          data: {
+            code: "group_join_authenticate_issued",
+            reply: `For the exact participant who requested this join: open that participant's direct chat with Eliza and send \`Eliza join ${authenticateCode}\` within 10 minutes. Do not share the code. ${GROUP_RELAY_DISCLOSURE}`,
+            ...(consentStatus ? { consentStatus } : {}),
+            groupDelivery: groupBindingDelivery(binding, "control"),
+          },
+        });
+      }
+
       if (
-        ownerControl &&
-        parsed.data.actor.platformUserId !== binding.created_by_platform_user_id
+        isAllAdultsBinding &&
+        isGroupConsentStatusCommand(parsed.data.message)
       ) {
+        await recordActor();
+        stage = "consent";
+        const consentStatus =
+          await personalSharedGroupConsentRepository.deriveConsentStatus({
+            bindingId: binding.id,
+          });
+        return c.json({
+          success: true,
+          data: {
+            code: "group_consent_status",
+            reply: consentStatus
+              ? groupConsentSummary(consentStatus)
+              : "Consent status is temporarily unavailable, so this group remains restricted.",
+            ...(consentStatus ? { consentStatus } : {}),
+            groupDelivery: groupBindingDelivery(binding, "control"),
+          },
+        });
+      }
+
+      const requestedPolicy = groupPolicyCommand(parsed.data.message);
+      const requestedLeave = isGroupLeaveCommand(parsed.data.message);
+      const actorIsOwner =
+        parsed.data.actor.platformUserId ===
+        binding.created_by_platform_user_id;
+      const ownerControl =
+        requestedPolicy !== null ||
+        (requestedLeave && (!isAllAdultsBinding || actorIsOwner));
+      if (ownerControl && !actorIsOwner) {
         return c.json({
           success: true,
           data: {
             code: "group_owner_required",
             reply:
               "Only the owner who linked Eliza can change this group's response policy.",
-            groupDelivery: groupBindingDelivery(binding),
+            groupDelivery: groupBindingDelivery(binding, "control"),
           },
         });
       }
@@ -704,11 +1110,11 @@ app.post("/", async (c) => {
               requestedPolicy === "ambient"
                 ? "Ambient replies are on. I may respond without a mention when I have something useful to add. Say `Eliza ambient off` to return to mention-only."
                 : "Mention-only is on. I will answer explicit mentions, commands, and replies to me.",
-            groupDelivery: groupBindingDelivery(updated),
+            groupDelivery: groupBindingDelivery(updated, "control"),
           },
         });
       }
-      if (isGroupLeaveCommand(parsed.data.message)) {
+      if (requestedLeave && actorIsOwner) {
         const revoked = await personalSharedGroupsRepository.revokeBinding({
           bindingId: binding.id,
           ownerUserId: binding.owner_user_id,
@@ -733,6 +1139,50 @@ app.post("/", async (c) => {
           },
         });
       }
+      if (requestedLeave && isAllAdultsBinding) {
+        await recordActor();
+        stage = "consent";
+        const selfRevoked =
+          await personalSharedGroupConsentRepository.selfRevoke({
+            bindingId: binding.id,
+            actorPlatformUserId: parsed.data.actor.platformUserId,
+          });
+        if (selfRevoked.status !== "revoked") {
+          return c.json({
+            success: true,
+            data: {
+              code: `group_participant_leave_${selfRevoked.status}`,
+              reply:
+                selfRevoked.status === "not_linked"
+                  ? "This participant is not actively linked and consented, so there is nothing to revoke."
+                  : selfRevoked.status === "owner_forbidden"
+                    ? "The owner cannot self-revoke only their row. The owner may say `Eliza leave` to disconnect the whole group."
+                    : "Eliza could not verify this participant's exact linked group identity, so no consent was revoked.",
+              groupDelivery: groupBindingDelivery(binding, "control"),
+            },
+          });
+        }
+        const currentBinding =
+          await personalSharedGroupsRepository.resolveBinding({
+            platform: parsed.data.platform,
+            project: parsed.data.project,
+            connectorAccountId: parsed.data.connectorAccountId,
+            providerChatId: parsed.data.chatId,
+          });
+        return c.json({
+          success: true,
+          data: {
+            code: "group_participant_revoked",
+            reply: `This participant's link and consent are revoked; the group binding remains owned and active. ${groupConsentSummary(selfRevoked.consent)}`,
+            consentStatus: selfRevoked.consent,
+            groupDelivery:
+              currentBinding?.state === "active"
+                ? groupBindingDelivery(currentBinding, "control")
+                : GROUP_CONTROL_DELIVERY,
+          },
+        });
+      }
+
       const verifiedInvocation =
         parsed.data.platform === "blooio" &&
         parsed.data.invocation === "reply" &&
@@ -743,6 +1193,42 @@ app.post("/", async (c) => {
           })))
           ? "ambient"
           : parsed.data.invocation;
+
+      if (isAllAdultsBinding) {
+        await recordActor();
+        stage = "consent";
+        const consentStatus =
+          await personalSharedGroupConsentRepository.deriveConsentStatus({
+            bindingId: binding.id,
+          });
+        if (
+          consentStatus?.mode !== "all_adults" ||
+          consentStatus.gate === "restricted"
+        ) {
+          if (verifiedInvocation === "ambient") {
+            return c.json({
+              success: true,
+              data: {
+                code: "group_silent",
+                reply: "",
+                ...(consentStatus ? { consentStatus } : {}),
+              },
+            });
+          }
+          return c.json({
+            success: true,
+            data: {
+              code: "group_consent_restricted",
+              reply: consentStatus
+                ? `${groupConsentSummary(consentStatus)} Each participant who still needs to link should say \`Eliza join\` here. ${GROUP_RELAY_DISCLOSURE}`
+                : `Consent status is unavailable, so Eliza capabilities remain restricted. Try \`Eliza consent status\` before continuing. ${GROUP_RELAY_DISCLOSURE}`,
+              ...(consentStatus ? { consentStatus } : {}),
+              groupDelivery: groupBindingDelivery(binding, "control"),
+            },
+          });
+        }
+      }
+
       if (
         binding.response_policy === "mention_only" &&
         verifiedInvocation === "ambient"
@@ -760,7 +1246,10 @@ app.post("/", async (c) => {
       accountResolution = "group-binding";
       groupConversationId = binding.conversation_id;
       groupPersonalAgentId = binding.personal_agent_id;
-      groupDeliveryAuthority = groupBindingDelivery(binding).authority;
+      groupDeliveryAuthority = groupBindingDelivery(
+        binding,
+        "capability",
+      ).authority;
       // Only the owner who linked Eliza may schedule proactive sends into the
       // group; other participants have no account or billing authority here.
       // The stored destination pins the binding generation of this turn so a
@@ -774,6 +1263,10 @@ app.post("/", async (c) => {
           project: parsed.data.project,
           connectorAccountId: parsed.data.connectorAccountId,
           chatId: parsed.data.chatId,
+          ...(parsed.data.platform === "telegram" &&
+          parsed.data.providerThreadId
+            ? { providerThreadId: parsed.data.providerThreadId }
+            : {}),
           ownerLabel:
             parsed.data.actor.displayName ?? GROUP_OWNER_FALLBACK_LABEL,
           authority: groupDeliveryAuthority,
@@ -786,12 +1279,7 @@ app.post("/", async (c) => {
       // that sends none (Blooio sends none at all) gets its stable ordinal.
       // Either way the label is enumerable, which is what lets
       // `guardGroupReply` redact a handle back to it.
-      const participants =
-        await personalSharedGroupParticipantsRepository.recordTurn({
-          bindingId: binding.id,
-          platformUserId: parsed.data.actor.platformUserId,
-          displayName: parsed.data.actor.displayName,
-        });
+      const participants = await recordActor();
       groupParticipantRoster = participants.roster;
       groupActorLabel = groupParticipantLabel(participants.actor);
     } else if (parsed.data.platform === "telegram") {
@@ -861,27 +1349,144 @@ app.post("/", async (c) => {
       );
     }
 
-    if (
+    const directJoinCode =
       !isGroupMessage(parsed.data) &&
-      (parsed.data.platform === "telegram" ||
-        parsed.data.platform === "blooio") &&
-      isGroupClaimRequest(parsed.data.message ?? "")
+      (parsed.data.platform === "telegram" || parsed.data.platform === "blooio")
+        ? groupJoinCodeCommand(parsed.data.message ?? "")
+        : null;
+    if (
+      directJoinCode &&
+      !isGroupMessage(parsed.data) &&
+      (parsed.data.platform === "telegram" || parsed.data.platform === "blooio")
     ) {
-      const code = createGroupClaimCode();
-      await personalSharedGroupsRepository.issueClaim({
-        codeHash: await sha256Hex(code),
-        organizationId: account.organizationId,
-        ownerUserId: account.userId,
-        personalAgentId: agent.id,
-        platform: parsed.data.platform,
-        project: parsed.data.project,
-        connectorAccountId: parsed.data.connectorAccountId,
-        issuedToPlatformUserId:
-          parsed.data.platform === "telegram"
-            ? parsed.data.telegramUserId
-            : parsed.data.phoneNumber,
-        expiresAt: new Date(Date.now() + GROUP_CLAIM_TTL_MS),
+      const joinCodeSecret = personalSharedJoinCodeSecret(c.env);
+      if (!joinCodeSecret) {
+        return c.json({
+          success: true,
+          data: {
+            code: "group_join_unavailable",
+            reply:
+              "Multi-principal group joining is temporarily unavailable. The existing group remains restricted.",
+          },
+        });
+      }
+      const directActorPlatformUserId =
+        parsed.data.platform === "telegram"
+          ? parsed.data.telegramUserId
+          : parsed.data.phoneNumber;
+      const confirmCode = await deriveGroupJoinCode(
+        joinCodeSecret,
+        "confirm",
+        [
+          parsed.data.platform,
+          parsed.data.project,
+          parsed.data.connectorAccountId,
+          directActorPlatformUserId,
+          parsed.data.messageId,
+          directJoinCode,
+        ],
+        directJoinCode,
+      );
+      stage = "consent";
+      const authenticated =
+        await personalSharedGroupConsentRepository.consumeJoinAuthenticateChallenge(
+          {
+            codeHash: await sha256Hex(directJoinCode),
+            confirmCodeHash: await sha256Hex(confirmCode),
+            sourceMessageId: parsed.data.messageId,
+            platform: parsed.data.platform,
+            project: parsed.data.project,
+            connectorAccountId: parsed.data.connectorAccountId,
+            actorPlatformUserId: directActorPlatformUserId,
+            linkedUserId: account.userId,
+            linkedOrganizationId: account.organizationId,
+            expiresAt: new Date(Date.now() + GROUP_JOIN_CHALLENGE_TTL_MS),
+          },
+        );
+      if (authenticated.status !== "confirm_issued") {
+        return c.json({
+          success: true,
+          data: {
+            code: `group_join_authenticate_${authenticated.status}`,
+            reply: `${groupJoinFailureReply(authenticated.status)} ${GROUP_RELAY_DISCLOSURE}`,
+          },
+        });
+      }
+      const consentStatus =
+        await personalSharedGroupConsentRepository.deriveConsentStatus({
+          bindingId: authenticated.bindingId,
+        });
+      return c.json({
+        success: true,
+        data: {
+          code: "group_join_confirm_issued",
+          reply: `Authentication succeeded. Return to the original group as this exact participant and send \`Eliza join ${confirmCode}\` within 10 minutes. Do not share the code. ${GROUP_RELAY_DISCLOSURE}`,
+          ...(consentStatus ? { consentStatus } : {}),
+        },
       });
+    }
+
+    const requestedGroupClaim =
+      !isGroupMessage(parsed.data) &&
+      (parsed.data.platform === "telegram" || parsed.data.platform === "blooio")
+        ? groupClaimRequest(parsed.data.message ?? "")
+        : null;
+    if (
+      requestedGroupClaim &&
+      !isGroupMessage(parsed.data) &&
+      (parsed.data.platform === "telegram" || parsed.data.platform === "blooio")
+    ) {
+      // Two-phase rollout fence: schema and every provider egress enforcer must
+      // be deployed before any all-adults binding can be issued. Unset and all
+      // non-exact values fail closed while single-owner behavior stays intact.
+      if (
+        requestedGroupClaim.consentMode === "all_adults" &&
+        (c.env.ELIZA_APP_PERSONAL_SHARED_ALL_ADULTS_ENABLED !== "true" ||
+          !personalSharedJoinCodeSecret(c.env))
+      ) {
+        return c.json({
+          success: true,
+          data: {
+            code: "group_all_adults_unavailable",
+            reply:
+              "Multi-principal group consent is not enabled on this deployment yet. No group link was created.",
+          },
+        });
+      }
+      const code = createGroupClaimCode();
+      try {
+        await personalSharedGroupsRepository.issueClaim({
+          codeHash: await sha256Hex(code),
+          organizationId: account.organizationId,
+          ownerUserId: account.userId,
+          personalAgentId: agent.id,
+          platform: parsed.data.platform,
+          project: parsed.data.project,
+          connectorAccountId: parsed.data.connectorAccountId,
+          issuedToPlatformUserId:
+            parsed.data.platform === "telegram"
+              ? parsed.data.telegramUserId
+              : parsed.data.phoneNumber,
+          ...(requestedGroupClaim.consentMode === "all_adults"
+            ? {
+                consentMode: requestedGroupClaim.consentMode,
+                requiredPrincipalCount:
+                  requestedGroupClaim.requiredPrincipalCount,
+              }
+            : {}),
+          expiresAt: new Date(Date.now() + GROUP_CLAIM_TTL_MS),
+        });
+      } catch (error) {
+        if (!isIndependentGroupOwnerAuthenticationError(error)) throw error;
+        return c.json({
+          success: true,
+          data: {
+            code: "group_claim_authentication_required",
+            reply:
+              "All-adults groups require you to finish signing in to your own Eliza account, then retry this command.",
+          },
+        });
+      }
       const linkCommand =
         parsed.data.platform === "telegram"
           ? `/eliza_link ${code}`
@@ -895,7 +1500,26 @@ app.post("/", async (c) => {
             userId: account.userId,
             organizationId: account.organizationId,
           },
-          reply: `Add Eliza to the group, then send this there within 10 minutes:\n\n${linkCommand}\n\nUse the same ${parsed.data.platform === "telegram" ? "Telegram account" : "iMessage identity"} that requested this code.`,
+          reply:
+            requestedGroupClaim.consentMode === "all_adults"
+              ? `Add Eliza to the group, then send this there within 10 minutes:\n\n${linkCommand}\n\nUse the same ${parsed.data.platform === "telegram" ? "Telegram account" : "iMessage identity"} that requested this code. This starts all-adults consent for ${requestedGroupClaim.requiredPrincipalCount} independently authenticated participants; Eliza capabilities stay restricted until they join and consent. ${GROUP_RELAY_DISCLOSURE}`
+              : `Add Eliza to the group, then send this there within 10 minutes:\n\n${linkCommand}\n\nUse the same ${parsed.data.platform === "telegram" ? "Telegram account" : "iMessage identity"} that requested this code.`,
+        },
+      });
+    }
+    if (
+      !requestedGroupClaim &&
+      !isGroupMessage(parsed.data) &&
+      (parsed.data.platform === "telegram" ||
+        parsed.data.platform === "blooio") &&
+      isInvalidAllAdultsGroupClaimRequest(parsed.data.message ?? "")
+    ) {
+      return c.json({
+        success: true,
+        data: {
+          code: "group_claim_invalid_principal_count",
+          reply:
+            "Choose an all-adults participant count from 2 through 32, for example `/group all-adults 2` or `Eliza group all adults 2`.",
         },
       });
     }

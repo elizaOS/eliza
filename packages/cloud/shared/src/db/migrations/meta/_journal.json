@@ -2122,6 +2122,13 @@
       "when": 1794254400010,
       "tag": "0319_personal_dedicated_upgrade_authorities",
       "breakpoints": true
+    },
+    {
+      "idx": 303,
+      "version": "7",
+      "when": 1794254400011,
+      "tag": "0320_personal_shared_multi_principal_consent",
+      "breakpoints": true
     }
   ]
 }
