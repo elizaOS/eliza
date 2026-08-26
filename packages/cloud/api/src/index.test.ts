@@ -1319,7 +1319,7 @@ describe("cloud-api worker entrypoint", () => {
     ).toBeUndefined();
   });
 
-  test("keeps the legacy edge guard false and reserves the replacement names for the cutover secrets", async () => {
+  test("keeps production closed while staging atomically bridges delivery epoch 1", async () => {
     const config = Bun.TOML.parse(
       await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),
     ) as {
@@ -1371,7 +1371,7 @@ describe("cloud-api worker entrypoint", () => {
     expect(
       config.env?.staging?.vars
         ?.PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED,
-    ).toBeUndefined();
+    ).toBe("true");
     expect(
       config.env?.production?.vars
         ?.PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED,

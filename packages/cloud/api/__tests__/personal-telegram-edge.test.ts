@@ -244,6 +244,7 @@ describe("Personal Shared Telegram edge", () => {
     } as AppEnv["Bindings"];
     const input = {
       project: "eliza-app",
+      connectorAccountId: "bot:123",
       chatId: "-100123456789",
       providerThreadId: "909",
       text: "time to stretch",
