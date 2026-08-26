@@ -17,6 +17,16 @@ describe("parseDurationMs", () => {
     expect(parseDurationMs("1.5s")).toBe(1500);
   });
 
+  it("supports spaces and word aliases for duration units", () => {
+    expect(parseDurationMs("500 ms")).toBe(500);
+    expect(parseDurationMs("20 seconds")).toBe(20_000);
+    expect(parseDurationMs("15 secs")).toBe(15_000);
+    expect(parseDurationMs("5 minutes")).toBe(300_000);
+    expect(parseDurationMs("2 mins")).toBe(120_000);
+    expect(parseDurationMs("3 hours")).toBe(10_800_000);
+    expect(parseDurationMs("2 days")).toBe(172_800_000);
+  });
+
   it("uses the default unit only when no suffix is present", () => {
     expect(parseDurationMs("250")).toBe(250); // default ms
     expect(parseDurationMs("5", { defaultUnit: "s" })).toBe(5000);

@@ -19,7 +19,10 @@ export function parseDurationMs(
     throw new Error("invalid duration (empty)");
   }
 
-  const m = /^(\d+(?:\.\d+)?)(ms|s|m|h|d)?$/.exec(trimmed);
+  const m =
+    /^(\d+(?:\.\d+)?)\s*(milliseconds?|millis|ms|seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d)?$/.exec(
+      trimmed,
+    );
   if (!m) {
     throw new Error(`invalid duration: ${raw}`);
   }
@@ -29,12 +32,31 @@ export function parseDurationMs(
     throw new Error(`invalid duration: ${raw}`);
   }
 
-  const unit = (m[2] ?? opts?.defaultUnit ?? "ms") as
-    | "ms"
-    | "s"
-    | "m"
-    | "h"
-    | "d";
+  const rawUnit = m[2];
+  let unit: "ms" | "s" | "m" | "h" | "d";
+  if (!rawUnit) {
+    unit = opts?.defaultUnit ?? "ms";
+  } else if (
+    rawUnit === "ms" ||
+    rawUnit === "millis" ||
+    rawUnit.startsWith("milli")
+  ) {
+    unit = "ms";
+  } else if (rawUnit === "s" || rawUnit.startsWith("sec")) {
+    unit = "s";
+  } else if (rawUnit === "m" || rawUnit.startsWith("min")) {
+    unit = "m";
+  } else if (
+    rawUnit === "h" ||
+    rawUnit.startsWith("hr") ||
+    rawUnit.startsWith("hour")
+  ) {
+    unit = "h";
+  } else if (rawUnit === "d" || rawUnit.startsWith("day")) {
+    unit = "d";
+  } else {
+    unit = opts?.defaultUnit ?? "ms";
+  }
   const multiplier =
     unit === "ms"
       ? 1
