@@ -6,6 +6,7 @@
  * super-admin-only controls (add / revoke admin).
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type {
   AdminModerationActionName,
   AdminModerationActionRequest,
@@ -76,6 +77,28 @@ import { useAdminGate } from "./data/use-admin-gate";
 function errorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError) return error.message;
   return error instanceof Error ? error.message : fallback;
+}
+
+
+function truncatePreviewId(value: string | null | undefined, maxLen = 8): string {
+  if (!value) return "";
+  const wellFormed = toWellFormedUnicode(value);
+  if (wellFormed.length <= maxLen) return wellFormed;
+  return `${truncateWellFormed(wellFormed, maxLen)}...`;
+}
+
+function truncateAdminAddress(value: string | null | undefined): string {
+  if (!value) return "";
+  const wellFormed = toWellFormedUnicode(value);
+  if (wellFormed.length <= 18) return wellFormed;
+  const start = truncateWellFormed(wellFormed, 10);
+  let endCut = wellFormed.length - 8;
+  const code = wellFormed.charCodeAt(endCut);
+  if (code >= 0xdc00 && code <= 0xdfff) {
+    endCut += 1;
+  }
+  const end = wellFormed.slice(endCut);
+  return `${start}...${end}`;
 }
 
 export default function ModerationPage(): React.JSX.Element {
@@ -347,7 +370,7 @@ export default function ModerationPage(): React.JSX.Element {
                           {new Date(v.createdAt).toLocaleString()}
                         </TableCell>
                         <TableCell className="text-xs">
-                          {v.userId.slice(0, 8)}...
+                          {truncatePreviewId(v.userId, 8)}
                         </TableCell>
                         <TableCell>
                           {v.categories.map((c) => (
@@ -423,7 +446,7 @@ export default function ModerationPage(): React.JSX.Element {
                         className="flex items-center justify-between rounded-sm border p-3"
                       >
                         <div>
-                          <p className="text-sm">{u.userId.slice(0, 12)}...</p>
+                          <p className="text-sm">{truncatePreviewId(u.userId, 12)}</p>
                           <div className="flex gap-2 text-xs text-muted-foreground">
                             <span>
                               {u.totalViolations}{" "}
@@ -498,7 +521,7 @@ export default function ModerationPage(): React.JSX.Element {
                         className="flex items-center justify-between rounded-sm border border-destructive/20 bg-destructive/5 p-3"
                       >
                         <div>
-                          <p className="text-sm">{u.userId.slice(0, 12)}...</p>
+                          <p className="text-sm">{truncatePreviewId(u.userId, 12)}</p>
                           <p className="text-xs text-muted-foreground">
                             {u.banReason ??
                               t("cloud.admin.noReasonProvided", {
@@ -577,8 +600,7 @@ export default function ModerationPage(): React.JSX.Element {
                     {admins.map((admin) => (
                       <TableRow key={admin.id}>
                         <TableCell className="text-sm">
-                          {admin.walletAddress.slice(0, 10)}...
-                          {admin.walletAddress.slice(-8)}
+                          {truncateAdminAddress(admin.walletAddress)}
                         </TableCell>
                         <TableCell>
                           <Badge
@@ -753,7 +775,7 @@ export default function ModerationPage(): React.JSX.Element {
                       :
                     </span>{" "}
                     <span>
-                      {userDetail.user?.wallet_address?.slice(0, 10)}...
+                      {truncatePreviewId(userDetail.user?.wallet_address, 10)}
                     </span>
                   </div>
                   <div>
