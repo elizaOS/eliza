@@ -220,6 +220,7 @@ Representative examples:
   deployment branch/tag policy, and adding any credential are owner-only
   actions taken in the GitHub UI with authorized confirmation at action time.
   No automation in this repository creates them.
+
 - `infra.yml` is the only Terraform plan, apply, and state-edit entry point.
   Each protected Environment supplies a distinct RSA public-key variable
   `TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY` and apply-only private-key secret
@@ -285,14 +286,15 @@ Representative examples:
   The dispatch choice and selected GitHub Environment use the same exact name;
   Railway service names are separate targets:
 
-  | Dispatch / GitHub Environment | Source branch | Railway service |
-  | --- | --- | --- |
-  | `staging` | `develop` | `gateway-webhook-stg` |
-  | `production` | `main` | `gateway-webhook` |
+  | Dispatch / GitHub Environment | Source branch | Railway service       |
+  | ----------------------------- | ------------- | --------------------- |
+  | `staging`                     | `develop`     | `gateway-webhook-stg` |
+  | `production`                  | `main`        | `gateway-webhook`     |
 
   The pinned Railway CLI is invoked without a relative path so its explicit
   project selector archives the absolute current repository root. Passing `.`
   with Railway CLI v5.38.0 fails its pre-upload archive-prefix check.
+
 - `voice-code-bench.yml` retains the bounded real-ASR benchmark.
 
 These workflows use `workflow_dispatch` and never run for pull requests.
@@ -338,6 +340,14 @@ resolve that tree's non-expired artifact from a completed successful
 reachable. The artifact id, GitHub digest, owning run, payload, current workflow
 bytes, and expiry are all checked. Different merge commits are accepted only
 when their root trees are byte-identical; `force` never bypasses this gate.
+
+Protected staging releases also preserve monotonic forward progress during
+sustained `develop` merge traffic. If a release was current when admitted and
+`develop` advances before a later mutation boundary, the source guard may
+continue only after proving both ancestry edges: the currently served staging
+commit is an ancestor of the release SHA, and the release SHA is an ancestor of
+the new `develop` head. Missing served identity, divergence, rollback, and
+unverifiable ancestry still fail closed. Production never enables this mode.
 
 Cloudflare application deploys require Workers and Pages write access. The
 Terraform domain workflow additionally requires zone-scoped DNS write and

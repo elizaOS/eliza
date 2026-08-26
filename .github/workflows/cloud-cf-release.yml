@@ -221,6 +221,8 @@ jobs:
           FORCE: ${{ inputs.force }}
           GITHUB_TOKEN: ${{ github.token }}
           NEUTRAL_WHEN_SUPERSEDED: ${{ inputs.target_environment == 'staging' && github.event_name == 'push' }}
+          MONOTONIC_FORWARD_PROGRESS: ${{ inputs.target_environment == 'staging' }}
+          SERVED_SOURCE_URL: ${{ inputs.target_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
         run: |
           set -euo pipefail
           # --neutral-when-superseded: this is the first mutation of the whole
@@ -233,6 +235,9 @@ jobs:
           source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
           if [ "$NEUTRAL_WHEN_SUPERSEDED" = "true" ]; then
             source_args+=(--neutral-when-superseded)
+          fi
+          if [ "$MONOTONIC_FORWARD_PROGRESS" = "true" ]; then
+            source_args+=(--allow-monotonic-forward-progress --served-url "$SERVED_SOURCE_URL" --served-path /api/health)
           fi
           if [ "$FORCE" = "true" ]; then
             source_args+=(--force)
@@ -464,6 +469,8 @@ jobs:
           DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
           CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
           FORCE: ${{ inputs.force }}
+          MONOTONIC_FORWARD_PROGRESS: ${{ inputs.target_environment == 'staging' }}
+          SERVED_SOURCE_URL: ${{ inputs.target_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
         run: |
           set -euo pipefail
           # The migrate entry imports @elizaos/core, whose i18n barrel pulls in the
@@ -474,6 +481,9 @@ jobs:
           # can advance between workflow steps. Once this step is running, any
           # mismatch must fail immediately before the database mutation.
           source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
+          if [ "$MONOTONIC_FORWARD_PROGRESS" = "true" ]; then
+            source_args+=(--allow-monotonic-forward-progress --served-url "$SERVED_SOURCE_URL" --served-path /api/health)
+          fi
           if [ "$FORCE" = "true" ]; then
             source_args+=(--force)
           fi
@@ -852,9 +862,14 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CANONICAL_REF: ${{ steps.env.outputs.deploy_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
           FORCE: ${{ inputs.force }}
+          MONOTONIC_FORWARD_PROGRESS: ${{ steps.env.outputs.deploy_environment == 'staging' }}
+          SERVED_SOURCE_URL: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
         run: |
           set -euo pipefail
           source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
+          if [ "$MONOTONIC_FORWARD_PROGRESS" = "true" ]; then
+            source_args+=(--allow-monotonic-forward-progress --served-url "$SERVED_SOURCE_URL" --served-path /api/health)
+          fi
           if [ "$FORCE" = "true" ]; then
             source_args+=(--force)
           fi
@@ -1530,10 +1545,15 @@ jobs:
           WORKER_SECRETS_FILE: ${{ steps.worker-secrets.outputs.secrets_file }}
           CANONICAL_REF: ${{ steps.env.outputs.deploy_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
           FORCE: ${{ inputs.force }}
+          MONOTONIC_FORWARD_PROGRESS: ${{ steps.env.outputs.deploy_environment == 'staging' }}
+          SERVED_SOURCE_URL: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
         run: |
           set -euo pipefail
           legacy_onboarding_secret_removed=false
           source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
+          if [ "$MONOTONIC_FORWARD_PROGRESS" = "true" ]; then
+            source_args+=(--allow-monotonic-forward-progress --served-url "$SERVED_SOURCE_URL" --served-path /api/health)
+          fi
           if [ "$FORCE" = "true" ]; then
             source_args+=(--force)
           fi
@@ -2375,10 +2395,15 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
           FORCE: ${{ inputs.force }}
+          MONOTONIC_FORWARD_PROGRESS: ${{ inputs.target_environment == 'staging' }}
+          SERVED_SOURCE_URL: ${{ inputs.target_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" != "pull_request" ]; then
             source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
+            if [ "$MONOTONIC_FORWARD_PROGRESS" = "true" ]; then
+              source_args+=(--allow-monotonic-forward-progress --served-url "$SERVED_SOURCE_URL" --served-path /api/health)
+            fi
             if [ "$FORCE" = "true" ]; then
               source_args+=(--force)
             fi
@@ -2428,6 +2453,8 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           CANONICAL_REF: ${{ inputs.target_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
           FORCE: ${{ inputs.force }}
+          MONOTONIC_FORWARD_PROGRESS: ${{ inputs.target_environment == 'staging' }}
+          SERVED_SOURCE_URL: ${{ inputs.target_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
         # Do NOT pass a positional `dist` argument: wrangler.toml already sets
         # `pages_build_output_dir = "./dist"`, and passing both makes wrangler
         # ignore wrangler.toml — which silently drops the `functions/` upload.
@@ -2446,6 +2473,9 @@ jobs:
           trap cleanup_wrangler_output EXIT
           trap 'exit 1' HUP INT TERM
           source_args=(--run-sha "$GITHUB_SHA" --canonical-ref "$CANONICAL_REF")
+          if [ "$MONOTONIC_FORWARD_PROGRESS" = "true" ]; then
+            source_args+=(--allow-monotonic-forward-progress --served-url "$SERVED_SOURCE_URL" --served-path /api/health)
+          fi
           if [ "$FORCE" = "true" ]; then
             source_args+=(--force)
           fi

@@ -2,7 +2,7 @@
  * Unit coverage for the Gmail send MessageConnector: provider wire-up
  * (registering the Google connector-account provider registers a `gmail` send
  * connector, closing the SOURCE_CONNECTOR_NOT_FOUND gap), literal-address and
- * entity-handle recipient resolution, account selection, subject derivation,
+ * canonical-claim recipient resolution, account selection, subject derivation,
  * and the structural delivery receipt. Mock runtime and Google service stubs —
  * no live Gmail API, nothing is actually sent.
  */
@@ -13,9 +13,11 @@ import {
   type Content,
   getConnectorAccountManager,
   type IAgentRuntime,
+  type IdentityClaim,
   InMemoryConnectorAccountStorage,
   type MessageConnectorRegistration,
   type SendHandlerOutcome,
+  ServiceType,
   type TargetInfo,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
@@ -28,6 +30,7 @@ import {
 import { GOOGLE_SERVICE_NAME } from "./types.js";
 
 const SHADOW_ID = "00000000-0000-0000-0000-0000000000e7";
+const CONNECTED_ACCOUNT_ID = "00000000-0000-0000-0000-0000000000a1";
 
 type AccountStub = {
   id: string;
@@ -40,6 +43,10 @@ function runtimeStub(options: {
   accounts?: AccountStub[];
   sendGmailMessage?: ReturnType<typeof vi.fn>;
   entity?: { id: string; names: string[]; components?: Array<Record<string, unknown>> };
+  deliveryClaims?: string[];
+  principalError?: Error;
+  /** Defaults to claim-authoritative; pass false to exercise the legacy component path. */
+  claimsAuthoritative?: boolean;
 }): {
   runtime: IAgentRuntime;
   sendGmailMessage: ReturnType<typeof vi.fn>;
@@ -72,11 +79,77 @@ function runtimeStub(options: {
     getService: vi.fn((serviceType: string) => {
       if (serviceType === "google") return { sendGmailMessage };
       if (serviceType === CONNECTOR_ACCOUNT_SERVICE_TYPE) return accountManager;
+      if (serviceType === ServiceType.PRINCIPAL) {
+        return {
+          resolveIdentityDeliveryClaim: vi.fn(async () => {
+            if (options.principalError) throw options.principalError;
+            const claims = (options.deliveryClaims ?? []).map(
+              (email, index) =>
+                ({
+                  contractVersion: 1,
+                  id: `00000000-0000-0000-0000-0000000001${String(index).padStart(2, "0")}`,
+                  agentId: "00000000-0000-0000-0000-000000000001",
+                  principalEntityId: SHADOW_ID,
+                  namespace: "connector_subject",
+                  connectorId: "google",
+                  connectorAccountId: CONNECTED_ACCOUNT_ID,
+                  externalSubjectId: email,
+                  handle: email,
+                  displayName: "Shadow",
+                  verification: "verified",
+                  status: "active",
+                  confidence: 1,
+                  ownerBindingId: null,
+                  provenance: {},
+                  evidence: {},
+                  firstSeenAt: "2026-08-23T00:00:00.000Z",
+                  lastSeenAt: "2026-08-23T00:00:00.000Z",
+                  verifiedAt: "2026-08-23T00:00:00.000Z",
+                  revokedAt: null,
+                  createdAt: "2026-08-23T00:00:00.000Z",
+                  updatedAt: "2026-08-23T00:00:00.000Z",
+                }) as IdentityClaim
+            );
+            if (claims.length === 0) {
+              return {
+                decision: "no_claim",
+                requestedPrincipalId: SHADOW_ID,
+                canonicalPrincipalId: SHADOW_ID,
+                generation: 1,
+                reason: "no_active_verified_claim",
+              };
+            }
+            if (claims.length > 1) {
+              return {
+                decision: "ambiguous",
+                requestedPrincipalId: SHADOW_ID,
+                canonicalPrincipalId: SHADOW_ID,
+                claims,
+                generation: 1,
+                reason: "multiple_verified_claims",
+              };
+            }
+            return {
+              decision: "resolved",
+              requestedPrincipalId: SHADOW_ID,
+              canonicalPrincipalId: SHADOW_ID,
+              claim: claims[0],
+              generation: 1,
+            };
+          }),
+        };
+      }
       return null;
     }),
     getEntityById: vi.fn(async (id: string) =>
       options.entity && id === options.entity.id ? options.entity : null
     ),
+    getSetting: vi.fn((key: string) =>
+      key === "IDENTITY_DELIVERY_CLAIMS_AUTHORITATIVE" && options.claimsAuthoritative !== false
+        ? "true"
+        : null
+    ),
+    reportError: vi.fn(),
   } as unknown as IAgentRuntime;
   return { runtime, sendGmailMessage };
 }
@@ -126,6 +199,9 @@ async function runtimeWithRealAccountPolicy(options: {
       if (serviceType === CONNECTOR_ACCOUNT_SERVICE_TYPE) return manager;
       return null;
     }),
+    getSetting: vi.fn((key: string) =>
+      key === "IDENTITY_DELIVERY_CLAIMS_AUTHORITATIVE" ? "true" : null
+    ),
   } as unknown as IAgentRuntime;
   return { runtime, sendGmailMessage };
 }
@@ -149,7 +225,7 @@ async function invokeSend(
 }
 
 const CONNECTED_ACCOUNT: AccountStub = {
-  id: "acct_google_1",
+  id: CONNECTED_ACCOUNT_ID,
   status: "connected",
   displayHandle: "owner@example.com",
   metadata: { grantedCapabilities: ["gmail.read", "gmail.send"] },
@@ -219,7 +295,7 @@ describe("gmail send handler", () => {
     );
 
     expect(sendGmailMessage).toHaveBeenCalledWith({
-      accountId: "acct_google_1",
+      accountId: CONNECTED_ACCOUNT_ID,
       to: ["shadow@example.com"],
       subject: "A friendly reminder",
       bodyText: "Please stop smoking.",
@@ -249,6 +325,24 @@ describe("gmail send handler", () => {
     expect(sendGmailMessage).toHaveBeenCalledWith(
       expect.objectContaining({ subject: "Stop smoking" })
     );
+  });
+
+  it("returns unknown instead of fabricating delivery when Gmail supplies no message evidence", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+      sendGmailMessage: vi.fn(async () => ({ messageId: null, threadId: null, labelIds: [] })),
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    if (!registration.sendHandler) throw new Error("sendHandler missing");
+    const outcome = await registration.sendHandler(
+      runtime,
+      { source: GMAIL_MESSAGE_SOURCE, channelId: "shadow@example.com" } as TargetInfo,
+      { text: "hello" }
+    );
+
+    expect(sendGmailMessage).toHaveBeenCalledTimes(1);
+    expect(outcome).toBeUndefined();
   });
 
   it("normalizes lone surrogates in explicit and short derived subjects", async () => {
@@ -352,7 +446,7 @@ describe("gmail send handler", () => {
     expect(subjects).toEqual(["m".repeat(78), "n".repeat(79)]);
   });
 
-  it("resolves an entity-store recipient through stored email handles", async () => {
+  it("resolves a principal recipient through its verified account-scoped claim", async () => {
     const { runtime, sendGmailMessage } = runtimeStub({
       accounts: [CONNECTED_ACCOUNT],
       entity: {
@@ -363,6 +457,7 @@ describe("gmail send handler", () => {
           { type: "contact_info", data: { email: "shadow@example.com" } },
         ],
       },
+      deliveryClaims: ["shadow@example.com"],
     });
     const registration = createGmailMessageConnector(runtime);
 
@@ -549,9 +644,242 @@ describe("gmail send handler", () => {
     expect(sendGmailMessage).not.toHaveBeenCalled();
   });
 
-  it("refuses structurally when the contact has multiple distinct stored emails", async () => {
+  it("refuses structurally when canonical authority has multiple verified email claims", async () => {
     const { runtime, sendGmailMessage } = runtimeStub({
       accounts: [CONNECTED_ACCOUNT],
+      entity: {
+        id: SHADOW_ID,
+        names: ["Shadow"],
+        components: [
+          { type: "contact_info", data: { email: "shadow.work@example.com" } },
+          { type: "rolodex", data: { email: "shadow.personal@example.com" } },
+        ],
+      },
+      deliveryClaims: ["shadow.work@example.com", "shadow.personal@example.com"],
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    const outcome = await invokeSend(
+      registration,
+      runtime,
+      { entityId: SHADOW_ID as TargetInfo["entityId"] },
+      { text: "hello" }
+    );
+
+    expect(outcome).toMatchObject({
+      kind: "not_delivered",
+      code: "GMAIL_RECIPIENT_AMBIGUOUS",
+    });
+    expect(sendGmailMessage).not.toHaveBeenCalled();
+  });
+
+  it("resolves when multiple verified claims observe one distinct address", async () => {
+    // Two claim rows (e.g. the address seen as both handle and subject, or by
+    // two verification events) are one destination — refusing here would make
+    // re-verification of the same address break delivery.
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+      deliveryClaims: ["shadow@example.com", "Shadow@Example.com"],
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    const outcome = await invokeSend(
+      registration,
+      runtime,
+      { entityId: SHADOW_ID as TargetInfo["entityId"] },
+      { text: "hello" }
+    );
+
+    expect(outcome.kind).toBe("delivered");
+    expect(sendGmailMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ to: ["shadow@example.com"] })
+    );
+  });
+
+  it("does not surface an empty ambiguity choice when verified claims are not emails", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+      deliveryClaims: ["discord-user-a", "discord-user-b"],
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    const outcome = await invokeSend(
+      registration,
+      runtime,
+      { entityId: SHADOW_ID as TargetInfo["entityId"] },
+      { text: "hello" }
+    );
+
+    expect(outcome).toMatchObject({
+      kind: "not_delivered",
+      code: "GMAIL_RECIPIENT_UNRESOLVED",
+    });
+    expect(sendGmailMessage).not.toHaveBeenCalled();
+  });
+
+  it("ignores every legacy component value and uses only the verified canonical claim", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+      entity: {
+        id: SHADOW_ID,
+        names: ["Shadow"],
+        components: [
+          { type: "notes", data: { assistant: "third.party@example.com" } },
+          { type: "contact_info", data: { email: "shadow@example.com" } },
+        ],
+      },
+      deliveryClaims: ["shadow@example.com"],
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    const outcome = await invokeSend(
+      registration,
+      runtime,
+      { entityId: SHADOW_ID as TargetInfo["entityId"] },
+      { text: "hello" }
+    );
+
+    expect(outcome.kind).toBe("delivered");
+    expect(sendGmailMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ to: ["shadow@example.com"] })
+    );
+  });
+
+  it("does not let a carried channel address bypass canonical revalidation for a principal", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+      deliveryClaims: ["shadow@example.com"],
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    const outcome = await invokeSend(
+      registration,
+      runtime,
+      {
+        entityId: SHADOW_ID as TargetInfo["entityId"],
+        channelId: "attacker@example.com",
+      },
+      { text: "hello" }
+    );
+
+    expect(outcome.kind).toBe("delivered");
+    expect(sendGmailMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ to: ["shadow@example.com"] })
+    );
+  });
+
+  it("refuses when the canonical claim changes after MESSAGE selected its audited target", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+      deliveryClaims: ["new-shadow@example.com"],
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    const outcome = await invokeSend(
+      registration,
+      runtime,
+      {
+        entityId: SHADOW_ID as TargetInfo["entityId"],
+        channelId: "old-shadow@example.com",
+      },
+      {
+        text: "hello",
+        metadata: {
+          identityDeliveryClaim: {
+            claimId: "00000000-0000-0000-0000-000000000199",
+            canonicalPrincipalId: SHADOW_ID,
+            connectorAccountId: CONNECTED_ACCOUNT_ID,
+            generation: 1,
+            deliveryKey: "old-shadow@example.com",
+          },
+        },
+      }
+    );
+
+    expect(outcome).toMatchObject({
+      kind: "not_delivered",
+      code: "GMAIL_IDENTITY_AUTHORITY_UNAVAILABLE",
+    });
+    expect(sendGmailMessage).not.toHaveBeenCalled();
+  });
+
+  it("refuses structurally when canonical authority throws", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+      principalError: new Error("identity database unavailable"),
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    const outcome = await invokeSend(
+      registration,
+      runtime,
+      { entityId: SHADOW_ID as TargetInfo["entityId"] },
+      { text: "hello" }
+    );
+
+    expect(outcome).toMatchObject({
+      kind: "not_delivered",
+      code: "GMAIL_IDENTITY_AUTHORITY_UNAVAILABLE",
+    });
+    expect(runtime.reportError).toHaveBeenCalledWith(
+      "gmail.resolveIdentityDeliveryClaim",
+      expect.any(Error),
+      expect.objectContaining({ principalId: SHADOW_ID })
+    );
+    expect(sendGmailMessage).not.toHaveBeenCalled();
+  });
+
+  it("refuses structurally when no recipient email can be resolved", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    const outcome = await invokeSend(
+      registration,
+      runtime,
+      { entityId: "shadow" as TargetInfo["entityId"] },
+      { text: "hello" }
+    );
+
+    expect(outcome).toMatchObject({
+      kind: "not_delivered",
+      code: "GMAIL_RECIPIENT_UNRESOLVED",
+    });
+    expect(sendGmailMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe("gmail send handler with claim authority disabled (legacy default)", () => {
+  it("routes a principal recipient through the stored entity email component", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+      claimsAuthoritative: false,
+      entity: {
+        id: SHADOW_ID,
+        names: ["Shadow"],
+        components: [{ type: "contact_info", data: { email: "shadow@example.com" } }],
+      },
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    const outcome = await invokeSend(
+      registration,
+      runtime,
+      { entityId: SHADOW_ID as TargetInfo["entityId"] },
+      { text: "hello" }
+    );
+
+    expect(outcome.kind).toBe("delivered");
+    expect(sendGmailMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ to: ["shadow@example.com"] })
+    );
+  });
+
+  it("refuses when the entity stores multiple distinct email addresses", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+      claimsAuthoritative: false,
       entity: {
         id: SHADOW_ID,
         names: ["Shadow"],
@@ -577,17 +905,38 @@ describe("gmail send handler", () => {
     expect(sendGmailMessage).not.toHaveBeenCalled();
   });
 
-  it("ignores email-shaped values in unrelated fields when a named email field exists", async () => {
+  it("lets a literal carried address win over the entity lookup", async () => {
     const { runtime, sendGmailMessage } = runtimeStub({
       accounts: [CONNECTED_ACCOUNT],
+      claimsAuthoritative: false,
       entity: {
         id: SHADOW_ID,
         names: ["Shadow"],
-        components: [
-          { type: "notes", data: { assistant: "third.party@example.com" } },
-          { type: "contact_info", data: { email: "shadow@example.com" } },
-        ],
+        components: [{ type: "contact_info", data: { email: "stored@example.com" } }],
       },
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    const outcome = await invokeSend(
+      registration,
+      runtime,
+      { entityId: SHADOW_ID as TargetInfo["entityId"], channelId: "typed@example.com" },
+      { text: "hello" }
+    );
+
+    expect(outcome.kind).toBe("delivered");
+    expect(sendGmailMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ to: ["typed@example.com"] })
+    );
+  });
+
+  it("refuses without consulting the principal service when nothing resolves", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+      claimsAuthoritative: false,
+      // A principal error would surface if the claim path ran despite the
+      // flag being off; the legacy path must never read claim authority.
+      principalError: new Error("claim authority must not be consulted"),
     });
     const registration = createGmailMessageConnector(runtime);
 
@@ -598,30 +947,12 @@ describe("gmail send handler", () => {
       { text: "hello" }
     );
 
-    expect(outcome.kind).toBe("delivered");
-    expect(sendGmailMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ to: ["shadow@example.com"] })
-    );
-  });
-
-  it("refuses structurally when no recipient email can be resolved", async () => {
-    const { runtime, sendGmailMessage } = runtimeStub({
-      accounts: [CONNECTED_ACCOUNT],
-    });
-    const registration = createGmailMessageConnector(runtime);
-
-    const outcome = await invokeSend(
-      registration,
-      runtime,
-      { entityId: "shadow" as TargetInfo["entityId"] },
-      { text: "hello" }
-    );
-
     expect(outcome).toMatchObject({
       kind: "not_delivered",
       code: "GMAIL_RECIPIENT_UNRESOLVED",
     });
     expect(sendGmailMessage).not.toHaveBeenCalled();
+    expect(runtime.reportError).not.toHaveBeenCalled();
   });
 });
 
