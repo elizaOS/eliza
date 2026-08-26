@@ -2,7 +2,7 @@
 
 The build orchestrator at
 [`packages/app-core/scripts/run-mobile-build.mjs`](../../scripts/run-mobile-build.mjs)
-ships three Android targets. They are deliberately separate because their
+ships four Android targets. They are deliberately separate because their
 manifests, embedded native artifacts, and signing models differ in ways
 that make a single APK unviable.
 
@@ -173,6 +173,33 @@ renderer reads this via
 [`packages/ui/src/platform/android-runtime.ts`](../../../ui/src/platform/android-runtime.ts)
 and the `RuntimeSettingsSection` hides the Local picker option so users
 cannot try to provision an on-device agent that physically isn't there.
+
+## `build:android:launcher` — stock-device Home app
+
+```bash
+bun run install:android:launcher
+```
+
+Builds and installs a direct-install debug APK with the same cloud-safe capability surface
+as `android-cloud-debug`, plus the `MAIN` + `HOME` + `DEFAULT` intent filter
+required for Android's `ROLE_HOME`. It does not claim the AOSP-only assistant,
+dialer, SMS, browser, or privileged permissions and is not the Play release
+artifact. Android requires the user to select Eliza in the Home-app consent
+screen; the command opens that screen, waits for the selection, verifies the
+role holder and resolver, and then sends HOME. To build without installing, run
+`bun run build:android:launcher`. The equivalent manual flow is:
+
+```bash
+adb install -r packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -a android.settings.HOME_SETTINGS
+adb shell cmd role get-role-holders --user 0 android.app.role.HOME
+adb shell cmd package resolve-activity --brief \
+  -a android.intent.action.MAIN -c android.intent.category.HOME
+```
+
+Restore the platform launcher with Settings → Apps → Default apps → Home app.
+For elizaOS system images, continue using `build:android:system`; that lane is
+platform-signed and assigns Eliza during image construction.
 
 ## `build:android:lp3-cloud:debug` — direct LP3 Cloud APK
 

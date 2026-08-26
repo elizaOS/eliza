@@ -1,7 +1,10 @@
 /** Verifies platform-specific native plugin ownership before raw Capacitor sync. */
 
 import { describe, expect, it } from "vitest";
-import { resolveAndroidCapacitorPlugins } from "../capacitor.config";
+import {
+  resolveAndroidCapacitorPlugins,
+  resolveCapacitorLoggingBehavior,
+} from "../capacitor.config";
 
 describe("Android Capacitor plugin selection", () => {
   it("includes the Bun host and excludes the iOS-only llama bridge (#17465)", () => {
@@ -19,5 +22,19 @@ describe("Android Capacitor plugin selection", () => {
       "@elizaos/capacitor-bun-runtime",
       "@elizaos/capacitor-talkmode",
     ]);
+  });
+});
+
+describe("Capacitor logging behavior", () => {
+  it("suppresses native bridge payloads in the debuggable launcher lane", () => {
+    expect(
+      resolveCapacitorLoggingBehavior({
+        ELIZA_ANDROID_LAUNCHER_BUILD: "1",
+      }),
+    ).toBe("none");
+  });
+
+  it("retains debug-only logging for other lanes", () => {
+    expect(resolveCapacitorLoggingBehavior({})).toBe("debug");
   });
 });
