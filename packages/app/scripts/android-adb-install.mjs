@@ -145,7 +145,11 @@ if (!commandExists("adb")) {
 }
 
 if (shouldBuild) {
-  const build = run("bun", ["run", "build:android"], { stdio: "inherit" });
+  const build = run(
+    "bun",
+    ["run", launcherMode ? "build:android:launcher" : "build:android"],
+    { stdio: "inherit" },
+  );
   if (build.status !== 0) {
     fail("Android build failed");
   }

@@ -47,6 +47,9 @@ describe("Android mobile build target table", () => {
     expect(adbInstallerSource).toContain("android.app.role.HOME");
     expect(adbInstallerSource).toContain("android.intent.category.HOME");
     expect(adbInstallerSource).toContain("resolve-activity");
+    expect(adbInstallerSource).toContain(
+      'launcherMode ? "build:android:launcher" : "build:android"',
+    );
   });
 
   it("requires the packaged HOME-role manifest contract", () => {
