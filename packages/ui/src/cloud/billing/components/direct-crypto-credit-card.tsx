@@ -1,4 +1,5 @@
 "use client";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 /**
  * Direct-crypto credit-card entry card for the cloud billing flow.
@@ -113,9 +114,18 @@ const NETWORK_LABELS: Record<DirectNetwork, string> = {
   solana: "Solana",
 };
 
-function formatAddress(value: string | null | undefined) {
+function formatAddress(value: string | null | undefined): string {
   if (!value) return "";
-  return `${value.slice(0, 6)}...${value.slice(-4)}`;
+  const wellFormed = toWellFormedUnicode(value);
+  if (wellFormed.length < 12) return wellFormed;
+  const head = truncateWellFormed(wellFormed, 6);
+  let tailOffset = wellFormed.length - 4;
+  const code = wellFormed.charCodeAt(tailOffset);
+  if (code >= 0xdc00 && code <= 0xdfff) {
+    tailOffset += 1;
+  }
+  const tail = wellFormed.slice(tailOffset);
+  return `${head}...${tail}`;
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -690,7 +700,7 @@ export function DirectCryptoCreditCard({
                   onClick={account ? openAccountModal : openConnectModal}
                 >
                   {account
-                    ? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`
+                    ? formatAddress(account.address)
                     : chain?.unsupported
                       ? "Wrong network"
                       : "Connect Wallet"}
