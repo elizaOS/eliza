@@ -143,13 +143,13 @@ describe("secure remote relay migrations", () => {
       ) as { entries: Array<{ idx: number; tag: string; when: number }> };
       const recentEntries = journal.entries.slice(-5);
       expect(recentEntries.map((entry) => entry.tag)).toEqual([
-        "0319_personal_dedicated_upgrade_authorities",
+        "0320_personal_shared_multi_principal_consent",
         "0321_remote_session_two_phase_activation",
         "0322_remote_host_managed_network",
         "0323_remote_target_initiated_pairing",
         "0324_remote_host_connection_mode_check",
       ]);
-      expect(recentEntries.map((entry) => entry.idx)).toEqual([302, 303, 304, 305, 306]);
+      expect(recentEntries.map((entry) => entry.idx)).toEqual([303, 304, 305, 306, 307]);
       expect(recentEntries[1]!.when).toBeGreaterThan(recentEntries[0]!.when);
       expect(recentEntries[2]!.when).toBeGreaterThan(recentEntries[1]!.when);
       expect(recentEntries[3]!.when).toBeGreaterThan(recentEntries[2]!.when);

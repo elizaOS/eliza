@@ -119,7 +119,7 @@ describe("remote session first-class expiry migration", () => {
     expect(columns.rows).toHaveLength(1);
   });
 
-  test("0312 admits only the non-authoritative activating phase and remains idempotent", async () => {
+  test("0321 admits only the non-authoritative activating phase and remains idempotent", async () => {
     await insertPending("40000000-0000-4000-8000-000000000004");
     await apply(twoPhaseSource);
     await pg.exec("UPDATE remote_sessions SET status = 'activating' WHERE status = 'pending'");

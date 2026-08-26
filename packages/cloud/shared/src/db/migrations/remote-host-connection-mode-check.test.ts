@@ -64,7 +64,7 @@ afterEach(async () => {
   await Promise.all(databases.splice(0).map((database) => database.close()));
 });
 
-describe("0323 remote host connection-mode check", () => {
+describe("0324 remote host connection-mode check", () => {
   test("revokes unsupported live rows and preserves relay enrollment states", async () => {
     const database = await createDatabase();
     await database.exec(`
