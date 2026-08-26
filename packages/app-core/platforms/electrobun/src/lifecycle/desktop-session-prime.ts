@@ -23,7 +23,7 @@ export function markDesktopSessionStale(): void {
 }
 
 /**
- * Best-effort: mint (or reuse) a loopback-only desktop session and install the
+ * Best-effort: mint a loopback-only desktop session and install the
  * cookies into the main window's session jar so the renderer's first /api
  * request is already authenticated. Failure is silent — the renderer falls
  * back to the standard login flow.
@@ -39,7 +39,14 @@ export async function primeDesktopSessionAuth(
   if (desktopSessionPrimed) return;
   let session: DesktopSession | null;
   try {
-    session = await loadOrCreateDesktopSession({ apiBase });
+    // A persisted session can outlive the embedded backend process that owns
+    // its database row. Re-prove filesystem co-location and mint for every
+    // agent generation; persistence remains available to browser-bridge callers
+    // that explicitly use loadOrCreateDesktopSession's default reuse behavior.
+    session = await loadOrCreateDesktopSession({
+      apiBase,
+      reusePersistedSession: false,
+    });
   } catch (err) {
     logger.warn(
       `[Main] Desktop auth bridge failed: ${err instanceof Error ? err.message : String(err)}`,
