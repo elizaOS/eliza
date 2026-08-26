@@ -492,6 +492,43 @@ describe("useWeather", () => {
     await waitFor(() => expect(result.current.status).toBe("unavailable"));
   });
 
+  it("keeps the weather deadline active while the response body is stalled", async () => {
+    Object.defineProperty(AbortSignal, "any", {
+      configurable: true,
+      value: undefined,
+    });
+    const timeoutController = new AbortController();
+    vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeoutController.signal);
+    const weatherSignal = { current: null as AbortSignal | null };
+    installFetchRouter({
+      openMeteo: (init) => {
+        weatherSignal.current = init?.signal as AbortSignal;
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            weatherSignal.current?.addEventListener(
+              "abort",
+              () => controller.error(weatherSignal.current?.reason),
+              { once: true },
+            );
+          },
+        });
+        return new Response(body, {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    });
+    denyGeolocation();
+
+    const { result } = renderHook(() => useWeather());
+    await waitFor(() => expect(weatherSignal.current).not.toBeNull());
+    await act(async () => {
+      timeoutController.abort(new DOMException("timed out", "TimeoutError"));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(result.current.status).toBe("unavailable"));
+  });
+
   it("aborts a pending weather request on unmount without degrading state", async () => {
     const weatherSignal = { current: null as AbortSignal | null };
     installFetchRouter({
