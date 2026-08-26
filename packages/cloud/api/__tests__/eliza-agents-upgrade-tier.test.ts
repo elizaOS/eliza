@@ -280,7 +280,9 @@ beforeAll(async () => {
         organization_id: ORG_A,
         user_id: USER_A,
         agent_name: "Already Dedicated",
-        execution_tier: "dedicated-always",
+        // A separate custom Dedicated row is not an eligible personal
+        // same-row adoption candidate and must not block Shared upgrades.
+        execution_tier: "custom",
         status: "running",
         database_status: "none",
       },
@@ -492,7 +494,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     );
   });
 
-  test("normal activation cannot bypass a durable same-row selection or mint a third target", async () => {
+  test("normal activation cannot bypass selected or unselected same-row inventory", async () => {
     expect(pgliteReady).toBe(true);
     const { dbWrite } = await import("@/db/client");
     const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
@@ -572,6 +574,14 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     ).toHaveLength(0);
 
     await dbWrite.delete(personalDedicatedAdoptionSelections);
+    const unselectedResponse = await upgrade(SHARED_SELECTED);
+    expect(unselectedResponse.status).toBe(409);
+    expect(await unselectedResponse.json()).toMatchObject({
+      success: false,
+      code: "dedicated_adoption_selection_required",
+    });
+    expect(await dbWrite.select().from(agentSandboxes)).toEqual(before);
+
     for (const id of [SHARED_SELECTED, SELECTED_EXISTING, SELECTED_STALE]) {
       await dbWrite.delete(agentSandboxes).where(eq(agentSandboxes.id, id));
     }
@@ -931,7 +941,9 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         organization_id: ORG_FULL,
         user_id: USER_FULL,
         agent_name: `Filler ${index + 1}`,
-        execution_tier: "dedicated-always" as const,
+        // Custom Dedicated capacity counts toward quota but is not eligible
+        // for personal same-row adoption.
+        execution_tier: "custom" as const,
         status: "running" as const,
         database_status: "none" as const,
       })),
