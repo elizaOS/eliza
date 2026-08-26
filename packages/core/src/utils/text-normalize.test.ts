@@ -20,6 +20,7 @@ import {
 	MAX_TEXT_NORMALIZE_EDGES,
 	MAX_TEXT_NORMALIZE_NODES,
 	TEXT_NORMALIZE_UNBOUNDED,
+	toCommaSeparatedText,
 	toMultilineText,
 } from "./text-normalize";
 
@@ -283,5 +284,18 @@ describe("flattenTextValues budget", () => {
 			expect((error as ElizaError).code).toBe(TEXT_NORMALIZE_UNBOUNDED);
 			expect(error).not.toBeInstanceOf(RangeError);
 		}
+	});
+});
+
+describe("toCommaSeparatedText and toMultilineText", () => {
+	it("formats flattened fragments as comma-separated or newline-delimited text", () => {
+		const input = ["apple", ["banana", "cherry"]];
+		expect(toCommaSeparatedText(input)).toBe("apple, banana, cherry");
+		expect(toMultilineText(input)).toBe("apple\nbanana\ncherry");
+	});
+
+	it("returns empty string for empty inputs", () => {
+		expect(toCommaSeparatedText([])).toBe("");
+		expect(toCommaSeparatedText(null)).toBe("");
 	});
 });
