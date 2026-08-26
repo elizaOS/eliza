@@ -117,6 +117,20 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).toContain('!"https".equals(current.getScheme())');
     expect(source).toContain('!"localhost".equals(current.getHost())');
     expect(source).toContain("current.getPort() != -1");
+    expect(source).toContain(
+      "private final Handler mainHandler = new Handler(Looper.getMainLooper());",
+    );
+    expect(source).toContain(
+      "if (Looper.myLooper() == Looper.getMainLooper()) return webView.getUrl();",
+    );
+    expect(source).toContain("mainHandler.post(() -> {");
+    expect(source).toContain(
+      "completed.await(WEBVIEW_URL_TIMEOUT_SECONDS, TimeUnit.SECONDS)",
+    );
+    expect(source).toContain("Thread.currentThread().interrupt();");
+    expect(source).not.toContain(
+      "String currentUrl = webView == null ? null : webView.getUrl();",
+    );
     expect(
       source.match(/if \(!requireExactLocalOrigin\(call\)\) return;/g),
     ).toHaveLength(3);

@@ -6266,6 +6266,8 @@ export function cloudSafeSecureCredentialsPluginJava(androidPackage) {
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.net.Uri;
+import android.os.Handler;
+import android.os.Looper;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 import android.util.Base64;
@@ -6281,6 +6283,9 @@ import java.nio.charset.StandardCharsets;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
@@ -6302,6 +6307,8 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
     private static final String LOCAL_APP_ORIGIN = "https://localhost";
     private static final int GCM_TAG_BITS = 128;
     private static final int MAX_TOKEN_BYTES = 16 * 1024;
+    private static final long WEBVIEW_URL_TIMEOUT_SECONDS = 2L;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     @PluginMethod
     public synchronized void get(PluginCall call) {
@@ -6381,7 +6388,7 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
             return false;
         }
         WebView webView = getBridge().getWebView();
-        String currentUrl = webView == null ? null : webView.getUrl();
+        String currentUrl = currentWebViewUrl(webView);
         Uri current = currentUrl == null ? null : Uri.parse(currentUrl);
         if (current == null
                 || !"https".equals(current.getScheme())
@@ -6391,6 +6398,28 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
             return false;
         }
         return true;
+    }
+
+    private String currentWebViewUrl(WebView webView) {
+        if (webView == null) return null;
+        if (Looper.myLooper() == Looper.getMainLooper()) return webView.getUrl();
+
+        CountDownLatch completed = new CountDownLatch(1);
+        AtomicReference<String> currentUrl = new AtomicReference<>();
+        mainHandler.post(() -> {
+            try {
+                currentUrl.set(webView.getUrl());
+            } finally {
+                completed.countDown();
+            }
+        });
+        try {
+            if (!completed.await(WEBVIEW_URL_TIMEOUT_SECONDS, TimeUnit.SECONDS)) return null;
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            return null;
+        }
+        return currentUrl.get();
     }
 
     private String storageKey(PluginCall call) {
