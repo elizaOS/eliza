@@ -424,7 +424,7 @@ const CREATE_ROLE_RE = /(^|\n)CREATE ROLE ([a-z_][a-z0-9_$]*);\n?/g;
 export function makeGlobalsIdempotent(globalsSql: string): string {
   return globalsSql.replace(
     CREATE_ROLE_RE,
-    (match, lead: string, role: string) => {
+    (_match, lead: string, role: string) => {
       return `${lead}${[
         "DO $$",
         "BEGIN",
@@ -961,7 +961,7 @@ function run(
     }
     throw new RecoveryDrillError(
       "TOOL_FAILED",
-      `${command} exited ${result.status}`,
+      `${command} exited ${result.status}: ${result.stderr.slice(-400)}`,
     );
   }
   return result.stdout;
@@ -1558,25 +1558,20 @@ export function executeDrill(options: CliOptions): DrillReport {
           Date.now(),
         );
       };
-      // Transactional exclusivity: refuse a different capability on this target
-      // before any destructive statement runs. Whether THIS capability already
-      // claimed the target is read BEFORE the claim transaction runs — the
-      // claim script upserts the row, so asking after it would always answer
-      // true and exempt archive-named roles on fresh targets too.
+      // Same-capability retry detection is read BEFORE the claim transaction
+      // runs (the claim script upserts the row, so asking after it would
+      // always answer true), but the claim itself is PERSISTED ONLY AFTER the
+      // clean-target collision check below has passed (#23453 review r3): a
+      // first invocation that refuses a pre-existing archive-named role must
+      // not leave a claim behind that a retry would treat as a legitimate
+      // same-capability retry, exempting every archive role from collision
+      // checking and proceeding to ALTER ROLE.
       const capabilityEnvelopeLocal = serializeRestoreCapability(capability);
       assertCapabilityLive();
       assertDrillLockHeld(drillLock);
       const isSameCapabilityRetry = targetHasDrillClaim(
         options.targetDsn,
         capabilityEnvelopeLocal,
-      );
-      const claimScript = join(work, "claim-exclusivity.sql");
-      writeFileSync(claimScript, buildClaimExclusivitySql(capability));
-      guardedPsqlFile(
-        options.targetDsn,
-        options.targetId,
-        capabilityEnvelope,
-        claimScript,
       );
 
       run("openssl", [
@@ -1621,6 +1616,21 @@ export function executeDrill(options: CliOptions): DrillReport {
         globalsSql,
         authority.existingRoles,
         isSameCapabilityRetry ? archiveRoles : [],
+      );
+      // The clean-target collision check has now passed (or the retry
+      // exemption is legitimate): persist the claim. Liveness and lock hold
+      // are re-proven immediately before this destructive statement — the
+      // pre-claim read above is a network round trip that can cross expiry
+      // or lock loss (#23453 review r3).
+      assertCapabilityLive();
+      assertDrillLockHeld(drillLock);
+      const claimScript = join(work, "claim-exclusivity.sql");
+      writeFileSync(claimScript, buildClaimExclusivitySql(capability));
+      guardedPsqlFile(
+        options.targetDsn,
+        options.targetId,
+        capabilityEnvelope,
+        claimScript,
       );
       const dbMap = parseDbMap(readFileSync(join(work, "dbmap.tsv"), "utf-8"));
       if (dbMap.length !== manifest.databaseCount) {
@@ -1735,6 +1745,52 @@ export function executeDrill(options: CliOptions): DrillReport {
           targetDatabaseDsn(options.targetDsn, entry.databaseName),
           "--file",
           guardedRestore,
+        ]);
+        // Ownership handoff (#23453 review r3): the dumps are restored with
+        // --no-owner, so restored objects are owned by the restore
+        // administrator — CONNECT alone would not give the tenant access to
+        // its own restored data. Hand the database, the public schema, and
+        // every restored relation to the tenant role. REASSIGN OWNED BY
+        // CURRENT_USER would also touch system-required objects when the
+        // restore admin is a superuser, so ownership transfers relation by
+        // relation: psql's \gexec runs one generated ALTER per row, %I
+        // quotes every identifier, and :'owner' interpolates the role
+        // outside any dollar-quoted context.
+        const guardedHandoff = join(work, `${entry.dumpId}.handoff.sql`);
+        writeFileSync(
+          guardedHandoff,
+          guardPsqlScript(
+            [
+              `ALTER DATABASE ${databaseIdentifier} OWNER TO ${ownerIdentifier};`,
+              `ALTER SCHEMA public OWNER TO ${ownerIdentifier};`,
+              `GRANT ALL ON SCHEMA public TO ${ownerIdentifier};`,
+              `SELECT format('ALTER %s %I.%I OWNER TO %I',`,
+              `         CASE c.relkind WHEN 'r' THEN 'TABLE' WHEN 'p' THEN 'TABLE'`,
+              `              WHEN 'v' THEN 'VIEW' WHEN 'm' THEN 'MATERIALIZED VIEW'`,
+              `              WHEN 'S' THEN 'SEQUENCE' WHEN 'f' THEN 'FOREIGN TABLE' END,`,
+              `         n.nspname, c.relname, :'owner')`,
+              `  FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace`,
+              ` WHERE c.relkind IN ('r','p','v','m','S','f')`,
+              `   AND n.nspname NOT IN ('pg_catalog','information_schema')`,
+              `   AND pg_get_userbyid(c.relowner) = current_user ` +
+                String.fromCharCode(92) +
+                `gexec`,
+              "",
+            ].join("\n"),
+          ),
+        );
+        run("psql", [
+          "--no-psqlrc",
+          "--set",
+          `expected_target_id=${options.targetId}`,
+          "--set",
+          `expected_capability=${capabilityEnvelope}`,
+          "--dbname",
+          targetDatabaseDsn(options.targetDsn, entry.databaseName),
+          "--set",
+          `owner=${probe.role}`,
+          "--file",
+          guardedHandoff,
         ]);
       }
       const restoreSeconds = Math.round((Date.now() - restoreStart) / 1000);
@@ -1949,6 +2005,91 @@ export function runMintCommand(argv: string[]): string {
  * opened before the reload may still hold the previous (unset) placeholder
  * value.
  */
+/** How long a provision lock may age before a crashed holder is presumed dead. */
+const PROVISION_LOCK_STALE_MS = 120_000;
+
+/**
+ * Atomically claim the provision lock (O_EXCL). A lock older than the
+ * staleness window is removed and retried once — the holder refreshes the
+ * mtime on acquire, so only a crashed holder's lock is ever broken.
+ */
+function claimProvisionLock(lockPath: string): void {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const fd = openSync(lockPath, "wx");
+      try {
+        writeSync(fd, `${process.pid}\n`);
+      } finally {
+        closeSync(fd);
+      }
+      return;
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+      if (code !== "EEXIST") {
+        throw new RecoveryDrillError(
+          "PROVISION_LOCK_FAILED",
+          `could not claim the provision lock: ${code ?? "unknown error"}`,
+        );
+      }
+    }
+    const stale = statSync(lockPath, { throwIfNoEntry: false });
+    if (
+      stale !== undefined &&
+      Date.now() - stale.mtimeMs > PROVISION_LOCK_STALE_MS
+    ) {
+      try {
+        // error-policy:J6 a stale lock from a crashed holder is removed.
+        rmSync(lockPath, { force: true });
+      } catch {
+        // error-policy:J6 stale-lock removal failure surfaces as EEXIST retry.
+      }
+      continue;
+    }
+    throw new RecoveryDrillError(
+      "PROVISION_LOCK_HELD",
+      "another provisioner holds the postgresql.auto.conf lock",
+    );
+  }
+  throw new RecoveryDrillError(
+    "PROVISION_LOCK_HELD",
+    "another provisioner holds the postgresql.auto.conf lock",
+  );
+}
+
+/**
+ * The locked read-modify-write of postgresql.auto.conf: strip prior eliza.*
+ * lines, append the fresh twins, and replace the file atomically (sibling
+ * temp file + fsync + rename — the same crash-consistency shape ALTER
+ * SYSTEM SET itself uses). Caller holds the provision lock.
+ */
+function writeAutoConfAtomic(
+  autoConf: string,
+  targetId: string,
+  capabilityText: string,
+): void {
+  const current = readFileSync(autoConf, "utf-8");
+  const kept = current
+    .split("\n")
+    .filter(
+      (line: string) =>
+        !line.startsWith("eliza.restore_target_id") &&
+        !line.startsWith("eliza.restore_capability"),
+    );
+  kept.push(`eliza.restore_target_id = '${targetId}'`);
+  // The serialized capability contains no single quotes (pipe-delimited
+  // envelope over UUID/hex ids and a hex signature), so this literal is safe.
+  kept.push(`eliza.restore_capability = '${capabilityText}'`);
+  const tmpConf = `${autoConf}.eliza-provision-${process.pid}.tmp`;
+  const fd = openSync(tmpConf, "w");
+  try {
+    writeSync(fd, `${kept.join("\n").trimEnd()}\n`);
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+  renameSync(tmpConf, autoConf);
+}
+
 export function runProvisionCommand(
   targetDsn: string,
   targetId: string,
@@ -1978,34 +2119,31 @@ export function runProvisionCommand(
     "SHOW data_directory",
   ]).trim();
   const autoConf = join(dataDir, "postgresql.auto.conf");
-  const current = readFileSync(autoConf, "utf-8");
-  const kept = current
-    .split("\n")
-    .filter(
-      (line: string) =>
-        !line.startsWith("eliza.restore_target_id") &&
-        !line.startsWith("eliza.restore_capability"),
-    );
-  kept.push(`eliza.restore_target_id = '${targetId}'`);
-  // The serialized capability contains no single quotes (pipe-delimited
-  // envelope over UUID/hex ids and a hex signature), so this literal is safe.
-  kept.push(`eliza.restore_capability = '${capabilityText}'`);
-  // Atomic update (#23453 review r2): write the new content to a sibling
-  // temp file, fsync it, then rename over postgresql.auto.conf — the same
-  // crash-consistency shape ALTER SYSTEM SET itself uses. A crash or a
-  // concurrent ALTER SYSTEM can never observe a truncated/partial file;
-  // the filter above re-reads immediately before this write, so the only
-  // lost race is a concurrent eliza.* line, which the fresh-session
-  // verification below catches.
-  const tmpConf = `${autoConf}.eliza-provision-${process.pid}.tmp`;
-  const fd = openSync(tmpConf, "w");
+  // Serialize the read/modify/replace against competing writers (#23453
+  // review r3): an exclusive advisory lock beside postgresql.auto.conf means
+  // a concurrent provisioner (or operator script following the same
+  // convention) cannot interleave its own read-modify-write between ours.
+  // ALTER SYSTEM SET takes no user-visible lock, so an interleaved ALTER
+  // SYSTEM can still race — the fresh-session verification below proves OUR
+  // settings landed, and the lock closes the provisioner-vs-provisioner
+  // lost-update race entirely.
+  // Neither Node nor Bun exposes flock(2), so the lock is an O_EXCL lock
+  // file: creation is atomic, so exactly one provisioner can hold it. A
+  // crash while holding leaves a stale lock; it is broken after
+  // PROVISION_LOCK_STALE_MS because a live holder refreshes the lock's
+  // mtime, and the whole window is minutes, not hours.
+  const lockPath = `${autoConf}.eliza-provision.lock`;
+  claimProvisionLock(lockPath);
   try {
-    writeSync(fd, `${kept.join("\n").trimEnd()}\n`);
-    fsyncSync(fd);
+    writeAutoConfAtomic(autoConf, targetId, capabilityText);
   } finally {
-    closeSync(fd);
+    try {
+      // error-policy:J6 best-effort lock-file release.
+      rmSync(lockPath, { force: true });
+    } catch {
+      // error-policy:J6 lock release must not mask the provisioning outcome.
+    }
   }
-  renameSync(tmpConf, autoConf);
   run("psql", [
     "--no-psqlrc",
     "--set",

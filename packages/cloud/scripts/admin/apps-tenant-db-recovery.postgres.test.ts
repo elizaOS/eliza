@@ -543,9 +543,16 @@ describe.if(ENABLED)(
       expect(report.isolation.passed).toBe(report.isolation.total);
       expect(report.objectives.met).toBe(true);
 
-      // Every tenant's restored data is real and reachable by its own role.
+      // Every tenant's restored data is real AND reachable by that tenant's
+      // OWN role credentials — not the admin credential (#23453 review r3):
+      // the dumps are --no-owner/--no-privileges and restore as the restore
+      // administrator, so CONNECT alone would not prove tenant access to the
+      // restored objects. The database is created OWNER <tenant role> by the
+      // drill, which must yield real table access for that role.
       for (const t of tenants) {
-        const check = new Client({ connectionString: dbUrl(t.databaseName) });
+        const url = new URL(BASE_URL);
+        const roleConn = `postgresql://${t.tenantRole}:tenantpw23453@${url.host}/${t.databaseName}`;
+        const check = new Client({ connectionString: roleConn });
         await check.connect();
         const rows = await check.query(
           `SELECT note FROM evidence WHERE id = 1`,
@@ -679,6 +686,85 @@ describe.if(ENABLED)(
       // The capability pin is the only remaining check that can fail here.
       expect(result.stderr).toContain("REFUSED_ARCHIVE_MISMATCH");
     });
+
+    test("a refused first invocation leaves no claim: the retry is still refused (claim-order regression r3)", async () => {
+      // Round-3 finding 1: the claim used to persist BEFORE the clean-target
+      // collision check, so a refused first invocation left a claim that a
+      // retry treated as a legitimate same-capability retry — exempting the
+      // archive-named role and proceeding to ALTER ROLE. The claim now
+      // persists only after the collision check passes, so BOTH invocations
+      // must refuse.
+      const sourceDb = `${TEST_PREFIX}src6`;
+      const targetDb = `${TEST_PREFIX}target6`;
+      const databaseName = `${TEST_PREFIX}tenant_f`;
+      const tenantRole = `${TEST_PREFIX}tenant_f`;
+      await admin.query(`CREATE DATABASE ${sourceDb}`);
+      const src = new Client({ connectionString: dbUrl(sourceDb) });
+      await src.connect();
+      await src.query(`CREATE TABLE t (id int)`);
+      await src.end();
+
+      const fixture = await buildBackupFixture(
+        sourceDb,
+        databaseName,
+        tenantRole,
+      );
+      fixture.capabilityFile = mintCapabilityFile(fixture.archiveSha256);
+      await admin.query(`CREATE DATABASE ${targetDb}`);
+      await provisionTarget(targetDb, fixture.capabilityFile);
+      // Pre-create the archive-named role: the clean-target collision check
+      // must refuse — on the first invocation AND on the retry.
+      await admin.query(`CREATE ROLE ${tenantRole}`);
+
+      const runDrill = () =>
+        spawnSync(
+          "bun",
+          [
+            "packages/cloud/scripts/admin/apps-tenant-db-recovery.ts",
+            "--set-dir",
+            fixture.setDir,
+            "--target-dsn",
+            dbUrl(targetDb),
+            "--target-id",
+            TARGET_ID,
+            "--capability-file",
+            fixture.capabilityFile,
+            "--pooler-endpoint",
+            "127.0.0.1:6432",
+            "--tenant-probes-file",
+            fixture.probesFile,
+            "--passphrase-file",
+            fixture.passphraseFile,
+            "--rpo-hours",
+            "26",
+            "--rto-minutes",
+            "60",
+          ],
+          {
+            encoding: "utf-8",
+            env: {
+              ...process.env,
+              ELIZA_RESTORE_CAPABILITY_KEY: SIGNING_KEY,
+              DRILL_TENANT_PW: fixture.tenantPassword,
+            },
+            maxBuffer: 64 * 1024 * 1024,
+          },
+        );
+
+      const first = runDrill();
+      expect(first.status).not.toBe(0);
+      expect(first.stderr).toContain("REFUSED_NONEMPTY_TARGET");
+      // Give the killed first-run lock holder a moment to drop its server
+      // session so the retry sees the advisory lock free (the drill's own
+      // teardown SIGKILLs the holder; the server releases asynchronously).
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const second = runDrill();
+      expect(second.status).not.toBe(0);
+      expect(second.stderr).toContain("REFUSED_NONEMPTY_TARGET");
+      // The retry-exemption must never have applied: the archive-named role
+      // collision is the refusal in both runs, not a restore-side failure.
+      expect(second.stderr).not.toContain("restored tenant data");
+    }, 120_000);
 
     test("replay after consumption fails closed", async () => {
       // Provision fresh twins on the cluster, consume them through the real
