@@ -318,7 +318,11 @@ export type ModelsConfigTarget = "small" | "large" | "coding";
  * in-house backend is spelled `eliza-code` on the wire (the server persists it
  * as `ELIZA_DEFAULT_AGENT_TYPE=elizaos`).
  */
-export type ModelsConfigCodingBackend = "codex" | "claude" | "eliza-code";
+export type ModelsConfigCodingBackend =
+  | "codex"
+  | "claude"
+  | "opencode"
+  | "eliza-code";
 
 /** Which config seam won for a key reported by `GET /api/models/config`. */
 export type ModelsConfigSource =
