@@ -1482,7 +1482,16 @@ function buildStaticTabRenderers(): Record<
       settingsNavigateSequence,
       pageLayout,
     }) => (
-      <AppWorkspaceContent pageLayout={pageLayout} surface="transparent">
+      <AppWorkspaceContent
+        pageLayout={pageLayout}
+        surface="transparent"
+        // The router owns the floating-composer clearance, so Settings must
+        // paint its material canvas on that same boundary. Keeping the palette
+        // only on the nested SettingsView left the reserved bottom region as a
+        // disconnected black strip instead of a continuous surface behind the
+        // floating chat overlay.
+        className="settings-surface settings-canvas"
+      >
         <LazySettingsView
           key="settings-root"
           initialSection={settingsInitialSection ?? undefined}
