@@ -22,15 +22,20 @@ after(async () => {
   );
 });
 
-test("stages identical Android and iOS runner bytes and rejects drift", async () => {
+test("stages identical app-public, Android, and iOS runner bytes and rejects drift", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "eliza-mobile-runner-"));
   roots.push(root);
-  const targets = [path.join(root, "android.js"), path.join(root, "ios.js")];
+  const targets = [
+    path.join(root, "app-public.js"),
+    path.join(root, "android.js"),
+    path.join(root, "ios.js"),
+  ];
 
   await syncMobileTaskRunnerAssets({ targets });
   const canonical = await readFile(MOBILE_TASK_RUNNER_SOURCE);
-  assert.deepEqual(await readFile(targets[0]), canonical);
-  assert.deepEqual(await readFile(targets[1]), canonical);
+  for (const target of targets) {
+    assert.deepEqual(await readFile(target), canonical);
+  }
   await checkMobileTaskRunnerAssets({ targets });
 
   await writeFile(targets[1], "drift");

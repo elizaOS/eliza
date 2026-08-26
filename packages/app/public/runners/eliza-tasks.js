@@ -1,6 +1,14 @@
 /**
- * Browser-runner script that hosts Eliza task execution inside the app public
- * runner sandbox.
+ * Canonical Eliza background runner. Capacitor Background Runner ships the
+ * copy staged into the app's web assets (packages/app/public/runners) as
+ * assets/public/runners/eliza-tasks.js; the Android and iOS platform copies
+ * are staged from this same source. It runs in a separate JSContext
+ * (iOS QuickJS, Android V8) per wake event: no window, no localStorage, no
+ * IndexedDB, no cookied fetch. Configuration arrives through the "configure"
+ * event and persists in CapacitorKV between wakes.
+ *
+ * Edit only this file and run `bun run --cwd packages/app-core
+ * mobile:runner:sync`; every staged copy must stay byte-identical.
  */
 const CONFIG_KEY = "eliza.background.config";
 const LAST_WAKE_KEY = "eliza.background.lastWake";

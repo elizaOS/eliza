@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 /**
- * Stages the canonical mobile background runner into Android and iOS package
- * locations and rejects any checked-in platform copy that drifts from it.
+ * Stages the canonical mobile background runner into the app web asset that
+ * Capacitor Background Runner actually ships (packages/app/public/runners,
+ * packaged as assets/public/runners/eliza-tasks.js) plus the Android and iOS
+ * platform copies, and rejects any staged copy that drifts from the source.
  */
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -17,6 +19,9 @@ export const MOBILE_TASK_RUNNER_SOURCE = path.join(
 );
 
 export const MOBILE_TASK_RUNNER_TARGETS = [
+  // The copy Capacitor Background Runner ships: cap sync packages the app's
+  // web assets, and the plugin loads assets/public/runners/eliza-tasks.js.
+  path.join(appCoreRoot, "../app/public/runners/eliza-tasks.js"),
   path.join(
     appCoreRoot,
     "platforms/android/app/src/main/assets/runners/eliza-tasks.js",
@@ -69,6 +74,8 @@ if (isMain) {
     console.log("Mobile task runner assets match the canonical source.");
   } else {
     await syncMobileTaskRunnerAssets();
-    console.log("Staged the canonical mobile task runner for Android and iOS.");
+    console.log(
+      "Staged the canonical mobile task runner into the app public asset and the Android and iOS platform copies.",
+    );
   }
 }
