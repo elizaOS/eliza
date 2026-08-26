@@ -89,7 +89,10 @@ describe("personal Dedicated upgrade authority migration", () => {
     const journal = JSON.parse(
       await readFile(new URL("./migrations/meta/_journal.json", import.meta.url), "utf8"),
     ) as { entries: Array<{ idx: number; tag: string }> };
-    expect(journal.entries.at(-1)).toMatchObject({
+    const authorityMigration = journal.entries.find(
+      ({ tag }) => tag === "0319_personal_dedicated_upgrade_authorities",
+    );
+    expect(authorityMigration).toMatchObject({
       idx: 302,
       tag: "0319_personal_dedicated_upgrade_authorities",
     });
