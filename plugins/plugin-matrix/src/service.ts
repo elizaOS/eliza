@@ -195,7 +195,18 @@ type MatrixAccountState = {
   membershipGate?: MatrixMembershipMessageGate;
   /** Authority handle for evidence publication; null when absent. */
   membershipAuthority?: MatrixMembershipAuthority;
+  /**
+   * Per-process monotonically increasing snapshot observation counter plus a
+   * boot token: together they make every snapshot idempotency key unique to
+   * one observation, so restarts and resyncs never collide with prior runs.
+   */
+  membershipSnapshotCounter: number;
 };
+
+// Per-process boot token for snapshot idempotency keys: distinguishes this
+// process's observations from a previous process's, so a restart's snapshots
+// are new evidence rather than idempotency conflicts against stale keys.
+const MATRIX_SNAPSHOT_BOOT_TOKEN = crypto.randomUUID().split("-")[0];
 
 /**
  * Serialized form of an IndexedDB database: object-store schemas plus their
@@ -850,6 +861,7 @@ export class MatrixService extends Service implements IMatrixService {
         }),
         connected: false,
         syncing: false,
+        membershipSnapshotCounter: 0,
       };
 
       this.states.set(state.accountId, state);
@@ -864,12 +876,20 @@ export class MatrixService extends Service implements IMatrixService {
         matrixUserId: settings.userId,
         personal: settings.personal,
       }).catch((err) => {
+        // error-policy:J2 Bootstrap failure must stay distinguishable from
+        // the absent-authority mode: the service IS configured but failed, so
+        // report and surface a BROKEN gate below (fail-closed admission)
+        // instead of silently degrading to the legacy allow mode.
         runtime.reportError("matrix:membership-bootstrap", err, {
           accountId: state.accountId,
         });
-        return null;
+        return "broken" as const;
       });
-      if (gate) {
+      if (gate === "broken") {
+        const brokenGate = new MatrixMembershipMessageGate({ runtime, authority: null });
+        brokenGate.markBroken();
+        state.membershipGate = brokenGate;
+      } else if (gate) {
         state.membershipAuthority = gate.authority;
         state.membershipGate = new MatrixMembershipMessageGate({
           runtime,
@@ -1155,9 +1175,23 @@ export class MatrixService extends Service implements IMatrixService {
         // complete membership snapshots for joined rooms. Later PREPAREDs
         // (reconnects) re-publish from the SDK's accumulated state, which is
         // complete for rooms already synced.
+        // error-policy:J7 snapshot publication is diagnostic and must not
+        // kill the sync loop; the failure is logged for operator escalation.
         void this.publishMembershipSnapshots(state, syncData?.oldSyncToken == null).catch((err) =>
           logger.error(
             `Matrix membership snapshot publication failed: ${err instanceof Error ? err.message : String(err)}`
+          )
+        );
+      } else if (syncState === "SYNCING" && _prevState === "RECONNECTING") {
+        // The SDK recovers RECONNECTING -> SYNCING (PREPARED does NOT recur
+        // after initial sync), so the republish that clears STALE scopes must
+        // run here. Complete-state rules inside publishMembershipSnapshots
+        // (lazy-load resolution + incompleteness checks) still gate what is
+        // actually published.
+        state.syncing = true;
+        void this.publishMembershipSnapshots(state, false).catch((err) =>
+          logger.error(
+            `Matrix membership snapshot recovery failed: ${err instanceof Error ? err.message : String(err)}`
           )
         );
       } else if (syncState === "ERROR" || syncState === "RECONNECTING") {
@@ -1168,6 +1202,8 @@ export class MatrixService extends Service implements IMatrixService {
         // self-leave/ban, where only an explicit rejoin may clear it — a
         // transient reconnect must never permanently kill a scope.
         if (state.membershipAuthority) {
+          // error-policy:J7 degrade is diagnostic; failed degrades surface
+          // via the authority's own error path and the next sync retries.
           void this.degradeAllMembershipScopes(state, `sync_${syncState.toLowerCase()}`).catch(
             (err) =>
               logger.error(
@@ -1184,9 +1220,24 @@ export class MatrixService extends Service implements IMatrixService {
     // trusted as complete for this room until the next full sync — record
     // incompleteness, never publish the partial roster as complete.
     state.client.on(sdk.RoomEvent.TimelineReset, (room) => {
-      if (room) {
-        state.membershipAuthority?.markRoomIncomplete(room.roomId);
+      if (!room || !state.membershipAuthority) {
+        return;
       }
+      // A limited-sync gap invalidates roster completeness immediately: the
+      // persisted scope is degraded to STALE (fail-closed admission) rather
+      // than left authorizing on an untrustworthy roster. The room is also
+      // marked locally incomplete so a later publication pass re-establishes
+      // a complete baseline instead of streaming deltas over the gap.
+      state.membershipAuthority.markRoomIncomplete(room.roomId);
+      // error-policy:J7 stale-degrade is diagnostic; a failed degrade leaves
+      // the local incompleteness flag set, so publication stays blocked.
+      void state.membershipAuthority
+        .markScopeStale({ roomId: room.roomId, reason: "limited_sync_timeline_reset" })
+        .catch((err) =>
+          logger.error(
+            `Matrix membership stale-degrade after timeline reset failed: ${err instanceof Error ? err.message : String(err)}`
+          )
+        );
     });
 
     // Room timeline events (messages)
@@ -1216,6 +1267,8 @@ export class MatrixService extends Service implements IMatrixService {
 
     // Room membership events
     state.client.on(sdk.RoomMemberEvent.Membership, (event, member, oldMembership) => {
+      // error-policy:J7 transition handling is diagnostic (the authority's
+      // evidence path already reports its own failures); never kill sync.
       void this.handleMembershipTransition(state, event, member, oldMembership).catch((err) =>
         logger.error(
           `Matrix membership transition handling failed: ${err instanceof Error ? err.message : String(err)}`
@@ -1235,7 +1288,7 @@ export class MatrixService extends Service implements IMatrixService {
    */
   private async publishMembershipSnapshots(
     state: MatrixAccountState,
-    firstSync: boolean
+    _firstSync: boolean
   ): Promise<void> {
     const authority = state.membershipAuthority;
     if (!authority) {
@@ -1320,11 +1373,17 @@ export class MatrixService extends Service implements IMatrixService {
           runtime: { worldId, roomId: worldId, entityId },
         });
       }
+      const snapshotObservedAt = new Date().toISOString();
+      // Idempotency keys must identify ONE observation, not a class of sync
+      // events: a per-process monotonically increasing token keeps restarts
+      // and resyncs distinct (a reused key is an idempotency CONFLICT, and
+      // publishSnapshot would silently skip a changed roster).
+      state.membershipSnapshotCounter += 1;
       const published = await authority.publishSnapshot({
         roomId: room.roomId,
-        observedAt: new Date().toISOString(),
+        observedAt: snapshotObservedAt,
         members: memberRecords,
-        idempotencyKey: `mx:${state.accountId}:${room.roomId}:prepared:${firstSync ? "first" : "resync"}:${rooms.length}`,
+        idempotencyKey: `mx:${state.accountId}:${room.roomId}:snapshot:${state.membershipSnapshotCounter}:${MATRIX_SNAPSHOT_BOOT_TOKEN}`,
       });
       if (published) {
         logger.debug(
@@ -1403,6 +1462,8 @@ export class MatrixService extends Service implements IMatrixService {
       }
       if (member.membership === "join" && oldMembership !== "join") {
         authority.clearScopeRemoval({ roomId });
+        // error-policy:J7 post-join republish is diagnostic; the join itself
+        // already succeeded.
         await this.publishMembershipSnapshots(state, false).catch((err) =>
           logger.error(
             `Matrix membership snapshot after join failed: ${err instanceof Error ? err.message : String(err)}`
@@ -1581,7 +1642,20 @@ export class MatrixService extends Service implements IMatrixService {
     // Check mention requirement. Skipped in 1:1 DMs: a direct message is
     // inherently addressed to the bot, so requiring an @mention there would
     // make it ignore the user. Group rooms still honor the gate.
-    const isDirectRoom = room.getJoinedMemberCount() <= 2;
+    // A lazy-loaded room's member count is unreliable until the out-of-band
+    // roster resolves (a large group can transiently look like a 1-member
+    // room). Only a RESOLVED <=2 roster counts as direct: otherwise the room
+    // is treated as governed and the membership gate decides, so a group can
+    // never bypass admission via a partial roster.
+    let rosterResolved = true;
+    if (typeof room.loadMembersIfNeeded === "function") {
+      try {
+        await room.loadMembersIfNeeded();
+      } catch {
+        rosterResolved = false;
+      }
+    }
+    const isDirectRoom = rosterResolved && room.getJoinedMemberCount() <= 2;
     if (state.settings.requireMention && !isDirectRoom) {
       const localpart = getMatrixLocalpart(state.settings.userId);
       const mentionPattern = new RegExp(`@?${escapeRegExp(localpart)}`, "i");
@@ -1632,6 +1706,8 @@ export class MatrixService extends Service implements IMatrixService {
     } as EventPayload);
 
     // Drive the core message loop so the agent actually reads and replies.
+    // error-policy:J7 dispatch failure is reported after the loop; dispatch
+    // must not take down the SDK event handler.
     void this.dispatchToAgent(state, message, matrixRoom).catch((err) =>
       logger.error(
         `Matrix dispatchToAgent failed: ${err instanceof Error ? err.message : String(err)}`
@@ -2078,6 +2154,17 @@ export class MatrixService extends Service implements IMatrixService {
     }
 
     await state.client.leave(normalizedRoomId);
+    // The homeserver confirmed the leave: terminate the room's authority
+    // scope NOW (unavailable + tombstone) instead of waiting for the SDK
+    // membership event — otherwise persisted membership stays current (and
+    // authorizing) after an explicit leave, potentially beyond this
+    // process's lifetime if the event never arrives.
+    if (state.membershipAuthority) {
+      await state.membershipAuthority.markScopeUnavailable({
+        roomId: normalizedRoomId,
+        reason: "bot_left_explicit",
+      });
+    }
     logger.info(`Left room ${normalizedRoomId}`);
     this.runtime.emitEvent(MatrixEventTypes.ROOM_LEFT, {
       roomId: normalizedRoomId,
@@ -2181,6 +2268,7 @@ export class MatrixService extends Service implements IMatrixService {
         client: legacy.client ?? ({} as sdk.MatrixClient),
         connected: legacy.connected ?? true,
         syncing: legacy.syncing ?? true,
+        membershipSnapshotCounter: 0,
       };
     }
 

@@ -221,14 +221,18 @@ export class MatrixMembershipAuthority {
    * Registers the scope publisher or adopts the persisted binding this
    * publisher already owns. Callers already hold the per-scope chain.
    */
-  private async ensureRegistered(
-    scope: MembershipScope,
-    evidenceMode: "complete_snapshot" | "ordered_delta"
-  ): Promise<ScopeTracker> {
+  private async ensureRegistered(scope: MembershipScope): Promise<ScopeTracker> {
     const key = scopeKey(scope);
     const cached = this.scopes.get(key);
     if (cached) return cached;
     const health = await this.service.getScopeHealth(scope);
+    // Single evidence mode for a scope's whole lifetime: the SQL authority
+    // requires every evidence command's mode to equal the registered
+    // publisher mode, and ordered_delta publishers may submit complete
+    // snapshots as their baseline. Registering a Matrix scope as
+    // "ordered_delta" up front keeps roster snapshots and join/leave deltas on
+    // one binding instead of fighting MEMBERSHIP_PUBLISHER_MISMATCH.
+    const evidenceMode = "ordered_delta" as const;
     if (
       health &&
       health.publisherInstanceId === this.publisherInstanceId &&
@@ -271,10 +275,7 @@ export class MatrixMembershipAuthority {
   }
 
   /** Re-reads persisted scope state after a pre-commit fencing failure. */
-  private async readoptFromHealth(
-    scope: MembershipScope,
-    evidenceMode: "complete_snapshot" | "ordered_delta"
-  ): Promise<ScopeTracker> {
+  private async readoptFromHealth(scope: MembershipScope): Promise<ScopeTracker> {
     const health = await this.service.getScopeHealth(scope);
     if (health && health.publisherInstanceId !== this.publisherInstanceId) {
       const publisherGeneration = (health.publisherGeneration ?? -1) + 1;
@@ -282,7 +283,7 @@ export class MatrixMembershipAuthority {
         ...scope,
         publisherInstanceId: this.publisherInstanceId,
         publisherGeneration,
-        evidenceMode,
+        evidenceMode: "ordered_delta",
         expectedGeneration: health.generation,
         idempotencyKey: `mx:${this.connectorAccountId}:publisher:${scope.externalRoomId}:${publisherGeneration}`,
         observedAt: new Date().toISOString(),
@@ -325,7 +326,12 @@ export class MatrixMembershipAuthority {
     const key = scopeKey(input.scope);
     for (let attempt = 0; attempt < 3; attempt++) {
       const health = await this.service.getScopeHealth(input.scope);
-      const expectedGeneration = health?.generation ?? 0;
+      if (!health) {
+        // No scope row exists (the room was never snapshotted): nothing to
+        // degrade, and no evidence was ever authorizing. Not an error.
+        return;
+      }
+      const expectedGeneration = health.generation;
       try {
         const receipt = await this.service.setScopeHealth({
           ...input.scope,
@@ -397,7 +403,7 @@ export class MatrixMembershipAuthority {
       if (!this.predateCheck(key, input.observedAt, input.roomId, "snapshot")) {
         return false;
       }
-      let tracker = await this.ensureRegistered(scope, "complete_snapshot");
+      let tracker = await this.ensureRegistered(scope);
       for (let attempt = 0; attempt < 2; attempt++) {
         const sourceVersion = tracker.sourceVersion + 1;
         const sourceCursor = `mx:${sourceVersion}`;
@@ -406,7 +412,10 @@ export class MatrixMembershipAuthority {
             ...scope,
             publisherInstanceId: this.publisherInstanceId,
             publisherGeneration: tracker.publisherGeneration,
-            evidenceMode: "complete_snapshot",
+            // Baseline submitted under the scope's single publisher mode;
+            // ordered_delta publishers establish their complete baseline with
+            // applyCompleteSnapshot and then stream deltas.
+            evidenceMode: "ordered_delta",
             expectedGeneration: tracker.generation,
             sourceVersion,
             previousSourceCursor: tracker.sourceCursor,
@@ -426,11 +435,11 @@ export class MatrixMembershipAuthority {
           this.incompleteRooms.delete(input.roomId);
           return true;
         } catch (error) {
-          if (this.handleFenceOrDuplicate(error, attempt, scope, "complete_snapshot")) {
+          if (this.handleFenceOrDuplicate(error, attempt, scope, "ordered_delta")) {
             if (authorityErrorCode(error) === "MEMBERSHIP_IDEMPOTENCY_CONFLICT") {
               return false;
             }
-            tracker = await this.readoptFromHealth(scope, "complete_snapshot");
+            tracker = await this.readoptFromHealth(scope);
             continue;
           }
           // error-policy:J2 A non-fencing failure (storage outage) propagates:
@@ -461,14 +470,17 @@ export class MatrixMembershipAuthority {
     });
     const key = scopeKey(scope);
     await this.serialized(key, async () => {
-      let tracker = await this.ensureRegistered(scope, "complete_snapshot");
+      // ensureRegistered creates the scope row when absent, so an incomplete
+      // observation on a fresh room persists explicit stale evidence
+      // (fail-closed) rather than relying on the absence of evidence.
+      let tracker = await this.ensureRegistered(scope);
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           await this.service.reportIncompleteSnapshot({
             ...scope,
             publisherInstanceId: this.publisherInstanceId,
             publisherGeneration: tracker.publisherGeneration,
-            evidenceMode: "complete_snapshot",
+            evidenceMode: "ordered_delta",
             expectedGeneration: tracker.generation,
             idempotencyKey: `mx:${this.connectorAccountId}:${input.roomId}:incomplete:${input.reason}:${tracker.generation}:${attempt}`,
             observedAt: input.observedAt,
@@ -478,11 +490,11 @@ export class MatrixMembershipAuthority {
           this.markRoomIncomplete(input.roomId);
           return;
         } catch (error) {
-          if (this.handleFenceOrDuplicate(error, attempt, scope, "complete_snapshot")) {
+          if (this.handleFenceOrDuplicate(error, attempt, scope, "ordered_delta")) {
             if (authorityErrorCode(error) === "MEMBERSHIP_IDEMPOTENCY_CONFLICT") {
               return;
             }
-            tracker = await this.readoptFromHealth(scope, "complete_snapshot");
+            tracker = await this.readoptFromHealth(scope);
             continue;
           }
           // error-policy:J7 Incompleteness reporting is diagnostic: the scope
@@ -539,7 +551,7 @@ export class MatrixMembershipAuthority {
         if (!this.predateCheck(key, input.observedAt, input.roomId, "transition")) {
           return;
         }
-        let tracker = await this.ensureRegistered(scope, "ordered_delta");
+        let tracker = await this.ensureRegistered(scope);
         // Out-of-order guard: a fact older than the principal's committed
         // evidence must never overwrite it. STRICT on the dangerous
         // direction: only a strictly newer active observation may replace a
@@ -611,7 +623,7 @@ export class MatrixMembershipAuthority {
                 );
                 return;
               }
-              tracker = await this.readoptFromHealth(scope, "ordered_delta");
+              tracker = await this.readoptFromHealth(scope);
               // The competing write may have committed NEWER evidence for
               // THIS principal: re-run the out-of-order guard before retrying.
               const recommitted = await this.service.getMembership(
@@ -800,7 +812,7 @@ export class MatrixMembershipAuthority {
     error: unknown,
     attempt: number,
     _scope: MembershipScope,
-    _mode: "complete_snapshot" | "ordered_delta"
+    _mode: "ordered_delta"
   ): boolean {
     const code = authorityErrorCode(error);
     if (code === "MEMBERSHIP_IDEMPOTENCY_CONFLICT") {
