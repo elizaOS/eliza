@@ -681,21 +681,65 @@ export function composeVerifyEscalationNotice(
   details: { attempts: number; summary: string; missing: string[] },
 ): string {
   const label = title.trim() || "the coding task";
+  const { summarySentence, missingLine } = verifyNoticeFragments(details);
+  return (
+    `⚠️ ${label}: automatic verification gave up after ${details.attempts} attempts, so it's waiting on you. ` +
+    `${summarySentence}${missingLine} ` +
+    `The work itself may still be fine — check the result, then tell me to accept it or what to fix.`
+  );
+}
+
+/** Which failed-verdict leg is speaking; shapes the notice's honest framing. */
+export type VerifyFailNoticeOutcome = "parked" | "stopped" | "unreachable";
+
+/** Shared summary/missing rendering for the fail-notice fallbacks: dedupes
+ * the residual line the callers often pass as both summary and missing (the
+ * live 2026-08-18 stutter) and caps the missing list for readability. */
+function verifyNoticeFragments(details: {
+  summary: string;
+  missing: string[];
+}): { summarySentence: string; missingLine: string } {
   const summaryText = details.summary.trim().toLowerCase();
   const missing = details.missing
     .filter((item) => item.trim().length > 0)
-    // The caller often passes the same residual line as both summary and
-    // missing; repeating it verbatim read like a stutter (live 2026-08-18:
-    // "Completion residuals found: 6 uncommitted path(s)… Couldn't confirm:
-    // 6 uncommitted path(s)…").
     .filter((item) => !summaryText.includes(item.trim().toLowerCase()))
     .slice(0, 3);
-  const missingLine =
-    missing.length > 0 ? ` Couldn't confirm: ${missing.join("; ")}.` : "";
+  return {
+    summarySentence: `${details.summary.trim()}${details.summary.trim().endsWith(".") ? "" : "."}`,
+    missingLine:
+      missing.length > 0 ? ` Couldn't confirm: ${missing.join("; ")}.` : "",
+  };
+}
+
+/**
+ * FALLBACK notice for every failed-verdict leg — used verbatim only when the
+ * model-phrased line is unavailable, so each variant must carry every fact
+ * the phrased path is given. `parked` keeps the established give-up wording;
+ * `stopped` is honest that the build is OVER (nothing runs, nothing will
+ * re-engage — the never-silent leg for a system-interrupted/failed task);
+ * `unreachable` is honest that the fix could not even be delivered.
+ */
+export function composeVerifyFailureNotice(
+  title: string,
+  details: { attempts: number; summary: string; missing: string[] },
+  outcome: VerifyFailNoticeOutcome,
+): string {
+  if (outcome === "parked") {
+    return composeVerifyEscalationNotice(title, details);
+  }
+  const label = title.trim() || "the coding task";
+  const { summarySentence, missingLine } = verifyNoticeFragments(details);
+  if (outcome === "stopped") {
+    return (
+      `⚠️ ${label}: the build stopped before it could finish. ` +
+      `${summarySentence}${missingLine} ` +
+      `Nothing is running for it now — say the word if you want me to retry it.`
+    );
+  }
   return (
-    `⚠️ ${label}: automatic verification gave up after ${details.attempts} attempts, so it's waiting on you. ` +
-    `${details.summary.trim()}${details.summary.trim().endsWith(".") ? "" : "."}${missingLine} ` +
-    `The work itself may still be fine — check the result, then tell me to accept it or what to fix.`
+    `⚠️ ${label}: automatic verification failed and I couldn't reach the worker to send a fix, so it's waiting on you. ` +
+    `${summarySentence}${missingLine} ` +
+    `Check the result, then tell me to accept it or what to fix.`
   );
 }
 
@@ -4599,6 +4643,18 @@ export class OrchestratorTaskService extends Service {
     }
   }
 
+  /**
+   * User-facing notice for a failed completion verdict that ends the
+   * automatic loop. Three outcomes share ONE dedupe surface (the per-task /
+   * per-lane notice stamps plus the router's request-terminal ledger), so a
+   * park notice and a fail notice can never double-post for one request:
+   * - `parked` (default): the at-cap give-up — task waits on the user.
+   * - `unreachable`: the corrective re-prompt could not be delivered (dead
+   *   worker) — task parks and waits on the user.
+   * - `stopped`: the task is already SYSTEM-terminal (interrupted/failed) —
+   *   nothing is running and nothing will re-engage; the user hears that the
+   *   build stopped with the verdict's honest summary instead of silence.
+   */
   private async notifyVerifyEscalation(
     taskId: string,
     details: {
@@ -4607,8 +4663,10 @@ export class OrchestratorTaskService extends Service {
       missing: string[];
       sessionId?: string;
       verifier?: string;
+      outcome?: VerifyFailNoticeOutcome;
     },
   ): Promise<void> {
+    const outcome: VerifyFailNoticeOutcome = details.outcome ?? "parked";
     try {
       const doc = await this.store.getTask(taskId);
       if (!doc) return;
@@ -4683,7 +4741,11 @@ export class OrchestratorTaskService extends Service {
             router.claimRequestTerminal(
               requestKey,
               details.sessionId ?? taskId,
-              "parked",
+              // A stopped/failed task's notice IS the request's failure
+              // terminal: if the router already posted a crash narration for
+              // this lineage (its error relay claims "failure"), the ledger
+              // denies this claim and the room is not told twice.
+              outcome === "stopped" ? "failure" : "parked",
               false,
             ),
           );
@@ -4713,10 +4775,10 @@ export class OrchestratorTaskService extends Service {
         },
       });
       if (suppressed) return;
-      // Model-phrased park notice (owner directive: user-facing text is
+      // Model-phrased notice (owner directive: user-facing text is
       // LLM-written). Runs AFTER the terminal claim + stamp above
       // (claim-before-phrase), so model latency cannot double the notice.
-      // composeVerifyEscalationNotice remains the factual fallback.
+      // composeVerifyFailureNotice remains the factual fallback.
       const label = doc.task.title.trim() || "the coding task";
       const missing = details.missing
         .filter((item) => item.trim().length > 0)
@@ -4728,29 +4790,57 @@ export class OrchestratorTaskService extends Service {
           intent: "warn",
           facts: {
             title: label,
-            attempts: details.attempts,
             summary: details.summary,
             ...(missing.length > 0 ? { couldNotConfirm: missing } : {}),
-            // User-facing state, not the internal status name: "parked"
-            // read as jargon in the room ("The page is parked", live
-            // 2026-08-22).
-            waitingOnYouNow: true,
-            // A manufactured input means the output is NOT to be trusted —
-            // "the work may still be fine" would soften a fabrication
-            // (live 2026-08-22: "though the output looks right").
-            ...(fabricatedInput
-              ? { outputIsFabricated: true, realInputMissingHere: true }
-              : { workMayStillBeFine: true }),
-            userShouldCheckThenAcceptOrSayWhatToFix: true,
+            ...(outcome === "stopped"
+              ? {
+                  // The build is over, not waiting: nothing runs and nothing
+                  // re-engages. The only honest offer is a retry.
+                  buildStoppedBeforeDelivering: true,
+                  nothingIsRunningForItNow: true,
+                  userCanAskToRetryIt: true,
+                }
+              : outcome === "unreachable"
+                ? {
+                    attempts: details.attempts,
+                    verificationFailed: true,
+                    couldNotReachTheWorkerToSendAFix: true,
+                    waitingOnYouNow: true,
+                    userShouldCheckThenAcceptOrSayWhatToFix: true,
+                  }
+                : {
+                    attempts: details.attempts,
+                    // User-facing state, not the internal status name:
+                    // "parked" read as jargon in the room ("The page is
+                    // parked", live 2026-08-22).
+                    waitingOnYouNow: true,
+                    // A manufactured input means the output is NOT to be
+                    // trusted — "the work may still be fine" would soften a
+                    // fabrication (live 2026-08-22: "though the output looks
+                    // right").
+                    ...(fabricatedInput
+                      ? { outputIsFabricated: true, realInputMissingHere: true }
+                      : { workMayStillBeFine: true }),
+                    userShouldCheckThenAcceptOrSayWhatToFix: true,
+                  }),
           },
           mustInclude: [label],
-          mustNotClaim: [
-            "the work was confirmed good",
-            "the task was abandoned",
-            ...(fabricatedInput ? ["the output is correct or usable"] : []),
-          ],
+          mustNotClaim:
+            outcome === "stopped"
+              ? [
+                  "the work finished or succeeded",
+                  "the task is still running",
+                  "results were delivered",
+                ]
+              : [
+                  "the work was confirmed good",
+                  "the task was abandoned",
+                  ...(fabricatedInput
+                    ? ["the output is correct or usable"]
+                    : []),
+                ],
         },
-        composeVerifyEscalationNotice(doc.task.title, details),
+        composeVerifyFailureNotice(doc.task.title, details, outcome),
       );
       await send(
         { source: origin.source, roomId: origin.roomId as UUID },
@@ -6167,17 +6257,39 @@ export class OrchestratorTaskService extends Service {
       TERMINAL_OR_INTERRUPTED_TASK_STATUSES.has(doc.task.status) ||
       this.pendingUserInterrupts.has(taskId)
     ) {
-      // The user cancelled (or an operator closed the task) while the judge
-      // was running: a corrective re-prompt would reactivate the stopped
-      // worker and resume the build the user just stopped; a park notice
-      // would announce a build nobody is waiting for. The pending flag covers
-      // the stop still queued behind THIS verify lap's write lock.
+      // No re-engage either way: a corrective re-prompt would reactivate a
+      // stopped worker. But WHO stopped it decides the messaging. A user
+      // cancel (pending flag covers the stop still queued behind THIS verify
+      // lap's write lock) stays silent — the stop confirmation was the
+      // notice, and a park notice would announce a build nobody is waiting
+      // for. A SYSTEM-terminal task (stuck-task reaper, crash `failed`,
+      // stop-failure fallback) has nobody left to coach and no park lap
+      // coming, yet this verdict just dropped the lane's deferred completion
+      // relay ("verify-retry or the park notice owns messaging") — staying
+      // silent strands the user (live 2026-08-25, chart-dep-check: the
+      // failed verdict landed, the task went interrupted, the room heard
+      // nothing, and the next "how's that build?" turn fabricated success).
       this.log("info", "skipping re-engage: task no longer in flight", {
         taskId,
         sessionId,
         status: doc.task.status,
         verifier,
       });
+      const userStopped =
+        this.pendingUserInterrupts.has(taskId) || userInterrupted(doc.task);
+      if (
+        !userStopped &&
+        (doc.task.status === "interrupted" || doc.task.status === "failed")
+      ) {
+        await this.notifyVerifyEscalation(taskId, {
+          attempts: attempt,
+          summary,
+          missing,
+          sessionId,
+          verifier,
+          outcome: "stopped",
+        });
+      }
       return;
     }
     const multiLane = this.laneScope(doc, sessionId).laneSessionIds.length > 1;
@@ -6323,6 +6435,19 @@ export class OrchestratorTaskService extends Service {
       // Same forwarder discriminator as the at-cap park above: this branch
       // parks too (the corrective send failed), so it must carry the stamp.
       await this.stampVerifyParkedAt(taskId);
+      // And the same VISIBILITY contract: this park used to be event-only,
+      // so a dead worker (the usual reason the corrective send fails) parked
+      // the task in silence right after its deferred relay was dropped as
+      // failed — the never-silent leg the relay drop points at. Same dedupe
+      // stamps/ledger as the at-cap notice, so park + fail cannot double-post.
+      await this.notifyVerifyEscalation(taskId, {
+        attempts: attempt + 1,
+        summary,
+        missing,
+        sessionId,
+        verifier,
+        outcome: "unreachable",
+      });
     }
     this.emitChange(taskId);
   }
