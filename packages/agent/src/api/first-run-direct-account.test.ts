@@ -116,6 +116,8 @@ function openRouterFirstRunBody(apiKey: string): Record<string, unknown> {
 function firstRunRouteContext(args: {
   apiKey: string;
   saveConfig?: typeof saveElizaConfig;
+  runtime?: FirstRunRouteContext["state"]["runtime"];
+  ensureWalletKeysInEnvAndConfig?: FirstRunRouteContext["ensureWalletKeysInEnvAndConfig"];
 }): {
   context: FirstRunRouteContext;
   responses: Array<{ status: number; data: unknown }>;
@@ -133,12 +135,12 @@ function firstRunRouteContext(args: {
     url: new URL("http://127.0.0.1/api/first-run"),
     state: {
       config,
-      runtime: null,
+      runtime: args.runtime ?? null,
       agentName: "Eliza",
-      adminEntityId: null,
-      chatUserId: null,
-      chatConnectionReady: null,
-      chatConnectionPromise: null,
+      adminEntityId: "existing-admin",
+      chatUserId: "existing-chat-user",
+      chatConnectionReady: "ready",
+      chatConnectionPromise: Promise.resolve(),
     },
     json: (_res: unknown, data: unknown, status = 200) => {
       responses.push({ status, data });
@@ -148,8 +150,11 @@ function firstRunRouteContext(args: {
     },
     readJsonBody: async () => openRouterFirstRunBody(args.apiKey),
     isCloudProvisionedContainer: () => false,
-    hasPersistedFirstRunState: () => false,
-    ensureWalletKeysInEnvAndConfig: () => false,
+    hasPersistedFirstRunState: (candidate: {
+      meta?: { firstRunComplete?: boolean };
+    }) => candidate.meta?.firstRunComplete === true,
+    ensureWalletKeysInEnvAndConfig:
+      args.ensureWalletKeysInEnvAndConfig ?? (() => false),
     getWalletAddresses: () => ({}),
     pickRandomNames: () => [],
     getStylePresets: () => [],
@@ -273,7 +278,7 @@ describe("POST /api/first-run direct account authority", () => {
     expect(process.env.OPENAI_API_KEY).toBeUndefined();
   });
 
-  it("retracts the adopted account and live export when config commit fails", async () => {
+  it("restores all live first-run authority when config commit fails", async () => {
     vi.stubGlobal(
       "fetch",
       vi
@@ -289,12 +294,32 @@ describe("POST /api/first-run direct account authority", () => {
           }),
         ),
     );
+    const runtime = {
+      agentId: "agent-id",
+      character: { name: "Original", bio: ["Original bio"] },
+      getAgent: vi.fn(async () => ({ metadata: { existing: true } })),
+      updateAgent: vi.fn(async () => {}),
+      setSetting: vi.fn(),
+    } as unknown as FirstRunRouteContext["state"]["runtime"];
     const { context, responses } = firstRunRouteContext({
       apiKey: "sk-or-config-failure",
+      runtime,
+      ensureWalletKeysInEnvAndConfig: (config) => {
+        config.env = {
+          ...(config.env ?? {}),
+          EVM_PRIVATE_KEY: "generated-evm",
+          SOLANA_PRIVATE_KEY: "generated-solana",
+        };
+        process.env.EVM_PRIVATE_KEY = "generated-evm";
+        process.env.SOLANA_PRIVATE_KEY = "generated-solana";
+        return true;
+      },
       saveConfig: () => {
         throw new Error("disk unavailable");
       },
     });
+    const originalConfig = structuredClone(context.state.config);
+    const originalChatPromise = context.state.chatConnectionPromise;
 
     await expect(handleFirstRunRoutes(context)).resolves.toBe(true);
 
@@ -308,10 +333,74 @@ describe("POST /api/first-run direct account authority", () => {
     expect(process.env.OPENROUTER_API_KEY).toBeUndefined();
     expect(process.env.OPENAI_API_KEY).toBeUndefined();
     expect(process.env.OPENAI_BASE_URL).toBeUndefined();
+    expect(process.env.EVM_PRIVATE_KEY).toBeUndefined();
+    expect(process.env.SOLANA_PRIVATE_KEY).toBeUndefined();
+    expect(context.state.config).toEqual(originalConfig);
+    expect(context.state.agentName).toBe("Eliza");
+    expect(context.state.adminEntityId).toBe("existing-admin");
+    expect(context.state.chatUserId).toBe("existing-chat-user");
+    expect(context.state.chatConnectionReady).toBe("ready");
+    expect(context.state.chatConnectionPromise).toBe(originalChatPromise);
+    expect(runtime?.character).toEqual({
+      name: "Original",
+      bio: ["Original bio"],
+    });
+    expect(runtime?.updateAgent).not.toHaveBeenCalled();
+    expect(runtime?.setSetting).not.toHaveBeenCalled();
     expect(state.applyAccountPoolApiCredentials).toHaveBeenCalledTimes(2);
+
+    context.method = "GET";
+    context.pathname = "/api/first-run/status";
+    await expect(handleFirstRunRoutes(context)).resolves.toBe(true);
+    expect(responses.at(-1)).toEqual({
+      status: 200,
+      data: { complete: false },
+    });
+
+    context.pathname = "/api/wallet/keys";
+    await expect(handleFirstRunRoutes(context)).resolves.toBe(true);
+    expect(responses.at(-1)?.status).toBe(200);
+    delete process.env.EVM_PRIVATE_KEY;
+    delete process.env.SOLANA_PRIVATE_KEY;
   });
 
-  it("persists only the encrypted account authority and restores it after a simulated restart", async () => {
+  it("retries cleanly after a failed config commit", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) =>
+        String(url).includes("/auth/key")
+          ? new Response(JSON.stringify({ data: { label: "primary" } }), {
+              status: 200,
+            })
+          : new Response(JSON.stringify({ data: [{ id: "openai/gpt-5" }] }), {
+              status: 200,
+            }),
+      ),
+    );
+    let attempts = 0;
+    const { context, responses } = firstRunRouteContext({
+      apiKey: "sk-or-retry-authority",
+      saveConfig: (config) => {
+        attempts += 1;
+        if (attempts === 1) throw new Error("first commit failed");
+        saveElizaConfig(config);
+      },
+    });
+
+    await handleFirstRunRoutes(context);
+    expect(responses.at(-1)?.status).toBe(500);
+    expect(context.state.agentName).toBe("Eliza");
+    expect(context.state.config.meta?.firstRunComplete).not.toBe(true);
+    expect(await listAccounts("openrouter-api")).toEqual([]);
+
+    await handleFirstRunRoutes(context);
+    expect(responses.at(-1)).toEqual({ status: 200, data: { ok: true } });
+    expect(context.state.agentName).toBe("Fresh Eliza");
+    expect(context.state.config.meta?.firstRunComplete).toBe(true);
+    expect(await listAccounts("openrouter-api")).toHaveLength(1);
+  });
+
+  it("reconstructs live exports from persisted authority in the same process", async () => {
     vi.stubGlobal(
       "fetch",
       vi
@@ -344,8 +433,8 @@ describe("POST /api/first-run direct account authority", () => {
       "sk-or-restart-authority",
     );
 
-    // Simulate a fresh process: raw env is empty and the deterministic host
-    // rebuilds authority from persisted metadata plus the encrypted record.
+    // Reconstruct the boot-time export inputs in-process: raw env is empty and
+    // the deterministic host reads persisted metadata plus the encrypted record.
     delete process.env.OPENROUTER_API_KEY;
     delete process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_BASE_URL;
