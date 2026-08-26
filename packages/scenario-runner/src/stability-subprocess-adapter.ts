@@ -665,6 +665,23 @@ export class ScenarioStabilitySubprocessAdapter
         input.target.model.provider === "openai"
           ? new Set(["/v1/responses", "/v1/chat/completions"])
           : new Set(["/v1/messages"]);
+      const acceptedEnvelopeKeys = new Set([
+        "requestNumber",
+        "method",
+        "route",
+        "bodyBytes",
+        "forwardedBodyBytes",
+        "forwardedBodySha256",
+        "observedModel",
+        "requestedMaxOutputTokens",
+        "effectiveMaxOutputTokens",
+        "inputBudgetCharge",
+        "accepted",
+      ]);
+      const rejectedEnvelopeKeys = new Set([
+        ...acceptedEnvelopeKeys,
+        "failureCode",
+      ]);
       const requestEnvelopesValid =
         requestEnvelopes !== null &&
         requestEnvelopes.length <= 1_000 &&
@@ -677,7 +694,15 @@ export class ScenarioStabilitySubprocessAdapter
           const effective = envelope.effectiveMaxOutputTokens;
           const charge = envelope.inputBudgetCharge;
           const failureCode = envelope.failureCode;
+          const forwardedBytes = envelope.forwardedBodyBytes;
+          const forwardedHash = envelope.forwardedBodySha256;
+          const expectedKeys =
+            envelope.accepted === true
+              ? acceptedEnvelopeKeys
+              : rejectedEnvelopeKeys;
           return (
+            Object.keys(envelope).length === expectedKeys.size &&
+            Object.keys(envelope).every((key) => expectedKeys.has(key)) &&
             Number.isSafeInteger(envelope.requestNumber) &&
             (envelope.requestNumber as number) > 0 &&
             (envelope.requestNumber as number) <=
@@ -702,18 +727,49 @@ export class ScenarioStabilitySubprocessAdapter
             typeof envelope.accepted === "boolean" &&
             (envelope.accepted
               ? envelope.observedModel === input.target.model.model &&
+                Number.isSafeInteger(forwardedBytes) &&
+                (forwardedBytes as number) > 0 &&
+                typeof forwardedHash === "string" &&
+                /^[a-f0-9]{64}$/u.test(forwardedHash) &&
                 effective !== null &&
                 (effective as number) <= input.budgets.maxOutputTokens &&
+                (requested === null ||
+                  (effective as number) <= (requested as number)) &&
                 charge !== null &&
+                (charge as number) ===
+                  Math.max(
+                    envelope.bodyBytes as number,
+                    forwardedBytes as number,
+                  ) +
+                    8_192 &&
                 (charge as number) <= input.budgets.maxInputTokens &&
                 failureCode === undefined
-              : typeof failureCode === "string" &&
+              : forwardedBytes === null &&
+                forwardedHash === null &&
+                typeof failureCode === "string" &&
                 REAL_MODEL_METER_FAILURE_CODES.has(failureCode))
           );
         }) &&
         requestEnvelopes.filter(
           (value) => (value as Record<string, unknown>).accepted === true,
-        ).length === requestCount;
+        ).length === requestCount &&
+        requestEnvelopes
+          .filter(
+            (value) => (value as Record<string, unknown>).accepted === true,
+          )
+          .every(
+            (value, index) =>
+              (value as Record<string, unknown>).requestNumber === index + 1,
+          ) &&
+        requestEnvelopes
+          .filter(
+            (value) => (value as Record<string, unknown>).accepted === false,
+          )
+          .every(
+            (value) =>
+              (value as Record<string, unknown>).requestNumber ===
+              (requestCount as number) + 1,
+          );
       const successMeteringValid =
         execution.passed === false ||
         (receipt?.liveModelInvoked === true &&

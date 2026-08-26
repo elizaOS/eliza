@@ -66,6 +66,8 @@ process.stdout.write(JSON.stringify({
         method: "POST",
         route: "/v1/responses",
         bodyBytes: 64,
+        forwardedBodyBytes: null,
+        forwardedBodySha256: null,
         observedModel: process.env.ELIZA_STABILITY_MODEL,
         requestedMaxOutputTokens: 1,
         effectiveMaxOutputTokens: null,
@@ -73,15 +75,18 @@ process.stdout.write(JSON.stringify({
         accepted: false,
         failureCode: meterFailureCode
       }] : Array.from({ length: requestCount }, (_, index) => ({
-        requestNumber: index + 1,
+        requestNumber: index + (process.env.ELIZA_TEST_BAD_ENVELOPE_SEQUENCE === "1" ? 2 : 1),
         method: "POST",
         route: "/v1/responses",
         bodyBytes: 64,
+        forwardedBodyBytes: process.env.ELIZA_TEST_BAD_ENVELOPE_BYTES === "1" ? 65 : 64,
+        forwardedBodySha256: process.env.ELIZA_TEST_BAD_ENVELOPE_HASH === "1" ? "not-a-hash" : "a".repeat(64),
         observedModel: process.env.ELIZA_TEST_WRONG_ENVELOPE_MODEL === "1" ? "wrong-model" : process.env.ELIZA_STABILITY_MODEL,
         requestedMaxOutputTokens: 2,
         effectiveMaxOutputTokens: 2,
         inputBudgetCharge: 8256,
-        accepted: true
+        accepted: true,
+        ...(process.env.ELIZA_TEST_EXTRA_ENVELOPE_KEY === "1" ? { extra: true } : {})
       })),
       namespace: process.env.ELIZA_SYNTHETIC_NAMESPACE,
       manifestId: process.env.ELIZA_SYNTHETIC_MANIFEST_ID,
@@ -399,6 +404,10 @@ describe("scenario stability subprocess adapter", () => {
       "none",
       "wrong-provider",
       "wrong-envelope-model",
+      "bad-envelope-hash",
+      "bad-envelope-bytes",
+      "bad-envelope-sequence",
+      "extra-envelope-key",
       "zero-metering",
       "over-request-cap",
     ] as const) {
@@ -434,6 +443,18 @@ describe("scenario stability subprocess adapter", () => {
             : {}),
           ...(failure === "wrong-envelope-model"
             ? { ELIZA_TEST_WRONG_ENVELOPE_MODEL: "1" }
+            : {}),
+          ...(failure === "bad-envelope-hash"
+            ? { ELIZA_TEST_BAD_ENVELOPE_HASH: "1" }
+            : {}),
+          ...(failure === "bad-envelope-bytes"
+            ? { ELIZA_TEST_BAD_ENVELOPE_BYTES: "1" }
+            : {}),
+          ...(failure === "bad-envelope-sequence"
+            ? { ELIZA_TEST_BAD_ENVELOPE_SEQUENCE: "1" }
+            : {}),
+          ...(failure === "extra-envelope-key"
+            ? { ELIZA_TEST_EXTRA_ENVELOPE_KEY: "1" }
             : {}),
           ...(failure === "zero-metering" ? { ELIZA_TEST_ZERO_REAL: "1" } : {}),
           ...(failure === "over-request-cap"

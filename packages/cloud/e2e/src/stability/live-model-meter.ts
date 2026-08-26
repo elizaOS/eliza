@@ -3,6 +3,7 @@
  * rejects unaccounted or over-budget provider traffic before it reaches the scenario.
  */
 
+import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -44,6 +45,8 @@ export interface StabilityModelRequestEnvelopeEvidence {
   method: string;
   route: string;
   bodyBytes: number;
+  forwardedBodyBytes: number | null;
+  forwardedBodySha256: string | null;
   observedModel: string | null;
   requestedMaxOutputTokens: number | null;
   effectiveMaxOutputTokens: number | null;
@@ -253,36 +256,408 @@ function preDispatchError(message: string): StabilityModelMeterError {
   );
 }
 
-function containsUnsupportedProviderInput(value: unknown): boolean {
-  if (Array.isArray(value)) return value.some(containsUnsupportedProviderInput);
+function exactKeys(
+  record: Record<string, unknown>,
+  allowed: readonly string[],
+): boolean {
+  const set = new Set(allowed);
+  return Object.keys(record).every((key) => set.has(key));
+}
+
+function cacheControl(value: unknown): boolean {
+  if (value === undefined) return true;
+  const record = asRecord(value);
+  return Boolean(
+    record &&
+      exactKeys(record, ["type", "ttl"]) &&
+      record.type === "ephemeral" &&
+      (record.ttl === undefined || record.ttl === "5m" || record.ttl === "1h"),
+  );
+}
+
+function openAiFunctionTool(value: unknown, responses: boolean): boolean {
   const record = asRecord(value);
   if (!record) return false;
-  for (const [key, child] of Object.entries(record)) {
-    const normalizedKey = key.toLowerCase();
-    if (
-      [
-        "image_url",
-        "file_id",
-        "file_url",
-        "input_audio",
-        "audio_url",
-        "video_url",
-      ].includes(normalizedKey)
-    ) {
-      return true;
-    }
-    if (
-      normalizedKey === "type" &&
-      typeof child === "string" &&
-      /(?:image|audio|video|file|web_search|computer|code_interpreter|mcp|connector)/iu.test(
-        child,
-      )
-    ) {
-      return true;
-    }
-    if (containsUnsupportedProviderInput(child)) return true;
+  if (responses) {
+    return (
+      record.type === "function" &&
+      exactKeys(record, [
+        "type",
+        "name",
+        "description",
+        "parameters",
+        "strict",
+      ]) &&
+      typeof record.name === "string" &&
+      asRecord(record.parameters) !== null
+    );
   }
-  return false;
+  const fn = asRecord(record.function);
+  return Boolean(
+    record.type === "function" &&
+      exactKeys(record, ["type", "function"]) &&
+      fn &&
+      exactKeys(fn, ["name", "description", "parameters", "strict"]) &&
+      typeof fn.name === "string" &&
+      asRecord(fn.parameters) !== null,
+  );
+}
+
+function openAiCustomTool(value: unknown): boolean {
+  const record = asRecord(value);
+  return Boolean(
+    record &&
+      record.type === "custom" &&
+      exactKeys(record, ["type", "name", "description", "format"]) &&
+      typeof record.name === "string",
+  );
+}
+
+function openAiToolChoice(value: unknown, responses: boolean): boolean {
+  if (
+    value === undefined ||
+    ["auto", "none", "required"].includes(String(value))
+  )
+    return true;
+  const record = asRecord(value);
+  if (!record) return false;
+  if (responses) {
+    return (
+      (record.type === "function" || record.type === "custom") &&
+      exactKeys(record, ["type", "name"]) &&
+      typeof record.name === "string"
+    );
+  }
+  const fn = asRecord(record.function);
+  return Boolean(
+    record.type === "function" &&
+      exactKeys(record, ["type", "function"]) &&
+      fn &&
+      exactKeys(fn, ["name"]) &&
+      typeof fn.name === "string",
+  );
+}
+
+function openAiChatContent(value: unknown): boolean {
+  if (typeof value === "string" || value === null) return true;
+  return (
+    Array.isArray(value) &&
+    value.every((part) => {
+      const record = asRecord(part);
+      return Boolean(
+        record &&
+          record.type === "text" &&
+          exactKeys(record, ["type", "text"]) &&
+          typeof record.text === "string",
+      );
+    })
+  );
+}
+
+function openAiChatMessage(value: unknown): boolean {
+  const record = asRecord(value);
+  if (
+    !record ||
+    !exactKeys(record, [
+      "role",
+      "content",
+      "name",
+      "tool_calls",
+      "tool_call_id",
+      "refusal",
+    ])
+  )
+    return false;
+  if (
+    !["system", "developer", "user", "assistant", "tool"].includes(
+      String(record.role),
+    )
+  )
+    return false;
+  if (!openAiChatContent(record.content)) return false;
+  if (record.tool_calls !== undefined) {
+    if (!Array.isArray(record.tool_calls)) return false;
+    for (const call of record.tool_calls) {
+      const item = asRecord(call);
+      const fn = asRecord(item?.function);
+      if (
+        !item ||
+        !fn ||
+        item.type !== "function" ||
+        !exactKeys(item, ["id", "type", "function"]) ||
+        !exactKeys(fn, ["name", "arguments"]) ||
+        typeof item.id !== "string" ||
+        typeof fn.name !== "string" ||
+        typeof fn.arguments !== "string"
+      )
+        return false;
+    }
+  }
+  return (
+    record.tool_call_id === undefined || typeof record.tool_call_id === "string"
+  );
+}
+
+function openAiResponsesInput(value: unknown): boolean {
+  if (typeof value === "string") return true;
+  if (!Array.isArray(value)) return false;
+  return value.every((item) => {
+    const record = asRecord(item);
+    if (!record) return false;
+    if (
+      record.type === "function_call_output" ||
+      record.type === "custom_tool_call_output"
+    ) {
+      return (
+        exactKeys(record, ["type", "call_id", "output"]) &&
+        typeof record.call_id === "string" &&
+        typeof record.output === "string"
+      );
+    }
+    if (
+      !exactKeys(record, ["role", "content", "type"]) ||
+      !["user", "assistant", "system", "developer"].includes(
+        String(record.role),
+      )
+    )
+      return false;
+    if (typeof record.content === "string") return true;
+    return (
+      Array.isArray(record.content) &&
+      record.content.every((part) => {
+        const content = asRecord(part);
+        return Boolean(
+          content &&
+            ["input_text", "output_text"].includes(String(content.type)) &&
+            exactKeys(content, ["type", "text"]) &&
+            typeof content.text === "string",
+        );
+      })
+    );
+  });
+}
+
+function anthropicContent(value: unknown): boolean {
+  if (typeof value === "string") return true;
+  if (!Array.isArray(value)) return false;
+  return value.every((part) => {
+    const record = asRecord(part);
+    if (!record) return false;
+    if (record.type === "text")
+      return (
+        exactKeys(record, ["type", "text", "cache_control"]) &&
+        typeof record.text === "string" &&
+        cacheControl(record.cache_control)
+      );
+    if (record.type === "tool_use")
+      return (
+        exactKeys(record, ["type", "id", "name", "input", "cache_control"]) &&
+        typeof record.id === "string" &&
+        typeof record.name === "string" &&
+        asRecord(record.input) !== null &&
+        cacheControl(record.cache_control)
+      );
+    if (record.type === "tool_result")
+      return (
+        exactKeys(record, [
+          "type",
+          "tool_use_id",
+          "content",
+          "is_error",
+          "cache_control",
+        ]) &&
+        typeof record.tool_use_id === "string" &&
+        (typeof record.content === "string" ||
+          anthropicContent(record.content)) &&
+        cacheControl(record.cache_control)
+      );
+    return false;
+  });
+}
+
+function validateProviderRequestShape(
+  provider: StabilityModelProvider,
+  route: string,
+  body: Record<string, unknown>,
+): void {
+  if (provider === "openai" && route === "/v1/chat/completions") {
+    const allowed = [
+      "model",
+      "messages",
+      "max_tokens",
+      "max_completion_tokens",
+      "temperature",
+      "top_p",
+      "frequency_penalty",
+      "presence_penalty",
+      "stop",
+      "stream",
+      "stream_options",
+      "tools",
+      "tool_choice",
+      "response_format",
+      "seed",
+      "user",
+      "parallel_tool_calls",
+      "logprobs",
+      "top_logprobs",
+      "reasoning_effort",
+      "n",
+    ];
+    if (
+      !exactKeys(body, allowed) ||
+      !Array.isArray(body.messages) ||
+      !body.messages.every(openAiChatMessage)
+    )
+      throw preDispatchError(
+        "OpenAI Chat request is outside the local text/function schema",
+      );
+    if (body.n !== undefined && body.n !== 1)
+      throw preDispatchError("OpenAI Chat n must be absent or exactly 1");
+    if (body.stream !== undefined && typeof body.stream !== "boolean")
+      throw preDispatchError("OpenAI Chat stream must be boolean");
+    if (body.stream === true) {
+      const streamOptions =
+        body.stream_options === undefined ? {} : asRecord(body.stream_options);
+      if (
+        !streamOptions ||
+        !exactKeys(streamOptions, ["include_usage"]) ||
+        (streamOptions.include_usage !== undefined &&
+          streamOptions.include_usage !== true)
+      ) {
+        throw preDispatchError(
+          "OpenAI Chat streaming requires exact include_usage support",
+        );
+      }
+      body.stream_options = { include_usage: true };
+    } else if (body.stream_options !== undefined) {
+      throw preDispatchError(
+        "OpenAI Chat stream_options requires streaming mode",
+      );
+    }
+    if (
+      body.tools !== undefined &&
+      (!Array.isArray(body.tools) ||
+        !body.tools.every((tool) => openAiFunctionTool(tool, false)))
+    )
+      throw preDispatchError("OpenAI Chat permits only client function tools");
+    if (!openAiToolChoice(body.tool_choice, false))
+      throw preDispatchError(
+        "OpenAI Chat tool choice must select a client function",
+      );
+    return;
+  }
+  if (provider === "openai") {
+    const allowed = [
+      "model",
+      "input",
+      "instructions",
+      "max_output_tokens",
+      "temperature",
+      "top_p",
+      "stream",
+      "tools",
+      "tool_choice",
+      "text",
+      "reasoning",
+      "parallel_tool_calls",
+      "store",
+      "metadata",
+    ];
+    if (
+      !exactKeys(body, allowed) ||
+      !openAiResponsesInput(body.input) ||
+      (body.instructions !== undefined && typeof body.instructions !== "string")
+    )
+      throw preDispatchError(
+        "OpenAI Responses request is outside the local text/function schema",
+      );
+    if (
+      body.tools !== undefined &&
+      (!Array.isArray(body.tools) ||
+        !body.tools.every(
+          (tool) => openAiFunctionTool(tool, true) || openAiCustomTool(tool),
+        ))
+    )
+      throw preDispatchError(
+        "OpenAI Responses permits only client function/custom tools",
+      );
+    if (
+      !openAiToolChoice(body.tool_choice, true) ||
+      (body.store !== undefined && body.store !== false)
+    )
+      throw preDispatchError(
+        "OpenAI Responses tool choice/storage is outside the local schema",
+      );
+    return;
+  }
+  const allowed = [
+    "model",
+    "messages",
+    "max_tokens",
+    "system",
+    "temperature",
+    "top_p",
+    "top_k",
+    "stop_sequences",
+    "stream",
+    "tools",
+    "tool_choice",
+    "metadata",
+    "thinking",
+    "output_config",
+  ];
+  if (
+    !exactKeys(body, allowed) ||
+    !Array.isArray(body.messages) ||
+    !body.messages.every((message) => {
+      const record = asRecord(message);
+      return Boolean(
+        record &&
+          exactKeys(record, ["role", "content"]) &&
+          ["user", "assistant"].includes(String(record.role)) &&
+          anthropicContent(record.content),
+      );
+    }) ||
+    (body.system !== undefined && !anthropicContent(body.system))
+  )
+    throw preDispatchError(
+      "Anthropic request is outside the local text/function schema",
+    );
+  if (
+    body.tools !== undefined &&
+    (!Array.isArray(body.tools) ||
+      !body.tools.every((tool) => {
+        const record = asRecord(tool);
+        return Boolean(
+          record &&
+            (record.type === undefined || record.type === "custom") &&
+            exactKeys(record, [
+              "type",
+              "name",
+              "description",
+              "input_schema",
+              "cache_control",
+            ]) &&
+            typeof record.name === "string" &&
+            asRecord(record.input_schema) !== null &&
+            cacheControl(record.cache_control),
+        );
+      }))
+  )
+    throw preDispatchError("Anthropic permits only client custom tools");
+  if (body.tool_choice !== undefined) {
+    const choice = asRecord(body.tool_choice);
+    if (
+      !choice ||
+      !exactKeys(choice, ["type", "name", "disable_parallel_tool_use"]) ||
+      !["auto", "any", "none", "tool"].includes(String(choice.type)) ||
+      (choice.type === "tool" && typeof choice.name !== "string")
+    )
+      throw preDispatchError(
+        "Anthropic tool choice must select a client custom tool",
+      );
+  }
 }
 
 function positiveOutputCap(value: unknown, field: string): number {
@@ -395,11 +770,7 @@ function parseRequestEnvelope(input: {
       throw preDispatchError("Anthropic messages must be a non-empty array");
     }
   }
-  if (containsUnsupportedProviderInput(body)) {
-    throw preDispatchError(
-      "multimodal, file, audio, video, and provider-fetched URL inputs are unsupported",
-    );
-  }
+  validateProviderRequestShape(input.provider, input.route, body);
   const effectiveMaxOutputTokens = Math.min(
     requestedMaxOutputTokens ?? input.remainingOutputTokens,
     input.remainingOutputTokens,
@@ -425,6 +796,8 @@ function parseRequestEnvelope(input: {
   }
   return {
     bodyBytes: input.bytes.byteLength,
+    forwardedBodyBytes: forwardBody.byteLength,
+    forwardedBodySha256: createHash("sha256").update(forwardBody).digest("hex"),
     observedModel,
     requestedMaxOutputTokens,
     effectiveMaxOutputTokens,
@@ -440,6 +813,8 @@ function inspectRejectedRequestEnvelope(
 ): Pick<
   StabilityModelRequestEnvelopeEvidence,
   | "bodyBytes"
+  | "forwardedBodyBytes"
+  | "forwardedBodySha256"
   | "observedModel"
   | "requestedMaxOutputTokens"
   | "effectiveMaxOutputTokens"
@@ -466,6 +841,8 @@ function inspectRejectedRequestEnvelope(
   const inputBudgetCharge = bytes.byteLength + INPUT_TOKEN_OVERHEAD_RESERVE;
   return {
     bodyBytes: bytes.byteLength,
+    forwardedBodyBytes: null,
+    forwardedBodySha256: null,
     observedModel,
     requestedMaxOutputTokens,
     effectiveMaxOutputTokens: null,
@@ -845,6 +1222,8 @@ export async function startLiveModelEgressProxy(options: {
             method: request.method ?? "UNKNOWN",
             route,
             ...envelopeEvidence,
+            forwardedBodyBytes: null,
+            forwardedBodySha256: null,
             accepted: false,
             failureCode: admission.failure.code,
           });
