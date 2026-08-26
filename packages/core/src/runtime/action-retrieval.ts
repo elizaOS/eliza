@@ -1184,6 +1184,15 @@ function explicitParentAliasesForCandidateAction(actionName: string): string[] {
 	) {
 		return ["CALCULATE"];
 	}
+	// Recap/summary-shaped inventions are open-ended — Stage 1 produces a fresh
+	// spelling per turn (live 2026-08-23: TASKS_RECAP_DAY, then RECAP_DAY, then
+	// GET_TASKS_SUMMARY for the same ask), so exact-name aliases cannot keep
+	// up. Any candidate whose name carries the recap/summary stem hints the
+	// room-transcript reader plus the TASKS umbrella (tracked-work day recaps);
+	// admission still passes through appendIfAllowed's role/context gates.
+	if (/RECAP|SUMMAR/.test(normalized)) {
+		return ["CHANNEL_RECAP", "TASKS"];
+	}
 	return [];
 }
 
