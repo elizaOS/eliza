@@ -187,6 +187,37 @@ describe("detectRuntimeModel — non-cloud branches unaffected", () => {
     ).toBe("cerebras");
     expect(detectRuntimeModel(makeRuntime(), config, env)).toBe("openai");
   });
+
+  it("reports Cerebras when its OpenAI-compatible handler served the last turn", () => {
+    const env = { ELIZA_PROVIDER: "cerebras" };
+    const runtime = makeRuntime({
+      openAiTextHandlerRegistered: true,
+      lastServingProvider: "openai",
+    });
+
+    expect(detectRuntimeModel(runtime, { serviceRouting: {} }, env)).toBe(
+      "cerebras",
+    );
+  });
+
+  it("does not relabel an explicitly routed OpenAI response as Cerebras", () => {
+    const env = { ELIZA_PROVIDER: "cerebras" };
+    const runtime = makeRuntime({
+      openAiTextHandlerRegistered: true,
+      lastServingProvider: "openai",
+    });
+    const directConfig = {
+      serviceRouting: {
+        llmText: {
+          backend: "openai",
+          transport: "direct" as const,
+          primaryModel: "gpt-4o",
+        },
+      },
+    };
+
+    expect(detectRuntimeModel(runtime, directConfig, env)).toBe("openai");
+  });
 });
 
 // The exact packaged-app state quoted in the #20124 review: cloud-proxy

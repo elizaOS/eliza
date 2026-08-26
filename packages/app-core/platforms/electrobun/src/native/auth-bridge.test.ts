@@ -95,6 +95,9 @@ describe("desktop auth bridge", () => {
       generateSecret: () => Buffer.alloc(32, 7),
       fetchImpl: async (_input, init) => {
         const body = JSON.parse(String(init?.body)) as { socketPath: string };
+        const socketStat = fs.statSync(body.socketPath);
+        expect(socketStat.isSocket()).toBe(true);
+        expect(socketStat.mode & 0o077).toBe(0);
         await new Promise<void>((resolve, reject) => {
           const socket = net.createConnection(body.socketPath);
           socket.once("error", reject);

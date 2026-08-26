@@ -193,20 +193,35 @@ export function detectRuntimeModel(
 ): string | undefined {
   if (!runtime) return undefined;
 
+  const routing = resolveServiceRoutingInConfig(
+    (config ?? null) as Record<string, unknown> | null,
+  );
+
   // Who actually answered beats who was configured to. A character `model`
   // pin is a request, not a receipt: with a cloud-proxy route and no live
   // Cloud account the runtime falls through to another provider, and
   // reporting the pin made /api/status claim "elizacloud" while local
   // inference served every turn (elizaOS/eliza#20045 review).
   const serving = lastServingTextProvider(runtime);
-  if (serving) return serving;
+  if (serving) {
+    // plugin-openai is also the OpenAI-compatible transport for Cerebras. Its
+    // core registration/receipt name remains "openai", so translate that
+    // implementation identity only for the legacy desktop configuration that
+    // explicitly selected Cerebras and has no service-routing override.
+    if (
+      serving === "openai" &&
+      routing === null &&
+      normalizeFirstRunProviderId(env.ELIZA_PROVIDER) === "cerebras" &&
+      hasOpenAiTextHandlerRegistered(runtime)
+    ) {
+      return "cerebras";
+    }
+    return serving;
+  }
 
   const configured = readCharacterModel(runtime);
   if (configured) return configured;
 
-  const routing = resolveServiceRoutingInConfig(
-    (config ?? null) as Record<string, unknown> | null,
-  );
   const deploymentTarget = resolveDeploymentTargetInConfig(
     (config ?? null) as Record<string, unknown> | null,
   );
