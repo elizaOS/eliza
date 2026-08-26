@@ -11,6 +11,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ownerGetSetting } from "../../src/test-utils/action-test-utils.js";
 
 const fakeWorkspaceService = {
   setAuthPromptCallback: vi.fn(),
@@ -43,19 +44,31 @@ vi.mock("../../src/services/workspace-service.js", () => ({
   CodingWorkspaceService: class {},
 }));
 
-vi.mock("../../src/services/task-policy.js", () => ({
-  requireTaskAgentAccess: vi.fn(async () => ({
-    allowed: true,
-    connector: null,
-    requiredRole: "GUEST",
-    actualRole: "GUEST",
-  })),
-}));
+// Partial mock: stub only the connector create/interact ACL (this suite tests
+// planner-only read settlement, not access control) and keep the real module —
+// notably `requireOwnerTaskReadAccess`, whose owner-privacy gate runs with the
+// real role machinery against the owner identity configured on the runtime.
+vi.mock("../../src/services/task-policy.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../src/services/task-policy.js")>();
+  return {
+    ...actual,
+    requireTaskAgentAccess: vi.fn(async () => ({
+      allowed: true,
+      connector: null,
+      requiredRole: "GUEST",
+      actualRole: "GUEST",
+    })),
+  };
+});
 
 const { tasksAction } = await import("../../src/actions/tasks.js");
 
 const runtime = {
   agentId: "agent1",
+  // Canonical owner = the test sender: the (real) owner-read gate on
+  // list_agents resolves ELIZA_ADMIN_ENTITY_ID and authorizes "user1".
+  getSetting: ownerGetSetting(),
   getService: vi.fn(),
   hasService: vi.fn(() => true),
   logger: {

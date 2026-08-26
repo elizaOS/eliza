@@ -10,6 +10,7 @@ import { OrchestratorTaskService } from "../../src/services/orchestrator-task-se
 import {
   callback,
   memory,
+  ownerGetSetting,
   serviceMock,
   state,
 } from "../../src/test-utils/action-test-utils.js";
@@ -55,6 +56,11 @@ function runtimeWithServices(opts: {
   acpService?: unknown;
 }): IAgentRuntime {
   return {
+    // History is owner-gated (`requireOwnerTaskReadAccess`): agentId gives the
+    // gate an access context and ownerGetSetting resolves `memory()`'s sender
+    // as the canonical owner, so these suites drive the surface AS the owner.
+    agentId: "agent1",
+    getSetting: ownerGetSetting(),
     getService: vi.fn((serviceType: string) =>
       serviceType === OrchestratorTaskService.serviceType
         ? (opts.taskService ?? null)

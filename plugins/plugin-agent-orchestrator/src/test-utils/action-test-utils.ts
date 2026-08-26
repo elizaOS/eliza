@@ -69,10 +69,30 @@ export function serviceMock(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/**
+ * Canonical-owner resolution for the owner-privacy read gate
+ * (`requireOwnerTaskReadAccess` → core `hasRoleAccess`): the gate resolves the
+ * configured `ELIZA_ADMIN_ENTITY_ID` and compares it to the message sender, so
+ * returning `memory()`'s sender ("user1") makes these suites exercise the TASKS
+ * read surfaces (history, list_agents, and their aliases) AS the authorized
+ * owner — which is what their assertions describe. Guest denial is proven
+ * separately in `src/__tests__/tasks-owner-read-gate.test.ts` with its own
+ * non-owner runtime. Suites with bespoke runtime builders reuse this so the
+ * owner identity lives in one place.
+ */
+export function ownerGetSetting(ownerEntityId = "user1") {
+  return vi.fn((key: string) =>
+    key === "ELIZA_ADMIN_ENTITY_ID" ? ownerEntityId : undefined,
+  );
+}
+
 export function runtimeWith(service?: unknown): IAgentRuntime {
   return {
     agentId: "agent1",
     getService: vi.fn(() => service ?? null),
+    // The TASKS owner-read gate runs before any service state is touched;
+    // resolve the test sender as the canonical owner (see ownerGetSetting).
+    getSetting: ownerGetSetting(),
     // tasks.ts validate() requires hasService — mirror getService's truthiness
     // so tests built with `runtimeWith(serviceMock())` see ACP as available.
     hasService: vi.fn(() => Boolean(service)),
