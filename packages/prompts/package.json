@@ -60,6 +60,11 @@
   "gitHead": "cb192f7b21c441e9463d1af2f890c145814baad2",
   "elizaos": {
     "scripts": {
+      "buildOnInstall": {
+        "sentinel": "dist/index.js",
+        "order": 2,
+        "script": "build:package"
+      },
       "testLanes": [
         "server"
       ]
