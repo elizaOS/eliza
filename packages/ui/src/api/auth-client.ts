@@ -183,6 +183,35 @@ function retryAfterMs(headers: Headers): number | undefined {
   return Math.max(0, retryAt - Date.now());
 }
 
+async function resolvePairingFallback(
+  base: string,
+): Promise<AuthMeResult | null> {
+  let statusResponse: Response;
+  try {
+    statusResponse = await fetchWithCsrf(`${base}/api/auth/status`);
+  } catch {
+    // error-policy:J4 the original 401 remains the explicit auth failure when
+    // the optional public pairing contract cannot be reached.
+    return null;
+  }
+  if (!statusResponse.ok) return null;
+  const status = (await statusResponse.json()) as {
+    required?: boolean;
+    pairingEnabled?: boolean;
+  };
+  if (status.required !== true || status.pairingEnabled !== true) return null;
+  return {
+    ok: false,
+    status: 401,
+    reason: "remote_auth_required",
+    access: {
+      mode: "remote",
+      passwordConfigured: true,
+      ownerConfigured: false,
+    },
+  };
+}
+
 // ── Endpoint callers ──────────────────────────────────────────────────────────
 
 /**
@@ -517,7 +546,7 @@ export async function authMe(): Promise<AuthMeResult> {
       reason?: string;
       access?: AuthAccessInfo;
     };
-    return {
+    const result: AuthMeResult = {
       ok: false,
       status: 401,
       reason:
@@ -528,6 +557,12 @@ export async function authMe(): Promise<AuthMeResult> {
             : "server_error",
       access: body.access,
     };
+    if (result.reason !== "server_error" || result.access) return result;
+
+    // Some standalone deployments enforce auth in outer middleware before the
+    // agent route can return its richer 401 body. The public status contract is
+    // authoritative for the supported one-time pairing flow in that case.
+    return (await resolvePairingFallback(authBase())) ?? result;
   }
 
   if (res.status === 429) {
