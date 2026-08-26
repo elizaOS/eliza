@@ -89,14 +89,19 @@ describe("StewardBackend.create", () => {
     // Network/HTTP failures from the vault endpoint must be classified as
     // StewardUnavailableError so callers can fall back to the local backend;
     // leaking the raw error breaks the failover contract.
+    const transportError = new Error("ECONNREFUSED 10.0.0.1:443");
     mockSteward({
       fetchStewardVaultChainAddresses: async () => {
-        throw new Error("ECONNREFUSED 10.0.0.1:443");
+        throw transportError;
       },
     });
-    await expect(
-      StewardBackend.create({} as unknown as never),
-    ).rejects.toBeInstanceOf(StewardUnavailableError);
+    const err = await StewardBackend.create({} as unknown as never).catch(
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(StewardUnavailableError);
+    // The original transport error must be retained as `cause` so owner
+    // diagnostics can distinguish network failure from a Steward-side error.
+    expect((err as Error).cause).toBe(transportError);
   });
 
   it("treats an invalid solana vault address as no solana address", async () => {
