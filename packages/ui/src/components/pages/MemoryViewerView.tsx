@@ -232,7 +232,8 @@ const MemoryCard = memo(function MemoryCard({
       size="card"
       align="start"
       aria-expanded={expanded}
-      className={`${MEMORY_FOCUS_CLASS} w-full`}
+      data-state={expanded ? "on" : "off"}
+      className={`${MEMORY_FOCUS_CLASS} w-full hover:bg-surface data-[state=on]:bg-surface`}
       onClick={() => onToggle(memory.id)}
       data-testid={`memory-card-${memory.id}`}
     >
@@ -1182,7 +1183,7 @@ export function MemoryViewerView({
 
   return (
     <ShellViewAgentSurface viewId="memories">
-      <div className="flex h-full min-h-0 w-full flex-col">
+      <div className="flex h-full min-h-0 w-full flex-col bg-bg">
         <ViewHeader
           title={t("memoryviewer.title", { defaultValue: "Memories" })}
           right={
@@ -1210,7 +1211,7 @@ export function MemoryViewerView({
                       value={viewMode}
                       onValueChange={(v) => setViewMode(v as ViewMode)}
                       items={viewModeItems}
-                      buttonClassName={`${MEMORY_FOCUS_CLASS} min-h-11 px-4 py-2`}
+                      buttonClassName={`${MEMORY_FOCUS_CLASS} min-h-11 px-4 py-2 hover:bg-surface data-[state=on]:bg-surface`}
                     />
                   </div>
                   {selectedPerson ? (
