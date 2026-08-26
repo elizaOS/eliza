@@ -711,12 +711,26 @@ describe("provisioning worker deployment contract", () => {
     // /opt/eliza/cloud/.env.local without it, every dedicated provision
     // silently falls back to the 30-120s cold path. The flag must flow from
     // the GitHub environment VARIABLE through the SSH env passthrough into the
-    // skip-empty EnvironmentFile reconcile loop.
+    // EnvironmentFile reconcile loop. An absent protected variable must force
+    // the safe disabled state instead of preserving unknown host drift.
     expect(workflow).toContain(
-      "WARM_POOL_ENABLED: $" + "{{ vars.WARM_POOL_ENABLED }}",
+      "WARM_POOL_ENABLED: $" + "{{ vars.WARM_POOL_ENABLED || 'false' }}",
     );
     expect(workflow).toMatch(/envs: [^\n]*\bWARM_POOL_ENABLED\b/);
     expect(workflow).toContain('"WARM_POOL_ENABLED=$WARM_POOL_ENABLED" \\');
+    expect(workflow).toContain('case "$WARM_POOL_ENABLED" in');
+    expect(workflow).toContain(
+      '"$ENV_FILE" WARM_POOL_ENABLED "$WARM_POOL_ENABLED"',
+    );
+    expect(workflow).toContain(
+      "Verified provisioning-host warm-pool state: $WARM_POOL_ENABLED",
+    );
+    const healthStep = workflow.slice(workflow.indexOf("- name: Health check"));
+    expect(healthStep).toMatch(/envs: [^\n]*\bWARM_POOL_ENABLED\b/);
+    expect(healthStep).toContain('"$ENV_FILE" WARM_POOL_ENABLED');
+    expect(healthStep).toContain(
+      "Provisioning host warm-pool drift. Values were not printed.",
+    );
   });
 
   it("keeps the Worker warm-pool claim flag committed per wrangler environment (#16961)", () => {

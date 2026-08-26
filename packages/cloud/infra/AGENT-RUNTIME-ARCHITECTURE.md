@@ -282,3 +282,15 @@ heartbeat authority; node and warm-pool counts; a fresh signed-in activation;
 terminal provision job; routed container health; atomic cutover receipt; and a
 real chat write/readback from the Dedicated base. No local test or public health
 beacon substitutes for that chain.
+
+The warm-pool claim and replenish halves are intentionally disabled in current
+source while issue `#16961` remains open. Every committed Cloudflare Worker
+environment has `WARM_POOL_ENABLED = "false"`; enabling only the Hetzner daemon
+would therefore spend compute on containers the API cannot claim. Conversely,
+enabling only the Worker would find no replenished capacity. The deploy repair
+in this change makes the protected environment variable authoritative with a
+safe `false` default, validates it as an exact boolean, reconciles that value
+over unknown host state, and verifies the same value again after restart. It
+does not activate the pool. Staging activation still requires the recorded
+identity, billing, capacity, starvation, digest, health, and rollback evidence
+before both halves may be flipped together.
