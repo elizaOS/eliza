@@ -1,0 +1,197 @@
+/**
+ * Applies the graphite proposal to the actual Eliza document mounted by the studio.
+ * It changes visual tokens and chrome only; route content, state, data, and actions remain live.
+ */
+
+html[data-eliza-studio-proposed="true"],
+html[data-eliza-studio-proposed="true"] :where(
+    [data-theme="dark"],
+    .dark,
+    .theme-cloud,
+    .theme-os,
+    .theme-app,
+    .theme-clouds,
+    [data-chat-overlay],
+    .shell-assistant-overlay-panel
+  ) {
+  color-scheme: dark !important;
+  --brand-black: #0c0c0d !important;
+  --brand-white: #f2f2f4 !important;
+  --brand-gray: #b7b7bd !important;
+  --brand-orange: #e8e8eb !important;
+  --eliza-orange: #e8e8eb !important;
+  --launch-bg: #0c0c0d !important;
+  --launch-foreground: #f2f2f4 !important;
+  --bg: #0d0d0f !important;
+  --background: #0d0d0f !important;
+  --bg-accent: #141416 !important;
+  --bg-elevated: #19191c !important;
+  --bg-hover: #202023 !important;
+  --bg-muted: #171719 !important;
+  --surface: #151517 !important;
+  --surface-0: #0d0d0f !important;
+  --surface-1: #151517 !important;
+  --surface-2: #1a1a1d !important;
+  --surface-3: #212125 !important;
+  --card: #161618 !important;
+  --card-foreground: #f2f2f4 !important;
+  --popover: #1b1b1e !important;
+  --popover-foreground: #f2f2f4 !important;
+  --inverse: #f2f2f4 !important;
+  --inverse-foreground: #111113 !important;
+  --text: #eeeeef !important;
+  --text-strong: #ffffff !important;
+  --chat-text: #eeeeef !important;
+  --txt: #eeeeef !important;
+  --foreground: #eeeeef !important;
+  --muted: #a1a1a8 !important;
+  --muted-strong: #c3c3c8 !important;
+  --muted-foreground: #aaaab0 !important;
+  --border: rgb(255 255 255 / 10%) !important;
+  --border-subtle: rgb(255 255 255 / 7%) !important;
+  --border-strong: rgb(255 255 255 / 17%) !important;
+  --border-hover: rgb(255 255 255 / 26%) !important;
+  --input: #19191b !important;
+  --ring: #d8d8dc !important;
+  --focus: rgb(255 255 255 / 14%) !important;
+  --focus-ring: 0 0 0 2px #d8d8dc !important;
+  --scrim: rgb(0 0 0 / 74%) !important;
+  --accent: #e8e8eb !important;
+  --accent-rgb: 232, 232, 235 !important;
+  --accent-hover: #ffffff !important;
+  --accent-muted: #b6b6bc !important;
+  --accent-subtle: rgb(255 255 255 / 10%) !important;
+  --accent-foreground: #111113 !important;
+  --primary: #e8e8eb !important;
+  --primary-foreground: #111113 !important;
+  --ok: #91b69c !important;
+  --ok-foreground: #b9d7c1 !important;
+  --ok-muted: rgb(145 182 156 / 72%) !important;
+  --ok-subtle: rgb(145 182 156 / 12%) !important;
+  --destructive: #d59a9a !important;
+  --destructive-foreground: #171112 !important;
+  --destructive-subtle: rgb(213 154 154 / 12%) !important;
+  --warn: #c3b487 !important;
+  --warn-muted: rgb(195 180 135 / 72%) !important;
+  --warn-subtle: rgb(195 180 135 / 12%) !important;
+  --danger: #d59a9a !important;
+  --info: #aaaab0 !important;
+  --status-success: #91b69c !important;
+  --status-success-bg: rgb(145 182 156 / 12%) !important;
+  --status-danger: #d59a9a !important;
+  --status-danger-bg: rgb(213 154 154 / 12%) !important;
+  --status-warning: #c3b487 !important;
+  --status-warning-bg: rgb(195 180 135 / 12%) !important;
+  --status-info: #aaaab0 !important;
+  --status-info-bg: rgb(255 255 255 / 7%) !important;
+  --header-bar-bg: rgb(15 15 17 / 96%) !important;
+  --header-bar-fg: #f2f2f4 !important;
+  --section-bar-bg: #141416 !important;
+  --section-bar-fg: #eeeeef !important;
+  --link-color: #eeeeef !important;
+  --link-hover-color: #ffffff !important;
+  --plugin-border: rgb(255 255 255 / 10%) !important;
+  --plugin-focus-ring: #d8d8dc !important;
+  --first-run-accent-bg: #e8e8eb !important;
+  --first-run-accent-bg-hover: #ffffff !important;
+  --first-run-accent-foreground: #111113 !important;
+  --first-run-link: #f2f2f4 !important;
+  --scrollbar-track: transparent !important;
+  --scrollbar-thumb-start: rgb(255 255 255 / 15%) !important;
+  --scrollbar-thumb-mid: rgb(255 255 255 / 19%) !important;
+  --scrollbar-thumb-end: rgb(255 255 255 / 23%) !important;
+  --scrollbar-thumb-hover-start: rgb(255 255 255 / 24%) !important;
+  --scrollbar-thumb-hover-mid: rgb(255 255 255 / 28%) !important;
+  --scrollbar-thumb-hover-end: rgb(255 255 255 / 32%) !important;
+  --scrollbar-thumb-edge: transparent !important;
+  --shadow-xs: none !important;
+  --shadow-sm: none !important;
+  --shadow-md: none !important;
+  --shadow-lg: none !important;
+  --shadow-xl: none !important;
+  --shadow-2xl: none !important;
+  --shadow-inset: none !important;
+  --radius-xs: 5px !important;
+  --radius-sm: 7px !important;
+  --radius-md: 10px !important;
+  --radius-lg: 12px !important;
+  --radius-xl: 15px !important;
+  --radius-2xl: 18px !important;
+  --radius-3xl: 22px !important;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Segoe UI", sans-serif !important;
+  --font-body: var(--font-sans) !important;
+  --font-display: var(--font-sans) !important;
+  --font-chat: var(--font-sans) !important;
+  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace !important;
+}
+
+html[data-eliza-studio-proposed="true"] body {
+  background: #0d0d0f !important;
+  color: #eeeeef !important;
+  font-family: var(--font-body) !important;
+  font-synthesis: none;
+  letter-spacing: -0.006em;
+}
+
+html[data-eliza-studio-proposed="true"] :where(button, input, select, textarea) {
+  font-family: var(--font-body) !important;
+}
+
+html[data-eliza-studio-proposed="true"] :where(button, [role="button"]) {
+  box-shadow: none !important;
+}
+
+html[data-eliza-studio-proposed="true"] :where(button, a, input, select, textarea):focus-visible {
+  outline-color: #d8d8dc !important;
+}
+
+html[data-eliza-studio-proposed="true"] [class~="text-accent"],
+html[data-eliza-studio-proposed="true"] [class*="text-brand-orange"] {
+  color: #eeeeef !important;
+}
+
+html[data-eliza-studio-proposed="true"] [class~="bg-accent"],
+html[data-eliza-studio-proposed="true"] [class*="bg-brand-orange"] {
+  background-color: #e8e8eb !important;
+  color: #111113 !important;
+}
+
+html[data-eliza-studio-proposed="true"] [class~="border-accent"],
+html[data-eliza-studio-proposed="true"] [class*="border-brand-orange"] {
+  border-color: rgb(255 255 255 / 22%) !important;
+}
+
+html[data-eliza-studio-proposed="true"] [class*="shadow-[0_0"],
+html[data-eliza-studio-proposed="true"] [class*="drop-shadow"] {
+  filter: none !important;
+  box-shadow: none !important;
+}
+
+html[data-eliza-studio-proposed="true"] [class*="from-brand-orange"],
+html[data-eliza-studio-proposed="true"] [class*="to-brand-orange"],
+html[data-eliza-studio-proposed="true"] [class*="via-brand-orange"] {
+  --tw-gradient-from: #1a1a1d !important;
+  --tw-gradient-to: #1a1a1d !important;
+  --tw-gradient-stops: #1a1a1d, #1a1a1d !important;
+}
+
+html[data-eliza-studio-proposed="true"] ::selection {
+  background: rgb(255 255 255 / 22%);
+  color: #fff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-eliza-studio-proposed="true"] {
+    scroll-behavior: auto !important;
+  }
+
+  html[data-eliza-studio-proposed="true"] :where(
+      .animate-pulse,
+      [class*="shimmer"],
+      [class*="glow"]
+    ) {
+    transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
