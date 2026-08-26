@@ -94,6 +94,7 @@ export function registerCloudSettingsSections(): void {
     titleKey: "settings.sections.cloudAccount.title",
     defaultTitle: "Account & Profile",
     order: 0,
+    prominence: "secondary",
     cloudOnly: true,
     Component: CloudAccountSection,
   });
@@ -109,6 +110,7 @@ export function registerCloudSettingsSections(): void {
     titleKey: "settings.sections.cloudBilling.title",
     defaultTitle: "Billing & Credits",
     order: 1,
+    prominence: "secondary",
     cloudOnly: true,
     Component: CloudBillingSection,
   });
@@ -125,6 +127,7 @@ export function registerCloudSettingsSections(): void {
     defaultTitle: "API Keys",
     order: 0,
     viewKind: "release",
+    prominence: "secondary",
     cloudOnly: true,
     Component: CloudApiKeysSection,
   });
@@ -141,6 +144,7 @@ export function registerCloudSettingsSections(): void {
     defaultTitle: "Applications",
     order: 1,
     viewKind: "release",
+    prominence: "secondary",
     cloudOnly: true,
     Component: CloudApplicationsSection,
   });
@@ -157,6 +161,7 @@ export function registerCloudSettingsSections(): void {
     defaultTitle: "Monetization",
     order: 2,
     viewKind: "release",
+    prominence: "secondary",
     cloudOnly: true,
     Component: CloudMonetizationSection,
   });
@@ -172,6 +177,7 @@ export function registerCloudSettingsSections(): void {
     titleKey: "settings.sections.cloudOrganization.title",
     defaultTitle: "Organization",
     order: 2,
+    prominence: "secondary",
     cloudOnly: true,
     Component: CloudOrganizationSection,
   });
@@ -206,6 +212,7 @@ export function registerCloudSettingsSections(): void {
     titleKey: "settings.sections.cloudPluginGrants.title",
     defaultTitle: "Plugin Grants",
     order: 101,
+    prominence: "secondary",
     cloudOnly: true,
     Component: CloudPluginGrantsSection,
   });

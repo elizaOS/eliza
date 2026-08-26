@@ -426,7 +426,6 @@ test("declared molecule nodes retain the complete live atom closure", async () =
     ["molecule:auth-result-shell", ["atom:card"]],
     ["molecule:connection-capability-tile", ["atom:card"]],
     ["molecule:content-state", ["atom:card", "atom:spinner"]],
-    ["molecule:selectable-tile", ["atom:button"]],
     ["molecule:settings-row", ["atom:button", "atom:card"]],
   ]);
 

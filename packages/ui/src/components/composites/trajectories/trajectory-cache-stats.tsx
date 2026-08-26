@@ -7,7 +7,6 @@ import type * as React from "react";
 
 import { Card } from "../../ui/card";
 import { PagePanel } from "../page-panel";
-
 export interface TrajectoryCacheMetric {
   id?: string;
   label: React.ReactNode;
@@ -27,14 +26,14 @@ export function TrajectoryCacheStats({
   metrics,
 }: TrajectoryCacheStatsProps) {
   return (
-    <PagePanel variant="section" className="px-5 py-4">
-      <div className="mb-3 text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
+    <PagePanel as="section" variant="section" className="px-5 py-4">
+      <div className="mb-3 text-sm font-semibold text-[color:var(--settings-foreground)]">
         {heading}
       </div>
       {metrics.length === 0 ? (
         <Card variant="dashedEmpty">{emptyLabel}</Card>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <dl className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {metrics.map((metric) => (
             <PagePanel.SummaryCard
               compact
@@ -43,20 +42,20 @@ export function TrajectoryCacheStats({
                 metric.id ?? `${String(metric.label)}-${String(metric.value)}`
               }
             >
-              <div className="text-xs-tight uppercase tracking-[0.14em] text-muted">
+              <dt className="text-xs text-[color:var(--settings-muted)]">
                 {metric.label}
-              </div>
-              <div className="mt-2 text-sm font-semibold text-txt">
+              </dt>
+              <dd className="mt-1 text-sm font-semibold text-[color:var(--settings-foreground)]">
                 {metric.value}
-              </div>
+              </dd>
               {metric.meta ? (
-                <div className="mt-1 text-xs-tight text-muted">
+                <div className="mt-1 text-xs text-[color:var(--settings-muted)]">
                   {metric.meta}
                 </div>
               ) : null}
             </PagePanel.SummaryCard>
           ))}
-        </div>
+        </dl>
       )}
     </PagePanel>
   );

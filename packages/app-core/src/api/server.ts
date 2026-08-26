@@ -159,7 +159,10 @@ import { handleDesktopAuthBootstrapRoute } from "./desktop-auth-bootstrap-routes
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleDropStatusCompatRoute } from "./drop-status-compat-route";
 import { handleEmbedAuthRoutes } from "./embed-auth-routes";
-import { resolveFeatureRouteReadinessFailure } from "./feature-route-readiness.js";
+import {
+  isFeatureRouteHandlerAvailable,
+  resolveFeatureRouteReadinessFailure,
+} from "./feature-route-readiness.js";
 import { handleFirstRunRoute } from "./first-run-routes";
 import { handleI18nLocaleRoute } from "./i18n-locale-routes";
 import { handleInternalWakeRoute } from "./internal-routes";
@@ -1059,10 +1062,17 @@ async function runCompatRequestPipeline(
   const readinessFailure = resolveFeatureRouteReadinessFailure(
     pathname,
     state.current !== null,
-    deferredBoot.phases["app-route-tail"],
+    deferredBoot.phases,
+    isFeatureRouteHandlerAvailable({
+      method: req.method ?? "GET",
+      pathname,
+      runtimeRoutes: state.current?.routes,
+    }),
   );
   if (readinessFailure) {
-    res.setHeader("Retry-After", "1");
+    if (readinessFailure.retryable) {
+      res.setHeader("Retry-After", "1");
+    }
     sendJsonResponse(res, 503, readinessFailure);
     return;
   }

@@ -100,6 +100,39 @@ describe("resolveMobileRemoteFallbackApiBase", () => {
 
     expect(client.setBaseUrl).toHaveBeenCalledWith(FALLBACK_BASE);
     expect(client.setToken).toHaveBeenCalledWith(null);
+    expect(client.setBaseUrl).toHaveBeenCalledTimes(1);
+    expect(client.setToken).toHaveBeenCalledTimes(1);
+    expect(client.setBaseUrl.mock.invocationCallOrder[0]).toBeLessThan(
+      client.setToken.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
+  });
+
+  it("clamps before adopting an existing exact-origin credential", async () => {
+    localStorage.setItem(
+      "elizaos:active-server",
+      JSON.stringify({
+        id: "remote:paired",
+        kind: "remote",
+        label: "Paired",
+        apiBase: FALLBACK_BASE,
+        accessToken: "paired-session",
+      }),
+    );
+    const client = {
+      setBaseUrl: vi.fn(),
+      setToken: vi.fn(),
+    };
+
+    await installMobileRemoteFallback(FALLBACK_ENV, client);
+
+    expect(client.setBaseUrl.mock.calls).toEqual([[FALLBACK_BASE]]);
+    expect(client.setToken.mock.calls).toEqual([[null], ["paired-session"]]);
+    expect(client.setBaseUrl.mock.invocationCallOrder[0]).toBeLessThan(
+      client.setToken.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
+    expect(client.setToken.mock.invocationCallOrder[0]).toBeLessThan(
+      client.setToken.mock.invocationCallOrder[1] ?? Number.POSITIVE_INFINITY,
+    );
   });
 
   it("publishes the build target to pre-built UI trust gates", async () => {

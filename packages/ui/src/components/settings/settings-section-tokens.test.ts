@@ -77,6 +77,7 @@ describe("resolveSettingsSectionToken", () => {
     expect(resolveSettingsSectionToken("identity")).toBe("identity");
     expect(resolveSettingsSectionToken("basics")).toBe("identity");
     expect(resolveSettingsSectionToken("profile")).toBe("identity");
+    expect(resolveSettingsSectionToken("general")).toBe("appearance");
     expect(resolveSettingsSectionToken("model")).toBe("ai-model");
     expect(resolveSettingsSectionToken("providers")).toBe("ai-model");
     expect(resolveSettingsSectionToken("vault")).toBe("secrets");

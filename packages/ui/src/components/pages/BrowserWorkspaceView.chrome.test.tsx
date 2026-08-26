@@ -12,6 +12,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -23,6 +24,14 @@ const walletStateHarness = vi.hoisted(() => ({
 
 const apiBaseHarness = vi.hoisted(() => ({
   base: "https://remote-agent.example/api-root",
+}));
+
+const authorityState = vi.hoisted(() => ({
+  value: "profile-a\u0000https://same-agent.test",
+}));
+
+vi.mock("../../hooks/useActiveAgentAuthority", () => ({
+  useActiveAgentAuthority: () => authorityState.value,
 }));
 
 vi.mock("../../utils/asset-url", () => ({
@@ -93,6 +102,7 @@ vi.mock("../../api", async (importOriginal) => {
 });
 
 import { client } from "../../api";
+import { ApiError } from "../../api/client-types-core";
 import { shellHistory } from "../../surface-realm-channel";
 import {
   BrowserWorkspaceView,
@@ -157,6 +167,7 @@ function deferred<T>(): {
 }
 
 beforeEach(() => {
+  authorityState.value = "profile-a\u0000https://same-agent.test";
   walletStateHarness.connected = false;
   walletStateHarness.pendingApprovals = 0;
   walletStateHarness.plugins.splice(0);
@@ -173,6 +184,9 @@ beforeEach(() => {
   vi.mocked(client.closeBrowserWorkspaceTab).mockRejectedValue(
     new Error("no api in test"),
   );
+  vi.mocked(client.snapshotBrowserWorkspaceTab)
+    .mockReset()
+    .mockRejectedValue(new Error("no api in test"));
 });
 
 afterEach(() => {
@@ -248,16 +262,14 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(screen.getByTestId("browser-session-policy-dock")).not.toBeNull();
   });
 
-  it("floats the navigation toolbar as its own glass panel above the web surface", async () => {
+  it("keeps one flat navigation rail above the web surface", async () => {
     render(<BrowserWorkspaceView />);
     expect(await screen.findByText("No page open")).not.toBeNull();
     const toolbar = screen.getByTestId("browser-workspace-toolbar");
-    // The glass material of the fullscreen pattern: translucent card fill +
-    // backdrop blur, expressed as utility classes on the toolbar panel.
-    expect(toolbar.className).toContain("backdrop-blur");
-    // 24px (rounded-3xl) — the token-scale radius the Calendar panel uses.
-    expect(toolbar.className).toContain("rounded-3xl");
-    // The address bar lives inside the floating toolbar, not a page header.
+    expect(toolbar.className).not.toContain("backdrop-blur");
+    expect(toolbar.className).toContain("rounded-2xl");
+    expect(toolbar.className).toContain("border-border");
+    expect(toolbar.className).toContain("bg-card");
     expect(
       toolbar.contains(screen.getByTestId("browser-workspace-address-input")),
     ).toBe(true);
@@ -298,7 +310,7 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(root.contains(surface)).toBe(true);
   });
 
-  it("uses one compact mobile toolbar row without shrinking any navigation target below 44px", async () => {
+  it("uses a compact two-row mobile toolbar without shrinking any navigation target below 44px", async () => {
     render(<BrowserWorkspaceView />);
     expect(await screen.findByText("No page open")).not.toBeNull();
 
@@ -308,25 +320,46 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(nav?.className).toContain("grid-cols-");
     expect(nav?.className).toContain("md:grid-cols-");
     expect(nav?.className).not.toContain("sm:grid-cols-");
-    expect(nav?.className).toContain("gap-1");
-    expect(nav?.className).toContain("py-1");
+    expect(nav?.className).toContain("gap-x-2");
+    expect(nav?.className).toContain("gap-y-1");
+    expect(nav?.className).toContain("px-2");
+    expect(nav?.className).toContain("py-0.5");
 
-    expect(nav?.className).toContain(
-      "grid-cols-[2.75rem_2.75rem_minmax(0,1fr)_repeat(3,2.75rem)]",
-    );
     expect(
       screen.getByTestId("browser-workspace-address-input").className,
-    ).toContain("min-w-0");
+    ).toContain("col-span-3");
     expect(
-      screen.getByTestId("browser-workspace-nav-new-tab").className,
-    ).toContain("hidden");
+      screen.getByTestId("browser-workspace-address-input").className,
+    ).toContain("md:col-span-1");
     expect(
-      screen.getByTestId("browser-workspace-close-all-tabs").className,
-    ).toContain("hidden");
+      screen.getByTestId("browser-workspace-address-input").className,
+    ).not.toContain("sm:col-span-1");
     for (const control of toolbar.querySelectorAll("button, input")) {
       // size-11 is the merged h-11 w-11 form; all three satisfy the 44px floor.
       expect(control.className).toMatch(/(?:h-11|min-h-11|size-11)/);
     }
+
+    for (const actionName of ["Close all tabs", "Open external"]) {
+      const wrapper = screen.getByRole("button", {
+        name: actionName,
+      }).parentElement;
+      expect(wrapper?.className.split(/\s+/)).toContain("max-md:hidden");
+      expect(wrapper?.className.split(/\s+/)).not.toContain("hidden");
+    }
+  });
+
+  it("returns focus to the folded tab control after the switcher closes", async () => {
+    render(<BrowserWorkspaceView />);
+    expect(await screen.findByText("No page open")).not.toBeNull();
+
+    const trigger = screen.getByTestId("browser-workspace-tab-fold-control");
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    const dialog = await screen.findByTestId("browser-workspace-tab-switcher");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 
   it("returns autofocus that arrives after iframe load to the control that opened Browser", async () => {
@@ -501,7 +534,7 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     }
   });
 
-  it("keeps an explicit action refresh failure observable", async () => {
+  it("keeps an explicit action refresh failure observable without leaking backend copy", async () => {
     vi.mocked(client.getBrowserWorkspace)
       .mockResolvedValueOnce(APPLE_WORKSPACE)
       .mockRejectedValueOnce(new Error("Explicit refresh failed"));
@@ -513,36 +546,84 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(await screen.findByTitle("Apple")).not.toBeNull();
     fireEvent.click(screen.getByTestId("browser-workspace-nav-new-tab"));
 
-    expect((await screen.findByRole("alert")).textContent).toContain(
-      "Explicit refresh failed",
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(
+      "Browser couldn’t connect. Try again in a moment.",
     );
+    expect(alert.textContent).not.toContain("Explicit refresh failed");
   });
 
-  it("shows an initial load failure until a later background retry succeeds", async () => {
-    vi.useFakeTimers();
+  it("keeps initial unavailability distinct from empty and exposes one recovery path", async () => {
     vi.mocked(client.getBrowserWorkspace)
       .mockReset()
       .mockRejectedValueOnce(new Error("Initial workspace load failed"))
-      .mockResolvedValueOnce(APPLE_WORKSPACE);
+      .mockResolvedValueOnce({ mode: "web", tabs: [] });
 
-    try {
-      render(<BrowserWorkspaceView />);
-      await act(async () => {
-        await Promise.resolve();
-        await Promise.resolve();
-      });
-      expect(screen.getByRole("alert").textContent).toContain(
-        "Initial workspace load failed",
-      );
+    render(<BrowserWorkspaceView />);
+    const unavailable = await screen.findByText("Browser view unavailable");
+    expect(screen.getByRole("alert").contains(unavailable)).toBe(true);
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Browser couldn’t connect. Try again in a moment.",
+    );
+    expect(screen.getByRole("alert").textContent).not.toContain(
+      "Initial workspace load failed",
+    );
+    expect(screen.queryByText("No page open")).toBeNull();
 
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(2_500);
-      });
-      expect(screen.getByTitle("Apple")).not.toBeNull();
-      expect(screen.queryByRole("alert")).toBeNull();
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(screen.queryByTestId("browser-workspace-nav-new-tab")).toBeNull();
+    expect(screen.queryByTestId("browser-workspace-address-input")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Go" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Back to launcher" }),
+    ).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByText("No page open")).not.toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(2);
+    const newTab = screen.getByTestId(
+      "browser-workspace-nav-new-tab",
+    ) as HTMLButtonElement;
+    const address = screen.getByTestId(
+      "browser-workspace-address-input",
+    ) as HTMLInputElement;
+    const go = screen.getByRole("button", { name: "Go" }) as HTMLButtonElement;
+    expect(newTab.disabled).toBe(false);
+    expect(address.disabled).toBe(false);
+
+    fireEvent.change(address, { target: { value: "example.com" } });
+    expect(go.disabled).toBe(false);
+  });
+
+  it("does not offer Retry for the typed non-retryable Shared capability boundary", async () => {
+    vi.mocked(client.getBrowserWorkspace).mockRejectedValue(
+      new ApiError({
+        kind: "http",
+        path: "/api/browser-workspace",
+        status: 503,
+        code: "browser_workspace_runtime_unavailable",
+        message:
+          "Browser workspace requires a dedicated agent runtime; this shared agent does not run an isolated browser workspace.",
+        data: {
+          capability: "browser-workspace",
+          requiredExecutionTier: "dedicated-always",
+          retryable: false,
+        },
+      }),
+    );
+
+    render(<BrowserWorkspaceView />);
+
+    expect(await screen.findByText("Browser view unavailable")).not.toBeNull();
+    expect(
+      screen.getByText("In-app browsing isn’t available with this connection."),
+    ).not.toBeNull();
+    expect(screen.queryByText(/requires a dedicated agent runtime/)).toBeNull();
+    expect(screen.queryByText("No page open")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.queryByTestId("browser-workspace-nav-new-tab")).toBeNull();
+    expect(screen.queryByTestId("browser-workspace-address-input")).toBeNull();
   });
 
   it("keeps the StrictMode initial load single-flight and loading until it settles", async () => {
@@ -557,8 +638,9 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
       await Promise.resolve();
     });
     expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("Loading browser workspace")).not.toBeNull();
+    expect(screen.getByText("Opening Browser")).not.toBeNull();
     expect(screen.queryByText("No page open")).toBeNull();
+    expect(screen.queryByTestId("browser-workspace-address-input")).toBeNull();
 
     await act(async () => {
       pendingInitialLoad.resolve(APPLE_WORKSPACE);
@@ -566,6 +648,92 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     });
     expect(screen.getByTitle("Apple")).not.toBeNull();
     expect(screen.queryByText("Loading browser workspace")).toBeNull();
+    expect(
+      screen.getByTestId("browser-workspace-address-input"),
+    ).not.toBeNull();
+  });
+
+  it("clears tabs immediately and ignores agent-A polling after a same-base profile switch", async () => {
+    vi.useFakeTimers();
+    const staleProfileRefresh = deferred<typeof APPLE_WORKSPACE>();
+    const activeProfileLoad = deferred<typeof GOOGLE_WORKSPACE>();
+    vi.mocked(client.getBrowserWorkspace)
+      .mockReset()
+      .mockResolvedValueOnce(APPLE_WORKSPACE)
+      .mockReturnValueOnce(staleProfileRefresh.promise)
+      .mockReturnValueOnce(activeProfileLoad.promise);
+
+    try {
+      const view = render(<BrowserWorkspaceView />);
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(screen.getByTitle("Apple")).not.toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_500);
+      });
+      expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(2);
+      const staleSignal = vi.mocked(client.getBrowserWorkspace).mock
+        .calls[1]?.[0]?.signal as AbortSignal;
+      expect(staleSignal.aborted).toBe(false);
+
+      authorityState.value = "profile-b\u0000https://same-agent.test";
+      view.rerender(<BrowserWorkspaceView />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(3);
+      expect(staleSignal.aborted).toBe(true);
+      const activeSignal = vi.mocked(client.getBrowserWorkspace).mock
+        .calls[2]?.[0]?.signal as AbortSignal;
+      expect(activeSignal.aborted).toBe(false);
+      expect(screen.queryByTitle("Apple")).toBeNull();
+      expect(screen.getByText("Opening Browser")).not.toBeNull();
+
+      await act(async () => {
+        staleProfileRefresh.resolve(APPLE_WORKSPACE);
+        await staleProfileRefresh.promise;
+      });
+      expect(screen.queryByTitle("Apple")).toBeNull();
+      expect(screen.getByText("Opening Browser")).not.toBeNull();
+
+      await act(async () => {
+        activeProfileLoad.resolve(GOOGLE_WORKSPACE);
+        await activeProfileLoad.promise;
+      });
+      expect(screen.getByTitle("Google")).not.toBeNull();
+      expect(screen.queryByTitle("Apple")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("aborts cloud-tab snapshot polling when the Browser lifecycle unmounts", async () => {
+    const cloudWorkspace = {
+      ...APPLE_WORKSPACE,
+      mode: "cloud" as const,
+    };
+    vi.mocked(client.getBrowserWorkspace).mockResolvedValue(cloudWorkspace);
+    vi.mocked(client.snapshotBrowserWorkspaceTab).mockImplementation(
+      () => new Promise<{ data: string }>(() => undefined),
+    );
+
+    const view = render(<BrowserWorkspaceView />);
+    await waitFor(() =>
+      expect(client.snapshotBrowserWorkspaceTab).toHaveBeenCalledTimes(1),
+    );
+    const signal = vi.mocked(client.snapshotBrowserWorkspaceTab).mock
+      .calls[0]?.[1]?.signal as AbortSignal;
+    expect(signal.aborted).toBe(false);
+
+    view.unmount();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(signal.aborted).toBe(true);
   });
 
   it("does not let a stale background response overwrite a newer navigation", async () => {

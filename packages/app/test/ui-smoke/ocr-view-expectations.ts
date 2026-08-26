@@ -159,7 +159,7 @@ export const VIEW_OCR_POLICIES = {
   }),
   "builtin-trajectories": expected({
     requireAll: ["Trajectories"],
-    requireAny: ["No trajectories yet", "Browse"],
+    requireAny: ["No trajectories yet", "No recorded activity yet", "Browse"],
   }),
   "builtin-transcripts": expected({
     requireAll: ["Live meeting"],

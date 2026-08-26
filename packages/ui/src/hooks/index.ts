@@ -3,6 +3,8 @@
  */
 export { BugReportProvider } from "./BugReportProvider";
 export * from "./frame-budget";
+export * from "./runtime-capability-retry";
+export * from "./useActiveAgentAuthority";
 export * from "./useActivityEvents";
 export * from "./useAutomationDeepLink";
 export * from "./useBugReport.hooks";

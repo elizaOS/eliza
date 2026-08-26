@@ -13,7 +13,7 @@ import {
   type ViewHeaderPolicy,
   type ViewKind,
 } from "@elizaos/core";
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { fetchWithCsrf } from "../api/csrf-client";
@@ -37,7 +37,8 @@ import type { StartupPhaseValue } from "../state/startup-coordinator";
 import { isShellPaintable } from "../state/startup-coordinator";
 import { onViewEvent } from "../views/view-event-bus";
 import { VIEW_EVENTS } from "../views/view-event-types";
-import { startPolling } from "./resource-cache";
+import { invalidate, startPolling } from "./resource-cache";
+import { useActiveAgentAuthority } from "./useActiveAgentAuthority";
 import { useCachedResource } from "./useCachedResource";
 
 export interface ViewRegistryEntry {
@@ -613,6 +614,9 @@ export function withBuiltinShellViews(
 
 function useDefaultViewsNetworkEnabled(): boolean {
   const phase = useAppSelector((s) => s.startupCoordinator?.phase);
+  // `authority` is deliberately an opaque cache key (profile + base +
+  // credential epoch), not a URL. Capability classification must use the
+  // client's actual API base.
   if (!supportsFullAppShellRoutes(client.getBaseUrl())) return false;
   if (typeof phase !== "string") return true;
   // first-run-required is now shell-paintable (onboarding runs in the live
@@ -625,26 +629,39 @@ function useDefaultViewsNetworkEnabled(): boolean {
 export function useAvailableViews(
   options: UseAvailableViewsOptions = {},
 ): UseAvailableViewsResult {
+  const authority = useActiveAgentAuthority();
   const defaultNetworkEnabled = useDefaultViewsNetworkEnabled();
   const networkEnabled = options.networkEnabled ?? defaultNetworkEnabled;
+  const cacheKey = `${VIEWS_CACHE_KEY}:${authority}`;
   // All mounts share one cache slot, so the router and the desktop-tab consumer
-  // (which both mount this hook) issue a single request and paint instantly on
-  // revisit instead of each re-fetching cold.
+  // (which both mount this hook) issue a single request. The active authority
+  // is part of the key so a repoint can never paint the prior agent's registry.
   const resource = useCachedResource<ViewRegistryEntry[]>(
-    VIEWS_CACHE_KEY,
+    cacheKey,
     () => fetchViews(),
     { staleTime: POLL_INTERVAL_MS, enabled: networkEnabled },
   );
 
+  // Retire the departed authority's slot after React has switched to the new
+  // key. Besides releasing the old snapshot, invalidate() advances the cache's
+  // request sequence so a slow response from the old agent cannot resurrect it
+  // and become visible on a later A -> B -> A round trip.
+  const previousCacheKeyRef = useRef(cacheKey);
+  useEffect(() => {
+    const previousCacheKey = previousCacheKeyRef.current;
+    previousCacheKeyRef.current = cacheKey;
+    if (previousCacheKey !== cacheKey) invalidate(previousCacheKey);
+  }, [cacheKey]);
+
   // Runtime plugin install/uninstall changes the registry; keep a background
   // poll so the list stays live. The poll is ref-counted in the cache layer
-  // keyed by VIEWS_CACHE_KEY, so the router and desktop-tab consumer (which
+  // keyed by authority, so the router and desktop-tab consumer (which
   // both mount this hook) share a single timer instead of each running one.
   const { refetch } = resource;
   useEffect(() => {
     if (!networkEnabled) return;
-    return startPolling(VIEWS_CACHE_KEY, fetchViews, POLL_INTERVAL_MS);
-  }, [networkEnabled]);
+    return startPolling(cacheKey, fetchViews, POLL_INTERVAL_MS);
+  }, [cacheKey, networkEnabled]);
   useEffect(() => {
     if (!networkEnabled) return;
     return subscribePluginReloadRefresh(refetch);
@@ -684,8 +701,9 @@ export function useAvailableViews(
     );
     // Availability gates apply to the in-process fallback registration, not to
     // a richer network entry that won the web/desktop merge for the same id.
-    // Cloud intentionally has both: its managed console page is unavailable on
-    // a local runtime while plugin-elizacloud's remote account view is valid.
+    // Cloud intentionally has both an account-dashboard fallback and
+    // plugin-elizacloud's live runtime view; either may own the same id without
+    // suppressing the authoritative network entry.
     const networkEntries = new Set(networkViews);
     const runtimeAvailable = merged.filter(
       (view) =>

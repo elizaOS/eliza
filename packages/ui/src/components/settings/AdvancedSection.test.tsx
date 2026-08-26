@@ -16,23 +16,19 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { setActionNotice, appValue, clientMock, devMode } = vi.hoisted(() => ({
-  setActionNotice: vi.fn(),
+const { appValue, clientMock } = vi.hoisted(() => ({
   appValue: {} as Record<string, unknown>,
   clientMock: {
     listLocalAgentBackups: vi.fn(),
     createLocalAgentBackup: vi.fn(),
     restoreLocalAgentBackup: vi.fn(),
-    seedDevNotifications: vi.fn(),
     getBaseUrl: vi.fn(() => "http://127.0.0.1:31337"),
   },
-  devMode: { value: false },
 }));
 
 vi.mock("../../state", () => {
   Object.assign(appValue, {
     t: (key: string) => key,
-    setActionNotice,
     exportBusy: false,
     exportPassword: "",
     exportIncludeLogs: false,
@@ -53,10 +49,6 @@ vi.mock("../../state", () => {
       sel(appValue),
     useAppSelectorShallow: (sel: (value: Record<string, unknown>) => unknown) =>
       sel(appValue),
-    useIsDeveloperMode: () => devMode.value,
-    setDeveloperMode: vi.fn(),
-    useIsPreviewMode: () => false,
-    setPreviewMode: vi.fn(),
   };
 });
 
@@ -67,14 +59,7 @@ vi.mock("../../api", () => ({
 import { AdvancedSection } from "./AdvancedSection";
 
 beforeEach(() => {
-  setActionNotice.mockClear();
-  devMode.value = false;
-  clientMock.seedDevNotifications.mockReset();
   clientMock.getBaseUrl.mockReturnValue("http://127.0.0.1:31337");
-  clientMock.seedDevNotifications.mockResolvedValue({
-    count: 8,
-    notifications: [],
-  });
   clientMock.listLocalAgentBackups.mockReset();
   clientMock.listLocalAgentBackups.mockResolvedValue([]);
   clientMock.createLocalAgentBackup.mockReset();
@@ -88,7 +73,7 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("AdvancedSection reset controls", () => {
-  it("does not render reset or danger-zone controls in the normal settings path", () => {
+  it("keeps the Backups destination free of unrelated developer controls", () => {
     render(<AdvancedSection />);
 
     expect(
@@ -97,6 +82,8 @@ describe("AdvancedSection reset controls", () => {
     expect(screen.queryByText("settings.dangerZone")).toBeNull();
     expect(screen.queryByText("settings.resetAgent")).toBeNull();
     expect(screen.queryByText("settings.resetConfirmBody")).toBeNull();
+    expect(screen.queryByText("View visibility")).toBeNull();
+    expect(screen.queryByText("Developer tools")).toBeNull();
   });
 });
 
@@ -176,48 +163,5 @@ describe("AdvancedSection agent backups", () => {
     expect(
       screen.getByText("Restored backup. Restart the agent to activate it."),
     ).toBeTruthy();
-  });
-
-  describe("dev notification seeding", () => {
-    it("hides the Developer tools group unless developer mode is on", () => {
-      render(<AdvancedSection />);
-      expect(
-        screen.queryByRole("button", { name: "Seed test notifications" }),
-      ).toBeNull();
-    });
-
-    it("seeds the demo spread and reports the count", async () => {
-      devMode.value = true;
-      render(<AdvancedSection />);
-      fireEvent.click(
-        screen.getByRole("button", { name: "Seed test notifications" }),
-      );
-      await waitFor(() =>
-        expect(clientMock.seedDevNotifications).toHaveBeenCalledTimes(1),
-      );
-      await waitFor(() =>
-        expect(setActionNotice).toHaveBeenCalledWith(
-          "Seeded 8 test notifications",
-          "success",
-        ),
-      );
-    });
-
-    it("surfaces a seeding failure as an error notice", async () => {
-      devMode.value = true;
-      clientMock.seedDevNotifications.mockRejectedValue(
-        new Error("notification route not found"),
-      );
-      render(<AdvancedSection />);
-      fireEvent.click(
-        screen.getByRole("button", { name: "Seed test notifications" }),
-      );
-      await waitFor(() =>
-        expect(setActionNotice).toHaveBeenCalledWith(
-          "notification route not found",
-          "error",
-        ),
-      );
-    });
   });
 });

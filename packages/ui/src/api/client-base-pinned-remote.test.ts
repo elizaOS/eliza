@@ -46,6 +46,10 @@ describe("ElizaClient build-pinned remote target", () => {
   it("rejects a Cloud base and the credential that follows it", () => {
     persistPinnedCredential("vps-session");
     const client = new ElizaClient(PINNED_BASE, "vps-session");
+    const authorityRevisions: number[] = [];
+    client.onAuthorityChange(() => {
+      authorityRevisions.push(client.getAuthorityRevision());
+    });
 
     client.setBaseUrl(
       "https://api.eliza.app/api/v1/eliza/agents/personal:test",
@@ -55,6 +59,7 @@ describe("ElizaClient build-pinned remote target", () => {
 
     expect(client.getBaseUrl()).toBe(PINNED_BASE);
     expect(client.getRestAuthToken()).toBe("vps-session");
+    expect(authorityRevisions).toEqual([]);
   });
 
   it("rejects an atomic Cloud repoint without opening a connection", () => {
@@ -98,10 +103,15 @@ describe("ElizaClient build-pinned remote target", () => {
   it("accepts a newly paired bearer after exact-origin persistence", () => {
     persistPinnedCredential("old-vps-session");
     const client = new ElizaClient(PINNED_BASE, "old-vps-session");
+    const authorityRevisions: number[] = [];
+    client.onAuthorityChange(() => {
+      authorityRevisions.push(client.getAuthorityRevision());
+    });
 
     persistPinnedCredential("new-vps-session");
     client.setToken("new-vps-session");
 
     expect(client.getRestAuthToken()).toBe("new-vps-session");
+    expect(authorityRevisions).toEqual([1]);
   });
 });

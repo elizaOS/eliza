@@ -153,6 +153,18 @@ export interface SettingsNonCatalogAuditEntry {
 }
 
 export const SETTINGS_NON_CATALOG_SECTION_AUDIT = {
+	"desktop-integration": {
+		reason:
+			"Native launch, Dock, and status-icon preferences require the desktop bridge and are not portable SETTINGS values.",
+		coveredBy:
+			"Capability-gated Settings controls remain agent-addressable through the desktop Settings surface.",
+	},
+	shortcuts: {
+		reason:
+			"Global shortcut registration is an operating-system desktop workflow rather than a portable local SETTINGS value.",
+		coveredBy:
+			"Capability-gated shortcut controls remain agent-addressable through the desktop Settings surface.",
+	},
 	"cloud-overview": {
 		reason:
 			"Cloud upsell/account overview is a late-registered non-catalog page, not a local setting value.",

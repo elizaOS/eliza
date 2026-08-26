@@ -748,7 +748,7 @@ function buildWalletContextPrompt(
   runtime: AgentRuntime,
   userPrompt: string,
 ): string {
-  const addrs = getWalletAddresses();
+  const addrs = getWalletAddresses(runtime.agentId);
   const walletNetwork =
     process.env.ELIZA_WALLET_NETWORK?.trim().toLowerCase() === "testnet"
       ? "testnet"
@@ -842,7 +842,7 @@ export function buildWalletActionNotExecutedReply(
   runtime: AgentRuntime,
   userPrompt: string,
 ): string {
-  const addrs = getWalletAddresses();
+  const addrs = getWalletAddresses(runtime.agentId);
   const walletNetwork =
     process.env.ELIZA_WALLET_NETWORK?.trim().toLowerCase() === "testnet"
       ? "testnet"

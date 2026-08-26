@@ -1,11 +1,10 @@
 /**
- * The Trajectories view: a paginated, searchable list of recorded model
- * trajectories (scenario/batch runs) with per-row select, download, and delete.
- * Selection can be controlled by a parent (master/detail) or self-managed
- * standalone. Binds the floating chat composer as its search box; data and
- * mutations flow through the trajectories API.
+ * Recorded agent activity in a responsive list/detail workspace. The list is
+ * the phone's primary screen and becomes a persistent rail on wider surfaces.
+ * Read capabilities are independent from management capabilities because
+ * shared runtimes may expose trajectory history without export/delete routes.
  */
-import { Download, Route, Trash2, XCircle } from "lucide-react";
+import { AlertTriangle, Download, Route, Trash2, XCircle } from "lucide-react";
 import {
   type ComponentProps,
   type ReactNode,
@@ -23,8 +22,15 @@ import type {
   TrajectoryRecord,
 } from "../../api/client-types-cloud";
 import { getCached, setCached } from "../../hooks/resource-cache";
+import {
+  isCapabilityWarmupAbort,
+  isCapabilityWarmupMiss,
+  useAbortableCapabilityWarmup,
+} from "../../hooks/runtime-capability-retry";
+import { useActiveAgentAuthority } from "../../hooks/useActiveAgentAuthority";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
-import { PageLayout } from "../../layouts/page-layout/page-layout";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
+import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import {
@@ -33,12 +39,10 @@ import {
   formatTrajectoryTokenCount,
 } from "../../utils/trajectory-format";
 import { PagePanel } from "../composites/page-panel";
-import { SidebarContent } from "../composites/sidebar/sidebar-content";
-import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
-import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { TrajectorySidebarItem } from "../composites/trajectories/trajectory-sidebar-item";
-import { AppPageSidebar } from "../shared/AppPageSidebar";
+import { SettingsGroup } from "../settings/settings-layout";
 import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
+import { ViewHeader } from "../shared/ViewHeader";
 import { Button, type ButtonProps } from "../ui/button";
 import {
   DropdownMenu,
@@ -50,18 +54,71 @@ import { ListSkeleton } from "../ui/skeleton-layouts";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { TrajectoryDetailView } from "./TrajectoryDetailView";
 
-const NEUTRAL_FG = "var(--muted)";
+const MOBILE_WORKSPACE_QUERY = "(max-width: 799px)";
+const PAGE_SIZE = 50;
 
-// Only `error` is an alert; `active` rides the --info status color (info blue is
-// allowed). `completed` is a terminal, non-alert state, so it stays neutral.
-const STATUS_COLORS: Record<string, string> = {
-  active: "var(--info)",
-  completed: NEUTRAL_FG,
-  error: "var(--danger)",
-};
+type TrajectoryLoadIssue =
+  | "dedicated-required"
+  | "unavailable"
+  | "restricted"
+  | "offline"
+  | "error";
+type ManagementCapability = "checking" | "available" | "unavailable";
 
-// Source tags are decorative metadata, not status — keep them all neutral.
-const SOURCE_FG = NEUTRAL_FG;
+const TRAJECTORIES_RUNTIME_UNAVAILABLE_CODE =
+  "trajectories_runtime_unavailable";
+
+function isTrajectoriesRuntimeUnavailable(error: unknown): boolean {
+  return (
+    (error as { code?: unknown } | null)?.code ===
+    TRAJECTORIES_RUNTIME_UNAVAILABLE_CODE
+  );
+}
+
+/** Classify transport failures without leaking server text into the UI. */
+export function classifyTrajectoryLoadError(
+  error: unknown,
+): TrajectoryLoadIssue {
+  const candidate = error as {
+    code?: unknown;
+    kind?: unknown;
+    status?: unknown;
+  } | null;
+  const status = typeof candidate?.status === "number" ? candidate.status : 0;
+  const kind = typeof candidate?.kind === "string" ? candidate.kind : "";
+
+  if (isTrajectoriesRuntimeUnavailable(error)) return "dedicated-required";
+  if (status === 404 || status === 405) return "unavailable";
+  if (status === 401 || status === 403) return "restricted";
+  if (
+    kind === "network" ||
+    kind === "timeout" ||
+    status === 202 ||
+    status === 408 ||
+    status === 429 ||
+    status === 502 ||
+    status === 503 ||
+    status === 504
+  ) {
+    return "offline";
+  }
+  return "error";
+}
+
+function isMissingManagementCapability(error: unknown): boolean {
+  const status = (error as { status?: unknown } | null)?.status;
+  return (
+    isTrajectoriesRuntimeUnavailable(error) || status === 404 || status === 405
+  );
+}
+
+export function shouldRetryTrajectoryLoad(error: unknown): boolean {
+  return (
+    !isTrajectoriesRuntimeUnavailable(error) &&
+    (isCapabilityWarmupMiss(error) ||
+      (error as { status?: unknown } | null)?.status === 503)
+  );
+}
 
 function agentSafeId(value: string): string {
   return (
@@ -125,15 +182,20 @@ function AgentDropdownMenuItem({
   return <DropdownMenuItem ref={ref} {...agentProps} {...itemProps} />;
 }
 
+function formatTrajectorySourceLabel(trajectory: TrajectoryRecord): string {
+  const parts = [trajectory.source];
+  if (trajectory.scenarioId) parts.push(trajectory.scenarioId);
+  if (trajectory.batchId) parts.push(trajectory.batchId);
+  return parts.join(" / ");
+}
+
 function AgentTrajectorySidebarItem({
   trajectory,
   selected,
-  statusColor,
   onSelect,
 }: {
   trajectory: TrajectoryRecord;
   selected: boolean;
-  statusColor: string;
   onSelect: () => void;
 }) {
   const title = formatTrajectoryTimestamp(trajectory.createdAt, "smart");
@@ -143,7 +205,7 @@ function AgentTrajectorySidebarItem({
     label: `Open trajectory ${title}`,
     group: "trajectories-list",
     status: selected ? "active" : trajectory.status,
-    description: "Select this trajectory and open its prompt/tool timeline",
+    description: "Open this recorded agent run",
     onActivate: onSelect,
   });
 
@@ -154,9 +216,14 @@ function AgentTrajectorySidebarItem({
       callCount={trajectory.llmCallCount}
       title={title}
       sourceLabel={formatTrajectorySourceLabel(trajectory)}
-      sourceColor={SOURCE_FG}
       statusLabel={trajectory.status}
-      statusColor={statusColor}
+      statusColor={
+        trajectory.status === "error"
+          ? "var(--danger)"
+          : trajectory.status === "active"
+            ? "var(--info)"
+            : "var(--settings-muted)"
+      }
       tokenLabel={`${formatTrajectoryTokenCount(
         trajectory.totalPromptTokens + trajectory.totalCompletionTokens,
         { emptyLabel: "0" },
@@ -166,11 +233,63 @@ function AgentTrajectorySidebarItem({
   );
 }
 
-function formatTrajectorySourceLabel(trajectory: TrajectoryRecord): string {
-  const parts = [trajectory.source];
-  if (trajectory.scenarioId) parts.push(trajectory.scenarioId);
-  if (trajectory.batchId) parts.push(trajectory.batchId);
-  return parts.join(" • ");
+function issueCopy(issue: TrajectoryLoadIssue, hasSavedData: boolean) {
+  if (hasSavedData) {
+    if (issue === "dedicated-required") {
+      return {
+        title: "Showing saved activity",
+        description:
+          "A Dedicated agent is required for live trajectory history.",
+      };
+    }
+    return issue === "unavailable"
+      ? {
+          title: "Showing saved activity",
+          description: "Live trajectory history isn't available here.",
+        }
+      : {
+          title: "Showing saved activity",
+          description: "Live updates will resume when the agent reconnects.",
+        };
+  }
+
+  switch (issue) {
+    case "dedicated-required":
+      return {
+        title: "Trajectories need a Dedicated agent",
+        description:
+          "Switch this agent to Dedicated to record and manage trajectory history.",
+      };
+    case "unavailable":
+      return {
+        title: "Trajectory history unavailable",
+        description: "This agent doesn't provide recorded trajectory history.",
+      };
+    case "restricted":
+      return {
+        title: "Trajectory history restricted",
+        description: "This account can't access recorded trajectory history.",
+      };
+    case "offline":
+      return {
+        title: "Agent unavailable",
+        description:
+          "Trajectory history will appear when the agent reconnects.",
+      };
+    default:
+      return {
+        title: "Couldn't load activity",
+        description: "Try again in a moment.",
+      };
+  }
+}
+
+function TrajectoryStateSurface({ children }: { children: ReactNode }) {
+  return (
+    <div className="overflow-hidden rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)]">
+      {children}
+    </div>
+  );
 }
 
 export interface TrajectoriesViewProps {
@@ -179,16 +298,33 @@ export interface TrajectoriesViewProps {
   onSelectTrajectory?: (id: string | null) => void;
 }
 
-export function TrajectoriesView({
+export function TrajectoriesView(props: TrajectoriesViewProps) {
+  const authority = useActiveAgentAuthority();
+  return (
+    <TrajectoriesViewForAuthority
+      key={authority}
+      {...props}
+      authority={authority}
+    />
+  );
+}
+
+function TrajectoriesViewForAuthority({
   contentHeader,
   selectedTrajectoryId: controlledId,
   onSelectTrajectory: controlledOnSelect,
-}: TrajectoriesViewProps) {
+  authority,
+}: TrajectoriesViewProps & { authority: string }) {
   const t = useAppSelector((s) => s.t);
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
-  const [error, setError] = useState<string | null>(null);
+  const isMobileWorkspace = useMediaQuery(MOBILE_WORKSPACE_QUERY);
+  const authorityRef = useRef(authority);
+  authorityRef.current = authority;
+  const runCapabilityWarmup = useAbortableCapabilityWarmup();
+  const [loadIssue, setLoadIssue] = useState<TrajectoryLoadIssue | null>(null);
+  const [managementCapability, setManagementCapability] =
+    useState<ManagementCapability>("checking");
 
-  // Self-manage selection when no external callback is provided (standalone mode).
   const [internalId, setInternalId] = useState<string | null>(null);
   const selectedTrajectoryId = controlledOnSelect
     ? (controlledId ?? null)
@@ -197,14 +333,9 @@ export function TrajectoriesView({
 
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(0);
-  const pageSize = 50;
   const previousSearchQueryRef = useRef(searchQuery);
-
-  // The one floating chat composer is this view's search box: typing in it
-  // drives `searchQuery` (which re-queries via `loadTrajectories`) and resets
-  // pagination. The binding clears when the view unmounts.
   const searchPlaceholder = t("trajectoriesview.Search", {
-    defaultValue: "Search...",
+    defaultValue: "Search activity",
   });
   const onQuery = useCallback((value: string) => {
     setSearchQuery(value);
@@ -216,16 +347,12 @@ export function TrajectoriesView({
   );
   useRegisterViewChatBinding(chatBinding);
 
-  // Seed from the shared cache so a revisit paints the last-known page
-  // instantly and revalidates silently, instead of flashing a spinner. The
-  // key carries every fetch parameter so distinct pages/queries don't collide.
-  const cacheKey = `trajectories:${page}:${searchQuery}`;
+  const cacheKey = `trajectories:${authority}:${page}:${searchQuery}`;
   const cachedResult = getCached<TrajectoryListResult>(cacheKey);
   const [result, setResult] = useState<TrajectoryListResult | null>(
     cachedResult?.data ?? null,
   );
   const [loading, setLoading] = useState(!cachedResult);
-
   const [exporting, setExporting] = useState(false);
   const [deletingTrajectoryId, setDeletingTrajectoryId] = useState<
     string | null
@@ -235,63 +362,143 @@ export function TrajectoriesView({
   const loadTrajectories = useCallback(
     async (options?: { silent?: boolean }) => {
       if (!options?.silent) setLoading(true);
-      setError(null);
+      setLoadIssue(null);
 
-      for (let attempt = 0; attempt <= 3; attempt++) {
-        try {
-          const trajResult = await client.getTrajectories({
-            limit: pageSize,
-            offset: page * pageSize,
-            search: searchQuery || undefined,
-          });
-          setResult(trajResult);
-          setCached(cacheKey, trajResult);
-          setLoading(false);
-          return;
-        } catch (err) {
-          const status = (err as { status?: number }).status;
-          if (status === 503 && attempt < 3) {
-            await new Promise((resolve) =>
-              setTimeout(resolve, 1000 * (attempt + 1)),
-            );
-            continue;
-          }
-          setError(
-            err instanceof Error
-              ? err.message
-              : t("trajectoriesview.FailedToLoad"),
-          );
-          setLoading(false);
-          return;
-        }
+      try {
+        const trajectoryResult = await runCapabilityWarmup(
+          () =>
+            client.getTrajectories({
+              limit: PAGE_SIZE,
+              offset: page * PAGE_SIZE,
+              search: searchQuery || undefined,
+            }),
+          {
+            retryWhen: shouldRetryTrajectoryLoad,
+          },
+        );
+        if (authorityRef.current !== authority) return;
+        setResult(trajectoryResult);
+        setCached(cacheKey, trajectoryResult);
+        setLoading(false);
+      } catch (error) {
+        if (authorityRef.current !== authority) return;
+        if (isCapabilityWarmupAbort(error)) return;
+        const issue = classifyTrajectoryLoadError(error);
+        setLoadIssue(issue);
+        setLoading(false);
       }
     },
-    [cacheKey, page, searchQuery, t],
+    [authority, cacheKey, page, runCapabilityWarmup, searchQuery],
   );
 
   useEffect(() => {
-    // Revalidate silently when this page/query is already cached on screen.
+    setResult(getCached<TrajectoryListResult>(cacheKey)?.data ?? null);
+    setLoadIssue(null);
+    setManagementCapability("checking");
+  }, [cacheKey]);
+
+  useEffect(() => {
     void loadTrajectories({
       silent: getCached<TrajectoryListResult>(cacheKey) != null,
     });
   }, [loadTrajectories, cacheKey]);
 
-  // Poll for new turns in the background instead of a manual refresh button.
-  // Gated on document visibility so a backgrounded window stops polling.
+  useEffect(() => {
+    let cancelled = false;
+    const requestedAuthority = authority;
+    void runCapabilityWarmup(() => client.getTrajectoryConfig())
+      .then(() => {
+        if (!cancelled && authorityRef.current === requestedAuthority) {
+          setManagementCapability("available");
+        }
+      })
+      .catch((error: unknown) => {
+        if (isCapabilityWarmupAbort(error)) return;
+        if (!cancelled && authorityRef.current === requestedAuthority) {
+          setManagementCapability(
+            isMissingManagementCapability(error) ? "unavailable" : "checking",
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authority, runCapabilityWarmup]);
+
   useIntervalWhenDocumentVisible(() => {
     void loadTrajectories({ silent: true });
   }, 15000);
 
   useEffect(() => {
     const previousSearchQuery = previousSearchQueryRef.current;
-    if (previousSearchQuery === searchQuery) {
+    if (previousSearchQuery === searchQuery) return;
+    previousSearchQueryRef.current = searchQuery;
+    if (selectedTrajectoryId != null) onSelectTrajectory(null);
+  }, [searchQuery, selectedTrajectoryId, onSelectTrajectory]);
+
+  const trajectories = useMemo(() => result?.trajectories ?? [], [result]);
+  const total = result?.total ?? 0;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const hasActiveFilters = searchQuery.trim().length > 0;
+
+  useLayoutEffect(() => {
+    if (loading) return;
+    if (trajectories.length === 0) {
+      if (selectedTrajectoryId != null) onSelectTrajectory(null);
       return;
     }
-    previousSearchQueryRef.current = searchQuery;
-    if (selectedTrajectoryId != null) {
-      onSelectTrajectory?.(null);
+    if (isMobileWorkspace) {
+      if (
+        selectedTrajectoryId != null &&
+        !trajectories.some(
+          (trajectory) => trajectory.id === selectedTrajectoryId,
+        )
+      ) {
+        onSelectTrajectory(null);
+      }
+      return;
     }
-  }, [searchQuery, selectedTrajectoryId, onSelectTrajectory]);
+    if (
+      selectedTrajectoryId == null ||
+      (page === 0 &&
+        !trajectories.some(
+          (trajectory) => trajectory.id === selectedTrajectoryId,
+        ))
+    ) {
+      onSelectTrajectory(trajectories[0].id);
+    }
+  }, [
+    isMobileWorkspace,
+    loading,
+    onSelectTrajectory,
+    page,
+    selectedTrajectoryId,
+    trajectories,
+  ]);
+
+  const detailTrajectoryId =
+    selectedTrajectoryId &&
+    trajectories.some((trajectory) => trajectory.id === selectedTrajectoryId)
+      ? selectedTrajectoryId
+      : isMobileWorkspace
+        ? null
+        : (trajectories[0]?.id ?? null);
+
+  const managementUnavailable = useCallback(() => {
+    setManagementCapability("unavailable");
+    setActionNotice?.(
+      "Trajectory management isn't available for this agent.",
+      "info",
+      3600,
+    );
+  }, [setActionNotice]);
+
+  const actionFailed = useCallback(
+    (message: string) => {
+      setActionNotice?.(message, "error", 4200);
+    },
+    [setActionNotice],
+  );
 
   const handleExport = async (
     format: "json" | "jsonl" | "csv" | "zip",
@@ -311,51 +518,13 @@ export function TrajectoriesView({
       anchor.download = `trajectories-${new Date().toISOString().split("T")[0]}.${format}`;
       anchor.click();
       URL.revokeObjectURL(url);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : t("trajectoriesview.FailedToExport"),
-      );
+    } catch (error) {
+      if (isMissingManagementCapability(error)) managementUnavailable();
+      else actionFailed("Couldn't export trajectories.");
     } finally {
       setExporting(false);
     }
   };
-
-  const hasActiveFilters = searchQuery !== "";
-  const trajectories = useMemo(() => result?.trajectories ?? [], [result]);
-  const total = result?.total ?? 0;
-  const totalPages = Math.ceil(total / pageSize);
-
-  useLayoutEffect(() => {
-    if (loading) return;
-    if (trajectories.length === 0) {
-      if (selectedTrajectoryId != null) onSelectTrajectory?.(null);
-      return;
-    }
-    if (selectedTrajectoryId == null) {
-      onSelectTrajectory?.(trajectories[0].id);
-      return;
-    }
-    if (
-      page === 0 &&
-      !trajectories.some((tr) => tr.id === selectedTrajectoryId)
-    ) {
-      onSelectTrajectory?.(trajectories[0].id);
-    }
-  }, [loading, trajectories, selectedTrajectoryId, onSelectTrajectory, page]);
-
-  const detailTrajectoryId =
-    trajectories.length === 0
-      ? null
-      : (selectedTrajectoryId ?? trajectories[0]?.id ?? null);
-  const deleteDisabled =
-    loading ||
-    clearingAll ||
-    deletingTrajectoryId !== null ||
-    detailTrajectoryId === null;
-  const clearAllDisabled =
-    loading || clearingAll || deletingTrajectoryId !== null || total === 0;
 
   const handleDeleteTrajectory = useCallback(
     async (trajectoryId: string) => {
@@ -363,51 +532,28 @@ export function TrajectoriesView({
       if (!normalizedId) return;
 
       setDeletingTrajectoryId(normalizedId);
-      setError(null);
-
       try {
         const response = await client.deleteTrajectories([normalizedId]);
         const deletedCount = Number(response.deleted ?? 0);
-
         if (selectedTrajectoryId === normalizedId) {
-          const remainingOnPage = trajectories.filter(
+          const remaining = trajectories.filter(
             (trajectory) => trajectory.id !== normalizedId,
           );
-          onSelectTrajectory?.(remainingOnPage[0]?.id ?? null);
+          onSelectTrajectory(remaining[0]?.id ?? null);
         }
-
         if (page > 0 && trajectories.length <= 1) {
           setPage((currentPage) => Math.max(0, currentPage - 1));
         } else {
           await loadTrajectories();
         }
-
-        if (deletedCount > 0) {
-          setActionNotice?.(
-            t("trajectoriesview.TrajectoryDeleted", {
-              defaultValue: "Trajectory deleted.",
-            }),
-            "success",
-            2400,
-          );
-        } else {
-          setActionNotice?.(
-            t("trajectoriesview.NoTrajectoryDeleted", {
-              defaultValue: "No trajectory was deleted.",
-            }),
-            "info",
-            2400,
-          );
-        }
-      } catch (err) {
-        const message =
-          err instanceof Error
-            ? err.message
-            : t("trajectoriesview.FailedToDelete", {
-                defaultValue: "Failed to delete trajectory",
-              });
-        setError(message);
-        setActionNotice?.(message, "error", 4200);
+        setActionNotice?.(
+          deletedCount > 0 ? "Trajectory deleted." : "Nothing was deleted.",
+          deletedCount > 0 ? "success" : "info",
+          2400,
+        );
+      } catch (error) {
+        if (isMissingManagementCapability(error)) managementUnavailable();
+        else actionFailed("Couldn't delete this trajectory.");
       } finally {
         setDeletingTrajectoryId((currentId) =>
           currentId === normalizedId ? null : currentId,
@@ -415,305 +561,383 @@ export function TrajectoriesView({
       }
     },
     [
+      actionFailed,
       loadTrajectories,
+      managementUnavailable,
       onSelectTrajectory,
       page,
       selectedTrajectoryId,
       setActionNotice,
-      t,
       trajectories,
     ],
   );
 
   const handleClearAllTrajectories = useCallback(async () => {
     setClearingAll(true);
-    setError(null);
-
     try {
       const response = await client.clearAllTrajectories();
       setResult({
         trajectories: [],
         total: 0,
         offset: 0,
-        limit: pageSize,
+        limit: PAGE_SIZE,
       });
       setPage(0);
-      onSelectTrajectory?.(null);
-
-      if (Number(response.deleted ?? 0) > 0) {
-        setActionNotice?.(
-          t("trajectoriesview.TrajectoriesCleared", {
-            defaultValue: "Trajectories cleared.",
-          }),
-          "success",
-          2400,
-        );
-      } else {
-        setActionNotice?.(
-          t("trajectoriesview.NoTrajectoryDeleted", {
-            defaultValue: "No trajectory was deleted.",
-          }),
-          "info",
-          2400,
-        );
-      }
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : t("trajectoriesview.FailedToClear", {
-              defaultValue: "Failed to clear trajectories",
-            });
-      setError(message);
-      setActionNotice?.(message, "error", 4200);
+      onSelectTrajectory(null);
+      const deletedCount = Number(response.deleted ?? 0);
+      setActionNotice?.(
+        deletedCount > 0
+          ? "Trajectory history cleared."
+          : "Nothing was deleted.",
+        deletedCount > 0 ? "success" : "info",
+        2400,
+      );
+    } catch (error) {
+      if (isMissingManagementCapability(error)) managementUnavailable();
+      else actionFailed("Couldn't clear trajectory history.");
     } finally {
       setClearingAll(false);
     }
-  }, [onSelectTrajectory, setActionNotice, t]);
+  }, [
+    actionFailed,
+    managementUnavailable,
+    onSelectTrajectory,
+    setActionNotice,
+  ]);
 
-  const trajectoriesSidebar = (
-    <AppPageSidebar
-      testId="trajectories-sidebar"
-      collapsible
-      contentIdentity="trajectories"
-      aria-label={t("trajectoriesview.Entries", {
-        defaultValue: "Entries",
-      })}
-    >
-      <SidebarScrollRegion>
-        <SidebarPanel>
-          {hasActiveFilters || trajectories.length > 0 ? (
-            <SidebarContent.Toolbar className="mb-3 items-center justify-end gap-2">
-              <SidebarContent.ToolbarActions>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <AgentToolbarButton
-                      agentId="trajectories-export-open"
-                      agentLabel="Open trajectory export menu"
-                      agentDescription="Open export options for trajectory logs"
-                      agentStatus={
-                        exporting || trajectories.length === 0
-                          ? "disabled"
-                          : "ready"
-                      }
-                      variant="outline"
-                      size="icon"
-                      type="button"
-                      className="size-7 rounded-full"
-                      disabled={exporting || trajectories.length === 0}
-                      title={t("common.export")}
-                    >
-                      <Download className="size-3" />
-                    </AgentToolbarButton>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48">
-                    <AgentDropdownMenuItem
-                      agentId="trajectories-export-json-prompts"
-                      agentLabel="Export trajectories as JSON with prompts"
-                      onClick={() => handleExport("json", true)}
-                    >
-                      {t("trajectoriesview.JSONWithPrompts")}
-                    </AgentDropdownMenuItem>
-                    <AgentDropdownMenuItem
-                      agentId="trajectories-export-jsonl-native"
-                      agentLabel="Export trajectories as native JSONL training data"
-                      onClick={() =>
-                        handleExport("jsonl", true, "eliza_native_v1")
-                      }
-                    >
-                      {t("trajectoriesview.JSONLNativeTraining")}
-                    </AgentDropdownMenuItem>
-                    <AgentDropdownMenuItem
-                      agentId="trajectories-export-json-redacted"
-                      agentLabel="Export trajectories as redacted JSON"
-                      onClick={() => handleExport("json", false)}
-                    >
-                      {t("trajectoriesview.JSONRedacted")}
-                    </AgentDropdownMenuItem>
-                    <AgentDropdownMenuItem
-                      agentId="trajectories-export-csv-summary"
-                      agentLabel="Export trajectories as CSV summary"
-                      onClick={() => handleExport("csv", false)}
-                    >
-                      {t("trajectoriesview.CSVSummaryOnly")}
-                    </AgentDropdownMenuItem>
-                    <AgentDropdownMenuItem
-                      agentId="trajectories-export-zip-folders"
-                      agentLabel="Export trajectories as ZIP folders"
-                      onClick={() => handleExport("zip", true)}
-                    >
-                      {t("trajectoriesview.ZIPFolders")}
-                    </AgentDropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <ConfirmDeleteControl
-                  agentId="trajectories-delete-current-open"
-                  agentLabel="Delete current trajectory"
-                  agentGroup="trajectories-toolbar"
-                  agentDescription="Open the confirmation controls for deleting the selected trajectory"
-                  confirmAgentId="trajectories-delete-current-confirm"
-                  cancelAgentId="trajectories-delete-current-cancel"
-                  triggerVariant="outline"
-                  triggerClassName="h-7 w-7 rounded-full text-danger transition-all hover:bg-danger/10"
-                  confirmClassName="h-7 rounded-full border border-danger/25 bg-danger/14 px-3 text-2xs font-bold text-danger transition-all hover:bg-danger/20"
-                  cancelClassName="h-7 rounded-full border border-border/35 px-3 text-2xs font-bold text-muted-strong transition-all hover:border-border-strong hover:text-txt"
-                  disabled={deleteDisabled}
-                  triggerLabel={<Trash2 className="size-3" />}
-                  triggerTitle={t("trajectoriesview.DeleteCurrent", {
-                    defaultValue: "Delete current",
-                  })}
-                  promptText={t("trajectoriesview.DeleteCurrentPrompt", {
-                    defaultValue: "Delete this trajectory?",
-                  })}
-                  busyLabel={t("trajectoriesview.Deleting", {
-                    defaultValue: "Deleting...",
-                  })}
-                  onConfirm={() => {
-                    if (detailTrajectoryId) {
-                      void handleDeleteTrajectory(detailTrajectoryId);
-                    }
-                  }}
-                />
-                <ConfirmDeleteControl
-                  agentId="trajectories-clear-all-open"
-                  agentLabel="Clear all trajectories"
-                  agentGroup="trajectories-toolbar"
-                  agentDescription="Open the confirmation controls for deleting every trajectory"
-                  confirmAgentId="trajectories-clear-all-confirm"
-                  cancelAgentId="trajectories-clear-all-cancel"
-                  triggerVariant="outline"
-                  triggerClassName="h-7 w-7 rounded-full text-danger transition-all hover:bg-danger/10"
-                  confirmClassName="h-7 rounded-full border border-danger/25 bg-danger/14 px-3 text-2xs font-bold text-danger transition-all hover:bg-danger/20"
-                  cancelClassName="h-7 rounded-full border border-border/35 px-3 text-2xs font-bold text-muted-strong transition-all hover:border-border-strong hover:text-txt"
-                  disabled={clearAllDisabled}
-                  triggerLabel={<XCircle className="size-3" />}
-                  triggerTitle={t("trajectoriesview.ClearAll", {
-                    defaultValue: "Clear all",
-                  })}
-                  promptText={t("trajectoriesview.ClearAllPrompt", {
-                    defaultValue: "Delete all trajectories?",
-                  })}
-                  busyLabel={t("trajectoriesview.Clearing", {
-                    defaultValue: "Clearing...",
-                  })}
-                  onConfirm={() => {
-                    void handleClearAllTrajectories();
-                  }}
-                />
-              </SidebarContent.ToolbarActions>
-            </SidebarContent.Toolbar>
-          ) : null}
+  const deleteDisabled =
+    loading ||
+    clearingAll ||
+    deletingTrajectoryId !== null ||
+    detailTrajectoryId === null;
+  const clearAllDisabled =
+    loading || clearingAll || deletingTrajectoryId !== null || total === 0;
+  const issue = loadIssue
+    ? issueCopy(loadIssue, trajectories.length > 0)
+    : null;
+  const canRetryIssue =
+    loadIssue !== "dedicated-required" &&
+    loadIssue !== "unavailable" &&
+    loadIssue !== "restricted";
+  const showList = !isMobileWorkspace || detailTrajectoryId === null;
+  const showDetail = !isMobileWorkspace || detailTrajectoryId !== null;
+  const showingMobileDetail = isMobileWorkspace && detailTrajectoryId !== null;
 
-          {loading && trajectories.length === 0 ? (
-            <SidebarContent.EmptyState>
-              {t("trajectoriesview.LoadingTrajectories")}
-            </SidebarContent.EmptyState>
-          ) : trajectories.length === 0 ? (
-            <SidebarContent.EmptyState>
-              {hasActiveFilters
-                ? t("trajectoriesview.NoTrajectoriesMatchingFilters")
-                : t("trajectoriesview.NoTrajectoriesYet")}
-            </SidebarContent.EmptyState>
-          ) : (
-            <div className="space-y-1.5">
-              {trajectories.map((trajectory: TrajectoryRecord) => {
-                const selected = selectedTrajectoryId === trajectory.id;
-                const statusColor =
-                  STATUS_COLORS[trajectory.status] ?? STATUS_COLORS.completed;
-
-                return (
-                  <AgentTrajectorySidebarItem
-                    key={trajectory.id}
-                    trajectory={trajectory}
-                    selected={selected}
-                    statusColor={statusColor}
-                    onSelect={() => onSelectTrajectory?.(trajectory.id)}
-                  />
-                );
-              })}
-            </div>
-          )}
-
-          {totalPages > 1 && (
-            <div className="mt-3 flex items-center justify-between gap-2 pt-3 text-xs text-muted">
-              <span className="min-w-0">
-                {t("trajectoriesview.ShowingRange", {
-                  start: page * pageSize + 1,
-                  end: Math.min((page + 1) * pageSize, total),
-                  total,
-                })}
-              </span>
-              <div className="flex gap-1.5">
-                <AgentToolbarButton
-                  agentId="trajectories-page-prev"
-                  agentLabel="Previous trajectories page"
-                  agentDescription="Move to the previous page of trajectory logs"
-                  agentStatus={page === 0 ? "disabled" : "ready"}
-                  onActivate={() =>
-                    setPage((current) => Math.max(0, current - 1))
-                  }
-                  variant="outline"
-                  size="sm"
-                  type="button"
-                  className="h-8 rounded-full px-3 text-xs-tight"
-                  onClick={() => setPage((current) => Math.max(0, current - 1))}
-                  disabled={page === 0}
-                >
-                  {t("common.prev")}
-                </AgentToolbarButton>
-                <AgentToolbarButton
-                  agentId="trajectories-page-next"
-                  agentLabel="Next trajectories page"
-                  agentDescription="Move to the next page of trajectory logs"
-                  agentStatus={page >= totalPages - 1 ? "disabled" : "ready"}
-                  onActivate={() => setPage((current) => current + 1)}
-                  variant="outline"
-                  size="sm"
-                  type="button"
-                  className="h-8 rounded-full px-3 text-xs-tight"
-                  onClick={() => setPage((current) => current + 1)}
-                  disabled={page >= totalPages - 1}
-                >
-                  {t("common.next")}
-                </AgentToolbarButton>
-              </div>
-            </div>
-          )}
-        </SidebarPanel>
-      </SidebarScrollRegion>
-    </AppPageSidebar>
-  );
+  const managementActions =
+    managementCapability === "available" && trajectories.length > 0 ? (
+      <div className="flex items-center gap-1">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <AgentToolbarButton
+              agentId="trajectories-export-open"
+              agentLabel="Open trajectory export menu"
+              agentDescription="Export recorded trajectory logs"
+              agentStatus={exporting ? "disabled" : "ready"}
+              variant="ghostMuted"
+              size="icon-lg"
+              type="button"
+              disabled={exporting}
+              title={t("common.export")}
+            >
+              <Download className="size-4" aria-hidden />
+            </AgentToolbarButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <AgentDropdownMenuItem
+              agentId="trajectories-export-json-prompts"
+              agentLabel="Export trajectories as JSON with prompts"
+              onClick={() => handleExport("json", true)}
+            >
+              {t("trajectoriesview.JSONWithPrompts")}
+            </AgentDropdownMenuItem>
+            <AgentDropdownMenuItem
+              agentId="trajectories-export-jsonl-native"
+              agentLabel="Export trajectories as native JSONL training data"
+              onClick={() => handleExport("jsonl", true, "eliza_native_v1")}
+            >
+              {t("trajectoriesview.JSONLNativeTraining")}
+            </AgentDropdownMenuItem>
+            <AgentDropdownMenuItem
+              agentId="trajectories-export-json-redacted"
+              agentLabel="Export trajectories as redacted JSON"
+              onClick={() => handleExport("json", false)}
+            >
+              {t("trajectoriesview.JSONRedacted")}
+            </AgentDropdownMenuItem>
+            <AgentDropdownMenuItem
+              agentId="trajectories-export-csv-summary"
+              agentLabel="Export trajectories as CSV summary"
+              onClick={() => handleExport("csv", false)}
+            >
+              {t("trajectoriesview.CSVSummaryOnly")}
+            </AgentDropdownMenuItem>
+            <AgentDropdownMenuItem
+              agentId="trajectories-export-zip-folders"
+              agentLabel="Export trajectories as ZIP folders"
+              onClick={() => handleExport("zip", true)}
+            >
+              {t("trajectoriesview.ZIPFolders")}
+            </AgentDropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <ConfirmDeleteControl
+          agentId="trajectories-delete-current-open"
+          agentLabel="Delete current trajectory"
+          agentGroup="trajectories-toolbar"
+          agentDescription="Delete the selected trajectory"
+          confirmAgentId="trajectories-delete-current-confirm"
+          cancelAgentId="trajectories-delete-current-cancel"
+          triggerVariant="ghost"
+          triggerClassName="h-11 w-11 text-danger hover:bg-danger/10 hover:text-danger"
+          confirmClassName="h-11 border border-danger/25 bg-danger/10 px-4 text-sm font-semibold text-danger hover:bg-danger/15"
+          cancelClassName="h-11 border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)] px-4 text-sm font-semibold text-[color:var(--settings-muted)] hover:bg-[var(--settings-fill)]"
+          disabled={deleteDisabled}
+          triggerLabel={<Trash2 className="size-4" />}
+          triggerTitle="Delete current"
+          promptText="Delete this trajectory?"
+          busyLabel="Deleting..."
+          onConfirm={() => {
+            if (detailTrajectoryId)
+              void handleDeleteTrajectory(detailTrajectoryId);
+          }}
+        />
+        <ConfirmDeleteControl
+          agentId="trajectories-clear-all-open"
+          agentLabel="Clear all trajectories"
+          agentGroup="trajectories-toolbar"
+          agentDescription="Delete every recorded trajectory"
+          confirmAgentId="trajectories-clear-all-confirm"
+          cancelAgentId="trajectories-clear-all-cancel"
+          triggerVariant="ghost"
+          triggerClassName="h-11 w-11 text-danger hover:bg-danger/10 hover:text-danger"
+          confirmClassName="h-11 border border-danger/25 bg-danger/10 px-4 text-sm font-semibold text-danger hover:bg-danger/15"
+          cancelClassName="h-11 border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)] px-4 text-sm font-semibold text-[color:var(--settings-muted)] hover:bg-[var(--settings-fill)]"
+          disabled={clearAllDisabled}
+          triggerLabel={<XCircle className="size-4" />}
+          triggerTitle="Clear all"
+          promptText="Delete all trajectories?"
+          busyLabel="Clearing..."
+          onConfirm={() => void handleClearAllTrajectories()}
+        />
+      </div>
+    ) : null;
 
   return (
     <ShellViewAgentSurface viewId="trajectories">
-      <PageLayout
-        sidebar={trajectoriesSidebar}
-        contentHeader={contentHeader}
-        contentInnerClassName="mx-auto w-full max-w-[76rem]"
+      <div
+        className="settings-surface settings-canvas flex h-full min-h-0 w-full flex-col overflow-hidden"
         data-testid="trajectories-view"
       >
-        {error ? (
-          <PagePanel.Notice tone="danger" className="mb-4">
-            {error}
-          </PagePanel.Notice>
-        ) : null}
+        <ViewHeader
+          title={
+            showingMobileDetail
+              ? t("trajectorydetailview.Title", {
+                  defaultValue: "Run details",
+                })
+              : t("trajectoriesview.Title", {
+                  defaultValue: "Trajectories",
+                })
+          }
+          onBack={
+            showingMobileDetail ? () => onSelectTrajectory(null) : undefined
+          }
+          backLabel={
+            showingMobileDetail
+              ? t("trajectorydetailview.BackToActivity", {
+                  defaultValue: "Back to activity",
+                })
+              : undefined
+          }
+          right={contentHeader}
+          className="text-[color:var(--settings-foreground)]"
+        />
+        <div className="mx-auto grid min-h-0 w-full max-w-[88rem] flex-1 min-[800px]:grid-cols-[21rem_minmax(0,1fr)] min-[800px]:gap-4 min-[800px]:px-5 min-[800px]:pt-4">
+          <aside
+            className={cn(
+              "min-h-0 flex-col px-4 pt-2 min-[800px]:rounded-t-[20px] min-[800px]:border min-[800px]:border-b-0 min-[800px]:border-[color:var(--settings-hairline)] min-[800px]:bg-[var(--settings-secondary)] min-[800px]:px-3 min-[800px]:pt-3",
+              showList ? "flex" : "hidden",
+            )}
+            aria-label="Trajectory history"
+          >
+            <div className="flex min-h-11 shrink-0 items-center justify-between gap-3 px-1">
+              <div className="min-w-0">
+                <h2 className="text-[15px] font-semibold text-[color:var(--settings-foreground)]">
+                  Activity
+                </h2>
+                <p className="text-xs leading-5 text-[color:var(--settings-muted)]">
+                  {hasActiveFilters
+                    ? `${total} matching ${total === 1 ? "run" : "runs"}`
+                    : `${total} recorded ${total === 1 ? "run" : "runs"}`}
+                </p>
+              </div>
+              {managementActions}
+            </div>
 
-        {loading && trajectories.length === 0 ? (
-          <ListSkeleton rows={8} />
-        ) : !loading && trajectories.length === 0 ? (
-          <PagePanel.Empty
-            className="flex-1"
-            icon={<Route className="size-6" aria-hidden />}
-            title={
-              hasActiveFilters
-                ? t("trajectoriesview.NoTrajectoriesMatchingFilters")
-                : t("trajectoriesview.NoTrajectoriesYet")
-            }
-          />
-        ) : detailTrajectoryId ? (
-          <TrajectoryDetailView trajectoryId={detailTrajectoryId} />
-        ) : null}
-      </PageLayout>
+            {issue && trajectories.length > 0 ? (
+              <div
+                role="status"
+                className="mt-2 flex items-start gap-2 rounded-[12px] bg-[var(--settings-fill)] px-3 py-2.5 text-[13px] leading-5 text-[color:var(--settings-muted)]"
+              >
+                <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium text-[color:var(--settings-foreground)]">
+                    {issue.title}
+                  </div>
+                  <div>{issue.description}</div>
+                </div>
+                {canRetryIssue ? (
+                  <Button
+                    type="button"
+                    size="touch"
+                    variant="ghostMuted"
+                    className="shrink-0"
+                    onClick={() => void loadTrajectories()}
+                  >
+                    Retry
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="eliza-chat-scroll min-h-0 flex-1 overflow-y-auto pb-4 pt-3">
+              {loading && trajectories.length === 0 ? (
+                <TrajectoryStateSurface>
+                  <div
+                    role="status"
+                    aria-label="Loading trajectory history"
+                    aria-busy="true"
+                    className="p-3"
+                  >
+                    <ListSkeleton rows={6} />
+                  </div>
+                </TrajectoryStateSurface>
+              ) : issue && trajectories.length === 0 ? (
+                <TrajectoryStateSurface>
+                  <PagePanel.ContentState
+                    state="error"
+                    placement="workspace"
+                    tone="warning"
+                    role="status"
+                    className="min-h-[18rem]"
+                    icon={<AlertTriangle className="size-5" />}
+                    title={issue.title}
+                    description={issue.description}
+                    action={
+                      canRetryIssue ? (
+                        <Button
+                          type="button"
+                          size="touch"
+                          variant="outline"
+                          onClick={() => void loadTrajectories()}
+                        >
+                          Retry
+                        </Button>
+                      ) : undefined
+                    }
+                  />
+                </TrajectoryStateSurface>
+              ) : trajectories.length === 0 ? (
+                <TrajectoryStateSurface>
+                  <PagePanel.ContentState
+                    state="empty"
+                    placement="workspace"
+                    className="min-h-[18rem]"
+                    icon={<Route className="size-5" />}
+                    title={
+                      hasActiveFilters
+                        ? "No matching activity"
+                        : "No recorded activity yet"
+                    }
+                    description={
+                      hasActiveFilters
+                        ? "Try a shorter search."
+                        : "Agent runs will appear here when trajectory recording is enabled."
+                    }
+                  />
+                </TrajectoryStateSurface>
+              ) : (
+                <SettingsGroup>
+                  {trajectories.map((trajectory) => (
+                    <AgentTrajectorySidebarItem
+                      key={trajectory.id}
+                      trajectory={trajectory}
+                      selected={selectedTrajectoryId === trajectory.id}
+                      onSelect={() => onSelectTrajectory(trajectory.id)}
+                    />
+                  ))}
+                </SettingsGroup>
+              )}
+
+              {totalPages > 1 ? (
+                <nav
+                  className="mt-3 flex min-h-11 items-center justify-between gap-2 px-1 text-xs text-[color:var(--settings-muted)]"
+                  aria-label="Trajectory pages"
+                >
+                  <span>
+                    {page * PAGE_SIZE + 1}-
+                    {Math.min((page + 1) * PAGE_SIZE, total)} of {total}
+                  </span>
+                  <div className="flex gap-1">
+                    <AgentToolbarButton
+                      agentId="trajectories-page-prev"
+                      agentLabel="Previous trajectories page"
+                      agentStatus={page === 0 ? "disabled" : "ready"}
+                      onActivate={() =>
+                        setPage((current) => Math.max(0, current - 1))
+                      }
+                      variant="ghostMuted"
+                      size="touch"
+                      className="px-3"
+                      onClick={() =>
+                        setPage((current) => Math.max(0, current - 1))
+                      }
+                      disabled={page === 0}
+                    >
+                      Previous
+                    </AgentToolbarButton>
+                    <AgentToolbarButton
+                      agentId="trajectories-page-next"
+                      agentLabel="Next trajectories page"
+                      agentStatus={
+                        page >= totalPages - 1 ? "disabled" : "ready"
+                      }
+                      onActivate={() => setPage((current) => current + 1)}
+                      variant="ghostMuted"
+                      size="touch"
+                      className="px-3"
+                      onClick={() => setPage((current) => current + 1)}
+                      disabled={page >= totalPages - 1}
+                    >
+                      Next
+                    </AgentToolbarButton>
+                  </div>
+                </nav>
+              ) : null}
+            </div>
+          </aside>
+
+          <main
+            className={cn(
+              "eliza-chat-scroll min-h-0 overflow-y-auto px-4 pb-4 pt-2 min-[800px]:px-0 min-[800px]:pt-0",
+              showDetail ? "block" : "hidden",
+            )}
+          >
+            {detailTrajectoryId ? (
+              <TrajectoryDetailView trajectoryId={detailTrajectoryId} />
+            ) : (
+              <TrajectoryStateSurface>
+                <PagePanel.ContentState
+                  state="empty"
+                  placement="workspace"
+                  className="min-h-[24rem]"
+                  title="Select a run"
+                  description="Choose recorded activity to inspect its timeline and model calls."
+                />
+              </TrajectoryStateSurface>
+            )}
+          </main>
+        </div>
+      </div>
     </ShellViewAgentSurface>
   );
 }

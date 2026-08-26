@@ -99,18 +99,22 @@ async function main() {
     await capture("01-collapsed", mixed);
     await page.getByRole("button", { name: "Manage calendar sources" }).click();
     await page
-      .getByRole("button", { name: "Close source settings" })
+      .getByRole("button", { name: "Close calendar source settings" })
       .waitFor({ state: "visible", timeout: 5_000 });
     await capture("02-expanded-mixed", mixed);
 
     const workRow = page
-      .locator('[data-agent-id^="source-row-calendar-source-"]')
+      .locator('[data-testid^="calendar-source-row-"]')
       .filter({ hasText: "Work" })
       .first();
-    await workRow.getByRole("button", { name: "Exclude" }).click();
+    await workRow
+      .getByRole("switch", {
+        name: /Include Work .* in the combined calendar/,
+      })
+      .click();
     await workRow.getByText("Excluding…").waitFor({ state: "visible" });
     await capture("03-write-pending", mixed);
-    await workRow.getByRole("button", { name: "Include" }).waitFor({
+    await workRow.getByText("Excluded").waitFor({
       state: "visible",
       timeout: 5_000,
     });

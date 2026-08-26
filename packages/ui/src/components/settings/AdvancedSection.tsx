@@ -1,27 +1,21 @@
 /**
  * Settings → "Backups" section body (the `advanced` section registered in
  * settings-sections.ts). Drives local-agent backup export/import — create,
- * list, and restore via the typed API client — alongside developer- and
- * preview-mode toggles.
+ * list, and restore via the typed API client. Developer/preview tooling does
+ * not belong in this everyday backup destination.
  */
 
-import { Bell, Download, Upload } from "lucide-react";
+import { Download, Upload } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client, type LocalAgentBackupMetadata } from "../../api";
-import {
-  setDeveloperMode,
-  setPreviewMode,
-  useAppSelectorShallow,
-  useIsDeveloperMode,
-  useIsPreviewMode,
-} from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { isDedicatedCloudAgentBase } from "../../utils/cloud-agent-base";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 import { Spinner } from "../ui/spinner";
-import { SettingsActionButton, SettingsSwitchRow } from "./settings-agent-rows";
+import { SettingsActionButton } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
 function formatBackupDate(value: string): string {
@@ -94,12 +88,9 @@ function BackupOptionList({
 }
 
 export function AdvancedSection() {
-  const { t, setActionNotice } = useAppSelectorShallow((s) => ({
+  const { t } = useAppSelectorShallow((s) => ({
     t: s.t,
-    setActionNotice: s.setActionNotice,
   }));
-  const developerMode = useIsDeveloperMode();
-  const previewMode = useIsPreviewMode();
   const dedicatedCloudAgent = isDedicatedCloudAgentBase(client.getBaseUrl());
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -107,7 +98,6 @@ export function AdvancedSection() {
   const [selectedBackupFileName, setSelectedBackupFileName] = useState("");
   const [backupListBusy, setBackupListBusy] = useState(false);
   const [createBackupBusy, setCreateBackupBusy] = useState(false);
-  const [seedNotificationsBusy, setSeedNotificationsBusy] = useState(false);
   const [restoreBackupBusy, setRestoreBackupBusy] = useState(false);
   const [backupError, setBackupError] = useState<string | null>(null);
   const [backupSuccess, setBackupSuccess] = useState<string | null>(null);
@@ -193,27 +183,6 @@ export function AdvancedSection() {
       setCreateBackupBusy(false);
     }
   }, [createBackupBusy]);
-
-  // Dev-only: paint the demo notification spread so the dashboard center can
-  // be exercised without waiting for real activity. The server 404s the route
-  // in production builds; surfacing that error here is the designed degrade.
-  const handleSeedDevNotifications = useCallback(async () => {
-    if (seedNotificationsBusy) return;
-    setSeedNotificationsBusy(true);
-    try {
-      const result = await client.seedDevNotifications();
-      setActionNotice(`Seeded ${result.count} test notifications`, "success");
-    } catch (err) {
-      // error-policy:J4 explicit user-facing degrade — the failure surfaces as
-      // an error toast (production builds reject this dev-only route).
-      setActionNotice(
-        backupErrorMessage(err, "Could not seed test notifications."),
-        "error",
-      );
-    } finally {
-      setSeedNotificationsBusy(false);
-    }
-  }, [seedNotificationsBusy, setActionNotice]);
 
   const handleRestoreBackup = useCallback(async () => {
     if (restoreBackupBusy) return;
@@ -301,57 +270,6 @@ export function AdvancedSection() {
             />
           </SettingsGroup>
         )}
-
-        <SettingsGroup
-          title="View visibility"
-          description="Views are sorted into four kinds. System and Release views are always shown. Turn on the kinds below to reveal the rest."
-        >
-          <SettingsSwitchRow
-            agentId="advanced-developer-mode"
-            group="advanced"
-            label="Developer views"
-            description="Developer tooling to verify the app is working — logs, database, trajectories. Off by default on every build, dev included."
-            checked={developerMode}
-            onCheckedChange={(checked) => setDeveloperMode(checked)}
-          />
-          <SettingsSwitchRow
-            agentId="advanced-preview-mode"
-            group="advanced"
-            label="Preview views"
-            description="Unfinished, alpha, or experimental views still in progress. Off by default."
-            checked={previewMode}
-            onCheckedChange={(checked) => setPreviewMode(checked)}
-          />
-        </SettingsGroup>
-
-        {developerMode ? (
-          <SettingsGroup
-            title="Developer tools"
-            description="Utilities for exercising app surfaces while developing. Dev builds only."
-          >
-            <SettingsRow
-              icon={Bell}
-              label="Seed test notifications"
-              description="Fill the dashboard notification center with a demo spread across every priority."
-              stacked
-            >
-              <div className="flex sm:justify-end">
-                <SettingsActionButton
-                  agentId="advanced-seed-test-notifications"
-                  agentLabel="Seed test notifications"
-                  agentGroup="advanced"
-                  variant="outline"
-                  size="sm"
-                  className="w-full rounded-sm whitespace-nowrap sm:w-auto"
-                  disabled={seedNotificationsBusy}
-                  onClick={() => void handleSeedDevNotifications()}
-                >
-                  {seedNotificationsBusy ? "Seeding…" : "Seed notifications"}
-                </SettingsActionButton>
-              </div>
-            </SettingsRow>
-          </SettingsGroup>
-        ) : null}
       </SettingsStack>
 
       <Dialog

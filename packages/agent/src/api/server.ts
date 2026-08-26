@@ -837,10 +837,11 @@ async function handleBuiltinOptionalRoutes(
   res: http.ServerResponse,
   pathname: string,
   method: string,
+  runtimeAgentId?: string | null,
 ): Promise<boolean> {
   if (method === "GET" && pathname === "/api/wallet/steward-status") {
     const { getWalletAddresses } = await getCoreWalletApi();
-    const addresses = getWalletAddresses();
+    const addresses = getWalletAddresses(runtimeAgentId);
     json(res, {
       configured: false,
       available: false,
@@ -2259,6 +2260,11 @@ async function handleRequest(
     return;
   }
 
+  const firstRunGetWalletAddresses =
+    pathname === "/api/wallet/keys"
+      ? (await getCoreWalletApi()).getWalletAddresses
+      : null;
+
   if (
     await handleFirstRunRoutes({
       req,
@@ -2273,13 +2279,12 @@ async function handleRequest(
       isCloudProvisionedContainer,
       hasPersistedFirstRunState,
       ensureWalletKeysInEnvAndConfig,
-      getWalletAddresses:
-        pathname === "/api/wallet/keys"
-          ? (await getCoreWalletApi()).getWalletAddresses
-          : () => ({
-              evmAddress: null,
-              solanaAddress: null,
-            }),
+      getWalletAddresses: firstRunGetWalletAddresses
+        ? () => firstRunGetWalletAddresses(state.runtime?.agentId)
+        : () => ({
+            evmAddress: null,
+            solanaAddress: null,
+          }),
       pickRandomNames,
       getStylePresets,
       getProviderOptions,
@@ -2785,7 +2790,7 @@ async function handleRequest(
       fetchSolanaBalances,
       fetchSolanaNativeBalanceViaRpc,
       generateWalletForChain,
-      getWalletAddresses,
+      getWalletAddresses: getCoreWalletAddresses,
       importWallet,
       setSolanaWalletEnv,
       validatePrivateKey,
@@ -2809,7 +2814,8 @@ async function handleRequest(
           fetchEvmBalances,
           fetchSolanaBalances,
           fetchSolanaNativeBalanceViaRpc,
-          getWalletAddresses,
+          getWalletAddresses: () =>
+            getCoreWalletAddresses(state.runtime?.agentId),
           validatePrivateKey,
           importWallet,
           generateWalletForChain,
@@ -2823,6 +2829,8 @@ async function handleRequest(
             ...resolveWalletCapabilityStatus({
               config: args.config,
               runtime: args.runtime,
+              getWalletAddresses: () =>
+                getCoreWalletAddresses(args.runtime?.agentId),
             }),
           }),
           isCloudWalletEnabled,
@@ -2848,6 +2856,10 @@ async function handleRequest(
       pathname.startsWith("/api/registry")) &&
     (await (async () => {
       const { RegistryService } = await import("./registry-service.ts");
+      const getCoreWalletAddresses =
+        pathname === "/api/agent/self-status"
+          ? (await getCoreWalletApi()).getWalletAddresses
+          : null;
       return handleAgentStatusRoutes({
         req,
         res,
@@ -2859,10 +2871,9 @@ async function handleRequest(
         error,
         readJsonBody,
         deps: {
-          getWalletAddresses:
-            pathname === "/api/agent/self-status"
-              ? (await getCoreWalletApi()).getWalletAddresses
-              : () => ({ evmAddress: null, solanaAddress: null }),
+          getWalletAddresses: getCoreWalletAddresses
+            ? () => getCoreWalletAddresses(state.runtime?.agentId)
+            : () => ({ evmAddress: null, solanaAddress: null }),
           resolveWalletCapabilityStatus,
           resolveWalletRpcReadiness,
           resolveTradePermissionMode,
@@ -3540,7 +3551,15 @@ async function handleRequest(
     return;
   }
 
-  if (await handleBuiltinOptionalRoutes(req, res, pathname, method)) {
+  if (
+    await handleBuiltinOptionalRoutes(
+      req,
+      res,
+      pathname,
+      method,
+      state.runtime?.agentId,
+    )
+  ) {
     return;
   }
 

@@ -20,8 +20,14 @@ vi.mock("@elizaos/ui/api", () => ({ ElizaClient: FakeElizaClient }));
 import "../src/api/client-calendar.js";
 
 type AugmentedClient = FakeElizaClient & {
-  getLifeOpsCalendarFeed: (o?: object) => Promise<unknown>;
-  getLifeOpsCalendars: (o?: object) => Promise<unknown>;
+  getLifeOpsCalendarFeed: (
+    o?: object,
+    request?: Pick<RequestInit, "signal">,
+  ) => Promise<unknown>;
+  getLifeOpsCalendars: (
+    o?: object,
+    request?: Pick<RequestInit, "signal">,
+  ) => Promise<unknown>;
   setLifeOpsCalendarIncluded: (d: object) => Promise<unknown>;
   getLifeOpsNextCalendarEventContext: (o?: object) => Promise<unknown>;
   createLifeOpsCalendarEvent: (d: object) => Promise<unknown>;
@@ -37,17 +43,24 @@ beforeEach(() => {
 
 describe("calendar client methods", () => {
   it("getLifeOpsCalendarFeed builds the feed path with a query", async () => {
-    await client.getLifeOpsCalendarFeed({
-      side: "owner",
-      timeMin: "2026-05-12T00:00:00.000Z",
-      timeMax: "2026-05-13T00:00:00.000Z",
-      grantId: "g1",
-    });
+    const controller = new AbortController();
+    await client.getLifeOpsCalendarFeed(
+      {
+        side: "owner",
+        timeMin: "2026-05-12T00:00:00.000Z",
+        timeMax: "2026-05-13T00:00:00.000Z",
+        grantId: "g1",
+      },
+      { signal: controller.signal },
+    );
     const path = client.fetch.mock.calls[0][0] as string;
     expect(path).toContain("/api/lifeops/calendar/feed?");
     expect(path).toContain("side=owner");
     expect(path).toContain("timeMin=");
     expect(path).toContain("grantId=g1");
+    expect(client.fetch.mock.calls[0][1]).toEqual({
+      signal: controller.signal,
+    });
   });
 
   it("getLifeOpsCalendars preserves owner, mode, and grant selection in the query", async () => {

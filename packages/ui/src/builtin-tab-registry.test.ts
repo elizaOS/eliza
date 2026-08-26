@@ -20,6 +20,7 @@ import {
   resolveBuiltinRoutedViewManifest,
   resolveBuiltinSurfaceManifest,
   resolveBuiltinTabId,
+  resolveBuiltinTabIdForPathAlias,
 } from "./builtin-tab-registry";
 
 describe("builtin-tab-registry: resolveBuiltinSurfaceManifest", () => {
@@ -45,6 +46,7 @@ describe("builtin-tab-registry: resolveBuiltinSurfaceManifest", () => {
 describe("builtin-tab-registry: table integrity", () => {
   it("has unique canonical ids and no id/alias collisions", () => {
     const seen = new Set<string>();
+    const seenPaths = new Set<string>();
     for (const entry of BUILTIN_TAB_METADATA) {
       expect(seen.has(entry.id), `duplicate id ${entry.id}`).toBe(false);
       seen.add(entry.id);
@@ -54,6 +56,13 @@ describe("builtin-tab-registry: table integrity", () => {
           `alias ${alias} collides with an existing id/alias`,
         ).toBe(false);
         seen.add(alias);
+      }
+      for (const pathAlias of entry.pathAliases ?? []) {
+        expect(
+          seenPaths.has(pathAlias),
+          `path alias ${pathAlias} has more than one owner`,
+        ).toBe(false);
+        seenPaths.add(pathAlias);
       }
     }
   });
@@ -74,6 +83,29 @@ describe("builtin-tab-registry: table integrity", () => {
       }
     }
     expect(resolveBuiltinPageLayout("some-plugin-tab")).toBeNull();
+  });
+
+  it("assigns Files canonical shell-owned scrolling for long grids", () => {
+    expect(resolveBuiltinPageLayout("files")).toEqual({
+      kind: "content",
+      width: "standard",
+      scroll: "shell",
+      gutter: "standard",
+    });
+  });
+});
+
+describe("resolveBuiltinTabIdForPathAlias: retired route resolution", () => {
+  it.each(["/documents", "/knowledge"])(
+    "maps %s to the canonical Knowledge tab owner",
+    (pathAlias) => {
+      expect(resolveBuiltinTabIdForPathAlias(pathAlias)).toBe("documents");
+    },
+  );
+
+  it("does not claim canonical or unknown paths", () => {
+    expect(resolveBuiltinTabIdForPathAlias("/character/documents")).toBeNull();
+    expect(resolveBuiltinTabIdForPathAlias("/calendar")).toBeNull();
   });
 });
 

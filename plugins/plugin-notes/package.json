@@ -56,6 +56,7 @@
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "test": "vitest run --config vitest.config.ts",
+    "preview:notes": "bunx --bun vite --config vite.config.preview.ts",
     "build": "bun run build:js && bun run build:views && bun run build:types",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",

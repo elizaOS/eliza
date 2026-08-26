@@ -792,6 +792,7 @@ async function collectAestheticDensityMetrics(
         style.borderBottomColor,
         style.borderLeftColor,
       ];
+      const visibleBorderWidths = [0, 0, 0, 0];
       let visibleBorderSides = 0;
       for (let i = 0; i < sideWidths.length; i += 1) {
         const width = Number.parseFloat(sideWidths[i] || "0");
@@ -801,6 +802,7 @@ async function collectAestheticDensityMetrics(
           sideStyles[i] !== "hidden" &&
           alphaOf(sideColors[i]) > 0.02
         ) {
+          visibleBorderWidths[i] = width;
           visibleBorderSides += 1;
         }
       }
@@ -832,16 +834,55 @@ async function collectAestheticDensityMetrics(
         node.id === "root" ||
         tag === "main" ||
         largestRectArea > viewportArea * 0.72;
-      if (
-        !isPageShell &&
-        (visibleBorderSides > 0 ||
+      if (!isPageShell) {
+        const occupiesCompleteRect =
           hasDividerBackground ||
           hasShadow ||
           isMedia ||
           isControl ||
-          (hasVisibleBackground && largestRectArea <= viewportArea * 0.45))
-      ) {
-        for (const rect of rects) markRect(rect);
+          (hasVisibleBackground && largestRectArea <= viewportArea * 0.45);
+        if (occupiesCompleteRect) {
+          for (const rect of rects) markRect(rect);
+        } else if (visibleBorderSides > 0) {
+          // A border occupies its edge, not the empty space it encloses. The
+          // previous full-rectangle mark made one large outlined empty state
+          // look denser than a screen packed with controls. Keep the 10px-grid
+          // estimate conservative by marking each visible edge strip.
+          for (const rect of rects) {
+            const [topWidth, rightWidth, bottomWidth, leftWidth] =
+              visibleBorderWidths;
+            if (topWidth > 0) {
+              markRect(
+                new DOMRect(rect.left, rect.top, rect.width, topWidth),
+              );
+            }
+            if (rightWidth > 0) {
+              markRect(
+                new DOMRect(
+                  rect.right - rightWidth,
+                  rect.top,
+                  rightWidth,
+                  rect.height,
+                ),
+              );
+            }
+            if (bottomWidth > 0) {
+              markRect(
+                new DOMRect(
+                  rect.left,
+                  rect.bottom - bottomWidth,
+                  rect.width,
+                  bottomWidth,
+                ),
+              );
+            }
+            if (leftWidth > 0) {
+              markRect(
+                new DOMRect(rect.left, rect.top, leftWidth, rect.height),
+              );
+            }
+          }
+        }
       }
     }
 

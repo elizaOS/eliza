@@ -16,9 +16,9 @@
  *    condensed in-chat BACKGROUND widget.
  */
 
-import { ImagePlus, RotateCcw, RotateCw } from "lucide-react";
+import { Check, ImagePlus, RotateCcw, RotateCw } from "lucide-react";
 import type { ChangeEvent, CSSProperties } from "react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api";
 import { getShaderPreset } from "../../backgrounds/shader-presets";
@@ -181,6 +181,76 @@ function CatalogTile({
   );
 }
 
+/**
+ * The compact settings treatment keeps the preview and its name separate. The
+ * old portrait tile put two lines of copy inside a 96px crop, which clipped the
+ * catalog names on phones and made the wallpaper art hard to compare.
+ */
+function FilmstripCatalogTile({
+  entry,
+  selected,
+  onSelect,
+}: {
+  entry: BackgroundCatalogEntry;
+  selected: boolean;
+  onSelect: (entry: BackgroundCatalogEntry) => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `background-catalog-${entry.id}`,
+    role: "button",
+    label: `Set background to ${entry.label}`,
+    group: "background-controls",
+    description: `${entry.description} (${entry.mood})`,
+    onActivate: () => onSelect(entry),
+  });
+
+  return (
+    <Button
+      ref={ref}
+      type="button"
+      onClick={() => onSelect(entry)}
+      aria-label={`Set background to ${entry.label}`}
+      aria-pressed={selected}
+      data-state={selected ? "on" : "off"}
+      title={`${entry.label}. ${entry.description}`}
+      variant="launcherTile"
+      size="content"
+      className="group/btn w-28 shrink-0 snap-start"
+      {...agentProps}
+    >
+      <Card
+        asChild
+        variant="transparent"
+        surface="raised"
+        border={selected ? "accent" : "subtle"}
+        radius="large"
+      >
+        <span
+          className="relative aspect-[16/10] w-full overflow-hidden transition-transform duration-150 ease-out group-active/btn:scale-[0.98]"
+          style={catalogPreviewStyle(entry)}
+          aria-hidden="true"
+        >
+          {selected ? (
+            <Card
+              asChild
+              variant="accentTile"
+              radius="full"
+              className="absolute right-1.5 top-1.5 size-5 p-0"
+            >
+              <span>
+                <Check className="size-3.5" aria-hidden />
+              </span>
+            </Card>
+          ) : null}
+        </span>
+      </Card>
+      <span className="min-h-4 w-full whitespace-normal px-0.5 text-center text-xs leading-4 font-medium text-[color:var(--settings-foreground)] break-words">
+        {entry.label}
+      </span>
+    </Button>
+  );
+}
+
 export interface BackgroundSettingsControlsProps {
   className?: string;
   /**
@@ -213,6 +283,7 @@ export function BackgroundSettingsControls({
   const isFilmstrip = variant === "filmstrip";
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const filmstripRef = useRef<HTMLFieldSetElement>(null);
 
   const [error, setError] = useState<string | null>(null);
   // The user's saved catalog entries (persisted, newest first). Shown in their
@@ -248,6 +319,23 @@ export function BackgroundSettingsControls({
           (e) => e.kind === "image" && e.source === config.imageUrl,
         )?.id ?? null)
       : null;
+
+  // Keep the current wallpaper visible when General opens and after a choice.
+  // `auto` avoids an unsolicited motion sequence while still honoring the
+  // native-picker expectation that the selected option is immediately clear.
+  useEffect(() => {
+    if (!isFilmstrip || !activeCatalogId) return;
+    const selectedTile = filmstripRef.current?.querySelector<HTMLButtonElement>(
+      'button[aria-pressed="true"]',
+    );
+    const inline =
+      (filmstripRef.current?.clientWidth ?? 0) >= 560 ? "nearest" : "center";
+    selectedTile?.scrollIntoView?.({
+      behavior: "auto",
+      block: "nearest",
+      inline,
+    });
+  }, [activeCatalogId, isFilmstrip]);
 
   const onUploadClick = useCallback(() => {
     setError(null);
@@ -329,8 +417,23 @@ export function BackgroundSettingsControls({
     onActivate: () => redoBackgroundConfig(),
   });
 
-  // The upload chip: the one way to bring in your own wallpaper.
-  const toolChips = (
+  const uploadInput = (
+    // aria-hidden: this hidden input is pure upload machinery. The visible
+    // Upload action below owns the accessible name and agent wiring.
+    <Input
+      ref={fileInputRef}
+      type="file"
+      variant="nativeFileHidden"
+      accept="image/*"
+      onChange={onFileChange}
+      aria-hidden="true"
+      tabIndex={-1}
+    />
+  );
+
+  // The full gallery keeps its existing upload treatment. The condensed
+  // settings filmstrip uses a smaller secondary action below the choices.
+  const galleryUploadAction = (
     <>
       <Button
         ref={uploadButton.ref}
@@ -345,19 +448,25 @@ export function BackgroundSettingsControls({
         <ImagePlus className="size-4" aria-hidden />
         Upload
       </Button>
-      {/* aria-hidden: this sr-only input is pure upload machinery — the
-          user/agent-facing control is the wired Upload button above; hiding
-          it from the a11y tree also keeps it out of the chat-drivability
-          audit, which grants aria-hidden machinery a carve-out. */}
-      <Input
-        ref={fileInputRef}
-        type="file"
-        variant="nativeFileHidden"
-        accept="image/*"
-        onChange={onFileChange}
-        aria-hidden="true"
-        tabIndex={-1}
-      />
+      {uploadInput}
+    </>
+  );
+  const filmstripUploadAction = (
+    <>
+      <Button
+        ref={uploadButton.ref}
+        type="button"
+        variant="outline"
+        size="regularCompact"
+        shape="circle"
+        onClick={onUploadClick}
+        aria-label="Upload a background image"
+        {...uploadButton.agentProps}
+      >
+        <ImagePlus className="size-4" aria-hidden />
+        Upload
+      </Button>
+      {uploadInput}
     </>
   );
 
@@ -404,32 +513,34 @@ export function BackgroundSettingsControls({
         data-variant="filmstrip"
         className={cn("flex w-full flex-col gap-3", className)}
       >
-        <div
+        <fieldset
+          ref={filmstripRef}
           data-testid="background-catalog-gallery"
-          className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="flex w-full min-w-0 max-w-full snap-x snap-proximity gap-2.5 overflow-x-auto overscroll-x-contain px-0.5 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
+          <legend className="sr-only">Wallpaper choices</legend>
           {CURATED_IMAGE_CATALOG.map((entry) => (
-            <div key={entry.id} className="w-24 shrink-0 snap-start">
-              <CatalogTile
-                entry={entry}
-                selected={activeCatalogId === entry.id}
-                onSelect={selectCatalog}
-              />
-            </div>
+            <FilmstripCatalogTile
+              key={entry.id}
+              entry={entry}
+              selected={activeCatalogId === entry.id}
+              onSelect={selectCatalog}
+            />
           ))}
           {userCatalog.map((entry) => (
-            <div key={entry.id} className="w-24 shrink-0 snap-start">
-              <CatalogTile
-                entry={entry}
-                selected={activeCatalogId === entry.id}
-                onSelect={selectCatalog}
-              />
-            </div>
+            <FilmstripCatalogTile
+              key={entry.id}
+              entry={entry}
+              selected={activeCatalogId === entry.id}
+              onSelect={selectCatalog}
+            />
           ))}
-        </div>
+        </fieldset>
 
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-2">{toolChips}</div>
+          <div className="flex flex-wrap items-center gap-2">
+            {filmstripUploadAction}
+          </div>
           {revertNode}
         </div>
 
@@ -450,7 +561,9 @@ export function BackgroundSettingsControls({
       className={cn("flex w-full max-w-2xl flex-col gap-5", className)}
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">{toolChips}</div>
+        <div className="flex flex-wrap items-center gap-2">
+          {galleryUploadAction}
+        </div>
         {revertNode}
       </div>
 

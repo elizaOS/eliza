@@ -1,12 +1,12 @@
 /**
- * General section of the cloud-only desktop settings panel.
+ * Desktop-app integration controls used by the canonical Settings registry.
  *
- * This cloud-only surface contains only native desktop behavior such as launch
- * on login, Dock visibility, menu bar presence, and tray-click recording.
+ * The registry mounts this module only when the desktop bridge capability is
+ * present, so portable runtimes never render or mutate placeholder native
+ * state.
  */
 import * as React from "react";
 import { invokeDesktopBridgeRequest } from "../../../../bridge";
-import { isDesktopPlatform } from "../../../../platform";
 import { useAppSelector } from "../../../../state";
 import {
   CloudSelectRow,
@@ -16,26 +16,19 @@ import {
 } from "../cloud-settings-primitives";
 
 const TRAY_CLICK_OPTIONS = [
-  { value: "full-menu", label: "Full menu" },
+  { value: "full-menu", label: "Open menu" },
   { value: "toggle-recording", label: "Toggle recording" },
 ];
 
-/** Desktop toggle state backed by the Electrobun desktop RPC. Falls back to
- * local state on non-desktop platforms so the panel still renders. */
+/** Desktop toggle state backed by the Electrobun desktop RPC. */
 function useDesktopToggles() {
-  const desktop = isDesktopPlatform();
   const [launchOnLogin, setLaunchOnLogin] = React.useState(false);
   const [showInDock, setShowInDock] = React.useState(true);
   const [recordOnTrayClick, setRecordOnTrayClick] = React.useState(false);
   const [trayClickAction, setTrayClickAction] = React.useState("full-menu");
-  const [loaded, setLoaded] = React.useState(false);
 
   // Load current values from the desktop on mount.
   React.useEffect(() => {
-    if (!desktop) {
-      setLoaded(true);
-      return;
-    }
     let cancelled = false;
     void (async () => {
       try {
@@ -59,53 +52,42 @@ function useDesktopToggles() {
       } catch {
         // error-policy:J4 RPC unavailable — defaults render as the
         // designed pre-bridge state.
-      } finally {
-        if (!cancelled) setLoaded(true);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [desktop]);
+  }, []);
 
-  const toggleLaunchOnLogin = React.useCallback(
-    async (enabled: boolean) => {
-      setLaunchOnLogin(enabled);
-      if (!desktop) return;
-      try {
-        await invokeDesktopBridgeRequest<void>({
-          rpcMethod: "desktopSetAutoLaunch",
-          ipcChannel: "desktop:setAutoLaunch",
-          params: { enabled, openAsHidden: false },
-        });
-      } catch {
-        // error-policy:J4 toggle failure reverts the switch visibly.
-        setLaunchOnLogin(!enabled);
-      }
-    },
-    [desktop],
-  );
+  const toggleLaunchOnLogin = React.useCallback(async (enabled: boolean) => {
+    setLaunchOnLogin(enabled);
+    try {
+      await invokeDesktopBridgeRequest<void>({
+        rpcMethod: "desktopSetAutoLaunch",
+        ipcChannel: "desktop:setAutoLaunch",
+        params: { enabled, openAsHidden: false },
+      });
+    } catch {
+      // error-policy:J4 toggle failure reverts the switch visibly.
+      setLaunchOnLogin(!enabled);
+    }
+  }, []);
 
-  const toggleShowInDock = React.useCallback(
-    async (visible: boolean) => {
-      setShowInDock(visible);
-      if (!desktop) return;
-      try {
-        await invokeDesktopBridgeRequest<void>({
-          rpcMethod: "desktopSetDockIconVisibility",
-          ipcChannel: "desktop:setDockIconVisibility",
-          params: { visible },
-        });
-      } catch {
-        // error-policy:J4 toggle failure reverts the switch visibly.
-        setShowInDock(!visible);
-      }
-    },
-    [desktop],
-  );
+  const toggleShowInDock = React.useCallback(async (visible: boolean) => {
+    setShowInDock(visible);
+    try {
+      await invokeDesktopBridgeRequest<void>({
+        rpcMethod: "desktopSetDockIconVisibility",
+        ipcChannel: "desktop:setDockIconVisibility",
+        params: { visible },
+      });
+    } catch {
+      // error-policy:J4 toggle failure reverts the switch visibly.
+      setShowInDock(!visible);
+    }
+  }, []);
 
   return {
-    loaded,
     launchOnLogin,
     setLaunchOnLogin: toggleLaunchOnLogin,
     showInDock,
@@ -117,7 +99,7 @@ function useDesktopToggles() {
   };
 }
 
-export function GeneralSection() {
+export function DesktopIntegrationSection() {
   const t = useAppSelector((s) => s.t);
 
   const {
@@ -134,14 +116,14 @@ export function GeneralSection() {
   return (
     <SettingsStack>
       <SettingsGroup
-        title={t("settings.desktop", { defaultValue: "Desktop" })}
-        footer="Control how Eliza integrates with macOS."
+        title={t("settings.desktop", { defaultValue: "Desktop app" })}
+        footer="These controls are available when Eliza is running as a desktop app."
       >
         <CloudSwitchRow
           agentId="general-launch-on-login"
           group="general"
           label={t("settings.launchOnLogin", {
-            defaultValue: "Launch on login",
+            defaultValue: "Open at sign-in",
           })}
           checked={launchOnLogin}
           onCheckedChange={setLaunchOnLogin}
@@ -149,7 +131,7 @@ export function GeneralSection() {
         <CloudSwitchRow
           agentId="general-show-in-dock"
           group="general"
-          label={t("settings.showInDock", { defaultValue: "Show in Dock" })}
+          label={t("settings.showInDock", { defaultValue: "Show app icon" })}
           checked={showInDock}
           onCheckedChange={setShowInDock}
         />
@@ -157,7 +139,7 @@ export function GeneralSection() {
           agentId="general-record-on-tray-click"
           group="general"
           label={t("settings.recordOnTrayClick", {
-            defaultValue: "Start recording on menu bar click",
+            defaultValue: "Start recording from the status icon",
           })}
           checked={recordOnTrayClick}
           onCheckedChange={setRecordOnTrayClick}
@@ -167,7 +149,7 @@ export function GeneralSection() {
             agentId="general-tray-click-action"
             group="general"
             label={t("settings.trayClickAction", {
-              defaultValue: "Click to open",
+              defaultValue: "Status icon action",
             })}
             value={trayClickAction}
             onValueChange={setTrayClickAction}
@@ -178,3 +160,6 @@ export function GeneralSection() {
     </SettingsStack>
   );
 }
+
+/** Compatibility export for the retired cloud-panel registry. */
+export const GeneralSection = DesktopIntegrationSection;

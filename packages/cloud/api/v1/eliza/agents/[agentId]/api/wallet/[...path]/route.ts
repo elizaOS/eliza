@@ -1,5 +1,10 @@
 /** Proxies an authenticated Cloud agent's supported wallet operations to its mapped Steward wallet. */
 import { ElizaError } from "@elizaos/core";
+import type {
+  WalletBalancesResponse,
+  WalletConfigStatus,
+  WalletEntry,
+} from "@elizaos/shared";
 import { and, eq } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import { dbWrite } from "@/db/helpers";
@@ -56,8 +61,10 @@ type StewardWalletClient = {
     };
   }>;
   getBalance(agentId: string): Promise<{
+    walletAddress?: string;
     balances: {
       native: string;
+      nativeFormatted?: string;
       chainId: number;
       symbol: string;
     };
@@ -108,6 +115,10 @@ const POLICY_TYPES: ReadonlySet<string> = new Set([
 const SUPPORTED_WALLET_PATHS = new Set([
   "addresses",
   "balances",
+  "config",
+  "nfts",
+  "market-overview",
+  "trading-profile",
   "steward-status",
   "steward-policies",
   "steward-tx-records",
@@ -115,6 +126,29 @@ const SUPPORTED_WALLET_PATHS = new Set([
   "steward-approve-tx",
   "steward-deny-tx",
 ]);
+
+const OPTIONAL_WALLET_CAPABILITIES = {
+  nfts: {
+    code: "wallet_nfts_unavailable",
+    message: "NFT inventory is not available for this managed wallet",
+  },
+  "market-overview": {
+    code: "wallet_market_overview_unavailable",
+    message: "Market overview is not available from the managed wallet proxy",
+  },
+  "trading-profile": {
+    code: "wallet_trading_profile_unavailable",
+    message: "Trading history is not available from the managed wallet proxy",
+  },
+} as const;
+
+type OptionalWalletCapability = keyof typeof OPTIONAL_WALLET_CAPABILITIES;
+
+function isOptionalWalletCapability(
+  path: string,
+): path is OptionalWalletCapability {
+  return path in OPTIONAL_WALLET_CAPABILITIES;
+}
 
 export async function resolveStewardAgentId(
   sandboxAgentId: string,
@@ -361,6 +395,19 @@ export async function handleDirectWalletRequest(
     return json({ success: false, error: "Agent not found" }, { status: 404 });
   }
 
+  if (method === "GET" && isOptionalWalletCapability(walletPath)) {
+    const capability = OPTIONAL_WALLET_CAPABILITIES[walletPath];
+    return json(
+      {
+        success: false,
+        error: capability.message,
+        code: capability.code,
+        capability: walletPath,
+      },
+      { status: 501 },
+    );
+  }
+
   let client: StewardClient;
   try {
     const bearerToken = readSessionCredential(c);
@@ -403,21 +450,104 @@ export async function handleDirectWalletRequest(
     return json(await getAgentAddresses(client, stewardAgentId));
   }
 
+  if (method === "GET" && walletPath === "config") {
+    const addresses = await getAgentAddresses(client, stewardAgentId);
+    const evmAddress = addresses.evmAddress || null;
+    const solanaAddress = addresses.solanaAddress || null;
+    const wallets: WalletEntry[] = [
+      ...(evmAddress
+        ? [
+            {
+              source: "cloud" as const,
+              chain: "evm" as const,
+              address: evmAddress,
+              provider: "steward" as const,
+              primary: true,
+            },
+          ]
+        : []),
+      ...(solanaAddress
+        ? [
+            {
+              source: "cloud" as const,
+              chain: "solana" as const,
+              address: solanaAddress,
+              provider: "steward" as const,
+              primary: true,
+            },
+          ]
+        : []),
+    ];
+    const config: WalletConfigStatus = {
+      evmAddress,
+      solanaAddress,
+      selectedRpcProviders: {
+        evm: "eliza-cloud",
+        bsc: "eliza-cloud",
+        solana: "eliza-cloud",
+      },
+      legacyCustomChains: [],
+      alchemyKeySet: false,
+      infuraKeySet: false,
+      ankrKeySet: false,
+      heliusKeySet: false,
+      birdeyeKeySet: false,
+      evmChains: [],
+      cloudManagedAccess: wallets.length > 0,
+      evmBalanceReady: Boolean(evmAddress),
+      // This proxy currently exposes Steward's active EVM balance only. The
+      // Solana address remains usable for signing, but claiming balance
+      // readiness here would cause the UI to render a fabricated empty feed.
+      solanaBalanceReady: false,
+      walletSource: wallets.length > 0 ? "managed" : "none",
+      executionReady: wallets.length > 0,
+      evmSigningCapability: evmAddress ? "steward-cloud" : "none",
+      solanaSigningAvailable: Boolean(solanaAddress),
+      wallets,
+      ...(evmAddress && solanaAddress
+        ? { primary: { evm: "cloud" as const, solana: "cloud" as const } }
+        : {}),
+    };
+    return json(config);
+  }
+
   if (method === "GET" && walletPath === "balances") {
     const balance = await client.getBalance(stewardAgentId);
     const { balances } = balance;
-    return json({
-      evm: [
-        {
-          chainId: balances.chainId,
-          chainName: chainName(balances.chainId),
-          nativeBalance: balances.native,
-          nativeSymbol: balances.symbol,
-          tokens: [],
-        },
-      ],
+    const addresses = await getAgentAddresses(client, stewardAgentId);
+    const evmAddress =
+      addresses.evmAddress || balance.walletAddress?.trim() || null;
+    const nativeBalance = balances.nativeFormatted ?? balances.native;
+    const parsedNativeBalance = Number.parseFloat(nativeBalance);
+    const valuationKnownZero =
+      Number.isFinite(parsedNativeBalance) && parsedNativeBalance === 0;
+    const response: WalletBalancesResponse = {
+      evm: evmAddress
+        ? {
+            address: evmAddress,
+            chains: [
+              {
+                chain: chainName(balances.chainId),
+                chainId: balances.chainId,
+                nativeBalance,
+                nativeSymbol: balances.symbol,
+                // Steward's native-balance contract has no fiat quote. Zero
+                // units are truthfully worth zero; for a non-zero balance the
+                // required legacy field carries its sentinel alongside an
+                // explicit chain error so consumers render valuation as
+                // unavailable rather than presenting a fake $0 portfolio.
+                nativeValueUsd: "0",
+                tokens: [],
+                error: valuationKnownZero
+                  ? null
+                  : "USD valuation is unavailable for this managed wallet",
+              },
+            ],
+          }
+        : null,
       solana: null,
-    });
+    };
+    return json(response);
   }
 
   if (method === "GET" && walletPath === "steward-status") {

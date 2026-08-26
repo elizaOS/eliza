@@ -9,7 +9,6 @@ import type * as React from "react";
 import { Badge } from "../../ui/badge";
 import { Card } from "../../ui/card";
 import { PagePanel } from "../page-panel";
-
 export type TrajectoryTimelineStatus =
   | "queued"
   | "running"
@@ -57,8 +56,8 @@ export function TrajectoryEventTimeline({
   heading,
 }: TrajectoryEventTimelineProps) {
   return (
-    <PagePanel variant="section" className="px-5 py-4">
-      <div className="mb-3 text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
+    <PagePanel as="section" variant="section" className="px-5 py-4">
+      <div className="mb-3 text-sm font-semibold text-[color:var(--settings-foreground)]">
         {heading}
       </div>
       {events.length === 0 ? (
@@ -70,7 +69,7 @@ export function TrajectoryEventTimeline({
               asChild
               key={event.id}
               variant="insetPadded"
-              className="grid grid-cols-[1.5rem_1fr] gap-3"
+              className="grid min-h-14 grid-cols-[1.25rem_minmax(0,1fr)] gap-3"
             >
               <li>
                 <div className="mt-0.5 flex justify-center">
@@ -78,7 +77,7 @@ export function TrajectoryEventTimeline({
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className="truncate text-sm font-semibold text-txt">
+                    <span className="truncate text-sm font-medium text-[color:var(--settings-foreground)]">
                       {event.label}
                     </span>
                     {event.stage ? (
@@ -87,18 +86,18 @@ export function TrajectoryEventTimeline({
                       </Badge>
                     ) : null}
                     {event.timestampLabel ? (
-                      <span className="text-xs-tight text-muted">
+                      <span className="ml-auto text-xs text-[color:var(--settings-muted)]">
                         {event.timestampLabel}
                       </span>
                     ) : null}
                   </div>
                   {event.description ? (
-                    <div className="mt-1 line-clamp-2 text-xs-tight text-muted">
+                    <div className="mt-1 line-clamp-2 text-xs leading-5 text-[color:var(--settings-muted)]">
                       {event.description}
                     </div>
                   ) : null}
                   {event.meta ? (
-                    <div className="mt-2 text-xs-tight text-muted">
+                    <div className="mt-1 text-xs text-[color:var(--settings-muted)]">
                       {event.meta}
                     </div>
                   ) : null}

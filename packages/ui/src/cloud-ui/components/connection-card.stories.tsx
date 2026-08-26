@@ -2,7 +2,11 @@
  * Storybook stories for the connection card.
  */
 import type { Meta, StoryObj } from "@storybook/react";
-import { MessageCircle, Send } from "lucide-react";
+import { MessageCircle } from "lucide-react";
+import {
+  SettingsGroup,
+  SettingsStack,
+} from "../../components/settings/settings-layout";
 import {
   ConnectionCallout,
   ConnectionCard,
@@ -12,15 +16,31 @@ import {
   ConnectionFooterActions,
   ConnectionIdentityPanel,
 } from "./connection-card";
+import { TelegramIcon } from "./icons";
 
 const meta = {
   title: "CloudUI/Components/ConnectionCard",
   component: ConnectionCard,
   tags: ["autodocs"],
+  decorators: [
+    (Story) => (
+      <SettingsStack>
+        <SettingsGroup>
+          <Story />
+        </SettingsGroup>
+      </SettingsStack>
+    ),
+  ],
   argTypes: {
     status: {
       control: "select",
-      options: ["loading", "not-configured", "connected", "disconnected"],
+      options: [
+        "loading",
+        "not-configured",
+        "connected",
+        "disconnected",
+        "error",
+      ],
     },
   },
   args: {
@@ -100,14 +120,14 @@ export const NotConfigured: Story = {
 export const TelegramConnected: Story = {
   args: {
     name: "Telegram Bot",
-    icon: <Send />,
+    icon: <TelegramIcon className="text-[#229ED9]" />,
     description: "Talk to your agent through a Telegram bot.",
     status: "connected",
     statusBadge: <ConnectionConnectedBadge label="Active" />,
     connectedContent: (
       <div className="space-y-4">
         <ConnectionIdentityPanel
-          icon={<Send className="size-6 text-white" />}
+          icon={<TelegramIcon className="size-6 text-white" />}
           iconClassName="bg-accent"
           title="@eliza_assistant_bot"
           subtitle="Webhook healthy — 1,284 messages handled"
