@@ -198,8 +198,7 @@ export async function handleSecretsManagerRoute(
   }
 
   if (method === "PUT" && pathname === "/api/secrets/manager/preferences") {
-    let body = "";
-    for await (const chunk of req) body += chunk;
+    const body = await readBody(req);
     let parsed: unknown;
     try {
       parsed = JSON.parse(body || "{}");
@@ -236,8 +235,7 @@ export async function handleSecretsManagerRoute(
 
   // ── Start install job ─────────────────────────────────────────────
   if (method === "POST" && pathname === "/api/secrets/manager/install") {
-    let body = "";
-    for await (const chunk of req) body += chunk;
+    const body = await readBody(req);
     let parsed: unknown;
     try {
       parsed = JSON.parse(body || "{}");
@@ -343,8 +341,7 @@ export async function handleSecretsManagerRoute(
 
   // ── Signin (non-streaming; runs to completion in one POST) ────────
   if (method === "POST" && pathname === "/api/secrets/manager/signin") {
-    let body = "";
-    for await (const chunk of req) body += chunk;
+    const body = await readBody(req);
     let parsed: unknown;
     try {
       parsed = JSON.parse(body || "{}");
@@ -391,8 +388,7 @@ export async function handleSecretsManagerRoute(
   }
 
   if (method === "POST" && pathname === "/api/secrets/manager/signout") {
-    let body = "";
-    for await (const chunk of req) body += chunk;
+    const body = await readBody(req);
     let parsed: unknown;
     try {
       parsed = JSON.parse(body || "{}");
@@ -502,8 +498,7 @@ async function handleSavedLoginsRoute(
   }
 
   if (method === "POST" && pathname === "/api/secrets/logins") {
-    let body = "";
-    for await (const chunk of req) body += chunk;
+    const body = await readBody(req);
     let parsed: unknown;
     try {
       parsed = JSON.parse(body || "{}");
@@ -566,8 +561,7 @@ async function handleSavedLoginsRoute(
       return true;
     }
     if (method === "PUT") {
-      let body = "";
-      for await (const chunk of req) body += chunk;
+      const body = await readBody(req);
       let parsed: unknown;
       try {
         parsed = JSON.parse(body || "{}");
@@ -658,6 +652,20 @@ function methodMatches(a: InstallMethod, b: InstallMethod): boolean {
   }
   return false;
 }
+
+async function readBody(req: http.IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(
+      typeof chunk === "string"
+        ? Buffer.from(chunk, "utf-8")
+        : (chunk as Buffer),
+    );
+  }
+  return chunks.length > 0 ? Buffer.concat(chunks).toString("utf-8") : "";
+}
+
+export const _readBodyForTesting = readBody;
 
 // Re-export so callers (server.ts) keep importing one symbol.
 export type { BackendId };
