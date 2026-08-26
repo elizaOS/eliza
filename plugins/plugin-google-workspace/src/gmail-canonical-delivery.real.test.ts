@@ -106,6 +106,9 @@ describe("canonical principal to Gmail delivery", () => {
     });
     runtime = harness.runtime;
     cleanup = harness.cleanup;
+    // This suite proves the opt-in claim-authoritative contract; the rollout
+    // flag defaults off until claim ingestion (issue #23099) ships.
+    runtime.setSetting("IDENTITY_DELIVERY_CLAIMS_AUTHORITATIVE", "true");
     const google = runtime.getService<GoogleWorkspaceService>(GoogleWorkspaceService.serviceType);
     if (!google) throw new Error("GoogleWorkspaceService did not start");
     google.setCredentialResolver(new LoopbackCredentialResolver());

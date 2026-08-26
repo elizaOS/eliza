@@ -105,7 +105,47 @@ export interface IdentityCluster {
 	readAt: string;
 }
 
-/** Deterministic query for one principal's provider/account-scoped delivery identity. */
+/**
+ * Rollout switch for claim-authoritative named-recipient delivery. While the
+ * claim-ingestion slice deferred from issue #23099 is not shipped, nothing in
+ * the runtime writes `identity_claims` rows, so treating claims as the sole
+ * delivery authority would refuse every contact send. The flag therefore
+ * defaults OFF: MESSAGE op=send and connector recipient resolution keep the
+ * legacy entity-component path until an operator opts in. Turning it ON makes
+ * active verified identity claims mandatory for principal-UUID recipients and
+ * removes legacy entity components from delivery authority.
+ */
+export const IDENTITY_DELIVERY_CLAIMS_AUTHORITATIVE_SETTING =
+	"IDENTITY_DELIVERY_CLAIMS_AUTHORITATIVE" as const;
+
+/**
+ * Parse the {@link IDENTITY_DELIVERY_CLAIMS_AUTHORITATIVE_SETTING} runtime
+ * setting fail-closed: only an explicit boolean `true` or an affirmative
+ * string opts into claim-mandatory delivery; everything else keeps legacy
+ * resolution so an absent or malformed setting can never disable delivery.
+ */
+export function identityDeliveryClaimsAuthoritative(value: unknown): boolean {
+	if (value === true) return true;
+	if (typeof value !== "string") return false;
+	const normalized = value.trim().toLowerCase();
+	return (
+		normalized === "true" ||
+		normalized === "1" ||
+		normalized === "yes" ||
+		normalized === "on"
+	);
+}
+
+/**
+ * Deterministic query for one principal's provider/account-scoped delivery
+ * identity. `namespace` is intentionally absent: claims are unique per
+ * `(namespace, connectorId, connectorAccountId, externalSubjectId)`, but
+ * delivery eligibility ignores the namespace and scopes only by connector
+ * authority and connected account. Claims that differ solely in namespace all
+ * survive scoping; connectors then collapse them by delivery key, so the same
+ * provider subject observed under several namespaces is one destination, not
+ * a forced ambiguity.
+ */
 export interface ResolveIdentityDeliveryClaimRequest {
 	agentId: UUID;
 	principalId: UUID;
@@ -113,6 +153,26 @@ export interface ResolveIdentityDeliveryClaimRequest {
 	connectorId?: string;
 	/** Connected account whose observations are permitted to route this send. */
 	connectorAccountId?: UUID;
+}
+
+/**
+ * Canonical ordering for delivery-claim candidates. Every resolver must sort
+ * ambiguous claims with this comparator so a `resolved` single claim and the
+ * first entry of an `ambiguous` list are stable across implementations and
+ * across process restarts.
+ */
+export function orderIdentityDeliveryClaims(
+	claims: readonly IdentityClaim[],
+): IdentityClaim[] {
+	const key = (claim: IdentityClaim): string =>
+		[
+			claim.connectorId,
+			claim.connectorAccountId,
+			claim.handle ?? "",
+			claim.externalSubjectId,
+			claim.id,
+		].join("\u0000");
+	return [...claims].sort((left, right) => key(left).localeCompare(key(right)));
 }
 
 /**
@@ -400,6 +460,23 @@ export abstract class PrincipalService extends Service {
 		principalId: UUID,
 		connectorAccountId?: UUID,
 	): Promise<readonly IdentityClaim[]>;
+	/**
+	 * Filter delivery-claim candidates to those whose connector account is
+	 * currently eligible to route a send (for example: connected, not deleted,
+	 * and provider-matched to the claim's connector authority). Implementations
+	 * own the storage lookup; returning every input claim is only correct for
+	 * backends that cannot observe account state.
+	 */
+	protected abstract filterConnectorAccountEligibleClaims(
+		agentId: UUID,
+		claims: readonly IdentityClaim[],
+	): Promise<readonly IdentityClaim[]>;
+	/**
+	 * Shared delivery-claim resolution pipeline. Subclasses supply cluster
+	 * reads and account eligibility; the decision shape, refusal reasons, and
+	 * {@link orderIdentityDeliveryClaims} ordering are fixed here so every
+	 * implementation resolves and refuses identically.
+	 */
 	async resolveIdentityDeliveryClaim(
 		request: ResolveIdentityDeliveryClaimRequest,
 	): Promise<IdentityDeliveryClaimResolution> {
@@ -443,12 +520,12 @@ export abstract class PrincipalService extends Service {
 				reason: "no_connector_claim",
 			};
 		}
-		const claims = request.connectorAccountId
+		const accountClaims = request.connectorAccountId
 			? connectorClaims.filter(
 					(claim) => claim.connectorAccountId === request.connectorAccountId,
 				)
 			: connectorClaims;
-		if (claims.length === 0) {
+		if (accountClaims.length === 0) {
 			return {
 				decision: "no_claim",
 				requestedPrincipalId: request.principalId,
@@ -457,9 +534,20 @@ export abstract class PrincipalService extends Service {
 				reason: "no_account_claim",
 			};
 		}
-		const ordered = [...claims].sort((left, right) =>
-			left.id.localeCompare(right.id),
+		const eligibleClaims = await this.filterConnectorAccountEligibleClaims(
+			request.agentId,
+			accountClaims,
 		);
+		if (eligibleClaims.length === 0) {
+			return {
+				decision: "no_claim",
+				requestedPrincipalId: request.principalId,
+				canonicalPrincipalId: cluster.canonicalPrincipalId,
+				generation: cluster.generation,
+				reason: "connector_account_ineligible",
+			};
+		}
+		const ordered = orderIdentityDeliveryClaims(eligibleClaims);
 		const claim = ordered[0];
 		if (ordered.length === 1 && claim) {
 			return {

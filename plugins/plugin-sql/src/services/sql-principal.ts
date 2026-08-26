@@ -435,70 +435,25 @@ export class SqlPrincipalService extends PrincipalService {
     );
   }
 
-  async resolveIdentityDeliveryClaim(
-    request: ResolveIdentityDeliveryClaimRequest
-  ): Promise<IdentityDeliveryClaimResolution> {
-    this.assertAgent(request.agentId);
-    const cluster = await this.getCluster(request.agentId, request.principalId);
-    if (!cluster) {
-      return {
-        decision: "no_claim",
-        requestedPrincipalId: request.principalId,
-        canonicalPrincipalId: null,
-        generation: null,
-        reason: "principal_not_found",
-      };
-    }
-
-    const verified = cluster.claims.filter(
-      (claim) =>
-        claim.status === "active" &&
-        (claim.verification === "verified" || claim.verification === "owner_bound")
-    );
-    if (verified.length === 0) {
-      return {
-        decision: "no_claim",
-        requestedPrincipalId: request.principalId,
-        canonicalPrincipalId: cluster.canonicalPrincipalId,
-        generation: cluster.generation,
-        reason: "no_active_verified_claim",
-      };
-    }
-
-    const requestedConnector = request.connectorId?.trim().toLowerCase();
-    const connectorClaims = requestedConnector
-      ? verified.filter((claim) => claim.connectorId.trim().toLowerCase() === requestedConnector)
-      : verified;
-    if (connectorClaims.length === 0) {
-      return {
-        decision: "no_claim",
-        requestedPrincipalId: request.principalId,
-        canonicalPrincipalId: cluster.canonicalPrincipalId,
-        generation: cluster.generation,
-        reason: "no_connector_claim",
-      };
-    }
-
-    const accountClaims = request.connectorAccountId
-      ? connectorClaims.filter((claim) => claim.connectorAccountId === request.connectorAccountId)
-      : connectorClaims;
-    if (accountClaims.length === 0) {
-      return {
-        decision: "no_claim",
-        requestedPrincipalId: request.principalId,
-        canonicalPrincipalId: cluster.canonicalPrincipalId,
-        generation: cluster.generation,
-        reason: "no_account_claim",
-      };
-    }
-
-    const accountIds = [...new Set(accountClaims.map((claim) => claim.connectorAccountId))];
+  /**
+   * Delivery-claim eligibility: a claim may route a send only through a
+   * connector account that is still connected, not soft-deleted, and whose
+   * provider matches the claim's connector authority. The decision pipeline
+   * and ordering live in the shared PrincipalService base.
+   */
+  protected async filterConnectorAccountEligibleClaims(
+    agentId: UUID,
+    claims: readonly IdentityClaim[]
+  ): Promise<readonly IdentityClaim[]> {
+    this.assertAgent(agentId);
+    if (claims.length === 0) return [];
+    const accountIds = [...new Set(claims.map((claim) => claim.connectorAccountId))];
     const accountRows = await this.db
       .select({ id: connectorAccountsTable.id, provider: connectorAccountsTable.provider })
       .from(connectorAccountsTable)
       .where(
         and(
-          eq(connectorAccountsTable.agentId, request.agentId),
+          eq(connectorAccountsTable.agentId, agentId),
           inArray(connectorAccountsTable.id, accountIds),
           eq(connectorAccountsTable.status, "connected"),
           isNull(connectorAccountsTable.deletedAt)
@@ -507,57 +462,17 @@ export class SqlPrincipalService extends PrincipalService {
     const eligibleProviders = new Map(
       accountRows.map((account) => [account.id, account.provider.trim().toLowerCase()])
     );
-    const eligibleClaims = accountClaims.filter(
+    return claims.filter(
       (claim) =>
         eligibleProviders.get(claim.connectorAccountId) === claim.connectorId.trim().toLowerCase()
     );
-    if (eligibleClaims.length === 0) {
-      return {
-        decision: "no_claim",
-        requestedPrincipalId: request.principalId,
-        canonicalPrincipalId: cluster.canonicalPrincipalId,
-        generation: cluster.generation,
-        reason: "connector_account_ineligible",
-      };
-    }
+  }
 
-    const claims = [...eligibleClaims].sort((left, right) =>
-      [
-        left.connectorId,
-        left.connectorAccountId,
-        left.handle ?? "",
-        left.externalSubjectId,
-        left.id,
-      ]
-        .join("\u0000")
-        .localeCompare(
-          [
-            right.connectorId,
-            right.connectorAccountId,
-            right.handle ?? "",
-            right.externalSubjectId,
-            right.id,
-          ].join("\u0000")
-        )
-    );
-    const claim = claims[0];
-    if (claims.length === 1 && claim) {
-      return {
-        decision: "resolved",
-        requestedPrincipalId: request.principalId,
-        canonicalPrincipalId: cluster.canonicalPrincipalId,
-        claim,
-        generation: cluster.generation,
-      };
-    }
-    return {
-      decision: "ambiguous",
-      requestedPrincipalId: request.principalId,
-      canonicalPrincipalId: cluster.canonicalPrincipalId,
-      claims,
-      generation: cluster.generation,
-      reason: "multiple_verified_claims",
-    };
+  override async resolveIdentityDeliveryClaim(
+    request: ResolveIdentityDeliveryClaimRequest
+  ): Promise<IdentityDeliveryClaimResolution> {
+    this.assertAgent(request.agentId);
+    return super.resolveIdentityDeliveryClaim(request);
   }
 
   async evaluateOwnerBinding(

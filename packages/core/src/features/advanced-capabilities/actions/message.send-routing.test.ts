@@ -77,6 +77,7 @@ describe("MESSAGE op=send exact-beats-prefix tier (ambiguity over-fire fix)", ()
 			getEntitiesForRoom: async () => [],
 			getEntityById: (async () => null) as IAgentRuntime["getEntityById"],
 			getRelationships: (async () => []) as IAgentRuntime["getRelationships"],
+			getSetting: (() => null) as IAgentRuntime["getSetting"],
 			sendMessageToTarget: async (target, content) => {
 				sends.push({
 					target: target as unknown as Record<string, unknown>,
@@ -191,6 +192,7 @@ describe("MESSAGE op=send unresolved recipient asks upfront (no doomed send)", (
 					? literalEntity
 					: null) as IAgentRuntime["getEntityById"],
 			getRelationships: (async () => []) as IAgentRuntime["getRelationships"],
+			getSetting: (() => null) as IAgentRuntime["getSetting"],
 			sendMessageToTarget: async (target, content) => {
 				sends.push({
 					target: target as unknown as Record<string, unknown>,
@@ -337,6 +339,10 @@ describe("MESSAGE op=send last-delivered-channel preference", () => {
 					}),
 				},
 			],
+			getSetting: ((key: string) =>
+				key === "IDENTITY_DELIVERY_CLAIMS_AUTHORITATIVE"
+					? "true"
+					: null) as IAgentRuntime["getSetting"],
 			getService: ((serviceType: string) => {
 				if (serviceType !== ServiceType.PRINCIPAL) return null;
 				return {
@@ -572,5 +578,199 @@ describe("MESSAGE op=send admin/owner target (app + connector transports)", () =
 		expect(sends[0].target).toMatchObject({ source: "discord" });
 		expect(sends[0].target.entityId).toBeDefined();
 		expect(resolveTargets).not.toHaveBeenCalled();
+	});
+});
+
+describe("MESSAGE op=send delivery-claim ambiguity is judged on distinct destinations", () => {
+	function harness(options: {
+		claimsAuthoritative: boolean;
+		claims: Array<{
+			id: string;
+			handle: string | null;
+			externalSubjectId: string;
+		}>;
+	}) {
+		const sends: SentMessage[] = [];
+		const entity = {
+			id: SHADOW_ID,
+			names: ["Shadow"],
+			agentId: AGENT_ID,
+			components: [
+				{
+					id: "00000000-0000-0000-0000-0000000000c4",
+					type: "discord",
+					sourceEntityId: AGENT_ID,
+					data: { channelId: "component-dm-shadow" },
+				},
+			],
+		};
+		const runtime = createMockRuntime({
+			agentId: AGENT_ID,
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
+			getMessageConnectors: () => [
+				{
+					source: "discord",
+					label: "Discord",
+					capabilities: [],
+					supportedTargetKinds: ["user", "contact"],
+					contexts: [],
+					resolveIdentityClaimTarget: async (claim: {
+						handle: string | null;
+						externalSubjectId: string;
+					}) => ({
+						identityDeliveryKey: claim.handle ?? claim.externalSubjectId,
+						target: {
+							source: "discord",
+							channelId: claim.handle ?? claim.externalSubjectId,
+						},
+						label: claim.handle ?? claim.externalSubjectId,
+						kind: "user" as const,
+						contexts: [],
+					}),
+				},
+			],
+			getSetting: ((key: string) =>
+				key === "IDENTITY_DELIVERY_CLAIMS_AUTHORITATIVE" &&
+				options.claimsAuthoritative
+					? "true"
+					: null) as IAgentRuntime["getSetting"],
+			getService: ((serviceType: string) => {
+				if (serviceType !== ServiceType.PRINCIPAL) return null;
+				return {
+					resolveIdentityDeliveryClaim: async (request: {
+						principalId: string;
+					}) => {
+						const claims = options.claims.map((claim) => ({
+							...claim,
+							connectorId: "discord",
+							connectorAccountId: DISCORD_ACCOUNT_ID,
+						}));
+						if (claims.length === 1) {
+							return {
+								decision: "resolved",
+								requestedPrincipalId: request.principalId,
+								canonicalPrincipalId: SHADOW_ID,
+								generation: 3,
+								claim: claims[0],
+							};
+						}
+						return {
+							decision: "ambiguous",
+							requestedPrincipalId: request.principalId,
+							canonicalPrincipalId: SHADOW_ID,
+							generation: 3,
+							claims,
+							reason: "multiple_verified_claims",
+						};
+					},
+				};
+			}) as IAgentRuntime["getService"],
+			getRoom: async () => ({ id: ROOM_ID, name: "app", source: "app" }),
+			getEntitiesForRoom: async () => [entity],
+			getWorld: (async () => null) as IAgentRuntime["getWorld"],
+			getEntityById: (async (id: string) =>
+				id === SHADOW_ID ? entity : null) as IAgentRuntime["getEntityById"],
+			getRelationships: (async () => []) as IAgentRuntime["getRelationships"],
+			getMemories: (async () => []) as IAgentRuntime["getMemories"],
+			sendMessageToTarget: async (target, content) => {
+				sends.push({
+					target: target as unknown as Record<string, unknown>,
+					text: String(content.text ?? ""),
+				});
+				return { id: "00000000-0000-0000-0000-0000000000ff" } as Memory;
+			},
+			upsertComponent: (async () =>
+				undefined) as IAgentRuntime["upsertComponent"],
+			useModel: (async () => "not-json") as IAgentRuntime["useModel"],
+			reportError: () => undefined,
+		});
+		return { runtime, sends };
+	}
+
+	const appMessage = {
+		...baseMessage,
+		content: { text: "tell shadow to stop smoking", source: "app" },
+	} as Memory;
+
+	it("two verified claims mapping to one delivery key resolve instead of refusing", async () => {
+		const { runtime, sends } = harness({
+			claimsAuthoritative: true,
+			claims: [
+				{
+					id: "00000000-0000-0000-0000-0000000000f1",
+					handle: "@shadow",
+					externalSubjectId: "discord-user-123",
+				},
+				{
+					id: "00000000-0000-0000-0000-0000000000f2",
+					handle: "@shadow",
+					externalSubjectId: "discord-user-123-alt",
+				},
+			],
+		});
+		const result = await send(
+			runtime,
+			{ target: "shadow", message: "stop smoking" },
+			appMessage,
+		);
+
+		expect(result.success).toBe(true);
+		expect(sends).toHaveLength(1);
+		expect(sends[0].target).toMatchObject({ channelId: "@shadow" });
+	});
+
+	it("claims mapping to distinct delivery keys stay a choice with no duplicate entries", async () => {
+		const { runtime, sends } = harness({
+			claimsAuthoritative: true,
+			claims: [
+				{
+					id: "00000000-0000-0000-0000-0000000000f1",
+					handle: "@shadow-work",
+					externalSubjectId: "discord-user-123",
+				},
+				{
+					id: "00000000-0000-0000-0000-0000000000f2",
+					handle: "@shadow-work",
+					externalSubjectId: "discord-user-123",
+				},
+				{
+					id: "00000000-0000-0000-0000-0000000000f3",
+					handle: "@shadow-personal",
+					externalSubjectId: "discord-user-456",
+				},
+			],
+		});
+		const result = await send(
+			runtime,
+			{ target: "shadow", message: "stop smoking" },
+			appMessage,
+		);
+
+		expect(result.success).toBe(false);
+		expect((result.data as { error?: string })?.error).toBe("TARGET_AMBIGUOUS");
+		const candidates = (
+			result.data as { candidates?: Array<{ label?: string }> }
+		)?.candidates;
+		expect(candidates).toHaveLength(2);
+		expect(sends).toHaveLength(0);
+	});
+
+	it("with the rollout flag off, the legacy entity-component path routes the send", async () => {
+		const { runtime, sends } = harness({
+			claimsAuthoritative: false,
+			claims: [],
+		});
+		const result = await send(
+			runtime,
+			{ target: "shadow", message: "stop smoking" },
+			appMessage,
+		);
+
+		expect(result.success).toBe(true);
+		expect(sends).toHaveLength(1);
+		expect(sends[0].target).toMatchObject({
+			source: "discord",
+			channelId: "component-dm-shadow",
+		});
 	});
 });

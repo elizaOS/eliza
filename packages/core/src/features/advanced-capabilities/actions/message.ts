@@ -64,6 +64,8 @@ import {
 	buildReadSlice,
 	CANONICAL_MESSAGE_TARGET_KINDS,
 	ChannelType,
+	IDENTITY_DELIVERY_CLAIMS_AUTHORITATIVE_SETTING,
+	identityDeliveryClaimsAuthoritative,
 	inspectSendHandlerResult,
 	ModelType,
 	ServiceType,
@@ -1538,6 +1540,128 @@ function connectorIdentityAuthorityId(connector: ConnectorWithHooks): string {
 		: connector.source;
 }
 
+/**
+ * Rollout gate for claim-authoritative delivery. Until the identity-claim
+ * ingestion slice (issue #23099) ships, no runtime path writes claims, so the
+ * claim-mandatory branch would refuse every contact send; the legacy
+ * entity-component path stays authoritative unless an operator opts in via
+ * the IDENTITY_DELIVERY_CLAIMS_AUTHORITATIVE setting.
+ */
+function claimDeliveryAuthoritative(runtime: IAgentRuntime): boolean {
+	return identityDeliveryClaimsAuthoritative(
+		runtime.getSetting(IDENTITY_DELIVERY_CLAIMS_AUTHORITATIVE_SETTING),
+	);
+}
+
+function componentString(
+	component: { data?: Record<string, unknown> },
+	keys: string[],
+): string | undefined {
+	for (const key of keys) {
+		const value = component.data?.[key];
+		if (typeof value === "string" && value.trim().length > 0)
+			return value.trim();
+		if (typeof value === "number") return String(value);
+	}
+	return undefined;
+}
+
+/**
+ * Legacy (pre-claim-authority) entity candidate collection: the entity store
+ * plus stored connector components supply delivery coordinates. Active only
+ * while {@link claimDeliveryAuthoritative} is off; the claim-based collector
+ * replaces it once verified identity claims are ingested and opted in.
+ */
+async function collectLegacyEntityCandidates(
+	runtime: IAgentRuntime,
+	message: Memory,
+	state: State | undefined,
+	query: string | undefined,
+	connectors: ConnectorWithHooks[],
+	targetKind: MessageTargetKind | undefined,
+	sourceWasExact: boolean,
+	accountId?: string,
+): Promise<SendCandidate[]> {
+	// An email literal is a typed address, not a contact name: it routes on the
+	// explicit-address path in both delivery modes rather than through entity
+	// lookup heuristics.
+	if (
+		!query ||
+		EMAIL_LITERAL.test(query.trim()) ||
+		(targetKind &&
+			!kindAliases(targetKind).has("user") &&
+			!kindAliases(targetKind).has("contact") &&
+			!kindAliases(targetKind).has("email") &&
+			!kindAliases(targetKind).has("phone"))
+	) {
+		return [];
+	}
+
+	// An entity UUID is already an unambiguous identifier. Resolving it through
+	// the language model makes deterministic connector sends depend on provider
+	// availability and can reinterpret an exact target as a name.
+	const entity = isUuidLike(query)
+		? await runtime.getEntityById(query)
+		: await findEntityByName(
+				runtime,
+				{ ...message, content: { ...message.content, text: query } },
+				state ?? ({ values: {}, data: {}, text: "" } as State),
+			);
+	if (!entity?.id) return [];
+
+	const label = entity.names[0] ?? query;
+	const preferredSource = preferredDeliverySource(entity);
+	const exact = entityDisplayNames(entity).some((name) =>
+		labelMatchesQuery(name, query),
+	);
+	const candidates: SendCandidate[] = [];
+	for (const connector of connectors) {
+		if (!connectorSupportsKind(connector, targetKind ?? "contact")) continue;
+		const matchingComponent = entity.components?.find(
+			(c) =>
+				normalizeComparable(c.type) === normalizeComparable(connector.source),
+		);
+		const target = {
+			source: connector.source,
+			accountId: connector.accountId ?? accountId,
+			entityId: entity.id as UUID,
+		} as TargetInfo;
+		if (matchingComponent) {
+			const channelId = componentString(matchingComponent, [
+				"channelId",
+				"chatId",
+				"conversationId",
+				"phone",
+				"phoneNumber",
+				"email",
+			]);
+			if (channelId) target.channelId = channelId;
+			const roomId = componentString(matchingComponent, ["roomId"]);
+			if (roomId) target.roomId = roomId as UUID;
+			const serverId = componentString(matchingComponent, ["serverId"]);
+			if (serverId) target.serverId = serverId;
+		}
+		const lastChannel =
+			preferredSource !== undefined &&
+			normalizeComparable(connector.source) ===
+				normalizeComparable(preferredSource);
+		const reasons = matchingComponent ? ["entity", "component"] : ["entity"];
+		if (lastChannel) reasons.push("lastChannel");
+		candidates.push({
+			connector,
+			target,
+			label,
+			kind: targetKind ?? "contact",
+			score:
+				(matchingComponent ? 0.78 : sourceWasExact ? 0.66 : 0.56) +
+				(lastChannel ? LAST_CHANNEL_BONUS : 0),
+			reasons,
+			exact,
+		});
+	}
+	return candidates;
+}
+
 async function collectEntityCandidates(
 	runtime: IAgentRuntime,
 	message: Memory,
@@ -1629,7 +1753,6 @@ async function collectEntityCandidates(
 			resolution.decision === "resolved"
 				? [resolution.claim]
 				: [...resolution.claims];
-		requiresChoice ||= resolution.decision === "ambiguous";
 		if (!connector.resolveIdentityClaimTarget) {
 			noClaimReasons.add(
 				`${connector.source} does not map identity claims to delivery targets`,
@@ -1649,6 +1772,12 @@ async function collectEntityCandidates(
 			preferredSource !== undefined &&
 			normalizeComparable(connector.source) ===
 				normalizeComparable(preferredSource);
+		// Ambiguity is judged on distinct delivery destinations, not raw claim
+		// rows: several verified claims that map to the same connector-owned
+		// delivery key (for example one address observed as both handle and
+		// subject) are one destination, and the choice list must never show
+		// identical entries.
+		const candidatesByDeliveryKey = new Map<string, SendCandidate>();
 		for (const claim of claims) {
 			let mapped: MessageConnectorTarget | null;
 			try {
@@ -1679,9 +1808,10 @@ async function collectEntityCandidates(
 				);
 				continue;
 			}
+			if (candidatesByDeliveryKey.has(deliveryKey)) continue;
 			const reasons = ["entity", "canonicalClaim"];
 			if (lastChannel) reasons.push("lastChannel");
-			candidates.push({
+			candidatesByDeliveryKey.set(deliveryKey, {
 				connector,
 				target: {
 					...mapped.target,
@@ -1704,6 +1834,8 @@ async function collectEntityCandidates(
 				},
 			});
 		}
+		requiresChoice ||= candidatesByDeliveryKey.size > 1;
+		candidates.push(...candidatesByDeliveryKey.values());
 	}
 	if (candidates.length > 0)
 		return { status: "resolved", candidates, requiresChoice };
@@ -2101,10 +2233,14 @@ async function resolveSendTarget(
 		if (currentConnector) considered = [currentConnector];
 	}
 
+	const claimsAuthoritative = claimDeliveryAuthoritative(runtime);
+
 	// Check the room before the rolodex: someone present in the current room is
 	// the closest, least-surprising referent for a bare name — resolve to an
 	// in-room utterance addressing them before any connector-wide fuzzy lookup
-	// or contact search gets a chance to misroute the send.
+	// or contact search gets a chance to misroute the send. An email literal
+	// skips the room shortcut in both delivery modes so a typed address always
+	// reaches the literal-address path instead of a same-named room member.
 	if (params.target && !EMAIL_LITERAL.test(params.target.trim())) {
 		const roomMembers = await currentRoomMemberCandidates(
 			runtime,
@@ -2134,46 +2270,76 @@ async function resolveSendTarget(
 	}
 
 	const candidates: SendCandidate[] = [];
-	const entityCandidates = await collectEntityCandidates(
-		runtime,
-		message,
-		state,
-		params.target,
-		considered,
-		params.targetKind,
-		sourceWasExact,
-		params.accountId,
-	);
-	if (entityCandidates.status === "authority_unavailable") {
-		return {
-			status: "missing_target",
-			text: `MESSAGE op=send cannot resolve canonical delivery authority for principal ${entityCandidates.principalId}: ${entityCandidates.detail}`,
-			error: "TARGET_IDENTITY_AUTHORITY_UNAVAILABLE",
-			sourceResolution: params.sourceResolution,
-		};
-	}
-	if (entityCandidates.status === "no_claim") {
-		return {
-			status: "missing_target",
-			text:
-				`MESSAGE op=send found principal ${entityCandidates.principalId}, but no active verified delivery claim matches the selected connector/account (${entityCandidates.detail}). ` +
-				"Ask the user for a literal address or link and verify the connector identity before retrying.",
-			error: "TARGET_DELIVERY_CLAIM_MISSING",
-			sourceResolution: params.sourceResolution,
-		};
-	}
-	if (entityCandidates.status === "resolved") {
-		if (entityCandidates.requiresChoice) {
+	// Under claim authority a resolved principal short-circuits hook lookups
+	// and explicit fallbacks; the legacy path keeps the pre-claim behavior of
+	// merging hook, entity-component, and explicit candidates into one ranking.
+	let claimEntityFound = false;
+	if (claimsAuthoritative) {
+		const entityCandidates = await collectEntityCandidates(
+			runtime,
+			message,
+			state,
+			params.target,
+			considered,
+			params.targetKind,
+			sourceWasExact,
+			params.accountId,
+		);
+		if (entityCandidates.status === "authority_unavailable") {
 			return {
-				status: "ambiguous",
-				text:
-					"MESSAGE op=send found multiple active verified delivery claims. Pick one:\n" +
-					formatCandidates(entityCandidates.candidates),
-				candidates: entityCandidates.candidates,
-				sourceResolution: params.source ? "exact" : "inferred",
+				status: "missing_target",
+				text: `MESSAGE op=send cannot resolve canonical delivery authority for principal ${entityCandidates.principalId}: ${entityCandidates.detail}`,
+				error: "TARGET_IDENTITY_AUTHORITY_UNAVAILABLE",
+				sourceResolution: params.sourceResolution,
 			};
 		}
-		candidates.push(...entityCandidates.candidates);
+		if (entityCandidates.status === "no_claim") {
+			return {
+				status: "missing_target",
+				text:
+					`MESSAGE op=send found principal ${entityCandidates.principalId}, but no active verified delivery claim matches the selected connector/account (${entityCandidates.detail}). ` +
+					"Ask the user for a literal address or link and verify the connector identity before retrying.",
+				error: "TARGET_DELIVERY_CLAIM_MISSING",
+				sourceResolution: params.sourceResolution,
+			};
+		}
+		if (entityCandidates.status === "resolved") {
+			if (entityCandidates.requiresChoice) {
+				return {
+					status: "ambiguous",
+					text:
+						"MESSAGE op=send found multiple active verified delivery claims. Pick one:\n" +
+						formatCandidates(entityCandidates.candidates),
+					candidates: entityCandidates.candidates,
+					sourceResolution: params.source ? "exact" : "inferred",
+				};
+			}
+			claimEntityFound = true;
+			candidates.push(...entityCandidates.candidates);
+		} else {
+			for (const connector of considered) {
+				const context = buildQueryContext(
+					runtime,
+					message,
+					state,
+					connector.source,
+					undefined,
+					connector,
+					params.accountId,
+				);
+				candidates.push(
+					...(await collectHookTargets(
+						runtime,
+						connector,
+						params.target,
+						context,
+						params.targetKind,
+						sourceWasExact,
+						params.accountId,
+					)),
+				);
+			}
+		}
 	} else {
 		for (const connector of considered) {
 			const context = buildQueryContext(
@@ -2197,9 +2363,21 @@ async function resolveSendTarget(
 				)),
 			);
 		}
+		candidates.push(
+			...(await collectLegacyEntityCandidates(
+				runtime,
+				message,
+				state,
+				params.target,
+				considered,
+				params.targetKind,
+				sourceWasExact,
+				params.accountId,
+			)),
+		);
 	}
 
-	if (params.target && entityCandidates.status === "not_found") {
+	if (params.target && !claimEntityFound) {
 		for (const connector of considered) {
 			candidates.push(
 				explicitSendTarget(
@@ -2746,6 +2924,7 @@ async function ensureSendAccountAllowed(
 const RECIPIENT_VETTED_REASONS = new Set([
 	"admin",
 	"entity",
+	"component",
 	"canonicalClaim",
 	"currentRoom",
 	"currentRoomMember",

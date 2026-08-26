@@ -45,6 +45,8 @@ function runtimeStub(options: {
   entity?: { id: string; names: string[]; components?: Array<Record<string, unknown>> };
   deliveryClaims?: string[];
   principalError?: Error;
+  /** Defaults to claim-authoritative; pass false to exercise the legacy component path. */
+  claimsAuthoritative?: boolean;
 }): {
   runtime: IAgentRuntime;
   sendGmailMessage: ReturnType<typeof vi.fn>;
@@ -142,6 +144,11 @@ function runtimeStub(options: {
     getEntityById: vi.fn(async (id: string) =>
       options.entity && id === options.entity.id ? options.entity : null
     ),
+    getSetting: vi.fn((key: string) =>
+      key === "IDENTITY_DELIVERY_CLAIMS_AUTHORITATIVE" && options.claimsAuthoritative !== false
+        ? "true"
+        : null
+    ),
     reportError: vi.fn(),
   } as unknown as IAgentRuntime;
   return { runtime, sendGmailMessage };
@@ -192,6 +199,9 @@ async function runtimeWithRealAccountPolicy(options: {
       if (serviceType === CONNECTOR_ACCOUNT_SERVICE_TYPE) return manager;
       return null;
     }),
+    getSetting: vi.fn((key: string) =>
+      key === "IDENTITY_DELIVERY_CLAIMS_AUTHORITATIVE" ? "true" : null
+    ),
   } as unknown as IAgentRuntime;
   return { runtime, sendGmailMessage };
 }
@@ -663,6 +673,29 @@ describe("gmail send handler", () => {
     expect(sendGmailMessage).not.toHaveBeenCalled();
   });
 
+  it("resolves when multiple verified claims observe one distinct address", async () => {
+    // Two claim rows (e.g. the address seen as both handle and subject, or by
+    // two verification events) are one destination — refusing here would make
+    // re-verification of the same address break delivery.
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+      deliveryClaims: ["shadow@example.com", "Shadow@Example.com"],
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    const outcome = await invokeSend(
+      registration,
+      runtime,
+      { entityId: SHADOW_ID as TargetInfo["entityId"] },
+      { text: "hello" }
+    );
+
+    expect(outcome.kind).toBe("delivered");
+    expect(sendGmailMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ to: ["shadow@example.com"] })
+    );
+  });
+
   it("does not surface an empty ambiguity choice when verified claims are not emails", async () => {
     const { runtime, sendGmailMessage } = runtimeStub({
       accounts: [CONNECTED_ACCOUNT],
@@ -814,6 +847,112 @@ describe("gmail send handler", () => {
       code: "GMAIL_RECIPIENT_UNRESOLVED",
     });
     expect(sendGmailMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe("gmail send handler with claim authority disabled (legacy default)", () => {
+  it("routes a principal recipient through the stored entity email component", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+      claimsAuthoritative: false,
+      entity: {
+        id: SHADOW_ID,
+        names: ["Shadow"],
+        components: [{ type: "contact_info", data: { email: "shadow@example.com" } }],
+      },
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    const outcome = await invokeSend(
+      registration,
+      runtime,
+      { entityId: SHADOW_ID as TargetInfo["entityId"] },
+      { text: "hello" }
+    );
+
+    expect(outcome.kind).toBe("delivered");
+    expect(sendGmailMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ to: ["shadow@example.com"] })
+    );
+  });
+
+  it("refuses when the entity stores multiple distinct email addresses", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+      claimsAuthoritative: false,
+      entity: {
+        id: SHADOW_ID,
+        names: ["Shadow"],
+        components: [
+          { type: "contact_info", data: { email: "shadow.work@example.com" } },
+          { type: "rolodex", data: { email: "shadow.personal@example.com" } },
+        ],
+      },
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    const outcome = await invokeSend(
+      registration,
+      runtime,
+      { entityId: SHADOW_ID as TargetInfo["entityId"] },
+      { text: "hello" }
+    );
+
+    expect(outcome).toMatchObject({
+      kind: "not_delivered",
+      code: "GMAIL_RECIPIENT_AMBIGUOUS",
+    });
+    expect(sendGmailMessage).not.toHaveBeenCalled();
+  });
+
+  it("lets a literal carried address win over the entity lookup", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+      claimsAuthoritative: false,
+      entity: {
+        id: SHADOW_ID,
+        names: ["Shadow"],
+        components: [{ type: "contact_info", data: { email: "stored@example.com" } }],
+      },
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    const outcome = await invokeSend(
+      registration,
+      runtime,
+      { entityId: SHADOW_ID as TargetInfo["entityId"], channelId: "typed@example.com" },
+      { text: "hello" }
+    );
+
+    expect(outcome.kind).toBe("delivered");
+    expect(sendGmailMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ to: ["typed@example.com"] })
+    );
+  });
+
+  it("refuses without consulting the principal service when nothing resolves", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+      claimsAuthoritative: false,
+      // A principal error would surface if the claim path ran despite the
+      // flag being off; the legacy path must never read claim authority.
+      principalError: new Error("claim authority must not be consulted"),
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    const outcome = await invokeSend(
+      registration,
+      runtime,
+      { entityId: SHADOW_ID as TargetInfo["entityId"] },
+      { text: "hello" }
+    );
+
+    expect(outcome).toMatchObject({
+      kind: "not_delivered",
+      code: "GMAIL_RECIPIENT_UNRESOLVED",
+    });
+    expect(sendGmailMessage).not.toHaveBeenCalled();
+    expect(runtime.reportError).not.toHaveBeenCalled();
   });
 });
 
