@@ -120,6 +120,30 @@ describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", (
 		});
 	});
 
+	it.each(commands)(
+		"promotes an actionless exact command %j to VIEWS",
+		async (text, view) => {
+			const patch = await run(text, { candidateActions: [] });
+
+			expect(patch?.deterministicToolCall).toMatchObject({
+				name: "VIEWS",
+				params: { action: "show", view },
+			});
+		},
+	);
+
+	it("promotes a live weak-model home category that is not a registered action", async () => {
+		const patch = await run("go home", {
+			candidateActions: ["VIEWS_NAVIGATE_HOME"],
+			parentActionHints: ["VIEWS_NAVIGATE_HOME"],
+		});
+
+		expect(patch?.deterministicToolCall).toMatchObject({
+			name: "VIEWS",
+			params: { action: "show", view: "chat" },
+		});
+	});
+
 	it.each([
 		["open notes and create a note about demo", ["VIEWS", "NOTES"]],
 		["send Alice a message and open my inbox", ["MESSAGE", "VIEWS"]],
@@ -198,9 +222,10 @@ describe("viewCommandShortcutEvaluator — does NOT fire", () => {
 		expect(await run("i need to fix the login bug")).toBeNull();
 		expect(await run("I want to add a new feature to my app")).toBeNull();
 	});
-	it("when Stage 1 did not select VIEWS", async () => {
+	it("when Stage 1 selected another registered domain action", async () => {
 		expect(
 			await run("open notes", {
+				extraActions: ["NOTES"],
 				candidateActions: ["NOTES"],
 			}),
 		).toBeNull();

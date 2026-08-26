@@ -1,13 +1,15 @@
 /**
- * Post-Stage-1 view-switch hook — deterministic execution after the model has
- * selected the VIEWS action.
+ * Post-Stage-1 view-switch hook — deterministic execution for an exact,
+ * standalone navigation command.
  *
  * Runs during response handling, BEFORE the action executes. If the user's
  * message is an explicit navigation command in ANY supported language
  * ("open settings", "go to my calendar", "abre ajustes", "설정 열어",
- * "打开设置"…), it resolves the target and executes the already-selected VIEWS
- * action without a second planner round. The model still owns action selection;
- * the rigid matcher only supplies parameters after Stage 1 has named VIEWS.
+ * "打开设置"…), it resolves the target and executes the canonical VIEWS
+ * action without a second planner round. Stage 1 normally names VIEWS first,
+ * but an exact standalone command may safely promote VIEWS when a weak model
+ * returns no action at all. Any other registered action keeps the turn
+ * planner-owned so domain and compound requests are never erased.
  *
  * The VIEWS action then resolves the exact target deterministically
  * (matchViewCommand → the same view) and navigates.
@@ -28,20 +30,21 @@ import {
 function shouldShortcut(
 	context: ResponseHandlerEvaluatorContext,
 ): string | null {
-	// Model-owned invariant: an exact phrase alone is insufficient. Stage 1 must
-	// already have selected the canonical VIEWS action before this evaluator can
-	// turn that selection into a deterministic call. Passive/domain intent and a
-	// model-selected adjacent action therefore remain planner-owned.
+	const viewId = resolveViewCommandShortcut(context);
+	if (!viewId) return null;
+
+	// A rigid whole-message match is enough when Stage 1 selected VIEWS or no
+	// action. If Stage 1 selected another *registered* action, preserve that
+	// semantic evidence and leave the turn to normal planning. This is what keeps
+	// "open calendar and schedule a meeting" with CALENDAR while allowing a weak
+	// model's actionless "go home" turn to reach the shell deterministically.
 	const selectedCandidates = (
 		context.messageHandler.plan.candidateActions ?? []
 	).map((candidate) => candidate.trim().toUpperCase());
-	const selectedViews = selectedCandidates.includes(VIEWS_ACTION_NAME);
-	if (!selectedViews) return null;
 
-	// A second *registered* action is semantic evidence of a compound/domain
-	// request. Never erase it. Unknown names may be weak-model category noise
-	// (for example CODING_TOOLS), so they do not block an otherwise standalone
-	// command; the direct executor still installs only the registered VIEWS call.
+	// Unknown names may be weak-model category noise (for example CODING_TOOLS),
+	// so they do not block an otherwise standalone command; the direct executor
+	// installs only the registered VIEWS call.
 	const registeredActions = new Set(
 		(context.runtime.actions ?? [])
 			.map((action) => action.name?.trim().toUpperCase())
@@ -52,7 +55,7 @@ function shouldShortcut(
 			candidate !== VIEWS_ACTION_NAME && registeredActions.has(candidate),
 	);
 	if (hasOtherRegisteredAction) return null;
-	return resolveViewCommandShortcut(context);
+	return viewId;
 }
 
 export const viewCommandShortcutEvaluator: ResponseHandlerEvaluator = {
