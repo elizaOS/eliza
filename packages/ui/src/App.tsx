@@ -106,6 +106,7 @@ import { BugReportModal } from "./components/shell/BugReportModal";
 import { BuildBadge } from "./components/shell/BuildBadge";
 import { ChatOverlay } from "./components/shell/ChatOverlay";
 import { ChatSurface } from "./components/shell/ChatSurface";
+import { CloudSignInRecoveryView } from "./components/shell/CloudSignInRecoveryView";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { DynamicPluginFallback } from "./components/shell/DynamicPluginFallback";
 import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
@@ -3354,13 +3355,8 @@ function AppContent() {
     return (
       <BugReportProvider value={bugReport}>
         {elizaCloudLoginError ? (
-          <StartupFailureView
-            error={{
-              reason: "unknown",
-              phase: "starting-backend",
-              message: "Eliza Cloud sign-in could not be completed.",
-              detail: elizaCloudLoginError,
-            }}
+          <CloudSignInRecoveryView
+            detail={elizaCloudLoginError}
             onRetry={() => {
               void startCloudAuthFirstScreen().catch(() => {
                 // error-policy:J4 the same retry surface receives the error.

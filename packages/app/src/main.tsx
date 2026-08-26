@@ -2015,9 +2015,8 @@ function getMobileLifecycle(): MobileLifecycle {
   return mobileLifecycleInstance;
 }
 
-// Universal/App-Link hosts whose `https://<host>/<path>` links route into the
-// app (paired with the iOS associated-domains entitlement + the Android/web
-// `assetlinks.json` + `apple-app-site-association` served from eliza.app).
+// Universal/App-Link hosts whose `https://<host>/<path>` links can route inside
+// the app after a platform host associates the domain with its native build.
 const APP_LINK_HOSTS = ["eliza.app"];
 
 // Device/desktop "connect to a remote agent at a URL" first-run onboarding:
@@ -2274,8 +2273,8 @@ function handleDeepLink(url: string): undefined | Promise<boolean> {
   }
 
   // Accept both the custom `<scheme>://` links and `https://eliza.app/<path>`
-  // universal/App links (iOS associated-domains + Android assetlinks hand these
-  // to the installed app); both route into the same hash routes below.
+  // universal/App links when a host has configured an operating-system domain
+  // association; both route into the same hash routes below.
   const isAppLink = isTrustedAppLink(parsed, APP_LINK_HOSTS);
   if (parsed.protocol !== `${APP_URL_SCHEME}:` && !isAppLink) return;
   const path = isAppLink
