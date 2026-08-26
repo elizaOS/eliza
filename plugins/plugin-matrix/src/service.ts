@@ -26,6 +26,8 @@ import {
   resolveAliasedEnvValue,
   Service,
   type TargetInfo,
+  toWellFormedUnicode,
+  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import * as sdk from "matrix-js-sdk";
@@ -1294,7 +1296,7 @@ export class MatrixService extends Service implements IMatrixService {
     };
 
     logger.debug(
-      `Matrix message from ${message.senderInfo.displayName || message.sender} in ${room.name || roomId}: ${message.content.slice(0, 50)}...`
+      `Matrix message from ${message.senderInfo.displayName || message.sender} in ${room.name || roomId}: ${truncateWellFormed(toWellFormedUnicode(message.content), 50)}...`
     );
 
     // Plugin-local event other code may listen for (the MatrixMessage/MatrixRoom payload).
