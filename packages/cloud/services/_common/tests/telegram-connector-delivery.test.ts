@@ -46,7 +46,7 @@ afterEach(() => {
 });
 
 describe("sendTelegramReply delivery state", () => {
-  test("retries only a rate-limited second chunk", async () => {
+  test("retries only a rate-limited second chunk without dropping its leading newline", async () => {
     const sentTexts: string[] = [];
     let call = 0;
     globalThis.fetch = mock(async (_input, init) => {
@@ -73,7 +73,7 @@ describe("sendTelegramReply delivery state", () => {
       hooks(events),
     );
 
-    expect(sentTexts).toEqual(["a".repeat(4096), "b", "b"]);
+    expect(sentTexts).toEqual(["a".repeat(4096), "\nb", "\nb"]);
     expect(receipt.providerMessageIds).toEqual(["1", "3"]);
     expect(events).toEqual([
       "prepare:2",

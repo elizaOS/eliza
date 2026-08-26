@@ -408,6 +408,7 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
       token,
       leaseMs: 60_000,
       organizationId: personalAgent.organization_id,
+      userId: personalAgent.user_id,
       dedicatedAgentId: "dedicated-agent-miniflare",
     });
     const sealedBody = await sealed.text();

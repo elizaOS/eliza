@@ -47,11 +47,14 @@ bun run build:package
 ```
 
 Bun workspace tooling resolves the maintained TypeScript source through the
-`bun` export condition, and workspace TypeScript consumers resolve source types
-before `dist/` exists. The generated publish manifest rewrites those type paths
-to declarations in `dist/`; native Node and the release path resolve compiled
-JavaScript from the tarball packed out of that publish directory. TypeScript
-source is not published as runtime code.
+`bun` export condition, and Vite resolves it through `module`. Vitest removes
+that condition in Node mode, so clean-workspace Vitest configs must use the
+explicit `eliza-source` condition or a targeted source alias. Workspace
+TypeScript consumers resolve source types before `dist/` exists, while normal
+native Node workspace consumers continue to use the compiled `dist/` entry.
+The generated publish manifest rewrites every source-facing condition to
+compiled JavaScript and declarations in `dist/`, so the release tarball never
+publishes TypeScript source as runtime code.
 
 ## Usage
 

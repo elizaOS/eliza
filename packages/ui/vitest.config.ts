@@ -11,6 +11,7 @@ const monorepoRoot = resolve(packageRoot, "../..");
 const uiSrc = resolve(packageRoot, "src");
 const sharedSrc = resolve(monorepoRoot, "packages/shared/src");
 const coreSrc = resolve(monorepoRoot, "packages/core/src");
+const promptsSrc = resolve(monorepoRoot, "packages/prompts/src");
 const cloudRoutingSrc = resolve(monorepoRoot, "packages/cloud/routing/src");
 const cloudSharedSrc = resolve(monorepoRoot, "packages/cloud/shared/src");
 const loggerSrc = resolve(monorepoRoot, "packages/logger/src");
@@ -112,6 +113,12 @@ export default defineConfig({
       {
         find: /^@elizaos\/core\/(.+)$/,
         replacement: resolve(coreSrc, "$1"),
+      },
+      {
+        // Vitest deliberately omits Vite's `module` condition. Resolve this
+        // workspace package explicitly so clean CI does not require dist/.
+        find: /^@elizaos\/prompts$/,
+        replacement: resolve(promptsSrc, "index.ts"),
       },
       {
         find: /^@elizaos\/app-core(?:\/browser|\/ui-compat)?$/,
