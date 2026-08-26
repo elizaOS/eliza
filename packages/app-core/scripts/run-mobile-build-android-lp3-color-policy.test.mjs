@@ -302,6 +302,7 @@ describe("LP3 direct Cloud build flag", () => {
 
     expect(manifest).toContain("Lp3ColorPolicyInitializer");
     expect(manifest).toContain("Lp3ColorPolicyService");
+    expect(manifest).toContain('android:screenOrientation="portrait"');
     expect(manifest).toContain('android:foregroundServiceType="specialUse"');
     expect(manifest).toContain("android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE");
     expect(manifest).toContain("Lp3ColorPolicyBootReceiver");
@@ -311,6 +312,9 @@ describe("LP3 direct Cloud build flag", () => {
     for (const permission of ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS) {
       expect(manifest).toContain(`android.permission.${permission}`);
     }
+    expect(ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS).toContain(
+      "FOREGROUND_SERVICE",
+    );
     expect(initializerBlock).toContain('android:exported="false"');
     expect(initializerBlock).toMatch(
       /android:authorities="\$\{applicationId\}\.lp3-color-policy-initializer"/,

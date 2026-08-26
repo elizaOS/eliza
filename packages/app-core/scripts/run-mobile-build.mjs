@@ -5536,6 +5536,7 @@ export const ANDROID_LP3_COLOR_POLICY_COMPONENTS = [
 export const ANDROID_LP3_COLOR_POLICY_PERMISSIONS = [
   "WRITE_SECURE_SETTINGS",
   "RECEIVE_BOOT_COMPLETED",
+  "FOREGROUND_SERVICE",
   "FOREGROUND_SERVICE_SPECIAL_USE",
 ];
 
@@ -7746,6 +7747,11 @@ function auditAndroidCloudSource(
           );
         }
       }
+      if (!lp3Manifest.includes('android:screenOrientation="portrait"')) {
+        failures.push(
+          "LP3 direct-debug manifest does not lock MainActivity to portrait",
+        );
+      }
     }
     const lp3JavaRoot = path.join(lp3DebugRoot, "java", "ai", "elizaos", "app");
     for (const file of ANDROID_LP3_COLOR_POLICY_JAVA_FILES) {
@@ -9669,6 +9675,11 @@ function assertAndroidLp3ColorPolicyManifest(manifestText) {
     "receiver",
     receiverName,
   );
+  const mainActivity = findAndroidManifestElementBlock(
+    manifestText,
+    "activity",
+    `${APP.appId}.MainActivity`,
+  );
   if (!initializer) {
     throw new Error(
       `[mobile-build] opted-in LP3 artifact is missing ${initializerName}`,
@@ -9682,6 +9693,14 @@ function assertAndroidLp3ColorPolicyManifest(manifestText) {
   if (!receiver) {
     throw new Error(
       `[mobile-build] opted-in LP3 artifact is missing ${receiverName}`,
+    );
+  }
+  if (
+    !mainActivity ||
+    !/android:screenOrientation[^\n]*0x1/.test(mainActivity)
+  ) {
+    throw new Error(
+      "[mobile-build] opted-in LP3 MainActivity must be locked to portrait",
     );
   }
   if (!/android:exported[^\n]*(?:0x0|false)/.test(service)) {
