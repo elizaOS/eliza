@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * AgentRequestTransport for the iOS local agent: installs the __ELIZA_BRIDGE__
  * window bridge and routes requests to the in-process full-bun agent over its
@@ -1007,7 +1008,7 @@ async function tryFullBunStreamingResponse(
         scope: "ios-local-agent.stream-after-head",
         severity: "warning",
         error,
-        context: { path: options.path?.slice(0, 120) },
+        context: { path: options.path ? truncateWellFormed(toWellFormedUnicode(options.path), 120) : undefined },
       });
     },
   );
@@ -1055,7 +1056,7 @@ export async function handleIosLocalAgentNativeRequest(
     appendIosBootTrace("native-request", {
       copy: "ui",
       n: tracedNativeRequests,
-      path: options.path?.slice(0, 120) ?? null,
+      path: options.path ? truncateWellFormed(toWellFormedUnicode(options.path), 120) : null,
     });
   }
   const path = options.path?.trim();
