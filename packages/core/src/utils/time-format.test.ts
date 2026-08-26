@@ -166,4 +166,16 @@ describe("invalid and unrepresentable timestamps", () => {
 		expect(formatRelativeTime(MAX_REPRESENTABLE_MS)).not.toBe("just now");
 		expect(formatTimestamp(MAX_REPRESENTABLE_MS)).not.toBe("just now");
 	});
+
+	it("accepts Date instances and string timestamps", () => {
+		expect(formatRelativeTime(new Date(NOW - 5 * MINUTE))).toBe("5m ago");
+		expect(formatRelativeTime(new Date(NOW + 5 * MINUTE))).toBe("in 5m");
+		expect(formatTimestamp(new Date(NOW - 5 * MINUTE))).toBe("5 minutes ago");
+		expect(formatRelativeTime(new Date(NOW - 5 * MINUTE).toISOString())).toBe(
+			"5m ago",
+		);
+		expect(formatRelativeTime(String(NOW - 5 * MINUTE))).toBe("5m ago");
+		expect(formatRelativeTime("invalid-date-string")).toBe("just now");
+		expect(formatRelativeTime("   ")).toBe("just now");
+	});
 });
