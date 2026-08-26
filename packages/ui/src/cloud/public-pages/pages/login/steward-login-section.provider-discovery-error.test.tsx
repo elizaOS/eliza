@@ -6,6 +6,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -17,6 +18,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const harness = vi.hoisted(() => ({
   getProvidersCalls: 0,
+  mode: "fail-twice-then-succeed" as
+    | "fail-twice-then-succeed"
+    | "always-fail"
+    | "hang",
 }));
 
 const LIVE_PROVIDERS = {
@@ -52,7 +57,10 @@ vi.mock("@stwd/sdk", () => ({
     }
     getProviders() {
       harness.getProvidersCalls += 1;
-      if (harness.getProvidersCalls === 1) {
+      if (harness.mode === "hang") {
+        return new Promise(() => {});
+      }
+      if (harness.mode === "always-fail" || harness.getProvidersCalls <= 2) {
         return Promise.reject(
           new Error("Provider service is temporarily unavailable"),
         );
@@ -132,16 +140,51 @@ function renderSection() {
 describe("StewardLoginSection provider discovery truth", () => {
   beforeEach(() => {
     harness.getProvidersCalls = 0;
+    harness.mode = "fail-twice-then-succeed";
     window.sessionStorage.clear();
   });
 
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     window.sessionStorage.clear();
     vi.clearAllMocks();
   });
 
-  it("fails visibly without a fabricated provider subset and retries live discovery", async () => {
+  it("times out a provider request that never settles", async () => {
+    vi.useFakeTimers();
+    harness.mode = "hang";
+    renderSection();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+
+    expect(screen.getByText("Sign-in options couldn't load")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Steward provider discovery timed out. Check your connection and retry.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Google" })).toBeNull();
+  });
+
+  it("keeps a valid session-cached provider set during reconcile failure", async () => {
+    harness.mode = "always-fail";
+    window.sessionStorage.setItem(
+      "eliza.steward.providers.v1:elizacloud",
+      JSON.stringify(LIVE_PROVIDERS),
+    );
+
+    renderSection();
+
+    expect(await screen.findByRole("button", { name: "Google" })).toBeTruthy();
+    await waitFor(() => expect(harness.getProvidersCalls).toBe(1));
+    expect(screen.queryByText("Sign-in options couldn't load")).toBeNull();
+    expect(screen.getByRole("button", { name: "Discord" })).toBeTruthy();
+  });
+
+  it("fails visibly without fabricated providers and survives repeated failure", async () => {
     renderSection();
 
     expect(
@@ -156,6 +199,15 @@ describe("StewardLoginSection provider discovery truth", () => {
       screen.getByRole("button", { name: "Retry sign-in options" }),
     );
 
+    expect(
+      await screen.findByText("Sign-in options couldn't load"),
+    ).toBeTruthy();
+    expect(harness.getProvidersCalls).toBe(2);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Retry sign-in options" }),
+    );
+
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Google" })).toBeTruthy(),
     );
@@ -163,6 +215,6 @@ describe("StewardLoginSection provider discovery truth", () => {
     expect(screen.getByRole("button", { name: "GitHub" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "X" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Telegram" })).toBeTruthy();
-    expect(harness.getProvidersCalls).toBe(2);
+    expect(harness.getProvidersCalls).toBe(3);
   });
 });
