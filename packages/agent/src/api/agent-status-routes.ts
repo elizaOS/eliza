@@ -3,7 +3,7 @@
  */
 
 import type http from "node:http";
-import type { AgentRuntime, ReadJsonBodyOptions } from "@elizaos/core";
+import { type AgentRuntime, type ReadJsonBodyOptions, tailWellFormed, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { TradePermissionMode } from "@elizaos/shared";
 import {
   PostRegistryRegisterRequestSchema,
@@ -227,12 +227,12 @@ export async function handleAgentStatusRoutes(
         evmAddress,
         evmAddressShort:
           evmAddress && evmAddress.length >= 12
-            ? `${evmAddress.slice(0, 6)}...${evmAddress.slice(-4)}`
+            ? `${truncateWellFormed(toWellFormedUnicode(evmAddress), 6)}...${tailWellFormed(toWellFormedUnicode(evmAddress), 4)}`
             : evmAddress,
         solanaAddress: addrs.solanaAddress ?? null,
         solanaAddressShort:
           addrs.solanaAddress && addrs.solanaAddress.length >= 12
-            ? `${addrs.solanaAddress.slice(0, 4)}...${addrs.solanaAddress.slice(-4)}`
+            ? `${truncateWellFormed(toWellFormedUnicode(addrs.solanaAddress), 4)}...${tailWellFormed(toWellFormedUnicode(addrs.solanaAddress), 4)}`
             : (addrs.solanaAddress ?? null),
         localSignerAvailable: capability.localSignerAvailable,
         managedBscRpcReady: bscRpcReady,
