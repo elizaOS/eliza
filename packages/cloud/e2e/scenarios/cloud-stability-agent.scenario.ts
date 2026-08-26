@@ -65,6 +65,7 @@ const syntheticRuntimePolicy = {
     "goals_migration",
     "identity_resolution",
     "lifeops_scheduled_task_runner",
+    "membership",
     "memoryStorage",
     "notification",
     "optimized_prompt",
