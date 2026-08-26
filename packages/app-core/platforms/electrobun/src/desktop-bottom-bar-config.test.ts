@@ -24,10 +24,8 @@ import {
 
 describe("desktop bottom-bar config", () => {
   describe("shouldStartBottomBar", () => {
-    it("defaults to the assistant on macOS and Workspace elsewhere", () => {
-      expect(shouldStartBottomBar({}, [], "darwin")).toBe(true);
-      expect(shouldStartBottomBar({}, [], "win32")).toBe(false);
-      expect(shouldStartBottomBar({}, [], "linux")).toBe(false);
+    it("is ON by default on every desktop platform", () => {
+      expect(shouldStartBottomBar({}, [])).toBe(true);
     });
 
     it("stays ON for unset / empty / truthy values", () => {
@@ -242,13 +240,13 @@ describe("desktop bottom-bar config", () => {
   });
 
   describe("resolveDesktopShellWindowPresentation", () => {
-    it("defaults to the assistant only on macOS", () => {
+    it("keeps the bottom-bar host transparent on every desktop platform", () => {
       expect(resolveDesktopShellWindowPresentation({}, [], "win32")).toEqual({
-        mode: "default",
-        titleBarStyle: "default",
-        transparent: false,
-        nativeShadow: true,
-        nativeInteractiveChrome: true,
+        mode: "bottom-bar",
+        titleBarStyle: "hidden",
+        transparent: true,
+        nativeShadow: false,
+        nativeInteractiveChrome: false,
       });
       expect(resolveDesktopShellWindowPresentation({}, [], "darwin")).toEqual({
         mode: "bottom-bar",
@@ -258,22 +256,6 @@ describe("desktop bottom-bar config", () => {
         nativeInteractiveChrome: false,
       });
       expect(resolveDesktopShellWindowPresentation({}, [], "linux")).toEqual({
-        mode: "default",
-        titleBarStyle: "default",
-        transparent: false,
-        nativeShadow: true,
-        nativeInteractiveChrome: true,
-      });
-    });
-
-    it("allows an explicit bottom-bar override on non-macOS desktop", () => {
-      expect(
-        resolveDesktopShellWindowPresentation(
-          { ELIZA_DESKTOP_BOTTOM_BAR: "1" },
-          [],
-          "linux",
-        ),
-      ).toEqual({
         mode: "bottom-bar",
         titleBarStyle: "hidden",
         transparent: true,

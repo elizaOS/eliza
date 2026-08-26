@@ -13,8 +13,8 @@ type RestingPillButtonProps = React.ComponentProps<typeof Button> & {
 
 /**
  * The default surface is the compact 48x6 embedded mark. A detached macOS
- * caller supplies its exact 64x12 host dimensions so visible material and
- * native hit geometry remain identical, with no dark capsule or clear halo.
+ * caller supplies a 64x44 native hit target and a 64x12 mark so the visible
+ * material remains compact without making pointer or keyboard activation tiny.
  */
 export function RestingPillButton({
   breathing = false,
@@ -39,7 +39,7 @@ export function RestingPillButton({
           aria-hidden="true"
           data-testid={markTestId}
           className={cn(
-            "pointer-events-none h-full w-full rounded-full bg-white/95 opacity-100",
+            "pointer-events-none h-1.5 w-12 rounded-full bg-white/95 opacity-100",
             breathing && "eliza-chat-handle-breathe",
             markClassName,
           )}

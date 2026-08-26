@@ -415,7 +415,7 @@ describe("DesktopManager main window controls", () => {
     expect(window.setFrame).toHaveBeenLastCalledWith(250, 36, 600, 700);
 
     await manager.setBottomBarExpanded({ expanded: false });
-    expect(window.setFrame).toHaveBeenLastCalledWith(518, 724, 64, 12);
+    expect(window.setFrame).toHaveBeenLastCalledWith(518, 692, 64, 44);
 
     await manager.setBottomBarExpanded({ expanded: false, hovered: true });
     expect(window.setFrame).toHaveBeenLastCalledWith(262, 672, 576, 64);
