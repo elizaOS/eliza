@@ -1455,7 +1455,12 @@ export interface DirectProviderCredentialExportDeps {
  */
 export type DirectProviderEnvLedger = Map<
   DirectAccountProvider,
-  { token: string; openAiCompat: boolean }
+  {
+    token: string;
+    openAiCompat: boolean;
+    /** False when only compatibility aliases, not the provider key, are owned. */
+    providerEnv?: boolean;
+  }
 >;
 
 const defaultDirectProviderEnvLedger: DirectProviderEnvLedger = new Map();
@@ -1528,9 +1533,11 @@ function retractExportedDirectProviderEnv(
   if (!previous) return;
   ledger.delete(providerId);
   const envKey = DIRECT_ACCOUNT_PROVIDER_ENV[providerId];
-  restoreExportedEnv(env, ledger, envKey, previous.token);
-  if (providerId === "zai-api" && env.Z_AI_API_KEY === previous.token) {
-    restoreExportedEnv(env, ledger, "Z_AI_API_KEY", previous.token);
+  if (previous.providerEnv !== false) {
+    restoreExportedEnv(env, ledger, envKey, previous.token);
+    if (providerId === "zai-api" && env.Z_AI_API_KEY === previous.token) {
+      restoreExportedEnv(env, ledger, "Z_AI_API_KEY", previous.token);
+    }
   }
   const openAiCompatBase = OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER[providerId];
   if (previous.openAiCompat && openAiCompatBase) {
@@ -1573,6 +1580,10 @@ export async function applyDirectProviderCredentialsToEnv(
 ): Promise<void> {
   const { pool, env, ledger } = deps;
   const generation = nextDirectProviderExportGeneration(ledger);
+  // Revoke the prior export before any storage or selection read can fail or
+  // suspend. A durable disable/delete must never leave its old credential live
+  // merely because the follow-up reconciliation could not finish.
+  retractAllExportedDirectProviderEnvInternal(env, ledger);
   const activeProvider = activeBackend
     ? DIRECT_PROVIDER_BY_BACKEND[activeBackend]
     : undefined;
@@ -1598,12 +1609,6 @@ export async function applyDirectProviderCredentialsToEnv(
   // never re-export a credential after the newer pass disabled or deleted it.
   if (directProviderExportGeneration.get(ledger) !== generation) return;
 
-  // Resolve every selection before mutating the environment, then retract the
-  // complete previous export as one synchronous transition. This prevents a
-  // native OpenAI token from being paired with a stale OpenRouter/xAI base URL
-  // while switching routes, and lets a disabled/revoked selection fail closed.
-  retractAllExportedDirectProviderEnvInternal(env, ledger);
-
   for (const [providerId, token] of selected) {
     const envKey = DIRECT_ACCOUNT_PROVIDER_ENV[providerId];
     assignExportedEnv(env, ledger, envKey, token);
@@ -1615,6 +1620,7 @@ export async function applyDirectProviderCredentialsToEnv(
     ledger.set(providerId, {
       token,
       openAiCompat: false,
+      providerEnv: true,
     });
   }
 
@@ -1642,7 +1648,18 @@ export async function applyDirectProviderCredentialsToEnv(
     assignExportedEnv(env, ledger, "OPENAI_API_KEY", activeProviderToken);
     assignExportedEnv(env, ledger, "OPENAI_BASE_URL", openAiCompatibleBase);
     const exported = activeProvider ? ledger.get(activeProvider) : undefined;
-    if (exported) exported.openAiCompat = true;
+    if (exported) {
+      exported.openAiCompat = true;
+    } else if (activeProvider) {
+      // The provider key came from operator launch env, but the compatibility
+      // aliases are still values written by this module and must be retracted
+      // or restored on route switch/reset.
+      ledger.set(activeProvider, {
+        token: activeProviderToken,
+        openAiCompat: true,
+        providerEnv: false,
+      });
+    }
   }
 }
 
