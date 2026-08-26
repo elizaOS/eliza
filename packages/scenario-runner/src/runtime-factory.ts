@@ -18,6 +18,8 @@ import {
   ModelType,
   NotificationService,
   trajectoriesPlugin,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import {
   createDeterministicModelPlugin,
@@ -574,10 +576,11 @@ export function deterministicScheduledDispatchRenderText(
   // contains) the raw instruction. Prefix the de-framed instruction and clamp
   // long instructions so the deterministic copy always passes that guard.
   if (!ownerMessage) return "checking in.";
+  const wellFormed = toWellFormedUnicode(ownerMessage);
   const clamped =
-    ownerMessage.length >= 64
-      ? `${ownerMessage.slice(0, 60).trimEnd()}…`
-      : ownerMessage;
+    wellFormed.length >= 64
+      ? `${truncateWellFormed(wellFormed, 60).trimEnd()}…`
+      : wellFormed;
   return `Heads up: ${clamped}`;
 }
 
