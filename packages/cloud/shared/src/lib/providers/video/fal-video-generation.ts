@@ -103,12 +103,15 @@ export function normalizeFalVideoResult(result: unknown, requestId?: string): Ge
 export function buildFalVideoInput(request: VideoGenerationRequest): Record<string, unknown> {
   const input: Record<string, unknown> = { prompt: request.prompt };
   const isSeedance25 = request.model.startsWith("bytedance/seedance-2.5/");
+  const isH3MaxImageToVideo = request.model === "minimax/h3-max/image-to-video";
   if (request.referenceUrl) {
     input.image_url = request.referenceUrl;
   }
   if (request.durationSeconds) {
     input.duration = isSeedance25 ? String(request.durationSeconds) : request.durationSeconds;
-    if (!isSeedance25) input.duration_seconds = request.durationSeconds;
+    if (!isSeedance25 && !isH3MaxImageToVideo) {
+      input.duration_seconds = request.durationSeconds;
+    }
   }
   if (request.resolution) {
     input.resolution = request.resolution;
@@ -122,6 +125,12 @@ export function buildFalVideoInput(request: VideoGenerationRequest): Record<stri
   if (request.endUserId) input.end_user_id = request.endUserId;
   if (request.voiceControl !== undefined) {
     input.voice_control = request.voiceControl;
+  }
+  if (isH3MaxImageToVideo) {
+    input.prompt_expansion_mode = "balanced";
+    delete input.audio;
+    delete input.generate_audio;
+    delete input.voice_control;
   }
   return input;
 }
