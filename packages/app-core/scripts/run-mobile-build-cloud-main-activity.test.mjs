@@ -62,7 +62,6 @@ describe("cloudSafeMainActivityJava", () => {
       "registerPlugin(ElizaSecureCredentialsPlugin.class);",
     );
     expect(source).toContain("registerPlugin(ElizaPlayVoicePlugin.class);");
-    expect(source).toContain("registerPlugin(GoogleIdentityPlugin.class);");
     expect(coldCapture).toBeGreaterThanOrEqual(0);
     expect(coldCapture).toBeLessThan(bridgeCreation);
     expect(warmCapture).toBeGreaterThanOrEqual(0);

@@ -340,8 +340,6 @@ export interface Bindings {
   /** Required managed Google OAuth application credentials. */
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
-  /** Native Google ID-token audience; browser OAuth remains on GOOGLE_CLIENT_ID. */
-  MOBILE_GOOGLE_SERVER_CLIENT_ID?: string;
   STEWARD_JWT_SECRET?: string;
   /** HS256 service-account bridge secret; must never equal the staging QA signer. */
   ELIZA_SERVICE_JWT_SECRET?: string;
