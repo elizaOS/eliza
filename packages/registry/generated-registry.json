@@ -369,6 +369,54 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@lurrielcode/plugin-qubic": {
+      "git": {
+        "repo": "lurrielcode/plugin-qubic",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@lurrielcode/plugin-qubic",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.18"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Qubic blockchain plugin for ElizaOS — wallet, balance, transfers, tick, vault, Qearn, QSWAP AMM, OTC escrow, and contract query/invoke",
+      "homepage": "https://github.com/lurrielcode/plugin-qubic/tree/main/plugin-qubic",
+      "topics": [
+        "qubic",
+        "blockchain",
+        "wallet",
+        "amm",
+        "qearn",
+        "qswap",
+        "escrow",
+        "web3"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugin-qubic"
+    },
     "@ophis/plugin-elizaos": {
       "git": {
         "repo": "ophis-fi/ophis",
