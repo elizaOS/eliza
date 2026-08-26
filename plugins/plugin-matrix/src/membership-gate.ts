@@ -149,10 +149,21 @@ export class MatrixMembershipMessageGate {
 
   /** True when the message may proceed to agent dispatch. */
   async authorizeMessage(input: MatrixMembershipGateDecisionInput): Promise<boolean> {
+    // A BROKEN gate fails closed for EVERY room, direct rooms included: a
+    // configured authority that failed bootstrap must never be bypassed by
+    // room shape. (The absent-authority legacy mode below still allows DMs.)
+    if (this.broken) {
+      this.warnOnce(
+        `authority-broken:${input.roomId}`,
+        "Matrix room admission denied: membership authority is unavailable",
+        { roomId: input.roomId }
+      );
+      return false;
+    }
     if (input.isDirectRoom) {
       return true;
     }
-    if (this.broken || (!this.authority && process.env.MATRIX_MEMBERSHIP_ENFORCE === "1")) {
+    if (!this.authority && process.env.MATRIX_MEMBERSHIP_ENFORCE === "1") {
       this.warnOnce(
         `authority-broken:${input.roomId}`,
         "Matrix room admission denied: membership authority is unavailable",

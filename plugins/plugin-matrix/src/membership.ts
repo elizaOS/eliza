@@ -188,6 +188,7 @@ export class MatrixMembershipAuthority {
    * complete — until complete state is observed.
    */
   private readonly incompleteRooms = new Set<string>();
+  private readonly incompleteReasons = new Map<string, string>();
 
   constructor(input: {
     runtime: IAgentRuntime;
@@ -433,6 +434,7 @@ export class MatrixMembershipAuthority {
           tracker.sourceVersion = sourceVersion;
           tracker.sourceCursor = sourceCursor;
           this.incompleteRooms.delete(input.roomId);
+          this.incompleteReasons.delete(input.roomId);
           return true;
         } catch (error) {
           if (this.handleFenceOrDuplicate(error, attempt, scope, "ordered_delta")) {
@@ -487,7 +489,7 @@ export class MatrixMembershipAuthority {
             completeness: "incomplete",
             reason: input.reason,
           });
-          this.markRoomIncomplete(input.roomId);
+          this.markRoomIncomplete(input.roomId, input.reason);
           return;
         } catch (error) {
           if (this.handleFenceOrDuplicate(error, attempt, scope, "ordered_delta")) {
@@ -768,12 +770,29 @@ export class MatrixMembershipAuthority {
    * Marks a room's member list as known-incomplete. Snapshots for the room are
    * reported incomplete until complete state is observed.
    */
-  markRoomIncomplete(roomId: string): void {
+  markRoomIncomplete(roomId: string, reason = "unknown"): void {
     this.incompleteRooms.add(roomId);
+    this.incompleteReasons.set(roomId, reason);
   }
 
   isRoomIncomplete(roomId: string): boolean {
     return this.incompleteRooms.has(roomId);
+  }
+
+  /**
+   * Clears a recorded incompleteness once the caller has independently
+   * established complete state (a fully resolved roster in a fresh sync).
+   * Scoped to ONE reason at a time so a caller may only clear the flag it
+   * just disproved — never blanket-clear flags other observers set.
+   */
+  clearRoomIncomplete(roomId: string, reason: string): boolean {
+    const recorded = this.incompleteReasons.get(roomId);
+    if (recorded !== reason) {
+      return false;
+    }
+    this.incompleteRooms.delete(roomId);
+    this.incompleteReasons.delete(roomId);
+    return true;
   }
 
   /** Read-only scope health accessor (tests and diagnostics). */
