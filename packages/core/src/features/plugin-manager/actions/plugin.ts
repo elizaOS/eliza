@@ -297,6 +297,12 @@ function readSourceOption(
 function stripTrailingChars(value: string, chars: string): string {
 	let end = value.length;
 	while (end > 0 && chars.includes(value[end - 1] as string)) end--;
+	if (end > 0) {
+		const lead = value.charCodeAt(end - 1);
+		if (lead >= 0xd800 && lead <= 0xdbff) {
+			end -= 1;
+		}
+	}
 	return value.slice(0, end);
 }
 

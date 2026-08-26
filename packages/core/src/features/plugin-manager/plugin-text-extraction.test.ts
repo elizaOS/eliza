@@ -26,6 +26,13 @@ describe("extractNameFromText", () => {
 		expect(extractNameFromText("install foo")).toBe("plugin-foo");
 	});
 
+
+	it("preserves well-formed Unicode when stripping trailing characters across surrogate boundaries", () => {
+		const textWithSurrogate = "install @scope/plugin-foo🚀...";
+		const extracted = extractNameFromText(textWithSurrogate);
+		expect(extracted?.isWellFormed?.()).not.toBe(false);
+	});
+
 	it("is linear on a long dotted token (ReDoS input)", () => {
 		const evil = `install a${".".repeat(200_000)}b`;
 		const start = performance.now();
