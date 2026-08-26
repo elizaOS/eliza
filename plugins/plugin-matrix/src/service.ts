@@ -475,6 +475,9 @@ function buildMatrixMessage(event: sdk.MatrixEvent, room: sdk.Room): MatrixMessa
 /**
  * Build a core Memory from a MatrixMessage, deriving deterministic ids the same
  * way the inbound dispatch path does so reads and the live message loop agree.
+ * When `accountScope` is set (multi-account runtime), every seed is prefixed
+ * with the account id so two Matrix accounts observing the same room never
+ * share room/entity ids.
  */
 function matrixMessageToMemory(
   runtime: IAgentRuntime,
@@ -482,19 +485,21 @@ function matrixMessageToMemory(
     MatrixMessage,
     "roomId" | "eventId" | "timestamp" | "sender" | "content" | "replyTo"
   >,
-  channelType: ChannelType
+  channelType: ChannelType,
+  accountScope?: string
 ): Memory {
   const roomId = message.roomId;
+  const scoped = (seed: string) => (accountScope ? `${accountScope}:${seed}` : seed);
   return {
-    id: createUniqueUuid(runtime, message.eventId || `${roomId}:${message.timestamp}`),
-    entityId: createUniqueUuid(runtime, message.sender || roomId),
+    id: createUniqueUuid(runtime, scoped(message.eventId || `${roomId}:${message.timestamp}`)),
+    entityId: createUniqueUuid(runtime, scoped(message.sender || roomId)),
     agentId: runtime.agentId,
-    roomId: createUniqueUuid(runtime, message.roomId),
+    roomId: createUniqueUuid(runtime, scoped(message.roomId)),
     content: {
       text: message.content,
       source: MATRIX_SERVICE_NAME,
       channelType,
-      ...(message.replyTo ? { inReplyTo: createUniqueUuid(runtime, message.replyTo) } : {}),
+      ...(message.replyTo ? { inReplyTo: createUniqueUuid(runtime, scoped(message.replyTo)) } : {}),
     },
     createdAt: message.timestamp,
   };
@@ -1656,7 +1661,7 @@ export class MatrixService extends Service implements IMatrixService {
       metadata: { accountId: state.accountId },
     });
 
-    const coreMessage = matrixMessageToMemory(this.runtime, message, channelType);
+    const coreMessage = matrixMessageToMemory(this.runtime, message, channelType, state.accountId);
 
     // Auto-reply is gated (default off, matching plugin-discord/telegram) so the
     // agent never speaks unprompted; passive LifeOps mode also suppresses it.
@@ -1869,7 +1874,7 @@ export class MatrixService extends Service implements IMatrixService {
       const event = events[i];
       const message = buildMatrixMessage(event, room);
       if (message) {
-        const memory = matrixMessageToMemory(this.runtime, message, channelType);
+        const memory = matrixMessageToMemory(this.runtime, message, channelType, state.accountId);
         memory.content.name = message.senderInfo.displayName || message.sender;
         out.push(memory);
         continue;
@@ -1893,7 +1898,8 @@ export class MatrixService extends Service implements IMatrixService {
               "🔒 [end-to-end encrypted message this device can't read — its device isn't cross-signed, so senders withhold the decryption keys. This needs a one-time device verification (or the account password) to unblock; it is NOT a sync or pagination issue.]",
             timestamp: event.getTs(),
           },
-          channelType
+          channelType,
+          state.accountId
         );
         placeholder.content.name = room.getMember(sender)?.name || sender;
         out.push(placeholder);
