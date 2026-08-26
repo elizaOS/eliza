@@ -729,6 +729,48 @@ export async function reserveAgentBackupOperationInTransaction(
   return row;
 }
 
+/** Renew from primary DB time after every backup-mutation trigger has returned. */
+async function renewAgentBackupOperationLeasesAfterLocks(
+  tx: DbTransaction,
+  params: {
+    backupIds: string[];
+    ownerId: string;
+    generation: string;
+    leaseMs: number;
+    leaseMustRemainValidUntil?: Date;
+  },
+): Promise<StoredAgentSandboxBackup[]> {
+  const databaseNow = await readPostLockDatabaseNow(tx);
+  if (
+    params.leaseMustRemainValidUntil &&
+    params.leaseMustRemainValidUntil.getTime() <= databaseNow.getTime()
+  ) {
+    throw new AgentBackupCatalogConflictError(
+      "Backup operation lease expired while waiting for post-lock authority",
+    );
+  }
+  const renewed = await tx
+    .update(agentSandboxBackups)
+    .set({
+      catalog_lease_expires_at: new Date(databaseNow.getTime() + params.leaseMs),
+      catalog_updated_at: databaseNow,
+    })
+    .where(
+      and(
+        inArray(agentSandboxBackups.id, params.backupIds),
+        eq(agentSandboxBackups.catalog_lease_owner, params.ownerId),
+        eq(agentSandboxBackups.catalog_lease_generation, params.generation),
+      ),
+    )
+    .returning();
+  if (renewed.length !== params.backupIds.length) {
+    throw new AgentBackupCatalogConflictError(
+      "Backup operation could not renew every post-lock lease",
+    );
+  }
+  return renewed;
+}
+
 /**
  * Fairly claim at most one due operation per tenant. Every capture/upload
  * mutation must carry the returned owner+generation fence.
@@ -812,8 +854,12 @@ export async function claimDueAgentBackupOperations(params: {
       .set({
         catalog_lease_owner: params.ownerId,
         catalog_lease_generation: generation,
-        catalog_lease_expires_at: sql`NOW() + (${params.leaseMs} * INTERVAL '1 millisecond')`,
-        catalog_updated_at: sql`NOW()`,
+        // Preliminary fence. A backup-mutation trigger may still block after
+        // these expressions are evaluated, so this is renewed below from a
+        // post-trigger database clock before the transaction can commit.
+        catalog_lease_expires_at: sql`clock_timestamp()
+          + (${params.leaseMs} * INTERVAL '1 millisecond')`,
+        catalog_updated_at: sql`clock_timestamp()`,
       })
       .where(
         and(
@@ -849,7 +895,14 @@ export async function claimDueAgentBackupOperations(params: {
         ),
       )
       .returning();
-    return claimed.map((backup) => ({
+    if (claimed.length === 0) return [];
+    const renewed = await renewAgentBackupOperationLeasesAfterLocks(tx, {
+      backupIds: claimed.map((backup) => backup.id),
+      ownerId: params.ownerId,
+      generation,
+      leaseMs: params.leaseMs,
+    });
+    return renewed.map((backup) => ({
       backup,
       ownerId: params.ownerId,
       generation,
@@ -873,33 +926,74 @@ export async function heartbeatAgentBackupOperation(params: {
   ) {
     throw new Error(`leaseMs must be between 1 and ${MAX_OPERATION_LEASE_MS}`);
   }
-  const [updated] = await dbWrite
-    .update(agentSandboxBackups)
-    .set({
-      catalog_lease_expires_at: sql`NOW() + (${params.leaseMs} * INTERVAL '1 millisecond')`,
-      catalog_updated_at: sql`NOW()`,
-    })
-    .where(
-      and(
-        eq(agentSandboxBackups.id, params.backupId),
-        eq(agentSandboxBackups.catalog_organization_id, params.organizationId),
-        eq(agentSandboxBackups.catalog_lease_owner, params.execution.ownerId),
-        eq(agentSandboxBackups.catalog_lease_generation, params.execution.generation),
-        gt(agentSandboxBackups.catalog_lease_expires_at, sql`NOW()`),
-        sql`${agentSandboxBackups.sandbox_record_id} IS NOT NULL`,
-        sql`${agentSandboxBackups.catalog_state} IN (${sql.join(
-          EXECUTION_OWNED_STATES.map((state) => sql`${state}`),
-          sql`, `,
-        )})`,
-      ),
-    )
-    .returning();
-  if (!updated) {
-    throw new AgentBackupCatalogConflictError(
-      "Backup operation heartbeat lost its execution generation",
-    );
-  }
-  return updated;
+  return dbWrite.transaction(async (tx) => {
+    const [leased] = await tx
+      .select({
+        id: agentSandboxBackups.id,
+        leaseExpiresAt: agentSandboxBackups.catalog_lease_expires_at,
+      })
+      .from(agentSandboxBackups)
+      .where(
+        and(
+          eq(agentSandboxBackups.id, params.backupId),
+          eq(agentSandboxBackups.catalog_organization_id, params.organizationId),
+          eq(agentSandboxBackups.catalog_lease_owner, params.execution.ownerId),
+          eq(agentSandboxBackups.catalog_lease_generation, params.execution.generation),
+          sql`${agentSandboxBackups.sandbox_record_id} IS NOT NULL`,
+          sql`${agentSandboxBackups.catalog_state} IN (${sql.join(
+            EXECUTION_OWNED_STATES.map((state) => sql`${state}`),
+            sql`, `,
+          )})`,
+        ),
+      )
+      .limit(1)
+      .for("update");
+    if (!leased?.leaseExpiresAt) {
+      throw new AgentBackupCatalogConflictError(
+        "Backup operation heartbeat lost its execution generation",
+      );
+    }
+    const [updated] = await tx
+      .update(agentSandboxBackups)
+      .set({
+        catalog_lease_expires_at: sql`clock_timestamp()
+          + (${params.leaseMs} * INTERVAL '1 millisecond')`,
+        catalog_updated_at: sql`clock_timestamp()`,
+      })
+      .where(
+        and(
+          eq(agentSandboxBackups.id, params.backupId),
+          eq(agentSandboxBackups.catalog_organization_id, params.organizationId),
+          eq(agentSandboxBackups.catalog_lease_owner, params.execution.ownerId),
+          eq(agentSandboxBackups.catalog_lease_generation, params.execution.generation),
+          gt(agentSandboxBackups.catalog_lease_expires_at, sql`clock_timestamp()`),
+          sql`${agentSandboxBackups.sandbox_record_id} IS NOT NULL`,
+          sql`${agentSandboxBackups.catalog_state} IN (${sql.join(
+            EXECUTION_OWNED_STATES.map((state) => sql`${state}`),
+            sql`, `,
+          )})`,
+        ),
+      )
+      .returning();
+    if (!updated) {
+      throw new AgentBackupCatalogConflictError(
+        "Backup operation heartbeat lost its execution generation",
+      );
+    }
+    const [renewed] = await renewAgentBackupOperationLeasesAfterLocks(tx, {
+      backupIds: [updated.id],
+      ownerId: params.execution.ownerId,
+      generation: params.execution.generation,
+      leaseMs: params.leaseMs,
+      leaseMustRemainValidUntil: leased.leaseExpiresAt,
+    });
+    if (!renewed) {
+      throw new AgentBackupCatalogConflictError(
+        "Backup operation heartbeat could not renew its post-lock lease",
+      );
+    }
+    return renewed;
+  });
 }
 
 /**
