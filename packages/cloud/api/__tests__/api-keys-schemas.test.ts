@@ -169,16 +169,31 @@ describe("updateApiKeySchema", () => {
     expect("expires_at" in omitted).toBe(false);
   });
 
-  test("pins the z.coerce boundary: boolean rate_limit input coerces to 1/0 before the bounds check", () => {
-    // z.coerce.number() runs Number() on the input, so true becomes 1 and passes
-    // the min bound. Pinned as the schema's actual coercion contract — if this
-    // surprises anyone, it is a schema change to make, not a test bug.
+  test("rejects boolean rate_limit at the wire boundary while accepting numeric input", () => {
+    // Booleans are a client typo, not a quota: z.coerce.number() would silently
+    // map `true` to quota 1 (and `false` to an out-of-bounds 0). The wire
+    // contract is numeric 1-100000 [K07]; numeric strings still coerce.
     expect(
-      createApiKeySchema.parse({ name: "k", rate_limit: true }).rate_limit,
-    ).toBe(1);
+      createApiKeySchema.safeParse({ name: "k", rate_limit: true }).success,
+    ).toBe(false);
     expect(
       createApiKeySchema.safeParse({ name: "k", rate_limit: false }).success,
     ).toBe(false);
+    expect(updateApiKeySchema.safeParse({ rate_limit: true }).success).toBe(
+      false,
+    );
+    expect(updateApiKeySchema.safeParse({ rate_limit: false }).success).toBe(
+      false,
+    );
+
+    // positive controls: real numeric quotas and numeric strings still pass
+    expect(
+      createApiKeySchema.parse({ name: "k", rate_limit: 250 }).rate_limit,
+    ).toBe(250);
+    expect(
+      createApiKeySchema.parse({ name: "k", rate_limit: "150" }).rate_limit,
+    ).toBe(150);
+    expect(updateApiKeySchema.parse({ rate_limit: "75" }).rate_limit).toBe(75);
   });
 
   test("transforms a valid expires_at to a Date and rejects invalid ones on update", () => {
