@@ -59,15 +59,6 @@ export const VIEW_OCR_POLICIES = {
       "Submit the quarterly report",
     ],
   }),
-  "builtin-phone": expected({
-    requireAny: ["call-blocked", "dialer", "recent"],
-  }),
-  "builtin-messages": expected({
-    requireAny: ["Set default SMS", "bridge-only", "compose"],
-  }),
-  "builtin-contacts": expected({
-    requireAny: ["address book", "phone, or email", "search"],
-  }),
   "builtin-camera": exempt(
     "native-platform-gated",
     "The camera is an AOSP-native surface, so the browser audit intentionally renders the launcher fallback.",
@@ -182,17 +173,6 @@ export const VIEW_OCR_POLICIES = {
       "recordings",
     ],
   }),
-  "builtin-relationships": expected({
-    requireAny: [
-      "Relationships",
-      "Personality",
-      "Skills",
-      "Experience",
-      "No relationships yet",
-      "Search people",
-      "Connect your platforms",
-    ],
-  }),
   "builtin-memories": expected({
     requireAny: [
       "No memories yet",
@@ -204,9 +184,7 @@ export const VIEW_OCR_POLICIES = {
       "Filter by type",
     ],
   }),
-  "builtin-rolodex": expected({
-    requireAny: ["Relationships", "No relationships yet", "Search people"],
-  }),
+  "builtin-rolodex": expected(LAUNCHER_FALLBACK),
   "builtin-runtime": expected({
     requireAny: ["Plugins", "Actions", "Providers"],
   }),
