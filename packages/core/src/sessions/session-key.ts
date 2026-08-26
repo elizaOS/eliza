@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "../utils/well-formed.js";
 /** Builds, parses, and normalizes `agent:{agentId}:{rest}` session identifiers. */
 
 // ============================================================================
@@ -15,7 +16,7 @@ const LEADING_DASH_RE = /^-+/;
 const TRAILING_DASH_RE = /-+$/;
 
 function trimOptionalString(value: string | undefined | null): string {
-	return value ? value.trim() : "";
+	return value ? truncateWellFormed(toWellFormedUnicode(value.trim()), 1024) : "";
 }
 
 // ============================================================================
@@ -185,8 +186,7 @@ export function normalizeAgentId(value: string | undefined | null): string {
 	if (!rawTrimmed) {
 		return DEFAULT_AGENT_ID;
 	}
-	const trimmed =
-		rawTrimmed.length > 1024 ? rawTrimmed.slice(0, 1024) : rawTrimmed;
+	const trimmed = rawTrimmed;
 	// Keep it path-safe + shell-friendly.
 	if (VALID_ID_RE.test(trimmed)) {
 		return trimmed.toLowerCase();
@@ -223,8 +223,7 @@ export function normalizeAccountId(value: string | undefined | null): string {
 	if (!rawTrimmed) {
 		return DEFAULT_ACCOUNT_ID;
 	}
-	const trimmed =
-		rawTrimmed.length > 1024 ? rawTrimmed.slice(0, 1024) : rawTrimmed;
+	const trimmed = rawTrimmed;
 	if (VALID_ID_RE.test(trimmed)) {
 		return trimmed.toLowerCase();
 	}
