@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Backend-free, device-runnable chat UX gallery.
  *
@@ -232,7 +233,7 @@ export function ChatWidgetHarness() {
       setChatInput: setDraft,
       copyToClipboard: async (text: string) => {
         setEvents((current) =>
-          [`copied → ${text.slice(0, 32)}`, ...current].slice(0, 4),
+          [`copied → ${truncateWellFormed(toWellFormedUnicode(text), 32)}`, ...current].slice(0, 4),
         );
       },
     }),

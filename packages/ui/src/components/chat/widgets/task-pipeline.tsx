@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Presentational pieces of the inline task pipeline: the live plan/todo
  * checklist, one sub-agent's activity block (its current line + collapsible
@@ -229,7 +230,7 @@ export function SubagentBlock({ agent }: { agent: SubagentActivity }) {
       <div className="flex items-center gap-2">
         <StatusDot status={agent.status} />
         <span className="truncate text-sm font-medium text-txt">
-          {agent.label ?? agent.sessionId.slice(0, 8)}
+          {agent.label ?? truncateWellFormed(toWellFormedUnicode(agent.sessionId), 8)}
         </span>
         <span className={`text-xs ${STATUS_TONE[agent.status]}`}>
           {STATUS_LABEL[agent.status]}
