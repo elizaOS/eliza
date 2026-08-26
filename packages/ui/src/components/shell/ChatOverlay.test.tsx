@@ -1431,11 +1431,6 @@ describe("ChatOverlay", () => {
       expect(cls).toContain("pointer-coarse:min-w-touch");
       expect(cls).not.toContain("before:-inset-0.5");
     }
-    const plusClassName = screen.getByTestId("chat-composer-plus").className;
-    expect(plusClassName).toContain("hover:bg-transparent");
-    expect(plusClassName).toContain("hover:text-txt");
-    expect(plusClassName).toContain("data-[state=open]:bg-transparent");
-    expect(plusClassName).not.toContain("hover:bg-surface");
     unmount();
 
     // Active (hands-free): distinguishable via its stop glyph and pressed state,
@@ -2431,7 +2426,7 @@ describe("ChatOverlay", () => {
     expect(screen.getAllByTestId("chat-composer-textarea")).toHaveLength(1);
   });
 
-  it("keeps Home above the surface-local search and upload actions", () => {
+  it("keeps Home above the surface-local conversation actions", () => {
     render(<ChatOverlay controller={makeController()} />);
     const plus = screen.getByTestId("chat-composer-plus");
     expect(screen.getByLabelText("chat actions")).toBeTruthy();
@@ -2448,12 +2443,18 @@ describe("ChatOverlay", () => {
     });
 
     const home = screen.getByText("Back to Home");
+    const newChat = screen.getByText("New chat");
     const search = screen.getByText("Search chat…");
     expect(home).toBeTruthy();
+    expect(newChat).toBeTruthy();
     expect(search).toBeTruthy();
     expect(screen.getByText("Upload file")).toBeTruthy();
     expect(
       home.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      newChat.compareDocumentPosition(search) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(screen.queryByText("Record long-form transcript…")).toBeNull();
     expect(screen.queryByText("Enable camera")).toBeNull();
@@ -2537,6 +2538,26 @@ describe("ChatOverlay", () => {
     fireEvent.click(screen.getByText("Back to Home"));
 
     expect(navigateHome).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts a fresh preserved conversation from the chat-actions menu", () => {
+    const clearConversation = vi.fn();
+    render(<ChatOverlay controller={makeController({ clearConversation })} />);
+
+    const plus = screen.getByTestId("chat-composer-plus");
+    fireEvent.pointerDown(plus, {
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerUp(plus, {
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.click(screen.getByText("New chat"));
+
+    expect(clearConversation).toHaveBeenCalledTimes(1);
   });
 
   it("hides the redundant Home action while already on Home", () => {
@@ -4197,12 +4218,12 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(screen.queryByTestId("message-search-empty")).toBeNull();
   });
 
-  it("never invokes clearConversation from the header (no new-chat control)", () => {
+  it("never invokes clearConversation from the header", () => {
     const { controller } = makeSwipeController();
     render(<ChatOverlay controller={controller} />);
     openSheet();
 
-    // Nothing in the visible overlay may reset the one continuous thread.
+    // New chat belongs in the composer menu, not the reading header.
     expect(screen.queryByTestId("chat-full-clear")).toBeNull();
     expect(controller.clearConversation).not.toHaveBeenCalled();
   });

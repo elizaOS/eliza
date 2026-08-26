@@ -151,20 +151,16 @@ describe("POST /api/models/config validation", () => {
     expect(String(body.error)).toContain("requires backend");
   });
 
-  it("accepts Gemma for the Cerebras large role used by the runtime default", async () => {
-    const { ctx, json, config } = makeHarness("POST", {
+  it("rejects a gemma large write (role mismatch on cerebras)", async () => {
+    const { ctx, json } = makeHarness("POST", {
       target: "large",
       provider: "cerebras",
       model: "gemma-4-31b",
     });
     await handleModelConfigRoutes(ctx as never);
     const { status, body } = responseOf(json);
-    expect(status).toBeUndefined();
-    expect(body).toMatchObject({ applied: true });
-    expect(
-      ((config as Record<string, unknown>).env as Record<string, unknown>)
-        .OPENAI_LARGE_MODEL,
-    ).toBe("gemma-4-31b");
+    expect(status).toBe(400);
+    expect(String(body.error)).toContain("not offered");
   });
 
   it("rejects an ambiguous model when provider is omitted", async () => {
@@ -601,14 +597,14 @@ describe("GET /api/models/config activeChat", () => {
       string,
       Record<string, { value: string; source: string } | null>
     >;
-    // Unpinned cloud tiers report the shared code defaults so the operator
-    // sees what actually serves.
+    // Unpinned cloud tiers report the plugin's code defaults so the operator
+    // sees what actually serves — small gemma, large GLM (genuinely larger).
     expect(targets.small?.ELIZAOS_CLOUD_SMALL_MODEL).toEqual({
       value: "gemma-4-31b",
       source: "default",
     });
     expect(targets.large?.ELIZAOS_CLOUD_LARGE_MODEL).toEqual({
-      value: "gemma-4-31b",
+      value: "zai-glm-4.7",
       source: "default",
     });
   });
@@ -659,47 +655,6 @@ describe("GET /api/models/config activeChat", () => {
       provider: "cerebras",
       family: "OPENAI",
       endpoint: "api.cerebras.ai",
-    });
-    const targets = responseOf(json).body.targets as Record<
-      string,
-      Record<string, { value: string; source: string } | null>
-    >;
-    expect(targets.small?.OPENAI_SMALL_MODEL).toEqual({
-      value: "gemma-4-31b",
-      source: "default",
-    });
-    expect(targets.large?.OPENAI_LARGE_MODEL).toEqual({
-      value: "gemma-4-31b",
-      source: "default",
-    });
-  });
-
-  it("mirrors Cerebras model override precedence in the Settings targets", async () => {
-    const { ctx, json } = makeHarness("GET", null, {
-      config: {
-        serviceRouting: {
-          llmText: {
-            backend: "cerebras",
-            transport: "direct",
-            accountId: "cerebras",
-          },
-        },
-        env: { CEREBRAS_MODEL: "zai-glm-4.7" },
-      } as never,
-      processEnv: { CEREBRAS_LARGE_MODEL: "gpt-oss-120b" },
-    });
-    await handleModelConfigRoutes(ctx as never);
-    const targets = responseOf(json).body.targets as Record<
-      string,
-      Record<string, { value: string; source: string } | null>
-    >;
-    expect(targets.small?.OPENAI_SMALL_MODEL).toEqual({
-      value: "zai-glm-4.7",
-      source: "config.env",
-    });
-    expect(targets.large?.OPENAI_LARGE_MODEL).toEqual({
-      value: "gpt-oss-120b",
-      source: "process.env",
     });
   });
 

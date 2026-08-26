@@ -39,7 +39,6 @@ import {
 import { resolveElizaCloudBaseURL } from "@elizaos/plugin-elizacloud/endpoint-config";
 import { resolveOpenAIBaseURL } from "@elizaos/plugin-openai/endpoint-config";
 import {
-  DEFAULT_CEREBRAS_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   resolveServiceRoutingInConfig,
@@ -55,7 +54,7 @@ import {
 } from "./model-catalog.ts";
 
 export type ModelConfigTarget = "small" | "large" | "coding";
-export type CodingBackend = "codex" | "claude" | "opencode" | "eliza-code";
+export type CodingBackend = "codex" | "claude" | "eliza-code";
 
 export interface ModelConfigWriteBody {
   target: ModelConfigTarget;
@@ -84,7 +83,6 @@ const TARGETS = new Set<ModelConfigTarget>(["small", "large", "coding"]);
 const CODING_BACKENDS = new Set<CodingBackend>([
   "codex",
   "claude",
-  "opencode",
   "eliza-code",
 ]);
 
@@ -153,11 +151,6 @@ const CODING_BACKEND_SEAMS: Record<CodingBackend, CodingBackendSeam> = {
     effortKey: "ELIZA_CLAUDE_EFFORT",
     catalogProvider: "claude-coding",
   },
-  opencode: {
-    modelKey: "ELIZA_OPENCODE_MODEL_POWERFUL",
-    effortKey: null,
-    catalogProvider: null,
-  },
   "eliza-code": {
     modelKey: "ELIZA_ELIZAOS_MODEL_POWERFUL",
     effortKey: null,
@@ -171,7 +164,6 @@ const CODING_BACKEND_SEAMS: Record<CodingBackend, CodingBackendSeam> = {
 const DEFAULT_BACKEND_PERSISTED_VALUE: Record<CodingBackend, string> = {
   codex: "codex",
   claude: "claude",
-  opencode: "opencode",
   "eliza-code": "elizaos",
 };
 
@@ -698,24 +690,8 @@ function buildEffectiveConfig(
     }
     return null;
   };
-  // plugin-openai's Cerebras mode resolves OPENAI_<tier> first, then the
-  // Cerebras-specific tier, then CEREBRAS_MODEL, then Gemma. Mirror that
-  // exact serving order under the existing OPENAI wire key so Settings shows
-  // the model actually in use instead of an empty selector.
-  const openAiModel = (target: "SMALL" | "LARGE"): EffectiveValue => {
-    const direct = resolve(`OPENAI_${target}_MODEL`);
-    if (direct) return direct;
-    if (activeChat?.provider !== "cerebras") return null;
-    return (
-      resolve(`CEREBRAS_${target}_MODEL`) ??
-      resolve("CEREBRAS_MODEL") ?? {
-        value: DEFAULT_CEREBRAS_TEXT_MODEL,
-        source: "default",
-      }
-    );
-  };
   const chatKeys = (target: "SMALL" | "LARGE") => ({
-    [`OPENAI_${target}_MODEL`]: openAiModel(target),
+    [`OPENAI_${target}_MODEL`]: resolve(`OPENAI_${target}_MODEL`),
     [`ANTHROPIC_${target}_MODEL`]: resolve(`ANTHROPIC_${target}_MODEL`),
     [`ELIZAOS_CLOUD_${target}_MODEL`]: cloudModel(target),
     OPENAI_REASONING_EFFORT: resolve("OPENAI_REASONING_EFFORT"),
@@ -737,7 +713,6 @@ function buildEffectiveConfig(
         resolve("ELIZA_CLAUDE_MODEL_POWERFUL") ??
         (claudeDefault ? { value: claudeDefault, source: "default" } : null),
       ELIZA_CLAUDE_EFFORT: resolve("ELIZA_CLAUDE_EFFORT"),
-      ELIZA_OPENCODE_MODEL_POWERFUL: resolve("ELIZA_OPENCODE_MODEL_POWERFUL"),
       ELIZA_ELIZAOS_MODEL_POWERFUL: resolve("ELIZA_ELIZAOS_MODEL_POWERFUL"),
     },
   };

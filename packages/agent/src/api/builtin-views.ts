@@ -87,34 +87,6 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     surface: { isolation: "native-webview", background: "opaque" },
   },
   {
-    id: "wallet.inventory",
-    viewKind: "system",
-    label: "Wallet",
-    description:
-      "Non-custodial wallet inventory, balances, tokens, DeFi positions, NFTs, and network readiness",
-    icon: "WalletCards",
-    path: "/wallet",
-    order: 30,
-    tags: ["wallet", "crypto", "balances", "tokens", "defi", "nfts", "rpc"],
-    capabilities: [
-      {
-        id: "inspect-wallet",
-        description:
-          "Read the visible wallet inventory, balances, assets, and network readiness.",
-      },
-      {
-        id: "configure-wallet-rpc",
-        description:
-          "Open the wallet RPC settings when a network is unavailable.",
-      },
-    ],
-    anticipatoryIntent:
-      "Offer to explain the visible balances and chain readiness, and identify the smallest missing setup step without claiming unavailable wallet actions are loaded.",
-    visibleInManager: true,
-    desktopTabEnabled: true,
-    platforms: ["web", "desktop", "ios", "android"],
-  },
-  {
     id: "character",
     viewKind: "system",
     label: "Character",

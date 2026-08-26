@@ -448,34 +448,6 @@ function CodingModelGroup({
   );
 }
 
-function LoadingModelGroup({
-  title,
-  description,
-  labels,
-}: {
-  title: string;
-  description: string;
-  labels: string[];
-}) {
-  return (
-    <SettingsGroup title={title} description={description} bare aria-hidden>
-      {labels.map((label) => (
-        <SettingsRow
-          key={label}
-          label={label}
-          description={
-            <span className="block h-3 w-36 animate-pulse rounded-sm bg-bg-muted motion-reduce:animate-none sm:w-52" />
-          }
-          control={
-            <span className="block h-9 w-28 animate-pulse rounded-md bg-bg-muted motion-reduce:animate-none sm:w-40" />
-          }
-          className="min-h-[4.25rem]"
-        />
-      ))}
-    </SettingsGroup>
-  );
-}
-
 export function ModelConfigurationPanelView({
   state,
   t,
@@ -485,66 +457,23 @@ export function ModelConfigurationPanelView({
 }) {
   if (state.phase === "loading") {
     return (
-      <section
-        role="status"
-        aria-label={t("modelconfig.loading", {
-          defaultValue: "Loading model catalog…",
-        })}
-        data-testid="model-configuration-loading"
-        className="flex flex-col gap-8"
+      <SettingsGroup
+        title={t("modelconfig.panelTitle", { defaultValue: "Models" })}
+        bare
       >
-        <span className="sr-only">
+        <span
+          role="status"
+          className="inline-flex items-center gap-2 py-2 text-xs text-muted"
+          aria-label={t("modelconfig.loading", {
+            defaultValue: "Loading model catalog…",
+          })}
+        >
+          <Loader2 className="size-3.5 animate-spin" aria-hidden />
           {t("modelconfig.loading", {
             defaultValue: "Loading model catalog…",
           })}
         </span>
-        <LoadingModelGroup
-          title={t("modelconfig.smallGroupTitle", {
-            defaultValue: "Small model",
-          })}
-          description={t("modelconfig.smallGroupDescription", {
-            defaultValue:
-              "Fast, cheap model for routing and lightweight replies.",
-          })}
-          labels={[
-            t("modelconfig.provider", { defaultValue: "Provider" }),
-            t("modelconfig.model", { defaultValue: "Model" }),
-            t("modelconfig.effort", { defaultValue: "Reasoning effort" }),
-            t("modelconfig.applyChanges", { defaultValue: "Apply changes" }),
-          ]}
-        />
-        <LoadingModelGroup
-          title={t("modelconfig.largeGroupTitle", {
-            defaultValue: "Large model",
-          })}
-          description={t("modelconfig.largeGroupDescription", {
-            defaultValue: "Primary reasoning model for substantive replies.",
-          })}
-          labels={[
-            t("modelconfig.provider", { defaultValue: "Provider" }),
-            t("modelconfig.model", { defaultValue: "Model" }),
-            t("modelconfig.effort", { defaultValue: "Reasoning effort" }),
-            t("modelconfig.applyChanges", { defaultValue: "Apply changes" }),
-          ]}
-        />
-        <LoadingModelGroup
-          title={t("modelconfig.codingGroupTitle", {
-            defaultValue: "Coding sub-agent",
-          })}
-          description={t("modelconfig.codingGroupDescription", {
-            defaultValue:
-              "The model coding tasks are delegated to. Applies to the next coding task — no restart.",
-          })}
-          labels={[
-            t("modelconfig.codingBackend", { defaultValue: "Backend" }),
-            t("modelconfig.model", { defaultValue: "Model" }),
-            t("modelconfig.defaultBackend", {
-              defaultValue: "Default coding backend",
-            }),
-            t("modelconfig.applyChanges", { defaultValue: "Apply changes" }),
-          ]}
-        />
-      </section>
+      </SettingsGroup>
     );
   }
   if (state.phase === "error") {

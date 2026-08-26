@@ -16,7 +16,7 @@ import {
   type Memory,
   satisfiesRoleGate,
 } from "@elizaos/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { notesAction } from "./action.js";
 import { NOTES_SERVICE_TYPE, NotesService } from "./service.js";
@@ -49,30 +49,15 @@ const message = { content: { text: "" } } as unknown as Memory;
 async function run(
   runtime: IAgentRuntime,
   parameters: Record<string, unknown>,
-  callback?: Parameters<typeof notesAction.handler>[4],
 ): Promise<ActionResult> {
-  const result = await notesAction.handler(
-    runtime,
-    message,
-    undefined,
-    {
-      parameters,
-    } as never,
-    callback,
-  );
+  const result = await notesAction.handler(runtime, message, undefined, {
+    parameters,
+  } as never);
   if (!result) throw new Error("NOTES action returned no result.");
   return result;
 }
 
 describe("NOTES operation parsing", () => {
-  it("keeps canonical Notes aliases distinct from generic view navigation", () => {
-    expect(notesAction.similes).toEqual(
-      expect.arrayContaining(["NOTES_LIST", "NOTES_READ", "SEARCH_NOTES"]),
-    );
-    expect(notesAction.similes).not.toContain("LIST_NOTES");
-    expect(notesAction.similes).not.toContain("SHOW_NOTES");
-  });
-
   it("denies every non-owner role before the handler can access the store", () => {
     expect(notesAction.roleGate).toEqual({ minRole: "OWNER" });
     expect(satisfiesRoleGate(["GUEST"], notesAction.roleGate)).toBe(false);
@@ -108,34 +93,7 @@ describe("NOTES operation parsing", () => {
     const result = await run(runtime, {});
 
     expect(result.success).toBe(true);
-    expect(result.text).toBe("You have 1 note.");
-    expect(result.data?.notes).toEqual([
-      { title: "wifi is on the fridge", body: "", color: "yellow" },
-    ]);
-  });
-
-  it("returns structured note facts for one natural model-authored reply", async () => {
-    const runtime = await harness();
-    await run(runtime, { action: "create", content: "wifi is on the fridge" });
-    const callback = vi.fn();
-
-    const result = await run(runtime, { action: "list" }, callback);
-
-    expect(callback).not.toHaveBeenCalled();
-    expect(result).toMatchObject({
-      success: true,
-      text: "You have 1 note.",
-      modelReplyRequired: true,
-      modelReplyFallback: "You have 1 note.",
-      data: {
-        count: 1,
-        total: 1,
-        notes: [{ title: "wifi is on the fridge", body: "" }],
-      },
-    });
-    expect(result).not.toHaveProperty("userFacingText");
-    expect(result).not.toHaveProperty("verifiedUserFacing");
-    expect(result).not.toHaveProperty("turnComplete");
+    expect(result.text).toContain("wifi is on the fridge");
   });
 
   it("keeps a topic-scoped read from exposing unrelated notes", async () => {
@@ -150,14 +108,8 @@ describe("NOTES operation parsing", () => {
     });
 
     const match = await run(runtime, { action: "list", content: "PLUMBER" });
-    expect(match.text).toBe("I found 1 matching note.");
-    expect(match.data?.notes).toEqual([
-      {
-        title: "the plumber comes thursday morning",
-        body: "",
-        color: "yellow",
-      },
-    ]);
+    expect(match.text).toContain("plumber comes thursday");
+    expect(match.text).not.toContain("spare key");
     expect(match.data).toMatchObject({
       count: 1,
       total: 2,
@@ -165,8 +117,8 @@ describe("NOTES operation parsing", () => {
     });
 
     const absent = await run(runtime, { action: "list", query: "dentist" });
-    expect(absent.text).toBe("I couldn't find a matching note.");
-    expect(absent.data?.notes).toEqual([]);
+    expect(absent.text).toBe("you don't have any matching notes.");
+    expect(absent.text).not.toContain("spare key");
     expect(absent.data).toMatchObject({
       count: 0,
       total: 2,
@@ -185,9 +137,7 @@ describe("NOTES operation parsing", () => {
 
     const listed = await run(runtime, { action: "list" });
     expect(listed.success).toBe(true);
-    expect(listed.data?.notes).toEqual([
-      { title: "bins go out tuesday", body: "", color: "yellow" },
-    ]);
+    expect(listed.text).toContain("bins go out tuesday");
 
     const updated = await run(runtime, {
       action: "update",
@@ -205,7 +155,7 @@ describe("NOTES operation parsing", () => {
     expect(deleted.text).toContain("deleted the note");
 
     const after = await run(runtime, { action: "list" });
-    expect(after.text).toBe("You don't have any notes yet.");
+    expect(after.text).toContain("don't have any notes");
   });
 });
 
@@ -257,9 +207,8 @@ describe("identical-duplicate notes", () => {
     expect(result.text).toContain("removed 4 identical copies");
 
     const after = await run(runtime, { action: "list" });
-    expect(after.data?.notes).toEqual([
-      { title: "spare key under the mat", body: "", color: "yellow" },
-    ]);
+    expect(after.text).not.toContain("milk");
+    expect(after.text).toContain("spare key");
   });
 
   it("still refuses genuinely differing matches as ambiguous", async () => {
@@ -286,9 +235,7 @@ describe("identical-duplicate notes", () => {
     expect(result.data).toMatchObject({ consolidatedCount: 3 });
     const after = await run(runtime, { action: "list" });
     expect(after.data).toMatchObject({ count: 1, total: 1 });
-    expect(after.data?.notes).toEqual([
-      { title: "i already bought milk", body: "", color: "yellow" },
-    ]);
+    expect(after.text).toContain("i already bought milk");
   });
 
   it("keeps same-text notes with different visible colors distinct", async () => {
