@@ -161,6 +161,13 @@ export interface GoalFollowUpInput {
    * "--- Verifier Findings ---" section so the retry knows EXACTLY what to
    * fix — without it the worker re-passes its own blind check every lap. */
   verifierFindings?: string;
+  /** The ONE lane slice this session owns on a multi-lane task. Rendered as a
+   * "--- Lane Scope ---" section directly under the goal so a retry/rebuild
+   * brief re-anchors the worker to ITS deliverable — without it the umbrella
+   * goal + criteria coached the word-counter lane into rebuilding itself as a
+   * combined tip-calc/word-counter page, contradicting the sibling lane's
+   * verdict (live 2026-08-24). */
+  laneTask?: string;
 }
 
 function bulletList(items: string[]): string {
@@ -325,6 +332,20 @@ export function buildGoalFollowUp(input: GoalFollowUpInput): string {
     FOLLOW_UP_FRAMING[reason],
     input.goal.trim(),
   ];
+
+  // Lane scope FIRST, directly under the (possibly umbrella) goal: the lane's
+  // own slice is the deliverable this session is graded on; sibling lanes'
+  // features must never be folded in (live 2026-08-24, tip-calc +
+  // word-counter merged into one page by a coached rebuild).
+  const laneTask = input.laneTask?.trim();
+  if (laneTask) {
+    sections.push(
+      "--- Lane Scope ---",
+      "This session owns ONE lane of a multi-lane task. Deliver ONLY this lane's deliverable:",
+      laneTask,
+      "Sibling lanes are built and verified separately — do NOT fold their features into this lane's deliverable.",
+    );
+  }
 
   // The verbatim ask, COMPLETE — a validation-failed retry must re-read what
   // the user actually asked for, not just the goal's (possibly short) label.

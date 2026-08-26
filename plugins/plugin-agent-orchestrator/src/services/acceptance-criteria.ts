@@ -299,6 +299,16 @@ export interface GenerateCriteriaOptions {
    * features (live 2026-08-21, demo-hello: generic template criteria while
    * the verifier failed "gradient and current date" three times). */
   verbatimRequest?: string;
+  /** ONE lane's slice of a multi-lane fan-out (`part:N` sessions under one
+   * task record). When present, generation reads THIS text alone — the goal
+   * and `verbatimRequest` on such calls are the UMBRELLA ask, and refining a
+   * lane against the umbrella mints sibling-deliverable criteria onto this
+   * lane's contract (live 2026-08-24, tip-calc + word-counter: the
+   * word-counter lane's verify and rebuild briefs carried "the page shows a
+   * tip calculator", so the builder rewrote the lane into a combined page,
+   * contradicting the sibling lane's verdict). Mirrors the single-lane gate
+   * on the verbatim User-Task merge (`composeUserTaskBody`). */
+  laneTask?: string;
 }
 
 /**
@@ -313,6 +323,9 @@ export interface GenerateCriteriaOptions {
  *   deterministic path the unit tests pin).
  * - `opts.verbatimRequest` feeds refinement (and type detection when no hint
  *   is given) so generated criteria name the actually-asked features.
+ * - `opts.laneTask` scopes generation to ONE lane of a multi-lane fan-out:
+ *   the lane slice replaces both the goal and the verbatim request so no
+ *   sibling deliverable leaks into this lane's criteria.
  *
  * Always returns ≥{@link MIN_CRITERIA} criteria for a non-trivial goal.
  */
@@ -322,10 +335,17 @@ export async function generateDefaultAcceptanceCriteria(
   runtime?: IAgentRuntime,
   opts?: GenerateCriteriaOptions,
 ): Promise<string[]> {
-  const verbatim = opts?.verbatimRequest?.trim() ?? "";
+  // Lane-scoped generation: the lane slice is the ONLY text read — the
+  // umbrella goal/verbatim would re-introduce sibling deliverables (see
+  // {@link GenerateCriteriaOptions.laneTask}).
+  const laneTask = opts?.laneTask?.trim() ?? "";
+  const effectiveGoal = laneTask || goal;
+  const verbatim = laneTask ? "" : (opts?.verbatimRequest?.trim() ?? "");
   // Detection reads BOTH texts: the planner's goal often drops the request's
   // app/script phrasing (same both-texts rule as taskTypeHintFor).
-  const detectionText = [goal, verbatim].filter((t) => t.trim()).join("\n");
+  const detectionText = [effectiveGoal, verbatim]
+    .filter((t) => t.trim())
+    .join("\n");
   const type = taskTypeHint ?? detectTaskType(detectionText);
   const fallback = [...DEFAULT_CRITERIA_TEMPLATES[type]];
 
@@ -347,7 +367,7 @@ export async function generateDefaultAcceptanceCriteria(
   // (invented paths, uncollectable evidence, non-static demands) and
   // degrading to the pure template on any model failure.
   if (type === "app-build") {
-    const requestText = verbatim || goal.trim();
+    const requestText = verbatim || effectiveGoal.trim();
     if (!modelRuntime || !requestText) return fallback;
     try {
       const prompt = buildAppBuildContentPrompt(requestText, fallback);
@@ -384,10 +404,10 @@ export async function generateDefaultAcceptanceCriteria(
 
   try {
     const prompt = buildRefinePrompt(
-      goal,
+      effectiveGoal,
       type,
       fallback,
-      verbatim && verbatim !== goal.trim() ? verbatim : undefined,
+      verbatim && verbatim !== effectiveGoal.trim() ? verbatim : undefined,
     );
     const result = await modelRuntime.useModel(ModelType.TEXT_SMALL, {
       prompt,

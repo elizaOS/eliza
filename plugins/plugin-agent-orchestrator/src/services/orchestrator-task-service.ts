@@ -761,6 +761,20 @@ function num(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
+/** The fan-out lane marker (`part:N`) minted per independent deliverable of a
+ * multi-part create. Stamped on session metadata (one task, N lane sessions)
+ * and on lane-launched task records (wave lanes / lane respawns). */
+const LANE_VOICE_PART_RE = /^part:\d+$/;
+
+/** The `part:N` request-voice slot from a metadata bag, or undefined when the
+ * record is not a lane of a multi-part fan-out. */
+function laneVoicePartOf(metadata: unknown): string | undefined {
+  const raw = isRecord(metadata) ? metadata.requestVoicePart : undefined;
+  return typeof raw === "string" && LANE_VOICE_PART_RE.test(raw)
+    ? raw
+    : undefined;
+}
+
 /** Adapt the pino-shaped runtime logger (context object first) to the task
  * store's message-first `Logger` contract. The store's trailing context value
  * (typically a caught error) is folded into the context slot so it renders as
@@ -4172,11 +4186,18 @@ export class OrchestratorTaskService extends Service {
     // features — "the page shows a gradient background" instead of only the
     // generic template (live 2026-08-21, demo-hello). Type detection inside
     // still reads both texts, so classification is unchanged.
+    // EXCEPT for lane-launched records (`part:N` stamped at create — wave
+    // lanes and lane respawns): their goal is ONE lane's slice while
+    // originalRequest is the umbrella ask, and refining the lane against the
+    // umbrella mints sibling-deliverable criteria onto this lane's contract
+    // (the create-time face of the 2026-08-24 tip-calc/word-counter bleed).
     const generated = await generateDefaultAcceptanceCriteria(
       input.goal,
       hint,
       this.runtime,
-      { verbatimRequest: input.originalRequest },
+      laneVoicePartOf(input.metadata)
+        ? { laneTask: input.goal }
+        : { verbatimRequest: input.originalRequest },
     );
     if (generated.length === 0) return input;
     this.log(
@@ -4211,8 +4232,13 @@ export class OrchestratorTaskService extends Service {
         // game" for "make me a lil memory match game page"), so detect on
         // both texts (live 2026-08-19: coding criteria — typecheck/lint —
         // parked a served page whose guidance forbids those very checks).
+        // Lane-launched records read the lane goal ALONE: the umbrella
+        // originalRequest's sibling phrasing ("…and deploy a word counter")
+        // must not steer THIS lane's classification.
         const detected = detectTaskType(
-          `${input.goal}\n${input.originalRequest ?? ""}`,
+          laneVoicePartOf(input.metadata)
+            ? input.goal
+            : `${input.goal}\n${input.originalRequest ?? ""}`,
         );
         return detected === "app-build" || detected === "script-run"
           ? detected
@@ -4647,7 +4673,18 @@ export class OrchestratorTaskService extends Service {
       const label = doc.task.title.trim() || "the coding task";
       const deploy = resolveAppDeployConfig();
       const workdir = doc.sessions.at(-1)?.workdir;
+      // A multi-lane task has one deliverable URL PER lane; naming the last
+      // session's URL as the whole task's home claimed both features at the
+      // word-counter lane's address (live 2026-08-24). Multi-lane drops the
+      // link here — each lane's own relay already delivered its URL.
+      const multiLane =
+        new Set(
+          doc.sessions
+            .map((s) => laneVoicePartOf(s.metadata))
+            .filter((part): part is string => Boolean(part)),
+        ).size >= 2;
       const url =
+        !multiLane &&
         deploy.target === "custom" &&
         deploy.customAppsDir &&
         deploy.customBaseUrl &&
@@ -4655,9 +4692,12 @@ export class OrchestratorTaskService extends Service {
         dirname(workdir) === deploy.customAppsDir.replace(/\/+$/, "")
           ? `${deploy.customBaseUrl.replace(/\/+$/, "")}/apps/${basename(workdir)}/`
           : undefined;
+      // Speak product, not verifier bookkeeping: "every acceptance criterion
+      // passes" relayed the umbrella CONTRACT over one lane's URL (live
+      // 2026-08-24) — the user hears what got built, not how it was graded.
       const text = sawRetry
-        ? `${label} recovered: the earlier failure was retried and every acceptance criterion now verifies.${url ? ` Live at ${url}` : ""}`
-        : `${label} is verified done — every acceptance criterion passes.${url ? ` Live at ${url}` : ""}`;
+        ? `${label} recovered: the earlier failure was fixed on retry and the finished work checks out.${url ? ` Live at ${url}` : ""}`
+        : `${label} is done and verified.${url ? ` Live at ${url}` : ""}`;
       await send(
         { source: origin.source, roomId: origin.roomId },
         { text, source: origin.source },
@@ -5876,7 +5916,18 @@ export class OrchestratorTaskService extends Service {
         }
       }
 
-      const acceptanceCriteria = doc.task.acceptanceCriteria;
+      // Criteria scoped to THIS lane: auto-generated umbrella criteria on a
+      // multi-lane task name every lane's deliverable, and grading one lane
+      // against its sibling's items is what rewrote the word-counter lane
+      // into a combined page (live 2026-08-24). Single-lane tasks and caller
+      // contracts pass through unchanged.
+      const acceptanceCriteria = await this.laneScopedAcceptanceCriteria(
+        doc,
+        sessionId,
+      );
+      // The lane scoping may have stamped its per-lane cache; re-read so the
+      // metadata spreads below carry the stamp instead of clobbering it.
+      doc = (await this.store.getTask(taskId)) ?? doc;
       // Criteria-free tasks keep the prior behavior after deterministic gates:
       // stay `validating` for a human/manual caller, with no model spend.
       if (acceptanceCriteria.length === 0) return;
@@ -6066,6 +6117,7 @@ export class OrchestratorTaskService extends Service {
         taskId,
         doc,
         sessionId,
+        acceptanceCriteria,
       );
       if (independent) {
         if (independent.inconclusive) {
@@ -6541,6 +6593,9 @@ export class OrchestratorTaskService extends Service {
     taskId: string,
     doc: OrchestratorTaskDocument,
     sessionId: string,
+    // Lane-scoped by the caller: umbrella criteria on a multi-lane task would
+    // fail a lane for its sibling's deliverable (live 2026-08-24).
+    acceptanceCriteria: string[] = doc.task.acceptanceCriteria,
   ): Promise<IndependentVerifierVerdict | null> {
     const changeSet = await this.resolveCompletionChangeSet(sessionId, doc);
     const hasCodeChanges = (changeSet?.changedFiles.length ?? 0) > 0;
@@ -6576,10 +6631,15 @@ export class OrchestratorTaskService extends Service {
       changeSet && changeSet.changedFiles.length > 0
         ? renderChangeSetBody(changeSet)
         : undefined;
+    // Same lane framing as the text judge: a lane of a multi-lane task is
+    // verified against ITS deliverable only.
+    const { laneTask } = this.laneScope(doc, sessionId);
     return runIndependentVerification(
       {
-        goal: doc.task.goal,
-        acceptanceCriteria: doc.task.acceptanceCriteria,
+        goal: laneTask
+          ? `${doc.task.goal}\n\nThis verification covers ONE lane of a multi-lane task. Verify ONLY this lane's deliverable: ${laneTask}\nSibling lanes are verified separately; their absence from the evidence is not a gap.`
+          : doc.task.goal,
+        acceptanceCriteria,
         ...(diffSummary ? { diffSummary } : {}),
       },
       {
@@ -7800,20 +7860,34 @@ export class OrchestratorTaskService extends Service {
     const acp = this.acp();
     if (!acp) throw new Error("ACP service unavailable");
 
+    // Lane scope for the brief: a retry/rebuild prompt to ONE lane of a
+    // multi-lane task must restate THAT lane's deliverable and contract, not
+    // the umbrella ask — umbrella criteria plus the full original request
+    // told the word-counter lane to satisfy "the page shows a tip calculator"
+    // and the builder rewrote the lane into a combined page, contradicting
+    // the sibling lane's verdict (live 2026-08-24).
+    const { laneTask } = this.laneScope(doc, sessionId);
+    const acceptanceCriteria = laneTask
+      ? await this.laneScopedAcceptanceCriteria(doc, sessionId)
+      : doc.task.acceptanceCriteria;
     const followUp = buildGoalFollowUp({
       goal: doc.task.goal,
       message,
-      acceptanceCriteria: doc.task.acceptanceCriteria,
+      acceptanceCriteria,
       reason,
       taskRoomId: doc.task.taskRoomId ?? doc.task.roomId,
+      ...(laneTask ? { laneTask } : {}),
       // A validation-failed retry gets the FULL picture: the user's verbatim
       // request and the verifier's newest concrete findings (persisted just
       // before this send by reEngageOrEscalate). Without them the retry only
       // ever saw the goal label + generic criteria and re-failed on the same
       // unstated gaps until the task parked (live 2026-08-21, demo-hello).
+      // A LANE retry re-reads its own slice instead: rendering the umbrella
+      // verbatim request would instruct this lane to satisfy every sibling's
+      // deliverable "in full" — the exact live rebuild bleed.
       ...(reason === "validation_failed"
         ? {
-            originalRequest: doc.task.originalRequest,
+            ...(laneTask ? {} : { originalRequest: doc.task.originalRequest }),
             verifierFindings: renderLatestVerifierFindings(doc.task.metadata),
           }
         : {}),
@@ -7846,12 +7920,8 @@ export class OrchestratorTaskService extends Service {
     doc: OrchestratorTaskDocument,
     sessionId: string,
   ): { laneTask?: string; laneSessionIds: string[] } {
-    const part = (session: OrchestratorTaskSession): string | undefined => {
-      const raw = session.metadata?.requestVoicePart;
-      return typeof raw === "string" && /^part:\d+$/.test(raw)
-        ? raw
-        : undefined;
-    };
+    const part = (session: OrchestratorTaskSession): string | undefined =>
+      laneVoicePartOf(session.metadata);
     const laneSessions = doc.sessions.filter((session) => part(session));
     const parts = new Set(laneSessions.map((session) => part(session)));
     if (parts.size < 2) return { laneSessionIds: [] };
@@ -7875,6 +7945,89 @@ export class OrchestratorTaskService extends Service {
       ...(laneTask ? { laneTask } : {}),
       laneSessionIds: [...latestByPart.values()].map((s) => s.sessionId),
     };
+  }
+
+  /**
+   * Acceptance criteria scoped to ONE lane of a multi-lane task.
+   *
+   * Auto-generated criteria are minted at create from the UMBRELLA ask, so a
+   * two-lane fan-out gets task-level criteria naming BOTH deliverables. A
+   * lane verified — or coached to rebuild — against them is told to build its
+   * sibling's feature (live 2026-08-24, tip-calc + word-counter: the
+   * word-counter lane's verify and rebuild briefs carried "the page shows a
+   * tip calculator", the builder rewrote the lane into a combined page, and
+   * the pass relay claimed the whole ask at that lane's URL). For a lane of
+   * a multi-lane task this regenerates criteria from the LANE's own slice
+   * (the same generator, seeded with the lane part text and never the
+   * umbrella — the generation-side mirror of the single-lane verbatim-merge
+   * gate) and caches them per `part:N` in task metadata so every verify lap
+   * and rebuild brief grades the lane against the same contract.
+   *
+   * Single-lane tasks, criteria-free tasks, and caller-supplied contracts are
+   * returned unchanged — an explicit caller contract is authoritative and is
+   * never rewritten per lane.
+   */
+  private async laneScopedAcceptanceCriteria(
+    doc: OrchestratorTaskDocument,
+    sessionId: string,
+  ): Promise<string[]> {
+    const umbrella = doc.task.acceptanceCriteria;
+    const { laneTask, laneSessionIds } = this.laneScope(doc, sessionId);
+    if (laneSessionIds.length < 2 || !laneTask) return umbrella;
+    if (umbrella.length === 0) return umbrella;
+    if (doc.task.metadata?.acceptanceCriteriaOrigin !== "generated") {
+      return umbrella;
+    }
+    if (!isNonTrivialGoal(laneTask)) return umbrella;
+    const session = doc.sessions.find((s) => s.sessionId === sessionId);
+    const partKey = laneVoicePartOf(session?.metadata) ?? sessionId;
+    const cache = isRecord(doc.task.metadata?.laneAcceptanceCriteria)
+      ? (doc.task.metadata.laneAcceptanceCriteria as Record<string, unknown>)
+      : {};
+    const cached = cache[partKey];
+    if (
+      Array.isArray(cached) &&
+      cached.length > 0 &&
+      cached.every((item): item is string => typeof item === "string")
+    ) {
+      return cached;
+    }
+    const generated = await generateDefaultAcceptanceCriteria(
+      laneTask,
+      this.taskTypeHintFor({
+        title: doc.task.title,
+        goal: laneTask,
+        kind: doc.task.kind,
+        originalRequest: laneTask,
+      }),
+      this.runtime,
+      { laneTask },
+    );
+    if (generated.length === 0) return umbrella;
+    try {
+      // Re-read before the write: generation crossed a model await and other
+      // writers may have stamped metadata since `doc` was loaded.
+      const fresh = (await this.store.getTask(doc.task.id)) ?? doc;
+      await this.store.updateTask(doc.task.id, {
+        metadata: {
+          ...fresh.task.metadata,
+          laneAcceptanceCriteria: {
+            ...(isRecord(fresh.task.metadata?.laneAcceptanceCriteria)
+              ? fresh.task.metadata.laneAcceptanceCriteria
+              : {}),
+            [partKey]: generated,
+          },
+        },
+      });
+    } catch (err) {
+      // error-policy:J6 best-effort per-lane cache; a failed stamp costs only
+      // regeneration on the next lap, never the lane-scoped verdict.
+      this.log("warn", "lane criteria cache stamp failed", {
+        taskId: doc.task.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return generated;
   }
 
   /** Operator/user stop of the whole task: the wave launches no further lane,
