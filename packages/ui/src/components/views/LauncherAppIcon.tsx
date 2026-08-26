@@ -60,15 +60,20 @@ export function LauncherAppIcon({
           aria-hidden="true"
           draggable={false}
           decoding="async"
+          style={
+            asset.kind === "ionicon"
+              ? { filter: "brightness(0) invert(1)" }
+              : undefined
+          }
           className={cn(
             "pointer-events-none relative z-10 !size-[52%] select-none object-contain",
             asset.kind === "ionicon"
               ? [
                   OPTICAL_GLYPH_SIZE[asset.name],
-                  // The official SVG assets are black-filled. A static inversion
-                  // brings them onto the chat panel's off-white contrast ladder;
+                  // The official SVG assets are black-filled. Inline inversion
+                  // survives packaged stylesheets that omit filter utilities;
                   // third-party image colors remain untouched.
-                  "brightness-0 invert opacity-[0.92]",
+                  "opacity-[0.92]",
                 ]
               : undefined,
             glyphClassName,

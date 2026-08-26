@@ -152,6 +152,7 @@ describe("LP3 direct Cloud build flag", () => {
     expect(resolveAndroidCloudStripPolicy({}).javaFiles).not.toContain(
       "SafePushNotificationsPlugin.java",
     );
+    expect(resolveAndroidCloudStripPolicy({}).safePushNotifications).toBe(true);
 
     const fallbackEnv = {
       ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED: "yes",
@@ -163,6 +164,9 @@ describe("LP3 direct Cloud build flag", () => {
     expect(resolveAndroidCloudStripPolicy(fallbackEnv).javaFiles).toContain(
       "SafePushNotificationsPlugin.java",
     );
+    expect(
+      resolveAndroidCloudStripPolicy(fallbackEnv).safePushNotifications,
+    ).toBe(false);
   });
 
   it("normalizes the passed build environment without consulting process.env", () => {

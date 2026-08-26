@@ -1334,6 +1334,9 @@ function buildStaticTabRenderers(): Record<
   const wrap = (node: ReactNode) => () => (
     <TabContentView>{node}</TabContentView>
   );
+  const wrapOverlayAware = (node: ReactNode) => () => (
+    <TabContentView reserveChatClearance={false}>{node}</TabContentView>
+  );
   // Tool views that own no header of their own get the shared ViewHeader (back
   // button + centered title) via the same flush structure MemoryViewerView uses,
   // so every launcher tool reads the same at the top instead of opening headerless.
@@ -1350,7 +1353,7 @@ function buildStaticTabRenderers(): Record<
     browser: () => <LazyBrowserWorkspaceView />,
     stream: () => <LazyStreamView />,
     "pendant-transcript": () => <LazyPendantTranscriptView />,
-    tasks: wrap(<LazyTasksPageView />),
+    tasks: wrapOverlayAware(<LazyTasksPageView />),
     automations: () => <LazyAutomationsFeed />,
     plugins: withHeader("plugins", <LazyPluginsPageView />),
     skills: withHeader("skills", <LazySkillsView />),
@@ -1364,16 +1367,16 @@ function buildStaticTabRenderers(): Record<
     // registered-page resolver renders its explicit unavailable state.
     documents: () => <ViewUnavailableFallback />,
     experience: ({ characterNav }) => (
-      <TabContentView nav={characterNav}>
+      <TabContentView nav={characterNav} reserveChatClearance={false}>
         <LazyCharacterExperienceView />
       </TabContentView>
     ),
     "character-skills": ({ characterNav }) => (
-      <TabContentView nav={characterNav}>
+      <TabContentView nav={characterNav} reserveChatClearance={false}>
         <LazyCharacterSkillsView />
       </TabContentView>
     ),
-    memories: wrap(<LazyMemoryViewerView />),
+    memories: wrapOverlayAware(<LazyMemoryViewerView />),
     files: () => (
       <TabContentView>
         <div className="flex h-full min-h-0 w-full flex-col">
@@ -1416,12 +1419,12 @@ function buildStaticTabRenderers(): Record<
     // background shows through behind the controls.
     background: () => <LazyBackgroundView />,
     character: ({ characterNav }) => (
-      <TabContentView nav={characterNav}>
+      <TabContentView nav={characterNav} reserveChatClearance={false}>
         <LazyCharacterEditor />
       </TabContentView>
     ),
     "character-select": ({ characterNav }) => (
-      <TabContentView nav={characterNav}>
+      <TabContentView nav={characterNav} reserveChatClearance={false}>
         <LazyCharacterEditor />
       </TabContentView>
     ),

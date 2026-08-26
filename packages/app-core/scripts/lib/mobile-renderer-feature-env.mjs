@@ -32,7 +32,12 @@ export function resolveMobileRendererFeatureEnv({ platform, env = {} } = {}) {
   return {
     VITE_VOICE_REALTIME_WS: "1",
     VITE_VOICE_REALTIME_FORCE: "1",
-    ...(isLp3RemoteFallback ? { VITE_ENABLE_STREAM: "false" } : {}),
+    ...(isLp3RemoteFallback
+      ? {
+          VITE_ENABLE_STREAM: "false",
+          VITE_ELIZA_ANDROID_LP3_SHARED_BROWSER_STORAGE: "1",
+        }
+      : {}),
   };
 }
 
