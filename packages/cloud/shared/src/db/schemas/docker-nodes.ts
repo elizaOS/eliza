@@ -67,6 +67,9 @@ export const dockerNodes = pgTable(
     /** Trigger-owned durable token for this exact mutable-node occurrence. */
     current_node_history_id: uuid("current_node_history_id"),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    backup_admission_cursor_at: timestamp("backup_admission_cursor_at", {
+      withTimezone: true,
+    }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
