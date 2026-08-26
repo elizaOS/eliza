@@ -12,6 +12,7 @@ import type { PluginInfo } from "../../api";
 import {
   buildPluginListState,
   iconImageSource,
+  pluginMonogram,
   resolveIcon,
 } from "./plugin-list-utils";
 
@@ -194,5 +195,12 @@ describe("buildPluginListState", () => {
       "needs-config",
       "disabled",
     ]);
+  });
+});
+
+describe("pluginMonogram", () => {
+  it("preserves well-formed Unicode when plugin name starts with surrogate pairs", () => {
+    const mono = pluginMonogram(plugin({ id: "emoji-plugin", name: "🚀Rocket Plugin" }));
+    expect(mono.isWellFormed()).toBe(true);
   });
 });

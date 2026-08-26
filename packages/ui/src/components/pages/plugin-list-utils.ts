@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Plugin list utilities — pure functions, constants, and type aliases
  * shared across the plugin management UI.
@@ -617,7 +618,7 @@ export function pluginMonogram(plugin: PluginInfo): string {
     return (words[0][0] + words[1][0]).toUpperCase();
   }
   const single = words[0] ?? source;
-  return single.slice(0, 2).toUpperCase() || "·";
+  return truncateWellFormed(toWellFormedUnicode(single), 2).toUpperCase() || "·";
 }
 
 /**
