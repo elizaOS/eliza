@@ -486,6 +486,10 @@ import {
 } from "./accounts";
 import { markdownToSlackMrkdwn, splitSlackText } from "./formatting";
 import {
+  readChannelMembershipSnapshot,
+  type SlackMembershipReadResult,
+} from "./membership";
+import {
   extractSlackEventWorkspace,
   SlackAccountPolicyResolver,
   type SlackInboundPolicyDecision,
@@ -1112,7 +1116,9 @@ export class SlackService extends Service implements ISlackService {
       );
     });
 
-    // Handle channel joins/leaves
+    // Handle channel joins/leaves. Payloads preserve the Slack user and
+    // channel so consumers can identify the affected member; membership
+    // evidence is renewed through the same path as snapshots.
     app.event("member_joined_channel", async ({ event, body }) => {
       if (
         !this.isInboundWorkspaceAuthorized(
@@ -1123,7 +1129,17 @@ export class SlackService extends Service implements ISlackService {
       ) {
         return;
       }
-      await this.handleMemberJoinedChannel(event, accountId);
+      await this.handleMemberJoinedChannel(
+        event as {
+          user: string;
+          channel: string;
+          team?: string;
+          channel_type?: string;
+          inviter?: string;
+          event_ts?: string;
+        },
+        accountId,
+      );
     });
 
     app.event("member_left_channel", async ({ event, body }) => {
@@ -1136,7 +1152,15 @@ export class SlackService extends Service implements ISlackService {
       ) {
         return;
       }
-      await this.handleMemberLeftChannel(event, accountId);
+      await this.handleMemberLeftChannel(
+        event as {
+          user: string;
+          channel: string;
+          team?: string;
+          event_ts?: string;
+        },
+        accountId,
+      );
     });
 
     // Handle file shares
@@ -1492,28 +1516,15 @@ export class SlackService extends Service implements ISlackService {
       accountId,
     );
 
-    const existingEntity = await this.runtime.getEntityById(memory.entityId);
-    if (!existingEntity) {
-      const slackUserId = message.user ?? memory.entityId;
-      const user = message.user
-        ? await this.getUser(message.user, accountId)
-        : null;
-      const displayName = user ? getSlackUserDisplayName(user) : slackUserId;
-      await this.runtime.createEntity({
-        id: memory.entityId,
-        names: [displayName],
-        metadata: {
-          source: "slack",
-          accountId,
-          slack: {
-            accountId,
-            id: slackUserId,
-            name: displayName,
-            userName: user?.name || slackUserId,
-          },
-        },
-        agentId: this.runtime.agentId,
-      });
+    // Renew the sender's room participation on every admitted inbound
+    // message: entity creation alone leaves a returning member disconnected.
+    if (message.user) {
+      await this.renewInboundSender(
+        message.user,
+        message.channel,
+        message.thread_ts,
+        accountId,
+      );
     }
 
     const claimedMemory = await this.claimInboundMemory(
@@ -1604,25 +1615,14 @@ export class SlackService extends Service implements ISlackService {
       accountId,
     );
 
-    const existingEntity = await this.runtime.getEntityById(memory.entityId);
-    if (!existingEntity) {
-      const user = await this.getUser(event.user, accountId);
-      const displayName = user ? getSlackUserDisplayName(user) : event.user;
-      await this.runtime.createEntity({
-        id: memory.entityId,
-        names: [displayName],
-        metadata: {
-          source: "slack",
-          accountId,
-          slack: {
-            accountId,
-            id: event.user,
-            name: displayName,
-            userName: user?.name || event.user,
-          },
-        },
-        agentId: this.runtime.agentId,
-      });
+    // Renew the mentioning sender the same way message senders are renewed.
+    if (event.user) {
+      await this.renewInboundSender(
+        event.user,
+        event.channel,
+        event.thread_ts,
+        accountId,
+      );
     }
 
     const claimedMemory = await this.claimInboundMemory(
@@ -2032,6 +2032,9 @@ export class SlackService extends Service implements ISlackService {
       user: string;
       channel: string;
       team?: string;
+      channel_type?: string;
+      inviter?: string;
+      event_ts?: string;
     },
     accountId = this.defaultAccountId,
   ): Promise<void> {
@@ -2045,18 +2048,44 @@ export class SlackService extends Service implements ISlackService {
       }
     }
 
+    // Preserve the Slack user and channel in the emitted payload so
+    // consumers can identify the affected member, then renew runtime
+    // participation for the joining member when the channel is admitted.
+    const payload = this.buildMemberEventPayload(event, accountId);
     await this.runtime.emitEvent(
       SlackEventTypes.MEMBER_JOINED_CHANNEL as string,
-      this.buildEventPayload(accountId),
+      payload,
     );
+
+    if (
+      event.user === this.getBotUserIdForAccount(accountId) ||
+      !this.isChannelAllowed(event.channel, accountId)
+    ) {
+      return;
+    }
+    try {
+      await this.renewChannelMember(event.user, event.channel, accountId);
+    } catch (cause) {
+      // error-policy:J2 Membership renewal is owner-visible; Bolt has already
+      // acknowledged the event, so the typed failure must be reported rather
+      // than swallowed into an empty state.
+      const error = new ElizaError("Slack member join renewal failed", {
+        code: "SLACK_MEMBERSHIP_RENEWAL_FAILED",
+        context: {
+          accountId,
+          channelId: event.channel,
+          userId: event.user,
+          eventType: "member_joined_channel",
+        },
+        cause,
+      });
+      this.runtime.reportError("slack-membership", error);
+      throw error;
+    }
   }
 
   private async handleMemberLeftChannel(
-    event: {
-      user: string;
-      channel: string;
-      team?: string;
-    },
+    event: { user: string; channel: string; team?: string; event_ts?: string },
     accountId = this.defaultAccountId,
   ): Promise<void> {
     if (event.user === this.getBotUserIdForAccount(accountId)) {
@@ -2065,8 +2094,281 @@ export class SlackService extends Service implements ISlackService {
 
     await this.runtime.emitEvent(
       SlackEventTypes.MEMBER_LEFT_CHANNEL as string,
-      this.buildEventPayload(accountId),
+      this.buildMemberEventPayload(event, accountId),
     );
+
+    if (event.user === this.getBotUserIdForAccount(accountId)) {
+      return;
+    }
+    // Leaving one channel never deactivates the workspace entity; only the
+    // room participation for this channel is dropped.
+    try {
+      const roomId = await this.getRoomId(event.channel, undefined, accountId);
+      const entityId = this.getEntityId(event.user, accountId);
+      if (typeof this.runtime.removeParticipant === "function") {
+        await this.runtime.removeParticipant(entityId, roomId);
+      }
+    } catch (cause) {
+      // error-policy:J2 Removal failure is owner-visible diagnostics; the
+      // authoritative Slack roster remains the source of truth on the next
+      // snapshot, so this must not be flattened into a fake success.
+      const error = new ElizaError("Slack member leave renewal failed", {
+        code: "SLACK_MEMBERSHIP_RENEWAL_FAILED",
+        context: {
+          accountId,
+          channelId: event.channel,
+          userId: event.user,
+          eventType: "member_left_channel",
+        },
+        cause,
+      });
+      this.runtime.reportError("slack-membership", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Builds a member-event payload that preserves the Slack user and channel
+   * alongside the runtime identity mapping, so downstream consumers can act
+   * on the affected member without re-deriving it from the account alone.
+   */
+  private buildMemberEventPayload(
+    event: {
+      user: string;
+      channel: string;
+      team?: string;
+      channel_type?: string;
+      inviter?: string;
+      event_ts?: string;
+    },
+    accountId: string,
+  ): EventPayload {
+    const normalized = normalizeAccountId(accountId ?? this.defaultAccountId);
+    const entityId = this.getEntityId(event.user, normalized);
+    const roomId = this.getRoomIdSync(event.channel, normalized);
+    const teamId = event.team ?? this.getTeamIdForAccount(normalized);
+    const worldId = teamId
+      ? createUniqueUuid(
+          this.runtime,
+          this.scopedSlackKey("slack-workspace", teamId, normalized),
+        )
+      : undefined;
+    return {
+      runtime: this.runtime,
+      source: "slack",
+      accountId: normalized,
+      entityId,
+      metadata: {
+        accountId: normalized,
+        slack: {
+          accountId: normalized,
+          userId: event.user,
+          channelId: event.channel,
+          teamId,
+          channelType: event.channel_type,
+          inviterId: event.inviter,
+          eventTs: event.event_ts,
+        },
+        ...(roomId ? { roomId } : {}),
+        ...(worldId ? { worldId } : {}),
+      },
+    } as EventPayload;
+  }
+
+  /** Synchronous roomId derivation for payloads (same keying as getRoomId). */
+  private getRoomIdSync(
+    channelId: string,
+    accountId: string,
+  ): UUID | undefined {
+    try {
+      return createUniqueUuid(
+        this.runtime,
+        this.scopedSlackKey("slack-room", channelId, accountId),
+      );
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Renews one member's runtime participation in an admitted channel: the
+   * entity is resolved for this account, its name is refreshed from the
+   * workspace directory, and the room/world/participant connection is
+   * ensured idempotently. Never called for non-admitted channels.
+   */
+  private async renewChannelMember(
+    slackUserId: string,
+    channelId: string,
+    accountId: string,
+  ): Promise<void> {
+    const entityId = this.getEntityId(slackUserId, accountId);
+    const roomId = await this.getRoomId(channelId, undefined, accountId);
+    const room = await this.runtime.getRoom(roomId);
+    const teamId = this.getTeamIdForAccount(accountId);
+    const worldId = teamId
+      ? createUniqueUuid(
+          this.runtime,
+          this.scopedSlackKey("slack-workspace", teamId, accountId),
+        )
+      : undefined;
+    const user = await this.getUser(slackUserId, accountId);
+    const displayName = user ? getSlackUserDisplayName(user) : slackUserId;
+    if (worldId) {
+      await this.runtime.ensureConnection({
+        entityId,
+        roomId,
+        roomName: room?.name || channelId,
+        userName: user?.name,
+        name: displayName,
+        source: "slack",
+        channelId,
+        serverId: teamId ?? undefined,
+        type: ChannelType.GROUP,
+        worldId,
+        userId: entityId,
+        metadata: {
+          source: "slack",
+          accountId,
+          slack: { accountId, id: slackUserId, name: displayName },
+        },
+      });
+    }
+  }
+
+  /**
+   * Inbound senders are renewed on every admitted message and mention, not
+   * only when their entity is missing: an existing entity that previously
+   * left the room (participant removed) is re-linked by activity, and the
+   * display name is refreshed from the workspace directory.
+   */
+  private async renewInboundSender(
+    slackUserId: string,
+    channelId: string,
+    threadTs: string | undefined,
+    accountId: string,
+  ): Promise<void> {
+    try {
+      const entityId = this.getEntityId(slackUserId, accountId);
+      const roomId = await this.getRoomId(channelId, threadTs, accountId);
+      const teamId = this.getTeamIdForAccount(accountId);
+      const worldId = teamId
+        ? createUniqueUuid(
+            this.runtime,
+            this.scopedSlackKey("slack-workspace", teamId, accountId),
+          )
+        : undefined;
+      const user = await this.getUser(slackUserId, accountId);
+      const displayName = user ? getSlackUserDisplayName(user) : slackUserId;
+      const existingEntity = await this.runtime.getEntityById(entityId);
+      if (!existingEntity) {
+        await this.runtime.createEntity({
+          id: entityId,
+          names: [displayName],
+          metadata: {
+            source: "slack",
+            accountId,
+            slack: {
+              accountId,
+              id: slackUserId,
+              name: displayName,
+              userName: user?.name || slackUserId,
+            },
+          },
+          agentId: this.runtime.agentId,
+        });
+      }
+      if (worldId) {
+        const room = await this.runtime.getRoom(roomId);
+        await this.runtime.ensureConnection({
+          entityId,
+          roomId,
+          roomName: room?.name || channelId,
+          userName: user?.name,
+          name: displayName,
+          source: "slack",
+          channelId,
+          serverId: teamId ?? undefined,
+          type: ChannelType.GROUP,
+          worldId,
+          userId: entityId,
+          metadata: {
+            source: "slack",
+            accountId,
+            slack: { accountId, id: slackUserId, name: displayName },
+          },
+        });
+      }
+    } catch (cause) {
+      // error-policy:J7 Sender renewal is diagnostics on the inbound path;
+      // the message itself must still flow, with the failure reported.
+      this.runtime.reportError(
+        "slack-membership",
+        new ElizaError("Slack inbound sender renewal failed", {
+          code: "SLACK_SENDER_RENEWAL_FAILED",
+          context: { accountId, channelId, userId: slackUserId },
+          cause,
+        }),
+      );
+    }
+  }
+
+  /**
+   * Reads the authoritative member roster for one channel through
+   * `conversations.members`, but only when the channel is admitted for this
+   * account. Any permission, membership, or pagination failure returns a
+   * typed unavailable state — never an empty roster.
+   */
+  async getChannelMembership(
+    channelId: string,
+    accountId?: string | null,
+  ): Promise<SlackMembershipReadResult> {
+    const normalized = normalizeAccountId(
+      accountId ?? this.defaultAccountId ?? DEFAULT_ACCOUNT_ID,
+    );
+    const client = this.getClientForAccount(normalized);
+    if (!client) {
+      return {
+        kind: "unavailable",
+        channelId,
+        reason: "client_not_initialized",
+        slackErrorCode: undefined,
+      };
+    }
+    if (!this.isChannelAllowed(channelId, normalized)) {
+      return {
+        kind: "unavailable",
+        channelId,
+        reason: "channel_not_admitted",
+        slackErrorCode: undefined,
+      };
+    }
+    return readChannelMembershipSnapshot(client, channelId);
+  }
+
+  /**
+   * Renews a channel's member list into runtime rooms: entities and
+   * participant connections are ensured for every snapshot member. When the
+   * read is unavailable nothing is revoked — the prior roster stays as-is
+   * and the unavailable reason is surfaced to the caller.
+   */
+  async renewChannelMembership(
+    channelId: string,
+    accountId?: string | null,
+  ): Promise<SlackMembershipReadResult> {
+    const result = await this.getChannelMembership(channelId, accountId);
+    if (result.kind !== "snapshot") {
+      return result;
+    }
+    const normalized = normalizeAccountId(
+      accountId ?? this.defaultAccountId ?? DEFAULT_ACCOUNT_ID,
+    );
+    for (const memberId of result.memberIds) {
+      if (memberId === this.getBotUserIdForAccount(normalized)) {
+        continue;
+      }
+      await this.renewChannelMember(memberId, channelId, normalized);
+    }
+    return result;
   }
 
   private async handleFileShared(
@@ -2447,6 +2749,16 @@ export class SlackService extends Service implements ISlackService {
         )
       : undefined;
 
+    // Thread rooms are explicitly linked to their parent channel room so
+    // membership stays channel-scoped and thread history can inherit the
+    // channel transcript when the account opts in.
+    const parentRoomId = threadTs
+      ? createUniqueUuid(
+          this.runtime,
+          this.scopedSlackKey("slack-room", channelId, accountId),
+        )
+      : undefined;
+
     const elizaChannelType =
       channelType === "im"
         ? ChannelType.DM
@@ -2470,11 +2782,13 @@ export class SlackService extends Service implements ISlackService {
         topic: channel?.topic?.value,
         purpose: channel?.purpose?.value,
         serverId: teamId,
+        ...(parentRoomId ? { parentRoomId } : {}),
         slack: {
           accountId,
           teamId,
           channelId,
           threadTs,
+          ...(parentRoomId ? { parentRoomId } : {}),
         },
       },
     };
@@ -3056,9 +3370,38 @@ export class SlackService extends Service implements ISlackService {
       (typeof metadata?.threadTs === "string" ? metadata.threadTs : undefined);
     const channel = await this.getChannel(channelId, accountId);
 
-    const rawMessages = threadTs
-      ? await this.readThreadReplies(channelId, threadTs, undefined, accountId)
-      : await this.readHistory(channelId, undefined, accountId);
+    // Thread inheritance contract: historyScope selects which transcript the
+    // thread room reads ("thread" reads only the thread; "channel" reads the
+    // parent channel), and inheritParent additionally injects the parent
+    // channel transcript ahead of thread history. Defaults preserve the
+    // existing thread-only behavior until the account opts in.
+    const threadConfig =
+      this.getAccountState(accountId)?.account.config.thread ?? {};
+    const historyScope = threadConfig.historyScope ?? "thread";
+    const inheritParent = threadConfig.inheritParent ?? false;
+    let rawMessages: Array<SlackMessage | Record<string, unknown>>;
+    if (threadTs && historyScope === "channel") {
+      rawMessages = await this.readHistory(channelId, undefined, accountId);
+    } else if (threadTs && inheritParent) {
+      rawMessages = [
+        ...(await this.readHistory(channelId, undefined, accountId)),
+        ...(await this.readThreadReplies(
+          channelId,
+          threadTs,
+          undefined,
+          accountId,
+        )),
+      ];
+    } else if (threadTs) {
+      rawMessages = await this.readThreadReplies(
+        channelId,
+        threadTs,
+        undefined,
+        accountId,
+      );
+    } else {
+      rawMessages = await this.readHistory(channelId, undefined, accountId);
+    }
     const recentMessages: MessageConnectorChatContext["recentMessages"] = [];
     for (const rawMessage of rawMessages.slice().reverse()) {
       const text = String((rawMessage as SlackMessage).text ?? "");
