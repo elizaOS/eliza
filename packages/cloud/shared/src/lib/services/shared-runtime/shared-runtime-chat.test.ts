@@ -14,6 +14,7 @@ let turn: Record<string, unknown>;
 let streamTurn: Record<string, unknown>;
 let turnError: Error | null;
 let streamTurnError: Error | null;
+let streamTurnSetupGate: Promise<void> | null;
 let turnCalls = 0;
 let lastTurnInput: Record<string, unknown> | undefined;
 const turnInputs: Record<string, unknown>[] = [];
@@ -26,6 +27,7 @@ let releaseBilling = () => {};
 let streamAbortSignal: AbortSignal | undefined;
 let lastTurnRole: "system" | "user" | undefined;
 let turnTimingOutcome: "success" | "error" | null = null;
+let streamTimingOutcome: "success" | "error" | null = null;
 let onTurnDispatch: (() => void) | null = null;
 const settleCalls: number[] = [];
 let settleUnknownCalls = 0;
@@ -257,6 +259,7 @@ mock.module("./run-shared-agent-turn", () => ({
   },
   runSharedAgentTurnStream: async (input: {
     abortSignal?: AbortSignal;
+    onRuntimeTiming?: (receipt: ReturnType<typeof timingReceipt>) => void;
     [key: string]: unknown;
   }) => {
     streamTurnCalls++;
@@ -264,6 +267,8 @@ mock.module("./run-shared-agent-turn", () => ({
     streamTurnInputs.push(input);
     if (streamTurnError) throw streamTurnError;
     streamAbortSignal = input.abortSignal;
+    if (streamTurnSetupGate) await streamTurnSetupGate;
+    if (streamTimingOutcome) input.onRuntimeTiming?.(timingReceipt(streamTimingOutcome));
     return streamTurn;
   },
 }));
@@ -308,11 +313,13 @@ type TestMemoryPair = {
 };
 const memoryPairs: TestMemoryPair[] = [];
 const memoryScopes: Array<{ agentKey: string; roomKey: string }> = [];
+let sharedMemoryStoreOverride: Record<string, unknown> | null | undefined;
 const recordTurnPair = mock(async (pair: TestMemoryPair) => {
   memoryPairs.push(pair);
 });
 const createSharedMemoryStore = mock((scope: { agentKey: string; roomKey: string }) => {
   memoryScopes.push(scope);
+  if (sharedMemoryStoreOverride !== undefined) return sharedMemoryStoreOverride;
   return process.env.SHARED_MEMORY_TABLES_ENABLED === "true" ? { recordTurnPair } : null;
 });
 mock.module("./shared-memory-store", () => ({
@@ -493,6 +500,7 @@ beforeEach(() => {
   billError = null;
   turnError = null;
   streamTurnError = null;
+  streamTurnSetupGate = null;
   turnCalls = 0;
   lastTurnInput = undefined;
   turnInputs.length = 0;
@@ -509,6 +517,7 @@ beforeEach(() => {
   releaseBilling = () => {};
   streamAbortSignal = undefined;
   turnTimingOutcome = null;
+  streamTimingOutcome = null;
   onTurnDispatch = null;
   traceRows.length = 0;
   insertTrace.mockClear();
@@ -517,6 +526,8 @@ beforeEach(() => {
   createSharedTodoStore.mockClear();
   sharedTodoStorageScope.mockClear();
   delete process.env.SHARED_MEMORY_TABLES_ENABLED;
+  delete process.env.SHARED_FACTS_ENABLED;
+  sharedMemoryStoreOverride = undefined;
   memoryPairs.length = 0;
   memoryScopes.length = 0;
   recordTurnPair.mockClear();
@@ -1359,6 +1370,145 @@ describe("SharedRuntimeChatService", () => {
     await reader?.cancel();
   });
 
+  test("terminates a silent provider stream before the outer room watchdog", async () => {
+    let providerNextStarted = false;
+    streamTurn = {
+      degraded: false,
+      parts: {
+        [Symbol.asyncIterator]() {
+          return {
+            next: async () => {
+              providerNextStarted = true;
+              return await new Promise<IteratorResult<never>>(() => {});
+            },
+          };
+        },
+      },
+    };
+
+    const service = new SharedRuntimeChatService(20);
+    const h = harness([]);
+    const body = await (await service.stream(agent, rpc, h)).text();
+
+    expect(providerNextStarted).toBe(true);
+    expect(body.startsWith(": ready\n\n")).toBe(true);
+    expect(body).toContain("event: error");
+    expect(body).not.toContain("event: done");
+    expect(streamAbortSignal?.aborted).toBe(true);
+    expect(h.history()).toEqual([expect.objectContaining({ role: "user", content: "hello" })]);
+    await Promise.all(h.background);
+    expect(settleUnknownCalls).toBe(1);
+  });
+
+  test("returns a terminal SSE timeout when provider setup never resolves", async () => {
+    streamTurnSetupGate = new Promise<void>(() => {});
+    const service = new SharedRuntimeChatService(20);
+    const h = harness([]);
+
+    const body = await (await service.stream(agent, rpc, h)).text();
+
+    expect(body).toContain("event: error");
+    expect(body).toContain("Shared runtime stream timed out");
+    expect(streamAbortSignal?.aborted).toBe(true);
+    expect(h.history()).toEqual([]);
+    await Promise.all(h.background);
+    expect(settleUnknownCalls).toBe(1);
+  });
+
+  test("bounds admitted facts hydration before provider setup", async () => {
+    process.env.SHARED_FACTS_ENABLED = "true";
+    sharedMemoryStoreOverride = {
+      listFacts: async () => await new Promise<never>(() => {}),
+    };
+    const service = new SharedRuntimeChatService(20);
+    const h = harness([]);
+
+    const body = await (await service.stream(agent, rpc, h)).text();
+
+    expect(body).toContain("event: error");
+    expect(body).toContain("Shared runtime stream timed out");
+    expect(streamTurnCalls).toBe(0);
+    expect(streamAbortSignal).toBeUndefined();
+    await Promise.all(h.background);
+    expect(settleUnknownCalls).toBe(1);
+  });
+
+  test("lands partial provider output as interrupted when the terminal deadline expires", async () => {
+    streamTurn = {
+      degraded: false,
+      parts: (async function* () {
+        yield { type: "text-delta", text: "partial" };
+        await new Promise<void>(() => {});
+      })(),
+    };
+
+    const service = new SharedRuntimeChatService(20);
+    const h = harness([]);
+    const body = await (await service.stream(agent, rpc, h)).text();
+
+    expect(body).toContain("event: chunk");
+    expect(body).toContain("event: error");
+    expect(body).not.toContain("event: done");
+    expect(h.history()).toEqual([
+      expect.objectContaining({ role: "user", content: "hello" }),
+      expect.objectContaining({
+        role: "assistant",
+        content: "partial",
+        interrupted: true,
+      }),
+    ]);
+    await Promise.all(h.background);
+    expect(settleUnknownCalls).toBe(1);
+  });
+
+  test("emits error without done when durable success finalization exceeds the deadline", async () => {
+    process.env.SHARED_TURN_TRACES_ENABLED = "true";
+    process.env.SHARED_TURN_TRACES_SAMPLE = "1";
+    streamTimingOutcome = "success";
+    const h = harness([]);
+    h.historyStore.checkpointPending = async () => undefined;
+    h.historyStore.merge = async () => await new Promise<never>(() => {});
+
+    const body = await (await new SharedRuntimeChatService(20).stream(agent, rpc, h)).text();
+
+    expect(body).toContain("event: chunk");
+    expect(body).toContain("event: error");
+    expect(body).not.toContain("event: done");
+    expect(h.staged()).toEqual([
+      expect.objectContaining({ role: "user", content: "hello" }),
+      expect.objectContaining({ role: "assistant", content: "hello", interrupted: true }),
+    ]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(traceRows).toHaveLength(1);
+    const trace = traceRows[0] as { stages: { terminalTiming?: { outcome?: string } } };
+    expect(trace.stages.terminalTiming).toMatchObject({ outcome: "error" });
+  });
+
+  test("request abort terminates an abort-ignoring provider before the absolute deadline", async () => {
+    streamTurn = {
+      degraded: false,
+      parts: {
+        [Symbol.asyncIterator]() {
+          return { next: async () => await new Promise<IteratorResult<never>>(() => {}) };
+        },
+      },
+    };
+    const requestAbort = new AbortController();
+    const h = harness([]);
+    const response = await new SharedRuntimeChatService(500).stream(agent, rpc, {
+      ...h,
+      abortSignal: requestAbort.signal,
+    });
+    const bodyPromise = response.text();
+
+    requestAbort.abort(new Error("client disconnected"));
+    const body = await bodyPromise;
+
+    expect(body).toContain("event: error");
+    expect(body).not.toContain("event: done");
+    expect(streamAbortSignal?.aborted).toBe(true);
+  });
+
   test("a failed long-term-memory mirror is reported without failing the landed turn (#25689)", async () => {
     process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
     recordTurnPair.mockImplementationOnce(async () => {
@@ -1656,6 +1806,7 @@ describe("SharedRuntimeChatService", () => {
     const response = await service.stream(agent, rpc, h);
     const reader = response.body!.getReader();
     await reader.read();
+    await reader.read();
     await reader.cancel("barge-in");
     await Promise.all(h.background);
 
@@ -1694,6 +1845,7 @@ describe("SharedRuntimeChatService", () => {
 
     const response = await service.stream(agent, rpc, h);
     const reader = response.body!.getReader();
+    await reader.read();
     await reader.read();
     await reader.cancel("barge-in");
     releaseProviderStream();
@@ -1761,6 +1913,7 @@ describe("SharedRuntimeChatService", () => {
     const response = await service.stream(agent, rpc, h);
     const reader = response.body!.getReader();
     await reader.read();
+    await reader.read();
     await expect(reader.cancel("first cancel")).resolves.toBeUndefined();
     expect(staged).toMatchObject([
       { role: "user", content: "hello" },
@@ -1825,6 +1978,28 @@ describe("SharedRuntimeChatService", () => {
     method: "message.send",
     params: { text: "hello", roomId: "room-1", clientMessageId: "client-key-1" },
   };
+
+  test("keeps a keyed claim pending when claim completion exceeds the terminal deadline", async () => {
+    const claims = memoryTurnClaims();
+    claims.store.complete = async () => await new Promise<never>(() => {});
+    const h = harness([]);
+    h.historyStore.checkpointPending = async () => undefined;
+
+    const body = await (
+      await new SharedRuntimeChatService(20).stream(agent, keyedRpc, {
+        ...h,
+        turnClaims: claims.store,
+      })
+    ).text();
+
+    expect(body).toContain("event: error");
+    expect(body).not.toContain("event: done");
+    expect(claims.claims.get("client-key-1")?.result).toBeUndefined();
+    expect(h.staged()).toEqual([
+      expect.objectContaining({ role: "user", content: "hello" }),
+      expect.objectContaining({ role: "assistant", content: "hello", interrupted: true }),
+    ]);
+  });
 
   test("an unkeyed client may reuse a JSON-RPC id without reusing durable message identities", async () => {
     const service = new SharedRuntimeChatService();
