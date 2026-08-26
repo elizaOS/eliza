@@ -116,4 +116,24 @@ describe("StackContextManager", () => {
 		expect(manager.active()).toBeUndefined();
 		return expect(settled).resolves.toBeUndefined();
 	});
+
+	it("tracks stack depth and clears active context", () => {
+		const manager = new StackContextManager<string>();
+		expect(manager.depth).toBe(0);
+
+		manager.run("first", () => {
+			expect(manager.depth).toBe(1);
+			manager.run("second", () => {
+				expect(manager.depth).toBe(2);
+			});
+			expect(manager.depth).toBe(1);
+		});
+		expect(manager.depth).toBe(0);
+
+		manager.run("outer", () => {
+			manager.clear();
+			expect(manager.depth).toBe(0);
+			expect(manager.active()).toBeUndefined();
+		});
+	});
 });
