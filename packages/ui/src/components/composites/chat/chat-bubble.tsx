@@ -89,6 +89,10 @@ export function ChatBubble({
           // hashes / paths so they can't blow out the bubble width on a phone.
           "relative w-fit max-w-full whitespace-pre-wrap text-chat-body [overflow-wrap:anywhere]",
           appearance === "default" && !bare && tone === "assistant" && "py-1",
+          appearance === "default" &&
+            !bare &&
+            tone === "user" &&
+            "rounded-2xl rounded-br-md border border-white/15",
           // Message text must remain selectable for normal highlight/copy.
           "select-text [-webkit-touch-callout:default]",
           WALLPAPER_FLOAT_SHADOW,
