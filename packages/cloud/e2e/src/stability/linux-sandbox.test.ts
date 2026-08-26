@@ -6,7 +6,7 @@
 import { expect, test } from "bun:test";
 import { spawn, spawnSync } from "node:child_process";
 import { closeSync, mkdtempSync, openSync, writeFileSync } from "node:fs";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -76,18 +76,45 @@ const hostedLinux =
   process.env.ELIZA_STABILITY_LINUX_SANDBOX === "1";
 
 test.skipIf(!hostedLinux)(
-  "kernel boundary blocks proc, fd, TCP, UDP, and DNS escapes",
+  "kernel boundary blocks proc, fd, network, AF_UNIX, socketpair, and io_uring escapes",
   async () => {
     const directory = await mkdtemp(
       path.join(tmpdir(), "cloud-sandbox-proof-"),
     );
+    const hostTmpDirectory = await mkdtemp(
+      path.join(tmpdir(), "cloud-sandbox-host-ipc-"),
+    );
+    await chmod(hostTmpDirectory, 0o755);
+    const hostTmpMarkerPath = path.join(hostTmpDirectory, "world-readable");
+    await writeFile(hostTmpMarkerPath, "must-be-masked", { mode: 0o644 });
     const allowed = createServer((socket) => socket.end("allowed"));
     const blocked = createServer((socket) => socket.end("blocked"));
     const blockedIpv6 = createServer((socket) => socket.end("blocked-ipv6"));
     const filesystemUnix = createServer((socket) => socket.end("host-unix"));
     const abstractUnix = createServer((socket) => socket.end("host-abstract"));
     const filesystemUnixPath = path.join(directory, "host-delegation.sock");
+    const filesystemUnixDatagramPath = path.join(
+      directory,
+      "host-delegation-dgram.sock",
+    );
+    const datagramReadyPath = path.join(directory, "host-dgram-ready");
     const abstractUnixPath = `\0eliza-stability-${process.pid}-${Date.now()}`;
+    const datagramServer = spawn(
+      "python3",
+      [
+        "-c",
+        [
+          "import pathlib, socket, sys",
+          "server = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)",
+          "server.bind(sys.argv[1])",
+          "pathlib.Path(sys.argv[2]).write_text('ready')",
+          "server.recv(1)",
+        ].join("\n"),
+        filesystemUnixDatagramPath,
+        datagramReadyPath,
+      ],
+      { stdio: "ignore" },
+    );
     await Promise.all([
       new Promise<void>((resolve, reject) => {
         allowed.once("error", reject);
@@ -111,6 +138,24 @@ test.skipIf(!hostedLinux)(
       }),
     ]);
     try {
+      const datagramReadyDeadline = Date.now() + 5_000;
+      while (Date.now() < datagramReadyDeadline) {
+        try {
+          if ((await readFile(datagramReadyPath, "utf8")) === "ready") break;
+        } catch (error) {
+          // error-policy:J3 The ready marker is absent until the host datagram endpoint is bound.
+          if (
+            !error ||
+            typeof error !== "object" ||
+            !("code" in error) ||
+            error.code !== "ENOENT"
+          ) {
+            throw error;
+          }
+        }
+        await Bun.sleep(25);
+      }
+      expect(await readFile(datagramReadyPath, "utf8")).toBe("ready");
       const allowedPort = (allowed.address() as { port: number }).port;
       const blockedPort = (blocked.address() as { port: number }).port;
       const blockedIpv6Port = (blockedIpv6.address() as { port: number }).port;
@@ -151,15 +196,46 @@ const udp = (family, host, port) => new Promise((resolve) => {
     });
   });
 });
+const syscallPython = [
+  "import ctypes, json, os, socket",
+  "libc = ctypes.CDLL(None, use_errno=True)",
+  "fds = (ctypes.c_int * 2)()",
+  "ctypes.set_errno(0)",
+  "socketpair_result = libc.syscall(53, socket.AF_UNIX, socket.SOCK_DGRAM, 0, fds)",
+  "socketpair_errno = ctypes.get_errno()",
+  "socketpair_reconnect = False",
+  "if socketpair_result == 0:",
+  "    left = socket.socket(fileno=fds[0])",
+  "    right = socket.socket(fileno=fds[1])",
+  "    try:",
+  "        left.connect(os.environ['PROBE_FILESYSTEM_UNIX_DGRAM'])",
+  "        socketpair_reconnect = True",
+  "    except OSError:",
+  "        pass",
+  "    left.close()",
+  "    right.close()",
+  "def denied(nr, *args):",
+  "    ctypes.set_errno(0)",
+  "    result = libc.syscall(nr, *args)",
+  "    return {'result': result, 'errno': ctypes.get_errno()}",
+  "print(json.dumps({'socketpairResult': socketpair_result, 'socketpairErrno': socketpair_errno, 'socketpairReconnect': socketpair_reconnect, 'x32Socketpair': denied(0x40000000 | 53, socket.AF_UNIX, socket.SOCK_DGRAM, 0, fds), 'ioUringSetup': denied(425, 1, 0), 'ioUringEnter': denied(426, -1, 0, 0, 0, 0, 0), 'ioUringRegister': denied(427, -1, 0, 0, 0)}))",
+].join("\\n");
+const syscallProbe = spawnSync("python3", ["-c", syscallPython], { encoding: "utf8" });
+const syscallResult = syscallProbe.status === 0
+  ? JSON.parse(syscallProbe.stdout)
+  : { probeError: syscallProbe.stderr };
 let procReadable = false;
 try { readFileSync("/proc/" + process.env.PROBE_PARENT_PID + "/environ"); procReadable = true; } catch {}
 let fdSecretReadable = false;
 try { fdSecretReadable = readFileSync(3, "utf8").includes("fd-secret"); } catch {}
+let hostTmpReadable = false;
+try { hostTmpReadable = readFileSync(process.env.PROBE_HOST_TMP_PATH, "utf8") === "must-be-masked"; } catch {}
 const rawProbeAvailable = spawnSync("python3", ["--version"]).status === 0;
 console.log(JSON.stringify({
   secretPresent: process.env.PROBE_PARENT_CREDENTIAL !== undefined,
   procReadable,
   fdSecretReadable,
+  hostTmpReadable,
   uid: process.getuid?.(),
   allowed: await tcp("127.0.0.1", Number(process.env.PROBE_ALLOWED_PORT)),
   blockedLoopback: await tcp("127.0.0.1", Number(process.env.PROBE_BLOCKED_PORT)),
@@ -173,6 +249,7 @@ console.log(JSON.stringify({
   rawIpv6: spawnSync("python3", ["-c", "import socket; socket.socket(socket.AF_INET6, socket.SOCK_RAW, socket.IPPROTO_RAW)"]).status === 0,
   filesystemUnix: await unix(process.env.PROBE_FILESYSTEM_UNIX),
   abstractUnix: await unix("\\0" + process.env.PROBE_ABSTRACT_UNIX_NAME),
+  syscallResult,
 }));
 `,
         { mode: 0o600 },
@@ -192,6 +269,8 @@ console.log(JSON.stringify({
             PROBE_BLOCKED_PORT: String(blockedPort),
             PROBE_BLOCKED_IPV6_PORT: String(blockedIpv6Port),
             PROBE_FILESYSTEM_UNIX: filesystemUnixPath,
+            PROBE_FILESYSTEM_UNIX_DGRAM: filesystemUnixDatagramPath,
+            PROBE_HOST_TMP_PATH: hostTmpMarkerPath,
             PROBE_ABSTRACT_UNIX_NAME: abstractUnixPath.slice(1),
           }),
         ),
@@ -231,6 +310,7 @@ console.log(JSON.stringify({
         secretPresent: false,
         procReadable: false,
         fdSecretReadable: false,
+        hostTmpReadable: false,
         uid: undefined,
         allowed: true,
         blockedLoopback: false,
@@ -244,6 +324,15 @@ console.log(JSON.stringify({
         rawIpv6: false,
         filesystemUnix: false,
         abstractUnix: false,
+        syscallResult: {
+          socketpairResult: -1,
+          socketpairErrno: 1,
+          socketpairReconnect: false,
+          x32Socketpair: { result: -1, errno: 1 },
+          ioUringSetup: { result: -1, errno: 1 },
+          ioUringEnter: { result: -1, errno: 1 },
+          ioUringRegister: { result: -1, errno: 1 },
+        },
       });
       const firewall = spawnSync(
         "sudo",
@@ -322,6 +411,8 @@ console.log(JSON.stringify({
       blockedIpv6.close();
       filesystemUnix.close();
       abstractUnix.close();
+      datagramServer.kill("SIGKILL");
+      await rm(hostTmpDirectory, { recursive: true, force: true });
       await rm(directory, { recursive: true, force: true });
     }
   },
