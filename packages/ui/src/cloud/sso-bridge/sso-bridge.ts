@@ -634,3 +634,34 @@ export async function signOutFromSsoBridgedHost(
   await clearStaleStewardSession();
   await serverLogout;
 }
+
+/**
+ * Ends the ambient hosted session before a native account-switch login.
+ * Unlike ordinary sign-out, this boundary fails closed: rendering provider
+ * choices over a still-live HttpOnly session would silently select the prior
+ * account again.
+ */
+export async function prepareSsoAccountSwitch(
+  hostname: string = window.location.hostname,
+  fetchFn: typeof fetch = fetch,
+): Promise<void> {
+  invalidateStewardServerCookieSyncMarker();
+  markSsoLoggedOut();
+  const base = apiBaseForHostname(hostname);
+  if (!base) {
+    throw new Error(
+      "Eliza Cloud account switching is unavailable on this host.",
+    );
+  }
+  const serverLogout = fetchFn(`${base}/api/auth/logout`, {
+    method: "POST",
+    credentials: "include",
+  });
+  await clearStaleStewardSession();
+  const response = await serverLogout;
+  if (!response.ok) {
+    throw new Error(
+      `Eliza Cloud could not end the previous browser session (${response.status}).`,
+    );
+  }
+}

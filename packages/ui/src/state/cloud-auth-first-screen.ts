@@ -1,5 +1,7 @@
 /** Carries the one-shot greeting handoff across the Cloud login navigation. */
 
+import { shellLocalStorage } from "../surface-realm-channel";
+
 export const CLOUD_AUTH_FIRST_SCREEN_GREETING_KEY =
   "eliza:cloud-auth-first-screen-greeting";
 
@@ -7,7 +9,7 @@ export const CLOUD_AUTH_FIRST_SCREEN_GREETING_KEY =
 export function markCloudAuthFirstScreenGreeting(): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(CLOUD_AUTH_FIRST_SCREEN_GREETING_KEY, "1");
+    shellLocalStorage.setItem(CLOUD_AUTH_FIRST_SCREEN_GREETING_KEY, "1");
   } catch {
     // error-policy:J4 storage loss affects only the optional greeting handoff.
   }
@@ -17,7 +19,7 @@ export function markCloudAuthFirstScreenGreeting(): void {
 export function clearCloudAuthFirstScreenGreeting(): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.removeItem(CLOUD_AUTH_FIRST_SCREEN_GREETING_KEY);
+    shellLocalStorage.removeItem(CLOUD_AUTH_FIRST_SCREEN_GREETING_KEY);
   } catch {
     // error-policy:J4 blocked storage cannot retain a marker that was not writable.
   }
@@ -30,7 +32,7 @@ export function consumeCloudAuthFirstScreenGreeting(): boolean {
     const pending =
       window.localStorage.getItem(CLOUD_AUTH_FIRST_SCREEN_GREETING_KEY) === "1";
     if (pending) {
-      window.localStorage.removeItem(CLOUD_AUTH_FIRST_SCREEN_GREETING_KEY);
+      shellLocalStorage.removeItem(CLOUD_AUTH_FIRST_SCREEN_GREETING_KEY);
     }
     return pending;
   } catch {

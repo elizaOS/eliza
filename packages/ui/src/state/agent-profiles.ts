@@ -6,6 +6,7 @@
  */
 
 import { logger } from "@elizaos/logger";
+import { setStorageValue } from "../bridge/storage-bridge";
 import { shellLocalStorage } from "../surface-realm-channel";
 import { isManagedCloudSharedAgentBase } from "../utils/cloud-agent-base";
 import type { AgentProfile, AgentProfileRegistry } from "./agent-profile-types";
@@ -303,6 +304,31 @@ export function removeManagedSharedCloudAgentProfiles(): void {
     activeProfileId: activeStillPresent ? registry.activeProfileId : null,
     profiles,
   });
+}
+
+/**
+ * Removes managed Cloud profiles only after the protected native rewrite has
+ * committed, so account sign-out cannot resolve over stale profile authority.
+ */
+export async function removeManagedCloudAgentProfilesDurably(): Promise<void> {
+  const registry = loadAgentProfileRegistry();
+  const profiles = registry.profiles.filter(
+    (profile) =>
+      profile.kind !== "cloud" &&
+      !isManagedCloudSharedAgentBase(profile.apiBase),
+  );
+  if (profiles.length === registry.profiles.length) return;
+  const activeStillPresent = profiles.some(
+    (profile) => profile.id === registry.activeProfileId,
+  );
+  await setStorageValue(
+    STORAGE_KEY,
+    JSON.stringify({
+      version: 1,
+      activeProfileId: activeStillPresent ? registry.activeProfileId : null,
+      profiles,
+    } satisfies AgentProfileRegistry),
+  );
 }
 
 export function removeAgentProfile(id: string): void {

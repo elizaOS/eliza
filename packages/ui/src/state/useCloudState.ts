@@ -30,7 +30,11 @@ import {
   type AndroidCloudAuthResult,
   beginAndroidCloudSignIn,
   cancelAndroidCloudSignIn,
+  clearAndroidCloudAccountSwitchPending,
+  isAndroidCloudAccountSwitchPending,
+  markAndroidCloudAccountSwitchPending,
   navigateAndroidCloudSignInInApp,
+  signOutAndroidCloud,
   takeLatestAndroidCloudCompletion,
 } from "../android-cloud/android-cloud-auth";
 import { client } from "../api";
@@ -87,8 +91,12 @@ import {
   launchStewardLogin,
 } from "./cloud-steward-login";
 
-import { scrubPersistedActiveServerToken } from "./persistence";
+import {
+  savePersistedFirstRunComplete,
+  scrubPersistedActiveServerToken,
+} from "./persistence";
 import { isPrivateNetworkHost } from "./private-network-host";
+import { clearManagedCloudAccountBinding } from "./shared-cloud-account-binding";
 import type { CloudLoginOptions } from "./types";
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -847,7 +855,9 @@ export function useCloudState({
                 onResult,
               );
           });
-          const attempt = await beginAndroidCloudSignIn(cloudApiBase);
+          const attempt = await beginAndroidCloudSignIn(cloudApiBase, {
+            switchAccount: isAndroidCloudAccountSwitchPending(),
+          });
           attemptId = attempt.state;
           if (isAndroidLauncherBuild()) {
             if (!navigateAndroidCloudSignInInApp(attempt.browserUrl)) {
@@ -912,6 +922,17 @@ export function useCloudState({
           if (!connected) {
             throw new Error(
               "Could not verify your Eliza Cloud session. Please sign in again.",
+            );
+          }
+          try {
+            clearAndroidCloudAccountSwitchPending();
+          } catch (error) {
+            // error-policy:J4 the replacement session is already verified;
+            // retaining this non-secret marker only forces another explicit
+            // account choice on a future login instead of weakening auth.
+            logger.warn(
+              { error },
+              "[useCloudState] Could not clear Android account-switch marker",
             );
           }
         } catch (error) {
@@ -1774,7 +1795,22 @@ export function useCloudState({
       // inherits the retired console's sign-out menu. Preserve the hardened
       // cross-origin teardown here: synchronously suppress auto-bridging,
       // revoke the server session, then scrub the local Steward session.
-      await signOutFromSsoBridgedHost();
+      const nativeAndroidCloud =
+        isAndroidCloudBuild() && Capacitor.isNativePlatform();
+      if (nativeAndroidCloud) {
+        const cloudApiBase =
+          getBootConfig().cloudApiBase ?? DEFAULT_DIRECT_CLOUD_BASE_URL;
+        await signOutAndroidCloud(cloudApiBase);
+        markAndroidCloudAccountSwitchPending();
+      } else {
+        await signOutFromSsoBridgedHost();
+      }
+      // A managed agent selection is scoped to the account that proved
+      // ownership. Account switching must not restore that target under the
+      // next account or strand the cloud-only app in backend-unreachable.
+      await clearManagedCloudAccountBinding();
+      clearCloudPairApiToken();
+      savePersistedFirstRunComplete(false);
       setElizaCloudEnabled(false);
       setElizaCloudConnected(false);
       publishElizaCloudVoiceSnapshot(setElizaCloudHasPersistedKey, {
