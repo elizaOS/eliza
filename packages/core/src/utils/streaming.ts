@@ -48,14 +48,9 @@ export class StreamError extends Error {
 		this.code = code;
 		this.details = details;
 	}
-
-	/** Check if an error is a StreamError */
-	static isStreamError(error: unknown): error is StreamError {
-		return error instanceof StreamError;
-	}
 }
 
-/** Standalone type guard checking whether an unknown value is a StreamError instance. */
+/** Narrowing helper: true when `error` is a {@link StreamError}. */
 export function isStreamError(error: unknown): error is StreamError {
 	return error instanceof StreamError;
 }

@@ -23,11 +23,11 @@ describe("StreamError", () => {
 		expect(error.code).toBe("CHUNK_TOO_LARGE");
 		expect(error.message).toBe("Chunk too big");
 		expect(error.details).toEqual({ chunkSize: 2000 });
-		expect(StreamError.isStreamError(error)).toBe(true);
-		expect(StreamError.isStreamError(new Error("generic"))).toBe(false);
 		expect(isStreamError(error)).toBe(true);
 		expect(isStreamError(new Error("generic"))).toBe(false);
 		expect(isStreamError(null)).toBe(false);
+		expect(isStreamError(undefined)).toBe(false);
+		expect(isStreamError({ name: "StreamError" })).toBe(false);
 	});
 });
 
