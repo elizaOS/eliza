@@ -4,18 +4,12 @@
  * sessions and commands so relay operations cannot outlive revocation.
  */
 
-<<<<<<< HEAD
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import {
   canonicalizeRemoteControlValue,
   type RemoteConnectionMode,
 } from "@elizaos/shared/contracts/remote-control";
 import { and, asc, desc, eq, inArray, isNotNull, lte, or, type SQL } from "drizzle-orm";
-=======
-import { ElizaError } from "@elizaos/core/edge";
-import { canonicalizeRemoteControlValue } from "@elizaos/shared/contracts/remote-control";
-import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
->>>>>>> 1196151a20401 (refactor(cloud-api): remove broad core worker mirror)
 import type { Database } from "../client";
 import { hashRemoteHostToken } from "../crypto/remote-host-token";
 import { dbWrite } from "../helpers";
