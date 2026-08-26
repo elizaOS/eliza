@@ -140,11 +140,7 @@ afterEach(() => {
     Reflect.deleteProperty(document, "visibilityState");
   }
   if (originalAbortSignalAnyDescriptor) {
-    Object.defineProperty(
-      AbortSignal,
-      "any",
-      originalAbortSignalAnyDescriptor,
-    );
+    Object.defineProperty(AbortSignal, "any", originalAbortSignalAnyDescriptor);
   } else {
     Reflect.deleteProperty(AbortSignal, "any");
   }
