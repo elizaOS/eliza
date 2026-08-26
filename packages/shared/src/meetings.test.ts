@@ -68,6 +68,11 @@ describe("parseMeetingUrl", () => {
     );
   });
 
+  it("preserves well-formed Unicode when Teams native meeting id contains surrogate pairs", () => {
+    const encoded = encodeURIComponent("meeting_id_" + "a".repeat(115) + "🚀" + "tail");
+    const parsed = parseMeetingUrl(`https://teams.microsoft.com/l/meetup-join/${encoded}`);
+    expect(parsed?.nativeMeetingId?.isWellFormed()).toBe(true);
+  });
   it("returns null for an unrecognized URL", () => {
     expect(parseMeetingUrl("https://example.com/not-a-meeting")).toBeNull();
     expect(parseMeetingUrl("")).toBeNull();

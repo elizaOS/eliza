@@ -18,6 +18,12 @@ describe("voice", () => {
     expect(sanitizeApiKey("  key123456789  ")).toContain("...");
     expect(sanitizeApiKey("[REDACTED]")).toBe("[REDACTED]");
   });
+  it("preserves well-formed Unicode when apiKey contains surrogate pairs", () => {
+    const key = "abc🚀SECRETMIDDLE🚀xyz";
+    const sanitized = sanitizeApiKey(key);
+    expect(sanitized?.isWellFormed()).toBe(true);
+    expect(sanitized).toContain("...");
+  });
   it("checks configured", () => {
     expect(hasConfiguredApiKey("abc")).toBe(true);
     expect(hasConfiguredApiKey(undefined)).toBe(false);
