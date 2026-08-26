@@ -57,6 +57,10 @@ export function buildSharedEnv(
     BUN_OPTIONS: withBunSourceCondition(process.env.BUN_OPTIONS),
     NODE_ENV: "test",
     CLOUD_E2E: "1",
+    // The production migration runner pauses at an active rollout barrier.
+    // This explicit acknowledgement can advance only against PGlite/loopback
+    // targets, allowing an ephemeral E2E database to reach the current schema.
+    ELIZA_DISPOSABLE_LOCAL_MIGRATION_RELEASE_BARRIER_ACK: "1",
     // Cross-process encrypted rows (API-key secrets, backups) must be
     // decryptable by the runner, Worker, and control-plane test processes.
     ELIZA_KMS_BACKEND: process.env.ELIZA_KMS_BACKEND ?? "local",
