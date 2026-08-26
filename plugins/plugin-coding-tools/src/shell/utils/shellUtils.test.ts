@@ -6,7 +6,12 @@
  * the real exported chunkString.
  */
 import { describe, expect, it } from "vitest";
-import { chunkString, deriveSessionName } from "./shellUtils";
+import {
+  chunkString,
+  deriveSessionName,
+  sliceUtf16Safe,
+  truncateMiddle,
+} from "./shellUtils";
 
 const CHUNK_LIMIT = 8 * 1024;
 
@@ -76,5 +81,57 @@ describe("deriveSessionName command tokenization", () => {
     // quadratic; the bounded tokenization prefix caps that work.
     const name = deriveSessionName(`run ${'"\\'.repeat(100_000)}`);
     expect(name).toBe("run \\");
+  });
+});
+
+describe("sliceUtf16Safe surrogate-safe string slicing", () => {
+  it("does not split surrogate pairs when start lands on a low surrogate", () => {
+    // "😀" has high surrogate at index 0 and low surrogate at index 1.
+    // Slicing at index 1 without protection yields a lone low surrogate.
+    const sliced = sliceUtf16Safe("😀", 1);
+    expect(sliced.isWellFormed()).toBe(true);
+    expect(sliced).toBe("");
+
+    const withPrefix = sliceUtf16Safe("A😀B", 2);
+    expect(withPrefix.isWellFormed()).toBe(true);
+    expect(withPrefix).toBe("B");
+  });
+
+  it("does not split surrogate pairs when end lands between a high and low surrogate", () => {
+    const sliced = sliceUtf16Safe("😀", 0, 1);
+    expect(sliced.isWellFormed()).toBe(true);
+    expect(sliced).toBe("");
+
+    const withPrefix = sliceUtf16Safe("A😀B", 0, 2);
+    expect(withPrefix.isWellFormed()).toBe(true);
+    expect(withPrefix).toBe("A");
+  });
+
+  it("sanitizes lone surrogates from input text", () => {
+    const lone = "bad \uD800 char";
+    const sliced = sliceUtf16Safe(lone, 0, 10);
+    expect(sliced.isWellFormed()).toBe(true);
+    expect(sliced).toContain("\uFFFD");
+  });
+});
+
+describe("truncateMiddle surrogate-safe string truncation", () => {
+  it("does not split surrogate pairs when middle ellipsis falls on astral characters", () => {
+    const text = `A${"😀".repeat(10)}`;
+    const result = truncateMiddle(text, 9);
+    expect(result.isWellFormed()).toBe(true);
+    expect(result.length).toBeLessThanOrEqual(9);
+    expect(result).toBe("A😀...😀");
+  });
+
+  it("handles small and non-positive max bounds without budget overflow", () => {
+    expect(truncateMiddle("hello", 2)).toBe("..");
+    expect(truncateMiddle("hello", 0)).toBe("");
+    expect(truncateMiddle("hello", -1)).toBe("");
+    expect(truncateMiddle("hello", 3)).toBe("...");
+  });
+
+  it("returns the input unchanged when within max limit", () => {
+    expect(truncateMiddle("hello", 10)).toBe("hello");
   });
 });
