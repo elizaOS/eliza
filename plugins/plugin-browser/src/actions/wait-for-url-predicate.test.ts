@@ -54,4 +54,19 @@ describe("buildWaitForUrlPredicate", () => {
     expect(predicate.kind).toBe("substring");
     expect(predicate.test("https://anything.example")).toBe(false);
   });
+
+  it("safely returns false for non-string url or pattern inputs", () => {
+    const subPredicate = buildWaitForUrlPredicate("example");
+    expect(subPredicate.test(null as unknown as string)).toBe(false);
+    expect(subPredicate.test(undefined as unknown as string)).toBe(false);
+
+    const regexPredicate = buildWaitForUrlPredicate("/example/i");
+    expect(regexPredicate.test(null as unknown as string)).toBe(false);
+    expect(regexPredicate.test(undefined as unknown as string)).toBe(false);
+
+    const nullPatternPredicate = buildWaitForUrlPredicate(
+      null as unknown as string,
+    );
+    expect(nullPatternPredicate.test("https://example.com")).toBe(false);
+  });
 });

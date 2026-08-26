@@ -44,7 +44,8 @@ function compileRegex(source: string, flags: string): RegExp | null {
  *   match on the original pattern text.
  */
 export function buildWaitForUrlPredicate(pattern: string): WaitForUrlPredicate {
-  const trimmed = pattern.trim();
+  const safePattern = typeof pattern === "string" ? pattern : "";
+  const trimmed = safePattern.trim();
 
   const literalMatch = trimmed.match(REGEX_LITERAL);
   if (literalMatch) {
@@ -52,9 +53,9 @@ export function buildWaitForUrlPredicate(pattern: string): WaitForUrlPredicate {
     const compiled = compileRegex(source, flags || "");
     if (compiled) {
       return {
-        pattern,
+        pattern: safePattern,
         kind: "regex",
-        test: (url: string) => compiled.test(url),
+        test: (url: string) => typeof url === "string" && compiled.test(url),
       };
     }
     // Invalid regex literal: fall through to substring on the raw pattern.
@@ -62,9 +63,11 @@ export function buildWaitForUrlPredicate(pattern: string): WaitForUrlPredicate {
 
   const needle = trimmed.toLowerCase();
   return {
-    pattern,
+    pattern: safePattern,
     kind: "substring",
     test: (url: string) =>
-      needle.length === 0 ? false : url.toLowerCase().includes(needle),
+      typeof url === "string" &&
+      needle.length > 0 &&
+      url.toLowerCase().includes(needle),
   };
 }
