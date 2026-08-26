@@ -18,7 +18,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { client } from "../../api/client";
 import type { CharacterData } from "../../api/client-types";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
-import { WorkspaceLayout } from "../../layouts/workspace-layout/workspace-layout";
+import { FramedPage, FramedPageBody } from "../../layouts/framed-page";
 import { useAppSelectorShallow } from "../../state";
 // Direct sub-path import to avoid the widgets/index.ts ↔ WidgetHost.tsx
 // chunk-level circular dependency.
@@ -223,53 +223,50 @@ export function CharacterHubView({
   );
 
   return (
-    <WorkspaceLayout
-      className="h-full"
-      contentPadding={false}
-      contentInnerClassName="flex w-full min-h-0 flex-1 flex-col"
-      data-testid="character-editor-view"
-    >
-      <div className="custom-scrollbar mx-auto flex min-h-0 w-full min-w-0 max-w-6xl flex-1 flex-col overflow-y-auto overflow-x-hidden px-4 pb-32 pt-1 sm:px-5 lg:px-6">
-        <WidgetHost slot="character" className="mb-4" />
-        <div className="flex min-w-0 flex-col gap-4 sm:gap-6">
-          {characterSaveError ? (
-            <span className="rounded-sm border border-status-danger/20 bg-status-danger-bg px-2 py-1 text-2xs font-medium text-status-danger">
-              {characterSaveError}
-            </span>
-          ) : null}
-          <section>
-            <CharacterIdentityPanel
-              nameText={typeof d.name === "string" ? d.name : ""}
-              systemText={typeof d.system === "string" ? d.system : ""}
-              bioText={bioText}
-              handleFieldEdit={handleAutoSavedFieldEdit}
-              t={t}
-            />
-          </section>
+    <FramedPage>
+      <FramedPageBody scroll="page" data-testid="character-editor-view">
+        <div className="flex min-w-0 flex-col pt-1">
+          <WidgetHost slot="character" className="mb-4" />
+          <div className="flex min-w-0 flex-col gap-4 sm:gap-6">
+            {characterSaveError ? (
+              <span className="rounded-sm border border-status-danger/20 bg-status-danger-bg px-2 py-1 text-2xs font-medium text-status-danger">
+                {characterSaveError}
+              </span>
+            ) : null}
+            <section>
+              <CharacterIdentityPanel
+                nameText={typeof d.name === "string" ? d.name : ""}
+                systemText={typeof d.system === "string" ? d.system : ""}
+                bioText={bioText}
+                handleFieldEdit={handleAutoSavedFieldEdit}
+                t={t}
+              />
+            </section>
 
-          <CharacterStylePanel
-            d={d}
-            pendingStyleEntries={pendingStyleEntries}
-            styleEntryDrafts={styleEntryDrafts}
-            handlePendingStyleEntryChange={handlePendingStyleEntryChange}
-            handleAddStyleEntry={handleAutoAddStyleEntry}
-            handleRemoveStyleEntry={handleAutoRemoveStyleEntry}
-            handleStyleEntryDraftChange={handleStyleEntryDraftChange}
-            handleCommitStyleEntry={handleAutoCommitStyleEntry}
-            handleReorderStyleEntries={handleAutoReorderStyleEntries}
-            t={t}
-          />
-
-          <section>
-            <CharacterExamplesPanel
+            <CharacterStylePanel
               d={d}
-              normalizedMessageExamples={normalizedMessageExamples}
-              handleFieldEdit={handleAutoSavedExamplesEdit}
+              pendingStyleEntries={pendingStyleEntries}
+              styleEntryDrafts={styleEntryDrafts}
+              handlePendingStyleEntryChange={handlePendingStyleEntryChange}
+              handleAddStyleEntry={handleAutoAddStyleEntry}
+              handleRemoveStyleEntry={handleAutoRemoveStyleEntry}
+              handleStyleEntryDraftChange={handleStyleEntryDraftChange}
+              handleCommitStyleEntry={handleAutoCommitStyleEntry}
+              handleReorderStyleEntries={handleAutoReorderStyleEntries}
               t={t}
             />
-          </section>
+
+            <section>
+              <CharacterExamplesPanel
+                d={d}
+                normalizedMessageExamples={normalizedMessageExamples}
+                handleFieldEdit={handleAutoSavedExamplesEdit}
+                t={t}
+              />
+            </section>
+          </div>
         </div>
-      </div>
-    </WorkspaceLayout>
+      </FramedPageBody>
+    </FramedPage>
   );
 }
