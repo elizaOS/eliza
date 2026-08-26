@@ -2934,10 +2934,15 @@ function retargetPlannerAppPaths(task: string, assignedDir: string): string {
 /** Slug = short noun phrase, not the whole imperative sentence: planner
  * labels like "Build an interactive magic 8 ball page w…" produced public
  * URLs such as /apps/build-an-interactive-magic-8-ball-page-w/ complete with
- * a mid-word chop (live 2026-08-20). Strip leading verb/filler tokens, stop
- * at the first clause boundary ("tip calculator page WITH input for bill
- * amount…" served as tip-calculator-page-with-input, live 2026-08-22), keep
- * at most five meaningful tokens, never cut inside a token. */
+ * a mid-word chop (live 2026-08-20). Strip leading verb/filler tokens
+ * (including lane-splitter residue — a multi-part ask's lane text starts
+ * mid-phrase, "…and deploy a tip calculator…" served as
+ * and-deploy-a-tip-calculator, live 2026-08-26), stop at the first clause
+ * boundary ("tip calculator page WITH input for bill amount…" served as
+ * tip-calculator-page-with-input, live 2026-08-22), drop trailing
+ * page/app/site noise, keep at most five meaningful tokens, never cut inside
+ * a token. An explicit user-given name ("called sky-card:") always wins over
+ * derivation. */
 const SLUG_FILLER = new Set([
   "build",
   "create",
@@ -2946,6 +2951,15 @@ const SLUG_FILLER = new Set([
   "generate",
   "ship",
   "add",
+  "deploy",
+  "publish",
+  "host",
+  "and",
+  "also",
+  "then",
+  "plus",
+  "please",
+  "another",
   "an",
   "a",
   "the",
@@ -2984,8 +2998,32 @@ const SLUG_BOUNDARY = new Set([
   "via",
   "w",
 ]);
+/** Conjunctions end the phrase only when they introduce ANOTHER deliverable
+ * clause (next token is a verb/article filler: "tip calculator page and a
+ * word counter page"). A conjunction inside a name is kept ("drag and drop
+ * page"). */
+const SLUG_CONJUNCTION = new Set(["and", "plus", "then", "also"]);
+/** Deliverable-kind words carry no identity at the tail of a slug: the URL
+ * already lives under /apps/. */
+const SLUG_TRAILING_NOISE = new Set(["page", "app", "site", "website"]);
+/** Explicit user-given deliverable name ("a tiny app called sky-card: …",
+ * 'named "Sky Card"'). Quoted spans may be multi-word; a bare name is one
+ * token. The negative lookbehind-style prefix rejects "so-called". */
+const SLUG_EXPLICIT_NAME_RE =
+  /(?:^|[^\w-])(?:called|named)\s+(?:"([^"\n]{1,64})"|'([^'\n]{1,64})'|`([^`\n]{1,64})`|([A-Za-z0-9][A-Za-z0-9._-]{0,63}))/i;
 
 export function deliverableSlugFromLabel(label: string): string {
+  const explicit = label.match(SLUG_EXPLICIT_NAME_RE);
+  if (explicit) {
+    let named = (explicit[1] ?? explicit[2] ?? explicit[3] ?? explicit[4] ?? "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    while (named.length > 48 && named.includes("-")) {
+      named = named.slice(0, named.lastIndexOf("-"));
+    }
+    if (named) return named;
+  }
   const slugTokens = label
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
@@ -2996,10 +3034,20 @@ export function deliverableSlugFromLabel(label: string): string {
     slugTokens.shift();
   }
   const boundary = slugTokens.findIndex(
-    (token, index) => index > 0 && SLUG_BOUNDARY.has(token),
+    (token, index) =>
+      index > 0 &&
+      (SLUG_BOUNDARY.has(token) ||
+        (SLUG_CONJUNCTION.has(token) &&
+          SLUG_FILLER.has(slugTokens[index + 1] ?? ""))),
   );
   const phrase = boundary > 0 ? slugTokens.slice(0, boundary) : slugTokens;
   const keptTokens = phrase.slice(0, 5);
+  while (
+    keptTokens.length > 1 &&
+    SLUG_TRAILING_NOISE.has(keptTokens[keptTokens.length - 1] as string)
+  ) {
+    keptTokens.pop();
+  }
   while (keptTokens.length > 1 && keptTokens.join("-").length > 48) {
     keptTokens.pop();
   }
