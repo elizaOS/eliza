@@ -115,6 +115,9 @@ describe("buildRuntimeSettingsProjection", () => {
         SOLANA_PUBLIC_KEY: "solana-public",
         WALLET_PUBLIC_KEY: "solana-public",
       },
+      providerCredentialsOverlay: {
+        CEREBRAS_API_KEY: "vault-only-cerebras-key",
+      },
     });
 
     expect(settings).toMatchObject({
@@ -137,6 +140,7 @@ describe("buildRuntimeSettingsProjection", () => {
       SOLANA_NO_ACTIONS: "true",
       SOLANA_PUBLIC_KEY: "solana-public",
       WALLET_PUBLIC_KEY: "solana-public",
+      CEREBRAS_API_KEY: "vault-only-cerebras-key",
       ELIZA_ADMIN_ENTITY_ID: "owner-entity",
       ELIZA_ROLES_CONNECTOR_ADMINS_JSON: JSON.stringify({
         imessage: ["owner-entity"],

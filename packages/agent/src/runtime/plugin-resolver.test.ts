@@ -45,6 +45,32 @@ describe("resolveRuntimePluginImportSpecifier", () => {
 });
 
 describe("resolvePlugins manifest discovery", () => {
+  it("loads a host-selected provider absent from config allow", async () => {
+    const provider = "@elizaos/plugin-openai";
+    const previous = STATIC_ELIZA_PLUGINS[provider];
+    STATIC_ELIZA_PLUGINS[provider] = {
+      default: {
+        name: provider,
+        description: "provider fixture",
+        services: [],
+      },
+    };
+    try {
+      const resolved = await resolvePlugins(
+        { plugins: { allow: [], entries: {} } } as ElizaConfig,
+        {
+          quiet: true,
+          phase: "blocking",
+          forceIncludePluginNames: [provider],
+        },
+      );
+      expect(resolved.map((item) => item.name)).toContain(provider);
+    } finally {
+      if (previous) STATIC_ELIZA_PLUGINS[provider] = previous;
+      else delete STATIC_ELIZA_PLUGINS[provider];
+    }
+  });
+
   it("auto-enables third-party scoped plugin packages with plugin-* names", async () => {
     const previousCwd = process.cwd();
     const previousEnv = process.env.THIRD_PARTY_PLUGIN_ENABLE;
