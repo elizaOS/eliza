@@ -10,6 +10,8 @@
  * exist and none is serving" is invisible to the heartbeat sweep (which
  * iterates only running rows), so this cron asks it explicitly and publishes
  * provisioning success measured on the jobs ledger in its response and logs.
+ * The root `healthy` signal covers both monitors; `heartbeatHealthy` preserves
+ * the daemon-only signal for diagnosis.
  *
  * The two monitors are INDEPENDENT questions that merely share a schedule, so
  * they are settled independently: a Redis outage in the heartbeat gate, or a
@@ -74,11 +76,15 @@ async function runProvisioningWorkerHealthCheck(c: AppContext) {
     fleetResult.status === "fulfilled" ? fleetResult.value : null;
   const heartbeat =
     heartbeatResult.status === "fulfilled" ? heartbeatResult.value : null;
+  const heartbeatHealthy = heartbeat?.healthy ?? null;
+  const overallHealthy =
+    heartbeat && fleet ? heartbeat.healthy && !fleet.unreachable : null;
 
   logger.info("[Provisioning Worker Health Cron] Monitors settled", {
     heartbeatOk: heartbeatResult.status === "fulfilled",
     fleetOk: fleetResult.status === "fulfilled",
-    healthy: heartbeat?.healthy ?? null,
+    healthy: overallHealthy,
+    heartbeatHealthy,
     stale: heartbeat?.stale ?? null,
     required: heartbeat?.health.required ?? null,
     fleetExpectedReachable: fleet?.expectedReachableTotal ?? null,
@@ -99,9 +105,9 @@ async function runProvisioningWorkerHealthCheck(c: AppContext) {
         : { ok: false as const, error: describe(fleetResult.reason) },
   };
 
-  // `!heartbeat` is implied by a non-empty `failures`; it is spelled out so the
-  // destructure below is narrowed by control flow rather than by an assertion.
-  if (failures.length > 0 || !heartbeat) {
+  // Missing monitor values are implied by a non-empty `failures`; spelling
+  // them out narrows both results below without assertions.
+  if (failures.length > 0 || !heartbeat || !fleet) {
     return c.json(
       {
         success: false,
@@ -109,14 +115,23 @@ async function runProvisioningWorkerHealthCheck(c: AppContext) {
         code: "cron_monitor_failed" as const,
         monitors,
         ...(heartbeat ?? {}),
+        heartbeatHealthy,
         fleet,
       },
       500,
     );
   }
 
-  const { healthy, stale, health } = heartbeat;
-  return c.json({ healthy, stale, health, fleet, monitors });
+  const { healthy: currentHeartbeatHealthy, stale, health } = heartbeat;
+  const healthy = currentHeartbeatHealthy && !fleet.unreachable;
+  return c.json({
+    healthy,
+    heartbeatHealthy: currentHeartbeatHealthy,
+    stale,
+    health,
+    fleet,
+    monitors,
+  });
 }
 
 app.get("/", runProvisioningWorkerHealthCheck);
