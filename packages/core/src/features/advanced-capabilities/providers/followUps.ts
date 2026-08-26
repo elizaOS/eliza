@@ -74,8 +74,15 @@ export const followUpsProvider: Provider = {
 			const upcoming: typeof upcomingFollowUps = [];
 			const scheduledAtMs = new Map<string, number>();
 			for (const item of upcomingFollowUps) {
-				const scheduledAt = item.task.metadata?.scheduledAt
+				const scheduledAtRaw = item.task.metadata?.scheduledAt
 					? new Date(item.task.metadata.scheduledAt as string).getTime()
+					: 0;
+				// Mirror getUpcomingFollowUps (services/followUp.ts): an invalid
+				// date string yields NaN, which fails every comparison and would
+				// silently classify the task as upcoming. Coerce NaN to 0 so the
+				// task is treated as overdue, matching the service contract.
+				const scheduledAt = Number.isFinite(scheduledAtRaw)
+					? scheduledAtRaw
 					: 0;
 				if (item.task.id) {
 					scheduledAtMs.set(item.task.id, scheduledAt);
