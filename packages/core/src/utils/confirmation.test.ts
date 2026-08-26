@@ -8,7 +8,9 @@ import type { Memory } from "../types/memory.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import {
 	clearPendingConfirmation,
+	DEFAULT_CONFIRM_REGEX,
 	gateDestructiveConfirmation,
+	isConfirmationMessage,
 	llmConfirmedFlagIsAuthoritative,
 	requireConfirmation,
 } from "./confirmation.js";
@@ -62,14 +64,21 @@ describe("confirmation utilities", () => {
 			"yes",
 			"yeah",
 			"y",
+			"yup",
 			"sure",
 			"proceed",
 			"do it",
 			"oui",
 			"sí",
+			"sim",
+			"da",
+			"ya",
+			"lgtm",
 			"はい",
 			"确认",
 			"확인",
+			"좋아요",
+			"肯定的",
 		];
 
 		for (const reply of affirmativeReplies) {
@@ -221,6 +230,14 @@ describe("confirmation utilities", () => {
 		});
 
 		expect(gate.status).toBe("pending");
+	});
+
+	it("detects confirmation messages using isConfirmationMessage", () => {
+		expect(isConfirmationMessage("yes")).toBe(true);
+		expect(isConfirmationMessage("lgtm")).toBe(true);
+		expect(isConfirmationMessage("no")).toBe(false);
+		expect(isConfirmationMessage("")).toBe(false);
+		expect(isConfirmationMessage(null as unknown as string)).toBe(false);
 	});
 
 	it("rejects LLM confirmed flag as authoritative", () => {

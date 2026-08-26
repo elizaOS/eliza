@@ -45,10 +45,23 @@ const DEFAULT_TTL_MS = 5 * 60_000;
  * symbols, whitespace, or end-of-input instead of relying on ASCII `\b`.
  * Consumers can pass a custom `confirmRegex` for a stricter contract.
  */
-const DEFAULT_CONFIRM_REGEX =
-	/^\s*[\p{Pi}\p{Ps}]?(?:(yes|yeah|yep|y|ok|okay|sure|confirm|confirmed|do it|go ahead|proceed|approve|approved|si|oui|ja|hai)\b|(sí|はい|确认|確認|확인)(?=[\s\p{P}\p{S}]|$))/iu;
+export const DEFAULT_CONFIRM_REGEX =
+	/^\s*[\p{Pi}\p{Ps}]?(?:(yes|yeah|yep|yup|y|ok|okay|sure|confirm|confirmed|do it|go ahead|proceed|approve|approved|correct|definitely|absolutely|lgtm|si|oui|ja|da|sim|ya|hai)\b|(sí|はい|确认|確認|확인|좋아요|肯定的)(?=[\s\p{P}\p{S}]|$))/iu;
 
 export type ConfirmationStatus = "pending" | "confirmed" | "cancelled";
+
+/**
+ * Test whether a user text matches a confirmation regex.
+ */
+export function isConfirmationMessage(
+	text: string,
+	regex: RegExp = DEFAULT_CONFIRM_REGEX,
+): boolean {
+	if (typeof text !== "string" || !text.trim()) {
+		return false;
+	}
+	return regex.test(text.trim());
+}
 
 interface PendingConfirmation {
 	readonly actionName: string;
