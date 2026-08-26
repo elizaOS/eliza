@@ -831,6 +831,19 @@ jobs:
           set -euo pipefail
           node packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts
 
+      - name: Verify Steward provider discovery before cutover
+        if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
+        working-directory: ${{ env.CHECKOUT_DIR }}
+        env:
+          DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
+          STEWARD_UPSTREAM_URL: https://steward-api-staging.up.railway.app
+        run: |
+          set -euo pipefail
+          node packages/cloud/scripts/verify-steward-provider-discovery.mjs \
+            --base-url "$STEWARD_UPSTREAM_URL" \
+            --environment "$DEPLOY_ENVIRONMENT" \
+            --surface upstream
+
       - name: Disable staging session exchange before cutover
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
         working-directory: ${{ env.CHECKOUT_DIR }}/packages/cloud/api
@@ -1701,6 +1714,19 @@ jobs:
           echo "::error::API health did not serve the deployed commit ${expected_commit} for ${expected_environment}."
           exit 1
 
+      - name: Verify deployed API provider discovery
+        if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
+        working-directory: ${{ env.CHECKOUT_DIR }}
+        env:
+          API_URL: https://api-staging.eliza.app
+          DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
+        run: |
+          set -euo pipefail
+          node packages/cloud/scripts/verify-steward-provider-discovery.mjs \
+            --base-url "$API_URL" \
+            --environment "$DEPLOY_ENVIRONMENT" \
+            --surface proxy
+
       - name: Verify deployed mobile App Auth metadata
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
         working-directory: ${{ env.CHECKOUT_DIR }}
@@ -2560,6 +2586,12 @@ jobs:
             verify_exact_api_route "$served_url/api"
             verify_json_endpoint "$served_url/.well-known/openid-configuration" discovery
             verify_json_endpoint "$served_url/.well-known/oidc/jwks.json" jwks
+            if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
+              node packages/cloud/scripts/verify-steward-provider-discovery.mjs \
+                --base-url "$served_url" \
+                --environment "$DEPLOY_ENVIRONMENT" \
+                --surface proxy
+            fi
             tenant_id="elizacloud"
             if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
               tenant_id="elizacloud-staging"
