@@ -20,6 +20,12 @@
 		"node": ">=24.0.0"
 	},
 	"type": "module",
+	"imports": {
+		"#errors": {
+			"eliza-source": "./src/errors.ts",
+			"default": "./dist/node/errors.js"
+		}
+	},
 	"main": "./dist/node/index.node.js",
 	"module": "./dist/node/index.node.js",
 	"types": "./dist/index.d.ts",

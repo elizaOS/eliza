@@ -17,11 +17,14 @@ import { dirname, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 import {
+	buildEdgeOnly,
 	buildNodeOnly,
+	CANONICAL_ERRORS_RUNTIME_EXPORTS,
 	emitFlatEntrypoints,
 	planFlatEntrypoints,
 	validateFlatEntrypoints,
 } from "../build";
+import * as errorsModule from "./errors";
 
 const temporaryRoots: string[] = [];
 
@@ -38,6 +41,12 @@ afterEach(async () => {
 });
 
 describe("core flat package entrypoints", () => {
+	it("keeps the canonical build shim aligned with errors.ts runtime exports", () => {
+		expect(Object.keys(errorsModule).sort()).toEqual(
+			[...CANONICAL_ERRORS_RUNTIME_EXPORTS].sort(),
+		);
+	});
+
 	it("recursively selects runtime fallbacks and computes nested specifiers", () => {
 		const plans = planFlatEntrypoints({
 			"./package.json": "./package.json",
@@ -115,12 +124,18 @@ describe("core flat package entrypoints", () => {
 
 	it("does not build or validate the testing target with --skip-testing", async () => {
 		const outdirs: string[] = [];
+		const entrypointSets: string[][] = [];
+		const pluginNames: string[][] = [];
 		const declarationOptions: Array<{ skipTesting?: boolean } | undefined> = [];
 
 		await buildNodeOnly({
 			argv: ["bun", "build.ts", "--node-only", "--skip-testing"],
 			runnerFactory: (options) => {
 				outdirs.push(options.buildOptions.outdir ?? "dist");
+				entrypointSets.push(options.buildOptions.entrypoints ?? []);
+				pluginNames.push(
+					(options.buildOptions.plugins ?? []).map((plugin) => plugin.name),
+				);
 				return async () => {};
 			},
 			generateDeclarations: async (options) => {
@@ -128,7 +143,53 @@ describe("core flat package entrypoints", () => {
 			},
 		});
 
-		expect(outdirs).toEqual(["dist/node"]);
+		expect(outdirs).toEqual(["dist/node", "dist/node"]);
+		expect(entrypointSets[0]).toEqual(["src/errors.ts"]);
+		expect(entrypointSets[1]).not.toContain("src/errors.ts");
+		expect(pluginNames[0]).toEqual([]);
+		expect(pluginNames[1]).toContain("eliza-core-canonical-errors");
 		expect(declarationOptions).toEqual([{ skipTesting: true }]);
+	});
+
+	it("emits the shared errors artifact before an Edge-only root", async () => {
+		const builds: Array<{
+			entrypoints: string[];
+			outdir: string;
+			plugins: string[];
+		}> = [];
+		let edgeWrites = 0;
+
+		await buildEdgeOnly({
+			runnerFactory: (options) => {
+				builds.push({
+					entrypoints: options.buildOptions.entrypoints ?? [],
+					outdir: options.buildOptions.outdir ?? "dist",
+					plugins: (options.buildOptions.plugins ?? []).map(
+						(plugin) => plugin.name,
+					),
+				});
+				return async () => {};
+			},
+			edgeBundleIo: {
+				readFile: async () => "",
+				writeFile: async () => {
+					edgeWrites += 1;
+				},
+			},
+		});
+
+		expect(builds).toEqual([
+			{
+				entrypoints: ["src/errors.ts"],
+				outdir: "dist/node",
+				plugins: [],
+			},
+			{
+				entrypoints: ["src/index.edge.ts"],
+				outdir: "dist/edge",
+				plugins: ["eliza-core-canonical-errors", "eliza-core-workerd-sources"],
+			},
+		]);
+		expect(edgeWrites).toBe(1);
 	});
 });

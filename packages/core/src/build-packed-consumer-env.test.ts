@@ -10,7 +10,10 @@
  * screenshot is captured. Pure function; no compiler or process is run here.
  */
 import { describe, expect, it } from "vitest";
-import { packedConsumerNodeOptions } from "../build";
+import {
+	conditionNeutralNodeOptions,
+	packedConsumerNodeOptions,
+} from "../build";
 
 describe("packedConsumerNodeOptions", () => {
 	it("passes through an unset value", () => {
@@ -51,5 +54,23 @@ describe("packedConsumerNodeOptions", () => {
 		expect(packedConsumerNodeOptions("--conditions=eliza-source-extra")).toBe(
 			"--conditions=eliza-source-extra",
 		);
+	});
+});
+
+describe("conditionNeutralNodeOptions", () => {
+	it("removes every inherited condition while preserving unrelated options", () => {
+		expect(
+			conditionNeutralNodeOptions(
+				"--conditions=workerd --enable-source-maps -C browser --conditions development --max-old-space-size=8192",
+			),
+		).toBe("--enable-source-maps --max-old-space-size=8192");
+	});
+
+	it("returns undefined when conditions were the only options", () => {
+		expect(
+			conditionNeutralNodeOptions(
+				"--conditions=eliza-source --conditions=browser -C=workerd",
+			),
+		).toBeUndefined();
 	});
 });
