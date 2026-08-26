@@ -289,4 +289,35 @@ describe("describeAppReference / appReferenceLogView — reference display seam"
     expect(view).toBe(`${"a".repeat(120)}…`);
     expect(view.length).toBe(121);
   });
+
+  it("sanitizes lone surrogates before quoting in describeAppReference", () => {
+    const lone = "my-app \uD800";
+    const described = describeAppReference(lone);
+    expect(described).toBe('"my-app \uFFFD"');
+    expect(described.isWellFormed?.() ?? true).toBe(true);
+  });
+
+  it("handles non-string references in describeAppReference safely", () => {
+    expect(describeAppReference(undefined as unknown as string)).toBe(
+      "that app",
+    );
+    expect(describeAppReference(null as unknown as string)).toBe("that app");
+    expect(describeAppReference(123 as unknown as string, "fallback")).toBe(
+      "fallback",
+    );
+  });
+
+  it("keeps surrogate pairs intact at the clamp boundary in appReferenceLogView", () => {
+    const text = `${"a".repeat(119)}🤖 extra`;
+    const view = appReferenceLogView(text);
+    expect(view.isWellFormed?.() ?? true).toBe(true);
+    expect(view).toBe(`${"a".repeat(119)}…`);
+  });
+
+  it("sanitizes lone surrogates in appReferenceLogView", () => {
+    const lone = "my-app \uD800 extra";
+    const view = appReferenceLogView(lone);
+    expect(view.isWellFormed?.() ?? true).toBe(true);
+    expect(view).toBe("my-app \uFFFD extra");
+  });
 });

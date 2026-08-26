@@ -13,7 +13,11 @@
 import type { AppDto } from "@elizaos/cloud-sdk";
 import { ElizaCloudClient } from "@elizaos/cloud-sdk";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { unwrapUserMessageText } from "@elizaos/core";
+import {
+  toWellFormedUnicode,
+  truncateWellFormed,
+  unwrapUserMessageText,
+} from "@elizaos/core";
 
 /** Default Eliza Cloud API base URL (matches the cloud runtime default). */
 export const DEFAULT_CLOUD_API_BASE_URL = "https://api.eliza.app/api/v1";
@@ -389,10 +393,12 @@ export function describeAppReference(
   reference: string,
   fallback = "that app",
 ): string {
-  const trimmed = reference.trim();
+  const safeRef = typeof reference === "string" ? reference : "";
+  const safeFallback = typeof fallback === "string" ? fallback : "that app";
+  const trimmed = toWellFormedUnicode(safeRef.trim());
   const nameShaped =
     trimmed.length > 0 && trimmed.length <= 64 && !/[\r\n]/.test(trimmed);
-  return nameShaped ? `"${trimmed}"` : fallback;
+  return nameShaped ? `"${trimmed}"` : safeFallback;
 }
 
 /**
@@ -401,10 +407,15 @@ export function describeAppReference(
  * {@link describeAppReference}) must still never travel whole: a weak planner
  * echoes tool text verbatim, and a multi-KB blob bloats context — so collapse
  * whitespace to one line and clamp to 120 chars with a trailing ellipsis.
+ * Surrogate pairs are kept intact across the clamp boundary.
  */
 export function appReferenceLogView(reference: string): string {
-  const collapsed = reference.replace(/\s+/g, " ").trim();
-  return collapsed.length > 120 ? `${collapsed.slice(0, 120)}…` : collapsed;
+  const safeRef = typeof reference === "string" ? reference : "";
+  const collapsed = toWellFormedUnicode(safeRef.replace(/\s+/g, " ").trim());
+  if (collapsed.length <= 120) {
+    return collapsed;
+  }
+  return `${truncateWellFormed(collapsed, 120)}…`;
 }
 
 export interface ResolvedApp {
