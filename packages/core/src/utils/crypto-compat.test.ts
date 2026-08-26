@@ -227,6 +227,40 @@ describe("createCipheriv / createDecipheriv AES-256-CBC", () => {
 		);
 	});
 
+	it("throws on update after final like node:crypto (cipher)", () => {
+		const cipher = createCipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
+		cipher.update("data", "utf8", "hex");
+		cipher.final("hex");
+		expect(() => cipher.update("more", "utf8", "hex")).toThrow(
+			/Trying to add data in unsupported state/,
+		);
+	});
+
+	it("throws on double final like node:crypto (cipher)", () => {
+		const cipher = createCipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
+		cipher.update("data", "utf8", "hex");
+		cipher.final("hex");
+		expect(() => cipher.final("hex")).toThrow(/Unsupported state/);
+	});
+
+	it("throws on update after final like node:crypto (decipher)", () => {
+		const hex = concatCipherHex(AES_CBC_KEY, AES_CBC_IV, PLAINTEXT);
+		const decipher = createDecipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
+		decipher.update(hex, "hex", "utf8");
+		decipher.final("utf8");
+		expect(() => decipher.update(hex, "hex", "utf8")).toThrow(
+			/Trying to add data in unsupported state/,
+		);
+	});
+
+	it("throws on double final like node:crypto (decipher)", () => {
+		const hex = concatCipherHex(AES_CBC_KEY, AES_CBC_IV, PLAINTEXT);
+		const decipher = createDecipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
+		decipher.update(hex, "hex", "utf8");
+		decipher.final("utf8");
+		expect(() => decipher.final("utf8")).toThrow(/Unsupported state/);
+	});
+
 	it("holds a partial block in update and emits it from final", () => {
 		const cipher = createCipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
 		expect(cipher.update("short", "utf8", "hex")).toBe("");
