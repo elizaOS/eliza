@@ -2749,7 +2749,7 @@ describe("runPollingBackend progress-aware native budget + dead-cloud recovery (
       const settledRun = run.finally(() => {
         settled = true;
       });
-      await vi.advanceTimersByTimeAsync(8_999);
+      await vi.advanceTimersByTimeAsync(6_999);
       expect(settled).toBe(false);
       await vi.advanceTimersByTimeAsync(1_001);
       expect(settled).toBe(true);
@@ -2854,7 +2854,7 @@ describe("runPollingBackend progress-aware native budget + dead-cloud recovery (
         settled = true;
       });
 
-      await vi.advanceTimersByTimeAsync(8_999);
+      await vi.advanceTimersByTimeAsync(6_999);
       expect(settled).toBe(false);
       await vi.advanceTimersByTimeAsync(1);
       expect(settled).toBe(true);
