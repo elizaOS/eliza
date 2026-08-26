@@ -119,8 +119,9 @@ function TileFrame({
         <Card
           asChild
           variant="transparent"
-          surface="inverseOverlay"
+          surface="transparent"
           radius="none"
+          wallpaperScrim
         >
           <span className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2" />
         </Card>

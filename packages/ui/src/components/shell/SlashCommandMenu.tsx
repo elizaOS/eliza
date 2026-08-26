@@ -243,7 +243,7 @@ export function SlashCommandMenu({
     if (loading) {
       return (
         <Card
-          surface="inverseOverlay"
+          surface="wallpaperOverlay"
           border="standard"
           radius="xlarge"
           tone="inverse"
@@ -267,7 +267,7 @@ export function SlashCommandMenu({
     if (error) {
       return (
         <Card
-          surface="inverseOverlay"
+          surface="wallpaperOverlay"
           border="standard"
           radius="xlarge"
           visualStyle={{
@@ -292,7 +292,7 @@ export function SlashCommandMenu({
     // The combobox input (in the composer) owns aria-activedescendant + focus;
     // this listbox is a non-focusable popup the input points to via aria-controls.
     <Card
-      surface="inverseOverlay"
+      surface="wallpaperOverlay"
       border="standard"
       radius="xlarge"
       data-testid="slash-command-menu"

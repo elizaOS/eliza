@@ -121,7 +121,7 @@ const cardVariants = cva("rounded-sm bg-card/70 text-card-fg", {
       backgroundStrong: "bg-bg/80",
       accentSubtle: "bg-accent/5",
       inverseForeground: "bg-inverse-foreground",
-      inverseOverlay: "bg-inverse/85",
+      wallpaperOverlay: "bg-bg-wallpaper-overlay",
     },
     border: {
       default: "",
@@ -198,6 +198,8 @@ export interface CardProps
   overlayHandle?: boolean;
   /** Styled scrollbar paint applied by the surface atom. */
   scrollbar?: "styled";
+  /** Bottom-up contrast scrim for copy rendered over wallpaper imagery. */
+  wallpaperScrim?: boolean;
   /** Semantic or runtime CSS variables consumed by this surface subtree. */
   tokenStyle?: Partial<Record<CardTokenStyleKey, string | number>>;
   /** Runtime paint data applied by the surface atom. */
@@ -271,6 +273,7 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
       variant,
       visualStyle,
       tone,
+      wallpaperScrim = false,
       wallpaperText = false,
       ...props
     },
@@ -296,6 +299,9 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
           glass === "sheet" ? "eliza-glass-sheet" : undefined,
           overlayHandle ? "chat-handle-bar-surface" : undefined,
           scrollbar === "styled" ? "custom-scrollbar" : undefined,
+          wallpaperScrim
+            ? "bg-linear-to-t from-scrim/80 to-transparent"
+            : undefined,
           className,
         )}
         style={{
