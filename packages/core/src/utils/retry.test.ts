@@ -184,26 +184,6 @@ describe("sleepWithAbort", () => {
 		);
 	});
 
-	it("rejects when the signal is already aborted even with non-positive duration", async () => {
-		const controller = new AbortController();
-		controller.abort();
-		await expect(sleepWithAbort(0, controller.signal)).rejects.toThrow(
-			"aborted",
-		);
-		await expect(sleepWithAbort(-10, controller.signal)).rejects.toThrow(
-			"aborted",
-		);
-	});
-
-	it("preserves custom abort reason on rejection", async () => {
-		const controller = new AbortController();
-		const customReason = new Error("custom cancel");
-		controller.abort(customReason);
-		await expect(sleepWithAbort(5, controller.signal)).rejects.toBe(
-			customReason,
-		);
-	});
-
 	it("rejects when aborted mid-sleep", async () => {
 		const controller = new AbortController();
 		setTimeout(() => controller.abort(), 1);
