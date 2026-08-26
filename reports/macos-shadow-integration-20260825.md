@@ -488,6 +488,71 @@ PR #28826 remains the separate narrow desktop-preflight review. Historical
 PR #26870 was not used or reopened. Publication changed no runtime, provider,
 production, signing, device, TCC, credential, port, or physical-input state.
 
+## f809 constituent wave and live streaming-text refresh
+
+The published shadow was refreshed in place from its clean v12 receipt using
+the exact f809 current-base wave supplied by each source owner:
+
+- Frozen wave base: `f809c5d04baca03571418a2543d291f903c42f4b`.
+- Computer Use PR #27215:
+  `528fa5b0120bb136bb8774216f49fed6f01bbea3`.
+- Devices PR #25427: `e9c8db1cd0cb013313baf7dad3ecfb2d5bf9048d`.
+- iOS PR #27216: `df0f56fd1685e19865efb53e2d9ea73df5c8c039`.
+- Shared PR #27103: `7cc1baf65a26bfd3cc8a156fe8fd7ef326b56652`.
+- Account Deletion PR #27213:
+  `6429bcda943458da984b01bb578170afb5198ae6`.
+- Merged desktop preflight PR #28826:
+  `eb74d871f652a550205f297f48617d97bf519aad`, now an ancestor of the wave
+  base rather than a separate unmerged constituent.
+- Merged Vault and Auth remain inherited at `a982a071b66f4688809ca49c5fb83284f54912dc`
+  and `c61c7f72123c722f7a14cfd0355f13123ba6c237`.
+
+Every supplied PR head is a two-parent restack whose second parent is exact
+`f809c5d04...`. Rehearsal and execution produced the same f809 composite tree
+for every head, so no new product conflict or integration-only source
+resolution was required. The existing Devices authority over runtime-management
+security/effects and the intentional iOS transport/login deltas remain
+unchanged.
+
+During the read-only live audit, `origin/develop` advanced once beyond the
+handoff to `2431f2e2ada693c0e4cc07e0f8d6dc9dad903950` through PR #28757. That
+commit changes only `packages/shared/src/utils/streaming-text.ts` and its test;
+it has zero changed-path overlap with every f809 constituent delta. The shadow
+therefore records the supplied f809 wave first, then layers this exact
+conflict-free live-develop commit so draft PR #28889 remains genuinely current.
+
+The pre-receipt composite is
+`0ce0e41e4ebca862bfb5f05ea7123d89c39b1f1f`, tree
+`78622b04a822de066ace9d4f7f412717d6745d07`. Every exact SHA above is an
+ancestor.
+
+Bounded verification of the 13-file byte delta from the v12 receipt:
+
+- Shared streaming-text regression: 16/16.
+- Core hosted-model pricing regression: 45/45.
+- iOS local model-grind regression: 14/14.
+- Develop/workflow/build-on-install discovery contracts: 17/17.
+- Shared strict typecheck and dist build: passed; package dry run contains
+  1,131 entries, 6,717,053 unpacked bytes, and a 2,023,206-byte archive
+  estimate.
+- Prompts strict typecheck and native-Node package build: passed; package dry
+  run contains 7 entries, 202,567 unpacked bytes, and a 44,955-byte archive
+  estimate.
+- Capacitor Bridge strict typecheck and production build: passed; package dry
+  run contains 57 entries, 347,977 unpacked bytes, and an 85,326-byte archive
+  estimate.
+- Release launch-QA plan dry run: passed; no command from the plan executed.
+- Scoped Biome: 11 changed source files checked with no findings.
+- Cloud router codegen second run, `git diff --check`, and generated keyword
+  checks produced no tracked source drift.
+- Redacted Gitleaks on the source refresh range: no leaks.
+
+All source-owner PRs remain draft/changes-requested except merged/approved
+desktop preflight. This receipt is still nonproduction and `DO NOT MERGE`.
+No native app was built or launched, no final port or PGlite writer was opened,
+and no signing, deployment, pairing, credential/TCC access, provider traffic,
+state exposure, or physical-pointer action occurred.
+
 ## Frozen inputs
 
 - Base `origin/develop`: `69c0291954942c9ae375fe5aacc82729a24bac6f`
