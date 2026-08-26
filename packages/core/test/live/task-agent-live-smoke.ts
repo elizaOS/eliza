@@ -21,8 +21,11 @@ type AcpServiceInstance = InstanceType<typeof AcpService>;
 
 const KEEP_ARTIFACTS = process.env.ELIZA_KEEP_LIVE_ARTIFACTS === "1";
 
+type RouterHandle = { isActive?: () => boolean };
+
 async function createRuntime(settings: RuntimeSettings = {}): Promise<{
 	runtime: AgentRuntime;
+	router: RouterHandle;
 	cleanup: () => Promise<void>;
 }> {
 	const { runtime, cleanup } = await createTestRuntime({
@@ -32,7 +35,7 @@ async function createRuntime(settings: RuntimeSettings = {}): Promise<{
 	});
 	const router = (await runtime.getServiceLoadPromise(
 		"ACPX_SUB_AGENT_ROUTER",
-	)) as { isActive?: () => boolean };
+	)) as RouterHandle;
 	assert.equal(
 		typeof router?.isActive,
 		"function",
@@ -43,7 +46,22 @@ async function createRuntime(settings: RuntimeSettings = {}): Promise<{
 		false,
 		"ACPX_SUB_AGENT_ROUTER_DISABLED must take effect before plugin startup",
 	);
-	return { runtime, cleanup };
+	return { runtime, router, cleanup };
+}
+
+/**
+ * The router's start() retries binding to the ACP service on a backoff for
+ * roughly ten seconds, so an isActive() === false observed at startup can be
+ * a race rather than proof the disable flag held. Call this only after work
+ * that outlasts the bind-retry window (e.g. the first completed prompt) to
+ * prove the router never bound.
+ */
+function assertRouterStayedDisabled(router: RouterHandle): void {
+	assert.equal(
+		router.isActive?.(),
+		false,
+		"router must still be inactive after the bind-retry window; the disable flag was dropped",
+	);
 }
 
 function createMessage(content: Record<string, unknown> = {}) {
@@ -180,12 +198,14 @@ async function waitForTrackedSession(
 
 async function runSequentialSmoke(agentType: Framework): Promise<void> {
 	const workdir = createWorkdir(agentType, "reuse");
-	const { runtime, cleanup } = await createRuntime({
+	const { runtime, router, cleanup } = await createRuntime({
 		SERVER_PORT: "31337",
 		// This smoke validates ACP child turns and durable reuse. Parent-broker
 		// relay behavior has separate coverage; disabling the router here keeps a
 		// synthetic no-parent fixture from manufacturing an endless child loop.
-		ACPX_SUB_AGENT_ROUTER_DISABLED: "true",
+		// "1" rather than "true": AgentRuntime.getSetting normalizes the string
+		// "true" to a boolean, and "1" survives as a string on every path.
+		ACPX_SUB_AGENT_ROUTER_DISABLED: "1",
 	});
 	// Use the single production service initialized by the plugin. Starting a
 	// second ACP instance lets TASKS spawn on one service while SubAgentRouter
@@ -272,6 +292,9 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 			6 * 60 * 1000,
 			3000,
 		);
+		// The first prompt's wait far exceeds the router's ~10s bind-retry
+		// window, so an inactive router here proves the disable flag held.
+		assertRouterStayedDisabled(router);
 
 		const secondTaskEventStart = events.length;
 		const sendResult = await sendToAgentAction.handler(
@@ -317,9 +340,9 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 
 async function runWebSmoke(agentType: Framework): Promise<void> {
 	const workdir = createWorkdir(agentType, "web");
-	const { runtime, cleanup } = await createRuntime({
+	const { runtime, router, cleanup } = await createRuntime({
 		SERVER_PORT: "31337",
-		ACPX_SUB_AGENT_ROUTER_DISABLED: "true",
+		ACPX_SUB_AGENT_ROUTER_DISABLED: "1",
 	});
 	const service = (await runtime.getServiceLoadPromise(
 		AcpService.serviceType,
@@ -410,6 +433,9 @@ async function runWebSmoke(agentType: Framework): Promise<void> {
 			6 * 60 * 1000,
 			3000,
 		);
+		// The web task's wait far exceeds the router's ~10s bind-retry window,
+		// so an inactive router here proves the disable flag held.
+		assertRouterStayedDisabled(router);
 	} finally {
 		unsubscribe();
 		await new Promise<void>((resolve) =>
