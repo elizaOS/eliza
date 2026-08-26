@@ -24,7 +24,10 @@ mock.module("@/lib/utils/logger", () => ({
 
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const AGENT_ID = "agent-resume-1";
-const ENV = { NODE_ENV: "test" } as unknown as AppEnv["Bindings"];
+const ENV = {
+  NODE_ENV: "test",
+  ELIZA_CLOUD_AGENT_BASE_DOMAIN: "staging.elizacloud.ai",
+} as unknown as AppEnv["Bindings"];
 
 type ResumeAgent = {
   id: string;
@@ -58,8 +61,8 @@ const getAgentForWrite = mock(
 );
 const provision = mock(async () => ({
   success: true,
-  bridgeUrl: "https://bridge.example.test",
-  healthUrl: "https://health.example.test",
+  bridgeUrl: "http://100.64.0.12:19027",
+  healthUrl: "http://10.0.0.8:19028/health",
 }));
 const checkAgentCreditGate = mock(async () => ({
   allowed: true,
@@ -191,6 +194,29 @@ describe("POST /api/v1/eliza/agents/:id/resume sync identity", () => {
     });
     expect(getAgentForWrite).toHaveBeenCalledTimes(1);
     expect(getAgentForWrite).toHaveBeenCalledWith(AGENT_ID, ORG_A);
+    expectNoResumeEffects();
+  });
+
+  test("returns only the configured public gateway for running Dedicated capacity", async () => {
+    getAgentForWrite.mockImplementationOnce(async () =>
+      resumeAgent({
+        status: "running",
+        bridge_url: "http://100.64.0.12:19027",
+        health_url: "http://10.0.0.8:19028/health",
+      }),
+    );
+
+    const response = await post();
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      success: true,
+      data: {
+        webUiUrl: `https://${AGENT_ID}.staging.elizacloud.ai`,
+      },
+    });
+    expect(JSON.stringify(body)).not.toMatch(/100\.64|10\.0|192\.168/);
     expectNoResumeEffects();
   });
 

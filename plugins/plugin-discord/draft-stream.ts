@@ -54,7 +54,10 @@ export function createDraftStreamController(
 ): DraftStreamController {
 	const throttleMs = Math.max(250, options.throttleMs ?? DEFAULT_THROTTLE_MS);
 	const minInitialChars = options.minInitialChars ?? DEFAULT_MIN_INITIAL_CHARS;
-	const maxChars = Math.min(options.maxChars ?? 1900, DISCORD_MAX_CHARS);
+	const maxChars = Math.min(
+		options.maxChars ?? DISCORD_MAX_CHARS,
+		DISCORD_MAX_CHARS,
+	);
 	const log = options.log ?? (() => {});
 	const warn = options.warn ?? (() => {});
 

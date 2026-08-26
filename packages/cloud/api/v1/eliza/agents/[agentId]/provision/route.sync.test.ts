@@ -25,7 +25,10 @@ mock.module("@/lib/utils/logger", () => ({
 
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const AGENT_ID = "agent-provision-1";
-const ENV = { NODE_ENV: "test" } as unknown as AppEnv["Bindings"];
+const ENV = {
+  NODE_ENV: "test",
+  ELIZA_CLOUD_AGENT_BASE_DOMAIN: "staging.elizacloud.ai",
+} as unknown as AppEnv["Bindings"];
 
 type ProvisionAgent = {
   id: string;
@@ -52,8 +55,8 @@ function provisionAgent(
     agent_name: "already-up",
     execution_tier: "dedicated-always",
     status: "running",
-    bridge_url: "https://bridge.example.test",
-    health_url: "https://health.example.test",
+    bridge_url: "http://100.64.0.12:19027",
+    health_url: "http://10.0.0.8:19028/health",
     pool_status: null,
     deleted_at: null,
     deletion_attempt_id: null,
@@ -200,6 +203,13 @@ describe("POST /api/v1/eliza/agents/:id/provision sync identity", () => {
       expect(getAgentForWrite).toHaveBeenCalledTimes(1);
       expect(provision).not.toHaveBeenCalled();
       expect(enqueueAgentProvisionOnce).not.toHaveBeenCalled();
+      const body = await response.json();
+      expect(body).toMatchObject({
+        data: {
+          webUiUrl: `https://${AGENT_ID}.staging.elizacloud.ai`,
+        },
+      });
+      expect(JSON.stringify(body)).not.toMatch(/100\.64|10\.0|192\.168/);
     },
   );
 
