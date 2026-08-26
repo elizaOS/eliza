@@ -351,7 +351,7 @@ async function addAccount(label, apiKey, { expectError = false } = {}) {
 try {
   // 01 — empty state.
   await page.goto(base);
-  await page.locator("text=Accounts (0)").waitFor({ state: "visible" });
+  await page.locator("text=No accounts yet").waitFor({ state: "visible" });
   assert(
     (await page.locator("text=No accounts yet").count()) === 1,
     "empty state renders when no accounts are connected",
