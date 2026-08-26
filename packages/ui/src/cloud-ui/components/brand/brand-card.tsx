@@ -9,13 +9,12 @@
  */
 
 import type * as React from "react";
-import { Card } from "../../../components/ui/card";
+import { Card, type CardProps } from "../../../components/ui/card";
 import { cn } from "../../lib/utils";
 import { CornerBrackets } from "./corner-brackets";
 
-interface BrandCardProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface CorneredCardProps extends Omit<CardProps, "variant"> {
   children: React.ReactNode;
-  className?: string;
   hover?: boolean;
   corners?: boolean;
   cornerSize?: "sm" | "md" | "lg" | "xl";
@@ -23,7 +22,7 @@ interface BrandCardProps extends React.HTMLAttributes<HTMLDivElement> {
   asChild?: boolean;
 }
 
-export function BrandCard({
+export function CorneredCard({
   children,
   className,
   hover = false,
@@ -32,7 +31,7 @@ export function BrandCard({
   cornerColor,
   asChild = false,
   ...props
-}: BrandCardProps) {
+}: CorneredCardProps) {
   return (
     <Card
       asChild={asChild}
@@ -45,6 +44,11 @@ export function BrandCard({
     </Card>
   );
 }
+
+/** @deprecated Use CorneredCard, or Card variant="brand" without corners. */
+export const BrandCard = CorneredCard;
+/** @deprecated Use CorneredCardProps. */
+export type BrandCardProps = CorneredCardProps;
 
 interface AgentCardProps {
   title: string;
@@ -64,7 +68,7 @@ export function AgentCard({
   className,
 }: AgentCardProps) {
   return (
-    <BrandCard hover className={cn("group", className)}>
+    <CorneredCard hover className={cn("group", className)}>
       <div
         className="mb-4 inline-flex rounded-sm border border-current/15 p-3"
         style={{
@@ -79,6 +83,6 @@ export function AgentCard({
       <p className="text-muted-foreground text-sm mb-4">{description}</p>
 
       {action && action}
-    </BrandCard>
+    </CorneredCard>
   );
 }

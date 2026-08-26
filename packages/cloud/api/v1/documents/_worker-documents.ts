@@ -1,5 +1,5 @@
 // Handles v1 cloud API v1 documents worker documents route traffic with route-local auth expectations.
-import type { Memory } from "@elizaos/core";
+import type { Memory } from "@elizaos/core/edge";
 import { sql } from "drizzle-orm";
 import { dbWrite } from "@/db/helpers";
 import { memoriesRepository } from "@/db/repositories/agents";

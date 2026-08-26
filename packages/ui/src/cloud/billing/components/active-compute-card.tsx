@@ -3,7 +3,7 @@
 "use client";
 
 import type { Observed } from "@elizaos/cloud-sdk/account-billing-snapshot";
-import { BrandCard, Button } from "@elizaos/ui/cloud-ui";
+import { Button, CorneredCard } from "@elizaos/ui/cloud-ui";
 import {
   AlertCircle,
   Box,
@@ -286,7 +286,7 @@ function RetryButton({
 
 function LoadingCard({ t }: { t: Translator }) {
   return (
-    <BrandCard
+    <CorneredCard
       cornerSize="sm"
       role="status"
       aria-busy="true"
@@ -307,7 +307,7 @@ function LoadingCard({ t }: { t: Translator }) {
           <Skeleton className="h-40 w-full" />
         </div>
       </div>
-    </BrandCard>
+    </CorneredCard>
   );
 }
 
@@ -324,7 +324,7 @@ export function ActiveComputeCardView({
     const paused = state.kind === "paused";
     const retrying = state.kind === "error" && state.retrying;
     return (
-      <BrandCard cornerSize="sm">
+      <CorneredCard cornerSize="sm">
         <div className="relative z-10 flex flex-col items-start gap-4 sm:flex-row sm:justify-between">
           <div role="alert" className="flex min-w-0 items-start gap-3">
             <AlertCircle
@@ -358,7 +358,7 @@ export function ActiveComputeCardView({
             <RetryButton onRetry={onRetry} retrying={retrying} t={t} />
           ) : null}
         </div>
-      </BrandCard>
+      </CorneredCard>
     );
   }
 
@@ -411,7 +411,7 @@ export function ActiveComputeCardView({
               });
 
   return (
-    <BrandCard cornerSize="sm" aria-busy={state.refreshing || undefined}>
+    <CorneredCard cornerSize="sm" aria-busy={state.refreshing || undefined}>
       <div className="relative z-10 space-y-5">
         <p
           role="status"
@@ -603,6 +603,6 @@ export function ActiveComputeCardView({
           </Card>
         ) : null}
       </div>
-    </BrandCard>
+    </CorneredCard>
   );
 }

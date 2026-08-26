@@ -94,6 +94,8 @@ src/
     mobile-signal-setup.ts      Mobile signal setup helpers
     mobile-signals.ts           Android Usage Stats / iOS Screen Time signal parsing and data-source status helpers
     ranges.ts                   Screen-time range labels / current+prior windows / history day enumeration
+    routes.ts                   Health-owned query parsing and read-route dispatch
+    service.ts                  Aggregation orchestration over injected host ports
     social-taxonomy.ts          Screen-time target classification by category / device / service / browser
     system-inactivity-apps.ts   OS lock / screen-saver app classification for screen-time filtering
   sleep/
@@ -177,7 +179,10 @@ Create `src/default-packs/<name>.ts` implementing `DefaultPack`, add it to `HEAL
 - **Action registration vs action ownership.** The `actions: []` in `healthPlugin` is still intentional for runtime registration, but action metadata and planning surfaces live here. `@elizaos/plugin-personal-assistant` may register host-adapted health actions only by calling plugin-health factories.
 - **No `app-lifeops` build-time dep.** `src/util/time.ts` and `src/util/time-util.ts` are local copies of same-named helpers to avoid a circular dependency. Do not replace them with imports from `app-lifeops`.
 - **CircadianInsightContract is the canonical seam.** Any code that needs circadian state or scheduling-window inference resolves it via `getCircadianInsightContract(runtime)` — never deep-imports `src/sleep/*` from outside the plugin.
-- **screen-time aggregation ownership.** `src/screen-time/` owns taxonomy/classification, range/window helpers, mobile signal parsing/status helpers, pure summary/breakdown/metrics builders, system-inactivity filtering, and shared payload contracts. The repository-backed aggregator lives in `@elizaos/plugin-personal-assistant` while signal-bus ownership remains split across the two plugins.
+- **Screen-time aggregation ownership.** `src/screen-time/` owns contracts,
+  taxonomy, ranges, mobile signals, summary/breakdown/history calculations, and
+  HTTP query dispatch. Hosts inject activity/social/storage ports and retain
+  authentication and response serialization; never recreate calculations in a host.
 - **Token encryption.** `src/util/token-encryption.ts` encrypts OAuth tokens at rest using a per-runtime key; do not store raw tokens elsewhere.
 - See root `CLAUDE.md` for global architecture rules, logger conventions, and ESM/naming requirements.
 

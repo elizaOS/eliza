@@ -14,6 +14,7 @@
  */
 
 import { client } from "@elizaos/ui/api";
+import { fetchWithDeadline } from "@elizaos/ui/utils";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SelfControlStatus } from "../../services/website-blocker/index.ts";
@@ -35,17 +36,19 @@ export async function getFocusJsonWithFetch<T>(
   timeoutMs: number = FOCUS_VIEW_JSON_TIMEOUT_MS,
   callerSignal?: AbortSignal,
 ): Promise<T> {
-  const deadline = AbortSignal.timeout(timeoutMs);
-  const response = await fetchImpl(url, {
-    method: "GET",
-    signal: callerSignal ? AbortSignal.any([callerSignal, deadline]) : deadline,
-  });
-  if (!response.ok) {
-    throw new Error(
-      `Website blocker status request failed (${response.status}).`,
-    );
-  }
-  return (await response.json()) as T;
+  return fetchWithDeadline(
+    url,
+    { method: "GET" },
+    async (response) => {
+      if (!response.ok) {
+        throw new Error(
+          `Website blocker status request failed (${response.status}).`,
+        );
+      }
+      return (await response.json()) as T;
+    },
+    { timeoutMs, fetchImpl, ...(callerSignal ? { signal: callerSignal } : {}) },
+  );
 }
 
 async function defaultFetchStatus(

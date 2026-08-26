@@ -111,6 +111,7 @@
     }
   },
   "dependencies": {
+    "@elizaos/shared": "workspace:*",
     "yaml": "2.9.0"
   },
   "devDependencies": {

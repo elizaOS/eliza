@@ -66,8 +66,6 @@ export const HOME_WIDGET_MOCK_PLUGINS: PluginInfo[] = [
 
 const minutesFromNow = (m: number) =>
   new Date(Date.now() + m * 60_000).toISOString();
-const hoursFromNow = (h: number) =>
-  new Date(Date.now() + h * 3_600_000).toISOString();
 
 export type HomeWidgetMockMode = "attention" | "quiet";
 
@@ -98,8 +96,8 @@ function calendarFeed() {
   };
 }
 
-/** GoalsAttentionWidget reads /api/lifeops/goals; an at_risk goal floats up at
- *  escalation weight and renders an urgent row. */
+/** The Today widget reads /api/lifeops/goals and folds an at-risk goal into its
+ *  urgent rows. */
 function goalsPayload() {
   return {
     goals: [
@@ -122,38 +120,6 @@ function goalsPayload() {
         links: [],
       },
     ],
-  };
-}
-
-/** HealthSleepWidget reads /api/lifeops/sleep/{history,regularity}; an
- *  "irregular" classification floats up at check-in weight. A latest episode is
- *  required for the card to render. */
-function sleepHistory() {
-  return {
-    episodes: [
-      {
-        startedAt: hoursFromNow(-8),
-        endedAt: hoursFromNow(-2),
-        durationMin: 345,
-      },
-    ],
-    summary: {
-      cycleCount: 6,
-      averageDurationMin: 360,
-      overnightCount: 6,
-      napCount: 0,
-      openCount: 0,
-    },
-    windowDays: 14,
-    includeNaps: true,
-  };
-}
-function sleepRegularity() {
-  return {
-    classification: "irregular",
-    sri: 41.2,
-    sampleSize: 6,
-    windowDays: 14,
   };
 }
 
@@ -299,30 +265,6 @@ function routeTable(): RouteMatch[] {
     {
       test: has("/api/lifeops/goals"),
       body: whenAttention(goalsPayload, { goals: [] }),
-    },
-    {
-      test: has("/api/lifeops/sleep/history"),
-      body: whenAttention(sleepHistory, {
-        episodes: [],
-        summary: {
-          cycleCount: 0,
-          averageDurationMin: 0,
-          overnightCount: 0,
-          napCount: 0,
-          openCount: 0,
-        },
-        windowDays: 14,
-        includeNaps: true,
-      }),
-    },
-    {
-      test: has("/api/lifeops/sleep/regularity"),
-      body: whenAttention(sleepRegularity, {
-        classification: "regular",
-        sri: 92,
-        sampleSize: 0,
-        windowDays: 14,
-      }),
     },
     { test: has("/api/notifications"), body: notificationsPayload },
     {

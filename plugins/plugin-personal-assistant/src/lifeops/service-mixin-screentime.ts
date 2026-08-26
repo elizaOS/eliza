@@ -5,16 +5,12 @@
  */
 import type {
   ScreenTimeAggregateRow,
-  ScreenTimeWeeklyAverageItem,
+  ScreenTimeAggregationService,
 } from "@elizaos/plugin-health";
 import type {
   LifeOpsScreenTimeDaily,
-  LifeOpsScreenTimeHistoryResponse,
-  LifeOpsScreenTimeRangeKey,
   LifeOpsScreenTimeSession,
   LifeOpsScreenTimeSource,
-  LifeOpsScreenTimeSummary,
-  LifeOpsScreenTimeBreakdown as ScreenTimeBreakdown,
   LifeOpsSocialHabitSummary as SocialHabitSummary,
 } from "@elizaos/shared";
 
@@ -28,13 +24,8 @@ type ScreenTimeEventInput = {
   metadata?: Record<string, unknown>;
 };
 
-type ScreenTimeWeeklyAverageResponse = {
-  items: ScreenTimeWeeklyAverageItem[];
-  totalSeconds: number;
-  daysInWindow: number;
-};
-
-export interface LifeOpsScreenTimeServicePublic {
+export interface LifeOpsScreenTimeServicePublic
+  extends ScreenTimeAggregationService {
   recordScreenTimeEvent(
     event: ScreenTimeEventInput,
   ): Promise<LifeOpsScreenTimeSession>;
@@ -55,36 +46,10 @@ export interface LifeOpsScreenTimeServicePublic {
     identifier?: string;
     limit?: number;
   }): Promise<LifeOpsScreenTimeDaily[]>;
-  getScreenTimeSummary(opts: {
-    since: string;
-    until: string;
-    source?: LifeOpsScreenTimeSource;
-    identifier?: string;
-    topN?: number;
-  }): Promise<LifeOpsScreenTimeSummary>;
-  getScreenTimeBreakdown(opts: {
-    since: string;
-    until: string;
-    source?: LifeOpsScreenTimeSource;
-    identifier?: string;
-    topN?: number;
-  }): Promise<ScreenTimeBreakdown>;
   getSocialHabitSummary(opts: {
     since: string;
     until: string;
     topN?: number;
   }): Promise<SocialHabitSummary>;
-  getScreenTimeHistory(opts: {
-    range: LifeOpsScreenTimeRangeKey;
-    topN?: number;
-    socialTopN?: number;
-  }): Promise<LifeOpsScreenTimeHistoryResponse>;
-  getScreenTimeWeeklyAverageByApp(opts: {
-    since: string;
-    until: string;
-    daysInWindow: number;
-    identifier?: string;
-    topN?: number;
-  }): Promise<ScreenTimeWeeklyAverageResponse>;
   aggregateDailyForDate(date: string): Promise<{ updated: number }>;
 }

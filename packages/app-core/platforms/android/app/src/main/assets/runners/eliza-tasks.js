@@ -1,6 +1,6 @@
-/*
- * Eliza background runner — fired by Capacitor BackgroundRunner inside a
- * separate JSContext (iOS QuickJS, Android V8) per wake event.
+/**
+ * Canonical Eliza background runner staged into both native platform projects.
+ * It runs in a separate JSContext (iOS QuickJS, Android V8) per wake event.
  *
  * Sandboxed env: no window, no localStorage, no IndexedDB, no cookied fetch.
  * Available globals: setTimeout, Promise, console, fetch (no cookies),
@@ -89,9 +89,7 @@ function handleWake(args) {
 
   var url = `${trimTrailingSlash(agentBase)}/api/internal/wake`;
   // Wrap in Promise.resolve().then so that a synchronous throw inside the
-  // sandboxed fetch() (rare, but observed under hostile mocks and the iOS
-  // QuickJS network stack when no route is registered) becomes a rejection
-  // we can race against the deadline.
+  // sandboxed fetch() becomes a rejection raced against the deadline.
   var workPromise = Promise.resolve()
     .then(() =>
       fetch(url, {

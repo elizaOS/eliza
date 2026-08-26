@@ -7,6 +7,7 @@ import {
   phoneGatewayDeviceLosslessSelection,
 } from "../../db/repositories/phone-metadata-readers";
 import { phoneGatewayDevices } from "../../db/schemas/phone-gateway-devices";
+import { constantTimeEqualUtf8, sha256Hex } from "../crypto/worker";
 import { logger } from "../utils/logger";
 import { normalizePhoneNumber } from "../utils/phone-normalization";
 import { isPostgresUndefinedTableError, phoneErrorDiagnostic } from "./phone-error-diagnostics";
@@ -124,19 +125,7 @@ function randomHex(byteLength: number): string {
 }
 
 export async function hashBlueBubblesGatewayToken(token: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
-  return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join(
-    "",
-  );
-}
-
-function constantTimeStringEqual(left: string, right: string): boolean {
-  if (left.length !== right.length) return false;
-  let mismatch = 0;
-  for (let index = 0; index < left.length; index += 1) {
-    mismatch |= left.charCodeAt(index) ^ right.charCodeAt(index);
-  }
-  return mismatch === 0;
+  return sha256Hex(token);
 }
 
 function parseBlueBubblesMetadata(value: unknown): BlueBubblesGatewayMetadata | null {
@@ -323,7 +312,7 @@ export async function authenticateBlueBubblesGateway(
 
   const match = matches[0]!;
   const presentedHash = await hashBlueBubblesGatewayToken(token.trim());
-  if (!constantTimeStringEqual(match.metadata.authTokenHash, presentedHash)) {
+  if (!constantTimeEqualUtf8(match.metadata.authTokenHash, presentedHash)) {
     return null;
   }
   return toAuthenticatedBlueBubblesGateway(match.record, match.metadata);

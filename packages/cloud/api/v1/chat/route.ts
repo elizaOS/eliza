@@ -6,7 +6,7 @@
  * anonymous counter mirrors run under `waitUntil`.
  */
 
-import { assertModelOutputComplete } from "@elizaos/core";
+import { assertModelOutputComplete } from "@elizaos/core/edge";
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
 import { Hono } from "hono";
 import type { AnonymousSession } from "@/db/repositories/anonymous-sessions";

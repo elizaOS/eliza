@@ -7,7 +7,7 @@
  */
 
 import { openai } from "@ai-sdk/openai";
-import { assertModelOutputComplete } from "@elizaos/core";
+import { assertModelOutputComplete } from "@elizaos/core/edge";
 import { streamText } from "ai";
 import { Hono } from "hono";
 import { requireGenerativeRouteCaller } from "@/api-app/lib/generative-route-auth";

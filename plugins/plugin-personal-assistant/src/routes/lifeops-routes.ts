@@ -49,6 +49,10 @@ import {
 } from "@elizaos/plugin-finances/finances-service";
 import type { AddPaymentSourceRequest } from "@elizaos/plugin-finances/payment-types";
 import { PLAID_WEBHOOK_MAX_BODY_BYTES } from "@elizaos/plugin-finances/plaid-webhook";
+import {
+  handleScreenTimeReadRoute,
+  ScreenTimeRouteError,
+} from "@elizaos/plugin-health";
 import type {
   AcknowledgeLifeOpsReminderRequest,
   CaptureLifeOpsActivitySignalRequest,
@@ -103,7 +107,6 @@ import {
   LIFEOPS_HEALTH_CONNECTOR_PROVIDERS,
   LIFEOPS_INBOX_CACHE_MODES,
   LIFEOPS_INBOX_CHANNELS,
-  LIFEOPS_SCREEN_TIME_RANGES,
   type LifeOpsGmailSpamReviewStatus,
   type VerifyLifeOpsTelegramConnectorRequest,
 } from "../contracts/index.js";
@@ -710,37 +713,6 @@ function parseActivitySignalStates(
     states.push(value);
   }
   return states;
-}
-
-function parseScreenTimeSourceQuery(
-  value: string | null,
-): "app" | "website" | undefined {
-  const normalized = value?.trim().toLowerCase();
-  if (!normalized) {
-    return undefined;
-  }
-  if (normalized !== "app" && normalized !== "website") {
-    throw new LifeOpsServiceError(400, "source must be app or website");
-  }
-  return normalized;
-}
-
-function parseScreenTimeIdentifierQuery(
-  value: string | null,
-): string | undefined {
-  const normalized = value?.trim();
-  return normalized && normalized.length > 0 ? normalized : undefined;
-}
-
-function parseScreenTimeRangeQuery(value: string | null) {
-  const normalized = value?.trim().toLowerCase() || "today";
-  if (!isOneOf(normalized, LIFEOPS_SCREEN_TIME_RANGES)) {
-    throw new LifeOpsServiceError(
-      400,
-      `range must be one of: ${LIFEOPS_SCREEN_TIME_RANGES.join(", ")}`,
-    );
-  }
-  return normalized;
 }
 
 const ISO_INSTANT_QUERY_RE =
@@ -2476,66 +2448,24 @@ export async function handleLifeOpsRoutes(
     });
   }
 
-  if (method === "GET" && pathname === "/api/lifeops/screen-time/summary") {
+  if (method === "GET" && pathname.startsWith("/api/lifeops/screen-time/")) {
     return runRoute(ctx, async (service) => {
-      const window = parseBoundedIsoWindowQuery(url);
-      json(
-        res,
-        await service.getScreenTimeSummary({
-          since: window.since,
-          until: window.until,
-          source: parseScreenTimeSourceQuery(url.searchParams.get("source")),
-          identifier: parseScreenTimeIdentifierQuery(
-            url.searchParams.get("identifier"),
-          ),
-          topN:
-            parsePositiveIntegerQuery(url.searchParams.get("topN"), "topN", {
-              max: 20,
-            }) ?? undefined,
-        }),
-      );
-    });
-  }
-
-  if (method === "GET" && pathname === "/api/lifeops/screen-time/breakdown") {
-    return runRoute(ctx, async (service) => {
-      const window = parseBoundedIsoWindowQuery(url);
-      json(
-        res,
-        await service.getScreenTimeBreakdown({
-          since: window.since,
-          until: window.until,
-          source: parseScreenTimeSourceQuery(url.searchParams.get("source")),
-          identifier: parseScreenTimeIdentifierQuery(
-            url.searchParams.get("identifier"),
-          ),
-          topN:
-            parsePositiveIntegerQuery(url.searchParams.get("topN"), "topN", {
-              max: 50,
-            }) ?? undefined,
-        }),
-      );
-    });
-  }
-
-  if (method === "GET" && pathname === "/api/lifeops/screen-time/history") {
-    return runRoute(ctx, async (service) => {
-      json(
-        res,
-        await service.getScreenTimeHistory({
-          range: parseScreenTimeRangeQuery(url.searchParams.get("range")),
-          topN:
-            parsePositiveIntegerQuery(url.searchParams.get("topN"), "topN", {
-              max: 50,
-            }) ?? undefined,
-          socialTopN:
-            parsePositiveIntegerQuery(
-              url.searchParams.get("socialTopN"),
-              "socialTopN",
-              { max: 50 },
-            ) ?? undefined,
-        }),
-      );
+      try {
+        const result = await handleScreenTimeReadRoute({
+          method,
+          pathname,
+          url,
+          service,
+        });
+        if (result.handled) json(res, result.body);
+      } catch (error) {
+        // error-policy:J1 Health owns query validation; the PA transport keeps
+        // its established LifeOps HTTP error envelope.
+        if (error instanceof ScreenTimeRouteError) {
+          throw new LifeOpsServiceError(error.status, error.message);
+        }
+        throw error;
+      }
     });
   }
 

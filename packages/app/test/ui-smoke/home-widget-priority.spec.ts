@@ -121,8 +121,8 @@ async function fulfillJson(
 
 // -- Seeded attention payloads ------------------------------------------------
 
-// GoalsAttentionWidget reads /api/lifeops/goals. A goal whose reviewState is
-// at_risk -> escalation self-signal (weight 10) and renders an urgent row.
+// The Today widget reads /api/lifeops/goals. An at-risk goal becomes its urgent
+// goal row.
 function goalsPayload() {
   return {
     goals: [
@@ -164,38 +164,6 @@ function calendarFeed() {
         location: "Zoom",
       },
     ],
-  };
-}
-
-// HealthSleepWidget reads /api/lifeops/sleep/{history,regularity}. An
-// "irregular" classification -> off-rhythm -> check-in self-signal (weight 4)
-// and an urgent badge. A latest episode is required for the card to render.
-function sleepHistory() {
-  return {
-    episodes: [
-      {
-        startedAt: "2026-01-01T23:30:00.000Z",
-        endedAt: "2026-01-02T05:15:00.000Z",
-        durationMin: 345,
-      },
-    ],
-    summary: {
-      cycleCount: 6,
-      averageDurationMin: 360,
-      overnightCount: 6,
-      napCount: 0,
-      openCount: 0,
-    },
-    windowDays: 14,
-    includeNaps: true,
-  };
-}
-function sleepRegularity() {
-  return {
-    classification: "irregular",
-    sri: 41.2,
-    sampleSize: 6,
-    windowDays: 14,
   };
 }
 
@@ -428,12 +396,6 @@ async function installHomeWidgetRoutes(page: Page): Promise<void> {
   await page.route("**/api/lifeops/calendar/feed**", async (route) => {
     await fulfillJson(route, calendarFeed());
   });
-  await page.route("**/api/lifeops/sleep/history**", async (route) => {
-    await fulfillJson(route, sleepHistory());
-  });
-  await page.route("**/api/lifeops/sleep/regularity**", async (route) => {
-    await fulfillJson(route, sleepRegularity());
-  });
   // Notification inbox hydrate — the pinned center + the urgent signal.
   await page.route("**/api/notifications**", async (route) => {
     if (route.request().method() !== "GET") {
@@ -605,11 +567,6 @@ const REMOVED_HOME_TESTIDS = [
   "chat-widget-relationships",
   "chat-widget-inbox-unread",
   "chat-widget-automations",
-  // The standalone goals and sleep residents were absorbed/removed
-  // (registry.ts "Explicitly NOT residents"); their routed components remain
-  // but must not render as home cards.
-  "widget-goals-attention",
-  "widget-health-sleep",
 ];
 
 /**

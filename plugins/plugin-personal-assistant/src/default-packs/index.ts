@@ -143,13 +143,7 @@ export const DEFAULT_PACKS: ReadonlyArray<DefaultPack> = [
   executiveAssistantPack,
   // Persona packs (issue #12186): offered at customize, not auto-seeded.
   ...PERSONA_PACKS,
-  // Health ships the byte-identical DefaultPack shape but types
-  // requiredCapabilities as optional; normalize to PA's required form at the
-  // registry boundary (the packs always provide it).
-  ...HEALTH_DEFAULT_PACKS.map((pack) => ({
-    ...pack,
-    requiredCapabilities: pack.requiredCapabilities ?? [],
-  })),
+  ...HEALTH_DEFAULT_PACKS,
 ];
 
 export function getAllDefaultPacks(): DefaultPack[] {

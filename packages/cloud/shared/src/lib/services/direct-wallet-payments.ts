@@ -38,6 +38,7 @@ import type { Bindings } from "../../types/cloud-worker-env";
 import { ValidationError } from "../api/cloud-worker-errors";
 import { PAYMENT_EXPIRATION_MS, validatePaymentAmount } from "../config/crypto";
 import { createCryptoCustomerId, createCryptoInvoiceId } from "../constants/invoice-ids";
+import { bytesToBase64Url, constantTimeEqualUtf8 } from "../crypto/worker";
 import { logger, redact } from "../utils/logger";
 import { type BnbPriceQuote, getBnbUsdQuote } from "./bnb-price-oracle";
 import { creditsService } from "./credits";
@@ -253,20 +254,6 @@ function canonicalQuoteString(input: QuoteSignatureInput): string {
   return `${input.paymentId}|${units}|${input.receiveAddress}|${chain}|${token}|${expiresAtIso}`;
 }
 
-function toBase64Url(bytes: Uint8Array): string {
-  let bin = "";
-  for (let i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]);
-  // btoa is available in Workers and Node 18+ globals
-  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function timingSafeEqualStrings(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
 /**
  * HMAC-SHA256 sign a canonical quote string. Works in Cloudflare Workers
  * (Web Crypto) and Node — no Node `crypto` import.
@@ -287,7 +274,7 @@ export async function signQuote(
   );
   const sigBuf = await crypto.subtle.sign("HMAC", key, encoder.encode(canonicalInput));
   return {
-    signature: toBase64Url(new Uint8Array(sigBuf)),
+    signature: bytesToBase64Url(new Uint8Array(sigBuf)),
     canonicalInput,
   };
 }
@@ -298,7 +285,7 @@ export async function verifyQuoteSignature(
   expectedSignature: string,
 ): Promise<boolean> {
   const { signature } = await signQuote(env, input);
-  return timingSafeEqualStrings(signature, expectedSignature);
+  return constantTimeEqualUtf8(signature, expectedSignature);
 }
 
 const EXPLORER_BASE: Record<DirectWalletNetwork, string> = {

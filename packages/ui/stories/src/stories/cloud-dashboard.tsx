@@ -1,7 +1,7 @@
 /**
  * Story group for the cloud dashboard compositions (empty states, cards, skeletons).
  */
-import { BrandButton } from "@ui-src/cloud-ui/components/brand/brand-button.tsx";
+
 import {
   AppsEmptyState,
   AppsSkeleton,
@@ -10,6 +10,7 @@ import {
   DashboardActionCards,
   DashboardActionCardsSkeleton,
 } from "@ui-src/cloud-ui/components/dashboard/cloud-dashboard-components.tsx";
+import { Button } from "@ui-src/components/ui/button.tsx";
 import { Plus } from "lucide-react";
 import type { StoryDefinition } from "../Story.tsx";
 
@@ -47,10 +48,10 @@ export const cloudDashboardStories: StoryDefinition[] = [
       <div style={{ width: "100%" }}>
         <AppsEmptyState
           action={
-            <BrandButton size="sm">
+            <Button size="sm">
               <Plus className="h-4 w-4" />
               Register app
-            </BrandButton>
+            </Button>
           }
         />
       </div>

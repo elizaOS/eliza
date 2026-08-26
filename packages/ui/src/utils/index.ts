@@ -31,6 +31,7 @@ export * from "./eliza-cloud-model-route";
 export * from "./eliza-globals";
 export * from "./env";
 export * from "./errors";
+export * from "./fetch-with-deadline";
 export * from "./format";
 export * from "./globals";
 export * from "./image-attachment";

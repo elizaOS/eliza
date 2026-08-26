@@ -6,36 +6,29 @@
  * workerd and on Node — no Node-only APIs, no third-party primitives.
  */
 
-const HEX = "0123456789abcdef";
-
-function toHex(bytes: Uint8Array): string {
-  let out = "";
-  for (const byte of bytes) {
-    out += HEX[byte >> 4] + HEX[byte & 15];
-  }
-  return out;
-}
+import {
+  bytesToBase64Url,
+  bytesToHex,
+  sha256Base64Url as digestBase64Url,
+  sha256Hex as digestHex,
+} from "../crypto/worker";
 
 /** 256 bits of CSPRNG output as lowercase hex — the shape of every opaque id here. */
 export function createOpaqueHex(): string {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
-  return toHex(bytes);
+  return bytesToHex(bytes);
 }
 
 export async function sha256Hex(input: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
-  return toHex(new Uint8Array(digest));
+  return digestHex(input);
 }
 
 export function base64UrlEncode(bytes: Uint8Array): string {
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return bytesToBase64Url(bytes);
 }
 
 /** `base64url(sha256(verifier))` — RFC 7636 S256. */
 export async function sha256Base64Url(input: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
-  return base64UrlEncode(new Uint8Array(digest));
+  return digestBase64Url(input);
 }

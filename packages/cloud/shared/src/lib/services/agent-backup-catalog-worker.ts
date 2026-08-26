@@ -23,6 +23,7 @@ import {
   settleAgentBackupGc,
 } from "../../db/repositories/agent-backup-gc";
 import type { AgentBackupObject } from "../../db/schemas/agent-backup-catalog";
+import { bytesToHex, sha256Bytes } from "../crypto/worker";
 import type {
   AgentBackupObjectStore,
   AgentBackupObjectStoreRegistry,
@@ -41,20 +42,6 @@ import {
 
 const MAX_GC_RETRY_DELAY_MS = 6 * 60 * 60 * 1_000;
 const GC_LEASE_SETTLEMENT_MARGIN_MS = 1_000;
-
-async function sha256Bytes(bytes: Uint8Array): Promise<Uint8Array> {
-  const stableBytes = new Uint8Array(new ArrayBuffer(bytes.byteLength));
-  stableBytes.set(bytes);
-  try {
-    return new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", stableBytes));
-  } finally {
-    stableBytes.fill(0);
-  }
-}
-
-function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
 
 function bytesToBase64(bytes: Uint8Array): string {
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";

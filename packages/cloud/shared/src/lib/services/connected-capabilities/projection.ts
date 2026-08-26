@@ -23,6 +23,7 @@ import type { discordConnections } from "../../../db/schemas/discord-connections
 import type { phoneGatewayDevices } from "../../../db/schemas/phone-gateway-devices";
 import type { platformCredentials } from "../../../db/schemas/platform-credentials";
 import type { vendorConnections } from "../../../db/schemas/vendor-connections";
+import { sha256Hex } from "../../crypto/worker";
 
 /**
  * Row shapes are `Pick`s of the Drizzle select model, not the full inferred
@@ -95,10 +96,8 @@ const ACCOUNT_ID_PREFIX = "ca_";
 const READ_ONLY_SCOPE_PATTERN = /read|view|list|get|fetch/i;
 
 async function deriveAccountId(source: string, rowId: string): Promise<string> {
-  const bytes = new TextEncoder().encode(`eliza-cloud/connected-capability\n${source}\n${rowId}`);
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
-  const hex = Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
-  return `${ACCOUNT_ID_PREFIX}${hex.slice(0, 32)}`;
+  const digest = await sha256Hex(`eliza-cloud/connected-capability\n${source}\n${rowId}`);
+  return `${ACCOUNT_ID_PREFIX}${digest.slice(0, 32)}`;
 }
 
 function unavailableCodeFor(

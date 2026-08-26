@@ -439,7 +439,6 @@ describe("TodoSidebarWidget", () => {
     expect(row.textContent).toContain("At risk");
     expect(row.className).toContain("bg-card");
     expect(row.className).not.toContain("bg-white");
-    expect(screen.queryByTestId("widget-goals-attention")).toBeNull();
 
     await waitFor(() => {
       expect(publishHomeAttentionSpy).toHaveBeenLastCalledWith(

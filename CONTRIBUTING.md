@@ -28,6 +28,32 @@ bun run verify
 Keep package-local instructions in view. Read root `AGENTS.md` or `CLAUDE.md`,
 then the package-local `AGENTS.md` or `CLAUDE.md` before touching that package.
 
+### Reuse-first implementation gate
+
+Before creating a component, hook, utility, type, service, schema, protocol
+adapter, or test harness, search the owning package, its public exports, and
+the full repository for an existing implementation and its callers. Check
+dynamic imports, plugin manifests, registries, generated inventories, stories,
+and package subpaths before concluding that a surface is missing or unused.
+
+- Extend or compose the canonical owner when the semantics match. UI primitives,
+  layouts, loading/error states, and design tokens belong in `@elizaos/ui`;
+  plugin packages should keep domain composition while consuming that shared
+  foundation.
+- Put framework contracts in `@elizaos/core`, cross-product utilities and wire
+  contracts in `@elizaos/shared`, and domain behavior in its owning package.
+  Do not copy a contract or helper merely to avoid fixing an import boundary.
+- When similar code must remain separate, document the semantic or runtime
+  difference that prevents consolidation. Superficial name or shape similarity
+  alone is not a reason to merge unrelated domains.
+- When replacing duplication, migrate callers and tests to one authority and
+  remove the obsolete implementation. Preserve public compatibility through a
+  deliberate re-export or deprecation path rather than a second maintained copy.
+
+The issue or pull request should record the searches performed, the selected
+owner, and why reuse, extension, extraction, or intentional separation is the
+correct outcome.
+
 ## Issue and test quality gate
 
 Do not open an issue or pull request merely because a file, export, branch, or

@@ -19,7 +19,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  BrandButton,
+  Button,
 } from "../../cloud-ui";
 import { Button } from "../../components/ui/button";
 import { Separator } from "../../components/ui/separator";
@@ -152,9 +152,9 @@ export function MembersTab({ user }: MembersTabProps) {
             </p>
           </div>
           {canManageMembers && (
-            <BrandButton
+            <Button
               type="button"
-              variant="primary"
+              variant="default"
               onClick={() => setIsInviteDialogOpen(true)}
               className="font-mono text-sm md:text-base w-full sm:w-auto"
             >
@@ -162,7 +162,7 @@ export function MembersTab({ user }: MembersTabProps) {
               {t("cloud.membersTab.inviteMember", {
                 defaultValue: "Invite Member",
               })}
-            </BrandButton>
+            </Button>
           )}
         </div>
 

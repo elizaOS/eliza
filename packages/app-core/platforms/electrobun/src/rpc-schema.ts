@@ -426,8 +426,6 @@ import type {
   SubscriptionStatusResponse,
 } from "@elizaos/shared";
 
-export type SystemPermissionId = PermissionId;
-
 /** Local variant uses an index signature (the canonical contract uses explicit keys). */
 export interface AllPermissionsState {
   [key: string]: PermissionState;
@@ -1870,15 +1868,15 @@ export type ElizaDesktopRPCSchema = {
 
       // ---- Permissions ----
       permissionsCheck: {
-        params: { id: SystemPermissionId; forceRefresh?: boolean };
+        params: { id: PermissionId; forceRefresh?: boolean };
         response: PermissionState;
       };
       permissionsCheckFeature: {
         params: { featureId: string };
-        response: { granted: boolean; missing: SystemPermissionId[] };
+        response: { granted: boolean; missing: PermissionId[] };
       };
       permissionsRequest: {
-        params: { id: SystemPermissionId };
+        params: { id: PermissionId };
         response: PermissionState;
       };
       permissionsGetAll: {
@@ -1893,7 +1891,7 @@ export type ElizaDesktopRPCSchema = {
       };
       permissionsClearCache: { params: undefined; response: undefined };
       permissionsOpenSettings: {
-        params: { id: SystemPermissionId };
+        params: { id: PermissionId };
         response: undefined;
       };
 

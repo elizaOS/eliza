@@ -1,10 +1,10 @@
 /**
  * Story group for the cloud brand components (buttons, cards, HUD pieces).
  */
-import { BrandButton } from "@ui-src/cloud-ui/components/brand/brand-button.tsx";
+
 import {
   AgentCard,
-  BrandCard,
+  CorneredCard,
 } from "@ui-src/cloud-ui/components/brand/brand-card.tsx";
 import {
   BrandTabs,
@@ -27,7 +27,6 @@ import {
   type KeyMetric,
   KeyMetricsGrid,
 } from "@ui-src/cloud-ui/components/brand/key-metrics-grid.tsx";
-import { LockOnButton } from "@ui-src/cloud-ui/components/brand/lock-on-button.tsx";
 import { MiniStatCard } from "@ui-src/cloud-ui/components/brand/mini-stat-card.tsx";
 import {
   PromptCard,
@@ -37,6 +36,7 @@ import {
   SectionHeader,
   SectionLabel,
 } from "@ui-src/cloud-ui/components/brand/section-header.tsx";
+import { Button } from "@ui-src/components/ui/button.tsx";
 import { Activity, Cloud, Cpu, Zap } from "lucide-react";
 import { useState } from "react";
 import type { StoryDefinition } from "../Story.tsx";
@@ -104,28 +104,27 @@ function SimpleTabsExample() {
 export const brandStories: StoryDefinition[] = [
   {
     id: "brand-button",
-    name: "BrandButton",
-    importPath:
-      'import { BrandButton } from "@elizaos/ui/cloud-ui/components/brand/brand-button"',
+    name: "Button",
+    importPath: 'import { Button } from "@elizaos/ui"',
     render: () => (
       <>
-        <BrandButton>Run in Cloud</BrandButton>
-        <BrandButton variant="ghost">Cancel</BrandButton>
-        <BrandButton variant="outline">Install elizaOS</BrandButton>
-        <BrandButton variant="icon" aria-label="settings">
+        <Button>Run in Cloud</Button>
+        <Button variant="ghost">Cancel</Button>
+        <Button variant="outline">Install elizaOS</Button>
+        <Button variant="surface" size="icon" aria-label="settings">
           <Zap />
-        </BrandButton>
-        <BrandButton size="sm">Small</BrandButton>
-        <BrandButton size="lg">Large</BrandButton>
-        <BrandButton disabled>Disabled</BrandButton>
+        </Button>
+        <Button size="sm">Small</Button>
+        <Button size="lg">Large</Button>
+        <Button disabled>Disabled</Button>
       </>
     ),
   },
   {
     id: "brand-card",
-    name: "BrandCard",
+    name: "CorneredCard",
     importPath:
-      'import { BrandCard, AgentCard } from "@elizaos/ui/cloud-ui/components/brand/brand-card"',
+      'import { CorneredCard, AgentCard } from "@elizaos/ui/cloud-ui/components/brand/brand-card"',
     render: () => (
       <div
         style={{
@@ -135,20 +134,20 @@ export const brandStories: StoryDefinition[] = [
           width: "100%",
         }}
       >
-        <BrandCard hover>
+        <CorneredCard hover>
           <h4 style={{ color: "#fff", margin: 0, marginBottom: 8 }}>
             Local Inference
           </h4>
           <p style={{ color: "rgba(255,255,255,.6)", margin: 0, fontSize: 13 }}>
             Connected.
           </p>
-        </BrandCard>
+        </CorneredCard>
         <AgentCard
           title="Eliza-1"
           description="Default local model."
           icon={<Cpu />}
           color="#FF5800"
-          action={<BrandButton size="sm">Load</BrandButton>}
+          action={<Button size="sm">Load</Button>}
         />
       </div>
     ),
@@ -214,7 +213,7 @@ export const brandStories: StoryDefinition[] = [
         label="Inference"
         title="Local-first by default"
         description="Eliza-1 runs on your device. Cloud fills the gaps."
-        action={<BrandButton size="sm">Configure</BrandButton>}
+        action={<Button size="sm">Configure</Button>}
       />
     ),
   },
@@ -277,25 +276,6 @@ export const brandStories: StoryDefinition[] = [
       <div style={{ width: "100%" }}>
         <KeyMetricsGrid metrics={sampleMetrics} columns={3} />
       </div>
-    ),
-  },
-  {
-    id: "brand-lock-on-button",
-    name: "LockOnButton",
-    importPath:
-      'import { LockOnButton } from "@elizaos/ui/cloud-ui/components/brand/lock-on-button"',
-    render: () => (
-      <>
-        <LockOnButton variant="primary">Lock on</LockOnButton>
-        <LockOnButton variant="outline">Outline</LockOnButton>
-        <LockOnButton variant="ghost">Ghost</LockOnButton>
-        <LockOnButton variant="hud" icon={<Zap />}>
-          HUD
-        </LockOnButton>
-        <LockOnButton size="sm">Small</LockOnButton>
-        <LockOnButton size="lg">Large</LockOnButton>
-        <LockOnButton disabled>Disabled</LockOnButton>
-      </>
     ),
   },
   {

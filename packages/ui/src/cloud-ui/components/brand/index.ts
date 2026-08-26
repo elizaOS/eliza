@@ -5,7 +5,8 @@
 
 export type { BrandButtonProps } from "./brand-button";
 export { BrandButton } from "./brand-button";
-export { AgentCard, BrandCard } from "./brand-card";
+export type { BrandCardProps, CorneredCardProps } from "./brand-card";
+export { AgentCard, BrandCard, CorneredCard } from "./brand-card";
 export {
   BrandTabs,
   BrandTabsContent,
@@ -24,9 +25,6 @@ export type { HUDContainerProps } from "./hud-container";
 export { HUDContainer } from "./hud-container";
 export type { KeyMetric } from "./key-metrics-grid";
 export { KeyMetricsGrid } from "./key-metrics-grid";
-export type { LockOnButtonProps } from "./lock-on-button";
-export { LockOnButton } from "./lock-on-button";
-export { lockOnButtonVariants } from "./lock-on-button.variants";
 export { MiniStatCard } from "./mini-stat-card";
 export { PromptCard, PromptCardGrid } from "./prompt-card";
 export { SectionHeader, SectionLabel } from "./section-header";

@@ -28,6 +28,11 @@
  * that polymorphism is higher than the cost of two clearly-scoped tables.
  */
 
+import {
+  type AgentExecutionTier,
+  type AgentSandboxStatus,
+  CONTAINER_BACKED_EXECUTION_TIERS,
+} from "@elizaos/shared/contracts/cloud-agent-lifecycle";
 import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
 import {
   bigint,
@@ -72,37 +77,8 @@ export const agentBackupCatalogAuthorities = pgTable(
   }),
 );
 
-export type AgentSandboxStatus =
-  | "pending"
-  | "provisioning"
-  | "running"
-  | "stopped"
-  /**
-   * Cold storage. The agent's full state has been backed up to object
-   * storage and its container removed, freeing the compute slot (the node
-   * autoscaler reclaims the now-empty Hetzner box). No compute cost accrues.
-   * An `agent_wake` job provisions a fresh container and restores state.
-   * Distinct from `stopped` (suspend), which also drops the container and
-   * frees the node slot but keeps the row's `sandbox_id` for a lighter
-   * in-place resume; both retain the per-tenant managed DB.
-   */
-  | "sleeping"
-  | "disconnected"
-  | "error"
-  /**
-   * Row is queued for async deletion. An `agent_delete` job has been
-   * enqueued in `jobs`; the provisioning worker will SSH the core, stop
-   * the container, and then DELETE the row. UI must treat this as
-   * "soon-to-be-gone" — no mutations should be accepted while in this
-   * state.
-   */
-  | "deletion_pending"
-  /**
-   * Async deletion exhausted retries (e.g. SSH unreachable for the core
-   * hosting this sandbox). The container may still be running on the
-   * core; ops must investigate. Row stays so the failure is visible.
-   */
-  | "deletion_failed";
+export type { AgentExecutionTier, AgentSandboxStatus };
+export { CONTAINER_BACKED_EXECUTION_TIERS };
 
 export type AgentBillingStatus = "active" | "warning" | "suspended" | "shutdown_pending" | "exempt";
 
@@ -113,19 +89,6 @@ export type AgentBillingStatus = "active" | "warning" | "suspended" | "shutdown_
  * migration backfills pre-existing rows to "dedicated-lazy" because they already
  * have containers. See services/shared-runtime/agent-tier.ts for derivation.
  */
-export type AgentExecutionTier = "shared" | "dedicated-lazy" | "dedicated-always" | "custom";
-
-/**
- * Tiers that own a real container. Every tier except "shared" is here today,
- * but the list is an explicit allowlist rather than a "not shared" test so
- * that adding a tier is a deliberate decision at each container-scoped query
- * (heartbeat dialing, fleet liveness) instead of a silent enrollment.
- */
-export const CONTAINER_BACKED_EXECUTION_TIERS = [
-  "dedicated-lazy",
-  "dedicated-always",
-  "custom",
-] as const satisfies readonly AgentExecutionTier[];
 export type WarmClaimCredentialState = "pending" | "attested" | "ready" | "failed";
 export type AgentActivationPurpose = "provision" | "wake" | "restore" | "fresh_boot";
 export type AgentActivationPhase =

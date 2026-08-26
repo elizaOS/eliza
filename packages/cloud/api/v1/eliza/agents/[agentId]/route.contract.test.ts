@@ -5,6 +5,10 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  AGENT_EXECUTION_TIERS,
+  AGENT_SANDBOX_STATUSES,
+} from "@elizaos/shared/contracts/cloud-agent-lifecycle";
 import { Hono } from "hono";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -176,6 +180,35 @@ describe("owned agent detail private-address contract", () => {
       expect(body.data.webUiUrl).toBeNull();
       expect(body.data).not.toHaveProperty("bridgeUrl");
       expect(JSON.stringify(body)).not.toMatch(/100\.64|10\.0|192\.168/);
+    },
+  );
+
+  test.each(AGENT_SANDBOX_STATUSES)(
+    "returns canonical sandbox status %s without translation",
+    async (status) => {
+      getAgent.mockResolvedValue({ ...dedicatedAgent(), status });
+
+      const response = await getDetail("staging.elizacloud.ai");
+      const body = (await response.json()) as DetailResponseBody;
+
+      expect(response.status).toBe(200);
+      expect(body.data.status).toBe(status);
+    },
+  );
+
+  test.each(AGENT_EXECUTION_TIERS)(
+    "returns canonical execution tier %s without translation",
+    async (executionTier) => {
+      getAgent.mockResolvedValue({
+        ...dedicatedAgent(),
+        execution_tier: executionTier,
+      });
+
+      const response = await getDetail("staging.elizacloud.ai");
+      const body = (await response.json()) as DetailResponseBody;
+
+      expect(response.status).toBe(200);
+      expect(body.data.executionTier).toBe(executionTier);
     },
   );
 });

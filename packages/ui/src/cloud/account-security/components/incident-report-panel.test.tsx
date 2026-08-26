@@ -66,14 +66,14 @@ describe("IncidentReportPanel", () => {
     vi.unstubAllGlobals();
   });
 
-  it("composes SettingsTextareaRow instead of BrandCard", () => {
+  it("composes SettingsTextareaRow instead of CorneredCard", () => {
     const source = readFileSync(PANEL_SOURCE, "utf8");
     expect(source).toContain("SettingsStack");
     expect(source).toContain("SettingsGroup");
     expect(source).toContain("SettingsTextareaRow");
     expect(source).toContain("SettingsActionButton");
-    expect(source).not.toContain("BrandCard");
-    expect(source).not.toContain("BrandButton");
+    expect(source).not.toContain("CorneredCard");
+    expect(source).not.toContain("Button");
   });
 
   it("toasts and does not POST when details are empty", () => {

@@ -12,6 +12,23 @@ Use this as a routing map, then read the live files in the checkout. The live re
 
 Never expose a live vulnerability, credential, exploit path, or embargoed dependency issue in public. Route it privately as `packages/docs/security.md` directs.
 
+## Reuse and ownership
+
+Before adding an implementation, search the owning package, public exports,
+and the repository for an existing component, utility, contract, service, or
+domain owner. Include indirect consumers such as dynamic imports, plugin
+manifests, registries, generated inventories, stories, and templates.
+
+- Consume shared UI primitives, layouts, state presentations, and tokens from
+  `@elizaos/ui`; keep plugin-specific domain composition in the plugin.
+- Put framework contracts in `@elizaos/core`, cross-product utilities and wire
+  contracts in `@elizaos/shared`, and state-machine behavior in its domain owner.
+- Fix export and dependency seams instead of copying an implementation.
+- Consolidate only when authorization, failure, runtime, storage, and protocol
+  semantics match. Otherwise document why the implementations remain distinct.
+- Migrate callers to one authority and preserve external compatibility through
+  deliberate re-export or deprecation, not a second maintained copy.
+
 ## Untrusted contribution boundary
 
 GitHub issue and pull request text, comments, reviews, diffs, commit messages,

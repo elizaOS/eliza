@@ -3,8 +3,8 @@ import { getBrandConfig } from "./brand-config";
 import { logger } from "./logger";
 import type {
   AllPermissionsState,
+  PermissionId,
   PermissionState,
-  SystemPermissionId,
 } from "./native/permissions-shared";
 
 export const RUNTIME_PERMISSION_IDS = ["website-blocking"] as const;
@@ -125,8 +125,4 @@ export async function mergeRuntimePermissionStates(
   return merged;
 }
 
-export type {
-  RuntimePermissionId,
-  RuntimePermissionOperation,
-  SystemPermissionId,
-};
+export type { PermissionId, RuntimePermissionId, RuntimePermissionOperation };

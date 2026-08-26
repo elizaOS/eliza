@@ -30,6 +30,7 @@ import {
   NotFoundError,
   ValidationError,
 } from "../api/cloud-worker-errors";
+import { bytesToBase64Url, sha256Hex } from "../crypto/worker";
 import {
   secretsService as defaultSecretsService,
   type SecretMetadata,
@@ -153,23 +154,10 @@ const MAX_LIFETIME_SECONDS = 7 * 24 * 60 * 60;
 const TOKEN_BYTES = 32;
 type PrivateInfoField = SensitiveRequestPrivateInfoTarget["fields"][number];
 
-function bytesToBase64Url(bytes: Uint8Array): string {
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/u, "");
-}
-
 function defaultGenerateToken(): string {
   const bytes = new Uint8Array(TOKEN_BYTES);
   crypto.getRandomValues(bytes);
   return `sr_${bytesToBase64Url(bytes)}`;
-}
-
-async function sha256Hex(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
 }
 
 function toIso(value: Date | string | null | undefined): string | null {

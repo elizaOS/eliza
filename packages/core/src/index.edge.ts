@@ -23,6 +23,7 @@ export * from "./character-utils";
 export * from "./connection";
 export * from "./connectors";
 export * from "./connectors/account-manager";
+export * from "./connectors/credential-refs";
 export * from "./connectors/oauth-role";
 export * from "./connectors/privacy";
 export {

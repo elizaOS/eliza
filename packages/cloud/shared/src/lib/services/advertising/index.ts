@@ -17,6 +17,7 @@ import {
   parseAdCampaignSpendCapCredits,
 } from "../../../db/repositories/ad-campaigns-spend-cap-numeric";
 import { NotFoundError, ValidationError } from "../../api/cloud-worker-errors";
+import { bytesToBase64Url, constantTimeEqualUtf8, sha256Hex } from "../../crypto/worker";
 import { logger } from "../../utils/logger";
 import { type ContentSafetyReview, contentSafetyService } from "../content-safety";
 import { creditsService } from "../credits";
@@ -86,19 +87,7 @@ function roundMetric(value: number): number {
 function randomReportToken(): string {
   const bytes = new Uint8Array(REPORT_TOKEN_BYTES);
   crypto.getRandomValues(bytes);
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
-}
-
-async function sha256Hex(value: string): Promise<string> {
-  const data = new TextEncoder().encode(value);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+  return bytesToBase64Url(bytes);
 }
 
 function csvCell(value: string | number | null): string {
@@ -400,10 +389,7 @@ class AdvertisingService {
 
   private base64UrlEncode(value: string | Uint8Array): string {
     const bytes = typeof value === "string" ? this.textEncoder.encode(value) : value;
-    return btoa(String.fromCharCode(...bytes))
-      .replaceAll("+", "-")
-      .replaceAll("/", "_")
-      .replace(/=+$/, "");
+    return bytesToBase64Url(bytes);
   }
 
   private base64UrlDecode(value: string): string {
@@ -422,15 +408,6 @@ class AdvertisingService {
     );
     const signature = await crypto.subtle.sign("HMAC", key, this.textEncoder.encode(message));
     return this.base64UrlEncode(new Uint8Array(signature));
-  }
-
-  private constantTimeEqual(left: string, right: string): boolean {
-    if (left.length !== right.length) return false;
-    let diff = 0;
-    for (let i = 0; i < left.length; i += 1) {
-      diff |= left.charCodeAt(i) ^ right.charCodeAt(i);
-    }
-    return diff === 0;
   }
 
   private newAttributionSecret(): string {
@@ -520,7 +497,7 @@ class AdvertisingService {
       throw new Error("Invalid attribution token");
     }
     const expected = await this.hmacSha256(secret, payload);
-    if (!this.constantTimeEqual(signature, expected)) {
+    if (!constantTimeEqualUtf8(signature, expected)) {
       throw new Error("Invalid attribution token");
     }
     return campaign;

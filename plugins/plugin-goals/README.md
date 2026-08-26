@@ -61,7 +61,7 @@ src/
   db/
     index.ts                     Re-exports schema
     schema.ts                    Drizzle pgSchema('app_goals')
-    sql.ts                       Self-contained raw-SQL helpers
+    sql.ts                       Goals adapter over Core raw-SQL helpers
     goals-repository.ts          GoalsRepository (raw SQL over app_lifeops.life_goal_*)
   components/goals/
     GoalsView.tsx                React view

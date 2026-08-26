@@ -464,7 +464,6 @@
     "@elizaos/capacitor-secure-store": "workspace:*"
   },
   "dependencies": {
-    "@babel/runtime": "^7.29.7",
     "@capacitor/core": "8.4.0",
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/core": "workspace:*",
@@ -498,7 +497,6 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@rainbow-me/rainbowkit": "^2.2.11",
     "@shadcn/react": "0.3.0",
-    "@simplewebauthn/browser": "^13.0.0",
     "@solana/spl-token": "^0.4.14",
     "@solana/wallet-adapter-phantom": "^0.9.29",
     "@solana/wallet-adapter-react": "^0.15.39",
@@ -525,7 +523,6 @@
     "react-router-dom": "^7.0.0",
     "react-syntax-highlighter": "^16.1.0",
     "recharts": "^3.8.1",
-    "refractor": "^5.0.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.3.1",

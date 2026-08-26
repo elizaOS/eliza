@@ -8,6 +8,18 @@
  */
 
 import {
+  executeRawSqlOnDb,
+  parseRawSqlJsonArray,
+  type RuntimeRawSqlDb,
+  sqlInteger,
+  sqlJson,
+  sqlNumber,
+  sqlQuote,
+  sqlText,
+  coerceRawSqlNumber as toNumber,
+  coerceRawSqlText as toText,
+} from "@elizaos/core";
+import {
   type PendantInsightRef,
   PendantInsightRefSchema,
   PendantProcessingLocationSchema,
@@ -17,13 +29,8 @@ import {
   PendantSessionStateSchema,
 } from "@elizaos/shared/contracts/pendant-session-sync";
 
-type RuntimeDb = {
-  execute: (query: RawSqlQuery) => Promise<unknown>;
+type RuntimeDb = RuntimeRawSqlDb & {
   transaction?: <T>(work: (tx: RuntimeDb) => Promise<T>) => Promise<T>;
-};
-
-type RawSqlQuery = {
-  queryChunks: Array<{ value?: unknown }>;
 };
 
 type RuntimeWithDatabase = {
@@ -32,34 +39,7 @@ type RuntimeWithDatabase = {
   };
 };
 
-let cachedSqlRaw: ((query: string) => RawSqlQuery) | null = null;
-
-function asObject(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
-}
-
-function extractRows(result: unknown): Array<Record<string, unknown>> {
-  if (Array.isArray(result)) {
-    return result
-      .map((row) => asObject(row))
-      .filter((row): row is Record<string, unknown> => row !== null);
-  }
-  const object = asObject(result);
-  if (!object || !Array.isArray(object.rows)) return [];
-  return object.rows
-    .map((row) => asObject(row))
-    .filter((row): row is Record<string, unknown> => row !== null);
-}
-
-async function getSqlRaw(): Promise<(query: string) => RawSqlQuery> {
-  if (cachedSqlRaw) return cachedSqlRaw;
-  const drizzle = (await import("drizzle-orm")) as {
-    sql: { raw: (query: string) => RawSqlQuery };
-  };
-  cachedSqlRaw = drizzle.sql.raw;
-  return cachedSqlRaw;
-}
+const rawSqlOptions = { subsystem: "PendantSessionRepository" } as const;
 
 async function executeRawSql(
   runtime: RuntimeWithDatabase,
@@ -70,9 +50,7 @@ async function executeRawSql(
   if (!db || typeof db.execute !== "function") {
     throw new Error("runtime database adapter unavailable");
   }
-  const raw = await getSqlRaw();
-  const result = await db.execute(raw(sqlText));
-  return extractRows(result);
+  return executeRawSqlOnDb(db, sqlText, rawSqlOptions);
 }
 
 async function runTransaction<T>(
@@ -86,51 +64,8 @@ async function runTransaction<T>(
   return db.transaction((tx) => work(tx));
 }
 
-function toText(value: unknown, fallback = ""): string {
-  if (typeof value === "string") return value;
-  if (value === null || value === undefined) return fallback;
-  return String(value);
-}
-
-function toNumber(value: unknown, fallback = 0): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string") {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return fallback;
-}
-
 function parseJsonArray<T>(value: unknown): T[] {
-  if (value === null || value === undefined || value === "") return [];
-  const parsed = typeof value === "string" ? JSON.parse(value) : value;
-  if (Array.isArray(parsed)) return parsed as T[];
-  throw new Error("[PendantSessionRepository] Expected JSON array");
-}
-
-function sqlQuote(value: string): string {
-  return `'${value.replace(/'/g, "''")}'`;
-}
-
-function sqlText(value: string | null | undefined): string {
-  if (value === null || value === undefined) return "NULL";
-  return sqlQuote(value);
-}
-
-function sqlInteger(value: number | null | undefined): string {
-  if (value === null || value === undefined) return "NULL";
-  if (!Number.isFinite(value)) throw new Error("invalid numeric SQL literal");
-  return String(Math.trunc(value));
-}
-
-function sqlNumber(value: number | null | undefined): string {
-  if (value === null || value === undefined) return "NULL";
-  if (!Number.isFinite(value)) throw new Error("invalid numeric SQL literal");
-  return String(value);
-}
-
-function sqlJson(value: unknown): string {
-  return sqlQuote(JSON.stringify(value ?? null));
+  return parseRawSqlJsonArray<T>(value, rawSqlOptions);
 }
 
 export interface StoredCaptureLease {

@@ -5,7 +5,7 @@
  * `EmailCallbackPage` mounts the magic-link callback inside `StewardAuthProvider`
  * so the verify actually runs instead of dead-ending on "unavailable". The
  * Steward provider, i18n provider, page-title hook, session helper, and
- * authorize-return/brand-button are doubled to isolate the mount.
+ * authorize-return/Button are doubled to isolate the mount.
  */
 
 import { StewardApiError } from "@stwd/sdk";
@@ -89,12 +89,20 @@ vi.mock("../../../../cloud-ui/components/auth/authorize-return", () => ({
   readStoredAppAuthorizeReturnTo: () => null,
   clearStoredAppAuthorizeReturnTo: () => {},
 }));
-vi.mock("../../../../cloud-ui/components/brand/brand-button", () => ({
-  BrandButton: ({ children, ...props }: ComponentProps<"button">) => (
-    <button type="button" {...props}>
-      {children}
-    </button>
-  ),
+vi.mock("../../../../components/ui/button", () => ({
+  Button: ({
+    asChild,
+    children,
+    variant: _variant,
+    ...props
+  }: ComponentProps<"button"> & { asChild?: boolean; variant?: string }) =>
+    asChild ? (
+      <>{children}</>
+    ) : (
+      <button type="button" {...props}>
+        {children}
+      </button>
+    ),
 }));
 
 import { storePendingOAuthReturnTo } from "../../lib/login-return-to";

@@ -1,148 +1,69 @@
 /**
- * Raw-SQL helpers for the scheduling-owned ScheduledTask store.
- *
- * The store uses this tiny seam instead of importing a host repository so the
- * always-loaded scheduling plugin can own durable rows without depending on
- * personal-assistant or app-core.
+ * Adapts the Core raw-SQL boundary for the scheduling store while preserving
+ * its optional-database probe and injected executor surface.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import {
+  asRawSqlRecord,
+  coerceRawSqlBoolean,
+  coerceRawSqlText,
+  executeRuntimeRawSql,
+  extractRawSqlRows,
+  findRuntimeRawSqlDb,
+  type IAgentRuntime,
+  parseRawSqlJsonRecord,
+  parseRawSqlJsonValue,
+  type RawSqlQuery,
+  type RuntimeRawSqlDb,
+  sqlBoolean,
+  sqlInteger,
+  sqlJson,
+  sqlQuote,
+  sqlText,
+} from "@elizaos/core";
 
-export type RawSqlQuery = {
-  queryChunks: Array<{ value?: unknown }>;
-};
+const options = { subsystem: "SchedulingSql", allowRuntimeDb: true } as const;
 
-export type RuntimeDb = {
-  execute: (query: RawSqlQuery) => Promise<unknown>;
-};
-
+export type { RawSqlQuery };
+export type RuntimeDb = RuntimeRawSqlDb;
 export type SchedulingSqlExecutor = (
-  sqlText: string,
+  sqlTextValue: string,
 ) => Promise<Array<Record<string, unknown>>>;
-
-let cachedSqlRaw: ((query: string) => RawSqlQuery) | null = null;
-
-export function asObject(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
-}
-
-export function toText(value: unknown, fallback = ""): string {
-  if (typeof value === "string") return value;
-  if (value === null || value === undefined) return fallback;
-  return String(value);
-}
-
-export function toBoolean(value: unknown, fallback = false): boolean {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "number") return value !== 0;
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (["1", "true", "yes", "on"].includes(normalized)) return true;
-    if (["0", "false", "no", "off"].includes(normalized)) return false;
-  }
-  return fallback;
-}
-
-function isMissingJsonValue(value: unknown): boolean {
-  return value === null || value === undefined || value === "";
-}
+export {
+  asRawSqlRecord as asObject,
+  coerceRawSqlBoolean as toBoolean,
+  coerceRawSqlText as toText,
+  sqlBoolean,
+  sqlInteger,
+  sqlJson,
+  sqlQuote,
+  sqlText,
+};
 
 export function parseJsonValue<T>(value: unknown, fallback: T): T {
-  if (isMissingJsonValue(value)) return fallback;
-  if (typeof value !== "string") {
-    if (typeof value === "object") return value as T;
-    throw new Error(
-      `[SchedulingSql] Expected JSON string or object, received ${typeof value}`,
-    );
-  }
-  try {
-    return JSON.parse(value) as T;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`[SchedulingSql] Invalid JSON value: ${message}`);
-  }
+  return parseRawSqlJsonValue(value, fallback, options);
 }
 
 export function parseJsonRecord(value: unknown): Record<string, unknown> {
-  if (isMissingJsonValue(value)) return {};
-  const parsed = parseJsonValue<Record<string, unknown> | null>(value, null);
-  const object = asObject(parsed);
-  if (object) return object;
-  throw new Error("[SchedulingSql] Expected JSON object");
+  return parseRawSqlJsonRecord(value, options);
 }
 
 export function extractRows(result: unknown): Array<Record<string, unknown>> {
-  if (Array.isArray(result)) {
-    return result
-      .map((row) => asObject(row))
-      .filter((row): row is Record<string, unknown> => row !== null);
-  }
-  const object = asObject(result);
-  if (!object) return [];
-  const rows = object.rows;
-  if (!Array.isArray(rows)) return [];
-  return rows
-    .map((row) => asObject(row))
-    .filter((row): row is Record<string, unknown> => row !== null);
-}
-
-async function getSqlRaw(): Promise<(query: string) => RawSqlQuery> {
-  if (cachedSqlRaw) return cachedSqlRaw;
-  const drizzle = (await import("drizzle-orm")) as {
-    sql: { raw: (query: string) => RawSqlQuery };
-  };
-  cachedSqlRaw = drizzle.sql.raw;
-  return cachedSqlRaw;
+  return extractRawSqlRows(result, options);
 }
 
 export function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb | null {
-  const adapterDb = runtime.adapter?.db as RuntimeDb | undefined;
-  if (adapterDb && typeof adapterDb.execute === "function") return adapterDb;
-  const runtimeDb = (runtime as IAgentRuntime & { db?: RuntimeDb }).db;
-  if (runtimeDb && typeof runtimeDb.execute === "function") return runtimeDb;
-  return null;
+  return findRuntimeRawSqlDb(runtime, options);
 }
 
-export async function executeRawSql(
+export function executeRawSql(
   runtime: IAgentRuntime,
-  sqlText: string,
+  sqlTextValue: string,
 ): Promise<Array<Record<string, unknown>>> {
-  const raw = await getSqlRaw();
-  const db = getRuntimeDb(runtime);
-  if (!db) {
-    throw new Error(
-      "[SchedulingSql] runtime database adapter unavailable; load @elizaos/plugin-sql before durable scheduling.",
-    );
-  }
-  const result = await db.execute(raw(sqlText));
-  return extractRows(result);
+  return executeRuntimeRawSql(runtime, sqlTextValue, options);
 }
 
 export function createRuntimeSchedulingSqlExecutor(
   runtime: IAgentRuntime,
 ): SchedulingSqlExecutor {
-  return (sqlText) => executeRawSql(runtime, sqlText);
-}
-
-export function sqlQuote(value: string): string {
-  return `'${value.replace(/'/g, "''")}'`;
-}
-
-export function sqlText(value: string | null | undefined): string {
-  if (value === null || value === undefined) return "NULL";
-  return sqlQuote(value);
-}
-
-export function sqlInteger(value: number | null | undefined): string {
-  if (value === null || value === undefined) return "NULL";
-  if (!Number.isFinite(value)) throw new Error("invalid numeric SQL literal");
-  return String(Math.trunc(value));
-}
-
-export function sqlBoolean(value: boolean): string {
-  return value ? "TRUE" : "FALSE";
-}
-
-export function sqlJson(value: unknown): string {
-  return sqlQuote(JSON.stringify(value ?? null));
+  return (sqlTextValue) => executeRawSql(runtime, sqlTextValue);
 }

@@ -19,6 +19,7 @@ import {
   unlink,
 } from "node:fs/promises";
 import path from "node:path";
+import { canonicalProgressiveContentJson } from "./canonical-json.ts";
 import {
   buildProgressiveFormatFixtureOracles,
   extractProgressiveFormatFixture,
@@ -209,18 +210,6 @@ export const PROGRESSIVE_CONTENT_BOUNDARY_BYTES = [
 
 function sha256(value: string | Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
-}
-
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value && typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    return `{${Object.keys(record)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
 }
 
 const OWNED_DIRECTORIES = ["objects", "formats"] as const;
@@ -585,7 +574,7 @@ export async function verifyProgressiveContentCorpus(
     );
   }
   const { manifestSha256, ...unsigned } = record;
-  if (sha256(canonicalJson(unsigned)) !== manifestSha256) {
+  if (sha256(canonicalProgressiveContentJson(unsigned)) !== manifestSha256) {
     corpusFailure(
       "PROGRESSIVE_CONTENT_MANIFEST_DIGEST_MISMATCH",
       "manifest identity does not match its canonical fields",
@@ -729,7 +718,10 @@ export async function verifyProgressiveContentCorpus(
       object.canaries,
       `objects[${index}].canaries`,
     );
-    if (canonicalJson(rawCanaries) !== canonicalJson(expectedCanaries)) {
+    if (
+      canonicalProgressiveContentJson(rawCanaries) !==
+      canonicalProgressiveContentJson(expectedCanaries)
+    ) {
       corpusFailure(
         "PROGRESSIVE_CONTENT_CANARY_MISMATCH",
         `objects[${index}] canary plan differs from the deterministic oracle`,
@@ -866,7 +858,8 @@ export async function verifyProgressiveContentCorpus(
     expectedPaths.add(relativePath);
     const bytes = await safeRead(outputRoot, relativePath);
     if (
-      canonicalJson(fixture) !== canonicalJson(trustedOracle.declaration) ||
+      canonicalProgressiveContentJson(fixture) !==
+        canonicalProgressiveContentJson(trustedOracle.declaration) ||
       !Buffer.from(bytes).equals(Buffer.from(trustedOracle.bytes))
     ) {
       corpusFailure(
@@ -1273,7 +1266,7 @@ export async function generateProgressiveContentCorpus(options: {
   } as const;
   const manifest: ProgressiveContentManifest = {
     ...unsigned,
-    manifestSha256: sha256(canonicalJson(unsigned)),
+    manifestSha256: sha256(canonicalProgressiveContentJson(unsigned)),
   };
   await atomicPrivateWrite(
     outputRoot,

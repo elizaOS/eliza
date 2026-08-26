@@ -1,150 +1,84 @@
 /**
- * Raw-SQL helpers for the calendar repository: lazily resolves the runtime's
- * `sql` tag, exposes the `RuntimeDb.execute` shape, and coerces DB result cells
- * to text/number/boolean.
+ * Adapts the Core raw-SQL boundary to calendar repositories and retains the
+ * calendar-owned atomic transaction requirement.
  */
-import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+import {
+  coerceRawSqlBoolean,
+  coerceRawSqlNumber,
+  coerceRawSqlText,
+  ElizaError,
+  executeRawSqlOnDb,
+  executeRuntimeRawSql,
+  getRuntimeRawSqlDb,
+  type IAgentRuntime,
+  parseRawSqlJsonArray,
+  parseRawSqlJsonRecord,
+  type RawSqlQuery,
+  type RuntimeRawSqlDb,
+  sqlBoolean,
+  sqlJson,
+  sqlQuote,
+  sqlText,
+} from "@elizaos/core";
 
-export type RawSqlQuery = {
-  queryChunks: Array<{ value?: unknown }>;
-};
+const options = { subsystem: "CalendarSql" } as const;
 
-export type RuntimeDb = {
-  execute: (query: RawSqlQuery) => Promise<unknown>;
-};
-
+export type { RawSqlQuery };
+export type RuntimeDb = RuntimeRawSqlDb;
 export type TransactionalDb = RuntimeDb;
-
 type TransactionalRuntimeDb = RuntimeDb & {
   transaction?: <T>(
     callback: (tx: TransactionalDb) => Promise<T>,
   ) => Promise<T>;
 };
 
-let cachedSqlRaw: ((query: string) => RawSqlQuery) | null = null;
-
-function asObject(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
-}
-
-export function toText(value: unknown, fallback = ""): string {
-  if (typeof value === "string") return value;
-  if (value === null || value === undefined) return fallback;
-  return String(value);
-}
-
-export function toNumber(value: unknown, fallback = 0): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string") {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return fallback;
-}
-
-export function toBoolean(value: unknown, fallback = false): boolean {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "number") return value !== 0;
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (["1", "true", "yes", "on"].includes(normalized)) return true;
-    if (["0", "false", "no", "off"].includes(normalized)) return false;
-  }
-  return fallback;
-}
-
-function isMissingJsonValue(value: unknown): boolean {
-  return value === null || value === undefined || value === "";
-}
-
-function parseJsonValue<T>(value: unknown, fallback: T): T {
-  if (isMissingJsonValue(value)) return fallback;
-  if (typeof value !== "string") {
-    if (typeof value === "object") return value as T;
-    throw new Error(
-      `[CalendarSql] Expected JSON string or object, received ${typeof value}`,
-    );
-  }
-  try {
-    return JSON.parse(value) as T;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`[CalendarSql] Invalid JSON value: ${message}`);
-  }
-}
+export {
+  coerceRawSqlBoolean as toBoolean,
+  coerceRawSqlNumber as toNumber,
+  coerceRawSqlText as toText,
+  sqlBoolean,
+  sqlJson,
+  sqlQuote,
+  sqlText,
+};
 
 export function parseJsonRecord(value: unknown): Record<string, unknown> {
-  if (isMissingJsonValue(value)) return {};
-  const parsed = parseJsonValue<Record<string, unknown> | null>(value, null);
-  const object = asObject(parsed);
-  if (object) return object;
-  throw new Error("[CalendarSql] Expected JSON object");
+  return parseRawSqlJsonRecord(value, options);
 }
 
 export function parseJsonArray<T>(value: unknown): T[] {
-  if (isMissingJsonValue(value)) return [];
-  const parsed = parseJsonValue<T[] | null>(value, null);
-  if (Array.isArray(parsed)) return parsed;
-  throw new Error("[CalendarSql] Expected JSON array");
-}
-
-export function extractRows(result: unknown): Array<Record<string, unknown>> {
-  if (Array.isArray(result)) {
-    return result
-      .map((row) => asObject(row))
-      .filter((row): row is Record<string, unknown> => row !== null);
-  }
-  const object = asObject(result);
-  if (!object) return [];
-  const rows = object.rows;
-  if (!Array.isArray(rows)) return [];
-  return rows
-    .map((row) => asObject(row))
-    .filter((row): row is Record<string, unknown> => row !== null);
-}
-
-async function getSqlRaw(): Promise<(query: string) => RawSqlQuery> {
-  if (cachedSqlRaw) return cachedSqlRaw;
-  const drizzle = (await import("drizzle-orm")) as {
-    sql: { raw: (query: string) => RawSqlQuery };
-  };
-  cachedSqlRaw = drizzle.sql.raw;
-  return cachedSqlRaw;
+  return parseRawSqlJsonArray<T>(value, options);
 }
 
 export function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb {
-  const db = runtime.adapter.db as RuntimeDb | undefined;
-  if (!db || typeof db.execute !== "function") {
-    throw new Error("runtime database adapter unavailable");
-  }
-  return db;
+  return getRuntimeRawSqlDb(runtime, options);
 }
 
-export async function executeRawSql(
+export function executeRawSql(
   runtime: IAgentRuntime,
-  sqlText: string,
+  sqlTextValue: string,
 ): Promise<Array<Record<string, unknown>>> {
-  const raw = await getSqlRaw();
-  const db = getRuntimeDb(runtime);
-  const result = await db.execute(raw(sqlText));
-  return extractRows(result);
+  return executeRuntimeRawSql(runtime, sqlTextValue, options);
 }
 
-export async function executeRawSqlTx(
+export function executeRawSqlTx(
   tx: TransactionalDb,
-  sqlText: string,
+  sqlTextValue: string,
 ): Promise<Array<Record<string, unknown>>> {
-  const raw = await getSqlRaw();
-  const result = await tx.execute(raw(sqlText));
-  return extractRows(result);
+  return executeRawSqlOnDb(tx, sqlTextValue, options);
 }
 
-/**
- * Calendar selection and provider state must commit together. Reject adapters
- * without a real SQL transaction rather than presenting a partial write as a
- * recoverable preference failure.
- */
+export function sqlInteger(value: number): string {
+  if (!Number.isSafeInteger(value)) {
+    throw new ElizaError("Invalid calendar integer SQL literal.", {
+      code: "CALENDAR_SQL_INTEGER_LITERAL_INVALID",
+      context: { value },
+    });
+  }
+  return String(value);
+}
+
+/** Calendar selection and provider state must commit together. */
 export async function withCalendarTransaction<T>(
   runtime: IAgentRuntime,
   operation: (tx: TransactionalDb) => Promise<T>,
@@ -161,32 +95,4 @@ export async function withCalendarTransaction<T>(
     );
   }
   return db.transaction(operation);
-}
-
-// ---------------------------------------------------------------------------
-// SQL value encoders
-// ---------------------------------------------------------------------------
-
-export function sqlQuote(value: string): string {
-  return `'${value.replace(/'/g, "''")}'`;
-}
-
-export function sqlText(value: string | null | undefined): string {
-  if (value === null || value === undefined) return "NULL";
-  return sqlQuote(value);
-}
-
-export function sqlBoolean(value: boolean): string {
-  return value ? "TRUE" : "FALSE";
-}
-
-export function sqlInteger(value: number): string {
-  if (!Number.isSafeInteger(value)) {
-    throw new Error("invalid integer SQL literal");
-  }
-  return String(value);
-}
-
-export function sqlJson(value: unknown): string {
-  return sqlQuote(JSON.stringify(value ?? null));
 }

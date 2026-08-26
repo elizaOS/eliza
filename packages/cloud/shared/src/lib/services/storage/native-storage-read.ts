@@ -14,6 +14,7 @@ import type {
   OrgStorageReadMethod,
   OrgStorageReadOperation,
 } from "../../../db/schemas/org-storage-reads";
+import { sha256Hex, utf8Bytes } from "../../crypto/worker";
 import type { RuntimeR2Bucket, RuntimeR2Object } from "../../storage/r2-runtime-binding";
 import {
   ensureNativeStorageQuotaReconciled,
@@ -23,7 +24,6 @@ import {
 const MAX_IDEMPOTENCY_KEY_BYTES = 200;
 const MAX_LEDGER_PRICE = new Decimal("999999.999999");
 const DIRECT_GET_REPLAY_MS = 5 * 60 * 1000;
-const UTF8 = new TextEncoder();
 
 export class NativeStorageReadError extends Error {
   constructor(
@@ -76,12 +76,8 @@ interface PreparedIdentity {
   replay: boolean;
 }
 
-function bytesToHex(bytes: ArrayBuffer): string {
-  return Array.from(new Uint8Array(bytes), (value) => value.toString(16).padStart(2, "0")).join("");
-}
-
 async function sha256(value: string): Promise<string> {
-  return bytesToHex(await crypto.subtle.digest("SHA-256", UTF8.encode(value)));
+  return sha256Hex(value);
 }
 
 function canonicalPrice(value: number | string): string {
@@ -97,7 +93,7 @@ function canonicalPrice(value: number | string): string {
 }
 
 function validateIdempotencyKey(value: string): void {
-  const bytes = UTF8.encode(value);
+  const bytes = utf8Bytes(value);
   if (bytes.byteLength === 0) {
     throw new NativeStorageReadError("IDEMPOTENCY_REQUIRED", "Idempotency-Key is required");
   }

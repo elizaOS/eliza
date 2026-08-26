@@ -117,7 +117,13 @@ export const SURFACE_ISOLATION_CATALOGUE: Readonly<
       "Fullscreen chrome-free surfaces that own their whole window. In-process " +
       "like the shell, but the only non-launcher level allowed to paint the " +
       "shared wallpaper — and only with the explicit `wallpaper` grant.",
-    examples: ["views (launcher)", "apps (launcher)", "background", "home"],
+    examples: [
+      "chat",
+      "views (launcher)",
+      "apps (launcher)",
+      "background",
+      "home",
+    ],
   },
 };
 

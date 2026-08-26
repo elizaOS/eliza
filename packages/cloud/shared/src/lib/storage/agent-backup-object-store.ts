@@ -7,6 +7,7 @@
  */
 
 import { ListObjectsV2Command } from "@aws-sdk/client-s3";
+import { sha256Hex } from "../crypto/worker";
 import {
   createExactRuntimeR2Backend,
   createExactS3Backend,
@@ -145,11 +146,7 @@ function normalizeEndpoint(endpoint: string): string {
 }
 
 async function sha256Fingerprint(value: string): Promise<string> {
-  const digest = new Uint8Array(
-    await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)),
-  );
-  const hex = Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
-  return `sha256:${hex}`;
+  return `sha256:${await sha256Hex(value)}`;
 }
 
 /**
