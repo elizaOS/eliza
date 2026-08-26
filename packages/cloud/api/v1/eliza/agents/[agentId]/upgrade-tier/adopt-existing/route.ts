@@ -236,6 +236,8 @@ async function __hono_GET(
       ),
     });
   } catch (error) {
+    // error-policy:J1 the HTTP boundary translates auth, lookup, and quote
+    // failures into the route's structured response contract.
     return applyCorsHeaders(errorToResponse(error), CORS_METHODS);
   }
 }
@@ -347,6 +349,8 @@ async function __hono_POST(
         expectedMinimumRunwayDays: quote.minimumRunwayDays,
       });
     } catch (error) {
+      // error-policy:J1 the route maps typed adoption conflicts while every
+      // other failure continues to the outer HTTP boundary.
       if (error instanceof PersonalDedicatedAdoptionError) {
         return adoptionServiceError(error);
       }
@@ -392,6 +396,8 @@ async function __hono_POST(
     };
     return json(response, result.job ? 202 : 200);
   } catch (error) {
+    // error-policy:J1 the HTTP boundary translates request and service
+    // failures without fabricating a successful adoption.
     return applyCorsHeaders(errorToResponse(error), CORS_METHODS);
   }
 }
