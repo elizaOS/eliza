@@ -310,6 +310,33 @@ jobs:
             exit "$gate_status"
           fi
 
+      - name: Validate database identity gate configuration
+        if: ${{ steps.source_guard.outputs.superseded != 'true' }}
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+          DATABASE_IDENTITY_GATE_MODE: ${{ vars.DATABASE_IDENTITY_GATE_MODE || 'off' }}
+          DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
+          DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
+        run: |
+          set -euo pipefail
+          if [ "$TARGET_ENVIRONMENT" != "production" ]; then
+            exit 0
+          fi
+          if [ "$DATABASE_IDENTITY_GATE_MODE" != "enforce" ]; then
+            echo "::error::Production migrations require DATABASE_IDENTITY_GATE_MODE=enforce"
+            exit 1
+          fi
+          for name in \
+            DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 \
+            DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256; do
+            value="${!name:-}"
+            if [[ ! "$value" =~ ^[0-9a-f]{64}$ ]]; then
+              echo "::error::$name must be a protected lowercase SHA-256 identity receipt"
+              exit 1
+            fi
+          done
+          echo "Production database identity enforcement is configured; receipt values were not printed."
+
       - name: Run migrations
         if: ${{ steps.source_guard.outputs.superseded != 'true' }}
         env:

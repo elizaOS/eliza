@@ -8,7 +8,10 @@ import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { validateAppliedMigrationLedger } from "./migrate-with-diagnostics";
+import {
+  assertAppliedLedgerHasCanonicalRelations,
+  validateAppliedMigrationLedger,
+} from "./migrate-with-diagnostics";
 
 const CHECKPOINT_TAG = "0194_job_execution_interruptions_catalog_guard";
 const STAGING_RESTORE_OPERATION = {
@@ -61,6 +64,36 @@ function applied(...journalIndexes: number[]) {
 }
 
 describe("migration ledger checkpoint completeness", () => {
+  test("rejects a complete ledger when a canonical relation is missing", async () => {
+    await expect(
+      assertAppliedLedgerHasCanonicalRelations({
+        backend: "postgres",
+        end: async () => undefined,
+        query: async () => ({
+          rows: [
+            { apps: false, organizations: true, users: true, api_keys: true },
+          ],
+        }),
+      }),
+    ).rejects.toThrow(
+      "Migration ledger is non-empty but canonical application relations are missing",
+    );
+  });
+
+  test("accepts a complete ledger only when all canonical relations exist", async () => {
+    await expect(
+      assertAppliedLedgerHasCanonicalRelations({
+        backend: "postgres",
+        end: async () => undefined,
+        query: async () => ({
+          rows: [
+            { apps: true, organizations: true, users: true, api_keys: true },
+          ],
+        }),
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   test("accepts an under-recorded historical prefix before the checkpoint", () => {
     expect(
       validateAppliedMigrationLedger(applied(0, 2, 3, 4), migrations),
