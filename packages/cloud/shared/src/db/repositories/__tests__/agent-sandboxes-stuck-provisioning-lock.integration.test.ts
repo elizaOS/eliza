@@ -342,6 +342,8 @@ async function createReplacementAttemptFixture(): Promise<ReplacementAttemptFixt
   const userId = randomUUID();
   const agentId = randomUUID();
   const nodeRecordId = randomUUID();
+  const nodeIncarnation = randomUUID();
+  const nodeHistoryId = randomUUID();
   const attemptId = randomUUID();
   const activationGeneration = randomUUID();
   const lifecycleJobId = randomUUID();
@@ -381,6 +383,16 @@ async function createReplacementAttemptFixture(): Promise<ReplacementAttemptFixt
     container_name: `old-container-${suffix}`,
     lifecycle_revision: 7,
   });
+  await dbWrite.insert(agentNodeIncarnationHistories).values({
+    id: nodeHistoryId,
+    docker_node_record_id: nodeRecordId,
+    node_id: nodeId,
+    node_incarnation: nodeIncarnation,
+    fleet_kind: "robot",
+    infrastructure_provider: "hetzner",
+    provider_server_id: null,
+    host_key_fingerprint: nodeHostKeyFingerprint,
+  });
   await dbWrite.insert(dockerNodes).values({
     id: nodeRecordId,
     node_id: nodeId,
@@ -391,6 +403,10 @@ async function createReplacementAttemptFixture(): Promise<ReplacementAttemptFixt
     status: "healthy",
     ssh_user: "root",
     host_key_fingerprint: nodeHostKeyFingerprint,
+    fleet_kind: "robot",
+    infrastructure_provider: "hetzner",
+    node_incarnation: nodeIncarnation,
+    current_node_history_id: nodeHistoryId,
   });
 
   return {
@@ -414,6 +430,8 @@ async function createReplacementAttemptFixture(): Promise<ReplacementAttemptFixt
       nodeId,
       containerName,
       nodeRecordId,
+      nodeIncarnation,
+      nodeHistoryId,
       nodeHostname,
       nodeSshPort: 22,
       nodeSshUser: "root",
