@@ -217,8 +217,15 @@ beforeAll(async () => {
         execution_generation uuid, execution_quiesced_at timestamp, completed_at timestamp,
         created_at timestamp NOT NULL DEFAULT now(), updated_at timestamp NOT NULL DEFAULT now()
       );
+      CREATE TABLE job_execution_leases (
+        job_id uuid PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+        execution_generation uuid NOT NULL, owner_id uuid NOT NULL,
+        expires_at timestamp NOT NULL, heartbeat_at timestamp NOT NULL DEFAULT now(),
+        created_at timestamp NOT NULL DEFAULT now()
+      );
       CREATE TABLE containers (
-        id uuid PRIMARY KEY, organization_id uuid NOT NULL, user_id uuid NOT NULL,
+        id uuid PRIMARY KEY, name text NOT NULL DEFAULT 'compute-stop-test-container',
+        organization_id uuid NOT NULL, user_id uuid NOT NULL,
         status text NOT NULL, billing_status text NOT NULL,
         scheduled_shutdown_at timestamp, shutdown_warning_sent_at timestamp,
         last_billed_at timestamp, next_billing_at timestamp,
@@ -259,7 +266,9 @@ beforeAll(async () => {
         status text NOT NULL DEFAULT 'pending', job_id uuid REFERENCES jobs(id) ON DELETE SET NULL,
         attempts integer NOT NULL DEFAULT 0, last_error text,
         next_attempt_at timestamptz NOT NULL DEFAULT now(), provider_started_at timestamptz,
-        provider_confirmed_at timestamptz, superseded_at timestamptz,
+        provider_confirmed_at timestamptz,
+        retained_backup_billing boolean NOT NULL DEFAULT false,
+        retained_backup_rate_per_hour numeric(18,6), superseded_at timestamptz,
         created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
       );
       CREATE UNIQUE INDEX agent_compute_stop_intents_active_unique
@@ -1071,14 +1080,29 @@ realPostgres("compute stop concurrency", () => {
     await seedContainer({ organizationId, userId, containerId, lifecycleRevision: 7 });
     const requested = await stopService.enqueueContainerStopOnce({ containerId, organizationId });
     if (!requested.requested) throw new Error("expected stop request");
+    const executionGeneration = randomUUID();
+    const executionOwnerId = randomUUID();
+    await dbWrite.execute(sql`UPDATE jobs
+      SET status = 'in_progress', execution_generation = ${executionGeneration},
+          execution_quiesced_at = NULL, started_at = NOW(), updated_at = NOW()
+      WHERE id = ${requested.id} AND status = 'pending'`);
+    await dbWrite.execute(sql`INSERT INTO job_execution_leases
+      (job_id, execution_generation, owner_id, expires_at)
+      VALUES (${requested.id}, ${executionGeneration}, ${executionOwnerId}, NOW() + INTERVAL '5 minutes')`);
     const jobResult = await dbWrite.execute(
-      sql`SELECT id, organization_id, data FROM jobs WHERE id = ${requested.id}`,
+      sql`SELECT id, organization_id, execution_generation, data
+          FROM jobs WHERE id = ${requested.id}`,
     );
-    const job = jobResult.rows[0] as { id: string; organization_id: string; data: unknown };
+    const job = jobResult.rows[0] as {
+      id: string;
+      organization_id: string;
+      execution_generation: string;
+      data: unknown;
+    };
     const providerStop = spyOn(
       getHetznerContainersClient(),
       "stopContainerRuntimeForBilling",
-    ).mockResolvedValue({ nodeId: null });
+    ).mockResolvedValue({ nodeId: null, alreadyAbsent: false });
     const holder = new Client({ connectionString: isolatedDsn });
     const observer = new Client({ connectionString: isolatedDsn });
     await Promise.all([holder.connect(), observer.connect()]);
@@ -1088,7 +1112,7 @@ realPostgres("compute stop concurrency", () => {
         "UPDATE containers SET lifecycle_revision = 8, status = 'deploying' WHERE id = $1",
         [containerId],
       );
-      const dispatch = stopService.dispatchContainerStopJob(job);
+      const dispatch = stopService.dispatchContainerStopJob(job, { executionOwnerId });
       await waitUntilBlocked(observer);
       await holder.query("COMMIT");
       await expect(dispatch).resolves.toMatchObject({ reason: "stale-lifecycle-generation" });

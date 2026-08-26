@@ -5,17 +5,18 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { pushSchema } from "drizzle-kit/api";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 
 import {
-  dispatchContainerStopJob,
+  dispatchContainerStopJob as dispatchContainerStopJobService,
   enqueueContainerStopOnce,
   enqueueContainerUserStopOnce,
   listRecoverableContainerStopIntents,
+  rearmRecoverableContainerStopIntentOnce,
 } from "../../../lib/services/container-stop-job-service";
 import { getHetznerContainersClient } from "../../../lib/services/containers/hetzner-client/client";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
@@ -30,6 +31,7 @@ import { computeBillingRateSegments } from "../../schemas/compute-billing-rate-s
 import { containerComputeStopIntents } from "../../schemas/compute-stop-intents";
 import { containerBillingRecords, containers } from "../../schemas/containers";
 import { creditTransactions } from "../../schemas/credit-transactions";
+import { jobExecutionLeases } from "../../schemas/job-execution-leases";
 import { jobs } from "../../schemas/jobs";
 import { organizations } from "../../schemas/organizations";
 import {
@@ -42,7 +44,10 @@ import { userCharacters } from "../../schemas/user-characters";
 import { users } from "../../schemas/users";
 import { agentBillingRepository } from "../agent-billing";
 import { agentBillingRunRepository } from "../agent-billing-runs";
+import { settleComputeRateSegments } from "../compute-billing-segments";
+import { containerBillingRepository } from "../container-billing";
 import { containersRepository } from "../containers";
+import { jobsRepository } from "../jobs";
 
 const PGLITE_TIMEOUT = 60_000;
 let ready = true;
@@ -103,6 +108,16 @@ beforeAll(async () => {
       completed_at timestamp,
       created_at timestamp NOT NULL DEFAULT now(),
       updated_at timestamp NOT NULL DEFAULT now()
+    )`),
+    );
+    await dbWrite.execute(
+      sql.raw(`CREATE TABLE job_execution_leases (
+      job_id uuid PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+      execution_generation uuid NOT NULL,
+      owner_id uuid NOT NULL,
+      expires_at timestamp NOT NULL,
+      heartbeat_at timestamp NOT NULL DEFAULT now(),
+      created_at timestamp NOT NULL DEFAULT now()
     )`),
     );
     await dbWrite.execute(
@@ -204,6 +219,64 @@ async function seed(balance = "10.000000") {
     effective_at: lastBilledAt,
   });
   return { org, user, sandbox, lastBilledAt };
+}
+
+/** Drive the daemon seam with the same generation + renewable lease as production. */
+async function ownContainerStopJob(job: { id: string; organization_id: string; data: unknown }) {
+  const [current] = await dbWrite.select().from(jobs).where(eq(jobs.id, job.id)).limit(1);
+  if (!current) throw new Error(`Expected container stop job ${job.id}`);
+
+  let claimed = current;
+  let executionOwnerId: string;
+  if (current.status === "pending") {
+    executionOwnerId = crypto.randomUUID();
+    const claims = await jobsRepository.claimPendingJobs({
+      type: "container_stop",
+      organizationId: current.organization_id,
+      limit: 100,
+      executionOwnerId,
+      executionLeaseMs: 5 * 60_000,
+    });
+    const exact = claims.find((candidate) => candidate.id === job.id);
+    if (!exact) throw new Error(`Expected container stop job ${job.id} to be claimed`);
+    claimed = exact;
+  } else if (current.status === "in_progress" && current.execution_generation) {
+    const [lease] = await dbWrite
+      .select({ ownerId: jobExecutionLeases.owner_id })
+      .from(jobExecutionLeases)
+      .where(
+        and(
+          eq(jobExecutionLeases.job_id, current.id),
+          eq(jobExecutionLeases.execution_generation, current.execution_generation),
+        ),
+      )
+      .limit(1);
+    if (!lease) throw new Error(`Expected active lease for container stop job ${job.id}`);
+    executionOwnerId = lease.ownerId;
+  } else {
+    throw new Error(`Container stop job ${job.id} is not claimable from ${current.status}`);
+  }
+
+  return {
+    job: {
+      id: claimed.id,
+      organization_id: job.organization_id,
+      execution_generation: claimed.execution_generation,
+      data: job.data,
+    },
+    executionOwnerId,
+  };
+}
+
+async function dispatchContainerStopJob(job: {
+  id: string;
+  organization_id: string;
+  data: unknown;
+}) {
+  const owned = await ownContainerStopJob(job);
+  return await dispatchContainerStopJobService(owned.job, {
+    executionOwnerId: owned.executionOwnerId,
+  });
 }
 
 async function claimBillingRun(_billingCutoffAt: Date) {
@@ -779,6 +852,295 @@ describe("compute billing recovery", () => {
     expect(rows.rows).toHaveLength(1);
   });
 
+  test("recovery discovery excludes live jobs and includes failed or unbound intents", async () => {
+    const { org, user } = await seed("10.000000");
+    const dueAt = new Date(0);
+    const fixtures = await Promise.all(
+      ["pending", "failed", "unbound"].map(async (jobStatus) => {
+        const containerId = crypto.randomUUID();
+        await dbWrite.insert(containers).values({
+          id: containerId,
+          organization_id: org.id,
+          user_id: user.id,
+          name: `recovery-${jobStatus}`,
+          project_name: `recovery-${jobStatus}`,
+          status: "running",
+          billing_status: "active",
+          lifecycle_revision: 1,
+        });
+        const [intent] = await dbWrite
+          .insert(containerComputeStopIntents)
+          .values({
+            organization_id: org.id,
+            container_id: containerId,
+            lifecycle_revision: 1,
+            authorization: "user_request",
+            status: "retry",
+            next_attempt_at: dueAt,
+          })
+          .returning();
+        if (jobStatus === "unbound") return { intent, job: null };
+        const [job] = await dbWrite
+          .insert(jobs)
+          .values({
+            type: "container_stop",
+            status: jobStatus,
+            organization_id: org.id,
+            user_id: user.id,
+            data: {
+              containerId,
+              organizationId: org.id,
+              intentId: intent.id,
+              lifecycleRevision: 1,
+            },
+          })
+          .returning();
+        await dbWrite
+          .update(containerComputeStopIntents)
+          .set({ job_id: job.id })
+          .where(eq(containerComputeStopIntents.id, intent.id));
+        return { intent, job };
+      }),
+    );
+
+    const billingContainerId = crypto.randomUUID();
+    await dbWrite.insert(containers).values({
+      id: billingContainerId,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "recovery-billing-due",
+      project_name: "recovery-billing-due",
+      status: "running",
+      billing_status: "shutdown_pending",
+      scheduled_shutdown_at: new Date(0),
+      lifecycle_revision: 1,
+    });
+    const [billingIntent] = await dbWrite
+      .insert(containerComputeStopIntents)
+      .values({
+        organization_id: org.id,
+        container_id: billingContainerId,
+        lifecycle_revision: 1,
+        authorization: "billing_request",
+        status: "retry",
+        next_attempt_at: dueAt,
+      })
+      .returning();
+
+    const invalidDueAt = new Date(-1_000);
+    const missingContainerIntent = await dbWrite
+      .insert(containerComputeStopIntents)
+      .values({
+        organization_id: org.id,
+        container_id: crypto.randomUUID(),
+        lifecycle_revision: 1,
+        authorization: "user_request",
+        status: "retry",
+        next_attempt_at: invalidDueAt,
+      })
+      .returning();
+    const staleContainerId = crypto.randomUUID();
+    await dbWrite.insert(containers).values({
+      id: staleContainerId,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "recovery-stale-lifecycle",
+      project_name: "recovery-stale-lifecycle",
+      status: "running",
+      billing_status: "active",
+      lifecycle_revision: 2,
+    });
+    const staleLifecycleIntent = await dbWrite
+      .insert(containerComputeStopIntents)
+      .values({
+        organization_id: org.id,
+        container_id: staleContainerId,
+        lifecycle_revision: 1,
+        authorization: "user_request",
+        status: "retry",
+        next_attempt_at: invalidDueAt,
+      })
+      .returning();
+    const unauthorizedBillingContainerId = crypto.randomUUID();
+    await dbWrite.insert(containers).values({
+      id: unauthorizedBillingContainerId,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "recovery-billing-not-due",
+      project_name: "recovery-billing-not-due",
+      status: "running",
+      billing_status: "active",
+      lifecycle_revision: 1,
+    });
+    const unauthorizedBillingIntent = await dbWrite
+      .insert(containerComputeStopIntents)
+      .values({
+        organization_id: org.id,
+        container_id: unauthorizedBillingContainerId,
+        lifecycle_revision: 1,
+        authorization: "billing_request",
+        status: "retry",
+        next_attempt_at: invalidDueAt,
+      })
+      .returning();
+
+    const recoverable = await listRecoverableContainerStopIntents(new Date(), 3);
+    const ids = recoverable.map((intent) => intent.id);
+    expect(ids).not.toContain(fixtures[0]!.intent.id);
+    expect(ids).toContain(fixtures[1]!.intent.id);
+    expect(ids).toContain(fixtures[2]!.intent.id);
+    expect(ids).toContain(billingIntent.id);
+    expect(ids).not.toContain(missingContainerIntent[0]!.id);
+    expect(ids).not.toContain(staleLifecycleIntent[0]!.id);
+    expect(ids).not.toContain(unauthorizedBillingIntent[0]!.id);
+  });
+
+  test("recovery pagination skips more than one page of poisoned failed jobs", async () => {
+    const { org, user } = await seed("10.000000");
+    const poisonDueAt = new Date("2026-08-26T00:00:00.000Z");
+    const validDueAt = new Date("2026-08-26T00:01:00.000Z");
+    const scanAt = new Date("2026-08-26T00:02:00.000Z");
+    const poisonContainers: Array<typeof containers.$inferInsert> = [];
+    const poisonJobs: Array<typeof jobs.$inferInsert> = [];
+    const poisonIntents: Array<typeof containerComputeStopIntents.$inferInsert> = [];
+
+    for (let index = 0; index < 104; index += 1) {
+      const containerId = crypto.randomUUID();
+      const intentId = crypto.randomUUID();
+      const jobId = crypto.randomUUID();
+      poisonContainers.push({
+        id: containerId,
+        organization_id: org.id,
+        user_id: user.id,
+        name: `poison-recovery-${index}`,
+        project_name: `poison-recovery-${index}`,
+        status: "running",
+        billing_status: "active",
+        lifecycle_revision: 1,
+      });
+      poisonJobs.push({
+        id: jobId,
+        type: "container_stop",
+        status: "failed",
+        organization_id: org.id,
+        user_id: user.id,
+        data: {
+          containerId,
+          organizationId: org.id,
+          intentId,
+          lifecycleRevision: "not-a-safe-revision",
+        },
+      });
+      poisonIntents.push({
+        id: intentId,
+        organization_id: org.id,
+        container_id: containerId,
+        lifecycle_revision: 1,
+        authorization: "user_request",
+        status: "terminal_attention",
+        job_id: jobId,
+        next_attempt_at: poisonDueAt,
+      });
+    }
+
+    // Exercise the envelope filters independently from the malformed-payload
+    // page above. None may consume a slot from the bounded recovery result.
+    for (const poisonKind of ["type", "tenant", "storage"] as const) {
+      const containerId = crypto.randomUUID();
+      const intentId = crypto.randomUUID();
+      const jobId = crypto.randomUUID();
+      poisonContainers.push({
+        id: containerId,
+        organization_id: org.id,
+        user_id: user.id,
+        name: `poison-recovery-${poisonKind}`,
+        project_name: `poison-recovery-${poisonKind}`,
+        status: "running",
+        billing_status: "active",
+        lifecycle_revision: 1,
+      });
+      poisonJobs.push({
+        id: jobId,
+        type: poisonKind === "type" ? "container_restart" : "container_stop",
+        status: "failed",
+        organization_id: poisonKind === "tenant" ? crypto.randomUUID() : org.id,
+        user_id: user.id,
+        data_storage: poisonKind === "storage" ? "r2" : "inline",
+        data_key: poisonKind === "storage" ? `poison/${jobId}` : null,
+        data: {
+          containerId,
+          organizationId: org.id,
+          intentId,
+          lifecycleRevision: 1,
+        },
+      });
+      poisonIntents.push({
+        id: intentId,
+        organization_id: org.id,
+        container_id: containerId,
+        lifecycle_revision: 1,
+        authorization: "user_request",
+        status: "terminal_attention",
+        job_id: jobId,
+        next_attempt_at: poisonDueAt,
+      });
+    }
+
+    const validContainerId = crypto.randomUUID();
+    const validIntentId = crypto.randomUUID();
+    const validJobId = crypto.randomUUID();
+    poisonContainers.push({
+      id: validContainerId,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "valid-late-recovery",
+      project_name: "valid-late-recovery",
+      status: "running",
+      billing_status: "active",
+      lifecycle_revision: 1,
+    });
+    poisonJobs.push({
+      id: validJobId,
+      type: "container_stop",
+      status: "failed",
+      organization_id: org.id,
+      user_id: user.id,
+      data: {
+        containerId: validContainerId,
+        organizationId: org.id,
+        intentId: validIntentId,
+        lifecycleRevision: 1,
+      },
+    });
+    poisonIntents.push({
+      id: validIntentId,
+      organization_id: org.id,
+      container_id: validContainerId,
+      lifecycle_revision: 1,
+      authorization: "user_request",
+      status: "terminal_attention",
+      job_id: validJobId,
+      next_attempt_at: validDueAt,
+    });
+
+    await dbWrite.insert(containers).values(poisonContainers);
+    await dbWrite.insert(jobs).values(poisonJobs);
+    await dbWrite.insert(containerComputeStopIntents).values(poisonIntents);
+
+    const recoverable = await listRecoverableContainerStopIntents(scanAt, 100);
+    expect(recoverable.map((intent) => intent.id)).toEqual([validIntentId]);
+    const rearmed = await rearmRecoverableContainerStopIntentOnce({
+      intentId: validIntentId,
+      containerId: validContainerId,
+      organizationId: org.id,
+      lifecycleRevision: 1,
+      now: scanAt,
+    });
+    expect(rearmed).toEqual({ id: validJobId, rearmed: true });
+    const [sameJob] = await dbWrite.select().from(jobs).where(eq(jobs.id, validJobId));
+    expect(sameJob).toMatchObject({ id: validJobId, status: "pending", attempts: 0 });
+  });
+
   test("user stop rejects a stale first submit without creating an intent or job", async () => {
     const { org, user } = await seed("10.000000");
     const containerId = crypto.randomUUID();
@@ -859,7 +1221,7 @@ describe("compute billing recovery", () => {
     const providerStop = spyOn(
       getHetznerContainersClient(),
       "stopContainerRuntimeForBilling",
-    ).mockResolvedValue({ nodeId: null });
+    ).mockResolvedValue({ nodeId: null, alreadyAbsent: false });
     try {
       await expect(dispatchContainerStopJob(job)).resolves.toMatchObject({
         stopped: false,
@@ -877,10 +1239,53 @@ describe("compute billing recovery", () => {
     }
   });
 
+  test("user replay rejects a live job whose payload no longer matches the intent", async () => {
+    const { org, user } = await seed("10.000000");
+    const containerId = crypto.randomUUID();
+    await dbWrite.insert(containers).values({
+      id: containerId,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "mismatched-live-stop-job",
+      project_name: "mismatched-live-stop-job",
+      status: "running",
+      billing_status: "active",
+      lifecycle_revision: 4,
+    });
+    const requested = await enqueueContainerUserStopOnce({
+      containerId,
+      organizationId: org.id,
+      userId: user.id,
+      expectedLifecycleRevision: 4,
+    });
+    if (!requested.requested) throw new Error("Expected durable user stop request");
+    await dbWrite
+      .update(jobs)
+      .set({
+        data: sql`jsonb_set(${jobs.data}, '{intentId}', to_jsonb(${crypto.randomUUID()}::text))`,
+      })
+      .where(eq(jobs.id, requested.jobId));
+
+    await expect(
+      enqueueContainerUserStopOnce({
+        containerId,
+        organizationId: org.id,
+        userId: user.id,
+        expectedLifecycleRevision: 4,
+      }),
+    ).rejects.toThrow("Live container stop job payload does not match its durable intent");
+    expect(await dbWrite.select().from(jobs)).toHaveLength(1);
+    const [intent] = await dbWrite
+      .select()
+      .from(containerComputeStopIntents)
+      .where(eq(containerComputeStopIntents.id, requested.intentId));
+    expect(intent).toMatchObject({ status: "pending", job_id: requested.jobId });
+  });
+
   test("user authority promotes a billing intent, reuses its job, and cannot be funding-superseded", async () => {
     const { org, user } = await seed("0.000000");
     const containerId = crypto.randomUUID();
-    const periodStart = new Date("2026-08-19T01:00:00.000Z");
+    const periodStart = new Date(Date.now() - 60 * 60 * 1000);
     await dbWrite.insert(containers).values({
       id: containerId,
       organization_id: org.id,
@@ -935,7 +1340,7 @@ describe("compute billing recovery", () => {
     const providerStop = spyOn(
       getHetznerContainersClient(),
       "stopContainerRuntimeForBilling",
-    ).mockResolvedValue({ nodeId: null });
+    ).mockResolvedValue({ nodeId: null, alreadyAbsent: false });
     try {
       await expect(dispatchContainerStopJob(job)).resolves.toEqual({ stopped: true });
       expect(providerStop).toHaveBeenCalledWith(containerId, org.id, 8);
@@ -956,34 +1361,36 @@ describe("compute billing recovery", () => {
         shutdown_warning_sent_at: null,
         scheduled_shutdown_at: null,
       });
-      const receipts = await dbWrite
-        .select()
-        .from(containerBillingRecords)
-        .where(eq(containerBillingRecords.container_id, containerId));
-      expect(receipts).toHaveLength(1);
-      expect(Number(receipts[0].amount)).toBeGreaterThan(0);
-      const debits = await dbWrite
-        .select()
-        .from(creditTransactions)
-        .where(eq(creditTransactions.organization_id, org.id));
-      expect(debits).toHaveLength(1);
-      expect(Number(debits[0].amount)).toBeLessThan(0);
       expect(container.last_billed_at?.getTime()).toBeGreaterThan(periodStart.getTime());
+      expect(Number(container.total_billed)).toBeGreaterThan(0);
+      const [receipt] = await dbWrite.select().from(containerBillingRecords);
+      expect(receipt).toMatchObject({
+        container_id: containerId,
+        organization_id: org.id,
+        status: "success",
+      });
+      expect(receipt.credit_transaction_id).not.toBeNull();
+      expect(receipt.rate_segments).toHaveLength(1);
+      const [balance] = await dbWrite
+        .select({ credit_balance: organizations.credit_balance })
+        .from(organizations)
+        .where(eq(organizations.id, org.id));
+      expect(Number(balance.credit_balance)).toBeCloseTo(10 - Number(receipt.amount), 6);
     } finally {
       providerStop.mockRestore();
     }
   });
 
-  test("an unfunded user stop succeeds without forgiving accrued container debt", async () => {
+  test("user stop persists an uncollected terminal receipt when funding is insufficient", async () => {
     const { org, user } = await seed("0.000000");
     const containerId = crypto.randomUUID();
-    const periodStart = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const periodStart = new Date(Date.now() - 60 * 60 * 1000);
     await dbWrite.insert(containers).values({
       id: containerId,
       organization_id: org.id,
       user_id: user.id,
-      name: "unfunded-user-stop",
-      project_name: "unfunded-user-stop",
+      name: "uncollected-user-stop",
+      project_name: "uncollected-user-stop",
       status: "running",
       billing_status: "active",
       last_billed_at: periodStart,
@@ -1007,26 +1414,45 @@ describe("compute billing recovery", () => {
       expectedLifecycleRevision: 9,
     });
     if (!requested.requested) throw new Error("Expected durable user stop request");
+
     const [job] = await dbWrite.select().from(jobs).where(eq(jobs.id, requested.jobId));
     const providerStop = spyOn(
       getHetznerContainersClient(),
       "stopContainerRuntimeForBilling",
-    ).mockResolvedValue({ nodeId: null });
+    ).mockResolvedValue({ nodeId: null, alreadyAbsent: false });
     try {
       await expect(dispatchContainerStopJob(job)).resolves.toEqual({ stopped: true });
+      await expect(dispatchContainerStopJob(job)).resolves.toMatchObject({
+        stopped: true,
+        reason: "already-provider-confirmed",
+      });
+      expect(providerStop).toHaveBeenCalledTimes(1);
+
       const [container] = await dbWrite
         .select()
         .from(containers)
         .where(eq(containers.id, containerId));
-      expect(container).toMatchObject({ status: "stopped", billing_status: "suspended" });
-      expect(container.last_billed_at).toEqual(periodStart);
-      expect(await dbWrite.select().from(containerBillingRecords)).toHaveLength(0);
-      expect(await dbWrite.select().from(creditTransactions)).toHaveLength(0);
-      const [intent] = await dbWrite
+      expect(container).toMatchObject({
+        status: "stopped",
+        billing_status: "suspended",
+        next_billing_at: null,
+      });
+      expect(container.last_billed_at?.getTime()).toBeGreaterThan(periodStart.getTime());
+      expect(Number(container.total_billed)).toBe(0);
+
+      const receipts = await dbWrite
         .select()
-        .from(containerComputeStopIntents)
-        .where(eq(containerComputeStopIntents.id, requested.intentId));
-      expect(intent.status).toBe("provider_confirmed");
+        .from(containerBillingRecords)
+        .where(eq(containerBillingRecords.container_id, containerId));
+      expect(receipts).toHaveLength(1);
+      expect(receipts[0]).toMatchObject({
+        organization_id: org.id,
+        status: "uncollected",
+        credit_transaction_id: null,
+      });
+      expect(Number(receipts[0]?.amount)).toBeGreaterThan(0);
+      expect(receipts[0]?.rate_segments).toHaveLength(1);
+      expect(await dbWrite.select().from(creditTransactions)).toHaveLength(0);
     } finally {
       providerStop.mockRestore();
     }
@@ -1052,6 +1478,10 @@ describe("compute billing recovery", () => {
       expectedLifecycleRevision: 12,
     });
     if (!requested.requested) throw new Error("Expected durable user stop request");
+    const [beforeProvider] = await dbWrite
+      .select({ last_billed_at: containers.last_billed_at })
+      .from(containers)
+      .where(eq(containers.id, containerId));
 
     const [job] = await dbWrite.select().from(jobs).where(eq(jobs.id, requested.jobId));
     const providerStop = spyOn(
@@ -1076,6 +1506,7 @@ describe("compute billing recovery", () => {
         .from(containers)
         .where(eq(containers.id, containerId));
       expect(container).toMatchObject({ status: "running", billing_status: "active" });
+      expect(container.last_billed_at).toEqual(beforeProvider.last_billed_at);
       expect(await dbWrite.select().from(containerBillingRecords)).toHaveLength(0);
       expect(await dbWrite.select().from(creditTransactions)).toHaveLength(0);
     } finally {
@@ -1083,9 +1514,340 @@ describe("compute billing recovery", () => {
     }
   });
 
-  test("user authority rearms a terminal billing intent instead of reusing its failed job", async () => {
+  test("post-provider settlement rejection preserves the cutoff and rearms a dead user job", async () => {
+    const { org, user } = await seed("10.000000");
+    const containerId = crypto.randomUUID();
+    const periodStart = new Date(Date.now() - 60 * 60 * 1000);
+    await dbWrite.insert(containers).values({
+      id: containerId,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "rejected-settlement-user-stop",
+      project_name: "rejected-settlement-user-stop",
+      status: "running",
+      billing_status: "active",
+      last_billed_at: periodStart,
+      lifecycle_revision: 13,
+      created_at: periodStart,
+      updated_at: periodStart,
+    });
+    await dbWrite.insert(computeBillingRateSegments).values({
+      organization_id: org.id,
+      workload_kind: "container",
+      workload_id: containerId,
+      lifecycle_revision: 13,
+      billing_state: "running",
+      rate_per_hour: "0.027917",
+      effective_at: periodStart,
+    });
+    const requested = await enqueueContainerUserStopOnce({
+      containerId,
+      organizationId: org.id,
+      userId: user.id,
+      expectedLifecycleRevision: 13,
+    });
+    if (!requested.requested) throw new Error("Expected durable user stop request");
+
+    const [job] = await dbWrite.select().from(jobs).where(eq(jobs.id, requested.jobId));
+    const providerStop = spyOn(
+      getHetznerContainersClient(),
+      "stopContainerRuntimeForBilling",
+    ).mockResolvedValue({ nodeId: null, alreadyAbsent: false });
+    const settlement = spyOn(
+      containerBillingRepository,
+      "recordSuccessfulDailyBillingInTransaction",
+    ).mockRejectedValue(new Error("application settlement rejected"));
+    let settlementMocked = true;
+    try {
+      await expect(dispatchContainerStopJob(job)).rejects.toThrow(
+        "application settlement rejected",
+      );
+      expect(providerStop).toHaveBeenCalledWith(containerId, org.id, 13);
+      const [intent] = await dbWrite
+        .select()
+        .from(containerComputeStopIntents)
+        .where(eq(containerComputeStopIntents.id, requested.intentId));
+      expect(intent).toMatchObject({ status: "retry", attempts: 1 });
+      expect(intent.provider_started_at).toBeInstanceOf(Date);
+      expect(intent.provider_confirmed_at).toBeInstanceOf(Date);
+      const providerCutoff = intent.provider_confirmed_at;
+      if (!providerCutoff) throw new Error("Expected durable provider cutoff");
+      const [container] = await dbWrite
+        .select()
+        .from(containers)
+        .where(eq(containers.id, containerId));
+      expect(container).toMatchObject({
+        status: "running",
+        billing_status: "suspended",
+        next_billing_at: null,
+      });
+      const billableAfterProof = await containerBillingRepository.listBillableContainers(
+        new Date(providerCutoff.getTime() + 24 * 60 * 60 * 1000),
+      );
+      expect(billableAfterProof.map((row) => row.id)).not.toContain(containerId);
+      const cutoffSegments = await dbWrite
+        .select()
+        .from(computeBillingRateSegments)
+        .where(
+          and(
+            eq(computeBillingRateSegments.organization_id, org.id),
+            eq(computeBillingRateSegments.workload_kind, "container"),
+            eq(computeBillingRateSegments.workload_id, containerId),
+            eq(computeBillingRateSegments.lifecycle_revision, 13),
+            eq(computeBillingRateSegments.effective_at, providerCutoff),
+          ),
+        );
+      expect(cutoffSegments).toHaveLength(1);
+      expect(cutoffSegments[0]).toMatchObject({
+        billing_state: "not_billable",
+        rate_per_hour: "0.000000",
+      });
+      expect(await dbWrite.select().from(containerBillingRecords)).toHaveLength(0);
+
+      const preservedStartedAt = new Date(providerCutoff.getTime() - 2_000);
+      const terminalAt = new Date(providerCutoff.getTime() + 2_000);
+      const executionGeneration = crypto.randomUUID();
+      await dbWrite
+        .update(jobs)
+        .set({
+          status: "failed",
+          attempts: 3,
+          execution_interruptions: 2,
+          retryable_requeues: 2,
+          result: null,
+          result_storage: "r2",
+          result_key: "container-stop/audit/result.json",
+          error: null,
+          error_storage: "r2",
+          error_key: "container-stop/audit/error.txt",
+          started_at: preservedStartedAt,
+          execution_generation: executionGeneration,
+          execution_quiesced_at: terminalAt,
+          completed_at: terminalAt,
+        })
+        .where(eq(jobs.id, requested.jobId));
+      await dbWrite.execute(sql`INSERT INTO job_execution_leases
+        (job_id, execution_generation, owner_id, expires_at)
+        VALUES (${requested.jobId}, ${executionGeneration}, ${crypto.randomUUID()},
+          ${new Date(terminalAt.getTime() + 60_000)})
+        ON CONFLICT (job_id) DO UPDATE SET
+          execution_generation = EXCLUDED.execution_generation,
+          owner_id = EXCLUDED.owner_id,
+          expires_at = EXCLUDED.expires_at`);
+      const replay = await enqueueContainerUserStopOnce({
+        containerId,
+        organizationId: org.id,
+        userId: user.id,
+        expectedLifecycleRevision: 13,
+      });
+      if (!replay.requested) throw new Error("Expected rearmed user stop");
+      expect(replay).toMatchObject({
+        intentId: requested.intentId,
+        created: true,
+        replayed: true,
+      });
+      expect(replay.jobId).toBe(requested.jobId);
+      const [rearmed] = await dbWrite
+        .select()
+        .from(containerComputeStopIntents)
+        .where(eq(containerComputeStopIntents.id, requested.intentId));
+      expect(rearmed).toMatchObject({ status: "retry", attempts: 1 });
+      expect(rearmed.provider_confirmed_at).toEqual(providerCutoff);
+      const [rearmedJob] = await dbWrite.select().from(jobs).where(eq(jobs.id, replay.jobId));
+      expect(rearmedJob).toMatchObject({
+        id: requested.jobId,
+        status: "pending",
+        attempts: 0,
+        execution_interruptions: 0,
+        retryable_requeues: 0,
+        result_storage: "r2",
+        result_key: "container-stop/audit/result.json",
+        error_storage: "r2",
+        error_key: "container-stop/audit/error.txt",
+        started_at: preservedStartedAt,
+        execution_generation: null,
+        execution_quiesced_at: null,
+        completed_at: null,
+      });
+      const remainingLease = await dbWrite.execute(
+        sql`SELECT count(*)::int AS count FROM job_execution_leases
+            WHERE job_id = ${requested.jobId}`,
+      );
+      expect(remainingLease.rows[0]).toMatchObject({ count: 0 });
+
+      settlement.mockRestore();
+      settlementMocked = false;
+      await expect(dispatchContainerStopJob(rearmedJob)).resolves.toEqual({ stopped: true });
+      expect(providerStop).toHaveBeenCalledTimes(1);
+      const [receipt] = await dbWrite
+        .select()
+        .from(containerBillingRecords)
+        .where(eq(containerBillingRecords.container_id, containerId));
+      expect(receipt.billing_period_end).toEqual(providerCutoff);
+      const [settledContainer] = await dbWrite
+        .select()
+        .from(containers)
+        .where(eq(containers.id, containerId));
+      expect(settledContainer.last_billed_at).toEqual(providerCutoff);
+      const replayedCutoffSegments = await dbWrite
+        .select()
+        .from(computeBillingRateSegments)
+        .where(
+          and(
+            eq(computeBillingRateSegments.organization_id, org.id),
+            eq(computeBillingRateSegments.workload_id, containerId),
+            eq(computeBillingRateSegments.lifecycle_revision, 13),
+            eq(computeBillingRateSegments.effective_at, providerCutoff),
+          ),
+        );
+      expect(replayedCutoffSegments).toHaveLength(1);
+    } finally {
+      if (settlementMocked) settlement.mockRestore();
+      providerStop.mockRestore();
+    }
+  });
+
+  test("a SQL fence failure preserves provider proof and blocks stale billing discovery and debit", async () => {
+    const { org, user } = await seed("10.000000");
+    const containerId = crypto.randomUUID();
+    const periodStart = new Date(Date.now() - 60 * 60 * 1000);
+    await dbWrite.insert(containers).values({
+      id: containerId,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "provider-proof-savepoint",
+      project_name: "provider-proof-savepoint",
+      status: "running",
+      billing_status: "active",
+      last_billed_at: periodStart,
+      lifecycle_revision: 17,
+      created_at: periodStart,
+      updated_at: periodStart,
+    });
+    await dbWrite.insert(computeBillingRateSegments).values({
+      organization_id: org.id,
+      workload_kind: "container",
+      workload_id: containerId,
+      lifecycle_revision: 17,
+      billing_state: "running",
+      rate_per_hour: "0.027917",
+      effective_at: periodStart,
+    });
+    const requested = await enqueueContainerUserStopOnce({
+      containerId,
+      organizationId: org.id,
+      userId: user.id,
+      expectedLifecycleRevision: 17,
+    });
+    if (!requested.requested) throw new Error("Expected provider-proof stop request");
+    const [job] = await dbWrite.select().from(jobs).where(eq(jobs.id, requested.jobId));
+    const providerStop = spyOn(
+      getHetznerContainersClient(),
+      "stopContainerRuntimeForBilling",
+    ).mockResolvedValue({ nodeId: null, alreadyAbsent: false });
+    providerStop.mockClear();
+    await dbWrite.execute(
+      sql.raw(`CREATE FUNCTION fail_provider_stop_billing_fence() RETURNS trigger AS $$
+      BEGIN
+        IF OLD.status = 'running' AND NEW.status = 'running'
+          AND NEW.billing_status = 'suspended' THEN
+          RAISE EXCEPTION 'simulated provider stop fence failure';
+        END IF;
+        RETURN NEW;
+      END $$ LANGUAGE plpgsql`),
+    );
+    await dbWrite.execute(
+      sql.raw(`CREATE TRIGGER fail_provider_stop_billing_fence
+        BEFORE UPDATE ON containers FOR EACH ROW
+        EXECUTE FUNCTION fail_provider_stop_billing_fence()`),
+    );
+    try {
+      await expect(dispatchContainerStopJob(job)).rejects.toThrow();
+      expect(providerStop).toHaveBeenCalledTimes(1);
+      const [intent] = await dbWrite
+        .select()
+        .from(containerComputeStopIntents)
+        .where(eq(containerComputeStopIntents.id, requested.intentId));
+      expect(intent).toMatchObject({ status: "retry", attempts: 1 });
+      expect(intent.provider_confirmed_at).toBeInstanceOf(Date);
+      const providerCutoff = intent.provider_confirmed_at;
+      if (!providerCutoff) throw new Error("Expected provider proof outside the failed savepoint");
+      const [unfencedContainer] = await dbWrite
+        .select()
+        .from(containers)
+        .where(eq(containers.id, containerId));
+      expect(unfencedContainer).toMatchObject({ status: "running", billing_status: "active" });
+
+      const discovered = await containerBillingRepository.listBillableContainers(
+        new Date(providerCutoff.getTime() + 60 * 60 * 1000),
+      );
+      expect(discovered.map((row) => row.id)).not.toContain(containerId);
+
+      const staleWriterResult = await containerBillingRepository.recordSuccessfulDailyBilling({
+        containerId,
+        organizationId: org.id,
+        userId: user.id,
+        containerName: unfencedContainer.name,
+        dailyRate: 0.67,
+        earningsSourceUserId: null,
+        payAsYouGoFromEarnings: false,
+        newBalance: 10,
+        now: new Date(providerCutoff.getTime() + 60 * 60 * 1000),
+      });
+      expect(staleWriterResult).toMatchObject({ alreadyBilled: true, amount: 0 });
+      const [organization] = await dbWrite
+        .select({ creditBalance: organizations.credit_balance })
+        .from(organizations)
+        .where(eq(organizations.id, org.id));
+      expect(organization.creditBalance).toBe("10.000000");
+      expect(await dbWrite.select().from(containerBillingRecords)).toHaveLength(0);
+      expect(await dbWrite.select().from(creditTransactions)).toHaveLength(0);
+
+      await dbWrite.execute(sql.raw(`DROP TRIGGER fail_provider_stop_billing_fence ON containers`));
+      await dbWrite.update(jobs).set({ status: "failed" }).where(eq(jobs.id, requested.jobId));
+      await dbWrite
+        .update(containerComputeStopIntents)
+        .set({ next_attempt_at: new Date(0) })
+        .where(eq(containerComputeStopIntents.id, requested.intentId));
+      const recovered = await rearmRecoverableContainerStopIntentOnce({
+        intentId: requested.intentId,
+        containerId,
+        organizationId: org.id,
+        lifecycleRevision: 17,
+        now: new Date(),
+      });
+      expect(recovered).toEqual({ id: requested.jobId, rearmed: true });
+      const [rearmedJob] = await dbWrite.select().from(jobs).where(eq(jobs.id, recovered.id));
+      await expect(dispatchContainerStopJob(rearmedJob)).resolves.toEqual({ stopped: true });
+      expect(providerStop).toHaveBeenCalledTimes(1);
+      const [receipt] = await dbWrite
+        .select()
+        .from(containerBillingRecords)
+        .where(eq(containerBillingRecords.container_id, containerId));
+      expect(receipt.billing_period_end).toEqual(providerCutoff);
+      const [settledContainer] = await dbWrite
+        .select()
+        .from(containers)
+        .where(eq(containers.id, containerId));
+      expect(settledContainer).toMatchObject({
+        status: "stopped",
+        billing_status: "suspended",
+        last_billed_at: providerCutoff,
+      });
+    } finally {
+      providerStop.mockRestore();
+      await dbWrite.execute(
+        sql.raw(`DROP TRIGGER IF EXISTS fail_provider_stop_billing_fence ON containers`),
+      );
+      await dbWrite.execute(sql.raw(`DROP FUNCTION IF EXISTS fail_provider_stop_billing_fence()`));
+    }
+  });
+
+  test("user authority rearms a provider-confirmed billing intent without erasing its proof", async () => {
     const { org, user } = await seed("0.000000");
     const containerId = crypto.randomUUID();
+    const periodStart = new Date(Date.now() - 60 * 60 * 1000);
+    const providerCutoff = new Date(Date.now() - 60_000);
     await dbWrite.insert(containers).values({
       id: containerId,
       organization_id: org.id,
@@ -1093,8 +1855,11 @@ describe("compute billing recovery", () => {
       name: "rearmed-user-stop",
       project_name: "rearmed-user-stop",
       status: "running",
-      billing_status: "shutdown_pending",
+      billing_status: "suspended",
+      last_billed_at: periodStart,
       lifecycle_revision: 18,
+      created_at: periodStart,
+      updated_at: periodStart,
     });
     const [intent] = await dbWrite
       .insert(containerComputeStopIntents)
@@ -1105,7 +1870,10 @@ describe("compute billing recovery", () => {
         authorization: "billing_request",
         status: "terminal_attention",
         attempts: 3,
-        last_error: "provider unavailable",
+        last_error: "terminal settlement unavailable",
+        provider_started_at: new Date(providerCutoff.getTime() - 1_000),
+        provider_confirmed_at: providerCutoff,
+        provider_node_id: "node-proof-18",
       })
       .returning();
     const [deadJob] = await dbWrite
@@ -1113,6 +1881,11 @@ describe("compute billing recovery", () => {
       .values({
         type: "container_stop",
         status: "failed",
+        attempts: 4,
+        error: "worker exhausted settlement retries",
+        execution_generation: crypto.randomUUID(),
+        execution_quiesced_at: new Date(),
+        completed_at: new Date(),
         organization_id: org.id,
         data: {
           containerId,
@@ -1136,20 +1909,195 @@ describe("compute billing recovery", () => {
     if (!userStop.requested) throw new Error("Expected rearmed user stop");
 
     expect(userStop).toMatchObject({ created: true, replayed: false, intentId: intent.id });
-    expect(userStop.jobId).not.toBe(deadJob.id);
+    expect(userStop.jobId).toBe(deadJob.id);
     const [rearmed] = await dbWrite
       .select()
       .from(containerComputeStopIntents)
       .where(eq(containerComputeStopIntents.id, intent.id));
     expect(rearmed).toMatchObject({
       authorization: "user_request",
-      status: "pending",
+      status: "retry",
       job_id: userStop.jobId,
-      attempts: 0,
-      last_error: null,
+      attempts: 3,
+      last_error: "terminal settlement unavailable",
+      provider_node_id: "node-proof-18",
     });
-    const [replacementJob] = await dbWrite.select().from(jobs).where(eq(jobs.id, userStop.jobId));
-    expect(replacementJob).toMatchObject({ status: "pending", user_id: user.id });
+    expect(rearmed.provider_confirmed_at).toEqual(providerCutoff);
+    const [rearmedJob] = await dbWrite.select().from(jobs).where(eq(jobs.id, userStop.jobId));
+    expect(rearmedJob).toMatchObject({
+      id: deadJob.id,
+      status: "pending",
+      user_id: user.id,
+      attempts: 0,
+      error: "worker exhausted settlement retries",
+      execution_generation: null,
+      execution_quiesced_at: null,
+      completed_at: null,
+    });
+    expect(await dbWrite.select().from(jobs)).toHaveLength(1);
+  });
+
+  test("user replay fails closed for completed or cancelled container stop jobs", async () => {
+    const { org, user } = await seed("10.000000");
+    for (const [offset, terminalStatus] of ["completed", "cancelled"].entries()) {
+      const containerId = crypto.randomUUID();
+      const lifecycleRevision = 30 + offset;
+      await dbWrite.insert(containers).values({
+        id: containerId,
+        organization_id: org.id,
+        user_id: user.id,
+        name: `terminal-replay-${terminalStatus}`,
+        project_name: `terminal-replay-${terminalStatus}`,
+        status: "running",
+        billing_status: "active",
+        lifecycle_revision: lifecycleRevision,
+      });
+      const [intent] = await dbWrite
+        .insert(containerComputeStopIntents)
+        .values({
+          organization_id: org.id,
+          container_id: containerId,
+          lifecycle_revision: lifecycleRevision,
+          authorization: "user_request",
+          status: "retry",
+          last_error: "settlement still active",
+        })
+        .returning();
+      const [terminalJob] = await dbWrite
+        .insert(jobs)
+        .values({
+          type: "container_stop",
+          status: terminalStatus,
+          completed_at: new Date(),
+          organization_id: org.id,
+          user_id: user.id,
+          data: {
+            containerId,
+            organizationId: org.id,
+            intentId: intent.id,
+            lifecycleRevision,
+          },
+        })
+        .returning();
+      await dbWrite
+        .update(containerComputeStopIntents)
+        .set({ job_id: terminalJob.id })
+        .where(eq(containerComputeStopIntents.id, intent.id));
+
+      await expect(
+        enqueueContainerUserStopOnce({
+          containerId,
+          organizationId: org.id,
+          userId: user.id,
+          expectedLifecycleRevision: lifecycleRevision,
+        }),
+      ).rejects.toThrow(`cannot be rearmed from ${terminalStatus}`);
+      const [unchangedJob] = await dbWrite.select().from(jobs).where(eq(jobs.id, terminalJob.id));
+      expect(unchangedJob.status).toBe(terminalStatus);
+      const [unchangedIntent] = await dbWrite
+        .select()
+        .from(containerComputeStopIntents)
+        .where(eq(containerComputeStopIntents.id, intent.id));
+      expect(unchangedIntent).toMatchObject({ status: "retry", job_id: terminalJob.id });
+    }
+  });
+
+  test("independent cron recovery rearms user and billing intents outside billable discovery", async () => {
+    const { org, user } = await seed("10.000000");
+    for (const [offset, authorization] of ["billing_request", "user_request"].entries()) {
+      const containerId = crypto.randomUUID();
+      const periodStart = new Date(Date.now() - 60 * 60 * 1000);
+      const providerCutoff = new Date(Date.now() - 60_000 - offset);
+      const recoveryAt = new Date(Date.now() + 1_000);
+      const lifecycleRevision = 19 + offset;
+      const nodeId = `node-proof-${lifecycleRevision}`;
+      await dbWrite.insert(containers).values({
+        id: containerId,
+        organization_id: org.id,
+        user_id: user.id,
+        name: `cron-rearmed-stop-${offset}`,
+        project_name: `cron-rearmed-stop-${offset}`,
+        status: "running",
+        billing_status: "suspended",
+        // Explicit user cancellations have no billing shutdown schedule. Their
+        // proof recovery must be driven by the intent scan, not billable rows.
+        scheduled_shutdown_at:
+          authorization === "billing_request" ? new Date(Date.now() - 30_000) : null,
+        last_billed_at: periodStart,
+        lifecycle_revision: lifecycleRevision,
+        created_at: periodStart,
+        updated_at: periodStart,
+      });
+      const [intent] = await dbWrite
+        .insert(containerComputeStopIntents)
+        .values({
+          organization_id: org.id,
+          container_id: containerId,
+          lifecycle_revision: lifecycleRevision,
+          authorization: authorization as "billing_request" | "user_request",
+          status: "retry",
+          attempts: 1,
+          last_error: "receipt unavailable",
+          provider_started_at: new Date(providerCutoff.getTime() - 1_000),
+          provider_confirmed_at: providerCutoff,
+          provider_node_id: nodeId,
+          job_id: null,
+        })
+        .returning();
+
+      let historicalJobId: string | null = null;
+      if (authorization === "user_request") {
+        const [failedJob] = await dbWrite
+          .insert(jobs)
+          .values({
+            type: "container_stop",
+            status: "failed",
+            organization_id: org.id,
+            user_id: user.id,
+            data: {
+              containerId,
+              organizationId: org.id,
+              intentId: intent.id,
+              lifecycleRevision,
+            },
+          })
+          .returning();
+        historicalJobId = failedJob.id;
+        await dbWrite
+          .update(containerComputeStopIntents)
+          .set({ job_id: failedJob.id })
+          .where(eq(containerComputeStopIntents.id, intent.id));
+      }
+
+      const rearmedJob = await rearmRecoverableContainerStopIntentOnce({
+        intentId: intent.id,
+        containerId,
+        organizationId: org.id,
+        lifecycleRevision,
+        now: recoveryAt,
+      });
+      expect(rearmedJob).toMatchObject({ rearmed: true });
+      if (historicalJobId) expect(rearmedJob.id).toBe(historicalJobId);
+      const [rearmed] = await dbWrite
+        .select()
+        .from(containerComputeStopIntents)
+        .where(eq(containerComputeStopIntents.id, intent.id));
+      expect(rearmed).toMatchObject({
+        authorization,
+        status: "retry",
+        job_id: rearmedJob.id,
+        attempts: 1,
+        provider_node_id: nodeId,
+      });
+      expect(rearmed.provider_confirmed_at).toEqual(providerCutoff);
+      const [job] = await dbWrite.select().from(jobs).where(eq(jobs.id, rearmedJob.id));
+      expect(job).toMatchObject({ status: "pending", scheduled_for: recoveryAt });
+      const [container] = await dbWrite
+        .select()
+        .from(containers)
+        .where(eq(containers.id, containerId));
+      expect(container).toMatchObject({ status: "running", billing_status: "suspended" });
+    }
   });
 
   test("funding restored under the stop-decision locks reactivates without a provider job", async () => {
@@ -1223,6 +2171,326 @@ describe("compute billing recovery", () => {
       billing_status: "active",
       last_billed_at: "2026-08-19 01:00:00",
     });
+  });
+
+  test("shutdown warning CAS refuses any durable provider proof", async () => {
+    const { org, user } = await seed("0.000000");
+    const containerId = crypto.randomUUID();
+    const providerCutoff = new Date("2026-08-19T02:00:00.000Z");
+    await dbWrite.insert(containers).values({
+      id: containerId,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "warning-provider-proof-fence",
+      project_name: "warning-provider-proof-fence",
+      status: "running",
+      billing_status: "active",
+      lifecycle_revision: 3,
+    });
+    await dbWrite.insert(containerComputeStopIntents).values({
+      organization_id: org.id,
+      container_id: containerId,
+      lifecycle_revision: 3,
+      authorization: "user_request",
+      status: "provider_confirmed",
+      provider_started_at: new Date(providerCutoff.getTime() - 1_000),
+      provider_confirmed_at: providerCutoff,
+    });
+
+    await expect(
+      containerBillingRepository.scheduleShutdownWarning(
+        containerId,
+        org.id,
+        new Date("2026-08-19T03:00:00.000Z"),
+        new Date("2026-08-21T03:00:00.000Z"),
+      ),
+    ).resolves.toBe(false);
+    const [container] = await dbWrite
+      .select()
+      .from(containers)
+      .where(eq(containers.id, containerId));
+    expect(container).toMatchObject({
+      status: "running",
+      billing_status: "active",
+      shutdown_warning_sent_at: null,
+      scheduled_shutdown_at: null,
+    });
+  });
+
+  test("funded restart refuses an active provider proof before debit or supersession", async () => {
+    const { org, user } = await seed("10.000000");
+    const containerId = crypto.randomUUID();
+    const periodStart = new Date("2026-08-19T01:00:00.000Z");
+    const providerCutoff = new Date("2026-08-19T02:00:00.000Z");
+    const restartAt = new Date("2026-08-19T03:00:00.000Z");
+    await dbWrite.insert(containers).values({
+      id: containerId,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "provider-proof-restart-fence",
+      project_name: "provider-proof-restart-fence",
+      status: "running",
+      billing_status: "suspended",
+      last_billed_at: periodStart,
+      lifecycle_revision: 24,
+      created_at: periodStart,
+      updated_at: providerCutoff,
+    });
+    await dbWrite.insert(computeBillingRateSegments).values([
+      {
+        organization_id: org.id,
+        workload_kind: "container",
+        workload_id: containerId,
+        lifecycle_revision: 24,
+        billing_state: "running",
+        rate_per_hour: "0.027917",
+        effective_at: periodStart,
+      },
+      {
+        organization_id: org.id,
+        workload_kind: "container",
+        workload_id: containerId,
+        lifecycle_revision: 24,
+        billing_state: "not_billable",
+        rate_per_hour: "0.000000",
+        effective_at: providerCutoff,
+      },
+    ]);
+    const [proofIntent] = await dbWrite
+      .insert(containerComputeStopIntents)
+      .values({
+        organization_id: org.id,
+        container_id: containerId,
+        lifecycle_revision: 24,
+        authorization: "user_request",
+        status: "retry",
+        provider_started_at: new Date(providerCutoff.getTime() - 1_000),
+        provider_confirmed_at: providerCutoff,
+        last_error: "terminal settlement unavailable",
+      })
+      .returning();
+
+    await expect(
+      containersRepository.prepareFundedRestart(containerId, org.id, restartAt),
+    ).rejects.toThrow("provider-confirmed stop settlement completes");
+    const [container] = await dbWrite
+      .select()
+      .from(containers)
+      .where(eq(containers.id, containerId));
+    expect(container).toMatchObject({
+      status: "running",
+      billing_status: "suspended",
+      last_billed_at: periodStart,
+    });
+    const [organization] = await dbWrite
+      .select({ creditBalance: organizations.credit_balance })
+      .from(organizations)
+      .where(eq(organizations.id, org.id));
+    expect(organization.creditBalance).toBe("10.000000");
+    expect(await dbWrite.select().from(containerBillingRecords)).toHaveLength(0);
+    expect(await dbWrite.select().from(creditTransactions)).toHaveLength(0);
+    const [intent] = await dbWrite
+      .select()
+      .from(containerComputeStopIntents)
+      .where(eq(containerComputeStopIntents.id, proofIntent.id));
+    expect(intent).toMatchObject({ status: "retry", superseded_at: null });
+    expect(intent.provider_confirmed_at).toEqual(providerCutoff);
+  });
+
+  test("funded restart refuses a terminal removed runtime before debit or status mutation", async () => {
+    const { org, user } = await seed("10.000000");
+    const containerId = crypto.randomUUID();
+    const providerCutoff = new Date("2026-08-19T02:00:00.000Z");
+    const slotReleasedAt = new Date("2026-08-19T02:00:01.000Z");
+    const restartAt = new Date("2026-08-19T03:00:00.000Z");
+    await dbWrite.insert(containers).values({
+      id: containerId,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "removed-runtime-restart-fence",
+      project_name: "removed-runtime-restart-fence",
+      status: "stopped",
+      billing_status: "suspended",
+      last_billed_at: providerCutoff,
+      lifecycle_revision: 55,
+      created_at: new Date("2026-08-19T01:00:00.000Z"),
+      updated_at: slotReleasedAt,
+    });
+    const [terminalProof] = await dbWrite
+      .insert(containerComputeStopIntents)
+      .values({
+        organization_id: org.id,
+        container_id: containerId,
+        // The terminal proof remains authoritative even after unrelated row
+        // lifecycle writes advance beyond the removed provider generation.
+        lifecycle_revision: 12,
+        authorization: "user_request",
+        status: "provider_confirmed",
+        provider_started_at: new Date(providerCutoff.getTime() - 1_000),
+        provider_confirmed_at: providerCutoff,
+        slot_released_at: slotReleasedAt,
+      })
+      .returning();
+
+    await expect(
+      containersRepository.prepareFundedRestart(containerId, org.id, restartAt),
+    ).rejects.toThrow("runtime was removed; redeploy is required");
+    const [container] = await dbWrite
+      .select()
+      .from(containers)
+      .where(eq(containers.id, containerId));
+    expect(container).toMatchObject({
+      status: "stopped",
+      billing_status: "suspended",
+      lifecycle_revision: 55,
+      last_billed_at: providerCutoff,
+    });
+    const [organization] = await dbWrite
+      .select({ creditBalance: organizations.credit_balance })
+      .from(organizations)
+      .where(eq(organizations.id, org.id));
+    expect(organization.creditBalance).toBe("10.000000");
+    expect(await dbWrite.select().from(containerBillingRecords)).toHaveLength(0);
+    expect(await dbWrite.select().from(creditTransactions)).toHaveLength(0);
+    const [proof] = await dbWrite
+      .select()
+      .from(containerComputeStopIntents)
+      .where(eq(containerComputeStopIntents.id, terminalProof.id));
+    expect(proof).toMatchObject({
+      status: "provider_confirmed",
+      slot_released_at: slotReleasedAt,
+      superseded_at: null,
+    });
+  });
+
+  test("funded restart refuses a legacy released-slot marker before debit", async () => {
+    const { org, user } = await seed("10.000000");
+    const containerId = crypto.randomUUID();
+    const periodStart = new Date("2026-08-19T01:00:00.000Z");
+    const slotReleasedAt = new Date("2026-08-19T02:00:00.000Z");
+    await dbWrite.insert(containers).values({
+      id: containerId,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "legacy-slot-release-restart-fence",
+      project_name: "legacy-slot-release-restart-fence",
+      status: "stopped",
+      billing_status: "suspended",
+      last_billed_at: periodStart,
+      lifecycle_revision: 9,
+      metadata: { slotReleasedAt: slotReleasedAt.toISOString() },
+      created_at: periodStart,
+      updated_at: slotReleasedAt,
+    });
+
+    await expect(
+      containersRepository.prepareFundedRestart(
+        containerId,
+        org.id,
+        new Date("2026-08-19T03:00:00.000Z"),
+      ),
+    ).rejects.toThrow("runtime slot was released; redeploy is required");
+
+    const [container] = await dbWrite
+      .select()
+      .from(containers)
+      .where(eq(containers.id, containerId));
+    expect(container).toMatchObject({
+      status: "stopped",
+      billing_status: "suspended",
+      lifecycle_revision: 9,
+      last_billed_at: periodStart,
+    });
+    expect(container.metadata).toEqual({ slotReleasedAt: slotReleasedAt.toISOString() });
+    const [organization] = await dbWrite
+      .select({ creditBalance: organizations.credit_balance })
+      .from(organizations)
+      .where(eq(organizations.id, org.id));
+    expect(organization.creditBalance).toBe("10.000000");
+    expect(await dbWrite.select().from(containerComputeStopIntents)).toHaveLength(0);
+    expect(await dbWrite.select().from(containerBillingRecords)).toHaveLength(0);
+    expect(await dbWrite.select().from(creditTransactions)).toHaveLength(0);
+  });
+
+  test("provider cutoff remains zero-rated across the stop revision until restart", async () => {
+    const { org, user } = await seed("10.000000");
+    const containerId = crypto.randomUUID();
+    const periodStart = new Date("2026-08-19T01:00:00.000Z");
+    const providerCutoff = new Date("2026-08-19T02:00:00.000Z");
+    const stoppedTriggerAt = new Date("2026-08-19T02:00:05.000Z");
+    const restartAt = new Date("2026-08-19T03:00:00.000Z");
+    await dbWrite.insert(containers).values({
+      id: containerId,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "zero-rated-restart-gap",
+      project_name: "zero-rated-restart-gap",
+      status: "stopped",
+      billing_status: "suspended",
+      last_billed_at: providerCutoff,
+      lifecycle_revision: 41,
+      created_at: periodStart,
+      updated_at: stoppedTriggerAt,
+    });
+    await dbWrite.insert(computeBillingRateSegments).values([
+      {
+        organization_id: org.id,
+        workload_kind: "container",
+        workload_id: containerId,
+        lifecycle_revision: 40,
+        billing_state: "running",
+        rate_per_hour: "0.027917",
+        effective_at: periodStart,
+      },
+      {
+        // Provider proof belongs to the stopped generation and is published at
+        // T1 before the status trigger advances lifecycle_revision.
+        organization_id: org.id,
+        workload_kind: "container",
+        workload_id: containerId,
+        lifecycle_revision: 40,
+        billing_state: "not_billable",
+        rate_per_hour: "0.000000",
+        effective_at: providerCutoff,
+      },
+      {
+        // Simulates the production status trigger at T2 on the new revision.
+        organization_id: org.id,
+        workload_kind: "container",
+        workload_id: containerId,
+        lifecycle_revision: 41,
+        billing_state: "not_billable",
+        rate_per_hour: "0.000000",
+        effective_at: stoppedTriggerAt,
+      },
+    ]);
+
+    const restartDebt = await dbWrite.transaction((tx) =>
+      settleComputeRateSegments(tx, {
+        organizationId: org.id,
+        workloadKind: "container",
+        workloadId: containerId,
+        periodStart: providerCutoff,
+        periodEnd: restartAt,
+      }),
+    );
+    expect(restartDebt.amount.toFixed(6)).toBe("0.000000");
+    expect(restartDebt.segments).toEqual([
+      {
+        state: "not_billable",
+        ratePerHour: "0.000000",
+        startedAt: providerCutoff.toISOString(),
+        endedAt: stoppedTriggerAt.toISOString(),
+        amount: "0.000000",
+      },
+      {
+        state: "not_billable",
+        ratePerHour: "0.000000",
+        startedAt: stoppedTriggerAt.toISOString(),
+        endedAt: restartAt.toISOString(),
+        amount: "0.000000",
+      },
+    ]);
   });
 
   test("funded restart atomically settles exact debt through earnings and canonical credits", async () => {
@@ -1346,6 +2614,193 @@ describe("compute billing recovery", () => {
     expect(await dbWrite.select().from(creditTransactions)).toHaveLength(0);
   });
 
+  test("a stale execution generation cannot journal or call the provider", async () => {
+    const { org, user } = await seed("10.000000");
+    const containerId = crypto.randomUUID();
+    await dbWrite.insert(containers).values({
+      id: containerId,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "stale-provider-claim",
+      project_name: "stale-provider-claim",
+      status: "running",
+      billing_status: "active",
+      lifecycle_revision: 2,
+    });
+    const requested = await enqueueContainerUserStopOnce({
+      containerId,
+      organizationId: org.id,
+      userId: user.id,
+      expectedLifecycleRevision: 2,
+    });
+    if (!requested.requested) throw new Error("Expected durable user stop request");
+    const [pendingJob] = await dbWrite.select().from(jobs).where(eq(jobs.id, requested.jobId));
+    const staleClaim = await ownContainerStopJob(pendingJob);
+    await dbWrite.delete(jobExecutionLeases).where(eq(jobExecutionLeases.job_id, pendingJob.id));
+    await dbWrite
+      .update(jobs)
+      .set({
+        status: "pending",
+        execution_generation: null,
+        execution_quiesced_at: null,
+        started_at: null,
+      })
+      .where(eq(jobs.id, pendingJob.id));
+    const freshClaim = await ownContainerStopJob(pendingJob);
+    expect(freshClaim.job.execution_generation).not.toBe(staleClaim.job.execution_generation);
+
+    const providerStop = spyOn(
+      getHetznerContainersClient(),
+      "stopContainerRuntimeForBilling",
+    ).mockResolvedValue({ nodeId: null, alreadyAbsent: false });
+    try {
+      await expect(
+        dispatchContainerStopJobService(staleClaim.job, {
+          executionOwnerId: staleClaim.executionOwnerId,
+        }),
+      ).rejects.toThrow("lost its exact execution lease");
+      expect(providerStop).not.toHaveBeenCalled();
+      const [currentJob] = await dbWrite.select().from(jobs).where(eq(jobs.id, pendingJob.id));
+      expect(currentJob.data).not.toHaveProperty("providerEffectStartedAt");
+    } finally {
+      providerStop.mockRestore();
+    }
+  });
+
+  test("a claim lost after durable admission but before provider effect makes no provider call", async () => {
+    const { org, user } = await seed("10.000000");
+    const containerId = crypto.randomUUID();
+    await dbWrite.insert(containers).values({
+      id: containerId,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "lost-effect-boundary-claim",
+      project_name: "lost-effect-boundary-claim",
+      status: "running",
+      billing_status: "active",
+      lifecycle_revision: 4,
+    });
+    const requested = await enqueueContainerUserStopOnce({
+      containerId,
+      organizationId: org.id,
+      userId: user.id,
+      expectedLifecycleRevision: 4,
+    });
+    if (!requested.requested) throw new Error("Expected durable user stop request");
+    const [pendingJob] = await dbWrite.select().from(jobs).where(eq(jobs.id, requested.jobId));
+    const claimed = await ownContainerStopJob(pendingJob);
+
+    await dbWrite.execute(
+      sql.raw(`CREATE FUNCTION replace_container_stop_claim_before_effect() RETURNS trigger AS $$
+      DECLARE
+        successor_generation uuid := gen_random_uuid();
+      BEGIN
+        IF OLD.status IS DISTINCT FROM NEW.status AND NEW.status = 'dispatching' THEN
+          UPDATE jobs
+          SET execution_generation = successor_generation,
+              execution_quiesced_at = NULL,
+              updated_at = clock_timestamp()
+          WHERE id = NEW.job_id;
+          UPDATE job_execution_leases
+          SET execution_generation = successor_generation,
+              owner_id = gen_random_uuid(),
+              expires_at = clock_timestamp() + interval '5 minutes',
+              heartbeat_at = clock_timestamp()
+          WHERE job_id = NEW.job_id;
+        END IF;
+        RETURN NEW;
+      END $$ LANGUAGE plpgsql`),
+    );
+    await dbWrite.execute(
+      sql.raw(`CREATE TRIGGER replace_container_stop_claim_before_effect
+        AFTER UPDATE OF status ON container_compute_stop_intents
+        FOR EACH ROW EXECUTE FUNCTION replace_container_stop_claim_before_effect()`),
+    );
+
+    const providerStop = spyOn(
+      getHetznerContainersClient(),
+      "stopContainerRuntimeForBilling",
+    ).mockResolvedValue({ nodeId: null, alreadyAbsent: false });
+    try {
+      await expect(
+        dispatchContainerStopJobService(claimed.job, {
+          executionOwnerId: claimed.executionOwnerId,
+        }),
+      ).rejects.toThrow("lost its exact execution claim");
+      expect(providerStop).not.toHaveBeenCalled();
+
+      const [currentJob] = await dbWrite.select().from(jobs).where(eq(jobs.id, pendingJob.id));
+      expect(currentJob.execution_generation).toBe(claimed.job.execution_generation);
+      expect(currentJob.data).toHaveProperty("providerEffectStartedAt");
+      const [intent] = await dbWrite
+        .select()
+        .from(containerComputeStopIntents)
+        .where(eq(containerComputeStopIntents.id, requested.intentId));
+      expect(intent).toMatchObject({ status: "pending", attempts: 0, provider_started_at: null });
+    } finally {
+      providerStop.mockRestore();
+      await dbWrite.execute(
+        sql.raw(
+          "DROP TRIGGER IF EXISTS replace_container_stop_claim_before_effect ON container_compute_stop_intents",
+        ),
+      );
+      await dbWrite.execute(
+        sql.raw("DROP FUNCTION IF EXISTS replace_container_stop_claim_before_effect()"),
+      );
+    }
+  });
+
+  test("a future provider admission marker fails closed before provider I/O", async () => {
+    const { org, user } = await seed("10.000000");
+    const containerId = crypto.randomUUID();
+    await dbWrite.insert(containers).values({
+      id: containerId,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "future-provider-admission",
+      project_name: "future-provider-admission",
+      status: "running",
+      billing_status: "active",
+      lifecycle_revision: 3,
+    });
+    const requested = await enqueueContainerUserStopOnce({
+      containerId,
+      organizationId: org.id,
+      userId: user.id,
+      expectedLifecycleRevision: 3,
+    });
+    if (!requested.requested) throw new Error("Expected durable user stop request");
+    const futureMarker = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const [poisonedJob] = await dbWrite
+      .update(jobs)
+      .set({
+        data: sql`jsonb_set(
+          ${jobs.data},
+          '{providerEffectStartedAt}',
+          to_jsonb(${futureMarker}::text)
+        )`,
+      })
+      .where(eq(jobs.id, requested.jobId))
+      .returning();
+    const providerStop = spyOn(
+      getHetznerContainersClient(),
+      "stopContainerRuntimeForBilling",
+    ).mockResolvedValue({ nodeId: null, alreadyAbsent: false });
+    try {
+      await expect(dispatchContainerStopJob(poisonedJob)).rejects.toThrow(
+        "out-of-bounds data.providerEffectStartedAt",
+      );
+      expect(providerStop).not.toHaveBeenCalled();
+      const [intent] = await dbWrite
+        .select()
+        .from(containerComputeStopIntents)
+        .where(eq(containerComputeStopIntents.id, requested.intentId));
+      expect(intent).toMatchObject({ status: "pending", attempts: 0 });
+    } finally {
+      providerStop.mockRestore();
+    }
+  });
+
   test("daemon rejects tenant envelopes and supersedes a stale lifecycle generation before provider I/O", async () => {
     const { org, user } = await seed("0.000000");
     const containerId = "00000000-0000-4000-8000-000000000003";
@@ -1370,7 +2825,7 @@ describe("compute billing recovery", () => {
     const providerStop = spyOn(
       getHetznerContainersClient(),
       "stopContainerRuntimeForBilling",
-    ).mockResolvedValue({ nodeId: null });
+    ).mockResolvedValue({ nodeId: null, alreadyAbsent: false });
     await expect(
       dispatchContainerStopJob({ ...job, organization_id: crypto.randomUUID() }),
     ).rejects.toThrow("tenant envelope mismatch");
@@ -1413,6 +2868,10 @@ describe("compute billing recovery", () => {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       await expect(dispatchContainerStopJob(job)).rejects.toThrow("provider unavailable");
     }
+    // The provisioning worker owns the terminal job transition. Recovery
+    // discovery deliberately excludes live pending/in-progress jobs so they
+    // cannot monopolize its bounded scan.
+    await dbWrite.update(jobs).set({ status: "failed" }).where(eq(jobs.id, requested.id));
     await dbWrite
       .update(containerComputeStopIntents)
       .set({ next_attempt_at: new Date(0) })
@@ -1431,10 +2890,395 @@ describe("compute billing recovery", () => {
     providerStop.mockRestore();
   });
 
-  test("provider success followed by control-plane rollback replays absence proof idempotently", async () => {
+  test("an outer proof rollback reuses the durable provider admission cutoff after restart", async () => {
+    const { org, user } = await seed("10.000000");
+    const containerId = crypto.randomUUID();
+    const periodStart = new Date(Date.now() - 60 * 60 * 1000);
+    await dbWrite.insert(containers).values({
+      id: containerId,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "provider-admission-restart",
+      project_name: "provider-admission-restart",
+      status: "running",
+      billing_status: "active",
+      last_billed_at: periodStart,
+      lifecycle_revision: 19,
+      created_at: periodStart,
+      updated_at: periodStart,
+    });
+    await dbWrite.insert(computeBillingRateSegments).values({
+      organization_id: org.id,
+      workload_kind: "container",
+      workload_id: containerId,
+      lifecycle_revision: 19,
+      billing_state: "running",
+      rate_per_hour: "0.027917",
+      effective_at: periodStart,
+    });
+    const requested = await enqueueContainerUserStopOnce({
+      containerId,
+      organizationId: org.id,
+      userId: user.id,
+      expectedLifecycleRevision: 19,
+    });
+    if (!requested.requested) throw new Error("Expected durable user stop request");
+    const [job] = await dbWrite.select().from(jobs).where(eq(jobs.id, requested.jobId));
+    const providerStop = spyOn(getHetznerContainersClient(), "stopContainerRuntimeForBilling")
+      .mockResolvedValueOnce({ nodeId: null, alreadyAbsent: false })
+      .mockResolvedValueOnce({ nodeId: null, alreadyAbsent: true });
+    await dbWrite.execute(
+      sql.raw(`CREATE FUNCTION fail_container_stop_provider_proof() RETURNS trigger AS $$
+      BEGIN
+        IF OLD.provider_confirmed_at IS NULL AND NEW.provider_confirmed_at IS NOT NULL THEN
+          RAISE EXCEPTION 'simulated provider proof commit failure';
+        END IF;
+        RETURN NEW;
+      END $$ LANGUAGE plpgsql`),
+    );
+    await dbWrite.execute(
+      sql.raw(`CREATE TRIGGER fail_container_stop_provider_proof
+        BEFORE UPDATE ON container_compute_stop_intents FOR EACH ROW
+        EXECUTE FUNCTION fail_container_stop_provider_proof()`),
+    );
+    try {
+      await expect(dispatchContainerStopJob(job)).rejects.toThrow();
+      expect(providerStop).toHaveBeenCalledTimes(1);
+
+      const [admittedJob] = await dbWrite.select().from(jobs).where(eq(jobs.id, requested.jobId));
+      const providerEffectStartedAtRaw = admittedJob.data.providerEffectStartedAt;
+      expect(typeof providerEffectStartedAtRaw).toBe("string");
+      const providerEffectStartedAt = new Date(String(providerEffectStartedAtRaw));
+      expect(providerEffectStartedAt.getTime()).toBeFinite();
+      const [rolledBackIntent] = await dbWrite
+        .select()
+        .from(containerComputeStopIntents)
+        .where(eq(containerComputeStopIntents.id, requested.intentId));
+      expect(rolledBackIntent).toMatchObject({
+        status: "pending",
+        attempts: 0,
+        provider_started_at: null,
+        provider_confirmed_at: null,
+      });
+      const [rolledBackContainer] = await dbWrite
+        .select()
+        .from(containers)
+        .where(eq(containers.id, containerId));
+      expect(rolledBackContainer).toMatchObject({
+        status: "running",
+        billing_status: "active",
+        last_billed_at: periodStart,
+      });
+      expect(await dbWrite.select().from(containerBillingRecords)).toHaveLength(0);
+      expect(await dbWrite.select().from(creditTransactions)).toHaveLength(0);
+
+      await dbWrite.execute(
+        sql.raw(`DROP TRIGGER fail_container_stop_provider_proof
+          ON container_compute_stop_intents`),
+      );
+      await dbWrite.update(jobs).set({ status: "failed" }).where(eq(jobs.id, requested.jobId));
+      const replay = await enqueueContainerUserStopOnce({
+        containerId,
+        organizationId: org.id,
+        userId: user.id,
+        expectedLifecycleRevision: 19,
+      });
+      if (!replay.requested) throw new Error("Expected provider stop replay");
+      expect(replay).toMatchObject({
+        jobId: requested.jobId,
+        created: true,
+        replayed: true,
+      });
+      const [rearmedJob] = await dbWrite.select().from(jobs).where(eq(jobs.id, replay.jobId));
+      expect(rearmedJob.data.providerEffectStartedAt).toBe(providerEffectStartedAtRaw);
+
+      await expect(dispatchContainerStopJob(rearmedJob)).resolves.toEqual({ stopped: true });
+      expect(providerStop).toHaveBeenCalledTimes(2);
+      const [confirmedIntent] = await dbWrite
+        .select()
+        .from(containerComputeStopIntents)
+        .where(eq(containerComputeStopIntents.id, requested.intentId));
+      expect(confirmedIntent.provider_started_at).toEqual(providerEffectStartedAt);
+      expect(confirmedIntent.provider_confirmed_at).toEqual(providerEffectStartedAt);
+      const [receipt] = await dbWrite
+        .select()
+        .from(containerBillingRecords)
+        .where(eq(containerBillingRecords.container_id, containerId));
+      expect(receipt.billing_period_end).toEqual(providerEffectStartedAt);
+      expect(Number(receipt.amount)).toBeCloseTo(
+        ((providerEffectStartedAt.getTime() - periodStart.getTime()) / (60 * 60 * 1000)) * 0.027917,
+        6,
+      );
+      const exactCutoffSegments = await dbWrite
+        .select()
+        .from(computeBillingRateSegments)
+        .where(
+          and(
+            eq(computeBillingRateSegments.organization_id, org.id),
+            eq(computeBillingRateSegments.workload_id, containerId),
+            eq(computeBillingRateSegments.lifecycle_revision, 19),
+            eq(computeBillingRateSegments.effective_at, providerEffectStartedAt),
+          ),
+        );
+      expect(exactCutoffSegments).toHaveLength(1);
+      expect(exactCutoffSegments[0]).toMatchObject({
+        billing_state: "not_billable",
+        rate_per_hour: "0.000000",
+      });
+    } finally {
+      providerStop.mockRestore();
+      await dbWrite.execute(
+        sql.raw(`DROP TRIGGER IF EXISTS fail_container_stop_provider_proof
+          ON container_compute_stop_intents`),
+      );
+      await dbWrite.execute(
+        sql.raw(`DROP FUNCTION IF EXISTS fail_container_stop_provider_proof()`),
+      );
+    }
+  });
+
+  test("an unreconciled billing provider admission fences restored funding until exact job replay", async () => {
     const { org, user } = await seed("0.000000");
+    const containerId = crypto.randomUUID();
+    const periodStart = new Date(Date.now() - 60 * 60 * 1000);
+    const scheduledShutdownAt = new Date(Date.now() - 60_000);
+    await dbWrite.insert(containers).values({
+      id: containerId,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "provider-admission-billing-fence",
+      project_name: "provider-admission-billing-fence",
+      status: "running",
+      billing_status: "shutdown_pending",
+      scheduled_shutdown_at: scheduledShutdownAt,
+      last_billed_at: periodStart,
+      lifecycle_revision: 20,
+      created_at: periodStart,
+      updated_at: periodStart,
+    });
+    await dbWrite.insert(computeBillingRateSegments).values({
+      organization_id: org.id,
+      workload_kind: "container",
+      workload_id: containerId,
+      lifecycle_revision: 20,
+      billing_state: "running",
+      rate_per_hour: "0.027917",
+      effective_at: periodStart,
+    });
+    const requested = await enqueueContainerStopOnce({
+      containerId,
+      organizationId: org.id,
+    });
+    if (!requested.requested) throw new Error("Expected durable billing stop request");
+    const [job] = await dbWrite.select().from(jobs).where(eq(jobs.id, requested.id));
+    const providerStop = spyOn(getHetznerContainersClient(), "stopContainerRuntimeForBilling")
+      .mockResolvedValueOnce({ nodeId: null, alreadyAbsent: false })
+      .mockResolvedValueOnce({ nodeId: null, alreadyAbsent: true });
+    await dbWrite.execute(
+      sql.raw(`CREATE FUNCTION fail_billing_stop_provider_proof() RETURNS trigger AS $$
+      BEGIN
+        IF OLD.provider_confirmed_at IS NULL AND NEW.provider_confirmed_at IS NOT NULL THEN
+          RAISE EXCEPTION 'simulated billing provider proof commit failure';
+        END IF;
+        RETURN NEW;
+      END $$ LANGUAGE plpgsql`),
+    );
+    await dbWrite.execute(
+      sql.raw(`CREATE TRIGGER fail_billing_stop_provider_proof
+        BEFORE UPDATE ON container_compute_stop_intents FOR EACH ROW
+        EXECUTE FUNCTION fail_billing_stop_provider_proof()`),
+    );
+    try {
+      await expect(dispatchContainerStopJob(job)).rejects.toThrow();
+      expect(providerStop).toHaveBeenCalledTimes(1);
+
+      const [admittedJob] = await dbWrite.select().from(jobs).where(eq(jobs.id, requested.id));
+      const providerEffectStartedAtRaw = admittedJob.data.providerEffectStartedAt;
+      expect(typeof providerEffectStartedAtRaw).toBe("string");
+      const providerEffectStartedAt = new Date(String(providerEffectStartedAtRaw));
+      expect(providerEffectStartedAt.getTime()).toBeFinite();
+      const [rolledBackIntent] = await dbWrite
+        .select()
+        .from(containerComputeStopIntents)
+        .where(eq(containerComputeStopIntents.container_id, containerId));
+      expect(rolledBackIntent).toMatchObject({
+        status: "pending",
+        attempts: 0,
+        provider_started_at: null,
+        provider_confirmed_at: null,
+      });
+
+      // A top-up and stale row-only billing publication must not reinterpret
+      // this possibly-absent runtime as live compute.
+      await dbWrite
+        .update(organizations)
+        .set({ credit_balance: "10.000000" })
+        .where(eq(organizations.id, org.id));
+      await dbWrite
+        .update(containers)
+        .set({
+          billing_status: "active",
+          scheduled_shutdown_at: null,
+          next_billing_at: null,
+        })
+        .where(eq(containers.id, containerId));
+      const later = new Date(providerEffectStartedAt.getTime() + 60 * 60 * 1000);
+      const billable = await containerBillingRepository.listBillableContainers(later);
+      expect(billable.map((container) => container.id)).not.toContain(containerId);
+      await expect(
+        containerBillingRepository.scheduleShutdownWarning(
+          containerId,
+          org.id,
+          later,
+          new Date(later.getTime() + 48 * 60 * 60 * 1000),
+        ),
+      ).resolves.toBe(false);
+      const staleWriter = await containerBillingRepository.recordSuccessfulDailyBilling({
+        containerId,
+        organizationId: org.id,
+        userId: user.id,
+        containerName: "provider-admission-billing-fence",
+        dailyRate: 0.67,
+        earningsSourceUserId: null,
+        payAsYouGoFromEarnings: false,
+        newBalance: 10,
+        now: later,
+      });
+      expect(staleWriter).toMatchObject({ alreadyBilled: true, amount: 0 });
+      await expect(
+        // PostgreSQL UUID equality accepts this alias, while the durable JSON
+        // envelope is canonical lowercase. The marker fence must be semantic,
+        // not bypassable through textual UUID casing.
+        containersRepository.prepareFundedRestart(containerId.toUpperCase(), org.id, later),
+      ).rejects.toThrow(
+        "Container restart is blocked until admitted provider stop reconciliation completes",
+      );
+      const [fundingAfterFences] = await dbWrite
+        .select({ creditBalance: organizations.credit_balance })
+        .from(organizations)
+        .where(eq(organizations.id, org.id));
+      expect(fundingAfterFences.creditBalance).toBe("10.000000");
+      expect(await dbWrite.select().from(containerBillingRecords)).toHaveLength(0);
+      expect(await dbWrite.select().from(creditTransactions)).toHaveLength(0);
+
+      await dbWrite.execute(
+        sql.raw(`DROP TRIGGER fail_billing_stop_provider_proof
+          ON container_compute_stop_intents`),
+      );
+      await dbWrite.update(jobs).set({ status: "failed" }).where(eq(jobs.id, requested.id));
+      await dbWrite
+        .update(containers)
+        .set({
+          billing_status: "shutdown_pending",
+          scheduled_shutdown_at: scheduledShutdownAt,
+          next_billing_at: null,
+        })
+        .where(eq(containers.id, containerId));
+
+      const replay = await enqueueContainerStopOnce({
+        containerId,
+        organizationId: org.id,
+      });
+      if (!replay.requested) throw new Error("Expected provider-admitted billing stop replay");
+      expect(replay).toMatchObject({ id: requested.id, created: true });
+      const [rearmedJob] = await dbWrite.select().from(jobs).where(eq(jobs.id, replay.id));
+      expect(rearmedJob.data.providerEffectStartedAt).toBe(providerEffectStartedAtRaw);
+
+      await expect(dispatchContainerStopJob(rearmedJob)).resolves.toEqual({ stopped: true });
+      expect(providerStop).toHaveBeenCalledTimes(2);
+      const [confirmedIntent] = await dbWrite
+        .select()
+        .from(containerComputeStopIntents)
+        .where(eq(containerComputeStopIntents.container_id, containerId));
+      expect(confirmedIntent).toMatchObject({ status: "provider_confirmed" });
+      expect(confirmedIntent.provider_started_at).toEqual(providerEffectStartedAt);
+      expect(confirmedIntent.provider_confirmed_at).toEqual(providerEffectStartedAt);
+      const [receipt] = await dbWrite
+        .select()
+        .from(containerBillingRecords)
+        .where(eq(containerBillingRecords.container_id, containerId));
+      expect(receipt.billing_period_end).toEqual(providerEffectStartedAt);
+    } finally {
+      providerStop.mockRestore();
+      await dbWrite.execute(
+        sql.raw(`DROP TRIGGER IF EXISTS fail_billing_stop_provider_proof
+          ON container_compute_stop_intents`),
+      );
+      await dbWrite.execute(sql.raw(`DROP FUNCTION IF EXISTS fail_billing_stop_provider_proof()`));
+    }
+  });
+
+  test("a safely superseded provider admission marker does not fence the live lifecycle", async () => {
+    const { org, user } = await seed("10.000000");
+    const containerId = crypto.randomUUID();
+    const intentId = crypto.randomUUID();
+    const jobId = crypto.randomUUID();
+    const periodStart = new Date(Date.now() - 60 * 60 * 1000);
+    const marker = new Date().toISOString();
+    await dbWrite.insert(containers).values({
+      id: containerId,
+      organization_id: org.id,
+      user_id: user.id,
+      name: "superseded-provider-admission",
+      project_name: "superseded-provider-admission",
+      status: "running",
+      billing_status: "active",
+      last_billed_at: periodStart,
+      lifecycle_revision: 21,
+      created_at: periodStart,
+      updated_at: periodStart,
+    });
+    await dbWrite.insert(computeBillingRateSegments).values({
+      organization_id: org.id,
+      workload_kind: "container",
+      workload_id: containerId,
+      lifecycle_revision: 21,
+      billing_state: "running",
+      rate_per_hour: "0.027917",
+      effective_at: periodStart,
+    });
+    await dbWrite.insert(jobs).values({
+      id: jobId,
+      type: "container_stop",
+      status: "failed",
+      organization_id: org.id,
+      user_id: user.id,
+      data: {
+        containerId,
+        organizationId: org.id,
+        intentId,
+        lifecycleRevision: 21,
+        providerEffectStartedAt: marker,
+      },
+    });
+    await dbWrite.insert(containerComputeStopIntents).values({
+      id: intentId,
+      organization_id: org.id,
+      container_id: containerId,
+      lifecycle_revision: 21,
+      authorization: "billing_request",
+      status: "superseded",
+      job_id: jobId,
+      superseded_at: new Date(),
+    });
+
+    const now = new Date(Date.now() + 60 * 60 * 1000);
+    const billable = await containerBillingRepository.listBillableContainers(now);
+    expect(billable.map((container) => container.id)).toContain(containerId);
+    await expect(
+      containerBillingRepository.scheduleShutdownWarning(
+        containerId,
+        org.id,
+        now,
+        new Date(now.getTime() + 48 * 60 * 60 * 1000),
+      ),
+    ).resolves.toBe(true);
+  });
+
+  test("provider success followed by control-plane rollback replays absence proof idempotently", async () => {
+    const { org, user } = await seed("10.000000");
     const containerId = "00000000-0000-4000-8000-000000000006";
-    const periodStart = new Date("2026-08-19T01:00:00.000Z");
+    const periodStart = new Date(Date.now() - 60 * 60 * 1000);
     await dbWrite.execute(sql`INSERT INTO containers
       (id, name, project_name, organization_id, user_id, status, billing_status,
        scheduled_shutdown_at, last_billed_at, lifecycle_revision, created_at, updated_at)
@@ -1450,28 +3294,31 @@ describe("compute billing recovery", () => {
       rate_per_hour: "0.027917",
       effective_at: periodStart,
     });
-    const requested = await enqueueContainerStopOnce({ containerId, organizationId: org.id });
+    const requested = await enqueueContainerUserStopOnce({
+      containerId,
+      organizationId: org.id,
+      userId: user.id,
+      expectedLifecycleRevision: 10,
+    });
     if (!requested.requested) throw new Error("Expected stop request");
-    const [job] = await dbWrite.select().from(jobs).where(eq(jobs.id, requested.id));
+    const [job] = await dbWrite.select().from(jobs).where(eq(jobs.id, requested.jobId));
     const providerStop = spyOn(
       getHetznerContainersClient(),
       "stopContainerRuntimeForBilling",
-    ).mockResolvedValue({ nodeId: null });
+    ).mockResolvedValue({ nodeId: null, alreadyAbsent: false });
+    providerStop.mockClear();
     await dbWrite.execute(
       sql.raw(`
       CREATE FUNCTION fail_compute_stop_confirmation() RETURNS trigger AS $$
       BEGIN
-        IF NEW.status = 'stopped' THEN
-          RAISE EXCEPTION 'simulated crash after provider success';
-        END IF;
-        RETURN NEW;
+        RAISE EXCEPTION 'simulated receipt failure after provider success';
       END $$ LANGUAGE plpgsql
     `),
     );
     await dbWrite.execute(
       sql.raw(`
       CREATE TRIGGER fail_compute_stop_confirmation
-        BEFORE UPDATE ON containers FOR EACH ROW
+        BEFORE INSERT ON container_billing_records FOR EACH ROW
         EXECUTE FUNCTION fail_compute_stop_confirmation()
     `),
     );
@@ -1481,20 +3328,102 @@ describe("compute billing recovery", () => {
         .select()
         .from(containerComputeStopIntents)
         .where(eq(containerComputeStopIntents.container_id, containerId));
-      expect(recoverable).toMatchObject({ status: "pending", attempts: 0 });
-      await dbWrite.execute(sql.raw(`DROP TRIGGER fail_compute_stop_confirmation ON containers`));
+      expect(recoverable).toMatchObject({ status: "retry", attempts: 1 });
+      expect(recoverable.provider_confirmed_at).toBeInstanceOf(Date);
+      const providerCutoff = recoverable.provider_confirmed_at;
+      if (!providerCutoff) throw new Error("Expected durable provider cutoff");
+      const [rolledBackContainer] = await dbWrite
+        .select()
+        .from(containers)
+        .where(eq(containers.id, containerId));
+      expect(rolledBackContainer).toMatchObject({
+        status: "running",
+        billing_status: "suspended",
+        last_billed_at: periodStart,
+      });
+      const billableAfterProof = await containerBillingRepository.listBillableContainers(
+        new Date(providerCutoff.getTime() + 24 * 60 * 60 * 1000),
+      );
+      expect(billableAfterProof.map((row) => row.id)).not.toContain(containerId);
+      const cutoffSegments = await dbWrite
+        .select()
+        .from(computeBillingRateSegments)
+        .where(
+          and(
+            eq(computeBillingRateSegments.organization_id, org.id),
+            eq(computeBillingRateSegments.workload_kind, "container"),
+            eq(computeBillingRateSegments.workload_id, containerId),
+            eq(computeBillingRateSegments.lifecycle_revision, 10),
+            eq(computeBillingRateSegments.effective_at, providerCutoff),
+          ),
+        );
+      expect(cutoffSegments).toHaveLength(1);
+      expect(cutoffSegments[0]).toMatchObject({
+        billing_state: "not_billable",
+        rate_per_hour: "0.000000",
+      });
+      const [rolledBackOrganization] = await dbWrite
+        .select({ credit_balance: organizations.credit_balance })
+        .from(organizations)
+        .where(eq(organizations.id, org.id));
+      expect(Number(rolledBackOrganization.credit_balance)).toBe(10);
+      expect(await dbWrite.select().from(containerBillingRecords)).toHaveLength(0);
+      expect(await dbWrite.select().from(creditTransactions)).toHaveLength(0);
+      await dbWrite.execute(
+        sql.raw(`DROP TRIGGER fail_compute_stop_confirmation ON container_billing_records`),
+      );
 
       await expect(dispatchContainerStopJob(job)).resolves.toEqual({ stopped: true });
-      expect(providerStop).toHaveBeenCalledTimes(2);
+      expect(providerStop).toHaveBeenCalledTimes(1);
       const [confirmed] = await dbWrite
         .select()
         .from(containerComputeStopIntents)
         .where(eq(containerComputeStopIntents.container_id, containerId));
-      expect(confirmed).toMatchObject({ status: "provider_confirmed", attempts: 1 });
+      expect(confirmed).toMatchObject({ status: "provider_confirmed", attempts: 2 });
+      expect(confirmed.provider_confirmed_at).toEqual(providerCutoff);
+      const [settledContainer] = await dbWrite
+        .select()
+        .from(containers)
+        .where(eq(containers.id, containerId));
+      expect(settledContainer.last_billed_at).toEqual(providerCutoff);
+      const receipts = await dbWrite
+        .select()
+        .from(containerBillingRecords)
+        .where(eq(containerBillingRecords.container_id, containerId));
+      expect(receipts).toHaveLength(1);
+      expect(receipts[0]).toMatchObject({ status: "success" });
+      expect(receipts[0]?.billing_period_end).toEqual(providerCutoff);
+      expect(Number(receipts[0]?.amount)).toBeCloseTo(
+        ((providerCutoff.getTime() - periodStart.getTime()) / (60 * 60 * 1000)) * 0.027917,
+        6,
+      );
+      const replayedCutoffSegments = await dbWrite
+        .select()
+        .from(computeBillingRateSegments)
+        .where(
+          and(
+            eq(computeBillingRateSegments.organization_id, org.id),
+            eq(computeBillingRateSegments.workload_id, containerId),
+            eq(computeBillingRateSegments.lifecycle_revision, 10),
+            eq(computeBillingRateSegments.effective_at, providerCutoff),
+          ),
+        );
+      expect(replayedCutoffSegments).toHaveLength(1);
+      expect(await dbWrite.select().from(creditTransactions)).toHaveLength(1);
+      const [settledOrganization] = await dbWrite
+        .select({ credit_balance: organizations.credit_balance })
+        .from(organizations)
+        .where(eq(organizations.id, org.id));
+      expect(Number(settledOrganization.credit_balance)).toBeCloseTo(
+        10 - Number(receipts[0]?.amount),
+        6,
+      );
     } finally {
       providerStop.mockRestore();
       await dbWrite.execute(
-        sql.raw(`DROP TRIGGER IF EXISTS fail_compute_stop_confirmation ON containers`),
+        sql.raw(
+          `DROP TRIGGER IF EXISTS fail_compute_stop_confirmation ON container_billing_records`,
+        ),
       );
       await dbWrite.execute(sql.raw(`DROP FUNCTION IF EXISTS fail_compute_stop_confirmation()`));
     }
@@ -1524,7 +3453,7 @@ describe("compute billing recovery", () => {
     const providerStop = spyOn(
       getHetznerContainersClient(),
       "stopContainerRuntimeForBilling",
-    ).mockResolvedValue({ nodeId: null });
+    ).mockResolvedValue({ nodeId: null, alreadyAbsent: false });
 
     await expect(dispatchContainerStopJob(job)).resolves.toEqual({ stopped: true });
     expect(providerStop).toHaveBeenCalledWith(containerId, org.id, 11);

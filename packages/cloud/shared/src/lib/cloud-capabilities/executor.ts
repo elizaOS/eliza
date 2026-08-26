@@ -11,6 +11,7 @@ type CapabilityArgs = Record<string, unknown>;
 type HttpMethod = CloudCapability["surfaces"]["rest"]["method"];
 
 const HTTP_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
+const DURABLE_BILLING_CANCEL_VERSION_HEADER = "X-Eliza-Billing-Cancel-Version";
 
 function asObject(value: unknown): CapabilityArgs {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -182,10 +183,14 @@ export async function executeCloudCapabilityRest(
         }
       : resolveBody(method, input, params);
   const url = buildUrl(c, path, query);
+  const headers = copyRequestHeaders(c, effectiveInput);
+  if (capability.id === "billing.cancel_resource") {
+    headers.set(DURABLE_BILLING_CANCEL_VERSION_HEADER, "2");
+  }
 
   const response = await fetch(url, {
     method,
-    headers: copyRequestHeaders(c, effectiveInput),
+    headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const contentType = response.headers.get("content-type") ?? "";

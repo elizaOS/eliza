@@ -749,6 +749,81 @@ describe("billing cancellation durable receipt authority", () => {
     });
   });
 
+  test("provider proof remains authoritative while a container intent is retrying", async () => {
+    const service = createService();
+    const accepted = await request(service);
+
+    await dbWrite
+      .update(containerComputeStopIntents)
+      .set({
+        status: "retry",
+        provider_confirmed_at: new Date("2026-08-26T12:00:00.000Z"),
+        provider_node_id: "node-proof-retry",
+        last_error: "terminal settlement will retry",
+      })
+      .where(eq(containerComputeStopIntents.job_id, accepted.receipt.jobId));
+    await dbWrite
+      .update(jobs)
+      .set({ status: "in_progress", result: null, completed_at: null })
+      .where(eq(jobs.id, accepted.receipt.jobId));
+
+    const replay = await request(service);
+    expect(replay.receipt).toMatchObject({
+      receiptId: accepted.receipt.receiptId,
+      jobId: accepted.receipt.jobId,
+      status: "provider_confirmed",
+      computeStopped: true,
+      providerStopped: true,
+      retainedBackupBilling: { status: "not_applicable", ratePerHour: null },
+      infrastructureStatus: "provider_confirmed",
+    });
+  });
+
+  test("provider proof overrides terminal attention and preserves retained backup billing", async () => {
+    const service = createService();
+    const accepted = await request(service, {
+      resourceType: "agent_sandbox",
+      resourceId: TERMINAL_RESOURCE,
+      expectedLifecycleRevision: 9,
+      idempotencyKey: "cancel-request-agent-proof-terminal",
+    });
+
+    await dbWrite
+      .update(agentComputeStopIntents)
+      .set({
+        status: "terminal_attention",
+        provider_confirmed_at: new Date("2026-08-26T12:01:00.000Z"),
+        retained_backup_billing: true,
+        retained_backup_rate_per_hour: "0.003750",
+        last_error: "terminal settlement retries exhausted",
+      })
+      .where(eq(agentComputeStopIntents.job_id, accepted.receipt.jobId));
+    await dbWrite
+      .update(jobs)
+      .set({
+        status: "failed",
+        error: "terminal settlement retries exhausted",
+        completed_at: new Date("2026-08-26T12:02:00.000Z"),
+      })
+      .where(eq(jobs.id, accepted.receipt.jobId));
+
+    const replay = await request(service, {
+      resourceType: "agent_sandbox",
+      resourceId: TERMINAL_RESOURCE,
+      expectedLifecycleRevision: 9,
+      idempotencyKey: "cancel-request-agent-proof-terminal",
+    });
+    expect(replay.receipt).toMatchObject({
+      receiptId: accepted.receipt.receiptId,
+      jobId: accepted.receipt.jobId,
+      status: "provider_confirmed",
+      computeStopped: true,
+      providerStopped: true,
+      retainedBackupBilling: { status: "billable", ratePerHour: 0.00375 },
+      infrastructureStatus: "provider_confirmed",
+    });
+  });
+
   test("a failed job projects terminal attention while its intent is pending", async () => {
     const service = createService();
     const accepted = await request(service);

@@ -5122,7 +5122,9 @@ export class ProvisioningJobService {
       // is pointless churn, and a completed row is the clean terminal state.
       case JOB_TYPES.CONTAINER_STOP: {
         await this.assertExecutionMutationLease(job);
-        const outcome = await dispatchContainerStopJob(job);
+        const outcome = await dispatchContainerStopJob(job, {
+          executionOwnerId: this.executionOwnerId,
+        });
         await this.settleClaimedExecution(job, "completed", {
           result: { stopped: outcome.stopped, reason: outcome.reason ?? null },
           completed_at: new Date(),

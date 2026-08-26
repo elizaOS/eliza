@@ -98,7 +98,9 @@ describe("billing cancellation capability authority", () => {
       "/api/v1/billing/resources/30000000-0000-4000-8000-000000000001/cancel",
     );
     const init = forwarded.mock.calls[0]?.[1] as RequestInit;
-    expect(new Headers(init.headers).get("idempotency-key")).toBe("billing-cancel-request-0001");
+    const headers = new Headers(init.headers);
+    expect(headers.get("idempotency-key")).toBe("billing-cancel-request-0001");
+    expect(headers.get("X-Eliza-Billing-Cancel-Version")).toBe("2");
     expect(JSON.parse(String(init.body))).toEqual({
       resourceType: "container",
       mode: "stop",
@@ -125,7 +127,9 @@ describe("billing cancellation capability authority", () => {
     });
 
     const init = forwarded.mock.calls[0]?.[1] as RequestInit;
-    expect(new Headers(init.headers).get("idempotency-key")).toBe("billing-cancel-request-nested");
+    const headers = new Headers(init.headers);
+    expect(headers.get("idempotency-key")).toBe("billing-cancel-request-nested");
+    expect(headers.get("X-Eliza-Billing-Cancel-Version")).toBe("2");
     expect(JSON.parse(String(init.body))).toEqual({
       resourceType: "agent_sandbox",
       mode: "stop",

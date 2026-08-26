@@ -132,7 +132,13 @@ function projectReceipt(bundle: BillingCancelCommandBundle): BillingCancellation
     intent?.status === "terminal_attention"
       ? intent.status
       : null;
+  // Provider acknowledgement is the authoritative infrastructure fact even
+  // while the durable job retries or terminal settlement needs attention.
+  // Status is an operational envelope; the write-once proof must never
+  // regress the public receipt to queued, conflicted, or not stopped.
+  const hasProviderProof = intent?.provider_confirmed_at != null;
   const providerConfirmed =
+    hasProviderProof ||
     terminalIntentStatus === "provider_confirmed" ||
     (terminalIntentStatus === null &&
       job.status === "completed" &&

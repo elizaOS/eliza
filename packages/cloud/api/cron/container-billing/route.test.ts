@@ -34,7 +34,7 @@ const listBillableContainers = mock(
 const listBillingOrganizations = mock(
   async (_ids: string[]): Promise<unknown[]> => [],
 );
-const scheduleShutdownWarning = mock(async () => undefined);
+const scheduleShutdownWarning = mock(async () => true);
 const recordBillingFailure = mock(async () => undefined);
 const suspendContainer = mock(async () => undefined);
 type RecordSuccessfulBillingResult = Awaited<
@@ -65,6 +65,24 @@ const convertToCredits = mock(async (_params: unknown) => ({
   ledgerEntryId: "ledger-mock",
 }));
 const getBalance = mock(async (_userId: string) => ({ availableBalance: 0 }));
+const listRecoverableContainerStopIntents = mock(
+  async (_now: Date) => [] as unknown[],
+);
+const rearmRecoverableContainerStopIntentOnce = mock(
+  async (_input: unknown) => ({
+    id: "recovered-stop-job",
+    rearmed: true,
+  }),
+);
+const enqueueContainerStopOnce = mock(async () => ({
+  requested: true,
+  id: "stop-job",
+  created: true,
+}));
+const triggerImmediate = mock(async (_env: unknown) => undefined);
+const sendContainerShutdownWarningEmail = mock(
+  async (_input: unknown) => undefined,
+);
 
 const listByOrganization = mock(
   async (
@@ -110,16 +128,15 @@ mock.module("@/lib/services/redeemable-earnings", () => ({
 
 mock.module("@/lib/services/email", () => ({
   emailService: {
-    sendContainerShutdownWarningEmail: mock(async () => undefined),
+    sendContainerShutdownWarningEmail,
   },
 }));
 
 mock.module("@/lib/services/container-stop-job-service", () => ({
   enqueueContainerStop: mock(async () => undefined),
-  enqueueContainerStopOnce: mock(async () => ({
-    id: "stop-job",
-    created: true,
-  })),
+  enqueueContainerStopOnce,
+  listRecoverableContainerStopIntents,
+  rearmRecoverableContainerStopIntentOnce,
 }));
 
 mock.module("@/lib/services/container-jobs-writer", () => ({
@@ -128,7 +145,7 @@ mock.module("@/lib/services/container-jobs-writer", () => ({
 
 mock.module("@/lib/services/provisioning-jobs", () => ({
   provisioningJobService: {
-    triggerImmediate: mock(async () => undefined),
+    triggerImmediate,
   },
 }));
 
@@ -251,6 +268,11 @@ describe("container-billing cron", () => {
     convertToCredits.mockReset();
     getBalance.mockReset();
     listByOrganization.mockReset();
+    listRecoverableContainerStopIntents.mockReset();
+    rearmRecoverableContainerStopIntentOnce.mockReset();
+    enqueueContainerStopOnce.mockReset();
+    triggerImmediate.mockReset();
+    sendContainerShutdownWarningEmail.mockReset();
 
     // Default happy-path behaviors.
     recordSuccessfulDailyBilling.mockImplementation(async (input) => ({
@@ -266,6 +288,19 @@ describe("container-billing cron", () => {
       ledgerEntryId: "ledger-mock",
     }));
     getBalance.mockImplementation(async () => ({ availableBalance: 0 }));
+    listRecoverableContainerStopIntents.mockImplementation(async () => []);
+    rearmRecoverableContainerStopIntentOnce.mockImplementation(async () => ({
+      id: "recovered-stop-job",
+      rearmed: true,
+    }));
+    enqueueContainerStopOnce.mockImplementation(async () => ({
+      requested: true,
+      id: "stop-job",
+      created: true,
+    }));
+    triggerImmediate.mockImplementation(async () => undefined);
+    scheduleShutdownWarning.mockImplementation(async () => true);
+    sendContainerShutdownWarningEmail.mockImplementation(async () => undefined);
     listByOrganization.mockImplementation(async () => [
       {
         id: "owner-user",
@@ -274,6 +309,37 @@ describe("container-billing cron", () => {
         created_at: new Date("2020-01-01T00:00:00Z"),
       },
     ]);
+  });
+
+  test("recovers a provider-confirmed user stop even when no container is billable", async () => {
+    const providerCutoff = new Date("2026-08-26T10:00:00.000Z");
+    listRecoverableContainerStopIntents.mockImplementation(async () => [
+      {
+        id: "intent-user-proof",
+        organization_id: ORG_ID,
+        container_id: "container-user-proof",
+        lifecycle_revision: 42,
+        authorization: "user_request",
+        status: "terminal_attention",
+        provider_confirmed_at: providerCutoff,
+        // Explicit user cancellations do not have a scheduled shutdown; the
+        // recovery seam is intent-scoped and must not depend on that field.
+      },
+    ]);
+    listBillableContainers.mockImplementation(async () => []);
+
+    const response = await runCron();
+    expect(response.status).toBe(200);
+    expect(rearmRecoverableContainerStopIntentOnce).toHaveBeenCalledTimes(1);
+    expect(rearmRecoverableContainerStopIntentOnce).toHaveBeenCalledWith({
+      intentId: "intent-user-proof",
+      containerId: "container-user-proof",
+      organizationId: ORG_ID,
+      lifecycleRevision: 42,
+      now: expect.any(Date),
+    });
+    expect(triggerImmediate).toHaveBeenCalledTimes(1);
+    expect(listBillingOrganizations).not.toHaveBeenCalled();
   });
 
   test("bills a single container at the $0.67 daily cost, charged purely to credits when no earnings", async () => {
@@ -479,6 +545,28 @@ describe("container-billing cron", () => {
     expect(json.data.errors).toBe(0);
     expect(json.data.results[0].action).toBe("skipped");
     expect(json.data.results[0].error).toContain("Already billed");
+  });
+
+  test("a lost shutdown-warning CAS publishes no email or failure receipt", async () => {
+    listBillableContainers.mockImplementation(async () => [makeContainer()]);
+    listBillingOrganizations.mockImplementation(async () => [
+      makeOrg({ credit_balance: "0" }),
+    ]);
+    scheduleShutdownWarning.mockImplementation(async () => false);
+
+    const response = await runCron();
+    expect(response.status).toBe(200);
+    const json = (await response.json()) as {
+      data: { results: { action: string; error?: string }[] };
+    };
+
+    expect(scheduleShutdownWarning).toHaveBeenCalledTimes(1);
+    expect(sendContainerShutdownWarningEmail).not.toHaveBeenCalled();
+    expect(recordBillingFailure).not.toHaveBeenCalled();
+    expect(json.data.results[0]).toMatchObject({
+      action: "skipped",
+      error: "Container state changed before shutdown warning",
+    });
   });
 
   test("filters invalid member timestamps so corrupt created_at cannot hijack earnings source", async () => {
