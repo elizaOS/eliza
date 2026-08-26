@@ -19,6 +19,7 @@ function ctx(
 ): ResponseHandlerEvaluatorContext {
 	const hasViews = opts.hasViews ?? true;
 	const extraActions = (opts.extraActions ?? []).map((name) => ({ name }));
+	const candidateActions = opts.candidateActions ?? (hasViews ? ["VIEWS"] : []);
 	return {
 		runtime: {
 			actions: hasViews
@@ -31,7 +32,7 @@ function ctx(
 			processMessage: opts.processMessage ?? "RESPOND",
 			plan: {
 				requiresTool: opts.requiresTool ?? false,
-				candidateActions: opts.candidateActions,
+				candidateActions,
 				parentActionHints: opts.parentActionHints,
 			},
 		},
@@ -56,6 +57,7 @@ describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", (
 	const commands: Array<[text: string, view: string]> = [
 		["settings", "settings"],
 		["open settings", "settings"],
+		["open notes", "notes"],
 		["go to settings view", "settings"],
 		["go home", "chat"],
 		["go back", "chat"],
@@ -70,8 +72,6 @@ describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", (
 		["mở lịch", "calendar"],
 		["buksan ang calendar", "calendar"],
 		["open my inbox", "inbox"],
-		["check my messages", "inbox"],
-		["revisa mi correo", "inbox"],
 		["show my wallet", "wallet"],
 		["abre ajustes", "settings"],
 		["打开设置", "settings"],
@@ -102,7 +102,7 @@ describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", (
 	it("overrides an already-tool-marked explicit view command", async () => {
 		const patch = await run("open app builder", {
 			requiresTool: true,
-			candidateActions: ["CODING_TOOLS"],
+			candidateActions: ["VIEWS", "CODING_TOOLS"],
 			parentActionHints: ["CODING_TOOLS"],
 		});
 
@@ -119,6 +119,49 @@ describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", (
 			},
 		});
 	});
+
+	it.each([
+		["open notes and create a note about demo", ["VIEWS", "NOTES"]],
+		["send Alice a message and open my inbox", ["MESSAGE", "VIEWS"]],
+		["open calendar and schedule a meeting", ["VIEWS", "CALENDAR"]],
+		["open settings, then change my model", ["VIEWS", "MODEL_SWITCH"]],
+		["show my wallet balance", ["VIEWS", "WALLET"]],
+	] as const)(
+		"preserves compound/domain planning for %j",
+		async (text, candidateActions) => {
+			expect(
+				await run(text, {
+					extraActions: candidateActions.filter((action) => action !== "VIEWS"),
+					candidateActions: [...candidateActions],
+					parentActionHints: [...candidateActions],
+				}),
+			).toBeNull();
+		},
+	);
+
+	it("still tolerates a noisy extra candidate on a standalone command", async () => {
+		const patch = await run("open notes", {
+			candidateActions: ["VIEWS", "CODING_TOOLS"],
+			parentActionHints: ["CODING_TOOLS"],
+		});
+
+		expect(patch?.deterministicToolCall).toMatchObject({
+			name: "VIEWS",
+			params: { action: "show", view: "notes" },
+		});
+	});
+
+	it.each(["check my messages", "revisa mi correo"])(
+		"keeps domain-like inbox request %j planner-owned",
+		async (text) => {
+			expect(
+				await run(text, {
+					extraActions: ["MESSAGE"],
+					candidateActions: ["VIEWS", "MESSAGE"],
+				}),
+			).toBeNull();
+		},
+	);
 
 	it("routes the actual request inside a contextual-document envelope", async () => {
 		const patch =
@@ -154,6 +197,13 @@ describe("viewCommandShortcutEvaluator — does NOT fire", () => {
 	it("on contextual intent (left to the post evaluator)", async () => {
 		expect(await run("i need to fix the login bug")).toBeNull();
 		expect(await run("I want to add a new feature to my app")).toBeNull();
+	});
+	it("when Stage 1 did not select VIEWS", async () => {
+		expect(
+			await run("open notes", {
+				candidateActions: ["NOTES"],
+			}),
+		).toBeNull();
 	});
 	it("when VIEWS action is not registered", async () => {
 		expect(await run("open settings", { hasViews: false })).toBeNull();

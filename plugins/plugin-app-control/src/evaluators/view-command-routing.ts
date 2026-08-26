@@ -3,7 +3,7 @@
  */
 
 import type { Memory } from "@elizaos/core";
-import { matchViewCommand } from "../actions/view-command-matcher.js";
+import { matchStandaloneViewCommand } from "../actions/view-command-matcher.js";
 import { userRequestMessageText } from "../params.js";
 
 export const VIEWS_ACTION_NAME = "VIEWS";
@@ -38,5 +38,5 @@ export function resolveViewCommandShortcut(
 ): string | null {
 	if (!hasRegisteredViewsAction(context)) return null;
 	const text = messageText(context);
-	return matchViewCommand(text);
+	return matchStandaloneViewCommand(text);
 }

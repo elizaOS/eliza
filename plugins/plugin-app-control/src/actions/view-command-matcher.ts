@@ -13,5 +13,6 @@
 export {
 	__matcherData,
 	MATCHER_VIEW_IDS,
+	matchStandaloneViewCommand,
 	matchViewCommand,
 } from "@elizaos/shared/views/view-command-matcher";

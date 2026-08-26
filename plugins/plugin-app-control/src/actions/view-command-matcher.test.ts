@@ -7,8 +7,33 @@ import { describe, expect, it } from "vitest";
 import {
 	__matcherData,
 	MATCHER_VIEW_IDS,
+	matchStandaloneViewCommand,
 	matchViewCommand,
 } from "./view-command-matcher.ts";
+
+describe("matchStandaloneViewCommand — whole-message direct execution", () => {
+	it.each([
+		["open notes", "notes"],
+		["could you switch to calender please", "calendar"],
+		["hey can you open settings please", "settings"],
+		["muéstrame mi calendario", "calendar"],
+		["設定を開いて", "settings"],
+		["설정 열어", "settings"],
+	] as const)("%j is a standalone %s command", (text, view) => {
+		expect(matchStandaloneViewCommand(text)).toBe(view);
+	});
+
+	it.each([
+		"open notes and create a note about demo",
+		"send Alice a message and open my inbox",
+		"open calendar and schedule a meeting",
+		"open settings, then change my model",
+		"show my wallet balance",
+		"Never mind. Open settings",
+	] as const)("%j remains planner-owned", (text) => {
+		expect(matchStandaloneViewCommand(text)).toBeNull();
+	});
+});
 
 describe("matchViewCommand — explicit user examples", () => {
 	const cases: Array<[string, string]> = [

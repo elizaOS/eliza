@@ -16,13 +16,13 @@ const MATCH_CONTEXT = {
 } as const;
 
 describe("viewNavigationShortcuts (#8791)", () => {
-	it("remain compatibility exports but are not registered ahead of the model", () => {
+	it("keeps pre-model shortcuts disabled and registers only the post-Stage-1 executor", () => {
 		expect(appControlPlugin.shortcuts ?? []).toEqual([]);
 		expect(
 			appControlPlugin.responseHandlerEvaluators?.map(
 				(evaluator) => evaluator.name,
 			),
-		).not.toContain("app-control.view-command-shortcut");
+		).toContain("app-control.view-command-shortcut");
 		expect(
 			appControlPlugin.responseHandlerEvaluators?.map(
 				(evaluator) => evaluator.name,

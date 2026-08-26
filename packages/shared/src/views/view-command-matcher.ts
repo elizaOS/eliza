@@ -1221,6 +1221,63 @@ const COMPILED: CompiledView[] = VIEW_PRIORITY.filter(
   return { viewId, re: new RegExp(pattern, "iu") };
 });
 
+// The post-Stage-1 direct executor needs a stricter contract than the general
+// matcher above. The general matcher intentionally recognizes a navigation
+// phrase embedded in short prose (for example, "Never mind. Open settings") so
+// the VIEWS action can resolve a target after the planner has preserved the
+// rest of the request. Direct execution, however, may clear the planner's other
+// candidates, so it is safe only when the *entire* user request is one view
+// command plus harmless courtesy words.
+const STANDALONE_COURTESY_PREFIX = [
+  "please",
+  "hey",
+  "hi",
+  "hello",
+  "por favor",
+  "s'il vous plaît",
+  "s il vous plait",
+  "bitte",
+] as const;
+const STANDALONE_COURTESY_SUFFIX = [
+  "please",
+  "for me",
+  "thanks",
+  "thank you",
+  "por favor",
+  "s'il vous plaît",
+  "s il vous plait",
+  "bitte",
+] as const;
+const STANDALONE_REQUEST_PREFIX = [
+  "can you",
+  "could you",
+  "would you",
+  "will you",
+] as const;
+const STANDALONE_PREFIX = `(?:[\\s\\p{P}]*(?:(?:${alt(STANDALONE_COURTESY_PREFIX)})[\\s\\p{P}]+)*(?:(?:${alt(STANDALONE_REQUEST_PREFIX)})[\\s\\p{P}]+(?:(?:please)[\\s\\p{P}]+)?)?)`;
+const STANDALONE_SUFFIX = `(?:[\\s\\p{P}]*(?:(?:${alt(STANDALONE_COURTESY_SUFFIX)})[\\s\\p{P}]*)*)`;
+const OPTIONAL_VIEW_WORD = `(?:[\\s\\p{P}]*(?:${VW_ALT}))?`;
+
+const STANDALONE_COMPILED: CompiledView[] = VIEW_PRIORITY.filter(
+  (v) => v !== CLOUD_APPS_VIEW_ID && VIEW_NOUNS[v],
+).map((viewId) => {
+  const N = nounAlt(VIEW_NOUNS[viewId]);
+  const command = [
+    `(?:${VERB_ALT})[\\s\\S]{0,16}?(?:${N})${OPTIONAL_VIEW_WORD}`,
+    `(?:${N})[\\s\\S]{0,8}?(?:${VERB_ALT})`,
+    `(?:${POSS_ALT})[\\s\\S]{0,4}?(?:${N})${OPTIONAL_VIEW_WORD}`,
+    `(?:${N})[\\s\\S]{0,4}?(?:${VW_ALT})`,
+    `(?:${N})`,
+  ].join("|");
+  return {
+    viewId,
+    re: new RegExp(
+      `^${STANDALONE_PREFIX}(?:${command})${STANDALONE_SUFFIX}$`,
+      "iu",
+    ),
+  };
+});
+
 // Bare "go back" is the conversational counterpart of the shell's Home affordance.
 // Browser/OS history remains a client-owned gesture, so this exact whole-message
 // form can safely return to the canonical chat surface without guessing history.
@@ -1257,6 +1314,61 @@ export function matchViewCommand(text: string | undefined): string | null {
     }
   }
   return null;
+}
+
+/**
+ * Match only a whole-message view-navigation command.
+ *
+ * Unlike `matchViewCommand`, this deliberately rejects commands embedded in a
+ * compound/domain request. It is the safe predicate for callers that will
+ * execute navigation directly and therefore skip normal multi-action planning.
+ */
+export function matchStandaloneViewCommand(
+  text: string | undefined,
+): string | null {
+  const raw = (text ?? "").trim();
+  if (!raw || raw.length > 160) return null;
+  const lower = raw.toLowerCase();
+  if (looksLikeCompanionActionRequest(lower)) return null;
+  if (NEGATED_NAVIGATION_RE.test(lower)) return null;
+  if (BARE_HOME_NAVIGATION.test(lower)) return "chat";
+  const variants = [lower, stripDiacritics(lower)];
+  if (variants.some((variant) => CLOUD_APPS_COMMAND_RE.test(variant))) {
+    return CLOUD_APPS_VIEW_ID;
+  }
+  if (variants.some((variant) => CLOUD_APPS_MENTION_RE.test(variant))) {
+    return null;
+  }
+  for (const { viewId, re } of STANDALONE_COMPILED) {
+    for (const variant of variants) {
+      if (re.test(variant) && !hasMultipleViewAliasSpans(variant, viewId)) {
+        return viewId;
+      }
+    }
+  }
+  return null;
+}
+
+function hasMultipleViewAliasSpans(text: string, viewId: string): boolean {
+  const spans: Array<{ start: number; end: number }> = [];
+  for (const noun of VIEW_NOUNS[viewId] ?? []) {
+    const matcher = new RegExp(nounAlt([noun]), "giu");
+    for (const match of text.matchAll(matcher)) {
+      if (match.index === undefined) continue;
+      spans.push({ start: match.index, end: match.index + match[0].length });
+    }
+  }
+  spans.sort((a, b) => a.start - b.start || b.end - a.end);
+  let clusters = 0;
+  let coveredUntil = -1;
+  for (const span of spans) {
+    if (span.start >= coveredUntil) {
+      clusters += 1;
+      if (clusters > 1) return true;
+    }
+    coveredUntil = Math.max(coveredUntil, span.end);
+  }
+  return false;
 }
 
 function looksLikeCompanionActionRequest(text: string): boolean {

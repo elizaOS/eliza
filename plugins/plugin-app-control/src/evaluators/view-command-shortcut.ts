@@ -1,12 +1,13 @@
 /**
- * EARLY view-switch hook — the deterministic, zero-model "up front" step.
+ * Post-Stage-1 view-switch hook — deterministic execution after the model has
+ * selected the VIEWS action.
  *
  * Runs during response handling, BEFORE the action executes. If the user's
  * message is an explicit navigation command in ANY supported language
  * ("open settings", "go to my calendar", "abre ajustes", "설정 열어",
- * "打开设置"…), it FORCES the VIEWS action onto the plan. This guarantees the
- * view switches even when a weak local model would not have selected VIEWS on
- * its own — the rigid matcher decides, not the model.
+ * "打开设置"…), it resolves the target and executes the already-selected VIEWS
+ * action without a second planner round. The model still owns action selection;
+ * the rigid matcher only supplies parameters after Stage 1 has named VIEWS.
  *
  * The VIEWS action then resolves the exact target deterministically
  * (matchViewCommand → the same view) and navigates.
@@ -27,19 +28,37 @@ import {
 function shouldShortcut(
 	context: ResponseHandlerEvaluatorContext,
 ): string | null {
-	// This shortcut is only for explicit navigation commands. Passive/domain
-	// intent ("fix my app", "how much did I spend") belongs to the contextual
-	// evaluator or planner so it cannot preempt coding/content actions. A Stage 1
-	// STOP does not suppress an exact rigid match: weak models commonly classify
-	// a bare command such as "settings" as a conversational reply, but the
-	// deterministic navigation contract must still win.
+	// Model-owned invariant: an exact phrase alone is insufficient. Stage 1 must
+	// already have selected the canonical VIEWS action before this evaluator can
+	// turn that selection into a deterministic call. Passive/domain intent and a
+	// model-selected adjacent action therefore remain planner-owned.
+	const selectedCandidates = (
+		context.messageHandler.plan.candidateActions ?? []
+	).map((candidate) => candidate.trim().toUpperCase());
+	const selectedViews = selectedCandidates.includes(VIEWS_ACTION_NAME);
+	if (!selectedViews) return null;
+
+	// A second *registered* action is semantic evidence of a compound/domain
+	// request. Never erase it. Unknown names may be weak-model category noise
+	// (for example CODING_TOOLS), so they do not block an otherwise standalone
+	// command; the direct executor still installs only the registered VIEWS call.
+	const registeredActions = new Set(
+		(context.runtime.actions ?? [])
+			.map((action) => action.name?.trim().toUpperCase())
+			.filter((name): name is string => Boolean(name)),
+	);
+	const hasOtherRegisteredAction = selectedCandidates.some(
+		(candidate) =>
+			candidate !== VIEWS_ACTION_NAME && registeredActions.has(candidate),
+	);
+	if (hasOtherRegisteredAction) return null;
 	return resolveViewCommandShortcut(context);
 }
 
 export const viewCommandShortcutEvaluator: ResponseHandlerEvaluator = {
 	name: "app-control.view-command-shortcut",
 	description:
-		"Deterministic multilingual fast-path: forces the VIEWS action when the message is an explicit view-navigation command, so view switching never depends on weak-model action selection.",
+		"Executes a model-selected VIEWS action directly when the message is an exact multilingual view-navigation command, avoiding a redundant planner round.",
 	// Run before core.simple_registered_action_request (20) so deterministic view
 	// intents never get captured by a broader coding/domain action first.
 	priority: 10,
@@ -62,7 +81,7 @@ export const viewCommandShortcutEvaluator: ResponseHandlerEvaluator = {
 				params: { action: "show", view: viewId },
 			},
 			debug: [
-				`rigid view command → ${viewId}; forcing VIEWS action (deterministic, no model)`,
+				`model-selected rigid view command → ${viewId}; executing VIEWS without a second planner round`,
 			],
 		};
 	},

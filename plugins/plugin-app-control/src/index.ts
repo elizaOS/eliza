@@ -25,6 +25,7 @@ import {
 } from "./actions/views.js";
 import { createViewsClient } from "./actions/views-client.js";
 import { createChoiceShortcutEvaluator } from "./evaluators/create-choice-shortcut.js";
+import { viewCommandShortcutEvaluator } from "./evaluators/view-command-shortcut.js";
 import { viewContextEvaluator } from "./evaluators/view-context.js";
 import { availableAppsProvider } from "./providers/available-apps.js";
 import { currentViewProvider } from "./providers/current-view.js";
@@ -168,18 +169,24 @@ export const appControlPlugin: Plugin = {
 		settingsAction,
 	],
 	// Model-owned view-switch cascade:
-	//  1. PLAN   — the response handler/planner selects VIEWS from the registered
-	//     action contract, including explicit multilingual navigation requests.
-	//  2. ACTION — viewsAction resolves the selected target and navigates.
-	//  3. POST   — viewContextEvaluator (small model) catches contextual intent
+	//  1. STAGE 1 — the response handler selects VIEWS from the registered action
+	//     contract, including explicit multilingual navigation requests.
+	//  2. EXACT  — for a rigid navigation phrase, the post-Stage-1 evaluator
+	//     resolves the target and executes that selected action without asking the
+	//     full planner to make the same decision again.
+	//  3. ACTION — viewsAction validates the selected target and navigates.
+	//  4. POST   — viewContextEvaluator (small model) catches contextual intent
 	//     the user never spelled out ("fix the login bug" -> task-coordinator).
 	//     Its gate defers whenever resolveIntentView already matches a direct
 	//     surface (the rigid matchViewCommand matcher, or the legacy intent
 	//     rules it falls back to), so it never contends with the action.
 	evaluators: [viewContextEvaluator],
-	// Persisted choice widgets are an explicit continuation protocol. Ordinary
-	// view navigation and follow-up language stays with Stage 1 and the planner.
-	responseHandlerEvaluators: [createChoiceShortcutEvaluator],
+	// Persisted choice widgets are an explicit continuation protocol. Exact view
+	// navigation remains model-selected but skips the redundant full-planner pass.
+	responseHandlerEvaluators: [
+		viewCommandShortcutEvaluator,
+		createChoiceShortcutEvaluator,
+	],
 	providers: [availableAppsProvider, currentViewProvider],
 	services: [
 		AppRegistryService,
