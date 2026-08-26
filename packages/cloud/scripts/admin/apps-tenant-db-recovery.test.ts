@@ -279,7 +279,8 @@ describe("restore target authority", () => {
   });
 
   test("guards one exact session before any supplied SQL", () => {
-    const guarded = guardPsqlScript("CREATE TABLE data(id int);\n");
+    const expiresAt = Date.now() + 3_600_000;
+    const guarded = guardPsqlScript("CREATE TABLE data(id int);\n", expiresAt);
     expect(guarded).not.toContain("\\quit");
     expect(guarded).toContain(
       "RAISE EXCEPTION 'restore target authority mismatch'",
@@ -290,6 +291,58 @@ describe("restore target authority", () => {
     // Both twin settings are checked: target id AND capability envelope.
     expect(guarded).toContain("eliza.restore_target_id");
     expect(guarded).toContain("eliza.restore_capability");
+    // The server-clock expiry check is embedded in the same guard block,
+    // before any supplied SQL, and exactly once (#23453 review r8).
+    expect(guarded).toContain(
+      "restore capability has expired on the server clock",
+    );
+    expect(guarded.indexOf("eliza_capability_live")).toBeLessThan(
+      guarded.indexOf("CREATE TABLE"),
+    );
+    expect(guarded.split("eliza_capability_live").length - 1).toBe(2);
+  });
+
+  test("every guarded script class carries the expiry guard exactly once", () => {
+    // #23453 review r8: guard composition is construction-only — every
+    // destructive session's script embeds the twin-settings + expiry guards
+    // exactly once. A double-wrapped script (the old guardedPsqlFile
+    // re-wrap) or an unwrapped one is detectable by these counts.
+    const expiresAt = Date.now() + 3_600_000;
+    const minted = mintRestoreCapability({
+      signingKey: CAP_KEY,
+      targetId: CAP_TARGET_ID,
+      archiveSha256: CAP_ARCHIVE_SHA,
+      expiresAtEpochMs: expiresAt,
+    });
+    const scripts: Record<string, string> = {
+      claim: buildClaimExclusivitySql(minted),
+      globals: guardPsqlScript(
+        makeGlobalsIdempotent("CREATE ROLE tenant_a;\n"),
+        expiresAt,
+      ),
+      consume: guardedConsumeAuthoritySql(expiresAt),
+      drop: guardPsqlScript(
+        ['DROP DATABASE IF EXISTS "db";', 'CREATE DATABASE "db";', ""].join(
+          "\n",
+        ),
+        expiresAt,
+      ),
+    };
+    for (const [name, script] of Object.entries(scripts)) {
+      // Twin-settings guard once: one gset assignment + one \if read.
+      expect(script.split("eliza_restore_target_ok").length - 1, name).toBe(2);
+      // Expiry guard once: the variable is set and read inside one block.
+      expect(script.split("eliza_capability_live").length - 1, name).toBe(2);
+      // Guard precedes the first destructive statement.
+      expect(script.indexOf("current_setting"), name).toBeLessThan(
+        script.length,
+      );
+    }
+    // Double-wrapping is detectable: guardPsqlScript applied to an already
+    // guarded script doubles both markers.
+    const doubleWrapped = guardPsqlScript(scripts.globals, expiresAt);
+    expect(doubleWrapped.split("eliza_restore_target_ok").length - 1).toBe(4);
+    expect(doubleWrapped.split("eliza_capability_live").length - 1).toBe(4);
   });
 
   test("quotes tenant identifiers and targets the restored database", () => {
@@ -303,10 +356,11 @@ describe("restore target authority", () => {
   });
 
   test("consuming the authority re-verifies inside the same guard, then resets and reloads", () => {
-    const script = guardedConsumeAuthoritySql();
+    const expiresAt = Date.now() + 3_600_000;
+    const script = guardedConsumeAuthoritySql(expiresAt);
     // Same guard as every other destructive statement — a mismatched setting
     // raises before ALTER SYSTEM is ever reached.
-    expect(script.startsWith(guardPsqlScript(""))).toBe(true);
+    expect(script.startsWith(guardPsqlScript("", expiresAt))).toBe(true);
     expect(script).toContain("ALTER SYSTEM RESET eliza.restore_target_id;");
     expect(script).toContain("ALTER SYSTEM RESET eliza.restore_capability;");
     expect(script).toContain("SELECT pg_reload_conf();");
@@ -797,6 +851,26 @@ describe("authenticated recovery point (#23453)", () => {
         sidecarCreatedAt: t0,
         manifestCreatedAt: new Date(t0.getTime() + 10 * 60_000),
         nowEpochMs: t0.getTime(),
+      }),
+    ).toThrow(expect.objectContaining({ code: "REFUSED_RECOVERY_POINT" }));
+  });
+
+  test("refuses unparseable timestamps instead of passing by NaN comparison", () => {
+    // Math.abs(NaN) > WINDOW and NaN > now are both false, so an Invalid
+    // Date on either side must be rejected explicitly (#23453 review r8).
+    const t0 = new Date("2026-08-25T00:00:00Z");
+    expect(() =>
+      assertRecoveryPointConsistency({
+        sidecarCreatedAt: new Date("not-a-timestamp"),
+        manifestCreatedAt: t0,
+        nowEpochMs: t0.getTime() + 3_600_000,
+      }),
+    ).toThrow(expect.objectContaining({ code: "REFUSED_RECOVERY_POINT" }));
+    expect(() =>
+      assertRecoveryPointConsistency({
+        sidecarCreatedAt: t0,
+        manifestCreatedAt: new Date("not-a-timestamp"),
+        nowEpochMs: t0.getTime() + 3_600_000,
       }),
     ).toThrow(expect.objectContaining({ code: "REFUSED_RECOVERY_POINT" }));
   });
