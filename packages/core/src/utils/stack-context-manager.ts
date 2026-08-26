@@ -21,12 +21,4 @@ export class StackContextManager<TContext> {
 			? this.stack[this.stack.length - 1]
 			: undefined;
 	}
-
-	get depth(): number {
-		return this.stack.length;
-	}
-
-	clear(): void {
-		this.stack.length = 0;
-	}
 }
