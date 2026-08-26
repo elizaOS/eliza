@@ -12,6 +12,8 @@ const migrations = [
   "0275_remote_sessions_first_class_expiry",
   "0305_secure_remote_hosts",
   "0306_secure_remote_command_relay",
+  "0331_remote_host_managed_network",
+  "0332_remote_target_initiated_pairing",
 ] as const;
 
 async function apply(database: PGlite, name: string): Promise<void> {
@@ -50,8 +52,9 @@ describe("secure remote relay migrations", () => {
         INSERT INTO remote_sessions (
           id, organization_id, user_id, host_id, grant_id, grant_revision,
           status, requester_identity, controller_device_id, controller_key_id,
+          controller_display_name, controller_platform,
           controller_signing_public_jwk, controller_encryption_public_jwk,
-          target_key_id, expires_at, grant_expires_at
+          target_key_id, pairing_consumed_at, expires_at, grant_expires_at
         ) VALUES (
           '50000000-0000-4000-8000-000000000001',
           '10000000-0000-4000-8000-000000000001',
@@ -59,8 +62,9 @@ describe("secure remote relay migrations", () => {
           '40000000-0000-4000-8000-000000000001',
           '60000000-0000-4000-8000-000000000001', 1, 'active',
           '20000000-0000-4000-8000-000000000001', 'controller-one',
-          'controller-key-1', '{"kty":"EC"}', '{"kty":"EC"}',
-          'target-key-1', now() + interval '5 minutes', now() + interval '1 hour'
+          'controller-key-1', 'Controller One', 'ios', '{"kty":"EC"}',
+          '{"kty":"EC"}', 'target-key-1', now(),
+          now() + interval '5 minutes', now() + interval '1 hour'
         );
         INSERT INTO remote_command_envelopes (
           id, session_id, grant_id, grant_revision, organization_id, user_id,
@@ -112,19 +116,44 @@ describe("secure remote relay migrations", () => {
           WHERE id = '70000000-0000-4000-8000-000000000001'
         `),
       ).rejects.toThrow(/session_sequence_unique/i);
+      await database.exec(`
+          INSERT INTO remote_hosts (
+            id, organization_id, user_id, device_id, display_name, platform,
+            connection_mode, runtime_key_id, signing_public_jwk,
+            encryption_public_jwk, host_token_hash, status
+          ) VALUES (
+            '40000000-0000-4000-8000-000000000002',
+            '10000000-0000-4000-8000-000000000001',
+            '20000000-0000-4000-8000-000000000001',
+            'linux-pending', 'Linux Pending', 'linux', 'relay',
+            'target-key-pending', '{"kty":"EC"}', '{"kty":"EC"}',
+            'sha256:pending', 'pending'
+          )
+        `);
+      await expect(
+        database.exec(`
+          UPDATE remote_hosts
+          SET status = 'revoked', revoked_at = NULL
+          WHERE id = '40000000-0000-4000-8000-000000000002'
+        `),
+      ).rejects.toThrow(/remote_hosts_status_check/i);
 
       const journal = JSON.parse(
         await readFile(new URL("./migrations/meta/_journal.json", import.meta.url), "utf8"),
       ) as { entries: Array<{ idx: number; tag: string; when: number }> };
-      const relayEntries = journal.entries.slice(-3);
-      expect(relayEntries.map((entry) => entry.tag)).toEqual([
-        "0304_personal_shared_group_delivery_lease",
-        "0305_secure_remote_hosts",
-        "0306_secure_remote_command_relay",
+      const recentEntries = journal.entries.slice(-5);
+      expect(recentEntries.map((entry) => entry.tag)).toEqual([
+        "0320_personal_shared_multi_principal_consent",
+        "0330_remote_session_two_phase_activation",
+        "0331_remote_host_managed_network",
+        "0332_remote_target_initiated_pairing",
+        "0333_remote_host_connection_mode_check",
       ]);
-      expect(relayEntries.map((entry) => entry.idx)).toEqual([287, 288, 289]);
-      expect(relayEntries[1]!.when).toBeGreaterThan(relayEntries[0]!.when);
-      expect(relayEntries[2]!.when).toBeGreaterThan(relayEntries[1]!.when);
+      expect(recentEntries.map((entry) => entry.idx)).toEqual([303, 304, 305, 306, 307]);
+      expect(recentEntries[1]!.when).toBeGreaterThan(recentEntries[0]!.when);
+      expect(recentEntries[2]!.when).toBeGreaterThan(recentEntries[1]!.when);
+      expect(recentEntries[3]!.when).toBeGreaterThan(recentEntries[2]!.when);
+      expect(recentEntries[4]!.when).toBeGreaterThan(recentEntries[3]!.when);
       expect(new Set(journal.entries.map((entry) => entry.when)).size).toBe(journal.entries.length);
     } finally {
       await database.close();

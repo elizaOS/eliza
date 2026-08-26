@@ -140,7 +140,7 @@ export function WorkspaceLayout({
           <main
             ref={setContentRef}
             className={cn(
-              "chat-native-scrollbar relative flex min-w-0 flex-1 flex-col",
+              "chat-native-scrollbar relative flex min-h-0 min-w-0 flex-1 flex-col",
               showMobileSidebarPane ? "overflow-hidden" : "overflow-y-auto",
               contentPadding && !showMobileSidebarPane && "px-2 pb-4 pt-1",
               !showMobileSidebarPane && contentClassName,

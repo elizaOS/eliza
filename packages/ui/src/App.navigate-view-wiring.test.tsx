@@ -32,6 +32,7 @@ import { getActiveSurfaceRealmScope } from "./surface-realm-broker";
 import { shellHistory } from "./surface-realm-channel";
 
 const appState = vi.hoisted(() => ({
+  backendConnectionState: "connected",
   firstRunComplete: true,
   retryStartup: vi.fn(),
   setTab: vi.fn(),
@@ -392,7 +393,7 @@ vi.mock("./state", async () => {
     appRuns: [],
     appsSubTab: "browse",
     agentStatus: null,
-    backendConnection: { state: "connected" },
+    backendConnection: { state: appState.backendConnectionState },
     copyToClipboard: vi.fn(),
     databaseSubTab: "overview",
     dismissSystemWarning: vi.fn(),
@@ -573,6 +574,7 @@ describe("App navigate-view event wiring", () => {
     Reflect.deleteProperty(window, "__ELIZA_API_TOKEN__");
     Reflect.deleteProperty(window, "__ELIZAOS_API_TOKEN__");
     appState.firstRunComplete = true;
+    appState.backendConnectionState = "connected";
     appState.startupPhase = "ready";
     appState.tab = "chat";
     appState.plugins = [];
@@ -1213,6 +1215,94 @@ describe("App navigate-view event wiring", () => {
       );
     });
     expect(window.location.pathname).toBe("/apps/remote-ledger");
+  });
+
+  it("replays a failed cold-start view report once after reconnect and still clears Home", async () => {
+    appState.tab = "views";
+    appState.startupPhase = "polling-backend";
+    appState.backendConnectionState = "connecting";
+    window.history.replaceState(null, "", "/notes");
+    mockAvailableViews.push(notesFullscreenView);
+    setBootConfig({ ...DEFAULT_BOOT_CONFIG, apiBase: "http://agent.local" });
+
+    let viewNavigationAttempts = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/commands")) {
+        return new Response(JSON.stringify({ commands: [] }), {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+      if (url.includes("/api/custom-actions")) {
+        return new Response(JSON.stringify({ actions: [] }), {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+      if (url.includes("/api/views/")) {
+        viewNavigationAttempts += 1;
+        if (viewNavigationAttempts === 1) {
+          throw new Error("offline");
+        }
+      }
+      return new Response("{}", { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const rendered = render(<App />);
+    const viewNavigationCalls = () =>
+      fetchMock.mock.calls.filter(([input]) =>
+        String(input).includes("/api/views/"),
+      );
+
+    expect(viewNavigationCalls()).toHaveLength(0);
+
+    appState.startupPhase = "ready";
+    appState.backendConnectionState = "connected";
+    rendered.rerender(<App />);
+
+    await waitFor(() => {
+      expect(viewNavigationCalls()).toHaveLength(1);
+    });
+
+    appState.backendConnectionState = "reconnecting";
+    rendered.rerender(<App />);
+    expect(viewNavigationCalls()).toHaveLength(1);
+
+    appState.backendConnectionState = "connected";
+    rendered.rerender(<App />);
+
+    await waitFor(() => {
+      expect(viewNavigationCalls()).toHaveLength(2);
+    });
+    expect(viewNavigationCalls()[1]).toEqual([
+      "http://agent.local/api/views/notes/navigate",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ source: "user", path: "/notes" }),
+      }),
+    ]);
+
+    rendered.rerender(<App />);
+    await act(async () => Promise.resolve());
+    expect(viewNavigationCalls()).toHaveLength(2);
+
+    act(() => {
+      shellHistory.replaceState(null, "", "/chat");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+
+    await waitFor(() => {
+      expect(viewNavigationCalls()).toHaveLength(3);
+    });
+    expect(viewNavigationCalls()[2]).toEqual([
+      "http://agent.local/api/views/__all__/navigate",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ source: "user", action: "close-all" }),
+      }),
+    ]);
   });
 
   it("renders split-view events as a live dynamic view layout", async () => {

@@ -77,9 +77,13 @@ import { isElectrobunRuntime } from "./bridge/electrobun-runtime";
 import {
   NAVIGATE_SETTINGS_EVENT,
   type NavigateSettingsDetail,
-  reportUserViewSwitch,
   useSlashCommandController,
 } from "./chat/useSlashCommandController";
+import {
+  reportUserViewClosed,
+  reportUserViewSwitch,
+  shouldClearReportedView,
+} from "./chat/view-navigation-report";
 import { markCompletedActionNavigationHandled } from "./completed-action-navigation";
 import { OverlayAppSurface } from "./components/apps/AppWindowRenderer";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
@@ -820,7 +824,7 @@ function resolveActiveScreenBackgroundPolicy({
   if (remoteView) return viewRegistrationBackgroundPolicy(remoteView);
 
   const appShellPageForTab = listAppShellPages().find(
-    (entry) => entry.id === tab,
+    (entry) => entry.id === tab || entry.tabAffinity === tab,
   );
   if (appShellPageForTab) {
     return viewRegistrationBackgroundPolicy(appShellPageForTab);
@@ -948,7 +952,7 @@ function resolveActiveViewSurface({
 
   const appShellPageForTab = listAppShellPages().find(
     (entry) =>
-      entry.id === tab &&
+      (entry.id === tab || entry.tabAffinity === tab) &&
       appShellPageIsAvailable(entry, {
         managedCloud: managedCloudRuntime,
       }) &&
@@ -1330,6 +1334,9 @@ function buildStaticTabRenderers(): Record<
   const wrap = (node: ReactNode) => () => (
     <TabContentView>{node}</TabContentView>
   );
+  const wrapOverlayAware = (node: ReactNode) => () => (
+    <TabContentView reserveChatClearance={false}>{node}</TabContentView>
+  );
   // Tool views that own no header of their own get the shared ViewHeader (back
   // button + centered title) via the same flush structure MemoryViewerView uses,
   // so every launcher tool reads the same at the top instead of opening headerless.
@@ -1346,7 +1353,7 @@ function buildStaticTabRenderers(): Record<
     browser: () => <LazyBrowserWorkspaceView />,
     stream: () => <LazyStreamView />,
     "pendant-transcript": () => <LazyPendantTranscriptView />,
-    tasks: wrap(<LazyTasksPageView />),
+    tasks: wrapOverlayAware(<LazyTasksPageView />),
     automations: () => <LazyAutomationsFeed />,
     plugins: withHeader("plugins", <LazyPluginsPageView />),
     skills: withHeader("skills", <LazySkillsView />),
@@ -1360,16 +1367,16 @@ function buildStaticTabRenderers(): Record<
     // registered-page resolver renders its explicit unavailable state.
     documents: () => <ViewUnavailableFallback />,
     experience: ({ characterNav }) => (
-      <TabContentView nav={characterNav}>
+      <TabContentView nav={characterNav} reserveChatClearance={false}>
         <LazyCharacterExperienceView />
       </TabContentView>
     ),
     "character-skills": ({ characterNav }) => (
-      <TabContentView nav={characterNav}>
+      <TabContentView nav={characterNav} reserveChatClearance={false}>
         <LazyCharacterSkillsView />
       </TabContentView>
     ),
-    memories: wrap(<LazyMemoryViewerView />),
+    memories: wrapOverlayAware(<LazyMemoryViewerView />),
     files: () => (
       <TabContentView>
         <div className="flex h-full min-h-0 w-full flex-col">
@@ -1412,12 +1419,12 @@ function buildStaticTabRenderers(): Record<
     // background shows through behind the controls.
     background: () => <LazyBackgroundView />,
     character: ({ characterNav }) => (
-      <TabContentView nav={characterNav}>
+      <TabContentView nav={characterNav} reserveChatClearance={false}>
         <LazyCharacterEditor />
       </TabContentView>
     ),
     "character-select": ({ characterNav }) => (
-      <TabContentView nav={characterNav}>
+      <TabContentView nav={characterNav} reserveChatClearance={false}>
         <LazyCharacterEditor />
       </TabContentView>
     ),
@@ -2306,7 +2313,6 @@ function HomeScreenMount({
     firstRunComplete,
     startupPhase,
   );
-  const { views } = useAvailableViews();
   // Host apps can override the home screen via the `homeScreen` boot-config slot
   // (whitelabel seam); fall back to the built-in HomeScreen.
   const { homeScreen: HomeScreenOverride } = useBootConfig();
@@ -2314,19 +2320,11 @@ function HomeScreenMount({
     (target: HomeTileTarget) => {
       if (target.kind === "tab") {
         setTab(target.tab);
-        // Report the tab id as a surface so the proactive decider reacts to
-        // user-initiated tile navigation (#8792). Fire-and-forget.
-        reportUserViewSwitch(target.tab);
       } else {
         dispatchNavigateViewEvent({ viewPath: target.path });
-        // The tile only carries a path; resolve the registered view id so the
-        // decider keys off the same id the rest of the navigation bus uses
-        // (#8792). Skip the report when no view is registered at that path.
-        const viewId = views.find((v) => v.path === target.path)?.id;
-        if (viewId) reportUserViewSwitch(viewId, target.path);
       }
     },
-    [setTab, views],
+    [setTab],
   );
   const Home = HomeScreenOverride ?? HomeScreen;
   const home = useMemo(
@@ -2811,6 +2809,30 @@ function AppContent() {
     enabledKinds,
     managedCloudRuntime,
   });
+  // Browser history is the authoritative active-view lifecycle. Synchronizing
+  // here covers every route producer uniformly: launcher tiles, chat/voice
+  // navigation, command palette, deep links, Back/Forward, reload, and desktop
+  // tabs. Controls only navigate; the shell reports the surface that actually
+  // rendered, and Home/launcher routes clear all scoped tools.
+  useEffect(() => {
+    if (startupCoordinator.phase !== "ready") return;
+    if (backendConnection?.state !== "connected") return;
+    if (overlayAppSurfaceActive) return;
+    if (shouldClearReportedView(navigationPath)) {
+      reportUserViewClosed();
+      return;
+    }
+    reportUserViewSwitch(
+      resolveBuiltinTabId(activeViewSurface.viewId),
+      navigationPath,
+    );
+  }, [
+    activeViewSurface.viewId,
+    backendConnection?.state,
+    navigationPath,
+    overlayAppSurfaceActive,
+    startupCoordinator.phase,
+  ]);
   useEffect(() => {
     if (typeof window === "undefined") return;
     const scope = new SurfaceRealmScope(
@@ -3011,7 +3033,6 @@ function AppContent() {
       } catch {
         // sandboxed — ignore
       }
-      reportUserViewSwitch(viewId, dtab.path);
     },
     [desktopTabs],
   );

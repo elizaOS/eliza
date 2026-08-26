@@ -8,8 +8,8 @@
  *
  * The palette opens on the COMMAND_PALETTE_EVENT (desktop shortcut) or a
  * Ctrl/Meta+K keydown in the browser; view switches route through the shared
- * `eliza:navigate:view` dispatcher and report VIEW_SWITCHED so the proactive
- * decider sees the same signal a manual nav produces. Visible-view gating
+ * `eliza:navigate:view` dispatcher. The app shell observes the rendered route
+ * and publishes VIEW_SWITCHED centrally. Visible-view gating
  * mirrors the view catalog, so hidden developer/preview views never leak.
  */
 
@@ -28,10 +28,7 @@ import {
   paletteViewEntries,
   type ViewNavEntry,
 } from "../../chat";
-import {
-  reportShortcutFired,
-  reportUserViewSwitch,
-} from "../../chat/useSlashCommandController";
+import { reportShortcutFired } from "../../chat/useSlashCommandController";
 import { COMMAND_PALETTE_EVENT, dispatchNavigateViewEvent } from "../../events";
 import { useBugReport } from "../../hooks";
 import { useAvailableViews } from "../../hooks/useAvailableViews";
@@ -119,12 +116,9 @@ export function CommandPalette() {
     () => paletteViewEntries(registeredViews, enabledKinds),
     [registeredViews, enabledKinds],
   );
-  // Navigation + agent reporting in one place: switching surfaces from the
-  // palette must reach the proactive decider as VIEW_SWITCHED (#8792).
   const navigateTab = useCallback(
     (tab: Tab) => {
       setTab(tab);
-      reportUserViewSwitch(String(tab));
     },
     [setTab],
   );
@@ -135,7 +129,6 @@ export function CommandPalette() {
   // consumer's `/apps/<viewId>` fallback.
   const navigateView = useCallback((viewId: string, path?: string) => {
     dispatchNavigateViewEvent({ viewId, viewPath: path });
-    reportUserViewSwitch(viewId, path);
   }, []);
 
   const allCommands = useMemo<CommandItem[]>(() => {

@@ -4383,11 +4383,6 @@ export function ChatOverlay({
         navigateTab: slash.navigateTab,
         navigateSettings: slash.navigateSettings,
         navigateView: slash.navigateView,
-        // One infinite thread (#13531): the overlay no longer resets/switches
-        // conversations (clear-chat / new-conversation) or toggles full-screen
-        // via a command — maximize is a vertical pull now. These slash paths are
-        // inert in the overlay; the shared subsystem plumbing (first-run/wipe/
-        // switch, CommandPalette, TUI) is untouched and handled elsewhere.
         clearChat: () => {},
         newConversation: () => {},
         toggleFullscreen: () => {},

@@ -16,6 +16,7 @@ import { agentSwitchAction } from "./actions/agent-switch.js";
 import { appAction, createAppAction } from "./actions/app.js";
 import { backgroundAction } from "./actions/background.js";
 import { modelSwitchAction } from "./actions/model-switch.js";
+import { runtimeManagementAction } from "./actions/runtime-management.js";
 import { settingsAction } from "./actions/settings.js";
 import {
 	closeAllViewsAction,
@@ -64,6 +65,13 @@ export {
 	modelSwitchAction,
 	sanctionedModelError,
 } from "./actions/model-switch.js";
+export {
+	createRuntimeManagementAction,
+	parseRuntimeManagementRequest,
+	type RuntimeManagementActionDeps,
+	type RuntimeManagementFn,
+	runtimeManagementAction,
+} from "./actions/runtime-management.js";
 export {
 	createSettingsAction,
 	parseBooleanValue,
@@ -156,6 +164,7 @@ export const appControlPlugin: Plugin = {
 		backgroundAction,
 		modelSwitchAction,
 		agentSwitchAction,
+		runtimeManagementAction,
 		settingsAction,
 	],
 	// Model-owned view-switch cascade:

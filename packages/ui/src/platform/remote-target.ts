@@ -11,11 +11,34 @@ export interface RemoteTargetStatus {
   lastErrorCode: string | null;
 }
 
+export interface RemoteTargetPairingChallenge {
+  sessionId: string;
+  code: string;
+  expiresAt: number;
+  capabilities: string[];
+  status: "pending";
+}
+
+export interface RemoteTargetPairingChallengeStatus {
+  sessionId: string;
+  status: "pending" | "claimed" | "denied" | "expired";
+  expiresAt: number;
+  capabilities: string[];
+  controller?: {
+    deviceId: string;
+    keyId: string;
+    displayName: string;
+    platform: "ios" | "macos" | "windows" | "linux" | "android" | "web";
+  };
+}
+
 export async function enrollRemoteTarget(input: {
   apiBaseUrl: string;
   ownerId: string;
   ownerAccessToken: string;
   displayName: string;
+  platform: "macos" | "windows" | "linux";
+  managedNetwork?: boolean;
 }): Promise<{ hostId: string; identity: RemoteTargetPublicIdentity }> {
   const result = await invokeDesktopBridgeRequest<{
     hostId: string;
@@ -27,7 +50,7 @@ export async function enrollRemoteTarget(input: {
     params: input,
   });
   if (!result)
-    throw new Error("Linux remote-target enrollment is unavailable.");
+    throw new Error("Desktop remote-target enrollment is unavailable.");
   return result;
 }
 
@@ -47,21 +70,126 @@ export async function getRemoteTargetIdentity(): Promise<{
   );
 }
 
+export async function createRemoteTargetPairingChallenge(): Promise<RemoteTargetPairingChallenge> {
+  const result = await invokeDesktopBridgeRequest<RemoteTargetPairingChallenge>(
+    {
+      rpcMethod: "remoteTargetCreatePairingChallenge",
+      ipcChannel: "remoteTarget:createPairingChallenge",
+      params: {},
+    },
+  );
+  if (!result) throw new Error("Remote pairing challenge is unavailable.");
+  return result;
+}
+
+export async function readRemoteTargetPairingChallenge(
+  sessionId: string,
+): Promise<RemoteTargetPairingChallengeStatus> {
+  const result =
+    await invokeDesktopBridgeRequest<RemoteTargetPairingChallengeStatus>({
+      rpcMethod: "remoteTargetReadPairingChallenge",
+      ipcChannel: "remoteTarget:readPairingChallenge",
+      params: { sessionId },
+    });
+  if (!result) throw new Error("Remote pairing status is unavailable.");
+  return result;
+}
+
+export async function confirmRemoteTargetPairing(
+  sessionId: string,
+): ReturnType<typeof activateRemoteTarget> {
+  const result = await invokeDesktopBridgeRequest<
+    Awaited<ReturnType<typeof activateRemoteTarget>>
+  >({
+    rpcMethod: "remoteTargetConfirmPairing",
+    ipcChannel: "remoteTarget:confirmPairing",
+    params: { sessionId },
+  });
+  if (!result) throw new Error("Remote pairing confirmation is unavailable.");
+  return result;
+}
+
 export async function activateRemoteTarget(input: {
-  sessionId: string;
+  sessionId?: string;
   code: string;
-}): Promise<{ controllerDisplayName: string; grantExpiresAt: number }> {
-  const result = await invokeDesktopBridgeRequest<{
-    sessionId: string;
-    status: "active";
-    controllerDisplayName: string;
-    grantExpiresAt: number;
-  }>({
+}): Promise<
+  | {
+      sessionId: string;
+      status: "active";
+      controllerDisplayName: string;
+      grantExpiresAt: number;
+    }
+  | {
+      sessionId: string;
+      status: "compensation_required";
+      errorCode: "REMOTE_ACTIVATION_COMPENSATION_REQUIRED";
+    }
+  | {
+      sessionId: string;
+      status: "commit_required";
+      errorCode: "REMOTE_ACTIVATION_COMMIT_REQUIRED";
+    }
+> {
+  const result = await invokeDesktopBridgeRequest<
+    | {
+        sessionId: string;
+        status: "active";
+        controllerDisplayName: string;
+        grantExpiresAt: number;
+      }
+    | {
+        sessionId: string;
+        status: "compensation_required";
+        errorCode: "REMOTE_ACTIVATION_COMPENSATION_REQUIRED";
+      }
+    | {
+        sessionId: string;
+        status: "commit_required";
+        errorCode: "REMOTE_ACTIVATION_COMMIT_REQUIRED";
+      }
+  >({
     rpcMethod: "remoteTargetActivate",
     ipcChannel: "remoteTarget:activate",
     params: input,
   });
   if (!result) throw new Error("Remote-target activation is unavailable.");
+  return result;
+}
+
+export async function compensateRemoteTargetActivation(
+  sessionId: string,
+): Promise<{
+  status: "denied" | "revoked";
+  alreadyCompensated: boolean;
+}> {
+  const result = await invokeDesktopBridgeRequest<{
+    sessionId: string;
+    status: "denied" | "revoked";
+    alreadyCompensated: boolean;
+  }>({
+    rpcMethod: "remoteTargetCompensateActivation",
+    ipcChannel: "remoteTarget:compensateActivation",
+    params: { sessionId },
+  });
+  if (!result)
+    throw new Error("Remote-target activation compensation is unavailable.");
+  return result;
+}
+
+export async function commitRemoteTargetActivation(
+  sessionId: string,
+): Promise<{ status: "active"; alreadyCommitted: boolean }> {
+  const result = await invokeDesktopBridgeRequest<{
+    sessionId: string;
+    status: "active";
+    alreadyCommitted: boolean;
+  }>({
+    rpcMethod: "remoteTargetCommitActivation",
+    ipcChannel: "remoteTarget:commitActivation",
+    params: { sessionId },
+  });
+  if (!result)
+    throw new Error("Remote-target activation commit is unavailable.");
   return result;
 }
 
