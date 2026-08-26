@@ -754,10 +754,22 @@ describe.if(ENABLED)(
       const first = runDrill();
       expect(first.status).not.toBe(0);
       expect(first.stderr).toContain("REFUSED_NONEMPTY_TARGET");
-      // Give the killed first-run lock holder a moment to drop its server
-      // session so the retry sees the advisory lock free (the drill's own
-      // teardown SIGKILLs the holder; the server releases asynchronously).
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      // The killed first-run lock holder's server session is dropped
+      // asynchronously, so poll pg_locks until no session holds the drill
+      // advisory lock on the target database before retrying (a fixed sleep
+      // is flaky: LOCK_FAILED here means the retry never even reaches the
+      // collision check this test exists to exercise).
+      const lockFree = async (): Promise<boolean> => {
+        const res = await admin.query(
+          `SELECT 1 FROM pg_locks l JOIN pg_database d ON d.oid = l.database
+           WHERE l.locktype = 'advisory' AND d.datname = $1`,
+          [targetDb],
+        );
+        return res.rowCount === 0;
+      };
+      for (let i = 0; i < 60 && !(await lockFree()); i++) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
       const second = runDrill();
       expect(second.status).not.toBe(0);
       expect(second.stderr).toContain("REFUSED_NONEMPTY_TARGET");
