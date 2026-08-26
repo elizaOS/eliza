@@ -12,15 +12,21 @@ import {
   ANDROID_CLOUD_STRIPPED_PERMISSIONS,
   ANDROID_CLOUD_STRIPPED_RESOURCE_FILES,
   ANDROID_CLOUD_STRIPPED_RESOURCE_VALUES,
+  ANDROID_PLAY_ALLOWED_CAPACITOR_CONFIG_PLUGINS,
+  ANDROID_PLAY_ALLOWED_COMPONENTS,
   ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES,
   ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES,
   ANDROID_PLAY_ALLOWED_PERMISSIONS,
+  ANDROID_PLAY_DATA_EXTRACTION_RULES,
   androidPlayManifestEvidenceFromAapt,
+  applyAndroidCloudSplashTheme,
   applyAndroidGeneratedBuildTargetProperties,
+  applyAndroidPlayManifestHardening,
   createAndroidPlayManifestPolicy,
   findAndroidCloudPackagedRuntimeOffenders,
   findAndroidPlayIndexHtmlFindings,
   findAndroidPlayTextAssetFindings,
+  sanitizeAndroidCloudCapacitorConfig,
 } from "./run-mobile-build.mjs";
 
 const VARIABLES_GRADLE = fs.readFileSync(
@@ -62,6 +68,142 @@ const AAPT_MANIFEST = `
 `;
 
 describe("Android Play manifest policy", () => {
+  it("generates a Cloud-only transparent white system splash theme", () => {
+    const base = `<resources>
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
+    </style>
+</resources>`;
+    const cloud = applyAndroidCloudSplashTheme(base, { cloudBuild: true });
+
+    expect(cloud).toContain(
+      '<item name="windowSplashScreenAnimatedIcon">@drawable/eliza_cloud_splash_mark</item>',
+    );
+    expect(cloud).toContain(
+      '<item name="windowSplashScreenBackground">@color/splash_background</item>',
+    );
+    expect(applyAndroidCloudSplashTheme(cloud, { cloudBuild: true })).toBe(
+      cloud,
+    );
+    const nonCloud = base.replace(
+      '<item name="postSplashScreenTheme">',
+      '<item name="windowSplashScreenAnimatedIcon">@drawable/custom_splash</item>\n        <item name="postSplashScreenTheme">',
+    );
+    expect(applyAndroidCloudSplashTheme(nonCloud, { cloudBuild: false })).toBe(
+      nonCloud,
+    );
+
+    const transparentWhiteMark = fs.readFileSync(
+      new URL(
+        "../../app/public/brand/logos/logo_white_nobg.svg",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    expect(transparentWhiteMark).toContain('fill="none"');
+    expect(transparentWhiteMark).toContain('fill="white"');
+    expect(transparentWhiteMark).not.toMatch(/#FF5800/i);
+    expect(transparentWhiteMark).not.toMatch(/<rect[^>]+fill=["']#FF5800["']/i);
+  });
+
+  it("places permissions before the application and disables all backup transfer", () => {
+    const hardened = applyAndroidPlayManifestHardening(`<manifest>
+    <queries />
+    <application android:allowBackup="false"></application>
+    <uses-permission android:name="android.permission.INTERNET" />
+</manifest>`);
+
+    expect(hardened.indexOf("<uses-permission")).toBeLessThan(
+      hardened.indexOf("<queries"),
+    );
+    expect(hardened.indexOf("<uses-permission")).toBeLessThan(
+      hardened.indexOf("<application"),
+    );
+    expect(hardened).toContain(
+      'android:dataExtractionRules="@xml/data_extraction_rules"',
+    );
+    expect(hardened).toContain('android:fullBackupContent="false"');
+    expect(ANDROID_PLAY_DATA_EXTRACTION_RULES).toContain(
+      '<exclude domain="sharedpref" path="." />',
+    );
+    expect(ANDROID_PLAY_DATA_EXTRACTION_RULES).toContain("<device-transfer>");
+  });
+
+  it("packages only the restricted Play-safe Capacitor runtime config", () => {
+    const sanitized = sanitizeAndroidCloudCapacitorConfig({
+      appId: "ai.elizaos.app",
+      appName: "Eliza",
+      webDir: "dist",
+      server: {
+        androidScheme: "http",
+        allowNavigation: ["localhost", "127.0.0.1", "*.elizacloud.ai"],
+      },
+      plugins: {
+        Agent: { apiBase: "http://127.0.0.1:31337" },
+        BackgroundRunner: { autoStart: true },
+        CapacitorHttp: { enabled: true },
+        Keyboard: { resize: "body" },
+        SplashScreen: { launchShowDuration: 0 },
+      },
+      android: {
+        includePlugins: ["@elizaos/capacitor-bun-runtime"],
+        backgroundColor: "#000000",
+        allowMixedContent: true,
+        captureInput: true,
+        webContentsDebuggingEnabled: true,
+      },
+      ios: { webContentsDebuggingEnabled: true },
+    });
+
+    expect(Object.keys(sanitized.plugins).sort()).toEqual(
+      [...ANDROID_PLAY_ALLOWED_CAPACITOR_CONFIG_PLUGINS].sort(),
+    );
+    expect(sanitized.server).toEqual({
+      androidScheme: "https",
+    });
+    expect(sanitized.server).not.toHaveProperty("allowNavigation");
+    expect(sanitized.android).toEqual({
+      backgroundColor: "#000000",
+      allowMixedContent: false,
+      captureInput: true,
+      webContentsDebuggingEnabled: false,
+    });
+    expect(JSON.stringify(sanitized)).not.toMatch(
+      /eliza\.app|localhost|127\.0\.0\.1|BackgroundRunner|bun-runtime|includePlugins/,
+    );
+    expect(sanitized).not.toHaveProperty("ios");
+    expect(sanitized).not.toHaveProperty("loggingBehavior");
+  });
+
+  it("preserves launcher-only logging suppression and opt-in WebView inspection", () => {
+    const sanitized = sanitizeAndroidCloudCapacitorConfig(
+      {
+        loggingBehavior: "debug",
+        android: { webContentsDebuggingEnabled: false },
+      },
+      { launcherKiosk: true, webViewDebugging: true },
+    );
+
+    expect(sanitized.loggingBehavior).toBe("none");
+    expect(sanitized.android.webContentsDebuggingEnabled).toBe(true);
+  });
+
+  it("keeps the unused native Google identity stack out of Android source", () => {
+    const androidSourceDir = new URL(
+      "../platforms/android/app/src/main/java/ai/elizaos/app/",
+      import.meta.url,
+    );
+
+    expect(APP_BUILD_GRADLE).not.toMatch(/androidx\.credentials|googleid/);
+    expect(
+      fs.readFileSync(new URL("MainActivity.java", androidSourceDir), "utf8"),
+    ).not.toContain("GoogleIdentityPlugin");
+    expect(
+      fs.existsSync(new URL("GoogleIdentityPlugin.java", androidSourceDir)),
+    ).toBe(false);
+  });
+
   it("stamps only generated Cloud projects for direct Gradle and IDE use", () => {
     const base = "org.gradle.jvmargs=-Xmx4g\nelizaCloudBuild=false\n";
     const cloud = applyAndroidGeneratedBuildTargetProperties(base, {
@@ -147,15 +289,48 @@ describe("Android Play manifest policy", () => {
       "BIND_NOTIFICATION_LISTENER_SERVICE",
       "CALL_PHONE",
       "CAMERA",
-      "POST_NOTIFICATIONS",
       "READ_SMS",
       "SYSTEM_ALERT_WINDOW",
     ]) {
       expect(ANDROID_CLOUD_STRIPPED_PERMISSIONS).toContain(permission);
     }
-    expect(ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES).toEqual([]);
+    expect(ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES).toEqual([
+      "lib/arm64-v8a/libdatastore_shared_counter.so",
+      "lib/armeabi-v7a/libdatastore_shared_counter.so",
+      "lib/x86/libdatastore_shared_counter.so",
+      "lib/x86_64/libdatastore_shared_counter.so",
+    ]);
     expect(ANDROID_PLAY_ALLOWED_PERMISSIONS).toContain(
       "android.permission.MODIFY_AUDIO_SETTINGS",
+    );
+    expect(ANDROID_PLAY_ALLOWED_PERMISSIONS).toEqual(
+      expect.arrayContaining([
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS",
+      ]),
+    );
+    expect(ANDROID_CLOUD_STRIPPED_PERMISSIONS).not.toEqual(
+      expect.arrayContaining([
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "POST_NOTIFICATIONS",
+      ]),
+    );
+    expect(ANDROID_CLOUD_STRIPPED_PERMISSIONS).toContain(
+      "ACCESS_BACKGROUND_LOCATION",
+    );
+    expect(ANDROID_PLAY_ALLOWED_PERMISSIONS).not.toContain(
+      "android.permission.USE_BIOMETRIC",
+    );
+    expect(ANDROID_PLAY_ALLOWED_PERMISSIONS).not.toContain(
+      "android.permission.USE_FINGERPRINT",
+    );
+    expect(ANDROID_PLAY_ALLOWED_COMPONENTS).not.toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("androidx.credentials"),
+        expect.stringContaining("com.google.android.gms"),
+      ]),
     );
     expect(ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES).toEqual([
       "agent",
@@ -170,20 +345,19 @@ describe("Android Play manifest policy", () => {
     expect(ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES).toEqual([
       "@capacitor/app",
       "@capacitor/browser",
-      "@capacitor/device",
-      "@capacitor/filesystem",
       "@capacitor/keyboard",
+      "@capacitor/local-notifications",
       "@capacitor/network",
       "@capacitor/preferences",
-      "@capacitor/share",
+      "@capacitor/push-notifications",
       "@capacitor/status-bar",
       "@elizaos/capacitor-browser-surface",
+      "@elizaos/capacitor-location",
       "@elizaos/capacitor-secure-store",
     ]);
     expect(ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS.map(([pkg]) => pkg)).toEqual(
       expect.arrayContaining([
         "@capacitor/background-runner",
-        "@capacitor/push-notifications",
         "@elizaos/capacitor-bun-runtime",
         "@elizaos/capacitor-mobile-signals",
         "@elizaos/capacitor-screencapture",
@@ -231,13 +405,30 @@ describe("Android Play manifest policy", () => {
     );
   });
 
-  it("rejects local routing and credential material in packaged text assets", () => {
+  it("rejects active development routing and credential material in packaged text assets", () => {
     expect(
       findAndroidPlayTextAssetFindings(
         ["base/assets/public/app.js"],
-        [Buffer.from("http://127.0.0.1:31337")],
+        [Buffer.from("connect to 10.0.2.2 through adb reverse")],
       ),
-    ).toEqual(["base/assets/public/app.js: local routing marker 31337"]);
+    ).toEqual([
+      "base/assets/public/app.js: local routing marker 10.0.2.2",
+      "base/assets/public/app.js: local routing marker adb reverse",
+    ]);
+    expect(
+      findAndroidPlayTextAssetFindings(
+        ["assets/public/sw-registration.js"],
+        [Buffer.from('navigator.serviceWorker.register("/sw.js")')],
+      ),
+    ).toEqual([
+      "assets/public/sw-registration.js: local routing marker navigator.serviceWorker",
+    ]);
+    expect(
+      findAndroidPlayTextAssetFindings(
+        ["assets/public/app.js"],
+        [Buffer.from("Dormant cross-platform labels: 31337 remote-mac")],
+      ),
+    ).toEqual([]);
     expect(
       findAndroidPlayTextAssetFindings(
         ["assets/public/app.js"],

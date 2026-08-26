@@ -55,7 +55,7 @@ import {
   mergeStreamingText,
 } from "../utils/streaming-text";
 import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
-import { readCsrfTokenFromCookie } from "./auth/csrf-cookie";
+import { readCsrfTokenForUrl } from "./auth/csrf-cookie";
 import { CSRF_HEADER_NAME } from "./auth/sessions";
 import type {
   AccountConnectRequest,
@@ -1764,7 +1764,7 @@ export class ElizaClient {
       !hasCsrfHeader &&
       CSRF_REQUIRED_METHODS.has(method)
     ) {
-      const csrfToken = readCsrfTokenFromCookie();
+      const csrfToken = readCsrfTokenForUrl(requestUrl);
       if (csrfToken) headers[CSRF_HEADER_NAME] = csrfToken;
     }
     const correlation = headers[SHARED_TURN_CORRELATION_HEADER];

@@ -58,7 +58,9 @@ import {
 } from "../types/workspace-delta";
 import {
 	isModelProviderError,
+	isProviderContextOverflowError,
 	modelProviderErrorDetail,
+	PROVIDER_CONTEXT_OVERFLOW,
 } from "../utils/model-errors";
 import {
 	hasReasoningResidue,
@@ -695,6 +697,16 @@ async function runPlannerLoopIterations(
 					onUsage: observePlannerUsage,
 				});
 			} catch (err) {
+				// A context overflow is a terminal integrity boundary even after a
+				// successful action. Relaying the action-owned fallback would hide that
+				// the planner never saw the complete result and could not verify a final
+				// answer from it.
+				if (
+					err instanceof ElizaError &&
+					err.code === PROVIDER_CONTEXT_OVERFLOW
+				) {
+					throw err;
+				}
 				// error-policy:J4 the sole tool already committed; an expected model
 				// provider outage degrades to its vetted action-owned fallback without replay.
 				if (!synthesizingRequiredModelReply || !isModelProviderError(err)) {
@@ -2528,7 +2540,7 @@ function appendMissingJsonObjectClosers(text: string): string {
 	return `${text}${"}".repeat(depth)}`;
 }
 
-async function callPlanner(params: {
+async function dispatchPlannerModelCall(params: {
 	runtime: PlannerRuntime;
 	context: ContextObject;
 	trajectory: PlannerTrajectory;
@@ -2762,6 +2774,69 @@ async function callPlanner(params: {
 	});
 
 	return parsed;
+}
+
+/** Typed terminal error for an unrecoverable provider context overflow. */
+function providerContextOverflowFailure(
+	cause: unknown,
+	context: Record<string, unknown>,
+): ElizaError {
+	return new ElizaError(
+		"Planner model input exceeded the provider's context limit and could not " +
+			"be recovered losslessly.",
+		{
+			code: PROVIDER_CONTEXT_OVERFLOW,
+			cause,
+			context: {
+				...context,
+				...(modelProviderErrorDetail(cause) ?? {}),
+			},
+		},
+	);
+}
+
+/**
+ * Planner model call with the context-overflow boundary applied. A hard
+ * provider length rejection (live: Cerebras 400 "Please reduce the length of
+ * the messages or completion. Current length is 202427 while limit is
+ * 131072") TERMINATES the turn with the typed PROVIDER_CONTEXT_OVERFLOW
+ * ElizaError with every completed result and model-facing projection byte-
+ * intact. A nested ReadView is only a content locator; it neither proves the
+ * complete ActionResult can be reconstructed nor names an invocable resolver.
+ * Continuing from such a locator allowed the planner to skip retrieval and
+ * falsely FINISH after source data and action metadata had been removed. Until
+ * a whole-result recovery protocol can execute and verify a resolver before
+ * any completion path, overflow is terminal. The typed error lets the message
+ * boundary answer honestly ("that needed more context — want a smaller
+ * range?") instead of surfacing a raw provider 400 or falsifying history.
+ *
+ * COMPOSITION with the pre-emptive input budget (model-input-budget.ts +
+ * `ProviderResult.overflowText` in services/message.ts): that mechanism is
+ * estimation-driven and runs BEFORE dispatch — when the utf8-upper-bound
+ * estimate crosses the dispatch threshold, Stage-1 composition swaps provider
+ * blocks for their explicitly declared lossless `overflowText` retrieval
+ * forms, and `buildModelInputBudget` stamps diagnostics into providerOptions.
+ * It never rewrites tool results. This boundary is rejection-driven and runs
+ * AT dispatch: the provider's actual length rejection is ground truth for
+ * what the estimator missed (tool results land after provider composition and
+ * estimation is heuristic). It preserves every projection and terminates the
+ * turn with a typed error. Ordered stages: the estimator lowers the odds of
+ * hitting this boundary; this boundary is the integrity-preserving backstop.
+ */
+async function callPlanner(
+	params: Parameters<typeof dispatchPlannerModelCall>[0],
+): ReturnType<typeof dispatchPlannerModelCall> {
+	try {
+		return await dispatchPlannerModelCall(params);
+	} catch (error) {
+		// error-policy:J2 only a structurally classified provider length rejection
+		// is translated; every other failure propagates intact.
+		if (!isProviderContextOverflowError(error)) throw error;
+		throw providerContextOverflowFailure(error, {
+			iteration: params.iteration,
+			recovery: "typed_boundary_terminal",
+		});
+	}
 }
 
 /** Record a gated evaluator outcome without making another model call. */

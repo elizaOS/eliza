@@ -677,12 +677,39 @@ export interface CameraPluginLike extends NativePlugin {
 
 export interface LocationPermissionStatus {
   location: "granted" | "denied" | "prompt";
+  accuracy?: "precise" | "approximate" | "none";
   background?: "granted" | "denied" | "prompt";
+}
+
+export interface LocationResult {
+  coords: {
+    latitude: number;
+    longitude: number;
+    altitude?: number;
+    accuracy: number;
+    altitudeAccuracy?: number;
+    speed?: number;
+    heading?: number;
+    timestamp: number;
+  };
+  cached: boolean;
 }
 
 export interface LocationPluginLike extends NativePlugin {
   checkPermissions?: () => Promise<LocationPermissionStatus>;
   requestPermissions?: () => Promise<LocationPermissionStatus>;
+  getCurrentPosition?: (options?: {
+    accuracy?: "best" | "high" | "medium" | "low" | "passive";
+    maxAge?: number;
+    timeout?: number;
+  }) => Promise<LocationResult>;
+}
+
+export interface PlaySettingsPluginLike extends NativePlugin {
+  openAppSettings?: () => Promise<void>;
+  openPermissionSettings?: (options: {
+    permission: "notifications" | "location" | "app";
+  }) => Promise<void>;
 }
 
 export interface ScreenCapturePermissionStatus {
@@ -1067,7 +1094,11 @@ export function getCameraPlugin(): CameraPluginLike {
 }
 
 export function getLocationPlugin(): LocationPluginLike {
-  return getNativePlugin<LocationPluginLike>("Location");
+  return getNativePlugin<LocationPluginLike>("ElizaLocation");
+}
+
+export function getPlaySettingsPlugin(): PlaySettingsPluginLike {
+  return getNativePlugin<PlaySettingsPluginLike>("ElizaPlaySettings");
 }
 
 export function getScreenCapturePlugin(): ScreenCapturePluginLike {

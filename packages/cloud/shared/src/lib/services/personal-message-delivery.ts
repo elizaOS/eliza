@@ -52,7 +52,11 @@ export async function deliverPersonalTextMessage(params: {
     userId: account.user.id,
     organizationId: account.organization.id,
   });
-  const dedicated = await findActivePersonalDedicatedTarget(account.organization.id, agent.id);
+  const dedicated = await findActivePersonalDedicatedTarget(
+    account.organization.id,
+    account.user.id,
+    agent.id,
+  );
   if (dedicated) {
     const preparation = await preparePersonalDedicatedDelivery(
       dedicated,

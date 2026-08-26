@@ -18,7 +18,7 @@ import java.util.concurrent.ConcurrentHashMap
  * ElizaLocation Capacitor Plugin
  *
  * Provides location services using Google Play Services FusedLocationProviderClient.
- * Supports one-shot position, continuous watching, maxAge caching, and background location.
+ * Supports foreground one-shot position, continuous watching, and maxAge caching.
  */
 @CapacitorPlugin(
     name = "ElizaLocation",
@@ -26,9 +26,6 @@ import java.util.concurrent.ConcurrentHashMap
         Permission(alias = "location", strings = [
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION
-        ]),
-        Permission(alias = "background", strings = [
-            Manifest.permission.ACCESS_BACKGROUND_LOCATION
         ])
     ]
 )
@@ -36,8 +33,7 @@ class LocationPlugin : Plugin() {
 
     private var fusedLocationClient: FusedLocationProviderClient? = null
     private val watches = ConcurrentHashMap<String, LocationCallback>()
-    private var pendingCall: PluginCall? = null
-    private var pendingAction: String? = null
+    private val pendingActions = ConcurrentHashMap<String, String>()
 
     // Cache the last known location for maxAge support
     private var lastKnownLocation: Location? = null
@@ -57,9 +53,8 @@ class LocationPlugin : Plugin() {
     @PluginMethod
     fun getCurrentPosition(call: PluginCall) {
         if (!hasRequiredPermissions()) {
-            pendingCall = call
-            pendingAction = "getCurrentPosition"
-            requestAllPermissions(call, "handlePermissionResult")
+            pendingActions[call.callbackId] = "getCurrentPosition"
+            requestPermissionForAlias("location", call, "handlePermissionResult")
             return
         }
         getCurrentPositionInternal(call)
@@ -131,9 +126,8 @@ class LocationPlugin : Plugin() {
     @PluginMethod
     fun watchPosition(call: PluginCall) {
         if (!hasRequiredPermissions()) {
-            pendingCall = call
-            pendingAction = "watchPosition"
-            requestAllPermissions(call, "handlePermissionResult")
+            pendingActions[call.callbackId] = "watchPosition"
+            requestPermissionForAlias("location", call, "handlePermissionResult")
             return
         }
         watchPositionInternal(call)
@@ -216,58 +210,67 @@ class LocationPlugin : Plugin() {
             call.resolve(buildPermissionResult())
             return
         }
-        pendingAction = "requestPermissions"
-        requestAllPermissions(call, "handlePermissionResult")
+        pendingActions[call.callbackId] = "requestPermissions"
+        requestPermissionForAlias("location", call, "handlePermissionResult")
     }
 
     @PermissionCallback
     private fun handlePermissionResult(call: PluginCall) {
+        val pendingAction = pendingActions.remove(call.callbackId)
         if (hasRequiredPermissions()) {
             when (pendingAction) {
                 "getCurrentPosition" -> {
-                    pendingAction = null
-                    pendingCall = null
                     getCurrentPositionInternal(call)
                 }
                 "watchPosition" -> {
-                    pendingAction = null
-                    pendingCall = null
                     watchPositionInternal(call)
                 }
                 else -> {
-                    pendingAction = null
-                    pendingCall = null
                     call.resolve(buildPermissionResult())
                 }
             }
         } else {
-            pendingAction = null
-            pendingCall = null
             notifyListeners("error", buildErrorEvent("PERMISSION_DENIED", "Location permission denied"))
-            call.reject("Location permission denied")
+            if (pendingAction == "requestPermissions") {
+                call.resolve(buildPermissionResult())
+            } else {
+                call.reject("Location permission denied")
+            }
         }
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────
 
     override fun hasRequiredPermissions(): Boolean {
-        return getPermissionState("location") == com.getcapacitor.PermissionState.GRANTED
+        // Android's approximate-location choice grants COARSE while denying
+        // FINE. Either grant is sufficient for every foreground read path.
+        return reader.hasForegroundPermission()
     }
 
     /** Map accuracy string from JS to Play Services Priority constant. */
     private fun mapAccuracyToPriority(accuracy: String): Int = reader.mapAccuracyToPriority(accuracy)
 
     private fun buildPermissionResult(): JSObject {
-        val locationState = getPermissionState("location")
-        val locationStatus = when (locationState) {
-            com.getcapacitor.PermissionState.GRANTED -> "granted"
-            com.getcapacitor.PermissionState.DENIED -> "denied"
-            else -> "prompt"
+        val locationStatus = if (reader.hasForegroundPermission()) {
+            "granted"
+        } else {
+            when (getPermissionState("location")) {
+                com.getcapacitor.PermissionState.DENIED -> "denied"
+                else -> "prompt"
+            }
+        }
+        val accuracy = when {
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION,
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED -> "precise"
+            reader.hasForegroundPermission() -> "approximate"
+            else -> "none"
         }
 
         return JSObject().apply {
             put("location", locationStatus)
-            put("background", reader.readBackgroundPermissionStatus(locationStatus))
+            put("accuracy", accuracy)
         }
     }
 
