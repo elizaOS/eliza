@@ -1091,9 +1091,9 @@ test("VIEWER + LIVE MEETING + KNOWLEDGE: every transcript surface action works",
   });
 
   // KNOWLEDGE: the mirrored document renders the recorded transcript inline.
-  // The knowledge surface (DocumentsView) lives under the Character tab at
+  // The knowledge surface (KnowledgeDocumentsView) lives under the Character tab at
   // /character/documents (the /apps/documents path collides with a decomposed
-  // PA view), rendered inside the CharacterEditor as <DocumentsView inModal />.
+  // PA view), rendered inside the CharacterEditor as <KnowledgeDocumentsView inModal />.
   await openAppPath(page, "/character/documents");
   await expect(page.getByTestId("documents-view")).toBeVisible({
     timeout: 60_000,
