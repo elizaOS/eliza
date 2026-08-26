@@ -40,6 +40,7 @@ const getModelsConfig = vi.hoisted(() =>
     },
   })),
 );
+const bootstrapState = vi.hoisted(() => ({ routingConfigResolved: true }));
 
 vi.mock("../../hooks/useDefaultProviderPresets", () => ({
   useDefaultProviderPresets: vi.fn(),
@@ -99,6 +100,7 @@ vi.mock("./useCloudModelConfig", () => ({
 }));
 vi.mock("./useProviderBootstrap", () => ({
   useProviderBootstrap: () => ({
+    routingConfigResolved: bootstrapState.routingConfigResolved,
     subscriptionStatus: {},
     anthropicCliDetected: false,
   }),
@@ -207,6 +209,7 @@ describe("ProviderSwitcher", () => {
     vi.clearAllMocks();
     selection.visibleProviderPanelId = "__local__";
     selection.cloudRuntimeLocked = false;
+    bootstrapState.routingConfigResolved = true;
   });
 
   it("states both serving axes above the intelligence tiles", async () => {
@@ -244,6 +247,18 @@ describe("ProviderSwitcher", () => {
     expect(selection.handleProviderPanelSelect).toHaveBeenCalledWith(
       "__cloud__",
     );
+  });
+
+  it("withholds provider detail panels until saved routing is resolved", async () => {
+    bootstrapState.routingConfigResolved = false;
+    render(<ProviderSwitcher />);
+    expect(screen.queryByRole("button", { name: "local panel" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Local" })).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByTestId("serving-inference-value").textContent).toBe(
+        "This device",
+      );
+    });
   });
 
   it("renders the cloud panel and activates cloud routing", async () => {
