@@ -29,15 +29,6 @@
       "matchCount": 1
     },
     {
-      "file": "packages/ui/src/components/pages/RelationshipsGraphPanel.tsx",
-      "symbol": "GraphZoomButton",
-      "primitive": "Button",
-      "role": "action",
-      "owner": "UI relationships graph",
-      "reason": "Owns the graph-specific tabular zoom percentage toggle geometry.",
-      "matchCount": 1
-    },
-    {
       "file": "packages/ui/src/components/shared/CollapsibleSidebarSection.tsx",
       "symbol": "CollapsibleSidebarSection",
       "primitive": "Button",
