@@ -13,10 +13,41 @@ import appViteConfig, {
   findAndroidCloudEmittedRoutingFindings,
   resolveAndroidCloudPrebootLockupDataUri,
   resolveAppShellLocalCspSources,
+  resolveLocalRealtimeVoiceDefines,
   selectAndroidCloudRendererEntry,
   stripAndroidCloudIpcBootstrap,
   stripAndroidCloudPublicAssetReferences,
 } from "./vite.config";
+
+describe("local realtime voice defaults", () => {
+  test("enables the realtime client and local force path when the dev gateway is configured", () => {
+    expect(resolveLocalRealtimeVoiceDefines("serve", 31_338, {})).toEqual({
+      "import.meta.env.VITE_VOICE_REALTIME_FORCE": JSON.stringify("1"),
+      "import.meta.env.VITE_VOICE_REALTIME_WS": JSON.stringify("1"),
+    });
+  });
+
+  test("preserves explicit client flag values", () => {
+    expect(
+      resolveLocalRealtimeVoiceDefines("serve", 31_338, {
+        VITE_VOICE_REALTIME_WS: "0",
+        VITE_VOICE_REALTIME_FORCE: "false",
+      }),
+    ).toEqual({});
+    expect(
+      resolveLocalRealtimeVoiceDefines("serve", 31_338, {
+        VITE_VOICE_REALTIME_WS: "1",
+      }),
+    ).toEqual({
+      "import.meta.env.VITE_VOICE_REALTIME_FORCE": JSON.stringify("1"),
+    });
+  });
+
+  test("does not change builds or dev servers without a gateway", () => {
+    expect(resolveLocalRealtimeVoiceDefines("build", 31_338, {})).toEqual({});
+    expect(resolveLocalRealtimeVoiceDefines("serve", null, {})).toEqual({});
+  });
+});
 
 describe("appDevWsBasePlugin", () => {
   test("injects same-origin ws/wss bases without a machine-local address", () => {

@@ -59,8 +59,6 @@ CARTESIA_API_KEY=… \
 ELIZA_LOCAL_VOICE_GATEWAY_PORT=31338 \
 bun run --cwd packages/cloud/api voice:local-gateway
 
-VITE_VOICE_REALTIME_WS=1 \
-VITE_VOICE_REALTIME_FORCE=1 \
 ELIZA_LOCAL_VOICE_GATEWAY_PORT=31338 \
 bun run --cwd packages/app dev
 ```
@@ -69,7 +67,10 @@ Vite sends only `/api/v1/voice/session` HTTP and WebSocket traffic to the
 loopback gateway; all other `/api` traffic remains on `31337`. The provider
 loop is Cartesia Ink 2 STT → local runtime/model route → Cartesia Sonic 3.5 TTS.
 The Cartesia key remains in the gateway process and is never exposed to Vite or
-the browser.
+the browser. In dev-server mode, configuring `ELIZA_LOCAL_VOICE_GATEWAY_PORT`
+also defaults the staged realtime client and local force flags on. Explicit
+`VITE_VOICE_REALTIME_WS` or `VITE_VOICE_REALTIME_FORCE` values still win, and
+production/mobile builds keep their existing staged defaults.
 
 ## Flag retirement
 

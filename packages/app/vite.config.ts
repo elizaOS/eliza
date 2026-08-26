@@ -1719,6 +1719,30 @@ function resolveOptionalLocalVoiceGatewayPort(
   return port;
 }
 
+/**
+ * A configured loopback voice gateway is an explicit local-development opt-in
+ * to the realtime voice stack. Keep deployed builds staged behind their
+ * existing flags, while making the supported local gateway command sufficient
+ * to exercise the same realtime UI without two easy-to-miss Vite flags.
+ * Explicit client flag values always win, including an explicit opt-out.
+ */
+export function resolveLocalRealtimeVoiceDefines(
+  command: string,
+  gatewayPort: number | null,
+  env: NodeJS.ProcessEnv,
+): Record<string, string> {
+  if (command !== "serve" || gatewayPort === null) return {};
+
+  const defines: Record<string, string> = {};
+  if (env.VITE_VOICE_REALTIME_WS === undefined) {
+    defines["import.meta.env.VITE_VOICE_REALTIME_WS"] = JSON.stringify("1");
+  }
+  if (env.VITE_VOICE_REALTIME_FORCE === undefined) {
+    defines["import.meta.env.VITE_VOICE_REALTIME_FORCE"] = JSON.stringify("1");
+  }
+  return defines;
+}
+
 export function appDevWsBasePlugin(): Plugin {
   const brandedWsBaseKey = `__${APP_ENV_PREFIX}_WS_BASE__`;
 
@@ -2410,6 +2434,11 @@ export default defineConfig(({ command }) => ({
     : path.resolve(here, "public"),
   define: {
     global: "globalThis",
+    ...resolveLocalRealtimeVoiceDefines(
+      command,
+      localVoiceGatewayPort,
+      process.env,
+    ),
     // Build variant — set at signing time by desktop-build.mjs and embedded
     // here so the renderer can branch on store vs direct without an API call.
     __ELIZA_BUILD_VARIANT__: JSON.stringify(
