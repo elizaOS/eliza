@@ -123,13 +123,15 @@ function toArrayBufferView(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
 /**
  * Decode a base64 credential, failing closed on malformed input.
  *
- * Surrounding ASCII whitespace is trimmed first — keys pasted from files
- * routinely carry a trailing newline — but any remaining character outside
- * the canonical base64 alphabet (including interior whitespace) throws
- * instead of being silently discarded by the lenient Buffer decoder: a
- * corrupted or mistyped signing secret must never decode to "some" bytes.
- * Unpadded final quanta are accepted (a legitimate spelling of the same
- * bytes); `=` padding anywhere but the tail still throws.
+ * Surrounding whitespace is trimmed first — keys pasted from files
+ * routinely carry a trailing newline — but any remaining character
+ * outside the canonical base64 alphabet (including interior whitespace)
+ * throws instead of being silently discarded by the lenient Buffer
+ * decoder: a corrupted or mistyped signing secret must never decode to
+ * "some" bytes. Unpadded final quanta are accepted (a legitimate
+ * spelling of the same bytes); a final quantum whose discarded slack
+ * bits are non-zero (e.g. `AAB=` where the canonical spelling is `AAA=`)
+ * and `=` padding anywhere but the tail also throw.
  */
 const CANONICAL_BASE64 =
   /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{2,3})?$/;
@@ -141,14 +143,27 @@ function decodeBase64Strict(input: string): Uint8Array {
       `Invalid base64: input contains characters outside the canonical base64 alphabet after trimming surrounding whitespace`,
     );
   }
-  if (typeof Buffer !== "undefined") {
-    const buf = Buffer.from(trimmed, "base64");
-    return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+  const bytes =
+    typeof Buffer !== "undefined"
+      ? new Uint8Array(Buffer.from(trimmed, "base64"))
+      : (() => {
+          const bin = atob(trimmed);
+          const out = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+          return out;
+        })();
+  // Reject non-zero slack bits: a final quantum like `AAB=` (canonical
+  // `AAA=`) decodes to the same bytes only because its low bits are
+  // discarded — a hand-mangled spelling, not an alternate encoding any
+  // standard tool emits. Re-encoding the decoded bytes must reproduce
+  // the input after restoring omitted padding.
+  const padded = trimmed.padEnd(Math.ceil(trimmed.length / 4) * 4, "=");
+  if (encodeBase64(bytes) !== padded) {
+    throw new Error(
+      `Invalid base64: non-canonical final quantum (discarded slack bits are non-zero)`,
+    );
   }
-  const bin = atob(trimmed);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
+  return bytes;
 }
 
 function encodeBase64(bytes: Uint8Array): string {
