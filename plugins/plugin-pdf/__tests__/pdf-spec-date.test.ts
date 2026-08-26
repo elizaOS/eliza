@@ -61,8 +61,16 @@ describe("parsePdfSpecDate years 0-99", () => {
     expect(new Date(10, 0, 1, 12, 0, 0).getFullYear()).toBe(1910);
   });
 
-  it("returns undefined for non-spec strings", () => {
+  it("parses whitespace-padded PDF date strings", () => {
+    const parsed = parsePdfSpecDate("  D:20240531120000Z\n\t");
+    expect(parsed?.toISOString()).toBe("2024-05-31T12:00:00.000Z");
+  });
+
+  it("returns undefined for non-spec strings and non-string inputs", () => {
     expect(parsePdfSpecDate("2024-01-01")).toBeUndefined();
     expect(parsePdfSpecDate("D:abcd")).toBeUndefined();
+    expect(parsePdfSpecDate("" as string)).toBeUndefined();
+    expect(parsePdfSpecDate(null as unknown as string)).toBeUndefined();
+    expect(parsePdfSpecDate(undefined as unknown as string)).toBeUndefined();
   });
 });
