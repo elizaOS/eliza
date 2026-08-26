@@ -1,3 +1,5 @@
+/** Resolves published AOSP model paths and voice bundle slugs from the shared catalog. */
+
 import {
   buildHuggingFaceResolveUrlForPath,
   ELIZA_1_TIER_IDS,
