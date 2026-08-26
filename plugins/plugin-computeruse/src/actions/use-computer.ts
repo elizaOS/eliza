@@ -191,6 +191,11 @@ async function deliverResult(
 
 export const useComputerAction: Action = {
   name: "COMPUTER_USE",
+  tags: [
+    "domain:computer-use",
+    "capability:desktop-control",
+    "effect:host-action",
+  ],
   contexts: [
     "chat",
     "browser",
