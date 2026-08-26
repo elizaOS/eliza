@@ -236,17 +236,21 @@ describe("desktop-session-prime", () => {
   it("skips the bridge and cookie jar after a successful prime", async () => {
     seedPersistedSession();
 
-    await primeDesktopSessionAuth(LOOPBACK_API, LOOPBACK_API);
-    await primeDesktopSessionAuth(LOOPBACK_API, LOOPBACK_API);
+    await expect(
+      primeDesktopSessionAuth(LOOPBACK_API, LOOPBACK_API),
+    ).resolves.toBe(true);
+    await expect(
+      primeDesktopSessionAuth(LOOPBACK_API, LOOPBACK_API),
+    ).resolves.toBe(true);
 
     expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledTimes(1);
     expect(electrobunState.defaultCookies).toHaveLength(2);
   });
 
   it("coalesces concurrent prime calls onto one socket proof", async () => {
-    let resolveSession:
-      | ((session: ReturnType<typeof seedPersistedSession>) => void)
-      | null = null;
+    let resolveSession!: (
+      session: ReturnType<typeof seedPersistedSession>,
+    ) => void;
     authBridgeState.loadOrCreateDesktopSession.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -258,7 +262,7 @@ describe("desktop-session-prime", () => {
     const second = primeDesktopSessionAuth(LOOPBACK_API, LOOPBACK_API);
 
     expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledTimes(1);
-    resolveSession?.({
+    resolveSession({
       sessionId: "coalesced-session",
       csrfToken: "coalesced-csrf",
       expiresAt: Date.now() + 86_400_000,
@@ -270,9 +274,9 @@ describe("desktop-session-prime", () => {
   });
 
   it("re-proves once when a generation turns stale during an in-flight prime", async () => {
-    let resolveFirst:
-      | ((session: ReturnType<typeof seedPersistedSession>) => void)
-      | null = null;
+    let resolveFirst!: (
+      session: ReturnType<typeof seedPersistedSession>,
+    ) => void;
     authBridgeState.loadOrCreateDesktopSession
       .mockImplementationOnce(
         () =>
@@ -292,7 +296,7 @@ describe("desktop-session-prime", () => {
       REBOUND_LOOPBACK_API,
       REBOUND_LOOPBACK_API,
     );
-    resolveFirst?.({
+    resolveFirst({
       sessionId: "stale-generation-session",
       csrfToken: "stale-generation-csrf",
       expiresAt: Date.now() + 86_400_000,
@@ -323,8 +327,12 @@ describe("desktop-session-prime", () => {
   it("leaves the jar empty and stays unprimed when the bridge produces no session", async () => {
     process.env.ELIZA_STATE_DIR = createStateDir();
 
-    await primeDesktopSessionAuth("https://agent.example.com", RENDERER_ORIGIN);
-    await primeDesktopSessionAuth("https://agent.example.com", RENDERER_ORIGIN);
+    await expect(
+      primeDesktopSessionAuth("https://agent.example.com", RENDERER_ORIGIN),
+    ).resolves.toBe(false);
+    await expect(
+      primeDesktopSessionAuth("https://agent.example.com", RENDERER_ORIGIN),
+    ).resolves.toBe(false);
 
     expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledTimes(2);
     expect(authBridgeState.loadOrCreateDesktopSession).toHaveBeenCalledWith({

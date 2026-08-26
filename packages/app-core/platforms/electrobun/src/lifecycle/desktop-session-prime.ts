@@ -153,8 +153,8 @@ async function drainDesktopSessionPrimes(
 export async function primeDesktopSessionAuth(
   apiBase: string,
   rendererOrigin: string,
-): Promise<void> {
-  if (desktopSessionPrimed) return;
+): Promise<boolean> {
+  if (desktopSessionPrimed) return true;
   const request = {
     apiBase,
     rendererOrigin,
@@ -171,4 +171,5 @@ export async function primeDesktopSessionAuth(
     );
   }
   await desktopSessionPrimeInFlight;
+  return desktopSessionPrimed;
 }
