@@ -169,6 +169,7 @@ import {
 	resolveElizaOwnerEntityId,
 } from "./identity";
 import { buildDiscordReplyPayload } from "./interactions";
+import { discordInstallationAccountUuid } from "./installation-adapter";
 import {
 	beginDiscordOutboundDelivery,
 	createDiscordMessageMemoryOnce,
@@ -851,6 +852,20 @@ export class DiscordService extends Service implements IDiscordService {
 				teamAdminDiscordUserIds: teamAdminIds,
 			},
 			"Resolved Discord privileged identities for owner mapping and connector admin access",
+		);
+	}
+
+	/**
+	 * Canonical installation lifecycle account id for the active client
+	 * (stable UUID per Discord account; default account keeps the historical
+	 * `discord-default-account` record key). Implements the facade seam
+	 * `setupDiscordEventListeners` consumes at the guildCreate/guildDelete
+	 * lifecycle reporting boundaries (#23107).
+	 */
+	public discordInstallationAccountId(): UUID {
+		return discordInstallationAccountUuid(
+			this.runtime,
+			this.accountId ?? DEFAULT_ACCOUNT_ID,
 		);
 	}
 

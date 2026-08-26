@@ -78,7 +78,10 @@ import {
 	isAliasedDiscordEntityId,
 } from "./identity";
 import { formatInboundEnvelope } from "./inbound-envelope";
-import { discordInstallationAllowsTraffic } from "./installation-adapter";
+import {
+	discordInstallationAccountUuid,
+	discordInstallationAllowsTraffic,
+} from "./installation-adapter";
 import { buildDiscordReplyPayload } from "./interactions";
 import {
 	appendCoalescedDiscordMetadata,
@@ -2281,13 +2284,22 @@ export class MessageManager {
 				// outbound traffic. Grandfathered scopes (no record / no service)
 				// flow; the record's presence opts the guild into the gate.
 				if (messageServerId) {
-					const allowsTraffic = discordInstallationAllowsTraffic(this.runtime, {
-						connectorAccountId: createUniqueUuid(
-							this.runtime,
-							"discord-default-account",
-						),
-						externalWorldId: messageServerId,
-					});
+					// Canonical lifecycle account scope (#23107): use THIS
+					// manager's connector account, not a hardcoded default —
+					// otherwise removing one configured bot account fences the
+					// still-connected account in the same guild. The default
+					// account resolves to the historical record key, so
+					// pre-existing records keep gating traffic.
+					const allowsTraffic = discordInstallationAllowsTraffic(
+						this.runtime,
+						{
+							connectorAccountId: discordInstallationAccountUuid(
+								this.runtime,
+								this.accountId,
+							),
+							externalWorldId: messageServerId,
+						},
+					);
 					if (!allowsTraffic) {
 						this.runtime.logger.warn(
 							{

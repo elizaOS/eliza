@@ -45,7 +45,7 @@ function makeService(service: InstallationLifecycleService | undefined) {
 		logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
 	};
 	return {
-		accountId: "test",
+		accountId: "default",
 		allowAllSlashCommands: new Set(),
 		allowedChannelIds: undefined,
 		buildMemoryFromMessage: vi.fn(),
@@ -104,7 +104,9 @@ describe("guildCreate installation lifecycle boundary", () => {
 		await new Promise((r) => setImmediate(r));
 		expect(svc.handleGuildCreate).not.toHaveBeenCalled();
 		// The listener resolves the account id the same way the production
-		// seam does (discordInstallationAccountId undefined in the harness).
+		// seam does: the harness facade omits discordInstallationAccountId, so
+		// the seam falls back to deriving from the facade's accountId field —
+		// "default" keeps the historical discord-default-account record key.
 		const resolvedAcct = createUniqueUuid(
 			svc.runtime as never,
 			"discord-default-account",

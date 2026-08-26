@@ -55,6 +55,17 @@ commits = [
   "82694fe2b91e9ca63635d5d74e0ab67401c0143e",
 ]
 
+# The first #23107 tranche introduced a synthetic DISCORD_APPLICATION_ID
+# snowflake ("123456789012345678") in the plugin-discord installation
+# contribution-init test fixture; the live lines are now annotated with
+# `gitleaks:allow synthetic snowflake`, but that first commit's diff still
+# carries the plain shape — allowlist that exact historical commit only.
+[[allowlists]]
+description = "historical synthetic DISCORD_APPLICATION_ID snowflake in installation-contribution-init fixture (#23107) — live lines since annotated"
+commits = [
+  "788fda97c549934aabb6086f852063c2c1c4f475",
+]
+
 # The inference-auth controlled-probe test uses a fixed discriminator with a
 # 32-character lowercase-hex suffix so the trusted bypass path is exercised
 # without accepting a production credential. Scope both the file and exact

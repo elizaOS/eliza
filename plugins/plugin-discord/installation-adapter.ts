@@ -29,6 +29,7 @@ import {
 	installationPermitsTraffic,
 	isInstallationLifecycleService,
 } from "@elizaos/core";
+import { DEFAULT_ACCOUNT_ID } from "./accounts";
 import { generateInviteUrl } from "./permissions";
 
 /**
@@ -155,6 +156,25 @@ function resolveService(
 ): InstallationLifecycleService | null {
 	const service = runtime.getService("installation");
 	return isInstallationLifecycleService(service) ? service : null;
+}
+
+/**
+ * Canonical lifecycle scope account UUID for a Discord connector account id.
+ * The default account keeps its historical key (`discord-default-account`)
+ * so records written before per-account scoping remain readable and the
+ * removal fence keeps firing for them; each named account gets its own
+ * stable `discord-account-<id>` scope so two configured bots joining the
+ * same guild produce two independent lifecycle records.
+ */
+export function discordInstallationAccountUuid(
+	runtime: IAgentRuntime,
+	accountId: string,
+): UUID {
+	const normalized = accountId.trim();
+	if (!normalized || normalized === DEFAULT_ACCOUNT_ID) {
+		return createUniqueUuid(runtime, "discord-default-account");
+	}
+	return createUniqueUuid(runtime, `discord-account-${normalized}`);
 }
 
 /**

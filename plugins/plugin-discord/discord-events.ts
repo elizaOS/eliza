@@ -22,10 +22,12 @@ import {
 	type Message,
 	type User,
 } from "discord.js";
+import { DEFAULT_ACCOUNT_ID } from "./accounts";
 import { isDiscordUserAddressed } from "./addressing";
 import { DISCORD_SERVICE_NAME } from "./constants";
 import { type ChannelDebouncer, createChannelDebouncer } from "./debouncer";
 import {
+	discordInstallationAccountUuid,
 	isInstallationLifecycleService,
 	reportDiscordGuildJoined,
 	reportDiscordGuildRemoved,
@@ -686,9 +688,16 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 			// observability-mode rule as the traffic gate).
 			const lifecycleService = service.runtime.getService?.("installation");
 			const joinedReport = await reportDiscordGuildJoined(service.runtime, {
+				// Canonical lifecycle account scope: the production facade's
+				// active accountId; legacy facades without the method fall back
+				// to the same derivation from their accountId field so the
+				// default account keeps its historical record key.
 				connectorAccountId:
 					service.discordInstallationAccountId?.() ??
-					createUniqueUuid(service.runtime, "discord-default-account"),
+					discordInstallationAccountUuid(
+						service.runtime,
+						service.accountId ?? DEFAULT_ACCOUNT_ID,
+					),
 				externalWorldId: guild.id,
 				guildName: guild.name,
 				worldId: createUniqueUuid(service.runtime, guild.id),
@@ -731,9 +740,13 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 	service.client.on("guildDelete", async (guild) => {
 		try {
 			await reportDiscordGuildRemoved(service.runtime, {
+				// Same canonical account scope as the guildCreate seam above.
 				connectorAccountId:
 					service.discordInstallationAccountId?.() ??
-					createUniqueUuid(service.runtime, "discord-default-account"),
+					discordInstallationAccountUuid(
+						service.runtime,
+						service.accountId ?? DEFAULT_ACCOUNT_ID,
+					),
 				externalWorldId: guild.id,
 			});
 		} catch (error) {
