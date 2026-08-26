@@ -87,6 +87,10 @@ describe("provider guards reject near-miss IDs", () => {
 
 describe("guards discriminate between provider vocabularies", () => {
   it("OAuth accepts only the two OAuth-capable subscription providers", () => {
+    expect([...OAUTH_SUBSCRIPTION_PROVIDER_IDS]).toEqual([
+      "anthropic-subscription",
+      "openai-codex",
+    ]);
     expect(isOAuthSubscriptionProvider("anthropic-subscription")).toBe(true);
     expect(isOAuthSubscriptionProvider("openai-codex")).toBe(true);
     // Subscription providers that authenticate by other means.
@@ -97,6 +101,10 @@ describe("guards discriminate between provider vocabularies", () => {
   });
 
   it("coding-plan-key accepts exactly the plan-key providers", () => {
+    expect([...CODING_PLAN_KEY_SUBSCRIPTION_PROVIDER_IDS]).toEqual([
+      "zai-coding",
+      "kimi-coding",
+    ]);
     expect(isCodingPlanKeySubscriptionProvider("zai-coding")).toBe(true);
     expect(isCodingPlanKeySubscriptionProvider("kimi-coding")).toBe(true);
     expect(isCodingPlanKeySubscriptionProvider("anthropic-subscription")).toBe(
@@ -106,12 +114,16 @@ describe("guards discriminate between provider vocabularies", () => {
   });
 
   it("external-cli accepts exactly gemini-cli", () => {
+    expect([...EXTERNAL_CLI_SUBSCRIPTION_PROVIDER_IDS]).toEqual(["gemini-cli"]);
     expect(isExternalCliSubscriptionProvider("gemini-cli")).toBe(true);
     expect(isExternalCliSubscriptionProvider("openai-codex")).toBe(false);
     expect(isExternalCliSubscriptionProvider("deepseek-coding")).toBe(false);
   });
 
   it("unavailable accepts exactly deepseek-coding", () => {
+    expect([...UNAVAILABLE_SUBSCRIPTION_PROVIDER_IDS]).toEqual([
+      "deepseek-coding",
+    ]);
     expect(isUnavailableSubscriptionProvider("deepseek-coding")).toBe(true);
     expect(isUnavailableSubscriptionProvider("zai-coding")).toBe(false);
     expect(isUnavailableSubscriptionProvider("anthropic-subscription")).toBe(
