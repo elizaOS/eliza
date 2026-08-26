@@ -107,6 +107,7 @@ describe("Shared group reminder delivery parsing", () => {
       isSharedGroupReminderDelivery({
         platform: "telegram",
         project: "eliza-app",
+        connectorAccountId: "bot:123456789",
         chatId: "123456",
       }),
     ).toBe(false);
@@ -231,14 +232,27 @@ describe("Shared group reminder delivery parsing", () => {
     ).toMatchObject({ ownerLabel: "the group owner" });
   });
 
-  it("still parses the existing private-chat destinations unchanged", () => {
+  it("requires the private Telegram connector account and preserves other private destinations", () => {
+    expect(
+      parseSharedReminderDelivery({
+        platform: "telegram",
+        project: "eliza-app",
+        connectorAccountId: "bot:123456789",
+        chatId: "123456",
+      }),
+    ).toEqual({
+      platform: "telegram",
+      project: "eliza-app",
+      connectorAccountId: "bot:123456789",
+      chatId: "123456",
+    });
     expect(
       parseSharedReminderDelivery({
         platform: "telegram",
         project: "eliza-app",
         chatId: "123456",
       }),
-    ).toEqual({ platform: "telegram", project: "eliza-app", chatId: "123456" });
+    ).toBeUndefined();
     expect(
       parseSharedReminderDelivery({
         platform: "blooio",
@@ -303,6 +317,7 @@ describe("Shared group reminder action", () => {
       sharedReminderMaxBodyLength({
         platform: "telegram",
         project: "eliza-app",
+        connectorAccountId: "bot:123456789",
         chatId: "123456",
       }),
     ).toBe(SHARED_REMINDER_MAX_TEXT_LENGTH);

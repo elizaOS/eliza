@@ -187,6 +187,7 @@ describe("Dedicated cutover group reminder relay", () => {
     await expect(requests[0]?.json()).resolves.toEqual({
       platform: "telegram",
       project: "eliza-app",
+      connectorAccountId: "telegram:test-bot",
       chatId: "-100123456789",
       providerThreadId: "909",
       text: "Reminder for this group from Nubs: pay the rent",

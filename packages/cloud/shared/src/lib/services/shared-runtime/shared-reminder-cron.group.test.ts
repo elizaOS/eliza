@@ -91,7 +91,8 @@ mock.module("@elizaos/plugin-scheduling/edge", () => ({
   parseSharedReminderDelivery(value: unknown) {
     if (!value || typeof value !== "object") return undefined;
     const delivery = value as Record<string, unknown>;
-    if (delivery.platform === "telegram") return delivery;
+    if (delivery.platform === "telegram" && typeof delivery.connectorAccountId === "string")
+      return delivery;
     if (delivery.platform === "blooio") return delivery;
     if (delivery.platform === "discord") return delivery;
     return undefined;
@@ -219,6 +220,7 @@ describe("Shared group reminder dispatch", () => {
     await expect(requests[0]?.json()).resolves.toEqual({
       platform: "telegram",
       project: "eliza-app",
+      connectorAccountId: "telegram:test-bot",
       chatId: "-100123456789",
       text: "Reminder for this group from Nubs: pay the rent",
       idempotencyKey: IDEMPOTENCY_KEY,
@@ -377,6 +379,7 @@ describe("Shared group reminder dispatch", () => {
     );
     expect(telegramDispatch).toHaveBeenCalledWith({
       project: "eliza-app",
+      connectorAccountId: "telegram:test-bot",
       chatId: "-100123456789",
       providerThreadId: "909",
       text: "Reminder for this group from Nubs: pay the rent",
@@ -422,6 +425,7 @@ describe("Shared group reminder dispatch", () => {
     await expect(requests[0]?.json()).resolves.toEqual({
       platform: "blooio",
       project: "eliza-app",
+      connectorAccountId: "blooio:test-number",
       chatId: "chat_group_123",
       text: "Reminder for this group from Nubs: pay the rent",
       idempotencyKey: IDEMPOTENCY_KEY,
@@ -571,6 +575,7 @@ describe("Shared group reminder dispatch", () => {
         delivery: {
           platform: "telegram",
           project: "eliza-app",
+          connectorAccountId: "bot:123456789",
           chatId: "123456789",
         },
       },

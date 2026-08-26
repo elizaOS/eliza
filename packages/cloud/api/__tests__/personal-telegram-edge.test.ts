@@ -159,6 +159,7 @@ async function run(
   runTurn: RunTurn,
   request = telegramRequest(),
   confirmIdentityLink?: TelegramEdgeDeps["confirmIdentityLink"],
+  botToken = "123:test-token",
 ): Promise<Response> {
   const app = new Hono<AppEnv>();
   app.use("*", async (c, next) => {
@@ -175,7 +176,7 @@ async function run(
   return app.fetch(
     request,
     {
-      ELIZA_APP_TELEGRAM_BOT_TOKEN: "123:test-token",
+      ELIZA_APP_TELEGRAM_BOT_TOKEN: botToken,
       ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
       ELIZA_APP_WEBHOOK_PROJECT: "eliza-app",
       PERSONAL_TELEGRAM_DELIVERIES: ledger.binding,
@@ -207,6 +208,7 @@ describe("Personal Shared Telegram edge", () => {
     } as AppEnv["Bindings"];
     const input = {
       project: "eliza-app",
+      connectorAccountId: "bot:123",
       chatId: "123456",
       text: "time to stretch",
       idempotencyKey: "reminder-1:2026-08-20T19:30:00.000Z",
@@ -242,6 +244,7 @@ describe("Personal Shared Telegram edge", () => {
     } as AppEnv["Bindings"];
     const input = {
       project: "eliza-app",
+      connectorAccountId: "bot:123",
       chatId: "-100123456789",
       providerThreadId: "909",
       text: "time to stretch",
@@ -277,6 +280,7 @@ describe("Personal Shared Telegram edge", () => {
       await expect(
         dispatchPersonalTelegramReminder(env, {
           project: "eliza-app",
+          connectorAccountId: "bot:123",
           chatId: "-100123456789",
           providerThreadId,
           text: "time to stretch",
@@ -290,6 +294,54 @@ describe("Personal Shared Telegram edge", () => {
     }
     expect(ledger.names).toHaveLength(0);
     expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  test("pins reminder delivery to its originating stable bot account", async () => {
+    const ledger = namespace();
+    let sends = 0;
+    globalThis.fetch = mock(async (input) => {
+      if (String(input).endsWith("/sendMessage")) sends += 1;
+      return Response.json({
+        ok: true,
+        result: { message_id: 9020 + sends },
+      });
+    }) as unknown as typeof fetch;
+    const env = (botToken: string) =>
+      ({
+        ELIZA_APP_TELEGRAM_BOT_TOKEN: botToken,
+        PERSONAL_TELEGRAM_DELIVERIES: ledger.binding,
+      }) as AppEnv["Bindings"];
+    const input = {
+      project: "eliza-app",
+      connectorAccountId: "bot:123",
+      chatId: "123456",
+      text: "time to stretch",
+      idempotencyKey: "reminder-rotation-1:2026-08-24T14:30:00.000Z",
+    };
+
+    const delivered = await dispatchPersonalTelegramReminder(
+      env("123:old-secret"),
+      input,
+    );
+    const rotatedDuplicate = await dispatchPersonalTelegramReminder(
+      env("123:rotated-secret"),
+      input,
+    );
+    const otherBot = await dispatchPersonalTelegramReminder(
+      env("456:other-secret"),
+      input,
+    );
+
+    expect(delivered).toMatchObject({ ok: true, providerMessageIds: ["9021"] });
+    expect(rotatedDuplicate).toEqual(delivered);
+    expect(otherBot).toMatchObject({
+      ok: false,
+      acceptance: "not_accepted",
+    });
+    expect(sends).toBe(1);
+    expect(new Set(ledger.names)).toEqual(
+      new Set(["telegram:eliza-app:personal-shared:bot:123:123456"]),
+    );
   });
 
   test("runs the canonical turn and Telegram egress once without a Railway hop", async () => {
@@ -324,6 +376,229 @@ describe("Personal Shared Telegram edge", () => {
       providerMethods.filter((method) => method === "sendMessage"),
     ).toHaveLength(1);
     expect(providerMethods).not.toContain("webhook");
+  });
+
+  test("retries only the rejected chunk for a multi-chunk reply containing newlines", async () => {
+    const ledger = namespace();
+    const firstChunk = `${"a".repeat(4094)}\n\n`;
+    const secondChunk = "retry tail";
+    const reply = `${firstChunk}${secondChunk}`;
+    const turn = mock(async () => Response.json({ data: { reply } }));
+    const sentTexts: string[] = [];
+    let rejectedTail = false;
+    globalThis.fetch = mock(async (input, init) => {
+      if (!String(input).endsWith("/sendMessage")) {
+        return Response.json({ ok: true, result: true });
+      }
+      const body = JSON.parse(String(init?.body ?? "{}")) as {
+        text?: string;
+      };
+      const text = body.text ?? "";
+      sentTexts.push(text);
+      if (text === secondChunk && !rejectedTail) {
+        rejectedTail = true;
+        return Response.json(
+          {
+            ok: false,
+            error_code: 400,
+            description: "Bad Request: chat not found",
+          },
+          { status: 400 },
+        );
+      }
+      return Response.json({
+        ok: true,
+        result: { message_id: 9100 + sentTexts.length },
+      });
+    }) as unknown as typeof fetch;
+
+    expect((await run(ledger, turn, telegramRequest(81613))).status).toBe(500);
+    expect((await run(ledger, turn, telegramRequest(81613))).status).toBe(200);
+
+    expect(turn).toHaveBeenCalledTimes(2);
+    expect(sentTexts).toEqual([firstChunk, secondChunk, secondChunk]);
+    expect(firstChunk).toHaveLength(4096);
+  });
+
+  test("deduplicates a rotated secret for the same bot in one Durable Object namespace", async () => {
+    const ledger = namespace();
+    const bodies: Record<string, unknown>[] = [];
+    let sends = 0;
+    const turn = mock(async (body: Record<string, unknown>) => {
+      bodies.push(body);
+      return Response.json({ data: { reply: "Account-scoped reply" } });
+    });
+    globalThis.fetch = mock(async (_input, init) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { text?: string };
+      if (body.text) sends += 1;
+      return Response.json({
+        ok: true,
+        result: body.text ? { message_id: 9011 } : true,
+      });
+    }) as unknown as typeof fetch;
+
+    expect(
+      (
+        await run(
+          ledger,
+          turn,
+          telegramRequest(81609),
+          undefined,
+          "123:old-secret",
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await run(
+          ledger,
+          turn,
+          telegramRequest(81609),
+          undefined,
+          "123:rotated-secret",
+        )
+      ).status,
+    ).toBe(200);
+
+    expect(turn).toHaveBeenCalledTimes(1);
+    expect(sends).toBe(1);
+    expect(bodies).toEqual([
+      expect.objectContaining({
+        connectorAccountId: "bot:123",
+        messageId: "telegram:eliza-app:bot:123:81609",
+      }),
+    ]);
+    expect(new Set(ledger.names)).toEqual(
+      new Set(["telegram:eliza-app:personal-shared:bot:123:123456"]),
+    );
+  });
+
+  test("isolates different bots with the same sender and Telegram update id", async () => {
+    const ledger = namespace();
+    const bodies: Record<string, unknown>[] = [];
+    let sends = 0;
+    const turn = mock(async (body: Record<string, unknown>) => {
+      bodies.push(body);
+      return Response.json({ data: { reply: "Account-scoped reply" } });
+    });
+    globalThis.fetch = mock(async (_input, init) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { text?: string };
+      if (body.text) sends += 1;
+      return Response.json({
+        ok: true,
+        result: body.text ? { message_id: 9013 + sends } : true,
+      });
+    }) as unknown as typeof fetch;
+
+    expect(
+      (
+        await run(
+          ledger,
+          turn,
+          telegramRequest(81610),
+          undefined,
+          "123:first-secret",
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await run(
+          ledger,
+          turn,
+          telegramRequest(81610),
+          undefined,
+          "456:second-secret",
+        )
+      ).status,
+    ).toBe(200);
+
+    expect(turn).toHaveBeenCalledTimes(2);
+    expect(sends).toBe(2);
+    expect(bodies).toEqual([
+      expect.objectContaining({
+        connectorAccountId: "bot:123",
+        messageId: "telegram:eliza-app:bot:123:81610",
+      }),
+      expect.objectContaining({
+        connectorAccountId: "bot:456",
+        messageId: "telegram:eliza-app:bot:456:81610",
+      }),
+    ]);
+    expect(new Set(ledger.names)).toEqual(
+      new Set([
+        "telegram:eliza-app:personal-shared:bot:123:123456",
+        "telegram:eliza-app:personal-shared:bot:456:123456",
+      ]),
+    );
+  });
+
+  test("does not import an ambiguous account-independent tombstone into epoch 2", async () => {
+    const ledger = namespace();
+    ledger.values.set("telegram:eliza-app:personal-shared:123456:81612", {
+      delivery: "delivered",
+    });
+    const turn = mock(async () =>
+      Response.json({ data: { reply: "Fresh bot reply" } }),
+    );
+    let sends = 0;
+    globalThis.fetch = mock(async (_input, init) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { text?: string };
+      if (body.text) sends += 1;
+      return Response.json({
+        ok: true,
+        result: body.text ? { message_id: 9015 } : true,
+      });
+    }) as unknown as typeof fetch;
+
+    expect(
+      (
+        await run(
+          ledger,
+          turn,
+          telegramRequest(81612),
+          undefined,
+          "456:new-bot-secret",
+        )
+      ).status,
+    ).toBe(200);
+    expect(turn).toHaveBeenCalledTimes(1);
+    expect(sends).toBe(1);
+    expect(new Set(ledger.names)).toEqual(
+      new Set(["telegram:eliza-app:personal-shared:bot:456:123456"]),
+    );
+  });
+
+  test("fingerprints an opaque Telegram credential without forwarding the token", async () => {
+    const botToken = "opaque-test-credential";
+    let deliveryBody: Record<string, unknown> | undefined;
+    const turn = mock(async (body: Record<string, unknown>) => {
+      deliveryBody = body;
+      return Response.json({ data: { reply: "Opaque account reply" } });
+    });
+    globalThis.fetch = mock(async (_input, init) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { text?: string };
+      return Response.json({
+        ok: true,
+        result: body.text ? { message_id: 9012 } : true,
+      });
+    }) as unknown as typeof fetch;
+
+    expect(
+      (
+        await run(
+          namespace(),
+          turn,
+          telegramRequest(81611),
+          undefined,
+          botToken,
+        )
+      ).status,
+    ).toBe(200);
+    expect(deliveryBody?.connectorAccountId).toBe(
+      "bot:d437b678c02873c49f7a3ffaaf947cc5ec289fb2676cd1a2063e84087750f9b4",
+    );
+    expect(JSON.stringify(deliveryBody)).not.toContain(botToken);
   });
 
   test("releases the processing claim after all pre-egress attempts fail", async () => {
@@ -454,7 +729,7 @@ describe("Personal Shared Telegram edge", () => {
     );
   });
 
-  test("serves the authenticated Railway ledger from a token-independent Durable Object", async () => {
+  test("keeps explicitly enabled epoch 1 reconciliation on its quarantined legacy namespace", async () => {
     const ledger = namespace();
     const app = new Hono<AppEnv>();
     app.route("/api/eliza-app/webhook/telegram", telegramRoute);
@@ -471,13 +746,15 @@ describe("Personal Shared Telegram edge", () => {
             project: "eliza-app",
             senderId: "123456",
             messageId: "81607",
-            operation: "prepare_plan",
-            chunkDigests: ["a".repeat(64)],
+            operation: "mark_uncertain",
           }),
         },
       );
     const env = {
       ELIZA_APP_WEBHOOK_GATEWAY_SECRET: "gateway-secret",
+      ELIZA_APP_WEBHOOK_PROJECT: "eliza-app",
+      ELIZA_APP_TELEGRAM_BOT_TOKEN: "123:test-token",
+      PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED: "true",
       PERSONAL_TELEGRAM_DELIVERIES: ledger.binding,
     } as AppEnv["Bindings"];
 
@@ -490,11 +767,215 @@ describe("Personal Shared Telegram edge", () => {
     expect(new Set(ledger.names)).toEqual(
       new Set(["telegram:eliza-app:personal-shared:123456"]),
     );
+    expect(
+      ledger.values.get("telegram:eliza-app:personal-shared:123456:81607")
+        ?.delivery,
+    ).toBe("uncertain");
     const unauthorized = request();
     unauthorized.headers.set("X-Eliza-Webhook-Forwarder-Secret", "wrong");
     expect(
       (await app.fetch(unauthorized, env, executionContext())).status,
     ).toBe(401);
+  });
+
+  test("rejects epoch 1 reconciliation unless the temporary compatibility gate is exact true", async () => {
+    const app = new Hono<AppEnv>();
+    app.route("/api/eliza-app/webhook/telegram", telegramRoute);
+    for (const legacyGate of [undefined, "false", "1", " true "]) {
+      const ledger = namespace();
+      const response = await app.fetch(
+        new Request(
+          "https://api-staging.eliza.app/api/eliza-app/webhook/telegram/delivery",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Eliza-Webhook-Forwarder-Secret": "gateway-secret",
+            },
+            body: JSON.stringify({
+              project: "eliza-app",
+              senderId: "123456",
+              messageId: "81607",
+              operation: "mark_uncertain",
+            }),
+          },
+        ),
+        {
+          ELIZA_APP_WEBHOOK_GATEWAY_SECRET: "gateway-secret",
+          ELIZA_APP_WEBHOOK_PROJECT: "eliza-app",
+          ELIZA_APP_TELEGRAM_BOT_TOKEN: "123:test-token",
+          ...(legacyGate === undefined
+            ? {}
+            : {
+                PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED: legacyGate,
+              }),
+          PERSONAL_TELEGRAM_DELIVERIES: ledger.binding,
+        } as AppEnv["Bindings"],
+        executionContext(),
+      );
+
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({
+        code: "LEGACY_DELIVERY_EPOCH_DISABLED",
+      });
+      expect(ledger.names).toHaveLength(0);
+    }
+  });
+
+  test("validates epoch 2 reconciliation and writes its account-scoped boundary", async () => {
+    const ledger = namespace();
+    const app = new Hono<AppEnv>();
+    app.route("/api/eliza-app/webhook/telegram", telegramRoute);
+    const request = (
+      connectorAccountId: string,
+      deliveryEpoch: number,
+      messageId = "81613",
+    ) =>
+      new Request(
+        "https://api-staging.eliza.app/api/eliza-app/webhook/telegram/delivery",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Eliza-Webhook-Forwarder-Secret": "gateway-secret",
+          },
+          body: JSON.stringify({
+            deliveryEpoch,
+            project: "eliza-app",
+            connectorAccountId,
+            senderId: "123456",
+            messageId,
+            operation: "mark_delivered",
+          }),
+        },
+      );
+    const env = {
+      ELIZA_APP_WEBHOOK_GATEWAY_SECRET: "gateway-secret",
+      ELIZA_APP_WEBHOOK_PROJECT: "eliza-app",
+      ELIZA_APP_TELEGRAM_BOT_TOKEN: "123:test-token",
+      PERSONAL_TELEGRAM_DELIVERIES: ledger.binding,
+    } as AppEnv["Bindings"];
+
+    expect(
+      (await app.fetch(request("bot:123", 2), env, executionContext())).status,
+    ).toBe(200);
+    expect(new Set(ledger.names)).toEqual(
+      new Set(["telegram:eliza-app:personal-shared:bot:123:123456"]),
+    );
+    expect(
+      ledger.values.get(
+        "telegram:eliza-app:personal-shared:bot:123:123456:telegram:eliza-app:bot:123:81613",
+      )?.delivery,
+    ).toBe("delivered");
+    const allocatedNames = ledger.names.length;
+    expect(
+      (await app.fetch(request("bot:456", 2), env, executionContext())).status,
+    ).toBe(403);
+    expect(ledger.names).toHaveLength(allocatedNames);
+
+    expect(
+      (
+        await app.fetch(
+          request("bot:123", 2, "x".repeat(160)),
+          env,
+          executionContext(),
+        )
+      ).status,
+    ).toBe(200);
+    const scopedName = "telegram:eliza-app:personal-shared:bot:123:123456";
+    const hashedKey = Array.from(ledger.values.keys()).find((key) =>
+      key.startsWith(`${scopedName}:telegram:v2:bot:123:`),
+    );
+    expect(hashedKey).toBeDefined();
+    expect(hashedKey?.slice(scopedName.length + 1).length).toBeLessThanOrEqual(
+      160,
+    );
+    const allocatedNamesAfterValidRequests = ledger.names.length;
+
+    expect(
+      (
+        await app.fetch(
+          request("bot:not-a-valid-account", 2),
+          env,
+          executionContext(),
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (await app.fetch(request("bot:456", 1), env, executionContext())).status,
+    ).toBe(400);
+    expect(ledger.names).toHaveLength(allocatedNamesAfterValidRequests);
+
+    const wrongProjectRequest = request("bot:123", 2);
+    const wrongProjectBody = (await wrongProjectRequest.json()) as Record<
+      string,
+      unknown
+    >;
+    const wrongProjectResponse = await app.fetch(
+      new Request(wrongProjectRequest.url, {
+        method: "POST",
+        headers: wrongProjectRequest.headers,
+        body: JSON.stringify({ ...wrongProjectBody, project: "other-project" }),
+      }),
+      env,
+      executionContext(),
+    );
+    expect(wrongProjectResponse.status).toBe(403);
+    expect(ledger.names).toHaveLength(allocatedNamesAfterValidRequests);
+
+    const unsupportedOperationRequest = request("bot:123", 2);
+    const unsupportedOperationBody =
+      (await unsupportedOperationRequest.json()) as Record<string, unknown>;
+    const unsupportedOperationResponse = await app.fetch(
+      new Request(unsupportedOperationRequest.url, {
+        method: "POST",
+        headers: unsupportedOperationRequest.headers,
+        body: JSON.stringify({
+          ...unsupportedOperationBody,
+          operation: "prepare_plan",
+          chunkDigests: ["a".repeat(64)],
+        }),
+      }),
+      env,
+      executionContext(),
+    );
+    expect(unsupportedOperationResponse.status).toBe(400);
+    expect(ledger.names).toHaveLength(allocatedNamesAfterValidRequests);
+  });
+
+  test("requires Worker-side Telegram scope configuration before delivery reconciliation", async () => {
+    const ledger = namespace();
+    const app = new Hono<AppEnv>();
+    app.route("/api/eliza-app/webhook/telegram", telegramRoute);
+    const response = await app.fetch(
+      new Request(
+        "https://api-staging.eliza.app/api/eliza-app/webhook/telegram/delivery",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Eliza-Webhook-Forwarder-Secret": "gateway-secret",
+          },
+          body: JSON.stringify({
+            deliveryEpoch: 2,
+            project: "eliza-app",
+            connectorAccountId: "bot:123",
+            senderId: "123456",
+            messageId: "81614",
+            operation: "mark_delivered",
+          }),
+        },
+      ),
+      {
+        ELIZA_APP_WEBHOOK_GATEWAY_SECRET: "gateway-secret",
+        ELIZA_APP_WEBHOOK_PROJECT: "eliza-app",
+        PERSONAL_TELEGRAM_DELIVERIES: ledger.binding,
+      } as AppEnv["Bindings"],
+      executionContext(),
+    );
+
+    expect(response.status).toBe(503);
+    expect(ledger.names).toHaveLength(0);
   });
 
   test("accepts the gateway edge handoff while public cutover is false and rechecks provider auth", async () => {
@@ -506,6 +987,7 @@ describe("Personal Shared Telegram edge", () => {
       inbound,
     );
     request.headers.set("X-Eliza-Webhook-Forwarder-Secret", "gateway-secret");
+    request.headers.set("X-Eliza-Connector-Account-Id", "bot:123");
     request.headers.set("X-Telegram-Bot-Api-Secret-Token", "wrong-provider");
 
     const response = await app.fetch(
@@ -520,5 +1002,69 @@ describe("Personal Shared Telegram edge", () => {
     );
 
     expect(response.status).toBe(401);
+  });
+
+  test("allows a headerless old gateway only while the exact legacy rollout gate is enabled", async () => {
+    const app = new Hono<AppEnv>();
+    app.route("/api/eliza-app/webhook/telegram", telegramRoute);
+    const request = new Request(
+      "https://api-staging.eliza.app/api/eliza-app/webhook/telegram/edge",
+      telegramRequest(81616),
+    );
+    request.headers.set("X-Eliza-Webhook-Forwarder-Secret", "gateway-secret");
+    request.headers.set("X-Telegram-Bot-Api-Secret-Token", "wrong-provider");
+
+    const response = await app.fetch(
+      request,
+      {
+        PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED: "true",
+        ELIZA_APP_WEBHOOK_GATEWAY_SECRET: "gateway-secret",
+        ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
+        ELIZA_APP_TELEGRAM_BOT_TOKEN: "123:test-token",
+      } as AppEnv["Bindings"],
+      executionContext(),
+    );
+
+    // The compatibility gate bypasses only the absent account header. Provider
+    // authentication remains mandatory and is rechecked by the Worker.
+    expect(response.status).toBe(401);
+  });
+
+  test("rejects a gateway edge handoff whose bot account is absent or mismatched before delivery state", async () => {
+    const app = new Hono<AppEnv>();
+    app.route("/api/eliza-app/webhook/telegram", telegramRoute);
+    for (const { accountId, legacyCompat } of [
+      { accountId: undefined, legacyCompat: undefined },
+      { accountId: "bot:not-valid", legacyCompat: undefined },
+      { accountId: "bot:456", legacyCompat: undefined },
+      { accountId: "bot:456", legacyCompat: "true" },
+    ]) {
+      const ledger = namespace();
+      const request = new Request(
+        "https://api-staging.eliza.app/api/eliza-app/webhook/telegram/edge",
+        telegramRequest(81615),
+      );
+      request.headers.set("X-Eliza-Webhook-Forwarder-Secret", "gateway-secret");
+      if (accountId) {
+        request.headers.set("X-Eliza-Connector-Account-Id", accountId);
+      }
+      const response = await app.fetch(
+        request,
+        {
+          PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED: legacyCompat,
+          ELIZA_APP_WEBHOOK_GATEWAY_SECRET: "gateway-secret",
+          ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
+          ELIZA_APP_TELEGRAM_BOT_TOKEN: "123:rotated-secret",
+          PERSONAL_TELEGRAM_DELIVERIES: ledger.binding,
+        } as AppEnv["Bindings"],
+        executionContext(),
+      );
+
+      expect(response.status).toBe(409);
+      expect(response.headers.get("X-Eliza-Failure-Stage")).toBe(
+        "connector_account",
+      );
+      expect(ledger.names).toHaveLength(0);
+    }
   });
 });

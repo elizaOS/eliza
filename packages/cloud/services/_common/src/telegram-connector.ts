@@ -6,6 +6,8 @@
 
 const TELEGRAM_API_BASE = "https://api.telegram.org";
 const MAX_MESSAGE_LENGTH = 4096;
+export const TELEGRAM_CONNECTOR_ACCOUNT_ID_HEADER =
+  "X-Eliza-Connector-Account-Id";
 export const TELEGRAM_HOSTED_FILE_MAX_BYTES = 20 * 1024 * 1024;
 export const TELEGRAM_VOICE_MAX_BYTES = 8 * 1024 * 1024;
 const TELEGRAM_API_TIMEOUT_MS = 10_000;
