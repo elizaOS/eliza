@@ -7,7 +7,16 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { androidArm64SimdCmakeFlags } from "./build-helpers/arm64-simd.mjs";
@@ -60,9 +69,7 @@ function resolveVulkanHostTooling(ndk) {
 
   const spirvHeadersDir =
     process.env.ELIZA_SPIRV_HEADERS_DIR ||
-    firstExisting([
-      "/tmp/spirv-headers-install/lib/cmake/SPIRV-Headers",
-    ]);
+    firstExisting(["/tmp/spirv-headers-install/lib/cmake/SPIRV-Headers"]);
   if (!spirvHeadersDir) {
     die(
       "SPIRV-Headers cmake dir not found (set ELIZA_SPIRV_HEADERS_DIR) — clone " +
@@ -340,12 +347,27 @@ for (const name of toStage) {
 // musl deps. For the Vulkan variant its backends are NEEDED siblings (resolved
 // in-process), not musl — but libvulkan resolves from the device at runtime.
 const readelf = ndkTool(ndk, "llvm-readelf");
+const nm = ndkTool(ndk, "llvm-nm");
 const engineSo = path.join(jniDir, "libelizainference.so");
-const dyn = execFileSync(readelf, ["--dyn-syms", engineSo], {
-  encoding: "utf8",
-});
-const symCount = (dyn.match(/eliza_inference_/g) || []).length;
-const needed = execFileSync(readelf, ["-d", engineSo], { encoding: "utf8" })
+const symCountFile = path.join(buildDir, "eliza-inference-symbol-count.txt");
+const dynamicFile = path.join(buildDir, "eliza-inference-dynamic.txt");
+function captureToolOutput(command, args, outputFile) {
+  log(`$ ${command} ${args.join(" ")} > ${outputFile}`);
+  const outputFd = openSync(outputFile, "w");
+  try {
+    execFileSync(command, args, {
+      stdio: ["ignore", outputFd, "inherit"],
+    });
+  } finally {
+    closeSync(outputFd);
+  }
+}
+captureToolOutput(nm, ["-D", "--defined-only", engineSo], symCountFile);
+captureToolOutput(readelf, ["-d", engineSo], dynamicFile);
+const symCount = (
+  readFileSync(symCountFile, "utf8").match(/eliza_inference_/g) || []
+).length;
+const needed = readFileSync(dynamicFile, "utf8")
   .split("\n")
   .filter((l) => l.includes("NEEDED"))
   .map((l) => (l.match(/\[([^\]]+)\]/) || [])[1])
