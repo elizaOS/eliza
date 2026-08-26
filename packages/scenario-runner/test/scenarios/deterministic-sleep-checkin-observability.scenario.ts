@@ -82,9 +82,7 @@ interface CapturedAssistantEvent {
 }
 
 interface AgentEventServiceLike {
-  subscribe: (
-    listener: (event: AgentEventEnvelope) => void,
-  ) => () => void;
+  subscribe: (listener: (event: AgentEventEnvelope) => void) => () => void;
 }
 
 interface RuntimeLike {
