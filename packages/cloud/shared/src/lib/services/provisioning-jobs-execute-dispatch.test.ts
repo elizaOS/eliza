@@ -1272,7 +1272,8 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
   });
 
   test("agent_provision transport receives the job payload's own agentId/orgId — the contract the single-flight enqueue writes (#15943)", async () => {
-    const ctx = harness(makeJob(JOB_TYPES.AGENT_PROVISION));
+    const restoreDirective = { kind: "fresh-boot" as const };
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_PROVISION, { restoreDirective }));
     const provisionSpy = spyOn(elizaSandboxService, "provision").mockResolvedValue({
       success: true,
       sandboxRecord: { id: AGENT, organization_id: ORG, user_id: USER, status: "running" },
@@ -1288,6 +1289,7 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
       expect(provisionSpy).toHaveBeenCalledTimes(1);
       expect(provisionSpy.mock.calls[0]?.[0]).toBe(AGENT);
       expect(provisionSpy.mock.calls[0]?.[1]).toBe(ORG);
+      expect(provisionSpy.mock.calls[0]?.[2]).toEqual(restoreDirective);
     } finally {
       ctx.claimSpy.mockRestore();
       ctx.recoverSpy.mockRestore();

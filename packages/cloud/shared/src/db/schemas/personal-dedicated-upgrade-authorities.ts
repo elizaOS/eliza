@@ -3,7 +3,6 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { check, integer, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
-import { agentSandboxes } from "./agent-sandboxes";
 import { organizations } from "./organizations";
 import { users } from "./users";
 
@@ -18,9 +17,10 @@ export const personalDedicatedUpgradeAuthorities = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     source_agent_id: text("source_agent_id").notNull(),
-    dedicated_agent_id: uuid("dedicated_agent_id")
-      .notNull()
-      .references(() => agentSandboxes.id, { onDelete: "cascade" }),
+    // Deliberately not an FK: the authority is an audit/fail-closed tombstone
+    // if the selected sandbox is later removed. Cascading this receipt would
+    // make an unrelated stale row eligible again after target deletion.
+    dedicated_agent_id: uuid("dedicated_agent_id").notNull(),
     schema_version: integer("schema_version").notNull().default(1),
     bound_at: timestamp("bound_at", { withTimezone: true }).notNull().defaultNow(),
     cutover_token: text("cutover_token"),

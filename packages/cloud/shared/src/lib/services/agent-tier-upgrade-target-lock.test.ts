@@ -25,6 +25,7 @@ import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import * as helpersActual from "../../db/helpers";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
+import { personalDedicatedAdoptionSelections } from "../../db/schemas/personal-dedicated-adoption-selections";
 import * as loggerActual from "../utils/logger";
 import * as apiKeysActual from "./api-keys";
 import * as managedConfigActual from "./managed-eliza-config";
@@ -103,6 +104,10 @@ function makeTx(txIndex: number) {
           if (state.table === agentSandboxes) {
             events.push({ tx: txIndex, kind: "select-sandbox-for-enqueue" });
             return insertedTarget ? [insertedTarget] : [];
+          }
+          if (state.table === personalDedicatedAdoptionSelections) {
+            events.push({ tx: txIndex, kind: "select-adoption-selection" });
+            return [];
           }
           events.push({ tx: txIndex, kind: "select-active-job" });
           return [];
@@ -236,6 +241,7 @@ describe("tier-upgrade single-flight span (#15943)", () => {
       "lock",
       "select-live-target",
       "select-quarantined-marker",
+      "select-adoption-selection",
       "select-quota-count",
     ]);
     // Global lock order: the ORG-WIDE agent-create lock is acquired FIRST
@@ -257,6 +263,7 @@ describe("tier-upgrade single-flight span (#15943)", () => {
       "lock",
       "select-live-target",
       "select-quarantined-marker",
+      "select-adoption-selection",
       "select-quota-count",
       "insert-target",
       "deadline",

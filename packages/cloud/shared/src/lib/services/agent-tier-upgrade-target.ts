@@ -41,14 +41,15 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { and, desc, eq, inArray, isNull, notExists, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, notExists, or, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { dbWrite } from "../../db/helpers";
 import type { AgentSandbox, AgentSandboxStatus } from "../../db/repositories/agent-sandboxes";
 import type { Job } from "../../db/repositories/jobs";
-import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
+import { agentSandboxBackups, agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { jobs } from "../../db/schemas/jobs";
 import { organizations } from "../../db/schemas/organizations";
+import { personalDedicatedAdoptionSelections } from "../../db/schemas/personal-dedicated-adoption-selections";
 import {
   type PersonalDedicatedUpgradeAuthority,
   personalDedicatedUpgradeAuthorities,
@@ -72,6 +73,15 @@ import {
 } from "./eliza-provision-lock";
 import { assertOrgAgentQuota, buildAgentSandboxInsertValues } from "./eliza-sandbox";
 import { prepareManagedElizaSharedEnvironment } from "./managed-eliza-config";
+import {
+  type PersonalDedicatedActivationAuthority,
+  type PersonalDedicatedBackupProvenance,
+  personalDedicatedActivationAuthority,
+  personalDedicatedActivationAuthorityFromReceipt,
+  personalDedicatedActivationAuthorityKey,
+  personalDedicatedInventoryFingerprint,
+  personalDedicatedStateDisposition,
+} from "./personal-dedicated-adoption-provenance";
 import { EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES, JOB_TYPES } from "./provisioning-job-types";
 import { provisioningJobService } from "./provisioning-jobs";
 
@@ -139,7 +149,7 @@ function agentConfigKeyAbsent(key: string) {
   return sql`NOT (COALESCE(${agentSandboxes.agent_config}, '{}'::jsonb) ? ${key})`;
 }
 
-function adoptableUnmarkedTargetWhere(organizationId: string, userId: string) {
+export function adoptableUnmarkedTargetWhere(organizationId: string, userId: string) {
   return and(
     eq(agentSandboxes.organization_id, organizationId),
     eq(agentSandboxes.user_id, userId),
@@ -159,6 +169,104 @@ function adoptableUnmarkedTargetWhere(organizationId: string, userId: string) {
         .from(personalDedicatedUpgradeAuthorities)
         .where(eq(personalDedicatedUpgradeAuthorities.dedicated_agent_id, agentSandboxes.id)),
     ),
+  );
+}
+
+function unselectedAdoptableTargetWhere(organizationId: string, userId: string) {
+  return and(
+    adoptableUnmarkedTargetWhere(organizationId, userId),
+    notExists(
+      dbWrite
+        .select({ id: personalDedicatedAdoptionSelections.id })
+        .from(personalDedicatedAdoptionSelections)
+        .where(eq(personalDedicatedAdoptionSelections.dedicated_agent_id, agentSandboxes.id)),
+    ),
+  );
+}
+
+function exactSelectionWhere(organizationId: string, userId: string, sourceAgentId: string) {
+  return and(
+    eq(personalDedicatedAdoptionSelections.organization_id, organizationId),
+    eq(personalDedicatedAdoptionSelections.user_id, userId),
+    eq(personalDedicatedAdoptionSelections.source_agent_id, sourceAgentId),
+    eq(personalDedicatedAdoptionSelections.schema_version, 1),
+    eq(personalDedicatedAdoptionSelections.dedicated_agent_id, agentSandboxes.id),
+  );
+}
+
+const adoptionBackupProjection = {
+  id: agentSandboxBackups.id,
+  sandboxRecordId: agentSandboxBackups.sandbox_record_id,
+  snapshotType: agentSandboxBackups.snapshot_type,
+  stateDataStorage: agentSandboxBackups.state_data_storage,
+  stateDataKey: agentSandboxBackups.state_data_key,
+  backupKind: agentSandboxBackups.backup_kind,
+  contentHash: agentSandboxBackups.content_hash,
+  verificationStatus: agentSandboxBackups.verification_status,
+  verifiedAt: agentSandboxBackups.verified_at,
+  catalogVersion: agentSandboxBackups.catalog_version,
+  catalogState: agentSandboxBackups.catalog_state,
+  catalogPayloadDigest: agentSandboxBackups.catalog_payload_digest,
+  catalogRevision: agentSandboxBackups.catalog_revision,
+  catalogOrganizationId: agentSandboxBackups.catalog_organization_id,
+  catalogAgentId: agentSandboxBackups.catalog_agent_id,
+  sourceProvider: agentSandboxBackups.source_provider,
+  sourceNodeRecordId: agentSandboxBackups.source_node_record_id,
+  sourceNodeId: agentSandboxBackups.source_node_id,
+  sourceProviderServerId: agentSandboxBackups.source_provider_server_id,
+  sourceProviderHandle: agentSandboxBackups.source_provider_handle,
+  sourceContainerId: agentSandboxBackups.source_container_id,
+  manifestVersion: agentSandboxBackups.manifest_version,
+  manifestDigest: agentSandboxBackups.manifest_digest,
+  objectInventoryDigest: agentSandboxBackups.object_inventory_digest,
+  imageDigest: agentSandboxBackups.image_digest,
+  databaseSchemaVersion: agentSandboxBackups.database_schema_version,
+  pluginSetDigest: agentSandboxBackups.plugin_set_digest,
+  watermarkDigest: agentSandboxBackups.watermark_digest,
+  restoreReceiptDigest: agentSandboxBackups.restore_receipt_digest,
+  catalogDeletedAt: agentSandboxBackups.catalog_deleted_at,
+  createdAt: agentSandboxBackups.created_at,
+};
+
+async function selectionReceiptMatchesInventory(params: {
+  organizationId: string;
+  userId: string;
+  sourceAgentId: string;
+  receipt: typeof personalDedicatedAdoptionSelections.$inferSelect;
+  candidates: AgentSandbox[];
+  backups: PersonalDedicatedBackupProvenance[];
+}): Promise<boolean> {
+  const currentActivationAuthority = personalDedicatedActivationAuthority(
+    params.organizationId,
+    params.receipt.dedicated_agent_id,
+    params.backups,
+  );
+  const receiptActivationAuthority = personalDedicatedActivationAuthorityFromReceipt(
+    params.receipt.activation_kind,
+    params.receipt.activation_backup_id,
+  );
+  if (
+    params.receipt.state_disposition !==
+      personalDedicatedStateDisposition(
+        params.organizationId,
+        params.receipt.dedicated_agent_id,
+        params.backups,
+      ) ||
+    personalDedicatedActivationAuthorityKey(currentActivationAuthority) !==
+      personalDedicatedActivationAuthorityKey(receiptActivationAuthority)
+  ) {
+    return false;
+  }
+  return (
+    params.receipt.inventory_fingerprint ===
+    (await personalDedicatedInventoryFingerprint({
+      organizationId: params.organizationId,
+      userId: params.userId,
+      sourceAgentId: params.sourceAgentId,
+      retainedAgentId: params.receipt.dedicated_agent_id,
+      candidates: params.candidates,
+      backups: params.backups,
+    }))
   );
 }
 
@@ -195,24 +303,96 @@ function unverifiedReservedMarkerWhere(organizationId: string, userId: string) {
 export type PersonalDedicatedAdoptionResolution =
   | { state: "unavailable" }
   | { state: "ambiguous" }
-  | { state: "available" | "adopted"; agent: AgentSandbox };
+  | {
+      state: "available" | "adopted";
+      agent: AgentSandbox;
+      selectionActivationAuthority?: PersonalDedicatedActivationAuthority;
+    };
 
 export class PersonalDedicatedAdoptionError extends ElizaError {
   override readonly name = "PersonalDedicatedAdoptionError";
 }
 
+export class PersonalDedicatedSelectionRequiredError extends ElizaError {
+  override readonly name = "PersonalDedicatedSelectionRequiredError";
+}
+
+async function assertNoPendingAdoptionSelectionInTx(
+  tx: DbTransaction,
+  params: Pick<CreateTierUpgradeTargetParams, "organizationId" | "userId" | "sourceAgentId">,
+): Promise<void> {
+  const [selection] = await tx
+    .select({ id: personalDedicatedAdoptionSelections.id })
+    .from(personalDedicatedAdoptionSelections)
+    .where(
+      and(
+        eq(personalDedicatedAdoptionSelections.organization_id, params.organizationId),
+        eq(personalDedicatedAdoptionSelections.user_id, params.userId),
+        eq(personalDedicatedAdoptionSelections.source_agent_id, params.sourceAgentId),
+        eq(personalDedicatedAdoptionSelections.schema_version, 1),
+      ),
+    )
+    .limit(1);
+  if (selection) {
+    throw new PersonalDedicatedSelectionRequiredError(
+      "An existing Dedicated target is selected; use the same-row adoption contract",
+      {
+        code: "PERSONAL_DEDICATED_SELECTION_REQUIRES_ADOPTION",
+        context: {
+          organizationId: params.organizationId,
+          userId: params.userId,
+          sourceAgentId: params.sourceAgentId,
+        },
+      },
+    );
+  }
+}
+
 function classifyAdoptionRows(
   adopted: AgentSandbox[],
+  hasAuthorityReceipt: boolean,
+  selected: AgentSandbox[],
+  hasSelectionReceipt: boolean,
   available: AgentSandbox[],
   hasQuarantinedMarker = false,
 ): PersonalDedicatedAdoptionResolution {
-  if (adopted.length + available.length > 1 || (hasQuarantinedMarker && adopted.length > 0)) {
+  if (adopted.length > 1 || selected.length > 1 || (hasQuarantinedMarker && adopted.length > 0)) {
     return { state: "ambiguous" };
   }
-  if (adopted[0]) return { state: "adopted", agent: adopted[0] };
+  if (hasAuthorityReceipt) {
+    return adopted[0] ? { state: "adopted", agent: adopted[0] } : { state: "unavailable" };
+  }
+  if (hasSelectionReceipt) {
+    return selected[0] ? { state: "available", agent: selected[0] } : { state: "unavailable" };
+  }
   if (hasQuarantinedMarker) return { state: "unavailable" };
+  if (available.length > 1) return { state: "ambiguous" };
   if (available[0]) return { state: "available", agent: available[0] };
   return { state: "unavailable" };
+}
+
+function attachSelectionActivationAuthority(
+  resolution: PersonalDedicatedAdoptionResolution,
+  receipt: typeof personalDedicatedAdoptionSelections.$inferSelect | undefined,
+  receiptValid: boolean,
+): PersonalDedicatedAdoptionResolution {
+  if (
+    !receipt ||
+    (resolution.state !== "available" && resolution.state !== "adopted") ||
+    resolution.agent.id !== receipt.dedicated_agent_id ||
+    (resolution.state === "available" && !receiptValid)
+  ) {
+    return resolution;
+  }
+  const authority = personalDedicatedActivationAuthorityFromReceipt(
+    receipt.activation_kind,
+    receipt.activation_backup_id,
+  );
+  if (!authority) return { state: "unavailable" };
+  return {
+    ...resolution,
+    selectionActivationAuthority: authority,
+  };
 }
 
 /**
@@ -235,11 +415,77 @@ export async function resolvePersonalDedicatedAdoption(params: {
     .where(adoptedTargetWhere(params.organizationId, params.userId, params.sourceAgentId))
     .orderBy(desc(agentSandboxes.created_at))
     .limit(2);
+  const [authorityReceipt] = await dbWrite
+    .select({ id: personalDedicatedUpgradeAuthorities.id })
+    .from(personalDedicatedUpgradeAuthorities)
+    .where(
+      and(
+        eq(personalDedicatedUpgradeAuthorities.organization_id, params.organizationId),
+        eq(personalDedicatedUpgradeAuthorities.user_id, params.userId),
+        eq(personalDedicatedUpgradeAuthorities.source_agent_id, params.sourceAgentId),
+        eq(personalDedicatedUpgradeAuthorities.schema_version, 1),
+      ),
+    )
+    .limit(1);
+
+  const selected = await dbWrite
+    .select({ agent: agentSandboxes })
+    .from(agentSandboxes)
+    .innerJoin(
+      personalDedicatedAdoptionSelections,
+      exactSelectionWhere(params.organizationId, params.userId, params.sourceAgentId),
+    )
+    .where(adoptableUnmarkedTargetWhere(params.organizationId, params.userId))
+    .limit(2);
+  const [selectionReceipt] = await dbWrite
+    .select()
+    .from(personalDedicatedAdoptionSelections)
+    .where(
+      and(
+        eq(personalDedicatedAdoptionSelections.organization_id, params.organizationId),
+        eq(personalDedicatedAdoptionSelections.user_id, params.userId),
+        eq(personalDedicatedAdoptionSelections.source_agent_id, params.sourceAgentId),
+        eq(personalDedicatedAdoptionSelections.schema_version, 1),
+      ),
+    )
+    .limit(1);
+  const selectionCandidates = selectionReceipt
+    ? await dbWrite
+        .select()
+        .from(agentSandboxes)
+        .where(adoptableUnmarkedTargetWhere(params.organizationId, params.userId))
+        .orderBy(asc(agentSandboxes.id))
+        .limit(101)
+    : [];
+  const selectionBackups =
+    selectionCandidates.length > 0
+      ? ((await dbWrite
+          .select(adoptionBackupProjection)
+          .from(agentSandboxBackups)
+          .where(
+            inArray(
+              agentSandboxBackups.sandbox_record_id,
+              selectionCandidates.map((candidate) => candidate.id),
+            ),
+          )
+          .orderBy(
+            asc(agentSandboxBackups.sandbox_record_id),
+            asc(agentSandboxBackups.id),
+          )) as PersonalDedicatedBackupProvenance[])
+      : [];
+  const selectionReceiptValid = selectionReceipt
+    ? await selectionReceiptMatchesInventory({
+        ...params,
+        receipt: selectionReceipt,
+        candidates: selectionCandidates,
+        backups: selectionBackups,
+      })
+    : false;
 
   const available = await dbWrite
     .select()
     .from(agentSandboxes)
-    .where(adoptableUnmarkedTargetWhere(params.organizationId, params.userId))
+    .where(unselectedAdoptableTargetWhere(params.organizationId, params.userId))
     .orderBy(desc(agentSandboxes.created_at))
     .limit(2);
   const [quarantined] = await dbWrite
@@ -247,10 +493,17 @@ export async function resolvePersonalDedicatedAdoption(params: {
     .from(agentSandboxes)
     .where(unverifiedReservedMarkerWhere(params.organizationId, params.userId))
     .limit(1);
-  return classifyAdoptionRows(
-    adopted.map((row) => row.agent),
-    available,
-    Boolean(quarantined),
+  return attachSelectionActivationAuthority(
+    classifyAdoptionRows(
+      adopted.map((row) => row.agent),
+      Boolean(authorityReceipt),
+      selectionReceiptValid ? selected.map((row) => row.agent) : [],
+      Boolean(selectionReceipt),
+      available,
+      Boolean(quarantined),
+    ),
+    selectionReceipt,
+    selectionReceiptValid,
   );
 }
 
@@ -273,11 +526,79 @@ async function resolvePersonalDedicatedAdoptionInTx(
     .orderBy(desc(agentSandboxes.created_at))
     .limit(2)
     .for("update");
+  const [authorityReceipt] = await tx
+    .select({ id: personalDedicatedUpgradeAuthorities.id })
+    .from(personalDedicatedUpgradeAuthorities)
+    .where(
+      and(
+        eq(personalDedicatedUpgradeAuthorities.organization_id, params.organizationId),
+        eq(personalDedicatedUpgradeAuthorities.user_id, params.userId),
+        eq(personalDedicatedUpgradeAuthorities.source_agent_id, params.sourceAgentId),
+        eq(personalDedicatedUpgradeAuthorities.schema_version, 1),
+      ),
+    )
+    .limit(1)
+    .for("update");
+
+  const selected = await tx
+    .select({ agent: agentSandboxes })
+    .from(agentSandboxes)
+    .innerJoin(
+      personalDedicatedAdoptionSelections,
+      exactSelectionWhere(params.organizationId, params.userId, params.sourceAgentId),
+    )
+    .where(adoptableUnmarkedTargetWhere(params.organizationId, params.userId))
+    .limit(2)
+    .for("update");
+  const [selectionReceipt] = await tx
+    .select()
+    .from(personalDedicatedAdoptionSelections)
+    .where(
+      and(
+        eq(personalDedicatedAdoptionSelections.organization_id, params.organizationId),
+        eq(personalDedicatedAdoptionSelections.user_id, params.userId),
+        eq(personalDedicatedAdoptionSelections.source_agent_id, params.sourceAgentId),
+        eq(personalDedicatedAdoptionSelections.schema_version, 1),
+      ),
+    )
+    .limit(1)
+    .for("update");
+  const selectionCandidates = selectionReceipt
+    ? await tx
+        .select()
+        .from(agentSandboxes)
+        .where(adoptableUnmarkedTargetWhere(params.organizationId, params.userId))
+        .orderBy(asc(agentSandboxes.id))
+        .limit(101)
+        .for("update")
+    : [];
+  const selectionBackups =
+    selectionCandidates.length > 0
+      ? ((await tx
+          .select(adoptionBackupProjection)
+          .from(agentSandboxBackups)
+          .where(
+            inArray(
+              agentSandboxBackups.sandbox_record_id,
+              selectionCandidates.map((candidate) => candidate.id),
+            ),
+          )
+          .orderBy(asc(agentSandboxBackups.sandbox_record_id), asc(agentSandboxBackups.id))
+          .for("share")) as PersonalDedicatedBackupProvenance[])
+      : [];
+  const selectionReceiptValid = selectionReceipt
+    ? await selectionReceiptMatchesInventory({
+        ...params,
+        receipt: selectionReceipt,
+        candidates: selectionCandidates,
+        backups: selectionBackups,
+      })
+    : false;
 
   const available = await tx
     .select()
     .from(agentSandboxes)
-    .where(adoptableUnmarkedTargetWhere(params.organizationId, params.userId))
+    .where(unselectedAdoptableTargetWhere(params.organizationId, params.userId))
     .orderBy(desc(agentSandboxes.created_at))
     .limit(2)
     .for("update");
@@ -287,10 +608,17 @@ async function resolvePersonalDedicatedAdoptionInTx(
     .where(unverifiedReservedMarkerWhere(params.organizationId, params.userId))
     .limit(1)
     .for("update");
-  return classifyAdoptionRows(
-    adopted.map((row) => row.agent),
-    available,
-    Boolean(quarantined),
+  return attachSelectionActivationAuthority(
+    classifyAdoptionRows(
+      adopted.map((row) => row.agent),
+      Boolean(authorityReceipt),
+      selectionReceiptValid ? selected.map((row) => row.agent) : [],
+      Boolean(selectionReceipt),
+      available,
+      Boolean(quarantined),
+    ),
+    selectionReceipt,
+    selectionReceiptValid,
   );
 }
 
@@ -312,11 +640,77 @@ async function previewPersonalDedicatedAdoptionInTx(
     .where(adoptedTargetWhere(params.organizationId, params.userId, params.sourceAgentId))
     .orderBy(desc(agentSandboxes.created_at))
     .limit(2);
+  const [authorityReceipt] = await tx
+    .select({ id: personalDedicatedUpgradeAuthorities.id })
+    .from(personalDedicatedUpgradeAuthorities)
+    .where(
+      and(
+        eq(personalDedicatedUpgradeAuthorities.organization_id, params.organizationId),
+        eq(personalDedicatedUpgradeAuthorities.user_id, params.userId),
+        eq(personalDedicatedUpgradeAuthorities.source_agent_id, params.sourceAgentId),
+        eq(personalDedicatedUpgradeAuthorities.schema_version, 1),
+      ),
+    )
+    .limit(1);
+
+  const selected = await tx
+    .select({ agent: agentSandboxes })
+    .from(agentSandboxes)
+    .innerJoin(
+      personalDedicatedAdoptionSelections,
+      exactSelectionWhere(params.organizationId, params.userId, params.sourceAgentId),
+    )
+    .where(adoptableUnmarkedTargetWhere(params.organizationId, params.userId))
+    .limit(2);
+  const [selectionReceipt] = await tx
+    .select()
+    .from(personalDedicatedAdoptionSelections)
+    .where(
+      and(
+        eq(personalDedicatedAdoptionSelections.organization_id, params.organizationId),
+        eq(personalDedicatedAdoptionSelections.user_id, params.userId),
+        eq(personalDedicatedAdoptionSelections.source_agent_id, params.sourceAgentId),
+        eq(personalDedicatedAdoptionSelections.schema_version, 1),
+      ),
+    )
+    .limit(1);
+  const selectionCandidates = selectionReceipt
+    ? await tx
+        .select()
+        .from(agentSandboxes)
+        .where(adoptableUnmarkedTargetWhere(params.organizationId, params.userId))
+        .orderBy(asc(agentSandboxes.id))
+        .limit(101)
+    : [];
+  const selectionBackups =
+    selectionCandidates.length > 0
+      ? ((await tx
+          .select(adoptionBackupProjection)
+          .from(agentSandboxBackups)
+          .where(
+            inArray(
+              agentSandboxBackups.sandbox_record_id,
+              selectionCandidates.map((candidate) => candidate.id),
+            ),
+          )
+          .orderBy(
+            asc(agentSandboxBackups.sandbox_record_id),
+            asc(agentSandboxBackups.id),
+          )) as PersonalDedicatedBackupProvenance[])
+      : [];
+  const selectionReceiptValid = selectionReceipt
+    ? await selectionReceiptMatchesInventory({
+        ...params,
+        receipt: selectionReceipt,
+        candidates: selectionCandidates,
+        backups: selectionBackups,
+      })
+    : false;
 
   const available = await tx
     .select()
     .from(agentSandboxes)
-    .where(adoptableUnmarkedTargetWhere(params.organizationId, params.userId))
+    .where(unselectedAdoptableTargetWhere(params.organizationId, params.userId))
     .orderBy(desc(agentSandboxes.created_at))
     .limit(2);
   const [quarantined] = await tx
@@ -324,10 +718,17 @@ async function previewPersonalDedicatedAdoptionInTx(
     .from(agentSandboxes)
     .where(unverifiedReservedMarkerWhere(params.organizationId, params.userId))
     .limit(1);
-  return classifyAdoptionRows(
-    adopted.map((row) => row.agent),
-    available,
-    Boolean(quarantined),
+  return attachSelectionActivationAuthority(
+    classifyAdoptionRows(
+      adopted.map((row) => row.agent),
+      Boolean(authorityReceipt),
+      selectionReceiptValid ? selected.map((row) => row.agent) : [],
+      Boolean(selectionReceipt),
+      available,
+      Boolean(quarantined),
+    ),
+    selectionReceipt,
+    selectionReceiptValid,
   );
 }
 
@@ -343,6 +744,7 @@ export interface AdoptPersonalDedicatedTargetParams {
   expectedDailyRate: number;
   expectedMinimumBalance: number;
   expectedMinimumRunwayDays: number;
+  expectedActivationAuthorityKey: string;
 }
 
 export interface AdoptPersonalDedicatedTargetResult {
@@ -377,7 +779,8 @@ function adoptionError(
   code:
     | "PERSONAL_DEDICATED_ADOPTION_UNAVAILABLE"
     | "PERSONAL_DEDICATED_ADOPTION_AMBIGUOUS"
-    | "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
+    | "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED"
+    | "PERSONAL_DEDICATED_ADOPTION_CATALOG_RESTORE_REQUIRED",
   message: string,
   params: AdoptPersonalDedicatedTargetParams,
 ): PersonalDedicatedAdoptionError {
@@ -442,6 +845,18 @@ export async function adoptPersonalDedicatedTargetWithProvision(
         throw adoptionError(
           "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
           "The eligible Dedicated target changed while acquiring lifecycle authority",
+          params,
+        );
+      }
+
+      const activationAuthority = resolution.selectionActivationAuthority;
+      if (
+        personalDedicatedActivationAuthorityKey(activationAuthority) !==
+        params.expectedActivationAuthorityKey
+      ) {
+        throw adoptionError(
+          "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
+          "The reviewed Dedicated restore authority changed after quoting",
           params,
         );
       }
@@ -563,11 +978,27 @@ export async function adoptPersonalDedicatedTargetWithProvision(
         return attemptedResult;
       }
 
+      if (activationAuthority?.kind === "catalog-restore-required") {
+        throw adoptionError(
+          "PERSONAL_DEDICATED_ADOPTION_CATALOG_RESTORE_REQUIRED",
+          "The selected Dedicated target requires the catalogue restore workflow before activation",
+          params,
+        );
+      }
+
+      const restoreDirective =
+        activationAuthority?.kind === "fresh-boot"
+          ? ({ kind: "fresh-boot" } as const)
+          : activationAuthority?.kind === "from-legacy-backup"
+            ? ({ kind: "from-backup", backupId: activationAuthority.backupId } as const)
+            : undefined;
+
       const enqueue = await provisioningJobService.enqueueAgentProvisionOnceInTx(tx, {
         agentId: target.id,
         organizationId: params.organizationId,
         userId: params.userId,
         agentName: target.agent_name ?? target.id,
+        restoreDirective,
       });
       attemptedResult = {
         agent: target,
@@ -1299,6 +1730,7 @@ export async function createTierUpgradeTargetWithProvision(
     );
     const existing = await findLiveTargetInTx(tx, params.organizationId, params.sourceAgentId);
     if (existing) return existing;
+    await assertNoPendingAdoptionSelectionInTx(tx, params);
     // Refuse over-quota upgrades before any credential is minted. The locked
     // insert transaction below re-asserts this authoritatively.
     await assertOrgAgentQuota(tx, params.organizationId, params.maxNonTerminalAgents);
@@ -1349,6 +1781,7 @@ export async function createTierUpgradeTargetWithProvision(
 
       const existing = await findLiveTargetInTx(tx, params.organizationId, params.sourceAgentId);
       if (existing) return { created: false as const, agent: existing };
+      await assertNoPendingAdoptionSelectionInTx(tx, params);
 
       await assertOrgAgentQuota(tx, params.organizationId, params.maxNonTerminalAgents);
 

@@ -100,6 +100,7 @@ export * from "./organizations";
 export * from "./payment-request-receipts";
 export * from "./payment-requests";
 export * from "./personal-account-convergences";
+export * from "./personal-dedicated-adoption-selections";
 export * from "./personal-dedicated-upgrade-authorities";
 export * from "./personal-shared-groups";
 export * from "./personal-shared-inbound-media";

@@ -19,6 +19,7 @@ import {
   type PersonalDedicatedAdoptionResolution,
   resolvePersonalDedicatedAdoption,
 } from "@/lib/services/agent-tier-upgrade-target";
+import { personalDedicatedActivationAuthorityKey } from "@/lib/services/personal-dedicated-adoption-provenance";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import {
   checkProvisioningWorkerHealth,
@@ -33,7 +34,7 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CORS_METHODS = "GET, POST, OPTIONS";
-const ADOPTION_QUOTE_VERSION = "personal-dedicated-adoption-v1";
+const ADOPTION_QUOTE_VERSION = "personal-dedicated-adoption-v2";
 
 const AdoptionConfirmation = z
   .object({
@@ -87,6 +88,7 @@ async function quoteIdFor(params: {
   targetStatus: ResolvedAdoption["agent"]["status"];
   lifecycleRevision: number;
   balance: number;
+  activationAuthorityKey: string;
 }): Promise<string> {
   const input = [
     ADOPTION_QUOTE_VERSION,
@@ -97,6 +99,7 @@ async function quoteIdFor(params: {
     params.targetStatus,
     params.lifecycleRevision.toString(10),
     params.balance.toFixed(6),
+    params.activationAuthorityKey,
     AGENT_PRICING.RUNNING_HOURLY_RATE.toFixed(6),
     AGENT_PRICING.DAILY_RUNNING_COST.toFixed(6),
     AGENT_PRICING.UPGRADE_MINIMUM_BALANCE.toFixed(6),
@@ -119,6 +122,12 @@ async function adoptionQuote(
   const credit = await checkAgentTierUpgradeCreditGate(user.organization_id);
   const target = resolution.agent;
   const willStartCompute = startsCompute(target.status);
+  const activationAuthority = resolution.selectionActivationAuthority;
+  const activationAuthorityKey =
+    personalDedicatedActivationAuthorityKey(activationAuthority);
+  const requiresCatalogRestore =
+    willStartCompute &&
+    activationAuthority?.kind === "catalog-restore-required";
   const minimumBalanceUsd = AGENT_PRICING.UPGRADE_MINIMUM_BALANCE;
   const deficitUsd = Math.max(
     0,
@@ -133,6 +142,7 @@ async function adoptionQuote(
       targetStatus: target.status,
       lifecycleRevision: target.lifecycle_revision,
       balance: credit.balance,
+      activationAuthorityKey,
     }),
     quoteVersion: ADOPTION_QUOTE_VERSION,
     sourceAgentId,
@@ -148,12 +158,24 @@ async function adoptionQuote(
     minimumRunwayDays: AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS,
     balanceUsd: credit.balance,
     deficitUsd,
-    canAdopt: !willStartCompute || credit.allowed,
+    stateDisposition:
+      activationAuthority?.kind === "fresh-boot"
+        ? ("fresh_boot_no_verified_backup" as const)
+        : activationAuthority
+          ? ("verified_backup_present" as const)
+          : ("unreviewed_existing_target" as const),
+    canAdopt: (!willStartCompute || credit.allowed) && !requiresCatalogRestore,
+    requiresCatalogRestore,
     requiresConfirmation: true,
     action: "adopt_existing_dedicated" as const,
-    ...(!credit.allowed && willStartCompute && credit.error
-      ? { unavailableReason: credit.error }
-      : {}),
+    ...(requiresCatalogRestore
+      ? {
+          unavailableReason:
+            "The reviewed target has catalogue state that must use the catalogue restore workflow before activation.",
+        }
+      : !credit.allowed && willStartCompute && credit.error
+        ? { unavailableReason: credit.error }
+        : {}),
   };
 }
 
@@ -190,7 +212,9 @@ function adoptionServiceError(error: PersonalDedicatedAdoptionError): Response {
       ? "dedicated_adoption_ambiguous"
       : error.code === "PERSONAL_DEDICATED_ADOPTION_UNAVAILABLE"
         ? "dedicated_adoption_unavailable"
-        : "dedicated_adoption_quote_changed";
+        : error.code === "PERSONAL_DEDICATED_ADOPTION_CATALOG_RESTORE_REQUIRED"
+          ? "dedicated_adoption_catalog_restore_required"
+          : "dedicated_adoption_quote_changed";
   return json(
     {
       success: false,
@@ -294,6 +318,17 @@ async function __hono_POST(
     }
 
     if (quote.startsCompute && !quote.canAdopt) {
+      if (quote.requiresCatalogRestore) {
+        return json(
+          {
+            success: false,
+            code: "dedicated_adoption_catalog_restore_required",
+            error: quote.unavailableReason,
+            data: quote,
+          },
+          409,
+        );
+      }
       const credit = await checkAgentTierUpgradeCreditGate(
         user.organization_id,
       );
@@ -347,6 +382,9 @@ async function __hono_POST(
         expectedDailyRate: quote.dailyRateUsd,
         expectedMinimumBalance: quote.minimumBalanceUsd,
         expectedMinimumRunwayDays: quote.minimumRunwayDays,
+        expectedActivationAuthorityKey: personalDedicatedActivationAuthorityKey(
+          resolved.selectionActivationAuthority,
+        ),
       });
     } catch (error) {
       // error-policy:J1 the route maps typed adoption conflicts while every
