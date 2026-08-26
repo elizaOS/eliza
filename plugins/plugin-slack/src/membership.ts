@@ -58,6 +58,13 @@ interface SlackMembersPage {
 
 /**
  * Maps a failed `conversations.members` call onto a classified reason.
+ *
+ * Real `@slack/web-api` platform errors carry the SDK error class in
+ * `error.code` (e.g. `slack_webapi_platform_error`) and the Slack error
+ * name in `error.data.error` (a string); `rateLimitedErrorWithDelay`
+ * likewise exposes `data.error: "ratelimited"`. `error.data.code` is kept
+ * only as a legacy fallback for hand-built errors.
+ *
  * `missing_scope` / `not_allowed` mean the app lacks read scopes;
  * `channel_not_found` means the channel is gone or invisible;
  * `not_in_channel` / `method_not_supported_for_channel_type` mean the bot
@@ -69,14 +76,20 @@ export function classifyMembershipFailure(error: unknown): {
 } {
   const slackError =
     typeof error === "object" && error !== null
-      ? (error as { data?: { code?: unknown }; code?: unknown })
+      ? (error as {
+          data?: { error?: unknown; code?: unknown };
+          code?: unknown;
+        })
       : {};
   const code =
-    typeof slackError.code === "string"
-      ? slackError.code
-      : typeof slackError.data?.code === "string"
-        ? slackError.data.code
-        : undefined;
+    typeof slackError.data?.error === "string"
+      ? slackError.data.error
+      : typeof slackError.code === "string" &&
+          !slackError.code.startsWith("slack_webapi_")
+        ? slackError.code
+        : typeof slackError.data?.code === "string"
+          ? slackError.data.code
+          : undefined;
   switch (code) {
     case "missing_scope":
     case "not_allowed":
@@ -170,11 +183,24 @@ export async function readChannelMembershipSnapshot(
     }
     pages += 1;
 
-    const nextCursor =
-      typeof page.response_metadata?.next_cursor === "string"
-        ? page.response_metadata.next_cursor.trim()
-        : "";
-    if (!nextCursor) break;
+    // Only an absent cursor completes the walk. A present-but-non-string
+    // cursor is malformed — treating it as terminal would publish a partial
+    // roster as a complete snapshot.
+    let nextCursor: string;
+    if (page.response_metadata?.next_cursor !== undefined) {
+      if (typeof page.response_metadata.next_cursor !== "string") {
+        return {
+          kind: "unavailable",
+          channelId,
+          reason: "malformed_response",
+          slackErrorCode: undefined,
+        };
+      }
+      nextCursor = page.response_metadata.next_cursor.trim();
+      if (!nextCursor) break;
+    } else {
+      break;
+    }
     if (seenCursors.has(nextCursor)) {
       return {
         kind: "unavailable",
