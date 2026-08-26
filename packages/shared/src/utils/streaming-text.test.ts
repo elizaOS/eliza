@@ -150,6 +150,27 @@ describe("streaming text named regressions", () => {
     expect(stream([decomposedAcute, decomposedAcute])).toBe(
       `${decomposedAcute}${decomposedAcute}`,
     );
+
+    // Some Unicode composition exclusions expand under NFC. They are still
+    // one raw streamed code point and must not enter snapshot heuristics.
+    const bmpCompositionExclusion = "\u0958";
+    const astralCompositionExclusion = "\u{1d1bb}";
+    expect(stream([bmpCompositionExclusion, bmpCompositionExclusion])).toBe(
+      `${bmpCompositionExclusion}${bmpCompositionExclusion}`,
+    );
+    expect(
+      stream([astralCompositionExclusion, "x", astralCompositionExclusion]),
+    ).toBe(`${astralCompositionExclusion}x${astralCompositionExclusion}`);
+    expect(
+      resolveStreamingUpdate(
+        `${bmpCompositionExclusion}a`,
+        bmpCompositionExclusion,
+      ),
+    ).toEqual({
+      kind: "append",
+      nextText: `${bmpCompositionExclusion}a${bmpCompositionExclusion}`,
+      emittedText: bmpCompositionExclusion,
+    });
   });
 
   it("still ignores genuine multi-character regressive snapshots", () => {
