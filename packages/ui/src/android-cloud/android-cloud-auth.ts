@@ -9,6 +9,7 @@
  */
 
 import { registerPlugin } from "@capacitor/core";
+import { shellLocalStorage } from "../surface-realm-channel";
 import { isSafeNavigationUrl } from "../utils/navigation-url";
 import {
   AndroidCloudAuthError,
@@ -96,7 +97,7 @@ function publishResult(result: AndroidCloudAuthResult): void {
 
 /** Persists explicit account-switch intent across renderer and app recreation. */
 export function markAndroidCloudAccountSwitchPending(): void {
-  window.localStorage.setItem(ANDROID_CLOUD_ACCOUNT_SWITCH_KEY, "1");
+  shellLocalStorage.setItem(ANDROID_CLOUD_ACCOUNT_SWITCH_KEY, "1");
   if (window.localStorage.getItem(ANDROID_CLOUD_ACCOUNT_SWITCH_KEY) !== "1") {
     throw new Error("Eliza Cloud could not preserve the account switch.");
   }
@@ -109,7 +110,7 @@ export function isAndroidCloudAccountSwitchPending(): boolean {
 
 /** Removes the durable switch marker after replacement-session verification. */
 export function clearAndroidCloudAccountSwitchPending(): void {
-  window.localStorage.removeItem(ANDROID_CLOUD_ACCOUNT_SWITCH_KEY);
+  shellLocalStorage.removeItem(ANDROID_CLOUD_ACCOUNT_SWITCH_KEY);
 }
 
 /** Creates the hosted login URL while keeping the verifier in Android Keystore. */

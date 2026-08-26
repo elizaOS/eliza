@@ -19,6 +19,7 @@ import {
   resolveCanonicalDirectCloudApiBase,
   STAGING_DIRECT_CLOUD_API_BASE_URL,
 } from "../api/direct-cloud-endpoints";
+import { shellLocalStorage } from "../surface-realm-channel";
 
 const MANAGED_RUNTIME_HOST_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.cloud(?:-staging)?\.eliza\.app$/i;
@@ -136,10 +137,10 @@ const browserPendingLoginStore: AndroidCloudPendingLoginStore = {
     return window.localStorage.getItem(ANDROID_CLOUD_PENDING_LOGIN_KEY);
   },
   async write(value) {
-    window.localStorage.setItem(ANDROID_CLOUD_PENDING_LOGIN_KEY, value);
+    shellLocalStorage.setItem(ANDROID_CLOUD_PENDING_LOGIN_KEY, value);
   },
   async clear() {
-    window.localStorage.removeItem(ANDROID_CLOUD_PENDING_LOGIN_KEY);
+    shellLocalStorage.removeItem(ANDROID_CLOUD_PENDING_LOGIN_KEY);
   },
 };
 
