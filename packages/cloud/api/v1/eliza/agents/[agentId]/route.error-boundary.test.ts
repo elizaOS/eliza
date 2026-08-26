@@ -76,7 +76,7 @@ mock.module("@/lib/config/containers-env", () => ({
   containersEnv: { publicBaseDomain: () => null },
 }));
 mock.module("@/lib/eliza-agent-web-ui", () => ({
-  getElizaAgentPublicWebUiUrl: () => "https://example.test",
+  getConfiguredElizaAgentPublicWebUiUrl: () => "https://example.test",
 }));
 mock.module("@/lib/services/admin", () => ({
   adminService: {
@@ -107,6 +107,9 @@ test.each([
   "Provider https://api.eliza.app?debug=/v1/chat/private/agents/agent-1/config.json",
   "Provider https://api.eliza.app(/srv/eliza/agents/agent-1/config.json)",
   "Provider https://api.eliza.app,C:\\eliza\\agents\\agent-1\\config.json",
+  "Provider https://api.eliza.app?debug=%20%2Fsrv%2Feliza%2Fagents%2Fagent-1%2Fconfig.json",
+  "Provider https://api.eliza.app?debug=%09%2Fworkspace%2Feliza%2Fagents%2Fagent-1%2Fconfig.json",
+  "Provider https://api.eliza.app?%2Fsrv%2Feliza%2Fagents%2Fagent-1%2Fconfig.json=debug",
 ])(
   "GET withholds formatted server paths from the detail DTO: %s",
   async (message) => {

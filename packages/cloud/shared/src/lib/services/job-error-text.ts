@@ -34,6 +34,7 @@ const UNC_PATH_PATTERN = /(?:^|[^A-Za-z0-9_.~%-])\\\\[^\\\s'"`<>]+\\[^\s'"`<>]*/
 const POSIX_PATH_PATTERN = /(?:^|[^A-Za-z0-9_.~%-])\/+[^\s'"`<>]+/u;
 const PUBLIC_URL_METADATA_PATH_PATTERN = /^\/(?:v1\/chat|callback)$/iu;
 const ABSOLUTE_HOST_PATH_PATTERN = /^(?:\/{1,2}|[A-Za-z]:[\\/]|\\\\)/u;
+const LEADING_URL_METADATA_PADDING_PATTERN = /^[\p{White_Space}\p{Cc}\p{Cf}]+/u;
 
 function decodeUrlMetadata(value: string): string | null {
   try {
@@ -56,16 +57,18 @@ function networkUrlContainsHostPath(urlToken: string): boolean {
 
   // The URL pathname is public route data; only query and fragment metadata
   // can carry an adjacent host path that must be withheld.
-  const candidates = [url.hash.slice(1), ...url.searchParams.values()];
+  const queryMetadata = [...url.searchParams.entries()].flat();
+  const candidates = [url.hash.slice(1), ...queryMetadata];
   return candidates.some((candidate) => {
     const decoded = decodeUrlMetadata(candidate);
     if (decoded === null) return true;
-    if (PUBLIC_URL_METADATA_PATH_PATTERN.test(decoded)) return false;
+    const canonical = decoded.replace(LEADING_URL_METADATA_PADDING_PATTERN, "");
+    if (PUBLIC_URL_METADATA_PATH_PATTERN.test(canonical)) return false;
     return (
-      FILE_URL_PATTERN.test(decoded) ||
-      DRIVE_PATH_PATTERN.test(decoded) ||
-      UNC_PATH_PATTERN.test(decoded) ||
-      ABSOLUTE_HOST_PATH_PATTERN.test(decoded)
+      FILE_URL_PATTERN.test(canonical) ||
+      DRIVE_PATH_PATTERN.test(canonical) ||
+      UNC_PATH_PATTERN.test(canonical) ||
+      ABSOLUTE_HOST_PATH_PATTERN.test(canonical)
     );
   });
 }
@@ -83,9 +86,10 @@ function containsAbsolutePath(text: string): boolean {
   }
 
   // A network URL contains `//` and path slashes but is not itself a host
-  // filesystem path. Inspect decoded query/fragment metadata before masking the
-  // URL: public route values such as `/v1/chat` remain valid, while known host
-  // roots and drive/UNC forms fail closed. The authority grammar deliberately
+  // filesystem path. Inspect canonical decoded query keys, values, and fragment
+  // metadata before masking the URL: public route values such as `/v1/chat`
+  // remain valid, while host roots and drive/UNC forms fail closed. The
+  // authority grammar deliberately
   // stops before adjacent `(`, `[`, or `,` host-path delimiters.
   let embeddedHostPath = false;
   const withoutNetworkUrls = text.replace(NETWORK_URL_PATTERN, (urlToken) => {
