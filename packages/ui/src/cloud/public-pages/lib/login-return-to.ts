@@ -126,6 +126,8 @@ function parseStoredReturnTo(value: string | null): string | null {
     }
     return null;
   } catch {
-    return sanitizeLoginReturnTo(value);
+    // error-policy:J3 unversioned or malformed state has no trustworthy
+    // expiry, so it cannot satisfy the pending-destination TTL.
+    return null;
   }
 }

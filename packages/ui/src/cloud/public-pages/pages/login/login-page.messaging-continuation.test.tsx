@@ -11,7 +11,10 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { storePendingOAuthReturnTo } from "../../lib/login-return-to";
 
-const continuationState = vi.hoisted(() => ({ token: null as string | null }));
+const continuationState = vi.hoisted(() => ({
+  token: null as string | null,
+  purpose: "link" as "link" | "telegram-account-claim",
+}));
 
 vi.mock("@elizaos/shared/brand", () => ({
   BRAND_PATHS: { logos: "/brand/logos" },
@@ -35,7 +38,13 @@ vi.mock("../../../auth/cloud-auth-complete-signal", () => ({
 }));
 
 vi.mock("../../../join/lib/onboarding-continuation", () => ({
-  peekPendingOnboardingSession: () => continuationState.token,
+  peekPendingOnboardingSession: (
+    purpose?: "link" | "telegram-account-claim",
+  ) => {
+    if (!continuationState.token) return null;
+    if (purpose && purpose !== continuationState.purpose) return null;
+    return continuationState.token;
+  },
 }));
 
 vi.mock("./steward-login-section", () => ({
@@ -63,6 +72,7 @@ function renderLogin(entry: string): void {
 
 beforeEach(() => {
   continuationState.token = null;
+  continuationState.purpose = "link";
   window.sessionStorage.clear();
   window.localStorage.clear();
 });
@@ -92,6 +102,20 @@ describe("messaging-continuation login context", () => {
     ).toBeTruthy();
     expect(await screen.findByText("Steward login options")).toBeTruthy();
     expect(document.body.textContent).not.toContain(CONTINUATION_FIXTURE);
+  });
+
+  it("keeps Telegram account claims in the shared messaging journey", async () => {
+    continuationState.token = CONTINUATION_FIXTURE;
+    continuationState.purpose = "telegram-account-claim";
+
+    renderLogin("/login?returnTo=%2Fget-started");
+
+    expect(
+      await screen.findByRole("heading", {
+        level: 1,
+        name: "Sign in to connect Eliza",
+      }),
+    ).toBeTruthy();
   });
 
   it("gives an explicit recovery step when the continuation is unavailable", async () => {

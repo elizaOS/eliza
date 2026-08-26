@@ -114,6 +114,9 @@ function loginJourneyFromReturnTo(
       : sanitizeLoginReturnTo(returnTo);
   if (sanitizedReturnTo !== "/get-started") return "default";
 
+  // `/get-started` is shared by ordinary messaging links and Telegram account
+  // claims. Either purpose is a live messaging journey here; purpose filtering
+  // belongs to the post-auth completion path.
   return peekPendingOnboardingSession() ? "messaging" : "messaging-recovery";
 }
 
