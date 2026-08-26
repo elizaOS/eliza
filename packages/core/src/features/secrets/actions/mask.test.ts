@@ -37,9 +37,9 @@ describe("maskSecretValue", () => {
 		expect(masked.startsWith("xxxx")).toBe(true);
 		expect(masked.endsWith("xxxx")).toBe(true);
 	});
-	it("preserves well-formed Unicode when secret starts or ends on surrogate pairs", () => {
-		const secretWithSurrogates = "🚀abcSECRETVALUEdef🚀";
-		const masked = maskSecretValue(secretWithSurrogates);
-		expect(masked.isWellFormed?.()).not.toBe(false);
+	it("keeps output well-formed when an emoji straddles the visible boundary", () => {
+		const masked = maskSecretValue("abc🚀SECRETMIDDLE🚀xyz");
+		expect(masked.isWellFormed()).toBe(true);
+		expect(masked).not.toContain("SECRETMIDDLE");
 	});
 });
