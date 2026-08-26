@@ -5,7 +5,14 @@
 
 import { expect, test } from "bun:test";
 import { spawn, spawnSync } from "node:child_process";
-import { closeSync, mkdtempSync, openSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -16,6 +23,50 @@ import {
   scenarioChildEnvironment,
   writeSandboxEnvironment,
 } from "./linux-sandbox.ts";
+
+function resolveRepositoryRoot(start: string): string {
+  let candidate = path.resolve(start);
+  while (true) {
+    if (
+      existsSync(path.join(candidate, "package.json")) &&
+      existsSync(path.join(candidate, "packages/cloud/e2e/package.json")) &&
+      existsSync(
+        path.join(
+          candidate,
+          "packages/cloud/e2e/scripts/stability-linux-sandbox.sh",
+        ),
+      )
+    ) {
+      return candidate;
+    }
+    const parent = path.dirname(candidate);
+    if (parent === candidate) {
+      throw new Error(`repository root not found above ${start}`);
+    }
+    candidate = parent;
+  }
+}
+
+const repoRoot = resolveRepositoryRoot(import.meta.dirname);
+const sandboxLauncherPath = path.join(
+  repoRoot,
+  "packages/cloud/e2e/scripts/stability-linux-sandbox.sh",
+);
+
+test("sandbox launcher resolves from the Cloud e2e workspace root", () => {
+  const packageManifestPath = path.join(
+    repoRoot,
+    "packages/cloud/e2e/package.json",
+  );
+  expect(
+    (
+      JSON.parse(readFileSync(packageManifestPath, "utf8")) as {
+        name?: unknown;
+      }
+    ).name,
+  ).toBe("@elizaos/cloud-e2e");
+  expect(existsSync(sandboxLauncherPath)).toBe(true);
+});
 
 test("credential-minimal child environment rejects ambient runner secrets", () => {
   const environment = scenarioChildEnvironment(
@@ -255,7 +306,6 @@ console.log(JSON.stringify({
         { mode: 0o600 },
       );
       process.env.PROBE_PARENT_CREDENTIAL = "must-not-cross-boundary";
-      const repoRoot = path.resolve(import.meta.dirname, "../../../..");
       const launch = sandboxCommand({
         enabled: true,
         allowedPorts: String(allowedPort),
@@ -425,7 +475,6 @@ test.skipIf(!hostedLinux)(
     const directory = await mkdtemp(
       path.join(tmpdir(), "cloud-sandbox-teardown-"),
     );
-    const repoRoot = path.resolve(import.meta.dirname, "../../../..");
     const readyPath = path.join(directory, "ready.json");
     const probePath = path.join(directory, "teardown-probe.ts");
     try {
