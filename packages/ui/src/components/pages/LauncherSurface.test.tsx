@@ -61,6 +61,7 @@ vi.mock("../../platform/platform-guards", () => ({
 vi.mock("../../navigation", () => {
   return {
     isAospShellEnabled: () => aospEnabled,
+    STREAM_ENABLED: false,
     LAUNCHER_AOSP_ONLY_VIEW_IDS: ["phone"],
     pathForTab: (id: string) => `/${id}`,
   };

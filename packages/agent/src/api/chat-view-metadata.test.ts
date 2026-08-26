@@ -35,6 +35,10 @@ const VIEWS = [
         authority: "human",
       },
     ],
+    responseContext: {
+      primaryContext: "health",
+      secondaryContexts: ["documents"],
+    },
     scopedActions: [
       {
         name: "HEALTH_OPEN_DETAIL",
@@ -82,11 +86,15 @@ describe("chat view metadata", () => {
         "OWNER_SCREENTIME",
         "HEALTH_OPEN_DETAIL",
       ],
+      __responseContext: {
+        primaryContext: "health",
+        secondaryContexts: ["documents"],
+      },
       keep: "caller-data",
     });
   });
 
-  it("keeps renderer hints when a view has no declared capabilities", () => {
+  it("clears renderer hints when a registered view declares no capabilities", () => {
     expect(
       enrichChatUiViewMetadata(
         {
@@ -98,8 +106,52 @@ describe("chat view metadata", () => {
       ),
     ).toMatchObject({
       uiView: "chat",
-      uiViewCapabilities: ["general-chat"],
+      uiViewCapabilities: [],
       uiViewActionNames: [],
+    });
+  });
+
+  it("does not trust renderer response context when the registry declares none", () => {
+    const neutralView = view({
+      id: "neutral",
+      label: "Neutral",
+      path: "/neutral",
+    });
+    expect(
+      enrichChatUiViewMetadata(
+        {
+          uiView: "neutral",
+          uiViewPath: "/neutral",
+          __responseContext: { primaryContext: "secrets" },
+        },
+        [...VIEWS, neutralView],
+      ),
+    ).toEqual({
+      uiView: "neutral",
+      uiViewPath: "/neutral",
+      uiViewCapabilities: [],
+      uiViewActionNames: [],
+    });
+  });
+
+  it("replaces a tampered response context with the registry declaration", () => {
+    expect(
+      enrichChatUiViewMetadata(
+        {
+          uiView: "health",
+          uiViewPath: "/health",
+          __responseContext: {
+            primaryContext: "wallet",
+            secondaryContexts: ["trading"],
+          },
+        },
+        VIEWS,
+      ),
+    ).toMatchObject({
+      __responseContext: {
+        primaryContext: "health",
+        secondaryContexts: ["documents"],
+      },
     });
   });
 
@@ -114,10 +166,34 @@ describe("chat view metadata", () => {
     };
     expect(enrichChatUiViewMetadata(apiMetadata, VIEWS)).toBe(apiMetadata);
     expect(enrichChatUiViewMetadata(unknown, VIEWS)).toEqual({
-      uiView: "unknown",
-      uiViewPath: "/unknown",
       requestId: "r2",
     });
+  });
+
+  it("neutralizes unavailable views and their claimed response context", () => {
+    const unavailable = view({
+      id: "notes",
+      label: "Notes",
+      path: "/notes",
+      capabilities: [{ id: "read-notes", description: "Read notes" }],
+    });
+    unavailable.available = false;
+
+    expect(
+      enrichChatUiViewMetadata(
+        {
+          uiView: "notes",
+          uiViewPath: "/notes",
+          uiViewCapabilities: ["read-notes"],
+          __responseContext: {
+            primaryContext: "notes",
+            secondaryContexts: ["notes"],
+          },
+          uiTab: "views",
+        },
+        [...VIEWS, unavailable],
+      ),
+    ).toEqual({ uiTab: "views" });
   });
 
   it("strips action names when no authoritative renderer view resolves", () => {

@@ -84,6 +84,16 @@ export function ChatBubble({
             : undefined
         }
         wallpaperText
+        border={
+          appearance === "default" && !bare && tone === "user"
+            ? "subtle"
+            : undefined
+        }
+        radius={
+          appearance === "default" && !bare && tone === "user"
+            ? "xlarge"
+            : undefined
+        }
         className={cn(
           // whitespace-pre-wrap keeps newlines; overflow-wrap breaks long URLs /
           // hashes / paths so they can't blow out the bubble width on a phone.

@@ -763,6 +763,20 @@ describe("App navigate-view event wiring", () => {
     expect(container.querySelectorAll("[data-scroll-owner]")).toHaveLength(0);
   });
 
+  it("renders an explicit unavailable state instead of healthy Home for an absent surface", async () => {
+    appState.tab = "phone";
+    window.history.replaceState(null, "", "/phone");
+
+    const { container } = render(<App />);
+
+    await waitFor(() => {
+      expect(
+        container.querySelector('[data-view-status="unavailable"]'),
+      ).toBeTruthy();
+    });
+    expect(container.querySelector('[data-testid="home-screen"]')).toBeNull();
+  });
+
   it("frames the immersive background editor exactly once", async () => {
     appState.tab = "background";
     window.history.replaceState(null, "", "/background");

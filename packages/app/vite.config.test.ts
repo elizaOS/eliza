@@ -2,7 +2,8 @@
 
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import path, { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
 import appViteConfig, {
   ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS,
@@ -10,6 +11,7 @@ import appViteConfig, {
   androidCloudRendererEntryPlugin,
   appDevWsBasePlugin,
   appShellMetadataPlugin,
+  devViewStudioPlugin,
   findAndroidCloudEmittedRoutingFindings,
   resolveAndroidCloudPrebootLockupDataUri,
   resolveAppShellLocalCspSources,
@@ -17,6 +19,71 @@ import appViteConfig, {
   stripAndroidCloudIpcBootstrap,
   stripAndroidCloudPublicAssetReferences,
 } from "./vite.config";
+
+const testDir = path.dirname(fileURLToPath(import.meta.url));
+
+describe("devViewStudioPlugin", () => {
+  test("serves review assets only through the dev server", () => {
+    expect(
+      existsSync(path.join(testDir, "public", "eliza-view-studio.html")),
+    ).toBe(false);
+    expect(
+      existsSync(path.join(testDir, "public", "eliza-proposed-theme.css")),
+    ).toBe(false);
+
+    let middleware:
+      | ((
+          req: { url?: string },
+          res: {
+            setHeader: (name: string, value: string) => void;
+            end: (body: Buffer) => void;
+          },
+          next: () => void,
+        ) => void)
+      | undefined;
+    const plugin = devViewStudioPlugin();
+    expect(plugin.apply).toBe("serve");
+    if (typeof plugin.configureServer !== "function") {
+      throw new Error("view studio dev middleware is missing");
+    }
+    plugin.configureServer({
+      middlewares: {
+        use: (handler: typeof middleware) => (middleware = handler),
+      },
+    } as never);
+
+    const headers = new Map<string, string>();
+    let body: Buffer | undefined;
+    let nextCalled = false;
+    middleware?.(
+      { url: "/eliza-view-studio.html?view=%2Fnotes" },
+      {
+        setHeader: (name, value) => headers.set(name, value),
+        end: (value) => (body = value),
+      },
+      () => (nextCalled = true),
+    );
+
+    expect(nextCalled).toBe(false);
+    expect(headers.get("Cache-Control")).toBe("no-store");
+    expect(body?.toString()).toContain("Eliza View Studio");
+
+    headers.clear();
+    body = undefined;
+    middleware?.(
+      { url: "/eliza-proposed-theme.css" },
+      {
+        setHeader: (name, value) => headers.set(name, value),
+        end: (value) => (body = value),
+      },
+      () => (nextCalled = true),
+    );
+
+    expect(headers.get("Content-Type")).toBe("text/css; charset=utf-8");
+    expect(headers.get("Cache-Control")).toBe("no-store");
+    expect(body?.toString()).toContain("data-eliza-studio-proposed");
+  });
+});
 
 describe("appDevWsBasePlugin", () => {
   test("injects same-origin ws/wss bases without a machine-local address", () => {
