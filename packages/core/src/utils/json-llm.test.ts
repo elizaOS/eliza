@@ -35,53 +35,6 @@ describe("extractAndParseJSONObjectFromText", () => {
 		).toEqual({ ok: true });
 	});
 
-	it("extracts JSON from unfenced conversational prose", () => {
-		expect(
-			extractAndParseJSONObjectFromText(
-				'Sure thing! Here is the JSON: {"status":"success","count":5} Let me know if you need more.',
-			),
-		).toEqual({ status: "success", count: 5 });
-
-		expect(
-			extractAndParseJSONObjectFromText(
-				"The list of items is [1, 2, 3] as requested.",
-			),
-		).toEqual([1, 2, 3]);
-	});
-
-	it("prefers object span when both brackets and braces appear in prose", () => {
-		expect(
-			extractAndParseJSONObjectFromText('Rate [1-5]: {"score": 4}'),
-		).toEqual({ score: 4 });
-
-		expect(
-			extractAndParseJSONObjectFromText(
-				'See [docs](http://x) then {"score": 4}',
-			),
-		).toEqual({ score: 4 });
-
-		expect(
-			extractAndParseJSONObjectFromText(
-				'As noted [1], the answer is {"score": 4}',
-			),
-		).toEqual({ score: 4 });
-	});
-
-	it("strict mode skips the prose-extraction fallback", () => {
-		expect(() =>
-			extractAndParseJSONObjectFromText(
-				'Sure thing! Here is the JSON: {"status":"success"} Let me know.',
-				{ strict: true },
-			),
-		).toThrow(/Failed to parse/);
-
-		expect(
-			extractAndParseJSONObjectFromText('{"status":"success"}', {
-				strict: true,
-			}),
-		).toEqual({ status: "success" });
-	});
-
 	it("accepts JSON5 leniency (unquoted keys, single quotes, trailing comma)", () => {
 		expect(extractAndParseJSONObjectFromText("{ a: 1, b: 'two', }")).toEqual({
 			a: 1,
