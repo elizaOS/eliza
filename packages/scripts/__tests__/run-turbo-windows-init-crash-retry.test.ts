@@ -173,3 +173,25 @@ describe("run-turbo Windows init-crash retry", () => {
     }
   }, 30_000);
 });
+
+describe("run-turbo multibyte", () => {
+  test("StringDecoder preserves split UTF-8 across chunk boundaries while still detecting crash marker", async () => {
+    const { StringDecoder } = await import("node:string_decoder");
+    const decoder = new StringDecoder("utf8");
+    const marker =
+      "@elizaos/plugin-example#build:  ERROR  command (D:/a/eliza) bun.exe run build exited (-1073741502)";
+    const star = "🌟";
+    const buf = Buffer.from(star, "utf8");
+    const part1 = buf.subarray(0, 2);
+    const part2 = buf.subarray(2);
+    const t1 = decoder.write(part1);
+    const t2 = decoder.write(part2);
+    const carry = decoder.end();
+    const decoded = `${t1}${t2}${carry}`;
+    expect(decoded).toBe(star);
+    expect(decoded).not.toContain("\uFFFD");
+    // marker still detectable after multibyte
+    const combined = `${decoded}${marker}`;
+    expect(combined).toContain(marker);
+  });
+});

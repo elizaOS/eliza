@@ -83,4 +83,20 @@ describe("captured test output", () => {
       "[eliza-test] FAILING_FILE src/stdout-file.test.ts",
     );
   });
+
+  test("preserves well-formed Unicode when truncation boundary lands on a surrogate pair", () => {
+    const capture = createCapturedTestOutput();
+    // "a" + astral emoji "🌟" (2 code units: \uD83C\uDF1F) + (MAX - 1) "b"s
+    // next.length = 1 + 2 + (MAX - 1) = MAX + 2.
+    // Truncation needs to drop 2 chars, which lands directly on \uDF1F (the low surrogate).
+    appendCapturedTestOutput(
+      capture,
+      `a🌟${"b".repeat(MAX_CAPTURED_OUTPUT_CHARS - 1)}`,
+    );
+
+    expect(capture.omittedChars).toBe(3);
+    expect(capture.retained.isWellFormed()).toBe(true);
+    expect(capture.retained.startsWith("b")).toBe(true);
+    expect(capture.retained.length).toBe(MAX_CAPTURED_OUTPUT_CHARS - 1);
+  });
 });

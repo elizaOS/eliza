@@ -12,6 +12,7 @@
  * usage: node packages/scripts/run-with-flake-retry.mjs <signature-regex> -- <command> [args...]
  */
 import { spawn } from "node:child_process";
+import { StringDecoder } from "node:string_decoder";
 
 const argv = process.argv.slice(2);
 const signatureRaw = argv[0] ?? "";
@@ -35,11 +36,17 @@ const [command, ...args] = argv.slice(2);
 function runOnce() {
   return new Promise((resolve) => {
     const child = spawn(command, args, { stdio: ["inherit", "pipe", "pipe"] });
+    const decoders = {
+      stdout: new StringDecoder("utf8"),
+      stderr: new StringDecoder("utf8"),
+    };
     const tails = { stdout: "", stderr: "" };
     let matched = false;
     const capture = (chunk, sink, stream) => {
       sink.write(chunk);
-      const candidate = tails[stream] + chunk.toString();
+      const text =
+        typeof chunk === "string" ? chunk : decoders[stream].write(chunk);
+      const candidate = tails[stream] + text;
       // Match while output arrives: a chatty teardown may emit more than the
       // retained overlap after the failure and must not erase the signal.
       if (!matched && signature.test(candidate)) matched = true;
@@ -58,6 +65,13 @@ function runOnce() {
       resolve({ code: 127, matched });
     });
     child.on("close", (code, signal) => {
+      for (const stream of ["stdout", "stderr"]) {
+        const remaining = decoders[stream].end();
+        if (remaining) {
+          const candidate = tails[stream] + remaining;
+          if (!matched && signature.test(candidate)) matched = true;
+        }
+      }
       resolve({ code: code ?? (signal ? 1 : 0), matched });
     });
   });

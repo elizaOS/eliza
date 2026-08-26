@@ -30,6 +30,7 @@ import {
 import { homedir } from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { StringDecoder } from "node:string_decoder";
 import { pathToFileURL } from "node:url";
 
 const DEFAULT_SECONDS = 90;
@@ -327,7 +328,7 @@ function formatLogChunk(source, at, text) {
 }
 
 function appendLog(logChunks, logStream, source, chunk) {
-  const text = chunk.toString();
+  const text = typeof chunk === "string" ? chunk : String(chunk);
   const clean = stripAnsi(text);
   const at = Date.now();
   logChunks.push({
@@ -695,14 +696,29 @@ async function run() {
     stdio: ["pipe", "pipe", "pipe"],
   });
 
+  const stdoutDecoder = new StringDecoder("utf8");
+  const stderrDecoder = new StringDecoder("utf8");
+
   let childExit = null;
   child.stdin?.on("error", () => {});
-  child.stdout.on("data", (chunk) =>
-    appendLog(logChunks, logStream, "stdout", chunk),
-  );
-  child.stderr.on("data", (chunk) =>
-    appendLog(logChunks, logStream, "stderr", chunk),
-  );
+  child.stdout.on("data", (chunk) => {
+    const text = typeof chunk === "string" ? chunk : stdoutDecoder.write(chunk);
+    if (!text) return;
+    appendLog(logChunks, logStream, "stdout", text);
+  });
+  child.stderr.on("data", (chunk) => {
+    const text = typeof chunk === "string" ? chunk : stderrDecoder.write(chunk);
+    if (!text) return;
+    appendLog(logChunks, logStream, "stderr", text);
+  });
+  child.stdout.on("end", () => {
+    const remaining = stdoutDecoder.end();
+    if (remaining) appendLog(logChunks, logStream, "stdout", remaining);
+  });
+  child.stderr.on("end", () => {
+    const remaining = stderrDecoder.end();
+    if (remaining) appendLog(logChunks, logStream, "stderr", remaining);
+  });
   child.on("error", (error) => {
     childExit = {
       code: null,

@@ -405,3 +405,26 @@ describe("route: POST /api/run rejects invalid concurrency before live-lane side
     expect(server.runManager.isRunning()).toBe(false);
   });
 });
+
+describe("console runner multibyte", () => {
+  test("StringDecoder preserves split UTF-8 across chunk boundaries for tail and event", async () => {
+    const { StringDecoder } = await import("node:string_decoder");
+    const decoder = new StringDecoder("utf8");
+    const star = "🌟";
+    const buf = Buffer.from(star, "utf8");
+    const part1 = buf.subarray(0, 2);
+    const part2 = buf.subarray(2);
+    const t1 = decoder.write(part1);
+    expect(t1).toBe("");
+    const t2 = decoder.write(part2);
+    const trail = decoder.end();
+    const combined = `${t1}${t2}${trail}`;
+    expect(combined).toBe(star);
+    expect(combined).not.toContain("\uFFFD");
+    // tail slicing preserves well-formed output
+    let tail = "";
+    tail = (tail + combined).slice(-16_384);
+    expect(tail).toContain(star);
+    expect(tail.isWellFormed()).toBe(true);
+  });
+});

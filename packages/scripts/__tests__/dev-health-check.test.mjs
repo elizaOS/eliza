@@ -454,3 +454,18 @@ describe("dev-health-check CLI boundary", () => {
     }
   });
 });
+
+describe("dev-health-check multibyte", () => {
+  test("StringDecoder preserves split UTF-8 across chunk boundaries for log capture", async () => {
+    const { StringDecoder } = await import("node:string_decoder");
+    const decoder = new StringDecoder("utf8");
+    const part1 = Buffer.from([0xf0, 0x9f]);
+    const part2 = Buffer.from([0x8c, 0x9f]);
+    const text1 = decoder.write(part1);
+    const text2 = decoder.write(part2);
+    const trail = decoder.end();
+    const combined = `${text1}${text2}${trail}`;
+    expect(combined).toBe("🌟");
+    expect(combined).not.toContain("\uFFFD");
+  });
+});

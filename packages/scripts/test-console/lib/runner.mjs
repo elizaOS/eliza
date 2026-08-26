@@ -19,6 +19,7 @@ import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
+import { StringDecoder } from "node:string_decoder";
 
 import { REPO_ROOT } from "./registry.mjs";
 import {
@@ -230,18 +231,47 @@ export class RunManager extends EventEmitter {
       run.children.add(child);
 
       let tail = "";
-      const capture = (chunk) => {
+      const stdoutDecoder = new StringDecoder("utf8");
+      const stderrDecoder = new StringDecoder("utf8");
+      const emitDecoded = (chunk, decoder) => {
         logStream.write(chunk);
-        tail = (tail + chunk.toString()).slice(-16_384);
+        const text = typeof chunk === "string" ? chunk : decoder.write(chunk);
+        if (!text && Buffer.isBuffer(chunk)) return;
+        const emitText = text ?? String(chunk);
+        tail = (tail + emitText).slice(-16_384);
         this.emit("event", {
           type: "log",
           runId: run.runId,
           label: entry.label,
-          chunk: chunk.toString(),
+          chunk: emitText,
         });
       };
-      child.stdout.on("data", capture);
-      child.stderr.on("data", capture);
+      child.stdout.on("data", (chunk) => emitDecoded(chunk, stdoutDecoder));
+      child.stderr.on("data", (chunk) => emitDecoded(chunk, stderrDecoder));
+      child.stdout.on("end", () => {
+        const remaining = stdoutDecoder.end();
+        if (remaining) {
+          tail = (tail + remaining).slice(-16_384);
+          this.emit("event", {
+            type: "log",
+            runId: run.runId,
+            label: entry.label,
+            chunk: remaining,
+          });
+        }
+      });
+      child.stderr.on("end", () => {
+        const remaining = stderrDecoder.end();
+        if (remaining) {
+          tail = (tail + remaining).slice(-16_384);
+          this.emit("event", {
+            type: "log",
+            runId: run.runId,
+            label: entry.label,
+            chunk: remaining,
+          });
+        }
+      });
 
       child.once("close", (code, signal) => {
         run.children.delete(child);
