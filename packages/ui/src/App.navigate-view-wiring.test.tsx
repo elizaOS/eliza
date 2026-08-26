@@ -842,6 +842,12 @@ describe("App navigate-view event wiring", () => {
       await screen.findByTestId("settings-view")
     ).closest<HTMLElement>("[data-page-content]");
     expect(settingsPageContent).not.toBeNull();
+    expect(settingsPageContent?.getAttribute("data-page-gutter")).toBe("none");
+    expect(
+      settingsPageContent
+        ?.closest<HTMLElement>("[data-page-kind]")
+        ?.getAttribute("data-page-width"),
+    ).toBe("full");
     expect(settingsPageContent?.className).toContain(
       "pb-[var(--eliza-chat-clearance,5.25rem)]",
     );

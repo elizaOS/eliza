@@ -179,7 +179,7 @@ export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
   runtime: { path: "/apps/runtime", layout: WORKSPACE_LAYOUT },
   database: { path: "/apps/database", layout: WORKSPACE_LAYOUT },
   desktop: { path: "/desktop", layout: FULL_WORKSPACE_LAYOUT },
-  settings: { path: "/settings", layout: WORKSPACE_LAYOUT },
+  settings: { path: "/settings", layout: FULL_WORKSPACE_LAYOUT },
   vault: { path: "/vault", layout: CONTENT_LAYOUT },
   logs: { path: "/apps/logs", layout: CONTENT_LAYOUT },
   background: {
