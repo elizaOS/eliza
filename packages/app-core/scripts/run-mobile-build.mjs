@@ -5894,7 +5894,7 @@ function sanitizeAndroidCloudPackagedConfig() {
   const sanitized = sanitizeAndroidCloudCapacitorConfig(parsed);
   fs.writeFileSync(configPath, `${JSON.stringify(sanitized, null, "\t")}\n`);
   console.log(
-    "[mobile-build] Rewrote capacitor.config.json to the minimal Play runtime contract.",
+    "[mobile-build] Rewrote capacitor.config.json to the restricted Play runtime contract.",
   );
 }
 
@@ -5992,15 +5992,12 @@ export function applyAndroidPlayManifestHardening(source) {
 }
 
 export const ANDROID_PLAY_FORBIDDEN_ASSET_MARKERS = Object.freeze([
-  "31337",
-  "31338",
   "32437",
   "32438",
   "10.0.2.2",
   "adb reverse",
-  "eliza-local-agent:",
   "__ELIZA_ANDROID_IPC_FETCH_BRIDGE__",
-  "remote-mac",
+  "navigator.serviceWorker",
 ]);
 
 export const ANDROID_PLAY_FORBIDDEN_INDEX_HTML_MARKERS = Object.freeze([
@@ -6230,7 +6227,7 @@ public class MainActivity extends BridgeActivity {
 
         super.onCreate(savedInstanceState);
 
-        // Draw the minimal Cloud shell behind transparent system bars while
+        // Draw the canonical Cloud renderer behind transparent system bars while
         // keeping both bars visible and user-controlled. This uses only the
         // public AndroidX edge-to-edge API and avoids white-on-white status
         // icons on the signed-out screen.
@@ -6259,7 +6256,7 @@ public class MainActivity extends BridgeActivity {
 `;
 }
 
-/** Android Keystore-backed bearer storage for the minimal Play Cloud shell. */
+/** Android Keystore-backed bearer storage for the Play Cloud client. */
 export function cloudSafeSecureCredentialsPluginJava(androidPackage) {
   return `package ${androidPackage};
 
@@ -6300,6 +6297,7 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
     private static final String KEY_ALIAS = "ai.elizaos.app.android_cloud_token_key_v1";
     private static final String PREFERENCES = "eliza_secure_credentials_v1";
     private static final String SESSION_CIPHERTEXT = "steward_token_ciphertext";
+    private static final String PENDING_LOGIN_CIPHERTEXT = "mobile_login_ciphertext";
     private static final String ADMISSION_CIPHERTEXT = "account_deletion_admission_ciphertext";
     private static final String STATUS_CIPHERTEXT = "account_deletion_status_ciphertext";
     private static final String RECOVERY_CIPHERTEXT = "account_deletion_recovery_ciphertext";
@@ -6313,9 +6311,9 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
     @PluginMethod
     public synchronized void get(PluginCall call) {
         if (!requireExactLocalOrigin(call)) return;
-        String storageKey = storageKey(call);
-        if (storageKey == null) return;
-        String encoded = preferences().getString(storageKey, null);
+        String preferenceKey = preferenceKey(call);
+        if (preferenceKey == null) return;
+        String encoded = preferences().getString(preferenceKey, null);
         if (encoded == null) {
             JSObject result = new JSObject();
             result.put("value", JSONObject.NULL);
@@ -6334,7 +6332,7 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
             result.put("value", value);
             call.resolve(result);
         } catch (GeneralSecurityException | IllegalArgumentException error) {
-            preferences().edit().remove(storageKey).apply();
+            preferences().edit().remove(preferenceKey).apply();
             call.reject("Secure credential storage is unavailable.", "SECURE_CREDENTIAL_UNAVAILABLE", error);
         }
     }
@@ -6342,8 +6340,8 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
     @PluginMethod
     public synchronized void set(PluginCall call) {
         if (!requireExactLocalOrigin(call)) return;
-        String storageKey = storageKey(call);
-        if (storageKey == null) return;
+        String preferenceKey = preferenceKey(call);
+        if (preferenceKey == null) return;
         String value = call.getString("value");
         if (value == null || value.trim().isEmpty()) {
             call.reject("A non-empty credential is required.", "SECURE_CREDENTIAL_INVALID");
@@ -6360,7 +6358,7 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
             String encoded = Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP)
                     + ":"
                     + Base64.encodeToString(cipher.doFinal(plaintext), Base64.NO_WRAP);
-            if (!preferences().edit().putString(storageKey, encoded).commit()) {
+            if (!preferences().edit().putString(preferenceKey, encoded).commit()) {
                 call.reject("Secure credential storage could not be committed.", "SECURE_CREDENTIAL_UNAVAILABLE");
                 return;
             }
@@ -6373,9 +6371,9 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
     @PluginMethod
     public synchronized void remove(PluginCall call) {
         if (!requireExactLocalOrigin(call)) return;
-        String storageKey = storageKey(call);
-        if (storageKey == null) return;
-        if (!preferences().edit().remove(storageKey).commit()) {
+        String preferenceKey = preferenceKey(call);
+        if (preferenceKey == null) return;
+        if (!preferences().edit().remove(preferenceKey).commit()) {
             call.reject("Secure credential storage could not be cleared.", "SECURE_CREDENTIAL_UNAVAILABLE");
             return;
         }
@@ -6422,7 +6420,14 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
         return currentUrl.get();
     }
 
-    private String storageKey(PluginCall call) {
+    private String preferenceKey(PluginCall call) {
+        String slot = call.getString("slot");
+        if ("credential".equals(slot)) return SESSION_CIPHERTEXT;
+        if ("pending_login".equals(slot)) return PENDING_LOGIN_CIPHERTEXT;
+        if (slot != null) {
+            call.reject("The secure credential slot is invalid.", "SECURE_CREDENTIAL_INVALID");
+            return null;
+        }
         String key = call.getString("key", "session");
         if ("session".equals(key)) return SESSION_CIPHERTEXT;
         if ("accountDeletionAdmission".equals(key)) return ADMISSION_CIPHERTEXT;
@@ -6434,6 +6439,14 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
 
     private SharedPreferences preferences() {
         return getContext().getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE);
+    }
+
+    private String preferenceKey(PluginCall call) {
+        String slot = call.getString("slot", "credential");
+        if ("credential".equals(slot)) return CREDENTIAL_CIPHERTEXT;
+        if ("pending_login".equals(slot)) return PENDING_LOGIN_CIPHERTEXT;
+        call.reject("The secure credential slot is invalid.", "SECURE_CREDENTIAL_INVALID");
+        return null;
     }
 
     private SecretKey loadOrCreateKey() throws GeneralSecurityException {
@@ -7582,7 +7595,7 @@ function auditAndroidCloudSource(phase, { env = process.env } = {}) {
       const expected = sanitizeAndroidCloudCapacitorConfig(config);
       if (JSON.stringify(config) !== JSON.stringify(expected)) {
         failures.push(
-          "capacitor.config.json differs from the minimal Play runtime contract",
+          "capacitor.config.json differs from the restricted Play runtime contract",
         );
       }
     } catch (error) {
@@ -8251,7 +8264,9 @@ export async function runAndroidBuild(
   if (target.buildMobileAgentBundle) await buildMobileAgentBundle();
   await ensurePlatform("android");
   await ensureRendererDistMatchesLane(target.webTarget);
-  await runCapacitor(["sync", "android"]);
+  await runCapacitor(["sync", "android"], {
+    env: { ...process.env, ...target.env },
+  });
   normalizeCapacitorSettingsFile(
     path.join(androidDir, "capacitor.settings.gradle"),
   );

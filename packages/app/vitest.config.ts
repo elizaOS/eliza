@@ -72,13 +72,6 @@ export default defineConfig({
         replacement: path.join(here, "../ui/src/api/index.ts"),
       },
       {
-        find: /^@elizaos\/ui\/error-boundary$/,
-        replacement: path.join(
-          here,
-          "../ui/src/components/ui/error-boundary.tsx",
-        ),
-      },
-      {
         find: /^@elizaos\/ui\/(.+)$/,
         replacement: path.join(here, "../ui/src/$1"),
       },

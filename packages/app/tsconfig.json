@@ -58,9 +58,6 @@
       "@elizaos/logger/*": ["../logger/src/*"],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/ui": ["../ui/src/index.ts"],
-      "@elizaos/ui/error-boundary": [
-        "../ui/src/components/ui/error-boundary.tsx"
-      ],
       "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/plugin-capacitor-bridge": [
         "../../plugins/plugin-capacitor-bridge/src/index.ts"

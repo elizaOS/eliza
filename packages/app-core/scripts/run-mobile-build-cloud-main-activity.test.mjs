@@ -26,7 +26,7 @@ describe("cloudSafeMainActivityJava", () => {
     expect(splashInstall).toBeLessThan(bridgeCreation);
   });
 
-  it("does not register push or background messaging in the minimal Play activity", () => {
+  it("does not register push or background messaging in the Play activity", () => {
     const source = cloudSafeMainActivityJava("ai.elizaos.app");
 
     expect(source).not.toContain("SafePushNotificationsPlugin");
@@ -75,6 +75,7 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).toContain("registerPlugin(ElizaPlayExportPlugin.class);");
     expect(source).toContain("registerPlugin(ElizaPlayVoicePlugin.class);");
     expect(source).toContain("registerPlugin(ElizaPlaySettingsPlugin.class);");
+    expect(source).not.toContain("GoogleIdentityPlugin");
     expect(coldCapture).toBeGreaterThanOrEqual(0);
     expect(coldCapture).toBeLessThan(bridgeCreation);
     expect(warmCapture).toBeGreaterThanOrEqual(0);
@@ -106,8 +107,10 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).toContain('"accountDeletionAdmission".equals(key)');
     expect(source).toContain('"accountDeletionStatus".equals(key)');
     expect(source).toContain('"accountDeletionRecovery".equals(key)');
-    expect(source).toContain("putString(storageKey, encoded).commit()");
-    expect(source).toContain("remove(storageKey).commit()");
+    expect(source).toContain('"pending_login".equals(slot)');
+    expect(source).toContain('"mobile_login_ciphertext"');
+    expect(source).toContain("putString(preferenceKey, encoded).commit()");
+    expect(source).toContain("remove(preferenceKey).commit()");
     expect(source).toContain(
       'private static final String LOCAL_APP_ORIGIN = "https://localhost";',
     );

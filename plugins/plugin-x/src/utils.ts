@@ -1,7 +1,6 @@
 /**
- * Shared tweet-sending and media helpers for the connector: `sendTweet` (publishes
- * text, splitting into threads and honoring the max length, returning the accepted
- * `SentTweet`), `fetchMediaData` (SSRF-guarded, size-capped attachment download), and
+ * Shared tweet-sending and media helpers for the connector: single-post and
+ * ordered-thread delivery, SSRF-guarded attachment loading, and
  * `parseActionResponseFromText` (extracts the model's like/retweet/quote/reply
  * choice). Re-exports the shared API error handler.
  */
@@ -18,6 +17,7 @@ import {
   type Memory,
   type UUID,
 } from "@elizaos/core";
+import twitterText from "twitter-text";
 import type { ClientBase } from "./base";
 import type { Tweet } from "./client";
 import { TWEET_MAX_LENGTH } from "./constants";
@@ -35,6 +35,58 @@ export interface SentTweet {
   text?: string;
   edit_history_tweet_ids?: string[];
   readonly [extra: string]: unknown;
+}
+
+/** Provider receipt paired with the exact chunk accepted for that post. */
+export interface TweetThreadReceipt {
+  id: string;
+  text: string;
+}
+
+/** X direct-message text accepts at most 10,000 Unicode characters per send. */
+export const X_MAX_DM_LENGTH = 10_000;
+
+// The pinned runtimes provide Intl.Segmenter, while this package's ES2020
+// declaration library does not expose its type.
+const GraphemeSegmenter = (
+  Intl as unknown as {
+    Segmenter: new (
+      locale: string,
+      options: { granularity: "grapheme" },
+    ) => { segment(text: string): Iterable<{ segment: string }> };
+  }
+).Segmenter;
+
+const xGraphemeSegmenter = new GraphemeSegmenter("en", {
+  granularity: "grapheme",
+});
+
+/** Split direct-message text on Unicode scalar boundaries without dropping it. */
+export function splitXDirectMessageContent(text: string): string[] {
+  const characters = Array.from(text);
+  const chunks: string[] = [];
+  for (let index = 0; index < characters.length; index += X_MAX_DM_LENGTH) {
+    chunks.push(characters.slice(index, index + X_MAX_DM_LENGTH).join(""));
+  }
+  return chunks;
+}
+
+/** Send complete text through a caller-owned first/reply transport. */
+export async function sendTextAsTweetThread(
+  text: string,
+  sendChunk: (
+    chunk: string,
+    previousTweetId: string | undefined,
+    index: number,
+  ) => Promise<SentTweet>,
+  maxLength: number = TWEET_MAX_LENGTH,
+): Promise<TweetThreadReceipt[]> {
+  const receipts: TweetThreadReceipt[] = [];
+  for (const [index, chunk] of splitTweetContent(text, maxLength).entries()) {
+    const receipt = await sendChunk(chunk, receipts[index - 1]?.id, index);
+    receipts.push({ id: receipt.id, text: chunk });
+  }
+  return receipts;
 }
 
 function errorDetail(error: unknown): string {
@@ -279,74 +331,64 @@ export async function sendChunkedTweet(
   content: Content,
   roomId: UUID,
   _twitterUsername: string,
-  inReplyTo: string,
+  inReplyTo?: string,
 ): Promise<Memory[]> {
   return client.withAuthenticatedSession(async (session) => {
-    const messages: Memory[] = [];
-    const chunks = splitTweetContent(content.text ?? "", TWEET_MAX_LENGTH);
-    let previousTweetId = inReplyTo;
     const mediaData =
       content.attachments && content.attachments.length > 0
         ? await fetchMediaData(content.attachments)
         : [];
 
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      if (chunk === undefined) continue;
-      const tweetContent = `${chunk}`;
-      logger.debug(`Sending tweet ${i + 1}/${chunks.length}: ${tweetContent}`);
-
-      try {
+    const receipts = await sendTextAsTweetThread(
+      content.text ?? "",
+      async (chunk, previousTweetId, index) => {
+        logger.debug(`Sending tweet chunk ${index + 1}: ${chunk}`);
         if (!client.isAuthenticatedSessionCurrent(session)) {
           throw new ElizaError("X credentials rotated during thread egress", {
             code: "X_AUTH_SESSION_ROTATED",
           });
         }
-        const result = await sendTweet(
-          client,
-          tweetContent,
-          i === 0 ? mediaData : [],
-          previousTweetId,
-        );
-        const tweetResult =
-          typeof result.data === "object" && result.data !== null
-            ? result.data
-            : result;
-
-        if (
-          typeof tweetResult === "object" &&
-          tweetResult !== null &&
-          "id" in tweetResult &&
-          typeof tweetResult.id === "string"
-        ) {
-          const tweetId = tweetResult.id;
-          messages.push({
-            id: createUniqueUuid(client.runtime, tweetId),
-            entityId: client.runtime.agentId,
-            content: {
-              text: chunk,
-              url: `https://x.com/${session.profile.username}/status/${tweetId}`,
-              source: "twitter",
-            },
-            agentId: client.runtime.agentId,
-            roomId,
-            createdAt: Date.now(),
-          });
-          previousTweetId = tweetId;
+        try {
+          return await sendTweet(
+            client,
+            chunk,
+            index === 0 ? mediaData : [],
+            previousTweetId ?? inReplyTo,
+          );
+        } catch (error) {
+          logger.error(`Error sending chunk ${index + 1}:`, errorDetail(error));
+          throw error;
         }
-      } catch (error) {
-        logger.error(`Error sending chunk ${i + 1}:`, errorDetail(error));
-        throw error;
-      }
-    }
+      },
+    );
 
-    return messages;
+    return receipts.map(({ id: tweetId, text }) => ({
+      id: createUniqueUuid(client.runtime, tweetId),
+      entityId: client.runtime.agentId,
+      content: {
+        text,
+        url: `https://x.com/${session.profile.username}/status/${tweetId}`,
+        source: "twitter",
+      },
+      metadata: {
+        type: "message",
+        source: "twitter",
+        accountId: client.accountId,
+        provider: "twitter",
+        messageIdFull: tweetId,
+        fromBot: true,
+      } satisfies Memory["metadata"],
+      agentId: client.runtime.agentId,
+      roomId,
+      createdAt: Date.now(),
+    }));
   });
 }
 
 /**
  * Split content into ordered posts without rewriting or dropping any text.
- * URLs stay indivisible because X gives each complete URL a fixed wire weight.
+ * URL boundaries come from twitter-text, the same parser used to enforce X's
+ * weighted limit, so trailing punctuation remains ordinary splittable text.
  */
 export function splitTweetContent(
   content: string,
@@ -361,19 +403,22 @@ export function splitTweetContent(
   if (!content) return [];
 
   const units: string[] = [];
-  const urlPattern = /https?:\/\/[^\s]+/gu;
   let cursor = 0;
-  for (const match of content.matchAll(urlPattern)) {
-    const index = match.index;
-    units.push(...Array.from(content.slice(cursor, index)));
-    units.push(match[0]);
-    cursor = index + match[0].length;
+  const appendTextUnits = (text: string) => {
+    for (const { segment } of xGraphemeSegmenter.segment(text)) {
+      units.push(segment);
+    }
+  };
+  for (const entity of twitterText.extractUrlsWithIndices(content)) {
+    const [start, end] = entity.indices;
+    appendTextUnits(content.slice(cursor, start));
+    units.push(content.slice(start, end));
+    cursor = end;
   }
-  units.push(...Array.from(content.slice(cursor)));
+  appendTextUnits(content.slice(cursor));
 
   const chunks: string[] = [];
   let chunk = "";
-  let chunkWeight = 0;
   for (const unit of units) {
     const unitWeight = countTwitterWeightedLength(unit);
     if (unitWeight > maxLength) {
@@ -385,13 +430,12 @@ export function splitTweetContent(
         },
       );
     }
-    if (chunk && chunkWeight + unitWeight > maxLength) {
+    const candidate = `${chunk}${unit}`;
+    if (chunk && countTwitterWeightedLength(candidate) > maxLength) {
       chunks.push(chunk);
       chunk = unit;
-      chunkWeight = unitWeight;
     } else {
-      chunk += unit;
-      chunkWeight += unitWeight;
+      chunk = candidate;
     }
   }
   if (chunk) chunks.push(chunk);

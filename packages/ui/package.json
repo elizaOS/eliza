@@ -158,6 +158,11 @@
       "import": "./dist/components/ui/button.js",
       "default": "./dist/components/ui/button.js"
     },
+    "./error-boundary": {
+      "types": "./dist/error-boundary.d.ts",
+      "import": "./dist/error-boundary.js",
+      "default": "./dist/error-boundary.js"
+    },
     "./card": {
       "types": "./dist/components/ui/card.d.ts",
       "import": "./dist/components/ui/card.js",
@@ -167,11 +172,6 @@
       "types": "./dist/components/ui/dropdown-menu.d.ts",
       "import": "./dist/components/ui/dropdown-menu.js",
       "default": "./dist/components/ui/dropdown-menu.js"
-    },
-    "./error-boundary": {
-      "types": "./dist/components/ui/error-boundary.d.ts",
-      "import": "./dist/components/ui/error-boundary.js",
-      "default": "./dist/components/ui/error-boundary.js"
     },
     "./input": {
       "types": "./dist/components/ui/input.d.ts",

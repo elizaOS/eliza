@@ -793,6 +793,118 @@ describe("runPollingBackend", () => {
     expect(clearPersistedActiveServer).not.toHaveBeenCalled();
   });
 
+  it("routes a password-configured HTTPS remote to owner login instead of pairing", async () => {
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: { origin: "capacitor://localhost", protocol: "capacitor:" },
+    };
+    clientMock.getBaseUrl.mockReturnValue("https://remote.tailnet.ts.net");
+    clientMock.hasToken.mockReturnValue(false);
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockResolvedValue({
+      required: true,
+      authenticated: false,
+      passwordConfigured: true,
+      pairingEnabled: false,
+      expiresAt: null,
+    });
+    const remote = {
+      id: "remote:owner-password",
+      kind: "remote" as const,
+      label: "owner-password-remote",
+      apiBase: "https://remote.tailnet.ts.net",
+    };
+    const ctx: RestoringSessionCtx = {
+      persistedActiveServer: remote,
+      restoredActiveServer: remote,
+      shouldPreserveCompletedFirstRun: false,
+      hadPriorFirstRun: false,
+    };
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+      ctx,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(deps.setAuthRequired).toHaveBeenCalledWith(false);
+    expect(deps.setFirstRunComplete).toHaveBeenCalledWith(true);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: true,
+    });
+    expect(dispatch).not.toHaveBeenCalledWith({
+      type: "BACKEND_AUTH_REQUIRED",
+    });
+    expect(clearPersistedActiveServer).not.toHaveBeenCalled();
+  });
+
+  it("keeps a password-configured plaintext remote behind the pairing gate", async () => {
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: { origin: "capacitor://localhost", protocol: "capacitor:" },
+    };
+    clientMock.getBaseUrl.mockReturnValue("http://192.168.0.137:31340");
+    clientMock.hasToken.mockReturnValue(false);
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockResolvedValue({
+      required: true,
+      authenticated: false,
+      passwordConfigured: true,
+      pairingEnabled: true,
+      expiresAt: 1893456000000,
+    });
+    const remote = {
+      id: "remote:plaintext-owner-password",
+      kind: "remote" as const,
+      label: "plaintext-owner-password-remote",
+      apiBase: "http://192.168.0.137:31340",
+    };
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+      {
+        persistedActiveServer: remote,
+        restoredActiveServer: remote,
+        shouldPreserveCompletedFirstRun: false,
+        hadPriorFirstRun: false,
+      },
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_AUTH_REQUIRED" });
+    expect(dispatch).not.toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: true,
+    });
+    expect(deps.setAuthRequired).toHaveBeenCalledWith(true);
+    expect(deps.setPairingEnabled).toHaveBeenCalledWith(true);
+  });
+
   it("on Capacitor native, a pairing-enabled REMOTE 401 exits to the pairing gate instead of looping (iOS remote-connect)", async () => {
     // Regression: on iOS native, a 401 without a token was always assumed to be
     // the transient local-agent token-injection race and fell through to the

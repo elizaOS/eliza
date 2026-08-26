@@ -12,6 +12,21 @@ const root = path.resolve(
 const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
 
 describe("Android Play account-deletion contract", () => {
+  it("keeps Android on the canonical full application shell", () => {
+    const entry = read("app/src/entry.ts");
+
+    expect(entry).toContain('import("./main")');
+    expect(entry).not.toContain("main.android-cloud");
+    expect(
+      fs.existsSync(path.join(root, "app/src/main.android-cloud.tsx")),
+    ).toBe(false);
+    expect(
+      fs.existsSync(
+        path.join(root, "ui/src/android-cloud/AndroidCloudApp.tsx"),
+      ),
+    ).toBe(false);
+  });
+
   it("ships real in-app and external deletion paths", () => {
     const privacy = read(
       "ui/src/cloud/account-security/components/privacy-panel.tsx",
@@ -37,39 +52,38 @@ describe("Android Play account-deletion contract", () => {
     }
   });
 
-  it("pins Android to the stable capability contract without backend ownership", () => {
-    const entry = read("app/src/main.android-cloud.tsx");
-    const parser = read("ui/src/android-cloud/account-deletion-contract.ts");
-    const settings = read("ui/src/android-cloud/AndroidCloudSettings.tsx");
-    const seam = read("ui/src/android-cloud/ACCOUNT_DELETION_CONTRACT_SEAM.md");
-
-    expect(seam).toContain("90343b7265d3fef2c717c1ab6701cbe3d8b59036");
-    expect(entry).toContain('"/api/v1/me/account-deletion"');
-    expect(entry).toContain('"/api/public/account-deletion"');
-    expect(entry).toContain('"X-Account-Deletion-Status"');
-    expect(entry).toContain('"X-Account-Deletion-Recovery"');
-    expect(entry).toContain('confirmation: "CANCEL DELETION"');
-    expect(entry).toContain('"accountDeletionAdmission"');
-    expect(entry).toContain("new Uint8Array(32)");
-    expect(entry).toContain("crypto.getRandomValues(bytes)");
-    expect(entry).toContain(
-      'data: { confirmation: "DELETE", admissionCredential }',
+  it("keeps deletion admission fenced until the lifecycle reservation exists", () => {
+    const route = read("cloud/api/v1/me/account-deletion/route.ts");
+    const lifecycle = read("cloud/shared/src/lib/services/account-deletion.ts");
+    const resourcePurge = read(
+      "cloud/shared/src/lib/services/account-deletion-resource-purge.ts",
     );
-    expect(entry).toContain("getOrCreateDeletionAdmissionCredential");
-    expect(entry).toContain("persistDeletionCapabilities");
-    expect(entry).toContain('from "@elizaos/ui/error-boundary"');
-    expect(entry).not.toContain('from "@elizaos/ui"');
-    expect(entry).not.toContain("Math.random");
-    expect(entry).not.toContain("statusAccessEstablished");
-    expect(parser).toContain("statusCredential: string;");
-    expect(parser).toContain("recoveryCredential: string;");
-    expect(parser).toContain('| "canceling"');
-    expect(parser).toContain("accessState: AccountDeletionAccessState;");
-    expect(parser).toContain("nextAction: AccountDeletionNextAction;");
-    expect(parser).toContain('nextAction: "wait_for_reconciliation"');
-    expect(settings).toContain("Type CANCEL DELETION");
-    expect(settings).toContain("Restoring account access");
-    expect(settings).toContain("Existing sessions and API keys remain revoked");
-    expect(settings).toContain("Save data export");
+    const users = read("cloud/shared/src/lib/services/users.ts");
+    const appCleanup = read("cloud/shared/src/lib/services/app-cleanup.ts");
+    const publicPage = read(
+      "ui/src/cloud/public-pages/pages/legal/account-deletion-page.tsx",
+    );
+    expect(route).toContain('body.confirmation !== "DELETE"');
+    expect(lifecycle).toContain('"TRANSFER_REQUIRED"');
+    expect(lifecycle).toContain('"LIFECYCLE_RESERVATION_REQUIRED"');
+    expect(lifecycle).toContain("reservePersonalAccountDeletion");
+    expect(lifecycle).toContain("deactivateStewardPlatformUser");
+    expect(lifecycle).toContain("reactivateStewardPlatformUser");
+    expect(lifecycle).not.toContain("deleteStewardPlatformUser");
+    expect(lifecycle).toContain("recoverStaleProcessing");
+    expect(lifecycle).toContain("purgePersonalOrganizationResources");
+    expect(lifecycle).toContain("markActionRequired");
+    expect(resourcePurge).toContain("deleteBillingCustomer");
+    expect(resourcePurge).toContain("prepareManagedDomains");
+    expect(resourcePurge).toContain('authorization: "account_deletion"');
+    expect(resourcePurge).toContain("purgeOrganizationObjectStorage");
+    expect(users).toContain("deletePersonalOrganizationAtomically");
+    expect(appCleanup).toContain("requireContainerTeardownCompletion");
+    expect(publicPage).toContain("30-day recovery");
+    expect(publicPage).toContain("support@eliza.cloud");
+    expect(publicPage).not.toContain("sign back in");
+    expect(read("cloud/shared/src/lib/cron/cloudflare-cron.ts")).toContain(
+      '"/api/cron/process-account-deletions"',
+    );
   });
 });
