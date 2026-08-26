@@ -289,4 +289,12 @@ describe("describeAppReference / appReferenceLogView — reference display seam"
     expect(view).toBe(`${"a".repeat(120)}…`);
     expect(view.length).toBe(121);
   });
+
+  it("appReferenceLogView avoids splitting surrogate pairs at 120-char boundary", () => {
+    const input = "a".repeat(119) + "🚀" + "b".repeat(50);
+    const view = appReferenceLogView(input);
+    expect(view.endsWith("…")).toBe(true);
+    expect(view.isWellFormed?.()).not.toBe(false);
+    expect(view).toBe(`${"a".repeat(119)}…`);
+  });
 });
