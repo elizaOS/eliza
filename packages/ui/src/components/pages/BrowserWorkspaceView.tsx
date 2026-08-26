@@ -2389,7 +2389,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   });
 
   const navNode = (
-    <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_repeat(3,2.75rem)] items-center gap-1 px-1.5 py-1 md:grid-cols-[2.75rem_minmax(10rem,4fr)_repeat(3,2.75rem)_minmax(10rem,5fr)_repeat(2,2.75rem)] md:gap-1.5 md:px-2 md:py-1.5 lg:gap-2 lg:px-3 lg:py-2">
+    <div className="grid grid-cols-[2.75rem_2.75rem_minmax(0,1fr)_repeat(3,2.75rem)] items-center gap-1 px-1.5 py-1 md:grid-cols-[2.75rem_minmax(10rem,4fr)_repeat(3,2.75rem)_minmax(10rem,5fr)_repeat(2,2.75rem)] md:gap-1.5 md:px-2 md:py-1.5 lg:gap-2 lg:px-3 lg:py-2">
       <TooltipHint
         content={t("common.backToLauncher", {
           defaultValue: "Back to launcher",
@@ -2426,7 +2426,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="size-11 shrink-0"
+        className="hidden size-11 shrink-0 md:inline-flex"
         aria-label={newTabLabel}
         disabled={busyAction !== null}
         onClick={() =>
@@ -2453,7 +2453,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="size-11"
+        className="order-5 size-11 md:order-none"
         aria-label={t("common.refresh", { defaultValue: "Refresh" })}
         disabled={!selectedTab || busyAction !== null}
         onClick={() =>
@@ -2478,7 +2478,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="size-11"
+        className="hidden size-11 md:inline-flex"
         aria-label={t("browserworkspace.CloseAllTabs", {
           defaultValue: "Close all tabs",
         })}
@@ -2527,7 +2527,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         })}
         data-testid="browser-workspace-address-input"
         disabled={busyAction !== null || selectedTabIsInternal}
-        className="col-span-2 h-11 min-w-[10rem] flex-1 rounded-full border-transparent bg-card/70 px-4 text-sm text-txt shadow-inset md:col-span-1"
+        className="order-3 h-11 min-w-0 flex-1 rounded-full border-transparent bg-card/70 px-3 text-sm text-txt shadow-inset md:order-none md:min-w-[10rem] md:px-4"
       />
       <BrowserNavButton
         agentId="go"
@@ -2541,7 +2541,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         variant="outline"
         size="sm"
-        className="h-11 shrink-0 px-3"
+        className="order-4 h-11 shrink-0 px-3 md:order-none"
         aria-label={goLabel}
         disabled={
           busyAction !== null ||
@@ -2571,7 +2571,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="size-11"
+        className="order-6 size-11 md:order-none"
         aria-label={t("browserworkspace.OpenExternal", {
           defaultValue: "Open external",
         })}
