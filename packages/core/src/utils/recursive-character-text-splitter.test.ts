@@ -73,8 +73,19 @@ describe("splitText", () => {
 		});
 		expect(await splitter.splitText("")).toEqual([]);
 		expect(await splitter.splitText("   \n\n  ")).toEqual([]);
-		expect(await splitter.splitText(null as unknown as string)).toEqual([]);
-		expect(await splitter.splitText(undefined as unknown as string)).toEqual([]);
+	});
+
+	it("rejects non-string inputs with TypeError", async () => {
+		const splitter = new RecursiveCharacterTextSplitter({
+			chunkSize: 100,
+			chunkOverlap: 0,
+		});
+		await expect(splitter.splitText(null as unknown as string)).rejects.toThrow(
+			TypeError,
+		);
+		await expect(
+			splitter.splitText(undefined as unknown as string),
+		).rejects.toThrow(TypeError);
 	});
 
 	it("merges pieces up to chunkSize instead of emitting one per separator", async () => {

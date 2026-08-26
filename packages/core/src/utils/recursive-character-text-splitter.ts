@@ -185,7 +185,10 @@ export class RecursiveCharacterTextSplitter {
 	}
 
 	async splitText(text: string): Promise<string[]> {
-		if (!text || typeof text !== "string") {
+		if (typeof text !== "string") {
+			throw new TypeError("text must be a string");
+		}
+		if (!text.trim()) {
 			return [];
 		}
 		return this._splitText(toWellFormedUnicode(text), this.separators);
