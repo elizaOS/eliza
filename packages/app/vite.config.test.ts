@@ -8,6 +8,7 @@ import appViteConfig, {
   appDevWsBasePlugin,
   appShellMetadataPlugin,
   findAndroidCloudEmittedRoutingFindings,
+  readAndroidCloudCuratedAssets,
   resolveAndroidCloudPrebootLockupDataUri,
   resolveAppShellLocalCspSources,
   selectAndroidCloudRendererEntry,
@@ -85,6 +86,16 @@ describe("app shell local connection policy", () => {
       localHttpSources: "",
       localConnectSources: "",
     });
+  });
+
+  test("packages third-party notices with the curated Android cloud assets", () => {
+    const notice = readAndroidCloudCuratedAssets().find(
+      (asset) => asset.fileName === "THIRD_PARTY_NOTICES.txt",
+    );
+
+    expect(notice?.type).toBe("asset");
+    expect(notice?.source.toString("utf8")).toContain("Ionicons");
+    expect(notice?.source.toString("utf8")).toContain("MIT License");
   });
 
   test("audits every emitted file without rewriting packaged code", () => {
