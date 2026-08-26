@@ -242,6 +242,7 @@ function makeRuntime(
 			}
 			return queue.shift();
 		}),
+		getModelRegistrations: vi.fn(() => []),
 		getSetting: vi.fn((key: string) => settings?.[key]),
 		logger: {
 			debug: vi.fn(),
@@ -916,54 +917,15 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(runtime.reportError).not.toHaveBeenCalled();
 	});
 
-	// #16395: a per-agent maxReplyTokens setting caps Stage-1 with a real
-	// max_tokens, overriding the 2048 group default.
-	it("caps Stage-1 max_tokens at a per-agent maxReplyTokens setting", async () => {
-		const runtime = makeRuntime([
-			{
-				text: "",
-				toolCalls: [
-					{
-						id: "mh-1",
-						name: "HANDLE_RESPONSE",
-						arguments: {
-							shouldRespond: "RESPOND",
-							thought: "Direct answer.",
-							replyText: "Hi.",
-							contexts: ["simple"],
-							intents: [],
-							candidateActionNames: [],
-							facts: [],
-							relationships: [],
-							addressedTo: [],
-						},
-					},
-				],
-				finishReason: "tool_calls",
-			},
-		]);
-		// Round-trip through the character schema: maxReplyTokens must survive
-		// validation as a known top-level settings key (not be relocated into
-		// settings.extra, which would silently strip the budget).
+	// The completion ceiling was retired; keep this Stage-1-adjacent regression
+	// aligned with the character schema so stale configurations fail closed
+	// instead of silently reintroducing a model-content cap.
+	it("rejects the retired per-agent maxReplyTokens setting", () => {
 		const validated = validateCharacter({
-			name: runtime.character.name ?? "Test",
+			name: "Test Agent",
 			settings: { maxReplyTokens: 200 },
 		});
-		expect(validated.success).toBe(true);
-		if (!validated.success) return;
-		expect(validated.data.settings?.maxReplyTokens).toBe(200);
-		runtime.character.settings = validated.data.settings;
-
-		await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage(),
-			state: makeState(),
-			responseId: "00000000-0000-0000-0000-000000000006" as UUID,
-		});
-
-		const params = useModelCalls(runtime)[0]?.[1] as { maxTokens?: number };
-		// Hard-capped at the per-agent budget, overriding the 2048 group default.
-		expect(params.maxTokens).toBe(200);
+		expect(validated.success).toBe(false);
 	});
 
 	it("restores PII surrogates at the direct reply boundary only", async () => {

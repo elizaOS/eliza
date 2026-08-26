@@ -164,7 +164,7 @@ const CEREBRAS_ENTRIES: ModelCatalogEntry[] = [
     id: "gemma-4-31b",
     display: "Gemma 4 31B",
     efforts: ["low", "medium", "high"],
-    roles: ["small"],
+    roles: ["small", "large"],
   },
   {
     id: "zai-glm-4.7",
