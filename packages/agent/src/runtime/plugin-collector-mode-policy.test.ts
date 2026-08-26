@@ -88,6 +88,36 @@ describe("collectPluginNames runtime mode provider policy", () => {
     expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
   });
 
+  it("does not let a stale force-included provider bypass cloud ownership", () => {
+    process.env.OPENAI_API_KEY = "sk-stale";
+    process.env.ELIZAOS_CLOUD_API_KEY = "cloud-test";
+
+    const config: ElizaConfig = {
+      deploymentTarget: {
+        runtime: "cloud",
+        provider: "elizacloud",
+      },
+      cloud: {
+        enabled: true,
+        apiKey: "cloud-test",
+        agentId: "agent-test",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+      },
+    } as ElizaConfig;
+
+    const names = collectPluginNames(config, undefined, [
+      "@elizaos/plugin-openai",
+    ]);
+
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+    expect(names.has("@elizaos/plugin-openai")).toBe(false);
+  });
+
   it("keeps local inference available for unsigned Cloud text intent", () => {
     const config: ElizaConfig = {
       serviceRouting: {
@@ -462,6 +492,26 @@ describe("collectPluginNames runtime mode provider policy", () => {
     expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
   });
 
+  it("does not let force-included providers bypass remote ownership", () => {
+    const config: ElizaConfig = {
+      deploymentTarget: {
+        runtime: "remote",
+        provider: "remote",
+        remoteApiBase: "https://api.elizacloud.example",
+      },
+    } as ElizaConfig;
+
+    const names = collectPluginNames(config, undefined, [
+      "@elizaos/plugin-openai",
+      "@elizaos/plugin-local-inference",
+      "@elizaos/plugin-elizacloud",
+    ]);
+
+    expect(names.has("@elizaos/plugin-openai")).toBe(false);
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(false);
+  });
+
   it("local-only mode keeps local providers and hides cloud providers", () => {
     process.env.ELIZAOS_CLOUD_API_KEY = "cloud-test";
     process.env.OLLAMA_BASE_URL = "http://127.0.0.1:11434";
@@ -476,6 +526,20 @@ describe("collectPluginNames runtime mode provider policy", () => {
     expect(names.has("@elizaos/plugin-local-inference")).toBe(true);
     expect(names.has("@elizaos/plugin-zerollama")).toBe(true);
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(false);
+  });
+
+  it("does not let a force-included remote provider bypass local-only mode", () => {
+    const config: ElizaConfig = {
+      deploymentTarget: { runtime: "local" },
+      cloud: { enabled: false },
+    } as ElizaConfig;
+
+    const names = collectPluginNames(config, undefined, [
+      "@elizaos/plugin-openai",
+    ]);
+
+    expect(names.has("@elizaos/plugin-openai")).toBe(false);
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(true);
   });
 
   it("keeps plugin-local-inference when only local embeddings are disabled", () => {

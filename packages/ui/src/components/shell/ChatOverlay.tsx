@@ -171,6 +171,10 @@ import {
   shellToChatMessageData,
 } from "./chat-overlay-transcript";
 import {
+  CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+  CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
+} from "./chat-overlay-window-bounds";
+import {
   isShortLandscapeViewport,
   measureSafeAreaInsetTop,
   resolveChatPanelHalfDetentHeight,
@@ -1089,6 +1093,7 @@ export function PillHandle({
   onOpen,
   breathing,
   pilled,
+  desktopOverlayHost = false,
 }: {
   binding: PullGestureBinding;
   // Inverse of the panel's pill-morph scale (see pillHandleCounterScale),
@@ -1106,19 +1111,81 @@ export function PillHandle({
   // opts back in), so the keyboard would never open. Gate on `pilled` so taps
   // pass through to the textarea once the input has formed.
   pilled: boolean;
+  desktopOverlayHost?: boolean;
 }): React.JSX.Element {
+  if (desktopOverlayHost) {
+    return (
+      <motion.div
+        className="h-1.5 w-12 origin-bottom"
+        style={{
+          scale: counterScale,
+          transformOrigin: desktopOverlayHost ? "center" : "bottom center",
+          ...(desktopOverlayHost
+            ? {
+                width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
+                height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+              }
+            : {}),
+        }}
+      >
+        <Button
+          variant="transparent"
+          size="content"
+          shape="circle"
+          data-testid="chat-pill"
+          aria-label="open chat"
+          style={{
+            width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
+            height: CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+          }}
+          onKeyDown={(event) => {
+            if (
+              event.key === "Enter" ||
+              event.key === " " ||
+              event.key === "ArrowUp"
+            ) {
+              event.preventDefault();
+              onOpen();
+            }
+          }}
+          onTouchEnd={(event) => {
+            if (event.cancelable) event.preventDefault();
+          }}
+          {...binding}
+          tabIndex={pilled ? 0 : -1}
+          aria-hidden={pilled ? undefined : true}
+          className={cn(
+            "shrink-0 cursor-grab touch-none select-none active:scale-95 active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-inverse/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
+            pilled ? "pointer-events-auto" : "pointer-events-none",
+          )}
+        >
+          <Card
+            asChild
+            surface="transparent"
+            border="none"
+            radius="full"
+            overlayHandle
+          >
+            <span
+              aria-hidden="true"
+              data-testid="chat-pill-mark"
+              className={cn(
+                "pointer-events-none h-3 w-16 opacity-100",
+                breathing && "eliza-chat-handle-breathe",
+              )}
+            />
+          </Card>
+        </Button>
+      </motion.div>
+    );
+  }
+
   return (
     <Button
       variant="chatGestureTarget"
       size="content"
       data-testid="chat-pill"
       aria-label="open chat"
-      // No onClick: the pull-gesture binding is the single tap authority (a tap
-      // routes through onPointerUp → onTap → openFromPill), matching the
-      // SheetGrabber. A native onClick would ALSO fire on every tap, opening the
-      // pill twice in one gesture (double haptic + a stale focus-suppress flag
-      // that swallowed the next focus→expand). Keyboard activation still routes
-      // through onKeyDown below.
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " " || e.key === "ArrowUp") {
           e.preventDefault();
@@ -1136,8 +1203,8 @@ export function PillHandle({
       // to their touchstart element), i.e. while it was the pilled handle —
       // the render that formed the input has already flipped `pilled` false by
       // the time this fires, so the prop cannot gate it.
-      onTouchEnd={(e) => {
-        if (e.cancelable) e.preventDefault();
+      onTouchEnd={(event) => {
+        if (event.cancelable) event.preventDefault();
       }}
       {...binding}
       tabIndex={pilled ? undefined : -1}
@@ -6971,6 +7038,7 @@ export function ChatOverlay({
                 // deliberately does not (the composer glyphs carry that cue).
                 breathing={listening || responding || recording}
                 pilled={pilled}
+                desktopOverlayHost={fillHostAtHalf}
               />
             </motion.div>
           </motion.fieldset>
