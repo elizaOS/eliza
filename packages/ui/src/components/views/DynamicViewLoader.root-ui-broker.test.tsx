@@ -167,4 +167,20 @@ describe("root @elizaos/ui import is broker-scoped, not an escape hatch (#14237)
       expect(mod.runAsPrivilegedShell).toBeUndefined();
     }
   }, 120_000);
+
+  it("provides the stable shared chrome and settings composite subpaths", async () => {
+    const shared = await hostImport("@elizaos/ui/components/shared");
+    expect(shared.ViewHeader).toEqual(expect.any(Function));
+    expect(shared.ViewBackButton).toEqual(expect.any(Function));
+    expect(shared.SectionNav).toEqual(expect.any(Function));
+    expect(shared.ActionListRow).toEqual(expect.any(Function));
+    expect(shared.AppPageSidebar).toBeDefined();
+
+    const settings = await hostImport(
+      "@elizaos/ui/components/composites/settings",
+    );
+    expect(settings.SettingsStack).toEqual(expect.any(Function));
+    expect(settings.SettingsGroup).toEqual(expect.any(Function));
+    expect(settings.SettingsRow).toBeDefined();
+  });
 });
