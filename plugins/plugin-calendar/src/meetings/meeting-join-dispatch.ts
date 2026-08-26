@@ -7,16 +7,21 @@
  * The scheduling host (`@elizaos/plugin-personal-assistant`) registers this
  * handler as a `ChannelContribution` on its channel registry; the runner's
  * production dispatcher then routes the fire here, where the current auto-join
- * policy is re-checked, the firing task's scheduled mode is confirmed to still
- * match that policy (the fire-time epoch guard that stops a superseded direct
- * `all` join from firing under a later `ask` policy without owner approval),
- * the event is re-loaded from the calendar store, its conference link
- * re-validated with `parseMeetingUrl`, and the meetings service
- * (`@elizaos/plugin-meetings`) is asked to join.
+ * policy is re-checked and the firing task is authenticated fail-closed before
+ * any join: the payload must name a task that resolves to a non-dismissed
+ * calendar auto-join `join` task whose subject event matches the dispatch
+ * target and whose scheduled mode still equals the current policy. This stops
+ * a superseded direct `all` join from firing under a later `ask` policy
+ * without owner approval, and refuses any fire whose provenance cannot be
+ * positively established. Only after authentication is the event re-loaded
+ * from the calendar store, its conference link re-validated with
+ * `parseMeetingUrl`, and the meetings service (`@elizaos/plugin-meetings`)
+ * asked to join.
  *
- * Every failure is a typed `DispatchResult { ok: false }` so the spine's
- * dispatch policy (retry / escalate / fail-loud) applies — no silent skips,
- * no thrown errors swallowed by the dispatcher.
+ * Every failure — including every task-resolution or validation failure — is a
+ * typed `DispatchResult { ok: false }` so the spine's dispatch policy (retry /
+ * escalate / fail-loud) applies; the handler never falls open to a join it
+ * could not authenticate, and never throws.
  */
 
 import { type IAgentRuntime, logger } from "@elizaos/core";
@@ -28,6 +33,7 @@ import {
 import type { MeetingJoinRequest, MeetingSession } from "@elizaos/shared";
 import { parseMeetingUrl } from "@elizaos/shared";
 import { CalendarRepository } from "../service/CalendarRepository.js";
+import { AUTO_JOIN_METADATA_FLAG } from "./auto-join.js";
 import {
   type MeetingAutoJoinPolicy,
   readMeetingAutoJoinSettings,
@@ -69,45 +75,128 @@ function readFiringTaskId(payload: unknown): string | null {
   return typeof taskId === "string" && taskId.trim() ? taskId.trim() : null;
 }
 
+/** Fire-time authentication outcome for the join task named in the payload. */
+type FiringTaskAuthorization =
+  | { ok: true; task: ScheduledTask }
+  | { ok: false; result: DispatchResult };
+
+function denyFiring(
+  reason: "disconnected" | "unknown_recipient" | "transport_error",
+  userActionable: boolean,
+  message: string,
+): { ok: false; result: DispatchResult } {
+  return {
+    ok: false,
+    result: { ok: false, reason, userActionable, message },
+  };
+}
+
 /**
- * Fire-time policy-epoch guard. A join task is scheduled under one auto-join
- * policy generation, recorded structurally in `metadata.autoJoinMode`. The
- * scheduling-time idempotency key and stale-dismiss pass (see `auto-join.ts`)
- * are the primary epoch enforcement, but a concurrent or stale reconcile can
- * leave a task from a superseded generation `scheduled` inside the race window
- * before the next reconcile retires it. The most dangerous case is a direct
- * `all` join that survives into an `ask` policy: it would join with no owner
- * approval. This resolves the firing task and returns its scheduled mode so the
- * handler can refuse any task whose mode no longer matches the current policy.
- * Returns `null` when the mode cannot be determined; the caller then defers to
- * the scheduling-time guarantees rather than blocking a legitimate join.
+ * Fire-time authentication (fail closed). A join task is scheduled under one
+ * auto-join policy generation, recorded structurally in its metadata
+ * (`calendarAutoJoin` flag, `role`, `calendarEventId`, `autoJoinMode`). The
+ * scheduling-time idempotency key and stale/retire dismiss passes (see
+ * `auto-join.ts`) keep at most one non-dismissed join task alive per
+ * `(event, mode)`, and retire a superseded generation by `dismiss`. This
+ * resolves the firing task named in the payload and authorizes the join ONLY
+ * when every provenance fact holds:
+ *
+ * - the payload carries a task id, and the runner resolves it to a real task;
+ * - the task is a calendar auto-join task with `role: "join"`;
+ * - the task's subject event matches this dispatch target;
+ * - the task is not `dismissed` (a `dismissed` task is a retired generation —
+ *   the authoritative epoch signal at fire time, since the module never keeps
+ *   two non-dismissed same-mode join tasks for one event); and
+ * - the task's scheduled mode still equals the current policy.
+ *
+ * Any resolution or validation failure returns a typed refusal — never a
+ * fall-through join. This closes the approval-bypass class: a stale direct
+ * `all` join under a later `ask` policy is refused on the mode check, a retired
+ * generation is refused on the `dismissed` check, and an unauthenticated or
+ * malformed fire is refused on provenance.
  */
-async function resolveFiringTaskMode(
+async function authenticateFiringJoinTask(
   runtime: IAgentRuntime,
   payload: unknown,
-): Promise<MeetingAutoJoinPolicy | null> {
+  eventId: string,
+  policy: MeetingAutoJoinPolicy,
+): Promise<FiringTaskAuthorization> {
   const taskId = readFiringTaskId(payload);
-  if (!taskId) return null;
-  let task: ScheduledTask | undefined;
+  if (!taskId) {
+    return denyFiring(
+      "unknown_recipient",
+      false,
+      "meeting_join dispatch carried no firing task id; refusing to join without authenticated task provenance.",
+    );
+  }
+  let tasks: ScheduledTask[];
   try {
     const runner = getScheduledTaskRunner(runtime, {
       agentId: runtime.agentId,
     });
-    const tasks = await runner.list({ source: "plugin" });
-    task = tasks.find((candidate) => candidate.taskId === taskId);
+    tasks = await runner.list({ source: "plugin" });
   } catch (error) {
-    // error-policy:J7 the epoch guard is a defense-in-depth safety check layered
-    // on the authoritative scheduling-time enforcement; a runner-resolution
-    // failure must be warned and must not break the dispatch boundary contract
-    // (every outcome is a typed DispatchResult, never a throw).
+    // error-policy:J1 the dispatch boundary translates a runner-resolution
+    // failure into a typed DispatchResult; the fire cannot be authenticated,
+    // so fail closed rather than joining a meeting whose provenance is unknown.
     logger.warn(
       { src: "calendar:meeting-join-channel", taskId, error },
-      `${LOG_PREFIX} Could not resolve firing task ${taskId} for policy-epoch guard; deferring to scheduling-time guarantees.`,
+      `${LOG_PREFIX} Could not resolve firing task ${taskId} to authenticate the join; refusing to join (fail closed).`,
     );
-    return null;
+    return denyFiring(
+      "transport_error",
+      false,
+      `Could not resolve firing task ${taskId} to authenticate the meeting join; refusing to join.`,
+    );
   }
-  const mode = task?.metadata?.autoJoinMode;
-  return mode === "all" || mode === "ask" ? mode : null;
+  const task = tasks.find((candidate) => candidate.taskId === taskId);
+  if (!task) {
+    return denyFiring(
+      "unknown_recipient",
+      false,
+      `Firing task ${taskId} is not a known scheduled task; refusing to join.`,
+    );
+  }
+  if (
+    task.metadata?.[AUTO_JOIN_METADATA_FLAG] !== true ||
+    task.metadata?.role !== "join"
+  ) {
+    return denyFiring(
+      "unknown_recipient",
+      false,
+      `Firing task ${taskId} is not a calendar auto-join "join" task; refusing to join.`,
+    );
+  }
+  if (task.metadata?.calendarEventId !== eventId) {
+    return denyFiring(
+      "unknown_recipient",
+      false,
+      `Firing task ${taskId} targets a different calendar event than ${eventId}; refusing to join.`,
+    );
+  }
+  if (task.state.status === "dismissed") {
+    return denyFiring(
+      "disconnected",
+      true,
+      `Firing task ${taskId} was retired (superseded policy generation); refusing to join.`,
+    );
+  }
+  const mode = task.metadata?.autoJoinMode;
+  if (mode !== "all" && mode !== "ask") {
+    return denyFiring(
+      "unknown_recipient",
+      false,
+      `Firing task ${taskId} has no recognizable auto-join mode; refusing to join.`,
+    );
+  }
+  if (mode !== policy) {
+    return denyFiring(
+      "disconnected",
+      true,
+      `Meeting auto-join task belongs to a superseded "${mode}" policy generation; current policy is "${policy}". Refusing to join.`,
+    );
+  }
+  return { ok: true, task };
 }
 
 /**
@@ -153,20 +242,19 @@ export async function handleMeetingJoinDispatch(
     };
   }
 
-  // Policy-epoch guard: refuse a join whose scheduled mode no longer matches
-  // the current policy. This closes the reconcile race where a stale `all`
-  // (direct) join lingers into an `ask` policy and would otherwise join with no
-  // owner approval, or a stale `ask` (gated) join lingers into `all`. Only a
-  // task from the current policy generation is allowed to fire.
-  const firingMode = await resolveFiringTaskMode(runtime, payload);
-  if (firingMode && firingMode !== settings.policy) {
-    return {
-      ok: false,
-      reason: "disconnected",
-      userActionable: true,
-      message: `Meeting auto-join task belongs to a superseded "${firingMode}" policy generation; current policy is "${settings.policy}". Refusing to join.`,
-    };
-  }
+  // Fire-time authentication (fail closed): only a currently-valid, non-
+  // dismissed calendar auto-join `join` task from the CURRENT policy
+  // generation, whose subject event matches this dispatch target, may drive a
+  // join. Every resolution or validation failure returns a typed refusal so a
+  // stale, retired, or unauthenticated fire can never join a meeting the owner
+  // never approved.
+  const authorization = await authenticateFiringJoinTask(
+    runtime,
+    payload,
+    eventId,
+    settings.policy,
+  );
+  if (!authorization.ok) return authorization.result;
 
   const repo = new CalendarRepository(runtime);
   const event = await repo.getCalendarEventById(runtime.agentId, eventId);

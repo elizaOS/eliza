@@ -155,9 +155,9 @@ function lifeOpsEvent(
 
 /**
  * Runtime backed by the REAL `@elizaos/plugin-scheduling` in-memory runner (so
- * the fire-time policy-epoch guard resolves a genuine, reconcile-scheduled task
- * via `runner.get`), plus the calendar SQL stub and a recording meetings
- * service. Used to prove the guard against real tasks rather than a hand-rolled
+ * fire-time authentication resolves a genuine, reconcile-scheduled task via
+ * `runner.list`), plus the calendar SQL stub and a recording meetings service.
+ * Used to prove the handler against real tasks rather than a hand-rolled
  * metadata double.
  */
 function makeScheduledRuntime(options: RuntimeOptions = {}): {
@@ -229,6 +229,24 @@ async function scheduleJoinTaskId(
   return join.taskId;
 }
 
+/**
+ * Schedule a real `all`-policy auto-join join task on the in-memory runner and
+ * return the runtime, runner, and that task id. The join is authentic
+ * reconcile output, so fire-time authentication sees genuine provenance
+ * metadata (`calendarAutoJoin`, `role`, `calendarEventId`, `autoJoinMode`) and
+ * a real lifecycle status.
+ */
+async function scheduledAllJoin(options: RuntimeOptions = {}): Promise<{
+  runtime: IAgentRuntime;
+  runner: ScheduledTaskRunnerHandle;
+  taskId: string;
+}> {
+  const { runtime, runner } = makeScheduledRuntime(options);
+  await writeMeetingAutoJoinPolicy(runtime, "all");
+  const taskId = await scheduleJoinTaskId(runtime, runner);
+  return { runtime, runner, taskId };
+}
+
 describe("handleMeetingJoinDispatch policy-epoch guard", () => {
   it("refuses a stale direct all join once the policy changed to ask (no join without approval) (#26503)", async () => {
     const requests: MeetingJoinRequest[] = [];
@@ -287,7 +305,7 @@ describe("handleMeetingJoinDispatch policy-epoch guard", () => {
 describe("handleMeetingJoinDispatch", () => {
   it("joins the meeting and returns ok with the session id", async () => {
     const requests: MeetingJoinRequest[] = [];
-    const runtime = makeRuntime({
+    const { runtime, taskId } = await scheduledAllJoin({
       rows: [eventRow()],
       meetings: {
         requestJoin: async (request) => {
@@ -296,11 +314,10 @@ describe("handleMeetingJoinDispatch", () => {
         },
       },
     });
-    await writeMeetingAutoJoinPolicy(runtime, "all");
     const result = await handleMeetingJoinDispatch(runtime, {
       target: "evt-1",
       message: "Join the meeting",
-      metadata: { taskId: "st_1", firedAtIso: "2026-07-03T14:59:00.000Z" },
+      metadata: { taskId, firedAtIso: "2026-07-03T14:59:00.000Z" },
     });
     expect(result).toEqual({ ok: true, messageId: "meeting:sess-1" });
     expect(requests).toEqual([
@@ -331,30 +348,34 @@ describe("handleMeetingJoinDispatch", () => {
   });
 
   it("fails typed when the event no longer exists", async () => {
-    const runtime = makeRuntime({ rows: [] });
-    await writeMeetingAutoJoinPolicy(runtime, "all");
+    // Authentic join task exists, but the calendar row is gone at fire time.
+    const { runtime, taskId } = await scheduledAllJoin({ rows: [] });
     const result = await handleMeetingJoinDispatch(runtime, {
-      target: "evt-gone",
+      target: "evt-1",
+      metadata: { taskId },
     });
     expect(result).toMatchObject({ ok: false, reason: "unknown_recipient" });
   });
 
   it("fails typed when the stored link is no longer recognizable", async () => {
-    const runtime = makeRuntime({
+    const { runtime, taskId } = await scheduledAllJoin({
       rows: [eventRow({ conference_link: "https://example.com/whatever" })],
     });
-    await writeMeetingAutoJoinPolicy(runtime, "all");
     const result = await handleMeetingJoinDispatch(runtime, {
       target: "evt-1",
+      metadata: { taskId },
     });
     expect(result).toMatchObject({ ok: false, reason: "unknown_recipient" });
   });
 
   it("fails typed (user-actionable) when the meetings service is missing", async () => {
-    const runtime = makeRuntime({ rows: [eventRow()], meetings: null });
-    await writeMeetingAutoJoinPolicy(runtime, "all");
+    const { runtime, taskId } = await scheduledAllJoin({
+      rows: [eventRow()],
+      meetings: null,
+    });
     const result = await handleMeetingJoinDispatch(runtime, {
       target: "evt-1",
+      metadata: { taskId },
     });
     expect(result).toMatchObject({
       ok: false,
@@ -364,7 +385,7 @@ describe("handleMeetingJoinDispatch", () => {
   });
 
   it("maps a requestJoin failure to transport_error, never a throw", async () => {
-    const runtime = makeRuntime({
+    const { runtime, taskId } = await scheduledAllJoin({
       rows: [eventRow()],
       meetings: {
         requestJoin: async () => {
@@ -372,14 +393,227 @@ describe("handleMeetingJoinDispatch", () => {
         },
       },
     });
-    await writeMeetingAutoJoinPolicy(runtime, "all");
     const result = await handleMeetingJoinDispatch(runtime, {
       target: "evt-1",
+      metadata: { taskId },
     });
     expect(result).toMatchObject({
       ok: false,
       reason: "transport_error",
       message: "browser bot crashed",
     });
+  });
+});
+
+describe("handleMeetingJoinDispatch fire-time authentication (#26503)", () => {
+  function recorder(): {
+    requests: MeetingJoinRequest[];
+    meetings: {
+      requestJoin: (r: MeetingJoinRequest) => Promise<MeetingSession>;
+    };
+  } {
+    const requests: MeetingJoinRequest[] = [];
+    return {
+      requests,
+      meetings: {
+        requestJoin: async (request) => {
+          requests.push(request);
+          return session();
+        },
+      },
+    };
+  }
+
+  const targetOf = (id: string) => `${MEETING_JOIN_CHANNEL_KEY}:${id}`;
+
+  it("fails closed when the payload carries no firing task id", async () => {
+    const { requests, meetings } = recorder();
+    const { runtime } = await scheduledAllJoin({
+      rows: [eventRow()],
+      meetings,
+    });
+    const result = await handleMeetingJoinDispatch(runtime, {
+      target: targetOf("evt-1"),
+      message: "Join the meeting",
+    });
+    expect(result).toMatchObject({ ok: false, reason: "unknown_recipient" });
+    expect(requests).toEqual([]);
+  });
+
+  it("fails closed when the firing task id is unknown", async () => {
+    const { requests, meetings } = recorder();
+    const { runtime } = await scheduledAllJoin({
+      rows: [eventRow()],
+      meetings,
+    });
+    const result = await handleMeetingJoinDispatch(runtime, {
+      target: targetOf("evt-1"),
+      metadata: { taskId: "st_does_not_exist" },
+    });
+    expect(result).toMatchObject({ ok: false, reason: "unknown_recipient" });
+    expect(requests).toEqual([]);
+  });
+
+  it("fails closed when the scheduled-task runner cannot be resolved", async () => {
+    // makeRuntime registers no scheduling runner service, so
+    // getScheduledTaskRunner throws and the handler must refuse rather than
+    // fall open to a join it could not authenticate.
+    const { requests, meetings } = recorder();
+    const runtime = makeRuntime({ rows: [eventRow()], meetings });
+    await writeMeetingAutoJoinPolicy(runtime, "all");
+    const result = await handleMeetingJoinDispatch(runtime, {
+      target: targetOf("evt-1"),
+      metadata: { taskId: "st_1" },
+    });
+    expect(result).toMatchObject({ ok: false, reason: "transport_error" });
+    expect(requests).toEqual([]);
+  });
+
+  it("fails closed when the firing task is an approval, not a join", async () => {
+    const { requests, meetings } = recorder();
+    const { runtime, runner } = makeScheduledRuntime({
+      rows: [eventRow()],
+      meetings,
+    });
+    await writeMeetingAutoJoinPolicy(runtime, "ask");
+    await reconcileMeetingAutoJoin({
+      runtime,
+      agentId: AGENT_ID,
+      events: [lifeOpsEvent()],
+      now: () => EVENT_NOW,
+    });
+    const approval = (await runner.list()).find(
+      (t) => t.metadata?.role === "approval",
+    );
+    if (!approval) throw new Error("expected a scheduled approval task");
+    const result = await handleMeetingJoinDispatch(runtime, {
+      target: targetOf("evt-1"),
+      metadata: { taskId: approval.taskId },
+    });
+    expect(result).toMatchObject({ ok: false, reason: "unknown_recipient" });
+    expect(requests).toEqual([]);
+  });
+
+  it("fails closed when the firing task targets a different event", async () => {
+    const { requests, meetings } = recorder();
+    const { runtime, taskId } = await scheduledAllJoin({
+      rows: [eventRow()],
+      meetings,
+    });
+    const result = await handleMeetingJoinDispatch(runtime, {
+      target: targetOf("evt-2"),
+      metadata: { taskId },
+    });
+    expect(result).toMatchObject({ ok: false, reason: "unknown_recipient" });
+    expect(requests).toEqual([]);
+  });
+
+  it("fails closed when the firing task was dismissed (retired generation)", async () => {
+    const { requests, meetings } = recorder();
+    const { runtime, runner, taskId } = await scheduledAllJoin({
+      rows: [eventRow()],
+      meetings,
+    });
+    await runner.apply(taskId, "dismiss", { reason: "retired in test" });
+    const result = await handleMeetingJoinDispatch(runtime, {
+      target: targetOf("evt-1"),
+      metadata: { taskId },
+    });
+    expect(result).toMatchObject({ ok: false, reason: "disconnected" });
+    expect(requests).toEqual([]);
+  });
+
+  it("all→ask→all round trip: refuses the superseded join, allows the fresh one", async () => {
+    const { requests, meetings } = recorder();
+    const { runtime, runner } = makeScheduledRuntime({
+      rows: [eventRow()],
+      meetings,
+    });
+    const reconcile = () =>
+      reconcileMeetingAutoJoin({
+        runtime,
+        agentId: AGENT_ID,
+        events: [lifeOpsEvent()],
+        now: () => EVENT_NOW,
+      });
+    await writeMeetingAutoJoinPolicy(runtime, "all");
+    await reconcile();
+    await writeMeetingAutoJoinPolicy(runtime, "ask");
+    await reconcile();
+    await writeMeetingAutoJoinPolicy(runtime, "all");
+    await reconcile();
+
+    const allJoins = (await runner.list()).filter(
+      (t) => t.metadata?.role === "join" && t.metadata?.autoJoinMode === "all",
+    );
+    const stale = allJoins.find((t) => t.state.status === "dismissed");
+    const fresh = allJoins.find((t) => t.state.status !== "dismissed");
+    if (!stale || !fresh) {
+      throw new Error(
+        `expected one dismissed and one live all join, got ${allJoins.length}`,
+      );
+    }
+    expect(stale.taskId).not.toBe(fresh.taskId);
+
+    const staleResult = await handleMeetingJoinDispatch(runtime, {
+      target: targetOf("evt-1"),
+      metadata: { taskId: stale.taskId },
+    });
+    expect(staleResult).toMatchObject({ ok: false });
+    expect(requests).toEqual([]);
+
+    const freshResult = await handleMeetingJoinDispatch(runtime, {
+      target: targetOf("evt-1"),
+      metadata: { taskId: fresh.taskId },
+    });
+    expect(freshResult).toEqual({ ok: true, messageId: "meeting:sess-1" });
+    expect(requests).toHaveLength(1);
+  });
+
+  it("ask→all→ask round trip: refuses the superseded gated join, allows the fresh one", async () => {
+    const { requests, meetings } = recorder();
+    const { runtime, runner } = makeScheduledRuntime({
+      rows: [eventRow()],
+      meetings,
+    });
+    const reconcile = () =>
+      reconcileMeetingAutoJoin({
+        runtime,
+        agentId: AGENT_ID,
+        events: [lifeOpsEvent()],
+        now: () => EVENT_NOW,
+      });
+    await writeMeetingAutoJoinPolicy(runtime, "ask");
+    await reconcile();
+    await writeMeetingAutoJoinPolicy(runtime, "all");
+    await reconcile();
+    await writeMeetingAutoJoinPolicy(runtime, "ask");
+    await reconcile();
+
+    const askJoins = (await runner.list()).filter(
+      (t) => t.metadata?.role === "join" && t.metadata?.autoJoinMode === "ask",
+    );
+    const stale = askJoins.find((t) => t.state.status === "dismissed");
+    const fresh = askJoins.find((t) => t.state.status !== "dismissed");
+    if (!stale || !fresh) {
+      throw new Error(
+        `expected one dismissed and one live ask join, got ${askJoins.length}`,
+      );
+    }
+    expect(stale.taskId).not.toBe(fresh.taskId);
+
+    const staleResult = await handleMeetingJoinDispatch(runtime, {
+      target: targetOf("evt-1"),
+      metadata: { taskId: stale.taskId },
+    });
+    expect(staleResult).toMatchObject({ ok: false });
+    expect(requests).toEqual([]);
+
+    const freshResult = await handleMeetingJoinDispatch(runtime, {
+      target: targetOf("evt-1"),
+      metadata: { taskId: fresh.taskId },
+    });
+    expect(freshResult).toEqual({ ok: true, messageId: "meeting:sess-1" });
+    expect(requests).toHaveLength(1);
   });
 });
