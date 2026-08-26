@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Settings → Security section (the `security` section id), OWNER-only behind a
  * RoleGate. Surfaces the access mode / bind endpoint (loopback vs all-
@@ -729,7 +730,7 @@ const SessionRow = memo(function SessionRow({
               })}{" "}
             &middot;{" "}
             {session.userAgent
-              ? session.userAgent.slice(0, 60)
+              ? truncateWellFormed(toWellFormedUnicode(session.userAgent), 60)
               : t("security.sessions.unknownClient", {
                   defaultValue: "Unknown client",
                 })}
