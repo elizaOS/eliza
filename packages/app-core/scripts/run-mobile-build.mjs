@@ -7728,6 +7728,31 @@ function auditAndroidLauncherSource(phase, options = {}) {
   assertAndroidLauncherManifest(manifest, {
     label: `android-launcher ${phase} source`,
   });
+  const mainActivityPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "java",
+    packageNameToPath(APP.appId),
+    "MainActivity.java",
+  );
+  const mainActivity = fs.existsSync(mainActivityPath)
+    ? fs.readFileSync(mainActivityPath, "utf8")
+    : "";
+  if (
+    !mainActivity.includes("hide(WindowInsetsCompat.Type.navigationBars())") ||
+    !mainActivity.includes("BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE")
+  ) {
+    throw new Error(
+      `[mobile-build] android-launcher ${phase} source audit failed: MainActivity does not hide the gesture navigation bar with transient swipe recovery.`,
+    );
+  }
+  if (mainActivity.includes("hide(WindowInsetsCompat.Type.statusBars())")) {
+    throw new Error(
+      `[mobile-build] android-launcher ${phase} source audit failed: MainActivity must keep the status bar visible.`,
+    );
+  }
   console.log(`[mobile-build] android-launcher ${phase} audit passed.`);
 }
 
@@ -8415,7 +8440,7 @@ export async function runAndroidBuild(
     ANDROID_SOURCE_AUDITS,
     "auditSourceKey",
     "pre-gradle",
-    { env: resolvedEnv },
+    { env: targetEnv },
   );
 
   const buildEnv = createAndroidBuildEnv(target, {
