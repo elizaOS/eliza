@@ -27,7 +27,7 @@ import {
   rotateAccountPoolConsumerKey,
   stripAccountPoolConsumerCredentialHeaders,
   updateAccountPoolConsumerKey,
-} from "./account-pool-consumer-metering.ts";
+} from "./account-pool-consumer-metering.js";
 
 let stateDir: string;
 let prevStateDir: string | undefined;
