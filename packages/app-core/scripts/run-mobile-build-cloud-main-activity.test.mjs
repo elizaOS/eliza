@@ -26,12 +26,10 @@ describe("cloudSafeMainActivityJava", () => {
     expect(splashInstall).toBeLessThan(bridgeCreation);
   });
 
-  it("registers crash-guarded push without any background agent service", () => {
+  it("does not reference removed push or background-agent services", () => {
     const source = cloudSafeMainActivityJava("ai.elizaos.app");
 
-    expect(source).toContain(
-      "getBridge().registerPlugin(SafePushNotificationsPlugin.class);",
-    );
+    expect(source).not.toContain("SafePushNotificationsPlugin");
     expect(source).not.toContain("GatewayConnectionService");
   });
 
@@ -62,6 +60,7 @@ describe("cloudSafeMainActivityJava", () => {
     });
 
     expect(source).toContain("import android.view.KeyEvent;");
+    expect(source).toContain("import android.app.admin.DevicePolicyManager;");
     expect(source).toContain("import androidx.activity.OnBackPressedCallback;");
     expect(source).toContain("new OnBackPressedCallback(true)");
     expect(source).toContain("public void handleOnBackPressed()");
@@ -69,10 +68,27 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).toContain("KeyEvent.KEYCODE_FORWARD");
     expect(source).toContain("KeyEvent.KEYCODE_NAVIGATE_NEXT");
     expect(source).toContain("startLockTask();");
-    expect(source).toContain("protected void onResume()");
+    expect(source).toContain("isLockTaskPermitted(getPackageName())");
+    expect(source).toContain("public void onResume()");
     expect(source).toContain("super.onResume();");
     expect(source).toContain(
       "IllegalArgumentException | IllegalStateException | SecurityException",
+    );
+  });
+
+  it("restores the bundled launcher renderer after the exact auth callback", () => {
+    const source = cloudSafeMainActivityJava("ai.elizaos.app", {
+      launcherKiosk: true,
+    });
+
+    expect(source).toContain("isCloudAuthCallback(Intent intent)");
+    expect(source).toContain('"elizaos".equalsIgnoreCase(data.getScheme())');
+    expect(source).toContain('"auth".equalsIgnoreCase(data.getHost())');
+    expect(source).toContain('"/callback".equals(data.getPath())');
+    expect(source).toContain("getBridge().getLocalUrl()");
+    expect(source).toContain("webView.loadUrl(localUrl)");
+    expect(source).toContain(
+      "restoreBundledRendererAfterAuthCallback(intent);",
     );
   });
 
@@ -83,6 +99,26 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).not.toContain("java.lang.reflect");
     expect(source).not.toContain("Class.forName(");
     expect(source).not.toContain("readSystemProperty");
+  });
+
+  it("hides only the launcher navigation bar with transient swipe recovery", () => {
+    const source = cloudSafeMainActivityJava("ai.elizaos.app", {
+      launcherKiosk: true,
+      immersiveNavigation: true,
+    });
+
+    expect(source).toContain("import androidx.core.view.WindowInsetsCompat;");
+    expect(
+      source.match(
+        /import androidx\.core\.view\.WindowInsetsControllerCompat;/g,
+      ),
+    ).toHaveLength(1);
+    expect(source).toContain(
+      "controller.hide(WindowInsetsCompat.Type.navigationBars())",
+    );
+    expect(source).toContain("BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE");
+    expect(source).toContain("onWindowFocusChanged(boolean hasFocus)");
+    expect(source).not.toContain("WindowInsetsCompat.Type.statusBars()");
   });
 
   it("captures cold and warm deep links before Capacitor dispatches them", () => {
