@@ -14,7 +14,7 @@
       STORY: Choose a real route, inspect current behavior, compare the same live DOM under the proposed system, and decide what deserves production work.
       FIRST VIEWPORT: Searchable route index at left, compact review controls above, and two equal live application frames owning the canvas.
       FORM: Precision comparison workbench, user-pinned direction; seed 4454c21b informed exploration but did not override the brief.
-      FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+      FINISH: unreviewed is unfinished; this build ends with the finish review and a recorded verdict.
     -->
     <div class="studio" id="studioRoot" data-rail-open="false" data-diverged="false">
       <aside class="rail" id="viewRail" aria-label="Eliza view index">
@@ -92,16 +92,16 @@
           </div>
 
           <div class="toolbar-actions">
-            <div class="segmented" aria-label="Preview size">
+            <fieldset class="segmented" aria-label="Preview size">
               <button type="button" data-viewport="desktop" aria-pressed="true">
                 Desktop
               </button>
               <button type="button" data-viewport="mobile" aria-pressed="false">
                 Mobile
               </button>
-            </div>
+            </fieldset>
 
-            <div class="segmented" aria-label="Comparison layout">
+            <fieldset class="segmented" aria-label="Comparison layout">
               <button type="button" data-layout="split" aria-pressed="true">
                 Side by side
               </button>
@@ -111,7 +111,7 @@
               <button type="button" data-layout="proposed" aria-pressed="false">
                 Proposal
               </button>
-            </div>
+            </fieldset>
 
             <button class="secondary-button" id="reloadFrames" type="button">
               <svg viewBox="0 0 20 20" aria-hidden="true">

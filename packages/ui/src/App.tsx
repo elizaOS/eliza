@@ -1265,8 +1265,8 @@ function ViewLayoutSurface({
 /**
  * Fallback shown when a view/tab is unavailable. Chat is the always-present
  * ChatOverlay that floats over every view — views never embed an
- * inline ChatView — so an unavailable view falls back to the Launcher page
- * of the retained Home/Launcher surface, not a chat surface.
+ * inline ChatView, so unavailable routes render an explicit recovery state
+ * instead of masquerading as the healthy Home or chat surface.
  */
 function ViewUnavailableFallback({ viewId }: { viewId: string }): ReactNode {
   const { refresh } = useAvailableViews();

@@ -5,7 +5,8 @@
 
 :root {
   color-scheme: dark;
-  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Segoe UI", sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Segoe UI", sans-serif;
   font-synthesis: none;
   --studio-bg: #09090a;
   --studio-panel: #101011;
@@ -394,6 +395,8 @@ input:focus-visible {
 .segmented {
   display: flex;
   flex: 0 0 auto;
+  min-width: 0;
+  margin: 0;
   padding: 2px;
   border: 1px solid var(--studio-line);
   border-radius: 10px;
@@ -471,15 +474,15 @@ input:focus-visible {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.comparison-seam {
+  background: var(--studio-line-strong);
+}
+
 .comparison[data-layout="current"] .preview-proposed,
 .comparison[data-layout="current"] .comparison-seam,
 .comparison[data-layout="proposed"] .preview-current,
 .comparison[data-layout="proposed"] .comparison-seam {
   display: none;
-}
-
-.comparison-seam {
-  background: var(--studio-line-strong);
 }
 
 .preview {
@@ -570,7 +573,10 @@ input:focus-visible {
 .review-strip {
   display: grid;
   min-height: 82px;
-  grid-template-columns: minmax(120px, 0.7fr) minmax(210px, 1.25fr) minmax(230px, 1.4fr) minmax(190px, 1fr);
+  grid-template-columns: minmax(120px, 0.7fr) minmax(210px, 1.25fr) minmax(
+      230px,
+      1.4fr
+    ) minmax(190px, 1fr);
   align-items: center;
   gap: 18px;
   padding: 12px 18px;
@@ -724,7 +730,7 @@ input:focus-visible {
     overflow-y: auto;
   }
 
-  .comparison-seam {
+  .studio .comparison .comparison-seam {
     display: none;
   }
 

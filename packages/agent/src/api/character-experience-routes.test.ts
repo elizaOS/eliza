@@ -74,6 +74,34 @@ describe("Character Experience routes", () => {
     });
   });
 
+  it("applies a nonzero offset once and reports the full filtered total", async () => {
+    const records = [
+      { id: "00000000-0000-4000-8000-000000000010", learning: "zero" },
+      { id: "00000000-0000-4000-8000-000000000011", learning: "one" },
+      { id: "00000000-0000-4000-8000-000000000012", learning: "two" },
+    ];
+    const service = { listExperiences: vi.fn().mockResolvedValue(records) };
+    const { ctx, json } = context({
+      url: "/api/character/experiences?offset=1&limit=1",
+      service,
+    });
+
+    await expect(handleCharacterRoutes(ctx)).resolves.toBe(true);
+    expect(service.listExperiences).toHaveBeenCalledWith({
+      includeRelated: false,
+    });
+    expect(json).toHaveBeenCalledWith(expect.anything(), {
+      data: [
+        {
+          id: "00000000-0000-4000-8000-000000000011",
+          learning: "one",
+          embeddingDimensions: null,
+        },
+      ],
+      total: 3,
+    });
+  });
+
   it("forwards the typed client's repeated tag filters", async () => {
     const service = {
       listExperiences: vi.fn().mockResolvedValue([]),
