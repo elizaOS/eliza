@@ -438,6 +438,10 @@ export function createCipheriv(
 			if (finalized) {
 				throw new Error("Unsupported state");
 			}
+			// Consume the state once finalization begins — before encoding
+			// validation — so even a failed final() (encoding-change throw)
+			// leaves the cipher unusable, exactly like node:crypto.
+			finalized = true;
 			const encoder = lockOutputEncoding(encoding);
 			const encryptedTail = Uint8Array.from(
 				cbc(normalizedKey, currentIv, { disablePadding: true }).encrypt(
@@ -445,7 +449,6 @@ export function createCipheriv(
 				),
 			);
 			pending = new Uint8Array(0);
-			finalized = true;
 			return encoder.flush(encryptedTail);
 		},
 	};

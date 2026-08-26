@@ -615,6 +615,11 @@ describe("createCipheriv / createDecipheriv AES-256-CBC", () => {
 		const c2 = createCipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
 		c2.update(PLAINTEXT, "utf8", "hex");
 		expect(() => c2.final("base64")).toThrow(/Cannot change encoding/);
+		// the failed final consumed the state exactly like node:crypto
+		expect(() => c2.update("tail", "utf8", "hex")).toThrow(
+			/Trying to add data in unsupported state/,
+		);
+		expect(() => c2.final("hex")).toThrow(/Unsupported state/);
 
 		// the alias pair utf8/utf-8 stays one encoding on both directions
 		const d3 = createDecipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
