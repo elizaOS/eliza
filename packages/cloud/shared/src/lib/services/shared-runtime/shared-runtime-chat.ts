@@ -119,6 +119,25 @@ import {
   type SharedTurnSummaryResult,
 } from "./shared-turn-trace-recorder";
 
+function retainedVoiceHistoryProvenance(
+  channelId: string,
+  history: readonly SharedTurnMessage[],
+  channel: SharedRuntimeChatOptions["channel"],
+) {
+  if (channel?.type !== ChannelType.VOICE_DM) return undefined;
+  return {
+    channelId,
+    channelType: String(channel.type),
+    channelSource: channel.source === undefined ? null : String(channel.source),
+    messages: history.map((message) => ({
+      id: message.id ?? null,
+      role: message.role,
+      createdAt: message.createdAt ?? null,
+      interrupted: message.interrupted === true,
+    })),
+  };
+}
+
 export { sharedTurnClientMessageId } from "./shared-turn-client-message-id";
 
 const SSE_TRANSPORT_READY_COMMENT = ": ready\n\n";
@@ -152,6 +171,12 @@ export type BridgeExecutionContext = {
 
 export interface SharedRuntimeHistoryStore {
   load(agentId: string, channelId: string, queryText?: string): Promise<SharedTurnMessage[]>;
+  /**
+   * Makes a terminal turn visible to later room requests before asynchronous
+   * durability work finishes. Implementations that serialize on durable
+   * writes may omit this hook.
+   */
+  stagePending?(agentId: string, channelId: string, messages: SharedTurnMessage[]): void;
   merge(
     agentId: string,
     channelId: string,
@@ -160,9 +185,9 @@ export interface SharedRuntimeHistoryStore {
 }
 
 /**
- * P5 sampled turn trace, recorded strictly off the response path. The recorder
- * self-gates on SHARED_TURN_TRACES_ENABLED + deterministic trace-id sampling
- * and never throws, so this adds zero turn latency and zero failure surface.
+ * Turn trace recorded strictly off the response path. The recorder self-gates
+ * on SHARED_TURN_TRACES_ENABLED, samples ordinary chat, and retains
+ * authenticated voice turns so incident diagnosis does not depend on sampling.
  */
 function recordTurnTraceOffPath(
   executionCtx: BridgeExecutionContext | undefined,
@@ -172,7 +197,10 @@ function recordTurnTraceOffPath(
   startedAt: number,
   result: SharedTurnSummaryResult,
   terminalTiming?: SharedRuntimeTimingReceipt,
+  history: readonly SharedTurnMessage[] = [],
+  channel?: SharedRuntimeChatOptions["channel"],
 ): void {
+  const historyProvenance = retainedVoiceHistoryProvenance(channelId, history, channel);
   void settleOffResponsePath(executionCtx, async () => {
     const summary = buildTurnSummary({
       result,
@@ -189,21 +217,29 @@ function recordTurnTraceOffPath(
       {
         ...summary,
         ...(terminalTiming ? { terminalTiming } : {}),
+        ...(historyProvenance ? { historyProvenance } : {}),
       },
+      { forceRecord: channel?.type === ChannelType.VOICE_DM },
     );
   });
 }
 
-/** Persist error/abort receipts through the same durable sampled trace row. */
+/** Persist error/abort receipts through the same durable turn trace row. */
 function recordFailedTurnTraceOffPath(
   executionCtx: BridgeExecutionContext | undefined,
   agent: SharedRuntimeAgent,
   channelId: string,
+  traceId: string,
   model: string,
   startedAt: number,
   terminalTiming: SharedRuntimeTimingReceipt | undefined,
+  history: readonly SharedTurnMessage[] = [],
+  channel?: SharedRuntimeChatOptions["channel"],
+  fallbackFinishReason: "aborted" | "error" = "error",
 ): void {
-  if (!terminalTiming) return;
+  const retainVoiceTrace = channel?.type === ChannelType.VOICE_DM;
+  if (!terminalTiming && !retainVoiceTrace) return;
+  const historyProvenance = retainedVoiceHistoryProvenance(channelId, history, channel);
   void settleOffResponsePath(executionCtx, async () => {
     const completedAt = Date.now();
     await recordSharedTurnTrace(
@@ -213,7 +249,7 @@ function recordFailedTurnTraceOffPath(
         userId: agent.user_id,
         agentId: agent.id,
         channelId,
-        traceId: terminalTiming.traceId,
+        traceId: terminalTiming?.traceId ?? traceId,
         startedAt,
         // The bounded runtime offset can be null when the measurement is
         // unavailable or rejected. The trace row still has an honest wall
@@ -221,10 +257,12 @@ function recordFailedTurnTraceOffPath(
         // failure.
         latencyMs: Math.max(0, Math.round(completedAt - startedAt)),
         model,
-        finishReason: terminalTiming.outcome === "aborted" ? "aborted" : "error",
+        finishReason: terminalTiming?.outcome === "aborted" ? "aborted" : fallbackFinishReason,
         stages: [{ name: "runtime" }],
-        terminalTiming,
+        ...(terminalTiming ? { terminalTiming } : {}),
+        ...(historyProvenance ? { historyProvenance } : {}),
       },
+      { forceRecord: retainVoiceTrace },
     );
   });
 }
@@ -694,7 +732,7 @@ async function sharedTurnFactsContext(
 ): Promise<string | undefined> {
   if (!store || !sharedFactsEnabled()) return undefined;
   try {
-    const facts = await store.listFacts(Number.MAX_SAFE_INTEGER);
+    const facts = await store.listFacts();
     return buildSharedFactsContext(facts) ?? undefined;
   } catch (error) {
     // error-policy:J4 knowledge loss degrades to a facts-free turn; the warn is
@@ -743,7 +781,7 @@ function extractSharedTurnFactsOffPath(
         await Promise.all([
           import("ai"),
           import("../../providers/language-model"),
-          store.listFacts(Number.MAX_SAFE_INTEGER),
+          store.listFacts(),
         ]);
       const facts = await extractSharedTurnFacts({
         agentName: character.name,
@@ -911,7 +949,6 @@ async function mergeHistory(
     agentId,
     roomId,
     valid,
-    Number.MAX_SAFE_INTEGER,
   )) as SharedTurnMessage[];
 }
 
@@ -1450,9 +1487,12 @@ export class SharedRuntimeChatService {
         options.executionCtx,
         agent,
         roomId,
+        options.traceId ?? messageIds.assistant,
         character.model?.trim() || "shared-runtime",
         turnStartedAtEpochMs,
         terminalTiming,
+        history,
+        options.channel,
       );
       await settleFailedProviderWorkOffPath(
         agent,
@@ -1472,6 +1512,8 @@ export class SharedRuntimeChatService {
       turnStartedAtEpochMs,
       turn,
       terminalTiming,
+      history,
+      options.channel,
     );
     if (!turn.degraded && turn.responded !== false && messageRole === "user") {
       extractSharedTurnFactsOffPath(options.executionCtx, memoryStore, character, text, turn.reply);
@@ -1680,9 +1722,12 @@ export class SharedRuntimeChatService {
         options.executionCtx,
         agent,
         roomId,
+        options.traceId ?? messageIds.assistant,
         character.model?.trim() || "shared-runtime",
         streamTurnStartedAtEpochMs,
         streamTerminalTiming,
+        history,
+        options.channel,
       );
       detachRequestAbort();
       await settleFailedProviderWorkOffPath(
@@ -1706,6 +1751,8 @@ export class SharedRuntimeChatService {
         streamTurnStartedAtEpochMs,
         turn,
         streamTerminalTiming,
+        history,
+        options.channel,
       );
       const reply = turn.reply?.trim() ?? "";
       if (!reply) return sseError("Shared runtime is unavailable");
@@ -1785,16 +1832,16 @@ export class SharedRuntimeChatService {
       interrupted: boolean,
       afterWrite?: () => Promise<void>,
       grounding?: SharedTurnMessage["grounding"],
+      stagePending = false,
     ): Promise<void> => {
       if (finalized) return finalizationPromise ?? Promise.resolve();
       if (finalizationPromise) return finalizationPromise;
+      const messages = makeTurnMessages(reply, interrupted, grounding);
+      if (stagePending) {
+        options.historyStore?.stagePending?.(agent.id, roomId, messages);
+      }
       finalizationPromise = (async () => {
-        await mergeHistory(
-          agent.id,
-          roomId,
-          makeTurnMessages(reply, interrupted, grounding),
-          options.historyStore,
-        );
+        await mergeHistory(agent.id, roomId, messages, options.historyStore);
         if (streamMemoryStore && !isProviderFreeTurn(turn)) {
           // The long-term-memory mirror is secondary to the durability boundary
           // above (merged history) and the claim completion below: a stalled
@@ -2050,15 +2097,21 @@ export class SharedRuntimeChatService {
                 ...(turn.capabilityWall ? { capabilityWall: turn.capabilityWall } : {}),
               },
               streamTerminalTiming,
+              history,
+              options.channel,
             );
           } else {
             recordFailedTurnTraceOffPath(
               options.executionCtx,
               agent,
               roomId,
+              options.traceId ?? messageIds.assistant,
               turn.model,
               streamTurnStartedAtEpochMs,
               streamTerminalTiming,
+              history,
+              options.channel,
+              consumerCanceled || generationAbort.signal.aborted ? "aborted" : "error",
             );
           }
           detachRequestAbort();
@@ -2081,12 +2134,22 @@ export class SharedRuntimeChatService {
           .then(() => undefined);
         observeProviderCancellationOffPath(agent.id, providerCancellation, options.executionCtx);
 
-        // The room may advance only after interrupted history is durable. It
-        // must not wait for provider teardown: abort is already signalled and
-        // consumerCanceled fences all late output from persistence/delivery.
-        await finalizeMessages(interruptedReply, true, () =>
-          settleInterruptedTurn("consumer canceled stream"),
+        // Stage the exact interrupted pair synchronously before the consumer's
+        // cancel promise can release room admission. Durable history, billing,
+        // and provider teardown may then finish off the room queue without
+        // hiding context from the next turn.
+        const finalization = finalizeMessages(
+          interruptedReply,
+          true,
+          () => settleInterruptedTurn("consumer canceled stream"),
+          undefined,
+          true,
         );
+        if (options.executionCtx) {
+          options.executionCtx.waitUntil(finalization);
+          return;
+        }
+        await finalization;
       },
     });
     return withTurnTimingHeaders(

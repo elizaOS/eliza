@@ -122,20 +122,17 @@ function renderSection() {
 
 /**
  * Asserts the merged class list keeps the accent CTA's label legible on the
- * accent fill in every state instead of inheriting the ghost variant's
- * neutral text color or a blanket disabled fade.
+ * accent fill in every state through the canonical default variant rather
+ * than a caller paint override or blanket disabled fade.
  */
 function expectAccentLabelContrast(button: HTMLElement) {
   const classes = button.className;
-  // Idle: label color must be the accent's paired foreground, not the ghost
-  // variant's text-txt-strong (which equals the accent fill on .theme-cloud).
-  expect(classes).toMatch(/(^| )text-accent-foreground( |$)/);
+  // Idle: label color must be the accent's paired foreground.
+  expect(classes).toMatch(/(^| )text-accent-fg( |$)/);
   expect(classes).not.toMatch(/(^| )text-txt-strong( |$)/);
-  // Hover: keep the paired foreground (ghost's hover:text-txt-strong loses).
-  expect(classes).toContain("hover:text-accent-foreground");
   // Disabled: dim the FILL, never fade the whole button to a gray bar.
   expect(classes).not.toContain("disabled:opacity-50");
-  expect(classes).toContain("disabled:text-accent-foreground");
+  expect(classes).toContain("disabled:text-accent-fg");
 }
 
 describe("StewardLoginSection button label contrast", () => {
@@ -168,7 +165,7 @@ describe("StewardLoginSection button label contrast", () => {
     expect(magicLink.textContent).toContain("Magic Link");
     // The bordered secondary CTA keeps explicit label color + border in the
     // disabled state instead of a whole-button opacity fade.
-    expect(magicLink.className).toMatch(/(^| )text-txt( |$)/);
+    expect(magicLink.className).toMatch(/(^| )text-muted-strong( |$)/);
     expect(magicLink.className).not.toContain("disabled:opacity-50");
   });
 
@@ -178,7 +175,7 @@ describe("StewardLoginSection button label contrast", () => {
       name: /Google/i,
     });
     expect(google.textContent).toContain("Google");
-    expect(google.className).toMatch(/(^| )text-txt( |$)/);
+    expect(google.className).toMatch(/(^| )text-muted-strong( |$)/);
     expect(google.className).not.toContain("disabled:opacity-50");
   });
 

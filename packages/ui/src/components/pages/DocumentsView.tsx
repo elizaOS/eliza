@@ -163,8 +163,10 @@ const SearchResultListItem = memo(function SearchResultListItem({
       ref={ref}
       {...agentProps}
       onClick={() => onSelect(documentId, result.startMs)}
-      variant="ghost"
-      className="group flex h-auto w-full items-start justify-start whitespace-normal rounded-none px-0 py-3 text-left font-normal transition-colors hover:bg-bg-hover"
+      variant="ghostMuted"
+      size="eventRow"
+      align="start"
+      className="group"
     >
       <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center text-2xs font-bold text-muted-strong">
         {(result.similarity * 100).toFixed(0)}%
@@ -234,8 +236,10 @@ const KnowledgeListItem = memo(function KnowledgeListItem({
           filename: doc.filename,
         })}
         title={doc.filename}
-        variant="ghost"
-        className="flex h-auto min-w-0 flex-1 items-center justify-start gap-3 whitespace-normal rounded-none px-3.5 py-3 text-left font-normal hover:bg-transparent"
+        variant="ghostMuted"
+        size="row"
+        align="start"
+        className="min-w-0 flex-1"
       >
         <FormatIcon className="size-4 shrink-0 text-muted" aria-hidden />
         <div className="min-w-0 flex-1">
@@ -1259,9 +1263,8 @@ export function DocumentsView({
           tone="danger"
           actions={
             <Button
-              variant="outline"
-              size="sm"
-              className="border-danger/30 px-3 text-xs text-danger hover:bg-danger/16"
+              variant="dangerOutline"
+              size="compact"
               onClick={() => loadData()}
             >
               {t("common.retry")}

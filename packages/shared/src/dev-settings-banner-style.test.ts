@@ -1,7 +1,7 @@
 /**
- * Coverage for dev settings banner style.
+ * Exercises dev settings banner coloring with forced, disabled, empty, and multiline terminal output.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   colorizeDevSettingsBanner,
@@ -9,100 +9,48 @@ import {
 } from "./dev-settings-banner-style.js";
 
 describe("colorizeDevSettingsBanner", () => {
-  it("returns unchanged when NO_COLOR set", () => {
-    const prev = process.env.NO_COLOR;
-    process.env.NO_COLOR = "1";
-    try {
-      expect(colorizeDevSettingsBanner("hello")).toBe("hello");
-    } finally {
-      if (prev === undefined) delete process.env.NO_COLOR;
-      else process.env.NO_COLOR = prev;
-    }
+  it("returns input unchanged when NO_COLOR is set", () => {
+    vi.stubEnv("NO_COLOR", "1");
+    expect(colorizeDevSettingsBanner("╭─╮")).toBe("╭─╮");
   });
 
-  it("returns unchanged for empty", () => {
-    const prev = process.env.NO_COLOR;
-    process.env.NO_COLOR = "1";
-    try {
-      expect(colorizeDevSettingsBanner("")).toBe("");
-    } finally {
-      if (prev === undefined) delete process.env.NO_COLOR;
-      else process.env.NO_COLOR = prev;
-    }
+  it("returns empty and multiline input unchanged when color is disabled", () => {
+    vi.stubEnv("NO_COLOR", "1");
+    expect(colorizeDevSettingsBanner("")).toBe("");
+    expect(colorizeDevSettingsBanner("a\nb")).toBe("a\nb");
   });
 
-  it("colorizes box lines when allowed", () => {
-    const prevNoColor = process.env.NO_COLOR;
-    const prevForce = process.env.FORCE_COLOR;
-    delete process.env.NO_COLOR;
-    process.env.FORCE_COLOR = "1";
-    const origIsTTY = process.stdout.isTTY;
-    Object.defineProperty(process.stdout, "isTTY", {
-      value: true,
-      configurable: true,
-    });
-    try {
-      const out = colorizeDevSettingsBanner("\u256Dhello");
-      expect(out).toContain("\u256D");
-    } finally {
-      if (prevNoColor !== undefined) process.env.NO_COLOR = prevNoColor;
-      else delete process.env.NO_COLOR;
-      if (prevForce !== undefined) process.env.FORCE_COLOR = prevForce;
-      else delete process.env.FORCE_COLOR;
-      Object.defineProperty(process.stdout, "isTTY", {
-        value: origIsTTY,
-        configurable: true,
-      });
-    }
+  it("colorizes box lines cyan when forced", () => {
+    vi.stubEnv("NO_COLOR", undefined);
+    vi.stubEnv("FORCE_COLOR", "1");
+    const out = colorizeDevSettingsBanner("╭────╮\n│ hi │");
+    expect(out).toContain("\x1b[1;36m");
+    expect(out).toContain("\x1b[0m");
   });
 
-  it("handles multiline", () => {
-    const prev = process.env.NO_COLOR;
-    process.env.NO_COLOR = "1";
-    try {
-      expect(colorizeDevSettingsBanner("a\nb")).toBe("a\nb");
-    } finally {
-      if (prev === undefined) delete process.env.NO_COLOR;
-      else process.env.NO_COLOR = prev;
-    }
+  it("skips color when FORCE_COLOR is zero", () => {
+    vi.stubEnv("NO_COLOR", undefined);
+    vi.stubEnv("FORCE_COLOR", "0");
+    expect(colorizeDevSettingsBanner("╭─╮")).toBe("╭─╮");
   });
 });
 
 describe("colorizeDevSettingsStartupBanner", () => {
-  it("returns unchanged when NO_COLOR", () => {
-    const prev = process.env.NO_COLOR;
-    process.env.NO_COLOR = "1";
-    try {
-      expect(colorizeDevSettingsStartupBanner("hello")).toBe("hello");
-    } finally {
-      if (prev === undefined) delete process.env.NO_COLOR;
-      else process.env.NO_COLOR = prev;
-    }
+  it("returns input unchanged when NO_COLOR is set", () => {
+    vi.stubEnv("NO_COLOR", "1");
+    const text = "ORCHESTRATOR\n╭────╮";
+    expect(colorizeDevSettingsStartupBanner(text)).toBe(text);
   });
 
-  it("handles figlet heading", () => {
-    const prevNoColor = process.env.NO_COLOR;
-    const prevForce = process.env.FORCE_COLOR;
-    delete process.env.NO_COLOR;
-    process.env.FORCE_COLOR = "1";
-    const origIsTTY = process.stdout.isTTY;
-    Object.defineProperty(process.stdout, "isTTY", {
-      value: true,
-      configurable: true,
-    });
-    try {
-      const out = colorizeDevSettingsStartupBanner("FIGLET\n\u256Dbox");
-      expect(out).toContain("FIGLET");
-      expect(out).toContain("\u256D");
-    } finally {
-      if (prevNoColor !== undefined) process.env.NO_COLOR = prevNoColor;
-      else delete process.env.NO_COLOR;
-      if (prevForce !== undefined) process.env.FORCE_COLOR = prevForce;
-      else delete process.env.FORCE_COLOR;
-      Object.defineProperty(process.stdout, "isTTY", {
-        value: origIsTTY,
-        configurable: true,
-      });
-    }
+  it("colorizes the figlet heading magenta and box cyan", () => {
+    vi.stubEnv("NO_COLOR", undefined);
+    vi.stubEnv("FORCE_COLOR", "1");
+    const out = colorizeDevSettingsStartupBanner("ORCHESTRATOR\n╭────╮\n│ t │");
+    expect(out).toContain("\x1b[1;35m");
+    expect(out).toContain("\x1b[1;36m");
   });
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });

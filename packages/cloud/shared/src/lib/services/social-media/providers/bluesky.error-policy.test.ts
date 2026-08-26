@@ -128,6 +128,54 @@ describe("blueskyProvider analytics error policy", () => {
   });
 });
 
+describe("blueskyProvider.createPost media boundary", () => {
+  it("rejects a fifth image before creating a session instead of dropping it", async () => {
+    let fetchCalls = 0;
+    globalThis.fetch = mock(async () => {
+      fetchCalls++;
+      return jsonResponse(VALID_SESSION);
+    }) as typeof fetch;
+
+    const result = await blueskyProvider.createPost(CREDS, {
+      text: "all five images matter",
+      media: Array.from({ length: 5 }, (_, index) => ({
+        type: "image" as const,
+        url: `https://example.com/${index}.jpg`,
+        mimeType: "image/jpeg",
+      })),
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("at most 4 images");
+    expect(result.error).toContain("nothing was posted");
+    expect(fetchCalls).toBe(0);
+  });
+
+  it("rejects unsupported media before creating a session instead of skipping it", async () => {
+    let fetchCalls = 0;
+    globalThis.fetch = mock(async () => {
+      fetchCalls++;
+      return jsonResponse(VALID_SESSION);
+    }) as typeof fetch;
+
+    const result = await blueskyProvider.createPost(CREDS, {
+      text: "video must not disappear",
+      media: [
+        {
+          type: "video",
+          url: "https://example.com/video.mp4",
+          mimeType: "video/mp4",
+        },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("only images");
+    expect(result.error).toContain("nothing was posted");
+    expect(fetchCalls).toBe(0);
+  });
+});
+
 describe("blueskyFetch — bounded hops fail closed and keep caller signals", () => {
   it("aborts a hung Bluesky API hop at the timeout", async () => {
     globalThis.fetch = mock(

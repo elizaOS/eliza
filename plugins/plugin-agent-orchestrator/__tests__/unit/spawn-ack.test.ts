@@ -93,27 +93,27 @@ describe("sanitizeSpawnAck", () => {
     );
   });
 
-  it("keeps only the first non-empty line", () => {
+  it("preserves every line of an acknowledgement", () => {
     expect(sanitizeSpawnAck("\n\nOkay, getting into it.\nblah blah")).toBe(
-      "Okay, getting into it.",
+      "Okay, getting into it.\nblah blah",
     );
   });
 
-  it("strips a leading emoji and list/quote markers", () => {
-    expect(sanitizeSpawnAck("🚀 On it.")).toBe("On it.");
-    expect(sanitizeSpawnAck("- On it.")).toBe("On it.");
-    expect(sanitizeSpawnAck("> On it.")).toBe("On it.");
+  it("preserves model-authored markers", () => {
+    expect(sanitizeSpawnAck("🚀 On it.")).toBe("🚀 On it.");
+    expect(sanitizeSpawnAck("- On it.")).toBe("- On it.");
+    expect(sanitizeSpawnAck("> On it.")).toBe("> On it.");
   });
 
-  it("strips a single pair of surrounding quotes (straight, smart, backtick)", () => {
-    expect(sanitizeSpawnAck('"On it."')).toBe("On it.");
-    expect(sanitizeSpawnAck("'On it.'")).toBe("On it.");
-    expect(sanitizeSpawnAck("“On it.”")).toBe("On it.");
-    expect(sanitizeSpawnAck("`On it.`")).toBe("On it.");
+  it("preserves model-authored quoting", () => {
+    expect(sanitizeSpawnAck('"On it."')).toBe('"On it."');
+    expect(sanitizeSpawnAck("'On it.'")).toBe("'On it.'");
+    expect(sanitizeSpawnAck("“On it.”")).toBe("“On it.”");
+    expect(sanitizeSpawnAck("`On it.`")).toBe("`On it.`");
   });
 
-  it("collapses internal whitespace", () => {
-    expect(sanitizeSpawnAck("On    it    now.")).toBe("On it now.");
+  it("preserves internal whitespace", () => {
+    expect(sanitizeSpawnAck("On    it    now.")).toBe("On    it    now.");
   });
 
   it("preserves non-English output untouched (no language assumptions)", () => {

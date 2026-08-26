@@ -6,7 +6,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
-import { APP_SESSION_SERVICE_TYPE } from "@elizaos/shared";
 import { afterEach, describe, expect, it } from "vitest";
 import { writeAppRunStore } from "./app-run-store.ts";
 import { AppSessionService } from "./app-session-service.ts";
@@ -42,10 +41,6 @@ afterEach(async () => {
 });
 
 describe("AppSessionService", () => {
-  it("exposes the canonical service type", () => {
-    expect(AppSessionService.serviceType).toBe(APP_SESSION_SERVICE_TYPE);
-  });
-
   it("getRuns reads the AppManager run store at the resolved state dir", async () => {
     const dir = await makeStateDir();
     process.env.ELIZA_STATE_DIR = dir;

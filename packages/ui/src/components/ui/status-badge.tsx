@@ -27,6 +27,7 @@ export interface StatusBadgeProps
   withDot?: boolean;
   pulse?: boolean;
   icon?: React.ReactNode;
+  presentation?: "default" | "pill";
 }
 
 function normalizeStatusVariant(variant: StatusVariant): StatusVariant {
@@ -73,6 +74,7 @@ export const StatusBadge = React.forwardRef<HTMLSpanElement, StatusBadgeProps>(
       withDot = false,
       pulse = false,
       icon,
+      presentation = "default",
       className,
       ...props
     },
@@ -87,6 +89,8 @@ export const StatusBadge = React.forwardRef<HTMLSpanElement, StatusBadgeProps>(
         data-status={resolvedVariant}
         className={cn(
           "inline-flex items-center gap-1 rounded-sm border px-2 py-0.5 text-2xs font-bold uppercase",
+          presentation === "pill" &&
+            "rounded-full px-2.5 py-1 text-xs-tight font-medium normal-case",
           statusBadgeClasses(resolvedVariant),
           className,
         )}

@@ -16,6 +16,10 @@ mock.module("@/lib/utils/logger", () => ({
 
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ENV = { NODE_ENV: "test" } as unknown as AppEnv["Bindings"];
+const ownerCredentialFixture = (prefix: string): string =>
+  `${prefix}${["legacy", "owner", "credential", "fixture"].join("-")}`;
+const ownerProviderTokenFixture = (): string =>
+  ["provider returned ghp_", "a".repeat(36)].join("");
 
 const checkAgentCreditGate = mock(async () => ({
   allowed: false,
@@ -89,7 +93,7 @@ mock.module("@/lib/config/containers-env", () => ({
   containersEnv: { publicBaseDomain: () => null },
 }));
 mock.module("@/lib/eliza-agent-web-ui", () => ({
-  getElizaAgentPublicWebUiUrl: () => "https://example.test",
+  getConfiguredElizaAgentPublicWebUiUrl: () => "https://example.test",
 }));
 mock.module("@/lib/constants/agent-sandbox-quota", () => ({
   getMaxNonTerminalAgentsForOrg: () => 3,
@@ -180,6 +184,108 @@ test("GET reconnects an agent row to its newest active lifecycle job", async () 
   };
   expect(body.data[0]?.activeJob).toMatchObject({ id: "job-1", attempts: 1 });
 });
+
+test("GET fails closed when legacy agent history contains an internal stack", async () => {
+  listAgents.mockImplementationOnce(async () => [
+    {
+      id: "agent-1",
+      agent_name: "Ada",
+      status: "error",
+      database_status: "ready",
+      last_backup_at: null,
+      last_heartbeat_at: null,
+      error_message:
+        "Provisioning permanently failed: Sandbox health check timed out\n    at ProvisioningJobService.executeAgentProvision (/opt/eliza/packages/cloud/shared/src/lib/services/provisioning-jobs.ts:6003:13)",
+      created_at: new Date("2026-08-21T00:00:00.000Z"),
+      updated_at: new Date("2026-08-21T00:01:00.000Z"),
+      character_id: null,
+      agent_config: {},
+      docker_image: null,
+      execution_tier: "dedicated-always",
+    },
+  ]);
+
+  const response = await get();
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as {
+    data: Array<{ errorMessage: string | null }>;
+  };
+  expect(body.data[0]?.errorMessage).toBe(
+    "The operation failed. Retry from Eliza Cloud or contact support if it continues.",
+  );
+});
+
+test.each([
+  "ENOENT [/srv/eliza/agents/agent-1/config.json]",
+  "ENOENT: //srv/eliza/agents/agent-1/config.json",
+  "Provider https://api.eliza.app?debug=/srv/eliza/agents/agent-1/config.json",
+  "Provider https://api.eliza.app?debug=/workspace/eliza/agents/agent-1/config.json",
+  "Provider https://api.eliza.app?debug=/app/eliza/agents/agent-1/config.json",
+  "Provider https://api.eliza.app?debug=/data/agents/agent-1/config.json",
+  "Provider https://api.eliza.app?debug=/nix/store/secret/agents/agent-1/config.json",
+  "Provider https://api.eliza.app?debug=//internal-host/agents/agent-1/config.json",
+  "Provider https://api.eliza.app?debug=/callback/eliza/agents/agent-1/config.json",
+  "Provider https://api.eliza.app?debug=/v1/chat/private/agents/agent-1/config.json",
+  "Provider https://api.eliza.app(/srv/eliza/agents/agent-1/config.json)",
+  "Provider https://api.eliza.app,C:\\eliza\\agents\\agent-1\\config.json",
+  "Provider https://api.eliza.app?debug=%20%2Fsrv%2Feliza%2Fagents%2Fagent-1%2Fconfig.json",
+  "Provider https://api.eliza.app?debug=%09%2Fworkspace%2Feliza%2Fagents%2Fagent-1%2Fconfig.json",
+  "Provider https://api.eliza.app?%2Fsrv%2Feliza%2Fagents%2Fagent-1%2Fconfig.json=debug",
+  "Provider https://api.eliza.app?debug=context%253A%2520%25252Fsrv%25252Feliza%25252Fagents%25252Fagent-1%25252Fconfig.json",
+  "Provider https://api.eliza.app?context%253A%2520%25252Fsrv%25252Feliza%25252Fagents%25252Fagent-1%25252Fconfig.json=debug",
+  "Provider https://api.eliza.app/#context%253A%2520%25252Fsrv%25252Feliza%25252Fagents%25252Fagent-1%25252Fconfig.json",
+  "Provider https://api.eliza.app?debug=prefix%25252Fsrv%25252Feliza%25252Fagents%25252Fagent-1%25252Fconfig.json",
+  "Provider https://api.eliza.app?prefix%25252Fsrv%25252Feliza%25252Fagents%25252Fagent-1%25252Fconfig.json=debug",
+  "Provider https://api.eliza.app/#prefix%25252Fsrv%25252Feliza%25252Fagents%25252Fagent-1%25252Fconfig.json",
+  ownerCredentialFixture("Authorization: Bearer "),
+  ownerCredentialFixture("CEREBRAS_API_KEY="),
+  ownerCredentialFixture("access_token="),
+  ownerProviderTokenFixture(),
+  "NODE_ENV=production",
+  "CUSTOM_VALUE=fixture-value",
+  "request failed at http://100.64.23.9:3000/api/status",
+  "request failed at http://10.0.0.4:3000/api/status",
+  "request failed at http://172.20.0.1:3000/api/status",
+  "request failed at http://192.168.1.2:3000/api/status",
+  "request failed at http://127.0.0.1:3000/api/status",
+  "request failed at http://169.254.169.254/latest/meta-data",
+  "request failed at http://[fd00::1]:3000/api/status",
+  "request failed at http://[::1]:3000/api/status",
+  "request failed at http://[fe80::1]:3000/api/status",
+  "request failed at http://db.internal:5432/status",
+  "request failed at https://service.eliza.local/status",
+])(
+  "GET re-sanitizes legacy private diagnostics at the list DTO: %s",
+  async (message) => {
+    listAgents.mockImplementationOnce(async () => [
+      {
+        id: "agent-1",
+        agent_name: "Ada",
+        status: "error",
+        database_status: "ready",
+        last_backup_at: null,
+        last_heartbeat_at: null,
+        error_message: message,
+        created_at: new Date("2026-08-21T00:00:00.000Z"),
+        updated_at: new Date("2026-08-21T00:01:00.000Z"),
+        character_id: null,
+        agent_config: {},
+        docker_image: null,
+        execution_tier: "dedicated-always",
+      },
+    ]);
+
+    const response = await get();
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: Array<{ errorMessage: string | null }>;
+    };
+    expect(body.data[0]?.errorMessage).toBe(
+      "The operation failed. Retry from Eliza Cloud or contact support if it continues.",
+    );
+    expect(JSON.stringify(body)).not.toContain(message);
+  },
+);
 
 describe("POST /api/v1/eliza/agents autoProvision identity", () => {
   beforeEach(() => {

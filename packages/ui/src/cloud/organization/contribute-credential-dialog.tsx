@@ -120,7 +120,7 @@ export function ContributeCredentialDialog({
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-txt-strong font-mono">
-                <ShieldCheck className="size-5 text-green-500" />
+                <ShieldCheck className="size-5 text-status-success" />
                 {t("cloud.contributeCredential.pooledTitle", {
                   defaultValue: "Key Added to the Pool",
                 })}
@@ -275,11 +275,11 @@ export function ContributeCredentialDialog({
 
               <DialogFooter className="gap-2 sm:gap-0 flex flex-col sm:flex-row">
                 <Button
-                  variant="ghost"
+                  variant="ghostMuted"
                   type="button"
                   onClick={handleClose}
                   disabled={isSubmitting}
-                  className="px-4 py-2 text-txt-strong hover:bg-surface transition-colors disabled:opacity-50 order-2 sm:order-1"
+                  className="order-2 sm:order-1"
                 >
                   {t("cloud.contributeCredential.cancel", {
                     defaultValue: "Cancel",

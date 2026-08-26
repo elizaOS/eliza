@@ -313,12 +313,8 @@ function EmailCallbackContent() {
         ) : null}
         <Button
           asChild
-          className={
-            email
-              ? undefined
-              : "hosted-signin-focus-emphasis mt-2 border border-transparent transition-none"
-          }
-          variant={email ? "ghost" : undefined}
+          className="hosted-signin-focus-emphasis mt-2"
+          variant={email ? "ghostMuted" : "default"}
         >
           <a href="/login">
             {email

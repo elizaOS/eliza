@@ -1,11 +1,18 @@
 /**
  * The tool ledger bridge is tested on the runtime's ACTION_COMPLETED content
- * shape: SHELL runs and FILE writes become verifiable ACP tool calls, reads and
- * non-coding actions contribute nothing.
+ * shape: shell and direct or umbrella file mutations become verifiable ACP
+ * tool calls, while reads and non-coding actions contribute nothing.
  */
 
 import { describe, expect, it } from "bun:test";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import type { Content } from "@elizaos/core";
+import { setupEnv } from "@elizaos/plugin-coding-tools/actions/_test-helpers";
+import {
+  editAction,
+  writeAction,
+} from "@elizaos/plugin-coding-tools/actions/index";
 import { toolCallUpdateFromAction } from "./acp-tool-ledger.js";
 
 function completed(
@@ -79,6 +86,98 @@ describe("ACP tool ledger bridge", () => {
     expect(toolCallUpdateFromAction("s1", content, "c")?.update.status).toBe(
       "failed",
     );
+  });
+
+  it.each(["WRITE", "EDIT"])(
+    "turns %s success and failure into located edit receipts",
+    (action) => {
+      const path = `/ws/${action.toLowerCase()}.ts`;
+      for (const actionStatus of ["completed", "failed"] as const) {
+        const content = {
+          ...completed(action, `${action} result for ${path}`, { path }),
+          actionStatus,
+          actionResult: {
+            success: actionStatus === "completed",
+            text: `${action} result for ${path}`,
+            data: { path },
+          },
+        } as unknown as Content;
+
+        expect(
+          toolCallUpdateFromAction("s1", content, `${action}-${actionStatus}`),
+        ).toMatchObject({
+          update: {
+            title: `${action} ${path}`,
+            kind: "edit",
+            status: actionStatus,
+            rawInput: { path },
+            locations: [{ path }],
+            rawOutput: `${action} result for ${path}`,
+          },
+        });
+      }
+    },
+  );
+
+  it("preserves real failed WRITE and EDIT paths through completion receipts", async () => {
+    const env = await setupEnv("acp-ledger-failure");
+    try {
+      const file = path.join(env.tmpDir, "existing.ts");
+      await fs.writeFile(file, "const value = 1;\n", "utf8");
+      await env.fileState.recordRead("test-room", file);
+
+      const cases = [
+        {
+          action: writeAction,
+          name: "WRITE",
+          parameters: { file_path: file, content: "replacement" },
+        },
+        {
+          action: editAction,
+          name: "EDIT",
+          parameters: {
+            file_path: file,
+            old_string: "missing text",
+            new_string: "replacement",
+          },
+        },
+      ] as const;
+
+      for (const entry of cases) {
+        const result = await entry.action.handler(
+          env.runtime,
+          env.message,
+          undefined,
+          { parameters: entry.parameters },
+          undefined,
+          undefined,
+        );
+        if (!result) throw new Error(`${entry.name} returned no ActionResult`);
+        expect(result.success).toBe(false);
+        expect(result.data).toMatchObject({ path: file });
+
+        const completion = {
+          text: result.text,
+          actions: [entry.name],
+          actionStatus: "failed",
+          actionResult: result,
+        } as unknown as Content;
+        expect(
+          toolCallUpdateFromAction(
+            "s1",
+            completion,
+            `${entry.name}-actual-failure`,
+          ),
+        ).toMatchObject({
+          update: {
+            status: "failed",
+            locations: [{ path: file }],
+          },
+        });
+      }
+    } finally {
+      await env.cleanup();
+    }
   });
 
   it("ignores reads, listings, and non-coding actions", () => {

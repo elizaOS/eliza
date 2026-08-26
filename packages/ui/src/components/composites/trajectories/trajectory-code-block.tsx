@@ -47,9 +47,8 @@ export function TrajectoryCodeBlock({
             {lines > 20 ? (
               <Button
                 variant="outline"
-                size="sm"
+                size="dense"
                 type="button"
-                className="h-8 rounded-sm px-3 text-xs-tight"
                 onClick={() => setExpanded((current) => !current)}
               >
                 {expanded ? collapseLabel : expandLabel}
@@ -57,9 +56,8 @@ export function TrajectoryCodeBlock({
             ) : null}
             <Button
               variant="outline"
-              size="sm"
+              size="dense"
               type="button"
-              className="h-8 rounded-sm px-3 text-xs-tight"
               onClick={() => onCopy(content)}
               title={copyToClipboardLabel}
             >

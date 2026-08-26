@@ -20,7 +20,7 @@ function writeShard(options: {
 }): string {
   const summary = summarizeTimingPredictions(options.predictions);
   const report: TimingReport = {
-    schema: 3,
+    schema: 4,
     status: "complete",
     dataset: "duke-trust-lab/When2Speak",
     input: options.input,
@@ -30,6 +30,9 @@ function writeShard(options: {
     provider: "cli",
     requestedModel: "test-model",
     backend: "test-backend",
+    characterPreset: "minimal",
+    characterSha256: "test-character-sha256",
+    runtimeProfile: "classifier-isolated",
     trajectoryDir: path.join(options.directory, "trajectories"),
     selection: {
       shardIndex: options.shardIndex,
@@ -65,6 +68,12 @@ describe("timing report merger", () => {
           predicted: "SPEAK",
           textuallyReferencesAgent: false,
           directlyAddressesAgent: false,
+          effectiveAddressed: false,
+          addressSignals: {
+            platformMention: false,
+            replyToAgent: false,
+            textualAgentName: false,
+          },
           speakerCount: 2,
           contextTurns: 3,
         },
@@ -81,6 +90,12 @@ describe("timing report merger", () => {
           predicted: "SILENT",
           textuallyReferencesAgent: false,
           directlyAddressesAgent: true,
+          effectiveAddressed: true,
+          addressSignals: {
+            platformMention: true,
+            replyToAgent: false,
+            textualAgentName: false,
+          },
           speakerCount: 3,
           contextTurns: 6,
         },

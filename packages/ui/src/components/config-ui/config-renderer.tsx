@@ -223,8 +223,9 @@ function ValidationSummary({
           <li key={key}>
             <Button
               type="button"
-              variant="link"
-              className="text-xs text-destructive p-0 h-auto hover:underline transition-all text-left flex items-center gap-1.5"
+              variant="surfaceDestructive"
+              size="content"
+              align="start"
               onClick={() => handleFieldClick(key)}
             >
               <span className="opacity-60">
@@ -703,7 +704,8 @@ function AdvancedSectionToggle({
     <Button
       type="button"
       variant="ghost"
-      className="flex items-center gap-2 cursor-pointer select-none group mb-3 p-0 h-auto"
+      size="content"
+      className="group mb-3"
       onClick={() => setAdvancedOpen((prev) => !prev)}
     >
       <span

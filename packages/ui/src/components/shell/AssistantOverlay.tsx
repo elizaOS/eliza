@@ -162,11 +162,12 @@ export function AssistantOverlay({
       ].join(" ")}
     >
       <Button
-        variant="ghost"
+        variant="ghostMuted"
         size="icon-sm"
         aria-label="Close assistant"
         onClick={onClose}
-        className="absolute right-2 top-2 z-10 grid size-8 place-items-center rounded-full bg-card/60 text-muted transition-colors hover:bg-card/60 hover:text-txt"
+        shape="circle"
+        className="absolute right-2 top-2 z-10"
       >
         <X aria-hidden="true" className="size-4" />
       </Button>

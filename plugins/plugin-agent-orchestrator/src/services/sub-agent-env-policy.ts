@@ -3,6 +3,8 @@
  * consumes this as the single host-env projection before adding per-session
  * model gateway, credential bridge, and adapter-specific overrides.
  */
+import { isHostExecutionToolchainEnvKey } from "@elizaos/shared/host-execution-env";
+
 const DENY_ENV_PATTERNS = [
   /DISCORD.*TOKEN/i,
   /TELEGRAM.*TOKEN/i,
@@ -26,6 +28,7 @@ const DENY_ENV_PATTERNS = [
   // AFTER this filter runs). A caller- or host-supplied value would let the
   // spawner inject arbitrary provider config into the child, so it is denied at
   // both intake paths.
+  /^OPENCODE_CONFIG_CONTENT$/i,
 ];
 
 /**
@@ -35,7 +38,10 @@ const DENY_ENV_PATTERNS = [
  * vault passphrase) the deny-list exists to keep out of sub-agents.
  */
 export function isDeniedSubAgentEnvKey(key: string): boolean {
-  return DENY_ENV_PATTERNS.some((pattern) => pattern.test(key));
+  return (
+    isHostExecutionToolchainEnvKey(key) ||
+    DENY_ENV_PATTERNS.some((pattern) => pattern.test(key))
+  );
 }
 
 /**

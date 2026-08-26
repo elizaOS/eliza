@@ -75,6 +75,13 @@ bun run --cwd packages/ui typecheck
 bun run --cwd packages/ui test
 bun run --cwd packages/ui lint
 bun run --cwd packages/ui stories:dev # component stories
+bun run --cwd packages/ui audit:story-coverage # report current story coverage
+bun run --cwd packages/ui audit:stories:build  # build and gate every story
 ```
 
 This is a library; there is no standalone dev server — run it through a host app.
+
+The ownership, adapter, variant, and exception rules for shared UI live in
+[`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md). Run
+`bun run --cwd packages/ui audit:design-system` before submitting changes to
+tokens, controls, or reusable UI patterns.

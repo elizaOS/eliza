@@ -19,7 +19,9 @@ function isDefinitiveFalRejection(error: unknown): error is InstanceType<typeof 
 }
 
 function falKey(apiKeys: Record<string, string | undefined>): string | null {
-  const key = apiKeys.FAL_KEY ?? apiKeys.FAL_API_KEY;
+  // FAL_API_KEY is the canonical deployment secret; retain FAL_KEY only as a
+  // backwards-compatible fallback for older local environments.
+  const key = apiKeys.FAL_API_KEY ?? apiKeys.FAL_KEY;
   return typeof key === "string" && key.trim() ? key.trim() : null;
 }
 

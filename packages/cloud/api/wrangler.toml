@@ -526,6 +526,10 @@ binding = "BROWSER"
 
 [env.staging.vars]
 NODE_ENV = "production"
+# Signed Twilio callbacks and media-stream URLs must use the externally routed
+# HTTPS origin, never a request-derived host. Keep this committed so any
+# Wrangler deployment preserves inbound voice instead of failing closed.
+TWILIO_PUBLIC_URL = "https://api-staging.eliza.app"
 # Capture every staging turn while validating voice and cross-channel routing.
 # Rows remain compact and exclude prompt/response text.
 SHARED_TURN_TRACES_ENABLED = "true"
@@ -612,6 +616,11 @@ ELIZA_ONBOARDING_APP_URL = "https://cloud-staging.eliza.app"
 # bindings immediately before deployment and restores their staging value if
 # that deployment fails. The committed var is the steady-state authority.
 ELIZA_ONBOARDING_LOGIN_APP_URL = "https://staging.eliza.app"
+# Mobile app auth is staged behind an explicit environment gate and a fixed
+# registered app identity. Production remains disabled until physical-device
+# hosted PKCE and session persistence are accepted against this environment.
+ELIZA_MOBILE_APP_AUTH_ENABLED = "true"
+ELIZA_MOBILE_APP_AUTH_APP_ID = "689a1597-85e7-43ca-b000-8c6392d79465"
 NEXT_PUBLIC_NETWORK = "base"
 NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 GITHUB_ORG_NAME = "eliza-cloud-apps"
@@ -827,6 +836,10 @@ binding = "BROWSER"
 
 [env.production.vars]
 NODE_ENV = "production"
+# Signed Twilio callbacks and media-stream URLs must use the externally routed
+# HTTPS origin, never a request-derived host. Keep this committed so any
+# Wrangler deployment preserves inbound voice instead of failing closed.
+TWILIO_PUBLIC_URL = "https://api.eliza.app"
 SHARED_TURN_TRACES_ENABLED = "true"
 SHARED_TURN_TRACES_SAMPLE = "0.1"
 # Keep production on the indexed canonical resolver. The Durable Object cannot

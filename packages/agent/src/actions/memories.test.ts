@@ -31,6 +31,7 @@ function assertUuidOrThrowLikeDrizzle(value: unknown, column: string): void {
 function makeRuntime(options?: {
   clusters?: Partial<Record<string, UUID[]>>;
   settings?: Record<string, string | boolean>;
+  embeddingResult?: number[];
 }): { runtime: IAgentRuntime; rows: StoredRow[] } {
   const rows: StoredRow[] = [];
   const runtime = {
@@ -102,6 +103,15 @@ function makeRuntime(options?: {
       assertUuidOrThrowLikeDrizzle(memoryId, "id");
       return rows.find((row) => row.memory.id === memoryId)?.memory ?? null;
     },
+    updateMemory: async (memory: Partial<Memory> & { id: UUID }) => {
+      const row = rows.find((candidate) => candidate.memory.id === memory.id);
+      if (!row) throw new Error(`memory ${memory.id} was not found`);
+      row.memory = { ...row.memory, ...memory } as Memory;
+    },
+    useModel: async () => {
+      if (options?.embeddingResult) return options.embeddingResult;
+      throw new Error("embedding capability should not be requested");
+    },
     deleteMemory: async (memoryId: UUID) => {
       assertUuidOrThrowLikeDrizzle(memoryId, "id");
       const index = rows.findIndex((row) => row.memory.id === memoryId);
@@ -162,6 +172,102 @@ async function runCreate(
 ): Promise<ActionResult> {
   return runAction(runtime, message, { action: "create", ...parameters });
 }
+
+describe("MEMORY op:update", () => {
+  it("updates a text-only memory without requiring an embedding provider", async () => {
+    const { runtime, rows } = makeRuntime();
+    const memoryId = seedFact(rows, {
+      text: "the project codename is Kingfisher",
+      entityId: USER_ID,
+    });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "update",
+      memoryId,
+      text: "the project codename is Nightjar",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(rows[0].memory.content.text).toBe(
+      "the project codename is Nightjar",
+    );
+    expect(rows[0].memory.embedding).toBeUndefined();
+  });
+
+  it("regenerates the vector when updating an embedded memory", async () => {
+    const { runtime, rows } = makeRuntime({ embeddingResult: [0.4, 0.8] });
+    const memoryId = seedFact(rows, {
+      text: "the project codename is Kingfisher",
+      entityId: USER_ID,
+    });
+    rows[0].memory.embedding = [0.1, 0.2];
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "update",
+      memoryId,
+      text: "the project codename is Nightjar",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(rows[0].memory.embedding).toEqual([0.4, 0.8]);
+  });
+
+  it("resolves a uniquely matching requester memory from a query", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "the project codename is Kingfisher",
+      entityId: USER_ID,
+    });
+    seedFact(rows, {
+      text: "the project codename is Kingfisher",
+      entityId: OTHER_USER_ID,
+    });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "update",
+      query: "project codename Kingfisher",
+      text: "the project codename is Nightjar",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(rows[0].memory.content.text).toBe(
+      "the project codename is Nightjar",
+    );
+    expect(rows[1].memory.content.text).toBe(
+      "the project codename is Kingfisher",
+    );
+  });
+
+  it("refuses a query that matches distinct requester memories", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, {
+      text: "the project codename is Kingfisher",
+      entityId: USER_ID,
+    });
+    seedFact(rows, {
+      text: "the archived project codename is Kingfisher Two",
+      entityId: USER_ID,
+    });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "update",
+      query: "project codename Kingfisher",
+      text: "the project codename is Nightjar",
+      confirm: true,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({ error: "MEMORY_AMBIGUOUS_QUERY" });
+    expect(
+      rows.every(
+        (row) => !(row.memory.content.text ?? "").includes("Nightjar"),
+      ),
+    ).toBe(true);
+  });
+});
 
 describe("MEMORY op:create", () => {
   it("persists to the facts table scoped to the conversation room and speaker", async () => {
@@ -328,8 +434,8 @@ describe("MEMORY op:search terminal recall", () => {
     expect(result.success).toBe(true);
     expect(result.turnComplete).toBe(true);
     expect(result.verifiedUserFacing).toBe(true);
-    expect(result.userFacingText).toBe(
-      "I found 1 matching memory record(s):\n- [facts] Royce taught Shadow guitar",
+    expect(result.userFacingText).toMatch(
+      /^I found 1 matching memory record\(s\):\n- \[facts\] at \d{4}-\d{2}-\d{2}T.*Z: Royce taught Shadow guitar$/,
     );
     expect(result.userFacingText).not.toContain(memoryId);
   });
@@ -595,6 +701,65 @@ describe("MEMORY op:delete by query", () => {
 });
 
 describe("MEMORY op:search complete traversal", () => {
+  it("finds attachment descriptions without exposing capability URLs", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, { text: "", entityId: USER_ID });
+    rows[0].memory.content = {
+      attachments: [
+        {
+          id: "receipt-photo",
+          url: "https://private.example/receipt.png",
+          thumbnailUrl: "https://private.example/receipt-thumb.png",
+          filename: "receipt.png",
+          mimeType: "image/png",
+          description: "A receipt showing a 6:30 PM dinner reservation",
+        },
+      ],
+    };
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      type: "facts",
+      query: "dinner reservation",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain(
+      "[attachment: receipt.png; image/png; A receipt showing a 6:30 PM dinner reservation]",
+    );
+    expect(result.text).not.toContain("private.example");
+  });
+
+  it("ranks an exact all-term match ahead of newer partial decoys", async () => {
+    const { runtime, rows } = makeRuntime();
+    const targetId = seedFact(rows, {
+      text: "the archival project codename is Copper Heron 9184",
+      entityId: USER_ID,
+    });
+    rows[0].memory.createdAt = 1;
+    seedFact(rows, {
+      text: "the archival project codename is Copper Heron 8194",
+      entityId: USER_ID,
+    });
+    seedFact(rows, {
+      text: "the archival project codename is Bronze Heron 9184",
+      entityId: USER_ID,
+    });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      type: "facts",
+      query: "archival project codename Copper Heron 9184",
+    });
+
+    expect(result.success).toBe(true);
+    const responseText = result.text ?? "";
+    expect(responseText.indexOf(targetId)).toBeLessThan(
+      responseText.indexOf("Copper Heron 8194"),
+    );
+    expect(responseText).toContain("1970-01-01T00:00:00.001Z");
+  });
+
   it("finds a matching fact older than the former 200-row window", async () => {
     const { runtime, rows } = makeRuntime();
     seedFact(rows, { text: "my sister is named vega", entityId: USER_ID });

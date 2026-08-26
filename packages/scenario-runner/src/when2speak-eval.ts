@@ -9,14 +9,18 @@ import path from "node:path";
 import readline from "node:readline";
 import {
   ChannelType,
+  type CharacterInput,
+  classifyMessageAddress,
   ElizaError,
   type IAgentRuntime,
   type Memory,
+  messageChallengesPriorAgentReply,
   runV5MessageRuntimeStage1,
   type State,
   stringToUuid,
 } from "@elizaos/core";
 import type { LiveProviderName } from "@elizaos/core/testing";
+import { getDefaultStylePreset } from "@elizaos/shared";
 import { createScenarioRuntime } from "./runtime-factory.ts";
 
 export type TimingLabel = "SPEAK" | "SILENT";
@@ -24,6 +28,38 @@ export type TimingDataset =
   | "duke-trust-lab/When2Speak"
   | "mookiezi/Discord-Dialogues";
 export type TimingInputFormat = "when2speak" | "discord-replay";
+export type TimingCharacterPreset = "minimal" | "eliza";
+export type TimingRuntimeProfile =
+  | "classifier-isolated"
+  | "production-composed";
+
+export function resolveTimingCharacter(
+  preset: TimingCharacterPreset,
+): (CharacterInput & { name: string }) | undefined {
+  if (preset === "minimal") return undefined;
+  const eliza = getDefaultStylePreset("en");
+  return {
+    name: eliza.name,
+    system: eliza.system,
+    bio: eliza.bio,
+    adjectives: eliza.adjectives,
+    style: eliza.style,
+    topics: eliza.topics,
+    postExamples: eliza.postExamples,
+    messageExamples: eliza.messageExamples.map((example) =>
+      example.map((message) => ({
+        name: message.user,
+        content: message.content,
+      })),
+    ),
+    ...(eliza.templates ? { templates: { ...eliza.templates } } : {}),
+  };
+}
+
+export function timingCharacterSha256(preset: TimingCharacterPreset): string {
+  const character = resolveTimingCharacter(preset) ?? { name: "ScenarioAgent" };
+  return createHash("sha256").update(JSON.stringify(character)).digest("hex");
+}
 export interface When2SpeakExample {
   row: number;
   turns: Array<{ speaker: string; text: string; isAgent: boolean }>;
@@ -31,6 +67,7 @@ export interface When2SpeakExample {
   textuallyReferencesAgent: boolean;
   directlyAddressesAgent: boolean;
   speakerCount: number;
+  dialogueId: string;
 }
 export interface TimingCounts {
   total: number;
@@ -50,18 +87,35 @@ export interface TimingMetrics extends TimingCounts {
   silentF1: number | null;
   falseInterventionRate: number | null;
   missedInterventionRate: number | null;
+  balancedAccuracy: number | null;
+  macroF1: number | null;
+  matthewsCorrelation: number | null;
 }
 export interface TimingPrediction {
   row: number;
   gold: TimingLabel;
   predicted: TimingLabel;
+  policyGold?: TimingLabel;
   textuallyReferencesAgent: boolean;
   directlyAddressesAgent: boolean;
+  effectiveAddressed?: boolean;
+  addressSignals?: {
+    platformMention: boolean;
+    replyToAgent: boolean;
+    textualAgentName: boolean;
+    priorAgentChallenge?: boolean;
+  };
   speakerCount: number;
   contextTurns: number;
+  dialogueId?: string;
+  trajectoryId?: string;
+  actualProvider?: string;
+  promptPrefixHash?: string;
+  parsedDecision?: "RESPOND" | "IGNORE" | "STOP";
+  attempt?: number;
 }
 export interface TimingReport {
-  schema: 3;
+  schema: 4;
   status: "in-progress" | "complete";
   dataset: TimingDataset;
   input: string;
@@ -69,6 +123,9 @@ export interface TimingReport {
   provider: string;
   requestedModel: string;
   backend: string;
+  characterPreset: TimingCharacterPreset;
+  characterSha256: string;
+  runtimeProfile: TimingRuntimeProfile;
   trajectoryDir: string;
   selection: {
     shardIndex: number;
@@ -81,6 +138,12 @@ export interface TimingReport {
   metrics: TimingMetrics;
   objectives: {
     labelAgreement: TimingMetrics;
+    policyAlignedAgreement: TimingMetrics;
+    dialogueClusterAgreement: {
+      clusters: number;
+      macroAccuracy: number | null;
+      macroPolicyAccuracy: number | null;
+    };
     ambientRestraint: {
       eligibleTurns: number;
       predictedResponses: number;
@@ -134,6 +197,54 @@ function parseSpeakerTurn(
     throw invalidCorpusRow(row, "has an empty speaker or turn");
   return { speaker, text };
 }
+function dialogueIdFor(
+  turns: readonly { speaker: string; text: string }[],
+): string {
+  const first = turns[0];
+  return createHash("sha256")
+    .update(`${first?.speaker ?? ""}\0${first?.text ?? ""}`)
+    .digest("hex")
+    .slice(0, 16);
+}
+
+function directlyAddressesAgentPlaceholder(text: string): boolean {
+  return (
+    /^\s*(?:thanks?|thank you)\s*,?\s*\[AGENT\]/i.test(text) ||
+    /^\s*(?:(?:hey|hi|hello|thanks?|thank you|please)\s*[,!:;-]?\s*)?\[AGENT\](?:\s*[,!:;?-]|\s*$)/i.test(
+      text,
+    ) ||
+    /(?:^|,\s*)\[AGENT\](?:\s*[,!:;?]|\s*$)/i.test(text)
+  );
+}
+
+/** Assigns stable inferred dialogue ids before sharding using adjacent turn overlap. */
+export function inferTimingDialogueIds(
+  lines: readonly string[],
+  inputFormat: TimingInputFormat,
+): Map<number, string> {
+  const ids = new Map<number, string>();
+  let cluster = 0;
+  let previousTurns = new Set<string>();
+  for (const [index, line] of lines.entries()) {
+    const row = index + 1;
+    try {
+      const example =
+        inputFormat === "when2speak"
+          ? parseWhen2SpeakLine(line, row)
+          : parseDiscordReplayLine(line, row);
+      const turns = new Set(
+        example.turns.map((turn) => `${turn.speaker}\0${turn.text}`),
+      );
+      if (![...turns].some((turn) => previousTurns.has(turn))) cluster += 1;
+      ids.set(row, `dialogue-${String(cluster).padStart(5, "0")}`);
+      previousTurns = turns;
+    } catch {
+      // error-policy:J3 Invalid corpus rows break adjacency and remain rejected by the evaluation loop.
+      previousTurns = new Set();
+    }
+  }
+  return ids;
+}
 export function parseWhen2SpeakLine(
   line: string,
   row: number,
@@ -157,6 +268,8 @@ export function parseWhen2SpeakLine(
   const labelMessage = messages[messages.length - 1];
   if (labelMessage.role !== "assistant")
     throw invalidCorpusRow(row, "must end with an assistant label");
+  if (!labelMessage.content.trim())
+    throw invalidCorpusRow(row, "has an empty assistant decision label");
   const contextMessages = messages.slice(0, -1);
   if (contextMessages.some((message) => message.role !== "user"))
     throw invalidCorpusRow(
@@ -173,8 +286,9 @@ export function parseWhen2SpeakLine(
     turns,
     label: labelMessage.content.trim() === ">" ? "SILENT" : "SPEAK",
     textuallyReferencesAgent: currentTurn.text.includes("[AGENT]"),
-    directlyAddressesAgent: false,
+    directlyAddressesAgent: directlyAddressesAgentPlaceholder(currentTurn.text),
     speakerCount: new Set(turns.map((turn) => turn.speaker)).size,
+    dialogueId: dialogueIdFor(turns),
   };
 }
 
@@ -237,6 +351,7 @@ export function parseDiscordReplayLine(
     textuallyReferencesAgent: false,
     directlyAddressesAgent: false,
     speakerCount: new Set(turns.map((turn) => turn.speaker)).size,
+    dialogueId: dialogueIdFor(turns),
   };
 }
 function emptyCounts(): TimingCounts {
@@ -269,26 +384,33 @@ export function computeTimingMetrics(counts: TimingCounts): TimingMetrics {
     counts.trueSilent,
     counts.trueSilent + counts.falseSpeak,
   );
+  const speakF1 =
+    speakPrecision === null ||
+    speakRecall === null ||
+    speakPrecision + speakRecall === 0
+      ? null
+      : (2 * speakPrecision * speakRecall) / (speakPrecision + speakRecall);
+  const silentF1 =
+    silentPrecision === null ||
+    silentRecall === null ||
+    silentPrecision + silentRecall === 0
+      ? null
+      : (2 * silentPrecision * silentRecall) / (silentPrecision + silentRecall);
+  const mccDenominator = Math.sqrt(
+    (counts.trueSpeak + counts.falseSpeak) *
+      (counts.trueSpeak + counts.falseSilent) *
+      (counts.trueSilent + counts.falseSpeak) *
+      (counts.trueSilent + counts.falseSilent),
+  );
   return {
     ...counts,
     accuracy: ratio(counts.correct, counts.total),
     speakPrecision,
     speakRecall,
-    speakF1:
-      speakPrecision === null ||
-      speakRecall === null ||
-      speakPrecision + speakRecall === 0
-        ? null
-        : (2 * speakPrecision * speakRecall) / (speakPrecision + speakRecall),
+    speakF1,
     silentPrecision,
     silentRecall,
-    silentF1:
-      silentPrecision === null ||
-      silentRecall === null ||
-      silentPrecision + silentRecall === 0
-        ? null
-        : (2 * silentPrecision * silentRecall) /
-          (silentPrecision + silentRecall),
+    silentF1,
     falseInterventionRate: ratio(
       counts.falseSpeak,
       counts.falseSpeak + counts.trueSilent,
@@ -297,6 +419,18 @@ export function computeTimingMetrics(counts: TimingCounts): TimingMetrics {
       counts.falseSilent,
       counts.falseSilent + counts.trueSpeak,
     ),
+    balancedAccuracy:
+      speakRecall === null || silentRecall === null
+        ? null
+        : (speakRecall + silentRecall) / 2,
+    macroF1:
+      speakF1 === null || silentF1 === null ? null : (speakF1 + silentF1) / 2,
+    matthewsCorrelation:
+      mccDenominator === 0
+        ? null
+        : (counts.trueSpeak * counts.trueSilent -
+            counts.falseSpeak * counts.falseSilent) /
+          mccDenominator,
   };
 }
 function recordPrediction(
@@ -314,10 +448,9 @@ function recordPrediction(
 export function buildWhen2SpeakEvaluationState(
   runtime: IAgentRuntime,
   example: When2SpeakExample,
-): { state: State; message: Memory } {
+): { state: State; message: Memory; memories: Memory[] } {
   const agentName = runtime.character.name ?? "ScenarioAgent";
   const roomId = stringToUuid(`when2speak-room-${example.row}`);
-  const currentTurnIndex = example.turns.length - 1;
   const memories = example.turns.map(
     (turn, index): Memory => ({
       id: stringToUuid(`when2speak-${example.row}-turn-${index}`),
@@ -332,21 +465,13 @@ export function buildWhen2SpeakEvaluationState(
         senderName: turn.isAgent ? agentName : turn.speaker,
         source: "when2speak-eval",
         channelType: ChannelType.GROUP,
-        ...(index === currentTurnIndex && example.directlyAddressesAgent
-          ? {
-              mentionContext: {
-                isMention: true,
-                isReply: false,
-                isThread: false,
-              },
-            }
-          : {}),
       },
     }),
   );
   const message = memories[memories.length - 1];
   return {
     message,
+    memories,
     state: {
       values: { agentName },
       data: {
@@ -361,15 +486,132 @@ export function buildWhen2SpeakEvaluationState(
 export async function evaluateExample(
   runtime: IAgentRuntime,
   example: When2SpeakExample,
-): Promise<TimingLabel> {
-  const { state, message } = buildWhen2SpeakEvaluationState(runtime, example);
+  runtimeProfile: TimingRuntimeProfile = "classifier-isolated",
+): Promise<{
+  predicted: TimingLabel;
+  addressSignals: ReturnType<typeof classifyMessageAddress> & {
+    priorAgentChallenge: boolean;
+  };
+  observation: {
+    trajectoryId?: string;
+    provider: string;
+    prefixHash: string;
+    decision: "RESPOND" | "IGNORE" | "STOP";
+  };
+}> {
+  const built = buildWhen2SpeakEvaluationState(runtime, example);
+  const { message } = built;
+  let state = built.state;
+  if (runtimeProfile === "production-composed") {
+    for (const memory of built.memories) {
+      await runtime.createMemory(memory, "messages");
+    }
+    state = await runtime.composeState(message, ["RECENT_MESSAGES"], true);
+  }
+  const structuralAddress = classifyMessageAddress(runtime, message);
+  const priorAgentChallenge = messageChallengesPriorAgentReply(
+    runtime,
+    message,
+    state,
+  );
+  const addressSignals = {
+    ...structuralAddress,
+    priorAgentChallenge,
+    effective: structuralAddress.effective || priorAgentChallenge,
+  };
+  let observation:
+    | {
+        trajectoryId?: string;
+        provider: string;
+        prefixHash: string;
+        decision: "RESPOND" | "IGNORE" | "STOP";
+      }
+    | undefined;
   const outcome = await runV5MessageRuntimeStage1({
     runtime,
     message,
     state,
     responseId: stringToUuid(`when2speak-${example.row}-response`),
+    stage1DecisionOnly: true,
+    onStage1Decision: (value) => {
+      if (!value.provider) {
+        throw new ElizaError(
+          `Timing row ${example.row} did not expose its Stage-1 provider`,
+          {
+            code: "TIMING_STAGE1_PROVIDER_MISSING",
+            context: { row: example.row },
+          },
+        );
+      }
+      observation = {
+        ...(value.trajectoryId ? { trajectoryId: value.trajectoryId } : {}),
+        provider: value.provider,
+        prefixHash: value.prefixHash,
+        decision: value.decision,
+      };
+    },
   });
-  return outcome.kind === "terminal" ? "SILENT" : "SPEAK";
+  if (!observation) {
+    throw new ElizaError(
+      `Timing row ${example.row} produced no Stage-1 observation`,
+      {
+        code: "TIMING_STAGE1_OBSERVATION_MISSING",
+        context: { row: example.row },
+      },
+    );
+  }
+  return {
+    predicted:
+      outcome.kind === "decision"
+        ? outcome.action === "RESPOND"
+          ? "SPEAK"
+          : "SILENT"
+        : outcome.kind === "terminal"
+          ? "SILENT"
+          : "SPEAK",
+    addressSignals,
+    observation,
+  };
+}
+
+/** Applies the shipped group-response policy independently of corpus labels. */
+export function classifyProductPolicyLabel(
+  example: When2SpeakExample,
+  effectiveAddressed: boolean,
+): TimingLabel {
+  const current = example.turns.at(-1)?.text.trim() ?? "";
+  const prior = example.turns.at(-2);
+  const stopRequest =
+    effectiveAddressed &&
+    /^(?:\s*(?:hey|hi|please)\s+)?(?:\[AGENT\]|eliza)[,!:;\s-]*(?:stop|pause|cancel|shut up|be quiet|don't respond|do not respond)\b/i.test(
+      current,
+    );
+  const closer =
+    /\b(thanks?|thank you|nice|great|got it|makes sense|helpful|appreciate(?:d| it)?)\b/i.test(
+      current,
+    ) &&
+    !/[?]/.test(current) &&
+    !/\b(but|however|why|how|what|when|where|who|which|could|can|would|should|do we|are we|is it)\b/i.test(
+      current,
+    );
+  if (stopRequest || closer) return "SILENT";
+  if (effectiveAddressed) return "SPEAK";
+  const challengesPriorAgent =
+    prior?.isAgent === true &&
+    (/[?]/.test(current) ||
+      /\b(counterintuitive|disagree|doubt|wrong|incorrect|confus(?:ed|ing)|clarify|actually|but i thought|i thought|are you sure|really|why)\b/i.test(
+        current,
+      ));
+  if (challengesPriorAgent) return "SPEAK";
+  const consequentialRisk =
+    /\b(urgent|emergency|danger|dangerous|harm|unsafe|overdose|poison|fire|bleeding|suicid(?:e|al)|security breach)\b/i.test(
+      current,
+    );
+  const standingResponsibility =
+    /\b(eliza|\[AGENT\]|assistant)\b[^.!?]{0,48}\b(?:is responsible|owns this|on call|assigned|must handle|please monitor)\b/i.test(
+      current,
+    );
+  return consequentialRisk || standingResponsibility ? "SPEAK" : "SILENT";
 }
 function sliceKey(turns: number): string {
   return turns <= 2 ? "1-2" : turns <= 5 ? "3-5" : "6+";
@@ -394,14 +636,38 @@ export function summarizeTimingPredictions(
   predictions: readonly TimingPrediction[],
 ): Pick<TimingReport, "metrics" | "objectives" | "slices"> {
   const overall = emptyCounts();
+  const policyAligned = emptyCounts();
   const address = new Map<string, TimingCounts>();
   const textualReference = new Map<string, TimingCounts>();
   const speakers = new Map<string, TimingCounts>();
   const contextTurns = new Map<string, TimingCounts>();
+  const dialogueRaw = new Map<string, TimingCounts>();
+  const dialoguePolicy = new Map<string, TimingCounts>();
   for (const prediction of predictions) {
     recordPrediction(overall, prediction.gold, prediction.predicted);
     recordPrediction(
-      bucket(address, prediction.directlyAddressesAgent ? "direct" : "ambient"),
+      policyAligned,
+      prediction.policyGold ?? prediction.gold,
+      prediction.predicted,
+    );
+    const dialogueId = prediction.dialogueId ?? `row-${prediction.row}`;
+    recordPrediction(
+      bucket(dialogueRaw, dialogueId),
+      prediction.gold,
+      prediction.predicted,
+    );
+    recordPrediction(
+      bucket(dialoguePolicy, dialogueId),
+      prediction.policyGold ?? prediction.gold,
+      prediction.predicted,
+    );
+    recordPrediction(
+      bucket(
+        address,
+        (prediction.effectiveAddressed ?? prediction.directlyAddressesAgent)
+          ? "effective"
+          : "ambient",
+      ),
       prediction.gold,
       prediction.predicted,
     );
@@ -426,7 +692,8 @@ export function summarizeTimingPredictions(
   }
   const metrics = computeTimingMetrics(overall);
   const ambientPredictions = predictions.filter(
-    (prediction) => !prediction.directlyAddressesAgent,
+    (prediction) =>
+      !(prediction.effectiveAddressed ?? prediction.directlyAddressesAgent),
   );
   const predictedResponses = ambientPredictions.filter(
     (prediction) => prediction.predicted === "SPEAK",
@@ -436,6 +703,24 @@ export function summarizeTimingPredictions(
     metrics,
     objectives: {
       labelAgreement: metrics,
+      policyAlignedAgreement: computeTimingMetrics(policyAligned),
+      dialogueClusterAgreement: {
+        clusters: dialogueRaw.size,
+        macroAccuracy: ratio(
+          [...dialogueRaw.values()].reduce(
+            (sum, counts) => sum + counts.correct / counts.total,
+            0,
+          ),
+          dialogueRaw.size,
+        ),
+        macroPolicyAccuracy: ratio(
+          [...dialoguePolicy.values()].reduce(
+            (sum, counts) => sum + counts.correct / counts.total,
+            0,
+          ),
+          dialoguePolicy.size,
+        ),
+      },
       ambientRestraint: {
         eligibleTurns: ambientPredictions.length,
         predictedResponses,
@@ -492,14 +777,49 @@ function isResumePrediction(value: unknown): value is TimingPrediction {
     (value.gold === "SPEAK" || value.gold === "SILENT") &&
     "predicted" in value &&
     (value.predicted === "SPEAK" || value.predicted === "SILENT") &&
+    "policyGold" in value &&
+    (value.policyGold === "SPEAK" || value.policyGold === "SILENT") &&
     "textuallyReferencesAgent" in value &&
     typeof value.textuallyReferencesAgent === "boolean" &&
     "directlyAddressesAgent" in value &&
     typeof value.directlyAddressesAgent === "boolean" &&
+    "effectiveAddressed" in value &&
+    typeof value.effectiveAddressed === "boolean" &&
+    "addressSignals" in value &&
+    value.addressSignals !== null &&
+    typeof value.addressSignals === "object" &&
+    "platformMention" in value.addressSignals &&
+    typeof value.addressSignals.platformMention === "boolean" &&
+    "replyToAgent" in value.addressSignals &&
+    typeof value.addressSignals.replyToAgent === "boolean" &&
+    "textualAgentName" in value.addressSignals &&
+    typeof value.addressSignals.textualAgentName === "boolean" &&
+    "priorAgentChallenge" in value.addressSignals &&
+    typeof value.addressSignals.priorAgentChallenge === "boolean" &&
     "speakerCount" in value &&
     Number.isSafeInteger(value.speakerCount) &&
     "contextTurns" in value &&
-    Number.isSafeInteger(value.contextTurns)
+    Number.isSafeInteger(value.contextTurns) &&
+    "dialogueId" in value &&
+    typeof value.dialogueId === "string" &&
+    value.dialogueId.length > 0 &&
+    "trajectoryId" in value &&
+    typeof value.trajectoryId === "string" &&
+    value.trajectoryId.length > 0 &&
+    "actualProvider" in value &&
+    typeof value.actualProvider === "string" &&
+    value.actualProvider.length > 0 &&
+    "promptPrefixHash" in value &&
+    typeof value.promptPrefixHash === "string" &&
+    value.promptPrefixHash.length > 0 &&
+    "parsedDecision" in value &&
+    (value.parsedDecision === "RESPOND" ||
+      value.parsedDecision === "IGNORE" ||
+      value.parsedDecision === "STOP") &&
+    "attempt" in value &&
+    typeof value.attempt === "number" &&
+    Number.isSafeInteger(value.attempt) &&
+    value.attempt > 0
   );
 }
 
@@ -555,6 +875,9 @@ function validateResumeReport(options: {
   provider: string;
   requestedModel: string;
   backend: string;
+  characterPreset: TimingCharacterPreset;
+  characterSha256: string;
+  runtimeProfile: TimingRuntimeProfile;
   shardIndex: number;
   shardCount: number;
   startRow: number;
@@ -566,7 +889,7 @@ function validateResumeReport(options: {
     value === null ||
     typeof value !== "object" ||
     !("schema" in value) ||
-    value.schema !== 3 ||
+    value.schema !== 4 ||
     !("status" in value) ||
     value.status !== "in-progress" ||
     !("dataset" in value) ||
@@ -581,6 +904,12 @@ function validateResumeReport(options: {
     value.requestedModel !== options.requestedModel ||
     !("backend" in value) ||
     value.backend !== options.backend ||
+    !("characterPreset" in value) ||
+    value.characterPreset !== options.characterPreset ||
+    !("characterSha256" in value) ||
+    value.characterSha256 !== options.characterSha256 ||
+    !("runtimeProfile" in value) ||
+    value.runtimeProfile !== options.runtimeProfile ||
     !("selection" in value) ||
     value.selection === null ||
     typeof value.selection !== "object" ||
@@ -633,11 +962,16 @@ export async function runWhen2SpeakEval(options: {
   checkpointEvery?: number;
   onCheckpoint?: (report: TimingReport) => void | Promise<void>;
   resumeReport?: unknown;
+  characterPreset?: TimingCharacterPreset;
+  runtimeProfile?: TimingRuntimeProfile;
+  attempt?: number;
 }): Promise<TimingReport> {
   const shardIndex = options.shardIndex ?? 0;
   const shardCount = options.shardCount ?? 1;
   const startRow = options.startRow ?? 1;
   const checkpointEvery = options.checkpointEvery;
+  const runtimeProfile = options.runtimeProfile ?? "classifier-isolated";
+  const attempt = options.attempt ?? 1;
   if (
     !Number.isSafeInteger(shardCount) ||
     shardCount <= 0 ||
@@ -649,7 +983,9 @@ export async function runWhen2SpeakEval(options: {
     (options.limit !== undefined &&
       (!Number.isSafeInteger(options.limit) || options.limit <= 0)) ||
     (checkpointEvery !== undefined &&
-      (!Number.isSafeInteger(checkpointEvery) || checkpointEvery <= 0))
+      (!Number.isSafeInteger(checkpointEvery) || checkpointEvery <= 0)) ||
+    !Number.isSafeInteger(attempt) ||
+    attempt <= 0
   ) {
     throw new ElizaError("Invalid When2Speak row selection", {
       code: "WHEN2SPEAK_INVALID_SELECTION",
@@ -663,17 +999,19 @@ export async function runWhen2SpeakEval(options: {
     });
   }
   const input = path.resolve(options.input);
-  const inputSha256 = createHash("sha256")
-    .update(fs.readFileSync(input))
-    .digest("hex");
+  const inputBytes = fs.readFileSync(input);
+  const inputSha256 = createHash("sha256").update(inputBytes).digest("hex");
   let startedAt = new Date().toISOString();
   const previousTrajectoryDir = process.env.ELIZA_TRAJECTORY_DIR;
   const trajectoryDir = path.resolve(options.trajectoryDir);
   process.env.ELIZA_TRAJECTORY_DIR = trajectoryDir;
   let runtimeResult: Awaited<ReturnType<typeof createScenarioRuntime>>;
   try {
+    const characterPreset = options.characterPreset ?? "minimal";
+    const timingCharacter = resolveTimingCharacter(characterPreset);
     runtimeResult = await createScenarioRuntime({
       ...(options.provider ? { preferredProvider: options.provider } : {}),
+      ...(timingCharacter ? { character: timingCharacter } : {}),
     });
   } catch (error) {
     // error-policy:J2 Restore process state, then add evaluator context while
@@ -686,13 +1024,25 @@ export async function runWhen2SpeakEval(options: {
     throw new ElizaError("Failed to create the When2Speak scenario runtime", {
       code: "WHEN2SPEAK_RUNTIME_CREATE_FAILED",
       cause: error,
-      context: { provider: options.provider ?? "auto" },
+      context: {
+        provider: options.provider ?? "auto",
+        characterPreset: options.characterPreset ?? "minimal",
+      },
     });
   }
   const predictions: TimingReport["predictions"] = [];
   const exclusions: TimingReport["exclusions"] = [];
   const failures: TimingReport["failures"] = [];
   const inputFormat = options.inputFormat ?? "when2speak";
+  const dialogueIds = inferTimingDialogueIds(
+    inputBytes
+      .toString("utf8")
+      .split(/\r?\n/u)
+      .filter(
+        (line, index, lines) => index < lines.length - 1 || line.length > 0,
+      ),
+    inputFormat,
+  );
   const dataset: TimingDataset =
     inputFormat === "when2speak"
       ? "duke-trust-lab/When2Speak"
@@ -704,6 +1054,11 @@ export async function runWhen2SpeakEval(options: {
   const backend =
     runtimeResult.providerConfig.env.ELIZA_CHAT_VIA_CLI ??
     runtimeResult.providerName;
+  // Hash the requested personality, not the runtime-owned character object:
+  // provider and plugin assembly may append model-specific runtime metadata.
+  const characterSha256 = timingCharacterSha256(
+    options.characterPreset ?? "minimal",
+  );
   const resumeReport = validateResumeReport({
     value: options.resumeReport,
     input,
@@ -712,6 +1067,9 @@ export async function runWhen2SpeakEval(options: {
     provider: runtimeResult.providerName,
     requestedModel,
     backend,
+    characterPreset: options.characterPreset ?? "minimal",
+    characterSha256,
+    runtimeProfile,
     shardIndex,
     shardCount,
     startRow,
@@ -732,7 +1090,7 @@ export async function runWhen2SpeakEval(options: {
   const report = (status: TimingReport["status"]): TimingReport => {
     const summary = summarizeTimingPredictions(predictions);
     return {
-      schema: 3,
+      schema: 4,
       status,
       dataset,
       input,
@@ -740,6 +1098,9 @@ export async function runWhen2SpeakEval(options: {
       provider: runtimeResult.providerName,
       requestedModel,
       backend,
+      characterPreset: options.characterPreset ?? "minimal",
+      characterSha256,
+      runtimeProfile,
       trajectoryDir,
       selection: {
         shardIndex,
@@ -778,6 +1139,7 @@ export async function runWhen2SpeakEval(options: {
           inputFormat === "when2speak"
             ? parseWhen2SpeakLine(line, row)
             : parseDiscordReplayLine(line, row);
+        example.dialogueId = dialogueIds.get(row) ?? example.dialogueId;
       } catch (error) {
         // error-policy:J3 Malformed corpus rows become explicit rejected rows.
         if (
@@ -804,15 +1166,55 @@ export async function runWhen2SpeakEval(options: {
       // Model and Stage-1 failures abort the run. Retrying every remaining row
       // after a provider failure would turn one boundary error into thousands
       // of requests and a misleading all-fail benchmark.
-      const predicted = await evaluateExample(runtimeResult.runtime, example);
+      const evaluation = await evaluateExample(
+        runtimeResult.runtime,
+        example,
+        runtimeProfile,
+      );
+      if (
+        runtimeResult.providerName === "cli" &&
+        evaluation.observation.provider !== "cli-inference"
+      ) {
+        throw new ElizaError(
+          `Timing row ${example.row} routed Stage 1 through an unexpected provider`,
+          {
+            code: "TIMING_STAGE1_PROVIDER_DRIFT",
+            context: {
+              row: example.row,
+              requestedProvider: runtimeResult.providerName,
+              requestedModel,
+              actualProvider: evaluation.observation.provider,
+            },
+          },
+        );
+      }
       predictions.push({
         row: example.row,
         gold: example.label,
-        predicted,
+        predicted: evaluation.predicted,
+        policyGold: classifyProductPolicyLabel(
+          example,
+          evaluation.addressSignals.effective,
+        ),
         textuallyReferencesAgent: example.textuallyReferencesAgent,
         directlyAddressesAgent: example.directlyAddressesAgent,
+        effectiveAddressed: evaluation.addressSignals.effective,
+        addressSignals: {
+          platformMention: evaluation.addressSignals.platformMention,
+          replyToAgent: evaluation.addressSignals.replyToAgent,
+          textualAgentName: evaluation.addressSignals.textualAgentName,
+          priorAgentChallenge: evaluation.addressSignals.priorAgentChallenge,
+        },
         speakerCount: example.speakerCount,
         contextTurns: example.turns.length,
+        dialogueId: example.dialogueId,
+        ...(evaluation.observation.trajectoryId
+          ? { trajectoryId: evaluation.observation.trajectoryId }
+          : {}),
+        actualProvider: evaluation.observation.provider,
+        promptPrefixHash: evaluation.observation.prefixHash,
+        parsedDecision: evaluation.observation.decision,
+        attempt,
       });
       if (
         options.checkpointEvery !== undefined &&

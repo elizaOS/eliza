@@ -5,7 +5,6 @@
  * are formatted compactly ($1.2k / $3.4m) for the header. The `shell` appearance
  * matches the app shell's chrome; the default is a lighter inline button.
  */
-import type { CSSProperties } from "react";
 import { Button } from "../ui/button";
 
 type CloudHeaderStatusKind =
@@ -124,22 +123,6 @@ function resolveCloudStatusBadgeState(
   };
 }
 
-function resolveCloudStatusToneStyle(
-  kind: CloudHeaderStatusKind,
-  appearance: CloudStatusBadgeProps["appearance"],
-): CSSProperties {
-  const toneVar = kind === "error" ? "var(--danger)" : "var(--warn)";
-  if (appearance === "shell") {
-    return {
-      borderColor: `color-mix(in srgb, ${toneVar} 34%, var(--border))`,
-      color: `color-mix(in srgb, var(--text-strong) 78%, ${toneVar} 22%)`,
-    };
-  }
-  return {
-    color: `color-mix(in srgb, var(--text-strong) 70%, ${toneVar} 30%)`,
-  };
-}
-
 export function CloudStatusBadge(props: CloudStatusBadgeProps) {
   const {
     connected,
@@ -169,19 +152,20 @@ export function CloudStatusBadge(props: CloudStatusBadgeProps) {
     return null;
   }
 
-  const toneStyle = resolveCloudStatusToneStyle(status.kind, appearance);
-
-  const buttonClassName =
-    appearance === "shell"
-      ? `inline-flex h-11 min-h-touch min-w-touch items-center justify-center rounded-sm px-3.5 py-0 border border-border/42 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] text-txt    transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-accent/55 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_78%,transparent),color-mix(in_srgb,var(--bg-hover)_52%,transparent))] hover:text-txt active:scale-[0.98] disabled:active:scale-100 disabled:hover:border-border/42 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] disabled:hover:text-txt shrink-0 gap-1.5 leading-none no-underline text-sm font-medium`
-      : `inline-flex h-[2.375rem] min-h-[2.375rem] shrink-0 items-center gap-1.5 rounded-sm border border-transparent !bg-transparent px-2.5 leading-none text-muted shadow-none  transition-colors duration-150 hover:!bg-transparent hover:text-txt active:!bg-transparent text-xs-tight font-mono sm:text-xs`;
+  const variant =
+    status.kind === "error"
+      ? appearance === "shell"
+        ? "dangerOutline"
+        : "dangerGhost"
+      : "warningOutline";
 
   return (
     <Button
-      variant={appearance === "shell" ? "outline" : "ghost"}
+      variant={variant}
+      size={appearance === "shell" ? "touch" : "pageDrawerTrigger"}
       data-testid={dataTestId}
       data-status={status.kind}
-      className={`${buttonClassName} ${compactOnMobile ? "max-[380px]:w-[2.375rem] max-[380px]:min-w-[2.375rem] max-[380px]:justify-center max-[380px]:px-0" : ""}`}
+      className={`shrink-0 ${compactOnMobile ? "max-[380px]:w-[2.375rem] max-[380px]:min-w-[2.375rem]" : ""}`}
       aria-label={status.title}
       title={status.title}
       onClick={onClick}
@@ -189,7 +173,6 @@ export function CloudStatusBadge(props: CloudStatusBadgeProps) {
         clipPath: "none",
         WebkitClipPath: "none",
         touchAction: "manipulation",
-        ...toneStyle,
       }}
     >
       <span

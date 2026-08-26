@@ -18,8 +18,6 @@ import type {
 
 const CONTACTS_PROVIDER_NAME = "androidContacts";
 
-const CONTACTS_PROVIDER_LIMIT = 50;
-
 interface AndroidContactEntry {
   id: string;
   displayName: string;
@@ -56,9 +54,7 @@ export const contactsProvider: Provider = {
     _state: State,
   ): Promise<ProviderResult> => {
     try {
-      const { contacts } = await Contacts.listContacts({
-        limit: CONTACTS_PROVIDER_LIMIT,
-      });
+      const { contacts } = await Contacts.listContacts();
       const entries = contacts.map(toEntry);
 
       return {
@@ -75,7 +71,6 @@ export const contactsProvider: Provider = {
         data: {
           contacts: entries,
           count: entries.length,
-          limit: CONTACTS_PROVIDER_LIMIT,
         },
       };
     } catch (error) {
@@ -97,7 +92,6 @@ export const contactsProvider: Provider = {
         data: {
           contacts: [],
           count: 0,
-          limit: CONTACTS_PROVIDER_LIMIT,
           error: message,
         },
       };

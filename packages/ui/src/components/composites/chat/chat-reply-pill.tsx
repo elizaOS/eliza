@@ -60,18 +60,12 @@ export function ChatReplyPill({
         ) : null}
       </span>
       <Button
-        variant="ghost"
-        size="icon-sm"
+        variant={glass ? "outlineAccent" : "ghostMuted"}
+        size="micro"
         data-testid="chat-reply-pill-cancel"
         aria-label={cancelReply}
         title={cancelReply}
         onClick={onCancel}
-        className={cn(
-          "size-6 shrink-0 rounded-full p-0 transition-colors",
-          glass
-            ? "bg-white/10 text-white/70 hover:bg-white/20"
-            : "text-muted hover:bg-bg hover:text-txt-strong",
-        )}
       >
         <X className="size-3.5" aria-hidden="true" />
       </Button>

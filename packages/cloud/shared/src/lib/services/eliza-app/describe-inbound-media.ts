@@ -34,10 +34,6 @@ export const MAX_INBOUND_MEDIA_IMAGES = 4;
 export const MAX_INBOUND_IMAGE_BYTES = 8 * 1024 * 1024;
 const INBOUND_MEDIA_FETCH_TIMEOUT_MS = 15_000;
 const INBOUND_MEDIA_VISION_TIMEOUT_MS = 45_000;
-// Output-side ceiling only; the completion is rejected (never clipped) when
-// the model reports it ran into this bound.
-const INBOUND_MEDIA_DESCRIPTION_MAX_OUTPUT_TOKENS = 768;
-
 const DESCRIPTION_PROMPT =
   "Describe the attached image(s) for an assistant that cannot see them. " +
   "State the subject, any visible text verbatim, and details a reply would " +
@@ -298,7 +294,6 @@ export async function describeInboundImageMedia(
           ],
         },
       ],
-      maxOutputTokens: INBOUND_MEDIA_DESCRIPTION_MAX_OUTPUT_TOKENS,
       abortSignal: AbortSignal.timeout(INBOUND_MEDIA_VISION_TIMEOUT_MS),
     });
   } catch (error) {

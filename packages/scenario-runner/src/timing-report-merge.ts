@@ -25,6 +25,9 @@ type TimingReportFragment = Pick<
   | "provider"
   | "requestedModel"
   | "backend"
+  | "characterPreset"
+  | "characterSha256"
+  | "runtimeProfile"
   | "selection"
   | "predictions"
   | "exclusions"
@@ -38,6 +41,9 @@ export interface TimingMatrixCell {
   provider: string;
   requestedModel: string;
   backend: string;
+  characterPreset: TimingReport["characterPreset"];
+  characterSha256: string;
+  runtimeProfile: TimingReport["runtimeProfile"];
   shardCount: number;
   sourceReports: string[];
   physicalRows: number;
@@ -167,7 +173,7 @@ function parseReport(file: string): TimingReportFragment {
     value === null ||
     typeof value !== "object" ||
     !("schema" in value) ||
-    value.schema !== 3 ||
+    value.schema !== 4 ||
     !("status" in value) ||
     (value.status !== "in-progress" && value.status !== "complete") ||
     !("dataset" in value) ||
@@ -183,6 +189,14 @@ function parseReport(file: string): TimingReportFragment {
     typeof value.requestedModel !== "string" ||
     !("backend" in value) ||
     typeof value.backend !== "string" ||
+    !("characterPreset" in value) ||
+    (value.characterPreset !== "minimal" &&
+      value.characterPreset !== "eliza") ||
+    !("characterSha256" in value) ||
+    typeof value.characterSha256 !== "string" ||
+    !("runtimeProfile" in value) ||
+    (value.runtimeProfile !== "classifier-isolated" &&
+      value.runtimeProfile !== "production-composed") ||
     !("selection" in value) ||
     !isSelection(value.selection) ||
     !("predictions" in value) ||
@@ -210,6 +224,9 @@ function parseReport(file: string): TimingReportFragment {
     provider: value.provider,
     requestedModel: value.requestedModel,
     backend: value.backend,
+    characterPreset: value.characterPreset,
+    characterSha256: value.characterSha256,
+    runtimeProfile: value.runtimeProfile,
     selection: value.selection,
     predictions: value.predictions,
     exclusions: value.exclusions,
@@ -225,6 +242,9 @@ function cellKey(report: TimingReportFragment): string {
     report.provider,
     report.requestedModel,
     report.backend,
+    report.characterPreset,
+    report.characterSha256,
+    report.runtimeProfile,
     report.selection.shardCount,
   ]);
 }
@@ -369,6 +389,9 @@ export function mergeTimingReports(
       provider: first.provider,
       requestedModel: first.requestedModel,
       backend: first.backend,
+      characterPreset: first.characterPreset,
+      characterSha256: first.characterSha256,
+      runtimeProfile: first.runtimeProfile,
       shardCount: first.selection.shardCount,
       sourceReports: entries.map(({ file }) => file).sort(),
       physicalRows,

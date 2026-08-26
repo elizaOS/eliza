@@ -49,14 +49,11 @@ export function ConnectorModeSelector({
         {modes.map((mode) => (
           <Button
             key={mode.id}
-            variant="ghost"
+            variant="choice"
+            size="compact"
+            data-state={selectedMode === mode.id ? "on" : "off"}
             data-testid={`connector-mode-${connectorId}-${mode.id}`}
             onClick={() => onModeChange(mode.id)}
-            className={`h-auto rounded-sm border px-3 py-1.5 text-xs-tight font-medium transition-all ${
-              selectedMode === mode.id
-                ? "border-accent bg-accent/10 text-accent"
-                : "border-border/40 bg-card/40 text-muted hover:border-accent/40 hover:text-txt"
-            }`}
             title={
               mode.descriptionKey
                 ? t(mode.descriptionKey, { defaultValue: mode.description })

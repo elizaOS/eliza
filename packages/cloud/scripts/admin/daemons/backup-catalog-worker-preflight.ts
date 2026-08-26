@@ -1,8 +1,8 @@
 #!/usr/bin/env -S npx tsx
 /**
  * Value-redacted configuration preflight for the manifest-v3 catalogue worker.
- * Disabled mode validates only daemon controls and the two gates; enabled mode
- * loads the same production composition as the daemon, without running a cycle.
+ * Disabled mode validates only daemon controls and three gates; enabled mode
+ * loads the same production composition as the daemon without running a cycle.
  */
 
 import path from "node:path";

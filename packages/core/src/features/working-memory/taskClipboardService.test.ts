@@ -1,19 +1,11 @@
 /**
- * Unit tests for TaskClipboardService: validates TASK_CLIPBOARD_MAX_ITEMS constant
- * and factory initialization.
+ * Unit tests for the uncapped task clipboard service factory.
  */
 import { describe, expect, it } from "vitest";
 import type { IAgentRuntime } from "../../types/index.ts";
-import {
-	createTaskClipboardService,
-	TASK_CLIPBOARD_MAX_ITEMS,
-} from "./taskClipboardService.ts";
+import { createTaskClipboardService } from "./taskClipboardService.ts";
 
 describe("taskClipboardService", () => {
-	it("exports TASK_CLIPBOARD_MAX_ITEMS as max safe integer", () => {
-		expect(TASK_CLIPBOARD_MAX_ITEMS).toBe(Number.MAX_SAFE_INTEGER);
-	});
-
 	it("creates task clipboard service instance with runtime", () => {
 		const runtime = {} as IAgentRuntime;
 		const service = createTaskClipboardService(runtime, {

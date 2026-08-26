@@ -590,10 +590,6 @@ export class SandboxManager {
 
   private emitEvent(event: SandboxEvent): void {
     this.eventLog.push(event);
-    // Keep bounded
-    if (this.eventLog.length > 1000) {
-      this.eventLog = this.eventLog.slice(-500);
-    }
   }
 
   getEventLog(): SandboxEvent[] {

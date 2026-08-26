@@ -12,6 +12,7 @@
 import { TrajectoryLimitExceeded } from "../../runtime/limits";
 import { readActionFailureProvenance } from "../../types/action-failure";
 import { ModelType } from "../../types/model";
+import { isProviderContextOverflowFailure } from "../../utils/model-errors";
 import {
 	findNextCloseTag,
 	REASONING_TAG_NAMES,
@@ -312,6 +313,10 @@ export function isModelProviderFallbackError(
  *   the honest reply names the gap.
  * - `planner_exhaustion` — the planner ran out of budget (tool calls,
  *   repeated failures, token budget) before finishing. Retrying may help.
+ * - `context_overflow` — the provider rejected the model call at its
+ *   documented context limit and the planner terminated without rewriting
+ *   completed results. Retrying the identical request cannot help; the
+ *   honest reply asks for a smaller range or narrower request.
  * - `transient` — a model/provider/infrastructure error; the pre-existing
  *   generic path.
  */
@@ -320,6 +325,7 @@ export type StructuredFailureCause =
 	| "handler_error"
 	| "persistence_error"
 	| "planner_exhaustion"
+	| "context_overflow"
 	| "transient";
 
 /**
@@ -352,6 +358,10 @@ export function classifyStructuredFailureCause(
 			}
 		}
 	}
+	// A provider context-length rejection — raw, or wrapped in the planner
+	// loop's typed PROVIDER_CONTEXT_OVERFLOW error — is a designed protocol
+	// boundary, not a generic transient flake.
+	if (isProviderContextOverflowFailure(error)) return "context_overflow";
 	return readActionFailureProvenance(error)?.kind ?? "transient";
 }
 
@@ -372,6 +382,10 @@ const FAILURE_PROMPT_CAUSE_LINES: Record<StructuredFailureCause, string[]> = {
 		"You ran out of attempts while working on the user's request and could not finish it.",
 		"Write a one or two sentence reply in plain language.",
 	],
+	context_overflow: [
+		"The user's request needed more context than your model can take in one call, so the request could not be completed as asked.",
+		"Write a one or two sentence reply in plain language.",
+	],
 	transient: [
 		"You hit a transient model error and have to send a short user-facing reply.",
 		"Write a one or two sentence reply in plain language.",
@@ -388,6 +402,8 @@ const FAILURE_PROMPT_CAUSE_RETRY_RULE: Record<StructuredFailureCause, string> =
 			"- Tell the user that the change could not be saved and was not completed. Do not claim success; suggest a retry.",
 		planner_exhaustion:
 			"- Acknowledge that you could not finish the request and suggest a retry.",
+		context_overflow:
+			"- Tell the user plainly that this needed more context than you can take in one go, and suggest retrying with a smaller range or a narrower request. Do NOT claim it was done, and do not suggest retrying the identical request.",
 		transient: "- Acknowledge that something went wrong and suggest a retry.",
 	};
 

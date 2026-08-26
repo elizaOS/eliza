@@ -248,7 +248,7 @@ export function ConnectorAccountCard({
               })}
             />
             {isDefault ? (
-              <Badge variant="outline" className="shrink-0 text-2xs">
+              <Badge variant="outline" size="compact" className="shrink-0">
                 {t("connectoraccount.default", { defaultValue: "Default" })}
               </Badge>
             ) : null}
@@ -274,7 +274,6 @@ export function ConnectorAccountCard({
               size="sm"
               disabled={saving || selected}
               onClick={onSelect}
-              className="h-7 px-2 text-xs"
             >
               {selected
                 ? t("connectoraccount.selected", { defaultValue: "Selected" })
@@ -291,7 +290,6 @@ export function ConnectorAccountCard({
               aria-label={t("connectoraccount.reconnect", {
                 defaultValue: "Reconnect account",
               })}
-              className="h-7 gap-1 px-2 text-xs"
             >
               {reconnectBusy ? (
                 <Spinner className="size-3" />
@@ -306,7 +304,7 @@ export function ConnectorAccountCard({
           <Button
             type="button"
             variant="ghost"
-            size="sm"
+            size="icon-sm"
             disabled={saving || isDefault || defaultBusy}
             onClick={() => void handleMakeDefault()}
             aria-label={t("connectoraccount.makeDefault", {
@@ -315,7 +313,6 @@ export function ConnectorAccountCard({
             title={t("connectoraccount.makeDefault", {
               defaultValue: "Make default account",
             })}
-            className="size-7 p-0"
           >
             {defaultBusy ? (
               <Spinner className="size-3" />
@@ -332,7 +329,6 @@ export function ConnectorAccountCard({
             aria-label={t("connectoraccount.test", {
               defaultValue: "Test connector account",
             })}
-            className="h-7 px-2 text-xs"
           >
             {testBusy ? (
               <Spinner className="size-3" />
@@ -343,7 +339,7 @@ export function ConnectorAccountCard({
           <Button
             type="button"
             variant="outline"
-            size="sm"
+            size="icon-sm"
             disabled={saving || refreshBusy}
             onClick={() => void onRefresh()}
             aria-label={t("connectoraccount.refresh", {
@@ -352,7 +348,6 @@ export function ConnectorAccountCard({
             title={t("connectoraccount.refresh", {
               defaultValue: "Refresh connector account",
             })}
-            className="size-7 p-0"
           >
             {refreshBusy ? (
               <Spinner className="size-3" />
@@ -362,8 +357,8 @@ export function ConnectorAccountCard({
           </Button>
           <Button
             type="button"
-            variant="ghost"
-            size="sm"
+            variant="destructive"
+            size="icon-sm"
             disabled={saving}
             onClick={deleteModal.open}
             aria-label={t("connectoraccount.delete", {
@@ -372,7 +367,6 @@ export function ConnectorAccountCard({
             title={t("connectoraccount.delete", {
               defaultValue: "Delete connector account",
             })}
-            className="size-7 p-0 text-destructive hover:bg-destructive/10"
           >
             <Trash2 className="size-3.5" aria-hidden />
           </Button>

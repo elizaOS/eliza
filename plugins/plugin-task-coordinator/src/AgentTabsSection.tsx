@@ -3,9 +3,9 @@
  * of the available agent frameworks, each tab carrying its install/auth state
  * (preflight result → status icon).
  */
+
+import { Button, SettingsControls } from "@elizaos/ui";
 import type { AgentPreflightResult } from "@elizaos/ui/api/client-types-cloud";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { SettingsControls } from "@elizaos/ui/components/ui/settings-controls";
 import { useAppSelector } from "@elizaos/ui/state";
 import {
   AlertTriangle,
@@ -77,15 +77,11 @@ export function AgentTabsSection({
           return (
             <Button
               key={agent}
-              variant={active ? "default" : "ghost"}
-              size="sm"
-              className={`h-8 flex-1 px-2 text-xs font-semibold ${
-                active
-                  ? "bg-accent text-accent-fg dark:text-accent-fg shadow-sm"
-                  : needsAuth
-                    ? "text-warn hover:bg-warn/10 hover:text-warn"
-                    : "text-muted hover:bg-bg-hover hover:text-txt"
-              }`}
+              variant={
+                active ? "default" : needsAuth ? "warningOutline" : "ghostMuted"
+              }
+              size="dense"
+              className="flex-1"
               onClick={() => onSelectAgent(agent)}
               aria-label={`${AGENT_LABELS[agent]} ${statusLabel}`}
             >
@@ -115,10 +111,10 @@ export function AgentTabsSection({
             </span>
           </div>
           <Button
-            variant="ghost"
-            size="sm"
+            variant="warningOutline"
+            size="tiny"
             disabled={activeAuthenticating}
-            className="h-7 shrink-0 px-2 text-xs font-semibold text-warn hover:bg-warn/10 hover:text-warn"
+            className="shrink-0"
             onClick={() => onAuth(activeTab)}
           >
             {activeAuthenticating ? (

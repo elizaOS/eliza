@@ -693,6 +693,14 @@ function getBuiltInMaxOutputTokens(modelName: ModelName): number {
   return isOpus4Model(modelName) ? 32_000 : 64_000;
 }
 
+/** Returns the provider-supported maximum for calls that omit a user budget. */
+export function resolveAnthropicMaxOutputTokens(
+  runtime: IAgentRuntime,
+  modelName: ModelName
+): number {
+  return getMaxOutputTokensOverride(runtime, modelName) ?? getBuiltInMaxOutputTokens(modelName);
+}
+
 /**
  * Whether a model accepts the effort parameter (output_config.effort) at all.
  * Live-probed 2026-07-12: haiku-4-5 rejects both `effort` ("This model does
@@ -1270,8 +1278,7 @@ function resolveTextParams(
   // or rejected before dispatch, never silently reduced to partial output.
   // ANTHROPIC_MAX_OUTPUT_TOKENS overrides the heuristic (bare number or
   // per-model `id:tokens` pairs) so unknown ids get the right ceiling.
-  const modelHardCap =
-    getMaxOutputTokensOverride(runtime, modelName) ?? getBuiltInMaxOutputTokens(modelName);
+  const modelHardCap = resolveAnthropicMaxOutputTokens(runtime, modelName);
   const requestedMaxTokens = params.maxTokens;
   if (
     !params.omitMaxTokens &&

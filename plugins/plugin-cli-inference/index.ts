@@ -82,6 +82,12 @@ const LARGE_TIER_MODEL_TYPES: readonly string[] = [
  */
 const PLANNER_MODEL_TYPES: readonly string[] = [ModelType.ACTION_PLANNER];
 
+// Codex rejects turn/start before inference when the flattened input exceeds
+// this character boundary. Core's UTF-8 upper-bound admission uses one byte as
+// one conservative token, so publishing the same number lets model-agnostic
+// prompt assembly choose an explicit retrieval representation before spawn.
+const CODEX_MAX_INPUT_CHARS = 1_048_576;
+
 /**
  * High-frequency triage tiers — the should-respond gate, media-description, and
  * the action-callback voice rewrite. NOT registered by default (they'd spend a
@@ -870,6 +876,7 @@ export function buildModelMetadata(
   const declaration = (settings: string[]) => ({
     displayModelSettings: settings,
     displayModelDefault: defaultModel,
+    ...(isCodex ? { contextWindowTokens: CODEX_MAX_INPUT_CHARS } : {}),
   });
 
   for (const modelType of LARGE_TIER_MODEL_TYPES) {

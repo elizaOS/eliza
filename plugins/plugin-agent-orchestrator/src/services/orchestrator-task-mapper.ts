@@ -58,6 +58,7 @@ export interface TaskThreadDto {
   latestAccountId: string | null;
   latestAccountLabel: string | null;
   parentTaskId: string | null;
+  completionCoordinatorSessionId: string | null;
   /**
    * The task's stable workdir/repo. Prefers the durable binding pinned at first
    * spawn (`task.boundWorkdir`/`boundRepo`) over the most-recent session's
@@ -104,6 +105,13 @@ export interface TaskSessionDto {
   idleCheckCount: number;
   taskDelivered: boolean;
   completionSummary: string | null;
+  completionRole: "coordinator" | "contributor" | null;
+  parentSessionId: string | null;
+  requiredForTaskCompletion: boolean | null;
+  aggregateCompletionRequestedAt: string | null;
+  completionReceiptDeliveredAt: string | null;
+  completionReceiptDeliveryError: string | null;
+  contributionReviewedAt: string | null;
   lastSeenDecisionIndex: number;
   lastInputSentAt: number | null;
   stoppedAt: number | null;
@@ -436,6 +444,8 @@ export function toTaskThread(doc: OrchestratorTaskDocument): TaskThreadDto {
     latestAccountId: latest?.accountId ?? null,
     latestAccountLabel: latest?.accountLabel ?? null,
     parentTaskId: doc.task.parentTaskId ?? null,
+    completionCoordinatorSessionId:
+      doc.task.completionCoordinatorSessionId ?? null,
     latestWorkdir: doc.task.boundWorkdir ?? latest?.workdir ?? null,
     latestRepo,
     projectId: doc.task.projectId ?? null,
@@ -513,6 +523,16 @@ export function toTaskThreadDetail(
       idleCheckCount: session.idleCheckCount,
       taskDelivered: session.taskDelivered,
       completionSummary: session.completionSummary ?? null,
+      completionRole: session.completionRole ?? null,
+      parentSessionId: session.parentSessionId ?? null,
+      requiredForTaskCompletion: session.requiredForTaskCompletion ?? null,
+      aggregateCompletionRequestedAt:
+        session.aggregateCompletionRequestedAt ?? null,
+      completionReceiptDeliveredAt:
+        session.completionReceiptDeliveredAt ?? null,
+      completionReceiptDeliveryError:
+        session.completionReceiptDeliveryError ?? null,
+      contributionReviewedAt: session.contributionReviewedAt ?? null,
       lastSeenDecisionIndex: session.lastSeenDecisionIndex,
       lastInputSentAt: session.lastInputSentAt ?? null,
       stoppedAt: session.stoppedAt ?? null,

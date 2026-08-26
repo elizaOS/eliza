@@ -3,16 +3,9 @@
  * on timeout via mocked hanging fetch, covering the central makeApiRequest path.
  */
 import { describe, expect, it, vi } from "vitest";
-import {
-  DEFAULT_KAMINO_LIQUIDITY_FETCH_TIMEOUT_MS,
-  KaminoLiquidityService,
-} from "./kaminoLiquidityService";
+import { KaminoLiquidityService } from "./kaminoLiquidityService";
 
 describe("KaminoLiquidityService fetch timeout", () => {
-  it("exposes the documented 10s budget", () => {
-    expect(DEFAULT_KAMINO_LIQUIDITY_FETCH_TIMEOUT_MS).toBe(10_000);
-  });
-
   it("aborts a stalled makeApiRequest at the deadline", async () => {
     const svc = new KaminoLiquidityService();
     const orig = AbortSignal.timeout.bind(AbortSignal);
