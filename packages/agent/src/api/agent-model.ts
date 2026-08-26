@@ -14,6 +14,7 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import {
+  DEFAULT_CEREBRAS_TEXT_MODEL,
   normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
@@ -143,6 +144,20 @@ function normalizeModelSpec(value: unknown): string | undefined {
   return trimmed;
 }
 
+function readRuntimeSetting(runtime: AgentRuntime, key: string): unknown {
+  const getSetting = (
+    runtime as AgentRuntime & {
+      getSetting?: (settingKey: string) => unknown;
+    }
+  ).getSetting;
+  if (typeof getSetting !== "function") return undefined;
+  try {
+    return getSetting.call(runtime, key);
+  } catch {
+    return undefined;
+  }
+}
+
 function readCharacterModel(runtime: AgentRuntime): string | undefined {
   const character = (runtime as { character?: unknown }).character;
   if (!character || typeof character !== "object") return undefined;
@@ -178,26 +193,45 @@ export function detectRuntimeModel(
 ): string | undefined {
   if (!runtime) return undefined;
 
+  const routing = resolveServiceRoutingInConfig(
+    (config ?? null) as Record<string, unknown> | null,
+  );
+  const llmText = routing?.llmText;
+  const backend = normalizeFirstRunProviderId(llmText?.backend);
+
   // Who actually answered beats who was configured to. A character `model`
   // pin is a request, not a receipt: with a cloud-proxy route and no live
   // Cloud account the runtime falls through to another provider, and
   // reporting the pin made /api/status claim "elizacloud" while local
   // inference served every turn (elizaOS/eliza#20045 review).
   const serving = lastServingTextProvider(runtime);
-  if (serving) return serving;
+  if (serving) {
+    const explicitProvider = normalizeModelSpec(
+      readRuntimeSetting(runtime, "ELIZA_PROVIDER"),
+    );
+    const cerebrasRoute =
+      (llmText?.transport === "direct" && backend === "cerebras") ||
+      explicitProvider?.toLowerCase() === "cerebras";
+    if (serving.toLowerCase() === "openai" && cerebrasRoute) {
+      return (
+        normalizeModelSpec(readRuntimeSetting(runtime, "OPENAI_LARGE_MODEL")) ??
+        normalizeModelSpec(
+          readRuntimeSetting(runtime, "CEREBRAS_LARGE_MODEL"),
+        ) ??
+        normalizeModelSpec(readRuntimeSetting(runtime, "CEREBRAS_MODEL")) ??
+        normalizeModelSpec(llmText?.primaryModel) ??
+        DEFAULT_CEREBRAS_TEXT_MODEL
+      );
+    }
+    return serving;
+  }
 
   const configured = readCharacterModel(runtime);
   if (configured) return configured;
 
-  const routing = resolveServiceRoutingInConfig(
-    (config ?? null) as Record<string, unknown> | null,
-  );
   const deploymentTarget = resolveDeploymentTargetInConfig(
     (config ?? null) as Record<string, unknown> | null,
   );
-  const llmText = routing?.llmText;
-  const backend = normalizeFirstRunProviderId(llmText?.backend);
-
   if (llmText?.transport === "direct") {
     const provider = backend && backend !== "elizacloud" ? backend : undefined;
     return llmText.primaryModel ?? provider;

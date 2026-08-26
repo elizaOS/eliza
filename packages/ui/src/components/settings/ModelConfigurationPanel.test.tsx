@@ -12,6 +12,7 @@
  */
 
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ModelCatalog,
@@ -192,9 +193,13 @@ function agentButton(agentId: string): HTMLButtonElement {
 
 async function renderReady() {
   render(<ModelConfigurationPanel />);
-  await waitFor(() =>
-    expect(agentElements.has("models-small-provider")).toBe(true),
-  );
+  await waitFor(() => {
+    expect(agentElements.has("models-small-provider")).toBe(true);
+    expect(agentElements.get("models-coding-model")?.options).toEqual([
+      "gpt-5.6-terra",
+      "gpt-5.3-codex-spark",
+    ]);
+  });
 }
 
 beforeEach(() => {
@@ -215,6 +220,23 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("catalog load states", () => {
+  it("re-arms the async guard across the Strict Mode mount probe", async () => {
+    render(
+      <StrictMode>
+        <ModelConfigurationPanel />
+      </StrictMode>,
+    );
+
+    await waitFor(() => {
+      expect(agentElements.has("models-small-provider")).toBe(true);
+      expect(agentElements.get("models-coding-model")?.options).toEqual([
+        "gpt-5.6-terra",
+        "gpt-5.3-codex-spark",
+      ]);
+    });
+    expect(screen.queryByText("Loading model catalog…")).toBeNull();
+  });
+
   it("renders a loading state while the catalog fetch is pending", async () => {
     let resolveCatalog: (value: unknown) => void = () => {};
     clientMock.getModelsCatalog.mockReturnValue(
@@ -345,12 +367,14 @@ describe("prefill and option filtering", () => {
     await renderReady();
 
     fill("models-coding-backend", "opencode");
-    expect(agentElements.get("models-coding-model")?.options).toEqual([
-      "custom-oss-model",
-      "gemma-4-31b",
-      "zai-glm-4.7",
-      "plain-model",
-    ]);
+    await waitFor(() =>
+      expect(agentElements.get("models-coding-model")?.options).toEqual([
+        "custom-oss-model",
+        "gemma-4-31b",
+        "zai-glm-4.7",
+        "plain-model",
+      ]),
+    );
     expect(
       document.querySelector('[data-agent-id="models-coding-effort"]'),
     ).toBeNull();

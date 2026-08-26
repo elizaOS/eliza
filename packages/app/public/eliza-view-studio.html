@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Eliza View Studio</title>
+    <link rel="stylesheet" href="/eliza-view-studio.css" />
+  </head>
+  <body>
+    <!--
+      THESIS: Review the real Eliza beside a disciplined proposal; refuse fictional mockups and ornamental dashboard scaffolds.
+      OWN-WORLD: Graphite planes, warm-white type, neutral controls, sparse separators, and exact native-feeling geometry.
+      STORY: Choose a real route, inspect current behavior, compare the same live DOM under the proposed system, and decide what deserves production work.
+      FIRST VIEWPORT: Searchable route index at left, compact review controls above, and two equal live application frames owning the canvas.
+      FORM: Precision comparison workbench, user-pinned direction; seed 4454c21b informed exploration but did not override the brief.
+      FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+    -->
+    <div class="studio" id="studioRoot" data-rail-open="false" data-diverged="false">
+      <aside class="rail" id="viewRail" aria-label="Eliza view index">
+        <div class="brand-row">
+          <span class="brand-mark" aria-hidden="true">E</span>
+          <div class="brand-copy">
+            <strong>Eliza</strong>
+            <span>View review</span>
+          </div>
+          <button
+            class="icon-button rail-close"
+            id="railClose"
+            type="button"
+            aria-label="Close view index"
+          >
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="m5 5 10 10M15 5 5 15" />
+            </svg>
+          </button>
+        </div>
+
+        <label class="search-field" for="viewSearch">
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <circle cx="8.5" cy="8.5" r="5.5" />
+            <path d="m12.5 12.5 4 4" />
+          </svg>
+          <input
+            id="viewSearch"
+            type="search"
+            autocomplete="off"
+            placeholder="Find a real route"
+          />
+          <kbd>⌘K</kbd>
+        </label>
+
+        <div class="index-summary" aria-live="polite">
+          <span id="routeCount">Loading routes…</span>
+          <span>Current + proposal</span>
+        </div>
+
+        <nav class="view-index" id="viewIndex"></nav>
+
+        <div class="rail-footer">
+          <span class="live-dot" id="registryDot" aria-hidden="true"></span>
+          <span id="registryStatus" aria-live="polite">Checking the live registry…</span>
+        </div>
+      </aside>
+
+      <button
+        class="rail-scrim"
+        id="railScrim"
+        type="button"
+        aria-label="Close view index"
+        tabindex="-1"
+      ></button>
+
+      <main class="workspace">
+        <header class="toolbar">
+          <button
+            class="icon-button rail-open"
+            id="railOpen"
+            type="button"
+            aria-label="Open view index"
+            aria-controls="viewRail"
+            aria-expanded="false"
+          >
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M3 5h14M3 10h14M3 15h14" />
+            </svg>
+          </button>
+
+          <div class="view-heading">
+            <strong id="viewTitle">Notes</strong>
+            <span id="viewMeta">Work &amp; life · /notes</span>
+          </div>
+
+          <div class="toolbar-actions">
+            <div class="segmented" aria-label="Preview size">
+              <button type="button" data-viewport="desktop" aria-pressed="true">
+                Desktop
+              </button>
+              <button type="button" data-viewport="mobile" aria-pressed="false">
+                Mobile
+              </button>
+            </div>
+
+            <div class="segmented" aria-label="Comparison layout">
+              <button type="button" data-layout="split" aria-pressed="true">
+                Side by side
+              </button>
+              <button type="button" data-layout="current" aria-pressed="false">
+                Current
+              </button>
+              <button type="button" data-layout="proposed" aria-pressed="false">
+                Proposal
+              </button>
+            </div>
+
+            <button class="secondary-button" id="reloadFrames" type="button">
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M16 6V2m0 0h-4m4 0-3 3a6 6 0 1 0 2.2 6" />
+              </svg>
+              Reload
+            </button>
+
+            <button
+              class="secondary-button resync-button"
+              id="resyncFrames"
+              type="button"
+            >
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M4 6h9a4 4 0 0 1 0 8H8M4 6l3-3M4 6l3 3" />
+              </svg>
+              Resync
+            </button>
+
+            <a
+              class="secondary-button"
+              id="openLive"
+              href="/notes"
+              target="_blank"
+              rel="noopener"
+            >
+              Open route
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M11 3h6v6M10 10l7-7M16 11v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5" />
+              </svg>
+            </a>
+          </div>
+        </header>
+
+        <section class="comparison" id="comparison" aria-label="Live view comparison">
+          <article class="preview preview-current" data-pane="current">
+            <div class="preview-label">
+              <div>
+                <strong>Current app</strong>
+                <span>Unchanged running route</span>
+              </div>
+              <span class="frame-state" id="currentState" aria-live="polite">Loading</span>
+            </div>
+            <div class="frame-stage">
+              <iframe id="currentFrame" title="Current Eliza view"></iframe>
+            </div>
+          </article>
+
+          <div class="comparison-seam" aria-hidden="true"></div>
+
+          <article class="preview preview-proposed" data-pane="proposed">
+            <div class="preview-label">
+              <div>
+                <strong>Graphite proposal</strong>
+                <span>Same live route with a local design layer</span>
+              </div>
+              <span class="frame-state" id="proposedState" aria-live="polite">Loading</span>
+            </div>
+            <div class="frame-stage">
+              <iframe id="proposedFrame" title="Graphite proposal for the Eliza view"></iframe>
+            </div>
+          </article>
+        </section>
+
+        <section class="review-strip" aria-label="Comparison truth">
+          <div class="review-fact">
+            <span>Selected route</span>
+            <strong id="comparisonRoute">/notes</strong>
+          </div>
+          <div class="review-fact">
+            <span>What stays real</span>
+            <strong>DOM, data, actions, and every rendered state</strong>
+          </div>
+          <div class="review-fact">
+            <span>What changes</span>
+            <strong>Graphite tokens, type, controls, and visual emphasis</strong>
+          </div>
+          <div class="truth-note">
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M10 2 3 5v4c0 4.5 2.8 7.4 7 9 4.2-1.6 7-4.5 7-9V5l-7-3Z" />
+              <path d="m7 10 2 2 4-4" />
+            </svg>
+            <span id="routeStatus">App route; live registry status pending.</span>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="/eliza-view-studio.js"></script>
+  </body>
+</html>
