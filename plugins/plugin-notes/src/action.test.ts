@@ -44,12 +44,14 @@ async function harness(): Promise<IAgentRuntime> {
   } as unknown as IAgentRuntime;
 }
 
-const message = { content: { text: "" } } as unknown as Memory;
-
 async function run(
   runtime: IAgentRuntime,
   parameters: Record<string, unknown>,
+  messageText = "",
 ): Promise<ActionResult> {
+  const message = {
+    content: { text: messageText },
+  } as unknown as Memory;
   const result = await notesAction.handler(runtime, message, undefined, {
     parameters,
   } as never);
@@ -156,6 +158,109 @@ describe("NOTES operation parsing", () => {
 
     const after = await run(runtime, { action: "list" });
     expect(after.text).toContain("don't have any notes");
+  });
+});
+
+describe("natural-language note body retrieval", () => {
+  it("preserves an explicit title/body request and returns only the scoped durable content after restart", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "notes-body-read-"));
+    tmpDirs.push(dir);
+    const filePath = path.join(dir, "notes.json");
+    const service = new NotesService(undefined, {
+      store: new NotesStore({ filePath }),
+    });
+    await service.initialize();
+    const runtime = {
+      getService: (type: string) =>
+        type === NOTES_SERVICE_TYPE ? service : null,
+    } as unknown as IAgentRuntime;
+
+    const title = "VPS Current D578 1738";
+    const body = "current develop persistence proof";
+    const createPrompt = `Create a local note title ${title} body ${body}`;
+    const created = await run(
+      runtime,
+      { action: "create", content: title },
+      createPrompt,
+    );
+    expect(created.success).toBe(true);
+    expect(created.text).toBe(`saved a note: ${title} — ${body}`);
+    expect(service.listNotes()).toEqual([
+      expect.objectContaining({ title, body }),
+    ]);
+
+    await run(runtime, {
+      action: "create",
+      content: "Private decoy\nnever expose this unrelated body",
+    });
+
+    const bodyOnlyPrompt = `Read local note ${title} and reply with the body only`;
+    const bodyOnly = await run(
+      runtime,
+      { action: "list", content: bodyOnlyPrompt },
+      bodyOnlyPrompt,
+    );
+    expect(bodyOnly.text).toBe(body);
+    expect(bodyOnly.text).not.toContain("Private decoy");
+    expect(bodyOnly.text).not.toContain("never expose");
+    expect(bodyOnly.data).toMatchObject({
+      count: 1,
+      total: 2,
+      filterApplied: true,
+    });
+
+    const inventory = await run(runtime, { action: "list" });
+    expect(inventory.text).toContain(title);
+    expect(inventory.text).toContain("Private decoy");
+    expect(inventory.text).not.toContain(body);
+    expect(inventory.text).not.toContain("never expose this unrelated body");
+
+    await service.stop();
+    const restartedService = new NotesService(undefined, {
+      store: new NotesStore({ filePath }),
+    });
+    await restartedService.initialize();
+    const restartedRuntime = {
+      getService: (type: string) =>
+        type === NOTES_SERVICE_TYPE ? restartedService : null,
+    } as unknown as IAgentRuntime;
+    const quotePrompt = `Open the note titled ${title} and quote its content exactly`;
+    const quoted = await run(
+      restartedRuntime,
+      { action: "list", title },
+      quotePrompt,
+    );
+    expect(quoted.text).toBe(`${title}\n${body}`);
+    expect(quoted.text).not.toContain("Private decoy");
+    expect(quoted.text).not.toContain("never expose");
+    await restartedService.stop();
+  });
+
+  it("withholds bodies when a query matches more than one note", async () => {
+    const runtime = await harness();
+    await run(runtime, {
+      action: "create",
+      content: "launch alpha\nsecret alpha details",
+    });
+    await run(runtime, {
+      action: "create",
+      content: "launch beta\nsecret beta details",
+    });
+
+    const result = await run(runtime, {
+      action: "list",
+      content: "launch",
+    });
+
+    expect(result.text).toContain("launch alpha");
+    expect(result.text).toContain("launch beta");
+    expect(result.text).not.toContain("secret alpha details");
+    expect(result.text).not.toContain("secret beta details");
+    expect(result.data).toMatchObject({
+      count: 2,
+      total: 2,
+      filterApplied: true,
+    });
   });
 });
 
