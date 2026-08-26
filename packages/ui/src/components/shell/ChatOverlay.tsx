@@ -135,6 +135,7 @@ import type {
   ChatMessageData,
   ChatMessageRenderContext,
 } from "../composites/chat/chat-types";
+import { TurnStatus } from "../composites/chat/chat-typing-indicator";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
@@ -7029,6 +7030,18 @@ export function ChatOverlay({
                 pointerEvents: pilled ? "auto" : "none",
               }}
             >
+              {pilled && responding && turnStatus && !fillHostAtHalf ? (
+                <div
+                  className={cn(
+                    "pointer-events-none absolute bottom-7 max-w-[calc(100vw-2rem)] overflow-hidden whitespace-nowrap",
+                    "[&_[data-slot=marker-content]]:truncate",
+                    WALLPAPER_FLOAT_SHADOW,
+                  )}
+                  data-testid="chat-pill-turn-status"
+                >
+                  <TurnStatus status={turnStatus} showLabel={false} />
+                </div>
+              ) : null}
               <PillHandle
                 binding={pullBinding}
                 counterScale={pillCounterScale}
