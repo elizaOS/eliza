@@ -44,8 +44,8 @@ import { validateTwitterConfig } from "../environment";
 import { TwitterInteractionClient } from "../interactions";
 import { TwitterPostClient } from "../post";
 import { TwitterTimelineClient } from "../timeline";
-import { countTwitterWeightedLength } from "../tweet-length";
 import type { ITwitterClient, TwitterClientState } from "../types";
+import { splitTweetContent } from "../utils";
 import { normalizeXReceiptId } from "../utils/provider-receipt";
 import { getSetting } from "../utils/settings";
 import { getEpochMs } from "../utils/time";
@@ -121,7 +121,7 @@ interface PostConnectorRegistration {
     runtime: IAgentRuntime,
     content: Content,
     context?: PostConnectorQueryContext,
-  ) => Promise<Memory>;
+  ) => Promise<Memory | Memory[]>;
   fetchFeed?: (
     context: PostConnectorQueryContext,
     params?: {
@@ -690,10 +690,10 @@ export class XService extends Service {
       searchPosts: this.searchConnectorPosts.bind(this),
       contentShaping: {
         systemPromptFragment:
-          "For X posts, write one public tweet under 280 characters. Preserve the user's requested wording when provided; avoid thread-style numbering unless asked.",
+          "For X posts, preserve the user's complete requested wording. Long content is delivered as an ordered thread; avoid adding thread-style numbering unless asked.",
         constraints: {
-          maxLength: X_MAX_POST_LENGTH,
           supportsMarkdown: false,
+          supportsThreads: true,
           channelType: ChannelType.FEED,
         },
       },
@@ -710,8 +710,8 @@ export class XService extends Service {
     target: TargetInfo,
     content: Content,
   ): Promise<void> {
-    const text = typeof content.text === "string" ? content.text.trim() : "";
-    if (!text) {
+    const text = typeof content.text === "string" ? content.text : "";
+    if (!text.trim()) {
       throw new Error("X DM connector requires non-empty text content.");
     }
 
@@ -753,8 +753,8 @@ export class XService extends Service {
     accountId: string,
     params: { participantId: string; text: string },
   ): Promise<{ ok: true; status: number; messageId: string | null }> {
-    const text = params.text.trim();
-    if (!text) {
+    const text = params.text;
+    if (!text.trim()) {
       throw new Error("X DM connector requires non-empty text content.");
     }
 
@@ -812,25 +812,11 @@ export class XService extends Service {
     runtime: IAgentRuntime,
     content: Content,
     context?: PostConnectorQueryContext,
-  ): Promise<Memory> {
-    const text = typeof content.text === "string" ? content.text.trim() : "";
-    if (!text) {
+  ): Promise<Memory[]> {
+    const text = typeof content.text === "string" ? content.text : "";
+    if (!text.trim()) {
       throw new Error("X post connector requires non-empty text content.");
     }
-    const weightedLength = countTwitterWeightedLength(text);
-    if (weightedLength > X_MAX_POST_LENGTH) {
-      throw new ElizaError(
-        `X post connector requires text <= ${X_MAX_POST_LENGTH} weighted characters; received ${weightedLength}.`,
-        {
-          code: "X_POST_LENGTH_EXCEEDED",
-          context: {
-            weightedLength,
-            maxWeightedLength: X_MAX_POST_LENGTH,
-          },
-        },
-      );
-    }
-
     const accountId = this.resolveAccountId(
       context?.accountId,
       context?.target,
@@ -845,33 +831,44 @@ export class XService extends Service {
       ]);
       const quotedPostId = readContentString(content, ["quotedPostId"]);
       const postService = new TwitterPostService(base);
-      const post = await postService.createPost(
-        {
-          agentId: runtime.agentId,
-          roomId: createUniqueUuid(
-            runtime,
-            `x:${accountId}:feed:${profile.id}`,
-          ),
-          text,
-          ...(replyToTweetId ? { inReplyTo: replyToTweetId } : {}),
-          ...(quotedPostId ? { quotedPostId } : {}),
-        },
-        profile,
+      const roomId = createUniqueUuid(
+        runtime,
+        `x:${accountId}:feed:${profile.id}`,
       );
-
-      return this.buildXPostMemory(runtime, {
-        id: post.id,
-        userId: post.userId,
-        username: post.username,
-        text: post.text,
-        createdAt: post.timestamp,
-        inReplyTo: post.inReplyTo,
-        roomId: post.roomId,
-        metadata: post.metadata,
-        metrics: post.metrics,
-        accountId,
-        ownUserId: profile.id,
-      });
+      const chunks = splitTweetContent(text, X_MAX_POST_LENGTH);
+      const memories: Memory[] = [];
+      let inReplyTo = replyToTweetId;
+      for (let index = 0; index < chunks.length; index += 1) {
+        const chunk = chunks[index];
+        if (chunk === undefined) continue;
+        const post = await postService.createPost(
+          {
+            agentId: runtime.agentId,
+            roomId,
+            text: chunk,
+            ...(inReplyTo ? { inReplyTo } : {}),
+            ...(index === 0 && quotedPostId ? { quotedPostId } : {}),
+          },
+          profile,
+        );
+        memories.push(
+          this.buildXPostMemory(runtime, {
+            id: post.id,
+            userId: post.userId,
+            username: post.username,
+            text: post.text,
+            createdAt: post.timestamp,
+            inReplyTo: post.inReplyTo,
+            roomId: post.roomId,
+            metadata: post.metadata,
+            metrics: post.metrics,
+            accountId,
+            ownUserId: profile.id,
+          }),
+        );
+        inReplyTo = post.id;
+      }
+      return memories;
     });
   }
 
@@ -883,7 +880,7 @@ export class XService extends Service {
     if (!runtime) {
       throw new Error("X service runtime is not initialized.");
     }
-    return this.handleSendPost(
+    const memories = await this.handleSendPost(
       runtime,
       {
         text: params.text,
@@ -899,6 +896,13 @@ export class XService extends Service {
         target: { source: "x", accountId } as TargetInfo,
       },
     );
+    const first = memories[0];
+    if (!first) {
+      throw new ElizaError("X post delivery returned no receipts", {
+        code: "X_POST_RECEIPT_MISSING",
+      });
+    }
+    return first;
   }
 
   async fetchFeedForAccount(

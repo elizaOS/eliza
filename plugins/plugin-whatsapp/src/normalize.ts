@@ -5,7 +5,7 @@
  * by the runtime service, message adapters, and account resolution.
  */
 
-import { truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { stripWhatsAppTargetPrefixes } from "./whatsapp-target-prefix";
 
 /**
@@ -229,18 +229,20 @@ function splitAtBreakPoint(text: string, limit: number): { chunk: string; remain
   // Prefer double newlines (paragraph breaks)
   const doubleNewline = searchArea.lastIndexOf("\n\n");
   if (doubleNewline > limit * 0.5) {
+    const breakPoint = doubleNewline + 2;
     return {
-      chunk: text.slice(0, doubleNewline).trimEnd(),
-      remainder: text.slice(doubleNewline + 2).trimStart(),
+      chunk: text.slice(0, breakPoint),
+      remainder: text.slice(breakPoint),
     };
   }
 
   // Try single newlines
   const singleNewline = searchArea.lastIndexOf("\n");
   if (singleNewline > limit * 0.5) {
+    const breakPoint = singleNewline + 1;
     return {
-      chunk: text.slice(0, singleNewline).trimEnd(),
-      remainder: text.slice(singleNewline + 1).trimStart(),
+      chunk: text.slice(0, breakPoint),
+      remainder: text.slice(breakPoint),
     };
   }
 
@@ -251,18 +253,20 @@ function splitAtBreakPoint(text: string, limit: number): { chunk: string; remain
     searchArea.lastIndexOf("? ")
   );
   if (sentenceEnd > limit * 0.5) {
+    const breakPoint = sentenceEnd + 2;
     return {
-      chunk: text.slice(0, sentenceEnd + 1).trimEnd(),
-      remainder: text.slice(sentenceEnd + 2).trimStart(),
+      chunk: text.slice(0, breakPoint),
+      remainder: text.slice(breakPoint),
     };
   }
 
   // Try word boundaries
   const space = searchArea.lastIndexOf(" ");
   if (space > limit * 0.5) {
+    const breakPoint = space + 1;
     return {
-      chunk: text.slice(0, space).trimEnd(),
-      remainder: text.slice(space + 1).trimStart(),
+      chunk: text.slice(0, breakPoint),
+      remainder: text.slice(breakPoint),
     };
   }
 
@@ -296,11 +300,11 @@ export function chunkWhatsAppText(text: string, opts: ChunkWhatsAppTextOpts = {}
     );
   }
 
-  if (!text.trim()) {
+  if (text.length === 0) {
     return [];
   }
 
-  const normalizedText = text.trim();
+  const normalizedText = toWellFormedUnicode(text);
   if (normalizedText.length <= limit) {
     return [normalizedText];
   }

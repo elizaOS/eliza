@@ -359,6 +359,9 @@ describe("sendTweet", () => {
       "https://x.com/captured-a/status/201",
       "https://x.com/captured-a/status/202",
     ]);
+    expect(memories.map((memory) => memory.content.text).join("")).toBe(
+      `${"a".repeat(280)}\n\n${"b".repeat(20)}`,
+    );
   });
 
   it("aborts a chunked thread before another egress when its captured session rotates", async () => {
