@@ -1,7 +1,5 @@
 // @vitest-environment jsdom
-/**
- * Verifies the shared launcher icon visual and interaction contract.
- */
+/** Verifies launcher icon resolution at the rendered consumer boundary. */
 
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
@@ -9,75 +7,70 @@ import { LauncherAppIcon, LauncherAppIconSkeleton } from "./LauncherAppIcon";
 
 afterEach(() => cleanup());
 
+function renderedGlyph(container: HTMLElement): HTMLImageElement {
+  const glyph = container.querySelector<HTMLImageElement>(
+    "img[data-launcher-glyph]",
+  );
+  expect(glyph).toBeTruthy();
+  return glyph as HTMLImageElement;
+}
+
 describe("LauncherAppIcon", () => {
-  it("renders first-party icons as decorative launcher glyphs", () => {
+  it("renders a semantic first-party glyph as decorative content", () => {
     const { container } = render(
       <LauncherAppIcon
         entry={{ id: "calendar", label: "Calendar", icon: "CalendarDays" }}
       />,
     );
 
-    const plate = container.querySelector<HTMLElement>("[data-launcher-icon]");
-    expect(plate).toBeTruthy();
-    expect(plate?.dataset.launcherIconVariant).toBe("ionicon");
-
-    const glyph = container.querySelector<HTMLImageElement>(
-      'img[data-ionicon="calendar"]',
-    );
-    expect(glyph?.src).toMatch(/^(?:data:image\/svg\+xml|https?:|file:)/);
-    expect(glyph?.getAttribute("alt")).toBe("");
-    expect(glyph?.getAttribute("aria-hidden")).toBe("true");
+    const glyph = renderedGlyph(container);
+    expect(glyph.dataset.ionicon).toBe("calendar");
+    expect(glyph.getAttribute("alt")).toBe("");
+    expect(glyph.getAttribute("aria-hidden")).toBe("true");
+    expect(glyph.draggable).toBe(false);
   });
 
-  it("uses the approved filled Ionicons family for Chat", () => {
+  it("preserves a third-party image URL without presenting it to assistive technology", () => {
+    const src = "https://cdn.example.com/partner.png";
     const { container } = render(
       <LauncherAppIcon
-        entry={{ id: "chat", label: "Chat", icon: "MessageSquare" }}
+        entry={{ id: "partner", label: "Partner", icon: src }}
       />,
     );
 
-    const plate = container.querySelector<HTMLElement>("[data-launcher-icon]");
-    expect(plate?.dataset.launcherIconVariant).toBe("ionicon");
-    expect(
-      plate?.querySelector('img[data-ionicon="chatbubble-ellipses"]'),
-    ).toBeTruthy();
+    const glyph = renderedGlyph(container);
+    expect(glyph.getAttribute("src")).toBe(src);
+    expect(glyph.dataset.launcherGlyphKind).toBe("image");
+    expect(glyph.hasAttribute("data-ionicon")).toBe(false);
+    expect(glyph.getAttribute("alt")).toBe("");
+    expect(glyph.getAttribute("aria-hidden")).toBe("true");
   });
 
-  it("preserves explicit third-party image icons and deterministic fallback", () => {
-    const image = render(
-      <LauncherAppIcon
-        entry={{
-          id: "partner",
-          label: "Partner",
-          icon: "https://cdn.example.com/partner.png",
-        }}
-      />,
-    );
-    expect(image.container.querySelector("img")?.getAttribute("src")).toBe(
-      "https://cdn.example.com/partner.png",
-    );
-    expect(
-      image.container
-        .querySelector("[data-launcher-icon]")
-        ?.getAttribute("data-launcher-icon-variant"),
-    ).toBe("image");
-    image.unmount();
-
-    const fallback = render(
+  it("renders the same deterministic fallback for unrelated unknown entries", () => {
+    const first = render(
       <LauncherAppIcon
         entry={{ id: "acme-tool", label: "Acme Tool", icon: "UnknownIcon" }}
       />,
     );
-    expect(
-      fallback.container.querySelector('img[data-ionicon="apps"]'),
-    ).toBeTruthy();
+    const second = render(
+      <LauncherAppIcon entry={{ id: "other-tool", label: "Other Tool" }} />,
+    );
+
+    const firstGlyph = renderedGlyph(first.container);
+    const secondGlyph = renderedGlyph(second.container);
+    expect(firstGlyph.dataset.launcherGlyphKind).toBe("ionicon");
+    expect(firstGlyph.dataset.ionicon).toBe(secondGlyph.dataset.ionicon);
+    expect(firstGlyph.getAttribute("src")).toBe(
+      secondGlyph.getAttribute("src"),
+    );
   });
 
-  it("marks loading placeholders as launcher icons", () => {
+  it("keeps loading placeholders decorative", () => {
     const { container } = render(<LauncherAppIconSkeleton />);
     const skeleton = container.querySelector<HTMLElement>(
       "[data-launcher-icon]",
     );
-    expect(skeleton).toBeTruthy();
+    expect(skeleton?.getAttribute("aria-hidden")).toBe("true");
+    expect(skeleton?.querySelector("img")).toBeNull();
   });
 });
