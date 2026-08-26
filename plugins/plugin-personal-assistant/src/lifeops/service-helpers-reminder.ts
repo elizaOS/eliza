@@ -4,6 +4,7 @@
  * and the owner's channel preferences. Shared by the reminder domain and
  * contact-route policy.
  */
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type {
   LifeOpsActivitySignal,
   LifeOpsReminderAttempt,
@@ -1376,7 +1377,7 @@ function normalizeSemanticConfidence(value: unknown): number {
 
 function normalizeSemanticReason(value: unknown): string {
   return typeof value === "string" && value.trim().length > 0
-    ? value.trim().slice(0, 120)
+    ? truncateWellFormed(toWellFormedUnicode(value.trim()), 120)
     : "semantic_classifier";
 }
 
