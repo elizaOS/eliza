@@ -1099,6 +1099,12 @@ describe("TODO action", () => {
       });
       const data = result.data as { todos: unknown[] };
       expect(data.todos.length).toBe(1);
+
+      const numericResult = await invoke(runtime, {
+        action: "list",
+        includeCompleted: 1,
+      });
+      expect((numericResult.data as { todos: unknown[] }).todos.length).toBe(1);
     });
   });
 
