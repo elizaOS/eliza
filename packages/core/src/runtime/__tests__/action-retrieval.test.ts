@@ -1408,7 +1408,6 @@ describe("guild/server management natural-language routing (regression 2026-08-2
 
 	it.each([
 		["APPLY_SERVER_TEMPLATE", EXACT_LIVE_PHRASE],
-		["APPLY_TEMPLATE", "tf, i mean discord template"],
 		["CREATE_CHANNEL", "create a channel called builds under code ops"],
 		["LIST_SERVER_TEMPLATES", "list the discord server templates"],
 		["MANAGE_SERVER", "set up the server structure"],
@@ -1428,6 +1427,9 @@ describe("guild/server management natural-language routing (regression 2026-08-2
 	);
 
 	it.each([
+		"APPLY_TEMPLATE",
+		"LIST_TEMPLATES",
+		"EDIT_PERMISSIONS",
 		"APPLY_FILE_TEMPLATE",
 		"CREATE_FILE",
 		"CODE_TEMPLATE",
@@ -1442,6 +1444,25 @@ describe("guild/server management natural-language routing (regression 2026-08-2
 			);
 		},
 	);
+
+	it("keeps generic app permissions on SETTINGS instead of MESSAGE", () => {
+		const catalog = buildActionCatalog([
+			messageAction,
+			{
+				name: "SETTINGS",
+				description:
+					"Manage application settings, operating-system permissions, and network access.",
+				similes: ["SET_APP_NETWORK_PERMISSION"],
+				contexts: ["settings"],
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "edit network permissions for the weather app",
+			candidateActions: ["EDIT_PERMISSIONS"],
+		});
+		expect(response.results[0]?.name).toBe("SETTINGS");
+	});
 
 	it("keeps a generic file-template ask off MESSAGE as the top result", () => {
 		const response = retrieveActions({
