@@ -135,6 +135,9 @@ describe("Cloud CF atomic Worker secrets deploy", () => {
     expect(index("Verify deployed API commit")).toBeLessThan(
       index("Verify deployed mobile App Auth metadata"),
     );
+    expect(live.env?.ELIZA_MOBILE_APP_AUTH_APP_ID).toBe(
+      preflight.env?.ELIZA_MOBILE_APP_AUTH_APP_ID,
+    );
     expect(live.run).toContain("--skip-database --verify-live");
   });
 
