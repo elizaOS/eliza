@@ -190,6 +190,8 @@ async function geolocationAlreadyGranted(): Promise<boolean> {
         localStorage.getItem(PRECISE_LOCATION_GRANTED_FLAG_KEY) === "granted"
       );
     } catch {
+      // error-policy:J4 unavailable storage visibly degrades to approximate
+      // weather instead of claiming that precise location is authorized.
       return false;
     }
   };
@@ -199,6 +201,8 @@ async function geolocationAlreadyGranted(): Promise<boolean> {
     const status = await perms.query({ name: "geolocation" });
     return status.state === "granted";
   } catch {
+    // error-policy:J4 unsupported Permissions API visibly degrades to the
+    // remembered explicit-grant path, then to approximate weather.
     // Android System WebView may provide geolocation but reject Permissions API
     // queries. Only reuse a grant that was established by a successful,
     // explicit user action; without that marker the no-prompt home-load rule
