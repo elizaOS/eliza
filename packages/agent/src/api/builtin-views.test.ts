@@ -144,6 +144,7 @@ describe("BUILTIN_VIEWS", () => {
       (view) => view.viewKind === "developer",
     );
     expect(developer.map((view) => view.id)).toEqual([
+      "relationships",
       "trajectories",
       "database",
       "logs",

@@ -474,6 +474,21 @@ export const LEGACY_PREFIX_TAB_ALIASES: Record<string, Tab> = {
   "/relationships": "relationships",
 };
 
+/** Whether a normalized route resolves into the apps surface family. */
+export function routeRequiresAppsEnabled(normalizedPath: string): boolean {
+  const legacyTab = LEGACY_PREFIX_TAB_ALIASES[normalizedPath];
+  const resolvedPath = legacyTab
+    ? (TAB_PATHS[legacyTab as BuiltinTab] ?? normalizedPath)
+    : normalizedPath;
+  const belongsToApps = (path: string) =>
+    path === "/apps" ||
+    path === "/views" ||
+    path.startsWith("/apps/") ||
+    path.startsWith("/views/") ||
+    path === "/game";
+  return belongsToApps(normalizedPath) || belongsToApps(resolvedPath);
+}
+
 /**
  * Resolve a `/<prefix>/<sub>` path to its tab from the canonical `TAB_PATHS`
  * registry (via {@link PATH_TO_TAB}), falling back to the explicitly-marked
@@ -500,14 +515,7 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   if (normalized === "/") return resolveDefaultLandingTab();
 
   // Apps disabled in production builds — redirect to chat
-  if (
-    !APPS_ENABLED &&
-    (normalized === "/apps" ||
-      normalized === "/views" ||
-      normalized.startsWith("/apps/") ||
-      normalized.startsWith("/views/") ||
-      normalized === "/game")
-  ) {
+  if (!APPS_ENABLED && routeRequiresAppsEnabled(normalized)) {
     return "chat";
   }
 

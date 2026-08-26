@@ -208,7 +208,8 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
   },
   {
     id: "relationships",
-    viewKind: "system",
+    viewKind: "developer",
+    developerOnly: true,
     label: "Relationships",
     description:
       "People, organizations, identity evidence, relationship activity, and merge candidates",
@@ -217,8 +218,6 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     order: 52,
     tags: ["relationships", "people", "contacts", "entities", "identity"],
     relatedActions: ["ENTITY", "KNOWLEDGE_GRAPH"],
-    anticipatoryIntent:
-      "Offer to review relationship activity, resolve identity candidates, or inspect a person, grounded in the visible relationship state.",
     visibleInManager: true,
     desktopTabEnabled: true,
     platforms: ["web", "desktop", "ios", "android"],

@@ -10,6 +10,7 @@ import { resetUiRegistryHostForTests } from "../registry-host";
 import {
   ALL_TAB_GROUPS,
   LEGACY_PREFIX_TAB_ALIASES,
+  routeRequiresAppsEnabled,
   TAB_PATHS,
   tabFromPath,
   titleForTab,
@@ -133,6 +134,13 @@ describe("navigation prefix sub-tab resolution is registry-derived", () => {
     expect(tabFromPath("/apps/inventory")).toBe("inventory");
     expect(tabFromPath("/character/relationships")).toBe("relationships");
     expect(tabFromPath("/relationships")).toBe("relationships");
+  });
+
+  it("applies the apps feature gate to aliases of apps-owned routes", () => {
+    expect(routeRequiresAppsEnabled("/relationships")).toBe(true);
+    expect(routeRequiresAppsEnabled("/character/relationships")).toBe(true);
+    expect(routeRequiresAppsEnabled("/apps/inventory")).toBe(true);
+    expect(routeRequiresAppsEnabled("/character/documents")).toBe(false);
   });
 
   it("legacy alias table holds no path already derivable from TAB_PATHS (drift guard)", () => {

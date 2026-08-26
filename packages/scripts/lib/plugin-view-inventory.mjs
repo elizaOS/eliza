@@ -19,6 +19,8 @@ const ts = require("typescript");
 const BUILTIN_SOURCE = "packages/agent/src/api/builtin-views.ts";
 const SHELL_ROUTE_SOURCE = "packages/ui/src/navigation/index.ts";
 const PLUGIN_SOURCE = /^plugins\/[^/]+\/src\/.*\.(?:ts|tsx)$/;
+const APP_SHELL_SOURCE =
+  /^(?:packages\/(?:app|ui)|plugins\/[^/]+)\/src\/.*\.(?:ts|tsx)$/;
 const VIEW_MODALITIES = new Set(["gui", "tui", "xr"]);
 
 function compareText(left, right) {
@@ -38,6 +40,8 @@ function repositoryFiles(repoRoot) {
       "--exclude-standard",
       BUILTIN_SOURCE,
       SHELL_ROUTE_SOURCE,
+      "packages/app/src",
+      "packages/ui/src",
       "plugins",
     ],
     { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
@@ -49,10 +53,10 @@ function repositoryFiles(repoRoot) {
       (file) =>
         file === BUILTIN_SOURCE ||
         file === SHELL_ROUTE_SOURCE ||
-        (PLUGIN_SOURCE.test(file) &&
-          !file.includes("/__tests__/") &&
+        (APP_SHELL_SOURCE.test(file) &&
+          !/\/(?:__tests__|__e2e__|fixtures)\//.test(file) &&
           !file.includes("/test/") &&
-          !/\.(?:test|spec)\.[^.]+$/.test(file)),
+          !/\.(?:test|spec|stories)\.[^.]+$/.test(file)),
     )
     .sort(compareText);
 }
@@ -77,22 +81,32 @@ function parseStaticStringRecord(context, constantName) {
       );
     }
     const id = propertyName(property, resolved.context, { strict: true });
-    const value = resolveStaticExpression(
-      property.initializer,
-      resolved.context,
-    );
-    if (!id || !ts.isStringLiteralLike(value.value)) {
+    const value = staticStringValue(property.initializer, resolved.context);
+    if (!id || value === null) {
       throw new Error(
         `[plugin-view-inventory] ${context.source}:${sourceLine(context.sourceFile, property)} ${constantName} entries must resolve to literal strings`,
       );
     }
     return {
       id,
-      value: value.value.text,
+      value,
       source: context.source,
       line: sourceLine(context.sourceFile, property),
     };
   });
+}
+
+function staticStringValue(expression, context) {
+  const resolved = resolveStaticExpression(expression, context);
+  if (ts.isStringLiteralLike(resolved.value)) return resolved.value.text;
+  if (!ts.isTemplateExpression(resolved.value)) return null;
+  let value = resolved.value.head.text;
+  for (const span of resolved.value.templateSpans) {
+    const substitution = staticStringValue(span.expression, resolved.context);
+    if (substitution === null) return null;
+    value += substitution + span.literal.text;
+  }
+  return value;
 }
 
 function parseShellRoutes(context) {
@@ -109,9 +123,29 @@ function parseShellRoutes(context) {
       owner: "@elizaos/ui",
       source,
       line,
-      buildTargets: ["web", "desktop", "ios", "android"],
+      routeKind: "builtin-tab",
+      pattern: false,
+      platforms: [],
     }),
   );
+  for (const {
+    id: path,
+    value: targetId,
+    source,
+    line,
+  } of parseStaticStringRecord(context, "LEGACY_PREFIX_TAB_ALIASES")) {
+    routes.push({
+      id: `legacy:${path}`,
+      ownerId: aliases.get(targetId) ?? targetId,
+      path,
+      owner: "@elizaos/ui",
+      source,
+      line,
+      routeKind: "legacy-alias",
+      pattern: false,
+      platforms: [],
+    });
+  }
   for (const route of routes) {
     if (
       !route.path.startsWith("/") ||
@@ -123,6 +157,71 @@ function parseShellRoutes(context) {
       );
     }
   }
+  return { aliases, routes };
+}
+
+function parseAppShellRegistrations(context, aliases) {
+  const routes = [];
+  const visit = (node) => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === "registerAppShellPage" &&
+      node.arguments.length === 1
+    ) {
+      const resolved = resolveStaticExpression(node.arguments[0], context);
+      if (!ts.isObjectLiteralExpression(resolved.value)) {
+        throw new Error(
+          `[plugin-view-inventory] ${context.source}:${sourceLine(context.sourceFile, node)} registerAppShellPage argument must resolve to an object literal`,
+        );
+      }
+      const registration = resolved.value;
+      const registrationContext = resolved.context;
+      const id = literalString(registration, "id", registrationContext, {
+        required: true,
+      });
+      const owner = literalString(
+        registration,
+        "pluginId",
+        registrationContext,
+        { required: true },
+      );
+      const pathValue = literalString(
+        registration,
+        "path",
+        registrationContext,
+        { required: true },
+      );
+      const tabAffinity = literalString(
+        registration,
+        "tabAffinity",
+        registrationContext,
+      );
+      const affinityOwner = tabAffinity ?? id;
+      const ownerId = aliases.get(affinityOwner) ?? affinityOwner;
+      const pathPatterns =
+        literalStringArray(registration, "pathPatterns", registrationContext) ??
+        [];
+      for (const [routePath, pattern] of [
+        [pathValue, false],
+        ...pathPatterns.map((pathPattern) => [pathPattern, true]),
+      ]) {
+        routes.push({
+          id,
+          ownerId,
+          path: routePath,
+          owner,
+          source: registrationContext.source,
+          line: sourceLine(registrationContext.sourceFile, registration),
+          routeKind: "app-shell-registration",
+          pattern,
+          platforms: [],
+        });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(context.sourceFile);
   return routes;
 }
 
@@ -461,7 +560,13 @@ function resolveStaticExpression(expression, context, resolving = new Set()) {
 }
 
 function literalString(object, name, context, { required = false } = {}) {
-  const property = objectProperty(object, name, context);
+  const property =
+    objectProperty(object, name, context) ??
+    object.properties.find(
+      (candidate) =>
+        ts.isShorthandPropertyAssignment(candidate) &&
+        candidate.name.text === name,
+    );
   if (!property) {
     if (required) {
       throw new Error(
@@ -470,13 +575,16 @@ function literalString(object, name, context, { required = false } = {}) {
     }
     return null;
   }
-  const resolved = resolveStaticExpression(property.initializer, context);
-  if (!ts.isStringLiteralLike(resolved.value)) {
+  const expression = ts.isShorthandPropertyAssignment(property)
+    ? property.name
+    : property.initializer;
+  const value = staticStringValue(expression, context);
+  if (value === null) {
     throw new Error(
       `[plugin-view-inventory] ${context.source}:${sourceLine(context.sourceFile, property)} ${name} must resolve to a string literal`,
     );
   }
-  return resolved.value.text;
+  return value;
 }
 
 function literalBoolean(object, name, context) {
@@ -877,6 +985,7 @@ function parseView(object, context, owner, builtin) {
     line: sourceLine(context.sourceFile, object),
     route,
     modalities,
+    platforms: literalStringArray(object, "platforms", context) ?? [],
     viewKind: literalString(object, "viewKind", context),
     componentExport,
     bundlePath,
@@ -991,6 +1100,22 @@ function routeIdentity(route) {
   return collisionIdentity(withoutTrailingSlash.replace(/\/{2,}/g, "/"));
 }
 
+function shellRoutesOverlap(left, right) {
+  const segments = (route) => routeIdentity(route).split("/").filter(Boolean);
+  const leftSegments = segments(left);
+  const rightSegments = segments(right);
+  const length = Math.max(leftSegments.length, rightSegments.length);
+  for (let index = 0; index < length; index += 1) {
+    const leftSegment = leftSegments[index];
+    const rightSegment = rightSegments[index];
+    if (leftSegment === "*" || rightSegment === "*") return true;
+    if (leftSegment === undefined || rightSegment === undefined) return false;
+    if (leftSegment.startsWith(":") || rightSegment.startsWith(":")) continue;
+    if (leftSegment !== rightSegment) return false;
+  }
+  return true;
+}
+
 function assertNoCollisions(views) {
   for (const [field, selectValue, normalize] of [
     ["id", (view) => view.id, collisionIdentity],
@@ -1021,7 +1146,7 @@ function assertShellOwnership(views, shellRoutes) {
   const shellIds = new Set(
     shellRoutes.map((route) => collisionIdentity(route.id)),
   );
-  const shellByPath = new Map();
+  const seenShellRoutes = [];
   const errors = [];
   for (const route of shellRoutes) {
     const id = collisionIdentity(route.id);
@@ -1033,20 +1158,29 @@ function assertShellOwnership(views, shellRoutes) {
         `[plugin-view-inventory] ${route.source}:${route.line} shell route ${route.id} aliases missing owner ${route.ownerId}`,
       );
     }
-    if (runtime && runtime.route && routeIdentity(runtime.route) !== path) {
+    if (
+      !route.pattern &&
+      runtime &&
+      runtime.route &&
+      routeIdentity(runtime.route) !== path
+    ) {
       errors.push(
         `[plugin-view-inventory] cross-registry owner mismatch for id "${route.id}": ${runtime.owner} ${runtime.source}:${runtime.line} declares ${runtime.route}, but ${route.owner} ${route.source}:${route.line} declares ${route.path}`,
       );
     }
-    const previous = shellByPath.get(path);
-    if (previous && previous.ownerId !== ownerId) {
-      errors.push(
-        `[plugin-view-inventory] duplicate shell path "${route.path}": ${previous.owner} ${previous.source}:${previous.line} owns ${previous.id}, but ${route.owner} ${route.source}:${route.line} owns ${route.id}`,
-      );
+    for (const previous of seenShellRoutes) {
+      if (
+        previous.ownerId !== ownerId &&
+        shellRoutesOverlap(previous.path, route.path)
+      ) {
+        errors.push(
+          `[plugin-view-inventory] overlapping shell paths "${previous.path}" and "${route.path}": ${previous.owner} ${previous.source}:${previous.line} owns ${previous.id}, but ${route.owner} ${route.source}:${route.line} owns ${route.id}`,
+        );
+      }
     }
-    shellByPath.set(path, { ...route, ownerId });
+    seenShellRoutes.push({ ...route, ownerId });
     const runtimeAtPath = views.find(
-      (view) => view.route && routeIdentity(view.route) === path,
+      (view) => view.route && shellRoutesOverlap(view.route, route.path),
     );
     if (runtimeAtPath && collisionIdentity(runtimeAtPath.id) !== ownerId) {
       errors.push(
@@ -1065,18 +1199,21 @@ export function discoverPluginViewInventory({
   const cache = new Map();
   const inventory = { views: [], sources: [], shellRoutes: [] };
   const reachablePlugins = runtimeReachablePluginFiles(repoRoot, files, cache);
+  if (!files.includes(SHELL_ROUTE_SOURCE)) {
+    throw new Error("[plugin-view-inventory] TAB_PATHS was not discovered");
+  }
+  const shellContext = parseSourceContext(repoRoot, SHELL_ROUTE_SOURCE, cache);
+  const shellNavigation = parseShellRoutes(shellContext);
+  inventory.shellRoutes.push(...shellNavigation.routes);
   for (const source of files) {
-    if (
-      source !== BUILTIN_SOURCE &&
-      source !== SHELL_ROUTE_SOURCE &&
-      !PLUGIN_SOURCE.test(source)
-    )
-      continue;
-    if (source === SHELL_ROUTE_SOURCE) {
+    if (source === SHELL_ROUTE_SOURCE) continue;
+    if (APP_SHELL_SOURCE.test(source)) {
       const context = parseSourceContext(repoRoot, source, cache);
-      inventory.shellRoutes.push(...parseShellRoutes(context));
-      continue;
+      inventory.shellRoutes.push(
+        ...parseAppShellRegistrations(context, shellNavigation.aliases),
+      );
     }
+    if (source !== BUILTIN_SOURCE && !PLUGIN_SOURCE.test(source)) continue;
     if (source !== BUILTIN_SOURCE && !reachablePlugins.has(source)) continue;
     const context = parseSourceContext(repoRoot, source, cache);
     const parsed =
@@ -1098,6 +1235,14 @@ export function discoverPluginViewInventory({
   if (inventory.shellRoutes.length === 0) {
     throw new Error("[plugin-view-inventory] TAB_PATHS was not discovered");
   }
+  const runtimeById = new Map(
+    inventory.views.map((view) => [collisionIdentity(view.id), view]),
+  );
+  for (const route of inventory.shellRoutes) {
+    route.platforms = [
+      ...(runtimeById.get(collisionIdentity(route.ownerId))?.platforms ?? []),
+    ];
+  }
   assertShellOwnership(inventory.views, inventory.shellRoutes);
   inventory.views.sort(
     (left, right) =>
@@ -1112,7 +1257,10 @@ export function discoverPluginViewInventory({
       compareText(left.source, right.source) ||
       left.line - right.line,
   );
-  inventory.shellRoutes.sort((left, right) => compareText(left.id, right.id));
+  inventory.shellRoutes.sort(
+    (left, right) =>
+      compareText(left.id, right.id) || compareText(left.path, right.path),
+  );
   return inventory;
 }
 
@@ -1141,7 +1289,7 @@ export function renderPluginViewInventoryMarkdown(serialized) {
   const lines = [
     "# First-party runtime view inventory",
     "",
-    "Generated from `BUILTIN_VIEWS`, typed first-party `Plugin.views`, and the app-shell `TAB_PATHS` route table.",
+    "Generated from `BUILTIN_VIEWS`, typed first-party `Plugin.views`, app-shell registrations, and canonical/compatibility navigation routes.",
     "",
     `- Total views: ${serialized.discoveredCount}`,
     `- Built-in views: ${serialized.builtinCount}`,
@@ -1161,12 +1309,12 @@ export function renderPluginViewInventoryMarkdown(serialized) {
     "",
     "## App-shell routes",
     "",
-    "| Route ID | Canonical owner ID | Path | Build targets | Source |",
-    "| --- | --- | --- | --- | --- |",
+    "| Route ID | Canonical owner ID | Path | Kind | Declared platforms | Source |",
+    "| --- | --- | --- | --- | --- | --- |",
   );
   for (const route of serialized.shellRoutes) {
     lines.push(
-      `| ${markdownCell(route.id)} | ${markdownCell(route.ownerId)} | ${markdownCell(route.path)} | ${markdownCell(route.buildTargets.join(", "))} | ${markdownCell(`${route.source}:${route.line}`)} |`,
+      `| ${markdownCell(route.id)} | ${markdownCell(route.ownerId)} | ${markdownCell(route.path)} | ${markdownCell(route.routeKind)} | ${markdownCell(route.platforms.join(", ") || "—")} | ${markdownCell(`${route.source}:${route.line}`)} |`,
     );
   }
   return `${lines.join("\n")}\n`;

@@ -53,10 +53,9 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../../..");
 
 /**
- * Map each audited view id → the plugin directory that owns its view source.
- * Only views whose `.tsx` actually live in a `plugins/<dir>/src` tree are
- * listed — host/built-in views with no plugin source at all (`lifeops`,
- * `training`, `settings`) have nothing to scan and are exercised through
+ * Map each audited view id → the production source root that owns its
+ * renderer. Host/built-in views with no source at all (`lifeops`, `training`,
+ * `settings`) have nothing to scan and are exercised through
  * `validateViewCoverage` below instead.
  * Every key here must declare relatedActions (asserted in the suite) so this
  * stays a meaningful subset of the registered surface, not a parallel list.
@@ -64,32 +63,38 @@ const repoRoot = path.resolve(here, "../../../..");
  * `.tsx` lives in a plugin while the host owns the `ViewDeclaration` is listed
  * in `HOST_VIEW_DECLARATIONS` below.
  */
-const VIEW_SOURCE_DIRS: Readonly<Record<string, string>> = {
-  calendar: "plugin-calendar",
-  wallet: "plugin-wallet",
-  health: "plugin-health",
-  focus: "plugin-blocker",
-  finances: "plugin-finances",
-  inbox: "plugin-inbox",
-  goals: "plugin-goals",
-  todos: "plugin-todos",
-  relationships: "plugin-relationships",
-  documents: "plugin-documents",
-  orchestrator: "plugin-task-coordinator",
+const VIEW_SOURCE_ROOTS: Readonly<Record<string, readonly string[]>> = {
+  calendar: ["plugins/plugin-calendar/src"],
+  wallet: ["plugins/plugin-wallet/src"],
+  health: ["plugins/plugin-health/src"],
+  focus: ["plugins/plugin-blocker/src"],
+  finances: ["plugins/plugin-finances/src"],
+  inbox: ["plugins/plugin-inbox/src"],
+  goals: ["plugins/plugin-goals/src"],
+  todos: ["plugins/plugin-todos/src"],
+  relationships: [
+    "packages/ui/src/components/pages/RelationshipsView.tsx",
+    "packages/ui/src/components/pages/RelationshipsGraphPanel.tsx",
+    "packages/ui/src/components/pages/RelationshipsIdentityCluster.tsx",
+    "packages/ui/src/components/pages/relationships",
+  ],
+  documents: [
+    "packages/ui/src/components/pages/KnowledgeView.tsx",
+    "packages/ui/src/components/pages/DocumentsView.tsx",
+  ],
+  orchestrator: ["plugins/plugin-task-coordinator/src"],
 };
 
 /**
  * Audited views whose `ViewDeclaration` is owned by the HOST registry rather
- * than by the plugin that ships the view `.tsx`. `documents` is the standing
- * case: `plugins/plugin-documents` deliberately registers no view of its own
- * (a second `documents` declaration collided with the shell's built-in
- * Knowledge view and presented a smaller duplicate surface at `/documents`),
- * so its relatedActions live on the built-in entry while its spatial source —
- * and therefore its instrumentation density — still lives under the plugin.
+ * than by a domain plugin. Documents and Relationships are rendered by
+ * `@elizaos/ui`; their plugins deliberately register no duplicate view, so
+ * their relatedActions live on the built-in entries.
  * Values are repo-relative paths to the file holding the declaration.
  */
 const HOST_VIEW_DECLARATIONS: Readonly<Record<string, string>> = {
   documents: "packages/agent/src/api/builtin-views.ts",
+  relationships: "packages/agent/src/api/builtin-views.ts",
 };
 
 /**
@@ -100,12 +105,10 @@ const HOST_VIEW_DECLARATIONS: Readonly<Record<string, string>> = {
  * cosmetic. (This is documentation of the audited set, not a second registry.)
  */
 const SPATIAL_VIEWS: readonly string[] = [
-  "documents",
   "inbox",
   "goals",
   "health",
   "finances",
-  "relationships",
   "todos",
   "focus",
 ];
@@ -122,7 +125,15 @@ const MAX_CONTROLS_PER_AGENT_ELEMENT = 4;
 
 /** Recursively collect every production `.tsx` under a dir (no tests/stories). */
 function collectViewTsx(dir: string): string[] {
-  if (!existsSync(dir) || !statSync(dir).isDirectory()) return [];
+  if (!existsSync(dir)) return [];
+  if (statSync(dir).isFile()) {
+    return dir.endsWith(".tsx") &&
+      !dir.endsWith(".test.tsx") &&
+      !dir.endsWith(".stories.tsx")
+      ? [dir]
+      : [];
+  }
+  if (!statSync(dir).isDirectory()) return [];
   const out: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
@@ -144,7 +155,7 @@ function collectViewTsx(dir: string): string[] {
 }
 
 /** Plugin entry source where a `ViewDeclaration[]` (and any `capabilities:`) lives. */
-function readPluginEntry(pluginDir: string): string {
+function readPluginEntry(sourceRoot: string): string {
   // `ui/plugin.ts` first: plugins that merge a server surface and a UI surface
   // (e.g. plugin-wallet) keep the ViewDeclaration[] on the UI descriptor.
   // Prefer the first candidate that actually CONTAINS a view declaration:
@@ -153,7 +164,7 @@ function readPluginEntry(pluginDir: string): string {
   // would audit the wrong file.
   let firstExisting = "";
   for (const name of ["ui/plugin.ts", "plugin.ts", "index.ts"]) {
-    const candidate = path.join(repoRoot, "plugins", pluginDir, "src", name);
+    const candidate = path.join(repoRoot, sourceRoot, name);
     if (!existsSync(candidate)) continue;
     const source = readFileSync(candidate, "utf8");
     if (/\brelatedActions:/.test(source)) return source;
@@ -175,9 +186,12 @@ function extractHostDeclaration(source: string, viewId: string): string {
 }
 
 /** Declaration source for a view: its host entry when the host owns it. */
-function readViewDeclaration(viewId: string, pluginDir: string): string {
+function readViewDeclaration(
+  viewId: string,
+  sourceRoots: readonly string[],
+): string {
   const hostFile = HOST_VIEW_DECLARATIONS[viewId];
-  if (!hostFile) return readPluginEntry(pluginDir);
+  if (!hostFile) return readPluginEntry(sourceRoots[0]);
   const full = path.join(repoRoot, hostFile);
   if (!existsSync(full)) return "";
   return extractHostDeclaration(readFileSync(full, "utf8"), viewId);
@@ -233,7 +247,7 @@ function meetsRegistrationDensity(m: SourceMeasure): boolean {
 
 interface ViewCoverage extends SourceMeasure {
   viewId: string;
-  pluginDir: string;
+  sourceRoots: readonly string[];
   files: number;
   /** Minimum registrations required for this view's control count. */
   requiredRegistrations: number;
@@ -243,16 +257,17 @@ interface ViewCoverage extends SourceMeasure {
   relatedActions: number;
 }
 
-const coverage: ViewCoverage[] = Object.entries(VIEW_SOURCE_DIRS).map(
-  ([viewId, pluginDir]) => {
-    const viewSrc = path.join(repoRoot, "plugins", pluginDir, "src");
-    const files = collectViewTsx(viewSrc);
+const coverage: ViewCoverage[] = Object.entries(VIEW_SOURCE_ROOTS).map(
+  ([viewId, sourceRoots]) => {
+    const files = sourceRoots.flatMap((sourceRoot) =>
+      collectViewTsx(path.join(repoRoot, sourceRoot)),
+    );
     const joined = files.map((f) => readFileSync(f, "utf8")).join("\n");
-    const entry = readViewDeclaration(viewId, pluginDir);
+    const entry = readViewDeclaration(viewId, sourceRoots);
     const measure = measureSource(joined);
     return {
       viewId,
-      pluginDir,
+      sourceRoots,
       files: files.length,
       controls: measure.controls,
       agentRegistrations: measure.agentRegistrations,
@@ -296,7 +311,7 @@ describe("static view-capability audit (#8798)", () => {
       expect(
         c.relatedActions,
         `audited view "${c.viewId}" must declare relatedActions in ${
-          HOST_VIEW_DECLARATIONS[c.viewId] ?? `plugins/${c.pluginDir}/src`
+          HOST_VIEW_DECLARATIONS[c.viewId] ?? c.sourceRoots.join(", ")
         }`,
       ).toBeGreaterThan(0);
     }
@@ -306,7 +321,7 @@ describe("static view-capability audit (#8798)", () => {
     for (const c of coverage) {
       expect(
         c.files,
-        `${c.viewId} (plugins/${c.pluginDir}/src) has no production .tsx — stale mapping?`,
+        `${c.viewId} (${c.sourceRoots.join(", ")}) has no production .tsx — stale mapping?`,
       ).toBeGreaterThan(0);
     }
   });
@@ -352,7 +367,7 @@ describe("static view-capability audit (#8798)", () => {
       underInstrumented
         .map(
           (c) =>
-            `view "${c.viewId}" (plugins/${c.pluginDir}) ships ${c.controls} interactive control(s) ` +
+            `view "${c.viewId}" (${c.sourceRoots.join(", ")}) ships ${c.controls} interactive control(s) ` +
             `but registers only ${c.agentRegistrations} agent-addressable element(s) — needs >= ` +
             `${c.requiredRegistrations} (at most ${MAX_CONTROLS_PER_AGENT_ELEMENT} controls per registration). ` +
             `Instrument controls with useAgentElement (DOM) or an agent= prop on the spatial primitive ` +
@@ -442,7 +457,7 @@ describe("static view-capability audit (#8798)", () => {
         relatedActions: ["__STATIC_AUDIT_ACTION__"],
       })),
     });
-    const registered = Object.keys(VIEW_SOURCE_DIRS);
+    const registered = Object.keys(VIEW_SOURCE_ROOTS);
     const withCapabilities = coverage
       .filter((c) => c.hasCapabilities)
       .map((c) => c.viewId);

@@ -44,12 +44,26 @@ function addShellRoutes(
   root: string,
   routes = '{ builtin: "/builtin" }',
   aliases = "{}",
+  legacyAliases = "{}",
 ) {
   const source = "packages/ui/src/navigation/index.ts";
   write(
     root,
     source,
-    `export const TAB_PATHS = ${routes};\nexport const TAB_ROUTE_OWNER_ALIASES = ${aliases};\n`,
+    `export const TAB_PATHS = ${routes};\nexport const TAB_ROUTE_OWNER_ALIASES = ${aliases};\nexport const LEGACY_PREFIX_TAB_ALIASES = ${legacyAliases};\n`,
+  );
+  return source;
+}
+
+function addShellRegistration(
+  root: string,
+  source: string,
+  declaration: string,
+) {
+  write(
+    root,
+    source,
+    `import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";\nregisterAppShellPage(${declaration});\n`,
   );
   return source;
 }
@@ -233,6 +247,32 @@ describe("first-party runtime view inventory", () => {
     );
   });
 
+  test("rejects app-shell pattern overlaps owned by different pages", () => {
+    const root = makeRoot();
+    const registration = addShellRegistration(
+      root,
+      "packages/app/src/registered-page.ts",
+      `{
+        id: "other",
+        pluginId: "@fixture/app",
+        label: "Other",
+        path: "/other",
+        pathPatterns: ["/builtin/*"],
+      }`,
+    );
+    expect(() =>
+      discoverPluginViewInventory({
+        repoRoot: root,
+        files: [
+          addBuiltin(root),
+          addShellRoutes(root),
+          registration,
+          addPlugin(root, "plugin-alpha", view("alpha", "/alpha")),
+        ],
+      }),
+    ).toThrow(/overlapping shell paths "\/builtin" and "\/builtin\/\*"/);
+  });
+
   test("accepts an explicitly declared shell route owner alias", () => {
     const root = makeRoot();
     addShellRoutes(
@@ -254,6 +294,74 @@ describe("first-party runtime view inventory", () => {
           id: "builtinAlias",
           ownerId: "builtin",
           path: "/builtin",
+        }),
+      ]),
+    );
+  });
+
+  test("inventories app-shell paths, patterns, and legacy aliases from production declarations", () => {
+    const root = makeRoot();
+    addShellRoutes(
+      root,
+      '{ builtin: "/builtin", inventory: "/wallet" }',
+      '{ inventory: "wallet" }',
+      '{ "/apps/inventory": "inventory" }',
+    );
+    const registration = addShellRegistration(
+      root,
+      "plugins/plugin-wallet/src/register.ts",
+      `{
+        id: "wallet.inventory",
+        pluginId: "@fixture/plugin-wallet",
+        label: "Wallet",
+        path: "/inventory",
+        pathPatterns: ["/inventory/*"],
+        tabAffinity: "inventory",
+      }`,
+    );
+    write(
+      root,
+      "plugins/plugin-wallet/package.json",
+      JSON.stringify({
+        name: "@fixture/plugin-wallet",
+        source: "./src/register.ts",
+      }),
+    );
+    const plugin = addPlugin(
+      root,
+      "plugin-wallet-runtime",
+      view("wallet", "/wallet"),
+    );
+    const inventory = discoverPluginViewInventory({
+      repoRoot: root,
+      files: [
+        addBuiltin(root),
+        "packages/ui/src/navigation/index.ts",
+        registration,
+        plugin,
+      ],
+    });
+
+    expect(inventory.shellRoutes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "wallet.inventory",
+          ownerId: "wallet",
+          path: "/inventory",
+          routeKind: "app-shell-registration",
+          pattern: false,
+        }),
+        expect.objectContaining({
+          id: "wallet.inventory",
+          ownerId: "wallet",
+          path: "/inventory/*",
+          pattern: true,
+        }),
+        expect.objectContaining({
+          id: "legacy:/apps/inventory",
+          ownerId: "wallet",
+          path: "/apps/inventory",
+          routeKind: "legacy-alias",
         }),
       ]),
     );
@@ -846,8 +954,26 @@ export const legacyPlugin: Plugin = {
           id: "relationships",
           ownerId: "relationships",
           path: "/apps/relationships",
+          platforms: ["web", "desktop", "ios", "android"],
+        }),
+        expect.objectContaining({
+          id: "legacy:/relationships",
+          ownerId: "relationships",
+          path: "/relationships",
+          routeKind: "legacy-alias",
+        }),
+        expect.objectContaining({
+          id: "wallet.inventory",
+          ownerId: "wallet",
+          path: "/inventory",
+          routeKind: "app-shell-registration",
         }),
       ]),
     );
+    expect(
+      serialized.shellRoutes.some((route) =>
+        route.source.includes("/__e2e__/"),
+      ),
+    ).toBe(false);
   }, 30_000);
 });
