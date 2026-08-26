@@ -3,19 +3,9 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ActivityEvent } from "../../../hooks/useActivityEvents";
-import type { ChatSidebarWidgetProps } from "./types";
-
-// useWidgetNavigation → reportUserViewSwitch (slash-command controller). The
-// home card opens a builtin tab (no view-path event), so the click test asserts
-// the tab switch through this spy.
-const { reportUserViewSwitchSpy } = vi.hoisted(() => ({
-  reportUserViewSwitchSpy: vi.fn(),
-}));
-vi.mock("../../../chat/useSlashCommandController", () => ({
-  reportUserViewSwitch: reportUserViewSwitchSpy,
-}));
-
+import { seedAppValue } from "../../../state/app-store";
 import { AGENT_ORCHESTRATOR_PLUGIN_WIDGETS } from "./agent-orchestrator";
+import type { ChatSidebarWidgetProps } from "./types";
 
 const ActivityWidget = AGENT_ORCHESTRATOR_PLUGIN_WIDGETS.find(
   (w) => w.id === "agent-orchestrator.activity",
@@ -47,7 +37,6 @@ function props(
 
 afterEach(() => {
   cleanup();
-  reportUserViewSwitchSpy.mockReset();
 });
 
 // #9143 / consolidation — the orchestrator Activity widget renders icon-first on
@@ -85,6 +74,8 @@ describe("OrchestratorActivityWidget (home slot)", () => {
   });
 
   it("home slot: clicking the card opens the Tasks tab", () => {
+    const setTab = vi.fn();
+    seedAppValue({ setTab } as never);
     render(
       <ActivityWidget
         {...props({ slot: "home", events: [event({ summary: "Working" })] })}
@@ -93,8 +84,7 @@ describe("OrchestratorActivityWidget (home slot)", () => {
 
     fireEvent.click(screen.getByTestId("chat-widget-events"));
 
-    // openTab("tasks") reports the switch through the slash-command controller.
-    expect(reportUserViewSwitchSpy).toHaveBeenCalledWith("tasks");
+    expect(setTab).toHaveBeenCalledWith("tasks");
   });
 
   it("chat-sidebar slot: keeps the existing activity list (a row per event, not a single card button)", () => {

@@ -298,7 +298,7 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(root.contains(surface)).toBe(true);
   });
 
-  it("uses a compact two-row mobile toolbar without shrinking any navigation target below 44px", async () => {
+  it("uses one compact mobile toolbar row without shrinking any navigation target below 44px", async () => {
     render(<BrowserWorkspaceView />);
     expect(await screen.findByText("No page open")).not.toBeNull();
 
@@ -311,15 +311,18 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(nav?.className).toContain("gap-1");
     expect(nav?.className).toContain("py-1");
 
+    expect(nav?.className).toContain(
+      "grid-cols-[2.75rem_2.75rem_minmax(0,1fr)_repeat(3,2.75rem)]",
+    );
     expect(
       screen.getByTestId("browser-workspace-address-input").className,
-    ).toContain("col-span-2");
+    ).toContain("min-w-0");
     expect(
-      screen.getByTestId("browser-workspace-address-input").className,
-    ).toContain("md:col-span-1");
+      screen.getByTestId("browser-workspace-nav-new-tab").className,
+    ).toContain("hidden");
     expect(
-      screen.getByTestId("browser-workspace-address-input").className,
-    ).not.toContain("sm:col-span-1");
+      screen.getByTestId("browser-workspace-close-all-tabs").className,
+    ).toContain("hidden");
     for (const control of toolbar.querySelectorAll("button, input")) {
       // size-11 is the merged h-11 w-11 form; all three satisfy the 44px floor.
       expect(control.className).toMatch(/(?:h-11|min-h-11|size-11)/);

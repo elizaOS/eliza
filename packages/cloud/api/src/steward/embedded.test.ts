@@ -384,6 +384,15 @@ describe("embeddedStewardHandler proxy", () => {
     expect(calls[0]?.headers.get("x-steward-tenant")).toBeNull();
   });
 
+  it("preserves accept-encoding on non-providers passthrough requests", async () => {
+    const calls = stubFetch(async () => Response.json({ ok: true }));
+    await makeApp(baseEnv()).request(
+      "https://api.elizacloud.ai/steward/auth/nonce",
+      { headers: { "accept-encoding": "gzip, br" } },
+    );
+    expect(calls[0]?.headers.get("accept-encoding")).toBe("gzip, br");
+  });
+
   it("signs PUT, PATCH, and DELETE when a signing secret is configured", async () => {
     const calls = stubFetch(async () => new Response("ok", { status: 200 }));
     const env = baseEnv({
@@ -451,6 +460,56 @@ describe("embeddedStewardHandler proxy", () => {
 });
 
 describe("patchProvidersResponse", () => {
+  it("removes inbound accept-encoding before reading uncompressed provider JSON", async () => {
+    const calls = stubFetch(async (_input, init) => {
+      expect(new Headers(init?.headers).get("accept-encoding")).toBeNull();
+      return Response.json(providersJson());
+    });
+    const response = await makeApp(baseEnv()).request(
+      "https://api.elizacloud.ai/steward/auth/providers",
+      { headers: { "accept-encoding": "gzip, br" } },
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-eliza-providers-cache")).toBe("miss");
+    expect(calls[0]?.headers.get("accept-encoding")).toBeNull();
+    await expect(response.json()).resolves.toMatchObject({ ok: true });
+  });
+
+  it("fails closed without caching when an upstream still returns compressed bytes", async () => {
+    let upstreamCalls = 0;
+    stubFetch(async () => {
+      upstreamCalls += 1;
+      const compressed = new Blob([JSON.stringify(providersJson())])
+        .stream()
+        .pipeThrough(new CompressionStream("gzip"));
+      return new Response(compressed, {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "content-encoding": "gzip",
+        },
+      });
+    });
+    const app = makeApp(baseEnv());
+    const first = await app.request(
+      "https://api.elizacloud.ai/steward/auth/providers",
+      { headers: { "accept-encoding": "gzip, br" } },
+    );
+    expect(first.status).toBe(502);
+    expect(first.headers.get("cache-control")).toBe("no-store");
+    await expect(first.json()).resolves.toMatchObject({
+      code: "steward_upstream_invalid_response",
+    });
+
+    const retry = await app.request(
+      "https://api.elizacloud.ai/steward/auth/providers",
+      { headers: { "accept-encoding": "gzip, br" } },
+    );
+    expect(retry.status).toBe(502);
+    expect(retry.headers.get("x-eliza-providers-cache")).toBeNull();
+    expect(upstreamCalls).toBe(2);
+  });
+
   it("patches discord and github from env credentials without duplicating oauth entries", async () => {
     stubFetch(async () =>
       Response.json(

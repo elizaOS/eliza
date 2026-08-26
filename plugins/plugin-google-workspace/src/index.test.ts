@@ -16,6 +16,7 @@ import { getConnectorAccountCatalogEntry } from "@elizaos/shared/connector-accou
 import { Auth } from "googleapis";
 
 const { OAuth2Client } = Auth;
+const TEST_OIDC_NONCE = "test-oidc-nonce";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import googlePlugin, {
@@ -129,6 +130,7 @@ describe("google plugin", () => {
         {
           provider: "google",
           scopes: ["google.calendar.read"],
+          metadata: { requestedRole: "OWNER" },
           flow: {
             id: "flow-invalid-capability",
             provider: "google",
@@ -164,6 +166,7 @@ describe("google plugin", () => {
             GOOGLE_OAUTH_SCOPES.profile.email,
             GOOGLE_OAUTH_SCOPES.profile.profile,
           ],
+          metadata: { requestedRole: "OWNER" },
           flow: {
             id: "flow-identity-only",
             provider: "google",
@@ -206,6 +209,7 @@ describe("google plugin", () => {
         {
           provider: "google",
           scopes,
+          metadata: { requestedRole: "OWNER" },
           flow: {
             id: "flow-missing-capabilities",
             provider: "google",
@@ -236,6 +240,7 @@ describe("google plugin", () => {
     const getAccount = vi.fn(async (_provider: string, accountId: string) => ({
       id: accountId,
       provider: "google",
+      role: "OWNER",
       metadata: { grantedCapabilities: ["gmail.read", "calendar.read"] },
     }));
 
@@ -308,9 +313,7 @@ describe("google plugin", () => {
         },
         { getAccount: vi.fn(async () => null) } as never
       )
-    ).rejects.toThrow(
-      "Google OAuth requires an explicit Gmail, Calendar, Drive, or Meet capability selection."
-    );
+    ).rejects.toThrow("Google OAuth cannot reauthorize a connector account that no longer exists.");
   });
 
   it("keeps failing closed when the account has no recorded granted capabilities", async () => {
@@ -343,6 +346,7 @@ describe("google plugin", () => {
           getAccount: vi.fn(async () => ({
             id: "acct-no-grant",
             provider: "google",
+            role: "OWNER",
             metadata: {},
           })),
         } as never
@@ -352,7 +356,7 @@ describe("google plugin", () => {
     );
   });
 
-  it("lets explicit scopes win over the recorded grant without consulting the account", async () => {
+  it("lets explicit scopes win while retaining the stored reauthorization role", async () => {
     const runtime = {
       getSetting: (key: string) =>
         ({
@@ -366,6 +370,7 @@ describe("google plugin", () => {
     const getAccount = vi.fn(async () => ({
       id: "acct-reauth-2",
       provider: "google",
+      role: "TEAM",
       metadata: {
         grantedCapabilities: ["gmail.read", "gmail.send", "calendar.read", "drive.read"],
       },
@@ -388,7 +393,8 @@ describe("google plugin", () => {
       { getAccount } as never
     );
 
-    expect(getAccount).not.toHaveBeenCalled();
+    expect(getAccount).toHaveBeenCalledWith("google", "acct-reauth-2");
+    expect(result?.metadata).toMatchObject({ requestedRole: "TEAM" });
     const url = new URL(result?.authUrl ?? "");
     expectIncrementalGrantingDisabled(url);
     const requestedScopes = new Set(
@@ -415,6 +421,7 @@ describe("google plugin", () => {
       {
         provider: "google",
         scopes: ["gmail.read", "calendar.read"],
+        metadata: { requestedRole: "OWNER" },
         flow: {
           id: "flow-gmail-calendar-read",
           provider: "google",
@@ -466,6 +473,7 @@ describe("google plugin", () => {
       {
         provider: "google",
         scopes: ["calendar.read"],
+        metadata: { requestedRole: "OWNER" },
         flow: {
           id: "flow-calendar-read",
           provider: "google",
@@ -765,7 +773,7 @@ describe("google plugin", () => {
               expires_in: 3600,
               scope: GOOGLE_OAUTH_SCOPES.gmail.read,
               token_type: "Bearer",
-              id_token: createUnsignedJwt({
+              id_token: createVerifiedJwt({
                 sub: "google-subject",
                 email: "ada@example.com",
                 name: "Ada",
@@ -792,31 +800,32 @@ describe("google plugin", () => {
           codeVerifier: "verifier",
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          metadata: { requestedRole: "AGENT" },
+          metadata: { requestedRole: "AGENT", oidcNonce: TEST_OIDC_NONCE },
         },
       },
       manager as never
     );
 
     const metadata = (result?.account as ConnectorAccount)?.metadata as Record<string, unknown>;
-    expect((result?.account as ConnectorAccount)?.id).toBe("acct_google_durable_1");
-    expect((result?.account as ConnectorAccount)?.role).toBe("AGENT");
+    const account = result?.account as ConnectorAccount;
+    expect(account.id).toMatch(/^acct_google_[a-f0-9]{32}$/u);
+    expect(account.role).toBe("AGENT");
     expect(JSON.stringify(metadata)).not.toContain("google-access-token");
     expect(JSON.stringify(metadata)).not.toContain("google-refresh-token");
     expect(metadata.credentialRefs).toEqual([
       expect.objectContaining({
         credentialType: "oauth.tokens",
-        vaultRef: "connector.agent-1.google.acct_google_durable_1.oauth_tokens",
+        vaultRef: `connector.agent-1.google.${account.id}.oauth_tokens`,
       }),
     ]);
-    expect(vault.get("connector.agent-1.google.acct_google_durable_1.oauth_tokens")).toContain(
+    expect(vault.get(`connector.agent-1.google.${account.id}.oauth_tokens`)).toContain(
       "google-access-token"
     );
     expect(setCredentialRef).toHaveBeenCalledWith(
       expect.objectContaining({
-        accountId: "acct_google_durable_1",
+        accountId: account.id,
         credentialType: "oauth.tokens",
-        vaultRef: "connector.agent-1.google.acct_google_durable_1.oauth_tokens",
+        vaultRef: `connector.agent-1.google.${account.id}.oauth_tokens`,
       })
     );
   });
@@ -865,7 +874,7 @@ describe("google plugin", () => {
               expires_in: 3600,
               scope: returnedScopes.join(" "),
               token_type: "Bearer",
-              id_token: createUnsignedJwt({
+              id_token: createVerifiedJwt({
                 sub: "google-subject",
                 email: "ada@example.com",
               }),
@@ -891,6 +900,8 @@ describe("google plugin", () => {
           createdAt: Date.now(),
           updatedAt: Date.now(),
           metadata: {
+            requestedRole: "OWNER",
+            oidcNonce: TEST_OIDC_NONCE,
             requestedCapabilities: ["gmail.read"],
             requestedScopes: scopesForGoogleCapabilities(["gmail.read"]),
           },
@@ -904,9 +915,9 @@ describe("google plugin", () => {
     expect(account.purpose).toEqual(["messaging"]);
     expect(metadata.grantedCapabilities).toEqual(["gmail.read"]);
     expect(metadata.grantedScopes).toEqual(returnedScopes);
-    expect(
-      vault.get("connector.agent-1.google.acct_google_incremental_grant.oauth_tokens")
-    ).toContain(providerAddedScope);
+    expect(vault.get(`connector.agent-1.google.${account.id}.oauth_tokens`)).toContain(
+      providerAddedScope
+    );
   });
 
   it("does not record or re-request a compound capability from a partial provider grant", async () => {
@@ -952,7 +963,7 @@ describe("google plugin", () => {
               expires_in: 3600,
               scope: returnedScopes.join(" "),
               token_type: "Bearer",
-              id_token: createUnsignedJwt({
+              id_token: createVerifiedJwt({
                 sub: "google-subject",
                 email: "ada@example.com",
               }),
@@ -978,6 +989,8 @@ describe("google plugin", () => {
           createdAt: Date.now(),
           updatedAt: Date.now(),
           metadata: {
+            requestedRole: "OWNER",
+            oidcNonce: TEST_OIDC_NONCE,
             requestedCapabilities: ["gmail.read", "gmail.manage"],
             requestedScopes: scopesForGoogleCapabilities(["gmail.read", "gmail.manage"]),
           },
@@ -1046,7 +1059,7 @@ describe("google plugin", () => {
                 " "
               ),
               token_type: "Bearer",
-              id_token: createUnsignedJwt({
+              id_token: createVerifiedJwt({
                 sub: "google-subject",
                 email: "ada@example.com",
               }),
@@ -1187,7 +1200,7 @@ describe("google plugin", () => {
               expires_in: 3600,
               scope: GOOGLE_OAUTH_SCOPES.gmail.read,
               token_type: "Bearer",
-              id_token: createUnsignedJwt({
+              id_token: createVerifiedJwt({
                 sub: "google-subject",
                 email: "ada@example.com",
               }),
@@ -1219,7 +1232,7 @@ describe("google plugin", () => {
             codeVerifier: "verifier",
             createdAt: Date.now(),
             updatedAt: Date.now(),
-            metadata: {},
+            metadata: { requestedRole: "OWNER", oidcNonce: TEST_OIDC_NONCE },
           },
         },
         manager as never
@@ -2003,10 +2016,22 @@ function createCredentialStorage(options: {
   };
 }
 
-function createUnsignedJwt(payload: Record<string, unknown>): string {
+function createVerifiedJwt(payload: Record<string, unknown>): string {
+  const now = Math.floor(Date.now() / 1000);
+  const verifiedPayload = {
+    iss: "https://accounts.google.com",
+    aud: "google-client",
+    iat: now - 10,
+    exp: now + 3600,
+    nonce: TEST_OIDC_NONCE,
+    ...payload,
+  };
+  vi.spyOn(OAuth2Client.prototype, "verifyIdToken").mockResolvedValue({
+    getPayload: () => verifiedPayload,
+  } as never);
   return [
-    Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url"),
-    Buffer.from(JSON.stringify(payload)).toString("base64url"),
+    Buffer.from(JSON.stringify({ alg: "RS256", kid: "test-key" })).toString("base64url"),
+    Buffer.from(JSON.stringify(verifiedPayload)).toString("base64url"),
     "sig",
   ].join(".");
 }

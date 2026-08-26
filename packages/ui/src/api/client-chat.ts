@@ -8,7 +8,7 @@ import type {
   PostInboxMessageRequest,
 } from "@elizaos/shared";
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
-import { ElizaClient } from "./client-base";
+import { ElizaClient, isRemoteRelayRestAdapterBase } from "./client-base";
 import type {
   AccountConnectRequest,
   ApiError,
@@ -995,7 +995,12 @@ async function invokeLocalDesktopChatRpc<T>(
   baseUrl: string,
   options: { rpcMethod: string; ipcChannel: string; params?: unknown },
 ): Promise<T | null> {
-  if (isDesktopExternalApiBaseUrl(baseUrl)) return null;
+  if (
+    isDesktopExternalApiBaseUrl(baseUrl) ||
+    isRemoteRelayRestAdapterBase(baseUrl)
+  ) {
+    return null;
+  }
   return invokeDesktopBridgeRequest<T>(options);
 }
 

@@ -764,6 +764,12 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
   // upstream fetch sets its own.
   headers.delete("host");
   if (isProvidersRequest) {
+    // Provider discovery is not a passthrough response: the proxy reads and
+    // validates the upstream JSON before caching it. Forwarding the browser's
+    // Accept-Encoding opts Workers into compressed passthrough, which can
+    // leave readBoundedBody() inspecting gzip/brotli bytes instead of JSON.
+    // Let the Workers runtime negotiate and decode this subrequest itself.
+    headers.delete("accept-encoding");
     for (const name of [
       "authorization",
       "cookie",

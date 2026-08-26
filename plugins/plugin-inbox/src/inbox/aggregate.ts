@@ -162,9 +162,7 @@ export function toInboxMessage(
     channel === "gmail"
       ? (message.gmailMessageId ?? message.id)
       : (message.entityId ?? message.roomId ?? message.id);
-  const receivedAt = Number.isFinite(message.timestamp)
-    ? new Date(message.timestamp).toISOString()
-    : new Date(0).toISOString();
+  const receivedAt = new Date(message.timestamp).toISOString();
   const subject =
     channel === "gmail"
       ? message.channelName.startsWith("Email from ")
@@ -176,9 +174,9 @@ export function toInboxMessage(
   // read state (the fetcher maps dm.readAt -> lastSeenAt and dm.repliedAt ->
   // repliedAt), so a read-or-replied DM must not inflate unread counts. Chat
   // memories still lack a read flag, so they stay unread for triage.
-  const hasSeenState =
-    (typeof message.lastSeenAt === "string" && message.lastSeenAt.length > 0) ||
-    (typeof message.repliedAt === "string" && message.repliedAt.length > 0);
+  const hasSeenState = [message.lastSeenAt, message.repliedAt].some(
+    (value) => typeof value === "string" && Number.isFinite(Date.parse(value)),
+  );
   const unread =
     channel === "gmail"
       ? Boolean(
@@ -189,7 +187,15 @@ export function toInboxMessage(
         ? !hasSeenState
         : true;
 
+  const gmailAccountId = message.gmailAccountId?.trim();
+  const gmailIdentityPrefix =
+    channel === "gmail" && gmailAccountId
+      ? `gmail:${encodeURIComponent(gmailAccountId)}:`
+      : null;
   const threadId = deriveThreadId(message, channel, externalId);
+  const scopedThreadId = gmailIdentityPrefix
+    ? `${gmailIdentityPrefix}${encodeURIComponent(threadId)}`
+    : threadId;
   const chatType: InboxChatType =
     message.chatType ??
     (channel === "gmail"
@@ -199,7 +205,9 @@ export function toInboxMessage(
         : "dm");
 
   return {
-    id: `${channel}:${externalId || `${message.timestamp}-${index}`}`,
+    id: gmailIdentityPrefix
+      ? `${gmailIdentityPrefix}${encodeURIComponent(externalId)}`
+      : `${channel}:${externalId || `${message.timestamp}-${index}`}`,
     channel,
     sender: {
       id: senderId,
@@ -223,10 +231,10 @@ export function toInboxMessage(
         : {}),
       ...(message.phoneNumber ? { phoneNumber: message.phoneNumber } : {}),
     },
-    threadId,
+    threadId: scopedThreadId,
     chatType,
     participantCount: message.participantCount,
-    gmailAccountId: message.gmailAccountId,
+    gmailAccountId,
     gmailAccountEmail: message.gmailAccountEmail,
     phoneAccountId: message.phoneAccountId,
     phoneAccountLabel: message.phoneAccountLabel,

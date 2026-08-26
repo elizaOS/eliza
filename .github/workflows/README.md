@@ -333,6 +333,21 @@ Terraform domain workflow additionally requires zone-scoped DNS write and
 certificate packs. Prefer separate environment-scoped deploy and DNS/TLS
 tokens so staging automation cannot mutate production zones.
 
+The Cloud release resolves the public Telegram bot ID and username before
+database migration or API deployment. Staging consumes the complete
+repository-scoped `VITE_TELEGRAM_BOT_ID` / `VITE_TELEGRAM_BOT_USERNAME` pair
+and requires both components to differ from production. Production ignores
+that repository pair and derives its exact canonical identity from the checked
+out `packages/homepage/src/lib/contact.ts`. Missing, partial, malformed,
+out-of-range, or cross-environment staging values stop the release without
+printing either value. Do not expect same-named GitHub Environment variables
+to override the repository pair: GitHub makes Environment variables available
+after values in the `vars` context have already been resolved. Implicit Vite
+fallback use remains local/direct-only; protected production explicitly selects
+and validates the canonical source constants. Pull requests are validated by
+`pr-static-smoke.yml`; there is no credentialed or artifact-only Pages preview
+path in `cloud-cf-deploy.yml`.
+
 Cloudflare secret values are write-only and cannot be reconstructed into
 GitHub. Deploy workflows therefore publish shared Worker/control-plane secrets
 only when the selected protected environment explicitly supplies a value. When

@@ -255,6 +255,13 @@ describe("ConnectorAccountStore (via BaseDrizzleAdapter delegation)", () => {
     );
     expect(all.every((c) => c.id === set1.id || c.id === set2.id)).toBe(true);
 
+    await expect(
+      adapter.deleteConnectorAccountCredentialRefs({ accountId: account.id })
+    ).resolves.toBe(2);
+    await expect(
+      adapter.listConnectorAccountCredentialRefs({ accountId: account.id })
+    ).resolves.toEqual([]);
+
     await adapter.deleteConnectorAccount({
       provider: "stripe",
       accountKey: "acct_123",

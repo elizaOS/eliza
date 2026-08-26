@@ -440,6 +440,7 @@ import {
   buildPluginDiagnosticEntry,
   resolveWalletDiagnosticStatus,
 } from "./plugin-diagnostic.ts";
+import { handleRuntimeManagementRoutes } from "./runtime-management-routes.ts";
 import {
   handleRuntimeModePreDispatch,
   handleRuntimeModeRemoteForward,
@@ -1808,6 +1809,19 @@ async function handleRequest(
     (typeof handleCloudPairRoute === "function" &&
       (await handleCloudPairRoute(req, res))) ||
     (await handleStandaloneCloudPairRoute(req, res))
+  ) {
+    return;
+  }
+
+  // The packaged desktop runs the agent listener directly, but app-core owns
+  // its browser-session store. The host consumes the one-shot local socket
+  // proof here; its handler enforces loopback peer+Host, originlessness,
+  // socket ownership, and socket mode before minting anything.
+  const handleDesktopAuthBootstrapRoute =
+    getAgentHostBridge().handleDesktopAuthBootstrapRoute;
+  if (
+    typeof handleDesktopAuthBootstrapRoute === "function" &&
+    (await handleDesktopAuthBootstrapRoute(req, res, state.runtime))
   ) {
     return;
   }
@@ -3323,6 +3337,28 @@ async function handleRequest(
   }
 
   // ── Runtime switch routes (/api/runtime/model-switch, /agent-switch) ──────
+  const runtimeManagementCallerAuthorization = resolveInboxRequestAuthorization(
+    req,
+    method,
+    pathname,
+    await resolveHostSessionAuthorization(),
+  );
+  if (
+    await handleRuntimeManagementRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      json,
+      error,
+      broadcastWs: state.broadcastWs ?? undefined,
+      broadcastWsToClientId: state.broadcastWsToClientId ?? undefined,
+      callerAuthorization: runtimeManagementCallerAuthorization,
+    })
+  ) {
+    return;
+  }
+
   if (
     await handleRuntimeSwitchRoutes({
       req,

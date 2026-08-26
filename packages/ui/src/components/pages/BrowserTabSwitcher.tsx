@@ -135,14 +135,14 @@ export function BrowserTabFoldControl({
       aria-label={openLabel}
       aria-haspopup="dialog"
       data-testid="browser-workspace-tab-fold-control"
-      className="min-w-0 shrink-0"
+      className="relative min-w-0 shrink-0 px-0 md:px-4"
     >
       <Globe className="size-4 shrink-0 text-muted" aria-hidden />
-      <span className="min-w-0 max-w-[9rem] truncate font-medium">
+      <span className="hidden min-w-0 max-w-[9rem] truncate font-medium md:inline">
         {activeLabel}
       </span>
       <span
-        className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-bg-muted px-1.5 text-2xs font-semibold tabular-nums text-muted"
+        className="absolute right-1 top-1 inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-bg-muted px-1 text-[9px] font-semibold tabular-nums text-muted md:static md:h-5 md:min-w-5 md:px-1.5 md:text-2xs"
         data-testid="browser-workspace-tab-count"
         aria-hidden
       >

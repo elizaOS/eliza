@@ -434,6 +434,7 @@ function shouldLoadGoogleWorkspace(
 export function collectPluginNames(
   config: ElizaConfig,
   reasons?: PluginLoadReasons,
+  forceIncludePluginNames: readonly string[] = [],
 ): Set<string> {
   const legacyLocalOnlyInference =
     config.cloud?.inferenceMode === "local" ||
@@ -506,7 +507,10 @@ export function collectPluginNames(
       markerIndex >= 0
         ? pluginPackageName.slice(markerIndex + marker.length)
         : pluginPackageName;
-    return pluginEntries?.[pluginId]?.enabled === false;
+    return (
+      pluginEntries?.[pluginId]?.enabled === false ||
+      pluginEntries?.[pluginPackageName]?.enabled === false
+    );
   };
 
   const providerPluginIdSet = new Set(
@@ -849,8 +853,19 @@ export function collectPluginNames(
     }
   }
 
+  // Host-selected providers must enter the same topology policy as every
+  // other source. Adding them later in resolvePlugins bypassed the final
+  // cloud/remote/local-only precedence sweep, allowing a stale ambient API key
+  // to resurrect a provider that the canonical route matrix had suppressed.
+  for (const pluginName of forceIncludePluginNames) {
+    const resolved = resolvePluginPackageAlias(pluginName);
+    pluginsToLoad.add(resolved);
+    track(resolved, "host-selected provider");
+  }
+
   // Re-apply provider precedence so later additive paths (entries, features,
-  // installs) cannot accidentally re-introduce suppressed providers.
+  // installs, host selections) cannot accidentally re-introduce suppressed
+  // providers.
   applyProviderPrecedence();
 
   // Enforce feature gating last so allow-list entries cannot bypass it.

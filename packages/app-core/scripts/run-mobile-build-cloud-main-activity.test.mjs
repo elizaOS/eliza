@@ -59,6 +59,20 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).not.toContain("SYSTEM_UI_FLAG_");
   });
 
+  it("restores the foreground keep-awake contract after lifecycle transitions", () => {
+    const source = cloudSafeMainActivityJava("ai.elizaos.app");
+
+    expect(source).toContain("import android.view.WindowManager;");
+    expect(source).toContain("public void onResume()");
+    expect(source).toContain("onWindowFocusChanged(boolean hasFocus)");
+    expect(source).toContain(
+      "getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);",
+    );
+    expect(
+      source.match(/keepScreenAwake\(\);/g)?.length,
+    ).toBeGreaterThanOrEqual(3);
+  });
+
   it("keeps kiosk navigation suppression out of ordinary Cloud builds", () => {
     const source = cloudSafeMainActivityJava("ai.elizaos.app");
 

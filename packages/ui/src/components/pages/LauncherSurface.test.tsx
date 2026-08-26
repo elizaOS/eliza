@@ -58,6 +58,7 @@ vi.mock("../../navigation", () => {
   return {
     isAospShellEnabled: () => aospEnabled,
     LAUNCHER_AOSP_ONLY_VIEW_IDS: ["phone"],
+    pathForTab: (id: string) => `/${id}`,
   };
 });
 

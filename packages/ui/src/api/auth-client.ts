@@ -120,13 +120,16 @@ export type AuthMeResult =
     }
   | {
       ok: false;
-      status: 401 | 503;
+      status: 401 | 429 | 503;
       reason?:
         | "remote_auth_required"
         | "remote_password_not_configured"
+        | "rate_limited"
         | "server_error"
         | "cloud_unavailable";
       access?: AuthAccessInfo;
+      /** Server-directed pause before the next auth probe, when supplied. */
+      retryAfterMs?: number;
     };
 
 export type AuthSessionsResult =
@@ -164,6 +167,20 @@ function authBase(): string {
   if (typeof window === "undefined") return "";
   const apiBase = getBootConfig().apiBase;
   return apiBase ? apiBase.replace(/\/$/, "") : window.location.origin;
+}
+
+function retryAfterMs(headers: Headers): number | undefined {
+  const raw = headers.get("retry-after")?.trim();
+  if (!raw) return undefined;
+
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.round(seconds * 1000);
+  }
+
+  const retryAt = Date.parse(raw);
+  if (!Number.isFinite(retryAt)) return undefined;
+  return Math.max(0, retryAt - Date.now());
 }
 
 // ── Endpoint callers ──────────────────────────────────────────────────────────
@@ -510,6 +527,15 @@ export async function authMe(): Promise<AuthMeResult> {
             ? "remote_auth_required"
             : "server_error",
       access: body.access,
+    };
+  }
+
+  if (res.status === 429) {
+    return {
+      ok: false,
+      status: 429,
+      reason: "rate_limited",
+      retryAfterMs: retryAfterMs(res.headers),
     };
   }
 
