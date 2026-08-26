@@ -164,6 +164,12 @@ export const SETTINGS_NON_CATALOG_SECTION_AUDIT = {
 		coveredBy:
 			"AGENT_SWITCH for switching; cloud agent management needs its own product action if chat-write is required.",
 	},
+	"android-account-lifecycle": {
+		reason:
+			"Android Cloud account deletion and privacy controls are platform lifecycle workflows, not local SETTINGS values.",
+		coveredBy:
+			"AndroidAccountLifecycleSection and the authenticated Android cloud account-deletion contract",
+	},
 	"my-runtimes": {
 		reason:
 			"Runtime registry management spans local/cloud/VPS runtimes and is outside the pinned settings catalog.",
