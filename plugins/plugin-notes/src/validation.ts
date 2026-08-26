@@ -140,8 +140,9 @@ export function parseEntityId(value: unknown, field = "id"): string {
 export function parseStickyColor(value: unknown, field = "color"): StickyColor {
   if (typeof value === "string") {
     const normalized = value.trim().toLowerCase();
-    if ((STICKY_COLORS as readonly string[]).includes(normalized)) {
-      return normalized as StickyColor;
+    const matched = STICKY_COLORS.find((c) => c === normalized);
+    if (matched) {
+      return matched;
     }
   }
   throw validationError(
