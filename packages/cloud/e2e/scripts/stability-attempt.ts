@@ -5,11 +5,12 @@
  */
 
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
+import { canonicalJsonString } from "@elizaos/shared/canonical-json";
 import cloudStabilityScenario from "../scenarios/cloud-stability-agent.scenario.ts";
 import { startCloudStack } from "../src/fixtures/stack.ts";
 import { canonicalCloudStabilitySha256 } from "../src/stability/cloud-stability-runner.ts";
@@ -123,8 +124,13 @@ const realModelCredential =
   mode === "real-llm" && providerRoute
     ? required(providerRoute.credentialEnvironment)
     : undefined;
+const meterAttestationKey =
+  mode === "real-llm"
+    ? required("ELIZA_STABILITY_METER_ATTESTATION_KEY")
+    : undefined;
 delete process.env.OPENAI_API_KEY;
 delete process.env.ANTHROPIC_API_KEY;
+delete process.env.ELIZA_STABILITY_METER_ATTESTATION_KEY;
 const guardedFetch = createLoopbackOnlyFetch(nativeFetch, networkLedger);
 globalThis.fetch = guardedFetch;
 
@@ -410,6 +416,7 @@ try {
 
 const explicitSecrets = [
   realModelCredential,
+  meterAttestationKey,
   process.env.ELIZA_SYNTHETIC_CONTROL_TOKEN,
 ].filter(
   (value): value is string => typeof value === "string" && value.length > 0,
@@ -535,7 +542,7 @@ const modelMeter = modelProxy?.snapshot() ?? {
   failures: [],
   requestEnvelopes: [],
 };
-const providerReceipt =
+const unsignedProviderReceipt =
   mode === "deterministic-mock"
     ? (() => {
         const diagnostics = scenarioResult.modelFixtureDiagnostics;
@@ -595,6 +602,27 @@ const providerReceipt =
         unexpectedRealServiceCalls: unexpectedEgress,
         unexpectedNetworkCalls: unexpectedEgress,
       };
+const providerReceipt =
+  mode === "real-llm" && meterAttestationKey
+    ? {
+        ...unsignedProviderReceipt,
+        attestation: createHmac("sha256", meterAttestationKey)
+          .update(
+            canonicalJsonString(unsignedProviderReceipt, {
+              maxDepth: 32,
+              maxNodes: 100_000,
+              maxOutputChars: 8 * 1024 * 1024,
+              sparseArrayHoles: "null",
+              onUnbounded: () => {
+                throw new Error(
+                  "real-model receipt attestation exceeds canonical JSON limits",
+                );
+              },
+            }),
+          )
+          .digest("hex"),
+      }
+    : unsignedProviderReceipt;
 const ledger = {
   network: { parentAndProxy: networkLedger, child: childNetworkLedger },
   mockServices: {

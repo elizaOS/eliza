@@ -1087,6 +1087,7 @@ export function liveModelScenarioChildEnvironment(
   const environment = { ...parentEnvironment };
   delete environment.OPENAI_API_KEY;
   delete environment.ANTHROPIC_API_KEY;
+  delete environment.ELIZA_STABILITY_METER_ATTESTATION_KEY;
   if (provider === "openai") {
     environment.OPENAI_BASE_URL = proxyUrl;
     environment.OPENAI_API_KEY = "sk-stability-proxy-placeholder-000000000000";

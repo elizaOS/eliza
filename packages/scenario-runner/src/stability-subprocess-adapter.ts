@@ -6,7 +6,12 @@
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import {
+  createHash,
+  createHmac,
+  randomBytes,
+  timingSafeEqual,
+} from "node:crypto";
 import { constants } from "node:fs";
 import fs from "node:fs/promises";
 import { isIP } from "node:net";
@@ -36,6 +41,7 @@ const INTERNAL_CONTROL_ENV = new Set([
   "ELIZA_SYNTHETIC_CONTROL_TOKEN",
   "ELIZA_SYNTHETIC_CONTROL_URL",
 ]);
+const METER_ATTESTATION_ENV = "ELIZA_STABILITY_METER_ATTESTATION_KEY";
 const REAL_MODEL_METER_FAILURE_CODES = new Set([
   "STABILITY_MODEL_PRE_DISPATCH_REJECTED",
   "STABILITY_MODEL_USAGE_MISSING",
@@ -197,6 +203,41 @@ function canonicalSha256(value: unknown, source: string): string {
   return createHash("sha256").update(canonical).digest("hex");
 }
 
+function canonicalAttestationPayload(receipt: Record<string, unknown>): string {
+  const { attestation: _attestation, ...payload } = receipt;
+  assertScenarioStabilityBoundedJson(payload, "real-model receipt attestation");
+  return canonicalJsonString(payload, {
+    maxDepth: 32,
+    maxNodes: 100_000,
+    maxOutputChars: SCENARIO_STABILITY_MAX_ATTEMPT_JSON_BYTES,
+    sparseArrayHoles: "null",
+    onUnbounded: () => {
+      throw new Error(
+        "real-model receipt attestation exceeds canonical JSON limits",
+      );
+    },
+  });
+}
+
+function verifyReceiptAttestation(
+  receipt: Record<string, unknown>,
+  key: string,
+): boolean {
+  if (
+    typeof receipt.attestation !== "string" ||
+    !/^[a-f0-9]{64}$/u.test(receipt.attestation)
+  )
+    return false;
+  const expected = createHmac("sha256", key)
+    .update(canonicalAttestationPayload(receipt))
+    .digest();
+  const supplied = Buffer.from(receipt.attestation, "hex");
+  return (
+    supplied.byteLength === expected.byteLength &&
+    timingSafeEqual(supplied, expected)
+  );
+}
+
 function isLoopbackUrl(raw: string): boolean {
   const url = new URL(raw);
   const hostname =
@@ -220,6 +261,11 @@ function validateEnvironment(
   source: string,
 ): void {
   for (const [name, value] of Object.entries(values)) {
+    if (name === METER_ATTESTATION_ENV) {
+      throw new Error(
+        `${source} cannot override the internal meter attestation key`,
+      );
+    }
     if (!ENVIRONMENT_NAME.test(name)) {
       throw new Error(`${source} contains invalid environment name '${name}'`);
     }
@@ -305,6 +351,7 @@ function appendBounded(
 function sanitizedStderr(
   options: ScenarioStabilitySubprocessAdapterOptions,
   chunks: readonly Buffer[],
+  attestationKey?: string,
 ): Buffer {
   let text = new TextDecoder().decode(Buffer.concat(chunks));
   const secrets = [
@@ -312,6 +359,7 @@ function sanitizedStderr(
     ...(options.modelMode.kind === "real-llm"
       ? [options.modelMode.credentialValue]
       : []),
+    ...(attestationKey ? [attestationKey] : []),
   ];
   for (const secret of secrets) {
     if (secret.length > 0) text = text.replaceAll(secret, "[REDACTED_SECRET]");
@@ -415,8 +463,12 @@ function childEnvironment(
   input: Parameters<ScenarioStabilityExecutionAdapter["execute"]>[0],
   session: SyntheticControlSession,
   initialStateHash: string,
+  attestationKey?: string,
 ): NodeJS.ProcessEnv {
   const mode = options.modelMode;
+  if (mode.kind === "real-llm" && !attestationKey) {
+    throw new Error("real-llm attempt requires a parent-owned attestation key");
+  }
   return {
     PATH: process.env.PATH,
     TMPDIR: process.env.TMPDIR,
@@ -425,7 +477,10 @@ function childEnvironment(
     ...options.env,
     ...options.mockServiceUrls,
     ...(mode.kind === "real-llm"
-      ? { [mode.credentialEnv]: mode.credentialValue }
+      ? {
+          [mode.credentialEnv]: mode.credentialValue,
+          [METER_ATTESTATION_ENV]: attestationKey,
+        }
       : {}),
     ELIZA_STABILITY_MODEL_MODE: mode.kind,
     ...(mode.kind === "deterministic-mock"
@@ -494,6 +549,10 @@ export class ScenarioStabilitySubprocessAdapter
     };
     this.#boundaries.set(input.attemptId, boundary);
     const initialStateHash = await authorityInitialStateHash(session);
+    const attestationKey =
+      this.options.modelMode.kind === "real-llm"
+        ? randomBytes(32).toString("hex")
+        : undefined;
     const child = spawn(
       this.options.command,
       this.options.args({
@@ -506,7 +565,13 @@ export class ScenarioStabilitySubprocessAdapter
         detached: true,
         shell: false,
         stdio: ["ignore", "pipe", "pipe"],
-        env: childEnvironment(this.options, input, session, initialStateHash),
+        env: childEnvironment(
+          this.options,
+          input,
+          session,
+          initialStateHash,
+          attestationKey,
+        ),
       },
     );
     boundary.child = child;
@@ -572,7 +637,7 @@ export class ScenarioStabilitySubprocessAdapter
     const stderrArtifact = await persistStderrArtifact(
       input.outputDir,
       outputIdentities,
-      sanitizedStderr(this.options, stderr),
+      sanitizedStderr(this.options, stderr, attestationKey),
     );
     if (outputFailure) throw outputFailure;
     if (exitCode !== 0) {
@@ -632,6 +697,11 @@ export class ScenarioStabilitySubprocessAdapter
         );
       });
       const receipt = receipts[0] as Record<string, unknown> | undefined;
+      const receiptAttestationValid = Boolean(
+        receipt &&
+          attestationKey &&
+          verifyReceiptAttestation(receipt, attestationKey),
+      );
       const meteringFailures = Array.isArray(receipt?.meteringFailures)
         ? receipt.meteringFailures
         : null;
@@ -750,26 +820,13 @@ export class ScenarioStabilitySubprocessAdapter
                 REAL_MODEL_METER_FAILURE_CODES.has(failureCode))
           );
         }) &&
-        requestEnvelopes.filter(
-          (value) => (value as Record<string, unknown>).accepted === true,
-        ).length === requestCount &&
-        requestEnvelopes
-          .filter(
-            (value) => (value as Record<string, unknown>).accepted === true,
-          )
-          .every(
-            (value, index) =>
-              (value as Record<string, unknown>).requestNumber === index + 1,
-          ) &&
-        requestEnvelopes
-          .filter(
-            (value) => (value as Record<string, unknown>).accepted === false,
-          )
-          .every(
-            (value) =>
-              (value as Record<string, unknown>).requestNumber ===
-              (requestCount as number) + 1,
-          );
+        requestEnvelopes.every((value, index) => {
+          const envelope = value as Record<string, unknown>;
+          return index < (requestCount as number)
+            ? envelope.accepted === true && envelope.requestNumber === index + 1
+            : envelope.accepted === false &&
+                envelope.requestNumber === (requestCount as number) + 1;
+        });
       const successMeteringValid =
         execution.passed === false ||
         (receipt?.liveModelInvoked === true &&
@@ -796,6 +853,7 @@ export class ScenarioStabilitySubprocessAdapter
       if (
         receipts.length !== 1 ||
         !receipt ||
+        !receiptAttestationValid ||
         receipt.provider !== input.target.model.provider ||
         receipt.model !== input.target.model.model ||
         receipt.liveModelInvoked !==
