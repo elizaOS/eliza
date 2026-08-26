@@ -13,6 +13,7 @@ import {
   boolean,
   check,
   foreignKey,
+  index,
   integer,
   numeric,
   pgTable,
@@ -182,6 +183,9 @@ export const agentSandboxReplacementAttempts = pgTable(
         agentNodeIncarnationHistories.node_incarnation,
       ],
     }).onDelete("restrict"),
+    organization_idx: index("agent_sandbox_replacement_attempts_organization_idx").on(
+      table.organization_id,
+    ),
     one_active_effect_per_agent_uidx: uniqueIndex(
       "agent_sandbox_replacement_attempts_active_agent_uidx",
     )

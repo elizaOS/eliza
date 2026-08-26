@@ -32,10 +32,16 @@ const REPLACEMENT_DIGEST = "a".repeat(64);
 const TEST_DATABASE = resolveAccountDeletionTestDatabase();
 let databaseReady = true;
 
-const replacementAttemptMigrationUrl = new URL(
-  "../migrations/0313_agent_sandbox_replacement_attempts.sql",
-  import.meta.url,
-);
+const replacementAttemptMigrationUrls = [
+  "0321_agent_sandbox_replacement_attempts_table.sql",
+  "0322_agent_sandbox_replacement_attempts_authority.sql",
+  "0323_agent_sandbox_replacement_attempt_locator.sql",
+  "0324_agent_sandbox_replacement_attempt_settlement.sql",
+  "0325_agent_sandbox_replacement_attempt_admission_guards.sql",
+  "0326_agent_sandbox_replacement_attempt_identity_guard.sql",
+  "0327_agent_sandbox_replacement_attempt_locator_guard.sql",
+  "0328_agent_sandbox_replacement_attempt_state_guard.sql",
+].map((migration) => new URL(`../migrations/${migration}`, import.meta.url));
 
 async function applyReplacementAttemptMigration(): Promise<void> {
   await dbWrite.execute(sql`
@@ -69,9 +75,11 @@ async function applyReplacementAttemptMigration(): Promise<void> {
       )
     )
   `);
-  const migration = await Bun.file(replacementAttemptMigrationUrl).text();
-  for (const statement of migration.split("--> statement-breakpoint")) {
-    if (statement.trim()) await dbWrite.execute(sql.raw(statement));
+  for (const migrationUrl of replacementAttemptMigrationUrls) {
+    const migration = await Bun.file(migrationUrl).text();
+    for (const statement of migration.split("--> statement-breakpoint")) {
+      if (statement.trim()) await dbWrite.execute(sql.raw(statement));
+    }
   }
 }
 

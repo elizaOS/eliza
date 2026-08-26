@@ -9,7 +9,16 @@ import { PGlite } from "@electric-sql/pglite";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import { agentSandboxReplacementAttempts } from "../schemas/agent-sandbox-replacement-attempts";
 
-const migrationUrl = new URL("./0313_agent_sandbox_replacement_attempts.sql", import.meta.url);
+const migrationUrls = [
+  "0321_agent_sandbox_replacement_attempts_table.sql",
+  "0322_agent_sandbox_replacement_attempts_authority.sql",
+  "0323_agent_sandbox_replacement_attempt_locator.sql",
+  "0324_agent_sandbox_replacement_attempt_settlement.sql",
+  "0325_agent_sandbox_replacement_attempt_admission_guards.sql",
+  "0326_agent_sandbox_replacement_attempt_identity_guard.sql",
+  "0327_agent_sandbox_replacement_attempt_locator_guard.sql",
+  "0328_agent_sandbox_replacement_attempt_state_guard.sql",
+].map((migration) => new URL(`./${migration}`, import.meta.url));
 const journalUrl = new URL("./meta/_journal.json", import.meta.url);
 const databases: PGlite[] = [];
 
@@ -194,6 +203,10 @@ const EXPECTED_CONSTRAINT_DEFINITIONS = {
 } satisfies Record<string, string>;
 
 const EXPECTED_INDEX_DEFINITIONS = {
+  agent_sandbox_replacement_attempts_organization_idx: normalizeDefinition(`
+    CREATE INDEX agent_sandbox_replacement_attempts_organization_idx
+    ON agent_sandbox_replacement_attempts USING btree (organization_id)
+  `),
   agent_sandbox_replacement_attempts_active_agent_uidx: normalizeDefinition(`
     CREATE UNIQUE INDEX agent_sandbox_replacement_attempts_active_agent_uidx
     ON agent_sandbox_replacement_attempts USING btree (organization_id, agent_id)
@@ -218,7 +231,7 @@ async function apply(source: string, db: PGlite): Promise<void> {
   }
 }
 
-async function database(): Promise<PGlite> {
+async function database(migrationCount: number = migrationUrls.length): Promise<PGlite> {
   const db = new PGlite();
   databases.push(db);
   await db.exec(`
@@ -261,7 +274,9 @@ async function database(): Promise<PGlite> {
       '${DIGEST}'
     );
   `);
-  await apply(await Bun.file(migrationUrl).text(), db);
+  for (const migrationUrl of migrationUrls.slice(0, migrationCount)) {
+    await apply(await Bun.file(migrationUrl).text(), db);
+  }
   return db;
 }
 
@@ -350,18 +365,23 @@ afterEach(async () => {
   await Promise.all(databases.splice(0).map((db) => db.close()));
 });
 
-describe("0313 agent sandbox replacement attempts", () => {
-  test("is the journal tail and matches the merged schema surface", async () => {
+describe("0321-0328 agent sandbox replacement attempts", () => {
+  test("occupies one ordered journal range and matches the merged schema surface", async () => {
     const journal = (await Bun.file(journalUrl).json()) as {
       entries: Array<{ idx: number; tag: string }>;
     };
     expect(journal.entries.at(-1)).toMatchObject({
-      idx: 296,
-      tag: "0313_agent_sandbox_replacement_attempts",
+      idx: 311,
+      tag: "0328_agent_sandbox_replacement_attempt_state_guard",
     });
-    expect(
-      journal.entries.filter((entry) => entry.tag.includes("agent_sandbox_replacement_attempts")),
-    ).toHaveLength(1);
+    expect(journal.entries.slice(-8).map(({ tag }) => tag)).toEqual(
+      migrationUrls.map(({ pathname }) =>
+        pathname
+          .split("/")
+          .at(-1)
+          ?.replace(/\.sql$/, ""),
+      ),
+    );
 
     const db = await database();
     const schema = getTableConfig(agentSandboxReplacementAttempts);
@@ -460,9 +480,45 @@ describe("0313 agent sandbox replacement attempts", () => {
       ORDER BY tgname
     `);
     expect(triggers.rows.map(({ tgname }) => tgname)).toEqual([
-      "agent_sandbox_replacement_attempts_guard_row",
+      "agent_sandbox_replacement_attempts_guard_delete",
+      "agent_sandbox_replacement_attempts_guard_identity",
+      "agent_sandbox_replacement_attempts_guard_insert",
+      "agent_sandbox_replacement_attempts_guard_locator",
+      "agent_sandbox_replacement_attempts_guard_state",
       "agent_sandbox_replacement_attempts_guard_truncate",
     ]);
+  });
+
+  test("uses the owner index for a selective cascade lookup across retained history", async () => {
+    const db = await database(4);
+    const otherOrganizationId = "10000000-0000-4000-8000-000000000002";
+    await db.query("INSERT INTO organizations (id) VALUES ($1::uuid)", [otherOrganizationId]);
+    await db.query(
+      `INSERT INTO agent_sandbox_replacement_attempts (
+         id, organization_id, agent_id, operation_kind, lifecycle_revision,
+         activation_generation, state, cleanup_proven_at, cleanup_receipt_digest
+       )
+       SELECT
+         ('30000000-0000-4000-8000-' || lpad(series::text, 12, '0'))::uuid,
+         CASE WHEN series <= 50 THEN $1::uuid ELSE $2::uuid END,
+         ('20000000-0000-4000-8000-' || lpad(series::text, 12, '0'))::uuid,
+         'upgrade', 7,
+         ('40000000-0000-4000-8000-' || lpad(series::text, 12, '0'))::uuid,
+         'cleanup_proven', clock_timestamp(), repeat('a', 64)
+       FROM generate_series(1, 6000) AS series`,
+      [ORGANIZATION_ID, otherOrganizationId],
+    );
+    await db.exec("ANALYZE agent_sandbox_replacement_attempts");
+
+    const explained = await db.query<{ "QUERY PLAN": unknown }>(
+      `EXPLAIN (FORMAT JSON)
+       DELETE FROM agent_sandbox_replacement_attempts
+       WHERE organization_id = $1::uuid`,
+      [ORGANIZATION_ID],
+    );
+    expect(JSON.stringify(explained.rows)).toContain(
+      "agent_sandbox_replacement_attempts_organization_idx",
+    );
   });
 
   test("keeps unresolved effects globally fenced until exact cleanup", async () => {
