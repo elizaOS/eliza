@@ -102,6 +102,7 @@
 		"@biomejs/biome": "2.5.8",
 		"@types/fluent-ffmpeg": "^2.1.28",
 		"@types/node": "^25.0.3",
+		"@elizaos/plugin-sql": "workspace:*",
 		"@typescript/native": "npm:typescript@^7.0.2",
 		"typescript": "^6.0.3",
 		"vitest": "^4.1.10"

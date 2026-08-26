@@ -75,6 +75,15 @@ export interface InteractionServiceInternals {
 	getChannelType(channel: Channel): Promise<ChannelType>;
 	registerSlashCommands(commands: DiscordSlashCommand[]): Promise<void>;
 	refreshOwnerDiscordUserIds(client: DiscordClient): Promise<void>;
+	/**
+	 * Canonical membership evidence hook (#24365): publish the ready-path
+	 * roster snapshot for one guild into the MembershipService authority.
+	 * Optional so hosts without the service can omit it.
+	 */
+	publishGuildMembershipEvidence?(
+		accountId: string,
+		guild: import("discord.js").Guild,
+	): Promise<void>;
 }
 
 /**
@@ -725,6 +734,19 @@ export async function onReady(
 					[EventType.WORLD_CONNECTED],
 					standardizedData,
 				);
+
+				// Canonical membership evidence (#24365): publish the observable
+				// roster snapshot into the MembershipService authority. The
+				// optional facade hook keeps this path testable and lets hosts
+				// without the authority skip it silently.
+				if (typeof service.publishGuildMembershipEvidence === "function") {
+					try {
+						await service.publishGuildMembershipEvidence(accountId, fullGuild);
+					} catch {
+						// error-policy:J4 the hook already degrades internally; a
+						// throw here must not break world connection.
+					}
+				}
 			} catch (error) {
 				service.runtime.logger.error(
 					{
