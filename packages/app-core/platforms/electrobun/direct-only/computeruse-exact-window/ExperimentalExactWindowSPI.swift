@@ -44,18 +44,21 @@ final class ExperimentalExactWindowSPI {
     private static let setWindowLocationSymbol = "CGEventSetWindowLocation"
     private static let postEventRecordSymbol = "SLPSPostEventRecordTo"
     private static let getProcessForPIDSymbol = "GetProcessForPID"
+    private static let getAXWindowIdSymbol = "_AXUIElementGetWindow"
 
     private typealias PostToPidFunction = @convention(c) (pid_t, UnsafeMutableRawPointer?) -> Void
     private typealias SetIntegerFieldFunction = @convention(c) (UnsafeMutableRawPointer?, UInt32, Int64) -> Void
     private typealias SetWindowLocationFunction = @convention(c) (UnsafeMutableRawPointer?, Double, Double) -> Void
     private typealias PostEventRecordFunction = @convention(c) (UnsafeRawPointer?, UnsafePointer<UInt8>?) -> Int32
     private typealias GetProcessForPIDFunction = @convention(c) (pid_t, UnsafeMutableRawPointer?) -> Int32
+    private typealias GetAXWindowIdFunction = @convention(c) (AXUIElement, UnsafeMutablePointer<CGWindowID>) -> AXError
 
     private let postToPidFunction: PostToPidFunction?
     private let setIntegerFieldFunction: SetIntegerFieldFunction?
     private let setWindowLocationFunction: SetWindowLocationFunction?
     private let postEventRecordFunction: PostEventRecordFunction?
     private let getProcessForPIDFunction: GetProcessForPIDFunction?
+    private let getAXWindowIdFunction: GetAXWindowIdFunction?
     let capability: ExperimentalCapability
 
     private init() {
@@ -66,12 +69,14 @@ final class ExperimentalExactWindowSPI {
         setWindowLocationFunction = Self.resolve(framework, Self.setWindowLocationSymbol)
         postEventRecordFunction = Self.resolve(framework, Self.postEventRecordSymbol)
         getProcessForPIDFunction = Self.resolve(applicationServices, Self.getProcessForPIDSymbol)
+        getAXWindowIdFunction = Self.resolve(applicationServices, Self.getAXWindowIdSymbol)
         var missing: [String] = []
         if postToPidFunction == nil { missing.append(Self.postToPidSymbol) }
         if setIntegerFieldFunction == nil { missing.append(Self.setIntegerFieldSymbol) }
         if setWindowLocationFunction == nil { missing.append(Self.setWindowLocationSymbol) }
         if postEventRecordFunction == nil { missing.append(Self.postEventRecordSymbol) }
         if getProcessForPIDFunction == nil { missing.append(Self.getProcessForPIDSymbol) }
+        if getAXWindowIdFunction == nil { missing.append(Self.getAXWindowIdSymbol) }
         capability = ExperimentalCapability(
             minimumMacOSMet: ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 14,
             missingSymbols: missing
@@ -87,12 +92,20 @@ final class ExperimentalExactWindowSPI {
             throw ExperimentalExactWindowError.refused("Could not create a private event source")
         }
         guard let postToPidFunction else { throw unavailable() }
-        let preparedEvents = try recipe.map { step in
+        let gestureGroup = Int64(DispatchTime.now().uptimeNanoseconds % 1_000_000_000)
+        let preparedEvents = try experimentalGroupedRecipe(recipe, group: gestureGroup).map { grouped in
+            let step = grouped.step
             let point = step.pointKind == .target
                 ? (target.screenPoint, target.windowPoint)
                 : (CGPoint(x: -1, y: -1), CGPoint(x: -1, y: -1))
             let event = try makeEvent(step: step, source: source, screenPoint: point.0)
-            try stamp(event: event, target: target, windowPoint: point.1, step: step)
+            try stamp(
+                event: event,
+                target: target,
+                windowPoint: point.1,
+                step: step,
+                group: grouped.group
+            )
             return event
         }
         guard let pointerObservationBefore = CGEvent(source: nil) else {
@@ -100,33 +113,42 @@ final class ExperimentalExactWindowSPI {
         }
         let pointerBefore = pointerObservationBefore.location
         var preparedEventIndex = 0
-        try experimentalDispatchSequence(
-            recipe: recipe,
-            beginFocus: { try self.beginSyntheticTargetFocus(target: target) },
-            revalidate: {
-                try self.validate(target, elementValidation: .immutableIdentity)
-            },
-            post: { step in
-                let event = preparedEvents[preparedEventIndex]
-                preparedEventIndex += 1
-                postToPidFunction(target.pid, Unmanaged.passUnretained(event).toOpaque())
-                if step.delayMicroseconds > 0 { usleep(step.delayMicroseconds) }
-            },
-            endFocus: { try self.endSyntheticTargetFocus($0) }
-        )
-        guard let pointerObservationAfter = CGEvent(source: nil) else {
-            throw ExperimentalExactWindowError.refused("Physical pointer provenance is unavailable")
+        var mayHavePosted = false
+        do {
+            try experimentalDispatchSequence(
+                recipe: recipe,
+                beginFocus: { try self.beginSyntheticTargetFocus(target: target) },
+                revalidate: {
+                    try self.validate(target, elementValidation: .immutableIdentity)
+                },
+                post: { step in
+                    let event = preparedEvents[preparedEventIndex]
+                    preparedEventIndex += 1
+                    mayHavePosted = true
+                    postToPidFunction(target.pid, Unmanaged.passUnretained(event).toOpaque())
+                    if step.delayMicroseconds > 0 { usleep(step.delayMicroseconds) }
+                },
+                endFocus: { try self.endSyntheticTargetFocus($0) }
+            )
+            guard let pointerObservationAfter = CGEvent(source: nil) else {
+                throw ExperimentalExactWindowError.refused("Physical pointer provenance is unavailable")
+            }
+            let pointerAfter = pointerObservationAfter.location
+            guard pointerAfter == pointerBefore else {
+                throw ExperimentalExactWindowError.refused("Physical pointer moved during private dispatch")
+            }
+            return ExperimentalDispatchReceipt(
+                targetPid: target.pid,
+                targetWindowId: target.windowId,
+                pointerBefore: pointerBefore,
+                pointerAfter: pointerAfter
+            )
+        } catch {
+            throw ExperimentalExactWindowError.refused(
+                error.localizedDescription,
+                mayHavePosted: mayHavePosted || (error as? ExperimentalExactWindowError)?.mayHavePosted == true
+            )
         }
-        let pointerAfter = pointerObservationAfter.location
-        guard pointerAfter == pointerBefore else {
-            throw ExperimentalExactWindowError.refused("Physical pointer moved during private dispatch")
-        }
-        return ExperimentalDispatchReceipt(
-            targetPid: target.pid,
-            targetWindowId: target.windowId,
-            pointerBefore: pointerBefore,
-            pointerAfter: pointerAfter
-        )
     }
 
     private func validate(
@@ -182,24 +204,29 @@ final class ExperimentalExactWindowSPI {
             )
         }
         let app = AXUIElementCreateApplication(target.pid)
-        guard let focusedWindowValue = copyAttribute(
-            app,
-            kAXFocusedWindowAttribute as CFString
-        ), CFGetTypeID(focusedWindowValue) == AXUIElementGetTypeID() else {
+        guard let windows = copyAttribute(app, kAXWindowsAttribute as CFString) as? [AXUIElement],
+              let getAXWindowIdFunction else {
             throw ExperimentalExactWindowError.refused(
-                "The target accessibility window is unavailable after focus"
+                "The target accessibility windows are unavailable after focus"
             )
         }
-        let focusedWindow = focusedWindowValue as! AXUIElement
-        guard let focusedBounds = bounds(focusedWindow),
-              experimentalBoundsMatch(focusedBounds, target.expectedBounds, tolerance: 2)
+        let exactWindow = try experimentalSelectExactWindow(
+            windows,
+            expectedWindowId: target.windowId,
+            windowId: { window in
+                var windowId: CGWindowID = 0
+                return getAXWindowIdFunction(window, &windowId) == .success ? windowId : nil
+            }
+        )
+        guard let exactBounds = bounds(exactWindow),
+              experimentalBoundsMatch(exactBounds, target.expectedBounds, tolerance: 2)
         else {
             throw ExperimentalExactWindowError.refused(
                 "The target accessibility window changed after focus"
             )
         }
         let element = try resolveElement(
-            root: focusedWindow,
+            root: exactWindow,
             locator: target.expectedElement.locator
         )
         let matchesExpected = switch validation {
@@ -388,10 +415,10 @@ final class ExperimentalExactWindowSPI {
         event: CGEvent,
         target: ExperimentalTarget,
         windowPoint: CGPoint,
-        step: ExperimentalEventStep
+        step: ExperimentalEventStep,
+        group: Int64
     ) throws {
         let window = Int64(target.windowId)
-        let group = Int64(DispatchTime.now().uptimeNanoseconds % 1_000_000_000)
         try setInteger(event, field: 0, value: step.phase)
         try setInteger(event, field: 1, value: step.clickState)
         try setInteger(event, field: 3, value: 0)

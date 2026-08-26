@@ -2,6 +2,7 @@
 /** Proves focus-time identity swaps refuse and mutable post-down changes cannot strand a button. */
 
 import Darwin
+import CoreGraphics
 import Foundation
 
 private struct FixtureElement: Equatable {
@@ -15,6 +16,38 @@ struct FocusRevalidationFixture {
     static func main() {
         verifyFocusReplacementRefusesBeforePost()
         verifyMutableChangeAfterDownStillPostsRelease()
+        verifyExactWindowIdentityRejectsSibling()
+        verifyGestureUsesOneGroup()
+    }
+
+    private static func verifyExactWindowIdentityRejectsSibling() {
+        struct FixtureWindow { let id: CGWindowID; let label: String }
+        let windows = [
+            FixtureWindow(id: 17, label: "same-size sibling"),
+            FixtureWindow(id: 18, label: "approved exact window"),
+        ]
+        do {
+            let selected = try experimentalSelectExactWindow(
+                windows,
+                expectedWindowId: 18,
+                windowId: { $0.id }
+            )
+            guard selected.label == "approved exact window" else { exit(6) }
+            _ = try experimentalSelectExactWindow(
+                windows,
+                expectedWindowId: 19,
+                windowId: { $0.id }
+            )
+            exit(7)
+        } catch {
+            print("exact-window-id-rejects-sibling-and-missing-window")
+        }
+    }
+
+    private static func verifyGestureUsesOneGroup() {
+        let grouped = experimentalGroupedRecipe(matchedClickPair(), group: 4242)
+        guard Set(grouped.map(\.group)) == [4242] else { exit(8) }
+        print("matched-gesture-uses-one-group")
     }
 
     private static func matchedClickPair() -> [ExperimentalEventStep] {

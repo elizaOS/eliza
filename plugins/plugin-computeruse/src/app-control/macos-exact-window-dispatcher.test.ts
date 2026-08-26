@@ -304,7 +304,7 @@ describe("experimental exact-window helper adapter", () => {
     expect(commands).toEqual(["probe"]);
   });
 
-  it("rejects a malformed dispatch receipt at the native-process boundary", async () => {
+  it("marks a malformed post-dispatch receipt as potentially posted", async () => {
     const dispatcher = new MacosExperimentalExactWindowDispatcher({
       resolveHelper: () => "/fixture/computeruse-exact-window-helper",
       invokeHelper: async (_helper, request) =>
@@ -353,6 +353,11 @@ describe("experimental exact-window helper adapter", () => {
         },
         expectedWindowId: 99,
       }),
-    ).rejects.toThrow("invalid dispatch receipt");
+    ).resolves.toMatchObject({
+      success: false,
+      mayHavePosted: true,
+      error:
+        "Experimental exact-window helper returned an invalid dispatch receipt",
+    });
   });
 });

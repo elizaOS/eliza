@@ -9,6 +9,7 @@ import type {
   AppControlPermissionState,
   AppDescriptor,
   AppElement,
+  AppExactWindowDispatchResult,
   AppExactWindowPointerDispatcher,
   AppState,
   AppStateCapture,
@@ -102,6 +103,38 @@ function makeDiff(previous: AppState, next: AppState): AppState["diff"] {
 
 function sameValue(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function sameApprovedElement(
+  approved: NativeAppElement,
+  fresh: NativeAppElement,
+): boolean {
+  return sameValue(
+    {
+      locator: approved.locator,
+      role: approved.role,
+      subrole: approved.subrole,
+      label: approved.label,
+      value: approved.secure ? undefined : approved.value,
+      description: approved.description,
+      bounds: approved.bounds,
+      actions: [...approved.actions].sort(),
+      enabled: approved.enabled,
+      secure: approved.secure,
+    },
+    {
+      locator: fresh.locator,
+      role: fresh.role,
+      subrole: fresh.subrole,
+      label: fresh.label,
+      value: fresh.secure ? undefined : fresh.value,
+      description: fresh.description,
+      bounds: fresh.bounds,
+      actions: [...fresh.actions].sort(),
+      enabled: fresh.enabled,
+      secure: fresh.secure,
+    },
+  );
 }
 
 function isTargetOrDescendant(
@@ -301,8 +334,7 @@ export class AppControlCoordinator {
           stored.publicState.screenshotBounds,
         ) ||
         !freshElement ||
-        !sameValue(freshElement.locator, element.locator) ||
-        !sameValue(freshElement.bounds, element.bounds)
+        !sameApprovedElement(element, freshElement)
       ) {
         return {
           success: false,
@@ -350,16 +382,28 @@ export class AppControlCoordinator {
           targetBounds: freshElement.bounds,
         },
       });
-      const result = await this.exactWindowPointer.dispatch(
-        {
-          app: freshState.app,
-          state: freshState,
-          element: freshElement,
-          request,
-          expectedWindowId: freshState.focusedWindowId,
-        },
-        signal,
-      );
+      let result: AppExactWindowDispatchResult;
+      try {
+        result = await this.exactWindowPointer.dispatch(
+          {
+            app: freshState.app,
+            state: freshState,
+            element: freshElement,
+            request,
+            expectedWindowId: freshState.focusedWindowId,
+          },
+          signal,
+        );
+      } catch (error) {
+        // error-policy:J4 once native dispatch is invoked, timeout/process/wire
+        // failures cannot prove that the effect was not already posted.
+        return postedUnconfirmed({
+          code: "POST_DISPATCH_OUTCOME_UNKNOWN",
+          message:
+            "Experimental exact-window dispatch outcome is unknown after entering the native boundary",
+          cause: error instanceof Error ? error.message : String(error),
+        });
+      }
       let pointerAfter: { x: number; y: number };
       try {
         pointerAfter = await this.pointerObserver.position();
@@ -374,6 +418,14 @@ export class AppControlCoordinator {
         });
       }
       if (!result.success) {
+        if (result.mayHavePosted) {
+          return postedUnconfirmed({
+            code: "POST_DISPATCH_OUTCOME_UNKNOWN",
+            message:
+              "Experimental exact-window helper failed after native delivery may have begun",
+            ...(result.error ? { cause: result.error } : {}),
+          });
+        }
         return {
           success: false,
           error:

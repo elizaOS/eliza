@@ -69,6 +69,8 @@ test("native sequence refuses focus swaps and balances down/up across mutable AX
       [
         "focus-revalidation-refused-before-post",
         "mutable-change-after-down-posted-matched-up",
+        "exact-window-id-rejects-sibling-and-missing-window",
+        "matched-gesture-uses-one-group",
       ].join("\n"),
     );
   } finally {

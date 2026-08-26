@@ -16,7 +16,17 @@ const MAX_OUTPUT_BYTES = 1024 * 1024;
 interface HelperResponse<T> {
   ok: boolean;
   result?: T;
-  error?: { code?: string; message?: string };
+  error?: { code?: string; message?: string; mayHavePosted?: boolean };
+}
+
+class ExperimentalHelperInvocationError extends Error {
+  constructor(
+    message: string,
+    readonly mayHavePosted: boolean,
+  ) {
+    super(message);
+    this.name = "ExperimentalHelperInvocationError";
+  }
 }
 
 interface ProbeResult {
@@ -99,6 +109,9 @@ export function parseExperimentalExactWindowDispatchResult(
     pointerBefore: value.pointerBefore,
     pointerAfter: value.pointerAfter,
     ...(typeof value.error === "string" ? { error: value.error } : {}),
+    ...(typeof value.mayHavePosted === "boolean"
+      ? { mayHavePosted: value.mayHavePosted }
+      : {}),
   };
 }
 
@@ -198,10 +211,11 @@ async function invokeHelper<T>(
         ) as HelperResponse<T>;
         if (!response.ok || response.result === undefined) {
           finish(
-            new Error(
+            new ExperimentalHelperInvocationError(
               response.error?.message ??
                 response.error?.code ??
                 "Experimental exact-window helper refused",
+              response.error?.mayHavePosted === true,
             ),
           );
           return;
@@ -276,46 +290,75 @@ export class MacosExperimentalExactWindowDispatcher
       x: targetBounds.x + targetBounds.width / 2,
       y: targetBounds.y + targetBounds.height / 2,
     };
-    const result = await this.dependencies.invokeHelper(
-      helper,
-      {
-        command: "dispatch",
-        experimental: true,
+    let result: unknown;
+    try {
+      result = await this.dependencies.invokeHelper(
+        helper,
+        {
+          command: "dispatch",
+          experimental: true,
+          route: ROUTE,
+          observationId: input.state.stateId,
+          action: input.request.kind,
+          pid: input.app.pid,
+          windowId: input.expectedWindowId,
+          screenPoint,
+          windowPoint: {
+            x: screenPoint.x - windowBounds.x,
+            y: screenPoint.y - windowBounds.y,
+          },
+          expectedWindowBounds: windowBounds,
+          expectedElement: {
+            locator: [...input.element.locator],
+            role: input.element.role,
+            subrole: input.element.subrole ?? null,
+            label: input.element.label ?? null,
+            value: input.element.value ?? null,
+            description: input.element.description ?? null,
+            bounds: targetBounds,
+            actions: [...input.element.actions],
+            enabled: input.element.enabled,
+            focused: input.element.focused,
+            selected: input.element.selected ?? null,
+            secure: input.element.secure,
+          },
+          direction: input.request.direction,
+          amount: input.request.amount,
+        },
+        signal,
+      );
+    } catch (error) {
+      return {
+        success: false,
+        mayHavePosted:
+          error instanceof ExperimentalHelperInvocationError
+            ? error.mayHavePosted
+            : true,
         route: ROUTE,
         observationId: input.state.stateId,
-        action: input.request.kind,
-        pid: input.app.pid,
-        windowId: input.expectedWindowId,
-        screenPoint,
-        windowPoint: {
-          x: screenPoint.x - windowBounds.x,
-          y: screenPoint.y - windowBounds.y,
-        },
-        expectedWindowBounds: windowBounds,
-        expectedElement: {
-          locator: [...input.element.locator],
-          role: input.element.role,
-          subrole: input.element.subrole ?? null,
-          label: input.element.label ?? null,
-          value: input.element.value ?? null,
-          description: input.element.description ?? null,
-          bounds: targetBounds,
-          actions: [...input.element.actions],
-          enabled: input.element.enabled,
-          focused: input.element.focused,
-          selected: input.element.selected ?? null,
-          secure: input.element.secure,
-        },
-        direction: input.request.direction,
-        amount: input.request.amount,
-      },
-      signal,
-    );
+        targetPid: input.app.pid,
+        targetWindowId: input.expectedWindowId,
+        targetWindowBounds: windowBounds,
+        pointerBefore: { x: 0, y: 0 },
+        pointerAfter: { x: 0, y: 0 },
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
     const parsedResult = parseExperimentalExactWindowDispatchResult(result);
     if (!parsedResult) {
-      throw new Error(
-        "Experimental exact-window helper returned an invalid dispatch receipt",
-      );
+      return {
+        success: false,
+        mayHavePosted: true,
+        route: ROUTE,
+        observationId: input.state.stateId,
+        targetPid: input.app.pid,
+        targetWindowId: input.expectedWindowId,
+        targetWindowBounds: windowBounds,
+        pointerBefore: { x: 0, y: 0 },
+        pointerAfter: { x: 0, y: 0 },
+        error:
+          "Experimental exact-window helper returned an invalid dispatch receipt",
+      };
     }
     return parsedResult;
   }

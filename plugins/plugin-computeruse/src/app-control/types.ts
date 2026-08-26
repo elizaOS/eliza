@@ -117,6 +117,8 @@ export type AppActionExecutionMode =
 
 export interface AppExactWindowDispatchResult {
   success: boolean;
+  /** True when native delivery may have crossed the side-effect boundary. */
+  mayHavePosted?: boolean;
   route: "experimental_direct_exact_window";
   observationId: string;
   targetPid: number;
@@ -163,6 +165,7 @@ export interface AppActionReceipt {
     code:
       | "POST_DISPATCH_POINTER_UNAVAILABLE"
       | "POST_DISPATCH_POINTER_CHANGED"
+      | "POST_DISPATCH_OUTCOME_UNKNOWN"
       | "POST_DISPATCH_RECEIPT_UNVERIFIED"
       | "POST_DISPATCH_STATE_UNAVAILABLE"
       | "POST_DISPATCH_TARGET_UNCONFIRMED";

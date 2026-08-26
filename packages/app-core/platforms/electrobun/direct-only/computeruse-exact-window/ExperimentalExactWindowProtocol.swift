@@ -58,6 +58,32 @@ func experimentalDispatchResultDictionary(
     ]
 }
 
+struct ExperimentalGroupedEventStep {
+    let step: ExperimentalEventStep
+    let group: Int64
+}
+
+func experimentalGroupedRecipe(
+    _ recipe: [ExperimentalEventStep],
+    group: Int64
+) -> [ExperimentalGroupedEventStep] {
+    recipe.map { ExperimentalGroupedEventStep(step: $0, group: group) }
+}
+
+func experimentalSelectExactWindow<Window>(
+    _ windows: [Window],
+    expectedWindowId: CGWindowID,
+    windowId: (Window) -> CGWindowID?
+) throws -> Window {
+    let matches = windows.filter { windowId($0) == expectedWindowId }
+    guard matches.count == 1, let match = matches.first else {
+        throw ExperimentalExactWindowError.refused(
+            "The exact accessibility window identity is unavailable or ambiguous"
+        )
+    }
+    return match
+}
+
 struct ExperimentalElementFingerprint: Decodable {
     let locator: [Int]
     let role: String
@@ -139,11 +165,17 @@ struct ExperimentalEventStep: Equatable {
 }
 
 enum ExperimentalExactWindowError: Error, LocalizedError {
-    case refused(String)
+    case refused(String, mayHavePosted: Bool = false)
+
+    var mayHavePosted: Bool {
+        switch self {
+        case let .refused(_, mayHavePosted): mayHavePosted
+        }
+    }
 
     var errorDescription: String? {
         switch self {
-        case let .refused(message): message
+        case let .refused(message, _): message
         }
     }
 }

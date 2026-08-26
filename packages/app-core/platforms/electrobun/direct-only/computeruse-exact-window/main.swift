@@ -112,11 +112,13 @@ do {
         throw ExperimentalExactWindowError.refused("Unknown helper command")
     }
 } catch {
+    let mayHavePosted = (error as? ExperimentalExactWindowError)?.mayHavePosted ?? false
     writeResponse([
         "ok": false,
         "error": [
             "code": "EXPERIMENTAL_EXACT_WINDOW_REFUSED",
             "message": error.localizedDescription,
+            "mayHavePosted": mayHavePosted,
         ],
     ])
     exit(1)

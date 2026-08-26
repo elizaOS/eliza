@@ -286,6 +286,96 @@ describe("AppControlCoordinator", () => {
     expect(dispatch).not.toHaveBeenCalled();
   });
 
+  it("refuses same-locator and same-bounds element substitutions before dispatch", async () => {
+    const dispatch = vi.fn();
+    const replaced = nativeSnapshot("Delete everything");
+    const replacedElement = replaced.elements[0];
+    if (!replacedElement) throw new Error("fixture target is required");
+    replacedElement.actions = ["AXDelete"];
+    replacedElement.value = "destructive replacement";
+    const snapshots = [nativeSnapshot(), replaced];
+    for (const snapshot of snapshots) snapshot.focusedWindowId = 17;
+    const { coordinator } = fixture({
+      snapshots,
+      exactWindowPointer: { available: () => true, dispatch },
+      performSuccess: false,
+    });
+    const before = await coordinator.getAppState(app.id);
+    const outcome = await coordinator.act(
+      action(before.stateId, { allowExperimentalExactWindow: true }),
+    );
+    expect(outcome.success).toBe(false);
+    expect(outcome.error).toContain("changed during pre-dispatch recapture");
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("returns posted-unconfirmed when native dispatch throws after entry", async () => {
+    const snapshots = [nativeSnapshot(), nativeSnapshot()];
+    for (const snapshot of snapshots) snapshot.focusedWindowId = 17;
+    const { coordinator } = fixture({
+      snapshots,
+      exactWindowPointer: {
+        available: () => true,
+        dispatch: vi.fn(async () => {
+          throw new Error("native helper timed out");
+        }),
+      },
+      performSuccess: false,
+    });
+    const before = await coordinator.getAppState(app.id);
+    const outcome = await coordinator.act(
+      action(before.stateId, { allowExperimentalExactWindow: true }),
+    );
+    expect(outcome).toMatchObject({
+      success: true,
+      receipt: {
+        effectStatus: "posted_unconfirmed",
+        effectDiagnostic: {
+          code: "POST_DISPATCH_OUTCOME_UNKNOWN",
+          cause: "native helper timed out",
+        },
+      },
+    });
+  });
+
+  it("returns posted-unconfirmed for a helper error after posting", async () => {
+    const snapshots = [nativeSnapshot(), nativeSnapshot()];
+    for (const snapshot of snapshots) snapshot.focusedWindowId = 17;
+    const { coordinator } = fixture({
+      snapshots,
+      exactWindowPointer: {
+        available: () => true,
+        dispatch: vi.fn(async (input) => ({
+          success: false,
+          mayHavePosted: true,
+          route: "experimental_direct_exact_window" as const,
+          observationId: input.state.stateId,
+          targetPid: app.pid,
+          targetWindowId: 17,
+          targetWindowBounds: { x: 100, y: 200, width: 800, height: 600 },
+          pointerBefore: { x: 10, y: 20 },
+          pointerAfter: { x: 10, y: 20 },
+          error: "focus teardown failed",
+        })),
+      },
+      performSuccess: false,
+    });
+    const before = await coordinator.getAppState(app.id);
+    const outcome = await coordinator.act(
+      action(before.stateId, { allowExperimentalExactWindow: true }),
+    );
+    expect(outcome).toMatchObject({
+      success: true,
+      receipt: {
+        effectStatus: "posted_unconfirmed",
+        effectDiagnostic: {
+          code: "POST_DISPATCH_OUTCOME_UNKNOWN",
+          cause: "focus teardown failed",
+        },
+      },
+    });
+  });
+
   it("requires independent cursor provenance before exact-window dispatch", async () => {
     const dispatch = vi.fn();
     const snapshots = [nativeSnapshot(), nativeSnapshot()];
