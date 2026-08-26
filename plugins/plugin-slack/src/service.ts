@@ -2089,7 +2089,9 @@ export class SlackService extends Service implements ISlackService {
     accountId = this.defaultAccountId,
   ): Promise<void> {
     if (event.user === this.getBotUserIdForAccount(accountId)) {
+      // The bot leaving only updates admission state; no participant removal.
       this.getPolicyForAccount(accountId)?.registerBotLeave(event.channel);
+      return;
     }
 
     await this.runtime.emitEvent(
@@ -2097,9 +2099,6 @@ export class SlackService extends Service implements ISlackService {
       this.buildMemberEventPayload(event, accountId),
     );
 
-    if (event.user === this.getBotUserIdForAccount(accountId)) {
-      return;
-    }
     // Leaving one channel never deactivates the workspace entity; only the
     // room participation for this channel is dropped.
     try {
@@ -2169,25 +2168,22 @@ export class SlackService extends Service implements ISlackService {
           inviterId: event.inviter,
           eventTs: event.event_ts,
         },
-        ...(roomId ? { roomId } : {}),
         ...(worldId ? { worldId } : {}),
+        roomId,
       },
     } as EventPayload;
   }
 
-  /** Synchronous roomId derivation for payloads (same keying as getRoomId). */
-  private getRoomIdSync(
-    channelId: string,
-    accountId: string,
-  ): UUID | undefined {
-    try {
-      return createUniqueUuid(
-        this.runtime,
-        this.scopedSlackKey("slack-room", channelId, accountId),
-      );
-    } catch {
-      return undefined;
-    }
+  /**
+   * Synchronous roomId derivation for payloads (same keying as getRoomId).
+   * `createUniqueUuid` is a pure string hash and cannot throw; no error
+   * path exists to catch.
+   */
+  private getRoomIdSync(channelId: string, accountId: string): UUID {
+    return createUniqueUuid(
+      this.runtime,
+      this.scopedSlackKey("slack-room", channelId, accountId),
+    );
   }
 
   /**
@@ -3370,11 +3366,13 @@ export class SlackService extends Service implements ISlackService {
       (typeof metadata?.threadTs === "string" ? metadata.threadTs : undefined);
     const channel = await this.getChannel(channelId, accountId);
 
-    // Thread inheritance contract: historyScope selects which transcript the
-    // thread room reads ("thread" reads only the thread; "channel" reads the
-    // parent channel), and inheritParent additionally injects the parent
-    // channel transcript ahead of thread history. Defaults preserve the
-    // existing thread-only behavior until the account opts in.
+    // Thread inheritance contract. All transcripts are newest-first from
+    // Slack; the final reverse below yields oldest-first. When both options
+    // are set, historyScope=channel takes precedence and inheritParent is
+    // ignored — the channel transcript already contains the thread parent.
+    // inheritParent concatenates channel + thread transcripts (not splicing
+    // the thread into the channel timeline, which Slack APIs cannot order
+    // reliably) so both are present in chronological order.
     const threadConfig =
       this.getAccountState(accountId)?.account.config.thread ?? {};
     const historyScope = threadConfig.historyScope ?? "thread";
@@ -3383,15 +3381,25 @@ export class SlackService extends Service implements ISlackService {
     if (threadTs && historyScope === "channel") {
       rawMessages = await this.readHistory(channelId, undefined, accountId);
     } else if (threadTs && inheritParent) {
-      rawMessages = [
-        ...(await this.readHistory(channelId, undefined, accountId)),
-        ...(await this.readThreadReplies(
-          channelId,
-          threadTs,
-          undefined,
-          accountId,
-        )),
-      ];
+      const channelTranscript = await this.readHistory(
+        channelId,
+        undefined,
+        accountId,
+      );
+      const threadTranscript = await this.readThreadReplies(
+        channelId,
+        threadTs,
+        undefined,
+        accountId,
+      );
+      // Both transcripts are newest-first. Sort by Slack ts descending so
+      // the single reverse below yields one chronological oldest-first
+      // sequence across channel and thread messages.
+      rawMessages = [...channelTranscript, ...threadTranscript].sort(
+        (a, b) =>
+          Number((b as SlackMessage).ts ?? 0) -
+          Number((a as SlackMessage).ts ?? 0),
+      );
     } else if (threadTs) {
       rawMessages = await this.readThreadReplies(
         channelId,

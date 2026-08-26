@@ -5,7 +5,7 @@
  * room participant, and inbound messages renew the sender's connection.
  * The Bolt app and WebClient are mocked; the SlackService under test is real.
  */
-import { type IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { projectConnectorSettings } from "../../../packages/agent/src/runtime/project-connector-settings";
 
@@ -78,6 +78,13 @@ function createAppRecord() {
         body?: unknown;
       }) => Promise<void>
     >(),
+    messageHandler: undefined as
+      | ((args: {
+          message: unknown;
+          client: unknown;
+          body?: unknown;
+        }) => Promise<void>)
+      | undefined,
     client,
   };
 }
@@ -92,7 +99,15 @@ vi.mock("@slack/bolt", () => ({
       apps.push(this.record);
     }
 
-    message() {}
+    message(
+      handler: (args: {
+        message: unknown;
+        client: unknown;
+        body?: unknown;
+      }) => Promise<void>,
+    ) {
+      this.record.messageHandler = handler;
+    }
 
     event(
       name: string,
@@ -304,6 +319,64 @@ describe("SlackService membership events", () => {
     expect(runtime.removeParticipant).toHaveBeenCalledTimes(1);
     expect(runtime.createEntity).not.toHaveBeenCalled();
   });
+
+  it("an inbound message from an existing sender renews room participation", async () => {
+    // requireMention=false so the message path itself (not app_mention)
+    // processes the message; the sender's entity already exists (e.g.
+    // rejoined after leaving the room) — renewal must still run so
+    // participation is re-linked.
+    const { app, runtime } = await startHarness({
+      channels: { ops: { users: [ALICE], requireMention: false } },
+    });
+    const handler = app.messageHandler;
+    expect(handler).toBeDefined();
+    (runtime.getEntityById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "existing",
+      names: ["alice"],
+    });
+    await handler?.({
+      message: {
+        type: "message",
+        user: ALICE,
+        channel: OPS,
+        text: "hello from alice",
+        ts: "1700000000.000700",
+      },
+      client: app.client,
+      body: memberEventBody({
+        user: ALICE,
+        channel: OPS,
+        event_ts: "1700000000.000700",
+      }),
+    });
+    expect(runtime.ensureConnection).toHaveBeenCalled();
+  });
+
+  it("an app mention from an existing sender renews room participation", async () => {
+    const { app, runtime } = await startHarness();
+    const handler = app.eventHandlers.get("app_mention");
+    expect(handler).toBeDefined();
+    (runtime.getEntityById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "existing",
+      names: ["alice"],
+    });
+    await handler?.({
+      event: {
+        type: "app_mention",
+        user: ALICE,
+        channel: OPS,
+        text: "<@U0BOTBOT0> hello",
+        ts: "1700000000.000800",
+      },
+      client: app.client,
+      body: memberEventBody({
+        user: ALICE,
+        channel: OPS,
+        event_ts: "1700000000.000800",
+      }),
+    });
+    expect(runtime.ensureConnection).toHaveBeenCalled();
+  });
 });
 
 describe("SlackService membership snapshots", () => {
@@ -340,16 +413,58 @@ describe("SlackService membership snapshots", () => {
 
   it("getChannelMembership maps missing scope to unavailable, not empty", async () => {
     const { app, service } = await startHarness();
-    const scopeError = new Error("missing_scope") as Error & {
-      data?: { code?: string };
+    // Real @slack/web-api platform-error shape: SDK class in `code`, Slack
+    // error name in `data.error` (verified against
+    // platformErrorFromResult in @slack/web-api/dist/errors.js).
+    const scopeError = new Error(
+      "An API error occurred: missing_scope",
+    ) as unknown as {
+      code: string;
+      data: { error: string };
     };
-    scopeError.data = { code: "missing_scope" };
+    scopeError.code = "slack_webapi_platform_error";
+    scopeError.data = { error: "missing_scope" };
     const members = vi.fn().mockRejectedValue(scopeError);
     (app.client.conversations as { members: typeof members }).members = members;
     const result = await service.getChannelMembership(OPS);
     expect(result.kind).toBe("unavailable");
     if (result.kind !== "unavailable") return;
     expect(result.reason).toBe("missing_scope");
+    expect(result.slackErrorCode).toBe("missing_scope");
+  });
+
+  it("getChannelMembership maps a rate-limited platform error with the real SDK shape", async () => {
+    const { app, service } = await startHarness();
+    const rateError = new Error("A rate-limit has been reached") as unknown as {
+      code: string;
+      data: { error: string };
+    };
+    rateError.code = "slack_webapi_rate_limited_error";
+    rateError.data = { error: "ratelimited" };
+    const members = vi.fn().mockRejectedValue(rateError);
+    (app.client.conversations as { members: typeof members }).members = members;
+    const result = await service.getChannelMembership(OPS);
+    expect(result.kind).toBe("unavailable");
+    if (result.kind !== "unavailable") return;
+    expect(result.reason).toBe("rate_limited");
+  });
+
+  it("getChannelMembership treats a present-but-non-string cursor as malformed, not complete", async () => {
+    const { app, service } = await startHarness();
+    const members = vi
+      .fn()
+      .mockResolvedValueOnce({
+        members: [ALICE],
+        response_metadata: { next_cursor: 12345 },
+      })
+      .mockResolvedValueOnce({ members: [BOB] });
+    (app.client.conversations as { members: typeof members }).members = members;
+    const result = await service.getChannelMembership(OPS);
+    expect(result.kind).toBe("unavailable");
+    if (result.kind !== "unavailable") return;
+    expect(result.reason).toBe("malformed_response");
+    // The partial roster must never be reported as a snapshot.
+    expect(members).toHaveBeenCalledTimes(1);
   });
 
   it("renewChannelMembership ensures connections for every snapshot member", async () => {
@@ -359,6 +474,39 @@ describe("SlackService membership snapshots", () => {
     const result = await service.renewChannelMembership(OPS);
     expect(result.kind).toBe("snapshot");
     expect(runtime.ensureConnection).toHaveBeenCalledTimes(2);
+  });
+
+  it("membership evidence is scoped per account: entity/room ids differ across accounts", async () => {
+    // Two accounts admit the same channel id; the derived runtime ids and
+    // the clients used must be account-scoped, never shared.
+    const { app, runtime, service } = await startHarness({
+      accounts: {
+        team: {
+          botToken: "xoxb-team",
+          appToken: "xapp-team",
+          groupPolicy: "allowlist",
+          channels: { ops: { users: [ALICE] } },
+        },
+      },
+    });
+    const secondAccountApp = apps.at(-1);
+    expect(secondAccountApp).toBeDefined();
+    const members = vi.fn().mockResolvedValue({ members: [ALICE] });
+    (
+      (secondAccountApp ?? app).client.conversations as {
+        members: typeof members;
+      }
+    ).members = members;
+    const result = await service.renewChannelMembership(OPS, "team");
+    expect(result.kind).toBe("snapshot");
+    // The connection was ensured with the team account's scoped ids.
+    const call = (
+      runtime.ensureConnection as ReturnType<typeof vi.fn>
+    ).mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(String(call.entityId)).not.toBe("");
+    expect(members).toHaveBeenCalledWith(
+      expect.objectContaining({ channel: OPS }),
+    );
   });
 });
 
@@ -406,12 +554,26 @@ describe("thread inheritance in chat context", () => {
     ]);
   });
 
-  it("inheritParent injects the parent transcript ahead of thread history", async () => {
+  it("inheritParent presents channel and thread transcripts chronologically", async () => {
     const { app, result } = await chatContextHarness({ inheritParent: true });
     expect(app.client.conversations.history).toHaveBeenCalledTimes(1);
     expect(app.client.conversations.replies).toHaveBeenCalledTimes(1);
+    // Both transcripts are newest-first from Slack and reversed together:
+    // the earlier channel message precedes the later thread reply.
     expect(result?.recentMessages.map((m) => m.text)).toEqual([
+      "channel message",
       "thread reply",
+    ]);
+  });
+
+  it("historyScope channel takes precedence over inheritParent", async () => {
+    const { app, result } = await chatContextHarness({
+      historyScope: "channel",
+      inheritParent: true,
+    });
+    expect(app.client.conversations.history).toHaveBeenCalledTimes(1);
+    expect(app.client.conversations.replies).not.toHaveBeenCalled();
+    expect(result?.recentMessages.map((m) => m.text)).toEqual([
       "channel message",
     ]);
   });
