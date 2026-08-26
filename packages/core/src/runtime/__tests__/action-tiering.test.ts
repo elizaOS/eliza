@@ -704,6 +704,88 @@ describe("action tiering", () => {
 		});
 	});
 
+	// Live regression tj-b9221945087bea (2026-08-26 06:19 UTC): "nubilio what
+	// tasks have you done today? quick recap pls" routed contexts=["tasks"]
+	// with Stage-1 candidates [OWNER_TASKS_RECAP, VIEWS]. Retrieval expanded
+	// the RECAP-stem family and exact-scored CHANNEL_RECAP and TASKS at 1.0,
+	// but the tiering narrow's candidate set skipped the same expansion (the
+	// TASKS token tripped candidateNamespaceParentExists before the curated
+	// family was consulted), matched no parent, and the contextual-override
+	// carve-out collapsed the whole surface to PAGE_DELEGATE — the planner's
+	// tool list was [PAGE_DELEGATE, REPLY, IGNORE, STOP] for a recap ask.
+	it("keeps the curated recap family on the surface when a namespaced Stage-1 invention names it (live tasks-recap shape)", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "PAGE_DELEGATE",
+				description:
+					"Owner-only main-chat parent action. Routes a request to a child action under one of the page contexts.",
+				similes: ["OWNER_TOOLS", "PERSONAL_ASSISTANT_ACTIONS"],
+				contexts: ["general", "tasks", "browser", "wallet"],
+			},
+			{
+				name: "TASKS",
+				description:
+					"Coding and agent-orchestration umbrella: spawn, monitor, and recap tracked agent tasks.",
+				contexts: ["code", "automation"],
+			},
+			{
+				name: "CHANNEL_RECAP",
+				description:
+					"Read back the recent message history of the current room so the reply can summarize or recap it.",
+				similes: ["ROOM_HISTORY", "SUMMARIZE_CHAT", "RECAP_CHANNEL"],
+				contexts: ["general"],
+			},
+			{
+				name: "TRIGGER",
+				description: "Schedule reminders and recurring triggers.",
+				contexts: ["automation", "tasks"],
+			},
+			{
+				name: "WORKFLOW",
+				description: "Create and manage automation workflows.",
+				contexts: ["automation", "tasks"],
+			},
+			{
+				name: "WEB_SEARCH",
+				description: "Search the web for current information.",
+			},
+		]);
+		const retrieval = retrieveActions({
+			catalog,
+			messageText: "nubilio what tasks have you done today? quick recap pls",
+			candidateActions: ["OWNER_TASKS_RECAP", "VIEWS"],
+			selectedContexts: ["tasks"],
+		});
+
+		// The curated RECAP-stem family must exact-hint both owners in
+		// retrieval (this half already worked live).
+		const channelRecap = retrieval.results.find(
+			(result) => result.name === "CHANNEL_RECAP",
+		);
+		const tasks = retrieval.results.find((result) => result.name === "TASKS");
+		expect(channelRecap?.stageScores.exact).toBe(1);
+		expect(tasks?.stageScores.exact).toBe(1);
+
+		const surface = tierActionResults({
+			catalog,
+			results: retrieval.results,
+			narrowToCandidateActions: ["OWNER_TASKS_RECAP", "VIEWS"],
+			queryTokens: retrieval.query.tokens,
+		});
+
+		// The narrow must honor the same curated family: the recap owners stay
+		// in tier-A instead of being demoted as off-route.
+		expect(surface.sortedTierAParentNames).toEqual(
+			expect.arrayContaining(["CHANNEL_RECAP", "TASKS"]),
+		);
+		expect(surface.exposedActionNames).toEqual(
+			expect.arrayContaining(["CHANNEL_RECAP", "TASKS"]),
+		);
+		// The live failure shape — surface collapsed to the contextual
+		// override alone — must not come back.
+		expect(surface.sortedTierAParentNames).not.toEqual(["PAGE_DELEGATE"]);
+	});
+
 	it("creates deterministic hashes from sorted parent sets", () => {
 		const left = stableActionSurfaceHash({
 			protocolActions: ["REPLY", "IGNORE", "STOP", "CONTINUE"],

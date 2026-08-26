@@ -14,6 +14,7 @@ import {
 import {
 	type ActionRetrievalResult,
 	candidateNamespaceParentExists,
+	explicitParentAliasesForCandidateAction,
 	parentAliasesForCandidateAction,
 	tokenizeActionSearchText,
 } from "./action-retrieval";
@@ -623,6 +624,36 @@ function normalizeCandidateSet(
 		const normalized = normalizeActionName(value);
 		if (normalized) {
 			set.add(normalized);
+			// Alias expansion mirrors retrieveActions' hint precedence exactly —
+			// the two must stay in lockstep or a candidate can exact-score a
+			// parent in retrieval that this narrow then demotes as off-route.
+			// 1) A candidate that IS a registered catalog parent stands alone:
+			//    its canonical fallback aliases (the OWNER_* rows) exist only
+			//    for topologies where the parent is absent.
+			if (parents.some((parent) => parent.normalizedName === normalized)) {
+				continue;
+			}
+			// 2) The curated explicit alias families expand BEFORE the
+			//    namespace guard. The guard exists to stop the WEAK
+			//    surface-shape heuristics from hijacking namespaced candidates,
+			//    never to cancel the curated table (live tj-b9221945087bea:
+			//    OWNER_TASKS_RECAP exact-hinted CHANNEL_RECAP/TASKS in
+			//    retrieval, but this narrow skipped the family because the
+			//    TASKS token tripped the namespace guard, matched nothing, and
+			//    the contextual-override carve-out collapsed the surface to
+			//    PAGE_DELEGATE alone).
+			const explicitAliases =
+				explicitParentAliasesForCandidateAction(normalized);
+			if (explicitAliases.length > 0) {
+				for (const alias of explicitAliases) {
+					const normalizedAlias = normalizeActionName(alias);
+					if (normalizedAlias) {
+						set.add(normalizedAlias);
+					}
+				}
+				continue;
+			}
+			// 3) The namespace guard gates only the weak fallback aliases.
 			if (candidateNamespaceParentExists(parents, normalized)) {
 				continue;
 			}
