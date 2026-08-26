@@ -152,8 +152,16 @@ export function verifyRestoreCapability(
   signingKey: string,
   nowEpochMs: number,
 ): RestoreCapability {
-  const expected = hmacHex(signingKey, cap.payload);
-  const a = Buffer.from(cap.signature, "utf-8");
+  // All authoritative fields derive from the SIGNED payload bytes, not from
+  // the mutable object fields: the signature authenticates cap.payload, so
+  // the envelope is re-parsed from those exact bytes and every semantic
+  // check below runs on the authenticated values. A caller who mutates a
+  // field without re-signing is caught here (#23453 review).
+  const fromSignedBytes = parseRestoreCapability(
+    serializeRestoreCapability(cap),
+  );
+  const expected = hmacHex(signingKey, fromSignedBytes.payload);
+  const a = Buffer.from(fromSignedBytes.signature, "utf-8");
   const b = Buffer.from(expected, "utf-8");
   if (a.length !== b.length || !timingSafeEqual(a, b)) {
     throw new RestoreCapabilityError(
@@ -161,29 +169,45 @@ export function verifyRestoreCapability(
       "restore capability signature does not verify",
     );
   }
+  if (
+    !Number.isSafeInteger(fromSignedBytes.issuedAtEpochMs) ||
+    !Number.isSafeInteger(fromSignedBytes.expiresAtEpochMs) ||
+    fromSignedBytes.issuedAtEpochMs > fromSignedBytes.expiresAtEpochMs
+  ) {
+    throw new RestoreCapabilityError(
+      "INVALID_CAPABILITY",
+      "capability timestamps are not sane epoch milliseconds",
+    );
+  }
   // The lifetime ceiling is proven from the SIGNED bytes, not trusted from
   // the envelope: a holder of the signing key cannot re-sign a grant whose
   // expiresAt−issuedAt span exceeds the ceiling, and a re-mint resets
   // issuedAt so the effective window always starts at minting time.
-  if (cap.expiresAtEpochMs - cap.issuedAtEpochMs > MAX_CAPABILITY_TTL_MS) {
+  if (
+    fromSignedBytes.expiresAtEpochMs - fromSignedBytes.issuedAtEpochMs >
+    MAX_CAPABILITY_TTL_MS
+  ) {
     throw new RestoreCapabilityError(
       "INVALID_CAPABILITY",
       `signed capability lifetime exceeds the ${MAX_CAPABILITY_TTL_MS}ms ceiling`,
     );
   }
-  if (cap.issuedAtEpochMs > nowEpochMs + METADATA_FRESHNESS_WINDOW_MS) {
+  if (
+    fromSignedBytes.issuedAtEpochMs >
+    nowEpochMs + METADATA_FRESHNESS_WINDOW_MS
+  ) {
     throw new RestoreCapabilityError(
       "INVALID_CAPABILITY",
       "capability issuedAt is in the future beyond the freshness window",
     );
   }
-  if (cap.expiresAtEpochMs <= nowEpochMs) {
+  if (fromSignedBytes.expiresAtEpochMs <= nowEpochMs) {
     throw new RestoreCapabilityError(
       "CAPABILITY_EXPIRED",
       "restore capability has expired",
     );
   }
-  return cap;
+  return fromSignedBytes;
 }
 
 export function newNonce(): string {

@@ -319,14 +319,14 @@ describe.if(ENABLED)(
         try {
           execSync("pkill -f drill-pgbouncer || true");
         } catch {
-          // pgbouncer may already have exited
+          // error-policy:J6 pgbouncer may already have exited.
         }
       }
       for (const fn of cleanups) {
         try {
           fn();
         } catch {
-          // best-effort temp cleanup
+          // error-policy:J6 best-effort temp cleanup.
         }
       }
       try {
@@ -334,7 +334,7 @@ describe.if(ENABLED)(
         await admin.query(`ALTER SYSTEM RESET eliza.restore_capability`);
         await admin.query(`SELECT pg_reload_conf()`);
       } catch {
-        // settings may already be reset by the drill's consume step
+        // error-policy:J6 settings may already be reset by the drill's consume step.
       }
       await admin.end();
     });
@@ -607,6 +607,66 @@ describe.if(ENABLED)(
         code = (error as { code?: string }).code ?? "";
       }
       expect(code).toBe("REFUSED_TARGET_AUTHORITY");
+    });
+
+    test("fresh target with archive-named role is refused (claim-order regression)", async () => {
+      // Regression (#23453 review finding 3): reading the same-capability
+      // claim AFTER the claim transaction upserts it made every target look
+      // like a retry, exempting archive-named roles from the clean-target
+      // collision check. A FRESH target (no prior claim) that already
+      // carries a role this archive defines must be refused.
+      const sourceDb = `${TEST_PREFIX}src4`;
+      const targetDb = `${TEST_PREFIX}target5`;
+      const databaseName = `${TEST_PREFIX}tenant_d`;
+      const tenantRole = `${TEST_PREFIX}tenant_d`;
+      await admin.query(`CREATE DATABASE ${sourceDb}`);
+      const src = new Client({ connectionString: dbUrl(sourceDb) });
+      await src.connect();
+      await src.query(`CREATE TABLE t (id int)`);
+      await src.end();
+
+      const fixture = await buildBackupFixture(
+        sourceDb,
+        databaseName,
+        tenantRole,
+      );
+      fixture.capabilityFile = mintCapabilityFile(fixture.archiveSha256);
+      await admin.query(`CREATE DATABASE ${targetDb}`);
+      await provisionTarget(targetDb, fixture.capabilityFile);
+      // Pre-create the archive-named role on the FRESH target: only the
+      // clean-target collision check (not a retry exemption) can catch it.
+      await admin.query(`CREATE ROLE ${tenantRole}`);
+
+      const result = spawnSync(
+        "bun",
+        [
+          "packages/cloud/scripts/admin/apps-tenant-db-recovery.ts",
+          "--set-dir",
+          fixture.setDir,
+          "--target-dsn",
+          dbUrl(targetDb),
+          "--target-id",
+          TARGET_ID,
+          "--capability-file",
+          fixture.capabilityFile,
+          "--pooler-endpoint",
+          "127.0.0.1:6432",
+          "--tenant-probes-file",
+          fixture.probesFile,
+          "--passphrase-file",
+          fixture.passphraseFile,
+        ],
+        {
+          encoding: "utf-8",
+          env: {
+            ...process.env,
+            ELIZA_RESTORE_CAPABILITY_KEY: SIGNING_KEY,
+            DRILL_TENANT_PW: fixture.tenantPassword,
+          },
+        },
+      );
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("REFUSED_NONEMPTY_TARGET");
     });
   },
 );
