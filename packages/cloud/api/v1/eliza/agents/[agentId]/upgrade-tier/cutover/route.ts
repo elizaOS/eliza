@@ -304,6 +304,7 @@ app.post("/", async (c) => {
     const reminderReservationToken = `${sealToken}:reminders:${crypto.randomUUID()}`;
     const active = await findActivePersonalDedicatedTarget(
       user.organization_id,
+      user.id,
       sourceAgentId,
     );
     if (
@@ -388,6 +389,18 @@ app.post("/", async (c) => {
             holderToken: reminderReservationToken,
             expectedTaskCount: marker.sharedScheduledTaskCount,
           });
+          await finalizePersonalTierUpgradeCutover({
+            organizationId: user.organization_id,
+            userId: user.id,
+            sourceAgentId,
+            dedicatedAgentId: active.id,
+            cutoverToken: marker.cutoverToken,
+            sharedMessageCount: marker.sharedMessageCount,
+            sharedScheduledTaskCount: marker.sharedScheduledTaskCount,
+            sharedTodoCount: marker.sharedTodoCount,
+            sharedTodoMutationCount: marker.sharedTodoMutationCount,
+            sharedTodoDigest: marker.sharedTodoDigest,
+          });
           return json({
             success: true,
             data: {
@@ -467,6 +480,7 @@ app.post("/", async (c) => {
         token: sealToken,
         leaseMs: CUTOVER_SEAL_LEASE_MS,
         organizationId: user.organization_id,
+        userId: user.id,
         dedicatedAgentId: target.id,
       },
       { namespace: conversationNamespace },

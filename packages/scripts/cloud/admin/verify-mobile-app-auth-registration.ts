@@ -573,7 +573,7 @@ async function main(): Promise<void> {
   const enabled = requireMobileAppAuthEnabled(
     readEnvironmentVariable("ELIZA_MOBILE_APP_AUTH_ENABLED"),
   );
-  const appId = enabled
+  const appId = enabled && !options.skipDatabase
     ? requireMobileAppAuthAppId(
         readEnvironmentVariable("ELIZA_MOBILE_APP_AUTH_APP_ID"),
       )
