@@ -1,9 +1,9 @@
 /**
  * Async semaphore: limits how many in-flight `process` calls run at once (true throttle for I/O).
  *
- * **Contract:** every `acquire()` must be paired with `release()` in a `finally` (or equivalent)
- * so permits return even when the guarded work throws. {@link BatchProcessor} does this; ad-hoc
- * callers must do the same.
+ * **Contract:** every `acquire()` must be paired with `release()` in a `finally` block,
+ * or managed safely via {@link withPermit} so permits return even when the guarded work throws.
+ * {@link BatchProcessor} does this; ad-hoc callers must do the same.
  *
  * **Why shared with PromptDispatcher:** One implementation avoids drift; `prompt-batcher/shared`
  * re-exports this module so existing `import { Semaphore } from "./shared"` keeps working.
@@ -29,7 +29,10 @@ export class Semaphore {
 		return this.waiters.length;
 	}
 
-	/** Try to acquire a permit immediately without waiting. Returns true if acquired. */
+	/**
+	 * Try to acquire a permit immediately without waiting. Returns true if acquired.
+	 * Callers must call `release()` only when this returns `true`.
+	 */
 	tryAcquire(): boolean {
 		if (this.permits > 0) {
 			this.permits -= 1;

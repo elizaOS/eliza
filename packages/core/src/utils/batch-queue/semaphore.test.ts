@@ -1,4 +1,4 @@
-/** Deterministic unit coverage for Semaphore capacity and waiter handoff. */
+/** Deterministic unit coverage for Semaphore capacity, contention, FIFO waiter handoff, tryAcquire, and withPermit. */
 
 import { describe, expect, it } from "vitest";
 import { Semaphore } from "./semaphore";
@@ -65,30 +65,70 @@ describe("Semaphore", () => {
 		expect(sem.availablePermits).toBe(1);
 	});
 
-	it("supports tryAcquire non-blocking permit acquisition", () => {
+	it("supports tryAcquire and prevents barging when waiters are queued", async () => {
 		const sem = new Semaphore(1);
 		expect(sem.tryAcquire()).toBe(true);
 		expect(sem.availablePermits).toBe(0);
 		expect(sem.tryAcquire()).toBe(false);
+
+		let waiterAcquired = false;
+		const waiter = (async () => {
+			await sem.acquire();
+			waiterAcquired = true;
+			sem.release();
+		})();
+
+		expect(sem.queueLength).toBe(1);
+		expect(sem.tryAcquire()).toBe(false);
+
 		sem.release();
-		expect(sem.tryAcquire()).toBe(true);
+		await waiter;
+
+		expect(waiterAcquired).toBe(true);
+		expect(sem.queueLength).toBe(0);
+		expect(sem.availablePermits).toBe(1);
 	});
 
-	it("executes operations within withPermit and automatically releases permit on completion or error", async () => {
+	it("serializes concurrent withPermit callers in FIFO order and prevents starvation on error", async () => {
 		const sem = new Semaphore(1);
-		const result = await sem.withPermit(async () => {
-			expect(sem.availablePermits).toBe(0);
-			return "success";
-		});
-		expect(result).toBe("success");
-		expect(sem.availablePermits).toBe(1);
+		const executionOrder: string[] = [];
+		let currentInFlight = 0;
+		let maxInFlight = 0;
 
-		await expect(
+		const runTask = (name: string, shouldFail = false) =>
 			sem.withPermit(async () => {
-				expect(sem.availablePermits).toBe(0);
-				throw new Error("fail inside");
-			}),
-		).rejects.toThrow("fail inside");
+				currentInFlight += 1;
+				maxInFlight = Math.max(maxInFlight, currentInFlight);
+				executionOrder.push(`${name}-start`);
+
+				await new Promise((resolve) => setTimeout(resolve, 5));
+
+				executionOrder.push(`${name}-end`);
+				currentInFlight -= 1;
+				if (shouldFail) {
+					throw new Error(`${name}-error`);
+				}
+				return `${name}-ok`;
+			});
+
+		const p1 = runTask("task1", true);
+		const p2 = runTask("task2", false);
+		const p3 = runTask("task3", false);
+
+		await expect(p1).rejects.toThrow("task1-error");
+		await expect(p2).resolves.toBe("task2-ok");
+		await expect(p3).resolves.toBe("task3-ok");
+
+		expect(maxInFlight).toBe(1);
+		expect(executionOrder).toEqual([
+			"task1-start",
+			"task1-end",
+			"task2-start",
+			"task2-end",
+			"task3-start",
+			"task3-end",
+		]);
 		expect(sem.availablePermits).toBe(1);
+		expect(sem.queueLength).toBe(0);
 	});
 });

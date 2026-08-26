@@ -2496,9 +2496,8 @@ export class DocumentService extends Service {
 
 		logger.info(`Processing ${items.length} character documents items`);
 
-		const processingPromises = items.map(async (item) => {
-			await this.documentProcessingSemaphore.acquire();
-			try {
+		const processingPromises = items.map((item) =>
+			this.documentProcessingSemaphore.withPermit(async () => {
 				const trimmedItem = item.trim();
 				if (trimmedItem.length === 0) {
 					return;
@@ -2594,10 +2593,8 @@ export class DocumentService extends Service {
 						worldId: this.runtime.agentId,
 					},
 				);
-			} finally {
-				this.documentProcessingSemaphore.release();
-			}
-		});
+			}),
+		);
 
 		await Promise.all(processingPromises);
 	}
