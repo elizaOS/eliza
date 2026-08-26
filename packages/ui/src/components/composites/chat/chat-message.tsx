@@ -1248,7 +1248,16 @@ export const ChatMessage = memo(function ChatMessage({
                   : "invisible pointer-events-none opacity-0",
               )}
             >
-              <MessageRowFooter className="flex items-center p-0 text-white/70">
+              <MessageRowFooter
+                className={cn(
+                  "flex items-center p-0 text-white/70",
+                  // Flat assistant text has no bubble padding beneath its last
+                  // line, so the shared absolute footer otherwise reads as a
+                  // detached row. Pull only that footer upward; user-bubble
+                  // actions already sit at the correct optical distance.
+                  !isUser && "-translate-y-2",
+                )}
+              >
                 <motion.div
                   key={accessoryMode}
                   className="flex items-center"
