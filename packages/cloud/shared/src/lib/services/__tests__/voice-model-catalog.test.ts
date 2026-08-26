@@ -201,9 +201,16 @@ describe("signVoiceModelCatalog", () => {
     // Buffer-based base64 decoding is lenient: junk characters are
     // dropped, so a padded 44-char base64 seed with one appended invalid
     // character still decodes to the same 32 bytes and signs. Pinning that
-    // boundary makes any future move
-    // to strict decoding (which would reject such keys) a deliberate,
+    // boundary makes any future move to strict decoding a deliberate,
     // visible change rather than a silent one.
+    //
+    // Note on the helper name: `decodeBase64Strict` in the module is
+    // aspirational — "strict" refers to the 32-byte length gate it
+    // enforces after decoding, NOT to character-level strictness. Node's
+    // Buffer base64 decoder ignores non-base64 characters (see the
+    // canonicalization tests in the fingerprintPublicKey block below for
+    // the observable leniency). The pinned behavior is the lenient
+    // decode; treat this comment, not the helper name, as the contract.
     const { privateKey } = generateKeyPairSync("ed25519");
     const seedB64 = seedFromPkcs8PrivateKey(privateKey);
     const signatureB64 = await signVoiceModelCatalog({
@@ -215,10 +222,22 @@ describe("signVoiceModelCatalog", () => {
 });
 
 describe("fingerprintPublicKey", () => {
-  test("base64-encodes a raw 32-byte public key unchanged", () => {
+  test("canonicalizes non-canonical base64 spellings to the same fingerprint", () => {
+    // Buffer-based base64 decoding is lenient: trailing whitespace or an
+    // appended invalid character decodes to the same 32 bytes, and
+    // re-encoding emits the canonical spelling. This is the realistic
+    // input class — a key pasted from a file routinely carries a
+    // trailing newline — and the case that proves the function does
+    // something a passthrough (return the input after the length check)
+    // would not: the passthrough returns the newline-terminated spelling.
     const raw = crypto.getRandomValues(new Uint8Array(32));
     const rawB64 = Buffer.from(raw).toString("base64");
-    expect(fingerprintPublicKey(rawB64)).toBe(rawB64);
+    expect(fingerprintPublicKey(`${rawB64}\n`)).toBe(rawB64);
+    expect(fingerprintPublicKey(` ${rawB64}`)).toBe(rawB64);
+    expect(fingerprintPublicKey(`${rawB64}!`)).toBe(rawB64);
+    // 43-char unpadded spelling of the same 32 bytes also canonicalizes
+    // to the padded form.
+    expect(fingerprintPublicKey(rawB64.replaceAll("=", ""))).toBe(rawB64);
   });
 
   test("rejects wrong-length public keys", () => {
@@ -226,5 +245,15 @@ describe("fingerprintPublicKey", () => {
     const longB64 = Buffer.from(new Uint8Array(64)).toString("base64");
     expect(() => fingerprintPublicKey(shortB64)).toThrow(/32 bytes/);
     expect(() => fingerprintPublicKey(longB64)).toThrow(/32 bytes/);
+  });
+
+  test("identity on canonical input: a canonical spelling round-trips unchanged", () => {
+    // Guards the other direction of the canonicalization contract: for a
+    // key already in canonical form the fingerprint equals the input, so
+    // storing/pinning fingerprints against operator-supplied canonical
+    // keys is stable.
+    const raw = crypto.getRandomValues(new Uint8Array(32));
+    const rawB64 = Buffer.from(raw).toString("base64");
+    expect(fingerprintPublicKey(rawB64)).toBe(rawB64);
   });
 });

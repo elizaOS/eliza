@@ -38,9 +38,18 @@ export interface VoiceModelCatalogResponse {
   /** Stable copy of `VOICE_MODEL_VERSIONS`. */
   readonly versions: ReadonlyArray<VoiceModelVersion>;
   /**
-   * Public-key fingerprints the device-side updater can pin against.
-   * Base64 raw 32-byte keys. The runtime accepts ANY of these as a
-   * signing key — used to manage rotation windows.
+   * Fingerprints of the public keys corresponding to the signing keys in
+   * the rotation window, exposed for downstream auditors. Informational:
+   * the device-side updater does NOT read this field — it verifies
+   * against its own configured public keys (`args.publicKeys` on
+   * `verifyManifestSignatureText`), so rotation safety comes from the
+   * device key list accepting both keys during the window, not from this
+   * body-carried list. A key list carried inside a signed body can never
+   * act as a trust root: any signer could self-authorize by listing its
+   * own key. Base64 raw 32-byte keys. Values produced by
+   * `fingerprintPublicKey` are canonical base64 encodings of raw
+   * 32-byte keys; entries supplied through this field are passed
+   * through unchanged.
    */
   readonly publicKeyFingerprints: ReadonlyArray<string>;
 }
