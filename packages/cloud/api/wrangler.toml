@@ -247,6 +247,9 @@ PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED = "false"
 NEXT_PUBLIC_APP_URL = "https://cloud.eliza.app"
 NEXT_PUBLIC_API_URL = "https://api.eliza.app"
 ELIZA_CLOUD_URL = "https://api.eliza.app"
+# Native Android PKCE is a committed product capability. The endpoint fails
+# closed unless this public environment flag is exactly "true" or "false".
+ELIZA_MOBILE_APP_AUTH_ENABLED = "true"
 ELIZA_CLOUD_AGENT_BASE_DOMAIN = "cloud.eliza.app"
 ELIZA_FRONTEND_HOST_SUFFIX = "sites.eliza.app"
 # Internal Worker-to-agent calls must target the control-plane origin directly;
@@ -563,6 +566,7 @@ APPS_DEPLOY_ENABLED = "1"
 NEXT_PUBLIC_APP_URL = "https://cloud-staging.eliza.app"
 NEXT_PUBLIC_API_URL = "https://api-staging.eliza.app"
 ELIZA_CLOUD_URL = "https://api-staging.eliza.app"
+ELIZA_MOBILE_APP_AUTH_ENABLED = "true"
 ELIZA_FRONTEND_HOST_SUFFIX = "sites-staging.eliza.app"
 # OpenID Connect provider (Eliza Cloud as the OP for Eliza Hub). Committed vars,
 # not secrets: the issuer string is byte-compared by every relying party, so it
@@ -872,6 +876,7 @@ APPS_DEPLOY_ALLOWED_ORG_IDS = "*"
 NEXT_PUBLIC_APP_URL = "https://cloud.eliza.app"
 NEXT_PUBLIC_API_URL = "https://api.eliza.app"
 ELIZA_CLOUD_URL = "https://api.eliza.app"
+ELIZA_MOBILE_APP_AUTH_ENABLED = "true"
 ELIZA_CLOUD_AGENT_BASE_DOMAIN = "cloud.eliza.app"
 ELIZA_FRONTEND_HOST_SUFFIX = "sites.eliza.app"
 # OpenID Connect provider — see the staging block for why these are vars, not
