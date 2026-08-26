@@ -107,8 +107,9 @@ SHA-256; rejected requests retain structural evidence without a forwarded hash.
 The trusted attempt harness signs the complete real-model receipt with the
 parent-owned, per-attempt HMAC key; the outer adapter verifies that attestation
 before accepting it.
-On Linux the scenario runs as a fresh per-attempt unprivileged UID in a new PID and `/proc`
-namespace with no capabilities, a read-only repository, bounded resources,
+On Linux the scenario runs as a fresh per-attempt unprivileged host UID, mapped
+to UID 0 only inside a new user namespace, with no capabilities, a new PID and
+`/proc` namespace, a read-only repository, bounded resources,
 AF_INET/AF_INET6-only seccomp, and owner-scoped firewall rules admitting only
 declared loopback proxy ports. The root launcher clears its environment and
 consumes only a strict caller-owned environment file before deleting it. The
