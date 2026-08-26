@@ -39,7 +39,14 @@ import { runWithCloudBindings } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
 import { DockerSSHClient } from "./docker-ssh";
-import { AGENT_PERSONAL_CUTOVER_KEY, AGENT_UPGRADED_FROM_KEY } from "./eliza-agent-config";
+import {
+  AGENT_CHARACTER_OWNERSHIP_KEY,
+  AGENT_MANAGED_DISCORD_GATEWAY_KEY,
+  AGENT_MANAGED_DISCORD_KEY,
+  AGENT_MANAGED_GITHUB_KEY,
+  AGENT_PERSONAL_CUTOVER_KEY,
+  AGENT_UPGRADED_FROM_KEY,
+} from "./eliza-agent-config";
 import { provisioningJobService } from "./provisioning-jobs";
 import { resolveSandboxContainerLaunchConfig } from "./sandbox-container-launch-config";
 import type { SandboxCreateConfig, SandboxHandle, SandboxProvider } from "./sandbox-provider-types";
@@ -10434,7 +10441,7 @@ describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () =
 
   function installLifecycleUpdateTransaction(
     existing: AgentSandbox | undefined,
-    options: { persist?: boolean } = {},
+    options: { persist?: boolean; authority?: Record<string, unknown> } = {},
   ) {
     let whereClause: SQL | undefined;
     const updateSet = mock((values: Record<string, unknown>) => ({
@@ -10452,6 +10459,13 @@ describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () =
     const update = mock(() => ({ set: updateSet }));
     const handle = {
       execute: async () => ({ rows: [] }),
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: async () => (options.authority ? [options.authority] : []),
+          }),
+        }),
+      }),
       update,
     } as unknown as UpgradeTx;
     upgradeTransactionImpl = async (fn) => fn(handle);
@@ -10503,18 +10517,20 @@ describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () =
     }
   });
 
-  test("updateAgentProfile preserves server markers when caller config attempts to forge or clear them", async () => {
-    const cutover = {
-      mode: "dedicated",
-      sourceAgentId: "personal:real-owner",
-      cutoverToken: "server-token",
-    };
+  test("updateAgentProfile purges unverified existing markers while rejecting caller replacements", async () => {
+    const managedDiscord = { mode: "cloud-managed", guildId: "server-owned" };
+    const managedDiscordGateway = { gatewayId: "server-owned" };
+    const managedGithub = { installationId: "server-owned" };
     const existing = {
       ...customSandbox(),
       agent_config: {
         system: "old system",
+        [AGENT_CHARACTER_OWNERSHIP_KEY]: "reuse-existing",
+        [AGENT_MANAGED_DISCORD_KEY]: managedDiscord,
+        [AGENT_MANAGED_DISCORD_GATEWAY_KEY]: managedDiscordGateway,
+        [AGENT_MANAGED_GITHUB_KEY]: managedGithub,
         [AGENT_UPGRADED_FROM_KEY]: "personal:real-owner",
-        [AGENT_PERSONAL_CUTOVER_KEY]: cutover,
+        [AGENT_PERSONAL_CUTOVER_KEY]: { mode: "dedicated", sourceAgentId: "personal:real-owner" },
       },
     };
     const tx = installLifecycleUpdateTransaction(existing);
@@ -10523,6 +10539,7 @@ describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () =
       await svc.updateAgentProfile(existing.id, existing.organization_id, {
         agentConfig: {
           system: "new system",
+          [AGENT_MANAGED_DISCORD_KEY]: { mode: "caller-forged" },
           [AGENT_UPGRADED_FROM_KEY]: "personal:attacker",
           [AGENT_PERSONAL_CUTOVER_KEY]: null,
         },
@@ -10530,9 +10547,39 @@ describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () =
       expect(tx.updateSet).toHaveBeenCalledWith({
         agent_config: {
           system: "new system",
-          [AGENT_UPGRADED_FROM_KEY]: "personal:real-owner",
-          [AGENT_PERSONAL_CUTOVER_KEY]: cutover,
+          [AGENT_CHARACTER_OWNERSHIP_KEY]: "reuse-existing",
+          [AGENT_MANAGED_DISCORD_KEY]: managedDiscord,
+          [AGENT_MANAGED_DISCORD_GATEWAY_KEY]: managedDiscordGateway,
+          [AGENT_MANAGED_GITHUB_KEY]: managedGithub,
         },
+        updated_at: expect.any(Date),
+      });
+    } finally {
+      upgradeTransactionImpl = null;
+      lock.mockRestore();
+      read.mockRestore();
+    }
+  });
+
+  test("updateAgentProfile name-only edits preserve unrelated server-owned config", async () => {
+    const managedDiscord = { mode: "cloud-managed", guildId: "server-owned" };
+    const existing = {
+      ...customSandbox(),
+      agent_config: {
+        system: "old system",
+        [AGENT_CHARACTER_OWNERSHIP_KEY]: "reuse-existing",
+        [AGENT_MANAGED_DISCORD_KEY]: managedDiscord,
+      },
+    };
+    const tx = installLifecycleUpdateTransaction(existing);
+    const { svc, lock, read } = await makeMutableService(existing);
+    try {
+      await svc.updateAgentProfile(existing.id, existing.organization_id, {
+        agentName: "Renamed",
+      });
+      expect(tx.updateSet).toHaveBeenCalledWith({
+        agent_name: "Renamed",
+        agent_config: existing.agent_config,
         updated_at: expect.any(Date),
       });
     } finally {

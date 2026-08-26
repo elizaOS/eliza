@@ -5,8 +5,8 @@
  * provision-job enqueue — so concurrent upgrade requests for one source agent
  * converge on exactly one target, one prepared environment, and one job.
  *
- * The invariant that makes the compensation problem disappear: the target row
- * and its provision job commit in ONE transaction under the per-source
+ * The invariant that makes the compensation problem disappear: the target row,
+ * its provenance receipt, and its provision job commit in ONE transaction under the per-source
  * advisory lock. A failure anywhere in that transaction rolls back the target
  * with the job, so there is never a committed target awaiting an enqueue that
  * a cleanup path might delete out from under a live job — the delete path
@@ -41,7 +41,7 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, notExists, or, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { dbWrite } from "../../db/helpers";
 import type { AgentSandbox, AgentSandboxStatus } from "../../db/repositories/agent-sandboxes";
@@ -49,6 +49,10 @@ import type { Job } from "../../db/repositories/jobs";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { jobs } from "../../db/schemas/jobs";
 import { organizations } from "../../db/schemas/organizations";
+import {
+  type PersonalDedicatedUpgradeAuthority,
+  personalDedicatedUpgradeAuthorities,
+} from "../../db/schemas/personal-dedicated-upgrade-authorities";
 import { AGENT_PRICING } from "../constants/agent-pricing";
 import { logger } from "../utils/logger";
 import { parseGateCreditBalance } from "./agent-billing-gate";
@@ -58,7 +62,7 @@ import {
   AGENT_PERSONAL_CUTOVER_KEY,
   AGENT_UPGRADED_FROM_KEY,
   readPersonalElizaCutover,
-  readUpgradedFromAgentId,
+  stripReservedElizaConfigKeys,
 } from "./eliza-agent-config";
 import {
   configureElizaLifecycleTransaction,
@@ -109,18 +113,24 @@ export type TierUpgradeTargetResult =
   | { created: true; agent: AgentSandbox; job: Job }
   | { created: false; agent: AgentSandbox };
 
-function liveTargetWhere(organizationId: string, sourceAgentId: string) {
+function liveTargetWhere(organizationId: string) {
   return and(
     eq(agentSandboxes.organization_id, organizationId),
-    // The marker alone is not proof of a migration target: agent_config is
-    // PATCHable, so a marker planted on a non-dedicated row must never be
-    // reattached to — only a dedicated-always row can own the upgrade.
     eq(agentSandboxes.execution_tier, "dedicated-always"),
     inArray(agentSandboxes.status, LIVE_TARGET_STATUSES),
     isNull(agentSandboxes.pool_status),
     isNull(agentSandboxes.deleted_at),
     isNull(agentSandboxes.deletion_attempt_id),
-    sql`${agentSandboxes.agent_config} ->> ${AGENT_UPGRADED_FROM_KEY} = ${sourceAgentId}`,
+  );
+}
+
+function exactAuthorityWhere(organizationId: string, userId: string, sourceAgentId: string) {
+  return and(
+    eq(personalDedicatedUpgradeAuthorities.organization_id, organizationId),
+    eq(personalDedicatedUpgradeAuthorities.user_id, userId),
+    eq(personalDedicatedUpgradeAuthorities.source_agent_id, sourceAgentId),
+    eq(personalDedicatedUpgradeAuthorities.schema_version, 1),
+    eq(personalDedicatedUpgradeAuthorities.dedicated_agent_id, agentSandboxes.id),
   );
 }
 
@@ -138,15 +148,48 @@ function adoptableUnmarkedTargetWhere(organizationId: string, userId: string) {
     isNull(agentSandboxes.pool_status),
     isNull(agentSandboxes.deleted_at),
     isNull(agentSandboxes.deletion_attempt_id),
-    // Presence is authority-bearing even when a corrupted/caller-forged value
-    // is JSON null or has the wrong shape. Only truly absent keys are eligible.
+    // Presence is quarantine-bearing even when a corrupted/caller-forged value
+    // is JSON null or has the wrong shape. Only truly absent keys are eligible;
+    // authority itself lives in the receipt table.
     agentConfigKeyAbsent(AGENT_UPGRADED_FROM_KEY),
     agentConfigKeyAbsent(AGENT_PERSONAL_CUTOVER_KEY),
+    notExists(
+      dbWrite
+        .select({ id: personalDedicatedUpgradeAuthorities.id })
+        .from(personalDedicatedUpgradeAuthorities)
+        .where(eq(personalDedicatedUpgradeAuthorities.dedicated_agent_id, agentSandboxes.id)),
+    ),
   );
 }
 
 function adoptedTargetWhere(organizationId: string, userId: string, sourceAgentId: string) {
-  return and(liveTargetWhere(organizationId, sourceAgentId), eq(agentSandboxes.user_id, userId));
+  return and(
+    liveTargetWhere(organizationId),
+    eq(agentSandboxes.user_id, userId),
+    exactAuthorityWhere(organizationId, userId, sourceAgentId),
+  );
+}
+
+function unverifiedReservedMarkerWhere(organizationId: string, userId: string) {
+  return and(
+    liveTargetWhere(organizationId),
+    eq(agentSandboxes.user_id, userId),
+    or(
+      sql`COALESCE(${agentSandboxes.agent_config}, '{}'::jsonb) ? ${AGENT_UPGRADED_FROM_KEY}`,
+      sql`COALESCE(${agentSandboxes.agent_config}, '{}'::jsonb) ? ${AGENT_PERSONAL_CUTOVER_KEY}`,
+    ),
+    notExists(
+      dbWrite
+        .select({ id: personalDedicatedUpgradeAuthorities.id })
+        .from(personalDedicatedUpgradeAuthorities)
+        .where(
+          and(
+            eq(personalDedicatedUpgradeAuthorities.dedicated_agent_id, agentSandboxes.id),
+            eq(personalDedicatedUpgradeAuthorities.schema_version, 1),
+          ),
+        ),
+    ),
+  );
 }
 
 export type PersonalDedicatedAdoptionResolution =
@@ -161,9 +204,13 @@ export class PersonalDedicatedAdoptionError extends ElizaError {
 function classifyAdoptionRows(
   adopted: AgentSandbox[],
   available: AgentSandbox[],
+  hasQuarantinedMarker = false,
 ): PersonalDedicatedAdoptionResolution {
-  if (adopted.length + available.length > 1) return { state: "ambiguous" };
+  if (adopted.length + available.length > 1 || (hasQuarantinedMarker && adopted.length > 0)) {
+    return { state: "ambiguous" };
+  }
   if (adopted[0]) return { state: "adopted", agent: adopted[0] };
+  if (hasQuarantinedMarker) return { state: "unavailable" };
   if (available[0]) return { state: "available", agent: available[0] };
   return { state: "unavailable" };
 }
@@ -179,8 +226,12 @@ export async function resolvePersonalDedicatedAdoption(params: {
   sourceAgentId: string;
 }): Promise<PersonalDedicatedAdoptionResolution> {
   const adopted = await dbWrite
-    .select()
+    .select({ agent: agentSandboxes })
     .from(agentSandboxes)
+    .innerJoin(
+      personalDedicatedUpgradeAuthorities,
+      exactAuthorityWhere(params.organizationId, params.userId, params.sourceAgentId),
+    )
     .where(adoptedTargetWhere(params.organizationId, params.userId, params.sourceAgentId))
     .orderBy(desc(agentSandboxes.created_at))
     .limit(2);
@@ -191,7 +242,16 @@ export async function resolvePersonalDedicatedAdoption(params: {
     .where(adoptableUnmarkedTargetWhere(params.organizationId, params.userId))
     .orderBy(desc(agentSandboxes.created_at))
     .limit(2);
-  return classifyAdoptionRows(adopted, available);
+  const [quarantined] = await dbWrite
+    .select({ id: agentSandboxes.id })
+    .from(agentSandboxes)
+    .where(unverifiedReservedMarkerWhere(params.organizationId, params.userId))
+    .limit(1);
+  return classifyAdoptionRows(
+    adopted.map((row) => row.agent),
+    available,
+    Boolean(quarantined),
+  );
 }
 
 async function resolvePersonalDedicatedAdoptionInTx(
@@ -203,8 +263,12 @@ async function resolvePersonalDedicatedAdoptionInTx(
   },
 ): Promise<PersonalDedicatedAdoptionResolution> {
   const adopted = await tx
-    .select()
+    .select({ agent: agentSandboxes })
     .from(agentSandboxes)
+    .innerJoin(
+      personalDedicatedUpgradeAuthorities,
+      exactAuthorityWhere(params.organizationId, params.userId, params.sourceAgentId),
+    )
     .where(adoptedTargetWhere(params.organizationId, params.userId, params.sourceAgentId))
     .orderBy(desc(agentSandboxes.created_at))
     .limit(2)
@@ -217,7 +281,17 @@ async function resolvePersonalDedicatedAdoptionInTx(
     .orderBy(desc(agentSandboxes.created_at))
     .limit(2)
     .for("update");
-  return classifyAdoptionRows(adopted, available);
+  const [quarantined] = await tx
+    .select({ id: agentSandboxes.id })
+    .from(agentSandboxes)
+    .where(unverifiedReservedMarkerWhere(params.organizationId, params.userId))
+    .limit(1)
+    .for("update");
+  return classifyAdoptionRows(
+    adopted.map((row) => row.agent),
+    available,
+    Boolean(quarantined),
+  );
 }
 
 async function previewPersonalDedicatedAdoptionInTx(
@@ -229,8 +303,12 @@ async function previewPersonalDedicatedAdoptionInTx(
   },
 ): Promise<PersonalDedicatedAdoptionResolution> {
   const adopted = await tx
-    .select()
+    .select({ agent: agentSandboxes })
     .from(agentSandboxes)
+    .innerJoin(
+      personalDedicatedUpgradeAuthorities,
+      exactAuthorityWhere(params.organizationId, params.userId, params.sourceAgentId),
+    )
     .where(adoptedTargetWhere(params.organizationId, params.userId, params.sourceAgentId))
     .orderBy(desc(agentSandboxes.created_at))
     .limit(2);
@@ -241,7 +319,16 @@ async function previewPersonalDedicatedAdoptionInTx(
     .where(adoptableUnmarkedTargetWhere(params.organizationId, params.userId))
     .orderBy(desc(agentSandboxes.created_at))
     .limit(2);
-  return classifyAdoptionRows(adopted, available);
+  const [quarantined] = await tx
+    .select({ id: agentSandboxes.id })
+    .from(agentSandboxes)
+    .where(unverifiedReservedMarkerWhere(params.organizationId, params.userId))
+    .limit(1);
+  return classifyAdoptionRows(
+    adopted.map((row) => row.agent),
+    available,
+    Boolean(quarantined),
+  );
 }
 
 export interface AdoptPersonalDedicatedTargetParams {
@@ -307,7 +394,7 @@ function adoptionError(
 /**
  * Atomically bind the sole existing same-owner Dedicated row to personal
  * Eliza and, when it is not already running, enqueue same-id provisioning.
- * The marker and job commit together under the canonical org/source/agent
+ * The receipt, compatibility projection, and job commit together under the canonical org/source/agent
  * lock order. Personal cutover remains a separate running-target transaction.
  */
 export async function adoptPersonalDedicatedTargetWithProvision(
@@ -380,7 +467,7 @@ export async function adoptPersonalDedicatedTargetWithProvision(
         currentBalance = parseGateCreditBalance(organization.creditBalance);
       } catch {
         // error-policy:J1 a corrupt locked billing value must fail closed before
-        // either the ownership marker or provisioning job is written.
+        // either the ownership receipt/projection or provisioning job is written.
         throw adoptionError(
           "PERSONAL_DEDICATED_ADOPTION_QUOTE_CHANGED",
           "The Dedicated adoption billing quote can no longer be verified",
@@ -429,11 +516,20 @@ export async function adoptPersonalDedicatedTargetWithProvision(
         }
       }
       if (!alreadyAdopted) {
+        await tx.insert(personalDedicatedUpgradeAuthorities).values({
+          organization_id: params.organizationId,
+          user_id: params.userId,
+          source_agent_id: params.sourceAgentId,
+          dedicated_agent_id: target.id,
+          schema_version: 1,
+        });
         const [updated] = await tx
           .update(agentSandboxes)
           .set({
             agent_config: {
-              ...((target.agent_config as Record<string, unknown> | null) ?? {}),
+              ...stripReservedElizaConfigKeys(
+                target.agent_config as Record<string, unknown> | null,
+              ),
               [AGENT_UPGRADED_FROM_KEY]: params.sourceAgentId,
             },
             updated_at: new Date(),
@@ -496,7 +592,7 @@ export async function adoptPersonalDedicatedTargetWithProvision(
 
 /**
  * Recover a lost COMMIT acknowledgement only after a fresh durable read proves
- * this exact owner target now carries the server marker. The callback result
+ * this exact owner target now carries the server receipt. The callback result
  * preserves whether this transaction created the job, so a recovered commit
  * still receives the same immediate-worker nudge as an acknowledged commit.
  */
@@ -583,12 +679,48 @@ async function findLiveTargetInTx(
   sourceAgentId: string,
 ): Promise<AgentSandbox | undefined> {
   const [existing] = await tx
-    .select()
+    .select({ agent: agentSandboxes })
     .from(agentSandboxes)
-    .where(liveTargetWhere(organizationId, sourceAgentId))
+    .innerJoin(
+      personalDedicatedUpgradeAuthorities,
+      eq(personalDedicatedUpgradeAuthorities.dedicated_agent_id, agentSandboxes.id),
+    )
+    .where(
+      and(
+        liveTargetWhere(organizationId),
+        eq(personalDedicatedUpgradeAuthorities.organization_id, organizationId),
+        eq(personalDedicatedUpgradeAuthorities.organization_id, agentSandboxes.organization_id),
+        eq(personalDedicatedUpgradeAuthorities.user_id, agentSandboxes.user_id),
+        eq(personalDedicatedUpgradeAuthorities.source_agent_id, sourceAgentId),
+        eq(personalDedicatedUpgradeAuthorities.schema_version, 1),
+      ),
+    )
     .orderBy(desc(agentSandboxes.created_at))
     .limit(1);
-  return existing;
+  if (existing) return existing.agent;
+  const [quarantined] = await tx
+    .select({ id: agentSandboxes.id })
+    .from(agentSandboxes)
+    .where(
+      and(
+        liveTargetWhere(organizationId),
+        sql`${agentSandboxes.agent_config} ->> ${AGENT_UPGRADED_FROM_KEY} = ${sourceAgentId}`,
+        notExists(
+          tx
+            .select({ id: personalDedicatedUpgradeAuthorities.id })
+            .from(personalDedicatedUpgradeAuthorities)
+            .where(eq(personalDedicatedUpgradeAuthorities.dedicated_agent_id, agentSandboxes.id)),
+        ),
+      ),
+    )
+    .limit(1);
+  if (quarantined) {
+    throw new PersonalDedicatedAuthorityError("Unverified tier-upgrade marker is quarantined", {
+      code: "PERSONAL_DEDICATED_AUTHORITY_UNVERIFIED",
+      context: { organizationId, sourceAgentId, dedicatedAgentId: quarantined.id },
+    });
+  }
+  return undefined;
 }
 
 /**
@@ -601,19 +733,55 @@ export async function findLiveTierUpgradeTarget(
   sourceAgentId: string,
 ): Promise<AgentSandbox | null> {
   const [existing] = await dbWrite
-    .select()
+    .select({ agent: agentSandboxes })
     .from(agentSandboxes)
-    .where(liveTargetWhere(organizationId, sourceAgentId))
+    .innerJoin(
+      personalDedicatedUpgradeAuthorities,
+      eq(personalDedicatedUpgradeAuthorities.dedicated_agent_id, agentSandboxes.id),
+    )
+    .where(
+      and(
+        liveTargetWhere(organizationId),
+        eq(personalDedicatedUpgradeAuthorities.organization_id, organizationId),
+        eq(personalDedicatedUpgradeAuthorities.organization_id, agentSandboxes.organization_id),
+        eq(personalDedicatedUpgradeAuthorities.user_id, agentSandboxes.user_id),
+        eq(personalDedicatedUpgradeAuthorities.source_agent_id, sourceAgentId),
+        eq(personalDedicatedUpgradeAuthorities.schema_version, 1),
+      ),
+    )
     .orderBy(desc(agentSandboxes.created_at))
     .limit(1);
-  return existing ?? null;
+  if (existing) return existing.agent;
+  const [quarantined] = await dbWrite
+    .select({ id: agentSandboxes.id })
+    .from(agentSandboxes)
+    .where(
+      and(
+        liveTargetWhere(organizationId),
+        sql`${agentSandboxes.agent_config} ->> ${AGENT_UPGRADED_FROM_KEY} = ${sourceAgentId}`,
+        notExists(
+          dbWrite
+            .select({ id: personalDedicatedUpgradeAuthorities.id })
+            .from(personalDedicatedUpgradeAuthorities)
+            .where(eq(personalDedicatedUpgradeAuthorities.dedicated_agent_id, agentSandboxes.id)),
+        ),
+      ),
+    )
+    .limit(1);
+  if (quarantined) {
+    throw new PersonalDedicatedAuthorityError("Unverified tier-upgrade marker is quarantined", {
+      code: "PERSONAL_DEDICATED_AUTHORITY_UNVERIFIED",
+      context: { organizationId, sourceAgentId, dedicatedAgentId: quarantined.id },
+    });
+  }
+  return null;
 }
 
 /**
  * Resolve the Dedicated target that has completed the personal-Eliza cutover.
  * A merely running migration target is not authoritative: Shared continues to
- * serve until transcript import and this server-owned marker both succeed.
- * Afterward the marker stays authoritative through sleep/error/restart states;
+ * serve until transcript import and this server-owned receipt both succeed.
+ * Afterward the receipt stays authoritative through sleep/error/restart states;
  * silently falling back would split later turns into the archived Shared log.
  */
 export async function findActivePersonalDedicatedTarget(
@@ -621,40 +789,199 @@ export async function findActivePersonalDedicatedTarget(
   userId: string,
   sourceAgentId: string,
 ): Promise<AgentSandbox | null> {
-  const [target] = await dbWrite
-    .select()
+  const [row] = await dbWrite
+    .select({ agent: agentSandboxes, authority: personalDedicatedUpgradeAuthorities })
     .from(agentSandboxes)
+    .innerJoin(
+      personalDedicatedUpgradeAuthorities,
+      eq(personalDedicatedUpgradeAuthorities.dedicated_agent_id, agentSandboxes.id),
+    )
     .where(
       and(
         eq(agentSandboxes.organization_id, organizationId),
         eq(agentSandboxes.user_id, userId),
         eq(agentSandboxes.execution_tier, "dedicated-always"),
-        sql`${agentSandboxes.agent_config} ->> ${AGENT_UPGRADED_FROM_KEY} = ${sourceAgentId}`,
+        eq(personalDedicatedUpgradeAuthorities.organization_id, organizationId),
+        eq(personalDedicatedUpgradeAuthorities.user_id, userId),
+        eq(personalDedicatedUpgradeAuthorities.source_agent_id, sourceAgentId),
       ),
     )
     .orderBy(desc(agentSandboxes.created_at))
     .limit(1);
-  if (!target) return null;
-  return isAuthoritativePersonalDedicatedTarget(target, sourceAgentId) ? target : null;
+  if (row) {
+    if (row.authority.schema_version !== 1) {
+      throw new PersonalDedicatedAuthorityError(
+        "Personal Dedicated authority version is unsupported",
+        {
+          code: "PERSONAL_DEDICATED_AUTHORITY_INVALID",
+          context: { organizationId, userId, sourceAgentId, dedicatedAgentId: row.agent.id },
+        },
+      );
+    }
+    const cutover = cutoverFromAuthority(row.authority);
+    if (!cutover) {
+      if (row.authority.cutover_token === null) return null;
+      throw new PersonalDedicatedAuthorityError("Personal Dedicated cutover receipt is malformed", {
+        code: "PERSONAL_DEDICATED_AUTHORITY_INVALID",
+        context: { organizationId, userId, sourceAgentId, dedicatedAgentId: row.agent.id },
+      });
+    }
+    return withAuthorityProjection(row.agent, row.authority);
+  }
+
+  const [quarantined] = await dbWrite
+    .select({ id: agentSandboxes.id })
+    .from(agentSandboxes)
+    .where(unverifiedReservedMarkerWhere(organizationId, userId))
+    .limit(1);
+  if (quarantined) {
+    throw new PersonalDedicatedAuthorityError(
+      "Unverified personal Dedicated marker is quarantined",
+      {
+        code: "PERSONAL_DEDICATED_AUTHORITY_UNVERIFIED",
+        context: { organizationId, userId, sourceAgentId, dedicatedAgentId: quarantined.id },
+      },
+    );
+  }
+  return null;
 }
 
-/** One source of truth for the two server-owned markers that activate cutover. */
-export function isAuthoritativePersonalDedicatedTarget(
-  target: Pick<AgentSandbox, "agent_config">,
-  sourceAgentId: string,
-): boolean {
-  const agentConfig = target.agent_config as Record<string, unknown> | null;
-  return (
-    readUpgradedFromAgentId(agentConfig) === sourceAgentId &&
-    readPersonalElizaCutover(agentConfig)?.sourceAgentId === sourceAgentId
-  );
+export class PersonalDedicatedAuthorityError extends ElizaError {
+  override readonly name = "PersonalDedicatedAuthorityError";
+}
+
+function cutoverFromAuthority(
+  authority: PersonalDedicatedUpgradeAuthority,
+): ReturnType<typeof readPersonalElizaCutover> {
+  if (
+    authority.schema_version !== 1 ||
+    !authority.cutover_token ||
+    authority.shared_message_count === null ||
+    authority.shared_scheduled_task_count === null ||
+    authority.shared_todo_count === null ||
+    authority.shared_todo_mutation_count === null ||
+    !authority.shared_todo_digest ||
+    !authority.cutover_activated_at
+  ) {
+    return null;
+  }
+  return readPersonalElizaCutover({
+    [AGENT_PERSONAL_CUTOVER_KEY]: {
+      mode: "dedicated",
+      sourceAgentId: authority.source_agent_id,
+      conversationId: authority.source_agent_id,
+      cutoverToken: authority.cutover_token,
+      sharedMessageCount: authority.shared_message_count,
+      sharedScheduledTaskCount: authority.shared_scheduled_task_count,
+      sharedTodoCount: authority.shared_todo_count,
+      sharedTodoMutationCount: authority.shared_todo_mutation_count,
+      sharedTodoDigest: authority.shared_todo_digest,
+      activatedAt: authority.cutover_activated_at.toISOString(),
+    },
+  });
+}
+
+function withAuthorityProjection(
+  target: AgentSandbox,
+  authority: PersonalDedicatedUpgradeAuthority,
+): AgentSandbox {
+  const cutover = cutoverFromAuthority(authority);
+  return {
+    ...target,
+    agent_config: {
+      ...stripReservedElizaConfigKeys(target.agent_config as Record<string, unknown> | null),
+      [AGENT_UPGRADED_FROM_KEY]: authority.source_agent_id,
+      ...(cutover ? { [AGENT_PERSONAL_CUTOVER_KEY]: cutover } : {}),
+    },
+  };
+}
+
+export type PersonalDedicatedCutoverRecovery =
+  | { state: "absent" }
+  | { state: "conflict" }
+  | { state: "committed"; agent: AgentSandbox; userId: string };
+
+/**
+ * Recover a pending DO seal from canonical DB authority. Legacy seals omit
+ * userId, so the exact user is derived from the receipt instead of caller or
+ * stale Durable Object data. Any mismatched or duplicate authority fails
+ * closed as a conflict; only a proven absence releases Shared.
+ */
+export async function resolvePersonalDedicatedCutoverRecovery(params: {
+  organizationId: string;
+  userId?: string;
+  sourceAgentId: string;
+  dedicatedAgentId: string;
+}): Promise<PersonalDedicatedCutoverRecovery> {
+  const rows = await dbWrite
+    .select({ agent: agentSandboxes, authority: personalDedicatedUpgradeAuthorities })
+    .from(personalDedicatedUpgradeAuthorities)
+    .innerJoin(
+      agentSandboxes,
+      eq(agentSandboxes.id, personalDedicatedUpgradeAuthorities.dedicated_agent_id),
+    )
+    .where(
+      and(
+        eq(personalDedicatedUpgradeAuthorities.organization_id, params.organizationId),
+        eq(personalDedicatedUpgradeAuthorities.source_agent_id, params.sourceAgentId),
+        eq(agentSandboxes.organization_id, params.organizationId),
+        eq(personalDedicatedUpgradeAuthorities.organization_id, agentSandboxes.organization_id),
+        eq(personalDedicatedUpgradeAuthorities.user_id, agentSandboxes.user_id),
+        eq(agentSandboxes.execution_tier, "dedicated-always"),
+      ),
+    )
+    .limit(2);
+  if (rows.length === 0) {
+    const [quarantined] = await dbWrite
+      .select({ id: agentSandboxes.id })
+      .from(agentSandboxes)
+      .where(
+        and(
+          liveTargetWhere(params.organizationId),
+          eq(agentSandboxes.id, params.dedicatedAgentId),
+          ...(params.userId ? [eq(agentSandboxes.user_id, params.userId)] : []),
+          or(
+            sql`COALESCE(${agentSandboxes.agent_config}, '{}'::jsonb) ? ${AGENT_UPGRADED_FROM_KEY}`,
+            sql`COALESCE(${agentSandboxes.agent_config}, '{}'::jsonb) ? ${AGENT_PERSONAL_CUTOVER_KEY}`,
+          ),
+          notExists(
+            dbWrite
+              .select({ id: personalDedicatedUpgradeAuthorities.id })
+              .from(personalDedicatedUpgradeAuthorities)
+              .where(
+                and(
+                  eq(personalDedicatedUpgradeAuthorities.dedicated_agent_id, agentSandboxes.id),
+                  eq(personalDedicatedUpgradeAuthorities.schema_version, 1),
+                ),
+              ),
+          ),
+        ),
+      )
+      .limit(1);
+    return quarantined ? { state: "conflict" } : { state: "absent" };
+  }
+  if (rows.length !== 1) return { state: "conflict" };
+  const [{ agent, authority }] = rows;
+  if (
+    agent.id !== params.dedicatedAgentId ||
+    agent.user_id !== authority.user_id ||
+    (params.userId !== undefined && params.userId !== authority.user_id) ||
+    !cutoverFromAuthority(authority)
+  ) {
+    return { state: "conflict" };
+  }
+  return {
+    state: "committed",
+    agent: withAuthorityProjection(agent, authority),
+    userId: authority.user_id,
+  };
 }
 
 /**
  * Atomically make one healthy Dedicated migration target authoritative after
  * the caller has completed the server-owned transcript import. The per-source
  * lock serializes completion with retry/reprovision activity, and an exact
- * existing marker is an idempotent success.
+ * existing cutover receipt is an idempotent success.
  */
 export async function finalizePersonalTierUpgradeCutover(params: {
   organizationId: string;
@@ -673,20 +1000,25 @@ export async function finalizePersonalTierUpgradeCutover(params: {
     await tx.execute(
       elizaAgentTierUpgradeAdvisoryLockSql(params.organizationId, params.sourceAgentId),
     );
-    const [target] = await tx
-      .select()
+    const [row] = await tx
+      .select({ agent: agentSandboxes, authority: personalDedicatedUpgradeAuthorities })
       .from(agentSandboxes)
+      .innerJoin(
+        personalDedicatedUpgradeAuthorities,
+        eq(personalDedicatedUpgradeAuthorities.dedicated_agent_id, agentSandboxes.id),
+      )
       .where(
         and(
-          liveTargetWhere(params.organizationId, params.sourceAgentId),
+          liveTargetWhere(params.organizationId),
           eq(agentSandboxes.id, params.dedicatedAgentId),
           eq(agentSandboxes.user_id, params.userId),
           eq(agentSandboxes.status, "running"),
+          exactAuthorityWhere(params.organizationId, params.userId, params.sourceAgentId),
         ),
       )
       .for("update")
       .limit(1);
-    if (!target) {
+    if (!row) {
       throw new ElizaError(
         "Dedicated cutover target is not healthy or does not own this personal Eliza",
         {
@@ -699,10 +1031,9 @@ export async function finalizePersonalTierUpgradeCutover(params: {
         },
       );
     }
+    const target = row.agent;
 
-    const existing = readPersonalElizaCutover(
-      target.agent_config as Record<string, unknown> | null,
-    );
+    const existing = cutoverFromAuthority(row.authority);
     const sameCutover =
       existing?.sourceAgentId === params.sourceAgentId &&
       existing.cutoverToken === params.cutoverToken;
@@ -714,26 +1045,71 @@ export async function finalizePersonalTierUpgradeCutover(params: {
       existing.sharedTodoMutationCount === params.sharedTodoMutationCount &&
       existing.sharedTodoDigest === params.sharedTodoDigest
     ) {
-      return target;
+      const projected = withAuthorityProjection(target, row.authority);
+      const current = readPersonalElizaCutover(target.agent_config);
+      const targetConfig = target.agent_config as Record<string, unknown> | null;
+      if (
+        targetConfig?.[AGENT_UPGRADED_FROM_KEY] === params.sourceAgentId &&
+        current?.sourceAgentId === existing.sourceAgentId &&
+        current.cutoverToken === existing.cutoverToken &&
+        current.sharedMessageCount === existing.sharedMessageCount &&
+        current.sharedScheduledTaskCount === existing.sharedScheduledTaskCount &&
+        current.sharedTodoCount === existing.sharedTodoCount &&
+        current.sharedTodoMutationCount === existing.sharedTodoMutationCount &&
+        current.sharedTodoDigest === existing.sharedTodoDigest &&
+        current.activatedAt === existing.activatedAt
+      ) {
+        return projected;
+      }
+      const [rehydrated] = await tx
+        .update(agentSandboxes)
+        .set({ agent_config: projected.agent_config, updated_at: new Date() })
+        .where(eq(agentSandboxes.id, target.id))
+        .returning();
+      if (!rehydrated) {
+        throw new ElizaError("Failed to rehydrate personal Dedicated cutover projection", {
+          code: "PERSONAL_DEDICATED_CUTOVER_UPDATE_FAILED",
+          context: { sourceAgentId: params.sourceAgentId, dedicatedAgentId: target.id },
+        });
+      }
+      return rehydrated;
     }
 
+    const activatedAt = sameCutover ? row.authority.cutover_activated_at! : new Date();
+    const [updatedAuthority] = await tx
+      .update(personalDedicatedUpgradeAuthorities)
+      .set({
+        cutover_token: params.cutoverToken,
+        shared_message_count: params.sharedMessageCount,
+        shared_scheduled_task_count: params.sharedScheduledTaskCount,
+        shared_todo_count: params.sharedTodoCount,
+        shared_todo_mutation_count: params.sharedTodoMutationCount,
+        shared_todo_digest: params.sharedTodoDigest,
+        cutover_activated_at: activatedAt,
+        updated_at: new Date(),
+      })
+      .where(eq(personalDedicatedUpgradeAuthorities.id, row.authority.id))
+      .returning();
+    if (!updatedAuthority) {
+      throw new ElizaError("Failed to persist personal Dedicated cutover authority", {
+        code: "PERSONAL_DEDICATED_CUTOVER_AUTHORITY_UPDATE_FAILED",
+        context: { sourceAgentId: params.sourceAgentId, dedicatedAgentId: target.id },
+      });
+    }
+
+    const cutover = cutoverFromAuthority(updatedAuthority);
+    if (!cutover) {
+      throw new ElizaError("Personal Dedicated cutover authority failed validation", {
+        code: "PERSONAL_DEDICATED_CUTOVER_AUTHORITY_INVALID",
+      });
+    }
     const [updated] = await tx
       .update(agentSandboxes)
       .set({
         agent_config: {
-          ...((target.agent_config as Record<string, unknown> | null) ?? {}),
-          [AGENT_PERSONAL_CUTOVER_KEY]: {
-            mode: "dedicated",
-            sourceAgentId: params.sourceAgentId,
-            conversationId: params.sourceAgentId,
-            cutoverToken: params.cutoverToken,
-            sharedMessageCount: params.sharedMessageCount,
-            sharedScheduledTaskCount: params.sharedScheduledTaskCount,
-            sharedTodoCount: params.sharedTodoCount,
-            sharedTodoMutationCount: params.sharedTodoMutationCount,
-            sharedTodoDigest: params.sharedTodoDigest,
-            activatedAt: sameCutover ? existing.activatedAt : new Date().toISOString(),
-          },
+          ...stripReservedElizaConfigKeys(target.agent_config as Record<string, unknown> | null),
+          [AGENT_UPGRADED_FROM_KEY]: params.sourceAgentId,
+          [AGENT_PERSONAL_CUTOVER_KEY]: cutover,
         },
         updated_at: new Date(),
       })
@@ -992,8 +1368,8 @@ export async function createTierUpgradeTargetWithProvision(
           id: targetId,
           agent_config: {
             // The canonical builder strips the reserved `__agent` namespace
-            // from caller config; the upgraded-from marker is server-owned and
-            // re-applied on top so reattach lookups can find this target.
+            // from caller config; the upgraded-from value is a compatibility
+            // projection while the adjacent receipt remains authoritative.
             ...(canonical.agent_config ?? {}),
             [AGENT_UPGRADED_FROM_KEY]: params.sourceAgentId,
           },
@@ -1005,6 +1381,14 @@ export async function createTierUpgradeTargetWithProvision(
           context: { sourceAgentId: params.sourceAgentId, organizationId: params.organizationId },
         });
       }
+
+      await tx.insert(personalDedicatedUpgradeAuthorities).values({
+        organization_id: params.organizationId,
+        user_id: params.userId,
+        source_agent_id: params.sourceAgentId,
+        dedicated_agent_id: created.id,
+        schema_version: 1,
+      });
 
       const { job } = await provisioningJobService.enqueueAgentProvisionOnceInTx(tx, {
         agentId: created.id,

@@ -22,12 +22,8 @@ import { isUniqueConstraintError } from "../../utils/db-errors";
 import { isValidEmail, maskEmailForLogging } from "../../utils/email-validation";
 import { logger } from "../../utils/logger";
 import { isValidE164, normalizePhoneNumber } from "../../utils/phone-normalization";
-import {
-  findActivePersonalDedicatedTarget,
-  isAuthoritativePersonalDedicatedTarget,
-} from "../agent-tier-upgrade-target";
+import { findActivePersonalDedicatedTarget } from "../agent-tier-upgrade-target";
 import { apiKeysService } from "../api-keys";
-import { readUpgradedFromAgentId } from "../eliza-agent-config";
 import { personalSharedAgentId } from "../shared-runtime/personal-shared-agent";
 import { redeemSignupCode } from "../signup-code";
 import { invalidateBoundPersonalDeliveryProjection } from "./personal-delivery-projection-contract";
@@ -290,18 +286,12 @@ class ElizaAppUserService {
       let dedicatedTarget: PersonalDeliveryResult["dedicatedTarget"] = null;
       let resolution: PersonalDeliveryResult["resolution"] = "single-query-repeat";
       if (candidate) {
-        if (readUpgradedFromAgentId(candidate.agent_config) === personalAgentId) {
-          dedicatedTarget = isAuthoritativePersonalDedicatedTarget(candidate, personalAgentId)
-            ? candidate
-            : null;
-        } else {
-          dedicatedTarget = await findActivePersonalDedicatedTarget(
-            reusable.organizationId,
-            reusable.userId,
-            personalAgentId,
-          );
-          resolution = "exact-dedicated-fallback";
-        }
+        dedicatedTarget = await findActivePersonalDedicatedTarget(
+          reusable.organizationId,
+          reusable.userId,
+          personalAgentId,
+        );
+        resolution = "exact-dedicated-fallback";
       }
       logger.info(`[ElizaAppUserService] Reused ${params.platform} personal account`, {
         userId: reusable.userId,

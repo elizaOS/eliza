@@ -238,6 +238,7 @@ interface StoredCutoverSeal {
   userId?: string;
   sourceAgentId?: string;
   dedicatedAgentId?: string;
+  recoveryBlocked?: true;
 }
 
 interface StoredProvisionalConvergenceSeal {
@@ -1161,29 +1162,34 @@ export class SharedRuntimeConversation {
     // crashes or loses the acknowledgement between those two durable writes,
     // an expired lease must recover the server-owned marker rather than
     // reopening Shared and splitting later turns into the archived log.
-    if (
-      seal.organizationId &&
-      seal.userId &&
-      seal.sourceAgentId &&
-      seal.dedicatedAgentId
-    ) {
+    if (seal.organizationId && seal.sourceAgentId && seal.dedicatedAgentId) {
       const organizationId = seal.organizationId;
-      const userId = seal.userId;
       const sourceAgentId = seal.sourceAgentId;
-      const active = await this.runWithBindings(async () => {
-        const { findActivePersonalDedicatedTarget } = await import(
+      const recovery = await this.runWithBindings(async () => {
+        const { resolvePersonalDedicatedCutoverRecovery } = await import(
           "@/lib/services/agent-tier-upgrade-target"
         );
-        return await findActivePersonalDedicatedTarget(
+        return await resolvePersonalDedicatedCutoverRecovery({
           organizationId,
-          userId,
+          ...(seal.userId ? { userId: seal.userId } : {}),
           sourceAgentId,
-        );
+          dedicatedAgentId: seal.dedicatedAgentId!,
+        });
       });
-      if (active?.id === seal.dedicatedAgentId) {
-        const recovered = { ...seal, committed: true };
+      if (recovery.state === "committed") {
+        const recovered = {
+          ...seal,
+          userId: recovery.userId,
+          committed: true,
+          recoveryBlocked: undefined,
+        };
         await this.state.storage.put(CUTOVER_SEAL_KEY, recovered);
         return recovered;
+      }
+      if (recovery.state === "conflict") {
+        const blocked = { ...seal, recoveryBlocked: true as const };
+        await this.state.storage.put(CUTOVER_SEAL_KEY, blocked);
+        return blocked;
       }
     }
     await this.state.storage.delete(CUTOVER_SEAL_KEY);
@@ -1775,7 +1781,11 @@ export class SharedRuntimeConversation {
     }
     if (payload.operation === "cutover-commit") {
       const existing = await this.activeCutoverSeal();
-      if (!existing || existing.token !== payload.token) {
+      if (
+        !existing ||
+        existing.token !== payload.token ||
+        existing.recoveryBlocked
+      ) {
         return Response.json(
           { success: false, code: "personal_cutover_seal_lost" },
           { status: 409 },

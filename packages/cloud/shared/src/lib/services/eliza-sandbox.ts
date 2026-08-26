@@ -45,6 +45,7 @@ import {
 } from "../../db/schemas/agent-sandboxes";
 import { dockerNodes } from "../../db/schemas/docker-nodes";
 import { jobs } from "../../db/schemas/jobs";
+import { personalDedicatedUpgradeAuthorities } from "../../db/schemas/personal-dedicated-upgrade-authorities";
 import { imageRepo, repinImageDigest } from "../../db/utils/docker-image-ref";
 import type { RuntimeDurableObjectNamespace } from "../../types/cloud-worker-env";
 import { ApiError } from "../api/cloud-worker-errors";
@@ -91,7 +92,11 @@ import type { DockerSandboxMetadata } from "./docker-sandbox-provider";
 import { shellQuote } from "./docker-sandbox-utils";
 import { DockerSSHClient } from "./docker-ssh";
 import {
+  AGENT_PERSONAL_CUTOVER_KEY,
+  AGENT_UPGRADED_FROM_KEY,
+  readPersonalElizaCutover,
   reusesExistingElizaCharacter,
+  stripPersonalDedicatedAuthorityConfigKeys,
   stripReservedElizaConfigKeys,
   withReusedElizaCharacterOwnership,
 } from "./eliza-agent-config";
@@ -2121,20 +2126,64 @@ export class ElizaSandboxService {
 
       const updates: { agent_name?: string; agent_config?: Record<string, unknown> } = {};
       if (input.agentName !== undefined) updates.agent_name = input.agentName;
-      if (input.agentConfig !== undefined) {
+      if (input.agentConfig !== undefined || input.agentName !== undefined) {
         const existing =
           rec.agent_config &&
           typeof rec.agent_config === "object" &&
           !Array.isArray(rec.agent_config)
             ? (rec.agent_config as Record<string, unknown>)
             : {};
-        // Caller edits may change ordinary character/config fields, but the
-        // reserved namespace remains owned by lifecycle services. Sanitizing
-        // at this shared write boundary protects every route that delegates
-        // here while preserving markers already present on the row.
+        const [authority] = await tx
+          .select()
+          .from(personalDedicatedUpgradeAuthorities)
+          .where(
+            and(
+              eq(personalDedicatedUpgradeAuthorities.dedicated_agent_id, rec.id),
+              eq(personalDedicatedUpgradeAuthorities.organization_id, orgId),
+            ),
+          )
+          .limit(1);
+        const reservedProjection: Record<string, unknown> = {};
+        if (authority) {
+          if (authority.schema_version !== 1 || authority.user_id !== rec.user_id) {
+            throw new ElizaError("Personal Dedicated authority is inconsistent", {
+              code: "PERSONAL_DEDICATED_AUTHORITY_INVALID",
+              context: { agentId, organizationId: orgId },
+            });
+          }
+          reservedProjection[AGENT_UPGRADED_FROM_KEY] = authority.source_agent_id;
+          if (authority.cutover_token !== null) {
+            const cutover = readPersonalElizaCutover({
+              [AGENT_PERSONAL_CUTOVER_KEY]: {
+                mode: "dedicated",
+                sourceAgentId: authority.source_agent_id,
+                conversationId: authority.source_agent_id,
+                cutoverToken: authority.cutover_token,
+                sharedMessageCount: authority.shared_message_count,
+                sharedScheduledTaskCount: authority.shared_scheduled_task_count,
+                sharedTodoCount: authority.shared_todo_count,
+                sharedTodoMutationCount: authority.shared_todo_mutation_count,
+                sharedTodoDigest: authority.shared_todo_digest,
+                activatedAt: authority.cutover_activated_at?.toISOString(),
+              },
+            });
+            if (!cutover) {
+              throw new ElizaError("Personal Dedicated cutover authority is malformed", {
+                code: "PERSONAL_DEDICATED_AUTHORITY_INVALID",
+                context: { agentId, organizationId: orgId },
+              });
+            }
+            reservedProjection[AGENT_PERSONAL_CUTOVER_KEY] = cutover;
+          }
+        }
+        // Only adoption state is untrusted on an existing row. Other internal
+        // bindings are server-owned and must survive ordinary profile edits;
+        // the broad input sanitizer still prevents callers from replacing any
+        // internal key.
         updates.agent_config = {
-          ...existing,
-          ...stripReservedElizaConfigKeys(input.agentConfig),
+          ...stripPersonalDedicatedAuthorityConfigKeys(existing),
+          ...(input.agentConfig ? stripReservedElizaConfigKeys(input.agentConfig) : {}),
+          ...reservedProjection,
         };
       }
       if (Object.keys(updates).length === 0) return rec;

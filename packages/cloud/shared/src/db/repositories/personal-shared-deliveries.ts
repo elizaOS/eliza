@@ -6,12 +6,12 @@
  */
 
 import { sql } from "drizzle-orm";
-import { AGENT_UPGRADED_FROM_KEY } from "../../lib/services/eliza-agent-config";
 import { sqlRows } from "../execute-helpers";
 import { dbWrite } from "../helpers";
 import type { AgentSandboxStatus } from "../schemas/agent-sandboxes";
 import { agentSandboxes } from "../schemas/agent-sandboxes";
 import { organizations } from "../schemas/organizations";
+import { personalDedicatedUpgradeAuthorities } from "../schemas/personal-dedicated-upgrade-authorities";
 import { userIdentities } from "../schemas/user-identities";
 import { users } from "../schemas/users";
 
@@ -131,10 +131,15 @@ export async function findReusablePersonalDelivery(
           candidate.bridge_url,
           candidate.agent_config
         FROM ${agentSandboxes} candidate
+        INNER JOIN ${personalDedicatedUpgradeAuthorities} authority
+          ON authority.dedicated_agent_id = candidate.id
+          AND authority.organization_id = candidate.organization_id
+          AND authority.user_id = candidate.user_id
+          AND authority.schema_version = 1
+          AND authority.cutover_token IS NOT NULL
         WHERE candidate.organization_id = organization.id
           AND candidate.user_id = canonical.id
           AND candidate.execution_tier = 'dedicated-always'
-          AND candidate.agent_config ->> ${AGENT_UPGRADED_FROM_KEY} LIKE ${"personal:%"}
         ORDER BY candidate.created_at DESC
         LIMIT 1
       ) dedicated ON TRUE
