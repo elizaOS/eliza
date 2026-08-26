@@ -108,9 +108,9 @@ describe("resolveEffectiveVoiceConfig - ASR provider default", () => {
 
 describe("describeTtsFetchTargetForDebug surrogate safety", () => {
   it("preserves well-formed Unicode when clamping unparseable URLs containing surrogate pairs", () => {
-    const invalidWithSurrogate = "http://" + "a".repeat(110) + "🚀" + "tail";
+    const invalidWithSurrogate = "http://[" + "a".repeat(111) + "🚀" + "tail";
     const result = describeTtsFetchTargetForDebug(invalidWithSurrogate);
-    expect(result.isWellFormed?.()).not.toBe(false);
+    expect(result.isWellFormed()).toBe(true);
   });
 });
 
