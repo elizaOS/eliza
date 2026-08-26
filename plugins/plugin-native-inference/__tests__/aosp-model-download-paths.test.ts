@@ -13,7 +13,7 @@ import {
 import {
   bundleSlugFromModelName,
   resolveRecommendedAospModel,
-} from "../src/aosp-local-inference-bootstrap.js";
+} from "../src/aosp-model-paths.js";
 
 describe("AOSP published model resolution", () => {
   it("resolves the first-run chat download through the shared catalog", () => {
