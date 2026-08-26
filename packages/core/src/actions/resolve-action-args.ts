@@ -137,7 +137,7 @@ function pickKnownParams<TSubaction extends string>(
 	]);
 	const result: Record<string, unknown> = {};
 	for (const [key, value] of Object.entries(params)) {
-		if (allowed.has(key) && value !== undefined) {
+		if (allowed.has(key) && valueIsPresent(value)) {
 			result[key] = value;
 		}
 	}
