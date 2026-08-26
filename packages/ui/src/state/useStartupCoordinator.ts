@@ -17,6 +17,7 @@
 import { logger } from "@elizaos/logger";
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { client } from "../api";
+import { isDirectCloudSharedAgentBase } from "../api/client-cloud";
 import { isElectrobunRuntime } from "../bridge";
 import { getBootConfig } from "../config/boot-config-store";
 import { enforceDeviceRamPolicyOnPersistedRuntimeModeAtBoot } from "../first-run/device-ram-gate";
@@ -101,6 +102,19 @@ export async function recoverTerminalStartupError(
     return false;
   }
   if (cancelled.current) return false;
+
+  // Direct Cloud status and first-run methods are compatibility shims because
+  // shared agents do not expose the full app-shell API. A real adapter request
+  // must succeed before recovery can claim connectivity; otherwise an offline
+  // device would leave Retry and paint an empty, falsely-connected Home.
+  if (isDirectCloudSharedAgentBase(client.getBaseUrl())) {
+    try {
+      await client.listConversations();
+    } catch {
+      return false;
+    }
+    if (cancelled.current) return false;
+  }
 
   deps.setAgentStatus(status);
   deps.setConnected(true);

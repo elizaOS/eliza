@@ -1664,6 +1664,7 @@ function AppProviderInner({
     chatAbortRef,
     setConversationMessages,
     loadConversationMessages,
+    hydrateInitialConversationState,
   });
 
   // ── Chat composer draft persistence ────────────────────────────────
