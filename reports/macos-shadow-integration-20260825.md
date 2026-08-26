@@ -192,6 +192,57 @@ Focused proof after the exact iOS-head merge:
 No native bundle was built or launched, no final port was bound, and the
 shadow branch was not pushed.
 
+## Connector multipart-post develop refresh
+
+`origin/develop` advanced by one commit from
+`6941532900d691b674ed0c0462985f1faab360d7` to exact
+`59dd400ddc0252f73f42da5d09466674f83db8c6` through connector multipart-post
+PR #28851. The 11-file delta is confined to Core post contracts plus the
+Telegram and X connector implementations and their tests. It has no changed
+path overlap with the recorded desktop preflight, Computer Use, Devices, iOS,
+or Shared inputs.
+
+The merge was conflict-free. Its rehearsed tree and executed tree are both
+`4a0b485307abb09048c2a1b240a1701fab5c756b`; the pre-receipt source composite
+is `eb991845286cf1048bc04de69141e579f28f9ed3`. Exact constituent heads remain
+ancestors:
+
+- Desktop preflight PR #28826:
+  `eb74d871f652a550205f297f48617d97bf519aad`.
+- Computer Use PR #27215:
+  `888d3d74e567b25f98d29ecb8ca7d0b9c2bcc3af`.
+- Devices PR #25427: `0425fc53469cbc2cd68f331f19a4aa54c4aea006`.
+- iOS PR #27216: `e5b4d076f4f064163ac45a1c14c17f0f5f894fb6`.
+- Shared PR #27103: `91c1cd94bcf16661a04c3f5273efd3e151538cea`.
+
+Focused multipart and connector proof:
+
+- Core POST multipart receipt contract: 9/9.
+- Telegram command registration and lossless ordered delivery: 21/21.
+- X send/chunking contracts: 9/9.
+- X oversized ordered-thread contract: 1/1.
+- Core Node, browser, edge, testing, declaration, and packed-import builds:
+  passed.
+- Telegram build and strict typecheck: passed.
+- X build and strict typecheck: passed.
+- Core package dry run: 1,520 files, 120,934,902 bytes unpacked,
+  26,355,232-byte archive estimate.
+- Telegram package dry run: 36 files, 937,017 bytes unpacked,
+  216,355-byte archive estimate.
+- X package dry run after its separately verified prepack build: 13 files,
+  1,745,481 bytes unpacked, 346,557-byte archive estimate.
+- `git diff --check`: passed; builds produced no tracked source drift.
+
+The complete Telegram suite reports 275 passed and two failures; the complete
+X suite reports 363 passed, 13 skipped, and four failures. All six failing
+source/test files are byte-identical between this shadow and exact
+`59dd400d...`. Their stale limit, iterator-mock, and search-call expectations
+are therefore current-develop baseline discrepancies rather than conflicts or
+regressions introduced by this merge. The new multipart contracts above pass.
+
+No source-owner branch was changed, no native bundle was built or launched, no
+final port was bound, and the shadow branch was not pushed.
+
 ## Frozen inputs
 
 - Base `origin/develop`: `69c0291954942c9ae375fe5aacc82729a24bac6f`
