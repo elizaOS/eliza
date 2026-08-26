@@ -20,6 +20,7 @@ import type {
 } from "@elizaos/core";
 import {
   createUniqueUuid,
+  truncateWellFormed,
   EventType,
   isLocalCodeExecutionAllowed,
   ModelType,
@@ -2236,7 +2237,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
             source,
             room: roomId.slice(0, 8),
           },
-          `posting: "${text.slice(0, 80)}"`,
+          `posting: "${truncateWellFormed(text, 80)}"`,
         );
         await emitProgress(sessionId, { source, roomId }, text, label);
       } catch (err) {
