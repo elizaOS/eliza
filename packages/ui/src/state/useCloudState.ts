@@ -87,8 +87,12 @@ import {
   launchStewardLogin,
 } from "./cloud-steward-login";
 
-import { scrubPersistedActiveServerToken } from "./persistence";
+import {
+  savePersistedFirstRunComplete,
+  scrubPersistedActiveServerToken,
+} from "./persistence";
 import { isPrivateNetworkHost } from "./private-network-host";
+import { clearManagedCloudAccountBinding } from "./shared-cloud-account-binding";
 import type { CloudLoginOptions } from "./types";
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -1775,6 +1779,12 @@ export function useCloudState({
       // cross-origin teardown here: synchronously suppress auto-bridging,
       // revoke the server session, then scrub the local Steward session.
       await signOutFromSsoBridgedHost();
+      // A managed agent selection is scoped to the account that proved
+      // ownership. Account switching must not restore that target under the
+      // next account or strand the cloud-only app in backend-unreachable.
+      await clearManagedCloudAccountBinding();
+      clearCloudPairApiToken();
+      savePersistedFirstRunComplete(false);
       setElizaCloudEnabled(false);
       setElizaCloudConnected(false);
       publishElizaCloudVoiceSnapshot(setElizaCloudHasPersistedKey, {

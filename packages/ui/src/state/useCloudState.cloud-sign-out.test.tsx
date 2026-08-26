@@ -10,6 +10,12 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { client } from "../api";
 import { signOutFromSsoBridgedHost } from "../cloud/sso-bridge/sso-bridge";
+import {
+  loadPersistedActiveServer,
+  loadPersistedFirstRunComplete,
+  savePersistedActiveServer,
+  savePersistedFirstRunComplete,
+} from "./persistence";
 import { useCloudState } from "./useCloudState";
 
 const getCloudStatusMock = vi.hoisted(() => vi.fn());
@@ -22,6 +28,8 @@ const isAppModeHostMock = vi.hoisted(() => vi.fn());
 vi.mock("../api", () => ({
   client: {
     getBaseUrl: vi.fn(() => "https://api.eliza.app"),
+    setBaseUrl: vi.fn(),
+    setToken: vi.fn(),
     getCloudStatus: getCloudStatusMock,
     getCloudCredits: getCloudCreditsMock,
     cloudDisconnect: cloudDisconnectMock,
@@ -53,6 +61,8 @@ function makeParams() {
 
 describe("useCloudState — Cloud account sign-out", () => {
   beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
     getCloudStatusMock.mockResolvedValue({
       connected: true,
       enabled: true,
@@ -74,6 +84,14 @@ describe("useCloudState — Cloud account sign-out", () => {
   });
 
   it("clears the account session without calling the locked runtime disconnect path", async () => {
+    savePersistedActiveServer({
+      id: "cloud:previous-account-agent",
+      kind: "cloud",
+      label: "Previous account agent",
+      apiBase: "https://previous-account-agent.cloud.eliza.app",
+      accessToken: "previous-account-pair-token",
+    });
+    savePersistedFirstRunComplete(true);
     const params = makeParams();
     const { result } = renderHook(() => useCloudState(params));
 
@@ -93,6 +111,8 @@ describe("useCloudState — Cloud account sign-out", () => {
     expect(result.current.elizaCloudEnabled).toBe(false);
     expect(result.current.elizaCloudUserId).toBeNull();
     expect(result.current.elizaCloudDisconnecting).toBe(false);
+    expect(loadPersistedActiveServer()).toBeNull();
+    expect(loadPersistedFirstRunComplete()).toBe(false);
     expect(params.setActionNotice).toHaveBeenCalledWith(
       "Signed out of Eliza Cloud.",
       "success",
