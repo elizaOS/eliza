@@ -199,7 +199,8 @@ export const ownerGoalsAction: Action = {
     try {
       switch (subaction) {
         case "create": {
-          const title = params.title?.trim();
+          const title =
+            typeof params.title === "string" ? params.title.trim() : undefined;
           if (!title) {
             const text = "Goal title is required for create.";
             await callback?.({ text });
@@ -218,7 +219,8 @@ export const ownerGoalsAction: Action = {
           return { success: true, text, data: { action: "create", record } };
         }
         case "update": {
-          const id = params.id?.trim();
+          const id =
+            typeof params.id === "string" ? params.id.trim() : undefined;
           if (!id) {
             const text = "Goal id is required for update.";
             await callback?.({ text });
@@ -249,7 +251,8 @@ export const ownerGoalsAction: Action = {
           return { success: true, text, data: { action: "update", record } };
         }
         case "delete": {
-          const id = params.id?.trim();
+          const id =
+            typeof params.id === "string" ? params.id.trim() : undefined;
           if (!id) {
             const text = "Goal id is required for delete.";
             await callback?.({ text });
@@ -270,7 +273,8 @@ export const ownerGoalsAction: Action = {
           };
         }
         case "review": {
-          const id = params.id?.trim();
+          const id =
+            typeof params.id === "string" ? params.id.trim() : undefined;
           if (!id) {
             const text = "Goal id is required for review.";
             await callback?.({ text });
