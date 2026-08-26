@@ -18,7 +18,11 @@ import {
 	BatcherDisposedError,
 	PromptBatcher,
 	PromptDispatcher,
+	clampRetryCount,
+	hasMeaningfulSectionDrift,
 	pickFields,
+	rollingAverage,
+	sanitizeIdentifier,
 } from "./prompt-batcher";
 import * as batcherImplementation from "./prompt-batcher/batcher";
 import * as dispatcherImplementation from "./prompt-batcher/dispatcher";
@@ -125,7 +129,23 @@ describe("prompt-batcher entrypoint", () => {
 		expect(PromptBatcher).toBe(batcherImplementation.PromptBatcher);
 		expect(PromptDispatcher).toBe(dispatcherImplementation.PromptDispatcher);
 		expect(pickFields).toBe(sharedImplementation.pickFields);
+		expect(sanitizeIdentifier).toBe(sharedImplementation.sanitizeIdentifier);
+		expect(clampRetryCount).toBe(sharedImplementation.clampRetryCount);
+		expect(rollingAverage).toBe(sharedImplementation.rollingAverage);
+		expect(hasMeaningfulSectionDrift).toBe(
+			sharedImplementation.hasMeaningfulSectionDrift,
+		);
 		expect(BatcherDisposedError).toBe(typesModule.BatcherDisposedError);
+	});
+
+	test("exposes helper functions and handles non-string sanitizeIdentifier", () => {
+		expect(sanitizeIdentifier("valid_id")).toBe("valid_id");
+		expect(sanitizeIdentifier("123abc")).toBe("section_123abc");
+		expect(sanitizeIdentifier("")).toBe("section_unnamed");
+		expect(sanitizeIdentifier(null as unknown as string)).toBe("section_unnamed");
+		expect(clampRetryCount(5)).toBe(2);
+		expect(clampRetryCount(-1)).toBe(0);
+		expect(rollingAverage(10, 2, 20)).toBe(15);
 	});
 
 	test("exposes class constructors (not namespace objects) through the barrel", () => {

@@ -80,6 +80,9 @@ export type PromptBatcherSettings = {
 export { Semaphore } from "../batch-queue/semaphore.js";
 
 export function sanitizeIdentifier(value: string): string {
+	if (typeof value !== "string" || !value.trim()) {
+		return "section_unnamed";
+	}
 	const normalized = value.replace(/[^a-zA-Z0-9_]/g, "_");
 	if (/^[a-zA-Z_]/.test(normalized)) {
 		return normalized;

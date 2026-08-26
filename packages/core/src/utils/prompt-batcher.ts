@@ -17,4 +17,10 @@ export {
 
 export { PromptBatcher } from "./prompt-batcher/batcher.js";
 export { PromptDispatcher } from "./prompt-batcher/dispatcher.js";
-export { pickFields } from "./prompt-batcher/shared.js";
+export {
+	clampRetryCount,
+	hasMeaningfulSectionDrift,
+	pickFields,
+	rollingAverage,
+	sanitizeIdentifier,
+} from "./prompt-batcher/shared.js";
