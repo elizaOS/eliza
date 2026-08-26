@@ -67,4 +67,10 @@ describe("parseDurationMs", () => {
       parseDurationMs(`1${"0".repeat(306)}`, { defaultUnit: "m" }),
     ).toThrow("invalid duration");
   });
+
+  it("throws when a casted-invalid defaultUnit is provided", () => {
+    expect(() => parseDurationMs("5", { defaultUnit: "xyz" as never })).toThrow(
+      "invalid duration",
+    );
+  });
 });
