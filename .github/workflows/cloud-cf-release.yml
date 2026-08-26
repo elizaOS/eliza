@@ -674,6 +674,18 @@ jobs:
           fi
           echo "Verified ${#required_names[@]} protected $DEPLOY_ENVIRONMENT Blooio secret names; values were not printed."
 
+      - name: Validate protected mobile App Auth registration
+        if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
+        working-directory: ${{ env.CHECKOUT_DIR }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
+          ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
+          ELIZA_MOBILE_APP_AUTH_ENABLED: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_MOBILE_APP_AUTH_ENABLED) && 'true' || 'false' }}
+          ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
+        run: |
+          set -euo pipefail
+          node packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts
+
       - name: Disable staging session exchange before cutover
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
         working-directory: ${{ env.CHECKOUT_DIR }}/packages/cloud/api
@@ -856,6 +868,8 @@ jobs:
           # Worker's local-embeddings routing sends it when LOCAL_EMBEDDINGS_BASE_URL
           # is configured. The sidecar rejects unauthenticated calls (401).
           LOCAL_EMBEDDINGS_API_KEY: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.LOCAL_EMBEDDINGS_API_KEY || '' }}
+          ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
+          ELIZA_MOBILE_APP_AUTH_ENABLED: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_MOBILE_APP_AUTH_ENABLED) && 'true' || 'false' }}
           GATEWAY_INTERNAL_SECRET: ${{ secrets.GATEWAY_INTERNAL_SECRET }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -1275,6 +1289,14 @@ jobs:
             queue_secret "$name"
           done
 
+          if [ "$ELIZA_MOBILE_APP_AUTH_ENABLED" = "true" ]; then
+            if ! has_nonblank_value "$ELIZA_MOBILE_APP_AUTH_APP_ID"; then
+              echo "::error::Enabled mobile App Auth requires the protected ELIZA_MOBILE_APP_AUTH_APP_ID secret"
+              exit 1
+            fi
+            queue_secret ELIZA_MOBILE_APP_AUTH_APP_ID || exit 1
+          fi
+
           # Routing toggles: presence changes code paths, so unset must delete.
           # A failed removal must fail the step. Configured toggle values join
           # the exact Worker deploy rather than mutating an earlier version.
@@ -1346,6 +1368,7 @@ jobs:
           FISH_AUDIO_MODEL: ${{ vars.FISH_AUDIO_MODEL || 's2.1-pro' }}
           FISH_AUDIO_SAMPLE_RATE: "16000"
           FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS: ${{ vars.FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS || '1500' }}
+          ELIZA_MOBILE_APP_AUTH_ENABLED: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_MOBILE_APP_AUTH_ENABLED) && 'true' || 'false' }}
           WORKER_SECRETS_FILE: ${{ steps.worker-secrets.outputs.secrets_file }}
           CANONICAL_REF: ${{ steps.env.outputs.deploy_environment == 'production' && 'refs/heads/main' || 'refs/heads/develop' }}
           FORCE: ${{ inputs.force }}
@@ -1398,7 +1421,7 @@ jobs:
             exit 1
           fi
 
-          args=(${{ steps.env.outputs.wrangler_args }} --secrets-file "$WORKER_SECRETS_FILE" --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" --var VOICE_REALTIME_WS_ENABLED:"$VOICE_REALTIME_WS_ENABLED" --var ELIZA_TTS_FISH_ENABLED:"$ELIZA_TTS_FISH_ENABLED" --var FISH_AUDIO_DATA_GOVERNANCE_APPROVED:"$FISH_AUDIO_DATA_GOVERNANCE_APPROVED" --var FISH_AUDIO_MODEL:"$FISH_AUDIO_MODEL" --var FISH_AUDIO_SAMPLE_RATE:"$FISH_AUDIO_SAMPLE_RATE" --var FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS:"$FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS")
+          args=(${{ steps.env.outputs.wrangler_args }} --secrets-file "$WORKER_SECRETS_FILE" --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" --var ELIZA_MOBILE_APP_AUTH_ENABLED:"$ELIZA_MOBILE_APP_AUTH_ENABLED" --var VOICE_REALTIME_WS_ENABLED:"$VOICE_REALTIME_WS_ENABLED" --var ELIZA_TTS_FISH_ENABLED:"$ELIZA_TTS_FISH_ENABLED" --var FISH_AUDIO_DATA_GOVERNANCE_APPROVED:"$FISH_AUDIO_DATA_GOVERNANCE_APPROVED" --var FISH_AUDIO_MODEL:"$FISH_AUDIO_MODEL" --var FISH_AUDIO_SAMPLE_RATE:"$FISH_AUDIO_SAMPLE_RATE" --var FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS:"$FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS")
           if [ -n "${KOKORO_TTS_URL:-}" ]; then
             args+=(--var KOKORO_TTS_URL:"$KOKORO_TTS_URL")
           else
@@ -1427,6 +1450,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
+          ELIZA_MOBILE_APP_AUTH_ENABLED: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_MOBILE_APP_AUTH_ENABLED) && 'true' || 'false' }}
           VOICE_REALTIME_WS_ENABLED: ${{ (steps.env.outputs.deploy_environment == 'production' || contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED)) && 'true' || 'false' }}
         run: |
           set -euo pipefail
@@ -1456,6 +1480,9 @@ jobs:
               "STEWARD_TENANT_API_KEY",
               "GATEWAY_INTERNAL_SECRET",
             ];
+            if (process.env.ELIZA_MOBILE_APP_AUTH_ENABLED === "true") {
+              required.push("ELIZA_MOBILE_APP_AUTH_APP_ID");
+            }
             if (process.env.DEPLOY_ENVIRONMENT === "staging") {
               required.push("LOCAL_EMBEDDINGS_API_KEY");
             }
@@ -1528,6 +1555,17 @@ jobs:
           done
           echo "::error::API health did not serve the deployed commit ${expected_commit} for ${expected_environment}."
           exit 1
+
+      - name: Verify deployed mobile App Auth metadata
+        if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
+        working-directory: ${{ env.CHECKOUT_DIR }}
+        env:
+          ELIZA_MOBILE_APP_AUTH_ENABLED: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_MOBILE_APP_AUTH_ENABLED) && 'true' || 'false' }}
+          ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
+          ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
+        run: |
+          set -euo pipefail
+          node packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts --skip-database --verify-live
 
       - name: Canary authenticated staging realtime and rollback on failure
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'

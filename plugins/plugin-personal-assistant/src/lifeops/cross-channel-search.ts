@@ -22,6 +22,7 @@
 // touch and provide a local fallback for cluster memory lookup.
 import type { IAgentRuntime, Memory, Room, Service, UUID } from "@elizaos/core";
 import {
+  ElizaError,
   logger,
   ModelType,
   runWithTrajectoryPurpose,
@@ -126,7 +127,7 @@ export type CrossChannelSearchQuery = {
   channels?: CrossChannelSearchChannel[];
   /** Optional worldId scope for memory search. */
   worldId?: UUID;
-  /** Per-channel hit cap (default 10). */
+  /** @deprecated Results are complete; model-facing search is not capped. */
   limit?: number;
 };
 
@@ -177,8 +178,8 @@ export type CrossChannelSearchResult = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const DEFAULT_PER_CHANNEL_LIMIT = 10;
 const MEMORY_MATCH_THRESHOLD = 0.55;
+const MEMORY_SEARCH_PAGE_SIZE = 500;
 
 const KNOWN_PLATFORM_FOR_CHANNEL: Record<CrossChannelSearchChannel, string> = {
   gmail: "gmail",
@@ -383,7 +384,6 @@ async function searchGmail(
   unsupported: CrossChannelSearchUnsupported[];
   degraded: CrossChannelSearchDegraded[];
 }> {
-  const limit = query.limit ?? DEFAULT_PER_CHANNEL_LIMIT;
   const lifeOps = getLifeOpsSearchService(runtime);
   if (!lifeOps || typeof lifeOps.getGmailSearch !== "function") {
     return {
@@ -401,7 +401,6 @@ async function searchGmail(
   const requestUrl = new URL("http://127.0.0.1/api/lifeops/gmail/search");
   const feed = await lifeOps.getGmailSearch(requestUrl, {
     query: query.query,
-    maxResults: limit,
   });
 
   const hits: CrossChannelSearchHit[] = [];
@@ -447,10 +446,8 @@ async function searchTelegram(
     };
   }
 
-  const limit = query.limit ?? DEFAULT_PER_CHANNEL_LIMIT;
   const messages = await lifeOps.searchTelegramMessages({
     query: query.query,
-    limit,
   });
   const hits: CrossChannelSearchHit[] = [];
   for (const msg of messages) {
@@ -539,10 +536,8 @@ async function searchIMessages(
     };
   }
 
-  const limit = query.limit ?? DEFAULT_PER_CHANNEL_LIMIT;
   const messages = await lifeOps.searchIMessages({
     query: query.query,
-    limit,
   });
   const hits: CrossChannelSearchHit[] = [];
   for (const msg of messages) {
@@ -585,9 +580,8 @@ async function searchWhatsApp(
     };
   }
 
-  const limit = query.limit ?? DEFAULT_PER_CHANNEL_LIMIT;
   const needle = query.query.trim().toLowerCase();
-  const recent = await lifeOps.pullWhatsAppRecent(limit + 25);
+  const recent = await lifeOps.pullWhatsAppRecent();
   const hits: CrossChannelSearchHit[] = [];
   for (const msg of recent.messages) {
     const text = msg.text?.trim();
@@ -613,7 +607,7 @@ async function searchWhatsApp(
       },
     });
   }
-  return { hits: hits.slice(0, limit), unsupported: [] };
+  return { hits, unsupported: [] };
 }
 
 function searchableCalendarText(event: LifeOpsCalendarEvent): string {
@@ -728,8 +722,7 @@ async function searchXPostsChannel(
     };
   }
 
-  const limit = query.limit ?? DEFAULT_PER_CHANNEL_LIMIT;
-  const posts = await lifeOps.searchXPosts(query.query, { limit });
+  const posts = await lifeOps.searchXPosts(query.query);
   const hits: CrossChannelSearchHit[] = [];
   for (const post of posts) {
     if (!withinTimeWindow(post.createdAtSource, query.timeWindow)) {
@@ -772,9 +765,8 @@ async function searchXDms(
     };
   }
 
-  const limit = query.limit ?? DEFAULT_PER_CHANNEL_LIMIT;
   const needle = query.query.trim().toLowerCase();
-  const dms = await lifeOps.getXDms({ limit: limit + 10 });
+  const dms = await lifeOps.getXDms();
   const hits: CrossChannelSearchHit[] = [];
   for (const dm of dms) {
     if (!withinTimeWindow(dm.receivedAt, query.timeWindow)) {
@@ -796,7 +788,7 @@ async function searchXDms(
       },
     });
   }
-  return { hits: hits.slice(0, limit), unsupported: [] };
+  return { hits, unsupported: [] };
 }
 
 async function embedQuery(
@@ -840,16 +832,33 @@ async function searchAgentMemory(
     };
   }
 
-  const limit = query.limit ?? DEFAULT_PER_CHANNEL_LIMIT;
-  const searchParams: Parameters<IAgentRuntime["searchMemories"]>[0] = {
-    embedding,
-    tableName: "messages",
-    match_threshold: MEMORY_MATCH_THRESHOLD,
-    limit: limit + 10,
-    worldId: query.worldId,
-  };
-
-  const memories = await runtime.searchMemories(searchParams);
+  const memories: Memory[] = [];
+  const seenIds = new Set<UUID>();
+  for (let offset = 0; ; offset += MEMORY_SEARCH_PAGE_SIZE) {
+    const page = await runtime.searchMemories({
+      embedding,
+      tableName: "messages",
+      match_threshold: MEMORY_MATCH_THRESHOLD,
+      limit: MEMORY_SEARCH_PAGE_SIZE,
+      offset,
+      worldId: query.worldId,
+    });
+    const ids = page.map((memory) => memory.id);
+    const invalidId = ids.some((id) => !id);
+    const repeatedId = ids.some((id) => id && seenIds.has(id));
+    if (invalidId || repeatedId) {
+      throw new ElizaError(
+        "Cross-channel memory pagination returned an unstable page",
+        {
+          code: "CROSS_CHANNEL_MEMORY_PAGINATION_STALLED",
+          context: { offset, pageSize: page.length, invalidId, repeatedId },
+        },
+      );
+    }
+    for (const id of ids) seenIds.add(id as UUID);
+    memories.push(...page);
+    if (page.length < MEMORY_SEARCH_PAGE_SIZE) break;
+  }
   const hits = await memoriesToHits(runtime, memories, query);
   return { hits, degraded: [] };
 }
@@ -1024,7 +1033,6 @@ async function searchClusterMemories(
 
   const memories = await fn({
     primaryEntityId: person.primaryEntityId,
-    count: (query.limit ?? DEFAULT_PER_CHANNEL_LIMIT) * 2,
     worldId: query.worldId,
   });
   const hits = await memoriesToHits(runtime, memories, query);
@@ -1308,18 +1316,13 @@ export async function runCrossChannelSearch(
     new Set(merged.map((h) => h.channel)),
   ) as CrossChannelSearchChannel[];
 
-  const finalLimit =
-    (query.limit ?? DEFAULT_PER_CHANNEL_LIMIT) *
-    CROSS_CHANNEL_SEARCH_CHANNELS.length;
-  const limited = merged.slice(0, finalLimit);
-
   logger.debug(
-    `[cross-channel-search] query="${query.query}" hits=${limited.length} unsupported=${unsupported.length} degraded=${degraded.length}`,
+    `[cross-channel-search] query="${query.query}" hits=${merged.length} unsupported=${unsupported.length} degraded=${degraded.length}`,
   );
 
   return {
     query: query.query,
-    hits: limited,
+    hits: merged,
     unsupported,
     degraded,
     channelsWithHits,

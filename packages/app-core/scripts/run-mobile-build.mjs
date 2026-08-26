@@ -6,11 +6,14 @@
  * Reads app identity from the host's app.config.ts so web, desktop, and
  * native builds share one canonical app contract.
  *
- * Usage: node scripts/run-mobile-build.mjs <android|android-host-e2e|android-cloud-hybrid|android-sms-gateway|android-cloud|android-cloud-audit [aab-path]|android-cloud-debug|android-system|ios|ios-local|ios-overlay>
+ * Usage: node scripts/run-mobile-build.mjs <android|android-launcher|android-host-e2e|android-cloud-hybrid|android-sms-gateway|android-cloud|android-cloud-audit [aab-path]|android-cloud-debug|android-system|ios|ios-local|ios-overlay>
  *
  * Android targets:
  *   - android         Sideload-only debug APK with the on-device agent runtime
  *                     and AOSP/system-only permissions. NOT Play-Store-shippable.
+ *   - android-launcher
+ *                     Direct-install cloud-client APK that qualifies for the
+ *                     stock Android HOME role. Not a Play release artifact.
  *   - android-host-e2e
  *                     Debug APK for hosted emulator evidence. Keeps the real
  *                     Android renderer and native bridge but omits the unused
@@ -1040,6 +1043,7 @@ export function applyIosAppIdentity({
 export function resolveMobileBuildPolicy(platform) {
   const capacitorTarget =
     platform === "android-system" ||
+    platform === "android-launcher" ||
     platform === "android-cloud" ||
     platform === "android-cloud-debug" ||
     platform === "android-cloud-hybrid"
@@ -1053,7 +1057,9 @@ export function resolveMobileBuildPolicy(platform) {
   // is the default sideload/AOSP behavior. Surfaced to the renderer via
   // VITE_ELIZA_ANDROID_RUNTIME_MODE so it can hide the Local picker option.
   const androidRuntimeMode =
-    platform === "android-cloud" || platform === "android-cloud-debug"
+    platform === "android-cloud" ||
+    platform === "android-cloud-debug" ||
+    platform === "android-launcher"
       ? "cloud"
       : platform === "android-cloud-hybrid"
         ? "cloud-hybrid"
@@ -1069,7 +1075,9 @@ export function resolveMobileBuildPolicy(platform) {
           ? "cloud"
           : null;
   const runtimeExecutionMode =
-    platform === "android-cloud" || platform === "android-cloud-debug"
+    platform === "android-cloud" ||
+    platform === "android-cloud-debug" ||
+    platform === "android-launcher"
       ? "cloud"
       : platform === "android" ||
           platform === "android-system" ||
@@ -1095,7 +1103,8 @@ export function resolveMobileBuildPolicy(platform) {
             ? "apple-app-store"
             : platform === "ios-local"
               ? "developer-toolchain"
-              : platform === "android-cloud-debug"
+              : platform === "android-cloud-debug" ||
+                  platform === "android-launcher"
                 ? "developer-debug"
                 : "developer-toolchain";
   return {
@@ -1568,13 +1577,13 @@ function removeIosLocalExecutionAssets() {
 
 // ── Phase 3: Capacitor sync ────────────────────────────────────────────
 
-async function ensurePlatform(platform) {
+async function ensurePlatform(platform, { env = process.env } = {}) {
   const dir = platform === "android" ? androidDir : iosDir;
   if (!fs.existsSync(dir)) {
     const copied = syncPlatformTemplateFiles(platform);
     if (copied.length === 0) {
       console.log(`[mobile-build] Adding Capacitor ${platform} platform...`);
-      await runCapacitor(["add", platform]);
+      await runCapacitor(["add", platform], { env });
     }
   }
   if (!isCapacitorPlatformReady(platform)) {
@@ -2928,7 +2937,10 @@ export function ensureElizaBootReceiverManifest(xml, androidPackage) {
   );
 }
 
-function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
+function overlayAndroid({
+  includeAospRoleLaunchers = false,
+  includeHomeRole = includeAospRoleLaunchers,
+} = {}) {
   assertSharedTreeOnlyForEliza("overlay Java sources");
   const templateJavaRoot = path.join(
     platformsDir,
@@ -3137,7 +3149,7 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       '    <uses-feature android:name="android.hardware.telephony" android:required="false" />',
     );
     const withElizaOsActivityFilters = ensureElizaOsActivityFilters(xml, {
-      enabled: includeAospRoleLaunchers,
+      enabled: includeHomeRole,
     });
     if (withElizaOsActivityFilters !== xml) {
       xml = withElizaOsActivityFilters;
@@ -5781,9 +5793,12 @@ export const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
   ["@capacitor-community/bluetooth-le", "capacitor-community-bluetooth-le"],
   ["@capacitor/background-runner", "capacitor-background-runner"],
   ["@capacitor/barcode-scanner", "capacitor-barcode-scanner"],
+  ["@capacitor/device", "capacitor-device"],
+  ["@capacitor/filesystem", "capacitor-filesystem"],
   ["@capacitor/haptics", "capacitor-haptics"],
   ["@capacitor/local-notifications", "capacitor-local-notifications"],
   ["@capacitor/push-notifications", "capacitor-push-notifications"],
+  ["@capacitor/share", "capacitor-share"],
   ["@elizaos/capacitor-agent", "elizaos-capacitor-agent"],
   ["@elizaos/capacitor-bun-runtime", "elizaos-capacitor-bun-runtime"],
   ["@elizaos/capacitor-appblocker", "elizaos-capacitor-appblocker"],
@@ -5812,16 +5827,95 @@ export const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
 export const ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES = Object.freeze([
   "@capacitor/app",
   "@capacitor/browser",
-  "@capacitor/device",
-  "@capacitor/filesystem",
   "@capacitor/keyboard",
   "@capacitor/network",
   "@capacitor/preferences",
-  "@capacitor/share",
   "@capacitor/status-bar",
   "@elizaos/capacitor-browser-surface",
   "@elizaos/capacitor-secure-store",
 ]);
+
+export const ANDROID_PLAY_ALLOWED_CAPACITOR_CONFIG_PLUGINS = Object.freeze([
+  "CapacitorHttp",
+  "Keyboard",
+  "SplashScreen",
+]);
+
+function isJsonRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Returns the minimal runtime config that is safe to package in a Play APK/AAB. */
+export function sanitizeAndroidCloudCapacitorConfig(
+  value,
+  { launcherKiosk = false, webViewDebugging = false } = {},
+) {
+  if (!isJsonRecord(value)) {
+    throw new Error(
+      "android-cloud capacitor.config.json must contain an object",
+    );
+  }
+  const sourcePlugins = isJsonRecord(value.plugins) ? value.plugins : {};
+  const plugins = {};
+  for (const pluginName of ANDROID_PLAY_ALLOWED_CAPACITOR_CONFIG_PLUGINS) {
+    const pluginConfig = sourcePlugins[pluginName];
+    if (isJsonRecord(pluginConfig)) plugins[pluginName] = pluginConfig;
+  }
+  const sourceAndroid = isJsonRecord(value.android) ? value.android : {};
+  return {
+    appId: APP.appId,
+    appName: APP.appName,
+    webDir: "dist",
+    ...(launcherKiosk ? { loggingBehavior: "none" } : {}),
+    server: {
+      androidScheme: "https",
+    },
+    plugins,
+    android: {
+      backgroundColor:
+        typeof sourceAndroid.backgroundColor === "string"
+          ? sourceAndroid.backgroundColor
+          : "#000000",
+      allowMixedContent: false,
+      captureInput: sourceAndroid.captureInput === true,
+      webContentsDebuggingEnabled: launcherKiosk && webViewDebugging,
+    },
+  };
+}
+
+function sanitizeAndroidCloudPackagedConfig(env = process.env) {
+  const configPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "assets",
+    "capacitor.config.json",
+  );
+  if (!fs.existsSync(configPath)) {
+    throw new Error(
+      "[mobile-build] android-cloud capacitor.config.json is missing",
+    );
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  } catch (error) {
+    throw new Error(
+      `[mobile-build] Could not parse android-cloud capacitor.config.json: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  const sanitized = sanitizeAndroidCloudCapacitorConfig(parsed, {
+    launcherKiosk: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
+    webViewDebugging: env.ELIZA_WEBVIEW_DEBUG === "1",
+  });
+  fs.writeFileSync(configPath, `${JSON.stringify(sanitized, null, "\t")}\n`);
+  console.log(
+    "[mobile-build] Rewrote capacitor.config.json to the restricted Play runtime contract.",
+  );
+}
 
 export const ANDROID_PLAY_ALLOWED_PERMISSIONS = Object.freeze([
   "android.permission.ACCESS_NETWORK_STATE",
@@ -5868,16 +5962,61 @@ export const ANDROID_PLAY_ALLOWED_QUERY_ACTIONS = Object.freeze([
 
 export const ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES = Object.freeze([]);
 
+export const ANDROID_PLAY_DATA_EXTRACTION_RULES = `<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>
+`;
+
+export function applyAndroidPlayManifestHardening(source) {
+  let xml = source
+    .replace(/\s+android:dataExtractionRules="[^"]*"/, "")
+    .replace(/\s+android:fullBackupContent="[^"]*"/, "")
+    .replace(
+      /<application\b/,
+      '<application\n        android:dataExtractionRules="@xml/data_extraction_rules"\n        android:fullBackupContent="false"',
+    );
+
+  const permissionBlocks = [];
+  xml = xml.replace(/\n?[ \t]*<uses-permission\b[\s\S]*?\/>/g, (block) => {
+    permissionBlocks.push(block.trim());
+    return "";
+  });
+  if (permissionBlocks.length === 0) return xml;
+
+  const insertion = xml.search(/\n[ \t]*<(?:queries|application)\b/);
+  if (insertion < 0) return xml;
+  const permissions = permissionBlocks
+    .map((block) =>
+      block
+        .split("\n")
+        .map((line) => `    ${line.trimStart()}`)
+        .join("\n"),
+    )
+    .join("\n");
+  return `${xml.slice(0, insertion)}\n\n${permissions}${xml.slice(insertion)}`;
+}
+
 export const ANDROID_PLAY_FORBIDDEN_ASSET_MARKERS = Object.freeze([
-  "31337",
-  "31338",
   "32437",
   "32438",
   "10.0.2.2",
   "adb reverse",
-  "eliza-local-agent:",
   "__ELIZA_ANDROID_IPC_FETCH_BRIDGE__",
-  "remote-mac",
+  "navigator.serviceWorker",
 ]);
 
 export const ANDROID_PLAY_FORBIDDEN_INDEX_HTML_MARKERS = Object.freeze([
@@ -6068,56 +6207,71 @@ export function findAndroidCloudPackagedRuntimeOffenders(entries) {
   });
 }
 
-function cloudBrandUserAgentMarkerLines() {
-  const markers = [
-    { systemProp: "ro.elizaos.product", uaPrefix: "ElizaOS/" },
-    ...(APP.userAgentMarkers ?? []),
-  ];
-  return markers
-    .map(
-      (marker) =>
-        `        new UserAgentMarker("${escapeJavaString(marker.systemProp)}", "${escapeJavaString(marker.uaPrefix)}"),`,
-    )
-    .join("\n");
-}
+export function cloudSafeMainActivityJava(
+  androidPackage,
+  { launcherKiosk = false } = {},
+) {
+  const launcherImports = launcherKiosk
+    ? `import android.util.Log;
+import android.view.KeyEvent;
 
-export function cloudSafeMainActivityJava(androidPackage) {
+import androidx.activity.OnBackPressedCallback;
+`
+    : "";
+  const launcherConstants = launcherKiosk
+    ? '    private static final String TAG = "ElizaMainActivity";\n'
+    : "";
+  const launcherSetup = launcherKiosk
+    ? `
+        // The launcher owns the device surface. Keep Back from finishing the
+        // root activity, then enter Android lock-task mode. A managed device
+        // owner can allowlist this package for silent kiosk; an unmanaged
+        // Pixel receives Android's recoverable screen-pinning confirmation.
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                // Intentionally stay on the launcher root.
+            }
+        });
+        try {
+            startLockTask();
+        } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
+            Log.w(TAG, "Unable to enter launcher lock-task mode", e);
+        }
+`
+    : "";
+  const launcherMethods = launcherKiosk
+    ? `
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        // Keep hardware keyboards and accessibility navigation from moving the
+        // launcher WebView forward through browser history.
+        if (event.getKeyCode() == KeyEvent.KEYCODE_FORWARD
+                || event.getKeyCode() == KeyEvent.KEYCODE_NAVIGATE_NEXT) {
+            return true;
+        }
+        return super.dispatchKeyEvent(event);
+    }
+`
+    : "";
   return `package ${androidPackage};
 
-import android.os.Build;
 import android.os.Bundle;
 import android.content.Intent;
-import android.util.Log;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 
 import androidx.core.splashscreen.SplashScreen;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
+${launcherImports}
 
 import com.getcapacitor.BridgeActivity;
 
 import ${androidPackage}.BuildConfig;
 
-import java.lang.reflect.Method;
-
 public class MainActivity extends BridgeActivity {
-
-    private static final String TAG = "ElizaMainActivity";
-
-    private static final class UserAgentMarker {
-        final String systemProp;
-        final String uaPrefix;
-
-        UserAgentMarker(String systemProp, String uaPrefix) {
-            this.systemProp = systemProp;
-            this.uaPrefix = uaPrefix;
-        }
-    }
-
-    private static final UserAgentMarker[] BRAND_USER_AGENT_MARKERS = new UserAgentMarker[] {
-${cloudBrandUserAgentMarkerLines()}
-    };
+${launcherConstants}
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -6134,11 +6288,14 @@ ${cloudBrandUserAgentMarkerLines()}
         DeepLinkBufferPlugin.captureIntent(this, getIntent());
         registerPlugin(DeepLinkBufferPlugin.class);
         registerPlugin(ElizaSecureCredentialsPlugin.class);
+        registerPlugin(ElizaPlayExportPlugin.class);
         registerPlugin(ElizaPlayVoicePlugin.class);
+        registerPlugin(ElizaPlaySettingsPlugin.class);
 
         super.onCreate(savedInstanceState);
+${launcherSetup}
 
-        // Draw the minimal Cloud shell behind transparent system bars while
+        // Draw the canonical Cloud renderer behind transparent system bars while
         // keeping both bars visible and user-controlled. This uses only the
         // public AndroidX edge-to-edge API and avoids white-on-white status
         // icons on the signed-out screen.
@@ -6154,7 +6311,6 @@ ${cloudBrandUserAgentMarkerLines()}
         if (getBridge() != null && getBridge().getWebView() != null) {
             WebSettings settings = getBridge().getWebView().getSettings();
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-            applyBrandUserAgentMarkers(settings);
         }
     }
 
@@ -6163,59 +6319,25 @@ ${cloudBrandUserAgentMarkerLines()}
         DeepLinkBufferPlugin.captureIntent(this, intent);
         super.onNewIntent(intent);
     }
+${launcherMethods}
 
-    private void applyBrandUserAgentMarkers(WebSettings settings) {
-        StringBuilder newUa = null;
-        String currentUa = settings.getUserAgentString();
-        for (UserAgentMarker marker : BRAND_USER_AGENT_MARKERS) {
-            if (marker.systemProp == null || marker.systemProp.isEmpty()) {
-                continue;
-            }
-            String tag = readSystemProperty(marker.systemProp);
-            if (tag == null || tag.isEmpty()) {
-                continue;
-            }
-            String token = marker.uaPrefix + tag;
-            if (currentUa != null && currentUa.contains(token)) {
-                continue;
-            }
-            if (newUa == null) {
-                newUa = new StringBuilder(currentUa == null ? "" : currentUa);
-            }
-            if (newUa.length() > 0) {
-                newUa.append(" ");
-            }
-            newUa.append(token);
-        }
-        if (newUa != null) {
-            settings.setUserAgentString(newUa.toString());
-        }
-    }
-
-    private static String readSystemProperty(String key) {
-        try {
-            Class<?> spClass = Class.forName("android.os.SystemProperties");
-            Method get = spClass.getMethod("get", String.class);
-            Object result = get.invoke(null, key);
-            return result instanceof String ? (String) result : "";
-        } catch (ReflectiveOperationException | SecurityException e) {
-            Log.w(TAG, "SystemProperties.get failed for " + key, e);
-            return "";
-        }
-    }
 }
 `;
 }
 
-/** Android Keystore-backed bearer storage for the minimal Play Cloud shell. */
+/** Android Keystore-backed bearer storage for the Play Cloud client. */
 export function cloudSafeSecureCredentialsPluginJava(androidPackage) {
   return `package ${androidPackage};
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.net.Uri;
+import android.os.Handler;
+import android.os.Looper;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 import android.util.Base64;
+import android.webkit.WebView;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -6227,6 +6349,9 @@ import java.nio.charset.StandardCharsets;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
@@ -6240,14 +6365,24 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
     private static final String ANDROID_KEYSTORE = "AndroidKeyStore";
     private static final String KEY_ALIAS = "ai.elizaos.app.android_cloud_token_key_v1";
     private static final String PREFERENCES = "eliza_secure_credentials_v1";
-    private static final String CIPHERTEXT = "steward_token_ciphertext";
+    private static final String SESSION_CIPHERTEXT = "steward_token_ciphertext";
+    private static final String PENDING_LOGIN_CIPHERTEXT = "mobile_login_ciphertext";
+    private static final String ADMISSION_CIPHERTEXT = "account_deletion_admission_ciphertext";
+    private static final String STATUS_CIPHERTEXT = "account_deletion_status_ciphertext";
+    private static final String RECOVERY_CIPHERTEXT = "account_deletion_recovery_ciphertext";
     private static final String TRANSFORMATION = "AES/GCM/NoPadding";
+    private static final String LOCAL_APP_ORIGIN = "https://localhost";
     private static final int GCM_TAG_BITS = 128;
     private static final int MAX_TOKEN_BYTES = 16 * 1024;
+    private static final long WEBVIEW_URL_TIMEOUT_SECONDS = 2L;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     @PluginMethod
     public synchronized void get(PluginCall call) {
-        String encoded = preferences().getString(CIPHERTEXT, null);
+        if (!requireExactLocalOrigin(call)) return;
+        String preferenceKey = preferenceKey(call);
+        if (preferenceKey == null) return;
+        String encoded = preferences().getString(preferenceKey, null);
         if (encoded == null) {
             JSObject result = new JSObject();
             result.put("value", JSONObject.NULL);
@@ -6266,13 +6401,16 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
             result.put("value", value);
             call.resolve(result);
         } catch (GeneralSecurityException | IllegalArgumentException error) {
-            preferences().edit().remove(CIPHERTEXT).apply();
+            preferences().edit().remove(preferenceKey).apply();
             call.reject("Secure credential storage is unavailable.", "SECURE_CREDENTIAL_UNAVAILABLE", error);
         }
     }
 
     @PluginMethod
     public synchronized void set(PluginCall call) {
+        if (!requireExactLocalOrigin(call)) return;
+        String preferenceKey = preferenceKey(call);
+        if (preferenceKey == null) return;
         String value = call.getString("value");
         if (value == null || value.trim().isEmpty()) {
             call.reject("A non-empty credential is required.", "SECURE_CREDENTIAL_INVALID");
@@ -6289,7 +6427,7 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
             String encoded = Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP)
                     + ":"
                     + Base64.encodeToString(cipher.doFinal(plaintext), Base64.NO_WRAP);
-            if (!preferences().edit().putString(CIPHERTEXT, encoded).commit()) {
+            if (!preferences().edit().putString(preferenceKey, encoded).commit()) {
                 call.reject("Secure credential storage could not be committed.", "SECURE_CREDENTIAL_UNAVAILABLE");
                 return;
             }
@@ -6301,11 +6439,71 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
 
     @PluginMethod
     public synchronized void remove(PluginCall call) {
-        if (!preferences().edit().remove(CIPHERTEXT).commit()) {
+        if (!requireExactLocalOrigin(call)) return;
+        String preferenceKey = preferenceKey(call);
+        if (preferenceKey == null) return;
+        if (!preferences().edit().remove(preferenceKey).commit()) {
             call.reject("Secure credential storage could not be cleared.", "SECURE_CREDENTIAL_UNAVAILABLE");
             return;
         }
         call.resolve();
+    }
+
+    private boolean requireExactLocalOrigin(PluginCall call) {
+        if (getBridge() == null || !LOCAL_APP_ORIGIN.equals(getBridge().getLocalUrl())) {
+            call.reject("Secure credentials are available only to the packaged app.", "SECURE_CREDENTIAL_ORIGIN_DENIED");
+            return false;
+        }
+        WebView webView = getBridge().getWebView();
+        String currentUrl = currentWebViewUrl(webView);
+        Uri current = currentUrl == null ? null : Uri.parse(currentUrl);
+        if (current == null
+                || !"https".equals(current.getScheme())
+                || !"localhost".equals(current.getHost())
+                || current.getPort() != -1) {
+            call.reject("Secure credentials are available only to the packaged app.", "SECURE_CREDENTIAL_ORIGIN_DENIED");
+            return false;
+        }
+        return true;
+    }
+
+    private String currentWebViewUrl(WebView webView) {
+        if (webView == null) return null;
+        if (Looper.myLooper() == Looper.getMainLooper()) return webView.getUrl();
+
+        CountDownLatch completed = new CountDownLatch(1);
+        AtomicReference<String> currentUrl = new AtomicReference<>();
+        mainHandler.post(() -> {
+            try {
+                currentUrl.set(webView.getUrl());
+            } finally {
+                completed.countDown();
+            }
+        });
+        try {
+            if (!completed.await(WEBVIEW_URL_TIMEOUT_SECONDS, TimeUnit.SECONDS)) return null;
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            return null;
+        }
+        return currentUrl.get();
+    }
+
+    private String preferenceKey(PluginCall call) {
+        String slot = call.getString("slot");
+        if ("credential".equals(slot)) return SESSION_CIPHERTEXT;
+        if ("pending_login".equals(slot)) return PENDING_LOGIN_CIPHERTEXT;
+        if (slot != null) {
+            call.reject("The secure credential slot is invalid.", "SECURE_CREDENTIAL_INVALID");
+            return null;
+        }
+        String key = call.getString("key", "session");
+        if ("session".equals(key)) return SESSION_CIPHERTEXT;
+        if ("accountDeletionAdmission".equals(key)) return ADMISSION_CIPHERTEXT;
+        if ("accountDeletionStatus".equals(key)) return STATUS_CIPHERTEXT;
+        if ("accountDeletionRecovery".equals(key)) return RECOVERY_CIPHERTEXT;
+        call.reject("The credential namespace is invalid.", "SECURE_CREDENTIAL_INVALID");
+        return null;
     }
 
     private SharedPreferences preferences() {
@@ -6332,6 +6530,259 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
                 .setRandomizedEncryptionRequired(true)
                 .build());
         return generator.generateKey();
+    }
+}
+`;
+}
+
+/** Standard Storage Access Framework export saver for the Play Cloud shell. */
+export function cloudSafePlayExportPluginJava(androidPackage) {
+  return `package ${androidPackage};
+
+import android.app.Activity;
+import android.content.Intent;
+import android.net.Uri;
+
+import androidx.activity.result.ActivityResult;
+
+import com.getcapacitor.JSObject;
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.ActivityCallback;
+import com.getcapacitor.annotation.CapacitorPlugin;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
+import java.security.MessageDigest;
+import java.util.Arrays;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+import javax.net.ssl.HttpsURLConnection;
+
+@CapacitorPlugin(name = "ElizaPlayExport")
+public final class ElizaPlayExportPlugin extends Plugin {
+    private static final int MAX_EXPORT_BYTES = 32 * 1024 * 1024;
+    private static final String PRODUCTION_API = "https://api.eliza.app";
+    private static final String PRODUCTION_APP = "https://cloud.eliza.app";
+    private static final String STAGING_API = "https://api-staging.eliza.app";
+    private static final String STAGING_APP = "https://cloud-staging.eliza.app";
+    private static final String STATUS_PATH = "/api/public/account-deletion/export";
+    private static final String CONFIRMATION = "{\\"confirmation\\":\\"EXPORT MY DATA\\"}";
+    private static final String CAPABILITY_PATTERN = "^[A-Za-z0-9_-]{43}$";
+    private static final String DIGEST_PATTERN = "^[A-Fa-f0-9]{64}$";
+
+    private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
+    private final Map<String, PendingExport> pendingExports = new ConcurrentHashMap<>();
+
+    private static final class PendingExport {
+        final byte[] bytes;
+        final String digest;
+
+        PendingExport(byte[] bytes, String digest) {
+            this.bytes = bytes;
+            this.digest = digest;
+        }
+    }
+
+    @PluginMethod
+    public void saveExport(PluginCall call) {
+        String apiBase = call.getString("apiBase", "");
+        String appOrigin = call.getString("appOrigin", "");
+        String recoveryCredential = call.getString("recoveryCredential", "");
+        if (!isCanonicalPair(apiBase, appOrigin)) {
+            call.reject("The account export authority is invalid.", "EXPORT_AUTHORITY_INVALID");
+            return;
+        }
+        if (!recoveryCredential.matches(CAPABILITY_PATTERN)) {
+            call.reject("Recovery access is invalid.", "EXPORT_CREDENTIAL_INVALID");
+            return;
+        }
+
+        ioExecutor.execute(() -> {
+            try {
+                PendingExport export = download(apiBase, appOrigin, recoveryCredential);
+                pendingExports.put(call.getCallbackId(), export);
+                getBridge().executeOnMainThread(() -> {
+                    Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    intent.setType("application/json");
+                    intent.putExtra(Intent.EXTRA_TITLE, "eliza-account-export.json");
+                    startActivityForResult(call, intent, "saveExportResult");
+                });
+            } catch (Exception error) {
+                getBridge().executeOnMainThread(() ->
+                    call.reject("The encrypted account export could not be downloaded.",
+                        "EXPORT_DOWNLOAD_FAILED", error));
+            }
+        });
+    }
+
+    @ActivityCallback
+    private void saveExportResult(PluginCall call, ActivityResult result) {
+        PendingExport export = pendingExports.remove(call.getCallbackId());
+        if (export == null) {
+            call.reject("The pending account export is unavailable.", "EXPORT_SAVE_UNAVAILABLE");
+            return;
+        }
+        if (result.getResultCode() != Activity.RESULT_OK || result.getData() == null) {
+            Arrays.fill(export.bytes, (byte) 0);
+            JSObject response = new JSObject();
+            response.put("saved", false);
+            call.resolve(response);
+            return;
+        }
+        Uri destination = result.getData().getData();
+        if (destination == null) {
+            Arrays.fill(export.bytes, (byte) 0);
+            call.reject("No export destination was selected.", "EXPORT_SAVE_UNAVAILABLE");
+            return;
+        }
+        ioExecutor.execute(() -> {
+            try (OutputStream output = getContext().getContentResolver().openOutputStream(destination, "w")) {
+                if (output == null) throw new IOException("destination stream is unavailable");
+                output.write(export.bytes);
+                output.flush();
+                JSObject response = new JSObject();
+                response.put("saved", true);
+                response.put("contentDigest", export.digest);
+                getBridge().executeOnMainThread(() -> call.resolve(response));
+            } catch (IOException error) {
+                getBridge().executeOnMainThread(() ->
+                    call.reject("The account export could not be saved.",
+                        "EXPORT_SAVE_FAILED", error));
+            } finally {
+                Arrays.fill(export.bytes, (byte) 0);
+            }
+        });
+    }
+
+    private PendingExport download(
+            String apiBase,
+            String appOrigin,
+            String recoveryCredential) throws IOException, GeneralSecurityException {
+        HttpsURLConnection connection = null;
+        try {
+            connection = (HttpsURLConnection) new URL(apiBase + STATUS_PATH).openConnection();
+            connection.setInstanceFollowRedirects(false);
+            connection.setConnectTimeout(15_000);
+            connection.setReadTimeout(120_000);
+            connection.setRequestMethod("POST");
+            connection.setRequestProperty("Accept", "application/json");
+            connection.setRequestProperty("Content-Type", "application/json");
+            connection.setRequestProperty("Origin", appOrigin);
+            connection.setRequestProperty("x-eliza-csrf", "1");
+            connection.setRequestProperty("X-Account-Deletion-Recovery", recoveryCredential);
+            connection.setDoOutput(true);
+            byte[] body = CONFIRMATION.getBytes(StandardCharsets.UTF_8);
+            connection.setFixedLengthStreamingMode(body.length);
+            try (OutputStream output = connection.getOutputStream()) {
+                output.write(body);
+            }
+            if (connection.getResponseCode() != 200) {
+                throw new IOException("account export returned HTTP " + connection.getResponseCode());
+            }
+            if (connection.getContentLengthLong() > MAX_EXPORT_BYTES) {
+                throw new IOException("account export exceeds the supported size");
+            }
+            String expectedDigest = connection.getHeaderField(
+                "X-Account-Deletion-Export-SHA256");
+            if (expectedDigest == null || !expectedDigest.matches(DIGEST_PATTERN)) {
+                throw new GeneralSecurityException("account export digest is missing");
+            }
+            byte[] bytes;
+            try (InputStream input = connection.getInputStream()) {
+                bytes = readBounded(input);
+            }
+            String actualDigest = sha256(bytes);
+            if (!MessageDigest.isEqual(
+                    actualDigest.getBytes(StandardCharsets.US_ASCII),
+                    expectedDigest.toLowerCase(Locale.ROOT).getBytes(StandardCharsets.US_ASCII))) {
+                Arrays.fill(bytes, (byte) 0);
+                throw new GeneralSecurityException("account export digest does not match");
+            }
+            return new PendingExport(bytes, actualDigest);
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
+    }
+
+    private static byte[] readBounded(InputStream input) throws IOException {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        byte[] buffer = new byte[16 * 1024];
+        int total = 0;
+        int read;
+        while ((read = input.read(buffer)) != -1) {
+            total += read;
+            if (total > MAX_EXPORT_BYTES) {
+                throw new IOException("account export exceeds the supported size");
+            }
+            output.write(buffer, 0, read);
+        }
+        return output.toByteArray();
+    }
+
+    private static String sha256(byte[] bytes) throws GeneralSecurityException {
+        byte[] digest = MessageDigest.getInstance("SHA-256").digest(bytes);
+        StringBuilder hex = new StringBuilder(digest.length * 2);
+        for (byte value : digest) hex.append(String.format("%02x", value & 0xff));
+        return hex.toString();
+    }
+
+    private static boolean isCanonicalPair(String apiBase, String appOrigin) {
+        return (PRODUCTION_API.equals(apiBase) && PRODUCTION_APP.equals(appOrigin))
+            || (STAGING_API.equals(apiBase) && STAGING_APP.equals(appOrigin));
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        ioExecutor.shutdownNow();
+        for (PendingExport export : pendingExports.values()) {
+            Arrays.fill(export.bytes, (byte) 0);
+        }
+        pendingExports.clear();
+        super.handleOnDestroy();
+    }
+}
+`;
+}
+
+/** Permissionless bridge to this app's standard Android settings page. */
+export function cloudSafePlaySettingsPluginJava(androidPackage) {
+  return `package ${androidPackage};
+
+import android.content.Intent;
+import android.net.Uri;
+import android.provider.Settings;
+
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
+
+@CapacitorPlugin(name = "ElizaPlaySettings")
+public final class ElizaPlaySettingsPlugin extends Plugin {
+    @PluginMethod
+    public void openAppSettings(PluginCall call) {
+        try {
+            Intent intent = new Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:" + getContext().getPackageName()));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            call.resolve();
+        } catch (RuntimeException error) {
+            call.reject("Android app settings could not be opened.", "APP_SETTINGS_UNAVAILABLE", error);
+        }
     }
 }
 `;
@@ -6716,7 +7167,11 @@ public class ElizaTasksWorker extends Worker {
 `;
 }
 
-function rewriteCloudJavaSources(javaRoots, androidPackage) {
+function rewriteCloudJavaSources(
+  javaRoots,
+  androidPackage,
+  { launcherKiosk = false } = {},
+) {
   let touched = 0;
   for (const root of javaRoots) {
     if (!fs.existsSync(root)) continue;
@@ -6724,7 +7179,7 @@ function rewriteCloudJavaSources(javaRoots, androidPackage) {
     if (fs.existsSync(mainActivity)) {
       fs.writeFileSync(
         mainActivity,
-        cloudSafeMainActivityJava(androidPackage),
+        cloudSafeMainActivityJava(androidPackage, { launcherKiosk }),
         "utf8",
       );
       touched += 1;
@@ -6745,8 +7200,20 @@ function rewriteCloudJavaSources(javaRoots, androidPackage) {
     );
     touched += 1;
     fs.writeFileSync(
+      path.join(root, "ElizaPlayExportPlugin.java"),
+      cloudSafePlayExportPluginJava(androidPackage),
+      "utf8",
+    );
+    touched += 1;
+    fs.writeFileSync(
       path.join(root, "ElizaPlayVoicePlugin.java"),
       cloudSafePlayVoicePluginJava(androidPackage),
+      "utf8",
+    );
+    touched += 1;
+    fs.writeFileSync(
+      path.join(root, "ElizaPlaySettingsPlugin.java"),
+      cloudSafePlaySettingsPluginJava(androidPackage),
       "utf8",
     );
     touched += 1;
@@ -6918,7 +7385,10 @@ function stripAndroidCloudNativePlugins() {
   );
 }
 
-function auditAndroidCloudSource(phase, { env = process.env } = {}) {
+function auditAndroidCloudSource(
+  phase,
+  { allowHomeRole = false, env = process.env } = {},
+) {
   const failures = [];
   const lp3ColorPolicyEnabled = isAndroidLp3ColorPolicyEnabled(env);
   const stripPolicy = resolveAndroidCloudStripPolicy(env);
@@ -6963,8 +7433,16 @@ function auditAndroidCloudSource(phase, { env = process.env } = {}) {
     if (!/android:allowBackup="false"/.test(xml)) {
       failures.push("AndroidManifest.xml does not disable application backup");
     }
+    if (
+      !/android:dataExtractionRules="@xml\/data_extraction_rules"/.test(xml) ||
+      !/android:fullBackupContent="false"/.test(xml)
+    ) {
+      failures.push(
+        "AndroidManifest.xml does not disable Android 12+ cloud backup and device transfer",
+      );
+    }
     for (const forbidden of [
-      "android.intent.category.HOME",
+      ...(allowHomeRole ? [] : ["android.intent.category.HOME"]),
       "com.google.android.apps.healthdata",
       "android.hardware.telephony",
       "android.hardware.bluetooth_le",
@@ -7039,6 +7517,20 @@ function auditAndroidCloudSource(phase, { env = process.env } = {}) {
   }
 
   const resRoot = path.join(androidDir, "app", "src", "main", "res");
+  const dataExtractionRulesPath = path.join(
+    resRoot,
+    "xml",
+    "data_extraction_rules.xml",
+  );
+  if (
+    !fs.existsSync(dataExtractionRulesPath) ||
+    fs.readFileSync(dataExtractionRulesPath, "utf8") !==
+      ANDROID_PLAY_DATA_EXTRACTION_RULES
+  ) {
+    failures.push(
+      "app/src/main/res/xml/data_extraction_rules.xml is missing or differs from the Play no-backup policy",
+    );
+  }
   for (const relPath of ANDROID_CLOUD_STRIPPED_RESOURCE_FILES) {
     if (fs.existsSync(path.join(resRoot, relPath))) {
       failures.push(`app/src/main/res/${relPath} still exists`);
@@ -7155,6 +7647,34 @@ function auditAndroidCloudSource(phase, { env = process.env } = {}) {
     }
   }
 
+  const capacitorConfigPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "assets",
+    "capacitor.config.json",
+  );
+  if (!fs.existsSync(capacitorConfigPath)) {
+    failures.push("app/src/main/assets/capacitor.config.json is missing");
+  } else {
+    try {
+      const config = JSON.parse(fs.readFileSync(capacitorConfigPath, "utf8"));
+      const expected = sanitizeAndroidCloudCapacitorConfig(config);
+      if (JSON.stringify(config) !== JSON.stringify(expected)) {
+        failures.push(
+          "capacitor.config.json differs from the restricted Play runtime contract",
+        );
+      }
+    } catch (error) {
+      failures.push(
+        `capacitor.config.json is invalid: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
   if (failures.length > 0) {
     throw new Error(
       `[mobile-build] android-cloud ${phase} audit failed:\n` +
@@ -7162,6 +7682,24 @@ function auditAndroidCloudSource(phase, { env = process.env } = {}) {
     );
   }
   console.log(`[mobile-build] android-cloud ${phase} audit passed.`);
+}
+
+function auditAndroidLauncherSource(phase, options = {}) {
+  auditAndroidCloudSource(phase, { ...options, allowHomeRole: true });
+  const manifestPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "AndroidManifest.xml",
+  );
+  const manifest = fs.existsSync(manifestPath)
+    ? fs.readFileSync(manifestPath, "utf8")
+    : "";
+  assertAndroidLauncherManifest(manifest, {
+    label: `android-launcher ${phase} source`,
+  });
+  console.log(`[mobile-build] android-launcher ${phase} audit passed.`);
 }
 
 function auditAndroidSmsGatewaySource(phase) {
@@ -7406,6 +7944,7 @@ function stripAndroidForCloud({ env = process.env } = {}) {
     xml = xml
       .replace(/(<\/provider>)\n[ \t]*(<activity\b)/g, "$1\n\n        $2")
       .replace(/\n[ \t]*<\/(application)>/g, "\n    </$1>");
+    xml = applyAndroidPlayManifestHardening(xml);
 
     if (xml !== original) {
       fs.writeFileSync(manifestPath, xml, "utf8");
@@ -7413,6 +7952,27 @@ function stripAndroidForCloud({ env = process.env } = {}) {
         "[mobile-build] Stripped Play-Store-noncompliant components and permissions from AndroidManifest.xml.",
       );
     }
+  }
+  const dataExtractionRulesPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "res",
+    "xml",
+    "data_extraction_rules.xml",
+  );
+  fs.mkdirSync(path.dirname(dataExtractionRulesPath), { recursive: true });
+  if (
+    !fs.existsSync(dataExtractionRulesPath) ||
+    fs.readFileSync(dataExtractionRulesPath, "utf8") !==
+      ANDROID_PLAY_DATA_EXTRACTION_RULES
+  ) {
+    fs.writeFileSync(
+      dataExtractionRulesPath,
+      ANDROID_PLAY_DATA_EXTRACTION_RULES,
+      "utf8",
+    );
   }
 
   // 2. Remove the matching Java sources so the build doesn't reference
@@ -7457,7 +8017,9 @@ function stripAndroidForCloud({ env = process.env } = {}) {
       `[mobile-build] Removed ${removedJavaRootCount} inactive Android Java source root(s).`,
     );
   }
-  rewriteCloudJavaSources(javaRoots, androidPackage);
+  rewriteCloudJavaSources(javaRoots, androidPackage, {
+    launcherKiosk: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
+  });
 
   const testJavaRoots = [
     path.join(
@@ -7509,6 +8071,7 @@ function stripAndroidForCloud({ env = process.env } = {}) {
   //    libeliza_*.so jniLibs disguise.
   removeCloudNativeArtifacts();
   stripAndroidCloudNativePlugins();
+  sanitizeAndroidCloudPackagedConfig(env);
 }
 
 function stripAndroidForSmsGateway() {
@@ -7658,6 +8221,7 @@ const ANDROID_SOURCE_STRIPS = Object.freeze({
 
 const ANDROID_SOURCE_AUDITS = Object.freeze({
   cloud: auditAndroidCloudSource,
+  launcher: auditAndroidLauncherSource,
   smsGateway: auditAndroidSmsGatewaySource,
   system: auditAndroidSystemSource,
 });
@@ -7668,6 +8232,8 @@ const ANDROID_ARTIFACT_AUDITS = Object.freeze({
   cloud: ({ env, javaHome }) => auditAndroidCloudArtifact({ env, javaHome }),
   cloudDebug: ({ env, javaHome }) =>
     auditAndroidCloudArtifact({ debug: true, env, javaHome }),
+  launcher: ({ androidSdkRoot, env, javaHome }) =>
+    auditAndroidLauncherArtifact({ androidSdkRoot, env, javaHome }),
   smsGateway: ({ androidSdkRoot, javaHome }) =>
     auditAndroidSmsGatewayArtifact({ androidSdkRoot, javaHome }),
   system: ({ androidSdkRoot, javaHome }) =>
@@ -7762,6 +8328,7 @@ export async function runAndroidBuild(
 ) {
   const resolvedEnv = resolveAndroidLp3ColorPolicyBuildEnv(env);
   const target = resolveAndroidBuildTarget(targetName, { debug });
+  const targetEnv = { ...resolvedEnv, ...target.env };
   enforceAndroidLp3ColorPolicyBuildPolicy({
     targetName: target.target,
     env: resolvedEnv,
@@ -7787,9 +8354,9 @@ export async function runAndroidBuild(
 
   await buildWeb(target.webTarget);
   if (target.buildMobileAgentBundle) await buildMobileAgentBundle();
-  await ensurePlatform("android");
+  await ensurePlatform("android", { env: targetEnv });
   await ensureRendererDistMatchesLane(target.webTarget);
-  await runCapacitor(["sync", "android"]);
+  await runCapacitor(["sync", "android"], { env: targetEnv });
   normalizeCapacitorSettingsFile(
     path.join(androidDir, "capacitor.settings.gradle"),
   );
@@ -7811,7 +8378,7 @@ export async function runAndroidBuild(
     });
   }
   runAndroidTargetPhase(target, ANDROID_SOURCE_STRIPS, "stripSourceKey", {
-    env: resolvedEnv,
+    env: targetEnv,
   });
   runAndroidTargetPhase(
     target,
@@ -7888,6 +8455,12 @@ function auditAndroidSideloadArtifact({ javaHome } = {}) {
     );
   }
   const entries = listAndroidArtifactEntries(artifact, javaHome);
+  assertAndroidArtifactRetainsBackgroundRunnerJniBridge(
+    artifact,
+    entries,
+    javaHome,
+    { label: "android sideload" },
+  );
   assertAndroidArtifactShipsWebPayload(artifact, entries, {
     requireAgent: true,
     label: "android",
@@ -7947,6 +8520,12 @@ function auditAndroidHostE2eArtifact({ javaHome } = {}) {
     );
   }
   const entries = listAndroidArtifactEntries(artifact, javaHome);
+  assertAndroidArtifactRetainsBackgroundRunnerJniBridge(
+    artifact,
+    entries,
+    javaHome,
+    { label: "android host-e2e" },
+  );
   assertAndroidArtifactShipsWebPayload(artifact, entries, {
     requireAgent: false,
     label: "android-host-e2e",
@@ -7982,6 +8561,12 @@ function auditAndroidSystemArtifact({ androidSdkRoot, javaHome } = {}) {
     );
   }
   const entries = listAndroidArtifactEntries(artifact, javaHome);
+  assertAndroidArtifactRetainsBackgroundRunnerJniBridge(
+    artifact,
+    entries,
+    javaHome,
+    { label: "android-system" },
+  );
   const aapt = resolveAndroidBuildTool(androidSdkRoot, "aapt");
   if (!aapt) {
     throw mobileBuildError(
@@ -8669,6 +9254,48 @@ export function auditAndroidArtifactDexLp3Policy(
   }
 }
 
+/**
+ * Require the Background Runner Java class that its native JS engine resolves
+ * through JNI. R8 cannot infer this edge from Java bytecode, so a missing class
+ * is a release-startup crash rather than a safely unused implementation detail.
+ */
+export function assertAndroidArtifactRetainsBackgroundRunnerJniBridge(
+  artifact,
+  entries,
+  javaHome,
+  { label = "Android" } = {},
+  { readEntryBuffers = readAndroidArtifactEntryBuffers } = {},
+) {
+  const dexEntries = entries.filter((entry) =>
+    /(^|\/)classes\d*\.dex$/.test(entry),
+  );
+  if (dexEntries.length === 0) {
+    throw mobileBuildError(
+      `[mobile-build] Android artifact has no classes*.dex entries: ${artifact}`,
+      {
+        code: "ANDROID_ARTIFACT_DEX_MISSING",
+        context: { artifact, label },
+      },
+    );
+  }
+
+  const marker = "io/ionic/android_js_engine/NativeWebAPI";
+  const dexBuffers = readEntryBuffers(artifact, dexEntries, javaHome, {
+    label: "Background Runner JNI DEX audit",
+  });
+  if (dexBuffers.some((dex) => dex.includes(Buffer.from(marker, "utf8")))) {
+    return;
+  }
+
+  throw mobileBuildError(
+    `[mobile-build] ${label} artifact DEX is missing the Background Runner JNI class ${marker.replaceAll("/", ".")}.`,
+    {
+      code: "ANDROID_BACKGROUND_RUNNER_JNI_CLASS_MISSING",
+      context: { artifact, label, marker },
+    },
+  );
+}
+
 function findAndroidManifestElementBlock(
   manifestText,
   elementName,
@@ -8968,6 +9595,10 @@ export function auditAndroidCloudArtifact(
   }
   let evidence;
   try {
+    // The Play client deliberately strips Background Runner and every
+    // background execution surface. Its artifact must therefore stay native
+    // library free; JNI bridge retention is enforced only by the sideload,
+    // host-E2E, and system artifact audits that compile the plugin.
     if (artifactKind === "apk") {
       // APK inspection deliberately retains the existing AAPT badging/xmltree
       // behavior. bundletool is only valid for the release App Bundle path.
@@ -9107,6 +9738,110 @@ export function auditAndroidCloudArtifact(
   }
   log(
     `[mobile-build] android-cloud${lp3ColorPolicyEnabled ? " LP3 direct" : ""} artifact audit passed: ${artifact}`,
+  );
+  return artifact;
+}
+
+export function assertAndroidLauncherManifest(
+  manifestText,
+  { label = "android-launcher artifact" } = {},
+) {
+  const requiredMarkers = [
+    "android.intent.action.MAIN",
+    "android.intent.category.HOME",
+    "android.intent.category.DEFAULT",
+  ];
+  const sourceFilters = [
+    ...manifestText.matchAll(
+      /<intent-filter\b[^>]*>([\s\S]*?)<\/intent-filter>/g,
+    ),
+  ].map((match) => match[1]);
+  const aaptLines = manifestText.split(/\r?\n/);
+  const aaptFilters = [];
+  for (let index = 0; index < aaptLines.length; index += 1) {
+    const match = aaptLines[index].match(/^(\s*)E: intent-filter\b/);
+    if (!match) continue;
+    const indent = match[1].length;
+    const block = [aaptLines[index]];
+    for (let next = index + 1; next < aaptLines.length; next += 1) {
+      const nextLine = aaptLines[next];
+      const nextElement = nextLine.match(/^(\s*)E: /);
+      if (nextElement && nextElement[1].length <= indent) break;
+      block.push(nextLine);
+    }
+    aaptFilters.push(block.join("\n"));
+  }
+  const intentFilters = sourceFilters.length > 0 ? sourceFilters : aaptFilters;
+  if (
+    intentFilters.some((filter) =>
+      requiredMarkers.every((marker) => filter.includes(marker)),
+    )
+  ) {
+    return;
+  }
+
+  const missingMarkers = requiredMarkers.filter(
+    (marker) => !manifestText.includes(marker),
+  );
+  const detail =
+    missingMarkers.length > 0
+      ? `missing ${missingMarkers.join(", ")}`
+      : "MAIN, HOME, and DEFAULT are not declared together in one intent-filter";
+  throw mobileBuildError(
+    `[mobile-build] ${label} does not qualify for ROLE_HOME: ${detail}`,
+  );
+}
+
+function auditAndroidLauncherArtifact({
+  androidSdkRoot,
+  env = process.env,
+  javaHome,
+} = {}) {
+  const artifact = auditAndroidCloudArtifact({
+    debug: true,
+    env,
+    javaHome,
+  });
+  const aapt = resolveAndroidBuildTool(androidSdkRoot, "aapt");
+  if (!aapt) {
+    throw mobileBuildError(
+      "[mobile-build] Could not find aapt under Android SDK build-tools for android-launcher artifact audit.",
+    );
+  }
+  assertAndroidLauncherManifest(dumpAndroidArtifactManifest(aapt, artifact));
+  const [runtimeConfigBytes] = readAndroidArtifactEntryBuffers(
+    artifact,
+    ["assets/capacitor.config.json"],
+    javaHome,
+    { label: "android-launcher Capacitor runtime config" },
+  );
+  let runtimeConfig;
+  try {
+    runtimeConfig = JSON.parse(runtimeConfigBytes.toString("utf8"));
+  } catch (cause) {
+    throw mobileBuildError(
+      `[mobile-build] android-launcher capacitor.config.json is invalid JSON: ${cause instanceof Error ? cause.message : String(cause)}`,
+      {
+        cause,
+        code: "ANDROID_LAUNCHER_RUNTIME_CONFIG_INVALID",
+        context: { artifact },
+      },
+    );
+  }
+  if (runtimeConfig.loggingBehavior !== "none") {
+    throw mobileBuildError(
+      "[mobile-build] android-launcher must package Capacitor loggingBehavior=none so native bridge results never reach logcat.",
+      {
+        code: "ANDROID_LAUNCHER_RUNTIME_LOGGING_ENABLED",
+        context: {
+          artifact,
+          loggingBehavior: runtimeConfig.loggingBehavior ?? null,
+        },
+      },
+    );
+  }
+  console.log(
+    `[mobile-build] android-launcher HOME-role artifact audit passed: ${artifact}`,
   );
   return artifact;
 }
@@ -9765,6 +10500,7 @@ export async function main(argv = process.argv.slice(2)) {
   const target = argv[0];
   if (
     target !== "android" &&
+    target !== "android-launcher" &&
     target !== "android-host-e2e" &&
     target !== "android-cloud-hybrid" &&
     target !== "android-sms-gateway" &&
@@ -9777,12 +10513,14 @@ export async function main(argv = process.argv.slice(2)) {
     target !== "ios-overlay"
   ) {
     console.error(
-      "Usage: node scripts/run-mobile-build.mjs <android|android-host-e2e|android-cloud-hybrid|android-sms-gateway|android-cloud|android-cloud-audit [aab-path]|android-cloud-debug|android-system|ios|ios-local|ios-overlay>",
+      "Usage: node scripts/run-mobile-build.mjs <android|android-launcher|android-host-e2e|android-cloud-hybrid|android-sms-gateway|android-cloud|android-cloud-audit [aab-path]|android-cloud-debug|android-system|ios|ios-local|ios-overlay>",
     );
     process.exit(1);
   }
   if (target === "android") {
     await buildAndroid();
+  } else if (target === "android-launcher") {
+    await runAndroidBuild("android-launcher");
   } else if (target === "android-host-e2e") {
     await runAndroidBuild("android-host-e2e");
   } else if (target === "android-cloud-hybrid") {

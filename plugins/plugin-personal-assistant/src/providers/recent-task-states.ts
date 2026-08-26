@@ -61,13 +61,6 @@ export interface RecentTaskStatesProvider {
 const TASK_LOG_CACHE_KEY = "eliza:lifeops:scheduled-task-log:v1";
 const DEFAULT_LOOKBACK_DAYS = 7;
 /**
- * Hard cap on retained log entries. The summarize window is 7 days by
- * default; even a chatty agent (dozens of fires/outcomes a day) stays far
- * below this, so the cap only guards the cache row against unbounded growth.
- */
-const TASK_LOG_MAX_ENTRIES = 500;
-
-/**
  * Read the scheduled-task log from the cache-backed list maintained alongside
  * the in-memory runner. Entries surface in **chronological order (oldest first)**.
  */
@@ -97,9 +90,8 @@ export async function readScheduledTaskLog(
 }
 
 /**
- * Append an entry to the log, retaining only the newest
- * {@link TASK_LOG_MAX_ENTRIES}. Called by the scheduled-task tick for fires,
- * completions, and no-reply terminal outcomes (and by tests to seed
+ * Append an entry to the complete log. Called by the scheduled-task tick for
+ * fires, completions, and no-reply terminal outcomes (and by tests to seed
  * histories directly).
  */
 export async function appendScheduledTaskLogEntry(
@@ -110,10 +102,7 @@ export async function appendScheduledTaskLogEntry(
   const existing =
     (await cache.getCache<RecentTaskStateEntry[]>(TASK_LOG_CACHE_KEY)) ?? [];
   existing.push(entry);
-  await cache.setCache<RecentTaskStateEntry[]>(
-    TASK_LOG_CACHE_KEY,
-    existing.slice(-TASK_LOG_MAX_ENTRIES),
-  );
+  await cache.setCache<RecentTaskStateEntry[]>(TASK_LOG_CACHE_KEY, existing);
 }
 
 const TERMINAL_OUTCOMES: ReadonlySet<TerminalState> = new Set<TerminalState>([

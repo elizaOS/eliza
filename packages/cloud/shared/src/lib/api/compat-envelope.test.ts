@@ -1,7 +1,7 @@
 // Exercises compat envelope behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
 import type { AgentSandbox } from "../../db/schemas/agent-sandboxes";
-import { toCompatStatus } from "./compat-envelope";
+import { toCompatAgent, toCompatJob, toCompatStatus } from "./compat-envelope";
 
 describe("toCompatStatus", () => {
   test("includes service status aliases and wallet account metadata", () => {
@@ -14,8 +14,8 @@ describe("toCompatStatus", () => {
       character_id: "character-1",
       sandbox_id: "sandbox-1",
       status: "running",
-      bridge_url: "https://runtime.example",
-      health_url: "https://runtime.example/health",
+      bridge_url: "http://100.64.0.12:3000",
+      health_url: "http://10.0.0.8:3000/health",
       agent_name: "Waifu Test",
       agent_config: {
         account: {
@@ -62,12 +62,13 @@ describe("toCompatStatus", () => {
       updated_at: updatedAt,
     } satisfies AgentSandbox;
 
-    expect(toCompatStatus(sandbox)).toMatchObject({
+    const status = toCompatStatus(sandbox);
+    expect(status).toMatchObject({
       agentId: "123e4567-e89b-12d3-a456-426614174000",
       cloudAgentId: "123e4567-e89b-12d3-a456-426614174000",
       containerId: "container-1",
-      containerUrl: "https://runtime.example",
-      bridgeUrl: "https://runtime.example",
+      containerUrl: "https://123e4567-e89b-12d3-a456-426614174000.cloud.eliza.app",
+      bridgeUrl: "https://123e4567-e89b-12d3-a456-426614174000.cloud.eliza.app",
       webUiUrl: "https://123e4567-e89b-12d3-a456-426614174000.cloud.eliza.app",
       status: "running",
       databaseStatus: "ready",
@@ -91,5 +92,21 @@ describe("toCompatStatus", () => {
         healthCheckPath: "/api/health",
       },
     });
+    expect(JSON.stringify(status)).not.toMatch(/100\.64|10\.0|192\.168/);
+
+    const agent = toCompatAgent(sandbox);
+    expect(agent).toMatchObject({
+      headscale_ip: null,
+      bridge_url: "https://123e4567-e89b-12d3-a456-426614174000.cloud.eliza.app",
+      containerUrl: "https://123e4567-e89b-12d3-a456-426614174000.cloud.eliza.app",
+    });
+    expect(JSON.stringify(agent)).not.toMatch(/100\.64|10\.0|192\.168/);
+
+    const job = toCompatJob(sandbox);
+    expect(job.data.bridgeUrl).toBe("https://123e4567-e89b-12d3-a456-426614174000.cloud.eliza.app");
+    expect(job.result).toMatchObject({
+      bridgeUrl: "https://123e4567-e89b-12d3-a456-426614174000.cloud.eliza.app",
+    });
+    expect(JSON.stringify(job)).not.toMatch(/100\.64|10\.0|192\.168/);
   });
 });

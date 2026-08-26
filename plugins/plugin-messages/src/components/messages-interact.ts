@@ -35,8 +35,23 @@ export async function interact(
 
   if (capability === "send-sms") {
     const address =
-      typeof params?.address === "string" ? params.address.trim() : "";
-    const body = typeof params?.body === "string" ? params.body.trim() : "";
+      typeof params?.address === "string"
+        ? params.address.trim()
+        : typeof params?.recipient === "string"
+          ? params.recipient.trim()
+          : typeof params?.to === "string"
+            ? params.to.trim()
+            : typeof params?.phoneNumber === "string"
+              ? params.phoneNumber.trim()
+              : "";
+    const body =
+      typeof params?.body === "string"
+        ? params.body.trim()
+        : typeof params?.message === "string"
+          ? params.message.trim()
+          : typeof params?.text === "string"
+            ? params.text.trim()
+            : "";
     if (!address) throw new Error("address is required");
     if (!body) throw new Error("body is required");
     await Messages.sendSms({ address, body });

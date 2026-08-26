@@ -83,9 +83,6 @@ export function bridgePersonalityExpect(scenario) {
       if (style) {
         options.style = style;
       }
-      if (style === "terse") {
-        options.maxTokens = options.maxTokens ?? 80;
-      }
       if (Number.isInteger(judgeKwargs.instructionTurnIndex)) {
         bridged.directiveTurn = assistantTurnFor(
           judgeKwargs.instructionTurnIndex,

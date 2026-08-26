@@ -110,9 +110,3 @@ export const EditCodeAction: Story = {
     action: sampleCodeAction,
   },
 };
-
-export const Closed: Story = {
-  args: {
-    open: false,
-  },
-};

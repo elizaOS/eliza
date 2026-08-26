@@ -132,7 +132,6 @@ Frequently used controls include:
 | `SELFCONTROL_HOSTS_FILE_PATH` / `WEBSITE_BLOCKER_HOSTS_FILE_PATH` | Override the blocker hosts file |
 | `ELIZA_BROWSER_BRIDGE_COMPANION_TOKEN_TTL_MS` | Configure browser companion token lifetime |
 | `ELIZAOS_CLOUD_API_KEY` / `ELIZAOS_CLOUD_BASE_URL` | Configure cloud-backed assistant features |
-| `ELIZA_LIFEOPS_CONTEXT_WINDOW` | Override the LifeOps provider context budget |
 
 Connector credentials and domain-specific settings belong to their owning plugin. `ELIZA_DEVICE_KIND` and `ELIZA_DEVICE_ID` control device-specific behavior.
 

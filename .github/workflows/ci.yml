@@ -120,6 +120,9 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
+      - name: Build core contract for script tests
+        run: bun run build:core
+
       - name: Script contract tests
         env:
           E2E_COVERAGE_GATE_ENFORCE: "1"
@@ -401,6 +404,7 @@ jobs:
       - name: Build mobile package dependencies
         if: steps.selection.outputs.selected == 'true'
         run: |
+          bun run --cwd packages/prompts build:package
           bun run build:core
           bun run --cwd packages/ui build
           bun run --cwd packages/vault build

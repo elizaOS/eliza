@@ -174,7 +174,6 @@ describe("cross-channel-search WS1 integration", () => {
         "gmail",
         "whatsapp",
       ],
-      limit: 5,
     });
 
     const platforms = new Set(result.hits.map((h) => h.channel));

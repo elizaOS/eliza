@@ -38,6 +38,7 @@ import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { CopyButton } from "../../../components/ui/copy-button";
 import { Input } from "../../../components/ui/input";
+import { StatusBadge } from "../../../components/ui/status-badge";
 import {
   Tooltip,
   TooltipContent,
@@ -361,11 +362,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
               !hasCustomDomain &&
               !showAddForm &&
               !isLoading && (
-                <Button
-                  onClick={() => setShowAddForm(true)}
-                  size="sm"
-                  className="min-h-touch bg-accent hover:bg-accent-hover text-accent-foreground rounded-sm"
-                >
+                <Button onClick={() => setShowAddForm(true)} size="sm">
                   <Plus className="size-4 mr-1.5" />
                   {t("cloud.appDomains.addDomain", {
                     defaultValue: "Add Domain",
@@ -495,17 +492,13 @@ export function AppDomains({ appId }: AppDomainsProps) {
                               setNewDomain("");
                             }
                           }}
-                          className="flex-1 bg-bg-muted border-border rounded-sm placeholder:text-muted"
+                          variant="form"
+                          className="flex-1"
                         />
                         <div className="flex gap-2">
                           <Button
                             onClick={handleAddDomain}
                             disabled={isAdding || !newDomain.trim()}
-                            className={`h-9 px-4 min-h-touch ${
-                              isAdding || !newDomain.trim()
-                                ? "bg-bg-muted text-muted"
-                                : "bg-accent hover:bg-accent-hover text-accent-foreground"
-                            }`}
                           >
                             {isAdding ? (
                               <Loader2 className="size-4 animate-spin" />
@@ -521,7 +514,6 @@ export function AppDomains({ appId }: AppDomainsProps) {
                               setShowAddForm(false);
                               setNewDomain("");
                             }}
-                            className="h-9 px-4 min-h-touch border-border-strong text-txt-strong hover:bg-bg-hover"
                           >
                             {t("cloud.appDomains.cancel", {
                               defaultValue: "Cancel",
@@ -752,10 +744,9 @@ function DomainCard({
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="sm"
+                  size="icon-sm"
                   onClick={onRefresh}
                   disabled={isChecking}
-                  className="size-8 p-0 min-h-touch text-muted hover:text-txt-strong hover:bg-bg-hover"
                 >
                   <RefreshCw
                     className={`size-4 ${isChecking ? "animate-spin" : ""}`}
@@ -779,10 +770,9 @@ function DomainCard({
                 <TooltipTrigger asChild>
                   <AlertDialogTrigger asChild>
                     <Button
-                      variant="ghost"
-                      size="sm"
+                      variant="surfaceDestructive"
+                      size="icon-sm"
                       disabled={isRemoving}
-                      className="size-8 p-0 min-h-touch text-muted hover:text-destructive hover:bg-destructive-subtle"
                     >
                       {isRemoving ? (
                         <Loader2 className="size-4 animate-spin" />
@@ -853,32 +843,31 @@ function DomainStatusBadge({
   const t = useCloudT();
   if (status === "verified" && sslStatus === "active") {
     return (
-      <Badge className="bg-status-success-bg text-status-success border-status-success/30 gap-1 text-2xs">
-        <span className="relative flex size-1.5">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-status-success opacity-50 motion-reduce:animate-none" />
-          <span className="relative inline-flex rounded-full size-1.5 bg-status-success" />
-        </span>
-        {t("cloud.appDomains.statusActive", { defaultValue: "Active" })}
-      </Badge>
+      <StatusBadge
+        status="success"
+        pulse
+        label={t("cloud.appDomains.statusActive", { defaultValue: "Active" })}
+      />
     );
   }
 
   if (sslStatus === "provisioning") {
     return (
-      <Badge className="bg-bg-muted text-muted-strong border-border-strong gap-1 text-2xs">
-        <Loader2 className="size-3 animate-spin" />
-        {t("cloud.appDomains.statusSslProvisioning", {
+      <StatusBadge
+        status="processing"
+        label={t("cloud.appDomains.statusSslProvisioning", {
           defaultValue: "SSL Provisioning",
         })}
-      </Badge>
+      />
     );
   }
 
   return (
-    <Badge className="bg-accent-subtle text-accent border-accent/30 gap-1 text-2xs">
-      <Clock className="size-3" />
-      {t("cloud.appDomains.statusPending", { defaultValue: "Pending" })}
-    </Badge>
+    <StatusBadge
+      status="warning"
+      icon={<Clock />}
+      label={t("cloud.appDomains.statusPending", { defaultValue: "Pending" })}
+    />
   );
 }
 
@@ -949,7 +938,6 @@ function DnsConfigPanel({
             size="sm"
             onClick={onRefresh}
             disabled={isChecking}
-            className="min-h-touch border-border hover:bg-bg-hover rounded-sm"
           >
             {isChecking ? (
               <Loader2 className="size-4 mr-1.5 animate-spin" />
@@ -1094,12 +1082,7 @@ function DnsRecordRow({
     <div className="group bg-bg-muted rounded-sm border border-border p-3">
       {/* Desktop */}
       <div className="hidden sm:flex items-center gap-3">
-        <Badge
-          variant="outline"
-          className="font-mono text-2xs border-border-strong text-muted bg-bg-muted"
-        >
-          {type}
-        </Badge>
+        <Badge variant="outline">{type}</Badge>
         <span className="font-mono text-xs text-txt-strong flex-1 truncate">
           {name}
         </span>
@@ -1122,17 +1105,11 @@ function DnsRecordRow({
       {/* Mobile */}
       <div className="sm:hidden space-y-2">
         <div className="flex items-center justify-between">
-          <Badge
-            variant="outline"
-            className="font-mono text-2xs border-border-strong text-muted bg-bg-muted"
-          >
-            {type}
-          </Badge>
+          <Badge variant="outline">{type}</Badge>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => copyToClipboard(value, valueLabel)}
-            className="h-7 px-2 min-h-touch text-muted hover:text-txt-strong"
           >
             {copiedValue === value ? (
               <Check className="size-3.5 text-status-success" />

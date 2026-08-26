@@ -241,12 +241,12 @@ export function MembersList({
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button
-                          variant="ghost"
+                          variant="dangerGhost"
+                          size="icon-sm"
                           type="button"
                           aria-label={t("cloud.membersList.removeMember", {
                             defaultValue: "Remove Member",
                           })}
-                          className="p-2 hover:bg-surface transition-colors border border-border"
                         >
                           <UserMinus className="size-4 text-danger" />
                         </Button>

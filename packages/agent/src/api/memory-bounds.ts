@@ -64,30 +64,6 @@ export function evictOldestConversation<T extends ConversationLike>(
   return oldestKey;
 }
 
-// ── Log buffer batch eviction ─────────────────────────────────────────
-
-/**
- * Push an entry to a bounded buffer and batch-evict when the high-water
- * mark is reached.  Returns the current buffer length.
- *
- * @param buffer   - The array to push into.
- * @param entry    - The item to append.
- * @param highWater - Trigger eviction when `buffer.length` exceeds this.
- * @param evictCount - Number of oldest entries to remove on eviction.
- */
-export function pushWithBatchEvict<T>(
-  buffer: T[],
-  entry: T,
-  highWater: number,
-  evictCount: number,
-): number {
-  buffer.push(entry);
-  if (buffer.length > highWater) {
-    buffer.splice(0, evictCount);
-  }
-  return buffer.length;
-}
-
 // ── Static file cache ─────────────────────────────────────────────────
 
 interface CachedFile {

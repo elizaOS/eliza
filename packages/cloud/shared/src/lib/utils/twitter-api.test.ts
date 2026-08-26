@@ -9,13 +9,9 @@ vi.mock("./owned-bounded-fetch", () => ({
   ),
 }));
 
-import { TWITTER_API_BASE, TWITTER_REQUEST_TIMEOUT_MS, twitterFetch } from "./twitter-api.js";
+import { twitterFetch } from "./twitter-api.js";
 
 describe("twitter-api", () => {
-  it("exposes bases", () => {
-    expect(TWITTER_API_BASE).toBe("https://api.twitter.com/2");
-    expect(TWITTER_REQUEST_TIMEOUT_MS).toBe(30000);
-  });
   it("twitterFetch delegates", async () => {
     const res = await twitterFetch("https://api.twitter.com/2/tweets");
     expect(res.status).toBe(200);

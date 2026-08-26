@@ -766,7 +766,6 @@ class DatabaseConnectorAccountStorage implements ConnectorAccountStorage {
 	async listAccounts(provider?: string): Promise<ConnectorAccount[]> {
 		const records = await this.adapter.listConnectorAccounts({
 			provider: provider ? normalizeProvider(provider) : undefined,
-			limit: 500,
 		});
 		return records.map(databaseRecordToAccount);
 	}

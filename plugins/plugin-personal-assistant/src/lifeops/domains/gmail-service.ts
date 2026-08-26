@@ -76,8 +76,6 @@ import {
 } from "../service-normalize-gmail.js";
 
 const GOOGLE_GMAIL_MAILBOX = "me";
-const DEFAULT_GMAIL_TRIAGE_MAX_RESULTS = 12;
-const DEFAULT_GMAIL_SEARCH_LIMIT = 25;
 
 /**
  * Dependencies the Gmail domain needs that are owned by the `google` domain
@@ -99,14 +97,14 @@ type GmailDomainDeps = {
   ): Promise<LifeOpsConnectorGrant>;
 };
 
-function maxResults(value: unknown, fallback: number): number {
-  return Math.max(
-    1,
-    Math.min(
-      100,
-      Number.isFinite(value) ? Math.trunc(value as number) : fallback,
-    ),
-  );
+function explicitMaxResults(value: unknown): number | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (!Number.isInteger(value) || (value as number) <= 0) {
+    fail(400, "maxResults must be a positive integer when provided.");
+  }
+  return value as number;
 }
 
 function bodyTextFromMessage(message: unknown): string {
@@ -257,7 +255,7 @@ export class GmailDomain {
     side?: LifeOpsConnectorSide;
     grantId?: string;
     query: string;
-    maxResults: number;
+    maxResults?: number;
     now?: Date;
   }): Promise<{
     grant: LifeOpsConnectorGrant;
@@ -299,7 +297,7 @@ export class GmailDomain {
         side: grant.side,
         mailbox: GOOGLE_GMAIL_MAILBOX,
         grantId: grant.id,
-        maxResults: args.maxResults,
+        maxResults: messages.length,
         syncedAt,
       }),
     );
@@ -313,10 +311,7 @@ export class GmailDomain {
   ): Promise<LifeOpsGmailTriageFeed> {
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
     const side = normalizeOptionalConnectorSide(request.side, "side");
-    const limit = maxResults(
-      request.maxResults,
-      DEFAULT_GMAIL_TRIAGE_MAX_RESULTS,
-    );
+    const limit = explicitMaxResults(request.maxResults);
     const synced = await this.syncGmailMessages({
       requestUrl,
       mode,
@@ -342,7 +337,7 @@ export class GmailDomain {
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
     const side = normalizeOptionalConnectorSide(request.side, "side");
     const query = normalizeGmailSearchQuery(request.query);
-    const limit = maxResults(request.maxResults, DEFAULT_GMAIL_SEARCH_LIMIT);
+    const limit = explicitMaxResults(request.maxResults);
     const synced = await this.syncGmailMessages({
       requestUrl,
       mode,
@@ -497,7 +492,7 @@ export class GmailDomain {
       "google",
       {
         status,
-        maxResults: maxResults(request.maxResults, 100),
+        maxResults: explicitMaxResults(request.maxResults),
         grantId: request.grantId,
       },
       side,
@@ -546,7 +541,7 @@ export class GmailDomain {
       side: normalizeOptionalConnectorSide(request.side, "side"),
       grantId: request.grantId,
       query,
-      maxResults: maxResults(request.maxResults, 25),
+      maxResults: explicitMaxResults(request.maxResults),
       now,
     });
     const threads = synced.messages.map((message) => ({
@@ -626,7 +621,7 @@ export class GmailDomain {
       );
     }
 
-    const max = maxResults(request.maxResults, DEFAULT_GMAIL_SEARCH_LIMIT);
+    const max = explicitMaxResults(request.maxResults);
     const messages: LifeOpsGmailMessageSummary[] =
       messageIds.length > 0
         ? await Promise.all(

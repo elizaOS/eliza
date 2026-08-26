@@ -92,6 +92,10 @@ import {
 	getCandidateActionBackstopRules,
 } from "../runtime/candidate-action-backstop";
 import { isCanonicalModelCapabilityDisabled } from "../runtime/canonical-model-capabilities.ts";
+import {
+	applyCodingActionProfile,
+	parseCodingActionProfile,
+} from "../runtime/coding-action-profile";
 import { filterProvidersByContextGate } from "../runtime/context-gates.ts";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
 import {
@@ -243,6 +247,7 @@ import {
 } from "../trajectory-context";
 import { withEvaluatorStep } from "../trajectory-utils";
 import type { CharacterSettings } from "../types/agent";
+import type { CodingActionProfile } from "../types/coding";
 import type {
 	Action,
 	ActionResult,
@@ -339,7 +344,10 @@ import {
 	getUserMessageText,
 	stripAugmentationForPersistence,
 } from "../utils/message-text";
-import { modelProviderErrorDetail } from "../utils/model-errors";
+import {
+	isProviderContextOverflowFailure,
+	modelProviderErrorDetail,
+} from "../utils/model-errors";
 import { readEnv } from "../utils/read-env";
 import {
 	createFirstSentenceStreamTracker,
@@ -1270,6 +1278,48 @@ async function composeResponseState(
 	return runtime.composeState(message, providers, true, skipCache);
 }
 
+/** Replace provider text only with explicitly declared lossless retrieval forms. */
+function withProviderOverflowText(state: State): State | null {
+	const providerResults = state.data.providers;
+	const providerOrder = Array.isArray(state.data.providerOrder)
+		? state.data.providerOrder.filter(
+				(name): name is string => typeof name === "string",
+			)
+		: Object.keys(providerResults ?? {});
+	if (!providerResults) return null;
+	let changed = false;
+	const nextProviders = { ...providerResults };
+	for (const name of providerOrder) {
+		const result = providerResults[name];
+		if (typeof result?.overflowText !== "string") continue;
+		nextProviders[name] = { ...result, text: result.overflowText };
+		changed = true;
+	}
+	if (!changed) return null;
+	const text = providerOrder
+		.map((name) => nextProviders[name]?.text)
+		.filter((value): value is string => Boolean(value?.trim()))
+		.join("\n");
+	return {
+		...state,
+		values: { ...state.values, providers: text },
+		data: { ...state.data, providers: nextProviders },
+		text,
+	};
+}
+
+function responseHandlerContextWindow(
+	runtime: IAgentRuntime,
+): number | undefined {
+	return runtime
+		.getModelRegistrations()
+		.find(
+			(registration) =>
+				registration.modelType === ModelType.RESPONSE_HANDLER &&
+				typeof registration.metadata?.contextWindowTokens === "number",
+		)?.metadata?.contextWindowTokens;
+}
+
 export function selectV5PlannerStateProviderNames(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -1532,6 +1582,7 @@ function _resolvePromptAttachments(
 type ResolvedMessageOptions = {
 	maxRetries: number;
 	codingMode: boolean;
+	codingActionProfile?: CodingActionProfile;
 	continueAfterActions: boolean;
 	keepExistingResponses: boolean;
 	onStreamChunk?: StreamChunkCallback;
@@ -3130,6 +3181,10 @@ type V5PlannerActionSurfaceSummary = {
 	queryTokens: string[];
 	candidateActions: string[];
 	parentActionHints: string[];
+	codingActionProfile?: {
+		kind: "pi";
+		includeWorktree: boolean;
+	};
 	fallback?: string;
 };
 
@@ -3534,6 +3589,7 @@ function buildFullV5PlannerActionSurface(params: {
 	actions: readonly Action[];
 	candidateActions?: readonly string[];
 	parentActionHints?: readonly string[];
+	codingActionProfile?: CodingActionProfile;
 }): V5PlannerActionSurface {
 	const exposedActionNames = new Set(
 		params.actions.map((action) => normalizeActionIdentifier(action.name)),
@@ -3553,6 +3609,15 @@ function buildFullV5PlannerActionSurface(params: {
 			queryTokens: [],
 			candidateActions: [...(params.candidateActions ?? [])],
 			parentActionHints: [...(params.parentActionHints ?? [])],
+			...(params.codingActionProfile
+				? {
+						codingActionProfile: {
+							kind: params.codingActionProfile.kind,
+							includeWorktree:
+								params.codingActionProfile.includeWorktree === true,
+						},
+					}
+				: {}),
 		},
 	};
 }
@@ -3603,6 +3668,7 @@ export function getCachedActionCatalog(
 function buildV5PlannerActionSurface(params: {
 	actions: readonly Action[];
 	forceFullSurface?: boolean;
+	codingActionProfile?: CodingActionProfile;
 	message: Memory;
 	state?: State;
 	messageHandler: MessageHandlerResult;
@@ -3661,6 +3727,15 @@ function buildV5PlannerActionSurface(params: {
 				queryTokens: [],
 				candidateActions: [],
 				parentActionHints: [],
+				...(params.codingActionProfile
+					? {
+							codingActionProfile: {
+								kind: params.codingActionProfile.kind,
+								includeWorktree:
+									params.codingActionProfile.includeWorktree === true,
+							},
+						}
+					: {}),
 			},
 		};
 	}
@@ -3671,6 +3746,7 @@ function buildV5PlannerActionSurface(params: {
 			actions: params.actions,
 			candidateActions,
 			parentActionHints,
+			codingActionProfile: params.codingActionProfile,
 		});
 	}
 
@@ -3817,6 +3893,15 @@ function buildV5PlannerActionSurface(params: {
 			queryTokens: retrieval.query.tokens,
 			candidateActions,
 			parentActionHints,
+			...(params.codingActionProfile
+				? {
+						codingActionProfile: {
+							kind: params.codingActionProfile.kind,
+							includeWorktree:
+								params.codingActionProfile.includeWorktree === true,
+						},
+					}
+				: {}),
 		},
 	};
 }
@@ -8152,6 +8237,8 @@ export async function runV5MessageRuntimeStage1(args: {
 	responseId: UUID;
 	/** Trusted per-turn direct coding-loop selection. */
 	codingMode?: boolean;
+	/** Optional model-facing action policy for this trusted coding turn. */
+	codingActionProfile?: CodingActionProfile;
 	callback?: HandlerCallback;
 	deliveredVisibleTexts?: Set<string>;
 	plannerLoopConfig?: PlannerLoopParams["config"];
@@ -8180,6 +8267,18 @@ export async function runV5MessageRuntimeStage1(args: {
 	/** Stops after Stage-1 routing, before reply generation, planning, or tools. */
 	stage1DecisionOnly?: boolean;
 }): Promise<V5MessageRuntimeStage1Result> {
+	const codingActionProfile = parseCodingActionProfile(
+		args.codingActionProfile,
+	);
+	if (codingActionProfile && args.codingMode !== true) {
+		throw new ElizaError(
+			"Coding action profile requires codingMode to be enabled",
+			{
+				code: "CODING_ACTION_PROFILE_REQUIRES_CODING_MODE",
+				context: { kind: codingActionProfile.kind },
+			},
+		);
+	}
 	const senderRole =
 		getTrajectoryContext()?.userRole ??
 		(await resolveStage1SenderRole(args.runtime, args.message));
@@ -8207,7 +8306,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		messageExplicitlyAddressesAgent(args.runtime, args.message) ||
 			messageChallengesPriorAgentReply(args.runtime, args.message, args.state),
 	);
-	const context = await createV5MessageContextObject({
+	let context = await createV5MessageContextObject({
 		...args,
 		userRoles: [senderRole],
 		availableContexts,
@@ -8220,6 +8319,21 @@ export async function runV5MessageRuntimeStage1(args: {
 		// left RECENT_ERRORS in state, an unaddressed group turn must not
 		// render internal diagnostics into its Stage-1 context.
 	});
+	const overflowState = withProviderOverflowText(args.state);
+	const overflowContext = overflowState
+		? await createV5MessageContextObject({
+				...args,
+				state: overflowState,
+				userRoles: [senderRole],
+				availableContexts,
+				ambientTurn,
+				extraProviderExclusions: ambientTurnProviderExclusions(
+					args.runtime,
+					args.message,
+				),
+			})
+		: null;
+	let useProviderOverflow = false;
 	const stage1PreprocessStartedAt = performance.now();
 
 	// G10/G11: construct the per-trajectory recorder. No-op when disabled via
@@ -8261,6 +8375,14 @@ export async function runV5MessageRuntimeStage1(args: {
 				// (#13775). Threading it here makes the file trajectory join the DB
 				// row and any spawned sub-agent trajectory on one traceId.
 				traceId: getTrajectoryContext()?.traceId,
+				...(codingActionProfile
+					? {
+							codingActionProfile: {
+								kind: codingActionProfile.kind,
+								includeWorktree: codingActionProfile.includeWorktree === true,
+							},
+						}
+					: {}),
 				rootMessage: {
 					id: String(args.message.id ?? args.responseId),
 					text: getUserMessageText(args.message) ?? "",
@@ -8302,7 +8424,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			);
 		const responseHandlerSchema =
 			args.runtime.responseHandlerFieldRegistry.composeSchema();
-		const messageHandlerInput = renderMessageHandlerModelInput(
+		let messageHandlerInput = renderMessageHandlerModelInput(
 			args.runtime,
 			context,
 			availableContexts,
@@ -8312,18 +8434,18 @@ export async function runV5MessageRuntimeStage1(args: {
 				responseHandlerFields: responseHandlerFieldPrompt.rendered,
 			},
 		);
-		const stage1PrefixHashes = computePrefixHashes(
+		let stage1PrefixHashes = computePrefixHashes(
 			messageHandlerInput.promptSegments,
 		);
-		const stableStage1Segments = messageHandlerInput.promptSegments.filter(
+		let stableStage1Segments = messageHandlerInput.promptSegments.filter(
 			(segment) => segment.stable,
 		);
-		const stableStage1PrefixHashes = computePrefixHashes(stableStage1Segments);
-		const stage1SystemContent =
+		let stableStage1PrefixHashes = computePrefixHashes(stableStage1Segments);
+		let stage1SystemContent =
 			typeof messageHandlerInput.messages[0]?.content === "string"
 				? messageHandlerInput.messages[0].content
 				: "";
-		const stage1PrefixHash =
+		let stage1PrefixHash =
 			stableStage1PrefixHashes[stableStage1PrefixHashes.length - 1]?.hash ??
 			hashString(`stage1:${stage1SystemContent}`);
 		const messageHandlerTools = [
@@ -8334,6 +8456,46 @@ export async function runV5MessageRuntimeStage1(args: {
 					"Stage 1: populate registered response-handler fields once before action tools. Empty values for non-applicable fields.",
 			}),
 		];
+		const contextWindowTokens = responseHandlerContextWindow(args.runtime);
+		if (overflowContext && contextWindowTokens) {
+			const eagerBudget = buildModelInputBudget({
+				messages: messageHandlerInput.messages,
+				promptSegments: messageHandlerInput.promptSegments,
+				tools: messageHandlerTools,
+				contextWindowTokens,
+				estimationMode: "utf8-upper-bound",
+			});
+			if (
+				eagerBudget.estimatedInputTokens > eagerBudget.dispatchThresholdTokens
+			) {
+				useProviderOverflow = true;
+				context = overflowContext;
+				messageHandlerInput = renderMessageHandlerModelInput(
+					args.runtime,
+					context,
+					availableContexts,
+					{
+						directMessage: directMessageChannel && !voiceDirectMessageChannel,
+						voiceDirectMessage: voiceDirectMessageChannel,
+						responseHandlerFields: responseHandlerFieldPrompt.rendered,
+					},
+				);
+				stage1PrefixHashes = computePrefixHashes(
+					messageHandlerInput.promptSegments,
+				);
+				stableStage1Segments = messageHandlerInput.promptSegments.filter(
+					(segment) => segment.stable,
+				);
+				stableStage1PrefixHashes = computePrefixHashes(stableStage1Segments);
+				stage1SystemContent =
+					typeof messageHandlerInput.messages[0]?.content === "string"
+						? messageHandlerInput.messages[0].content
+						: "";
+				stage1PrefixHash =
+					stableStage1PrefixHashes[stableStage1PrefixHashes.length - 1]?.hash ??
+					hashString(`stage1:${stage1SystemContent}`);
+			}
+		}
 		const messageHandlerProviderOptions = withModelInputBudgetProviderOptions(
 			cacheProviderOptions({
 				prefixHash: stage1PrefixHash,
@@ -9210,8 +9372,19 @@ export async function runV5MessageRuntimeStage1(args: {
 						},
 					}
 				: undefined;
+		// Once Stage 1 has explicitly selected the memory domain, the planner owns
+		// retrieval through its complete search tools. Repeating an eager corpus in
+		// every tool iteration adds no recall capability and can turn a technically
+		// admissible prompt into an operational timeout. Ordinary chat still keeps
+		// eager context; this branch is driven by the typed routing decision.
+		const retrievalContextSelected = selectedContexts.includes("memory");
+		const capacityAdjustedPlannerState =
+			useProviderOverflow || retrievalContextSelected
+				? (withProviderOverflowText(recomposedPlannerState) ??
+					recomposedPlannerState)
+				: recomposedPlannerState;
 		const plannerState = withContextRoutingValues(
-			attachAvailableContexts(recomposedPlannerState, args.runtime),
+			attachAvailableContexts(capacityAdjustedPlannerState, args.runtime),
 			selectedContextRoutingState,
 		);
 		if (args.codingMode === true) {
@@ -9224,14 +9397,14 @@ export async function runV5MessageRuntimeStage1(args: {
 			};
 		}
 		// A focused coding turn receives every action whose ordinary execution gates
-		// pass for the coding contexts. Relevance or a fixed name list may order or
-		// describe the tools, but cannot hide a newly registered authorized action.
+		// pass for the coding contexts unless its trusted host selected an explicit
+		// per-turn profile. Generic coding mode keeps the complete authorized surface.
 		const useFullSurface = args.codingMode === true;
-		const plannerCandidateActions = useFullSurface
+		const authorizedCodingActions = useFullSurface
 			? (args.runtime.actions ?? []).filter((action) =>
 					// The execution gates are the authority for a focused coding turn.
-					// Names may rank tools but cannot form a second fixed allowlist that
-					// silently hides newly registered coding capabilities.
+					// Absent an explicit profile, names cannot form a second fixed allowlist
+					// that silently hides newly registered coding capabilities.
 					canActionRun(action, {
 						activeContexts: CODING_SUB_AGENT_CONTEXTS,
 						userRoles: [senderRole],
@@ -9240,6 +9413,9 @@ export async function runV5MessageRuntimeStage1(args: {
 						skipPrivateGate: true,
 					}),
 				)
+			: undefined;
+		const plannerCandidateActions = authorizedCodingActions
+			? applyCodingActionProfile(authorizedCodingActions, codingActionProfile)
 			: await collectV5PlannerCandidateActions({
 					runtime: args.runtime,
 					message: args.message,
@@ -9393,6 +9569,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		const actionSurface = buildV5PlannerActionSurface({
 			actions: plannerCandidateActions,
 			forceFullSurface: args.codingMode === true,
+			codingActionProfile,
 			message: args.message,
 			state: plannerState,
 			messageHandler,
@@ -9795,10 +9972,12 @@ export async function runV5MessageRuntimeStage1(args: {
 								effects: evaluatorEffects,
 								recorder,
 								trajectoryId,
+								cacheConversationId: String(args.message.roomId),
 							}),
 						evaluatorEffects,
 						recorder,
 						trajectoryId,
+						cacheConversationId: String(args.message.roomId),
 						providerAttributionState: plannerState,
 					});
 				}
@@ -9895,6 +10074,7 @@ export async function runV5MessageRuntimeStage1(args: {
 					evaluatorEffects,
 					recorder,
 					trajectoryId,
+					cacheConversationId: String(args.message.roomId),
 					providerAttributionState: plannerState,
 					executeToolCall: (toolCall, ctx) =>
 						timeInferenceSpan(
@@ -9953,6 +10133,7 @@ export async function runV5MessageRuntimeStage1(args: {
 								effects: evaluatorEffects,
 								recorder,
 								trajectoryId,
+								cacheConversationId: String(args.message.roomId),
 							}),
 						),
 				}),
@@ -10544,8 +10725,12 @@ export async function runV5MessageRuntimeStage1(args: {
 		};
 	} catch (err) {
 		// error-policy:J2 Preserve the failing status for trajectory diagnostics,
-		// then rethrow the original failure to the message boundary.
-		endStatus = "errored";
+		// then rethrow the original failure to the message boundary. A provider
+		// context-overflow rejection classified by the planner boundary is the
+		// exception: the message boundary converts it into a designed
+		// honest reply, so the trajectory FINISHES with that outcome instead of
+		// recording a dead errored turn.
+		endStatus = isProviderContextOverflowFailure(err) ? "finished" : "errored";
 		throw err;
 	} finally {
 		// Trajectory persistence is diagnostic work. Preserve stage ordering in
@@ -12589,7 +12774,6 @@ async function rewriteActionCallbackInCharacter(args: {
 	try {
 		const raw = (await args.runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt,
-			maxTokens: 260,
 			providerOptions: { eliza: { thinking: "off" } },
 		})) as string | GenerateTextResult;
 		const cleaned = stripReasoningBlocks(getV5ModelText(raw)).trim();
@@ -12859,6 +13043,22 @@ export class DefaultMessageService implements IMessageService {
 		callback?: HandlerCallback,
 		options?: MessageProcessingOptions,
 	): Promise<MessageProcessingResult> {
+		// Validate trusted host policy before touching the message, runtime events,
+		// action hooks, or callbacks. A profile is meaningful only on the explicit
+		// direct coding path; accepting it elsewhere would make telemetry claim a
+		// restriction that ordinary routing never applied.
+		const codingActionProfile = parseCodingActionProfile(
+			options?.codingActionProfile,
+		);
+		if (codingActionProfile && options?.codingMode !== true) {
+			throw new ElizaError(
+				"Coding action profile requires codingMode to be enabled",
+				{
+					code: "CODING_ACTION_PROFILE_REQUIRES_CODING_MODE",
+					context: { kind: codingActionProfile.kind },
+				},
+			);
+		}
 		// Analysis-mode token detection runs BEFORE any planner work so the
 		// agent never hallucinates a "performing an analysis" reply. Gated by
 		// `ELIZA_ENABLE_ANALYSIS_MODE` / `NODE_ENV=development`. See
@@ -13187,6 +13387,7 @@ export class DefaultMessageService implements IMessageService {
 				const opts: ResolvedMessageOptions = {
 					maxRetries: options?.maxRetries ?? 3,
 					codingMode: options?.codingMode === true,
+					...(codingActionProfile ? { codingActionProfile } : {}),
 					continueAfterActions:
 						options?.continueAfterActions ??
 						parseBooleanFromText(
@@ -14212,6 +14413,9 @@ export class DefaultMessageService implements IMessageService {
 							state,
 							responseId,
 							codingMode: opts.codingMode,
+							...(opts.codingActionProfile
+								? { codingActionProfile: opts.codingActionProfile }
+								: {}),
 							...(callback ? { callback } : {}),
 							deliveredVisibleTexts,
 							...(opts.roomHandlerLease
@@ -15914,6 +16118,14 @@ export class DefaultMessageService implements IMessageService {
 						? fallbackTmpl({ state })
 						: fallbackTmpl) ||
 					"I ran out of attempts before I could finish that. Nothing was completed - please try again.";
+			} else if (cause === "context_overflow") {
+				// The provider rejected the call at its context limit; retrying the
+				// identical request cannot succeed, so the honest reply asks for a
+				// smaller ask instead of the generic "try again".
+				const tmpl = runtime.character.templates?.contextOverflowFailureReply;
+				replyText =
+					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
+					"That needed more context than my model can take in one call - try a smaller range or a narrower request.";
 			} else {
 				const tmpl = runtime.character.templates?.transientFailureReply;
 				replyText =

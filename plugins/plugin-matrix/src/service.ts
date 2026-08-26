@@ -26,6 +26,8 @@ import {
   resolveAliasedEnvValue,
   Service,
   type TargetInfo,
+  toWellFormedUnicode,
+  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import * as sdk from "matrix-js-sdk";
@@ -406,11 +408,12 @@ export async function restoreDb(name: string, snapshot: CryptoStoreSnapshot): Pr
   db.close();
 }
 
-function normalizeConnectorLimit(limit: number | undefined, fallback = 50): number {
-  if (!Number.isFinite(limit) || !limit || limit <= 0) {
-    return fallback;
+function normalizeConnectorLimit(limit: number | undefined): number | undefined {
+  if (limit === undefined) return undefined;
+  if (!Number.isFinite(limit) || limit <= 0) {
+    throw new RangeError("Matrix connector limit must be a positive finite number");
   }
-  return Math.min(Math.floor(limit), 200);
+  return Math.floor(limit);
 }
 
 /**
@@ -489,12 +492,12 @@ function matrixMessageToMemory(
 async function readStoredMessageMemories(
   runtime: IAgentRuntime,
   roomId: UUID,
-  limit: number
+  limit: number | undefined
 ): Promise<Memory[]> {
   return runtime.getMemories({
     tableName: "messages",
     roomId,
-    limit,
+    ...(limit === undefined ? {} : { limit }),
     orderBy: "createdAt",
     orderDirection: "desc",
   });
@@ -525,24 +528,20 @@ async function resolveMatrixRoomId(
 async function readJoinedRoomMessages(
   service: MatrixService,
   accountId: string,
-  limit: number
+  limit: number | undefined
 ): Promise<Memory[]> {
   const rooms = await service.getJoinedRooms(accountId);
   const chunks = await Promise.all(
     rooms.map((room) => service.getRoomMessages(room.roomId, limit, accountId))
   );
-  return chunks
-    .flat()
-    .sort((left, right) => {
-      const r =
-        typeof right.createdAt === "number" && Number.isFinite(right.createdAt)
-          ? right.createdAt
-          : 0;
-      const l =
-        typeof left.createdAt === "number" && Number.isFinite(left.createdAt) ? left.createdAt : 0;
-      return r - l;
-    })
-    .slice(0, limit);
+  const sorted = chunks.flat().sort((left, right) => {
+    const r =
+      typeof right.createdAt === "number" && Number.isFinite(right.createdAt) ? right.createdAt : 0;
+    const l =
+      typeof left.createdAt === "number" && Number.isFinite(left.createdAt) ? left.createdAt : 0;
+    return r - l;
+  });
+  return limit === undefined ? sorted : sorted.slice(0, limit);
 }
 
 /**
@@ -556,7 +555,7 @@ async function readMessagesForTarget(
   runtime: IAgentRuntime,
   accountId: string,
   target: TargetInfo | undefined,
-  limit: number
+  limit: number | undefined
 ): Promise<Memory[]> {
   const matrixRoomId = await resolveMatrixRoomId(runtime, target);
   if (!matrixRoomId) {
@@ -569,17 +568,20 @@ async function readMessagesForTarget(
   return readStoredMessageMemories(runtime, createUniqueUuid(runtime, matrixRoomId), limit);
 }
 
-function filterMemoriesByQuery(memories: Memory[], query: string, limit: number): Memory[] {
+function filterMemoriesByQuery(
+  memories: Memory[],
+  query: string,
+  limit: number | undefined
+): Memory[] {
   const normalized = query.trim().toLowerCase();
   if (!normalized) {
-    return memories.slice(0, limit);
+    return limit === undefined ? memories : memories.slice(0, limit);
   }
-  return memories
-    .filter((memory) => {
-      const text = typeof memory.content?.text === "string" ? memory.content.text : "";
-      return text.toLowerCase().includes(normalized);
-    })
-    .slice(0, limit);
+  const matches = memories.filter((memory) => {
+    const text = typeof memory.content?.text === "string" ? memory.content.text : "";
+    return text.toLowerCase().includes(normalized);
+  });
+  return limit === undefined ? matches : matches.slice(0, limit);
 }
 
 function extractMatrixSendOptions(content: Content, target: TargetInfo): MatrixMessageSendOptions {
@@ -695,13 +697,12 @@ export class MatrixService extends Service implements IMatrixService {
         searchMessages: async (context, params) => {
           const limit = normalizeConnectorLimit(params?.limit);
           const target = params?.target ?? context.target;
-          // Scan wider than the requested limit so the query filter has candidates.
           const messages = await readMessagesForTarget(
             service,
             context.runtime,
             accountId,
             target,
-            Math.max(limit, 100)
+            undefined
           );
           return filterMemoriesByQuery(messages, params.query, limit);
         },
@@ -1295,7 +1296,7 @@ export class MatrixService extends Service implements IMatrixService {
     };
 
     logger.debug(
-      `Matrix message from ${message.senderInfo.displayName || message.sender} in ${room.name || roomId}: ${message.content.slice(0, 50)}...`
+      `Matrix message from ${message.senderInfo.displayName || message.sender} in ${room.name || roomId}: ${truncateWellFormed(toWellFormedUnicode(message.content), 50)}...`
     );
 
     // Plugin-local event other code may listen for (the MatrixMessage/MatrixRoom payload).
@@ -1548,7 +1549,7 @@ export class MatrixService extends Service implements IMatrixService {
    */
   async getRoomMessages(
     matrixRoomId: string,
-    limit: number,
+    limit: number | undefined,
     accountId?: string
   ): Promise<Memory[]> {
     const state = this.getState(accountId);
@@ -1560,7 +1561,7 @@ export class MatrixService extends Service implements IMatrixService {
     const channelType = room.getJoinedMemberCount() <= 2 ? ChannelType.DM : ChannelType.GROUP;
     const events = room.getLiveTimeline().getEvents();
     const out: Memory[] = [];
-    for (let i = events.length - 1; i >= 0 && out.length < limit; i -= 1) {
+    for (let i = events.length - 1; i >= 0 && (limit === undefined || out.length < limit); i -= 1) {
       const event = events[i];
       const message = buildMatrixMessage(event, room);
       if (message) {

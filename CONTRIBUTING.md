@@ -28,6 +28,45 @@ bun run verify
 Keep package-local instructions in view. Read root `AGENTS.md` or `CLAUDE.md`,
 then the package-local `AGENTS.md` or `CLAUDE.md` before touching that package.
 
+## Issue and test quality gate
+
+Do not open an issue or pull request merely because a file, export, branch, or
+line is uncovered. Coverage is a diagnostic signal, not a product requirement.
+An issue must identify a concrete defect, regression, risk, or missing
+consumer-visible capability, name the affected caller or boundary, and define
+an observable acceptance result. Do not create speculative per-file,
+per-package, or inventory-only audit issues whose acceptable outcome is “no
+change.” Run the audit first and open a narrowly scoped issue only for a real
+finding.
+
+A test-only pull request must protect meaningful behavior or a documented
+external contract. It must explain what realistic regression the test detects,
+which consumer would observe it, and why an existing higher-level test does not
+already own the contract. A red result after mutating the asserted literal is
+not by itself evidence that the test is valuable.
+
+Do not add tests whose material assertions only:
+
+- copy constants, names, labels, copy text, URLs, CSS classes, visual tokens,
+  array lengths, object keys, or other implementation literals;
+- check that an export, type-shaped object, class, function, property, file,
+  asset, generated catalog entry, barrel re-export, or fixture exists;
+- inspect schema or metadata descriptors without exercising the database,
+  parser, transport, migration, or consumer behavior they are meant to drive;
+- prove TypeScript assignability at runtime, restate the implementation in the
+  test, snapshot deterministic fixture data, or assert a mock that substitutes
+  for the system under test; or
+- increase line, branch, or module coverage without a concrete behavioral
+  regression contract.
+
+These checks create change-detector noise: an intentional implementation edit
+requires changing the test in lockstep while no user-visible failure is
+prevented. They should be removed or replaced with a test at the owning
+behavioral boundary. Narrow exceptions exist for externally versioned wire
+values, security allowlists, migration contracts, and generated-artifact
+integrity, but the test must exercise or validate that external boundary rather
+than simply mirror its source declaration.
+
 ## GitHub Projects
 
 Issues are work cards. GitHub Projects are the live kanban state and ownership

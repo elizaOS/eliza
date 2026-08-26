@@ -227,6 +227,130 @@ From Discord.js `PermissionFlagsBits`:
 
 No actions or providers are registered. The plugin operates entirely through services and events. Credential pairing is handled by connector account providers and owner-only slash commands.
 
+### Server Management (structural guild operations)
+
+The connector exposes structural server management through the platform
+`MESSAGE` action (`op=manage_server`, `source=discord`). Supported
+operations:
+
+- `create_category`, `create_channel`, `edit_channel`, `delete_channel`
+- `create_role`, `edit_role`, `delete_role`
+- `edit_permissions` (channel permission overwrites)
+- `assign_role`, `remove_role`
+- `create_invite`
+- `kick`, `ban`, `unban`, `timeout`
+- `list_templates`, `apply_template` (idempotent, non-destructive guild
+  template reconcile)
+
+Management requests must identify the destination with the exact Discord guild
+snowflake persisted as the room's `serverId`; guild display names are never an
+authorization or lookup key. For example:
+
+```json
+{
+  "action": "create_channel",
+  "source": "discord",
+  "accountId": "primary",
+  "serverId": "123456789012345678",
+  "name": "release-status"
+}
+```
+
+Before Discord is queried or changed, core requires a verified identity related
+to the requester to be both a member and `ADMIN` or `OWNER` in that exact
+destination world. The destination must also have an exact Discord room binding
+(`room.source`, raw guild `room.serverId`, and `room.messageServerId`). The
+selected account's Discord client must then fetch that exact guild before any
+write. The connector independently revalidates the same world binding,
+membership, role, account provenance, and live guild id immediately before
+mutation, so revoked, unbound, cross-account, and cross-guild requests fail
+closed. Shared guild rooms remain valid when more than one configured Discord
+account can access the same guild.
+
+**Every structural write fails closed.** The `actions.channels`,
+`actions.roles`, `actions.permissions`, and `actions.moderation` gates all
+default to OFF and must be explicitly enabled:
+
+```json
+{
+  "settings": {
+    "discord": {
+      "token": "<bot token>",
+      "actions": {
+        "channels": true,
+        "roles": true,
+        "permissions": true,
+        "moderation": false
+      }
+    }
+  }
+}
+```
+
+Environment fallbacks: `DISCORD_ACTIONS_CHANNELS`, `DISCORD_ACTIONS_ROLES`,
+`DISCORD_ACTIONS_PERMISSIONS`, `DISCORD_ACTIONS_MODERATION` (only consulted
+when the config key is absent).
+
+Additional guardrails, independent of the gates:
+
+- The bot must actually hold the Discord-side permission (`ManageChannels`,
+  `ManageRoles`, `CreateInstantInvite`, `KickMembers`, `BanMembers`,
+  `ModerateMembers`) for the verb, or the operation fails with an actionable
+  error.
+- Role and member-role writes enforce Discord role hierarchy: only roles
+  strictly below the bot's highest role can be created against, edited,
+  deleted, or assigned. Integration-managed roles and `@everyone` are
+  refused.
+- Granting the `Administrator` permission through any role or overwrite is
+  always rejected, and requested role permissions must be a subset of the
+  bot's own permissions (no escalation).
+- Moderation refuses to target the guild owner and honors
+  `kickable`/`bannable`/`moderatable`.
+- Every operation accepts `dryRun: true` and returns a structured receipt
+  listing created/updated/unchanged/skipped entities.
+
+#### Guild templates
+
+`apply_template` reconciles a declarative guild spec (roles, categories,
+channels, permission overwrites) against the live guild:
+
+- Objects are matched by stable template `key` via a persisted
+  key-to-snowflake map (runtime cache), with exact-name fallback, so
+  re-applying converges (`unchanged`) instead of duplicating.
+- Reconcile creates missing objects and updates explicitly managed fields
+  (name, topic, parent, color, hoist, mentionable, permissions, overwrites).
+- It NEVER deletes channels or roles it does not manage; manual channels
+  and roles are untouched. Deletion only happens through the explicit
+  `delete_channel` / `delete_role` verbs.
+- `dryRun: true` returns the full plan (`would_create` / `would_update`)
+  without touching Discord.
+
+Built-in vendor-neutral templates: `companion-private`, `friends-casual`,
+`project-team`, `community-public`. Deployments can add or override
+templates via `settings.discord.guildTemplates` (per-account:
+`settings.discord.accounts.<id>.guildTemplates`):
+
+```json
+{
+  "settings": {
+    "discord": {
+      "guildTemplates": {
+        "my-workspace": {
+          "id": "my-workspace",
+          "categories": [{ "key": "ops", "name": "OPS" }],
+          "channels": [
+            { "key": "receipts", "name": "receipts", "parent": "ops" }
+          ]
+        }
+      }
+    }
+  }
+}
+```
+
+`{{agent}}` in template names renders the character name; custom variables
+can be supplied per apply via `variables`.
+
 ### Event Types
 
 The plugin emits the following Discord-specific events:

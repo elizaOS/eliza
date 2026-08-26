@@ -1,14 +1,4 @@
-/**
- * What a failed job records about why.
- *
- * `jobs.error` used to hold `error.message` alone. That is how 342 production
- * `agent_delete` failures came to share one 35-byte string — "value.toISOString
- * is not a function" — with nothing to locate the call site from, one of them
- * stuck since 2026-07-07 (#23117). These tests pin the stack being kept, and
- * kept bounded: the same column already has 33 rows over 100 KB from payload
- * dumps, and a grouping query over it failed with
- * `invalid memory alloc request size 1130945444`.
- */
+/** Durable private job diagnostics retain complete operator evidence; owner-facing projection is tested separately. */
 import { describe, expect, test } from "bun:test";
 import { jobErrorText } from "./job-error-text";
 
@@ -46,15 +36,14 @@ describe("jobErrorText", () => {
     expect(jobErrorText(null)).toBe("null");
   });
 
-  test("bounds the text so a stack cannot become another oversized row", () => {
+  test("preserves a large stack without truncating operator evidence", () => {
     const huge = new Error("boom");
     huge.stack = `Error: boom\n${"    at frame\n".repeat(5_000)}`;
 
     const text = jobErrorText(huge);
 
-    expect(text.length).toBeLessThan(4_200);
-    expect(text).toContain("truncated");
-    // The head survives: truncation must not cost the message itself.
+    expect(text).toBe(huge.stack.trim());
+    expect(text).not.toContain("truncated");
     expect(text.startsWith("Error: boom")).toBe(true);
   });
 

@@ -265,6 +265,26 @@ describe("compat dispatcher default-deny (H5)", () => {
     expect(cap.status()).toBe(200);
   });
 
+  it("dispatches unauthenticated auth/me to its typed handler boundary", async () => {
+    const cap = captureRes();
+    const handled = await handleElizaCompatRoute(
+      unauthReq("GET", "/api/auth/me"),
+      cap.res,
+      STATE,
+    );
+
+    expect(handled).toBe(true);
+    // This harness deliberately has no auth database. Reaching the handler's
+    // typed DB-unavailable response proves the outer policy did not replace it
+    // with its generic Unauthorized body; auth-session route coverage pins the
+    // real-DB remote_auth_required metadata branch.
+    expect(cap.status()).toBe(503);
+    expect(cap.json()).toEqual({
+      error: "db_unavailable",
+      reason: "db_unavailable",
+    });
+  });
+
   it("denies remote-mode cloud mutations before the forwarder sees unauthenticated callers", async () => {
     const cap = captureRes();
     const handled = await handleElizaCompatRoute(

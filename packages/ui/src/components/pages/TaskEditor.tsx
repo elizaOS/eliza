@@ -320,7 +320,8 @@ export function TaskEditor({
               value={cron}
               onChange={(e) => setCron(e.target.value)}
               placeholder="0 9 * * 1-5"
-              className="font-mono text-xs"
+              variant="config"
+              density="compact"
               data-testid="task-editor-cron"
               {...cronField.agentProps}
             />
@@ -467,13 +468,10 @@ function CronPresetButton({
     <Button
       ref={ref}
       onClick={() => onSelect(expression)}
-      variant="ghost"
-      size="sm"
-      className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
-        active
-          ? "border-accent bg-accent/10 text-accent"
-          : "border-border/40 text-muted-strong hover:border-border"
-      }`}
+      variant="choice"
+      size="tiny"
+      shape="circle"
+      data-state={active ? "on" : "off"}
       {...agentProps}
     >
       {label}

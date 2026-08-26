@@ -170,6 +170,16 @@ describe("LlmEntityRecognizer", () => {
 		}
 	});
 
+	it("does not impose an output ceiling on entity extraction", async () => {
+		let request: { maxTokens?: number } | undefined;
+		const recognizer = new LlmEntityRecognizer(async (params) => {
+			request = params;
+			return "[]";
+		});
+		await recognizer.recognize(TEXT);
+		expect(request?.maxTokens).toBeUndefined();
+	});
+
 	it("propagates parse failures so the composite recognizer degrades", async () => {
 		const recognizer = new LlmEntityRecognizer(async () => "no entities here");
 		await expect(recognizer.recognize(TEXT)).rejects.toThrow(/no JSON array/);

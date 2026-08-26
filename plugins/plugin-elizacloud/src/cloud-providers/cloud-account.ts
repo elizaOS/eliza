@@ -30,7 +30,6 @@ import { createElizaCloudClient } from "../utils/sdk-client";
 
 const TOP_UP_URL = "https://cloud.eliza.app/cloud/billing";
 const TTL = 60_000;
-const MAX_AGENTS_RENDERED = 8;
 
 interface AccountSnapshot {
   balance: number;
@@ -111,11 +110,8 @@ function render(snapshot: AccountSnapshot, organizationId?: string): ProviderRes
         ? "1 hosted agent:"
         : `${snapshot.agents.length} hosted agents:`,
     );
-    for (const agent of snapshot.agents.slice(0, MAX_AGENTS_RENDERED)) {
+    for (const agent of snapshot.agents) {
       lines.push(`- ${agent.agentName ?? agent.id} (${agent.status})`);
-    }
-    if (snapshot.agents.length > MAX_AGENTS_RENDERED) {
-      lines.push(`…and ${snapshot.agents.length - MAX_AGENTS_RENDERED} more`);
     }
   }
 
@@ -129,7 +125,7 @@ function render(snapshot: AccountSnapshot, organizationId?: string): ProviderRes
       cloudTopUpUrl: TOP_UP_URL,
     },
     data: {
-      agents: snapshot.agents.slice(0, MAX_AGENTS_RENDERED).map((agent) => ({
+      agents: snapshot.agents.map((agent) => ({
         id: agent.id,
         name: agent.agentName,
         status: agent.status,

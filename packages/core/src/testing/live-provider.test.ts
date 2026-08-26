@@ -152,7 +152,6 @@ describe("cli live provider", () => {
 		resetEnv();
 		writeClaudeCredentials(tempHome);
 		process.env.ELIZA_CHAT_VIA_CLI = "claude";
-		process.env.ELIZA_PLANNER_NATIVE_TOOLS = "0";
 
 		expect(availableProviderNames()).toEqual(["cli"]);
 		const provider = selectLiveProvider();

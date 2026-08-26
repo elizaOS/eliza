@@ -2,12 +2,9 @@
  * Coverage for owned-bounded-fetch.
  */
 import { describe, expect, it } from "vitest";
-import { DEFAULT_REST_RESPONSE_MAX_BYTES, ownedBoundedFetch } from "./owned-bounded-fetch.js";
+import { ownedBoundedFetch } from "./owned-bounded-fetch.js";
 
 describe("owned-bounded-fetch", () => {
-  it("exposes defaults", () => {
-    expect(DEFAULT_REST_RESPONSE_MAX_BYTES).toBe(4 * 1024 * 1024);
-  });
   it("fetches small response", async () => {
     const mockFetch = async () =>
       new Response("hello", { status: 200, headers: { "content-length": "5" } });

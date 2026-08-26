@@ -37,6 +37,7 @@ const DEDICATED_A = "cccccccc-4444-4444-8444-444444444444";
 const SHARED_RESUME = "cccccccc-7777-4777-8777-777777777777";
 const STOPPED_TARGET = "cccccccc-8888-4888-8888-888888888888";
 const SLEEPING_TARGET = "cccccccc-9999-4999-8999-999999999999";
+const ERROR_TARGET = "cccccccc-eeee-4eee-8eee-eeeeeeeeeeee";
 const SHARED_CONCURRENT = "cccccccc-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const SHARED_B = "cccccccc-2222-4222-8222-222222222222";
 const MISSING = "dddddddd-9999-4999-8999-999999999999";
@@ -488,7 +489,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     );
   });
 
-  test("stopped and sleeping targets cannot restart below the hosting runway", async () => {
+  test("error, stopped, and sleeping targets cannot restart below the hosting runway", async () => {
     expect(pgliteReady).toBe(true);
     const { dbWrite } = await import("@/db/client");
     const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
@@ -504,6 +505,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     });
 
     for (const [targetId, status] of [
+      [ERROR_TARGET, "error"],
       [STOPPED_TARGET, "stopped"],
       [SLEEPING_TARGET, "sleeping"],
     ] as const) {

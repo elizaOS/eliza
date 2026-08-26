@@ -115,6 +115,25 @@ describe("InMemoryDatabaseAdapter.searchMemories", () => {
 		}
 	});
 
+	it("returns every eligible memory when no result limit is requested", async () => {
+		const memories = Array.from({ length: 12 }, (_, index) => ({
+			entityId: entityA,
+			roomId: roomA,
+			agentId,
+			content: { text: `complete ${index}` },
+			embedding: offAxis(index / 100),
+		})) as Memory[];
+		const adapter = await seed(memories);
+
+		const results = await adapter.searchMemories({
+			tableName: "memories",
+			embedding: onAxis(),
+			match_threshold: 0,
+		});
+
+		expect(results).toHaveLength(12);
+	});
+
 	it("skips mixed-width vectors instead of ranking them against the query", async () => {
 		const adapter = await seed([
 			{

@@ -121,15 +121,6 @@
       "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
       "advanced": false
     },
-    "OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS": {
-      "type": "secret",
-      "required": false,
-      "sensitive": true,
-      "default": "8192",
-      "label": "Image Description Max Tokens",
-      "help": "Maximum number of tokens allowed in the image-description model response.",
-      "advanced": false
-    },
     "OPENAI_TTS_MODEL": {
       "type": "string",
       "required": false,

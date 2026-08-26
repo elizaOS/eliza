@@ -81,7 +81,6 @@ export class SharedRuntimeHistoryRepository {
     agentId: string,
     channelId: string,
     messages: SharedRuntimeHistoryMessage[],
-    limit: number,
   ): Promise<SharedRuntimeHistoryMessage[]> {
     const merged = await dbWrite.transaction(async (tx) => {
       const now = new Date();
@@ -110,7 +109,6 @@ export class SharedRuntimeHistoryRepository {
       const next = mergeSharedRuntimeHistoryMessages(
         Array.isArray(row?.messages) ? row.messages : [],
         messages,
-        limit,
       );
       await tx
         .update(sharedRuntimeHistory)

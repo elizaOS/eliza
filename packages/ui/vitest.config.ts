@@ -209,6 +209,13 @@ export default defineConfig({
         ),
       },
       {
+        find: /^@elizaos\/cloud-sdk\/browser-contracts$/,
+        replacement: resolve(
+          monorepoRoot,
+          "packages/cloud/sdk/src/browser-contracts/index.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/cloud-sdk\/cloud-setup-session$/,
         replacement: resolve(
           monorepoRoot,

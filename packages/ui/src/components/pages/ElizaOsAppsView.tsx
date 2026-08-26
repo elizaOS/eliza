@@ -396,13 +396,9 @@ function PhonePanelTabButton({
       ref={ref}
       onClick={() => onSelect(item.id)}
       aria-current={isActive ? "page" : undefined}
-      variant="ghost"
-      size="sm"
-      className={`inline-flex h-9 items-center gap-2 rounded-full px-3 text-sm font-medium transition-colors ${
-        isActive
-          ? "bg-accent text-accent-foreground"
-          : "text-muted-strong hover:bg-surface hover:text-txt"
-      }`}
+      variant="selection"
+      size="pillDense"
+      data-state={isActive ? "on" : "off"}
       {...agentProps}
     >
       {item.icon}
@@ -429,8 +425,9 @@ function DialpadButton({
     <Button
       ref={ref}
       onClick={() => onPress(digit)}
-      variant="ghost"
-      className="h-auto aspect-[1.6] rounded-sm bg-surface text-lg font-semibold text-txt transition-colors hover:bg-bg-hover"
+      variant="surface"
+      size="tile"
+      className="aspect-[1.6]"
       {...agentProps}
     >
       {digit}
@@ -460,8 +457,9 @@ const RecentCallButton = memo(function RecentCallButton({
     <Button
       ref={ref}
       onClick={handleSelect}
-      variant="ghost"
-      className="h-auto justify-start whitespace-normal rounded-sm p-3 text-left text-sm font-normal transition-colors hover:bg-surface"
+      variant="surface"
+      size="row"
+      align="start"
       {...agentProps}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">

@@ -132,7 +132,12 @@ import {
   resolveRendererAssetDir,
 } from "./runtime-layout";
 import { mergeRuntimePermissionStates } from "./runtime-permissions";
-import { resolveDesktopRuntimeForBoot } from "./runtime-preflight";
+import {
+  type DesktopRuntimeBootResolution,
+  resolveDesktopApiRequestToken,
+  resolveDesktopRuntimeForBoot,
+  resolveQualifiedExternalToken,
+} from "./runtime-preflight";
 import { startScreenCaptureBridgeServer } from "./screen-capture-bridge-server";
 import { startScreenshotDevServer } from "./screenshot-dev-server";
 import { registerShellSyncEndpoint } from "./shell-sync-relay";
@@ -241,13 +246,9 @@ onAgentReadyChange(() => setupApplicationMenu());
  * base resolves to `external` so the embedded agent is skipped; topology 1
  * (local agent → cloud inference) and topology 2 (all-local) keep `local`.
  */
-let preparedDesktopRuntime: ReturnType<
-  typeof resolveDesktopRuntimeModeWithDeployment
-> | null = null;
+let preparedDesktopRuntime: DesktopRuntimeBootResolution | null = null;
 
-function resolveDesktopRuntime(): ReturnType<
-  typeof resolveDesktopRuntimeModeWithDeployment
-> {
+function resolveDesktopRuntime(): DesktopRuntimeBootResolution {
   return (
     preparedDesktopRuntime ??
     resolveDesktopRuntimeModeWithDeployment(
@@ -264,17 +265,24 @@ function summarizeDesktopActionError(error: unknown, fallback: string): string {
   return trimmed.length > 80 ? `${trimmed.slice(0, 77)}...` : trimmed;
 }
 
-function buildApiRequestHeaders(contentType?: string): Record<string, string> {
+function buildApiRequestHeaders(
+  targetUrl: string,
+  contentType?: string,
+): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: "application/json",
   };
   if (contentType) {
     headers["Content-Type"] = contentType;
   }
-  let apiToken = resolveApiToken(process.env);
+  const runtime = resolveDesktopRuntime();
+  let apiToken = resolveDesktopApiRequestToken({
+    resolution: runtime,
+    targetUrl,
+    configuredToken: resolveApiToken(process.env),
+  });
   if (!apiToken) {
-    const rt = resolveDesktopRuntime();
-    if (rt.mode === "local") {
+    if (runtime.mode === "local") {
       apiToken = configureDesktopLocalApiAuth().trim();
     }
   }
@@ -415,10 +423,11 @@ async function resetTheAppFromApplicationMenu(): Promise<void> {
       },
       getLocalApiAuthToken: () => configureDesktopLocalApiAuth(),
       postExternalAgentRestart: async () => {
+        const restartUrl = `${apiBase}/api/agent/restart`;
         try {
-          await fetch(`${apiBase}/api/agent/restart`, {
+          await fetch(restartUrl, {
             method: "POST",
-            headers: buildApiRequestHeaders(),
+            headers: buildApiRequestHeaders(restartUrl),
           });
         } catch {
           /* 409 / race while restarting — poll below */
@@ -848,7 +857,9 @@ async function startRendererServer(): Promise<string> {
   const initialApiToken =
     initialRuntime.mode === "local"
       ? configureDesktopLocalApiAuth()
-      : (resolveApiToken(process.env) ?? "");
+      : (resolveApiToken(process.env) ??
+        resolveQualifiedExternalToken(initialRuntime, initialApiBase) ??
+        "");
   apiBaseOwner.setCurrent(initialApiBase, initialApiToken);
 
   const resolveRendererCacheControl = (
@@ -1543,8 +1554,9 @@ async function exportConfigFromMenu(): Promise<void> {
   }
 
   try {
-    const response = await fetch(`${apiBase}/api/config`, {
-      headers: buildApiRequestHeaders(),
+    const configUrl = `${apiBase}/api/config`;
+    const response = await fetch(configUrl, {
+      headers: buildApiRequestHeaders(configUrl),
     });
     if (!response.ok) {
       throw new Error(`Config fetch failed (${response.status})`);
@@ -1611,9 +1623,10 @@ async function importConfigFromMenu(): Promise<void> {
       throw new Error("Config file must contain a JSON object");
     }
 
-    const response = await fetch(`${apiBase}/api/config`, {
+    const configUrl = `${apiBase}/api/config`;
+    const response = await fetch(configUrl, {
       method: "PUT",
-      headers: buildApiRequestHeaders("application/json"),
+      headers: buildApiRequestHeaders(configUrl, "application/json"),
       body: JSON.stringify(parsedConfig),
     });
     if (!response.ok) {
@@ -1846,9 +1859,14 @@ function injectApiBase(win: BrowserWindow): void {
     apiBaseOwner.notifyChange(
       win,
       runtimeResolution.externalApi.base,
-      resolveApiToken(process.env) ?? "",
+      resolveApiToken(process.env) ??
+        resolveQualifiedExternalToken(
+          runtimeResolution,
+          runtimeResolution.externalApi.base,
+        ) ??
+        "",
     );
-    setAgentReady(true);
+    setAgentReady(runtimeResolution.externalReachability !== "unavailable");
     return;
   }
 
@@ -2617,6 +2635,10 @@ async function main(): Promise<void> {
   ) {
     logger.warn(
       "[Main] Persisted external target is not a ready Eliza agent; using the embedded runtime for this launch without changing the saved deployment target.",
+    );
+  } else if (preparedDesktopRuntime.externalReachability === "unavailable") {
+    logger.warn(
+      "[Main] Persisted external target is unavailable and this package has no embedded runtime; keeping the external topology unavailable without exposing its credential.",
     );
   }
   // Start the static renderer server in parallel with the rest of pre-window

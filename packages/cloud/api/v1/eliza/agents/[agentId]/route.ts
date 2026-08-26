@@ -16,10 +16,10 @@ import { userCharactersRepository } from "@/db/repositories/characters";
 import { agentServerWallets } from "@/db/schemas/agent-server-wallets";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { containersEnv } from "@/lib/config/containers-env";
-import { getElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
+import { getConfiguredElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
 import { adminService } from "@/lib/services/admin";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import { publicJobErrorSummary } from "@/lib/services/job-error-text";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { getStewardAgent } from "@/lib/services/steward-client";
 import type {
@@ -113,6 +113,7 @@ function toAdminDetailsDto(
   return {
     nodeId: agent.node_id,
     containerName: agent.container_name,
+    internalBridgeUrl: agent.bridge_url,
     headscaleIp: agent.headscale_ip,
     bridgePort: agent.bridge_port,
     webUiPort: agent.web_ui_port,
@@ -123,10 +124,12 @@ function toAdminDetailsDto(
   };
 }
 
-function resolvePublicWebUiUrl(agent: Agent): string | null {
+function resolvePublicWebUiUrl(
+  agent: Agent,
+  canonicalAgentBaseDomain: string | undefined,
+): string | null {
   if (agent.execution_tier === "shared") return null;
-  const baseDomain = containersEnv.publicBaseDomain();
-  return getElizaAgentPublicWebUiUrl(agent, baseDomain ? { baseDomain } : {});
+  return getConfiguredElizaAgentPublicWebUiUrl(agent, canonicalAgentBaseDomain);
 }
 
 app.get("/", async (c) => {
@@ -208,7 +211,10 @@ app.get("/", async (c) => {
     }
 
     const { isAdmin } = await adminService.getAdminStatusForUser(user);
-    const webUiUrl = resolvePublicWebUiUrl(agent);
+    const webUiUrl = resolvePublicWebUiUrl(
+      agent,
+      c.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
+    );
     const activeLifecycleJob = (
       await provisioningJobService.getActiveAgentLifecycleJobsForOrg(
         user.organization_id,
@@ -224,10 +230,11 @@ app.get("/", async (c) => {
       agentName: agent.agent_name,
       status: agent.status,
       databaseStatus: agent.database_status,
-      bridgeUrl: agent.bridge_url,
       lastBackupAt: toIsoStringOrNull(agent.last_backup_at),
       lastHeartbeatAt: toIsoStringOrNull(agent.last_heartbeat_at),
-      errorMessage: agent.error_message,
+      // Match the list/jobs owner boundary: keep the full redacted diagnostic
+      // in storage, never expose server frames through the normal-user DTO.
+      errorMessage: publicJobErrorSummary(agent.error_message),
       errorCount: agent.error_count,
       createdAt: toIsoString(agent.created_at),
       updatedAt: toIsoString(agent.updated_at),
