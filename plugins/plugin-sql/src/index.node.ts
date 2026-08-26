@@ -8,7 +8,7 @@
  * live-query / Electric Sync status/reset/close accessors used by hosts.
  */
 import type { IDatabaseAdapter, UUID } from "@elizaos/core";
-import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
+import { type IAgentRuntime, logger, type Plugin, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   createAdapterReadinessError,
   describeAdapterReadinessError,
@@ -138,7 +138,7 @@ export function createDatabaseAdapter(
       logger.debug(
         {
           src: "plugin:sql",
-          rlsServerId: rlsServerId.slice(0, 8),
+          rlsServerId: truncateWellFormed(toWellFormedUnicode(rlsServerId), 8),
           serverIdString: rlsServerIdString,
         },
         "Using connection pool for RLS server"
@@ -152,7 +152,7 @@ export function createDatabaseAdapter(
     let manager = globalSingletons.postgresConnectionManagers.get(managerKey);
     if (!shouldReusePostgresManager(manager)) {
       logger.debug(
-        { src: "plugin:sql", managerKey: managerKey.slice(0, 8) },
+        { src: "plugin:sql", managerKey: truncateWellFormed(toWellFormedUnicode(managerKey), 8) },
         "Creating new connection pool"
       );
       manager = new PostgresConnectionManager(config.postgresUrl, rlsServerId);

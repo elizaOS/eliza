@@ -7,7 +7,7 @@
  * table, so new schema tables need no manual RLS wiring. PGlite has no RLS
  * support, so these helpers are only invoked on the Postgres adapter.
  */
-import { type IDatabaseAdapter, logger, validateUuid } from "@elizaos/core";
+import { type IDatabaseAdapter, logger, toWellFormedUnicode, truncateWellFormed, validateUuid } from "@elizaos/core";
 import { eq, sql } from "drizzle-orm";
 import { agentTable } from "./schema/agent";
 import { serverTable } from "./schema/server";
@@ -128,7 +128,7 @@ export async function getOrCreateRlsServer(
     })
     .onConflictDoNothing();
 
-  logger.info({ src: "plugin:sql", serverId: serverId.slice(0, 8) }, "RLS server registered");
+  logger.info({ src: "plugin:sql", serverId: truncateWellFormed(toWellFormedUnicode(serverId), 8) }, "RLS server registered");
   return serverId;
 }
 
@@ -144,7 +144,7 @@ export async function setServerContext(adapter: IDatabaseAdapter, serverId: stri
     throw new Error(`Server ${serverId} does not exist`);
   }
 
-  logger.info({ src: "plugin:sql", serverId: serverId.slice(0, 8) }, "RLS context configured");
+  logger.info({ src: "plugin:sql", serverId: truncateWellFormed(toWellFormedUnicode(serverId), 8) }, "RLS context configured");
 }
 
 export async function assignAgentToServer(
