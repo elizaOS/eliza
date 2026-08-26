@@ -42,8 +42,9 @@ build, preview, and deployment lifecycle.
 Run from the repo root with `--cwd packages/app`, or from inside the package directly.
 
 ```bash
-bun run dev            # Vite dev server (renderer only; UI port from ELIZA_UI_PORT, default 2138)
-bun run dev:cloud-only # Vite renderer with hosted Cloud onboarding policy
+bun run dev            # Vite renderer linked to staging Cloud (UI port from ELIZA_UI_PORT, default 2138)
+bun run dev:local      # Vite renderer with the local/cloud/remote runtime chooser
+bun run dev:cloud-only # Compatibility alias for the hosted Cloud onboarding policy
 bun run build          # Full app build (scripts/build.mjs)
 bun run build:web      # Vite build only (no Capacitor sync)
 bun run plugin:build   # Plugin-only build
@@ -79,24 +80,46 @@ grants still cover the target instead of minting another profile.
 The desktop shell is built by Electrobun from the repo root (`bun run dev:desktop`),
 not from inside this package â `packages/app` only produces the renderer.
 
-### Cloud-only renderer development
+### Local Cloud development
 
-The ordinary `bun run dev` command intentionally retains the local/cloud/remote
-runtime chooser for local-agent development. Use `bun run dev:cloud-only` when
-you need the same hosted Cloud sign-in policy as a production Cloud surface.
-This explicit lane starts the canonical Vite development server with the
-existing `VITE_ELIZA_DESKTOP_RUNTIME_MODE=cloud` policy; it does not introduce a
-separate renderer or change the default development experience.
-
-To compose the lane against staging, provide the public Cloud and Steward
-configuration without embedding credentials:
+Ordinary local development is Cloud-first and targets **staging**. Both the
+root `bun run dev` stack and the package-level `bun run --cwd packages/app dev`
+renderer receive the same public, non-secret configuration:
 
 ```bash
-VITE_ELIZA_CLOUD_BASE=https://cloud-staging.eliza.app \
-VITE_STEWARD_API_URL=https://staging.eliza.app/steward \
-VITE_STEWARD_TENANT_ID=elizacloud-staging \
-bun run --cwd packages/app dev:cloud-only
+ELIZAOS_CLOUD_BASE_URL=https://api-staging.eliza.app/api/v1
+VITE_ELIZA_CLOUD_BASE=https://cloud-staging.eliza.app
+VITE_STEWARD_API_URL=https://staging.eliza.app/steward
+VITE_STEWARD_TENANT_ID=elizacloud-staging
+VITE_ELIZA_DESKTOP_RUNTIME_MODE=cloud
 ```
+
+The launcher also sets `ELIZA_DEV_SOURCE=1`, but it does not enable the legacy
+Cloud runtime plugin or supply credentials. Implicit staging clears inherited
+Cloud activation keys as well, so a generic production key from a shell or CI
+cannot be replayed against staging. This keeps local sign-in, agent selection,
+and Cloud API traffic on staging without weakening production CORS. To run the
+legacy plugin with a deliberately minted staging key, opt in explicitly:
+
+```bash
+ELIZA_DEV_CLOUD_TARGET=staging ELIZAOS_CLOUD_API_KEY=... bun run dev
+```
+
+Use `bun run dev:local` (or `bun run --cwd packages/app dev:local`) for the
+local/cloud/remote chooser. This lane suppresses automatic Cloud-plugin startup,
+while an explicit Cloud choice still uses staging. Select production only when
+deliberately testing that environment with
+`bun run dev --cloud-target=production`; localhost auth continues to follow
+production's stricter CORS policy. The equivalent process environment selector
+is `ELIZA_DEV_CLOUD_TARGET=staging|production|offline`.
+
+Custom/self-hosted development remains available by setting both the server API
+`ELIZAOS_CLOUD_BASE_URL` and renderer app `VITE_ELIZA_CLOUD_BASE` in the
+launching process; they must identify the same deployment (an `/api/v1` suffix
+on the server URL is ignored for this comparison). `VITE_STEWARD_API_URL` and
+`VITE_STEWARD_TENANT_ID` remain optional independent overrides. Contradictory
+canonical staging/production values fail at startup instead of producing a
+split environment.
 
 ## Config
 

@@ -1,9 +1,13 @@
 /**
- * Proves the explicit cloud-only development lane through the real Vite
- * transform and renderer, without changing the ordinary development default.
+ * Proves ordinary local development uses the staging Cloud tuple through the
+ * real Vite transform: Cloud-only onboarding, local `/login`, and staging
+ * Cloud/Steward boundaries. The compatibility `dev:cloud-only` lane exercises
+ * the same contract.
  */
 
 import { mkdir } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect, type Page, type Route, test } from "@playwright/test";
 import {
   expectNoRenderTelemetryErrors,
@@ -12,10 +16,14 @@ import {
   seedAppStorage,
 } from "../ui-smoke/helpers";
 
-test.skip(
-  process.env.ELIZA_DEV_SMOKE_CLOUD_ONLY !== "1",
-  "runs only through test:dev-smoke:cloud-only",
-);
+const stewardConfigAbsolutePath = path
+  .resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../../../ui/src/cloud/shell/steward-config.ts",
+  )
+  .split(path.sep)
+  .join("/");
+const STEWARD_CONFIG_MODULE_URL = `/@fs/${stewardConfigAbsolutePath.replace(/^\/+/, "")}`;
 
 async function fulfillJson(
   route: Route,
@@ -28,10 +36,17 @@ async function fulfillJson(
   });
 }
 
-async function routeFreshFirstRun(
-  page: Page,
-): Promise<{ loginStarts: number }> {
-  const state = { loginStarts: 0 };
+interface CloudAuthRouteState {
+  agentLoginPosts: number;
+  providerDiscoveryGets: number;
+}
+
+async function routeFreshFirstRun(page: Page): Promise<CloudAuthRouteState> {
+  const state: CloudAuthRouteState = {
+    agentLoginPosts: 0,
+    providerDiscoveryGets: 0,
+  };
+
   await page.route("**/api/auth/status", async (route) => {
     if (route.request().method() !== "GET") return route.fallback();
     await fulfillJson(route, {
@@ -63,7 +78,7 @@ async function routeFreshFirstRun(
   });
   await page.route("**/api/cloud/login", async (route) => {
     if (route.request().method() !== "POST") return route.fallback();
-    state.loginStarts += 1;
+    state.agentLoginPosts += 1;
     await fulfillJson(route, {
       ok: true,
       sessionId: "cloud-only-dev-smoke",
@@ -74,13 +89,78 @@ async function routeFreshFirstRun(
     if (route.request().method() !== "GET") return route.fallback();
     await fulfillJson(route, { status: "pending" });
   });
+
+  await page.route(
+    /^https:\/\/staging\.eliza\.app\/steward\/auth\/providers\/?(?:\?.*)?$/,
+    async (route) => {
+      const method = route.request().method();
+      const origin = route.request().headers().origin ?? "*";
+      const corsHeaders = {
+        "access-control-allow-headers": "content-type",
+        "access-control-allow-methods": "GET, OPTIONS",
+        "access-control-allow-origin": origin,
+        "cache-control": "no-store",
+      };
+
+      if (method === "OPTIONS") {
+        await route.fulfill({ status: 204, headers: corsHeaders, body: "" });
+        return;
+      }
+      if (method !== "GET") {
+        await route.abort("blockedbyclient");
+        return;
+      }
+
+      state.providerDiscoveryGets += 1;
+      await route.fulfill({
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          ok: true,
+          passkey: false,
+          email: true,
+          sms: false,
+          siwe: false,
+          siws: false,
+          google: false,
+          discord: false,
+          github: false,
+          twitter: false,
+          telegram: false,
+          oauth: [],
+        }),
+      });
+    },
+  );
+
   return state;
 }
 
-async function expectCloudOnlyAuth(page: Page): Promise<void> {
-  await expect(page.getByText("Opening secure sign in…")).toBeVisible({
-    timeout: 20_000,
-  });
+async function expectCloudOnlyAuth(
+  page: Page,
+  localOrigin: string,
+  extraPages: Page[],
+): Promise<void> {
+  await expect(page).toHaveURL(/\/login\?returnTo=/, { timeout: 20_000 });
+  const loginUrl = new URL(page.url());
+  expect(
+    loginUrl.origin,
+    "the original localhost page must own the Steward login surface",
+  ).toBe(localOrigin);
+  expect(loginUrl.pathname).toBe("/login");
+  expect(loginUrl.searchParams.get("returnTo")).toBe("/");
+  expect(
+    extraPages,
+    "same-tab Cloud sign-in must never open a popup or second page",
+  ).toHaveLength(0);
+  expect(page.context().pages()).toHaveLength(1);
+  expect(page.context().pages()[0]).toBe(page);
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Sign in", exact: true }),
+  ).toBeVisible();
   await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
   for (const runtime of ["local", "remote"]) {
     await expect(
@@ -93,19 +173,55 @@ async function capture(page: Page, outputPath: string): Promise<void> {
   await page.screenshot({ path: outputPath, fullPage: true });
 }
 
-test("explicit cloud-only Vite development skips the runtime chooser", async ({
+test("ordinary Vite development defaults to staging Cloud sign-in", async ({
   page,
 }, testInfo) => {
   await installRenderTelemetryGuard(page);
   await installDefaultAppRoutes(page);
   const routeState = await routeFreshFirstRun(page);
+  const configuredBaseUrl = testInfo.project.use.baseURL;
+  if (typeof configuredBaseUrl !== "string") {
+    throw new Error("dev-smoke requires a string Playwright baseURL");
+  }
+  const localOrigin = new URL(configuredBaseUrl).origin;
+  const extraPages: Page[] = [];
+  page.context().on("page", (openedPage) => {
+    if (openedPage !== page) extraPages.push(openedPage);
+  });
   await seedAppStorage(page, {
     "eliza:first-run-complete": "",
   });
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expectCloudOnlyAuth(page);
-  expect(routeState.loginStarts).toBeGreaterThan(0);
+  await expectCloudOnlyAuth(page, localOrigin, extraPages);
+  await expect.poll(() => routeState.providerDiscoveryGets).toBeGreaterThan(0);
+  expect(routeState.agentLoginPosts).toBe(0);
+  const stewardConfig = await page.evaluate(async (moduleUrl) => {
+    const loaded = (await import(/* @vite-ignore */ moduleUrl)) as {
+      configuredStewardApiUrlOverride: () => string | undefined;
+      configuredStewardTenantId: () => string | undefined;
+    };
+    return {
+      apiUrl: loaded.configuredStewardApiUrlOverride(),
+      tenantId: loaded.configuredStewardTenantId(),
+    };
+  }, STEWARD_CONFIG_MODULE_URL);
+  expect(stewardConfig).toEqual({
+    apiUrl: "https://staging.eliza.app/steward",
+    tenantId: "elizacloud-staging",
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __ELIZAOS_APP_BOOT_CONFIG__?: { cloudApiBase?: string };
+            }
+          ).__ELIZAOS_APP_BOOT_CONFIG__?.cloudApiBase ?? "",
+      ),
+    )
+    .toBe("https://cloud-staging.eliza.app");
   expect(
     await page.evaluate(() =>
       localStorage.getItem("eliza:enable-runtime-chooser"),
@@ -121,9 +237,14 @@ test("explicit cloud-only Vite development skips the runtime chooser", async ({
     contentType: "image/png",
   });
 
+  const desktopProviderDiscoveryGets = routeState.providerDiscoveryGets;
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await expectCloudOnlyAuth(page);
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expectCloudOnlyAuth(page, localOrigin, extraPages);
+  await expect
+    .poll(() => routeState.providerDiscoveryGets)
+    .toBeGreaterThan(desktopProviderDiscoveryGets);
+  expect(routeState.agentLoginPosts).toBe(0);
   await expectNoRenderTelemetryErrors(
     page,
     "cloud-only Vite development mobile reload",

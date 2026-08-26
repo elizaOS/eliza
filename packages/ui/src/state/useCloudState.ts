@@ -1152,10 +1152,19 @@ export function useCloudState({
       // session whose browser window would never open. The returnTo round
       // trip lands back here and the stored Steward token completes the login
       // (first-run resumes via its marker + mount-time token poll). Direct
-      // cloud targets only: an agent-proxied (hasBackend) login stays on the
-      // device-code flow, whose copyable fallback link is the designed
-      // degrade for blocked popups there.
-      if (useDirectAuth && shouldUseSameTabCloudLogin(prePoppedWindow)) {
+      // cloud targets normally require direct auth: an agent-proxied
+      // (hasBackend) login stays on the device-code flow, whose copyable
+      // fallback link is the designed degrade for blocked popups there. The
+      // narrow exception is loopback plain-web staging development: its local
+      // `/login` route is the configured auth surface and must receive the
+      // Steward token on this origin, regardless of whether the local agent API
+      // answered the status probe. Production and self-hosted agent proxies
+      // retain device-code auth because their CORS/pairing contracts differ.
+      if (
+        shouldUseSameTabCloudLogin(prePoppedWindow, {
+          hasAgentProxy: !useDirectAuth,
+        })
+      ) {
         closePrePoppedWindow();
         navigateToSameTabCloudLogin();
         elizaCloudLoginBusyRef.current = false;

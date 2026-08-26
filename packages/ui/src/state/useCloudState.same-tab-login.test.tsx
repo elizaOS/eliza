@@ -95,6 +95,7 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
     delete windowWithElectrobun.__ELIZA_DESKTOP_RUNTIME_MODE__;
     delete windowWithElectrobun.__ELIZA_ELECTROBUN_RPC__;
     __resetPreparedDesktopCloudLoginSessionForTests();
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
     if (originalLocationDescriptor) {
       Object.defineProperty(window, "location", originalLocationDescriptor);
@@ -153,6 +154,93 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
 
     expect(assignSpy).not.toHaveBeenCalled();
     expect(cloudLoginDirectSpy).toHaveBeenCalledTimes(1);
+    expect(result.current.elizaCloudLoginError).toBe(DEVICE_CODE_SENTINEL);
+  });
+
+  it("uses local /login on configured loopback even when a live popup and local API backend exist", async () => {
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        ...window.location,
+        href: "http://127.0.0.1:2189/settings",
+        origin: "http://127.0.0.1:2189",
+        protocol: "http:",
+        hostname: "127.0.0.1",
+        port: "2189",
+        pathname: "/settings",
+        search: "",
+        assign: assignSpy,
+      },
+    });
+    vi.stubEnv("VITE_STEWARD_API_URL", "https://staging.eliza.app/steward");
+    vi.stubEnv("VITE_STEWARD_TENANT_ID", "elizacloud-staging");
+    vi.spyOn(client, "getBaseUrl").mockReturnValue("http://127.0.0.1:31337");
+    const getCloudStatusSpy = vi
+      .spyOn(client, "getCloudStatus")
+      .mockResolvedValue({
+        connected: false,
+        enabled: true,
+      } as Awaited<ReturnType<typeof client.getCloudStatus>>);
+    const popup = {
+      closed: false,
+      close: vi.fn(() => {
+        (popup as { closed: boolean }).closed = true;
+      }),
+      location: { href: "" },
+      opener: {},
+    } as unknown as Window;
+    vi.spyOn(window, "open").mockReturnValue(popup);
+
+    const { result } = renderHook(() => useCloudState(makeParams()));
+    await act(async () => {
+      await result.current.handleCloudLogin(popup);
+    });
+
+    expect(getCloudStatusSpy).toHaveBeenCalled();
+    expect(assignSpy).toHaveBeenCalledWith("/login?returnTo=%2Fsettings");
+    expect(popup.close).toHaveBeenCalled();
+    expect(deviceCodeCalls()).toBe(0);
+    expect(result.current.elizaCloudLoginBusy).toBe(false);
+    expect(result.current.elizaCloudLoginError).toBeNull();
+  });
+
+  it("keeps production loopback on the agent-proxied device-code flow", async () => {
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        ...window.location,
+        href: "http://127.0.0.1:2189/settings",
+        origin: "http://127.0.0.1:2189",
+        protocol: "http:",
+        hostname: "127.0.0.1",
+        port: "2189",
+        pathname: "/settings",
+        search: "",
+        assign: assignSpy,
+      },
+    });
+    vi.stubEnv("VITE_STEWARD_API_URL", "https://eliza.app/steward");
+    vi.stubEnv("VITE_STEWARD_TENANT_ID", "elizacloud");
+    vi.spyOn(client, "getBaseUrl").mockReturnValue("http://127.0.0.1:31337");
+    vi.spyOn(client, "getCloudStatus").mockResolvedValue({
+      connected: false,
+      enabled: true,
+    } as Awaited<ReturnType<typeof client.getCloudStatus>>);
+    const popup = {
+      closed: false,
+      close: vi.fn(),
+      location: { href: "" },
+      opener: {},
+    } as unknown as Window;
+
+    const { result } = renderHook(() => useCloudState(makeParams()));
+    await act(async () => {
+      await result.current.handleCloudLogin(popup);
+    });
+
+    expect(assignSpy).not.toHaveBeenCalled();
+    expect(cloudLoginSpy).toHaveBeenCalledTimes(1);
+    expect(cloudLoginDirectSpy).not.toHaveBeenCalled();
     expect(result.current.elizaCloudLoginError).toBe(DEVICE_CODE_SENTINEL);
   });
 

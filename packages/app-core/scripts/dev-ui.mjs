@@ -35,6 +35,10 @@ import { relativeAppDir, resolveMainAppDir } from "./lib/app-dir.mjs";
 import { getBunVersionAdvisory } from "./lib/bun-version-guard.mjs";
 import { capacitorPluginsBuildNeeded } from "./lib/capacitor-plugin-build-needed.mjs";
 import {
+  applyDevCloudTarget,
+  configureDevCloudEnvironment,
+} from "./lib/dev-cloud-target.mjs";
+import {
   createApiHealthWatchdog,
   createParentExitGuard,
 } from "./lib/dev-process-lifecycle.mjs";
@@ -169,6 +173,10 @@ const { CAPACITOR_PLUGIN_NAMES, NATIVE_PLUGINS_ROOT } = await import(
 );
 
 syncElizaEnvAliases();
+const devCloud = configureDevCloudEnvironment(
+  process.argv.slice(2),
+  process.env,
+);
 
 const API_PORT = resolveDesktopApiPort(process.env);
 const cwd = process.cwd();
@@ -279,7 +287,7 @@ const VITE_RENDERER_ONLY_MOBILE_ENV_KEYS = [
 let warnedAboutStrippedDevMocks = false;
 
 function createDevChildEnv(baseEnv) {
-  const nextEnv = { ...baseEnv };
+  const nextEnv = applyDevCloudTarget(baseEnv, devCloud);
   if (nextEnv.ELIZA_DEV_ALLOW_TEST_MOCKS === "1") {
     return nextEnv;
   }
@@ -1170,6 +1178,9 @@ function scheduleViteHealthCheck(delayMs = 15_000) {
 }
 
 if (uiOnly) {
+  console.log(
+    `  ${green(logPrefix)} ${dim(`Cloud target=${devCloud.effectiveTarget} (${devCloud.source})`)}`,
+  );
   startVite();
 } else {
   console.log(`${orange(`\n${cliName} dev mode`)}\n`);
@@ -1186,6 +1197,9 @@ if (uiOnly) {
             : " (startup + warnings/errors)"
       }`,
     )}`,
+  );
+  console.log(
+    `  ${green(logPrefix)} ${dim(`Cloud target=${devCloud.effectiveTarget} (${devCloud.source})`)}`,
   );
 
   prepareMacNativeEffectsForDev();

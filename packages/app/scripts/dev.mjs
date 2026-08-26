@@ -8,16 +8,24 @@
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { configureDevCloudEnvironment } from "../../app-core/scripts/lib/dev-cloud-target.mjs";
 import { resolveViteCommand } from "../../app-core/scripts/lib/dev-ui-vite.mjs";
 import { spawnMirroredChild } from "./lib/spawn-mirrored-child.mjs";
 
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const devCloud = configureDevCloudEnvironment(
+  process.argv.slice(2),
+  process.env,
+);
 const viteCommand = resolveViteCommand({
   appDir,
-  viteArgs: process.argv.slice(2),
+  viteArgs: devCloud.passthroughArgs,
 });
+console.log(
+  `[dev] Cloud target=${devCloud.effectiveTarget} (${devCloud.source})`,
+);
 spawnMirroredChild(viteCommand.command, viteCommand.args, {
   cwd: appDir,
-  env: process.env,
+  env: devCloud.env,
   stdio: "inherit",
 });

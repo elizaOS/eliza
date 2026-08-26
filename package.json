@@ -60,6 +60,7 @@
     "start:eliza": "node packages/app-core/scripts/run-node-tsx.mjs packages/app-core/src/entry.ts start",
     "dev:prepare": "node packages/scripts/run-turbo.mjs run build --filter=@elizaos/app... --filter=!@elizaos/app",
     "dev": "node packages/app-core/scripts/ensure-shared-i18n-data.mjs && bun --no-install --conditions=eliza-source packages/app-core/scripts/dev-ui.mjs",
+    "dev:local": "node packages/app-core/scripts/ensure-shared-i18n-data.mjs && bun --no-install --conditions=eliza-source packages/app-core/scripts/dev-ui.mjs --cloud-target=offline",
     "dev:ui": "node packages/app-core/scripts/ensure-shared-i18n-data.mjs && bun --no-install --conditions=eliza-source packages/app-core/scripts/dev-ui.mjs --ui-only",
     "dev:cloud-only": "node packages/app-core/scripts/ensure-shared-i18n-data.mjs && bun run --cwd packages/app dev:cloud-only",
     "dev:desktop": "ELIZA_DEV_SOURCE=1 ELIZA_NAMESPACE=eliza bun --conditions=eliza-source packages/app-core/scripts/dev-platform.mjs",

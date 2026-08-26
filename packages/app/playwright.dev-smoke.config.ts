@@ -25,6 +25,19 @@ const stateDir =
   process.env.ELIZA_DEV_SMOKE_STATE_DIR ||
   path.join(os.tmpdir(), `eliza-dev-smoke-${process.pid}`);
 const cloudOnlyLane = process.env.ELIZA_DEV_SMOKE_CLOUD_ONLY === "1";
+const offlineLane = process.env.ELIZA_DEV_SMOKE_OFFLINE === "1";
+
+if (cloudOnlyLane && offlineLane) {
+  throw new Error(
+    "ELIZA_DEV_SMOKE_CLOUD_ONLY and ELIZA_DEV_SMOKE_OFFLINE are mutually exclusive",
+  );
+}
+
+const laneName = cloudOnlyLane
+  ? "cloud-only"
+  : offlineLane
+    ? "local"
+    : "staging";
 
 process.env.ELIZA_API_PORT = String(apiPort);
 process.env.ELIZA_UI_PORT = String(uiPort);
@@ -41,7 +54,10 @@ export default defineConfig({
   retries: 0,
   workers: 1,
   reporter: "list",
-  outputDir: "./test-results/dev-smoke",
+  // CI runs staging and local sequentially before one artifact upload.
+  // Playwright clears outputDir at invocation start, so each lane owns a
+  // directory and cannot erase the previous lane's screenshots/traces.
+  outputDir: `./test-results/dev-smoke-${laneName}`,
   use: {
     baseURL: `http://127.0.0.1:${uiPort}`,
     trace: "retain-on-failure",
@@ -57,7 +73,9 @@ export default defineConfig({
   webServer: {
     command: cloudOnlyLane
       ? "bun run --cwd packages/app dev:cloud-only"
-      : "bun run dev",
+      : offlineLane
+        ? "bun run dev:local"
+        : "bun run dev",
     cwd: repoRoot,
     env: {
       ...process.env,

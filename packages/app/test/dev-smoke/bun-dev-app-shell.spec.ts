@@ -36,16 +36,12 @@ test.describe("bun run dev app shell renders", () => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
     // A blank `#root` means a module-eval crash blanked the tree (the #9452
-    // failure mode). Any startup/onboarding/app content satisfies this.
-    await expect
-      .poll(
-        () =>
-          page.evaluate(
-            () => document.getElementById("root")?.childElementCount ?? 0,
-          ),
-        { timeout: 60_000 },
-      )
-      .toBeGreaterThan(0);
+    // failure mode). Any startup/onboarding/app content satisfies this. Use a
+    // locator so the assertion survives an expected same-tab sign-in redirect,
+    // which replaces the page execution context during staging development.
+    await expect(page.locator("#root > *").first()).toBeAttached({
+      timeout: 60_000,
+    });
 
     expect(
       fatalErrors,

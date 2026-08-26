@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 /**
- * Starts the ordinary Vite renderer with the hosted Cloud onboarding policy.
- * The default dev command intentionally keeps the local/cloud/remote chooser;
- * this explicit lane mirrors production Cloud sign-in without changing it.
+ * Compatibility entrypoint for the hosted Cloud onboarding policy. Ordinary
+ * local development now uses this policy against staging by default; keep the
+ * named lane for existing automation and explicit operator intent.
  */
 
 process.env.VITE_ELIZA_DESKTOP_RUNTIME_MODE = "cloud";

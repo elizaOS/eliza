@@ -6,7 +6,7 @@
  * concurrent launchers from duplicating servers or overwriting newer owners.
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -17,6 +17,79 @@ export const DEFAULT_UI_PORT_SPAN = 900;
 export const DEFAULT_API_PORT_OFFSET = 10_000;
 export const REGISTRY_VERSION = 1;
 const STARTUP_RESERVATION_GRACE_MS = 120_000;
+const CLOUD_PROFILE_FINGERPRINT_PREFIX = "cloud-v1:";
+
+function cloudProfileValue(value, field) {
+  if (value === undefined) return null;
+  if (typeof value !== "string") {
+    throw new TypeError(`${field} must be a string when supplied`);
+  }
+  return value;
+}
+
+/**
+ * Build the non-secret identity of the Cloud environment baked into Vite.
+ *
+ * Only the explicitly listed public routing fields participate. The registry
+ * stores the digest, never the source values or any inherited credentials, so
+ * it is safe to keep under ~/.eliza while still preventing cross-target reuse.
+ */
+export function createDevServerCloudProfileFingerprint({
+  effectiveTarget,
+  serverApiBase,
+  rendererCloudBase,
+  stewardApiUrl,
+  stewardTenantId,
+  runtimeMode,
+}) {
+  if (typeof effectiveTarget !== "string" || !effectiveTarget) {
+    throw new TypeError("effectiveTarget must be a non-empty string");
+  }
+  const profile = {
+    version: 1,
+    effectiveTarget,
+    serverApiBase: cloudProfileValue(serverApiBase, "serverApiBase"),
+    rendererCloudBase: cloudProfileValue(
+      rendererCloudBase,
+      "rendererCloudBase",
+    ),
+    stewardApiUrl: cloudProfileValue(stewardApiUrl, "stewardApiUrl"),
+    stewardTenantId: cloudProfileValue(stewardTenantId, "stewardTenantId"),
+    runtimeMode: cloudProfileValue(runtimeMode, "runtimeMode"),
+  };
+  const digest = createHash("sha256")
+    .update(JSON.stringify(profile))
+    .digest("hex");
+  return `${CLOUD_PROFILE_FINGERPRINT_PREFIX}${digest}`;
+}
+
+function normalizeCloudProfileFingerprint(value) {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !/^cloud-v1:[0-9a-f]{64}$/.test(value)) {
+    throw new TypeError(
+      "cloudProfileFingerprint must be a createDevServerCloudProfileFingerprint() value",
+    );
+  }
+  return value;
+}
+
+function assertReusableCloudProfile(existing, requestedFingerprint, worktree) {
+  const existingFingerprint = existing.cloudProfileFingerprint;
+  if (existingFingerprint === requestedFingerprint) return;
+
+  const existingLabel =
+    typeof existingFingerprint === "string" &&
+    /^cloud-v1:[0-9a-f]{64}$/.test(existingFingerprint)
+      ? existingFingerprint
+      : "missing or invalid";
+  const requestedLabel = requestedFingerprint ?? "missing";
+  const pidHint = Number.isInteger(existing.pid)
+    ? ` (PID ${existing.pid})`
+    : "";
+  throw new Error(
+    `A shared dev server is already running for ${worktree}${pidHint} with a different or missing Cloud profile (existing=${existingLabel}, requested=${requestedLabel}). Stop it with Ctrl-C in its terminal, then restart with \`bun run --cwd packages/app dev:shared\`. The running server was left untouched.`,
+  );
+}
 
 export function defaultRegistryPath(env = process.env) {
   return (
@@ -248,9 +321,17 @@ export async function withRegistryLock(
 
 export async function reservePortsForWorktree(
   worktreePath,
-  { registryPath = defaultRegistryPath(), base, span } = {},
+  {
+    registryPath = defaultRegistryPath(),
+    base,
+    span,
+    cloudProfileFingerprint,
+  } = {},
 ) {
   const worktree = normalizeWorktreePath(worktreePath);
+  const requestedCloudProfile = normalizeCloudProfileFingerprint(
+    cloudProfileFingerprint,
+  );
   return await withRegistryLock(
     async () => {
       const current = readRegistry(registryPath);
@@ -261,6 +342,7 @@ export async function reservePortsForWorktree(
         // After that bounded window, require both the owner PID and listener so
         // one recycled PID or unrelated process on the port cannot mask Vite.
         if (canReuseEntry(existing, runtime)) {
+          assertReusableCloudProfile(existing, requestedCloudProfile, worktree);
           return { entry: existing, reused: true };
         }
       }
@@ -279,6 +361,9 @@ export async function reservePortsForWorktree(
           allocated.entry.reservationId = randomUUID();
           allocated.entry.startedAt = startedAt;
           allocated.entry.updatedAt = startedAt;
+          if (requestedCloudProfile !== undefined) {
+            allocated.entry.cloudProfileFingerprint = requestedCloudProfile;
+          }
           writeRegistry(allocated.registry, registryPath);
           return { entry: allocated.entry, reused: false };
         }

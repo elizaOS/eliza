@@ -11,8 +11,11 @@
  * `/login?returnTo=…` page instead. Touch-primary web browsers skip the popup
  * attempt outright — a capability hint (coarse pointer + no hover), not a
  * user-agent sniff — because even a popup that opens there is a disorienting
- * tab switch. Native (Capacitor) keeps the external Browser plugin and desktop
- * (Electrobun) keeps the RPC external-open; neither is popup-hostile.
+ * tab switch. Loopback staging development also stays in the current tab: the
+ * local `/login` route is the configured auth surface, even while the local
+ * agent API is available. Native (Capacitor) keeps the external Browser plugin,
+ * while desktop (Electrobun) keeps the RPC external-open; neither is
+ * popup-hostile.
  *
  * The same-tab round trip needs no new flow: the `/login` page sanitizes and
  * honors `returnTo` (login-return-to.ts), the Steward token lands in this
@@ -22,7 +25,10 @@
 
 import { resolveDirectCloudWebBase } from "../api/client-cloud";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
-import { configuredStewardApiUrlOverride } from "../cloud/shell/steward-config";
+import {
+  configuredStewardApiUrlOverride,
+  configuredStewardTenantId,
+} from "../cloud/shell/steward-config";
 import { ELIZA_CLOUD_DIRECT_API_BY_HOST } from "../cloud/shell/steward-url";
 import { preOpenWindow } from "../utils/openExternalUrl";
 
@@ -151,6 +157,46 @@ function isPlainWebPlatform(): boolean {
   return true;
 }
 
+function isLoopbackHostname(hostname: string): boolean {
+  const normalized = hostname
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "");
+  if (normalized === "localhost" || normalized === "::1") return true;
+  if (!/^127(?:\.\d{1,3}){3}$/.test(normalized)) return false;
+  return normalized
+    .split(".")
+    .every((octet) => Number.parseInt(octet, 10) <= 255);
+}
+
+/**
+ * Staging Vite development owns a real `/login` route whose Steward target is
+ * injected explicitly. Prefer that route over the legacy agent-proxied
+ * device-code handshake; the latter opens a second auth surface and does not
+ * return the Steward session to the loopback origin. Keep this exception
+ * staging-specific: production rejects loopback CORS and custom/self-hosted
+ * agent proxies retain their device-code pairing contract.
+ */
+function loopbackStewardDevelopmentTarget(): "staging" | "other" | null {
+  if (!isPlainWebPlatform()) return null;
+  if (!isLoopbackHostname(window.location.hostname)) return null;
+
+  const configuredUrl = configuredStewardApiUrlOverride();
+  if (!configuredUrl) return null;
+  try {
+    const parsed = new URL(configuredUrl);
+    const pathname = parsed.pathname.replace(/\/+$/, "");
+    const isStaging =
+      (parsed.hostname.toLowerCase() === "staging.eliza.app" ||
+        parsed.hostname.toLowerCase() === "staging.elizacloud.ai") &&
+      pathname === "/steward" &&
+      configuredStewardTenantId() === "elizacloud-staging";
+    return isStaging ? "staging" : "other";
+  } catch {
+    return "other";
+  }
+}
+
 /**
  * Capability hint for popup-hostile browsers: a touch-primary device with no
  * hover (phones/tablets in any browser engine). Deliberately not a user-agent
@@ -190,12 +236,14 @@ export function preOpenCloudLoginWindow(): Window | null {
   // the app WebView, not the system browser. The eventual login URL goes
   // through desktopOpenExternal instead (see useCloudState).
   if (isElectrobunRuntime()) return null;
-  if (
-    isPlainWebPlatform() &&
-    hasSameOriginStewardLogin() &&
-    isTouchPrimaryWebBrowser()
-  ) {
-    return null;
+  if (isPlainWebPlatform() && hasSameOriginStewardLogin()) {
+    const loopbackTarget = loopbackStewardDevelopmentTarget();
+    if (
+      loopbackTarget === "staging" ||
+      (loopbackTarget === null && isTouchPrimaryWebBrowser())
+    ) {
+      return null;
+    }
   }
   return preOpenWindow(CLOUD_LOGIN_POPUP_NAME);
 }
@@ -252,13 +300,19 @@ export function releaseClaimedCloudLoginWindow(): void {
  * `/login` page instead of driving the popup device-code flow. True on plain
  * web with a same-origin Steward login when the popup handle is dead (blocked
  * at pre-open — the browser-agnostic runtime signal — or never attempted) or
- * when the touch-primary hint prefers same-tab outright.
+ * when the touch-primary hint prefers same-tab outright. Loopback staging
+ * development always uses the local login route, even when an agent proxy and
+ * a live popup are both available.
  */
 export function shouldUseSameTabCloudLogin(
   prePoppedWindow: Window | null,
+  options: { hasAgentProxy?: boolean } = {},
 ): boolean {
   if (!isPlainWebPlatform()) return false;
   if (!hasSameOriginStewardLogin()) return false;
+  const loopbackTarget = loopbackStewardDevelopmentTarget();
+  if (loopbackTarget !== null) return loopbackTarget === "staging";
+  if (options.hasAgentProxy) return false;
   if (isTouchPrimaryWebBrowser()) return true;
   return !prePoppedWindow || prePoppedWindow.closed;
 }
