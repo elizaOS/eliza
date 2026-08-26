@@ -84,4 +84,25 @@ describe("ChatMessageActions copy", () => {
     );
     expect(screen.getByRole("button", { name: "Copy text" })).toBeTruthy();
   });
+
+  it("keeps overlay actions in one evenly aligned compact cluster", () => {
+    render(
+      <ChatMessageActions
+        appearance="glass-row"
+        canPlay
+        canReply
+        onCopy={vi.fn()}
+        onPlay={vi.fn()}
+        onReply={vi.fn()}
+        trailingAccessory={<span>2m</span>}
+      />,
+    );
+
+    const surface = screen.getByTestId("thread-line-action-surface");
+    expect(surface.className).toContain("gap-0.5");
+    expect(surface.className).toContain("leading-none");
+    const accessory = screen.getByTestId("thread-line-action-accessory");
+    expect(accessory.className).toContain("ml-1.5");
+    expect(accessory.className).toContain("items-center");
+  });
 });

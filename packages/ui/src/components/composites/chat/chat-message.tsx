@@ -978,7 +978,7 @@ export const ChatMessage = memo(function ChatMessage({
           ts={message.timestamp}
           short
           data-testid="thread-line-timestamp"
-          className="inline-block min-w-[3ch] whitespace-nowrap text-left text-xs-tight tabular-nums text-white/45"
+          className="inline-flex h-5 min-w-[3ch] items-center whitespace-nowrap text-left text-xs-tight tabular-nums text-white/45"
         />
       ) : null;
     const trailingAccessory =
@@ -1159,7 +1159,7 @@ export const ChatMessage = memo(function ChatMessage({
             hasActionLane &&
               "transition-[padding-bottom] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:duration-100",
             hasActionLane &&
-              (supportsHover ? "pb-6" : accessoryVisible ? "pb-9" : "pb-0"),
+              (supportsHover ? "pb-6" : accessoryVisible ? "pb-7" : "pb-0"),
             isFirstRun
               ? "max-w-[22rem] items-start"
               : isUser
@@ -1251,7 +1251,7 @@ export const ChatMessage = memo(function ChatMessage({
               <MessageRowFooter className="flex items-center p-0 text-white/70">
                 <motion.div
                   key={accessoryMode}
-                  className="flex"
+                  className="flex items-center"
                   initial={
                     reduceMotion
                       ? false
