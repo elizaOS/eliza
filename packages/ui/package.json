@@ -158,6 +158,11 @@
       "import": "./dist/components/ui/button.js",
       "default": "./dist/components/ui/button.js"
     },
+    "./error-boundary": {
+      "types": "./dist/error-boundary.d.ts",
+      "import": "./dist/error-boundary.js",
+      "default": "./dist/error-boundary.js"
+    },
     "./card": {
       "types": "./dist/components/ui/card.d.ts",
       "import": "./dist/components/ui/card.js",

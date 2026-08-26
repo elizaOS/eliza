@@ -44,6 +44,33 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).not.toContain("SYSTEM_UI_FLAG_");
   });
 
+  it("keeps kiosk navigation suppression out of ordinary Cloud builds", () => {
+    const source = cloudSafeMainActivityJava("ai.elizaos.app");
+
+    expect(source).not.toContain("OnBackPressedCallback");
+    expect(source).not.toContain("startLockTask()");
+    expect(source).not.toContain("KEYCODE_FORWARD");
+    expect(source).not.toContain("KEYCODE_NAVIGATE_NEXT");
+  });
+
+  it("pins the launcher task and suppresses Back and Forward only in kiosk", () => {
+    const source = cloudSafeMainActivityJava("ai.elizaos.app", {
+      launcherKiosk: true,
+    });
+
+    expect(source).toContain("import android.view.KeyEvent;");
+    expect(source).toContain("import androidx.activity.OnBackPressedCallback;");
+    expect(source).toContain("new OnBackPressedCallback(true)");
+    expect(source).toContain("public void handleOnBackPressed()");
+    expect(source).toContain("public boolean dispatchKeyEvent(KeyEvent event)");
+    expect(source).toContain("KeyEvent.KEYCODE_FORWARD");
+    expect(source).toContain("KeyEvent.KEYCODE_NAVIGATE_NEXT");
+    expect(source).toContain("startLockTask();");
+    expect(source).toContain(
+      "IllegalArgumentException | IllegalStateException | SecurityException",
+    );
+  });
+
   it("captures cold and warm deep links before Capacitor dispatches them", () => {
     const source = cloudSafeMainActivityJava("ai.elizaos.app");
     const coldCapture = source.indexOf(
@@ -78,6 +105,8 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).toContain("Cipher.getInstance(TRANSFORMATION)");
     expect(source).toContain("KeyProperties.BLOCK_MODE_GCM");
     expect(source).toContain(".setRandomizedEncryptionRequired(true)");
+    expect(source).toContain('"pending_login".equals(slot)');
+    expect(source).toContain('"mobile_login_ciphertext"');
     expect(source).not.toContain("uses-permission");
     expect(source).not.toContain("http://");
     expect(source).not.toContain("https://");

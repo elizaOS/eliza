@@ -51,4 +51,14 @@ describe("resolveAppCloudOnlyBranding", () => {
       }),
     ).toBe(true);
   });
+
+  it("keeps the native Android Cloud client cloud-only", () => {
+    expect(
+      resolveAppCloudOnlyBranding({
+        isDev: false,
+        isNativePlatform: true,
+        nativeRuntimeMode: "cloud",
+      }),
+    ).toBe(true);
+  });
 });

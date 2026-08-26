@@ -102,6 +102,42 @@ describe("Cloud CF atomic Worker secrets deploy", () => {
     expect(verify.run).toContain('"VOICE_REALTIME_ELIZA_AUTHORIZATION"');
   });
 
+  test("preflights and atomically verifies protected mobile App Auth bindings", () => {
+    const preflight = step("Validate protected mobile App Auth registration");
+    const prepare = step("Prepare Worker secrets for atomic deploy");
+    const deploy = step("Deploy to Cloudflare Workers");
+    const inventory = step("Verify required Worker secret binding names");
+    const live = step("Verify deployed mobile App Auth metadata");
+
+    expect(
+      index("Validate protected mobile App Auth registration"),
+    ).toBeLessThan(index("Prepare Worker secrets for atomic deploy"));
+    expect(preflight.env?.ELIZA_MOBILE_APP_AUTH_APP_ID).toContain(
+      "secrets.ELIZA_MOBILE_APP_AUTH_APP_ID",
+    );
+    expect(preflight.env?.ELIZA_MOBILE_APP_AUTH_ENABLED).toContain(
+      "vars.ELIZA_MOBILE_APP_AUTH_ENABLED",
+    );
+    expect(preflight.run).toContain("verify-mobile-app-auth-registration.ts");
+    expect(prepare.env?.ELIZA_MOBILE_APP_AUTH_APP_ID).toContain(
+      "secrets.ELIZA_MOBILE_APP_AUTH_APP_ID",
+    );
+    expect(prepare.run).toContain("queue_secret ELIZA_MOBILE_APP_AUTH_APP_ID");
+    expect(deploy.run).toContain(
+      '--var ELIZA_MOBILE_APP_AUTH_ENABLED:"$ELIZA_MOBILE_APP_AUTH_ENABLED"',
+    );
+    expect(inventory.env?.ELIZA_MOBILE_APP_AUTH_ENABLED).toContain(
+      "vars.ELIZA_MOBILE_APP_AUTH_ENABLED",
+    );
+    expect(inventory.run).toContain(
+      'required.push("ELIZA_MOBILE_APP_AUTH_APP_ID")',
+    );
+    expect(index("Verify deployed API commit")).toBeLessThan(
+      index("Verify deployed mobile App Auth metadata"),
+    );
+    expect(live.run).toContain("--skip-database --verify-live");
+  });
+
   test("keeps post-deploy session activation separate from the atomic payload", () => {
     const prepare = step("Prepare Worker secrets for atomic deploy");
     const activation = step(
