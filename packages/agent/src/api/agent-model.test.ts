@@ -16,6 +16,7 @@ const LOCAL_INFERENCE_PROVIDER_NAME = "eliza-local-inference";
 type RuntimeOpts = {
   cloudTextHandlerRegistered?: boolean;
   localTextHandlerRegistered?: boolean;
+  openAiTextHandlerRegistered?: boolean;
   plugins?: Array<{ name: string }>;
   characterModel?: string;
   /** Provider core recorded as having served the last chat call. */
@@ -38,6 +39,14 @@ function makeRuntime(opts: RuntimeOpts = {}): AgentRuntime {
       provider: LOCAL_INFERENCE_PROVIDER_NAME,
       priority: 0,
       registrationOrder: 2,
+    });
+  }
+  if (opts.openAiTextHandlerRegistered) {
+    registrations.push({
+      modelType: ModelType.TEXT_SMALL,
+      provider: "openai",
+      priority: 20,
+      registrationOrder: 3,
     });
   }
   const runtime = {
@@ -160,6 +169,20 @@ describe("detectRuntimeModel — non-cloud branches unaffected", () => {
       },
     };
     expect(detectRuntimeModel(runtime, directConfig)).toBe("gpt-4o");
+  });
+
+  it("reports env-selected Cerebras only after its text handler registers", () => {
+    const env = { ELIZA_PROVIDER: "cerebras" };
+    const config = { serviceRouting: {} };
+
+    expect(
+      detectRuntimeModel(
+        makeRuntime({ openAiTextHandlerRegistered: true }),
+        config,
+        env,
+      ),
+    ).toBe("cerebras");
+    expect(detectRuntimeModel(makeRuntime(), config, env)).toBeUndefined();
   });
 });
 

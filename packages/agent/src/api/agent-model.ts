@@ -77,6 +77,20 @@ export function hasCloudTextHandlerRegistered(runtime: AgentRuntime): boolean {
   }
 }
 
+function hasOpenAiTextHandlerRegistered(runtime: AgentRuntime): boolean {
+  try {
+    return (runtime.getModelRegistrations?.() ?? []).some(
+      (entry) =>
+        (entry.modelType === ModelType.TEXT_SMALL ||
+          entry.modelType === ModelType.TEXT_LARGE) &&
+        entry.provider === "openai",
+    );
+  } catch {
+    // error-policy:J7 diagnostics must not kill the model-label resolver
+    return false;
+  }
+}
+
 const MODEL_PLACEHOLDERS = new Set(["", "n/a", "na", "unknown", "provided"]);
 
 const PROVIDER_HINTS = [
@@ -175,6 +189,7 @@ function readCharacterModel(runtime: AgentRuntime): string | undefined {
 export function detectRuntimeModel(
   runtime: AgentRuntime | null,
   config?: Pick<ElizaConfig, "deploymentTarget" | "serviceRouting" | "agents">,
+  env: Readonly<NodeJS.ProcessEnv> = process.env,
 ): string | undefined {
   if (!runtime) return undefined;
 
@@ -241,6 +256,18 @@ export function detectRuntimeModel(
   );
   if (configModel) return configModel;
 
+  // A legacy direct desktop launch may select Cerebras through
+  // ELIZA_PROVIDER without persisting serviceRouting. Report that selection
+  // only after plugin-openai has registered a live text handler; the env value
+  // alone is configuration intent, not runtime availability.
+  if (
+    routing === null &&
+    normalizeFirstRunProviderId(env.ELIZA_PROVIDER) === "cerebras" &&
+    hasOpenAiTextHandlerRegistered(runtime)
+  ) {
+    return "cerebras";
+  }
+
   const pluginNames = Array.isArray(runtime.plugins)
     ? runtime.plugins
         .map((plugin) =>
@@ -258,7 +285,7 @@ export function detectRuntimeModel(
   }
 
   for (const { envVar, label } of ENV_PROVIDER_SIGNALS) {
-    const value = process.env[envVar]?.trim();
+    const value = env[envVar]?.trim();
     if (value && value.length > 0) return label;
   }
 
