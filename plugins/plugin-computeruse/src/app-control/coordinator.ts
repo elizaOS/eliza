@@ -239,6 +239,21 @@ export class AppControlCoordinator {
             "Experimental exact-window dispatch requires an exact window binding",
         };
       }
+      const fresh = await this.adapter.snapshot(request.app, signal);
+      const freshElement = request.element_index
+        ? fresh.elements[request.element_index - 1]
+        : undefined;
+      if (
+        fresh.app.pid !== stored.publicState.app.pid ||
+        fresh.focusedWindowId !== stored.publicState.focusedWindowId ||
+        JSON.stringify(freshElement) !== JSON.stringify(element)
+      ) {
+        return {
+          success: false,
+          error:
+            "Experimental exact-window target changed during pre-dispatch recapture",
+        };
+      }
       const result = await this.exactWindowPointer.dispatch(
         {
           app: stored.publicState.app,
@@ -254,6 +269,9 @@ export class AppControlCoordinator {
         result.observationId !== request.stateId ||
         result.targetPid !== stored.publicState.app.pid ||
         result.targetWindowId !== stored.publicState.focusedWindowId ||
+        !stored.publicState.screenshotBounds ||
+        JSON.stringify(result.targetWindowBounds) !==
+          JSON.stringify(stored.publicState.screenshotBounds) ||
         result.pointerBefore.x !== result.pointerAfter.x ||
         result.pointerBefore.y !== result.pointerAfter.y
       ) {
