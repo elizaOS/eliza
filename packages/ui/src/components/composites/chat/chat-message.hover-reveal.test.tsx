@@ -154,7 +154,7 @@ describe("ChatMessage desktop hover chrome", () => {
     expect(content?.className).toContain("pb-6");
     expect(content?.className).toContain("transition-[padding-bottom]");
     expect(content?.className).not.toContain("pb-0");
-    expect(content?.className).not.toContain("pb-9");
+    expect(content?.className).not.toContain("pb-7");
     expect(actions.className).toContain("bottom-0");
     expect(actions.className).toContain("absolute");
     expect(actions.className).toContain("invisible");
