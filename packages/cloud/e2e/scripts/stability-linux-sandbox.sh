@@ -108,9 +108,10 @@ import struct
 import sys
 filters = [
     (0x20, 0, 0, 4), (0x15, 1, 0, 0xC000003E), (0x06, 0, 0, 0x80000000),
-    (0x20, 0, 0, 0), (0x15, 0, 4, 41), (0x20, 0, 0, 16),
-    (0x15, 2, 0, 2), (0x15, 1, 0, 10), (0x06, 0, 0, 0x00050001),
-    (0x06, 0, 0, 0x7FFF0000),
+    (0x20, 0, 0, 0), (0x45, 9, 0, 0x40000000), (0x15, 5, 0, 41), (0x15, 7, 0, 53),
+    (0x15, 6, 0, 425), (0x15, 5, 0, 426), (0x15, 4, 0, 427),
+    (0x06, 0, 0, 0x7FFF0000), (0x20, 0, 0, 16), (0x15, 2, 0, 2),
+    (0x15, 1, 0, 10), (0x06, 0, 0, 0x00050001), (0x06, 0, 0, 0x7FFF0000),
 ]
 with open(sys.argv[1], "wb") as output:
     for item in filters:
@@ -129,7 +130,10 @@ PY
   /usr/bin/prlimit --nproc=512 --nofile=1024 --fsize=1073741824 --cpu=240 -- \
     /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin "${child_environment[@]}" \
       /usr/bin/bwrap --die-with-parent --new-session --unshare-pid --unshare-ipc --unshare-uts \
-        --ro-bind / / --bind "$output_dir" "$output_dir" --bind "$sandbox_root" "$sandbox_root" \
+        --ro-bind / / --tmpfs /run --chmod 0700 /run \
+        --tmpfs /tmp --chmod 1777 /tmp --tmpfs /var/tmp --chmod 1777 /var/tmp \
+        --dir "$output_dir" --bind "$output_dir" "$output_dir" \
+        --dir "$sandbox_root" --bind "$sandbox_root" "$sandbox_root" \
         "${masks[@]}" --proc /proc --dev /dev --chdir "$repo_root" --setenv HOME "$sandbox_root" \
         --uid "$uid" --gid "$uid" --cap-drop ALL --seccomp 3 \
         "$sandbox_root/runtime" "$@" 3<"$sandbox_root/socket-domain.bpf"
