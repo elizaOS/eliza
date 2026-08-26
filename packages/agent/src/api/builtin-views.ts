@@ -355,7 +355,10 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/stream",
     order: 74,
     tags: ["stream", "live", "activity"],
-    responseContext: { primaryContext: "social_posting" },
+    responseContext: {
+      primaryContext: "media",
+      secondaryContexts: ["system"],
+    },
     visibleInManager: false,
     desktopTabEnabled: true,
   },

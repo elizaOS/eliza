@@ -184,6 +184,7 @@ export function Launcher({
   const showSkeleton = loading && entries.length === 0;
   const showError = !showSkeleton && error !== null && entries.length === 0;
   const showEmpty = !showSkeleton && !showError && entries.length === 0;
+  const showPartialError = error !== null && entries.length > 0;
 
   return (
     <div
@@ -213,6 +214,28 @@ export function Launcher({
           )}
         >
           <div className="flex w-full max-w-2xl flex-col gap-6">
+            {showPartialError ? (
+              <div
+                role="alert"
+                data-testid="launcher-partial-error"
+                className="flex items-center justify-between gap-3 rounded-xl border border-white/15 bg-black/55 px-3 py-2.5 text-white backdrop-blur-md"
+              >
+                <span className="text-xs text-white/75">
+                  Some apps couldn&apos;t load.
+                </span>
+                {onRetry ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 rounded-full px-3 text-xs text-white hover:bg-white/10 hover:text-white"
+                    onClick={onRetry}
+                  >
+                    Retry
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
             {showSkeleton ? (
               <div className="grid w-full grid-cols-3 gap-x-4 gap-y-5 min-[360px]:grid-cols-4 sm:grid-cols-5">
                 {["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => (

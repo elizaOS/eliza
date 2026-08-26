@@ -28,7 +28,11 @@ const catalogRouteGroups = [
       { label: "Knowledge", path: "/character/documents", icon: "file" },
       { label: "Character skills", path: "/character/skills", icon: "spark" },
       { label: "Experience", path: "/character/experience", icon: "timeline" },
-      { label: "Relationships", path: "/apps/relationships", icon: "relationships" },
+      {
+        label: "Relationships",
+        path: "/apps/relationships",
+        icon: "relationships",
+      },
       { label: "Rolodex", path: "/rolodex", icon: "book" },
     ],
   },
@@ -81,7 +85,8 @@ const catalogRouteGroups = [
 const iconPaths = {
   "message-circle": '<path d="M3 4.5h14v10H8l-4 3v-3H3z"/>',
   message: '<path d="M3 5h14v10H3zM3 6l7 5 7-5"/>',
-  phone: '<path d="M6 3 4 5c0 5.5 5.5 11 11 11l2-2-3-3-2 2c-2.5-1-4-2.5-5-5l2-2z"/>',
+  phone:
+    '<path d="M6 3 4 5c0 5.5 5.5 11 11 11l2-2-3-3-2 2c-2.5-1-4-2.5-5-5l2-2z"/>',
   compass:
     '<circle cx="10" cy="10" r="7"/><path d="m12.5 7.5-1.4 3.6-3.6 1.4 1.4-3.6z"/>',
   camera:
@@ -98,36 +103,44 @@ const iconPaths = {
   spark: '<path d="m10 2 1.5 5.5L17 9l-5.5 1.5L10 16l-1.5-5.5L3 9l5.5-1.5z"/>',
   timeline:
     '<path d="M5 3v14M5 6h6M5 11h9M5 16h5"/><circle cx="5" cy="6" r="1"/><circle cx="5" cy="11" r="1"/><circle cx="5" cy="16" r="1"/>',
-  relationships: '<circle cx="6" cy="10" r="3"/><circle cx="14" cy="10" r="3"/><path d="M9 10h2"/>',
+  relationships:
+    '<circle cx="6" cy="10" r="3"/><circle cx="14" cy="10" r="3"/><path d="M9 10h2"/>',
   book: '<path d="M3 4.5h5.5c1 0 1.5.5 1.5 1.5v11c0-1-.5-1.5-1.5-1.5H3zM17 4.5h-5.5c-1 0-1.5.5-1.5 1.5v11c0-1 .5-1.5 1.5-1.5H17z"/>',
   note: '<path d="M4 3h12v14H4zM7 7h6M7 10h6M7 13h4"/>',
   calendar:
     '<rect x="3" y="4.5" width="14" height="12.5" rx="2"/><path d="M6 2.5v4M14 2.5v4M3 8h14"/>',
   bolt: '<path d="m11 2-6 9h5l-1 7 6-10h-5z"/>',
   folder: '<path d="M2.5 5.5h6l1.5 2h7.5v8.5H2.5z"/>',
-  check: '<rect x="3" y="3" width="14" height="14" rx="2"/><path d="m6 10 2.5 2.5L14 7"/>',
+  check:
+    '<rect x="3" y="3" width="14" height="14" rx="2"/><path d="m6 10 2.5 2.5L14 7"/>',
   nodes:
     '<circle cx="5" cy="5" r="2"/><circle cx="15" cy="6" r="2"/><circle cx="10" cy="15" r="2"/><path d="m6.8 5.2 6.2.6M6 6.7 9 13M14 7.8 11 13"/>',
   sliders:
     '<path d="M3 5h14M3 10h14M3 15h14"/><circle cx="7" cy="5" r="2"/><circle cx="13" cy="10" r="2"/><circle cx="9" cy="15" r="2"/>',
   inbox: '<path d="M3 4h14v12H3zM3 11h4l1.5 2h3L13 11h4"/>',
-  target: '<circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="3"/><path d="m10 10 5-5"/>',
-  focus: '<path d="M3 8V4a1 1 0 0 1 1-1h4M12 3h4a1 1 0 0 1 1 1v4M17 12v4a1 1 0 0 1-1 1h-4M8 17H4a1 1 0 0 1-1-1v-4"/>',
+  target:
+    '<circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="3"/><path d="m10 10 5-5"/>',
+  focus:
+    '<path d="M3 8V4a1 1 0 0 1 1-1h4M12 3h4a1 1 0 0 1 1 1v4M17 12v4a1 1 0 0 1-1 1h-4M8 17H4a1 1 0 0 1-1-1v-4"/>',
   heart:
     '<path d="M10 17S3 13 3 7.5A3.5 3.5 0 0 1 9.5 5L10 6l.5-1A3.5 3.5 0 0 1 17 7.5C17 13 10 17 10 17Z"/>',
   chart: '<path d="M3 17V3M3 17h14M6 14v-4M10 14V6M14 14V9"/>',
   wallet: '<path d="M3 5h12v11H3zM3 7h14v6h-5a2 2 0 0 1 0-4h5M13 11h.01"/>',
   plug: '<path d="M7 3v4M13 3v4M5 7h10v3a5 5 0 0 1-10 0zM10 15v3"/>',
-  route: '<circle cx="5" cy="4" r="2"/><circle cx="15" cy="16" r="2"/><path d="M5 6v4c0 2 1 3 3 3h4c2 0 3 1 3 3"/>',
+  route:
+    '<circle cx="5" cy="4" r="2"/><circle cx="15" cy="16" r="2"/><path d="M5 6v4c0 2 1 3 3 3h4c2 0 3 1 3 3"/>',
   transcript: '<path d="M4 3h12v14H4zM7 7h6M7 10h6M7 13h3"/>',
   memory: '<path d="M7 3h6v3h3v8h-3v3H7v-3H4V6h3zM7 7h6v6H7z"/>',
-  runtime: '<rect x="3" y="4" width="14" height="12" rx="2"/><path d="m6 8 2 2-2 2M10 12h4"/>',
+  runtime:
+    '<rect x="3" y="4" width="14" height="12" rx="2"/><path d="m6 8 2 2-2 2M10 12h4"/>',
   database:
     '<ellipse cx="10" cy="5" rx="6" ry="2.5"/><path d="M4 5v5c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5V5M4 10v5c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5v-5"/>',
   list: '<path d="M7 5h10M7 10h10M7 15h10M3 5h.01M3 10h.01M3 15h.01"/>',
   pulse: '<path d="M2 10h4l2-5 4 10 2-5h4"/>',
-  desktop: '<rect x="2.5" y="3.5" width="15" height="11" rx="1.5"/><path d="M7 17h6M10 14.5V17"/>',
-  cloud: '<path d="M5 15h10a3 3 0 0 0 .4-6A5.5 5.5 0 0 0 5 7.5 3.8 3.8 0 0 0 5 15Z"/>',
+  desktop:
+    '<rect x="2.5" y="3.5" width="15" height="11" rx="1.5"/><path d="M7 17h6M10 14.5V17"/>',
+  cloud:
+    '<path d="M5 15h10a3 3 0 0 0 .4-6A5.5 5.5 0 0 0 5 7.5 3.8 3.8 0 0 0 5 15Z"/>',
   lock: '<rect x="4" y="8" width="12" height="9" rx="2"/><path d="M7 8V6a3 3 0 0 1 6 0v2"/>',
   settings:
     '<circle cx="10" cy="10" r="3"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.3 4.3l1.4 1.4M14.3 14.3l1.4 1.4M15.7 4.3l-1.4 1.4M5.7 14.3l-1.4 1.4"/>',
@@ -162,7 +175,11 @@ const catalogPathSet = new Set(
 let registryViews = [];
 
 function safeRoutePath(value) {
-  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
+  if (
+    typeof value !== "string" ||
+    !value.startsWith("/") ||
+    value.startsWith("//")
+  ) {
     return null;
   }
   try {
@@ -174,8 +191,11 @@ function safeRoutePath(value) {
   }
 }
 
-const requestedPath = safeRoutePath(new URLSearchParams(window.location.search).get("view"));
-let selectedPath = requestedPath && catalogPathSet.has(requestedPath) ? requestedPath : "/notes";
+const requestedPath = safeRoutePath(
+  new URLSearchParams(window.location.search).get("view"),
+);
+let selectedPath =
+  requestedPath && catalogPathSet.has(requestedPath) ? requestedPath : "/notes";
 
 function dynamicRegistryViews() {
   const byPath = new Map();
@@ -184,12 +204,17 @@ function dynamicRegistryViews() {
     const path = safeRoutePath(entry.path);
     if (!path || catalogPathSet.has(path) || byPath.has(path)) continue;
     byPath.set(path, {
-      label: typeof entry.label === "string" && entry.label.trim() ? entry.label.trim() : path,
+      label:
+        typeof entry.label === "string" && entry.label.trim()
+          ? entry.label.trim()
+          : path,
       path,
       icon: "grid",
     });
   }
-  return [...byPath.values()].sort((left, right) => left.label.localeCompare(right.label));
+  return [...byPath.values()].sort((left, right) =>
+    left.label.localeCompare(right.label),
+  );
 }
 
 function routeGroups() {
@@ -219,12 +244,15 @@ function routeAvailability(path) {
     return {
       state: "route",
       label: "App route",
-      detail: "This route is part of the app catalog and is not separately reported by the runtime registry.",
+      detail:
+        "This route is part of the app catalog and is not separately reported by the runtime registry.",
     };
   }
 
   const availableEntries = entries.filter((entry) => entry.available !== false);
-  const owners = [...new Set(entries.map((entry) => entry.pluginName).filter(Boolean))];
+  const owners = [
+    ...new Set(entries.map((entry) => entry.pluginName).filter(Boolean)),
+  ];
   const ownerDetail = owners.length ? ` Reported by ${owners.join(", ")}.` : "";
   if (availableEntries.length) {
     return {
@@ -269,7 +297,8 @@ function renderIndex(query = "") {
       button.className = "view-link";
       button.dataset.path = view.path;
       button.setAttribute("aria-label", `${view.label}, ${availability.label}`);
-      if (view.path === selectedPath) button.setAttribute("aria-current", "page");
+      if (view.path === selectedPath)
+        button.setAttribute("aria-current", "page");
       button.insertAdjacentHTML("afterbegin", icon(view.icon));
 
       const label = document.createElement("span");
@@ -299,7 +328,9 @@ function renderIndex(query = "") {
   }
 
   const total = allViews().length;
-  routeCount.textContent = normalized ? `${visibleViews.length} of ${total} routes` : `${total} real routes`;
+  routeCount.textContent = normalized
+    ? `${visibleViews.length} of ${total} routes`
+    : `${total} real routes`;
 }
 
 function setFrameState(element, state, label) {
@@ -359,7 +390,8 @@ function clearFrameDivergence() {
 function frameRoute(frame) {
   try {
     const url = new URL(frame.contentWindow.location.href);
-    if (url.origin !== window.location.origin || url.protocol === "about:") return null;
+    if (url.origin !== window.location.origin || url.protocol === "about:")
+      return null;
     return url.pathname;
   } catch {
     return null;
@@ -370,8 +402,12 @@ function detectFrameDivergence() {
   const selectedRoute = new URL(selectedPath, window.location.origin).pathname;
   const currentRoute = frameRoute(currentFrame);
   const proposedRoute = frameRoute(proposedFrame);
-  const currentDiverged = Boolean(currentRoute && currentRoute !== selectedRoute);
-  const proposedDiverged = Boolean(proposedRoute && proposedRoute !== selectedRoute);
+  const currentDiverged = Boolean(
+    currentRoute && currentRoute !== selectedRoute,
+  );
+  const proposedDiverged = Boolean(
+    proposedRoute && proposedRoute !== selectedRoute,
+  );
   root.dataset.diverged = String(currentDiverged || proposedDiverged);
   if (currentDiverged) {
     setFrameState(currentState, "error", `Different route · ${currentRoute}`);
@@ -512,7 +548,9 @@ document.addEventListener("keydown", (event) => {
   ) {
     return;
   }
-  const focusable = [...rail.querySelectorAll("button, input, a[href], [tabindex]")].filter(
+  const focusable = [
+    ...rail.querySelectorAll("button, input, a[href], [tabindex]"),
+  ].filter(
     (element) => !element.disabled && element.getAttribute("tabindex") !== "-1",
   );
   if (!focusable.length) return;
@@ -533,16 +571,24 @@ syncRailAccessibility();
 
 async function loadRegistryStatus() {
   try {
-    const response = await fetch("/api/views", { headers: { Accept: "application/json" } });
+    const response = await fetch("/api/views", {
+      headers: { Accept: "application/json" },
+    });
     if (!response.ok) throw new Error(String(response.status));
     const payload = await response.json();
-    if (!payload || !Array.isArray(payload.views)) throw new Error("Malformed response");
+    if (!payload || !Array.isArray(payload.views))
+      throw new Error("Malformed response");
     registryViews = payload.views.filter(
-      (entry) => entry && typeof entry === "object" && safeRoutePath(entry.path),
+      (entry) =>
+        entry && typeof entry === "object" && safeRoutePath(entry.path),
     );
 
-    const guiEntries = registryViews.filter((entry) => (entry.viewType ?? "gui") === "gui");
-    const available = guiEntries.filter((entry) => entry.available !== false).length;
+    const guiEntries = registryViews.filter(
+      (entry) => (entry.viewType ?? "gui") === "gui",
+    );
+    const available = guiEntries.filter(
+      (entry) => entry.available !== false,
+    ).length;
     registryStatus.textContent = `${guiEntries.length} GUI entries · ${available} available`;
     registryDot.dataset.state = "available";
 
@@ -558,7 +604,8 @@ async function loadRegistryStatus() {
     if (selectedView) updateSelectedView(selectedView);
     renderIndex(viewSearch.value);
   } catch {
-    registryStatus.textContent = "Runtime registry unavailable; app routes still open";
+    registryStatus.textContent =
+      "Runtime registry unavailable; app routes still open";
     registryDot.dataset.state = "unavailable";
     renderIndex(viewSearch.value);
   }
