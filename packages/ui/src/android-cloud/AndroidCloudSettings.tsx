@@ -455,7 +455,7 @@ export function AndroidCloudSettings({
               </section>
             ) : null}
 
-            {!embedded && onSignOut ? (
+            {embedded || onSignOut ? (
               <section className="space-y-3 rounded-2xl border border-border bg-card p-5">
                 <h2 className="font-semibold">Privacy & data</h2>
                 <p className="text-sm leading-relaxed text-muted">
