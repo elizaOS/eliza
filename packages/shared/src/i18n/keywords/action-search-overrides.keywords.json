@@ -1,0 +1,32 @@
+{
+  "$schema": "./keywords.schema.json",
+  "locales": [],
+  "entries": {
+    "action.message.request": {
+      "base": [
+        "add a channel",
+        "channel structure",
+        "code-ops",
+        "code-ops template",
+        "create a channel",
+        "create category",
+        "create channel",
+        "delete channel",
+        "discord template",
+        "guild management",
+        "guild template",
+        "make a channel",
+        "manage server",
+        "new channel",
+        "server management",
+        "server role",
+        "server setup",
+        "server structure",
+        "server template",
+        "server templates",
+        "set up channels",
+        "template to this server"
+      ]
+    }
+  }
+}

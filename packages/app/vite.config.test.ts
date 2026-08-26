@@ -4,10 +4,12 @@ import { describe, expect, test } from "bun:test";
 import { runInNewContext } from "node:vm";
 import appViteConfig, {
   ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS,
+  androidCloudCuratedAssetsPlugin,
   androidCloudRendererEntryPlugin,
   appDevWsBasePlugin,
   appShellMetadataPlugin,
   findAndroidCloudEmittedRoutingFindings,
+  resolveAndroidCloudPrebootLockupDataUri,
   resolveAppShellLocalCspSources,
   selectAndroidCloudRendererEntry,
   stripAndroidCloudIpcBootstrap,
@@ -86,6 +88,59 @@ describe("app shell local connection policy", () => {
     });
   });
 
+  test("packages third-party notices with the curated Android cloud assets", () => {
+    if (typeof appViteConfig !== "function") {
+      throw new Error("app Vite config is not callable");
+    }
+    const config = appViteConfig({
+      command: "build",
+      mode: "test",
+      isSsrBuild: false,
+      isPreview: false,
+    });
+    if (config instanceof Promise) {
+      throw new Error("app Vite config unexpectedly became async");
+    }
+    expect(
+      config.plugins?.some(
+        (plugin) =>
+          typeof plugin === "object" &&
+          plugin !== null &&
+          "name" in plugin &&
+          plugin.name === "android-cloud-curated-assets",
+      ),
+    ).toBe(true);
+
+    const emitted: Array<{
+      type?: string;
+      fileName?: string;
+      source?: string | Uint8Array;
+    }> = [];
+    const hook = androidCloudCuratedAssetsPlugin(true).generateBundle;
+    if (typeof hook !== "function") {
+      throw new Error("Android Cloud curated-assets plugin has no bundle hook");
+    }
+    Reflect.apply(
+      hook,
+      {
+        emitFile(asset: (typeof emitted)[number]) {
+          emitted.push(asset);
+          return asset.fileName ?? "emitted-asset";
+        },
+      },
+      [{}, {}, false],
+    );
+
+    const notice = emitted.find(
+      (asset) => asset.fileName === "THIRD_PARTY_NOTICES.txt",
+    );
+
+    expect(notice?.type).toBe("asset");
+    const noticeText = Buffer.from(notice?.source ?? "").toString("utf8");
+    expect(noticeText).toContain("Ionicons");
+    expect(noticeText).toContain("MIT License");
+  });
+
   test("audits every emitted file without rewriting packaged code", () => {
     const lazyCode =
       "remote-mac eliza-local-agent: http://127.0.0.1:31337 adb reverse tcp:32437";
@@ -161,6 +216,58 @@ describe("app shell local connection policy", () => {
       /favicon|apple-touch-icon|site\.webmanifest|logo_white_nobg/,
     );
     expect(stripped).toContain('rel="stylesheet"');
+  });
+
+  test("inlines the complete Play preboot lockup as one atomic image", () => {
+    const source = `
+      <div class="eliza-preboot-shell__brand" aria-hidden="true">
+        <img class="eliza-preboot-shell__mark" src="/brand/logos/logo_white_nobg.svg" alt="" />
+        <span class="eliza-preboot-shell__name">elizaOS</span>
+      </div>`;
+    const stripped = stripAndroidCloudPublicAssetReferences(source);
+
+    expect(stripped).toContain(
+      'class="eliza-preboot-shell__lockup" src="data:image/svg+xml;base64,',
+    );
+    expect(stripped).toContain('decoding="sync" fetchpriority="high"');
+    const encodedLockup = stripped.match(
+      /src="data:image\/svg\+xml;base64,([^"]+)"/,
+    )?.[1];
+    expect(encodedLockup).toBeDefined();
+    const lockupSvg = Buffer.from(encodedLockup ?? "", "base64").toString(
+      "utf8",
+    );
+    expect(lockupSvg).toContain('fill="none"');
+    expect(lockupSvg).toContain('fill="white"');
+    expect(lockupSvg).not.toContain("#FF5800");
+    expect(lockupSvg).not.toContain(
+      '<rect x="0.081543" y="1.84143" width="101.919" height="101.919"',
+    );
+    expect(stripped).not.toContain("eliza-preboot-shell__name");
+    expect(stripped).not.toContain("logo_white_nobg.svg");
+  });
+
+  test("does not resolve the Play-only lockup for non-Cloud renderers", () => {
+    let resolutions = 0;
+    const plugin = appShellMetadataPlugin({
+      androidCloudBuild: false,
+      capacitorBuildTarget: "android",
+      resolveAndroidCloudPrebootLockup: () => {
+        resolutions += 1;
+        throw new Error("Cloud-only logo must stay lazy");
+      },
+    });
+    if (typeof plugin.transformIndexHtml !== "function") {
+      throw new Error("app metadata plugin has no HTML transform");
+    }
+
+    expect(plugin.transformIndexHtml("<main>direct Android</main>")).toContain(
+      "direct Android",
+    );
+    expect(resolutions).toBe(0);
+    expect(resolveAndroidCloudPrebootLockupDataUri()).toStartWith(
+      "data:image/svg+xml;base64,",
+    );
   });
 
   test("keeps the canonical renderer for Android Cloud builds", () => {

@@ -4,7 +4,7 @@ Android SMS overlay plugin for elizaOS — provides an SMS inbox and compose sur
 
 ## Purpose / role
 
-Adds a Messages GUI view to elizaOS on Android. It lets an Eliza agent and the user read SMS threads and send text messages through the native Android SMS bridge. The plugin is opt-in; load it by including `@elizaos/plugin-messages` in the agent's plugin list. It is marked `androidOnly: true` in its elizaOS app metadata; there is no side-effect app-register module.
+Adds a Messages GUI view to elizaOS on Android. It lets an Eliza agent and the user read SMS threads and send text messages through the native Android SMS bridge. The plugin is opt-in; load it by including `@elizaos/plugin-messages` in the agent's plugin list. It is marked `androidOnly: true` in its elizaOS app metadata and self-registers its bundled page through `src/register.ts`.
 
 ## Plugin surface
 
@@ -22,8 +22,10 @@ The view bundle path points to `dist/views/bundle.js` (built by `build:views`).
 src/
   plugin.ts              Plugin object — defines the three views registered with @elizaos/core
   index.ts               Public package entry — re-exports plugin and ui
-  ui.ts                  Re-exports MessagesView for renderer consumers
+  register.ts            Registers the bundled page with the app shell
+  ui.ts                  Re-exports MessagesPage and MessagesView
   components/
+    MessagesPage.tsx     Fullscreen page chrome and launcher back affordance
     MessagesView.tsx     GUI data wrapper and Android bridge owner
     messages-view-helpers.ts  Shared helper functions for MessagesView
     messages-interact.ts  interact() capability handler for the view bundle
@@ -37,6 +39,7 @@ src/
 ### Key exports
 
 - `appMessagesPlugin` / `default` — the `Plugin` object; import this to register the plugin.
+- `MessagesPage` — app-shell page wrapper with the shared launcher back button.
 - `MessagesView` — GUI React component used by the plugin view declaration.
 - `interact(capability, params?)` — programmatic view API for agents; see capabilities below. Defined in `src/components/messages-interact.ts`; re-exported via `src/components/messages-view-bundle.ts`. Not re-exported from the package root.
 
@@ -92,7 +95,7 @@ import messagesPlugin from "@elizaos/plugin-messages";
 
 ## Conventions / gotchas
 
-- **Android-only.** Package metadata marks the view app as `androidOnly: true`, and the plugin view declaration sets `nativeOs: true`. Do not add `elizaos.appRegister` unless a real renderer side-effect module exists.
+- **Android-only.** Package metadata marks the view app as `androidOnly: true`, and the plugin view declaration sets `nativeOs: true`. The renderer side-effect module is declared with `elizaos.appRegister: "register"` and guards registration to the ElizaOS fork.
 - **View bundle is separate from the library bundle.** `build:js` (tsup) produces `dist/index.js` for the npm package. `build:views` (vite) produces `dist/views/bundle.js` which is loaded at runtime by the plugin view system. Both must be built for a full build.
 - **Capacitor bridge in tests.** `vitest.config.ts` aliases `@elizaos/capacitor-messages` → `plugins/plugin-native-messages/src/index.ts` and `@elizaos/capacitor-system` → `plugins/plugin-native-system/src/index.ts`. Tests mock both via `vi.mock`.
 - **SMS role vs bridge mode.** The UI shows two modes: "Default SMS app" (owns the role, full inbox) and "Android SMS bridge" (read-only via the capacitor bridge, no role held). Agents can request the role via the interact handler.

@@ -67,7 +67,10 @@ vi.mock("../first-run/runtime-target", () => ({
     mocks.activeServerKindToFirstRunRuntimeTarget,
 }));
 
-import { switchRuntimeNonDestructive } from "./switch-runtime";
+import {
+  subscribeRuntimeAuthoritySwitch,
+  switchRuntimeNonDestructive,
+} from "./switch-runtime";
 
 const LOCAL: AgentProfile = {
   id: "local-1",
@@ -161,7 +164,10 @@ describe("switchRuntimeNonDestructive", () => {
 
   it("switches to a cloud runtime: persists, activates, re-points seamlessly (not setBaseUrl)", () => {
     withRegistry([LOCAL, CLOUD]);
+    const authorityPhase = vi.fn();
+    const unsubscribe = subscribeRuntimeAuthoritySwitch(authorityPhase);
     const res = switchRuntimeNonDestructive("cloud-1");
+    unsubscribe();
     expect(res).toEqual({ ok: true, profile: CLOUD });
     expect(mocks.persistAgentProfileSelection).toHaveBeenCalledWith(
       "cloud-1",
@@ -172,16 +178,38 @@ describe("switchRuntimeNonDestructive", () => {
       "tok-cloud",
     );
     expect(mocks.setBaseUrl).not.toHaveBeenCalled();
+    expect(authorityPhase.mock.calls).toEqual([["before"], ["after"]]);
+    expect(authorityPhase.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.repointBaseUrl.mock.invocationCallOrder[0] ??
+        Number.POSITIVE_INFINITY,
+    );
+    expect(mocks.repointBaseUrl.mock.invocationCallOrder[0]).toBeLessThan(
+      authorityPhase.mock.invocationCallOrder[1] ?? Number.POSITIVE_INFINITY,
+    );
+  });
+
+  it("does not emit authority phases for a raw client repoint", () => {
+    const authorityPhase = vi.fn();
+    const unsubscribe = subscribeRuntimeAuthoritySwitch(authorityPhase);
+
+    mocks.repointBaseUrl("https://dedicated.example.test", "token");
+
+    unsubscribe();
+    expect(authorityPhase).not.toHaveBeenCalled();
   });
 
   it("does not move the live client or clear drafts when durable selection fails", () => {
     mocks.persistAgentProfileSelection.mockReturnValue(false);
     withRegistry([LOCAL, CLOUD]);
+    const authorityPhase = vi.fn();
+    const unsubscribe = subscribeRuntimeAuthoritySwitch(authorityPhase);
 
     expect(switchRuntimeNonDestructive("cloud-1")).toEqual({
       ok: false,
       reason: "persistence-failed",
     });
+    unsubscribe();
+    expect(authorityPhase).not.toHaveBeenCalled();
     expect(mocks.repointBaseUrl).not.toHaveBeenCalled();
     expect(mocks.setToken).not.toHaveBeenCalled();
     expect(mocks.clearAllChatDrafts).not.toHaveBeenCalled();
@@ -197,11 +225,15 @@ describe("switchRuntimeNonDestructive", () => {
       apiBase: "https://credential-sink.example.test",
     };
     withRegistry([LOCAL, untrustedCloud]);
+    const authorityPhase = vi.fn();
+    const unsubscribe = subscribeRuntimeAuthoritySwitch(authorityPhase);
 
     expect(switchRuntimeNonDestructive(untrustedCloud.id)).toEqual({
       ok: false,
       reason: "untrusted-cloud",
     });
+    unsubscribe();
+    expect(authorityPhase).not.toHaveBeenCalled();
     expect(mocks.setToken).not.toHaveBeenCalled();
     expect(mocks.repointBaseUrl).not.toHaveBeenCalled();
     expect(mocks.persistAgentProfileSelection).not.toHaveBeenCalled();

@@ -1107,6 +1107,10 @@ describe("cloud-api worker entrypoint", () => {
       region: "local-test",
       commit: "feedfacefeedfacefeedfacefeedfacefeedface",
       personalSharedTelegramEdge: { enabled: false },
+      personalTelegramDelivery: {
+        epoch: 2,
+        legacyEpoch1CompatEnabled: false,
+      },
       schemaCompatibility: { usageQuotasTombstone: true },
     });
   });
@@ -1150,6 +1154,7 @@ describe("cloud-api worker entrypoint", () => {
         ENVIRONMENT: "staging",
         PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED: "false",
         PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED: "true",
+        PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED: "true",
         ELIZA_APP_TELEGRAM_BOT_TOKEN: "never-return-this-bot-token",
         ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "never-return-this-webhook-secret",
       } as never,
@@ -1160,6 +1165,10 @@ describe("cloud-api worker entrypoint", () => {
     expect(JSON.parse(text)).toMatchObject({
       environment: "staging",
       personalSharedTelegramEdge: { enabled: true },
+      personalTelegramDelivery: {
+        epoch: 2,
+        legacyEpoch1CompatEnabled: true,
+      },
     });
     expect(text).not.toContain("never-return-this-bot-token");
     expect(text).not.toContain("never-return-this-webhook-secret");
@@ -1310,12 +1319,13 @@ describe("cloud-api worker entrypoint", () => {
     ).toBeUndefined();
   });
 
-  test("keeps the legacy edge guard false and reserves the replacement names for the cutover secrets", async () => {
+  test("keeps production closed while staging atomically bridges delivery epoch 1", async () => {
     const config = Bun.TOML.parse(
       await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),
     ) as {
       vars?: {
         PERSONAL_DELIVERY_PROJECTION_READ_ENABLED?: string;
+        PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED?: string;
         PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED?: string;
         PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED?: string;
         PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED?: string;
@@ -1325,6 +1335,7 @@ describe("cloud-api worker entrypoint", () => {
         staging?: {
           vars?: {
             PERSONAL_DELIVERY_PROJECTION_READ_ENABLED?: string;
+            PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED?: string;
             PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED?: string;
             PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED?: string;
             PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED?: string;
@@ -1334,6 +1345,7 @@ describe("cloud-api worker entrypoint", () => {
         production?: {
           vars?: {
             PERSONAL_DELIVERY_PROJECTION_READ_ENABLED?: string;
+            PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED?: string;
             PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED?: string;
             PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED?: string;
             PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED?: string;
@@ -1353,6 +1365,17 @@ describe("cloud-api worker entrypoint", () => {
       config.env?.production?.vars?.PERSONAL_DELIVERY_PROJECTION_READ_ENABLED,
     ).toBe("false");
     expect(config.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED).toBe("false");
+    expect(
+      config.vars?.PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED,
+    ).toBeUndefined();
+    expect(
+      config.env?.staging?.vars
+        ?.PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED,
+    ).toBe("true");
+    expect(
+      config.env?.production?.vars
+        ?.PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED,
+    ).toBeUndefined();
     expect(
       config.env?.staging?.vars?.PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED,
     ).toBeUndefined();

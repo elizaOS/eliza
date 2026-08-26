@@ -18,7 +18,7 @@ registerAppShellPage({
   viewKind: "release",
   surface: { header: "fullscreen" },
   loader: () =>
-    import("./views/NotesView.tsx").then((module) => ({
-      default: module.NotesView,
+    import("./views/NotesPage.tsx").then((module) => ({
+      default: module.NotesPage,
     })),
 });

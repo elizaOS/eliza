@@ -36,6 +36,10 @@ import { KNOWN_ROUTE_SHARD_KEYS } from "./_router-shard-keys.generated";
 import { isStorageReadCapabilityPath, serveBlobHostRequest } from "./blob-host";
 import { isThinCliSessionPath } from "./cli-session-paths";
 import { isPersonalSharedTelegramEdgeEnabled } from "./personal-shared-telegram-edge";
+import {
+  isPersonalTelegramDeliveryEpoch1CompatEnabled,
+  PERSONAL_TELEGRAM_DELIVERY_EPOCH,
+} from "./personal-telegram-delivery";
 import { serveRegistryHostRequest } from "./registry-host";
 import { knownRouteShardKey } from "./router-shards";
 import { isThinStewardPath } from "./steward/public-paths";
@@ -648,6 +652,11 @@ function healthResponse(env: AppEnv["Bindings"]): Response {
       // a provider-side mutation has an ambiguous result.
       personalSharedTelegramEdge: {
         enabled: personalSharedTelegramEdgeEnabled,
+      },
+      personalTelegramDelivery: {
+        epoch: PERSONAL_TELEGRAM_DELIVERY_EPOCH,
+        legacyEpoch1CompatEnabled:
+          isPersonalTelegramDeliveryEpoch1CompatEnabled(env),
       },
       // Value-free schema compatibility beacon. The release workflow checks
       // the currently served Worker for this marker before the later quota

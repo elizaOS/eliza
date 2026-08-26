@@ -878,6 +878,8 @@ app.post("/", async (c) => {
         settleUnknownReservation = () => settle(reservation.reservedAmount);
       }
     } catch (error) {
+      // error-policy:J1 admission failures become terminal Anthropic responses
+      // before any provider dispatch.
       if (error instanceof InferenceAppAffiliateUnsupportedError) {
         return anthropicError(
           "invalid_request_error",
@@ -887,9 +889,9 @@ app.post("/", async (c) => {
       }
       if (error instanceof InsufficientCreditsError) {
         return anthropicError(
-          "rate_limit_error",
+          "billing_error",
           `Insufficient cloud credits. Required: $${error.required.toFixed(4)}`,
-          429,
+          402,
         );
       }
       if (
@@ -931,11 +933,13 @@ app.post("/", async (c) => {
       markProviderDispatched = admission.markProviderDispatched;
       billingReservation = admission.reservation;
     } catch (error) {
+      // error-policy:J1 admission failures become terminal Anthropic responses
+      // before any provider dispatch.
       if (error instanceof InsufficientCreditsError) {
         return anthropicError(
-          "rate_limit_error",
+          "billing_error",
           `Insufficient credits. Required: $${error.required.toFixed(4)}`,
-          429,
+          402,
         );
       }
       if (error instanceof InferenceBalanceCacheWarmingError) {

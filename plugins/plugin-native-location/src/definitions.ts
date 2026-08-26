@@ -71,7 +71,9 @@ export interface LocationResult {
 export interface LocationPermissionStatus {
   /** Current permission status */
   location: "granted" | "denied" | "prompt";
-  /** Whether background location is allowed (iOS/Android) */
+  /** Android foreground accuracy selected by the user. */
+  accuracy?: "precise" | "approximate" | "none";
+  /** Whether background location is allowed. Present on iOS only. */
   background?: "granted" | "denied" | "prompt";
 }
 

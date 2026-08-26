@@ -68,9 +68,35 @@ const LOADER_RELATIVE_IMPORT_BINDINGS = new Map([
   ["@elizaos/ui/state", "../../state/index.ts"],
   ["@elizaos/ui/state/useApp", "../../state/useApp.ts"],
   ["@elizaos/ui/utils", "../../utils/index.ts"],
+  ["@elizaos/ui/hooks/resource-cache", "../../hooks/resource-cache.ts"],
+  ["@elizaos/ui/utils/attachment-url", "../../utils/attachment-url.ts"],
+  ["@elizaos/ui/utils/desktop-dialogs", "../../utils/desktop-dialogs.ts"],
+  ["@elizaos/ui/utils/download-share", "../../utils/download-share.ts"],
   [
     "@elizaos/ui/components/composites/page-panel",
     "../composites/page-panel/index.ts",
+  ],
+  [
+    "@elizaos/ui/components/composites/settings",
+    "../composites/settings/index.ts",
+  ],
+  [
+    "@elizaos/ui/components/shared/confirm-delete-control",
+    "../shared/confirm-delete-control.tsx",
+  ],
+  ["@elizaos/ui/components/shared/SectionNav", "../shared/SectionNav.tsx"],
+  ["@elizaos/ui/components/shared/ViewHeader", "../shared/ViewHeader.tsx"],
+  [
+    "@elizaos/ui/components/transcripts/TranscriptPlayer",
+    "../transcripts/TranscriptPlayer.tsx",
+  ],
+  [
+    "@elizaos/ui/components/transcripts/TranscriptsView",
+    "../transcripts/TranscriptsView.tsx",
+  ],
+  [
+    "@elizaos/ui/components/views/ShellViewAgentSurface",
+    "./ShellViewAgentSurface.tsx",
   ],
   [
     "@elizaos/ui/components/composites/sidebar/sidebar-content",
@@ -96,6 +122,7 @@ const LOADER_RELATIVE_IMPORT_BINDINGS = new Map([
     "@elizaos/ui/components/shared/AppPageSidebar",
     "../shared/AppPageSidebar.tsx",
   ],
+  ["@elizaos/ui/components/shared", "../shared/index.ts"],
   ["@elizaos/ui/components/ui/button", "../ui/button.tsx"],
   ["@elizaos/ui/components/ui/input", "../ui/input.tsx"],
   ["@elizaos/ui/components/ui/select", "../ui/select.tsx"],

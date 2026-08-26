@@ -47,6 +47,7 @@ import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
 import {
   createTierUpgradeTargetWithProvision,
   findLiveTierUpgradeTarget,
+  PersonalDedicatedSelectionRequiredError,
 } from "@/lib/services/agent-tier-upgrade-target";
 import { buildDefaultAgentCharacterConfig } from "@/lib/services/default-agent-character";
 import {
@@ -536,6 +537,17 @@ async function __hono_POST(
             maxAgents: error.max,
           },
           429,
+        );
+      }
+      if (error instanceof PersonalDedicatedSelectionRequiredError) {
+        return json(
+          {
+            success: false,
+            code: "dedicated_adoption_selection_required",
+            error:
+              "An existing Dedicated agent is selected for this account. Continue with same-row adoption instead of creating another agent.",
+          },
+          409,
         );
       }
       throw error;

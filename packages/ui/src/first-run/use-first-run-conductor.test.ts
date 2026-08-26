@@ -151,6 +151,7 @@ import {
   ConversationMessagesCtx,
   type ConversationMessagesValue,
 } from "../state/ConversationMessagesContext.hooks";
+import { markCloudAuthFirstScreenGreeting } from "../state/cloud-auth-first-screen";
 import {
   __resetPreparedDesktopCloudLoginSessionForTests,
   CLOUD_LOGIN_POPUP_NAME,
@@ -1799,6 +1800,33 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     expect(mocks.client.getPersonalSharedEliza.mock.calls[0][0]).toMatchObject({
       cloudApiBase: "https://eliza.app",
     });
+    unmount();
+  });
+
+  it("greets once after an auth-first login recovers through the hosted cookie session", async () => {
+    localStorage.removeItem("steward_session_token");
+    markCloudAuthFirstScreenGreeting();
+    writeTestCookie("steward-authed=1");
+    mocks.refreshCloudStewardSession.mockResolvedValue({
+      token: "cookie-token",
+    });
+    const spies = seedAppStore({ elizaCloudConnected: false });
+    const { transcript, turn, unmount } = renderConductor();
+
+    await waitFor(() => {
+      expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+    });
+
+    const welcome = await waitForTurn(turn, "first-run:cloud-welcome");
+    expect(welcome.text).toContain("Hi, I'm Eliza.");
+    expect(
+      transcript.current.some((message) =>
+        message.text.includes("Sign in to Eliza Cloud"),
+      ),
+    ).toBe(false);
+    expect(localStorage.getItem("eliza:cloud-auth-first-screen-greeting")).toBe(
+      null,
+    );
     unmount();
   });
 

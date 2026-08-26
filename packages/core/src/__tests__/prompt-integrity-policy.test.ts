@@ -1112,7 +1112,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"packages/ui/src/voice/voice-chat-playback.ts": [/MAX_SPOKEN_CHARS/],
 	"packages/ui/src/chat/model-choices.ts": [/MAX_MODEL_CHOICES/],
-	"packages/ui/src/components/pages/documents-detail.tsx": [
+	"plugins/plugin-documents/src/components/documents/documents-detail.tsx": [
 		/previewText\.slice\(/,
 	],
 	"packages/ui/src/components/composites/chat/permission-card.helpers.ts": [
