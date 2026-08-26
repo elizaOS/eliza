@@ -46,6 +46,35 @@ afterEach(async () => {
   }
 });
 
+async function resealCloudStabilityReport(
+  outputRoot: string,
+  report: unknown,
+): Promise<void> {
+  const reportBytes = Buffer.from(canonicalCloudStabilityJson(report), "utf8");
+  const reportSha256 = createHash("sha256").update(reportBytes).digest("hex");
+  const manifestPath = path.join(outputRoot, "manifest.json");
+  const artifactManifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  const {
+    manifestSha256: _previousManifestSha256,
+    ...previousUnsignedManifest
+  } = artifactManifest;
+  const unsignedManifest = { ...previousUnsignedManifest, reportSha256 };
+  await Promise.all([
+    writeFile(path.join(outputRoot, "stability.json"), reportBytes),
+    writeFile(
+      path.join(outputRoot, "stability.sha256"),
+      `${reportSha256}  stability.json\n`,
+    ),
+    writeFile(
+      manifestPath,
+      canonicalCloudStabilityJson({
+        ...unsignedManifest,
+        manifestSha256: canonicalCloudStabilitySha256(unsignedManifest),
+      }),
+    ),
+  ]);
+}
+
 describe("Cloud stability manifest", () => {
   test("authority environment drops ambient credentials", () => {
     const environment = authorityChildEnvironment(
@@ -216,6 +245,42 @@ describe("Cloud stability manifest", () => {
     await expect(
       verifyCloudStabilityArtifacts(absentBaselineRoot),
     ).resolves.toMatchObject({ report: absentBaseline });
+
+    const ordinarySuccessRoot = await mkdtemp(
+      path.join(tmpdir(), "cloud-stability-ordinary-baseline-test-"),
+    );
+    directories.push(ordinarySuccessRoot);
+    const ordinarySuccess = await runCloudStabilityLane({
+      manifest,
+      outputRoot: ordinarySuccessRoot,
+      adapter: {
+        async execute() {
+          return result;
+        },
+        async terminate() {},
+      },
+    });
+    expect(ordinarySuccess.status).toBe("passed");
+
+    const ordinarySuccessWithoutBaseline = structuredClone(ordinarySuccess);
+    ordinarySuccessWithoutBaseline.cells[0].baselineInitialStateHash = null;
+    await resealCloudStabilityReport(
+      ordinarySuccessRoot,
+      ordinarySuccessWithoutBaseline,
+    );
+    await expect(
+      verifyCloudStabilityArtifacts(ordinarySuccessRoot),
+    ).rejects.toThrow(/without a baseline.*pre-admission harness failures/);
+
+    const delayedSuccessWithoutBaseline = structuredClone(delayedBaseline);
+    delayedSuccessWithoutBaseline.cells[0].baselineInitialStateHash = null;
+    await resealCloudStabilityReport(
+      delayedBaselineRoot,
+      delayedSuccessWithoutBaseline,
+    );
+    await expect(
+      verifyCloudStabilityArtifacts(delayedBaselineRoot),
+    ).rejects.toThrow(/without a baseline.*pre-admission harness failures/);
   }, 30_000);
 
   test("rejects modified, truncated, noncanonical, and duplicate-key reports", async () => {

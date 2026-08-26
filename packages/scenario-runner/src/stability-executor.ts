@@ -642,7 +642,20 @@ export function assertScenarioStabilityExecutedCellCoherence(
   ) {
     throw new Error("stability cell summary does not match its attempts");
   }
-  if (cell.baselineInitialStateHash !== null) {
+  if (cell.baselineInitialStateHash === null) {
+    if (
+      cell.attempts.some(
+        (attempt) =>
+          attempt.initialStateHash !== "unavailable" ||
+          attempt.passed ||
+          attempt.failureClassification !== "harness-failure",
+      )
+    ) {
+      throw new Error(
+        "a stability cell without a baseline must contain only pre-admission harness failures",
+      );
+    }
+  } else {
     if (
       !cell.attempts.some(
         (attempt) => attempt.initialStateHash === cell.baselineInitialStateHash,
