@@ -55,6 +55,7 @@ function replaceLoneSurrogates(text: string): string {
   return out;
 }
 export function toWellFormedUnicode(text: string): string {
+  if (typeof text !== "string") return "";
   const nativeToWellFormed = (
     String.prototype as { toWellFormed?: (this: string) => string }
   ).toWellFormed;
@@ -65,7 +66,9 @@ export function toWellFormedUnicode(text: string): string {
   if (nativeIsWellFormed?.call(text)) return text;
   return replaceLoneSurrogates(text);
 }
+
 export function truncateWellFormed(text: string, maxLength: number): string {
+  if (typeof text !== "string") return "";
   if (!Number.isFinite(maxLength) || maxLength <= 0) return "";
   if (text.length <= maxLength) return text;
   const end =
@@ -74,4 +77,14 @@ export function truncateWellFormed(text: string, maxLength: number): string {
       ? maxLength - 1
       : maxLength;
   return text.slice(0, end);
+}
+
+export function maskSecret(value: string, visibleChars = 4): string {
+  if (typeof value !== "string" || value.length === 0) return "";
+  if (value.length <= visibleChars) return "*".repeat(value.length);
+  const visible = Math.max(
+    1,
+    Math.min(visibleChars, Math.floor(value.length / 2)),
+  );
+  return `${value.slice(0, visible)}${"*".repeat(Math.max(4, value.length - visible * 2))}${value.slice(-visible)}`;
 }
