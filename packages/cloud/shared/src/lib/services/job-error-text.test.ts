@@ -15,6 +15,10 @@ import {
   publicJobErrorSummary,
 } from "./job-error-text";
 
+const ownerCredentialFixture = (prefix: string): string =>
+  `${prefix}${["legacy", "owner", "credential", "fixture"].join("-")}`;
+const ownerProviderTokenFixture = (): string => ["provider returned ghp_", "a".repeat(36)].join("");
+
 describe("jobErrorText — completeness", () => {
   test("preserves a long stack and message", () => {
     const error = new Error("x".repeat(10_000));
@@ -134,37 +138,115 @@ describe("jobErrorSummary — safe to embed in a wrapper's message", () => {
 });
 
 describe("publicJobErrorSummary — API boundary", () => {
-  test("drops stack frames from what the owner can read", () => {
+  test("fails closed when legacy storage contains a stack", () => {
     const stored = jobErrorText(new Error("agent_delete failed"));
     expect(stored).toContain("\n    at ");
     const summary = publicJobErrorSummary(stored);
-    expect(summary).toBe("Error: agent_delete failed");
-    expect(summary).not.toContain("\n");
-    expect(summary).not.toContain(" at ");
+    expect(summary).toBe(
+      "The operation failed. Retry from Eliza Cloud or contact support if it continues.",
+    );
   });
 
-  test("drops the frames' server paths, and keeps a multi-line message body", () => {
-    // The frames are what disclose module layout; the message body is the
-    // operator's own text and the owner needs it. Both halves asserted on a
-    // stack that genuinely carries this file's absolute path.
-    const stored = jobErrorText(
-      new Error("Provisioning failed:\nnode: hetzner-3\nreason: no capacity"),
-    );
-    expect(stored).toContain("job-error-text.test.ts");
+  test("keeps a benign multi-line message that contains no private diagnostic material", () => {
+    const stored = "Provisioning failed:\nnode: unavailable\nreason: no capacity";
     const summary = publicJobErrorSummary(stored) ?? "";
-    expect(summary).toContain("node: hetzner-3");
+    expect(summary).toContain("node: unavailable");
     expect(summary).toContain("reason: no capacity");
-    expect(summary).not.toContain("job-error-text.test.ts");
-    expect(summary).not.toMatch(/\n\s+at /);
   });
 
-  test("a path inside the message itself is preserved — only frames are cut", () => {
-    // Honest scope: this summary is not a path scrubber. An ENOENT message
-    // names the file the operator asked about; the redactor handles secrets.
-    const stored = jobErrorText(
-      new Error("ENOENT: no such file, open '/srv/eliza/agents/9c1/config.json'"),
+  test.each([
+    ownerCredentialFixture("Authorization: Bearer "),
+    ownerCredentialFixture("X_API_KEY="),
+    ownerCredentialFixture("CEREBRAS_API_KEY="),
+    ownerCredentialFixture("access_token="),
+    ownerProviderTokenFixture(),
+    "NODE_ENV=production",
+    "CUSTOM_VALUE=fixture-value",
+    "request failed at http://100.64.23.9:3000/api/status",
+    "request failed at http://10.0.0.4:3000/api/status",
+    "request failed at http://172.20.0.1:3000/api/status",
+    "request failed at http://192.168.1.2:3000/api/status",
+    "request failed at http://127.0.0.1:3000/api/status",
+    "request failed at http://169.254.169.254/latest/meta-data",
+    "request failed at http://[fd00::1]:3000/api/status",
+    "request failed at http://[::1]:3000/api/status",
+    "request failed at http://[fe80::1]:3000/api/status",
+    "request failed at http://db.internal:5432/status",
+    "request failed at https://service.eliza.local/status",
+  ])("re-sanitizes a legacy raw owner diagnostic: %s", (stored) => {
+    expect(publicJobErrorSummary(stored)).toBe(
+      "The operation failed. Retry from Eliza Cloud or contact support if it continues.",
     );
-    expect(publicJobErrorSummary(stored)).toContain("/srv/eliza/agents/9c1");
+  });
+
+  test.each([
+    "ENOENT: no such file, open '/srv/eliza/agents/9c1/config.json'",
+    "ENOENT [/srv/eliza/agents/9c1/config.json]",
+    "ENOENT: //srv/eliza/agents/9c1/config.json",
+    "failed to create /tmp",
+    "failed to read C:\\eliza\\agents\\9c1\\config.json",
+    "failed to read \\\\internal-host\\agents\\9c1\\config.json",
+    "failed to read file:///srv/eliza/agents/9c1/config.json",
+    "failed at prefix/srv/eliza/agents/9c1/config.json",
+    "failed at prefixC:\\eliza\\agents\\9c1\\config.json",
+  ])("withholds a first-line absolute path from the owner: %s", (message) => {
+    const stored = jobErrorText(new Error(message));
+    const summary = publicJobErrorSummary(stored) ?? "";
+    expect(summary).toBe(
+      "The operation failed. Retry from Eliza Cloud or contact support if it continues.",
+    );
+    expect(summary).not.toContain("9c1");
+  });
+
+  test.each([
+    "Provider failed at https://api.eliza.app/v1/chat",
+    "Provider failed at https://api.eliza.app/callback?next=/v1/chat",
+    "Provider failed at https://api.eliza.app/v1//chat",
+    "Provider failed at https://api.eliza.app/callback?next=%25252Fv1%25252Fchat",
+    "Socket closed at wss://agent.example.test/chat",
+  ])("does not mistake a public network URL for a host path: %s", (message) => {
+    const stored = `Error: ${message}`;
+    expect(publicJobErrorSummary(stored)).toBe(stored);
+  });
+
+  test("still finds a formatted host path adjacent to a public URL", () => {
+    const stored = jobErrorText(
+      new Error("Provider https://api.eliza.app[/srv/eliza/agents/9c1/config.json]"),
+    );
+    expect(publicJobErrorSummary(stored)).toBe(
+      "The operation failed. Retry from Eliza Cloud or contact support if it continues.",
+    );
+  });
+
+  test.each([
+    "Provider https://api.eliza.app?debug=/srv/eliza/agents/9c1/config.json",
+    "Provider https://api.eliza.app?debug=/workspace/eliza/agents/9c1/config.json",
+    "Provider https://api.eliza.app?debug=/app/eliza/agents/9c1/config.json",
+    "Provider https://api.eliza.app?debug=/data/agents/9c1/config.json",
+    "Provider https://api.eliza.app?debug=/nix/store/secret/agents/9c1/config.json",
+    "Provider https://api.eliza.app?debug=//internal-host/agents/9c1/config.json",
+    "Provider https://api.eliza.app?debug=/callback/eliza/agents/9c1/config.json",
+    "Provider https://api.eliza.app?debug=/v1/chat/private/agents/9c1/config.json",
+    "Provider https://api.eliza.app(/srv/eliza/agents/9c1/config.json)",
+    "Provider https://api.eliza.app,C:\\eliza\\agents\\9c1\\config.json",
+    "Provider https://api.eliza.app?debug=%2Fsrv%2Feliza%2Fagents%2F9c1%2Fconfig.json",
+    "Provider https://api.eliza.app?debug=%20%2Fsrv%2Feliza%2Fagents%2F9c1%2Fconfig.json",
+    "Provider https://api.eliza.app?debug=%09%2Fworkspace%2Feliza%2Fagents%2F9c1%2Fconfig.json",
+    "Provider https://api.eliza.app?%2Fsrv%2Feliza%2Fagents%2F9c1%2Fconfig.json=debug",
+    "Provider https://api.eliza.app?debug=context%253A%2520%25252Fsrv%25252Feliza%25252Fagents%25252F9c1%25252Fconfig.json",
+    "Provider https://api.eliza.app?context%253A%2520%25252Fsrv%25252Feliza%25252Fagents%25252F9c1%25252Fconfig.json=debug",
+    "Provider https://api.eliza.app/#context%253A%2520%25252Fsrv%25252Feliza%25252Fagents%25252F9c1%25252Fconfig.json",
+    "Provider https://api.eliza.app?debug=prefix%25252Fsrv%25252Feliza%25252Fagents%25252F9c1%25252Fconfig.json",
+    "Provider https://api.eliza.app?prefix%25252Fsrv%25252Feliza%25252Fagents%25252F9c1%25252Fconfig.json=debug",
+    "Provider https://api.eliza.app/#prefix%25252Fsrv%25252Feliza%25252Fagents%25252F9c1%25252Fconfig.json",
+    "Provider https://api.eliza.app?debug=%E0%A4%A/srv/eliza/agents/9c1/config.json",
+  ])("withholds a host path carried beside or inside a public URL: %s", (message) => {
+    const stored = jobErrorText(new Error(message));
+    const summary = publicJobErrorSummary(stored) ?? "";
+    expect(summary).toBe(
+      "The operation failed. Retry from Eliza Cloud or contact support if it continues.",
+    );
+    expect(summary).not.toContain("9c1");
   });
 
   test("null and empty stay null", () => {
