@@ -307,12 +307,23 @@ export class NativeAcpClient {
         ? "bypassPermissions"
         : this.opts.approvalPreset === "readonly"
           ? "plan"
-          : "dontAsk";
+          : this.opts.approvalPreset === "verifier"
+            ? availableModes.includes("read-only")
+              ? "read-only"
+              : "default"
+            : "dontAsk";
     if (availableModes.includes(requestedMode)) {
       await this.request("session/set_mode", {
         sessionId,
         modeId: requestedMode,
       });
+    } else if (this.opts.approvalPreset === "verifier" && modes) {
+      const currentMode = stringValue(modes.currentModeId);
+      throw new Error(
+        `ACP verifier requires an advertised permission-requesting mode ("read-only" or "default")${
+          currentMode ? `; current mode is "${currentMode}"` : ""
+        }`,
+      );
     }
     return {
       sessionId,
@@ -797,9 +808,9 @@ export class NativeAcpClient {
       return kind === "read" || kind === "search";
     }
     // Independent verifier (#8898): may read, search, and EXECUTE (run tests /
-    // build / git diff) but is hard-blocked from edit/write/delete — writeTextFile
-    // throws PermissionDeniedError off this gate, so read-only is enforced at the
-    // transport, not by prompt text.
+    // build / git diff), while direct ACP edit/write/delete operations are
+    // denied. Execute is intentionally not a filesystem sandbox: validation
+    // commands can write, so the verifier prompt remains part of that boundary.
     if (this.opts.approvalPreset === "verifier") {
       return kind === "read" || kind === "search" || kind === "execute";
     }
