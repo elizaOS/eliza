@@ -12,9 +12,11 @@ import os from "node:os";
 import path from "node:path";
 import {
   type ActionResult,
+  executePlannedToolCall,
   type IAgentRuntime,
   type Memory,
   satisfiesRoleGate,
+  type UUID,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -136,6 +138,52 @@ describe("NOTES operation parsing", () => {
     expect(result).not.toHaveProperty("userFacingText");
     expect(result).not.toHaveProperty("verifiedUserFacing");
     expect(result).not.toHaveProperty("turnComplete");
+  });
+
+  it("treats a strict-provider empty content field as omission for an unfiltered count", async () => {
+    const runtime = await harness();
+    await run(runtime, { action: "create", content: "first note" });
+    await run(runtime, { action: "create", content: "second note" });
+    Object.assign(runtime, {
+      actions: [notesAction],
+      agentId: "agent-id" as UUID,
+      getRoom: vi.fn(async () => null),
+      reportError: vi.fn(),
+      logger: {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      },
+    });
+
+    const result = await executePlannedToolCall(
+      runtime,
+      {
+        message: {
+          id: "message-id" as UUID,
+          entityId: "owner-id" as UUID,
+          roomId: "room-id" as UUID,
+          content: { text: "How many notes do I have?" },
+        } as Memory,
+        activeContexts: ["notes"],
+        userRoles: ["OWNER"],
+      },
+      {
+        name: "NOTES",
+        params: { action: "list", content: "", body: "" },
+      },
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      text: "You have 2 notes.",
+      data: {
+        count: 2,
+        total: 2,
+        filterApplied: false,
+      },
+    });
   });
 
   it("keeps a topic-scoped read from exposing unrelated notes", async () => {

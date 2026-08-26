@@ -286,8 +286,14 @@ export const notesAction: Action = {
     {
       name: "content",
       description:
-        "The note's text as the user said it. Required for create/update/delete; on update and delete it identifies the existing note. On list, pass the requested topic to return only matching notes.",
+        "The note's text as the user said it. Required for create/update/delete; on update and delete it identifies the existing note. On list, pass the requested topic to return only matching notes; omit it entirely when listing or counting every note.",
       required: false,
+      // Strict providers may serialize an omitted optional string as "". The
+      // empty string is never valid note content (minLength is 1), so normalize
+      // that provider sentinel back to omission before schema validation. This
+      // lets an unfiltered list/count reach the authoritative NotesService
+      // instead of failing and inviting a model-authored estimate.
+      modelOmissionSentinels: [""],
       schema: { type: "string", minLength: 1 },
     },
     {
