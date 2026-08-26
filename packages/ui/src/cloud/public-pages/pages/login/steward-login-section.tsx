@@ -465,9 +465,7 @@ function providersSessionCacheKey(): string {
   return `${PROVIDERS_SESSION_CACHE_PREFIX}:${STEWARD_TENANT_ID}`;
 }
 
-function normalizeSessionCachedProviders(
-  value: unknown,
-): StewardProviders | null {
+function normalizeStewardProviders(value: unknown): StewardProviders | null {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
@@ -518,7 +516,7 @@ function readSessionCachedProviders(): StewardProviders | null {
   try {
     const raw = window.sessionStorage.getItem(providersSessionCacheKey());
     if (!raw) return null;
-    return normalizeSessionCachedProviders(JSON.parse(raw) as unknown);
+    return normalizeStewardProviders(JSON.parse(raw) as unknown);
   } catch (error) {
     // error-policy:J3 a corrupt or inaccessible snapshot is explicitly "no
     // cache" — the section falls back to the discovery skeleton, never to a
@@ -550,12 +548,21 @@ function loadStewardProviders(auth: {
   const requestGeneration = stewardProvidersRequestGeneration;
   stewardProvidersPromise ??= auth.getProviders().then(
     (loadedProviders) => {
-      if (requestGeneration === stewardProvidersRequestGeneration) {
-        cachedStewardProviders = loadedProviders;
-        stewardProvidersPromise = null;
-        writeSessionCachedProviders(loadedProviders);
+      // error-policy:J3 SDK response data is an untrusted transport boundary.
+      // Reject malformed 200 responses instead of caching or rendering a
+      // healthy-looking subset inferred from missing fields.
+      const normalizedProviders = normalizeStewardProviders(loadedProviders);
+      if (normalizedProviders === null) {
+        throw new Error(
+          "Steward returned an invalid sign-in provider configuration.",
+        );
       }
-      return loadedProviders;
+      if (requestGeneration === stewardProvidersRequestGeneration) {
+        cachedStewardProviders = normalizedProviders;
+        stewardProvidersPromise = null;
+        writeSessionCachedProviders(normalizedProviders);
+      }
+      return normalizedProviders;
     },
     (error: unknown) => {
       if (requestGeneration === stewardProvidersRequestGeneration) {
@@ -810,6 +817,8 @@ export default function StewardLoginSection() {
   }, []);
 
   useEffect(() => {
+    // The nonce is the explicit retry trigger for this discovery effect.
+    void providerDiscoveryAttempt;
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) {
       setProvidersLoaded(true);
       return;
