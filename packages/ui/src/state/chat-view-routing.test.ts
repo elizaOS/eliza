@@ -47,18 +47,18 @@ describe("resolveChatViewRouting", () => {
     });
   });
 
-  it("keeps Wallet chat and voice turns scoped to available read/setup capabilities", () => {
+  it("does not invent Wallet capabilities before the registry declares them", () => {
     expect(resolveChatViewRouting("views", "/wallet")).toEqual({
       view: "wallet",
       primaryContext: "wallet",
       secondaryContexts: [],
-      capabilities: ["inspect-wallet", "configure-wallet-rpc"],
+      capabilities: [],
     });
     expect(resolveChatViewRouting("inventory", "/")).toEqual({
       view: "wallet",
       primaryContext: "wallet",
       secondaryContexts: [],
-      capabilities: ["inspect-wallet", "configure-wallet-rpc"],
+      capabilities: [],
     });
   });
 

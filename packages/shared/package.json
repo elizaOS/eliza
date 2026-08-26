@@ -313,6 +313,16 @@
       "import": "./dist/contracts/pendant-session-sync.js",
       "default": "./dist/contracts/pendant-session-sync.js"
     },
+    "./contracts/remote-agent-request": {
+      "types": "./dist/contracts/remote-agent-request.d.ts",
+      "eliza-source": {
+        "types": "./src/contracts/remote-agent-request.ts",
+        "import": "./src/contracts/remote-agent-request.ts",
+        "default": "./src/contracts/remote-agent-request.ts"
+      },
+      "import": "./dist/contracts/remote-agent-request.js",
+      "default": "./dist/contracts/remote-agent-request.js"
+    },
     "./contracts/remote-control": {
       "types": "./dist/contracts/remote-control.d.ts",
       "eliza-source": {

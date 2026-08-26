@@ -86,7 +86,7 @@ describe("chat view metadata", () => {
     });
   });
 
-  it("keeps renderer hints when a view has no declared capabilities", () => {
+  it("clears renderer hints when a registered view declares no capabilities", () => {
     expect(
       enrichChatUiViewMetadata(
         {
@@ -98,7 +98,7 @@ describe("chat view metadata", () => {
       ),
     ).toMatchObject({
       uiView: "chat",
-      uiViewCapabilities: ["general-chat"],
+      uiViewCapabilities: [],
       uiViewActionNames: [],
     });
   });
