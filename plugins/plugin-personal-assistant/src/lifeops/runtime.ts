@@ -66,6 +66,9 @@ export async function executeLifeOpsSchedulerTask(
   scheduledTaskCompletionTimeouts: Awaited<
     ReturnType<LifeOpsService["processScheduledWork"]>
   >["scheduledTaskCompletionTimeouts"];
+  sleepCycleCheckins: Awaited<
+    ReturnType<LifeOpsService["processScheduledWork"]>
+  >["sleepCycleCheckins"];
   subsystemFailures: Awaited<
     ReturnType<LifeOpsService["processScheduledWork"]>
   >["subsystemFailures"];
@@ -146,6 +149,7 @@ export async function executeLifeOpsSchedulerTask(
     scheduledTaskFires: scheduledWork.scheduledTaskFires,
     scheduledTaskCompletionTimeouts:
       scheduledWork.scheduledTaskCompletionTimeouts,
+    sleepCycleCheckins: scheduledWork.sleepCycleCheckins,
     subsystemFailures,
     householdGrantWarningReceipts,
   };

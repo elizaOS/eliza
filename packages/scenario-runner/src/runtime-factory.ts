@@ -9,8 +9,9 @@ import "./react-runtime-stubs";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { AgentRuntime, Plugin } from "@elizaos/core";
+import type { AgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import {
+  AgentEventService,
   AgentRuntime as AgentRuntimeCtor,
   createBasicCapabilitiesPlugin,
   createCharacter,
@@ -96,6 +97,25 @@ const SCHEDULED_DISPATCH_TITLE_BODY_MARKER = "\nMessage body:\n";
 // runtime-wide background work, not scenario-specific: the prompt header below
 // is emitted verbatim by `renderSharedContext`.
 const POST_TURN_EVALUATION_PROMPT_PREFIX = "# Task: Post-turn evaluation";
+
+/**
+ * Production agent-event service for the shared scenario runtime (#29068).
+ * LifeOps in-app delivery (`emitAssistantEvent` → `getAgentEventService`)
+ * resolves `getService("agent_event")`; the factory previously never
+ * registered it, so a due sleep-cycle check-in dispatched to `disconnected`
+ * and the report was dropped while the batch stayed green. The REAL core
+ * service is registered (not a stub) so scenarios observe production
+ * delivery semantics; plugin-declared services start eagerly, which puts
+ * the stream in place before any LifeOps background work begins.
+ */
+function createScenarioAgentEventPlugin(): Plugin {
+  return {
+    name: "scenario-runner-agent-event",
+    description:
+      "Scenario-runner production agent event service for assistant-stream delivery.",
+    services: [AgentEventService as unknown as ServiceClass],
+  };
+}
 
 async function createScenarioKnowledgeGraphPlugin(): Promise<Plugin> {
   const [knowledgeGraphModule, approvalModule] = await Promise.all([
@@ -964,6 +984,7 @@ export async function createScenarioRuntime(
   await runtime.registerPlugin(trajectoriesPlugin);
   registeredPluginPackages.add("@elizaos/plugin-trajectories");
   await runtime.registerPlugin(await createScenarioKnowledgeGraphPlugin());
+  await runtime.registerPlugin(createScenarioAgentEventPlugin());
 
   // Basic capabilities: REPLY, CHOICE, IGNORE, NONE actions, core providers
   // (CHARACTER, ACTIONS, MESSAGES, ENTITIES, ...), and baseline services

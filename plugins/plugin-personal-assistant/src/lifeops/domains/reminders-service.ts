@@ -405,6 +405,24 @@ type ScheduledWorkflowRunner = {
   }): Promise<LifeOpsWorkflowRun[]>;
 };
 
+/**
+ * Observable outcome of one sleep-cycle check-in dispatch attempt inside a
+ * scheduler tick (#29068). `status` is the delivery state, not the report
+ * state: `delivered` means a delivery surface accepted the message AND the
+ * report row was persisted; `skipped_already_sent` is the deterministic
+ * same-local-day dedupe; `disconnected` is a typed delivery failure where
+ * nothing was persisted — previously a log line inside an all-green tick.
+ */
+export interface SleepCycleCheckinDeliveryReport {
+  kind: "morning" | "night";
+  status: "delivered" | "skipped_already_sent" | "disconnected";
+  reportId: string | null;
+  messageId: string | null;
+  reason: string | null;
+  message: string | null;
+  persisted: boolean;
+}
+
 function reminderChoiceId(args: {
   ownerType: "occurrence" | "calendar_event";
   ownerId: string;
@@ -478,6 +496,7 @@ export interface LifeOpsReminderService {
     workflowRuns: LifeOpsWorkflowRun[];
     scheduledTaskFires: Array<Record<string, unknown>>;
     scheduledTaskCompletionTimeouts: Array<Record<string, unknown>>;
+    sleepCycleCheckins: SleepCycleCheckinDeliveryReport[];
     subsystemFailures: LifeOpsScheduledWorkSubsystemFailure[];
   }>;
   relockWebsiteAccessGroup(groupKey: string, now?: Date): Promise<{ ok: true }>;
@@ -5584,6 +5603,7 @@ export class RemindersDomain {
     workflowRuns: LifeOpsWorkflowRun[];
     scheduledTaskFires: Array<Record<string, unknown>>;
     scheduledTaskCompletionTimeouts: Array<Record<string, unknown>>;
+    sleepCycleCheckins: SleepCycleCheckinDeliveryReport[];
     subsystemFailures: LifeOpsScheduledWorkSubsystemFailure[];
   }> {
     const now =
@@ -5833,12 +5853,30 @@ export class RemindersDomain {
           limit: scheduledTaskLimit,
         }),
     );
-    await runSubsystem("sleep_cycle_checkins", undefined, () =>
-      this.processSleepCycleCheckins({
-        now,
-        currentSchedule,
-      }),
-    );
+    const sleepCycleCheckins: SleepCycleCheckinDeliveryReport[] =
+      await runSubsystem("sleep_cycle_checkins", [], () =>
+        this.processSleepCycleCheckins({
+          now,
+          currentSchedule,
+        }),
+      );
+    // A due check-in whose every delivery surface rejected the message is a
+    // tick failure (#29068): the report was generated and then dropped. The
+    // subsystem-isolation contract still holds — the tick completes and the
+    // failure is typed in the summary — but the owning scenario (or operator
+    // reading the scheduler task result) can no longer see 16/16 green while
+    // a morning check-in silently vanished.
+    for (const checkin of sleepCycleCheckins) {
+      if (checkin.status === "disconnected") {
+        subsystemFailures.push({
+          subsystem: "sleep_cycle_checkins",
+          error:
+            "Sleep-cycle check-in delivery failed; report not persisted " +
+            `(${checkin.kind} report ${checkin.reportId ?? "?"}: ` +
+            `${checkin.reason ?? "unknown"})`,
+        });
+      }
+    }
     await this.runTelemetryMaintenanceIfDue(now);
     return {
       now: now.toISOString(),
@@ -5851,6 +5889,7 @@ export class RemindersDomain {
         scheduledTaskResult.completionTimeouts.map((timeout) => ({
           ...timeout,
         })),
+      sleepCycleCheckins,
       subsystemFailures,
     };
   }
@@ -5947,10 +5986,10 @@ export class RemindersDomain {
   private async processSleepCycleCheckins(args: {
     now: Date;
     currentSchedule: LifeOpsScheduleMergedStateRecord | null;
-  }): Promise<void> {
+  }): Promise<SleepCycleCheckinDeliveryReport[]> {
     const currentSchedule = args.currentSchedule;
     if (!currentSchedule) {
-      return;
+      return [];
     }
     const service = new CheckinService(this.ctx.runtime, {
       sources: this.deps.checkinSource,
@@ -5961,7 +6000,9 @@ export class RemindersDomain {
     // the dispatcher just consumed for trigger decisions. Morning runs
     // ignore this field; the assignment below is night-only by design.
     const sleepRecap = buildSleepRecapFromSchedule(currentSchedule);
-    const dispatch = async (kind: "morning" | "night"): Promise<void> => {
+    const dispatch = async (
+      kind: "morning" | "night",
+    ): Promise<SleepCycleCheckinDeliveryReport> => {
       const alreadySent = await service.hasCheckinForLocalDay({
         kind,
         now: args.now,
@@ -5984,7 +6025,15 @@ export class RemindersDomain {
             });
           }
         }
-        return;
+        return {
+          kind,
+          status: "skipped_already_sent",
+          reportId: null,
+          messageId: null,
+          reason: null,
+          message: null,
+          persisted: false,
+        };
       }
       const report =
         kind === "morning"
@@ -6036,18 +6085,36 @@ export class RemindersDomain {
             message: delivery.message,
           },
         );
-        return;
+        return {
+          kind,
+          status: "disconnected",
+          reportId: report.reportId,
+          messageId: null,
+          reason: delivery.reason,
+          message: delivery.message ?? null,
+          persisted: false,
+        };
       }
       await service.persistCheckinReport(report, args.now);
+      return {
+        kind,
+        status: "delivered",
+        reportId: report.reportId,
+        messageId: delivery.messageId ?? null,
+        reason: null,
+        message: null,
+        persisted: true,
+      };
     };
 
+    const results: SleepCycleCheckinDeliveryReport[] = [];
     if (
       shouldRunMorningCheckinFromSleepCycle({
         state: currentSchedule,
         now: args.now,
       })
     ) {
-      await dispatch("morning");
+      results.push(await dispatch("morning"));
     }
     // For irregular-schedule owners, the relative-time resolver leaves
     // `bedtimeTargetAt` null because no projection is trustworthy. Read the
@@ -6062,8 +6129,9 @@ export class RemindersDomain {
         nightFallbackBedtimeLocal: profileSchedule.nightCheckinTime,
       })
     ) {
-      await dispatch("night");
+      results.push(await dispatch("night"));
     }
+    return results;
   }
 
   /**
