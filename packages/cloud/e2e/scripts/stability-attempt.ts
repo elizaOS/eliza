@@ -5,18 +5,36 @@
  */
 
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
+import { canonicalJsonString } from "@elizaos/shared/canonical-json";
 import cloudStabilityScenario from "../scenarios/cloud-stability-agent.scenario.ts";
 import { startCloudStack } from "../src/fixtures/stack.ts";
 import { canonicalCloudStabilitySha256 } from "../src/stability/cloud-stability-runner.ts";
+import {
+  liveModelScenarioChildEnvironment,
+  type StabilityModelProvider,
+  startLiveModelEgressProxy,
+} from "../src/stability/live-model-meter.ts";
+import {
+  createLoopbackOnlyFetch,
+  type StabilityParentNetworkEntry,
+} from "../src/stability/parent-network-guard.ts";
+import { readRealModelBootstrap } from "../src/stability/real-model-bootstrap.ts";
 
 const required = (name: string): string => {
   const value = process.env[name];
   if (!value) throw new Error(`Cloud stability attempt requires ${name}`);
+  return value;
+};
+const requiredPositiveInteger = (name: string): number => {
+  const value = Number(required(name));
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive safe integer`);
+  }
   return value;
 };
 const outputDir = required("ELIZA_STABILITY_OUTPUT_DIR");
@@ -80,136 +98,47 @@ const scenarioPath = path.join(
 );
 const scenarioReportPath = path.join(outputDir, "scenario-report.json");
 const nativePath = path.join(outputDir, "trajectory.native.jsonl");
-const networkLedger: Array<{
-  origin: string;
-  method: string;
-  allowed: boolean;
-}> = [];
+const networkLedger: StabilityParentNetworkEntry[] = [];
 
 const nativeFetch = globalThis.fetch;
 const providerRoutes: Record<
   string,
   {
     origin: string;
-    baseUrlEnvironment: "OPENAI_BASE_URL" | "ANTHROPIC_BASE_URL";
+    credentialEnvironment: "OPENAI_API_KEY" | "ANTHROPIC_API_KEY";
   }
 > = {
   openai: {
     origin: "https://api.openai.com",
-    baseUrlEnvironment: "OPENAI_BASE_URL",
+    credentialEnvironment: "OPENAI_API_KEY",
   },
   anthropic: {
     origin: "https://api.anthropic.com",
-    baseUrlEnvironment: "ANTHROPIC_BASE_URL",
+    credentialEnvironment: "ANTHROPIC_API_KEY",
   },
 };
-const guardedFetch: typeof globalThis.fetch = Object.assign(
-  async (
-    input: Parameters<typeof nativeFetch>[0],
-    init?: Parameters<typeof nativeFetch>[1],
-  ) => {
-    const url = new URL(
-      typeof input === "string" || input instanceof URL ? input : input.url,
-    );
-    const loopback =
-      url.hostname === "localhost" ||
-      url.hostname === "::1" ||
-      url.hostname === "[::1]" ||
-      url.hostname.startsWith("127.");
-    const allowed =
-      loopback ||
-      (mode === "real-llm" && providerRoutes[provider]?.origin === url.origin);
-    networkLedger.push({
-      origin: url.origin,
-      method: init?.method ?? "GET",
-      allowed,
-    });
-    if (!allowed) throw new Error(`unexpected egress blocked: ${url.origin}`);
-    return nativeFetch(input, init);
-  },
-  { preconnect: nativeFetch.preconnect },
-);
-globalThis.fetch = guardedFetch;
-
-async function startModelEgressProxy(): Promise<{
-  url: string;
-  requestCount: () => number;
-  stop: () => Promise<void>;
-}> {
-  const route = providerRoutes[provider];
-  if (!route) throw new Error(`unsupported real-model provider ${provider}`);
-  let requests = 0;
-  const server = createServer((request, response) => {
-    void (async () => {
-      const chunks: Buffer[] = [];
-      let requestBytes = 0;
-      for await (const chunk of request) {
-        const bytes = Buffer.from(chunk);
-        requestBytes += bytes.byteLength;
-        if (requestBytes > 8 * 1024 * 1024) {
-          throw new Error("provider proxy request exceeded 8 MiB");
-        }
-        chunks.push(bytes);
-      }
-      requests += 1;
-      const upstream = await nativeFetch(
-        `${route.origin}${request.url ?? "/"}`,
-        {
-          method: request.method,
-          headers: Object.fromEntries(
-            Object.entries(request.headers).flatMap(([key, value]) =>
-              value === undefined
-                ? []
-                : [[key, Array.isArray(value) ? value.join(",") : value]],
-            ),
-          ),
-          body: chunks.length > 0 ? Buffer.concat(chunks) : undefined,
-          signal: AbortSignal.timeout(120_000),
-        },
-      );
-      networkLedger.push({
-        origin: route.origin,
-        method: request.method ?? "GET",
-        allowed: true,
-      });
-      const responseBytes = Buffer.from(await upstream.arrayBuffer());
-      if (responseBytes.byteLength > 16 * 1024 * 1024) {
-        throw new Error("provider proxy response exceeded 16 MiB");
-      }
-      const headers = Object.fromEntries(upstream.headers);
-      delete headers["content-encoding"];
-      delete headers["content-length"];
-      delete headers.connection;
-      delete headers["transfer-encoding"];
-      response.writeHead(upstream.status, headers);
-      response.end(responseBytes);
-    })().catch((error: unknown) => {
-      // error-policy:J1 The loopback proxy translates selected-provider failures to the scenario client.
-      response.writeHead(502, { "content-type": "application/json" });
-      response.end(
-        JSON.stringify({
-          error: {
-            message:
-              error instanceof Error ? error.message : "provider proxy failure",
-          },
-        }),
-      );
-    });
-  });
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
-  });
-  const port = (server.address() as AddressInfo).port;
-  return {
-    url: `http://127.0.0.1:${port}/v1`,
-    requestCount: () => requests,
-    stop: () =>
-      new Promise<void>((resolve, reject) =>
-        server.close((error) => (error ? reject(error) : resolve())),
-      ),
-  };
+const providerRoute = providerRoutes[provider];
+if (mode === "real-llm" && !providerRoute) {
+  throw new Error(`unsupported real-model provider ${provider}`);
 }
+const realModelBootstrap =
+  mode === "real-llm" ? await readRealModelBootstrap() : undefined;
+if (
+  realModelBootstrap &&
+  providerRoute &&
+  realModelBootstrap.credentialEnvironment !==
+    providerRoute.credentialEnvironment
+) {
+  throw new Error("real-model bootstrap credential does not match provider");
+}
+const realModelCredential =
+  mode === "real-llm" ? realModelBootstrap?.credentialValue : undefined;
+const meterAttestationKey = realModelBootstrap?.meterAttestationKey;
+delete process.env.OPENAI_API_KEY;
+delete process.env.ANTHROPIC_API_KEY;
+delete process.env.ELIZA_STABILITY_METER_ATTESTATION_KEY;
+const guardedFetch = createLoopbackOnlyFetch(nativeFetch, networkLedger);
+globalThis.fetch = guardedFetch;
 
 type MockOperation = {
   service: "cloud-api" | "hetzner";
@@ -240,7 +169,7 @@ async function startMockAuditProxy(
         ? upstream.pathname.slice(0, -1)
         : upstream.pathname;
       const target = new URL(`${basePath}${incomingPath}`, upstream.origin);
-      const result = await nativeFetch(target, {
+      const result = await guardedFetch(target, {
         method: request.method,
         headers: Object.fromEntries(
           Object.entries(request.headers).flatMap(([key, value]) =>
@@ -358,8 +287,32 @@ const hetznerProxy = await startMockAuditProxy(
   stack.urls.hetzner,
   mockOperations,
 );
+const maxModelRequests =
+  mode === "real-llm"
+    ? requiredPositiveInteger("ELIZA_STABILITY_MAX_MODEL_REQUESTS")
+    : 0;
 const modelProxy =
-  mode === "real-llm" ? await startModelEgressProxy() : undefined;
+  mode === "real-llm"
+    ? await startLiveModelEgressProxy({
+        provider: provider as StabilityModelProvider,
+        expectedModel: model,
+        budgets: {
+          maxInputTokens: requiredPositiveInteger(
+            "ELIZA_STABILITY_MAX_INPUT_TOKENS",
+          ),
+          maxOutputTokens: requiredPositiveInteger(
+            "ELIZA_STABILITY_MAX_OUTPUT_TOKENS",
+          ),
+          maxRequests: maxModelRequests,
+        },
+        upstreamCredential: realModelCredential,
+        fetchUpstream: (url, init) => nativeFetch(url, init),
+        upstreamOrigin: providerRoute?.origin,
+        onUpstreamRequest: (origin, method) => {
+          networkLedger.push({ origin, method, allowed: true });
+        },
+      })
+    : undefined;
 const childNetworkLedgerPath = path.join(
   outputDir,
   "child-network-ledger.jsonl",
@@ -372,6 +325,13 @@ const childQuiescenceLedgerPath = path.join(
   outputDir,
   "child-quiescence-ledger.json",
 );
+const childProcessEnvironment = modelProxy
+  ? liveModelScenarioChildEnvironment(
+      provider as StabilityModelProvider,
+      modelProxy.url,
+      process.env,
+    )
+  : process.env;
 let cliStdout = "";
 let cliStderr = "";
 let cliCode: number | null = null;
@@ -405,14 +365,11 @@ try {
     shell: false,
     stdio: ["ignore", "pipe", "pipe"],
     env: {
-      ...process.env,
+      ...childProcessEnvironment,
       CLOUD_E2E_API_URL: cloudApiProxy.url,
       CLOUD_E2E_CONTROL_PLANE_URL: stack.urls.controlPlane,
       CLOUD_E2E_HETZNER_URL: hetznerProxy.url,
       ELIZA_SCENARIO_MODEL: model,
-      ...(modelProxy
-        ? { [providerRoutes[provider].baseUrlEnvironment]: modelProxy.url }
-        : {}),
       ELIZA_STABILITY_CHILD_NETWORK_LEDGER: childNetworkLedgerPath,
       ELIZA_STABILITY_CHILD_QUIESCENCE_LEDGER: childQuiescenceLedgerPath,
       ELIZA_SYNTHETIC_RUNTIME_LEDGER: childRuntimeLedgerPath,
@@ -464,8 +421,8 @@ try {
 }
 
 const explicitSecrets = [
-  process.env.OPENAI_API_KEY,
-  process.env.ANTHROPIC_API_KEY,
+  realModelCredential,
+  meterAttestationKey,
   process.env.ELIZA_SYNTHETIC_CONTROL_TOKEN,
 ].filter(
   (value): value is string => typeof value === "string" && value.length > 0,
@@ -584,7 +541,14 @@ const runtimeErrors = childRuntimeLedger.reportedErrors ?? [];
 const unexpectedEgress = [...networkLedger, ...childNetworkLedger].filter(
   (entry) => !entry.allowed,
 ).length;
-const providerReceipt =
+const modelMeter = modelProxy?.snapshot() ?? {
+  requestCount: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  failures: [],
+  requestEnvelopes: [],
+};
+const unsignedProviderReceipt =
   mode === "deterministic-mock"
     ? (() => {
         const diagnostics = scenarioResult.modelFixtureDiagnostics;
@@ -630,7 +594,12 @@ const providerReceipt =
         receiptType: "eliza.stability.real-llm.v1",
         provider,
         model,
-        liveModelInvoked: (modelProxy?.requestCount() ?? 0) > 0,
+        liveModelInvoked: modelMeter.requestCount > 0,
+        requestCount: modelMeter.requestCount,
+        inputTokens: modelMeter.inputTokens,
+        outputTokens: modelMeter.outputTokens,
+        meteringFailures: modelMeter.failures,
+        requestEnvelopes: modelMeter.requestEnvelopes,
         namespace,
         manifestId,
         generation,
@@ -639,12 +608,34 @@ const providerReceipt =
         unexpectedRealServiceCalls: unexpectedEgress,
         unexpectedNetworkCalls: unexpectedEgress,
       };
+const providerReceipt =
+  mode === "real-llm" && meterAttestationKey
+    ? {
+        ...unsignedProviderReceipt,
+        attestation: createHmac("sha256", meterAttestationKey)
+          .update(
+            canonicalJsonString(unsignedProviderReceipt, {
+              maxDepth: 32,
+              maxNodes: 100_000,
+              maxOutputChars: 8 * 1024 * 1024,
+              sparseArrayHoles: "null",
+              onUnbounded: () => {
+                throw new Error(
+                  "real-model receipt attestation exceeds canonical JSON limits",
+                );
+              },
+            }),
+          )
+          .digest("hex"),
+      }
+    : unsignedProviderReceipt;
 const ledger = {
   network: { parentAndProxy: networkLedger, child: childNetworkLedger },
   mockServices: {
     hetznerServers: stack.mocks.hetzner.store.servers.size,
     controlPlaneUrl: stack.urls.controlPlane,
-    providerProxyRequests: modelProxy?.requestCount() ?? 0,
+    providerProxyRequests: modelMeter.requestCount,
+    providerUsage: modelMeter,
     operations: mockOperations,
   },
   actionCount: actions.length,
@@ -680,6 +671,11 @@ const passed =
   naturalExitLatencyMs >= 0 &&
   naturalExitLatencyMs <= 5_000 &&
   unexpectedEgress === 0 &&
+  modelMeter.failures.length === 0 &&
+  (mode !== "real-llm" ||
+    (modelMeter.requestCount > 0 &&
+      modelMeter.requestCount <= maxModelRequests &&
+      modelMeter.inputTokens > 0)) &&
   mockOperations.some(
     (operation) =>
       operation.service === "hetzner" &&
@@ -709,8 +705,8 @@ process.stdout.write(
     passed,
     initialStateHash,
     finalStateHash,
-    inputTokens: 0,
-    outputTokens: 0,
+    inputTokens: modelMeter.inputTokens,
+    outputTokens: modelMeter.outputTokens,
     toolCalls: actions.length,
     evidence: {
       trajectory: turns,
@@ -722,6 +718,10 @@ process.stdout.write(
     stateDiff: ledger,
     ...(passed
       ? {}
-      : { error: `scenario failed with code ${String(cliCode)}` }),
+      : {
+          error:
+            modelMeter.failures.at(-1)?.code ??
+            `scenario failed with code ${String(cliCode)}`,
+        }),
   }),
 );
