@@ -225,6 +225,35 @@ describe("AppControlCoordinator", () => {
     });
   });
 
+  it("refuses an exact-window receipt with mismatched action target bounds", async () => {
+    const exactWindowPointer: AppExactWindowPointerDispatcher = {
+      available: () => true,
+      dispatch: vi.fn(async (input) => ({
+        success: true,
+        route: "experimental_direct_exact_window" as const,
+        observationId: input.state.stateId,
+        targetPid: app.pid,
+        targetWindowId: 17,
+        targetWindowBounds: { x: 0, y: 0, width: 1, height: 1 },
+        pointerBefore: { x: 10, y: 20 },
+        pointerAfter: { x: 10, y: 20 },
+      })),
+    };
+    const snapshots = [nativeSnapshot(), nativeSnapshot(), nativeSnapshot()];
+    for (const snapshot of snapshots) snapshot.focusedWindowId = 17;
+    const { coordinator } = fixture({
+      snapshots,
+      exactWindowPointer,
+      performSuccess: false,
+    });
+    const before = await coordinator.getAppState(app.id);
+    const outcome = await coordinator.act(
+      action(before.stateId, { allowExperimentalExactWindow: true }),
+    );
+    expect(outcome.success).toBe(false);
+    expect(outcome.error).toContain("failed validation");
+  });
+
   it("keeps hover planning in the agent overlay without invoking AX or the pointer", async () => {
     const pointer = { click: vi.fn(), scroll: vi.fn() };
     const { adapter, coordinator } = fixture({ pointer });

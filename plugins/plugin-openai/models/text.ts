@@ -2421,8 +2421,12 @@ async function generateTextByModelType(
   // Object.getOwnPropertyDescriptor and rejected without invocation; cycles
   // and over-depth fail closed with the typed WELL_FORMED_* contract.
   if (normalizedToolResult.tools) {
+    // Uniform per-edge charging with no name-based exemptions: a schema at
+    // the walkers' full authority costs up to twice its node depth here, so
+    // the cap is sized 2x + slack while hostile wrapper structure stays
+    // bounded far below stack limits.
     assertSchemaAnnotationsSerializable(paramsWithAttachments.tools, {
-      maxDepth: MAX_WELL_FORMED_DEPTH,
+      maxDepth: 2 * MAX_WELL_FORMED_DEPTH + 8,
     });
   }
   const normalizedTools = normalizedToolResult.tools;
