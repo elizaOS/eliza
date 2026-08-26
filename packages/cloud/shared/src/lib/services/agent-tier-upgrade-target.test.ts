@@ -147,7 +147,9 @@ const SRC_RACE_1 = "cccccccc-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const SRC_RACE_2 = "cccccccc-dddd-4ddd-8ddd-dddddddddddd";
 const SRC_RACE_CREATE = "cccccccc-eeee-4eee-8eee-eeeeeeeeeeee";
 const SRC_SELECTED = "cccccccc-f111-4f11-8f11-111111111111";
+const SRC_UNSELECTED = "cccccccc-f222-4f22-8f22-222222222222";
 const SELECTED_TARGET = "dddddddd-f111-4f11-8f11-111111111111";
+const UNSELECTED_TARGET = "dddddddd-f222-4f22-8f22-222222222222";
 const QUOTA_EXISTING = "dddddddd-1111-4111-8111-111111111111";
 
 const PGLITE_TIMEOUT = 120_000;
@@ -237,6 +239,7 @@ beforeAll(async () => {
       execution_tier: "dedicated-always",
       status: "running",
       database_status: "none",
+      agent_config: { __agentUpgradedFrom: "quota-fixture-existing-source" },
     });
 
     svc = await import("./agent-tier-upgrade-target");
@@ -295,6 +298,36 @@ async function expectNoOrphanAgentKeys() {
 }
 
 describe("createTierUpgradeTargetWithProvision — durable single-flight boundary", () => {
+  test(
+    "an unselected same-owner Dedicated row blocks the normal mint path before credential preparation",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      await dbWrite.insert(agentSandboxes).values({
+        id: UNSELECTED_TARGET,
+        organization_id: ORG_A,
+        user_id: USER_A,
+        agent_name: "Unselected existing target",
+        execution_tier: "dedicated-always",
+        status: "error",
+        database_status: "ready",
+      });
+
+      const callsBefore = prepCalls;
+      await expect(
+        svc.createTierUpgradeTargetWithProvision(upgradeParams(SRC_UNSELECTED)),
+      ).rejects.toMatchObject({
+        code: "PERSONAL_DEDICATED_SELECTION_REQUIRES_ADOPTION",
+      });
+      expect(prepCalls).toBe(callsBefore);
+      expect(await targetsForSource(SRC_UNSELECTED)).toHaveLength(0);
+      expect(await jobsForAgent(UNSELECTED_TARGET)).toHaveLength(0);
+      await expectNoOrphanAgentKeys();
+
+      await dbWrite.delete(agentSandboxes).where(eq(agentSandboxes.id, UNSELECTED_TARGET));
+    },
+    PGLITE_TIMEOUT,
+  );
+
   test(
     "a durable same-row selection blocks the normal mint path before credential preparation",
     async () => {

@@ -5,6 +5,7 @@
  */
 
 import type { ReactNode } from "react";
+import { Card } from "../../../../components/ui/card";
 
 export interface AuthResultShellProps {
   children: ReactNode;
@@ -12,12 +13,14 @@ export interface AuthResultShellProps {
 
 export function AuthResultShell({ children }: AuthResultShellProps) {
   return (
-    <main className="theme-cloud relative flex min-h-[100dvh] items-center justify-center bg-bg p-4">
-      <div className="relative w-full max-w-md border border-border bg-card p-8">
-        <div className="flex flex-col items-center gap-6 text-center">
-          {children}
-        </div>
-      </div>
-    </main>
+    <Card asChild variant="sandboxFrame">
+      <main className="theme-cloud relative flex min-h-[100dvh] items-center justify-center p-4">
+        <Card variant="outlinedPadded" className="relative w-full max-w-md p-8">
+          <div className="flex flex-col items-center gap-6 text-center">
+            {children}
+          </div>
+        </Card>
+      </main>
+    </Card>
   );
 }

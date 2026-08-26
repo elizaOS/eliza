@@ -176,22 +176,8 @@ html.eliza-chat-overlay-shell #root {
 }
 
 html.eliza-chat-overlay-shell .shell-assistant-overlay-panel {
-  /* The popup floats over arbitrary desktop content, so its local palette is a
-     stable dark material rather than inheriting a page theme that may make the
-     conversation translucent white. The eliza-glass-sheet recipe owns the
-     fill and blur; these variables keep its descendants on the same contrast
-     contract. */
-  --card: rgb(20 20 24 / 82%);
-  --card-foreground: #f5f5f5;
-  --text: #f5f5f5;
-  --text-strong: #ffffff;
-  --txt: var(--text);
-  --muted: rgb(255 255 255 / 64%);
-  --muted-strong: rgb(255 255 255 / 78%);
-  --foreground: var(--text);
-  --muted-foreground: var(--muted);
-  --bg: rgb(12 12 14);
-  --accent-subtle: rgb(255 88 0 / 18%);
+  /* Card owns the fixed dark palette and glass paint; this shell selector
+     keeps only native-popup placement and animation geometry. */
   top: auto;
   right: auto;
   /* Keep the conversation physically above the persistent Flow handle. The
@@ -215,8 +201,6 @@ html.eliza-chat-overlay-shell .shell-assistant-overlay-panel {
      `motion-safe:animate-[shell-overlay-in_220ms_ease-out]` utility (the
      `-anchored` keyframes are declared in base.css next to the base ones). */
   animation-name: shell-overlay-in-anchored;
-  border-radius: 1.5rem;
-  border-color: rgb(255 255 255 / 20%);
 }
 
 /* `body.pwa-standalone` mirrors the native mobile lockdown for an INSTALLED

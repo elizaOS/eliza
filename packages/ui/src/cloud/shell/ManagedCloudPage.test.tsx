@@ -69,6 +69,14 @@ vi.mock("./cloud-route-registry", async () => {
       {
         path: "cloud/billing",
         group: "cloud",
+        surface: {
+          layout: {
+            kind: "workspace",
+            width: "wide",
+            scroll: "view",
+            gutter: "none",
+          },
+        },
         element: () => {
           useSetPageHeader({
             title: "Cloud Billing",
@@ -145,6 +153,17 @@ describe("ManagedCloudPage", () => {
       }),
     ).toBeTruthy();
     expect(screen.getAllByTestId("view-header")).toHaveLength(1);
+    const frame = screen
+      .getByTestId("billing-page")
+      .closest("[data-page-kind]");
+    expect(frame?.getAttribute("data-page-kind")).toBe("workspace");
+    expect(frame?.getAttribute("data-page-width")).toBe("wide");
+    expect(frame?.getAttribute("data-page-gutter")).toBeNull();
+    expect(
+      frame
+        ?.querySelector("[data-page-content]")
+        ?.getAttribute("data-page-gutter"),
+    ).toBe("none");
   });
 
   it("hides Cloud management for local and VPS agents", () => {

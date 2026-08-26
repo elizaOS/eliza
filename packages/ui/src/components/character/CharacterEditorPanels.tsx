@@ -14,6 +14,7 @@ import {
 import { useAgentElement } from "../../agent-surface";
 import type { CharacterData } from "../../api/client-types-config";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 
@@ -303,58 +304,60 @@ function StyleRuleRow({
       onActivate: onRemove,
     });
   return (
-    <fieldset
-      draggable
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-      onDragEnd={onDragEnd}
-      className={`group flex min-w-0 items-center gap-2 px-0 py-1 transition-opacity ${isDragging ? "opacity-40" : ""}`}
-    >
-      <span
-        className="shrink-0 text-muted opacity-60 cursor-grab active:cursor-grabbing select-none"
-        aria-hidden="true"
-        title={t("charactereditor.DragToReorder", {
-          defaultValue: "Drag to reorder",
-        })}
+    <Card asChild variant="transparent">
+      <fieldset
+        draggable
+        onDragStart={onDragStart}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+        onDragEnd={onDragEnd}
+        className={`group flex min-w-0 items-center gap-2 px-0 py-1 transition-opacity ${isDragging ? "opacity-40" : ""}`}
       >
-        <GripIconSvg />
-      </span>
-      <Input
-        variant="embeddedName"
-        density="denseResponsive"
-        hasError={isDuplicate}
-        ref={inputRef}
-        value={value}
-        onChange={(e: ChangeEvent<HTMLInputElement>) =>
-          onDraftChange(e.target.value)
-        }
-        onBlur={onCommit}
-        aria-label={ruleLabel}
-        className="min-w-0 flex-1"
-        {...inputAgentProps}
-      />
-      {isDuplicate ? (
-        <span className="shrink-0 text-[0.68rem] font-medium text-warning">
-          {t("charactereditor.DuplicateRule", {
-            defaultValue: "duplicate",
+        <span
+          className="shrink-0 text-muted opacity-60 cursor-grab active:cursor-grabbing select-none"
+          aria-hidden="true"
+          title={t("charactereditor.DragToReorder", {
+            defaultValue: "Drag to reorder",
           })}
+        >
+          <GripIconSvg />
         </span>
-      ) : null}
-      <Button
-        ref={removeRef}
-        type="button"
-        variant="destructive"
-        size="icon-sm"
-        className="shrink-0 opacity-0 group-hover:opacity-100"
-        onClick={onRemove}
-        title={t("common.remove")}
-        aria-label={`${t("common.remove")} ${ruleLabel}`}
-        {...removeAgentProps}
-      >
-        <TrashIconSvg />
-      </Button>
-    </fieldset>
+        <Input
+          variant="embeddedName"
+          density="denseResponsive"
+          hasError={isDuplicate}
+          ref={inputRef}
+          value={value}
+          onChange={(e: ChangeEvent<HTMLInputElement>) =>
+            onDraftChange(e.target.value)
+          }
+          onBlur={onCommit}
+          aria-label={ruleLabel}
+          className="min-w-0 flex-1"
+          {...inputAgentProps}
+        />
+        {isDuplicate ? (
+          <span className="shrink-0 text-[0.68rem] font-medium text-warning">
+            {t("charactereditor.DuplicateRule", {
+              defaultValue: "duplicate",
+            })}
+          </span>
+        ) : null}
+        <Button
+          ref={removeRef}
+          type="button"
+          variant="destructive"
+          size="icon-sm"
+          className="shrink-0 opacity-0 group-hover:opacity-100"
+          onClick={onRemove}
+          title={t("common.remove")}
+          aria-label={`${t("common.remove")} ${ruleLabel}`}
+          {...removeAgentProps}
+        >
+          <TrashIconSvg />
+        </Button>
+      </fieldset>
+    </Card>
   );
 }
 
@@ -720,68 +723,70 @@ function PostExampleRow({
       onActivate: onRemove,
     });
   return (
-    <fieldset
-      draggable
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-      onDragEnd={onDragEnd}
-      className={`group flex min-w-0 items-start gap-2 py-2.5 transition-opacity ${isDragging ? "opacity-40" : ""}`}
-    >
-      <span
-        className="mt-2 text-muted opacity-60 cursor-grab active:cursor-grabbing select-none"
-        aria-hidden="true"
-        title={t("charactereditor.DragToReorder", {
-          defaultValue: "Drag to reorder",
-        })}
+    <Card asChild variant="transparent">
+      <fieldset
+        draggable
+        onDragStart={onDragStart}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+        onDragEnd={onDragEnd}
+        className={`group flex min-w-0 items-start gap-2 py-2.5 transition-opacity ${isDragging ? "opacity-40" : ""}`}
       >
-        <GripIconSvg />
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="mb-1.5 flex flex-wrap items-center gap-2">
-          <span className="text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-accent">
-            {t("charactereditor.PostExample", {
-              defaultValue: "Post",
-            })}{" "}
-            #{pi + 1}
-          </span>
-          {isDuplicate ? (
-            <span className="text-[0.68rem] font-medium text-warning">
-              {t("charactereditor.DuplicatePost", {
-                defaultValue: "duplicate",
-              })}
-            </span>
-          ) : null}
-        </div>
-        <Textarea
-          ref={textRef}
-          variant="documentEditor"
-          density="compact"
-          value={post}
-          rows={3}
-          aria-label={postLabel}
-          onChange={(e) => onChange(e.target.value)}
-          {...textAgentProps}
-        />
-      </div>
-      <div className="flex shrink-0 flex-col gap-1">
-        <Button
-          ref={removeRef}
-          type="button"
-          variant="destructive"
-          size="icon-sm"
-          className="shrink-0"
-          onClick={onRemove}
-          aria-label={`${t("common.remove")} post ${pi + 1}`}
-          title={t("charactereditor.RemovePost", {
-            defaultValue: "Remove post",
+        <span
+          className="mt-2 text-muted opacity-60 cursor-grab active:cursor-grabbing select-none"
+          aria-hidden="true"
+          title={t("charactereditor.DragToReorder", {
+            defaultValue: "Drag to reorder",
           })}
-          {...removeAgentProps}
         >
-          <TrashIconSvg />
-        </Button>
-      </div>
-    </fieldset>
+          <GripIconSvg />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="mb-1.5 flex flex-wrap items-center gap-2">
+            <span className="text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-accent">
+              {t("charactereditor.PostExample", {
+                defaultValue: "Post",
+              })}{" "}
+              #{pi + 1}
+            </span>
+            {isDuplicate ? (
+              <span className="text-[0.68rem] font-medium text-warning">
+                {t("charactereditor.DuplicatePost", {
+                  defaultValue: "duplicate",
+                })}
+              </span>
+            ) : null}
+          </div>
+          <Textarea
+            ref={textRef}
+            variant="documentEditor"
+            density="compact"
+            value={post}
+            rows={3}
+            aria-label={postLabel}
+            onChange={(e) => onChange(e.target.value)}
+            {...textAgentProps}
+          />
+        </div>
+        <div className="flex shrink-0 flex-col gap-1">
+          <Button
+            ref={removeRef}
+            type="button"
+            variant="destructive"
+            size="icon-sm"
+            className="shrink-0"
+            onClick={onRemove}
+            aria-label={`${t("common.remove")} post ${pi + 1}`}
+            title={t("charactereditor.RemovePost", {
+              defaultValue: "Remove post",
+            })}
+            {...removeAgentProps}
+          >
+            <TrashIconSvg />
+          </Button>
+        </div>
+      </fieldset>
+    </Card>
   );
 }
 

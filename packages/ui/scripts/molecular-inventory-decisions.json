@@ -15,24 +15,36 @@
     "disposition": "distinct-domain-compositions",
     "rationale": "Search, connector setup, and release-note panels have different interaction and state contracts."
   },
-  "card:badge+button+checkbox+dialog+spinner": {
+  "card:badge+button+card+checkbox+dialog+spinner": {
     "disposition": "distinct-domain-compositions",
     "rationale": "The credential-pool card owns priority ordering, provider usage windows, credential repair, and enabled opacity; the connector card owns selection/default state, capability grants, privacy/purpose, sync identity, and independent busy transitions. Their shared status, editing, controls, and confirmation behavior already comes from canonical atoms, while a shared slot shell would hide distinct state machines without removing domain logic."
   },
-  "dialog:button+input": {
+  "dialog:alert+button+card": {
     "disposition": "distinct-domain-compositions",
-    "rationale": "Account deletion and sign-in are unrelated workflows despite using the same atoms."
+    "rationale": "The dialogs share canonical feedback and surface atoms while retaining unrelated validation, confirmation, and completion lifecycles."
   },
   "form:button+input": {
     "disposition": "distinct-domain-compositions",
     "rationale": "Trigger configuration and tag editing do not share a domain contract or meaningful layout beyond generic form controls."
   },
-  "header:button+input": {
+  "panel:button+card+input": {
     "disposition": "distinct-domain-compositions",
-    "rationale": "Search navigation and meeting join controls have unrelated behavior; the role-name match is superficial."
+    "rationale": "These panels use the canonical Card boundary but retain unrelated search, connector, and release workflows."
+  },
+  "row:button+card": {
+    "disposition": "distinct-domain-compositions",
+    "rationale": "Sidebar and settings rows share atomic controls but own different selection, status, and lifecycle contracts."
+  },
+  "row:button+card+statusDot": {
+    "disposition": "distinct-domain-compositions",
+    "rationale": "Rail rows compose the same atomic status indicator while preserving domain-specific navigation and selection behavior."
   },
   "panel:badge+button+input": {
     "disposition": "shared-lifecycle-owner",
     "rationale": "The cloud-panel-owned useCloudAgentManagement pattern owns list refresh, create, rename, suspend/resume, delete polling, wake-and-switch, persistence, and notices; AgentSection and CloudAgentsSection are distinct presentation adapters with explicit management-token providers."
+  },
+  "list:badge+button+card": {
+    "disposition": "distinct-domain-compositions",
+    "rationale": "The lists share canonical status, action, and surface atoms, but their item identity, loading, selection, and mutation contracts remain domain-specific."
   }
 }

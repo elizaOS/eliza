@@ -8,8 +8,19 @@ import test from "node:test";
 import {
   ATOMS,
   buildInventory,
+  isMaintainedSource,
   renderMarkdown,
 } from "./find-duplicate-components.mjs";
+
+test("a generated declaration removed during a concurrent build is skipped", () => {
+  assert.equal(
+    isMaintainedSource(
+      new URL("../../core/src/vanished-runtime-composition.d.ts", import.meta.url)
+        .pathname,
+    ),
+    false,
+  );
+});
 
 test("the atomic inventory is deterministic and repository-wide", () => {
   const first = buildInventory();
@@ -52,8 +63,8 @@ test("the inventory identifies canonical ownership without regressing wrappers",
   assert.equal(report.atoms.card.rawHostUsage.length, 0);
   assert.ok(report.atoms.button.rawHostUsage.length > 0);
   assert.ok(
-    report.atoms.button.rawHostUsage.some(
-      (entry) => entry.classification === "runtime-host-control",
+    report.atoms.button.rawHostUsage.every(
+      (entry) => entry.classification !== "runtime-host-control",
     ),
   );
   assert.ok(

@@ -22,8 +22,10 @@ import {
   ConnectionInstructions,
 } from "../../cloud-ui/components/connection-card";
 import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { TextLink } from "../../components/ui/text-link";
 import { ApiError, api } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { useConnectionStatus } from "./use-connection-status";
@@ -275,17 +277,17 @@ export function WhatsAppConnection() {
             <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
               <li>
                 {t("cloud.whatsapp.instructGoTo", { defaultValue: "Go to" })}{" "}
-                <a
+                <TextLink
                   href="https://developers.facebook.com/apps"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-txt-strong hover:underline inline-flex items-center gap-1"
+                  className="inline-flex items-center gap-1 text-txt-strong"
                 >
                   {t("cloud.whatsapp.metaDashboard", {
                     defaultValue: "Meta App Dashboard",
                   })}
                   <ExternalLink className="size-3" />
-                </a>
+                </TextLink>
               </li>
               <li>
                 {t("cloud.whatsapp.webhookStep2", {
@@ -357,15 +359,15 @@ export function WhatsAppConnection() {
             <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
               <li>
                 {t("cloud.whatsapp.instructGoTo", { defaultValue: "Go to" })}{" "}
-                <a
+                <TextLink
                   href="https://developers.facebook.com"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-accent hover:underline inline-flex items-center gap-1"
+                  className="inline-flex items-center gap-1"
                 >
                   developers.facebook.com
                   <ExternalLink className="size-3" />
-                </a>{" "}
+                </TextLink>{" "}
                 {t("cloud.whatsapp.instructCreateApp", {
                   defaultValue: "and create a Meta Business App",
                 })}
@@ -487,7 +489,7 @@ export function WhatsAppConnection() {
           </div>
 
           {/* Capabilities preview */}
-          <div className="p-4 bg-muted rounded-sm">
+          <Card variant="flatPadded">
             <h4 className="font-medium mb-2">
               {t("cloud.whatsapp.whatYouCanDo", {
                 defaultValue: "What you can do with WhatsApp:",
@@ -515,7 +517,7 @@ export function WhatsAppConnection() {
                 })}
               </li>
             </ul>
-          </div>
+          </Card>
 
           {/* Connect button */}
           <Button

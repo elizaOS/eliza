@@ -15,6 +15,7 @@ import {
   SettingsRow,
   SettingsStack,
 } from "../../../components/settings/settings-layout";
+import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { ApiError, api, apiFetch } from "../../lib/api-client";
 import { emitAuditEvent } from "../data/audit-client";
@@ -119,9 +120,9 @@ export function PluginPermissionsPageClient() {
                 label={
                   <span className="flex min-w-0 flex-wrap items-center gap-2">
                     <span>{g.plugin_name ?? g.plugin_id}</span>
-                    <span className="rounded-full border border-border px-1.5 py-0.5 font-mono text-2xs text-muted">
-                      {g.permission}
-                    </span>
+                    <Badge asChild variant="permissionCode">
+                      <span>{g.permission}</span>
+                    </Badge>
                   </span>
                 }
                 description={`${g.scope ? `scope: ${g.scope} · ` : ""}granted ${new Date(g.granted_at).toLocaleString()}${

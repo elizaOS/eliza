@@ -18,7 +18,12 @@ import {
   type CreateContactOptions,
 } from "@elizaos/capacitor-contacts";
 import type { OverlayAppContext } from "@elizaos/shared";
-import { Button, Input } from "@elizaos/ui";
+import {
+  AvatarFallback,
+  Avatar as AvatarRoot,
+  Button,
+  Input,
+} from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { PermissionRecoveryCallout } from "@elizaos/ui/components";
 import { isNative } from "@elizaos/ui/platform";
@@ -866,19 +871,16 @@ function Avatar({
   const dimension = size === "lg" ? "h-16 w-16 text-xl" : "h-10 w-10 text-sm";
   if (photoUri) {
     return (
-      <img
-        src={photoUri}
-        alt=""
-        className={`${dimension} shrink-0 object-cover`}
-      />
+      <AvatarRoot className={dimension}>
+        <img src={photoUri} alt="" className="size-full object-cover" />
+      </AvatarRoot>
     );
   }
   return (
-    <div
-      aria-hidden="true"
-      className={`${dimension} flex shrink-0 items-center justify-center bg-bg-accent font-semibold text-muted`}
-    >
-      {getInitials(name)}
-    </div>
+    <AvatarRoot className={dimension} aria-hidden="true">
+      <AvatarFallback className="font-semibold text-muted">
+        {getInitials(name)}
+      </AvatarFallback>
+    </AvatarRoot>
   );
 }

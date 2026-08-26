@@ -9,7 +9,9 @@ import { client } from "../../api";
 import { useAppSelector } from "../../state";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { Checkbox } from "../ui/checkbox";
+import { CodeBlock } from "../ui/code-block";
 import {
   Select,
   SelectContent,
@@ -312,9 +314,7 @@ export function DiscordLocalConnectorPanel() {
               })}
         </div>
         {connectedUser ? (
-          <code className="inline-flex rounded-sm border border-border/40 bg-bg/60 px-2 py-0.5 text-xs-tight text-muted-strong">
-            {connectedUser}
-          </code>
+          <CodeBlock variant="inline" tone="muted" value={connectedUser} />
         ) : null}
         {status?.ipcPath ? (
           <div className="text-muted">
@@ -342,7 +342,7 @@ export function DiscordLocalConnectorPanel() {
         ) : null}
 
         {status?.authenticated ? (
-          <div className="space-y-3 rounded-sm border border-border/40 bg-bg/60 p-3">
+          <Card variant="connectorPanel" stack="compact" padding="default">
             <div className="text-muted">
               {t("pluginsview.DiscordLocalSubscriptionsHint", {
                 defaultValue:
@@ -365,7 +365,7 @@ export function DiscordLocalConnectorPanel() {
                     aria-label={t("common.server", {
                       defaultValue: "Server",
                     })}
-                    className="h-9 border-border/40 bg-bg text-sm text-txt"
+                    variant="connectorLocal"
                   >
                     <SelectValue />
                   </SelectTrigger>
@@ -407,13 +407,21 @@ export function DiscordLocalConnectorPanel() {
                     })}
                   </div>
                 ) : channels.length > 0 ? (
-                  <div className="max-h-56 space-y-2 overflow-y-auto border-y border-border/30 py-2">
+                  <Card
+                    variant="transparentSquare"
+                    border="subtle"
+                    surface="transparent"
+                    stack="compact"
+                    className="max-h-56 overflow-y-auto py-2"
+                  >
                     {channels.map((channel) => {
                       const checked = selectedChannelIds.includes(channel.id);
                       return (
-                        <div
+                        <Card
                           key={channel.id}
-                          className="flex items-center gap-3 rounded-sm px-2 py-1 hover:bg-bg-hover"
+                          variant="vaultListRow"
+                          flow="row"
+                          gap="default"
                         >
                           <Checkbox
                             checked={checked}
@@ -422,10 +430,10 @@ export function DiscordLocalConnectorPanel() {
                           <span className="min-w-0 flex-1 truncate text-sm text-txt">
                             {channelLabel(channel)}
                           </span>
-                        </div>
+                        </Card>
                       );
                     })}
-                  </div>
+                  </Card>
                 ) : (
                   <div className="text-muted">
                     {t("pluginsview.DiscordLocalNoChannels", {
@@ -459,7 +467,7 @@ export function DiscordLocalConnectorPanel() {
                 </div>
               </div>
             ) : null}
-          </div>
+          </Card>
         ) : null}
       </div>
     </PagePanel.Notice>

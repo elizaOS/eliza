@@ -6,6 +6,7 @@ import { useState } from "react";
 import type { PluginInfo } from "../../api";
 import { getProviderLogo } from "../../providers";
 import { getBrandIcon } from "../conversations/brand-icons";
+import { Card } from "../ui/card";
 import {
   iconImageSource,
   pluginMonogram,
@@ -62,19 +63,23 @@ export function PluginVisual({
   const BrandIcon = getBrandIcon(plugin.id);
   if (BrandIcon) {
     return (
-      <span
-        className={`flex ${dimension} shrink-0 items-center justify-center rounded-md border border-border/45 bg-bg-accent/70 text-txt`}
+      <Card
+        variant="connectorAvatar"
+        tone="text"
+        className={`flex ${dimension} shrink-0 items-center justify-center`}
       >
         <BrandIcon className={glyph} />
-      </span>
+      </Card>
     );
   }
 
   if (!imgFailed && PROVIDER_LOGO_IDS.has(plugin.id)) {
     const logo = getProviderLogo(plugin.id, isDarkTheme());
     return (
-      <span
-        className={`flex ${dimension} shrink-0 items-center justify-center rounded-md border border-border/45 bg-bg-accent/70 p-2`}
+      <Card
+        variant="connectorAvatar"
+        padding="compact"
+        className={`flex ${dimension} shrink-0 items-center justify-center`}
       >
         <img
           src={logo}
@@ -82,7 +87,7 @@ export function PluginVisual({
           className="h-full w-full object-contain"
           onError={() => setImgFailed(true)}
         />
-      </span>
+      </Card>
     );
   }
 
@@ -91,8 +96,10 @@ export function PluginVisual({
     const imageSrc = iconImageSource(icon);
     if (imageSrc) {
       return (
-        <span
-          className={`flex ${dimension} shrink-0 items-center justify-center rounded-md border border-border/45 bg-bg-accent/70 p-2`}
+        <Card
+          variant="connectorAvatar"
+          padding="compact"
+          className={`flex ${dimension} shrink-0 items-center justify-center`}
         >
           <img
             src={imageSrc}
@@ -100,7 +107,7 @@ export function PluginVisual({
             className="h-full w-full object-contain"
             onError={() => setImgFailed(true)}
           />
-        </span>
+        </Card>
       );
     }
   }
@@ -108,25 +115,27 @@ export function PluginVisual({
   if (icon && typeof icon !== "string") {
     const Glyph = icon;
     return (
-      <span
-        className={`flex ${dimension} shrink-0 items-center justify-center rounded-md border border-border/45 bg-bg-accent/70 text-muted-strong`}
+      <Card
+        variant="connectorAvatar"
+        className={`flex ${dimension} shrink-0 items-center justify-center`}
       >
         <Glyph className={glyph} />
-      </span>
+      </Card>
     );
   }
 
   // Generative monogram tile — deterministic gradient + initials.
   return (
-    <span
-      className={`flex ${dimension} shrink-0 select-none items-center justify-center rounded-md font-bold tracking-tight text-white ${monogramText}`}
-      style={{
+    <Card
+      variant="connectorAvatar"
+      className={`flex ${dimension} shrink-0 select-none items-center justify-center font-bold tracking-tight ${monogramText}`}
+      visualStyle={{
         background: pluginTileGradient(plugin),
-        textShadow: "0 1px 2px rgba(0,0,0,0.35)",
       }}
+      wallpaperText
       aria-hidden="true"
     >
       {pluginMonogram(plugin)}
-    </span>
+    </Card>
   );
 }

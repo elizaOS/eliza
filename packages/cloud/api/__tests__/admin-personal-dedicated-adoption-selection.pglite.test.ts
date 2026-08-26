@@ -452,7 +452,7 @@ describe("admin personal Dedicated adoption selection", () => {
     ).toEqual({ state: "unavailable" });
   });
 
-  test("uses canonical catalogue restore states when legacy verification columns are null", async () => {
+  test("only canonical catalog-v2/manifest-v3 protected states are restorable", async () => {
     for (const manifestVersion of [2, 3] as const) {
       await dbWrite.delete(agentSandboxBackups);
       await dbWrite.delete(agentSandboxes);
@@ -489,8 +489,44 @@ describe("admin personal Dedicated adoption selection", () => {
       const protectedBackup = await post(requestBody(true));
       expect(protectedBackup.status).toBe(200);
       expect(await protectedBackup.json()).toMatchObject({
-        data: { stateDisposition: "verified_backup_present" },
+        data: {
+          stateDisposition:
+            manifestVersion === 3
+              ? "verified_backup_present"
+              : "fresh_boot_no_verified_backup",
+        },
       });
+    }
+
+    await dbWrite.delete(agentSandboxBackups);
+    for (const catalogState of [
+      "primary_verified",
+      "secondary_pending",
+    ] as const) {
+      const [backup] = await dbWrite
+        .insert(agentSandboxBackups)
+        .values({
+          sandbox_record_id: RETAINED,
+          snapshot_type: "auto",
+          state_data: { memories: [], config: {}, workspaceFiles: {} },
+          catalog_version: 2,
+          catalog_state: catalogState,
+          catalog_payload_digest: "c".repeat(64),
+          catalog_organization_id: ORG_A,
+          catalog_agent_id: RETAINED,
+          manifest_version: 3,
+          manifest_digest: "d".repeat(64),
+          object_inventory_digest: "e".repeat(64),
+        })
+        .returning();
+      const preview = await post(requestBody(true));
+      expect(preview.status).toBe(200);
+      expect(await preview.json()).toMatchObject({
+        data: { stateDisposition: "fresh_boot_no_verified_backup" },
+      });
+      await dbWrite
+        .delete(agentSandboxBackups)
+        .where(eq(agentSandboxBackups.id, backup!.id));
     }
   });
 
@@ -575,6 +611,52 @@ describe("admin personal Dedicated adoption selection", () => {
         alreadySelected: true,
       },
     });
+  });
+
+  test("idempotent execute replay succeeds only against the complete unchanged inventory", async () => {
+    await seedAmbiguousInventory();
+    const fingerprint = await previewFingerprint();
+    const execute = () =>
+      personalDedicatedAdoptionSelectionService.execute({
+        organizationId: ORG_A,
+        userId: USER_A,
+        sourceAgentId: SOURCE_A,
+        retainedAgentId: RETAINED,
+        selectedByUserId: ADMIN,
+        reason: "duplicate_owned_dedicated_inventory",
+        expectedInventoryFingerprint: fingerprint,
+        expectedStateDisposition: "fresh_boot_no_verified_backup",
+      });
+
+    expect(await execute()).toMatchObject({
+      alreadySelected: false,
+      candidateCount: 2,
+    });
+    expect(await execute()).toMatchObject({
+      alreadySelected: true,
+      candidateCount: 2,
+    });
+
+    await dbWrite.insert(jobs).values({
+      type: "agent_provision",
+      status: "pending",
+      organization_id: ORG_A,
+      agent_id: RETAINED,
+      data: { agentId: RETAINED, organizationId: ORG_A },
+    });
+    await expect(execute()).rejects.toMatchObject({
+      code: "PERSONAL_DEDICATED_SELECTION_ACTIVE_JOB",
+    });
+    await dbWrite.delete(jobs);
+
+    await seedCandidate({ id: "cccccccc-3333-4333-8333-333333333333" });
+    await expect(execute()).rejects.toMatchObject({
+      code: "PERSONAL_DEDICATED_SELECTION_INVENTORY_CHANGED",
+    });
+    expect(
+      await dbWrite.select().from(personalDedicatedAdoptionSelections),
+    ).toHaveLength(1);
+    expect((await post(requestBody(true))).status).toBe(409);
   });
 
   test("an invalidated selection fails closed instead of falling back to the stale row", async () => {

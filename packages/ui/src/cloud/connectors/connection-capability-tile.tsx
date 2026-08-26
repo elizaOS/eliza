@@ -5,6 +5,7 @@
  */
 
 import type { ReactNode } from "react";
+import { Card } from "../../components/ui/card";
 
 export interface ConnectionCapabilityTileProps {
   description: string;
@@ -18,12 +19,12 @@ export function ConnectionCapabilityTile({
   title,
 }: ConnectionCapabilityTileProps) {
   return (
-    <div className="rounded-sm bg-muted p-3 text-center">
+    <Card variant="flatPadded" className="p-3 text-center">
       <div className="mx-auto mb-2 flex size-6 items-center justify-center">
         {icon}
       </div>
       <p className="text-sm font-medium">{title}</p>
       <p className="text-xs text-muted-foreground">{description}</p>
-    </div>
+    </Card>
   );
 }

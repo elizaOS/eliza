@@ -4,6 +4,8 @@
  * monogram badge (first letter of the symbol) on load failure or when no URL
  * resolves.
  */
+
+import { Avatar, AvatarFallback, AvatarImage } from "@elizaos/ui";
 import * as React from "react";
 import { useState } from "react";
 import { getContractLogoUrl, getNativeLogoUrl } from "./chainConfig.ts";
@@ -50,23 +52,19 @@ export function TokenLogo({
 
   if (url) {
     return (
-      <img
-        src={url}
-        alt={symbol}
-        width={size}
-        height={size}
-        className="inline-flex shrink-0 items-center justify-center rounded-full object-cover font-mono font-bold text-white"
-        style={{ width: size, height: size }}
-        onError={() => setErrored(true)}
-      />
+      <Avatar presentation="walletLogo" size={size}>
+        <AvatarImage src={url} alt={symbol} onError={() => setErrored(true)} />
+        <AvatarFallback tone={icon.tone} style={{ fontSize: size * 0.38 }}>
+          {symbol.charAt(0).toUpperCase()}
+        </AvatarFallback>
+      </Avatar>
     );
   }
   return (
-    <span
-      className={`inline-flex items-center justify-center shrink-0 rounded-full font-mono font-bold bg-bg-muted ${icon.cls}`}
-      style={{ width: size, height: size, fontSize: size * 0.38 }}
-    >
-      {symbol.charAt(0).toUpperCase()}
-    </span>
+    <Avatar presentation="walletLogo" size={size}>
+      <AvatarFallback tone={icon.tone} style={{ fontSize: size * 0.38 }}>
+        {symbol.charAt(0).toUpperCase()}
+      </AvatarFallback>
+    </Avatar>
   );
 }

@@ -12,6 +12,8 @@ import * as React from "react";
 import { cn } from "../../../lib/utils";
 import { shellLocalStorage } from "../../../surface-realm-channel";
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
+import { Separator } from "../../ui/separator";
 import {
   buildSidebarAutoRailItems,
   buildSidebarAutoRailItemsFromDom,
@@ -26,12 +28,12 @@ const sidebarRootVariants = cva(
     variants: {
       variant: {
         default:
-          "relative isolate min-h-0 h-[calc(100%_-_1rem)] w-full shrink-0 rounded-sm border border-border bg-card",
-        mobile: "h-full w-full min-w-0 border-0 bg-card shadow-none ",
-        "game-modal": "h-full rounded-sm border border-border bg-card ",
+          "relative isolate min-h-0 h-[calc(100%_-_1rem)] w-full shrink-0",
+        mobile: "h-full w-full min-w-0",
+        "game-modal": "h-full",
       },
       collapsed: {
-        true: "!w-0 !min-w-0 xl:!w-0 xl:!min-w-0 !border-0 !shadow-none !bg-transparent z-40",
+        true: "!w-0 !min-w-0 xl:!w-0 xl:!min-w-0 z-40",
         false: "",
       },
       resizable: {
@@ -102,7 +104,7 @@ const sidebarFooterVariants = cva(
 );
 
 const sidebarMobileHeaderBarClassName =
-  "sticky top-0 z-10 flex items-center justify-between bg-card px-3.5 py-2.5";
+  "sticky top-0 z-10 flex items-center justify-between px-3.5 py-2.5";
 
 const sidebarContentLayerClassName =
   "flex min-h-0 flex-1 flex-col origin-left transform-gpu transition-[opacity,transform,filter] duration-[260ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[opacity,transform,filter] motion-reduce:transform-none motion-reduce:transition-none";
@@ -801,99 +803,117 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
     const mergedStyle = { ...style, ...resizeStyle };
 
     return (
-      <aside
-        ref={ref}
-        className={cn(
-          sidebarRootVariants({
-            variant,
-            collapsed: variant === "default" ? showsCollapsedState : false,
-            resizable: resizeActive,
-          }),
-          className,
-        )}
-        data-testid={testId}
-        data-collapsed={showsCollapsedState || undefined}
-        data-variant={variant}
-        style={mergedStyle}
-        {...props}
+      <Card
+        asChild
+        surface={
+          variant === "default" && showsCollapsedState ? "transparent" : "card"
+        }
+        border={
+          variant === "default" && showsCollapsedState ? "none" : "standard"
+        }
+        shadow={
+          variant === "mobile" || showsCollapsedState ? "none" : undefined
+        }
       >
-        {resizeActive ? (
-          <hr
-            aria-orientation="vertical"
-            aria-valuemin={minWidth}
-            aria-valuemax={maxWidth}
-            aria-valuenow={typeof width === "number" ? width : minWidth}
-            tabIndex={0}
-            data-testid="sidebar-resize-handle"
-            onPointerDown={handleResizePointerDown}
-            className="absolute inset-y-0 right-0 z-20 m-0 h-full w-3 -mr-1.5 cursor-col-resize touch-none select-none border-0 bg-transparent transition-colors hover:bg-accent/20"
-          />
-        ) : null}
-        {showsCollapsedState && variant === "default" ? (
-          <Button
-            variant="ghostMuted"
-            size="icon-xs"
-            data-testid={expandButtonTestId}
-            className={cn(
-              "fixed bottom-2 left-2 z-40 shrink-0",
-              collapseButtonClassName,
-            )}
-            aria-label={expandButtonAriaLabel}
-            onClick={handleExpand}
-          >
-            <PanelLeftOpen className="size-3.5" aria-hidden />
-          </Button>
-        ) : null}
-        <React.Fragment key={renderedContentIdentity}>
-          {variant === "mobile" ? (
-            <div className={sidebarMobileHeaderBarClassName}>
-              <div className="space-y-1">
-                {mobileTitle ? <div>{mobileTitle}</div> : null}
-                {mobileMeta ? (
-                  <div className={sidebarMetaClassName}>{mobileMeta}</div>
-                ) : null}
-              </div>
-              {onMobileClose ? (
-                <Button
-                  variant="surface"
-                  size="icon-lg"
-                  onClick={onMobileClose}
-                  aria-label={mobileCloseLabel}
-                  title={mobileCloseLabel}
-                  data-testid="conversations-mobile-close"
-                >
-                  <X className="size-4" aria-hidden />
-                </Button>
-              ) : null}
-            </div>
+        <aside
+          ref={ref}
+          className={cn(
+            sidebarRootVariants({
+              variant,
+              collapsed: variant === "default" ? showsCollapsedState : false,
+              resizable: resizeActive,
+            }),
+            className,
+          )}
+          data-testid={testId}
+          data-collapsed={showsCollapsedState || undefined}
+          data-variant={variant}
+          style={mergedStyle}
+          {...props}
+        >
+          {resizeActive ? (
+            <Separator
+              decorative={false}
+              orientation="vertical"
+              aria-orientation="vertical"
+              aria-valuemin={minWidth}
+              aria-valuemax={maxWidth}
+              aria-valuenow={typeof width === "number" ? width : minWidth}
+              tabIndex={0}
+              data-testid="sidebar-resize-handle"
+              tone="resizeHandle"
+              onPointerDown={handleResizePointerDown}
+              className="absolute inset-y-0 right-0 z-20 m-0 h-full w-3 -mr-1.5 cursor-col-resize touch-none select-none"
+            />
           ) : null}
-          <div className="relative flex min-h-0 flex-1 flex-col">
-            {showsCollapsedState
-              ? renderCollapsedView({
-                  layerClassName: collapsedBaseMotionClassName,
-                  renderHiddenAutoRailSource:
-                    !hasCustomCollapsedContent && !hasStructuredCollapsedRail,
-                })
-              : renderExpandedView({
-                  layerClassName: expandedBaseMotionClassName,
-                  provideAutoRailSourceRef:
-                    !hasCustomCollapsedContent && !hasStructuredCollapsedRail,
-                })}
-            {isCollapsing
-              ? renderExpandedView({
-                  layerClassName: expandedOverlayMotionClassName,
-                  overlay: true,
-                })
-              : null}
-            {isExpanding
-              ? renderCollapsedView({
-                  layerClassName: collapsedOverlayMotionClassName,
-                  overlay: true,
-                })
-              : null}
-          </div>
-        </React.Fragment>
-      </aside>
+          {showsCollapsedState && variant === "default" ? (
+            <Button
+              variant="ghostMuted"
+              size="icon-xs"
+              data-testid={expandButtonTestId}
+              className={cn(
+                "fixed bottom-2 left-2 z-40 shrink-0",
+                collapseButtonClassName,
+              )}
+              aria-label={expandButtonAriaLabel}
+              onClick={handleExpand}
+            >
+              <PanelLeftOpen className="size-3.5" aria-hidden />
+            </Button>
+          ) : null}
+          <React.Fragment key={renderedContentIdentity}>
+            {variant === "mobile" ? (
+              <Card asChild surface="card">
+                <div className={sidebarMobileHeaderBarClassName}>
+                  <div className="space-y-1">
+                    {mobileTitle ? <div>{mobileTitle}</div> : null}
+                    {mobileMeta ? (
+                      <div className={sidebarMetaClassName}>{mobileMeta}</div>
+                    ) : null}
+                  </div>
+                  {onMobileClose ? (
+                    <Button
+                      variant="surface"
+                      size="icon-lg"
+                      onClick={onMobileClose}
+                      aria-label={mobileCloseLabel}
+                      title={mobileCloseLabel}
+                      data-testid="conversations-mobile-close"
+                    >
+                      <X className="size-4" aria-hidden />
+                    </Button>
+                  ) : null}
+                </div>
+              </Card>
+            ) : null}
+            <div className="relative flex min-h-0 flex-1 flex-col">
+              {showsCollapsedState
+                ? renderCollapsedView({
+                    layerClassName: collapsedBaseMotionClassName,
+                    renderHiddenAutoRailSource:
+                      !hasCustomCollapsedContent && !hasStructuredCollapsedRail,
+                  })
+                : renderExpandedView({
+                    layerClassName: expandedBaseMotionClassName,
+                    provideAutoRailSourceRef:
+                      !hasCustomCollapsedContent && !hasStructuredCollapsedRail,
+                  })}
+              {isCollapsing
+                ? renderExpandedView({
+                    layerClassName: expandedOverlayMotionClassName,
+                    overlay: true,
+                  })
+                : null}
+              {isExpanding
+                ? renderCollapsedView({
+                    layerClassName: collapsedOverlayMotionClassName,
+                    overlay: true,
+                  })
+                : null}
+            </div>
+          </React.Fragment>
+        </aside>
+      </Card>
     );
   },
 );

@@ -1,18 +1,20 @@
-// Renders safe markdown prose inside orchestrator transcripts.
+/** Renders safe markdown prose inside orchestrator transcripts. */
 
 import {
-  Button,
+  Card,
   Checkbox,
+  CodeBlock,
+  Separator,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
+  TextLink,
 } from "@elizaos/ui";
-import { Check, Copy } from "lucide-react";
 import { marked, type Token, type Tokens, type TokensList } from "marked";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { sanitizeMarkdownUrl } from "./orchestrator-markdown.helpers";
 
 // The coding agent writes markdown prose. We parse it with `marked` — a real
@@ -54,13 +56,23 @@ function renderToken(token: Token, key: string): ReactNode {
       );
     }
     case "code":
-      return <CodeBlock key={key} code={token.text} lang={token.lang} />;
+      return (
+        <CodeBlock
+          key={key}
+          value={token.text}
+          wrap
+          copyable
+          aria-label={token.lang ? `${token.lang} code` : "Code"}
+          className="my-1 max-h-72 text-2xs leading-relaxed"
+        />
+      );
     case "blockquote":
       return (
-        <blockquote
-          key={key}
-          className="my-1 border-l-2 border-border pl-3 text-muted-strong"
-        >
+        <blockquote key={key} className="relative my-1 pl-3 text-muted-strong">
+          <Separator
+            orientation="vertical"
+            className="absolute inset-y-0 left-0 w-0.5"
+          />
           {renderChildren(token.tokens, key)}
         </blockquote>
       );
@@ -109,7 +121,8 @@ function renderToken(token: Token, key: string): ReactNode {
                     <TableHead
                       key={cellKey}
                       style={alignStyle(cell.align)}
-                      className="border border-border/60 bg-bg/40 px-2 py-1 text-left font-semibold text-txt"
+                      divider="subtle"
+                      className="h-auto px-2 py-1 text-left font-semibold normal-case tracking-normal"
                     >
                       {renderChildren(cell.tokens, cellKey)}
                     </TableHead>
@@ -128,7 +141,8 @@ function renderToken(token: Token, key: string): ReactNode {
                         <TableCell
                           key={cellKey}
                           style={alignStyle(cell.align)}
-                          className="border border-border/50 px-2 py-1 align-top"
+                          variant="divided"
+                          className="px-2 py-1 align-top"
                         >
                           {renderChildren(cell.tokens, cellKey)}
                         </TableCell>
@@ -142,7 +156,7 @@ function renderToken(token: Token, key: string): ReactNode {
         </div>
       );
     case "hr":
-      return <hr key={key} className="my-2 border-border/50" />;
+      return <Separator key={key} className="my-2" tone="subtle40" />;
     case "strong":
       return (
         <strong key={key} className="font-semibold text-txt">
@@ -163,12 +177,15 @@ function renderToken(token: Token, key: string): ReactNode {
       );
     case "codespan":
       return (
-        <code
+        <CodeBlock
           key={key}
-          className="break-words rounded-sm bg-bg/70 px-1 py-px font-mono text-[0.95em] text-txt-strong"
+          variant="inline"
+          size="prose"
+          tone="strong"
+          className="break-words px-1 py-px"
         >
           {token.text}
-        </code>
+        </CodeBlock>
       );
     case "link": {
       const href = sanitizeMarkdownUrl(token.href);
@@ -176,29 +193,29 @@ function renderToken(token: Token, key: string): ReactNode {
       // Relative paths should navigate in the same context.
       const isExternal = href !== null && /^https?:/i.test(href);
       return (
-        <a
+        <TextLink
           key={key}
           href={href ?? undefined}
           title={token.title ?? undefined}
           target={isExternal ? "_blank" : undefined}
           rel={isExternal ? "noreferrer" : undefined}
-          className="text-txt-strong underline underline-offset-2 transition-colors hover:text-accent"
         >
           {renderChildren(token.tokens, key)}
-        </a>
+        </TextLink>
       );
     }
     case "image": {
       const src = sanitizeMarkdownUrl(token.href);
       if (!src) return token.text;
       return (
-        <img
-          key={key}
-          src={src}
-          alt={token.text}
-          title={token.title ?? undefined}
-          className="my-1 max-w-full rounded-sm border border-border/50"
-        />
+        <Card key={key} asChild surface="transparent" border="subtle">
+          <img
+            src={src}
+            alt={token.text}
+            title={token.title ?? undefined}
+            className="my-1 max-w-full"
+          />
+        </Card>
       );
     }
     case "br":
@@ -216,66 +233,6 @@ function renderToken(token: Token, key: string): ReactNode {
       // injected as markup — so stray tags in the stream can't execute.
       return "raw" in token ? token.raw : null;
   }
-}
-
-function CodeBlock({ code, lang }: { code: string; lang?: string }): ReactNode {
-  const [copied, setCopied] = useState(false);
-  // Hold the revert timer so we can cancel it on unmount; firing setCopied
-  // after unmount (within the 1200ms window) would be a stale-state update.
-  const revertTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(
-    () => () => {
-      if (revertTimer.current) clearTimeout(revertTimer.current);
-    },
-    [],
-  );
-
-  const copy = () => {
-    // Guard for non-secure-context / older webviews where clipboard is absent.
-    if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
-      return;
-    }
-    navigator.clipboard.writeText(code).then(
-      () => {
-        setCopied(true);
-        // Brief confirmation, then revert to the resting copy icon.
-        if (revertTimer.current) clearTimeout(revertTimer.current);
-        revertTimer.current = setTimeout(() => setCopied(false), 1200);
-      },
-      () => undefined,
-    );
-  };
-
-  return (
-    <div className="group/code relative my-1 overflow-hidden rounded-sm border border-border/50 bg-bg/80">
-      {lang ? (
-        <div className="border-b border-border/40 px-2.5 py-0.5 font-mono text-3xs uppercase tracking-wide text-muted">
-          {lang}
-        </div>
-      ) : null}
-      <span
-        className={`absolute right-1 top-1 z-10 opacity-0 focus-within:opacity-100 group-hover/code:opacity-100 ${copied ? "opacity-100" : ""}`}
-      >
-        <Button
-          variant={copied ? "surfaceAccent" : "ghostMuted"}
-          size="icon-sm"
-          type="button"
-          onClick={copy}
-          aria-label={copied ? "Copied" : "Copy code"}
-        >
-          {copied ? (
-            <Check className="size-3.5" aria-hidden />
-          ) : (
-            <Copy className="size-3.5" aria-hidden />
-          )}
-        </Button>
-      </span>
-      <pre className="max-h-72 overflow-auto px-2.5 py-1.5 font-mono text-2xs leading-relaxed text-txt">
-        <code className="whitespace-pre-wrap break-words">{code}</code>
-      </pre>
-    </div>
-  );
 }
 
 export function MarkdownText({ text }: { text: string }): ReactNode {

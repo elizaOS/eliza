@@ -6,6 +6,7 @@
 import { Loader2 } from "lucide-react";
 import * as React from "react";
 import { cn } from "../../lib/utils";
+import { Badge } from "./badge";
 
 export type StatusVariant =
   | "success"
@@ -15,7 +16,8 @@ export type StatusVariant =
   | "info"
   | "neutral"
   | "processing"
-  | "muted";
+  | "muted"
+  | "accent";
 export type StatusTone = StatusVariant;
 
 export interface StatusBadgeProps
@@ -36,21 +38,22 @@ function normalizeStatusVariant(variant: StatusVariant): StatusVariant {
   return variant;
 }
 
-function statusBadgeClasses(variant: StatusVariant): string {
+function statusBadgeVariant(
+  variant: StatusVariant,
+):
+  | "statusSuccess"
+  | "statusWarning"
+  | "statusDanger"
+  | "statusInfo"
+  | "statusMuted" {
   const normalized = normalizeStatusVariant(variant);
-  if (normalized === "success") {
-    return "border-ok/35 bg-ok/12 text-ok";
-  }
+  if (normalized === "success") return "statusSuccess";
   if (normalized === "warning" || normalized === "processing") {
-    return "border-warn/40 bg-warn/14 text-warn";
+    return "statusWarning";
   }
-  if (normalized === "danger") {
-    return "border-destructive/35 bg-destructive/12 text-destructive";
-  }
-  if (normalized === "info") {
-    return "border-status-info/35 bg-status-info-bg text-status-info";
-  }
-  return "border-border bg-bg-accent text-muted-strong";
+  if (normalized === "danger") return "statusDanger";
+  if (normalized === "info" || normalized === "accent") return "statusInfo";
+  return "statusMuted";
 }
 
 function statusDotClasses(variant: StatusVariant): string {
@@ -61,6 +64,7 @@ function statusDotClasses(variant: StatusVariant): string {
   }
   if (normalized === "danger") return "bg-destructive";
   if (normalized === "info") return "bg-status-info";
+  if (normalized === "accent") return "bg-accent";
   return "bg-muted";
 }
 
@@ -83,43 +87,28 @@ export const StatusBadge = React.forwardRef<HTMLSpanElement, StatusBadgeProps>(
     const resolvedVariant = status ?? variant ?? tone ?? "muted";
     const showDot = withDot || pulse;
     return (
-      <span
-        ref={ref}
-        data-slot="status-badge"
-        data-status={resolvedVariant}
-        className={cn(
-          "inline-flex items-center gap-1 rounded-sm border px-2 py-0.5 text-2xs font-bold uppercase",
-          presentation === "pill" &&
-            "rounded-full px-2.5 py-1 text-xs-tight font-medium normal-case",
-          statusBadgeClasses(resolvedVariant),
-          className,
-        )}
-        {...props}
+      <Badge
+        asChild
+        variant={statusBadgeVariant(resolvedVariant)}
+        size={presentation === "pill" ? "pill" : "compact"}
       >
-        {resolvedVariant === "processing" ? (
-          <Loader2 className="size-3 animate-spin" />
-        ) : icon ? (
-          <span className="[&>svg]:h-3 [&>svg]:w-3">{icon}</span>
-        ) : showDot ? (
-          <span className="relative flex  size-2">
-            {pulse && (
-              <span
-                className={cn(
-                  "absolute inline-flex h-full w-full animate-ping rounded-full opacity-70",
-                  statusDotClasses(resolvedVariant),
-                )}
-              />
-            )}
-            <span
-              className={cn(
-                "relative inline-flex size-2 rounded-full",
-                statusDotClasses(resolvedVariant),
-              )}
-            />
-          </span>
-        ) : null}
-        <span>{label}</span>
-      </span>
+        <span
+          ref={ref}
+          data-slot="status-badge"
+          data-status={resolvedVariant}
+          className={cn("gap-1 font-bold", className)}
+          {...props}
+        >
+          {resolvedVariant === "processing" ? (
+            <Loader2 className="size-3 animate-spin" />
+          ) : icon ? (
+            <span className="[&>svg]:h-3 [&>svg]:w-3">{icon}</span>
+          ) : showDot ? (
+            <StatusPulseDot tone={resolvedVariant} pulse={pulse} />
+          ) : null}
+          <span>{label}</span>
+        </span>
+      </Badge>
     );
   },
 );
@@ -130,10 +119,23 @@ export interface StatusDotProps extends React.HTMLAttributes<HTMLSpanElement> {
   status?: string;
   /** Direct variant override — when provided, `status` is ignored. */
   tone?: StatusVariant;
+  size?: "default" | "compact";
+  color?: string;
 }
 
 export const StatusDot = React.forwardRef<HTMLSpanElement, StatusDotProps>(
-  ({ status, tone: toneProp, className, ...props }, ref) => {
+  (
+    {
+      status,
+      tone: toneProp,
+      size = "default",
+      color,
+      className,
+      style,
+      ...props
+    },
+    ref,
+  ) => {
     const variant = normalizeStatusVariant(
       toneProp ??
         (status === "success" ||
@@ -150,12 +152,47 @@ export const StatusDot = React.forwardRef<HTMLSpanElement, StatusDotProps>(
         ref={ref}
         className={cn(
           "inline-block size-2 rounded-full",
+          size === "compact" && "size-1.5",
           statusDotClasses(variant),
           className,
         )}
+        style={color ? { backgroundColor: color, ...style } : style}
         {...props}
       />
     );
   },
 );
 StatusDot.displayName = "StatusDot";
+
+interface StatusPulseDotProps {
+  pulse: boolean;
+  size?: "default" | "micro";
+  tone: StatusVariant;
+}
+
+export function StatusPulseDot({
+  pulse,
+  size = "default",
+  tone,
+}: StatusPulseDotProps) {
+  return (
+    <span
+      className={cn("relative flex", size === "micro" ? "size-1.5" : "size-2")}
+    >
+      {pulse ? (
+        <span
+          className={cn(
+            "absolute inline-flex h-full w-full animate-ping rounded-full opacity-70",
+            statusDotClasses(tone),
+          )}
+        />
+      ) : null}
+      <span
+        className={cn(
+          "relative inline-flex size-2 rounded-full",
+          statusDotClasses(tone),
+        )}
+      />
+    </span>
+  );
+}

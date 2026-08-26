@@ -2,28 +2,6 @@
   "schemaVersion": 1,
   "exceptions": [
     {
-      "id": "desktop-window-native-button",
-      "rule": "raw-control",
-      "file": "packages/app-core/src/runtime/desktop/AppWindowRenderer.tsx",
-      "symbol": "button",
-      "owner": "app-core desktop runtime",
-      "reason": "The desktop renderer owns native window controls outside the React design-system host.",
-      "reviewBy": "2026-11-24",
-      "matchCount": 1,
-      "lines": [450]
-    },
-    {
-      "id": "desktop-window-native-button-visuals",
-      "rule": "visual-override",
-      "file": "packages/app-core/src/runtime/desktop/AppWindowRenderer.tsx",
-      "symbol": "button",
-      "owner": "app-core desktop runtime",
-      "reason": "The desktop renderer owns native window-control visuals outside the React design-system host.",
-      "reviewBy": "2026-11-24",
-      "matchCount": 1,
-      "lines": [450]
-    },
-    {
       "id": "design-lab-shell-native-buttons",
       "rule": "raw-control",
       "file": "packages/ui/stories/src/lab/DesignLab.tsx",
@@ -33,28 +11,6 @@
       "reviewBy": "2026-11-24",
       "matchCount": 2,
       "lines": [105, 120]
-    },
-    {
-      "id": "design-lab-controls-native-buttons",
-      "rule": "raw-control",
-      "file": "packages/ui/stories/src/lab/lab-ui.tsx",
-      "symbol": "button",
-      "owner": "UI design lab harness",
-      "reason": "The lab control chrome is intentionally dependency-free so canonical atom changes cannot restyle the comparison harness.",
-      "reviewBy": "2026-11-24",
-      "matchCount": 2,
-      "lines": [37, 83]
-    },
-    {
-      "id": "design-lab-controls-native-checkbox",
-      "rule": "raw-control",
-      "file": "packages/ui/stories/src/lab/lab-ui.tsx",
-      "symbol": "checkbox",
-      "owner": "UI design lab harness",
-      "reason": "The native checkbox belongs to the isolated comparison harness and must not depend on the surface under review.",
-      "reviewBy": "2026-11-24",
-      "matchCount": 1,
-      "lines": [62]
     },
     {
       "id": "design-lab-widget-native-button",
@@ -77,28 +33,6 @@
       "reviewBy": "2026-11-24",
       "matchCount": 2,
       "lines": [786, 809]
-    },
-    {
-      "id": "calendar-day-runtime-presentation",
-      "rule": "visual-override",
-      "file": "plugins/plugin-calendar/src/components/calendar/SimpleCalendarView.tsx",
-      "symbol": "Button",
-      "owner": "plugin-calendar",
-      "reason": "Calendar day cells combine responsive grid geometry with runtime selected and outside-month paint supplied by the calendar domain; the canonical static variants cannot represent that data-driven presentation.",
-      "reviewBy": "2026-11-24",
-      "matchCount": 1,
-      "lines": [250]
-    },
-    {
-      "id": "calendar-event-runtime-palette",
-      "rule": "visual-override",
-      "file": "plugins/plugin-calendar/src/components/CalendarSection.tsx",
-      "symbol": "Button",
-      "owner": "plugin-calendar",
-      "reason": "Calendar event controls use provider-supplied palette colors and timed-event geometry that are runtime domain data rather than a finite static visual variant.",
-      "reviewBy": "2026-11-24",
-      "matchCount": 3,
-      "lines": [456, 571, 814]
     }
   ]
 }

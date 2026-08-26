@@ -10,6 +10,7 @@ import { client } from "../../api";
 import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import { startFreshFirstRunReload } from "../../platform";
 import { useAppSelectorShallow } from "../../state";
+import { Alert } from "../ui/alert";
 import { Button } from "../ui/button";
 import {
   Card,
@@ -20,10 +21,11 @@ import {
 } from "../ui/card";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { SemanticForm } from "../ui/semantic-form";
 import { PairingCommandHint } from "./PairingCommandHint";
 
 const SCREEN_SHELL_CLASS =
-  "relative flex min-h-screen w-full items-center justify-center overflow-y-auto bg-bg px-4 py-6 font-body text-txt sm:px-6";
+  "relative flex min-h-screen w-full items-center justify-center overflow-y-auto px-4 py-6 font-body text-txt sm:px-6";
 export function PairingView() {
   const [statusUnavailable, setStatusUnavailable] = useState(false);
   const {
@@ -98,187 +100,201 @@ export function PairingView() {
   };
 
   return (
-    <div className={SCREEN_SHELL_CLASS}>
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(var(--accent-rgb),0.12),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_40%)]"
-      />
-      <Card variant="pairingGate">
-        {statusUnavailable ? (
-          <div
-            role="alert"
-            className="border-b border-destructive/40 bg-destructive/10 px-6 py-3 text-sm text-destructive"
-          >
-            {t("pairingview.StatusUnavailable", {
-              defaultValue:
-                "Pairing status is unavailable. Check the connection and reopen this screen.",
-            })}
-          </div>
-        ) : null}
-        <CardHeader className="pb-6 pt-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0 space-y-1.5">
-              <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
-                {branding.appName}
-              </div>
-              <CardTitle className="text-xl text-txt-strong">
-                {t("pairingview.PairingRequired")}
-              </CardTitle>
-              <CardDescription className="max-w-[48ch] text-sm leading-relaxed">
-                {t("pairingview.EnterThePairingCo")}
-              </CardDescription>
-            </div>
-            {pairingEnabled && expiryText ? (
-              <div
-                id="pairing-code-expiry"
-                aria-live="polite"
-                className="inline-flex min-h-10 items-center text-xs font-medium text-muted"
-              >
-                {expiryText}
-              </div>
-            ) : null}
-          </div>
-        </CardHeader>
-
-        <CardContent className="pt-6">
-          {pairingEnabled ? (
-            <form
-              onSubmit={handleSubmit}
-              aria-busy={pairingBusy}
-              className="space-y-6"
+    <Card asChild variant="sandboxFrame" className={SCREEN_SHELL_CLASS}>
+      <div>
+        <Card
+          asChild
+          border="none"
+          radius="none"
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0"
+          visualStyle={{
+            background:
+              "radial-gradient(circle at top, rgb(var(--accent-rgb) / 12%), transparent 30%), linear-gradient(180deg, rgb(255 255 255 / 2%), transparent 40%)",
+          }}
+        >
+          <div />
+        </Card>
+        <Card variant="pairingGate">
+          {statusUnavailable ? (
+            <Alert
+              variant="destructive"
+              role="alert"
+              className="px-6 py-3 text-sm"
             >
-              {/* Flat — no inner box. Whitespace separates the field group. */}
-              <div>
-                <div className="mb-3">
-                  <Label
-                    htmlFor="pairing-code"
-                    className="text-sm font-semibold"
-                  >
-                    {t("pairingview.PairingCode")}
-                  </Label>
+              {t("pairingview.StatusUnavailable", {
+                defaultValue:
+                  "Pairing status is unavailable. Check the connection and reopen this screen.",
+              })}
+            </Alert>
+          ) : null}
+          <CardHeader className="pb-6 pt-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0 space-y-1.5">
+                <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
+                  {branding.appName}
                 </div>
-                <div className="mb-4">
-                  <PairingCommandHint remoteUrl={client.getBaseUrl()} />
-                </div>
-                <Input
-                  id="pairing-code"
-                  type="text"
-                  value={pairingCodeInput}
-                  onChange={handleCodeChange}
-                  placeholder={t("pairingview.EnterPairingCode")}
-                  disabled={pairingBusy}
-                  autoFocus
-                  autoCapitalize="characters"
-                  autoCorrect="off"
-                  enterKeyHint="done"
-                  spellCheck={false}
-                  aria-invalid={pairingError ? "true" : "false"}
-                  aria-describedby={
-                    [
-                      pairingError ? "pairing-code-error" : null,
-                      expiryText ? "pairing-code-expiry" : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" ") || undefined
-                  }
-                  variant="form"
-                  density="search"
-                />
+                <CardTitle className="text-xl text-txt-strong">
+                  {t("pairingview.PairingRequired")}
+                </CardTitle>
+                <CardDescription className="max-w-[48ch] text-sm leading-relaxed">
+                  {t("pairingview.EnterThePairingCo")}
+                </CardDescription>
               </div>
-
-              {pairingError ? (
+              {pairingEnabled && expiryText ? (
                 <div
-                  id="pairing-code-error"
-                  role="alert"
-                  className="rounded-sm border border-danger/30 bg-danger/10 p-3 text-sm leading-relaxed text-danger"
+                  id="pairing-code-expiry"
+                  aria-live="polite"
+                  className="inline-flex min-h-10 items-center text-xs font-medium text-muted"
                 >
-                  {pairingError}
+                  {expiryText}
                 </div>
               ) : null}
+            </div>
+          </CardHeader>
 
-              <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center sm:justify-between">
-                <Button
-                  asChild
-                  variant="outline"
-                  size="lg"
-                  className="w-full sm:w-auto sm:min-w-[12rem]"
-                >
-                  <a
-                    href={`https://github.com/${branding.orgName}/${branding.repoName}/blob/develop/docs/api-reference.mdx`}
-                    target="_blank"
-                    rel="noreferrer"
+          <CardContent className="pt-6">
+            {pairingEnabled ? (
+              <SemanticForm
+                onSubmit={handleSubmit}
+                aria-busy={pairingBusy}
+                className="space-y-6"
+              >
+                {/* Flat — no inner box. Whitespace separates the field group. */}
+                <div>
+                  <div className="mb-3">
+                    <Label
+                      htmlFor="pairing-code"
+                      className="text-sm font-semibold"
+                    >
+                      {t("pairingview.PairingCode")}
+                    </Label>
+                  </div>
+                  <div className="mb-4">
+                    <PairingCommandHint remoteUrl={client.getBaseUrl()} />
+                  </div>
+                  <Input
+                    id="pairing-code"
+                    type="text"
+                    value={pairingCodeInput}
+                    onChange={handleCodeChange}
+                    placeholder={t("pairingview.EnterPairingCode")}
+                    disabled={pairingBusy}
+                    autoFocus
+                    autoCapitalize="characters"
+                    autoCorrect="off"
+                    enterKeyHint="done"
+                    spellCheck={false}
+                    aria-invalid={pairingError ? "true" : "false"}
+                    aria-describedby={
+                      [
+                        pairingError ? "pairing-code-error" : null,
+                        expiryText ? "pairing-code-expiry" : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" ") || undefined
+                    }
+                    variant="form"
+                    density="search"
+                  />
+                </div>
+
+                {pairingError ? (
+                  <Card
+                    asChild
+                    variant="dangerNotice"
+                    id="pairing-code-error"
+                    role="alert"
+                    className="p-3 text-sm leading-relaxed"
                   >
-                    {t("pairingview.PairingSetupDocs")}
-                  </a>
-                </Button>
-                <Button
-                  type="submit"
-                  variant="default"
-                  size="lg"
-                  className="w-full sm:w-auto sm:min-w-[9rem]"
-                  disabled={pairingBusy || !pairingCode}
-                >
-                  {pairingBusy
-                    ? t("pairingview.PairingInProgress")
-                    : t("common.submit")}
-                </Button>
-              </div>
-            </form>
-          ) : (
-            <div className="space-y-5 text-sm">
-              <p className="leading-relaxed text-muted">
-                {t("pairingview.PairingIsNotEnabl")}
-              </p>
+                    <div>{pairingError}</div>
+                  </Card>
+                ) : null}
 
-              <div className="space-y-3">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted">
-                  {t("pairingview.NextSteps")}
+                <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                  <Button
+                    asChild
+                    variant="outline"
+                    size="lg"
+                    className="w-full sm:w-auto sm:min-w-[12rem]"
+                  >
+                    <a
+                      href={`https://github.com/${branding.orgName}/${branding.repoName}/blob/develop/docs/api-reference.mdx`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {t("pairingview.PairingSetupDocs")}
+                    </a>
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="default"
+                    size="lg"
+                    className="w-full sm:w-auto sm:min-w-[9rem]"
+                    disabled={pairingBusy || !pairingCode}
+                  >
+                    {pairingBusy
+                      ? t("pairingview.PairingInProgress")
+                      : t("common.submit")}
+                  </Button>
+                </div>
+              </SemanticForm>
+            ) : (
+              <div className="space-y-5 text-sm">
+                <p className="leading-relaxed text-muted">
+                  {t("pairingview.PairingIsNotEnabl")}
                 </p>
-                <ol className="list-decimal space-y-2 pl-5 text-sm leading-relaxed text-txt">
-                  <li>{t("pairingview.AskTheServerOwner")}</li>
-                  <li>
-                    {t(
-                      "pairingview.EnablePairingOnTh",
-                      appNameInterpolationVars(branding),
-                    )}
-                  </li>
-                </ol>
-              </div>
 
-              {/* In-app escape: pairing is disabled with no token field, so
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted">
+                    {t("pairingview.NextSteps")}
+                  </p>
+                  <ol className="list-decimal space-y-2 pl-5 text-sm leading-relaxed text-txt">
+                    <li>{t("pairingview.AskTheServerOwner")}</li>
+                    <li>
+                      {t(
+                        "pairingview.EnablePairingOnTh",
+                        appNameInterpolationVars(branding),
+                      )}
+                    </li>
+                  </ol>
+                </div>
+
+                {/* In-app escape: pairing is disabled with no token field, so
                   this screen is otherwise a dead end. Let the user abandon the
                   stale server and start over on a local agent. */}
-              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                <Button
-                  type="button"
-                  variant="default"
-                  size="lg"
-                  className="w-full sm:w-auto sm:min-w-[12rem]"
-                  onClick={() => startFreshFirstRunReload()}
-                >
-                  {t("pairingview.UseLocalInstead", {
-                    defaultValue: "Use a local agent instead",
-                  })}
-                </Button>
-                <Button
-                  asChild
-                  variant="outline"
-                  size="lg"
-                  className="w-full sm:w-auto sm:min-w-[12rem]"
-                >
-                  <a
-                    href={`https://github.com/${branding.orgName}/${branding.repoName}/blob/develop/docs/api-reference.mdx`}
-                    target="_blank"
-                    rel="noreferrer"
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="lg"
+                    className="w-full sm:w-auto sm:min-w-[12rem]"
+                    onClick={() => startFreshFirstRunReload()}
                   >
-                    {t("pairingview.PairingSetupDocs")}
-                  </a>
-                </Button>
+                    {t("pairingview.UseLocalInstead", {
+                      defaultValue: "Use a local agent instead",
+                    })}
+                  </Button>
+                  <Button
+                    asChild
+                    variant="outline"
+                    size="lg"
+                    className="w-full sm:w-auto sm:min-w-[12rem]"
+                  >
+                    <a
+                      href={`https://github.com/${branding.orgName}/${branding.repoName}/blob/develop/docs/api-reference.mdx`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {t("pairingview.PairingSetupDocs")}
+                    </a>
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </Card>
   );
 }

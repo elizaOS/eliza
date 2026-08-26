@@ -12,6 +12,7 @@ import * as React from "react";
 import { useAgentElement } from "../../../agent-surface";
 import { cn } from "../../../lib/utils";
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 import {
   Dialog,
   DialogContent,
@@ -46,11 +47,11 @@ export function SettingsGroup({
           {title}
         </h2>
       ) : null}
-      <div className="rounded-2xl border border-border bg-card px-5 py-1">
+      <Card variant="accountConnect" className="px-5 py-1">
         <div className="[&>:not([hidden])+:not([hidden])]:border-t [&>:not([hidden])+:not([hidden])]:border-border">
           {children}
         </div>
-      </div>
+      </Card>
       {footer ? (
         <p className="mt-2 px-1 text-pretty text-xs leading-5 text-muted-foreground">
           {footer}
@@ -580,49 +581,58 @@ export function CloudModal({
         if (!nextOpen) onClose();
       }}
     >
-      <DialogContent
-        showCloseButton={false}
-        overlayClassName="bg-black/40"
-        onCloseAutoFocus={(event) => {
-          event.preventDefault();
-          returnFocusRef.current?.focus();
-          returnFocusRef.current = null;
-        }}
+      <Card
+        asChild
+        variant="panel"
         className={cn(
-          "block w-[min(calc(100vw_-_2rem),28rem)] gap-0 overflow-y-auto rounded-sm border-border bg-card p-0 sm:p-0 text-foreground shadow-lg",
+          "block w-[min(calc(100vw_-_2rem),28rem)] gap-0 overflow-y-auto p-0 sm:p-0 text-foreground",
           maxWidth,
           "max-h-[85vh]",
         )}
       >
-        <div className="border-b border-border px-4 py-2.5">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <DialogTitle className="text-sm font-semibold leading-6 text-foreground">
-                {title}
-              </DialogTitle>
-              {description ? (
-                <DialogDescription className="mt-1 text-sm-tight leading-5 text-muted-foreground">
-                  {description}
-                </DialogDescription>
-              ) : null}
+        <DialogContent
+          showCloseButton={false}
+          overlayClassName="bg-black/40"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            returnFocusRef.current?.focus();
+            returnFocusRef.current = null;
+          }}
+        >
+          <Card asChild variant="bottomDivider" className="px-4 py-2.5">
+            <div>
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <DialogTitle className="text-sm font-semibold leading-6 text-foreground">
+                    {title}
+                  </DialogTitle>
+                  {description ? (
+                    <DialogDescription className="mt-1 text-sm-tight leading-5 text-muted-foreground">
+                      {description}
+                    </DialogDescription>
+                  ) : null}
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={onClose}
+                  className="shrink-0"
+                  aria-label="Close dialog"
+                >
+                  <X aria-hidden className="size-4" />
+                </Button>
+              </div>
             </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              onClick={onClose}
-              className="shrink-0"
-              aria-label="Close dialog"
-            >
-              <X aria-hidden className="size-4" />
-            </Button>
-          </div>
-        </div>
-        <div className="px-4 py-3">{children}</div>
-        {footer ? (
-          <div className="border-t border-border px-4 py-2.5">{footer}</div>
-        ) : null}
-      </DialogContent>
+          </Card>
+          <div className="px-4 py-3">{children}</div>
+          {footer ? (
+            <Card asChild variant="topDivider" className="px-4 py-2.5">
+              <div>{footer}</div>
+            </Card>
+          ) : null}
+        </DialogContent>
+      </Card>
     </Dialog>
   );
 }

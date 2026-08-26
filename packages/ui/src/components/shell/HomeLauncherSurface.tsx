@@ -11,6 +11,7 @@ import {
   setShellSurfacePage,
   useShellSurface,
 } from "../../state/shell-surface-store";
+import { Card } from "../ui/card";
 import { FirstSessionSwipeHint } from "./FirstSessionSwipeHint";
 import { PagerEdgeButtons } from "./PagerEdgeButtons";
 
@@ -114,7 +115,8 @@ export function HomeLauncherSurface({
         // covered too.
         className="absolute inset-0 flex w-[200%] touch-pan-y"
       >
-        <div
+        <Card
+          variant="transparent"
           data-testid="home-launcher-home-page"
           aria-hidden={page !== "home"}
           // `inert` (not just aria-hidden) so the offscreen half is also removed
@@ -139,8 +141,9 @@ export function HomeLauncherSurface({
           onClickCapture={pager.handlers.onClickCapture}
         >
           {home}
-        </div>
-        <div
+        </Card>
+        <Card
+          variant="transparent"
           data-testid="home-launcher-launcher-page"
           aria-hidden={page !== "launcher"}
           inert={page !== "launcher" || undefined}
@@ -156,7 +159,7 @@ export function HomeLauncherSurface({
           onClickCapture={pager.handlers.onClickCapture}
         >
           {launcher}
-        </div>
+        </Card>
       </div>
       {/* Web/desktop `< >` edge buttons for the home↔launcher rail (hidden on
           touch). PagerEdgeButtons self-hides each chevron at the rail's

@@ -22,8 +22,11 @@ import {
 } from "../../cloud-ui/components/connection-card";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { Separator } from "../../components/ui/separator";
+import { TextLink } from "../../components/ui/text-link";
 import { ApiError, api } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { useConnectionStatus } from "./use-connection-status";
@@ -287,7 +290,12 @@ export function BlooioConnection() {
           )}
 
           {status?.webhookUrl && !status.hasWebhookSecret && (
-            <div className="p-3 bg-status-warning-bg border border-status-warning/30 rounded-sm space-y-3">
+            <Card
+              variant="warningNotice"
+              padding="compact"
+              stack="compact"
+              className="text-base"
+            >
               <div>
                 <p className="text-sm font-medium text-status-warning mb-1">
                   {t("cloud.blooio.step2Title", {
@@ -318,7 +326,8 @@ export function BlooioConnection() {
                   </li>
                 </ol>
               </div>
-              <div className="space-y-2 pt-2 border-t border-status-warning/20">
+              <Separator />
+              <div className="space-y-2 pt-2">
                 <Label className="text-xs text-status-warning">
                   {t("cloud.blooio.step3Label", {
                     defaultValue: "Step 3: Paste signing secret here",
@@ -345,7 +354,7 @@ export function BlooioConnection() {
                   </Button>
                 </div>
               </div>
-            </div>
+            </Card>
           )}
 
           {status?.hasWebhookSecret && (
@@ -402,15 +411,15 @@ export function BlooioConnection() {
             <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
               <li>
                 {t("cloud.blooio.instructGoTo", { defaultValue: "Go to" })}{" "}
-                <a
+                <TextLink
                   href="https://app.blooio.com"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-accent hover:underline inline-flex items-center gap-1"
+                  className="inline-flex items-center gap-1"
                 >
                   app.blooio.com
                   <ExternalLink className="size-3" />
-                </a>
+                </TextLink>
               </li>
               <li>
                 {t("cloud.blooio.instructCreateAccount", {
@@ -482,7 +491,7 @@ export function BlooioConnection() {
             </p>
           </div>
 
-          <div className="p-4 bg-muted rounded-sm">
+          <Card variant="flatPadded">
             <h4 className="font-medium mb-2">
               {t("cloud.blooio.whatYouCanDo", {
                 defaultValue: "What you can do with iMessage:",
@@ -510,7 +519,7 @@ export function BlooioConnection() {
                 })}
               </li>
             </ul>
-          </div>
+          </Card>
 
           <Button
             onClick={handleConnect}

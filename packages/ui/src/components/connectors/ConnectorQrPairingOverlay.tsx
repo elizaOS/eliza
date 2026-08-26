@@ -11,6 +11,8 @@ import { useEffect, useRef } from "react";
 import { useAppSelector } from "../../state";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
+import { StatusDot } from "../ui/status-badge";
 
 type ConnectorPairingStatus =
   | "idle"
@@ -114,7 +116,7 @@ export function ConnectorQrPairingOverlay({
       >
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-xs font-semibold text-ok">
-            <span className="inline-block size-2 rounded-full bg-ok" />
+            <StatusDot tone="success" className="size-2" />
             <span>
               {t("common.connected")}
               {phoneNumber ? ` (${connectedPhonePrefix}${phoneNumber})` : ""}
@@ -172,31 +174,33 @@ export function ConnectorQrPairingOverlay({
   }
 
   return (
-    <div className="rounded-sm border border-border/60 bg-card/60 p-4">
+    <Card variant="panel" padding="comfortable">
       <div className="flex flex-col items-start gap-4 sm:flex-row">
         <div className="shrink-0">
           {qrDataUrl ? (
-            <img
-              src={qrDataUrl}
-              alt={qrAlt}
+            <Card
+              variant="transparentSquare"
+              border="standard"
+              surface="transparent"
               className={qrSizeClassName}
-              style={{
-                imageRendering: "pixelated",
-                border: "1px solid var(--border)",
-              }}
-            />
+            >
+              <img
+                src={qrDataUrl}
+                alt={qrAlt}
+                className="h-full w-full"
+                style={{ imageRendering: "pixelated" }}
+              />
+            </Card>
           ) : (
-            <div
+            <Card
+              border="standard"
+              surface="raised"
               className="flex size-40 items-center justify-center sm:h-48 sm:w-48"
-              style={{
-                border: "1px solid var(--border)",
-                background: "var(--bg-hover)",
-              }}
             >
               <span className="animate-pulse text-xs text-muted">
                 {generatingLabel}
               </span>
-            </div>
+            </Card>
           )}
         </div>
         <div className="min-w-0 flex-1">
@@ -217,6 +221,6 @@ export function ConnectorQrPairingOverlay({
           </Button>
         </div>
       </div>
-    </div>
+    </Card>
   );
 }

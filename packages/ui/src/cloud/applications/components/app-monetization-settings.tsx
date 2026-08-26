@@ -34,6 +34,7 @@ import {
   AlertDialogTitle,
 } from "../../../components/ui/alert-dialog";
 import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { Slider } from "../../../components/ui/slider";
 import { Switch } from "../../../components/ui/switch";
 import {
@@ -443,7 +444,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
         {/* Settings Grid */}
         <div className="grid gap-4 lg:grid-cols-2">
           {/* Markup Controls */}
-          <div className="bg-card rounded-sm p-4 space-y-4">
+          <Card stack="default" variant="flatPadded">
             <h3 className="text-sm font-medium text-txt">
               {t("cloud.monetization.revenueSettings", {
                 defaultValue: "Revenue Settings",
@@ -587,7 +588,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                 })}
               </Button>
             </div>
-          </div>
+          </Card>
 
           {/* Revenue Flow Diagram */}
           <RevenueFlowDiagram

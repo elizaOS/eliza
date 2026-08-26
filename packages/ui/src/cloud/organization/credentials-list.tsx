@@ -31,7 +31,9 @@ import {
   AlertDialogTrigger,
   Switch,
 } from "../../cloud-ui";
+import { Badge, type BadgeProps } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import {
   POOLED_PROVIDER_LABELS,
@@ -51,15 +53,15 @@ export function providerDisplayName(provider: string): string {
   return POOLED_PROVIDER_LABELS[provider as PooledProviderId] ?? provider;
 }
 
-function healthDotClass(health: string): string {
+function healthDotVariant(health: string): NonNullable<BadgeProps["variant"]> {
   switch (health) {
     case "ok":
-      return "bg-status-success";
+      return "statusDotSuccess";
     case "rate-limited":
-      return "bg-status-warning";
+      return "statusDotWarning";
     default:
       // needs-reauth / invalid / unknown
-      return "bg-danger";
+      return "statusDotDanger";
   }
 }
 
@@ -84,7 +86,7 @@ export function CredentialsList({
 
   if (credentials.length === 0) {
     return (
-      <div className="bg-surface border border-brand-surface p-8 text-center">
+      <Card variant="insetPadded" className="p-8 text-center">
         <KeyRound className="size-12 mx-auto text-muted mb-4" />
         <p className="text-sm font-mono text-muted">
           {t("cloud.credentialsList.empty", {
@@ -92,7 +94,7 @@ export function CredentialsList({
               "No pooled credentials yet. Contribute a provider API key to get started.",
           })}
         </p>
-      </div>
+      </Card>
     );
   }
 
@@ -119,9 +121,10 @@ export function CredentialsList({
           canManage || credential.contributedBy?.id === currentUserId;
 
         return (
-          <div
+          <Card
             key={credential.id}
-            className={`bg-surface border border-brand-surface p-3 md:p-4 ${credential.enabled ? "" : "opacity-60"}`}
+            variant="insetPadded"
+            className={`md:p-4 ${credential.enabled ? "" : "opacity-60"}`}
           >
             <div className="flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4">
               <div className="flex-1 min-w-0 w-full space-y-2">
@@ -131,9 +134,13 @@ export function CredentialsList({
                   <span className="font-mono font-semibold text-sm md:text-base text-txt-strong truncate">
                     {credential.label}
                   </span>
-                  <span className="px-2 py-0.5 border border-border bg-muted text-txt-strong text-xs font-mono uppercase">
+                  <Badge
+                    variant="metaStrong"
+                    size="compact"
+                    className="font-mono"
+                  >
                     {providerDisplayName(credential.provider)}
-                  </span>
+                  </Badge>
                 </div>
 
                 {/* Masked key + health */}
@@ -142,10 +149,14 @@ export function CredentialsList({
                     ••••{credential.last4}
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span
+                    <Badge
+                      variant={
+                        credential.enabled
+                          ? healthDotVariant(credential.health)
+                          : "statusDotMuted"
+                      }
                       data-testid={`health-dot-${credential.id}`}
                       data-health={credential.health}
-                      className={`inline-block size-2 rounded-full ${credential.enabled ? healthDotClass(credential.health) : "bg-muted"}`}
                     />
                     <span className="capitalize">
                       {healthLabel(credential)}
@@ -226,7 +237,7 @@ export function CredentialsList({
                         <Trash2 className="size-4 text-danger" />
                       </Button>
                     </AlertDialogTrigger>
-                    <AlertDialogContent className="bg-bg border border-brand-surface">
+                    <AlertDialogContent>
                       <AlertDialogHeader>
                         <AlertDialogTitle className="text-txt-strong font-mono">
                           {t("cloud.credentialsList.removeTitle", {
@@ -242,26 +253,27 @@ export function CredentialsList({
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
-                        <AlertDialogCancel className="bg-transparent border-border text-txt-strong hover:bg-surface">
+                        <AlertDialogCancel>
                           {t("cloud.credentialsList.cancel", {
                             defaultValue: "Cancel",
                           })}
                         </AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={() => onRemove(credential.id)}
-                          className="bg-danger hover:bg-danger/90 text-danger-fg"
-                        >
-                          {t("cloud.credentialsList.remove", {
-                            defaultValue: "Remove",
-                          })}
-                        </AlertDialogAction>
+                        <Button asChild variant="destructive">
+                          <AlertDialogAction
+                            onClick={() => onRemove(credential.id)}
+                          >
+                            {t("cloud.credentialsList.remove", {
+                              defaultValue: "Remove",
+                            })}
+                          </AlertDialogAction>
+                        </Button>
                       </AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>
                 )}
               </div>
             </div>
-          </div>
+          </Card>
         );
       })}
     </div>

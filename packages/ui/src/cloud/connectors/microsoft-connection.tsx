@@ -18,6 +18,7 @@ import {
 } from "../../cloud-ui/components/connection-card";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { ConnectionCapabilityTile } from "./connection-capability-tile";
 import { useOAuthConnections } from "./oauth-connection";
@@ -123,7 +124,7 @@ export function MicrosoftConnection() {
           />
 
           {activeConnection?.scopes && activeConnection.scopes.length > 0 && (
-            <div className="p-3 bg-muted rounded-sm">
+            <Card variant="flatPadded" className="p-3">
               <p className="text-sm font-medium mb-2">
                 {t("cloud.microsoft.permissionsGranted", {
                   defaultValue: "Permissions granted:",
@@ -139,7 +140,7 @@ export function MicrosoftConnection() {
                     </Badge>
                   ))}
               </div>
-            </div>
+            </Card>
           )}
 
           <ConnectionCallout

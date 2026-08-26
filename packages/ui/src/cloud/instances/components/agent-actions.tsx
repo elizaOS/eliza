@@ -31,6 +31,7 @@ import {
 } from "@elizaos/cloud-sdk/browser-contracts";
 import {
   AlertDialog,
+  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -54,6 +55,7 @@ import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { client, ElizaClient } from "../../../api";
+import { Alert } from "../../../components/ui/alert";
 import { Button } from "../../../components/ui/button";
 import { getBootConfig } from "../../../config/boot-config";
 import { dispatchCloudHandoffPhase } from "../../../events";
@@ -550,8 +552,9 @@ export function ElizaAgentActions({
     <>
       <div className="space-y-4">
         {isSleeping && (
-          <div
-            className="flex items-start gap-3 rounded-sm border border-white/10 bg-white/5 p-3"
+          <Alert
+            variant="sidebar"
+            className="flex items-start gap-3 p-3"
             data-testid="agent-deactivated-panel"
           >
             <Moon className="size-4 shrink-0 mt-0.5 text-white/50" />
@@ -564,7 +567,7 @@ export function ElizaAgentActions({
                   "This agent is deactivated. It is not running and is not consuming hourly credits; its data is retained. Reactivation can take a few minutes and requires available credits.",
               })}
             </p>
-          </div>
+          </Alert>
         )}
 
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -702,20 +705,23 @@ export function ElizaAgentActions({
             )}
 
             {isDedicated && !showDeleteConfirm ? (
-              <BrandButton
-                variant="outline"
+              <Button
+                variant="dangerOutline"
                 size="sm"
                 onClick={() => setShowDeleteConfirm(true)}
                 disabled={!!loading || isBusy}
-                className="min-h-touch text-destructive border-destructive/30 hover:bg-destructive-subtle hover:text-destructive"
+                className="min-h-touch"
               >
                 <Trash2 className="size-4" />
                 {t("cloud.containers.agentActions.delete", {
                   defaultValue: "Delete Agent",
                 })}
-              </BrandButton>
+              </Button>
             ) : isDedicated ? (
-              <div className="flex flex-wrap items-center gap-2 rounded-sm border border-destructive/30 bg-destructive-subtle p-3">
+              <Alert
+                variant="dangerConfirm"
+                className="flex flex-wrap items-center gap-2 p-3"
+              >
                 <span
                   className="text-sm text-destructive"
                   style={{ fontFamily: "var(--font-roboto-mono)" }}
@@ -724,12 +730,12 @@ export function ElizaAgentActions({
                     defaultValue: "Confirm delete?",
                   })}
                 </span>
-                <BrandButton
-                  variant="outline"
+                <Button
+                  variant="dangerOutline"
                   size="sm"
                   onClick={() => doAction("delete", "DELETE")}
                   disabled={!!loading}
-                  className="min-h-touch text-destructive border-destructive/50 hover:bg-destructive-subtle"
+                  className="min-h-touch"
                 >
                   {loading === "delete" ? (
                     <Loader2 className="size-3 animate-spin" />
@@ -737,7 +743,7 @@ export function ElizaAgentActions({
                   {t("cloud.containers.agentActions.yesDelete", {
                     defaultValue: "Yes, delete",
                   })}
-                </BrandButton>
+                </Button>
                 <BrandButton
                   variant="outline"
                   size="sm"
@@ -748,7 +754,7 @@ export function ElizaAgentActions({
                     defaultValue: "Cancel",
                   })}
                 </BrandButton>
-              </div>
+              </Alert>
             ) : null}
           </div>
         </div>
@@ -829,10 +835,7 @@ export function ElizaAgentActions({
         )}
 
         {trackedJob?.status === "failed" && (
-          <div
-            role="alert"
-            className="rounded-md border border-destructive/30 bg-destructive-subtle p-3"
-          >
+          <Alert variant="destructive" className="block p-3">
             <p
               className="text-sm text-destructive"
               style={{ fontFamily: "var(--font-roboto-mono)" }}
@@ -848,7 +851,7 @@ export function ElizaAgentActions({
                   "Your agent was left in its previous state. Review the message, then retry the action when ready.",
               })}
             </p>
-          </div>
+          </Alert>
         )}
       </div>
 
@@ -858,7 +861,7 @@ export function ElizaAgentActions({
         open={showUpgradeConfirm}
         onOpenChange={setShowUpgradeConfirm}
       >
-        <AlertDialogContent className="bg-card border-border">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="text-txt-strong">
               {quotedSetupIsResuming
@@ -920,43 +923,49 @@ export function ElizaAgentActions({
             ) : null}
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="border-border bg-transparent text-txt hover:bg-surface">
-              {t("cloud.containers.agentActions.cancel", {
-                defaultValue: "Cancel",
-              })}
-            </AlertDialogCancel>
-            {upgradeQuote?.canActivate ? (
-              <Button
-                type="button"
-                disabled={!!loading || isBusy}
-                onClick={() => void doUpgrade()}
-                data-testid="agent-upgrade-tier-confirm"
-              >
-                {loading === "upgrade-tier" ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Rocket className="size-4" />
-                )}
-                {quotedSetupIsResuming
-                  ? t("cloud.containers.agentActions.upgradeContinue", {
-                      defaultValue: "Resume setup",
-                    })
-                  : t("cloud.containers.agentActions.upgradeConfirm", {
-                      defaultValue: "Activate Dedicated",
-                    })}
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                onClick={() => {
-                  setShowUpgradeConfirm(false);
-                  navigate("/cloud/billing");
-                }}
-              >
-                {t("cloud.containers.agentActions.addCredits", {
-                  defaultValue: "Add funds to upgrade",
+            <AlertDialogCancel asChild>
+              <Button variant="outline">
+                {t("cloud.containers.agentActions.cancel", {
+                  defaultValue: "Cancel",
                 })}
               </Button>
+            </AlertDialogCancel>
+            {upgradeQuote?.canActivate ? (
+              <AlertDialogAction asChild>
+                <Button
+                  type="button"
+                  disabled={!!loading || isBusy}
+                  onClick={() => void doUpgrade()}
+                  data-testid="agent-upgrade-tier-confirm"
+                >
+                  {loading === "upgrade-tier" ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Rocket className="size-4" />
+                  )}
+                  {quotedSetupIsResuming
+                    ? t("cloud.containers.agentActions.upgradeContinue", {
+                        defaultValue: "Resume setup",
+                      })
+                    : t("cloud.containers.agentActions.upgradeConfirm", {
+                        defaultValue: "Activate Dedicated",
+                      })}
+                </Button>
+              </AlertDialogAction>
+            ) : (
+              <AlertDialogAction asChild>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setShowUpgradeConfirm(false);
+                    navigate("/cloud/billing");
+                  }}
+                >
+                  {t("cloud.containers.agentActions.addCredits", {
+                    defaultValue: "Add funds to upgrade",
+                  })}
+                </Button>
+              </AlertDialogAction>
             )}
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -968,7 +977,7 @@ export function ElizaAgentActions({
         open={showDeactivateConfirm}
         onOpenChange={setShowDeactivateConfirm}
       >
-        <AlertDialogContent className="bg-card border-border">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="text-txt-strong">
               {t("cloud.containers.agentActions.deactivateTitle", {
@@ -998,25 +1007,29 @@ export function ElizaAgentActions({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="border-border bg-transparent text-txt hover:bg-surface">
-              {t("cloud.containers.agentActions.cancel", {
-                defaultValue: "Cancel",
-              })}
+            <AlertDialogCancel asChild>
+              <Button variant="outline">
+                {t("cloud.containers.agentActions.cancel", {
+                  defaultValue: "Cancel",
+                })}
+              </Button>
             </AlertDialogCancel>
-            <Button
-              type="button"
-              disabled={!!loading || isBusy}
-              onClick={() => doAction("sleep")}
-            >
-              {loading === "sleep" ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Moon className="size-4" />
-              )}
-              {t("cloud.containers.agentActions.deactivateConfirm", {
-                defaultValue: "Yes, deactivate",
-              })}
-            </Button>
+            <AlertDialogAction asChild>
+              <Button
+                type="button"
+                disabled={!!loading || isBusy}
+                onClick={() => doAction("sleep")}
+              >
+                {loading === "sleep" ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Moon className="size-4" />
+                )}
+                {t("cloud.containers.agentActions.deactivateConfirm", {
+                  defaultValue: "Yes, deactivate",
+                })}
+              </Button>
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

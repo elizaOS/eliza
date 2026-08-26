@@ -20,6 +20,7 @@ import {
   AlertDialogTitle,
 } from "../../../components/ui/alert-dialog";
 import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 
 export interface BulkSelectionBarLabels {
   selected: string;
@@ -44,7 +45,12 @@ export function BulkSelectionBar({
 }) {
   if (count === 0) return null;
   return (
-    <div className="mb-2 flex items-center justify-between gap-3 rounded-sm border border-border bg-surface px-3 py-2">
+    <Card
+      className="mb-2"
+      flow="rowBetween"
+      gap="default"
+      variant="insetCompact"
+    >
       <span className="text-sm text-txt">{labels.selected}</span>
       <div className="flex items-center gap-2">
         <Button
@@ -66,7 +72,7 @@ export function BulkSelectionBar({
           {labels.deleteSelected}
         </Button>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -93,7 +99,7 @@ export function BulkDeleteDialog({
 }) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="bg-card border-border">
+      <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle className="text-txt-strong">
             {title}
@@ -103,9 +109,9 @@ export function BulkDeleteDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel className="border-border bg-transparent text-txt hover:bg-surface">
-            {cancelLabel}
-          </AlertDialogCancel>
+          <Button asChild variant="outline">
+            <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
+          </Button>
           <Button
             variant="destructive"
             type="button"
