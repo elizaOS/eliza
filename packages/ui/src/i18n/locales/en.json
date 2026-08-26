@@ -444,6 +444,7 @@
   "browserworkspace.LastSeen": "Last seen {{time}}",
   "browserworkspace.LoadFailed": "Failed to load browser workspace.",
   "browserworkspace.Loading": "Loading browser workspace",
+  "browserworkspace.MoreActions": "More browser actions",
   "browserworkspace.NewTab": "New tab",
   "browserworkspace.NoActiveTab": "No tab",
   "browserworkspace.NoAgentTabs": "No Agent Tabs",
