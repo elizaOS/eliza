@@ -77,6 +77,12 @@ export interface DesktopBootstrapDeps {
    * inherit an authority row that only existed in the previous process.
    */
   reusePersistedSession?: boolean;
+  /** Override bounded handshake timing for deterministic tests. */
+  timing?: {
+    httpRequestTimeoutMs: number;
+    socketConnectTimeoutMs: number;
+    dbUnavailableRetryDelaysMs: readonly number[];
+  };
 }
 
 interface DesktopBootstrapResponseBody {
@@ -380,8 +386,61 @@ function buildBootstrapUrl(apiBase: string): string {
   return `${trimmed}${DESKTOP_BOOTSTRAP_ENDPOINT}`;
 }
 
-function waitForBootstrapRetry(delayMs: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, delayMs));
+function waitForBootstrapRetry(
+  delayMs: number,
+  requestSignal: AbortSignal,
+): Promise<void> {
+  if (requestSignal.aborted) {
+    return Promise.reject(
+      requestSignal.reason instanceof Error
+        ? requestSignal.reason
+        : new Error(String(requestSignal.reason)),
+    );
+  }
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(
+        requestSignal.reason instanceof Error
+          ? requestSignal.reason
+          : new Error(String(requestSignal.reason)),
+      );
+    };
+    const timer = setTimeout(() => {
+      requestSignal.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    requestSignal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function waitForSocketConsumption(
+  consumed: Promise<void>,
+  timeoutMs: number,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    };
+    const timeout = setTimeout(
+      () =>
+        finish(new Error("socket consume timed out before backend connected")),
+      timeoutMs,
+    );
+    consumed.then(
+      () => finish(),
+      (err: unknown) =>
+        finish(err instanceof Error ? err : new Error(String(err))),
+    );
+  });
 }
 
 function isLoopbackBase(apiBase: string): boolean {
@@ -416,6 +475,13 @@ export async function bootstrapDesktopSession(
   const now = deps.now ?? Date.now;
   const generateSecret =
     deps.generateSecret ?? (() => crypto.randomBytes(SECRET_BYTES));
+  const timing =
+    deps.timing ??
+    ({
+      httpRequestTimeoutMs: HTTP_REQUEST_TIMEOUT_MS,
+      socketConnectTimeoutMs: SOCKET_CONNECT_TIMEOUT_MS,
+      dbUnavailableRetryDelaysMs: DB_UNAVAILABLE_RETRY_DELAYS_MS,
+    } as const);
 
   if (process.platform === "win32") {
     // UDS path is POSIX-only for this bridge. Win32 falls through to the
@@ -444,26 +510,10 @@ export async function bootstrapDesktopSession(
   }
 
   const url = buildBootstrapUrl(deps.apiBase);
-  const requestSignal = AbortSignal.timeout(HTTP_REQUEST_TIMEOUT_MS);
-  const consumeSignal = AbortSignal.timeout(SOCKET_CONNECT_TIMEOUT_MS);
-
-  // Wrap consumed in a race so a hung backend doesn't keep the socket open.
-  const consumedOrTimeout = new Promise<void>((resolve, reject) => {
-    const onAbort = () =>
-      reject(new Error("socket consume timed out before backend connected"));
-    consumeSignal.addEventListener("abort", onAbort, { once: true });
-    socketHandle.consumed
-      .then(() => resolve())
-      .catch((err: unknown) =>
-        reject(err instanceof Error ? err : new Error(String(err))),
-      );
-  });
-  // The early bail-outs below (fetch throw, !response.ok) return without
-  // awaiting this promise, but the consume-timeout still fires ~5s later.
-  // Swallow that orphaned rejection so it can't surface as an unhandled
-  // rejection and crash the Electrobun worker; the awaited path on line ~388
-  // still re-throws normally because `.catch()` returns a separate chain.
-  consumedOrTimeout.catch((err: unknown) => {
+  const requestSignal = AbortSignal.timeout(timing.httpRequestTimeoutMs);
+  // error-policy:J5 a socket-server rejection is awaited after a 2xx response;
+  // this observer covers early HTTP exits without changing that result.
+  socketHandle.consumed.catch((err: unknown) => {
     logger.debug("[DesktopAuthBridge] Bootstrap socket was not consumed", {
       error: errorMessage(err),
     });
@@ -484,9 +534,9 @@ export async function bootstrapDesktopSession(
       });
 
       if (response.ok) break;
-      const retryDelay = DB_UNAVAILABLE_RETRY_DELAYS_MS[attempt];
+      const retryDelay = timing.dbUnavailableRetryDelaysMs[attempt];
       if (response.status === 503 && retryDelay !== undefined) {
-        await waitForBootstrapRetry(retryDelay);
+        await waitForBootstrapRetry(retryDelay, requestSignal);
         continue;
       }
 
@@ -509,11 +559,14 @@ export async function bootstrapDesktopSession(
       return null;
     }
 
-    // Wait for the API to actually connect to the socket before we tear it
-    // down. If the API never connects we still got an HTTP response, but the
-    // session it minted was based on something other than filesystem proof —
-    // refuse it.
-    await consumedOrTimeout;
+    // Begin the proof deadline only after the retry ladder has produced a 2xx.
+    // A 503 is returned before the backend touches the one-shot socket, so its
+    // bounded retries must not spend the separate proof-consumption budget.
+    // If a backend returns success without consuming the socket, fail closed.
+    await waitForSocketConsumption(
+      socketHandle.consumed,
+      timing.socketConnectTimeoutMs,
+    );
   } catch (err) {
     warnAuthBridge("Desktop auth bootstrap failed", {
       url,
