@@ -2,7 +2,7 @@
  * Storybook stories for the composed cloud dashboard components (empty states, cards).
  */
 import type { Meta, StoryObj } from "@storybook/react";
-import { BrandButton } from "../brand/brand-button";
+import { Button } from "../../../components/ui/button";
 import {
   AppsEmptyState,
   AppsSkeleton,
@@ -79,7 +79,7 @@ export const AppsEmptyWithAction: Story = {
     <div className="mx-auto max-w-2xl">
       <AppsEmptyState
         description="Publish your first app to start earning."
-        action={<BrandButton onClick={() => undefined}>Create app</BrandButton>}
+        action={<Button onClick={() => undefined}>Create app</Button>}
       />
     </div>
   ),

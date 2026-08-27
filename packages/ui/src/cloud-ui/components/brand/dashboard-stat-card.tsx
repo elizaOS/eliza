@@ -1,10 +1,10 @@
 /**
- * A single dashboard stat card (label + value) built on BrandCard.
+ * A single dashboard stat card (label + value) built on canonical Card.
  */
 import type { ReactNode } from "react";
 import { Badge, type BadgeProps } from "../../../components/ui/badge";
+import { Card } from "../../../components/ui/card";
 import { cn } from "../../lib/utils";
-import { BrandCard } from "./brand-card";
 
 type DashboardStatAccent =
   | "orange"
@@ -58,9 +58,9 @@ export function DashboardStatCard({
   valueClassName,
 }: DashboardStatCardProps) {
   return (
-    <BrandCard
+    <Card
       className={cn("min-h-[108px] justify-between p-4", className)}
-      corners={false}
+      variant="brand"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 space-y-2">
@@ -90,6 +90,6 @@ export function DashboardStatCard({
       {helper ? (
         <p className="text-xs text-muted-foreground">{helper}</p>
       ) : null}
-    </BrandCard>
+    </Card>
   );
 }

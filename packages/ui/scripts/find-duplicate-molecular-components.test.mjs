@@ -6,16 +6,43 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  assertMolecularArtifactsCurrent,
   buildMolecularInventory,
   fileComposesContract,
+  fileRendersContract,
+  molecularClusterBinding,
+  parseMolecularDecisionRegistry,
   parseMoleculeContractRegistry,
   renderMolecularMarkdown,
+  serializeMolecularReport,
   validateMolecularDecisions,
   validateMoleculeContracts,
 } from "./find-duplicate-molecular-components.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../../..");
+
+function exampleCluster(signature = "card:badge+button") {
+  return {
+    archetype: "card",
+    atomicDependencies: ["badge", "button"],
+    entries: [
+      {
+        atomicDependencies: ["badge", "button"],
+        file: "packages/ui/src/alpha.tsx",
+        name: "AlphaCard",
+        renderedTags: ["Badge", "Button"],
+      },
+      {
+        atomicDependencies: ["badge", "button"],
+        file: "packages/ui/src/beta.tsx",
+        name: "BetaCard",
+        renderedTags: ["Badge", "Button"],
+      },
+    ],
+    signature,
+  };
+}
 
 test("molecular inventory is deterministic and requires meaningful signatures", () => {
   const first = buildMolecularInventory();
@@ -112,18 +139,39 @@ test("canonical molecule contracts require named consumers to keep composing the
   );
 });
 
-test("molecule contract registry rejects incomplete boundary data", () => {
+test("molecule contract registry rejects under-proven owners", () => {
   assert.throws(
     () =>
       parseMoleculeContractRegistry({
-        schemaVersion: 1,
+        schemaVersion: 2,
         contracts: [{ id: "incomplete" }],
       }),
-    /requires non-empty owner/,
+    /requires non-empty behavioralTest/,
   );
   assert.throws(
-    () => parseMoleculeContractRegistry({ schemaVersion: 2, contracts: [] }),
-    /requires schemaVersion 1 and contracts/,
+    () => parseMoleculeContractRegistry({ schemaVersion: 1, contracts: [] }),
+    /requires schemaVersion 2 and contracts/,
+  );
+  assert.throws(
+    () =>
+      parseMoleculeContractRegistry({
+        schemaVersion: 2,
+        contracts: [
+          {
+            behavioralTest: "packages/ui/src/example.test.tsx",
+            id: "example",
+            minimumMaintainedReferences: 2,
+            owner: "packages/ui/src/example.tsx",
+            renderedStory: "packages/ui/src/example.stories.tsx",
+            requiredAtomicDependencies: ["button"],
+            requiredConsumerFiles: ["packages/ui/src/one.tsx"],
+            requiredRenderedTags: ["Button"],
+            responsibility: "Example.",
+            symbol: "Example",
+          },
+        ],
+      }),
+    /requires at least two distinct maintained consumer files/,
   );
 });
 
@@ -160,6 +208,14 @@ test("consumer composition resolves the owner binding through aliases and barrel
       path.join(fixtureRoot, "wrong.tsx"),
       "export function CanonicalRow() { return <span />; }\n",
     );
+    fs.writeFileSync(
+      path.join(fixtureRoot, "story.tsx"),
+      'import { CanonicalRow as Row } from "./barrel"; export default { component: Row };\n',
+    );
+    fs.writeFileSync(
+      path.join(fixtureRoot, "behavior.test.tsx"),
+      'import { CanonicalRow } from "./wrong"; test("decoy", () => <CanonicalRow />);\n',
+    );
 
     assert.equal(
       fileComposesContract(path.join(fixtureRoot, "consumer.tsx"), contract),
@@ -169,30 +225,164 @@ test("consumer composition resolves the owner binding through aliases and barrel
       fileComposesContract(path.join(fixtureRoot, "decoy.tsx"), contract),
       false,
     );
+    assert.equal(
+      fileRendersContract(path.join(fixtureRoot, "story.tsx"), contract),
+      true,
+    );
+    assert.throws(
+      () =>
+        validateMoleculeContracts(
+          [
+            {
+              atomicDependencies: [],
+              file: contract.owner,
+              name: contract.symbol,
+              renderedTags: ["div"],
+            },
+          ],
+          [
+            {
+              ...contract,
+              behavioralTest: `${relativeRoot}/behavior.test.tsx`,
+              id: "canonical-row",
+              minimumMaintainedReferences: 0,
+              renderedStory: `${relativeRoot}/story.tsx`,
+              requiredAtomicDependencies: [],
+              requiredConsumerFiles: [],
+              requiredRenderedTags: [],
+            },
+          ],
+          {},
+        ),
+      /behavior\.test\.tsx does not render canonical CanonicalRow/,
+    );
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true });
   }
 });
 
-test("molecular decisions reject candidate and duplicate states", () => {
-  const clusters = [
-    { signature: "card:badge+button" },
-    { signature: "panel:button+input" },
-  ];
+test("molecular decisions bind exact members and semantic structure", () => {
+  const cluster = exampleCluster();
+  const binding = molecularClusterBinding(cluster);
   const decisions = {
-    "card:badge+button": {
-      disposition: "shared-shell-candidate",
-      rationale: "Still needs review.",
+    [cluster.signature]: {
+      ...binding,
+      disposition: "distinct-domain-compositions",
+      rationale: "The domains own different state.",
     },
-    "panel:button+input": {
-      disposition: "duplicate-implementation",
-      rationale: "Still needs consolidation.",
+  };
+
+  assert.doesNotThrow(() => validateMolecularDecisions([cluster], decisions));
+
+  const drifted = {
+    ...cluster,
+    entries: [
+      cluster.entries[0],
+      {
+        ...cluster.entries[1],
+        file: "packages/ui/src/replacement.tsx",
+      },
+    ],
+  };
+  assert.throws(
+    () => validateMolecularDecisions([drifted], decisions),
+    /member IDs changed.*semantic fingerprint changed/,
+  );
+
+  const renderedStructureDrift = {
+    ...cluster,
+    entries: [
+      cluster.entries[0],
+      {
+        ...cluster.entries[1],
+        renderedTags: [...cluster.entries[1].renderedTags, "CardDescription"],
+      },
+    ],
+  };
+  assert.throws(
+    () => validateMolecularDecisions([renderedStructureDrift], decisions),
+    /semantic fingerprint changed/,
+  );
+});
+
+test("molecular decision workflow states cannot pass the completion gate", () => {
+  const unresolved = exampleCluster("card:badge+button");
+  const canonicalize = exampleCluster("panel:button+input");
+  const decisions = {
+    [unresolved.signature]: {
+      ...molecularClusterBinding(unresolved),
+      disposition: "unresolved",
+      rationale: "The lifecycle boundary has not been reviewed.",
+    },
+    [canonicalize.signature]: {
+      ...molecularClusterBinding(canonicalize),
+      canonicalContractId: "example-shell",
+      disposition: "canonicalize",
+      rationale: "Callers still need to migrate.",
     },
   };
 
   assert.throws(
-    () => validateMolecularDecisions(clusters, decisions),
-    /non-final: card:badge\+button \(shared-shell-candidate\), panel:button\+input \(duplicate-implementation\)/,
+    () =>
+      validateMolecularDecisions(
+        [unresolved, canonicalize],
+        decisions,
+        new Set(["example-shell"]),
+      ),
+    /non-final: card:badge\+button \(unresolved\), panel:button\+input \(canonicalize\)/,
+  );
+});
+
+test("molecular decision registry rejects fingerprints that cannot bind", () => {
+  assert.throws(
+    () =>
+      parseMolecularDecisionRegistry({
+        schemaVersion: 2,
+        decisions: {
+          "card:badge+button": {
+            disposition: "distinct-domain-compositions",
+            memberComponentIds: ["packages/ui/src/alpha.tsx:AlphaCard"],
+            rationale: "Different domains.",
+            semanticFingerprint: "not-a-fingerprint",
+          },
+        },
+      }),
+    /at least two unique memberComponentIds/,
+  );
+});
+
+test("molecular artifact checks compare formatted JSON by schema and data", () => {
+  const report = {
+    canonicalContracts: [],
+    clusters: [],
+    eligibleComponents: 0,
+    scannedFiles: 0,
+  };
+  const artifacts = serializeMolecularReport(report);
+  const differentlyFormattedJson = JSON.stringify(
+    {
+      scannedFiles: report.scannedFiles,
+      eligibleComponents: report.eligibleComponents,
+      clusters: report.clusters,
+      canonicalContracts: report.canonicalContracts,
+    },
+    null,
+    4,
+  );
+
+  assert.doesNotThrow(() =>
+    assertMolecularArtifactsCurrent(report, {
+      ...artifacts,
+      json: differentlyFormattedJson,
+    }),
+  );
+  assert.throws(
+    () =>
+      assertMolecularArtifactsCurrent(report, {
+        ...artifacts,
+        json: JSON.stringify({ ...report, scannedFiles: 1 }, null, 4),
+      }),
+    /artifacts are stale: json/,
   );
 });
 

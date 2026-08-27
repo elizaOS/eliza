@@ -24,7 +24,6 @@ export {
 export * from "@elizaos/ui/browser";
 export { ErrorBoundary } from "@elizaos/ui/browser";
 export {
-  SurfaceBadge,
   SurfaceCard,
   SurfaceEmptyState,
   SurfaceGrid,

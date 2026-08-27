@@ -1468,7 +1468,7 @@ function buildStaticTabRenderers(): Record<
     stream: wrap(<LazyStreamView />),
     "pendant-transcript": wrapOverlayAware(<LazyPendantTranscriptView />),
     tasks: wrapOverlayAware(<LazyTasksPageView />),
-    automations: wrap(<LazyAutomationsFeed />),
+    automations: wrapOverlayAware(<LazyAutomationsFeed />),
     plugins: withHeader("plugins", <LazyPluginsPageView />),
     skills: withHeader("skills", <LazySkillsView />),
     trajectories: wrap(<LazyTrajectoriesView />),

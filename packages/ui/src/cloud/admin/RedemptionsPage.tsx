@@ -17,8 +17,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   Badge,
-  BrandCard,
   Button,
+  Card,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -331,7 +331,7 @@ export default function RedemptionsPage(): React.JSX.Element {
     <div className="flex flex-col gap-6 max-w-7xl mx-auto">
       {/* System Status */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <BrandCard corners={false}>
+        <Card variant="brand">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-txt-strong">
               {t("cloud.redemptions.systemStatus", {
@@ -381,10 +381,10 @@ export default function RedemptionsPage(): React.JSX.Element {
               </span>
             </div>
           </div>
-        </BrandCard>
+        </Card>
 
         {/* Stats */}
-        <BrandCard corners={false}>
+        <Card variant="brand">
           <h3 className="text-lg font-semibold text-txt-strong mb-4">
             {t("cloud.redemptions.queueStats", { defaultValue: "Queue Stats" })}
           </h3>
@@ -418,11 +418,11 @@ export default function RedemptionsPage(): React.JSX.Element {
               </p>
             </div>
           </div>
-        </BrandCard>
+        </Card>
       </div>
 
       {/* Filters */}
-      <BrandCard corners={false}>
+      <Card variant="brand">
         <div className="flex flex-wrap gap-4 items-center">
           <div className="flex-1 min-w-[200px]">
             <Input
@@ -492,10 +492,10 @@ export default function RedemptionsPage(): React.JSX.Element {
             <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
           </Button>
         </div>
-      </BrandCard>
+      </Card>
 
       {/* Redemptions Table */}
-      <BrandCard corners={false}>
+      <Card variant="brand">
         {loading ? (
           <div className="space-y-3">
             {[1, 2, 3, 4, 5].map((i) => (
@@ -650,7 +650,7 @@ export default function RedemptionsPage(): React.JSX.Element {
             </TableBody>
           </Table>
         )}
-      </BrandCard>
+      </Card>
 
       {/* Details Dialog */}
       <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>

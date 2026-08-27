@@ -1,0 +1,923 @@
+{
+  "schemaVersion": 3,
+  "sourceAtomicSchemaVersion": 1,
+  "scannedFiles": 898,
+  "canonicalContracts": [
+    {
+      "id": "auth-result-shell",
+      "owner": "packages/ui/src/cloud/public-pages/pages/auth/auth-result-shell.tsx",
+      "symbol": "AuthResultShell",
+      "requiredAtomicDependencies": ["card"],
+      "requiredRenderedTags": ["main"],
+      "renderedStory": "packages/ui/src/cloud/public-pages/pages/auth/auth-result-shell.stories.tsx",
+      "behavioralTest": "packages/ui/src/cloud/public-pages/pages/auth/auth-result-shell.test.tsx",
+      "requiredConsumerFiles": [
+        "packages/ui/src/cloud/public-pages/pages/auth/auth-error-page.tsx",
+        "packages/ui/src/cloud/public-pages/pages/auth/auth-success-page.tsx"
+      ],
+      "minimumMaintainedReferences": 2,
+      "responsibility": "Full-page surface, centered card, and content geometry for authentication results.",
+      "maintainedReferences": 2
+    },
+    {
+      "id": "connection-capability-tile",
+      "owner": "packages/ui/src/cloud/connectors/connection-capability-tile.tsx",
+      "symbol": "ConnectionCapabilityTile",
+      "requiredAtomicDependencies": ["card"],
+      "requiredRenderedTags": ["p"],
+      "renderedStory": "packages/ui/src/cloud/connectors/connection-capability-tile.stories.tsx",
+      "behavioralTest": "packages/ui/src/cloud/connectors/connection-capability-tile.test.tsx",
+      "requiredConsumerFiles": [
+        "packages/ui/src/cloud/connectors/google-connection.tsx",
+        "packages/ui/src/cloud/connectors/microsoft-connection.tsx"
+      ],
+      "minimumMaintainedReferences": 2,
+      "responsibility": "Icon, title, and description hierarchy for connector capability grids.",
+      "maintainedReferences": 2
+    },
+    {
+      "id": "content-state",
+      "owner": "packages/ui/src/components/composites/page-panel/content-state.tsx",
+      "symbol": "ContentState",
+      "requiredAtomicDependencies": ["card", "spinner"],
+      "requiredRenderedTags": ["LoadingContent", "PlainEmptyContent"],
+      "renderedStory": "packages/ui/src/components/composites/page-panel/content-state.stories.tsx",
+      "behavioralTest": "packages/ui/src/components/composites/page-panel/content-state.test.tsx",
+      "requiredConsumerFiles": [
+        "packages/ui/src/components/composites/page-panel/page-panel-empty.tsx",
+        "packages/ui/src/components/composites/page-panel/page-panel-loading.tsx"
+      ],
+      "minimumMaintainedReferences": 2,
+      "responsibility": "Empty and loading presentation inside page-panel placements.",
+      "maintainedReferences": 2
+    },
+    {
+      "id": "settings-row",
+      "owner": "packages/ui/src/components/settings/settings-layout.tsx",
+      "symbol": "SettingsRow",
+      "requiredAtomicDependencies": ["button", "card"],
+      "requiredRenderedTags": ["Button"],
+      "renderedStory": "packages/ui/src/components/settings/settings-layout.stories.tsx",
+      "behavioralTest": "packages/ui/src/components/settings/settings-layout.test.tsx",
+      "requiredConsumerFiles": [
+        "packages/ui/src/components/settings/settings-agent-rows.tsx",
+        "packages/ui/src/components/settings/cloud-panel/cloud-settings-primitives.tsx"
+      ],
+      "minimumMaintainedReferences": 10,
+      "responsibility": "Label, description, control, and navigation alignment for settings.",
+      "maintainedReferences": 42
+    },
+    {
+      "id": "action-list-row",
+      "owner": "packages/ui/src/components/shared/ActionListRow.tsx",
+      "symbol": "ActionListRow",
+      "requiredAtomicDependencies": ["button", "card"],
+      "requiredRenderedTags": ["Button"],
+      "renderedStory": "packages/ui/src/components/shared/ActionListRow.stories.tsx",
+      "behavioralTest": "packages/ui/src/components/shared/ActionListRow.test.tsx",
+      "requiredConsumerFiles": [
+        "packages/ui/src/components/settings/LoadedPacksList.tsx",
+        "packages/ui/src/components/composites/skills/skill-sidebar-item.tsx"
+      ],
+      "minimumMaintainedReferences": 2,
+      "responsibility": "Button, link, and static list rows with shared content slots.",
+      "maintainedReferences": 2
+    }
+  ],
+  "eligibleComponents": 103,
+  "clusters": [
+    {
+      "archetype": "row",
+      "atomicDependencies": ["button", "card"],
+      "entries": [
+        {
+          "atomicDependencies": ["button", "card"],
+          "file": "packages/ui/src/components/composites/sidebar/sidebar-content.tsx",
+          "line": 174,
+          "name": "SidebarItem",
+          "renderedTags": ["Button", "Card", "div"],
+          "archetype": "row"
+        },
+        {
+          "atomicDependencies": ["button", "card"],
+          "file": "packages/ui/src/components/settings/settings-layout.tsx",
+          "line": 298,
+          "name": "SettingsRow",
+          "renderedTags": ["Button", "Card", "SettingsRowBody", "div"],
+          "archetype": "row"
+        },
+        {
+          "atomicDependencies": ["button", "card"],
+          "file": "packages/ui/src/components/shared/ActionListRow.tsx",
+          "line": 115,
+          "name": "ActionListRow",
+          "renderedTags": [
+            "ActionListRowContent",
+            "Button",
+            "Card",
+            "a",
+            "div"
+          ],
+          "archetype": "row"
+        },
+        {
+          "atomicDependencies": ["button", "card"],
+          "file": "plugins/plugin-task-coordinator/src/orchestrator-reasoning.tsx",
+          "line": 96,
+          "name": "ReasoningCell",
+          "renderedTags": [
+            "Brain",
+            "Button",
+            "Card",
+            "ChevronRight",
+            "MarkdownText",
+            "div",
+            "span",
+            "style"
+          ],
+          "archetype": "row"
+        }
+      ],
+      "signature": "row:button+card",
+      "disposition": "distinct-domain-compositions",
+      "rationale": "Sidebar and settings rows share atomic controls but own different selection, status, and lifecycle contracts.",
+      "memberComponentIds": [
+        "packages/ui/src/components/composites/sidebar/sidebar-content.tsx:SidebarItem",
+        "packages/ui/src/components/settings/settings-layout.tsx:SettingsRow",
+        "packages/ui/src/components/shared/ActionListRow.tsx:ActionListRow",
+        "plugins/plugin-task-coordinator/src/orchestrator-reasoning.tsx:ReasoningCell"
+      ],
+      "semanticFingerprint": "sha256:fd78fc85a90ee454e7e021a6637ca7d81c7d1c48cd9491e96b99f3175784a020"
+    },
+    {
+      "archetype": "dialog",
+      "atomicDependencies": ["button", "dialog"],
+      "entries": [
+        {
+          "atomicDependencies": ["button", "dialog"],
+          "file": "packages/ui/src/components/pages/skill-detail-panel.tsx",
+          "line": 35,
+          "name": "EditSkillModal",
+          "renderedTags": [
+            "AdminCodeEditor",
+            "AdminDialogContent",
+            "AdminDialogHeader",
+            "AdminMonoMeta",
+            "Button",
+            "Dialog",
+            "DialogDescription",
+            "DialogTitle",
+            "div",
+            "span"
+          ],
+          "archetype": "dialog"
+        },
+        {
+          "atomicDependencies": ["button", "dialog"],
+          "file": "packages/ui/src/components/ui/confirm-dialog.tsx",
+          "line": 35,
+          "name": "ConfirmDialog",
+          "renderedTags": [
+            "Button",
+            "Dialog",
+            "DialogContent",
+            "DialogDescription",
+            "DialogFooter",
+            "DialogHeader",
+            "DialogTitle"
+          ],
+          "archetype": "dialog"
+        },
+        {
+          "atomicDependencies": ["button", "dialog"],
+          "file": "plugins/plugin-calendar/src/components/EventEditorDrawer.tsx",
+          "line": 469,
+          "name": "EventEditorDrawer",
+          "renderedTags": [
+            "Button",
+            "Check",
+            "ConfirmDialog",
+            "Dialog",
+            "DialogContent",
+            "EventEditorActionButton",
+            "EventEditorCalendarSelect",
+            "EventEditorInput",
+            "EventEditorNotes",
+            "Loader2",
+            "MessageSquare",
+            "Plus",
+            "Save",
+            "TagEditor",
+            "Trash2",
+            "X",
+            "div",
+            "label",
+            "p",
+            "span"
+          ],
+          "archetype": "dialog"
+        }
+      ],
+      "signature": "dialog:button+dialog",
+      "disposition": "distinct-domain-compositions",
+      "rationale": "The three dialogs own unrelated editing, confirmation, and calendar workflows.",
+      "memberComponentIds": [
+        "packages/ui/src/components/pages/skill-detail-panel.tsx:EditSkillModal",
+        "packages/ui/src/components/ui/confirm-dialog.tsx:ConfirmDialog",
+        "plugins/plugin-calendar/src/components/EventEditorDrawer.tsx:EventEditorDrawer"
+      ],
+      "semanticFingerprint": "sha256:947ceb36e16ef7a3aa4c0573a96769b3876c58f6564e858ac1f3bbb636e997ed"
+    },
+    {
+      "archetype": "dialog",
+      "atomicDependencies": ["button", "dialog", "input"],
+      "entries": [
+        {
+          "atomicDependencies": ["button", "dialog", "input"],
+          "file": "packages/ui/src/components/chat/SaveCommandModal.tsx",
+          "line": 37,
+          "name": "SaveCommandModal",
+          "renderedTags": [
+            "Button",
+            "Dialog",
+            "DialogContent",
+            "DialogDescription",
+            "DialogFooter",
+            "DialogHeader",
+            "DialogTitle",
+            "Input",
+            "div",
+            "label",
+            "p",
+            "pre",
+            "span"
+          ],
+          "archetype": "dialog"
+        },
+        {
+          "atomicDependencies": ["button", "dialog", "input"],
+          "file": "packages/ui/src/components/composites/chat/chat-conversation-rename-dialog.tsx",
+          "line": 41,
+          "name": "ChatConversationRenameDialog",
+          "renderedTags": [
+            "Button",
+            "Dialog",
+            "DialogContent",
+            "DialogDescription",
+            "DialogFooter",
+            "DialogHeader",
+            "DialogTitle",
+            "Input",
+            "Label",
+            "Sparkles",
+            "div"
+          ],
+          "archetype": "dialog"
+        },
+        {
+          "atomicDependencies": ["button", "dialog", "input"],
+          "file": "packages/ui/src/components/ui/confirm-dialog.tsx",
+          "line": 95,
+          "name": "PromptDialog",
+          "renderedTags": [
+            "Button",
+            "Dialog",
+            "DialogContent",
+            "DialogDescription",
+            "DialogFooter",
+            "DialogHeader",
+            "DialogTitle",
+            "Field",
+            "FieldLabel",
+            "Input"
+          ],
+          "archetype": "dialog"
+        }
+      ],
+      "signature": "dialog:button+dialog+input",
+      "disposition": "distinct-domain-compositions",
+      "rationale": "Command persistence, conversation renaming, and generic prompting have different validation, pending, error, and result contracts. Their stable shared behavior already belongs to Dialog, Input, and Button.",
+      "memberComponentIds": [
+        "packages/ui/src/components/chat/SaveCommandModal.tsx:SaveCommandModal",
+        "packages/ui/src/components/composites/chat/chat-conversation-rename-dialog.tsx:ChatConversationRenameDialog",
+        "packages/ui/src/components/ui/confirm-dialog.tsx:PromptDialog"
+      ],
+      "semanticFingerprint": "sha256:00ceb89f6fe73868413b0028529b0ad6edf2af5297e2c21084e59cc1026a2e7d"
+    },
+    {
+      "archetype": "list",
+      "atomicDependencies": ["badge", "button", "card"],
+      "entries": [
+        {
+          "atomicDependencies": ["badge", "button", "card"],
+          "file": "packages/ui/src/cloud/organization/credentials-list.tsx",
+          "line": 78,
+          "name": "CredentialsList",
+          "renderedTags": [
+            "AlertDialog",
+            "AlertDialogAction",
+            "AlertDialogCancel",
+            "AlertDialogContent",
+            "AlertDialogDescription",
+            "AlertDialogFooter",
+            "AlertDialogHeader",
+            "AlertDialogTitle",
+            "AlertDialogTrigger",
+            "Badge",
+            "Button",
+            "Card",
+            "KeyRound",
+            "Switch",
+            "Trash2",
+            "User",
+            "div",
+            "p",
+            "span"
+          ],
+          "archetype": "list"
+        },
+        {
+          "atomicDependencies": ["badge", "button", "card"],
+          "file": "packages/ui/src/cloud/organization/members-list.tsx",
+          "line": 53,
+          "name": "MembersList",
+          "renderedTags": [
+            "AlertDialog",
+            "AlertDialogAction",
+            "AlertDialogCancel",
+            "AlertDialogContent",
+            "AlertDialogDescription",
+            "AlertDialogFooter",
+            "AlertDialogHeader",
+            "AlertDialogTitle",
+            "AlertDialogTrigger",
+            "Badge",
+            "Button",
+            "Card",
+            "Crown",
+            "Mail",
+            "Select",
+            "SelectContent",
+            "SelectItem",
+            "SelectTrigger",
+            "SelectValue",
+            "Shield",
+            "User",
+            "UserMinus",
+            "Wallet",
+            "div",
+            "h4",
+            "p",
+            "span"
+          ],
+          "archetype": "list"
+        },
+        {
+          "atomicDependencies": ["badge", "button", "card"],
+          "file": "packages/ui/src/cloud/organization/pending-invites-list.tsx",
+          "line": 42,
+          "name": "PendingInvitesList",
+          "renderedTags": [
+            "AlertDialog",
+            "AlertDialogAction",
+            "AlertDialogCancel",
+            "AlertDialogContent",
+            "AlertDialogDescription",
+            "AlertDialogFooter",
+            "AlertDialogHeader",
+            "AlertDialogTitle",
+            "AlertDialogTrigger",
+            "Badge",
+            "Button",
+            "Card",
+            "CheckCircle2",
+            "Clock",
+            "Mail",
+            "Shield",
+            "User",
+            "X",
+            "XCircle",
+            "details",
+            "div",
+            "p",
+            "span",
+            "summary"
+          ],
+          "archetype": "list"
+        }
+      ],
+      "signature": "list:badge+button+card",
+      "disposition": "distinct-domain-compositions",
+      "rationale": "The lists share canonical status, action, and surface atoms, but their item identity, loading, selection, and mutation contracts remain domain-specific.",
+      "memberComponentIds": [
+        "packages/ui/src/cloud/organization/credentials-list.tsx:CredentialsList",
+        "packages/ui/src/cloud/organization/members-list.tsx:MembersList",
+        "packages/ui/src/cloud/organization/pending-invites-list.tsx:PendingInvitesList"
+      ],
+      "semanticFingerprint": "sha256:c31d0df24a1084c39b7dbc6d355666c54d88f8166c02a6a55bba547b6e91f30a"
+    },
+    {
+      "archetype": "panel",
+      "atomicDependencies": ["button", "card", "input"],
+      "entries": [
+        {
+          "atomicDependencies": ["button", "card", "input"],
+          "file": "packages/ui/src/components/chat/message-search/MessageSearchPanel.tsx",
+          "line": 50,
+          "name": "MessageSearchPanel",
+          "renderedTags": [
+            "Button",
+            "Card",
+            "Input",
+            "div",
+            "li",
+            "p",
+            "span",
+            "ul"
+          ],
+          "archetype": "panel"
+        },
+        {
+          "atomicDependencies": ["button", "card", "input"],
+          "file": "packages/ui/src/components/connectors/TelegramAccountConnectorPanel.tsx",
+          "line": 72,
+          "name": "TelegramAccountConnectorPanel",
+          "renderedTags": [
+            "Button",
+            "Card",
+            "Input",
+            "PagePanel.Notice",
+            "div"
+          ],
+          "archetype": "panel"
+        },
+        {
+          "atomicDependencies": ["button", "card", "input"],
+          "file": "packages/ui/src/components/settings/VoiceConfigView.tsx",
+          "line": 64,
+          "name": "DesktopTalkModePanel",
+          "renderedTags": [
+            "Button",
+            "Card",
+            "CardContent",
+            "CardHeader",
+            "CardTitle",
+            "Input",
+            "div"
+          ],
+          "archetype": "panel"
+        }
+      ],
+      "signature": "panel:button+card+input",
+      "disposition": "distinct-domain-compositions",
+      "rationale": "These panels use the canonical Card boundary but retain unrelated search, connector, and release workflows.",
+      "memberComponentIds": [
+        "packages/ui/src/components/chat/message-search/MessageSearchPanel.tsx:MessageSearchPanel",
+        "packages/ui/src/components/connectors/TelegramAccountConnectorPanel.tsx:TelegramAccountConnectorPanel",
+        "packages/ui/src/components/settings/VoiceConfigView.tsx:DesktopTalkModePanel"
+      ],
+      "semanticFingerprint": "sha256:f7345abc1428d196ccedee6737be18b6f42af9f022aad9cb9a0d948ad8c6be6d"
+    },
+    {
+      "archetype": "card",
+      "atomicDependencies": [
+        "badge",
+        "button",
+        "card",
+        "checkbox",
+        "dialog",
+        "spinner"
+      ],
+      "entries": [
+        {
+          "atomicDependencies": [
+            "badge",
+            "button",
+            "card",
+            "checkbox",
+            "dialog",
+            "spinner"
+          ],
+          "file": "packages/ui/src/components/accounts/AccountCard.tsx",
+          "line": 174,
+          "name": "AccountCard",
+          "renderedTags": [
+            "Badge",
+            "Button",
+            "Card",
+            "Checkbox",
+            "ChevronDown",
+            "ChevronUp",
+            "Dialog",
+            "DialogContent",
+            "DialogDescription",
+            "DialogFooter",
+            "DialogHeader",
+            "DialogTitle",
+            "EditableAccountLabel",
+            "KeyRound",
+            "Spinner",
+            "StatusBadge",
+            "Trash2",
+            "UsageBar",
+            "div",
+            "span"
+          ],
+          "archetype": "card"
+        },
+        {
+          "atomicDependencies": [
+            "badge",
+            "button",
+            "card",
+            "checkbox",
+            "dialog",
+            "spinner"
+          ],
+          "file": "packages/ui/src/components/connectors/ConnectorAccountCard.tsx",
+          "line": 163,
+          "name": "ConnectorAccountCard",
+          "renderedTags": [
+            "Badge",
+            "Button",
+            "Card",
+            "Checkbox",
+            "ConnectedCapabilityChips",
+            "ConnectorAccountPrivacySelector",
+            "ConnectorAccountPurposeSelector",
+            "Dialog",
+            "DialogContent",
+            "DialogDescription",
+            "DialogFooter",
+            "DialogHeader",
+            "DialogTitle",
+            "EditableAccountLabel",
+            "KeyRound",
+            "RefreshCw",
+            "Spinner",
+            "Star",
+            "StatusBadge",
+            "Trash2",
+            "div",
+            "img",
+            "span"
+          ],
+          "archetype": "card"
+        }
+      ],
+      "signature": "card:badge+button+card+checkbox+dialog+spinner",
+      "disposition": "distinct-domain-compositions",
+      "rationale": "The credential-pool card owns priority ordering, provider usage windows, credential repair, and enabled opacity; the connector card owns selection/default state, capability grants, privacy/purpose, sync identity, and independent busy transitions. Their shared status, editing, controls, and confirmation behavior already comes from canonical atoms, while a shared slot shell would hide distinct state machines without removing domain logic.",
+      "memberComponentIds": [
+        "packages/ui/src/components/accounts/AccountCard.tsx:AccountCard",
+        "packages/ui/src/components/connectors/ConnectorAccountCard.tsx:ConnectorAccountCard"
+      ],
+      "semanticFingerprint": "sha256:4250aea273e79d484e15009ef24f27ec2e4ef7ffb9c3a9a50df793e44e46938a"
+    },
+    {
+      "archetype": "card",
+      "atomicDependencies": ["button", "input"],
+      "entries": [
+        {
+          "atomicDependencies": ["button", "input"],
+          "file": "packages/ui/src/components/chat/widgets/ChoiceWidget.tsx",
+          "line": 60,
+          "name": "ChoiceWidget",
+          "renderedTags": [
+            "Button",
+            "ChatWidgetShell",
+            "Check",
+            "ChevronRight",
+            "Input",
+            "X",
+            "div",
+            "fieldset",
+            "span"
+          ],
+          "archetype": "card"
+        },
+        {
+          "atomicDependencies": ["button", "input"],
+          "file": "packages/ui/src/components/chat/widgets/connector-card.tsx",
+          "line": 83,
+          "name": "ConnectorCardWidget",
+          "renderedTags": [
+            "Button",
+            "ConnectorBrandIcon",
+            "Input",
+            "ShieldCheck",
+            "div",
+            "form",
+            "label",
+            "span"
+          ],
+          "archetype": "card"
+        }
+      ],
+      "signature": "card:button+input",
+      "disposition": "distinct-domain-compositions",
+      "rationale": "Domain purchase, chat choice, and connector cards only coincide at a broad dependency signature.",
+      "memberComponentIds": [
+        "packages/ui/src/components/chat/widgets/ChoiceWidget.tsx:ChoiceWidget",
+        "packages/ui/src/components/chat/widgets/connector-card.tsx:ConnectorCardWidget"
+      ],
+      "semanticFingerprint": "sha256:d117c0f4416d00578f8951dea1438e1314848151b99ba8432591a7f77bb3d93b"
+    },
+    {
+      "archetype": "dialog",
+      "atomicDependencies": ["alert", "button", "card"],
+      "entries": [
+        {
+          "atomicDependencies": ["alert", "button", "card"],
+          "file": "packages/ui/src/cloud/organization/contribute-credential-dialog.tsx",
+          "line": 56,
+          "name": "ContributeCredentialDialog",
+          "renderedTags": [
+            "Alert",
+            "AlertCircle",
+            "Button",
+            "Card",
+            "Dialog",
+            "DialogContent",
+            "DialogDescription",
+            "DialogFooter",
+            "DialogHeader",
+            "DialogTitle",
+            "Input",
+            "KeyRound",
+            "Label",
+            "Loader2",
+            "Select",
+            "SelectContent",
+            "SelectItem",
+            "SelectTrigger",
+            "SelectValue",
+            "SemanticForm",
+            "ShieldCheck",
+            "code",
+            "div",
+            "p",
+            "span"
+          ],
+          "archetype": "dialog"
+        },
+        {
+          "atomicDependencies": ["alert", "button", "card"],
+          "file": "packages/ui/src/cloud/organization/invite-member-dialog.tsx",
+          "line": 66,
+          "name": "InviteMemberDialog",
+          "renderedTags": [
+            "Alert",
+            "AlertCircle",
+            "Button",
+            "Card",
+            "Copy",
+            "Dialog",
+            "DialogContent",
+            "DialogDescription",
+            "DialogFooter",
+            "DialogHeader",
+            "DialogTitle",
+            "Input",
+            "Label",
+            "Link2",
+            "Loader2",
+            "Mail",
+            "Select",
+            "SelectContent",
+            "SelectItem",
+            "SelectTrigger",
+            "SelectValue",
+            "SemanticForm",
+            "UserCog",
+            "code",
+            "div",
+            "p",
+            "span"
+          ],
+          "archetype": "dialog"
+        }
+      ],
+      "signature": "dialog:alert+button+card",
+      "disposition": "distinct-domain-compositions",
+      "rationale": "The dialogs share canonical feedback and surface atoms while retaining unrelated validation, confirmation, and completion lifecycles.",
+      "memberComponentIds": [
+        "packages/ui/src/cloud/organization/contribute-credential-dialog.tsx:ContributeCredentialDialog",
+        "packages/ui/src/cloud/organization/invite-member-dialog.tsx:InviteMemberDialog"
+      ],
+      "semanticFingerprint": "sha256:d79bada7a8fe1a7748f1f3ed393b0ad8b5ea866611e2a11e24b9ad1b779b20c6"
+    },
+    {
+      "archetype": "form",
+      "atomicDependencies": ["button", "input"],
+      "entries": [
+        {
+          "atomicDependencies": ["button", "input"],
+          "file": "packages/ui/src/components/pages/TriggerForm.tsx",
+          "line": 231,
+          "name": "TriggerForm",
+          "renderedTags": [
+            "AgentSelectField",
+            "Button",
+            "CronInputSection",
+            "DurationValueInput",
+            "EventInputSection",
+            "FieldLabel",
+            "FieldSwitch",
+            "FormSelect",
+            "FormSelectItem",
+            "Input",
+            "IntervalHostWarningBanner",
+            "PagePanel",
+            "PagePanel.Notice",
+            "SchedulePreview",
+            "ScheduledAtInput",
+            "TriggerKindSection",
+            "TriggerRunHistory",
+            "div",
+            "h2"
+          ],
+          "archetype": "form"
+        },
+        {
+          "atomicDependencies": ["button", "input"],
+          "file": "packages/ui/src/components/ui/tag-editor.tsx",
+          "line": 29,
+          "name": "TagEditor",
+          "renderedTags": ["Button", "Input", "Label", "X", "div", "span"],
+          "archetype": "form"
+        }
+      ],
+      "signature": "form:button+input",
+      "disposition": "distinct-domain-compositions",
+      "rationale": "Trigger configuration and tag editing do not share a domain contract or meaningful layout beyond generic form controls.",
+      "memberComponentIds": [
+        "packages/ui/src/components/pages/TriggerForm.tsx:TriggerForm",
+        "packages/ui/src/components/ui/tag-editor.tsx:TagEditor"
+      ],
+      "semanticFingerprint": "sha256:ecc864434687a7ce763252d359cad9bdb85db187f1defa060a767d5e5df45290"
+    },
+    {
+      "archetype": "panel",
+      "atomicDependencies": ["badge", "button", "input"],
+      "entries": [
+        {
+          "atomicDependencies": ["badge", "button", "input"],
+          "file": "packages/ui/src/components/settings/cloud-panel/sections/AgentSection.tsx",
+          "line": 109,
+          "name": "AgentSection",
+          "renderedTags": [
+            "Button",
+            "Circle",
+            "CloudRow",
+            "Input",
+            "Pause",
+            "Pencil",
+            "Play",
+            "Plus",
+            "RefreshCw",
+            "SettingsGroup",
+            "SettingsStack",
+            "StatusBadge",
+            "Trash2",
+            "dd",
+            "div",
+            "dl",
+            "dt",
+            "label",
+            "p",
+            "span"
+          ],
+          "archetype": "panel"
+        },
+        {
+          "atomicDependencies": ["badge", "button", "input"],
+          "file": "packages/ui/src/components/settings/CloudAgentsSection.tsx",
+          "line": 77,
+          "name": "CloudAgentsSection",
+          "renderedTags": [
+            "Bot",
+            "Button",
+            "Check",
+            "Input",
+            "Pencil",
+            "Play",
+            "Plus",
+            "Power",
+            "RefreshCw",
+            "SettingsGroup",
+            "SettingsRow",
+            "SettingsStack",
+            "StatusBadge",
+            "Trash2",
+            "div",
+            "p",
+            "span"
+          ],
+          "archetype": "panel"
+        }
+      ],
+      "signature": "panel:badge+button+input",
+      "disposition": "shared-lifecycle-owner",
+      "rationale": "The cloud-panel-owned useCloudAgentManagement pattern owns list refresh, create, rename, suspend/resume, delete polling, wake-and-switch, persistence, and notices; AgentSection and CloudAgentsSection are distinct presentation adapters with explicit management-token providers.",
+      "memberComponentIds": [
+        "packages/ui/src/components/settings/cloud-panel/sections/AgentSection.tsx:AgentSection",
+        "packages/ui/src/components/settings/CloudAgentsSection.tsx:CloudAgentsSection"
+      ],
+      "semanticFingerprint": "sha256:f0e0a109e0fab258115f7e1cc83319bae2890d554c23083a69f95a6700db6757"
+    },
+    {
+      "archetype": "panel",
+      "atomicDependencies": ["button", "input"],
+      "entries": [
+        {
+          "atomicDependencies": ["button", "input"],
+          "file": "packages/ui/src/components/connectors/TelegramBotSetupPanel.tsx",
+          "line": 35,
+          "name": "TelegramBotSetupPanel",
+          "renderedTags": [
+            "Button",
+            "Input",
+            "PagePanel.Notice",
+            "TextLink",
+            "div",
+            "li",
+            "ol",
+            "span"
+          ],
+          "archetype": "panel"
+        },
+        {
+          "atomicDependencies": ["button", "input"],
+          "file": "packages/ui/src/components/release-center/sections.tsx",
+          "line": 241,
+          "name": "ReleaseNotesSection",
+          "renderedTags": [
+            "Button",
+            "DefinitionList",
+            "DefinitionRow",
+            "Input",
+            "div",
+            "h3",
+            "p",
+            "section"
+          ],
+          "archetype": "panel"
+        }
+      ],
+      "signature": "panel:button+input",
+      "disposition": "distinct-domain-compositions",
+      "rationale": "Search, connector setup, and release-note panels have different interaction and state contracts.",
+      "memberComponentIds": [
+        "packages/ui/src/components/connectors/TelegramBotSetupPanel.tsx:TelegramBotSetupPanel",
+        "packages/ui/src/components/release-center/sections.tsx:ReleaseNotesSection"
+      ],
+      "semanticFingerprint": "sha256:7c11e8d4a6401f86006252780a6d7d428dc8d5ade6007d697bf320b213c709af"
+    },
+    {
+      "archetype": "row",
+      "atomicDependencies": ["button", "card", "statusDot"],
+      "entries": [
+        {
+          "atomicDependencies": ["button", "card", "statusDot"],
+          "file": "packages/ui/src/components/composites/chat/chat-conversation-item.tsx",
+          "line": 126,
+          "name": "ChatConversationItem",
+          "renderedTags": [
+            "Button",
+            "Card",
+            "MoreHorizontal",
+            "PencilLine",
+            "StatusDot",
+            "TruncatingConversationTitle",
+            "X",
+            "div",
+            "span"
+          ],
+          "archetype": "row"
+        },
+        {
+          "atomicDependencies": ["button", "card", "statusDot"],
+          "file": "packages/ui/src/components/composites/sidebar/sidebar-content.tsx",
+          "line": 361,
+          "name": "SidebarRailItem",
+          "renderedTags": ["Button", "Card", "StatusDot", "span"],
+          "archetype": "row"
+        }
+      ],
+      "signature": "row:button+card+statusDot",
+      "disposition": "distinct-domain-compositions",
+      "rationale": "Rail rows compose the same atomic status indicator while preserving domain-specific navigation and selection behavior.",
+      "memberComponentIds": [
+        "packages/ui/src/components/composites/chat/chat-conversation-item.tsx:ChatConversationItem",
+        "packages/ui/src/components/composites/sidebar/sidebar-content.tsx:SidebarRailItem"
+      ],
+      "semanticFingerprint": "sha256:f6d48d195f3dd4ea624645beeb9ab2db5ffd4c892685663a2498a8d0a9bfda91"
+    }
+  ],
+  "summary": {
+    "clusterCount": 12,
+    "clusteredComponents": 30,
+    "largestCluster": 4
+  }
+}
