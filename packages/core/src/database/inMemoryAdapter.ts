@@ -2197,10 +2197,11 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	}
 
 	async deleteCaches(keys: string[]): Promise<boolean> {
+		let removed = false;
 		for (const key of keys) {
-			this.cache.delete(key);
+			removed = this.cache.delete(key) || removed;
 		}
-		return true;
+		return removed;
 	}
 
 	async getTasks(params: {
