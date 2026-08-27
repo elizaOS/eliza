@@ -933,6 +933,52 @@ test("published Card compatibility variants require exact public API and recipe 
       }),
     /is missing public barrel packages\/ui\/src\/browser\.ts/,
   );
+  assert.throws(
+    () =>
+      validatePublicCardVariantCompatibility({
+        cardSource,
+        cardVariants,
+        document: { schemaVersion: 1, variants: [entry] },
+        now,
+        publicBarrelSources,
+        packageDocument: {
+          exports: { ".": packageDocument.exports["."] },
+        },
+      }),
+    /requires the canonical \.\/card package export/,
+  );
+  for (const duplicate of [
+    { ...entry, value: "other-public-compatibility" },
+    { ...entry, id: "other-public-compatibility" },
+  ]) {
+    assert.throws(
+      () =>
+        validatePublicCardVariantCompatibility({
+          cardSource,
+          cardVariants,
+          document: { schemaVersion: 1, variants: [entry, duplicate] },
+          now,
+          publicBarrelSources,
+          packageDocument,
+        }),
+      /Invalid public Card variant compatibility/,
+    );
+  }
+  assert.throws(
+    () =>
+      validatePublicCardVariantCompatibility({
+        cardSource,
+        cardVariants,
+        document: {
+          schemaVersion: 1,
+          variants: [{ ...entry, reviewBy: "2026-08-26" }],
+        },
+        now,
+        publicBarrelSources,
+        packageDocument,
+      }),
+    /Stale public Card variant compatibility/,
+  );
 });
 
 test("Card axis inventory follows helper-returned JSX spreads", () => {
