@@ -164,8 +164,7 @@ describe("SimpleCalendarView", () => {
     ).toBeNull();
   });
 
-  it("composes the shared source manager across the calendar grid", () => {
-    const refresh = vi.fn().mockResolvedValue(undefined);
+  it("keeps healthy calendar source controls out of the primary view", () => {
     const sources: LifeOpsCalendarSourceHealth[] = [
       {
         key: {
@@ -184,29 +183,16 @@ describe("SimpleCalendarView", () => {
       },
     ];
     fixtures.calendar.mockReturnValue(
-      calendarState({ sources, refresh, status: "ready" }),
+      calendarState({ sources, status: "ready" }),
     );
 
     render(<SimpleCalendarView />);
 
-    const scroll = screen.getByTestId("simple-calendar-scroll-region");
-    const managerSlot = screen.getByTestId("simple-calendar-source-manager");
-    const content = screen.getByTestId("simple-calendar-content");
-    expect(scroll.contains(managerSlot)).toBe(true);
-    expect(managerSlot.dataset.placement).toBe("secondary");
+    expect(screen.queryByTestId("simple-calendar-source-manager")).toBeNull();
     expect(
-      content.compareDocumentPosition(managerSlot) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).not.toBe(0);
-    expect(screen.getAllByTestId("calendar-source-manager")).toHaveLength(1);
-    expect(fixtures.sourceManager).toHaveBeenCalledWith(
-      expect.objectContaining({ sourceHealth: sources }),
-    );
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Manage calendar sources" }),
-    );
-    expect(refresh).toHaveBeenCalledTimes(1);
+      screen.queryByRole("button", { name: "Manage calendar sources" }),
+    ).toBeNull();
+    expect(fixtures.sourceManager).not.toHaveBeenCalled();
   });
 
   it("renders canonical events with month navigation and selectable days", () => {
