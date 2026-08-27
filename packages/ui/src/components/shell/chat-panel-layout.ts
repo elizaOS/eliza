@@ -68,28 +68,70 @@ export interface ChatPanelLayout {
 
 export interface ChatNativeKeyboardLiftInput {
   /**
-   * True only when the native window does not resize around the keyboard.
-   * The shipped iOS shell needs an explicit fixed-overlay lift; Android's
-   * adjustResize window already moves fixed content above the IME.
+   * True when a native shell may report keyboard pixels that its layout
+   * viewport did not absorb. The returned lift still subtracts any resize the
+   * viewport already performed, so an adjustResize Android window gets zero.
    */
   platformNeedsNativeLift: boolean;
   /** Keyboard height reported by the native Keyboard bridge. */
   nativeKeyboardHeight: number;
-  /** Layout viewport height captured while the keyboard was down. */
-  keyboardDownInnerHeight: number;
+  /** Stable layout viewport height captured while the keyboard was hidden. */
+  keyboardHiddenInnerHeight: number;
   /** Current layout viewport height. */
   currentInnerHeight: number;
+}
+
+export interface ChatKeyboardHiddenViewportBaseline {
+  innerHeight: number;
+  innerWidth: number;
+}
+
+export interface ChatKeyboardHiddenViewportBaselineInput {
+  previous: ChatKeyboardHiddenViewportBaseline;
+  currentInnerHeight: number;
+  currentInnerWidth: number;
+  nativeKeyboardVisible: boolean;
+}
+
+/**
+ * Preserve the last trustworthy keyboard-hidden layout viewport.
+ *
+ * Android can resize the WebView before its native keyboard event arrives.
+ * Keeping the larger same-orientation height prevents that transient resize
+ * from becoming the new baseline. A width change marks a real orientation or
+ * window-class transition and resets the baseline to the new geometry.
+ */
+export function resolveChatKeyboardHiddenViewportBaseline(
+  input: ChatKeyboardHiddenViewportBaselineInput,
+): ChatKeyboardHiddenViewportBaseline {
+  if (input.nativeKeyboardVisible) return input.previous;
+
+  const currentInnerHeight = Number.isFinite(input.currentInnerHeight)
+    ? Math.max(0, input.currentInnerHeight)
+    : 0;
+  const currentInnerWidth = Number.isFinite(input.currentInnerWidth)
+    ? Math.max(0, input.currentInnerWidth)
+    : 0;
+  const orientationOrWindowClassChanged =
+    Math.abs(currentInnerWidth - input.previous.innerWidth) > 1;
+
+  return {
+    innerHeight: orientationOrWindowClassChanged
+      ? currentInnerHeight
+      : Math.max(input.previous.innerHeight, currentInnerHeight),
+    innerWidth: currentInnerWidth,
+  };
 }
 
 /**
  * Return only the part of the native keyboard height that the layout viewport
  * has not already absorbed.
  *
- * Android can deliver its resize before `keyboardWillShow`. In that ordering,
- * a component may observe the shrunken height as both the keyboard-down and
- * current baseline. Platform-gating is therefore required in addition to the
- * height delta: the Android bridge height is a visibility signal, never an
- * instruction to lift a fixed overlay a second time.
+ * Android can deliver its resize before `keyboardWillShow`, so callers must
+ * preserve a stable keyboard-hidden baseline. This subtraction then handles
+ * both Android window behaviors: adjustResize consumes the bridge height and
+ * returns zero; overlay-style IMEs leave the viewport unchanged and return the
+ * full native lift.
  */
 export function resolveChatNativeKeyboardLift(
   input: ChatNativeKeyboardLiftInput,
@@ -99,15 +141,17 @@ export function resolveChatNativeKeyboardLift(
   const nativeKeyboardHeight = Number.isFinite(input.nativeKeyboardHeight)
     ? Math.max(0, input.nativeKeyboardHeight)
     : 0;
-  const keyboardDownInnerHeight = Number.isFinite(input.keyboardDownInnerHeight)
-    ? Math.max(0, input.keyboardDownInnerHeight)
+  const keyboardHiddenInnerHeight = Number.isFinite(
+    input.keyboardHiddenInnerHeight,
+  )
+    ? Math.max(0, input.keyboardHiddenInnerHeight)
     : 0;
   const currentInnerHeight = Number.isFinite(input.currentInnerHeight)
     ? Math.max(0, input.currentInnerHeight)
     : 0;
   const layoutShrink = Math.max(
     0,
-    keyboardDownInnerHeight - currentInnerHeight,
+    keyboardHiddenInnerHeight - currentInnerHeight,
   );
 
   return Math.max(0, nativeKeyboardHeight - layoutShrink);
