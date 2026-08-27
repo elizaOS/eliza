@@ -94,6 +94,26 @@ function httpRequest(
   });
 }
 
+/** Posts raw bytes verbatim — required for byte-identity assertions. */
+function httpRequestRaw(
+  port: number,
+  path: string,
+  body: Buffer,
+): Promise<{ status: number }> {
+  return new Promise((resolve, reject) => {
+    const req = request(
+      { hostname: "127.0.0.1", port, path, method: "POST" },
+      (res) => {
+        res.resume();
+        res.on("end", () => resolve({ status: res.statusCode ?? 0 }));
+      },
+    );
+    req.on("error", reject);
+    req.write(body);
+    req.end();
+  });
+}
+
 describe("first-party callback server", () => {
   const closers: Array<() => Promise<void>> = [];
 
@@ -931,5 +951,97 @@ describe("first-party callback server", () => {
     // agent binding is never reached with a coerced-to-absent AgentID.
     expect(res).toEqual({ body: "success", status: 200 });
     expect(received).toHaveLength(0);
+  });
+
+  it("expires replay entries after the freshness window passes", async () => {
+    const received: WechatMessageContext[] = [];
+    let now = FIXED_NOW_MS;
+    const handle = await startCallbackServer({
+      port: 0,
+      accounts: [OFFICIAL],
+      onMessage: (_id, msg) => {
+        received.push(msg);
+      },
+      clock: { now: () => now },
+    });
+    closers.push(handle.close);
+
+    const buildBody = (content: string) =>
+      buildWechatXml("xml", {
+        ToUserName: "gh_app1",
+        FromUserName: "openid-alice",
+        CreateTime: TIMESTAMP,
+        MsgType: "text",
+        Content: content,
+        MsgId: "6009",
+      });
+    const signature = sha1Of(OFFICIAL.tokenSecret, TIMESTAMP, NONCE);
+    const path = `/webhook/wechat/oa-main?signature=${signature}&timestamp=${TIMESTAMP}&nonce=${NONCE}`;
+
+    // First delivery under the triple is accepted.
+    expect(
+      (
+        await httpRequest(handle.port, path, {
+          method: "POST",
+          body: buildBody("a"),
+        })
+      ).status,
+    ).toBe(200);
+
+    // Different body, same triple: rejected while inside the window.
+    expect(
+      (
+        await httpRequest(handle.port, path, {
+          method: "POST",
+          body: buildBody("b"),
+        })
+      ).status,
+    ).toBe(403);
+
+    // Advance past the tolerance window: the entry expired, so the map does
+    // not grow without bound and a same-triple request is freshness-rejected
+    // long before it reaches replay state (403 either way, but the guard's
+    // map is empty again — a fresh triple with the same bytes is accepted).
+    now = FIXED_NOW_MS + 6 * 60 * 1000;
+    const freshTs = String(Math.floor(now / 1000));
+    const freshSig = sha1Of(OFFICIAL.tokenSecret, freshTs, NONCE);
+    const freshPath = `/webhook/wechat/oa-main?signature=${freshSig}&timestamp=${freshTs}&nonce=${NONCE}`;
+    expect(
+      (
+        await httpRequest(handle.port, freshPath, {
+          method: "POST",
+          body: buildBody("c"),
+        })
+      ).status,
+    ).toBe(200);
+    expect(received).toHaveLength(2);
+  });
+
+  it("distinguishes bodies that normalize to the same utf8 string", async () => {
+    const received: WechatMessageContext[] = [];
+    const handle = await start((_id, msg) => {
+      received.push(msg);
+    });
+
+    // Two byte sequences that both decode (lossily) to the same utf8 text
+    // but are different on the wire: an isolated continuation byte vs the
+    // same byte replaced by U+FFFD replacement char encoding.
+    const signature = sha1Of(OFFICIAL.tokenSecret, TIMESTAMP, NONCE);
+    const path = `/webhook/wechat/oa-main?signature=${signature}&timestamp=${TIMESTAMP}&nonce=${NONCE}`;
+    const bodyA = Buffer.from([
+      0x3c, 0x78, 0x6d, 0x6c, 0x3e, 0x80, 0x3c, 0x2f, 0x78, 0x6d, 0x6c, 0x3e,
+    ]);
+    const bodyB = Buffer.from([
+      0x3c, 0x78, 0x6d, 0x6c, 0x3e, 0xef, 0xbf, 0xbd, 0x3c, 0x2f, 0x78, 0x6d,
+      0x6c, 0x3e,
+    ]);
+    expect(bodyA.toString("utf8")).toBe(bodyB.toString("utf8"));
+
+    const first = await httpRequestRaw(handle.port, path, bodyA);
+    expect(first.status).toBe(200);
+    // Same decoded text, different wire bytes: must NOT count as an identical
+    // retry of the first delivery.
+    const replay = await httpRequestRaw(handle.port, path, bodyB);
+    expect(replay.status).toBe(403);
   });
 });
