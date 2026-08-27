@@ -76,6 +76,31 @@ describe("voice-session streaming PCM playback sink (ScriptProcessor path)", () 
     await playback.stop();
   });
 
+  it("folds AudioWorklet queue-depth and drain signals into sanitized stats", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeVoiceAudioWorkletNode);
+    const ctx = new FakePlaybackWorkletAudioContext();
+    const events: string[] = [];
+    const playback = await createVoiceSessionPlayback({
+      createAudioContext: () => ctx,
+      preRollMs: 0,
+      onStats: (event) => events.push(event.reason),
+    });
+    await playback.unlock();
+    playback.beginInput();
+    playback.enqueue(pcmFrame(0.5, 4));
+
+    const node = FakeVoiceAudioWorkletNode.instances[0];
+    node?.emitMessage({ type: "queue-depth", queuedSamples: 4, sequence: 1 });
+    expect(playback.getStats().queuedSamples).toBe(4);
+    playback.enqueue(pcmFrame(0.25, 4));
+    node?.emitMessage({ type: "drained", sequence: 1 });
+    expect(playback.getStats().underrunCount).toBe(0);
+    node?.emitMessage({ type: "drained", sequence: 2 });
+    expect(playback.getStats().underrunCount).toBe(1);
+    expect(events).toContain("underrun");
+    await playback.stop();
+  });
+
   it("closes the context when the static AudioWorklet module fails to load", async () => {
     vi.stubGlobal("AudioWorkletNode", FakeVoiceAudioWorkletNode);
     const ctx = new FakePlaybackWorkletAudioContext();
@@ -240,6 +265,114 @@ describe("voice-session streaming PCM playback sink (ScriptProcessor path)", () 
     // Pull more than enqueued → transitions to empty → onDrained fires once.
     scriptNodeOf(ctx).render(8);
     expect(onDrained).toHaveBeenCalledTimes(1);
+    await pb.stop();
+  });
+
+  it("holds the default 120 ms startup reserve, then releases it in order", async () => {
+    const ctx = new FakePlaybackAudioContext(16_000);
+    const pb = await createVoiceSessionPlayback({
+      createAudioContext: () => ctx,
+    });
+    await pb.unlock();
+    pb.beginInput();
+
+    pb.enqueue(pcmFrame(0.25, 960));
+    expect(scriptNodeOf(ctx).render(8)).toEqual(new Float32Array(8));
+    expect(pb.getStats().queuedSamples).toBe(960);
+
+    pb.enqueue(pcmFrame(0.5, 960));
+    const out = scriptNodeOf(ctx).render(8);
+    for (const sample of out) expect(sample).toBeCloseTo(0.25, 2);
+    expect(pb.getStats().preRollMs).toBe(120);
+    expect(pb.getStats().maxQueuedSamples).toBe(1_920);
+    await pb.stop();
+  });
+
+  it("releases a short final utterance before it fills the reserve", async () => {
+    const ctx = new FakePlaybackAudioContext(16_000);
+    const pb = await createVoiceSessionPlayback({
+      createAudioContext: () => ctx,
+    });
+    await pb.unlock();
+    pb.beginInput();
+    pb.enqueue(pcmFrame(0.5, 400));
+    expect(scriptNodeOf(ctx).render(4)).toEqual(new Float32Array(4));
+
+    pb.finishInput();
+    const out = scriptNodeOf(ctx).render(4);
+    for (const sample of out) expect(sample).toBeCloseTo(0.5, 2);
+    await pb.stop();
+  });
+
+  it("streams later chunks immediately after the initial reserve starts", async () => {
+    const ctx = new FakePlaybackAudioContext(1_000);
+    const pb = await createVoiceSessionPlayback({
+      createAudioContext: () => ctx,
+      preRollMs: 4,
+    });
+    await pb.unlock();
+    pb.beginInput();
+    pb.enqueue(pcmFrame(0.25, 4));
+    expect(Array.from(scriptNodeOf(ctx).render(2))).toEqual([
+      expect.closeTo(0.25, 2),
+      expect.closeTo(0.25, 2),
+    ]);
+
+    pb.enqueue(pcmFrame(0.5, 2));
+    const out = scriptNodeOf(ctx).render(4);
+    for (let i = 0; i < 2; i += 1) expect(out[i]).toBeCloseTo(0.25, 2);
+    for (let i = 2; i < 4; i += 1) expect(out[i]).toBeCloseTo(0.5, 2);
+    await pb.stop();
+  });
+
+  it("counts a mid-utterance underrun and rearms the reserve", async () => {
+    const ctx = new FakePlaybackAudioContext(1_000);
+    const events: string[] = [];
+    const pb = await createVoiceSessionPlayback({
+      createAudioContext: () => ctx,
+      preRollMs: 4,
+      onStats: (event) => events.push(event.reason),
+    });
+    await pb.unlock();
+    pb.beginInput();
+    pb.enqueue(pcmFrame(0.5, 4));
+    scriptNodeOf(ctx).render(8);
+    expect(pb.getStats().underrunCount).toBe(1);
+    expect(events).toContain("underrun");
+
+    pb.enqueue(pcmFrame(0.25, 2));
+    expect(scriptNodeOf(ctx).render(2)).toEqual(new Float32Array(2));
+    pb.enqueue(pcmFrame(0.25, 2));
+    const recovered = scriptNodeOf(ctx).render(4);
+    for (const sample of recovered) expect(sample).toBeCloseTo(0.25, 2);
+    await pb.stop();
+  });
+
+  it("reports only sanitized queue and arrival-gap counters", async () => {
+    const ctx = new FakePlaybackAudioContext(1_000);
+    const clock = [100, 145, 250];
+    const events: unknown[] = [];
+    const pb = await createVoiceSessionPlayback({
+      createAudioContext: () => ctx,
+      preRollMs: 4,
+      now: () => clock.shift() ?? 250,
+      onStats: (event) => events.push(event),
+    });
+    await pb.unlock();
+    pb.beginInput();
+    pb.enqueue(pcmFrame(0.25, 2));
+    pb.enqueue(pcmFrame(0.5, 2));
+
+    expect(pb.getStats()).toMatchObject({
+      framesEnqueued: 2,
+      samplesEnqueued: 4,
+      maxInterFrameGapMs: 45,
+      maxPreRollWaitMs: 150,
+    });
+    const serialized = JSON.stringify(events);
+    expect(serialized).not.toContain("pcm");
+    expect(serialized).not.toContain("transcript");
+    expect(serialized).not.toContain("audio");
     await pb.stop();
   });
 });
