@@ -230,18 +230,19 @@ export function CharacterHubView({
       <FramedPageBody
         scroll="page"
         padded={false}
-        className="[@media(min-width:768px)_and_(min-height:600px)]:px-6 lg:px-8"
+        className="[@media(min-width:768px)_and_(min-height:600px)]:px-10 lg:px-8"
         data-testid="character-editor-view"
       >
         <div className="flex min-w-0 flex-col pt-1">
           <WidgetHost slot="character" className="mb-4" />
-          <div className="flex min-w-0 flex-col gap-4 sm:gap-6">
+          <div className="flex min-w-0 flex-col gap-4 sm:gap-6 md:gap-8">
             {characterSaveError ? (
               <span className="rounded-sm border border-status-danger/20 bg-status-danger-bg px-2 py-1 text-2xs font-medium text-status-danger">
                 {characterSaveError}
               </span>
             ) : null}
-            <section>
+            <section className="space-y-4 border-b border-border/40 pb-6">
+              <h2 className="text-sm font-semibold text-txt">Identity</h2>
               <CharacterIdentityPanel
                 nameText={typeof d.name === "string" ? d.name : ""}
                 systemText={typeof d.system === "string" ? d.system : ""}
@@ -251,20 +252,24 @@ export function CharacterHubView({
               />
             </section>
 
-            <CharacterStylePanel
-              d={d}
-              pendingStyleEntries={pendingStyleEntries}
-              styleEntryDrafts={styleEntryDrafts}
-              handlePendingStyleEntryChange={handlePendingStyleEntryChange}
-              handleAddStyleEntry={handleAutoAddStyleEntry}
-              handleRemoveStyleEntry={handleAutoRemoveStyleEntry}
-              handleStyleEntryDraftChange={handleStyleEntryDraftChange}
-              handleCommitStyleEntry={handleAutoCommitStyleEntry}
-              handleReorderStyleEntries={handleAutoReorderStyleEntries}
-              t={t}
-            />
+            <section className="space-y-4 border-b border-border/40 pb-6">
+              <h2 className="text-sm font-semibold text-txt">Voice</h2>
+              <CharacterStylePanel
+                d={d}
+                pendingStyleEntries={pendingStyleEntries}
+                styleEntryDrafts={styleEntryDrafts}
+                handlePendingStyleEntryChange={handlePendingStyleEntryChange}
+                handleAddStyleEntry={handleAutoAddStyleEntry}
+                handleRemoveStyleEntry={handleAutoRemoveStyleEntry}
+                handleStyleEntryDraftChange={handleStyleEntryDraftChange}
+                handleCommitStyleEntry={handleAutoCommitStyleEntry}
+                handleReorderStyleEntries={handleAutoReorderStyleEntries}
+                t={t}
+              />
+            </section>
 
-            <section>
+            <section className="space-y-4 pb-6">
+              <h2 className="text-sm font-semibold text-txt">Examples</h2>
               <CharacterExamplesPanel
                 d={d}
                 normalizedMessageExamples={normalizedMessageExamples}
