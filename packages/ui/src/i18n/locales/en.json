@@ -6422,6 +6422,8 @@
   "learnedskills.activeSkills": "Active learned skills",
   "learnedskills.disabled": "Disabled",
   "learnedskills.empty": "I haven’t picked up any abilities yet. Browse the catalog or add one by example, and I’ll start using it.",
+  "learnedskills.emptyTitle": "No learned skills yet",
+  "learnedskills.startLearning": "Learn a skill",
   "learnedskills.refinements": "{{count}} refinements",
   "learnedskills.score": "{{score}} score",
   "learnedskills.derivedFrom": "Derived from trajectory:",
