@@ -26,6 +26,17 @@ const organizationId = "10000000-0000-4000-8000-000000000001";
 const userId = "20000000-0000-4000-8000-000000000001";
 const now = new Date("2026-08-22T12:00:00Z");
 const recoveryExpiresAt = new Date("2026-09-21T12:00:00Z");
+const billingCancelMigrations = await Promise.all(
+  [
+    "0335_billing_cancel_commands.sql",
+    "0336_billing_cancel_command_keys.sql",
+    "0337_billing_cancel_guard_functions.sql",
+    "0338_billing_cancel_guards.sql",
+    "0343_billing_cancel_account_deletion_detach.sql",
+    "0344_billing_cancel_account_deletion_guard.sql",
+    "0345_billing_cancel_key_command_subject_consistency.sql",
+  ].map((name) => Bun.file(new URL(`../migrations/${name}`, import.meta.url)).text()),
+);
 
 function reservationInput(requestId: string, tokenSuffix: string) {
   return {
@@ -79,6 +90,17 @@ beforeAll(async () => {
     dbWrite as never,
   );
   await apply();
+  await dbWrite.execute(`
+    CREATE TABLE jobs (
+      id uuid PRIMARY KEY,
+      organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE
+    )
+  `);
+  for (const statement of billingCancelMigrations
+    .join("\n--> statement-breakpoint\n")
+    .split("--> statement-breakpoint")) {
+    if (statement.trim()) await dbWrite.execute(statement);
+  }
   await dbWrite.execute(`
     CREATE TABLE account_deletion_restrictive_fixture (
       id uuid PRIMARY KEY,
@@ -134,6 +156,20 @@ async function activateReservation(tokenSuffix: string, activatedAt = now) {
 }
 
 beforeEach(async () => {
+  await dbWrite.execute(
+    "ALTER TABLE billing_cancel_command_keys DISABLE TRIGGER billing_cancel_command_keys_authority_immutable",
+  );
+  await dbWrite.execute(
+    "ALTER TABLE billing_cancel_commands DISABLE TRIGGER billing_cancel_commands_authority_immutable",
+  );
+  await dbWrite.execute("DELETE FROM billing_cancel_command_keys");
+  await dbWrite.execute("DELETE FROM billing_cancel_commands");
+  await dbWrite.execute(
+    "ALTER TABLE billing_cancel_command_keys ENABLE TRIGGER billing_cancel_command_keys_authority_immutable",
+  );
+  await dbWrite.execute(
+    "ALTER TABLE billing_cancel_commands ENABLE TRIGGER billing_cancel_commands_authority_immutable",
+  );
   await dbWrite.execute("DELETE FROM account_deletion_restrictive_fixture");
   await dbWrite.execute("DELETE FROM agent_sandbox_replacement_attempts");
   await dbWrite.delete(providerAdmissions);
@@ -898,6 +934,98 @@ describe("personal account deletion reservation", () => {
     });
     const reserved = await accountDeletionRequestsRepository.reservePersonalAccountDeletion(input);
     if (reserved.outcome !== "reserved") throw new Error("reservation failed");
+    const commandId = "72000000-0000-4000-8000-000000000001";
+    const jobId = "73000000-0000-4000-8000-000000000001";
+    const historicalActorCommandId = "72000000-0000-4000-8000-000000000002";
+    const historicalActorJobId = "73000000-0000-4000-8000-000000000002";
+    const crossOrganizationCommandId = "72000000-0000-4000-8000-000000000003";
+    const crossOrganizationJobId = "73000000-0000-4000-8000-000000000003";
+    const otherOrganizationId = "10000000-0000-4000-8000-000000000002";
+    const otherUserId = "20000000-0000-4000-8000-000000000002";
+    await dbWrite.insert(organizations).values({
+      id: otherOrganizationId,
+      name: "Other",
+      slug: "other-billing-receipts",
+    });
+    await dbWrite.insert(users).values({
+      id: otherUserId,
+      organization_id: organizationId,
+      steward_user_id: "steward-other",
+      role: "member",
+    });
+    await dbWrite.execute(
+      `INSERT INTO jobs (id, organization_id) VALUES
+        ('${jobId}', '${organizationId}'),
+        ('${historicalActorJobId}', '${organizationId}'),
+        ('${crossOrganizationJobId}', '${otherOrganizationId}')`,
+    );
+    await dbWrite.execute(`INSERT INTO billing_cancel_commands (
+        id, organization_id, requested_by_user_id, resource_type, resource_id,
+        expected_lifecycle_revision, job_id
+      ) VALUES (
+        '${commandId}', '${organizationId}', '${userId}', 'container',
+        '74000000-0000-4000-8000-000000000001', 7, '${jobId}'
+      )`);
+    await dbWrite.execute(`INSERT INTO billing_cancel_commands (
+      id, organization_id, requested_by_user_id, resource_type, resource_id,
+      expected_lifecycle_revision, job_id
+    ) VALUES (
+      '${historicalActorCommandId}', '${organizationId}', '${otherUserId}', 'container',
+      '74000000-0000-4000-8000-000000000002', 8, '${historicalActorJobId}'
+    )`);
+    await dbWrite
+      .update(users)
+      .set({ organization_id: otherOrganizationId })
+      .where(eq(users.id, otherUserId));
+    await dbWrite
+      .update(users)
+      .set({ organization_id: otherOrganizationId })
+      .where(eq(users.id, userId));
+    await dbWrite.execute(`INSERT INTO billing_cancel_commands (
+      id, organization_id, requested_by_user_id, resource_type, resource_id,
+      expected_lifecycle_revision, job_id
+    ) VALUES (
+      '${crossOrganizationCommandId}', '${otherOrganizationId}', '${userId}', 'container',
+      '74000000-0000-4000-8000-000000000003', 9, '${crossOrganizationJobId}'
+    )`);
+    await dbWrite
+      .update(users)
+      .set({ organization_id: organizationId })
+      .where(eq(users.id, userId));
+    await dbWrite.execute(`INSERT INTO billing_cancel_command_keys (
+        organization_id, idempotency_key_hash, request_digest, command_id,
+        requested_by_user_id
+      ) VALUES
+        ('${organizationId}', '${"a".repeat(64)}', '${"c".repeat(64)}', '${commandId}', '${userId}'),
+        ('${organizationId}', '${"b".repeat(64)}', '${"c".repeat(64)}', '${commandId}', '${userId}');
+    `);
+    await dbWrite
+      .update(users)
+      .set({ organization_id: organizationId })
+      .where(eq(users.id, otherUserId));
+    await dbWrite.execute(`INSERT INTO billing_cancel_command_keys (
+      organization_id, idempotency_key_hash, request_digest, command_id, requested_by_user_id
+    ) VALUES
+      ('${organizationId}', '${"c".repeat(64)}', '${"c".repeat(64)}',
+        '${commandId}', '${otherUserId}'),
+      ('${organizationId}', '${"d".repeat(64)}', '${"e".repeat(64)}',
+        '${historicalActorCommandId}', '${otherUserId}')`);
+    await dbWrite
+      .update(users)
+      .set({ organization_id: otherOrganizationId })
+      .where(eq(users.id, otherUserId));
+    await dbWrite
+      .update(users)
+      .set({ organization_id: otherOrganizationId })
+      .where(eq(users.id, userId));
+    await dbWrite.execute(`INSERT INTO billing_cancel_command_keys (
+      organization_id, idempotency_key_hash, request_digest, command_id, requested_by_user_id
+    ) VALUES ('${otherOrganizationId}', '${"f".repeat(64)}', '${"0".repeat(64)}',
+      '${crossOrganizationCommandId}', '${userId}')`);
+    await dbWrite
+      .update(users)
+      .set({ organization_id: organizationId })
+      .where(eq(users.id, userId));
     await expect(activateReservation("erase")).resolves.toMatchObject({ outcome: "activated" });
     await dbWrite.execute(`
       INSERT INTO agent_sandbox_replacement_attempts (id, organization_id)
@@ -993,8 +1121,13 @@ describe("personal account deletion reservation", () => {
       now: irreversibleAt,
     });
     expect(finalized).toMatchObject({ outcome: "completed" });
-    expect(await dbWrite.select().from(organizations)).toHaveLength(0);
-    expect(await dbWrite.select().from(users)).toHaveLength(0);
+    expect((await dbWrite.select().from(organizations)).map(({ id }) => id)).toEqual([
+      otherOrganizationId,
+    ]);
+    expect((await dbWrite.select().from(users)).map(({ id }) => id)).toEqual([otherUserId]);
+    expect((await dbWrite.execute("SELECT id FROM jobs")).rows).toEqual([
+      { id: crossOrganizationJobId },
+    ]);
     expect(await dbWrite.select().from(accountDeletionPhaseReceipts)).toHaveLength(0);
     expect(await dbWrite.select().from(accountDeletionExports)).toHaveLength(0);
     const replacementAttempts = await dbWrite.execute(
@@ -1010,6 +1143,100 @@ describe("personal account deletion reservation", () => {
       completion_receipt_digest: "f".repeat(64),
       status_token_hash: "status-erase",
     });
+    const commands = await dbWrite.execute(`SELECT id, organization_id,
+      requested_by_user_id, job_id, organization_deletion_request_id,
+      requesting_user_deletion_request_id,
+      resource_type, resource_id, expected_lifecycle_revision::text, action
+      FROM billing_cancel_commands ORDER BY id`);
+    expect(commands.rows).toEqual([
+      {
+        id: commandId,
+        organization_id: null,
+        requested_by_user_id: null,
+        job_id: null,
+        organization_deletion_request_id: reserved.request.id,
+        requesting_user_deletion_request_id: reserved.request.id,
+        resource_type: "container",
+        resource_id: "74000000-0000-4000-8000-000000000001",
+        expected_lifecycle_revision: "7",
+        action: "stop",
+      },
+      {
+        id: historicalActorCommandId,
+        organization_id: null,
+        requested_by_user_id: otherUserId,
+        job_id: null,
+        organization_deletion_request_id: reserved.request.id,
+        requesting_user_deletion_request_id: null,
+        resource_type: "container",
+        resource_id: "74000000-0000-4000-8000-000000000002",
+        expected_lifecycle_revision: "8",
+        action: "stop",
+      },
+      {
+        id: crossOrganizationCommandId,
+        organization_id: otherOrganizationId,
+        requested_by_user_id: null,
+        job_id: crossOrganizationJobId,
+        organization_deletion_request_id: null,
+        requesting_user_deletion_request_id: reserved.request.id,
+        resource_type: "container",
+        resource_id: "74000000-0000-4000-8000-000000000003",
+        expected_lifecycle_revision: "9",
+        action: "stop",
+      },
+    ]);
+    const aliases = await dbWrite.execute(`SELECT organization_id, requested_by_user_id,
+      organization_deletion_request_id, requesting_user_deletion_request_id,
+      idempotency_key_hash, request_digest, command_id
+      FROM billing_cancel_command_keys ORDER BY idempotency_key_hash`);
+    expect(aliases.rows).toEqual([
+      {
+        organization_id: null,
+        requested_by_user_id: null,
+        organization_deletion_request_id: reserved.request.id,
+        requesting_user_deletion_request_id: reserved.request.id,
+        idempotency_key_hash: "a".repeat(64),
+        request_digest: "c".repeat(64),
+        command_id: commandId,
+      },
+      {
+        organization_id: null,
+        requested_by_user_id: null,
+        organization_deletion_request_id: reserved.request.id,
+        requesting_user_deletion_request_id: reserved.request.id,
+        idempotency_key_hash: "b".repeat(64),
+        request_digest: "c".repeat(64),
+        command_id: commandId,
+      },
+      {
+        organization_id: null,
+        requested_by_user_id: otherUserId,
+        organization_deletion_request_id: reserved.request.id,
+        requesting_user_deletion_request_id: null,
+        idempotency_key_hash: "c".repeat(64),
+        request_digest: "c".repeat(64),
+        command_id: commandId,
+      },
+      {
+        organization_id: null,
+        requested_by_user_id: otherUserId,
+        organization_deletion_request_id: reserved.request.id,
+        requesting_user_deletion_request_id: null,
+        idempotency_key_hash: "d".repeat(64),
+        request_digest: "e".repeat(64),
+        command_id: historicalActorCommandId,
+      },
+      {
+        organization_id: otherOrganizationId,
+        requested_by_user_id: null,
+        organization_deletion_request_id: null,
+        requesting_user_deletion_request_id: reserved.request.id,
+        idempotency_key_hash: "f".repeat(64),
+        request_digest: "0".repeat(64),
+        command_id: crossOrganizationCommandId,
+      },
+    ]);
   });
 
   test("rolls back identifier nulling when a restrictive foreign key survives purge", async () => {

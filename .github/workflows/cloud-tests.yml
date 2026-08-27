@@ -129,6 +129,13 @@ jobs:
         run: >-
           bun test --config=/dev/null --isolate
           packages/cloud/shared/src/db/repositories/__tests__/agent-sandbox-replacement-account-deletion-locks.integration.test.ts
+      - name: Run PostgreSQL billing receipt deletion contention tests
+        env:
+          APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
+          REQUIRE_REAL_POSTGRES_BILLING_CANCEL_DELETION_TESTS: "1"
+        run: >-
+          bun test --config=/dev/null --isolate
+          packages/cloud/shared/src/db/repositories/__tests__/billing-cancel-account-deletion-concurrency.postgres.integration.test.ts
       - name: Run PostgreSQL agent billing lease precision tests
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres

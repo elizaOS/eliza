@@ -31,6 +31,10 @@ import {
 } from "../schemas/account-deletion-requests";
 import { agentSandboxReplacementAttempts } from "../schemas/agent-sandbox-replacement-attempts";
 import { apiKeys } from "../schemas/api-keys";
+import {
+  billingCancelCommandKeys,
+  billingCancelCommands,
+} from "../schemas/billing-cancel-commands";
 import { organizations } from "../schemas/organizations";
 import { providerAdmissions } from "../schemas/provider-admissions";
 import { userSessions } from "../schemas/user-sessions";
@@ -1038,6 +1042,91 @@ export class AccountDeletionRequestsRepository {
       await tx
         .delete(agentSandboxReplacementAttempts)
         .where(eq(agentSandboxReplacementAttempts.organization_id, organization.id));
+
+      // Billing cancellation commands and every idempotency-key alias are
+      // immutable audit evidence. The exact generation-fenced database phase
+      // authorizes only their one-way subject detachment in this transaction.
+      await tx.execute(
+        sql`SELECT set_config(
+          'eliza.billing_cancel_account_deletion_authority',
+          ${`${request.id}:${databasePhase.id}:${input.generation}`},
+          true
+        )`,
+      );
+      // Cross-tenant historical actors can make two personal deletions touch
+      // the same receipts. Lock the complete union in one canonical order so
+      // every finalizer waits keys-first, then commands, with IDs ascending.
+      await tx
+        .select({ id: billingCancelCommandKeys.id })
+        .from(billingCancelCommandKeys)
+        .where(
+          or(
+            eq(billingCancelCommandKeys.organization_id, organization.id),
+            eq(billingCancelCommandKeys.requested_by_user_id, request.user_id),
+          ),
+        )
+        .orderBy(asc(billingCancelCommandKeys.id))
+        .for("update");
+      await tx
+        .select({ id: billingCancelCommands.id })
+        .from(billingCancelCommands)
+        .where(
+          or(
+            eq(billingCancelCommands.organization_id, organization.id),
+            eq(billingCancelCommands.requested_by_user_id, request.user_id),
+          ),
+        )
+        .orderBy(asc(billingCancelCommands.id))
+        .for("update");
+      await tx
+        .update(billingCancelCommandKeys)
+        .set({
+          organization_id: sql`CASE
+            WHEN ${billingCancelCommandKeys.organization_id} = ${organization.id} THEN NULL
+            ELSE ${billingCancelCommandKeys.organization_id} END`,
+          requested_by_user_id: sql`CASE
+            WHEN ${billingCancelCommandKeys.requested_by_user_id} = ${request.user_id} THEN NULL
+            ELSE ${billingCancelCommandKeys.requested_by_user_id} END`,
+          organization_deletion_request_id: sql`CASE
+            WHEN ${billingCancelCommandKeys.organization_id} = ${organization.id} THEN ${request.id}::uuid
+            ELSE ${billingCancelCommandKeys.organization_deletion_request_id} END`,
+          requesting_user_deletion_request_id: sql`CASE
+            WHEN ${billingCancelCommandKeys.requested_by_user_id} = ${request.user_id} THEN ${request.id}::uuid
+            ELSE ${billingCancelCommandKeys.requesting_user_deletion_request_id} END`,
+        })
+        .where(
+          or(
+            eq(billingCancelCommandKeys.organization_id, organization.id),
+            eq(billingCancelCommandKeys.requested_by_user_id, request.user_id),
+          ),
+        );
+      await tx
+        .update(billingCancelCommands)
+        .set({
+          organization_id: sql`CASE
+            WHEN ${billingCancelCommands.organization_id} = ${organization.id} THEN NULL
+            ELSE ${billingCancelCommands.organization_id} END`,
+          requested_by_user_id: sql`CASE
+            WHEN ${billingCancelCommands.requested_by_user_id} = ${request.user_id} THEN NULL
+            ELSE ${billingCancelCommands.requested_by_user_id} END`,
+          job_id: sql`CASE WHEN ${billingCancelCommands.organization_id} = ${organization.id}
+            THEN NULL ELSE ${billingCancelCommands.job_id} END`,
+          organization_deletion_request_id: sql`CASE
+            WHEN ${billingCancelCommands.organization_id} = ${organization.id} THEN ${request.id}::uuid
+            ELSE ${billingCancelCommands.organization_deletion_request_id} END`,
+          requesting_user_deletion_request_id: sql`CASE
+            WHEN ${billingCancelCommands.requested_by_user_id} = ${request.user_id} THEN ${request.id}::uuid
+            ELSE ${billingCancelCommands.requesting_user_deletion_request_id} END`,
+        })
+        .where(
+          or(
+            eq(billingCancelCommands.organization_id, organization.id),
+            eq(billingCancelCommands.requested_by_user_id, request.user_id),
+          ),
+        );
+      await tx.execute(
+        sql`SELECT set_config('eliza.billing_cancel_account_deletion_authority', '', true)`,
+      );
 
       const deleted = await tx
         .delete(organizations)
