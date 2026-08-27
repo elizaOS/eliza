@@ -14,6 +14,8 @@ import type { AppliedMigration, Migration } from "./canonical-migration-ledger";
 const PROJECT = "10000000-0000-4000-8000-000000000001";
 const ENVIRONMENT = "20000000-0000-4000-8000-000000000002";
 const SERVICE = "30000000-0000-4000-8000-000000000003";
+const OTHER_SERVICE = "40000000-0000-4000-8000-000000000004";
+const PINNED_IMAGE = `ghcr.io/railwayapp-templates/postgres-ssl@sha256:${"a".repeat(64)}`;
 const PRIVATE_URL =
   "postgresql://operator:private-password@canonical.example.test:5432/production";
 
@@ -186,9 +188,79 @@ describe("canonical Railway target", () => {
       resolveCanonicalRailwayTarget(evidence, {
         projectId: PROJECT,
         environmentId: ENVIRONMENT,
-        serviceId: "40000000-0000-4000-8000-000000000004",
+        serviceId: OTHER_SERVICE,
       }),
     ).toEqual({ verdict: "mismatch" });
+  });
+
+  test("accepts a digest-immutable Postgres image only through an exact protected pin", () => {
+    const evidence = railwayEvidence();
+    const digestPinned = {
+      ...evidence,
+      services: [{ id: SERVICE, source: { image: PINNED_IMAGE } }],
+    };
+    expect(
+      resolveCanonicalRailwayTarget(digestPinned, {
+        projectId: PROJECT,
+        environmentId: ENVIRONMENT,
+        serviceId: SERVICE,
+      }),
+    ).toEqual({ verdict: "match", serviceId: SERVICE });
+    expect(
+      resolveCanonicalRailwayTarget(digestPinned, {
+        projectId: PROJECT,
+        environmentId: ENVIRONMENT,
+      }),
+    ).toEqual({ verdict: "unavailable" });
+
+    expect(
+      resolveCanonicalRailwayTarget(
+        {
+          ...digestPinned,
+          services: [
+            ...digestPinned.services,
+            { id: OTHER_SERVICE, source: { image: "postgres:18" } },
+          ],
+          status: {
+            ...digestPinned.status,
+            services: {
+              edges: [
+                { node: { id: SERVICE, name: "Postgres" } },
+                { node: { id: OTHER_SERVICE, name: "Postgres Legacy" } },
+              ],
+            },
+          },
+        },
+        {
+          projectId: PROJECT,
+          environmentId: ENVIRONMENT,
+          serviceId: SERVICE,
+        },
+      ),
+    ).toEqual({ verdict: "match", serviceId: SERVICE });
+  });
+
+  test("fails closed when the protected pin is absent, duplicated, or not Postgres", () => {
+    const evidence = railwayEvidence();
+    for (const services of [
+      [],
+      [
+        { id: SERVICE, source: { image: PINNED_IMAGE } },
+        { id: SERVICE, source: { image: PINNED_IMAGE } },
+      ],
+      [{ id: SERVICE, source: { image: "redis:8" } }],
+    ]) {
+      expect(
+        resolveCanonicalRailwayTarget(
+          { ...evidence, services },
+          {
+            projectId: PROJECT,
+            environmentId: ENVIRONMENT,
+            serviceId: SERVICE,
+          },
+        ),
+      ).toEqual({ verdict: "mismatch" });
+    }
   });
 
   test("accepts only the selected service's public PostgreSQL URL", () => {
@@ -272,6 +344,21 @@ describe("read-only database audit", () => {
     expect(output).not.toContain("operator");
     expect(output).not.toContain(PROJECT);
     expect(output).not.toContain(PRIVATE_URL);
+  });
+
+  test("rejects a matching authority unless both targets run PostgreSQL 18", async () => {
+    for (const [protectedMajor, canonicalMajor] of [
+      ["170009", "180001"],
+      ["180001", "170009"],
+      ["170009", "170009"],
+    ]) {
+      const report = await audit(
+        new FakeClient(identity({ server_version_num: protectedMajor })),
+        new FakeClient(identity({ server_version_num: canonicalMajor })),
+      );
+      expect(report.verdict).toBe("fail");
+      expect(report.checks.protectedDatabaseAuthority).toBe("mismatch");
+    }
   });
 
   test("reports fixed table presence and pending ledger status", async () => {
