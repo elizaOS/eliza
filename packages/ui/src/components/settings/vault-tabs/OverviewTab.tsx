@@ -169,7 +169,7 @@ export function OverviewTab(props: OverviewTabProps) {
     <div className="max-w-3xl space-y-4">
       {protection ? <ProtectionCard protection={protection} /> : null}
       <section aria-labelledby="vault-backends-heading">
-        <div className="flex items-start justify-between gap-4 pb-3">
+        <div className="flex flex-col items-start gap-3 pb-3 sm:flex-row sm:justify-between sm:gap-4">
           <div className="min-w-0 space-y-1">
             <h2
               id="vault-backends-heading"
@@ -799,6 +799,7 @@ export function InstallSheet({
           {...closeAgentProps}
           variant="ghost"
           size="sm"
+          className="self-start"
           onClick={close}
           disabled={running}
         >

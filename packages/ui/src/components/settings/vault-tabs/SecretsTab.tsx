@@ -37,14 +37,16 @@ export function SecretsTab({
     [navigate],
   );
   return (
-    <VaultInventoryPanel
-      entries={entries}
-      securityFindings={securityFindings}
-      onChanged={onChanged}
-      onJumpToRouting={onJumpToRouting}
-      focusKey={focusKey}
-      focusProfileId={focusProfileId}
-      onFocusApplied={onFocusApplied}
-    />
+    <div className="max-w-3xl">
+      <VaultInventoryPanel
+        entries={entries}
+        securityFindings={securityFindings}
+        onChanged={onChanged}
+        onJumpToRouting={onJumpToRouting}
+        focusKey={focusKey}
+        focusProfileId={focusProfileId}
+        onFocusApplied={onFocusApplied}
+      />
+    </div>
   );
 }
