@@ -965,6 +965,77 @@ export const PULL_TIMEOUT_MS = 300_000; // 5 min
 /** SSH command timeout for docker run / stop / rm. */
 const DOCKER_CMD_TIMEOUT_MS = 60_000;
 
+/** Bound each inline probe so transport loss cannot replace the 180s VPN budget. */
+const MESH_JOIN_PROBE_TIMEOUT_MS = 5_000;
+
+export type DockerMeshJoinProbeVerdict =
+  | { readonly status: "pending" }
+  | {
+      readonly status: "terminal";
+      readonly reason: "auth_required" | "container_exited";
+      readonly containerState: string | null;
+      readonly exitCode: number | null;
+    };
+
+/**
+ * Classify the bounded, secret-free Docker evidence collected while Headscale
+ * registration is pending. Only an explicit interactive/auth rejection or a
+ * terminal Docker state can abort the normal slow-join budget.
+ */
+export function classifyDockerMeshJoinProbe(output: string): DockerMeshJoinProbeVerdict {
+  const stateMatch = /^state=(\S+) exit=(-?\d+)$/m.exec(output);
+  const containerState = stateMatch?.[1] ?? null;
+  const exitCode = stateMatch ? Number.parseInt(stateMatch[2]!, 10) : null;
+  if (classifyMeshAuthStatus({ exitCode, logs: output }) === "auth_expired") {
+    return { status: "terminal", reason: "auth_required", containerState, exitCode };
+  }
+  if (containerState === "exited" || containerState === "dead") {
+    return { status: "terminal", reason: "container_exited", containerState, exitCode };
+  }
+  return { status: "pending" };
+}
+
+async function probeDockerMeshJoinTerminalFailure(
+  ssh: DockerSSHClient,
+  containerId: string,
+): Promise<Error | null> {
+  let output: string;
+  try {
+    output = await ssh.exec(
+      [
+        `docker inspect --format 'state={{.State.Status}} exit={{.State.ExitCode}}' ${shellQuote(containerId)} 2>/dev/null`,
+        `docker logs --tail 80 ${shellQuote(containerId)} 2>&1 || true`,
+      ].join("; "),
+      MESH_JOIN_PROBE_TIMEOUT_MS,
+    );
+  } catch (error) {
+    // error-policy:J1 This is an early transport observation, not the
+    // authoritative registration verdict. Preserve the normal Headscale
+    // budget unless Docker returned positive terminal evidence.
+    logger.debug(
+      "[docker-sandbox] Early mesh-join probe unavailable; registration remains pending",
+      {
+        containerId,
+        failureKind: classifyDockerSshProbeError(error),
+      },
+    );
+    return null;
+  }
+
+  const verdict = classifyDockerMeshJoinProbe(output);
+  if (verdict.status === "pending") return null;
+  return new ElizaError("Docker candidate cannot complete required Headscale registration", {
+    code: "SANDBOX_MESH_JOIN_TERMINAL",
+    context: {
+      containerId,
+      reason: verdict.reason,
+      containerState: verdict.containerState,
+      exitCode: verdict.exitCode,
+    },
+    severity: "ephemeral",
+  });
+}
+
 /**
  * Dedicated, tighter SSH timeout for the stop/rm calls on the delete path.
  * `docker stop` uses its own `-t 10` grace, so 25s caps the whole stop path
@@ -2724,6 +2795,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         // inferTailscaleHostname), NOT the bare agentId — Headscale only knows the
         // node by that hostname, so polling by agentId never matched and the node
         // "timed out" registering despite being online.
+        const meshJoinCandidateId = createdContainerId;
         let registration = await headscaleIntegration.waitForVPNRegistration(
           vpnEnvVars.TS_HOSTNAME ?? agentId,
           // 180s default (env-overridable via VPN_REGISTRATION_TIMEOUT_MS), not
@@ -2732,10 +2804,23 @@ export class DockerSandboxProvider implements SandboxProvider {
           // → 404 despite running. Single source of truth lives in
           // headscale-integration so the constant and this call agree.
           DEFAULT_REGISTRATION_TIMEOUT_MS,
-          // During a blue/green overlap the preserved live node shares this
-          // hostname — matching it would route the new sandbox to the OLD
-          // container, the race the reclaim-mode deletion used to guard (#16565).
-          previousVpnNodeId ? { excludeNodeId: previousVpnNodeId } : undefined,
+          {
+            // During a blue/green overlap the preserved live node shares this
+            // hostname — matching it would route the new sandbox to the OLD
+            // container, the race the reclaim-mode deletion used to guard (#16565).
+            ...(previousVpnNodeId ? { excludeNodeId: previousVpnNodeId } : {}),
+            // The entrypoint is mesh-first, so app readiness cannot make
+            // progress after an interactive AuthURL or terminal container exit.
+            // Await this probe inside the registration loop: exact-success
+            // cleanup can then retire the failed candidate and mint a new key
+            // without blindly burning the remaining 180s registration budget.
+            ...(meshJoinCandidateId
+              ? {
+                  probeTerminalCandidateFailure: () =>
+                    probeDockerMeshJoinTerminalFailure(ssh, meshJoinCandidateId),
+                }
+              : {}),
+          },
         );
         if (registration && remoteCompletionTracker) {
           try {

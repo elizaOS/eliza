@@ -278,6 +278,13 @@ export class HeadscaleIntegration {
        *  accepting its IP would route the new sandbox to the old container —
        *  the exact race the reclaim-mode deletion used to guard against. */
       excludeNodeId?: string;
+      /**
+       * Inspect the exact Docker candidate after a Headscale miss. Returning
+       * an error proves that candidate cannot register and aborts immediately;
+       * `null` means it is still pending. The probe is awaited inline, so no
+       * detached poll can outlive a successful registration or its cleanup.
+       */
+      probeTerminalCandidateFailure?: () => Promise<Error | null>;
     },
   ): Promise<HeadscaleVpnRegistration | null> {
     logger.info(
@@ -355,6 +362,11 @@ export class HeadscaleIntegration {
         }
         // Transient errors (network, timeout) — keep polling
         logger.debug(`[headscale-integration] Poll error for ${nodeName}: ${msg}`);
+      }
+
+      const terminalCandidateFailure = await options?.probeTerminalCandidateFailure?.();
+      if (terminalCandidateFailure) {
+        throw terminalCandidateFailure;
       }
 
       // Exponential backoff with jitter to avoid thundering-herd on
