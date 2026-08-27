@@ -168,6 +168,7 @@ describe("forbidden Cloud agent mutations", () => {
       "https://api.test/api/v1/eliza/agents/private/api/conversations/private/messages";
     audit.observeRequest("GET", history);
     audit.observeResponse("GET", history, 200);
+    audit.observeRequest("GET", "/api/v1/eliza/personal");
     audit.observeResponse("GET", "/api/v1/eliza/personal", 200);
     const firstLogicalTurn = JSON.stringify({
       text: "private prompt",
@@ -205,7 +206,13 @@ describe("forbidden Cloud agent mutations", () => {
       clientErrorChatSendResponseCount: 1,
       serverErrorChatSendResponseCount: 1,
       otherChatSendResponseCount: 1,
+      personalIdentityGetRequestCount: 1,
       successfulPersonalIdentityGetCount: 1,
+      clientErrorPersonalIdentityGetResponseCount: 0,
+      serverErrorPersonalIdentityGetResponseCount: 0,
+      otherPersonalIdentityGetResponseCount: 0,
+      failedPersonalIdentityGetRequestCount: 0,
+      pendingPersonalIdentityGetRequestCount: 0,
       historyGetRequestCount: 1,
       successfulHistoryGetCount: 1,
       clientErrorHistoryGetResponseCount: 0,
@@ -222,6 +229,30 @@ describe("forbidden Cloud agent mutations", () => {
     expect(JSON.stringify(snapshot)).not.toMatch(
       /api\.test|private|idempotency|prompt/,
     );
+  });
+
+  it("reduces pre-identity request outcomes to closed counters", async () => {
+    const audit = createCloudLiveNetworkAudit();
+    const personal = "https://api.test/api/v1/eliza/personal";
+    for (const status of [200, 404, 503, 302]) {
+      audit.observeRequest("GET", personal);
+      audit.observeResponse("GET", personal, status);
+    }
+    audit.observeRequest("GET", personal);
+    audit.observeRequestFailure("GET", personal, "private timeout detail");
+    audit.observeRequest("GET", personal);
+
+    const snapshot = await audit.snapshot();
+    expect(snapshot).toMatchObject({
+      personalIdentityGetRequestCount: 6,
+      successfulPersonalIdentityGetCount: 1,
+      clientErrorPersonalIdentityGetResponseCount: 1,
+      serverErrorPersonalIdentityGetResponseCount: 1,
+      otherPersonalIdentityGetResponseCount: 1,
+      failedPersonalIdentityGetRequestCount: 1,
+      pendingPersonalIdentityGetRequestCount: 1,
+    });
+    expect(JSON.stringify(snapshot)).not.toMatch(/api\.test|private|timeout/);
   });
 
   it("reduces timed-out history proof traffic to privacy-safe counters", async () => {

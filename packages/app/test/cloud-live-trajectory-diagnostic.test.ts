@@ -41,6 +41,71 @@ describe("Cloud live trajectory diagnostic", () => {
     ).toThrow("trajectory elapsed time must be non-negative");
   });
 
+  it("records only closed pre-identity action and request counters", () => {
+    const diagnostic = createCloudLiveTrajectoryDiagnostic(
+      "pre-identity-runtime-choice",
+      456,
+      {
+        runtimeCloudActionAttemptCount: 1,
+        runtimeCloudActionSuccessCount: 0,
+        runtimeCloudActionTimeoutCount: 1,
+        personalIdentityGetRequestCount: 0,
+        successfulPersonalIdentityGetResponseCount: 0,
+        clientErrorPersonalIdentityGetResponseCount: 0,
+        serverErrorPersonalIdentityGetResponseCount: 0,
+        otherPersonalIdentityGetResponseCount: 0,
+        failedPersonalIdentityGetRequestCount: 0,
+        pendingPersonalIdentityGetRequestCount: 0,
+        token: "private-token",
+        selector: "private-selector",
+      } as Parameters<typeof createCloudLiveTrajectoryDiagnostic>[2],
+    );
+
+    expect(diagnostic).toEqual({
+      schema: CLOUD_LIVE_TRAJECTORY_DIAGNOSTIC_SCHEMA,
+      phase: "pre-identity-runtime-choice",
+      elapsedMs: 456,
+      preIdentity: {
+        runtimeCloudActionAttemptCount: 1,
+        runtimeCloudActionSuccessCount: 0,
+        runtimeCloudActionTimeoutCount: 1,
+        personalIdentityGetRequestCount: 0,
+        successfulPersonalIdentityGetResponseCount: 0,
+        clientErrorPersonalIdentityGetResponseCount: 0,
+        serverErrorPersonalIdentityGetResponseCount: 0,
+        otherPersonalIdentityGetResponseCount: 0,
+        failedPersonalIdentityGetRequestCount: 0,
+        pendingPersonalIdentityGetRequestCount: 0,
+      },
+    });
+    expect(JSON.stringify(diagnostic)).not.toMatch(
+      /selector|locator|https?:|token|transcript/i,
+    );
+  });
+
+  it("rejects invalid pre-identity counters", () => {
+    const counters = {
+      runtimeCloudActionAttemptCount: 1,
+      runtimeCloudActionSuccessCount: 0,
+      runtimeCloudActionTimeoutCount: 0,
+      personalIdentityGetRequestCount: 0,
+      successfulPersonalIdentityGetResponseCount: 0,
+      clientErrorPersonalIdentityGetResponseCount: 0,
+      serverErrorPersonalIdentityGetResponseCount: 0,
+      otherPersonalIdentityGetResponseCount: 0,
+      failedPersonalIdentityGetRequestCount: 0,
+      pendingPersonalIdentityGetRequestCount: -1,
+    };
+
+    expect(() =>
+      createCloudLiveTrajectoryDiagnostic(
+        "pre-identity-runtime-choice",
+        456,
+        counters,
+      ),
+    ).toThrow("pre-identity counters must be non-negative integers");
+  });
+
   it("overwrites one private receipt with restrictive permissions", async () => {
     const mkdirFn = vi.fn(async () => undefined);
     let written = "";
