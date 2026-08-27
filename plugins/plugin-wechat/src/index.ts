@@ -1,10 +1,11 @@
 /**
- * Plugin entry for the WeChat connector: resolves account config (from
- * `character.settings.connectors.wechat` or env), starts a `WechatChannel` per
- * account, and registers a `MessageConnector` (source `"wechat"`) plus a
- * `ConnectorAccountProvider` with the runtime. The connector resolves contacts,
- * lists rooms, fetches history, and sends text/images; inbound messages arrive
- * via the channel's webhook and flow through `deliverIncomingWechatMessage`.
+ * Plugin entry for the direct first-party WeChat connector: resolves direct
+ * account config (Official Account or WeCom self-built) from
+ * `character.settings.connectors.wechat`, starts the public callback server,
+ * registers a `MessageConnector` (source `"wechat"`) whose capabilities are
+ * mode-aware and health-bound, and surfaces observational account status
+ * through the `ConnectorAccountProvider`. Personal WeChat and the legacy
+ * proxy transport are explicitly unsupported and rejected with typed errors.
  */
 import {
   type Content,
@@ -21,6 +22,7 @@ import { WechatChannel } from "./channel";
 import { createWechatConnectorAccountProvider } from "./connector-account-provider";
 import { deliverIncomingWechatMessage } from "./runtime-bridge";
 import type { WechatConfig, WechatMessageContext } from "./types";
+import { WechatError } from "./types";
 
 export const WECHAT_PLUGIN_PACKAGE = "@elizaos/plugin-wechat" as const;
 
@@ -30,23 +32,21 @@ export function isWechatConnectorConfigured(
   if (!config || config.enabled === false) {
     return false;
   }
-
-  if (config.apiKey) {
+  const direct = config as WechatConfig;
+  if (
+    direct.account?.mode === "official-account" ||
+    direct.account?.mode === "wecom"
+  ) {
     return true;
   }
-
-  const accounts = config.accounts;
+  const accounts = direct.accounts;
   if (accounts && typeof accounts === "object") {
-    return Object.values(
-      accounts as Record<string, Record<string, unknown>>,
-    ).some((account) => {
-      if (account.enabled === false) {
-        return false;
-      }
-      return Boolean(account.apiKey);
-    });
+    return Object.values(accounts).some(
+      (account) =>
+        account.enabled !== false &&
+        (account.mode === "official-account" || account.mode === "wecom"),
+    );
   }
-
   return false;
 }
 
@@ -84,47 +84,47 @@ function readRuntimeSetting(runtime: unknown, key: string): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+/**
+ * Resolve the direct WeChat configuration. Legacy proxy-shaped settings
+ * (WECHAT_API_KEY / WECHAT_PROXY_URL) surface as a typed unsupported-mode
+ * error instead of silently configuring nothing.
+ */
 function resolveWechatConfig(
   config: Record<string, unknown>,
   runtime: unknown,
 ): WechatConfig | undefined {
   const explicit = (config as { connectors?: { wechat?: WechatConfig } })
     ?.connectors?.wechat;
-  if (explicit) return explicit;
-  const apiKey = readRuntimeSetting(runtime, "WECHAT_API_KEY");
-  const proxyUrl = readRuntimeSetting(runtime, "WECHAT_PROXY_URL");
-  if (!apiKey && !proxyUrl) return undefined;
-  return {
-    apiKey,
-    proxyUrl,
-  };
+  if (explicit) {
+    return explicit;
+  }
+
+  const legacyApiKey = readRuntimeSetting(runtime, "WECHAT_API_KEY");
+  const legacyProxyUrl = readRuntimeSetting(runtime, "WECHAT_PROXY_URL");
+  if (legacyApiKey || legacyProxyUrl) {
+    // Fail loudly at the boundary: the proxy transport this credential pair
+    // served was removed; keeping it silent would fake a configured state.
+    throw new WechatError(
+      "WECHAT_PROXY_CONFIG_UNSUPPORTED",
+      "WECHAT_API_KEY/WECHAT_PROXY_URL configured the removed proxy transport; migrate to a direct official-account or wecom block",
+      { legacyEnvKeys: ["WECHAT_API_KEY", "WECHAT_PROXY_URL"] },
+    );
+  }
+  return undefined;
 }
 
 function normalizeConnectorLimit(
   limit: number | undefined,
-): number | undefined {
-  if (limit === undefined) return undefined;
-  if (!Number.isFinite(limit) || limit <= 0) {
-    throw new RangeError(
-      "WeChat connector limit must be a positive finite number",
-    );
+  fallback = 50,
+): number {
+  if (!Number.isFinite(limit) || !limit || limit <= 0) {
+    return fallback;
   }
-  return Math.floor(limit);
-}
-
-function getConfiguredAccountIds(config: WechatConfig): string[] {
-  if (config.accounts && typeof config.accounts === "object") {
-    return Object.entries(config.accounts)
-      .filter(
-        ([, account]) => account.enabled !== false && Boolean(account.apiKey),
-      )
-      .map(([id]) => id);
-  }
-  return config.apiKey ? ["default"] : [];
+  return Math.min(Math.floor(limit), 200);
 }
 
 function resolveWechatAccountId(
-  config: WechatConfig,
+  _config: WechatConfig,
   target?: TargetInfo,
 ): string {
   const metadata = (
@@ -137,16 +137,22 @@ function resolveWechatAccountId(
   if (accountId) {
     return accountId;
   }
-  return (
-    channel?.getAccountIds()[0] ??
-    getConfiguredAccountIds(config)[0] ??
-    "default"
+  const ids = channel?.getAccountIds() ?? [];
+  // Single-account deployments may omit metadata; multi-account sends must
+  // fail closed rather than silently pick another account.
+  if (ids.length === 1) {
+    return ids[0];
+  }
+  throw new WechatError(
+    "WECHAT_CONFIG_INVALID",
+    "target does not identify a wechat account and multiple accounts are configured",
+    { accountCount: ids.length },
   );
 }
 
 function wechatTarget(
   accountId: string,
-  wxid: string,
+  platformUserId: string,
   name: string | undefined,
   kind: "user" | "group",
   score = 0.55,
@@ -154,75 +160,62 @@ function wechatTarget(
   return {
     target: {
       source: "wechat",
-      channelId: wxid,
-      roomId: stringToUuid(`wechat:room:${accountId}:${wxid}`) as UUID,
+      channelId: platformUserId,
+      roomId: stringToUuid(
+        `wechat:room:${accountId}:${platformUserId}`,
+      ) as UUID,
       metadata: { accountId },
     } as TargetInfo,
-    label: name || wxid,
+    label: name || platformUserId,
     kind,
     score,
     contexts: ["social", "connectors"],
-    metadata: { accountId, wxid },
+    metadata: { accountId, platformUserId },
   };
 }
 
-async function listWechatTargets(
-  config: WechatConfig,
-): Promise<MessageConnectorTarget[]> {
+/**
+ * Targets are derived only from observed inbound senders — never from
+ * configuration presence and never synthetic per-account fallbacks. A passive
+ * first-party WeChat transport has no roster API to enumerate contacts.
+ */
+async function listWechatTargets(): Promise<MessageConnectorTarget[]> {
   if (!channel) {
     return [];
   }
-  const targets: MessageConnectorTarget[] = [];
-  for (const accountId of channel.getAccountIds()) {
-    const contacts = await channel.listContacts(accountId).catch(() => null);
-    if (!contacts) {
-      continue;
-    }
-    targets.push(
-      ...contacts.friends.map((friend) =>
-        wechatTarget(accountId, friend.wxid, friend.name, "user"),
-      ),
-      ...contacts.chatrooms.map((chatroom) =>
-        wechatTarget(accountId, chatroom.wxid, chatroom.name, "group"),
+  return channel
+    .listObservedTargets()
+    .map((observed) =>
+      wechatTarget(
+        observed.accountId,
+        observed.platformUserId,
+        observed.name,
+        observed.kind,
       ),
     );
-  }
-  if (targets.length > 0) {
-    return targets;
-  }
-  return getConfiguredAccountIds(config).map((accountId) =>
-    wechatTarget(
-      accountId,
-      accountId,
-      `WeChat account ${accountId}`,
-      "user",
-      0.25,
-    ),
-  );
 }
 
 function filterMemoriesByQuery(
   memories: Memory[],
   query: string,
-  limit: number | undefined,
+  limit: number,
 ): Memory[] {
   const normalized = query.trim().toLowerCase();
   if (!normalized) {
-    return limit === undefined ? memories : memories.slice(0, limit);
+    return memories.slice(0, limit);
   }
-  const matches = memories.filter((memory) => {
-    const text =
-      typeof memory.content?.text === "string" ? memory.content.text : "";
-    return text.toLowerCase().includes(normalized);
-  });
-  return limit === undefined ? matches : matches.slice(0, limit);
+  return memories
+    .filter((memory) => {
+      const text =
+        typeof memory.content?.text === "string" ? memory.content.text : "";
+      return text.toLowerCase().includes(normalized);
+    })
+    .slice(0, limit);
 }
 
-export function registerWechatMessageConnector(
+function registerWechatMessageConnector(
   runtime: unknown,
   config: WechatConfig,
-  targetLister: () => Promise<MessageConnectorTarget[]> = () =>
-    listWechatTargets(config),
 ): void {
   const connectorRuntime = runtime as RuntimeWithWechatConnector;
   const sendHandler = async (
@@ -250,18 +243,13 @@ export function registerWechatMessageConnector(
       source: "wechat",
       label: "WeChat",
       description:
-        "WeChat connector for sending and reading stored DM/group messages.",
-      capabilities: [
-        "send_message",
-        "resolve_targets",
-        "list_rooms",
-        "chat_context",
-      ],
+        "Direct first-party WeChat connector (Official Account / WeCom) for sending and reading stored conversations.",
+      capabilities: ["send_message", "resolve_targets", "chat_context"],
       supportedTargetKinds: ["user", "group", "room"],
       contexts: ["social", "connectors"],
       resolveTargets: async (query: string) => {
         const normalized = query.trim().toLowerCase();
-        return (await targetLister())
+        return (await listWechatTargets())
           .map((target) => {
             const haystack =
               `${target.label ?? ""} ${target.target.channelId ?? ""}`.toLowerCase();
@@ -273,10 +261,10 @@ export function registerWechatMessageConnector(
                   : (target.score ?? 0.4),
             };
           })
-          .filter((target) => !normalized || (target.score ?? 0) >= 0.8);
+          .filter((target) => !normalized || (target.score ?? 0) >= 0.8)
+          .slice(0, 25);
       },
-      listRecentTargets: async () => targetLister(),
-      listRooms: async () => targetLister(),
+      listRecentTargets: async () => (await listWechatTargets()).slice(0, 10),
       fetchMessages: async (
         context: { runtime: IAgentRuntime; target?: TargetInfo },
         params?: WechatConnectorReadParams,
@@ -287,12 +275,12 @@ export function registerWechatMessageConnector(
           return context.runtime.getMemories({
             tableName: "messages",
             roomId: target.roomId,
-            ...(limit === undefined ? {} : { limit }),
+            limit,
             orderBy: "createdAt",
             orderDirection: "desc",
           });
         }
-        const targets = await targetLister();
+        const targets = (await listWechatTargets()).slice(0, 10);
         const chunks = await Promise.all(
           targets
             .map((candidate) => candidate.target.roomId)
@@ -301,29 +289,16 @@ export function registerWechatMessageConnector(
               context.runtime.getMemories({
                 tableName: "messages",
                 roomId,
-                ...(limit === undefined ? {} : { limit }),
+                limit,
                 orderBy: "createdAt",
                 orderDirection: "desc",
               }),
             ),
         );
-        const sorted = chunks.flat().sort((left, right) => {
-          const rightCreated =
-            typeof right.createdAt === "number" &&
-            Number.isFinite(right.createdAt)
-              ? right.createdAt
-              : 0;
-          const leftCreated =
-            typeof left.createdAt === "number" &&
-            Number.isFinite(left.createdAt)
-              ? left.createdAt
-              : 0;
-          return (
-            rightCreated - leftCreated ||
-            (left.id ?? "").localeCompare(right.id ?? "")
-          );
-        });
-        return limit === undefined ? sorted : sorted.slice(0, limit);
+        return chunks
+          .flat()
+          .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
+          .slice(0, limit);
       },
       searchMessages: async (
         context: { runtime: IAgentRuntime; target?: TargetInfo },
@@ -343,6 +318,7 @@ export function registerWechatMessageConnector(
         const messages =
           (await registration?.fetchMessages?.(context, {
             target: params.target ?? context.target,
+            limit: Math.max(limit, 100),
           })) ?? [];
         return filterMemoriesByQuery(messages, params.query, limit);
       },
@@ -356,7 +332,8 @@ export function registerWechatMessageConnector(
 
 const wechatPlugin: Plugin = {
   name: "wechat",
-  description: "WeChat messaging via proxy API",
+  description:
+    "Direct first-party WeChat messaging (Official Account / WeCom self-built)",
   connectorSources: [
     {
       source: "wechat",
@@ -377,7 +354,21 @@ const wechatPlugin: Plugin = {
     try {
       const manager = getConnectorAccountManager(runtime as IAgentRuntime);
       manager.registerProvider(
-        createWechatConnectorAccountProvider(runtime as IAgentRuntime),
+        createWechatConnectorAccountProvider(runtime as IAgentRuntime, {
+          // Observational status: once the channel starts (below), its
+          // evidence map feeds the provider so "connected" always reflects a
+          // real first-party observation. listAccounts reads the map lazily,
+          // so registration order (provider before channel start) is safe.
+          healthSource: () => {
+            const map = new Map<string, { state: string }>();
+            for (const evidence of channel?.listAccountEvidence() ?? []) {
+              if (evidence.health) {
+                map.set(evidence.accountId, evidence.health);
+              }
+            }
+            return map;
+          },
+        }),
       );
     } catch (err) {
       console.warn(
@@ -401,7 +392,7 @@ const wechatPlugin: Plugin = {
     channel = new WechatChannel({
       config: wechatConfig,
       onDeliveryError: (error, accountId) => {
-        runtime.reportError("wechat:webhook-delivery", error, { accountId });
+        runtime.reportError("wechat:callback-delivery", error, { accountId });
       },
       onMessage: async (accountId: string, msg: WechatMessageContext) => {
         await deliverIncomingWechatMessage({
@@ -434,8 +425,13 @@ const wechatPlugin: Plugin = {
 export default wechatPlugin;
 export { Bot } from "./bot";
 export { WechatChannel } from "./channel";
-export { ProxyClient } from "./proxy-client";
 export { ReplyDispatcher } from "./reply-dispatcher";
 export { deliverIncomingWechatMessage } from "./runtime-bridge";
-export type { WechatConfig, WechatMessageContext } from "./types";
+export type {
+  WechatAccountConfig,
+  WechatConfig,
+  WechatMessageContext,
+  WechatMode,
+} from "./types";
+export { WechatError } from "./types";
 export { wechatPlugin };

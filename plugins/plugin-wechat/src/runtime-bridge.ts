@@ -194,6 +194,8 @@ function buildIncomingMemory(
         recipient: message.recipient,
         threadId: message.threadId,
         groupSubject: message.group?.subject,
+        platformMode: message.platform?.mode,
+        platformAccountId: message.platform?.accountId,
       },
     },
   } as Memory;
