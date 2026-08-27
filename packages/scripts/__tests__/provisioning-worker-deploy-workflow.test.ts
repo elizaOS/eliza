@@ -143,6 +143,23 @@ describe("provisioning worker deployment contract", () => {
     expect(workflow).toContain(
       '[ "$actual_sha" = "$EXPECTED_DEPLOY_SHA" ] || {',
     );
+    const exactSourceCheck = workflow.indexOf(
+      '[ "$actual_sha" = "$EXPECTED_DEPLOY_SHA" ] || {',
+      verify,
+    );
+    const reset = workflow.indexOf(
+      'git reset --hard --quiet "$EXPECTED_DEPLOY_SHA"',
+      verify,
+    );
+    const clean = workflow.indexOf("git clean -ffdx -q", verify);
+    const cleanVerdict = workflow.indexOf(
+      '[ -z "$(git status --porcelain)" ] || {',
+      verify,
+    );
+    expect(reset).toBeGreaterThan(exactSourceCheck);
+    expect(clean).toBeGreaterThan(reset);
+    expect(cleanVerdict).toBeGreaterThan(clean);
+    expect(migration).toBeGreaterThan(cleanVerdict);
     expect(workflow).toContain("bun run db:cloud:migrate");
   });
 
