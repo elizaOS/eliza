@@ -166,8 +166,12 @@ async function cleanupHarnessOnce(): Promise<void> {
           [databaseName],
         );
       });
-      await capture(async () => admin?.query(`DROP DATABASE IF EXISTS "${databaseName}"`));
-      await capture(async () => admin?.end());
+      await capture(async () => {
+        await admin?.query(`DROP DATABASE IF EXISTS "${databaseName}"`);
+      });
+      await capture(async () => {
+        await admin?.end();
+      });
     }
   }
   await capture(async () => acquiredPostgres?.stop());
@@ -458,6 +462,7 @@ realPostgres("billing-cancel crossed account deletion concurrency", () => {
     if (!isolatedDsn || !accountDeletionRequestsRepository) {
       throw new Error("real PostgreSQL harness was not initialized");
     }
+    const repository = accountDeletionRequestsRepository;
     const now = new Date();
     const seed = new Client({ connectionString: isolatedDsn });
     const holder = new Client({
@@ -487,7 +492,7 @@ realPostgres("billing-cancel crossed account deletion concurrency", () => {
         ]);
 
         const finalizeA = () =>
-          accountDeletionRequestsRepository.finalizePersonalAccountDeletion({
+          repository.finalizePersonalAccountDeletion({
             requestId: fixture.requestA,
             phaseReceiptId: fixture.phaseA,
             generation: GENERATION_A,
@@ -495,7 +500,7 @@ realPostgres("billing-cancel crossed account deletion concurrency", () => {
             now,
           });
         const finalizeB = () =>
-          accountDeletionRequestsRepository.finalizePersonalAccountDeletion({
+          repository.finalizePersonalAccountDeletion({
             requestId: fixture.requestB,
             phaseReceiptId: fixture.phaseB,
             generation: GENERATION_B,
@@ -518,13 +523,17 @@ realPostgres("billing-cancel crossed account deletion concurrency", () => {
           }
         }
         expect(results.map((result) => result.status)).toEqual(["fulfilled", "fulfilled"]);
-        if (results[0]?.status !== "fulfilled" || results[1]?.status !== "fulfilled") {
+        const [firstResult, secondResult] = results;
+        if (firstResult?.status !== "fulfilled" || secondResult?.status !== "fulfilled") {
           throw new AggregateError(
             results.flatMap((result) => (result.status === "rejected" ? [result.reason] : [])),
             "crossed account-deletion finalizers did not both complete",
           );
         }
-        expect(results.map((result) => result.value.outcome)).toEqual(["completed", "completed"]);
+        expect([firstResult.value.outcome, secondResult.value.outcome]).toEqual([
+          "completed",
+          "completed",
+        ]);
 
         const receipts = await observer.query<{
           command_actor_request: string | null;

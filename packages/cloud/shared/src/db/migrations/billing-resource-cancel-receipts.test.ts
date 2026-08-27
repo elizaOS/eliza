@@ -450,7 +450,7 @@ describe("split billing resource cancellation receipts", () => {
       command_actor: string | null;
       job_id: string | null;
       organization_deletion_request_id: string;
-      requesting_user_deletion_request_id: string;
+      requesting_user_deletion_request_id: string | null;
       resource_id: string;
       revision: string;
       key_org: string | null;
