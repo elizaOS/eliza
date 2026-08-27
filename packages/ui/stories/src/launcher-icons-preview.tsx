@@ -2,6 +2,7 @@
  * Interactive launcher icon-pack lab. It compares complete third-party packs,
  * supports per-app overrides, and queues bespoke icons for later generation.
  */
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { Button } from "@ui-src/components/ui/button.tsx";
 import { Sparkles } from "lucide-react";
 import { StrictMode, useEffect, useMemo, useState } from "react";
@@ -65,7 +66,7 @@ function PackIcon({
   return (
     <span className={`pack-icon-art ${className ?? ""}`} data-pack={choice}>
       <span className="pack-icon-fallback" aria-hidden="true">
-        {app.label.slice(0, 1)}
+        {truncateWellFormed(toWellFormedUnicode(app.label), 1)}
       </span>
       <img
         src={launcherIconUrl(app, choice)}
