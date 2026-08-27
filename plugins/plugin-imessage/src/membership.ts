@@ -199,6 +199,27 @@ export class IMessageRosterUnavailableError extends ElizaError {
 }
 
 /**
+ * A roster snapshot could not be committed after fenced retries: the
+ * authority kept rejecting the publish (fence collisions or idempotency
+ * conflicts the retry could not reconcile). The scope keeps its prior
+ * authoritative state; the sweep reports it and must NOT count the chat
+ * as committed.
+ */
+export class IMessageSnapshotCommitError extends ElizaError {
+  constructor(
+    message: string,
+    options?: { cause?: unknown; context?: Record<string, unknown> },
+  ) {
+    super(message, {
+      code: "IMESSAGE_SNAPSHOT_COMMIT_FAILED",
+      context: options?.context,
+      cause: options?.cause,
+      severity: "ephemeral",
+    });
+  }
+}
+
+/**
  * Publisher of native iMessage membership evidence to the canonical
  * MembershipService authority. One instance per (runtime, connector
  * account). All authority mutations are serialized per scope; every roster
@@ -215,7 +236,6 @@ export class IMessageMembershipPublisher {
   private readonly scopes = new Map<string, ScopeTracker>();
   private readonly chains = new Map<string, Promise<unknown>>();
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
-  private rosterCounter = 0;
   private readonly ownHandle: string | null;
   /**
    * Direct-chat handle → chat id index built from roster sweeps, so the
@@ -410,6 +430,11 @@ export class IMessageMembershipPublisher {
       try {
         const committed = await this.publishRosterSnapshot({ roster });
         if (committed) published += 1;
+        // Only a committed (or benignly replayed) observation feeds the
+        // persisted inventory and the outbound index.
+        if (committed) {
+          this.indexRosterDirectHandles(roster);
+        }
       } catch (error) {
         // error-policy:J7 Diagnostics must not kill the polling loop: report
         // and continue with the remaining chats; the scope keeps its prior
@@ -420,21 +445,6 @@ export class IMessageMembershipPublisher {
         });
       }
       committedChatIds.push(chatId);
-      // Index direct-chat handles so the outbound send gate can resolve a
-      // bare phone/email to its governed scope. Rebuilding on every sweep
-      // keeps the index current as chats are created or deleted. Both the
-      // roster's own spelling and the canonicalized spelling map to the
-      // same entry so variant target spellings resolve; the entry keeps
-      // the roster handle because principal ids derive from it.
-      if (roster.chatType === "direct") {
-        for (const participant of roster.participants) {
-          if (!participant.handle) continue;
-          const entry = { chatId, rosterHandle: participant.handle };
-          this.directChatByHandle.set(participant.handle, entry);
-          const canonical = this.normalizeTarget(participant.handle);
-          if (canonical) this.directChatByHandle.set(canonical, entry);
-        }
-      }
     }
     if (this.onRosterCommitted && committedChatIds.length > 0) {
       // Persist the governed scope inventory; a failure to persist is a
@@ -459,8 +469,15 @@ export class IMessageMembershipPublisher {
     if (this.sweepTimer) return;
     this.sweepTimer = setInterval(() => {
       this.sweepRoster(source).catch((error) => {
+        // error-policy:J7 Diagnostics must not kill the sweep timer: report
+        // through the runtime so RECENT_ERRORS surfaces the failure.
         logger.warn(
           `[imessage][membership] periodic roster sweep failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        this.runtime.reportError?.(
+          "imessage:membership:periodic-sweep",
+          error,
+          { accountKey: this.accountKey },
         );
       });
     }, intervalMs);
@@ -482,7 +499,6 @@ export class IMessageMembershipPublisher {
     roster: IMessageRosterRead;
     observedAt?: string;
   }): Promise<boolean> {
-    this.rosterCounter += 1;
     const roster = input.roster;
     const scope = imessageMembershipScope({
       agentId: this.runtime.agentId,
@@ -503,9 +519,12 @@ export class IMessageMembershipPublisher {
       // unique while staying deterministic for a replay of the same
       // observation.
       const observedAtMs = Date.parse(observedAt);
-      const observedToken = Number.isFinite(observedAtMs)
-        ? observedAtMs.toString(36)
-        : this.rosterCounter.toString(36);
+      if (!Number.isFinite(observedAtMs)) {
+        throw new Error(
+          `membership snapshot observedAt is not a finite timestamp: ${observedAt}`,
+        );
+      }
+      const observedToken = observedAtMs.toString(36);
       const snapshotKey = `imessage:snapshot:${roster.chatId}:${observedToken}`;
       for (let attempt = 0; attempt < 2; attempt++) {
         const sourceVersion = tracker.sourceVersion + 1;
@@ -545,7 +564,12 @@ export class IMessageMembershipPublisher {
         } catch (error) {
           const code = membershipErrorCode(error);
           if (code === "MEMBERSHIP_IDEMPOTENCY_CONFLICT") {
-            return false;
+            // A conflict means the reused key carried a DIFFERENT command
+            // digest (e.g. a restart replay whose generation/cursor state
+            // changed after publisher re-registration) — not an identical
+            // replay. Retrying once under a fresh derived key reconciles the
+            // divergence instead of misreporting a duplicate.
+            continue;
           }
           if (FENCE_CODES.has(code)) {
             tracker = await this.readoptFromHealth(scope);
@@ -557,7 +581,10 @@ export class IMessageMembershipPublisher {
           throw error;
         }
       }
-      return false;
+      throw new IMessageSnapshotCommitError(
+        "roster snapshot commit exhausted its fenced retries",
+        { context: { accountKey: this.accountKey, chatId: roster.chatId } },
+      );
     });
   }
 
@@ -821,6 +848,79 @@ export class IMessageMembershipPublisher {
   }
 
   /**
+   * Index the direct-chat handles of a committed roster observation.
+   */
+  private indexRosterDirectHandles(roster: IMessageRosterRead): void {
+    if (roster.chatType !== "direct") return;
+    for (const participant of roster.participants) {
+      if (!participant.handle) continue;
+      this.indexDirectHandle(participant.handle, roster.chatId);
+    }
+  }
+
+  /**
+   * Reconcile a persisted governed-chat inventory against the fresh roster:
+   * every inventory chat the source no longer lists (deleted chat, emptied
+   * roster) is degraded fail-closed so its stale durable evidence stops
+   * authorizing. Chats still listed keep their committed state.
+   */
+  async reconcileRemovedScopes(
+    persistedChatIds: readonly string[],
+    source: IMessageMembershipRosterSource,
+  ): Promise<void> {
+    if (persistedChatIds.length === 0) return;
+    let currentIds: ReadonlySet<string>;
+    try {
+      currentIds = new Set(source.listChatIds());
+    } catch {
+      // error-policy:J4 Enumeration failed: degrade every persisted scope
+      // rather than trust possibly-stale evidence against an unreadable
+      // source.
+      const reason =
+        "chat.db roster enumeration failed during startup reconciliation";
+      for (const chatId of persistedChatIds) {
+        await this.degradeScope({ chatId, reason });
+      }
+      return;
+    }
+    const reason =
+      "governed chat absent from the fresh roster; stale evidence degraded";
+    for (const chatId of persistedChatIds) {
+      if (!currentIds.has(chatId)) {
+        await this.degradeScope({ chatId, reason });
+      }
+    }
+  }
+
+  /**
+   * Index one direct-chat handle under both its roster spelling and its
+   * canonicalized spelling. When two DIFFERENT roster spellings (or their
+   * canonical forms) already map to a different chat, the key is ambiguous:
+   * tombstone it so authorizeOutbound denies instead of resolving the wrong
+   * scope.
+   */
+  private indexDirectHandle(rosterHandle: string, chatId: string): void {
+    const entry = { chatId, rosterHandle };
+    this.setIndexEntry(rosterHandle, entry);
+    const canonical = this.normalizeTarget(rosterHandle);
+    if (canonical && canonical !== rosterHandle) {
+      this.setIndexEntry(canonical, entry);
+    }
+  }
+
+  private setIndexEntry(
+    key: string,
+    entry: { chatId: string; rosterHandle: string },
+  ): void {
+    const existing = this.directChatByHandle.get(key);
+    if (existing && existing.chatId !== entry.chatId) {
+      this.directChatByHandle.set(key, { chatId: "", rosterHandle: "" });
+      return;
+    }
+    this.directChatByHandle.set(key, entry);
+  }
+
+  /**
    * Source-wide fail-closed degradation: every known scope goes unavailable.
    * The governed chat-id inventory is persisted through the connector
    * account metadata when the service supplied an onRosterCommitted hook,
@@ -875,11 +975,7 @@ export class IMessageMembershipPublisher {
       // no committed roster evidence, so it only ever resolves to a denial.
       const parts = chatId.split(";");
       if (parts.length >= 3 && parts[1] === "-") {
-        const embedded = parts.slice(2).join(";");
-        const entry = { chatId, rosterHandle: embedded };
-        this.directChatByHandle.set(embedded, entry);
-        const canonical = this.normalizeTarget(embedded);
-        if (canonical) this.directChatByHandle.set(canonical, entry);
+        this.indexDirectHandle(parts.slice(2).join(";"), chatId);
       }
     }
   }
@@ -934,6 +1030,9 @@ export class IMessageMembershipPublisher {
       this.directChatByHandle.get(canonical) ??
       this.directChatByHandle.get(target) ??
       null;
+    // A tombstoned (ambiguous) key carries an empty chat id: deny rather
+    // than resolve a possibly-wrong scope.
+    if (entry && entry.chatId === "") return false;
     let chatId = entry?.chatId ?? null;
     const principalHandle = entry?.rosterHandle ?? null;
     if (chatId === null) {

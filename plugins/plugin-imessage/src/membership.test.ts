@@ -11,7 +11,12 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { AgentRuntime, type MembershipScope, MembershipService, type UUID } from "@elizaos/core";
+import {
+  AgentRuntime,
+  type MembershipScope,
+  MembershipService,
+  type UUID,
+} from "@elizaos/core";
 import { createDatabaseAdapter } from "@elizaos/plugin-sql";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -44,11 +49,18 @@ let restartDir: string;
  * path is what needs the real database here.
  */
 class SyntheticRosterSource implements IMessageMembershipRosterSource {
-  private chats = new Map<string, { chatType: "direct" | "group"; handles: string[] }>();
+  private chats = new Map<
+    string,
+    { chatType: "direct" | "group"; handles: string[] }
+  >();
   private counter = 0;
   failure: Error | null = null;
 
-  setChat(chatId: string, chatType: "direct" | "group", handles: string[]): void {
+  setChat(
+    chatId: string,
+    chatType: "direct" | "group",
+    handles: string[],
+  ): void {
     this.chats.set(chatId, { chatType, handles });
   }
 
@@ -68,7 +80,10 @@ class SyntheticRosterSource implements IMessageMembershipRosterSource {
       chatId,
       chatType: chat.chatType,
       displayName: chat.chatType === "group" ? `group-${chatId}` : null,
-      participants: chat.handles.map((handle) => ({ handle, service: "iMessage" })),
+      participants: chat.handles.map((handle) => ({
+        handle,
+        service: "iMessage",
+      })),
       cursor: this.counter,
     };
   }
@@ -83,7 +98,9 @@ async function scopeFor(chatId: string): Promise<MembershipScope> {
 }
 
 beforeAll(async () => {
-  restartDir = fs.mkdtempSync(path.join(os.tmpdir(), "imessage-membership-24370-"));
+  restartDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "imessage-membership-24370-"),
+  );
   // The membership authority validates UUID version nibbles, so the test
   // agent id must be a real v4. Build the runtime directly over a real
   // PGlite adapter, the same shape plugin-sql's own authority tests use.
@@ -106,12 +123,17 @@ beforeAll(async () => {
     default?: { plugins?: unknown[] };
     plugin?: { plugins?: unknown[] };
   };
-  const sqlPlugin = sqlModule.default ?? (sqlModule.plugin as { plugins?: unknown[] });
+  const sqlPlugin =
+    sqlModule.default ?? (sqlModule.plugin as { plugins?: unknown[] });
   if (sqlPlugin) {
-    await runtime.registerPlugin(sqlPlugin as Parameters<AgentRuntime["registerPlugin"]>[0]);
+    await runtime.registerPlugin(
+      sqlPlugin as Parameters<AgentRuntime["registerPlugin"]>[0],
+    );
   }
   await runtime.initialize();
-  const services = runtime.getServicesByType<MembershipService>(MembershipService.serviceType);
+  const services = runtime.getServicesByType<MembershipService>(
+    MembershipService.serviceType,
+  );
   expect(services.length).toBeGreaterThan(0);
   membership = services[0];
 
@@ -133,7 +155,7 @@ beforeAll(async () => {
     metadata: { source: "imessage-membership" },
   });
   expect(stored.id).toMatch(
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
   );
   connectorAccountId = stored.id as UUID;
 
@@ -159,7 +181,9 @@ describe("iMessage membership publisher (real PGlite authority)", () => {
     const c = imessageMembershipPrincipalId("default", "+15550002222");
     expect(a).toEqual(b);
     expect(a).not.toEqual(c);
-    expect(a).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+    expect(a).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
   });
 
   it("publishes a complete roster snapshot and admits its members", async () => {
@@ -178,7 +202,7 @@ describe("iMessage membership publisher (real PGlite authority)", () => {
     for (const handle of ["+15550001111", "+15550002222", "+15550003333"]) {
       const decision = await membership.authorize(
         scope,
-        imessageMembershipPrincipalId("default", handle)
+        imessageMembershipPrincipalId("default", handle),
       );
       expect(decision.decision).toBe("allowed");
     }
@@ -186,7 +210,7 @@ describe("iMessage membership publisher (real PGlite authority)", () => {
     // A handle not in the roster must be denied: the roster is the truth.
     const outsider = await membership.authorize(
       scope,
-      imessageMembershipPrincipalId("default", "+15550009999")
+      imessageMembershipPrincipalId("default", "+15550009999"),
     );
     expect(outsider.decision).toBe("denied");
   });
@@ -204,12 +228,12 @@ describe("iMessage membership publisher (real PGlite authority)", () => {
     const scope = await scopeFor(chatId);
     const removed = await membership.authorize(
       scope,
-      imessageMembershipPrincipalId("default", "+15550005555")
+      imessageMembershipPrincipalId("default", "+15550005555"),
     );
     expect(removed.decision).toBe("denied");
     const kept = await membership.authorize(
       scope,
-      imessageMembershipPrincipalId("default", "+15550004444")
+      imessageMembershipPrincipalId("default", "+15550004444"),
     );
     expect(kept.decision).toBe("allowed");
   });
@@ -230,7 +254,7 @@ describe("iMessage membership publisher (real PGlite authority)", () => {
     expect(health?.health).toBe("unavailable");
     const decision = await membership.authorize(
       scope,
-      imessageMembershipPrincipalId("default", "+15550006666")
+      imessageMembershipPrincipalId("default", "+15550006666"),
     );
     expect(decision.decision).toBe("denied");
 
@@ -240,7 +264,7 @@ describe("iMessage membership publisher (real PGlite authority)", () => {
     expect(restored).toBeGreaterThanOrEqual(1);
     const after = await membership.authorize(
       scope,
-      imessageMembershipPrincipalId("default", "+15550006666")
+      imessageMembershipPrincipalId("default", "+15550006666"),
     );
     expect(after.decision).toBe("allowed");
   });
@@ -254,21 +278,24 @@ describe("iMessage membership publisher (real PGlite authority)", () => {
     const scope = await scopeFor(chatId);
     const before = await membership.getMembership(
       scope,
-      imessageMembershipPrincipalId("default", "+15550007777")
+      imessageMembershipPrincipalId("default", "+15550007777"),
     );
     expect(before?.state).toBe("active");
 
     // Within the renewal window the same sender is not re-proven: the sweep
     // just stamped this principal, so the in-process gate dedupes the
     // inbound-message renewal (the authoritative refresh path is the sweep).
-    const tooSoon = await publisher.renewSender({ chatId, handle: "+15550007777" });
+    const tooSoon = await publisher.renewSender({
+      chatId,
+      handle: "+15550007777",
+    });
     expect(tooSoon).toBe(false);
 
     // A renewed principal is still admitted: the committed snapshot evidence
     // carries the authorization, not the in-memory renewal map.
     const decision = await membership.authorize(
       scope,
-      imessageMembershipPrincipalId("default", "+15550007777")
+      imessageMembershipPrincipalId("default", "+15550007777"),
     );
     expect(decision.decision).toBe("allowed");
   });
@@ -294,7 +321,7 @@ describe("iMessage membership publisher (real PGlite authority)", () => {
     const scope = await scopeFor(chatId);
     const decision = await membership.authorize(
       scope,
-      imessageMembershipPrincipalId("default", "+15550008888")
+      imessageMembershipPrincipalId("default", "+15550008888"),
     );
     expect(decision.decision).toBe("allowed");
   });
@@ -332,7 +359,7 @@ describe("iMessage membership failure semantics (RP R1 fixes)", () => {
     for (const handle of ["+155****9001", "+155****9002"]) {
       const decision = await membership.authorize(
         scope,
-        imessageMembershipPrincipalId("default", handle)
+        imessageMembershipPrincipalId("default", handle),
       );
       expect(decision.decision).toBe("allowed");
     }
@@ -355,9 +382,12 @@ describe("iMessage membership failure semantics (RP R1 fixes)", () => {
     expect(tracker).toBeDefined();
     tracker?.renewedAt.set(
       imessageMembershipPrincipalId("default", "+155****9011") as string,
-      Date.now() - 60 * 60 * 1000
+      Date.now() - 60 * 60 * 1000,
     );
-    const first = await publisher.renewSender({ chatId, handle: "+155****9011" });
+    const first = await publisher.renewSender({
+      chatId,
+      handle: "+155****9011",
+    });
     expect(first).toBe(true);
 
     // A later renewal (fresh observation, new cursor/timestamp digest) must
@@ -365,9 +395,12 @@ describe("iMessage membership failure semantics (RP R1 fixes)", () => {
     // window to expire again by backdating the in-process renewal stamp.
     tracker?.renewedAt.set(
       imessageMembershipPrincipalId("default", "+155****9011") as string,
-      Date.now() - 60 * 60 * 1000
+      Date.now() - 60 * 60 * 1000,
     );
-    const second = await publisher.renewSender({ chatId, handle: "+155****9011" });
+    const second = await publisher.renewSender({
+      chatId,
+      handle: "+155****9011",
+    });
     expect(second).toBe(true);
   });
 
@@ -390,7 +423,10 @@ describe("iMessage membership failure semantics (RP R1 fixes)", () => {
 
     // The local flag is consulted first: the send gate denies without
     // trusting possibly-stale authority evidence.
-    const allowed = await publisher.authorizeSend({ chatId, handle: "+155****9021" });
+    const allowed = await publisher.authorizeSend({
+      chatId,
+      handle: "+155****9021",
+    });
     expect(allowed).toBe(false);
 
     // Outbound gate over the bare handle resolves the direct chat and also denies.
@@ -444,8 +480,124 @@ describe("iMessage membership failure semantics (RP R1 fixes)", () => {
     expect(health?.health).toBe("unavailable");
     const decision = await membership.authorize(
       scope,
-      imessageMembershipPrincipalId("default", "+155****9041")
+      imessageMembershipPrincipalId("default", "+155****9041"),
     );
     expect(decision.decision).toBe("denied");
+  });
+});
+
+/**
+ * RP R2 follow-up coverage: canonical handle-index wiring (variant target
+ * spellings resolve through the shared normalizer), ambiguous-index
+ * collision denial, startup reconciliation of removed scopes, and
+ * committed-only index feeding on fenced commit failure.
+ */
+describe("iMessage membership R2 fixes (canonical index + reconciliation)", () => {
+  it("variant target spellings resolve through the shared canonical normalizer", async () => {
+    const source = new SyntheticRosterSource();
+    const chatId = "Imessage;-;+155****9051";
+    source.setChat(chatId, "direct", ["+155****9051"]);
+
+    const canonical = (raw: string) =>
+      raw.replace(/^(\+\d{3})\*{4}(\d{4})$/, "$1$2");
+    const gated = new IMessageMembershipPublisher({
+      runtime,
+      connectorAccountId,
+      accountKey: "default",
+      service: membership,
+      normalizeTarget: canonical,
+    });
+    const published = await gated.sweepRoster(source);
+    expect(published).toBe(1);
+
+    // The roster spelling resolves...
+    expect(await gated.authorizeOutbound("+155****9051")).toBe(true);
+    // ...and so does the variant spelling the connector would format to.
+    expect(await gated.authorizeOutbound("+1559051")).toBe(true);
+    // Ungoverned variant stays ungoverned.
+    expect(await gated.authorizeOutbound("+155****9998")).toBeNull();
+  });
+
+  it("an ambiguous canonical collision denies instead of resolving the wrong chat", async () => {
+    const source = new SyntheticRosterSource();
+    source.setChat("Imessage;-;+155****9061", "direct", ["+155****9061"]);
+    source.setChat("Imessage;-;+155****9062", "direct", ["+155****9062"]);
+    const canonical = () => "+155same";
+    const gated = new IMessageMembershipPublisher({
+      runtime,
+      connectorAccountId,
+      accountKey: "default",
+      service: membership,
+      normalizeTarget: canonical,
+    });
+    await gated.sweepRoster(source);
+
+    // Both distinct roster spellings canonicalize to one key: the index is
+    // ambiguous, so the gate must DENY (fail-closed), not guess a scope.
+    expect(await gated.authorizeOutbound("+155****9061")).toBe(false);
+    expect(await gated.authorizeOutbound("+155****9062")).toBe(false);
+  });
+
+  it("reconcileRemovedScopes degrades persisted chats the fresh roster no longer lists", async () => {
+    const source = new SyntheticRosterSource();
+    const chatId = "Imessage;+;chat-reconcile-1;+155****9071";
+    source.setChat(chatId, "group", ["+155****9071"]);
+    await publisher.sweepRoster(source);
+
+    const scope = await scopeFor(chatId);
+    expect(
+      (
+        await membership.authorize(
+          scope,
+          imessageMembershipPrincipalId("default", "+155****9071"),
+        )
+      ).decision,
+    ).toBe("allowed");
+
+    // The chat vanished from the fresh roster: the persisted inventory
+    // entry must degrade, not silently un-govern.
+    const next = new SyntheticRosterSource();
+    await publisher.reconcileRemovedScopes([chatId], next);
+
+    const health = await membership.getScopeHealth(scope);
+    expect(health?.health).toBe("unavailable");
+    expect(
+      (
+        await membership.authorize(
+          scope,
+          imessageMembershipPrincipalId("default", "+155****9071"),
+        )
+      ).decision,
+    ).toBe("denied");
+  });
+
+  it("a fenced commit failure keeps the chat out of the committed index and inventory", async () => {
+    const source = new SyntheticRosterSource();
+    const chatId = "Imessage;-;+155****9081";
+    source.setChat(chatId, "direct", ["+155****9081"]);
+
+    // Break the authority commits for this publisher: every
+    // applyCompleteSnapshot throws a fence error, both retries exhaust, and
+    // the snapshot errors instead of fabricating success.
+    const broken = {
+      applyCompleteSnapshot: async () => {
+        const err = new Error("fence") as Error & { code?: string };
+        err.code = "MEMBERSHIP_GENERATION_FENCE";
+        throw err;
+      },
+    } as unknown as MembershipService;
+    const fenced = new IMessageMembershipPublisher({
+      runtime,
+      connectorAccountId,
+      accountKey: "default",
+      service: broken,
+    });
+    // The per-chat sweep catch reports the failure and skips the chat, so
+    // the sweep resolves (0 published) instead of throwing the loop away.
+    const published = await fenced.sweepRoster(source);
+    expect(published).toBe(0);
+
+    // The outbound index must NOT contain the uncommitted chat's handle.
+    expect(await fenced.authorizeOutbound("+155****9081")).toBeNull();
   });
 });
