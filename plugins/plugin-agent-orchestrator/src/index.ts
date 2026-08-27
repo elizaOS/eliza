@@ -19,6 +19,8 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
+  toWellFormedUnicode,
+  truncateWellFormed,
   createUniqueUuid,
   EventType,
   isLocalCodeExecutionAllowed,
@@ -1951,7 +1953,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
       runtime.logger?.debug?.(
         {
           src: "@elizaos/plugin-agent-orchestrator",
-          sessionId: sessionId.slice(0, 8),
+          sessionId: truncateWellFormed(toWellFormedUnicode(sessionId), 8),
           ev: evName,
         },
         "session event",
@@ -2231,12 +2233,12 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         runtime.logger?.debug?.(
           {
             src: "@elizaos/plugin-agent-orchestrator",
-            sessionId: sessionId.slice(0, 8),
+            sessionId: truncateWellFormed(toWellFormedUnicode(sessionId), 8),
             ev: evName,
             source,
-            room: roomId.slice(0, 8),
+            room: truncateWellFormed(toWellFormedUnicode(roomId), 8),
           },
-          `posting: "${text.slice(0, 80)}"`,
+          `posting: "${truncateWellFormed(toWellFormedUnicode(text), 80)}"`,
         );
         await emitProgress(sessionId, { source, roomId }, text, label);
       } catch (err) {
