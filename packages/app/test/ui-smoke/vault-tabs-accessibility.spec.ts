@@ -89,4 +89,49 @@ test.describe("Vault tab accessibility", () => {
     );
     expect(headerDirection).toBe("row");
   });
+
+  test("shares route gutters with the Character family", async ({ page }) => {
+    for (const viewport of [
+      { width: 390, height: 844 },
+      { width: 820, height: 1180 },
+      { width: 1440, height: 900 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await openAppPath(page, "/vault");
+      await expect(page.getByTestId("section-nav-vault")).toBeVisible();
+      const vaultBody = await page
+        .locator("[data-framed-page-body]")
+        .boundingBox();
+      const vaultTab = await page
+        .getByTestId("vault-tab-overview")
+        .boundingBox();
+
+      for (const characterRoute of [
+        "/character",
+        "/character/skills",
+        "/character/experience",
+      ]) {
+        await openAppPath(page, characterRoute);
+        await expect(page.getByTestId("section-nav-character")).toBeVisible();
+        const characterBody = await page
+          .locator("[data-framed-page-body]")
+          .boundingBox();
+        const characterTab = await page
+          .getByRole("button", { name: "Personality" })
+          .boundingBox();
+
+        expect(characterBody?.x).toBe(vaultBody?.x);
+        expect(characterBody?.width).toBe(vaultBody?.width);
+        expect(characterTab?.x).toBe(vaultTab?.x);
+      }
+
+      await openAppPath(page, "/character/select");
+      await expect(page.locator("[data-framed-page-body]")).toBeVisible();
+      const characterSelectBody = await page
+        .locator("[data-framed-page-body]")
+        .boundingBox();
+      expect(characterSelectBody?.x).toBe(vaultBody?.x);
+      expect(characterSelectBody?.width).toBe(vaultBody?.width);
+    }
+  });
 });

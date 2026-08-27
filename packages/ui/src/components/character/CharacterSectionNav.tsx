@@ -83,10 +83,7 @@ export function CharacterSectionNav({
   return (
     <>
       <FramedPageHeader title="Character" />
-      <FramedPageNavigation
-        padded={false}
-        className="overflow-x-auto [@media(min-width:768px)_and_(min-height:600px)]:px-6 lg:px-8"
-      >
+      <FramedPageNavigation className="overflow-x-auto">
         <SectionTabStrip
           entries={CHARACTER_SECTION_TABS}
           activeId={activeCharacterTabId(activePath)}

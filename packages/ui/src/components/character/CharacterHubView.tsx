@@ -227,12 +227,7 @@ export function CharacterHubView({
   return (
     <FramedPage>
       {pageChrome}
-      <FramedPageBody
-        scroll="page"
-        padded={false}
-        className="[@media(min-width:768px)_and_(min-height:600px)]:px-10 lg:px-8"
-        data-testid="character-editor-view"
-      >
+      <FramedPageBody scroll="page" data-testid="character-editor-view">
         <div className="flex min-w-0 flex-col pt-1">
           <WidgetHost slot="character" className="mb-4" />
           <div className="flex min-w-0 flex-col gap-4 sm:gap-6 md:gap-8">

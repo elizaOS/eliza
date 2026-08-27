@@ -92,6 +92,14 @@ const WORKSPACE_LAYOUT: PageLayoutManifest = Object.freeze({
   gutter: "standard",
 });
 
+/** Routes whose rendered view owns its canonical FramedPage width and gutter. */
+const FRAMED_PAGE_LAYOUT: PageLayoutManifest = Object.freeze({
+  kind: "content",
+  width: "wide",
+  scroll: "view",
+  gutter: "none",
+});
+
 const FULL_WORKSPACE_LAYOUT: PageLayoutManifest = Object.freeze({
   kind: "workspace",
   width: "full",
@@ -150,10 +158,10 @@ export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
     layout: IMMERSIVE_LAYOUT,
     surface: { shared: (path) => path === "/views" },
   },
-  character: { path: "/character", layout: WORKSPACE_LAYOUT },
+  character: { path: "/character", layout: FRAMED_PAGE_LAYOUT },
   "character-select": {
     path: "/character/select",
-    layout: WORKSPACE_LAYOUT,
+    layout: FRAMED_PAGE_LAYOUT,
   },
   automations: { path: "/automations", layout: WORKSPACE_LAYOUT },
   triggers: { aliasOf: "automations" },
@@ -169,10 +177,10 @@ export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
   trajectories: { path: "/apps/trajectories", layout: WORKSPACE_LAYOUT },
   transcripts: { path: "/apps/transcripts", layout: CONTENT_LAYOUT },
   relationships: { path: "/apps/relationships", layout: WORKSPACE_LAYOUT },
-  experience: { path: "/character/experience", layout: CONTENT_LAYOUT },
+  experience: { path: "/character/experience", layout: FRAMED_PAGE_LAYOUT },
   "character-skills": {
     path: "/character/skills",
-    layout: CONTENT_LAYOUT,
+    layout: FRAMED_PAGE_LAYOUT,
   },
   memories: { path: "/apps/memories", layout: WORKSPACE_LAYOUT },
   rolodex: { path: "/rolodex", layout: CONTENT_LAYOUT },
@@ -180,7 +188,7 @@ export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
   database: { path: "/apps/database", layout: WORKSPACE_LAYOUT },
   desktop: { path: "/desktop", layout: FULL_WORKSPACE_LAYOUT },
   settings: { path: "/settings", layout: FULL_WORKSPACE_LAYOUT },
-  vault: { path: "/vault", layout: CONTENT_LAYOUT },
+  vault: { path: "/vault", layout: FRAMED_PAGE_LAYOUT },
   logs: { path: "/apps/logs", layout: CONTENT_LAYOUT },
   background: {
     path: "/background",

@@ -99,7 +99,7 @@ function VaultTabTrigger({
       value={id}
       data-state={isActive ? "active" : "inactive"}
       data-testid={testId}
-      className="shrink-0 bg-transparent px-3 py-1.5 text-txt-strong hover:bg-accent-subtle data-[state=active]:bg-accent-subtle data-[state=active]:text-txt-strong max-[420px]:px-2 max-[360px]:px-1"
+      className="h-9 shrink-0 bg-transparent px-3 py-1.5 text-xs text-txt-strong hover:bg-accent-subtle data-[state=active]:bg-accent-subtle data-[state=active]:text-txt-strong pointer-coarse:min-h-touch pointer-coarse:min-w-touch max-[420px]:px-2 max-[360px]:px-1"
     >
       {label}
     </TabsTrigger>

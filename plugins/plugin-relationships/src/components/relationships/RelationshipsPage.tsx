@@ -16,10 +16,7 @@ export function RelationshipsPage({
   return (
     <FramedPage reserveComposer={false}>
       {pageChrome}
-      <FramedPageBody
-        padded={false}
-        className="[@media(min-width:768px)_and_(min-height:600px)]:px-6 lg:px-8"
-      >
+      <FramedPageBody>
         <RelationshipsView />
       </FramedPageBody>
     </FramedPage>
