@@ -1374,7 +1374,8 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
       paymentIntentId: "pi_terminal_reinstate",
       source: "charge.dispute.funds_withdrawn",
       reversedUsd: 40,
-      unrecoveredUsd: 15,
+      // Writer-honest snapshot: requested 40, applied 40 → snapshot 0.
+      unrecoveredUsd: 0,
       cumulativeTargetUsd: 40,
       createdAt: new Date("2026-08-20T10:00:00.000Z"),
       idempotencyKey: "stripe:dispute:dp_terminal:4000",
@@ -1469,7 +1470,9 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
       paymentIntentId: "pi_partial_reinstate",
       source: "charge.dispute.funds_withdrawn",
       reversedUsd: 40,
-      unrecoveredUsd: 15,
+      // Writer-honest snapshot: requested 40 (target 40, no prior
+      // reversals), applied 40 → snapshot 0.
+      unrecoveredUsd: 0,
       cumulativeTargetUsd: 40,
       createdAt: new Date("2026-08-20T10:00:00.000Z"),
       idempotencyKey: "stripe:dispute:dp_partial:4000",
@@ -1822,5 +1825,82 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
     // Max target since (no full) cycle = 60 − net applied (70 − 20 = 50)
     // = 10 owed. Newest-target (50 − 50 = 0) would erase real debt.
     expect(row?.unrecoveredShortfallCredits).toBe(10);
+  });
+
+  test("a full dispute reinstatement never erases an unrelated authority's shortfall (#26752 r6)", async () => {
+    // RP r5 finding: balance 10; dispute target 10 applies 10; unrelated
+    // refund target 60 requests 50 but applies 0 (requested > 0 passes the
+    // writer's insertion guard — insertion does NOT require applied > 0);
+    // then the dispute fully reinstates 10. Aggregate reinstated (10) >=
+    // aggregate applied (10), but the refund's recorded shortfall of 50 is
+    // unmet debt from a different authority — it survives the cycle.
+    const request = await insertStripePaymentRequest({
+      organizationId,
+      amountCents: 20000,
+      status: "settled",
+      settlementTxRef: "pi_unrelated_shortfall",
+      settledAt: new Date(),
+    });
+    await insertReceipt({
+      organizationId,
+      paymentRequestId: request.id,
+      providerTxRef: "pi_unrelated_shortfall",
+      amountCents: 20000,
+    });
+    // Dispute clawback: target 10, applied 10, snapshot 0.
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "-10",
+      paymentIntentId: "pi_unrelated_shortfall",
+      source: "charge.dispute.funds_withdrawn",
+      reversedUsd: 10,
+      unrecoveredUsd: 0,
+      cumulativeTargetUsd: 10,
+      reference: "dispute dp_unrelated",
+      createdAt: new Date("2026-08-20T10:00:00.000Z"),
+      idempotencyKey: "stripe:dispute:dp_unrelated:1000",
+    });
+    // Unrelated refund clawback: target 60, prior total 10 → requested 50,
+    // balance 0 → applied 0, snapshot 50. Insertion passed because
+    // requested > 0.
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "0",
+      paymentIntentId: "pi_unrelated_shortfall",
+      source: "charge.refunded",
+      reversedUsd: 60,
+      unrecoveredUsd: 50,
+      cumulativeTargetUsd: 60,
+      reference: "charge ch_unrelated",
+      createdAt: new Date("2026-08-20T11:00:00.000Z"),
+      idempotencyKey: "stripe:refund:ch_unrelated:6000",
+    });
+    // The dispute is fully reinstated — its own debt closes, but the
+    // refund's 50 survives.
+    await insertReversal({
+      organizationId,
+      type: "refund",
+      amount: "10",
+      paymentIntentId: "pi_unrelated_shortfall",
+      source: "charge.dispute.funds_reinstated",
+      reversedUsd: 10,
+      createdAt: new Date("2026-08-20T12:00:00.000Z"),
+      idempotencyKey: "stripe:dispute:dp_unrelated:reinstated",
+    });
+
+    const rows = await paymentHistoryService.listPaymentStates(organizationId);
+    const row = rows.find((r) => r.id === `payment_request:${request.id}`);
+    expect(row).toBeDefined();
+    expect(row?.cumulativeClawbackCredits).toBe(10);
+    expect(row?.reinstatedCredits).toBe(10);
+    expect(row?.paymentState).toBe("dispute_reinstated");
+    // The refund's unmet 50 survives the dispute's full reinstatement, and
+    // the reinstatement's 10 restored credits are debt again (RP's own
+    // arithmetic: 50 snapshot + 10 later reinstatement = 60; equivalently
+    // max target 60 − net applied 0 = 60). The aggregate zero branch must
+    // not erase another authority's debt.
+    expect(row?.unrecoveredShortfallCredits).toBe(60);
   });
 });

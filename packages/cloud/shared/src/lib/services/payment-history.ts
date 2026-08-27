@@ -143,35 +143,23 @@ interface ReversalAggregate {
   unrecoveredShortfallCredits: number;
   /**
    * Per-event clawback/reinstatement timeline for the intent, collected
-   * newest-first. The outstanding-shortfall derivation walks it oldest-first
-   * to compute the max cumulative target SINCE the last full reinstatement
-   * cycle (the point where cumulative reinstated credits reached cumulative
-   * clawbacks): the writer's prior_reversal.total returns to zero only
-   * there, so only a full cycle may re-base the intent's debt downward —
-   * a newer smaller target without a cycle leaves the older larger target
-   * outstanding (60 applied 30, later target 40 applying 10 → 20 still owed).
+   * newest-first. The outstanding-shortfall derivation walks it oldest-first:
+   * the debt basis is the max cumulative target since the last FULL
+   * reinstatement cycle — the point where cumulative reinstated credits
+   * reached cumulative applied clawbacks AND no unmet shortfall snapshot
+   * remained (a reinstatement overturns only its own dispute; another
+   * authority's recorded shortfall survives it). The writer's
+   * prior_reversal.total returns to zero only at such a boundary.
    */
   reversalTimeline: Array<{
     at: number;
     id: string;
     amount: number;
     target: number | null;
+    /** This row's own shortfall snapshot (requested − applied at write time). */
+    snapshot: number | null;
     reinstatement: boolean;
   }>;
-  /**
-   * Shortfall snapshot of the chronologically newest clawback row that
-   * recorded one (credit units) — legacy fallback for rows written without
-   * a cumulative target. Rows arrive newest-first, so the first snapshot
-   * seen wins; zero is a valid snapshot (an earlier shortfall was cleared).
-   */
-  lastShortfallSnapshotCredits: number | null;
-  /**
-   * Reinstatement credits recorded strictly AFTER the newest shortfall
-   * snapshot row. Older reinstatements already reduced prior_reversal.total
-   * at that row's write time, so their effect is inside the snapshot; only
-   * newer ones must be re-added by the legacy fallback derivation.
-   */
-  reinstatedCreditsSinceSnapshot: number;
   disputeReinstated: boolean;
   lastReversalAt: number;
   /** Ledger row id of the latest reversal — stable tie-breaker for equal timestamps. */
@@ -187,8 +175,6 @@ function emptyAggregate(): ReversalAggregate {
     reinstatedCredits: 0,
     unrecoveredShortfallCredits: 0,
     reversalTimeline: [],
-    lastShortfallSnapshotCredits: null,
-    reinstatedCreditsSinceSnapshot: 0,
     disputeReinstated: false,
     lastReversalAt: -1,
     lastReversalRowId: "",
@@ -254,24 +240,18 @@ function aggregateReversals(
       // (requested − covered-by-balance at write time). A later row's
       // snapshot already carries any earlier under-recovery — its
       // requested_amount is a cumulative delta — so snapshots must never be
-      // summed. Track the newest snapshot (rows are newest-first; zero is a
-      // valid snapshot meaning an earlier shortfall was cleared) and the
-      // per-authority max cumulative target for the derivation below.
+      // summed. Zero is a valid snapshot (an earlier shortfall was cleared);
+      // an explicit null is absent data and must not masquerade as zero.
       const shortfallRaw = metadata.unrecovered_clawback_usd;
-      if (shortfallRaw !== undefined && shortfallRaw !== null) {
-        const shortfall = finiteNumber(shortfallRaw);
-        if (shortfall !== null && shortfall >= 0) {
-          if (current.lastShortfallSnapshotCredits === null) {
-            current.lastShortfallSnapshotCredits = shortfall;
-          }
-        }
-      }
+      const snapshot =
+        shortfallRaw !== undefined && shortfallRaw !== null ? finiteNumber(shortfallRaw) : null;
       const cumulativeTarget = finiteNumber(metadata.cumulative_clawback_target_usd);
       current.reversalTimeline.push({
         at,
         id: row.id,
         amount,
         target: cumulativeTarget !== null && cumulativeTarget > 0 ? cumulativeTarget : null,
+        snapshot: snapshot !== null && snapshot >= 0 ? snapshot : null,
         reinstatement: false,
       });
       if (
@@ -290,18 +270,9 @@ function aggregateReversals(
         id: row.id,
         amount,
         target: null,
+        snapshot: null,
         reinstatement: true,
       });
-      // A reinstatement un-applies credits, so it grows outstanding debt by
-      // the restored amount. For the legacy-snapshot fallback only the
-      // reinstatements AFTER the newest snapshot row matter: older ones
-      // already reduced prior_reversal.total at that row's write time and
-      // are therefore folded into the recorded snapshot. Rows arrive
-      // newest-first, so while no snapshot has been seen yet every
-      // reinstatement is older than (or equal to) the not-yet-seen snapshot.
-      if (current.lastShortfallSnapshotCredits === null) {
-        current.reinstatedCreditsSinceSnapshot += amount;
-      }
       if (
         at > current.lastReversalAt ||
         (at === current.lastReversalAt && row.id > current.lastReversalRowId)
@@ -351,67 +322,76 @@ function aggregateReversals(
     agg.cumulativeDisputedChargeCurrency = disputed;
   }
 
-  // Derive the outstanding credit-unit shortfall from authoritative
-  // cumulative quantities: max cumulative target since the last full
-  // reinstatement cycle − net applied credits (clawbacks minus
-  // reinstatements). Per-row shortfall snapshots already fold earlier
-  // under-recovery into later rows, so summing them inflates the
-  // outstanding amount forever. The debt basis is the MAX target recorded
-  // since the last FULL reinstatement cycle — the point where cumulative
-  // reinstated credits reached cumulative clawbacks and the writer's
-  // prior_reversal.total returned to zero: only there may the debt be
-  // re-based downward. A newer SMALLER target without a cycle does not
-  // cancel an older larger one (60 applied 30, later target 40 applying
-  // 10 → 20 of the original 60 is still owed). Only when no cumulative
-  // target was ever recorded (legacy rows) does the newest snapshot stand
-  // in, plus any reinstatements recorded after it.
-  // A FULL dispute reinstatement (restored credits cover the applied
-  // clawbacks) closes the outstanding shortfall: the reversal was
-  // overturned and the ledger no longer asserts the debt. A PARTIAL
-  // reinstatement must not zero unrelated debt — it flows through the net
-  // applied term instead.
+  // Derive the outstanding credit-unit shortfall by walking the intent's
+  // reversal timeline oldest-first. Per-row shortfall snapshots already
+  // fold earlier under-recovery into later rows, so summing them inflates
+  // the outstanding amount forever. The writer's authority is:
+  //   requested = GREATEST(event_target − prior_reversal.total, 0)
+  //   applied  = LEAST(requested, balance)
+  //   snapshot = requested − applied
+  // where prior_reversal.total nets ALL clawbacks and dispute
+  // reinstatements across the intent. A FULL reinstatement cycle
+  // (cumulative reinstated reaches cumulative applied clawbacks) returns
+  // prior_reversal.total to zero and re-bases the debt — but a
+  // reinstatement overturns only its own dispute: a shortfall another
+  // authority recorded is unmet debt that survives the cycle, so the walk
+  // tracks unmet snapshot debt separately from the max-target basis.
+  // A newer SMALLER target without a cycle does not cancel an older larger
+  // one (60 applied 30, later target 40 applying 10 → 20 still owed).
   for (const agg of byIntent.values()) {
-    if (
-      agg.lastReversalSource === "charge.dispute.funds_reinstated" &&
-      agg.reinstatedCredits >= agg.cumulativeClawbackCredits
-    ) {
-      agg.unrecoveredShortfallCredits = 0;
-      continue;
-    }
-    // Walk the intent's timeline oldest-first. The debt basis is the max
-    // cumulative target recorded since the last FULL reinstatement cycle —
-    // the point where cumulative reinstated credits caught up with
-    // cumulative clawbacks and the writer's prior_reversal.total returned
-    // to zero. Only such a cycle may re-base the debt downward; a newer
-    // smaller target without a cycle leaves the older larger target owed.
     const timeline = [...agg.reversalTimeline].sort(
       (a, b) => a.at - b.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
     );
     let clawbackSoFar = 0;
     let reinstatedSoFar = 0;
     let maxTargetSinceCycle: number | null = null;
+    // Unmet shortfall debt recorded by snapshots since the last full
+    // cycle — reinstatements must burn through this before any cycle may
+    // re-base the debt downward.
+    let unmetSnapshotDebt = 0;
+    // Newest snapshot since the last full cycle, and reinstatements after
+    // it (legacy path: no cumulative target survives the walk).
+    let newestSnapshot: number | null = null;
+    let reinstatedAfterSnapshot = 0;
     for (const event of timeline) {
       if (event.reinstatement) {
         reinstatedSoFar += event.amount;
+        if (newestSnapshot !== null) {
+          reinstatedAfterSnapshot += event.amount;
+        }
       } else {
         clawbackSoFar += event.amount;
         if (event.target !== null) {
           maxTargetSinceCycle = Math.max(maxTargetSinceCycle ?? 0, event.target);
         }
+        if (event.snapshot !== null) {
+          newestSnapshot = event.snapshot;
+          reinstatedAfterSnapshot = 0;
+        }
       }
-      if (reinstatedSoFar >= clawbackSoFar && clawbackSoFar > 0) {
-        // Full reinstatement cycle boundary: debt re-bases from here.
+      // Full cycle: reinstatements caught up with applied clawbacks AND
+      // every recorded shortfall has been met. Only then does the writer's
+      // prior_reversal.total reaching zero imply the intent's debt closed.
+      if (
+        clawbackSoFar > 0 &&
+        reinstatedSoFar >= clawbackSoFar &&
+        unmetSnapshotDebt === 0 &&
+        newestSnapshot === 0
+      ) {
         maxTargetSinceCycle = null;
+        newestSnapshot = null;
+        reinstatedAfterSnapshot = 0;
+      } else if (newestSnapshot !== null) {
+        unmetSnapshotDebt = newestSnapshot;
       }
     }
     if (maxTargetSinceCycle !== null) {
       const netApplied = agg.cumulativeClawbackCredits - agg.reinstatedCredits;
       agg.unrecoveredShortfallCredits = Math.max(maxTargetSinceCycle - netApplied, 0);
-    } else if (agg.lastShortfallSnapshotCredits !== null) {
-      agg.unrecoveredShortfallCredits = Math.max(
-        agg.lastShortfallSnapshotCredits + agg.reinstatedCreditsSinceSnapshot,
-        0,
-      );
+    } else if (newestSnapshot !== null) {
+      agg.unrecoveredShortfallCredits = Math.max(newestSnapshot + reinstatedAfterSnapshot, 0);
+    } else {
+      agg.unrecoveredShortfallCredits = 0;
     }
   }
   return byIntent;
