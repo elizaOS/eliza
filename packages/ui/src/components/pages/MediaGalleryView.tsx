@@ -328,10 +328,11 @@ export function MediaGalleryView({
           : tables.map((t) => t.name);
       const scanLimit = mediaTableNames.length > 0 ? 500 : 100;
 
-      // Scan the candidate tables concurrently — they are independent queries,
-      // and the sequential loop made the gallery wait on up to 10 round-trips.
+      // Scan all candidate tables concurrently — they are independent queries.
+      // The previous `.slice(0, 10)` silently dropped tables beyond the tenth,
+      // hiding media stored in later tables. Preserve complete enumeration.
       const scanResults = await Promise.all(
-        tablesToScan.slice(0, 10).map(async (tableName) => {
+        tablesToScan.map(async (tableName) => {
           try {
             const result: QueryResult = await client.executeDatabaseQuery(
               `SELECT * FROM "${tableName}" LIMIT ${scanLimit}`,

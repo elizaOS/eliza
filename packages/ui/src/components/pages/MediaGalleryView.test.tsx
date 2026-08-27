@@ -99,4 +99,49 @@ describe("MediaGalleryView", () => {
     );
     expect(container.querySelector('[aria-busy="false"]')).toBeTruthy();
   });
+
+  it("preserves complete enumeration — scans every candidate table beyond tenth", async () => {
+    const tableNames = Array.from({ length: 12 }, (_, i) => `memories_${i}`);
+    clientMock.getDatabaseTables.mockResolvedValue({
+      tables: tableNames.map((name) => ({ name })),
+    });
+    clientMock.executeDatabaseQuery.mockImplementation(async (sql: string) => {
+      const match = String(sql).match(/FROM "([^"]+)"/);
+      const table = match?.[1] ?? "unknown";
+      const idx = tableNames.indexOf(table);
+      return {
+        rows: [
+          {
+            content: `https://example.test/photo${idx}.png`,
+            createdAt: `2026-07-17T0${String(idx).padStart(2, "0")}:00:00.000Z`,
+          },
+        ],
+      };
+    });
+
+    render(<MediaGalleryView />);
+
+    // The bug truncated to 10 tables; photo10/photo11 would never appear.
+    // All 12 tables must be queried — assert absence of the cap.
+    await waitFor(() =>
+      expect(clientMock.executeDatabaseQuery).toHaveBeenCalledTimes(12),
+    );
+    const calledTables = clientMock.executeDatabaseQuery.mock.calls.map(
+      ([sql]) => String(sql).match(/FROM "([^"]+)"/)?.[1],
+    );
+    expect(calledTables).toEqual(
+      expect.arrayContaining(["memories_10", "memories_11"]),
+    );
+
+    // Gallery renders the full set, not a truncated preview. Sidebar list + count reflect 12.
+    await screen.findByText("12 items");
+    expect(screen.getAllByText("photo0.png").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("photo10.png").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("photo11.png").length).toBeGreaterThanOrEqual(1);
+
+    // Detail heading shows the most-recent (sorted desc) item — must be photo11, proving it was enumerated.
+    expect(
+      await screen.findByRole("heading", { name: "photo11.png" }),
+    ).toBeTruthy();
+  });
 });
