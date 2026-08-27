@@ -834,7 +834,7 @@ describe("ensurePersonalDedicatedEliza", () => {
     vi.spyOn(Date, "now").mockImplementation(() => {
       nowReadCount += 1;
       if (nowReadCount === 1) return 0;
-      if (nowReadCount === 2) return 359_999;
+      if (nowReadCount <= 3) return 359_999;
       return 360_000;
     });
     vi.stubGlobal(
@@ -894,6 +894,75 @@ describe("ensurePersonalDedicatedEliza", () => {
       },
     });
     expect(nowReadCount).toBeGreaterThanOrEqual(3);
+    expect(cutoverPosts).toBe(0);
+  });
+
+  it("does not dispatch native cutover when the deadline crosses at transport", async () => {
+    capacitorState.isNative = true;
+    const personalElizaId = "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b";
+    const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
+    let cutoverPosts = 0;
+    let nowReadCount = 0;
+    vi.spyOn(Date, "now").mockImplementation(() => {
+      nowReadCount += 1;
+      if (nowReadCount === 1) return 0;
+      if (nowReadCount <= 3) return 359_999;
+      return 360_000;
+    });
+    capacitorHttpRequestMock.mockImplementation(
+      async ({ method, url }: { method: string; url: string }) => {
+        if (url.endsWith("/api/v1/eliza/personal")) {
+          return {
+            status: 200,
+            data: {
+              success: true,
+              data: {
+                identity: {
+                  id: personalElizaId,
+                  displayName: "Eliza",
+                  runtime: "shared",
+                },
+              },
+            },
+          };
+        }
+        if (url.endsWith("/upgrade-tier") && method === "GET") {
+          return {
+            status: 200,
+            data: {
+              success: true,
+              data: {
+                quoteId: "9".repeat(64),
+                canActivate: true,
+                activation: {
+                  state: "in_progress",
+                  dedicatedAgentId,
+                  status: "provisioning",
+                },
+              },
+            },
+          };
+        }
+        if (url.endsWith("/upgrade-tier/cutover")) {
+          cutoverPosts += 1;
+        }
+        return { status: 500, data: { error: "unexpected route" } };
+      },
+    );
+
+    const rejection = new ElizaClient().ensurePersonalDedicatedEliza({
+      cloudApiBase: "https://api.eliza.app",
+      authToken: "steward-token",
+      pollIntervalMs: 0,
+    });
+
+    await expect(rejection).rejects.toMatchObject({
+      cause: {
+        message: "The startup deadline elapsed",
+        name: "TimeoutError",
+      },
+    });
+    expect(nowReadCount).toBeGreaterThanOrEqual(4);
     expect(cutoverPosts).toBe(0);
   });
 
@@ -1004,7 +1073,59 @@ describe("ensurePersonalDedicatedEliza", () => {
         cloudApiBase: "https://api.eliza.app",
         authToken: "steward-token",
       }),
-    ).rejects.toThrow("invalid in-progress Dedicated status");
+    ).rejects.toMatchObject({
+      code: "CLOUD_DEDICATED_STATUS_UNKNOWN",
+      context: { phase: "quote", field: "activation.status" },
+      message: expect.stringContaining("invalid in-progress Dedicated status"),
+      name: "ElizaError",
+    });
+    expect(activationPosts).toBe(0);
+  });
+
+  it("fails with a coded sanitized error on an unknown quote state", async () => {
+    let activationPosts = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/v1/eliza/personal")) {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              identity: {
+                id: "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b",
+                displayName: "Eliza",
+                runtime: "shared",
+              },
+            },
+          });
+        }
+        if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              quoteId: "4".repeat(64),
+              canActivate: true,
+              activation: { state: "unknown-future-state" },
+            },
+          });
+        }
+        if (init?.method === "POST") activationPosts += 1;
+        return jsonResponse(500, { error: "unexpected route" });
+      }),
+    );
+
+    await expect(
+      new ElizaClient().ensurePersonalDedicatedEliza({
+        cloudApiBase: "https://api.eliza.app",
+        authToken: "steward-token",
+      }),
+    ).rejects.toMatchObject({
+      code: "CLOUD_DEDICATED_QUOTE_STATE_UNKNOWN",
+      context: { phase: "quote", field: "activation.state" },
+      message: expect.stringContaining("invalid Dedicated quote state"),
+      name: "ElizaError",
+    });
     expect(activationPosts).toBe(0);
   });
 
@@ -1058,7 +1179,14 @@ describe("ensurePersonalDedicatedEliza", () => {
         cloudApiBase: "https://api.eliza.app",
         authToken: "steward-token",
       }),
-    ).rejects.toThrow("different Dedicated target than the quoted activation");
+    ).rejects.toMatchObject({
+      code: "CLOUD_DEDICATED_TARGET_MISMATCH",
+      context: { phase: "activation", field: "dedicatedAgentId" },
+      message: expect.stringContaining(
+        "different Dedicated target than the quoted activation",
+      ),
+      name: "ElizaError",
+    });
     expect(cutoverPosts).toBe(0);
   });
 

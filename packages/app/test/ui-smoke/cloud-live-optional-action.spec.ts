@@ -282,6 +282,31 @@ test.describe("Cloud live optional action boundary", () => {
     await expect(page.getByTestId("retry-count")).toHaveText("0");
   });
 
+  test("preserves the typed recovery when its diagnostic sink rejects", async ({
+    page,
+  }) => {
+    await page.setContent(
+      '<button data-testid="identity-retry">Retry</button>',
+    );
+
+    await expect(
+      waitForCloudLivePersonalIdentity({
+        readBinding: async () => null,
+        runtimeCloudRecovery: page.getByTestId("runtime-cloud"),
+        retryRecovery: page.getByTestId("identity-retry"),
+        timeoutMs: 500,
+        runtimeCloudGraceMs: 50,
+        pollIntervalMs: 5,
+        onRecovery: async () => {
+          throw new Error("diagnostic sink unavailable");
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "CLOUD_LIVE_PERSONAL_IDENTITY_RECOVERY",
+      recovery: "retry",
+    });
+  });
+
   test("fails with a closed deadline when binding and recovery stay absent", async ({
     page,
   }) => {

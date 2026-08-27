@@ -549,10 +549,24 @@ function resolveBrowserCloudApiRequestUrl(url: string): string {
  * available, bypassing the WKWebView CORS block on loopback renderer origins.
  * Falls back to a regular fetch() on web/native platforms.
  */
+const directCloudAbsoluteDeadlineBySignal = new WeakMap<AbortSignal, number>();
+
+function throwIfDirectCloudDispatchDeadlineElapsed(
+  signal?: AbortSignal | null,
+): void {
+  if (!signal) return;
+  signal.throwIfAborted();
+  const deadlineMs = directCloudAbsoluteDeadlineBySignal.get(signal);
+  if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
+    throw new DOMException("The startup deadline elapsed", "TimeoutError");
+  }
+}
+
 async function directCloudFetch(
   url: string,
   init?: RequestInit,
 ): Promise<Response> {
+  throwIfDirectCloudDispatchDeadlineElapsed(init?.signal);
   const transport = desktopHttpTransportForUrl(url);
   if (transport) {
     return transport.request(url, init ?? {}, undefined);
@@ -942,6 +956,15 @@ async function fetchDirectCloudWithTimeout<T>(
   consume: (response: Response) => Promise<T>,
 ): Promise<T> {
   const controller = new AbortController();
+  const absoluteDeadlineMs = init.signal
+    ? directCloudAbsoluteDeadlineBySignal.get(init.signal)
+    : undefined;
+  if (absoluteDeadlineMs !== undefined) {
+    directCloudAbsoluteDeadlineBySignal.set(
+      controller.signal,
+      absoluteDeadlineMs,
+    );
+  }
   let abortListener: (() => void) | undefined;
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   let timedOut = false;
@@ -988,6 +1011,7 @@ async function fetchDirectCloudWithTimeout<T>(
     }
     throw err;
   } finally {
+    directCloudAbsoluteDeadlineBySignal.delete(controller.signal);
     if (timeoutId) clearTimeout(timeoutId);
     if (init.signal && abortListener) {
       init.signal.removeEventListener("abort", abortListener);
@@ -1010,8 +1034,8 @@ async function directCloudJsonResponse<T>(
     // request whose caller-owned deadline has already elapsed before invoking
     // CapacitorHttp; withDirectCloudHttpTimeout then bounds any in-flight
     // request by the earlier of its 30s HTTP limit and that caller signal.
-    init?.signal?.throwIfAborted();
     const data = directCloudBodyData(init?.body);
+    throwIfDirectCloudDispatchDeadlineElapsed(init?.signal);
     const res = await withDirectCloudHttpTimeout(
       CapacitorHttp.request({
         url,
@@ -4254,6 +4278,7 @@ function createAbsoluteDeadlineSignal(
   const remainingMs = deadlineMs - Date.now();
   if (remainingMs <= 0) onDeadline();
   else timeout = setTimeout(onDeadline, remainingMs);
+  directCloudAbsoluteDeadlineBySignal.set(controller.signal, deadlineMs);
   return {
     signal: controller.signal,
     deadlineElapsed: () => deadlineElapsed,
@@ -4262,6 +4287,7 @@ function createAbsoluteDeadlineSignal(
       disposed = true;
       if (timeout) clearTimeout(timeout);
       callerSignal?.removeEventListener("abort", onCallerAbort);
+      directCloudAbsoluteDeadlineBySignal.delete(controller.signal);
     },
   };
 }
@@ -4595,8 +4621,12 @@ ElizaClient.prototype.ensurePersonalDedicatedEliza = async function (
     const existingTargetId = firstString(quoteActivation?.dedicatedAgentId);
     const existingTargetStatus = firstString(quoteActivation?.status);
     if (!existingTargetId || !existingTargetStatus) {
-      throw new Error(
+      throw new ElizaError(
         "Eliza Cloud returned an invalid in-progress Dedicated activation.",
+        {
+          code: "CLOUD_DEDICATED_ACTIVATION_INVALID",
+          context: { phase: "quote", field: "activation" },
+        },
       );
     }
     quotedTargetId = existingTargetId;
@@ -4615,14 +4645,24 @@ ElizaClient.prototype.ensurePersonalDedicatedEliza = async function (
       // quoted target below; this is a resume, not an ambiguous replay.
       activationPostRequired = true;
     } else {
-      throw new Error(
+      throw new ElizaError(
         "Eliza Cloud returned an invalid in-progress Dedicated status.",
+        {
+          code: "CLOUD_DEDICATED_STATUS_UNKNOWN",
+          context: { phase: "quote", field: "activation.status" },
+        },
       );
     }
   } else if (activationState === "available") {
     activationPostRequired = true;
   } else {
-    throw new Error("Eliza Cloud returned an invalid Dedicated quote state.");
+    throw new ElizaError(
+      "Eliza Cloud returned an invalid Dedicated quote state.",
+      {
+        code: "CLOUD_DEDICATED_QUOTE_STATE_UNKNOWN",
+        context: { phase: "quote", field: "activation.state" },
+      },
+    );
   }
 
   if (activationPostRequired) {
@@ -4662,8 +4702,12 @@ ElizaClient.prototype.ensurePersonalDedicatedEliza = async function (
       );
     }
     if (quotedTargetId && activatedTargetId !== quotedTargetId) {
-      throw new Error(
+      throw new ElizaError(
         "Eliza Cloud resumed a different Dedicated target than the quoted activation.",
+        {
+          code: "CLOUD_DEDICATED_TARGET_MISMATCH",
+          context: { phase: "activation", field: "dedicatedAgentId" },
+        },
       );
     }
     dedicatedAgentId = activatedTargetId;

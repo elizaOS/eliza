@@ -105,7 +105,16 @@ export async function waitForCloudLivePersonalIdentity<T>({
         ? "runtime-cloud"
         : null;
     if (recovery) {
-      await onRecovery?.(recovery);
+      try {
+        await onRecovery?.(recovery);
+      } catch {
+        // error-policy:J7 recovery evidence is secondary to the typed live
+        // identity failure. Report only a fixed, payload-free warning and
+        // preserve the original recovery classification below.
+        console.warn(
+          "[cloud-live] Personal identity recovery diagnostic unavailable",
+        );
+      }
       throw new CloudLivePersonalIdentityRecoveryError(recovery);
     }
 
