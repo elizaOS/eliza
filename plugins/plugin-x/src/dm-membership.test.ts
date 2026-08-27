@@ -38,6 +38,10 @@ vi.mock("./membership", () => {
       degradeScope = vi.fn().mockResolvedValue(undefined);
       degradeAllScopes = vi.fn().mockResolvedValue(undefined);
       restoreAllScopes = vi.fn().mockResolvedValue(undefined);
+      restoreScope = vi.fn().mockResolvedValue(undefined);
+      // The DM client only restores once this publisher has actually bound
+      // at least one scope (process-local knowledge of degraded scopes).
+      hasBoundScopes = vi.fn().mockReturnValue(true);
       constructor() {
         membershipInstances.push(
           this as unknown as Record<string, ReturnType<typeof vi.fn>>,
