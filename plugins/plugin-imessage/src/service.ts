@@ -2373,7 +2373,10 @@ export class IMessageService extends Service implements IIMessageService {
           // same membership gate as agent replies: a degraded or revoked
           // scope must not receive it.
           const pairingGate = this.membership
-            ? await this.membership.authorizeOutbound(row.handle)
+            ? await this.membership.authorizeOutboundInChat(
+                row.handle,
+                row.chatId,
+              )
             : null;
           if (pairingGate === false) {
             logger.warn(
@@ -2754,9 +2757,11 @@ export class IMessageService extends Service implements IIMessageService {
 
       // Agent-generated replies follow the same membership gate as public
       // sendMessage: a degraded or revoked scope must not receive an
-      // autonomous external effect.
+      // autonomous external effect. The chat-scoped variant fails closed
+      // when the originating chat is durably governed but the reply target
+      // cannot be resolved to current evidence.
       const replyGate = this.membership
-        ? await this.membership.authorizeOutbound(replyTarget)
+        ? await this.membership.authorizeOutboundInChat(replyTarget, row.chatId)
         : null;
       if (replyGate === false) {
         logger.error(

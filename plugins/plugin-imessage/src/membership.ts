@@ -457,23 +457,36 @@ export class IMessageMembershipPublisher {
         committedChatIds.push(chatId);
       }
     }
-    if (this.onRosterCommitted && committedChatIds.length > 0) {
-      // Persist the governed scope inventory; a failure to persist is a
-      // diagnostic (the in-memory state is still correct for this process).
+    if (this.onRosterCommitted) {
+      // Deletion ratchet — runs on EVERY sweep, including ones that commit
+      // nothing: a chat in the previously persisted inventory that this
+      // sweep no longer committed (deleted from chat.db, or every snapshot
+      // failed) must degrade fail-closed so stale durable evidence stops
+      // authorizing. Degradation happens BEFORE the new inventory is
+      // persisted: a crash between the two leaves removed scopes degraded,
+      // never absent from the inventory yet still current.
       try {
-        await this.onRosterCommitted(committedChatIds);
-        // Deletion ratchet: a chat in the previously persisted inventory
-        // that this sweep no longer committed (deleted from chat.db, or its
-        // snapshot failed) must degrade fail-closed — stale durable
-        // evidence must stop authorizing between periodic sweeps too.
         const committedSet = new Set(committedChatIds);
         const reason =
           "governed chat absent from the committed roster sweep; stale evidence degraded";
         for (const priorId of this.persistedInventory) {
           if (!committedSet.has(priorId)) {
-            await this.degradeScope({ chatId: priorId, reason });
+            try {
+              await this.degradeScope({ chatId: priorId, reason });
+            } catch (error) {
+              // error-policy:J4 Degrade-path failure keeps the local flag
+              // and continues with the remaining removed scopes.
+              this.runtime.reportError?.("imessage:membership:degrade", error, {
+                chatId: priorId,
+                accountKey: this.accountKey,
+              });
+            }
           }
         }
+        // Persist the governed scope inventory (including the empty set —
+        // an emptied roster must not leave the durable inventory claiming
+        // governed chats); a failure to persist is a diagnostic.
+        await this.onRosterCommitted(committedChatIds);
         this.persistedInventory = committedSet;
       } catch (error) {
         // error-policy:J7 Diagnostics must not kill the sweep loop.
@@ -879,6 +892,37 @@ export class IMessageMembershipPublisher {
     for (const participant of roster.participants) {
       if (!participant.handle) continue;
       this.indexDirectHandle(participant.handle, roster.chatId);
+    }
+  }
+
+  /**
+   * Chat-scoped outbound admission for autonomous replies (agent replies
+   * and pairing replies), where the caller knows the originating chat id.
+   * Unresolved handle lookups must NOT degrade a governed chat to
+   * legacy-ungated: when the durable authority carries ANY health record
+   * for the chat's scope, an unresolvable target fails closed.
+   */
+  async authorizeOutboundInChat(
+    target: string,
+    chatId: string,
+  ): Promise<boolean | null> {
+    const direct = await this.authorizeOutbound(target);
+    if (direct !== null) return direct;
+    const scope = imessageMembershipScope({
+      agentId: this.runtime.agentId,
+      connectorAccountId: this.connectorAccountId,
+      chatId,
+    });
+    if (this.scopes.get(scopeKey(scope))?.degraded) return false;
+    try {
+      const health = await this.service.getScopeHealth(scope);
+      if (!health) return null;
+      // The scope exists durably but the target handle could not be
+      // resolved to it: fail closed rather than send ungated.
+      return false;
+    } catch {
+      // error-policy:J4 Fail-closed on authority errors.
+      return false;
     }
   }
 

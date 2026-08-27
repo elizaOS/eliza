@@ -571,6 +571,74 @@ describe("iMessage membership R2 fixes (canonical index + reconciliation)", () =
     ).toBe("denied");
   });
 
+  it("an emptied roster degrades every previously governed scope (empty-sweep ratchet)", async () => {
+    const source = new SyntheticRosterSource();
+    const chatId = "Imessage;+;chat-ratchet-1;+155****9091";
+    source.setChat(chatId, "group", ["+155****9091"]);
+    let persisted: readonly string[] = [];
+    const tracked = new IMessageMembershipPublisher({
+      runtime,
+      connectorAccountId,
+      accountKey: "default",
+      service: membership,
+      onRosterCommitted: async (chatIds) => {
+        persisted = [...chatIds];
+      },
+    });
+    await tracked.sweepRoster(source);
+    expect(persisted).toContain(chatId);
+
+    // The roster empties (chat deleted): the sweep commits nothing, but the
+    // ratchet must still degrade the previously governed scope and persist
+    // the empty inventory.
+    const empty = new SyntheticRosterSource();
+    await tracked.sweepRoster(empty);
+    expect(persisted).toEqual([]);
+
+    const scope = await scopeFor(chatId);
+    const health = await membership.getScopeHealth(scope);
+    expect(health?.health).toBe("unavailable");
+    expect(
+      (
+        await membership.authorize(
+          scope,
+          imessageMembershipPrincipalId("default", "+155****9091"),
+        )
+      ).decision,
+    ).toBe("denied");
+  });
+
+  it("authorizeOutboundInChat fails closed for governed chats with unresolvable targets", async () => {
+    const source = new SyntheticRosterSource();
+    const chatId = "Imessage;-;+155****9095";
+    source.setChat(chatId, "direct", ["+155****9095"]);
+    await publisher.sweepRoster(source);
+
+    const scope = await scopeFor(chatId);
+    expect(
+      (
+        await membership.authorize(
+          scope,
+          imessageMembershipPrincipalId("default", "+155****9095"),
+        )
+      ).decision,
+    ).toBe("allowed");
+
+    // A variant spelling the index cannot resolve, inside a durably
+    // governed chat: DENY, not legacy-ungated null.
+    expect(await publisher.authorizeOutboundInChat("+1559095", chatId)).toBe(
+      false,
+    );
+
+    // An ungoverned chat with no durable scope stays null (legacy).
+    expect(
+      await publisher.authorizeOutboundInChat(
+        "+155****7777",
+        "Imessage;-;+155****7777",
+      ),
+    ).toBeNull();
+  });
+
   it("a fenced commit failure keeps the chat out of the committed index and inventory", async () => {
     const source = new SyntheticRosterSource();
     const chatId = "Imessage;-;+155****9081";
