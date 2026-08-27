@@ -14,6 +14,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const walletStateHarness = vi.hoisted(() => ({
@@ -30,6 +31,8 @@ const authorityState = vi.hoisted(() => ({
   value: "profile-a\u0000https://same-agent.test",
 }));
 
+const openExternalUrlMock = vi.hoisted(() => vi.fn());
+
 vi.mock("../../hooks/useActiveAgentAuthority", () => ({
   useActiveAgentAuthority: () => authorityState.value,
 }));
@@ -37,6 +40,14 @@ vi.mock("../../hooks/useActiveAgentAuthority", () => ({
 vi.mock("../../utils/asset-url", () => ({
   resolveApiUrl: (path: string) => `${apiBaseHarness.base}${path}`,
 }));
+
+vi.mock("../../utils", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../utils")>();
+  return {
+    ...actual,
+    openExternalUrl: openExternalUrlMock,
+  };
+});
 
 vi.mock("../../state", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../state")>();
@@ -187,6 +198,8 @@ beforeEach(() => {
   vi.mocked(client.snapshotBrowserWorkspaceTab)
     .mockReset()
     .mockRejectedValue(new Error("no api in test"));
+  openExternalUrlMock.mockReset();
+  openExternalUrlMock.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -310,40 +323,109 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     expect(root.contains(surface)).toBe(true);
   });
 
-  it("uses one compact mobile row with secondary actions in an accessible menu", async () => {
+  it("exposes the folded mobile actions through a named menu and opens a new tab", async () => {
+    const user = userEvent.setup({ delay: null });
+    vi.mocked(client.getBrowserWorkspace)
+      .mockReset()
+      .mockResolvedValueOnce({ mode: "web", tabs: [] })
+      .mockResolvedValue(GOOGLE_WORKSPACE);
+    vi.mocked(client.openBrowserWorkspaceTab).mockResolvedValue({
+      tab: GOOGLE_WORKSPACE.tabs[0],
+    });
+
     render(<BrowserWorkspaceView />);
     expect(await screen.findByText("No page open")).not.toBeNull();
 
-    const toolbar = screen.getByTestId("browser-workspace-toolbar");
-    const nav = toolbar.firstElementChild as HTMLElement | null;
-    expect(nav).not.toBeNull();
-    expect(nav?.className).toContain("flex");
-    expect(nav?.className).toContain("md:grid-cols-");
-    expect(nav?.className).toContain("gap-1");
-    expect(nav?.className).toContain("p-1");
+    const trigger = screen.getByRole("button", {
+      name: "More browser actions",
+    });
+    expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
 
-    expect(
-      screen.getByTestId("browser-workspace-address-input").className,
-    ).toContain("flex-1");
-    expect(
-      screen.getByTestId("browser-workspace-address-input").className,
-    ).toContain("md:col-span-1");
-    expect(
-      screen.getByTestId("browser-workspace-address-input").className,
-    ).toContain("min-w-0");
-    expect(screen.getByTestId("browser-workspace-mobile-more")).not.toBeNull();
-    for (const control of toolbar.querySelectorAll("button, input")) {
-      // size-11 is the merged h-11 w-11 form; all three satisfy the 44px floor.
-      expect(control.className).toMatch(/(?:h-11|min-h-11|size-11)/);
+    await user.click(trigger);
+
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    const newTab = await screen.findByRole("menuitem", { name: "New tab" });
+    expect(newTab.getAttribute("aria-disabled")).not.toBe("true");
+    for (const unavailableAction of [
+      "Refresh",
+      "Close all tabs",
+      "Open external",
+    ]) {
+      expect(
+        screen
+          .getByRole("menuitem", { name: unavailableAction })
+          .getAttribute("aria-disabled"),
+      ).toBe("true");
     }
 
-    for (const actionName of ["Close all tabs", "Open external"]) {
-      const wrapper = screen.getByRole("button", {
-        name: actionName,
-      }).parentElement;
-      expect(wrapper?.className.split(/\s+/)).toContain("max-md:hidden");
-      expect(wrapper?.className.split(/\s+/)).not.toContain("hidden");
-    }
+    await user.click(newTab);
+
+    await waitFor(() =>
+      expect(client.openBrowserWorkspaceTab).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: "https://www.google.com/webhp?igu=1",
+          show: true,
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(trigger.getAttribute("aria-expanded")).toBe("false"),
+    );
+  });
+
+  it("dispatches refresh, external-open, and close-all from the mobile action menu", async () => {
+    const user = userEvent.setup({ delay: null });
+    const cloudWorkspace = { ...APPLE_WORKSPACE, mode: "cloud" as const };
+    vi.mocked(client.getBrowserWorkspace)
+      .mockReset()
+      .mockResolvedValueOnce(cloudWorkspace)
+      .mockResolvedValue({ mode: "cloud", tabs: [] });
+    vi.mocked(client.navigateBrowserWorkspaceTab).mockResolvedValue({
+      tab: cloudWorkspace.tabs[0],
+    });
+    vi.mocked(client.closeBrowserWorkspaceTab).mockResolvedValue({
+      closed: true,
+    });
+
+    render(<BrowserWorkspaceView />);
+    await waitFor(() =>
+      expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(1),
+    );
+
+    const trigger = screen.getByRole("button", {
+      name: "More browser actions",
+    });
+    const selectAction = async (name: string): Promise<void> => {
+      await user.click(trigger);
+      const item = await screen.findByRole("menuitem", { name });
+      expect(item.getAttribute("aria-disabled")).not.toBe("true");
+      await user.click(item);
+      await waitFor(() =>
+        expect(trigger.getAttribute("aria-expanded")).toBe("false"),
+      );
+    };
+
+    await selectAction("Refresh");
+    await waitFor(() =>
+      expect(client.navigateBrowserWorkspaceTab).toHaveBeenCalledWith(
+        "tab-apple",
+        "https://www.apple.com/",
+      ),
+    );
+
+    await selectAction("Open external");
+    await waitFor(() =>
+      expect(openExternalUrlMock).toHaveBeenCalledWith(
+        "https://www.apple.com/",
+      ),
+    );
+
+    await selectAction("Close all tabs");
+    await waitFor(() =>
+      expect(client.closeBrowserWorkspaceTab).toHaveBeenCalledWith("tab-apple"),
+    );
+    expect(await screen.findByText("No page open")).not.toBeNull();
   });
 
   it("returns focus to the folded tab control after the switcher closes", async () => {
