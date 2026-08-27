@@ -30,6 +30,7 @@ import {
   invokeDesktopBridgeRequest,
 } from "../bridge/electrobun-rpc";
 import {
+  getElizaPlayVoicePlugin,
   getTalkModePlugin,
   type TalkModeErrorEvent,
   type TalkModeStateEvent,
@@ -2417,12 +2418,21 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               ...task.telemetry,
             });
             try {
-              const result = await getTalkModePlugin().speak({
-                text: trimmed,
-                useLocalInferenceTts: true,
-              });
+              const talkMode = getTalkModePlugin();
+              if (typeof talkMode.speak === "function") {
+                const result = await talkMode.speak({
+                  text: trimmed,
+                  useLocalInferenceTts: true,
+                });
+                if (result?.error) throw new Error(result.error);
+              } else {
+                const playVoice = getElizaPlayVoicePlugin();
+                if (typeof playVoice.speak !== "function") {
+                  throw new Error("Native voice playback is unavailable");
+                }
+                await playVoice.speak({ text: trimmed });
+              }
               if (workerGeneration !== generationRef.current) break;
-              if (result?.error) throw new Error(result.error);
               continue;
             } catch (error) {
               if (
