@@ -39,7 +39,7 @@ import {
   unlinkSync,
 } from "node:fs";
 import path from "node:path";
-import { ElizaError, logger } from "@elizaos/core";
+import { ElizaError, logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   type AccountStorageMutationScope,
   type AccountStoragePolicy,
@@ -92,7 +92,7 @@ function validateAccountId(accountId: string): void {
     throw adoptError(
       "adopt_codex.invalid_account_id",
       "Account id must be 1-64 chars of [A-Za-z0-9._-], starting alphanumeric, with no traversal sequences",
-      { accountId: String(accountId).slice(0, 80) },
+      { accountId: truncateWellFormed(toWellFormedUnicode(String(accountId)), 80) },
     );
   }
 }

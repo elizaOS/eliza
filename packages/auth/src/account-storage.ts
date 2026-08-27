@@ -14,7 +14,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ElizaError, logger, resolveStateDir } from "@elizaos/core";
+import { ElizaError, logger, resolveStateDir, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { decrypt, encrypt, loadDefaultMasterKeySync } from "@elizaos/vault";
 import {
   ACCOUNT_CREDENTIAL_PROVIDER_IDS,
@@ -691,7 +691,7 @@ export function assertCanonicalAccountId(accountId: string): void {
     throw storageError(
       "AUTH_CREDENTIAL_ACCOUNT_ID_INVALID",
       "Account id must be a canonical filename-safe identifier",
-      { accountId: String(accountId).slice(0, 160) },
+      { accountId: truncateWellFormed(toWellFormedUnicode(String(accountId)), 160) },
     );
   }
 }
