@@ -227,14 +227,22 @@ describe("committed Cloud CF workflow matches the policy", () => {
     expect(cloudCfRelease).not.toContain("cloud-cf-deploy-app-");
   });
 
-  test("PR Pages previews remain pinned to staging inputs", () => {
-    const buildPages = jobBlock(cloudCf, "build-pages");
-    expect(buildPages).not.toContain("inputs.target_environment");
-    expect(buildPages).toContain("VITE_API_URL: https://api-staging.eliza.app");
-    expect(buildPages).toContain(
-      "NEXT_PUBLIC_APP_URL: https://cloud-staging.eliza.app",
+  test("Pages builds remain bound to the admitted release environment", () => {
+    const release = jobBlock(cloudCf, "release");
+    const buildPages = jobBlock(cloudCfRelease, "build-pages");
+    expect(release).toContain("github.event_name != 'pull_request'");
+    expect(release).toContain(
+      `target_environment: \${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}`,
     );
-    expect(buildPages).toContain("VITE_ENVIRONMENT: staging");
+    expect(buildPages).toContain(
+      `VITE_API_URL: \${{ (inputs.target_environment == 'production') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}`,
+    );
+    expect(buildPages).toContain(
+      `NEXT_PUBLIC_APP_URL: \${{ (inputs.target_environment == 'production') && 'https://cloud.eliza.app' || 'https://cloud-staging.eliza.app' }}`,
+    );
+    expect(buildPages).toContain(
+      `VITE_ENVIRONMENT: \${{ inputs.target_environment }}`,
+    );
   });
 });
 
