@@ -332,6 +332,12 @@ jobs:
             echo "::error::Migration checkout resolved $actual_sha, expected $EXPECTED_DEPLOY_SHA"
             exit 1
           }
+          # Self-hosted runners can retain files created after checkout's own
+          # cleanup hook. Re-establish the exact immutable tree immediately
+          # before migrations; suppress removed paths so runner-local names do
+          # not enter deployment logs.
+          git reset --hard --quiet "$EXPECTED_DEPLOY_SHA"
+          git clean -ffdx -q
           [ -z "$(git status --porcelain)" ] || {
             echo "::error::Migration checkout is not clean"
             exit 1
