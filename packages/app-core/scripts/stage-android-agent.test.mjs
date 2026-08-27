@@ -155,6 +155,52 @@ test("runtime provenance manifest name is exported for APK provenance embedding"
   );
 });
 
+test("PGlite gzip payload names survive aapt2 without byte rewriting", () => {
+  assert.equal(
+    __testables.packagedPgliteAssetName("vector.tar.gz"),
+    "vector.tar.gz.payload",
+  );
+  assert.equal(
+    __testables.packagedPgliteAssetName("fuzzystrmatch.tar.gz"),
+    "fuzzystrmatch.tar.gz.payload",
+  );
+  assert.equal(
+    __testables.packagedPgliteAssetName("pglite.wasm"),
+    "pglite.wasm",
+  );
+});
+
+test("runtime provenance binds native and seccomp ABI assets", () => {
+  assert.equal(
+    __testables.shouldBindAdditionalAbiAsset(
+      "OMNIVOICE_FUSE_VERIFY.json",
+      "ld-musl-aarch64.so.1",
+    ),
+    true,
+  );
+  assert.equal(
+    __testables.shouldBindAdditionalAbiAsset(
+      "libelizainference.so",
+      "ld-musl-aarch64.so.1",
+    ),
+    true,
+  );
+  assert.equal(
+    __testables.shouldBindAdditionalAbiAsset(
+      "ld-musl-aarch64.so.1.real",
+      "ld-musl-aarch64.so.1",
+    ),
+    true,
+  );
+  assert.equal(
+    __testables.shouldBindAdditionalAbiAsset(
+      "libsigsys-handler.so",
+      "ld-musl-aarch64.so.1",
+    ),
+    true,
+  );
+});
+
 test("runtime downloads retry transient transport failures and publish atomically", async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-retry-"));
   const target = path.join(tmp, "cache", "bun.zip");

@@ -1483,20 +1483,25 @@ public class ElizaAgentService extends Service {
             boolean forceRefreshTarballs) throws IOException {
         // vector.tar.gz / fuzzystrmatch.tar.gz must live one directory ABOVE the
         // bundle (PGlite resolves them via `new URL("../X.tar.gz", ...)`), so
-        // they sit in files/ rather than the agent root. aapt2 strips the `.gz`
-        // from `*.tar.gz` asset names AND decompresses them to raw tar at
-        // packaging time (even with `androidResources.noCompress`), so the APK
-        // entry is `vector.tar` / `fuzzystrmatch.tar`; re-gzip on extraction so
-        // the on-disk file is the gzipped tarball the loader's gunzip expects
-        // (raw tar → `Z_DATA_ERROR: incorrect header check` → PGlite crashloop).
+        // they sit in files/ rather than the agent root. The build stages the
+        // original gzip bytes under a `.payload` suffix because aapt2 otherwise
+        // strips `.gz` and expands them to raw tar. Copy the byte-identical
+        // payload back to the runtime filename. Keep the legacy raw-tar fallback
+        // for already-installed APKs built before the stable payload names.
         File vector = new File(filesDir, "vector.tar.gz");
         File fuzzy = new File(filesDir, "fuzzystrmatch.tar.gz");
         if (forceRefreshTarballs) {
             if (vector.exists() && !vector.delete()) Log.w(TAG, "Could not delete stale vector.tar.gz");
             if (fuzzy.exists() && !fuzzy.delete()) Log.w(TAG, "Could not delete stale fuzzystrmatch.tar.gz");
         }
-        copyAssetIfPresentAsGzipped(assets, "agent/vector.tar", vector);
-        copyAssetIfPresentAsGzipped(assets, "agent/fuzzystrmatch.tar", fuzzy);
+        copyAssetIfPresent(assets, "agent/vector.tar.gz.payload", vector);
+        copyAssetIfPresent(assets, "agent/fuzzystrmatch.tar.gz.payload", fuzzy);
+        if (!vector.exists()) {
+            copyAssetIfPresentAsGzipped(assets, "agent/vector.tar", vector);
+        }
+        if (!fuzzy.exists()) {
+            copyAssetIfPresentAsGzipped(assets, "agent/fuzzystrmatch.tar", fuzzy);
+        }
 
         // Bundled default models (chat + embedding GGUF, staged by
         // scripts/elizaos/stage-default-models.mjs at AOSP build time). Land

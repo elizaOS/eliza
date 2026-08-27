@@ -944,6 +944,23 @@ function shouldStageNativeLlamaAsset(name) {
   );
 }
 
+const PGLITE_GZIP_ASSETS = new Set([
+  "vector.tar.gz",
+  "fuzzystrmatch.tar.gz",
+]);
+
+function packagedPgliteAssetName(name) {
+  return PGLITE_GZIP_ASSETS.has(name) ? `${name}.payload` : name;
+}
+
+function shouldBindAdditionalAbiAsset(name, ldName) {
+  return (
+    shouldStageNativeLlamaAsset(name) ||
+    name === `${ldName}.real` ||
+    name === "libsigsys-handler.so"
+  );
+}
+
 function stageNativeLlamaAssetsForAbi({ androidAbi, abiAssetsDir, log }) {
   const source = resolveNativeLlamaAssetDir(androidAbi);
   if (!source) return 0;
@@ -1439,6 +1456,35 @@ export async function stageAndroidAgentRuntime({
       );
     }
 
+    const alreadyBoundAssetPaths = new Set(sources.map(([, dst]) => dst));
+    for (const entry of fs.readdirSync(abiAssetsDir, {
+      withFileTypes: true,
+    })) {
+      if (
+        !entry.isFile() ||
+        !shouldBindAdditionalAbiAsset(entry.name, ldName)
+      ) {
+        continue;
+      }
+      const assetPath = path.join(abiAssetsDir, entry.name);
+      if (alreadyBoundAssetPaths.has(assetPath)) continue;
+      stagedFiles.push(
+        fileProvenanceEntry({
+          filePath: assetPath,
+          relativePath: path.relative(
+            path.join(androidDir, "app", "src", "main"),
+            assetPath,
+          ),
+          source: {
+            kind: shouldStageNativeLlamaAsset(entry.name)
+              ? "native-llama-asset"
+              : "android-seccomp-runtime",
+            abi: androidAbi,
+          },
+        }),
+      );
+    }
+
     stagedCount += abiChanges;
     tlog(
       `Staged ${sources.length} runtime file(s) for ABI ${androidAbi}` +
@@ -1539,7 +1585,15 @@ export async function stageAndroidAgentRuntime({
   for (const name of pgliteAssets) {
     const src = path.join(distMobileDir, name);
     if (!fs.existsSync(src)) continue;
-    const dst = path.join(assetsAgentDir, name);
+    const packagedName = packagedPgliteAssetName(name);
+    const dst = path.join(assetsAgentDir, packagedName);
+    if (packagedName !== name) {
+      const legacyDestination = path.join(assetsAgentDir, name);
+      if (fs.existsSync(legacyDestination)) {
+        fs.unlinkSync(legacyDestination);
+        stagedCount += 1;
+      }
+    }
     if (copyIfDifferent(src, dst)) stagedCount += 1;
     stagedFiles.push(
       fileProvenanceEntry({
@@ -1660,8 +1714,10 @@ export const __testables = {
   LAUNCH_CHILD_SCRIPT,
   LAUNCH_SCRIPT,
   LLAMA_KERNEL_DIAGNOSTIC_SCRIPT,
+  packagedPgliteAssetName,
   RISCV64_BUN_ARTIFACT_FILENAME,
   RUNTIME_PROVENANCE_FILENAME,
+  shouldBindAdditionalAbiAsset,
   downloadRetryDelayMs,
   defaultRiscv64BunArtifactPath,
   riscv64BunFilePath,
