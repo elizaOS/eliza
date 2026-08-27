@@ -59,6 +59,8 @@ export const users = pgTable(
     whatsapp_id: text("whatsapp_id").unique(),
     whatsapp_name: text("whatsapp_name"),
     phone_number: text("phone_number").unique(),
+    // TRUE requires a phone number. New rows default false; phoneless NULL is
+    // legacy 0051 drift repaired append-only to false.
     phone_verified: boolean("phone_verified").default(false),
 
     // Anonymous user support
@@ -156,6 +158,10 @@ export const users = pgTable(
     account_lifecycle_state_check: check(
       "users_account_lifecycle_state_check",
       sql`${table.account_lifecycle_state} IN ('active', 'deletion_recovery', 'deletion_irreversible')`,
+    ),
+    phone_verified_requires_number: check(
+      "users_phone_verified_requires_number",
+      sql`${table.phone_verified} IS NOT TRUE OR ${table.phone_number} IS NOT NULL`,
     ),
   }),
 );

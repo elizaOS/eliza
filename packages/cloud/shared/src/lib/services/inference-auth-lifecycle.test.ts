@@ -24,6 +24,8 @@ const orgDeleteCalls: string[] = [];
 const lifecycleEvents: string[] = [];
 const repositoryReads: string[] = [];
 const deletedCacheKeys: string[] = [];
+const normalizeCalls: Array<{ userId: string; stewardUserId: string }> = [];
+let identityPhoneVerifiedOverride: boolean | null | undefined;
 
 let userApiKeys: Array<{ key_hash: string }> = [];
 let orgApiKeys: Array<{ key_hash: string }> = [];
@@ -133,10 +135,15 @@ mock.module("../../db/repositories", () => ({
       repositoryReads.push("identity-for-write");
       return userRecord?.steward_user_id
         ? {
+            user_id: userRecord.id,
             steward_user_id: userRecord.steward_user_id,
             telegram_id: userRecord.telegram_id ?? null,
             discord_id: userRecord.discord_id ?? null,
             phone_number: userRecord.phone_number ?? null,
+            phone_verified:
+              identityPhoneVerifiedOverride !== undefined
+                ? identityPhoneVerifiedOverride
+                : (userRecord.phone_verified ?? false),
           }
         : undefined;
     },
@@ -155,6 +162,13 @@ mock.module("../../db/repositories", () => ({
       lifecycleEvents.push(`identity-upsert:${id}:${stewardUserId}`);
       if (userRecord) userRecord.steward_user_id = stewardUserId;
       return { user_id: id, steward_user_id: stewardUserId };
+    },
+    normalizePhonelessLegacyPhoneVerified: async (input: {
+      userId: string;
+      stewardUserId: string;
+    }) => {
+      normalizeCalls.push(input);
+      return "repaired";
     },
     linkStewardId: async (id: string, stewardUserId: string) => {
       lifecycleEvents.push(`identity-link:${id}:${stewardUserId}`);
@@ -220,6 +234,8 @@ beforeEach(() => {
   lifecycleEvents.length = 0;
   repositoryReads.length = 0;
   deletedCacheKeys.length = 0;
+  normalizeCalls.length = 0;
+  identityPhoneVerifiedOverride = undefined;
 });
 
 describe("UsersService — IAC invalidation on lifecycle", () => {
@@ -540,6 +556,43 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
 
     expect(lifecycleEvents).toEqual(["session-binding:o1:u1:steward-new:true"]);
     expect(invalidatedSessionBatches).toEqual([["steward-new"]]);
+    expect(normalizeCalls).toEqual([]);
+  });
+
+  test("healthy matching Steward authority does not write the identity projection", async () => {
+    userRecord = {
+      id: "u1",
+      organization_id: "o1",
+      email: null,
+      steward_user_id: "steward-1",
+      phone_number: null,
+      phone_verified: false,
+    };
+
+    const { usersService } = await import("./users");
+    await usersService.upsertStewardIdentity("u1", "steward-1");
+
+    expect(normalizeCalls).toEqual([]);
+    expect(lifecycleEvents).toEqual(["session-binding:o1:u1:steward-1:true"]);
+    expect(lifecycleEvents.some((event) => event.startsWith("identity-upsert:"))).toBe(false);
+  });
+
+  test("repairs phoneless false/NULL drift without a full Steward identity upsert", async () => {
+    userRecord = {
+      id: "u1",
+      organization_id: "o1",
+      email: null,
+      steward_user_id: "steward-1",
+      phone_number: null,
+      phone_verified: false,
+    };
+    identityPhoneVerifiedOverride = null;
+
+    const { usersService } = await import("./users");
+    await usersService.upsertStewardIdentity("u1", "steward-1");
+
+    expect(normalizeCalls).toEqual([{ userId: "u1", stewardUserId: "steward-1" }]);
+    expect(lifecycleEvents.some((event) => event.startsWith("identity-upsert:"))).toBe(false);
   });
 
   test("Steward identity upsert retry uses the primary user when the read replica lags", async () => {
