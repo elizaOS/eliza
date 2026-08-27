@@ -3366,8 +3366,10 @@ export class SlackService extends Service implements ISlackService {
       (typeof metadata?.threadTs === "string" ? metadata.threadTs : undefined);
     const channel = await this.getChannel(channelId, accountId);
 
-    // Thread inheritance contract. All transcripts are newest-first from
-    // Slack; the final reverse below yields oldest-first. When both options
+    // Thread inheritance contract. Channel history is newest-first;
+    // conversations.replies is EARLIEST-FIRST (parent first). The final
+    // reverse below yields oldest-first for every branch, with the thread
+    // transcript pre-reversed where needed. When both options
     // are set, historyScope=channel takes precedence and inheritParent is
     // ignored — the channel transcript already contains the thread parent.
     // inheritParent concatenates channel + thread transcripts (not splicing
@@ -3413,12 +3415,18 @@ export class SlackService extends Service implements ISlackService {
             Number((a as SlackMessage).ts ?? 0),
         );
     } else if (threadTs) {
-      rawMessages = await this.readThreadReplies(
-        channelId,
-        threadTs,
-        undefined,
-        accountId,
-      );
+      // Slack's conversations.replies returns EARLIEST-FIRST (the parent
+      // message first), the opposite of newest-first channel history; the
+      // shared .reverse() below therefore needs the thread transcript
+      // pre-reversed so the published order stays chronological.
+      rawMessages = (
+        await this.readThreadReplies(
+          channelId,
+          threadTs,
+          undefined,
+          accountId,
+        )
+      ).reverse();
     } else {
       rawMessages = await this.readHistory(channelId, undefined, accountId);
     }
