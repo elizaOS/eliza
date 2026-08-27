@@ -1,7 +1,7 @@
 /**
  * Unit test for the window-title PII redactor.
  *
- * Materiality: the CC-like detector `(?:\d[ -]?){13,19}` only tolerates a
+ * Materiality: the CC-like detector `(?:\\d[ -]?){13,19}` only tolerates a
  * single space/dash separator, so a card number pasted with tab separators
  * (spreadsheet paste) is NOT redacted and the PAN leaves the process. These
  * tests pin the redaction boundaries for emails, phones, and card-like runs.
@@ -51,6 +51,21 @@ describe("redactWindowTitle", () => {
     );
   });
 
+  it("redacts grouped PANs with doubled separators", () => {
+    // A recognizable Visa test PAN pasted with doubled spaces/tabs must not
+    // survive in cleartext: CC_LIKE allows one separator per gap, GROUPED_PAN
+    // (4x4 digit groups, 1-2 separators) catches these.
+    expect(redactWindowTitle("4111  1111  1111  1111", {})).toBe(
+      "[redacted-cc]",
+    );
+    expect(redactWindowTitle("4111\t\t1111\t\t1111\t\t1111", {})).toBe(
+      "[redacted-cc]",
+    );
+    expect(
+      redactWindowTitle("Order #4111  1111  1111  1111 confirmed", {}),
+    ).toBe("Order #[redacted-cc] confirmed");
+  });
+
   it("leaves short digit runs and unrelated numbers alone", () => {
     expect(redactWindowTitle("PIN 12345", {})).toBe("PIN 12345");
     expect(redactWindowTitle("123456789012", {})).toBe("123456789012");
@@ -66,13 +81,11 @@ describe("redactWindowTitle", () => {
         {},
       ),
     ).toBe("1 - 2 - 3 - 4 - 5 - 6 - 7 - 8 - 9 - 10 - 11 - 12 - 13");
-    // 14 digits with double-space gaps, and a PAN pasted with double spaces:
-    // neither is a single-separator card run, so both stay intact.
+    // 14 digits with double-space gaps and uneven group sizes: an arbitrary
+    // numeric list, not a grouped PAN (GROUPED_PAN requires 4x4), so it
+    // stays intact.
     expect(redactWindowTitle("12  7  93  4  55  18  22  31", {})).toBe(
       "12  7  93  4  55  18  22  31",
-    );
-    expect(redactWindowTitle("4111  1111  1111  1111", {})).toBe(
-      "4111  1111  1111  1111",
     );
   });
 
