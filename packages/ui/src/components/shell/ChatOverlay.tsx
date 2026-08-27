@@ -95,7 +95,12 @@ import {
   OS_INTENT_COMPOSER_PREFILL_EVENT,
   type OsIntentComposerPrefillDetail,
 } from "../../os-intent/host";
-import { isIOS, isNative, isStandalonePwa } from "../../platform/init";
+import {
+  isAndroid,
+  isIOS,
+  isNative,
+  isStandalonePwa,
+} from "../../platform/init";
 import {
   getPhysicalScreenVerticalExtent,
   KEYBOARD_INTRUSION_THRESHOLD_PX,
@@ -179,9 +184,11 @@ import {
 import {
   isShortLandscapeViewport,
   measureSafeAreaInsetTop,
+  resolveChatKeyboardGeometry,
   resolveChatNativeKeyboardLift,
   resolveChatPanelHalfDetentHeight,
   resolveChatPanelLayout,
+  shouldSettleChatWindowResize,
 } from "./chat-panel-layout";
 import { setChatComposerAccessoryBarHidden } from "./ios-chat-accessory-bar";
 import { LIQUID_GLASS_SHEEN, liquidGlassEdgeShadow } from "./liquid-glass";
@@ -2190,9 +2197,23 @@ export function ChatOverlay({
   // MessageScroller catches up. Preserve only an already-pinned reader in the
   // ResizeObserver delivery phase; readers in history retain their exact place.
   const threadPinnedToEndRef = React.useRef(!firstRunOpen);
+  const threadViewportHeightRef = React.useRef<number | null>(null);
   const handleThreadScroll = React.useCallback(
     (event: React.UIEvent<HTMLDivElement>) => {
       const viewport = event.currentTarget;
+      const previousHeight = threadViewportHeightRef.current;
+      const currentHeight = viewport.clientHeight;
+      threadViewportHeightRef.current = currentHeight;
+      // A browser-generated scroll can arrive after the IME has changed the
+      // viewport height but before ResizeObserver reconciles the pinned end.
+      // Keep the prior pin decision for that geometry transition; stable-height
+      // user scrolling below still owns whether the reader follows the tail.
+      if (
+        previousHeight !== null &&
+        Math.abs(currentHeight - previousHeight) > 0.5
+      ) {
+        return;
+      }
       const end = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
       threadPinnedToEndRef.current =
         end - viewport.scrollTop <= MESSAGE_SCROLLER_END_THRESHOLD_PX;
@@ -2211,9 +2232,11 @@ export function ChatOverlay({
       !viewport ||
       typeof ResizeObserver === "undefined"
     ) {
+      threadViewportHeightRef.current = null;
       return;
     }
     const preservePinnedEnd = () => {
+      threadViewportHeightRef.current = viewport.clientHeight;
       if (!threadPinnedToEndRef.current) return;
       const end = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
       if (Math.abs(end - viewport.scrollTop) > 0.5) {
@@ -2223,7 +2246,10 @@ export function ChatOverlay({
     preservePinnedEnd();
     const observer = new ResizeObserver(preservePinnedEnd);
     observer.observe(viewport);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      threadViewportHeightRef.current = null;
+    };
   }, [activeConversationId, threadPresented]);
   const [scrollToEndRequest, setScrollToEndRequest] = React.useState(0);
   // Focus the thread for keyboard scrolling when an opener requested it.
@@ -2893,10 +2919,11 @@ export function ChatOverlay({
     // A real WINDOW resize (rotation/desktop resize) must never strand the
     // pill↔input morph mid-crossfade — rotation often cancels the in-flight
     // pointer with no pointerup, leaving the drag orphaned. Re-settle to a clean
-    // 0/1 end there. `visualViewport.resize`, however, fires continuously during
-    // soft-keyboard animation; settling on those events fights typing, detent
-    // drags, and keyboard open/close. For vv resize/scroll, update measurements
-    // only and let the current sheet state remain authoritative.
+    // 0/1 end there. Android IME animation also fires `window.resize`, while
+    // `visualViewport.resize` fires continuously on the other mobile paths;
+    // settling on either fights typing, detent drags, and keyboard open/close.
+    // Those keyboard paths update measurements only. `orientationchange`
+    // remains independently wired to the settle handler on every platform.
     let settleFrame: number | null = null;
     const syncAndSettleWindow = () => {
       sync();
@@ -2918,14 +2945,17 @@ export function ChatOverlay({
     // events below retain the two-frame settle path.
     sync();
     const vv = window.visualViewport;
-    window.addEventListener("resize", syncAndSettleWindow);
+    const syncWindow = shouldSettleChatWindowResize(isAndroid)
+      ? syncAndSettleWindow
+      : sync;
+    window.addEventListener("resize", syncWindow);
     window.addEventListener("orientationchange", syncAndSettleWindow);
     vv?.addEventListener("resize", sync);
     vv?.addEventListener("scroll", sync, { passive: true });
     return () => {
       cancelViewportSync();
       if (settleFrame !== null) window.cancelAnimationFrame(settleFrame);
-      window.removeEventListener("resize", syncAndSettleWindow);
+      window.removeEventListener("resize", syncWindow);
       window.removeEventListener("orientationchange", syncAndSettleWindow);
       vv?.removeEventListener("resize", sync);
       vv?.removeEventListener("scroll", sync);
@@ -3009,8 +3039,19 @@ export function ChatOverlay({
     keyboardDownInnerHeight: baseInnerHeightRef.current,
     currentInnerHeight: viewport.innerHeight,
   });
-  const effectiveKeyboardInset = Math.max(keyboardInset, nativeLift);
-  const keyboardLiftActive = effectiveKeyboardInset > 0;
+  const layoutViewportShrink = Math.max(
+    0,
+    baseInnerHeightRef.current - viewport.innerHeight,
+  );
+  const { overlayLift: effectiveKeyboardInset, keyboardIntrusion } =
+    resolveChatKeyboardGeometry({
+      platformResizesLayoutForKeyboard: isAndroid,
+      visualViewportKeyboardInset: keyboardInset,
+      nativeKeyboardLift: nativeLift,
+      nativeKeyboardHeight,
+      layoutViewportShrink,
+    });
+  const keyboardLiftActive = keyboardIntrusion > 0;
   // A REAL keyboard (not the few-px inset mobile emulation reports) blocks the
   // over-pull maximize: the edge-to-edge panel is sized against the LAYOUT
   // viewport, so with the keyboard up it would spill above the shrunk visual
@@ -3018,7 +3059,7 @@ export function ChatOverlay({
   // keeps a genuine keyboard from over-maximizing while never tripping on the
   // sub-threshold inset a touch page carries at rest.
   const keyboardBlocksMaximize =
-    effectiveKeyboardInset >= KEYBOARD_INTRUSION_THRESHOLD_PX;
+    keyboardIntrusion >= KEYBOARD_INTRUSION_THRESHOLD_PX;
   const layoutBottomPad = keyboardLiftActive
     ? KEYBOARD_COMPOSER_GAP_PX
     : bottomPad;
@@ -5754,18 +5795,20 @@ export function ChatOverlay({
         // The side inset (px) is driven by the shape spring below (`overlayPadX`),
         // not a class, so it eases 12→0 on maximize and 0→12 on de-maximize.
       )}
-      // Lift the whole overlay above the on-screen keyboard (`bottom`); padding
-      // below the composer is conditional on an actual keyboard lift, not focus
-      // alone. With the keyboard up, only a small gap (0.75rem, matching the side
-      // margin) sits between composer and keyboard. At rest, clear the
-      // home-gesture zone (max safe-area / android inset) plus a hair, keeping the
-      // chat low without touching that zone.
+      // Keep the overlay above the on-screen keyboard: iOS/web use `bottom`,
+      // while Android's adjustResize window already owns the lift. Padding below
+      // the composer is conditional on keyboard intrusion, not focus alone. With
+      // the keyboard up, only a small gap (0.75rem, matching the side margin)
+      // sits between composer and keyboard. At rest, clear the home-gesture zone
+      // (max safe-area / android inset) plus a hair, keeping the chat low without
+      // touching that zone.
       style={{
         zIndex: Z_SHELL_OVERLAY,
         // At rest, the measured reclaim offset seats the composer at the
         // physical bottom on collapsed iOS standalone/native viewports. Off that
-        // surface the custom property is zero. When the keyboard is visible,
-        // effectiveKeyboardInset owns the lift instead of the reclaim offset.
+        // surface the custom property is zero. When the keyboard is visible, the
+        // resolved platform lift replaces the reclaim offset (0 on adjustResize
+        // Android, where the layout viewport itself already moved).
         bottom: keyboardLiftActive
           ? effectiveKeyboardInset
           : STANDALONE_BOTTOM_RECLAIM_OFFSET,

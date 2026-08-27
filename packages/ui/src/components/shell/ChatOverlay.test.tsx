@@ -2776,8 +2776,12 @@ describe("ChatOverlay", () => {
         }
       };
 
-      fireEvent.scroll(viewport);
+      resizeViewport();
       clientHeight = 80;
+      // Android can resize the WebView before its browser-generated scroll
+      // event and ResizeObserver delivery. That event must not demote an
+      // already-tail-pinned transcript just because the viewport got shorter.
+      fireEvent.scroll(viewport);
       resizeViewport();
       expect(viewport.scrollTop).toBe(420);
 
