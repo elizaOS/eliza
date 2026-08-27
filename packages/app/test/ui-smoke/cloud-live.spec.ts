@@ -570,7 +570,21 @@ async function resolvePersonalIdentity(
     if (attempt === PERSONAL_IDENTITY_ATTEMPTS) {
       throw new Error("Personal Eliza identity resolution exhausted its retry");
     }
-    await page.getByTestId("choice-__first_run__:error:retry").click();
+    const retryClicked = await clickCloudLiveOptionalAction(
+      page.getByTestId("choice-__first_run__:error:retry"),
+      {
+        phase: "personal-identity-retry",
+        action: "identity-retry",
+        offerTimeoutMs: 5_000,
+        actionTimeoutMs: 10_000,
+      },
+    );
+    if (!retryClicked) {
+      throw new CloudLiveOptionalActionDeadlineError(
+        "personal-identity-retry",
+        "identity-retry",
+      );
+    }
   }
   throw new Error("Personal Eliza identity resolution remained pending");
 }
