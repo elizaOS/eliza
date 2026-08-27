@@ -4562,18 +4562,35 @@ function inProgressDedicatedActivationPolicy(
   }
 }
 
-ElizaClient.prototype.ensurePersonalDedicatedEliza = async function (
+function throwIfDedicatedStartupDeadlineElapsed(
+  deadline: number,
+  signal?: AbortSignal,
+): void {
+  signal?.throwIfAborted();
+  if (Date.now() >= deadline) {
+    throw new DOMException("The startup deadline elapsed", "TimeoutError");
+  }
+}
+
+type EnsurePersonalDedicatedElizaOptions = Parameters<
+  ElizaClient["ensurePersonalDedicatedEliza"]
+>[0];
+
+async function ensurePersonalDedicatedElizaWithinDeadline(
   this: ElizaClient,
-  options,
-) {
+  options: EnsurePersonalDedicatedElizaOptions,
+  deadline: number,
+): ReturnType<ElizaClient["ensurePersonalDedicatedEliza"]> {
+  throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
   const personal = await this.getPersonalSharedEliza(options);
+  throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
   if (personal.runtime === "dedicated") {
     return { ...personal, runtime: "dedicated" as const };
   }
 
   const cloudApiBase = resolveDirectCloudAuthApiBase(options.cloudApiBase);
   const upgradeUrl = `${cloudApiBase}/api/v1/eliza/agents/${encodeURIComponent(personal.personalElizaId)}/upgrade-tier`;
-  options.signal?.throwIfAborted();
+  throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
   options.onProgress?.("provisioning", "Starting your Dedicated agent…");
 
   const quoteResponse = await directCloudJsonResponse<unknown>(upgradeUrl, {
@@ -4583,6 +4600,7 @@ ElizaClient.prototype.ensurePersonalDedicatedEliza = async function (
     },
     ...(options.signal ? { signal: options.signal } : {}),
   });
+  throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
   const quoteRoot = recordOrNull(quoteResponse.data);
   const quote = recordOrNull(quoteRoot?.data);
   const quoteId = firstString(quote?.quoteId);
@@ -4611,7 +4629,7 @@ ElizaClient.prototype.ensurePersonalDedicatedEliza = async function (
     );
   }
 
-  options.signal?.throwIfAborted();
+  throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
   const quoteActivation = recordOrNull(quote?.activation);
   const activationState = firstString(quoteActivation?.state);
   let quotedTargetId: string | null = null;
@@ -4679,6 +4697,7 @@ ElizaClient.prototype.ensurePersonalDedicatedEliza = async function (
         ...(options.signal ? { signal: options.signal } : {}),
       },
     );
+    throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
     const activationRoot = recordOrNull(activationResponse.data);
     const activation = recordOrNull(activationRoot?.data);
     const activatedTargetId = firstString(activation?.dedicatedAgentId);
@@ -4719,28 +4738,23 @@ ElizaClient.prototype.ensurePersonalDedicatedEliza = async function (
   }
 
   const intervalMs = options.pollIntervalMs ?? 5_000;
-  const timeoutMs = options.timeoutMs ?? CLOUD_AGENT_WAKE_TIMEOUT_MS;
-  const deadline = Date.now() + timeoutMs;
   for (;;) {
-    options.signal?.throwIfAborted();
+    throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) {
       throw new Error(
         `Dedicated agent ${dedicatedAgentId} did not become ready before the signed-in startup deadline.`,
       );
     }
-    const attemptDeadline = createAbsoluteDeadlineSignal(
-      deadline,
-      options.signal,
-    );
     try {
       const cutover = await this.finalizePersonalDedicatedCutover({
         personalElizaId: personal.personalElizaId,
         dedicatedAgentId,
         cloudApiBase,
         authToken: options.authToken,
-        signal: attemptDeadline.signal,
+        signal: options.signal,
       });
+      throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
       options.onProgress?.("ready", "Connected to your Dedicated agent");
       return {
         personalElizaId: personal.personalElizaId,
@@ -4751,15 +4765,8 @@ ElizaClient.prototype.ensurePersonalDedicatedEliza = async function (
         runtime: "dedicated" as const,
       };
     } catch (error) {
-      const attemptHitDeadline = attemptDeadline.deadlineElapsed();
-      attemptDeadline.dispose();
       options.signal?.throwIfAborted();
-      if (attemptHitDeadline || Date.now() >= deadline) {
-        throw new Error(
-          `Dedicated agent ${dedicatedAgentId} did not become ready before the signed-in startup deadline.`,
-          { cause: error },
-        );
-      }
+      if (Date.now() >= deadline) throw error;
       const status =
         error && typeof error === "object" && "status" in error
           ? (error as { status?: unknown }).status
@@ -4773,9 +4780,37 @@ ElizaClient.prototype.ensurePersonalDedicatedEliza = async function (
         Math.min(intervalMs, deadline - Date.now()),
         options.signal,
       );
-    } finally {
-      attemptDeadline.dispose();
     }
+  }
+}
+
+ElizaClient.prototype.ensurePersonalDedicatedEliza = async function (
+  this: ElizaClient,
+  options,
+) {
+  const timeoutMs = options.timeoutMs ?? CLOUD_AGENT_WAKE_TIMEOUT_MS;
+  const deadline = Date.now() + timeoutMs;
+  const operationDeadline = createAbsoluteDeadlineSignal(
+    deadline,
+    options.signal,
+  );
+  try {
+    return await ensurePersonalDedicatedElizaWithinDeadline.call(
+      this,
+      { ...options, signal: operationDeadline.signal },
+      deadline,
+    );
+  } catch (error) {
+    options.signal?.throwIfAborted();
+    if (operationDeadline.deadlineElapsed() || Date.now() >= deadline) {
+      throw new Error(
+        "Dedicated agent did not become ready before the signed-in startup deadline.",
+        { cause: error },
+      );
+    }
+    throw error;
+  } finally {
+    operationDeadline.dispose();
   }
 };
 

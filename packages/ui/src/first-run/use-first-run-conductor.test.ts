@@ -771,6 +771,45 @@ describe("useFirstRunConductor", () => {
     unmount();
   });
 
+  it("does not provision when required client auth is transiently unverifiable", async () => {
+    localStorage.removeItem("steward_session_token");
+    const handleInteractiveCloudLogin = vi.fn(async () => {
+      localStorage.setItem("steward_session_token", "retained-cloud-token");
+      const transient = new Error(
+        "Eliza Cloud is temporarily unavailable. Retry in a moment.",
+      );
+      transient.name = "CloudSessionVerificationTransientError";
+      throw transient;
+    });
+    seedAppStore({
+      elizaCloudConnected: false,
+      handleInteractiveCloudLogin,
+    });
+    const { transcript, turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+
+    await waitFor(() => {
+      expect(handleInteractiveCloudLogin).toHaveBeenCalledWith({
+        requireClientAuth: true,
+      });
+      expect(
+        transcript.current.some(
+          (message) =>
+            message.id.startsWith("first-run:error:") &&
+            message.text.includes("temporarily unavailable"),
+        ),
+      ).toBe(true);
+    });
+    expect(mocks.client.getPersonalSharedEliza).not.toHaveBeenCalled();
+    expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
+    expect(localStorage.getItem("steward_session_token")).toBe(
+      "retained-cloud-token",
+    );
+    unmount();
+  });
+
   it("resumes an interrupted cloud login on relaunch (no greeting restart) when the durable marker + connection are present", async () => {
     // Simulate the device flow AFTER the eviction+relaunch: the resume marker
     // was persisted before the external browser login evicted the WebView, and

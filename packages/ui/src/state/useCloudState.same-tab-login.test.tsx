@@ -1164,6 +1164,22 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       );
       expect(localStorage.getItem("steward_session_token")).toBe(stewardToken);
       expect(result.current.elizaCloudPollInterval.current).toBeNull();
+
+      let requiredClientAuthFailure: unknown;
+      await act(async () => {
+        try {
+          await result.current.handleCloudLogin(null, {
+            requireClientAuth: true,
+          });
+        } catch (error) {
+          requiredClientAuthFailure = error;
+        }
+      });
+      expect(requiredClientAuthFailure).toMatchObject({
+        message: "Eliza Cloud is temporarily unavailable. Retry in a moment.",
+        name: "CloudSessionVerificationTransientError",
+      });
+      expect(localStorage.getItem("steward_session_token")).toBe(stewardToken);
       unmount();
     } finally {
       unregister();

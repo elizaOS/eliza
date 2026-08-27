@@ -590,7 +590,7 @@ describe("ensurePersonalDedicatedEliza", () => {
       cloudApiBase: "https://api.eliza.app",
       authToken: "steward-token",
       pollIntervalMs: 0,
-      timeoutMs: 1_000,
+      timeoutMs: 60_000,
     });
     const rejection = expect(ambiguous).rejects.toThrow(
       "Eliza Cloud request timed out after 30s",
@@ -827,6 +827,7 @@ describe("ensurePersonalDedicatedEliza", () => {
   );
 
   it("does not dispatch cutover after the absolute startup deadline elapses", async () => {
+    vi.useFakeTimers();
     const personalElizaId = "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b";
     const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
     let cutoverPosts = 0;
@@ -834,7 +835,7 @@ describe("ensurePersonalDedicatedEliza", () => {
     vi.spyOn(Date, "now").mockImplementation(() => {
       nowReadCount += 1;
       if (nowReadCount === 1) return 0;
-      if (nowReadCount <= 3) return 359_999;
+      if (nowReadCount <= 11) return 359_999;
       return 360_000;
     });
     vi.stubGlobal(
@@ -893,11 +894,120 @@ describe("ensurePersonalDedicatedEliza", () => {
         name: "TimeoutError",
       },
     });
-    expect(nowReadCount).toBeGreaterThanOrEqual(3);
+    expect(nowReadCount).toBeGreaterThanOrEqual(4);
     expect(cutoverPosts).toBe(0);
   });
 
+  it("bounds personal, quote, retained activation, and cutover to one overall deadline", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const personalElizaId = "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b";
+    const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
+    const onProgress = vi.fn();
+    let activationPosts = 0;
+    let cutoverPosts = 0;
+    const delayResponse = async <T>(delayMs: number, value: T): Promise<T> =>
+      await new Promise<T>((resolve) =>
+        setTimeout(() => resolve(value), delayMs),
+      );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/v1/eliza/personal")) {
+          return await delayResponse(
+            1_000,
+            jsonResponse(200, {
+              success: true,
+              data: {
+                identity: {
+                  id: personalElizaId,
+                  displayName: "Eliza",
+                  runtime: "shared",
+                },
+              },
+            }),
+          );
+        }
+        if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
+          return await delayResponse(
+            1_000,
+            jsonResponse(200, {
+              success: true,
+              data: {
+                quoteId: "7".repeat(64),
+                canActivate: true,
+                activation: {
+                  state: "in_progress",
+                  dedicatedAgentId,
+                  status: "stopped",
+                },
+              },
+            }),
+          );
+        }
+        if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
+          activationPosts += 1;
+          return await delayResponse(
+            1_000,
+            jsonResponse(202, {
+              success: true,
+              data: { dedicatedAgentId },
+            }),
+          );
+        }
+        if (url.endsWith("/upgrade-tier/cutover")) {
+          cutoverPosts += 1;
+          return jsonResponse(409, {
+            success: false,
+            error: "Dedicated is still provisioning",
+          });
+        }
+        return jsonResponse(500, { error: "unexpected route" });
+      }),
+    );
+
+    let outcome: Error | "resolved" | undefined;
+    const attempt = new ElizaClient()
+      .ensurePersonalDedicatedEliza({
+        cloudApiBase: "https://api.eliza.app",
+        authToken: "steward-token",
+        onProgress,
+        pollIntervalMs: 30_000,
+      })
+      .then(() => {
+        outcome = "resolved";
+      })
+      .catch((error: unknown) => {
+        outcome = error instanceof Error ? error : new Error(String(error));
+      });
+
+    await vi.advanceTimersByTimeAsync(359_999);
+    expect(outcome).toBeUndefined();
+    expect(activationPosts).toBe(1);
+    expect(cutoverPosts).toBeGreaterThan(0);
+    const cutoverPostsAtBoundary = cutoverPosts;
+    const progressAtBoundary = onProgress.mock.calls.length;
+
+    await vi.advanceTimersByTimeAsync(1);
+    await attempt;
+    expect(Date.now()).toBe(360_000);
+    expect(outcome).toBeInstanceOf(Error);
+    expect((outcome as Error).message).toContain(
+      "did not become ready before the signed-in startup deadline",
+    );
+    expect(activationPosts).toBe(1);
+    expect(cutoverPosts).toBe(cutoverPostsAtBoundary);
+    expect(onProgress).toHaveBeenCalledTimes(progressAtBoundary);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(cutoverPosts).toBe(cutoverPostsAtBoundary);
+    expect(onProgress).toHaveBeenCalledTimes(progressAtBoundary);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("does not dispatch native cutover when the deadline crosses at transport", async () => {
+    vi.useFakeTimers();
     capacitorState.isNative = true;
     const personalElizaId = "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b";
     const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
@@ -906,7 +1016,7 @@ describe("ensurePersonalDedicatedEliza", () => {
     vi.spyOn(Date, "now").mockImplementation(() => {
       nowReadCount += 1;
       if (nowReadCount === 1) return 0;
-      if (nowReadCount <= 3) return 359_999;
+      if (nowReadCount <= 11) return 359_999;
       return 360_000;
     });
     capacitorHttpRequestMock.mockImplementation(
@@ -1028,7 +1138,7 @@ describe("ensurePersonalDedicatedEliza", () => {
     });
 
     await expect(rejection).rejects.toBe(abortReason);
-    expect(nowReadCount).toBeGreaterThanOrEqual(3);
+    expect(nowReadCount).toBeGreaterThanOrEqual(2);
   });
 
   it("fails closed on an unknown retained-target status", async () => {

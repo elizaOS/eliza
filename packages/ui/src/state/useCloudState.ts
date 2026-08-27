@@ -1162,6 +1162,12 @@ export function useCloudState({
                 ? err.message
                 : "Eliza Cloud login failed",
           );
+          if (
+            options.requireClientAuth &&
+            err instanceof CloudSessionVerificationTransientError
+          ) {
+            throw err;
+          }
         } finally {
           if (!fallThroughToLegacyLogin) {
             elizaCloudLoginBusyRef.current = false;
