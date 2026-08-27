@@ -11,6 +11,15 @@
       "matchCount": 2
     },
     {
+      "file": "packages/ui/src/components/character/CharacterExperienceWorkspace.tsx",
+      "symbol": "ExperienceQueueRow",
+      "primitive": "Button",
+      "role": "action",
+      "owner": "UI Character experience queue",
+      "reason": "Owns the selected queue row's flat radius, dividers, and flush horizontal geometry as one review action.",
+      "matchCount": 1
+    },
+    {
       "file": "packages/ui/src/components/composites/sidebar/sidebar-content.tsx",
       "symbol": "SidebarRailItem",
       "primitive": "Button",
