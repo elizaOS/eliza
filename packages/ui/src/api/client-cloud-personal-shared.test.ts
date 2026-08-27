@@ -893,134 +893,152 @@ describe("ensurePersonalDedicatedEliza", () => {
     },
   );
 
-  it("requires renewed visible confirmation for a changed adoption quote within the same attempt", async () => {
-    const personalElizaId = "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b";
-    const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
-    const dedicatedBase = `https://${dedicatedAgentId}.cloud.eliza.app`;
-    const initialQuoteId = "b".repeat(64);
-    const changedQuoteId = "c".repeat(64);
-    let adoptionPosts = 0;
-    const confirmationReasons: string[] = [];
-    const quoteData = (quoteId: string, balanceUsd: number) => ({
-      quoteId,
-      dedicatedAgentId,
-      adoptionState: "available",
-      status: "error",
-      startsCompute: true,
-      hourlyRateUsd: 0.01,
-      dailyRateUsd: 0.24,
-      minimumBalanceUsd: 0.72,
-      minimumRunwayDays: 3,
-      balanceUsd,
-      deficitUsd: 0,
-      stateDisposition: "verified_backup_present",
-      canAdopt: true,
-      requiresCatalogRestore: false,
-      requiresConfirmation: true,
-      action: "adopt_existing_dedicated",
-    });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = String(input);
-        if (url.endsWith("/api/v1/eliza/personal")) {
-          return jsonResponse(200, {
-            success: true,
-            data: {
-              identity: {
-                id: personalElizaId,
-                displayName: "Eliza",
-                runtime: "shared",
+  it.each([
+    { responseShape: "embedded replacement quote", embedsQuote: true },
+    { responseShape: "code-only response", embedsQuote: false },
+  ])(
+    "requires renewed visible confirmation after a $responseShape within the same attempt",
+    async ({ embedsQuote }) => {
+      const personalElizaId = "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b";
+      const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
+      const dedicatedBase = `https://${dedicatedAgentId}.cloud.eliza.app`;
+      const initialQuoteId = "b".repeat(64);
+      const changedQuoteId = "c".repeat(64);
+      let adoptionGets = 0;
+      let adoptionPosts = 0;
+      const confirmationReasons: string[] = [];
+      const quoteData = (quoteId: string, balanceUsd: number) => ({
+        quoteId,
+        dedicatedAgentId,
+        adoptionState: "available",
+        status: "error",
+        startsCompute: true,
+        hourlyRateUsd: 0.01,
+        dailyRateUsd: 0.24,
+        minimumBalanceUsd: 0.72,
+        minimumRunwayDays: 3,
+        balanceUsd,
+        deficitUsd: 0,
+        stateDisposition: "verified_backup_present",
+        canAdopt: true,
+        requiresCatalogRestore: false,
+        requiresConfirmation: true,
+        action: "adopt_existing_dedicated",
+      });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = String(input);
+          if (url.endsWith("/api/v1/eliza/personal")) {
+            return jsonResponse(200, {
+              success: true,
+              data: {
+                identity: {
+                  id: personalElizaId,
+                  displayName: "Eliza",
+                  runtime: "shared",
+                },
               },
-            },
-          });
-        }
-        if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
-          return jsonResponse(200, {
-            success: true,
-            data: {
-              quoteId: "a".repeat(64),
-              canActivate: true,
-              activation: { state: "available" },
-            },
-          });
-        }
-        if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
-          return jsonResponse(409, {
-            success: false,
-            code: "dedicated_adoption_selection_required",
-          });
-        }
-        if (
-          url.endsWith("/upgrade-tier/adopt-existing") &&
-          init?.method === "GET"
-        ) {
-          return jsonResponse(200, {
-            success: true,
-            data: quoteData(initialQuoteId, 115.54),
-          });
-        }
-        if (
-          url.endsWith("/upgrade-tier/adopt-existing") &&
-          init?.method === "POST"
-        ) {
-          adoptionPosts += 1;
-          const body = JSON.parse(String(init.body));
-          if (adoptionPosts === 1) {
-            expect(body.quoteId).toBe(initialQuoteId);
-            return jsonResponse(409, {
-              success: false,
-              code: "dedicated_adoption_quote_changed",
-              data: quoteData(changedQuoteId, 115.53),
             });
           }
-          expect(body.quoteId).toBe(changedQuoteId);
-          return jsonResponse(202, {
-            success: true,
-            created: false,
-            data: {
-              dedicatedAgentId,
-              runtime: "dedicated_pending_cutover",
-              status: "queued",
-            },
-          });
-        }
-        if (url.endsWith("/upgrade-tier/cutover")) {
-          return jsonResponse(200, {
-            success: true,
-            data: {
-              personalElizaId,
-              activeAgentId: dedicatedAgentId,
-              runtime: "dedicated",
-              apiBase: dedicatedBase,
-              importedMessages: 0,
-            },
-          });
-        }
-        return jsonResponse(500, { error: `Unexpected URL ${url}` });
-      }),
-    );
+          if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
+            return jsonResponse(200, {
+              success: true,
+              data: {
+                quoteId: "a".repeat(64),
+                canActivate: true,
+                activation: { state: "available" },
+              },
+            });
+          }
+          if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
+            return jsonResponse(409, {
+              success: false,
+              code: "dedicated_adoption_selection_required",
+            });
+          }
+          if (
+            url.endsWith("/upgrade-tier/adopt-existing") &&
+            init?.method === "GET"
+          ) {
+            adoptionGets += 1;
+            return jsonResponse(200, {
+              success: true,
+              data:
+                adoptionGets === 1
+                  ? quoteData(initialQuoteId, 115.54)
+                  : quoteData(changedQuoteId, 115.53),
+            });
+          }
+          if (
+            url.endsWith("/upgrade-tier/adopt-existing") &&
+            init?.method === "POST"
+          ) {
+            adoptionPosts += 1;
+            const body = JSON.parse(String(init.body));
+            if (adoptionPosts === 1) {
+              expect(body.quoteId).toBe(initialQuoteId);
+              return jsonResponse(409, {
+                success: false,
+                code: "dedicated_adoption_quote_changed",
+                ...(embedsQuote
+                  ? { data: quoteData(changedQuoteId, 115.53) }
+                  : {}),
+              });
+            }
+            expect(body.quoteId).toBe(changedQuoteId);
+            return jsonResponse(202, {
+              success: true,
+              created: false,
+              data: {
+                dedicatedAgentId,
+                runtime: "dedicated_pending_cutover",
+                status: "queued",
+              },
+            });
+          }
+          if (url.endsWith("/upgrade-tier/cutover")) {
+            return jsonResponse(200, {
+              success: true,
+              data: {
+                personalElizaId,
+                activeAgentId: dedicatedAgentId,
+                runtime: "dedicated",
+                apiBase: dedicatedBase,
+                importedMessages: 0,
+              },
+            });
+          }
+          return jsonResponse(500, { error: `Unexpected URL ${url}` });
+        }),
+      );
 
-    await expect(
-      new ElizaClient().ensurePersonalDedicatedEliza({
-        cloudApiBase: "https://api.eliza.app",
-        authToken: "steward-token",
-        timeoutMs: 1_000,
-        requestDedicatedAdoptionConfirmation: async (quote, context) => {
-          confirmationReasons.push(context.reason);
-          return {
-            action: "adopt_existing_dedicated",
-            quoteId: quote.quoteId,
-          };
-        },
-      }),
-    ).resolves.toMatchObject({
-      activeAgentId: dedicatedAgentId,
-      runtime: "dedicated",
-    });
-    expect(adoptionPosts).toBe(2);
-    expect(confirmationReasons).toEqual(["initial", "quote_changed"]);
-  });
+      await expect(
+        new ElizaClient().ensurePersonalDedicatedEliza({
+          cloudApiBase: "https://api.eliza.app",
+          authToken: "steward-token",
+          timeoutMs: 1_000,
+          requestDedicatedAdoptionConfirmation: async (quote, context) => {
+            expect(adoptionPosts).toBe(context.reason === "initial" ? 0 : 1);
+            expect(quote.quoteId).toBe(
+              context.reason === "initial" ? initialQuoteId : changedQuoteId,
+            );
+            confirmationReasons.push(context.reason);
+            return {
+              action: "adopt_existing_dedicated",
+              quoteId: quote.quoteId,
+            };
+          },
+        }),
+      ).resolves.toMatchObject({
+        activeAgentId: dedicatedAgentId,
+        runtime: "dedicated",
+      });
+      expect(adoptionPosts).toBe(2);
+      expect(adoptionGets).toBe(embedsQuote ? 1 : 2);
+      expect(confirmationReasons).toEqual(["initial", "quote_changed"]);
+    },
+  );
 
   it("fails closed when adoption returns a row other than the selected quote target", async () => {
     const personalElizaId = "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b";

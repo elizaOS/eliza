@@ -4755,14 +4755,19 @@ async function adoptSelectedPersonalDedicatedEliza(
   deadline: number,
 ): Promise<string | null> {
   const adoptionUrl = `${upgradeUrl}/adopt-existing`;
-  throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
-  let quoteResponse = await directCloudJsonResponse<unknown>(adoptionUrl, {
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${options.authToken}`,
-    },
-    ...(options.signal ? { signal: options.signal } : {}),
-  });
+  const fetchCurrentQuote = async () => {
+    throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+    const response = await directCloudJsonResponse<unknown>(adoptionUrl, {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${options.authToken}`,
+      },
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
+    throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+    return response;
+  };
+  let quoteResponse = await fetchCurrentQuote();
   let confirmationReason: "initial" | "quote_changed" = "initial";
   let firstTargetId: string | null = null;
   for (;;) {
@@ -4866,7 +4871,14 @@ async function adoptSelectedPersonalDedicatedEliza(
       adoptionRoot?.success === false &&
       adoptionCode === DEDICATED_ADOPTION_QUOTE_CHANGED
     ) {
-      quoteResponse = adoptionResponse;
+      // Some server versions return the replacement quote in the 409 body;
+      // others return only the typed quote-changed code. Preserve the former
+      // fast path, but always reconcile the latter with a fresh read before
+      // asking for renewed consent. The original absolute startup deadline and
+      // first-target lock remain authoritative across both reads.
+      quoteResponse = parseDedicatedAdoptionQuote(adoptionRoot.data)
+        ? adoptionResponse
+        : await fetchCurrentQuote();
       confirmationReason = "quote_changed";
       continue;
     }
