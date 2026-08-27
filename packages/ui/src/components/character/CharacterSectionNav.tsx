@@ -19,12 +19,15 @@
  */
 
 import {
+  FramedPageHeader,
+  FramedPageNavigation,
+} from "../../layouts/framed-page";
+import {
   navigateToSectionPath,
   normalizeSectionPath,
   type SectionTab,
   SectionTabStrip,
 } from "../shared/SectionNav";
-import { ViewHeader } from "../shared/ViewHeader";
 import { Separator } from "../ui/separator";
 
 const CHARACTER_SECTION_GROUP = "character";
@@ -79,20 +82,22 @@ export function CharacterSectionNav({
 }): React.JSX.Element {
   return (
     <div className="flex shrink-0 flex-col">
-      <ViewHeader title="Character" />
-      <SectionTabStrip
-        entries={CHARACTER_SECTION_TABS}
-        activeId={activeCharacterTabId(activePath)}
-        onSelect={(id) => {
-          const tab = CHARACTER_SECTION_TABS.find(
-            (candidate) => candidate.id === id,
-          );
-          if (tab) navigateToSectionPath(tab.path);
-        }}
-        testId={`section-nav-${CHARACTER_SECTION_GROUP}`}
-        ariaLabel="Character sections"
-        className="pt-0"
-      />
+      <FramedPageHeader title="Character" />
+      <FramedPageNavigation>
+        <SectionTabStrip
+          entries={CHARACTER_SECTION_TABS}
+          activeId={activeCharacterTabId(activePath)}
+          onSelect={(id) => {
+            const tab = CHARACTER_SECTION_TABS.find(
+              (candidate) => candidate.id === id,
+            );
+            if (tab) navigateToSectionPath(tab.path);
+          }}
+          testId={`section-nav-${CHARACTER_SECTION_GROUP}`}
+          ariaLabel="Character sections"
+          className="py-0"
+        />
+      </FramedPageNavigation>
       <Separator tone="subtle45" />
     </div>
   );

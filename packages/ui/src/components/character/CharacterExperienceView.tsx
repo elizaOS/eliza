@@ -6,6 +6,7 @@ import { useCallback, useMemo, useState } from "react";
 import { client } from "../../api/client";
 import type { ExperienceRecord } from "../../api/client-types";
 import { useFetchData } from "../../hooks/useFetchData";
+import { FramedPage, FramedPageBody } from "../../layouts/framed-page";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { CharacterExperienceWorkspace } from "./CharacterExperienceWorkspace";
 import { mapExperienceRecordToHubRecord } from "./character-hub-helpers";
@@ -97,35 +98,41 @@ export function CharacterExperienceView() {
 
   return (
     <ShellViewAgentSurface viewId="experience">
-      <div className="custom-scrollbar mx-auto flex min-h-0 w-full min-w-0 max-w-6xl flex-1 flex-col gap-4 overflow-y-auto px-4 pb-32 pt-1 sm:px-5 lg:px-6">
-        {error ? (
-          <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
-            {error}
-          </div>
-        ) : null}
-        {loading ? (
-          <div className="text-sm text-muted">Loading experiences…</div>
-        ) : (
-          <CharacterExperienceWorkspace
-            showTitle={false}
-            experiences={hubRecords}
-            selectedExperienceId={selectedExperienceId}
-            onSelectExperience={setSelectedExperienceId}
-            onSaveExperience={(experience, draft) => {
-              const source = records.find((item) => item.id === experience.id);
-              if (!source) return;
-              void handleSaveExperience(source, draft);
-            }}
-            onDeleteExperience={(experience) => {
-              const source = records.find((item) => item.id === experience.id);
-              if (!source) return;
-              void handleDeleteExperience(source);
-            }}
-            savingExperienceId={savingExperienceId}
-            deletingExperienceId={deletingExperienceId}
-          />
-        )}
-      </div>
+      <FramedPage>
+        <FramedPageBody className="gap-4 pt-1">
+          {error ? (
+            <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+              {error}
+            </div>
+          ) : null}
+          {loading ? (
+            <div className="text-sm text-muted">Loading experiences…</div>
+          ) : (
+            <CharacterExperienceWorkspace
+              showTitle={false}
+              experiences={hubRecords}
+              selectedExperienceId={selectedExperienceId}
+              onSelectExperience={setSelectedExperienceId}
+              onSaveExperience={(experience, draft) => {
+                const source = records.find(
+                  (item) => item.id === experience.id,
+                );
+                if (!source) return;
+                void handleSaveExperience(source, draft);
+              }}
+              onDeleteExperience={(experience) => {
+                const source = records.find(
+                  (item) => item.id === experience.id,
+                );
+                if (!source) return;
+                void handleDeleteExperience(source);
+              }}
+              savingExperienceId={savingExperienceId}
+              deletingExperienceId={deletingExperienceId}
+            />
+          )}
+        </FramedPageBody>
+      </FramedPage>
     </ShellViewAgentSurface>
   );
 }

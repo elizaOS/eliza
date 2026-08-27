@@ -21,12 +21,17 @@ import {
   subscribeAppShellPages,
 } from "../../app-shell-registry";
 import { dispatchChatClose } from "../../events";
+import {
+  FramedPage,
+  FramedPageBody,
+  FramedPageHeader,
+  FramedPageNavigation,
+} from "../../layouts/framed-page";
 import { getWindowNavigationPath } from "../../navigation";
 import { CodingAgentTasksPanel } from "../../slots/task-coordinator-slots.js";
 import { useAppSelector } from "../../state";
 import { AppsManagementSection } from "../settings/AppsManagementSection";
 import { SettingsGroup, SettingsRow } from "../settings/settings-layout";
-import { ViewHeader } from "../shared/ViewHeader";
 import { useShellControllerContext } from "../shell/ShellControllerContext.hooks";
 import { SegmentedControl } from "../ui/segmented-control";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
@@ -162,12 +167,10 @@ export function TasksPageView() {
   );
   return (
     <ShellViewAgentSurface viewId="tasks">
-      <div
-        className="flex h-full min-h-0 w-full flex-col"
-        data-testid="tasks-view"
-      >
-        <ViewHeader title="Projects" right={segmentControl} />
-        <div className="device-layout mx-auto flex min-h-0 w-full min-w-0 max-w-4xl flex-1 flex-col">
+      <FramedPage data-testid="tasks-view" reserveComposer={false}>
+        <FramedPageHeader title="Projects" />
+        <FramedPageNavigation>{segmentControl}</FramedPageNavigation>
+        <FramedPageBody scroll="view" padded={false} className="device-layout">
           {segment === "apps" ? (
             <div
               className="min-h-0 flex-1 overflow-y-auto eliza-chat-scroll pb-[var(--eliza-chat-clearance,5.25rem)]"
@@ -199,8 +202,8 @@ export function TasksPageView() {
           ) : (
             <CodingAgentTasksPanel fullPage />
           )}
-        </div>
-      </div>
+        </FramedPageBody>
+      </FramedPage>
     </ShellViewAgentSurface>
   );
 }

@@ -78,12 +78,14 @@ function ViewModeTab({
 export function DatabaseView({
   leftNav,
   contentHeader,
+  layout = "embedded",
 }: {
   leftNav?: ReactNode;
   contentHeader?: ReactNode;
+  layout?: "embedded" | "page";
 }) {
   const { t } = useTranslation();
-  const showExternalSidebar = Boolean(leftNav);
+  const showExternalSidebar = layout === "page" || Boolean(leftNav);
 
   // `t` from useApp is not guaranteed to be referentially stable across
   // renders. Reading it through a ref keeps the data loaders below stable so

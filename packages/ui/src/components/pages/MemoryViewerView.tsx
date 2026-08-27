@@ -36,6 +36,11 @@ import {
 } from "../../hooks/runtime-capability-retry";
 import { useActiveAgentAuthority } from "../../hooks/useActiveAgentAuthority";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
+import {
+  FramedPage,
+  FramedPageBody,
+  FramedPageHeader,
+} from "../../layouts/framed-page";
 import { WorkspaceLayout } from "../../layouts/workspace-layout";
 import { useWorkspaceMobileSidebarHeader } from "../../layouts/workspace-layout/workspace-mobile-sidebar-controls.hooks";
 import { WorkspaceMobileSidebarScope } from "../../layouts/workspace-layout/workspace-mobile-sidebar-scope";
@@ -51,7 +56,6 @@ import { ChatSearchHint } from "../composites/chat-search-hint";
 import { PagePanel } from "../composites/page-panel";
 import { MetaPill } from "../composites/page-panel/page-panel-header";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
-import { ViewHeader } from "../shared/ViewHeader";
 import { ViewHeaderSidebarTrigger } from "../shared/ViewHeaderSidebarTrigger";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -1408,11 +1412,10 @@ function MemoryViewerViewForAuthority({
 
   return (
     <ShellViewAgentSurface viewId="memories">
-      <div className="settings-surface settings-canvas flex h-full min-h-0 w-full flex-col">
-        <ViewHeader
+      <FramedPage>
+        <FramedPageHeader
           title={t("memoryviewer.title", { defaultValue: "Memories" })}
-          className="text-[color:var(--settings-foreground)]"
-          right={
+          actions={
             memoryRuntimeUnavailable ? undefined : (
               <ViewHeaderSidebarTrigger
                 control={mobileSidebarHeader.control}
@@ -1421,7 +1424,7 @@ function MemoryViewerViewForAuthority({
             )
           }
         />
-        <div className="flex min-h-0 flex-1 overflow-hidden">
+        <FramedPageBody scroll="view" padded={false}>
           <WorkspaceMobileSidebarScope controls={mobileSidebarHeader.controls}>
             <WorkspaceLayout
               sidebar={memoryRuntimeUnavailable ? null : sidebar}
@@ -1528,8 +1531,8 @@ function MemoryViewerViewForAuthority({
               </div>
             </WorkspaceLayout>
           </WorkspaceMobileSidebarScope>
-        </div>
-      </div>
+        </FramedPageBody>
+      </FramedPage>
     </ShellViewAgentSurface>
   );
 }
