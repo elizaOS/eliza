@@ -45,6 +45,8 @@ const mountedProviderCapabilities = vi.hoisted(() => ({
   enableSolana: null as boolean | null,
 }));
 
+const PROVIDERS_CACHE_KEY = "eliza.steward.providers.v1:elizacloud";
+
 vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => {
   const actual =
     await importOriginal<
@@ -196,10 +198,12 @@ describe("StewardLoginSection wallet collapse (#19217)", () => {
     mountedWalletCapabilities.siws = null;
     mountedProviderCapabilities.enableEvm = null;
     mountedProviderCapabilities.enableSolana = null;
+    window.sessionStorage.removeItem(PROVIDERS_CACHE_KEY);
   });
 
   afterEach(() => {
     cleanup();
+    window.sessionStorage.removeItem(PROVIDERS_CACHE_KEY);
     vi.clearAllMocks();
   });
 

@@ -548,7 +548,6 @@ function writeSessionCachedProviders(providers: StewardProviders): void {
 function loadStewardProviders(auth: {
   getProviders: () => Promise<StewardProviders>;
 }): Promise<StewardProviders> {
-  if (cachedStewardProviders) return Promise.resolve(cachedStewardProviders);
   const requestGeneration = stewardProvidersRequestGeneration;
   stewardProvidersPromise ??= auth.getProviders().then(
     (loadedProviders) => {
@@ -725,6 +724,13 @@ export default function StewardLoginSection() {
       readSessionCachedProviders() ??
       (PLAYWRIGHT_TEST_AUTH_ENABLED ? DEFAULT_PROVIDERS : null),
   );
+  // A sessionStorage/module snapshot is a paint accelerator, not an
+  // authorization signal. Wallet provider mounts can auto-reconnect persisted
+  // browser state, so require a successful live discovery for this document
+  // before exposing either wallet intent.
+  const [walletProvidersConfirmed, setWalletProvidersConfirmed] = useState(
+    PLAYWRIGHT_TEST_AUTH_ENABLED,
+  );
   const [passkeyCapability, setPasskeyCapability] =
     useState<WebPasskeyCapability | null>(
       PLAYWRIGHT_TEST_AUTH_ENABLED
@@ -744,7 +750,10 @@ export default function StewardLoginSection() {
   const hasIdentityProviders =
     enabledOAuthProviders.length > 0 || providers?.telegram === true;
   const emailEnabled = providers !== null && providers.email !== false;
-  const showWallets = providers !== null && hasAnyWalletProvider(providers);
+  const showWallets =
+    walletProvidersConfirmed &&
+    providers !== null &&
+    hasAnyWalletProvider(providers);
   const showPasskey =
     providers !== null &&
     providers.passkey !== false &&
@@ -844,6 +853,7 @@ export default function StewardLoginSection() {
         if (!cancelled) {
           setProviderDiscoveryError(null);
           setProviders(loadedProviders);
+          setWalletProvidersConfirmed(true);
         }
       })
       .catch((providerError: unknown) => {
@@ -873,6 +883,7 @@ export default function StewardLoginSection() {
     discardStewardProvidersRequest();
     setProviderDiscoveryError(null);
     setProvidersLoaded(false);
+    setWalletProvidersConfirmed(false);
     setProviderDiscoveryAttempt((attempt) => attempt + 1);
   }, []);
 

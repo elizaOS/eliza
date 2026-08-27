@@ -1,18 +1,19 @@
 /**
  * Verifies StewardLoginSection's session-cached provider fast path (#18256)
  * under a mocked Steward harness (jsdom). A per-tenant sessionStorage snapshot
- * of the last provider discovery must render the real option stack immediately
- * on a repeat SPA load (no "Loading sign-in options…" roundtrip on the
- * critical path), reconcile with the live fetch when it resolves, and the
- * completing-callback return leg must not issue a discovery fetch at all. A
- * corrupt snapshot must fall back to the discovery skeleton, never to a
- * fake-valid provider set.
+ * of the last provider discovery must render cached non-wallet options
+ * immediately on a repeat SPA load (no "Loading sign-in options…" roundtrip on
+ * the critical path), reconcile with the live fetch when it resolves, and the
+ * completing-callback return leg must not issue a discovery fetch at all.
+ * Wallet providers remain behind current-document live discovery because
+ * mounting one can auto-reconnect persisted browser state. A corrupt snapshot
+ * must fall back to the discovery skeleton, never to a fake-valid provider set.
  *
- * The section module memoizes discovery process-wide (one in-flight promise,
- * one resolved set), so these tests share a single controlled deferred and run
- * in a deliberate order: every test before the final one leaves discovery
- * unresolved (assertions are synchronous or fetch-free), and only the last
- * test resolves it.
+ * The section module deduplicates one in-flight discovery promise and retains
+ * the last resolved set for initial paint. These tests share a single
+ * controlled deferred and run in a deliberate order: every test before the
+ * final one leaves discovery unresolved (assertions are synchronous or
+ * fetch-free), and only the last test resolves it.
  */
 // @vitest-environment jsdom
 
@@ -192,6 +193,24 @@ describe("StewardLoginSection — session-cached provider fast path (#18256)", (
     expect(screen.getByRole("button", { name: /^Google$/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /^Telegram$/i })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /^GitHub$/i })).toBeNull();
+  });
+
+  it("does not activate cached wallet providers before live discovery", () => {
+    window.sessionStorage.setItem(
+      CACHE_KEY,
+      JSON.stringify({
+        ...CACHED_PROVIDERS,
+        siwe: true,
+        siws: true,
+      }),
+    );
+
+    renderSection("/login");
+
+    expect(screen.getByRole("button", { name: /^Google$/i })).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: /Continue with a wallet/i }),
+    ).toBeNull();
   });
 
   it("does not fetch provider discovery on the completing-callback return leg", async () => {
