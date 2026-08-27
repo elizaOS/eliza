@@ -433,8 +433,8 @@ export interface NotesSurfaceProps {
   loading: boolean;
   error: Error | null;
   refresh: () => Promise<void>;
-  /** Render the shared route header. Embedded projections turn this off. */
-  standalone?: boolean;
+  /** Render the shared route header. Every caller must declare its chrome context. */
+  standalone: boolean;
 }
 
 export function NotesSurface({
@@ -442,7 +442,7 @@ export function NotesSurface({
   loading,
   error,
   refresh,
-  standalone = true,
+  standalone,
 }: NotesSurfaceProps) {
   const notes = snapshot?.notes ?? [];
   const issue = notesIssue(error);

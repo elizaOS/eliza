@@ -98,7 +98,9 @@ test("Notes keeps readable cards clear of the composer in short landscape", asyn
   const cards = page.getByRole("listitem");
   const first = await cards.nth(0).boundingBox();
   const second = await cards.nth(1).boundingBox();
-  const composer = await page.getByPlaceholder(/Message/).boundingBox();
+  const composerInput = page.getByPlaceholder(/Message/);
+  await expect(composerInput).toBeInViewport();
+  const composer = await composerInput.boundingBox();
   expect(first).not.toBeNull();
   expect(second).not.toBeNull();
   expect(composer).not.toBeNull();
@@ -109,6 +111,13 @@ test("Notes keeps readable cards clear of the composer in short landscape", asyn
   expect(second.y).toBeGreaterThan(first.y + first.height);
   expect(rectanglesOverlap(first, composer)).toBe(false);
   expect(rectanglesOverlap(second, composer)).toBe(false);
+  const viewport = page.viewportSize();
+  expect(viewport).not.toBeNull();
+  if (!viewport) throw new Error("Expected the configured landscape viewport");
+  expect(composer.x).toBeGreaterThanOrEqual(0);
+  expect(composer.y).toBeGreaterThanOrEqual(0);
+  expect(composer.x + composer.width).toBeLessThanOrEqual(viewport.width);
+  expect(composer.y + composer.height).toBeLessThanOrEqual(viewport.height);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
