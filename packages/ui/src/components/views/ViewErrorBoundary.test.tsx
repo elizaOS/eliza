@@ -88,7 +88,7 @@ describe("ViewErrorBoundary", () => {
     }
     render(<Harness />);
     expect(screen.getByTestId("view-error-boundary-fallback")).toBeTruthy();
-    fireEvent.click(screen.getByTestId("view-error-retry"));
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
     expect(screen.getByTestId("recovered")).toBeTruthy();
     // The view recovered out of the crashed phase (markRecovering passes through
     // "recovering" and resolves to a resting phase — here "inactive" since this
@@ -106,8 +106,9 @@ describe("ViewErrorBoundary", () => {
     // The card is a real, non-empty DOM node — not a blank white screen.
     expect(card).toBeTruthy();
     expect(container.textContent).not.toBe("");
-    expect(card.textContent).toContain("kaboom");
-    expect(screen.getByTestId("view-error-retry")).toBeTruthy();
+    expect(card.textContent).toContain("This view couldn’t open");
+    expect(card.textContent).not.toContain("kaboom");
+    expect(screen.getByRole("button", { name: /retry/i })).toBeTruthy();
   });
 
   it("uses a caller-supplied richer fallback when provided", () => {

@@ -1119,6 +1119,8 @@ function normalizeMessageConnector(
 	if (metadata.metadata) connector.metadata = { ...metadata.metadata };
 	if (metadata.resolveTargets)
 		connector.resolveTargets = metadata.resolveTargets;
+	if (metadata.resolveIdentityClaimTarget)
+		connector.resolveIdentityClaimTarget = metadata.resolveIdentityClaimTarget;
 	if (metadata.listRecentTargets)
 		connector.listRecentTargets = metadata.listRecentTargets;
 	if (metadata.listRooms) connector.listRooms = metadata.listRooms;

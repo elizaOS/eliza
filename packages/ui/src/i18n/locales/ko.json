@@ -4092,6 +4092,7 @@
   "settings.sections.aimodel.desc": "제공자 및 모델 설정",
   "settings.sections.appearance.desc": "콘텐츠 팩, VRM 아바타, 배경 및 테마",
   "settings.sections.appearance.label": "외관",
+  "settings.sections.general.label": "일반",
   "settings.sections.apps.basedOnLabel": "기존 앱 기반 (선택)",
   "settings.sections.apps.basedOnNone": "처음부터 시작",
   "settings.sections.apps.col.actions": "동작",

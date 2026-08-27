@@ -44,12 +44,14 @@ describe("message and post connector registries", () => {
 		} as Memory;
 		const sendHandler = vi.fn(async () => sentMemory);
 		const fetchMessages = vi.fn(async () => [] as Memory[]);
+		const resolveIdentityClaimTarget = vi.fn(async () => null);
 
 		runtime.registerMessageConnector({
 			source: "chat",
 			label: "Chat",
 			sendHandler,
 			fetchMessages,
+			resolveIdentityClaimTarget,
 			capabilities: ["send_message", "read_messages"],
 			supportedTargetKinds: ["room"],
 		});
@@ -69,6 +71,11 @@ describe("message and post connector registries", () => {
 			),
 		).toEqual(["archive", "chat"]);
 		expect(getMessageConnectorsWithHook(runtime, "resolveTargets")).toEqual([]);
+		expect(
+			getMessageConnectorsWithHook(runtime, "resolveIdentityClaimTarget").map(
+				(connector) => connector.source,
+			),
+		).toEqual(["chat"]);
 
 		const target = makeTarget("chat");
 		const content: Content = { text: "hello", source: "chat" };

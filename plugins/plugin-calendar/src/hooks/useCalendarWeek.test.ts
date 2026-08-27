@@ -18,6 +18,38 @@ const uiClient = vi.hoisted(() => ({
   getLifeOpsCalendarFeed: vi.fn(),
 }));
 
+const authorityState = vi.hoisted(() => ({
+  value: "profile-a\u0000https://same-agent.test",
+}));
+
+const apiErrors = vi.hoisted(() => {
+  class MockApiError extends Error {
+    readonly kind: "timeout" | "network" | "http" | "parse";
+    readonly status?: number;
+    readonly path: string;
+    readonly code?: string;
+    readonly data?: unknown;
+
+    constructor(options: {
+      kind: "timeout" | "network" | "http" | "parse";
+      path?: string;
+      message: string;
+      status?: number;
+      code?: string;
+      data?: unknown;
+    }) {
+      super(options.message);
+      this.name = "ApiError";
+      this.kind = options.kind;
+      this.path = options.path ?? "/api/lifeops/calendar/feed";
+      this.status = options.status;
+      this.code = options.code;
+      this.data = options.data;
+    }
+  }
+  return { MockApiError };
+});
+
 const calendarWeekAppValue = vi.hoisted(() => ({
   t: (_key: string, opts?: { defaultValue?: string }) =>
     opts?.defaultValue ?? _key,
@@ -35,9 +67,15 @@ vi.mock("@elizaos/ui", () => ({
 
 vi.mock("@elizaos/ui/api", () => ({
   client: uiClient,
+  ApiError: apiErrors.MockApiError,
   ElizaClient: class {
     fetch = vi.fn(async () => ({}));
   },
+  isApiError: (value: unknown) => value instanceof apiErrors.MockApiError,
+}));
+
+vi.mock("@elizaos/ui/hooks/useActiveAgentAuthority", () => ({
+  useActiveAgentAuthority: () => authorityState.value,
 }));
 
 vi.mock("@elizaos/ui/state", () => ({
@@ -121,6 +159,20 @@ function feed(
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason?: unknown) => void;
+} {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 function lastFeedArgs(): {
   side: string;
   timeMin: string;
@@ -146,7 +198,12 @@ function windowSpanDays(): number {
 describe("useCalendarWeek", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authorityState.value = "profile-a\u0000https://same-agent.test";
     uiClient.getLifeOpsCalendarFeed.mockResolvedValue(feed([]));
+    Object.defineProperty(window.navigator, "onLine", {
+      configurable: true,
+      value: true,
+    });
   });
 
   afterEach(() => {
@@ -288,19 +345,118 @@ describe("useCalendarWeek", () => {
     );
   });
 
-  it("surfaces an error message when the feed fetch rejects", async () => {
+  it("uses safe fallback copy when an untyped feed fetch rejects", async () => {
     uiClient.getLifeOpsCalendarFeed.mockRejectedValue(
       new Error("network down"),
     );
 
     const { result } = renderHook(() => useCalendarWeek());
 
-    await waitFor(() => expect(result.current.error).toBe("network down"));
+    await waitFor(() =>
+      expect(result.current.error).toBe("Calendar failed to load."),
+    );
     expect(result.current.loading).toBe(false);
     expect(result.current.events).toEqual([]);
     expect(result.current.feedState).toBeNull();
     expect(result.current.sources).toEqual([]);
     expect(result.current.status).toBe("error");
+    expect(result.current.issue).toEqual({
+      kind: "unknown",
+      message: "Calendar failed to load.",
+      retryable: true,
+      upgradeRequired: false,
+    });
+  });
+
+  it("classifies the Shared Calendar capability response without leaking server copy", async () => {
+    uiClient.getLifeOpsCalendarFeed.mockRejectedValue(
+      new apiErrors.MockApiError({
+        kind: "http",
+        message:
+          "Calendar requires a dedicated agent runtime; this shared agent does not run calendar connectors.",
+        status: 503,
+        code: "calendar_runtime_unavailable",
+        data: { upgradeRequired: true },
+      }),
+    );
+
+    const { result } = renderHook(() => useCalendarWeek());
+
+    await waitFor(() =>
+      expect(result.current.issue?.kind).toBe("runtime_unavailable"),
+    );
+    expect(result.current.status).toBe("unavailable");
+    expect(result.current.issue).toEqual({
+      kind: "runtime_unavailable",
+      message:
+        "Calendar isn’t available with this cloud setup yet. Connect a dedicated agent to use calendar sources.",
+      retryable: false,
+      upgradeRequired: true,
+    });
+    expect(result.current.error).not.toContain("runtime");
+  });
+
+  it.each([
+    {
+      error: new apiErrors.MockApiError({
+        kind: "timeout",
+        message: "request timed out",
+      }),
+      kind: "timeout",
+      message: "Calendar took too long to respond. Try again.",
+      retryable: true,
+    },
+    {
+      error: new apiErrors.MockApiError({
+        kind: "http",
+        message: "unauthorized",
+        status: 401,
+      }),
+      kind: "authentication",
+      message: "Sign in again to load your calendar.",
+      retryable: false,
+    },
+    {
+      error: new apiErrors.MockApiError({
+        kind: "http",
+        message: "forbidden",
+        status: 403,
+      }),
+      kind: "permission",
+      message: "Your account doesn’t have permission to view this calendar.",
+      retryable: false,
+    },
+  ])(
+    "classifies $kind failures",
+    async ({ error, kind, message, retryable }) => {
+      uiClient.getLifeOpsCalendarFeed.mockRejectedValue(error);
+
+      const { result } = renderHook(() => useCalendarWeek());
+
+      await waitFor(() => expect(result.current.issue?.kind).toBe(kind));
+      expect(result.current.issue?.message).toBe(message);
+      expect(result.current.issue?.retryable).toBe(retryable);
+    },
+  );
+
+  it("distinguishes an offline device from a reachable network failure", async () => {
+    Object.defineProperty(window.navigator, "onLine", {
+      configurable: true,
+      value: false,
+    });
+    uiClient.getLifeOpsCalendarFeed.mockRejectedValue(
+      new apiErrors.MockApiError({
+        kind: "network",
+        message: "Failed to fetch",
+      }),
+    );
+
+    const { result } = renderHook(() => useCalendarWeek());
+
+    await waitFor(() => expect(result.current.issue?.kind).toBe("offline"));
+    expect(result.current.error).toBe(
+      "You’re offline. Reconnect to load your calendar.",
+    );
   });
 
   it("holds loading true while the fetch is in flight", async () => {
@@ -470,7 +626,12 @@ describe("useCalendarWeek", () => {
           [originalSource],
         ),
       )
-      .mockRejectedValueOnce(new Error("refresh transport failed"));
+      .mockRejectedValueOnce(
+        new apiErrors.MockApiError({
+          kind: "network",
+          message: "refresh transport failed",
+        }),
+      );
 
     const { result } = renderHook(() => useCalendarWeek());
     await waitFor(() => expect(result.current.status).toBe("ready"));
@@ -480,11 +641,51 @@ describe("useCalendarWeek", () => {
     });
 
     expect(result.current.status).toBe("error");
-    expect(result.current.error).toBe("refresh transport failed");
+    expect(result.current.error).toBe(
+      "Calendar couldn’t connect. Check your connection and try again.",
+    );
+    expect(result.current.issue?.kind).toBe("network");
     expect(result.current.events.map((item) => item.id)).toEqual(["cached"]);
     expect(result.current.feedState).toBe("complete");
     expect(result.current.sources).toEqual([originalSource]);
     expect(result.current.refreshing).toBe(false);
+  });
+
+  it("masks the previous window immediately and never restores it after the new window fails", async () => {
+    uiClient.getLifeOpsCalendarFeed
+      .mockResolvedValueOnce(
+        feed([
+          event(
+            "cached-week",
+            "2026-06-15T09:00:00.000Z",
+            "2026-06-15T10:00:00.000Z",
+          ),
+        ]),
+      )
+      .mockRejectedValueOnce(
+        new apiErrors.MockApiError({
+          kind: "network",
+          message: "next window unavailable",
+        }),
+      );
+
+    const { result } = renderHook(() =>
+      useCalendarWeek({ baseDate: new Date("2026-06-15T12:00:00.000Z") }),
+    );
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(result.current.events.map((item) => item.id)).toEqual([
+      "cached-week",
+    ]);
+
+    act(() => result.current.goNext());
+    expect(result.current.events).toEqual([]);
+    expect(result.current.feedState).toBeNull();
+    expect(result.current.loading).toBe(true);
+
+    await waitFor(() => expect(result.current.status).toBe("error"));
+    expect(result.current.events).toEqual([]);
+    expect(result.current.feedState).toBeNull();
+    expect(result.current.issue?.kind).toBe("network");
   });
 
   it("ignores an older window response that resolves after the latest request", async () => {
@@ -562,5 +763,90 @@ describe("useCalendarWeek", () => {
     expect(result.current.events.map((item) => item.id)).toEqual(["latest"]);
     expect(result.current.status).toBe("ready");
     expect(result.current.sources).toEqual([latestSource]);
+  });
+
+  it("masks the old feed and rejects its late response on a same-base profile switch", async () => {
+    uiClient.getLifeOpsCalendarFeed.mockResolvedValueOnce(
+      feed([
+        event(
+          "agent-a",
+          "2026-06-15T09:00:00.000Z",
+          "2026-06-15T10:00:00.000Z",
+        ),
+      ]),
+    );
+    const { result, rerender } = renderHook(() => useCalendarWeek());
+    await waitFor(() =>
+      expect(result.current.events.map((item) => item.id)).toEqual(["agent-a"]),
+    );
+
+    const staleProfileRefresh = deferred<LifeOpsCalendarFeed>();
+    const activeProfileRefresh = deferred<LifeOpsCalendarFeed>();
+    uiClient.getLifeOpsCalendarFeed
+      .mockReturnValueOnce(staleProfileRefresh.promise)
+      .mockReturnValueOnce(activeProfileRefresh.promise);
+
+    act(() => {
+      void result.current.refresh();
+    });
+    const staleSignal = uiClient.getLifeOpsCalendarFeed.mock.calls[1]?.[1]
+      ?.signal as AbortSignal;
+    expect(staleSignal.aborted).toBe(false);
+    authorityState.value = "profile-b\u0000https://same-agent.test";
+    rerender();
+
+    expect(staleSignal.aborted).toBe(true);
+    expect(result.current.events).toEqual([]);
+    expect(result.current.feedState).toBeNull();
+    expect(result.current.loading).toBe(true);
+    await waitFor(() =>
+      expect(uiClient.getLifeOpsCalendarFeed).toHaveBeenCalledTimes(3),
+    );
+    const activeSignal = uiClient.getLifeOpsCalendarFeed.mock.calls[2]?.[1]
+      ?.signal as AbortSignal;
+    expect(activeSignal.aborted).toBe(false);
+
+    await act(async () => {
+      staleProfileRefresh.resolve(
+        feed([
+          event(
+            "agent-a-stale",
+            "2026-06-15T11:00:00.000Z",
+            "2026-06-15T12:00:00.000Z",
+          ),
+        ]),
+      );
+      await staleProfileRefresh.promise;
+    });
+    expect(result.current.events).toEqual([]);
+    expect(result.current.loading).toBe(true);
+
+    await act(async () => {
+      activeProfileRefresh.resolve(
+        feed([
+          event(
+            "agent-b",
+            "2026-06-15T13:00:00.000Z",
+            "2026-06-15T14:00:00.000Z",
+          ),
+        ]),
+      );
+      await activeProfileRefresh.promise;
+    });
+    expect(result.current.events.map((item) => item.id)).toEqual(["agent-b"]);
+    expect(result.current.loading).toBe(false);
+  });
+
+  it("aborts an in-flight feed read when the mounted calendar unmounts", () => {
+    uiClient.getLifeOpsCalendarFeed.mockReturnValueOnce(
+      new Promise<LifeOpsCalendarFeed>(() => undefined),
+    );
+    const view = renderHook(() => useCalendarWeek());
+    const signal = uiClient.getLifeOpsCalendarFeed.mock.calls[0]?.[1]
+      ?.signal as AbortSignal;
+
+    expect(signal.aborted).toBe(false);
+    view.unmount();
+    expect(signal.aborted).toBe(true);
   });
 });

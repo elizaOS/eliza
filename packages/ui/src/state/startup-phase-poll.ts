@@ -60,7 +60,11 @@ import {
   clearPersistedActiveServer,
   savePersistedActiveServer,
 } from "./persistence";
-import type { PlatformPolicy, StartupEvent } from "./startup-coordinator";
+import type {
+  PlatformPolicy,
+  RuntimeTarget,
+  StartupEvent,
+} from "./startup-coordinator";
 import { buildStaticFirstRunOptions } from "./startup-first-run-options";
 import type { RestoringSessionCtx } from "./startup-phase-restore";
 import { runStartupProbe, unwrapStartupProbe } from "./startup-probe";
@@ -377,6 +381,7 @@ export async function runPollingBackend(
   effectRunRef: React.MutableRefObject<number>,
   cancelled: { current: boolean },
   tidRef: { current: ReturnType<typeof setTimeout> | null },
+  target: RuntimeTarget = "embedded-local",
 ): Promise<void> {
   const describeBackendFailure = (
     err: unknown,
@@ -427,6 +432,10 @@ export async function runPollingBackend(
     policy.nativeConsecutiveFailureBudgetMs ??
     NATIVE_CONSECUTIVE_FAILURE_BUDGET_MS;
   let nativeFailureStreakStartedAt: number | null = null;
+  const remoteNativeFailureBudgetMs =
+    policy.remoteNativeConsecutiveFailureBudgetMs ??
+    STARTUP_TIMING_POLICY.remoteNativeConsecutiveFailureBudgetMs;
+  let remoteNativeFailureStreakStartedAt: number | null = null;
   // Hosted-web bounded boot for a DEDICATED cloud agent base (issue #19627):
   // timestamp of the first CONNECTION-LEVEL failure (no HTTP response at all —
   // e.g. a TLS handshake failure on `<id>.cloud.eliza.app`) in the current
@@ -698,7 +707,17 @@ export async function runPollingBackend(
    */
   const boundedProbe = <T>(promise: Promise<T>): Promise<T> => {
     const remainingMs = Math.max(0, deadline - Date.now());
-    const capMs = Math.max(1, Math.min(PROBE_REQUEST_TIMEOUT_MS, remainingMs));
+    // Remote native targets have no local boot process that benefits from the
+    // generic 12s per-request allowance. Cap the first request by the same
+    // short budget as its visible error state so one hung transport cannot
+    // consume the entire failure budget before the streak is evaluated.
+    const remoteNativeProbeCapMs =
+      isCapacitorNative() &&
+      target !== "embedded-local" &&
+      !isMobileLocalAgentIpcBase(client.getBaseUrl())
+        ? remoteNativeFailureBudgetMs
+        : PROBE_REQUEST_TIMEOUT_MS;
+    const capMs = Math.max(1, Math.min(remoteNativeProbeCapMs, remainingMs));
     return new Promise<T>((resolve, reject) => {
       const hangTid = setTimeout(() => {
         reject(
@@ -755,6 +774,7 @@ export async function runPollingBackend(
         }
       });
     }
+    const probeAttemptStartedAt = Date.now();
     try {
       const auth = await traceIfStalled(
         boundedProbe(client.getAuthStatus()),
@@ -772,6 +792,7 @@ export async function runPollingBackend(
       // transport works; any remaining slowness is the agent booting, which
       // the overall `deadline` already budgets for.
       nativeFailureStreakStartedAt = null;
+      remoteNativeFailureStreakStartedAt = null;
       agentUnreachableStreakStartedAt = null;
       if (cancelled.current) return;
       if (auth.required && !auth.authenticated && !client.hasToken()) {
@@ -1339,6 +1360,51 @@ export async function runPollingBackend(
         }
       }
       if (isCapacitorNative()) {
+        // A terminal/deleted Cloud target may have recovered in-loop to the
+        // bundled local IPC base. Classify the base we are polling, not only
+        // the original coordinator target, so that recovered local boot keeps
+        // the full progress-aware allowance.
+        const remoteTarget =
+          target !== "embedded-local" &&
+          !isMobileLocalAgentIpcBase(client.getBaseUrl());
+        const isConnectionLevelFailure =
+          err instanceof ApiHangTimeoutError ||
+          ae?.kind === "network" ||
+          ae?.kind === "timeout";
+        if (remoteTarget && isConnectionLevelFailure) {
+          // A restored Cloud/VPS target has no local process whose migrations,
+          // model load, or socket startup could justify the 90s native warm-up
+          // allowance. Count the time spent inside the failed request itself so
+          // a hung 12s probe reaches the visible retry card on its first failure.
+          // This path deliberately leaves the active server and bearer intact;
+          // the terminal-error recovery loop can therefore reconnect the same
+          // target/session as soon as connectivity returns.
+          remoteNativeFailureStreakStartedAt ??= probeAttemptStartedAt;
+          const failingForMs = Date.now() - remoteNativeFailureStreakStartedAt;
+          if (failingForMs >= remoteNativeFailureBudgetMs) {
+            const detail = formatStartupErrorDetail(err) ?? String(err);
+            logger.warn(
+              { failingForMs, target, detail },
+              "[startup-phase-poll] native remote target exceeded the connection-failure budget; surfacing the startup error",
+            );
+            deps.setStartupError({
+              reason: "backend-unreachable",
+              phase: "starting-backend",
+              message:
+                "Could not reach your saved agent. Check your connection and retry; your sign-in and chat history are preserved.",
+              detail,
+              status: ae?.status,
+              path: ae?.path,
+            });
+            deps.setFirstRunLoading(false);
+            dispatch({ type: "BACKEND_TIMEOUT" });
+            return;
+          }
+        } else {
+          // An HTTP/protocol response proves the remote host was reached, while
+          // embedded-local uses the separate progress-aware budget below.
+          remoteNativeFailureStreakStartedAt = null;
+        }
         // Android detached local agent now exposes the service-owned boot
         // state over the Capacitor plugin. That distinguishes a cold boot
         // from a launcher or child process death before the renderer's HTTP
@@ -1360,11 +1426,12 @@ export async function runPollingBackend(
           androidLocalAgentIpc &&
           (err instanceof ApiHangTimeoutError ||
             (err as { status?: number } | undefined)?.status === undefined);
-        if (
-          isIosNativeAgentBootInProgress() ||
-          androidNativeBootProgress ||
-          legacyAndroidLocalAgentBooting
-        ) {
+        const localAgentBootProgress =
+          !remoteTarget &&
+          (isIosNativeAgentBootInProgress() ||
+            androidNativeBootProgress ||
+            legacyAndroidLocalAgentBooting);
+        if (localAgentBootProgress) {
           // PROGRESS-AWARE budget: native evidence says the local agent is
           // booting, restarting, or accepting connections. Older Android
           // plugins that lack the boot-state method keep the legacy HTTP
@@ -1372,7 +1439,7 @@ export async function runPollingBackend(
           // deadline. A native `dead` state falls through and burns the
           // consecutive-failure budget.
           nativeFailureStreakStartedAt = null;
-        } else {
+        } else if (!remoteTarget) {
           nativeFailureStreakStartedAt ??= Date.now();
           const failingForMs = Date.now() - nativeFailureStreakStartedAt;
           if (failingForMs >= nativeFailureBudgetMs) {

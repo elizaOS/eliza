@@ -25,6 +25,7 @@ import {
 } from "./actions/views.js";
 import { createViewsClient } from "./actions/views-client.js";
 import { createChoiceShortcutEvaluator } from "./evaluators/create-choice-shortcut.js";
+import { viewCommandShortcutEvaluator } from "./evaluators/view-command-shortcut.js";
 import { viewContextEvaluator } from "./evaluators/view-context.js";
 import { availableAppsProvider } from "./providers/available-apps.js";
 import { currentViewProvider } from "./providers/current-view.js";
@@ -167,9 +168,9 @@ export const appControlPlugin: Plugin = {
 		runtimeManagementAction,
 		settingsAction,
 	],
-	// Model-owned view-switch cascade:
-	//  1. PLAN   — the response handler/planner selects VIEWS from the registered
-	//     action contract, including explicit multilingual navigation requests.
+	// View-switch cascade:
+	//  1. ROUTE  — exact standalone multilingual commands take the deterministic
+	//     VIEWS fast path; contextual and compound requests stay with the planner.
 	//  2. ACTION — viewsAction resolves the selected target and navigates.
 	//  3. POST   — viewContextEvaluator (small model) catches contextual intent
 	//     the user never spelled out ("fix the login bug" -> task-coordinator).
@@ -177,9 +178,15 @@ export const appControlPlugin: Plugin = {
 	//     surface (the rigid matchViewCommand matcher, or the legacy intent
 	//     rules it falls back to), so it never contends with the action.
 	evaluators: [viewContextEvaluator],
-	// Persisted choice widgets are an explicit continuation protocol. Ordinary
-	// view navigation and follow-up language stays with Stage 1 and the planner.
-	responseHandlerEvaluators: [createChoiceShortcutEvaluator],
+	// Persisted choice widgets are an explicit continuation protocol. Exact,
+	// standalone view commands use the rigid zero-model evaluator so shell
+	// navigation cannot fail merely because the general planner is unavailable
+	// or over its provider context limit. Contextual and compound language still
+	// stays with Stage 1 and the planner.
+	responseHandlerEvaluators: [
+		viewCommandShortcutEvaluator,
+		createChoiceShortcutEvaluator,
+	],
 	providers: [availableAppsProvider, currentViewProvider],
 	services: [
 		AppRegistryService,
@@ -224,6 +231,7 @@ export const appControlPlugin: Plugin = {
 			description: "Browse and open available views contributed by plugins",
 			icon: "LayoutGrid",
 			path: "/views",
+			responseContext: { primaryContext: "system" },
 			modalities: ["gui"],
 			bundlePath: "dist/views/bundle.js",
 			// First-party instrumented view (data-agent-id controls): grant the

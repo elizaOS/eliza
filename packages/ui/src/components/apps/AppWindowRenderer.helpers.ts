@@ -33,7 +33,7 @@ export function getOverlayAppLazyComponent(
       componentProps: props,
       // A failed overlay-app import (bundle 404 / network error / a module with
       // no renderable default export) must surface the SAME recoverable
-      // "Failed to load view" card as a remote view — never a blank/white
+      // plain-language recovery card as a remote view — never a blank/white
       // screen. `fallback` covers the loading gap; `onError` renders the card
       // with a Retry that re-imports and a Back that exits the overlay.
       fallback: createElement(ViewLoadingSkeleton),

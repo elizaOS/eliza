@@ -552,6 +552,10 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@elizaos/ui/utils": () => import("../../utils/index.ts"),
   "@elizaos/ui/hooks/resource-cache": () =>
     import("../../hooks/resource-cache.ts"),
+  "@elizaos/ui/hooks/runtime-capability-retry": () =>
+    import("../../hooks/runtime-capability-retry.ts"),
+  "@elizaos/ui/hooks/useActiveAgentAuthority": () =>
+    import("../../hooks/useActiveAgentAuthority.ts"),
   "@elizaos/ui/utils/attachment-url": () =>
     import("../../utils/attachment-url.ts"),
   "@elizaos/ui/utils/desktop-dialogs": () =>
@@ -1309,6 +1313,8 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
     () => resolveSurfaceManifest({ surface }),
     [surface],
   );
+  const recoveryBackAction =
+    resolvedManifest.header === "normal" ? undefined : navigateToViews;
   // A `sandboxed-iframe` view is never imported into the host realm — that is
   // the whole point of the level. It renders in an `<iframe sandbox>` (#14180)
   // and talks to the shell only through the postMessage broker, so the in-realm
@@ -1492,7 +1498,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
               "Sandboxed iframe views require a frameUrl HTML document; bundleUrl is a JavaScript module.",
             )
           }
-          onBack={navigateToViews}
+          onBack={recoveryBackAction}
         />
       );
     }
@@ -1522,7 +1528,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
             `Dynamic view "${viewId}" requires bundleUrl unless it declares sandboxed-iframe isolation with frameUrl.`,
           )
         }
-        onBack={navigateToViews}
+        onBack={recoveryBackAction}
       />
     );
   }
@@ -1532,7 +1538,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
         viewId={viewId}
         error={loadError}
         onRetry={recoverView}
-        onBack={navigateToViews}
+        onBack={recoveryBackAction}
       />
     );
   }
@@ -1578,7 +1584,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
                 resetErrorBoundary();
                 recoverView();
               }}
-              onBack={navigateToViews}
+              onBack={recoveryBackAction}
             />
           )}
         >

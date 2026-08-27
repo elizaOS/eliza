@@ -1226,6 +1226,32 @@ const COMPILED: CompiledView[] = VIEW_PRIORITY.filter(
 // form can safely return to the canonical chat surface without guessing history.
 const BARE_HOME_NAVIGATION = /^[\s\p{P}]*go\s+back[\s\p{P}]*$/iu;
 
+// A whole-message "go <single word>" command has enough intent to safely
+// recover a one-key typo in "home" without making every view noun fuzzy. Keep
+// this keyboard-aware and substitution-only: broad edit distance would turn
+// unrelated commands such as "go dome" into navigation.
+const FUZZY_HOME_NAVIGATION = /^[\s\p{P}]*go(?:\s+to)?\s+([a-z]+)[\s\p{P}]*$/iu;
+const QWERTY_NEIGHBORS: Readonly<Record<string, string>> = {
+  e: "wsdr",
+  h: "ygjb",
+  m: "njk",
+  o: "iklp",
+};
+
+function isLikelyHomeKeyTypo(candidate: string): boolean {
+  if (candidate.length !== "home".length || candidate === "home") return false;
+  let differingIndex = -1;
+  for (let index = 0; index < candidate.length; index++) {
+    if (candidate[index] === "home"[index]) continue;
+    if (differingIndex !== -1) return false;
+    differingIndex = index;
+  }
+  if (differingIndex === -1) return false;
+  const expected = "home"[differingIndex];
+  const actual = candidate[differingIndex];
+  return QWERTY_NEIGHBORS[expected]?.includes(actual) === true;
+}
+
 function stripDiacritics(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "");
 }
@@ -1242,6 +1268,10 @@ export function matchViewCommand(text: string | undefined): string | null {
   if (looksLikeCompanionActionRequest(lower)) return null;
   if (NEGATED_NAVIGATION_RE.test(lower)) return null;
   if (BARE_HOME_NAVIGATION.test(lower)) return "chat";
+  const fuzzyHomeMatch = FUZZY_HOME_NAVIGATION.exec(lower);
+  if (fuzzyHomeMatch?.[1] && isLikelyHomeKeyTypo(fuzzyHomeMatch[1])) {
+    return "chat";
+  }
   const variants = [lower, stripDiacritics(lower)];
   if (variants.some((variant) => CLOUD_APPS_COMMAND_RE.test(variant))) {
     return CLOUD_APPS_VIEW_ID;

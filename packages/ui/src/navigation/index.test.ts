@@ -12,6 +12,7 @@ import {
   BUILTIN_ROUTE_IDS,
   LEGACY_PREFIX_TAB_ALIASES,
   resolveBuiltinRouteDescriptor,
+  resolveLegacyBuiltinRoute,
   TAB_PATHS,
   tabFromPath,
   titleForTab,
@@ -26,6 +27,21 @@ afterEach(() => {
 });
 
 describe("navigation tabFromPath", () => {
+  it.each(["/documents", "/knowledge", "/KNOWLEDGE/"])(
+    "resolves the retired Knowledge route %s without falling into the views catalog",
+    (path) => {
+      expect(tabFromPath(path)).toBe("documents");
+      expect(resolveLegacyBuiltinRoute(path)).toEqual({
+        tab: "documents",
+        canonicalPath: TAB_PATHS.documents,
+      });
+    },
+  );
+
+  it("does not treat the canonical Knowledge route as a legacy alias", () => {
+    expect(resolveLegacyBuiltinRoute(TAB_PATHS.documents)).toBeNull();
+  });
+
   it("uses app-shell tab affinity for registered plugin pages", () => {
     registerAppShellPage({
       id: "test.wallet.inventory",
@@ -122,7 +138,7 @@ describe("navigation built-in route descriptors", () => {
     const shellScrolled = BUILTIN_ROUTE_IDS.filter(
       (id) => resolveBuiltinRouteDescriptor(id)?.layout.scroll === "shell",
     );
-    expect(shellScrolled).toEqual(["inventory"]);
+    expect(shellScrolled).toEqual(["inventory", "files"]);
 
     expect(resolveBuiltinRouteDescriptor("chat")?.layout).toEqual({
       kind: "immersive",

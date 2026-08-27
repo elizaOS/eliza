@@ -14,12 +14,15 @@ import type {
 	IAgentRuntime,
 	Memory,
 } from "../../../types/index.ts";
+import { ServiceType } from "../../../types/index.ts";
 import { messageAction } from "./message.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";
 const ROOM_ID = "00000000-0000-0000-0000-0000000000bb";
 const SENDER_ID = "00000000-0000-0000-0000-0000000000cc";
 const SHADOW_ID = "00000000-0000-0000-0000-0000000000e7";
+const DISCORD_ACCOUNT_ID = "00000000-0000-0000-0000-0000000000d1";
+const TELEGRAM_ACCOUNT_ID = "00000000-0000-0000-0000-0000000000d2";
 
 const baseMessage = {
 	id: "00000000-0000-0000-0000-0000000000aa",
@@ -74,6 +77,7 @@ describe("MESSAGE op=send exact-beats-prefix tier (ambiguity over-fire fix)", ()
 			getEntitiesForRoom: async () => [],
 			getEntityById: (async () => null) as IAgentRuntime["getEntityById"],
 			getRelationships: (async () => []) as IAgentRuntime["getRelationships"],
+			getSetting: (() => null) as IAgentRuntime["getSetting"],
 			sendMessageToTarget: async (target, content) => {
 				sends.push({
 					target: target as unknown as Record<string, unknown>,
@@ -150,9 +154,15 @@ describe("MESSAGE op=send exact-beats-prefix tier (ambiguity over-fire fix)", ()
 });
 
 describe("MESSAGE op=send unresolved recipient asks upfront (no doomed send)", () => {
-	function harness() {
+	function harness(matchingLiteralEntity = false) {
 		const sends: SentMessage[] = [];
 		const cache = new Map<string, unknown>();
+		const literalEntity = {
+			id: SHADOW_ID,
+			agentId: AGENT_ID,
+			names: ["shadow@example.com"],
+			components: [],
+		};
 		const runtime = createMockRuntime({
 			getCache: (async (key: string) =>
 				cache.get(key)) as IAgentRuntime["getCache"],
@@ -175,9 +185,14 @@ describe("MESSAGE op=send unresolved recipient asks upfront (no doomed send)", (
 				},
 			],
 			getRoom: async () => null,
-			getEntitiesForRoom: async () => [],
-			getEntityById: (async () => null) as IAgentRuntime["getEntityById"],
+			getEntitiesForRoom: async () =>
+				matchingLiteralEntity ? [literalEntity] : [],
+			getEntityById: (async (id: string) =>
+				matchingLiteralEntity && id === SHADOW_ID
+					? literalEntity
+					: null) as IAgentRuntime["getEntityById"],
 			getRelationships: (async () => []) as IAgentRuntime["getRelationships"],
+			getSetting: (() => null) as IAgentRuntime["getSetting"],
 			sendMessageToTarget: async (target, content) => {
 				sends.push({
 					target: target as unknown as Record<string, unknown>,
@@ -211,7 +226,7 @@ describe("MESSAGE op=send unresolved recipient asks upfront (no doomed send)", (
 	});
 
 	it("a literal email address is address-routed and delivers without a contact lookup", async () => {
-		const { runtime, sends } = harness();
+		const { runtime, sends } = harness(true);
 		const result = await send(runtime, {
 			target: "shadow@example.com",
 			message: "stop smoking",
@@ -251,20 +266,7 @@ describe("MESSAGE op=send last-delivered-channel preference", () => {
 			type: string;
 			sourceEntityId: string;
 			data: Record<string, unknown>;
-		}> = [
-			{
-				id: "00000000-0000-0000-0000-0000000000c1",
-				type: "discord",
-				sourceEntityId: AGENT_ID,
-				data: { channelId: "dm-discord" },
-			},
-			{
-				id: "00000000-0000-0000-0000-0000000000c2",
-				type: "telegram",
-				sourceEntityId: AGENT_ID,
-				data: { channelId: "dm-telegram" },
-			},
-		];
+		}> = [];
 		if (withPreference) {
 			components.push({
 				id: "00000000-0000-0000-0000-0000000000c3",
@@ -295,6 +297,27 @@ describe("MESSAGE op=send last-delivered-channel preference", () => {
 					capabilities: [],
 					supportedTargetKinds: ["user", "contact"],
 					contexts: [],
+					resolveTargets: async () => [
+						{
+							target: { source: "discord", channelId: "attacker-hook" },
+							label: "Shadow",
+							kind: "user" as const,
+							score: 1,
+							contexts: [],
+						},
+					],
+					resolveIdentityClaimTarget: async (claim: {
+						externalSubjectId: string;
+					}) => ({
+						identityDeliveryKey: claim.externalSubjectId,
+						target: {
+							source: "discord",
+							entityId: claim.externalSubjectId,
+						},
+						label: claim.externalSubjectId,
+						kind: "user" as const,
+						contexts: [],
+					}),
 				},
 				{
 					source: "telegram",
@@ -302,8 +325,57 @@ describe("MESSAGE op=send last-delivered-channel preference", () => {
 					capabilities: [],
 					supportedTargetKinds: ["user", "contact"],
 					contexts: [],
+					resolveIdentityClaimTarget: async (claim: {
+						externalSubjectId: string;
+					}) => ({
+						identityDeliveryKey: claim.externalSubjectId,
+						target: {
+							source: "telegram",
+							channelId: claim.externalSubjectId,
+						},
+						label: claim.externalSubjectId,
+						kind: "user" as const,
+						contexts: [],
+					}),
 				},
 			],
+			getSetting: ((key: string) =>
+				key === "IDENTITY_DELIVERY_CLAIMS_AUTHORITATIVE"
+					? "true"
+					: null) as IAgentRuntime["getSetting"],
+			getService: ((serviceType: string) => {
+				if (serviceType !== ServiceType.PRINCIPAL) return null;
+				return {
+					resolveIdentityDeliveryClaim: async (request: {
+						principalId: string;
+						connectorId?: string;
+					}) => {
+						const discord = request.connectorId === "discord";
+						const accountId = discord
+							? DISCORD_ACCOUNT_ID
+							: TELEGRAM_ACCOUNT_ID;
+						const handle = discord ? "@shadow-discord" : "@shadow-telegram";
+						const externalSubjectId = discord
+							? "discord-user-123"
+							: "telegram-chat-456";
+						return {
+							decision: "resolved",
+							requestedPrincipalId: request.principalId,
+							canonicalPrincipalId: SHADOW_ID,
+							generation: 3,
+							claim: {
+								id: discord
+									? "00000000-0000-0000-0000-0000000000f1"
+									: "00000000-0000-0000-0000-0000000000f2",
+								connectorId: request.connectorId,
+								connectorAccountId: accountId,
+								handle,
+								externalSubjectId,
+							},
+						};
+					},
+				};
+			}) as IAgentRuntime["getService"],
 			// The room's source has no registered connector, so the room-first
 			// member path stays out of the way and the entity path is exercised.
 			getRoom: async () => ({ id: ROOM_ID, name: "app", source: "app" }),
@@ -331,7 +403,7 @@ describe("MESSAGE op=send last-delivered-channel preference", () => {
 		return { runtime, sends, upserts };
 	}
 
-	it("without a recorded preference, two stored handles stay ambiguous (baseline)", async () => {
+	it("without a recorded preference, two verified connector claims stay ambiguous", async () => {
 		const { runtime, sends } = harness({ withPreference: false });
 		const message = {
 			...baseMessage,
@@ -346,6 +418,24 @@ describe("MESSAGE op=send last-delivered-channel preference", () => {
 		expect(result.success).toBe(false);
 		expect((result.data as { error?: string })?.error).toBe("TARGET_AMBIGUOUS");
 		expect(sends).toHaveLength(0);
+	});
+
+	it("preserves a connector-owned provider entity target and excludes discovery hooks", async () => {
+		const { runtime, sends } = harness({ withPreference: false });
+		const result = await send(runtime, {
+			source: "discord",
+			target: "shadow",
+			targetKind: "user",
+			message: "stop smoking",
+		});
+
+		expect(result.success).toBe(true);
+		expect(sends).toHaveLength(1);
+		expect(sends[0].target).toMatchObject({
+			source: "discord",
+			entityId: "discord-user-123",
+		});
+		expect(sends[0].target).not.toHaveProperty("channelId");
 	});
 
 	it("prefers the channel the person was last reached on", async () => {
@@ -364,7 +454,7 @@ describe("MESSAGE op=send last-delivered-channel preference", () => {
 		expect(sends).toHaveLength(1);
 		expect(sends[0].target).toMatchObject({
 			source: "telegram",
-			channelId: "dm-telegram",
+			channelId: "telegram-chat-456",
 		});
 		expect(
 			(result.data as { resolutionReasons?: string[] })?.resolutionReasons,
@@ -488,5 +578,199 @@ describe("MESSAGE op=send admin/owner target (app + connector transports)", () =
 		expect(sends[0].target).toMatchObject({ source: "discord" });
 		expect(sends[0].target.entityId).toBeDefined();
 		expect(resolveTargets).not.toHaveBeenCalled();
+	});
+});
+
+describe("MESSAGE op=send delivery-claim ambiguity is judged on distinct destinations", () => {
+	function harness(options: {
+		claimsAuthoritative: boolean;
+		claims: Array<{
+			id: string;
+			handle: string | null;
+			externalSubjectId: string;
+		}>;
+	}) {
+		const sends: SentMessage[] = [];
+		const entity = {
+			id: SHADOW_ID,
+			names: ["Shadow"],
+			agentId: AGENT_ID,
+			components: [
+				{
+					id: "00000000-0000-0000-0000-0000000000c4",
+					type: "discord",
+					sourceEntityId: AGENT_ID,
+					data: { channelId: "component-dm-shadow" },
+				},
+			],
+		};
+		const runtime = createMockRuntime({
+			agentId: AGENT_ID,
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
+			getMessageConnectors: () => [
+				{
+					source: "discord",
+					label: "Discord",
+					capabilities: [],
+					supportedTargetKinds: ["user", "contact"],
+					contexts: [],
+					resolveIdentityClaimTarget: async (claim: {
+						handle: string | null;
+						externalSubjectId: string;
+					}) => ({
+						identityDeliveryKey: claim.handle ?? claim.externalSubjectId,
+						target: {
+							source: "discord",
+							channelId: claim.handle ?? claim.externalSubjectId,
+						},
+						label: claim.handle ?? claim.externalSubjectId,
+						kind: "user" as const,
+						contexts: [],
+					}),
+				},
+			],
+			getSetting: ((key: string) =>
+				key === "IDENTITY_DELIVERY_CLAIMS_AUTHORITATIVE" &&
+				options.claimsAuthoritative
+					? "true"
+					: null) as IAgentRuntime["getSetting"],
+			getService: ((serviceType: string) => {
+				if (serviceType !== ServiceType.PRINCIPAL) return null;
+				return {
+					resolveIdentityDeliveryClaim: async (request: {
+						principalId: string;
+					}) => {
+						const claims = options.claims.map((claim) => ({
+							...claim,
+							connectorId: "discord",
+							connectorAccountId: DISCORD_ACCOUNT_ID,
+						}));
+						if (claims.length === 1) {
+							return {
+								decision: "resolved",
+								requestedPrincipalId: request.principalId,
+								canonicalPrincipalId: SHADOW_ID,
+								generation: 3,
+								claim: claims[0],
+							};
+						}
+						return {
+							decision: "ambiguous",
+							requestedPrincipalId: request.principalId,
+							canonicalPrincipalId: SHADOW_ID,
+							generation: 3,
+							claims,
+							reason: "multiple_verified_claims",
+						};
+					},
+				};
+			}) as IAgentRuntime["getService"],
+			getRoom: async () => ({ id: ROOM_ID, name: "app", source: "app" }),
+			getEntitiesForRoom: async () => [entity],
+			getWorld: (async () => null) as IAgentRuntime["getWorld"],
+			getEntityById: (async (id: string) =>
+				id === SHADOW_ID ? entity : null) as IAgentRuntime["getEntityById"],
+			getRelationships: (async () => []) as IAgentRuntime["getRelationships"],
+			getMemories: (async () => []) as IAgentRuntime["getMemories"],
+			sendMessageToTarget: async (target, content) => {
+				sends.push({
+					target: target as unknown as Record<string, unknown>,
+					text: String(content.text ?? ""),
+				});
+				return { id: "00000000-0000-0000-0000-0000000000ff" } as Memory;
+			},
+			upsertComponent: (async () =>
+				undefined) as IAgentRuntime["upsertComponent"],
+			useModel: (async () => "not-json") as IAgentRuntime["useModel"],
+			reportError: () => undefined,
+		});
+		return { runtime, sends };
+	}
+
+	const appMessage = {
+		...baseMessage,
+		content: { text: "tell shadow to stop smoking", source: "app" },
+	} as Memory;
+
+	it("two verified claims mapping to one delivery key resolve instead of refusing", async () => {
+		const { runtime, sends } = harness({
+			claimsAuthoritative: true,
+			claims: [
+				{
+					id: "00000000-0000-0000-0000-0000000000f1",
+					handle: "@shadow",
+					externalSubjectId: "discord-user-123",
+				},
+				{
+					id: "00000000-0000-0000-0000-0000000000f2",
+					handle: "@shadow",
+					externalSubjectId: "discord-user-123-alt",
+				},
+			],
+		});
+		const result = await send(
+			runtime,
+			{ target: "shadow", message: "stop smoking" },
+			appMessage,
+		);
+
+		expect(result.success).toBe(true);
+		expect(sends).toHaveLength(1);
+		expect(sends[0].target).toMatchObject({ channelId: "@shadow" });
+	});
+
+	it("claims mapping to distinct delivery keys stay a choice with no duplicate entries", async () => {
+		const { runtime, sends } = harness({
+			claimsAuthoritative: true,
+			claims: [
+				{
+					id: "00000000-0000-0000-0000-0000000000f1",
+					handle: "@shadow-work",
+					externalSubjectId: "discord-user-123",
+				},
+				{
+					id: "00000000-0000-0000-0000-0000000000f2",
+					handle: "@shadow-work",
+					externalSubjectId: "discord-user-123",
+				},
+				{
+					id: "00000000-0000-0000-0000-0000000000f3",
+					handle: "@shadow-personal",
+					externalSubjectId: "discord-user-456",
+				},
+			],
+		});
+		const result = await send(
+			runtime,
+			{ target: "shadow", message: "stop smoking" },
+			appMessage,
+		);
+
+		expect(result.success).toBe(false);
+		expect((result.data as { error?: string })?.error).toBe("TARGET_AMBIGUOUS");
+		const candidates = (
+			result.data as { candidates?: Array<{ label?: string }> }
+		)?.candidates;
+		expect(candidates).toHaveLength(2);
+		expect(sends).toHaveLength(0);
+	});
+
+	it("with the rollout flag off, the legacy entity-component path routes the send", async () => {
+		const { runtime, sends } = harness({
+			claimsAuthoritative: false,
+			claims: [],
+		});
+		const result = await send(
+			runtime,
+			{ target: "shadow", message: "stop smoking" },
+			appMessage,
+		);
+
+		expect(result.success).toBe(true);
+		expect(sends).toHaveLength(1);
+		expect(sends[0].target).toMatchObject({
+			source: "discord",
+			channelId: "component-dm-shadow",
+		});
 	});
 });

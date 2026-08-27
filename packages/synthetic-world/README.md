@@ -1,8 +1,10 @@
 # `@elizaos/synthetic-world`
 
-This package provides a durable SQLite command journal bound to the existing synthetic
-environment lease generation. Callers supply the lease store and execute domain
-mutations on the guarded SQLite transaction.
+This package provides a storage-neutral durable command journal bound to the
+existing synthetic environment lease generation. Callers supply a lease store
+and journal repository, then execute synchronous or asynchronous domain
+mutations on the guarded transaction context. The SQLite compatibility adapter
+remains available for local use.
 
 SW-2 adds a production-derived controller that durably claims one boot attempt,
 boots the canonical `@elizaos/agent` runtime against an explicit PGlite path,
@@ -12,9 +14,13 @@ exact public PGlite configuration. The result distinguishes a genuinely
 unavailable local runtime from typed input, claim, initialization, proof, and
 teardown failures. The controller owns idempotent typed runtime teardown.
 
-The package proves local command ownership, success and failure
-replay, fencing, rollback-aware crash classification, and restart recovery.
-Full manifests, virtual clocks, fault injection, observation ledgers, a Cloud
-journal adapter, deployment qualification, and atomic commands spanning the
-SQLite journal and production PGlite domain repository remain unavailable and
-are reported as such by `SYNTHETIC_WORLD_CAPABILITIES`.
+The Cloud adapter uses the production Drizzle schema and lease transaction.
+PGlite integration coverage proves an actual `AgentsRepository` mutation and
+readback commit atomically with the journal's `COMMITTED` transition, plus
+replay, conflict, fencing, rollback, ambiguous-response recovery, and corrupt
+state handling. It does not claim genuine multi-process PostgreSQL contention.
+
+Full manifests, virtual clocks, fault injection, observation ledgers,
+deployment qualification, and atomic commands spanning the controller's local
+SQLite journal and separate production PGlite repository remain unavailable
+and are reported as such by `SYNTHETIC_WORLD_CAPABILITIES`.

@@ -211,6 +211,8 @@ export function DiscordGatewayConnection() {
   const [connections, setConnections] = useState<DiscordGatewayConnection[]>(
     [],
   );
+  const [connectionsUnavailable, setConnectionsUnavailable] = useState(false);
+  const [charactersUnavailable, setCharactersUnavailable] = useState(false);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingCharacters, setIsLoadingCharacters] = useState(false);
@@ -257,18 +259,17 @@ export function DiscordGatewayConnection() {
         );
         if (!signal?.aborted) {
           setConnections(data.connections || []);
+          setConnectionsUnavailable(false);
         }
       } catch {
         if (!signal?.aborted) {
-          toast.error(
-            t("cloud.discord.fetchConnectionsFailed", {
-              defaultValue: "Failed to fetch Discord connections",
-            }),
-          );
+          // error-policy:J4 Keep the provider row quiet and let the section
+          // own the single degraded-state notice and recovery action.
+          setConnectionsUnavailable(true);
         }
       }
     },
-    [t],
+    [],
   );
 
   const fetchCharacters = useCallback(
@@ -286,6 +287,7 @@ export function DiscordGatewayConnection() {
               : await fetchRuntimeCharacters(signal);
           if (!signal?.aborted) {
             setCharacters(fallbackCharacters);
+            setCharactersUnavailable(false);
             setCharacterId(
               (current) => current || fallbackCharacters[0]?.id || "",
             );
@@ -297,16 +299,15 @@ export function DiscordGatewayConnection() {
             const fallbackCharacters = await fetchRuntimeCharacters(signal);
             if (!signal?.aborted) {
               setCharacters(fallbackCharacters);
+              setCharactersUnavailable(false);
               setCharacterId(
                 (current) => current || fallbackCharacters[0]?.id || "",
               );
             }
           } catch {
-            toast.error(
-              t("cloud.discord.fetchCharactersFailed", {
-                defaultValue: "Failed to fetch characters",
-              }),
-            );
+            // error-policy:J4 Character discovery is required for setup. Fold
+            // this background failure into the section-level degraded state.
+            if (!signal?.aborted) setCharactersUnavailable(true);
           }
         }
       } finally {
@@ -315,7 +316,7 @@ export function DiscordGatewayConnection() {
         }
       }
     },
-    [t],
+    [],
   );
 
   const fetchData = useCallback(
@@ -627,7 +628,17 @@ export function DiscordGatewayConnection() {
       description={t("cloud.discord.cardDescription", {
         defaultValue: "Connect Discord gateway bots for AI-powered automation",
       })}
-      status={connections.length > 0 ? "connected" : "disconnected"}
+      status={
+        connectionsUnavailable || charactersUnavailable
+          ? "error"
+          : connections.length > 0
+            ? "connected"
+            : "disconnected"
+      }
+      errorMessage={t("cloud.discord.fetchConnectionsFailed", {
+        defaultValue: "Failed to fetch Discord connections",
+      })}
+      onRetry={() => void fetchData()}
       statusBadge={
         connections.length > 0 ? (
           <Badge variant="outline">

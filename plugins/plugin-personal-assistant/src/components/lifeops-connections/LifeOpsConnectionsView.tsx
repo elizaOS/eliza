@@ -10,8 +10,7 @@ import type {
 import {
   Button,
   Checkbox,
-  RadioGroup,
-  RadioGroupItem,
+  SegmentedControl,
   Select,
   SelectContent,
   SelectItem,
@@ -770,7 +769,7 @@ export function LifeOpsConnectionsView({
           >
             <fieldset className="lifeops-range">
               <legend>Gmail and calendar history</legend>
-              <RadioGroup
+              <SegmentedControl
                 className="lifeops-range-choices"
                 value={String(rangeDays)}
                 onValueChange={(value) => {
@@ -779,17 +778,11 @@ export function LifeOpsConnectionsView({
                     setRangeDays(days);
                   }
                 }}
-              >
-                {([7, 30, 90] as const).map((days) => (
-                  <label key={days} htmlFor={`lifeops-seed-range-${days}`}>
-                    <RadioGroupItem
-                      id={`lifeops-seed-range-${days}`}
-                      value={String(days)}
-                    />
-                    {days} days
-                  </label>
-                ))}
-              </RadioGroup>
+                items={([7, 30, 90] as const).map((days) => ({
+                  value: String(days),
+                  label: `${days} days`,
+                }))}
+              />
             </fieldset>
             <div className="lifeops-calendar-list">
               {[...googleCalendars, ...appleCalendars].map((calendar) => {
@@ -1058,7 +1051,7 @@ function LifeOpsStyles() {
       .lifeops-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:16px;margin-bottom:16px}.lifeops-grid>section:nth-child(3){grid-column:1/-1}
       .lifeops-options,.lifeops-range{margin:16px 0;border:0;padding:0}.lifeops-options legend,.lifeops-range legend{margin-bottom:10px;font-size:12px;font-weight:750;color:var(--muted)}
       .lifeops-check-row{display:flex;align-items:flex-start;gap:12px;padding:12px;border-radius:14px;background:var(--bg-accent);margin-bottom:7px;cursor:pointer}.lifeops-check-row.compact{align-items:center}.lifeops-check-row input{width:20px;height:20px;margin:1px 0 0;accent-color:var(--accent);flex:0 0 auto}.lifeops-check-row span{display:grid;gap:3px;min-width:0}.lifeops-check-row small{color:var(--muted);line-height:1.4}.lifeops-check-row code{width:max-content;max-width:100%;overflow-wrap:anywhere;color:var(--accent);font-size:11px}
-      .lifeops-field{display:grid;gap:7px;font-size:12px;font-weight:700}.lifeops-field select{min-height:44px;border:1px solid var(--border);border-radius:13px;padding:0 12px;background:var(--card);color:inherit;font:inherit}.lifeops-range-choices{display:flex;flex-wrap:wrap;gap:8px}.lifeops-range legend{width:100%}.lifeops-range label{display:flex;align-items:center;gap:7px;min-height:44px;padding:0 13px;border:1px solid var(--border);border-radius:12px}
+      .lifeops-field{display:grid;gap:7px;font-size:12px;font-weight:700}.lifeops-field select{min-height:44px;border:1px solid var(--border);border-radius:13px;padding:0 12px;background:var(--card);color:inherit;font:inherit}.lifeops-range-choices{display:flex;flex-wrap:wrap;gap:8px}.lifeops-range legend{width:100%}
       .lifeops-primary,.lifeops-danger-confirm{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;border:0;border-radius:13px;padding:0 17px;background:var(--accent);color:var(--accent-foreground);font:inherit;font-weight:800;cursor:pointer}.lifeops-primary:hover{background:var(--accent-muted,#c94400);color:var(--brand-white,#fdfaf7)}.lifeops-primary:disabled,button:disabled{opacity:.48;cursor:not-allowed}.lifeops-danger-confirm{background:var(--destructive);color:var(--destructive-foreground)}.lifeops-danger-confirm:hover{background:color-mix(in srgb, var(--destructive) 82%, black)}
       .lifeops-actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:14px}.lifeops-actions button{display:inline-flex;align-items:center;justify-content:center;gap:8px}.lifeops-empty{padding:14px;border:1px dashed var(--border-strong);border-radius:13px;color:var(--muted)}
       .lifeops-status-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px}.lifeops-status-row div{display:grid;gap:4px}.lifeops-status-row span{color:var(--muted);font-size:13px;line-height:1.4}

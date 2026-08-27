@@ -265,14 +265,16 @@ test("browser page clears the resting chat and keeps compact mobile chrome touch
       viewportWidth: window.innerWidth,
       controls: Array.from(
         toolbar.querySelectorAll<HTMLElement>("button, input"),
-      ).map((control) => ({
-        label:
-          control.getAttribute("aria-label") ??
-          control.getAttribute("data-testid") ??
-          control.tagName,
-        width: control.getBoundingClientRect().width,
-        height: control.getBoundingClientRect().height,
-      })),
+      )
+        .filter((control) => control.getClientRects().length > 0)
+        .map((control) => ({
+          label:
+            control.getAttribute("aria-label") ??
+            control.getAttribute("data-testid") ??
+            control.tagName,
+          width: control.getBoundingClientRect().width,
+          height: control.getBoundingClientRect().height,
+        })),
     };
   });
   expect(collapsedGeometry).not.toBeNull();

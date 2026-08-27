@@ -581,12 +581,11 @@ dependencies {
     implementation "com.google.code.gson:gson:2.14.0"
     if (project.findProperty('elizaCloudBuild') != 'true') {
         implementation "com.google.firebase:firebase-common-ktx:21.0.0"
-    } else {
-        // The push plugin supplies Firebase Messaging at runtime, but Gradle's
-        // implementation boundary does not expose it to the app module where
-        // SafePushNotificationsPlugin compiles its no-config crash guard.
-        compileOnly "com.google.firebase:firebase-messaging:25.0.1"
     }
+    // The push plugin supplies Firebase Messaging at runtime, but Gradle's
+    // implementation boundary does not expose it to the app module where
+    // SafePushNotificationsPlugin compiles its no-config crash guard.
+    compileOnly "com.google.firebase:firebase-messaging:25.0.1"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

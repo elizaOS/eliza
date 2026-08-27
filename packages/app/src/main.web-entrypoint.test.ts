@@ -6,7 +6,11 @@
  */
 import { Capacitor } from "@capacitor/core";
 import { runIosFullBunSmokeIfRequested } from "@elizaos/app-core/desktop-shell";
-import { DEFAULT_BOOT_CONFIG, setBootConfig } from "@elizaos/ui/config";
+import {
+  DEFAULT_BOOT_CONFIG,
+  getBootConfig,
+  setBootConfig,
+} from "@elizaos/ui/config";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const webBoot = vi.hoisted(() => ({
@@ -102,6 +106,10 @@ describe("renderer web composition", () => {
     expect(webBoot.cloudApiBaseAtServiceWorkerModuleLoad).toBe(
       "https://cloud-staging.eliza.app",
     );
+    expect(getBootConfig()).toMatchObject({
+      preferSharedCloudTier: true,
+      autoUpgradeSharedToDedicated: true,
+    });
     expect(webBoot.initializeStorage).toHaveBeenCalledTimes(2);
     expect(webBoot.initializeCapacitor).toHaveBeenCalledOnce();
     expect(document.body.classList).toContain("platform-web");

@@ -425,6 +425,25 @@ describeE2E("Group H — POST /api/cron/agent-billing", () => {
 // /api/crypto/payments/:id/confirm — session/owner-required
 // ─────────────────────────────────────────────────────────────────────────
 describeE2E("Group H — POST /api/crypto/payments/:id/confirm", () => {
+  test("browser preflight returns credentialed CORS without route bootstrap", async () => {
+    const origin = "https://develop.eliza-app.pages.dev";
+    const res = await fetch(url("/api/crypto/payments/missing-id/confirm"), {
+      method: "OPTIONS",
+      headers: {
+        Origin: origin,
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type, x-eliza-csrf",
+      },
+    });
+    expect(res.status).toBe(204);
+    expect(res.headers.get("access-control-allow-origin")).toBe(origin);
+    expect(res.headers.get("access-control-allow-credentials")).toBe("true");
+    expect(res.headers.get("access-control-allow-methods")).toContain("POST");
+    expect(res.headers.get("access-control-allow-headers")).toContain(
+      "X-Eliza-CSRF",
+    );
+  });
+
   test("auth gate: missing credentials → 401", async () => {
     const res = await api.post(
       "/api/crypto/payments/00000000-0000-0000-0000-000000000000/confirm",

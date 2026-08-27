@@ -36,6 +36,8 @@ describe("SQL identity authority", () => {
   const sourceF = crypto.randomUUID() as UUID;
   const ownerPrincipalId = crypto.randomUUID() as UUID;
   const configuredOwnerAliasId = crypto.randomUUID() as UUID;
+  const deliveryAccountA = crypto.randomUUID() as UUID;
+  const deliveryAccountB = crypto.randomUUID() as UUID;
 
   beforeAll(async () => {
     const setup = await createIsolatedTestDatabase("identity-authority-real");
@@ -156,6 +158,133 @@ describe("SQL identity authority", () => {
     expect(await db.select().from(identityMergeJournalTable)).toHaveLength(2);
     const [consumed] = await db.select().from(identityMergeConfirmationTable);
     expect(consumed?.status).toBe("consumed");
+  });
+
+  it("resolves delivery only through verified canonical-cluster claims and reports typed ambiguity", async () => {
+    await db
+      .insert(connectorAccountsTable)
+      .values([
+        {
+          id: deliveryAccountA,
+          agentId,
+          provider: "discord",
+          accountKey: "delivery-a",
+          status: "connected",
+        },
+        {
+          id: deliveryAccountB,
+          agentId,
+          provider: "discord",
+          accountKey: "delivery-b",
+          status: "connected",
+        },
+      ])
+      .onConflictDoNothing();
+    await db
+      .insert(identityClaimTable)
+      .values([
+        {
+          agentId,
+          principalEntityId: sourceB,
+          namespace: "connector_subject",
+          connectorId: "discord",
+          connectorAccountId: deliveryAccountA,
+          externalSubjectId: "discord-user-a",
+          handle: "shadow-a",
+          verification: "verified",
+          status: "active",
+          confidence: 1,
+          verifiedAt: new Date(),
+        },
+        {
+          agentId,
+          principalEntityId: sourceB,
+          namespace: "connector_subject",
+          connectorId: "discord",
+          connectorAccountId: deliveryAccountB,
+          externalSubjectId: "discord-user-b",
+          handle: "shadow-b",
+          verification: "verified",
+          status: "active",
+          confidence: 1,
+          verifiedAt: new Date(),
+        },
+      ])
+      .onConflictDoNothing();
+
+    const ambiguous = await service.resolveIdentityDeliveryClaim({
+      agentId,
+      principalId: canonicalId,
+      connectorId: "discord",
+    });
+    expect(ambiguous).toMatchObject({
+      decision: "ambiguous",
+      requestedPrincipalId: canonicalId,
+      canonicalPrincipalId: canonicalId,
+      reason: "multiple_verified_claims",
+    });
+    if (ambiguous.decision !== "ambiguous") throw new Error("expected ambiguity");
+    expect(ambiguous.claims.map((claim) => claim.connectorAccountId)).toEqual(
+      [deliveryAccountA, deliveryAccountB].sort()
+    );
+
+    for (const ineligibleAccount of [
+      { status: "disconnected", provider: "discord", deletedAt: null },
+      { status: "connected", provider: "google", deletedAt: null },
+      { status: "connected", provider: "discord", deletedAt: new Date() },
+    ]) {
+      await db
+        .update(connectorAccountsTable)
+        .set(ineligibleAccount)
+        .where(eq(connectorAccountsTable.id, deliveryAccountA));
+      await expect(
+        service.resolveIdentityDeliveryClaim({
+          agentId,
+          principalId: sourceB,
+          connectorId: "discord",
+          connectorAccountId: deliveryAccountA,
+        })
+      ).resolves.toMatchObject({
+        decision: "no_claim",
+        reason: "connector_account_ineligible",
+      });
+    }
+    await db
+      .update(connectorAccountsTable)
+      .set({ status: "connected", provider: "discord", deletedAt: null })
+      .where(eq(connectorAccountsTable.id, deliveryAccountA));
+
+    await expect(
+      service.resolveIdentityDeliveryClaim({
+        agentId,
+        principalId: sourceB,
+        connectorId: "discord",
+        connectorAccountId: deliveryAccountB,
+      })
+    ).resolves.toMatchObject({
+      decision: "resolved",
+      requestedPrincipalId: sourceB,
+      canonicalPrincipalId: canonicalId,
+      claim: {
+        connectorAccountId: deliveryAccountB,
+        externalSubjectId: "discord-user-b",
+      },
+    });
+    await expect(
+      service.resolveIdentityDeliveryClaim({
+        agentId,
+        principalId: sourceB,
+        connectorId: "gmail",
+      })
+    ).resolves.toMatchObject({ decision: "no_claim", reason: "no_connector_claim" });
+    await expect(
+      service.resolveIdentityDeliveryClaim({
+        agentId,
+        principalId: sourceB,
+        connectorId: "discord",
+        connectorAccountId: crypto.randomUUID() as UUID,
+      })
+    ).resolves.toMatchObject({ decision: "no_claim", reason: "no_account_claim" });
   });
 
   it("rejects foreign runtime tenants before reading", async () => {

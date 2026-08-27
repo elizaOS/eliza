@@ -1,7 +1,8 @@
 /**
  * Resolves the Node-backed Vite subprocess used by app development entrypoints.
- * Vite's runner loader resolves source-conditioned TypeScript packages before
- * the dev server exists, while central validation keeps dashboard and
+ * Vite's bundled config loader keeps the renderer and its React plugins on the
+ * same Vite major while still resolving source-conditioned TypeScript imports
+ * before the dev server exists. Central validation keeps dashboard and
  * shared-worktree launch paths in sync.
  */
 
@@ -32,17 +33,20 @@ export function resolveViteCommand({
   if (!existsSync(viteCli)) {
     throw new Error(`Vite CLI not found at ${viteCli}. Run bun install first.`);
   }
-  // Config loading happens before the dev server's resolver exists. The runner
-  // loader still applies Vite's TypeScript resolver here; the native loader
-  // delegates extensionless source imports to Node and fails on clean
-  // source-conditioned workspaces such as @elizaos/core.
+  // Config loading happens before the dev server's resolver exists. Vite 8's
+  // runner loader can resolve the workspace's Vite 7 test alias while
+  // @vitejs/plugin-react resolves Vite 8, mixing Rollup and Rolldown plugin
+  // contexts and failing every dev request with `Missing field moduleType`.
+  // The bundled loader keeps one Vite owner and still handles the config's
+  // source TypeScript graph; the tsx import remains for source-conditioned
+  // runtime modules loaded after config evaluation.
   const args = [
     "--conditions=eliza-source",
     "--import",
     "tsx",
     viteCli,
     "--configLoader",
-    "runner",
+    "bundle",
   ];
   if (force) args.push("--force");
   if (port !== undefined) args.push("--port", String(port));

@@ -126,4 +126,60 @@ describe("resolveTrustedApiPrincipal", () => {
       principalId: "direct-owner-api",
     });
   });
+
+  it("carries the USER boundary role for an authenticated machine session", () => {
+    expect(
+      resolveTrustedApiPrincipal(makeRemoteRequest({}), {
+        ok: true,
+        role: "USER",
+        identityId: "machine-session-identity",
+      }),
+    ).toEqual({
+      kind: "service_gateway",
+      principalId: "machine-session-identity",
+      sessionRole: "USER",
+      sessionIdentityId: "machine-session-identity",
+    });
+  });
+
+  it("clamps an above-USER (non-owner) session boundary role to USER", () => {
+    expect(
+      resolveTrustedApiPrincipal(makeRemoteRequest({}), {
+        ok: true,
+        role: "ADMIN",
+        identityId: "admin-boundary-identity",
+      }),
+    ).toEqual({
+      kind: "service_gateway",
+      principalId: "admin-boundary-identity",
+      sessionRole: "USER",
+      sessionIdentityId: "admin-boundary-identity",
+    });
+  });
+
+  it("does not attach a session role for a principal-only (non-session) authority", () => {
+    const principal = resolveTrustedApiPrincipal(makeRemoteRequest({}), {
+      ok: true,
+      role: "USER",
+      principal: "scoped-token-authority",
+    });
+    expect(principal).toEqual({
+      kind: "service_gateway",
+      principalId: "scoped-token-authority",
+    });
+    expect("sessionRole" in principal).toBe(false);
+  });
+
+  it("does not attach a session role below the USER boundary tier", () => {
+    const principal = resolveTrustedApiPrincipal(makeRemoteRequest({}), {
+      ok: true,
+      role: "GUEST",
+      identityId: "guest-session-identity",
+    });
+    expect(principal).toEqual({
+      kind: "service_gateway",
+      principalId: "guest-session-identity",
+    });
+    expect("sessionRole" in principal).toBe(false);
+  });
 });

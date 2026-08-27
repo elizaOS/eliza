@@ -1290,12 +1290,12 @@ export function appShellMetadataPlugin(
       short_name: APP_SHELL_METADATA.shortName,
       icons: [
         {
-          src: "./android-chrome-192x192.png",
+          src: "/brand/favicons/android-chrome-192x192.png",
           sizes: "192x192",
           type: "image/png",
         },
         {
-          src: "./android-chrome-512x512.png",
+          src: "/brand/favicons/android-chrome-512x512.png",
           sizes: "512x512",
           type: "image/png",
         },
@@ -1362,6 +1362,39 @@ export function appShellMetadataPlugin(
         type: "asset",
         fileName: "site.webmanifest",
         source: manifest,
+      });
+    },
+  };
+}
+
+/**
+ * Serves the live current/proposed view comparison only from Vite dev.
+ * Keeping review assets outside public/ prevents them from becoming
+ * production root endpoints while preserving the local review URL.
+ */
+export function devViewStudioPlugin(): Plugin {
+  const assetRoot = path.join(here, "test", "design-review", "view-studio");
+  const assets: ReadonlyMap<string, readonly [string, string]> = new Map([
+    ["/eliza-view-studio.html", ["eliza-view-studio.html", "text/html"]],
+    ["/eliza-view-studio.css", ["eliza-view-studio.css", "text/css"]],
+    ["/eliza-view-studio.js", ["eliza-view-studio.js", "text/javascript"]],
+    ["/eliza-proposed-theme.css", ["eliza-proposed-theme.css", "text/css"]],
+  ]);
+
+  return {
+    name: "eliza-dev-view-studio",
+    apply: "serve",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const pathname = req.url?.split("?")[0] ?? "";
+        const asset = assets.get(pathname);
+        if (!asset) {
+          next();
+          return;
+        }
+        res.setHeader("Content-Type", `${asset[1]}; charset=utf-8`);
+        res.setHeader("Cache-Control", "no-store");
+        res.end(fs.readFileSync(path.join(assetRoot, asset[0])));
       });
     },
   };
@@ -2453,6 +2486,7 @@ export default defineConfig(({ command }) => ({
     ),
   },
   plugins: [
+    devViewStudioPlugin(),
     androidCloudRendererEntryPlugin(),
     androidCloudCuratedAssetsPlugin(),
     androidCloudRendererPolicyPlugin(),

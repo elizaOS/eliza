@@ -50,8 +50,10 @@ export function ChatMessageActionSurface({
       elevation={bare ? undefined : "liquidGlass"}
       flow="row"
       className={cn(
-        "inline-flex text-white",
-        bare ? "gap-0" : "gap-0.5 p-0.5 transition-colors duration-150",
+        "inline-flex items-center text-white",
+        bare
+          ? "gap-0.5 leading-none"
+          : "gap-0.5 p-0.5 transition-colors duration-150",
         className,
       )}
       style={
@@ -229,7 +231,7 @@ export function ChatMessageActions({
       {trailingAccessory ? (
         <div
           data-testid="thread-line-action-accessory"
-          className="ml-0.5 min-w-0 shrink-0"
+          className="ml-1.5 flex min-w-0 shrink-0 items-center leading-none"
         >
           {trailingAccessory}
         </div>

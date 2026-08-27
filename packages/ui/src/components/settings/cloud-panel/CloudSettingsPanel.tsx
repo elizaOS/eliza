@@ -6,11 +6,11 @@
  * sidebar + content layout on Eliza design tokens. Responsive: below 700px
  * collapses to a hub list with a back button.
  */
-import { ArrowLeft } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
 import { useMediaQuery } from "../../../hooks/useMediaQuery";
 import { cn } from "../../../lib/utils";
 import { useAppSelector } from "../../../state";
+import { ViewHeader } from "../../shared/ViewHeader";
 import { Button } from "../../ui/button";
 import { ErrorBoundary } from "../../ui/error-boundary";
 import { Skeleton } from "../../ui/skeleton";
@@ -94,11 +94,17 @@ function SectionError({
   );
 }
 
-function SectionContent({ section }: { section: CloudPanelSection }) {
+function SectionContent({
+  section,
+  includeHeading = true,
+}: {
+  section: CloudPanelSection;
+  includeHeading?: boolean;
+}) {
   const Component = section.Component;
   return (
     <>
-      <h1 className="sr-only">{section.label}</h1>
+      {includeHeading ? <h1 className="sr-only">{section.label}</h1> : null}
       <ErrorBoundary
         key={section.id}
         fallback={(error: Error, reset: () => void) => (
@@ -128,10 +134,10 @@ function HubList({
 }) {
   const grouped = groupedCloudPanelSections();
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex-1 overflow-y-auto p-4">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex-1 overflow-y-auto px-4 pb-3 pt-2">
         {Object.entries(grouped).map(([groupId, sections]) => (
-          <div key={groupId} className="mb-5 last:mb-0">
+          <div key={groupId} className="mb-4 last:mb-0">
             <h2 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               {groupId.charAt(0).toUpperCase() + groupId.slice(1)}
             </h2>
@@ -268,30 +274,32 @@ export function CloudSettingsPanel() {
   if (!isWide) {
     const showHub = narrowView === "hub";
     return (
-      <div className="flex h-full flex-col bg-bg pt-8">
-        <CloudSettingsDragStrip />
+      <div className="flex h-full flex-col bg-bg pb-[var(--eliza-chat-clearance,5.25rem)] pe-[var(--eliza-chat-side-clearance,0px)]">
         {showHub ? (
-          <HubList
-            accountState={accountNavigationState}
-            activeSection={activeSectionId}
-            onSignOutAttemptFinish={() => setAccountSignOutAttempt("finished")}
-            onSignOutAttemptStart={() => setAccountSignOutAttempt("pending")}
-            onSelect={handleSelect}
-          />
+          <div className="flex min-h-0 flex-1 flex-col">
+            <ViewHeader title="Settings" className="min-h-12 px-0 py-1" />
+            <HubList
+              accountState={accountNavigationState}
+              activeSection={activeSectionId}
+              onSignOutAttemptFinish={() =>
+                setAccountSignOutAttempt("finished")
+              }
+              onSignOutAttemptStart={() => setAccountSignOutAttempt("pending")}
+              onSelect={handleSelect}
+            />
+          </div>
         ) : (
           <div className="flex flex-1 flex-col overflow-hidden">
-            <Button
-              type="button"
-              variant="ghost"
-              size="touch"
-              align="start"
-              onClick={() => setNarrowView("hub")}
-            >
-              <ArrowLeft className="size-4" />
-              Settings
-            </Button>
-            <div className="flex-1 overflow-y-auto px-4 py-6">
-              {section && <SectionContent section={section} />}
+            <ViewHeader
+              title={section?.label ?? "Settings"}
+              onBack={() => setNarrowView("hub")}
+              backLabel="Back to Settings"
+              className="min-h-12 px-0 py-1"
+            />
+            <div className="flex-1 overflow-y-auto px-4 pb-4 pt-3">
+              {section && (
+                <SectionContent section={section} includeHeading={false} />
+              )}
             </div>
           </div>
         )}

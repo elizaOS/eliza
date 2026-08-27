@@ -54,18 +54,6 @@
       "responsibility": "Label, description, control, and navigation alignment for settings."
     },
     {
-      "id": "selectable-tile",
-      "owner": "packages/ui/src/components/composites/settings/selectable-tile.tsx",
-      "symbol": "SelectableTile",
-      "requiredAtomicDependencies": ["button"],
-      "requiredRenderedTags": ["Button"],
-      "requiredConsumerFiles": [
-        "packages/ui/src/components/settings/AppearanceSettingsSection.tsx"
-      ],
-      "minimumMaintainedReferences": 1,
-      "responsibility": "Pressed-state selection tile with a leading visual and check indicator."
-    },
-    {
       "id": "action-list-row",
       "owner": "packages/ui/src/components/shared/ActionListRow.tsx",
       "symbol": "ActionListRow",

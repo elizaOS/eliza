@@ -2410,6 +2410,7 @@ describe("runPollingBackend progress-aware native budget + dead-cloud recovery (
       { current: 1 },
       { current: false },
       { current: null },
+      "cloud-managed",
     );
 
     // Recovered to the bundled on-device agent and completed startup.
@@ -2654,12 +2655,17 @@ describe("runPollingBackend progress-aware native budget + dead-cloud recovery (
     const run = runPollingBackend(
       deps,
       dispatch,
-      { ...nativePolicy, nativeConsecutiveFailureBudgetMs: 150 },
+      {
+        ...nativePolicy,
+        nativeConsecutiveFailureBudgetMs: 90_000,
+        remoteNativeConsecutiveFailureBudgetMs: 150,
+      },
       nativeCtx(remoteServer),
       1,
       { current: 1 },
       { current: false },
       { current: null },
+      "remote-backend",
     );
     let settled = false;
     const settledRun = run.finally(() => {
@@ -2685,7 +2691,182 @@ describe("runPollingBackend progress-aware native budget + dead-cloud recovery (
       "eliza:mobile-runtime-mode",
       "local",
     ]);
+    expect(deps.setStartupError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "backend-unreachable",
+        message: expect.stringContaining(
+          "sign-in and chat history are preserved",
+        ),
+      }),
+    );
   });
+
+  it.each(["remote-backend", "cloud-managed"] as const)(
+    "surfaces an unreachable native %s target within its short remote budget without clearing the saved session",
+    async (target) => {
+      vi.useFakeTimers();
+      const deps = createDeps();
+      const dispatch = vi.fn();
+      installNativeWindow({ persistedRuntimeMode: null });
+      clientMock.getBaseUrl.mockReturnValue(
+        target === "cloud-managed"
+          ? deadCloudServer.apiBase
+          : "https://vps.example.test",
+      );
+      clientMock.getAuthStatus.mockReset();
+      clientMock.getAuthStatus.mockRejectedValue(
+        Object.assign(new TypeError("Failed to fetch"), {
+          kind: "network",
+          path: "/api/auth/status",
+        }),
+      );
+
+      const run = runPollingBackend(
+        deps,
+        dispatch,
+        {
+          ...nativePolicy,
+          backendTimeoutMs: 30_000,
+          nativeConsecutiveFailureBudgetMs: 90_000,
+        },
+        nativeCtx(
+          target === "cloud-managed"
+            ? deadCloudServer
+            : {
+                id: "remote:vps",
+                kind: "remote",
+                label: "VPS agent",
+                apiBase: "https://vps.example.test",
+              },
+        ),
+        1,
+        { current: 1 },
+        { current: false },
+        { current: null },
+        target,
+      );
+      let settled = false;
+      const settledRun = run.finally(() => {
+        settled = true;
+      });
+      await vi.advanceTimersByTimeAsync(6_999);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1_001);
+      expect(settled).toBe(true);
+      await settledRun;
+
+      expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+      expect(deps.setStartupError).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: "backend-unreachable" }),
+      );
+      expect(vi.mocked(clearPersistedActiveServer)).not.toHaveBeenCalled();
+      expect(clientMock.setBaseUrl).not.toHaveBeenCalled();
+      expect(clientMock.setToken).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps the full local probe cap when a Cloud target has recovered to mobile IPC", async () => {
+    vi.useFakeTimers();
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    const effectRunRef = { current: 1 };
+    const cancelledRef = { current: false };
+    installNativeWindow({ persistedRuntimeMode: null });
+    clientMock.getBaseUrl.mockReturnValue(ANDROID_LOCAL_AGENT_IPC_BASE);
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockImplementation(
+      () => new Promise<never>(() => {}),
+    );
+
+    const run = runPollingBackend(
+      deps,
+      dispatch,
+      {
+        ...nativePolicy,
+        backendTimeoutMs: 30_000,
+        nativeConsecutiveFailureBudgetMs: 90_000,
+      },
+      nativeCtx(deadCloudServer),
+      1,
+      effectRunRef,
+      cancelledRef,
+      { current: null },
+      "cloud-managed",
+    );
+    let settled = false;
+    const settledRun = run.finally(() => {
+      settled = true;
+    });
+
+    await vi.advanceTimersByTimeAsync(9_000);
+    expect(settled).toBe(false);
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+
+    cancelledRef.current = true;
+    await vi.runAllTimersAsync();
+    await settledRun;
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+  });
+
+  it.each(["remote-backend", "cloud-managed"] as const)(
+    "caps a hung first native %s probe by the short remote budget",
+    async (target) => {
+      vi.useFakeTimers();
+      const deps = createDeps();
+      const dispatch = vi.fn();
+      installNativeWindow({ persistedRuntimeMode: null });
+      clientMock.getBaseUrl.mockReturnValue(
+        target === "cloud-managed"
+          ? deadCloudServer.apiBase
+          : "https://vps.example.test",
+      );
+      clientMock.getAuthStatus.mockReset();
+      clientMock.getAuthStatus.mockImplementation(
+        () => new Promise<never>(() => {}),
+      );
+
+      const run = runPollingBackend(
+        deps,
+        dispatch,
+        {
+          ...nativePolicy,
+          backendTimeoutMs: 30_000,
+          nativeConsecutiveFailureBudgetMs: 90_000,
+        },
+        nativeCtx(
+          target === "cloud-managed"
+            ? deadCloudServer
+            : {
+                id: "remote:vps",
+                kind: "remote",
+                label: "VPS agent",
+                apiBase: "https://vps.example.test",
+              },
+        ),
+        1,
+        { current: 1 },
+        { current: false },
+        { current: null },
+        target,
+      );
+      let settled = false;
+      const settledRun = run.finally(() => {
+        settled = true;
+      });
+
+      await vi.advanceTimersByTimeAsync(6_999);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(settled).toBe(true);
+      await settledRun;
+
+      expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+      expect(deps.setStartupError).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: "backend-unreachable" }),
+      );
+      expect(vi.mocked(clearPersistedActiveServer)).not.toHaveBeenCalled();
+    },
+  );
 
   it("fails a hung probe fast and retries+connects instead of one hang eating the whole budget (#13737)", async () => {
     // The on-device Android boot: the first probe issued while the detached

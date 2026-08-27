@@ -20,6 +20,7 @@
 @import "./shadcn-utilities.css";
 @import "./base.css";
 @import "./tailwind-theme.css";
+@import "./settings-surface.css";
 @import "./electrobun-mac-window-drag.css";
 /* React Flow base styles — required for @xyflow/react canvas to render correctly */
 @import "@xyflow/react/dist/style.css";

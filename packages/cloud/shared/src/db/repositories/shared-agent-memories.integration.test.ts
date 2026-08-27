@@ -306,6 +306,144 @@ describe("SharedAgentMemoriesReader.listRecentByType (real PGlite)", () => {
   });
 });
 
+describe("SharedAgentMemoriesReader product listing (real PGlite)", () => {
+  test("paginates and filters without crossing the tenant scope", async () => {
+    const base = Date.now() - 60_000;
+    const rows = [
+      {
+        id: "10000000-0000-4000-8000-000000000001",
+        entityId: USER_A,
+        roomId: ROOM_A,
+        type: "messages",
+        text: "orange clouds alpha",
+      },
+      {
+        id: "10000000-0000-4000-8000-000000000002",
+        entityId: USER_A,
+        roomId: ROOM_A,
+        type: "messages",
+        text: "orange clouds beta",
+      },
+      {
+        id: "10000000-0000-4000-8000-000000000003",
+        entityId: AGENT_A,
+        roomId: ROOM_A,
+        type: "messages",
+        text: "assistant response",
+      },
+      {
+        id: "10000000-0000-4000-8000-000000000004",
+        entityId: USER_A,
+        roomId: ROOM_B,
+        type: "facts",
+        text: "orange clouds fact",
+      },
+    ] as const;
+    for (const [index, row] of rows.entries()) {
+      await sharedAgentMemoriesWriter.insertMemory({
+        id: row.id,
+        scope: scopeA,
+        entityId: row.entityId,
+        roomId: row.roomId,
+        type: row.type,
+        content: { text: row.text },
+        createdAt: new Date(base + index * 1000),
+      });
+    }
+    await sharedAgentMemoriesWriter.insertMemory({
+      scope: scopeB,
+      entityId: USER_A,
+      roomId: ROOM_A,
+      type: "messages",
+      content: { text: "orange clouds tenant B" },
+      createdAt: new Date(base + 10_000),
+    });
+
+    const firstPage = await sharedAgentMemoriesReader.listPage(scopeA, {
+      limit: 2,
+    });
+    expect(firstPage.hasMore).toBe(true);
+    expect(firstPage.rows.map((row) => row.content.text)).toEqual([
+      "orange clouds fact",
+      "assistant response",
+    ]);
+
+    const filtered = await sharedAgentMemoriesReader.listPage(scopeA, {
+      limit: 10,
+      type: "messages",
+      entityIds: [USER_A],
+      roomId: ROOM_A,
+      textQuery: "CLOUDS",
+    });
+    expect(filtered.hasMore).toBe(false);
+    expect(filtered.rows.map((row) => row.content.text)).toEqual([
+      "orange clouds beta",
+      "orange clouds alpha",
+    ]);
+    expect(
+      filtered.rows.every(
+        (row) =>
+          row.organization_id === ORG_A && row.user_id === USER_A && row.agent_id === AGENT_A,
+      ),
+    ).toBe(true);
+
+    const offsetPage = await sharedAgentMemoriesReader.listPage(scopeA, {
+      limit: 2,
+      offset: 2,
+    });
+    expect(offsetPage.rows.map((row) => row.content.text)).toEqual([
+      "orange clouds beta",
+      "orange clouds alpha",
+    ]);
+
+    const canonicalSearch = await sharedAgentMemoriesReader.listPage(scopeA, {
+      limit: 10,
+      type: "messages",
+      textQuery: "missing beta",
+    });
+    expect(canonicalSearch.rows.map((row) => row.content.text)).toEqual(["orange clouds beta"]);
+
+    expect(
+      await sharedAgentMemoriesReader.countMatching(scopeA, {
+        type: "messages",
+        entityIds: [USER_A],
+        roomId: ROOM_A,
+        textQuery: "missing clouds",
+      }),
+    ).toBe(2);
+    expect(
+      await sharedAgentMemoriesReader.countMatching(scopeB, {
+        type: "messages",
+        entityIds: [USER_A],
+        roomId: ROOM_A,
+        textQuery: "missing clouds",
+      }),
+    ).toBe(1);
+  });
+
+  test("returns exact tenant-pinned type counts", async () => {
+    for (const type of ["messages", "messages", "facts"] as const) {
+      await sharedAgentMemoriesWriter.insertMemory({
+        scope: scopeA,
+        roomId: ROOM_A,
+        type,
+        content: { text: `${type} A` },
+      });
+    }
+    await sharedAgentMemoriesWriter.insertMemory({
+      scope: scopeB,
+      roomId: ROOM_A,
+      type: "messages",
+      content: { text: "tenant B" },
+    });
+
+    expect(await sharedAgentMemoriesReader.countByType(scopeA)).toEqual([
+      { type: "facts", count: 1 },
+      { type: "messages", count: 2 },
+    ]);
+  });
+});
+
 describe("SharedAgentMemoriesReader.searchByEmbedding (real PGlite + pgvector)", () => {
   test("ranks only the trusted room and excludes other-room and legacy rows", async () => {
     await sharedAgentMemoriesWriter.insertMemory({

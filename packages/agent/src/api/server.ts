@@ -837,10 +837,11 @@ async function handleBuiltinOptionalRoutes(
   res: http.ServerResponse,
   pathname: string,
   method: string,
+  runtimeAgentId?: string | null,
 ): Promise<boolean> {
   if (method === "GET" && pathname === "/api/wallet/steward-status") {
     const { getWalletAddresses } = await getCoreWalletApi();
-    const addresses = getWalletAddresses();
+    const addresses = getWalletAddresses(runtimeAgentId);
     json(res, {
       configured: false,
       available: false,
@@ -1347,6 +1348,7 @@ import {
   clearPairing as _clearPairing,
   ensureApiTokenForBindHost as _ensureApiTokenForBindHost,
   ensurePairingCode as _ensurePairingCode,
+  extractWebSocketHandshakeToken as _extractWebSocketHandshakeToken,
   getConfiguredApiToken as _getConfiguredApiToken,
   getPairingExpiresAt as _getPairingExpiresAt,
   isAllowedHost as _isAllowedHost,
@@ -1357,6 +1359,9 @@ import {
   isSharedTerminalClientId as _isSharedTerminalClientId,
   isTrustedLocalRequest as _isTrustedLocalRequest,
   isWebSocketAuthorized as _isWebSocketAuthorized,
+  isWebSocketSessionTokenAuthorized as _isWebSocketSessionTokenAuthorized,
+  isWebSocketUpgradeSessionAuthorized as _isWebSocketUpgradeSessionAuthorized,
+  markWebSocketUpgradeSessionAuthorized as _markWebSocketUpgradeSessionAuthorized,
   normalizePairingCode as _normalizePairingCode,
   normalizeWsClientId as _normalizeWsClientId,
   pairingEnabled as _pairingEnabled,
@@ -1411,6 +1416,12 @@ const resolveTerminalRunRejection = _resolveTerminalRunRejection;
 const resolveWebSocketUpgradeRejection = _resolveWebSocketUpgradeRejection;
 const rejectWebSocketUpgrade = _rejectWebSocketUpgrade;
 const isWebSocketAuthorized = _isWebSocketAuthorized;
+const extractWebSocketHandshakeToken = _extractWebSocketHandshakeToken;
+const isWebSocketSessionTokenAuthorized = _isWebSocketSessionTokenAuthorized;
+const isWebSocketUpgradeSessionAuthorized =
+  _isWebSocketUpgradeSessionAuthorized;
+const markWebSocketUpgradeSessionAuthorized =
+  _markWebSocketUpgradeSessionAuthorized;
 const tryAcquirePendingWebSocket = _tryAcquirePendingWebSocket;
 const releasePendingWebSocket = _releasePendingWebSocket;
 const getConfiguredApiToken = _getConfiguredApiToken;
@@ -2259,6 +2270,11 @@ async function handleRequest(
     return;
   }
 
+  const firstRunGetWalletAddresses =
+    pathname === "/api/wallet/keys"
+      ? (await getCoreWalletApi()).getWalletAddresses
+      : null;
+
   if (
     await handleFirstRunRoutes({
       req,
@@ -2273,13 +2289,12 @@ async function handleRequest(
       isCloudProvisionedContainer,
       hasPersistedFirstRunState,
       ensureWalletKeysInEnvAndConfig,
-      getWalletAddresses:
-        pathname === "/api/wallet/keys"
-          ? (await getCoreWalletApi()).getWalletAddresses
-          : () => ({
-              evmAddress: null,
-              solanaAddress: null,
-            }),
+      getWalletAddresses: firstRunGetWalletAddresses
+        ? () => firstRunGetWalletAddresses(state.runtime?.agentId)
+        : () => ({
+            evmAddress: null,
+            solanaAddress: null,
+          }),
       pickRandomNames,
       getStylePresets,
       getProviderOptions,
@@ -2785,7 +2800,7 @@ async function handleRequest(
       fetchSolanaBalances,
       fetchSolanaNativeBalanceViaRpc,
       generateWalletForChain,
-      getWalletAddresses,
+      getWalletAddresses: getCoreWalletAddresses,
       importWallet,
       setSolanaWalletEnv,
       validatePrivateKey,
@@ -2809,7 +2824,8 @@ async function handleRequest(
           fetchEvmBalances,
           fetchSolanaBalances,
           fetchSolanaNativeBalanceViaRpc,
-          getWalletAddresses,
+          getWalletAddresses: () =>
+            getCoreWalletAddresses(state.runtime?.agentId),
           validatePrivateKey,
           importWallet,
           generateWalletForChain,
@@ -2823,6 +2839,8 @@ async function handleRequest(
             ...resolveWalletCapabilityStatus({
               config: args.config,
               runtime: args.runtime,
+              getWalletAddresses: () =>
+                getCoreWalletAddresses(args.runtime?.agentId),
             }),
           }),
           isCloudWalletEnabled,
@@ -2848,6 +2866,10 @@ async function handleRequest(
       pathname.startsWith("/api/registry")) &&
     (await (async () => {
       const { RegistryService } = await import("./registry-service.ts");
+      const getCoreWalletAddresses =
+        pathname === "/api/agent/self-status"
+          ? (await getCoreWalletApi()).getWalletAddresses
+          : null;
       return handleAgentStatusRoutes({
         req,
         res,
@@ -2859,10 +2881,9 @@ async function handleRequest(
         error,
         readJsonBody,
         deps: {
-          getWalletAddresses:
-            pathname === "/api/agent/self-status"
-              ? (await getCoreWalletApi()).getWalletAddresses
-              : () => ({ evmAddress: null, solanaAddress: null }),
+          getWalletAddresses: getCoreWalletAddresses
+            ? () => getCoreWalletAddresses(state.runtime?.agentId)
+            : () => ({ evmAddress: null, solanaAddress: null }),
           resolveWalletCapabilityStatus,
           resolveWalletRpcReadiness,
           resolveTradePermissionMode,
@@ -3540,7 +3561,15 @@ async function handleRequest(
     return;
   }
 
-  if (await handleBuiltinOptionalRoutes(req, res, pathname, method)) {
+  if (
+    await handleBuiltinOptionalRoutes(
+      req,
+      res,
+      pathname,
+      method,
+      state.runtime?.agentId,
+    )
+  ) {
     return;
   }
 
@@ -4285,6 +4314,9 @@ export async function startApiServer(opts?: {
   const hostAuthorizedWebSocketRequests = new WeakSet<http.IncomingMessage>();
 
   // Handle upgrade requests for WebSocket
+  // Async: the handshake-bearer session lookup below awaits the host's
+  // session store. Every throw lands inside the try/catch, so the listener's
+  // returned promise never rejects unobserved.
   server.on("upgrade", async (request, socket, head) => {
     // The raw upgrade socket can emit 'error' (client RST mid-handshake) before
     // a WebSocket — and its error handler — exists. Unhandled, it crashes the
@@ -4312,9 +4344,54 @@ export async function startApiServer(opts?: {
       ) {
         return;
       }
-      const rejection = resolveWebSocketUpgradeRejection(request, wsUrl);
+      let rejection = resolveWebSocketUpgradeRejection(request, wsUrl);
+      if (rejection?.status === 401) {
+        // Device pairing mints a revocable machine-session id as the client's
+        // bearer — never the static connection key (#13985) — so the static
+        // check above cannot recognize a paired device. Before letting the
+        // 401 stand, resolve the presented handshake bearer through the same
+        // host-bridge session seam REST uses. Fail-closed: an absent token or
+        // an unknown/expired/revoked session keeps the rejection.
+        const handshakeToken = extractWebSocketHandshakeToken(request, wsUrl);
+        if (handshakeToken) {
+          // The session lookup is asynchronous store work, so it must sit
+          // behind the same per-peer pre-auth admission cap as post-open
+          // authentication — otherwise repeated invalid bearers from one
+          // remote could fan out unbounded concurrent store lookups. The
+          // slot is held only for the lookup itself; the pre-auth socket
+          // flow below re-acquires its own longer-lived slot.
+          const lookupPeer = request.socket.remoteAddress ?? null;
+          if (!tryAcquirePendingWebSocket(lookupPeer)) {
+            rejectWebSocketUpgrade(
+              socket,
+              401,
+              "Too many unauthenticated WebSocket connections",
+            );
+            return;
+          }
+          try {
+            if (
+              await isWebSocketSessionTokenAuthorized(
+                handshakeToken,
+                state.runtime,
+              )
+            ) {
+              markWebSocketUpgradeSessionAuthorized(request);
+              rejection = null;
+            }
+          } finally {
+            releasePendingWebSocket(lookupPeer);
+          }
+        }
+      }
       if (rejection) {
         rejectWebSocketUpgrade(socket, rejection.status, rejection.reason);
+        return;
+      }
+      // The session lookup above yields to the event loop; the client may
+      // have gone away in the meantime. Bail before reserving a pre-auth
+      // slot that no connection handler would ever release.
+      if (socket.destroyed) {
         return;
       }
       // W5-015: an upgrade without handshake credentials is allowed so the
@@ -4324,8 +4401,13 @@ export async function startApiServer(opts?: {
       // the connection handler), or in the catch below if the upgrade fails.
       let pendingWsPeer: string | null | undefined;
       const staticallyAuthorized = isWebSocketAuthorized(request, wsUrl);
+      const sessionAuthorized = isWebSocketUpgradeSessionAuthorized(request);
       let hostAuthorized = false;
-      if (!staticallyAuthorized && opts?.authorizeWebSocket) {
+      if (
+        !staticallyAuthorized &&
+        !sessionAuthorized &&
+        opts?.authorizeWebSocket
+      ) {
         try {
           hostAuthorized = await opts.authorizeWebSocket(request, wsUrl);
         } catch (error) {
@@ -4342,7 +4424,7 @@ export async function startApiServer(opts?: {
       if (hostAuthorized) {
         hostAuthorizedWebSocketRequests.add(request);
       }
-      if (!staticallyAuthorized && !hostAuthorized) {
+      if (!staticallyAuthorized && !sessionAuthorized && !hostAuthorized) {
         const peer = request.socket.remoteAddress ?? null;
         if (!tryAcquirePendingWebSocket(peer)) {
           rejectWebSocketUpgrade(
@@ -4406,7 +4488,12 @@ export async function startApiServer(opts?: {
 
     const hostAuthorized = hostAuthorizedWebSocketRequests.delete(request);
     let isAuthenticated =
-      hostAuthorized || isWebSocketAuthorized(request, wsUrl);
+      hostAuthorized ||
+      isWebSocketAuthorized(request, wsUrl) ||
+      isWebSocketUpgradeSessionAuthorized(request);
+    // Serializes in-band machine-session lookups for this socket (see the
+    // auth branch of the message handler).
+    let inBandSessionLookupInFlight = false;
 
     // W5-015: the upgrade handler reserved a pre-auth slot for this socket's
     // peer. It releases on post-open authentication or on close — whichever
@@ -4561,12 +4648,42 @@ export async function startApiServer(opts?: {
         const msg = JSON.parse(String(data));
         if (!isAuthenticated) {
           const expected = getConfiguredApiToken();
-          if (
-            expected &&
-            msg.type === "auth" &&
-            typeof msg.token === "string" &&
-            tokenMatches(expected, msg.token.trim())
-          ) {
+          const providedToken =
+            msg.type === "auth" && typeof msg.token === "string"
+              ? msg.token.trim()
+              : "";
+          let authorized = Boolean(
+            expected && providedToken && tokenMatches(expected, providedToken),
+          );
+          if (!authorized && providedToken) {
+            // A paired remote client's bearer is a revocable machine-session
+            // id, never the static connection key (#13985). Resolve it through
+            // the same host-bridge session seam REST uses; unknown, expired,
+            // and revoked sessions fall through to the fail-closed 1008.
+            // At most one store lookup may be in flight per socket: the
+            // lookup is asynchronous, so an attacker spamming auth frames on
+            // one pre-auth socket must not fan out concurrent store work.
+            // Extra frames are dropped; the in-flight lookup's verdict
+            // decides this socket either way.
+            if (inBandSessionLookupInFlight) {
+              return;
+            }
+            inBandSessionLookupInFlight = true;
+            try {
+              authorized = await isWebSocketSessionTokenAuthorized(
+                providedToken,
+                state.runtime,
+              );
+            } finally {
+              inBandSessionLookupInFlight = false;
+            }
+            if (isAuthenticated) {
+              // Another frame authenticated this socket while the session
+              // lookup was in flight; this pre-auth frame is spent either way.
+              return;
+            }
+          }
+          if (authorized) {
             isAuthenticated = true;
             clearAuthGraceTimer();
             releasePendingSlot();

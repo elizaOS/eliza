@@ -12,7 +12,12 @@ import {
   DEFAULT_BRANDING,
 } from "../../../config/branding-base";
 import { createTranslator } from "../../../i18n";
+import { seedAppValue } from "../../../state/app-store";
 import { preOpenCloudLoginWindow } from "../../../state/cloud-login-launch";
+import {
+  ACCENT_PRESETS,
+  DEFAULT_BACKGROUND_CONFIG,
+} from "../../../state/ui-preferences";
 
 declare const module: { exports: unknown };
 
@@ -21,6 +26,17 @@ const t = createTranslator("en", appNameInterpolationVars(DEFAULT_BRANDING));
 const fixtureState: Record<string, unknown> = {
   t,
   uiLanguage: "en",
+  setUiLanguage: () => {},
+  uiAccentId: "default",
+  setUiAccent: () => {},
+  homeTimeWidgetHidden: false,
+  setHomeTimeWidgetHidden: () => {},
+  backgroundConfig: DEFAULT_BACKGROUND_CONFIG,
+  setBackgroundConfig: () => {},
+  undoBackgroundConfig: () => {},
+  redoBackgroundConfig: () => {},
+  canUndoBackground: false,
+  canRedoBackground: false,
   loadPlugins: async () => {},
   walletEnabled: false,
   // SettingsView gates `cloudOnly` sections on the resolved runtime target.
@@ -54,12 +70,52 @@ const useApp = () => fixtureState;
 const useAppSelector = <T,>(sel: (s: Record<string, unknown>) => T): T =>
   sel(fixtureState);
 const useAppSelectorShallow = useAppSelector;
+const useIsDeveloperMode = () => false;
+const useIsPreviewMode = () => false;
+const setDeveloperMode = () => {};
+const setPreviewMode = () => {};
+
+// Appearance owns a real content-pack hook in production. The browser fixture
+// intentionally has no files/URLs to load, but it must still expose the full
+// hook contract so the real Appearance section renders all portable controls
+// instead of falling into its section error boundary.
+const contentPackState = {
+  activePack: null,
+  loadedPacks: [],
+  error: null,
+  setError: () => {},
+  canPickDirectory: false,
+  activate: () => {},
+  deactivate: () => {},
+  toggle: () => {},
+  loadFromUrl: async () => {},
+  loadFromFiles: async () => {},
+  isSafeContentPackUrl: (value: string) => /^https?:\/\//i.test(value),
+};
+const useContentPack = () => contentPackState;
+
+// A few section bodies intentionally import the selector store directly rather
+// than through the public state barrel. Seed that same production store with
+// the fixture value so those sections exercise their real hooks without
+// requiring the entire AppProvider shell.
+seedAppValue(fixtureState as never);
 
 // Runtime-resolving export surface: real hooks above, permissive no-op for any
 // other named symbol a section imports from the barrel.
 const noop = new Proxy(() => noop, { get: () => noop });
 module.exports = new Proxy(
-  { useApp, useAppSelector, useAppSelectorShallow, __esModule: true },
+  {
+    ACCENT_PRESETS,
+    useApp,
+    useAppSelector,
+    useAppSelectorShallow,
+    useContentPack,
+    useIsDeveloperMode,
+    useIsPreviewMode,
+    setDeveloperMode,
+    setPreviewMode,
+    __esModule: true,
+  },
   {
     get: (target, prop) =>
       prop in target ? (target as Record<PropertyKey, unknown>)[prop] : noop,

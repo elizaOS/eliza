@@ -150,6 +150,7 @@ beforeEach(() => {
   surfaceHarness.retry.mockClear();
   openExternalHarness.openExternalUrl.mockClear();
   vi.mocked(client.getBrowserWorkspace).mockClear();
+  vi.mocked(client.closeBrowserWorkspaceTab).mockClear();
 });
 
 afterEach(() => {
@@ -157,6 +158,19 @@ afterEach(() => {
 });
 
 describe("BrowserWorkspaceView native surface error states", () => {
+  it("closes all native tabs locally without calling the absent workspace API", async () => {
+    render(<BrowserWorkspaceView />);
+    expect(await screen.findByText("Example")).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close all tabs" }));
+
+    expect(await screen.findByText("No page open")).not.toBeNull();
+    expect(client.closeBrowserWorkspaceTab).not.toHaveBeenCalled();
+    // The only server read is the initial compatibility snapshot. Close-all
+    // itself follows the same client-state lifecycle as one native tab close.
+    expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(1);
+  });
+
   it("permanent capability denial: honest copy + Open external, NO Retry", async () => {
     surfaceHarness.error = {
       key: "browser-tab:tab-1:lifecycle",
@@ -169,7 +183,7 @@ describe("BrowserWorkspaceView native surface error states", () => {
       await screen.findByText("Secure browsing not supported here"),
     ).not.toBeNull();
     expect(
-      screen.getByText(/system WebView cannot provide the isolation/),
+      screen.getByText(/can’t keep in-app browsing isolated/),
     ).not.toBeNull();
     // Fail-closed with an escape hatch: no Retry that can never succeed.
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();

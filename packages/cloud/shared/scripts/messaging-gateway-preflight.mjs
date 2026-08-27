@@ -7,6 +7,8 @@
  * or deterministic contract sentinels.
  */
 
+import { missingWhatsAppCredentialRefs } from "./messaging-gateway-preflight-contract.mjs";
+
 const args = new Set(process.argv.slice(2));
 const strict = args.has("--strict");
 const channelsArg = process.argv.find((arg) => arg.startsWith("--channels="));
@@ -78,18 +80,13 @@ function checkDiscord() {
 }
 
 function checkWhatsApp() {
-  const missingWhatsapp = missing([
-    ["WHATSAPP_ACCESS_TOKEN", "ELIZA_APP_WHATSAPP_ACCESS_TOKEN"],
-    ["WHATSAPP_PHONE_NUMBER_ID", "ELIZA_APP_WHATSAPP_PHONE_NUMBER_ID"],
-    ["WHATSAPP_APP_SECRET", "ELIZA_APP_WHATSAPP_APP_SECRET"],
-    ["WHATSAPP_VERIFY_TOKEN", "ELIZA_APP_WHATSAPP_VERIFY_TOKEN"],
-  ]);
+  const missingWhatsapp = missingWhatsAppCredentialRefs(process.env);
   addCheck(
     "whatsapp",
     "Meta credentials",
     missingWhatsapp.length === 0,
     "WhatsApp Business Platform credentials are configured",
-    `Missing: ${missingWhatsapp.join(", ")}`,
+    `Missing from nearest complete set: ${missingWhatsapp.join(", ")}`,
   );
 }
 

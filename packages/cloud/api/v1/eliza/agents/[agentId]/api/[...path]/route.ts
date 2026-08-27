@@ -52,7 +52,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 import { workflowRuntimeUnavailableResponse } from "../../workflows/_shared";
 import { proxyLocalDedicatedOrNext } from "../_local-dedicated-proxy";
 
-const CORS_METHODS = "GET, POST, PUT, DELETE, OPTIONS";
+const CORS_METHODS = "GET, POST, PUT, PATCH, DELETE, OPTIONS";
 const MAX_PUSH_REGISTRATION_BODY_BYTES = 8_192;
 
 const app = new Hono<AppEnv>();
@@ -82,6 +82,39 @@ function shellPath(c: Context<AppEnv>): string {
 
 function isWorkflowApiPath(path: string): boolean {
   return path === "workflow" || path.startsWith("workflow/");
+}
+
+function isBrowserWorkspaceApiPath(path: string): boolean {
+  return path === "browser-workspace" || path.startsWith("browser-workspace/");
+}
+
+function isCalendarApiPath(path: string): boolean {
+  return path === "lifeops/calendar" || path.startsWith("lifeops/calendar/");
+}
+
+function isNotesApiPath(path: string): boolean {
+  return path === "notes/state" || path === "views/notes/interact";
+}
+
+function isDocumentsApiPath(path: string): boolean {
+  return path === "documents" || path.startsWith("documents/");
+}
+
+function isTrajectoriesApiPath(path: string): boolean {
+  return path === "trajectories" || path.startsWith("trajectories/");
+}
+
+function isMemoriesApiPath(path: string): boolean {
+  return (
+    path === "memories/feed" ||
+    path === "memories/browse" ||
+    path === "memories/stats" ||
+    path.startsWith("memories/by-entity/")
+  );
+}
+
+function isRelationshipsPeopleApiPath(path: string): boolean {
+  return path === "relationships/people";
 }
 
 /** `views/<viewId>/navigate` → `<viewId>`; null for any other shape. */
@@ -163,6 +196,152 @@ function lifeopsUnavailable(c: Context<AppEnv>): Response {
       capability: "lifeops-activity-signals",
       requiredExecutionTier: "dedicated-always",
       upgradeRequired: true,
+    },
+    503,
+  );
+}
+
+/**
+ * Calendar feed and mutation routes are owned by the Calendar plugin running
+ * on a Dedicated agent. Shared agents must advertise that capability boundary
+ * explicitly so clients can distinguish unavailable execution from an empty
+ * calendar and avoid retrying a configuration condition as transport failure.
+ */
+function calendarUnavailable(c: Context<AppEnv>): Response {
+  return json(
+    c,
+    {
+      success: false,
+      code: "calendar_runtime_unavailable",
+      error:
+        "Calendar requires a dedicated agent runtime; this shared agent does not run calendar connectors.",
+      capability: "calendar",
+      requiredExecutionTier: "dedicated-always",
+      upgradeRequired: true,
+      retryable: false,
+    },
+    503,
+  );
+}
+
+/**
+ * Persistent Notes are owned by the Notes plugin on Dedicated agents. Shared
+ * agents do not have that store, so answer the app renderer with an explicit
+ * capability boundary instead of letting its state and interaction requests
+ * fall through to an unrelated 404.
+ */
+function notesUnavailable(c: Context<AppEnv>): Response {
+  return json(
+    c,
+    {
+      success: false,
+      code: "notes_runtime_unavailable",
+      error:
+        "Notes require a dedicated agent runtime; this shared agent does not have a persistent notes store.",
+      capability: "notes",
+      requiredExecutionTier: "dedicated-always",
+      upgradeRequired: true,
+      retryable: false,
+    },
+    503,
+  );
+}
+
+/**
+ * Browser workspace tabs require an isolated browser process owned by a
+ * Dedicated runtime. The Dedicated proxy middleware runs before this adapter;
+ * this boundary therefore applies only after a request has remained on Shared.
+ */
+function browserWorkspaceUnavailable(c: Context<AppEnv>): Response {
+  return json(
+    c,
+    {
+      success: false,
+      code: "browser_workspace_runtime_unavailable",
+      error:
+        "Browser workspace requires a dedicated agent runtime; this shared agent does not run an isolated browser workspace.",
+      capability: "browser-workspace",
+      requiredExecutionTier: "dedicated-always",
+      upgradeRequired: true,
+      retryable: false,
+    },
+    503,
+  );
+}
+
+/** Shared has durable transcript/fact memories but no document ingest store. */
+function documentsUnavailable(c: Context<AppEnv>): Response {
+  return json(
+    c,
+    {
+      success: false,
+      code: "documents_runtime_unavailable",
+      error:
+        "Knowledge documents require a dedicated agent runtime; this shared agent does not have a document ingest store.",
+      capability: "knowledge-documents",
+      requiredExecutionTier: "dedicated-always",
+      upgradeRequired: true,
+      retryable: false,
+    },
+    503,
+  );
+}
+
+/** Recorded trajectory storage and management require a Dedicated runtime. */
+function trajectoriesUnavailable(c: Context<AppEnv>): Response {
+  return json(
+    c,
+    {
+      success: false,
+      code: "trajectories_runtime_unavailable",
+      error:
+        "Trajectory history requires a dedicated agent runtime; this shared agent does not record or manage trajectories.",
+      capability: "trajectories",
+      requiredExecutionTier: "dedicated-always",
+      upgradeRequired: true,
+      retryable: false,
+    },
+    503,
+  );
+}
+
+async function memoriesResponse(
+  c: Context<AppEnv>,
+  path: string,
+  agent: {
+    id: string;
+    organization_id: string;
+    user_id: string;
+  },
+): Promise<Response> {
+  const { sharedMemoryRestRequest } = await import(
+    "@/lib/services/shared-runtime/shared-memory-rest-adapter"
+  );
+  const result = await sharedMemoryRestRequest({
+    path,
+    searchParams: new URL(c.req.url).searchParams,
+    identity: {
+      organizationId: agent.organization_id,
+      userId: agent.user_id,
+      sourceAgentId: agent.id,
+    },
+  });
+  return json(c, result.data, result.status);
+}
+
+/** Shared durable memories do not include the full relationships graph. */
+function relationshipsPeopleUnavailable(c: Context<AppEnv>): Response {
+  return json(
+    c,
+    {
+      success: false,
+      code: "relationships_runtime_unavailable",
+      error:
+        "People filters require a dedicated agent runtime; this shared agent does not host the relationships graph.",
+      capability: "relationships",
+      requiredExecutionTier: "dedicated-always",
+      upgradeRequired: true,
+      retryable: false,
     },
     503,
   );
@@ -254,6 +433,27 @@ app.get("/", async (c) => {
   if ("error" in r) {
     return json(c, { success: false, error: r.error }, r.status);
   }
+  if (isBrowserWorkspaceApiPath(path)) {
+    return browserWorkspaceUnavailable(c);
+  }
+  if (isCalendarApiPath(path)) {
+    return calendarUnavailable(c);
+  }
+  if (isNotesApiPath(path)) {
+    return notesUnavailable(c);
+  }
+  if (isDocumentsApiPath(path)) {
+    return documentsUnavailable(c);
+  }
+  if (isTrajectoriesApiPath(path)) {
+    return trajectoriesUnavailable(c);
+  }
+  if (isMemoriesApiPath(path)) {
+    return memoriesResponse(c, path, r.agent);
+  }
+  if (isRelationshipsPeopleApiPath(path)) {
+    return relationshipsPeopleUnavailable(c);
+  }
   if (path === "notifications/push-tokens") {
     if (!isPersonalSharedAgent(r)) return personalPushUnavailable(c);
     const worker = resolveSharedRuntimeWorkerRequestContext(c);
@@ -285,6 +485,12 @@ app.get("/", async (c) => {
       return json(c, sharedRestFirstRun());
     case "views":
       return json(c, sharedRestViews(c.req.query("viewType")));
+    case "apps/permissions":
+      // Shared has no local app manager or app registry. Match the full agent
+      // route's explicit no-registry contract (`GET /api/apps/permissions` →
+      // `[]`) so Settings renders its honest empty state instead of treating
+      // the unsupported local capability as a missing HTTP route.
+      return json(c, []);
     case "config":
       return json(c, sharedRestConfig());
     case "auth/me":
@@ -320,6 +526,21 @@ app.post("/", async (c) => {
     return json(c, { success: false, error: r.error }, r.status);
   }
   const path = shellPath(c);
+  if (isBrowserWorkspaceApiPath(path)) {
+    return browserWorkspaceUnavailable(c);
+  }
+  if (isCalendarApiPath(path)) {
+    return calendarUnavailable(c);
+  }
+  if (isNotesApiPath(path)) {
+    return notesUnavailable(c);
+  }
+  if (isDocumentsApiPath(path)) {
+    return documentsUnavailable(c);
+  }
+  if (isTrajectoriesApiPath(path)) {
+    return trajectoriesUnavailable(c);
+  }
   if (path === "notifications/push-tokens") {
     if (!isPersonalSharedAgent(r)) return personalPushUnavailable(c);
     const worker = resolveSharedRuntimeWorkerRequestContext(c);
@@ -411,8 +632,14 @@ async function handleWorkflowMutation(c: Context<AppEnv>): Promise<Response> {
   if ("error" in r) {
     return json(c, { success: false, error: r.error }, r.status);
   }
+  const path = shellPath(c);
+  if (isBrowserWorkspaceApiPath(path)) {
+    return browserWorkspaceUnavailable(c);
+  }
+  if (isCalendarApiPath(path)) {
+    return calendarUnavailable(c);
+  }
   if (c.req.method === "DELETE") {
-    const path = shellPath(c);
     let token = pushTokenDeleteTarget(path);
     if (path === "notifications/push-tokens") {
       const contentLength = Number(c.req.header("content-length") ?? 0);
@@ -462,8 +689,14 @@ async function handleWorkflowMutation(c: Context<AppEnv>): Promise<Response> {
       });
     }
   }
-  if (isWorkflowApiPath(shellPath(c))) {
+  if (isWorkflowApiPath(path)) {
     return workflowUnavailable(c, r.agentId, r.agent.execution_tier);
+  }
+  if (isDocumentsApiPath(path)) {
+    return documentsUnavailable(c);
+  }
+  if (isTrajectoriesApiPath(path)) {
+    return trajectoriesUnavailable(c);
   }
   return json(
     c,
@@ -473,6 +706,7 @@ async function handleWorkflowMutation(c: Context<AppEnv>): Promise<Response> {
 }
 
 app.put("/", handleWorkflowMutation);
+app.patch("/", handleWorkflowMutation);
 app.delete("/", handleWorkflowMutation);
 
 export default app;

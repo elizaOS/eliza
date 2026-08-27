@@ -27,6 +27,7 @@ import {
 } from "../shell/wallpaper-idiom";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { Skeleton } from "../ui/skeleton";
 import {
   LauncherAppIcon,
@@ -54,6 +55,8 @@ const LAUNCHER_RESPONSIVE_CSS = `
 export interface LauncherProps {
   entries: ViewEntry[];
   loading?: boolean;
+  error?: Error | null;
+  onRetry?: () => void;
   onLaunch: (entry: ViewEntry) => void;
   className?: string;
   /** Render at natural height inside Home's app scroll region. */
@@ -161,6 +164,8 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
 export function Launcher({
   entries,
   loading = false,
+  error = null,
+  onRetry,
   onLaunch,
   className,
   embedded = false,
@@ -178,6 +183,9 @@ export function Launcher({
   );
 
   const showSkeleton = loading && entries.length === 0;
+  const showError = !showSkeleton && error !== null && entries.length === 0;
+  const showEmpty = !showSkeleton && !showError && entries.length === 0;
+  const showPartialError = error !== null && entries.length > 0;
 
   return (
     <div
@@ -207,6 +215,33 @@ export function Launcher({
           )}
         >
           <div className="flex w-full max-w-2xl flex-col gap-6">
+            {showPartialError ? (
+              <Card
+                role="alert"
+                data-testid="launcher-partial-error"
+                radius="large"
+                border="subtle"
+                surface="wallpaperOverlay"
+                wallpaperText
+                className="flex items-center justify-between gap-3 px-3 py-2.5"
+              >
+                <span className="text-xs text-white/75">
+                  Some apps couldn&apos;t load.
+                </span>
+                {onRetry ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="overlayEdge"
+                    shape="circle"
+                    className="h-8 px-3 text-xs"
+                    onClick={onRetry}
+                  >
+                    Retry
+                  </Button>
+                ) : null}
+              </Card>
+            ) : null}
             {showSkeleton ? (
               <div className="grid w-full grid-cols-3 gap-x-4 gap-y-5 min-[360px]:grid-cols-4 sm:grid-cols-5">
                 {["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => (
@@ -218,6 +253,46 @@ export function Launcher({
                     <Skeleton className="h-2.5 w-12" />
                   </div>
                 ))}
+              </div>
+            ) : showError ? (
+              <div
+                role="alert"
+                data-testid="launcher-error"
+                className="mx-auto flex min-h-48 max-w-sm flex-col items-center justify-center gap-3 px-5 text-center"
+              >
+                <div
+                  className={cn("text-sm font-semibold", WALLPAPER_TEXT.base)}
+                >
+                  Couldn&apos;t load apps
+                </div>
+                <p className={cn("text-xs", WALLPAPER_TEXT.muted)}>
+                  Check the connection and try again.
+                </p>
+                {onRetry ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="overlayEdge"
+                    onClick={onRetry}
+                  >
+                    Retry
+                  </Button>
+                ) : null}
+              </div>
+            ) : showEmpty ? (
+              <div
+                role="status"
+                data-testid="launcher-empty"
+                className="mx-auto flex min-h-48 max-w-sm flex-col items-center justify-center gap-2 px-5 text-center"
+              >
+                <div
+                  className={cn("text-sm font-semibold", WALLPAPER_TEXT.base)}
+                >
+                  No apps available
+                </div>
+                <p className={cn("text-xs", WALLPAPER_TEXT.muted)}>
+                  Available apps and views will appear here.
+                </p>
               </div>
             ) : (
               <div className="grid w-full grid-cols-3 gap-x-4 gap-y-5 min-[360px]:grid-cols-4 max-sm:portrait:gap-y-8 sm:grid-cols-5">

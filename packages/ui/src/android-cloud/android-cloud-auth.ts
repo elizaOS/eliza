@@ -1,11 +1,11 @@
 /**
  * Native Android handoff for the canonical Eliza Cloud sign-in flow.
  *
- * The application keeps its normal first-run chat and full app shell; this
+ * Cloud mode owns the first-run viewport until authentication completes. This
  * module contributes the PKCE protocol and Keystore-backed pending-login state
- * needed to use hosted authentication and safely resume through an Android
- * deep link. Play builds use a Custom Tab; pinned launcher builds navigate the
- * same first-party flow inside their own WebView task.
+ * needed to use hosted authentication and safely resume through the custom
+ * Android deep link. Play builds use a Custom Tab; pinned launcher builds
+ * navigate the same first-party flow inside their own WebView task.
  */
 
 import { registerPlugin } from "@capacitor/core";

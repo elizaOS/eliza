@@ -3184,6 +3184,79 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it.each([
+		{
+			caseName: "currently-open adjective order",
+			prompt:
+				'Reply in one concise sentence beginning with "BUDGET-READONLY" and identify the currently open view. Do not use tools or change anything.',
+			reply:
+				"BUDGET-READONLY the notes view is open, where I can list notes or read one.",
+		},
+		{
+			caseName: "current-open adjective order",
+			prompt:
+				"Identify the current open view. Reply with the view name and exact nonce CEREBRAS-E1F-20260826-0952. Do not use tools or change anything.",
+			reply: "notes CEREBRAS-E1F-20260826-0952",
+		},
+	] as const)(
+		"keeps read-only current-view inspection direct when the view tool surface would overflow a planner call: $caseName",
+		async ({ prompt, reply }) => {
+			const runtime = makeRuntime([
+				stage1Response({
+					contexts: ["simple"],
+					replyText: reply,
+				}),
+			]);
+			const viewsHandler = vi.fn(async () => ({
+				success: true,
+				text: "unexpected navigation",
+			}));
+			runtime.actions = [
+				{
+					name: "VIEWS",
+					similes: ["VIEW", "SHOW_VIEW", "OPEN_VIEW", "OPEN_SETTINGS"],
+					tags: ["views", "ui", "panel", "view-capability", "notes"],
+					description: `Manage and navigate UI views. ${"x".repeat(500_000)}`,
+					parameters: [
+						{
+							name: "action",
+							description: "Operation",
+							required: true,
+							schema: { type: "string" },
+						},
+					],
+					examples: [],
+					validate: async () => true,
+					handler: viewsHandler,
+				},
+			] as never;
+			const message = makeMessage();
+			message.content = {
+				...message.content,
+				text: prompt,
+				mentionContext: { isMention: true },
+			};
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+
+			expect(result.kind).toBe("direct_reply");
+			expect(viewsHandler).not.toHaveBeenCalled();
+			// The complete Stage-1 answer is the whole read-only turn. Adding the
+			// intentionally oversized tool definition to a planner request would cross
+			// the provider boundary, so this also fences the redundant-call overflow.
+			expect(useModelCalls(runtime)).toHaveLength(1);
+			expect(reportErrorCalls(runtime)).toHaveLength(0);
+			if (result.kind === "direct_reply") {
+				expect(result.result.responseContent?.text).toBe(reply);
+			}
+		},
+	);
+
 	it("keeps external-content armor out of deterministic action inference", async () => {
 		const directAnswer =
 			"Dinner is at 6:30 PM for four people at Saffron House.";

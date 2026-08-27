@@ -925,6 +925,15 @@ export interface ViewDeclaration {
 	/** Tags for search and discovery (e.g. ["finance", "crypto"]). */
 	tags?: string[];
 	/**
+	 * Registry-owned response routing while this view is foreground. The server
+	 * replaces renderer-supplied context with this declaration, so chat and
+	 * voice share one truthful view contract.
+	 */
+	responseContext?: {
+		primaryContext: AgentContext;
+		secondaryContexts?: AgentContext[];
+	};
+	/**
 	 * Runtime action names especially relevant while this view is foreground.
 	 * Hosts use these as view-scoped affinity hints so plugins keep their own
 	 * view -> action relationship with the view declaration. Weighting only —

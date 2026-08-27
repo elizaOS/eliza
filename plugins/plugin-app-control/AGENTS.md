@@ -5,8 +5,9 @@ models, active agent profiles, and built-in settings.
 
 ## Purpose / role
 
-This opt-in plugin registers nine actions, no natural-language pre-LLM shortcuts, two evaluators,
-two providers, and four services. Dashboard operations use authenticated
+This opt-in plugin registers nine actions, no `shortcuts` entries, three evaluators
+(including a deterministic exact-command pre-planner evaluator), two providers,
+and four services. Dashboard operations use authenticated
 loopback HTTP (`/api/apps/*`, `/api/views/*`) discovered through the existing
 port resolver.
 
@@ -30,7 +31,7 @@ port resolver.
 | Name | File | Description |
 |---|---|---|
 | `viewContextEvaluator` | `src/evaluators/view-context.ts` | Model-assisted contextual navigation when no explicit view command matched. |
-| `viewCommandShortcutEvaluator` | `src/evaluators/view-command-shortcut.ts` | Compatibility export for downstream users; the first-party plugin does not register it because the model owns view-action selection. |
+| `viewCommandShortcutEvaluator` | `src/evaluators/view-command-shortcut.ts` | Registered zero-model fast path for exact standalone view commands. It installs one deterministic `VIEWS` call before the planner; contextual and compound requests still remain model-owned. |
 | `createChoiceShortcutEvaluator` | `src/evaluators/create-choice-shortcut.ts` | Routes replies to pending app/view creation choices without another model decision. |
 | `viewFollowupRoutingEvaluator` | `src/evaluators/view-followup-routing.ts` | Compatibility export for downstream users; the first-party plugin leaves focused-view mutation follow-ups to Stage 1 and the planner. |
 

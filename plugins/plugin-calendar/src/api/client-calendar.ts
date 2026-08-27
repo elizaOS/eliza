@@ -64,9 +64,11 @@ type CalendarEditorDeleteRequest = Partial<
 export interface CalendarClientMethods {
   getLifeOpsCalendarFeed(
     options?: GetLifeOpsCalendarFeedRequest,
+    request?: Pick<RequestInit, "signal">,
   ): Promise<LifeOpsCalendarFeed>;
   getLifeOpsCalendars(
     options?: ListLifeOpsCalendarsRequest,
+    request?: Pick<RequestInit, "signal">,
   ): Promise<{ calendars: LifeOpsCalendarSummary[] }>;
   setLifeOpsCalendarIncluded(
     data: SetLifeOpsCalendarIncludedRequest,
@@ -125,6 +127,7 @@ const calendarClientPrototype = ElizaClient.prototype as ElizaClient &
 calendarClientPrototype.getLifeOpsCalendarFeed = async function (
   this: ElizaClient,
   options: GetLifeOpsCalendarFeedRequest = {},
+  request?: Pick<RequestInit, "signal">,
 ) {
   const params = new URLSearchParams();
   if (options.mode) params.set("mode", options.mode);
@@ -146,6 +149,7 @@ calendarClientPrototype.getLifeOpsCalendarFeed = async function (
   const query = params.toString();
   return this.fetch<LifeOpsCalendarFeed>(
     `/api/lifeops/calendar/feed${query ? `?${query}` : ""}`,
+    request?.signal ? { signal: request.signal } : undefined,
   );
 };
 
@@ -172,6 +176,7 @@ calendarClientPrototype.purgeLifeOpsCalendarImportedData = async function (
 calendarClientPrototype.getLifeOpsCalendars = async function (
   this: ElizaClient,
   options: ListLifeOpsCalendarsRequest = {},
+  request?: Pick<RequestInit, "signal">,
 ) {
   const params = new URLSearchParams();
   if (options.mode) params.set("mode", options.mode);
@@ -180,6 +185,7 @@ calendarClientPrototype.getLifeOpsCalendars = async function (
   const query = params.toString();
   return this.fetch<{ calendars: LifeOpsCalendarSummary[] }>(
     `/api/lifeops/calendar/calendars${query ? `?${query}` : ""}`,
+    request?.signal ? { signal: request.signal } : undefined,
   );
 };
 

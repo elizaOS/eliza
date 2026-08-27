@@ -3,13 +3,21 @@
  * and exercises its nested-directory copy boundary in an isolated directory.
  */
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   HOMEPAGE_PUBLIC_ASSETS,
+  RETIRED_HOMEPAGE_PUBLIC_ASSETS,
   syncHomepageAssets,
 } from "./sync-homepage-assets.mjs";
 
@@ -69,6 +77,12 @@ test("asset sync preserves bytes and nested relative paths", async () => {
     path.join(os.tmpdir(), "eliza-homepage-assets-"),
   );
   temporaryRoots.push(destinationRoot);
+  const retiredAsset = path.join(
+    destinationRoot,
+    RETIRED_HOMEPAGE_PUBLIC_ASSETS[0],
+  );
+  await mkdir(path.dirname(retiredAsset), { recursive: true });
+  await writeFile(retiredAsset, "stale placeholder");
 
   await syncHomepageAssets({
     sourceRoot: homepagePublic,
@@ -84,4 +98,5 @@ test("asset sync preserves bytes and nested relative paths", async () => {
       assert.deepEqual(destination, source, relativePath);
     }),
   );
+  await assert.rejects(stat(retiredAsset), { code: "ENOENT" });
 });

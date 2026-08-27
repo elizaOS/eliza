@@ -317,6 +317,27 @@ describe("replyClaimsCompletedSideEffect", () => {
 			expect(replyClaimsCompletedSideEffect(reply)).toBe(true);
 		}
 	});
+
+	it("does not treat the synthesized view-navigation confirmation as a committed mutation", () => {
+		// The deterministic effect-receipt confirmation ("done — you're on
+		// <label>.") must survive egress even when the destination label
+		// collides with a tracked-work noun (Settings, Notes, Calendar).
+		for (const reply of [
+			"done — you're on Settings.",
+			"done — you're on Notes.",
+			"done — you're on Calendar.",
+			"Done — you're on the settings view.",
+			"done — you're back in Notes.",
+		]) {
+			expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+		}
+		// A mutation smuggled beside the navigation acknowledgement still fires.
+		expect(
+			replyClaimsCompletedSideEffect(
+				"done — you're on Settings and your reminders are set.",
+			),
+		).toBe(true);
+	});
 });
 
 describe(CLAIM_EVALUATOR_NAME, () => {

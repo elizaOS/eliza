@@ -8,7 +8,7 @@
 
 "use client";
 
-import { Bot, ExternalLink, Loader2, MessageSquare } from "lucide-react";
+import { ExternalLink, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -20,6 +20,7 @@ import {
   ConnectionIdentityPanel,
   ConnectionInstructions,
 } from "../../cloud-ui/components/connection-card";
+import { TelegramIcon } from "../../cloud-ui/components/icons";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { CodeBlock } from "../../components/ui/code-block";
@@ -159,7 +160,9 @@ export function TelegramConnection() {
     return (
       <ConnectionCard
         name={t("cloud.telegram.cardName", { defaultValue: "Telegram Bot" })}
-        icon={<MessageSquare className="text-txt" />}
+        icon={
+          <TelegramIcon className="text-[#229ED9]" data-brand-icon="telegram" />
+        }
         description={t("cloud.telegram.cardDescription", {
           defaultValue: "Connect your Telegram bot for AI-powered automation",
         })}
@@ -171,7 +174,9 @@ export function TelegramConnection() {
   return (
     <ConnectionCard
       name={t("cloud.telegram.cardName", { defaultValue: "Telegram Bot" })}
-      icon={<MessageSquare className="text-txt" />}
+      icon={
+        <TelegramIcon className="text-[#229ED9]" data-brand-icon="telegram" />
+      }
       description={t("cloud.telegram.cardDescription", {
         defaultValue: "Connect your Telegram bot for AI-powered automation",
       })}
@@ -193,8 +198,8 @@ export function TelegramConnection() {
       connectedContent={
         <div className="space-y-4">
           <ConnectionIdentityPanel
-            icon={<Bot className="size-6 text-txt-strong" />}
-            iconClassName="bg-accent"
+            icon={<TelegramIcon className="size-6 text-white" />}
+            iconClassName="bg-[#229ED9]"
             title={`@${status?.botUsername}`}
             subtitle={`Bot ID: ${status?.botId}`}
             actions={
@@ -392,7 +397,7 @@ export function TelegramConnection() {
               </>
             ) : (
               <>
-                <MessageSquare className="size-4 mr-2" />
+                <TelegramIcon className="mr-2 size-4" aria-hidden />
                 {t("cloud.telegram.connectButton", {
                   defaultValue: "Connect Telegram Bot",
                 })}

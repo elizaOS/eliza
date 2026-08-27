@@ -26,6 +26,7 @@ import {
   appShellPageMatchesPath,
   listAppShellPages,
 } from "../app-shell-registry";
+import { resolveBuiltinTabIdForPathAlias } from "../builtin-tab-registry";
 import { userAgentHasElizaOSMarker } from "../platform/aosp-user-agent";
 import { type BuiltinTab, mapBuiltinRoutes } from "./builtin-route-descriptors";
 import { resolveDefaultLandingTab } from "./main-tab";
@@ -360,6 +361,25 @@ export function pathForTab(tab: Tab, basePath = ""): string {
   return base ? `${base}${p}` : p;
 }
 
+export interface LegacyBuiltinRouteResolution {
+  tab: Tab;
+  canonicalPath: string;
+}
+
+/**
+ * Resolve a retired builtin route through the builtin metadata registry. The
+ * canonical destination is always derived from `TAB_PATHS`, so aliases cannot
+ * drift into a second renderer or platform-specific routing table.
+ */
+export function resolveLegacyBuiltinRoute(
+  pathname: string,
+  basePath = "",
+): LegacyBuiltinRouteResolution | null {
+  const normalized = normalizePathForLookup(pathname, basePath);
+  const tab = resolveBuiltinTabIdForPathAlias(normalized) as Tab | null;
+  return tab ? { tab, canonicalPath: pathForTab(tab, basePath) } : null;
+}
+
 export function isRouteRootPath(pathname: string, basePath = ""): boolean {
   return normalizePathForLookup(pathname, basePath) === "/";
 }
@@ -440,6 +460,9 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   if (normalized === "/tutorial") {
     return "chat";
   }
+
+  const legacyBuiltinRoute = resolveLegacyBuiltinRoute(pathname, basePath);
+  if (legacyBuiltinRoute) return legacyBuiltinRoute.tab;
 
   // /views — legacy launcher alias; renders the combined Home/Launcher.
   if (normalized === "/views" || normalized.startsWith("/views/")) {

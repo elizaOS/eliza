@@ -109,6 +109,7 @@ import {
 } from "../../state/ChatComposerContext.hooks";
 import { useConversationMessages } from "../../state/ConversationMessagesContext.hooks";
 import { loadOlderConversationMessages } from "../../state/load-older-conversation-messages";
+import { goHome } from "../../state/shell-surface-store";
 import { useViewChatBinding } from "../../state/view-chat-binding";
 import { NATIVE_GLASS_DARK_TINT } from "../../themes/native-glass.js";
 import { tryHandleTutorialText } from "../../tutorial/tutorial-action-channel";
@@ -4081,12 +4082,15 @@ export function ChatOverlay({
     const preserveFocusedComposer = (event: Event) => {
       const detail = (event as CustomEvent<NavigateViewDetail>).detail;
       const action = detail?.action;
+      const targetsHome =
+        detail?.viewId === "chat" || detail?.viewPath === "/chat";
       const staysInShell =
         action !== "close" &&
         action !== "close-all" &&
         action !== "open-window";
       const shouldPreserve =
         staysInShell &&
+        !targetsHome &&
         typeof document !== "undefined" &&
         document.activeElement === inputRef.current;
       preserveComposerFocusUntilRef.current = shouldPreserve
@@ -4451,6 +4455,8 @@ export function ChatOverlay({
         navigateTab: slash.navigateTab,
         navigateSettings: slash.navigateSettings,
         navigateView: slash.navigateView,
+        // One continuous thread: reset plumbing remains available to internal
+        // recovery flows, but slash/client actions cannot create or switch chats.
         clearChat: () => {},
         newConversation: () => {},
         toggleFullscreen: () => {},
@@ -4838,6 +4844,24 @@ export function ChatOverlay({
     return () =>
       window.removeEventListener(ELIZA_BACK_INTENT_EVENT, onBackIntent);
   }, [sheetOpen, pinnedOpen, collapse]);
+
+  // Agent-driven Home navigation targets the persistent `/chat` canvas. When
+  // the thread sheet is already open, changing the route alone is visually a
+  // no-op: the sheet keeps covering Home even though the server delivered and
+  // accepted the navigation. Match the manual Home gesture by returning the
+  // launcher rail to Home and collapsing the sheet in the same event.
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onNavigateHome = (event: Event) => {
+      const detail = (event as CustomEvent<NavigateViewDetail>).detail;
+      if (detail?.viewId !== "chat" && detail?.viewPath !== "/chat") return;
+      goHome();
+      if (sheetOpen) collapse();
+    };
+    window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigateHome);
+    return () =>
+      window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigateHome);
+  }, [sheetOpen, collapse]);
 
   // Auto-grow the composer with multi-line input: snap to the content height
   // (capped by `max-h` in CSS, which then scrolls). Runs on every draft change
@@ -5874,9 +5898,9 @@ export function ChatOverlay({
             data-chat-state={chatState}
             data-header-shown={headerVisible ? "true" : "false"}
             data-theme="dark"
-            // The active conversation id + its position in the most-recent-first
-            // list, surfaced so flows like the tutorial can observe a new-chat or a
-            // swipe-between-chats without reaching into controller internals.
+            // Preserve the active conversation identity for diagnostics and
+            // persistence without exposing thread creation or switching in the
+            // canonical one-conversation UI.
             data-conversation-id={conversationNav.activeId ?? undefined}
             data-conversation-index={conversationNav.index}
             // ONE persistent element across pill ↔ input ↔ chat (never remounts —
@@ -6668,7 +6692,7 @@ export function ChatOverlay({
                       >
                         <DropdownMenuTrigger asChild>
                           <Button
-                            variant="ghostMuted"
+                            variant="overlayEdge"
                             size="icon"
                             aria-label="chat actions"
                             disabled={firstRunOpen}

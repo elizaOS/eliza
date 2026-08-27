@@ -7,16 +7,13 @@ import {
   type ButtonHTMLAttributes,
   type ChangeEvent,
   Children,
-  createContext,
   createElement,
   Fragment,
-  type HTMLAttributes,
   type InputHTMLAttributes,
   isValidElement,
   type ReactNode,
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
-  useContext,
 } from "react";
 
 type ComponentProps = Record<string, unknown>;
@@ -97,40 +94,34 @@ function TestSelectItem({
   return createElement("option", { value }, children);
 }
 
-const TestRadioGroupContext = createContext<{
-  value: string;
-  onValueChange?: (value: string) => void;
-}>({ value: "" });
-
-function TestRadioGroup({
-  children,
+function TestSegmentedControl({
   value,
   onValueChange,
+  items,
   ...props
-}: HTMLAttributes<HTMLDivElement> & {
-  children?: ReactNode;
+}: {
   value: string;
-  onValueChange?: (value: string) => void;
+  onValueChange: (value: string) => void;
+  items: Array<{ value: string; label: ReactNode; disabled?: boolean }>;
+  className?: string;
 }): ReactNode {
   return createElement(
-    TestRadioGroupContext.Provider,
-    { value: { value, onValueChange } },
-    createElement("div", { ...props, role: "radiogroup" }, children),
+    "div",
+    props,
+    items.map((item) =>
+      createElement(
+        "button",
+        {
+          key: item.value,
+          type: "button",
+          disabled: item.disabled,
+          "aria-pressed": value === item.value,
+          onClick: () => onValueChange(item.value),
+        },
+        item.label,
+      ),
+    ),
   );
-}
-
-function TestRadioGroupItem({
-  value,
-  ...props
-}: InputHTMLAttributes<HTMLInputElement> & { value: string }): ReactNode {
-  const group = useContext(TestRadioGroupContext);
-  return createElement("input", {
-    ...props,
-    type: "radio",
-    value,
-    checked: group.value === value,
-    onChange: () => group.onValueChange?.(value),
-  });
 }
 
 // Lifecycle constants + platform probes the activity-signal capture imports at
@@ -164,14 +155,12 @@ export const Input = (
   props: InputHTMLAttributes<HTMLInputElement>,
 ): ReactNode => createElement("input", props);
 export const PagePanel = PassthroughComponent;
-export const RadioGroup = TestRadioGroup;
-export const RadioGroupItem = TestRadioGroupItem;
 export const Select = TestSelect;
 export const SelectContent = PassthroughComponent;
 export const SelectItem = TestSelectItem;
 export const SelectTrigger = TestSelectTrigger;
 export const SelectValue = NullComponent;
-export const SegmentedControl = NullComponent;
+export const SegmentedControl = TestSegmentedControl;
 export const Switch = NullComponent;
 export const Textarea = (
   props: TextareaHTMLAttributes<HTMLTextAreaElement>,

@@ -23,6 +23,8 @@ export type BuiltinRouteSurfaceDeclaration =
 interface CanonicalBuiltinRouteDescriptor {
   readonly path: string;
   readonly layout: PageLayoutManifest;
+  /** Retired browser paths that redirect to this canonical route. */
+  readonly legacyPaths?: readonly string[];
   readonly surface?: BuiltinRouteSurfaceDeclaration;
 }
 
@@ -66,6 +68,13 @@ const CONTENT_LAYOUT: PageLayoutManifest = Object.freeze({
   kind: "content",
   width: "standard",
   scroll: "view",
+  gutter: "standard",
+});
+
+const SHELL_CONTENT_LAYOUT: PageLayoutManifest = Object.freeze({
+  kind: "content",
+  width: "standard",
+  scroll: "shell",
   gutter: "standard",
 });
 
@@ -149,8 +158,12 @@ export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
   automations: { path: "/automations", layout: WORKSPACE_LAYOUT },
   triggers: { aliasOf: "automations" },
   inventory: { path: "/wallet", layout: SHELL_WIDE_CONTENT_LAYOUT },
-  documents: { path: "/character/documents", layout: WORKSPACE_LAYOUT },
-  files: { path: "/apps/files", layout: CONTENT_LAYOUT },
+  documents: {
+    path: "/character/documents",
+    layout: WORKSPACE_LAYOUT,
+    legacyPaths: ["/documents", "/knowledge"],
+  },
+  files: { path: "/apps/files", layout: SHELL_CONTENT_LAYOUT },
   plugins: { path: "/apps/plugins", layout: WORKSPACE_LAYOUT },
   skills: { path: "/apps/skills", layout: WORKSPACE_LAYOUT },
   trajectories: { path: "/apps/trajectories", layout: WORKSPACE_LAYOUT },
@@ -166,7 +179,7 @@ export const BUILTIN_ROUTE_DESCRIPTORS = defineBuiltinRoutes({
   runtime: { path: "/apps/runtime", layout: WORKSPACE_LAYOUT },
   database: { path: "/apps/database", layout: WORKSPACE_LAYOUT },
   desktop: { path: "/desktop", layout: FULL_WORKSPACE_LAYOUT },
-  settings: { path: "/settings", layout: WORKSPACE_LAYOUT },
+  settings: { path: "/settings", layout: FULL_WORKSPACE_LAYOUT },
   vault: { path: "/vault", layout: CONTENT_LAYOUT },
   logs: { path: "/apps/logs", layout: CONTENT_LAYOUT },
   background: {

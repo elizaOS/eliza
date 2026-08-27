@@ -242,6 +242,7 @@ bun run --cwd plugins/plugin-agent-orchestrator build           # Build Node ESM
 bun run --cwd plugins/plugin-agent-orchestrator build:ts        # TypeScript-only build
 bun run --cwd plugins/plugin-agent-orchestrator dev             # Watch mode rebuild
 bun run --cwd plugins/plugin-agent-orchestrator typecheck       # Type-check without emit
+bun run --cwd plugins/plugin-agent-orchestrator typecheck:live-harness # Type-check the cross-package live wrapper and harness
 bun run --cwd plugins/plugin-agent-orchestrator test            # Run vitest suite
 bun run --cwd plugins/plugin-agent-orchestrator test:unit       # Unit tests only
 bun run --cwd plugins/plugin-agent-orchestrator test:watch      # Vitest watch mode

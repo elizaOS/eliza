@@ -5,6 +5,11 @@
  */
 import { Capacitor } from "@capacitor/core";
 import { runIosFullBunSmokeIfRequested } from "@elizaos/app-core/desktop-shell";
+import {
+  DEFAULT_BOOT_CONFIG,
+  getBootConfig,
+  setBootConfig,
+} from "@elizaos/ui/config";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const androidBoot = vi.hoisted(() => ({
@@ -140,6 +145,7 @@ beforeEach(() => {
     "requestAnimationFrame",
     vi.fn(() => 1),
   );
+  setBootConfig(DEFAULT_BOOT_CONFIG);
   window.localStorage.setItem("eliza:mobile-runtime-mode", "local");
   document.body.innerHTML = '<div id="root"></div>';
 });
@@ -166,6 +172,10 @@ describe("renderer Android local composition", () => {
 
     expect(main.isAndroid).toBe(true);
     expect(main.isNative).toBe(true);
+    expect(getBootConfig()).toMatchObject({
+      preferSharedCloudTier: true,
+      autoUpgradeSharedToDedicated: true,
+    });
     expect(androidBoot.installAndroidFetch).toHaveBeenCalledOnce();
     expect(androidBoot.installDiarization).toHaveBeenCalledOnce();
     expect(androidBoot.installJniVoice).toHaveBeenCalledOnce();

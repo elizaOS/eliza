@@ -29,6 +29,7 @@ import type {
 import { useAppSelector } from "../../state";
 import {
   formatTrajectoryDuration,
+  formatTrajectoryTimestamp,
   formatTrajectoryTokenCount,
 } from "../../utils/trajectory-format";
 import { PagePanel } from "../composites/page-panel";
@@ -116,7 +117,6 @@ function buildPipelineNodes(
 
 interface TrajectoryDetailViewProps {
   trajectoryId: string;
-  onBack?: () => void;
 }
 
 function formatTrajectoryStepLabel(
@@ -468,7 +468,9 @@ export function TrajectoryDetailView({
   const copyToClipboard = useAppSelector((s) => s.copyToClipboard);
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<TrajectoryDetailResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<
+    "missing" | "restricted" | "offline" | "error" | null
+  >(null);
   const [activeStage, setActiveStage] = useState<PipelineStageId | null>(null);
 
   const loadDetail = useCallback(async () => {
@@ -478,8 +480,23 @@ export function TrajectoryDetailView({
       const result = await client.getTrajectoryDetail(trajectoryId);
       setDetail(result);
     } catch (err) {
+      const candidate = err as { kind?: unknown; status?: unknown } | null;
+      const status =
+        typeof candidate?.status === "number" ? candidate.status : 0;
+      const kind = typeof candidate?.kind === "string" ? candidate.kind : "";
       setError(
-        err instanceof Error ? err.message : "Failed to load trajectory",
+        status === 404
+          ? "missing"
+          : status === 401 || status === 403
+            ? "restricted"
+            : kind === "network" ||
+                kind === "timeout" ||
+                status === 202 ||
+                status === 502 ||
+                status === 503 ||
+                status === 504
+              ? "offline"
+              : "error",
       );
     } finally {
       setLoading(false);
@@ -592,31 +609,79 @@ export function TrajectoryDetailView({
 
   if (loading) {
     return (
-      <PagePanel.Loading
-        variant="workspace"
-        heading={t("trajectorydetailview.LoadingTrajectory")}
-        description={t("trajectorydetailview.LoadingDescription")}
-      />
+      <div className="overflow-hidden rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)]">
+        <PagePanel.ContentState
+          state="loading"
+          placement="workspace"
+          className="min-h-[24rem]"
+          heading={t("trajectorydetailview.LoadingTrajectory")}
+          description={t("trajectorydetailview.LoadingDescription")}
+        />
+      </div>
     );
   }
 
   if (error) {
+    const copy =
+      error === "missing"
+        ? {
+            title: "Trajectory unavailable",
+            description: "This recorded run may have been removed.",
+          }
+        : error === "restricted"
+          ? {
+              title: "Trajectory restricted",
+              description: "This account can't inspect the selected run.",
+            }
+          : error === "offline"
+            ? {
+                title: "Agent unavailable",
+                description: "Reconnect to inspect this recorded run.",
+              }
+            : {
+                title: "Couldn't load this run",
+                description: "Try again in a moment.",
+              };
     return (
-      <PagePanel.Empty
-        variant="workspace"
-        title={t("trajectorydetailview.UnableToLoad")}
-        description={error}
-      />
+      <div className="overflow-hidden rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)]">
+        <PagePanel.ContentState
+          state="error"
+          placement="workspace"
+          tone="warning"
+          role="status"
+          className="min-h-[24rem]"
+          title={copy.title}
+          description={copy.description}
+          action={
+            error === "missing" || error === "restricted" ? undefined : (
+              <Button
+                type="button"
+                size="touch"
+                variant="outline"
+                onClick={() => void loadDetail()}
+              >
+                Retry
+              </Button>
+            )
+          }
+        />
+      </div>
     );
   }
 
   if (!detail || !trajectory) {
     return (
-      <PagePanel.Empty
-        variant="workspace"
-        title={t("trajectorydetailview.Unavailable")}
-        description={t("trajectorydetailview.TrajectoryNotFound")}
-      />
+      <div className="overflow-hidden rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)]">
+        <PagePanel.ContentState
+          state="error"
+          placement="workspace"
+          tone="warning"
+          role="status"
+          className="min-h-[24rem]"
+          title={t("trajectorydetailview.Unavailable")}
+          description={t("trajectorydetailview.TrajectoryNotFound")}
+        />
+      </div>
     );
   }
 
@@ -627,57 +692,119 @@ export function TrajectoryDetailView({
       : null;
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4">
-      {orchestratorData ? (
-        <PagePanel variant="section" className="p-5">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            <PagePanel.SummaryCard compact className="px-4 py-3">
-              <div className="text-xs-tight text-muted">
-                {t("trajectorydetailview.DecisionType")}
-              </div>
-              <div className="mt-2 text-sm font-semibold text-txt">
-                {String(orchestratorData.decisionType ?? "—")}
-              </div>
-            </PagePanel.SummaryCard>
-            <PagePanel.SummaryCard compact className="px-4 py-3">
-              <div className="text-xs-tight text-muted">
-                {t("trajectorydetailview.Task")}
-              </div>
-              <div className="mt-2 text-sm font-semibold text-txt">
-                {String(orchestratorData.taskLabel ?? "—")}
-              </div>
-            </PagePanel.SummaryCard>
-            <PagePanel.SummaryCard compact className="px-4 py-3">
-              <div className="text-xs-tight text-muted">
-                {t("trajectorydetailview.Session1")}
-              </div>
-              <div className="mt-2 break-all font-mono text-xs-tight text-txt">
-                {String(orchestratorData.sessionId ?? "—")}
-              </div>
-            </PagePanel.SummaryCard>
+    <div className="flex min-h-0 flex-col gap-4">
+      <section className="overflow-hidden rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)]">
+        <div className="flex min-h-16 items-center gap-2 px-4 py-3">
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-[17px] font-semibold text-[color:var(--settings-foreground)]">
+              {formatTrajectoryTimestamp(trajectory.createdAt, "smart")}
+            </h2>
+            <p className="truncate text-[13px] leading-5 text-[color:var(--settings-muted)]">
+              {trajectory.source}
+              {trajectory.scenarioId ? ` / ${trajectory.scenarioId}` : ""}
+            </p>
           </div>
-        </PagePanel>
+          <span className="inline-flex min-h-7 shrink-0 items-center rounded-full bg-[var(--settings-fill)] px-3 text-xs font-medium capitalize text-[color:var(--settings-muted)]">
+            {trajectory.status}
+          </span>
+        </div>
+        <dl className="grid grid-cols-2 border-t border-[color:var(--settings-hairline)] min-[620px]:grid-cols-4">
+          {[
+            {
+              label: "Duration",
+              value: formatTrajectoryDuration(trajectory.durationMs),
+            },
+            { label: "Model calls", value: trajectory.llmCallCount },
+            {
+              label: "Tokens",
+              value: formatTrajectoryTokenCount(
+                trajectory.totalPromptTokens + trajectory.totalCompletionTokens,
+                { emptyLabel: "0" },
+              ),
+            },
+            { label: "Provider reads", value: trajectory.providerAccessCount },
+          ].map((metric) => (
+            <div
+              key={metric.label}
+              className="border-b border-[color:var(--settings-hairline)] px-4 py-3 odd:border-r min-[620px]:border-b-0 min-[620px]:border-r min-[620px]:last:border-r-0"
+            >
+              <dt className="text-xs text-[color:var(--settings-muted)]">
+                {metric.label}
+              </dt>
+              <dd className="mt-1 text-sm font-semibold text-[color:var(--settings-foreground)]">
+                {metric.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+      {orchestratorData ? (
+        <section className="overflow-hidden rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)]">
+          <h3 className="px-4 pb-2 pt-4 text-sm font-semibold text-[color:var(--settings-foreground)]">
+            Orchestration
+          </h3>
+          <dl className="divide-y divide-[color:var(--settings-hairline)]">
+            {[
+              {
+                label: t("trajectorydetailview.DecisionType"),
+                value: String(orchestratorData.decisionType ?? "Not recorded"),
+              },
+              {
+                label: t("trajectorydetailview.Task"),
+                value: String(orchestratorData.taskLabel ?? "Not recorded"),
+              },
+              {
+                label: t("trajectorydetailview.Session1"),
+                value: String(orchestratorData.sessionId ?? "Not recorded"),
+              },
+            ].map((item) => (
+              <div
+                key={item.label}
+                className="flex min-h-12 items-start justify-between gap-4 px-4 py-3 text-sm"
+              >
+                <dt className="text-[color:var(--settings-muted)]">
+                  {item.label}
+                </dt>
+                <dd className="min-w-0 max-w-[65%] break-words text-right font-medium text-[color:var(--settings-foreground)]">
+                  {item.value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
       ) : null}
 
       {trajectory.metadata &&
       Object.keys(trajectory.metadata).length > 0 &&
       formatProviderPayload(trajectory.metadata).trim().length > 0 ? (
-        <PagePanel variant="section" className="p-5">
-          <pre className="max-h-[20rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-sm bg-bg/60 p-4 text-xs leading-6 text-txt">
+        <details className="group overflow-hidden rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)]">
+          <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium text-[color:var(--settings-foreground)] hover:bg-[var(--settings-fill)]">
+            Run metadata
+            <span className="text-xs text-[color:var(--settings-muted)] group-open:hidden">
+              Show
+            </span>
+            <span className="hidden text-xs text-[color:var(--settings-muted)] group-open:inline">
+              Hide
+            </span>
+          </summary>
+          <pre className="max-h-[20rem] overflow-auto whitespace-pre-wrap break-words border-t border-[color:var(--settings-hairline)] bg-[var(--settings-secondary)] p-4 text-xs leading-6 text-[color:var(--settings-foreground)]">
             {formatProviderPayload(trajectory.metadata)}
           </pre>
-        </PagePanel>
+        </details>
       ) : null}
 
       {llmCalls.length > 0 ? (
-        <PagePanel variant="section" className="px-5 py-4">
+        <section className="overflow-hidden rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)] px-4 py-4">
+          <h3 className="mb-3 text-sm font-semibold text-[color:var(--settings-foreground)]">
+            Pipeline
+          </h3>
           <TrajectoryPipelineGraph
             nodes={pipelineNodes}
             activeStageId={activeStage}
             onStageClick={handleStageClick}
           />
           {activeStage && activeStage !== "input" ? (
-            <div className="mt-3 flex items-center gap-2 text-xs text-muted">
+            <div className="mt-3 flex min-h-11 items-center gap-2 text-xs text-[color:var(--settings-muted)]">
               <span>
                 {t("trajectorydetailview.ShowingCalls", {
                   defaultValue: "Showing {{count}} {{stage}} calls",
@@ -689,14 +816,15 @@ export function TrajectoryDetailView({
                 ref={clearStageFilter.ref}
                 onClick={() => setActiveStage(null)}
                 variant="ghostMuted"
-                size="disclosure"
+                size="icon-lg"
+                aria-label="Clear stage filter"
                 {...clearStageFilter.agentProps}
               >
                 <X className="size-3" />
               </Button>
             </div>
           ) : null}
-        </PagePanel>
+        </section>
       ) : null}
 
       <TrajectoryEventTimeline
@@ -710,7 +838,10 @@ export function TrajectoryDetailView({
       />
 
       {toolEvents.length > 0 ? (
-        <PagePanel variant="section" className="px-5 py-4">
+        <section className="overflow-hidden rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)] px-4 py-4">
+          <h3 className="mb-3 text-sm font-semibold text-[color:var(--settings-foreground)]">
+            Tool activity
+          </h3>
           <div className="space-y-3">
             {toolEvents.map((event, index) => (
               <ToolCallEventLog
@@ -719,7 +850,7 @@ export function TrajectoryDetailView({
               />
             ))}
           </div>
-        </PagePanel>
+        </section>
       ) : null}
 
       {shouldShowNativeEventPanels ? (
@@ -747,53 +878,66 @@ export function TrajectoryDetailView({
       ) : null}
 
       {providerAccesses.length > 0 ? (
-        <PagePanel variant="section" className="px-5 py-4">
+        <section className="overflow-hidden rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)] px-4 py-4">
+          <h3 className="mb-3 text-sm font-semibold text-[color:var(--settings-foreground)]">
+            Provider activity
+          </h3>
           <div className="space-y-4">
             {providerAccesses.map((access, index) => (
-              <PagePanel variant="inset" key={access.id} className="p-4">
-                <div className="flex flex-col gap-1">
-                  <div className="text-xs-tight font-semibold text-muted">
-                    {t("trajectorydetailview.ProviderAccess", {
-                      defaultValue: "Provider Access",
-                    })}{" "}
-                    #{index + 1}
-                  </div>
-                  <div className="text-sm font-semibold text-txt">
-                    {access.providerName || "unknown"}
-                  </div>
-                  <div className="text-xs-tight text-muted">
-                    {access.purpose || "—"}
-                  </div>
-                </div>
-                {access.query ? (
-                  <div className="mt-4">
-                    <div className="text-xs-tight font-semibold text-muted">
-                      {t("trajectorydetailview.Query", {
-                        defaultValue: "Query",
+              <details
+                key={access.id}
+                className="group overflow-hidden rounded-[12px] bg-[var(--settings-secondary)]"
+              >
+                <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-4 px-4 py-3">
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium text-[color:var(--settings-foreground)]">
+                      {access.providerName || "Unknown provider"}
+                    </span>
+                    <span className="block truncate text-xs text-[color:var(--settings-muted)]">
+                      {access.purpose ||
+                        t("trajectorydetailview.ProviderAccess", {
+                          defaultValue: "Provider access",
+                        })}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-xs text-[color:var(--settings-muted)] group-open:hidden">
+                    #{index + 1} Show
+                  </span>
+                  <span className="hidden shrink-0 text-xs text-[color:var(--settings-muted)] group-open:inline">
+                    Hide
+                  </span>
+                </summary>
+                <div className="border-t border-[color:var(--settings-hairline)] p-4">
+                  {access.query ? (
+                    <div>
+                      <div className="text-xs font-medium text-[color:var(--settings-muted)]">
+                        {t("trajectorydetailview.Query", {
+                          defaultValue: "Query",
+                        })}
+                      </div>
+                      <pre className="mt-2 max-h-[18rem] overflow-auto whitespace-pre-wrap break-words rounded-[10px] bg-[var(--settings-panel)] p-4 text-xs leading-6 text-[color:var(--settings-foreground)]">
+                        {formatProviderPayload(access.query)}
+                      </pre>
+                    </div>
+                  ) : null}
+                  <div className={access.query ? "mt-4" : ""}>
+                    <div className="text-xs font-medium text-[color:var(--settings-muted)]">
+                      {t("trajectorydetailview.Data", {
+                        defaultValue: "Data",
                       })}
                     </div>
-                    <pre className="mt-2 max-h-[18rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-sm border border-border/50 bg-bg/60 p-4 text-xs leading-6 text-txt">
-                      {formatProviderPayload(access.query)}
+                    <pre className="mt-2 max-h-[18rem] overflow-auto whitespace-pre-wrap break-words rounded-[10px] bg-[var(--settings-panel)] p-4 text-xs leading-6 text-[color:var(--settings-foreground)]">
+                      {formatProviderPayload(access.data)}
                     </pre>
                   </div>
-                ) : null}
-                <div className="mt-4">
-                  <div className="text-xs-tight font-semibold text-muted">
-                    {t("trajectorydetailview.Data", {
-                      defaultValue: "Data",
-                    })}
-                  </div>
-                  <pre className="mt-2 max-h-[18rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-sm border border-border/50 bg-bg/60 p-4 text-xs leading-6 text-txt">
-                    {formatProviderPayload(access.data)}
-                  </pre>
                 </div>
-              </PagePanel>
+              </details>
             ))}
           </div>
-        </PagePanel>
+        </section>
       ) : null}
 
-      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+      <div className="min-h-0 flex-1">
         <div className="space-y-4 pb-1">
           {llmCalls.length === 0 ? (
             <PagePanel.Empty

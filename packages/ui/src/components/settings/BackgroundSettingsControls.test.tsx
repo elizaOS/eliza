@@ -7,7 +7,13 @@
  * revert (undo/redo) affordances appear only when history exists and fire the
  * store callbacks. jsdom, no backend.
  */
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { __setAppValueForTests } from "../../state/app-store";
 import type { BackgroundConfig } from "../../state/ui-preferences";
@@ -157,15 +163,79 @@ describe("BackgroundSettingsControls wallpaper gallery", () => {
     );
   });
 
-  it("lays the filmstrip variant out as a single scroll row of tiles", () => {
-    seed();
+  it("brings the active wallpaper into view when the filmstrip opens", () => {
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+
+    try {
+      seed({
+        backgroundConfig: {
+          mode: "image",
+          color: "#ef5a1f",
+          imageUrl: "/bg-sunset.webp",
+        },
+      });
+      render(<BackgroundSettingsControls variant="filmstrip" />);
+
+      expect(
+        screen
+          .getByLabelText("Set background to Ember Night")
+          .getAttribute("aria-pressed"),
+      ).toBe("true");
+      expect(scrollIntoView).toHaveBeenCalledWith({
+        behavior: "auto",
+        block: "nearest",
+        inline: "center",
+      });
+    } finally {
+      if (originalScrollIntoView) {
+        Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+          configurable: true,
+          value: originalScrollIntoView,
+        });
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+      }
+    }
+  });
+
+  it("keeps full wallpaper names legible in one labelled filmstrip", () => {
+    const setBackgroundConfig = vi.fn();
+    seed({ setBackgroundConfig });
     render(<BackgroundSettingsControls variant="filmstrip" />);
 
     const root = screen.getByTestId("background-settings-controls");
     expect(root.getAttribute("data-variant")).toBe("filmstrip");
-    // Tiles still apply on tap in the condensed sheet.
-    expect(
-      screen.getByLabelText("Set background to Misty Forest"),
-    ).toBeTruthy();
+    const choices = screen.getByRole("group", { name: "Wallpaper choices" });
+    expect(within(choices).getByText("Misty Forest")).toBeTruthy();
+    expect(within(choices).getByText("Desert Dusk")).toBeTruthy();
+    expect(within(choices).getByText("Ocean Deep")).toBeTruthy();
+
+    // The compact visual treatment still writes through the canonical store.
+    fireEvent.click(
+      within(choices).getByLabelText("Set background to Ocean Deep"),
+    );
+    expect(setBackgroundConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: "image" }),
+    );
+  });
+
+  it("keeps upload available as the filmstrip's secondary action", () => {
+    seed();
+    const { container } = render(
+      <BackgroundSettingsControls variant="filmstrip" />,
+    );
+    const input =
+      container.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(input).not.toBeNull();
+    const clickFileInput = vi.spyOn(input as HTMLInputElement, "click");
+
+    fireEvent.click(screen.getByLabelText("Upload a background image"));
+
+    expect(clickFileInput).toHaveBeenCalledTimes(1);
   });
 });

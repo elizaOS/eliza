@@ -92,9 +92,9 @@ export const SETTINGS_SECTION_META: SettingsSectionMeta[] = [
   // backups) last so common taps are not buried behind rare ones.
   {
     id: "appearance",
-    defaultLabel: "Appearance",
+    defaultLabel: "General",
     group: "system",
-    aliases: ["theme", "look"],
+    aliases: ["general", "preferences", "theme", "look"],
   },
   { id: "background", defaultLabel: "Background", group: "system" },
   {
@@ -146,6 +146,18 @@ export const SETTINGS_SECTION_META: SettingsSectionMeta[] = [
  * so chat-write coverage for late-registered sections cannot drift silently.
  */
 export const SETTINGS_NON_CATALOG_SECTION_META = [
+  {
+    id: "desktop-integration",
+    defaultLabel: "Desktop app",
+    group: "system",
+    aliases: ["desktop", "startup", "dock", "tray"],
+  },
+  {
+    id: "shortcuts",
+    defaultLabel: "Shortcuts",
+    group: "system",
+    aliases: ["hotkeys", "keyboard"],
+  },
   {
     id: "cloud-overview",
     defaultLabel: "Overview",

@@ -14,8 +14,9 @@ import {
   type DocumentDetail,
   type DocumentFragmentRecord,
 } from "@elizaos/ui/api";
-import { Button, Textarea } from "@elizaos/ui/components";
+import { Button, DetailSkeleton, Textarea } from "@elizaos/ui/components";
 import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
+import { SettingsGroup } from "@elizaos/ui/components/composites/settings";
 import { TranscriptPlayer } from "@elizaos/ui/components/transcripts/TranscriptPlayer";
 import { ArtifactPrivacyControls } from "@elizaos/ui/components/transcripts/TranscriptsView";
 import { useAppSelector } from "@elizaos/ui/state";
@@ -29,23 +30,17 @@ import {
   shareAttachment,
 } from "@elizaos/ui/utils/download-share";
 import {
-  BadgeCheck,
-  Bot,
-  CalendarDays,
+  AlertTriangle,
   Download,
   FileText,
-  Globe2,
-  Lock,
   Maximize2,
   Minimize2,
   Pencil,
   Save,
   Share2,
-  Shield,
-  User,
 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
-import { getDocumentTypeLabel } from "./documents-detail.helpers";
+import { getDocumentSourceLabel } from "./documents-detail.helpers";
 import { knowledgeReaderKind } from "./knowledge-media-format";
 
 function formatDocumentTimestamp(value?: number): string | null {
@@ -58,6 +53,73 @@ function formatDocumentTimestamp(value?: number): string | null {
     day: "numeric",
     year: "numeric",
   });
+}
+
+type DocumentLoadIssue = {
+  title: string;
+  description: string;
+  retryable: boolean;
+};
+
+function documentLoadIssue(
+  error: unknown,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): DocumentLoadIssue {
+  const status = (error as { status?: number } | null)?.status;
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  if (message.includes("no longer available")) {
+    return {
+      title: t("documentsview.DocumentUnavailable", {
+        defaultValue: "This document is no longer available",
+      }),
+      description: t("documentsview.DocumentUnavailableHint", {
+        defaultValue: "Return to the library and choose another item.",
+      }),
+      retryable: false,
+    };
+  }
+  if (status === 401 || status === 403) {
+    return {
+      title: t("documentsview.DocumentAccessUnavailable", {
+        defaultValue: "This document isn't available",
+      }),
+      description: t("documentsview.DocumentAccessUnavailableHint", {
+        defaultValue: "This account can't open it.",
+      }),
+      retryable: false,
+    };
+  }
+  if (status === 404) {
+    return {
+      title: t("documentsview.DocumentUnavailable", {
+        defaultValue: "This document is no longer available",
+      }),
+      description: t("documentsview.DocumentUnavailableHint", {
+        defaultValue: "Return to the library and choose another item.",
+      }),
+      retryable: false,
+    };
+  }
+  if (status === 429) {
+    return {
+      title: t("documentsview.DocumentBusy", {
+        defaultValue: "This document is busy",
+      }),
+      description: t("documentsview.DocumentBusyHint", {
+        defaultValue: "Wait a moment, then try again.",
+      }),
+      retryable: true,
+    };
+  }
+  return {
+    title: t("documentsview.FailedToLoadDocument", {
+      defaultValue: "This document couldn't load",
+    }),
+    description: t("documentsview.FailedToLoadDocumentHint", {
+      defaultValue: "Try again when Eliza is connected.",
+    }),
+    retryable: true,
+  };
 }
 
 /* ── Document Viewer ────────────────────────────────────────────────── */
@@ -76,7 +138,7 @@ export function DocumentViewer({
   const [doc, setDoc] = useState<DocumentDetail | null>(null);
   const [fragments, setFragments] = useState<DocumentFragmentRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DocumentLoadIssue | null>(null);
   const [editing, setEditing] = useState(false);
   const [draftText, setDraftText] = useState("");
   const [saving, setSaving] = useState(false);
@@ -139,13 +201,7 @@ export function DocumentViewer({
 
     load().catch((err) => {
       if (!cancelled) {
-        setError(
-          err instanceof Error
-            ? err.message
-            : t("documentsview.FailedToLoadDocument", {
-                defaultValue: "Failed to load document",
-              }),
-        );
+        setError(documentLoadIssue(err, t));
         setLoading(false);
       }
     });
@@ -240,18 +296,12 @@ export function DocumentViewer({
     doc?.scope === "owner-private"
       ? t("documentsview.ScopeOwner", { defaultValue: "Owner" })
       : doc?.scope === "user-private"
-        ? t("documentsview.ScopeUser", { defaultValue: "User" })
+        ? t("documentsview.ScopeUser", { defaultValue: "Private" })
         : doc?.scope === "agent-private"
           ? t("documentsview.ScopeAgent", { defaultValue: "Agent" })
-          : t("documentsview.ScopeGlobal", { defaultValue: "Global" });
-  const ScopeIcon =
-    doc?.scope === "owner-private"
-      ? Shield
-      : doc?.scope === "user-private"
-        ? User
-        : doc?.scope === "agent-private"
-          ? Bot
-          : Globe2;
+          : null;
+  const readableText =
+    previewText || fragments.map((fragment) => fragment.text).join("\n\n");
 
   // The original served file (when the backend exposes a fetchable URL for the
   // document, e.g. uploaded binaries / mirrored transcript audio). v1 gates the
@@ -311,13 +361,11 @@ export function DocumentViewer({
       setEditing(false);
       setReloadToken((current) => current + 1);
       onUpdated?.();
-    } catch (saveError) {
+    } catch {
       setActionNotice(
-        saveError instanceof Error
-          ? saveError.message
-          : t("documentsview.FailedToUpdateDocument", {
-              defaultValue: "Failed to update knowledge document",
-            }),
+        t("documentsview.FailedToUpdateDocument", {
+          defaultValue: "Couldn't save this document. Try again.",
+        }),
         "error",
         5000,
       );
@@ -404,190 +452,205 @@ export function DocumentViewer({
     }
   }
 
+  const hasDocumentActions = Boolean(
+    doc &&
+      ((mediaUrl && readerKind !== "transcript") ||
+        servedFileUrl ||
+        doc.canEditText),
+  );
+  const documentMeta = doc
+    ? [
+        getDocumentSourceLabel(doc.source, t),
+        scopeLabel,
+        formatByteSize(doc.fileSize),
+        doc.fragmentCount === 1
+          ? t("documentsview.FragmentCountOne", {
+              defaultValue: "1 fragment",
+            })
+          : t("documentsview.FragmentCountMany", {
+              defaultValue: "{{count}} fragments",
+              count: doc.fragmentCount,
+            }),
+        documentCreatedLabel,
+      ].filter((value): value is string => Boolean(value))
+    : [];
+
   return (
-    /* Flat — no card/border. The shell owns the page's horizontal padding. */
-    <PagePanel className="flex flex-col overflow-hidden">
-      <div className="custom-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
-        {loading && (
-          <div className="py-10 text-center font-bold tracking-wide text-muted animate-pulse">
-            <span className="mr-3 inline-block size-4 animate-spin rounded-full border-2 border-accent border-t-transparent align-middle" />
-            {t("appsview.Loading")}
+    <PagePanel className="settings-surface flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto pb-4">
+        {loading ? (
+          <div
+            role="status"
+            aria-label={t("appsview.Loading")}
+            className="rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)] p-5"
+          >
+            <DetailSkeleton />
           </div>
-        )}
+        ) : null}
 
-        {error && <PagePanel.Notice tone="danger">{error}</PagePanel.Notice>}
+        {error ? (
+          <div className="rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)]">
+            <PagePanel.ContentState
+              state="error"
+              placement="inset"
+              tone="warning"
+              icon={<AlertTriangle className="size-5" />}
+              title={error.title}
+              description={error.description}
+              action={
+                error.retryable ? (
+                  <Button
+                    variant="outline"
+                    size="touch"
+                    onClick={() => setReloadToken((current) => current + 1)}
+                  >
+                    {t("common.retry")}
+                  </Button>
+                ) : undefined
+              }
+            />
+          </div>
+        ) : null}
 
-        {!loading && !error && !doc && (
-          <PagePanel.Empty
-            variant="inset"
-            className="px-0 py-12"
-            description={t("documentsview.NoDocumentSelectedDesc", {
-              defaultValue:
-                "Select a document from the list to view its fragments and metadata.",
-            })}
-            title={t("documentsview.NoDocumentSelected", {
-              defaultValue: "No document selected",
-            })}
-          />
-        )}
+        {!loading && !error && !doc ? (
+          <div className="rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)]">
+            <PagePanel.ContentState
+              state="empty"
+              placement="inset"
+              title={t("documentsview.NoDocumentSelected", {
+                defaultValue: "No document selected",
+              })}
+              description={t("documentsview.NoDocumentSelectedDesc", {
+                defaultValue: "Choose an item from the library.",
+              })}
+            />
+          </div>
+        ) : null}
 
-        {!loading && !error && doc && (
-          <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
-            <div className="px-1">
-              <div className="flex min-w-0 items-start gap-3">
-                <FileText
-                  className="mt-1.5  size-5 shrink-0 text-muted-strong"
+        {!loading && !error && doc ? (
+          <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
+            <SettingsGroup
+              title={t("documentsview.Document", { defaultValue: "Document" })}
+            >
+              <div
+                data-slot="settings-row"
+                className="flex min-h-20 items-center gap-3 px-5 py-4"
+              >
+                <span
                   aria-hidden
-                />
+                  className="flex size-10 shrink-0 items-center justify-center rounded-[12px] bg-[var(--settings-fill)] text-accent"
+                >
+                  <FileText className="size-5" />
+                </span>
                 <div className="min-w-0 flex-1">
-                  <h2 className="break-words text-lg font-semibold text-txt">
+                  <h2 className="break-words text-[17px] font-semibold leading-6 text-[color:var(--settings-foreground)]">
                     {doc.filename}
                   </h2>
-                  <div className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted">
-                    <span className="inline-flex items-center gap-1">
-                      <ScopeIcon className="size-3" aria-hidden />
-                      {scopeLabel}
-                    </span>
-                    <span aria-hidden>·</span>
-                    <span>{doc.provenance.label}</span>
-                    <span aria-hidden>·</span>
-                    <span>{formatByteSize(doc.fileSize)}</span>
-                    <span aria-hidden>·</span>
-                    <span>
-                      {doc.fragmentCount === 1
-                        ? "1 fragment"
-                        : `${doc.fragmentCount} fragments`}
-                    </span>
-                    <span aria-hidden>·</span>
-                    <span>{getDocumentTypeLabel(doc.contentType)}</span>
-                    {doc.canEditText ? (
-                      <>
-                        <span aria-hidden>·</span>
-                        <span className="inline-flex items-center gap-1 text-status-success">
-                          <BadgeCheck className="size-3" aria-hidden />
-                          {t("documentsview.Editable", {
-                            defaultValue: "Editable",
-                          })}
-                        </span>
-                      </>
-                    ) : null}
-                    {!doc.canDelete ? (
-                      <>
-                        <span aria-hidden>·</span>
-                        <span className="inline-flex items-center gap-1">
-                          <Lock className="size-3" aria-hidden />
-                          {t("documentsview.Locked", {
-                            defaultValue: "Locked",
-                          })}
-                        </span>
-                      </>
-                    ) : null}
-                    {documentCreatedLabel ? (
-                      <>
-                        <span aria-hidden>·</span>
-                        <span className="inline-flex items-center gap-1">
-                          <CalendarDays className="size-3" aria-hidden />
-                          {documentCreatedLabel}
-                        </span>
-                      </>
-                    ) : null}
-                    {doc.provenance.detail ? (
-                      <>
-                        <span aria-hidden>·</span>
-                        <span className="min-w-0 max-w-full truncate">
-                          {doc.provenance.detail}
-                        </span>
-                      </>
-                    ) : null}
-                  </div>
+                  <p className="mt-0.5 text-[13px] leading-5 text-[color:var(--settings-muted)]">
+                    {documentMeta.join(" · ")}
+                  </p>
                 </div>
               </div>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                {mediaUrl && readerKind !== "transcript" ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    data-testid="document-fullscreen"
-                    aria-pressed={fullscreen}
-                    onClick={() => setFullscreen((current) => !current)}
-                  >
-                    {fullscreen ? (
-                      <Minimize2 className="mr-1.5 size-4" aria-hidden />
-                    ) : (
-                      <Maximize2 className="mr-1.5 size-4" aria-hidden />
-                    )}
-                    {fullscreen
-                      ? t("documentsview.ExitFullScreen", {
-                          defaultValue: "Exit full screen",
-                        })
-                      : t("documentsview.FullScreen", {
-                          defaultValue: "Full screen",
-                        })}
-                  </Button>
-                ) : null}
-                {servedFileUrl ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    data-testid="document-download"
-                    onClick={() => void handleDownloadFile()}
-                  >
-                    <Download className="mr-1.5 size-4" aria-hidden />
-                    {t("documentsview.Download", {
-                      defaultValue: "Download",
-                    })}
-                  </Button>
-                ) : null}
-                {servedFileUrl && shareSupported ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    data-testid="document-share"
-                    onClick={() => void handleShareFile()}
-                  >
-                    <Share2 className="mr-1.5 size-4" aria-hidden />
-                    {t("documentsview.Share", {
-                      defaultValue: "Share",
-                    })}
-                  </Button>
-                ) : null}
-                {doc.canEditText ? (
-                  <>
+
+              {hasDocumentActions ? (
+                <div
+                  data-slot="settings-row"
+                  className="flex min-h-14 flex-wrap items-center gap-2 px-4 py-2"
+                >
+                  {mediaUrl && readerKind !== "transcript" ? (
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => setEditing((current) => !current)}
-                      disabled={saving}
+                      data-testid="document-fullscreen"
+                      aria-pressed={fullscreen}
+                      onClick={() => setFullscreen((current) => !current)}
                     >
-                      <Pencil className="mr-1.5 size-3.5" aria-hidden />
-                      {editing ? "Cancel" : "Edit text"}
+                      {fullscreen ? (
+                        <Minimize2 className="size-4" aria-hidden />
+                      ) : (
+                        <Maximize2 className="size-4" aria-hidden />
+                      )}
+                      {fullscreen
+                        ? t("documentsview.ExitFullScreen", {
+                            defaultValue: "Exit full screen",
+                          })
+                        : t("documentsview.FullScreen", {
+                            defaultValue: "Full screen",
+                          })}
                     </Button>
-                    {editing ? (
+                  ) : null}
+                  {servedFileUrl ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      data-testid="document-download"
+                      onClick={() => void handleDownloadFile()}
+                    >
+                      <Download className="size-4" aria-hidden />
+                      {t("documentsview.Download", {
+                        defaultValue: "Download",
+                      })}
+                    </Button>
+                  ) : null}
+                  {servedFileUrl && shareSupported ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      data-testid="document-share"
+                      onClick={() => void handleShareFile()}
+                    >
+                      <Share2 className="size-4" aria-hidden />
+                      {t("documentsview.Share", {
+                        defaultValue: "Share",
+                      })}
+                    </Button>
+                  ) : null}
+                  {doc.canEditText ? (
+                    <>
                       <Button
                         type="button"
+                        variant="outline"
                         size="sm"
-                        onClick={() => void handleSave()}
-                        disabled={saving || draftText.trim().length === 0}
+                        onClick={() => setEditing((current) => !current)}
+                        disabled={saving}
                       >
-                        <Save className="mr-1.5 size-3.5" aria-hidden />
-                        {saving ? "Saving…" : "Save"}
+                        <Pencil className="size-4" aria-hidden />
+                        {editing
+                          ? t("common.cancel", { defaultValue: "Cancel" })
+                          : t("documentsview.EditText", {
+                              defaultValue: "Edit text",
+                            })}
                       </Button>
-                    ) : null}
-                  </>
-                ) : doc.editabilityReason ? (
-                  <div className="text-xs text-muted">
-                    {doc.editabilityReason}
-                  </div>
-                ) : null}
-              </div>
-            </div>
+                      {editing ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => void handleSave()}
+                          disabled={saving || draftText.trim().length === 0}
+                        >
+                          <Save className="size-4" aria-hidden />
+                          {saving
+                            ? t("common.saving", { defaultValue: "Saving…" })
+                            : t("common.save", { defaultValue: "Save" })}
+                        </Button>
+                      ) : null}
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+            </SettingsGroup>
 
             {mediaBlock ? (
-              <div data-testid="reader-media">{mediaBlock}</div>
+              <SettingsGroup
+                title={t("documentsview.Preview", { defaultValue: "Preview" })}
+              >
+                <div data-testid="reader-media" className="p-4">
+                  {mediaBlock}
+                </div>
+              </SettingsGroup>
             ) : null}
 
             {transcript?.source === "meeting" && !transcript.redacted ? (
@@ -602,92 +665,37 @@ export function DocumentViewer({
               />
             ) : null}
 
-            {/* The transcript player already renders the full body; a plain
-                media record keeps the searchable text copy below for context. */}
             {readerKind === "transcript" && transcript ? null : (
-              <PagePanel variant="inset" className="p-4">
-                {editing ? (
-                  <Textarea
-                    value={draftText}
-                    rows={16}
-                    onChange={(event) => setDraftText(event.target.value)}
-                    variant="documentEditor"
-                    density="tall"
-                  />
-                ) : previewText ? (
-                  <pre className="custom-scrollbar max-h-[16rem] overflow-auto whitespace-pre-wrap break-words text-sm leading-relaxed text-txt/88">
-                    {previewText}
-                  </pre>
-                ) : (
-                  <div className="py-6 text-center text-xs text-muted">
-                    {t("documentsview.NoPreview", {
-                      defaultValue: "Full text preview is not available",
-                    })}
-                  </div>
-                )}
-              </PagePanel>
+              <SettingsGroup
+                title={t("documentsview.Content", { defaultValue: "Content" })}
+              >
+                <div className="p-5">
+                  {editing ? (
+                    <Textarea
+                      value={draftText}
+                      rows={16}
+                      onChange={(event) => setDraftText(event.target.value)}
+                      variant="documentEditor"
+                      density="tall"
+                    />
+                  ) : readableText ? (
+                    <div className="whitespace-pre-wrap break-words text-[15px] leading-7 text-[color:var(--settings-foreground)]">
+                      {readableText}
+                    </div>
+                  ) : (
+                    <PagePanel.ContentState
+                      state="empty"
+                      placement="inset"
+                      title={t("documentsview.NoPreview", {
+                        defaultValue: "No preview available",
+                      })}
+                    />
+                  )}
+                </div>
+              </SettingsGroup>
             )}
-
-            <PagePanel variant="inset" className="p-4">
-              <div>
-                {fragments.map((fragment, index) => {
-                  const createdLabel = formatDocumentTimestamp(
-                    fragment.createdAt,
-                  );
-                  return (
-                    <article
-                      key={fragment.id}
-                      className="grid gap-3 py-4 sm:grid-cols-[4rem_minmax(0,1fr)]"
-                    >
-                      <div className="flex size-8 items-center justify-center text-xs font-bold text-muted-strong">
-                        {index + 1}
-                      </div>
-
-                      <div className="min-w-0">
-                        <div className="mb-2 flex flex-wrap items-center gap-2 text-2xs text-muted">
-                          {fragment.position !== undefined ? (
-                            <span>
-                              {t("documentsview.FragmentPosition", {
-                                defaultValue: "position {{position}}",
-                                position: fragment.position,
-                              })}
-                            </span>
-                          ) : null}
-                          {createdLabel ? (
-                            <>
-                              {fragment.position !== undefined ? (
-                                <span>•</span>
-                              ) : null}
-                              <span>{createdLabel}</span>
-                            </>
-                          ) : null}
-                          {(fragment.position !== undefined ||
-                            createdLabel) && <span>•</span>}
-                          <span>
-                            {t("documentsview.CharacterCount", {
-                              defaultValue: "{{count}} chars",
-                              count: fragment.text.length,
-                            })}
-                          </span>
-                        </div>
-                        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-txt/90">
-                          {fragment.text}
-                        </p>
-                      </div>
-                    </article>
-                  );
-                })}
-                {fragments.length === 0 && (
-                  <PagePanel.Empty
-                    variant="inset"
-                    className="min-h-[8rem] py-8"
-                    title={t("documentsview.NoFragmentsFound")}
-                  />
-                )}
-              </div>
-            </PagePanel>
           </div>
-        )}
+        ) : null}
       </div>
 
       {fullscreen && mediaBlock ? (

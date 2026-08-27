@@ -606,7 +606,11 @@ describe("authMe over plain HTTP boundaries", () => {
   });
 
   it("degrades a 401 with an unparseable body to server_error without access", async () => {
-    fetchWithCsrfMock.mockResolvedValueOnce(textResponse("", 401));
+    fetchWithCsrfMock
+      .mockResolvedValueOnce(textResponse("", 401))
+      .mockResolvedValueOnce(
+        jsonResponse({ required: true, pairingEnabled: false }),
+      );
 
     const result = await authMe();
 
@@ -616,6 +620,26 @@ describe("authMe over plain HTTP boundaries", () => {
       reason: "server_error",
       access: undefined,
     });
+  });
+
+  it("recovers a generic outer-middleware 401 into the remote pairing contract", async () => {
+    fetchWithCsrfMock
+      .mockResolvedValueOnce(jsonResponse({ error: "Unauthorized" }, 401))
+      .mockResolvedValueOnce(
+        jsonResponse({ required: true, pairingEnabled: true }),
+      );
+
+    await expect(authMe()).resolves.toEqual({
+      ok: false,
+      status: 401,
+      reason: "remote_auth_required",
+      access: {
+        mode: "remote",
+        passwordConfigured: true,
+        ownerConfigured: false,
+      },
+    });
+    expect(fetchWithCsrfMock.mock.calls[1]?.[0]).toContain("/api/auth/status");
   });
 
   it("preserves auth throttling and the server retry window", async () => {

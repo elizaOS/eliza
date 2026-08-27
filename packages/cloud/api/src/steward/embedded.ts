@@ -440,7 +440,22 @@ function isProvidersData(value: unknown): value is ProvidersData {
   return !Object.hasOwn(value, "captcha") || isValidCaptcha(value.captcha);
 }
 
-function invalidProvidersResponse(): Response {
+type InvalidProvidersReason =
+  | "upstream_status"
+  | "media_type"
+  | "body"
+  | "json"
+  | "envelope"
+  | "provider_contract";
+
+function invalidProvidersResponse(
+  reason: InvalidProvidersReason,
+  upstreamStatus?: number,
+): Response {
+  logger.warn("[embedded-steward] invalid providers response", {
+    reason,
+    ...(upstreamStatus === undefined ? {} : { upstreamStatus }),
+  });
   return Response.json(
     {
       success: false,
@@ -630,40 +645,53 @@ async function patchProvidersResponse(
   upstream: Response,
   env: AppEnv["Bindings"],
 ): Promise<Response> {
-  if (!upstream.ok) return invalidProvidersResponse();
-  if (upstream.status !== 200) return invalidProvidersResponse();
+  if (!upstream.ok || upstream.status !== 200) {
+    return invalidProvidersResponse("upstream_status", upstream.status);
+  }
   const contentType = upstream.headers
     .get("content-type")
     ?.split(";", 1)[0]
     ?.trim()
     .toLowerCase();
   if (contentType !== "application/json" && !contentType?.endsWith("+json")) {
-    return invalidProvidersResponse();
+    return invalidProvidersResponse("media_type");
   }
+
+  let text: string | null;
+  try {
+    text = await readBoundedBody(upstream);
+  } catch {
+    // error-policy:J3 the public discovery boundary maps a failed body read to
+    // a bounded reason without logging response bytes or transport metadata.
+    return invalidProvidersResponse("body");
+  }
+  if (text === null) return invalidProvidersResponse("body");
 
   let parsed: unknown;
   try {
-    const text = await readBoundedBody(upstream);
-    if (text === null) return invalidProvidersResponse();
     parsed = parseProvidersJson(text);
   } catch {
-    return invalidProvidersResponse();
+    // error-policy:J3 untrusted provider JSON becomes an explicit invalid
+    // response; parser details and upstream content never enter logs.
+    return invalidProvidersResponse("json");
   }
-  if (!isRecord(parsed)) return invalidProvidersResponse();
+  if (!isRecord(parsed)) return invalidProvidersResponse("envelope");
   if (
     parsed.ok !== true ||
     Object.hasOwn(parsed, "error") ||
     (Object.hasOwn(parsed, "success") && parsed.success !== true)
   ) {
-    return invalidProvidersResponse();
+    return invalidProvidersResponse("envelope");
   }
 
   const hasNestedData = !isProvidersData(parsed);
   if (hasNestedData && !Object.hasOwn(parsed, "data")) {
-    return invalidProvidersResponse();
+    return invalidProvidersResponse("envelope");
   }
   const providerData = hasNestedData ? parsed.data : parsed;
-  if (!isProvidersData(providerData)) return invalidProvidersResponse();
+  if (!isProvidersData(providerData)) {
+    return invalidProvidersResponse("provider_contract");
+  }
 
   const oauth = new Set<string>(providerData.oauth);
   const patched: ProvidersData = { ...providerData };

@@ -81,6 +81,7 @@ function healthyPrimary(
         name: "exact-rate-container",
         status: "running",
         billingStatus: "active",
+        lifecycleRevision: 7,
         unitPrice: 99,
         billingInterval: "day",
         lastBilledAt: "2026-08-20T10:00:00.000Z",
