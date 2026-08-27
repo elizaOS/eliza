@@ -16,12 +16,11 @@ Clock + weather (`DefaultHomeWidgets`). Never ranked, never sunset; the calm
 backdrop a brand-new account still sees.
 
 ### Tier 2 - Live agent work (ongoing, self-hiding)
-Only work that needs the user's response belongs here:
-`needs-attention.pending`, plus setup-progress cards such as
-`model-download.status` and `agent-provisioning.status`. These rank by
-`approval`/`escalation`/setup signals and self-hide when idle. Continuous
-activity streams, app-run lists, and running workflow lists stay in the
-launcher/sidebar/routed views.
+Setup-progress cards such as `model-download.status` and
+`agent-provisioning.status` live here. Actions that need the user's response
+remain in the pinned notification center instead of duplicating the same item
+as a resident Home card. Continuous activity streams, app-run lists, and
+running workflow lists stay in the launcher/sidebar/routed views.
 
 ### Tier 3 - Data attention (urgency from the widget's own data)
 Calendar and Today (todo.items). Each fetches its own data, self-publishes a
@@ -78,4 +77,5 @@ declarations are removed: `agent-orchestrator.activity`,
 inside Today (`todo.items`) per the spec's merge verdict. The old
 `messages.recent` card also remains removed. Follow-up-worthy messages surface
 through notifications, and conversation navigation lives in chat history instead
-of a resident home tile.
+of a resident home tile. `needs-attention.pending` is also removed because
+approval and check-in prompts already render in the pinned notification center.
