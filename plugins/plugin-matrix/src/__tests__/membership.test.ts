@@ -271,6 +271,15 @@ describe("matrix membership scope and mapping", () => {
     expect(classifyMatrixTransition("leave", "ban")).toBe<MatrixMembershipTransition>("leave");
   });
 
+  it("refuses to classify unknown or missing membership as a leave", () => {
+    // Revoking a principal requires an explicit leave/ban decision — a
+    // missing value or a valid-but-unsupported Matrix state (knock) must be
+    // reported and skipped, never silently interpreted as absence.
+    expect(classifyMatrixTransition(undefined, "join")).toBeNull();
+    expect(classifyMatrixTransition("knock", "join")).toBeNull();
+    expect(classifyMatrixTransition("future_state", undefined)).toBeNull();
+  });
+
   it("derives roles from power levels", () => {
     expect(matrixMemberRoles(100)).toContain("owner");
     expect(matrixMemberRoles(50)).toContain("administrator");

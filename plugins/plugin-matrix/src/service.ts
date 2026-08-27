@@ -1173,10 +1173,15 @@ export class MatrixService extends Service implements IMatrixService {
         // First PREPARED after start (oldSyncToken null/undefined): publish
         // complete membership snapshots for joined rooms. Later PREPAREDs
         // (reconnects) re-publish from the SDK's accumulated state, which is
-        // complete for rooms already synced.
+        // complete for rooms already synced. A CACHED PREPARED (syncData
+        // fromCache, e.g. after a restart resuming from the store) is NOT
+        // fresh server state — publishing from it would restore possibly
+        // stale rosters as current evidence, so skip publication and let the
+        // recovery paths (scope-health probing) establish fresh state.
+        const firstPrepared = syncData?.oldSyncToken == null && syncData?.fromCache !== true;
         // error-policy:J7 snapshot publication is diagnostic and must not
         // kill the sync loop; the failure is logged for operator escalation.
-        void this.publishMembershipSnapshots(state, syncData?.oldSyncToken == null).catch((err) =>
+        void this.publishMembershipSnapshots(state, firstPrepared).catch((err) =>
           logger.error(
             `Matrix membership snapshot publication failed: ${err instanceof Error ? err.message : String(err)}`
           )
@@ -1329,21 +1334,42 @@ export class MatrixService extends Service implements IMatrixService {
         });
         continue;
       }
-      // Direct rooms are not membership-governed (assessed after the member
-      // list resolved, so a lazily-loaded group is never misclassified).
-      if (room.getJoinedMemberCount() <= 2) {
-        continue;
+      // Recovery check comes BEFORE the direct-room skip: a lazily-loaded
+      // group can transiently report <= 2 members, and skipping first would
+      // leave a partial roster unrecovered indefinitely. Only a room the
+      // authority already knows (in-memory flag OR persisted non-current
+      // health) needs recovery; a never-registered true DM has no scope row
+      // and must not be published.
+      const incomplete = authority.isRoomIncomplete(room.roomId);
+      let persistedNonCurrent = false;
+      if (!incomplete) {
+        const health = await authority
+          .scopeHealth({ roomId: room.roomId })
+          .catch((err: unknown) => {
+            // error-policy:J7 health probe failure is diagnostic; treat as
+            // not needing recovery rather than blocking the whole pass.
+            logger.error(
+              `Matrix membership scope health probe failed for ${room.roomId}: ${err instanceof Error ? err.message : String(err)}`
+            );
+            return null;
+          });
+        // A scope the SQL authority holds as stale/unavailable must recover
+        // through a fresh-roster republication even when this process has no
+        // in-memory incompleteness flag (e.g. after a restart).
+        persistedNonCurrent = health !== null && health.health !== "current";
       }
-      if (authority.isRoomIncomplete(room.roomId)) {
+      if (incomplete || persistedNonCurrent) {
         // Recovery requires a GENUINELY FRESH server-side roster:
         // loadMembersIfNeeded is one-shot and cached by the SDK, so a cached
         // resolve does NOT disprove a later timeline-reset gap. Perform a
         // fresh client.members fetch; a successful full fetch disproves every
         // transient incompleteness reason (timeline reset, member load
-        // failure, empty roster) at once. On failure the room stays
+        // failure, empty roster) at once. The FETCHED roster (not the SDK's
+        // cached Room model, which client.members does not update) becomes
+        // the published baseline. On failure the room stays
         // incomplete — fail closed.
-        const refreshed = await this.fetchFreshServerRoster(state, room.roomId);
-        if (!refreshed) {
+        const freshRoster = await this.fetchFreshServerRoster(state, room.roomId);
+        if (freshRoster === null) {
           await authority.reportIncomplete({
             roomId: room.roomId,
             reason: "member_list_incomplete",
@@ -1351,32 +1377,62 @@ export class MatrixService extends Service implements IMatrixService {
           });
           continue;
         }
+        if (freshRoster.length <= 2 && !persistedNonCurrent) {
+          // The fresh server roster shows this is (now) a direct-sized room
+          // with no persisted authority scope: publish nothing, but clear the
+          // transient flag so the room stops entering recovery every pass.
+          // (A room WITH a persisted non-current scope still publishes — the
+          // shrunken roster is complete evidence and restores health.)
+          authority.clearTransientRoomIncompleteness(room.roomId);
+          continue;
+        }
         authority.clearTransientRoomIncompleteness(room.roomId);
-        // Fall through: publish the complete baseline.
+        // Fall through: publish the complete baseline from the fresh roster.
+        await this.publishSingleRoomMembershipSnapshot(state, room, freshRoster);
+        continue;
+      }
+      // Direct rooms are not membership-governed (assessed after recovery,
+      // so a lazily-loaded group is never misclassified nor left stuck).
+      if (room.getJoinedMemberCount() <= 2) {
+        continue;
       }
       await this.publishSingleRoomMembershipSnapshot(state, room);
     }
   }
 
   /**
-   * Performs a genuinely fresh server-side member fetch for recovery paths.
-   * Room.loadMembersIfNeeded is one-shot and cached by the SDK, so only a
-   * direct client.members call proves the roster is complete NOW (disproving
-   * a timeline-reset gap or a failed member load from an earlier pass).
-   * Returns true when the server returned a usable member map.
+   * Fetches a GENUINELY FRESH server-side joined roster for a room via the
+   * homeserver API (`client.members` — a plain HTTP request that does NOT
+   * touch the SDK's cached Room model, unlike the one-shot
+   * `room.loadMembersIfNeeded`). Returns the joined user IDs, or null on
+   * failure (fail closed — the caller keeps the room incomplete).
    */
   private async fetchFreshServerRoster(
     state: MatrixAccountState,
     roomId: string
-  ): Promise<boolean> {
+  ): Promise<string[] | null> {
     try {
       const result = await state.client.members(roomId, "join");
-      return result !== null && typeof result === "object";
+      if (result === null || typeof result !== "object") {
+        return null;
+      }
+      const joined: string[] = [];
+      for (const [userId, events] of Object.entries(result)) {
+        // One authoritative membership event per user; only an explicit
+        // "join" counts as presence on the fresh server roster.
+        const latest = Array.isArray(events) ? events[events.length - 1] : undefined;
+        if (latest?.content?.membership === "join") {
+          joined.push(userId);
+        }
+      }
+      return joined;
     } catch (err) {
       logger.error(
         `Matrix fresh member fetch failed for ${roomId}: ${err instanceof Error ? err.message : String(err)}`
       );
-      return false;
+      return null;
+      // error-policy:J6 fetch failure leaves the room incomplete; recovery
+      // is retried on the next publication pass.
     }
   }
 
@@ -1389,20 +1445,45 @@ export class MatrixService extends Service implements IMatrixService {
    */
   private async publishSingleRoomMembershipSnapshot(
     state: MatrixAccountState,
-    room: sdk.Room
+    room: sdk.Room,
+    freshJoinedUserIds?: string[]
   ): Promise<boolean> {
     const authority = state.membershipAuthority;
     if (!authority) {
       return false;
     }
-    const joinedMembers = room.getJoinedMembers();
-    if (joinedMembers.length === 0) {
-      await authority.reportIncomplete({
-        roomId: room.roomId,
-        reason: "empty_roster",
-        observedAt: new Date().toISOString(),
-      });
-      return false;
+    // A caller-supplied fresh server roster (from client.members) overrides
+    // the SDK Room model: the plain HTTP fetch does not update the Room's
+    // cached members, so reading room.getJoinedMembers() after a fresh fetch
+    // would republish the stale/partial roster that triggered recovery.
+    let memberEntries: { userId: string; powerLevel: number }[];
+    if (freshJoinedUserIds !== undefined) {
+      if (freshJoinedUserIds.length === 0) {
+        await authority.reportIncomplete({
+          roomId: room.roomId,
+          reason: "empty_roster",
+          observedAt: new Date().toISOString(),
+        });
+        return false;
+      }
+      memberEntries = freshJoinedUserIds.map((userId) => ({
+        userId,
+        powerLevel: room.getMember(userId)?.powerLevel ?? 0,
+      }));
+    } else {
+      const joinedMembers = room.getJoinedMembers();
+      if (joinedMembers.length === 0) {
+        await authority.reportIncomplete({
+          roomId: room.roomId,
+          reason: "empty_roster",
+          observedAt: new Date().toISOString(),
+        });
+        return false;
+      }
+      memberEntries = joinedMembers.map((m) => ({
+        userId: m.userId,
+        powerLevel: m.powerLevel,
+      }));
     }
     // Snapshot members must reference existing entity/room/world rows; the
     // gate path creates them lazily, and synced rooms may carry members the
@@ -1423,7 +1504,7 @@ export class MatrixService extends Service implements IMatrixService {
       worldId,
     });
     const memberRecords = [];
-    for (const roomMember of joinedMembers) {
+    for (const roomMember of memberEntries) {
       const entityId = createUniqueUuid(this.runtime, `${state.accountId}:${roomMember.userId}`);
       await this.runtime.createEntity({
         id: entityId,
@@ -1584,8 +1665,19 @@ export class MatrixService extends Service implements IMatrixService {
         }
       }
     }
-    const transition = classifyMatrixTransition(member.membership, oldMembership);
     const matrixUserId = member.userId || event.getSender() || "unknown";
+    const transition = classifyMatrixTransition(member.membership, oldMembership);
+    if (transition === null) {
+      // Unknown/missing membership must not become leave authority (an
+      // explicit decision is required to revoke a principal).
+      // error-policy:J7 diagnostic report only; the loop continues.
+      this.runtime.reportError(
+        "matrix:membership-transition",
+        new Error(`Unsupported Matrix membership value: ${String(member.membership)}`),
+        { roomId, subject: matrixUserId, membership: member.membership ?? null }
+      );
+      return;
+    }
     const entityId = createUniqueUuid(this.runtime, `${state.accountId}:${matrixUserId}`);
     const worldId = createUniqueUuid(this.runtime, `${state.accountId}:${roomId}`);
     // Evidence requires entity/room/world rows: bootstrap them for members the
@@ -2239,13 +2331,27 @@ export class MatrixService extends Service implements IMatrixService {
     if (state.membershipAuthority) {
       state.membershipAuthority.clearScopeRemoval({ roomId });
       // error-policy:J7 post-join publication is diagnostic; the join itself
-      // already succeeded. The publication pass performs verified
-      // complete-state checks before publishing anything.
-      void this.publishMembershipSnapshots(state, false).catch((err) =>
-        logger.error(
-          `Matrix membership snapshot after join failed: ${err instanceof Error ? err.message : String(err)}`
+      // already succeeded. Publish THIS room directly from the Room object
+      // the homeserver call returned — the store scan inside the general
+      // publication pass only sees rooms whose getMyMembership() is already
+      // "join" in the SDK's possibly-not-yet-synced state, which is exactly
+      // the missed-event case this recovery exists for.
+      void this.publishSingleRoomMembershipSnapshot(state, response)
+        .catch((err) =>
+          logger.error(
+            `Matrix membership snapshot after join failed: ${err instanceof Error ? err.message : String(err)}`
+          )
         )
-      );
+        .then((published) => {
+          // Snapshot-only room (no other members yet): also run the general
+          // pass so rooms already in the store get their snapshots too.
+          void this.publishMembershipSnapshots(state, false).catch((err) =>
+            logger.error(
+              `Matrix membership snapshot sweep after join failed: ${err instanceof Error ? err.message : String(err)}`
+            )
+          );
+          return published;
+        });
     }
 
     logger.info(`Joined room ${roomId}`);
