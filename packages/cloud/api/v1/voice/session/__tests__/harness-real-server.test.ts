@@ -179,6 +179,23 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
       expect(health.status).toBe(200);
       expect((await health.json()) as unknown).toEqual({ ready: true });
 
+      const scopedHealth = await fetch(
+        `${server.httpUrl}/api/v1/voice/session/health?conversationId=${encodeURIComponent(CONVERSATION_ID)}`,
+      );
+      expect(scopedHealth.status).toBe(200);
+      expect((await scopedHealth.json()) as unknown).toEqual({
+        ready: true,
+        conversationId: CONVERSATION_ID,
+      });
+
+      const mismatchedHealth = await fetch(
+        `${server.httpUrl}/api/v1/voice/session/health?conversationId=another-conversation`,
+      );
+      expect(mismatchedHealth.status).toBe(200);
+      expect((await mismatchedHealth.json()) as unknown).toEqual({
+        ready: false,
+      });
+
       const consent = await fetch(
         `${server.httpUrl}/api/v1/voice/session/consent`,
         { method: "POST" },
