@@ -75,6 +75,6 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "playwright": "^1.62.1",
     "tsup": "^8.5.1",
-    "vite": "^8.0.0"
+    "vite": "^8.2.2"
   }
 }
