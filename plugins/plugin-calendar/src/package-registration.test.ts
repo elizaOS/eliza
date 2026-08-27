@@ -19,6 +19,31 @@ describe("@elizaos/plugin-calendar root registration", () => {
     expect(CalendarView).toBe(SimpleCalendarView);
   });
 
+  it("declares owner-gated server capabilities wired to a server interact handler", () => {
+    const view = calendarPlugin.views?.[0];
+    expect(view?.roleGate).toEqual({ minRole: "OWNER" });
+    expect(typeof view?.serverInteract).toBe("function");
+    const capabilities = view?.capabilities ?? [];
+    expect(capabilities.map((capability) => capability.id)).toEqual([
+      "get-events",
+      "create-event",
+    ]);
+    const createEvent = capabilities.find(
+      (capability) => capability.id === "create-event",
+    );
+    expect(createEvent?.params?.title).toMatchObject({
+      type: "string",
+      required: true,
+    });
+    expect(createEvent?.params?.startAt).toMatchObject({
+      type: "string",
+      required: true,
+    });
+    // The declaration must stay honest about its write target: the built-in
+    // calendar, never a silently-selected provider account.
+    expect(createEvent?.description).toMatch(/built-in/i);
+  });
+
   it("registers one callable canonical CALENDAR_SOURCES action", async () => {
     const registered = calendarPlugin.actions?.filter(
       (action) => action.name === "CALENDAR_SOURCES",
