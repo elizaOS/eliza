@@ -39,6 +39,26 @@ describe("fixture bundle", () => {
     expect(js).toContain("ready");
   });
 
+  it("drops incidental CSS side-effect imports from inline fixture bundles", async () => {
+    const root = await mkdtemp(join(tmpdir(), "eliza-fixture-css-"));
+    const entry = join(root, "entry.ts");
+
+    await writeFile(
+      join(root, "side-effect.css"),
+      ".fixture-only { color: red; }",
+    );
+    await writeFile(
+      entry,
+      'import "./side-effect.css"; globalThis.__fixtureCssImport = "ready";',
+    );
+
+    const js = await bundleFixture({ entry });
+
+    expect(js).toContain("__fixtureCssImport");
+    expect(js).toContain("ready");
+    expect(js).not.toContain("fixture-only");
+  });
+
   it("bundles shared routing contracts before workspace dist exists", async () => {
     const root = await mkdtemp(join(tmpdir(), "eliza-fixture-contracts-"));
     const entry = join(root, "entry.ts");

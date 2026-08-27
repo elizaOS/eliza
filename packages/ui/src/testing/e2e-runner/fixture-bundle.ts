@@ -1,7 +1,8 @@
 /**
  * Bundle a shell fixture with esbuild and wrap it in a static HTML page for the
  * `__e2e__` runners to load over `file://` in headless Chromium. One esbuild
- * config (browser IIFE, tsx/ts loaders, NODE_ENV=production), one HTML skeleton
+ * config (browser IIFE, TypeScript loaders, incidental CSS discarded,
+ * NODE_ENV=production), one HTML skeleton
  * with the knobs the runners actually vary — Tailwind source (CDN vs a compiled
  * theme vs none), the `process` shim, `<html>` class, extra head markup, body
  * background — and an optional real-`@elizaos/ui` Tailwind v4 theme compile.
@@ -56,7 +57,7 @@ export async function bundleFixture({
     // export selection for packages with a dedicated renderer entrypoint.
     conditions: ["eliza-source", "browser"],
     jsx: "automatic",
-    loader: { ".tsx": "tsx", ".ts": "ts" },
+    loader: { ".tsx": "tsx", ".ts": "ts", ".css": "empty" },
     define: { "process.env.NODE_ENV": '"production"', ...define },
     plugins: [workspaceSourcePlugin, ...plugins],
     write: false,
