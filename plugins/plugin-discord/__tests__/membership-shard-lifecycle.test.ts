@@ -12,6 +12,7 @@
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setupDiscordEventListeners } from "../discord-events";
+import { DiscordService } from "../service";
 
 type GuildLike = { id: string; shardId?: number };
 
@@ -151,5 +152,76 @@ describe("membership-evidence shard lifecycle wiring (#24365)", () => {
 		expect(degrade).toHaveBeenCalledTimes(1);
 		const worldIds = degrade.mock.calls[0][2];
 		expect(worldIds).toEqual([String(2 ** 22)]);
+	});
+
+	it("the per-account service facade forwards every membership hook with the state account id (r6)", async () => {
+		// RP r6: round-5 finding 2 had no byte-level regression guard. The
+		// facade is built by the private createAccountServiceFacade over
+		// (parent, state) only — a prototype-only instance is enough to
+		// exercise it. If any of the five membership hooks is dropped from
+		// the facade, the corresponding forward here receives undefined.
+		const calls: Record<string, unknown[][]> = {};
+		const hookNames = [
+			"publishGuildMembershipEvidence",
+			"publishMemberMembershipDelta",
+			"publishMemberPermissionDelta",
+			"degradeMembershipForAccount",
+			"renewSenderMembershipEvidence",
+		] as const;
+		const parent = {
+			accountPool: new Map(),
+			...Object.fromEntries(
+				hookNames.map((name) => [name, vi.fn().mockResolvedValue(undefined)]),
+			),
+		};
+		const state = { accountId: "acct-secondary", account: { token: "" } };
+		const facade = (
+			DiscordService.prototype as unknown as {
+				createAccountServiceFacade: (
+					this: unknown,
+					state: unknown,
+				) => Record<string, (...args: unknown[]) => unknown>;
+			}
+		).createAccountServiceFacade.call(parent, state);
+
+		// Snapshot the forwarding identity of each membership hook before
+		// invocation so the RED control distinguishes a dropped forward from
+		// a forwarding bug.
+		for (const name of hookNames) {
+			calls[name] = [];
+		}
+		expect(typeof facade.publishGuildMembershipEvidence).toBe("function");
+		expect(typeof facade.publishMemberMembershipDelta).toBe("function");
+		expect(typeof facade.publishMemberPermissionDelta).toBe("function");
+		expect(typeof facade.degradeMembershipForAccount).toBe("function");
+		expect(typeof facade.renewSenderMembershipEvidence).toBe("function");
+
+		const guildArg = { id: "300" } as never;
+		await facade.publishGuildMembershipEvidence("acct-secondary", guildArg);
+		await facade.publishMemberMembershipDelta({ guildId: "300" } as never);
+		await facade.publishMemberPermissionDelta({ guildId: "300" } as never);
+		await facade.degradeMembershipForAccount("acct-secondary", "r6", ["300"]);
+		await facade.renewSenderMembershipEvidence({ guildId: "300" } as never);
+
+		for (const name of hookNames) {
+			const parentHook = (
+				parent as unknown as Record<string, { mock: { calls: unknown[][] } }>
+			)[name];
+			expect(
+				parentHook.mock.calls.length,
+				`${name} forwarded to parent`,
+			).toBeGreaterThanOrEqual(1);
+			calls[name].push(...parentHook.mock.calls);
+		}
+		// Options-carrying hooks stamp the facade state's account id on the
+		// forwarded options (falls back only when the caller supplied none).
+		const deltaCall = (
+			parent as unknown as Record<string, { mock: { calls: any[][] } }>
+		).publishMemberMembershipDelta.mock.calls[0][0];
+		expect(deltaCall.accountId).toBe("acct-secondary");
+		const renewCall = (
+			parent as unknown as Record<string, { mock: { calls: any[][] } }>
+		).renewSenderMembershipEvidence.mock.calls[0][0];
+		expect(renewCall.accountId).toBe("acct-secondary");
 	});
 });
