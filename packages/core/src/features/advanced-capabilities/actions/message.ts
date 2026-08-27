@@ -156,23 +156,21 @@ const MESSAGE_COMPRESSED =
 	"primary message action send read_channel read_with_contact read_message search list_channels list_servers list_connections list_worlds list_rooms join leave react edit delete pin get_user manage_server triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server world inbox draft connections platforms reachable";
 
 /**
- * Ops an ordinary USER principal may execute (#25284). The umbrella's exposure
- * gate is USER so owned/delegated delivery paths are reachable by ordinary
- * users; every op NOT in this set keeps its historical ADMIN floor, enforced
- * per-op inside the handler regardless of how the action was reached. The
- * admitted set is exactly the outbound compose/deliver surface: `send`
- * (direct compose-and-deliver, whose unvetted-recipient path already requires
- * user confirmation), the draft-compose ops, and `send_draft`, which carries
- * its own turn-bound consent gate in the leaf. Read/triage topology and every
+ * Ops an ordinary USER principal may execute (#25284, narrowed per #27932
+ * review). The umbrella's exposure gate is USER so the consent-gated
+ * draft-delivery path is reachable by ordinary users; every op NOT in this
+ * set keeps its historical ADMIN floor, enforced per-op inside the handler
+ * regardless of how the action was reached. The admitted set is exactly
+ * `send_draft` — the op whose leaf carries the turn-bound consent gate
+ * (#25284). Direct `send`, `draft_reply`, `draft_followup`, and `respond`
+ * stay ADMIN: `respond` drafts and delivers in one turn with no consent
+ * gate, `send`'s confirmation covers only the unvetted-recipient branch,
+ * and `delegateToTriage` dispatches leaf handlers without re-reading their
+ * `roleGate`, so admitting them here would silently bypass the ADMIN floors
+ * those leaf actions still declare. Read/triage topology and every
  * destructive or scheduling op stays ADMIN.
  */
-const MESSAGE_USER_OPS: ReadonlySet<MessageOperation> = new Set([
-	"send",
-	"draft_reply",
-	"draft_followup",
-	"respond",
-	"send_draft",
-]);
+const MESSAGE_USER_OPS: ReadonlySet<MessageOperation> = new Set(["send_draft"]);
 
 /** True iff op belongs to the USER-admissible set above (#25284). */
 function messageOpAdmitsUser(op: MessageOperation): boolean {
@@ -3136,8 +3134,12 @@ async function handleSend(
 			// Turn-bound (#27932 review): exactly ONE pending send confirmation
 			// per actor per room (the helper's cache key already prefixes
 			// actor+action; this key adds only the room). A new operation
-			// OVERWRITES any prior armed preview — even for a different
-			// recipient or connector — so no stale record can ever be
+			// consumes any prior armed preview — even for a different
+			// recipient or connector — on the arming turn: requireConfirmation
+			// resolves (and deletes) the prior record, and because the digest
+			// below cannot match the consumed record's operation, the code
+			// re-arms for the NEW operation regardless of whether the turn
+			// was an affirmative or not. No stale record can ever be
 			// selected. The record carries a SHA-256 digest of the complete
 			// effective send operation — the outbound Content AND the full
 			// resolved TargetInfo — and the arming message id; consumption
@@ -3186,13 +3188,22 @@ async function handleSend(
 				distinctTurn = metadata.armedByMessageId !== String(message.id ?? "");
 			}
 			if (
-				decision.status === "confirmed" &&
+				(decision.status === "confirmed" || decision.status === "cancelled") &&
 				(!digestMatches || !distinctTurn)
 			) {
 				// The consumed record described a DIFFERENT operation: the
-				// affirmative did not authorize THESE bytes. Fail closed and
-				// re-arm for the current operation so the user can
-				// deliberately confirm it on a later message.
+				// reply did not authorize THESE bytes. This covers a genuine
+				// affirmative aimed at a superseded preview AND a
+				// non-affirmative turn (e.g. switching recipients without
+				// saying yes): requireConfirmation consumed the prior record
+				// either way, and reporting "declined" for a request the
+				// user never answered — while leaving the new operation
+				// unarmed — would be wrong twice. Fail closed and re-arm
+				// for the current operation so the user can deliberately
+				// confirm it on a later message. A genuine "no" still
+				// reports declined: there the fingerprint matches and the
+				// turn is distinct, so this guard is false and nothing
+				// re-arms.
 				decision = await requireConfirmation(armArgs);
 				metadata = (decision.metadata ?? {}) as typeof metadata;
 				digestMatches =

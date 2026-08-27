@@ -108,9 +108,6 @@ const SEND_CUE_WORDS = new Set([
 	"sending",
 	"sent",
 	"ahead",
-	"do",
-	"did",
-	"does",
 	"it",
 	"out",
 	"して",
@@ -151,12 +148,36 @@ const SEND_CUE_WORDS = new Set([
 	"discord",
 	"slack",
 ]);
+// NOTE (#27932 review): interrogative auxiliaries ("do", "did", "does") are
+// deliberately NOT cue words. With "did" admitted, "did you send it?" reduced
+// to cue words only with "send" as an anchor and authorized an irreversible
+// send off a question about whether the send happened. A question is never an
+// answer to the preview; the residue test below plus the question-mark check
+// fail these closed.
+// Any Unicode question-mark codepoint marks a question. The class is the
+// complete set of codepoints whose Unicode name contains "QUESTION MARK"
+// (including TAG QUESTION MARK U+E003F and MEDIEVAL QUESTION MARK U+2E54,
+// Unicode 14) plus the interrobang family (⁇ ⁈ ⁉ ‽ ⸘) — question semantics
+// per the Unicode names list. Derived from the Unicode data, not hand-picked,
+// so no locale's question shape (Arabic ؟, Armenian ՞, Greek ;, Ethiopic ፧,
+// Vai ꘏, Chakma 𑅃, inverted ¿, …) is missed. None is alphanumeric, so none
+// participates in the residue filter below; a question always fails closed.
+const QUESTION_MARK_RE = /[?¿;՞؟፧᥅⁇⁈⁉‽⸘❓❔⩻⩼⳺⳻⸮꘏꛷︖﹖？⹔𑅃𞥟🯄󠀿]/u;
 
 function isBareSendAffirmation(text: string): boolean {
-	const residue = text
-		.toLowerCase()
-		.replace(/[^\p{L}\p{N}]+/gu, " ")
-		.trim();
+	const lowered = text.toLowerCase();
+	// ANY question mark makes the reply a question about the send ("did you
+	// send it?", "ok send it?"), not an answer to the preview — regardless of
+	// trailing punctuation, quotes, or trailing words ("send it?!", "\"send
+	// it?\"", "send it? please"). Checked before punctuation stripping
+	// because the residue filter would otherwise erase the mark and turn the
+	// question into a bare affirmative. Covers the Unicode question-mark
+	// forms (full-width ？, Arabic ؟, small ﹖, presentation ︖, inverted ⸮,
+	// interrobangs ⁇⁈⁉) so no locale's question shape survives stripping.
+	// False positives (an affirmative that quotes a question) merely
+	// re-prompt: fail-safe direction.
+	if (QUESTION_MARK_RE.test(lowered)) return false;
+	const residue = lowered.replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 	if (residue.length === 0) return false;
 	let sawAnchor = false;
 	for (const word of residue.split(/\s+/)) {

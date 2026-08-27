@@ -251,6 +251,80 @@ describe("#25284 send-consent gate — planner flags can never authorize", () =>
 	});
 });
 
+describe("#25284 send-consent gate — interrogative replies are questions, not consent (#27932 review)", () => {
+	const interrogatives = [
+		"did you send it?",
+		"Did you send the email?",
+		"does it send?",
+		"did that send?",
+		"thanks did you send it",
+		"did you send it just now?",
+		"did you send it",
+		// RP review R1: a question mark ANYWHERE makes the reply a question,
+		// even when trailing punctuation/quotes/words would otherwise survive
+		// the residue filter and reduce to a bare affirmative.
+		"send it?!",
+		"send it?.",
+		'"send it?"',
+		"send it? please",
+		"ok send it? thanks",
+		"ok？send it",
+		// RP review R2: non-Latin question-mark forms must not survive either.
+		"send it؟",
+		"send it﹖",
+		"send it︖",
+		// RP review R3: the class is now the complete Unicode question-mark
+		// set (name-derived) — pin the exotic locales it called out.
+		"send it¿",
+		"send it՞",
+		"send it؟ yes",
+		// RP review R3b: medieval question mark + interrobangs.
+		"send it⹔",
+		"send it‽",
+		"send it⸘",
+	];
+	for (const text of interrogatives) {
+		it(`interrogative "${text}" re-prompts instead of sending`, async () => {
+			const runtime = makeRuntime();
+			const draft = seedDraft();
+			await runSendDraft({
+				runtime,
+				message: makeMessage({ text: "send the draft" }),
+				parameters: { draftId: draft.draftId },
+			});
+			const result = await runSendDraft({
+				runtime,
+				message: makeMessage({ text }),
+				parameters: { draftId: draft.draftId },
+			});
+			expect(result.data).toMatchObject({ consentStatus: "stale" });
+			expect(sendSpy).toHaveBeenCalledTimes(0);
+		});
+	}
+
+	it("a reply carrying a question mark is a question, while terminal punctuation without one still confirms", async () => {
+		// Belt-and-braces must be additive: "ok send it?" — the user asking
+		// whether to send — stays a question (stale), but "ok, send it." with
+		// terminal punctuation still confirms. Punctuation is already
+		// stripped by the residue filter; only the QUESTION MARK carries
+		// question intent.
+		const runtime = makeRuntime();
+		const draft = seedDraft();
+		await runSendDraft({
+			runtime,
+			message: makeMessage({ text: "send the draft" }),
+			parameters: { draftId: draft.draftId },
+		});
+		const result = await runSendDraft({
+			runtime,
+			message: makeMessage({ text: "ok send it?" }),
+			parameters: { draftId: draft.draftId },
+		});
+		expect(result.data).toMatchObject({ consentStatus: "stale" });
+		expect(sendSpy).toHaveBeenCalledTimes(0);
+	});
+});
+
 describe("#25284 send-consent gate — qualified/modified confirmation refuses", () => {
 	const qualified = [
 		"yes, but change the subject",
