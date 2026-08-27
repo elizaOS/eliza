@@ -312,6 +312,14 @@ export async function isDuplicateTweet(
   const normalizedNew = normalizeTweetForDuplicateCheck(tweetText);
   for (const recent of recentTweets) {
     const normalizedRecent = normalizeTweetForDuplicateCheck(recent);
+    // A tweet that normalizes to "" (URL-only or emoji-only) carries no
+    // comparable signal: `anyString.includes("")` is always true, so without
+    // this guard one such recent tweet flags every future tweet as a
+    // duplicate and permanently halts autonomous posting (#29657). The exact
+    // raw-text guard above still catches genuinely identical posts.
+    if (!normalizedRecent || !normalizedNew) {
+      continue;
+    }
     if (normalizedNew === normalizedRecent) {
       return true;
     }
