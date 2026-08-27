@@ -1,0 +1,235 @@
+/**
+ * Unit coverage for the X DM client's membership wiring (#24372): roster
+ * event routing, own-membership handling, contained publish failures (the
+ * account-global dm_cursor must advance regardless), and the auth
+ * 401/403 degrade + successful-poll restore cycle. The membership
+ * publisher is stubbed at the class boundary (it has its own real-PGlite
+ * vertical in __tests__/membership-publisher.real.test.ts); the harness is
+ * deterministic with fake sessions.
+ */
+
+import type { IAgentRuntime } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ClientBase } from "./base";
+import type { AuthenticatedTwitterSession } from "./client/auth";
+import { TwitterDirectMessageClient } from "./direct-messages";
+
+const membershipInstances: Array<Record<string, ReturnType<typeof vi.fn>>> = [];
+
+vi.mock("./membership", () => {
+  return {
+    XMembershipPublisher: class {
+      scopeForConversation = vi.fn().mockResolvedValue(null);
+      publishJoin = vi.fn().mockResolvedValue(undefined);
+      publishLeave = vi.fn().mockRejectedValue(new Error("publish down"));
+      renewSender = vi.fn().mockResolvedValue(undefined);
+      degradeScope = vi.fn().mockResolvedValue(undefined);
+      degradeAllScopes = vi.fn().mockResolvedValue(undefined);
+      restoreAllScopes = vi.fn().mockResolvedValue(undefined);
+      constructor() {
+        membershipInstances.push(
+          this as unknown as Record<string, ReturnType<typeof vi.fn>>,
+        );
+      }
+    },
+    xMembershipPrincipal: vi.fn().mockResolvedValue({
+      principalId: "00000000-0000-4000-8000-000000000001",
+    }),
+  };
+});
+
+const settledWrites: Array<[string, string]> = [];
+
+function fakeRuntime(): IAgentRuntime {
+  const cache = new Map<string, string>();
+  return {
+    agentId: "00000000-0000-4000-8000-0000000000aa",
+    getCache: vi.fn(async (k: string) => cache.get(k) ?? null),
+    setCache: vi.fn(async (k: string, v: string) => {
+      cache.set(k, v);
+      settledWrites.push([k, v]);
+    }),
+    deleteCache: vi.fn(async (k: string) => cache.delete(k)),
+    reportError: vi.fn(),
+    getRoom: vi.fn().mockResolvedValue(null),
+    ensureRoomExists: vi.fn().mockResolvedValue(undefined),
+    ensureWorldExists: vi.fn().mockResolvedValue(undefined),
+    ensureConnection: vi.fn().mockResolvedValue(undefined),
+    getEntityById: vi.fn().mockResolvedValue(null),
+    createEntities: vi.fn().mockResolvedValue(undefined),
+    updateEntity: vi.fn().mockResolvedValue(undefined),
+    getServicesByType: vi.fn().mockReturnValue([]),
+    getSetting: vi.fn().mockReturnValue(undefined),
+  } as unknown as IAgentRuntime;
+}
+
+function fakeSession(events: unknown[], includes?: unknown) {
+  return {
+    profile: { userId: "990000000000000001" },
+    client: {
+      v2: {
+        listDmEvents: vi.fn().mockResolvedValue({
+          events,
+          includes,
+          done: true,
+        }),
+        sendDmToParticipant: vi
+          .fn()
+          .mockResolvedValue({ data: { dm_event_id: "1" } }),
+      },
+    },
+  } as unknown as AuthenticatedTwitterSession;
+}
+
+function buildClient(runtime: IAgentRuntime) {
+  const clientBase = {
+    accountId: "default",
+    twitterClient: {
+      withAuthenticatedSession: vi.fn(
+        async (fn: (s: AuthenticatedTwitterSession) => Promise<void>) =>
+          fn(currentSession),
+      ),
+      isAuthenticatedSessionCurrent: vi.fn().mockReturnValue(true),
+    },
+  } as unknown as ClientBase;
+  let currentSession: AuthenticatedTwitterSession;
+  const dm = new TwitterDirectMessageClient(
+    clientBase,
+    runtime,
+    {} as Parameters<
+      typeof TwitterDirectMessageClient.prototype.start
+    >[0] extends never
+      ? never
+      : Record<string, never>,
+  );
+  return {
+    dm,
+    setSession: (s: AuthenticatedTwitterSession) => {
+      currentSession = s;
+    },
+    clientBase,
+  };
+}
+
+describe("TwitterDirectMessageClient membership wiring (#24372)", () => {
+  beforeEach(() => {
+    settledWrites.length = 0;
+  });
+
+  it("routes a ParticipantsJoin event through the membership path and advances the cursor", async () => {
+    const runtime = fakeRuntime();
+    const { dm, setSession } = buildClient(runtime);
+    await runtime.setCache(
+      "twitter/default/990000000000000001/dm_cursor",
+      "100",
+    );
+    setSession(
+      fakeSession([
+        {
+          id: "101",
+          event_type: "ParticipantsJoin",
+          dm_conversation_id: "1999888777660001",
+          participant_ids: ["990000000000000002"],
+          sender_id: "990000000000000003",
+          created_at: "2026-08-26T00:00:00.000Z",
+        },
+      ]),
+    );
+    // poll() is private; drive the full path through start()'s first poll.
+    await dm.start();
+    await dm.stop();
+    // The roster event was processed (scope resolution returned null in the
+    // stub → no publish) and the cursor still advanced past it.
+    expect(
+      await runtime.getCache("twitter/default/990000000000000001/dm_cursor"),
+    ).toBe("101");
+  });
+
+  it("advances the cursor even when a publish would fail (degrade-only containment)", async () => {
+    const runtime = fakeRuntime();
+    const { dm, setSession } = buildClient(runtime);
+    await runtime.setCache(
+      "twitter/default/990000000000000001/dm_cursor",
+      "200",
+    );
+    setSession(
+      fakeSession([
+        {
+          id: "201",
+          event_type: "ParticipantsLeave",
+          dm_conversation_id: "1999888777660002",
+          participant_ids: ["990000000000000004"],
+          created_at: "2026-08-26T00:00:00.000Z",
+        },
+      ]),
+    );
+    await dm.start();
+    await dm.stop();
+    expect(
+      await runtime.getCache("twitter/default/990000000000000001/dm_cursor"),
+    ).toBe("201");
+  });
+
+  it("publishes own membership for a self-sent message and advances the cursor", async () => {
+    const runtime = fakeRuntime();
+    const { dm, setSession } = buildClient(runtime);
+    await runtime.setCache(
+      "twitter/default/990000000000000001/dm_cursor",
+      "300",
+    );
+    setSession(
+      fakeSession([
+        {
+          id: "301",
+          event_type: "MessageCreate",
+          dm_conversation_id: "1999888777660003",
+          sender_id: "990000000000000001", // own user
+          text: "self note",
+        },
+      ]),
+    );
+    await dm.start();
+    await dm.stop();
+    expect(
+      await runtime.getCache("twitter/default/990000000000000001/dm_cursor"),
+    ).toBe("301");
+  });
+
+  it("degrades all membership scopes on a 401 poll failure and restores on recovery", async () => {
+    const runtime = fakeRuntime();
+    const before = membershipInstances.length;
+    const { dm, setSession } = buildClient(runtime);
+    const degraded = membershipInstances[before];
+    // First poll throws a 401-shaped error.
+    const failing = {
+      profile: { userId: "990000000000000001" },
+      client: {
+        v2: {
+          listDmEvents: vi.fn().mockRejectedValue({ data: { status: 401 } }),
+        },
+      },
+    } as unknown as AuthenticatedTwitterSession;
+    setSession(failing);
+    await dm.start();
+    await dm.stop();
+    expect(degraded).toBeDefined();
+    expect(degraded.degradeAllScopes).toHaveBeenCalledWith("x_auth_failed_401");
+    // A transient 429 must NOT degrade scope health.
+    setSession({
+      profile: { userId: "990000000000000001" },
+      client: {
+        v2: {
+          listDmEvents: vi.fn().mockRejectedValue({ data: { status: 429 } }),
+        },
+      },
+    } as unknown as AuthenticatedTwitterSession);
+    await dm.start();
+    await dm.stop();
+    expect(degraded.degradeAllScopes).toHaveBeenCalledTimes(1);
+    // A subsequent successful poll restores the degraded scopes.
+    setSession(fakeSession([]));
+    await dm.start();
+    await dm.stop();
+    expect(degraded.restoreAllScopes).toHaveBeenCalledWith("x_auth_recovered");
+  });
+});

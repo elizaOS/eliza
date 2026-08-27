@@ -115,11 +115,20 @@ export class TwitterDirectMessageClient {
    */
   private readonly membership = new XMembershipPublisher(this.runtime);
   /**
-   * Conversation ids whose own-account membership has been published this
-   * process, so the account's own participation is proven once per
-   * conversation instead of on every event.
+   * Conversation ids whose own-account membership was published this
+   * process, with the publish time — own participation is re-proven after
+   * the evidence TTL lapses (the authority expires evidence at validUntil,
+   * so a lifetime marker would let own proof silently go stale) and after
+   * the scope is degraded (own-leave) so regained access re-proves.
    */
-  private readonly ownMembershipPublished = new Set<string>();
+  private readonly ownMembershipPublishedAt = new Map<string, number>();
+  /** Evidence validity window requested per own-membership proof (6h). */
+  private static readonly OWN_MEMBERSHIP_TTL_MS = 6 * 60 * 60 * 1_000;
+  /**
+   * True while all membership scopes are degraded after a 401/403 poll
+   * failure; the next successful poll clears it and restores the scopes.
+   */
+  private membershipDegradedForAuth = false;
 
   constructor(
     private readonly client: ClientBase,
@@ -225,13 +234,71 @@ export class TwitterDirectMessageClient {
     this.pollInFlight = true;
     try {
       await this.processNewMessages();
+      // Membership evidence (#24372): a successful authenticated poll means
+      // authorization recovered — restore any scopes degraded by a prior
+      // 401/403 so observed activity re-proves participants.
+      if (this.membershipDegradedForAuth) {
+        this.membershipDegradedForAuth = false;
+        await this.restoreMembershipScopes("x_auth_recovered");
+      }
     } catch (error) {
       this.runtime.reportError("XDirectMessages.poll", error, {
         accountId: this.client.accountId,
       });
+      // Membership evidence (#24372): persistent authorization failures
+      // (401/403) mean the account can no longer observe ANY conversation —
+      // degrade every known scope so authorization fails closed instead of
+      // trusting stale evidence. Transient failures (429, 5xx, network) do
+      // NOT write health: the evidence TTL (6h) is the fail-closed
+      // backstop and the next successful poll simply continues renewing.
+      if (isAuthorizationFailure(error)) {
+        this.membershipDegradedForAuth = true;
+        await this.degradeAllMembershipScopes(
+          `x_auth_failed_${errorCodeOf(error) ?? "401"}`,
+        );
+      }
     } finally {
       this.pollInFlight = false;
       this.scheduleNextPoll();
+    }
+  }
+
+  /**
+   * Degrade every membership scope this client has published under (#24372).
+   * Used when the account's authorization fails globally (401/403 on the DM
+   * events endpoint): no conversation remains observable, so all evidence
+   * must fail closed. Degrade-only and failure-contained per J4.
+   */
+  private async degradeAllMembershipScopes(reason: string): Promise<void> {
+    try {
+      await this.membership.degradeAllScopes(reason);
+    } catch (error) {
+      // error-policy:J4 degrade-only side surface; never break the poll path.
+      logger.debug(
+        {
+          src: "plugin:x",
+          accountId: this.client.accountId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "X DM membership scope degrade-all failed",
+      );
+    }
+  }
+
+  /** Restore all scopes after authorization recovers; contained per J4. */
+  private async restoreMembershipScopes(reason: string): Promise<void> {
+    try {
+      await this.membership.restoreAllScopes(reason);
+    } catch (error) {
+      // error-policy:J4 degrade-only side surface; never break the poll path.
+      logger.debug(
+        {
+          src: "plugin:x",
+          accountId: this.client.accountId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "X DM membership scope restore-all failed",
+      );
     }
   }
 
@@ -784,6 +851,9 @@ export class TwitterDirectMessageClient {
             health: "unavailable",
             reason: "own_account_removed_from_conversation",
           });
+          // Clear the own-membership marker so regained access (re-add) can
+          // re-prove the account in this process.
+          this.ownMembershipPublishedAt.delete(conversationId);
           continue;
         }
         const { principalId } = await xMembershipPrincipal(
@@ -847,7 +917,14 @@ export class TwitterDirectMessageClient {
     conversationId: string,
     ownUserId: string,
   ): Promise<void> {
-    if (this.ownMembershipPublished.has(conversationId)) return;
+    const publishedAt = this.ownMembershipPublishedAt.get(conversationId);
+    if (
+      publishedAt !== undefined &&
+      Date.now() - publishedAt <
+        TwitterDirectMessageClient.OWN_MEMBERSHIP_TTL_MS
+    ) {
+      return;
+    }
     try {
       const scope = await this.membership.scopeForConversation({
         conversationId,
@@ -878,7 +955,7 @@ export class TwitterDirectMessageClient {
           participantId: ownUserId,
         }),
       });
-      this.ownMembershipPublished.add(conversationId);
+      this.ownMembershipPublishedAt.set(conversationId, Date.now());
     } catch (error) {
       // error-policy:J4 degrade-only side surface; never break the poll path.
       logger.debug(
@@ -1014,4 +1091,31 @@ function membershipObservationKey(options: {
   if (options.eventId) parts.push(options.eventId);
   const key = parts.join(":");
   return key.length > 1_000 ? key.slice(0, 1_000) : key;
+}
+
+/** HTTP status embedded in a twitter-api-v2 error shape, when present. */
+function errorCodeOf(error: unknown): number | null {
+  if (!error || typeof error !== "object") return null;
+  const candidate = error as {
+    code?: unknown;
+    status?: unknown;
+    data?: { status?: unknown };
+    response?: { status?: unknown };
+  };
+  const status =
+    candidate.data?.status ??
+    candidate.response?.status ??
+    candidate.status ??
+    candidate.code;
+  return typeof status === "number" && Number.isInteger(status) ? status : null;
+}
+
+/**
+ * Authorization failures (401/403) on the DM events endpoint mean the
+ * account can no longer observe any conversation; 429 and 5xx are transient
+ * and must not degrade scope health (evidence TTL is the backstop).
+ */
+function isAuthorizationFailure(error: unknown): boolean {
+  const status = errorCodeOf(error);
+  return status === 401 || status === 403;
 }

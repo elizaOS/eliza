@@ -379,7 +379,7 @@ describe("X membership publisher (real PGlite authority)", () => {
     }
   });
 
-  it("survives a restart: a new publisher instance adopts durable scope state and re-proves", async () => {
+  it("survives a restart: a new publisher instance ADOPTS the durable binding (same generation) and re-proves", async () => {
     const conversationId = "1999888777660008";
     const scope = await scopeFor(conversationId);
     const { principalId: principal } = await xMembershipPrincipal(
@@ -397,7 +397,14 @@ describe("X membership publisher (real PGlite authority)", () => {
       idempotencyKey: `x:join:${conversationId}:7300:e900600`,
       eventAnchoredAt: 1_756_000_007_000,
     });
-    // Simulate a restart: a brand-new publisher over the same runtime.
+    const before = await membership.getScopeHealth(scope);
+    expect(before).not.toBeNull();
+    const beforeState = publisher.scopeState(scope);
+    expect(beforeState).toBeDefined();
+
+    // Simulate a restart: a brand-new publisher over the same runtime. The
+    // stable per-(agent, account) publisher id must take the ADOPTION path —
+    // generation, cursor, and version preserved, not bumped.
     const reborn = new XMembershipPublisher(runtime);
     const rebornScope = await reborn.scopeForConversation({
       conversationId,
@@ -405,8 +412,6 @@ describe("X membership publisher (real PGlite authority)", () => {
       ownUserId: OWN_USER_ID,
     });
     expect(rebornScope).toEqual(scope);
-    // A DIFFERENT event after restart must chain onto the durable evidence
-    // (adopting generation + cursor), not collide with the old publisher.
     await reborn.renewSender({
       scope: rebornScope ?? scope,
       principalId: principal,
@@ -416,7 +421,118 @@ describe("X membership publisher (real PGlite authority)", () => {
       permissionSnapshot: { observed: true },
       idempotencyKey: `x:renew:${conversationId}:7300:e900601`,
     });
+    // Evidence committed after the restart chained onto the adopted state,
+    // proving the reborn publisher did NOT reset the chain.
+    const after = await membership.getScopeHealth(scope);
+    expect(after).not.toBeNull();
+    if (before && after) {
+      expect(after.generation).toBeGreaterThanOrEqual(before.generation);
+    }
     const decision = await membership.authorize(scope, principal);
     expect(decision.decision).toBe("allowed");
+    expect(decision.reason).toBe("active_membership");
+  });
+
+  it("leave removes the renewal window at commit so the next observation re-proves immediately", async () => {
+    const conversationId = "1999888777660009";
+    const scope = await scopeFor(conversationId);
+    const { principalId: principal } = await xMembershipPrincipal(
+      runtime,
+      "default",
+      "7400",
+    );
+    await publisher.publishJoin({
+      scope,
+      principalId: principal,
+      worldId: runtime.agentId,
+      roomId: runtime.agentId,
+      roles: ["participant"],
+      permissionSnapshot: { observed: true },
+      idempotencyKey: `x:join:${conversationId}:7400:e900700`,
+      eventAnchoredAt: 1_756_000_008_000,
+    });
+    await publisher.publishLeave({
+      scope,
+      principalId: principal,
+      worldId: runtime.agentId,
+      roomId: runtime.agentId,
+      reason: "left",
+      idempotencyKey: `x:left:${conversationId}:7400:e900701`,
+      eventAnchoredAt: 1_756_000_009_000,
+    });
+    // A renewal queued AFTER the leave (activity observed post-revocation)
+    // must not be suppressed by a stale renewal-window entry: the member
+    // re-proves active immediately.
+    await publisher.renewSender({
+      scope,
+      principalId: principal,
+      worldId: runtime.agentId,
+      roomId: runtime.agentId,
+      roles: ["participant"],
+      permissionSnapshot: { observed: true },
+      idempotencyKey: `x:renew:${conversationId}:7400:e900702`,
+    });
+    const record = await membership.getMembership(scope, principal);
+    expect(record?.state).toBe("active");
+    expect(record?.reason).toBe("reconciled_present");
+  });
+
+  it("degrades all scopes for the account and restores them (auth failure and recovery)", async () => {
+    const conversationA = "1999888777660010";
+    const conversationB = "1999888777660011";
+    const scopeA = await scopeFor(conversationA);
+    const scopeB = await scopeFor(conversationB);
+    const { principalId: principalA } = await xMembershipPrincipal(
+      runtime,
+      "default",
+      "7500",
+    );
+    const { principalId: principalB } = await xMembershipPrincipal(
+      runtime,
+      "default",
+      "7501",
+    );
+    await publisher.publishJoin({
+      scope: scopeA,
+      principalId: principalA,
+      worldId: runtime.agentId,
+      roomId: runtime.agentId,
+      roles: ["participant"],
+      permissionSnapshot: { observed: true },
+      idempotencyKey: `x:join:${conversationA}:7500:e900800`,
+      eventAnchoredAt: 1_756_000_010_000,
+    });
+    await publisher.publishJoin({
+      scope: scopeB,
+      principalId: principalB,
+      worldId: runtime.agentId,
+      roomId: runtime.agentId,
+      roles: ["participant"],
+      permissionSnapshot: { observed: true },
+      idempotencyKey: `x:join:${conversationB}:7501:e900801`,
+      eventAnchoredAt: 1_756_000_011_000,
+    });
+    await publisher.degradeAllScopes("x_auth_failed_401");
+    for (const [scope, principal] of [
+      [scopeA, principalA],
+      [scopeB, principalB],
+    ] as const) {
+      const denied = await membership.authorize(scope, principal);
+      expect(denied.decision).toBe("denied");
+      expect(denied.reason).toBe("authority_unavailable");
+    }
+    await publisher.restoreAllScopes("x_auth_recovered");
+    // Re-prove on the next observed activity after restoration.
+    await publisher.renewSender({
+      scope: scopeA,
+      principalId: principalA,
+      worldId: runtime.agentId,
+      roomId: runtime.agentId,
+      roles: ["participant"],
+      permissionSnapshot: { observed: true },
+      idempotencyKey: `x:renew:${conversationA}:7500:e900802`,
+    });
+    const allowed = await membership.authorize(scopeA, principalA);
+    expect(allowed.decision).toBe("allowed");
   });
 });

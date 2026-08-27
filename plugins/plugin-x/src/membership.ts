@@ -1,20 +1,18 @@
 /**
- * Per-conversation X (Twitter) DM membership evidence publisher: the X DM
- * events API exposes no full-roster enumeration for arbitrary conversations,
- * so this connector publishes observed-only point-query proofs (sender
- * renewals, ParticipantsJoin deltas, ParticipantsLeave deltas) into the
- * canonical `MembershipService` authority instead of fabricating roster
- * snapshots. `participant_ids` is treated as roster-authoritative only on
- * ParticipantsJoin events where X semantics name the complete participant
- * set (and even then as an ordered_delta of the observed roster, never as a
- * completeness-claimed snapshot); everything else stays observed-only.
- * Evidence is renewed on activity with a bounded freshness window; every
- * command is journal-idempotent on the authority side via event-anchored
- * idempotency keys, so cursor redelivery after a restart cannot double-apply
- * a delta. In-memory state only tracks fencing cursors and renewal
- * timestamps and is reconstructable after a restart by adopting the durable
- * scope state. Public-timeline authors are never roster authority: only DM
- * timeline events feed this publisher.
+ * Per-conversation X (Twitter) DM membership evidence publisher. The X DM
+ * events API can never prove the complete roster of a conversation
+ * (participant_ids, per the June 2025 API changelog, names only the
+ * participants who joined or left in that event), so this connector
+ * publishes observed-only point-query proofs (sender renewals,
+ * ParticipantsJoin deltas, ParticipantsLeave deltas) into the canonical
+ * `MembershipService` authority and never claims completeness. Evidence is
+ * renewed on activity with a bounded freshness window; every command is
+ * journal-idempotent on the authority side via event-anchored idempotency
+ * keys, so cursor redelivery after a restart cannot double-apply a delta.
+ * In-memory state only tracks fencing cursors and renewal timestamps and is
+ * reconstructable after a restart by adopting the durable scope state.
+ * Public-timeline authors are never roster authority: only DM timeline
+ * events feed this publisher.
  */
 import {
   type ConnectorAccount,
@@ -77,14 +75,15 @@ export class XMembershipPublisher {
   private readonly runtime: IAgentRuntime;
   private readonly scopes = new Map<string, ScopePublisherState>();
   /**
-   * Publisher instance id is STABLE per (agent, durable account), derived
-   * like the telegram template's formula — a restarted process re-binds to
-   * the persisted publisher binding (adoption) instead of bumping the
-   * publisher generation and stranding every committed member fact. A
-   * per-process random suffix distinguishes genuinely concurrent processes
-   * fencing each other.
+   * Publisher instance id is STABLE per (agent, durable account) — derived
+   * like the telegram template's formula. A restarted process re-derives the
+   * same id and ADOPTS the persisted publisher binding (same generation,
+   * cursor, and version) instead of bumping the publisher generation and
+   * stranding every committed member fact behind evidence-mismatch denials.
+   * Concurrent processes fencing each other still cannot corrupt state: the
+   * authority's generation fencing rejects the loser, which then re-registers
+   * through the normal takeover path.
    */
-  private readonly publisherInstanceSalt = crypto.randomUUID();
   private readonly publisherInstanceIds = new Map<string, string>();
   /**
    * Runtime world/room mapping rows ensured for the authority's
@@ -119,7 +118,7 @@ export class XMembershipPublisher {
     const key = scope.connectorAccountId as string;
     let id = this.publisherInstanceIds.get(key);
     if (!id) {
-      id = `x:${this.runtime.agentId}:${scope.connectorAccountId}:${this.publisherInstanceSalt}`;
+      id = `x:${this.runtime.agentId}:${scope.connectorAccountId}`;
       this.publisherInstanceIds.set(key, id);
     }
     return id;
@@ -418,6 +417,12 @@ export class XMembershipPublisher {
      */
     eventAnchoredAt?: number;
     displayName?: string;
+    /**
+     * Revocation commands remove the principal's renewal-window entry at
+     * commit time (inside serialization) so a stale queued renewal cannot
+     * re-suppress the next observation after a leave.
+     */
+    removeRenewalOnCommit?: boolean;
   }): Promise<MembershipMutationReceipt | null> {
     const service = this.membershipService();
     if (!service) {
@@ -519,10 +524,12 @@ export class XMembershipPublisher {
         state.generation = receipt.committedGeneration;
         state.sourceCursor = `x:${options.idempotencyKey}`;
         state.currentVersion = currentVersion + 1;
-        // Only ACTIVE evidence renews: a revoked principal must stay out of
-        // the renewal window so the next observation re-proves (or re-revokes)
-        // instead of being skipped for an hour.
-        if (options.membershipState === "active") {
+        if (options.removeRenewalOnCommit) {
+          state.renewedAt.delete(options.principalId);
+        } else if (options.membershipState === "active") {
+          // Only ACTIVE evidence renews: a revoked principal must stay out of
+          // the renewal window so the next observation re-proves (or
+          // re-revokes) instead of being skipped for an hour.
           state.renewedAt.set(options.principalId, renewedAtMs);
         }
         return receipt;
@@ -641,14 +648,16 @@ export class XMembershipPublisher {
     eventAnchoredAt?: number;
     displayName?: string;
   }): Promise<void> {
-    const state = this.stateFor(options.scope);
-    state.renewedAt.delete(options.principalId);
+    // The renewedAt removal runs INSIDE the serialized section (not here)
+    // so a queued renewal cannot re-set the timestamp after this revocation
+    // and suppress the next legitimate observation for an hour.
     await this.publishPointQuery({
       ...options,
       membershipState: "revoked",
       roles: [],
       permissionSnapshot: {},
       reason: options.reason,
+      removeRenewalOnCommit: true,
     });
   }
 
@@ -663,6 +672,57 @@ export class XMembershipPublisher {
     reason: string;
   }): Promise<void> {
     await this.setScopeHealth(options.scope, options.health, options.reason);
+  }
+
+  /**
+   * Degrade every scope this publisher has bound in this process (account
+   * authorization failed globally). Scopes published by other processes are
+   * unreachable by design; their evidence expires via TTL.
+   */
+  async degradeAllScopes(reason: string): Promise<void> {
+    for (const key of this.scopes.keys()) {
+      const [connectorAccountId, externalWorldId, externalRoomId] =
+        key.split(":");
+      if (!connectorAccountId || !externalWorldId || !externalRoomId) {
+        continue;
+      }
+      await this.setScopeHealth(
+        {
+          agentId: this.runtime.agentId,
+          connectorId: X_MEMBERSHIP_CONNECTOR_ID,
+          connectorAccountId: connectorAccountId as UUID,
+          externalWorldId,
+          externalRoomId,
+        },
+        "unavailable",
+        reason,
+      );
+    }
+  }
+
+  /**
+   * Restore every degraded scope after a successful authenticated poll
+   * (authorization recovered): re-register each bound scope so fresh
+   * evidence re-proves participants on observed activity.
+   */
+  async restoreAllScopes(reason: string): Promise<void> {
+    for (const key of this.scopes.keys()) {
+      const [connectorAccountId, externalWorldId, externalRoomId] =
+        key.split(":");
+      if (!connectorAccountId || !externalWorldId || !externalRoomId) {
+        continue;
+      }
+      await this.restoreScope({
+        scope: {
+          agentId: this.runtime.agentId,
+          connectorId: X_MEMBERSHIP_CONNECTOR_ID,
+          connectorAccountId: connectorAccountId as UUID,
+          externalWorldId,
+          externalRoomId,
+        },
+        reason,
+      });
+    }
   }
 
   /**
@@ -701,22 +761,21 @@ export class XMembershipPublisher {
       return;
     }
     const state = this.stateFor(scope);
-    // A fresh process (or a scope first seen through the degrade path) may
-    // not know the durable generation: adopt it before attempting the health
-    // command so the expectedGeneration fence is satisfiable.
-    if (state.generation === 0) {
-      const durable = await this.readScopeHealth(service, scope);
-      if (!durable) {
-        return;
-      }
-      state.generation = durable.generation;
-      state.sourceCursor = durable.sourceCursor;
-      state.currentVersion = durable.sourceVersion;
-    }
-    // Serialize health changes with evidence publishes for this scope.
+    // The durable-health read AND the command both run INSIDE the serialized
+    // section: reading generation outside the queue would race an in-flight
+    // publish that advances it, making expectedGeneration stale.
     const run = state.queue.then(
-      () =>
-        service.setScopeHealth({
+      async () => {
+        if (state.generation === 0) {
+          const durable = await this.readScopeHealth(service, scope);
+          if (!durable) {
+            return undefined;
+          }
+          state.generation = durable.generation;
+          state.sourceCursor = durable.sourceCursor;
+          state.currentVersion = durable.sourceVersion;
+        }
+        return service.setScopeHealth({
           ...scope,
           expectedGeneration: state.generation,
           health,
@@ -729,7 +788,8 @@ export class XMembershipPublisher {
             String(Date.now()),
           ]),
           observedAt: new Date().toISOString(),
-        }),
+        });
+      },
       () => undefined,
     );
     state.queue = run.catch(() => undefined);
