@@ -1017,6 +1017,59 @@ describe("first-party callback server", () => {
     expect(received).toHaveLength(2);
   });
 
+  it("keeps replay coverage for the full freshness window of a future timestamp", async () => {
+    const received: WechatMessageContext[] = [];
+    let now = FIXED_NOW_MS;
+    const handle = await startCallbackServer({
+      port: 0,
+      accounts: [OFFICIAL],
+      onMessage: (_id, msg) => {
+        received.push(msg);
+      },
+      clock: { now: () => now },
+    });
+    closers.push(handle.close);
+
+    // Platform clock ~4.5 minutes in the future (still inside the 5-minute
+    // freshness window on the receiving side).
+    const futureTs = String(Math.floor(FIXED_NOW_MS / 1000) + 270);
+    const buildBody = (content: string) =>
+      buildWechatXml("xml", {
+        ToUserName: "gh_app1",
+        FromUserName: "openid-alice",
+        CreateTime: futureTs,
+        MsgType: "text",
+        Content: content,
+        MsgId: "6010",
+      });
+    const signature = sha1Of(OFFICIAL.tokenSecret, futureTs, NONCE);
+    const path = `/webhook/wechat/oa-main?signature=${signature}&timestamp=${futureTs}&nonce=${NONCE}`;
+
+    expect(
+      (
+        await httpRequest(handle.port, path, {
+          method: "POST",
+          body: buildBody("a"),
+        })
+      ).status,
+    ).toBe(200);
+
+    // Advance 5 minutes: the timestamp is STILL fresh (only ~30s of its
+    // skew budget consumed), so a substituted body under the same captured
+    // triple must remain rejected — the entry must live until the
+    // timestamp's own freshness endpoint, not 5 minutes after receipt.
+    now = FIXED_NOW_MS + 5 * 60 * 1000;
+    expect(
+      (
+        await httpRequest(handle.port, path, {
+          method: "POST",
+          body: buildBody("b"),
+        })
+      ).status,
+    ).toBe(403);
+    expect(received).toHaveLength(1);
+  });
+
   it("distinguishes bodies that normalize to the same utf8 string", async () => {
     const received: WechatMessageContext[] = [];
     const handle = await start((_id, msg) => {
