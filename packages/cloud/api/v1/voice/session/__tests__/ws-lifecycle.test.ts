@@ -2433,6 +2433,56 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes()).toContain("human_double_talk");
   });
 
+  test("continuous handoff serializes canonical conversation writes while old model output is streaming", async () => {
+    const client = new FakeClientSocket();
+    const first = makeControlledCanonicalChunkFetch();
+    const second = makeCanonicalChunkFetch([
+      "The prepared follow-up is safe to hand off now.",
+    ]);
+    let fetchCalls = 0;
+    const fetchImpl = (async (...args: Parameters<typeof fetch>) => {
+      fetchCalls += 1;
+      return fetchCalls === 1 ? first.fetchImpl(...args) : second(...args);
+    }) as typeof fetch;
+    await connectSession({
+      client,
+      fetchImpl,
+      acousticBargeInEnabled: false,
+      allowContinuousHandoff: true,
+    });
+    client.clientSend(
+      JSON.stringify({
+        t: "audio_capabilities",
+        mode: "continuous_handoff",
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        referenceAwarePlayback: true,
+      }),
+    );
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "start the long response");
+    await first.ready;
+    first.enqueueChunk(
+      "The first canonical response is already audible, but its model stream remains open long enough to prove ordered conversation writes. ",
+    );
+    await flush();
+    await flush();
+    expect(client.controlTypes()).toContain("assistant_playing");
+
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "prepare a follow-up without racing history");
+    await flush();
+    expect(fetchCalls).toBe(1);
+
+    first.finish();
+    await flush();
+    await flush();
+    expect(fetchCalls).toBe(2);
+    expect(client.controlTypes()).toContain("next_reply_ready");
+  });
+
   test("half duplex drops speaker echo through playback and bounded settle", async () => {
     let nowMs = Date.now();
     const client = new FakeClientSocket();

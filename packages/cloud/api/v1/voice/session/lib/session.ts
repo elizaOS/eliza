@@ -336,6 +336,13 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       subview?: string;
     };
   } | null = null;
+  /**
+   * Resolves once the active canonical response stream has finished reading
+   * and persisting its model turn. An overlap request may prepare while the
+   * old audio is still playing, but it must not race another canonical write
+   * against the same conversation.
+   */
+  private activeResponseModelSettled: Promise<void> = Promise.resolve();
 
   // Metering accrual (server-derived): count uplink bytes, convert to seconds.
   private unmeteredUplinkBytes = 0;
@@ -1343,9 +1350,16 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
     this.state = "thinking";
     this.callerResponseTurnCount += 1;
-    void this.runResponseTurn(transcript, traceId, {
-      callerResponseTurnIndex: this.callerResponseTurnCount,
-    });
+    this.activeResponseModelSettled = this.runResponseTurn(
+      transcript,
+      traceId,
+      {
+        callerResponseTurnIndex: this.callerResponseTurnCount,
+      },
+    ).then(
+      () => undefined,
+      () => undefined,
+    );
   }
 
   private startOverlapTurn(transcript: string): void {
@@ -1371,6 +1385,18 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     let replyText = "";
     let firstText = false;
     try {
+      // The existing response may still be streaming model output even though
+      // its first TTS audio is already audible. Serializing this boundary keeps
+      // canonical conversation writes ordered while still allowing the next
+      // model request to overlap the remainder of old audio playback.
+      await this.activeResponseModelSettled;
+      if (
+        pending.abort.signal.aborted ||
+        this.pendingOverlapTurn !== pending ||
+        this.closed
+      ) {
+        return;
+      }
       const result = await streamElizaConversation(
         {
           endpoint: this.config.elizaEndpoint,
