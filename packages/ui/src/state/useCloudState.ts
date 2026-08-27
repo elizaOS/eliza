@@ -788,6 +788,8 @@ export function useCloudState({
           );
         }
       } catch (err) {
+        // error-policy:J4 designed degrade — a transient Android session probe
+        // retains the credential and becomes an explicit user-visible retry.
         logger.warn(
           { err },
           "[useCloudState] Android Cloud session reconciliation failed",

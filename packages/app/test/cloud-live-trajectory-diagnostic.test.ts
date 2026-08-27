@@ -225,10 +225,14 @@ describe("Cloud live trajectory diagnostic", () => {
     const writeDiagnostic = vi.fn(async () => {
       throw new Error("diagnostic storage unavailable");
     });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
     await expect(
       rethrowCloudLiveFailureAfterDiagnostic(originalCause, writeDiagnostic),
     ).rejects.toBe(originalCause);
     expect(writeDiagnostic).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      "[cloud-live] trajectory diagnostic write unavailable",
+    );
   });
 });

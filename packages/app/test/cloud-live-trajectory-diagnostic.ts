@@ -224,8 +224,10 @@ export async function rethrowCloudLiveFailureAfterDiagnostic(
   try {
     await writeDiagnostic();
   } catch {
+    console.warn("[cloud-live] trajectory diagnostic write unavailable");
     // error-policy:J7 the diagnostic is secondary evidence; an unavailable
-    // evidence sink must not mask the original live identity failure.
+    // evidence sink emits one fixed payload-free warning but must not mask the
+    // original live identity failure.
   }
   throw cause;
 }

@@ -4801,6 +4801,8 @@ ElizaClient.prototype.ensurePersonalDedicatedEliza = async function (
       deadline,
     );
   } catch (error) {
+    // error-policy:J2 context-adding rethrow — preserve caller cancellation;
+    // only a proven overall deadline adds the stable startup-deadline context.
     options.signal?.throwIfAborted();
     if (operationDeadline.deadlineElapsed() || Date.now() >= deadline) {
       throw new Error(
