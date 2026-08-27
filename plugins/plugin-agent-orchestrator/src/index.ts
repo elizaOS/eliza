@@ -19,8 +19,6 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
-  toWellFormedUnicode,
-  truncateWellFormed,
   createUniqueUuid,
   EventType,
   isLocalCodeExecutionAllowed,
@@ -28,6 +26,7 @@ import {
   promoteSubactionsToActions,
   requireConfirmedSendHandlerDelivery,
   toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 
 // Register coding-agent HTTP routes with the runtime route registry.
