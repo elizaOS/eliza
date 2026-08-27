@@ -1,9 +1,11 @@
 /**
- * Outbound send path for WeChat replies: splits long text into proxy-safe chunks
- * and sends each chunk (and images) through the `ProxyClient`.
+ * Outbound send path for WeChat replies: splits long text into
+ * platform-size-limited chunks (Unicode-safe) and sends each chunk through the
+ * first-party API transport.
  */
 import {
   ElizaError,
+  logger,
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
@@ -50,7 +52,11 @@ export class ReplyDispatcher {
       try {
         await this.client.sendText(to, chunk);
       } catch (err) {
-        console.error(`[wechat] Failed to send text to ${to}:`, err);
+        if (err instanceof Error) {
+          logger.error(`[wechat] Failed to send text to ${to}: ${err.message}`);
+        } else {
+          logger.error(`[wechat] Failed to send text to ${to}: ${String(err)}`);
+        }
         throw err;
       }
     }
@@ -70,7 +76,11 @@ export class ReplyDispatcher {
     try {
       await this.client.sendImage(to, imagePath, caption);
     } catch (err) {
-      console.error(`[wechat] Failed to send image to ${to}:`, err);
+      if (err instanceof Error) {
+        logger.error(`[wechat] Failed to send image to ${to}: ${err.message}`);
+      } else {
+        logger.error(`[wechat] Failed to send image to ${to}: ${String(err)}`);
+      }
       throw err;
     }
   }
@@ -113,7 +123,7 @@ export class ReplyDispatcher {
       }
       const cutPoint = chunkCandidate.length;
       chunks.push(remaining.slice(0, cutPoint));
-      remaining = remaining.slice(cutPoint).trimStart();
+      remaining = remaining.slice(cutPoint);
     }
 
     return chunks;

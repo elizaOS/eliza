@@ -135,7 +135,8 @@ export class TokenManager {
       throw new WechatError(
         "WECHAT_TOKEN_UNAVAILABLE",
         "token request to the first-party endpoint failed",
-        { cause: err as Error, accountId: account.id },
+        { accountId: account.id },
+        { cause: err },
       );
     }
 

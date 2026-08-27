@@ -94,26 +94,34 @@ export class WechatApiClient {
       throw new WechatError(
         "WECHAT_SEND_FAILED",
         "send request to the first-party endpoint failed",
-        { cause: err as Error, accountId: account.id },
+        { accountId: account.id },
+        { cause: err },
       );
     }
 
-    const payload = (await response.json().catch(() => null)) as {
-      errcode?: unknown;
-      errmsg?: unknown;
-    } | null;
-    const errcode = typeof payload?.errcode === "number" ? payload.errcode : 0;
+    // error-policy:J3 a platform body that fails to parse is untrusted input:
+    // render it as absent so the caller classifies the send as failed instead
+    // of fabricating a success-shaped payload or defaulting errcode to zero.
+    const payload = (await response
+      .json()
+      .catch(() => null)) as WechatApiPayload | null;
 
-    if (response.ok && errcode === 0) {
+    if (response.ok && payload?.errcode === 0) {
       return { ok: true };
     }
     return {
       ok: false,
-      platformErrorCode: errcode || undefined,
+      platformErrorCode:
+        typeof payload?.errcode === "number" ? payload.errcode : undefined,
       redactedDetail:
         typeof payload?.errmsg === "string"
           ? payload.errmsg.slice(0, 120)
           : `http-${response.status}`,
     };
   }
+}
+
+interface WechatApiPayload {
+  errcode?: unknown;
+  errmsg?: unknown;
 }

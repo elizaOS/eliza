@@ -120,21 +120,48 @@ describe("parseWechatXml hardening", () => {
     expect(parsed.fields.FromUserName).toBe("openid-alice");
   });
 
-  it("rejects DTDs, entities, CDATA, nesting, and trailing content", () => {
+  it("parses CDATA-wrapped leaf values as the platforms emit them", () => {
+    const parsed = parseWechatXml(
+      "<xml><ToUserName><![CDATA[gh_123]]></ToUserName><Content><![CDATA[a ]x> b &amp; c]]></Content></xml>",
+    );
+    expect(parsed.fields.ToUserName).toBe("gh_123");
+    expect(parsed.fields.Content).toBe("a ]x> b & c");
+  });
+
+  it("rejects unterminated CDATA sections", () => {
+    expect(() => parseWechatXml("<xml><a><![CDATA[unclosed</a></xml>")).toThrow(
+      WechatError,
+    );
+  });
+
+  it("rejects DTDs, entities, nesting, and trailing content", () => {
     expect(() =>
       parseWechatXml(
         '<!DOCTYPE xml [<!ENTITY xxe "file:///etc/passwd">]><xml><a>1</a></xml>',
       ),
     ).toThrow(WechatError);
-    expect(() => parseWechatXml("<xml><a><![CDATA[1]]></a></xml>")).toThrow(
-      WechatError,
-    );
     expect(() => parseWechatXml("<xml><a><b>1</b></a></xml>")).toThrow(
       WechatError,
     );
     expect(() =>
       parseWechatXml("<xml><a>1</a></xml><xml><a>2</a></xml>"),
     ).toThrow(WechatError);
+  });
+
+  it("decrypts Tencent's official WeCom sample ciphertext with 32-byte PKCS#7", () => {
+    // Vector from Tencent's WXBizMsgCrypt documentation sample: the famous
+    // wx5823bf96d3bd56c7 callback. Key jWmYm7...; pad byte 30; receiver
+    // wx5823bf96d3bd56R4; inner XML carries CDATA-wrapped fields and AgentID.
+    const result = decryptCallbackPayload(
+      "RypEvHKD8QQKFhvQ6QleEB4J58tiPdvo+rtK1I9qca6aM/wvqnLSV5zEPeusUiX5L5X/0lWfrf0QADHHhGd3QczcdCUpj911L3vg3W/sYYvuJTs3TUUkSUXxaccAS0qhxchrRYt66wiSpGLYL42aM6A8dTT+6k4aSknmPj48kzJs8qLjvd4Xgpue06DOdnLxAUHzM6+kDZ+HMZfJYuR+LtwGc2hgf5gsijff0ekUNXZiqATP7PF5mZxZ3Izoun1s4zG4LUMnvw2r+KqCKIw+3IQH03v+BCA9nMELNqbSf6tiWSrXJB3LAVGUcallcrw8V2t9EL4EhzJWrQUax5wLVMNS0+rUPA3k22Ncx4XXZS9o0MBH27Bo6BpNelZpS+/uh9KsNlY6bHCmJU9p8g7m3fVKn28H3KDYA5Pl/T8Z1ptDAVe1lXdQ2YoyyH2uyPIGHBZZIs2pDBS8R07+qN+E7Q==",
+      "jWmYm7qr5nMoAUwZRjGtBxmz3KA1tkAj3ykkR6q2B2C",
+    );
+    expect(result.receiverId).toBe("wx5823bf96d3bd56R4");
+    const parsed = parseWechatXml(result.plaintext);
+    expect(parsed.fields.ToUserName).toBe("wx5823bf96d3bd56c7");
+    expect(parsed.fields.FromUserName).toBe("mycreate");
+    expect(parsed.fields.Content).toBe("hello");
+    expect(parsed.fields.AgentID).toBe("218");
   });
 
   it("rejects oversized documents under the byte cap", () => {

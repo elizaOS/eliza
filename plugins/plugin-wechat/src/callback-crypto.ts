@@ -35,7 +35,11 @@ export const defaultSha1: Sha1Fn = (input) =>
   createHash("sha1").update(input, "utf8").digest("hex");
 
 export const defaultAesDecrypt: AesDecryptFn = (key, iv, ciphertext) => {
+  // WeChat's scheme applies its own 32-byte PKCS#7 padding, so Node's
+  // 16-byte auto-padding must be disabled on both directions (matching the
+  // platform reference implementations).
   const decipher = createDecipheriv("aes-256-cbc", key, iv);
+  decipher.setAutoPadding(false);
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
 };
 // WeChat's reference implementations use the first 16 key bytes as the CBC IV.
@@ -43,6 +47,7 @@ export const wechatIv = (key: Buffer): Buffer => key.subarray(0, 16);
 
 export const defaultAesEncrypt: AesEncryptFn = (key, iv, plaintext) => {
   const cipher = createCipheriv("aes-256-cbc", key, iv);
+  cipher.setAutoPadding(false);
   return Buffer.concat([cipher.update(plaintext), cipher.final()]);
 };
 
@@ -214,20 +219,18 @@ function pkcs7Unpad(data: Buffer): Buffer {
       "decrypted block size is invalid",
     );
   }
+  // Tencent's reference implementations strip `pad = last byte` when it is in
+  // 1..32 WITHOUT verifying that every padding byte matches: the platform's
+  // own documented sample vector carries non-uniform padding bytes, and
+  // integrity is guaranteed by the SHA-1 message signature over the
+  // ciphertext, not by the padding. Rejecting non-uniform padding would break
+  // compatibility with bytes the platform actually produced.
   const pad = data[data.length - 1];
   if (pad <= 0 || pad > WECHAT_AES_KEY_LENGTH) {
     throw new WechatError(
       "WECHAT_CALLBACK_DECRYPT_FAILED",
       "PKCS#7 padding is invalid",
     );
-  }
-  for (let i = data.length - pad; i < data.length; i += 1) {
-    if (data[i] !== pad) {
-      throw new WechatError(
-        "WECHAT_CALLBACK_DECRYPT_FAILED",
-        "PKCS#7 padding bytes are inconsistent",
-      );
-    }
   }
   return data.subarray(0, data.length - pad);
 }

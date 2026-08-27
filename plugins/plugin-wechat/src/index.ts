@@ -11,6 +11,7 @@ import {
   type Content,
   getConnectorAccountManager,
   type IAgentRuntime,
+  logger,
   type Memory,
   type MessageConnectorTarget,
   type Plugin,
@@ -34,8 +35,10 @@ export function isWechatConnectorConfigured(
   }
   const direct = config as WechatConfig;
   if (
-    direct.account?.mode === "official-account" ||
-    direct.account?.mode === "wecom"
+    direct.account &&
+    direct.account.enabled !== false &&
+    (direct.account.mode === "official-account" ||
+      direct.account.mode === "wecom")
   ) {
     return true;
   }
@@ -372,21 +375,20 @@ const wechatPlugin: Plugin = {
         }),
       );
     } catch (err) {
-      console.warn(
-        "[wechat] Failed to register provider with ConnectorAccountManager:",
-        err instanceof Error ? err.message : String(err),
+      logger.warn(
+        `[wechat] Failed to register provider with ConnectorAccountManager: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
 
     const wechatConfig = resolveWechatConfig(config, runtime);
 
     if (!wechatConfig) {
-      console.warn("[wechat] No wechat config found in connectors — skipping");
+      logger.warn("[wechat] No wechat config found in connectors — skipping");
       return;
     }
 
     if (wechatConfig.enabled === false) {
-      console.log("[wechat] Plugin disabled via config");
+      logger.log("[wechat] Plugin disabled via config");
       return;
     }
 
@@ -412,13 +414,13 @@ const wechatPlugin: Plugin = {
 
     await channel.start();
     registerWechatMessageConnector(runtime, wechatConfig);
-    console.log("[wechat] Plugin initialized");
+    logger.log("[wechat] Plugin initialized");
   },
   async dispose() {
     if (channel) {
       await channel.stop();
       channel = null;
-      console.log("[wechat] Plugin disposed");
+      logger.log("[wechat] Plugin disposed");
     }
   },
 };

@@ -79,11 +79,10 @@ function safeCallbackBaseUrl(value: unknown): string {
   try {
     const url = new URL(value.trim());
     if (url.protocol !== "https:") return "";
-    url.username = "";
-    url.password = "";
-    url.search = "";
-    url.hash = "";
-    return url.toString().replace(/\/$/, "");
+    // Origins only: scheme + host + port. Strip credentials, and any path,
+    // query, or fragment the configured value may carry.
+    const port = url.port ? `:${url.port}` : "";
+    return `${url.protocol}//${url.hostname}${port}`;
   } catch {
     // error-policy:J3 an unparseable callback URL is untrusted input; render
     // it as absent rather than echoing attacker-controlled text.

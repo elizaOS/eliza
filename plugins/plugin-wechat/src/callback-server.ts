@@ -17,6 +17,7 @@ import {
   type ServerResponse,
 } from "node:http";
 import type { AddressInfo } from "node:net";
+import { logger } from "@elizaos/core";
 import {
   decryptCallbackPayload,
   verifyCallbackSignature,
@@ -72,9 +73,9 @@ export async function startCallbackServer(
       onDeliveryError,
       maxBodyBytes,
     }).catch((error: unknown) => {
-      console.error("[wechat] Unexpected callback handler failure", {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.error(
+        `[wechat] Unexpected callback handler failure: ${error instanceof Error ? error.message : String(error)}`,
+      );
       if (!res.writableEnded) {
         res.writeHead(500);
         res.end("Internal Server Error");
@@ -191,7 +192,7 @@ function handleUrlVerification(
         echostr,
         account.encodingAESKey ?? "",
       );
-      if (decrypted.receiverId !== account.platformIdentity) {
+      if (!isBoundReceiver(decrypted.receiverId, account)) {
         res.writeHead(403);
         res.end("Forbidden");
         return;
@@ -227,14 +228,11 @@ async function handleMessagePost(
   const timestamp = query.get("timestamp") ?? "";
   const nonce = query.get("nonce") ?? "";
   if (!signature || !timestamp || !nonce) {
+    // For an encrypted-mode account `signature` is msg_signature, so an
+    // encrypted payload arriving without it fails closed here (400) — it can
+    // never fall through to the plaintext verification path below.
     res.writeHead(400);
     res.end("Bad Request");
-    return;
-  }
-  if (encryptedMode && query.get("msg_signature") === null) {
-    // An encrypted-mode account must never accept the plaintext path.
-    res.writeHead(403);
-    res.end("Forbidden");
     return;
   }
 
@@ -276,7 +274,7 @@ async function handleMessagePost(
         encryptField,
         account.encodingAESKey ?? "",
       );
-      if (decrypted.receiverId !== account.platformIdentity) {
+      if (!isBoundReceiver(decrypted.receiverId, account)) {
         res.writeHead(403);
         res.end("Forbidden");
         return;
@@ -321,10 +319,24 @@ async function handleMessagePost(
   }
   // Receiver binding: a decrypted/plaintext payload addressed to a different
   // account identity is a cross-account replay, not a message for this route.
-  if (message.recipient && message.recipient !== account.platformIdentity) {
+  // Binding uses callbackIdentity (gh_ original ID / corpId) when configured;
+  // unset means binding is skipped (official-account without callbackId).
+  if (message.recipient && !isBoundReceiver(message.recipient, account)) {
     res.writeHead(403);
     res.end("Forbidden");
     return;
+  }
+  // WeCom evidence must belong to the configured agent: the outer AgentID
+  // (present on self-built app callbacks) must match the account's agentId.
+  if (account.mode === "wecom" && account.wecomAgentId !== undefined) {
+    if (
+      message.agentId !== undefined &&
+      message.agentId !== account.wecomAgentId
+    ) {
+      res.writeHead(403);
+      res.end("Forbidden");
+      return;
+    }
   }
 
   try {
@@ -343,15 +355,34 @@ async function handleMessagePost(
       } catch (diagnosticError) {
         // error-policy:J7 diagnostics must never escape the HTTP boundary or
         // replace the delivery failure that the 500 response represents.
-        console.error("[wechat] Delivery error reporter failed", {
-          error:
-            diagnosticError instanceof Error
-              ? diagnosticError.message
-              : String(diagnosticError),
-        });
+        logger.error(
+          `[wechat] Delivery error reporter failed: ${diagnosticError instanceof Error ? diagnosticError.message : String(diagnosticError)}`,
+        );
       }
     }
   }
+}
+
+/**
+ * Receiver binding across both identity surfaces. When `callbackIdentity` is
+ * configured it is the authoritative expected receiver (gh_ original ID for
+ * official accounts, corpId for WeCom). Legacy configuration without it falls
+ * back to platformIdentity (appId / corpId) — the token-API identity — which
+ * for official accounts never matches the inbound ToUserName, so binding is
+ * skipped there rather than mis-verified; a mismatch is a cross-account replay.
+ */
+function isBoundReceiver(
+  observed: string,
+  account: ResolvedWechatAccount,
+): boolean {
+  if (!account.callbackIdentity) {
+    // No callback identity configured. For official accounts the fallback
+    // (appId) is the token-API identity, never the inbound ToUserName —
+    // binding against it would mis-verify every legitimate callback, so
+    // binding is skipped. WeCom always resolves a callbackIdentity above.
+    return account.mode === "official-account";
+  }
+  return observed === account.callbackIdentity;
 }
 
 function extractEncryptField(body: string): string {
@@ -385,7 +416,7 @@ export function normalizePlatformXml(
   const recipient = f.ToUserName ?? "";
   const rawTimestamp = Number(f.CreateTime ?? Number.NaN);
   if (!Number.isSafeInteger(rawTimestamp) || rawTimestamp < 0) {
-    console.warn("[wechat] Dropping callback with unusable CreateTime");
+    logger.warn("[wechat] Dropping callback with unusable CreateTime");
     return null;
   }
   // Platform CreateTime is epoch seconds.
@@ -439,7 +470,7 @@ export function normalizePlatformXml(
       imageUrl = f.MediaId ? `media:${f.MediaId}` : undefined;
       break;
     default:
-      console.warn(`[wechat] Unknown callback MsgType: ${msgType}`);
+      logger.warn(`[wechat] Unknown callback MsgType: ${msgType}`);
       return null;
   }
 
@@ -453,6 +484,11 @@ export function normalizePlatformXml(
     threadId: undefined,
     group: undefined,
     imageUrl,
+    // WeCom app messages carry the target agent id; used for app binding.
+    agentId:
+      f.AgentID !== undefined && /^\d+$/.test(f.AgentID)
+        ? Number(f.AgentID)
+        : undefined,
     platform: { mode: account.mode, accountId: account.id },
     raw: { root: parsed.root, msgType },
   };

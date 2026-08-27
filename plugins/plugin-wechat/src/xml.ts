@@ -2,10 +2,12 @@
  * Hardened XML support for first-party WeChat platform callbacks. WeChat's MP
  * and WeCom message XML is strictly flat (a root element whose children are
  * all leaf text nodes), so this module implements exactly that subset with a
- * hand-rolled parser that rejects DTDs, entity declarations, CDATA tricks,
- * comments, processing instructions, nesting, duplicate roots, and oversized
- * inputs — none of which legitimate WeChat payloads ever contain. Parsing
- * happens only after signature verification.
+ * hand-rolled parser that rejects DTDs, entity declarations, comments,
+ * processing instructions, nesting, duplicate roots, and oversized inputs.
+ * Leaf values wrapped in CDATA sections — the form the platforms'
+ * reference implementations actually emit — are captured verbatim; a CDATA
+ * section cannot contain its own terminator, so nesting is structurally
+ * impossible. Parsing happens only after signature verification.
  */
 import { WechatError } from "./types";
 
@@ -71,12 +73,13 @@ export function parseWechatXml(
   const fields: XmlObject = {};
   let cursor = 0;
   while (cursor < inner.length) {
-    if (inner.startsWith("<![CDATA[", cursor)) {
-      throw new WechatError(
-        "WECHAT_CALLBACK_MALFORMED",
-        "callback XML contains CDATA (unsupported)",
-      );
+    // Platform envelopes place newline whitespace between children; skip it
+    // before looking for the next open tag (element content itself never
+    // leans on this — child values are matched between their own tags).
+    while (cursor < inner.length && /\s/.test(inner[cursor])) {
+      cursor += 1;
     }
+    if (cursor >= inner.length) break;
     const openMatch = /^<([A-Za-z][A-Za-z0-9_.-]*)\s*(\/?)>/.exec(
       inner.slice(cursor),
     );
@@ -85,7 +88,9 @@ export function parseWechatXml(
       throw new WechatError(
         "WECHAT_CALLBACK_MALFORMED",
         "callback XML child element is malformed",
-        { rest },
+        {
+          rest,
+        },
       );
     }
     const tag = openMatch[1];
@@ -93,6 +98,33 @@ export function parseWechatXml(
       // Self-closing child = empty value.
       fields[tag] = "";
       cursor += openMatch[0].length;
+      continue;
+    }
+    // Platform payloads conventionally wrap leaf values in CDATA. A CDATA
+    // section's content is character data: capture it verbatim (it cannot
+    // contain the terminator "]]>" so nesting is structurally impossible),
+    // then require the closing tag to match the opener.
+    if (inner.startsWith("<![CDATA[", cursor + openMatch[0].length)) {
+      const cdataStart = cursor + openMatch[0].length + "<![CDATA[".length;
+      const cdataEnd = inner.indexOf("]]>", cdataStart);
+      if (cdataEnd < 0) {
+        throw new WechatError(
+          "WECHAT_CALLBACK_MALFORMED",
+          "callback XML CDATA section is not terminated",
+          { tag },
+        );
+      }
+      const afterCdata = cdataEnd + "]]>".length;
+      const closeTag = `</${tag}>`;
+      if (!inner.startsWith(closeTag, afterCdata)) {
+        throw new WechatError(
+          "WECHAT_CALLBACK_MALFORMED",
+          "callback XML CDATA child is not closed by its opening tag",
+          { tag },
+        );
+      }
+      fields[tag] = decodeEntities(inner.slice(cdataStart, cdataEnd));
+      cursor = afterCdata + closeTag.length;
       continue;
     }
     const closeIndex = inner.indexOf(`</${tag}>`, cursor + openMatch[0].length);

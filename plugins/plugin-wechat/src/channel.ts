@@ -9,6 +9,7 @@
  * are tracked separately, and an account whose outbound transport failed is
  * never reported healthy from inbound evidence alone.
  */
+import { logger } from "@elizaos/core";
 import { WechatApiClient } from "./api-client";
 import { Bot } from "./bot";
 import {
@@ -108,6 +109,15 @@ export class WechatChannel {
     }
     for (const [id, account] of Object.entries(this.config.accounts ?? {})) {
       const trimmed = id.trim().toLowerCase();
+      if (!trimmed) {
+        // A whitespace-only key would normalize to an unreachable callback
+        // route; reject it at configuration time instead.
+        throw new WechatError(
+          "WECHAT_CONFIG_INVALID",
+          "wechat account id must contain non-whitespace characters",
+          { accountId: id },
+        );
+      }
       sources.push([trimmed, account]);
     }
     for (const [id, accountConfig] of sources) {
@@ -128,7 +138,7 @@ export class WechatChannel {
     this.abortController = new AbortController();
     const resolved = this.resolveAccounts();
     if (resolved.length === 0) {
-      console.warn("[wechat] No configured direct accounts found");
+      logger.warn("[wechat] No configured direct accounts found");
       return;
     }
 
@@ -148,7 +158,34 @@ export class WechatChannel {
         dispatcher: new ReplyDispatcher({
           client: {
             sendText: async (to, text) => {
-              await this.api.sendText(account, to, text);
+              const receipt = await this.api.sendText(account, to, text);
+              if (!receipt.ok) {
+                // A platform-rejected send is a real failure: mark outbound
+                // health and surface a typed error instead of discarding the
+                // receipt and reporting success.
+                this.outboundHealth.set(account.id, {
+                  state: "degraded",
+                  lastFailureAt: this.now(),
+                  lastFailureDetail:
+                    receipt.platformErrorCode !== undefined
+                      ? `send-errcode-${receipt.platformErrorCode}`
+                      : "send-rejected",
+                });
+                throw new WechatError(
+                  "WECHAT_SEND_FAILED",
+                  "first-party platform rejected the send",
+                  {
+                    accountId: account.id,
+                    platformErrorCode: receipt.platformErrorCode,
+                    redactedDetail: receipt.redactedDetail,
+                  },
+                );
+              }
+              this.outboundHealth.set(account.id, {
+                state: "connected",
+                lastSuccessAt: this.now(),
+                observedVia: "send-receipt",
+              });
             },
           },
         }),
@@ -168,7 +205,7 @@ export class WechatChannel {
         } catch (err) {
           const detail =
             err instanceof WechatError ? err.code : "token-probe-failed";
-          console.error(
+          logger.error(
             `[wechat] Account "${account.id}" failed its startup token probe (${detail}) — outbound marked unavailable`,
           );
         }
@@ -194,9 +231,9 @@ export class WechatChannel {
       } catch (error) {
         // error-policy:J6 teardown-only failure is logged, never propagated
         // over an already-aborting dispose path.
-        console.warn("[wechat] Callback server close failed during stop", {
-          error: error instanceof Error ? error.message : String(error),
-        });
+        logger.warn(
+          `[wechat] Callback server close failed during stop: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
   }
@@ -407,6 +444,8 @@ export function resolveDirectAccount(
       securityMode,
       tokenSecret: config.token.trim(),
       encodingAESKey: config.encodingAESKey?.trim(),
+      // The inbound receiver id is the gh_ original ID, not the appId.
+      callbackIdentity: config.callbackId?.trim() || undefined,
       label: config.name ?? `Official Account ${config.appId.trim()}`,
     };
   }
@@ -440,6 +479,8 @@ export function resolveDirectAccount(
       securityMode: "encrypted",
       tokenSecret: config.token.trim(),
       encodingAESKey: config.encodingAESKey.trim(),
+      // WeCom callbacks always address the corp; callbackId may override.
+      callbackIdentity: config.callbackId?.trim() || config.corpId.trim(),
       label: config.name ?? `WeCom ${config.corpId.trim()}/${config.agentId}`,
     };
   }
