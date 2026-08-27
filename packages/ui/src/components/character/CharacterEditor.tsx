@@ -18,6 +18,7 @@ import {
 } from "../../events/index";
 import { useChatAvatarVoiceBridge, useVoiceChat } from "../../hooks";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { FramedPage, FramedPageBody } from "../../layouts/framed-page";
 import { useAppSelectorShallow } from "../../state";
 import { normalizeCharacterMessageExamples } from "../../utils/character-message-examples";
 import {
@@ -259,11 +260,13 @@ export function CharacterEditor({
   sceneOverlay = false,
   inModal: _inModal = false,
   onHeaderActionsChange,
+  pageChrome,
 }: {
   initialPage?: CharacterEditorPage;
   sceneOverlay?: boolean;
   inModal?: boolean;
   onHeaderActionsChange?: (actions: ReactNode | null) => void;
+  pageChrome?: ReactNode;
 } = {}) {
   useRenderGuard("CharacterEditor");
   const {
@@ -1275,7 +1278,7 @@ export function CharacterEditor({
 
   /* ── Loading state ──────────────────────────────────────────────── */
   if (characterLoading && !characterData) {
-    return (
+    const loadingState = (
       <div
         className={
           sceneOverlay
@@ -1292,6 +1295,14 @@ export function CharacterEditor({
           })}
         </div>
       </div>
+    );
+    return sceneOverlay ? (
+      loadingState
+    ) : (
+      <FramedPage>
+        {pageChrome}
+        <FramedPageBody scroll="page">{loadingState}</FramedPageBody>
+      </FramedPage>
     );
   }
 
@@ -1476,6 +1487,7 @@ export function CharacterEditor({
           {/* ── Standalone page: the Personality section (Character family) */}
           {!sceneOverlay && (
             <CharacterHubView
+              pageChrome={pageChrome}
               d={d}
               bioText={bioText}
               normalizedMessageExamples={normalizedMessageExamples}
