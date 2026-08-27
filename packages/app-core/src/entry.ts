@@ -10,6 +10,7 @@ import process from "node:process";
 import { formatErrorWithStack, getLogPrefix } from "@elizaos/shared";
 import { bootLap } from "./boot-profile";
 import { applyCliProfileEnv, parseCliProfileArgs } from "./cli/profile";
+import { promoteLauncherScopedDevCloudApiKey } from "./entry-cloud-api-key";
 
 bootLap("entry:body (Bun load of entry.js + @elizaos/shared)");
 
@@ -20,20 +21,13 @@ if (process.argv.includes("--no-color")) {
   process.env.FORCE_COLOR = "0";
 }
 
-// Build-testing bridge: when ELIZA_DEV_CLOUD_API_KEY is set in non-production,
-// promote it to ELIZAOS_CLOUD_API_KEY so the cloud plugin's env-fallback chain
-// (plugins/plugin-elizacloud/src/cloud/cloud-api-key.ts) authenticates without
-// the browser SIWE handshake. Production never sets ELIZA_DEV_*, so this is
-// inactive there. See scripts/cloud-siwe-login.mjs to mint a fresh key.
-if (
-  process.env.NODE_ENV !== "production" &&
-  process.env.ELIZA_DEV_CLOUD_API_KEY &&
-  !process.env.ELIZAOS_CLOUD_API_KEY
-) {
-  process.env.ELIZAOS_CLOUD_API_KEY = process.env.ELIZA_DEV_CLOUD_API_KEY;
+// Explicit staging and self-hosted launchers may bridge their target-scoped
+// development credential for the cloud plugin. Direct and packaged entrypoints
+// default to production and must not infer authority from NODE_ENV.
+if (promoteLauncherScopedDevCloudApiKey(process.env)) {
   // Stderr only — logger isn't initialized yet at this point in boot.
   process.stderr.write(
-    "[entry] ELIZA_DEV_CLOUD_API_KEY detected (dev mode): promoted to ELIZAOS_CLOUD_API_KEY\n",
+    "[entry] launcher-scoped Cloud development credential promoted to ELIZAOS_CLOUD_API_KEY\n",
   );
 }
 
