@@ -59,11 +59,11 @@ function stateRow(
     eventTime: "2026-08-23T12:00:00.000Z",
     eventTimeKind: "provider_settlement",
     paymentState: "succeeded",
-    cumulativeRefundedUsd: 0,
-    cumulativeDisputedUsd: 0,
+    cumulativeRefundedChargeCurrency: 0,
+    cumulativeDisputedChargeCurrency: 0,
     cumulativeClawbackCredits: 0,
     reinstatedCredits: 0,
-    unrecoveredShortfallUsd: 0,
+    unrecoveredShortfallChargeCurrency: 0,
     disputeReinstated: false,
     policyEffect: null,
     supportState: "none",
@@ -173,7 +173,7 @@ describe("PaymentActivityCard fetch states", () => {
           id: "checkout_order:ambrev",
           paymentState: "unavailable",
           eventTimeKind: "server_creation",
-          cumulativeRefundedUsd: 12,
+          cumulativeRefundedChargeCurrency: 12,
           cumulativeClawbackCredits: 12,
           policyEffect: {
             status: "unavailable",
@@ -248,7 +248,7 @@ describe("PaymentActivityCard refund and dispute rendering", () => {
           id: "checkout_order:partial",
           amountCents: 10000,
           paymentState: "partially_refunded",
-          cumulativeRefundedUsd: 40,
+          cumulativeRefundedChargeCurrency: 40,
           cumulativeClawbackCredits: 25,
           policyEffect: {
             status: "unavailable",
@@ -284,7 +284,7 @@ describe("PaymentActivityCard refund and dispute rendering", () => {
         stateRow({
           id: "checkout_order:disp1",
           paymentState: "dispute_withdrawn",
-          cumulativeDisputedUsd: 80,
+          cumulativeDisputedChargeCurrency: 80,
           cumulativeClawbackCredits: 80,
           policyEffect: {
             status: "unavailable",
@@ -295,7 +295,7 @@ describe("PaymentActivityCard refund and dispute rendering", () => {
         stateRow({
           id: "checkout_order:disp2",
           paymentState: "dispute_reinstated",
-          cumulativeDisputedUsd: 80,
+          cumulativeDisputedChargeCurrency: 80,
           reinstatedCredits: 80,
           disputeReinstated: true,
           policyEffect: {
@@ -381,11 +381,11 @@ describe("PaymentActivityCard refund and dispute rendering", () => {
       "currency",
       "eventTime",
       "eventTimeKind",
-      "cumulativeRefundedUsd",
-      "cumulativeDisputedUsd",
+      "cumulativeRefundedChargeCurrency",
+      "cumulativeDisputedChargeCurrency",
       "cumulativeClawbackCredits",
       "reinstatedCredits",
-      "unrecoveredShortfallUsd",
+      "unrecoveredShortfallChargeCurrency",
       "disputeReinstated",
       "supportState",
     ] as const;
@@ -451,7 +451,7 @@ describe("PaymentActivityCard refund and dispute rendering", () => {
       states: [
         stateRow({
           paymentState: "partially_refunded",
-          cumulativeRefundedUsd: 5,
+          cumulativeRefundedChargeCurrency: 5,
           policyEffect: null,
         }),
       ],
@@ -472,7 +472,7 @@ describe("PaymentActivityCard refund and dispute rendering", () => {
       states: [
         stateRow({
           paymentState: "partially_refunded",
-          cumulativeRefundedUsd: 5,
+          cumulativeRefundedChargeCurrency: 5,
           policyEffect: { status: "unavailable", reason: "policy_pending" },
         }),
       ],
@@ -519,7 +519,7 @@ describe("PaymentActivityCard refund and dispute rendering", () => {
   it("shows reversal detail for a row carrying only a shortfall or a support escalation, matching the detail surface", async () => {
     // The list's reversal gate must cover the same authoritative field set
     // the detail surface renders: a row with all four classic totals zero,
-    // policyEffect: null, but a real unrecoveredShortfallUsd (or a
+    // policyEffect: null, but a real unrecoveredShortfallChargeCurrency (or a
     // contact_support escalation) is a reversed payment per the authority.
     // The old gate hid both facts in the list while detail showed them
     // (#26752 review r6).
@@ -529,7 +529,7 @@ describe("PaymentActivityCard refund and dispute rendering", () => {
           id: "payment_request:shortfall-only",
           surface: "payment_request",
           authorityId: "pr_shortfall",
-          unrecoveredShortfallUsd: 5,
+          unrecoveredShortfallChargeCurrency: 5,
         }),
       ],
     });
@@ -607,5 +607,71 @@ describe("PaymentActivityCard refund and dispute rendering", () => {
       expect(screen.queryByTestId("payment-state-row")).toBeNull();
       cleanup();
     }
+  });
+});
+
+describe("PaymentActivityCard reversal currency rendering (#26752 review)", () => {
+  // Regression: reversal amounts were formatted with a hard-coded "USD"
+  // while the projection carries them in the purchase's own currency
+  // (Stripe minor units of the charge). A refunded EUR purchase rendered
+  // "$19" next to "€19" — the customer-visible wrong one (review finding:
+  // both cannot be right, and the one the customer sees was wrong).
+  it("formats reversal amounts in the row's own currency, not USD", async () => {
+    apiMock.mockResolvedValue({
+      states: [
+        stateRow({
+          id: "checkout_order:eur",
+          amountCents: 1900,
+          currency: "EUR",
+          paymentState: "partially_refunded",
+          cumulativeRefundedChargeCurrency: 19,
+          cumulativeDisputedChargeCurrency: 7.5,
+          unrecoveredShortfallChargeCurrency: 2.25,
+          policyEffect: {
+            status: "unavailable",
+            reason: "refund_entitlement_policy_pending_22930",
+          },
+          supportState: "contact_support",
+        }),
+      ],
+    });
+    render(
+      <MemoryRouter>
+        <PaymentActivityCard />
+      </MemoryRouter>,
+    );
+    await screen.findAllByTestId("payment-reversal-detail");
+
+    expect(screen.getByTestId("refunded-amount").textContent).toBe("€19");
+    expect(screen.getByTestId("disputed-amount").textContent).toBe("€7.50");
+    expect(screen.getByTestId("shortfall-amount").textContent).toBe("€2.25");
+    // The purchase line itself stays in its own currency (already correct).
+    expect(screen.queryByText("$19")).toBeNull();
+    expect(screen.queryByText("$7.50")).toBeNull();
+    expect(screen.queryByText("$2.25")).toBeNull();
+  });
+
+  it("USD purchases still render reversal amounts with the $ sign", async () => {
+    apiMock.mockResolvedValue({
+      states: [
+        stateRow({
+          id: "checkout_order:usd",
+          paymentState: "partially_refunded",
+          cumulativeRefundedChargeCurrency: 12,
+          policyEffect: {
+            status: "unavailable",
+            reason: "refund_entitlement_policy_pending_22930",
+          },
+          supportState: "contact_support",
+        }),
+      ],
+    });
+    render(
+      <MemoryRouter>
+        <PaymentActivityCard />
+      </MemoryRouter>,
+    );
+    await screen.findAllByTestId("payment-reversal-detail");
+    expect(screen.getByTestId("refunded-amount").textContent).toBe("$12");
   });
 });

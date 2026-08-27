@@ -60,11 +60,11 @@ export interface PaymentStateDisplay {
     | "dispute_withdrawn"
     | "dispute_reinstated"
     | "unavailable";
-  cumulativeRefundedUsd: number;
-  cumulativeDisputedUsd: number;
+  cumulativeRefundedChargeCurrency: number;
+  cumulativeDisputedChargeCurrency: number;
   cumulativeClawbackCredits: number;
   reinstatedCredits: number;
-  unrecoveredShortfallUsd: number;
+  unrecoveredShortfallChargeCurrency: number;
   disputeReinstated: boolean;
   policyEffect: {
     status: "unavailable";
@@ -267,11 +267,11 @@ export function PaymentActivityCard() {
               // two surfaces disagree on what the authority returned.
               const reversed =
                 row.policyEffect?.status === "unavailable" ||
-                row.cumulativeRefundedUsd > 0 ||
-                row.cumulativeDisputedUsd > 0 ||
+                row.cumulativeRefundedChargeCurrency > 0 ||
+                row.cumulativeDisputedChargeCurrency > 0 ||
                 row.cumulativeClawbackCredits > 0 ||
                 row.reinstatedCredits > 0 ||
-                row.unrecoveredShortfallUsd > 0 ||
+                row.unrecoveredShortfallChargeCurrency > 0 ||
                 row.supportState === "contact_support";
               return (
                 <li
@@ -385,25 +385,31 @@ export function PaymentActivityCard() {
                       className="flex flex-col gap-1 border-l-2 border-amber-400/60 pl-3"
                       data-testid="payment-reversal-detail"
                     >
-                      {row.cumulativeRefundedUsd > 0 ? (
+                      {row.cumulativeRefundedChargeCurrency > 0 ? (
                         <p className="text-xs font-mono text-txt-strong">
                           {t("cloud.billingTab.refundedAmount", {
                             defaultValue: "Refunded",
                           })}
                           :{" "}
                           <span data-testid="refunded-amount">
-                            {formatAmount(row.cumulativeRefundedUsd, "USD")}
+                            {formatAmount(
+                              row.cumulativeRefundedChargeCurrency,
+                              row.currency,
+                            )}
                           </span>
                         </p>
                       ) : null}
-                      {row.cumulativeDisputedUsd > 0 ? (
+                      {row.cumulativeDisputedChargeCurrency > 0 ? (
                         <p className="text-xs font-mono text-txt-strong">
                           {t("cloud.billingTab.disputedAmount", {
                             defaultValue: "Disputed",
                           })}
                           :{" "}
                           <span data-testid="disputed-amount">
-                            {formatAmount(row.cumulativeDisputedUsd, "USD")}
+                            {formatAmount(
+                              row.cumulativeDisputedChargeCurrency,
+                              row.currency,
+                            )}
                           </span>
                         </p>
                       ) : null}
@@ -430,14 +436,17 @@ export function PaymentActivityCard() {
                           {formatCredits(row.cumulativeClawbackCredits)}
                         </span>
                       </p>
-                      {row.unrecoveredShortfallUsd > 0 ? (
+                      {row.unrecoveredShortfallChargeCurrency > 0 ? (
                         <p className="text-xs font-mono text-amber-300">
                           {t("cloud.billingTab.unrecoveredShortfall", {
                             defaultValue: "Unrecovered balance shortfall",
                           })}
                           :{" "}
                           <span data-testid="shortfall-amount">
-                            {formatAmount(row.unrecoveredShortfallUsd, "USD")}
+                            {formatAmount(
+                              row.unrecoveredShortfallChargeCurrency,
+                              row.currency,
+                            )}
                           </span>
                         </p>
                       ) : null}

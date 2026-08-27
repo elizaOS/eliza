@@ -178,6 +178,7 @@ async function insertCheckoutOrder(params: {
   userId: string;
   amountCents: number;
   status: string;
+  currency?: string;
   stripePaymentIntentId?: string | null;
   stripeCheckoutSessionId?: string | null;
   stripeCustomerId?: string | null;
@@ -196,7 +197,7 @@ async function insertCheckoutOrder(params: {
       purchase_type: "custom_amount",
       credits_to_grant: String(params.amountCents / 100),
       charge_amount_cents: BigInt(params.amountCents),
-      currency: "usd",
+      currency: params.currency ?? "usd",
       // phase_shape_check: delivered rows bind session+customer without a
       // payment intent; the intent binds at settlement.
       stripe_customer_id:
@@ -382,7 +383,7 @@ describe("listPaymentStates — base states", () => {
     expect(rows.length).toBe(1);
     const row = rows[0];
     expect(row.paymentState).toBe("refunded");
-    expect(row.cumulativeRefundedUsd).toBe(100);
+    expect(row.cumulativeRefundedChargeCurrency).toBe(100);
 
     // Control: a reversal keyed on the stale request intent must NOT
     // attach to the same purchase through the receipt path.
@@ -411,7 +412,7 @@ describe("listPaymentStates — base states", () => {
     const rows2 = await paymentHistoryService.listPaymentStates(organizationId);
     const row2 = rows2.find((r) => r.id === `payment_request:${request2.id}`);
     expect(row2?.paymentState).toBe("succeeded");
-    expect(row2?.cumulativeRefundedUsd).toBe(0);
+    expect(row2?.cumulativeRefundedChargeCurrency).toBe(0);
   });
 
   test("pending and failed and expired payment requests project distinct states", async () => {
@@ -490,7 +491,7 @@ describe("listPaymentStates — refund and dispute derivation", () => {
     expect(rows.length).toBe(1);
     const row = rows[0];
     expect(row.paymentState).toBe("partially_refunded");
-    expect(row.cumulativeRefundedUsd).toBe(40);
+    expect(row.cumulativeRefundedChargeCurrency).toBe(40);
     expect(row.cumulativeClawbackCredits).toBe(25);
     expect(row.policyEffect).toEqual({
       status: "unavailable",
@@ -524,7 +525,7 @@ describe("listPaymentStates — refund and dispute derivation", () => {
 
     const rows = await paymentHistoryService.listPaymentStates(organizationId);
     expect(rows[0].paymentState).toBe("refunded");
-    expect(rows[0].cumulativeRefundedUsd).toBe(50);
+    expect(rows[0].cumulativeRefundedChargeCurrency).toBe(50);
   });
 
   test("replayed webhook cannot double-write: the ledger key is unique and the projection reads one row", async () => {
@@ -588,7 +589,7 @@ describe("listPaymentStates — refund and dispute derivation", () => {
 
     const rows = await paymentHistoryService.listPaymentStates(organizationId);
     expect(rows.length).toBe(1);
-    expect(rows[0].cumulativeRefundedUsd).toBe(30);
+    expect(rows[0].cumulativeRefundedChargeCurrency).toBe(30);
     expect(rows[0].paymentState).toBe("partially_refunded");
   });
 
@@ -631,7 +632,7 @@ describe("listPaymentStates — refund and dispute derivation", () => {
 
     const rows = await paymentHistoryService.listPaymentStates(organizationId);
     const row = rows[0];
-    expect(row.cumulativeRefundedUsd).toBe(70);
+    expect(row.cumulativeRefundedChargeCurrency).toBe(70);
     expect(row.paymentState).toBe("partially_refunded");
   });
 
@@ -676,7 +677,7 @@ describe("listPaymentStates — refund and dispute derivation", () => {
 
     const rows = await paymentHistoryService.listPaymentStates(organizationId);
     const row = rows[0];
-    expect(row.cumulativeRefundedUsd).toBe(50);
+    expect(row.cumulativeRefundedChargeCurrency).toBe(50);
     expect(row.paymentState).toBe("partially_refunded");
   });
 
@@ -719,7 +720,7 @@ describe("listPaymentStates — refund and dispute derivation", () => {
 
     const rows = await paymentHistoryService.listPaymentStates(organizationId);
     const row = rows[0];
-    expect(row.cumulativeRefundedUsd).toBe(70);
+    expect(row.cumulativeRefundedChargeCurrency).toBe(70);
     expect(row.paymentState).toBe("partially_refunded");
   });
 
@@ -765,7 +766,7 @@ describe("listPaymentStates — refund and dispute derivation", () => {
     const rows = await paymentHistoryService.listPaymentStates(organizationId);
     const row = rows[0];
     // Distinct authorities stay additive: 40 (genuine) + 10 (malformed raw) = 50.
-    expect(row.cumulativeRefundedUsd).toBe(50);
+    expect(row.cumulativeRefundedChargeCurrency).toBe(50);
     expect(row.paymentState).toBe("partially_refunded");
   });
 
@@ -809,7 +810,7 @@ describe("listPaymentStates — refund and dispute derivation", () => {
 
     const rows = await paymentHistoryService.listPaymentStates(organizationId);
     const row = rows[0];
-    expect(row.cumulativeRefundedUsd).toBe(60);
+    expect(row.cumulativeRefundedChargeCurrency).toBe(60);
     expect(row.paymentState).toBe("partially_refunded");
   });
 
@@ -854,8 +855,8 @@ describe("listPaymentStates — refund and dispute derivation", () => {
 
     const rows = await paymentHistoryService.listPaymentStates(organizationId);
     expect(rows[0].paymentState).toBe("dispute_withdrawn");
-    expect(rows[0].cumulativeDisputedUsd).toBe(80);
-    expect(rows[0].cumulativeRefundedUsd).toBe(0);
+    expect(rows[0].cumulativeDisputedChargeCurrency).toBe(80);
+    expect(rows[0].cumulativeRefundedChargeCurrency).toBe(0);
   });
 });
 
@@ -950,7 +951,7 @@ describe("listPaymentStates — checkout orders and provider isolation", () => {
     const rows = await paymentHistoryService.listPaymentStates(organizationId);
     expect(rows.length).toBe(1);
     expect(rows[0].paymentState).toBe("succeeded");
-    expect(rows[0].cumulativeRefundedUsd).toBe(0);
+    expect(rows[0].cumulativeRefundedChargeCurrency).toBe(0);
   });
 
   test("checkout order refund flows through the same reversal aggregation", async () => {
@@ -973,7 +974,7 @@ describe("listPaymentStates — checkout orders and provider isolation", () => {
 
     const rows = await paymentHistoryService.listPaymentStates(organizationId);
     expect(rows[0].paymentState).toBe("partially_refunded");
-    expect(rows[0].cumulativeRefundedUsd).toBe(30);
+    expect(rows[0].cumulativeRefundedChargeCurrency).toBe(30);
   });
 
   test("oxapay purchase rows never join Stripe reversals and vice versa", async () => {
@@ -1017,7 +1018,7 @@ describe("listPaymentStates — checkout orders and provider isolation", () => {
     // No receipt was projected for this oxapay row: settled requests are only
     // a success through their immutable receipt authority (#22427).
     expect(rows[0].paymentState).toBe("unavailable");
-    expect(rows[0].cumulativeRefundedUsd).toBe(0);
+    expect(rows[0].cumulativeRefundedChargeCurrency).toBe(0);
     expect(rows[0].cumulativeClawbackCredits).toBe(0);
   });
 });
@@ -1045,5 +1046,191 @@ describe("listPaymentStates — limit and ordering", () => {
     expect(all.length).toBe(2);
     expect(all[0].eventTime >= all[1].eventTime).toBe(true);
     void second;
+  });
+});
+
+describe("listPaymentStates — projection boundary contracts (#26752 review)", () => {
+  // These tests kill the mutants the original 22-test suite let survive:
+  // M1 truncation removal, M2 limit clamp upper bound, M3 currency
+  // normalization, M5 stable tie-break, M8 shortfall projection. Each
+  // asserts the behavior a consumer observes (row count, DETAIL route
+  // reachability, currency casing, ordering stability, money field).
+
+  test("combined surfaces truncate to the bounded limit (M1: rows.slice removal)", async () => {
+    // The detail route reaches rows ONLY through this window: if the final
+    // slice is dropped, a list surfacing >limit rows silently widens the
+    // contract for every consumer that paginates on length.
+    const seeds: Array<Promise<unknown>> = [];
+    for (let i = 0; i < 5; i++) {
+      seeds.push(
+        insertStripePaymentRequest({
+          organizationId,
+          amountCents: 100 + i,
+          status: "pending",
+        }),
+      );
+      seeds.push(
+        insertCheckoutOrder({
+          organizationId,
+          userId,
+          amountCents: 200 + i,
+          status: "quoted",
+        }),
+      );
+    }
+    await Promise.all(seeds);
+    const rows = await paymentHistoryService.listPaymentStates(organizationId, 7);
+    expect(rows.length).toBe(7);
+  });
+
+  test("limit above the hard clamp still returns exactly 200 rows (M2: clamp removal)", async () => {
+    // DETAIL_WINDOW_LIMIT (200) in the detail route is coupled to this
+    // clamp: removing Math.min(.., 200) would let the two surfaces return
+    // up to 2x limit combined, changing the reachable window contract.
+    const seeds: Array<Promise<unknown>> = [];
+    for (let i = 0; i < 120; i++) {
+      seeds.push(
+        insertStripePaymentRequest({
+          organizationId,
+          amountCents: 100,
+          status: "pending",
+          settlementTxRef: `pi_clamp_${i}`,
+        }),
+      );
+      seeds.push(
+        insertCheckoutOrder({
+          organizationId,
+          userId,
+          amountCents: 200,
+          status: "quoted",
+        }),
+      );
+    }
+    await Promise.all(seeds);
+    // Above the clamp: exactly 200, not 240.
+    const rows = await paymentHistoryService.listPaymentStates(organizationId, 240);
+    expect(rows.length).toBe(200);
+    // At the clamp: same window.
+    const atClamp = await paymentHistoryService.listPaymentStates(organizationId, 200);
+    expect(atClamp.length).toBe(200);
+  });
+
+  test("currency is uppercased from the ledger's lowercase storage (M3: .toUpperCase() drop)", async () => {
+    // The checkout-orders table enforces LOWERCASE currency codes
+    // (stripe_checkout_orders_currency_check: currency = lower(currency)),
+    // so every checkout row reaches the projection as "eur"/"usd". The
+    // PaymentStateRow contract documents "Uppercase currency code as
+    // normalized from the owning authority" — without normalization the
+    // storage casing leaks into a documented API contract and consumers
+    // cannot compare codes without their own casing pass.
+    const order = await insertCheckoutOrder({
+      organizationId,
+      userId,
+      amountCents: 1900,
+      status: "settled",
+      currency: "eur",
+      stripePaymentIntentId: "pi_eur_casing",
+      settledAt: new Date(),
+    });
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "-19",
+      paymentIntentId: "pi_eur_casing",
+      source: "charge.refunded",
+      reversedUsd: 19,
+    });
+
+    const rows = await paymentHistoryService.listPaymentStates(organizationId);
+    const row = rows.find((r) => r.id === `checkout_order:${order.id}`);
+    expect(row).toBeDefined();
+    expect(row?.currency).toBe("EUR");
+    expect(row?.cumulativeRefundedChargeCurrency).toBe(19);
+    // Refund status compares cumulative reversal vs purchase amount in the
+    // SAME currency: 19.00 EUR refunded of 19.00 EUR purchase = refunded.
+    expect(row?.paymentState).toBe("refunded");
+  });
+
+  test("equal eventTime rows order by stable row-id tie-break (M5: tie-break swap)", async () => {
+    const stamp = new Date("2026-08-27T10:00:00Z");
+    // Deterministic construction: the projection concatenates request rows
+    // BEFORE order rows, but the id tie-break must sort `checkout_order:*`
+    // before `payment_request:*` (localeCompare ascending). With equal
+    // eventTimes, a mutant that returns only timeDelta keeps the input
+    // order ([payment_request, checkout_order]) and fails here regardless
+    // of any generated uuid — no coincidence can mask it.
+    const request = await insertStripePaymentRequest({
+      organizationId,
+      amountCents: 100,
+      status: "settled",
+      settlementTxRef: "pi_tie_req",
+      settledAt: stamp,
+    });
+    await insertReceipt({
+      organizationId,
+      paymentRequestId: request.id,
+      providerTxRef: "pi_tie_req",
+      amountCents: 100,
+      settledAt: stamp,
+    });
+    const order = await insertCheckoutOrder({
+      organizationId,
+      userId,
+      amountCents: 200,
+      status: "settled",
+      stripePaymentIntentId: "pi_tie_order",
+      settledAt: stamp,
+    });
+
+    const rows = await paymentHistoryService.listPaymentStates(organizationId);
+    expect(rows.length).toBe(2);
+    // Exact expected order: checkout_order id sorts first even though the
+    // request row was collected first.
+    expect(rows.map((r) => r.id)).toEqual([
+      `checkout_order:${order.id}`,
+      `payment_request:${request.id}`,
+    ]);
+    // Repeated calls produce the IDENTICAL order (the UI stability promise).
+    const again = await paymentHistoryService.listPaymentStates(organizationId);
+    expect(again.map((r) => r.id)).toEqual([
+      `checkout_order:${order.id}`,
+      `payment_request:${request.id}`,
+    ]);
+  });
+
+  test("clawback shortfall projects into unrecoveredShortfallChargeCurrency (M8: += 0)", async () => {
+    // Customer-visible money field: the reviewer's mutation zeroed the
+    // accumulation and 22 tests stayed green. A partial clawback that could
+    // not recover the full reversal must surface the shortfall.
+    const request = await insertStripePaymentRequest({
+      organizationId,
+      amountCents: 5000,
+      status: "settled",
+      settlementTxRef: "pi_shortfall",
+      settledAt: new Date(),
+    });
+    await insertReceipt({
+      organizationId,
+      paymentRequestId: request.id,
+      providerTxRef: "pi_shortfall",
+      amountCents: 5000,
+    });
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "-30",
+      paymentIntentId: "pi_shortfall",
+      source: "charge.refunded",
+      reversedUsd: 50,
+      unrecoveredUsd: 20,
+    });
+
+    const rows = await paymentHistoryService.listPaymentStates(organizationId);
+    const row = rows.find((r) => r.id === `payment_request:${request.id}`);
+    expect(row).toBeDefined();
+    expect(row?.cumulativeRefundedChargeCurrency).toBe(50);
+    expect(row?.cumulativeClawbackCredits).toBe(30);
+    expect(row?.unrecoveredShortfallChargeCurrency).toBe(20);
+    expect(row?.paymentState).toBe("refunded");
   });
 });

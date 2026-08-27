@@ -83,11 +83,11 @@ function stateRow(
     eventTime: "2026-08-23T12:00:00.000Z",
     eventTimeKind: "provider_settlement",
     paymentState: "succeeded",
-    cumulativeRefundedUsd: 0,
-    cumulativeDisputedUsd: 0,
+    cumulativeRefundedChargeCurrency: 0,
+    cumulativeDisputedChargeCurrency: 0,
     cumulativeClawbackCredits: 0,
     reinstatedCredits: 0,
-    unrecoveredShortfallUsd: 0,
+    unrecoveredShortfallChargeCurrency: 0,
     disputeReinstated: false,
     policyEffect: null,
     supportState: "none",
@@ -181,7 +181,7 @@ describe("PaymentStateDetailPage fetch states", () => {
       "authorityId",
       "eventTime",
       "eventTimeKind",
-      "cumulativeRefundedUsd",
+      "cumulativeRefundedChargeCurrency",
       "supportState",
       "disputeReinstated",
     ] as const;
@@ -271,7 +271,7 @@ describe("PaymentStateDetailPage success rendering", () => {
     apiMock.api.mockResolvedValueOnce({
       state: stateRow({
         paymentState: "partially_refunded",
-        cumulativeRefundedUsd: 12,
+        cumulativeRefundedChargeCurrency: 12,
         cumulativeClawbackCredits: 12,
         policyEffect: {
           status: "unavailable",
