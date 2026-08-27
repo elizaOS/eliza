@@ -1372,4 +1372,45 @@ describe("MESSAGE op=send unvetted-recipient confirmation gate (stranger-DM clos
 			awaitingUserInput: true,
 		});
 	});
+
+	it("switching operations WITHOUT saying yes re-arms for the new operation instead of reporting a decline (#27932 review §3a)", async () => {
+		// The non-affirmative switch: preview for operation A is armed, then
+		// the next turn requests a DIFFERENT send (new body bytes — the
+		// digest covers {target, content}) without answering the first
+		// preview. requireConfirmation consumed A's record and returned
+		// cancelled with A's metadata; the digest cannot match the new
+		// operation, so the fix re-arms for it. Reporting "declined" for a
+		// request the user never answered — while leaving the new operation
+		// unarmed — was the §3a bug (a false decline + a dead slot).
+		const { runtime, sends } = harness({ known: false });
+		await send(runtime, "message fuzzymatch saying hey"); // arm op A
+
+		const switchTurn = await send(
+			runtime,
+			"message fuzzymatch saying I'm late instead",
+			{
+				body: "I'm late instead",
+				messageId: "00000000-0000-0000-0000-0000000000a2",
+			},
+		);
+		// Not a decline: the user asked for a new send, so the new preview is
+		// armed and awaits its own confirmation.
+		expect(switchTurn.data).toMatchObject({
+			confirmationRequired: true,
+			awaitingUserInput: true,
+			cancelled: false,
+		});
+		expect(sends).toHaveLength(0);
+
+		// The next affirmative now confirms the NEW operation's bytes (the
+		// armed record), not the superseded preview — the planner re-supplies
+		// the same operation parameters on the confirming turn, so the
+		// recomputed digest matches the re-armed record.
+		const confirmed = await send(runtime, "yes", {
+			body: "I'm late instead",
+			messageId: "00000000-0000-0000-0000-0000000000a3",
+		});
+		expect(confirmed.success).toBe(true);
+		expect(sends).toHaveLength(1);
+	});
 });

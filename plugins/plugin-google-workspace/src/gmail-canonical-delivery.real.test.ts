@@ -124,7 +124,13 @@ describe("canonical principal to Gmail delivery", () => {
       id: WORLD_ID,
       agentId: runtime.agentId,
       name: "Fixture world",
-      metadata: { type: "fixture" },
+      // The sender is the fixture's owner-principal (named "Owner" below), and
+      // #25284's per-op MESSAGE role gate resolves world roles from this
+      // ownership record: without it the sender ranks GUEST and op=send is
+      // denied (MESSAGE_OP_ROLE_DENIED) before the claim-authority branch
+      // under test can run. Recording the ownership keeps this suite about
+      // canonical delivery claims, not role admission.
+      metadata: { type: "fixture", ownership: { ownerId: SENDER_ID } },
     });
     await runtime.ensureRoomExists({
       id: ROOM_ID,
