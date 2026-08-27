@@ -576,19 +576,18 @@ export class VideoService extends IVideoService {
     elizaLogger.log("Getting transcript");
     try {
       // Check for manual subtitles
-      if (videoInfo.subtitles?.en) {
+      const manualSubUrl = videoInfo.subtitles?.en?.[0]?.url;
+      if (manualSubUrl) {
         elizaLogger.log("Manual subtitles found");
-        const srtContent = await this.downloadSRT(
-          videoInfo.subtitles.en[0].url,
-        );
+        const srtContent = await this.downloadSRT(manualSubUrl);
         return this.parseSRT(srtContent);
       }
 
       // Check for automatic captions
-      if (videoInfo.automatic_captions?.en) {
+      const autoCaptionUrl = videoInfo.automatic_captions?.en?.[0]?.url;
+      if (autoCaptionUrl) {
         elizaLogger.log("Automatic captions found");
-        const captionUrl = videoInfo.automatic_captions.en[0].url;
-        const captionContent = await this.downloadCaption(captionUrl);
+        const captionContent = await this.downloadCaption(autoCaptionUrl);
         return this.parseCaption(captionContent);
       }
 
