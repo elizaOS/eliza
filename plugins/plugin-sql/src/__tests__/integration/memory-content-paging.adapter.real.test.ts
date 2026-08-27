@@ -368,6 +368,26 @@ describe("adapter-integrated memory content paging (real PGlite)", () => {
       )
     ).rejects.toMatchObject({ code: "MEMORY_SEGMENT_ATTACHMENT_ID_CONFLICT" });
 
+    // Small attachment reusing a segmented attachment's id: equally ambiguous
+    // for the owner-bound descriptor key, must fail closed the same way.
+    await expect(
+      adapter.createMemory(
+        {
+          entityId,
+          roomId,
+          agentId,
+          content: {
+            text: "small",
+            attachments: [
+              { id: "dup-1", url: "https://example.test/a", text: largeSource(150 * 1024) },
+              { id: "dup-1", url: "https://example.test/b", text: "small text" },
+            ],
+          },
+        } as unknown as Memory,
+        "messages"
+      )
+    ).rejects.toMatchObject({ code: "MEMORY_SEGMENT_ATTACHMENT_ID_CONFLICT" });
+
     await adapter.close();
     await manager.close();
   });

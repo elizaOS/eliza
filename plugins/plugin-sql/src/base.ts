@@ -4083,23 +4083,19 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     params: MemoryContentPageParams
   ): Promise<MemoryContentPageResult | null> {
     return this.withDatabase(async () => {
-      // #25140 review: when an access context is supplied, authorize the
-      // parent row with the SAME pushed-down conditions getMemories uses, so
-      // every page reauthorizes at the storage boundary — an ineligible caller
-      // gets null (no descriptor leak), never page bytes.
-      if (params.accessContext) {
-        const authorized = await this.db
-          .select({ id: memoryTable.id })
-          .from(memoryTable)
-          .where(
-            and(
-              eq(memoryTable.id, params.memoryId),
-              ...memoryAccessContextConditions(params.accessContext, this.agentId, "messages")
-            )
+      // #25140 review R2: when an access context is supplied, authorize the
+      // parent row with the SAME pushed-down conditions getMemories uses —
+      // ANDed into every parent read INSIDE the page-read snapshot, so the
+      // authorization decision and the page bytes come from one repeatable-read
+      // snapshot. An ineligible caller gets null (no descriptor leak), never
+      // page bytes; a concurrently revoked room cannot slip a page through
+      // between an authorization check and the read.
+      const authorization = params.accessContext
+        ? and(
+            eq(memoryTable.id, params.memoryId),
+            ...memoryAccessContextConditions(params.accessContext, this.agentId, "messages")
           )
-          .limit(1);
-        if (authorized.length === 0) return null;
-      }
+        : undefined;
       return readMemoryContentPage({
         db: this.db,
         memoryId: params.memoryId,
@@ -4109,6 +4105,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         ...(params.expectedRevision === undefined
           ? {}
           : { expectedRevision: params.expectedRevision }),
+        ...(authorization === undefined ? {} : { parentAuthorization: authorization }),
       });
     });
   }
@@ -4203,23 +4200,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       };
     }
     const seenAttachmentIds = new Set<string>();
+    // Indexes (into the mapped attachments array) of entries that were
+    // segmented; the ONLY reliable discriminator between the segmented entry
+    // and a small entry reusing its id.
+    const segmentedIndexes = new Set<number>();
     if (Array.isArray(content.attachments) && content.attachments.length > 0) {
-      // Track EVERY attachment id (small or large): a small attachment sharing
-      // an id with a segmented one would make the owner-bound descriptor key
-      // ambiguous for readers resolving attachment.text:<id>.
-      const allAttachmentIds = new Set<string>();
-      for (const attachment of content.attachments) {
-        if (
-          attachment &&
-          typeof attachment === "object" &&
-          typeof (attachment as { id?: unknown }).id === "string"
-        ) {
-          const rawId = (attachment as { id: string }).id;
-          if (rawId.trim()) allAttachmentIds.add(rawId.trim());
-        }
-      }
       let changed = false;
+      let index = -1;
       const attachments = content.attachments.map((attachment) => {
+        index += 1;
         if (
           attachment &&
           typeof attachment === "object" &&
@@ -4252,6 +4241,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             );
           }
           seenAttachmentIds.add(id);
+          segmentedIndexes.add(index);
           const field = { kind: "attachment.text", attachmentId: id } as const;
           const text = (attachment as { text: string }).text;
           // Store the trimmed id back on the attachment so the descriptor key
@@ -4265,15 +4255,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         }
         return attachment;
       });
-      // A small attachment reusing a segmented id is equally ambiguous. Skip
-      // the segmented entries themselves: their text is now the published
-      // marker (small by design), so they are not "small attachments".
+      // A small attachment reusing a segmented id is equally ambiguous for the
+      // owner-bound descriptor key; fail closed. segmentedIndexes is the only
+      // reliable discriminator: after the map, a segmented entry's text is the
+      // small published marker, so shape checks cannot tell them apart.
+      let sweepIndex = -1;
       for (const attachment of attachments) {
+        sweepIndex += 1;
+        if (segmentedIndexes.has(sweepIndex)) continue;
         if (
           attachment &&
           typeof attachment === "object" &&
-          typeof (attachment as { id?: unknown }).id === "string" &&
-          !seenAttachmentIds.has((attachment as { id: string }).id.trim())
+          typeof (attachment as { id?: unknown }).id === "string"
         ) {
           const id = (attachment as { id: string }).id.trim();
           if (id && seenAttachmentIds.has(id)) {
