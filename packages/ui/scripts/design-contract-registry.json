@@ -9,7 +9,14 @@
         "symbol": "StartupShell"
       },
       "responsibility": "Owns the application startup lifecycle across loading, failure, pairing, and bootstrap states.",
-      "dependsOn": [],
+      "dependsOn": [
+        "atom:alert",
+        "atom:badge",
+        "atom:button",
+        "atom:card",
+        "atom:input",
+        "atom:separator"
+      ],
       "grants": ["layout.viewport", "layout.region", "semantics.landmark"],
       "lifecycleOwner": "application-startup"
     },

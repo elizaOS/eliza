@@ -55,6 +55,8 @@ const cardVariants = cva("rounded-sm bg-card/70 text-card-fg", {
         "overflow-hidden border border-border/50 bg-bg-accent text-xs font-semibold text-muted",
       connectorPanel: "border border-border/40 bg-bg/60",
       vaultForm: "border border-border/50 bg-card/30 p-2",
+      vaultEmpty:
+        "border border-dashed border-border/50 bg-card/20 p-3 text-center text-xs text-muted",
       vaultListRow: "bg-transparent px-2 py-1.5 hover:bg-bg-muted/30",
       vaultError:
         "border border-danger/40 bg-danger/10 px-3 py-1.5 text-xs text-danger",

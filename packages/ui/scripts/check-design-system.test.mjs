@@ -25,6 +25,7 @@ import {
   scanSourceText,
   validateAdapterRegistry,
   validateExceptions,
+  validatePublicCardVariantCompatibility,
 } from "./check-design-system.mjs";
 
 test("named CSS cannot hide paint on a canonical atom", () => {
@@ -781,6 +782,157 @@ test("Card variants require reuse instead of storing molecule-local paint", () =
     suggestedOwner: "ui/components molecule",
     value: "oneOff",
   });
+});
+
+test("published Card compatibility variants require exact public API and recipe evidence", () => {
+  const now = new Date("2026-08-27T00:00:00Z");
+  const entry = {
+    id: "legacy-public-compatibility",
+    value: "legacy",
+    file: "packages/ui/src/components/ui/card.tsx",
+    packageExports: [".", "./card"],
+    publicSymbols: ["Card", "CardProps", "cardVariants"],
+    publicBarrels: [
+      {
+        file: "packages/ui/src/index.ts",
+        reexport: "./components/primitives/index",
+      },
+      {
+        file: "packages/ui/src/components/primitives/index.ts",
+        reexport: "../ui/card",
+      },
+      {
+        file: "packages/ui/src/browser.ts",
+        reexport: "./components/ui/card.tsx",
+      },
+    ],
+    recipe: "legacy-recipe",
+    reason: "Preserves a published downstream variant.",
+    reviewBy: "2027-02-27",
+  };
+  const cardVariants = [
+    {
+      axis: "variant",
+      callerCount: 0,
+      callers: [],
+      file: entry.file,
+      line: 1,
+      recipe: entry.recipe,
+      value: entry.value,
+    },
+  ];
+  const packageDocument = {
+    exports: {
+      ".": {
+        types: "./dist/index.d.ts",
+        import: "./dist/index.js",
+        default: "./dist/index.js",
+      },
+      "./card": {
+        types: "./dist/components/ui/card.d.ts",
+        import: "./dist/components/ui/card.js",
+        default: "./dist/components/ui/card.js",
+      },
+    },
+  };
+  const cardSource = `
+    type VariantProps<T> = T;
+    const Card = () => null;
+    const cardVariants = () => "";
+    export interface CardProps extends VariantProps<typeof cardVariants> {}
+    export { Card, cardVariants };
+  `;
+  const publicBarrelSources = {
+    "packages/ui/src/index.ts":
+      'export * from "./components/primitives/index";',
+    "packages/ui/src/components/primitives/index.ts":
+      'export * from "../ui/card";',
+    "packages/ui/src/browser.ts": 'export * from "./components/ui/card.tsx";',
+  };
+
+  assert.deepEqual(
+    validatePublicCardVariantCompatibility({
+      cardSource,
+      cardVariants,
+      document: { schemaVersion: 1, variants: [entry] },
+      now,
+      publicBarrelSources,
+      packageDocument,
+    }).map(({ callerCount, value }) => ({ callerCount, value })),
+    [{ callerCount: 0, value: "legacy" }],
+  );
+  assert.throws(
+    () =>
+      validatePublicCardVariantCompatibility({
+        cardSource,
+        cardVariants,
+        document: {
+          schemaVersion: 1,
+          variants: [{ ...entry, recipe: "drifted" }],
+        },
+        now,
+        publicBarrelSources,
+        packageDocument,
+      }),
+    /does not match its canonical recipe/,
+  );
+  assert.throws(
+    () =>
+      validatePublicCardVariantCompatibility({
+        cardSource,
+        cardVariants: [{ ...cardVariants[0], callerCount: 2 }],
+        document: { schemaVersion: 1, variants: [entry] },
+        now,
+        publicBarrelSources,
+        packageDocument,
+      }),
+    /is no longer underused/,
+  );
+  assert.throws(
+    () =>
+      validatePublicCardVariantCompatibility({
+        cardSource,
+        cardVariants,
+        document: {
+          schemaVersion: 1,
+          variants: [{ ...entry, publicSymbols: ["Card"] }],
+        },
+        now,
+        publicBarrelSources,
+        packageDocument,
+      }),
+    /Invalid public Card variant compatibility/,
+  );
+  assert.throws(
+    () =>
+      validatePublicCardVariantCompatibility({
+        cardSource: cardSource.replace(
+          "extends VariantProps<typeof cardVariants>",
+          "",
+        ),
+        cardVariants,
+        document: { schemaVersion: 1, variants: [entry] },
+        now,
+        publicBarrelSources,
+        packageDocument,
+      }),
+    /requires CardProps to derive VariantProps<typeof cardVariants>/,
+  );
+  assert.throws(
+    () =>
+      validatePublicCardVariantCompatibility({
+        cardSource,
+        cardVariants,
+        document: { schemaVersion: 1, variants: [entry] },
+        now,
+        publicBarrelSources: {
+          ...publicBarrelSources,
+          "packages/ui/src/browser.ts": "export const browser = true;",
+        },
+        packageDocument,
+      }),
+    /is missing public barrel packages\/ui\/src\/browser\.ts/,
+  );
 });
 
 test("Card axis inventory follows helper-returned JSX spreads", () => {

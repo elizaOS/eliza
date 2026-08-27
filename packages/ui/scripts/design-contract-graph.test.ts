@@ -16,7 +16,7 @@ import {
   buildDesignContractGraph,
   inventoryDesignTokens,
   resolveCanonicalAtomImport,
-  validateDeclaredMoleculeAtomicDependencies,
+  validateDeclaredAtomicDependencies,
   validateDeclaredMoleculeConsumers,
   validateDesignDependencyGraph,
   validateHigherOrderOwners,
@@ -282,8 +282,8 @@ test("atomic composition requires the canonical source module", () => {
   );
 });
 
-test("declared molecule atoms reject drift in both directions", () => {
-  const findings = validateDeclaredMoleculeAtomicDependencies({
+test("declared composition atoms reject drift in both directions", () => {
+  const findings = validateDeclaredAtomicDependencies({
     nodeId: "molecule:test",
     owner: "packages/ui/src/components/test.tsx:TestMolecule",
     declaredAtomicDependencies: ["button", "spinner"],
@@ -300,7 +300,7 @@ test("declared molecule atoms reject drift in both directions", () => {
   assert.match(findings[0].detail, /spinner/);
   assert.match(findings[1].detail, /card/);
   assert.deepEqual(
-    validateDeclaredMoleculeAtomicDependencies({
+    validateDeclaredAtomicDependencies({
       nodeId: "molecule:test",
       owner: "packages/ui/src/components/test.tsx:TestMolecule",
       declaredAtomicDependencies: ["button", "card"],
@@ -419,7 +419,7 @@ test("maintained source produces a deterministic closed graph", async () => {
   );
 });
 
-test("declared reusable nodes retain the complete live atom closure", async () => {
+test("declared molecule nodes retain the complete live atom closure", async () => {
   const graph = await buildDesignContractGraph();
   const expectedDependencies = new Map<string, readonly string[]>([
     ["molecule:action-list-row", ["atom:button", "atom:card"]],
@@ -427,30 +427,35 @@ test("declared reusable nodes retain the complete live atom closure", async () =
     ["molecule:connection-capability-tile", ["atom:card"]],
     ["molecule:content-state", ["atom:card", "atom:spinner"]],
     ["molecule:settings-row", ["atom:button", "atom:card"]],
-    [
-      "organism:vault-workspace",
-      [
-        "atom:alert",
-        "atom:badge",
-        "atom:banner",
-        "atom:button",
-        "atom:card",
-        "atom:checkbox",
-        "atom:dialog",
-        "atom:input",
-        "atom:radioGroup",
-        "atom:select",
-        "atom:separator",
-        "atom:table",
-        "atom:tabs",
-      ],
-    ],
   ]);
 
   for (const [nodeId, expected] of expectedDependencies) {
     const node = graph.nodes.find((candidate) => candidate.id === nodeId);
     assert.ok(node, `missing declared molecule ${nodeId}`);
     assert.deepEqual(node.dependsOn, expected, nodeId);
+  }
+});
+
+test("declared higher-order nodes retain their discovered live atom closure", async () => {
+  const graph = await buildDesignContractGraph();
+  const higherOrderNodes = graph.nodes.filter(
+    (node) => node.layer === "organism" || node.layer === "page-shell",
+  );
+
+  for (const node of higherOrderNodes) {
+    assert.equal(node.owner.kind, "export", node.id);
+    if (node.owner.kind !== "export") continue;
+    const component = graph.observations.discoveredComponents.find(
+      (candidate) =>
+        candidate.file === node.owner.file &&
+        candidate.symbol === node.owner.symbol,
+    );
+    assert.ok(component, `missing discovered owner for ${node.id}`);
+    assert.deepEqual(
+      node.dependsOn.filter((dependency) => dependency.startsWith("atom:")),
+      component.transitiveAtoms.map((atom) => `atom:${atom}`),
+      node.id,
+    );
   }
 });
 
