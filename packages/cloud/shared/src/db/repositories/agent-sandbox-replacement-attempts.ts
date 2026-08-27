@@ -6,7 +6,7 @@
  */
 
 import { Buffer } from "node:buffer";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { and, eq, gt, sql } from "drizzle-orm";
 import { isUniqueConstraintError } from "../../lib/utils/db-errors";
 import type { DbTransaction } from "../client";

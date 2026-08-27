@@ -6,7 +6,7 @@
  * All costs include 20% platform markup.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { PLATFORM_MARKUP_MULTIPLIER } from "../pricing-constants";
 
 // Base provider costs (before 20% markup)

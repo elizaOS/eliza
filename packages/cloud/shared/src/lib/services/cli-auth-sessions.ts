@@ -2,7 +2,7 @@
  * Service for managing CLI authentication sessions.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { decryptApiKey } from "../../db/crypto/api-keys";
 import { cliAuthSessionsRepository } from "../../db/repositories";
 import type { ApiKey } from "../../db/schemas/api-keys";

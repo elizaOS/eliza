@@ -74,16 +74,6 @@
     "canonicalOwner": "packages/ui/src/components/ui/status-badge.tsx",
     "note": "Status-toned attribution label should compose the canonical status badge."
   },
-  "packages/ui/src/cloud-ui/components/brand/brand-button.tsx:BrandButton": {
-    "disposition": "consolidation-candidate",
-    "canonicalOwner": "packages/ui/src/components/ui/button.tsx",
-    "note": "Reimplements Slot, button attributes, sizes, states, and variants already owned by Button."
-  },
-  "packages/ui/src/cloud-ui/components/brand/lock-on-button.tsx:LockOnButton": {
-    "disposition": "consolidation-candidate",
-    "canonicalOwner": "packages/ui/src/components/ui/button.tsx",
-    "note": "Special hover treatment can be a canonical Button variant or wrapper without a second button base."
-  },
   "packages/ui/src/components/shared/ViewHeader.tsx:ViewBackButton": {
     "disposition": "consolidation-candidate",
     "canonicalOwner": "packages/ui/src/components/ui/button.tsx",
@@ -94,10 +84,15 @@
     "canonicalOwner": "packages/ui/src/components/ui/button.tsx",
     "note": "Design-lab fixture is not shipped product UI."
   },
-  "packages/ui/src/cloud-ui/components/brand/brand-card.tsx:BrandCard": {
-    "disposition": "consolidation-candidate",
+  "packages/ui/src/cloud-ui/components/brand/brand-card.tsx:CorneredCard": {
+    "disposition": "molecular",
     "canonicalOwner": "packages/ui/src/components/ui/card.tsx",
-    "note": "Reimplements the base card surface, polymorphism, padding, border, and hover contract."
+    "note": "Composes optional brand corner brackets around the canonical Card and inherits CardProps; cornerless product surfaces use Card directly."
+  },
+  "packages/ui/src/cloud-ui/components/brand/brand-card.tsx:BrandCard": {
+    "disposition": "compatibility-adapter",
+    "canonicalOwner": "packages/ui/src/cloud-ui/components/brand/brand-card.tsx",
+    "note": "Deprecated direct alias retained for public compatibility; in-repository consumers use CorneredCard or the canonical Card."
   },
   "packages/ui/src/cloud-ui/components/brand/mini-stat-card.tsx:MiniStatCard": {
     "disposition": "molecular",

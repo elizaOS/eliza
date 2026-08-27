@@ -6,7 +6,7 @@
 
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import {
   AGENT_BACKUP_CAPTURE_V2_REQUEST_FORMAT,
   AGENT_BACKUP_CAPTURE_V2_SCHEMA_VERSION,

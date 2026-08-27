@@ -81,6 +81,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-scheduling": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0"
@@ -91,7 +92,6 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",
-    "@elizaos/plugin-scheduling": "workspace:*",
     "@types/node": "^25.6.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

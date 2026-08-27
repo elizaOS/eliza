@@ -1,5 +1,5 @@
 /** Multi-principal consent authority for one Personal Shared provider group. */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { and, asc, eq, gt, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import type { Database, DbTransaction } from "../client";
 import { dbWrite } from "../client";

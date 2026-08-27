@@ -15,12 +15,13 @@
  * same structure but the control differs.
  */
 
+import type { PermissionId } from "@elizaos/shared";
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, api, apiFetch } from "../../../../cloud/lib/api-client";
 import { useAppSelector } from "../../../../state";
 import { Button } from "../../../ui/button";
 import { useDesktopPermissionsState } from "../../permission-controls.hooks";
-import type { PermissionDef } from "../../permission-types";
+import { type PermissionDef, SYSTEM_PERMISSIONS } from "../../permission-types";
 import { hasCloudManagementCredential } from "../cloud-management-auth";
 import {
   CloudRow,
@@ -32,40 +33,15 @@ import { PermissionStatusBadge } from "./permission-status-badge";
 
 /* ── Device permissions ─────────────────────────────────────────── */
 
-const DEVICE_PERMISSION_DEFS: PermissionDef[] = [
-  {
-    id: "microphone",
-    name: "Microphone",
-    nameKey: "permissionssection.permission.microphone.name",
-    description: "Voice input for talk mode and speech recognition",
-    descriptionKey: "permissionssection.permission.microphone.description",
-    icon: "mic",
-    platforms: ["darwin", "win32", "linux"],
-    requiredForFeatures: ["talkmode", "voice"],
-  },
-  {
-    id: "notifications",
-    name: "Notifications",
-    nameKey: "permissionssection.permission.notifications.name",
-    description:
-      "Show system notifications for reminders and background results",
-    descriptionKey: "permissionssection.permission.notifications.description",
-    icon: "bell",
-    platforms: ["darwin", "win32", "linux", "ios", "android", "web"],
-    requiredForFeatures: ["notifications"],
-  },
-  {
-    id: "accessibility",
-    name: "Accessibility",
-    nameKey: "permissionssection.permission.accessibility.name",
-    description:
-      "Control mouse, keyboard, and interact with other applications",
-    descriptionKey: "permissionssection.permission.accessibility.description",
-    icon: "cursor",
-    platforms: ["darwin"],
-    requiredForFeatures: ["computeruse", "browser"],
-  },
-];
+const DEVICE_PERMISSION_IDS: ReadonlySet<PermissionId> = new Set([
+  "microphone",
+  "notifications",
+  "accessibility",
+]);
+const DEVICE_PERMISSION_DEFS: readonly PermissionDef[] =
+  SYSTEM_PERMISSIONS.filter((definition) =>
+    DEVICE_PERMISSION_IDS.has(definition.id),
+  );
 
 function DevicePermissionRow({
   def,

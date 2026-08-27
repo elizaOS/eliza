@@ -5,7 +5,7 @@
  * and never treats a missing provider or invalid page as absence.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import type {
   AgentBackupObjectStore,
   AgentBackupObjectStoreRegistry,

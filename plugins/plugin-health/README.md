@@ -65,7 +65,9 @@ single skip line and contributes nothing.
 ### Domain logic
 
 - `src/sleep/` — sleep / circadian / regularity engines.
-- `src/screen-time/` — type-only exports (`LifeOpsScreenTimePerAppUsage`, `LifeOpsScreenTimeSummaryPayload`); the aggregator lives in `plugins/plugin-personal-assistant/src/lifeops/service-mixin-screentime.ts` pending Wave-2 (W2-D) decoupling.
+- `src/screen-time/` — contracts, taxonomy, mobile signal adapters, aggregation
+  service, and HTTP read dispatcher. Hosts inject activity/social/storage ports
+  and retain authentication plus response serialization.
 - `src/health-bridge/` — `detectHealthBackend` (HealthKit on darwin, Google
   Fit REST fallback), the Strava/Fitbit/Withings/Oura OAuth-bridged readers,
   the per-provider OAuth flow, and the `createLifeOpsHealth*` record

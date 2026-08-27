@@ -1,5 +1,5 @@
 // Wires hosted Eliza agent types behavior for cloud runtime services.
-import type { Action, ActionResult, Content, Memory, State, UUID } from "@elizaos/core";
+import type { Action, ActionResult, Content, Memory, State, UUID } from "@elizaos/core/edge";
 
 export interface NativePlannerActionResult extends ActionResult {
   data: NonNullable<ActionResult["data"]> & { actionName: string };

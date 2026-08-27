@@ -128,7 +128,9 @@ describe("core flat package entrypoints", () => {
 			},
 		});
 
-		expect(outdirs).toEqual(["dist/node"]);
+		// Three dist/node builds: the barrel + nested entries, the flat public
+		// leaves (documents, raw-sql), and the canonical shared errors artifact.
+		expect(outdirs).toEqual(["dist/node", "dist/node", "dist/node"]);
 		expect(declarationOptions).toEqual([{ skipTesting: true }]);
 	});
 });

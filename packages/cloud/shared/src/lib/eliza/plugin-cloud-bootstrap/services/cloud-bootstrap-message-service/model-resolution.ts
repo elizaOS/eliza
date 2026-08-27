@@ -9,7 +9,7 @@
  * request via the request-context entity settings map.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core/edge";
 import { getRequestContext } from "../../../../services/entity-settings/request-context";
 import type { ScopedSettingOverride } from "./types";
 

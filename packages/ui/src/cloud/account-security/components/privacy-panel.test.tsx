@@ -15,15 +15,12 @@ vi.mock("../../shell/CloudI18nProvider", () => ({
 }));
 
 vi.mock("../../../cloud-ui", () => ({
-  BrandButton: ({
-    children,
-    ...props
-  }: ButtonHTMLAttributes<HTMLButtonElement>) => (
+  Button: ({ children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) => (
     <button type="button" {...props}>
       {children}
     </button>
   ),
-  BrandCard: ({ children }: { children: ReactNode }) => (
+  CorneredCard: ({ children }: { children: ReactNode }) => (
     <section>{children}</section>
   ),
   CornerBrackets: () => null,

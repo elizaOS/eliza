@@ -159,7 +159,7 @@ describe("executeRawSql", () => {
     ]);
   });
 
-  it("drops non-object entries from an array result", async () => {
+  it("rejects non-object entries from an array result", async () => {
     const runtime = runtimeWithExecute(async () => [
       { id: "keep" },
       null,
@@ -167,14 +167,14 @@ describe("executeRawSql", () => {
       "nope",
       1,
     ]);
-    await expect(executeRawSql(runtime, "SELECT 1")).resolves.toEqual([
-      { id: "keep" },
-    ]);
+    await expect(executeRawSql(runtime, "SELECT 1")).rejects.toMatchObject({
+      code: "RAW_SQL_ROW_SHAPE_INVALID",
+    });
   });
 
   it("extracts object rows from a { rows } envelope", async () => {
     const runtime = runtimeWithExecute(async () => ({
-      rows: [{ id: "a" }, null, { id: "b" }, "skip"],
+      rows: [{ id: "a" }, { id: "b" }],
     }));
     await expect(executeRawSql(runtime, "SELECT 1")).resolves.toEqual([
       { id: "a" },
@@ -182,18 +182,26 @@ describe("executeRawSql", () => {
     ]);
   });
 
-  it("returns an empty list when { rows } is missing or not an array", async () => {
+  it("rejects when { rows } is missing or not an array", async () => {
     const missing = runtimeWithExecute(async () => ({ count: 0 }));
     const notArray = runtimeWithExecute(async () => ({ rows: "nope" }));
-    await expect(executeRawSql(missing, "SELECT 1")).resolves.toEqual([]);
-    await expect(executeRawSql(notArray, "SELECT 1")).resolves.toEqual([]);
+    await expect(executeRawSql(missing, "SELECT 1")).rejects.toMatchObject({
+      code: "RAW_SQL_RESULT_SHAPE_INVALID",
+    });
+    await expect(executeRawSql(notArray, "SELECT 1")).rejects.toMatchObject({
+      code: "RAW_SQL_RESULT_SHAPE_INVALID",
+    });
   });
 
-  it("returns an empty list for a non-object, non-array execute result", async () => {
+  it("rejects a non-object, non-array execute result", async () => {
     const none = runtimeWithExecute(async () => null);
     const scalar = runtimeWithExecute(async () => 42);
-    await expect(executeRawSql(none, "SELECT 1")).resolves.toEqual([]);
-    await expect(executeRawSql(scalar, "SELECT 1")).resolves.toEqual([]);
+    await expect(executeRawSql(none, "SELECT 1")).rejects.toMatchObject({
+      code: "RAW_SQL_RESULT_SHAPE_INVALID",
+    });
+    await expect(executeRawSql(scalar, "SELECT 1")).rejects.toMatchObject({
+      code: "RAW_SQL_RESULT_SHAPE_INVALID",
+    });
   });
 
   it("throws when the runtime database adapter is unavailable", async () => {

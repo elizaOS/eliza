@@ -16,6 +16,7 @@ export {
 } from "../cloud-ui/components/analytics";
 export type {
   BrandButtonProps,
+  CorneredCardProps,
   KeyMetric,
   TabItem,
 } from "../cloud-ui/components/brand";
@@ -29,6 +30,7 @@ export {
   BrandTabsResponsive,
   BrandTabsTrigger,
   CornerBrackets,
+  CorneredCard,
   DashboardSection,
   DashboardStatCard,
   ElizaCloudLockup,

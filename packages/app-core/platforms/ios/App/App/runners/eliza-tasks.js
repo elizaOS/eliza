@@ -1,157 +1,51 @@
-/*
- * Eliza background runner — fired by Capacitor BackgroundRunner inside a
- * separate JSContext (iOS QuickJS, Android V8) per wake event.
- *
- * Sandboxed env: no window, no localStorage, no IndexedDB, no cookied fetch.
- * Available globals: setTimeout, Promise, console, fetch (no cookies),
- * CapacitorBackgroundRunner.addEventListener.
- *
- * Contract:
- *   args: {
- *     kind: 'refresh' | 'processing',
- *     deadlineSec: number,
- *     deviceSecret: string,
- *     agentBase: string,        // e.g. 'http://127.0.0.1:31337'
- *   }
- *
- * Resolves with { delivered: true, ...result } on success; rejects with
- * { delivered: false, error } on failure or deadline.
- *
- * The host app's main webview (FGS on Android, foreground process on iOS)
- * owns the long-lived AgentRuntime; this runner pokes it via loopback HTTP
- * and returns. Every wake-up runs once and then the JSContext is suspended.
- */
-
-addEventListener("wake", (resolve, reject, args) => {
-  handleWake(args).then(resolve, reject);
-});
-
 /**
- * Entry point exposed for unit testing. The addEventListener handler above
- * is the production binding; this function is the testable body.
+ * Canonical Eliza background runner. Capacitor Background Runner ships the
+ * copy staged into the app's web assets (packages/app/public/runners) as
+ * assets/public/runners/eliza-tasks.js; the Android and iOS platform copies
+ * are staged from this same source. It runs in a separate JSContext
+ * (iOS QuickJS, Android V8) per wake event: no window, no localStorage, no
+ * IndexedDB, no cookied fetch. Configuration arrives through the "configure"
+ * event and persists in CapacitorKV between wakes.
  *
- * @param {{kind: 'refresh' | 'processing', deadlineSec: number, deviceSecret: string, agentBase: string}} args
- * @returns {Promise<{delivered: boolean, ranTasks?: number, durationMs?: number, lastWakeFiredAt?: number}>}
+ * Edit only this file and run `bun run --cwd packages/app-core
+ * mobile:runner:sync`; every staged copy must stay byte-identical.
  */
-function handleWake(args) {
-  const kind = args?.kind;
-  const deadlineSec = args && Number(args.deadlineSec);
-  const deviceSecret = args?.deviceSecret;
-  const agentBase = args?.agentBase;
+const CONFIG_KEY = "eliza.background.config";
+const LAST_WAKE_KEY = "eliza.background.lastWake";
+const LAST_RESULT_KEY = "eliza.background.lastResult";
 
-  if (kind !== "refresh" && kind !== "processing") {
-    return Promise.reject({
-      delivered: false,
-      error: 'invalid args: kind must be "refresh" or "processing"',
-    });
+function eventDetails(args) {
+  if (args && typeof args === "object" && args.dataArgs && typeof args.dataArgs === "object") {
+    return args.dataArgs;
   }
-  if (!Number.isFinite(deadlineSec) || deadlineSec <= 0) {
-    return Promise.reject({
-      delivered: false,
-      error: "invalid args: deadlineSec must be a positive number",
-    });
-  }
-  if (typeof deviceSecret !== "string" || deviceSecret.length === 0) {
-    return Promise.reject({
-      delivered: false,
-      error: "invalid args: deviceSecret must be a non-empty string",
-    });
-  }
-  if (typeof agentBase !== "string" || agentBase.length === 0) {
-    return Promise.reject({
-      delivered: false,
-      error: "invalid args: agentBase must be a non-empty string",
-    });
-  }
-
-  // OS gives ~30s on iOS, more on Android. Leave 2-3s buffer so the POST
-  // body can flush and we can resolve before the OS kills the JSContext.
-  var BUFFER_MS = 2500;
-  var hardDeadlineMs = Math.max(1000, deadlineSec * 1000 - BUFFER_MS);
-  var startedAt = Date.now();
-  var wakeDeadlineAt = startedAt + hardDeadlineMs;
-
-  if (!isHttpUrlBase(agentBase)) {
-    if (isLocalAgentBase(agentBase)) {
-      return Promise.resolve({
-        delivered: true,
-        skipped: true,
-        reason: "android_agent_service_ipc_unavailable_in_background_jscontext",
-        durationMs: Date.now() - startedAt,
-        lastWakeFiredAt: Date.now(),
-      });
-    }
-    return Promise.reject({
-      delivered: false,
-      error: "invalid args: agentBase must be http(s) or local IPC",
-    });
-  }
-
-  var url = `${trimTrailingSlash(agentBase)}/api/internal/wake`;
-  // Wrap in Promise.resolve().then so that a synchronous throw inside the
-  // sandboxed fetch() (rare, but observed under hostile mocks and the iOS
-  // QuickJS network stack when no route is registered) becomes a rejection
-  // we can race against the deadline.
-  var workPromise = Promise.resolve()
-    .then(() =>
-      fetch(url, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${deviceSecret}`,
-        },
-        body: JSON.stringify({
-          kind: kind,
-          deadlineMs: wakeDeadlineAt,
-        }),
-      }),
-    )
-    .then((response) => {
-      if (!response?.ok) {
-        const status = response ? response.status : "no-response";
-        throw new Error(`wake POST failed: status=${status}`);
-      }
-      return response.json();
-    });
-
-  var deadlinePromise = new Promise((_resolve, reject) => {
-    setTimeout(() => {
-      reject(new Error(`wake deadline reached after ${hardDeadlineMs}ms`));
-    }, hardDeadlineMs);
-  });
-
-  return Promise.race([workPromise, deadlinePromise])
-    .then((result) => {
-      var safe = result && typeof result === "object" ? result : {};
-      return {
-        delivered: true,
-        ranTasks: typeof safe.ranTasks === "number" ? safe.ranTasks : 0,
-        durationMs:
-          typeof safe.durationMs === "number"
-            ? safe.durationMs
-            : Date.now() - startedAt,
-        lastWakeFiredAt:
-          typeof safe.lastWakeFiredAt === "number"
-            ? safe.lastWakeFiredAt
-            : Date.now(),
-      };
-    })
-    .catch((error) => {
-      var msg = error?.message
-        ? error.message
-        : typeof error === "string"
-          ? error
-          : "unknown error";
-      console.error(`[eliza-tasks] wake failed: ${msg}`);
-      return Promise.reject({ delivered: false, error: msg });
-    });
+  return args && typeof args === "object" ? args : {};
 }
 
-function trimTrailingSlash(value) {
-  if (typeof value !== "string") return value;
-  return value.charAt(value.length - 1) === "/"
-    ? value.substring(0, value.length - 1)
-    : value;
+function kvGetJson(key) {
+  try {
+    if (typeof CapacitorKV === "undefined") return {};
+    const entry = CapacitorKV.get(key);
+    return entry && typeof entry.value === "string" && entry.value
+      ? JSON.parse(entry.value)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function kvSetJson(key, value) {
+  try {
+    if (typeof CapacitorKV !== "undefined") {
+      CapacitorKV.set(key, JSON.stringify(value));
+    }
+  } catch {
+    // Best effort diagnostics only.
+  }
+}
+
+function joinUrl(base, pathname) {
+  if (!base || typeof base !== "string") return null;
+  return `${base.replace(/\/+$/, "")}${pathname}`;
 }
 
 function isHttpUrlBase(base) {
@@ -159,19 +53,178 @@ function isHttpUrlBase(base) {
   return /^https?:\/\//i.test(base.trim());
 }
 
-function isLocalAgentBase(base) {
-  if (!base || typeof base !== "string") return false;
-  var normalized = trimTrailingSlash(base.trim()).toLowerCase();
+function runDueUrl(config) {
+  if (typeof config.runDueUrl === "string" && config.runDueUrl) {
+    return config.runDueUrl;
+  }
+  if (
+    typeof config.localApiBase === "string" &&
+    config.localApiBase &&
+    isHttpUrlBase(config.localApiBase)
+  ) {
+    return joinUrl(config.localApiBase, "/api/background/run-due-tasks");
+  }
+  if (
+    typeof config.apiBase === "string" &&
+    config.apiBase &&
+    config.mode !== "local" &&
+    isHttpUrlBase(config.apiBase)
+  ) {
+    return joinUrl(config.apiBase, "/api/background/run-due-tasks");
+  }
+  return null;
+}
+
+function isIosLocalIttpRunner(config) {
   return (
-    normalized === "eliza-local-agent://ipc" ||
-    normalized === "http://127.0.0.1:31337" ||
-    normalized === "http://localhost:31337"
+    config &&
+    config.mode === "local" &&
+    config.platform === "ios" &&
+    config.localRouteKernel === "ittp"
   );
 }
 
-// Export `handleWake` to the global scope so unit tests can exercise it
-// without depending on the Capacitor addEventListener binding. In the real
-// runner this is harmless — the JSContext is recreated per wake.
-if (typeof globalThis !== "undefined") {
-  globalThis.handleWake = handleWake;
+function isIosLocalBunHostIpcRunner(config) {
+  return (
+    config &&
+    config.mode === "local" &&
+    config.platform === "ios" &&
+    config.localRouteKernel === "bun-host-ipc"
+  );
 }
+
+function isAndroidLocalAgentServiceIpcRunner(config) {
+  return (
+    config &&
+    config.mode === "local" &&
+    config.platform === "android" &&
+    config.localRouteKernel === "agent-service-ipc"
+  );
+}
+
+async function runWake(args) {
+  const firedAt = new Date().toISOString();
+  const details = eventDetails(args);
+  const config = { ...kvGetJson(CONFIG_KEY), ...details };
+  const endpoint = runDueUrl(config);
+  const wake = {
+    event: "wake",
+    source: "capacitor-background-runner",
+    firedAt,
+    mode: config.mode || "unknown",
+    platform: config.platform || "unknown",
+  };
+  kvSetJson(LAST_WAKE_KEY, wake);
+
+  if (!endpoint && isIosLocalIttpRunner(config)) {
+    const skipped = {
+      ...wake,
+      ok: true,
+      skipped: true,
+      reason: "ios_ittp_route_kernel_unavailable_in_background_jscontext",
+    };
+    kvSetJson(LAST_RESULT_KEY, skipped);
+    return skipped;
+  }
+
+  if (!endpoint && isIosLocalBunHostIpcRunner(config)) {
+    const skipped = {
+      ...wake,
+      ok: true,
+      skipped: true,
+      reason: "ios_bun_host_ipc_unavailable_in_background_jscontext",
+    };
+    kvSetJson(LAST_RESULT_KEY, skipped);
+    return skipped;
+  }
+
+  if (!endpoint && isAndroidLocalAgentServiceIpcRunner(config)) {
+    const skipped = {
+      ...wake,
+      ok: true,
+      skipped: true,
+      reason: "android_agent_service_ipc_unavailable_in_background_jscontext",
+    };
+    kvSetJson(LAST_RESULT_KEY, skipped);
+    return skipped;
+  }
+
+  if (!endpoint) {
+    const skipped = {
+      ...wake,
+      ok: true,
+      skipped: true,
+      reason: "no_background_task_endpoint",
+    };
+    kvSetJson(LAST_RESULT_KEY, skipped);
+    return skipped;
+  }
+
+  const headers = { "Content-Type": "application/json" };
+  if (typeof config.authToken === "string" && config.authToken) {
+    headers.Authorization = `Bearer ${config.authToken}`;
+  }
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(wake),
+  });
+  const text = await response.text();
+  const body = text ? JSON.parse(text) : {};
+  const result = {
+    ...wake,
+    ok: response.ok,
+    status: response.status,
+    body,
+  };
+  kvSetJson(LAST_RESULT_KEY, result);
+
+  if (!response.ok) {
+    throw new Error(`run-due-tasks failed: ${response.status}`);
+  }
+  return result;
+}
+
+addEventListener("wake", (resolve, reject, args) => {
+  runWake(args).then(resolve).catch((error) => {
+    console.error("[eliza-tasks] wake failed", error);
+    reject(error);
+  });
+});
+
+addEventListener("configure", (resolve, reject, args) => {
+  try {
+    const next = {
+      ...kvGetJson(CONFIG_KEY),
+      ...eventDetails(args),
+      configuredAt: new Date().toISOString(),
+    };
+    kvSetJson(CONFIG_KEY, next);
+    resolve({ event: "configure", configured: true });
+  } catch (error) {
+    reject(error);
+  }
+});
+
+addEventListener("register", (resolve, reject, args) => {
+  try {
+    const details = eventDetails(args);
+    kvSetJson(CONFIG_KEY, {
+      ...kvGetJson(CONFIG_KEY),
+      ...details,
+      registeredAt: new Date().toISOString(),
+    });
+    resolve({ event: "register", registered: true });
+  } catch (error) {
+    reject(error);
+  }
+});
+
+addEventListener("cancel", (resolve, reject) => {
+  try {
+    resolve({ event: "cancel", cancelled: true });
+  } catch (error) {
+    reject(error);
+  }
+});

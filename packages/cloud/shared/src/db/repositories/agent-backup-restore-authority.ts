@@ -1,6 +1,6 @@
 /** Shared fail-closed state predicate for dormant restore authority. */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import type { AgentBackupCatalogState } from "../schemas/agent-sandboxes";
 
 /** Typed validation and invariant failure for dormant restore authority. */

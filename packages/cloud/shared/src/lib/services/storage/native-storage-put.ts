@@ -15,6 +15,7 @@ import type {
   OrgStorageObject,
   OrgStoragePutOperation,
 } from "../../../db/schemas/org-storage-mutations";
+import { sha256Hex } from "../../crypto/worker";
 import type { RuntimeR2Bucket, RuntimeR2ObjectMetadata } from "../../storage/r2-runtime-binding";
 import { logger } from "../../utils/logger";
 import { InsufficientCreditsError } from "../credits";
@@ -100,13 +101,8 @@ export interface ExecuteNativeStorageDeleteInput {
   priceUsd: number;
 }
 
-function bytesToHex(bytes: ArrayBuffer): string {
-  return Array.from(new Uint8Array(bytes), (value) => value.toString(16).padStart(2, "0")).join("");
-}
-
 async function sha256(value: string | ArrayBuffer): Promise<string> {
-  const bytes = typeof value === "string" ? new TextEncoder().encode(value) : value;
-  return bytesToHex(await crypto.subtle.digest("SHA-256", bytes));
+  return sha256Hex(value);
 }
 
 function canonicalPrice(priceUsd: number): string {

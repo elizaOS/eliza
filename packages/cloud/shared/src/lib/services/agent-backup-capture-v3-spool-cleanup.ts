@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import z from "zod";
 import {
   type AuthorizeAgentBackupProtectedSpoolCleanupInput,

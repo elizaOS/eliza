@@ -1,6 +1,6 @@
 /** Coordinates cloud service sandbox provider contracts behind route handlers. */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import {
   type AgentExecutionTier,
   CONTAINER_BACKED_EXECUTION_TIERS,

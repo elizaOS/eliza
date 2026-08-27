@@ -17,7 +17,7 @@ import {
   stringToUuid,
   type UUID,
   type World,
-} from "@elizaos/core";
+} from "@elizaos/core/edge";
 import { createHash } from "crypto";
 import { v4 as uuidv4 } from "uuid";
 import { discordConnectionsRepository, userCharactersRepository } from "../../../db/repositories";

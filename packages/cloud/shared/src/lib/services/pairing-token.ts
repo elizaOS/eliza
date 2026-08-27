@@ -6,6 +6,7 @@ import {
   type AgentPairingToken,
   agentPairingTokensRepository,
 } from "../../db/repositories/agent-pairing-tokens";
+import { bytesToBase64Url, sha256Hex } from "../crypto/worker";
 import { getAlternateDomainOrigins } from "./pairing-token-domains";
 
 export interface PairingToken {
@@ -53,38 +54,13 @@ export type AuthenticatedNativePairingClaim =
 const TOKEN_EXPIRY_MS = 60_000; // 60 seconds
 
 async function hashToken(token: string): Promise<string> {
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-function base64UrlEncode(bytes: Uint8Array): string {
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-  let encoded = "";
-
-  for (let i = 0; i < bytes.length; i += 3) {
-    const a = bytes[i]!;
-    const b = bytes[i + 1] ?? 0;
-    const c = bytes[i + 2] ?? 0;
-
-    encoded += alphabet[a >> 2];
-    encoded += alphabet[((a & 0x03) << 4) | (b >> 4)];
-    if (i + 1 < bytes.length) {
-      encoded += alphabet[((b & 0x0f) << 2) | (c >> 6)];
-    }
-    if (i + 2 < bytes.length) {
-      encoded += alphabet[c & 0x3f];
-    }
-  }
-
-  return encoded;
+  return sha256Hex(token);
 }
 
 function createPairingToken(): string {
   const bytes = new Uint8Array(32);
   globalThis.crypto.getRandomValues(bytes);
-  return base64UrlEncode(bytes);
+  return bytesToBase64Url(bytes);
 }
 
 function normalizeHttpOrigin(value: string): string | null {

@@ -2,7 +2,7 @@
  * Agent state cache for Eliza agent runtime data.
  */
 
-import type { Memory, UUID } from "@elizaos/core";
+import type { Memory, UUID } from "@elizaos/core/edge";
 import type { ElizaCharacter } from "../types/eliza-character";
 import { logger } from "../utils/logger";
 import { cache as cacheClient } from "./client";

@@ -9,6 +9,7 @@ import { apiKeysRepository, appsRepository, usersRepository } from "../../db/rep
 import type { ApiKey } from "../../db/repositories/api-keys";
 import { ssoBridgeRepository } from "../../db/repositories/sso-bridge";
 import type { UserWithOrganization } from "../../db/repositories/users";
+import { sha256Hex } from "../crypto/worker";
 import { timingSafeEqualSecret } from "./cron";
 
 export const STAGING_SESSION_EXCHANGE_VERSION = "v1" as const;
@@ -228,8 +229,7 @@ async function credentialFingerprint(
 }
 
 async function hashPresentedApiKey(apiKey: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(apiKey));
-  return hex(digest);
+  return sha256Hex(apiKey);
 }
 
 interface ExistingStagingSessionSubjectInput {

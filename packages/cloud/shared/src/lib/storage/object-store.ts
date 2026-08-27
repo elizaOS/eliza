@@ -9,6 +9,7 @@ import {
   type HeadObjectCommandOutput,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
+import { sha256Bytes, sha256Hex } from "../crypto/worker";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import type { ObjectNamespace } from "./object-namespace";
 import {
@@ -625,11 +626,7 @@ function requireBucketName(bucket: string | null): string {
 }
 
 async function fingerprintKey(key: string): Promise<string> {
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(key));
-  const hex = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join(
-    "",
-  );
-  return `sha256:${hex}`;
+  return `sha256:${await sha256Hex(key)}`;
 }
 
 async function legacyBackendIdentityFingerprint(input: {
@@ -1766,13 +1763,13 @@ async function immutableSha256(body: Uint8Array<ArrayBuffer>): Promise<{
   bytes: ArrayBuffer;
   receipt: Sha256ChecksumReceipt;
 }> {
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", body);
+  const digest = await sha256Bytes(body);
   return {
-    bytes: digest,
+    bytes: digest.buffer,
     receipt: {
       algorithm: "sha256",
       encoding: "base64",
-      value: checksumBytesToBase64(digest),
+      value: checksumBytesToBase64(digest.buffer),
     },
   };
 }

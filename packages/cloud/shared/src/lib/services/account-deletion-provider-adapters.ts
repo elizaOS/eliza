@@ -5,7 +5,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { and, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { dbWrite } from "../../db/helpers";
 import {

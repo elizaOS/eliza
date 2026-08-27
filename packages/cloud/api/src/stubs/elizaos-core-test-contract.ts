@@ -3,6 +3,17 @@
  * through unreachable transitive module paths.
  */
 
+export { DEFAULT_MAX_BODY_BYTES } from "../../../../core/src/api/http-helpers";
+export {
+  ElizaError,
+  isElizaError,
+  toElizaError,
+} from "../../../../core/src/errors";
+export {
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "../../../../core/src/utils/well-formed";
+
 function unavailable(name: string): never {
   throw new Error(`@elizaos/core ${name} is outside this test path`);
 }
@@ -42,7 +53,17 @@ export const documentRoleHasGlobalVisibility = unavailableFunction(
   "documentRoleHasGlobalVisibility",
 );
 export const encryptedCharacter = unavailableFunction("encryptedCharacter");
+export const isConnectorConfigured = unavailableFunction(
+  "isConnectorConfigured",
+);
 export const logger = unavailableObject("logger");
+export const readJsonBody = unavailableFunction("readJsonBody");
+export const readRequestBody = unavailableFunction("readRequestBody");
+export const readRequestBodyBuffer = unavailableFunction(
+  "readRequestBodyBuffer",
+);
+export const sendJson = unavailableFunction("sendJson");
+export const sendJsonError = unavailableFunction("sendJsonError");
 export const normalizePairingPageOptions = unavailableFunction(
   "normalizePairingPageOptions",
 );

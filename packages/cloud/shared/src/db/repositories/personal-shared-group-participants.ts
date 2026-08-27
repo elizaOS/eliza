@@ -8,7 +8,7 @@
  * transaction, so the roster always contains the speaker that transaction just
  * registered, and the name rules see the roster they are deciding against.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { asc, eq, sql } from "drizzle-orm";
 import { resolveGroupParticipantDisplayName } from "../../lib/services/shared-runtime/group-participant-labels";
 import type { Database } from "../client";

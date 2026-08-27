@@ -3,7 +3,7 @@
  * Provider metadata is a lookup hint; the attempt row and canonical organization row are authority.
  */
 import { createHash, randomUUID } from "node:crypto";
-import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core/edge";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type Stripe from "stripe";
 import { writeTransaction } from "../../db/helpers";

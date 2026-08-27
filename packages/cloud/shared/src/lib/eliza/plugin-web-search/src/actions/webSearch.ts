@@ -12,7 +12,7 @@ import {
   ModelType,
   parseJSONObjectFromText,
   type State,
-} from "@elizaos/core";
+} from "@elizaos/core/edge";
 import { defineActionParameters } from "../../../plugin-cloud-bootstrap/types";
 import { normalizeCloudActionArgs } from "../../../plugin-cloud-bootstrap/utils/native-planner-guards";
 import { WebSearchService } from "../services/searchService";

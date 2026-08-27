@@ -3,7 +3,11 @@
  * Validates canonical permission ID registry and type guard predicate.
  */
 import { describe, expect, it } from "vitest";
-import { isPermissionId, PERMISSION_IDS } from "../permissions.ts";
+import {
+  isPermissionId,
+  PERMISSION_DEFINITIONS,
+  PERMISSION_IDS,
+} from "../permissions.ts";
 
 describe("permissions contract", () => {
   describe("PERMISSION_IDS", () => {
@@ -37,6 +41,18 @@ describe("permissions contract", () => {
       expect(PERMISSION_IDS).toContain("write-settings");
       expect(PERMISSION_IDS).toContain("local-network");
       expect(PERMISSION_IDS).toContain("battery-optimization");
+    });
+
+    it("is derived one-to-one from the canonical metadata catalog", () => {
+      expect(PERMISSION_DEFINITIONS.map(({ id }) => id)).toEqual(
+        PERMISSION_IDS,
+      );
+      expect(new Set(PERMISSION_IDS).size).toBe(PERMISSION_IDS.length);
+      for (const definition of PERMISSION_DEFINITIONS) {
+        expect(definition.name).not.toBe("");
+        expect(definition.description).not.toBe("");
+        expect(definition.icon).not.toBe("");
+      }
     });
   });
 

@@ -14,7 +14,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { agentSandboxesRepository } from "../../../db/repositories/agent-sandboxes";
 import { WARM_POOL_ORG_ID } from "../../../db/schemas/agent-sandboxes";
 import { logger } from "../../utils/logger";

@@ -1,13 +1,13 @@
 /**
- * Storybook stories for BrandCard / AgentCard (cloud brand card skins).
+ * Storybook stories for CorneredCard / AgentCard (cloud brand card skins).
  */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Button } from "../../../components/ui/button";
-import { AgentCard, BrandCard } from "./brand-card";
+import { AgentCard, CorneredCard } from "./brand-card";
 
 const meta = {
-  title: "CloudUI/Brand/BrandCard",
-  component: BrandCard,
+  title: "CloudUI/Brand/CorneredCard",
+  component: CorneredCard,
   tags: ["autodocs"],
   argTypes: {
     hover: { control: "boolean" },
@@ -36,7 +36,7 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof BrandCard>;
+} satisfies Meta<typeof CorneredCard>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

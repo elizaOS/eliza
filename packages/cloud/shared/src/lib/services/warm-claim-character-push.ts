@@ -33,7 +33,7 @@
  * agent_name), in which case the caller skips the push entirely.
  */
 
-import { toWellFormedUnicode } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/core/edge";
 
 import { applyRemoteDockerRuntimeMode } from "./remote-docker-runtime-mode";
 

@@ -1,5 +1,5 @@
 // Wires hosted Eliza agent mcp behavior for cloud runtime services.
-import { type IAgentRuntime, logger, type Memory } from "@elizaos/core";
+import { type IAgentRuntime, logger, type Memory } from "@elizaos/core/edge";
 import type {
   McpProvider,
   McpProviderData,

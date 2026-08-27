@@ -11,7 +11,7 @@
  * - MCP_SCHEMA_CACHE_TTL: Cache TTL in seconds (default: 3600)
  */
 
-import { logger } from "@elizaos/core";
+import { logger } from "@elizaos/core/edge";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { createHash } from "crypto";
 import type { CachedServerSchema, McpServerConfig } from "../types";

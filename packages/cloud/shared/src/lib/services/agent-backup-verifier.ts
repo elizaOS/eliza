@@ -50,7 +50,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import {
   AGENT_BACKUP_CANONICAL_JSON,
   CANONICAL_JSON_UNBOUNDED,

@@ -5,8 +5,9 @@
  */
 
 import { beforeAll, describe, expect, mock, test } from "bun:test";
+import * as workerCoreStub from "@elizaos/core/edge";
 import { Hono } from "hono";
-import * as workerCoreStub from "../../../../src/stubs/elizaos-core";
+import * as coreTestContract from "../../../../src/stubs/elizaos-core-test-contract";
 
 const fakeLogger = {
   logger: { error: mock(), info: mock(), warn: mock(), debug: mock() },
@@ -14,6 +15,7 @@ const fakeLogger = {
 mock.module("@/lib/utils/logger", () => fakeLogger);
 mock.module("@elizaos/core", () => ({
   ...workerCoreStub,
+  ...coreTestContract,
   isSensitiveKeyName: () => false,
   redactLogArgs: (a: unknown) => a,
 }));
@@ -80,14 +82,16 @@ mock.module("@/db/repositories/conversations", () => ({
 }));
 const activePersonalTargetLookups: Array<{
   organizationId: string;
+  userId: string;
   sourceAgentId: string;
 }> = [];
 mock.module("@/lib/services/agent-tier-upgrade-target", () => ({
   findActivePersonalDedicatedTarget: async (
     organizationId: string,
+    userId: string,
     sourceAgentId: string,
   ) => {
-    activePersonalTargetLookups.push({ organizationId, sourceAgentId });
+    activePersonalTargetLookups.push({ organizationId, userId, sourceAgentId });
     return {
       id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
       organization_id: "org-1",
@@ -339,7 +343,11 @@ describe("voice-session mint route", () => {
     expect(verified.claims.conversationId).toBe(canonicalPersonalId);
     expect(conversationLookups).toEqual([]);
     expect(activePersonalTargetLookups).toEqual([
-      { organizationId: "org-1", sourceAgentId: canonicalPersonalId },
+      {
+        organizationId: "org-1",
+        userId: "user-1",
+        sourceAgentId: canonicalPersonalId,
+      },
     ]);
   });
 

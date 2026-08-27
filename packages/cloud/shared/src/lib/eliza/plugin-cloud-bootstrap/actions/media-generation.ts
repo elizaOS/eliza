@@ -10,7 +10,7 @@ import {
   type Memory,
   ServiceType,
   type State,
-} from "@elizaos/core";
+} from "@elizaos/core/edge";
 import { v4 } from "uuid";
 import type { CloudMediaGenerationService } from "../services/cloud-media-generation-service";
 import { type ActionWithParams, defineActionParameters } from "../types";

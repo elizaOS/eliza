@@ -6,7 +6,7 @@ import {
   type Memory,
   ModelType,
   type State,
-} from "@elizaos/core";
+} from "@elizaos/core/edge";
 import { DEFAULT_MAX_RETRIES, type ValidationResult } from "../types";
 import { parseJSON } from "./json";
 

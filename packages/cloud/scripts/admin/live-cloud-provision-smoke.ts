@@ -13,16 +13,15 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import {
+  type AgentExecutionTier,
+  isAgentExecutionTier,
+} from "@elizaos/shared/contracts/cloud-agent-lifecycle";
 import { classifyBridgeReply } from "./bridge-reply-verdict";
 import { SMOKE_AGENT_PLUGINS } from "./smoke-agent-plugins";
 
 type JsonObject = Record<string, unknown>;
 type Fetch = typeof globalThis.fetch;
-type AgentExecutionTier =
-  | "shared"
-  | "dedicated-lazy"
-  | "dedicated-always"
-  | "custom";
 type ObservedTier = AgentExecutionTier | "other";
 type TimingPhase =
   | "preflight"
@@ -157,15 +156,7 @@ function isSharedRuntimeWarming(response: JsonResponse): boolean {
 }
 
 function asExecutionTier(value: string | null): AgentExecutionTier | null {
-  switch (value) {
-    case "shared":
-    case "dedicated-lazy":
-    case "dedicated-always":
-    case "custom":
-      return value;
-    default:
-      return null;
-  }
+  return isAgentExecutionTier(value) ? value : null;
 }
 
 function privacySafeTier(value: string | null): ObservedTier | null {

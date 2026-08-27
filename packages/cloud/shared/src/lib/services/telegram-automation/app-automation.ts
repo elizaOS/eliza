@@ -1,6 +1,6 @@
 // Coordinates cloud service app automation behavior behind route handlers.
 import { openai } from "@ai-sdk/openai";
-import { assertModelOutputComplete } from "@elizaos/core";
+import { assertModelOutputComplete } from "@elizaos/core/edge";
 import { generateText } from "ai";
 import { Telegraf } from "telegraf";
 import { appsRepository } from "../../../db/repositories/apps";

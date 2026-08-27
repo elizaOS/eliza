@@ -4,7 +4,7 @@
  * Handles all database operations for rooms without spinning up runtime.
  */
 
-import type { Room as BaseRoom } from "@elizaos/core";
+import type { Room as BaseRoom } from "@elizaos/core/edge";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../client";
 import { memoryTable, participantTable, roomTable } from "../../schemas/eliza";

@@ -1,5 +1,5 @@
 /** Persists apps and serializes their database-backed cache identities across processes. */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import {
   and,
   count,

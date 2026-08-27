@@ -8,7 +8,7 @@ import {
   type Memory,
   ModelType,
   type State,
-} from "@elizaos/core";
+} from "@elizaos/core/edge";
 import { errorAnalysisPrompt } from "../templates/errorAnalysisPrompt";
 import type { McpProvider } from "../types";
 

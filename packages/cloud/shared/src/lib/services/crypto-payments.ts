@@ -1,5 +1,5 @@
 /** Coordinates atomic provider-backed crypto settlement and recovery behind route handlers. */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import Decimal from "decimal.js";
 import { eq, sql } from "drizzle-orm";
 import { validate as uuidValidate } from "uuid";

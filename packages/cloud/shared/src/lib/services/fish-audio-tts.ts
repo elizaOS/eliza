@@ -7,7 +7,7 @@
  * policy, playback, and billing responsibility.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { decode, encode } from "@msgpack/msgpack";
 
 export const FISH_AUDIO_PROVIDER_ID = "fish-audio";

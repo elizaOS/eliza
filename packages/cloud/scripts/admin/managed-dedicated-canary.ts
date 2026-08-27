@@ -11,22 +11,16 @@
 
 import { randomBytes } from "node:crypto";
 import { writeFile } from "node:fs/promises";
+import {
+  type AgentExecutionTier,
+  isAgentExecutionTier,
+} from "@elizaos/shared/contracts/cloud-agent-lifecycle";
 import { classifyBridgeReply } from "./bridge-reply-verdict";
 import { SMOKE_AGENT_PLUGINS } from "./smoke-agent-plugins";
 
 type JsonObject = Record<string, unknown>;
 type Fetch = typeof globalThis.fetch;
-type AgentExecutionTier =
-  | "shared"
-  | "dedicated-lazy"
-  | "dedicated-always"
-  | "custom";
-type PrivacySafeObservedTier =
-  | "shared"
-  | "dedicated-lazy"
-  | "dedicated-always"
-  | "custom"
-  | "other";
+type PrivacySafeObservedTier = AgentExecutionTier | "other";
 
 const STAGING_BASE_URL = "https://api-staging.eliza.app";
 const CANARY_NAME_PREFIX = "managed-dedicated-canary-";
@@ -216,20 +210,6 @@ function dataRecord(body: JsonObject): JsonObject | null {
 function stringField(record: JsonObject | null, key: string): string | null {
   const value = record?.[key];
   return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function isAgentExecutionTier(
-  value: string | null,
-): value is AgentExecutionTier {
-  switch (value) {
-    case "shared":
-    case "dedicated-lazy":
-    case "dedicated-always":
-    case "custom":
-      return true;
-    default:
-      return false;
-  }
 }
 
 function privacySafeObservedTier(

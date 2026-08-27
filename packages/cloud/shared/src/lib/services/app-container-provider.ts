@@ -11,7 +11,7 @@
  * scaffolding, no shared network, no NET_ADMIN.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { logger } from "../utils/logger";
 import {
   ambassadorName,

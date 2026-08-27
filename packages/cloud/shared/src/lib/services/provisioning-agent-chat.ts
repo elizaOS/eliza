@@ -8,7 +8,7 @@
  */
 
 import { createOpenAI } from "@ai-sdk/openai";
-import { assertModelOutputComplete } from "@elizaos/core";
+import { assertModelOutputComplete } from "@elizaos/core/edge";
 import { generateText } from "ai";
 import {
   type AgentSandboxStatus,

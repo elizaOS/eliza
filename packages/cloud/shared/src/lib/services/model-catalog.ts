@@ -1,5 +1,5 @@
 // Coordinates cloud service model catalog behavior behind route handlers.
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { cache } from "../cache/client";
 import { InMemoryLRUCache } from "../cache/in-memory-lru-cache";
 import { CacheKeys, CacheStaleTTL, CacheTTL } from "../cache/keys";

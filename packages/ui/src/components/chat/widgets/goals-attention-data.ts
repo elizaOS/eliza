@@ -1,15 +1,10 @@
 /**
  * Shared goals-attention data layer.
  *
- * The single most-urgent LifeOps goal is surfaced in two places now:
- *  - the routed Goals view still renders the standalone `GoalsAttentionWidget`
- *    (goals-attention.tsx), and
- *  - the home "Today" card (todo.tsx) absorbs the at-risk goal as one flagged
- *    row (spec §B/§E item 5 - goals loses its standalone home resident).
- *
- * To keep those two consumers in lock-step, the wire parsing + urgency
- * selection live here rather than duplicated in each. Kept dependency-light
- * (no React) so it can be unit-tested and reused without pulling in a widget.
+ * The home "Today" card (todo.tsx) absorbs the most-urgent LifeOps goal as one
+ * flagged row. Wire parsing and urgency selection stay dependency-light here
+ * so the combined daily-attention surface can reuse and test them without a
+ * second goal renderer.
  *
  * Wire shape mirrors the JSON served by the PA goals route and parsed in
  * plugins/plugin-goals/src/components/goals/GoalsView.tsx (GoalsWire /

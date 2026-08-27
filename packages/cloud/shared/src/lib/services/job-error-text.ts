@@ -22,7 +22,7 @@
  * - It preserves the complete redacted diagnostic and cause chain.
  */
 
-import { redactSensitiveText } from "@elizaos/core";
+import { redactSensitiveText } from "@elizaos/core/edge";
 
 const PUBLIC_INTERNAL_ERROR =
   "The operation failed. Retry from Eliza Cloud or contact support if it continues.";

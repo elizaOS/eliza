@@ -75,6 +75,7 @@ import {
   loadAospVariantConfig,
   resolveAppConfigPath,
 } from "./aosp/lib/load-variant-config.mjs";
+import { syncMobileTaskRunnerAssets } from "./mobile-task-runner-assets.mjs";
 import {
   ANDROID_BUNDLETOOL_JAR_ENV,
   ANDROID_LP3_POLICY_CLASSES,
@@ -11078,6 +11079,7 @@ export async function main(argv = process.argv.slice(2)) {
     );
     process.exit(1);
   }
+  await syncMobileTaskRunnerAssets();
   if (target === "android") {
     await buildAndroid();
   } else if (target === "android-launcher") {

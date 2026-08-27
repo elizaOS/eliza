@@ -1,5 +1,5 @@
 // Persists user mcps records for cloud services through the shared DB boundary.
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { mutateRowCount } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";

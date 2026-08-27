@@ -5,7 +5,7 @@
  * Each organization has their own webhook URL with their orgId.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import { Hono } from "hono";
 import { Telegraf } from "telegraf";
 import type { ChatMemberUpdated, Message, Update } from "telegraf/types";

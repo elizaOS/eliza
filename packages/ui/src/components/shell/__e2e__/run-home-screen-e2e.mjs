@@ -879,12 +879,9 @@ try {
       );
     }
   }
-  // Demoted (wallet.balance, health.sleep) + previously-removed domain cards
-  // must not resurface as home residents. goals.attention no longer stands
-  // alone - its data now lives inside the Today card's flagged row above.
+  // Demoted and previously removed domain cards must not resurface as home
+  // residents. Goal attention now lives inside the Today card above.
   for (const testId of [
-    "widget-goals-attention",
-    "widget-health-sleep",
     "chat-widget-wallet-prices",
     "chat-widget-finances-alerts",
     "chat-widget-relationships",

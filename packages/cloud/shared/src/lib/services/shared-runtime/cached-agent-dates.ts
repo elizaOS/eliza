@@ -17,7 +17,7 @@
  * graph into their own graphs.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 
 import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 

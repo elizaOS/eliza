@@ -1,6 +1,6 @@
 /** Resolves signed Twilio webhook URLs from the canonical configured origin. */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import type { AppContext } from "@/types/cloud-worker-env";
 
 export function resolveTwilioPublicUrl(c: AppContext, pathname: string): URL {

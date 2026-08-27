@@ -23,6 +23,8 @@ export * from "./character-utils";
 export * from "./connection";
 export * from "./connectors";
 export * from "./connectors/account-manager";
+export * from "./connectors/connector-config";
+export * from "./connectors/credential-refs";
 export * from "./connectors/oauth-role";
 export * from "./connectors/privacy";
 export {
@@ -38,6 +40,7 @@ export {
 	LOCAL_MODEL_PROVIDERS,
 } from "./constants";
 export * from "./contracts/computer-use";
+export * from "./contracts/service-routing";
 export * from "./database";
 export * from "./database/connector-json";
 export * from "./database/document-list-query";
@@ -65,6 +68,7 @@ export * from "./providers/setup-progress";
 export * from "./providers/skill-eligibility";
 export * from "./roles";
 export * from "./runtime";
+export * from "./runtime/execute-planned-tool-call";
 export * from "./runtime/rlm";
 export * from "./runtime/system-prompt";
 export * from "./schemas/character";
@@ -73,6 +77,7 @@ export { type BaseTables, buildBaseTables } from "./schemas/index";
 export * from "./search";
 export * from "./search/keyless-web-search";
 export * from "./security";
+export * from "./sensitive-request-policy";
 export * from "./services";
 export * from "./services/agentEvent";
 export * from "./services/approval";

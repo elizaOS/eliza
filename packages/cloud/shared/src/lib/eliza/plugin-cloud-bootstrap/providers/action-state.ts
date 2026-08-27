@@ -7,7 +7,7 @@ import {
   type Provider,
   type State,
   toWellFormedUnicode,
-} from "@elizaos/core";
+} from "@elizaos/core/edge";
 import type { NativePlannerActionResult } from "../types";
 
 export function normalizeText(value: string): string {

@@ -2,7 +2,7 @@
  * Owns durable Stripe Checkout quotes and atomically fulfills organization-credit purchases.
  * Stripe metadata is only a lookup hint; every money and tenant field is compared to this record.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import Decimal from "decimal.js";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { dbWrite, writeTransaction } from "../../db/helpers";

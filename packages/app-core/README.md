@@ -39,4 +39,10 @@ bun run --cwd packages/app-core test         # vitest
 bun run --cwd packages/app-core lint         # Biome
 ```
 
+The native background runner is maintained once at
+`platforms/mobile/runners/eliza-tasks.js`. Mobile builds stage those exact
+bytes into the Android and iOS package projects. After editing it, run
+`bun run --cwd packages/app-core mobile:runner:sync`; the corresponding
+`mobile:runner:check` command fails if either packaged asset drifts.
+
 This package is consumed by `@elizaos/agent`, `@elizaos/ui`, `@elizaos/shared`, the `packages/app` shell, and most `plugins/*` app plugins. It targets Node `>=24`, with `react`/`react-dom`/`three` as peer dependencies and the `@elizaos/capacitor-*` mobile bridges as optional dependencies.

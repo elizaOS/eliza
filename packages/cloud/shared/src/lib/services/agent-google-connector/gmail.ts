@@ -1,5 +1,5 @@
 // Coordinates cloud service gmail behavior behind route handlers.
-import { stripHtmlRawTextElements } from "@elizaos/core";
+import { stripHtmlRawTextElements } from "@elizaos/core/edge";
 import { extractBody, sanitizeHeaderValue } from "../../utils/google-mcp-shared";
 import type { OAuthConnectionRole } from "../oauth/types";
 import {

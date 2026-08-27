@@ -41,6 +41,34 @@ plugin is the deliberate exception because it reimplements the 1966 chatbot.
 4. Use the narrowest relevant command while iterating, then run the required
    package and repository gates before declaring the work complete.
 
+### Search, reuse, and consolidate before creating
+
+Before adding a component, hook, utility, type, service, schema, protocol
+adapter, or test harness, search the owning package, public package exports,
+and the full repository for an existing implementation. Include dynamic
+imports, plugin manifests, component-export strings, registries, generated
+inventories, stories, and templates in the search so indirect consumers are
+not mistaken for dead code.
+
+- Reuse or extend the canonical owner when behavior and failure semantics
+  match. `@elizaos/ui` owns shared primitives, layouts, state presentations,
+  and design tokens; plugins own domain composition and consume that UI
+  foundation instead of recreating generic controls or shells.
+- Framework abstractions belong in `@elizaos/core`; cross-product utilities
+  and wire contracts belong in `@elizaos/shared`; domain-specific behavior
+  belongs in the package that owns the state machine. Fix a missing export or
+  dependency direction instead of copying an implementation across boundaries.
+- Similar-looking code is not automatically equivalent. Keep separate
+  implementations when their authorization, error policy, runtime, persistence,
+  or protocol semantics differ, and document that distinction at the boundary.
+- A consolidation migrates callers and meaningful tests to one authority and
+  removes the obsolete implementation. Preserve public compatibility through
+  deliberate re-exports or deprecation, never through two maintained copies.
+
+Record the caller/export searches and ownership decision in the issue or pull
+request. Analyzer output and text similarity are leads, not proof of dead code
+or safe consolidation.
+
 ## Toolchain
 
 - **Runtime:** Bun `1.3.14` and Node `24.15.0` are pinned in `package.json`.

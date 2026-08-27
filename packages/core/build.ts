@@ -790,6 +790,85 @@ const edgeRuntimeSourcesPlugin: BunPlugin = {
 // Node-specific externals (native modules and node-specific packages)
 const nodeExternals = ["dotenv", "sharp", "zod", "@hapi/shot"];
 
+// `dist/node` emits several independent bundles (the root barrel plus narrow
+// leaves such as raw-sql and documents). With code splitting off, each bundle
+// would inline its own copy of `src/errors.ts`, so an `ElizaError` thrown by a
+// leaf would fail `instanceof` against the root barrel's class. The plugin
+// keeps every internal import of the errors module external behind a bare
+// sentinel specifier (Bun rewrites resolvable externals inconsistently), and
+// `rewriteSharedErrorsImports` then repoints each emitted bundle at the single
+// `dist/node/errors.js` runtime definition.
+const CORE_ERRORS_SOURCE = join(process.cwd(), "src/errors.ts");
+const CORE_ERRORS_SENTINEL = "eliza-internal:core-shared-errors";
+const sharedErrorsModulePlugin: BunPlugin = {
+	name: "eliza-core-shared-errors-module",
+	setup(build) {
+		// Replace the module body with a re-export of the sentinel: Bun keeps the
+		// original specifier verbatim for externals, so the emitted bundles carry
+		// the sentinel for the deterministic post-build rewrite. Builds using this
+		// plugin must NOT list src/errors.ts as an entrypoint.
+		build.onLoad({ filter: /[/\\]errors\.ts$/ }, (args) => {
+			if (args.path !== CORE_ERRORS_SOURCE) return undefined;
+			// Named value re-exports only: `export *` through the sentinel trips
+			// Bun's namespace re-export codegen, and type-only names have no
+			// runtime binding in the emitted errors artifact.
+			return {
+				contents: `export { ElizaError, isElizaError, toElizaError } from ${JSON.stringify(CORE_ERRORS_SENTINEL)};\nexport type { ElizaErrorOptions, ElizaErrorSeverity, ReportedError } from ${JSON.stringify(CORE_ERRORS_SENTINEL)};\n`,
+				loader: "ts",
+			};
+		});
+		build.onResolve(
+			{ filter: /^eliza-internal:core-shared-errors$/ },
+			(args) => ({ path: args.path, external: true }),
+		);
+	},
+};
+
+/**
+ * Repoints every sentinel import emitted by `sharedErrorsModulePlugin` at the
+ * canonical `dist/node/errors.js` artifact, using a relative specifier
+ * computed per emitted file so nested entrypoints resolve correctly.
+ */
+async function rewriteSharedErrorsImports(outdir: string): Promise<void> {
+	const fs = await import("node:fs/promises");
+	const path = await import("node:path");
+	const errorsArtifact = join(process.cwd(), outdir, "errors.js");
+	const walk = async (dir: string): Promise<string[]> => {
+		const out: string[] = [];
+		let entries: Awaited<ReturnType<typeof fs.readdir>>;
+		try {
+			entries = await fs.readdir(dir, { withFileTypes: true });
+		} catch (error) {
+			// error-policy:J3 a missing outdir (stubbed runner factories in unit
+			// tests emit nothing) is explicitly "no bundles to rewrite".
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") return out;
+			throw error;
+		}
+		for (const entry of entries) {
+			const full = path.join(dir, entry.name);
+			if (entry.isDirectory()) out.push(...(await walk(full)));
+			else if (entry.isFile() && full.endsWith(".js")) out.push(full);
+		}
+		return out;
+	};
+	for (const file of await walk(join(process.cwd(), outdir))) {
+		const src = await fs.readFile(file, "utf8");
+		if (!src.includes(CORE_ERRORS_SENTINEL)) continue;
+		let relativeSpec = path
+			.relative(path.dirname(file), errorsArtifact)
+			.replaceAll("\\", "/");
+		if (!relativeSpec.startsWith(".")) relativeSpec = `./${relativeSpec}`;
+		await fs.writeFile(
+			file,
+			src.replaceAll(
+				JSON.stringify(CORE_ERRORS_SENTINEL),
+				JSON.stringify(relativeSpec),
+			),
+			"utf8",
+		);
+	}
+}
+
 // Shared configuration
 const sharedConfig = {
 	packageName: "@elizaos/core",
@@ -812,7 +891,6 @@ export async function buildNode(
 		buildOptions: {
 			entrypoints: [
 				`${TS_SRC}/index.node.ts`,
-				`${TS_SRC}/errors.ts`,
 				`${TS_SRC}/roles.ts`,
 				`${TS_SRC}/client-public.ts`,
 				`${TS_SRC}/security/kms/index.ts`,
@@ -823,6 +901,7 @@ export async function buildNode(
 			target: "node",
 			format: "esm",
 			external: nodeExternals,
+			plugins: [sharedErrorsModulePlugin],
 			sourcemap: true,
 			minify: false,
 			generateDts: false, // We'll generate declarations separately for all entry points
@@ -830,8 +909,46 @@ export async function buildNode(
 			selfPackageName: "@elizaos/core", // Exclude self from externals to avoid self-referential imports
 		},
 	});
+	// These public leaves must be emitted directly under dist/node. Keeping
+	// them in a separate build gives Bun a common source root of src/ instead
+	// of preserving the src/ directory used by the nested Node entrypoints.
+	const runNodeLeaves = runnerFactory({
+		...sharedConfig,
+		buildOptions: {
+			entrypoints: [`${TS_SRC}/documents.ts`, `${TS_SRC}/raw-sql.ts`],
+			outdir: "dist/node",
+			target: "node",
+			format: "esm",
+			external: nodeExternals,
+			plugins: [sharedErrorsModulePlugin],
+			sourcemap: true,
+			minify: false,
+			generateDts: false,
+			skipClean: true,
+			selfPackageName: "@elizaos/core",
+		},
+	});
 
-	await runNode();
+	// The canonical shared errors artifact builds alone, without the sharing
+	// plugin, so it keeps the real module body every other bundle points at.
+	const runNodeErrors = runnerFactory({
+		...sharedConfig,
+		buildOptions: {
+			entrypoints: [`${TS_SRC}/errors.ts`],
+			outdir: "dist/node",
+			target: "node",
+			format: "esm",
+			external: nodeExternals,
+			sourcemap: true,
+			minify: false,
+			generateDts: false,
+			skipClean: true,
+			selfPackageName: "@elizaos/core",
+		},
+	});
+
+	await Promise.all([runNode(), runNodeLeaves(), runNodeErrors()]);
+	await rewriteSharedErrorsImports("dist/node");
 
 	const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 	console.log(`✅ Node.js build complete in ${duration}s`);

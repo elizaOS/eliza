@@ -563,6 +563,7 @@
       "name": "@elizaos/cloud-sdk",
       "version": "2.0.3-beta.7",
       "dependencies": {
+        "@elizaos/shared": "workspace:*",
         "yaml": "2.9.0",
       },
       "devDependencies": {
@@ -1130,7 +1131,6 @@
       "name": "@elizaos/ui",
       "version": "2.0.3-beta.7",
       "dependencies": {
-        "@babel/runtime": "^7.29.7",
         "@capacitor/core": "8.4.0",
         "@elizaos/cloud-sdk": "workspace:*",
         "@elizaos/core": "workspace:*",
@@ -1191,7 +1191,6 @@
         "react-router-dom": "^7.0.0",
         "react-syntax-highlighter": "^16.1.0",
         "recharts": "^3.8.1",
-        "refractor": "^5.0.0",
         "sonner": "^2.0.7",
         "tailwind-merge": "^3.4.0",
         "tailwindcss": "^4.3.1",
@@ -2031,13 +2030,13 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-scheduling": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.8",
-        "@elizaos/plugin-scheduling": "workspace:*",
         "@types/node": "^25.6.0",
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",

@@ -74,9 +74,12 @@ describe("onboarding coordinator error integration", () => {
                 };
               },
             );
-            build.onResolve({ filter: /^@elizaos\/core$/ }, () => ({
+            build.onResolve({ filter: /^@elizaos\/core(?:\/edge)?$/ }, () => ({
               path: fileURLToPath(
-                new URL("../src/stubs/elizaos-core.ts", import.meta.url),
+                new URL(
+                  "../src/stubs/elizaos-core-test-contract.ts",
+                  import.meta.url,
+                ),
               ),
             }));
             build.onLoad({ filter: ROUTE_BOUNDARIES.users }, () => ({

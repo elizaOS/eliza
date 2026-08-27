@@ -2,7 +2,7 @@
  * Service for managing app-specific credit balances and purchases.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import Decimal from "decimal.js";
 import { and, eq, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";

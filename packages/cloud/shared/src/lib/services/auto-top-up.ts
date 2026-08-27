@@ -4,7 +4,7 @@
  * retries reuse that attempt's stable idempotency key and fenced lease.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core/edge";
 import Decimal from "decimal.js";
 import type Stripe from "stripe";
 import type {

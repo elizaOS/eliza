@@ -12,7 +12,7 @@ import {
   type Memory,
   ModelType,
   type State,
-} from "@elizaos/core";
+} from "@elizaos/core/edge";
 import { type ActionWithParams, defineActionParameters } from "../../plugin-cloud-bootstrap/types";
 import type { McpService } from "../service";
 import { resourceSelectionTemplate } from "../templates/resourceSelectionTemplate";

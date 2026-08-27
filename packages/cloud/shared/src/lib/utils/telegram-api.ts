@@ -6,7 +6,7 @@
  * into one capped slab before JSON parsing. The fetch primitive stays private
  * so no consumer can receive a response whose deadline it does not release.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 
 export const TELEGRAM_API_BASE = "https://api.telegram.org";
 

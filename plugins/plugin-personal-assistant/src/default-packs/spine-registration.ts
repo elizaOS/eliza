@@ -164,6 +164,9 @@ export function toSpineTaskInput(
     createdBy: record.createdBy,
     ownerVisible: record.ownerVisible,
     ...(record.metadata ? { metadata: record.metadata } : {}),
+    ...(record.executionProfile
+      ? { executionProfile: record.executionProfile }
+      : {}),
   };
 }
 

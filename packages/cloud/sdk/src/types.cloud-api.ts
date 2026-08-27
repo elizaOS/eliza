@@ -5,6 +5,21 @@
  * fields here.
  */
 
+import type {
+  AgentSandboxStatus,
+  CloudAgentActiveJobDto,
+  CloudAgentAdminDetailsDto,
+  CloudAgentDatabaseStatus,
+  CloudAgentDetailDto,
+  CloudAgentListItemDto,
+  CloudAgentWalletStatus,
+} from "@elizaos/shared/contracts/cloud-agent-lifecycle";
+
+export type {
+  AgentExecutionTier,
+  AgentSandboxStatus,
+} from "@elizaos/shared/contracts/cloud-agent-lifecycle";
+
 export type IsoDateString = string;
 type DateLike = Date | IsoDateString;
 
@@ -149,37 +164,8 @@ export interface SubscriptionDto {
   resourceCeilings: SubscriptionResourceCeilingsDto | null;
 }
 
-export type AgentSandboxStatus =
-  | "pending"
-  | "provisioning"
-  | "running"
-  | "stopped"
-  | "sleeping"
-  | "disconnected"
-  | "deletion_pending"
-  | "deletion_failed"
-  | "error";
-
-export type AgentDatabaseStatus = "none" | "provisioning" | "ready" | "error";
-export type AgentExecutionTier =
-  | "shared"
-  | "dedicated-lazy"
-  | "dedicated-always"
-  | "custom";
-
-/** A server-owned lifecycle job that clients can resume polling after reload. */
-export interface AgentActiveJobDto {
-  id: string;
-  type: string;
-  status: "pending" | "in_progress";
-  attempts: number;
-  maxAttempts: number;
-  estimatedCompletionAt: IsoDateString | null;
-  scheduledFor: IsoDateString;
-  startedAt: IsoDateString | null;
-  createdAt: IsoDateString;
-  updatedAt: IsoDateString;
-}
+export type AgentDatabaseStatus = CloudAgentDatabaseStatus;
+export type AgentActiveJobDto = CloudAgentActiveJobDto;
 
 export interface AgentListItemDto {
   id: string;
@@ -205,31 +191,11 @@ export interface AgentListItemDto {
  * Strict projection produced after validating the current agents-list payload.
  * Keep {@link AgentListItemDto} permissive for existing SDK consumers.
  */
-export interface NormalizedAgentListItemDto
-  extends Omit<
-    AgentListItemDto,
-    "dockerImage" | "executionTier" | "webUiUrl" | "activeJob"
-  > {
-  dockerImage: string | null;
-  executionTier: AgentExecutionTier;
-  webUiUrl: string | null;
-  activeJob: AgentActiveJobDto | null;
-}
+export type NormalizedAgentListItemDto = CloudAgentListItemDto;
 
-interface AgentAdminDetailsDto {
-  nodeId: string | null;
-  containerName: string | null;
-  internalBridgeUrl: string | null;
-  headscaleIp: string | null;
-  bridgePort: number | null;
-  webUiPort: number | null;
-  dockerImage: string | null;
-  isDockerBacked: boolean;
-  webUiUrl: string | null;
-  sshCommand: string | null;
-}
+type AgentAdminDetailsDto = CloudAgentAdminDetailsDto;
 
-export type AgentWalletStatus = "active" | "pending" | "none" | "error";
+export type AgentWalletStatus = CloudAgentWalletStatus;
 
 export interface AgentDetailDto extends AgentListItemDto {
   errorCount: number;
@@ -240,16 +206,7 @@ export interface AgentDetailDto extends AgentListItemDto {
 }
 
 /** Strict current-response projection for validated agent detail payloads. */
-export interface NormalizedAgentDetailDto
-  extends Omit<
-    AgentDetailDto,
-    "dockerImage" | "executionTier" | "webUiUrl" | "activeJob"
-  > {
-  dockerImage: string | null;
-  executionTier: AgentExecutionTier;
-  webUiUrl: string | null;
-  activeJob: AgentActiveJobDto | null;
-}
+export type NormalizedAgentDetailDto = CloudAgentDetailDto;
 
 export type AgentsResponse = ApiSuccessEnvelope<AgentListItemDto[]>;
 export type AgentResponse = ApiSuccessEnvelope<AgentDetailDto>;

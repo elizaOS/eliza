@@ -4,7 +4,7 @@
  * count required by the RIFF header.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 
 const WAV_HEADER_BYTES = 44;
 const MAX_RIFF_DATA_BYTES = 0xffff_ffff - 36;

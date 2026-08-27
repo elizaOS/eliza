@@ -7,7 +7,7 @@
  * to that same object before reporting success.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 import type {
   RuntimeDurableObjectNamespace,
   RuntimeDurableObjectStub,

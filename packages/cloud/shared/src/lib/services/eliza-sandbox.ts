@@ -5,8 +5,12 @@
 
 import crypto from "node:crypto";
 import { isIP } from "node:net";
-import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import { ChannelType } from "@elizaos/core/edge";
+import {
+  ChannelType,
+  ElizaError,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core/edge";
 import {
   MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   resolveRetainableAgentBackupBytes,

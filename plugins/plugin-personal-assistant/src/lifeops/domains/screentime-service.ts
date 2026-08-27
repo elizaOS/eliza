@@ -14,29 +14,21 @@ import {
 } from "@elizaos/plugin-browser";
 import {
   androidUsageRowsFromSignals,
-  buildScreenTimeBreakdown,
-  buildScreenTimeMetrics,
-  buildScreenTimeSummary,
-  buildScreenTimeVisibleBuckets,
-  buildScreenTimeWeeklyAverageItems,
-  computePriorScreenTimeRange,
-  computeScreenTimeRange,
-  enumerateScreenTimeHistoryDays,
+  createScreenTimeAggregationService,
   iosCoarseUsageRowsFromSignals,
   isSocialCategory,
   isSystemInactivityApp,
   mergeScreenTimeAggregateRows,
   mobileScreenTimeDataSourceFromSignals,
   type ScreenTimeAggregateRow,
+  type ScreenTimeAggregationService,
   type ScreenTimeWeeklyAverageItem,
   screenTimeBucketList,
   screenTimeDeviceLabel,
-  screenTimeRangeLabel,
   screenTimeSourceLabel,
 } from "@elizaos/plugin-health";
 import type {
   LifeOpsScreenTimeDaily,
-  LifeOpsScreenTimeHistoryPoint,
   LifeOpsScreenTimeHistoryResponse,
   LifeOpsScreenTimeRangeKey,
   LifeOpsScreenTimeSession,
@@ -320,10 +312,17 @@ function browserTrackingDataSourceState(
 }
 
 export class ScreenTimeDomain {
+  private readonly aggregation: ScreenTimeAggregationService;
+
   constructor(
     private readonly ctx: LifeOpsContext,
     private readonly deps: ScreenTimeDomainDeps,
-  ) {}
+  ) {
+    this.aggregation = createScreenTimeAggregationService({
+      collectRows: (query) => this.collectScreenTimeRows(query),
+      getSocialSummary: (query) => this.getSocialHabitSummary(query),
+    });
+  }
 
   async recordScreenTimeEvent(
     event: ScreenTimeEventInput,
@@ -489,8 +488,7 @@ export class ScreenTimeDomain {
     identifier?: string;
     topN?: number;
   }): Promise<LifeOpsScreenTimeSummary> {
-    const rows = await this.collectScreenTimeRows(opts);
-    return buildScreenTimeSummary(rows, opts.topN);
+    return this.aggregation.getScreenTimeSummary(opts);
   }
 
   async getScreenTimeBreakdown(opts: {
@@ -500,8 +498,7 @@ export class ScreenTimeDomain {
     identifier?: string;
     topN?: number;
   }): Promise<ScreenTimeBreakdown> {
-    const rows = await this.collectScreenTimeRows(opts);
-    return buildScreenTimeBreakdown(rows, opts.topN);
+    return this.aggregation.getScreenTimeBreakdown(opts);
   }
 
   async getSocialHabitSummary(opts: {
@@ -650,67 +647,7 @@ export class ScreenTimeDomain {
     topN?: number;
     socialTopN?: number;
   }): Promise<LifeOpsScreenTimeHistoryResponse> {
-    const window = computeScreenTimeRange(opts.range);
-    const priorWindow = computePriorScreenTimeRange(opts.range, window);
-    const [breakdown, social, priorBreakdown, priorSocial] = await Promise.all([
-      this.getScreenTimeBreakdown({
-        since: window.since,
-        until: window.until,
-        topN: opts.topN,
-      }),
-      this.getSocialHabitSummary({
-        since: window.since,
-        until: window.until,
-        topN: opts.socialTopN,
-      }),
-      priorWindow
-        ? this.getScreenTimeBreakdown({
-            since: priorWindow.since,
-            until: priorWindow.until,
-            topN: opts.topN,
-          })
-        : Promise.resolve(null),
-      priorWindow
-        ? this.getSocialHabitSummary({
-            since: priorWindow.since,
-            until: priorWindow.until,
-            topN: opts.socialTopN,
-          })
-        : Promise.resolve(null),
-    ]);
-    const history: LifeOpsScreenTimeHistoryPoint[] =
-      opts.range === "today"
-        ? []
-        : await Promise.all(
-            enumerateScreenTimeHistoryDays(window).map(async (day) => {
-              const summary = await this.getScreenTimeSummary({
-                since: day.since,
-                until: day.until,
-              });
-              return {
-                ...day,
-                totalSeconds: summary.totalSeconds,
-              };
-            }),
-          );
-
-    return {
-      range: opts.range,
-      label: screenTimeRangeLabel(opts.range),
-      window,
-      priorWindow,
-      breakdown,
-      social,
-      history,
-      metrics: buildScreenTimeMetrics(
-        breakdown,
-        social,
-        priorBreakdown,
-        priorSocial,
-      ),
-      visible: buildScreenTimeVisibleBuckets(breakdown, social),
-      fetchedAt: isoNow(),
-    };
+    return this.aggregation.getScreenTimeHistory(opts);
   }
 
   async getScreenTimeWeeklyAverageByApp(opts: {
@@ -720,19 +657,7 @@ export class ScreenTimeDomain {
     identifier?: string;
     topN?: number;
   }): Promise<ScreenTimeWeeklyAverageResponse> {
-    const summary = await this.getScreenTimeSummary({
-      since: opts.since,
-      until: opts.until,
-      source: "app",
-      identifier: opts.identifier,
-      topN: opts.topN,
-    });
-    const daysInWindow = Math.max(1, Math.floor(opts.daysInWindow));
-    return {
-      items: buildScreenTimeWeeklyAverageItems(summary.items, daysInWindow),
-      totalSeconds: summary.totalSeconds,
-      daysInWindow,
-    };
+    return this.aggregation.getScreenTimeWeeklyAverageByApp(opts);
   }
 
   async aggregateDailyForDate(date: string): Promise<{ updated: number }> {

@@ -3,7 +3,7 @@
  * video transfer through the provider's sequential ranged-upload protocol.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/edge";
 
 import { safeFetch } from "../../../security/safe-fetch";
 import type {
