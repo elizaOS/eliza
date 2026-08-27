@@ -46,7 +46,9 @@ import {
 } from "../../layouts/framed-page";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import {
+  FEED_FILTERS,
   type FeedFilter,
+  isFeedFilter,
   passesFilter,
 } from "../../utils/automation-feed-filter";
 import { formatSchedule } from "../../utils/cron-format";
@@ -106,18 +108,6 @@ const FILTER_LABELS: Record<FeedFilter, { key: string; defaultLabel: string }> =
       defaultLabel: "Inactive",
     },
   };
-const FILTER_OPTIONS: readonly FeedFilter[] = [
-  "all",
-  "prompts",
-  "workflows",
-  "active",
-  "inactive",
-];
-
-function isFeedFilter(value: string): value is FeedFilter {
-  return FILTER_OPTIONS.some((option) => option === value);
-}
-
 function isUnavailableScheduledTaskSupplement(error: unknown): boolean {
   if (!isApiError(error)) return false;
   if (error.status === 404) return true;
@@ -973,7 +963,7 @@ function AutomationFilterMenu({
             if (isFeedFilter(value)) onSelect(value);
           }}
         >
-          {FILTER_OPTIONS.map((option) => (
+          {FEED_FILTERS.map((option) => (
             <DropdownMenuRadioItem key={option} value={option}>
               <span className="flex-1">
                 {t(FILTER_LABELS[option].key, {
