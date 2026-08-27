@@ -37,7 +37,7 @@ import {
   signOutAndroidCloud,
   takeLatestAndroidCloudCompletion,
 } from "../android-cloud/android-cloud-auth";
-import { client } from "../api";
+import { type CloudCredits, type CloudStatus, client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import {
   cloudTokenSecsRemaining,
@@ -45,6 +45,7 @@ import {
   refreshCloudStewardSession,
   resolveDirectCloudAuthApiBase,
   resolveDirectCloudWebBase,
+  verifyDirectCloudStewardSession,
 } from "../api/client-cloud";
 import {
   invokeDesktopBridgeRequestWithTimeout,
@@ -415,13 +416,11 @@ function hasCloudLoginBackend(): boolean {
   return isSameOriginLocalHttpBackend();
 }
 
-export function canPollCloudStatus(
-  configuredRemoteApiBase = getBuildConfiguredRemoteApiBaseUrl(),
-): boolean {
+function canPollCloudStatus(): boolean {
   // A dedicated remote build gets models and voice from its paired runtime.
   // Polling that runtime's optional Cloud billing integration misclassifies an
   // unrelated server credential as the mobile app's own authentication state.
-  if (configuredRemoteApiBase) return false;
+  if (getBuildConfiguredRemoteApiBaseUrl()) return false;
 
   const explicitBase =
     typeof client.getBaseUrl === "function" ? client.getBaseUrl().trim() : "";
@@ -429,6 +428,8 @@ export function canPollCloudStatus(
   if (explicitBase && isConfiguredCloudSiteBase(explicitBase)) return true;
   return hasCloudLoginBackend() && supportsFullAppShellRoutes(explicitBase);
 }
+
+type PollIntent = "ambient" | "session-verification";
 
 /**
  * Resolve the Steward refresh endpoint for the current target. On hosted web
@@ -555,8 +556,11 @@ export function useCloudState({
 
   // ── Callbacks ──────────────────────────────────────────────────────
 
-  const pollCloudCredits = useCallback(async (): Promise<boolean> => {
-    if (!canPollCloudStatus()) {
+  async function runCloudPoll(
+    intent: PollIntent = "ambient",
+  ): Promise<boolean> {
+    const buildPinnedRemoteApiBase = getBuildConfiguredRemoteApiBaseUrl();
+    if (intent === "ambient" && !canPollCloudStatus()) {
       if (elizaCloudPollInterval.current) {
         clearInterval(elizaCloudPollInterval.current);
         elizaCloudPollInterval.current = null;
@@ -566,10 +570,33 @@ export function useCloudState({
     if (elizaCloudDisconnectInFlightRef.current) {
       return lastElizaCloudPollConnectedRef.current;
     }
-    // error-policy:J4 transient poll failure degrades to the last known
-    // snapshot (below) rather than flapping the UI into a false "disconnected"
-    // state; a persistent failure surfaces via that stale-but-visible state.
-    const cloudStatus = await client.getCloudStatus().catch(() => null);
+
+    let cloudStatus: CloudStatus | null;
+    let prefetchedCloudCredits: CloudCredits | null | undefined;
+    if (intent === "session-verification" && buildPinnedRemoteApiBase) {
+      const stewardToken = readStoredStewardToken()?.trim();
+      const cloudApiBase =
+        getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_BASE_URL;
+      if (!stewardToken) return false;
+      const verification = await verifyDirectCloudStewardSession({
+        cloudApiBase,
+        stewardToken,
+      }).catch((err: unknown) => {
+        logger.warn(
+          { err },
+          "[useCloudState] direct Cloud session verification failed",
+        );
+        return null;
+      });
+      if (!verification) return false;
+      cloudStatus = verification.status;
+      prefetchedCloudCredits = verification.credits;
+    } else {
+      // error-policy:J4 transient poll failure degrades to the last known
+      // snapshot (below) rather than flapping the UI into a false "disconnected"
+      // state; a persistent failure surfaces via that stale-but-visible state.
+      cloudStatus = await client.getCloudStatus().catch(() => null);
+    }
     if (elizaCloudDisconnectInFlightRef.current) {
       return lastElizaCloudPollConnectedRef.current;
     }
@@ -620,11 +647,18 @@ export function useCloudState({
       // state below — the balance widget renders a real error, never
       // healthy-empty; the next poll interval retries.
       let creditsFetchError: string | null = null;
-      const credits = await client.getCloudCredits().catch((err: unknown) => {
-        creditsFetchError = err instanceof Error ? err.message : String(err);
-        logger.warn({ err }, "[useCloudState] cloud credits fetch failed");
-        return null;
-      });
+      const credits =
+        prefetchedCloudCredits !== undefined
+          ? prefetchedCloudCredits
+          : await client.getCloudCredits().catch((err: unknown) => {
+              creditsFetchError =
+                err instanceof Error ? err.message : String(err);
+              logger.warn(
+                { err },
+                "[useCloudState] cloud credits fetch failed",
+              );
+              return null;
+            });
       if (elizaCloudDisconnectInFlightRef.current) {
         return lastElizaCloudPollConnectedRef.current;
       }
@@ -667,9 +701,14 @@ export function useCloudState({
     }
     lastElizaCloudPollConnectedRef.current = isConnected;
     // Self-manage the recurring poll interval: start when connected, stop when not.
-    // This covers login during first-run setup (interval wasn't started at mount) and
-    // disconnect (interval should stop to avoid useless API calls).
-    if (isConnected && !elizaCloudPollInterval.current) {
+    // A build-pinned remote may verify a deliberate login against the Cloud
+    // control plane, but must never turn that one request into ambient polling.
+    const canScheduleAmbientPolling = canPollCloudStatus();
+    if (
+      isConnected &&
+      canScheduleAmbientPolling &&
+      !elizaCloudPollInterval.current
+    ) {
       elizaCloudPollInterval.current = window.setInterval(() => {
         if (
           typeof document !== "undefined" &&
@@ -677,14 +716,18 @@ export function useCloudState({
         ) {
           return;
         }
-        void pollCloudCredits();
+        void runCloudPoll();
       }, 60_000);
-    } else if (!isConnected && elizaCloudPollInterval.current) {
+    } else if (
+      (!isConnected || !canScheduleAmbientPolling) &&
+      elizaCloudPollInterval.current
+    ) {
       clearInterval(elizaCloudPollInterval.current);
       elizaCloudPollInterval.current = null;
     }
     return isConnected;
-  }, []);
+  }
+  const pollCloudCredits = useCallback(runCloudPoll, []);
 
   const reconcileAndroidCloudSession = useCallback(
     async (cloudApiBase?: string): Promise<boolean> => {
@@ -699,9 +742,11 @@ export function useCloudState({
         ...getBootConfig(),
         cloudApiBase: authenticatedCloudApiBase,
       });
-      client.setBaseUrl(authenticatedCloudApiBase, { persist: false });
-      client.setToken(token);
-      const connected = await pollCloudCredits();
+      if (!getBuildConfiguredRemoteApiBaseUrl()) {
+        client.setBaseUrl(authenticatedCloudApiBase, { persist: false });
+        client.setToken(token);
+      }
+      const connected = await pollCloudCredits("session-verification");
       try {
         await loadWalletConfig();
       } catch (err) {
@@ -992,7 +1037,7 @@ export function useCloudState({
           const apiKey = await siweLoginWithInjectedWallet(siweBase);
           if (apiKey) {
             closePrePoppedWindow();
-            const connected = await pollCloudCredits();
+            const connected = await pollCloudCredits("session-verification");
             // error-policy:J4 wallet config is a secondary panel; a failed
             // load must not undo a verified login.
             await loadWalletConfig().catch(() => undefined);
@@ -1049,7 +1094,7 @@ export function useCloudState({
           // declaring "connected" + toasting here would be a false success that
           // 401s the agent picker in a loop. Only celebrate a verified session;
           // otherwise surface the re-auth path the login UI already renders.
-          let connected = await pollCloudCredits();
+          let connected = await pollCloudCredits("session-verification");
           // A direct identity 401 clears only the exact rejected Steward
           // credential. When launchStewardLogin reused that credential, invoke
           // the mounted sign-in surface now and verify the replacement on this
@@ -1062,7 +1107,7 @@ export function useCloudState({
             if (hasStewardLoginLauncher()) {
               closePrePoppedWindow();
               await launchStewardLogin();
-              connected = await pollCloudCredits();
+              connected = await pollCloudCredits("session-verification");
             } else {
               // The opaque token was the only reason this branch was usable.
               // With it authoritatively rejected and no in-app provider,
@@ -1137,7 +1182,7 @@ export function useCloudState({
           hasRequiredClientAuth()
         ) {
           closePrePoppedWindow();
-          await pollCloudCredits();
+          await pollCloudCredits("session-verification");
           await loadWalletConfig().catch((err: unknown) => {
             // error-policy:J4 already-authenticated login has succeeded; a
             // wallet config refresh failure must not wedge the login button.

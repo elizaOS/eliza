@@ -218,9 +218,11 @@ function isDedicatedCloudAgentClient(client: ElizaClient): boolean {
   return isDedicatedCloudAgentBase(client.getBaseUrl());
 }
 
-function resolveConfiguredDirectCloudApiBase(): string | null {
+function resolveConfiguredDirectCloudApiBase(
+  configuredCloudApiBase = getBootConfig().cloudApiBase,
+): string | null {
   const configured =
-    getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_BASE_URL;
+    configuredCloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_BASE_URL;
   const known = resolveKnownDirectCloudApiBase(configured);
   if (known) return known;
   // Local app development intentionally points at an isolated loopback Cloud
@@ -1021,6 +1023,121 @@ function directCloudResponseErrorMessage(
   return detail
     ? `Cloud request failed (${status}): ${detail}`
     : `Cloud request failed (${status})`;
+}
+
+export interface DirectCloudSessionVerification {
+  credits: CloudCredits | null;
+  status: CloudStatus;
+}
+
+/**
+ * Verify a Steward session against an explicit Cloud control-plane authority.
+ *
+ * Dedicated Android builds keep the app client pinned to their remote agent,
+ * so account verification must not temporarily repoint that client or reuse its
+ * agent bearer. This narrow request boundary resolves only a known Cloud API
+ * environment (or first-party loopback development), and sends only the
+ * caller-provided Steward token to the account + credits endpoints.
+ */
+export async function verifyDirectCloudStewardSession(options: {
+  cloudApiBase: string;
+  stewardToken: string;
+}): Promise<DirectCloudSessionVerification> {
+  const stewardToken = options.stewardToken.trim();
+  const apiBase = resolveConfiguredDirectCloudApiBase(options.cloudApiBase);
+  if (!apiBase) {
+    throw new Error("Eliza Cloud control-plane authority is not trusted");
+  }
+  if (!stewardToken) {
+    return {
+      credits: null,
+      status: {
+        connected: false,
+        enabled: true,
+        hasApiKey: false,
+        reason: "not-authenticated",
+        topUpUrl: directTopUpUrl(),
+      },
+    };
+  }
+
+  const headers = {
+    Accept: "application/json",
+    Authorization: `Bearer ${stewardToken}`,
+  };
+  const rejected = async (): Promise<DirectCloudSessionVerification> => {
+    await clearStoredStewardTokenIfCurrent(stewardToken);
+    return {
+      credits: null,
+      status: {
+        connected: false,
+        enabled: true,
+        hasApiKey: true,
+        reason: "auth-rejected",
+        topUpUrl: directTopUpUrl(),
+      },
+    };
+  };
+
+  const userResponse = await directCloudJsonResponse<Record<string, unknown>>(
+    `${apiBase}/api/v1/user`,
+    { headers },
+  );
+  if (userResponse.status === 401 || userResponse.status === 403) {
+    return rejected();
+  }
+  if (!userResponse.ok) {
+    throw Object.assign(
+      new Error(
+        directCloudResponseErrorMessage(userResponse.status, userResponse.data),
+      ),
+      { status: userResponse.status, url: `${apiBase}/api/v1/user` },
+    );
+  }
+  const userEnvelope = recordOrNull(userResponse.data);
+  const user = recordOrNull(userEnvelope?.data) ?? userEnvelope;
+
+  const creditsResponse = await directCloudJsonResponse<
+    Record<string, unknown>
+  >(`${apiBase}/api/v1/credits/balance`, { headers });
+  if (creditsResponse.status === 401 || creditsResponse.status === 403) {
+    return rejected();
+  }
+  if (!creditsResponse.ok) {
+    throw Object.assign(
+      new Error(
+        directCloudResponseErrorMessage(
+          creditsResponse.status,
+          creditsResponse.data,
+        ),
+      ),
+      {
+        status: creditsResponse.status,
+        url: `${apiBase}/api/v1/credits/balance`,
+      },
+    );
+  }
+
+  const creditsData = recordOrNull(creditsResponse.data);
+  const balance = numberOrNull(creditsData?.balance);
+  return {
+    credits: {
+      balance: Number.isFinite(balance) ? balance : null,
+      connected: true,
+      critical: typeof balance === "number" ? balance < 0.5 : undefined,
+      low: typeof balance === "number" ? balance < 2 : undefined,
+      topUpUrl: directTopUpUrl(),
+    },
+    status: {
+      connected: true,
+      enabled: true,
+      hasApiKey: true,
+      cloudVoiceProxyAvailable: true,
+      organizationId: stringOrNull(user?.organization_id) ?? undefined,
+      topUpUrl: directTopUpUrl(),
+      userId: stringOrNull(user?.id) ?? undefined,
+    },
+  };
 }
 
 async function directCloudRequest<T>(
