@@ -38,6 +38,7 @@ import {
 import {
   CloudLiveOptionalActionDeadlineError,
   clickCloudLiveOptionalAction,
+  prepareCloudLivePersonalIdentity,
 } from "../cloud-live-optional-action";
 import { resolveCloudLiveOriginContract } from "../cloud-live-origin";
 import { waitForRendererCloudApiOrigin } from "../cloud-live-renderer-api-readiness";
@@ -540,10 +541,12 @@ async function resolvePersonalIdentity(
   page: Page,
   chooseRuntime = true,
 ): Promise<CloudLiveRuntimeBinding> {
-  await expect(page.getByTestId("chat-overlay")).toBeVisible({
-    timeout: 60_000,
+  await prepareCloudLivePersonalIdentity({
+    chooseRuntime,
+    chatOverlay: page.getByTestId("chat-overlay"),
+    chatOverlayTimeoutMs: 60_000,
+    chooseRuntimeAction: () => chooseCloudRuntime(page),
   });
-  if (chooseRuntime) await chooseCloudRuntime(page);
   for (let attempt = 1; attempt <= PERSONAL_IDENTITY_ATTEMPTS; attempt += 1) {
     let binding: CloudLiveRuntimeBinding | null = null;
     await expect
@@ -712,24 +715,32 @@ test.describe("real cloud login + personal identity + chat", () => {
       runtimeCloudActionSuccessCount: 0,
       runtimeCloudActionTimeoutCount: 0,
     };
+    const readPreIdentityDiagnostic =
+      async (): Promise<CloudLivePreIdentityDiagnostic> => {
+        const audit = await primaryAudit.snapshot();
+        return {
+          ...runtimeChoiceCounters,
+          personalIdentityGetRequestCount:
+            audit.personalIdentityGetRequestCount,
+          successfulPersonalIdentityGetResponseCount:
+            audit.successfulPersonalIdentityGetCount,
+          clientErrorPersonalIdentityGetResponseCount:
+            audit.clientErrorPersonalIdentityGetResponseCount,
+          serverErrorPersonalIdentityGetResponseCount:
+            audit.serverErrorPersonalIdentityGetResponseCount,
+          otherPersonalIdentityGetResponseCount:
+            audit.otherPersonalIdentityGetResponseCount,
+          failedPersonalIdentityGetRequestCount:
+            audit.failedPersonalIdentityGetRequestCount,
+          pendingPersonalIdentityGetRequestCount:
+            audit.pendingPersonalIdentityGetRequestCount,
+        };
+      };
     const writePreIdentityDiagnostic = async (): Promise<void> => {
-      const audit = await primaryAudit.snapshot();
-      await enterTrajectoryPhase("pre-identity-runtime-choice", {
-        ...runtimeChoiceCounters,
-        personalIdentityGetRequestCount: audit.personalIdentityGetRequestCount,
-        successfulPersonalIdentityGetResponseCount:
-          audit.successfulPersonalIdentityGetCount,
-        clientErrorPersonalIdentityGetResponseCount:
-          audit.clientErrorPersonalIdentityGetResponseCount,
-        serverErrorPersonalIdentityGetResponseCount:
-          audit.serverErrorPersonalIdentityGetResponseCount,
-        otherPersonalIdentityGetResponseCount:
-          audit.otherPersonalIdentityGetResponseCount,
-        failedPersonalIdentityGetRequestCount:
-          audit.failedPersonalIdentityGetRequestCount,
-        pendingPersonalIdentityGetRequestCount:
-          audit.pendingPersonalIdentityGetRequestCount,
-      });
+      await enterTrajectoryPhase(
+        "pre-identity-runtime-choice",
+        await readPreIdentityDiagnostic(),
+      );
     };
     await writePreIdentityDiagnostic();
     await chooseCloudRuntime(page, async (state) => {
@@ -746,7 +757,10 @@ test.describe("real cloud login + personal identity + chat", () => {
     // The current Cloud join flow resolves the account-derived Personal Eliza
     // identity through the read-only Personal endpoint. It persists the
     // account-owned binding without creating dedicated compute.
-    await enterTrajectoryPhase("personal-identity");
+    await enterTrajectoryPhase(
+      "personal-identity",
+      await readPreIdentityDiagnostic(),
+    );
     const referenceBinding = await resolvePersonalIdentity(page, false);
     const identityAudit = await primaryAudit.snapshot();
     expect(
