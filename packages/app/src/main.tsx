@@ -2245,10 +2245,12 @@ function handleDeepLink(url: string): undefined | Promise<boolean> {
           typeof navigator === "undefined" ? "" : navigator.platform,
         nativePlatform: Capacitor.getPlatform(),
         native: Capacitor.isNativePlatform(),
+        nativePluginAvailable:
+          Capacitor.isPluginAvailable?.("RemoteControllerIdentity") === true,
       })
     ) {
       console.warn(
-        `${APP_LOG_PREFIX} Remote controller pairing is available only on an enrolled Linux desktop or a compatible signed-in iPhone`,
+        `${APP_LOG_PREFIX} Remote controller pairing requires the enrolled Linux desktop shell or this iPhone's secure native controller bridge`,
       );
       return;
     }

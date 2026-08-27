@@ -29,6 +29,7 @@ class ElizaBridgeViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(ElizaKeyboardPlugin())
         bridge?.registerPluginInstance(ElizaLiveActivityPlugin())
         bridge?.registerPluginInstance(NativeTranscriptPlugin())
+        bridge?.registerPluginInstance(RemoteControllerIdentityPlugin())
         NSLog("[ElizaStartupTrace] iOS startupTraceId=%@", ElizaStartupTrace.currentId)
     }
 }

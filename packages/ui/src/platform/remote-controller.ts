@@ -5,13 +5,16 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import type {
-  EncryptedRemoteControlEnvelope,
-  RemoteCommandAction,
-  RemoteControllerPublicIdentity,
-  RemoteJsonValue,
-  RemoteTargetPublicIdentity,
-  SignedRemoteCommand,
+import {
+  type EncryptedRemoteControlEnvelope,
+  isEncryptedRemoteControlEnvelope,
+  isRemoteControllerPublicIdentity,
+  isSignedRemoteCommand,
+  type RemoteCommandAction,
+  type RemoteControllerPublicIdentity,
+  type RemoteJsonValue,
+  type RemoteTargetPublicIdentity,
+  type SignedRemoteCommand,
 } from "@elizaos/shared/contracts/remote-control";
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 
@@ -30,6 +33,53 @@ interface NativeRemoteControllerPlugin {
   clearSessionState(
     input: Record<string, unknown>,
   ): Promise<{ cleared: boolean }>;
+}
+
+type NativeCommandResult = {
+  commandId: string;
+  expiresAt: number;
+  command: SignedRemoteCommand;
+  envelope: EncryptedRemoteControlEnvelope;
+  recoveredPending: boolean;
+  bindingDigest: string;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isNativeCommandResult(value: unknown): value is NativeCommandResult {
+  return (
+    isRecord(value) &&
+    typeof value.commandId === "string" &&
+    Number.isSafeInteger(value.expiresAt) &&
+    isSignedRemoteCommand(value.command) &&
+    isEncryptedRemoteControlEnvelope(value.envelope) &&
+    typeof value.recoveredPending === "boolean" &&
+    typeof value.bindingDigest === "string"
+  );
+}
+
+function isOpenedResult(
+  value: unknown,
+): value is { status: string; result?: RemoteJsonValue; errorCode?: string } {
+  return (
+    isRecord(value) &&
+    ["completed", "rejected", "cancelled", "execution_ambiguous"].includes(
+      String(value.status),
+    ) &&
+    (value.errorCode === undefined || typeof value.errorCode === "string")
+  );
+}
+
+function isOpenedStartReceipt(
+  value: unknown,
+): value is { startedAt: number; executionId: string } {
+  return (
+    isRecord(value) &&
+    Number.isSafeInteger(value.startedAt) &&
+    typeof value.executionId === "string"
+  );
 }
 
 const nativeRemoteController =
@@ -77,9 +127,9 @@ export async function getOrCreateRemoteControllerIdentity(input: {
       platform: Capacitor.getPlatform(),
     });
     if (
-      !identity?.deviceId ||
-      !identity.keyId ||
-      !identity.encryptionPublicKeyJwk
+      !isRemoteControllerPublicIdentity(identity) ||
+      identity.ownerId !== input.ownerId ||
+      identity.platform !== "ios"
     ) {
       throw new Error("Secure mobile pairing identity is unavailable.");
     }
@@ -141,16 +191,9 @@ export async function createRemoteCommand(input: {
       action: input.action,
       payload: input.payload,
     });
-    if (!result)
+    if (!isNativeCommandResult(result))
       throw new Error("Secure mobile command signing is unavailable.");
-    return result as {
-      commandId: string;
-      expiresAt: number;
-      command: SignedRemoteCommand;
-      envelope: EncryptedRemoteControlEnvelope;
-      recoveredPending: boolean;
-      bindingDigest: string;
-    };
+    return result;
   }
   const result = await invokeDesktopBridgeRequest<{
     commandId: string;
@@ -189,7 +232,10 @@ export async function acknowledgeRemoteCommandEnqueue(input: {
 }): Promise<boolean> {
   if (isNativeController()) {
     const result = await nativeRemoteController.acknowledgeEnqueue(input);
-    return result?.acknowledged ?? false;
+    if (!isRecord(result) || typeof result.acknowledged !== "boolean") {
+      throw new Error("Secure mobile enqueue acknowledgement is unavailable.");
+    }
+    return result.acknowledged;
   }
   const result = await invokeDesktopBridgeRequest<{ acknowledged: boolean }>({
     rpcMethod: "remoteControllerAcknowledgeEnqueue",
@@ -210,13 +256,9 @@ export async function openRemoteCommandResult(input: {
 }): Promise<{ status: string; result?: RemoteJsonValue; errorCode?: string }> {
   if (isNativeController()) {
     const result = await nativeRemoteController.openResult(input);
-    if (!result)
+    if (!isOpenedResult(result))
       throw new Error("Secure mobile result decryption is unavailable.");
-    return result as {
-      status: string;
-      result?: RemoteJsonValue;
-      errorCode?: string;
-    };
+    return result;
   }
   const result = await invokeDesktopBridgeRequest<{
     status: string;
@@ -241,11 +283,11 @@ export async function openRemoteCommandStartReceipt(input: {
 }): Promise<{ startedAt: number; executionId: string }> {
   if (isNativeController()) {
     const result = await nativeRemoteController.openStartReceipt(input);
-    if (!result)
+    if (!isOpenedStartReceipt(result))
       throw new Error(
         "Secure mobile start receipt verification is unavailable.",
       );
-    return result as { startedAt: number; executionId: string };
+    return result;
   }
   const result = await invokeDesktopBridgeRequest<{
     startedAt: number;
@@ -268,7 +310,10 @@ export async function clearRemoteControllerSessionState(input: {
 }): Promise<boolean> {
   if (isNativeController()) {
     const result = await nativeRemoteController.clearSessionState(input);
-    return result?.cleared ?? false;
+    if (!isRecord(result) || typeof result.cleared !== "boolean") {
+      throw new Error("Secure mobile session cleanup is unavailable.");
+    }
+    return result.cleared;
   }
   const result = await invokeDesktopBridgeRequest<{ cleared: boolean }>({
     rpcMethod: "remoteControllerClearSessionState",

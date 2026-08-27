@@ -1,17 +1,23 @@
-import { Capacitor } from "@capacitor/core";
+/**
+ * Decides whether a remote-controller claim may enter the platform pairing
+ * flow. iOS is admitted only when the compiled native key/crypto owner is
+ * registered; other Capacitor shells fail closed.
+ */
 
-/** Allow controller-claim delivery only to enrolled Linux desktop or native iOS shells. */
-export function isRemoteControllerPairingRuntimeAllowed(input?: {
-  isElectrobun?: boolean;
-  navigatorPlatform?: string;
-  nativePlatform?: string;
-  native?: boolean;
+/** Allows claim delivery only to the two shells that own controller keys. */
+export function isRemoteControllerPairingRuntimeAllowed(input: {
+  isElectrobun: boolean;
+  navigatorPlatform: string;
+  nativePlatform: string;
+  native: boolean;
+  nativePluginAvailable: boolean;
 }): boolean {
   const isLinuxDesktop =
-    (input?.isElectrobun ?? false) &&
-    (input?.navigatorPlatform ?? "").toLowerCase().includes("linux");
+    input.isElectrobun &&
+    input.navigatorPlatform.toLowerCase().includes("linux");
   const isNativeIOS =
-    (input?.native ?? Capacitor.isNativePlatform()) &&
-    (input?.nativePlatform ?? Capacitor.getPlatform()) === "ios";
+    input.native &&
+    input.nativePlatform === "ios" &&
+    input.nativePluginAvailable;
   return isLinuxDesktop || isNativeIOS;
 }
