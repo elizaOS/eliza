@@ -99,6 +99,15 @@ export default function PaymentStateDetailPage() {
     queueMicrotask(() => {
       void fetchState();
     });
+    return () => {
+      // Effect cleanup runs on EVERY id transition and on unmount, BEFORE
+      // the new id's queued fetch begins — closing the window where a
+      // previous id's in-flight completion still matched the current
+      // generation (its fetch had not started yet, so the counter had not
+      // advanced). Any completion racing a cleanup now observes a stale
+      // generation and must not commit state.
+      generation.current += 1;
+    };
   }, [fetchState]);
 
   const loadingLabel = t("cloud.paymentStateDetail.loading", {

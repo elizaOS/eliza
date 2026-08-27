@@ -1311,6 +1311,9 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
       providerTxRef: "pi_full_catchup",
       amountCents: 10000,
     });
+    // Both rows carry the production `reference` authority for the same
+    // charge, so their cumulative targets collapse to ONE authority (max
+    // 40) instead of two raw fallback authorities.
     await insertReversal({
       organizationId,
       type: "clawback",
@@ -1320,6 +1323,7 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
       reversedUsd: 40,
       unrecoveredUsd: 15,
       cumulativeTargetUsd: 40,
+      reference: "charge ch_full_catchup",
       createdAt: new Date("2026-08-20T10:00:00.000Z"),
       idempotencyKey: "stripe:refund:ch_full_catchup:4000",
     });
@@ -1334,6 +1338,7 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
       reversedUsd: 40,
       unrecoveredUsd: 0,
       cumulativeTargetUsd: 40,
+      reference: "charge ch_full_catchup",
       createdAt: new Date("2026-08-20T12:00:00.000Z"),
       idempotencyKey: "stripe:refund:ch_full_catchup:4000:2",
     });
@@ -1345,53 +1350,152 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
     expect(row?.unrecoveredShortfallCredits).toBe(0);
   });
 
-  test("dispute reinstatement reduces the outstanding shortfall (net applied, #26752 P1#3)", async () => {
-    // Reinstated credits are restored by the same ledger; net applied =
-    // clawbacks − reinstatements, so a reinstatement shrinks the derived
-    // outstanding shortfall instead of being ignored.
+  test("dispute reinstatement closes the outstanding shortfall when it is the latest reversal (#26752 r2)", async () => {
+    // A reinstatement is the reversal being OVERTURNED — the credits were
+    // restored and the clawback no longer asserts a debt. The outstanding
+    // shortfall must read zero, not (target − net applied).
     const request = await insertStripePaymentRequest({
       organizationId,
       amountCents: 10000,
       status: "settled",
-      settlementTxRef: "pi_reinstate_net",
+      settlementTxRef: "pi_terminal_reinstate",
       settledAt: new Date(),
     });
     await insertReceipt({
       organizationId,
       paymentRequestId: request.id,
-      providerTxRef: "pi_reinstate_net",
+      providerTxRef: "pi_terminal_reinstate",
       amountCents: 10000,
     });
     await insertReversal({
       organizationId,
       type: "clawback",
-      amount: "-25",
-      paymentIntentId: "pi_reinstate_net",
+      amount: "-40",
+      paymentIntentId: "pi_terminal_reinstate",
       source: "charge.dispute.funds_withdrawn",
       reversedUsd: 40,
       unrecoveredUsd: 15,
       cumulativeTargetUsd: 40,
       createdAt: new Date("2026-08-20T10:00:00.000Z"),
-      idempotencyKey: "stripe:dispute:dp_net:4000",
+      idempotencyKey: "stripe:dispute:dp_terminal:4000",
     });
     await insertReversal({
       organizationId,
       type: "refund",
-      amount: "10",
-      paymentIntentId: "pi_reinstate_net",
+      amount: "40",
+      paymentIntentId: "pi_terminal_reinstate",
       source: "charge.dispute.funds_reinstated",
       reversedUsd: 40,
       createdAt: new Date("2026-08-20T11:00:00.000Z"),
-      idempotencyKey: "stripe:dispute:dp_net:reinstate",
+      idempotencyKey: "stripe:dispute:dp_terminal:reinstate",
     });
 
     const rows = await paymentHistoryService.listPaymentStates(organizationId);
     const row = rows.find((r) => r.id === `payment_request:${request.id}`);
     expect(row).toBeDefined();
-    expect(row?.cumulativeClawbackCredits).toBe(25);
-    expect(row?.reinstatedCredits).toBe(10);
-    // max target 40 − net applied (25 − 10 = 15) = 25.
-    expect(row?.unrecoveredShortfallCredits).toBe(25);
     expect(row?.paymentState).toBe("dispute_reinstated");
+    expect(row?.cumulativeClawbackCredits).toBe(40);
+    expect(row?.reinstatedCredits).toBe(40);
+    // Overturned reversal: zero outstanding, never 40 or 15.
+    expect(row?.unrecoveredShortfallCredits).toBe(0);
+  });
+
+  test("two charges under one intent sum their per-authority clawback targets (#26752 r2)", async () => {
+    // Each cumulative clawback target is derived from ONE reversal
+    // authority; a single intent-wide max would understate a two-charge
+    // reversal (charge A target 60 fully applied, charge B target 40 with
+    // nothing applied → outstanding 40, not 0).
+    const request = await insertStripePaymentRequest({
+      organizationId,
+      amountCents: 20000,
+      status: "settled",
+      settlementTxRef: "pi_two_charges",
+      settledAt: new Date(),
+    });
+    await insertReceipt({
+      organizationId,
+      paymentRequestId: request.id,
+      providerTxRef: "pi_two_charges",
+      amountCents: 20000,
+    });
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "-60",
+      paymentIntentId: "pi_two_charges",
+      source: "charge.refunded",
+      reversedUsd: 60,
+      unrecoveredUsd: 0,
+      cumulativeTargetUsd: 60,
+      reference: "charge ch_a",
+      createdAt: new Date("2026-08-20T10:00:00.000Z"),
+      idempotencyKey: "stripe:refund:ch_a:6000",
+    });
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "0",
+      paymentIntentId: "pi_two_charges",
+      source: "charge.refunded",
+      reversedUsd: 0,
+      unrecoveredUsd: 40,
+      cumulativeTargetUsd: 40,
+      reference: "charge ch_b",
+      createdAt: new Date("2026-08-20T11:00:00.000Z"),
+      idempotencyKey: "stripe:refund:ch_b:0",
+    });
+
+    const rows = await paymentHistoryService.listPaymentStates(organizationId);
+    const row = rows.find((r) => r.id === `payment_request:${request.id}`);
+    expect(row).toBeDefined();
+    // Per-authority maxima sum: 60 + 40 = 100 target, 60 applied → 40
+    // outstanding. A single intent-wide max (60) would have reported 0.
+    expect(row?.unrecoveredShortfallCredits).toBe(40);
+  });
+
+  test("legacy newest zero snapshot clears an older shortfall (#26752 r2)", async () => {
+    // Zero is a valid recorded snapshot: a later legacy row recording
+    // shortfall 0 (recovery caught up) must clear the older 15, not be
+    // skipped by a `> 0` guard.
+    const request = await insertStripePaymentRequest({
+      organizationId,
+      amountCents: 5000,
+      status: "settled",
+      settlementTxRef: "pi_legacy_zero",
+      settledAt: new Date(),
+    });
+    await insertReceipt({
+      organizationId,
+      paymentRequestId: request.id,
+      providerTxRef: "pi_legacy_zero",
+      amountCents: 5000,
+    });
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "-25",
+      paymentIntentId: "pi_legacy_zero",
+      source: "charge.refunded",
+      reversedUsd: 40,
+      unrecoveredUsd: 15,
+      createdAt: new Date("2026-08-20T10:00:00.000Z"),
+      idempotencyKey: "legacy:older",
+    });
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "-15",
+      paymentIntentId: "pi_legacy_zero",
+      source: "charge.refunded",
+      reversedUsd: 40,
+      unrecoveredUsd: 0,
+      createdAt: new Date("2026-08-20T12:00:00.000Z"),
+      idempotencyKey: "legacy:newer",
+    });
+
+    const rows = await paymentHistoryService.listPaymentStates(organizationId);
+    const row = rows.find((r) => r.id === `payment_request:${request.id}`);
+    expect(row).toBeDefined();
+    expect(row?.unrecoveredShortfallCredits).toBe(0);
   });
 });
