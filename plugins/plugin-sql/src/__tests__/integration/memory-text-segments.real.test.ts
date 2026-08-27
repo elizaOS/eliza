@@ -52,12 +52,7 @@ async function openDatabase(dataDir: string, agentId: UUID) {
 function multibyteSource(byteLength: number): string {
   const chunks: string[] = [];
   let bytes = 0;
-  const alphabet = [
-    "plain text ",
-    "日本語のテキスト ",
-    "emoji🚀🎉 ",
-    "ελληνικά ",
-  ];
+  const alphabet = ["plain text ", "日本語のテキスト ", "emoji🚀🎉 ", "ελληνικά "];
   let i = 0;
   while (bytes < byteLength) {
     const chunk = alphabet[i % alphabet.length];
@@ -86,17 +81,13 @@ async function seedRoom(adapter: PgliteDatabaseAdapter, agentId: UUID) {
       type: ChannelType.DM,
     } satisfies Room,
   ]);
-  await adapter.createEntities([
-    { id: entityId, agentId, names: ["user"] } satisfies Entity,
-  ]);
+  await adapter.createEntities([{ id: entityId, agentId, names: ["user"] } satisfies Entity]);
   return { roomId, entityId };
 }
 
 async function migrate(adapter: PgliteDatabaseAdapter) {
   const migrations = new DatabaseMigrationService();
-  await migrations.initializeWithDatabase(
-    adapter.getDatabase() as DrizzleDatabase,
-  );
+  await migrations.initializeWithDatabase(adapter.getDatabase() as DrizzleDatabase);
   migrations.discoverAndRegisterPluginSchemas([sqlPlugin]);
   await migrations.runAllPluginMigrations();
 }
@@ -167,9 +158,9 @@ describe("memory text segments (real PGlite)", () => {
     expect(page1?.start).toBe(0);
     expect(page1?.end).toBe(256 * 1024);
     expect(page1?.completeness).toBe("partial-recoverable");
-    expect(
-      createHash("sha256").update(encodeUtf8Strict(page1?.text)).digest("hex"),
-    ).toBe(page1?.sliceSha256);
+    expect(createHash("sha256").update(encodeUtf8Strict(page1?.text)).digest("hex")).toBe(
+      page1?.sliceSha256
+    );
 
     await expect(
       readMemoryContentPage({
@@ -177,7 +168,7 @@ describe("memory text segments (real PGlite)", () => {
         memoryId,
         field: { kind: "content.text" },
         byteStart: page1?.end,
-      }),
+      })
     ).rejects.toThrow(/expectedRevision/);
 
     const parts: string[] = [page1?.text];
@@ -198,12 +189,7 @@ describe("memory text segments (real PGlite)", () => {
       if (guard > 100) throw new Error("paging did not terminate");
     }
     const reassembled = parts.join("");
-    expect(
-      Buffer.compare(
-        Buffer.from(reassembled, "utf8"),
-        Buffer.from(source, "utf8"),
-      ),
-    ).toBe(0);
+    expect(Buffer.compare(Buffer.from(reassembled, "utf8"), Buffer.from(source, "utf8"))).toBe(0);
 
     // Stale revision rejection on continuation.
     await expect(
@@ -213,16 +199,14 @@ describe("memory text segments (real PGlite)", () => {
         field: { kind: "content.text" },
         byteStart: page1?.end,
         expectedRevision: `seg:00000000-0000-0000-0000-000000000000:${"0".repeat(64)}`,
-      }),
+      })
     ).rejects.toThrow(/changed before this page/);
 
     // Parent stays bounded: descriptor only, no source bytes.
     const parentMeta = await db.execute(
-      `SELECT octet_length(metadata::text) AS meta_bytes, content->>'text' AS text FROM memories WHERE id = '${memoryId}'`,
+      `SELECT octet_length(metadata::text) AS meta_bytes, content->>'text' AS text FROM memories WHERE id = '${memoryId}'`
     );
-    const metaRow = (
-      parentMeta.rows as Array<{ meta_bytes: number; text: string }>
-    )[0];
+    const metaRow = (parentMeta.rows as Array<{ meta_bytes: number; text: string }>)[0];
     expect(metaRow.meta_bytes).toBeLessThan(4096);
     expect(metaRow.text.length).toBeLessThan(100);
 
@@ -239,23 +223,19 @@ describe("memory text segments (real PGlite)", () => {
     });
     expect(after).not.toBeNull();
     expect(encodeUtf8Strict(after?.text).length).toBe(4096);
-    expect(after?.text).toBe(
-      new TextDecoder().decode(encodeUtf8Strict(source).subarray(0, 4096)),
-    );
+    expect(after?.text).toBe(new TextDecoder().decode(encodeUtf8Strict(source).subarray(0, 4096)));
 
     // Deletion cascade.
     await second.adapter.deleteMemory(memoryId);
     const remaining = await db2.execute(
-      `SELECT count(*)::int AS n FROM memory_text_segments WHERE parent_id = '${memoryId}'`,
+      `SELECT count(*)::int AS n FROM memory_text_segments WHERE parent_id = '${memoryId}'`
     );
     expect((remaining.rows as Array<{ n: number }>)[0].n).toBe(0);
     await second.adapter.close();
   });
 
   it("replaces a generation atomically and retires the prior one", async () => {
-    const dataDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "eliza-segments-replace-"),
-    );
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-segments-replace-"));
     tempDirectories.push(dataDir);
     const agentId = v4() as UUID;
     const memoryId = v4() as UUID;
@@ -296,9 +276,7 @@ describe("memory text segments (real PGlite)", () => {
       text: replacement,
       segmentBytes: 64 * 1024,
     });
-    expect(secondPlan.descriptor.generation).not.toBe(
-      firstPlan.descriptor.generation,
-    );
+    expect(secondPlan.descriptor.generation).not.toBe(firstPlan.descriptor.generation);
     const secondMetadata = mergeSegmentationMetadata({}, secondPlan.descriptor);
     await db.transaction(async (tx) => {
       await tx
@@ -330,7 +308,7 @@ describe("memory text segments (real PGlite)", () => {
     expect(page?.total).toBe(encodeUtf8Strict(replacement).length);
 
     const generations = await db.execute(
-      `SELECT count(DISTINCT generation)::int AS n FROM memory_text_segments WHERE parent_id = '${memoryId}'`,
+      `SELECT count(DISTINCT generation)::int AS n FROM memory_text_segments WHERE parent_id = '${memoryId}'`
     );
     expect((generations.rows as Array<{ n: number }>)[0].n).toBe(1);
 
@@ -342,15 +320,13 @@ describe("memory text segments (real PGlite)", () => {
         field: { kind: "content.text" },
         byteStart: 100,
         expectedRevision: firstPlan.descriptor.revision,
-      }),
+      })
     ).rejects.toThrow(/changed before this page/);
     await adapter.close();
   });
 
   it("flags legacy large unsegmented rows and passes small rows through", async () => {
-    const dataDir = fs.mkdtempSync(
-      path.join(os.tmpdir(), "eliza-segments-legacy-"),
-    );
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-segments-legacy-"));
     tempDirectories.push(dataDir);
     const agentId = v4() as UUID;
     const memoryId = v4() as UUID;
@@ -360,21 +336,21 @@ describe("memory text segments (real PGlite)", () => {
     const { roomId, entityId } = await seedRoom(adapter, agentId);
     const db = adapter.getDatabase() as DrizzleDatabase;
 
-    // Legacy large row: inline text above the hard page ceiling, NO descriptor.
-    const legacyText = "legacy ".repeat(
-      Math.ceil((MEMORY_PAGE_MAX_BYTES + 1024) / 7),
-    );
-    await adapter.createMemory(
-      {
-        id: memoryId,
-        entityId,
-        roomId,
-        agentId,
-        content: { text: legacyText, source: "test" },
-        unique: true,
-      } as Memory,
-      "messages",
-    );
+    // Legacy large row: inline text above the hard page ceiling, NO
+    // descriptor. Inserted with a raw drizzle write because createMemory now
+    // transparently segments oversized content (#25140) — the legacy state by
+    // definition predates that publication path.
+    const legacyText = "legacy ".repeat(Math.ceil((MEMORY_PAGE_MAX_BYTES + 1024) / 7));
+    await db.insert(memoryTable).values({
+      id: memoryId,
+      type: "messages",
+      content: { text: legacyText, source: "test" },
+      metadata: {},
+      entityId,
+      roomId,
+      agentId,
+      unique: true,
+    });
 
     await expect(
       readMemoryContentPage({
@@ -382,7 +358,7 @@ describe("memory text segments (real PGlite)", () => {
         memoryId,
         field: { kind: "content.text" },
         byteStart: 0,
-      }),
+      })
     ).rejects.toThrow(/reindex/i);
 
     const smallId = v4() as UUID;
@@ -395,7 +371,7 @@ describe("memory text segments (real PGlite)", () => {
         content: { text: "small", source: "test" },
         unique: true,
       } as Memory,
-      "messages",
+      "messages"
     );
     const small = await readMemoryContentPage({
       db,
