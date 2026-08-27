@@ -94,6 +94,7 @@ import {
 } from "./cloud-steward-login";
 
 import {
+  loadPersistedActiveServer,
   savePersistedFirstRunComplete,
   scrubPersistedActiveServerToken,
 } from "./persistence";
@@ -427,10 +428,16 @@ function hasCloudLoginBackend(): boolean {
 }
 
 function canPollCloudStatus(): boolean {
-  // A dedicated remote build gets models and voice from its paired runtime.
-  // Polling that runtime's optional Cloud billing integration misclassifies an
-  // unrelated server credential as the mobile app's own authentication state.
-  if (getBuildConfiguredRemoteApiBaseUrl()) return false;
+  // A paired self-hosted runtime gets models and voice from that runtime. Its
+  // optional Cloud integration describes the server owner, not the app user,
+  // so ambient billing polls would misclassify that unrelated credential as
+  // the current user's Cloud authentication state.
+  if (
+    getBuildConfiguredRemoteApiBaseUrl() ||
+    loadPersistedActiveServer()?.kind === "remote"
+  ) {
+    return false;
+  }
 
   const explicitBase =
     typeof client.getBaseUrl === "function" ? client.getBaseUrl().trim() : "";
