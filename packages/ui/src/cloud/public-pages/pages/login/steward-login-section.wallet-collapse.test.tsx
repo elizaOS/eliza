@@ -35,6 +35,11 @@ const sessionSpies = vi.hoisted(() => ({
   hasCookie: false,
 }));
 
+const mountedWalletCapabilities = vi.hoisted(() => ({
+  siwe: null as boolean | null,
+  siws: null as boolean | null,
+}));
+
 vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => {
   const actual =
     await importOriginal<
@@ -113,9 +118,11 @@ vi.mock("../../../billing/wallet/steward-wallet-providers", () => ({
 }));
 
 vi.mock("./wallet-buttons", () => ({
-  WalletButtons: () => (
-    <div data-testid="mounted-wallet-buttons">Mounted wallet stack</div>
-  ),
+  WalletButtons: ({ siwe, siws }: { siwe: boolean; siws: boolean }) => {
+    mountedWalletCapabilities.siwe = siwe;
+    mountedWalletCapabilities.siws = siws;
+    return <div data-testid="mounted-wallet-buttons">Mounted wallet stack</div>;
+  },
 }));
 
 import StewardLoginSection from "./steward-login-section";
@@ -166,6 +173,8 @@ describe("StewardLoginSection wallet collapse (#19217)", () => {
     });
     sessionSpies.recover.mockResolvedValue(null);
     sessionSpies.hasCookie = false;
+    mountedWalletCapabilities.siwe = null;
+    mountedWalletCapabilities.siws = null;
   });
 
   afterEach(() => {
@@ -249,6 +258,7 @@ describe("StewardLoginSection wallet collapse (#19217)", () => {
     expect(lockedToggle.hasAttribute("disabled")).toBe(true);
     expect(screen.queryByRole("button", { name: /EVM wallet/i })).toBeNull();
     expect(await screen.findByTestId("mounted-wallet-buttons")).toBeTruthy();
+    expect(mountedWalletCapabilities).toEqual({ siwe: true, siws: true });
 
     const liveRegion = document.getElementById("steward-wallet-options");
     expect(liveRegion).toBeTruthy();

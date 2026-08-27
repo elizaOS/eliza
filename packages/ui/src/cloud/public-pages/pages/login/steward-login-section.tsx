@@ -803,9 +803,8 @@ export default function StewardLoginSection() {
       if (!event.persisted) return;
       setLoading((current) => {
         if (
-          current === "google" ||
-          current === "discord" ||
-          current === "github"
+          current !== null &&
+          STEWARD_OAUTH_PROVIDERS.some((provider) => provider === current)
         ) {
           return null;
         }
@@ -2817,6 +2816,8 @@ export default function StewardLoginSection() {
                     auth={auth}
                     autoStart={autoStartWallet}
                     disabled={isLoading}
+                    siwe={providers.siwe === true}
+                    siws={providers.siws === true}
                     loadingProvider={
                       loading === "ethereum" || loading === "solana"
                         ? (loading as WalletKind)
