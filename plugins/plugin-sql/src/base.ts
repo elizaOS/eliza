@@ -557,6 +557,7 @@ import {
   entityTable,
   logTable,
   memoryTable,
+  memoryTextSegmentTable,
   messageServerAgentsTable,
   messageServerTable,
   messageTable,
