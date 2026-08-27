@@ -41,6 +41,13 @@ export interface DraftEntry {
   queuedAt: string; // ISO-8601
   approved: boolean;
   rejected: boolean;
+  /**
+   * True once this draft's amount has been recorded into the RollingSpendCap
+   * window. Guards against double-counting when approveDraft() is called more
+   * than once for the same draft. Approved-draft spend must accrue exactly once
+   * so the cap governs subsequent auto-approvals against the true balance.
+   */
+  counted: boolean;
 }
 
 /** Immutable record written to the audit log. */
@@ -160,11 +167,26 @@ export class SpendingPolicy {
 
   // ─── Draft queue management ─────────────────────────────────────────────────
 
-  /** Approve a queued draft by its draftId. Returns false if not found. */
+  /**
+   * Approve a queued draft by its draftId. Returns false if not found.
+   *
+   * A DraftThenApprove payment bypasses the auto-approval path in _check(), so
+   * its amount was never added to the RollingSpendCap window. Human approval is
+   * the point at which the spend becomes real, so record it here — exactly once
+   * and regardless of whether it now exceeds maxAmount (the human explicitly
+   * approved; the cap governs future auto-approvals, which must see the true
+   * accrued spend). Without this, the largest payments — the ones the cap is
+   * meant to govern — escape the rolling accounting entirely (fail-open).
+   */
   approveDraft(draftId: string): boolean {
     const draft = this.drafts.get(draftId);
     if (!draft) return false;
+    if (draft.rejected) return false;
     draft.approved = true;
+    if (this.config.rollingCap && !draft.counted) {
+      this.spendWindow.push({ amount: draft.payment.amount, ts: Date.now() });
+      draft.counted = true;
+    }
     return true;
   }
 
@@ -236,6 +258,7 @@ export class SpendingPolicy {
         queuedAt: payment.timestamp ?? new Date().toISOString(),
         approved: false,
         rejected: false,
+        counted: false,
       };
       this.drafts.set(draftId, draft);
 
