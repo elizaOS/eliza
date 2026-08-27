@@ -81,6 +81,7 @@
     "eval:timing:merge": "bun --conditions eliza-source --tsconfig-override ../../tsconfig.json src/timing-report-merge-cli.ts",
     "eval:memory-horizon": "bun --conditions eliza-source --tsconfig-override ../../tsconfig.json src/memory-horizon-matrix-cli.ts",
     "eval:multi-agent-arena": "bun --conditions eliza-source --tsconfig-override ../../tsconfig.json src/multi-agent-arena-cli.ts",
+    "eval:sales-lighthouse": "bun --conditions eliza-source --tsconfig-override ../../tsconfig.json src/multi-agent-arena-cli.ts --scenario=lighthouse",
     "format": "bunx @biomejs/biome format --write package.json",
     "format:check": "bunx @biomejs/biome format package.json",
     "typecheck": "tsc --noEmit"

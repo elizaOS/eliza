@@ -7,6 +7,12 @@ import {
   BUILT_IN_ARENA_TURNS,
   runMultiAgentArena,
 } from "./multi-agent-arena.ts";
+import {
+  evaluateLighthouseAssertions,
+  LIGHTHOUSE_PRIVATE_FACTS,
+  LIGHTHOUSE_SEATS,
+  LIGHTHOUSE_TURNS,
+} from "./multi-agent-sales-lighthouse.ts";
 
 function writeJsonAtomically(outputPath: string, value: unknown): void {
   const temporaryOutputPath = `${outputPath}.${process.pid}.tmp`;
@@ -91,12 +97,21 @@ async function main(): Promise<void> {
   const trajectoryDir = path.join(runDir, "trajectories", runId);
   process.env.ELIZA_TRAJECTORY_LOGGING = "1";
   process.env.ELIZA_TRAJECTORY_DIR = trajectoryDir;
+  const lighthouse = process.argv.includes("--scenario=lighthouse");
+  const seats = lighthouse ? LIGHTHOUSE_SEATS : BUILT_IN_ARENA_SEATS;
+  const turns = lighthouse ? LIGHTHOUSE_TURNS : BUILT_IN_ARENA_TURNS;
   const report = await runMultiAgentArena({
-    seats: BUILT_IN_ARENA_SEATS,
-    turns: BUILT_IN_ARENA_TURNS,
+    seats,
+    turns,
     preferredProvider: "cli",
-    maxPeerRounds: 1,
+    maxPeerRounds: lighthouse ? 2 : 1,
     runId,
+    ...(lighthouse
+      ? {
+          privateFacts: LIGHTHOUSE_PRIVATE_FACTS,
+          evaluateAssertions: evaluateLighthouseAssertions,
+        }
+      : {}),
   });
   const filesByAgent = Object.fromEntries(
     report.seats.map((seat) => [
@@ -106,8 +121,11 @@ async function main(): Promise<void> {
   );
   const trajectoryCapturePassed = report.seats.every((seat) => {
     const files = filesByAgent[seat.agentId] ?? [];
+    const expectedTurns = report.turns.filter(
+      (turn) => !turn.injectFailureSeatIds?.includes(seat.id),
+    ).length;
     return (
-      files.length >= report.turns.length &&
+      files.length >= expectedTurns &&
       files.every((file) =>
         isFinishedAgentTrajectory(trajectoryDir, file, seat.agentId),
       )

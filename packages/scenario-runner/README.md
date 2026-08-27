@@ -44,6 +44,17 @@ safe scheduling utility. Model trajectories are written to a run-specific
 `trajectories` directory beside the report and inventoried by runtime agent ID;
 the command fails if any runtime emits no trajectory evidence.
 
+Run the four-runtime Lighthouse sales evaluation, where an account executive,
+solutions architect, and compliance lead sell elizaOS as an embeddable agentic
+operating system to an adversarial buyer agent:
+
+```bash
+ELIZA_CHAT_VIA_CLI=codex \
+ELIZA_CLI_CODEX_BIN=/absolute/path/to/codex \
+bun run --cwd packages/scenario-runner eval:sales-lighthouse -- \
+  --output=../../reports/multi-agent-arena/lighthouse.json
+```
+
 ## When2Speak Stage-1 evaluation
 
 Run the full labeled JSONL through the same `runV5MessageRuntimeStage1` model
