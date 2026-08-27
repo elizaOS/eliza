@@ -936,6 +936,7 @@ export interface ElizaPlayVoicePluginLike extends NativePlugin {
   }): Promise<{ started: boolean }>;
   stopDictation(): Promise<void>;
   speak(options: { text: string; language?: string }): Promise<void>;
+  stop(): Promise<void>;
 }
 
 /**
