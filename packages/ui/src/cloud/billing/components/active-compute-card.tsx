@@ -15,6 +15,7 @@ import {
   ServerCog,
 } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { Alert } from "../../../components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -443,46 +444,30 @@ function ResourceCard({
           <Card asChild variant="billingTopDivider">
             <div className="mt-4 space-y-3">
               {!control.eligible ? (
-                <div
+                <Alert
                   ref={cancellationBlockerRef}
                   tabIndex={-1}
                   role="status"
-                  className="border border-border bg-bg-accent p-3 text-sm text-muted-strong outline-none"
+                  variant="default"
                 >
                   {cancellationBlockerMessage}
-                </div>
+                </Alert>
               ) : null}
 
-              <div
-                ref={cancellationStatusRef}
-                tabIndex={-1}
-                role={
-                  cancellationMessage
-                    ? cancellationIsAlert
-                      ? "alert"
-                      : "status"
-                    : undefined
-                }
-                aria-live={
-                  cancellationMessage
-                    ? cancellationIsAlert
-                      ? "assertive"
-                      : "polite"
-                    : undefined
-                }
-                className={
-                  cancellationMessage
-                    ? `border p-3 text-sm outline-none ${
-                        cancellationState?.kind === "provider_confirmed"
-                          ? "border-status-success/40 bg-status-success-bg text-status-success"
-                          : cancellationIsAlert
-                            ? "border-warn/40 bg-warn/10 text-txt"
-                            : "border-brand-surface bg-bg-accent text-muted-strong"
-                      }`
-                    : "outline-none"
-                }
-              >
-                {cancellationMessage ? (
+              {cancellationMessage ? (
+                <Alert
+                  ref={cancellationStatusRef}
+                  tabIndex={-1}
+                  role={cancellationIsAlert ? "alert" : "status"}
+                  aria-live={cancellationIsAlert ? "assertive" : "polite"}
+                  variant={
+                    cancellationState?.kind === "provider_confirmed"
+                      ? "dashboardSuccess"
+                      : cancellationIsAlert
+                        ? "warningStrong"
+                        : "default"
+                  }
+                >
                   <div className="flex items-start gap-2">
                     {isPending ? (
                       <Loader2
@@ -512,8 +497,8 @@ function ResourceCard({
                       ) : null}
                     </div>
                   </div>
-                ) : null}
-              </div>
+                </Alert>
+              ) : null}
 
               {control.eligible &&
               cancellationState?.kind === "receipt_unavailable" ? (
@@ -547,8 +532,8 @@ function ResourceCard({
                     <Button
                       ref={cancellationTriggerRef}
                       type="button"
-                      variant="outline"
-                      className="keyboard-focus-surface min-h-11 min-w-11 border-danger/60 font-mono text-danger hover:bg-destructive-subtle"
+                      variant="dangerOutline"
+                      className="keyboard-focus-surface min-h-11 min-w-11 font-mono"
                       disabled={!canSubmit}
                     >
                       {isRetry
@@ -602,18 +587,22 @@ function ResourceCard({
                           defaultValue: "Keep running",
                         })}
                       </AlertDialogCancel>
-                      <AlertDialogAction
-                        className="keyboard-focus-surface min-h-11 bg-destructive text-destructive-fg hover:bg-destructive/85"
-                        onClick={() => {
-                          submittedFromDialogRef.current = true;
-                          onRequestCancellation(resource);
-                        }}
-                      >
-                        {isRetry
-                          ? t("cloud.billing.compute.cancel.confirmRetry", {
-                              defaultValue: "Retry safely",
-                            })
-                          : actionLabel}
+                      <AlertDialogAction asChild>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          className="keyboard-focus-surface min-h-11"
+                          onClick={() => {
+                            submittedFromDialogRef.current = true;
+                            onRequestCancellation(resource);
+                          }}
+                        >
+                          {isRetry
+                            ? t("cloud.billing.compute.cancel.confirmRetry", {
+                                defaultValue: "Retry safely",
+                              })
+                            : actionLabel}
+                        </Button>
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
@@ -846,9 +835,11 @@ export function ActiveComputeCardView({
         </div>
 
         {state.refreshFailed || state.refreshPaused ? (
-          <div
+          <Card
+            variant="warningNotice"
+            padding="default"
             role="alert"
-            className="flex flex-col gap-3 border border-warn/40 bg-warn/10 p-3 sm:flex-row sm:items-center sm:justify-between"
+            className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
           >
             <div className="flex min-w-0 items-start gap-2 text-sm text-txt">
               <Clock3
@@ -880,7 +871,7 @@ export function ActiveComputeCardView({
                 t={t}
               />
             ) : null}
-          </div>
+          </Card>
         ) : (
           <p className="text-xs font-mono text-muted">
             {t("cloud.billing.compute.observedAt", {
@@ -892,7 +883,7 @@ export function ActiveComputeCardView({
 
         {resourcesObservation.status === "available" ? (
           resourcesObservation.value.length === 0 ? (
-            <div className="border border-brand-surface bg-surface px-4 py-8 text-center">
+            <Card variant="brandSurface" className="px-4 py-8 text-center">
               <p className="font-mono text-sm text-txt-strong">
                 {t("cloud.billing.compute.empty", {
                   defaultValue: "No active billable compute",
@@ -904,7 +895,7 @@ export function ActiveComputeCardView({
                     "No containers or agent sandboxes are currently reported as billable.",
                 })}
               </p>
-            </div>
+            </Card>
           ) : (
             <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">
               {resourcesObservation.value.map((resource) => (
@@ -923,7 +914,10 @@ export function ActiveComputeCardView({
             </ul>
           )
         ) : (
-          <div className="flex flex-col items-start gap-4 border border-brand-surface bg-surface p-4 sm:flex-row sm:justify-between">
+          <Card
+            variant="brandSurface"
+            className="flex flex-col items-start gap-4 p-4 sm:flex-row sm:justify-between"
+          >
             <div className="flex min-w-0 items-start gap-3">
               <AlertCircle
                 className="mt-0.5 size-4 shrink-0 text-warn"
@@ -948,11 +942,15 @@ export function ActiveComputeCardView({
                 t={t}
               />
             ) : null}
-          </div>
+          </Card>
         )}
 
         {resourcesObservation.status === "available" && hasPartialCost ? (
-          <div className="flex flex-col items-start gap-3 border border-warn/40 bg-warn/10 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <Card
+            variant="warningNotice"
+            padding="default"
+            className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between"
+          >
             <div className="flex min-w-0 items-start gap-2 text-sm text-txt">
               <AlertCircle
                 className="mt-0.5 size-4 shrink-0 text-warn"
@@ -972,7 +970,7 @@ export function ActiveComputeCardView({
                 t={t}
               />
             ) : null}
-          </div>
+          </Card>
         ) : null}
       </div>
     </BrandCard>
