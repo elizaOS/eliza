@@ -209,7 +209,8 @@ export function PaymentStateDetailClient({
             </DetailField>
 
             <DetailField label={authorityLabel}>
-              <button
+              <Button
+                variant="ghost"
                 type="button"
                 data-testid="payment-detail-authority"
                 aria-label={t("cloud.billingTab.copyAuthorityReference", {
@@ -226,7 +227,7 @@ export function PaymentStateDetailClient({
                 }}
               >
                 {row.authorityId}
-              </button>
+              </Button>
             </DetailField>
 
             <DetailField
@@ -235,7 +236,8 @@ export function PaymentStateDetailClient({
               })}
             >
               {row.receiptId ? (
-                <button
+                <Button
+                  variant="ghost"
                   type="button"
                   data-testid="payment-detail-receipt"
                   aria-label={t("cloud.billingTab.copyReceiptReference", {
@@ -253,7 +255,7 @@ export function PaymentStateDetailClient({
                   }}
                 >
                   {row.receiptId}
-                </button>
+                </Button>
               ) : (
                 <span
                   className="text-muted-strong"

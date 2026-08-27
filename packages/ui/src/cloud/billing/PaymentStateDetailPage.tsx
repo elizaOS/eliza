@@ -5,7 +5,7 @@
  * loading / not-found / error / success states per the repo error policy.
  */
 
-import { DashboardLoadingState } from "@elizaos/ui/cloud-ui";
+import { Button, DashboardLoadingState } from "@elizaos/ui/cloud-ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ApiError, api } from "../lib/api-client";
@@ -138,7 +138,8 @@ export default function PaymentStateDetailPage() {
             defaultValue: "This payment could not be found in your history.",
           })}
         </p>
-        <button
+        <Button
+          variant="ghost"
           type="button"
           onClick={() => navigate("/settings#cloud-billing")}
           className="text-xs font-mono text-txt-strong underline uppercase hover:text-txt transition-colors"
@@ -146,7 +147,7 @@ export default function PaymentStateDetailPage() {
           {t("cloud.paymentStateDetail.backToBillingLink", {
             defaultValue: "Back to billing",
           })}
-        </button>
+        </Button>
       </div>
     );
   }
@@ -163,7 +164,8 @@ export default function PaymentStateDetailPage() {
           })}
         </p>
         <p className="text-xs text-muted-strong font-mono">{phase.message}</p>
-        <button
+        <Button
+          variant="ghost"
           type="button"
           onClick={() => void fetchState()}
           className="text-xs font-mono text-txt-strong underline uppercase hover:text-txt transition-colors"
@@ -171,7 +173,7 @@ export default function PaymentStateDetailPage() {
           {t("cloud.billingTab.paymentActivityRetry", {
             defaultValue: "Retry",
           })}
-        </button>
+        </Button>
       </div>
     );
   }
