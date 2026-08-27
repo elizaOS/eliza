@@ -26,8 +26,12 @@ const UNIQUE_NODE_INCARNATION = "40000000-0000-4000-8000-000000000002";
 const FIRST_HISTORY_ID = "50000000-0000-4000-8000-000000000001";
 const ABA_HISTORY_ID = "50000000-0000-4000-8000-000000000002";
 const UNIQUE_HISTORY_ID = "50000000-0000-4000-8000-000000000003";
-const migration = readFileSync(
+const admissionMigration = readFileSync(
   new URL("./migrations/0341_agent_backup_admission_cursors.sql", import.meta.url),
+  "utf8",
+);
+const guardRetirementMigration = readFileSync(
+  new URL("./migrations/0342_retire_agent_backup_admission_protocol_guard.sql", import.meta.url),
   "utf8",
 );
 
@@ -44,9 +48,9 @@ async function publicTables(): Promise<string[]> {
   return result.rows.map(({ table_name }) => table_name);
 }
 
-async function applyMigration(target = database): Promise<void> {
+async function applyMigration(source: string, target = database): Promise<void> {
   await target.transaction(async (transaction) => {
-    for (const statement of migration.split("--> statement-breakpoint")) {
+    for (const statement of source.split("--> statement-breakpoint")) {
       if (statement.trim()) await transaction.exec(statement);
     }
   });
@@ -155,15 +159,15 @@ beforeAll(async () => {
   `);
   tablesBeforeMigration = await publicTables();
 
-  await applyMigration();
-  await applyMigration();
+  await applyMigration(admissionMigration);
+  await applyMigration(admissionMigration);
 }, 60_000);
 
 afterAll(async () => {
   await database.close();
 });
 
-describe("0334 backup admission authority migration", () => {
+describe("0341-0342 backup admission authority migrations", () => {
   test("never guesses an append-only occurrence for legacy rows", async () => {
     const backups = await database.query<{ id: string; source_node_history_id: string | null }>(`
       SELECT id, source_node_history_id
@@ -516,6 +520,123 @@ describe("0334 backup admission authority migration", () => {
     expect(secondLane.rows).toEqual([]);
   });
 
+  test("retires only the protocol guard and remains idempotent", async () => {
+    await applyMigration(guardRetirementMigration);
+    await applyMigration(guardRetirementMigration);
+
+    const guards = await database.query<{
+      function_count: number;
+      trigger_count: number;
+    }>(`
+      SELECT
+        (
+          SELECT count(*)::integer
+          FROM pg_trigger
+          WHERE tgrelid = 'agent_sandbox_backups'::regclass
+            AND tgname = 'agent_sandbox_backups_require_admission_protocol'
+            AND NOT tgisinternal
+        ) AS trigger_count,
+        (
+          SELECT count(*)::integer
+          FROM pg_proc
+          JOIN pg_namespace ON pg_namespace.oid = pg_proc.pronamespace
+          WHERE pg_namespace.nspname = 'public'
+            AND pg_proc.proname = 'require_agent_backup_admission_protocol'
+        ) AS function_count
+    `);
+    expect(guards.rows).toEqual([{ function_count: 0, trigger_count: 0 }]);
+
+    const preservedTriggers = await database.query<{ tgname: string }>(`
+      SELECT tgname
+      FROM pg_trigger
+      WHERE tgrelid = 'agent_sandbox_backups'::regclass
+        AND tgname IN (
+          'agent_sandbox_backups_bind_admission_authorities',
+          'agent_sandbox_backups_preserve_admission_identity'
+        )
+        AND NOT tgisinternal
+      ORDER BY tgname
+    `);
+    expect(preservedTriggers.rows).toEqual([
+      { tgname: "agent_sandbox_backups_bind_admission_authorities" },
+      { tgname: "agent_sandbox_backups_preserve_admission_identity" },
+    ]);
+
+    const preservedConstraints = await database.query<{ conname: string }>(`
+      SELECT conname
+      FROM pg_constraint
+      WHERE conrelid = 'agent_sandbox_backups'::regclass
+        AND conname IN (
+          'agent_sandbox_backups_capture_source_occurrence_check',
+          'agent_sandbox_backups_source_node_occurrence_fkey'
+        )
+      ORDER BY conname
+    `);
+    expect(preservedConstraints.rows).toEqual([
+      { conname: "agent_sandbox_backups_capture_source_occurrence_check" },
+      { conname: "agent_sandbox_backups_source_node_occurrence_fkey" },
+    ]);
+
+    const ownerId = "backup-worker-forward-migration";
+    const generation = "60000000-0000-4000-8000-000000000002";
+    await database.exec(`
+      UPDATE agent_sandbox_backups
+      SET catalog_lease_owner = '${ownerId}',
+        catalog_lease_generation = '${generation}',
+        catalog_lease_expires_at = clock_timestamp() + interval '1 hour'
+      WHERE id = '${PROTOCOL_BACKUP_ID}';
+      UPDATE agent_sandbox_backups
+      SET catalog_lease_expires_at = catalog_lease_expires_at + interval '1 hour'
+      WHERE id = '${PROTOCOL_BACKUP_ID}';
+    `);
+    const lease = await database.query<{
+      catalog_lease_generation: string | null;
+      catalog_lease_owner: string | null;
+      lease_is_live: boolean;
+    }>(`
+      SELECT catalog_lease_owner, catalog_lease_generation,
+        catalog_lease_expires_at > clock_timestamp() AS lease_is_live
+      FROM agent_sandbox_backups
+      WHERE id = '${PROTOCOL_BACKUP_ID}'
+    `);
+    expect(lease.rows).toEqual([
+      {
+        catalog_lease_generation: generation,
+        catalog_lease_owner: ownerId,
+        lease_is_live: true,
+      },
+    ]);
+
+    await expect(
+      database.exec(`
+        UPDATE agent_sandbox_backups
+        SET source_node_id = 'different-node'
+        WHERE id = '${IMMUTABLE_BACKUP_ID}'
+      `),
+    ).rejects.toThrow(/admission identity is immutable/i);
+    await expect(
+      database.exec(`
+        INSERT INTO agent_sandbox_backups (
+          id, catalog_version, catalog_state, catalog_organization_id,
+          source_node_history_id, source_node_record_id, source_node_incarnation,
+          created_at
+        ) VALUES (
+          '${FOREIGN_KEY_BACKUP_ID}', 1, 'legacy_unmigrated', '${ORGANIZATION_ID}',
+          '${UNIQUE_HISTORY_ID}', '30000000-0000-4000-8000-000000000099',
+          '${UNIQUE_NODE_INCARNATION}', '2026-08-26T13:00:00Z'
+        )
+      `),
+    ).rejects.toThrow(/source_node_occurrence|foreign key/i);
+
+    await database.exec(`
+      UPDATE agent_sandbox_backups
+      SET catalog_lease_owner = NULL,
+        catalog_lease_generation = NULL,
+        catalog_lease_expires_at = NULL
+      WHERE id = '${PROTOCOL_BACKUP_ID}'
+    `);
+  });
+
   test("aborts cutover instead of silently stranding a legacy capture", async () => {
     const blockedDatabase = new PGlite();
     try {
@@ -532,7 +653,7 @@ describe("0334 backup admission authority migration", () => {
           '20000000-0000-4000-8000-000000000099', 2, 'failed_retryable', 'capturing'
         );
       `);
-      await expect(applyMigration(blockedDatabase)).rejects.toThrow(
+      await expect(applyMigration(admissionMigration, blockedDatabase)).rejects.toThrow(
         /explicit source occurrence reconciliation/i,
       );
       const columns = await blockedDatabase.query<{ column_name: string }>(`
@@ -588,7 +709,9 @@ describe("0334 backup admission authority migration", () => {
             catalog_organization_id, source_node_history_id, catalog_lease_expires_at
           ) VALUES ${fixture.rows};
         `);
-        await expect(applyMigration(blockedDatabase)).rejects.toThrow(fixture.expected);
+        await expect(applyMigration(admissionMigration, blockedDatabase)).rejects.toThrow(
+          fixture.expected,
+        );
       } finally {
         await blockedDatabase.close();
       }

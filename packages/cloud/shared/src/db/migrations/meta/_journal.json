@@ -2276,6 +2276,13 @@
       "when": 1794254400032,
       "tag": "0341_agent_backup_admission_cursors",
       "breakpoints": true
+    },
+    {
+      "idx": 325,
+      "version": "7",
+      "when": 1794254400033,
+      "tag": "0342_retire_agent_backup_admission_protocol_guard",
+      "breakpoints": true
     }
   ]
 }

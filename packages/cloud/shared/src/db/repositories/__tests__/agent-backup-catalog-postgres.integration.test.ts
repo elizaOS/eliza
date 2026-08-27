@@ -6,6 +6,7 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { pushSchema } from "drizzle-kit/api";
 import { asc, eq, sql } from "drizzle-orm";
 import { Client } from "pg";
@@ -13,11 +14,14 @@ import {
   acquireEphemeralPostgres,
   type EphemeralPostgres,
 } from "../../../lib/services/tenant-db/__tests__/ephemeral-postgres";
+import { sqlRows } from "../../execute-helpers";
+import { agentNodeIncarnationHistories } from "../../schemas/agent-node-incarnation-histories";
 import {
   agentBackupCatalogAuthorities,
   agentSandboxBackups,
   agentSandboxes,
 } from "../../schemas/agent-sandboxes";
+import { dockerNodes } from "../../schemas/docker-nodes";
 import { organizations } from "../../schemas/organizations";
 import { userCharacters } from "../../schemas/user-characters";
 import { users } from "../../schemas/users";
@@ -42,7 +46,9 @@ interface TenantFixture {
   readonly organizationId: string;
   readonly userId: string;
   readonly agentId: string;
+  readonly nodeHistoryId: string;
   readonly nodeRecordId: string;
+  readonly nodeId: string;
   readonly nodeIncarnation: string;
 }
 
@@ -50,14 +56,18 @@ const TENANT_A = {
   organizationId: "10000000-0000-4000-8000-000000000201",
   userId: "20000000-0000-4000-8000-000000000201",
   agentId: "30000000-0000-4000-8000-000000000201",
+  nodeHistoryId: "41000000-0000-4000-8000-000000000201",
   nodeRecordId: "40000000-0000-4000-8000-000000000201",
+  nodeId: "backup-catalogue-tenant-a-node",
   nodeIncarnation: "50000000-0000-4000-8000-000000000201",
 } as const satisfies TenantFixture;
 const TENANT_B = {
   organizationId: "10000000-0000-4000-8000-000000000202",
   userId: "20000000-0000-4000-8000-000000000202",
   agentId: "30000000-0000-4000-8000-000000000202",
+  nodeHistoryId: "41000000-0000-4000-8000-000000000202",
   nodeRecordId: "40000000-0000-4000-8000-000000000202",
+  nodeId: "backup-catalogue-tenant-b-node",
   nodeIncarnation: "50000000-0000-4000-8000-000000000202",
 } as const satisfies TenantFixture;
 const OPERATION_A1 = "60000000-0000-4000-8000-000000000201";
@@ -67,6 +77,10 @@ const OWNER_A = "backup-catalogue-postgres-worker-a";
 const OWNER_B = "backup-catalogue-postgres-worker-b";
 const PAYLOAD_DIGEST = "a".repeat(64);
 const CONTAINER_ID = "b".repeat(64);
+const BACKUP_ADMISSION_MIGRATIONS = [
+  "0341_agent_backup_admission_cursors",
+  "0342_retire_agent_backup_admission_protocol_guard",
+] as const;
 
 type ClientModule = typeof import("../../client");
 type CatalogRepository = typeof import("../agent-backup-catalog");
@@ -82,6 +96,26 @@ let catalogRepository: CatalogRepository | undefined;
 function restoreEnv(name: keyof typeof ORIGINAL_ENV, value: string | undefined): void {
   if (value === undefined) delete process.env[name];
   else process.env[name] = value;
+}
+
+async function expectPostgresFailure(operation: Promise<unknown>, expected: RegExp): Promise<void> {
+  let failure: unknown;
+  try {
+    await operation;
+  } catch (error) {
+    failure = error;
+  }
+
+  const details: string[] = [];
+  let current = failure;
+  for (let depth = 0; current && depth < 8; depth += 1) {
+    if (current instanceof Error) details.push(current.message);
+    if (typeof current !== "object") break;
+    const record = current as { cause?: unknown; constraint?: unknown };
+    if (typeof record.constraint === "string") details.push(record.constraint);
+    current = record.cause;
+  }
+  expect(details.join("\n")).toMatch(expected);
 }
 
 async function createIsolatedDatabase(baseDsn: string): Promise<{
@@ -182,6 +216,18 @@ async function initializeHarness(): Promise<void> {
   dbWrite = client.dbWrite;
   closeDatabaseConnectionsForTests = client.closeDatabaseConnectionsForTests;
   catalogRepository = repository;
+}
+
+async function applyBackupAdmissionMigrations(): Promise<void> {
+  if (!dbWrite) throw new Error("Real PostgreSQL harness was not initialized");
+  for (const tag of BACKUP_ADMISSION_MIGRATIONS) {
+    const source = readFileSync(new URL(`../../migrations/${tag}.sql`, import.meta.url), "utf8");
+    await dbWrite.transaction(async (transaction) => {
+      for (const statement of source.split("--> statement-breakpoint")) {
+        if (statement.trim()) await transaction.execute(sql.raw(statement));
+      }
+    });
+  }
 }
 
 async function waitForRepositoryLockWaiters(
@@ -289,6 +335,33 @@ async function settleTeardown(
   }
 }
 
+async function seedSourceAuthority(tenant: TenantFixture): Promise<void> {
+  if (!dbWrite) throw new Error("Real PostgreSQL harness was not initialized");
+  const hostKeyFingerprint = `sha256:${tenant.nodeId}`;
+  await dbWrite.insert(agentNodeIncarnationHistories).values({
+    id: tenant.nodeHistoryId,
+    docker_node_record_id: tenant.nodeRecordId,
+    node_id: tenant.nodeId,
+    node_incarnation: tenant.nodeIncarnation,
+    fleet_kind: "robot",
+    infrastructure_provider: "hetzner",
+    provider_server_id: null,
+    host_key_fingerprint: hostKeyFingerprint,
+  });
+  await dbWrite.insert(dockerNodes).values({
+    id: tenant.nodeRecordId,
+    node_id: tenant.nodeId,
+    hostname: tenant.nodeId,
+    status: "healthy",
+    host_key_fingerprint: hostKeyFingerprint,
+    fleet_kind: "robot",
+    infrastructure_provider: "hetzner",
+    provider_server_id: null,
+    node_incarnation: tenant.nodeIncarnation,
+    current_node_history_id: tenant.nodeHistoryId,
+  });
+}
+
 async function seedTenant(tenant: TenantFixture, suffix: string): Promise<void> {
   if (!dbWrite) throw new Error("Real PostgreSQL harness was not initialized");
   await dbWrite.insert(organizations).values({
@@ -343,7 +416,7 @@ async function seedBackup(params: {
     lifecycle_revision: 0n,
     source_provider: "operator-onboarded",
     source_node_record_id: params.tenant.nodeRecordId,
-    source_node_id: `backup-catalogue-${params.suffix}-node`,
+    source_node_id: params.tenant.nodeId,
     source_node_incarnation: params.tenant.nodeIncarnation,
     source_provider_server_id: null,
     source_provider_handle: `backup-catalogue-${params.suffix}-container`,
@@ -407,6 +480,8 @@ realPostgres("canonical backup catalogue contention", () => {
         organizations,
         users,
         userCharacters,
+        agentNodeIncarnationHistories,
+        dockerNodes,
         agentSandboxes,
         agentSandboxBackups,
         agentBackupCatalogAuthorities,
@@ -414,6 +489,9 @@ realPostgres("canonical backup catalogue contention", () => {
       dbWrite as never,
     );
     await apply();
+    await seedSourceAuthority(TENANT_A);
+    await seedSourceAuthority(TENANT_B);
+    await applyBackupAdmissionMigrations();
     await installBackupMutationGuardForTests();
   }, 60_000);
 
@@ -427,6 +505,173 @@ realPostgres("canonical backup catalogue contention", () => {
     await dbWrite.delete(organizations);
     await seedTenant(TENANT_A, "tenant-a");
     await seedTenant(TENANT_B, "tenant-b");
+  });
+
+  test("retires only the protocol guard after the admission migration", async () => {
+    if (!dbWrite) throw new Error("Real PostgreSQL harness was not initialized");
+    const [migrationState] = await sqlRows<{
+      bind_trigger_exists: boolean;
+      capture_check_exists: boolean;
+      node_cursor_exists: boolean;
+      occurrence_fk_exists: boolean;
+      organization_cursor_exists: boolean;
+      preserve_trigger_exists: boolean;
+      protocol_function_exists: boolean;
+      protocol_trigger_exists: boolean;
+    }>(
+      dbWrite,
+      sql`
+        SELECT
+          EXISTS (
+            SELECT 1 FROM pg_trigger
+            WHERE tgrelid = 'agent_sandbox_backups'::regclass
+              AND tgname = 'agent_sandbox_backups_require_admission_protocol'
+              AND NOT tgisinternal
+          ) AS protocol_trigger_exists,
+          to_regprocedure('public.require_agent_backup_admission_protocol()') IS NOT NULL
+            AS protocol_function_exists,
+          EXISTS (
+            SELECT 1 FROM pg_trigger
+            WHERE tgrelid = 'agent_sandbox_backups'::regclass
+              AND tgname = 'agent_sandbox_backups_bind_admission_authorities'
+              AND NOT tgisinternal
+          ) AS bind_trigger_exists,
+          EXISTS (
+            SELECT 1 FROM pg_trigger
+            WHERE tgrelid = 'agent_sandbox_backups'::regclass
+              AND tgname = 'agent_sandbox_backups_preserve_admission_identity'
+              AND NOT tgisinternal
+          ) AS preserve_trigger_exists,
+          EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conrelid = 'agent_sandbox_backups'::regclass
+              AND conname = 'agent_sandbox_backups_source_node_occurrence_fkey'
+          ) AS occurrence_fk_exists,
+          EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conrelid = 'agent_sandbox_backups'::regclass
+              AND conname = 'agent_sandbox_backups_capture_source_occurrence_check'
+          ) AS capture_check_exists,
+          to_regclass('public.agent_backup_organization_admission_cursors') IS NOT NULL
+            AS organization_cursor_exists,
+          to_regclass('public.agent_backup_node_admission_cursors') IS NOT NULL
+            AS node_cursor_exists
+      `,
+    );
+    expect(migrationState).toEqual({
+      bind_trigger_exists: true,
+      capture_check_exists: true,
+      node_cursor_exists: true,
+      occurrence_fk_exists: true,
+      organization_cursor_exists: true,
+      preserve_trigger_exists: true,
+      protocol_function_exists: false,
+      protocol_trigger_exists: false,
+    });
+
+    const backupId = await seedBackup({
+      tenant: TENANT_A,
+      suffix: "preserved-authorities",
+      operationId: OPERATION_A1,
+      dueAt: new Date("2020-01-01T00:00:00.000Z"),
+    });
+    const [bound] = await dbWrite
+      .select({
+        sourceNodeHistoryId: agentSandboxBackups.source_node_history_id,
+        sourceNodeId: agentSandboxBackups.source_node_id,
+      })
+      .from(agentSandboxBackups)
+      .where(eq(agentSandboxBackups.id, backupId));
+    expect(bound).toEqual({
+      sourceNodeHistoryId: TENANT_A.nodeHistoryId,
+      sourceNodeId: TENANT_A.nodeId,
+    });
+
+    await expectPostgresFailure(
+      dbWrite
+        .update(agentSandboxBackups)
+        .set({ source_node_id: TENANT_B.nodeId })
+        .where(eq(agentSandboxBackups.id, backupId))
+        .execute(),
+      /admission identity is immutable/i,
+    );
+    const [preserved] = await dbWrite
+      .select({ sourceNodeId: agentSandboxBackups.source_node_id })
+      .from(agentSandboxBackups)
+      .where(eq(agentSandboxBackups.id, backupId));
+    expect(preserved?.sourceNodeId).toBe(TENANT_A.nodeId);
+    await expectPostgresFailure(
+      dbWrite
+        .insert(agentSandboxBackups)
+        .values({
+          id: randomUUID(),
+          sandbox_record_id: TENANT_A.agentId,
+          snapshot_type: "auto",
+          state_data: { memories: [], config: {}, workspaceFiles: {} },
+          state_data_storage: "inline",
+          size_bytes: 0,
+          backup_kind: "full",
+          source_node_history_id: TENANT_B.nodeHistoryId,
+          source_node_record_id: TENANT_A.nodeRecordId,
+          source_node_incarnation: TENANT_A.nodeIncarnation,
+        })
+        .execute(),
+      /source_node_occurrence|foreign key/i,
+    );
+  });
+
+  test("claims, heartbeats, and releases without the protocol GUC", async () => {
+    if (!dbWrite || !catalogRepository) {
+      throw new Error("Real PostgreSQL harness was not initialized");
+    }
+    const [session] = await sqlRows<{ protocol: string | null }>(
+      dbWrite,
+      sql`SELECT current_setting('eliza.agent_backup_admission_protocol', true) AS protocol`,
+    );
+    expect(session?.protocol).not.toBe("2");
+
+    const backupId = await seedBackup({
+      tenant: TENANT_A,
+      suffix: "no-protocol-guc",
+      operationId: OPERATION_A1,
+      dueAt: new Date("2020-01-01T00:00:00.000Z"),
+    });
+    const [claim] = await catalogRepository.claimDueAgentBackupOperations({
+      ownerId: OWNER_A,
+      limit: 1,
+      leaseMs: 60_000,
+    });
+    if (!claim?.backup.lifecycle_generation) {
+      throw new Error("Expected a claimed backup with lifecycle authority");
+    }
+    const heartbeat = await catalogRepository.heartbeatAgentBackupOperation({
+      organizationId: TENANT_A.organizationId,
+      backupId,
+      execution: { ownerId: claim.ownerId, generation: claim.generation },
+      leaseMs: 60_000,
+    });
+    expect(heartbeat).toMatchObject({
+      id: backupId,
+      catalog_lease_owner: claim.ownerId,
+      catalog_lease_generation: claim.generation,
+    });
+
+    const released = await catalogRepository.failAgentBackupOperation({
+      organizationId: TENANT_A.organizationId,
+      backupId,
+      operationId: OPERATION_A1,
+      lifecycleGeneration: claim.backup.lifecycle_generation,
+      expectedState: "scheduled",
+      terminal: true,
+      error: { code: "CAPTURE_TERMINAL", message: "forward migration release proof" },
+      execution: { ownerId: claim.ownerId, generation: claim.generation },
+    });
+    expect(released).toMatchObject({
+      catalog_state: "failed_terminal",
+      catalog_lease_owner: null,
+      catalog_lease_generation: null,
+      catalog_lease_expires_at: null,
+    });
   });
 
   test("serves another tenant while preserving one-operation-per-tenant admission", async () => {
