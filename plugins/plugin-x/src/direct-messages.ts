@@ -241,14 +241,25 @@ export class TwitterDirectMessageClient {
       // (re-registered) evidence chain instead of being rejected while
       // unavailable or erased by a post-hoc reset. The flag is only cleared
       // after restoration succeeds, so a contained restore failure is
-      // retried on the next poll (R3 finding 3).
-      if (this.membershipDegradedForAuth && this.hasBoundMembershipScopes()) {
-        await this.restoreMembershipScopes("x_auth_recovered");
+      // retried on the next poll (R3 finding 3, R4 finding 1). With no
+      // bound scopes there is nothing to restore: clear the flag so a later
+      // poll cannot force-restore and reset freshly published evidence
+      // (R4 finding 3 edge).
+      if (this.membershipDegradedForAuth) {
+        if (this.hasBoundMembershipScopes()) {
+          const restored =
+            await this.restoreMembershipScopes("x_auth_recovered");
+          if (!restored) {
+            // Restoration was attempted and failed: keep the degraded
+            // marker so the next poll retries (contained per J4).
+            return;
+          }
+          // Clear own-membership markers so restored scopes re-prove the
+          // account's own participation immediately instead of waiting out
+          // the marker window.
+          this.ownMembershipPublishedAt.clear();
+        }
         this.membershipDegradedForAuth = false;
-        // Clear own-membership markers so restored scopes re-prove the
-        // account's own participation immediately instead of waiting out
-        // the marker window.
-        this.ownMembershipPublishedAt.clear();
       }
       await this.processNewMessages();
     } catch (error) {
@@ -299,44 +310,54 @@ export class TwitterDirectMessageClient {
     }
   }
 
-  /** Restore all scopes after authorization recovers; contained per J4. */
-  private async restoreMembershipScopes(reason: string): Promise<void> {
+  /** Restore all scopes after authorization recovers. Returns false when the
+   * restoration was attempted but failed, so the caller keeps the degraded
+   * marker and retries on the next poll (R4 finding 1: a suppressed restore
+   * failure must not read as recovery). Contained per J4. */
+  private async restoreMembershipScopes(reason: string): Promise<boolean> {
     try {
       await this.membership.restoreAllScopes(reason);
+      return true;
     } catch (error) {
       // error-policy:J4 degrade-only side surface; never break the poll path.
-      logger.debug(
+      logger.warn(
         {
           src: "plugin:x",
           accountId: this.client.accountId,
           error: error instanceof Error ? error.message : String(error),
         },
-        "X DM membership scope restore-all failed",
+        "X DM membership scope restore-all failed; will retry on next poll",
       );
+      return false;
     }
   }
 
   /**
    * Restore one conversation scope after the account itself rejoins it.
-   * Contained per J4: a failed restore leaves the scope degraded (fail
-   * closed), never breaks the roster-event loop.
+   * Returns false when the restoration was attempted but failed, so the
+   * roster-event caller withholds the cursor advance for this event and the
+   * restore is retried on the next poll (R4 finding 2: publishing past a
+   * failed restore would strand the scope durably unavailable). Contained
+   * per J4: never breaks the roster-event loop.
    */
   private async restoreOneMembershipScope(
     scope: MembershipScope,
     reason: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
       await this.membership.restoreScope({ scope, reason });
+      return true;
     } catch (error) {
       // error-policy:J4 degrade-only side surface; never break the poll path.
-      logger.debug(
+      logger.warn(
         {
           src: "plugin:x",
           accountId: this.client.accountId,
           error: error instanceof Error ? error.message : String(error),
         },
-        "X DM membership scope restore failed",
+        "X DM membership scope restore failed; withholding cursor advance for retry",
       );
+      return false;
     }
   }
 
@@ -435,11 +456,18 @@ export class TwitterDirectMessageClient {
         // Membership evidence (#24372): observed-only join/leave proofs.
         // Event-anchored idempotency keys absorb redelivery; a publish
         // failure must not hold the poll cursor (degrade-only evidence), so
-        // the cursor advances regardless.
-        await this.publishMembershipFromRosterEvent(
+        // the cursor advances regardless — EXCEPT when an own-account
+        // rejoin's scope restoration failed: publishing or advancing past
+        // it would strand the scope durably unavailable with no retry, so
+        // the cursor is withheld and the event retried next poll (R4
+        // finding 2).
+        const retryable = await this.publishMembershipFromRosterEvent(
           event as DirectMessageEvent & { id: string },
           ownUserId,
         );
+        if (retryable === "retry") {
+          break;
+        }
         await this.runtime.setCache(cursorKey, event.id);
         continue;
       }
@@ -813,21 +841,23 @@ export class TwitterDirectMessageClient {
    * the absence of unlisted members, so `participant_ids` never becomes a
    * completeness claim. The account's own removal degrades the scope (the
    * account can no longer observe the conversation) instead of revoking its
-   * own membership row.
+   * own membership row. Returns "retry" when an own-rejoin scope restoration
+   * failed and the event must be reprocessed on the next poll (R4 finding
+   * 2); all other failures stay contained and the cursor may advance.
    */
   private async publishMembershipFromRosterEvent(
     event: DirectMessageEvent & { id: string },
     ownUserId: string,
-  ): Promise<void> {
+  ): Promise<"ok" | "retry"> {
     try {
       const conversationId = event.dm_conversation_id?.trim();
-      if (!conversationId) return;
+      if (!conversationId) return "ok";
       const scope = await this.membership.scopeForConversation({
         conversationId,
         accountKey: this.client.accountId,
         ownUserId,
       });
-      if (!scope) return;
+      if (!scope) return "ok";
       const isJoin = event.event_type === "ParticipantsJoin";
       const participants = (event.participant_ids ?? []).filter(
         (id) => typeof id === "string" && id.trim(),
@@ -846,7 +876,7 @@ export class TwitterDirectMessageClient {
           },
           "X DM roster event carried no participant_ids; no membership evidence published",
         );
-        return;
+        return "ok";
       }
       const anchoredAt = event.created_at
         ? Date.parse(event.created_at)
@@ -907,10 +937,16 @@ export class TwitterDirectMessageClient {
           // durably `unavailable` scope and authorization stays failed
           // closed forever (R3 finding 2). Contained per J4.
           if (participantId === ownUserId) {
-            await this.restoreOneMembershipScope(
+            const restored = await this.restoreOneMembershipScope(
               scope,
               "own_account_rejoined_conversation",
             );
+            if (!restored) {
+              // Withhold the cursor and reprocess this event next poll:
+              // publishing past a failed restore would strand the scope
+              // durably unavailable (R4 finding 2).
+              return "retry";
+            }
           }
           await this.publishOwnMembership(conversationId, ownUserId);
           await this.membership.publishJoin({
@@ -940,6 +976,7 @@ export class TwitterDirectMessageClient {
           });
         }
       }
+      return "ok";
     } catch (error) {
       // error-policy:J4 Membership evidence is a degrade-only side surface of
       // the poll path; failures are logged, never propagated into the loop.
@@ -952,6 +989,7 @@ export class TwitterDirectMessageClient {
         },
         "X DM membership evidence publish failed",
       );
+      return "ok";
     }
   }
 
