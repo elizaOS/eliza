@@ -11,12 +11,15 @@
  * keep the ledger's three distinct authorities separate: provider-cumulative
  * reversed amounts in the charge's own currency (per charge/dispute
  * authority, summed across authorities; Stripe minor units divided by 100,
- * charge currency despite the legacy `reversed_usd` metadata key),
- * applied credit clawbacks (credit units — NOT USD for credit packs), and
- * the unrecovered shortfall recorded by the clawback mutation. Policy
- * effects are never invented: while the refund/chargeback entitlement
- * decision (#22930) is unresolved, every reversal row reports an explicit
- * unavailable policy effect.
+ * charge currency despite the legacy `reversed_usd` metadata key), applied
+ * credit clawbacks (credit units — NOT USD for credit packs), and the
+ * unrecovered credit-unit shortfall currently outstanding on the clawback
+ * ledger: derived as max cumulative clawback target minus net applied
+ * credits, so later rows that carry earlier under-recovery in their
+ * cumulative snapshots are never double-counted. Policy effects are never
+ * invented: while the refund/chargeback entitlement decision (#22930) is
+ * unresolved, every reversal row reports an explicit unavailable policy
+ * effect.
  *
  * Purchase identity is typed and provider-scoped: Stripe rows unify on the
  * payment intent id; OxaPay rows join through `payment_request_id`, whose
@@ -109,11 +112,16 @@ export interface PaymentStateRow {
   /** Credits restored by dispute reinstatement (credit units). */
   reinstatedCredits: number;
   /**
-   * Amount the clawback could not recover from the balance, recorded by the
-   * mutation in the purchase's own currency (major units). NOT USD unless
-   * the charge itself is USD.
+   * Clawback target the org balance could not cover, still outstanding now
+   * (CREDIT units — the clawback target is denominated in granted credits,
+   * never provider currency). Derived as max cumulative clawback target
+   * minus net applied clawback credits, so per-row shortfall snapshots that
+   * already fold in earlier under-recovery are not double-counted; legacy
+   * rows without a recorded target fall back to the chronologically last
+   * shortfall snapshot. NOT USD even though the ledger metadata key is
+   * `unrecovered_clawback_usd`.
    */
-  unrecoveredShortfallChargeCurrency: number;
+  unrecoveredShortfallCredits: number;
   /** True when a dispute reinstatement ledger row exists for this purchase. */
   disputeReinstated: boolean;
   /**
@@ -131,7 +139,17 @@ interface ReversalAggregate {
   cumulativeDisputedChargeCurrency: number;
   cumulativeClawbackCredits: number;
   reinstatedCredits: number;
-  unrecoveredShortfallChargeCurrency: number;
+  /** Outstanding credit-unit clawback shortfall — derived after the row pass. */
+  unrecoveredShortfallCredits: number;
+  /** Max cumulative clawback target observed (credit units), when recorded. */
+  maxCumulativeTargetCredits: number | null;
+  /**
+   * Shortfall snapshot of the chronologically newest clawback row that
+   * recorded one (credit units) — legacy fallback for rows written without
+   * a cumulative target. Rows arrive newest-first, so the first snapshot
+   * seen wins.
+   */
+  lastShortfallSnapshotCredits: number | null;
   disputeReinstated: boolean;
   lastReversalAt: number;
   /** Ledger row id of the latest reversal — stable tie-breaker for equal timestamps. */
@@ -145,7 +163,9 @@ function emptyAggregate(): ReversalAggregate {
     cumulativeDisputedChargeCurrency: 0,
     cumulativeClawbackCredits: 0,
     reinstatedCredits: 0,
-    unrecoveredShortfallChargeCurrency: 0,
+    unrecoveredShortfallCredits: 0,
+    maxCumulativeTargetCredits: null,
+    lastShortfallSnapshotCredits: null,
     disputeReinstated: false,
     lastReversalAt: -1,
     lastReversalRowId: "",
@@ -207,9 +227,24 @@ function aggregateReversals(
 
     if (row.type === "clawback") {
       current.cumulativeClawbackCredits += amount;
+      // The writer records each row's own shortfall snapshot
+      // (requested − covered-by-balance at write time). A later row's
+      // snapshot already carries any earlier under-recovery — its
+      // requested_amount is a cumulative delta — so snapshots must never be
+      // summed. Track the newest snapshot (rows are newest-first) and the
+      // max cumulative target for the authoritative derivation below.
       const shortfall = finiteNumber(metadata.unrecovered_clawback_usd);
       if (shortfall !== null && shortfall > 0) {
-        current.unrecoveredShortfallChargeCurrency += shortfall;
+        if (current.lastShortfallSnapshotCredits === null) {
+          current.lastShortfallSnapshotCredits = shortfall;
+        }
+      }
+      const cumulativeTarget = finiteNumber(metadata.cumulative_clawback_target_usd);
+      if (cumulativeTarget !== null && cumulativeTarget > 0) {
+        current.maxCumulativeTargetCredits = Math.max(
+          current.maxCumulativeTargetCredits ?? 0,
+          cumulativeTarget,
+        );
       }
       if (
         at > current.lastReversalAt ||
@@ -269,6 +304,21 @@ function aggregateReversals(
     for (const v of classes.get("dispute")?.values() ?? []) disputed += v;
     agg.cumulativeRefundedChargeCurrency = refunded;
     agg.cumulativeDisputedChargeCurrency = disputed;
+  }
+
+  // Derive the outstanding credit-unit shortfall from authoritative
+  // cumulative quantities: max cumulative target − net applied credits
+  // (clawbacks minus reinstatements). Per-row shortfall snapshots already
+  // fold earlier under-recovery into later rows, so summing them inflates
+  // the outstanding amount forever; only when no cumulative target was ever
+  // recorded (legacy rows) does the newest snapshot stand in.
+  for (const agg of byIntent.values()) {
+    if (agg.maxCumulativeTargetCredits !== null) {
+      const netApplied = agg.cumulativeClawbackCredits - agg.reinstatedCredits;
+      agg.unrecoveredShortfallCredits = Math.max(agg.maxCumulativeTargetCredits - netApplied, 0);
+    } else if (agg.lastShortfallSnapshotCredits !== null) {
+      agg.unrecoveredShortfallCredits = agg.lastShortfallSnapshotCredits;
+    }
   }
   return byIntent;
 }
@@ -582,7 +632,7 @@ export class PaymentHistoryService {
         cumulativeDisputedChargeCurrency: reversal?.cumulativeDisputedChargeCurrency ?? 0,
         cumulativeClawbackCredits: reversal?.cumulativeClawbackCredits ?? 0,
         reinstatedCredits: reversal?.reinstatedCredits ?? 0,
-        unrecoveredShortfallChargeCurrency: reversal?.unrecoveredShortfallChargeCurrency ?? 0,
+        unrecoveredShortfallCredits: reversal?.unrecoveredShortfallCredits ?? 0,
         disputeReinstated: reversal?.disputeReinstated ?? false,
         policyEffect: reversed
           ? {
@@ -628,7 +678,7 @@ export class PaymentHistoryService {
         cumulativeDisputedChargeCurrency: reversal?.cumulativeDisputedChargeCurrency ?? 0,
         cumulativeClawbackCredits: reversal?.cumulativeClawbackCredits ?? 0,
         reinstatedCredits: reversal?.reinstatedCredits ?? 0,
-        unrecoveredShortfallChargeCurrency: reversal?.unrecoveredShortfallChargeCurrency ?? 0,
+        unrecoveredShortfallCredits: reversal?.unrecoveredShortfallCredits ?? 0,
         disputeReinstated: reversal?.disputeReinstated ?? false,
         policyEffect: reversed
           ? {

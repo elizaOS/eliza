@@ -6,7 +6,7 @@
  */
 
 import { DashboardLoadingState } from "@elizaos/ui/cloud-ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ApiError, api } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
@@ -29,8 +29,15 @@ export default function PaymentStateDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [phase, setPhase] = useState<DetailPhase>({ kind: "loading" });
+  // Monotonic generation counter: every in-flight fetch captures the current
+  // value, and only the most recent generation may commit state. A delayed
+  // completion for a previous route id (the fetch closes over `id`) must
+  // never overwrite the row the user navigated to next — /payments/B must
+  // never render payment A's amount, receipt, or authority.
+  const generation = useRef(0);
 
   const fetchState = useCallback(async () => {
+    const requestGeneration = ++generation.current;
     setPhase({ kind: "loading" });
     if (!id) {
       setPhase({ kind: "not-found" });
@@ -40,6 +47,9 @@ export default function PaymentStateDetailPage() {
       const data = await api<PaymentStateResponse>(
         `/api/v1/billing/payment-states/${encodeURIComponent(id)}`,
       );
+      if (requestGeneration !== generation.current) {
+        return;
+      }
       // A malformed success response is an error state, never a healthy
       // row: every rendered field is required by the route contract, so a
       // partial payload fails validation instead of rendering fabricated
@@ -51,8 +61,21 @@ export default function PaymentStateDetailPage() {
         });
         return;
       }
+      if (data.state.id !== id) {
+        // The route contract binds the detail to the requested id; a
+        // mismatched row is malformed for this route, not a renderable
+        // success.
+        setPhase({
+          kind: "error",
+          message: "Payment state response was malformed.",
+        });
+        return;
+      }
       setPhase({ kind: "ready", row: data.state });
     } catch (error) {
+      if (requestGeneration !== generation.current) {
+        return;
+      }
       // A 404 from the authoritative endpoint is a distinct not-found state,
       // not a generic error — the linked row may have scrolled out of the
       // projection window or the id may simply be stale.

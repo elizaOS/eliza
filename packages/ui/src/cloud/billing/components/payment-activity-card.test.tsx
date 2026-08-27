@@ -63,7 +63,7 @@ function stateRow(
     cumulativeDisputedChargeCurrency: 0,
     cumulativeClawbackCredits: 0,
     reinstatedCredits: 0,
-    unrecoveredShortfallChargeCurrency: 0,
+    unrecoveredShortfallCredits: 0,
     disputeReinstated: false,
     policyEffect: null,
     supportState: "none",
@@ -385,7 +385,7 @@ describe("PaymentActivityCard refund and dispute rendering", () => {
       "cumulativeDisputedChargeCurrency",
       "cumulativeClawbackCredits",
       "reinstatedCredits",
-      "unrecoveredShortfallChargeCurrency",
+      "unrecoveredShortfallCredits",
       "disputeReinstated",
       "supportState",
     ] as const;
@@ -519,7 +519,7 @@ describe("PaymentActivityCard refund and dispute rendering", () => {
   it("shows reversal detail for a row carrying only a shortfall or a support escalation, matching the detail surface", async () => {
     // The list's reversal gate must cover the same authoritative field set
     // the detail surface renders: a row with all four classic totals zero,
-    // policyEffect: null, but a real unrecoveredShortfallChargeCurrency (or a
+    // policyEffect: null, but a real unrecoveredShortfallCredits (or a
     // contact_support escalation) is a reversed payment per the authority.
     // The old gate hid both facts in the list while detail showed them
     // (#26752 review r6).
@@ -529,7 +529,7 @@ describe("PaymentActivityCard refund and dispute rendering", () => {
           id: "payment_request:shortfall-only",
           surface: "payment_request",
           authorityId: "pr_shortfall",
-          unrecoveredShortfallChargeCurrency: 5,
+          unrecoveredShortfallCredits: 5,
         }),
       ],
     });
@@ -626,7 +626,7 @@ describe("PaymentActivityCard reversal currency rendering (#26752 review)", () =
           paymentState: "partially_refunded",
           cumulativeRefundedChargeCurrency: 19,
           cumulativeDisputedChargeCurrency: 7.5,
-          unrecoveredShortfallChargeCurrency: 2.25,
+          unrecoveredShortfallCredits: 2.25,
           policyEffect: {
             status: "unavailable",
             reason: "refund_entitlement_policy_pending_22930",
@@ -644,10 +644,17 @@ describe("PaymentActivityCard reversal currency rendering (#26752 review)", () =
 
     expect(screen.getByTestId("refunded-amount").textContent).toBe("€19");
     expect(screen.getByTestId("disputed-amount").textContent).toBe("€7.50");
-    expect(screen.getByTestId("shortfall-amount").textContent).toBe("€2.25");
+    // The shortfall is CREDIT units (the clawback target is denominated in
+    // granted credits), labeled as credits — never formatted in the charge
+    // currency or relabeled USD (#26752 review P1: credit-unit clawback
+    // shortfall must not be presented as currency).
+    expect(screen.getByTestId("shortfall-amount").textContent).toBe(
+      "2.25 credits",
+    );
     // The purchase line itself stays in its own currency (already correct).
     expect(screen.queryByText("$19")).toBeNull();
     expect(screen.queryByText("$7.50")).toBeNull();
+    expect(screen.queryByText("€2.25")).toBeNull();
     expect(screen.queryByText("$2.25")).toBeNull();
   });
 

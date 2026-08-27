@@ -283,7 +283,7 @@ const paymentStateRow = (overrides: {
   cumulativeDisputedChargeCurrency: 0,
   cumulativeClawbackCredits: 0,
   reinstatedCredits: 0,
-  unrecoveredShortfallChargeCurrency: 0,
+  unrecoveredShortfallCredits: 0,
   disputeReinstated: false,
   policyEffect: null,
   supportState: "none",
