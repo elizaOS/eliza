@@ -12,9 +12,9 @@ const enabled =
 const realPostgresTest = enabled ? test : test.skip;
 const TEST_SCHEMA = "backup_admission_source_stamps_test";
 const migrations = [
-  "0343_agent_backup_admission_sandbox_source_stamp",
-  "0344_agent_backup_admission_node_source_stamp",
-  "0345_agent_backup_admission_snapshot_visibility",
+  "0346_agent_backup_admission_sandbox_source_stamp",
+  "0347_agent_backup_admission_node_source_stamp",
+  "0348_agent_backup_admission_snapshot_visibility",
 ] as const;
 
 async function applyMigration(client: Client, migration: (typeof migrations)[number]) {

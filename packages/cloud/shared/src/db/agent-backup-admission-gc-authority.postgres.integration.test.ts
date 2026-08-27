@@ -91,7 +91,7 @@ realPostgresTest(
       const fileNode = await relationFileNode(migrator, "agent_backup_gc_outbox");
       const indexes = await gcIndexes(migrator);
       const source = await readFile(
-        new URL("./migrations/0348_agent_backup_admission_work_table.sql", import.meta.url),
+        new URL("./migrations/0351_agent_backup_admission_work_table.sql", import.meta.url),
         "utf8",
       );
 
