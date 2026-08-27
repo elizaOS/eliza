@@ -37,8 +37,10 @@ import {
 } from "../cloud-live-continuity-contract";
 import {
   CloudLiveOptionalActionDeadlineError,
+  type CloudLivePersonalIdentityRecovery,
   clickCloudLiveOptionalAction,
   prepareCloudLivePersonalIdentity,
+  waitForCloudLivePersonalIdentity,
 } from "../cloud-live-optional-action";
 import { resolveCloudLiveOriginContract } from "../cloud-live-origin";
 import { waitForRendererCloudApiOrigin } from "../cloud-live-renderer-api-readiness";
@@ -46,6 +48,7 @@ import {
   CLOUD_LIVE_TRAJECTORY_TIMEOUT_MS,
   type CloudLivePreIdentityDiagnostic,
   type CloudLiveTrajectoryPhase,
+  rethrowCloudLiveFailureAfterDiagnostic,
   writeCloudLiveTrajectoryDiagnostic,
 } from "../cloud-live-trajectory-diagnostic";
 import {
@@ -72,8 +75,10 @@ const DEPLOYED_BROWSER_SMOKE_SCHEMA = "elizaos.cloud.deployed-browser-smoke/v1";
 const REQUIRE_NAMED_WARMING =
   process.env.ELIZA_UI_SMOKE_REQUIRE_NAMED_WARMING === "1";
 
-const PERSONAL_IDENTITY_ATTEMPT_TIMEOUT_MS = 180_000;
-const PERSONAL_IDENTITY_ATTEMPTS = 2;
+const PERSONAL_DEDICATED_ACTIVATION_TIMEOUT_MS = 6 * 60_000;
+const PERSONAL_IDENTITY_COMMIT_MARGIN_MS = 30_000;
+const PERSONAL_IDENTITY_ATTEMPT_TIMEOUT_MS =
+  PERSONAL_DEDICATED_ACTIVATION_TIMEOUT_MS + PERSONAL_IDENTITY_COMMIT_MARGIN_MS;
 
 // This lane deliberately places a real Cloud bearer in browser storage.
 // Playwright traces record init-script arguments and request headers, while
@@ -540,6 +545,7 @@ async function proveAnchoredTurnHistory(
 async function resolvePersonalIdentity(
   page: Page,
   chooseRuntime = true,
+  onRecovery?: (recovery: CloudLivePersonalIdentityRecovery) => Promise<void>,
 ): Promise<CloudLiveRuntimeBinding> {
   await prepareCloudLivePersonalIdentity({
     chooseRuntime,
@@ -547,54 +553,26 @@ async function resolvePersonalIdentity(
     chatOverlayTimeoutMs: 60_000,
     chooseRuntimeAction: () => chooseCloudRuntime(page),
   });
-  for (let attempt = 1; attempt <= PERSONAL_IDENTITY_ATTEMPTS; attempt += 1) {
-    let binding: CloudLiveRuntimeBinding | null = null;
-    await expect
-      .poll(
-        async () => {
-          binding = await readActiveBinding(page);
-          return (
-            Boolean(binding) ||
-            (await page
-              .getByTestId("choice-__first_run__:error:retry")
-              .isVisible())
-          );
-        },
-        { timeout: PERSONAL_IDENTITY_ATTEMPT_TIMEOUT_MS },
-      )
-      .toBe(true);
-    if (binding) {
-      await clickIfVisible(
-        page.getByTestId("choice-__first_run__:tutorial:skip"),
-        15_000,
-      );
-      return binding;
-    }
-    if (attempt === PERSONAL_IDENTITY_ATTEMPTS) {
-      throw new Error("Personal Eliza identity resolution exhausted its retry");
-    }
-    const retryClicked = await clickCloudLiveOptionalAction(
-      page.getByTestId("choice-__first_run__:error:retry"),
-      {
-        phase: "personal-identity-retry",
-        action: "identity-retry",
-        offerTimeoutMs: 5_000,
-        actionTimeoutMs: 10_000,
-      },
-    );
-    if (!retryClicked) {
-      throw new CloudLiveOptionalActionDeadlineError(
-        "personal-identity-retry",
-        "identity-retry",
-      );
-    }
-  }
-  throw new Error("Personal Eliza identity resolution remained pending");
+  const binding = await waitForCloudLivePersonalIdentity({
+    readBinding: () => readActiveBinding(page),
+    runtimeCloudRecovery: page.getByTestId(
+      "choice-__first_run__:runtime:cloud",
+    ),
+    retryRecovery: page.getByTestId("choice-__first_run__:error:retry"),
+    timeoutMs: PERSONAL_IDENTITY_ATTEMPT_TIMEOUT_MS,
+    runtimeCloudGraceMs: 15_000,
+    onRecovery,
+  });
+  await clickIfVisible(
+    page.getByTestId("choice-__first_run__:tutorial:skip"),
+    15_000,
+  );
+  return binding;
 }
 
 test.describe("real cloud login + personal identity + chat", () => {
   // This single contract contains two independently bounded Personal identity
-  // resolutions (2 x 2 x 180s), two 240s history proofs, protected renderer
+  // resolutions (2 x 390s), two 240s history proofs, protected renderer
   // boot twice, and one 180s live-chat proof. A 15-minute aggregate timeout can
   // therefore close a healthy browser before the later phase-specific bounds
   // adjudicate. Keep the test below its 45-minute workflow job while allowing
@@ -714,6 +692,8 @@ test.describe("real cloud login + personal identity + chat", () => {
       runtimeCloudActionAttemptCount: 0,
       runtimeCloudActionSuccessCount: 0,
       runtimeCloudActionTimeoutCount: 0,
+      runtimeCloudRecoveryVisibleCount: 0,
+      personalIdentityRetryVisibleCount: 0,
     };
     const readPreIdentityDiagnostic =
       async (): Promise<CloudLivePreIdentityDiagnostic> => {
@@ -734,6 +714,83 @@ test.describe("real cloud login + personal identity + chat", () => {
             audit.failedPersonalIdentityGetRequestCount,
           pendingPersonalIdentityGetRequestCount:
             audit.pendingPersonalIdentityGetRequestCount,
+          completedPersonalIdentityResponseBodyCount:
+            audit.completedPersonalIdentityResponseBodyCount,
+          parsedPersonalIdentityResponseBodyCount:
+            audit.parsedPersonalIdentityResponseBodyCount,
+          decodedSharedPersonalIdentityResponseCount:
+            audit.decodedSharedPersonalIdentityResponseCount,
+          decodedDedicatedPersonalIdentityResponseCount:
+            audit.decodedDedicatedPersonalIdentityResponseCount,
+          uninspectablePersonalIdentityResponseBodyCount:
+            audit.uninspectablePersonalIdentityResponseBodyCount,
+          dedicatedQuoteGetRequestCount: audit.dedicatedQuoteGetRequestCount,
+          successfulDedicatedQuoteGetResponseCount:
+            audit.successfulDedicatedQuoteGetResponseCount,
+          clientErrorDedicatedQuoteGetResponseCount:
+            audit.clientErrorDedicatedQuoteGetResponseCount,
+          serverErrorDedicatedQuoteGetResponseCount:
+            audit.serverErrorDedicatedQuoteGetResponseCount,
+          otherDedicatedQuoteGetResponseCount:
+            audit.otherDedicatedQuoteGetResponseCount,
+          failedDedicatedQuoteGetRequestCount:
+            audit.failedDedicatedQuoteGetRequestCount,
+          pendingDedicatedQuoteGetRequestCount:
+            audit.pendingDedicatedQuoteGetRequestCount,
+          completedDedicatedQuoteResponseBodyCount:
+            audit.completedDedicatedQuoteResponseBodyCount,
+          parsedDedicatedQuoteResponseBodyCount:
+            audit.parsedDedicatedQuoteResponseBodyCount,
+          decodedDedicatedQuoteResponseCount:
+            audit.decodedDedicatedQuoteResponseCount,
+          uninspectableDedicatedQuoteResponseBodyCount:
+            audit.uninspectableDedicatedQuoteResponseBodyCount,
+          dedicatedActivationPostRequestCount:
+            audit.dedicatedActivationPostRequestCount,
+          successfulDedicatedActivationPostResponseCount:
+            audit.successfulDedicatedActivationPostResponseCount,
+          clientErrorDedicatedActivationPostResponseCount:
+            audit.clientErrorDedicatedActivationPostResponseCount,
+          serverErrorDedicatedActivationPostResponseCount:
+            audit.serverErrorDedicatedActivationPostResponseCount,
+          otherDedicatedActivationPostResponseCount:
+            audit.otherDedicatedActivationPostResponseCount,
+          failedDedicatedActivationPostRequestCount:
+            audit.failedDedicatedActivationPostRequestCount,
+          pendingDedicatedActivationPostRequestCount:
+            audit.pendingDedicatedActivationPostRequestCount,
+          completedDedicatedActivationResponseBodyCount:
+            audit.completedDedicatedActivationResponseBodyCount,
+          parsedDedicatedActivationResponseBodyCount:
+            audit.parsedDedicatedActivationResponseBodyCount,
+          decodedDedicatedActivationReceiptCount:
+            audit.decodedDedicatedActivationReceiptCount,
+          uninspectableDedicatedActivationResponseBodyCount:
+            audit.uninspectableDedicatedActivationResponseBodyCount,
+          dedicatedCutoverPostRequestCount:
+            audit.dedicatedCutoverPostRequestCount,
+          successfulDedicatedCutoverPostResponseCount:
+            audit.successfulDedicatedCutoverPostResponseCount,
+          clientErrorDedicatedCutoverPostResponseCount:
+            audit.clientErrorDedicatedCutoverPostResponseCount,
+          serverErrorDedicatedCutoverPostResponseCount:
+            audit.serverErrorDedicatedCutoverPostResponseCount,
+          otherDedicatedCutoverPostResponseCount:
+            audit.otherDedicatedCutoverPostResponseCount,
+          failedDedicatedCutoverPostRequestCount:
+            audit.failedDedicatedCutoverPostRequestCount,
+          pendingDedicatedCutoverPostRequestCount:
+            audit.pendingDedicatedCutoverPostRequestCount,
+          completedDedicatedCutoverResponseBodyCount:
+            audit.completedDedicatedCutoverResponseBodyCount,
+          parsedDedicatedCutoverResponseBodyCount:
+            audit.parsedDedicatedCutoverResponseBodyCount,
+          decodedDedicatedCutoverPendingResponseCount:
+            audit.decodedDedicatedCutoverPendingResponseCount,
+          decodedDedicatedCutoverFinalResponseCount:
+            audit.decodedDedicatedCutoverFinalResponseCount,
+          uninspectableDedicatedCutoverResponseBodyCount:
+            audit.uninspectableDedicatedCutoverResponseBodyCount,
         };
       };
     const writePreIdentityDiagnostic = async (): Promise<void> => {
@@ -754,14 +811,36 @@ test.describe("real cloud login + personal identity + chat", () => {
       await writePreIdentityDiagnostic();
     });
 
-    // The current Cloud join flow resolves the account-derived Personal Eliza
-    // identity through the read-only Personal endpoint. It persists the
-    // account-owned binding without creating dedicated compute.
+    // The join resolves the account-derived Personal Eliza through the canonical
+    // identity endpoint. A correctly prepared proof principal is already bound
+    // to Dedicated; if it is not, the closed quote/activation/cutover counters
+    // expose that control-plane path and the final no-mutation gate fails.
     await enterTrajectoryPhase(
       "personal-identity",
       await readPreIdentityDiagnostic(),
     );
-    const referenceBinding = await resolvePersonalIdentity(page, false);
+    const referenceBinding = await resolvePersonalIdentity(
+      page,
+      false,
+      async (recovery) => {
+        if (recovery === "runtime-cloud") {
+          runtimeChoiceCounters.runtimeCloudRecoveryVisibleCount += 1;
+        } else {
+          runtimeChoiceCounters.personalIdentityRetryVisibleCount += 1;
+        }
+        await enterTrajectoryPhase(
+          "personal-identity",
+          await readPreIdentityDiagnostic(),
+        );
+      },
+    ).catch((cause: unknown) =>
+      rethrowCloudLiveFailureAfterDiagnostic(cause, async () => {
+        await enterTrajectoryPhase(
+          "personal-identity",
+          await readPreIdentityDiagnostic(),
+        );
+      }),
+    );
     const identityAudit = await primaryAudit.snapshot();
     expect(
       identityAudit.successfulPersonalIdentityGetCount,

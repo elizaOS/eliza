@@ -111,10 +111,20 @@ const ELIZA_CLOUD_LOGIN_MAX_CONSECUTIVE_ERRORS = 3;
 const ANDROID_CLOUD_AUTH_TIMEOUT_MS = 5 * 60_000;
 const ANDROID_CLOUD_BROWSER_FINISH_GRACE_MS = 1_500;
 const DEFAULT_DIRECT_CLOUD_BASE_URL = "https://eliza.app";
+const CLOUD_SESSION_VERIFICATION_TRANSIENT_MESSAGE =
+  "Eliza Cloud is temporarily unavailable. Retry in a moment.";
 const ELIZA_CLOUD_LOGIN_COMPLETE_PARAM = "elizaCloudLogin";
 const ELIZA_CLOUD_LOGIN_SESSION_PARAM = "elizaCloudLoginSession";
 
 let activeCloudLoginPopup: Window | null = null;
+
+class CloudSessionVerificationTransientError extends Error {
+  override readonly name = "CloudSessionVerificationTransientError";
+
+  constructor(cause: unknown) {
+    super(CLOUD_SESSION_VERIFICATION_TRANSIENT_MESSAGE, { cause });
+  }
+}
 
 /** Cloud=Steward token-lifecycle: how often to check the JWT for expiry. */
 const STEWARD_REFRESH_CHECK_INTERVAL_MS = 60_000;
@@ -586,9 +596,8 @@ export function useCloudState({
           { err },
           "[useCloudState] direct Cloud session verification failed",
         );
-        return null;
+        throw new CloudSessionVerificationTransientError(err);
       });
-      if (!verification) return false;
       cloudStatus = verification.status;
       prefetchedCloudCredits = verification.credits;
     } else {
@@ -771,11 +780,27 @@ export function useCloudState({
     let cancelled = false;
 
     const reconcile = async (apiBase?: string) => {
-      const connected = await reconcileAndroidCloudSession(apiBase);
-      if (!cancelled && !connected && readStoredStewardToken()?.trim()) {
-        setElizaCloudLoginError(
-          "Could not verify your Eliza Cloud session. Please sign in again.",
+      try {
+        const connected = await reconcileAndroidCloudSession(apiBase);
+        if (!cancelled && !connected && readStoredStewardToken()?.trim()) {
+          setElizaCloudLoginError(
+            "Could not verify your Eliza Cloud session. Please sign in again.",
+          );
+        }
+      } catch (err) {
+        // error-policy:J4 designed degrade — a transient Android session probe
+        // retains the credential and becomes an explicit user-visible retry.
+        logger.warn(
+          { err },
+          "[useCloudState] Android Cloud session reconciliation failed",
         );
+        if (!cancelled) {
+          setElizaCloudLoginError(
+            err instanceof CloudSessionVerificationTransientError
+              ? CLOUD_SESSION_VERIFICATION_TRANSIENT_MESSAGE
+              : "Could not verify your Eliza Cloud session. Retry in a moment.",
+          );
+        }
       }
     };
     const onResult = (event: Event) => {
@@ -1133,8 +1158,18 @@ export function useCloudState({
           }
         } catch (err) {
           setElizaCloudLoginError(
-            err instanceof Error ? err.message : "Eliza Cloud login failed",
+            err instanceof CloudSessionVerificationTransientError
+              ? CLOUD_SESSION_VERIFICATION_TRANSIENT_MESSAGE
+              : err instanceof Error
+                ? err.message
+                : "Eliza Cloud login failed",
           );
+          if (
+            options.requireClientAuth &&
+            err instanceof CloudSessionVerificationTransientError
+          ) {
+            throw err;
+          }
         } finally {
           if (!fallThroughToLegacyLogin) {
             elizaCloudLoginBusyRef.current = false;

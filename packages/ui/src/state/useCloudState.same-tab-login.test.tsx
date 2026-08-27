@@ -1128,6 +1128,63 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       unregister();
     }
   });
+
+  it("keeps the pinned Steward token on a transient verification failure", async () => {
+    runtimeWithPinnedRemote.__ELIZA_BUILD_CONFIGURED_REMOTE_API_BASE__ =
+      "https://bot.nubs.site";
+    setBootConfig({
+      branding: {},
+      cloudApiBase: "https://api-staging.eliza.app",
+    });
+    const stewardToken = "durable-steward-session-token";
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        jsonResponse(503, { error: "temporarily unavailable" }),
+      );
+    const launcher = vi.fn(async () => {
+      localStorage.setItem("steward_session_token", stewardToken);
+      return { token: stewardToken };
+    });
+    const unregister = registerStewardLoginLauncher(launcher);
+
+    try {
+      const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+      await act(async () => {
+        await result.current.handleCloudLogin();
+      });
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(result.current.elizaCloudConnected).toBe(false);
+      expect(result.current.elizaCloudLoginError).toBe(
+        "Eliza Cloud is temporarily unavailable. Retry in a moment.",
+      );
+      expect(result.current.elizaCloudLoginError).not.toContain(
+        "sign in again",
+      );
+      expect(localStorage.getItem("steward_session_token")).toBe(stewardToken);
+      expect(result.current.elizaCloudPollInterval.current).toBeNull();
+
+      let requiredClientAuthFailure: unknown;
+      await act(async () => {
+        try {
+          await result.current.handleCloudLogin(null, {
+            requireClientAuth: true,
+          });
+        } catch (error) {
+          requiredClientAuthFailure = error;
+        }
+      });
+      expect(requiredClientAuthFailure).toMatchObject({
+        message: "Eliza Cloud is temporarily unavailable. Retry in a moment.",
+        name: "CloudSessionVerificationTransientError",
+      });
+      expect(localStorage.getItem("steward_session_token")).toBe(stewardToken);
+      unmount();
+    } finally {
+      unregister();
+    }
+  });
 });
 
 // The same-tab login leg lands back in the app with only a session token; the

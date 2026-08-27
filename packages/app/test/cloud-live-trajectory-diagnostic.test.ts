@@ -8,8 +8,56 @@ import {
   CLOUD_LIVE_TRAJECTORY_PHASES,
   CLOUD_LIVE_TRAJECTORY_TIMEOUT_MS,
   createCloudLiveTrajectoryDiagnostic,
+  rethrowCloudLiveFailureAfterDiagnostic,
   writeCloudLiveTrajectoryDiagnostic,
 } from "./cloud-live-trajectory-diagnostic";
+
+const ZERO_DEDICATED_CONTROL_PLANE_COUNTERS = {
+  dedicatedQuoteGetRequestCount: 0,
+  successfulDedicatedQuoteGetResponseCount: 0,
+  clientErrorDedicatedQuoteGetResponseCount: 0,
+  serverErrorDedicatedQuoteGetResponseCount: 0,
+  otherDedicatedQuoteGetResponseCount: 0,
+  failedDedicatedQuoteGetRequestCount: 0,
+  pendingDedicatedQuoteGetRequestCount: 0,
+  completedDedicatedQuoteResponseBodyCount: 0,
+  parsedDedicatedQuoteResponseBodyCount: 0,
+  decodedDedicatedQuoteResponseCount: 0,
+  uninspectableDedicatedQuoteResponseBodyCount: 0,
+  dedicatedActivationPostRequestCount: 0,
+  successfulDedicatedActivationPostResponseCount: 0,
+  clientErrorDedicatedActivationPostResponseCount: 0,
+  serverErrorDedicatedActivationPostResponseCount: 0,
+  otherDedicatedActivationPostResponseCount: 0,
+  failedDedicatedActivationPostRequestCount: 0,
+  pendingDedicatedActivationPostRequestCount: 0,
+  completedDedicatedActivationResponseBodyCount: 0,
+  parsedDedicatedActivationResponseBodyCount: 0,
+  decodedDedicatedActivationReceiptCount: 0,
+  uninspectableDedicatedActivationResponseBodyCount: 0,
+  dedicatedCutoverPostRequestCount: 0,
+  successfulDedicatedCutoverPostResponseCount: 0,
+  clientErrorDedicatedCutoverPostResponseCount: 0,
+  serverErrorDedicatedCutoverPostResponseCount: 0,
+  otherDedicatedCutoverPostResponseCount: 0,
+  failedDedicatedCutoverPostRequestCount: 0,
+  pendingDedicatedCutoverPostRequestCount: 0,
+  completedDedicatedCutoverResponseBodyCount: 0,
+  parsedDedicatedCutoverResponseBodyCount: 0,
+  decodedDedicatedCutoverPendingResponseCount: 0,
+  decodedDedicatedCutoverFinalResponseCount: 0,
+  uninspectableDedicatedCutoverResponseBodyCount: 0,
+} as const;
+
+const ZERO_PERSONAL_BODY_AND_RECOVERY_COUNTERS = {
+  runtimeCloudRecoveryVisibleCount: 0,
+  personalIdentityRetryVisibleCount: 0,
+  completedPersonalIdentityResponseBodyCount: 0,
+  parsedPersonalIdentityResponseBodyCount: 0,
+  decodedSharedPersonalIdentityResponseCount: 0,
+  decodedDedicatedPersonalIdentityResponseCount: 0,
+  uninspectablePersonalIdentityResponseBodyCount: 0,
+} as const;
 
 describe("Cloud live trajectory diagnostic", () => {
   it("allows the complete bounded trajectory within the 45-minute job", () => {
@@ -49,6 +97,7 @@ describe("Cloud live trajectory diagnostic", () => {
         runtimeCloudActionAttemptCount: 1,
         runtimeCloudActionSuccessCount: 0,
         runtimeCloudActionTimeoutCount: 1,
+        ...ZERO_PERSONAL_BODY_AND_RECOVERY_COUNTERS,
         personalIdentityGetRequestCount: 0,
         successfulPersonalIdentityGetResponseCount: 0,
         clientErrorPersonalIdentityGetResponseCount: 0,
@@ -56,6 +105,7 @@ describe("Cloud live trajectory diagnostic", () => {
         otherPersonalIdentityGetResponseCount: 0,
         failedPersonalIdentityGetRequestCount: 0,
         pendingPersonalIdentityGetRequestCount: 0,
+        ...ZERO_DEDICATED_CONTROL_PLANE_COUNTERS,
         token: "private-token",
         selector: "private-selector",
       } as Parameters<typeof createCloudLiveTrajectoryDiagnostic>[2],
@@ -69,6 +119,7 @@ describe("Cloud live trajectory diagnostic", () => {
         runtimeCloudActionAttemptCount: 1,
         runtimeCloudActionSuccessCount: 0,
         runtimeCloudActionTimeoutCount: 1,
+        ...ZERO_PERSONAL_BODY_AND_RECOVERY_COUNTERS,
         personalIdentityGetRequestCount: 0,
         successfulPersonalIdentityGetResponseCount: 0,
         clientErrorPersonalIdentityGetResponseCount: 0,
@@ -76,6 +127,7 @@ describe("Cloud live trajectory diagnostic", () => {
         otherPersonalIdentityGetResponseCount: 0,
         failedPersonalIdentityGetRequestCount: 0,
         pendingPersonalIdentityGetRequestCount: 0,
+        ...ZERO_DEDICATED_CONTROL_PLANE_COUNTERS,
       },
     });
     expect(JSON.stringify(diagnostic)).not.toMatch(
@@ -101,6 +153,7 @@ describe("Cloud live trajectory diagnostic", () => {
       runtimeCloudActionAttemptCount: 1,
       runtimeCloudActionSuccessCount: 0,
       runtimeCloudActionTimeoutCount: 0,
+      ...ZERO_PERSONAL_BODY_AND_RECOVERY_COUNTERS,
       personalIdentityGetRequestCount: 0,
       successfulPersonalIdentityGetResponseCount: 0,
       clientErrorPersonalIdentityGetResponseCount: 0,
@@ -108,6 +161,7 @@ describe("Cloud live trajectory diagnostic", () => {
       otherPersonalIdentityGetResponseCount: 0,
       failedPersonalIdentityGetRequestCount: 0,
       pendingPersonalIdentityGetRequestCount: -1,
+      ...ZERO_DEDICATED_CONTROL_PLANE_COUNTERS,
     };
 
     expect(() =>
@@ -154,5 +208,31 @@ describe("Cloud live trajectory diagnostic", () => {
     });
     expect(written).not.toContain("private-token");
     expect(written).not.toContain("private-transcript");
+  });
+
+  it("preserves the original trajectory failure when its diagnostic writes", async () => {
+    const originalCause = new Error("Personal identity did not resolve");
+    const writeDiagnostic = vi.fn(async () => undefined);
+
+    await expect(
+      rethrowCloudLiveFailureAfterDiagnostic(originalCause, writeDiagnostic),
+    ).rejects.toBe(originalCause);
+    expect(writeDiagnostic).toHaveBeenCalledOnce();
+  });
+
+  it("preserves the original trajectory failure when its diagnostic rejects", async () => {
+    const originalCause = new Error("Personal identity did not resolve");
+    const writeDiagnostic = vi.fn(async () => {
+      throw new Error("diagnostic storage unavailable");
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    await expect(
+      rethrowCloudLiveFailureAfterDiagnostic(originalCause, writeDiagnostic),
+    ).rejects.toBe(originalCause);
+    expect(writeDiagnostic).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      "[cloud-live] trajectory diagnostic write unavailable",
+    );
   });
 });
