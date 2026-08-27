@@ -91,6 +91,8 @@ export class WechatApiClient {
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
     } catch (err) {
+      // error-policy:J2 the transport failure is wrapped in the typed send
+      // error with the original cause preserved.
       throw new WechatError(
         "WECHAT_SEND_FAILED",
         "send request to the first-party endpoint failed",

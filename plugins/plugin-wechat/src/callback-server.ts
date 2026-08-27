@@ -8,8 +8,14 @@
  * payload is parsed before signature verification succeeds, and the embedded
  * receiver id must match the addressed account. Accounts are addressed by id
  * in the path (`/webhook/wechat/<accountId>`); a payload signed or encrypted
- * for one account can never be accepted for another.
+ * for one account can never be accepted for another. Verified signatures are
+ * additionally bound to time and delivery: the platform timestamp must fall
+ * inside a tolerance window, and each account/timestamp/nonce triple accepts
+ * only byte-identical retries (bounded), so a captured plaintext-mode
+ * signature cannot be replayed against a substituted body.
  */
+
+import { createHash } from "node:crypto";
 import type { Server } from "node:http";
 import {
   createServer,
@@ -34,6 +40,78 @@ const DEFAULT_MAX_BODY_BYTES = 64 * 1024;
 /** Public-internet binding: the platform must reach this listener. */
 const CALLBACK_BIND_HOST = "0.0.0.0";
 
+/**
+ * Signature freshness window. WeChat's signature covers token/timestamp/nonce
+ * (and, in encrypted mode, the ciphertext) but NOT the plaintext-mode body, so
+ * without a freshness check a captured query authenticates any body forever.
+ * Five minutes on either side of the wall clock comfortably covers platform
+ * clock skew while making captured signatures worthless minutes later.
+ */
+const SIGNATURE_TOLERANCE_MS = 5 * 60 * 1000;
+/**
+ * WeCom retries delivery (default 3 times) when a callback does not answer in
+ * time, resending the identical payload and query. Byte-identical retries are
+ * therefore legitimate; anything else under the same triple is tampering.
+ */
+const MAX_IDENTICAL_RETRIES = 3;
+
+/** Injectable per-run dependencies so tests can pin the clock. */
+export interface CallbackServerClock {
+  now: () => number;
+}
+
+class SignatureReplayGuard {
+  private readonly seen = new Map<
+    string,
+    { bodySha256: string; retries: number }
+  >();
+
+  constructor(
+    private readonly maxRetries: number,
+    private readonly toleranceMs: number,
+    private readonly clock: CallbackServerClock,
+  ) {}
+
+  /**
+   * Returns true when the timestamp is inside the freshness window. A missing
+   * or non-numeric timestamp was already rejected as 400 by the caller's
+   * required-parameter check.
+   */
+  isFresh(timestamp: string): boolean {
+    const seconds = Number(timestamp);
+    if (!Number.isFinite(seconds)) {
+      return false;
+    }
+    const deltaMs = Math.abs(this.clock.now() - seconds * 1000);
+    return deltaMs <= this.toleranceMs;
+  }
+
+  /**
+   * Allows byte-identical redelivery (platform retry) and rejects a different
+   * body replayed under a captured account/timestamp/nonce signature. Once a
+   * triple has consumed its retry budget it stays rejected until restart.
+   */
+  accepts(
+    accountId: string,
+    timestamp: string,
+    nonce: string,
+    body: string,
+  ): boolean {
+    const key = `${accountId}\n${timestamp}\n${nonce}`;
+    const digest = createHash("sha256").update(body, "utf8").digest("hex");
+    const prior = this.seen.get(key);
+    if (!prior) {
+      this.seen.set(key, { bodySha256: digest, retries: 0 });
+      return true;
+    }
+    if (prior.bodySha256 === digest && prior.retries < this.maxRetries) {
+      prior.retries += 1;
+      return true;
+    }
+    return false;
+  }
+}
+
 export interface CallbackServerOptions {
   port: number;
   accounts: ResolvedWechatAccount[];
@@ -44,6 +122,8 @@ export interface CallbackServerOptions {
   onDeliveryError?: (error: unknown, accountId: string) => void | Promise<void>;
   signal?: AbortSignal;
   maxBodyBytes?: number;
+  /** Test seam: deterministic clock for freshness assertions. */
+  clock?: CallbackServerClock;
 }
 
 export interface CallbackServerHandle {
@@ -62,7 +142,13 @@ export async function startCallbackServer(
     onDeliveryError,
     signal,
     maxBodyBytes = DEFAULT_MAX_BODY_BYTES,
+    clock = { now: Date.now },
   } = options;
+  const replayGuard = new SignatureReplayGuard(
+    MAX_IDENTICAL_RETRIES,
+    SIGNATURE_TOLERANCE_MS,
+    clock,
+  );
 
   const server = createServer((req, res) => {
     // error-policy:J1 any unexpected failure inside request handling becomes
@@ -72,6 +158,7 @@ export async function startCallbackServer(
       onMessage,
       onDeliveryError,
       maxBodyBytes,
+      replayGuard,
     }).catch((error: unknown) => {
       logger.error(
         `[wechat] Unexpected callback handler failure: ${error instanceof Error ? error.message : String(error)}`,
@@ -122,6 +209,7 @@ interface RequestDeps {
   onMessage: CallbackServerOptions["onMessage"];
   onDeliveryError: CallbackServerOptions["onDeliveryError"];
   maxBodyBytes: number;
+  replayGuard: SignatureReplayGuard;
 }
 
 async function handleRequest(
@@ -145,7 +233,7 @@ async function handleRequest(
   const query = parseQuery(req.url ?? "");
 
   if (req.method === "GET") {
-    handleUrlVerification(res, account, query);
+    handleUrlVerification(res, account, query, deps.replayGuard);
     return;
   }
 
@@ -156,6 +244,7 @@ function handleUrlVerification(
   res: ServerResponse,
   account: ResolvedWechatAccount,
   query: URLSearchParams,
+  replayGuard: SignatureReplayGuard,
 ): void {
   // The verification flavor is fixed by the account's configured security
   // mode, not by which query parameters the caller happened to supply.
@@ -179,8 +268,9 @@ function handleUrlVerification(
     nonce,
     ...(encryptedMode ? [echostr] : []),
   ]);
-  if (!valid) {
-    // Signature failure is a security event: reject without parsing anything.
+  if (!valid || !replayGuard.isFresh(timestamp)) {
+    // Signature failure or a stale signature is a security event: reject
+    // without parsing anything.
     res.writeHead(403);
     res.end("Forbidden");
     return;
@@ -206,6 +296,8 @@ function handleUrlVerification(
         res.end("Bad Request");
         return;
       }
+      // error-policy:J1 only the typed expected decrypt failure is a 400;
+      // anything unexpected propagates to the 500 boundary.
       throw err;
     }
   }
@@ -240,6 +332,19 @@ async function handleMessagePost(
   if (body === null) {
     return;
   }
+  // Freshness and replay control on every verified delivery: a captured
+  // signature goes stale within minutes, and a fresh triple only ever
+  // redelivers byte-identical bodies (platform retry), never a substituted
+  // one. Checked after the 400 shape gate but before signature work so an
+  // attacker cannot use the check as an oracle.
+  if (!deps.replayGuard.isFresh(timestamp)) {
+    logger.warn(
+      `[wechat] Rejecting stale callback signature for account "${account.id}"`,
+    );
+    res.writeHead(403);
+    res.end("Forbidden");
+    return;
+  }
 
   let xmlText: string;
   let envelopeAgentId: number | undefined;
@@ -251,6 +356,8 @@ async function handleMessagePost(
     try {
       envelope = extractEncryptedEnvelope(body);
     } catch (err) {
+      // error-policy:J1 only the typed expected envelope failure is a 400;
+      // anything unexpected propagates to the 500 boundary.
       if (err instanceof WechatError) {
         res.writeHead(400);
         res.end("Bad Request");
@@ -272,6 +379,16 @@ async function handleMessagePost(
       res.end("Forbidden");
       return;
     }
+    if (!deps.replayGuard.accepts(account.id, timestamp, nonce, body)) {
+      // error-policy:J1 a replayed or substituted delivery under a captured
+      // signature is a security rejection at this boundary.
+      logger.warn(
+        `[wechat] Rejecting replayed callback body for account "${account.id}"`,
+      );
+      res.writeHead(403);
+      res.end("Forbidden");
+      return;
+    }
     try {
       const decrypted = decryptCallbackPayload(
         encryptField,
@@ -284,6 +401,8 @@ async function handleMessagePost(
       }
       xmlText = decrypted.plaintext;
     } catch (err) {
+      // error-policy:J1 only the typed expected decrypt failure is a 400;
+      // anything unexpected propagates to the 500 boundary.
       if (err instanceof WechatError) {
         res.writeHead(400);
         res.end("Bad Request");
@@ -302,15 +421,32 @@ async function handleMessagePost(
       res.end("Forbidden");
       return;
     }
+    if (!deps.replayGuard.accepts(account.id, timestamp, nonce, body)) {
+      // error-policy:J1 the plaintext signature does not cover the body, so
+      // replay state is the only thing binding this query to THIS delivery.
+      logger.warn(
+        `[wechat] Rejecting replayed callback body for account "${account.id}"`,
+      );
+      res.writeHead(403);
+      res.end("Forbidden");
+      return;
+    }
     xmlText = body;
   }
 
   let message: WechatMessageContext | null;
   try {
     message = normalizePlatformXml(xmlText, account);
-  } catch {
-    // Unknown/malformed payload shapes are acknowledged so the platform does
-    // not retry them; diagnostic reporting happened during normalization.
+  } catch (err) {
+    if (!(err instanceof WechatError)) {
+      // error-policy:J1 only the typed expected malformed-input failure is
+      // acknowledged; a programmer/runtime failure propagates to the 500
+      // boundary instead of being silently swallowed as a 200.
+      throw err;
+    }
+    // error-policy:J3 unknown/malformed payload shapes are acknowledged so
+    // the platform does not retry them; diagnostic reporting happened during
+    // normalization.
     res.writeHead(200, { "Content-Type": "text/plain" });
     res.end("success");
     return;
@@ -323,9 +459,14 @@ async function handleMessagePost(
   // Inner receiver binding: a decrypted/plaintext payload addressed to a
   // different account identity is a cross-account replay, not a message for
   // this route. Binding uses callbackIdentity (gh_ original ID / corpId) when
-  // configured; unset means binding is skipped (official-account without
-  // callbackId) — never mis-verified against the appId.
-  if (message.recipient && !isBoundInnerReceiver(message.recipient, account)) {
+  // configured; an account WITH a configured identity requires a non-empty
+  // ToUserName — an absent receiver cannot be verified and fails closed.
+  // Unset identity (official-account without callbackId) skips binding rather
+  // than mis-verifying against the appId.
+  if (
+    account.callbackIdentity &&
+    (!message.recipient || !isBoundInnerReceiver(message.recipient, account))
+  ) {
     res.writeHead(403);
     res.end("Forbidden");
     return;
@@ -333,7 +474,8 @@ async function handleMessagePost(
   // WeCom evidence must belong to the configured agent. The outer envelope
   // AgentID is authoritative when present; the inner AgentID must agree with
   // both. An outer/inner disagreement or a mismatch with the configured agent
-  // is a cross-agent replay under the same corp credentials.
+  // is a cross-agent replay under the same corp credentials. Malformed
+  // values were already rejected during extraction/normalization.
   if (account.mode === "wecom" && account.wecomAgentId !== undefined) {
     const agentIds = [envelopeAgentId, message.agentId].filter(
       (id): id is number => id !== undefined,
@@ -424,11 +566,27 @@ function extractEncryptedEnvelope(body: string): {
   const rawAgentId = parsed.fields.AgentID;
   return {
     encrypt,
-    outerAgentId:
-      rawAgentId !== undefined && /^\d+$/.test(rawAgentId)
-        ? Number(rawAgentId)
-        : undefined,
+    outerAgentId: parseAgentIdField(rawAgentId),
   };
+}
+
+/**
+ * A present AgentID must be a positive safe-integer decimal. Malformed,
+ * unsafe, or non-positive values are a typed malformed-input failure — never
+ * silently coerced to "absent", which would bypass agent binding.
+ */
+function parseAgentIdField(raw: string | undefined): number | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  if (!/^[1-9]\d*$/.test(raw) || !Number.isSafeInteger(Number(raw))) {
+    throw new WechatError(
+      "WECHAT_CALLBACK_MALFORMED",
+      "AgentID is malformed or unsafe",
+      { agentId: raw },
+    );
+  }
+  return Number(raw);
 }
 
 /**
@@ -474,11 +632,9 @@ export function normalizePlatformXml(
       group: undefined,
       event,
       // WeCom event callbacks carry the target agent too; surfaced for the
-      // same agent binding as message callbacks.
-      agentId:
-        f.AgentID !== undefined && /^\d+$/.test(f.AgentID)
-          ? Number(f.AgentID)
-          : undefined,
+      // same agent binding as message callbacks. Malformed values are typed
+      // malformed-input failures, never coerced to absent.
+      agentId: parseAgentIdField(f.AgentID),
       platform: { mode: account.mode, accountId: account.id },
       raw: { root: parsed.root, event: f.Event ?? null },
     };
@@ -525,10 +681,8 @@ export function normalizePlatformXml(
     group: undefined,
     imageUrl,
     // WeCom app messages carry the target agent id; used for app binding.
-    agentId:
-      f.AgentID !== undefined && /^\d+$/.test(f.AgentID)
-        ? Number(f.AgentID)
-        : undefined,
+    // Malformed values are typed malformed-input failures, never coerced.
+    agentId: parseAgentIdField(f.AgentID),
     platform: { mode: account.mode, accountId: account.id },
     raw: { root: parsed.root, msgType },
   };
@@ -555,8 +709,11 @@ function resolveCallbackAccount(
 function safeDecode(segment: string): string {
   try {
     return decodeURIComponent(segment);
-  } catch {
-    throw new URIError("malformed percent-encoding");
+  } catch (err) {
+    // error-policy:J3 the path segment is untrusted input; malformed
+    // percent-encoding is surfaced as an explicit invalid result so account
+    // resolution fails closed (404), never a fabricated account id.
+    throw new URIError(`malformed percent-encoding: ${String(err)}`);
   }
 }
 

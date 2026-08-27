@@ -237,7 +237,10 @@ export function registerWechatMessageConnector(
     content: Content,
   ): Promise<void> => {
     if (!channel) {
-      throw new Error("[wechat] Channel is not available");
+      throw new WechatError(
+        "WECHAT_ACCOUNT_UNAVAILABLE",
+        "Channel is not available",
+      );
     }
     const text = typeof content.text === "string" ? content.text.trim() : "";
     if (!text) {
@@ -246,7 +249,11 @@ export function registerWechatMessageConnector(
     const accountId = resolveWechatAccountId(config, target);
     const to = String(target.channelId ?? target.entityId ?? "").trim();
     if (!to) {
-      throw new Error("[wechat] target is missing channelId/entityId");
+      throw new WechatError(
+        "WECHAT_SEND_FAILED",
+        "target is missing channelId/entityId",
+        { target },
+      );
     }
     await channel.sendText(accountId, to, text);
   };
@@ -385,6 +392,8 @@ const wechatPlugin: Plugin = {
         }),
       );
     } catch (err) {
+      // error-policy:J4 provider registration failure degrades account
+      // observability; the connector keeps operating without it.
       logger.warn(
         `[wechat] Failed to register provider with ConnectorAccountManager: ${err instanceof Error ? err.message : String(err)}`,
       );
@@ -414,7 +423,10 @@ const wechatPlugin: Plugin = {
           message: msg,
           sendText: async (replyAccountId, to, text) => {
             if (!channel) {
-              throw new Error("[wechat] Channel is not available for replies");
+              throw new WechatError(
+                "WECHAT_ACCOUNT_UNAVAILABLE",
+                "Channel is not available for replies",
+              );
             }
             await channel.sendText(replyAccountId, to, text);
           },

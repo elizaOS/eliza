@@ -52,6 +52,8 @@ export class ReplyDispatcher {
       try {
         await this.client.sendText(to, chunk);
       } catch (err) {
+        // error-policy:J2 the send failure is logged with its account-bound
+        // context and rethrown so the delivery boundary sees the typed error.
         if (err instanceof Error) {
           logger.error(`[wechat] Failed to send text to ${to}: ${err.message}`);
         } else {
@@ -76,6 +78,8 @@ export class ReplyDispatcher {
     try {
       await this.client.sendImage(to, imagePath, caption);
     } catch (err) {
+      // error-policy:J2 the send failure is logged with its account-bound
+      // context and rethrown so the delivery boundary sees the typed error.
       if (err instanceof Error) {
         logger.error(`[wechat] Failed to send image to ${to}: ${err.message}`);
       } else {

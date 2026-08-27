@@ -118,6 +118,7 @@ describe("callback UTF-8 chunk-boundary integrity (#22426, direct path)", () => 
       onMessage: (_accountId, msg) => {
         received.push(msg);
       },
+      clock: { now: () => 1_710_969_600_000 },
     });
     closers.push(handle.close);
     return handle.port;

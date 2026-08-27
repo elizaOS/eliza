@@ -15,6 +15,12 @@ import { startCallbackServer } from "./callback-server";
 import type { ResolvedWechatAccount, WechatMessageContext } from "./types";
 import { buildWechatXml } from "./xml";
 
+/**
+ * Deterministic clock anchored to the fixed TIMESTAMP: freshness passes for
+ * TIMESTAMP and fails for anything minutes away, without real-time waits.
+ */
+const FIXED_NOW_MS = 1_710_969_600_000;
+const CLOCK = { now: () => FIXED_NOW_MS };
 const TIMESTAMP = "1710969600";
 const NONCE = "nonce-42";
 const AES_KEY = Buffer.from("0123456789abcdef0123456789abcdef")
@@ -109,6 +115,7 @@ describe("first-party callback server", () => {
       accounts,
       onMessage,
       onDeliveryError,
+      clock: CLOCK,
     });
     closers.push(handle.close);
     return handle;
@@ -708,5 +715,221 @@ describe("first-party callback server", () => {
     expect(failures).toEqual([
       { error: new Error("delivery exploded"), accountId: "oa-main" },
     ]);
+  });
+
+  it("rejects a signature whose timestamp is outside the freshness window", async () => {
+    const received: WechatMessageContext[] = [];
+    const handle = await start((_id, msg) => {
+      received.push(msg);
+    });
+
+    // Perfectly signed, but 10 minutes before the pinned clock (window: 5).
+    const stale = "1710969000";
+    const signature = sha1Of(OFFICIAL.tokenSecret, stale, NONCE);
+    const res = await httpRequest(
+      handle.port,
+      `/webhook/wechat/oa-main?signature=${signature}&timestamp=${stale}&nonce=${NONCE}`,
+      {
+        method: "POST",
+        body: buildWechatXml("xml", {
+          ToUserName: "gh_app1",
+          FromUserName: "openid-alice",
+          CreateTime: stale,
+          MsgType: "text",
+          Content: "stale replay",
+          MsgId: "6001",
+        }),
+      },
+    );
+    expect(res.status).toBe(403);
+    expect(received).toHaveLength(0);
+  });
+
+  it("rejects a different body replayed under a captured plaintext signature", async () => {
+    const received: WechatMessageContext[] = [];
+    const handle = await start((_id, msg) => {
+      received.push(msg);
+    });
+
+    const original = buildWechatXml("xml", {
+      ToUserName: "gh_app1",
+      FromUserName: "openid-alice",
+      CreateTime: TIMESTAMP,
+      MsgType: "text",
+      Content: "original body",
+      MsgId: "6002",
+    });
+    const signature = sha1Of(OFFICIAL.tokenSecret, TIMESTAMP, NONCE);
+    const first = await httpRequest(
+      handle.port,
+      `/webhook/wechat/oa-main?signature=${signature}&timestamp=${TIMESTAMP}&nonce=${NONCE}`,
+      { method: "POST", body: original },
+    );
+    expect(first).toEqual({ body: "success", status: 200 });
+    expect(received).toHaveLength(1);
+
+    // Same captured signature triple, SUBSTITUTED body: must be rejected even
+    // though the signature itself is valid — plaintext signatures do not
+    // cover the body, so replay state is the binding.
+    const substituted = buildWechatXml("xml", {
+      ToUserName: "gh_app1",
+      FromUserName: "openid-alice",
+      CreateTime: TIMESTAMP,
+      MsgType: "text",
+      Content: "attacker body",
+      MsgId: "6003",
+    });
+    const replay = await httpRequest(
+      handle.port,
+      `/webhook/wechat/oa-main?signature=${signature}&timestamp=${TIMESTAMP}&nonce=${NONCE}`,
+      { method: "POST", body: substituted },
+    );
+    expect(replay.status).toBe(403);
+    expect(received).toHaveLength(1);
+  });
+
+  it("allows byte-identical platform retries of a delivered message", async () => {
+    const received: WechatMessageContext[] = [];
+    const handle = await start((_id, msg) => {
+      received.push(msg);
+    });
+
+    const xml = buildWechatXml("xml", {
+      ToUserName: "gh_app1",
+      FromUserName: "openid-alice",
+      CreateTime: TIMESTAMP,
+      MsgType: "text",
+      Content: "retry me",
+      MsgId: "6004",
+    });
+    const signature = sha1Of(OFFICIAL.tokenSecret, TIMESTAMP, NONCE);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const res = await httpRequest(
+        handle.port,
+        `/webhook/wechat/oa-main?signature=${signature}&timestamp=${TIMESTAMP}&nonce=${NONCE}`,
+        { method: "POST", body: xml },
+      );
+      expect(res.status).toBe(200);
+    }
+    expect(received).toHaveLength(3);
+  });
+
+  it("rejects a plaintext message whose ToUserName is absent (bound account)", async () => {
+    const received: WechatMessageContext[] = [];
+    const handle = await start((_id, msg) => {
+      received.push(msg);
+    });
+
+    // No ToUserName at all: an absent receiver cannot be verified against the
+    // configured gh_ identity and fails closed.
+    const xml = buildWechatXml("xml", {
+      FromUserName: "openid-alice",
+      CreateTime: TIMESTAMP,
+      MsgType: "text",
+      Content: "missing receiver",
+      MsgId: "6005",
+    });
+    const signature = sha1Of(OFFICIAL.tokenSecret, TIMESTAMP, NONCE);
+    const res = await httpRequest(
+      handle.port,
+      `/webhook/wechat/oa-main?signature=${signature}&timestamp=${TIMESTAMP}&nonce=${NONCE}`,
+      { method: "POST", body: xml },
+    );
+    expect(res.status).toBe(403);
+    expect(received).toHaveLength(0);
+  });
+
+  it("rejects an encrypted WeCom message whose inner ToUserName is absent", async () => {
+    const received: WechatMessageContext[] = [];
+    const handle = await start((_id, msg) => {
+      received.push(msg);
+    });
+
+    const innerXml = buildWechatXml("xml", {
+      FromUserName: "wecom-bob",
+      CreateTime: TIMESTAMP,
+      MsgType: "text",
+      Content: "missing inner receiver",
+      MsgId: "6006",
+    });
+    const encrypt = encryptCallbackPayload(innerXml, "corp1", AES_KEY);
+    const envelope = buildWechatXml("xml", {
+      ToUserName: "corp1",
+      Encrypt: encrypt,
+    });
+    const signature = sha1Of(WECOM.tokenSecret, TIMESTAMP, NONCE, encrypt);
+    const res = await httpRequest(
+      handle.port,
+      `/webhook/wechat/wecom-main?msg_signature=${signature}&timestamp=${TIMESTAMP}&nonce=${NONCE}`,
+      { method: "POST", body: envelope },
+    );
+    expect(res.status).toBe(403);
+    expect(received).toHaveLength(0);
+  });
+
+  it("rejects a malformed envelope AgentID instead of treating it as absent", async () => {
+    const received: WechatMessageContext[] = [];
+    const handle = await start((_id, msg) => {
+      received.push(msg);
+    });
+
+    const innerXml = buildWechatXml("xml", {
+      ToUserName: "corp1",
+      FromUserName: "wecom-bob",
+      CreateTime: TIMESTAMP,
+      MsgType: "text",
+      Content: "malformed outer agent",
+      MsgId: "6007",
+    });
+    const encrypt = encryptCallbackPayload(innerXml, "corp1", AES_KEY);
+    // Outer envelope AgentID is garbage: must be a typed 400, never parsed
+    // as "absent" (which would bypass agent binding entirely).
+    const envelope = buildWechatXml("xml", {
+      ToUserName: "corp1",
+      Encrypt: encrypt,
+      AgentID: "invalid",
+    });
+    const signature = sha1Of(WECOM.tokenSecret, TIMESTAMP, NONCE, encrypt);
+    const res = await httpRequest(
+      handle.port,
+      `/webhook/wechat/wecom-main?msg_signature=${signature}&timestamp=${TIMESTAMP}&nonce=${NONCE}`,
+      { method: "POST", body: envelope },
+    );
+    expect(res.status).toBe(400);
+    expect(received).toHaveLength(0);
+  });
+
+  it("drops a malformed inner AgentID instead of treating it as absent", async () => {
+    const received: WechatMessageContext[] = [];
+    const handle = await start((_id, msg) => {
+      received.push(msg);
+    });
+
+    const innerXml = buildWechatXml("xml", {
+      ToUserName: "corp1",
+      FromUserName: "wecom-bob",
+      CreateTime: TIMESTAMP,
+      MsgType: "text",
+      Content: "malformed inner agent",
+      MsgId: "6008",
+      AgentID: "2evil",
+    });
+    const encrypt = encryptCallbackPayload(innerXml, "corp1", AES_KEY);
+    const envelope = buildWechatXml("xml", {
+      ToUserName: "corp1",
+      Encrypt: encrypt,
+      AgentID: "2",
+    });
+    const signature = sha1Of(WECOM.tokenSecret, TIMESTAMP, NONCE, encrypt);
+    const res = await httpRequest(
+      handle.port,
+      `/webhook/wechat/wecom-main?msg_signature=${signature}&timestamp=${TIMESTAMP}&nonce=${NONCE}`,
+      { method: "POST", body: envelope },
+    );
+    // Inner normalization throws the typed malformed-input failure, which the
+    // boundary acknowledges (no platform retry) WITHOUT dispatching — the
+    // agent binding is never reached with a coerced-to-absent AgentID.
+    expect(res).toEqual({ body: "success", status: 200 });
+    expect(received).toHaveLength(0);
   });
 });
