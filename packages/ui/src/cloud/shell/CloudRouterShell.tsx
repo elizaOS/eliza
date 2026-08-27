@@ -402,13 +402,11 @@ function CloudRouteElement({
   }
   if (route.group && MANAGED_CLOUD_APP_GROUPS.has(route.group)) {
     if (isApexControlPlaneHost()) return <CanonicalCloudAppRedirect />;
-    return (
-      <StewardAuthProvider>
-        <CloudManagementSessionGate>
-          <AppCatchAllRoute appElement={appElement} />
-        </CloudManagementSessionGate>
-      </StewardAuthProvider>
-    );
+    // Individually registered cloud/admin routes must honor the same
+    // pending/error/retry/ready barrier as the `/cloud/*` wildcard. Publishing
+    // a domain route during private load must not mount the app shell early
+    // (#29283).
+    return <PrivateCloudAppRoute appElement={appElement} />;
   }
   const body = applyRouteGate(route.gate, renderRouteElement(route));
   return (
