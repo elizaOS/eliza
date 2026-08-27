@@ -415,22 +415,15 @@ jobs:
           VITE_ELIZA_CLOUD_BASE: ${{ env.ELIZAOS_CLOUD_BASE_URL }}
         run: bun run --cwd packages/app build:web
 
-      - name: Run real STAGING cloud login + personal identity + chat
+      - name: Run read-only staging Personal and Dedicated quote diagnostic
         id: staging-cloud-smoke
         shell: bash
         run: |
-          set -uo pipefail
-          rm -f -- "$ELIZA_UI_SMOKE_STAGING_CHAT_LATENCY_EVIDENCE_PATH"
-          rm -f -- "$ELIZA_UI_SMOKE_STAGING_CONTINUITY_EVIDENCE_PATH"
-          started_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
-          echo "started_ms=$started_ms" >> "$GITHUB_OUTPUT"
-          set +e
-          bun run --cwd packages/app test:e2e test/ui-smoke/cloud-live.spec.ts --project=chromium
-          test_status=$?
-          set -e
-          completed_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
-          echo "completed_ms=$completed_ms" >> "$GITHUB_OUTPUT"
-          exit "$test_status"
+          set -euo pipefail
+          node packages/app/test/staging-personal-readonly-diagnostic.mjs
+          # This branch is diagnostics-only and must never be accepted as live
+          # browser evidence or run the later evidence validators.
+          exit 97
 
       - name: Validate privacy-safe staging chat latency evidence
         id: staging-cloud-chat-latency
