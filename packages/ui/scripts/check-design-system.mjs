@@ -3399,6 +3399,10 @@ function reexportedModuleSpecifiers(file, source) {
   );
 }
 
+/**
+ * Validates review-dated Card variants that remain part of the published API
+ * even after their maintained in-repo callers have moved to newer layouts.
+ */
 export function validatePublicCardVariantCompatibility({
   cardSource,
   cardVariants,
