@@ -17,6 +17,9 @@ import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import {
   getCloudAuthToken,
   isDirectCloudSharedAgentBase,
+  type PersonalDedicatedAdoptionConfirmation,
+  type PersonalDedicatedAdoptionQuote,
+  personalDedicatedAdoptionQuoteFromError,
 } from "../api/client-cloud";
 import type { CloudCompatAgent } from "../api/client-types-cloud";
 import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
@@ -144,6 +147,10 @@ export type FirstRunFinishOutcome =
   | { kind: "handoff-started" }
   | { kind: "needs-cloud-login"; fallbackUrl?: string }
   | { kind: "pick-cloud-agent"; agents: CloudCompatAgent[] }
+  | {
+      kind: "confirm-dedicated-adoption";
+      quote: PersonalDedicatedAdoptionQuote;
+    }
   | { kind: "error"; message: string };
 
 // ── Exactly-once POST funnel ─────────────────────────────────────────────────
@@ -786,6 +793,9 @@ export async function bindCloudAgent(
 export async function listOrAutoProvisionCloudAgent(
   sourceDraft: FirstRunProfileDraft,
   ports: FirstRunFinishPorts,
+  options: {
+    adoptionConfirmation?: PersonalDedicatedAdoptionConfirmation;
+  } = {},
 ): Promise<FirstRunFinishOutcome> {
   ports.signal?.throwIfAborted();
   syncIdentity(sourceDraft, ports);
@@ -810,17 +820,30 @@ export async function listOrAutoProvisionCloudAgent(
   // stops HERE (#19255) so it cannot race a newer attempt's join.
   ports.signal?.throwIfAborted();
   const cloudApiBase = getBootConfig().cloudApiBase || "https://eliza.app";
-  const selected = await runJoinFlow({
-    client,
-    effects: {
-      savePersistedActiveServer,
-      savePersistedFirstRunComplete,
-    },
-    cloudApiBase,
-    authToken,
-    signal: ports.signal,
-    onProgress: (status, detail) => ports.onStatus?.(detail ?? status, status),
-  });
+  let selected: Awaited<ReturnType<typeof runJoinFlow>>;
+  try {
+    selected = await runJoinFlow({
+      client,
+      effects: {
+        savePersistedActiveServer,
+        savePersistedFirstRunComplete,
+      },
+      cloudApiBase,
+      authToken,
+      signal: ports.signal,
+      onProgress: (status, detail) =>
+        ports.onStatus?.(detail ?? status, status),
+      ...(options.adoptionConfirmation
+        ? { adoptionConfirmation: options.adoptionConfirmation }
+        : {}),
+    });
+  } catch (error) {
+    // error-policy:J2 adoption authority — translate only the typed quote
+    // confirmation boundary; preserve every unrelated startup failure.
+    const quote = personalDedicatedAdoptionQuoteFromError(error);
+    if (quote) return { kind: "confirm-dedicated-adoption", quote };
+    throw error;
+  }
   addAgentProfile({
     kind: "cloud",
     label: selected.agentName,

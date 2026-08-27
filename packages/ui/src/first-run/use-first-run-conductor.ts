@@ -71,6 +71,8 @@ import type {
 import { client } from "../api";
 import {
   getCloudAuthToken,
+  type PersonalDedicatedAdoptionConfirmation,
+  type PersonalDedicatedAdoptionQuote,
   refreshCloudStewardSession,
 } from "../api/client-cloud";
 import { getBootConfig } from "../config/boot-config";
@@ -162,6 +164,38 @@ const CLOUD_WELCOME_BACK =
   "Welcome back — you're already signed in to Eliza Cloud. Setting up your agent…";
 const CLOUD_ONLY_DONE =
   'You\'re all set — ask me anything. Want a quick tour? Type "restart tutorial" whenever you like.';
+
+function dedicatedAdoptionQuoteTurn(
+  quote: PersonalDedicatedAdoptionQuote,
+): string {
+  const compute = quote.startsCompute
+    ? "This confirmation starts or restarts compute."
+    : "This confirmation adopts the already-running target without starting new compute.";
+  const state =
+    quote.stateDisposition === "verified_backup_present"
+      ? "Restore the reviewed backup before activation"
+      : quote.stateDisposition === "fresh_boot_no_verified_backup"
+        ? "Fresh boot; no reviewed backup is available"
+        : "Keep the existing target state; no reviewed restore directive is selected";
+  return [
+    "I found your existing Dedicated agent. Review the exact quote before anything changes:",
+    "",
+    `- Current status: ${quote.status}`,
+    `- Compute: ${compute}`,
+    `- State handling: ${state} (${quote.stateDisposition})`,
+    `- Hosting: $${String(quote.hourlyRateUsd)}/hour, $${String(quote.dailyRateUsd)}/day`,
+    `- Balance: $${String(quote.balanceUsd)}`,
+    `- Required balance: $${String(quote.minimumBalanceUsd)} (${String(quote.minimumRunwayDays)} days)`,
+    `- Deficit: $${String(quote.deficitUsd)}`,
+    "",
+    "Nothing will be adopted, started, or charged until you confirm below.",
+    "",
+    "[CHOICE:first-run id=dedicated-adoption]",
+    `${FIRST_RUN_ACTION_PREFIX}dedicated-adoption:confirm=Confirm this exact Dedicated agent`,
+    `${FIRST_RUN_ACTION_PREFIX}dedicated-adoption:cancel=Not now`,
+    "[/CHOICE]",
+  ].join("\n");
+}
 
 // Bounded cookie-recovery refresh at conductor mount (#15133). Mirrors
 // STEWARD_RESTORE_REFRESH_TIMEOUT_MS in startup-phase-restore.ts so a hung
@@ -780,6 +814,10 @@ export function useFirstRunConductor(): void {
   // Armed by a needs-cloud-login outcome; consumed by the auto-resume effect
   // when the cloud connection lands (or cleared by the user's next pick).
   const pendingCloudResumeRef = React.useRef<"cloud" | "hybrid" | null>(null);
+  const pendingDedicatedAdoptionQuoteRef =
+    React.useRef<PersonalDedicatedAdoptionQuote | null>(null);
+  const pendingDedicatedAdoptionConfirmationRef =
+    React.useRef<PersonalDedicatedAdoptionConfirmation | null>(null);
   // Bind tail for a chosen/auto-chosen cloud agent — assigned below (it and
   // handleOutcome reference each other; the ref breaks the cycle). Its own
   // in-flight latch exists because the provisioning flow's finally releases
@@ -829,6 +867,16 @@ export function useFirstRunConductor(): void {
           );
           return;
         }
+        case "confirm-dedicated-adoption": {
+          pendingDedicatedAdoptionQuoteRef.current = outcome.quote;
+          pendingDedicatedAdoptionConfirmationRef.current = null;
+          silentCloudEntryRef.current = false;
+          seedFreshChoiceTurn(
+            "first-run:dedicated-adoption",
+            dedicatedAdoptionQuoteTurn(outcome.quote),
+          );
+          return;
+        }
         case "needs-cloud-login": {
           // Arm auto-resume ONLY when not already connected. If elizaCloudConnected
           // already reads true yet the bind still reported needs-cloud-login, the
@@ -860,6 +908,7 @@ export function useFirstRunConductor(): void {
       seedTutorial,
       completeCloudOnly,
       seedCloudAgentChoice,
+      seedFreshChoiceTurn,
       seedTurn,
       replaceTurn,
       seedError,
@@ -956,24 +1005,34 @@ export function useFirstRunConductor(): void {
     if (!hasUsableStoredStewardToken()) {
       claimCloudLoginWindow();
     }
-    void listOrAutoProvisionCloudAgent(draftRef.current, {
-      ...portsRef.current,
-      signal: abortController.signal,
-      onInteractiveLogin: () => {
-        if (!cloudLoginAttemptRef.current.isCurrent(attempt)) return;
-        // A silent entry (stored Steward token, #15133) just degraded into
-        // real OAuth: the flow is interactive now, so the user gets the same
-        // waiting turn and bounded recovery as a visible entry (#19255).
-        if (silentCloudEntryRef.current) {
-          silentCloudEntryRef.current = false;
-          seedWaitingTurn();
-        }
-        armRecoveryDeadline();
+    const adoptionConfirmation =
+      pendingDedicatedAdoptionConfirmationRef.current;
+    // Confirmation is single-attempt authority. If this request is ambiguous,
+    // a retry must reconcile via a fresh GET and re-offer consent rather than
+    // replaying the paid POST with a stale in-memory choice.
+    pendingDedicatedAdoptionConfirmationRef.current = null;
+    void listOrAutoProvisionCloudAgent(
+      draftRef.current,
+      {
+        ...portsRef.current,
+        signal: abortController.signal,
+        onInteractiveLogin: () => {
+          if (!cloudLoginAttemptRef.current.isCurrent(attempt)) return;
+          // A silent entry (stored Steward token, #15133) just degraded into
+          // real OAuth: the flow is interactive now, so the user gets the same
+          // waiting turn and bounded recovery as a visible entry (#19255).
+          if (silentCloudEntryRef.current) {
+            silentCloudEntryRef.current = false;
+            seedWaitingTurn();
+          }
+          armRecoveryDeadline();
+        },
+        onInteractiveLoginComplete: () => {
+          loginDeadline?.cancel();
+        },
       },
-      onInteractiveLoginComplete: () => {
-        loginDeadline?.cancel();
-      },
-    })
+      adoptionConfirmation ? { adoptionConfirmation } : {},
+    )
       .then((outcome) => {
         loginDeadline?.cancel();
         // Stale attempt: the deadline already surfaced the retry turn — this
@@ -1178,6 +1237,24 @@ export function useFirstRunConductor(): void {
       pendingCloudResumeRef.current = null;
       clearCloudLoginPending();
       erroredRef.current = false;
+
+      if (group === "dedicated-adoption") {
+        const quote = pendingDedicatedAdoptionQuoteRef.current;
+        if (!quote || (id !== "confirm" && id !== "cancel")) return true;
+        if (id === "cancel") {
+          pendingDedicatedAdoptionQuoteRef.current = null;
+          pendingDedicatedAdoptionConfirmationRef.current = null;
+          seedError("No Dedicated agent was started.");
+          return true;
+        }
+        pendingDedicatedAdoptionQuoteRef.current = null;
+        pendingDedicatedAdoptionConfirmationRef.current = {
+          quoteId: quote.quoteId,
+          dedicatedAgentId: quote.dedicatedAgentId,
+        };
+        startCloudProvisionFlow();
+        return true;
+      }
 
       if (group === "runtime") {
         if (id !== "cloud" && id !== "local" && id !== "remote") return true;
@@ -1463,6 +1540,7 @@ export function useFirstRunConductor(): void {
       startProviderFinish,
       setUiAccent,
       runtimeChooserEnabled,
+      seedError,
     ],
   );
   const handleActionRef = React.useRef(handleFirstRunAction);

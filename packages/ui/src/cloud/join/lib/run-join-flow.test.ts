@@ -185,6 +185,28 @@ describe("runJoinFlow", () => {
     });
   });
 
+  test("passes only the exact user-confirmed adoption quote to the client", async () => {
+    const h = harness();
+    const adoptionConfirmation = {
+      quoteId: "b".repeat(64),
+      dedicatedAgentId: DEDICATED_ID,
+    };
+
+    await runJoinFlow({
+      client: h.client,
+      effects: h.effects,
+      cloudApiBase: CLOUD_API_BASE,
+      authToken: "tok",
+      adoptionConfirmation,
+    });
+
+    expect(h.ensurePersonalDedicatedEliza).toHaveBeenCalledWith({
+      cloudApiBase: CLOUD_API_BASE,
+      authToken: "tok",
+      adoptionConfirmation,
+    });
+  });
+
   test("does not persist when cancellation arrives after identity resolution", async () => {
     const controller = new AbortController();
     const h = harness();

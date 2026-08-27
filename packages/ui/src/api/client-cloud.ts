@@ -79,6 +79,36 @@ import {
 import { createTimeoutSignal, isTimeoutAbortError } from "./timeout-signal";
 import { fetchAgentTransport } from "./transport";
 
+/** Exact, privacy-safe fields the UI may show before adopting Dedicated compute. */
+export interface PersonalDedicatedAdoptionQuote {
+  quoteId: string;
+  dedicatedAgentId: string;
+  adoptionState: "available" | "adopted";
+  status: string;
+  startsCompute: boolean;
+  hourlyRateUsd: number;
+  dailyRateUsd: number;
+  minimumBalanceUsd: number;
+  minimumRunwayDays: number;
+  balanceUsd: number;
+  deficitUsd: number;
+  stateDisposition:
+    | "fresh_boot_no_verified_backup"
+    | "verified_backup_present"
+    | "unreviewed_existing_target";
+  canAdopt: boolean;
+  requiresCatalogRestore: boolean;
+  requiresConfirmation: true;
+  action: "adopt_existing_dedicated";
+  unavailableReason?: string;
+}
+
+/** User authority for one exact quote and one exact existing Dedicated row. */
+export interface PersonalDedicatedAdoptionConfirmation {
+  quoteId: string;
+  dedicatedAgentId: string;
+}
+
 // ---------------------------------------------------------------------------
 // Module-level constants
 // ---------------------------------------------------------------------------
@@ -2036,6 +2066,7 @@ declare module "./client-base" {
       onProgress?: (status: string, detail?: string) => void;
       pollIntervalMs?: number;
       timeoutMs?: number;
+      adoptionConfirmation?: PersonalDedicatedAdoptionConfirmation;
     }): Promise<{
       personalElizaId: string;
       agentId: string;
@@ -4612,11 +4643,101 @@ type EnsurePersonalDedicatedElizaOptions = Parameters<
 const DEDICATED_ADOPTION_SELECTION_REQUIRED =
   "dedicated_adoption_selection_required";
 
+const DEDICATED_ADOPTION_UNAVAILABLE = "dedicated_adoption_unavailable";
+const DEDICATED_ADOPTION_QUOTE_CHANGED = "dedicated_adoption_quote_changed";
+
+function personalDedicatedAdoptionQuoteOrNull(
+  value: unknown,
+): PersonalDedicatedAdoptionQuote | null {
+  const quote = recordOrNull(value);
+  const quoteId = firstString(quote?.quoteId);
+  const dedicatedAgentId = firstString(quote?.dedicatedAgentId);
+  const adoptionState = firstString(quote?.adoptionState);
+  const status = firstString(quote?.status);
+  const stateDisposition = firstString(quote?.stateDisposition);
+  const hourlyRateUsd = numberOrNull(quote?.hourlyRateUsd);
+  const dailyRateUsd = numberOrNull(quote?.dailyRateUsd);
+  const minimumBalanceUsd = numberOrNull(quote?.minimumBalanceUsd);
+  const minimumRunwayDays = numberOrNull(quote?.minimumRunwayDays);
+  const balanceUsd = numberOrNull(quote?.balanceUsd);
+  const deficitUsd = numberOrNull(quote?.deficitUsd);
+  if (
+    !quoteId ||
+    !dedicatedAgentId ||
+    (adoptionState !== "available" && adoptionState !== "adopted") ||
+    !status ||
+    (stateDisposition !== "fresh_boot_no_verified_backup" &&
+      stateDisposition !== "verified_backup_present" &&
+      stateDisposition !== "unreviewed_existing_target") ||
+    hourlyRateUsd === null ||
+    dailyRateUsd === null ||
+    minimumBalanceUsd === null ||
+    minimumRunwayDays === null ||
+    balanceUsd === null ||
+    deficitUsd === null ||
+    typeof quote?.startsCompute !== "boolean" ||
+    typeof quote?.canAdopt !== "boolean" ||
+    typeof quote?.requiresCatalogRestore !== "boolean" ||
+    quote?.requiresConfirmation !== true ||
+    quote?.action !== "adopt_existing_dedicated"
+  ) {
+    return null;
+  }
+  const unavailableReason = firstString(quote.unavailableReason);
+  return {
+    quoteId,
+    dedicatedAgentId,
+    adoptionState,
+    status,
+    startsCompute: quote.startsCompute,
+    hourlyRateUsd,
+    dailyRateUsd,
+    minimumBalanceUsd,
+    minimumRunwayDays,
+    balanceUsd,
+    deficitUsd,
+    stateDisposition,
+    canAdopt: quote.canAdopt,
+    requiresCatalogRestore: quote.requiresCatalogRestore,
+    requiresConfirmation: true,
+    action: "adopt_existing_dedicated",
+    ...(unavailableReason ? { unavailableReason } : {}),
+  };
+}
+
+function throwDedicatedAdoptionConfirmationRequired(
+  quote: PersonalDedicatedAdoptionQuote,
+  cause?: unknown,
+): never {
+  throw new ElizaError(
+    "Review and explicitly confirm the existing Dedicated agent quote before any adoption or compute starts.",
+    {
+      code: "CLOUD_DEDICATED_ADOPTION_CONFIRMATION_REQUIRED",
+      ...(cause !== undefined ? { cause } : {}),
+      context: { phase: "adoption-confirmation", quote },
+      severity: "ephemeral",
+    },
+  );
+}
+
+/** Read the sanitized adoption quote carried by a confirmation-required error. */
+export function personalDedicatedAdoptionQuoteFromError(
+  error: unknown,
+): PersonalDedicatedAdoptionQuote | null {
+  if (
+    !(error instanceof ElizaError) ||
+    error.code !== "CLOUD_DEDICATED_ADOPTION_CONFIRMATION_REQUIRED"
+  ) {
+    return null;
+  }
+  return personalDedicatedAdoptionQuoteOrNull(error.context?.quote);
+}
+
 async function adoptSelectedPersonalDedicatedEliza(
   upgradeUrl: string,
   options: EnsurePersonalDedicatedElizaOptions,
   deadline: number,
-): Promise<string> {
+): Promise<string | null> {
   const adoptionUrl = `${upgradeUrl}/adopt-existing`;
   throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
   const quoteResponse = await directCloudJsonResponse<unknown>(adoptionUrl, {
@@ -4628,19 +4749,16 @@ async function adoptSelectedPersonalDedicatedEliza(
   });
   throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
   const quoteRoot = recordOrNull(quoteResponse.data);
-  const quote = recordOrNull(quoteRoot?.data);
-  const quoteId = firstString(quote?.quoteId);
-  const quotedTargetId = firstString(quote?.dedicatedAgentId);
-  const adoptionState = firstString(quote?.adoptionState);
+  const quoteErrorCode = directCloudErrorMetadata(quoteResponse.data).code;
   if (
-    !quoteResponse.ok ||
-    quoteRoot?.success !== true ||
-    !quoteId ||
-    !quotedTargetId ||
-    (adoptionState !== "available" && adoptionState !== "adopted") ||
-    quote?.requiresConfirmation !== true ||
-    quote?.action !== "adopt_existing_dedicated"
+    quoteResponse.status === 404 &&
+    quoteRoot?.success === false &&
+    quoteErrorCode === DEDICATED_ADOPTION_UNAVAILABLE
   ) {
+    return null;
+  }
+  const quote = personalDedicatedAdoptionQuoteOrNull(quoteRoot?.data);
+  if (!quoteResponse.ok || quoteRoot?.success !== true || !quote) {
     throw Object.assign(
       new Error(
         directCloudResponseErrorMessage(
@@ -4655,18 +4773,42 @@ async function adoptSelectedPersonalDedicatedEliza(
       },
     );
   }
-  if (quote?.canAdopt !== true) {
-    throw Object.assign(
-      new Error(
-        firstString(quote?.unavailableReason) ??
-          "The selected Dedicated agent cannot be adopted right now.",
-      ),
+  if (!quote.canAdopt) {
+    throw new ElizaError(
+      quote.unavailableReason ??
+        "The selected Dedicated agent cannot be adopted right now.",
       {
-        status: quote?.requiresCatalogRestore === true ? 409 : 402,
-        data: quoteResponse.data,
-        url: adoptionUrl,
+        code: "CLOUD_DEDICATED_ADOPTION_UNAVAILABLE",
+        context: {
+          phase: "adoption-quote",
+          startsCompute: quote.startsCompute,
+          requiresCatalogRestore: quote.requiresCatalogRestore,
+          stateDisposition: quote.stateDisposition,
+        },
+        severity: "ephemeral",
       },
     );
+  }
+
+  // An already-adopted live/in-flight row proves that an earlier confirmed
+  // mutation committed. Reattach without replaying the quote-bound POST.
+  if (
+    quote.adoptionState === "adopted" &&
+    !quote.startsCompute &&
+    (quote.status === "pending" ||
+      quote.status === "provisioning" ||
+      quote.status === "running")
+  ) {
+    return quote.dedicatedAgentId;
+  }
+
+  const confirmation = options.adoptionConfirmation;
+  if (
+    !confirmation ||
+    confirmation.quoteId !== quote.quoteId ||
+    confirmation.dedicatedAgentId !== quote.dedicatedAgentId
+  ) {
+    throwDedicatedAdoptionConfirmationRequired(quote);
   }
 
   throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
@@ -4679,7 +4821,7 @@ async function adoptSelectedPersonalDedicatedEliza(
     },
     body: JSON.stringify({
       action: "adopt_existing_dedicated",
-      quoteId,
+      quoteId: quote.quoteId,
     }),
     ...(options.signal ? { signal: options.signal } : {}),
   });
@@ -4687,6 +4829,36 @@ async function adoptSelectedPersonalDedicatedEliza(
   const adoptionRoot = recordOrNull(adoptionResponse.data);
   const adoption = recordOrNull(adoptionRoot?.data);
   const adoptedTargetId = firstString(adoption?.dedicatedAgentId);
+  const adoptionCode = directCloudErrorMetadata(adoptionResponse.data).code;
+  if (
+    adoptionResponse.status === 409 &&
+    adoptionRoot?.success === false &&
+    adoptionCode === DEDICATED_ADOPTION_QUOTE_CHANGED
+  ) {
+    const freshQuote = personalDedicatedAdoptionQuoteOrNull(adoptionRoot.data);
+    if (!freshQuote) {
+      throw new ElizaError(
+        "Eliza Cloud changed the Dedicated adoption quote without returning a valid replacement.",
+        {
+          code: "CLOUD_DEDICATED_ADOPTION_QUOTE_INVALID",
+          context: { phase: "adoption", field: "quote" },
+        },
+      );
+    }
+    if (freshQuote.dedicatedAgentId !== confirmation.dedicatedAgentId) {
+      throw new ElizaError(
+        "Eliza Cloud changed the selected Dedicated target while refreshing its quote.",
+        {
+          code: "CLOUD_DEDICATED_ADOPTION_TARGET_MISMATCH",
+          context: { phase: "adoption", field: "dedicatedAgentId" },
+        },
+      );
+    }
+    throwDedicatedAdoptionConfirmationRequired(
+      freshQuote,
+      adoptionResponse.data,
+    );
+  }
   if (
     !adoptionResponse.ok ||
     adoptionRoot?.success !== true ||
@@ -4707,7 +4879,7 @@ async function adoptSelectedPersonalDedicatedEliza(
       },
     );
   }
-  if (adoptedTargetId !== quotedTargetId) {
+  if (adoptedTargetId !== quote.dedicatedAgentId) {
     throw new ElizaError(
       "Eliza Cloud adopted a different Dedicated target than the quoted selection.",
       {
@@ -4717,6 +4889,61 @@ async function adoptSelectedPersonalDedicatedEliza(
     );
   }
   return adoptedTargetId;
+}
+
+async function waitForPersonalDedicatedCutover(
+  client: ElizaClient,
+  personal: Awaited<ReturnType<ElizaClient["getPersonalSharedEliza"]>>,
+  dedicatedAgentId: string,
+  cloudApiBase: string,
+  options: EnsurePersonalDedicatedElizaOptions,
+  deadline: number,
+): ReturnType<ElizaClient["ensurePersonalDedicatedEliza"]> {
+  const intervalMs = options.pollIntervalMs ?? 5_000;
+  for (;;) {
+    throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      throw new Error(
+        `Dedicated agent ${dedicatedAgentId} did not become ready before the signed-in startup deadline.`,
+      );
+    }
+    try {
+      const cutover = await client.finalizePersonalDedicatedCutover({
+        personalElizaId: personal.personalElizaId,
+        dedicatedAgentId,
+        cloudApiBase,
+        authToken: options.authToken,
+        signal: options.signal,
+      });
+      throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+      options.onProgress?.("ready", "Connected to your Dedicated agent");
+      return {
+        personalElizaId: personal.personalElizaId,
+        agentId: personal.personalElizaId,
+        activeAgentId: cutover.activeAgentId,
+        agentName: personal.agentName,
+        apiBase: cutover.apiBase,
+        runtime: "dedicated" as const,
+      };
+    } catch (error) {
+      options.signal?.throwIfAborted();
+      if (Date.now() >= deadline) throw error;
+      const status =
+        error && typeof error === "object" && "status" in error
+          ? (error as { status?: unknown }).status
+          : null;
+      if (status !== 409 && status !== 423 && status !== 503) throw error;
+      options.onProgress?.(
+        "starting",
+        "Your Dedicated agent is still starting…",
+      );
+      await abortableDelay(
+        Math.min(intervalMs, deadline - Date.now()),
+        options.signal,
+      );
+    }
+  }
 }
 
 async function ensurePersonalDedicatedElizaWithinDeadline(
@@ -4800,11 +5027,16 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
       // resume cutover without replaying the paid activation POST.
       dedicatedAgentId = existingTargetId;
     } else if (statusPolicy === "resume-with-confirmed-post") {
-      // The server deliberately reports retained resumable targets as
-      // in_progress too, but POST is still required to re-arm compute under
-      // the freshly confirmed quote. Validate that response against the exact
-      // quoted target below; this is a resume, not an ambiguous replay.
-      activationPostRequired = true;
+      // A retained failed/stopped/sleeping target may be an adopted row with a
+      // reviewed restore directive. Resolve that authority before the generic
+      // activation POST so recovery cannot bypass the same-row adoption quote.
+      const adoptedTargetId = await adoptSelectedPersonalDedicatedEliza(
+        upgradeUrl,
+        options,
+        deadline,
+      );
+      if (adoptedTargetId) dedicatedAgentId = adoptedTargetId;
+      else activationPostRequired = true;
     } else {
       throw new ElizaError(
         "Eliza Cloud returned an invalid in-progress Dedicated status.",
@@ -4894,51 +5126,14 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
     );
   }
 
-  const intervalMs = options.pollIntervalMs ?? 5_000;
-  for (;;) {
-    throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
-    const remainingMs = deadline - Date.now();
-    if (remainingMs <= 0) {
-      throw new Error(
-        `Dedicated agent ${dedicatedAgentId} did not become ready before the signed-in startup deadline.`,
-      );
-    }
-    try {
-      const cutover = await this.finalizePersonalDedicatedCutover({
-        personalElizaId: personal.personalElizaId,
-        dedicatedAgentId,
-        cloudApiBase,
-        authToken: options.authToken,
-        signal: options.signal,
-      });
-      throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
-      options.onProgress?.("ready", "Connected to your Dedicated agent");
-      return {
-        personalElizaId: personal.personalElizaId,
-        agentId: personal.personalElizaId,
-        activeAgentId: cutover.activeAgentId,
-        agentName: personal.agentName,
-        apiBase: cutover.apiBase,
-        runtime: "dedicated" as const,
-      };
-    } catch (error) {
-      options.signal?.throwIfAborted();
-      if (Date.now() >= deadline) throw error;
-      const status =
-        error && typeof error === "object" && "status" in error
-          ? (error as { status?: unknown }).status
-          : null;
-      if (status !== 409 && status !== 423 && status !== 503) throw error;
-      options.onProgress?.(
-        "starting",
-        "Your Dedicated agent is still starting…",
-      );
-      await abortableDelay(
-        Math.min(intervalMs, deadline - Date.now()),
-        options.signal,
-      );
-    }
-  }
+  return await waitForPersonalDedicatedCutover(
+    this,
+    personal,
+    dedicatedAgentId,
+    cloudApiBase,
+    options,
+    deadline,
+  );
 }
 
 ElizaClient.prototype.ensurePersonalDedicatedEliza = async function (

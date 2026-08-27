@@ -10,6 +10,7 @@
  * singleton + the background model download).
  */
 
+import { ElizaError } from "@elizaos/core";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -1589,6 +1590,74 @@ describe("surfaceCloudLoginRetryTurn", () => {
 describe("cloud-only onboarding (runtime chooser off — the production default)", () => {
   beforeEach(() => {
     localStorage.removeItem("eliza:enable-runtime-chooser");
+  });
+
+  it("surfaces the exact Dedicated adoption quote and posts only after the confirmation pick", async () => {
+    const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
+    const quoteId = "b".repeat(64);
+    const quote = {
+      quoteId,
+      dedicatedAgentId,
+      adoptionState: "available" as const,
+      status: "stopped",
+      startsCompute: true,
+      hourlyRateUsd: 0.01,
+      dailyRateUsd: 0.24,
+      minimumBalanceUsd: 0.72,
+      minimumRunwayDays: 3,
+      balanceUsd: 115.54059,
+      deficitUsd: 0,
+      stateDisposition: "verified_backup_present" as const,
+      canAdopt: true,
+      requiresCatalogRestore: false,
+      requiresConfirmation: true as const,
+      action: "adopt_existing_dedicated" as const,
+    };
+    mocks.client.getPersonalSharedEliza
+      .mockRejectedValueOnce(
+        new ElizaError("Confirmation required", {
+          code: "CLOUD_DEDICATED_ADOPTION_CONFIRMATION_REQUIRED",
+          context: { phase: "adoption-confirmation", quote },
+        }),
+      )
+      .mockResolvedValueOnce({
+        personalElizaId: PERSONAL_ELIZA_ID,
+        agentId: PERSONAL_ELIZA_ID,
+        activeAgentId: dedicatedAgentId,
+        agentName: "Eliza Cloud",
+        apiBase: `https://${dedicatedAgentId}.cloud.eliza.app`,
+        runtime: "dedicated" as const,
+      });
+    const spies = seedAppStore({ elizaCloudConnected: true });
+    const { turn, unmount } = renderConductor();
+
+    const confirmation = await waitForTurn(
+      turn,
+      "first-run:dedicated-adoption",
+    );
+    expect(confirmation.text).toContain("Current status: stopped");
+    expect(confirmation.text).toContain("starts or restarts compute");
+    expect(confirmation.text).toContain("verified_backup_present");
+    expect(confirmation.text).toContain("$0.01/hour, $0.24/day");
+    expect(confirmation.text).toContain("Balance: $115.54059");
+    expect(confirmation.text).toContain(
+      "Nothing will be adopted, started, or charged until you confirm",
+    );
+    expect(spies.completeFirstRun).not.toHaveBeenCalled();
+    expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(1);
+
+    expect(
+      tryHandleFirstRunAction("__first_run__:dedicated-adoption:confirm"),
+    ).toBe(true);
+    await waitFor(() => {
+      expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+    });
+    expect(mocks.client.getPersonalSharedEliza).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        adoptionConfirmation: { quoteId, dedicatedAgentId },
+      }),
+    );
+    unmount();
   });
 
   it("seeds the established greeting and sign-in chat bubbles — no local/remote options, backup probe, or unprompted provisioning", async () => {
