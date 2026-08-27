@@ -139,14 +139,17 @@ afterAll(() => {
 });
 
 describe("inference hot-path benchmark", () => {
-  test("cold miss pays the authoritative chain exactly once, then caches", async () => {
+  test("cold miss performs one combined cache read before authoritative hydration", async () => {
+    const getSpy = spyOn(cache, "getWithOutcome");
     const cold = await resolveInferenceAuthContext(req());
     expect(cold.kind).toBe("authorized");
+    expect(getSpy).toHaveBeenCalledTimes(1);
     expect(authChainCalls).toBe(1); // one auth chain
     expect(moderationCalls).toBe(1); // one moderation read
     expect(admissionLoadCalls).toBe(1); // one admission projection load (IAC v2)
     expect(appScopeCalls).toBe(1); // one app-key scope load (IAC v2)
     expect(revocationBoundaryCalls).toBe(1);
+    getSpy.mockRestore();
   });
 
   test("WARM hit = exactly 1 cache read, 0 writes, 0 auth, 0 moderation", async () => {

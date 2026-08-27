@@ -1,14 +1,14 @@
 /**
  * Exercises the real inference-session cache while replacing only the
- * authoritative user/moderation stores, proving cold hydration is detached and
- * warm session authorization performs no database service call.
+ * authoritative user/moderation stores, proving cold hydration is detached,
+ * uses one combined cache read, and bypasses secondary user caches.
  */
 
 process.env.MOCK_REDIS = "1";
 process.env.CACHE_ENABLED = "true";
 process.env.INFERENCE_STRONG_REVOCATION_ENABLED = "true";
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 
 let claims: {
   userId: string;
@@ -42,9 +42,9 @@ mock.module("../auth/steward-client", () => ({
   verifyStewardTokenCached: async () => claims,
 }));
 
-mock.module("./users", () => ({
-  usersService: {
-    getByStewardId: async () => {
+mock.module("../../db/repositories/users", () => ({
+  usersRepository: {
+    findByStewardIdWithOrganizationForWrite: async () => {
       userReads++;
       return await getUser?.();
     },
@@ -96,6 +96,7 @@ const { __clearInferenceSessionAuthHydrations, resolveInferenceSessionAuthContex
 const { invalidateInferenceSessionAuthContext, readInferenceSessionAuthDecision } = await import(
   "./inference-auth-cache"
 );
+const { cache } = await import("../cache/client");
 
 function request(): Request {
   return new Request("https://api.example/api/v1/chat/completions", {
@@ -138,6 +139,7 @@ describe("resolveInferenceSessionAuthContext", () => {
           });
       });
     const waited: Promise<unknown>[] = [];
+    const cacheRead = spyOn(cache, "getWithOutcome");
 
     const result = await resolveInferenceSessionAuthContext(request(), {
       cacheOnly: true,
@@ -148,11 +150,13 @@ describe("resolveInferenceSessionAuthContext", () => {
     expect(result).toMatchObject({ kind: "warming" });
     expect(result.kind === "warming" && result.hydration).toBeTruthy();
     expect(waited).toHaveLength(1);
+    expect(cacheRead).toHaveBeenCalledTimes(1);
     expect(userReads).toBe(1);
     expect(moderationReads).toBe(0);
     releaseUser();
     await Promise.all(waited);
     expect(moderationReads).toBe(1);
+    cacheRead.mockRestore();
   });
 
   test("warm verified session reads the combined cache and never calls users or moderation", async () => {
