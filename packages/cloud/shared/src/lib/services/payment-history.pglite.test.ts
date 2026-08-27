@@ -1707,4 +1707,120 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
     // Snapshot 0 + reinstated-since-snapshot 4 = 4 outstanding, not 0.
     expect(row?.unrecoveredShortfallCredits).toBe(4);
   });
+
+  test("a newer smaller target without a reinstatement cycle never cancels the older larger target (#26752 r5)", async () => {
+    // RP r4 finding 1, sharpened: target 60 applies only 30 (balance ran
+    // out); later a target-40 event sees prior total 30, requests and
+    // applies 10. The older 60 is still 20 unmet — nothing in the writer
+    // cancels it. Newest-target would wrongly report 40 − 40 = 0.
+    const request = await insertStripePaymentRequest({
+      organizationId,
+      amountCents: 20000,
+      status: "settled",
+      settlementTxRef: "pi_no_cycle_reset",
+      settledAt: new Date(),
+    });
+    await insertReceipt({
+      organizationId,
+      paymentRequestId: request.id,
+      providerTxRef: "pi_no_cycle_reset",
+      amountCents: 20000,
+    });
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "-30",
+      paymentIntentId: "pi_no_cycle_reset",
+      source: "charge.refunded",
+      reversedUsd: 60,
+      unrecoveredUsd: 30,
+      cumulativeTargetUsd: 60,
+      createdAt: new Date("2026-08-20T10:00:00.000Z"),
+      idempotencyKey: "stripe:refund:ch_no_cycle:6000",
+    });
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "-10",
+      paymentIntentId: "pi_no_cycle_reset",
+      source: "charge.refunded",
+      reversedUsd: 40,
+      unrecoveredUsd: 20,
+      cumulativeTargetUsd: 40,
+      createdAt: new Date("2026-08-20T11:00:00.000Z"),
+      idempotencyKey: "stripe:refund:ch_no_cycle:4000",
+    });
+
+    const rows = await paymentHistoryService.listPaymentStates(organizationId);
+    const row = rows.find((r) => r.id === `payment_request:${request.id}`);
+    expect(row).toBeDefined();
+    expect(row?.cumulativeClawbackCredits).toBe(40);
+    // Max target since (no) cycle = 60 − net applied 40 = 20 still owed —
+    // the newest target (40 − 40 = 0) would erase real debt.
+    expect(row?.unrecoveredShortfallCredits).toBe(20);
+  });
+
+  test("partial reinstatement keeps post-cycle clawbacks owed against the max target since the cycle (#26752 r5)", async () => {
+    // RP r4 finding 1, second scenario: 60 applied → only 20 reinstated
+    // (NOT a full cycle — prior total 40 stays) → target-50 event requests
+    // and applies 10 more. Max target since the cycle is still 60 (the
+    // partial reinstatement never zeroed it): 60 − (70 − 20) = 10 owed.
+    const request = await insertStripePaymentRequest({
+      organizationId,
+      amountCents: 20000,
+      status: "settled",
+      settlementTxRef: "pi_partial_cycle",
+      settledAt: new Date(),
+    });
+    await insertReceipt({
+      organizationId,
+      paymentRequestId: request.id,
+      providerTxRef: "pi_partial_cycle",
+      amountCents: 20000,
+    });
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "-60",
+      paymentIntentId: "pi_partial_cycle",
+      source: "charge.dispute.funds_withdrawn",
+      reversedUsd: 60,
+      unrecoveredUsd: 0,
+      cumulativeTargetUsd: 60,
+      createdAt: new Date("2026-08-20T10:00:00.000Z"),
+      idempotencyKey: "stripe:dispute:dp_partial_cycle:6000",
+    });
+    // PARTIAL reinstatement: 20 of 60 restored — not a cycle boundary.
+    await insertReversal({
+      organizationId,
+      type: "refund",
+      amount: "20",
+      paymentIntentId: "pi_partial_cycle",
+      source: "charge.dispute.funds_reinstated",
+      reversedUsd: 20,
+      createdAt: new Date("2026-08-20T11:00:00.000Z"),
+      idempotencyKey: "stripe:dispute:dp_partial_cycle:reinstated",
+    });
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "-10",
+      paymentIntentId: "pi_partial_cycle",
+      source: "charge.refunded",
+      reversedUsd: 50,
+      unrecoveredUsd: 10,
+      cumulativeTargetUsd: 50,
+      createdAt: new Date("2026-08-20T12:00:00.000Z"),
+      idempotencyKey: "stripe:refund:ch_partial_cycle:5000",
+    });
+
+    const rows = await paymentHistoryService.listPaymentStates(organizationId);
+    const row = rows.find((r) => r.id === `payment_request:${request.id}`);
+    expect(row).toBeDefined();
+    expect(row?.cumulativeClawbackCredits).toBe(70);
+    expect(row?.reinstatedCredits).toBe(20);
+    // Max target since (no full) cycle = 60 − net applied (70 − 20 = 50)
+    // = 10 owed. Newest-target (50 − 50 = 0) would erase real debt.
+    expect(row?.unrecoveredShortfallCredits).toBe(10);
+  });
 });
