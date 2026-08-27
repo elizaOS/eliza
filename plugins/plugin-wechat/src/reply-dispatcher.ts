@@ -7,17 +7,26 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import type { ProxyClient } from "./proxy-client";
 
 const DEFAULT_CHUNK_SIZE = 2000;
 
+/** Minimal outbound transport the dispatcher needs (implemented by the API client). */
+export interface WechatOutboundTransport {
+  sendText: (to: string, text: string) => Promise<void>;
+  sendImage?: (
+    to: string,
+    imagePath: string,
+    caption?: string,
+  ) => Promise<void>;
+}
+
 export interface ReplyDispatcherOptions {
-  client: ProxyClient;
+  client: WechatOutboundTransport;
   chunkSize?: number;
 }
 
 export class ReplyDispatcher {
-  private readonly client: ProxyClient;
+  private readonly client: WechatOutboundTransport;
   private readonly chunkSize: number;
 
   constructor(options: ReplyDispatcherOptions) {
@@ -52,6 +61,12 @@ export class ReplyDispatcher {
     imagePath: string,
     caption?: string,
   ): Promise<void> {
+    if (!this.client.sendImage) {
+      throw new ElizaError(
+        "WeChat image sending is not available on this transport",
+        { code: "WECHAT_SEND_FAILED", context: { to } },
+      );
+    }
     try {
       await this.client.sendImage(to, imagePath, caption);
     } catch (err) {
@@ -98,7 +113,7 @@ export class ReplyDispatcher {
       }
       const cutPoint = chunkCandidate.length;
       chunks.push(remaining.slice(0, cutPoint));
-      remaining = remaining.slice(cutPoint);
+      remaining = remaining.slice(cutPoint).trimStart();
     }
 
     return chunks;

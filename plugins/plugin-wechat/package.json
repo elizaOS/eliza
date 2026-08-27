@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-wechat",
   "version": "2.0.3-beta.7",
-  "description": "WeChat connector plugin for elizaOS via proxy API",
+  "description": "Direct first-party WeChat connector plugin for elizaOS (Official Account / WeCom)",
   "type": "module",
   "license": "MIT",
   "homepage": "https://github.com/eliza-ai/plugin-wechat",
@@ -76,11 +76,43 @@
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {
-      "WECHAT_API_KEY": {
+      "WECHAT_MODE": {
         "type": "string",
-        "required": true,
+        "required": false,
+        "description": "Direct mode: official-account or wecom"
+      },
+      "WECHAT_APP_ID": {
+        "type": "string",
+        "required": false,
+        "description": "Official Account appId"
+      },
+      "WECHAT_APP_SECRET": {
+        "type": "string",
+        "required": false,
         "sensitive": true,
-        "description": "WeChat proxy service API key"
+        "description": "Official Account appSecret"
+      },
+      "WECHAT_TOKEN": {
+        "type": "string",
+        "required": false,
+        "sensitive": true,
+        "description": "Callback signature token"
+      },
+      "WECHAT_CORP_ID": {
+        "type": "string",
+        "required": false,
+        "description": "WeCom corpId"
+      },
+      "WECHAT_AGENT_ID": {
+        "type": "string",
+        "required": false,
+        "description": "WeCom agentId"
+      },
+      "WECHAT_CORP_SECRET": {
+        "type": "string",
+        "required": false,
+        "sensitive": true,
+        "description": "WeCom corpSecret"
       }
     }
   },

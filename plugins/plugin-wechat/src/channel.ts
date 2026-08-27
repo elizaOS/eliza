@@ -1,24 +1,45 @@
 /**
- * Per-account lifecycle orchestrator for one WeChat connection: drives QR login
- * (polling the proxy until logged in, printing the login URL to the terminal),
- * starts the callback webhook server, wires the `Bot` dedup/gate to inbound
- * dispatch, runs periodic health checks, and owns outbound sends via the
- * `ReplyDispatcher`. One `WechatChannel` exists per configured account.
+ * Runtime-owned lifecycle orchestrator for direct-mode WeChat accounts:
+ * resolves and validates the direct configuration, starts one public callback
+ * server shared by all accounts, verifies transport health via a token probe
+ * at startup, and owns outbound sends through the first-party API client.
+ * The proxy login/registration flow that previously lived here is deleted;
+ * an account whose credentials fail the startup probe is reported
+ * unavailable and never fake-healthy.
  */
+import { WechatApiClient } from "./api-client";
 import { Bot } from "./bot";
-import { startCallbackServer } from "./callback-server";
-import { LoginExpiredError, ProxyClient } from "./proxy-client";
-import { ReplyDispatcher } from "./reply-dispatcher";
+import {
+  type CallbackServerHandle,
+  startCallbackServer,
+} from "./callback-server";
+import { TokenManager } from "./token-manager";
 import type {
   ResolvedWechatAccount,
+  WechatAccountConfig,
   WechatConfig,
   WechatMessageContext,
+  WechatTransportHealth,
 } from "./types";
-import { displayQRUrl } from "./utils/qrcode";
+import { WechatError } from "./types";
 
-const HEALTH_CHECK_INTERVAL_MS = 60_000;
-const LOGIN_POLL_INTERVAL_MS = 5_000;
-const LOGIN_TIMEOUT_MS = 5 * 60_000;
+const DEFAULT_CALLBACK_PORT = 18790;
+
+/** Observed-target summary consumed by the connector target builders. */
+export interface MessageConnectorTargetLite {
+  accountId: string;
+  platformUserId: string;
+  name?: string;
+  kind: "user" | "group";
+  lastObservedAt: number;
+}
+
+interface ObservedSenderEntry {
+  name?: string;
+  kind: "user" | "group";
+  lastObservedAt: number;
+  via: string;
+}
 
 export interface ChannelOptions {
   config: WechatConfig;
@@ -27,177 +48,140 @@ export interface ChannelOptions {
     msg: WechatMessageContext,
   ) => void | Promise<void>;
   onDeliveryError?: (error: unknown, accountId: string) => void | Promise<void>;
+  fetchFn?: typeof globalThis.fetch;
+  now?: () => number;
+  callbackPort?: number;
 }
 
 export class WechatChannel {
   private readonly config: WechatConfig;
-  private readonly onMessage: (
-    accountId: string,
-    msg: WechatMessageContext,
-  ) => void | Promise<void>;
-  private readonly onDeliveryError: (
-    error: unknown,
-    accountId: string,
-  ) => void | Promise<void>;
+  private readonly onMessage: ChannelOptions["onMessage"];
+  private readonly onDeliveryError: ChannelOptions["onDeliveryError"];
+  private readonly fetchFn: typeof globalThis.fetch;
+  private readonly now: () => number;
   private readonly accounts = new Map<
     string,
-    {
-      client: ProxyClient;
-      dispatcher: ReplyDispatcher;
-      bot: Bot;
-    }
+    { account: ResolvedWechatAccount; bot: Bot }
   >();
-  private readonly callbackServers: Array<{
-    close: () => Promise<void>;
-    port: number;
-  }> = [];
-  private readonly loginPromises = new Map<string, Promise<void>>();
-  private healthTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly health = new Map<string, WechatTransportHealth>();
+  private readonly tokens: TokenManager;
+  private readonly api: WechatApiClient;
+  private server: CallbackServerHandle | null = null;
   private abortController: AbortController | null = null;
+  private readonly observedSenders = new Map<
+    string,
+    Map<string, ObservedSenderEntry>
+  >();
 
   constructor(options: ChannelOptions) {
     this.config = options.config;
     this.onMessage = options.onMessage;
     this.onDeliveryError = options.onDeliveryError ?? (() => undefined);
+    this.fetchFn = options.fetchFn ?? globalThis.fetch;
+    this.now = options.now ?? Date.now;
+    this.tokens = new TokenManager({
+      fetchFn: this.fetchFn,
+      now: this.now,
+      onHealthChange: (accountId, health) => {
+        this.health.set(accountId, health);
+      },
+    });
+    this.api = new WechatApiClient({
+      tokens: this.tokens,
+      fetchFn: this.fetchFn,
+    });
+  }
+
+  /** Resolve and validate every configured direct account. */
+  resolveAccounts(): ResolvedWechatAccount[] {
+    const resolved: ResolvedWechatAccount[] = [];
+    const sources: Array<[string, WechatAccountConfig]> = [];
+    if (this.config.account) {
+      sources.push(["default", this.config.account]);
+    }
+    for (const [id, account] of Object.entries(this.config.accounts ?? {})) {
+      sources.push([id, account]);
+    }
+    for (const [id, accountConfig] of sources) {
+      if (accountConfig.enabled === false) continue;
+      resolved.push(resolveDirectAccount(id, accountConfig));
+    }
+    return resolved;
   }
 
   async start(): Promise<void> {
     this.abortController = new AbortController();
     const resolved = this.resolveAccounts();
-
     if (resolved.length === 0) {
-      console.warn("[wechat] No configured accounts found");
+      console.warn("[wechat] No configured direct accounts found");
       return;
     }
 
-    const webhookAccountsByPort = new Map<
-      number,
-      Array<{ accountId: string; apiKey: string }>
-    >();
-    for (const account of resolved) {
-      const existing = webhookAccountsByPort.get(account.webhookPort) ?? [];
-      existing.push({ accountId: account.id, apiKey: account.apiKey });
-      webhookAccountsByPort.set(account.webhookPort, existing);
-    }
+    const port = this.config.callbackPort ?? DEFAULT_CALLBACK_PORT;
+    this.server = await startCallbackServer({
+      port,
+      accounts: resolved,
+      onMessage: (accountId, msg) => this.routeIncoming(accountId, msg),
+      onDeliveryError: this.onDeliveryError,
+      signal: this.abortController.signal,
+    });
 
-    for (const [webhookPort, accounts] of webhookAccountsByPort) {
-      try {
-        this.callbackServers.push(
-          await startCallbackServer({
-            port: webhookPort,
-            accounts,
-            onMessage: (accountId, msg) => this.routeIncoming(accountId, msg),
-            onDeliveryError: this.onDeliveryError,
-            signal: this.abortController.signal,
-          }),
-        );
-      } catch (err) {
-        const accountIds = accounts.map((a) => a.accountId).join(", ");
-        console.error(
-          `[wechat] Failed to bind webhook server on port ${webhookPort} for accounts [${accountIds}]:`,
-          err,
-        );
-      }
-    }
-
-    // Initialize each account
     for (const account of resolved) {
-      const client = new ProxyClient(account);
-      const dispatcher = new ReplyDispatcher({ client });
-      const bot = new Bot({
-        onMessage: (msg) => this.onMessage(account.id, msg),
-        featuresGroups: this.config.features?.groups,
-        featuresImages: this.config.features?.images,
+      this.accounts.set(account.id, {
+        account,
+        bot: new Bot({ onMessage: (msg) => this.onMessage(account.id, msg) }),
       });
-
-      this.accounts.set(account.id, { client, dispatcher, bot });
-
-      // Login flow
-      await this.ensureLoggedIn(account.id, client);
-      // The callback server binds 127.0.0.1; register the literal IPv4
-      // loopback so a same-host proxy never resolves localhost to ::1 and
-      // misses the listener.
-      const webhookUrl = `http://127.0.0.1:${account.webhookPort}/webhook/wechat/${account.id}`;
-
-      try {
-        await client.registerWebhook(webhookUrl);
-        console.log(
-          `[wechat] Account "${account.id}" registered webhook at ${webhookUrl}`,
-        );
-      } catch (err) {
-        console.error(
-          `[wechat] Failed to register webhook for "${account.id}":`,
-          err,
-        );
-        throw new Error(
-          `Webhook registration failed for account "${account.id}": ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
+      this.health.set(account.id, { state: "pending" });
     }
 
-    // Periodic health check
-    this.healthTimer = setInterval(
-      () => this.healthCheck(),
-      HEALTH_CHECK_INTERVAL_MS,
+    // Startup transport probe: verify first-party credentials so account
+    // health starts from an observation, not from configuration presence.
+    await Promise.all(
+      resolved.map(async (account) => {
+        try {
+          await this.tokens.getAccessToken(account);
+        } catch (err) {
+          const detail =
+            err instanceof WechatError ? err.code : "token-probe-failed";
+          console.error(
+            `[wechat] Account "${account.id}" failed its startup token probe (${detail}) — marked unavailable`,
+          );
+        }
+      }),
     );
   }
 
   async stop(): Promise<void> {
-    if (this.healthTimer) {
-      clearInterval(this.healthTimer);
-      this.healthTimer = null;
-    }
-
     for (const [, { bot }] of this.accounts) {
       bot.stop();
     }
     this.accounts.clear();
-
+    this.tokens.dispose();
     if (this.abortController) {
       this.abortController.abort();
       this.abortController = null;
     }
-
-    const servers = this.callbackServers.splice(0);
-    await Promise.all(
-      servers.map((server) => server.close().catch(() => undefined)),
-    );
+    const server = this.server;
+    this.server = null;
+    if (server) {
+      await server.close().catch(() => undefined);
+    }
   }
 
   async sendText(accountId: string, to: string, text: string): Promise<void> {
     const entry = this.accounts.get(accountId);
     if (!entry) throw new Error(`Unknown account: ${accountId}`);
-
-    try {
-      await entry.dispatcher.sendText(to, text);
-    } catch (err) {
-      if (err instanceof LoginExpiredError) {
-        await this.ensureLoggedIn(accountId, entry.client);
-        await entry.dispatcher.sendText(to, text);
-      } else {
-        throw err;
-      }
-    }
-  }
-
-  async sendImage(
-    accountId: string,
-    to: string,
-    imagePath: string,
-    caption?: string,
-  ): Promise<void> {
-    const entry = this.accounts.get(accountId);
-    if (!entry) throw new Error(`Unknown account: ${accountId}`);
-
-    try {
-      await entry.dispatcher.sendImage(to, imagePath, caption);
-    } catch (err) {
-      if (err instanceof LoginExpiredError) {
-        await this.ensureLoggedIn(accountId, entry.client);
-        await entry.dispatcher.sendImage(to, imagePath, caption);
-      } else {
-        throw err;
-      }
+    const receipt = await this.api.sendText(entry.account, to, text);
+    if (!receipt.ok) {
+      throw new WechatError(
+        "WECHAT_SEND_FAILED",
+        "first-party send was rejected",
+        {
+          accountId,
+          platformErrorCode: receipt.platformErrorCode,
+          detail: receipt.redactedDetail,
+        },
+      );
     }
   }
 
@@ -205,13 +189,83 @@ export class WechatChannel {
     return Array.from(this.accounts.keys());
   }
 
-  async listContacts(accountId: string): Promise<{
-    friends: Array<{ wxid: string; name: string }>;
-    chatrooms: Array<{ wxid: string; name: string }>;
+  getAccountHealth(accountId: string): WechatTransportHealth | undefined {
+    return this.health.get(accountId);
+  }
+
+  getResolvedAccount(accountId: string): ResolvedWechatAccount | undefined {
+    return this.accounts.get(accountId)?.account;
+  }
+
+  /**
+   * Targets derived exclusively from signature-verified inbound senders.
+   * Registration here IS the account-bound observed evidence for a passive
+   * transport with no roster API: an entry exists only because that platform
+   * user verifiably interacted with that account.
+   */
+  listObservedTargets(): MessageConnectorTargetLite[] {
+    const targets: MessageConnectorTargetLite[] = [];
+    for (const [accountId, observed] of this.observedSenders) {
+      for (const [platformUserId, entry] of observed) {
+        targets.push({
+          accountId,
+          platformUserId,
+          name: entry.name,
+          kind: entry.kind,
+          lastObservedAt: entry.lastObservedAt,
+        });
+      }
+    }
+    return targets.sort((a, b) => b.lastObservedAt - a.lastObservedAt);
+  }
+
+  /** Redacted, account-bound observed-evidence snapshot for diagnostics. */
+  listAccountEvidence(): Array<{
+    accountId: string;
+    mode: string;
+    platformIdentity: string;
+    health: WechatTransportHealth | undefined;
+    observedSenders: Array<{
+      platformUserId: string;
+      lastObservedAt: number;
+      via: string;
+    }>;
   }> {
-    const entry = this.accounts.get(accountId);
-    if (!entry) throw new Error(`Unknown account: ${accountId}`);
-    return entry.client.getContacts();
+    return this.getAccountIds().map((accountId) => {
+      const account = this.getResolvedAccount(accountId);
+      return {
+        accountId,
+        mode: account?.mode ?? "unknown",
+        platformIdentity: account?.platformIdentity ?? "",
+        health: this.health.get(accountId),
+        observedSenders: Array.from(
+          this.observedSenders.get(accountId)?.entries() ?? [],
+        ).map(([platformUserId, entry]) => ({
+          platformUserId,
+          lastObservedAt: entry.lastObservedAt,
+          via: entry.via,
+        })),
+      };
+    });
+  }
+
+  private observeSender(accountId: string, msg: WechatMessageContext): void {
+    let accountMap = this.observedSenders.get(accountId);
+    if (!accountMap) {
+      accountMap = new Map();
+      this.observedSenders.set(accountId, accountMap);
+    }
+    const existing = accountMap.get(msg.sender);
+    const via =
+      msg.type === "event"
+        ? `event:${msg.event ?? "unknown"}`
+        : `message:${msg.type}`;
+    accountMap.set(msg.sender, {
+      name: existing?.name,
+      kind: msg.group ? "group" : "user",
+      lastObservedAt: this.now(),
+      via,
+    });
   }
 
   private async routeIncoming(
@@ -221,126 +275,106 @@ export class WechatChannel {
     const entry = this.accounts.get(accountId);
     if (!entry) {
       throw new Error(
-        `[wechat] Cannot deliver webhook for unknown account "${accountId}"`,
+        `[wechat] Cannot deliver callback for unknown account "${accountId}"`,
       );
     }
-
-    await entry.bot.handleIncoming(msg);
-  }
-
-  private async ensureLoggedIn(
-    accountId: string,
-    client: ProxyClient,
-  ): Promise<void> {
-    const existing = this.loginPromises.get(accountId);
-    if (existing) {
-      return existing;
-    }
-
-    const promise = this.doLogin(accountId, client).finally(() => {
-      this.loginPromises.delete(accountId);
+    // A signature-verified callback is a transport observation.
+    this.health.set(accountId, {
+      state: "connected",
+      lastSuccessAt: this.now(),
+      observedVia: "verified-callback",
     });
-    this.loginPromises.set(accountId, promise);
-    return promise;
-  }
-
-  private async doLogin(accountId: string, client: ProxyClient): Promise<void> {
-    const status = await client.getStatus();
-
-    if (status.loginState === "logged_in") {
-      console.log(
-        `[wechat] Account "${accountId}" logged in as ${status.nickName ?? status.wcId}`,
-      );
-      return;
-    }
-
-    console.log(
-      `[wechat] Account "${accountId}" needs login — generating QR code...`,
-    );
-    const qrUrl = await client.getQRCode();
-    displayQRUrl(qrUrl);
-
-    const timeoutMs = this.config.loginTimeoutMs ?? LOGIN_TIMEOUT_MS;
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-      await sleep(LOGIN_POLL_INTERVAL_MS);
-
-      if (this.abortController?.signal.aborted) {
-        throw new Error("Login aborted");
-      }
-
-      const result = await client.checkLogin();
-
-      if (result.status === "logged_in") {
-        console.log(
-          `[wechat] Account "${accountId}" logged in as ${result.nickName ?? result.wcId}`,
-        );
-        return;
-      }
-
-      if (result.status === "need_verify") {
-        console.log(
-          `[wechat] Verification needed: ${result.verifyUrl ?? "check your phone"}`,
-        );
-      }
-    }
-
-    throw new Error(
-      `[wechat] Login timed out for account "${accountId}" after ${Math.round(timeoutMs / 1000)} seconds`,
-    );
-  }
-
-  private async healthCheck(): Promise<void> {
-    for (const [accountId, { client }] of this.accounts) {
-      try {
-        const status = await client.getStatus();
-        if (status.loginState !== "logged_in") {
-          console.warn(
-            `[wechat] Account "${accountId}" login expired — attempting re-login`,
-          );
-          await this.ensureLoggedIn(accountId, client);
-        }
-      } catch (err) {
-        console.error(`[wechat] Health check failed for "${accountId}":`, err);
-      }
-    }
-  }
-
-  private resolveAccounts(): ResolvedWechatAccount[] {
-    const accounts: ResolvedWechatAccount[] = [];
-    const rawPort = Number(process.env.ELIZA_WECHAT_WEBHOOK_PORT);
-    const envPort =
-      Number.isFinite(rawPort) && rawPort > 0 ? rawPort : undefined;
-    const defaultPort = envPort ?? this.config.webhookPort ?? 18790;
-    const defaultDevice = this.config.deviceType ?? "ipad";
-
-    if (this.config.accounts) {
-      for (const [id, acc] of Object.entries(this.config.accounts)) {
-        if (acc.enabled === false) continue;
-        accounts.push({
-          id,
-          apiKey: acc.apiKey,
-          proxyUrl: acc.proxyUrl,
-          deviceType: acc.deviceType ?? defaultDevice,
-          webhookPort: acc.webhookPort ?? defaultPort,
-          wcId: acc.wcId,
-          nickName: acc.nickName,
-        });
-      }
-    } else if (this.config.apiKey && this.config.proxyUrl) {
-      accounts.push({
-        id: "default",
-        apiKey: this.config.apiKey,
-        proxyUrl: this.config.proxyUrl,
-        deviceType: defaultDevice,
-        webhookPort: defaultPort,
-      });
-    }
-
-    return accounts;
+    this.observeSender(accountId, msg);
+    await entry.bot.handleIncoming(msg);
   }
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/** Validate one direct account config into its resolved runtime shape. */
+export function resolveDirectAccount(
+  id: string,
+  input: WechatAccountConfig,
+): ResolvedWechatAccount {
+  // Guard the raw, possibly-unvalidated discriminator first: legacy proxy and
+  // personal-WeChat shapes must fail with their dedicated codes, not slip
+  // through union narrowing.
+  const rawMode = (input as { mode?: unknown }).mode;
+  if (rawMode === "personal") {
+    throw new WechatError(
+      "WECHAT_PERSONAL_MODE_UNSUPPORTED",
+      "personal WeChat has no first-party API and is unsupported",
+      { accountId: id },
+    );
+  }
+  if (rawMode === "proxy") {
+    throw new WechatError(
+      "WECHAT_PROXY_CONFIG_UNSUPPORTED",
+      "proxy-based WeChat configuration was removed",
+      { accountId: id },
+    );
+  }
+  const config = input as WechatAccountConfig;
+  if (config.mode === "official-account") {
+    if (
+      !config.appId?.trim() ||
+      !config.appSecret?.trim() ||
+      !config.token?.trim()
+    ) {
+      throw new WechatError(
+        "WECHAT_CONFIG_INVALID",
+        "official-account requires appId, appSecret, and token",
+        { accountId: id },
+      );
+    }
+    const securityMode = config.messageSecurityMode ?? "plaintext";
+    if (securityMode === "encrypted" && !config.encodingAESKey?.trim()) {
+      throw new WechatError(
+        "WECHAT_CONFIG_INVALID",
+        "encrypted security mode requires encodingAESKey",
+        { accountId: id },
+      );
+    }
+    return {
+      id,
+      mode: "official-account",
+      platformAccountId: config.appId.trim(),
+      platformIdentity: config.appId.trim(),
+      secret: config.appSecret.trim(),
+      securityMode,
+      tokenSecret: config.token.trim(),
+      encodingAESKey: config.encodingAESKey?.trim(),
+      label: config.name ?? `Official Account ${config.appId.trim()}`,
+    };
+  }
+  if (config.mode === "wecom") {
+    if (
+      !config.corpId?.trim() ||
+      !config.agentId ||
+      !config.corpSecret?.trim() ||
+      !config.token?.trim() ||
+      !config.encodingAESKey?.trim()
+    ) {
+      throw new WechatError(
+        "WECHAT_CONFIG_INVALID",
+        "wecom requires corpId, agentId, corpSecret, token, and encodingAESKey",
+        { accountId: id },
+      );
+    }
+    return {
+      id,
+      mode: "wecom",
+      platformAccountId: `${config.corpId.trim()}_${config.agentId}`,
+      platformIdentity: config.corpId.trim(),
+      wecomAgentId: config.agentId,
+      secret: config.corpSecret.trim(),
+      securityMode: "encrypted",
+      tokenSecret: config.token.trim(),
+      encodingAESKey: config.encodingAESKey.trim(),
+      label: config.name ?? `WeCom ${config.corpId.trim()}/${config.agentId}`,
+    };
+  }
+  throw new WechatError(
+    "WECHAT_CONFIG_INVALID",
+    "account configuration has no supported mode",
+    { accountId: id, mode: (config as { mode?: string }).mode },
+  );
 }

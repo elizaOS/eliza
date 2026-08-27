@@ -22,8 +22,11 @@ the conventional sense. It integrates via these runtime extension points:
 
 - **MessageConnector** (`source: "wechat"`) — registered with the runtime's
   `registerMessageConnector` (or `registerSendHandler` fallback). Capabilities:
-  `send_message`, `resolve_targets`, `list_rooms`, `chat_context`. Supports
-  target kinds `user`, `group`, `room`. Contexts: `social`, `connectors`.
+  `send_message`, `resolve_targets`, `chat_context`. There is no roster API on
+  the first-party platforms, so targets are derived exclusively from
+  signature-verified inbound senders (observed evidence); `list_rooms` was
+  removed as an untruthful claim. Supports target kinds `user`, `group`,
+  `room`. Contexts: `social`, `connectors`.
 - **ConnectorAccountProvider** (`provider: "wechat"`) — registered with
   `ConnectorAccountManager` on init. Surfaces configured accounts to the
   connector account UI. Reads from `character.settings.connectors.wechat` or
