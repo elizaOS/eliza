@@ -1,3 +1,5 @@
+/** Verifies that only launcher-scoped usable development credentials reach Cloud boot. */
+
 import {
   resetDevCloudEnvAuthorityForTests,
   resolveDevCloudAuthorityEnvValue,
@@ -77,6 +79,25 @@ describe("entry Cloud API key promotion", () => {
 
     expect(promoteLauncherScopedDevCloudApiKey(env)).toBe(false);
     expect(env.ELIZAOS_CLOUD_API_KEY).toBe("canonical-key");
+  });
+
+  it.each(["   ", "[REDACTED]", "vault://cloud/staging-key"])(
+    "does not promote an unusable staging credential %j",
+    (credential) => {
+      const env = explicitAuthority("staging-explicit");
+      env.ELIZA_DEV_CLOUD_API_KEY = credential;
+
+      expect(promoteLauncherScopedDevCloudApiKey(env)).toBe(false);
+      expect(env.ELIZAOS_CLOUD_API_KEY).toBeUndefined();
+    },
+  );
+
+  it("normalizes a usable staging credential before promotion", () => {
+    const env = explicitAuthority("staging-explicit");
+    env.ELIZA_DEV_CLOUD_API_KEY = "  staging-specific-key  ";
+
+    expect(promoteLauncherScopedDevCloudApiKey(env)).toBe(true);
+    expect(env.ELIZAOS_CLOUD_API_KEY).toBe("staging-specific-key");
   });
 
   it("does not promote from a production process even with compatible authority", () => {
