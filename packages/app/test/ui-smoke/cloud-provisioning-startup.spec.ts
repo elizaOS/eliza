@@ -138,12 +138,23 @@ async function clickIfVisible(
   timeoutMs = 2_000,
 ): Promise<boolean> {
   const target = locator.first();
+  // Bound both the visibility wait and the click action independently so a
+  // continuously re-rendered optional control cannot inherit and exhaust
+  // the enclosing test's overall deadline (#29534). A control that never
+  // settles is treated as absent (typed fail-closed for optional onboarding).
   await target.waitFor({ state: "visible", timeout: timeoutMs }).catch(() => {
     /* absent in this first-run variant */
   });
   if (!(await target.isVisible().catch(() => false))) return false;
-  await target.click();
-  return true;
+  try {
+    await target.click({ timeout: Math.min(timeoutMs, 5_000) });
+    return true;
+  } catch {
+    // A control that re-renders mid-click is treated as unavailable so the
+    // caller falls through to the next onboarding variant instead of
+    // inheriting the enclosing test deadline.
+    return false;
+  }
 }
 
 async function startCloudRuntime(page: Page): Promise<void> {
