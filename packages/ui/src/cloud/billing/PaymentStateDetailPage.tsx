@@ -96,10 +96,19 @@ export default function PaymentStateDetailPage() {
   }, [id]);
 
   useEffect(() => {
+    // Gate the queued fetch on this effect instance: if the component
+    // unmounts (or the id changes) BEFORE the queued microtask runs, the
+    // cancelled flag prevents it from ever starting — a bare generation
+    // bump in cleanup alone would be defeated by the microtask's own
+    // ++generation.current when it runs afterwards.
+    let cancelled = false;
     queueMicrotask(() => {
-      void fetchState();
+      if (!cancelled) {
+        void fetchState();
+      }
     });
     return () => {
+      cancelled = true;
       // Effect cleanup runs on EVERY id transition and on unmount, BEFORE
       // the new id's queued fetch begins — closing the window where a
       // previous id's in-flight completion still matched the current
