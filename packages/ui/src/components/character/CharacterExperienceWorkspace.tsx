@@ -6,6 +6,8 @@
  * the save/delete/select callbacks (and the save/delete-in-flight ids). Pass
  * `showTitle={false}` when the host view already supplies a ViewHeader.
  */
+
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { memo, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { useTranslation } from "../../state/TranslationContext.hooks";
@@ -139,9 +141,12 @@ function uniqueSorted(values: Array<string | null | undefined>): string[] {
   ).sort((left, right) => left.localeCompare(right));
 }
 
-function shortId(value: string | null | undefined): string {
+export function shortId(value: string | null | undefined): string {
   if (!value) return "Not recorded";
-  return value.length > 12 ? `${value.slice(0, 12)}...` : value;
+  const wellFormed = toWellFormedUnicode(value);
+  return wellFormed.length > 12
+    ? `${truncateWellFormed(wellFormed, 12)}...`
+    : wellFormed;
 }
 
 function experienceKeywords(experience: CharacterExperienceRecord): string[] {
