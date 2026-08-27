@@ -2248,7 +2248,7 @@ function handleDeepLink(url: string): undefined | Promise<boolean> {
       })
     ) {
       console.warn(
-        `${APP_LOG_PREFIX} Remote controller pairing is available only on an enrolled Linux desktop or signed-in iPhone`,
+        `${APP_LOG_PREFIX} Remote controller pairing is available only on an enrolled Linux desktop or a compatible signed-in iPhone`,
       );
       return;
     }

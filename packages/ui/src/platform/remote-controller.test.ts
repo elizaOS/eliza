@@ -8,11 +8,13 @@ const native = vi.hoisted(() => ({
   openStartReceipt: vi.fn(),
   clearSessionState: vi.fn(),
 }));
+const nativeAvailable = vi.hoisted(() => ({ value: true }));
 
 vi.mock("@capacitor/core", () => ({
   Capacitor: {
     getPlatform: () => "ios",
     isNativePlatform: () => true,
+    isPluginAvailable: () => nativeAvailable.value,
     registerPlugin: () => native,
   },
 }));
@@ -64,5 +66,13 @@ describe("Capacitor remote controller bridge", () => {
         payload: {},
       }),
     ).rejects.toThrow("Secure mobile command signing is unavailable");
+  });
+
+  it("fails closed when the native iOS plugin is absent", async () => {
+    nativeAvailable.value = false;
+    await expect(
+      getOrCreateRemoteControllerIdentity({ ownerId: "owner-1" }),
+    ).rejects.toThrow("native iOS plugin is installed");
+    nativeAvailable.value = true;
   });
 });

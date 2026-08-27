@@ -41,7 +41,16 @@ function isNativeController(): boolean {
   const platform = Capacitor.getPlatform();
   return (
     Capacitor.isNativePlatform() &&
-    (platform === "ios" || platform === "android")
+    platform === "ios" &&
+    Capacitor.isPluginAvailable?.("RemoteControllerIdentity") === true
+  );
+}
+
+function isUnsupportedNativeIOS(): boolean {
+  return (
+    Capacitor.isNativePlatform() &&
+    Capacitor.getPlatform() === "ios" &&
+    Capacitor.isPluginAvailable?.("RemoteControllerIdentity") !== true
   );
 }
 
@@ -56,7 +65,11 @@ export async function getOrCreateRemoteControllerIdentity(input: {
   ownerId: string;
   displayName?: string;
 }): Promise<RemoteControllerPublicIdentity> {
-  const platform = desktopPlatform();
+  if (isUnsupportedNativeIOS()) {
+    throw new Error(
+      "Secure mobile pairing is unavailable until the native iOS plugin is installed.",
+    );
+  }
   if (isNativeController()) {
     const identity = await nativeRemoteController.getOrCreateIdentity({
       ownerId: input.ownerId,
@@ -72,6 +85,7 @@ export async function getOrCreateRemoteControllerIdentity(input: {
     }
     return identity;
   }
+  const platform = desktopPlatform();
   const identity =
     await invokeDesktopBridgeRequest<RemoteControllerPublicIdentity>({
       rpcMethod: "remoteControllerGetOrCreateIdentity",
