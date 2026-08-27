@@ -107,7 +107,7 @@ describe("migrations/meta/_journal.json registration", () => {
     expect(new Set(entries.map((e) => e.tag)).size).toBe(entries.length);
   });
 
-  test("keeps the deployed 0320-0328 stack and appends dedicated adoption as 0329", () => {
+  test("keeps the deployed 0320-0340 stack and appends backup admission", () => {
     const entries = journalEntries();
     const sharedConsent = entries.find(
       ({ tag }) => tag === "0320_personal_shared_multi_principal_consent",
@@ -118,10 +118,14 @@ describe("migrations/meta/_journal.json registration", () => {
     const dedicatedAdoption = entries.find(
       ({ tag }) => tag === "0329_personal_dedicated_adoption_selections",
     );
+    const backupAdmissionCursors = entries.find(
+      ({ tag }) => tag === "0341_agent_backup_admission_cursors",
+    );
 
     expect(sharedConsent).toMatchObject({ idx: 303, when: 1794254400011 });
     expect(replacementTail).toMatchObject({ idx: 311, when: 1794254400019 });
     expect(dedicatedAdoption).toMatchObject({ idx: 312, when: 1794254400020 });
+    expect(backupAdmissionCursors).toMatchObject({ idx: 324, when: 1794254400032 });
   });
 
   test("the catalogue, capture, and restore stack is registered in strict deployment order", () => {

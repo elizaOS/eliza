@@ -188,6 +188,13 @@ function exactReservation(
 
 async function reserveTestBackup(overrides: Partial<TestBackupReservation> = {}) {
   const input = reservation(overrides);
+  const [sourceOccurrence] = await dbWrite
+    .select({ historyId: dockerNodes.current_node_history_id })
+    .from(dockerNodes)
+    .where(eq(dockerNodes.id, input.sourceNodeRecordId));
+  if (!sourceOccurrence?.historyId) {
+    throw new Error("Expected exact source node occurrence fixture");
+  }
   await dbWrite
     .insert(agentBackupCatalogAuthorities)
     .values({ organization_id: input.organizationId, agent_id: input.agentId })
@@ -222,6 +229,7 @@ async function reserveTestBackup(overrides: Partial<TestBackupReservation> = {})
       source_node_record_id: input.sourceNodeRecordId,
       source_node_id: input.sourceNodeId,
       source_node_incarnation: input.sourceNodeIncarnation,
+      source_node_history_id: sourceOccurrence.historyId,
       source_provider_server_id: input.sourceProviderServerId,
       source_provider_handle: input.sourceProviderHandle,
       source_container_id: input.sourceContainerId,

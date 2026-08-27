@@ -50,6 +50,7 @@ import {
   agentSandboxes,
   type StoredAgentSandboxBackup,
 } from "../schemas/agent-sandboxes";
+import { dockerNodes } from "../schemas/docker-nodes";
 import {
   AgentBackupSourceAuthorityError,
   requireCanonicalNodeIncarnation,
@@ -331,7 +332,10 @@ export async function agentBackupObjectInventoryDigest(
   );
 }
 
-function canonicalReservationPayload(input: ReserveAgentBackupOperationInput): string {
+function canonicalReservationPayload(
+  input: ReserveAgentBackupOperationInput,
+  sourceNodeHistoryId: string,
+): string {
   return JSON.stringify({
     organizationId: input.organizationId.toLowerCase(),
     agentId: input.agentId.toLowerCase(),
@@ -347,6 +351,7 @@ function canonicalReservationPayload(input: ReserveAgentBackupOperationInput): s
     sourceNodeRecordId: input.sourceNodeRecordId.toLowerCase(),
     sourceNodeId: input.sourceNodeId,
     sourceNodeIncarnation: input.sourceNodeIncarnation,
+    sourceNodeHistoryId,
     sourceProviderServerId: input.sourceProviderServerId,
     sourceProviderHandle: input.sourceProviderHandle,
     sourceContainerId: input.sourceContainerId,
@@ -419,6 +424,7 @@ function validateReservationInput(input: ReserveAgentBackupOperationInput): void
 function assertReservationReplay(
   row: StoredAgentSandboxBackup,
   input: ReserveAgentBackupOperationInput,
+  sourceNodeHistoryId: string,
   payloadDigest: string,
 ): void {
   const matches =
@@ -437,6 +443,7 @@ function assertReservationReplay(
     row.source_node_record_id === input.sourceNodeRecordId.toLowerCase() &&
     row.source_node_id === input.sourceNodeId &&
     row.source_node_incarnation === input.sourceNodeIncarnation &&
+    row.source_node_history_id === sourceNodeHistoryId &&
     row.source_provider_server_id === input.sourceProviderServerId &&
     row.source_provider_handle === input.sourceProviderHandle &&
     row.source_container_id === input.sourceContainerId &&
@@ -493,7 +500,6 @@ export async function reserveAgentBackupOperationInTransaction(
   input: ReserveAgentBackupOperationInput,
 ): Promise<StoredAgentSandboxBackup> {
   validateReservationInput(input);
-  const payloadDigest = await sha256Hex(canonicalReservationPayload(input));
 
   // Replay joins the global lock order operation-backup -> sandbox ->
   // catalogue-authority, matching recordCapturedAgentBackupManifest (backup
@@ -579,6 +585,23 @@ export async function reserveAgentBackupOperationInTransaction(
       "Backup source node record or Robot/Cloud provider authority does not match",
     );
   }
+  const [sourceOccurrence] = await tx
+    .select({ historyId: dockerNodes.current_node_history_id })
+    .from(dockerNodes)
+    .where(
+      and(
+        eq(dockerNodes.id, input.sourceNodeRecordId),
+        eq(dockerNodes.node_incarnation, input.sourceNodeIncarnation),
+      ),
+    )
+    .limit(1);
+  if (!sourceOccurrence?.historyId) {
+    throw new AgentBackupCatalogConflictError(
+      "Backup source node lacks exact append-only occurrence authority",
+    );
+  }
+  const sourceNodeHistoryId = sourceOccurrence.historyId;
+  const payloadDigest = await sha256Hex(canonicalReservationPayload(input, sourceNodeHistoryId));
 
   if (input.backupKind === "incremental") {
     const [directParent] = await tx
@@ -675,6 +698,7 @@ export async function reserveAgentBackupOperationInTransaction(
       source_node_record_id: input.sourceNodeRecordId.toLowerCase(),
       source_node_id: input.sourceNodeId,
       source_node_incarnation: input.sourceNodeIncarnation,
+      source_node_history_id: sourceNodeHistoryId,
       source_provider_server_id: input.sourceProviderServerId,
       source_provider_handle: input.sourceProviderHandle,
       source_container_id: input.sourceContainerId,
@@ -719,7 +743,7 @@ export async function reserveAgentBackupOperationInTransaction(
     .for("update")
     .limit(1);
   if (!row) throw new Error("Backup operation reservation disappeared");
-  assertReservationReplay(row, input, payloadDigest);
+  assertReservationReplay(row, input, sourceNodeHistoryId, payloadDigest);
   const authority = await lockAgentBackupCatalogAuthority(tx, input.organizationId, input.agentId);
   if (row.catalog_revision > authority.catalog_revision) {
     throw new AgentBackupCatalogConflictError(
