@@ -44,7 +44,7 @@ const CHARACTER_SECTION_TABS: readonly SectionTab[] = [
     id: "relationships",
     label: "Relationships",
     path: "/apps/relationships",
-    aliases: ["/character/relationships"],
+    aliases: ["/character/relationships", "/relationships"],
   },
   { id: "character-skills", label: "Skills", path: "/character/skills" },
   { id: "experience", label: "Experience", path: "/character/experience" },
@@ -83,7 +83,10 @@ export function CharacterSectionNav({
   return (
     <>
       <FramedPageHeader title="Character" />
-      <FramedPageNavigation padded={false} className="sm:px-6 lg:px-8">
+      <FramedPageNavigation
+        padded={false}
+        className="overflow-x-auto [@media(min-width:768px)_and_(min-height:600px)]:px-6 lg:px-8"
+      >
         <SectionTabStrip
           entries={CHARACTER_SECTION_TABS}
           activeId={activeCharacterTabId(activePath)}

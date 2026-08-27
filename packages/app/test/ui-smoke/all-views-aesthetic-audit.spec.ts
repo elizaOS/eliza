@@ -69,6 +69,7 @@ const FRAMED_PAGE_SLUGS = new Set([
   "builtin-memories",
   "builtin-tasks",
   "builtin-vault",
+  "plugin-relationships-gui",
 ]);
 const FRAMED_PAGE_MAX_WIDTH_PX = 1024;
 const FRAMED_PAGE_GEOMETRY_TOLERANCE_PX = 2;

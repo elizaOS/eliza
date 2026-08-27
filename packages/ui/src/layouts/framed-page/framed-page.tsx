@@ -87,7 +87,7 @@ export function FramedPageNavigation({
   return (
     <div
       className={cn(
-        "mx-auto w-full max-w-5xl shrink-0 pb-2",
+        "mx-auto w-full max-w-5xl min-w-0 shrink-0 pb-2",
         padded && "px-4 sm:px-6 lg:px-8",
         className,
       )}
