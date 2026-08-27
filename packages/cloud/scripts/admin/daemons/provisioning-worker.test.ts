@@ -56,11 +56,101 @@ describe("assertProvisioningWorkerDatabaseConfigured", () => {
     ).toThrow(/postgres/);
   });
 
+  it("rejects TEST_DATABASE_URL as a deployed database-authority override", () => {
+    for (const testDatabaseUrl of [
+      "pglite://memory",
+      "postgresql://test:test@test-db.example/eliza",
+    ]) {
+      expect(() =>
+        assertProvisioningWorkerDatabaseConfigured({
+          NODE_ENV: "production",
+          DATABASE_URL: "postgresql://prod:prod@prod-db.example/eliza",
+          TEST_DATABASE_URL: testDatabaseUrl,
+        }),
+      ).toThrow(/TEST_DATABASE_URL is test-only/);
+    }
+  });
+
+  it("rejects database URLs with leading or trailing whitespace", () => {
+    for (const databaseUrl of [
+      " postgresql://user:pass@db.example/eliza",
+      "postgresql://user:pass@db.example/eliza ",
+    ]) {
+      expect(() =>
+        assertProvisioningWorkerDatabaseConfigured({
+          NODE_ENV: "production",
+          DATABASE_URL: databaseUrl,
+        }),
+      ).toThrow(/leading or trailing whitespace/);
+    }
+  });
+
+  it("rejects hostless, loopback, unspecified, and local-socket PostgreSQL targets", () => {
+    for (const databaseUrl of [
+      "postgresql:///eliza",
+      "postgresql://user:pass@localhost/eliza",
+      "postgresql://user:pass@service.localhost/eliza",
+      "postgresql://user:pass@127.0.0.1/eliza",
+      "postgresql://user:pass@127.1/eliza",
+      "postgresql://user:pass@2130706433/eliza",
+      "postgresql://user:pass@[::1]/eliza",
+      "postgresql://user:pass@[::ffff:127.0.0.1]/eliza",
+      "postgresql://user:pass@0.0.0.0/eliza",
+      "postgresql://user:pass@[::]/eliza",
+      "postgresql://user:pass@db.example/eliza?host=%2Fvar%2Frun%2Fpostgresql",
+    ]) {
+      expect(() =>
+        assertProvisioningWorkerDatabaseConfigured({
+          NODE_ENV: "production",
+          DATABASE_URL: databaseUrl,
+        }),
+      ).toThrow(/remote PostgreSQL host/);
+    }
+  });
+
+  it("validates the last effective pg host query override", () => {
+    expect(() =>
+      assertProvisioningWorkerDatabaseConfigured({
+        NODE_ENV: "production",
+        DATABASE_URL:
+          "postgresql://user:pass@db.example/eliza?host=remote-db.example&host=127.0.0.1",
+      }),
+    ).toThrow(/remote PostgreSQL host/);
+
+    expect(() =>
+      assertProvisioningWorkerDatabaseConfigured({
+        NODE_ENV: "production",
+        DATABASE_URL:
+          "postgresql://user:pass@db.example/eliza?host=127.0.0.1&host=remote-db.example",
+      }),
+    ).not.toThrow();
+  });
+
   it("accepts canonical remote PostgreSQL URLs", () => {
     expect(() =>
       assertProvisioningWorkerDatabaseConfigured({
         NODE_ENV: "staging",
         DATABASE_URL: "postgresql://user:pass@db.example/eliza?sslmode=require",
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertProvisioningWorkerDatabaseConfigured({
+        NODE_ENV: "production",
+        DATABASE_URL:
+          "postgresql://user:pass@db.example/eliza?host=pooler.example",
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertProvisioningWorkerDatabaseConfigured({
+        NODE_ENV: "production",
+        DATABASE_URL: "postgresql://user:pass@[2001:db8::42]/eliza",
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertProvisioningWorkerDatabaseConfigured({
+        NODE_ENV: "production",
+        DATABASE_URL: "postgresql://user:pass@db.example/eliza",
+        TEST_DATABASE_URL: "",
       }),
     ).not.toThrow();
   });

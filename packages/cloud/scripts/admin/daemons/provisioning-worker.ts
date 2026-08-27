@@ -12,8 +12,10 @@
  *   npx tsx packages/cloud/scripts/admin/daemons/provisioning-worker.ts --once
  */
 
+import { isIP } from "node:net";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveDatabaseUrl } from "@elizaos/cloud-shared/db/database-url";
 import type { AppOrphanReconcileResult } from "@elizaos/cloud-shared/lib/services/app-container-orphan-reconciler";
 import type { OrphanReconcileResult } from "@elizaos/cloud-shared/lib/services/docker-node-workloads";
 import {
@@ -408,6 +410,57 @@ export function formatErrorWithCause(error: unknown): string {
   return message;
 }
 
+function normalizeDatabaseHost(rawHostname: string): string {
+  let hostname = rawHostname.trim().toLowerCase();
+  const zoneIndex = hostname.indexOf("%");
+  if (zoneIndex >= 0) hostname = hostname.slice(0, zoneIndex);
+  hostname = hostname.replace(/\.$/, "");
+  if (!hostname || hostname.startsWith("/") || hostname.startsWith("\\")) {
+    return hostname;
+  }
+
+  try {
+    const urlHost =
+      hostname.includes(":") && !hostname.startsWith("[")
+        ? `[${hostname}]`
+        : hostname;
+    hostname = new URL(`http://${urlHost}/`).hostname.toLowerCase();
+  } catch {
+    // Keep the original value. Invalid remote hosts fail when pg connects;
+    // known local forms still fail closed below.
+  }
+  if (hostname.startsWith("[") && hostname.endsWith("]")) {
+    hostname = hostname.slice(1, -1);
+  }
+  return hostname.replace(/\.$/, "");
+}
+
+function isLocalDatabaseHost(rawHostname: string): boolean {
+  const hostname = normalizeDatabaseHost(rawHostname);
+  if (!hostname || hostname.startsWith("/") || hostname.startsWith("\\"))
+    return true;
+  if (hostname === "localhost" || hostname.endsWith(".localhost")) return true;
+  if (isIP(hostname) === 4) {
+    return hostname === "0.0.0.0" || hostname.startsWith("127.");
+  }
+  if (isIP(hostname) !== 6) return false;
+  if (hostname === "::" || hostname === "::1") return true;
+  const mapped = /^::ffff:([0-9a-f]{1,4}):[0-9a-f]{1,4}$/.exec(hostname);
+  if (!mapped) return false;
+  const mappedFirstOctet = Number.parseInt(mapped[1] ?? "", 16) >> 8;
+  return mappedFirstOctet === 0 || mappedFirstOctet === 127;
+}
+
+function effectivePostgresHost(parsed: URL): string {
+  const queryHosts = parsed.searchParams.getAll("host");
+  const queryHost = queryHosts.at(-1);
+  // pg-connection-string applies query fields in order (last one wins), but an
+  // exactly empty `host=` falls back to the authority hostname.
+  return queryHost !== undefined && queryHost !== ""
+    ? queryHost
+    : parsed.hostname;
+}
+
 /**
  * Refuse to start a deployed provisioning daemon without the same remote
  * PostgreSQL authority used by the API. A missing URL otherwise falls through
@@ -419,10 +472,24 @@ export function assertProvisioningWorkerDatabaseConfigured(
 ): void {
   const nodeEnv = env.NODE_ENV;
   if (nodeEnv === "test" || nodeEnv === "development") return;
-  const raw = env.DATABASE_URL?.trim();
-  if (!raw) {
+  if (env.TEST_DATABASE_URL !== undefined && env.TEST_DATABASE_URL !== "") {
+    throw new Error(
+      "Provisioning worker TEST_DATABASE_URL is test-only and must be unset outside test/development; refusing a hidden database-authority override.",
+    );
+  }
+
+  // Use the same resolver as the database client. In deployed environments we
+  // additionally require an explicit DATABASE_URL so a local fallback can
+  // never become the worker's effective jobs-queue authority.
+  const raw = resolveDatabaseUrl(env);
+  if (env.DATABASE_URL === undefined || env.DATABASE_URL === "" || !raw) {
     throw new Error(
       "Provisioning worker DATABASE_URL is required outside test/development; refusing to advertise liveness against a local or implicit database.",
+    );
+  }
+  if (raw !== raw.trim()) {
+    throw new Error(
+      "Provisioning worker DATABASE_URL must not contain leading or trailing whitespace; the startup gate validates the exact URL consumed by the database client.",
     );
   }
   if (/^pglite:\/\//i.test(raw)) {
@@ -441,6 +508,12 @@ export function assertProvisioningWorkerDatabaseConfigured(
   if (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:") {
     throw new Error(
       "Provisioning worker DATABASE_URL must use postgres:// or postgresql:// outside test/development.",
+    );
+  }
+  const effectiveHost = effectivePostgresHost(parsed);
+  if (isLocalDatabaseHost(effectiveHost)) {
+    throw new Error(
+      "Provisioning worker DATABASE_URL must target a remote PostgreSQL host outside test/development; hostless, loopback, unspecified, and local-socket targets are forbidden.",
     );
   }
 }
@@ -2291,6 +2364,10 @@ async function armAppsDeployBackendIfEnabled(
 
 async function main(): Promise<void> {
   loadLocalEnv(import.meta.url);
+  // Validate the exact DB resolver inputs before importing repositories. That
+  // prevents a deployed worker from even constructing a client against a
+  // TEST_DATABASE_URL override or local fallback.
+  assertProvisioningWorkerDatabaseConfigured();
 
   const config = readWorkerConfig();
   const { logger, assertSSHKeyAvailable } = await loadDeps();
@@ -2310,7 +2387,6 @@ async function main(): Promise<void> {
     dbLivenessMaxAgeHours: config.dbLivenessMaxAgeHours,
   });
 
-  assertProvisioningWorkerDatabaseConfigured();
   await assertProvisioningWorkerPreflight({ logger });
 
   // Fail-fast on a missing SSH key BEFORE the first heartbeat for remote-node
