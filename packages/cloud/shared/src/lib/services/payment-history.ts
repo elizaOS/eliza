@@ -141,8 +141,13 @@ interface ReversalAggregate {
   reinstatedCredits: number;
   /** Outstanding credit-unit clawback shortfall — derived after the row pass. */
   unrecoveredShortfallCredits: number;
-  /** Intent-wide max cumulative clawback target (credit units), when recorded. */
-  maxCumulativeTargetCredits: number | null;
+  /**
+   * Cumulative clawback target recorded on the chronologically newest row
+   * that carries one (rows arrive newest-first). The writer's requested
+   * delta subtracts prior reversals intent-wide, so this — not the
+   * historical max — is the current basis of the intent's outstanding debt.
+   */
+  newestCumulativeTargetCredits: number | null;
   /**
    * Shortfall snapshot of the chronologically newest clawback row that
    * recorded one (credit units) — legacy fallback for rows written without
@@ -150,6 +155,13 @@ interface ReversalAggregate {
    * seen wins; zero is a valid snapshot (an earlier shortfall was cleared).
    */
   lastShortfallSnapshotCredits: number | null;
+  /**
+   * Reinstatement credits recorded strictly AFTER the newest shortfall
+   * snapshot row. Older reinstatements already reduced prior_reversal.total
+   * at that row's write time, so their effect is inside the snapshot; only
+   * newer ones must be re-added by the legacy fallback derivation.
+   */
+  reinstatedCreditsSinceSnapshot: number;
   disputeReinstated: boolean;
   lastReversalAt: number;
   /** Ledger row id of the latest reversal — stable tie-breaker for equal timestamps. */
@@ -164,8 +176,9 @@ function emptyAggregate(): ReversalAggregate {
     cumulativeClawbackCredits: 0,
     reinstatedCredits: 0,
     unrecoveredShortfallCredits: 0,
-    maxCumulativeTargetCredits: null,
+    newestCumulativeTargetCredits: null,
     lastShortfallSnapshotCredits: null,
+    reinstatedCreditsSinceSnapshot: 0,
     disputeReinstated: false,
     lastReversalAt: -1,
     lastReversalRowId: "",
@@ -248,14 +261,15 @@ function aggregateReversals(
         // The writer derives each event's cumulative clawback target from
         // that event's charge/dispute, but its requested delta subtracts
         // prior reversals across the WHOLE intent (prior_reversal.total),
-        // so applied credits converge to at most the LARGEST cumulative
-        // target ever recorded — never the sum across authorities. The
-        // projection therefore takes the intent-wide max; per-authority
-        // summation would assert a debt the writer can never record.
-        current.maxCumulativeTargetCredits = Math.max(
-          current.maxCumulativeTargetCredits ?? 0,
-          cumulativeTarget,
-        );
+        // so applied credits converge to at most the target of the latest
+        // recorded event — never the sum across authorities. The
+        // projection therefore tracks the chronologically NEWEST recorded
+        // target (rows arrive newest-first); the historical max would
+        // fabricate debt after a full reinstatement cycle re-bases the
+        // intent's debt at a newer, smaller event target.
+        if (current.newestCumulativeTargetCredits === null) {
+          current.newestCumulativeTargetCredits = cumulativeTarget;
+        }
       }
       if (
         at > current.lastReversalAt ||
@@ -268,6 +282,16 @@ function aggregateReversals(
     } else if (row.type === "refund" && source === "charge.dispute.funds_reinstated") {
       current.disputeReinstated = true;
       current.reinstatedCredits += amount;
+      // A reinstatement un-applies credits, so it grows outstanding debt by
+      // the restored amount. For the legacy-snapshot fallback only the
+      // reinstatements AFTER the newest snapshot row matter: older ones
+      // already reduced prior_reversal.total at that row's write time and
+      // are therefore folded into the recorded snapshot. Rows arrive
+      // newest-first, so while no snapshot has been seen yet every
+      // reinstatement is older than (or equal to) the not-yet-seen snapshot.
+      if (current.lastShortfallSnapshotCredits === null) {
+        current.reinstatedCreditsSinceSnapshot += amount;
+      }
       if (
         at > current.lastReversalAt ||
         (at === current.lastReversalAt && row.id > current.lastReversalRowId)
@@ -318,11 +342,16 @@ function aggregateReversals(
   }
 
   // Derive the outstanding credit-unit shortfall from authoritative
-  // cumulative quantities: intent-wide max cumulative target − net applied
+  // cumulative quantities: NEWEST recorded cumulative target − net applied
   // credits (clawbacks minus reinstatements). Per-row shortfall snapshots
   // already fold earlier under-recovery into later rows, so summing them
-  // inflates the outstanding amount forever; only when no cumulative target
-  // was ever recorded (legacy rows) does the newest snapshot stand in.
+  // inflates the outstanding amount forever; the historical-max target is
+  // equally wrong — after a FULL reinstatement cycle the writer re-bases the
+  // intent's debt at the newer event's target (its prior_reversal.total is
+  // back to zero, so a smaller target applies in full), and max-target
+  // would fabricate debt the ledger no longer asserts. Only when no
+  // cumulative target was ever recorded (legacy rows) does the newest
+  // snapshot stand in, plus any reinstatements recorded after it.
   // A FULL dispute reinstatement (restored credits cover the applied
   // clawbacks) closes the outstanding shortfall: the reversal was
   // overturned and the ledger no longer asserts the debt. A PARTIAL
@@ -336,11 +365,14 @@ function aggregateReversals(
       agg.unrecoveredShortfallCredits = 0;
       continue;
     }
-    if (agg.maxCumulativeTargetCredits !== null) {
+    if (agg.newestCumulativeTargetCredits !== null) {
       const netApplied = agg.cumulativeClawbackCredits - agg.reinstatedCredits;
-      agg.unrecoveredShortfallCredits = Math.max(agg.maxCumulativeTargetCredits - netApplied, 0);
+      agg.unrecoveredShortfallCredits = Math.max(agg.newestCumulativeTargetCredits - netApplied, 0);
     } else if (agg.lastShortfallSnapshotCredits !== null) {
-      agg.unrecoveredShortfallCredits = agg.lastShortfallSnapshotCredits;
+      agg.unrecoveredShortfallCredits = Math.max(
+        agg.lastShortfallSnapshotCredits + agg.reinstatedCreditsSinceSnapshot,
+        0,
+      );
     }
   }
   return byIntent;
