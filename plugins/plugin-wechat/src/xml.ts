@@ -51,7 +51,34 @@ export function parseWechatXml(
   }
   const root = rootMatch[1];
 
-  const closingIndex = withoutDecl.indexOf(`</${root}>`);
+  // The root's close tag must be located outside CDATA sections: a literal
+  // `</xml>` inside CDATA content is data, not markup. Scan candidates left to
+  // right, skipping any occurrence nested inside a CDATA terminator.
+  let closingIndex = -1;
+  {
+    let scan = 0;
+    for (;;) {
+      const idx = withoutDecl.indexOf(`</${root}>`, scan);
+      if (idx < 0) break;
+      // count CDATA openers/closers before idx to see if idx sits inside one
+      let inCdata = false;
+      let pos = withoutDecl.indexOf("<![CDATA[");
+      while (pos >= 0 && pos < idx) {
+        const end = withoutDecl.indexOf("]]>", pos);
+        if (end < 0) break;
+        if (end + 3 > idx) {
+          inCdata = true;
+          break;
+        }
+        pos = withoutDecl.indexOf("<![CDATA[", end + 3);
+      }
+      if (!inCdata) {
+        closingIndex = idx;
+        break;
+      }
+      scan = idx + 1;
+    }
+  }
   if (closingIndex < 0) {
     throw new WechatError(
       "WECHAT_CALLBACK_MALFORMED",
@@ -123,7 +150,9 @@ export function parseWechatXml(
           { tag },
         );
       }
-      fields[tag] = decodeEntities(inner.slice(cdataStart, cdataEnd));
+      // CDATA content is character data, verbatim: entity references inside
+      // CDATA are literal text, not markup, and are NOT decoded.
+      fields[tag] = inner.slice(cdataStart, cdataEnd);
       cursor = afterCdata + closeTag.length;
       continue;
     }

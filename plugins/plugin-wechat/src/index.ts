@@ -99,6 +99,16 @@ function resolveWechatConfig(
   const explicit = (config as { connectors?: { wechat?: WechatConfig } })
     ?.connectors?.wechat;
   if (explicit) {
+    if (explicit.callbackPort === undefined) {
+      // ELIZA_WECHAT_WEBHOOK_PORT is the documented env override for the
+      // public callback listener port; wire it so the advertised setting is
+      // not inert.
+      const envPort = readRuntimeSetting(runtime, "ELIZA_WECHAT_WEBHOOK_PORT");
+      const parsed = envPort !== undefined ? Number(envPort) : Number.NaN;
+      if (Number.isSafeInteger(parsed) && parsed > 0 && parsed < 65536) {
+        explicit.callbackPort = parsed;
+      }
+    }
     return explicit;
   }
 
