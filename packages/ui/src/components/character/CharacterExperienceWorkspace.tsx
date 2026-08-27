@@ -993,56 +993,54 @@ export function CharacterExperienceWorkspace({
                     visibleSelectedExperience.context}
                 </h4>
               </div>
-              <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="min-w-0 text-xs text-muted">
-                  {visibleSelectedExperience.type}
-                  {visibleSelectedExperience.domain
-                    ? ` · ${visibleSelectedExperience.domain}`
-                    : ""}
-                  {` · Created ${formatTimestamp(visibleSelectedExperience.createdAt)}`}
-                  {visibleSelectedExperience.updatedAt
-                    ? ` · Updated ${formatTimestamp(visibleSelectedExperience.updatedAt)}`
-                    : ""}
-                </p>
-                <div className="flex shrink-0 items-center gap-2">
-                  {onDeleteExperience ? (
-                    <Button
-                      ref={deleteRef}
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={
-                        deletingExperienceId === visibleSelectedExperience.id
-                      }
-                      onClick={() =>
-                        onDeleteExperience(visibleSelectedExperience)
-                      }
-                      {...deleteAgentProps}
-                    >
-                      {deletingExperienceId === visibleSelectedExperience.id
-                        ? "Deleting…"
-                        : "Delete"}
-                    </Button>
-                  ) : null}
-                  {onSaveExperience ? (
-                    <Button
-                      ref={saveRef}
-                      type="button"
-                      size="sm"
-                      disabled={
-                        savingExperienceId === visibleSelectedExperience.id
-                      }
-                      onClick={() =>
-                        onSaveExperience(visibleSelectedExperience, draft)
-                      }
-                      {...saveAgentProps}
-                    >
-                      {savingExperienceId === visibleSelectedExperience.id
-                        ? "Saving…"
-                        : "Save review"}
-                    </Button>
-                  ) : null}
-                </div>
+              <p className="text-xs text-muted">
+                {visibleSelectedExperience.type}
+                {visibleSelectedExperience.domain
+                  ? ` · ${visibleSelectedExperience.domain}`
+                  : ""}
+                {` · Created ${formatTimestamp(visibleSelectedExperience.createdAt)}`}
+                {visibleSelectedExperience.updatedAt
+                  ? ` · Updated ${formatTimestamp(visibleSelectedExperience.updatedAt)}`
+                  : ""}
+              </p>
+              <div className="flex items-center justify-end gap-2">
+                {onDeleteExperience ? (
+                  <Button
+                    ref={deleteRef}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={
+                      deletingExperienceId === visibleSelectedExperience.id
+                    }
+                    onClick={() =>
+                      onDeleteExperience(visibleSelectedExperience)
+                    }
+                    {...deleteAgentProps}
+                  >
+                    {deletingExperienceId === visibleSelectedExperience.id
+                      ? "Deleting…"
+                      : "Delete"}
+                  </Button>
+                ) : null}
+                {onSaveExperience ? (
+                  <Button
+                    ref={saveRef}
+                    type="button"
+                    size="sm"
+                    disabled={
+                      savingExperienceId === visibleSelectedExperience.id
+                    }
+                    onClick={() =>
+                      onSaveExperience(visibleSelectedExperience, draft)
+                    }
+                    {...saveAgentProps}
+                  >
+                    {savingExperienceId === visibleSelectedExperience.id
+                      ? "Saving…"
+                      : "Save review"}
+                  </Button>
+                ) : null}
               </div>
             </div>
 
@@ -1070,7 +1068,7 @@ export function CharacterExperienceWorkspace({
                 </div>
               </div>
 
-              <div className="space-y-4 lg:pl-4">
+              <div className="space-y-4 2xl:pl-4">
                 <ScoreBar
                   label="Importance"
                   value={visibleSelectedExperience.importance}
