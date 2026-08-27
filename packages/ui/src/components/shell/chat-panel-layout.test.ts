@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   type ChatPanelLayoutInput,
   isShortLandscapeViewport,
+  resolveChatNativeKeyboardLift,
   resolveChatPanelHalfDetentHeight,
   resolveChatPanelLayout,
   SHEET_GRABBER_TOP_CLEARANCE,
@@ -30,6 +31,42 @@ const SCREEN_H = 852; // iPhone 15 logical height
 const NOTCH = 59; // safe-area-inset-top on a Dynamic-Island device
 const KEYBOARD = 336; // iOS soft-keyboard height incl. accessory bar
 const BOTTOM_PAD = 34; // home-indicator safe area at rest
+
+describe("resolveChatNativeKeyboardLift", () => {
+  it("never double-lifts Android when adjustResize wins the event race", () => {
+    // Exact Pixel 11 Pro failure: the WebView had already shrunk 919→520, then
+    // keyboardWillShow delivered 398px. Because the resize arrived first, the
+    // component briefly observed 520 as its keyboard-down baseline. Android's
+    // platform contract must win over that stale baseline and keep bottom: 0.
+    expect(
+      resolveChatNativeKeyboardLift({
+        platformNeedsNativeLift: false,
+        nativeKeyboardHeight: 398,
+        keyboardDownInnerHeight: 520,
+        currentInnerHeight: 520,
+      }),
+    ).toBe(0);
+  });
+
+  it("keeps only the unabsorbed native lift on iOS", () => {
+    expect(
+      resolveChatNativeKeyboardLift({
+        platformNeedsNativeLift: true,
+        nativeKeyboardHeight: 336,
+        keyboardDownInnerHeight: 852,
+        currentInnerHeight: 852,
+      }),
+    ).toBe(336);
+    expect(
+      resolveChatNativeKeyboardLift({
+        platformNeedsNativeLift: true,
+        nativeKeyboardHeight: 336,
+        keyboardDownInnerHeight: 852,
+        currentInnerHeight: 700,
+      }),
+    ).toBe(184);
+  });
+});
 
 describe("resolveChatPanelLayout", () => {
   it("reserves the fixed top margin on web/desktop (no keyboard, no notch)", () => {
