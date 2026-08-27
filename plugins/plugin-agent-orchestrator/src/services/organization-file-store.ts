@@ -131,6 +131,73 @@ export class FileOrganizationStore implements OrganizationStore {
     return record;
   }
 
+  async list(): Promise<AgentOrganizationRecord[]> {
+    let directories: string[];
+    try {
+      directories = (await readdir(this.rootPath, { withFileTypes: true }))
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name)
+        .sort();
+    } catch (error) {
+      // error-policy:J2 add the organization root to directory discovery failures.
+      if (errorCode(error) === "ENOENT") return [];
+      throw new ElizaError("Organization root directory could not be read", {
+        code: "ORGANIZATION_STORE_READ_FAILED",
+        cause: error,
+        context: { rootPath: this.rootPath },
+      });
+    }
+    const records: AgentOrganizationRecord[] = [];
+    for (const directoryName of directories) {
+      const directory = join(this.rootPath, directoryName);
+      let revisions: string[];
+      try {
+        revisions = (await readdir(directory))
+          .filter((name) => /^revision-\d{16}\.json$/.test(name))
+          .sort();
+      } catch (error) {
+        // error-policy:J2 preserve the failing organization directory at the filesystem boundary.
+        throw new ElizaError(
+          "Organization revision directory could not be read",
+          {
+            code: "ORGANIZATION_STORE_READ_FAILED",
+            cause: error,
+            context: { directory },
+          },
+        );
+      }
+      const latest = revisions.at(-1);
+      if (!latest) continue;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(
+          await readFile(join(directory, latest), "utf8"),
+        ) as unknown;
+      } catch (error) {
+        // error-policy:J2 published revision parsing keeps its file context.
+        throw new ElizaError(
+          "Published organization revision is not valid JSON",
+          {
+            code: "ORGANIZATION_STORE_CORRUPT",
+            cause: error,
+            context: { directory, revisionFile: latest },
+            severity: "fatal",
+          },
+        );
+      }
+      const record = parseAgentOrganizationRecord(parsed);
+      if (this.organizationPath(record.organization.id) !== directory) {
+        throw new ElizaError("Organization directory digest is inconsistent", {
+          code: "ORGANIZATION_STORE_CORRUPT",
+          context: { organizationId: record.organization.id, directory },
+          severity: "fatal",
+        });
+      }
+      records.push(record);
+    }
+    return records;
+  }
+
   async get(
     organizationId: OrganizationId,
   ): Promise<AgentOrganizationRecord | null> {

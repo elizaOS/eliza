@@ -29,15 +29,76 @@ export interface AgentOrganization {
 	name: string;
 	goal: string;
 	sponsorPrincipalId: OrganizationPrincipalId;
-	status: "active";
+	status: "active" | "completed";
+	members: OrganizationMember[];
+	workItems: OrganizationWorkItem[];
 	createdAt: OrganizationTimestamp;
 	updatedAt: OrganizationTimestamp;
+}
+
+export type OrganizationMemberAuthority = "coordinate" | "contribute";
+
+export interface OrganizationMember {
+	id: string;
+	principalId: OrganizationPrincipalId;
+	name: string;
+	role: string;
+	capabilities: string[];
+	authority: OrganizationMemberAuthority;
+}
+
+export type OrganizationWorkStatus =
+	| "assigned"
+	| "in_progress"
+	| "completed"
+	| "failed";
+
+export interface OrganizationWorkItem {
+	id: string;
+	objective: string;
+	assigneeMemberId: string;
+	dependsOnWorkItemIds: string[];
+	status: OrganizationWorkStatus;
+	executionId?: string;
+	result?: string;
 }
 
 export type OrganizationCommand =
 	| { type: "create_organization"; name: string; goal: string }
 	| { type: "rename_organization"; name: string }
-	| { type: "change_organization_goal"; goal: string };
+	| { type: "change_organization_goal"; goal: string }
+	| { type: "add_member"; member: OrganizationMember }
+	| {
+			type: "adopt_plan";
+			members: OrganizationMember[];
+			workItems: Array<
+				Pick<
+					OrganizationWorkItem,
+					"id" | "objective" | "assigneeMemberId" | "dependsOnWorkItemIds"
+				>
+			>;
+	  }
+	| {
+			type: "assign_work";
+			workItem: Pick<
+				OrganizationWorkItem,
+				"id" | "objective" | "assigneeMemberId" | "dependsOnWorkItemIds"
+			>;
+	  }
+	| { type: "bind_work_execution"; workItemId: string; executionId: string }
+	| {
+			type: "update_work_status";
+			workItemId: string;
+			status: Exclude<OrganizationWorkStatus, "assigned">;
+			result?: string;
+	  }
+	| {
+			type: "reassign_work";
+			workItemId: string;
+			assigneeMemberId: string;
+			reason: string;
+	  }
+	| { type: "complete_organization" };
 
 export interface OrganizationCommandEnvelope {
 	organizationId: OrganizationId;
@@ -79,6 +140,7 @@ export interface OrganizationCommandResult {
 }
 
 export interface OrganizationStore {
+	list(): Promise<AgentOrganizationRecord[]>;
 	get(organizationId: OrganizationId): Promise<AgentOrganizationRecord | null>;
 	apply(
 		envelope: OrganizationCommandEnvelope,
@@ -94,6 +156,73 @@ function requiredText(value: unknown, field: string): string {
 		});
 	}
 	return normalized;
+}
+
+function requiredTextList(value: unknown, field: string): string[] {
+	if (!Array.isArray(value)) {
+		throw new ElizaError(`Organization ${field} must be an array`, {
+			code: "ORGANIZATION_INVALID_COMMAND",
+			context: { field },
+		});
+	}
+	return value.map((item, index) => requiredText(item, `${field}.${index}`));
+}
+
+function normalizeMember(member: OrganizationMember): OrganizationMember {
+	if (member.authority !== "coordinate" && member.authority !== "contribute") {
+		throw new ElizaError("Organization member authority is invalid", {
+			code: "ORGANIZATION_INVALID_COMMAND",
+		});
+	}
+	return {
+		id: requiredText(member.id, "member.id"),
+		principalId: toOrganizationPrincipalId(member.principalId),
+		name: requiredText(member.name, "member.name"),
+		role: requiredText(member.role, "member.role"),
+		capabilities: requiredTextList(member.capabilities, "member.capabilities"),
+		authority: member.authority,
+	};
+}
+
+function normalizeWorkItem(
+	workItem: Extract<OrganizationCommand, { type: "assign_work" }>["workItem"],
+): Extract<OrganizationCommand, { type: "assign_work" }>["workItem"] {
+	return {
+		id: requiredText(workItem.id, "workItem.id"),
+		objective: requiredText(workItem.objective, "workItem.objective"),
+		assigneeMemberId: requiredText(
+			workItem.assigneeMemberId,
+			"workItem.assigneeMemberId",
+		),
+		dependsOnWorkItemIds: requiredTextList(
+			workItem.dependsOnWorkItemIds,
+			"workItem.dependsOnWorkItemIds",
+		),
+	};
+}
+
+function hasWorkDependencyCycle(
+	workItems: ReadonlyArray<
+		Pick<OrganizationWorkItem, "id" | "dependsOnWorkItemIds">
+	>,
+): boolean {
+	const dependencies = new Map(
+		workItems.map((item) => [item.id, item.dependsOnWorkItemIds]),
+	);
+	const visiting = new Set<string>();
+	const visited = new Set<string>();
+	const visit = (id: string): boolean => {
+		if (visiting.has(id)) return true;
+		if (visited.has(id)) return false;
+		visiting.add(id);
+		for (const dependency of dependencies.get(id) ?? []) {
+			if (visit(dependency)) return true;
+		}
+		visiting.delete(id);
+		visited.add(id);
+		return false;
+	};
+	return workItems.some((item) => visit(item.id));
 }
 
 export function toOrganizationId(value: string): OrganizationId {
@@ -152,6 +281,34 @@ function assertEnvelope(envelope: OrganizationCommandEnvelope): void {
 		requiredText(envelope.command.name, "name");
 	} else if (envelope.command.type === "change_organization_goal") {
 		requiredText(envelope.command.goal, "goal");
+	} else if (envelope.command.type === "add_member") {
+		normalizeMember(envelope.command.member);
+	} else if (envelope.command.type === "adopt_plan") {
+		envelope.command.members.map(normalizeMember);
+		envelope.command.workItems.map(normalizeWorkItem);
+	} else if (envelope.command.type === "assign_work") {
+		normalizeWorkItem(envelope.command.workItem);
+	} else if (envelope.command.type === "bind_work_execution") {
+		requiredText(envelope.command.workItemId, "workItemId");
+		requiredText(envelope.command.executionId, "executionId");
+	} else if (envelope.command.type === "update_work_status") {
+		requiredText(envelope.command.workItemId, "workItemId");
+		if (
+			!["in_progress", "completed", "failed"].includes(envelope.command.status)
+		) {
+			throw new ElizaError("Organization work status is invalid", {
+				code: "ORGANIZATION_INVALID_COMMAND",
+			});
+		}
+		if (envelope.command.result !== undefined) {
+			requiredText(envelope.command.result, "result");
+		}
+	} else if (envelope.command.type === "reassign_work") {
+		requiredText(envelope.command.workItemId, "workItemId");
+		requiredText(envelope.command.assigneeMemberId, "assigneeMemberId");
+		requiredText(envelope.command.reason, "reason");
+	} else if (envelope.command.type === "complete_organization") {
+		return;
 	} else {
 		throw new ElizaError("Organization command type is unsupported", {
 			code: "ORGANIZATION_INVALID_COMMAND",
@@ -196,6 +353,56 @@ function normalizedEnvelope(
 				type: envelope.command.type,
 				goal: requiredText(envelope.command.goal, "goal"),
 			};
+			break;
+		case "add_member":
+			command = {
+				type: envelope.command.type,
+				member: normalizeMember(envelope.command.member),
+			};
+			break;
+		case "adopt_plan":
+			command = {
+				type: envelope.command.type,
+				members: envelope.command.members.map(normalizeMember),
+				workItems: envelope.command.workItems.map(normalizeWorkItem),
+			};
+			break;
+		case "assign_work":
+			command = {
+				type: envelope.command.type,
+				workItem: normalizeWorkItem(envelope.command.workItem),
+			};
+			break;
+		case "bind_work_execution":
+			command = {
+				type: envelope.command.type,
+				workItemId: requiredText(envelope.command.workItemId, "workItemId"),
+				executionId: requiredText(envelope.command.executionId, "executionId"),
+			};
+			break;
+		case "update_work_status":
+			command = {
+				type: envelope.command.type,
+				workItemId: requiredText(envelope.command.workItemId, "workItemId"),
+				status: envelope.command.status,
+				...(envelope.command.result === undefined
+					? {}
+					: { result: requiredText(envelope.command.result, "result") }),
+			};
+			break;
+		case "reassign_work":
+			command = {
+				type: envelope.command.type,
+				workItemId: requiredText(envelope.command.workItemId, "workItemId"),
+				assigneeMemberId: requiredText(
+					envelope.command.assigneeMemberId,
+					"assigneeMemberId",
+				),
+				reason: requiredText(envelope.command.reason, "reason"),
+			};
+			break;
+		case "complete_organization":
+			command = { type: envelope.command.type };
 			break;
 		default:
 			assertNever(envelope.command);
@@ -299,6 +506,8 @@ export function createOrganizationRecord(
 			goal,
 			sponsorPrincipalId: envelope.actorPrincipalId,
 			status: "active",
+			members: [],
+			workItems: [],
 			createdAt: envelope.issuedAt,
 			updatedAt: envelope.issuedAt,
 		},
@@ -350,12 +559,238 @@ export async function applyOrganizationCommand(
 		});
 	}
 	const organization = structuredClone(record.organization);
+	if (organization.status === "completed") {
+		throw new ElizaError("Completed organizations cannot be mutated", {
+			code: "ORGANIZATION_ALREADY_COMPLETED",
+			context: { organizationId: organization.id },
+		});
+	}
 	switch (envelope.command.type) {
 		case "rename_organization":
 			organization.name = requiredText(envelope.command.name, "name");
 			break;
 		case "change_organization_goal":
 			organization.goal = requiredText(envelope.command.goal, "goal");
+			break;
+		case "add_member": {
+			const member = normalizeMember(envelope.command.member);
+			if (
+				organization.members.some(
+					(candidate) =>
+						candidate.id === member.id ||
+						candidate.principalId === member.principalId,
+				)
+			) {
+				throw new ElizaError("Organization member already exists", {
+					code: "ORGANIZATION_MEMBER_CONFLICT",
+					context: { memberId: member.id },
+				});
+			}
+			organization.members.push(member);
+			break;
+		}
+		case "adopt_plan": {
+			if (
+				organization.members.length > 0 ||
+				organization.workItems.length > 0
+			) {
+				throw new ElizaError("Organization plan already exists", {
+					code: "ORGANIZATION_PLAN_CONFLICT",
+				});
+			}
+			const members = envelope.command.members.map(normalizeMember);
+			const memberIds = new Set(members.map((member) => member.id));
+			const principals = new Set(members.map((member) => member.principalId));
+			if (
+				memberIds.size !== members.length ||
+				principals.size !== members.length
+			) {
+				throw new ElizaError("Organization plan contains duplicate members", {
+					code: "ORGANIZATION_MEMBER_CONFLICT",
+				});
+			}
+			const workItems = envelope.command.workItems.map(normalizeWorkItem);
+			const workIds = new Set(workItems.map((item) => item.id));
+			if (workIds.size !== workItems.length) {
+				throw new ElizaError("Organization plan contains duplicate work", {
+					code: "ORGANIZATION_WORK_CONFLICT",
+				});
+			}
+			for (const item of workItems) {
+				if (!memberIds.has(item.assigneeMemberId)) {
+					throw new ElizaError("Organization plan assignee does not exist", {
+						code: "ORGANIZATION_MEMBER_NOT_FOUND",
+					});
+				}
+				if (
+					item.dependsOnWorkItemIds.some(
+						(id) => !workIds.has(id) || id === item.id,
+					)
+				) {
+					throw new ElizaError("Organization plan dependency is invalid", {
+						code: "ORGANIZATION_WORK_DEPENDENCY_NOT_FOUND",
+					});
+				}
+			}
+			if (hasWorkDependencyCycle(workItems)) {
+				throw new ElizaError("Organization plan contains a dependency cycle", {
+					code: "ORGANIZATION_WORK_DEPENDENCY_CYCLE",
+				});
+			}
+			organization.members = members;
+			organization.workItems = workItems.map((item) => ({
+				...item,
+				status: "assigned",
+			}));
+			break;
+		}
+		case "assign_work": {
+			const workItem = normalizeWorkItem(envelope.command.workItem);
+			if (
+				organization.workItems.some((candidate) => candidate.id === workItem.id)
+			) {
+				throw new ElizaError("Organization work item already exists", {
+					code: "ORGANIZATION_WORK_CONFLICT",
+					context: { workItemId: workItem.id },
+				});
+			}
+			if (
+				!organization.members.some(
+					(member) => member.id === workItem.assigneeMemberId,
+				)
+			) {
+				throw new ElizaError("Organization work assignee does not exist", {
+					code: "ORGANIZATION_MEMBER_NOT_FOUND",
+					context: { memberId: workItem.assigneeMemberId },
+				});
+			}
+			const knownWorkIds = new Set(
+				organization.workItems.map((item) => item.id),
+			);
+			if (workItem.dependsOnWorkItemIds.some((id) => !knownWorkIds.has(id))) {
+				throw new ElizaError("Organization work dependency does not exist", {
+					code: "ORGANIZATION_WORK_DEPENDENCY_NOT_FOUND",
+					context: { workItemId: workItem.id },
+				});
+			}
+			organization.workItems.push({ ...workItem, status: "assigned" });
+			break;
+		}
+		case "bind_work_execution": {
+			const command = envelope.command;
+			const workItem = organization.workItems.find(
+				(candidate) => candidate.id === command.workItemId,
+			);
+			if (!workItem) {
+				throw new ElizaError("Organization work item does not exist", {
+					code: "ORGANIZATION_WORK_NOT_FOUND",
+				});
+			}
+			const executionId = requiredText(command.executionId, "executionId");
+			if (workItem.status !== "assigned") {
+				throw new ElizaError(
+					"Organization work execution can only bind while assigned",
+					{
+						code: "ORGANIZATION_WORK_TRANSITION_INVALID",
+						context: { workItemId: workItem.id, status: workItem.status },
+					},
+				);
+			}
+			if (workItem.executionId && workItem.executionId !== executionId) {
+				throw new ElizaError(
+					"Organization work already has another execution",
+					{
+						code: "ORGANIZATION_EXECUTION_CONFLICT",
+						context: { workItemId: workItem.id },
+					},
+				);
+			}
+			workItem.executionId = executionId;
+			break;
+		}
+		case "update_work_status": {
+			const command = envelope.command;
+			const workItem = organization.workItems.find(
+				(candidate) => candidate.id === command.workItemId,
+			);
+			if (!workItem) {
+				throw new ElizaError("Organization work item does not exist", {
+					code: "ORGANIZATION_WORK_NOT_FOUND",
+				});
+			}
+			const validTransition =
+				(workItem.status === "assigned" && command.status === "in_progress") ||
+				(workItem.status === "in_progress" &&
+					(command.status === "completed" || command.status === "failed"));
+			if (!validTransition) {
+				throw new ElizaError("Organization work status transition is invalid", {
+					code: "ORGANIZATION_WORK_TRANSITION_INVALID",
+					context: {
+						workItemId: workItem.id,
+						from: workItem.status,
+						to: command.status,
+					},
+				});
+			}
+			if (!workItem.executionId) {
+				throw new ElizaError(
+					"Organization work cannot advance without an execution",
+					{
+						code: "ORGANIZATION_EXECUTION_REQUIRED",
+						context: { workItemId: workItem.id },
+					},
+				);
+			}
+			workItem.status = command.status;
+			if (command.result !== undefined) {
+				workItem.result = requiredText(command.result, "result");
+			}
+			break;
+		}
+		case "reassign_work": {
+			const command = envelope.command;
+			const workItem = organization.workItems.find(
+				(candidate) => candidate.id === command.workItemId,
+			);
+			if (!workItem) {
+				throw new ElizaError("Organization work item does not exist", {
+					code: "ORGANIZATION_WORK_NOT_FOUND",
+				});
+			}
+			if (workItem.status !== "failed") {
+				throw new ElizaError(
+					"Only failed organization work can be reassigned",
+					{
+						code: "ORGANIZATION_WORK_TRANSITION_INVALID",
+						context: { workItemId: workItem.id, status: workItem.status },
+					},
+				);
+			}
+			if (
+				!organization.members.some(
+					(member) => member.id === command.assigneeMemberId,
+				)
+			) {
+				throw new ElizaError("Organization work assignee does not exist", {
+					code: "ORGANIZATION_MEMBER_NOT_FOUND",
+				});
+			}
+			workItem.assigneeMemberId = command.assigneeMemberId;
+			workItem.status = "assigned";
+			delete workItem.executionId;
+			delete workItem.result;
+			break;
+		}
+		case "complete_organization":
+			if (
+				organization.workItems.length === 0 ||
+				organization.workItems.some((item) => item.status !== "completed")
+			) {
+				throw new ElizaError("Organization still has unfinished work", {
+					code: "ORGANIZATION_WORK_INCOMPLETE",
+				});
+			}
+			organization.status = "completed";
 			break;
 		default:
 			assertNever(envelope.command);
@@ -374,6 +809,38 @@ export const sponsorOnlyOrganizationAuthorizer: OrganizationCommandAuthorizer =
 	(record, envelope) =>
 		record === null ||
 		record.organization.sponsorPrincipalId === envelope.actorPrincipalId;
+
+/** Allows sponsors to govern the organization, coordinators to manage work, and contributors to report only their own work. */
+export const delegatedOrganizationAuthorizer: OrganizationCommandAuthorizer = (
+	record,
+	envelope,
+) => {
+	if (!record) return envelope.command.type === "create_organization";
+	if (record.organization.sponsorPrincipalId === envelope.actorPrincipalId) {
+		return true;
+	}
+	const member = record.organization.members.find(
+		(candidate) => candidate.principalId === envelope.actorPrincipalId,
+	);
+	if (!member) return false;
+	if (member.authority === "coordinate") {
+		return [
+			"add_member",
+			"adopt_plan",
+			"assign_work",
+			"bind_work_execution",
+			"update_work_status",
+			"reassign_work",
+			"complete_organization",
+		].includes(envelope.command.type);
+	}
+	if (envelope.command.type !== "update_work_status") return false;
+	const command = envelope.command;
+	return record.organization.workItems.some(
+		(item) =>
+			item.id === command.workItemId && item.assigneeMemberId === member.id,
+	);
+};
 
 export async function transitionOrganizationRecord(
 	record: AgentOrganizationRecord | null,
@@ -409,8 +876,92 @@ function isOrganizationCommandType(
 	return (
 		value === "create_organization" ||
 		value === "rename_organization" ||
-		value === "change_organization_goal"
+		value === "change_organization_goal" ||
+		value === "add_member" ||
+		value === "adopt_plan" ||
+		value === "assign_work" ||
+		value === "bind_work_execution" ||
+		value === "update_work_status" ||
+		value === "reassign_work" ||
+		value === "complete_organization"
 	);
+}
+
+function persistedTextList(value: unknown, field: string): string[] {
+	if (!Array.isArray(value)) {
+		throw new ElizaError(`Persisted organization ${field} is invalid`, {
+			code: "ORGANIZATION_STORE_CORRUPT",
+			severity: "fatal",
+		});
+	}
+	return value.map((item, index) => persistedText(item, `${field}.${index}`));
+}
+
+function persistedMember(value: unknown): OrganizationMember {
+	if (!isRecord(value)) {
+		throw new ElizaError("Persisted organization member is invalid", {
+			code: "ORGANIZATION_STORE_CORRUPT",
+			severity: "fatal",
+		});
+	}
+	if (value.authority !== "coordinate" && value.authority !== "contribute") {
+		throw new ElizaError("Persisted organization member authority is invalid", {
+			code: "ORGANIZATION_STORE_CORRUPT",
+			severity: "fatal",
+		});
+	}
+	return {
+		id: persistedText(value.id, "member.id"),
+		principalId: persistedText(
+			value.principalId,
+			"member.principalId",
+		) as OrganizationPrincipalId,
+		name: persistedText(value.name, "member.name"),
+		role: persistedText(value.role, "member.role"),
+		capabilities: persistedTextList(value.capabilities, "member.capabilities"),
+		authority: value.authority,
+	};
+}
+
+function persistedWorkItem(value: unknown): OrganizationWorkItem {
+	if (!isRecord(value)) {
+		throw new ElizaError("Persisted organization work item is invalid", {
+			code: "ORGANIZATION_STORE_CORRUPT",
+			severity: "fatal",
+		});
+	}
+	if (
+		!["assigned", "in_progress", "completed", "failed"].includes(
+			String(value.status),
+		)
+	) {
+		throw new ElizaError("Persisted organization work status is invalid", {
+			code: "ORGANIZATION_STORE_CORRUPT",
+			severity: "fatal",
+		});
+	}
+	const status = value.status as OrganizationWorkStatus;
+	return {
+		id: persistedText(value.id, "workItem.id"),
+		objective: persistedText(value.objective, "workItem.objective"),
+		assigneeMemberId: persistedText(
+			value.assigneeMemberId,
+			"workItem.assigneeMemberId",
+		),
+		dependsOnWorkItemIds: persistedTextList(
+			value.dependsOnWorkItemIds,
+			"workItem.dependsOnWorkItemIds",
+		),
+		status,
+		...(value.executionId === undefined
+			? {}
+			: {
+					executionId: persistedText(value.executionId, "workItem.executionId"),
+				}),
+		...(value.result === undefined
+			? {}
+			: { result: persistedText(value.result, "workItem.result") }),
+	};
 }
 
 function persistedTimestamp(
@@ -486,6 +1037,118 @@ function persistedCommandEnvelope(value: unknown): OrganizationCommandEnvelope {
 				goal: persistedText(value.command.goal, "command.goal"),
 			};
 			break;
+		case "add_member":
+			command = { type, member: persistedMember(value.command.member) };
+			break;
+		case "adopt_plan": {
+			if (
+				!Array.isArray(value.command.members) ||
+				!Array.isArray(value.command.workItems)
+			) {
+				throw new ElizaError("Persisted organization plan command is invalid", {
+					code: "ORGANIZATION_STORE_CORRUPT",
+					severity: "fatal",
+				});
+			}
+			command = {
+				type,
+				members: value.command.members.map(persistedMember),
+				workItems: value.command.workItems.map((item) => {
+					const parsed = persistedWorkItem({
+						...(isRecord(item) ? item : {}),
+						status: "assigned",
+					});
+					return {
+						id: parsed.id,
+						objective: parsed.objective,
+						assigneeMemberId: parsed.assigneeMemberId,
+						dependsOnWorkItemIds: parsed.dependsOnWorkItemIds,
+					};
+				}),
+			};
+			break;
+		}
+		case "assign_work": {
+			const workItem = value.command.workItem;
+			if (!isRecord(workItem))
+				throw new ElizaError("Persisted organization work command is invalid", {
+					code: "ORGANIZATION_STORE_CORRUPT",
+					severity: "fatal",
+				});
+			command = {
+				type,
+				workItem: {
+					id: persistedText(workItem.id, "command.workItem.id"),
+					objective: persistedText(
+						workItem.objective,
+						"command.workItem.objective",
+					),
+					assigneeMemberId: persistedText(
+						workItem.assigneeMemberId,
+						"command.workItem.assigneeMemberId",
+					),
+					dependsOnWorkItemIds: persistedTextList(
+						workItem.dependsOnWorkItemIds,
+						"command.workItem.dependsOnWorkItemIds",
+					),
+				},
+			};
+			break;
+		}
+		case "bind_work_execution":
+			command = {
+				type,
+				workItemId: persistedText(
+					value.command.workItemId,
+					"command.workItemId",
+				),
+				executionId: persistedText(
+					value.command.executionId,
+					"command.executionId",
+				),
+			};
+			break;
+		case "update_work_status": {
+			const status = value.command.status;
+			if (
+				status !== "in_progress" &&
+				status !== "completed" &&
+				status !== "failed"
+			)
+				throw new ElizaError(
+					"Persisted organization work status command is invalid",
+					{ code: "ORGANIZATION_STORE_CORRUPT", severity: "fatal" },
+				);
+			command = {
+				type,
+				workItemId: persistedText(
+					value.command.workItemId,
+					"command.workItemId",
+				),
+				status,
+				...(value.command.result === undefined
+					? {}
+					: { result: persistedText(value.command.result, "command.result") }),
+			};
+			break;
+		}
+		case "reassign_work":
+			command = {
+				type,
+				workItemId: persistedText(
+					value.command.workItemId,
+					"command.workItemId",
+				),
+				assigneeMemberId: persistedText(
+					value.command.assigneeMemberId,
+					"command.assigneeMemberId",
+				),
+				reason: persistedText(value.command.reason, "command.reason"),
+			};
+			break;
+		case "complete_organization":
+			command = { type };
+			break;
 		default:
 			throw new ElizaError("Persisted organization command type is invalid", {
 				code: "ORGANIZATION_STORE_CORRUPT",
@@ -530,6 +1193,8 @@ function reconstructOrganization(
 		goal: first.command.goal,
 		sponsorPrincipalId: first.actorPrincipalId,
 		status: "active",
+		members: [],
+		workItems: [],
 		createdAt: first.issuedAt,
 		updatedAt: first.issuedAt,
 	};
@@ -541,6 +1206,68 @@ function reconstructOrganization(
 				break;
 			case "change_organization_goal":
 				organization.goal = envelope.command.goal;
+				break;
+			case "add_member":
+				organization.members.push(structuredClone(envelope.command.member));
+				break;
+			case "adopt_plan":
+				organization.members = structuredClone(envelope.command.members);
+				organization.workItems = envelope.command.workItems.map((item) => ({
+					...structuredClone(item),
+					status: "assigned",
+				}));
+				break;
+			case "assign_work":
+				organization.workItems.push({
+					...structuredClone(envelope.command.workItem),
+					status: "assigned",
+				});
+				break;
+			case "bind_work_execution": {
+				const command = envelope.command;
+				const workItem = organization.workItems.find(
+					(candidate) => candidate.id === command.workItemId,
+				);
+				if (!workItem)
+					throw new ElizaError(
+						"Persisted organization execution targets missing work",
+						{ code: "ORGANIZATION_STORE_CORRUPT", severity: "fatal" },
+					);
+				workItem.executionId = command.executionId;
+				break;
+			}
+			case "update_work_status": {
+				const command = envelope.command;
+				const workItem = organization.workItems.find(
+					(candidate) => candidate.id === command.workItemId,
+				);
+				if (!workItem)
+					throw new ElizaError(
+						"Persisted organization status targets missing work",
+						{ code: "ORGANIZATION_STORE_CORRUPT", severity: "fatal" },
+					);
+				workItem.status = command.status;
+				if (command.result !== undefined) workItem.result = command.result;
+				break;
+			}
+			case "reassign_work": {
+				const command = envelope.command;
+				const workItem = organization.workItems.find(
+					(candidate) => candidate.id === command.workItemId,
+				);
+				if (!workItem)
+					throw new ElizaError(
+						"Persisted organization reassignment targets missing work",
+						{ code: "ORGANIZATION_STORE_CORRUPT", severity: "fatal" },
+					);
+				workItem.assigneeMemberId = command.assigneeMemberId;
+				workItem.status = "assigned";
+				delete workItem.executionId;
+				delete workItem.result;
+				break;
+			}
+			case "complete_organization":
+				organization.status = "completed";
 				break;
 			case "create_organization":
 				throw new ElizaError(
@@ -592,7 +1319,7 @@ export function parseAgentOrganizationRecord(
 		);
 	}
 	const status = organization.status;
-	if (status !== "active") {
+	if (status !== "active" && status !== "completed") {
 		throw new ElizaError("Persisted organization status is invalid", {
 			code: "ORGANIZATION_STORE_CORRUPT",
 			severity: "fatal",
@@ -716,6 +1443,12 @@ export function parseAgentOrganizationRecord(
 			"sponsorPrincipalId",
 		) as OrganizationPrincipalId,
 		status,
+		members: Array.isArray(organization.members)
+			? organization.members.map(persistedMember)
+			: [],
+		workItems: Array.isArray(organization.workItems)
+			? organization.workItems.map(persistedWorkItem)
+			: [],
 		createdAt: persistedTimestamp(organization.createdAt, "createdAt"),
 		updatedAt: persistedTimestamp(organization.updatedAt, "updatedAt"),
 	};
@@ -747,6 +1480,11 @@ export class InMemoryOrganizationStore implements OrganizationStore {
 	) {}
 	private readonly records = new Map<string, AgentOrganizationRecord>();
 	private tail: Promise<void> = Promise.resolve();
+
+	async list(): Promise<AgentOrganizationRecord[]> {
+		await this.tail;
+		return [...this.records.values()].map((record) => structuredClone(record));
+	}
 
 	async get(
 		organizationId: OrganizationId,

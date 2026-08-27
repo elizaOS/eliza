@@ -128,6 +128,17 @@ describe("FileOrganizationStore", () => {
     expect(retry.record.audit).toHaveLength(1);
   });
 
+  it("lists published organizations for restart reconciliation", async () => {
+    const path = await storePath();
+    const store = new FileOrganizationStore(path);
+    await store.apply(createCommand());
+
+    const records = await new FileOrganizationStore(path).list();
+
+    expect(records).toHaveLength(1);
+    expect(records[0]?.organization.id).toBe(toOrganizationId("org-acme"));
+  });
+
   it("ignores a stranded candidate and resumes from the published revision", async () => {
     const path = await storePath();
     const store = new FileOrganizationStore(path);

@@ -220,7 +220,15 @@ When both are present, `GITHUB_TOKEN` wins.
 
 ## Persistence
 
-The first general-purpose organization experiment exposes `FileOrganizationStore` as a Node-only persistence adapter. It publishes the host-neutral core aggregate, command receipt, and audit entry together as one complete immutable revision file. The store is not yet registered as a runtime service and does not activate ACP or remote executors; distributed host leasing, identity mapping, and authorization projections remain gated follow-on experiments.
+`AutonomousOrganizationService` turns one compact objective into a durable ACP-backed organization. The runtime planner selects workers from the currently installed ACP agents, creates a dependency-checked work plan, and starts only ready work. Each work item is bound to an idempotently discovered or created orchestrator task, and dependent workers receive the complete non-empty completion summaries reported for their completed prerequisites. The service periodically reconciles task completion, retries failed work on a different available worker through an explicit reassignment, completes the organization when every task has a non-empty result, and reloads active organizations from persisted revisions during service startup.
+
+The `ORGANIZE_TEAM` action is the planner-facing entrypoint. Hosts must explicitly set `ELIZA_ENABLE_AUTONOMOUS_ORGANIZATIONS=true` before the action is exposed because it can start coding workers. Once enabled, it requires only an `objective`; the incoming message identity is the stable kickoff and sponsor identity, so duplicate delivery converges on the same organization instead of creating a second team.
+
+`FileOrganizationStore` publishes the host-neutral core aggregate, command receipt, and audit entry together as one immutable revision file under the current runtime's `$ELIZA_ACP_STATE_DIR/organizations/<agent-id>` namespace (or the plugin's normal state root). The core aggregate enforces revision checks, command idempotency, delegated coordinator and assignee authority, acyclic dependencies, valid state transitions, and guarded terminal completion.
+
+This initial ACP adapter implementation recruits coding agents already exposed by the host. Candidate capabilities are currently generic ACP coding capabilities, not runtime-attested skill profiles. It does not yet discover remote A2A agents or transfer an organization lease between Eliza runtime processes. Organization objectives and worker result summaries are persisted verbatim, so callers must not put secrets or private artifacts in them; use authorized external references for sensitive material.
+
+The multi-runtime scenario-runner arenas are adjacent behavioral evaluations, not end-to-end evidence for this ACP adapter. A production-path live proof must invoke `ORGANIZE_TEAM`, record its organization revisions and task bindings, complete a dependency chain through real ACP sessions, and demonstrate continuation across a host restart.
 
 Session state is persisted with a tiered backend:
 

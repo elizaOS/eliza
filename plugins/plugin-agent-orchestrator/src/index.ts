@@ -37,6 +37,18 @@ import {
 // `/api/coding-agents/*` surface 404s on the node bundle.
 export { codingAgentRouteRegistration } from "./register-routes.js";
 export {
+  AUTONOMOUS_ORGANIZATION_SERVICE_TYPE,
+  AutonomousOrganizationService,
+  type AutonomousOrganizationServiceOptions,
+  type OrganizationPlan,
+  type OrganizationPlanner,
+  type OrganizationWorkerCandidate,
+  type OrganizationWorkerExecutionStatus,
+  type OrganizationWorkerHost,
+  parseOrganizationPlan,
+  type StartAutonomousOrganizationInput,
+} from "./services/autonomous-organization-service.js";
+export {
   cloneLanePlan,
   collisionProviderFromWorkspaceService,
   createDeterministicLanePlan,
@@ -67,6 +79,7 @@ export {
   stripToolTranscript,
 } from "./services/transcript-sanitizer.js";
 
+import { organizeTeamAction } from "./actions/organize-team.js";
 import {
   createTerminalUnsupportedTasksAction,
   tasksSandboxStubAction,
@@ -90,6 +103,7 @@ import {
   TASK_AUDIT_EVENT,
   type TaskAuditPayload,
 } from "./services/audit.js";
+import { AutonomousOrganizationService } from "./services/autonomous-organization-service.js";
 import { OrchestratorTaskService } from "./services/orchestrator-task-service.js";
 import { resolveOriginRoomId } from "./services/session-room-binding.js";
 import { SubAgentInbox } from "./services/sub-agent-inbox.js";
@@ -141,6 +155,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
     ? [
         serviceClass(AcpService),
         serviceClass(OrchestratorTaskService),
+        serviceClass(AutonomousOrganizationService),
         serviceClass(SubAgentRouter),
         serviceClass(CodingWorkspaceService),
         serviceClass(TaskSupervisorService),
@@ -158,6 +173,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
 
   const orchestratorActions = codeExecutionAllowed
     ? [
+        organizeTeamAction,
         ...promoteSubactionsToActions(tasksAction, {
           // Override the auto-generated description for `spawn_agent` so
           // the planner reliably picks it over inline tools (e.g.
