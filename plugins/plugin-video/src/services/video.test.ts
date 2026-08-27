@@ -325,4 +325,24 @@ describe("VideoService deterministic behavior", () => {
       embedSubs: true,
     });
   });
+
+  it("degrades gracefully when subtitles/captions array is empty (#29562)", async () => {
+    const runtime = createRuntime();
+    const { service } = createServiceWithYtDlp([
+      {
+        title: "Music Video",
+        description: "Test",
+        categories: ["Music"],
+        subtitles: { en: [] },
+        automatic_captions: { en: [] },
+      },
+    ]);
+
+    const result = await service.processVideo(
+      "https://youtu.be/empty-subtitles-test",
+      runtime,
+    );
+
+    expect(result.text).toBe("No lyrics available.");
+  });
 });
