@@ -17,12 +17,22 @@ const canonicalRoot = "packages/ui/src/components/ui";
 const baselinePath = path.join(scriptDir, "design-system-baseline.json");
 const exceptionsPath = path.join(scriptDir, "design-system-exceptions.json");
 const adaptersPath = path.join(scriptDir, "design-system-adapters.json");
+const publicCardVariantsPath = path.join(
+  scriptDir,
+  "design-system-public-card-variants.json",
+);
+const packagePath = path.join(repoRoot, "packages/ui/package.json");
 const reportPath = path.join(scriptDir, "design-system-compliance-report.md");
 const buttonPath = path.join(
   repoRoot,
   "packages/ui/src/components/ui/button.tsx",
 );
 const cardPath = path.join(repoRoot, "packages/ui/src/components/ui/card.tsx");
+const publicCardBarrelPaths = [
+  path.join(repoRoot, "packages/ui/src/index.ts"),
+  path.join(repoRoot, "packages/ui/src/components/primitives/index.ts"),
+  path.join(repoRoot, "packages/ui/src/browser.ts"),
+];
 const BUTTON_AXES = ["variant", "size", "shape", "align"];
 const BUTTON_MIN_MAINTAINED_CALLERS = 2;
 const CARD_AXES = [
@@ -3311,6 +3321,245 @@ export function applyExceptions(findings, exceptions) {
   return active;
 }
 
+function publicCardSourceContract(file, source) {
+  const sourceFile = ts.createSourceFile(
+    file,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const names = new Set();
+  let cardPropsDerivesCardVariants = false;
+  for (const statement of sourceFile.statements) {
+    const exported = ts
+      .getModifiers(statement)
+      ?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword);
+    if (
+      exported &&
+      "name" in statement &&
+      statement.name &&
+      ts.isIdentifier(statement.name)
+    ) {
+      names.add(statement.name.text);
+    }
+    if (
+      exported &&
+      ts.isInterfaceDeclaration(statement) &&
+      statement.name.text === "CardProps"
+    ) {
+      cardPropsDerivesCardVariants =
+        statement.heritageClauses?.some(
+          (clause) =>
+            clause.token === ts.SyntaxKind.ExtendsKeyword &&
+            clause.types.some(
+              (type) =>
+                ts.isIdentifier(type.expression) &&
+                type.expression.text === "VariantProps" &&
+                type.typeArguments?.some(
+                  (argument) =>
+                    ts.isTypeQueryNode(argument) &&
+                    ts.isIdentifier(argument.exprName) &&
+                    argument.exprName.text === "cardVariants",
+                ),
+            ),
+        ) === true;
+    }
+    if (
+      ts.isExportDeclaration(statement) &&
+      statement.exportClause &&
+      ts.isNamedExports(statement.exportClause)
+    ) {
+      for (const element of statement.exportClause.elements) {
+        names.add(element.name.text);
+      }
+    }
+  }
+  return { cardPropsDerivesCardVariants, names };
+}
+
+function reexportedModuleSpecifiers(file, source) {
+  const sourceFile = ts.createSourceFile(
+    file,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  return new Set(
+    sourceFile.statements
+      .filter(
+        (statement) =>
+          ts.isExportDeclaration(statement) &&
+          statement.exportClause === undefined &&
+          statement.moduleSpecifier !== undefined &&
+          ts.isStringLiteral(statement.moduleSpecifier),
+      )
+      .map((statement) => statement.moduleSpecifier.text),
+  );
+}
+
+/**
+ * Validates review-dated Card variants that remain part of the published API
+ * even after their maintained in-repo callers have moved to newer layouts.
+ */
+export function validatePublicCardVariantCompatibility({
+  cardSource,
+  cardVariants,
+  document,
+  now,
+  publicBarrelSources,
+  packageDocument,
+}) {
+  if (
+    document.schemaVersion !== 1 ||
+    !Array.isArray(document.variants) ||
+    typeof packageDocument !== "object" ||
+    packageDocument === null ||
+    typeof packageDocument.exports !== "object" ||
+    packageDocument.exports === null
+  ) {
+    throw new Error(
+      "Public Card variant compatibility requires schemaVersion 1, variants, and package exports",
+    );
+  }
+  const ids = new Set();
+  const values = new Set();
+  const sourceContract = publicCardSourceContract(cardPath, cardSource);
+  const requiredSymbols = ["Card", "CardProps", "cardVariants"];
+  const requiredPackageExports = [".", "./card"];
+  const requiredBarrels = [
+    {
+      file: "packages/ui/src/index.ts",
+      reexport: "./components/primitives/index",
+    },
+    {
+      file: "packages/ui/src/components/primitives/index.ts",
+      reexport: "../ui/card",
+    },
+    {
+      file: "packages/ui/src/browser.ts",
+      reexport: "./components/ui/card.tsx",
+    },
+  ];
+
+  return document.variants.map((entry) => {
+    if (
+      typeof entry !== "object" ||
+      entry === null ||
+      typeof entry.id !== "string" ||
+      ids.has(entry.id) ||
+      typeof entry.value !== "string" ||
+      values.has(entry.value) ||
+      entry.file !== relative(cardPath) ||
+      !Array.isArray(entry.packageExports) ||
+      entry.packageExports.length !== requiredPackageExports.length ||
+      !requiredPackageExports.every((packageExport) =>
+        entry.packageExports.includes(packageExport),
+      ) ||
+      !Array.isArray(entry.publicSymbols) ||
+      entry.publicSymbols.length !== requiredSymbols.length ||
+      !requiredSymbols.every((symbol) =>
+        entry.publicSymbols.includes(symbol),
+      ) ||
+      !Array.isArray(entry.publicBarrels) ||
+      entry.publicBarrels.length !== requiredBarrels.length ||
+      !requiredBarrels.every((requiredBarrel) =>
+        entry.publicBarrels.some(
+          (barrel) =>
+            barrel?.file === requiredBarrel.file &&
+            barrel.reexport === requiredBarrel.reexport,
+        ),
+      ) ||
+      typeof entry.recipe !== "string" ||
+      typeof entry.reason !== "string" ||
+      entry.reason.trim() === "" ||
+      typeof entry.reviewBy !== "string"
+    ) {
+      throw new Error(
+        `Invalid public Card variant compatibility: ${JSON.stringify(entry)}`,
+      );
+    }
+    ids.add(entry.id);
+    values.add(entry.value);
+    const reviewBy = Date.parse(`${entry.reviewBy}T23:59:59Z`);
+    if (!Number.isFinite(reviewBy) || reviewBy < now.getTime()) {
+      throw new Error(
+        `Stale public Card variant compatibility ${entry.id}: reviewBy=${entry.reviewBy}`,
+      );
+    }
+    const rootPackageExport = packageDocument.exports["."];
+    if (
+      typeof rootPackageExport !== "object" ||
+      rootPackageExport === null ||
+      rootPackageExport.types !== "./dist/index.d.ts" ||
+      rootPackageExport.import !== "./dist/index.js" ||
+      rootPackageExport.default !== "./dist/index.js"
+    ) {
+      throw new Error(
+        `Public Card variant compatibility ${entry.id} requires the canonical root package export`,
+      );
+    }
+    const packageExport = packageDocument.exports["./card"];
+    if (
+      typeof packageExport !== "object" ||
+      packageExport === null ||
+      packageExport.types !== "./dist/components/ui/card.d.ts" ||
+      packageExport.import !== "./dist/components/ui/card.js" ||
+      packageExport.default !== "./dist/components/ui/card.js"
+    ) {
+      throw new Error(
+        `Public Card variant compatibility ${entry.id} requires the canonical ./card package export`,
+      );
+    }
+    const missingSymbols = entry.publicSymbols.filter(
+      (symbol) => !sourceContract.names.has(symbol),
+    );
+    if (missingSymbols.length > 0) {
+      throw new Error(
+        `Public Card variant compatibility ${entry.id} is missing exports ${missingSymbols.join(", ")}`,
+      );
+    }
+    if (!sourceContract.cardPropsDerivesCardVariants) {
+      throw new Error(
+        `Public Card variant compatibility ${entry.id} requires CardProps to derive VariantProps<typeof cardVariants>`,
+      );
+    }
+    for (const barrel of entry.publicBarrels) {
+      const barrelSource = publicBarrelSources?.[barrel.file];
+      if (
+        typeof barrelSource !== "string" ||
+        !reexportedModuleSpecifiers(barrel.file, barrelSource).has(
+          barrel.reexport,
+        )
+      ) {
+        throw new Error(
+          `Public Card variant compatibility ${entry.id} is missing public barrel ${barrel.file} -> ${barrel.reexport}`,
+        );
+      }
+    }
+    const definition = cardVariants.find(
+      (candidate) =>
+        candidate.axis === "variant" && candidate.value === entry.value,
+    );
+    if (
+      !definition ||
+      definition.file !== entry.file ||
+      definition.recipe !== entry.recipe
+    ) {
+      throw new Error(
+        `Public Card variant compatibility ${entry.id} does not match its canonical recipe`,
+      );
+    }
+    if (definition.callerCount >= CARD_MIN_MAINTAINED_CALLERS) {
+      throw new Error(
+        `Public Card variant compatibility ${entry.id} is no longer underused and must be removed`,
+      );
+    }
+    return { ...entry, callerCount: definition.callerCount };
+  });
+}
+
 export function buildComplianceReport(options = {}) {
   const now = options.now ?? new Date();
   const inventory = buildInventory();
@@ -3418,8 +3667,30 @@ export function buildComplianceReport(options = {}) {
     definitions: cardDefinitions,
     usages: cardUsages,
   });
+  const publicCardVariantCompatibility = validatePublicCardVariantCompatibility(
+    {
+      cardSource: fs.readFileSync(cardPath, "utf8"),
+      cardVariants,
+      document: JSON.parse(fs.readFileSync(publicCardVariantsPath, "utf8")),
+      now,
+      publicBarrelSources: Object.fromEntries(
+        publicCardBarrelPaths.map((file) => [
+          relative(file),
+          fs.readFileSync(file, "utf8"),
+        ]),
+      ),
+      packageDocument: JSON.parse(fs.readFileSync(packagePath, "utf8")),
+    },
+  );
+  const publicCompatibilityValues = new Set(
+    publicCardVariantCompatibility.map((entry) => entry.value),
+  );
   for (const entry of cardVariants) {
-    if (entry.callerCount >= CARD_MIN_MAINTAINED_CALLERS) continue;
+    if (
+      entry.callerCount >= CARD_MIN_MAINTAINED_CALLERS ||
+      publicCompatibilityValues.has(entry.value)
+    )
+      continue;
     findings.push(
       finding({
         rule: "card-variant-reuse",
@@ -3446,7 +3717,11 @@ export function buildComplianceReport(options = {}) {
   return {
     adapters,
     buttonAxes,
-    cardVariantMigration: buildCardVariantMigrationInventory(cardVariants),
+    cardVariantMigration: buildCardVariantMigrationInventory(
+      cardVariants.filter(
+        (entry) => !publicCompatibilityValues.has(entry.value),
+      ),
+    ),
     cardVariants,
     canonicalRecipes: Object.entries(CANONICAL_RECIPE_CONTRACTS).map(
       ([owner, contract]) => ({
@@ -3457,6 +3732,7 @@ export function buildComplianceReport(options = {}) {
     ),
     counts,
     findings: active,
+    publicCardVariantCompatibility,
     scannedFiles: files.length,
     schemaVersion: 1,
   };
@@ -3495,6 +3771,18 @@ export function renderComplianceMarkdown(report) {
   );
   for (const entry of report.cardVariants) {
     lines.push(`| \`${entry.value}\` | ${entry.callerCount} |`);
+  }
+  lines.push("");
+  lines.push(
+    "## Public Card variant compatibility",
+    "",
+    "| Value | Package exports | Public symbols | Maintained callers | Review by |",
+    "| --- | --- | --- | ---: | --- |",
+  );
+  for (const entry of report.publicCardVariantCompatibility) {
+    lines.push(
+      `| \`${entry.value}\` | ${entry.packageExports.map((packageExport) => `\`${packageExport}\``).join(", ")} | ${entry.publicSymbols.map((symbol) => `\`${symbol}\``).join(", ")} | ${entry.callerCount} | ${entry.reviewBy} |`,
+    );
   }
   lines.push("");
   lines.push(

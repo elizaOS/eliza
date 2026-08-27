@@ -36,6 +36,8 @@ export interface CloudLivePreIdentityDiagnostic {
   runtimeCloudActionAttemptCount: number;
   runtimeCloudActionSuccessCount: number;
   runtimeCloudActionTimeoutCount: number;
+  runtimeCloudRecoveryVisibleCount: number;
+  personalIdentityRetryVisibleCount: number;
   personalIdentityGetRequestCount: number;
   successfulPersonalIdentityGetResponseCount: number;
   clientErrorPersonalIdentityGetResponseCount: number;
@@ -43,12 +45,53 @@ export interface CloudLivePreIdentityDiagnostic {
   otherPersonalIdentityGetResponseCount: number;
   failedPersonalIdentityGetRequestCount: number;
   pendingPersonalIdentityGetRequestCount: number;
+  completedPersonalIdentityResponseBodyCount: number;
+  parsedPersonalIdentityResponseBodyCount: number;
+  decodedSharedPersonalIdentityResponseCount: number;
+  decodedDedicatedPersonalIdentityResponseCount: number;
+  uninspectablePersonalIdentityResponseBodyCount: number;
+  dedicatedQuoteGetRequestCount: number;
+  successfulDedicatedQuoteGetResponseCount: number;
+  clientErrorDedicatedQuoteGetResponseCount: number;
+  serverErrorDedicatedQuoteGetResponseCount: number;
+  otherDedicatedQuoteGetResponseCount: number;
+  failedDedicatedQuoteGetRequestCount: number;
+  pendingDedicatedQuoteGetRequestCount: number;
+  completedDedicatedQuoteResponseBodyCount: number;
+  parsedDedicatedQuoteResponseBodyCount: number;
+  decodedDedicatedQuoteResponseCount: number;
+  uninspectableDedicatedQuoteResponseBodyCount: number;
+  dedicatedActivationPostRequestCount: number;
+  successfulDedicatedActivationPostResponseCount: number;
+  clientErrorDedicatedActivationPostResponseCount: number;
+  serverErrorDedicatedActivationPostResponseCount: number;
+  otherDedicatedActivationPostResponseCount: number;
+  failedDedicatedActivationPostRequestCount: number;
+  pendingDedicatedActivationPostRequestCount: number;
+  completedDedicatedActivationResponseBodyCount: number;
+  parsedDedicatedActivationResponseBodyCount: number;
+  decodedDedicatedActivationReceiptCount: number;
+  uninspectableDedicatedActivationResponseBodyCount: number;
+  dedicatedCutoverPostRequestCount: number;
+  successfulDedicatedCutoverPostResponseCount: number;
+  clientErrorDedicatedCutoverPostResponseCount: number;
+  serverErrorDedicatedCutoverPostResponseCount: number;
+  otherDedicatedCutoverPostResponseCount: number;
+  failedDedicatedCutoverPostRequestCount: number;
+  pendingDedicatedCutoverPostRequestCount: number;
+  completedDedicatedCutoverResponseBodyCount: number;
+  parsedDedicatedCutoverResponseBodyCount: number;
+  decodedDedicatedCutoverPendingResponseCount: number;
+  decodedDedicatedCutoverFinalResponseCount: number;
+  uninspectableDedicatedCutoverResponseBodyCount: number;
 }
 
 const CLOUD_LIVE_PRE_IDENTITY_DIAGNOSTIC_KEYS = [
   "runtimeCloudActionAttemptCount",
   "runtimeCloudActionSuccessCount",
   "runtimeCloudActionTimeoutCount",
+  "runtimeCloudRecoveryVisibleCount",
+  "personalIdentityRetryVisibleCount",
   "personalIdentityGetRequestCount",
   "successfulPersonalIdentityGetResponseCount",
   "clientErrorPersonalIdentityGetResponseCount",
@@ -56,6 +99,45 @@ const CLOUD_LIVE_PRE_IDENTITY_DIAGNOSTIC_KEYS = [
   "otherPersonalIdentityGetResponseCount",
   "failedPersonalIdentityGetRequestCount",
   "pendingPersonalIdentityGetRequestCount",
+  "completedPersonalIdentityResponseBodyCount",
+  "parsedPersonalIdentityResponseBodyCount",
+  "decodedSharedPersonalIdentityResponseCount",
+  "decodedDedicatedPersonalIdentityResponseCount",
+  "uninspectablePersonalIdentityResponseBodyCount",
+  "dedicatedQuoteGetRequestCount",
+  "successfulDedicatedQuoteGetResponseCount",
+  "clientErrorDedicatedQuoteGetResponseCount",
+  "serverErrorDedicatedQuoteGetResponseCount",
+  "otherDedicatedQuoteGetResponseCount",
+  "failedDedicatedQuoteGetRequestCount",
+  "pendingDedicatedQuoteGetRequestCount",
+  "completedDedicatedQuoteResponseBodyCount",
+  "parsedDedicatedQuoteResponseBodyCount",
+  "decodedDedicatedQuoteResponseCount",
+  "uninspectableDedicatedQuoteResponseBodyCount",
+  "dedicatedActivationPostRequestCount",
+  "successfulDedicatedActivationPostResponseCount",
+  "clientErrorDedicatedActivationPostResponseCount",
+  "serverErrorDedicatedActivationPostResponseCount",
+  "otherDedicatedActivationPostResponseCount",
+  "failedDedicatedActivationPostRequestCount",
+  "pendingDedicatedActivationPostRequestCount",
+  "completedDedicatedActivationResponseBodyCount",
+  "parsedDedicatedActivationResponseBodyCount",
+  "decodedDedicatedActivationReceiptCount",
+  "uninspectableDedicatedActivationResponseBodyCount",
+  "dedicatedCutoverPostRequestCount",
+  "successfulDedicatedCutoverPostResponseCount",
+  "clientErrorDedicatedCutoverPostResponseCount",
+  "serverErrorDedicatedCutoverPostResponseCount",
+  "otherDedicatedCutoverPostResponseCount",
+  "failedDedicatedCutoverPostRequestCount",
+  "pendingDedicatedCutoverPostRequestCount",
+  "completedDedicatedCutoverResponseBodyCount",
+  "parsedDedicatedCutoverResponseBodyCount",
+  "decodedDedicatedCutoverPendingResponseCount",
+  "decodedDedicatedCutoverFinalResponseCount",
+  "uninspectableDedicatedCutoverResponseBodyCount",
 ] as const satisfies readonly (keyof CloudLivePreIdentityDiagnostic)[];
 
 interface WriteCloudLiveTrajectoryDiagnosticOptions {
@@ -129,4 +211,23 @@ export async function writeCloudLiveTrajectoryDiagnostic({
       mode: 0o600,
     },
   );
+}
+
+/**
+ * Retain the best-effort progress receipt without allowing an evidence-write
+ * failure to replace the trajectory failure that the receipt is describing.
+ */
+export async function rethrowCloudLiveFailureAfterDiagnostic(
+  cause: unknown,
+  writeDiagnostic: () => Promise<void>,
+): Promise<never> {
+  try {
+    await writeDiagnostic();
+  } catch {
+    console.warn("[cloud-live] trajectory diagnostic write unavailable");
+    // error-policy:J7 the diagnostic is secondary evidence; an unavailable
+    // evidence sink emits one fixed payload-free warning but must not mask the
+    // original live identity failure.
+  }
+  throw cause;
 }

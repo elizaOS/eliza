@@ -4,12 +4,19 @@
  * vitest without resolving the rest of the UI bundle.
  */
 
-export type FeedFilter =
-  | "all"
-  | "prompts"
-  | "workflows"
-  | "active"
-  | "inactive";
+export const FEED_FILTERS = [
+  "all",
+  "prompts",
+  "workflows",
+  "active",
+  "inactive",
+] as const;
+
+export type FeedFilter = (typeof FEED_FILTERS)[number];
+
+export function isFeedFilter(value: string): value is FeedFilter {
+  return FEED_FILTERS.some((filter) => filter === value);
+}
 
 // `kind` is the internal row discriminant: a "task" row is a workbench prompt
 // automation (glossary "prompt automation"); a "workflow" row is a node-graph
@@ -34,7 +41,7 @@ export function passesFilter(row: FeedRowSummary, filter: FeedFilter): boolean {
       return row.active;
     case "inactive":
       return !row.active;
-    default:
-      return true;
   }
+  const _exhaustive: never = filter;
+  return _exhaustive;
 }

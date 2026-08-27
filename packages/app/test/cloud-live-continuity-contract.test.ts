@@ -213,6 +213,45 @@ describe("forbidden Cloud agent mutations", () => {
       otherPersonalIdentityGetResponseCount: 0,
       failedPersonalIdentityGetRequestCount: 0,
       pendingPersonalIdentityGetRequestCount: 0,
+      completedPersonalIdentityResponseBodyCount: 0,
+      parsedPersonalIdentityResponseBodyCount: 0,
+      decodedSharedPersonalIdentityResponseCount: 0,
+      decodedDedicatedPersonalIdentityResponseCount: 0,
+      uninspectablePersonalIdentityResponseBodyCount: 1,
+      dedicatedQuoteGetRequestCount: 0,
+      successfulDedicatedQuoteGetResponseCount: 0,
+      clientErrorDedicatedQuoteGetResponseCount: 0,
+      serverErrorDedicatedQuoteGetResponseCount: 0,
+      otherDedicatedQuoteGetResponseCount: 0,
+      failedDedicatedQuoteGetRequestCount: 0,
+      pendingDedicatedQuoteGetRequestCount: 0,
+      completedDedicatedQuoteResponseBodyCount: 0,
+      parsedDedicatedQuoteResponseBodyCount: 0,
+      decodedDedicatedQuoteResponseCount: 0,
+      uninspectableDedicatedQuoteResponseBodyCount: 0,
+      dedicatedActivationPostRequestCount: 0,
+      successfulDedicatedActivationPostResponseCount: 0,
+      clientErrorDedicatedActivationPostResponseCount: 0,
+      serverErrorDedicatedActivationPostResponseCount: 0,
+      otherDedicatedActivationPostResponseCount: 0,
+      failedDedicatedActivationPostRequestCount: 0,
+      pendingDedicatedActivationPostRequestCount: 0,
+      completedDedicatedActivationResponseBodyCount: 0,
+      parsedDedicatedActivationResponseBodyCount: 0,
+      decodedDedicatedActivationReceiptCount: 0,
+      uninspectableDedicatedActivationResponseBodyCount: 0,
+      dedicatedCutoverPostRequestCount: 0,
+      successfulDedicatedCutoverPostResponseCount: 0,
+      clientErrorDedicatedCutoverPostResponseCount: 0,
+      serverErrorDedicatedCutoverPostResponseCount: 0,
+      otherDedicatedCutoverPostResponseCount: 0,
+      failedDedicatedCutoverPostRequestCount: 0,
+      pendingDedicatedCutoverPostRequestCount: 0,
+      completedDedicatedCutoverResponseBodyCount: 0,
+      parsedDedicatedCutoverResponseBodyCount: 0,
+      decodedDedicatedCutoverPendingResponseCount: 0,
+      decodedDedicatedCutoverFinalResponseCount: 0,
+      uninspectableDedicatedCutoverResponseBodyCount: 0,
       historyGetRequestCount: 1,
       successfulHistoryGetCount: 1,
       clientErrorHistoryGetResponseCount: 0,
@@ -236,11 +275,66 @@ describe("forbidden Cloud agent mutations", () => {
     const personal = "https://api.test/api/v1/eliza/personal";
     for (const status of [200, 404, 503, 302]) {
       audit.observeRequest("GET", personal);
-      audit.observeResponse("GET", personal, status);
+      audit.observeResponse(
+        "GET",
+        personal,
+        status,
+        status === 200
+          ? boundedJsonBody({
+              success: true,
+              data: { identity: { runtime: "shared", id: "private" } },
+            }).responseBody
+          : undefined,
+      );
     }
     audit.observeRequest("GET", personal);
     audit.observeRequestFailure("GET", personal, "private timeout detail");
     audit.observeRequest("GET", personal);
+    const upgrade =
+      "https://api.test/api/v1/eliza/agents/private-target/upgrade-tier";
+    audit.observeRequest("GET", upgrade);
+    audit.observeResponse(
+      "GET",
+      upgrade,
+      200,
+      boundedJsonBody({
+        success: true,
+        data: {
+          quoteId: "private-quote",
+          activation: { state: "available" },
+        },
+      }).responseBody,
+    );
+    audit.observeRequest("POST", upgrade);
+    audit.observeResponse(
+      "POST",
+      upgrade,
+      202,
+      boundedJsonBody({
+        success: true,
+        data: { dedicatedAgentId: "private-target" },
+      }).responseBody,
+    );
+    audit.observeRequest("POST", `${upgrade}/cutover`);
+    audit.observeResponse(
+      "POST",
+      `${upgrade}/cutover`,
+      409,
+      boundedJsonBody({ success: false, code: "private-pending" }).responseBody,
+    );
+    audit.observeRequest("POST", `${upgrade}/cutover`);
+    audit.observeResponse(
+      "POST",
+      `${upgrade}/cutover`,
+      200,
+      boundedJsonBody({
+        success: true,
+        data: { runtime: "dedicated", activeAgentId: "private-target" },
+      }).responseBody,
+    );
+    audit.observeRequest("GET", upgrade);
+    audit.observeRequestFailure("GET", upgrade, "private timeout detail");
+    audit.observeRequest("GET", upgrade);
 
     const snapshot = await audit.snapshot();
     expect(snapshot).toMatchObject({
@@ -251,8 +345,94 @@ describe("forbidden Cloud agent mutations", () => {
       otherPersonalIdentityGetResponseCount: 1,
       failedPersonalIdentityGetRequestCount: 1,
       pendingPersonalIdentityGetRequestCount: 1,
+      completedPersonalIdentityResponseBodyCount: 1,
+      parsedPersonalIdentityResponseBodyCount: 1,
+      decodedSharedPersonalIdentityResponseCount: 1,
+      decodedDedicatedPersonalIdentityResponseCount: 0,
+      uninspectablePersonalIdentityResponseBodyCount: 0,
+      dedicatedQuoteGetRequestCount: 3,
+      successfulDedicatedQuoteGetResponseCount: 1,
+      clientErrorDedicatedQuoteGetResponseCount: 0,
+      serverErrorDedicatedQuoteGetResponseCount: 0,
+      otherDedicatedQuoteGetResponseCount: 0,
+      failedDedicatedQuoteGetRequestCount: 1,
+      pendingDedicatedQuoteGetRequestCount: 1,
+      completedDedicatedQuoteResponseBodyCount: 1,
+      parsedDedicatedQuoteResponseBodyCount: 1,
+      decodedDedicatedQuoteResponseCount: 1,
+      uninspectableDedicatedQuoteResponseBodyCount: 0,
+      dedicatedActivationPostRequestCount: 1,
+      successfulDedicatedActivationPostResponseCount: 1,
+      clientErrorDedicatedActivationPostResponseCount: 0,
+      serverErrorDedicatedActivationPostResponseCount: 0,
+      otherDedicatedActivationPostResponseCount: 0,
+      failedDedicatedActivationPostRequestCount: 0,
+      pendingDedicatedActivationPostRequestCount: 0,
+      completedDedicatedActivationResponseBodyCount: 1,
+      parsedDedicatedActivationResponseBodyCount: 1,
+      decodedDedicatedActivationReceiptCount: 1,
+      uninspectableDedicatedActivationResponseBodyCount: 0,
+      dedicatedCutoverPostRequestCount: 2,
+      successfulDedicatedCutoverPostResponseCount: 1,
+      clientErrorDedicatedCutoverPostResponseCount: 1,
+      serverErrorDedicatedCutoverPostResponseCount: 0,
+      otherDedicatedCutoverPostResponseCount: 0,
+      failedDedicatedCutoverPostRequestCount: 0,
+      pendingDedicatedCutoverPostRequestCount: 0,
+      completedDedicatedCutoverResponseBodyCount: 2,
+      parsedDedicatedCutoverResponseBodyCount: 2,
+      decodedDedicatedCutoverPendingResponseCount: 1,
+      decodedDedicatedCutoverFinalResponseCount: 1,
+      uninspectableDedicatedCutoverResponseBodyCount: 0,
     });
     expect(JSON.stringify(snapshot)).not.toMatch(/api\.test|private|timeout/);
+  });
+
+  it("distinguishes Personal response headers, body, parse, and runtime decode", async () => {
+    vi.useFakeTimers();
+    const audit = createCloudLiveNetworkAudit();
+    const personal = "https://api.test/api/v1/eliza/personal";
+    const shared = boundedJsonBody({
+      success: true,
+      data: { identity: { runtime: "shared", id: "private-shared" } },
+    });
+    const dedicated = boundedJsonBody({
+      success: true,
+      data: {
+        identity: { runtime: "dedicated", id: "private-dedicated" },
+      },
+    });
+    const malformed = boundedJsonBody(null, { raw: "not-json" });
+    const stalled = {
+      contentType: "application/json",
+      async read() {
+        return await new Promise<Uint8Array | null>(() => undefined);
+      },
+    };
+
+    for (const responseBody of [
+      shared.responseBody,
+      dedicated.responseBody,
+      malformed.responseBody,
+      stalled,
+    ]) {
+      audit.observeRequest("GET", personal);
+      audit.observeResponse("GET", personal, 200, responseBody);
+    }
+    const snapshotPromise = audit.snapshot();
+    await vi.advanceTimersByTimeAsync(30_000);
+    const snapshot = await snapshotPromise;
+
+    expect(snapshot).toMatchObject({
+      personalIdentityGetRequestCount: 4,
+      successfulPersonalIdentityGetCount: 4,
+      completedPersonalIdentityResponseBodyCount: 3,
+      parsedPersonalIdentityResponseBodyCount: 2,
+      decodedSharedPersonalIdentityResponseCount: 1,
+      decodedDedicatedPersonalIdentityResponseCount: 1,
+      uninspectablePersonalIdentityResponseBodyCount: 1,
+    });
+    expect(JSON.stringify(snapshot)).not.toMatch(/private|api\.test|not-json/);
   });
 
   it("reduces timed-out history proof traffic to privacy-safe counters", async () => {

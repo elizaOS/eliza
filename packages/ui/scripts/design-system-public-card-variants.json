@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "variants": [
+    {
+      "id": "vault-empty-public-compatibility",
+      "value": "vaultEmpty",
+      "file": "packages/ui/src/components/ui/card.tsx",
+      "packageExports": [".", "./card"],
+      "publicSymbols": ["Card", "CardProps", "cardVariants"],
+      "publicBarrels": [
+        {
+          "file": "packages/ui/src/index.ts",
+          "reexport": "./components/primitives/index"
+        },
+        {
+          "file": "packages/ui/src/components/primitives/index.ts",
+          "reexport": "../ui/card"
+        },
+        {
+          "file": "packages/ui/src/browser.ts",
+          "reexport": "./components/ui/card.tsx"
+        }
+      ],
+      "recipe": "border border-dashed border-border/50 bg-card/20 p-3 text-center text-xs text-muted",
+      "reason": "The published @elizaos/ui/card VariantProps and cardVariants helper exposed vaultEmpty before the maintained Vault callers moved to layout-owned empty states. Preserve downstream source and runtime compatibility while internal usage remains intentionally zero.",
+      "reviewBy": "2027-02-27"
+    }
+  ]
+}

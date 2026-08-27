@@ -9,16 +9,13 @@ import {
   AlertTriangle,
   CalendarClock,
   CheckCircle2,
-  CircleSlash,
+  ChevronDown,
   Clock,
   History,
-  Layers,
-  Play,
   PlayCircle,
   Plus,
   Rocket,
   Workflow,
-  X,
 } from "lucide-react";
 import {
   type ReactNode,
@@ -41,17 +38,32 @@ import { resolveCloudConsoleUrl } from "../../cloud/applications/lib/native-clou
 import { getCached, invalidate, setCached } from "../../hooks/resource-cache";
 import { useAutomationDeepLink } from "../../hooks/useAutomationDeepLink";
 import { useFetchData } from "../../hooks/useFetchData";
+import {
+  FramedPage,
+  FramedPageBody,
+  FramedPageHeader,
+  FramedPageNavigation,
+} from "../../layouts/framed-page";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import {
+  FEED_FILTERS,
   type FeedFilter,
+  isFeedFilter,
   passesFilter,
 } from "../../utils/automation-feed-filter";
 import { formatSchedule } from "../../utils/cron-format";
 import { mergeUnifiedTasks } from "../../utils/merge-unified-tasks";
 import { openExternalUrl } from "../../utils/openExternalUrl";
-import { PagePanel } from "../composites/page-panel";
-import { ViewHeader } from "../shared/ViewHeader";
 import { Button } from "../ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 import { ListSkeleton } from "../ui/skeleton-layouts";
 import { Spinner } from "../ui/spinner";
 import { StatusDot } from "../ui/status-badge";
@@ -96,7 +108,6 @@ const FILTER_LABELS: Record<FeedFilter, { key: string; defaultLabel: string }> =
       defaultLabel: "Inactive",
     },
   };
-
 function isUnavailableScheduledTaskSupplement(error: unknown): boolean {
   if (!isApiError(error)) return false;
   if (error.status === 404) return true;
@@ -106,13 +117,6 @@ function isUnavailableScheduledTaskSupplement(error: unknown): boolean {
     error.message.includes("cannot be parsed as a URL against")
   );
 }
-const FILTER_ICONS: Record<FeedFilter, ReactNode> = {
-  all: <Layers className="size-3.5" aria-hidden />,
-  prompts: <CheckCircle2 className="size-3.5" aria-hidden />,
-  workflows: <Workflow className="size-3.5" aria-hidden />,
-  active: <Play className="size-3.5" aria-hidden />,
-  inactive: <CircleSlash className="size-3.5" aria-hidden />,
-};
 const NEW_AUTOMATION_LINK_ID = "__new__";
 
 /** Namespaces cached rows by the currently selected local or Cloud agent. */
@@ -566,7 +570,7 @@ export function AutomationsFeed({
     description: "Choose a workflow or prompt automation",
     onActivate: () => setCreateOpen(true),
   });
-  const newWorkflowAction = useAgentElement<HTMLButtonElement>({
+  const newWorkflowAction = useAgentElement<HTMLDivElement>({
     id: "action-new-workflow",
     role: "button",
     label: "New workflow",
@@ -574,7 +578,7 @@ export function AutomationsFeed({
     description: "Open the Smithers workflow studio",
     onActivate: () => setEditor({ kind: "workflow", workflowId: null }),
   });
-  const newPromptAction = useAgentElement<HTMLButtonElement>({
+  const newPromptAction = useAgentElement<HTMLDivElement>({
     id: "action-new-prompt",
     role: "button",
     label: "New prompt automation",
@@ -659,102 +663,82 @@ export function AutomationsFeed({
 
   const feedContent = (
     <ShellViewAgentSurface viewId="automations">
-      <div
-        className="flex h-full min-h-0 min-w-0 w-full flex-col"
+      <FramedPage
+        reserveComposer={false}
+        className="flex h-full min-h-0 min-w-0 w-full flex-col pb-[var(--eliza-chat-clearance,5.25rem)] [@media(orientation:landscape)_and_(max-height:520px)]:pb-0"
         data-testid="automations-layout"
       >
         {/* Uniform view header (#13451/#13597): bare-icon back, centered title. */}
-        <ViewHeader
+        <FramedPageHeader
           title={t("automationsfeed.title", { defaultValue: "Automations" })}
-          right={
-            <div className="relative">
-              <Button
-                ref={newAutomationAction.ref}
-                type="button"
-                variant="ghostMuted"
-                size="icon-sm"
-                aria-label={t("automationsfeed.addAutomation", {
-                  defaultValue: "Add automation",
-                })}
-                aria-expanded={createOpen}
-                onClick={() => setCreateOpen((current) => !current)}
-                {...newAutomationAction.agentProps}
-              >
-                {createOpen ? (
-                  <X className="size-4" aria-hidden />
-                ) : (
-                  <Plus className="size-4" aria-hidden />
-                )}
-              </Button>
-              {createOpen ? (
-                <div
-                  className="absolute right-0 top-11 z-30 flex gap-1 rounded-xl border border-border/60 bg-card p-1.5"
-                  data-testid="automation-create-menu"
+          actions={
+            <DropdownMenu open={createOpen} onOpenChange={setCreateOpen}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  ref={newAutomationAction.ref}
+                  type="button"
+                  variant="selection"
+                  size="compact"
+                  aria-label="New automation"
+                  aria-expanded={createOpen}
+                  {...newAutomationAction.agentProps}
                 >
-                  <Button
-                    ref={newWorkflowAction.ref}
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label="New workflow"
-                    title="Workflow"
-                    onClick={() =>
-                      setEditor({ kind: "workflow", workflowId: null })
-                    }
-                    {...newWorkflowAction.agentProps}
-                  >
-                    <Workflow className="size-4 text-accent-muted dark:text-accent" />
-                  </Button>
-                  <Button
-                    ref={newPromptAction.ref}
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label="New prompt automation"
-                    title="Prompt"
-                    onClick={() => setEditor({ kind: "task", taskId: null })}
-                    {...newPromptAction.agentProps}
-                  >
-                    <CheckCircle2 className="size-4" />
-                  </Button>
-                </div>
-              ) : null}
-            </div>
+                  <Plus className="size-4" aria-hidden />
+                  New
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="min-w-52"
+                data-testid="automation-create-menu"
+              >
+                <DropdownMenuLabel>Create automation</DropdownMenuLabel>
+                <DropdownMenuItem
+                  ref={newWorkflowAction.ref}
+                  className="gap-2"
+                  aria-label="New workflow"
+                  onSelect={() =>
+                    setEditor({ kind: "workflow", workflowId: null })
+                  }
+                  {...newWorkflowAction.agentProps}
+                >
+                  <Workflow className="size-4" aria-hidden />
+                  Workflow
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  ref={newPromptAction.ref}
+                  className="gap-2"
+                  aria-label="New prompt automation"
+                  onSelect={() => setEditor({ kind: "task", taskId: null })}
+                  {...newPromptAction.agentProps}
+                >
+                  <CheckCircle2 className="size-4" aria-hidden />
+                  Prompt automation
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           }
         />
-        {/* This direct-rendered route has no TabContentView wrapper, so it owns
-            the one scroll region that reserves the ambient chat footprint. */}
-        <div
+        {data && !(workflowServiceIssue && rows.length === 0) ? (
+          <FramedPageNavigation className="flex items-center justify-between gap-3">
+            <span className="text-sm text-muted">Show</span>
+            <AutomationFilterMenu
+              filter={filter}
+              counts={filterCounts}
+              onSelect={setFilter}
+            />
+          </FramedPageNavigation>
+        ) : null}
+        <FramedPageBody
+          scroll="page"
           data-testid="automations-scroll-region"
           data-shell-scroll-region="true"
-          className="eliza-chat-scroll min-h-0 min-w-0 w-full flex-1 overflow-x-hidden overflow-y-auto pb-[var(--eliza-chat-clearance,5.25rem)] pe-[var(--eliza-chat-side-clearance,0px)]"
+          className="device-layout gap-4 overflow-x-hidden py-4"
         >
-          {/* Flat — no card/border. The shell owns the page's horizontal padding. */}
           <div
             data-testid="automations-shell"
-            className="device-layout mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 pt-[var(--view-pad-top)] pb-[var(--view-pad-bottom)] lg:px-6"
+            className="flex w-full flex-col gap-4"
           >
-            {data && !(workflowServiceIssue && rows.length === 0) ? (
-              <>
-                {/* Filter chips */}
-                <div className="flex flex-wrap gap-1.5">
-                  {(Object.keys(FILTER_LABELS) as FeedFilter[]).map((key) => (
-                    <FilterChipButton
-                      key={key}
-                      filter={key}
-                      label={t(FILTER_LABELS[key].key, {
-                        defaultValue: FILTER_LABELS[key].defaultLabel,
-                      })}
-                      icon={FILTER_ICONS[key]}
-                      count={filterCounts[key]}
-                      isActive={filter === key}
-                      onSelect={setFilter}
-                    />
-                  ))}
-                </div>
-              </>
-            ) : null}
-
             {workflowServiceIssue && rows.length > 0 && (
               <WorkflowServiceIssuePanel
                 issue={workflowServiceIssue}
@@ -780,8 +764,7 @@ export function AutomationsFeed({
               />
             )}
 
-            {/* Feed — flat, no card/border; rows separate by whitespace. */}
-            <PagePanel variant="inset" className="p-0">
+            <div className="border-y border-border/50">
               {(loading || dataState.cacheKey !== cacheKey) && !data ? (
                 <ListSkeleton rows={6} className="p-3" />
               ) : workflowServiceIssue && rows.length === 0 ? (
@@ -821,7 +804,7 @@ export function AutomationsFeed({
                   </p>
                 </div>
               ) : (
-                <ul>
+                <ul className="divide-y divide-border/40">
                   {rows.map((row) => (
                     <FeedRowItem
                       key={row.key}
@@ -869,10 +852,10 @@ export function AutomationsFeed({
                   ))}
                 </ul>
               )}
-            </PagePanel>
+            </div>
           </div>
-        </div>
-      </div>
+        </FramedPageBody>
+      </FramedPage>
     </ShellViewAgentSurface>
   );
 
@@ -935,58 +918,64 @@ function WorkflowServiceIssuePanel({
   );
 }
 
-function FilterChipButton({
+function AutomationFilterMenu({
   filter,
-  label,
-  icon,
-  count,
-  isActive,
+  counts,
   onSelect,
 }: {
   filter: FeedFilter;
-  label: string;
-  icon: ReactNode;
-  count: number;
-  isActive: boolean;
+  counts: Readonly<Record<FeedFilter, number>>;
   onSelect: (filter: FeedFilter) => void;
 }) {
+  const { t } = useTranslation();
+  const selectedLabel = t(FILTER_LABELS[filter].key, {
+    defaultValue: FILTER_LABELS[filter].defaultLabel,
+  });
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `tab-${filter}`,
-    role: "tab",
-    label,
+    id: "filter-automations",
+    role: "button",
+    label: `Filter automations, ${selectedLabel} selected`,
     group: "automations-filters",
-    status: isActive ? "active" : "inactive",
-    description: `Filter automations to "${label}"`,
-    onActivate: () => onSelect(filter),
+    status: filter,
+    description: "Choose which automations appear in the feed",
   });
   return (
-    <Button
-      ref={ref}
-      onClick={() => onSelect(filter)}
-      aria-current={isActive ? "true" : undefined}
-      variant="selection"
-      size="pillDense"
-      data-state={isActive ? "on" : "off"}
-      // Borderless text tab (#10710): active reads as accent text on a faint
-      // wash; the count renders as plain text and hides at zero.
-      {...agentProps}
-    >
-      <span className="[&>svg]:h-3.5 [&>svg]:w-3.5">{icon}</span>
-      <span
-        className={
-          isActive
-            ? undefined
-            : "hidden sm:inline [@media(orientation:landscape)_and_(max-height:520px)]:hidden"
-        }
-      >
-        {label}
-      </span>
-      {count > 0 ? (
-        <span className="text-[0.65rem] font-semibold tabular-nums">
-          {count}
-        </span>
-      ) : null}
-    </Button>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          ref={ref}
+          variant="ghostMuted"
+          size="dense"
+          className="gap-1.5"
+          aria-label={`Filter automations, ${selectedLabel} selected`}
+          {...agentProps}
+        >
+          <span>{selectedLabel}</span>
+          <span className="tabular-nums text-muted">({counts[filter]})</span>
+          <ChevronDown className="size-4" aria-hidden />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-52">
+        <DropdownMenuLabel>Filter automations</DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          value={filter}
+          onValueChange={(value) => {
+            if (isFeedFilter(value)) onSelect(value);
+          }}
+        >
+          {FEED_FILTERS.map((option) => (
+            <DropdownMenuRadioItem key={option} value={option}>
+              <span className="flex-1">
+                {t(FILTER_LABELS[option].key, {
+                  defaultValue: FILTER_LABELS[option].defaultLabel,
+                })}
+              </span>
+              <span className="tabular-nums text-muted">{counts[option]}</span>
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -1051,7 +1040,7 @@ function FeedRowItem({
   return (
     <li
       ref={registerRef}
-      className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-bg-accent/40"
+      className="group flex items-center gap-3 py-3 transition-colors hover:bg-bg-accent/40"
     >
       <Button
         ref={openAction.ref}
