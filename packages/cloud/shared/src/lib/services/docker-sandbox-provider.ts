@@ -563,6 +563,9 @@ export function buildManagedElizaRuntimeConfig(
 ): Record<string, unknown> {
   const apiKey = allEnv.ELIZAOS_CLOUD_API_KEY || "";
   const agentId = allEnv.ELIZA_CLOUD_AGENT_ID || allEnv.WAIFU_ELIZA_CLOUD_AGENT_ID;
+  const directEmbeddingProvider =
+    allEnv.ELIZAOS_CLOUD_USE_EMBEDDINGS?.trim().toLowerCase() === "false" &&
+    Boolean(allEnv.EMBEDDING_BASE_URL?.trim() || allEnv.EMBEDDING_API_KEY?.trim());
 
   return {
     logging: { level: "info" },
@@ -578,6 +581,14 @@ export function buildManagedElizaRuntimeConfig(
         }
       : {}),
     serviceRouting: buildDefaultElizaCloudServiceRouting({
+      // Canonical routing wins over process env during PID1 boot. Persist the
+      // same direct embedding ownership selected by managed provisioning;
+      // otherwise the default Eliza Cloud route below flips
+      // ELIZAOS_CLOUD_USE_EMBEDDINGS back to true. Legacy agents without a
+      // direct provider and explicit Cloud opt-ins keep cloud-proxy routing.
+      base: directEmbeddingProvider
+        ? { embeddings: { backend: "embeddings", transport: "direct" } }
+        : undefined,
       includeInference: true,
       nanoModel: allEnv.ELIZAOS_CLOUD_NANO_MODEL,
       smallModel: allEnv.ELIZAOS_CLOUD_SMALL_MODEL,
