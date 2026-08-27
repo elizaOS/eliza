@@ -168,8 +168,8 @@ import {
 	resolveDiscordRuntimeEntityId,
 	resolveElizaOwnerEntityId,
 } from "./identity";
-import { buildDiscordReplyPayload } from "./interactions";
 import { discordInstallationAccountUuid } from "./installation-adapter";
+import { buildDiscordReplyPayload } from "./interactions";
 import {
 	beginDiscordOutboundDelivery,
 	createDiscordMessageMemoryOnce,

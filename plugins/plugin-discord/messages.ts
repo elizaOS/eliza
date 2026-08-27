@@ -2290,16 +2290,13 @@ export class MessageManager {
 					// still-connected account in the same guild. The default
 					// account resolves to the historical record key, so
 					// pre-existing records keep gating traffic.
-					const allowsTraffic = discordInstallationAllowsTraffic(
-						this.runtime,
-						{
-							connectorAccountId: discordInstallationAccountUuid(
-								this.runtime,
-								this.accountId,
-							),
-							externalWorldId: messageServerId,
-						},
-					);
+					const allowsTraffic = discordInstallationAllowsTraffic(this.runtime, {
+						connectorAccountId: discordInstallationAccountUuid(
+							this.runtime,
+							this.accountId,
+						),
+						externalWorldId: messageServerId,
+					});
 					if (!allowsTraffic) {
 						this.runtime.logger.warn(
 							{
