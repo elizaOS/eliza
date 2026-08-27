@@ -680,13 +680,42 @@ export function messageContinuesAfterRecentAgentCorrection(
 	// Repair ownership expires when the room has moved on; this is an adjacency
 	// signal, not permission to revive an old correction on later ambient turns.
 	if (turnsAfterAgent.length === 0 || turnsAfterAgent.length > 3) return false;
-	const explicitCorrection =
-		/\b(?:(?:please\s+)?(?:don't|do not|stop)\b|we\s+just\s+said\b|too\s+much\b)/iu;
-	return turnsAfterAgent.some(
-		(candidate) =>
-			candidate.entityId === message.entityId &&
-			candidate.entityId !== runtime.agentId &&
-			explicitCorrection.test(getUserMessageText(candidate) ?? ""),
+	const correction = turnsAfterAgent[0];
+	if (
+		correction.entityId !== message.entityId ||
+		correction.entityId === runtime.agentId
+	) {
+		return false;
+	}
+	// Only behavioral language aimed at the agent's contribution establishes a
+	// repair exchange. Bare words such as "stop" and "too much" occur often in
+	// unrelated group chatter and must not disable ambient restraint.
+	const explicitBehaviorCorrection =
+		/\b(?:(?:please\s+)?(?:don't|do not)\s+(?:try\s+to\s+)?(?:fix|solve|advise|recommend|suggest|coach|lecture|explain|give\s+(?:me|us)\s+advice)|stop\s+(?:trying\s+to\s+)?(?:fixing|solving|advising|recommending|suggesting|coaching|lecturing|explaining|giving\s+(?:me|us)\s+advice))\b/iu;
+	if (!explicitBehaviorCorrection.test(getUserMessageText(correction) ?? "")) {
+		return false;
+	}
+	const correctionCreatedAt = correction.createdAt;
+	const currentCreatedAt = message.createdAt;
+	if (
+		typeof correctionCreatedAt === "number" &&
+		typeof currentCreatedAt === "number" &&
+		currentCreatedAt - correctionCreatedAt > 15 * 60_000
+	) {
+		return false;
+	}
+	// A correction grants one later turn to its author. Once that participant
+	// has spoken again, later ambient messages must pass the ordinary gate.
+	if (
+		turnsAfterAgent
+			.slice(1)
+			.some((candidate) => candidate.entityId === message.entityId)
+	) {
+		return false;
+	}
+	const currentText = (getUserMessageText(message) ?? "").trim();
+	return /^(?:and\b|also\b|plus\b|yeah\b|honestly\b|still\b|then\b|i\s+(?:just|also|keep|remembered|feel|felt|was|am)\b)/iu.test(
+		currentText,
 	);
 }
 

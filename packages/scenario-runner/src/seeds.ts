@@ -2470,7 +2470,7 @@ async function seedMemory(
     // A seed the runner cannot land must fail the scenario, never no-op:
     // a silently dropped seed fabricates the premise the checks grade
     // against (#14631 — the "seeded VIP fact" the model never received).
-    return `unsupported memory seed kind "${memoryType}" — supported: contact/rolodex-entity/merged-entity/calendar-event/appointment/inbound-message/user-state/focus-window-active/queued-push/device-intent/push-delivery-attempt/outbound-push-attempt/voice-call-attempt/ladder-state/scheduled-push-ladder/browser-task-state/follow-up state kinds, travel profile/trip/booking/upgrade-offer/calendar-focus-window, or plain { text } for a durable owner fact`;
+    return `unsupported memory seed kind "${memoryType}" — supported: contact/rolodex-entity/merged-entity/calendar-event/appointment/inbound-message/agent-message/user-state/focus-window-active/queued-push/device-intent/push-delivery-attempt/outbound-push-attempt/voice-call-attempt/ladder-state/scheduled-push-ladder/browser-task-state/follow-up state kinds, travel profile/trip/booking/upgrade-offer/calendar-focus-window, or plain { text } for a durable owner fact`;
   }
   const text = readNonEmptyString((content as { text?: unknown }).text);
   if (!text) {
