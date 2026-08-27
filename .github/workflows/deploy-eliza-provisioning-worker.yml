@@ -1501,12 +1501,48 @@ jobs:
             HEALTH_SINCE_TS="$(date -u '+%Y-%m-%d %H:%M:%S')"
             STABLE_THRESHOLD_SEC=20
             FATAL_LOG_PATTERN="\[(provisioning-worker|agent-router|backup-catalog-worker)\] (fatal|unhandled rejection)|node:internal/.*Error:|Error \[ERR_|^[A-Za-z]+Error:"
+            report_unit_diagnostic() {
+              local category="$1"
+              local label="$2"
+              local unit="$3"
+              local raw_load raw_active raw_result
+              local load_class active_class result_class
+              case "$label" in
+                worker|router|backup|nginx) ;;
+                *) label=unknown ;;
+              esac
+              raw_load=$(sudo systemctl show "$unit" --property=LoadState --value 2>/dev/null || true)
+              raw_active=$(sudo systemctl show "$unit" --property=ActiveState --value 2>/dev/null || true)
+              raw_result=$(sudo systemctl show "$unit" --property=Result --value 2>/dev/null || true)
+              case "$raw_load" in
+                loaded) load_class=loaded ;;
+                masked) load_class=masked ;;
+                not-found) load_class=missing ;;
+                *) load_class=other ;;
+              esac
+              case "$raw_active" in
+                active) active_class=active ;;
+                failed) active_class=failed ;;
+                inactive) active_class=inactive ;;
+                activating|deactivating|reloading) active_class=transitioning ;;
+                *) active_class=other ;;
+              esac
+              case "$raw_result" in
+                "") result_class=none ;;
+                success) result_class=success ;;
+                exit-code|signal|core-dump|watchdog|timeout|start-limit-hit|oom-kill) result_class=failure ;;
+                *) result_class=other ;;
+              esac
+              echo "::error::unit-state category=${category} component=${label} load=${load_class} active=${active_class} result=${result_class}"
+            }
             report_public_route_failure() {
-              sudo nginx -t || true
-              sudo systemctl status nginx --no-pager || true
-              sudo journalctl -u nginx --since "$HEALTH_SINCE_TS" -n 200 --no-pager || true
-              sudo systemctl status eliza-agent-router.service --no-pager || true
-              sudo journalctl -u eliza-agent-router.service --since "$HEALTH_SINCE_TS" -n 200 --no-pager || true
+              local nginx_config_class=invalid
+              if sudo nginx -t >/dev/null 2>&1; then
+                nginx_config_class=valid
+              fi
+              echo "::error::nginx-config category=public-route verdict=${nginx_config_class}"
+              report_unit_diagnostic public-route nginx nginx
+              report_unit_diagnostic public-route router eliza-agent-router.service
             }
             validate_deletion_authority_backup_health() {
               # DynamicUser owns the mode-0700 RuntimeDirectory and mode-0600
@@ -1564,9 +1600,9 @@ jobs:
                 continue
               fi
               BACKUP_JOURNAL=$(sudo journalctl -u "$BACKUP_SYSTEMD_UNIT" --since "$HEALTH_SINCE_TS" --no-pager 2>/dev/null || true)
-              if echo "$BACKUP_JOURNAL" | grep -qE "$FATAL_LOG_PATTERN"; then
+              if grep -qE "$FATAL_LOG_PATTERN" <<<"$BACKUP_JOURNAL"; then
                 echo "::error::Backup catalogue worker logged a fatal error since deploy."
-                echo "$BACKUP_JOURNAL" | tail -n 50
+                report_unit_diagnostic fatal-log backup "$BACKUP_SYSTEMD_UNIT"
                 exit 1
               fi
               if ! validate_deletion_authority_backup_health; then
@@ -1576,9 +1612,9 @@ jobs:
               fi
               if sudo systemctl is-active --quiet "$SYSTEMD_UNIT"; then
                 JOURNAL=$(sudo journalctl -u "$SYSTEMD_UNIT" --since "$HEALTH_SINCE_TS" --no-pager 2>/dev/null || true)
-                if echo "$JOURNAL" | grep -qE "$FATAL_LOG_PATTERN"; then
+                if grep -qE "$FATAL_LOG_PATTERN" <<<"$JOURNAL"; then
                   echo "::error::Worker logged a fatal error since deploy."
-                  echo "$JOURNAL" | tail -n 50
+                  report_unit_diagnostic fatal-log worker "$SYSTEMD_UNIT"
                   exit 1
                 fi
                 # Active + uptime past the threshold = healthy. systemd's Restart=always
@@ -1594,9 +1630,9 @@ jobs:
                     continue
                   fi
                   ROUTER_JOURNAL=$(sudo journalctl -u eliza-agent-router.service --since "$HEALTH_SINCE_TS" --no-pager 2>/dev/null || true)
-                  if echo "$ROUTER_JOURNAL" | grep -qE "$FATAL_LOG_PATTERN"; then
+                  if grep -qE "$FATAL_LOG_PATTERN" <<<"$ROUTER_JOURNAL"; then
                     echo "::error::Agent router logged a fatal error since activation."
-                    echo "$ROUTER_JOURNAL" | tail -n 50
+                    report_unit_diagnostic fatal-log router eliza-agent-router.service
                     exit 1
                   fi
                   ROUTER_UPTIME_SEC=$(systemctl show eliza-agent-router.service --property=ActiveEnterTimestampMonotonic --value | awk '{ print int($1 / 1e6) }')
@@ -1614,33 +1650,33 @@ jobs:
                     PUBLIC_READINESS=""
                     public_route_ok=false
                     for public_attempt in 1 2 3; do
-                      if PUBLIC_HEALTH=$(curl -fsS -m 5 "https://${AGENT_ROUTER_PUBLIC_HOST}/healthz") && \
-                         PUBLIC_READINESS=$(curl -fsS -m 5 "https://${AGENT_ROUTER_PUBLIC_HOST}/readyz"); then
+                      if PUBLIC_HEALTH=$(curl -fsS -m 5 "https://${AGENT_ROUTER_PUBLIC_HOST}/healthz" 2>/dev/null) && \
+                         PUBLIC_READINESS=$(curl -fsS -m 5 "https://${AGENT_ROUTER_PUBLIC_HOST}/readyz" 2>/dev/null); then
                         public_route_ok=true
                         break
                       fi
-                      echo "Canonical health/readiness attempt ${public_attempt}/3 failed for ${AGENT_ROUTER_PUBLIC_HOST}; retrying in 2s."
+                      echo "Canonical health/readiness attempt ${public_attempt}/3 failed; response suppressed; retrying in 2s."
                       sleep 2
                     done
                     if [ "$public_route_ok" != "true" ]; then
-                      echo "::error::Canonical agent-router host failed after local readiness: ${AGENT_ROUTER_PUBLIC_HOST}"
+                      echo "::error::Canonical agent-router route failed after local readiness (category=public-route-transport)."
                       report_public_route_failure
                       exit 1
                     fi
                     if ! printf '%s' "$PUBLIC_HEALTH" | validate_public_health_payload; then
-                      echo "::error::Canonical agent-router host returned an unexpected health payload: ${AGENT_ROUTER_PUBLIC_HOST}"
+                      echo "::error::Canonical agent-router health contract failed (category=public-route-payload)."
                       report_public_route_failure
                       exit 1
                     fi
                     if ! printf '%s' "$PUBLIC_READINESS" | validate_public_health_payload; then
-                      echo "::error::Canonical agent-router host returned an unexpected readiness payload: ${AGENT_ROUTER_PUBLIC_HOST}"
+                      echo "::error::Canonical agent-router readiness contract failed (category=public-route-payload)."
                       report_public_route_failure
                       exit 1
                     fi
                     echo "Provisioning/router stable and backup worker disabled/healthy (worker ${AGE}s, router ${ROUTER_AGE}s) on attempt $attempt."
                     exit 0
                   fi
-                  echo "Health check attempt $attempt/18: worker stable (${AGE}s), router ${ROUTER_AGE}s but health/readiness not ready on port ${ROUTER_PORT}."
+                  echo "Health check attempt $attempt/18: worker and router stable but local health/readiness not ready."
                   sleep 5
                   continue
                 fi
@@ -1651,13 +1687,10 @@ jobs:
               sleep 5
             done
 
-            echo "::error::$SYSTEMD_UNIT failed to become healthy within 90s."
-            sudo systemctl status "$SYSTEMD_UNIT" --no-pager || true
-            sudo journalctl -u "$SYSTEMD_UNIT" -n 200 --no-pager || true
-            sudo systemctl status eliza-agent-router.service --no-pager || true
-            sudo journalctl -u eliza-agent-router.service -n 200 --no-pager || true
-            sudo systemctl status "$BACKUP_SYSTEMD_UNIT" --no-pager || true
-            sudo journalctl -u "$BACKUP_SYSTEMD_UNIT" -n 200 --no-pager || true
+            echo "::error::Provisioning health deadline exceeded (category=health-timeout)."
+            report_unit_diagnostic health-timeout worker "$SYSTEMD_UNIT"
+            report_unit_diagnostic health-timeout router eliza-agent-router.service
+            report_unit_diagnostic health-timeout backup "$BACKUP_SYSTEMD_UNIT"
             exit 1
 
       - name: Notify Discord (Success)
