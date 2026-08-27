@@ -1537,6 +1537,16 @@ function makeDecision(
     });
   }
   const reasons = reasonsFromEvidence(analysis.evidence, degraded);
+  for (const effect of analysis.policyEffects) {
+    if (effect.kind === "add_reason") {
+      reasons.push({
+        code: "policy",
+        label: "Policy reason",
+        reviewText: effect.message,
+        citations: effect.citation ? [effect.citation] : [],
+      });
+    }
+  }
   const citations = citationsFromEvidence(analysis.evidence);
   const canonicalMessageIds = group.members.map((candidate) => candidate.id);
   const decisionWithoutBulk: Omit<CurationDecision, "bulkReview" | "rank"> = {
