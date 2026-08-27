@@ -20,7 +20,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
-import { resolveStateDir } from "@elizaos/core";
+import { resolveStateDir, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 const STORE_DIR = "account-pool";
 const KEY_FILE = "consumer-keys.json";
@@ -388,7 +388,7 @@ export function createAccountPoolConsumerKey(
     enabled,
     dailyTokenQuota: quota,
     keyDigest: digestConsumerKey(key),
-    keyPrefix: key.slice(0, 18),
+    keyPrefix: truncateWellFormed(toWellFormedUnicode(key), 18),
     createdAt: now,
     updatedAt: now,
   };
@@ -441,7 +441,7 @@ export function rotateAccountPoolConsumerKey(
   const next: AccountPoolConsumerKey = {
     ...current,
     keyDigest: digestConsumerKey(key),
-    keyPrefix: key.slice(0, 18),
+    keyPrefix: truncateWellFormed(toWellFormedUnicode(key), 18),
     updatedAt: Date.now(),
   };
   file.keys[index] = next;
