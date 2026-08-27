@@ -829,17 +829,13 @@ describe("provisioning worker deployment contract", () => {
       `"https://${publicHost}/healthz"`,
     );
     expect(workflow).toContain(
-      "Canonical agent-router host failed after local readiness",
+      "Canonical agent-router route failed after local readiness",
     );
+    expect(workflow).toContain("Canonical agent-router health contract failed");
     expect(workflow).toContain(
-      "Canonical agent-router host returned an unexpected health payload",
+      "Canonical agent-router readiness contract failed",
     );
-    expect(workflow).toContain(
-      "Canonical agent-router host returned an unexpected readiness payload",
-    );
-    expect(workflow).toContain(
-      "sudo systemctl status eliza-agent-router.service --no-pager || true",
-    );
+    expect(workflow).toContain("report_unit_diagnostic public-route");
   });
 
   it("settles both public-route failure branches with diagnostics then exit 1", () => {
