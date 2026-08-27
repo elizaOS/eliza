@@ -105,6 +105,10 @@ start_tailscale_if_configured() {
   ts_state_file="${ts_state_dir}/tailscaled.state"
   ts_authkey_expired_marker="${ts_state_dir}/authkey-expired"
   mkdir -p "$ts_state_dir"
+  ts_had_persisted_state=0
+  if [ -s "$ts_state_file" ]; then
+    ts_had_persisted_state=1
+  fi
   rm -f "$ts_socket"
   # Clear any stale marker from a previous boot: we re-derive status this run.
   rm -f "$ts_authkey_expired_marker"
@@ -144,7 +148,7 @@ start_tailscale_if_configured() {
   #    Running `up` without --auth-key (and without --force-reauth) reuses the
   #    persisted identity instead of insisting on interactive re-login.
   # shellcheck disable=SC2086
-  if [ -s "$ts_state_file" ]; then
+  if [ "$ts_had_persisted_state" -eq 1 ]; then
     ts_up --hostname="$ts_hostname" $login_server_arg ${TS_EXTRA_ARGS:-}
     if [ "$ts_up_rc" -eq 0 ]; then
       echo "[docker-entrypoint] reconnected to headscale on persisted node identity" >&2

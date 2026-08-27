@@ -94,6 +94,25 @@ sleep 5
 `;
 }
 
+// Tailscale 1.90 writes a non-empty state file during daemon startup, before
+// the socket is ready. A fresh container must not mistake that new file for a
+// persisted node identity and skip its auth-key join.
+function tailscaledFreshStateFixture(socketPath: string): string {
+  return `#!/bin/sh
+for arg in "$@"; do
+  case "$arg" in
+    --state=*) state="\${arg#--state=}" ;;
+    --socket=*) socket="\${arg#--socket=}" ;;
+  esac
+done
+: "\${socket:=${socketPath}}"
+mkdir -p "$(dirname "$state")" "$(dirname "$socket")"
+printf 'fresh-daemon-state' > "$state"
+: > "$socket"
+sleep 5
+`;
+}
+
 describeIfPosix("docker entrypoint", () => {
   test("preserves port normalization and starts without tailscale when no auth key is configured", () => {
     const result = runDockerEntrypoint(
@@ -192,6 +211,48 @@ printf '%s\\n' "$@" > "$TAILSCALE_ARGS_LOG"
       expect(args).toContain("--hostname=agent-ci-test");
       expect(args).toContain("--login-server=https://headscale.example.test");
       expect(args).toContain("--accept-routes");
+    },
+  );
+
+  testIfLinux(
+    "uses the auth key when tailscaled creates fresh state before its socket",
+    async () => {
+      const root = await mkdtemp(path.join(tmpdir(), "docker-entrypoint-fresh-state-"));
+      const binDir = path.join(root, "bin");
+      const stateDir = path.join(root, "state");
+      const socketPath = path.join(root, "tailscaled.sock");
+      const argsLog = path.join(root, "tailscale-args.log");
+      await mkdir(binDir, { recursive: true });
+      await mkdir(stateDir, { recursive: true });
+      await writeExecutable(path.join(binDir, "id"), ID_ROOT_FIXTURE);
+      await writeExecutable(
+        path.join(binDir, "tailscaled"),
+        tailscaledFreshStateFixture(socketPath),
+      );
+      await writeExecutable(
+        path.join(binDir, "tailscale"),
+        `#!/bin/sh
+printf '%s\\n' "$@" >> "$TAILSCALE_ARGS_LOG"
+`,
+      );
+
+      const result = runDockerEntrypoint(
+        {
+          PATH: `${binDir}:/usr/bin:/bin`,
+          TS_AUTHKEY: KEY_CI_TEST,
+          SANDBOX_AGENT_ID: "agent-fresh-state",
+          TS_STATE_DIR: stateDir,
+          TS_SOCKET: socketPath,
+          HEADSCALE_URL: "https://headscale.example.test",
+          TAILSCALE_ARGS_LOG: argsLog,
+        },
+        ["/bin/sh", "-c", "printf app-started"],
+      );
+
+      expect(result).toMatchObject({ code: 0, stdout: "app-started" });
+      const args = await readFile(argsLog, "utf8");
+      expect(args.match(/^up$/gm)).toHaveLength(1);
+      expect(args).toContain(`--auth-key=${KEY_CI_TEST}`);
     },
   );
 
@@ -514,6 +575,55 @@ exec "$@"
       expect(args).toContain("--login-server=https://headscale.example.test");
       expect(args).toContain("--accept-routes");
       await expect(readFile(gosuUserLog, "utf8")).resolves.toBe("agent\n");
+    },
+  );
+
+  testIfLinux(
+    "uses the auth key when tailscaled creates fresh state before its socket",
+    async () => {
+      const root = await mkdtemp(path.join(tmpdir(), "cloud-entrypoint-fresh-state-"));
+      const binDir = path.join(root, "bin");
+      const stateDir = path.join(root, "state");
+      const socketPath = path.join(root, "tailscaled.sock");
+      const argsLog = path.join(root, "tailscale-args.log");
+      await mkdir(binDir, { recursive: true });
+      await mkdir(stateDir, { recursive: true });
+      await writeExecutable(path.join(binDir, "id"), ID_ROOT_FIXTURE);
+      await writeExecutable(
+        path.join(binDir, "tailscaled"),
+        tailscaledFreshStateFixture(socketPath),
+      );
+      await writeExecutable(
+        path.join(binDir, "tailscale"),
+        `#!/bin/sh
+printf '%s\\n' "$@" >> "$TAILSCALE_ARGS_LOG"
+`,
+      );
+      await writeExecutable(
+        path.join(binDir, "gosu"),
+        `#!/bin/sh
+shift
+exec "$@"
+`,
+      );
+
+      const result = runEntrypoint(
+        {
+          PATH: `${binDir}:/usr/bin:/bin`,
+          TS_AUTHKEY: KEY_CLOUD_TEST,
+          SANDBOX_AGENT_ID: "agent-cloud-fresh-state",
+          TS_STATE_DIR: stateDir,
+          TS_SOCKET: socketPath,
+          HEADSCALE_URL: "https://headscale.example.test",
+          TAILSCALE_ARGS_LOG: argsLog,
+        },
+        ["/bin/sh", "-c", "printf cloud-started"],
+      );
+
+      expect(result).toMatchObject({ code: 0, stdout: "cloud-started" });
+      const args = await readFile(argsLog, "utf8");
+      expect(args.match(/^up$/gm)).toHaveLength(1);
+      expect(args).toContain(`--auth-key=${KEY_CLOUD_TEST}`);
     },
   );
 });
