@@ -1745,10 +1745,86 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     // attempt cancel this request without changing that server-side policy.
     expect(
       Object.keys(mocks.client.getPersonalSharedEliza.mock.calls[0][0]).sort(),
-    ).toEqual(["authToken", "cloudApiBase", "onProgress", "signal"]);
+    ).toEqual([
+      "authToken",
+      "cloudApiBase",
+      "onProgress",
+      "requestDedicatedAdoptionConfirmation",
+      "signal",
+    ]);
     expect(
       mocks.client.getPersonalSharedEliza.mock.calls[0][0]?.signal,
     ).toBeInstanceOf(AbortSignal);
+    unmount();
+  });
+
+  it("shows the exact safe Dedicated terms and waits for a visible confirmation gesture", async () => {
+    const quoteId = "b".repeat(64);
+    const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
+    mocks.client.getPersonalSharedEliza.mockImplementationOnce(
+      async (options: Record<string, unknown>) => {
+        const request = options.requestDedicatedAdoptionConfirmation as (
+          quote: Record<string, unknown>,
+          context: { reason: "initial"; signal?: AbortSignal },
+        ) => Promise<Record<string, unknown> | null>;
+        const confirmation = await request(
+          {
+            quoteId,
+            dedicatedAgentId,
+            adoptionState: "available",
+            status: "error",
+            startsCompute: true,
+            hourlyRateUsd: 0.01,
+            dailyRateUsd: 0.24,
+            minimumBalanceUsd: 0.72,
+            balanceUsd: 115.54,
+            deficitUsd: 0,
+            stateDisposition: "verified_backup_present",
+            canAdopt: true,
+            requiresCatalogRestore: false,
+            requiresConfirmation: true,
+            action: "adopt_existing_dedicated",
+          },
+          {
+            reason: "initial",
+            signal: options.signal as AbortSignal,
+          },
+        );
+        expect(confirmation).toEqual({
+          action: "adopt_existing_dedicated",
+          quoteId,
+        });
+        return {
+          personalElizaId: PERSONAL_ELIZA_ID,
+          agentId: PERSONAL_ELIZA_ID,
+          activeAgentId: dedicatedAgentId,
+          agentName: "Eliza Cloud",
+          apiBase: `https://${dedicatedAgentId}.cloud.eliza.app`,
+          runtime: "dedicated" as const,
+        };
+      },
+    );
+    const spies = seedAppStore({ elizaCloudConnected: true });
+    const { turn, unmount } = renderConductor();
+
+    const confirmationTurn = await waitForTurn(
+      turn,
+      "first-run:dedicated-adoption",
+    );
+    expect(confirmationTurn.text).toContain("$0.01/hour ($0.24/day)");
+    expect(confirmationTurn.text).toContain("Balance: $115.54");
+    expect(confirmationTurn.text).toContain("starts Dedicated compute");
+    expect(confirmationTurn.text).toContain("restore its reviewed backup");
+    expect(confirmationTurn.text).not.toContain(quoteId);
+    expect(confirmationTurn.text).not.toContain(dedicatedAgentId);
+    expect(spies.completeFirstRun).not.toHaveBeenCalled();
+
+    expect(
+      tryHandleFirstRunAction("__first_run__:dedicated-adoption:confirm"),
+    ).toBe(true);
+    await waitFor(() =>
+      expect(spies.completeFirstRun).toHaveBeenCalledWith("chat"),
+    );
     unmount();
   });
 
