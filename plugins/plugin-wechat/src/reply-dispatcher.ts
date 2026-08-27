@@ -5,10 +5,10 @@
  */
 import {
   ElizaError,
-  logger,
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
+import { WechatError } from "./types";
 
 const DEFAULT_CHUNK_SIZE = 2000;
 
@@ -52,14 +52,14 @@ export class ReplyDispatcher {
       try {
         await this.client.sendText(to, chunk);
       } catch (err) {
-        // error-policy:J2 the send failure is logged with its account-bound
-        // context and rethrown so the delivery boundary sees the typed error.
-        if (err instanceof Error) {
-          logger.error(`[wechat] Failed to send text to ${to}: ${err.message}`);
-        } else {
-          logger.error(`[wechat] Failed to send text to ${to}: ${String(err)}`);
-        }
-        throw err;
+        // error-policy:J2 the send failure is wrapped in the typed send
+        // error with destination context and the original cause preserved.
+        throw new WechatError(
+          "WECHAT_SEND_FAILED",
+          "chunked text delivery to the first-party endpoint failed",
+          { to, chunkLength: chunk.length },
+          { cause: err },
+        );
       }
     }
   }
@@ -78,14 +78,14 @@ export class ReplyDispatcher {
     try {
       await this.client.sendImage(to, imagePath, caption);
     } catch (err) {
-      // error-policy:J2 the send failure is logged with its account-bound
-      // context and rethrown so the delivery boundary sees the typed error.
-      if (err instanceof Error) {
-        logger.error(`[wechat] Failed to send image to ${to}: ${err.message}`);
-      } else {
-        logger.error(`[wechat] Failed to send image to ${to}: ${String(err)}`);
-      }
-      throw err;
+      // error-policy:J2 the send failure is wrapped in the typed send
+      // error with destination context and the original cause preserved.
+      throw new WechatError(
+        "WECHAT_SEND_FAILED",
+        "image delivery to the first-party endpoint failed",
+        { to, imagePath },
+        { cause: err },
+      );
     }
   }
 

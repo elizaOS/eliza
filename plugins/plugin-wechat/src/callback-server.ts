@@ -54,6 +54,12 @@ const SIGNATURE_TOLERANCE_MS = 5 * 60 * 1000;
  * therefore legitimate; anything else under the same triple is tampering.
  */
 const MAX_IDENTICAL_RETRIES = 3;
+/**
+ * Upper bound on tracked replay keys. Sized far above legitimate callback
+ * volume within one freshness window (five minutes across every account) so
+ * eviction never affects a live triple, while capping memory growth.
+ */
+const MAX_REPLAY_ENTRIES = 10_000;
 
 /** Injectable per-run dependencies so tests can pin the clock. */
 export interface CallbackServerClock {
@@ -63,13 +69,14 @@ export interface CallbackServerClock {
 class SignatureReplayGuard {
   private readonly seen = new Map<
     string,
-    { bodySha256: string; retries: number }
+    { bodySha256: string; retries: number; expiresAt: number }
   >();
 
   constructor(
     private readonly maxRetries: number,
     private readonly toleranceMs: number,
     private readonly clock: CallbackServerClock,
+    private readonly maxEntries: number,
   ) {}
 
   /**
@@ -88,23 +95,42 @@ class SignatureReplayGuard {
 
   /**
    * Allows byte-identical redelivery (platform retry) and rejects a different
-   * body replayed under a captured account/timestamp/nonce signature. Once a
-   * triple has consumed its retry budget it stays rejected until restart.
+   * body replayed under a captured account/timestamp/nonce signature. Entries
+   * expire after the freshness window (a stale key can never be legitimately
+   * re-presented) and the map is insertion-order capped so traffic cannot
+   * grow it without bound; at capacity the oldest entry is evicted, which can
+   * only re-admit an already-expired key, never a fresh replay.
    */
   accepts(
     accountId: string,
     timestamp: string,
     nonce: string,
-    body: string,
+    bodySha256: string,
   ): boolean {
+    const now = this.clock.now();
+    // Lazy expiry sweep: drop every entry past its window before deciding.
+    for (const [key, entry] of this.seen) {
+      if (entry.expiresAt <= now) {
+        this.seen.delete(key);
+      }
+    }
     const key = `${accountId}\n${timestamp}\n${nonce}`;
-    const digest = createHash("sha256").update(body, "utf8").digest("hex");
     const prior = this.seen.get(key);
     if (!prior) {
-      this.seen.set(key, { bodySha256: digest, retries: 0 });
+      if (this.seen.size >= this.maxEntries) {
+        const oldest = this.seen.keys().next().value;
+        if (oldest !== undefined) {
+          this.seen.delete(oldest);
+        }
+      }
+      this.seen.set(key, {
+        bodySha256,
+        retries: 0,
+        expiresAt: now + this.toleranceMs,
+      });
       return true;
     }
-    if (prior.bodySha256 === digest && prior.retries < this.maxRetries) {
+    if (prior.bodySha256 === bodySha256 && prior.retries < this.maxRetries) {
       prior.retries += 1;
       return true;
     }
@@ -148,6 +174,7 @@ export async function startCallbackServer(
     MAX_IDENTICAL_RETRIES,
     SIGNATURE_TOLERANCE_MS,
     clock,
+    MAX_REPLAY_ENTRIES,
   );
 
   const server = createServer((req, res) => {
@@ -354,7 +381,7 @@ async function handleMessagePost(
     // decrypted or business payload is parsed before verification succeeds.
     let envelope: { encrypt: string; outerAgentId?: number };
     try {
-      envelope = extractEncryptedEnvelope(body);
+      envelope = extractEncryptedEnvelope(body.text);
     } catch (err) {
       // error-policy:J1 only the typed expected envelope failure is a 400;
       // anything unexpected propagates to the 500 boundary.
@@ -379,7 +406,9 @@ async function handleMessagePost(
       res.end("Forbidden");
       return;
     }
-    if (!deps.replayGuard.accepts(account.id, timestamp, nonce, body)) {
+    if (
+      !deps.replayGuard.accepts(account.id, timestamp, nonce, body.bodySha256)
+    ) {
       // error-policy:J1 a replayed or substituted delivery under a captured
       // signature is a security rejection at this boundary.
       logger.warn(
@@ -421,7 +450,9 @@ async function handleMessagePost(
       res.end("Forbidden");
       return;
     }
-    if (!deps.replayGuard.accepts(account.id, timestamp, nonce, body)) {
+    if (
+      !deps.replayGuard.accepts(account.id, timestamp, nonce, body.bodySha256)
+    ) {
       // error-policy:J1 the plaintext signature does not cover the body, so
       // replay state is the only thing binding this query to THIS delivery.
       logger.warn(
@@ -431,7 +462,7 @@ async function handleMessagePost(
       res.end("Forbidden");
       return;
     }
-    xmlText = body;
+    xmlText = body.text;
   }
 
   let message: WechatMessageContext | null;
@@ -709,11 +740,15 @@ function resolveCallbackAccount(
 function safeDecode(segment: string): string {
   try {
     return decodeURIComponent(segment);
-  } catch (err) {
+  } catch {
     // error-policy:J3 the path segment is untrusted input; malformed
-    // percent-encoding is surfaced as an explicit invalid result so account
+    // percent-encoding is surfaced as a typed invalid result so account
     // resolution fails closed (404), never a fabricated account id.
-    throw new URIError(`malformed percent-encoding: ${String(err)}`);
+    throw new WechatError(
+      "WECHAT_CALLBACK_MALFORMED",
+      "webhook account id has malformed percent-encoding",
+      { segment },
+    );
   }
 }
 
@@ -731,7 +766,7 @@ function readBody(
   req: IncomingMessage,
   res: ServerResponse,
   maxBodyBytes: number,
-): Promise<string | null> {
+): Promise<{ text: string; raw: Buffer; bodySha256: string } | null> {
   return new Promise((resolve) => {
     const chunks: Buffer[] = [];
     let total = 0;
@@ -749,7 +784,12 @@ function readBody(
       chunks.push(chunk);
     });
     req.on("end", () => {
-      resolve(Buffer.concat(chunks).toString("utf8"));
+      const raw = Buffer.concat(chunks);
+      // Byte identity is hashed from the ORIGINAL bytes, not a re-encoded
+      // string: distinct invalid-UTF-8 sequences can normalize to the same
+      // utf8 string, which would weaken the replay guard's identity check.
+      const bodySha256 = createHash("sha256").update(raw).digest("hex");
+      resolve({ text: raw.toString("utf8"), raw, bodySha256 });
     });
     req.on("error", () => {
       if (!res.writableEnded) {
