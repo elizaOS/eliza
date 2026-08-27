@@ -141,22 +141,35 @@ export function extractBaseCommand(fullCommand: string): string {
   return parts[0] || "";
 }
 
+// Collapse runs of any whitespace (spaces, tabs, newlines) to a single space
+// and lowercase, so the blocklist tokenizes commands the same way the shell
+// executor does. `bash -c` collapses inter-token whitespace and
+// runCommandSimple splits on /\s+/, so without this normalization a
+// prefix comparison on the raw string lets `rm  -rf  /` or `rm\t-rf /`
+// slip past a `rm -rf /` entry that the shell would still run destructively.
+function collapseWhitespace(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 export function isForbiddenCommand(
   command: string,
   forbiddenCommands: string[],
 ): boolean {
-  const normalizedCommand = command.trim().toLowerCase();
+  const normalizedCommand = collapseWhitespace(command);
 
   return forbiddenCommands.some((forbidden) => {
-    const forbiddenLower = forbidden.toLowerCase();
+    const forbiddenNormalized = collapseWhitespace(forbidden);
+    if (forbiddenNormalized === "") {
+      return false;
+    }
 
-    if (normalizedCommand.startsWith(forbiddenLower)) {
+    if (normalizedCommand.startsWith(forbiddenNormalized)) {
       return true;
     }
 
-    if (!forbidden.includes(" ")) {
-      const baseCommand = extractBaseCommand(command);
-      if (baseCommand.toLowerCase() === forbiddenLower) {
+    if (!forbiddenNormalized.includes(" ")) {
+      const baseCommand = extractBaseCommand(normalizedCommand);
+      if (baseCommand === forbiddenNormalized) {
         return true;
       }
     }

@@ -167,6 +167,27 @@ describePosixShell("shell plugin real local integration", () => {
     expect(provider.data?.historyCount).toBe(11);
   });
 
+  it("refuses whitespace-bypass variants of forbidden commands via exec() without spawning", async () => {
+    // Regression for #29519: the blocklist and the executor disagreed on
+    // tokenization, so `rm  -rf  /` (extra whitespace) slipped past the gate
+    // while `bash -c` would still collapse it back to a destructive command.
+    const marker = path.join(allowedDirectory, "forbidden-bypass-marker");
+    for (const command of [`rm  -rf  ${marker}`, `rm\t-rf ${marker}`]) {
+      const result = await service.exec(command);
+      expect(result.status, JSON.stringify(result)).toBe("failed");
+      expect(result.reason).toBe("Forbidden command");
+      expect(result.aggregated).toBe("Command is forbidden by security policy");
+    }
+
+    const simple = await service.executeCommand(
+      "kill  -9 1234",
+      "room-forbidden",
+    );
+    expect(simple.success).toBe(false);
+    expect(simple.error).toBe("Forbidden command");
+    expect(simple.exitCode).toBe(1);
+  });
+
   it("fails closed when a command tries to escape the allowed directory", async () => {
     const result = await service.executeCommand("cd ../..", "room-1");
 
