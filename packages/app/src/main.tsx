@@ -247,6 +247,7 @@ import {
   SIDE_EFFECT_APP_MODULE_LOADERS,
   type SideEffectAppModuleLoader,
 } from "./plugin-registrations";
+import { isRemoteControllerPairingRuntimeAllowed } from "./remote-controller-deep-link";
 import {
   PHONE_COMPANION_AGENT_VIEW_ID,
   resolveRendererShellKind,
@@ -2237,13 +2238,15 @@ function handleDeepLink(url: string): undefined | Promise<boolean> {
     APP_URL_SCHEME,
   );
   if (remotePairing) {
-    const isLinuxDesktop =
-      isElectrobunRuntime() &&
-      typeof navigator !== "undefined" &&
-      navigator.platform.toLowerCase().includes("linux");
-    const isNativeIOS =
-      Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios";
-    if (!isLinuxDesktop && !isNativeIOS) {
+    if (
+      !isRemoteControllerPairingRuntimeAllowed({
+        isElectrobun: isElectrobunRuntime(),
+        navigatorPlatform:
+          typeof navigator === "undefined" ? "" : navigator.platform,
+        nativePlatform: Capacitor.getPlatform(),
+        native: Capacitor.isNativePlatform(),
+      })
+    ) {
       console.warn(
         `${APP_LOG_PREFIX} Remote controller pairing is available only on an enrolled Linux desktop or signed-in iPhone`,
       );
