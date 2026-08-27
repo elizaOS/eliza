@@ -1801,6 +1801,46 @@ export class DiscordService extends Service implements IDiscordService {
 			},
 			admitInboundMessage: (messageId: string, channelId: string) =>
 				parent.admitInboundMessage(messageId, channelId, accountId()),
+			// Canonical membership evidence (#24365): forward the membership
+			// hooks to the per-account publisher surface. Without these
+			// forwards the facade passes DiscordServiceInternals' optional
+			// membership guards as undefined and multi-account clients
+			// silently never publish membership evidence (RP r5 finding 2).
+			publishGuildMembershipEvidence: (acctId: string, guild: Guild) =>
+				parent.publishGuildMembershipEvidence(acctId, guild),
+			publishMemberMembershipDelta: (
+				options: Parameters<
+					DiscordService["publishMemberMembershipDelta"]
+				>[0],
+			) =>
+				parent.publishMemberMembershipDelta({
+					...options,
+					accountId: state?.accountId ?? options.accountId,
+				}),
+			publishMemberPermissionDelta: (
+				options: Parameters<
+					DiscordService["publishMemberPermissionDelta"]
+				>[0],
+			) =>
+				parent.publishMemberPermissionDelta({
+					...options,
+					accountId: state?.accountId ?? options.accountId,
+				}),
+			degradeMembershipForAccount: (
+				acctId: string,
+				reason: string,
+				worldIds?: string[],
+			) =>
+				parent.degradeMembershipForAccount(acctId, reason, worldIds),
+			renewSenderMembershipEvidence: (
+				options: Parameters<
+					DiscordService["renewSenderMembershipEvidence"]
+				>[0],
+			) =>
+				parent.renewSenderMembershipEvidence({
+					...options,
+					accountId: state?.accountId ?? options.accountId,
+				}),
 			accountToken: state?.account.token,
 		};
 		return facade;
