@@ -871,12 +871,12 @@ test.describe("assistant home app flow", () => {
 
     await openAppPath(page, "/wallet");
     await expect(
-      page.getByTestId("wallets-sidebar").getByRole("button", {
-        name: /^Tokens$/,
-      }),
+      page
+        .getByRole("tablist", { name: "Wallet asset type" })
+        .getByRole("tab", { name: "Tokens", selected: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "RPC settings", exact: true }),
+      page.getByRole("button", { name: "Network settings", exact: true }),
     ).toBeVisible();
     await screenshot(page, "07-wallet-view-with-pill");
   });
