@@ -14,6 +14,7 @@ import {
   acquireEphemeralPostgres,
   type EphemeralPostgres,
 } from "../../../lib/services/tenant-db/__tests__/ephemeral-postgres";
+import { installAgentNodeOccurrenceTriggerForTests } from "../../agent-node-occurrence-test-support";
 import { sqlRows } from "../../execute-helpers";
 import {
   agentBackupNodeAdmissionCursors,
@@ -577,6 +578,9 @@ realPostgres("canonical backup catalogue contention", () => {
     await apply();
     await seedSourceAuthority(TENANT_A);
     await seedSourceAuthority(TENANT_B);
+    await installAgentNodeOccurrenceTriggerForTests((statement) =>
+      dbWrite.execute(sql.raw(statement)),
+    );
     await applyBackupAdmissionMigrations();
     await installBackupMutationGuardForTests();
   }, 60_000);
@@ -601,6 +605,8 @@ realPostgres("canonical backup catalogue contention", () => {
 
   test("retires only the protocol guard after the admission migration", async () => {
     if (!dbWrite) throw new Error("Real PostgreSQL harness was not initialized");
+    const tenantAHistoryId = await requireCurrentNodeHistoryId(TENANT_A);
+    const tenantBHistoryId = await requireCurrentNodeHistoryId(TENANT_B);
     const [migrationState] = await sqlRows<{
       bind_trigger_exists: boolean;
       capture_check_exists: boolean;
@@ -675,7 +681,7 @@ realPostgres("canonical backup catalogue contention", () => {
       .from(agentSandboxBackups)
       .where(eq(agentSandboxBackups.id, backupId));
     expect(bound).toEqual({
-      sourceNodeHistoryId: TENANT_A.nodeHistoryId,
+      sourceNodeHistoryId: tenantAHistoryId,
       sourceNodeId: TENANT_A.nodeId,
     });
 
@@ -703,7 +709,7 @@ realPostgres("canonical backup catalogue contention", () => {
           state_data_storage: "inline",
           size_bytes: 0,
           backup_kind: "full",
-          source_node_history_id: TENANT_B.nodeHistoryId,
+          source_node_history_id: tenantBHistoryId,
           source_node_record_id: TENANT_A.nodeRecordId,
           source_node_incarnation: TENANT_A.nodeIncarnation,
         })
