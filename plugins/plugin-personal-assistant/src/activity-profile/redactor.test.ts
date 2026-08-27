@@ -1,10 +1,12 @@
 /**
  * Unit test for the window-title PII redactor.
  *
- * Materiality: the CC-like detector `(?:\\d[ -]?){13,19}` only tolerates a
+ * Materiality: the CC-like detector `(?:\d[ -]?){13,19}` only tolerates a
  * single space/dash separator, so a card number pasted with tab separators
  * (spreadsheet paste) is NOT redacted and the PAN leaves the process. These
- * tests pin the redaction boundaries for emails, phones, and card-like runs.
+ * tests pin the redaction boundaries for emails, phones, and card-like runs,
+ * including grouped PANs with doubled separators in every standard PAN length
+ * (13/15/16/19) and the no-partial-redaction boundary.
  */
 import { describe, expect, it } from "vitest";
 import { redactWindowTitle, resolveRedactorConfigFromEnv } from "./redactor.js";
@@ -53,8 +55,8 @@ describe("redactWindowTitle", () => {
 
   it("redacts grouped PANs with doubled separators", () => {
     // A recognizable Visa test PAN pasted with doubled spaces/tabs must not
-    // survive in cleartext: CC_LIKE allows one separator per gap, GROUPED_PAN
-    // (4x4 digit groups, 1-2 separators) catches these.
+    // survive in cleartext: CC_LIKE allows one separator per gap, so the
+    // grouped path catches these.
     expect(redactWindowTitle("4111  1111  1111  1111", {})).toBe(
       "[redacted-cc]",
     );
@@ -66,6 +68,29 @@ describe("redactWindowTitle", () => {
     ).toBe("Order #[redacted-cc] confirmed");
   });
 
+  it("redacts non-16-digit grouped PANs (Amex 15, legacy 13)", () => {
+    // 4-6-5 Amex layout with doubled spaces.
+    expect(redactWindowTitle("3782  822463  10005", {})).toBe("[redacted-cc]");
+    // 4-3-3-3 legacy Visa layout with doubled spaces.
+    expect(redactWindowTitle("4000  000  000  000", {})).toBe("[redacted-cc]");
+  });
+
+  it("consumes the complete 19-digit grouped run (no partial replacement)", () => {
+    // A 19-digit 4-4-4-4-3 PAN with doubled spaces: the whole run must be
+    // redacted, not just the leading 16 digits with a visible " 111" suffix.
+    expect(redactWindowTitle("4111  1111  1111  1111  111", {})).toBe(
+      "[redacted-cc]",
+    );
+  });
+
+  it("leaves 20+-digit grouped runs untouched (no partial redaction)", () => {
+    // Outside the 13–19 PAN range: either redact nothing, never half. A
+    // partial replacement that reads like redaction is worse than no match.
+    expect(redactWindowTitle("4111  1111  1111  1111  1111", {})).toBe(
+      "4111  1111  1111  1111  1111",
+    );
+  });
+
   it("leaves short digit runs and unrelated numbers alone", () => {
     expect(redactWindowTitle("PIN 12345", {})).toBe("PIN 12345");
     expect(redactWindowTitle("123456789012", {})).toBe("123456789012");
@@ -74,16 +99,16 @@ describe("redactWindowTitle", () => {
 
   it("leaves dense numeric titles with multi-character separators untouched", () => {
     // 17 digits joined by " - " (three characters per gap): a list of small
-    // numbers, not a card run. At most one separator per gap, so no match.
+    // numbers, not a card run.
     expect(
       redactWindowTitle(
         "1 - 2 - 3 - 4 - 5 - 6 - 7 - 8 - 9 - 10 - 11 - 12 - 13",
         {},
       ),
     ).toBe("1 - 2 - 3 - 4 - 5 - 6 - 7 - 8 - 9 - 10 - 11 - 12 - 13");
-    // 14 digits with double-space gaps and uneven group sizes: an arbitrary
-    // numeric list, not a grouped PAN (GROUPED_PAN requires 4x4), so it
-    // stays intact.
+    // 14 digits with double-space gaps and uneven group sizes (1–2 digits per
+    // group): an arbitrary numeric list, not a grouped PAN (groups must be
+    // 3–6 digits), so it stays intact.
     expect(redactWindowTitle("12  7  93  4  55  18  22  31", {})).toBe(
       "12  7  93  4  55  18  22  31",
     );

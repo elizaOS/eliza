@@ -20,13 +20,15 @@ const EMAIL = /[\w.!#$%&'*+/=?^`{|}~-]+@[\w-]+(?:\.[\w-]+)+/g;
 // final \d sits outside the repetition so a match never ends on a separator.
 const CC_LIKE = /(?:\d[ \t-]?){12,18}\d/g;
 
-// Grouped PANs: exactly 4 groups of 4 digits, 1–2 separator characters per
-// gap. Catches spreadsheet pastes with doubled spaces/tabs, which CC_LIKE
-// (one separator per gap) skips, so a recognizable Visa/Mastercard PAN such
-// as "4111  1111  1111  1111" never leaves the process in cleartext. Dense
-// numeric lists with uneven group sizes ("12  7  93  4  55  18  22  31") do
-// not match and stay untouched.
-const GROUPED_PAN = /(?:\d{4}[ \t-]{1,2}){3}\d{4}/g;
+// Grouped PANs: digit groups of 3–6 (the group sizes that occur in standard
+// PAN layouts — 4-3-3-3, 4-4-4-4, 4-6-5, 4-4-4-4-3 — e.g. a spreadsheet paste
+// with doubled spaces/tabs, which CC_LIKE's one-separator-per-gap rule skips).
+// The whole run is consumed as a single match (never a partial 16-digit
+// substring of a longer run), then digit-counted 13–19 like CC_LIKE: a
+// recognizable Visa/Mastercard/Amex PAN never leaves the process in cleartext,
+// while 1–2-digit numeric lists ("12  7  93  4  55"), 10-digit phones, and
+// 20+-digit runs are left untouched (no partial redaction).
+const GROUPED_PAN = /(?:\d{3,6}[ \t-]{1,2})+\d{3,6}/g;
 
 // Phone: e.164 (+ followed by 7-15 digits), or 10-digit US formats with an
 // optional +1 country code and separators.
@@ -41,17 +43,19 @@ export function resolveRedactorConfigFromEnv(
   return {};
 }
 
+function redactCardRun(match: string): string {
+  const digitCount = (match.match(/\d/g) ?? []).length;
+  return digitCount >= 13 && digitCount <= 19 ? "[redacted-cc]" : match;
+}
+
 export function redactWindowTitle(
   title: string | null | undefined,
   _config: RedactorConfig,
 ): string | null {
   if (title === null || title === undefined) return null;
   let out = title;
-  out = out.replace(GROUPED_PAN, "[redacted-cc]");
-  out = out.replace(CC_LIKE, (match) => {
-    const digitCount = (match.match(/\d/g) ?? []).length;
-    return digitCount >= 13 && digitCount <= 19 ? "[redacted-cc]" : match;
-  });
+  out = out.replace(GROUPED_PAN, redactCardRun);
+  out = out.replace(CC_LIKE, redactCardRun);
   out = out.replace(EMAIL, "[redacted-email]");
   out = out.replace(PHONE, "[redacted-phone]");
   return out;
