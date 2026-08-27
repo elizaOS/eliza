@@ -916,17 +916,18 @@ describe("runV5MessageRuntimeStage1", () => {
 				finishReason: "tool_calls",
 			},
 		]);
-		// Round-trip through the character schema: maxReplyTokens must survive
-		// validation as a known top-level settings key (not be relocated into
-		// settings.extra, which would silently strip the budget).
+		// #28112 retired maxReplyTokens as a reserved key: characters carrying
+		// it now fail validation (consistent with schemas/character.test.ts)
+		// instead of silently relocating the budget into settings.extra.
 		const validated = validateCharacter({
 			name: runtime.character.name ?? "Test",
 			settings: { maxReplyTokens: 200 },
 		});
-		expect(validated.success).toBe(true);
-		if (!validated.success) return;
-		expect(validated.data.settings?.maxReplyTokens).toBe(200);
-		runtime.character.settings = validated.data.settings;
+		expect(validated.success).toBe(false);
+		// resolveMaxReplyTokens still honors the key as an unvalidated
+		// passthrough for characters constructed without validation, so drive
+		// the runtime half with a directly-set settings object.
+		runtime.character.settings = { maxReplyTokens: 200 };
 
 		await runV5MessageRuntimeStage1({
 			runtime,
