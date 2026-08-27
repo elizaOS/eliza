@@ -23,12 +23,10 @@ const COLLECTION_STYLE: CSSProperties = {
   width: "100%",
 };
 
-const NOTE_GROUP_STYLE: CSSProperties = {
-  ...PANEL_STYLE,
+const NOTE_LIST_STYLE: CSSProperties = {
   margin: 0,
   padding: 0,
   listStyle: "none",
-  overflow: "hidden",
 };
 
 const NOTE_ROW_BASE_STYLE: CSSProperties = {
@@ -59,7 +57,7 @@ function noteContent(note: StickyNoteModel): string {
   return body ? `${note.title}\n${body}` : note.title;
 }
 
-function NoteRow({ note, isLast }: { note: StickyNoteModel; isLast: boolean }) {
+function NoteRow({ note }: { note: StickyNoteModel }) {
   const content = noteContent(note);
   const card = useAgentElement<HTMLLIElement>({
     id: note.id,
@@ -78,10 +76,9 @@ function NoteRow({ note, isLast }: { note: StickyNoteModel; isLast: boolean }) {
       {...card.agentProps}
       data-note-color={note.color}
       style={{
+        ...PANEL_STYLE,
         ...NOTE_ROW_BASE_STYLE,
-        borderBlockEnd: isLast
-          ? undefined
-          : "1px solid var(--border, rgba(255,255,255,.12))",
+        margin: 0,
         background: `linear-gradient(${material}, ${material}), var(--card, #121212)`,
       }}
     >
@@ -135,16 +132,14 @@ function NotesLoadingSkeleton() {
       aria-label="Loading notes"
       style={COLLECTION_STYLE}
     >
-      <div style={NOTE_GROUP_STYLE}>
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {[0, 1, 2].map((index) => (
           <div
             key={index}
             style={{
+              ...PANEL_STYLE,
               ...NOTE_ROW_BASE_STYLE,
-              borderBlockEnd:
-                index === 2
-                  ? undefined
-                  : "1px solid var(--border, rgba(255,255,255,.12))",
+              margin: 0,
             }}
           >
             <CompactCardSkeleton />
@@ -438,8 +433,8 @@ export interface NotesSurfaceProps {
   loading: boolean;
   error: Error | null;
   refresh: () => Promise<void>;
-  /** Render the shared route header. Embedded projections turn this off. */
-  standalone?: boolean;
+  /** Render the shared route header. Every caller must declare its chrome context. */
+  standalone: boolean;
 }
 
 export function NotesSurface({
@@ -447,7 +442,7 @@ export function NotesSurface({
   loading,
   error,
   refresh,
-  standalone = true,
+  standalone,
 }: NotesSurfaceProps) {
   const notes = snapshot?.notes ?? [];
   const issue = notesIssue(error);
@@ -468,7 +463,8 @@ export function NotesSurface({
       {standalone ? <ViewHeader title="Notes" /> : null}
       <PagePanel.ContentArea data-testid="simple-notes-scroll-region">
         <PagePanel.ContentRail
-          width="compact"
+          width="wide"
+          className="px-0 sm:px-0"
           style={{
             paddingBlockStart: "var(--view-pad-top, .5rem)",
             paddingBlockEnd: "var(--view-pad-bottom, 1rem)",
@@ -517,13 +513,13 @@ export function NotesSurface({
                       issue={null}
                     />
                   )}
-                  <ul data-testid="simple-notes-list" style={NOTE_GROUP_STYLE}>
-                    {notes.map((note, index) => (
-                      <NoteRow
-                        key={note.id}
-                        note={note}
-                        isLast={index === notes.length - 1}
-                      />
+                  <ul
+                    data-testid="simple-notes-list"
+                    className="grid grid-cols-1 gap-3 lg:grid-cols-2"
+                    style={NOTE_LIST_STYLE}
+                  >
+                    {notes.map((note) => (
+                      <NoteRow key={note.id} note={note} />
                     ))}
                   </ul>
                 </>
