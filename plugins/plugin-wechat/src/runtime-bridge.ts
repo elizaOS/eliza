@@ -130,6 +130,8 @@ export async function deliverIncomingWechatMessage(
       "[wechat] No inbound runtime message pipeline is available",
     );
   } catch (error) {
+    // error-policy:J2 a failure after a committed outbound reply is wrapped
+    // in the typed side-effect-aware delivery error; otherwise rethrown.
     if (replyDelivered) {
       throw new WechatDeliveryError(
         "WeChat delivery failed after an outbound reply was committed",

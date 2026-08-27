@@ -140,6 +140,8 @@ export function decryptCallbackPayload(
   try {
     ciphertext = Buffer.from(base64Ciphertext, "base64");
   } catch {
+    // error-policy:J3 the ciphertext is untrusted input; invalid base64 is
+    // an explicit typed decrypt failure, never a zero-length stand-in.
     throw new WechatError(
       "WECHAT_CALLBACK_DECRYPT_FAILED",
       "ciphertext is not valid base64",
@@ -161,6 +163,8 @@ export function decryptCallbackPayload(
   try {
     plaintext = aesDecrypt(key, wechatIv(key), ciphertext);
   } catch {
+    // error-policy:J3 the ciphertext is untrusted input; an AES failure is
+    // an explicit typed decrypt failure, never a fabricated plaintext.
     throw new WechatError(
       "WECHAT_CALLBACK_DECRYPT_FAILED",
       "AES decryption failed",

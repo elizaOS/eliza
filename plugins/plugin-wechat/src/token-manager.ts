@@ -127,6 +127,8 @@ export class TokenManager {
         });
       }
     } catch (err) {
+      // error-policy:J2 the transport failure is wrapped in the typed token
+      // error with the original cause preserved; health records the degrade.
       this.reportHealth(account.id, {
         state: "unavailable",
         lastFailureAt: this.now(),

@@ -203,6 +203,8 @@ export class WechatChannel {
         try {
           await this.tokens.getAccessToken(account);
         } catch (err) {
+          // error-policy:J4 a failed startup probe degrades the account to a
+          // visibly distinct outbound-unavailable state; startup continues.
           const detail =
             err instanceof WechatError ? err.code : "token-probe-failed";
           logger.error(
@@ -240,7 +242,13 @@ export class WechatChannel {
 
   async sendText(accountId: string, to: string, text: string): Promise<void> {
     const entry = this.accounts.get(accountId);
-    if (!entry) throw new Error(`Unknown account: ${accountId}`);
+    if (!entry) {
+      throw new WechatError(
+        "WECHAT_ACCOUNT_UNAVAILABLE",
+        `Unknown account: ${accountId}`,
+        { accountId },
+      );
+    }
     // Fail closed on an outbound-unavailable account: an API/login failure
     // must surface as a typed error, never a hopeful network attempt.
     const outbound = this.outboundHealth.get(accountId);
@@ -366,8 +374,10 @@ export class WechatChannel {
   ): Promise<void> {
     const entry = this.accounts.get(accountId);
     if (!entry) {
-      throw new Error(
-        `[wechat] Cannot deliver callback for unknown account "${accountId}"`,
+      throw new WechatError(
+        "WECHAT_ACCOUNT_UNAVAILABLE",
+        `Cannot deliver callback for unknown account "${accountId}"`,
+        { accountId },
       );
     }
     // A signature-verified callback is an INBOUND observation only.
