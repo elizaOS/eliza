@@ -4206,9 +4206,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     const segmentedIndexes = new Set<number>();
     if (Array.isArray(content.attachments) && content.attachments.length > 0) {
       let changed = false;
-      let index = -1;
-      const attachments = content.attachments.map((attachment) => {
-        index += 1;
+      const attachments = content.attachments.map((attachment, index) => {
         if (
           attachment &&
           typeof attachment === "object" &&
