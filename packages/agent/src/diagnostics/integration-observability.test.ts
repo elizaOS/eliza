@@ -85,6 +85,22 @@ describe("integration-observability", () => {
     expect(event.errorKind).toBe("timeout");
   });
 
+
+  it("preserves well-formed Unicode when inferring errorKind from overlong string containing surrogate pairs", () => {
+    const loggerMock = { info: vi.fn(), warn: vi.fn() };
+    const span = createIntegrationTelemetrySpan(
+      { boundary: "cloud", operation: "sync" },
+      { sink: loggerMock },
+    );
+    const longErr = "a".repeat(1023) + "🚀" + "tail_error";
+    span.failure({ error: longErr });
+    expect(loggerMock.warn).toHaveBeenCalledTimes(1);
+    const line = loggerMock.warn.mock.calls[0][0] as string;
+    const event: IntegrationObservabilityEvent = JSON.parse(
+      line.replace("[integration] ", ""),
+    );
+    expect(event.errorKind?.isWellFormed()).toBe(true);
+  });
   it("emits expected transient failure at info level instead of warn", () => {
     const loggerMock = {
       info: vi.fn(),
