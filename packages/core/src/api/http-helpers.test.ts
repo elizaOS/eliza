@@ -143,4 +143,56 @@ describe("readRequestBodyBuffer", () => {
 			JSON.stringify({ error: "Request body exceeds this route's limit" }),
 		);
 	});
+
+	it("maps malformed JSON to 400 with default message", async () => {
+		const outcome = await withIncomingRequest(
+			"{\"broken\":",
+			async (req, res) => {
+				return readJsonBody(req, res);
+			},
+		);
+
+		expect(outcome.inspection).toBeNull();
+		expect(outcome.status).toBe(400);
+		expect(outcome.responseBody).toBe(
+			JSON.stringify({ error: "Invalid JSON in request body" }),
+		);
+	});
+
+	it("maps non-object JSON bodies to 400 under default requireObject", async () => {
+		const outcomeArray = await withIncomingRequest(
+			"[1, 2, 3]",
+			async (req, res) => {
+				return readJsonBody(req, res);
+			},
+		);
+
+		expect(outcomeArray.inspection).toBeNull();
+		expect(outcomeArray.status).toBe(400);
+		expect(outcomeArray.responseBody).toBe(
+			JSON.stringify({ error: "Request body must be a JSON object" }),
+		);
+
+		const outcomeNull = await withIncomingRequest("null", async (req, res) => {
+			return readJsonBody(req, res);
+		});
+
+		expect(outcomeNull.inspection).toBeNull();
+		expect(outcomeNull.status).toBe(400);
+		expect(outcomeNull.responseBody).toBe(
+			JSON.stringify({ error: "Request body must be a JSON object" }),
+		);
+	});
+
+	it("accepts array JSON when requireObject is false", async () => {
+		const outcome = await withIncomingRequest(
+			"[\"item1\", \"item2\"]",
+			async (req, res) => {
+				return readJsonBody(req, res, { requireObject: false });
+			},
+		);
+
+		expect(outcome.inspection).toEqual(["item1", "item2"]);
+		expect(outcome.status).toBe(200);
+	});
 });
