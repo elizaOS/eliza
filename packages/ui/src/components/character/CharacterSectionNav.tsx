@@ -81,9 +81,9 @@ export function CharacterSectionNav({
   activePath: string;
 }): React.JSX.Element {
   return (
-    <div className="flex shrink-0 flex-col">
+    <>
       <FramedPageHeader title="Character" />
-      <FramedPageNavigation>
+      <FramedPageNavigation padded={false} className="sm:px-6 lg:px-8">
         <SectionTabStrip
           entries={CHARACTER_SECTION_TABS}
           activeId={activeCharacterTabId(activePath)}
@@ -95,10 +95,11 @@ export function CharacterSectionNav({
           }}
           testId={`section-nav-${CHARACTER_SECTION_GROUP}`}
           ariaLabel="Character sections"
-          className="py-0"
+          className="px-0 py-0"
+          tabClassName="max-[420px]:px-2 max-[360px]:px-1"
         />
       </FramedPageNavigation>
       <Separator tone="subtle45" />
-    </div>
+    </>
   );
 }
