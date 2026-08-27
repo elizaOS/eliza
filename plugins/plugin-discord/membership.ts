@@ -88,13 +88,6 @@ interface ScopePublisherState {
 	queue: Promise<unknown>;
 }
 
-export interface DiscordMembershipObservationTarget {
-	scope: MembershipScope;
-	principalId: UUID;
-	worldId: UUID;
-	roomId: UUID;
-}
-
 export class DiscordMembershipPublisher {
 	private readonly runtime: IAgentRuntime;
 	private readonly publisherInstanceId: string;
@@ -136,6 +129,9 @@ export class DiscordMembershipPublisher {
 		try {
 			return getConnectorAccountManager(this.runtime);
 		} catch (error) {
+			// error-policy:J4 membership evidence is a degrade-only surface;
+			// a missing manager disables publishing (unavailableReasons) while
+			// message flow continues.
 			logger.debug(
 				{
 					src: "plugin:discord",
@@ -255,6 +251,9 @@ export class DiscordMembershipPublisher {
 		try {
 			return await service.getScopeHealth(scope);
 		} catch (error) {
+			// error-policy:J7 a failed health read is diagnostics-only: the
+			// caller falls back to fresh registration state and the command
+			// path continues; the error is surfaced for observability.
 			logger.debug(
 				{
 					src: "plugin:discord",
@@ -410,6 +409,9 @@ export class DiscordMembershipPublisher {
 		run: () => Promise<T>,
 	): Promise<T> {
 		const result = state.queue.then(run, run);
+		// error-policy:J5 the rejection suppressed here is observed by the
+		// caller through the returned `result` promise; this catch only keeps
+		// the serialization chain alive for the next command.
 		state.queue = result.catch(() => undefined);
 		return result;
 	}
@@ -437,6 +439,8 @@ export class DiscordMembershipPublisher {
 	async publishDelta(options: {
 		scope: MembershipScope;
 		principalId: UUID;
+		/** Owner-aware runtime entity id (canonical principal stays separate). */
+		runtimeEntityId?: UUID;
 		worldId: UUID;
 		roomId: UUID;
 		membershipState: "active" | "revoked";
@@ -495,7 +499,7 @@ export class DiscordMembershipPublisher {
 						runtime: {
 							worldId: options.worldId,
 							roomId: options.roomId,
-							entityId: options.principalId,
+							entityId: options.runtimeEntityId ?? options.principalId,
 						},
 						sourceVersion: currentVersion + 1,
 						previousSourceCursor: state.sourceCursor,
@@ -533,14 +537,41 @@ export class DiscordMembershipPublisher {
 						);
 						continue;
 					}
-					logger.debug(
+					if (code === "MEMBERSHIP_IDEMPOTENCY_CONFLICT") {
+						// A same-key journal replay where the persisted command
+						// differs. With content-anchored keys this only happens
+						// when the first delivery of this exact observation
+						// already committed under a now-superseded cursor — a
+						// benign replay. Return the durable outcome instead of
+						// degrading healthy evidence.
+						logger.debug(
+							{
+								src: "plugin:discord",
+								agentId: this.runtime.agentId,
+								idempotencyKey: options.idempotencyKey,
+							},
+							"Discord membership delta replayed (idempotency journal hit)",
+						);
+						return null;
+					}
+					// error-policy:J4 an unexpected rejection degrades the scope
+					// to stale — authorize fails closed on this channel — and is
+					// reported for observability; the gateway path continues.
+					this.runtime.reportError(
+						"discord:membership-delta",
+						error instanceof Error ? error : new Error(String(error)),
 						{
-							src: "plugin:discord",
-							agentId: this.runtime.agentId,
 							idempotencyKey: options.idempotencyKey,
-							error: error instanceof Error ? error.message : String(error),
+							scope: this.scopeKey(options.scope),
+							reason: options.reason,
 						},
-						"Discord membership delta rejected",
+					);
+					await this.degradeScopeInternal(
+						service,
+						options.scope,
+						state,
+						"stale",
+						`delta_rejected:${code || "unknown"}`,
 					);
 					return null;
 				}
@@ -557,6 +588,8 @@ export class DiscordMembershipPublisher {
 	async renewSender(options: {
 		scope: MembershipScope;
 		principalId: UUID;
+		/** Owner-aware runtime entity id (canonical principal stays separate). */
+		runtimeEntityId?: UUID;
 		worldId: UUID;
 		roomId: UUID;
 		roles: string[];
@@ -622,14 +655,32 @@ export class DiscordMembershipPublisher {
 					state.generation = receipt.committedGeneration;
 					return receipt;
 				} catch (error) {
-					logger.debug(
+					const code = membershipErrorCode(error);
+					if (code === "MEMBERSHIP_IDEMPOTENCY_CONFLICT") {
+						// error-policy:J4 a same-key replay of an identical
+						// unavailable report: the durable state already carries
+						// this reason, so the replay is a benign no-op.
+						logger.debug(
+							{
+								src: "plugin:discord",
+								agentId: this.runtime.agentId,
+								reason: unavailable.reason,
+							},
+							"Discord membership unavailable report replayed (journal hit)",
+						);
+						return null;
+					}
+					// error-policy:J4 the unavailable report is itself the degrade
+					// signal; a rejection here is surfaced for observability and
+					// the next ready pass retries the report.
+					this.runtime.reportError(
+						"discord:membership-snapshot-unavailable",
+						error instanceof Error ? error : new Error(String(error)),
 						{
-							src: "plugin:discord",
-							agentId: this.runtime.agentId,
+							idempotencyKey: options.idempotencyKey,
 							reason: unavailable.reason,
-							error: error instanceof Error ? error.message : String(error),
+							scope: this.scopeKey(options.scope),
 						},
-						"Discord membership unavailable-snapshot report rejected",
 					);
 					return null;
 				}
@@ -708,14 +759,40 @@ export class DiscordMembershipPublisher {
 						);
 						continue;
 					}
-					logger.debug(
+					if (code === "MEMBERSHIP_IDEMPOTENCY_CONFLICT") {
+						// A content-anchored key colliding means this exact roster
+						// already committed under this key (redelivery of an
+						// identical snapshot): the evidence stands as-is, so the
+						// replay is a benign no-op — do NOT degrade the scope.
+						logger.debug(
+							{
+								src: "plugin:discord",
+								agentId: this.runtime.agentId,
+								idempotencyKey: options.idempotencyKey,
+							},
+							"Discord membership snapshot replayed (idempotency journal hit)",
+						);
+						return null;
+					}
+					// error-policy:J4 a failed complete snapshot means the scope's
+					// evidence is NOT refreshed as advertised: degrade the scope to
+					// stale so authorize fails closed instead of trusting the prior
+					// generation's roster, report it, and continue the ready pass.
+					this.runtime.reportError(
+						"discord:membership-snapshot",
+						error instanceof Error ? error : new Error(String(error)),
 						{
-							src: "plugin:discord",
-							agentId: this.runtime.agentId,
 							idempotencyKey: options.idempotencyKey,
-							error: error instanceof Error ? error.message : String(error),
+							scope: this.scopeKey(options.scope),
+							code: code || "unknown",
 						},
-						"Discord membership complete snapshot rejected",
+					);
+					await this.degradeScopeInternal(
+						service,
+						options.scope,
+						state,
+						"stale",
+						`snapshot_rejected:${code || "unknown"}`,
 					);
 					return null;
 				}
@@ -743,30 +820,50 @@ export class DiscordMembershipPublisher {
 		if (state.generation === 0) {
 			return;
 		}
+		await this.degradeScopeInternal(
+			service,
+			options.scope,
+			state,
+			options.health,
+			options.reason,
+		);
+	}
+
+	/**
+	 * Shared degrade write used both by explicit gateway degrades and by
+	 * failed evidence commands above. A degrade write itself failing must
+	 * not break the caller: it is reported and swallowed (error-policy:J7
+	 * diagnostics must not kill the loop — the next command or ready pass
+	 * retries the degrade or supersedes it with fresh evidence).
+	 */
+	private async degradeScopeInternal(
+		service: MembershipService,
+		scope: MembershipScope,
+		state: ScopePublisherState,
+		health: "stale" | "unavailable" | "unsupported",
+		reason: string,
+	): Promise<void> {
 		try {
 			const receipt = await service.setScopeHealth({
-				...options.scope,
+				...scope,
 				expectedGeneration: state.generation,
-				health: options.health,
-				reason: options.reason,
+				health,
+				reason,
 				idempotencyKey: membershipIdempotencyKey([
-					options.scope.connectorAccountId,
-					options.scope.externalRoomId,
+					scope.connectorAccountId,
+					scope.externalRoomId,
 					"degrade",
-					options.reason,
+					reason,
 					String(Date.now()),
 				]),
 				observedAt: new Date().toISOString(),
 			});
 			state.generation = receipt.committedGeneration;
 		} catch (error) {
-			logger.debug(
-				{
-					src: "plugin:discord",
-					agentId: this.runtime.agentId,
-					error: error instanceof Error ? error.message : String(error),
-				},
-				"Discord membership scope degrade rejected",
+			this.runtime.reportError(
+				"discord:membership-degrade",
+				error instanceof Error ? error : new Error(String(error)),
+				{ scope: this.scopeKey(scope), reason },
 			);
 		}
 	}
@@ -803,16 +900,6 @@ export class DiscordMembershipPublisher {
 				reason: options.reason,
 			});
 		}
-	}
-
-	/** Exposed for tests: current fencing state of one scope. */
-	scopeState(scope: MembershipScope): ScopePublisherState | undefined {
-		return this.scopes.get(this.scopeKey(scope));
-	}
-
-	/** Exposed for tests: this process's publisher instance id. */
-	get publisherId(): string {
-		return this.publisherInstanceId;
 	}
 }
 
