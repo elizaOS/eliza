@@ -51,22 +51,23 @@ function createClient() {
         ],
       }),
       replies: vi.fn().mockResolvedValue({
-        // Realistic Slack shape, newest-first: the replies come first, and
-        // the thread PARENT is the oldest message, returned last.
+        // Realistic Slack shape per docs: conversations.replies returns
+        // EARLIEST-FIRST — the thread PARENT first, then replies in
+        // chronological order.
         messages: [
-          {
-            type: "message",
-            subtype: undefined,
-            ts: "1700000000.000002",
-            user: ALICE,
-            text: "thread reply",
-          },
           {
             type: "message",
             subtype: undefined,
             ts: "1700000000.000000",
             user: ALICE,
             text: "thread parent",
+          },
+          {
+            type: "message",
+            subtype: undefined,
+            ts: "1700000000.000002",
+            user: ALICE,
+            text: "thread reply",
           },
         ],
       }),
@@ -219,13 +220,14 @@ async function startHarness(overrides: Record<string, unknown> = {}) {
   try {
     service = await SlackService.start(runtime);
   } catch (startError) {
-    // error-policy:J3 the harness rethrows with the captured log tail so a
-    // start failure is an explicit invalid state, never a fake pass.
+    // error-policy:J2 context-adding rethrow: wrap with the captured log
+    // tail and preserve the original start failure as cause.
     const calls = (runtime.logger.warn as ReturnType<typeof vi.fn>).mock.calls
       .concat((runtime.logger.error as ReturnType<typeof vi.fn>).mock.calls)
       .map((c) => String(c.at(-1)));
     throw new Error(
       `SlackService.start failed: ${String(startError)}; logged: ${calls.join(" | ")}`,
+      { cause: startError },
     );
   }
   if (apps.length === 0) {
@@ -594,8 +596,8 @@ describe("thread inheritance in chat context", () => {
     const { app, result } = await chatContextHarness({});
     expect(app.client.conversations.replies).toHaveBeenCalledTimes(1);
     expect(app.client.conversations.history).not.toHaveBeenCalled();
-    // The replies transcript (parent + reply), oldest-first, no dedup
-    // needed — the channel transcript was never read.
+    // Slack returns replies earliest-first (parent first); the published
+    // context must still be chronological oldest-first.
     expect(result?.recentMessages.map((m) => m.text)).toEqual([
       "thread parent",
       "thread reply",
