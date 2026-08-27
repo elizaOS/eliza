@@ -1588,4 +1588,123 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
     expect(row).toBeDefined();
     expect(row?.unrecoveredShortfallCredits).toBe(0);
   });
+
+  test("a full reinstatement cycle re-bases debt at the newer event's target (#26752 r4)", async () => {
+    // Writer sequence (RP r4 finding 1): target 60 fully applied → dispute
+    // fully reinstated (net prior total back to 0) → a NEWER reversal with
+    // target 40 applies 40 with no shortfall. The current debt basis is the
+    // NEWEST recorded target (40), not the historical max (60) — max-target
+    // would fabricate 60 − 40 = 20 of debt the ledger no longer asserts.
+    const request = await insertStripePaymentRequest({
+      organizationId,
+      amountCents: 20000,
+      status: "settled",
+      settlementTxRef: "pi_rebase_cycle",
+      settledAt: new Date(),
+    });
+    await insertReceipt({
+      organizationId,
+      paymentRequestId: request.id,
+      providerTxRef: "pi_rebase_cycle",
+      amountCents: 20000,
+    });
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "-60",
+      paymentIntentId: "pi_rebase_cycle",
+      source: "charge.dispute.funds_withdrawn",
+      reversedUsd: 60,
+      unrecoveredUsd: 0,
+      cumulativeTargetUsd: 60,
+      createdAt: new Date("2026-08-20T10:00:00.000Z"),
+      idempotencyKey: "stripe:dispute:dp_rebase:6000",
+    });
+    await insertReversal({
+      organizationId,
+      type: "refund",
+      amount: "60",
+      paymentIntentId: "pi_rebase_cycle",
+      source: "charge.dispute.funds_reinstated",
+      reversedUsd: 60,
+      createdAt: new Date("2026-08-20T11:00:00.000Z"),
+      idempotencyKey: "stripe:dispute:dp_rebase:reinstated",
+    });
+    // Newer refund event with a SMALLER cumulative target: the writer's
+    // prior_reversal.total is 0 after the reinstatement, so requested 40
+    // applies in full — no shortfall row is implied, but the target row
+    // itself records the intent's current debt basis.
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "-40",
+      paymentIntentId: "pi_rebase_cycle",
+      source: "charge.refunded",
+      reversedUsd: 40,
+      unrecoveredUsd: 0,
+      cumulativeTargetUsd: 40,
+      createdAt: new Date("2026-08-20T12:00:00.000Z"),
+      idempotencyKey: "stripe:refund:ch_rebase:4000",
+    });
+
+    const rows = await paymentHistoryService.listPaymentStates(organizationId);
+    const row = rows.find((r) => r.id === `payment_request:${request.id}`);
+    expect(row).toBeDefined();
+    expect(row?.cumulativeClawbackCredits).toBe(100);
+    expect(row?.reinstatedCredits).toBe(60);
+    // Newest target 40 − net applied (100 − 60 = 40) = 0 outstanding.
+    // Historical max (60) would fabricate 20 of phantom debt.
+    expect(row?.unrecoveredShortfallCredits).toBe(0);
+  });
+
+  test("legacy partial reinstatement grows the snapshot shortfall by the restored credits (#26752 r4)", async () => {
+    // RP r4 finding 2: legacy rows (no cumulative target) with a PARTIAL
+    // reinstatement AFTER the newest snapshot. The writer's snapshot already
+    // nets older reinstatements, but a later reinstatement un-applies
+    // credits the snapshot never saw: outstanding = snapshot + reinstated
+    // since that snapshot (RP's case: 0 + 4 = 4).
+    const request = await insertStripePaymentRequest({
+      organizationId,
+      amountCents: 10000,
+      status: "settled",
+      settlementTxRef: "pi_legacy_partial_reinstate",
+      settledAt: new Date(),
+    });
+    await insertReceipt({
+      organizationId,
+      paymentRequestId: request.id,
+      providerTxRef: "pi_legacy_partial_reinstate",
+      amountCents: 10000,
+    });
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "-10",
+      paymentIntentId: "pi_legacy_partial_reinstate",
+      source: "charge.dispute.funds_withdrawn",
+      reversedUsd: 10,
+      unrecoveredUsd: 0,
+      createdAt: new Date("2026-08-20T10:00:00.000Z"),
+      idempotencyKey: "stripe:dispute:dp_legacy_partial:1000",
+    });
+    // PARTIAL reinstatement (4 of 10 applied) recorded AFTER the snapshot:
+    // the credits were handed back, so 4 are outstanding again.
+    await insertReversal({
+      organizationId,
+      type: "refund",
+      amount: "4",
+      paymentIntentId: "pi_legacy_partial_reinstate",
+      source: "charge.dispute.funds_reinstated",
+      reversedUsd: 4,
+      createdAt: new Date("2026-08-20T11:00:00.000Z"),
+      idempotencyKey: "stripe:dispute:dp_legacy_partial:reinstated",
+    });
+
+    const rows = await paymentHistoryService.listPaymentStates(organizationId);
+    const row = rows.find((r) => r.id === `payment_request:${request.id}`);
+    expect(row).toBeDefined();
+    expect(row?.paymentState).toBe("dispute_reinstated");
+    // Snapshot 0 + reinstated-since-snapshot 4 = 4 outstanding, not 0.
+    expect(row?.unrecoveredShortfallCredits).toBe(4);
+  });
 });
