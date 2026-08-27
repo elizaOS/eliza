@@ -1379,6 +1379,7 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
       cumulativeTargetUsd: 40,
       createdAt: new Date("2026-08-20T10:00:00.000Z"),
       idempotencyKey: "stripe:dispute:dp_terminal:4000",
+      reference: "dispute dp_terminal",
     });
     await insertReversal({
       organizationId,
@@ -1389,6 +1390,7 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
       reversedUsd: 40,
       createdAt: new Date("2026-08-20T11:00:00.000Z"),
       idempotencyKey: "stripe:dispute:dp_terminal:reinstate",
+      reference: "dispute dp_terminal",
     });
 
     const rows = await paymentHistoryService.listPaymentStates(organizationId);
@@ -1622,6 +1624,7 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
       cumulativeTargetUsd: 60,
       createdAt: new Date("2026-08-20T10:00:00.000Z"),
       idempotencyKey: "stripe:dispute:dp_rebase:6000",
+      reference: "dispute dp_rebase",
     });
     await insertReversal({
       organizationId,
@@ -1632,6 +1635,7 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
       reversedUsd: 60,
       createdAt: new Date("2026-08-20T11:00:00.000Z"),
       idempotencyKey: "stripe:dispute:dp_rebase:reinstated",
+      reference: "dispute dp_rebase",
     });
     // Newer refund event with a SMALLER cumulative target: the writer's
     // prior_reversal.total is 0 after the reinstatement, so requested 40
