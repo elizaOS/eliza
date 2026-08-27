@@ -19,6 +19,8 @@ import { readDatabaseIdentityReceipt } from "./database-identity-receipt";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const MAX_EVIDENCE_BYTES = 4 * 1024 * 1024;
 
+// Provisioning relations added here must also be considered by the worker's
+// startup gate in preflight-job-execution-interruptions.ts.
 export const REQUIRED_PRODUCTION_RELATIONS = [
   "public.apps",
   "public.organizations",
