@@ -179,6 +179,7 @@ import {
 import {
   isShortLandscapeViewport,
   measureSafeAreaInsetTop,
+  resolveChatNativeKeyboardLift,
   resolveChatPanelHalfDetentHeight,
   resolveChatPanelLayout,
 } from "./chat-panel-layout";
@@ -2995,11 +2996,19 @@ export function ChatOverlay({
   // iOS the layout doesn't shrink (layoutShrink = 0), so the full native height
   // lifts the fixed composer above the keyboard. Web (no native plugin) keeps
   // the visualViewport-derived inset.
-  const layoutShrink = Math.max(
-    0,
-    baseInnerHeightRef.current - viewport.innerHeight,
-  );
-  const nativeLift = Math.max(0, nativeKeyboardHeight - layoutShrink);
+  // The shipped Android window uses adjustResize, so the native bridge height
+  // must never be applied as an additional fixed-overlay bottom offset. In the
+  // observed race the WebView resized 919→520 before keyboardWillShow; the
+  // effect above then captured 520 as its baseline and a later 398px bridge
+  // event lifted the composer a second time, all the way to the status bar.
+  // iOS keeps the explicit bridge lift because its native window is configured
+  // not to resize around the keyboard.
+  const nativeLift = resolveChatNativeKeyboardLift({
+    platformNeedsNativeLift: isIOS,
+    nativeKeyboardHeight,
+    keyboardDownInnerHeight: baseInnerHeightRef.current,
+    currentInnerHeight: viewport.innerHeight,
+  });
   const effectiveKeyboardInset = Math.max(keyboardInset, nativeLift);
   const keyboardLiftActive = effectiveKeyboardInset > 0;
   // A REAL keyboard (not the few-px inset mobile emulation reports) blocks the

@@ -66,6 +66,53 @@ export interface ChatPanelLayout {
   panelMaxH: number;
 }
 
+export interface ChatNativeKeyboardLiftInput {
+  /**
+   * True only when the native window does not resize around the keyboard.
+   * The shipped iOS shell needs an explicit fixed-overlay lift; Android's
+   * adjustResize window already moves fixed content above the IME.
+   */
+  platformNeedsNativeLift: boolean;
+  /** Keyboard height reported by the native Keyboard bridge. */
+  nativeKeyboardHeight: number;
+  /** Layout viewport height captured while the keyboard was down. */
+  keyboardDownInnerHeight: number;
+  /** Current layout viewport height. */
+  currentInnerHeight: number;
+}
+
+/**
+ * Return only the part of the native keyboard height that the layout viewport
+ * has not already absorbed.
+ *
+ * Android can deliver its resize before `keyboardWillShow`. In that ordering,
+ * a component may observe the shrunken height as both the keyboard-down and
+ * current baseline. Platform-gating is therefore required in addition to the
+ * height delta: the Android bridge height is a visibility signal, never an
+ * instruction to lift a fixed overlay a second time.
+ */
+export function resolveChatNativeKeyboardLift(
+  input: ChatNativeKeyboardLiftInput,
+): number {
+  if (!input.platformNeedsNativeLift) return 0;
+
+  const nativeKeyboardHeight = Number.isFinite(input.nativeKeyboardHeight)
+    ? Math.max(0, input.nativeKeyboardHeight)
+    : 0;
+  const keyboardDownInnerHeight = Number.isFinite(input.keyboardDownInnerHeight)
+    ? Math.max(0, input.keyboardDownInnerHeight)
+    : 0;
+  const currentInnerHeight = Number.isFinite(input.currentInnerHeight)
+    ? Math.max(0, input.currentInnerHeight)
+    : 0;
+  const layoutShrink = Math.max(
+    0,
+    keyboardDownInnerHeight - currentInnerHeight,
+  );
+
+  return Math.max(0, nativeKeyboardHeight - layoutShrink);
+}
+
 /**
  * Resolve the HALF detent without allowing its resting target to exceed the
  * current panel ceiling. Native keyboards can lift an overlay while leaving
