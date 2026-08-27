@@ -1055,6 +1055,29 @@ describe("binary payload redaction", () => {
     expect(out).not.toContain('"type":"Buffer"');
   });
 
+
+  it("preserves well-formed Unicode in logChatIn and logChatOut with surrogate pairs at boundaries", () => {
+    const overlongIn = "a".repeat(199) + "🚀" + "tail";
+    const lineIn = logChatIn({
+      agentName: "Agent",
+      agentId: "agent-1",
+      roomId: "room123" + "🚀",
+      messageId: "msg1234" + "🚀",
+      text: overlongIn,
+    });
+    expect(lineIn.isWellFormed()).toBe(true);
+
+    const overlongOut = "b".repeat(119) + "🚀" + "tail";
+    const lineOut = logChatOut({
+      agentName: "Agent",
+      agentId: "agent-1",
+      roomId: "room123" + "🚀",
+      action: "REPLY",
+      text: overlongOut,
+      reasoning: "r".repeat(79) + "🚀" + "tail",
+    });
+    expect(lineOut.isWellFormed()).toBe(true);
+  });
   it("detaches hostile built-ins and functions in the browser path", () => {
     const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
     const dateSecret = "sk-browser-date-hook-secret";

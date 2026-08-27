@@ -1088,8 +1088,32 @@ export interface ChatOutLogParams {
 const CHAT_PREVIEW_IN_MAX = 200;
 const CHAT_PREVIEW_OUT_MAX = 120;
 
+
+function toWellFormedUnicode(text: string): string {
+  return typeof text.toWellFormed === "function"
+    ? text.toWellFormed()
+    : text.replace(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g,
+        "\uFFFD",
+      );
+}
+
+function truncateWellFormed(text: string, maxLength: number): string {
+  const normalized = toWellFormedUnicode(text);
+  if (normalized.length <= maxLength) return normalized;
+  let end = maxLength;
+  const lastCode = normalized.charCodeAt(end - 1);
+  if (lastCode >= 0xd800 && lastCode <= 0xdbff) {
+    end -= 1;
+  }
+  return normalized.slice(0, end);
+}
+
 function escapeChatPreview(text: string): string {
-  const safe = text.length > 10_000 ? text.slice(0, 10_000) : text;
+  const safe =
+    text.length > 10_000
+      ? truncateWellFormed(text, 10_000)
+      : toWellFormedUnicode(text);
   const oneLine = safe.replace(/\s+/g, " ").trim();
   return oneLine.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
@@ -1110,11 +1134,11 @@ function writeChatLine(line: string): void {
 export function logChatIn(params: ChatInLogParams): string {
   const preview = escapeChatPreview(
     params.text.length > CHAT_PREVIEW_IN_MAX
-      ? `${params.text.slice(0, CHAT_PREVIEW_IN_MAX)}...`
+      ? `${truncateWellFormed(params.text, CHAT_PREVIEW_IN_MAX)}...`
       : params.text,
   );
-  const roomShort = params.roomId.slice(0, 8);
-  const msgShort = params.messageId.slice(0, 8);
+  const roomShort = truncateWellFormed(params.roomId, 8);
+  const msgShort = truncateWellFormed(params.messageId, 8);
   const source = params.source ?? "unknown";
   const line = `[CHAT:IN]  #agent:${params.agentName} room=${roomShort} msg=${msgShort} source=${source} "${preview}"`;
   writeChatLine(line);
@@ -1123,7 +1147,7 @@ export function logChatIn(params: ChatInLogParams): string {
 
 /** Log an outgoing response to chat.log. */
 export function logChatOut(params: ChatOutLogParams): string {
-  const roomShort = params.roomId.slice(0, 8);
+  const roomShort = truncateWellFormed(params.roomId, 8);
   let part = `[CHAT:OUT] #agent:${params.agentName} room=${roomShort} action=${params.action}`;
   if (params.actions && params.actions.length > 0) {
     part += ` actions=${params.actions.join(",")}`;
@@ -1134,7 +1158,7 @@ export function logChatOut(params: ChatOutLogParams): string {
   if (params.text !== undefined && params.text !== "") {
     const preview = escapeChatPreview(
       params.text.length > CHAT_PREVIEW_OUT_MAX
-        ? `${params.text.slice(0, CHAT_PREVIEW_OUT_MAX)}...`
+        ? `${truncateWellFormed(params.text, CHAT_PREVIEW_OUT_MAX)}...`
         : params.text,
     );
     part += ` len=${params.text.length} "${preview}"`;
@@ -1147,7 +1171,7 @@ export function logChatOut(params: ChatOutLogParams): string {
   if (params.reasoning !== undefined && params.reasoning !== "") {
     const safe = escapeChatPreview(
       params.reasoning.length > 80
-        ? `${params.reasoning.slice(0, 80)}...`
+        ? `${truncateWellFormed(params.reasoning, 80)}...`
         : params.reasoning,
     );
     part += ` reasoning="${safe}"`;
