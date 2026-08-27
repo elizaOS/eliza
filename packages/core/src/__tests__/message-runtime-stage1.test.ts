@@ -4295,7 +4295,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		).toBe(false);
 	});
 
-	it("does not treat incidental correction words or later topic changes as agent repair", () => {
+	it("does not treat incidental or third-party correction language as agent repair", () => {
 		const runtime = makeRuntime([]);
 		const speakerId = "00000000-0000-0000-0000-000000000002" as UUID;
 		const agentMessage = {
@@ -4314,6 +4314,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			"The bus stop is nearby.",
 			"That quote is too much for us.",
 			"Please do not deploy that.",
+			"Bob, stop explaining it to me.",
 		]) {
 			const correction = {
 				...makeMessage({ text }),
@@ -4338,6 +4339,46 @@ describe("runV5MessageRuntimeStage1", () => {
 				),
 			).toBe(false);
 		}
+	});
+
+	it("fails closed when the current continuation has no stable message id", () => {
+		const runtime = makeRuntime([]);
+		const speakerId = "00000000-0000-0000-0000-000000000002" as UUID;
+		const state: State = {
+			...makeState(),
+			data: {
+				providers: {
+					RECENT_MESSAGES: {
+						data: {
+							recentMessages: [
+								{
+									...makeMessage({ text: "You should follow up." }),
+									id: "00000000-0000-0000-0000-000000000010" as UUID,
+									entityId: runtime.agentId,
+								},
+								{
+									...makeMessage({ text: "Please don't fix it." }),
+									id: "00000000-0000-0000-0000-000000000011" as UUID,
+									entityId: speakerId,
+								},
+							],
+						},
+					},
+				},
+			},
+		};
+		const continuation = {
+			...makeMessage({
+				text: "and now I remembered another part",
+				channelType: ChannelType.GROUP,
+			}),
+			id: undefined,
+			entityId: speakerId,
+		};
+
+		expect(
+			messageContinuesAfterRecentAgentCorrection(runtime, continuation, state),
+		).toBe(false);
 	});
 
 	it("expires repair permission after the correcting participant's first continuation", () => {

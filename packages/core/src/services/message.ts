@@ -665,16 +665,20 @@ export function messageContinuesAfterRecentAgentCorrection(
 		data && typeof data === "object" && "recentMessages" in data
 			? (data as { recentMessages?: unknown }).recentMessages
 			: undefined;
-	if (!Array.isArray(recentMessages)) return false;
+	if (!Array.isArray(recentMessages) || !message.id) return false;
 	const priorMessages = recentMessages.filter(
 		(candidate): candidate is Memory =>
 			candidate !== null &&
 			typeof candidate === "object" &&
-			(!message.id || (candidate as Memory).id !== message.id),
+			(candidate as Memory).id !== message.id,
 	);
-	const lastAgentIndex = priorMessages.findLastIndex(
-		(candidate) => candidate.entityId === runtime.agentId,
-	);
+	let lastAgentIndex = -1;
+	for (let index = priorMessages.length - 1; index >= 0; index -= 1) {
+		if (priorMessages[index].entityId === runtime.agentId) {
+			lastAgentIndex = index;
+			break;
+		}
+	}
 	if (lastAgentIndex < 0) return false;
 	const turnsAfterAgent = priorMessages.slice(lastAgentIndex + 1);
 	// Repair ownership expires when the room has moved on; this is an adjacency
@@ -687,11 +691,11 @@ export function messageContinuesAfterRecentAgentCorrection(
 	) {
 		return false;
 	}
-	// Only behavioral language aimed at the agent's contribution establishes a
-	// repair exchange. Bare words such as "stop" and "too much" occur often in
-	// unrelated group chatter and must not disable ambient restraint.
+	// Only a directive that begins as the speaker's own behavioral correction
+	// establishes repair ownership. Anchoring the directive rejects third-party
+	// exchanges such as "Bob, stop explaining" that merely follow an agent turn.
 	const explicitBehaviorCorrection =
-		/\b(?:(?:please\s+)?(?:don't|do not)\s+(?:try\s+to\s+)?(?:fix|solve|advise|recommend|suggest|coach|lecture|explain|give\s+(?:me|us)\s+advice)|stop\s+(?:trying\s+to\s+)?(?:fixing|solving|advising|recommending|suggesting|coaching|lecturing|explaining|giving\s+(?:me|us)\s+advice))\b/iu;
+		/^\s*(?:(?:please\s+)?(?:don't|do not)\s+(?:try\s+to\s+)?(?:fix|solve|advise|recommend|suggest|coach|lecture|explain|give\s+(?:me|us)\s+advice)|stop\s+(?:trying\s+to\s+)?(?:fixing|solving|advising|recommending|suggesting|coaching|lecturing|explaining|giving\s+(?:me|us)\s+advice))\b/iu;
 	if (!explicitBehaviorCorrection.test(getUserMessageText(correction) ?? "")) {
 		return false;
 	}
