@@ -14,7 +14,7 @@
  * only.
  */
 import type { MessageExampleGroup } from "@elizaos/core";
-import { useCallback, useEffect, useRef } from "react";
+import { type ReactNode, useCallback, useEffect, useRef } from "react";
 import { client } from "../../api/client";
 import type { CharacterData } from "../../api/client-types";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
@@ -43,6 +43,7 @@ function mergeCharacterPatch(
 }
 
 export function CharacterHubView({
+  pageChrome,
   d,
   bioText,
   normalizedMessageExamples,
@@ -54,6 +55,7 @@ export function CharacterHubView({
   handleStyleEntryDraftChange,
   characterSaveError,
 }: {
+  pageChrome?: ReactNode;
   d: CharacterData;
   bioText: string;
   normalizedMessageExamples: MessageExampleGroup[];
@@ -224,7 +226,13 @@ export function CharacterHubView({
 
   return (
     <FramedPage>
-      <FramedPageBody scroll="page" data-testid="character-editor-view">
+      {pageChrome}
+      <FramedPageBody
+        scroll="page"
+        padded={false}
+        className="sm:px-6 lg:px-8"
+        data-testid="character-editor-view"
+      >
         <div className="flex min-w-0 flex-col pt-1">
           <WidgetHost slot="character" className="mb-4" />
           <div className="flex min-w-0 flex-col gap-4 sm:gap-6">

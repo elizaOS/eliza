@@ -1552,21 +1552,13 @@ function buildStaticTabRenderers(): Record<
       </PageFrame>
     ),
     character: ({ characterNav, pageLayout }) => (
-      <AppWorkspaceContent
-        nav={characterNav}
-        pageLayout={pageLayout}
-        reserveChatClearance={false}
-      >
-        <LazyCharacterEditor />
+      <AppWorkspaceContent pageLayout={pageLayout} reserveChatClearance={false}>
+        <LazyCharacterEditor pageChrome={characterNav} />
       </AppWorkspaceContent>
     ),
     "character-select": ({ characterNav, pageLayout }) => (
-      <AppWorkspaceContent
-        nav={characterNav}
-        pageLayout={pageLayout}
-        reserveChatClearance={false}
-      >
-        <LazyCharacterEditor />
+      <AppWorkspaceContent pageLayout={pageLayout} reserveChatClearance={false}>
+        <LazyCharacterEditor pageChrome={characterNav} />
       </AppWorkspaceContent>
     ),
     inventory: ({ walletNav, pageLayout }) => (

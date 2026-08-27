@@ -5437,6 +5437,8 @@
   "dynamicviewloader.viewId": "View ID: {{viewId}}",
   "dynamicviewloader.restricted.title": "This view isn’t included here",
   "dynamicviewloader.restricted.body": "Open it from the desktop or web app, or install a mobile build that includes it.",
+  "dynamicviewloader.unavailable.title": "View unavailable",
+  "dynamicviewloader.unavailable.body": "This view is not available in the current runtime.",
   "dynamicviewloader.retry": "Retry",
   "vaultinventory.storedSecrets": "Stored secrets",
   "vaultinventory.storedSecrets.description": "Every secret stored locally, grouped by category. Add API keys, wallet keys, and plugin tokens here.",
