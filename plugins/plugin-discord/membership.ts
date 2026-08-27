@@ -839,23 +839,32 @@ export class DiscordMembershipPublisher {
 	/**
 	 * Degrade every published scope of one account (gateway disconnect,
 	 * invalid session) so `authorize` fails closed with an explicit state
-	 * instead of trusting evidence that missed gateway events.
+	 * instead of trusting evidence that missed gateway events. When
+	 * `worldIds` is provided, only scopes for those guilds degrade — a
+	 * single shard disconnecting must not poison scopes served by healthy
+	 * shards, and recovery (shardResume) only resnapshots that shard.
 	 */
 	async degradeAllForAccount(options: {
 		accountKey: string;
 		health: "stale" | "unavailable" | "unsupported";
 		reason: string;
+		worldIds?: string[];
 	}): Promise<void> {
 		const account = await this.resolveDurableAccount(options.accountKey);
 		if (!account) {
 			return;
 		}
 		const prefix = `${account.id}:`;
+		const worldFilter =
+			options.worldIds === undefined ? null : new Set(options.worldIds);
 		for (const [key, state] of this.scopes) {
 			if (!key.startsWith(prefix) || state.generation === 0) {
 				continue;
 			}
 			const [_, worldId, roomId] = key.split(":");
+			if (worldFilter && !worldFilter.has(worldId)) {
+				continue;
+			}
 			await this.degradeScope({
 				scope: {
 					agentId: this.runtime.agentId,

@@ -20,12 +20,13 @@ import {
 	type GuildMember,
 	type Interaction,
 	type Message,
+	PermissionsBitField,
 	type User,
 } from "discord.js";
 import { isDiscordUserAddressed } from "./addressing";
 import { DISCORD_SERVICE_NAME } from "./constants";
 import { type ChannelDebouncer, createChannelDebouncer } from "./debouncer";
-import { asMemberLike } from "./membership-adapters";
+import { asMemberLike, roleUpdatePermissionAggregates } from "./membership-adapters";
 import type { ChannelLike } from "./membership-bridge";
 import {
 	getDiscordMessageCoalesceConfig,
@@ -143,11 +144,13 @@ export interface DiscordServiceInternals {
 	): Promise<void>;
 	/**
 	 * Degrade all membership scopes of one account (gateway disconnect).
-	 * Optional.
+	 * When `worldIds` is set, only scopes of those guilds degrade (a single
+	 * shard disconnect must not poison healthy shards' scopes). Optional.
 	 */
 	degradeMembershipForAccount?(
 		accountId: string,
 		reason: string,
+		worldIds?: string[],
 	): Promise<void>;
 	handleReactionAdd(
 		reaction:
@@ -171,6 +174,41 @@ interface EventListenerConfig {
 	channelDebounceMs: number;
 	recentContextTtlMs: number;
 	shouldRespondOnlyToMentions: boolean;
+}
+
+/**
+ * The guilds served by one gateway shard (#24365). discord.js stamps each
+ * guild with its owning shard id (GUILD_CREATE handler); fall back to the
+ * shard-count formula for guilds that lack it. Unknown shard geometry
+ * (single-shard clients or shards without a total count) conservatively
+ * returns every cached guild so degrade/resume stay symmetric.
+ */
+function guildsForShard<T extends { id: string; shardId?: number }>(
+	client: unknown,
+	shardId: number,
+): T[] {
+	const c = client as {
+		guilds?: { cache?: Iterable<T> };
+		options?: { shards?: unknown; shardCount?: unknown };
+		ws?: { shards?: { size?: number } };
+	};
+	const allGuilds = [...(c.guilds?.cache ?? [])];
+	const shardOptions = c.options?.shards;
+	const shardCount = Array.isArray(shardOptions)
+		? shardOptions.length
+		: typeof c.options?.shardCount === "number"
+			? c.options.shardCount
+			: (c.ws?.shards?.size ?? 0);
+	const shardGuilds = allGuilds.filter((guild) => {
+		const guildShard = guild.shardId;
+		if (typeof guildShard === "number") {
+			return guildShard === shardId;
+		}
+		return (
+			shardCount > 1 && Number(BigInt(guild.id) >> 22n) % shardCount === shardId
+		);
+	});
+	return shardGuilds.length > 0 ? shardGuilds : allGuilds;
 }
 
 function parseSettingInt(
@@ -1384,8 +1422,20 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 									otherRoles |= role.permissions.bitfield;
 								}
 							}
-							const oldAggregate = otherRoles | oldRole.permissions.bitfield;
-							const newAggregate = otherRoles | newRole.permissions.bitfield;
+							// discord.js grants the guild owner every permission
+							// independently of roles; preserve that invariant so a
+							// role transition never fabricates a permission change
+							// for the owner (RP r4 finding 2).
+							const aggregates = roleUpdatePermissionAggregates({
+								memberId: member.id,
+								guildOwnerId: newRole.guild.ownerId,
+								otherRolesBitfield: otherRoles,
+								oldRoleBitfield: oldRole.permissions.bitfield,
+								newRoleBitfield: newRole.permissions.bitfield,
+								allPermissions: PermissionsBitField.All,
+							});
+							const oldAggregate = aggregates.oldPermissions;
+							const newAggregate = aggregates.newPermissions;
 							await service.publishMemberPermissionDelta({
 								accountId,
 								guild: newRole.guild,
@@ -1622,12 +1672,19 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 		);
 		// Canonical membership evidence (#24365): events may have been missed
 		// during the outage, so scopes must fail closed as stale until the
-		// next ready-path resnapshot. Fire-and-forget degrade.
+		// next ready-path resnapshot. Fire-and-forget degrade. Shard-scoped:
+		// only the guilds served by the disconnected shard degrade, so
+		// healthy shards' scopes stay fresh and shardResume recovery (which
+		// resnapshots only that shard's guilds) is symmetric (RP r4 finding 1).
 		if (typeof service.degradeMembershipForAccount === "function") {
+			const shardGuildIds = guildsForShard(service.client, shardId).map(
+				(guild) => guild.id,
+			);
 			void service
 				.degradeMembershipForAccount(
 					accountId,
 					`gateway_shard_disconnect:${shardId}:${event?.code ?? "unknown"}`,
+					shardGuildIds,
 				)
 				.catch((error: unknown) => {
 					// error-policy:J4 the degrade itself is best-effort; scopes
@@ -1670,31 +1727,13 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				if (!publishGuild) {
 					return;
 				}
-				const allGuilds = [...service.client.guilds.cache.values()];
-				// discord.js stamps each guild with its owning shard id
-				// (GUILD_CREATE handler); fall back to the shard-count formula
-				// for guilds that somehow lack it. Shards without a total
-				// count (single-shard clients) resnapshot everything.
-				const shardOptions = service.client.options.shards;
-				const shardCount = Array.isArray(shardOptions)
-					? shardOptions.length
-					: typeof service.client.options.shardCount === "number"
-						? service.client.options.shardCount
-						: service.client.ws.shards.size;
-				const shardGuilds = allGuilds.filter((guild) => {
-					const guildShard = (guild as { shardId?: number }).shardId;
-					if (typeof guildShard === "number") {
-						return guildShard === shardId;
-					}
-					return (
-						typeof shardCount === "number" &&
-						shardCount > 1 &&
-						Number(BigInt(guild.id) >> 22n) % shardCount === shardId
-					);
-				});
-				// Single-shard clients or shards that do not report their
-				// guild set: conservatively resnapshot all cached guilds.
-				const targets = shardGuilds.length > 0 ? shardGuilds : allGuilds;
+				// discord.js stamps each guild with its owning shard id;
+				// unknown shard geometry conservatively resnapshots all
+				// cached guilds (symmetric with the shardDisconnect degrade).
+				const targets = guildsForShard<import("discord.js").Guild>(
+					service.client,
+					shardId,
+				);
 				for (const guild of targets) {
 					try {
 						await publishGuild(accountId, guild);
