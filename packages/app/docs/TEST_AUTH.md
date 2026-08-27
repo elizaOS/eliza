@@ -9,9 +9,12 @@ surface instead.
 Chromium renderer tests that need a Steward session use
 `test/ui-smoke/helpers/test-auth.ts`.
 
-- `seedStewardSession(page)` seeds the canonical
-  `steward_session_token` localStorage key before React boots.
-- `setStewardSession(page)` writes the same key after the page has loaded.
+- `seedStewardSession(page)` seeds the canonical `steward_session_token` and
+  `steward_session_token_scope` localStorage pair before React boots.
+- `setStewardSession(page)` writes the same pair after the page has loaded.
+- The helper pairs tokens with `eliza-cloud:production` by default. Pass an
+  explicit `scope` only for a staging or self-hosted renderer fixture. It never
+  writes `steward_session_active_scope`; the renderer owns the active target.
 - The default token is opaque (`ui-smoke-onboarding-cloud-token`). Use it for
   mocked cloud login flows where refresh churn would obscure the test.
 - Pass `{ jwt: true }` only when the spec intentionally needs a decodable JWT
