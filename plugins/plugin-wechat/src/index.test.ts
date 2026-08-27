@@ -382,6 +382,19 @@ describe("@elizaos/plugin-wechat internals", () => {
     expect(sent.every((chunk) => chunk.isWellFormed())).toBe(true);
   });
 
+  it("keeps the established whitespace-boundary policy explicit", async () => {
+    const client: WechatOutboundTransport = {
+      sendText: vi.fn(async () => undefined),
+    };
+    const dispatcher = new ReplyDispatcher({ client, chunkSize: 6 });
+
+    await dispatcher.sendText("openid-alice", "hello  world");
+
+    expect(
+      vi.mocked(client.sendText).mock.calls.map((call) => call[1]),
+    ).toEqual(["hello ", "world"]);
+  });
+
   it("typed WechatError carries a stable machine code", () => {
     const err = new WechatError("WECHAT_CONFIG_INVALID", "test", { a: 1 });
     expect(err.code).toBe("WECHAT_CONFIG_INVALID");

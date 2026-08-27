@@ -47,10 +47,11 @@ function listWechatAccounts(runtime: IAgentRuntime): WechatResolvedAccount[] {
     return result;
   }
 
+  const globalDisabled = config.enabled === false;
   if (config.account) {
     result.push({
       id: WECHAT_DEFAULT_ACCOUNT_ID,
-      enabled: true,
+      enabled: !globalDisabled && config.account.enabled !== false,
       config: config.account,
     });
   }
@@ -58,12 +59,36 @@ function listWechatAccounts(runtime: IAgentRuntime): WechatResolvedAccount[] {
     if (!id) continue;
     result.push({
       id: id.trim().toLowerCase(),
-      enabled: account.enabled !== false,
+      enabled: !globalDisabled && account.enabled !== false,
       config: account,
     });
   }
 
   return result;
+}
+
+/** True for account shapes that cannot ever start (unsupported/invalid modes). */
+function isUnsupportedConfig(config: WechatAccountConfig): boolean {
+  const mode = (config as { mode?: unknown }).mode;
+  return mode !== "official-account" && mode !== "wecom";
+}
+
+/** Only well-formed, credential-free HTTPS origins belong in metadata. */
+function safeCallbackBaseUrl(value: unknown): string {
+  if (typeof value !== "string" || value.trim() === "") return "";
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== "https:") return "";
+    url.username = "";
+    url.password = "";
+    url.search = "";
+    url.hash = "";
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    // error-policy:J3 an unparseable callback URL is untrusted input; render
+    // it as absent rather than echoing attacker-controlled text.
+    return "";
+  }
 }
 
 function observationalStatus(
@@ -122,17 +147,18 @@ export function createWechatConnectorAccountProvider(
           role: "AGENT",
           purpose: ["messaging"],
           accessGate: "open",
-          status: observationalStatus(account, health.get(account.id)),
+          // Unsupported shapes (personal/proxy/unknown mode) surface as an
+          // explicit error state, never a healthy-looking pending.
+          status: isUnsupportedConfig(account.config)
+            ? ("error" as const)
+            : observationalStatus(account, health.get(account.id)),
           externalId: externalId || undefined,
           createdAt: now,
           updatedAt: now,
-          // Never copy secrets into account metadata.
+          // Never copy secrets or unvalidated URLs into account metadata.
           metadata: {
             mode,
-            callbackBaseUrl:
-              typeof config.callbackBaseUrl === "string"
-                ? config.callbackBaseUrl
-                : "",
+            callbackBaseUrl: safeCallbackBaseUrl(config.callbackBaseUrl),
           },
         } satisfies ConnectorAccount;
       });

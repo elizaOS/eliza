@@ -2,10 +2,12 @@
  * Runtime-owned lifecycle orchestrator for direct-mode WeChat accounts:
  * resolves and validates the direct configuration, starts one public callback
  * server shared by all accounts, verifies transport health via a token probe
- * at startup, and owns outbound sends through the first-party API client.
- * The proxy login/registration flow that previously lived here is deleted;
- * an account whose credentials fail the startup probe is reported
- * unavailable and never fake-healthy.
+ * at startup, and owns outbound sends through the first-party API client via
+ * the chunking ReplyDispatcher. The proxy login/registration flow that
+ * previously lived here is deleted. Health is split per direction: inbound
+ * (verified-callback observations) and outbound (token-probe/send receipts)
+ * are tracked separately, and an account whose outbound transport failed is
+ * never reported healthy from inbound evidence alone.
  */
 import { WechatApiClient } from "./api-client";
 import { Bot } from "./bot";
@@ -13,6 +15,7 @@ import {
   type CallbackServerHandle,
   startCallbackServer,
 } from "./callback-server";
+import { ReplyDispatcher } from "./reply-dispatcher";
 import { TokenManager } from "./token-manager";
 import type {
   ResolvedWechatAccount,
@@ -24,6 +27,7 @@ import type {
 import { WechatError } from "./types";
 
 const DEFAULT_CALLBACK_PORT = 18790;
+const WECHAT_AES_KEY_BASE64_LENGTH = 43;
 
 /** Observed-target summary consumed by the connector target builders. */
 export interface MessageConnectorTargetLite {
@@ -61,9 +65,12 @@ export class WechatChannel {
   private readonly now: () => number;
   private readonly accounts = new Map<
     string,
-    { account: ResolvedWechatAccount; bot: Bot }
+    { account: ResolvedWechatAccount; bot: Bot; dispatcher: ReplyDispatcher }
   >();
-  private readonly health = new Map<string, WechatTransportHealth>();
+  /** Outbound-transport health (token probes, send receipts). */
+  private readonly outboundHealth = new Map<string, WechatTransportHealth>();
+  /** Inbound-transport health (verified-callback observations). */
+  private readonly inboundHealth = new Map<string, WechatTransportHealth>();
   private readonly tokens: TokenManager;
   private readonly api: WechatApiClient;
   private server: CallbackServerHandle | null = null;
@@ -83,7 +90,7 @@ export class WechatChannel {
       fetchFn: this.fetchFn,
       now: this.now,
       onHealthChange: (accountId, health) => {
-        this.health.set(accountId, health);
+        this.outboundHealth.set(accountId, health);
       },
     });
     this.api = new WechatApiClient({
@@ -100,10 +107,18 @@ export class WechatChannel {
       sources.push(["default", this.config.account]);
     }
     for (const [id, account] of Object.entries(this.config.accounts ?? {})) {
-      sources.push([id, account]);
+      const trimmed = id.trim().toLowerCase();
+      sources.push([trimmed, account]);
     }
     for (const [id, accountConfig] of sources) {
       if (accountConfig.enabled === false) continue;
+      if (resolved.some((existing) => existing.id === id)) {
+        throw new WechatError(
+          "WECHAT_CONFIG_INVALID",
+          "duplicate wechat account id (the single-account block collides with accounts map)",
+          { accountId: id },
+        );
+      }
       resolved.push(resolveDirectAccount(id, accountConfig));
     }
     return resolved;
@@ -130,12 +145,22 @@ export class WechatChannel {
       this.accounts.set(account.id, {
         account,
         bot: new Bot({ onMessage: (msg) => this.onMessage(account.id, msg) }),
+        dispatcher: new ReplyDispatcher({
+          client: {
+            sendText: async (to, text) => {
+              await this.api.sendText(account, to, text);
+            },
+          },
+        }),
       });
-      this.health.set(account.id, { state: "pending" });
+      this.outboundHealth.set(account.id, { state: "pending" });
+      this.inboundHealth.set(account.id, { state: "pending" });
     }
 
-    // Startup transport probe: verify first-party credentials so account
-    // health starts from an observation, not from configuration presence.
+    // Startup transport probe: verify first-party credentials so outbound
+    // health starts from an observation, not from configuration presence. A
+    // failed account keeps its callback route (recovery is possible) but is
+    // reported unavailable until a probe succeeds.
     await Promise.all(
       resolved.map(async (account) => {
         try {
@@ -144,7 +169,7 @@ export class WechatChannel {
           const detail =
             err instanceof WechatError ? err.code : "token-probe-failed";
           console.error(
-            `[wechat] Account "${account.id}" failed its startup token probe (${detail}) — marked unavailable`,
+            `[wechat] Account "${account.id}" failed its startup token probe (${detail}) — outbound marked unavailable`,
           );
         }
       }),
@@ -164,33 +189,63 @@ export class WechatChannel {
     const server = this.server;
     this.server = null;
     if (server) {
-      await server.close().catch(() => undefined);
+      try {
+        await server.close();
+      } catch (error) {
+        // error-policy:J6 teardown-only failure is logged, never propagated
+        // over an already-aborting dispose path.
+        console.warn("[wechat] Callback server close failed during stop", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
   }
 
   async sendText(accountId: string, to: string, text: string): Promise<void> {
     const entry = this.accounts.get(accountId);
     if (!entry) throw new Error(`Unknown account: ${accountId}`);
-    const receipt = await this.api.sendText(entry.account, to, text);
-    if (!receipt.ok) {
+    // Fail closed on an outbound-unavailable account: an API/login failure
+    // must surface as a typed error, never a hopeful network attempt.
+    const outbound = this.outboundHealth.get(accountId);
+    if (outbound?.state === "unavailable") {
       throw new WechatError(
-        "WECHAT_SEND_FAILED",
-        "first-party send was rejected",
-        {
-          accountId,
-          platformErrorCode: receipt.platformErrorCode,
-          detail: receipt.redactedDetail,
-        },
+        "WECHAT_ACCOUNT_UNAVAILABLE",
+        "wechat account outbound transport is unavailable",
+        { accountId, lastFailureDetail: outbound.lastFailureDetail },
       );
     }
+    // The dispatcher chunks the text and sends each chunk through the
+    // first-party API client.
+    await entry.dispatcher.sendText(to, text);
   }
 
   getAccountIds(): string[] {
     return Array.from(this.accounts.keys());
   }
 
+  /**
+   * Combined observational health. An account reads "connected" only when
+   * its outbound transport was observed healthy (token probe/send receipt);
+   * inbound-only evidence can lift a pending account no higher than
+   * "degraded" so inbound activity never masks a dead outbound path.
+   */
   getAccountHealth(accountId: string): WechatTransportHealth | undefined {
-    return this.health.get(accountId);
+    const outbound = this.outboundHealth.get(accountId);
+    const inbound = this.inboundHealth.get(accountId);
+    if (!outbound) return undefined;
+    if (outbound.state === "connected") {
+      return inbound?.state === "connected"
+        ? outbound
+        : { ...outbound, observedVia: "token-probe" };
+    }
+    if (outbound.state === "unavailable" || outbound.state === "degraded") {
+      return outbound;
+    }
+    // pending outbound: inbound evidence alone cannot claim connected.
+    if (inbound?.state === "connected") {
+      return { ...inbound, state: "degraded" };
+    }
+    return outbound;
   }
 
   getResolvedAccount(accountId: string): ResolvedWechatAccount | undefined {
@@ -237,7 +292,7 @@ export class WechatChannel {
         accountId,
         mode: account?.mode ?? "unknown",
         platformIdentity: account?.platformIdentity ?? "",
-        health: this.health.get(accountId),
+        health: this.getAccountHealth(accountId),
         observedSenders: Array.from(
           this.observedSenders.get(accountId)?.entries() ?? [],
         ).map(([platformUserId, entry]) => ({
@@ -278,8 +333,8 @@ export class WechatChannel {
         `[wechat] Cannot deliver callback for unknown account "${accountId}"`,
       );
     }
-    // A signature-verified callback is a transport observation.
-    this.health.set(accountId, {
+    // A signature-verified callback is an INBOUND observation only.
+    this.inboundHealth.set(accountId, {
       state: "connected",
       lastSuccessAt: this.now(),
       observedVia: "verified-callback",
@@ -294,9 +349,8 @@ export function resolveDirectAccount(
   id: string,
   input: WechatAccountConfig,
 ): ResolvedWechatAccount {
-  // Guard the raw, possibly-unvalidated discriminator first: legacy proxy and
-  // personal-WeChat shapes must fail with their dedicated codes, not slip
-  // through union narrowing.
+  // Guard the raw, possibly-unvalidated discriminator first: legacy proxy,
+  // personal-WeChat, and wecom third-party shapes fail with dedicated codes.
   const rawMode = (input as { mode?: unknown }).mode;
   if (rawMode === "personal") {
     throw new WechatError(
@@ -312,6 +366,14 @@ export function resolveDirectAccount(
       { accountId: id },
     );
   }
+  if (rawMode === "wecom-third-party") {
+    throw new WechatError(
+      "WECHAT_WECOM_THIRD_PARTY_UNSUPPORTED",
+      "WeCom third-party (suite) apps are not supported; configure a self-built app",
+      { accountId: id },
+    );
+  }
+
   const config = input as WechatAccountConfig;
   if (config.mode === "official-account") {
     if (
@@ -326,12 +388,15 @@ export function resolveDirectAccount(
       );
     }
     const securityMode = config.messageSecurityMode ?? "plaintext";
-    if (securityMode === "encrypted" && !config.encodingAESKey?.trim()) {
+    if (securityMode !== "plaintext" && securityMode !== "encrypted") {
       throw new WechatError(
         "WECHAT_CONFIG_INVALID",
-        "encrypted security mode requires encodingAESKey",
-        { accountId: id },
+        'messageSecurityMode must be "plaintext" or "encrypted"',
+        { accountId: id, messageSecurityMode: securityMode },
       );
+    }
+    if (securityMode === "encrypted") {
+      assertValidAesKey(config.encodingAESKey, id);
     }
     return {
       id,
@@ -348,17 +413,23 @@ export function resolveDirectAccount(
   if (config.mode === "wecom") {
     if (
       !config.corpId?.trim() ||
-      !config.agentId ||
       !config.corpSecret?.trim() ||
-      !config.token?.trim() ||
-      !config.encodingAESKey?.trim()
+      !config.token?.trim()
     ) {
       throw new WechatError(
         "WECHAT_CONFIG_INVALID",
-        "wecom requires corpId, agentId, corpSecret, token, and encodingAESKey",
+        "wecom requires corpId, corpSecret, and token",
         { accountId: id },
       );
     }
+    if (!Number.isSafeInteger(config.agentId) || (config.agentId ?? 0) <= 0) {
+      throw new WechatError(
+        "WECHAT_CONFIG_INVALID",
+        "wecom agentId must be a positive integer",
+        { accountId: id, agentId: config.agentId },
+      );
+    }
+    assertValidAesKey(config.encodingAESKey, id);
     return {
       id,
       mode: "wecom",
@@ -375,6 +446,28 @@ export function resolveDirectAccount(
   throw new WechatError(
     "WECHAT_CONFIG_INVALID",
     "account configuration has no supported mode",
-    { accountId: id, mode: (config as { mode?: string }).mode },
+    {
+      accountId: id,
+      mode: rawMode,
+    },
   );
+}
+
+function assertValidAesKey(value: string | undefined, accountId: string): void {
+  const trimmed = value?.trim() ?? "";
+  if (trimmed.length !== WECHAT_AES_KEY_BASE64_LENGTH) {
+    throw new WechatError(
+      "WECHAT_CONFIG_INVALID",
+      "encodingAESKey must be exactly 43 base64 characters",
+      { accountId, length: trimmed.length },
+    );
+  }
+  const decoded = Buffer.from(`${trimmed}=`, "base64");
+  if (decoded.length !== 32) {
+    throw new WechatError(
+      "WECHAT_CONFIG_INVALID",
+      "encodingAESKey must decode to 32 bytes",
+      { accountId, decodedLength: decoded.length },
+    );
+  }
 }

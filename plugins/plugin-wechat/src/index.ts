@@ -115,12 +115,14 @@ function resolveWechatConfig(
 
 function normalizeConnectorLimit(
   limit: number | undefined,
-  fallback = 50,
-): number {
-  if (!Number.isFinite(limit) || !limit || limit <= 0) {
-    return fallback;
+): number | undefined {
+  if (limit === undefined) return undefined;
+  if (!Number.isFinite(limit) || limit <= 0) {
+    throw new RangeError(
+      "WeChat connector limit must be a positive finite number",
+    );
   }
-  return Math.min(Math.floor(limit), 200);
+  return Math.floor(limit);
 }
 
 function resolveWechatAccountId(
@@ -198,22 +200,20 @@ async function listWechatTargets(): Promise<MessageConnectorTarget[]> {
 function filterMemoriesByQuery(
   memories: Memory[],
   query: string,
-  limit: number,
+  limit: number | undefined,
 ): Memory[] {
   const normalized = query.trim().toLowerCase();
-  if (!normalized) {
-    return memories.slice(0, limit);
-  }
-  return memories
-    .filter((memory) => {
-      const text =
-        typeof memory.content?.text === "string" ? memory.content.text : "";
-      return text.toLowerCase().includes(normalized);
-    })
-    .slice(0, limit);
+  const filtered = normalized
+    ? memories.filter((memory) => {
+        const text =
+          typeof memory.content?.text === "string" ? memory.content.text : "";
+        return text.toLowerCase().includes(normalized);
+      })
+    : memories;
+  return limit === undefined ? filtered : filtered.slice(0, limit);
 }
 
-function registerWechatMessageConnector(
+export function registerWechatMessageConnector(
   runtime: unknown,
   config: WechatConfig,
 ): void {
@@ -261,10 +261,9 @@ function registerWechatMessageConnector(
                   : (target.score ?? 0.4),
             };
           })
-          .filter((target) => !normalized || (target.score ?? 0) >= 0.8)
-          .slice(0, 25);
+          .filter((target) => !normalized || (target.score ?? 0) >= 0.8);
       },
-      listRecentTargets: async () => (await listWechatTargets()).slice(0, 10),
+      listRecentTargets: async () => listWechatTargets(),
       fetchMessages: async (
         context: { runtime: IAgentRuntime; target?: TargetInfo },
         params?: WechatConnectorReadParams,
@@ -275,12 +274,12 @@ function registerWechatMessageConnector(
           return context.runtime.getMemories({
             tableName: "messages",
             roomId: target.roomId,
-            limit,
+            ...(limit === undefined ? {} : { limit }),
             orderBy: "createdAt",
             orderDirection: "desc",
           });
         }
-        const targets = (await listWechatTargets()).slice(0, 10);
+        const targets = await listWechatTargets();
         const chunks = await Promise.all(
           targets
             .map((candidate) => candidate.target.roomId)
@@ -289,16 +288,18 @@ function registerWechatMessageConnector(
               context.runtime.getMemories({
                 tableName: "messages",
                 roomId,
-                limit,
+                ...(limit === undefined ? {} : { limit }),
                 orderBy: "createdAt",
                 orderDirection: "desc",
               }),
             ),
         );
-        return chunks
+        const sorted = chunks
           .flat()
-          .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
-          .slice(0, limit);
+          .sort(
+            (left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0),
+          );
+        return limit === undefined ? sorted : sorted.slice(0, limit);
       },
       searchMessages: async (
         context: { runtime: IAgentRuntime; target?: TargetInfo },
@@ -318,7 +319,7 @@ function registerWechatMessageConnector(
         const messages =
           (await registration?.fetchMessages?.(context, {
             target: params.target ?? context.target,
-            limit: Math.max(limit, 100),
+            ...(limit === undefined ? {} : { limit }),
           })) ?? [];
         return filterMemoriesByQuery(messages, params.query, limit);
       },

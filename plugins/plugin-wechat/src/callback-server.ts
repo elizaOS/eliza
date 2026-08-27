@@ -1,12 +1,14 @@
 /**
  * Public callback HTTP surface for first-party WeChat platforms: `GET` URL
- * verification (echo/echostr handshake) and `POST` message delivery. Every
- * request is signature-verified against the addressed account before any
- * parsing, decryption, or dispatch; unverified requests never reach message
- * normalization or the runtime. Accounts are addressed by id in the path
- * (`/webhook/wechat/<accountId>`), so one server serves many accounts and a
- * signed-for-A payload can never be replayed against account B. This module
- * replaces the deleted proxy callback protocol wholesale.
+ * verification (echo/echostr handshake) and `POST` message delivery. The
+ * security mode is taken from the RESOLVED ACCOUNT (never from request
+ * shape), so an encrypted-mode account cannot be downgraded to the plaintext
+ * verification path; the outer encrypted envelope is extracted with the
+ * hardened parser (WeCom's documented sequence) but no decrypted or business
+ * payload is parsed before signature verification succeeds, and the embedded
+ * receiver id must match the addressed account. Accounts are addressed by id
+ * in the path (`/webhook/wechat/<accountId>`); a payload signed or encrypted
+ * for one account can never be accepted for another.
  */
 import type { Server } from "node:http";
 import {
@@ -56,17 +58,27 @@ export async function startCallbackServer(
     port,
     accounts,
     onMessage,
-    onDeliveryError = () => undefined,
+    onDeliveryError,
     signal,
     maxBodyBytes = DEFAULT_MAX_BODY_BYTES,
   } = options;
 
   const server = createServer((req, res) => {
-    void handleRequest(req, res, {
+    // error-policy:J1 any unexpected failure inside request handling becomes
+    // a structured 500 at this boundary instead of an unhandled rejection.
+    handleRequest(req, res, {
       accounts,
       onMessage,
       onDeliveryError,
       maxBodyBytes,
+    }).catch((error: unknown) => {
+      console.error("[wechat] Unexpected callback handler failure", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      if (!res.writableEnded) {
+        res.writeHead(500);
+        res.end("Internal Server Error");
+      }
     });
   });
 
@@ -116,22 +128,23 @@ async function handleRequest(
   res: ServerResponse,
   deps: RequestDeps,
 ): Promise<void> {
+  // Route-first: an unknown account/path is 404 regardless of method.
   const account = resolveCallbackAccount(req.url, deps.accounts);
-  if (req.method !== "GET" && req.method !== "POST") {
-    res.writeHead(405);
-    res.end("Method Not Allowed");
-    return;
-  }
   if (!account) {
     res.writeHead(404);
     res.end("Not Found");
+    return;
+  }
+  if (req.method !== "GET" && req.method !== "POST") {
+    res.writeHead(405);
+    res.end("Method Not Allowed");
     return;
   }
 
   const query = parseQuery(req.url ?? "");
 
   if (req.method === "GET") {
-    handleUrlVerification(req, res, account, query);
+    handleUrlVerification(res, account, query);
     return;
   }
 
@@ -139,12 +152,16 @@ async function handleRequest(
 }
 
 function handleUrlVerification(
-  _req: IncomingMessage,
   res: ServerResponse,
   account: ResolvedWechatAccount,
   query: URLSearchParams,
 ): void {
-  const signature = query.get("signature") ?? query.get("msg_signature") ?? "";
+  // The verification flavor is fixed by the account's configured security
+  // mode, not by which query parameters the caller happened to supply.
+  const encryptedMode = account.securityMode === "encrypted";
+  const signature = encryptedMode
+    ? (query.get("msg_signature") ?? "")
+    : (query.get("signature") ?? "");
   const timestamp = query.get("timestamp") ?? "";
   const nonce = query.get("nonce") ?? "";
   const echostr = query.get("echostr") ?? "";
@@ -155,12 +172,11 @@ function handleUrlVerification(
     return;
   }
 
-  const encryptedEcho = query.get("msg_signature") !== null;
   const valid = verifyCallbackSignature(signature, [
     account.tokenSecret,
     timestamp,
     nonce,
-    encryptedEcho ? echostr : undefined,
+    ...(encryptedMode ? [echostr] : []),
   ]);
   if (!valid) {
     // Signature failure is a security event: reject without parsing anything.
@@ -169,7 +185,7 @@ function handleUrlVerification(
     return;
   }
 
-  if (encryptedEcho) {
+  if (encryptedMode) {
     try {
       const decrypted = decryptCallbackPayload(
         echostr,
@@ -204,12 +220,21 @@ async function handleMessagePost(
   query: URLSearchParams,
   deps: RequestDeps,
 ): Promise<void> {
-  const signature = query.get("msg_signature") ?? query.get("signature") ?? "";
+  const encryptedMode = account.securityMode === "encrypted";
+  const signature = encryptedMode
+    ? (query.get("msg_signature") ?? "")
+    : (query.get("signature") ?? "");
   const timestamp = query.get("timestamp") ?? "";
   const nonce = query.get("nonce") ?? "";
   if (!signature || !timestamp || !nonce) {
     res.writeHead(400);
     res.end("Bad Request");
+    return;
+  }
+  if (encryptedMode && query.get("msg_signature") === null) {
+    // An encrypted-mode account must never accept the plaintext path.
+    res.writeHead(403);
+    res.end("Forbidden");
     return;
   }
 
@@ -218,10 +243,12 @@ async function handleMessagePost(
     return;
   }
 
-  const encrypted =
-    query.get("msg_signature") !== null || body.includes("<Encrypt>");
-  let encryptField: string | undefined;
-  if (encrypted) {
+  let xmlText: string;
+  if (encryptedMode) {
+    // WeCom's documented sequence: extract the outer Encrypt envelope with
+    // the hardened parser, verify the signature over it, then decrypt. No
+    // decrypted or business payload is parsed before verification succeeds.
+    let encryptField: string;
     try {
       encryptField = extractEncryptField(body);
     } catch (err) {
@@ -232,15 +259,12 @@ async function handleMessagePost(
       }
       throw err;
     }
-  }
 
-  let xmlText: string;
-  if (encrypted) {
     const valid = verifyCallbackSignature(signature, [
       account.tokenSecret,
       timestamp,
       nonce,
-      encryptField ?? "",
+      encryptField,
     ]);
     if (!valid) {
       res.writeHead(403);
@@ -249,7 +273,7 @@ async function handleMessagePost(
     }
     try {
       const decrypted = decryptCallbackPayload(
-        encryptField ?? "",
+        encryptField,
         account.encodingAESKey ?? "",
       );
       if (decrypted.receiverId !== account.platformIdentity) {
@@ -293,6 +317,13 @@ async function handleMessagePost(
   if (!message) {
     res.writeHead(200, { "Content-Type": "text/plain" });
     res.end("success");
+    return;
+  }
+  // Receiver binding: a decrypted/plaintext payload addressed to a different
+  // account identity is a cross-account replay, not a message for this route.
+  if (message.recipient && message.recipient !== account.platformIdentity) {
+    res.writeHead(403);
+    res.end("Forbidden");
     return;
   }
 
@@ -412,8 +443,6 @@ export function normalizePlatformXml(
       return null;
   }
 
-  // WeCom app chat may address a group via ChatId in some forms; Official
-  // Account has no group scope. Room scoping arrives only with observed data.
   return {
     id,
     type,
@@ -459,6 +488,8 @@ function parseQuery(rawUrl: string): URLSearchParams {
   try {
     return new URL(rawUrl, "http://localhost").searchParams;
   } catch {
+    // error-policy:J3 an unparseable target yields empty query parameters;
+    // signature checks then fail closed with 400/403.
     return new URLSearchParams();
   }
 }
