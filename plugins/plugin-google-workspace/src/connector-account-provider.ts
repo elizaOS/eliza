@@ -21,7 +21,6 @@ import {
   type ConnectorAccountPatch,
   type ConnectorAccountProvider,
   type ConnectorAccountPurpose,
-  type ConnectorAccountRole,
   type ConnectorOAuthCallbackRequest,
   type ConnectorOAuthCallbackResult,
   type ConnectorOAuthStartRequest,
@@ -53,6 +52,7 @@ import { GOOGLE_SERVICE_NAME } from "./types.js";
 
 const GOOGLE_USERINFO_ENDPOINT = "https://openidconnect.googleapis.com/v1/userinfo";
 const GOOGLE_OAUTH_REVOKED_AT_METADATA_KEY = "oauthRevokedAt";
+type GoogleConnectorRole = "OWNER" | "AGENT" | "TEAM";
 
 /** Maximum time allowed for one Google OAuth or userinfo request. */
 export const GOOGLE_OAUTH_FETCH_TIMEOUT_MS = 15_000;
@@ -119,10 +119,7 @@ function createOidcNonce(): string {
  * the role keeps an owner grant distinct from an intentionally separate agent
  * grant for the same Google account.
  */
-export function stableGoogleConnectorAccountId(
-  subject: string,
-  role: ConnectorAccountRole
-): string {
+export function stableGoogleConnectorAccountId(subject: string, role: GoogleConnectorRole): string {
   const digest = createHash("sha256").update(`${role}\u0000${subject}`).digest("hex").slice(0, 32);
   return `acct_google_${digest}`;
 }
@@ -640,7 +637,7 @@ function requestedScopesFromMetadata(metadata: unknown): string[] {
   return scopes;
 }
 
-function roleFromMetadata(metadata: unknown): ConnectorAccountRole {
+function roleFromMetadata(metadata: unknown): GoogleConnectorRole {
   const record =
     metadata && typeof metadata === "object" && !Array.isArray(metadata)
       ? (metadata as Record<string, unknown>)
@@ -681,7 +678,7 @@ function roleFromMetadata(metadata: unknown): ConnectorAccountRole {
 async function resolveOAuthRoleAtStart(
   request: ConnectorOAuthStartRequest,
   manager: ConnectorAccountManager
-): Promise<ConnectorAccountRole> {
+): Promise<GoogleConnectorRole> {
   const accountId = nonEmptyString(request.accountId);
   if (!accountId) {
     return roleFromMetadata(request.metadata);
@@ -916,10 +913,13 @@ export function createGoogleConnectorAccountProvider(
       // Persistence is owned by the manager; this adapter just normalizes the
       // patch into a Google-shaped account so role/purpose/status defaults are
       // sensible when an upstream caller creates the row before OAuth runs.
+      const role = roleFromMetadata({ role: input.role });
+      const externalId = nonEmptyString(input.externalId);
       return {
         ...input,
         provider: GOOGLE_SERVICE_NAME,
-        role: roleFromMetadata({ role: input.role }),
+        ...(externalId ? { accountKey: stableGoogleConnectorAccountId(externalId, role) } : {}),
+        role,
         purpose: input.purpose ?? ["messaging", "calendar", "drive", "meet"],
         accessGate: input.accessGate ?? "open",
         status: input.status ?? "pending",
@@ -929,15 +929,56 @@ export function createGoogleConnectorAccountProvider(
     patchAccount: async (
       accountId: string,
       patch: ConnectorAccountPatch,
-      _manager: ConnectorAccountManager
+      manager: ConnectorAccountManager
     ) => {
+      const existing = await manager.getAccount(GOOGLE_SERVICE_NAME, accountId);
+      if (!existing) {
+        return { ...patch, provider: GOOGLE_SERVICE_NAME };
+      }
+
+      const existingExternalId = nonEmptyString(existing.externalId);
+      if (
+        patch.externalId !== undefined &&
+        nonEmptyString(patch.externalId) !== existingExternalId
+      ) {
+        throw new ElizaError("Google connector external identity can only be changed by OAuth.", {
+          code: "GOOGLE_CONNECTOR_EXTERNAL_ID_IMMUTABLE",
+          context: { accountId },
+          severity: "fatal",
+        });
+      }
+      const role = roleFromMetadata({ role: patch.role ?? existing.role });
+      const nextAccountKey = existingExternalId
+        ? stableGoogleConnectorAccountId(existingExternalId, role)
+        : nonEmptyString(existing.accountKey);
+      if (nextAccountKey && nextAccountKey !== existing.accountKey) {
+        const conflictingAccount = await manager.getAccount(GOOGLE_SERVICE_NAME, nextAccountKey);
+        if (conflictingAccount && conflictingAccount.id !== existing.id) {
+          throw new ElizaError("A Google connector account already owns this subject and role.", {
+            code: "GOOGLE_CONNECTOR_ROLE_ACCOUNT_CONFLICT",
+            context: { accountId, conflictingAccountId: conflictingAccount.id, role },
+            severity: "fatal",
+          });
+        }
+      }
       if (patch.status === "revoked" || patch.status === "disabled") {
         const calendarService = runtime.getService("calendar");
         if (isGoogleCalendarWatchRevocationService(calendarService)) {
           await calendarService.revokeGoogleCalendarWatchesByAccount(accountId);
         }
       }
-      return { ...patch, provider: GOOGLE_SERVICE_NAME };
+      return {
+        ...existing,
+        ...patch,
+        provider: GOOGLE_SERVICE_NAME,
+        ...(existingExternalId && nextAccountKey
+          ? {
+              accountKey: nextAccountKey,
+              externalId: existingExternalId,
+            }
+          : {}),
+        role,
+      };
     },
 
     deleteAccount: async (accountId: string, manager: ConnectorAccountManager): Promise<void> => {
@@ -1105,7 +1146,7 @@ export function createGoogleConnectorAccountProvider(
         config.redirectUri;
 
       const requestedAccountId = nonEmptyString(request.flow.accountId);
-      const existingAccount = requestedAccountId
+      let existingAccount = requestedAccountId
         ? await manager.getAccount(GOOGLE_SERVICE_NAME, requestedAccountId)
         : null;
       if (requestedAccountId && !existingAccount) {
@@ -1118,9 +1159,9 @@ export function createGoogleConnectorAccountProvider(
           }
         );
       }
-      const priorCredentialRefs: OAuthCredentialRefSnapshot[] = requestedAccountId
+      let priorCredentialRefs: OAuthCredentialRefSnapshot[] = existingAccount
         ? await runtime.adapter.listConnectorAccountCredentialRefs({
-            accountId: requestedAccountId as UUID,
+            accountId: existingAccount.id as UUID,
           })
         : [];
 
@@ -1234,8 +1275,31 @@ export function createGoogleConnectorAccountProvider(
             }
           );
         }
-        const accountId =
-          requestedAccountId ?? stableGoogleConnectorAccountId(externalId, requestedRole);
+        const providerAccountKey = stableGoogleConnectorAccountId(externalId, requestedRole);
+        if (!existingAccount) {
+          const identityMatches = (await manager.listAccounts(GOOGLE_SERVICE_NAME)).filter(
+            (account) =>
+              nonEmptyString(account.externalId) === externalId &&
+              roleFromMetadata({ role: account.role }) === requestedRole
+          );
+          if (identityMatches.length > 1) {
+            throw new ElizaError(
+              "Google OAuth found multiple connector accounts for the same subject and role.",
+              {
+                code: "GOOGLE_OAUTH_ACCOUNT_IDENTITY_AMBIGUOUS",
+                context: { externalId, role: requestedRole },
+                severity: "fatal",
+              }
+            );
+          }
+          existingAccount = identityMatches[0] ?? null;
+          if (existingAccount) {
+            priorCredentialRefs = await runtime.adapter.listConnectorAccountCredentialRefs({
+              accountId: existingAccount.id as UUID,
+            });
+          }
+        }
+        const accountId = existingAccount?.id ?? providerAccountKey;
         const expiresAt = Date.now() + tokens.expires_in * 1000;
         const oauthCredentialVersion = String(Date.now());
         const accountMetadata = {
@@ -1264,6 +1328,7 @@ export function createGoogleConnectorAccountProvider(
           {
             ...(existingAccount ?? {}),
             provider: GOOGLE_SERVICE_NAME,
+            accountKey: providerAccountKey,
             role: existingAccount?.role ?? requestedRole,
             purpose: purposes,
             accessGate: "open",

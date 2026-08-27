@@ -4,7 +4,10 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { createGoogleConnectorAccountProvider } from "./connector-account-provider.js";
+import {
+  createGoogleConnectorAccountProvider,
+  stableGoogleConnectorAccountId,
+} from "./connector-account-provider.js";
 
 const provider = createGoogleConnectorAccountProvider({
   getSetting: () => undefined,
@@ -24,8 +27,132 @@ describe("Google connector account role admission", () => {
 
   it("preserves an explicit canonical role", async () => {
     await expect(
-      provider.createAccount?.({ role: "AGENT" } as never, {} as never)
-    ).resolves.toMatchObject({ provider: "google", role: "AGENT" });
+      provider.createAccount?.(
+        { role: "AGENT", externalId: "shared-subject" } as never,
+        {} as never
+      )
+    ).resolves.toMatchObject({
+      accountKey: stableGoogleConnectorAccountId("shared-subject", "AGENT"),
+      externalId: "shared-subject",
+      provider: "google",
+      role: "AGENT",
+    });
+  });
+
+  it("rekeys an existing account when its role changes", async () => {
+    const existing = {
+      id: "account-1",
+      provider: "google",
+      accountKey: stableGoogleConnectorAccountId("shared-subject", "OWNER"),
+      role: "OWNER",
+      purpose: ["automation"],
+      accessGate: "open",
+      status: "connected",
+      externalId: "shared-subject",
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const getAccount = vi.fn(async () => existing);
+
+    await expect(
+      provider.patchAccount?.("account-1", { role: "AGENT" }, { getAccount } as never)
+    ).resolves.toMatchObject({
+      id: "account-1",
+      accountKey: stableGoogleConnectorAccountId("shared-subject", "AGENT"),
+      externalId: "shared-subject",
+      role: "AGENT",
+    });
+  });
+
+  it.each([
+    ["replace", "different-subject"],
+    ["clear", null],
+  ])("rejects an external identity %s without OAuth", async (_label, externalId) => {
+    const existing = {
+      id: "account-1",
+      provider: "google",
+      accountKey: stableGoogleConnectorAccountId("shared-subject", "OWNER"),
+      role: "OWNER",
+      purpose: ["automation"],
+      accessGate: "open",
+      status: "connected",
+      externalId: "shared-subject",
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const getAccount = vi.fn(async () => existing);
+
+    await expect(
+      provider.patchAccount?.("account-1", { externalId }, { getAccount } as never)
+    ).rejects.toMatchObject({ code: "GOOGLE_CONNECTOR_EXTERNAL_ID_IMMUTABLE" });
+  });
+
+  it("validates a role patch before revoking calendar watches", async () => {
+    const revokeGoogleCalendarWatchesByAccount = vi.fn(async () => undefined);
+    const guardedProvider = createGoogleConnectorAccountProvider({
+      getSetting: () => undefined,
+      getService: (serviceType: string) =>
+        serviceType === "calendar" ? { revokeGoogleCalendarWatchesByAccount } : null,
+    } as never);
+    const existing = {
+      id: "account-1",
+      provider: "google",
+      accountKey: stableGoogleConnectorAccountId("shared-subject", "OWNER"),
+      role: "OWNER",
+      purpose: ["automation"],
+      accessGate: "open",
+      status: "connected",
+      externalId: "shared-subject",
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const getAccount = vi.fn(async () => existing);
+
+    await expect(
+      guardedProvider.patchAccount?.(
+        "account-1",
+        { role: "administrator" as never, status: "disabled" },
+        { getAccount } as never
+      )
+    ).rejects.toMatchObject({ code: "GOOGLE_CONNECTOR_ROLE_INVALID" });
+    expect(revokeGoogleCalendarWatchesByAccount).not.toHaveBeenCalled();
+  });
+
+  it("detects a role identity collision before revoking calendar watches", async () => {
+    const revokeGoogleCalendarWatchesByAccount = vi.fn(async () => undefined);
+    const guardedProvider = createGoogleConnectorAccountProvider({
+      getSetting: () => undefined,
+      getService: (serviceType: string) =>
+        serviceType === "calendar" ? { revokeGoogleCalendarWatchesByAccount } : null,
+    } as never);
+    const owner = {
+      id: "owner-account",
+      provider: "google",
+      accountKey: stableGoogleConnectorAccountId("shared-subject", "OWNER"),
+      role: "OWNER",
+      purpose: ["automation"],
+      accessGate: "open",
+      status: "connected",
+      externalId: "shared-subject",
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const agent = {
+      ...owner,
+      id: "agent-account",
+      accountKey: stableGoogleConnectorAccountId("shared-subject", "AGENT"),
+      role: "AGENT",
+    };
+    const getAccount = vi.fn(async (_provider: string, accountRef: string) =>
+      accountRef === owner.id ? owner : agent
+    );
+
+    await expect(
+      guardedProvider.patchAccount?.(owner.id, { role: "AGENT", status: "disabled" }, {
+        getAccount,
+      } as never)
+    ).rejects.toMatchObject({ code: "GOOGLE_CONNECTOR_ROLE_ACCOUNT_CONFLICT" });
+    expect(revokeGoogleCalendarWatchesByAccount).not.toHaveBeenCalled();
   });
 
   it("returns a role-bound consent URL for a valid new grant", async () => {

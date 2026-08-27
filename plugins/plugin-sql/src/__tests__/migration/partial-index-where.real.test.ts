@@ -5,7 +5,7 @@
  * turn them into full unique indexes and diverge from the committed SQL
  * migrations. Covers the whole pipeline: snapshot capture, SQL generation
  * (including NULLS ordering), and a real-database check that RuntimeMigrator
- * and the committed drizzle/migrations/0003 file produce byte-identical
+ * and the committed drizzle/migrations/0004 file produce byte-identical
  * pg_get_indexdef output for the same declared index.
  */
 import fs from "node:fs";
@@ -25,9 +25,9 @@ import { createIsolatedTestDatabaseForMigration } from "../test-helpers";
 
 const INDEX_NAME = "approval_requests_agent_idempotency_uidx";
 
-const MIGRATION_0003_PATH = path.resolve(
+const MIGRATION_0004_PATH = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  "../../../drizzle/migrations/0003_approval_request_idempotency.sql"
+  "../../../drizzle/migrations/0004_approval_request_idempotency.sql"
 );
 
 async function getIndexDef(db: DrizzleDB, indexName: string): Promise<string> {
@@ -62,7 +62,7 @@ describe("Partial index WHERE clause preservation", () => {
       expect(connectorIndexes.connector_accounts_agent_provider_account_key_uniq.where).toBe(
         `"deleted_at" IS NULL`
       );
-      expect(connectorIndexes.connector_accounts_agent_provider_external_uniq.where).toBe(
+      expect(connectorIndexes.connector_accounts_agent_provider_external_role_uniq.where).toBe(
         `"deleted_at" IS NULL`
       );
 
@@ -130,9 +130,9 @@ describe("Partial index WHERE clause preservation", () => {
       }
     });
 
-    it("RuntimeMigrator and drizzle/migrations/0003 produce identical index DDL", async () => {
+    it("RuntimeMigrator and drizzle/migrations/0004 produce identical index DDL", async () => {
       // Path A: the committed SQL migration, applied verbatim from disk
-      // against a minimal pre-existing approval_requests table (0003 is an
+      // against a minimal pre-existing approval_requests table (0004 is an
       // ALTER + CREATE INDEX on an already-provisioned database).
       await db.execute(
         sql.raw(
@@ -140,7 +140,7 @@ describe("Partial index WHERE clause preservation", () => {
         )
       );
 
-      const migrationSql = fs.readFileSync(MIGRATION_0003_PATH, "utf8");
+      const migrationSql = fs.readFileSync(MIGRATION_0004_PATH, "utf8");
       for (const statement of migrationSql.split(/-->\s*statement-breakpoint/)) {
         const trimmed = statement.trim();
         if (trimmed.length > 0) {
