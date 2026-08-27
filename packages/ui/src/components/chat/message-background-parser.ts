@@ -12,7 +12,7 @@
  */
 
 /** The single background marker; matched globally so repeats each render. */
-export const BACKGROUND_RE = /\[BACKGROUND\]/g;
+export const BACKGROUND_RE = /\[[ \t]*BACKGROUND[ \t]*\]/g;
 
 export interface BackgroundMatch {
   start: number;

@@ -37,6 +37,15 @@ describe("findBackgroundRegions", () => {
     BACKGROUND_RE.lastIndex = 5;
     expect(findBackgroundRegions(text)).toHaveLength(1);
   });
+
+  it("finds a background marker with horizontal whitespace inside brackets", () => {
+    const text = "here you go:\n\n[  BACKGROUND  ]";
+    const regions = findBackgroundRegions(text);
+    expect(regions).toHaveLength(1);
+    expect(text.slice(regions[0].start, regions[0].end)).toBe(
+      "[  BACKGROUND  ]",
+    );
+  });
 });
 
 describe("background inline widget registration", () => {
@@ -44,6 +53,14 @@ describe("background inline widget registration", () => {
     const widget = getInlineWidget("background");
     expect(widget).toBeDefined();
     const matches = widget?.parse("pick one:\n\n[BACKGROUND]") ?? [];
+    expect(matches).toHaveLength(1);
+    expect(matches[0].start).toBeGreaterThan(0);
+  });
+
+  it("parses bracket-spaced marker through widget registration", () => {
+    const widget = getInlineWidget("background");
+    expect(widget).toBeDefined();
+    const matches = widget?.parse("pick one:\n\n[   BACKGROUND   ]") ?? [];
     expect(matches).toHaveLength(1);
     expect(matches[0].start).toBeGreaterThan(0);
   });
