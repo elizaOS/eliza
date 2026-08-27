@@ -291,6 +291,9 @@ app.patch("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const agentId = c.req.param("agentId") ?? "";
+    if (isPersonalSharedAgentId(agentId)) {
+      return c.json({ success: false, error: "Agent not found" }, 404);
+    }
     const body = await c.req.json().catch(() => null);
 
     // A body without `action` is an in-place profile edit (rename / config
@@ -471,6 +474,9 @@ app.delete("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const agentId = c.req.param("agentId") ?? "";
+    if (isPersonalSharedAgentId(agentId)) {
+      return c.json({ success: false, error: "Agent not found" }, 404);
+    }
     let expectedIdentity:
       | {
           agentName: string;

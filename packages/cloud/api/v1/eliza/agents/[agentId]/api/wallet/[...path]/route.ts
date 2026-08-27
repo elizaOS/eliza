@@ -212,15 +212,21 @@ export async function resolveStewardAgentId(
 async function resolveStewardAgentIdForProxy(
   client: StewardClient,
   sandboxAgentId: string,
+  userId: string,
   organizationId: string,
 ): Promise<string | null> {
   // Personal Shared identities are rowless, so they must not enter the
-  // UUID-backed agent_server_wallets lookup. Ownership was already bound to
-  // the authenticated account before this resolver is called.
+  // UUID-backed agent_server_wallets lookup. Re-derive ownership here so a
+  // future caller cannot rely only on call-site discipline.
   if (isPersonalSharedAgentId(sandboxAgentId)) {
+    const expectedPersonalId = personalSharedAgentId({
+      userId,
+      organizationId,
+    });
+    if (sandboxAgentId.toLowerCase() !== expectedPersonalId) return null;
     try {
-      await client.getAgent(sandboxAgentId);
-      return sandboxAgentId;
+      await client.getAgent(expectedPersonalId);
+      return expectedPersonalId;
     } catch {
       // error-policy:J4 Steward treats an unknown Personal id as unavailable;
       // preserve the route's indistinguishable-not-found contract.
@@ -405,17 +411,19 @@ export async function handleDirectWalletRequest(
     );
   }
 
+  let ownedAgentId = agentId;
   if (isPersonalSharedAgentId(agentId)) {
     const expectedPersonalId = personalSharedAgentId({
       userId: user.id,
       organizationId: user.organization_id,
     });
-    if (agentId !== expectedPersonalId) {
+    if (agentId.toLowerCase() !== expectedPersonalId) {
       return json(
         { success: false, error: "Agent not found" },
         { status: 404 },
       );
     }
+    ownedAgentId = expectedPersonalId;
   } else {
     const agent = await elizaSandboxService.getAgent(
       agentId,
@@ -462,7 +470,8 @@ export async function handleDirectWalletRequest(
 
   const stewardAgentId = await resolveStewardAgentIdForProxy(
     client,
-    agentId,
+    ownedAgentId,
+    user.id,
     user.organization_id,
   );
   if (!stewardAgentId) {

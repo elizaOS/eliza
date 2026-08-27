@@ -201,4 +201,26 @@ describe("owned agent detail private-address contract", () => {
     });
     expect(getAgent).not.toHaveBeenCalled();
   });
+
+  test.each(["PATCH", "DELETE"])(
+    "%s rejects Personal identity before parsing or UUID-backed repository access",
+    async (method) => {
+      getAgent.mockClear();
+      const personalId = personalSharedAgentId({
+        userId: "user-1",
+        organizationId: "org-1",
+      });
+
+      const response = await app.request(`/api/v1/eliza/agents/${personalId}`, {
+        method,
+      });
+
+      expect(response.status).toBe(404);
+      await expect(response.json()).resolves.toEqual({
+        success: false,
+        error: "Agent not found",
+      });
+      expect(getAgent).not.toHaveBeenCalled();
+    },
+  );
 });

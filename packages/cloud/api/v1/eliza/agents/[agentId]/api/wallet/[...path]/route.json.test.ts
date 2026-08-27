@@ -139,6 +139,26 @@ describe("wallet-path malformed JSON", () => {
     expect(dbSelect).not.toHaveBeenCalled();
   });
 
+  test("canonical Personal id is normalized before Steward lookup", async () => {
+    stewardGetAgent.mockClear();
+    const personalId = personalSharedAgentId({
+      userId: "user-1",
+      organizationId: "org-1",
+    });
+
+    const response = await handleDirectWalletRequest(
+      context(""),
+      Promise.resolve({
+        agentId: personalId.toUpperCase(),
+        path: ["addresses"],
+      }),
+      "GET",
+    );
+
+    expect(response.status).toBe(200);
+    expect(stewardGetAgent).toHaveBeenCalledWith(personalId);
+  });
+
   test("canonical Personal id without a Steward agent returns the existing typed 404", async () => {
     getAgent.mockClear();
     dbSelect.mockClear();
