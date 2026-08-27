@@ -472,11 +472,11 @@ describe("Task Integration Tests", () => {
       expect(byName).toHaveLength(1);
       expect(byName[0]?.entityId).toBe(entityA);
 
-      const tasksForA = await adapter.getTasks({ entityId: entityA });
+      const tasksForA = await adapter.getTasks({ entityId: entityA, agentIds: [testAgentId] });
       expect(tasksForA.some((t) => t.id === taskAId)).toBe(true);
       expect(tasksForA.some((t) => t.id === taskBId)).toBe(false);
 
-      const tasksForB = await adapter.getTasks({ entityId: entityB });
+      const tasksForB = await adapter.getTasks({ entityId: entityB, agentIds: [testAgentId] });
       expect(tasksForB.some((t) => t.id === taskBId)).toBe(true);
       expect(tasksForB.some((t) => t.id === taskAId)).toBe(false);
 
