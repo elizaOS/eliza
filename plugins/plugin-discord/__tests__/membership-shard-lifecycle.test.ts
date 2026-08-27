@@ -213,15 +213,24 @@ describe("membership-evidence shard lifecycle wiring (#24365)", () => {
 			).toBeGreaterThanOrEqual(1);
 			calls[name].push(...parentHook.mock.calls);
 		}
-		// Options-carrying hooks stamp the facade state's account id on the
-		// forwarded options (falls back only when the caller supplied none).
-		const deltaCall = (
-			parent as unknown as Record<string, { mock: { calls: any[][] } }>
-		).publishMemberMembershipDelta.mock.calls[0][0];
+		// Every hook must carry the facade state's account id — either as
+		// the explicit first argument (direct hooks) or stamped on the
+		// forwarded options object (options-carrying hooks).
+		const forwarded = parent as unknown as Record<
+			string,
+			{ mock: { calls: any[][] } }
+		>;
+		expect(forwarded.publishGuildMembershipEvidence.mock.calls[0][0]).toBe(
+			"acct-secondary",
+		);
+		expect(forwarded.degradeMembershipForAccount.mock.calls[0][0]).toBe(
+			"acct-secondary",
+		);
+		const deltaCall = forwarded.publishMemberMembershipDelta.mock.calls[0][0];
 		expect(deltaCall.accountId).toBe("acct-secondary");
-		const renewCall = (
-			parent as unknown as Record<string, { mock: { calls: any[][] } }>
-		).renewSenderMembershipEvidence.mock.calls[0][0];
+		const permCall = forwarded.publishMemberPermissionDelta.mock.calls[0][0];
+		expect(permCall.accountId).toBe("acct-secondary");
+		const renewCall = forwarded.renewSenderMembershipEvidence.mock.calls[0][0];
 		expect(renewCall.accountId).toBe("acct-secondary");
 	});
 });
