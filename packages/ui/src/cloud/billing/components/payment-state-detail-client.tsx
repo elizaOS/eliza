@@ -14,6 +14,7 @@ import { ArrowLeft, LifeBuoy } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import type { PaymentStateDisplay } from "./payment-activity-card";
 
@@ -137,10 +138,10 @@ export function PaymentStateDetailClient({
     <div className="flex flex-col gap-6 max-w-6xl mx-auto p-6">
       <div className="border-b border-border pb-4">
         <Button
-          variant="ghost"
+          variant="ghostMuted"
           type="button"
           onClick={() => navigate("/settings#cloud-billing")}
-          className="group flex min-h-touch items-center gap-2 font-mono text-sm text-muted hover:text-txt-strong transition-colors"
+          className="group flex min-h-touch items-center gap-2 font-mono text-sm"
         >
           <div className="flex items-center justify-center size-8 rounded-sm bg-bg-elevated group-hover:bg-bg-hover transition-colors">
             <ArrowLeft className="size-4" />
@@ -218,7 +219,7 @@ export function PaymentStateDetailClient({
                   surface: authorityLabel,
                   id: row.authorityId,
                 })}
-                className="underline decoration-dotted underline-offset-2 hover:text-txt-strong cursor-pointer text-left"
+                className="underline decoration-dotted underline-offset-2 cursor-pointer text-left"
                 onClick={() => {
                   void copyReference(
                     row.authorityId,
@@ -244,7 +245,7 @@ export function PaymentStateDetailClient({
                     defaultValue: "Copy receipt ID {{id}} to clipboard",
                     id: row.receiptId,
                   })}
-                  className="underline decoration-dotted underline-offset-2 hover:text-txt-strong cursor-pointer text-left"
+                  className="underline decoration-dotted underline-offset-2 cursor-pointer text-left"
                   onClick={() => {
                     void copyReference(
                       row.receiptId as string,
@@ -270,81 +271,85 @@ export function PaymentStateDetailClient({
           </div>
 
           {hasReversalDetail ? (
-            <div
-              className="flex flex-col gap-1 border-l-2 border-amber-400/60 pl-3"
+            <Card
+              asChild
+              variant="billingReversalInset"
+              className="flex flex-col gap-1 pl-3"
               data-testid="payment-detail-reversal"
             >
-              {row.cumulativeRefundedChargeCurrency > 0 ? (
-                <p className="text-xs font-mono text-txt-strong">
-                  {t("cloud.billingTab.refundedAmount", {
-                    defaultValue: "Refunded",
+              <div>
+                {row.cumulativeRefundedChargeCurrency > 0 ? (
+                  <p className="text-xs font-mono text-txt-strong">
+                    {t("cloud.billingTab.refundedAmount", {
+                      defaultValue: "Refunded",
+                    })}
+                    :{" "}
+                    <span data-testid="payment-detail-refunded">
+                      {formatAmount(
+                        row.cumulativeRefundedChargeCurrency,
+                        row.currency,
+                      )}
+                    </span>
+                  </p>
+                ) : null}
+                {row.cumulativeDisputedChargeCurrency > 0 ? (
+                  <p className="text-xs font-mono text-txt-strong">
+                    {t("cloud.billingTab.disputedAmount", {
+                      defaultValue: "Disputed",
+                    })}
+                    :{" "}
+                    <span data-testid="payment-detail-disputed">
+                      {formatAmount(
+                        row.cumulativeDisputedChargeCurrency,
+                        row.currency,
+                      )}
+                    </span>
+                  </p>
+                ) : null}
+                {row.reinstatedCredits > 0 ? (
+                  <p className="text-xs font-mono text-txt-strong">
+                    {t("cloud.billingTab.reinstatedAmount", {
+                      defaultValue: "Reinstated",
+                    })}
+                    :{" "}
+                    <span data-testid="payment-detail-reinstated">
+                      {formatCredits(row.reinstatedCredits)}
+                    </span>
+                  </p>
+                ) : null}
+                <p className="text-xs font-mono text-muted-strong">
+                  {t("cloud.billingTab.clawedBackCredits", {
+                    defaultValue: "Credits removed",
                   })}
                   :{" "}
-                  <span data-testid="payment-detail-refunded">
-                    {formatAmount(
-                      row.cumulativeRefundedChargeCurrency,
-                      row.currency,
-                    )}
+                  <span data-testid="payment-detail-clawback">
+                    {formatCredits(row.cumulativeClawbackCredits)}
                   </span>
                 </p>
-              ) : null}
-              {row.cumulativeDisputedChargeCurrency > 0 ? (
-                <p className="text-xs font-mono text-txt-strong">
-                  {t("cloud.billingTab.disputedAmount", {
-                    defaultValue: "Disputed",
-                  })}
-                  :{" "}
-                  <span data-testid="payment-detail-disputed">
-                    {formatAmount(
-                      row.cumulativeDisputedChargeCurrency,
-                      row.currency,
-                    )}
-                  </span>
-                </p>
-              ) : null}
-              {row.reinstatedCredits > 0 ? (
-                <p className="text-xs font-mono text-txt-strong">
-                  {t("cloud.billingTab.reinstatedAmount", {
-                    defaultValue: "Reinstated",
-                  })}
-                  :{" "}
-                  <span data-testid="payment-detail-reinstated">
-                    {formatCredits(row.reinstatedCredits)}
-                  </span>
-                </p>
-              ) : null}
-              <p className="text-xs font-mono text-muted-strong">
-                {t("cloud.billingTab.clawedBackCredits", {
-                  defaultValue: "Credits removed",
-                })}
-                :{" "}
-                <span data-testid="payment-detail-clawback">
-                  {formatCredits(row.cumulativeClawbackCredits)}
-                </span>
-              </p>
-              {row.unrecoveredShortfallCredits > 0 ? (
-                <p className="text-xs font-mono text-amber-300">
-                  {t("cloud.billingTab.unrecoveredShortfall", {
-                    defaultValue: "Unrecovered balance shortfall",
-                  })}
-                  :{" "}
-                  <span data-testid="payment-detail-shortfall">
-                    {formatCredits(row.unrecoveredShortfallCredits)}
-                  </span>
-                </p>
-              ) : null}
-              {row.policyEffect !== null ? (
-                <p
-                  className="flex items-center gap-1.5 text-xs font-mono text-muted-strong"
-                  data-testid="payment-detail-policy-effect"
-                >
-                  {t("cloud.billingTab.policyEffectUnavailable", {
-                    defaultValue:
-                      "Policy effect unavailable pending refund policy decision",
-                  })}
-                </p>
-              ) : null}
-            </div>
+                {row.unrecoveredShortfallCredits > 0 ? (
+                  <p className="text-xs font-mono text-warn">
+                    {t("cloud.billingTab.unrecoveredShortfall", {
+                      defaultValue: "Unrecovered balance shortfall",
+                    })}
+                    :{" "}
+                    <span data-testid="payment-detail-shortfall">
+                      {formatCredits(row.unrecoveredShortfallCredits)}
+                    </span>
+                  </p>
+                ) : null}
+                {row.policyEffect !== null ? (
+                  <p
+                    className="flex items-center gap-1.5 text-xs font-mono text-muted-strong"
+                    data-testid="payment-detail-policy-effect"
+                  >
+                    {t("cloud.billingTab.policyEffectUnavailable", {
+                      defaultValue:
+                        "Policy effect unavailable pending refund policy decision",
+                    })}
+                  </p>
+                ) : null}
+              </div>
+            </Card>
           ) : null}
 
           {row.supportState === "contact_support" ? (
