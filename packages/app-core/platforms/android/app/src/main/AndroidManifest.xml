@@ -9,6 +9,11 @@
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
+        <!-- Android 11+ package visibility: expose installed system TTS
+             engines so ElizaPlayVoice can bind to the user's selected engine. -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
     </queries>
 
     <uses-feature
