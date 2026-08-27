@@ -597,6 +597,25 @@ export function createVoiceSessionClient(
         // Turn complete → loop back to listening once emitted.
         setState(loopToListening(state));
         break;
+      case "handoff_requested":
+        playback?.beginHandoff(event.crossfadeMs);
+        mark("handoff_requested", event.toTraceId);
+        break;
+      case "handoff_completed":
+        mark("handoff_completed", event.toTraceId);
+        break;
+      case "assistant_playing":
+        mark(
+          event.active ? "assistant_playing" : "assistant_playing_end",
+          event.traceId,
+        );
+        break;
+      case "human_double_talk":
+      case "echo_rejected":
+      case "user_eos":
+      case "next_reply_ready":
+        mark(event.t, event.traceId);
+        break;
       case "interrupted":
         // Reconcile: the server confirms the interruption. Ensure local audio is
         // silenced (idempotent with an optimistic local flush) and loop to
@@ -674,6 +693,14 @@ export function createVoiceSessionClient(
         return;
       }
       mic = createdMic;
+      sendControl({
+        t: "audio_capabilities",
+        mode: "continuous_handoff",
+        echoCancellation: createdMic.audioProcessing.echoCancellation,
+        noiseSuppression: createdMic.audioProcessing.noiseSuppression,
+        autoGainControl: createdMic.audioProcessing.autoGainControl,
+        referenceAwarePlayback: true,
+      });
       // Now genuinely listening.
       setState(beginListening(state));
     } catch (err) {
@@ -1053,6 +1080,11 @@ export function createVoiceSessionClient(
           onDrained: () => {
             if (isLifecycleCurrent(generation)) {
               mark("playback_drained", state.traceId);
+            }
+          },
+          onHandoffComplete: () => {
+            if (isLifecycleCurrent(generation)) {
+              mark("handoff_crossfade_complete", state.traceId);
             }
           },
           now,
