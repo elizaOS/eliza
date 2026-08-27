@@ -51,6 +51,7 @@ export {
 } from "./membershipAuthority";
 export { memoryTable } from "./memory";
 export { memoryAccessLogs } from "./memoryAccessLogs";
+export { memoryTextSegmentTable } from "./memoryTextSegments";
 export { messageTable } from "./message";
 export { messageServerTable } from "./messageServer";
 export { messageServerAgentsTable } from "./messageServerAgent";
