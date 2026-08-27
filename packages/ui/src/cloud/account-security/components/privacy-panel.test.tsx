@@ -68,12 +68,12 @@ describe("PrivacyPanel", () => {
     expect(consentMock.setVisionEnabled).toHaveBeenCalledWith(true);
   });
 
-  it("routes DSR export and delete through labelled SettingsRows", () => {
+  it("keeps account deletion live without a peer-level export row", () => {
     render(<PrivacyPanel />);
-    expect(screen.getByText("Download my data")).toBeTruthy();
     const del = screen.getByText("Delete account") as HTMLButtonElement;
     expect(screen.getByTestId("delete-account-trigger")).toBe(del);
     expect(del.disabled).toBe(false);
-    expect(screen.getByText("Export unavailable")).toBeTruthy();
+    expect(screen.queryByText("Download my data")).toBeNull();
+    expect(screen.queryByText("Export unavailable")).toBeNull();
   });
 });
