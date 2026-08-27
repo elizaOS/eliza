@@ -74,10 +74,12 @@ loopback gateway; all other `/api` traffic remains on `31337`. The provider
 loop is Cartesia Ink 2 STT → local runtime/model route → Cartesia Sonic 3.5 TTS.
 The Cartesia key remains in the gateway process and is never exposed to Vite or
 the browser. In dev-server mode, configuring `ELIZA_LOCAL_VOICE_GATEWAY_PORT`
-also defaults the staged realtime client flag on. An explicit
-`VITE_VOICE_REALTIME_WS` value still wins, the diagnostic
-`VITE_VOICE_REALTIME_FORCE` bypass remains explicit-only, and
-production/mobile builds keep their existing staged defaults.
+defaults both the staged realtime client and self-hosted capability flags on.
+The self-hosted path still requires a paired remote runtime and a successful
+same-origin health probe. Explicit `VITE_VOICE_REALTIME_WS` and
+`VITE_VOICE_REALTIME_SELF_HOSTED` values still win, the diagnostic
+`VITE_VOICE_REALTIME_FORCE` bypass remains explicit-only, and production/mobile
+builds keep their existing staged defaults.
 
 ## Flag retirement
 
