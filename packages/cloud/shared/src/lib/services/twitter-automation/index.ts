@@ -795,11 +795,16 @@ class TwitterAutomationService {
       });
 
       if (oauth2AccessToken && getTwitterApiErrorStatus(error) === 403) {
+        // error-policy:J4a an unverifiable identity never satisfies readiness: a 403 from
+        // `/2/users/me` means the stored OAuth2 grant is rejected by X, so the connection is
+        // reported disconnected with an explicit classification. Stored username/user id are
+        // preserved only as explicitly unverified metadata and must not imply connectivity.
         return {
-          connected: true,
+          connected: false,
           username: username ?? undefined,
           userId: twitterUserId ?? undefined,
-          error: `X rejected profile validation, but OAuth2 credentials are stored: ${errorMessage}`,
+          error:
+            "X rejected profile validation (HTTP 403); stored identity is unverified. Reconnect to restore verified status.",
         };
       }
 

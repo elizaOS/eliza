@@ -166,16 +166,30 @@ describe("TwitterAutomationService error policy", () => {
       expect(status.error).toContain("reconnecting");
     });
 
-    test("the OAuth2 403 quirk stays connected but still carries an explicit error, never silent", async () => {
+    test("an HTTP 403 profile rejection fails closed: disconnected with an explicit safe classification", async () => {
       secretStore.TWITTER_OWNER_OAUTH2_ACCESS_TOKEN = "stored-oauth2-token";
       twitterApiBehavior.me = async () => {
         throw Object.assign(new Error("profile forbidden"), { code: 403 });
       };
       const service = await loadService();
       const status = await service.getConnectionStatus("org-1", "owner");
-      expect(status.connected).toBe(true);
+      expect(status.connected).toBe(false);
       expect(typeof status.error).toBe("string");
-      expect(status.error).toContain("OAuth2 credentials are stored");
+      expect(status.error).toContain("unverified");
+    });
+
+    test("a 403 keeps stored identity as explicitly unverified metadata that never satisfies readiness", async () => {
+      secretStore.TWITTER_OWNER_OAUTH2_ACCESS_TOKEN = "stored-oauth2-token";
+      secretStore.TWITTER_OWNER_USERNAME = "alice";
+      secretStore.TWITTER_OWNER_USER_ID = "42";
+      twitterApiBehavior.me = async () => {
+        throw Object.assign(new Error("profile forbidden"), { code: 403 });
+      };
+      const service = await loadService();
+      const status = await service.getConnectionStatus("org-1", "owner");
+      expect(status.connected).toBe(false);
+      expect(status.username).toBe("alice");
+      expect(status.userId).toBe("42");
     });
 
     test("a valid token reports connected with no error", async () => {
