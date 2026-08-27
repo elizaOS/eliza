@@ -174,9 +174,18 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
   test("documented standalone scripts are tracked separately from true orphans", () => {
     const byFile = (name: string) => inv.files.find((f) => f.file === name);
 
+    // The live-smoke workflow now invokes this operator entrypoint directly,
+    // so CI is the strongest reachability color while the named root command
+    // remains recorded as an operator caller.
     expect(byFile("run-scenarios-isolated.mjs")?.category).toBe(
-      "reachable-from-operator-script",
+      "reachable-from-ci-workflow",
     );
+    expect(
+      byFile("run-scenarios-isolated.mjs")?.operatorScriptCallers,
+    ).toContainEqual({
+      packageJson: "package.json",
+      script: "test:scenarios:isolated",
+    });
     expect(inv.summary.filesByCategory.orphan).toBe(0);
     expect(inv.summary.orphanFiles).toBe(0);
     expect(inv.summary.documentationFileReferences).toBeGreaterThan(0);
