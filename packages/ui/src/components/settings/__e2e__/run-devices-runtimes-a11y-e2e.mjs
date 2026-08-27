@@ -16,6 +16,10 @@ const here = dirname(fileURLToPath(import.meta.url));
 const uiSrc = resolve(here, "../../..");
 const repoRoot = resolve(uiSrc, "../../..");
 const outDir = join(here, "output-devices-runtimes-a11y");
+const sharedLanguageModule = join(
+  repoRoot,
+  "packages/shared/src/i18n/language.ts",
+);
 await mkdir(outDir, { recursive: true });
 
 let failures = 0;
@@ -32,6 +36,16 @@ const bundle = await build({
   conditions: ["eliza-source", "browser"],
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts" },
+  plugins: [
+    {
+      name: "narrow-shared-language-import",
+      setup(context) {
+        context.onResolve({ filter: /^@elizaos\/shared$/ }, () => ({
+          path: sharedLanguageModule,
+        }));
+      },
+    },
+  ],
   define: { "process.env.NODE_ENV": '"production"' },
   write: false,
   absWorkingDir: repoRoot,
@@ -115,13 +129,14 @@ for (const name of [
   "Copy session ID",
   "Refresh",
   "Use runtime",
-  "Pair device",
+  "Claim pairing",
   "Retry",
   "Revoke",
   "Remove",
   "Stop relay",
   "Revoke host",
-  "Approve this pairing on this Linux computer",
+  "Confirm controller on this Linux computer",
+  "Deny",
 ]) {
   assert(
     (await page.getByRole("button", { name, exact: true }).count()) === 1,
@@ -158,14 +173,14 @@ const expectedInitialOrder = [
   "button:Copy session ID",
   "button:Refresh",
   "button:Use runtime",
-  "button:Pair device",
+  "input:Mac's 6-digit code",
   "button:Retry",
   "button:Revoke",
   "button:Remove",
   "button:Stop relay",
   "button:Revoke host",
-  "button:Approve this pairing on this Linux computer",
-  "input:6-digit code",
+  "button:Confirm controller on this Linux computer",
+  "button:Deny",
   "summary:Advanced SSH",
 ];
 await page.locator("body").click({ position: { x: 2, y: 2 } });

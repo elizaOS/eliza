@@ -56,7 +56,13 @@ function Fixture() {
           code: "420731",
           expiresAt: "2099-01-01T00:05:00.000Z",
           capabilities: ["agent.status", "agent.request"],
-          status: "pending",
+          status: "claimed",
+          controller: {
+            deviceId: "iphone-a11y-proof",
+            keyId: "controller-key-a11y-proof",
+            displayName: "Proof iPhone",
+            platform: "ios",
+          },
           qrPayload:
             "elizaos://remote/control-claim?session=session-a11y-proof&code=420731",
         }}
