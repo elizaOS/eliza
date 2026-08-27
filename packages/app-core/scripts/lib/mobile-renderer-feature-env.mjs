@@ -45,7 +45,8 @@ export function resolveMobileRendererFeatureEnv({ platform, env = {} } = {}) {
     // same-origin runtime proves the authenticated voice-session contract is
     // available. This is distinct from the developer force override: the
     // runtime remains authoritative and provider credentials stay server-side.
-    VITE_VOICE_REALTIME_SELF_HOSTED: isVpsSidecar ? "1" : "0",
+    VITE_VOICE_REALTIME_SELF_HOSTED:
+      isVpsSidecar || (isLp3Debug && isLp3RemoteFallback) ? "1" : "0",
     // Never inherit an ambient debug-force flag into a device artifact. A
     // Cloud mobile build may use realtime only when the normal eligibility
     // contract and server gate both pass.
