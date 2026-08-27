@@ -5,11 +5,13 @@ import type { Locator } from "@playwright/test";
 export type CloudLiveOptionalActionPhase =
   | "pre-identity-runtime-choice"
   | "pre-identity-oauth-choice"
+  | "personal-identity-retry"
   | "post-identity-tutorial-skip";
 
 export type CloudLiveOptionalActionName =
   | "runtime-cloud"
   | "oauth-start"
+  | "identity-retry"
   | "tutorial-skip";
 
 export class CloudLiveOptionalActionDeadlineError extends Error {
