@@ -16,6 +16,7 @@
 
 import { KeyRound, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAgentElement } from "../../agent-surface";
 // All requests go through the shared client (never bare `fetch`) so they hit
 // the configured apiBase and carry the injected auth token — a bare relative
 // fetch targets the page origin unauthenticated, which breaks remote/token-
@@ -28,7 +29,6 @@ import {
   type VaultTab,
 } from "../../hooks/useSecretsManagerModal";
 import { getShortcutLabel } from "../../hooks/useSecretsManagerShortcut";
-import { SectionTabStrip } from "../shared/SectionNav";
 import { Badge } from "../ui/badge";
 import { Banner } from "../ui/banner";
 import {
@@ -39,7 +39,7 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { Separator } from "../ui/separator";
-import { Tabs, TabsContent } from "../ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { SettingsActionButton } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 import { LoginsTab } from "./vault-tabs/LoginsTab";
@@ -68,6 +68,43 @@ const VAULT_SECTION_TABS = [
   { id: "logins", label: "Logins", testId: "vault-tab-logins" },
   { id: "routing", label: "Routing", testId: "vault-tab-routing" },
 ] as const;
+
+function VaultTabTrigger({
+  id,
+  label,
+  testId,
+  activeTab,
+  onSelect,
+}: {
+  id: VaultTab;
+  label: string;
+  testId: string;
+  activeTab: VaultTab;
+  onSelect: (tab: VaultTab) => void;
+}): React.JSX.Element {
+  const isActive = activeTab === id;
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `vault-tab-${id}`,
+    role: "tab",
+    label: `${label} Vault section`,
+    group: "vault-tabs",
+    status: isActive ? "active" : "inactive",
+    onActivate: () => onSelect(id),
+  });
+
+  return (
+    <TabsTrigger
+      ref={ref}
+      {...agentProps}
+      value={id}
+      data-state={isActive ? "active" : "inactive"}
+      data-testid={testId}
+      className="shrink-0 bg-transparent px-3 py-1.5 text-txt-strong hover:bg-accent-subtle data-[state=active]:bg-accent-subtle data-[state=active]:text-txt-strong max-[420px]:px-2 max-[360px]:px-1"
+    >
+      {label}
+    </TabsTrigger>
+  );
+}
 
 function readHashTab(): VaultTab | null {
   if (typeof window === "undefined") return null;
@@ -608,16 +645,20 @@ export function VaultWorkspace({
               onValueChange={onTabChange}
               className="flex min-h-0 flex-1 flex-col"
             >
-              <SectionTabStrip
-                entries={VAULT_SECTION_TABS}
-                activeId={activeTab}
-                onSelect={onTabChange}
-                testId="section-nav-vault"
-                ariaLabel="Vault sections"
-                agentIdPrefix="vault-tab"
-                className="self-start px-0 py-0"
-                tabClassName="max-[360px]:px-2"
-              />
+              <TabsList
+                aria-label="Vault sections"
+                data-testid="section-nav-vault"
+                className="h-auto max-w-full self-start justify-start gap-1 overflow-x-auto rounded-none bg-transparent p-0"
+              >
+                {VAULT_SECTION_TABS.map((tab) => (
+                  <VaultTabTrigger
+                    key={tab.id}
+                    {...tab}
+                    activeTab={activeTab}
+                    onSelect={onTabChange}
+                  />
+                ))}
+              </TabsList>
 
               <div className="mt-2 min-h-0 flex-1 overflow-y-auto pr-1">
                 <TabsContent

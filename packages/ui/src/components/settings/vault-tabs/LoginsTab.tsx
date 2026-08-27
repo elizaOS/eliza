@@ -294,8 +294,8 @@ export function LoginsTab() {
 
   return (
     <section data-testid="saved-logins-panel" className="max-w-3xl space-y-4">
-      <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between sm:gap-4">
-        <div className="min-w-0 space-y-1">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-[min(100%,30rem)] flex-1 space-y-1">
           <h2 className="text-sm font-semibold text-txt">
             {t("logins.title", { defaultValue: "Saved logins" })}
           </h2>
@@ -472,22 +472,26 @@ export function LoginsTab() {
       ) : logins.length === 0 ? (
         <div
           data-testid="saved-logins-empty"
-          className="flex min-h-40 max-w-md items-center text-xs text-muted sm:justify-center sm:text-center"
+          className="flex min-h-40 w-full items-center text-xs text-muted sm:justify-center sm:text-center"
         >
-          {t("logins.empty", {
-            defaultValue:
-              "No saved logins. Add one, or sign in to 1Password / Bitwarden on Overview.",
-          })}
+          <p className="max-w-md">
+            {t("logins.empty", {
+              defaultValue:
+                "No saved logins. Add one, or sign in to 1Password / Bitwarden on Overview.",
+            })}
+          </p>
         </div>
       ) : filtered.length === 0 ? (
         <div
           data-testid="saved-logins-no-match"
-          className="flex min-h-32 max-w-md items-center text-xs text-muted sm:justify-center sm:text-center"
+          className="flex min-h-32 w-full items-center text-xs text-muted sm:justify-center sm:text-center"
         >
-          {t("logins.noMatch", {
-            filter,
-            defaultValue: 'No logins match "{{filter}}".',
-          })}
+          <p className="max-w-md">
+            {t("logins.noMatch", {
+              filter,
+              defaultValue: 'No logins match "{{filter}}".',
+            })}
+          </p>
         </div>
       ) : (
         <div className="overflow-hidden rounded-lg border border-line-subtle bg-bg-card">

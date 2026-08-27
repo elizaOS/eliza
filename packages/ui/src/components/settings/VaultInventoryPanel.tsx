@@ -314,15 +314,15 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
           </ul>
         </Card>
       ) : null}
-      <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between sm:gap-4">
-        <div className="min-w-0 space-y-1">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-[min(100%,30rem)] flex-1 space-y-1">
           <h2 className="text-sm font-semibold text-txt">
             {t("vaultinventory.storedSecrets", {
               defaultValue: "Stored secrets",
             })}
           </h2>
           <p className="text-xs text-muted">
-            Encrypted credentials and references available to this agent.
+            Manage secret values without exposing their contents.
           </p>
         </div>
         <Button
@@ -368,10 +368,12 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
       ) : entries.length === 0 ? (
         <div
           data-testid="vault-inventory-empty"
-          className="flex min-h-40 max-w-sm items-center text-xs text-muted sm:justify-center sm:text-center"
+          className="flex min-h-40 w-full items-center text-xs text-muted sm:justify-center sm:text-center"
         >
-          No secrets yet. Add one when this agent needs a credential or secure
-          reference.
+          <p className="max-w-sm">
+            No secrets yet. Add one when this agent needs a credential or secure
+            reference.
+          </p>
         </div>
       ) : (
         <div className="space-y-3">

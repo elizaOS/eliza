@@ -167,10 +167,22 @@ export function OverviewTab(props: OverviewTabProps) {
 
   return (
     <div className="max-w-3xl space-y-4">
+      <p
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {saving
+          ? "Saving Vault preferences."
+          : savedAt !== null
+            ? "Vault preferences saved."
+            : ""}
+      </p>
       {protection ? <ProtectionCard protection={protection} /> : null}
       <section aria-labelledby="vault-backends-heading">
-        <div className="flex flex-col items-start gap-3 pb-3 sm:flex-row sm:justify-between sm:gap-4">
-          <div className="min-w-0 space-y-1">
+        <div className="flex flex-wrap items-start justify-between gap-3 pb-3">
+          <div className="min-w-[min(100%,30rem)] flex-1 space-y-1">
             <h2
               id="vault-backends-heading"
               className="text-sm font-semibold text-txt"

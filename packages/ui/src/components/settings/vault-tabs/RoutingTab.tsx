@@ -78,6 +78,7 @@ export function RoutingTab(props: RoutingTabProps) {
 
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [keyPattern, setKeyPattern] = useState("");
   const [scopeKind, setScopeKind] = useState<RoutingScopeKind>("agent");
@@ -227,6 +228,7 @@ export function RoutingTab(props: RoutingTabProps) {
   const saveConfig = useCallback(
     async (next: RoutingConfig) => {
       setSaving(true);
+      setSaveStatus("");
       setError(null);
       try {
         const body = await client.fetch<{ config: RoutingConfig }>(
@@ -238,6 +240,7 @@ export function RoutingTab(props: RoutingTabProps) {
           },
         );
         onConfigChange(body.config);
+        setSaveStatus("Routing preferences saved.");
       } catch (err) {
         setError(
           err instanceof Error
@@ -338,6 +341,14 @@ export function RoutingTab(props: RoutingTabProps) {
 
   return (
     <div data-testid="routing-tab" className="max-w-3xl space-y-6">
+      <p
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {saveStatus}
+      </p>
       <section className="space-y-3">
         <div className="space-y-1">
           <h2 className="text-sm font-semibold text-txt">
@@ -378,8 +389,8 @@ export function RoutingTab(props: RoutingTabProps) {
 
       {/* Rules table */}
       <section className="space-y-4">
-        <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between sm:gap-4">
-          <div className="min-w-0 space-y-1">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-[min(100%,30rem)] flex-1 space-y-1">
             <h2 className="text-sm font-semibold text-txt">
               {t("routing.rules.title", { defaultValue: "Routing rules" })}
             </h2>
@@ -612,22 +623,26 @@ export function RoutingTab(props: RoutingTabProps) {
         {config.rules.length === 0 ? (
           <div
             data-testid="routing-rules-empty"
-            className="flex min-h-32 max-w-md items-center text-xs text-muted sm:justify-center sm:text-center"
+            className="flex min-h-32 w-full items-center text-xs text-muted sm:justify-center sm:text-center"
           >
-            {t("routing.empty", {
-              defaultValue:
-                "No routing rules. The default profile applies for every caller.",
-            })}
+            <p className="max-w-md">
+              {t("routing.empty", {
+                defaultValue:
+                  "No routing rules. The default profile applies for every caller.",
+              })}
+            </p>
           </div>
         ) : visibleRules.length === 0 ? (
           <div
             data-testid="routing-rules-no-match"
-            className="flex min-h-32 max-w-md items-center text-xs text-muted sm:justify-center sm:text-center"
+            className="flex min-h-32 w-full items-center text-xs text-muted sm:justify-center sm:text-center"
           >
-            {t("routing.noMatch", {
-              filter: rulesFilter,
-              defaultValue: 'No rules match "{{filter}}".',
-            })}
+            <p className="max-w-md">
+              {t("routing.noMatch", {
+                filter: rulesFilter,
+                defaultValue: 'No rules match "{{filter}}".',
+              })}
+            </p>
           </div>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-line-subtle">
