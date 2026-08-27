@@ -547,9 +547,9 @@ function makeFinding(input: {
   };
 }
 
-/** Compares a declared molecule contract with its discovered live atom closure. */
-export function validateDeclaredMoleculeAtomicDependencies(input: {
-  nodeId: `molecule:${string}`;
+/** Compares a declared composition with its discovered live atom closure. */
+export function validateDeclaredAtomicDependencies(input: {
+  nodeId: DesignNodeId;
   owner: string;
   declaredAtomicDependencies: readonly string[];
   sourceAtomicDependencies: readonly string[];
@@ -882,6 +882,21 @@ export async function buildDesignContractGraph(): Promise<DesignContractGraph> {
       component,
     ]),
   );
+  for (const node of higherOrderNodes) {
+    const ownerKey = designOwnerKey(node.owner);
+    const discoveredComponent = discoveredComponentByOwner.get(ownerKey);
+    if (!discoveredComponent) continue;
+    findings.push(
+      ...validateDeclaredAtomicDependencies({
+        nodeId: node.id,
+        owner: ownerKey,
+        declaredAtomicDependencies: node.dependsOn
+          .filter((dependency) => dependency.startsWith("atom:"))
+          .map((dependency) => dependency.slice("atom:".length)),
+        sourceAtomicDependencies: discoveredComponent.transitiveAtoms,
+      }),
+    );
+  }
   const rawCapabilityClosure = (rootId: string) => {
     const occurrences: Array<{
       component: (typeof componentGraph.components)[number];
@@ -985,7 +1000,7 @@ export async function buildDesignContractGraph(): Promise<DesignContractGraph> {
         );
       }
       findings.push(
-        ...validateDeclaredMoleculeAtomicDependencies({
+        ...validateDeclaredAtomicDependencies({
           nodeId,
           owner: ownerKey,
           declaredAtomicDependencies: contract.requiredAtomicDependencies,
