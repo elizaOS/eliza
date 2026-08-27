@@ -264,7 +264,7 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
   }, [entries]);
 
   return (
-    <section data-testid="vault-inventory-panel" className="space-y-2 pt-1">
+    <section data-testid="vault-inventory-panel" className="space-y-4">
       {findingsAvailable ? null : (
         <Card
           data-testid="vault-security-findings-unavailable"
@@ -314,18 +314,23 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
           </ul>
         </Card>
       ) : null}
-      <div className="flex items-center justify-between gap-2">
-        <p className="min-w-0 text-sm font-medium text-txt">
-          {t("vaultinventory.storedSecrets", {
-            defaultValue: "Stored secrets",
-          })}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-[min(100%,30rem)] flex-1 space-y-1">
+          <h2 className="text-sm font-semibold text-txt">
+            {t("vaultinventory.storedSecrets", {
+              defaultValue: "Stored secrets",
+            })}
+          </h2>
+          <p className="text-xs text-muted">
+            Manage secret values without exposing their contents.
+          </p>
+        </div>
         <Button
           ref={addSecretRef}
           {...addSecretAgentProps}
           variant="outline"
           size="sm"
-          className="shrink-0"
+          className="self-start"
           onClick={() => setShowAdd((v) => !v)}
           aria-label={t("vaultinventory.addSecret", {
             defaultValue: "Add secret",
@@ -361,12 +366,15 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
           <Loader2 className="size-3.5 animate-spin" aria-hidden /> Loading…
         </div>
       ) : entries.length === 0 ? (
-        <p
+        <div
           data-testid="vault-inventory-empty"
-          className="p-3 text-center text-xs text-muted"
+          className="flex min-h-40 w-full items-center text-xs text-muted sm:justify-center sm:text-center"
         >
-          No secrets yet.
-        </p>
+          <p className="max-w-sm">
+            No secrets yet. Add one when this agent needs a credential or secure
+            reference.
+          </p>
+        </div>
       ) : (
         <div className="space-y-3">
           {CATEGORY_ORDER.map((cat) => {
