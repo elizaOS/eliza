@@ -39,7 +39,8 @@ server mint), the mic runs the existing batch ASR path completely unchanged.
 
 ## Flags
 
-- Client: `VITE_VOICE_REALTIME_WS` = `1|true|yes|on` (default OFF).
+- Client: `VITE_VOICE_REALTIME_WS` = `1|true|yes|on` (default OFF for builds;
+  the local dev gateway defaults it ON unless explicitly configured).
 - Self-hosted client capability: `VITE_VOICE_REALTIME_SELF_HOSTED` =
   `1|true|yes|on` (default OFF). It still requires a paired `remote` runtime and
   a successful same-origin `/api/v1/voice/session/health` probe.
@@ -64,8 +65,6 @@ CARTESIA_API_KEY=… \
 ELIZA_LOCAL_VOICE_GATEWAY_PORT=31338 \
 bun run --cwd packages/cloud/api voice:local-gateway
 
-VITE_VOICE_REALTIME_WS=1 \
-VITE_VOICE_REALTIME_FORCE=1 \
 ELIZA_LOCAL_VOICE_GATEWAY_PORT=31338 \
 bun run --cwd packages/app dev
 ```
@@ -74,7 +73,11 @@ Vite sends only `/api/v1/voice/session` HTTP and WebSocket traffic to the
 loopback gateway; all other `/api` traffic remains on `31337`. The provider
 loop is Cartesia Ink 2 STT → local runtime/model route → Cartesia Sonic 3.5 TTS.
 The Cartesia key remains in the gateway process and is never exposed to Vite or
-the browser.
+the browser. In dev-server mode, configuring `ELIZA_LOCAL_VOICE_GATEWAY_PORT`
+also defaults the staged realtime client flag on. An explicit
+`VITE_VOICE_REALTIME_WS` value still wins, the diagnostic
+`VITE_VOICE_REALTIME_FORCE` bypass remains explicit-only, and
+production/mobile builds keep their existing staged defaults.
 
 ## Flag retirement
 

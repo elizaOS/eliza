@@ -1,7 +1,8 @@
 /** Verifies app-shell WebSocket origins for dev proxies and native remotes. */
 
 import { describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path, { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
@@ -15,6 +16,8 @@ import appViteConfig, {
   findAndroidCloudEmittedRoutingFindings,
   resolveAndroidCloudPrebootLockupDataUri,
   resolveAppShellLocalCspSources,
+  resolveLocalRealtimeVoiceDefines,
+  resolveLocalRealtimeVoiceDefinesFromEnv,
   selectAndroidCloudRendererEntry,
   stripAndroidCloudIpcBootstrap,
   stripAndroidCloudPublicAssetReferences,
@@ -82,6 +85,68 @@ describe("devViewStudioPlugin", () => {
     expect(headers.get("Content-Type")).toBe("text/css; charset=utf-8");
     expect(headers.get("Cache-Control")).toBe("no-store");
     expect(body?.toString()).toContain("data-eliza-studio-proposed");
+  });
+});
+
+describe("local realtime voice defaults", () => {
+  test("enables the realtime client without force-arming unresolved agents", () => {
+    expect(resolveLocalRealtimeVoiceDefines("serve", 31_338, {})).toEqual({
+      "import.meta.env.VITE_VOICE_REALTIME_WS": JSON.stringify("1"),
+    });
+  });
+
+  test("preserves explicit client flag values", () => {
+    expect(
+      resolveLocalRealtimeVoiceDefines("serve", 31_338, {
+        VITE_VOICE_REALTIME_WS: "0",
+        VITE_VOICE_REALTIME_FORCE: "false",
+      }),
+    ).toEqual({});
+    expect(
+      resolveLocalRealtimeVoiceDefines("serve", 31_338, {
+        VITE_VOICE_REALTIME_WS: "1",
+      }),
+    ).toEqual({});
+  });
+
+  test("does not change builds or dev servers without a gateway", () => {
+    expect(resolveLocalRealtimeVoiceDefines("build", 31_338, {})).toEqual({});
+    expect(resolveLocalRealtimeVoiceDefines("serve", null, {})).toEqual({});
+  });
+
+  test("preserves explicit opt-outs loaded from .env.local", () => {
+    const envDir = mkdtempSync(path.join(os.tmpdir(), "eliza-voice-env-"));
+    const previousWs = process.env.VITE_VOICE_REALTIME_WS;
+    const previousForce = process.env.VITE_VOICE_REALTIME_FORCE;
+    delete process.env.VITE_VOICE_REALTIME_WS;
+    delete process.env.VITE_VOICE_REALTIME_FORCE;
+
+    try {
+      writeFileSync(
+        path.join(envDir, ".env.local"),
+        "VITE_VOICE_REALTIME_WS=0\nVITE_VOICE_REALTIME_FORCE=false\n",
+      );
+      expect(
+        resolveLocalRealtimeVoiceDefinesFromEnv(
+          "serve",
+          "development",
+          31_338,
+          envDir,
+        ),
+      ).toEqual({});
+    } finally {
+      if (previousWs === undefined) {
+        delete process.env.VITE_VOICE_REALTIME_WS;
+      } else {
+        process.env.VITE_VOICE_REALTIME_WS = previousWs;
+      }
+      if (previousForce === undefined) {
+        delete process.env.VITE_VOICE_REALTIME_FORCE;
+      } else {
+        process.env.VITE_VOICE_REALTIME_FORCE = previousForce;
+      }
+      rmSync(envDir, { recursive: true, force: true });
+    }
   });
 });
 
