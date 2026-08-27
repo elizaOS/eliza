@@ -7,7 +7,7 @@ import { CLI_PALETTE } from "./palette.js";
 
 // The shared barrel is imported by browser bundles; a bare `process`
 // identifier at module scope throws ReferenceError there and kills the whole
-// graph before any consumer mounts (proven by the permission-priming e2e).
+// graph before any consumer mounts.
 // Without a process, take the same no-color path as dev-settings-banner-style
 // and self-edit: a browser context cannot honor CLI color env vars.
 const terminalEnv: NodeJS.ProcessEnv | undefined =

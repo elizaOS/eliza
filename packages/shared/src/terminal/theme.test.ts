@@ -6,9 +6,6 @@
  * scope (no bare `process` read).
  */
 
-import { readFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import vm from "node:vm";
 import { build } from "esbuild";
 import { describe, expect, it } from "vitest";
@@ -31,28 +28,27 @@ describe("terminal theme", () => {
 
   describe("module scope without `process`", () => {
     /**
-     * The shared barrel reaches this module from browser bundles (e.g. the
-     * permission-priming e2e graph, which esbuild-bundles for the browser
-     * and defines only `process.env.NODE_ENV`). Reading `process.env` at
-     * module scope threw ReferenceError there, killing the whole graph
-     * before any consumer mounted. Replay the browser condition
-     * faithfully: bundle for the browser (no node builtins, no defines)
-     * and evaluate inside a vm context with NO `process` global at all.
+     * The shared barrel reaches this module from browser bundles. The
+     * invariant under test: bundling for the browser (no node builtins)
+     * must not leave module-scope code that needs a `process` global to
+     * evaluate, because a page context that lacks one would throw
+     * ReferenceError and kill the whole graph before any consumer mounts.
+     * Bundle for the browser with no `define` replacements and evaluate
+     * inside a vm context that has NO `process` global at all.
      */
     it("evaluates the browser bundle without throwing in a process-less context", async () => {
-      const out = join(tmpdir(), `eliza-theme-browser-${Date.now()}.js`);
-      await build({
+      const result = await build({
         entryPoints: [new URL("./theme.ts", import.meta.url).pathname],
         bundle: true,
         format: "iife",
         globalName: "__themeBundle",
         platform: "browser",
         // No `define` at all: bare `process` identifiers must survive to
-        // runtime, exactly like the e2e runner's browser bundle.
-        outfile: out,
+        // runtime evaluation rather than being compiled away.
+        write: false,
         logLevel: "silent",
       });
-      const code = await readFile(out, "utf8");
+      const code = result.outputFiles[0]?.text ?? "";
       const context: Record<string, unknown> = {}; // no `process` global
       vm.runInNewContext(code, context);
       const bundle = context.__themeBundle as { theme: unknown };
