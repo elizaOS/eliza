@@ -404,7 +404,9 @@ describe("X membership publisher (real PGlite authority)", () => {
 
     // Simulate a restart: a brand-new publisher over the same runtime. The
     // stable per-(agent, account) publisher id must take the ADOPTION path —
-    // generation, cursor, and version preserved, not bumped.
+    // generation, cursor, and version preserved, not bumped. The adoption
+    // happens at first use (renewSender); capture the durable state right
+    // after that call and require EXACT generation equality.
     const reborn = new XMembershipPublisher(runtime);
     const rebornScope = await reborn.scopeForConversation({
       conversationId,
@@ -421,16 +423,84 @@ describe("X membership publisher (real PGlite authority)", () => {
       permissionSnapshot: { observed: true },
       idempotencyKey: `x:renew:${conversationId}:7300:e900601`,
     });
-    // Evidence committed after the restart chained onto the adopted state,
-    // proving the reborn publisher did NOT reset the chain.
     const after = await membership.getScopeHealth(scope);
     expect(after).not.toBeNull();
+    // Adoption invariant: the authority bumps `generation` on every committed
+    // command (registration=+1, each evidence=+1), so a restart that adopts
+    // and re-proves must show EXACTLY one new commit — generation
+    // before+1 — with the publisher seat UNCHANGED (same publisherInstanceId
+    // and same publisherGeneration). A takeover would bump publisherGeneration
+    // and add a second generation step (re-register + commit).
     if (before && after) {
-      expect(after.generation).toBeGreaterThanOrEqual(before.generation);
+      expect(after.generation).toBe(before.generation + 1);
+      expect(after.publisherInstanceId).toBe(before.publisherInstanceId);
+      expect(after.publisherGeneration).toBe(before.publisherGeneration);
+      expect(after.sourceVersion).toBe(before.sourceVersion + 1);
     }
     const decision = await membership.authorize(scope, principal);
     expect(decision.decision).toBe("allowed");
     expect(decision.reason).toBe("active_membership");
+  });
+
+  it("serializes a concurrent renew→leave→renew sequence without a stale renewal window", async () => {
+    const conversationId = "1999888777660012";
+    const scope = await scopeFor(conversationId);
+    const { principalId: principal } = await xMembershipPrincipal(
+      runtime,
+      "default",
+      "7600",
+    );
+    await publisher.publishJoin({
+      scope,
+      principalId: principal,
+      worldId: runtime.agentId,
+      roomId: runtime.agentId,
+      roles: ["participant"],
+      permissionSnapshot: { observed: true },
+      idempotencyKey: `x:join:${conversationId}:7600:e900900`,
+      eventAnchoredAt: 1_756_000_012_000,
+    });
+    // Fire renewal, leave, and a fresh observation CONCURRENTLY: per-scope
+    // serialization plus removeRenewalOnCommit must leave the principal
+    // re-proved active (the last observation wins inside the queue), never
+    // suppressed by a stale renewal-window timestamp written after the
+    // leave's revocation.
+    await Promise.allSettled([
+      publisher.renewSender({
+        scope,
+        principalId: principal,
+        worldId: runtime.agentId,
+        roomId: runtime.agentId,
+        roles: ["participant"],
+        permissionSnapshot: { observed: true },
+        idempotencyKey: `x:renew:${conversationId}:7600:e900901`,
+        eventAnchoredAt: 1_756_000_013_000,
+      }),
+      publisher.publishLeave({
+        scope,
+        principalId: principal,
+        worldId: runtime.agentId,
+        roomId: runtime.agentId,
+        reason: "left",
+        idempotencyKey: `x:left:${conversationId}:7600:e900902`,
+        eventAnchoredAt: 1_756_000_014_000,
+      }),
+      publisher.renewSender({
+        scope,
+        principalId: principal,
+        worldId: runtime.agentId,
+        roomId: runtime.agentId,
+        roles: ["participant"],
+        permissionSnapshot: { observed: true },
+        idempotencyKey: `x:renew:${conversationId}:7600:e900903`,
+        eventAnchoredAt: 1_756_000_015_000,
+      }),
+    ]);
+    // Post-leave observation activity re-proves the principal: the record
+    // reflects the LAST serialized observation, not a suppressed renewal.
+    const record = await membership.getMembership(scope, principal);
+    expect(record?.state).toBe("active");
+    expect(record?.reason).toBe("reconciled_present");
   });
 
   it("leave removes the renewal window at commit so the next observation re-proves immediately", async () => {

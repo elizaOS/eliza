@@ -239,6 +239,10 @@ export class TwitterDirectMessageClient {
       // 401/403 so observed activity re-proves participants.
       if (this.membershipDegradedForAuth) {
         this.membershipDegradedForAuth = false;
+        // Clear own-membership markers so restored scopes re-prove the
+        // account's own participation immediately instead of waiting out
+        // the marker window (R2 finding 2).
+        this.ownMembershipPublishedAt.clear();
         await this.restoreMembershipScopes("x_auth_recovered");
       }
     } catch (error) {
@@ -953,6 +957,12 @@ export class TwitterDirectMessageClient {
           kind: "own",
           conversationId,
           participantId: ownUserId,
+          // Anchor the renewal epoch so a TTL-expired re-proof gets a FRESH
+          // journal key: reusing the first epoch's key would collide with
+          // the original entry (different timestamps) and surface as a
+          // non-benign idempotency conflict instead of a clean renewal
+          // (R2 finding 2).
+          eventId: `epoch-${Math.floor(Date.now() / TwitterDirectMessageClient.OWN_MEMBERSHIP_TTL_MS)}`,
         }),
       });
       this.ownMembershipPublishedAt.set(conversationId, Date.now());
