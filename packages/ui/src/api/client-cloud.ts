@@ -4609,6 +4609,116 @@ type EnsurePersonalDedicatedElizaOptions = Parameters<
   ElizaClient["ensurePersonalDedicatedEliza"]
 >[0];
 
+const DEDICATED_ADOPTION_SELECTION_REQUIRED =
+  "dedicated_adoption_selection_required";
+
+async function adoptSelectedPersonalDedicatedEliza(
+  upgradeUrl: string,
+  options: EnsurePersonalDedicatedElizaOptions,
+  deadline: number,
+): Promise<string> {
+  const adoptionUrl = `${upgradeUrl}/adopt-existing`;
+  throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+  const quoteResponse = await directCloudJsonResponse<unknown>(adoptionUrl, {
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${options.authToken}`,
+    },
+    ...(options.signal ? { signal: options.signal } : {}),
+  });
+  throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+  const quoteRoot = recordOrNull(quoteResponse.data);
+  const quote = recordOrNull(quoteRoot?.data);
+  const quoteId = firstString(quote?.quoteId);
+  const quotedTargetId = firstString(quote?.dedicatedAgentId);
+  const adoptionState = firstString(quote?.adoptionState);
+  if (
+    !quoteResponse.ok ||
+    quoteRoot?.success !== true ||
+    !quoteId ||
+    !quotedTargetId ||
+    (adoptionState !== "available" && adoptionState !== "adopted") ||
+    quote?.requiresConfirmation !== true ||
+    quote?.action !== "adopt_existing_dedicated"
+  ) {
+    throw Object.assign(
+      new Error(
+        directCloudResponseErrorMessage(
+          quoteResponse.status,
+          quoteResponse.data,
+        ),
+      ),
+      {
+        status: quoteResponse.status,
+        data: quoteResponse.data,
+        url: adoptionUrl,
+      },
+    );
+  }
+  if (quote?.canAdopt !== true) {
+    throw Object.assign(
+      new Error(
+        firstString(quote?.unavailableReason) ??
+          "The selected Dedicated agent cannot be adopted right now.",
+      ),
+      {
+        status: quote?.requiresCatalogRestore === true ? 409 : 402,
+        data: quoteResponse.data,
+        url: adoptionUrl,
+      },
+    );
+  }
+
+  throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+  const adoptionResponse = await directCloudJsonResponse<unknown>(adoptionUrl, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${options.authToken}`,
+    },
+    body: JSON.stringify({
+      action: "adopt_existing_dedicated",
+      quoteId,
+    }),
+    ...(options.signal ? { signal: options.signal } : {}),
+  });
+  throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
+  const adoptionRoot = recordOrNull(adoptionResponse.data);
+  const adoption = recordOrNull(adoptionRoot?.data);
+  const adoptedTargetId = firstString(adoption?.dedicatedAgentId);
+  if (
+    !adoptionResponse.ok ||
+    adoptionRoot?.success !== true ||
+    !adoptedTargetId ||
+    adoption?.runtime !== "dedicated_pending_cutover"
+  ) {
+    throw Object.assign(
+      new Error(
+        directCloudResponseErrorMessage(
+          adoptionResponse.status,
+          adoptionResponse.data,
+        ),
+      ),
+      {
+        status: adoptionResponse.status,
+        data: adoptionResponse.data,
+        url: adoptionUrl,
+      },
+    );
+  }
+  if (adoptedTargetId !== quotedTargetId) {
+    throw new ElizaError(
+      "Eliza Cloud adopted a different Dedicated target than the quoted selection.",
+      {
+        code: "CLOUD_DEDICATED_ADOPTION_TARGET_MISMATCH",
+        context: { phase: "adoption", field: "dedicatedAgentId" },
+      },
+    );
+  }
+  return adoptedTargetId;
+}
+
 async function ensurePersonalDedicatedElizaWithinDeadline(
   this: ElizaClient,
   options: EnsurePersonalDedicatedElizaOptions,
@@ -4733,10 +4843,24 @@ async function ensurePersonalDedicatedElizaWithinDeadline(
     throwIfDedicatedStartupDeadlineElapsed(deadline, options.signal);
     const activationRoot = recordOrNull(activationResponse.data);
     const activation = recordOrNull(activationRoot?.data);
-    const activatedTargetId = firstString(activation?.dedicatedAgentId);
+    let activatedTargetId = firstString(activation?.dedicatedAgentId);
+    const activationCode = directCloudErrorMetadata(
+      activationResponse.data,
+    ).code;
+    const adoptionRequired =
+      activationResponse.status === 409 &&
+      activationRoot?.success === false &&
+      activationCode === DEDICATED_ADOPTION_SELECTION_REQUIRED;
+    if (adoptionRequired) {
+      activatedTargetId = await adoptSelectedPersonalDedicatedEliza(
+        upgradeUrl,
+        options,
+        deadline,
+      );
+    }
     if (
-      !activationResponse.ok ||
-      activationRoot?.success !== true ||
+      (!activationResponse.ok && !adoptionRequired) ||
+      (activationResponse.ok && activationRoot?.success !== true) ||
       !activatedTargetId
     ) {
       throw Object.assign(
