@@ -32,10 +32,14 @@ import {
 import { ElizaClient } from "./client-base";
 import { verifyDirectCloudStewardSession } from "./client-cloud";
 
-function jsonResponse(status: number, body: unknown): Response {
+function jsonResponse(
+  status: number,
+  body: unknown,
+  headers: Record<string, string> = {},
+): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...headers },
   });
 }
 
@@ -184,43 +188,76 @@ describe("getPersonalSharedEliza", () => {
     expect(requestSignal?.aborted).toBe(true);
   });
 
-  it("preserves HTTP 409 when the Personal response body rejects", async () => {
-    const response = jsonResponse(409, { error: "still starting" });
-    vi.spyOn(response, "text").mockRejectedValue(
-      new Error("response body unavailable"),
-    );
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => response),
-    );
+  it.each([409, 423, 503])(
+    "preserves HTTP %s metadata when the Personal response body rejects",
+    async (status) => {
+      const response = jsonResponse(
+        status,
+        { error: "still starting" },
+        { "Retry-After": "7" },
+      );
+      vi.spyOn(response, "text").mockRejectedValue(
+        new Error("response body unavailable"),
+      );
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => response),
+      );
 
-    await expect(
-      new ElizaClient().getPersonalSharedEliza({
-        cloudApiBase: "https://api.eliza.app",
-        authToken: "steward-token",
-      }),
-    ).rejects.toMatchObject({ status: 409 });
-  });
+      const error = await new ElizaClient()
+        .getPersonalSharedEliza({
+          cloudApiBase: "https://api.eliza.app",
+          authToken: "steward-token",
+        })
+        .catch((cause: unknown) => cause);
 
-  it("preserves HTTP 409 when the Personal response body stalls until timeout", async () => {
-    vi.useFakeTimers();
-    const response = jsonResponse(409, { error: "still starting" });
-    vi.spyOn(response, "text").mockImplementation(
-      async () => await new Promise<string>(() => undefined),
-    );
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => response),
-    );
+      expect(error).toMatchObject({
+        status,
+        url: "https://api.eliza.app/api/v1/eliza/personal",
+        retryAfter: 7,
+      });
+      expect((error as { headers: Headers }).headers.get("Retry-After")).toBe(
+        "7",
+      );
+    },
+  );
 
-    const request = new ElizaClient().getPersonalSharedEliza({
-      cloudApiBase: "https://api.eliza.app",
-      authToken: "steward-token",
-    });
-    const rejection = expect(request).rejects.toMatchObject({ status: 409 });
-    await vi.advanceTimersByTimeAsync(30_000);
-    await rejection;
-  });
+  it.each([409, 423, 503])(
+    "preserves HTTP %s metadata when the Personal response body stalls until timeout",
+    async (status) => {
+      vi.useFakeTimers();
+      const response = jsonResponse(
+        status,
+        { error: "still starting" },
+        { "Retry-After": "7" },
+      );
+      vi.spyOn(response, "text").mockImplementation(
+        async () => await new Promise<string>(() => undefined),
+      );
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => response),
+      );
+
+      const outcome = new ElizaClient()
+        .getPersonalSharedEliza({
+          cloudApiBase: "https://api.eliza.app",
+          authToken: "steward-token",
+        })
+        .catch((cause: unknown) => cause);
+      await vi.advanceTimersByTimeAsync(30_000);
+      const error = await outcome;
+
+      expect(error).toMatchObject({
+        status,
+        url: "https://api.eliza.app/api/v1/eliza/personal",
+        retryAfter: 7,
+      });
+      expect((error as { headers: Headers }).headers.get("Retry-After")).toBe(
+        "7",
+      );
+    },
+  );
 
   it("propagates caller abort while the Personal response body is pending", async () => {
     const response = jsonResponse(200, {});

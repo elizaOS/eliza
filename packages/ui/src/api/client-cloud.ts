@@ -1003,6 +1003,14 @@ async function fetchDirectCloudWithTimeout<T>(
     // Personal/Dedicated conductor indefinitely.
     return await Promise.race([consume(response), aborted]);
   } catch (err) {
+    const responseMetadata = response
+      ? {
+          status: response.status,
+          url: args.url,
+          headers: response.headers,
+          ...directCloudErrorMetadata(undefined, response.headers),
+        }
+      : {};
     if (timedOut) {
       throw Object.assign(
         new Error(
@@ -1011,7 +1019,7 @@ async function fetchDirectCloudWithTimeout<T>(
           )}s (${args.method} ${args.url})`,
           { cause: controller.signal.reason },
         ),
-        response ? { status: response.status, url: args.url } : {},
+        responseMetadata,
       );
     }
     if (response && !controller.signal.aborted) {
@@ -1020,10 +1028,7 @@ async function fetchDirectCloudWithTimeout<T>(
           `Eliza Cloud response body could not be read (${args.method} ${args.url})`,
           { cause: err },
         ),
-        {
-          status: response.status,
-          url: args.url,
-        },
+        responseMetadata,
       );
     }
     throw err;
