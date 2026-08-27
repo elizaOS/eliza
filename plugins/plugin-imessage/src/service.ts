@@ -73,6 +73,13 @@ import {
 } from "./contacts-reader.js";
 import { renderIMessageInteractionText } from "./interactions.js";
 import {
+  IMESSAGE_MEMBERSHIP_CONNECTOR_ID,
+  IMessageMembershipPublisher,
+  type IMessageMembershipRosterSource,
+  resolveMembershipService,
+} from "./membership.js";
+import { createChatDbRosterSource } from "./membership-roster.js";
+import {
   DEFAULT_POLL_INTERVAL_MS,
   formatPhoneNumber,
   type IIMessageService,
@@ -665,6 +672,16 @@ export class IMessageService extends Service implements IIMessageService {
   private chatDb: ChatDbReader | null = null;
   private chatDbPath: string = DEFAULT_CHAT_DB_PATH;
   /**
+   * Native membership evidence publisher (issue #24370). Non-null only when
+   * both the canonical MembershipService authority and a readable chat.db
+   * are available; it publishes chat_handle_join roster snapshots and
+   * per-sender renewals. Absent authority ⇒ membership evidence is simply
+   * not published (legacy behavior); roster read failures degrade the
+   * publisher fail-closed via its own error path.
+   */
+  private membership: IMessageMembershipPublisher | null = null;
+  private membershipRosterSource: IMessageMembershipRosterSource | null = null;
+  /**
    * Cached handle → display name map from the user's Apple Contacts.
    * Populated lazily on first inbound message through CNContactStore, NOT at
    * service start. Loading at boot would create a settings-level Contacts
@@ -744,6 +761,12 @@ export class IMessageService extends Service implements IIMessageService {
     } else if (!service.chatDb && service.settings.pollIntervalMs > 0) {
       logger.debug("[imessage] inbound polling not started because chat.db is unavailable");
     }
+
+    // Native membership evidence (issue #24370): when the canonical
+    // MembershipService authority is registered (plugin-sql) and chat.db is
+    // readable, publish chat_handle_join roster snapshots immediately and on
+    // a periodic sweep. Absent authority keeps the legacy ungated behavior.
+    await service.initMembership();
 
     // Register the heartbeat task worker + create a recurring task.
     // See registerHeartbeat for what it actually does. We gate on the
@@ -1054,6 +1077,10 @@ export class IMessageService extends Service implements IIMessageService {
     logger.info("Stopping iMessage service...");
     this.connected = false;
 
+    this.membership?.stopSweeping();
+    this.membership = null;
+    this.membershipRosterSource = null;
+
     if (this.pollInterval) {
       clearInterval(this.pollInterval);
       this.pollInterval = null;
@@ -1067,6 +1094,79 @@ export class IMessageService extends Service implements IIMessageService {
     this.settings = null;
     this.lastRowId = 0;
     logger.info("iMessage service stopped");
+  }
+
+  /**
+   * Bootstrap native membership evidence publication (issue #24370).
+   * Requires BOTH the canonical MembershipService authority (plugin-sql's
+   * SqlMembershipService) and a readable chat.db. The connector-account row
+   * is upserted through the ConnectorAccountManager so the authority's FK
+   * resolves to a stable durable UUID; a bootstrap failure is reported and
+   * leaves the publisher absent (legacy behavior) rather than crashing the
+   * connector — but roster read failures once running degrade fail-closed.
+   */
+  private async initMembership(): Promise<void> {
+    if (!this.runtime || !this.chatDb) return;
+    const authority = resolveMembershipService(this.runtime);
+    if (!authority) {
+      logger.debug(
+        "[imessage][membership] canonical MembershipService authority not registered; membership evidence is not published"
+      );
+      return;
+    }
+    try {
+      const { getConnectorAccountManager } = await import("@elizaos/core");
+      const manager = getConnectorAccountManager(this.runtime);
+      const now = Date.now();
+      const stored = await manager.upsertAccount(IMESSAGE_MEMBERSHIP_CONNECTOR_ID, {
+        id: `imessage-${IMESSAGE_LOCAL_ACCOUNT_ID}`,
+        provider: IMESSAGE_MEMBERSHIP_CONNECTOR_ID,
+        label: "iMessage (local Apple account)",
+        role: "AGENT",
+        purpose: ["messaging"],
+        accessGate: "open",
+        status: "connected",
+        createdAt: now,
+        updatedAt: now,
+        metadata: { source: "imessage-membership" },
+      });
+      if (
+        !stored.id ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          stored.id
+        )
+      ) {
+        throw new Error(
+          `membership connector account returned a non-authority-valid id: ${String(stored.id)}`
+        );
+      }
+      this.membershipRosterSource = createChatDbRosterSource(this.chatDb);
+      this.membership = new IMessageMembershipPublisher({
+        runtime: this.runtime,
+        connectorAccountId: stored.id as UUID,
+        accountKey: IMESSAGE_LOCAL_ACCOUNT_ID,
+        service: authority,
+      });
+      // Initial snapshot sweep; the publisher degrades its scopes and throws
+      // a typed error on roster read failure (fail-closed admission).
+      const published = await this.membership.sweepRoster(this.membershipRosterSource);
+      this.membership.startSweeping(this.membershipRosterSource);
+      logger.info(
+        `[imessage][membership] native roster snapshots published for ${published} chat(s); periodic sweep active`
+      );
+    } catch (error) {
+      // error-policy:J4 Bootstrap is an expected-failure boundary: report,
+      // keep the publisher absent, and continue in legacy ungated mode so a
+      // broken authority bootstrap never kills messaging.
+      this.membership = null;
+      this.membershipRosterSource = null;
+      logger.warn(
+        `[imessage][membership] bootstrap failed; continuing without membership evidence: ${error instanceof Error ? error.message : String(error)}`
+      );
+      this.runtime.reportError?.("imessage:membership:bootstrap", error, {
+        accountKey: IMESSAGE_LOCAL_ACCOUNT_ID,
+      });
+    }
   }
 
   /**
@@ -2337,6 +2437,26 @@ export class IMessageService extends Service implements IIMessageService {
       logger.debug(
         `[imessage][entity-joined] entityKey=${entityKey} name=${resolvedName ?? row.handle}`
       );
+    }
+
+    // Sender renewal (issue #24370): every inbound message re-proves the
+    // sender's active membership with point evidence, keeping freshness
+    // inside the validity window between periodic roster sweeps. Renewal
+    // failures are diagnostics, not dispatch blockers — the roster sweep is
+    // the authoritative refresh path.
+    if (this.membership && row.handle) {
+      try {
+        await this.membership.renewSender({
+          chatId: roomKey,
+          handle: row.handle,
+        });
+      } catch (error) {
+        // error-policy:J7 Diagnostics must not kill the dispatch loop.
+        this.runtime.reportError?.("imessage:membership:renew", error, {
+          chatId: roomKey,
+          handle: row.handle,
+        });
+      }
     }
 
     // Resolve the in-reply-to link. If this message is an inline reply to

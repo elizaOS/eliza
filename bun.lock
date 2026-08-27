@@ -2064,6 +2064,7 @@
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.8",
+        "@elizaos/plugin-sql": "workspace:*",
         "@types/node": "^22.19.17",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",

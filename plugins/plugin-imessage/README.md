@@ -19,7 +19,7 @@ Native mode requires macOS. Blooio mode supports Linux servers.
 
 - **macOS**: This plugin only works on macOS
 - **Messages App Access**: Full Disk Access is required for reads; Automation permission is required for sends
-- **No Relay Required**: BlueBubbles, local servers, auxiliary CLIs, and external services are not used
+- **No Relay Required**: no external bridge, local server, auxiliary CLI, or network service is used; the connector reads chat.db directly
 
 ## Installation
 
@@ -107,6 +107,17 @@ The plugin uses two local macOS surfaces: read-only SQLite access to
 `~/Library/Messages/chat.db` for inbound history and Apple's built-in
 AppleScript interface to Messages.app for outbound delivery. It does not run a
 relay server or delegate to a third-party executable.
+
+### Membership evidence
+
+When the canonical `MembershipService` authority is registered (plugin-sql)
+and chat.db is readable, the service publishes native membership evidence:
+complete per-chat roster snapshots derived from `chat_handle_join` (on start
+and on a periodic sweep) plus per-sender point renewals on every inbound
+message. Roster read failures — a Full Disk Access (TCC) revocation, a moved
+or corrupt database — degrade every governed scope fail-closed (health
+`unavailable`, authorization denies) until a later successful sweep restores
+it. An absent authority keeps the legacy ungated behavior.
 
 ### AppleScript Method
 
