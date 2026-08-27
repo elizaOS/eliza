@@ -25,7 +25,8 @@ export const IMessageEventTypes = {
   ERROR: "IMESSAGE_ERROR",
 } as const;
 
-export type IMessageEventType = (typeof IMessageEventTypes)[keyof typeof IMessageEventTypes];
+export type IMessageEventType =
+  (typeof IMessageEventTypes)[keyof typeof IMessageEventTypes];
 
 /**
  * iMessage chat types
@@ -173,13 +174,19 @@ export interface IIMessageService extends Service {
   isMacOS(): boolean;
 
   /** Send a message */
-  sendMessage(to: string, text: string, options?: IMessageSendOptions): Promise<IMessageSendResult>;
+  sendMessage(
+    to: string,
+    text: string,
+    options?: IMessageSendOptions,
+  ): Promise<IMessageSendResult>;
 
   /** Get recent messages */
   getRecentMessages(limit?: number): Promise<IMessageMessage[]>;
 
   /** List newest messages, optionally filtered to one chat. */
-  getMessages(options?: IMessageListMessagesOptions): Promise<IMessageMessage[]>;
+  getMessages(
+    options?: IMessageListMessagesOptions,
+  ): Promise<IMessageMessage[]>;
 
   /** Get chats */
   getChats(): Promise<IMessageChat[]>;
@@ -198,7 +205,7 @@ export class IMessagePluginError extends Error {
   constructor(
     message: string,
     public readonly code: string,
-    public readonly details?: Record<string, unknown>
+    public readonly details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = "IMessagePluginError";
@@ -252,7 +259,9 @@ export function isEmail(input: string): boolean {
  */
 export function isValidIMessageTarget(target: string): boolean {
   const trimmed = target.trim();
-  return isPhoneNumber(trimmed) || isEmail(trimmed) || trimmed.startsWith("chat_id:");
+  return (
+    isPhoneNumber(trimmed) || isEmail(trimmed) || trimmed.startsWith("chat_id:")
+  );
 }
 
 /**
@@ -294,6 +303,33 @@ export function formatPhoneNumber(phone: string): string {
 }
 
 /**
+ * Canonical outbound-target spelling shared by the connector send path and
+ * the membership send gate: strips scheme prefixes, canonicalizes chat-id
+ * grammars, lowercases emails, and E.164-formats phone numbers so the same
+ * counterparty resolves to one gate key regardless of how the caller
+ * spelled it. Returns "" when the input trims to nothing.
+ */
+export function normalizeIMessageConnectorHandle(
+  value: string,
+  normalizeContact: (raw: string) => string,
+): string {
+  const stripped = value
+    .trim()
+    .replace(/^(?:messages?|sms|text):/i, "")
+    .trim();
+  const normalizedTarget = normalizeIMessageTarget(stripped) ?? stripped;
+  if (!normalizedTarget) return "";
+  if (normalizedTarget.startsWith("chat_id:")) return normalizedTarget;
+  if (/^(?:imessage|sms|rcs);/i.test(normalizedTarget)) {
+    return `chat_id:${normalizedTarget}`;
+  }
+  if (isEmail(normalizedTarget)) return normalizedTarget.toLowerCase();
+  if (isPhoneNumber(normalizedTarget))
+    return formatPhoneNumber(normalizedTarget);
+  return normalizeContact(normalizedTarget) || normalizedTarget;
+}
+
+/**
  * Split text for iMessage
  */
 // truncateWellFormed(text, 1) returns "" when text opens with a surrogate
@@ -311,11 +347,11 @@ function takeAtLeastOneUnit(text: string, limit: number): string {
 
 export function splitMessageForIMessage(
   text: string,
-  maxLength: number = MAX_IMESSAGE_MESSAGE_LENGTH
+  maxLength: number = MAX_IMESSAGE_MESSAGE_LENGTH,
 ): string[] {
   if (!Number.isFinite(maxLength) || maxLength < 1) {
     throw new Error(
-      `splitMessageForIMessage: maxLength must be a positive finite number, got ${maxLength}`
+      `splitMessageForIMessage: maxLength must be a positive finite number, got ${maxLength}`,
     );
   }
   const limit = Math.floor(maxLength);
