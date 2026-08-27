@@ -10,11 +10,13 @@
 
 import { createHash } from "node:crypto";
 import {
+  buildSegmentedContentMarker,
   type ComputedMemorySegment,
   clampPageWindow,
   ElizaError,
   encodeUtf8Strict,
   MEMORY_PAGE_MAX_BYTES,
+  MEMORY_SEGMENTATION_THRESHOLD_BYTES,
   type MemorySegmentField,
   memorySegmentFieldKey,
   segmentMemoryContent,
@@ -183,22 +185,61 @@ export async function readMemoryContentPage(params: {
 } | null> {
   const { db, memoryId, field } = params;
 
-  const parentRows = await db.execute(sql`
-    SELECT id, metadata FROM memories WHERE id = ${memoryId} LIMIT 1
+  // Snapshot consistency (#25140 review): the descriptor (parent row) and the
+  // segment rows must be read under one transaction fence so a concurrent
+  // replacement cannot switch the generation between the two reads.
+  return await db.transaction(async (tx) => {
+  const parentRows = await tx.execute(sql`
+    SELECT id, metadata, content FROM memories WHERE id = ${memoryId} LIMIT 1
   `);
-  const parentRow = (parentRows.rows as ParentRow[])[0];
+  const parentRow = (parentRows.rows as Array<{ id: UUID; metadata: unknown; content: unknown }>)[0];
   if (!parentRow) return null;
 
   const descriptor = readDescriptors(parentRow.metadata).get(
     memorySegmentFieldKey(field),
   );
 
+  if (descriptor) {
+    // Marker forgery fence: the inline field must carry EXACTLY the canonical
+    // marker for this descriptor. A user-crafted string with the marker
+    // prefix but no matching descriptor never reaches here (no descriptor),
+    // and a stored state where the marker and descriptor disagree is
+    // corruption, not a pageable field.
+    const content =
+      parentRow.content && typeof parentRow.content === "object"
+        ? (parentRow.content as { text?: unknown; attachments?: unknown })
+        : undefined;
+    let inlineText: unknown;
+    if (field.kind === "content.text") {
+      inlineText = content?.text;
+    } else {
+      const attachments = Array.isArray(content?.attachments)
+        ? content.attachments
+        : [];
+      const match = attachments.find(
+        (a) =>
+          a && typeof a === "object" && (a as { id?: unknown }).id === field.attachmentId,
+      );
+      inlineText = match && typeof match === "object" ? (match as { text?: unknown }).text : undefined;
+    }
+    const expectedMarker = buildSegmentedContentMarker(descriptor);
+    if (inlineText !== expectedMarker) {
+      throw new ElizaError(
+        "Segmented field inline marker does not match its descriptor",
+        {
+          code: "MEMORY_SEGMENT_MARKER_MISMATCH",
+          context: { memoryId, fieldKey: memorySegmentFieldKey(field) },
+        },
+      );
+    }
+  }
+
   if (!descriptor) {
     const attachmentFilter =
       field.kind === "attachment.text"
         ? sql`a->>'id' = ${field.attachmentId}`
         : sql`false`;
-    const inlineBytes = await db.execute(sql`
+    const inlineBytes = await tx.execute(sql`
       SELECT octet_length(COALESCE(content->>'text','')) AS text_bytes,
              (
                SELECT COALESCE(sum(octet_length(a->>'text')), 0)
@@ -217,7 +258,10 @@ export async function readMemoryContentPage(params: {
       field.kind === "attachment.text"
         ? row?.attachment_bytes
         : row?.text_bytes;
-    if (fieldBytes !== undefined && fieldBytes > MEMORY_PAGE_MAX_BYTES) {
+    // Fail closed at the SEGMENTATION THRESHOLD, not the page ceiling: any
+    // legacy row a fresh write would have segmented is exactly the row a
+    // single bounded page cannot be trusted to serve inline.
+    if (fieldBytes !== undefined && fieldBytes > MEMORY_SEGMENTATION_THRESHOLD_BYTES) {
       throw new ElizaError(
         "Legacy large unsegmented content requires an authorized reindex before paged reads",
         {
@@ -257,7 +301,22 @@ export async function readMemoryContentPage(params: {
     params.byteLimit,
   );
 
-  const segmentRows = await db
+  // Empty-terminal page: an offset exactly at end-of-source is a complete,
+  // empty page — not a drift error.
+  if (window.start === descriptor.totalBytes) {
+    return {
+      text: "",
+      start: window.start,
+      end: window.start,
+      total: descriptor.totalBytes,
+      sliceSha256: sha256Hex(new Uint8Array(0)),
+      sourceSha256: descriptor.totalSha256,
+      revision: descriptor.revision,
+      completeness: "complete" as const,
+    };
+  }
+
+  const segmentRows = await tx
     .select({
       byteStart: memoryTextSegmentTable.byteStart,
       byteEnd: memoryTextSegmentTable.byteEnd,
@@ -319,6 +378,42 @@ export async function readMemoryContentPage(params: {
     }
     segmentBytes.push(segBytes);
   }
+  // Coverage proof: the intersecting rows must form one contiguous run from
+  // the first segment at/before `window.start` through the last segment at/before
+  // `window.end`. A deleted middle row would otherwise be silently concatenated,
+  // collapsing the gap and mislabeling the returned range.
+  let expectedByteStart = base;
+  for (const row of segmentRows) {
+    if (row.byteStart !== expectedByteStart) {
+      throw new ElizaError(
+        "Stored segment rows are not contiguous over the requested window",
+        {
+          code: "MEMORY_SEGMENT_DESCRIPTOR_DRIFT",
+          context: {
+            memoryId,
+            generation: descriptor.generation,
+            expectedByteStart,
+            actualByteStart: row.byteStart,
+          },
+        },
+      );
+    }
+    expectedByteStart = row.byteEnd;
+  }
+  if (window.end < descriptor.totalBytes && expectedByteStart < window.end) {
+    throw new ElizaError(
+      "Stored segment rows do not cover the requested window",
+      {
+        code: "MEMORY_SEGMENT_DESCRIPTOR_DRIFT",
+        context: {
+          memoryId,
+          generation: descriptor.generation,
+          coveredThrough: expectedByteStart,
+          windowEnd: window.end,
+        },
+      },
+    );
+  }
   const covered = concatBytes(segmentBytes);
   let from = window.start - base;
   let to = Math.min(window.end - base, covered.length);
@@ -349,6 +444,7 @@ export async function readMemoryContentPage(params: {
     completeness:
       end >= descriptor.totalBytes ? "complete" : "partial-recoverable",
   };
+  });
 }
 
 function concatBytes(parts: Uint8Array[]): Uint8Array {

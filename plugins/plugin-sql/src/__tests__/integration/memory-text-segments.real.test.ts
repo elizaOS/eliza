@@ -19,6 +19,7 @@ import {
   MEMORY_PAGE_MAX_BYTES,
   type Memory,
   type Room,
+  buildSegmentedContentMarker,
   shouldSegmentContent,
   type UUID,
 } from "@elizaos/core";
@@ -125,7 +126,7 @@ describe("memory text segments (real PGlite)", () => {
       await tx.insert(memoryTable).values({
         id: memoryId,
         type: "messages",
-        content: { text: "" },
+        content: { text: buildSegmentedContentMarker(plan.descriptor) },
         metadata,
         entityId,
         roomId,
@@ -208,7 +209,7 @@ describe("memory text segments (real PGlite)", () => {
     );
     const metaRow = (parentMeta.rows as Array<{ meta_bytes: number; text: string }>)[0];
     expect(metaRow.meta_bytes).toBeLessThan(4096);
-    expect(metaRow.text.length).toBeLessThan(100);
+    expect(metaRow.text).toBe(buildSegmentedContentMarker(plan.descriptor));
 
     // Restart: fresh manager + adapter on the same data dir.
     await first.adapter.close();
@@ -255,7 +256,7 @@ describe("memory text segments (real PGlite)", () => {
       await tx.insert(memoryTable).values({
         id: memoryId,
         type: "messages",
-        content: { text: "" },
+        content: { text: buildSegmentedContentMarker(firstPlan.descriptor) },
         metadata: firstMetadata,
         entityId,
         roomId,
@@ -281,7 +282,10 @@ describe("memory text segments (real PGlite)", () => {
     await db.transaction(async (tx) => {
       await tx
         .update(memoryTable)
-        .set({ metadata: secondMetadata })
+        .set({
+          metadata: secondMetadata,
+          content: { text: buildSegmentedContentMarker(secondPlan.descriptor) },
+        })
         .where(eq(memoryTable.id, memoryId));
       await insertSegmentsInTransaction({
         tx,
