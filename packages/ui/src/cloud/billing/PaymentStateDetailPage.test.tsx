@@ -16,7 +16,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const apiMock = vi.hoisted(() => {
@@ -87,7 +87,7 @@ function stateRow(
     cumulativeDisputedChargeCurrency: 0,
     cumulativeClawbackCredits: 0,
     reinstatedCredits: 0,
-    unrecoveredShortfallChargeCurrency: 0,
+    unrecoveredShortfallCredits: 0,
     disputeReinstated: false,
     policyEffect: null,
     supportState: "none",
@@ -197,6 +197,155 @@ describe("PaymentStateDetailPage fetch states", () => {
       expect(screen.queryByTestId("payment-detail-title")).toBeNull();
       cleanup();
     }
+  });
+
+  it("rejects a success row whose id does not match the active route id", async () => {
+    // The route contract binds /payments/:id to the requested row: a
+    // well-formed payload for a DIFFERENT payment must not render as this
+    // route's success state (#26752 review P2).
+    apiMock.api.mockResolvedValueOnce({ state: stateRow() });
+    renderDetail("checkout_order:other");
+    await screen.findByTestId("payment-detail-error");
+    expect(screen.getByText(/malformed/i)).toBeTruthy();
+    expect(screen.queryByTestId("payment-detail-title")).toBeNull();
+  });
+
+  it("a delayed response for a previous route id never overwrites the current row (#26752 P2)", async () => {
+    // Deferred A/B navigation: fetch A (slow) then navigate to B (fast) —
+    // the SAME mounted component with a new :id param, exactly like the
+    // app's route. The old unguarded completion order let A's
+    // amount/receipt/authority render on /payments/B. The generation guard
+    // must reject A's late completion.
+    function Harness() {
+      const navigate = useNavigate();
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() =>
+              navigate("/cloud/billing/payments/checkout_order:b1")
+            }
+          >
+            go-b
+          </button>
+          <Routes>
+            <Route
+              path="/cloud/billing/payments/:id"
+              element={<PaymentStateDetailPage />}
+            />
+          </Routes>
+        </>
+      );
+    }
+
+    let resolveA: (value: unknown) => void = () => {};
+    const fetchA = new Promise((resolve) => {
+      resolveA = resolve;
+    });
+    apiMock.api.mockImplementationOnce(() => fetchA);
+    apiMock.api.mockResolvedValueOnce({
+      state: stateRow({
+        id: "checkout_order:b1",
+        authorityId: "authority-B",
+        amountCents: 9900,
+      }),
+    });
+
+    render(
+      <MemoryRouter
+        initialEntries={["/cloud/billing/payments/checkout_order:a1"]}
+      >
+        <Harness />
+      </MemoryRouter>,
+    );
+
+    // A's fetch started; navigate to B before it completes.
+    await waitFor(() =>
+      expect(apiMock.api).toHaveBeenCalledWith(
+        "/api/v1/billing/payment-states/checkout_order%3Aa1",
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "go-b" }));
+
+    await screen.findByTestId("payment-detail-title");
+    expect(screen.getByTestId("payment-detail-authority").textContent).toBe(
+      "authority-B",
+    );
+
+    // A's delayed completion arrives AFTER B rendered successfully.
+    resolveA({
+      state: stateRow({
+        id: "checkout_order:a1",
+        authorityId: "authority-A",
+        amountCents: 1100,
+      }),
+    });
+    // Let A's stale continuation run; the rendered row must still be B's.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.getByTestId("payment-detail-authority").textContent).toBe(
+      "authority-B",
+    );
+    expect(screen.queryByText("authority-A")).toBeNull();
+  });
+
+  it("a delayed failure for a previous route id never overwrites the current row (#26752 P2)", async () => {
+    // Same generation guard on the catch path: a stale rejection must not
+    // tear down the newer route's rendered row.
+    function Harness() {
+      const navigate = useNavigate();
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() =>
+              navigate("/cloud/billing/payments/checkout_order:b2")
+            }
+          >
+            go-b
+          </button>
+          <Routes>
+            <Route
+              path="/cloud/billing/payments/:id"
+              element={<PaymentStateDetailPage />}
+            />
+          </Routes>
+        </>
+      );
+    }
+
+    let rejectA: (reason?: unknown) => void = () => {};
+    const fetchA = new Promise((_resolve, reject) => {
+      rejectA = reject;
+    });
+    apiMock.api.mockImplementationOnce(() => fetchA);
+    apiMock.api.mockResolvedValueOnce({
+      state: stateRow({
+        id: "checkout_order:b2",
+        authorityId: "authority-B2",
+      }),
+    });
+
+    render(
+      <MemoryRouter
+        initialEntries={["/cloud/billing/payments/checkout_order:a2"]}
+      >
+        <Harness />
+      </MemoryRouter>,
+    );
+    await waitFor(() =>
+      expect(apiMock.api).toHaveBeenCalledWith(
+        "/api/v1/billing/payment-states/checkout_order%3Aa2",
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "go-b" }));
+    await screen.findByTestId("payment-detail-title");
+
+    rejectA(new Error("stale route failure"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.getByTestId("payment-detail-authority").textContent).toBe(
+      "authority-B2",
+    );
+    expect(screen.queryByTestId("payment-detail-error")).toBeNull();
   });
 });
 

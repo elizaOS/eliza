@@ -88,8 +88,8 @@ export function isPaymentStateRow(
     Number.isFinite(row.cumulativeClawbackCredits) &&
     typeof row.reinstatedCredits === "number" &&
     Number.isFinite(row.reinstatedCredits) &&
-    typeof row.unrecoveredShortfallChargeCurrency === "number" &&
-    Number.isFinite(row.unrecoveredShortfallChargeCurrency) &&
+    typeof row.unrecoveredShortfallCredits === "number" &&
+    Number.isFinite(row.unrecoveredShortfallCredits) &&
     typeof row.disputeReinstated === "boolean" &&
     (row.policyEffect === null ||
       (typeof row.policyEffect === "object" &&

@@ -64,7 +64,7 @@ export interface PaymentStateDisplay {
   cumulativeDisputedChargeCurrency: number;
   cumulativeClawbackCredits: number;
   reinstatedCredits: number;
-  unrecoveredShortfallChargeCurrency: number;
+  unrecoveredShortfallCredits: number;
   disputeReinstated: boolean;
   policyEffect: {
     status: "unavailable";
@@ -271,7 +271,7 @@ export function PaymentActivityCard() {
                 row.cumulativeDisputedChargeCurrency > 0 ||
                 row.cumulativeClawbackCredits > 0 ||
                 row.reinstatedCredits > 0 ||
-                row.unrecoveredShortfallChargeCurrency > 0 ||
+                row.unrecoveredShortfallCredits > 0 ||
                 row.supportState === "contact_support";
               return (
                 <li
@@ -436,17 +436,14 @@ export function PaymentActivityCard() {
                           {formatCredits(row.cumulativeClawbackCredits)}
                         </span>
                       </p>
-                      {row.unrecoveredShortfallChargeCurrency > 0 ? (
+                      {row.unrecoveredShortfallCredits > 0 ? (
                         <p className="text-xs font-mono text-amber-300">
                           {t("cloud.billingTab.unrecoveredShortfall", {
                             defaultValue: "Unrecovered balance shortfall",
                           })}
                           :{" "}
                           <span data-testid="shortfall-amount">
-                            {formatAmount(
-                              row.unrecoveredShortfallChargeCurrency,
-                              row.currency,
-                            )}
+                            {formatCredits(row.unrecoveredShortfallCredits)}
                           </span>
                         </p>
                       ) : null}
