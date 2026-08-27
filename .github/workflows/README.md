@@ -136,11 +136,11 @@ Representative examples:
   an explicit trusted caller.
   Artifact names include the run ID and attempt so reruns cannot overwrite or
   link a prior attempt's bundle. Both jobs initialize a revision-bound artifact
-  root after checkout, then run the bundle-owning runners with `--output`. A
-  started runner finalizes the full bundle (`inline/`, `logs/`, `summary.json`,
-  `junit.xml`) on success and failure; an earlier toolchain or device failure
-  retains the bootstrap record plus the Actions log. No job reads a repository
-  secret.
+  root after checkout, then run the bundle-owning runners with `--output`.
+  Android retains its bootstrap record under `android/logs/` and atomically
+  publishes its allowlisted proof under `android/evidence/`; iOS retains its
+  existing full bundle layout. An earlier toolchain or device failure retains
+  the bootstrap record plus the Actions log. No job reads a repository secret.
 - `android-arm64-local-e2e.yml` is the separate trusted repository-dispatch
   self-hosted physical-device lane for the embedded Bun + GGUF agent. Its
   `[self-hosted, Linux, ARM64, android-device]` labels are an infrastructure
