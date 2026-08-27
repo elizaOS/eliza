@@ -72,7 +72,7 @@
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.typecheck.json",
     "test": "vitest run --config ./vitest.config.ts",
     "test:ts": "vitest run --config ./vitest.config.ts",
     "build": "bun run build.ts"

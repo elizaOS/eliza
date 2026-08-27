@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": ["__tests__/clean-routing-planner.test.ts"],
+  "exclude": ["node_modules", "dist"]
+}

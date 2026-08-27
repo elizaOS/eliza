@@ -25,13 +25,13 @@ import {
   TEXT_COMPLETION_FRAMING,
 } from "../src/clean-routing-planner";
 
-const msg = (role: string, content: string | unknown): ChatMessage =>
+const msg = (role: ChatMessage["role"], content: string | unknown): ChatMessage =>
   ({ role, content }) as unknown as ChatMessage;
 
 const tool = (
   name: string,
   description: string,
-  parameters?: Record<string, unknown>
+  parameters?: ToolDefinition["parameters"]
 ): ToolDefinition => ({ name, description, parameters }) as unknown as ToolDefinition;
 
 const baseParams = (overrides: Partial<GenerateTextParams> = {}): GenerateTextParams =>
@@ -266,10 +266,10 @@ describe("param hint rendering", () => {
       baseParams({
         tools: [
           tool("BARE", "no schema at all"),
-          tool("NULLY", "schema is null", null as unknown as Record<string, unknown>),
+          tool("NULLY", "schema is null", null as unknown as ToolDefinition["parameters"]),
           // Truthy primitive: distinguishes the typeof guard from the falsy
           // `!schema` check, so deleting either half of the early return fails.
-          tool("PRIM", "schema is a string", "nope" as unknown as Record<string, unknown>),
+          tool("PRIM", "schema is a string", "nope" as unknown as ToolDefinition["parameters"]),
           // Non-object carrying an own `properties` field: without the typeof
           // guard this falls through to the properties lookup and would render
           // hints — the only input class where the two paths diverge.
@@ -282,7 +282,7 @@ describe("param hint rendering", () => {
                 value: { a: { type: "string" } },
                 enumerable: true,
               });
-              return fn as unknown as Record<string, unknown>;
+              return fn as unknown as ToolDefinition["parameters"];
             })()
           ),
         ],
