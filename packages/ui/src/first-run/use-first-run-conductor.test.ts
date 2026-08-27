@@ -1221,11 +1221,11 @@ describe("useFirstRunConductor", () => {
     unmount();
   });
 
-  it("closes the gesture-claimed popup when an already-authenticated cloud provision skips login", async () => {
-    // Token + connection are live (beforeEach defaults), so getCloudAuthToken
-    // short-circuits and interactive login never consumes the claimed handle.
+  it("does not open a popup when an already-authenticated cloud provision skips login", async () => {
+    // Token + connection are live (beforeEach defaults), so this gesture enters
+    // silent provisioning and has no interactive login window to retain.
     const close = vi.fn();
-    vi.spyOn(window, "open").mockReturnValue({
+    const openSpy = vi.spyOn(window, "open").mockReturnValue({
       closed: false,
       close,
     } as unknown as Window);
@@ -1234,8 +1234,27 @@ describe("useFirstRunConductor", () => {
     await waitForTurn(turn, "first-run:greeting");
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
     await waitFor(() => {
-      expect(close).toHaveBeenCalledTimes(1);
+      expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(1);
     });
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("keeps the popup closed while stored-token Dedicated activation remains pending", async () => {
+    mocks.client.getPersonalSharedEliza.mockImplementation(
+      async () => await new Promise(() => undefined),
+    );
+    const openSpy = vi.spyOn(window, "open");
+    seedAppStore();
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    await waitFor(() => {
+      expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(1);
+    });
+    expect(openSpy).not.toHaveBeenCalled();
     unmount();
   });
 

@@ -991,9 +991,10 @@ async function fetchDirectCloudWithTimeout<T>(
         once: true,
       });
   });
+  let response: Response | undefined;
 
   try {
-    const response = await Promise.race([
+    response = await Promise.race([
       directCloudFetch(url, { ...init, signal: controller.signal }),
       aborted,
     ]);
@@ -1003,10 +1004,26 @@ async function fetchDirectCloudWithTimeout<T>(
     return await Promise.race([consume(response), aborted]);
   } catch (err) {
     if (timedOut) {
-      throw new Error(
-        `Eliza Cloud request timed out after ${Math.round(
-          DIRECT_CLOUD_HTTP_TIMEOUT_MS / 1000,
-        )}s (${args.method} ${args.url})`,
+      throw Object.assign(
+        new Error(
+          `Eliza Cloud request timed out after ${Math.round(
+            DIRECT_CLOUD_HTTP_TIMEOUT_MS / 1000,
+          )}s (${args.method} ${args.url})`,
+          { cause: controller.signal.reason },
+        ),
+        response ? { status: response.status, url: args.url } : {},
+      );
+    }
+    if (response && !controller.signal.aborted) {
+      throw Object.assign(
+        new Error(
+          `Eliza Cloud response body could not be read (${args.method} ${args.url})`,
+          { cause: err },
+        ),
+        {
+          status: response.status,
+          url: args.url,
+        },
       );
     }
     throw err;
@@ -1063,7 +1080,13 @@ async function directCloudJsonResponse<T>(
     requestUrl,
     { ...init, method, headers },
     { method, url },
-    async (res) => ({ res, text: await res.text() }),
+    async (res) => ({
+      res,
+      // An authoritative auth rejection is complete in its status line. Do
+      // not let a malformed, rejecting, or indefinitely stalled error body
+      // turn it into a transient transport failure and retain a dead token.
+      text: res.status === 401 || res.status === 403 ? "" : await res.text(),
+    }),
   );
   const parsed = parseDirectCloudJsonSafe(text) as T;
   return {
@@ -1277,7 +1300,12 @@ async function directCloudRequest<T>(
     requestUrl,
     { ...init, method, headers },
     { method, url },
-    async (res) => ({ res, text: await res.text() }),
+    async (res) => ({
+      res,
+      // directCloudRequest clears only an authoritative 401. Its body is not
+      // needed for that decision and must not be able to mask the status.
+      text: res.status === 401 ? "" : await res.text(),
+    }),
   );
   if (res.status === 401) {
     await clearStoredStewardTokenIfCurrent(token);

@@ -72,6 +72,33 @@ interface WaitForCloudLivePersonalIdentityOptions<T> {
   ) => void | Promise<void>;
 }
 
+async function withinCloudLivePersonalIdentityDeadline<T>(
+  operation: () => Promise<T>,
+  deadline: number,
+): Promise<T> {
+  const remainingMs = deadline - Date.now();
+  if (remainingMs <= 0) throw new CloudLivePersonalIdentityDeadlineError();
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(() => {
+        if (Date.now() >= deadline) {
+          throw new CloudLivePersonalIdentityDeadlineError();
+        }
+        return operation();
+      }),
+      new Promise<never>((_resolve, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new CloudLivePersonalIdentityDeadlineError()),
+          remainingMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
 /**
  * Wait once for a real persisted binding. A recovery choice is an adjudicated
  * failure, never permission to replay an activation POST. Runtime Cloud is
@@ -91,11 +118,20 @@ export async function waitForCloudLivePersonalIdentity<T>({
   const deadline = startedAt + timeoutMs;
   let runtimeCloudWasAbsent = false;
   for (;;) {
-    const binding = await readBinding();
+    const binding = await withinCloudLivePersonalIdentityDeadline(
+      readBinding,
+      deadline,
+    );
     if (binding) return binding;
 
-    const retryVisible = await retryRecovery.isVisible();
-    const runtimeCloudVisible = await runtimeCloudRecovery.isVisible();
+    const retryVisible = await withinCloudLivePersonalIdentityDeadline(
+      () => retryRecovery.isVisible(),
+      deadline,
+    );
+    const runtimeCloudVisible = await withinCloudLivePersonalIdentityDeadline(
+      () => runtimeCloudRecovery.isVisible(),
+      deadline,
+    );
     if (!runtimeCloudVisible) runtimeCloudWasAbsent = true;
     const recovery: CloudLivePersonalIdentityRecovery | null = retryVisible
       ? "retry"
@@ -106,8 +142,16 @@ export async function waitForCloudLivePersonalIdentity<T>({
         : null;
     if (recovery) {
       try {
-        await onRecovery?.(recovery);
-      } catch {
+        if (onRecovery) {
+          await withinCloudLivePersonalIdentityDeadline(
+            () => Promise.resolve(onRecovery(recovery)),
+            deadline,
+          );
+        }
+      } catch (error) {
+        if (error instanceof CloudLivePersonalIdentityDeadlineError) {
+          throw error;
+        }
         // error-policy:J7 recovery evidence is secondary to the typed live
         // identity failure. Report only a fixed, payload-free warning and
         // preserve the original recovery classification below.

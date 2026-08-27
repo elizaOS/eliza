@@ -1,6 +1,6 @@
 /** Real-browser regression coverage for bounded optional Cloud actions. */
 
-import { expect, test } from "@playwright/test";
+import { expect, type Locator, test } from "@playwright/test";
 import {
   CloudLiveOptionalActionDeadlineError,
   CloudLivePersonalIdentityDeadlineError,
@@ -323,6 +323,52 @@ test.describe("Cloud live optional action boundary", () => {
       }),
     ).rejects.toBeInstanceOf(CloudLivePersonalIdentityDeadlineError);
   });
+
+  for (const hungPhase of [
+    "read-binding",
+    "retry-visibility",
+    "runtime-visibility",
+    "recovery-diagnostic",
+  ] as const) {
+    test(`bounds a hung ${hungPhase} operation by the same absolute identity deadline`, async ({
+      page,
+    }) => {
+      const pending = async () => await new Promise<never>(() => undefined);
+      const hidden = {
+        isVisible: async () => false,
+      } as unknown as Locator;
+      const visible = {
+        isVisible: async () => true,
+      } as unknown as Locator;
+      const hung = {
+        isVisible: pending,
+      } as unknown as Locator;
+      const startedAt = Date.now();
+
+      await expect(
+        waitForCloudLivePersonalIdentity({
+          readBinding:
+            hungPhase === "read-binding" ? pending : async () => null,
+          retryRecovery:
+            hungPhase === "retry-visibility"
+              ? hung
+              : hungPhase === "recovery-diagnostic"
+                ? visible
+                : hidden,
+          runtimeCloudRecovery:
+            hungPhase === "runtime-visibility" ? hung : hidden,
+          timeoutMs: 50,
+          runtimeCloudGraceMs: 10,
+          pollIntervalMs: 5,
+          ...(hungPhase === "recovery-diagnostic"
+            ? { onRecovery: pending }
+            : {}),
+        }),
+      ).rejects.toBeInstanceOf(CloudLivePersonalIdentityDeadlineError);
+      expect(Date.now() - startedAt).toBeLessThan(500);
+      await expect(page.locator("body")).toBeVisible();
+    });
+  }
 
   test("fails closed when an offered action is continuously replaced", async ({
     page,

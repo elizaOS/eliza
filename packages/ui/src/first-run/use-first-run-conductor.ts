@@ -947,13 +947,15 @@ export function useFirstRunConductor(): void {
     if (!silentCloudEntryRef.current) {
       seedWaitingTurn();
     }
-    // Pre-open the cloud-login popup synchronously NOW — the action handler is
-    // still inside the user gesture, but the provision flow below awaits
-    // several network round-trips before reaching the (async) interactive login
-    // entry point. User activation does not survive those awaits, so opening the
-    // window here keeps the popup path (#15143) while entry point's named
-    // `window.open` would be blocked (#17064 regression guard).
-    claimCloudLoginWindow();
+    // Pre-open only when this gesture can actually enter OAuth. A usable
+    // stored Steward token takes the silent provisioning path and may spend
+    // the full Dedicated startup budget there; retaining an about:blank popup
+    // for that entire phase is both misleading and unnecessary. Token-less
+    // entries still claim synchronously because user activation does not
+    // survive the network awaits before interactive login (#15143/#17064).
+    if (!hasUsableStoredStewardToken()) {
+      claimCloudLoginWindow();
+    }
     void listOrAutoProvisionCloudAgent(draftRef.current, {
       ...portsRef.current,
       signal: abortController.signal,

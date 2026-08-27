@@ -184,6 +184,44 @@ describe("getPersonalSharedEliza", () => {
     expect(requestSignal?.aborted).toBe(true);
   });
 
+  it("preserves HTTP 409 when the Personal response body rejects", async () => {
+    const response = jsonResponse(409, { error: "still starting" });
+    vi.spyOn(response, "text").mockRejectedValue(
+      new Error("response body unavailable"),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => response),
+    );
+
+    await expect(
+      new ElizaClient().getPersonalSharedEliza({
+        cloudApiBase: "https://api.eliza.app",
+        authToken: "steward-token",
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("preserves HTTP 409 when the Personal response body stalls until timeout", async () => {
+    vi.useFakeTimers();
+    const response = jsonResponse(409, { error: "still starting" });
+    vi.spyOn(response, "text").mockImplementation(
+      async () => await new Promise<string>(() => undefined),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => response),
+    );
+
+    const request = new ElizaClient().getPersonalSharedEliza({
+      cloudApiBase: "https://api.eliza.app",
+      authToken: "steward-token",
+    });
+    const rejection = expect(request).rejects.toMatchObject({ status: 409 });
+    await vi.advanceTimersByTimeAsync(30_000);
+    await rejection;
+  });
+
   it("propagates caller abort while the Personal response body is pending", async () => {
     const response = jsonResponse(200, {});
     vi.spyOn(response, "text").mockImplementation(
@@ -400,10 +438,19 @@ describe("ensurePersonalDedicatedEliza", () => {
           if (url.endsWith("/upgrade-tier/cutover")) {
             cutoverAttempts += 1;
             if (cutoverAttempts <= 3) {
-              return jsonResponse([409, 423, 503][cutoverAttempts - 1] ?? 409, {
-                success: false,
-                error: "Dedicated is still provisioning",
-              });
+              const response = jsonResponse(
+                [409, 423, 503][cutoverAttempts - 1] ?? 409,
+                {
+                  success: false,
+                  error: "Dedicated is still provisioning",
+                },
+              );
+              if (cutoverAttempts === 1) {
+                vi.spyOn(response, "text").mockRejectedValue(
+                  new Error("409 response body unavailable"),
+                );
+              }
+              return response;
             }
             return jsonResponse(200, {
               success: true,
@@ -1689,6 +1736,37 @@ describe("verifyDirectCloudStewardSession", () => {
       ).resolves.toMatchObject({
         status: { connected: false, reason: "auth-rejected" },
       });
+      expect(localStorage.getItem("steward_session_token")).toBeNull();
+    },
+  );
+
+  it.each(["rejecting", "stalled"] as const)(
+    "clears an authoritative HTTP 401 without consuming its %s body",
+    async (bodyMode) => {
+      localStorage.setItem("steward_session_token", stewardToken);
+      const response = jsonResponse(401, { error: "unauthorized" });
+      const bodySpy = vi.spyOn(response, "text");
+      if (bodyMode === "rejecting") {
+        bodySpy.mockRejectedValue(new Error("error body unavailable"));
+      } else {
+        bodySpy.mockImplementation(
+          async () => await new Promise<string>(() => undefined),
+        );
+      }
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => response),
+      );
+
+      await expect(
+        verifyDirectCloudStewardSession({
+          cloudApiBase: "https://api-staging.eliza.app",
+          stewardToken,
+        }),
+      ).resolves.toMatchObject({
+        status: { connected: false, reason: "auth-rejected" },
+      });
+      expect(bodySpy).not.toHaveBeenCalled();
       expect(localStorage.getItem("steward_session_token")).toBeNull();
     },
   );
