@@ -92,6 +92,14 @@ describe("ChatConversationItem", () => {
     expect(onRequestDeleteConfirm).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps the active game-modal title readable on its dark surface", () => {
+    renderItem({ variant: "game-modal", isActive: true });
+
+    const title = screen.getByText("Planning the launch");
+    expect(title.classList.contains("text-white")).toBe(true);
+    expect(title.classList.contains("text-bg")).toBe(false);
+  });
+
   it("renders the delete-confirm prompt and wires Yes/No while confirming", () => {
     const onConfirmDelete = vi.fn();
     const onCancelDelete = vi.fn();
