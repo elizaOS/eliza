@@ -96,7 +96,7 @@ import {
 import { installVoiceSessionTestSigningKey } from "../../../../../shared/src/lib/voice-session/test-signing";
 import { attachVoiceWsHandler } from "../../../../../shared/src/lib/voice-session/ws-handler";
 import type { CartesiaInkWebSocket } from "../../stt/providers/cartesia-ink";
-import { VoiceSession } from "../lib/session";
+import { VoiceSession, type VoiceTurnMetricsReceipt } from "../lib/session";
 
 // --- signing setup --------------------------------------------------------
 
@@ -217,6 +217,12 @@ class FakeCartesiaSocket implements CartesiaWebSocketLike {
   emitDone() {
     this.fire("message", {
       data: JSON.stringify({ type: "done", done: true }),
+    });
+  }
+  emitAudio(bytes = new Uint8Array([1, 2, 3, 4])) {
+    const pcm = Buffer.from(bytes).toString("base64");
+    this.fire("message", {
+      data: JSON.stringify({ type: "chunk", data: pcm }),
     });
   }
   emitProviderError(code = "provider_failed") {
@@ -540,6 +546,7 @@ async function connectSession(opts: {
   acousticBargeInEnabled?: boolean;
   halfDuplexPlaybackSettleMs?: number;
   now?: () => number;
+  onTurnMetrics?: (receipt: VoiceTurnMetricsReceipt) => void;
   fish?: {
     enabled?: boolean;
     firstAudioTimeoutMs?: number;
@@ -583,6 +590,7 @@ async function connectSession(opts: {
               halfDuplexPlaybackSettleMs: opts.halfDuplexPlaybackSettleMs,
             }
           : {}),
+        ...(opts.onTurnMetrics ? { onTurnMetrics: opts.onTurnMetrics } : {}),
         elizaEndpoint: "http://internal/api/v1/chat/completions",
         elizaAuthorization: "Bearer eliza-server",
         elizaModel: "gemma-4-31b",
@@ -851,7 +859,9 @@ describe("voice-session WS lifecycle", () => {
       fetchImpl: controlled.fetchImpl,
     });
     await controlled.ready;
-    controlled.enqueueChunk("Welcome home friend.");
+    controlled.enqueueChunk(
+      "Welcome home friend. This contextual greeting is intentionally long enough to begin speaking before the upstream stream fails, proving the fallback cannot double-speak.",
+    );
     await flush();
     await flush();
 
@@ -1531,7 +1541,6 @@ describe("voice-session WS lifecycle", () => {
     expect(fish.sentText()).toBe(
       "Fish primary response reaches audio quickly.",
     );
-    expect(fish.sentFrames()).toContainEqual({ event: "flush" });
     expect(fish.sentFrames().at(-1)).toEqual({ event: "stop" });
     expect(client.audioFrames.at(-1)).toEqual(new Uint8Array([9, 8, 7, 6]));
   });
@@ -1682,13 +1691,15 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes()).toContain("speaking_start");
   });
 
-  test("starts TTS after 24 chars before an unpunctuated LLM stream completes", async () => {
+  test("starts TTS at the high word-safe ceiling before a long unpunctuated stream completes", async () => {
     let aborted = false;
     const client = new FakeClientSocket();
     await connectSession({
       client,
       fetchImpl: makeSseFetch(
-        ["This answer starts speaking now and keeps going"],
+        [
+          "This deliberately long answer crosses the bounded streaming threshold at a natural word boundary so speech begins without chopping a short reply into tiny phrases",
+        ],
         {
           hang: true,
           onAbort: () => {
@@ -1703,8 +1714,8 @@ describe("voice-session WS lifecycle", () => {
     await flush();
     await flush();
 
-    // No punctuation or stream-end was delivered, but the voice-specific
-    // clause ceiling must already have sent a continuation phrase to Cartesia.
+    // No punctuation or stream-end was delivered, but the bounded high
+    // ceiling must already have sent a word-safe continuation to Cartesia.
     const cartesia = FakeCartesiaSocket.instances.at(-1)!;
     const requests = cartesia.sent
       .map(
@@ -1721,7 +1732,7 @@ describe("voice-session WS lifecycle", () => {
     expect(aborted).toBe(true);
   });
 
-  test("starts TTS from a phrase prefix while retaining a non-empty terminal suffix", async () => {
+  test("sends a complete short reply as one terminal Sonic request", async () => {
     const client = new FakeClientSocket();
     await connectSession({
       client,
@@ -1740,12 +1751,11 @@ describe("voice-session WS lifecycle", () => {
           JSON.parse(entry) as { transcript?: string; continue?: boolean },
       )
       .filter((entry) => entry.transcript);
-    expect(requests.length).toBeGreaterThanOrEqual(2);
+    expect(requests).toHaveLength(1);
     expect(requests.map((request) => request.transcript).join("")).toBe(
       "Sunlight reaches Earth quickly.",
     );
-    expect(requests[0]?.continue).toBe(true);
-    expect(requests.at(-1)?.continue).toBe(false);
+    expect(requests[0]?.continue).toBe(false);
   });
 
   test("canonical chunk/done SSE frames are parsed into speakable LLM text", async () => {
@@ -1888,7 +1898,8 @@ describe("voice-session WS lifecycle", () => {
     ink.emitTurn("turn.end", "voice transcript");
     await controlled.ready;
 
-    const streamedChunk = "This first streamed phrase is speakable now ";
+    const streamedChunk =
+      "This first streamed phrase is intentionally long enough to cross the bounded streaming threshold at a natural word boundary before the response completes ";
     controlled.enqueueChunk(streamedChunk);
     await flush();
 
@@ -2094,7 +2105,7 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes()).not.toContain("error");
     expect(client.controlTypes()).toContain("llm_first_text");
     const cartesia = FakeCartesiaSocket.instances.at(-1)!;
-    expect(cartesia.sentText()).toBe("Cache warmed.Here is your answer.");
+    expect(cartesia.sentText()).toBe("Cache warmed. Here is your answer.");
     const latencyLog = fakeLogger.logger.info.mock.calls.findLast(
       ([message]) => message === "[voice-session] first-turn latency",
     );
@@ -2354,6 +2365,52 @@ describe("voice-session WS lifecycle", () => {
     client.clientSend(pcmChunk(3_200));
     await flush();
     expect(ink.sentChunks.length).toBeGreaterThan(providerChunksBeforeEcho);
+  });
+
+  test("emits bounded payload-free turn timing and half-duplex metrics", async () => {
+    let nowMs = Date.now();
+    const receipts: VoiceTurnMetricsReceipt[] = [];
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["Copy that.", " Bravo 913 noted."]),
+      acousticBargeInEnabled: false,
+      halfDuplexPlaybackSettleMs: 600,
+      now: () => nowMs,
+      onTurnMetrics: (receipt) => receipts.push(receipt),
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "voice checkpoint");
+    await flush();
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(client.controlTypes()).toContain("speaking_start");
+
+    nowMs += 45;
+    cartesia.emitAudio(new Uint8Array(8));
+    client.clientSend(pcmChunk(3_200));
+    nowMs += 30;
+    cartesia.emitDone();
+    await flush();
+
+    expect(receipts).toHaveLength(1);
+    const receipt = receipts[0]!;
+    expect(receipt.outcome).toBe("completed");
+    expect(receipt.llmDeltaCount).toBe(2);
+    expect(receipt.sonicRequestCount).toBe(1);
+    expect(receipt.sonicRequestOffsetsMs.length).toBeLessThanOrEqual(16);
+    expect(receipt.audioFrameCount).toBe(2);
+    expect(receipt.outboundAudioBytes).toBe(12);
+    expect(receipt.maxAudioFrameGapMs).toBe(45);
+    expect(receipt.completionOffsetMs).toBe(75);
+    expect(receipt.halfDuplexArmedCount).toBe(1);
+    expect(receipt.halfDuplexSettlingCount).toBe(1);
+    expect(receipt.halfDuplexSuppressedFrameCount).toBe(1);
+    expect(receipt.halfDuplexSuppressedBytes).toBe(3_200);
+    expect(Object.keys(receipt)).not.toContain("transcript");
+    expect(Object.keys(receipt)).not.toContain("text");
+    expect(Object.keys(receipt)).not.toContain("audio");
   });
 
   test("explicit barge-in immediately releases half-duplex suppression", async () => {

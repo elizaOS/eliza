@@ -94,13 +94,14 @@ const REVOCATION_POLL_MS = 400;
  */
 const MAX_OUTSTANDING_METER_WINDOWS = 2;
 /**
- * Voice cannot wait for the generic 180-character phrase ceiling: short spoken
- * replies often have no punctuation until the model's final token, which put
- * ~2.8s of generation after `llm_first_text` on the first-audio path. Emit a
- * speakable clause after a small token-sized prefix; Cartesia's continuation
- * context preserves prosody across the resulting chunks.
+ * Hold a short reply until the LLM finishes so Cartesia receives one terminal
+ * request and can render it with coherent prosody. Longer replies still begin
+ * streaming at a bounded prefix; after that point PhraseAggregator emits only
+ * at natural clause/sentence boundaries or this higher word-safe ceiling.
  */
-const VOICE_TTS_FIRST_CLAUSE_CHARS = 24;
+const VOICE_TTS_STREAMING_THRESHOLD_CHARS = 96;
+/** Keep every per-turn timing collection bounded even for pathological output. */
+const MAX_VOICE_METRIC_OFFSETS = 16;
 /** Human-readable interim captions do not benefit from provider-rate redraws. */
 const STT_PARTIAL_EMIT_INTERVAL_MS = 40;
 /**
@@ -137,6 +138,36 @@ const UNSPEAKABLE_RESPONSE_FALLBACK =
 
 export type { VoiceSessionDownlink } from "@/lib/voice-session/ws-handler";
 
+export interface VoiceTurnMetricsReceipt {
+  traceId: string;
+  startedAtMs: number;
+  outcome: "completed" | "interrupted" | "error";
+  llmDeltaCount: number;
+  firstLlmTextOffsetMs: number | null;
+  lastLlmTextOffsetMs: number | null;
+  maxLlmDeltaGapMs: number;
+  sonicRequestCount: number;
+  sonicRequestOffsetsMs: readonly number[];
+  sonicRequestsBeforeTransportReady: number;
+  maxSonicRequestGapMs: number;
+  firstAudioFrameOffsetMs: number | null;
+  lastAudioFrameOffsetMs: number | null;
+  audioFrameCount: number;
+  outboundAudioBytes: number;
+  maxAudioFrameGapMs: number;
+  completionOffsetMs: number | null;
+  halfDuplexArmedCount: number;
+  halfDuplexSettlingCount: number;
+  halfDuplexSuppressedFrameCount: number;
+  halfDuplexSuppressedBytes: number;
+}
+
+interface VoiceTurnMetricsState extends VoiceTurnMetricsReceipt {
+  lastLlmDeltaAtMs: number | null;
+  lastSonicRequestAtMs: number | null;
+  lastAudioFrameAtMs: number | null;
+}
+
 export interface VoiceSessionConfig {
   sessionId: string;
   jti: string;
@@ -166,6 +197,8 @@ export interface VoiceSessionConfig {
   acousticBargeInEnabled?: boolean;
   /** Deterministic test override for the post-playback microphone settle. */
   halfDuplexPlaybackSettleMs?: number;
+  /** Bounded payload-free timing receipt for observability and regression tests. */
+  onTurnMetrics?: (receipt: VoiceTurnMetricsReceipt) => void;
 
   // LLM leg.
   elizaEndpoint: string;
@@ -253,6 +286,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private assistantPlaybackSuppressedUntilMs = Number.NEGATIVE_INFINITY;
   private assistantPlaybackDroppedUplinkBytes = 0;
   private assistantPlaybackDropLogged = false;
+  private turnMetrics: VoiceTurnMetricsState | null = null;
 
   private state: SessionState = "ready";
   private started = false;
@@ -477,6 +511,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     // clients that opt in through the session config.
     if (this.isAssistantPlaybackSuppressed()) {
       this.assistantPlaybackDroppedUplinkBytes += bytes.byteLength;
+      if (this.turnMetrics) {
+        this.turnMetrics.halfDuplexSuppressedFrameCount += 1;
+        this.turnMetrics.halfDuplexSuppressedBytes += bytes.byteLength;
+      }
       if (!this.assistantPlaybackDropLogged) {
         this.assistantPlaybackDropLogged = true;
         logger.info("[voice-session] half-duplex uplink suppressed", {
@@ -529,6 +567,133 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     }
 
     for (const frame of frames) if (!this.forwardSttFrame(frame)) return;
+  }
+
+  private beginTurnMetrics(traceId: string, startedAtMs: number): void {
+    this.turnMetrics = {
+      traceId,
+      startedAtMs,
+      outcome: "completed",
+      llmDeltaCount: 0,
+      firstLlmTextOffsetMs: null,
+      lastLlmTextOffsetMs: null,
+      maxLlmDeltaGapMs: 0,
+      sonicRequestCount: 0,
+      sonicRequestOffsetsMs: [],
+      sonicRequestsBeforeTransportReady: 0,
+      maxSonicRequestGapMs: 0,
+      firstAudioFrameOffsetMs: null,
+      lastAudioFrameOffsetMs: null,
+      audioFrameCount: 0,
+      outboundAudioBytes: 0,
+      maxAudioFrameGapMs: 0,
+      completionOffsetMs: null,
+      halfDuplexArmedCount: 0,
+      halfDuplexSettlingCount: 0,
+      halfDuplexSuppressedFrameCount: 0,
+      halfDuplexSuppressedBytes: 0,
+      lastLlmDeltaAtMs: null,
+      lastSonicRequestAtMs: null,
+      lastAudioFrameAtMs: null,
+    };
+  }
+
+  private noteLlmDelta(traceId: string): void {
+    const metrics = this.turnMetrics;
+    if (!metrics || metrics.traceId !== traceId) return;
+    const now = this.now();
+    const offset = Math.max(0, now - metrics.startedAtMs);
+    metrics.llmDeltaCount += 1;
+    metrics.firstLlmTextOffsetMs ??= offset;
+    metrics.lastLlmTextOffsetMs = offset;
+    if (metrics.lastLlmDeltaAtMs !== null) {
+      metrics.maxLlmDeltaGapMs = Math.max(
+        metrics.maxLlmDeltaGapMs,
+        now - metrics.lastLlmDeltaAtMs,
+      );
+    }
+    metrics.lastLlmDeltaAtMs = now;
+  }
+
+  private noteSonicRequest(traceId: string, transportReady: boolean): void {
+    const metrics = this.turnMetrics;
+    if (!metrics || metrics.traceId !== traceId) return;
+    const now = this.now();
+    metrics.sonicRequestCount += 1;
+    if (metrics.sonicRequestOffsetsMs.length < MAX_VOICE_METRIC_OFFSETS) {
+      (metrics.sonicRequestOffsetsMs as number[]).push(
+        Math.max(0, now - metrics.startedAtMs),
+      );
+    }
+    if (!transportReady) metrics.sonicRequestsBeforeTransportReady += 1;
+    if (metrics.lastSonicRequestAtMs !== null) {
+      metrics.maxSonicRequestGapMs = Math.max(
+        metrics.maxSonicRequestGapMs,
+        now - metrics.lastSonicRequestAtMs,
+      );
+    }
+    metrics.lastSonicRequestAtMs = now;
+  }
+
+  private noteAudioFrame(traceId: string, byteLength: number): void {
+    const metrics = this.turnMetrics;
+    if (!metrics || metrics.traceId !== traceId) return;
+    const now = this.now();
+    const offset = Math.max(0, now - metrics.startedAtMs);
+    metrics.firstAudioFrameOffsetMs ??= offset;
+    metrics.lastAudioFrameOffsetMs = offset;
+    metrics.audioFrameCount += 1;
+    metrics.outboundAudioBytes += Math.max(0, byteLength);
+    if (metrics.lastAudioFrameAtMs !== null) {
+      metrics.maxAudioFrameGapMs = Math.max(
+        metrics.maxAudioFrameGapMs,
+        now - metrics.lastAudioFrameAtMs,
+      );
+    }
+    metrics.lastAudioFrameAtMs = now;
+  }
+
+  private emitTurnMetrics(
+    traceId: string,
+    outcome: VoiceTurnMetricsReceipt["outcome"],
+  ): void {
+    const metrics = this.turnMetrics;
+    if (!metrics || metrics.traceId !== traceId) return;
+    metrics.outcome = outcome;
+    metrics.completionOffsetMs = Math.max(0, this.now() - metrics.startedAtMs);
+    this.turnMetrics = null;
+    const receipt: VoiceTurnMetricsReceipt = {
+      traceId: metrics.traceId,
+      startedAtMs: metrics.startedAtMs,
+      outcome: metrics.outcome,
+      llmDeltaCount: metrics.llmDeltaCount,
+      firstLlmTextOffsetMs: metrics.firstLlmTextOffsetMs,
+      lastLlmTextOffsetMs: metrics.lastLlmTextOffsetMs,
+      maxLlmDeltaGapMs: metrics.maxLlmDeltaGapMs,
+      sonicRequestCount: metrics.sonicRequestCount,
+      sonicRequestOffsetsMs: [...metrics.sonicRequestOffsetsMs],
+      sonicRequestsBeforeTransportReady:
+        metrics.sonicRequestsBeforeTransportReady,
+      maxSonicRequestGapMs: metrics.maxSonicRequestGapMs,
+      firstAudioFrameOffsetMs: metrics.firstAudioFrameOffsetMs,
+      lastAudioFrameOffsetMs: metrics.lastAudioFrameOffsetMs,
+      audioFrameCount: metrics.audioFrameCount,
+      outboundAudioBytes: metrics.outboundAudioBytes,
+      maxAudioFrameGapMs: metrics.maxAudioFrameGapMs,
+      completionOffsetMs: metrics.completionOffsetMs,
+      halfDuplexArmedCount: metrics.halfDuplexArmedCount,
+      halfDuplexSettlingCount: metrics.halfDuplexSettlingCount,
+      halfDuplexSuppressedFrameCount: metrics.halfDuplexSuppressedFrameCount,
+      halfDuplexSuppressedBytes: metrics.halfDuplexSuppressedBytes,
+    };
+    try {
+      this.config.onTurnMetrics?.(receipt);
+    } catch (error) {
+      logger.warn("[voice-session] turn metrics hook failed", {
+        traceId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /** Queue audio until Ink is ready, then preserve its original frame order. */
@@ -645,6 +810,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
   private armAssistantPlaybackSuppression(): void {
     if (this.config.acousticBargeInEnabled === true) return;
+    if (this.turnMetrics) this.turnMetrics.halfDuplexArmedCount += 1;
     this.assistantPlaybackActive = true;
     this.assistantPlaybackStartedAtMs = this.now();
     this.assistantPlaybackAudioBytes = 0;
@@ -664,6 +830,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
   private settleAssistantPlaybackSuppression(): void {
     if (!this.assistantPlaybackActive) return;
+    if (this.turnMetrics) this.turnMetrics.halfDuplexSettlingCount += 1;
     const now = this.now();
     const playbackStartedAt = this.assistantPlaybackStartedAtMs ?? now;
     const estimatedPlaybackMs = Math.ceil(
@@ -1224,6 +1391,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     } = {},
   ): Promise<void> {
     const responseStartedAt = this.now();
+    this.beginTurnMetrics(traceId, responseStartedAt);
     let firstModelTextAt: number | null = null;
     const upstreamAttempts: Array<{
       attempt: number;
@@ -1242,10 +1410,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     const abort = new AbortController();
     this.llmAbort = abort;
     const phrase = new PhraseAggregator({
-      maxBufferChars: VOICE_TTS_FIRST_CLAUSE_CHARS,
+      maxBufferChars: VOICE_TTS_STREAMING_THRESHOLD_CHARS,
       preferWordBoundaryAtMax: true,
     });
     this.phrase = phrase;
+    let initialReplyBuffer = "";
+    let streamingReplyStarted = false;
 
     let tts: RealtimeTtsStream | null = null;
     // Held terminal suffix (see the streaming loop below): Cartesia requires a
@@ -1295,6 +1465,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         onAudioFrame: (frame) => {
           // Guard: no post-cancel / stale-turn frames ever reach the client.
           if (this.currentVoiceTurnId !== traceId) return;
+          this.noteAudioFrame(traceId, frame.bytes.byteLength);
           this.noteAssistantPlaybackAudio(frame.bytes.byteLength);
           this.config.downlink.sendAudio(frame.bytes);
         },
@@ -1317,12 +1488,42 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           abort.abort();
           // Close out the failed turn so the client gets usage + returns to
           // listening, instead of the session being stuck on a dead turn.
-          this.finishTurn(traceId);
+          this.finishTurn(traceId, "error");
         },
       };
       tts = this.createTtsStream(traceId, callbacks);
       this.ttsStream = tts;
       return tts;
+    };
+    const sendTtsPhrase = (
+      stream: RealtimeTtsStream,
+      input: RealtimeTtsPhraseInput,
+    ): void => {
+      this.noteSonicRequest(traceId, ttsTransportReadyAt !== null);
+      stream.sendPhrase(input);
+    };
+    const queueStreamingPhrases = (phrases: readonly string[]): void => {
+      for (const p of phrases) {
+        if (!SPOKEN_TRANSCRIPT_RE.test(p)) continue;
+        this.turnTtsChars += p.length;
+        const stream = ensureTts();
+        if (pendingPhrase !== null) {
+          sendTtsPhrase(stream, {
+            text: pendingPhrase,
+            continueContext: true,
+          });
+        }
+        const split = splitTerminalSuffix(p);
+        if (split) {
+          sendTtsPhrase(stream, {
+            text: split.prefix,
+            continueContext: true,
+          });
+          pendingPhrase = split.suffix;
+        } else {
+          pendingPhrase = p;
+        }
+      }
     };
 
     try {
@@ -1394,10 +1595,13 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           // same TTS context and normal terminal cleanup closes it.
           const stream = ensureTts();
           if (pendingPhrase !== null) {
-            stream.sendPhrase({ text: pendingPhrase, continueContext: true });
+            sendTtsPhrase(stream, {
+              text: pendingPhrase,
+              continueContext: true,
+            });
             pendingPhrase = null;
           }
-          stream.sendPhrase({ text, continueContext: true });
+          sendTtsPhrase(stream, { text, continueContext: true });
           logger.info("[voice-session] action progress cue", {
             traceId,
             elapsedMs: this.now() - responseStartedAt,
@@ -1406,6 +1610,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       };
       const onDelta = (delta: string) => {
         if (this.currentVoiceTurnId !== traceId) return;
+        this.noteLlmDelta(traceId);
         modelOutputChars += delta.length;
         if (SPOKEN_TRANSCRIPT_RE.test(delta)) {
           modelSpeakableContentSeen = true;
@@ -1415,28 +1620,23 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           firstModelTextAt = this.now();
           this.send({ t: "llm_first_text", traceId });
         }
-        // Cartesia closes a synthesis context via the FINAL non-empty phrase
-        // carrying continue:false. Holding a whole sentence until LLM stream
-        // completion added seconds to first audio for one-sentence replies.
-        // Send the speakable prefix immediately and retain only its last word
-        // as the eventual terminal phrase. A following phrase first flushes
-        // the retained suffix with continue:true.
-        const phrases = phrase.push(delta);
-        for (const p of phrases) {
-          if (!SPOKEN_TRANSCRIPT_RE.test(p)) continue;
-          this.turnTtsChars += p.length;
-          const stream = ensureTts();
-          if (pendingPhrase !== null) {
-            stream.sendPhrase({ text: pendingPhrase, continueContext: true });
+        // Short answers sound best as one coherent terminal request. Hold the
+        // initial reply until either the LLM completes or it crosses the
+        // bounded streaming threshold. Longer replies then use the shared
+        // phrase policy, which emits at natural boundaries or a high word-safe
+        // ceiling rather than arbitrary 24-character splits.
+        if (!streamingReplyStarted) {
+          initialReplyBuffer += delta;
+          if (initialReplyBuffer.length < VOICE_TTS_STREAMING_THRESHOLD_CHARS) {
+            return;
           }
-          const split = splitTerminalSuffix(p);
-          if (split) {
-            stream.sendPhrase({ text: split.prefix, continueContext: true });
-            pendingPhrase = split.suffix;
-          } else {
-            pendingPhrase = p;
-          }
+          streamingReplyStarted = true;
+          const buffered = initialReplyBuffer;
+          initialReplyBuffer = "";
+          queueStreamingPhrases(phrase.push(buffered));
+          return;
         }
+        queueStreamingPhrases(phrase.push(delta));
       };
       const retryDelays =
         this.config.cacheWarmingRetryDelaysMs ?? CACHE_WARMING_RETRY_DELAYS_MS;
@@ -1496,25 +1696,44 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         });
       }
 
+      if (!streamingReplyStarted) {
+        const completeShortReply = initialReplyBuffer.trim();
+        initialReplyBuffer = "";
+        if (SPOKEN_TRANSCRIPT_RE.test(completeShortReply)) {
+          this.turnTtsChars += completeShortReply.length;
+          sendTtsPhrase(ensureTts(), {
+            text: completeShortReply,
+            continueContext: false,
+          });
+          return;
+        }
+      }
+
       const tail = phrase.flush();
       if (tail && SPOKEN_TRANSCRIPT_RE.test(tail)) {
         // A trailing phrase remains. Flush any held phrase (continue:true), then
         // send the tail as the terminal phrase with continue:false.
         if (pendingPhrase !== null) {
-          ensureTts().sendPhrase({
+          sendTtsPhrase(ensureTts(), {
             text: pendingPhrase,
             continueContext: true,
           });
           pendingPhrase = null;
         }
         this.turnTtsChars += tail.length;
-        ensureTts().sendPhrase({ text: tail, continueContext: false });
+        sendTtsPhrase(ensureTts(), {
+          text: tail,
+          continueContext: false,
+        });
       } else if (pendingPhrase !== null) {
         // The held phrase is the LAST speakable unit: send it with
         // continue:false to close the context cleanly (yields `done` ->
         // onComplete). This replaces the empty-transcript finish() that the
         // LIVE Cartesia API rejects.
-        ensureTts().sendPhrase({ text: pendingPhrase, continueContext: false });
+        sendTtsPhrase(ensureTts(), {
+          text: pendingPhrase,
+          continueContext: false,
+        });
         pendingPhrase = null;
       } else {
         // No speakable output at all (empty LLM reply). The socket was opened
@@ -1580,7 +1799,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       // stream fails before a terminal TTS phrase is sent. finishTurn has not
       // run yet, so ttsStream still belongs to this turn.
       this.ttsStream?.cancel("llm_error");
-      this.finishTurn(traceId);
+      this.finishTurn(traceId, "error");
       const fallbackGreeting = options.fallbackGreeting?.trim();
       if (fallbackGreeting && !modelAudioStarted) {
         this.speakOpeningGreeting(fallbackGreeting);
@@ -1588,9 +1807,13 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     }
   }
 
-  private finishTurn(traceId: string): void {
+  private finishTurn(
+    traceId: string,
+    outcome: VoiceTurnMetricsReceipt["outcome"] = "completed",
+  ): void {
     if (this.currentVoiceTurnId !== traceId || this.closed) return;
     this.settleAssistantPlaybackSuppression();
+    this.emitTurnMetrics(traceId, outcome);
     this.send({
       t: "usage",
       sttMs: this.turnSttMs,
@@ -1617,6 +1840,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     this.clearAssistantPlaybackSuppression();
     const traceId = this.currentVoiceTurnId;
     if (!traceId) return; // nothing speaking/thinking to interrupt.
+    this.emitTurnMetrics(traceId, "interrupted");
 
     // 1. Invalidate the turn id FIRST so any in-flight adapter callback that
     //    races this path is dropped by the `currentVoiceTurnId` guard.
