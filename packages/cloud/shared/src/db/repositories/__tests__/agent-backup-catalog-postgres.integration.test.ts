@@ -561,7 +561,10 @@ const realPostgres = postgres ? describe : describe.skip;
 
 realPostgres("canonical backup catalogue contention", () => {
   beforeAll(async () => {
-    if (!dbWrite) throw new Error("Real PostgreSQL harness was not initialized");
+    const initializedDbWrite = dbWrite;
+    if (!initializedDbWrite) {
+      throw new Error("Real PostgreSQL harness was not initialized");
+    }
     const { apply } = await pushSchema(
       {
         organizations,
@@ -573,13 +576,13 @@ realPostgres("canonical backup catalogue contention", () => {
         agentSandboxBackups,
         agentBackupCatalogAuthorities,
       } as never,
-      dbWrite as never,
+      initializedDbWrite as never,
     );
     await apply();
     await seedSourceAuthority(TENANT_A);
     await seedSourceAuthority(TENANT_B);
     await installAgentNodeOccurrenceTriggerForTests((statement) =>
-      dbWrite.execute(sql.raw(statement)),
+      initializedDbWrite.execute(sql.raw(statement)),
     );
     await applyBackupAdmissionMigrations();
     await installBackupMutationGuardForTests();
