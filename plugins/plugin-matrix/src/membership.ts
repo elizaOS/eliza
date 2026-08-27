@@ -113,7 +113,7 @@ export function matrixTransitionToMembership(transition: MatrixMembershipTransit
 export function classifyMatrixTransition(
   membership: string | undefined,
   previousMembership: string | undefined
-): MatrixMembershipTransition {
+): MatrixMembershipTransition | null {
   switch (membership) {
     case "join":
       return "join";
@@ -126,7 +126,10 @@ export function classifyMatrixTransition(
       // membership resets to leave); treat as leave — it is still not active.
       return previousMembership === "ban" ? "leave" : "leave";
   }
-  return "leave";
+  // Unknown or missing membership (undefined, "knock", future values) must
+  // never be interpreted as absence: revoking a principal requires an
+  // explicit leave/ban decision. Callers skip and report these.
+  return null;
 }
 
 /** Role snapshot derived from a Matrix power level (default 0 = member). */
