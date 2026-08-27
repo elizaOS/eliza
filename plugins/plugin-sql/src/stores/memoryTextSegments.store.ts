@@ -1,19 +1,20 @@
 /**
  * Segmented-content store for the `memory_text_segments` table (#25140):
- * atomic publication of immutable UTF-8 source segments alongside a bounded
- * parent descriptor, generation-fenced replacement, and authorized byte-window
- * page reads that never materialize the parent content or join embeddings.
- * Consumed by BaseDrizzleAdapter; segmented parents carry their descriptors in
- * `metadata.segmentation[<fieldKey>]`, never the source bytes.
+ * planning of immutable UTF-8 source segments plus a bounded parent
+ * descriptor, transactional publication, generation retirement, and
+ * authorized byte-window page reads that never materialize the parent content
+ * or join embeddings. Consumed by BaseDrizzleAdapter; segmented parents carry
+ * their descriptors in `metadata.segmentation[<fieldKey>]`, never the source
+ * bytes. Not a second attachment/media byte store.
  */
 
 import { createHash } from "node:crypto";
 import {
-  buildSegmentationRevision,
   type ComputedMemorySegment,
   clampPageWindow,
   ElizaError,
   encodeUtf8Strict,
+  MEMORY_PAGE_MAX_BYTES,
   type MemorySegmentField,
   memorySegmentFieldKey,
   segmentMemoryContent,
@@ -38,10 +39,6 @@ export interface StoredSegmentationDescriptor {
 
 type ParentRow = {
   id: UUID;
-  entityId: UUID | null;
-  roomId: UUID | null;
-  worldId: UUID | null;
-  agentId: UUID;
   metadata: unknown;
 };
 
@@ -70,83 +67,55 @@ function readDescriptors(
   return out;
 }
 
-/**
- * Splits `text` and inserts the bounded parent descriptor + all generation
- * segments for `field` inside the caller's transaction. The caller MUST write
- * the returned metadata onto the parent row in the SAME transaction (or pass a
- * parent that already carries it), so failure leaves neither parent nor
- * orphaned segments. When the parent already carries a descriptor for this
- * field, a fresh generation replaces it and prior-generation rows for this
- * parent are deleted in the same transaction.
- *
- * Returns the metadata object the parent row must persist.
- */
-export async function publishSegmentedFieldInTransaction(params: {
-  tx: DrizzleDatabase;
-  parentId: UUID;
-  entityId: UUID | null;
-  field: MemorySegmentField;
-  text: string;
-  existingMetadata: unknown;
-  segmentBytes?: number;
-}): Promise<Record<string, unknown>> {
-  const { tx, parentId, field, text } = params;
+/** Merges a segmentation descriptor into parent metadata (pure). */
+export function mergeSegmentationMetadata(
+  existingMetadata: unknown,
+  descriptor: StoredSegmentationDescriptor,
+): Record<string, unknown> {
   const metadata =
-    params.existingMetadata && typeof params.existingMetadata === "object"
-      ? { ...(params.existingMetadata as Record<string, unknown>) }
+    existingMetadata && typeof existingMetadata === "object"
+      ? { ...(existingMetadata as Record<string, unknown>) }
       : {};
   const segmentation = {
     ...((metadata.segmentation as Record<string, unknown> | undefined) ?? {}),
   };
-
-  const descriptors = readDescriptors(metadata);
-  const prior = descriptors.get(memorySegmentFieldKey(field));
-
-  const computed = segmentMemoryContent(text, field, {
-    ...(params.segmentBytes ? { segmentBytes: params.segmentBytes } : {}),
-    // A fresh generation every publication keeps immutability even if the
-    // text is byte-identical to the prior generation.
-  });
-
-  // Generation UUID must be a valid uuid for the column; segmentMemoryContent
-  // mints one via randomUUID.
-  await insertSegments(
-    tx,
-    parentId,
-    computed.segments,
-    computed.descriptor.generation,
-  );
-
-  segmentation[memorySegmentFieldKey(field)] = computed.descriptor;
+  segmentation[memorySegmentFieldKey(descriptor.field)] = descriptor;
   metadata.segmentation = segmentation;
-
-  // Retire prior generations of this parent (any field) atomically with the
-  // new publication: delete every segment row not belonging to a live
-  // descriptor generation after the parent metadata update is staged.
-  const liveGenerations = new Set(
-    [...readDescriptors(metadata).values()].map((d) => d.generation),
-  );
-  await deleteStaleGenerations(
-    tx,
-    parentId,
-    liveGenerations,
-    prior?.generation,
-  );
-
   return metadata;
 }
 
-async function insertSegments(
-  tx: DrizzleDatabase,
-  parentId: UUID,
-  segments: ComputedMemorySegment[],
-  generation: string,
-): Promise<void> {
-  if (segments.length === 0) return;
-  await tx.insert(memoryTextSegmentTable).values(
-    segments.map((segment) => ({
-      parentId,
-      generation,
+/**
+ * Pure planning pass: computes the immutable segments and the bounded
+ * descriptor for `text`, minting a fresh generation. The caller persists the
+ * parent row (carrying the merged metadata) FIRST, then
+ * `insertSegmentsInTransaction`, both inside one transaction — parent-first
+ * satisfies the FK, and rollback leaves neither parent nor orphaned rows.
+ */
+export function planSegmentedField(params: {
+  field: MemorySegmentField;
+  text: string;
+  segmentBytes?: number;
+}): {
+  segments: ComputedMemorySegment[];
+  descriptor: StoredSegmentationDescriptor;
+} {
+  return segmentMemoryContent(params.text, params.field, {
+    ...(params.segmentBytes ? { segmentBytes: params.segmentBytes } : {}),
+  });
+}
+
+/** Inserts the planned generation's rows. Parent row must already exist. */
+export async function insertSegmentsInTransaction(params: {
+  tx: DrizzleDatabase;
+  parentId: UUID;
+  segments: ComputedMemorySegment[];
+  generation: string;
+}): Promise<void> {
+  if (params.segments.length === 0) return;
+  await params.tx.insert(memoryTextSegmentTable).values(
+    params.segments.map((segment) => ({
+      parentId: params.parentId,
+      generation: params.generation,
       segmentIndex: segment.index,
       byteStart: segment.byteStart,
       byteEnd: segment.byteEnd,
@@ -156,37 +125,44 @@ async function insertSegments(
   );
 }
 
-async function deleteStaleGenerations(
-  tx: DrizzleDatabase,
-  parentId: UUID,
-  liveGenerations: Set<string>,
-  priorGeneration?: string,
-): Promise<void> {
-  // Delete rows of any retired generation. With only live generations kept,
-  // the invariant "every segment row belongs to the descriptor's generation"
-  // holds at read time.
-  const live = [...liveGenerations];
-  if (live.length === 0) return;
-  // Guard: prior generation of this field is retired unless it is still live.
-  if (priorGeneration && !live.includes(priorGeneration)) {
-    await tx
+/**
+ * Deletes every segment generation of this parent that is no longer live in
+ * the (already-updated) parent metadata. Run in the same transaction as the
+ * replacement so retired generations never outlive their descriptor switch.
+ */
+export async function retireStaleGenerationsInTransaction(params: {
+  tx: DrizzleDatabase;
+  parentId: UUID;
+  liveMetadata: unknown;
+}): Promise<void> {
+  const live = [...readDescriptors(params.liveMetadata).values()].map(
+    (descriptor) => descriptor.generation,
+  );
+  if (live.length === 0) {
+    await params.tx
       .delete(memoryTextSegmentTable)
-      .where(
-        and(
-          eq(memoryTextSegmentTable.parentId, parentId),
-          eq(memoryTextSegmentTable.generation, priorGeneration),
-        ),
-      );
+      .where(eq(memoryTextSegmentTable.parentId, params.parentId));
+    return;
   }
+  await params.tx
+    .delete(memoryTextSegmentTable)
+    .where(
+      and(
+        eq(memoryTextSegmentTable.parentId, params.parentId),
+        sql`${memoryTextSegmentTable.generation} NOT IN ${live}`,
+      ),
+    );
 }
 
 /**
  * Authorized byte-window page read over a segmented field. Throws typed
- * ElizaErrors: MEMORY_CONTENT_REINDEX_REQUIRED for legacy large unsegmented
- * rows, MEMORY_CONTENT_STALE_REVISION for continuation mismatches, and
- * MEMORY_CONTENT_NOT_SEGMENTED when the field has no descriptor and the
- * inline value is within the segmentation threshold (caller should fall back
- * to the ordinary small-row read).
+ * ElizaErrors: MEMORY_CONTENT_REINDEX_REQUIRED for legacy unsegmented rows
+ * whose inline field exceeds the hard page ceiling (a single bounded read can
+ * never serve them), MEMORY_CONTENT_STALE_REVISION for continuation
+ * mismatches, and MEMORY_SEGMENT_DESCRIPTOR_DRIFT / DIGEST_MISMATCH for
+ * storage corruption. Returns null when the field has no descriptor and the
+ * inline value fits a bounded page — callers fall back to the ordinary
+ * small-row read.
  */
 export async function readMemoryContentPage(params: {
   db: DrizzleDatabase;
@@ -218,18 +194,16 @@ export async function readMemoryContentPage(params: {
   );
 
   if (!descriptor) {
-    // No descriptor: either the row is small (caller falls back to the normal
-    // read) or it is a legacy large unsegmented row (typed reindex error).
+    const attachmentFilter =
+      field.kind === "attachment.text"
+        ? sql`a->>'id' = ${field.attachmentId}`
+        : sql`false`;
     const inlineBytes = await db.execute(sql`
       SELECT octet_length(COALESCE(content->>'text','')) AS text_bytes,
              (
                SELECT COALESCE(sum(octet_length(a->>'text')), 0)
                FROM jsonb_array_elements(COALESCE(content->'attachments','[]'::jsonb)) a
-               WHERE ${
-                 field.kind === "attachment.text"
-                   ? sql`a->>'id' = ${field.attachmentId}`
-                   : sql`false`
-}
+               WHERE ${attachmentFilter}
              ) AS attachment_bytes
       FROM memories WHERE id = ${memoryId}
     `);
@@ -243,7 +217,7 @@ export async function readMemoryContentPage(params: {
       field.kind === "attachment.text"
         ? row?.attachment_bytes
         : row?.text_bytes;
-    if (fieldBytes !== undefined && fieldBytes > 256 * 1024) {
+    if (fieldBytes !== undefined && fieldBytes > MEMORY_PAGE_MAX_BYTES) {
       throw new ElizaError(
         "Legacy large unsegmented content requires an authorized reindex before paged reads",
         {
@@ -283,7 +257,6 @@ export async function readMemoryContentPage(params: {
     params.byteLimit,
   );
 
-  // Fetch only segments intersecting the window, ordered by range.
   const segmentRows = await db
     .select({
       byteStart: memoryTextSegmentTable.byteStart,
@@ -296,7 +269,6 @@ export async function readMemoryContentPage(params: {
       and(
         eq(memoryTextSegmentTable.parentId, memoryId),
         eq(memoryTextSegmentTable.generation, descriptor.generation),
-        // Intersects [window.start, window.end): start < windowEnd AND end > windowStart
         lt(memoryTextSegmentTable.byteStart, window.end),
         gt(memoryTextSegmentTable.byteEnd, window.start),
       ),
@@ -313,8 +285,13 @@ export async function readMemoryContentPage(params: {
     );
   }
 
-  // Byte-exact assembly of the window across segment boundaries.
-  const parts: Uint8Array[] = [];
+  // Assemble the intersecting segments' full bytes (bounded: the page window
+  // plus at most one segment on each side), verify each segment, then slice
+  // the window with the end snapped back to a UTF-8 code point boundary so a
+  // page never splits a code point and the returned `end` is a valid
+  // continuation offset.
+  const segmentBytes: Uint8Array[] = [];
+  const base = segmentRows[0].byteStart;
   for (const row of segmentRows) {
     const segBytes = encodeUtf8Strict(row.text);
     if (segBytes.length !== row.byteEnd - row.byteStart) {
@@ -340,14 +317,26 @@ export async function readMemoryContentPage(params: {
         },
       });
     }
-    const from = Math.max(window.start, row.byteStart) - row.byteStart;
-    const to = Math.min(window.end, row.byteEnd) - row.byteStart;
-    if (to > from) parts.push(segBytes.subarray(from, to));
+    segmentBytes.push(segBytes);
   }
-
-  const pageBytes = concatBytes(parts);
+  const covered = concatBytes(segmentBytes);
+  let from = window.start - base;
+  let to = Math.min(window.end - base, covered.length);
+  // Snap the end backward off any partial trailing code point.
+  while (to > from && (covered[to] & 0xc0) === 0x80) {
+    to -= 1;
+  }
+  // A caller offset that starts mid-code-point is invalid.
+  if (from > 0 && (covered[from] & 0xc0) === 0x80) {
+    throw new ElizaError("Page byte offset splits a UTF-8 code point", {
+      code: "MEMORY_PAGE_INVALID_OFFSET",
+      context: { memoryId, byteStart: window.start },
+    });
+  }
+  const pageBytes = covered.subarray(from, to);
   const text = new TextDecoder("utf-8", { fatal: true }).decode(pageBytes);
-  const end = window.start + pageBytes.length;
+  const end = base + to;
+  from = 0;
 
   return {
     text,
@@ -372,5 +361,3 @@ function concatBytes(parts: Uint8Array[]): Uint8Array {
   }
   return out;
 }
-
-export { buildSegmentationRevision };
