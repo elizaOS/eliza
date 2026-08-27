@@ -16,6 +16,18 @@ describe("e2e _helpers isLocalTarget", () => {
   const savedApiBaseUrl = process.env.TEST_API_BASE_URL;
   const savedBaseUrl = process.env.TEST_BASE_URL;
 
+  const workerdRecycleResponse = (status: 500 | 503 = 500) =>
+    new Response(
+      status === 500 ? "Internal Server Error" : "Service Unavailable",
+      {
+        status,
+        headers: {
+          "content-type": "text/plain; charset=UTF-8",
+          server: "workerd",
+        },
+      },
+    );
+
   beforeEach(() => {
     delete process.env.TEST_API_BASE_URL;
     delete process.env.TEST_BASE_URL;
@@ -89,5 +101,85 @@ describe("e2e _helpers isLocalTarget", () => {
     const requestInit = fetchSpy.mock.calls[0]?.[1];
     expect(new Headers(requestInit?.headers).has("Origin")).toBe(false);
     fetchSpy.mockRestore();
+  });
+
+  test("retries a local plain-text Wrangler 500 before asserting the app contract", async () => {
+    process.env.TEST_API_BASE_URL = "http://127.0.0.1:8787";
+    const fetchSpy = spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(workerdRecycleResponse())
+      .mockResolvedValueOnce(
+        Response.json({ error: "unsupported_transport" }, { status: 404 }),
+      );
+
+    const response = await api.get("/api/mcps/jira/garbage-transport");
+    const fetchCount = fetchSpy.mock.calls.length;
+    fetchSpy.mockRestore();
+
+    const body = (await response.json()) as { error: string };
+    expect(response.status).toBe(404);
+    expect(body).toEqual({ error: "unsupported_transport" });
+    expect(fetchCount).toBe(2);
+  });
+
+  test.each(["application/json", "application/problem+json"])(
+    "does not retry a structured application 500 with %s",
+    async (contentType) => {
+      process.env.TEST_API_BASE_URL = "http://127.0.0.1:8787";
+      const fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response('{"error":"application_failure"}', {
+          status: 500,
+          headers: { "content-type": contentType, server: "workerd" },
+        }),
+      );
+
+      const response = await api.get("/api/test-failure");
+      const fetchCount = fetchSpy.mock.calls.length;
+      fetchSpy.mockRestore();
+
+      expect(response.status).toBe(500);
+      expect(fetchCount).toBe(1);
+    },
+  );
+
+  test("does not replay a non-idempotent request after a workerd 500", async () => {
+    process.env.TEST_API_BASE_URL = "http://127.0.0.1:8787";
+    const fetchSpy = spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(workerdRecycleResponse())
+      .mockResolvedValueOnce(new Response(null, { status: 201 }));
+
+    const response = await api.post("/api/mutate", { value: "once" });
+    const fetchCount = fetchSpy.mock.calls.length;
+    fetchSpy.mockRestore();
+
+    expect(response.status).toBe(500);
+    expect(fetchCount).toBe(1);
+  });
+
+  test("caps persistent local workerd failures at two retries", async () => {
+    process.env.TEST_API_BASE_URL = "http://127.0.0.1:8787";
+    const fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(
+      workerdRecycleResponse(),
+    );
+
+    const response = await api.get("/api/mcps/jira/garbage-transport");
+    const fetchCount = fetchSpy.mock.calls.length;
+    fetchSpy.mockRestore();
+
+    expect(response.status).toBe(500);
+    expect(fetchCount).toBe(3);
+  });
+
+  test("does not retry a deployed target plain-text 500", async () => {
+    process.env.TEST_API_BASE_URL = "https://staging-api.elizacloud.ai";
+    const fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(
+      workerdRecycleResponse(),
+    );
+
+    const response = await api.get("/api/mcps/jira/garbage-transport");
+    const fetchCount = fetchSpy.mock.calls.length;
+    fetchSpy.mockRestore();
+
+    expect(response.status).toBe(500);
+    expect(fetchCount).toBe(1);
   });
 });

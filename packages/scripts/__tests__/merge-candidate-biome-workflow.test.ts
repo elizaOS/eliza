@@ -1,6 +1,6 @@
 /**
- * Proves the merge-queue Biome workflow checks GitHub's synthesized candidate
- * SHA and that the repository-pinned formatter rejects a planted bad file.
+ * Proves the manual full-tree Biome diagnostic checks the dispatched SHA with
+ * repository-pinned commands and rejects a planted bad file.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -22,11 +22,14 @@ const WORKFLOW_PATH = path.join(
 );
 
 describe("merge candidate Biome workflow", () => {
-  test("checks the exact merge-group candidate with pinned repository commands", () => {
+  test("checks the exact dispatched candidate with pinned repository commands", () => {
     const workflow = parse(readFileSync(WORKFLOW_PATH, "utf8"));
 
-    expect(workflow.on).toEqual({
-      merge_group: { types: ["checks_requested"] },
+    expect(workflow.on).toEqual({ workflow_dispatch: null });
+    expect(workflow.concurrency).toEqual({
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: this is the literal GitHub Actions expression the workflow must use.
+      group: "merge-candidate-biome-${{ github.run_id }}",
+      "cancel-in-progress": false,
     });
     const job = workflow.jobs["candidate-tree"];
     const checkout = job.steps.find(

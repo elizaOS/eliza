@@ -589,9 +589,14 @@ export function useShellController(): ShellController {
   // realtime session. ChatView may still consume the same hook on legacy
   // embedding surfaces, but the visible shell Talk control must never hand a
   // failed Cartesia interaction to the unrelated batch Cloud-ASR recorder.
-  const realtimeVoiceEnabled = isRealtimeVoiceFlagEnabled();
+  const realtimeVoiceBuildEnabled = isRealtimeVoiceFlagEnabled();
   const { agentId: realtimeVoiceAgentId, getConsentNonce } =
     useRealtimeVoiceMint();
+  // The build flag advertises the capability, but only a resolved Dedicated
+  // agent may own Talk. A stale Shared binding has no mintable UUID; retain the
+  // established batch path until signed-in routing repairs it to Dedicated.
+  const realtimeVoiceEnabled =
+    realtimeVoiceBuildEnabled && Boolean(realtimeVoiceAgentId);
   const realtimeVoice = useRealtimeVoiceSession({
     agentId: realtimeVoiceAgentId,
     conversationId: activeConversationId,
