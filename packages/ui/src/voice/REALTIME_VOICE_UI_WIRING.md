@@ -15,8 +15,10 @@ server mint), the mic runs the existing batch ASR path completely unchanged.
   the persisted active server) + `getConsentNonce` (POST
   `/api/v1/voice/session/consent` via the same `fetchWithCsrf` every other
   `/api/v1` call uses). The client obtains a fresh one-use nonce immediately
-  before every initial or reconnect mint. A local/self-hosted runtime yields no
-  UUID → realtime never arms.
+  before every initial or reconnect mint. A production self-hosted build may
+  instead arm against a paired runtime only after its same-origin
+  voice-session health route succeeds; the runtime binds its fixed identity
+  server-side.
 - `useContinuousVoiceSession` — composes the batch continuous-chat engine with
   the realtime session; tries realtime when eligible, else batch UNCHANGED.
   Eligibility is not proof that mint or WebSocket setup has succeeded.
@@ -38,11 +40,14 @@ server mint), the mic runs the existing batch ASR path completely unchanged.
 ## Flags
 
 - Client: `VITE_VOICE_REALTIME_WS` = `1|true|yes|on` (default OFF).
+- Self-hosted client capability: `VITE_VOICE_REALTIME_SELF_HOSTED` =
+  `1|true|yes|on` (default OFF). It still requires a paired `remote` runtime and
+  a successful same-origin `/api/v1/voice/session/health` probe.
 - Server: `VOICE_REALTIME_WS_ENABLED` on the cloud worker (default OFF; a 404
   mint = feature disabled → the client falls back to batch, no error).
 
-Both must be on AND a dedicated cloud agent UUID must resolve for the realtime
-path to arm.
+Both must be on AND either a dedicated cloud agent UUID must resolve or the
+self-hosted capability and health-probe contract must pass.
 
 - Debug: `VITE_VOICE_REALTIME_FORCE` = `1|true|yes|on` (default OFF). A
 local-verification debug affordance only — it force-arms the realtime path

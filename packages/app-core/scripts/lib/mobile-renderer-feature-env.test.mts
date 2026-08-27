@@ -24,6 +24,7 @@ describe("resolveMobileRendererFeatureEnv", () => {
     for (const platform of ["android-cloud", "android-cloud-debug"]) {
       expect(resolveMobileRendererFeatureEnv({ platform })).toEqual({
         VITE_VOICE_REALTIME_WS: "1",
+        VITE_VOICE_REALTIME_SELF_HOSTED: "0",
         VITE_VOICE_REALTIME_FORCE: "0",
       });
     }
@@ -35,6 +36,7 @@ describe("resolveMobileRendererFeatureEnv", () => {
       }),
     ).toEqual({
       VITE_VOICE_REALTIME_WS: "1",
+      VITE_VOICE_REALTIME_SELF_HOSTED: "0",
       VITE_VOICE_REALTIME_FORCE: "0",
     });
   });
@@ -48,12 +50,25 @@ describe("resolveMobileRendererFeatureEnv", () => {
         }),
       ).toEqual({
         VITE_VOICE_REALTIME_WS: "1",
+        VITE_VOICE_REALTIME_SELF_HOSTED: "0",
         VITE_VOICE_REALTIME_FORCE: "0",
       });
     }
   });
 
-  it("permanently hides Stream only in the dedicated LP3 VPS fallback", () => {
+  it("enables server-probed realtime for the self-hosted VPS sidecar", () => {
+    expect(
+      resolveMobileRendererFeatureEnv({
+        platform: "android-cloud-debug",
+        env: { ELIZA_ANDROID_VPS_SIDECAR: "1" },
+      }),
+    ).toEqual({
+      VITE_VOICE_REALTIME_WS: "1",
+      VITE_VOICE_REALTIME_SELF_HOSTED: "1",
+      VITE_VOICE_REALTIME_FORCE: "0",
+    });
+  });
+  it("enables probed realtime and hides Stream only in the dedicated LP3 VPS fallback", () => {
     expect(
       resolveMobileRendererFeatureEnv({
         platform: "android-cloud-debug",
@@ -64,6 +79,7 @@ describe("resolveMobileRendererFeatureEnv", () => {
       }),
     ).toEqual({
       VITE_VOICE_REALTIME_WS: "1",
+      VITE_VOICE_REALTIME_SELF_HOSTED: "1",
       VITE_VOICE_REALTIME_FORCE: "0",
       VITE_ENABLE_STREAM: "false",
       VITE_ELIZA_ANDROID_LP3_SHARED_BROWSER_STORAGE: "1",
@@ -84,6 +100,7 @@ describe("resolveMobileRendererFeatureEnv", () => {
       }),
     ).toEqual({
       VITE_VOICE_REALTIME_WS: "1",
+      VITE_VOICE_REALTIME_SELF_HOSTED: "0",
       VITE_VOICE_REALTIME_FORCE: "0",
     });
   });
