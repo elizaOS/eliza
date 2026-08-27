@@ -5557,6 +5557,24 @@ export class AgentRuntime implements IAgentRuntime {
 		return this.adapter.deleteCaches([key]);
 	}
 
+	/**
+	 * Compare-and-swap a cache row under an optimistic revision; delegates to
+	 * the adapter contract (see IDatabaseAdapter.compareAndSwapCache).
+	 */
+	async compareAndSwapCache<T>(
+		key: string,
+		expectedRevision: number | null,
+		nextRevision: number,
+		value: T,
+	): Promise<boolean> {
+		return this.adapter.compareAndSwapCache<T>(
+			key,
+			expectedRevision,
+			nextRevision,
+			value,
+		);
+	}
+
 	// Batch task methods
 	async createTasks(tasks: Task[]): Promise<UUID[]> {
 		const ids = await this.adapter.createTasks(tasks);

@@ -246,6 +246,8 @@ interface StoredRelationship {
 interface StoredCacheEntry<T = unknown> {
   value: T;
   expiresAt?: number;
+  /** Optimistic revision for compareAndSwapCache; absent means zero. */
+  revision?: number;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -2257,6 +2259,40 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       if (ok) removed = true;
     }
     return removed;
+  }
+
+  async compareAndSwapCache<T>(
+    key: string,
+    expectedRevision: number | null,
+    nextRevision: number,
+    value: T
+  ): Promise<boolean> {
+    const entry = await this.storage.get<StoredCacheEntry<T>>(COLLECTIONS.CACHE, key);
+    if (entry === null || entry === undefined) {
+      if (expectedRevision !== null) return false;
+      await this.storage.set(COLLECTIONS.CACHE, key, {
+        value,
+        revision: nextRevision,
+      });
+      return true;
+    }
+    if (entry.expiresAt && Date.now() > entry.expiresAt) {
+      await this.storage.delete(COLLECTIONS.CACHE, key);
+      if (expectedRevision !== null) return false;
+      await this.storage.set(COLLECTIONS.CACHE, key, {
+        value,
+        revision: nextRevision,
+      });
+      return true;
+    }
+    const stored = entry.revision ?? 0;
+    if (stored !== expectedRevision) return false;
+    await this.storage.set(COLLECTIONS.CACHE, key, {
+      ...entry,
+      value,
+      revision: nextRevision,
+    });
+    return true;
   }
 
   // ── Task CRUD ─────────────────────────────────────────────────────────
