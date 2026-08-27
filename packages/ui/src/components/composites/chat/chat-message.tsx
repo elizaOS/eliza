@@ -16,6 +16,7 @@
  * Presentation only — actions are delegated to callbacks.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { isRetryableChatFailureKind } from "@elizaos/shared/contracts";
 import { Check, LoaderCircle, RotateCcw, Sparkles, X } from "lucide-react";
 import { motion } from "motion/react";
@@ -214,9 +215,9 @@ export function getChatMessageAnchorId(messageId: string): string {
 /** Single-line, length-capped preview of a message for the "Replying to" pill. */
 const REPLY_PILL_SNIPPET_MAX = 140;
 function replyPillSnippet(text: string): string {
-  const collapsed = text.replace(/\s+/g, " ").trim();
+  const collapsed = toWellFormedUnicode(text.replace(/\s+/g, " ").trim());
   return collapsed.length > REPLY_PILL_SNIPPET_MAX
-    ? `${collapsed.slice(0, REPLY_PILL_SNIPPET_MAX)}…`
+    ? `${truncateWellFormed(collapsed, REPLY_PILL_SNIPPET_MAX)}…`
     : collapsed;
 }
 

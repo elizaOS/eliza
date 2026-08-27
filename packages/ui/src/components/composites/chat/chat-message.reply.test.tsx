@@ -129,3 +129,37 @@ describe("ChatReplyPill", () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("buildReplyTargetFromMessage well-formed truncation", () => {
+  it("preserves well-formed Unicode when truncating at surrogate boundary", () => {
+    const emoji = String.fromCodePoint(0x1f600);
+    const text = `${"a".repeat(139)}${emoji} trailing text that exceeds the 140 char cap`;
+    const target = buildReplyTargetFromMessage(makeMessage({ text }), "Eliza");
+    expect(target.snippet.endsWith("…")).toBe(true);
+    expect(target.snippet).not.toMatch(/\uD83D$/);
+    expect(() => JSON.stringify(target.snippet)).not.toThrow();
+    const withoutEllipsis = target.snippet.slice(0, -1);
+    expect(withoutEllipsis.length).toBeLessThanOrEqual(140);
+    expect(withoutEllipsis).not.toMatch(/\uD83D$/);
+  });
+
+  it("replaces lone surrogates before truncation", () => {
+    const lone = "\uD83D";
+    const raw = JSON.parse(`"${lone}"`);
+    const input = `${"a".repeat(139)}${raw} trailing that pushes beyond cap with more text padding`;
+    const target = buildReplyTargetFromMessage(
+      makeMessage({ text: input }),
+      "Eliza",
+    );
+    expect(
+      target.snippet.includes("\uFFFD") || !target.snippet.includes(raw),
+    ).toBe(true);
+    expect(() => JSON.stringify(target.snippet)).not.toThrow();
+  });
+
+  it("does not truncate short messages", () => {
+    const text = "hello world";
+    const target = buildReplyTargetFromMessage(makeMessage({ text }), "Eliza");
+    expect(target.snippet).toBe("hello world");
+  });
+});
