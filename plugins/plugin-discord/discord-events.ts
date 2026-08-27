@@ -188,11 +188,13 @@ function guildsForShard<T extends { id: string; shardId?: number }>(
 	shardId: number,
 ): T[] {
 	const c = client as {
-		guilds?: { cache?: Iterable<T> };
+		guilds?: { cache?: { values?: () => Iterable<T> } };
 		options?: { shards?: unknown; shardCount?: unknown };
 		ws?: { shards?: { size?: number } };
 	};
-	const allGuilds = [...(c.guilds?.cache ?? [])];
+	// discord.js Collection extends Map: spreading the collection itself
+	// yields [id, guild] tuples — always iterate .values().
+	const allGuilds = [...(c.guilds?.cache?.values?.() ?? [])];
 	const shardOptions = c.options?.shards;
 	const shardCount = Array.isArray(shardOptions)
 		? shardOptions.length
