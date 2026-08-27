@@ -52,6 +52,7 @@ import {
   createVoiceSessionPlayback,
   type PlaybackAudioContextLike,
   type VoiceSessionPlayback,
+  type VoiceSessionPlaybackStatsEvent,
 } from "./voice-session-playback";
 import {
   DEFAULT_DOWNLINK_CODEC,
@@ -184,6 +185,8 @@ export interface VoiceSessionClientOptions {
   onMinted?: (minted: VoiceSessionMintResponse) => void;
   /** Fired when browser autoplay requires (or no longer requires) a tap. */
   onPlaybackUnlockChange?: (needsUnlock: boolean) => void;
+  /** Sanitized playout queue/timing counters; never audio or transcript data. */
+  onPlaybackStats?: (event: VoiceSessionPlaybackStatsEvent) => void;
   /** Fired on a fatal client error (mic/permission/transport). */
   onError?: (error: Error) => void;
   /** Monotonic clock for trace marks (tests inject). */
@@ -585,9 +588,11 @@ export function createVoiceSessionClient(
         mark("llm_first_text", event.traceId);
         break;
       case "speaking_start":
+        playback?.beginInput();
         mark("speaking_start", event.traceId);
         break;
       case "speaking_end":
+        playback?.finishInput();
         mark("speaking_end", event.traceId);
         // Turn complete → loop back to listening once emitted.
         setState(loopToListening(state));
@@ -1050,6 +1055,8 @@ export function createVoiceSessionClient(
               mark("playback_drained", state.traceId);
             }
           },
+          now,
+          onStats: options.onPlaybackStats,
         });
         if (!isLifecycleCurrent(generation)) {
           // error-policy:J6 best-effort release of a playback sink whose lifecycle was superseded mid-create.
