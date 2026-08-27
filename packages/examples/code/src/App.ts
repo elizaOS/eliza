@@ -3,6 +3,8 @@ import {
   type ActionEventPayload,
   type AgentRuntime,
   EventType,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import {
   type AutocompleteItem,
@@ -286,7 +288,7 @@ function formatTaskList(tasks: CodeTask[]): string {
     const marker = task.id === currentTaskId ? "->" : "  ";
     const status = task.metadata?.status ?? "pending";
     const progress = task.metadata?.progress ?? 0;
-    const id = task.id ? task.id.slice(0, 8) : "no-id";
+    const id = task.id ? truncateWellFormed(toWellFormedUnicode(task.id), 8) : "no-id";
     return `${marker} ${index + 1}. ${task.name} [${status}, ${progress}%] ${id}`;
   });
   return `Tasks:\n${lines.join("\n")}`;
@@ -1158,7 +1160,7 @@ During a turn: Enter queues the message, Esc/Ctrl+C aborts (queued messages are 
           state.addMessage(
             state.currentRoomId,
             "system",
-            `Failed to start task ${taskId.slice(0, 8)}: ${msg}`,
+            `Failed to start task ${truncateWellFormed(toWellFormedUnicode(taskId), 8)}: ${msg}`,
           );
         });
       }
