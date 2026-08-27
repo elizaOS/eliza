@@ -357,16 +357,21 @@ tokens so staging automation cannot mutate production zones.
 
 The Cloud release resolves the public Telegram bot ID and username before
 database migration or API deployment. Staging consumes the complete
-repository-scoped `VITE_TELEGRAM_BOT_ID` / `VITE_TELEGRAM_BOT_USERNAME` pair
-and requires both components to differ from production. Production ignores
-that repository pair and derives its exact canonical identity from the checked
-out `packages/homepage/src/lib/contact.ts`. Missing, partial, malformed,
-out-of-range, or cross-environment staging values stop the release without
-printing either value. Do not expect same-named GitHub Environment variables
-to override the repository pair: GitHub makes Environment variables available
-after values in the `vars` context have already been resolved. Implicit Vite
-fallback use remains local/direct-only; protected production explicitly selects
-and validates the canonical source constants. Pull requests are validated by
+`VITE_TELEGRAM_BOT_ID` / `VITE_TELEGRAM_BOT_USERNAME` pair only from the
+protected `staging` GitHub Environment and requires both components to differ
+from production. Before the reusable release enters any Environment,
+`cloud-cf-deploy.yml` evaluates both names at organization/repository scope and
+passes a required provenance flag. The Environment-scoped preflight first
+rejects either component at either outer scope as conflicting authority, then
+validates the pair exposed by its job Environment; all of this precedes any
+mutation.
+Missing, partial, malformed, out-of-range, duplicate-scope, or
+cross-environment staging configuration stops the release without printing
+either value. Production continues to ignore every GitHub Telegram input and
+derives its exact canonical identity from the checked out
+`packages/homepage/src/lib/contact.ts`. Implicit Vite fallback use remains
+local/direct-only; protected production explicitly selects and validates the
+canonical source constants. Pull requests are validated by
 `pr-static-smoke.yml`; there is no credentialed or artifact-only Pages preview
 path in `cloud-cf-deploy.yml`.
 

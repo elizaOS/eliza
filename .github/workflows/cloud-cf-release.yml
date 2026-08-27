@@ -11,6 +11,10 @@ on:
         description: staging or production
         required: true
         type: string
+      telegram_repo_or_org_configured:
+        description: Whether either Telegram public identity variable resolves outside a GitHub Environment
+        required: true
+        type: boolean
       force:
         description: Bypass the deploy freshness guard
         required: false
@@ -69,11 +73,11 @@ jobs:
         id: telegram
         env:
           TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
-          # GitHub Environment variables cannot overwrite values already
-          # resolved through the vars context. Treat this repository pair as
-          # staging-only input; production ignores it and uses source truth.
-          STAGING_TELEGRAM_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
-          STAGING_TELEGRAM_BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
+          TELEGRAM_REPO_OR_ORG_CONFIGURED: ${{ inputs.telegram_repo_or_org_configured }}
+          # The caller proves the same names are absent at repository and
+          # organization scope before staging may trust this job Environment.
+          ENVIRONMENT_TELEGRAM_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
+          ENVIRONMENT_TELEGRAM_BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
         run: |
           set -euo pipefail
 
@@ -108,23 +112,26 @@ jobs:
             resolved_bot_id="$canonical_bot_id"
             resolved_bot_username="$canonical_bot_username"
           else
-            if [ -z "$STAGING_TELEGRAM_BOT_ID" ] || \
-              [ -z "$STAGING_TELEGRAM_BOT_USERNAME" ]; then
-              fail "Repository VITE_TELEGRAM_BOT_ID and VITE_TELEGRAM_BOT_USERNAME must configure the complete staging pair"
+            if [ "$TELEGRAM_REPO_OR_ORG_CONFIGURED" = "true" ]; then
+              fail "Staging Telegram public identity must be configured only on the staging GitHub Environment"
             fi
-            valid_bot_id "$STAGING_TELEGRAM_BOT_ID" || \
-              fail "Repository VITE_TELEGRAM_BOT_ID must match the Telegram bot ID contract"
-            [[ "$STAGING_TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]] || \
-              fail "Repository VITE_TELEGRAM_BOT_USERNAME must match the Telegram username contract"
-            staging_bot_username_key="$(printf '%s' "$STAGING_TELEGRAM_BOT_USERNAME" | tr '[:upper:]' '[:lower:]')"
+            if [ -z "$ENVIRONMENT_TELEGRAM_BOT_ID" ] || \
+              [ -z "$ENVIRONMENT_TELEGRAM_BOT_USERNAME" ]; then
+              fail "The staging GitHub Environment must configure the complete VITE_TELEGRAM_BOT_ID and VITE_TELEGRAM_BOT_USERNAME pair"
+            fi
+            valid_bot_id "$ENVIRONMENT_TELEGRAM_BOT_ID" || \
+              fail "The staging GitHub Environment VITE_TELEGRAM_BOT_ID must match the Telegram bot ID contract"
+            [[ "$ENVIRONMENT_TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]] || \
+              fail "The staging GitHub Environment VITE_TELEGRAM_BOT_USERNAME must match the Telegram username contract"
+            staging_bot_username_key="$(printf '%s' "$ENVIRONMENT_TELEGRAM_BOT_USERNAME" | tr '[:upper:]' '[:lower:]')"
             [[ "$staging_bot_username_key" == *bot ]] || \
-              fail "Repository VITE_TELEGRAM_BOT_USERNAME must use the managed bot suffix"
-            if [ "$STAGING_TELEGRAM_BOT_ID" = "$canonical_bot_id" ] || \
+              fail "The staging GitHub Environment VITE_TELEGRAM_BOT_USERNAME must use the managed bot suffix"
+            if [ "$ENVIRONMENT_TELEGRAM_BOT_ID" = "$canonical_bot_id" ] || \
               [ "$staging_bot_username_key" = "$canonical_bot_username_key" ]; then
               fail "Staging Telegram configuration must use an identity fully distinct from production"
             fi
-            resolved_bot_id="$STAGING_TELEGRAM_BOT_ID"
-            resolved_bot_username="$STAGING_TELEGRAM_BOT_USERNAME"
+            resolved_bot_id="$ENVIRONMENT_TELEGRAM_BOT_ID"
+            resolved_bot_username="$ENVIRONMENT_TELEGRAM_BOT_USERNAME"
           fi
 
           printf 'bot_id=%s\n' "$resolved_bot_id" >> "$GITHUB_OUTPUT"
