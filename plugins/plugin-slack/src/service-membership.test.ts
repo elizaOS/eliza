@@ -30,6 +30,9 @@ function createClient() {
         })),
       members: vi.fn(),
       history: vi.fn().mockResolvedValue({
+        // Newest-first, as Slack returns. The thread PARENT (ts .000000)
+        // is part of the channel transcript — the same message
+        // conversations.replies repeats first.
         messages: [
           {
             type: "message",
@@ -38,9 +41,18 @@ function createClient() {
             user: ALICE,
             text: "channel message",
           },
+          {
+            type: "message",
+            subtype: undefined,
+            ts: "1700000000.000000",
+            user: ALICE,
+            text: "thread parent",
+          },
         ],
       }),
       replies: vi.fn().mockResolvedValue({
+        // Realistic Slack shape, newest-first: the replies come first, and
+        // the thread PARENT is the oldest message, returned last.
         messages: [
           {
             type: "message",
@@ -48,6 +60,13 @@ function createClient() {
             ts: "1700000000.000002",
             user: ALICE,
             text: "thread reply",
+          },
+          {
+            type: "message",
+            subtype: undefined,
+            ts: "1700000000.000000",
+            user: ALICE,
+            text: "thread parent",
           },
         ],
       }),
@@ -200,6 +219,8 @@ async function startHarness(overrides: Record<string, unknown> = {}) {
   try {
     service = await SlackService.start(runtime);
   } catch (startError) {
+    // error-policy:J3 the harness rethrows with the captured log tail so a
+    // start failure is an explicit invalid state, never a fake pass.
     const calls = (runtime.logger.warn as ReturnType<typeof vi.fn>).mock.calls
       .concat((runtime.logger.error as ReturnType<typeof vi.fn>).mock.calls)
       .map((c) => String(c.at(-1)));
@@ -433,20 +454,23 @@ describe("SlackService membership snapshots", () => {
     expect(result.slackErrorCode).toBe("missing_scope");
   });
 
-  it("getChannelMembership maps a rate-limited platform error with the real SDK shape", async () => {
+  it("getChannelMembership maps a rate-limited error with the real SDK shape (no data)", async () => {
     const { app, service } = await startHarness();
+    // @slack/web-api 7.15.2 rateLimitedErrorWithDelay sets only code +
+    // retryAfter — there is no data property at all.
     const rateError = new Error("A rate-limit has been reached") as unknown as {
       code: string;
-      data: { error: string };
+      retryAfter: number;
     };
     rateError.code = "slack_webapi_rate_limited_error";
-    rateError.data = { error: "ratelimited" };
+    rateError.retryAfter = 30;
     const members = vi.fn().mockRejectedValue(rateError);
     (app.client.conversations as { members: typeof members }).members = members;
     const result = await service.getChannelMembership(OPS);
     expect(result.kind).toBe("unavailable");
     if (result.kind !== "unavailable") return;
     expect(result.reason).toBe("rate_limited");
+    expect(result.slackErrorCode).toBe("ratelimited");
   });
 
   it("getChannelMembership treats a present-but-non-string cursor as malformed, not complete", async () => {
@@ -479,33 +503,63 @@ describe("SlackService membership snapshots", () => {
   it("membership evidence is scoped per account: entity/room ids differ across accounts", async () => {
     // Two accounts admit the same channel id; the derived runtime ids and
     // the clients used must be account-scoped, never shared.
-    const { app, runtime, service } = await startHarness({
+    const { runtime, service } = await startHarness({
       accounts: {
-        team: {
-          botToken: "xoxb-team",
-          appToken: "xapp-team",
+        alpha: {
+          botToken: "xoxb-alpha",
+          appToken: "xapp-alpha",
+          groupPolicy: "allowlist",
+          channels: { ops: { users: [ALICE] } },
+        },
+        beta: {
+          botToken: "xoxb-beta",
+          appToken: "xapp-beta",
           groupPolicy: "allowlist",
           channels: { ops: { users: [ALICE] } },
         },
       },
     });
-    const secondAccountApp = apps.at(-1);
-    expect(secondAccountApp).toBeDefined();
-    const members = vi.fn().mockResolvedValue({ members: [ALICE] });
+    expect(apps).toHaveLength(2);
+    // Accounts start in sorted order: alpha first, beta second.
+    const [alphaApp, betaApp] = apps;
+    const alphaMembers = vi.fn().mockResolvedValue({ members: [ALICE] });
+    const betaMembers = vi.fn().mockResolvedValue({ members: [ALICE] });
     (
-      (secondAccountApp ?? app).client.conversations as {
-        members: typeof members;
-      }
-    ).members = members;
-    const result = await service.renewChannelMembership(OPS, "team");
-    expect(result.kind).toBe("snapshot");
-    // The connection was ensured with the team account's scoped ids.
-    const call = (
+      alphaApp.client.conversations as { members: typeof alphaMembers }
+    ).members = alphaMembers;
+    (betaApp.client.conversations as { members: typeof betaMembers }).members =
+      betaMembers;
+
+    const alphaResult = await service.renewChannelMembership(OPS, "alpha");
+    const betaResult = await service.renewChannelMembership(OPS, "beta");
+    expect(alphaResult.kind).toBe("snapshot");
+    expect(betaResult.kind).toBe("snapshot");
+    // Each renewal read its own account's client.
+    expect(alphaMembers).toHaveBeenCalledTimes(1);
+    expect(betaMembers).toHaveBeenCalledTimes(1);
+
+    // Both accounts renewed the same Slack member in the same channel, so
+    // the derivation — not the roster — must carry the account scope.
+    const calls = (
       runtime.ensureConnection as ReturnType<typeof vi.fn>
-    ).mock.calls.at(-1)?.[0] as Record<string, unknown>;
-    expect(String(call.entityId)).not.toBe("");
-    expect(members).toHaveBeenCalledWith(
-      expect.objectContaining({ channel: OPS }),
+    ).mock.calls.map((c) => c[0] as Record<string, unknown>);
+    expect(calls).toHaveLength(2);
+    const [alphaConnection, betaConnection] = calls;
+    expect(String(alphaConnection.entityId)).not.toBe(
+      String(betaConnection.entityId),
+    );
+    expect(String(alphaConnection.roomId)).not.toBe(
+      String(betaConnection.roomId),
+    );
+    expect(String(alphaConnection.worldId)).not.toBe(
+      String(betaConnection.worldId),
+    );
+    expect(alphaConnection.entityId).not.toBe("");
+    expect(
+      (alphaConnection.metadata as Record<string, unknown>).accountId,
+    ).toBe("alpha");
+    expect((betaConnection.metadata as Record<string, unknown>).accountId).toBe(
+      "beta",
     );
   });
 });
@@ -540,7 +594,12 @@ describe("thread inheritance in chat context", () => {
     const { app, result } = await chatContextHarness({});
     expect(app.client.conversations.replies).toHaveBeenCalledTimes(1);
     expect(app.client.conversations.history).not.toHaveBeenCalled();
-    expect(result?.recentMessages.map((m) => m.text)).toEqual(["thread reply"]);
+    // The replies transcript (parent + reply), oldest-first, no dedup
+    // needed — the channel transcript was never read.
+    expect(result?.recentMessages.map((m) => m.text)).toEqual([
+      "thread parent",
+      "thread reply",
+    ]);
   });
 
   it("historyScope channel reads the parent channel transcript instead", async () => {
@@ -550,6 +609,7 @@ describe("thread inheritance in chat context", () => {
     expect(app.client.conversations.history).toHaveBeenCalledTimes(1);
     expect(app.client.conversations.replies).not.toHaveBeenCalled();
     expect(result?.recentMessages.map((m) => m.text)).toEqual([
+      "thread parent",
       "channel message",
     ]);
   });
@@ -558,9 +618,11 @@ describe("thread inheritance in chat context", () => {
     const { app, result } = await chatContextHarness({ inheritParent: true });
     expect(app.client.conversations.history).toHaveBeenCalledTimes(1);
     expect(app.client.conversations.replies).toHaveBeenCalledTimes(1);
-    // Both transcripts are newest-first from Slack and reversed together:
-    // the earlier channel message precedes the later thread reply.
+    // The shared parent (ts .000000) appears in BOTH transcripts; it must
+    // be published exactly once, then the later channel and thread items in
+    // chronological order.
     expect(result?.recentMessages.map((m) => m.text)).toEqual([
+      "thread parent",
       "channel message",
       "thread reply",
     ]);
@@ -574,6 +636,7 @@ describe("thread inheritance in chat context", () => {
     expect(app.client.conversations.history).toHaveBeenCalledTimes(1);
     expect(app.client.conversations.replies).not.toHaveBeenCalled();
     expect(result?.recentMessages.map((m) => m.text)).toEqual([
+      "thread parent",
       "channel message",
     ]);
   });

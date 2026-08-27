@@ -61,9 +61,11 @@ interface SlackMembersPage {
  *
  * Real `@slack/web-api` platform errors carry the SDK error class in
  * `error.code` (e.g. `slack_webapi_platform_error`) and the Slack error
- * name in `error.data.error` (a string); `rateLimitedErrorWithDelay`
- * likewise exposes `data.error: "ratelimited"`. `error.data.code` is kept
- * only as a legacy fallback for hand-built errors.
+ * name in `error.data.error` (a string); rate-limit errors carry only
+ * `code: "slack_webapi_rate_limited_error"` and `retryAfter` with no
+ * `data` at all (verified against @slack/web-api 7.15.2 dist/errors.js
+ * and WebClient.js). `error.data.code` is kept only as a legacy fallback
+ * for hand-built errors.
  *
  * `missing_scope` / `not_allowed` mean the app lacks read scopes;
  * `channel_not_found` means the channel is gone or invisible;
@@ -81,6 +83,12 @@ export function classifyMembershipFailure(error: unknown): {
           code?: unknown;
         })
       : {};
+  if (slackError.code === "slack_webapi_rate_limited_error") {
+    return {
+      reason: "rate_limited",
+      slackErrorCode: "ratelimited",
+    };
+  }
   const code =
     typeof slackError.data?.error === "string"
       ? slackError.data.error
@@ -144,6 +152,8 @@ export async function readChannelMembershipSnapshot(
         ...(cursor ? { cursor } : {}),
       })) as unknown as SlackMembersPage;
     } catch (error) {
+      // error-policy:J1 boundary translation: an API-layer failure becomes
+      // the typed unavailable result callers consume; no fabricated success.
       const { reason, slackErrorCode } = classifyMembershipFailure(error);
       return {
         kind: "unavailable",

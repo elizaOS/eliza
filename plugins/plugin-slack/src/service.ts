@@ -3372,7 +3372,9 @@ export class SlackService extends Service implements ISlackService {
     // ignored — the channel transcript already contains the thread parent.
     // inheritParent concatenates channel + thread transcripts (not splicing
     // the thread into the channel timeline, which Slack APIs cannot order
-    // reliably) so both are present in chronological order.
+    // reliably) so both are present in chronological order, deduplicated by
+    // ts — the replies response repeats the parent the channel transcript
+    // already contains.
     const threadConfig =
       this.getAccountState(accountId)?.account.config.thread ?? {};
     const historyScope = threadConfig.historyScope ?? "thread";
@@ -3392,14 +3394,24 @@ export class SlackService extends Service implements ISlackService {
         undefined,
         accountId,
       );
-      // Both transcripts are newest-first. Sort by Slack ts descending so
-      // the single reverse below yields one chronological oldest-first
-      // sequence across channel and thread messages.
-      rawMessages = [...channelTranscript, ...threadTranscript].sort(
-        (a, b) =>
-          Number((b as SlackMessage).ts ?? 0) -
-          Number((a as SlackMessage).ts ?? 0),
-      );
+      // Slack's conversations.replies response includes the thread parent
+      // message first, and the channel transcript already contains that
+      // same parent — deduplicate by ts so the parent is never published
+      // twice. Messages without a usable ts are kept as-is.
+      const seenTs = new Set<string>();
+      rawMessages = [...channelTranscript, ...threadTranscript]
+        .filter((message) => {
+          const ts = (message as SlackMessage).ts;
+          if (typeof ts !== "string" || !ts) return true;
+          if (seenTs.has(ts)) return false;
+          seenTs.add(ts);
+          return true;
+        })
+        .sort(
+          (a, b) =>
+            Number((b as SlackMessage).ts ?? 0) -
+            Number((a as SlackMessage).ts ?? 0),
+        );
     } else if (threadTs) {
       rawMessages = await this.readThreadReplies(
         channelId,
