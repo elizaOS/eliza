@@ -313,8 +313,18 @@ function aggregateReversals(
       // A reinstatement un-applies credits, so it grows outstanding debt by
       // the restored amount — but only ITS OWN dispute's: the row carries
       // the dispute's `reference`, so the credit lands on that authority.
-      // Other authorities' targets survive the reinstatement.
-      const authority = reversalAuthority(metadata, row.stripePaymentIntentId ?? row.id, "dispute");
+      // Other authorities' targets survive the reinstatement. When the
+      // reference is absent (legacy rows), the row's `clawback_key`
+      // metadata names the clawback row's idempotency key — the same key
+      // the clawback row's own fallback authority derives from — so the
+      // reinstatement still reaches its dispute's debt entry.
+      const clawbackKey = metadata.clawback_key;
+      const authority =
+        typeof metadata.reference === "string" && metadata.reference.trim()
+          ? reversalAuthority(metadata, row.stripePaymentIntentId ?? row.id, "dispute")
+          : typeof clawbackKey === "string" && clawbackKey.trim()
+            ? `dispute:fallback:${clawbackKey.trim()}`
+            : reversalAuthority(metadata, row.stripePaymentIntentId ?? row.id, "dispute");
       // Rows arrive newest-first, so the dispute's clawback row may not have
       // been seen yet — collect per-authority reinstatements and apply them
       // in the derivation pass below.

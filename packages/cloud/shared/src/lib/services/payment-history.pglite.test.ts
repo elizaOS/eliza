@@ -1907,4 +1907,65 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
     // not erase another authority's debt.
     expect(row?.unrecoveredShortfallCredits).toBe(60);
   });
+
+  test("a legacy reinstatement without reference still overturns its own dispute via clawback_key (#26752 r7)", async () => {
+    // RP r7 finding: production reinstatement rows carry
+    // clawback_key = the clawback row's idempotency key. When the
+    // reference is absent, that key must resolve to the SAME fallback
+    // authority the clawback row itself derives (stripe:dispute:dp_1) —
+    // otherwise the dispute is never overturned and a fully reinstated
+    // 40-credit dispute would project 40 outstanding forever.
+    const request = await insertStripePaymentRequest({
+      organizationId,
+      amountCents: 10000,
+      status: "settled",
+      settlementTxRef: "pi_legacy_clawback_key",
+      settledAt: new Date(),
+    });
+    await insertReceipt({
+      organizationId,
+      paymentRequestId: request.id,
+      providerTxRef: "pi_legacy_clawback_key",
+      amountCents: 10000,
+    });
+    // Dispute clawback WITHOUT reference: fallback authority
+    // dispute:fallback:stripe:dispute:dp_legacy_key:4000 (its own
+    // idempotency key), target 40 fully applied.
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "-40",
+      paymentIntentId: "pi_legacy_clawback_key",
+      source: "charge.dispute.funds_withdrawn",
+      reversedUsd: 40,
+      unrecoveredUsd: 0,
+      cumulativeTargetUsd: 40,
+      createdAt: new Date("2026-08-20T10:00:00.000Z"),
+      idempotencyKey: "stripe:dispute:dp_legacy_key:4000",
+    });
+    // Full reinstatement WITHOUT reference but carrying the clawback row's
+    // key — must reach the dispute's debt entry and overturn it.
+    await dbWrite.insert(creditTransactions).values({
+      organization_id: organizationId,
+      amount: "40",
+      type: "refund",
+      description: "charge.dispute.funds_reinstated test row",
+      stripe_payment_intent_id: "stripe:dispute:dp_legacy_key:4000:reinstated",
+      metadata: {
+        payment_intent_id: "pi_legacy_clawback_key",
+        source: "charge.dispute.funds_reinstated",
+        clawback_key: "stripe:dispute:dp_legacy_key:4000",
+      },
+      created_at: new Date("2026-08-20T11:00:00.000Z"),
+    });
+
+    const rows = await paymentHistoryService.listPaymentStates(organizationId);
+    const row = rows.find((r) => r.id === `payment_request:${request.id}`);
+    expect(row).toBeDefined();
+    expect(row?.paymentState).toBe("dispute_reinstated");
+    expect(row?.cumulativeClawbackCredits).toBe(40);
+    expect(row?.reinstatedCredits).toBe(40);
+    // The dispute's own reinstatement overturned it: 0 outstanding, not 40.
+    expect(row?.unrecoveredShortfallCredits).toBe(0);
+  });
 });
