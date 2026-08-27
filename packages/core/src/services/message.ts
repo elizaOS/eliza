@@ -650,6 +650,46 @@ export function messageChallengesPriorAgentReply(
 	);
 }
 
+/** Detects a same-speaker continuation immediately after peers corrected this agent's behavior. */
+export function messageContinuesAfterRecentAgentCorrection(
+	runtime: IAgentRuntime,
+	message: Memory,
+	state: State,
+): boolean {
+	const providers = state.data?.providers;
+	if (!providers || typeof providers !== "object") return false;
+	const recent = (providers as Record<string, unknown>).RECENT_MESSAGES;
+	if (!recent || typeof recent !== "object") return false;
+	const data = (recent as { data?: unknown }).data;
+	const recentMessages =
+		data && typeof data === "object" && "recentMessages" in data
+			? (data as { recentMessages?: unknown }).recentMessages
+			: undefined;
+	if (!Array.isArray(recentMessages)) return false;
+	const priorMessages = recentMessages.filter(
+		(candidate): candidate is Memory =>
+			candidate !== null &&
+			typeof candidate === "object" &&
+			(!message.id || (candidate as Memory).id !== message.id),
+	);
+	const lastAgentIndex = priorMessages.findLastIndex(
+		(candidate) => candidate.entityId === runtime.agentId,
+	);
+	if (lastAgentIndex < 0) return false;
+	const turnsAfterAgent = priorMessages.slice(lastAgentIndex + 1);
+	// Repair ownership expires when the room has moved on; this is an adjacency
+	// signal, not permission to revive an old correction on later ambient turns.
+	if (turnsAfterAgent.length === 0 || turnsAfterAgent.length > 3) return false;
+	const explicitCorrection =
+		/\b(?:(?:please\s+)?(?:don't|do not|stop)\b|we\s+just\s+said\b|too\s+much\b)/iu;
+	return turnsAfterAgent.some(
+		(candidate) =>
+			candidate.entityId === message.entityId &&
+			candidate.entityId !== runtime.agentId &&
+			explicitCorrection.test(getUserMessageText(candidate) ?? ""),
+	);
+}
+
 /**
  * Resolves the sender's effective personality `reply_gate` mode (user slot →
  * global slot) for the post-Stage-1 engagement addressing gate. An explicit
@@ -4101,6 +4141,8 @@ async function createV5MessageContextObject(args: {
 	 * byte-identical to before, so addressed turns are untouched.
 	 */
 	ambientTurn?: boolean;
+	/** Trusted same-speaker continuation after a recent correction of this agent. */
+	peerCorrectionContinuation?: boolean;
 }): Promise<ContextObject> {
 	const events: ContextEvent[] = [];
 
@@ -4253,6 +4295,16 @@ async function createV5MessageContextObject(args: {
 					// nobody asked for. Unaddressed group chatter defaults to IGNORE;
 					// RESPOND is reserved for a concrete contribution.
 					"ambient_turn_policy: HARD GATE. The final message:user below was not addressed to you — it is other participants talking to each other, and no reply is expected from you. Default shouldRespond=IGNORE. You MUST set shouldRespond=IGNORE unless the current turn explicitly challenges or asks to clarify your immediately preceding prior_message:agent reply, silence would allow a concrete consequential error or harm you can specifically prevent, or an explicit standing responsibility makes this turn yours to handle. A broadcast question, a useful fact you could add, your ability to answer, or your desire to keep the discussion moving is never enough. IGNORE banter, jokes, reactions, acknowledgements, open group questions, and side chatter where you would only answer, agree, comment, restate, or continue the conversation. Having replied earlier is a reason to stay silent unless the current turn directly challenges or needs clarification of that reply.",
+		});
+	}
+	if (args.peerCorrectionContinuation) {
+		events.push({
+			id: "peer-correction-continuation-policy",
+			type: "instruction",
+			source: "message-service",
+			stable: false,
+			content:
+				"peer_correction_continuation_policy: Trusted recent-message structure shows that the current participant corrected your last contribution and is now continuing within the same short exchange. Set shouldRespond=RESPOND. Follow the correction in a brief, natural acknowledgment; do not repeat the behavior they corrected or add unsolicited advice.",
 		});
 	}
 
@@ -8528,17 +8580,28 @@ export async function runV5MessageRuntimeStage1(args: {
 	// got a reply to nearly every message — the Stage-1 field guidance alone
 	// ("active in the conversation") reads as RESPOND. Also drives the planner's
 	// ambient-turn policy instruction and the deliberate-silence terminal below.
+	const peerCorrectionContinuation = messageContinuesAfterRecentAgentCorrection(
+		args.runtime,
+		args.message,
+		args.state,
+	);
 	const ambientTurn = isAmbientStage1Turn(
 		args.runtime,
 		args.message,
 		messageExplicitlyAddressesAgent(args.runtime, args.message) ||
-			messageChallengesPriorAgentReply(args.runtime, args.message, args.state),
+			messageChallengesPriorAgentReply(
+				args.runtime,
+				args.message,
+				args.state,
+			) ||
+			peerCorrectionContinuation,
 	);
 	let context = await createV5MessageContextObject({
 		...args,
 		userRoles: [senderRole],
 		availableContexts,
 		ambientTurn,
+		peerCorrectionContinuation,
 		extraProviderExclusions: ambientTurnProviderExclusions(
 			args.runtime,
 			args.message,
@@ -8555,6 +8618,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				userRoles: [senderRole],
 				availableContexts,
 				ambientTurn,
+				peerCorrectionContinuation,
 				extraProviderExclusions: ambientTurnProviderExclusions(
 					args.runtime,
 					args.message,

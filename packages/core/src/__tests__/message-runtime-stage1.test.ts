@@ -27,6 +27,7 @@ import {
 } from "../security/index.js";
 import {
 	BUILTIN_RESPONSE_HANDLER_EVALUATORS,
+	messageContinuesAfterRecentAgentCorrection,
 	messageHandlerFromFieldResult,
 	resolveZeroDeliveryRecovery,
 	runV5MessageRuntimeStage1,
@@ -4248,6 +4249,50 @@ describe("runV5MessageRuntimeStage1", () => {
 		if (result.kind === "terminal") {
 			expect(result.action).toBe("IGNORE");
 		}
+	});
+
+	it("recognizes a bounded continuation from the participant who corrected the agent", () => {
+		const runtime = makeRuntime([]);
+		const correctingEntityId = "00000000-0000-0000-0000-000000000002" as UUID;
+		const otherEntityId = "00000000-0000-0000-0000-000000000005" as UUID;
+		const recentMessages: Memory[] = [
+			{
+				...makeMessage({ text: "You should send a follow-up email." }),
+				id: "00000000-0000-0000-0000-000000000010" as UUID,
+				entityId: runtime.agentId,
+			},
+			{
+				...makeMessage({
+					text: "Please don't fix it. In this chat we listen unless someone asks for ideas.",
+				}),
+				id: "00000000-0000-0000-0000-000000000011" as UUID,
+				entityId: correctingEntityId,
+			},
+			{
+				...makeMessage({ text: "yeah, no homework assignment right now" }),
+				id: "00000000-0000-0000-0000-000000000012" as UUID,
+				entityId: otherEntityId,
+			},
+		];
+		const state: State = {
+			...makeState(),
+			data: { providers: { RECENT_MESSAGES: { data: { recentMessages } } } },
+		};
+		const continuation = makeMessage({
+			text: "and now I remembered I blanked on the easiest question",
+			channelType: ChannelType.GROUP,
+		});
+
+		expect(
+			messageContinuesAfterRecentAgentCorrection(runtime, continuation, state),
+		).toBe(true);
+		expect(
+			messageContinuesAfterRecentAgentCorrection(
+				runtime,
+				{ ...continuation, entityId: otherEntityId },
+				state,
+			),
+		).toBe(false);
 	});
 
 	it("keeps the planner prompt byte-identical on an addressed group turn (no ambient policy, no terminal conversion)", async () => {
