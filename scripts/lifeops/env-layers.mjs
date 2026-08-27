@@ -39,7 +39,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ROOT = resolve(new URL("../..", import.meta.url).pathname);
+const ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 /** Home-layer file: shared across every checkout and worktree of this repo. */
 export const HOME_ENV_PATH = join(homedir(), ".eliza", ".env");
