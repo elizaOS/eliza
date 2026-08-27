@@ -152,7 +152,6 @@ function currentConfigMtimeMs(): number {
     // the cache still works and creation of the file invalidates it.
     return 0;
   }
->>>>>>> 2104be8db9 (perf(agent): cache the runtime-mode snapshot on config mtime)
 }
 
 function resolveSnapshotCached(): RuntimeModeSnapshot {
