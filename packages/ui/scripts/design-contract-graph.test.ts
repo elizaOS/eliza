@@ -419,7 +419,7 @@ test("maintained source produces a deterministic closed graph", async () => {
   );
 });
 
-test("declared molecule nodes retain the complete live atom closure", async () => {
+test("declared reusable nodes retain the complete live atom closure", async () => {
   const graph = await buildDesignContractGraph();
   const expectedDependencies = new Map<string, readonly string[]>([
     ["molecule:action-list-row", ["atom:button", "atom:card"]],
@@ -427,6 +427,24 @@ test("declared molecule nodes retain the complete live atom closure", async () =
     ["molecule:connection-capability-tile", ["atom:card"]],
     ["molecule:content-state", ["atom:card", "atom:spinner"]],
     ["molecule:settings-row", ["atom:button", "atom:card"]],
+    [
+      "organism:vault-workspace",
+      [
+        "atom:alert",
+        "atom:badge",
+        "atom:banner",
+        "atom:button",
+        "atom:card",
+        "atom:checkbox",
+        "atom:dialog",
+        "atom:input",
+        "atom:radioGroup",
+        "atom:select",
+        "atom:separator",
+        "atom:table",
+        "atom:tabs",
+      ],
+    ],
   ]);
 
   for (const [nodeId, expected] of expectedDependencies) {
