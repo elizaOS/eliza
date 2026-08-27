@@ -2,7 +2,8 @@
  * Verifies the provisioning worker's required sandbox inventory and durable
  * job-interruption schema before code reads either relation. The check binds
  * deployment to PostgreSQL's live catalog and the migration file hashes, so a
- * journal-only success or an incomplete schema fails closed.
+ * missing sandbox relation, an incompatible guarded column, or a journal-only
+ * success fails closed.
  */
 
 import { createHash } from "node:crypto";
@@ -286,6 +287,9 @@ async function expectedMigrationHash(file: string): Promise<string> {
 export async function verifyJobExecutionInterruptionsCatalog(
   client: QueryClient,
 ): Promise<void> {
+  // Keep this runtime gate aligned with the provisioning relations declared in
+  // audit-production-railway-database-authority.ts. The audit is broader; this
+  // probe covers the exact relations read during worker startup and execution.
   const sandboxRelation = await client.query(`
     SELECT
       to_regclass('public.agent_sandboxes') IS NOT NULL AS agent_sandboxes_present

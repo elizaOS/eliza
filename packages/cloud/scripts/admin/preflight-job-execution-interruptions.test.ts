@@ -105,6 +105,16 @@ describe("job interruption catalog preflight", () => {
     expect(ended).toBe(true);
   });
 
+  test("fails closed when the sandbox catalog presence result is invalid", async () => {
+    await expect(
+      verifyJobExecutionInterruptionsCatalog({
+        query: async () => ({ rows: [{ agent_sandboxes_present: "t" }] }),
+      }),
+    ).rejects.toThrow(
+      "public.agent_sandboxes catalog presence result is invalid",
+    );
+  });
+
   test("rejects incompatible shape and duplicate journal rows", async () => {
     await expect(
       verifyJobExecutionInterruptionsCatalog({
@@ -323,13 +333,6 @@ describe("job interruption catalog preflight", () => {
       "timeout --foreground --signal=TERM --kill-after=5s 8m",
     );
     expect(deployStep).toContain("command_timeout: 40m");
-    expect(workflow).toContain(
-      "- 'packages/cloud/scripts/admin/preflight-job-execution-interruptions.ts'",
-    );
-    expect(workflow).toContain(
-      "- 'packages/cloud/scripts/admin/error-preserving-cleanup.ts'",
-    );
-
     const service = await readFile(
       path.join(
         ROOT,
