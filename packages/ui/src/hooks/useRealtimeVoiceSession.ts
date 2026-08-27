@@ -63,6 +63,8 @@ export type RealtimeVoiceStartOutcome =
   | {
       kind: "fallback-to-batch";
       reason: "consent" | "mint" | "transport" | "unknown";
+      /** Optional actionable detail for a more precise pre-live failure. */
+      message?: string;
     }
   | { kind: "error"; error: RealtimeVoiceError }
   | { kind: "unavailable" };
@@ -463,6 +465,11 @@ export function useRealtimeVoiceSession(
     // 404 the moment onError fires (state updates are async and can't be read
     // back mid-function).
     let failedThisSession = false;
+    // Distinguish a transport that never became ready from a browser mic setup
+    // that stalled after the server explicitly accepted the session. Both use
+    // the same retry semantics, but blaming the network for the latter sends
+    // the user to the wrong control while a permission prompt is waiting.
+    let serverReadyForMic = false;
 
     // Connect/ready watchdog: a session that stalls in connecting/ready (a
     // black-holed socket, a never-arriving `ready`, a hung mic bring-up) must
@@ -478,16 +485,20 @@ export function useRealtimeVoiceSession(
       sessionGenRef.current += 1;
       startingRef.current = false;
       failedThisSession = true;
+      const timeoutMessage = serverReadyForMic
+        ? "Microphone setup timed out. Check browser microphone permission, then tap Talk to retry."
+        : "Voice connection timed out. Tap the mic to try again.";
       resolveStartOutcome(gen, {
         kind: "fallback-to-batch",
         reason: "transport",
+        ...(serverReadyForMic ? { message: timeoutMessage } : {}),
       });
       if (clientRef.current === client) clientRef.current = null;
       // error-policy:J6 timed-out session teardown is best effort; the timeout error below is the surfaced failure.
       void client.stop().catch(() => {});
       setError({
         kind: "transport",
-        message: "Voice connection timed out. Tap the mic to try again.",
+        message: timeoutMessage,
         actionable: true,
       });
       setActive(false);
@@ -525,6 +536,7 @@ export function useRealtimeVoiceSession(
       getConsentNonce: () => getConsentNonceRef.current(),
       onState: (state, unifiedStatus) => {
         if (!isCurrent()) return;
+        if (state.phase === "ready") serverReadyForMic = true;
         setStatus(unifiedStatus);
         setAgentSpeaking(state.phase === "speaking");
         // `active` derives ONLY from the client's phase: live means the socket

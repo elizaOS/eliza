@@ -2337,6 +2337,31 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     );
   });
 
+  it("surfaces the precise browser microphone setup timeout from realtime voice", async () => {
+    realtimeVoiceMock.startOutcome = {
+      kind: "fallback-to-batch",
+      reason: "transport",
+      message:
+        "Microphone setup timed out. Check browser microphone permission, then tap Talk to retry.",
+    };
+    const { result } = renderHook(() => useShellController());
+
+    await act(async () => {
+      result.current.toggleHandsFree();
+      await Promise.resolve();
+    });
+
+    expect(result.current.handsFree).toBe(false);
+    expect(result.current.realtimeVoice?.error).toContain(
+      "Microphone setup timed out",
+    );
+    expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+      "Microphone setup timed out. Check browser microphone permission, then tap Talk to retry.",
+      "error",
+      6000,
+    );
+  });
+
   it("uses the newly committed conversation UUID before a slow greeting finishes", async () => {
     appMock.value.activeConversationId = null;
     let finishGreeting: (() => void) | null = null;
