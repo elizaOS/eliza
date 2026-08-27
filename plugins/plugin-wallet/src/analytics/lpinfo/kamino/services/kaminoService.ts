@@ -9,7 +9,7 @@
  * exact on-chain values.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, Service } from "@elizaos/core";
+import { logger, Service, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 const KAMINO_API_BASE_URL = "https://api.kamino.finance";
 const KAMINO_LEND_PROGRAM_ID = "GzFgdRJXmawPhGeBsyRCDLx4jAKPsvbUqoqitzppkzkW";
@@ -428,7 +428,7 @@ export class KaminoService extends Service {
             const borrowApy = await this.calculateLimoBorrowApy(trade);
             reserves.push({
               market: pairKey,
-              marketName: `Limo-${pairKey.slice(0, 16)}`,
+              marketName: `Limo-${truncateWellFormed(toWellFormedUnicode(pairKey), 16)}`,
               dataSize: 0,
               lamports: 0,
               owner: KAMINO_LEND_PROGRAM_ID,
