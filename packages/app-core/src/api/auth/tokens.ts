@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 /**
  * Constant-time token equality for API auth. `tokenMatches` compares an expected
  * secret/bearer token against a provided one without leaking length or content
@@ -43,9 +44,10 @@ export function extractHeaderValue(
 export function getProvidedApiToken(
   req: Pick<http.IncomingMessage, "headers">,
 ): string | null {
-  const authHeader = extractHeaderValue(req.headers.authorization)
-    ?.slice(0, 1024)
-    ?.trim();
+  const rawAuth = extractHeaderValue(req.headers.authorization);
+  const authHeader = rawAuth
+    ? truncateWellFormed(toWellFormedUnicode(rawAuth), 1024).trim()
+    : null;
   if (authHeader) {
     const match = /^Bearer\s{1,8}(.+)$/i.exec(authHeader);
     if (match?.[1]) return match[1].trim();

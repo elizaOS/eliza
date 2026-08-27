@@ -41,6 +41,14 @@ describe("getProvidedApiToken", () => {
     expect(getProvidedApiToken(req)).toBe("tok-1");
   });
 
+
+  it("preserves well-formed Unicode when authorization header contains surrogate pairs at boundary", () => {
+    const longToken = "Bearer " + "a".repeat(1015) + "🚀" + "tail";
+    const req = { headers: { authorization: longToken } } as never;
+    const token = getProvidedApiToken(req);
+    expect(token).toBeTruthy();
+    expect(token!.isWellFormed()).toBe(true);
+  });
   it("falls back to x-api-key and returns null when absent", () => {
     const req = { headers: { "x-api-key": "k" } } as never;
     expect(getProvidedApiToken(req)).toBe("k");
