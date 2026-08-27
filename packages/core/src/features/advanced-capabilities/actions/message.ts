@@ -12,6 +12,7 @@
  * inbox / draft ops delegate to the triage actions in features/messaging/triage.
  */
 
+import { buildAccessContext } from "../../../access-context.ts";
 import { searchCanonicalConversationMemories } from "../../../access-control/provenance-envelope.ts";
 import { getConnectorAccountManager } from "../../../connectors/account-manager.ts";
 import { createUniqueUuid, findEntityByName } from "../../../entities.ts";
@@ -3530,6 +3531,15 @@ async function handleReadStoredMemory(
 			);
 		}
 		let page: Awaited<ReturnType<NonNullable<typeof pageCapable>>>;
+		// #25140 review R2: reauthorize every page at the storage boundary with
+		// the requester's access context (room membership + scope ladder), not
+		// just the action-layer same-room check above. Resolution failure
+		// degrades to requester-only authority, never unrestricted.
+		const accessContext = await buildAccessContext(runtime, message).catch(
+			() => ({
+				requesterEntityId: message.entityId as UUID,
+			}),
+		);
 		try {
 			page = await pageCapable.call(runtime, {
 				memoryId: memoryRef as UUID,
@@ -3537,6 +3547,7 @@ async function handleReadStoredMemory(
 				byteStart: offset,
 				...(limit === undefined ? {} : { byteLimit: limit }),
 				...(expectedRevision === undefined ? {} : { expectedRevision }),
+				accessContext,
 			});
 		} catch (error) {
 			// error-policy:J1 the action boundary translates typed paging

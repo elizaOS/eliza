@@ -15,6 +15,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { buildAccessContext } from "../../access-context.ts";
 import { ElizaError } from "../../errors.ts";
 import {
 	fetchRemoteMedia,
@@ -1069,6 +1070,16 @@ export const readAttachmentAction: Action = {
 				}
 				const limit = readOptionalPositiveInteger(params, "limit");
 				let page: Awaited<ReturnType<NonNullable<typeof pageCapable>>>;
+				// #25140 review R2: reauthorize every page at the storage
+				// boundary with the requester's access context; resolution
+				// failure degrades to requester-only authority, never
+				// unrestricted.
+				const accessContext = await buildAccessContext(
+					runtime,
+					messageWithParams,
+				).catch(() => ({
+					requesterEntityId: messageWithParams.entityId as UUID,
+				}));
 				try {
 					page = await pageCapable.call(runtime, {
 						memoryId: ownerMessageId,
@@ -1076,6 +1087,7 @@ export const readAttachmentAction: Action = {
 						byteStart: offset,
 						...(limit === undefined ? {} : { byteLimit: limit }),
 						...(expectedRevision === undefined ? {} : { expectedRevision }),
+						accessContext,
 					});
 				} catch (error) {
 					// error-policy:J1 the action boundary translates typed paging

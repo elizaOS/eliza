@@ -21,7 +21,7 @@ import {
   segmentMemoryContent,
   type UUID,
 } from "@elizaos/core";
-import { and, asc, eq, gt, lt, sql } from "drizzle-orm";
+import { and, asc, eq, gt, lt, type SQL, sql } from "drizzle-orm";
 import { memoryTextSegmentTable } from "../schema/index";
 import type { DrizzleDatabase } from "../types";
 
@@ -161,6 +161,14 @@ export async function readMemoryContentPage(params: {
   byteStart: number;
   byteLimit?: number;
   expectedRevision?: string;
+  /**
+   * Raw authorization predicate over the memories table (aliased SQL, no
+   * table prefix). When supplied it is ANDed into EVERY parent-row read inside
+   * the repeatable-read snapshot, so the authorization decision and the page
+   * bytes come from one consistent read — access revoked concurrently cannot
+   * slip a page through between the two.
+   */
+  parentAuthorization?: SQL;
 }): Promise<{
   text: string;
   start: number;
@@ -172,6 +180,7 @@ export async function readMemoryContentPage(params: {
   completeness: "partial-recoverable" | "complete";
 } | null> {
   const { db, memoryId, field } = params;
+  const authz = params.parentAuthorization ? sql` AND (${params.parentAuthorization})` : sql``;
 
   // Snapshot consistency (#25140 review): the descriptor (parent row) and the
   // segment rows must be read under one repeatable-read snapshot so a
@@ -180,7 +189,7 @@ export async function readMemoryContentPage(params: {
   return await db.transaction(
     async (tx) => {
       const parentRows = await tx.execute(sql`
-    SELECT id, metadata, content FROM memories WHERE id = ${memoryId} LIMIT 1
+    SELECT id, metadata, content FROM memories WHERE id = ${memoryId}${authz} LIMIT 1
   `);
       const parentRow = (
         parentRows.rows as Array<{ id: UUID; metadata: unknown; content: unknown }>
@@ -229,7 +238,7 @@ export async function readMemoryContentPage(params: {
                FROM jsonb_array_elements(COALESCE(content->'attachments','[]'::jsonb)) a
                WHERE ${attachmentFilter}
              ) AS attachment_bytes
-      FROM memories WHERE id = ${memoryId}
+      FROM memories WHERE id = ${memoryId}${authz}
     `);
         const row = (
           inlineBytes.rows as Array<{
