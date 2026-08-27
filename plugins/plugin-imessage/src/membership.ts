@@ -201,6 +201,19 @@ export class IMessageMembershipPublisher {
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
   private rosterCounter = 0;
   private readonly ownHandle: string | null;
+  /**
+   * Direct-chat handle → chat id index built from roster sweeps, so the
+   * outbound send gate can resolve a bare phone/email target to its
+   * governed scope without re-reading chat.db.
+   */
+  private readonly directChatByHandle = new Map<string, string>();
+  /**
+   * Optional durable-snapshot hook: invoked with every governed chat id
+   * after a successful full sweep so the owning service can persist the
+   * scope inventory (e.g. on the connector account row) and fail closed
+   * across restarts when chat.db is unavailable.
+   */
+  private readonly onRosterCommitted?: (chatIds: readonly string[]) => Promise<void>;
 
   constructor(input: {
     runtime: IAgentRuntime;
@@ -210,6 +223,7 @@ export class IMessageMembershipPublisher {
     publisherInstanceId?: string;
     /** The local Apple account handle, tagged with the self role. */
     ownHandle?: string | null;
+    onRosterCommitted?: (chatIds: readonly string[]) => Promise<void>;
   }) {
     this.runtime = input.runtime;
     this.connectorAccountId = input.connectorAccountId;
@@ -217,6 +231,7 @@ export class IMessageMembershipPublisher {
     this.service = input.service;
     this.publisherInstanceId = input.publisherInstanceId ?? `imessage-${randomUUID()}`;
     this.ownHandle = input.ownHandle ?? null;
+    this.onRosterCommitted = input.onRosterCommitted;
   }
 
   /** Per-scope serialization: authority mutations for one scope must chain. */
@@ -331,19 +346,20 @@ export class IMessageMembershipPublisher {
     try {
       chatIds = source.listChatIds();
     } catch (error) {
-      await this.degradeAllScopes(source, error);
+      await this.markSourceUnavailable(source, error);
       throw new IMessageRosterUnavailableError(
         "chat.db roster enumeration failed; degrading all imessage membership scopes",
         { cause: error, context: { accountKey: this.accountKey } }
       );
     }
     let published = 0;
+    const committedChatIds: string[] = [];
     for (const chatId of chatIds) {
       let roster: IMessageRosterRead | null;
       try {
         roster = source.readRoster(chatId);
       } catch (error) {
-        await this.degradeAllScopes(source, error);
+        await this.markSourceUnavailable(source, error);
         throw new IMessageRosterUnavailableError(
           `chat.db roster read failed for chat ${chatId}; degrading all imessage membership scopes`,
           { cause: error, context: { accountKey: this.accountKey, chatId } }
@@ -359,6 +375,27 @@ export class IMessageMembershipPublisher {
         // authoritative state.
         this.runtime.reportError?.("imessage:membership:sweep", error, {
           chatId,
+          accountKey: this.accountKey,
+        });
+      }
+      committedChatIds.push(chatId);
+      // Index direct-chat handles so the outbound send gate can resolve a
+      // bare phone/email to its governed scope. Rebuilding on every sweep
+      // keeps the index current as chats are created or deleted.
+      if (roster.chatType === "direct") {
+        for (const participant of roster.participants) {
+          if (participant.handle) this.directChatByHandle.set(participant.handle, chatId);
+        }
+      }
+    }
+    if (this.onRosterCommitted && committedChatIds.length > 0) {
+      // Persist the governed scope inventory; a failure to persist is a
+      // diagnostic (the in-memory state is still correct for this process).
+      try {
+        await this.onRosterCommitted(committedChatIds);
+      } catch (error) {
+        // error-policy:J7 Diagnostics must not kill the sweep loop.
+        this.runtime.reportError?.("imessage:membership:inventory", error, {
           accountKey: this.accountKey,
         });
       }
@@ -409,13 +446,23 @@ export class IMessageMembershipPublisher {
       let tracker = await this.ensureRegistered(scope);
       const observedAt = input.observedAt ?? new Date().toISOString();
       const members = await this.materializeMembers(roster);
-      const snapshotKey =
-        roster.cursor > 0
-          ? `imessage:snapshot:${roster.chatId}:${roster.cursor}`
-          : `imessage:snapshot:${roster.chatId}:${this.rosterCounter}`;
+      // Idempotency key derived from the observation identity, not a
+      // process-local counter: the authority journals keys per account and
+      // rejects a reused key whose digest differs (MEMBERSHIP_IDEMPOTENCY_
+      // CONFLICT), so a restart (counter reset) or a repeated sweep of a
+      // live adapter must never collide with a previously journaled key.
+      // observedAt (caller-supplied or now) makes each observation event
+      // unique while staying deterministic for a replay of the same
+      // observation.
+      const observedAtMs = Date.parse(observedAt);
+      const observedToken = Number.isFinite(observedAtMs)
+        ? observedAtMs.toString(36)
+        : this.rosterCounter.toString(36);
+      const snapshotKey = `imessage:snapshot:${roster.chatId}:${observedToken}`;
       for (let attempt = 0; attempt < 2; attempt++) {
         const sourceVersion = tracker.sourceVersion + 1;
         const sourceCursor = `imessage:${roster.chatId}:${sourceVersion}`;
+        const attemptKey = attempt === 0 ? snapshotKey : `${snapshotKey}:r${attempt}`;
         try {
           await this.service.applyCompleteSnapshot({
             ...scope,
@@ -429,7 +476,7 @@ export class IMessageMembershipPublisher {
             validUntil: new Date(Date.parse(observedAt) + IMESSAGE_MEMBERSHIP_TTL_MS).toISOString(),
             completeness: "complete",
             members,
-            idempotencyKey: snapshotKey,
+            idempotencyKey: attemptKey,
             observedAt,
           });
           tracker.generation += 1;
@@ -586,6 +633,11 @@ export class IMessageMembershipPublisher {
       const observedAt = input.observedAt ?? new Date().toISOString();
       const sourceVersion = tracker.sourceVersion + 1;
       const sourceCursor = `imessage:${input.chatId}:${sourceVersion}`;
+      // One key per renewal observation, not one permanent key per
+      // (chat, principal): a permanent key conflicts
+      // (MEMBERSHIP_IDEMPOTENCY_CONFLICT) on every later renewal carrying a
+      // new cursor/timestamp digest and silently drops the renewal.
+      const renewKey = `imessage:renew:${input.chatId}:${principalId}:${observedAt}`;
       try {
         const receipt = await this.service.applyMembership({
           ...scope,
@@ -603,7 +655,7 @@ export class IMessageMembershipPublisher {
           previousSourceCursor: tracker.sourceCursor,
           sourceCursor,
           validUntil: new Date(Date.parse(observedAt) + IMESSAGE_MEMBERSHIP_TTL_MS).toISOString(),
-          idempotencyKey: `imessage:renew:${input.chatId}:${principalId}`,
+          idempotencyKey: renewKey,
           observedAt,
         });
         tracker.generation = receipt.committedGeneration;
@@ -653,8 +705,14 @@ export class IMessageMembershipPublisher {
     });
     const key = scopeKey(scope);
     await this.serialized(key, async () => {
-      const tracker = this.trackerFor(scope);
+      let tracker = this.trackerFor(scope);
       tracker.degraded = true;
+      // A degrade may be the first authority mutation of this process (a
+      // restart with chat.db unavailable): adopt the durable generation
+      // before writing health so the fence accepts the command.
+      if (tracker.generation === 0) {
+        tracker = await this.ensureRegistered(scope);
+      }
       try {
         await this.service.setScopeHealth({
           ...scope,
@@ -675,15 +733,21 @@ export class IMessageMembershipPublisher {
     });
   }
 
-  /** Degrade every known scope after a roster-source-wide failure. */
-  async degradeAllScopes(source: IMessageMembershipRosterSource, cause: unknown): Promise<number> {
+  /**
+   * Source-wide fail-closed degradation: every known scope goes unavailable.
+   * The governed chat-id inventory is persisted through the connector
+   * account metadata when the service supplied an onRosterCommitted hook,
+   * so a later restart with chat.db still unavailable can re-degrade the
+   * same scopes without being able to enumerate chat.db at all.
+   */
+  async markSourceUnavailable(
+    source: IMessageMembershipRosterSource,
+    cause: unknown
+  ): Promise<void> {
     const reason = `chat.db roster source unavailable: ${cause instanceof Error ? cause.message : String(cause)}`;
-    let degraded = 0;
     for (const chatId of this.knownChatIds(source)) {
       await this.degradeScope({ chatId, reason });
-      degraded += 1;
     }
-    return degraded;
   }
 
   private knownChatIds(source: IMessageMembershipRosterSource): string[] {
@@ -691,15 +755,32 @@ export class IMessageMembershipPublisher {
       return [...source.listChatIds()];
     } catch {
       // error-policy:J6 Best-effort enumeration fallback: fall back to the
-      // in-memory scope table (keys are <account>:<chatId>).
-      return [...this.scopes.keys()].map((k) => k.split(":").slice(1).join(":"));
+      // in-memory scope table (keys are <account>:<chatId>) plus the
+      // direct-handle index built by prior sweeps.
+      const fromScopes = [...this.scopes.keys()].map((k) => k.split(":").slice(1).join(":"));
+      return [...new Set([...fromScopes, ...this.directChatByHandle.values()])];
+    }
+  }
+
+  /**
+   * Degrade a persisted inventory of governed chat scopes (restart with
+   * chat.db unavailable): every scope goes unavailable so stale authority
+   * evidence cannot authorize while the roster source cannot be read.
+   */
+  async degradePersistedScopes(chatIds: readonly string[]): Promise<void> {
+    const reason = "chat.db unavailable at service start; persisted scope inventory degraded";
+    for (const chatId of chatIds) {
+      await this.degradeScope({ chatId, reason });
     }
   }
 
   /**
    * Source-derived admission check for outbound sends: the authority must
    * hold fresh active evidence for the sender in the chat. Fails closed on
-   * any authority error.
+   * any authority error AND on any locally-degraded scope — the local
+   * degraded flag is the publisher's fast-path denial for a chat.db read
+   * failure whose durable unavailable commit may itself have failed, so a
+   * decision from possibly-stale authority evidence is never trusted.
    */
   async authorizeSend(input: { chatId: string; handle: string }): Promise<boolean> {
     const scope = imessageMembershipScope({
@@ -707,10 +788,60 @@ export class IMessageMembershipPublisher {
       connectorAccountId: this.connectorAccountId,
       chatId: input.chatId,
     });
+    const tracker = this.scopes.get(scopeKey(scope));
+    if (tracker?.degraded) return false;
     const principalId = imessageMembershipPrincipalId(this.accountKey, input.handle);
     try {
       const decision = await this.service.authorize(scope, principalId);
       return decision.decision === "allowed";
+    } catch {
+      // error-policy:J4 Fail-closed on authority errors.
+      return false;
+    }
+  }
+
+  /**
+   * Outbound send admission for a bare target (phone/email handle or chat
+   * id). Returns null when the target is not governed (legacy ungated
+   * behavior); otherwise true only when the scope is not locally degraded
+   * and the authority holds current evidence for it. Direct-chat targets
+   * additionally require the recipient principal to be an active member —
+   * the recipient's roster membership is the freshest signal the authority
+   * holds for a bare handle. Fails closed on authority errors.
+   */
+  async authorizeOutbound(target: string): Promise<boolean | null> {
+    let chatId = this.directChatByHandle.get(target) ?? null;
+    const viaHandle = chatId !== null;
+    if (chatId === null) {
+      // A chat id used directly as the target names its own scope; accept
+      // the canonical `chat_id:` prefix used by the connector target shape.
+      const bare = target.startsWith("chat_id:") ? target.slice("chat_id:".length) : target;
+      for (const key of this.scopes.keys()) {
+        if (key.endsWith(`:${bare}`)) {
+          chatId = key.split(":").slice(1).join(":");
+          break;
+        }
+      }
+    }
+    if (chatId === null) return null;
+    const scope = imessageMembershipScope({
+      agentId: this.runtime.agentId,
+      connectorAccountId: this.connectorAccountId,
+      chatId,
+    });
+    const tracker = this.scopes.get(scopeKey(scope));
+    if (tracker?.degraded) return false;
+    try {
+      if (viaHandle) {
+        const principalId = imessageMembershipPrincipalId(this.accountKey, target);
+        const decision = await this.service.authorize(scope, principalId);
+        return decision.decision === "allowed";
+      }
+      const health = await this.service.getScopeHealth(scope);
+      if (!health) return false;
+      if (health.health !== "current") return false;
+      const validUntil = health.validUntil ? Date.parse(health.validUntil) : 0;
+      return Number.isFinite(validUntil) && validUntil > Date.now();
     } catch {
       // error-policy:J4 Fail-closed on authority errors.
       return false;

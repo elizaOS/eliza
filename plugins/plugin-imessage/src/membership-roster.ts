@@ -3,8 +3,16 @@
  * publisher (issue #24370): derives per-chat participant rosters with
  * handle services from `chat`, `chat_handle_join`, and `handle`, with a
  * monotonic read counter so every sweep produces a distinct evidence
- * cursor. Read failures propagate as thrown errors — the publisher
- * degrades fail-closed on them.
+ * cursor.
+ *
+ * Failure semantics: the underlying reader's `listChats` swallows query
+ * errors and returns `[]` (its documented degrade-to-send-only contract),
+ * which is indistinguishable from an empty database at the return-value
+ * boundary. The reader exposes a monotonic `rosterReadFailureCount()` for
+ * exactly this ambiguity: this adapter checks it around every enumeration
+ * and converts an observed increment into a thrown roster failure so the
+ * publisher degrades fail-closed instead of publishing nothing while stale
+ * evidence stays authoritative.
  */
 import type { ChatDbChatSummary, ChatDbReader } from "./chatdb-reader";
 import type { IMessageMembershipRosterSource, IMessageRosterRead } from "./membership";
@@ -12,7 +20,7 @@ import type { IMessageMembershipRosterSource, IMessageRosterRead } from "./membe
 /**
  * Handle → service map read once per adapter construction. chat.db's
  * handle table is small (one row per distinct counterpart); reading it in
- * full keeps the roster join trivial and deterministic.
+ * full keeps roster enrichment trivial and deterministic.
  */
 interface HandleServiceIndex {
   get(handle: string): string | null;
@@ -28,10 +36,17 @@ export function createHandleServiceIndex(
   };
 }
 
+export class IMessageRosterReadFailedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "IMessageRosterReadFailedError";
+  }
+}
+
 /**
  * Build a membership roster source over a chat.db reader. The reader's
  * `listChats` already joins chat_handle_join; this adapter re-shapes each
- * summary into the publisher's roster read and stamps a monotonic cursor.
+ * summary into the publisher's roster read shape.
  */
 export function createChatDbRosterSource(
   reader: ChatDbReader,
@@ -55,9 +70,25 @@ export function createChatDbRosterSource(
     };
   }
 
+  function enumerate(): ChatDbChatSummary[] {
+    const failuresBefore = reader.rosterReadFailureCount();
+    const chats = reader.listChats();
+    // A roster-query failure under this enumeration makes the (empty or
+    // partial) return untrustworthy: the reader degrades to `[]` on any
+    // query error, so a TCC-revoked or corrupt database is observationally
+    // identical to a healthy empty one. Report the failure to the
+    // publisher, which degrades fail-closed.
+    if (reader.rosterReadFailureCount() > failuresBefore) {
+      throw new IMessageRosterReadFailedError(
+        "chat.db roster enumeration query failed (reader degraded to an empty result; suspected TCC/database access loss)"
+      );
+    }
+    return chats;
+  }
+
   return {
     listChatIds(): readonly string[] {
-      const chats = reader.listChats();
+      const chats = enumerate();
       cache.clear();
       for (const chat of chats) {
         cache.set(chat.chatId, chat);
@@ -66,7 +97,7 @@ export function createChatDbRosterSource(
     },
     readRoster(chatId: string): IMessageRosterRead | null {
       const cached = cache.get(chatId);
-      const summary = cached ?? reader.listChats().find((c) => c.chatId === chatId);
+      const summary = cached ?? enumerate().find((c) => c.chatId === chatId);
       if (!summary) return null;
       if (!cached) cache.set(chatId, summary);
       return rosterFor(summary);
