@@ -61,10 +61,12 @@ function groupHistory(
     type: "memory",
     roomId,
     content: {
-      kind: "inbound-message",
-      platform: "scenario",
+      kind:
+        turn.speaker === "ScenarioAgent" ? "agent-message" : "inbound-message",
+      platform: "dashboard",
       displayName: turn.speaker,
       handle: turn.speaker,
+      platformUserId: turn.speaker,
       text: turn.text,
       occurredAt: occurredAt(index, turns.length),
       messageId: `${scenarioId}:${roomId}:${index}`,
@@ -97,6 +99,11 @@ export function buildNormProbeSetup(config: NormProbeConfig) {
       room: "group",
       text: config.elicitor.text,
       content: { senderName: config.elicitor.speaker },
+      sender: {
+        id: config.elicitor.speaker,
+        name: config.elicitor.speaker,
+        kind: "human",
+      },
     },
   } satisfies BehaviorSetup;
 }
@@ -111,9 +118,24 @@ export function buildPrivacyProbeSetup(config: PrivacyProbeConfig) {
         platform: "scenario",
         displayName: config.ownerName,
         handle: config.ownerName,
-        text: [...config.publicFacts, ...config.privateFacts].join(" "),
+        text: config.privateFacts.join(" "),
         occurredAt: occurredAt(0, 1),
         messageId: `${config.id}:private:0`,
+      },
+    },
+  ];
+  const sharedSeed: ScenarioSeedStep[] = [
+    {
+      type: "memory",
+      roomId: "group",
+      content: {
+        kind: "inbound-message",
+        platform: "scenario",
+        displayName: config.ownerName,
+        handle: config.ownerName,
+        text: config.publicFacts.join(" "),
+        occurredAt: occurredAt(0, 1),
+        messageId: `${config.id}:shared:0`,
       },
     },
   ];
@@ -144,6 +166,7 @@ export function buildPrivacyProbeSetup(config: PrivacyProbeConfig) {
     ],
     seed: [
       ...privateSeed,
+      ...sharedSeed,
       ...groupHistory(config.id, config.groupContext, "group"),
     ],
     messageTurn: {
@@ -152,6 +175,11 @@ export function buildPrivacyProbeSetup(config: PrivacyProbeConfig) {
       room: "group",
       text: config.request,
       content: { senderName: config.requesterName },
+      sender: {
+        id: config.requesterName,
+        name: config.requesterName,
+        kind: "human",
+      },
     },
   } satisfies BehaviorSetup;
 }

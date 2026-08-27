@@ -27,6 +27,7 @@ import {
 } from "../security/index.js";
 import {
 	BUILTIN_RESPONSE_HANDLER_EVALUATORS,
+	messageContinuesAfterRecentAgentCorrection,
 	messageHandlerFromFieldResult,
 	resolveZeroDeliveryRecovery,
 	runV5MessageRuntimeStage1,
@@ -4248,6 +4249,221 @@ describe("runV5MessageRuntimeStage1", () => {
 		if (result.kind === "terminal") {
 			expect(result.action).toBe("IGNORE");
 		}
+	});
+
+	it("recognizes a bounded continuation from the participant who corrected the agent", () => {
+		const runtime = makeRuntime([]);
+		const correctingEntityId = "00000000-0000-0000-0000-000000000002" as UUID;
+		const otherEntityId = "00000000-0000-0000-0000-000000000005" as UUID;
+		const recentMessages: Memory[] = [
+			{
+				...makeMessage({ text: "You should send a follow-up email." }),
+				id: "00000000-0000-0000-0000-000000000010" as UUID,
+				entityId: runtime.agentId,
+			},
+			{
+				...makeMessage({
+					text: "Please don't fix it. In this chat we listen unless someone asks for ideas.",
+				}),
+				id: "00000000-0000-0000-0000-000000000011" as UUID,
+				entityId: correctingEntityId,
+			},
+			{
+				...makeMessage({ text: "yeah, no homework assignment right now" }),
+				id: "00000000-0000-0000-0000-000000000012" as UUID,
+				entityId: otherEntityId,
+			},
+		];
+		const state: State = {
+			...makeState(),
+			data: { providers: { RECENT_MESSAGES: { data: { recentMessages } } } },
+		};
+		const continuation = makeMessage({
+			text: "and now I remembered I blanked on the easiest question",
+			channelType: ChannelType.GROUP,
+		});
+
+		expect(
+			messageContinuesAfterRecentAgentCorrection(runtime, continuation, state),
+		).toBe(true);
+		expect(
+			messageContinuesAfterRecentAgentCorrection(
+				runtime,
+				{ ...continuation, entityId: otherEntityId },
+				state,
+			),
+		).toBe(false);
+	});
+
+	it("does not treat incidental or third-party correction language as agent repair", () => {
+		const runtime = makeRuntime([]);
+		const speakerId = "00000000-0000-0000-0000-000000000002" as UUID;
+		const agentMessage = {
+			...makeMessage({ text: "Here is my thought." }),
+			id: "00000000-0000-0000-0000-000000000010" as UUID,
+			entityId: runtime.agentId,
+		};
+		const continuation = {
+			...makeMessage({
+				text: "and now I remembered another part",
+				channelType: ChannelType.GROUP,
+			}),
+			entityId: speakerId,
+		};
+		for (const text of [
+			"The bus stop is nearby.",
+			"That quote is too much for us.",
+			"Please do not deploy that.",
+			"Bob, stop explaining it to me.",
+		]) {
+			const correction = {
+				...makeMessage({ text }),
+				id: "00000000-0000-0000-0000-000000000011" as UUID,
+				entityId: speakerId,
+			};
+			const state: State = {
+				...makeState(),
+				data: {
+					providers: {
+						RECENT_MESSAGES: {
+							data: { recentMessages: [agentMessage, correction] },
+						},
+					},
+				},
+			};
+			expect(
+				messageContinuesAfterRecentAgentCorrection(
+					runtime,
+					continuation,
+					state,
+				),
+			).toBe(false);
+		}
+	});
+
+	it("fails closed when the current continuation has no stable message id", () => {
+		const runtime = makeRuntime([]);
+		const speakerId = "00000000-0000-0000-0000-000000000002" as UUID;
+		const state: State = {
+			...makeState(),
+			data: {
+				providers: {
+					RECENT_MESSAGES: {
+						data: {
+							recentMessages: [
+								{
+									...makeMessage({ text: "You should follow up." }),
+									id: "00000000-0000-0000-0000-000000000010" as UUID,
+									entityId: runtime.agentId,
+								},
+								{
+									...makeMessage({ text: "Please don't fix it." }),
+									id: "00000000-0000-0000-0000-000000000011" as UUID,
+									entityId: speakerId,
+								},
+							],
+						},
+					},
+				},
+			},
+		};
+		const continuation = {
+			...makeMessage({
+				text: "and now I remembered another part",
+				channelType: ChannelType.GROUP,
+			}),
+			id: undefined,
+			entityId: speakerId,
+		};
+
+		expect(
+			messageContinuesAfterRecentAgentCorrection(runtime, continuation, state),
+		).toBe(false);
+	});
+
+	it("expires repair permission after the correcting participant's first continuation", () => {
+		const runtime = makeRuntime([]);
+		const speakerId = "00000000-0000-0000-0000-000000000002" as UUID;
+		const recentMessages: Memory[] = [
+			{
+				...makeMessage({ text: "You should send a follow-up email." }),
+				id: "00000000-0000-0000-0000-000000000010" as UUID,
+				entityId: runtime.agentId,
+			},
+			{
+				...makeMessage({ text: "Please don't fix it." }),
+				id: "00000000-0000-0000-0000-000000000011" as UUID,
+				entityId: speakerId,
+			},
+			{
+				...makeMessage({ text: "and now I remembered another part" }),
+				id: "00000000-0000-0000-0000-000000000012" as UUID,
+				entityId: speakerId,
+			},
+		];
+		const state: State = {
+			...makeState(),
+			data: { providers: { RECENT_MESSAGES: { data: { recentMessages } } } },
+		};
+
+		expect(
+			messageContinuesAfterRecentAgentCorrection(
+				runtime,
+				{
+					...makeMessage({
+						text: "also, lunch at noon?",
+						channelType: ChannelType.GROUP,
+					}),
+					entityId: speakerId,
+				},
+				state,
+			),
+		).toBe(false);
+	});
+
+	it("expires a sparse-room repair exchange after fifteen minutes", () => {
+		const runtime = makeRuntime([]);
+		const speakerId = "00000000-0000-0000-0000-000000000002" as UUID;
+		const correction = {
+			...makeMessage({ text: "Please don't fix it." }),
+			id: "00000000-0000-0000-0000-000000000011" as UUID,
+			entityId: speakerId,
+			createdAt: 1_000,
+		};
+		const state: State = {
+			...makeState(),
+			data: {
+				providers: {
+					RECENT_MESSAGES: {
+						data: {
+							recentMessages: [
+								{
+									...makeMessage({ text: "You should follow up." }),
+									id: "00000000-0000-0000-0000-000000000010" as UUID,
+									entityId: runtime.agentId,
+								},
+								correction,
+							],
+						},
+					},
+				},
+			},
+		};
+
+		expect(
+			messageContinuesAfterRecentAgentCorrection(
+				runtime,
+				{
+					...makeMessage({
+						text: "and I remembered another part",
+						channelType: ChannelType.GROUP,
+					}),
+					entityId: speakerId,
+					createdAt: 15 * 60_000 + 1_001,
+				},
+				state,
+			),
+		).toBe(false);
 	});
 
 	it("keeps the planner prompt byte-identical on an addressed group turn (no ambient policy, no terminal conversion)", async () => {
