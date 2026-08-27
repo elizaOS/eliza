@@ -1,9 +1,10 @@
 /**
- * Production Google Play Cloud sign-in checks on the real Android WebView.
- *
- * The Play shell deliberately has no embedded wallet, private-key autologin,
- * local-agent setup, or in-WebView account authentication. Authentication is
- * delegated to the system browser through a short-lived Cloud CLI session.
+ * Operator-driven Google sign-in checks on the real Android Play shell.
+ * Authentication stays in the system browser while the app retains its PKCE
+ * verifier in Keystore; only a genuine OS callback may return automatically,
+ * activate the mobile credential, restore the same agent, and reach chat.
+ * Browser authentication is deliberately excluded from recorded artifacts so
+ * account details and credentials cannot enter CI evidence.
  */
 
 import { randomBytes } from "node:crypto";
@@ -17,10 +18,14 @@ import {
 } from "../liveness-contract";
 import { expect, ORIGIN, test } from "./android-harness";
 import {
-  buildAndroidCloudLoginCompletionRequest,
+  type AndroidCloudResponseEvidence,
+  applyAndroidCloudOnboardingDocumentBootstrap,
+  buildAndroidCloudOnboardingBootstrapPlan,
   buildAndroidCloudOnboardingJpegArtifact,
-  extractAndroidCloudLoginHandoff,
-  isTrustedAndroidCloudResponseUrl,
+  buildAndroidCloudResponseEvidence,
+  extractAndroidCloudPkceHandoffEvidence,
+  findAndroidGoogleProviderTapPoint,
+  requirePhysicalAndroidDevice,
 } from "./cloud-onboarding-evidence";
 import {
   ANDROID_CLOUD_SIGN_IN_RESUMED_ACTIVITY,
@@ -32,78 +37,186 @@ const ARTIFACT_DIR = path.join(
   "test-results",
   "android-cloud-onboarding",
 );
+const STALE_ACTIVE_SERVER = JSON.stringify({
+  id: "local:android",
+  kind: "remote",
+  apiBase: "eliza-local-agent://ipc",
+});
 
-// This live lane passes a credential to the Cloud completion endpoint. Disable
-// Playwright tracing so evaluation/network metadata cannot serialize it; the
-// required review artifacts are the explicit JPG and Android MP4 captures.
+// The genuine callback exchange carries one-time codes and mobile credentials.
+// Disable tracing so request bodies and URLs cannot serialize them; explicit
+// artifacts begin only after the private system-browser step has completed.
 test.use({ trace: "off" });
 
-async function clearBrowserState(page: import("@playwright/test").Page) {
-  await page.evaluate(async () => {
-    localStorage.clear();
-    const plugins = (
-      window as Window & {
-        Capacitor?: {
-          Plugins?: {
-            Preferences?: { clear(): Promise<void> };
+interface NativeCloudStateOptions {
+  seedStaleLocalState?: boolean;
+}
+
+async function resetNativeCloudState(
+  page: import("@playwright/test").Page,
+  options: NativeCloudStateOptions = {},
+) {
+  await page.evaluate(
+    async ({ seedStaleLocalState, staleActiveServer }) => {
+      const plugins = (
+        window as Window & {
+          Capacitor?: {
+            Plugins?: {
+              ElizaSecureCredentials?: {
+                remove(options: { slot: "pending_login" }): Promise<void>;
+              };
+              ElizaSecureStore?: {
+                remove(options: {
+                  key: "runtime.active_server" | "session.steward_token";
+                }): Promise<{ error?: string; ok: boolean }>;
+                set(options: {
+                  key: "runtime.active_server";
+                  value: string;
+                }): Promise<{ error?: string; ok: boolean }>;
+              };
+              Preferences?: {
+                clear(): Promise<void>;
+                set(options: { key: string; value: string }): Promise<void>;
+              };
+            };
           };
-        };
+        }
+      ).Capacitor?.Plugins;
+      const preferences = plugins?.Preferences;
+      const pendingCredentials = plugins?.ElizaSecureCredentials;
+      const secureStore = plugins?.ElizaSecureStore;
+      if (!preferences || !pendingCredentials || !secureStore) {
+        throw new Error("Android Cloud native reset plugins are unavailable");
       }
-    ).Capacitor?.Plugins;
-    if (!plugins?.Preferences) {
-      throw new Error("Android Cloud Preferences plugin is unavailable");
-    }
-    await plugins.Preferences.clear();
-  });
+
+      await preferences.clear();
+      await pendingCredentials.remove({ slot: "pending_login" });
+      for (const key of [
+        "runtime.active_server",
+        "session.steward_token",
+      ] as const) {
+        const result = await secureStore.remove({ key });
+        if (!result.ok && result.error !== "not_found") {
+          throw new Error(`Android secure state reset failed for ${key}`);
+        }
+      }
+
+      if (seedStaleLocalState) {
+        const activeServerResult = await secureStore.set({
+          key: "runtime.active_server",
+          value: staleActiveServer,
+        });
+        if (!activeServerResult.ok) {
+          throw new Error("Android stale active-server seed was rejected");
+        }
+        await preferences.set({
+          key: "eliza:e2e-wallet:autologin",
+          value: "1",
+        });
+        await preferences.set({
+          key: "eliza:e2e-wallet:pk",
+          value: "legacy-test-wallet-key",
+        });
+      }
+    },
+    {
+      seedStaleLocalState: options.seedStaleLocalState === true,
+      staleActiveServer: STALE_ACTIVE_SERVER,
+    },
+  );
 }
 
-async function seedStaleBrowserState(page: import("@playwright/test").Page) {
-  // Reserved shell keys are realm-guarded after the renderer boots. Seed the
-  // adversarial legacy state at document start so this exercises hydration
-  // instead of being rejected by the view-storage facade before navigation.
-  await page.addInitScript(() => {
-    localStorage.setItem(
-      "elizaos:active-server",
-      JSON.stringify({
-        id: "local:android",
-        kind: "remote",
-        apiBase: "eliza-local-agent://ipc",
-      }),
-    );
-    localStorage.setItem("eliza:e2e-wallet:autologin", "1");
-    localStorage.setItem("eliza:e2e-wallet:pk", "legacy-test-wallet-key");
-  });
-}
-
-async function loadSignedOutShell(page: import("@playwright/test").Page) {
-  await page.goto(`${ORIGIN}/?androidPlayCloudSignIn=1`, {
+async function loadFreshCloudAuthFirstScreen(
+  page: import("@playwright/test").Page,
+  options: NativeCloudStateOptions & { switchAccount?: boolean } = {},
+) {
+  await resetNativeCloudState(page, options);
+  const bootstrap = buildAndroidCloudOnboardingBootstrapPlan(
+    randomBytes(16).toString("hex"),
+    { switchAccount: options.switchAccount },
+  );
+  // The exact helper is installed once per reset. Its unique URL token is
+  // consumed and removed at document start, so older scripts retained by this
+  // serial page and the successful credential reload are both inert.
+  await page.addInitScript(
+    applyAndroidCloudOnboardingDocumentBootstrap,
+    bootstrap,
+  );
+  await page.goto(`${ORIGIN}${bootstrap.navigationPath}`, {
     waitUntil: "domcontentloaded",
     timeout: 60_000,
   });
-  await expect(page.getByRole("heading", { name: "Eliza" })).toBeVisible({
-    timeout: 30_000,
-  });
-  await expect(page.getByRole("button", { name: /^Sign in$/ })).toBeVisible();
+  await expect(page.getByTestId("startup-shell-loading")).toContainText(
+    "Opening secure sign in…",
+    {
+      timeout: 30_000,
+    },
+  );
 }
 
-interface CloudResponseEvidence {
-  method: string;
-  pathname: string;
-  status: number;
+async function closeBrowserAndExpectSignedOutRecovery(
+  page: import("@playwright/test").Page,
+  device: import("@playwright/test").AndroidDevice,
+) {
+  await page.evaluate(async () => {
+    const browser = (
+      window as Window & {
+        Capacitor?: {
+          Plugins?: { Browser?: { close?: () => Promise<void> } };
+        };
+      }
+    ).Capacitor?.Plugins?.Browser;
+    if (!browser?.close) {
+      throw new Error("Android Browser.close is unavailable");
+    }
+    await browser.close();
+  });
+  await expect
+    .poll(
+      async () =>
+        resumedAndroidActivityComponent(
+          (await device.shell("dumpsys activity activities")).toString(),
+        ),
+      { timeout: 30_000 },
+    )
+    .toBe(`${APP_ID}/.MainActivity`);
+
+  await expect(page.getByTestId("cloud-sign-in-recovery")).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(
+    page.getByRole("heading", { name: "Sign in to Eliza Cloud" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Sign in again" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign out" })).toHaveCount(0);
+  await expect(page.getByTestId("home-launcher-surface")).toHaveCount(0);
 }
 
 function observeCloudResponses(page: import("@playwright/test").Page) {
-  const responses: CloudResponseEvidence[] = [];
+  const responses: AndroidCloudResponseEvidence[] = [];
   page.on("response", (response) => {
-    const url = new URL(response.url());
-    if (!isTrustedAndroidCloudResponseUrl(url)) return;
-    responses.push({
-      method: response.request().method(),
-      pathname: url.pathname,
-      status: response.status(),
-    });
+    const evidence = buildAndroidCloudResponseEvidence(
+      response.url(),
+      response.request().method(),
+      response.status(),
+    );
+    if (evidence) responses.push(evidence);
   });
   return responses;
+}
+
+function successfulPhaseCount(
+  responses: readonly AndroidCloudResponseEvidence[],
+  phase: AndroidCloudResponseEvidence["phase"],
+): number {
+  return responses.filter(
+    (response) =>
+      response.phase === phase &&
+      response.status >= 200 &&
+      response.status < 300,
+  ).length;
 }
 
 async function attachJpeg(
@@ -126,14 +239,29 @@ test.describe
       "Set ELIZA_DEVICE_CLOUD_ONBOARDING_LIVE=1 to exercise the live Cloud sign-in handoff.",
     );
 
+    test.beforeEach(async ({ device }, testInfo) => {
+      const kernelQemuProperty = (
+        await device.shell("getprop ro.kernel.qemu")
+      ).toString();
+      const receipt = requirePhysicalAndroidDevice(
+        device.serial(),
+        kernelQemuProperty,
+      );
+      await testInfo.attach("physical Android device receipt", {
+        body: JSON.stringify(receipt, null, 2),
+        contentType: "application/json",
+      });
+    });
+
     test("stale local and embedded-wallet state cannot bypass Cloud sign-in", async ({
       page,
       device,
     }, testInfo) => {
-      await clearBrowserState(page);
-      await seedStaleBrowserState(page);
+      await device.shell("logcat -c");
 
-      await loadSignedOutShell(page);
+      await loadFreshCloudAuthFirstScreen(page, {
+        seedStaleLocalState: true,
+      });
       await expect(page.getByTestId("home-launcher-surface")).toHaveCount(0);
       await expect(page.getByText(/where should your agent run/i)).toHaveCount(
         0,
@@ -146,6 +274,17 @@ test.describe
         "android.permission.RECORD_AUDIO: granted=false",
       );
 
+      await expect
+        .poll(
+          async () =>
+            resumedAndroidActivityComponent(
+              (await device.shell("dumpsys activity activities")).toString(),
+            ),
+          { timeout: 30_000 },
+        )
+        .toMatch(ANDROID_CLOUD_SIGN_IN_RESUMED_ACTIVITY);
+      await closeBrowserAndExpectSignedOutRecovery(page, device);
+
       const screenshotPath = path.join(ARTIFACT_DIR, "play-signed-out.png");
       await page.screenshot({ path: screenshotPath, fullPage: true });
       await testInfo.attach("Play signed-out shell", {
@@ -154,27 +293,28 @@ test.describe
       });
     });
 
-    test("browser-handoff smoke creates a short-lived Cloud session and opens the system browser", async ({
+    test("mobile-PKCE handoff closes into signed-out recovery", async ({
       page,
       device,
     }) => {
-      await clearBrowserState(page);
-      await loadSignedOutShell(page);
       await device.shell("logcat -c");
-
-      await page.getByRole("button", { name: /^Sign in$/ }).click();
-      await expect(
-        page.getByRole("button", { name: "Cancel sign-in" }),
-      ).toBeVisible({ timeout: 30_000 });
+      await loadFreshCloudAuthFirstScreen(page);
 
       await expect
         .poll(
-          async () => (await device.shell("logcat -d -v brief")).toString(),
+          async () =>
+            extractAndroidCloudPkceHandoffEvidence(
+              (await device.shell("logcat -d -v brief")).toString(),
+            ),
           { timeout: 30_000 },
         )
-        .toMatch(
-          /pluginId: Browser[\s\S]*https:\\?\/\\?\/cloud\.eliza\.app\\?\/auth\\?\/cli-login\?session=[0-9a-f-]{36}/i,
-        );
+        .toMatchObject({
+          browserHost: "cloud.eliza.app",
+          codeChallengeShapeValid: true,
+          codeChallengeMethod: "S256",
+          environment: "production",
+          stateShapeValid: true,
+        });
 
       await expect
         .poll(
@@ -185,126 +325,130 @@ test.describe
           { timeout: 15_000 },
         )
         .toMatch(ANDROID_CLOUD_SIGN_IN_RESUMED_ACTIVITY);
-
-      await device.shell("input keyevent BACK");
-      await page.getByRole("button", { name: "Cancel sign-in" }).click();
-      await expect(
-        page.getByRole("button", { name: /^Sign in$/ }),
-      ).toBeVisible();
+      await closeBrowserAndExpectSignedOutRecovery(page, device);
     });
 
-    test("authenticated browser return provisions Cloud and reaches live chat", async ({
+    test("Google returns by PKCE callback and reaches streamed chat", async ({
       page,
       device,
     }, testInfo) => {
-      test.setTimeout(420_000);
-      const authToken = process.env.ELIZA_CLOUD_AUTH_TOKEN;
-      // Resolve before recording or navigation so a misconfigured operator run
-      // fails visibly without producing evidence that looks like a live pass.
-      buildAndroidCloudLoginCompletionRequest(
-        {
-          browserUrl:
-            "https://cloud.eliza.app/auth/cli-login?session=123e4567-e89b-42d3-a456-426614174000",
-          sessionId: "123e4567-e89b-42d3-a456-426614174000",
-          apiBase: "https://api.eliza.app",
-        },
-        authToken,
-      );
-
+      test.setTimeout(660_000);
+      testInfo.annotations.push({
+        type: "operator-action",
+        description:
+          "After the lane taps Google, complete the private test-account chooser without pressing Android Back.",
+      });
       const evidenceResponses = observeCloudResponses(page);
+      await device.shell("logcat -c");
+      await loadFreshCloudAuthFirstScreen(page, { switchAccount: true });
+      await attachJpeg(page, testInfo, "sign-in-greeting");
+
+      await expect
+        .poll(
+          async () =>
+            extractAndroidCloudPkceHandoffEvidence(
+              (await device.shell("logcat -d -v brief")).toString(),
+            ),
+          { timeout: 30_000 },
+        )
+        .not.toBeNull();
+      const handoff = extractAndroidCloudPkceHandoffEvidence(
+        (await device.shell("logcat -d -v brief")).toString(),
+      );
+      if (!handoff) throw new Error("Mobile-PKCE browser handoff was not seen");
+      expect(handoff.switchAccount).toBe(true);
+      await testInfo.attach("mobile PKCE handoff receipt", {
+        body: JSON.stringify(handoff, null, 2),
+        contentType: "application/json",
+      });
+
+      await expect
+        .poll(() => successfulPhaseCount(evidenceResponses, "mobile-config"), {
+          timeout: 30_000,
+        })
+        .toBeGreaterThanOrEqual(1);
+      await expect
+        .poll(
+          async () =>
+            resumedAndroidActivityComponent(
+              (await device.shell("dumpsys activity activities")).toString(),
+            ),
+          { timeout: 15_000 },
+        )
+        .toMatch(ANDROID_CLOUD_SIGN_IN_RESUMED_ACTIVITY);
+
+      await expect
+        .poll(
+          async () => {
+            const point = findAndroidGoogleProviderTapPoint(
+              (await device.shell("uiautomator dump /dev/tty")).toString(),
+            );
+            return point ? { googleProviderAvailable: true } : null;
+          },
+          { timeout: 90_000 },
+        )
+        .not.toBeNull();
+      const googleTapPoint = findAndroidGoogleProviderTapPoint(
+        (await device.shell("uiautomator dump /dev/tty")).toString(),
+      );
+      if (!googleTapPoint) {
+        throw new Error("Google was not available in the Android login picker");
+      }
+      await device.shell(`input tap ${googleTapPoint.x} ${googleTapPoint.y}`);
+      await testInfo.attach("Google provider selection receipt", {
+        body: JSON.stringify({ accessibilityTargetTapped: true }),
+        contentType: "application/json",
+      });
+
+      // The operator completes the private Google account chooser. The test
+      // never sends Back or foregrounds the package: only the genuine custom
+      // scheme callback may make MainActivity resume and complete token/ACK.
+      await expect
+        .poll(
+          async () =>
+            resumedAndroidActivityComponent(
+              (await device.shell("dumpsys activity activities")).toString(),
+            ),
+          { timeout: 360_000 },
+        )
+        .toBe(`${APP_ID}/.MainActivity`);
+
+      await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible({
+        timeout: 180_000,
+      });
+      await expect(page.getByPlaceholder("Message Eliza")).toBeVisible();
+      for (const phase of ["mobile-token", "mobile-ack"] as const) {
+        await expect
+          .poll(() => successfulPhaseCount(evidenceResponses, phase), {
+            timeout: 30_000,
+          })
+          .toBeGreaterThanOrEqual(1);
+      }
+      await expect
+        .poll(() => successfulPhaseCount(evidenceResponses, "personal-agent"), {
+          timeout: 30_000,
+        })
+        .toBeGreaterThanOrEqual(1);
+
+      // Recording starts only after authentication so account chooser, email,
+      // credentials, callback parameters, and authorization codes stay private.
       const recording = await startChunkedAndroidScreenRecord({
         serial: device.serial(),
         artifactDir: path.join(ARTIFACT_DIR, "authenticated-browser-return"),
-        filename: "cloud-onboarding-authenticated-browser-return.mp4",
+        filename: "cloud-onboarding-post-callback-chat.mp4",
         requireComplete: true,
       });
       let videoPath: string | null = null;
-
       try {
-        await clearBrowserState(page);
-        await loadSignedOutShell(page);
-        await attachJpeg(page, testInfo, "sign-in-greeting");
-        await device.shell("logcat -c");
-
-        await page.getByRole("button", { name: /^Sign in$/ }).click();
-        await expect(
-          page.getByRole("button", { name: "Cancel sign-in" }),
-        ).toBeVisible({ timeout: 30_000 });
-
-        let handoff: ReturnType<typeof extractAndroidCloudLoginHandoff> = null;
-        await expect
-          .poll(
-            async () => {
-              handoff = extractAndroidCloudLoginHandoff(
-                (await device.shell("logcat -d -v brief")).toString(),
-              );
-              return handoff;
-            },
-            { timeout: 30_000 },
-          )
-          .not.toBeNull();
-        if (!handoff) throw new Error("Cloud browser handoff was not captured");
-
-        await expect
-          .poll(
-            async () =>
-              resumedAndroidActivityComponent(
-                (await device.shell("dumpsys activity activities")).toString(),
-              ),
-            { timeout: 15_000 },
-          )
-          .toMatch(ANDROID_CLOUD_SIGN_IN_RESUMED_ACTIVITY);
-
-        const completion = buildAndroidCloudLoginCompletionRequest(
-          handoff,
-          authToken,
-        );
-        const completionResponse = await fetch(completion.url, completion.init);
-        if (!completionResponse.ok) {
-          throw new Error(
-            `Cloud login completion failed (${completionResponse.status})`,
-          );
-        }
-
-        // Return from the authenticated system-browser handoff. Foregrounding
-        // the app is required on devices that suspend WebView timers while the
-        // Custom Tab owns the resumed activity; the resumed poll must then
-        // consume this exact completed session and close the browser adapter.
-        await device.shell("input keyevent BACK");
-        await expect
-          .poll(
-            async () =>
-              resumedAndroidActivityComponent(
-                (await device.shell("dumpsys activity activities")).toString(),
-              ),
-            { timeout: 30_000 },
-          )
-          .toBe(`${APP_ID}/.MainActivity`);
-
-        await expect(
-          page.getByRole("button", { name: "Sign out" }),
-        ).toBeVisible({
-          timeout: 180_000,
-        });
-        await expect(page.getByPlaceholder("Message Eliza")).toBeVisible();
-        await expect
-          .poll(
-            () =>
-              evidenceResponses.filter(
-                (response) =>
-                  response.method === "GET" &&
-                  response.pathname === "/api/v1/eliza/personal" &&
-                  response.status === 200,
-              ).length,
-            { timeout: 30_000 },
-          )
-          .toBeGreaterThanOrEqual(1);
-
         await attachJpeg(page, testInfo, "home-landing");
 
         // A reload can only recover through the Keystore-backed credential
-        // written by pollLogin; this guards token persistence independently of
-        // the first in-memory ready state.
+        // committed by mobile token/ACK; this guards persistence independently
+        // of the first in-memory ready state and must restore Personal again.
+        const personalAgentCountBeforeReload = successfulPhaseCount(
+          evidenceResponses,
+          "personal-agent",
+        );
         await page.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
         await expect(
           page.getByRole("button", { name: "Sign out" }),
@@ -313,16 +457,10 @@ test.describe
         });
         await expect
           .poll(
-            () =>
-              evidenceResponses.filter(
-                (response) =>
-                  response.method === "GET" &&
-                  response.pathname === "/api/v1/eliza/personal" &&
-                  response.status === 200,
-              ).length,
+            () => successfulPhaseCount(evidenceResponses, "personal-agent"),
             { timeout: 30_000 },
           )
-          .toBeGreaterThanOrEqual(2);
+          .toBeGreaterThan(personalAgentCountBeforeReload);
 
         const challenge = buildLivenessChallenge(
           randomBytes(4).toString("hex"),
@@ -330,6 +468,10 @@ test.describe
         const challengeToken = extractLivenessChallengeToken(challenge);
         const composer = page.getByPlaceholder("Message Eliza");
         await composer.fill(challenge);
+        const streamCountBeforeSend = successfulPhaseCount(
+          evidenceResponses,
+          "message-stream",
+        );
         await page.getByRole("button", { name: /^Send$/ }).click();
         const userRow = page
           .locator("ol > li")
@@ -343,15 +485,21 @@ test.describe
         await expect
           .poll(
             async () => {
-              const candidate = await assistantText
-                .textContent()
-                .catch(() => null);
+              let candidate: string | null = null;
+              try {
+                candidate = await assistantText.textContent();
+              } catch {
+                // error-policy:J4 A transiently detached streaming row remains
+                // visibly pending until this bounded assertion poll expires.
+              }
               try {
                 reply = assertLiveChallengeReply(candidate, {
                   challengeToken,
                   label: "android-cloud-onboarding",
                 });
               } catch {
+                // error-policy:J3 Partial streamed text is explicitly not yet
+                // a valid liveness reply; the bounded poll retries it.
                 reply = null;
               }
               return reply;
@@ -367,22 +515,13 @@ test.describe
 
         await expect
           .poll(
-            () =>
-              evidenceResponses.some(
-                (response) =>
-                  response.method === "POST" &&
-                  /\/api\/conversations\/[^/]+\/messages$/.test(
-                    response.pathname,
-                  ) &&
-                  response.status >= 200 &&
-                  response.status < 300,
-              ),
+            () => successfulPhaseCount(evidenceResponses, "message-stream"),
             { timeout: 30_000 },
           )
-          .toBe(true);
-        await testInfo.attach("liveness reply", {
-          body: reply,
-          contentType: "text/plain",
+          .toBeGreaterThan(streamCountBeforeSend);
+        await testInfo.attach("liveness receipt", {
+          body: JSON.stringify({ matchedFreshChallenge: true }),
+          contentType: "application/json",
         });
         await testInfo.attach("Cloud response evidence", {
           body: JSON.stringify(evidenceResponses, null, 2),
@@ -392,7 +531,7 @@ test.describe
       } finally {
         videoPath = await recording.stop();
         if (videoPath) {
-          await testInfo.attach("authenticated browser return walkthrough", {
+          await testInfo.attach("post-callback chat walkthrough", {
             path: videoPath,
             contentType: "video/mp4",
           });
@@ -401,7 +540,7 @@ test.describe
 
       if (!videoPath) {
         throw new Error(
-          "Android Cloud onboarding passed without the required MP4 walkthrough",
+          "Android Cloud onboarding passed without the required post-callback MP4",
         );
       }
     });
