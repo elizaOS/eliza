@@ -17,6 +17,10 @@ import {
 } from "@/lib/auth/workers-hono-auth";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
+import {
+  isPersonalSharedAgentId,
+  personalSharedAgentId,
+} from "@/lib/services/shared-runtime/personal-shared-agent";
 import { createStewardClient } from "@/lib/services/steward-client";
 import { parseClampedLimit, parseClampedOffset } from "@/lib/utils/clamp-limit";
 import { logger } from "@/lib/utils/logger";
@@ -208,8 +212,28 @@ export async function resolveStewardAgentId(
 async function resolveStewardAgentIdForProxy(
   client: StewardClient,
   sandboxAgentId: string,
+  userId: string,
   organizationId: string,
 ): Promise<string | null> {
+  // Personal Shared identities are rowless, so they must not enter the
+  // UUID-backed agent_server_wallets lookup. Re-derive ownership here so a
+  // future caller cannot rely only on call-site discipline.
+  if (isPersonalSharedAgentId(sandboxAgentId)) {
+    const expectedPersonalId = personalSharedAgentId({
+      userId,
+      organizationId,
+    });
+    if (sandboxAgentId.toLowerCase() !== expectedPersonalId) return null;
+    try {
+      await client.getAgent(expectedPersonalId);
+      return expectedPersonalId;
+    } catch {
+      // error-policy:J4 Steward treats an unknown Personal id as unavailable;
+      // preserve the route's indistinguishable-not-found contract.
+      return null;
+    }
+  }
+
   const stewardAgentId = await resolveStewardAgentId(
     sandboxAgentId,
     organizationId,
@@ -387,12 +411,30 @@ export async function handleDirectWalletRequest(
     );
   }
 
-  const agent = await elizaSandboxService.getAgent(
-    agentId,
-    user.organization_id,
-  );
-  if (!agent) {
-    return json({ success: false, error: "Agent not found" }, { status: 404 });
+  let ownedAgentId = agentId;
+  if (isPersonalSharedAgentId(agentId)) {
+    const expectedPersonalId = personalSharedAgentId({
+      userId: user.id,
+      organizationId: user.organization_id,
+    });
+    if (agentId.toLowerCase() !== expectedPersonalId) {
+      return json(
+        { success: false, error: "Agent not found" },
+        { status: 404 },
+      );
+    }
+    ownedAgentId = expectedPersonalId;
+  } else {
+    const agent = await elizaSandboxService.getAgent(
+      agentId,
+      user.organization_id,
+    );
+    if (!agent) {
+      return json(
+        { success: false, error: "Agent not found" },
+        { status: 404 },
+      );
+    }
   }
 
   if (method === "GET" && isOptionalWalletCapability(walletPath)) {
@@ -428,7 +470,8 @@ export async function handleDirectWalletRequest(
 
   const stewardAgentId = await resolveStewardAgentIdForProxy(
     client,
-    agentId,
+    ownedAgentId,
+    user.id,
     user.organization_id,
   );
   if (!stewardAgentId) {

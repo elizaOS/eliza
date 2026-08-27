@@ -27,7 +27,7 @@ describe("account deletion full-schema foreign-key policy", () => {
       .update(descriptors.map(serializeDescriptor).join("\n"))
       .digest("hex");
 
-    expect(descriptors).toHaveLength(230);
+    expect(descriptors).toHaveLength(236);
     expect(digest).toBe(ACCOUNT_DELETION_FOREIGN_KEY_SNAPSHOT_SHA256);
   });
 
@@ -37,10 +37,10 @@ describe("account deletion full-schema foreign-key policy", () => {
       action: classifyAccountDeletionForeignKey(descriptor),
     }));
 
-    expect(classified).toHaveLength(230);
+    expect(classified).toHaveLength(236);
     expect(classified.every(({ action }) => Boolean(action))).toBe(true);
     expect(classified.filter(({ action }) => action === "reconcile_external_resource").length).toBe(
-      70,
+      71,
     );
     expect(classified.filter(({ action }) => action === "transfer_shared_resource").length).toBe(
       11,
@@ -79,6 +79,47 @@ describe("account deletion full-schema foreign-key policy", () => {
       onDelete: "cascade",
     });
     expect(classifyAccountDeletionForeignKey(admissionWork!)).toBe("reconcile_external_resource");
+  });
+
+  test("anonymizes all four billing-cancel subject relationships", () => {
+    const billingCancelRelationships = listAccountDeletionForeignKeys().filter(({ sourceTable }) =>
+      ["billing_cancel_commands", "billing_cancel_command_keys"].includes(sourceTable),
+    );
+
+    expect(billingCancelRelationships).toHaveLength(4);
+    expect(
+      billingCancelRelationships.map((descriptor) => ({
+        sourceTable: descriptor.sourceTable,
+        sourceColumns: descriptor.sourceColumns,
+        targetTable: descriptor.targetTable,
+        action: classifyAccountDeletionForeignKey(descriptor),
+      })),
+    ).toEqual([
+      {
+        sourceTable: "billing_cancel_command_keys",
+        sourceColumns: "organization_id",
+        targetTable: "organizations",
+        action: "anonymize_retained_record",
+      },
+      {
+        sourceTable: "billing_cancel_command_keys",
+        sourceColumns: "requested_by_user_id",
+        targetTable: "users",
+        action: "anonymize_retained_record",
+      },
+      {
+        sourceTable: "billing_cancel_commands",
+        sourceColumns: "organization_id",
+        targetTable: "organizations",
+        action: "anonymize_retained_record",
+      },
+      {
+        sourceTable: "billing_cancel_commands",
+        sourceColumns: "requested_by_user_id",
+        targetTable: "users",
+        action: "anonymize_retained_record",
+      },
+    ]);
   });
 
   test("rejects an unknown restrictive relationship", () => {
