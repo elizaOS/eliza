@@ -13,8 +13,12 @@
 const EMAIL = /[\w.!#$%&'*+/=?^`{|}~-]+@[\w-]+(?:\.[\w-]+)+/g;
 
 // Credit-card-like digit runs. Checked BEFORE phone numbers because a 16-digit
-// PAN would otherwise be partially matched by the phone regex.
-const CC_LIKE = /(?:\d[ -]?){13,19}/g;
+// PAN would otherwise be partially matched by the phone regex. Separators are
+// allowed only BETWEEN digits, at most one per gap (never trailing, so
+// surrounding text like the space before "(555)" is preserved, and dense
+// numeric titles with multi-character separators are not over-redacted). The
+// final \d sits outside the repetition so a match never ends on a separator.
+const CC_LIKE = /(?:\d[ \t-]?){12,18}\d/g;
 
 // Phone: e.164 (+ followed by 7-15 digits), or 10-digit US formats with an
 // optional +1 country code and separators.
