@@ -79,7 +79,7 @@ import {
   recordOutcomes,
 } from "./hitl-ledger.mjs";
 
-const ROOT = resolve(new URL("../..", import.meta.url).pathname);
+const ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const REPO_ENV_PATH = join(ROOT, ".env");
 const PROBE_CACHE_PATH = join(
   ROOT,
