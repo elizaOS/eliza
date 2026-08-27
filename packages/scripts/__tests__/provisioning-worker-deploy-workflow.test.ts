@@ -68,12 +68,13 @@ function deployStep(name: string): WorkflowStep {
 }
 
 describe("provisioning worker deployment contract", () => {
-  it("routes both jobs only to the healthy Hetzner fleet", () => {
+  it("routes both jobs to the online generic self-hosted fleet", () => {
     expect(
-      workflow.match(
-        /^\s+runs-on: \$\{\{ fromJSON\(vars\.HETZNER_FLEET_ONLINE != 'true' && '\["ubuntu-24\.04"\]' \|\| '\["self-hosted","hetzner-robot"\]'\) \}\}$/gm,
-      ),
+      workflow.match(/^\s+runs-on: \[self-hosted, Linux, X64\]$/gm),
     ).toHaveLength(2);
+    expect(workflow).not.toContain("HETZNER_FLEET_ONLINE");
+    expect(workflow).not.toContain("ubuntu-24.04");
+    expect(workflow).not.toContain("hetzner-robot");
   });
 
   it("resolves one immutable SHA and deploys exactly that snapshot", () => {
@@ -310,6 +311,11 @@ describe("provisioning worker deployment contract", () => {
   });
 
   it("serializes the SSH mutation on the target host after runner cancellation", () => {
+    expect(workflow).toContain(
+      "group: deploy-eliza-provisioning-worker-mutate-$" +
+        "{{ needs.determine-env.outputs.environment }}-$" +
+        "{{ format('run-{0}', github.run_id) }}",
+    );
     const lock = "exec 9>/tmp/eliza-provisioning-worker-deploy.lock";
     expect(workflow).toContain(lock);
     expect(workflow).toContain("flock -w 1200 9");

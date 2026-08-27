@@ -43,7 +43,7 @@ permissions:
 jobs:
   determine-env:
     name: Determine environment
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: [self-hosted, Linux, X64]
     outputs:
       environment: ${{ steps.env.outputs.environment }}
       branch: ${{ steps.env.outputs.branch }}
@@ -51,6 +51,15 @@ jobs:
     steps:
       - id: env
         run: |
+          # Production is a protected release target. A manual dispatch from
+          # any non-main ref must never be able to select production secrets or
+          # deploy the current main snapshot while running unreviewed code.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] \
+            && [ "${{ github.event.inputs.environment }}" = "production" ] \
+            && [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "::error::Production deployments must be dispatched from refs/heads/main"
+            exit 1
+          fi
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             env="${{ github.event.inputs.environment }}"
           elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
@@ -110,10 +119,10 @@ jobs:
 
   deploy:
     name: Deploy worker to Hetzner host (${{ needs.determine-env.outputs.environment }} @ ${{ needs.determine-env.outputs.deployment_sha }})
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: [self-hosted, Linux, X64]
     needs: determine-env
     concurrency:
-      group: deploy-eliza-provisioning-worker-mutate-${{ needs.determine-env.outputs.environment }}
+      group: deploy-eliza-provisioning-worker-mutate-${{ needs.determine-env.outputs.environment }}-${{ format('run-{0}', github.run_id) }}
       cancel-in-progress: false
       queue: max
     environment: ${{ needs.determine-env.outputs.environment }}
