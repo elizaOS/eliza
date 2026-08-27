@@ -1006,6 +1006,11 @@ async function directCloudJsonResponse<T>(
   });
 
   if (shouldUseNativeCloudHttp()) {
+    // The native transport cannot consume an AbortSignal itself. Refuse a
+    // request whose caller-owned deadline has already elapsed before invoking
+    // CapacitorHttp; withDirectCloudHttpTimeout then bounds any in-flight
+    // request by the earlier of its 30s HTTP limit and that caller signal.
+    init?.signal?.throwIfAborted();
     const data = directCloudBodyData(init?.body);
     const res = await withDirectCloudHttpTimeout(
       CapacitorHttp.request({
@@ -4224,8 +4229,8 @@ function abortableDelay(delayMs: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-function createRemainingDeadlineSignal(
-  remainingMs: number,
+function createAbsoluteDeadlineSignal(
+  deadlineMs: number,
   callerSignal?: AbortSignal,
 ): {
   signal: AbortSignal;
@@ -4235,22 +4240,27 @@ function createRemainingDeadlineSignal(
   const controller = new AbortController();
   let deadlineElapsed = false;
   let disposed = false;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   const onCallerAbort = () => controller.abort(callerSignal?.reason);
   if (callerSignal?.aborted) onCallerAbort();
   else callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
-  const timeout = setTimeout(() => {
+  const onDeadline = () => {
+    if (controller.signal.aborted) return;
     deadlineElapsed = true;
     controller.abort(
       new DOMException("The startup deadline elapsed", "TimeoutError"),
     );
-  }, remainingMs);
+  };
+  const remainingMs = deadlineMs - Date.now();
+  if (remainingMs <= 0) onDeadline();
+  else timeout = setTimeout(onDeadline, remainingMs);
   return {
     signal: controller.signal,
     deadlineElapsed: () => deadlineElapsed,
     dispose: () => {
       if (disposed) return;
       disposed = true;
-      clearTimeout(timeout);
+      if (timeout) clearTimeout(timeout);
       callerSignal?.removeEventListener("abort", onCallerAbort);
     },
   };
@@ -4675,8 +4685,8 @@ ElizaClient.prototype.ensurePersonalDedicatedEliza = async function (
         `Dedicated agent ${dedicatedAgentId} did not become ready before the signed-in startup deadline.`,
       );
     }
-    const attemptDeadline = createRemainingDeadlineSignal(
-      remainingMs,
+    const attemptDeadline = createAbsoluteDeadlineSignal(
+      deadline,
       options.signal,
     );
     try {
@@ -4699,6 +4709,7 @@ ElizaClient.prototype.ensurePersonalDedicatedEliza = async function (
     } catch (error) {
       const attemptHitDeadline = attemptDeadline.deadlineElapsed();
       attemptDeadline.dispose();
+      options.signal?.throwIfAborted();
       if (attemptHitDeadline || Date.now() >= deadline) {
         throw new Error(
           `Dedicated agent ${dedicatedAgentId} did not become ready before the signed-in startup deadline.`,
