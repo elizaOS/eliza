@@ -464,6 +464,7 @@ export function NotesSurface({
       <PagePanel.ContentArea data-testid="simple-notes-scroll-region">
         <PagePanel.ContentRail
           width="wide"
+          className="px-0 sm:px-0"
           style={{
             paddingBlockStart: "var(--view-pad-top, .5rem)",
             paddingBlockEnd: "var(--view-pad-bottom, 1rem)",

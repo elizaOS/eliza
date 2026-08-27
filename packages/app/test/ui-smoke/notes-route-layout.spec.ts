@@ -89,6 +89,41 @@ test("Notes uses one shell header and a readable desktop collection", async ({
   expect(second.x).toBeGreaterThan(first.x + first.width);
 });
 
+test("Notes uses the canonical shell gutter on mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openNotes(page);
+
+  const geometry = await page.evaluate(() => {
+    const pageContent = document.querySelector<HTMLElement>(
+      "[data-page-content]",
+    );
+    const notesRail = document.querySelector<HTMLElement>(
+      '[data-testid="simple-notes-view"] [data-slot="page-panel-content-rail"]',
+    );
+    if (!pageContent || !notesRail) return null;
+    const pageRect = pageContent.getBoundingClientRect();
+    const railRect = notesRail.getBoundingClientRect();
+    const pageStyle = getComputedStyle(pageContent);
+    return {
+      expectedStart:
+        pageRect.left + Number.parseFloat(pageStyle.paddingInlineStart),
+      expectedEnd:
+        pageRect.right - Number.parseFloat(pageStyle.paddingInlineEnd),
+      actualStart: railRect.left,
+      actualEnd: railRect.right,
+    };
+  });
+
+  expect(geometry).not.toBeNull();
+  if (!geometry) throw new Error("Expected routed Notes gutter geometry");
+  expect(
+    Math.abs(geometry.actualStart - geometry.expectedStart),
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(geometry.actualEnd - geometry.expectedEnd),
+  ).toBeLessThanOrEqual(1);
+});
+
 test("Notes keeps readable cards clear of the composer in short landscape", async ({
   page,
 }) => {
