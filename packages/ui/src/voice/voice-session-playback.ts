@@ -609,6 +609,10 @@ export async function createVoiceSessionPlayback(
       if (stopped) return;
       const samples = int16BytesToFloatPcm(bytes);
       if (samples.length === 0) return;
+      // Surface the browser autoplay gate as soon as real audio arrives, even
+      // while the startup jitter reserve is still accumulating. Waiting until
+      // the reserve releases would hide the unlock CTA for short first frames.
+      if (!isRunning()) setNeedsUnlock(true);
       const receivedAtMs = now();
       if (lastFrameAtMs !== null) {
         maxInterFrameGapMs = Math.max(
