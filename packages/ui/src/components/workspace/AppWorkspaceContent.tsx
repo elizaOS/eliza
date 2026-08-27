@@ -102,6 +102,8 @@ export function AppWorkspaceContent({
         {header}
         <div
           data-shell-scroll-region="true"
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: the overflow container must be keyboard reachable.
+          tabIndex={0}
           className={cn(
             "eliza-chat-scroll min-h-0 min-w-0 w-full flex-1 overflow-y-auto",
             clearanceClass,
@@ -114,6 +116,8 @@ export function AppWorkspaceContent({
     ) : (
       <div
         data-shell-scroll-region="true"
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: the overflow container must be keyboard reachable.
+        tabIndex={0}
         className={cn(
           "eliza-chat-scroll min-h-0 min-w-0 w-full flex-1 overflow-y-auto",
           clearanceClass,
