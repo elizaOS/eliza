@@ -3,11 +3,12 @@
  * `src/clean-routing-planner.ts` (#29107).
  *
  * Imports the REAL production symbols — no implementation copy lives here —
- * and asserts the four documented invariants that keep the CLI/Agent-SDK
- * backends routable: steering-role hygiene, `planner_stage:` grammar
- * stripping, params hygiene (no messages/tools passthrough), and the
- * `toolChoice: "required"` live-info branch. Deterministic node-only vitest;
- * no CLI process or live model.
+ * and asserts the documented invariants that keep the CLI/Agent-SDK backends
+ * routable: steering-role hygiene, `planner_stage:` grammar stripping, params
+ * hygiene (no messages/tools passthrough), the `toolChoice: "required"`
+ * live-info branch, param-hint rendering edges, TEXT-mode framing, and
+ * ENVELOPE/ROUTE body composition. Deterministic node-only vitest; no CLI
+ * process or live model.
  */
 
 import type { ChatMessage, GenerateTextParams, ToolDefinition } from "@elizaos/core";
@@ -102,6 +103,30 @@ describe("buildCleanRoutingParams — transcript hygiene", () => {
     expect(prompt).not.toContain("grammar rules only");
   });
 
+  it("renders content-parts arrays through the canonical contentToText (tool calls/results survive)", () => {
+    const parts = [
+      { type: "text", text: "check this price" },
+      { type: "tool-call", toolName: "WEB_FETCH", input: { url: "https://example.com/x" } },
+      { type: "tool-result", toolName: "WEB_FETCH", output: { value: "59527" } },
+    ];
+    const prompt =
+      buildCleanRoutingParams(baseParams({ messages: [msg("user", parts)] })).prompt ?? "";
+    // The parts path feeds renderTranscript via the canonical contentToText —
+    // this is the branch that decides whether real user text (and the fetched
+    // data it produced) survives into the CLI prompt at all.
+    expect(prompt).toContain("User: check this price");
+    expect(prompt).toContain('[tool_call WEB_FETCH {"url":"https://example.com/x"}]');
+    // toolOutputToText unwraps a {value} envelope to its inner string.
+    expect(prompt).toContain("[tool_result WEB_FETCH: 59527]");
+  });
+
+  it("drops a user turn whose content-parts array yields no renderable text", () => {
+    const prompt = buildCleanRoutingParams(
+      baseParams({ messages: [msg("user", [{ type: "image", url: "file://x.png" }])] })
+    );
+    expect(prompt.prompt).toContain("(no prior conversation)");
+  });
+
   it("renders an empty transcript as the explicit no-conversation placeholder", () => {
     const prompt = buildCleanRoutingParams(baseParams({ messages: [] })).prompt ?? "";
     expect(prompt).toContain("(no prior conversation)");
@@ -115,8 +140,6 @@ describe("buildCleanRoutingParams — params hygiene (the flattenPrompt re-injec
     expect(out.prompt).toBeTypeOf("string");
     // flattenPrompt appends every non-system message to the body; carrying
     // messages/tools would re-inject the grammar block into the CLI call.
-    expect("messages" in out).toBe(false);
-    expect("tools" in out).toBe(false);
     expect(Object.keys(out).sort()).toEqual(["prompt", "system"]);
   });
 
@@ -219,6 +242,59 @@ describe("param hint rendering", () => {
     const { system } = buildCleanRoutingParams(params);
     expect(system).toContain("q?: string");
     expect(system).toContain('mode?: string one of ["fast", "deep"]');
+  });
+
+  it("falls back to the any type when a property carries no type", () => {
+    const { system } = buildCleanRoutingParams(
+      baseParams({
+        tools: [
+          tool("LOOKUP", "look things up", {
+            type: "object",
+            properties: { payload: { description: "no type key" } },
+          }),
+        ],
+      })
+    );
+    expect(system).toContain("payload?: any");
+    // The fallback must not fabricate a type that the schema did not state.
+    expect(system).not.toContain("payload?: string");
+    expect(system).not.toContain("payload?: object");
+  });
+
+  it("renders the (no params) hint for a non-object schema", () => {
+    const { system } = buildCleanRoutingParams(
+      baseParams({
+        tools: [
+          tool("BARE", "no schema at all"),
+          tool("NULLY", "schema is null", null as unknown as Record<string, unknown>),
+          // Truthy primitive: distinguishes the typeof guard from the falsy
+          // `!schema` check, so deleting either half of the early return fails.
+          tool("PRIM", "schema is a string", "nope" as unknown as Record<string, unknown>),
+          // Non-object carrying an own `properties` field: without the typeof
+          // guard this falls through to the properties lookup and would render
+          // hints — the only input class where the two paths diverge.
+          tool(
+            "FN",
+            "schema is a function",
+            (() => {
+              const fn = () => {};
+              Object.defineProperty(fn, "properties", {
+                value: { a: { type: "string" } },
+                enumerable: true,
+              });
+              return fn as unknown as Record<string, unknown>;
+            })()
+          ),
+        ],
+      })
+    );
+    expect(system).toContain("- BARE — no schema at all [params: (no params)]");
+    expect(system).toContain("- NULLY — schema is null [params: (no params)]");
+    expect(system).toContain("- PRIM — schema is a string [params: (no params)]");
+    expect(system).toContain("- FN — schema is a function [params: (no params)]");
+    // The typeof guard's observable contract: a non-object with an own
+    // properties field renders no hints (does not read the field).
+    expect(system).not.toContain("a?: string");
   });
 });
 
