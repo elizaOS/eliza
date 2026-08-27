@@ -947,6 +947,20 @@ test("published Card compatibility variants require exact public API and recipe 
       }),
     /requires the canonical \.\/card package export/,
   );
+  assert.throws(
+    () =>
+      validatePublicCardVariantCompatibility({
+        cardSource,
+        cardVariants,
+        document: { schemaVersion: 1, variants: [entry] },
+        now,
+        publicBarrelSources,
+        packageDocument: {
+          exports: { "./card": packageDocument.exports["./card"] },
+        },
+      }),
+    /requires the canonical root package export/,
+  );
   for (const duplicate of [
     { ...entry, value: "other-public-compatibility" },
     { ...entry, id: "other-public-compatibility" },
@@ -1181,6 +1195,36 @@ test("compliance inventory is deterministic and covers every governed rule", {
     false,
   );
   assert.equal(first.counts["unstyled-canonical"], 0);
+  const vaultEmpty = first.publicCardVariantCompatibility.find(
+    (entry) => entry.id === "vault-empty-public-compatibility",
+  );
+  assert.deepEqual(vaultEmpty, {
+    callerCount: 0,
+    file: "packages/ui/src/components/ui/card.tsx",
+    id: "vault-empty-public-compatibility",
+    packageExports: [".", "./card"],
+    publicBarrels: [
+      {
+        file: "packages/ui/src/index.ts",
+        reexport: "./components/primitives/index",
+      },
+      {
+        file: "packages/ui/src/components/primitives/index.ts",
+        reexport: "../ui/card",
+      },
+      {
+        file: "packages/ui/src/browser.ts",
+        reexport: "./components/ui/card.tsx",
+      },
+    ],
+    publicSymbols: ["Card", "CardProps", "cardVariants"],
+    reason:
+      "The published @elizaos/ui/card VariantProps and cardVariants helper exposed vaultEmpty before the maintained Vault callers moved to layout-owned empty states. Preserve downstream source and runtime compatibility while internal usage remains intentionally zero.",
+    recipe:
+      "border border-dashed border-border/50 bg-card/20 p-3 text-center text-xs text-muted",
+    reviewBy: "2027-02-27",
+    value: "vaultEmpty",
+  });
 });
 
 test("supported UI barrels resolve to canonical atoms without relying on debt", () => {
