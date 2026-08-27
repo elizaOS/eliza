@@ -55,6 +55,10 @@ export {
   shouldUseLanePlanner,
   validateLaneDependencyGraph,
 } from "./services/lane-planner.js";
+export {
+  FileOrganizationStore,
+  type FileOrganizationStoreOptions,
+} from "./services/organization-file-store.js";
 // Shared relay sanitizer (issue elizaOS/eliza#11578). Re-exported from the
 // package root so packages/agent's swarm-synthesis path can strip captured
 // tool-output envelopes with the SAME implementation the sub-agent router uses.

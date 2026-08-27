@@ -83,6 +83,7 @@
     "eval:multi-agent-arena": "bun --conditions eliza-source --tsconfig-override ../../tsconfig.json src/multi-agent-arena-cli.ts",
     "eval:sales-lighthouse": "bun --conditions eliza-source --tsconfig-override ../../tsconfig.json src/multi-agent-arena-cli.ts --scenario=lighthouse",
     "eval:sales-lighthouse-autonomous": "bun --conditions eliza-source --tsconfig-override ../../tsconfig.json src/multi-agent-arena-cli.ts --scenario=lighthouse-autonomous",
+    "eval:meridian-autonomous": "bun --conditions eliza-source --tsconfig-override ../../tsconfig.json src/multi-agent-arena-cli.ts --scenario=meridian-autonomous",
     "format": "bunx @biomejs/biome format --write package.json",
     "format:check": "bunx @biomejs/biome format package.json",
     "typecheck": "tsc --noEmit"

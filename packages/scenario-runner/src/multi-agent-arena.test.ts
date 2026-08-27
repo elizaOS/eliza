@@ -4,6 +4,7 @@ import type { AgentRuntime, Content, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   type ArenaDelivery,
+  arenaResponseAddressesRecipient,
   BUILT_IN_ARENA_SEATS,
   BUILT_IN_ARENA_TURNS,
   evaluateBuiltInArenaAssertions,
@@ -27,6 +28,8 @@ function delivery(
     kind: "human-turn",
     senderId: "human",
     senderName: "Mina",
+    responderSeatId: overrides.recipientSeatId,
+    responderName: overrides.recipientSeatId,
     responseText: "",
     durationMs: 1,
     syntheticFailure: false,
@@ -40,6 +43,140 @@ function arenaMetadata(message: Memory, key: string): unknown {
 }
 
 describe("multi-agent arena assertions", () => {
+  it("routes a participant response back to the agent that addressed it", () => {
+    expect(
+      arenaResponseAddressesRecipient(
+        "ari-agent-id",
+        "ari-agent-id",
+        "Ari",
+        "The arithmetic is feasible.",
+      ),
+    ).toBe(true);
+    expect(
+      arenaResponseAddressesRecipient(
+        "ari-agent-id",
+        "milo-agent-id",
+        "Milo",
+        "The arithmetic is feasible.",
+      ),
+    ).toBe(false);
+    expect(
+      arenaResponseAddressesRecipient(
+        "ari-agent-id",
+        "milo-agent-id",
+        "Milo",
+        "Milo, pressure-test the rollback plan.",
+      ),
+    ).toBe(true);
+    expect(
+      arenaResponseAddressesRecipient(
+        "ari-agent-id",
+        "quinn-agent-id",
+        "Quinn",
+        "Quinn can stand by unless event logistics become relevant.",
+      ),
+    ).toBe(false);
+    expect(
+      arenaResponseAddressesRecipient(
+        "ari-agent-id",
+        "quinn-agent-id",
+        "Quinn",
+        "@Quinn Stand by unless event logistics become relevant. No action needed.",
+      ),
+    ).toBe(false);
+  });
+
+  it("does not invoke candidates that the coordinator did not select", async () => {
+    const definitions = [
+      { id: "lead", name: "Lead" },
+      { id: "analyst", name: "Analyst" },
+      { id: "events", name: "Events" },
+    ] as const;
+    const handledBySeat = definitions.map(() => vi.fn());
+    const cleanups = definitions.map(() => vi.fn());
+    let runtimeIndex = 0;
+    const createRuntime = vi.fn(async (): Promise<RuntimeFactoryResult> => {
+      const index = runtimeIndex++;
+      const definition = definitions[index];
+      if (!definition) throw new Error("runtime fixture exhausted");
+      const agentId = `${index + 1}1000000-0000-0000-0000-000000000000`;
+      const runtime = {
+        agentId,
+        ensureConnection: vi.fn(),
+        createMemory: vi.fn(),
+        getMemories: vi.fn(async () => []),
+        messageService: {
+          handleMessage: vi.fn(
+            async (
+              _runtime: AgentRuntime,
+              message: Memory,
+              callback: (content: Content) => Promise<unknown>,
+            ) => {
+              handledBySeat[index](message);
+              const fromBot = arenaMetadata(message, "fromBot") === true;
+              const responseText =
+                index === 0 && !fromBot
+                  ? "@Analyst assess feasibility."
+                  : index === 1 && fromBot
+                    ? "The plan is feasible."
+                    : index === 0 && fromBot
+                      ? "[TEAM_DECISION] Proceed with the feasible plan."
+                      : "";
+              if (responseText) await callback({ text: responseText });
+              return { responseContent: { text: responseText } };
+            },
+          ),
+        },
+      } as unknown as AgentRuntime;
+      return {
+        runtime,
+        pgliteDir: `/tmp/selective-pglite-${index}`,
+        skillsDir: `/tmp/selective-skills-${index}`,
+        hostsFilePath: `/tmp/selective-hosts-${index}`,
+        executionProfile: "simulated",
+        registeredPluginPackages: [],
+        scenarioDeclaredActionNames: [],
+        providerName: "deterministic-model-provider",
+        providerConfig: {
+          name: "deterministic-model-provider",
+          env: {},
+          pluginPackage: null,
+        },
+        cleanup: cleanups[index],
+      };
+    });
+
+    const report = await runMultiAgentArena({
+      seats: definitions,
+      turns: [
+        {
+          id: "kickoff",
+          senderId: "sponsor",
+          senderName: "Sponsor",
+          text: "@Lead form the useful team.",
+          addressedSeatIds: ["lead"],
+        },
+      ],
+      createRuntime,
+      runId: "selective-routing",
+      maxPeerRounds: 2,
+      scopedFacts: [],
+      deliverHumanTurnsToUnaddressed: false,
+      deliverPeerTurnsToUnaddressed: false,
+      evaluateAssertions: () => [],
+    });
+
+    expect(report.deliveries.map((item) => item.responderSeatId)).toEqual([
+      "lead",
+      "analyst",
+      "lead",
+    ]);
+    expect(handledBySeat[2]).not.toHaveBeenCalled();
+    expect(cleanups.every((cleanup) => cleanup.mock.calls.length === 1)).toBe(
+      true,
+    );
+  });
+
   it("routes distinct human identities through isolated runtime seats", async () => {
     const deliveredMessages: Memory[] = [];
     const cleanups = [vi.fn(), vi.fn()];

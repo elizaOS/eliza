@@ -55,12 +55,13 @@ bun run --cwd packages/scenario-runner eval:sales-lighthouse -- \
   --output=../../reports/multi-agent-arena/lighthouse.json
 ```
 
-Run the next-level autonomous variant with one human kickoff. Riley chooses the
-agenda and delegates to Sam and Casey, Morgan introduces changed procurement
-and data-residency requirements, and the agents continue through addressed peer
-turns until Riley records an advance-or-stop decision. Relationship-scoped
-facts are seeded only into their authorized runtime stores, and the negotiation
-is capped at six peer rounds as a safety bound:
+Run the general team-protocol variant with one small human kickoff. The scenario
+declares stable roles, capabilities, and separately authorized facts; it does
+not script delegation, questions, speaking order, or the answer. Riley selects
+participants from the capability roster, the selected runtimes contribute their
+own evidence, and Riley records one evidence-backed team decision. Relationship-
+scoped facts are seeded only into their authorized runtime stores, and the
+negotiation is capped at six peer rounds as a safety bound:
 
 ```bash
 ELIZA_CHAT_VIA_CLI=codex \
@@ -68,6 +69,21 @@ ELIZA_CLI_CODEX_BIN=/absolute/path/to/codex \
 bun run --cwd packages/scenario-runner eval:sales-lighthouse-autonomous -- \
   --output=../../reports/multi-agent-arena/lighthouse-autonomous.json
 ```
+
+The same generic protocol can be exercised without a sales domain. Project
+Meridian distributes resource, risk, and timing facts across three specialists;
+the coordinator receives only the objective and capability roster:
+
+```bash
+ELIZA_CHAT_VIA_CLI=codex \
+ELIZA_CLI_CODEX_BIN=/absolute/path/to/codex \
+bun run --cwd packages/scenario-runner eval:meridian-autonomous -- \
+  --output=../../reports/multi-agent-arena/meridian-autonomous.json
+```
+
+Both commands pre-provision independent runtimes. They test autonomous team
+selection and collaboration inside that candidate pool, not dynamic process
+creation or discovery of agents outside the configured roster.
 
 ## When2Speak Stage-1 evaluation
 

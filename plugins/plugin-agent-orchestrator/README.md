@@ -220,6 +220,8 @@ When both are present, `GITHUB_TOKEN` wins.
 
 ## Persistence
 
+The first general-purpose organization experiment exposes `FileOrganizationStore` as a Node-only persistence adapter. It publishes the host-neutral core aggregate, command receipt, and audit entry together as one complete immutable revision file. The store is not yet registered as a runtime service and does not activate ACP or remote executors; distributed host leasing, identity mapping, and authorization projections remain gated follow-on experiments.
+
 Session state is persisted with a tiered backend:
 
 1. If `runtime.databaseAdapter` exposes SQL methods, sessions live in the `acp_sessions` table.

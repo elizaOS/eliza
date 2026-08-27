@@ -135,6 +135,32 @@
 			"import": "./dist/node/errors.js",
 			"default": "./dist/node/errors.js"
 		},
+		"./contracts/agent-organization": {
+			"types": "./dist/agent-organization.d.ts",
+			"eliza-source": {
+				"types": "./src/agent-organization.ts",
+				"import": "./src/agent-organization.ts",
+				"default": "./src/agent-organization.ts"
+			},
+			"workerd": {
+				"import": "./dist/edge/agent-organization.js",
+				"default": "./dist/edge/agent-organization.js"
+			},
+			"browser": {
+				"import": "./dist/browser/agent-organization.js",
+				"default": "./dist/browser/agent-organization.js"
+			},
+			"node": {
+				"import": "./dist/node/agent-organization.js",
+				"default": "./dist/node/agent-organization.js"
+			},
+			"bun": {
+				"import": "./dist/node/agent-organization.js",
+				"default": "./dist/node/agent-organization.js"
+			},
+			"import": "./dist/node/agent-organization.js",
+			"default": "./dist/node/agent-organization.js"
+		},
 		"./security/kms": {
 			"types": "./dist/security/kms/index.d.ts",
 			"eliza-source": {

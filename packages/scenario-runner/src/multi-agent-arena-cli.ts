@@ -8,6 +8,13 @@ import {
   runMultiAgentArena,
 } from "./multi-agent-arena.ts";
 import {
+  AUTONOMOUS_MERIDIAN_SCOPED_FACTS,
+  AUTONOMOUS_MERIDIAN_SEATS,
+  AUTONOMOUS_MERIDIAN_TURNS,
+  autonomousMeridianDecisionReached,
+  evaluateAutonomousMeridianAssertions,
+} from "./multi-agent-meridian-autonomous.ts";
+import {
   AUTONOMOUS_LIGHTHOUSE_SCOPED_FACTS,
   AUTONOMOUS_LIGHTHOUSE_SEATS,
   AUTONOMOUS_LIGHTHOUSE_TURNS,
@@ -107,22 +114,36 @@ async function main(): Promise<void> {
   const autonomousLighthouse = process.argv.includes(
     "--scenario=lighthouse-autonomous",
   );
+  const autonomousMeridian = process.argv.includes(
+    "--scenario=meridian-autonomous",
+  );
   const lighthouse = process.argv.includes("--scenario=lighthouse");
-  const seats = autonomousLighthouse
-    ? AUTONOMOUS_LIGHTHOUSE_SEATS
-    : lighthouse
-      ? LIGHTHOUSE_SEATS
-      : BUILT_IN_ARENA_SEATS;
-  const turns = autonomousLighthouse
-    ? AUTONOMOUS_LIGHTHOUSE_TURNS
-    : lighthouse
-      ? LIGHTHOUSE_TURNS
-      : BUILT_IN_ARENA_TURNS;
+  const seats = autonomousMeridian
+    ? AUTONOMOUS_MERIDIAN_SEATS
+    : autonomousLighthouse
+      ? AUTONOMOUS_LIGHTHOUSE_SEATS
+      : lighthouse
+        ? LIGHTHOUSE_SEATS
+        : BUILT_IN_ARENA_SEATS;
+  const turns = autonomousMeridian
+    ? AUTONOMOUS_MERIDIAN_TURNS
+    : autonomousLighthouse
+      ? AUTONOMOUS_LIGHTHOUSE_TURNS
+      : lighthouse
+        ? LIGHTHOUSE_TURNS
+        : BUILT_IN_ARENA_TURNS;
   const report = await runMultiAgentArena({
     seats,
     turns,
     preferredProvider: "cli",
-    maxPeerRounds: autonomousLighthouse ? 6 : lighthouse ? 2 : 1,
+    maxPeerRounds:
+      autonomousMeridian || autonomousLighthouse ? 6 : lighthouse ? 2 : 1,
+    deliverHumanTurnsToUnaddressed: !(
+      autonomousMeridian || autonomousLighthouse
+    ),
+    deliverPeerTurnsToUnaddressed: !(
+      autonomousMeridian || autonomousLighthouse
+    ),
     runId,
     ...(lighthouse
       ? {
@@ -137,6 +158,13 @@ async function main(): Promise<void> {
           shouldStopPeerRounds: autonomousLighthouseDealReached,
         }
       : {}),
+    ...(autonomousMeridian
+      ? {
+          scopedFacts: AUTONOMOUS_MERIDIAN_SCOPED_FACTS,
+          evaluateAssertions: evaluateAutonomousMeridianAssertions,
+          shouldStopPeerRounds: autonomousMeridianDecisionReached,
+        }
+      : {}),
   });
   const filesByAgent = Object.fromEntries(
     report.seats.map((seat) => [
@@ -146,11 +174,12 @@ async function main(): Promise<void> {
   );
   const trajectoryCapturePassed = report.seats.every((seat) => {
     const files = filesByAgent[seat.agentId] ?? [];
-    const expectedTurns = report.turns.filter(
-      (turn) => !turn.injectFailureSeatIds?.includes(seat.id),
-    ).length;
+    const participated = report.deliveries.some(
+      (delivery) => delivery.recipientSeatId === seat.id,
+    );
+    if (!participated) return files.length === 0;
     return (
-      files.length >= expectedTurns &&
+      files.length >= 1 &&
       files.every((file) =>
         isFinishedAgentTrajectory(trajectoryDir, file, seat.agentId),
       )
@@ -164,8 +193,8 @@ async function main(): Promise<void> {
     name: "trajectory-capture-per-runtime",
     passed: trajectoryCapturePassed,
     detail: trajectoryCapturePassed
-      ? "every runtime emitted finished, agent-bound model trajectories for every human turn"
-      : "one or more runtimes had missing, malformed, unfinished, or misbound trajectory evidence",
+      ? "every participating runtime emitted finished, agent-bound model trajectories; unused candidates emitted none"
+      : "one or more participating runtimes had missing, malformed, unfinished, or misbound trajectory evidence",
   });
   report.passed = report.assertions.every((assertion) => assertion.passed);
   writeJsonAtomically(outputPath, report);

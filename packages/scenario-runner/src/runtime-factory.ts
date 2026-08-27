@@ -1226,13 +1226,18 @@ export async function createScenarioRuntime(
         logger.debug(`[scenario-runner] provider plugin dispose error: ${err}`);
       }
     });
-    await runCleanupStep("runtime.stop()", async () => {
-      try {
-        await runtime.stop();
-      } catch (err) {
-        logger.debug(`[scenario-runner] runtime.stop() error: ${err}`);
-      }
-    });
+    await runCleanupStep(
+      "runtime.stop()",
+      async () => {
+        try {
+          await runtime.stop();
+        } catch (err) {
+          // error-policy:J6 runtime shutdown failure must not prevent remaining teardown.
+          logger.debug(`[scenario-runner] runtime.stop() error: ${err}`);
+        }
+      },
+      15_000,
+    );
     await runCleanupStep("runtime.close()", async () => {
       try {
         await runtime.close();

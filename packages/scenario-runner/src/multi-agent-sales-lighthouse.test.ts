@@ -14,6 +14,8 @@ function finalDelivery(responseText: string): ArenaDelivery {
     recipientSeatId: "solutions-architect",
     senderId: "facilitator",
     senderName: "Evaluation Facilitator",
+    responderSeatId: "solutions-architect",
+    responderName: "Sam",
     responseText,
     durationMs: 1,
     syntheticFailure: false,

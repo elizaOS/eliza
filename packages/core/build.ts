@@ -812,6 +812,7 @@ export async function buildNode(
 		buildOptions: {
 			entrypoints: [
 				`${TS_SRC}/index.node.ts`,
+				`${TS_SRC}/agent-organization.ts`,
 				`${TS_SRC}/errors.ts`,
 				`${TS_SRC}/roles.ts`,
 				`${TS_SRC}/client-public.ts`,
@@ -851,6 +852,7 @@ export async function buildBrowser(
 		buildOptions: {
 			entrypoints: [
 				`${TS_SRC}/index.browser.ts`,
+				`${TS_SRC}/agent-organization.ts`,
 				`${TS_SRC}/roles.ts`,
 				`${TS_SRC}/client-public.ts`,
 			],
@@ -875,6 +877,27 @@ export async function buildBrowser(
 
 	await runBrowser();
 
+	// The main browser barrel intentionally uses the Node target for Vite's
+	// builtin aliases. Build this standalone host-neutral contract separately so
+	// direct browser imports do not depend on a node:module shim.
+	const runBrowserContract = runnerFactory({
+		...sharedConfig,
+		buildOptions: {
+			entrypoints: [`${TS_SRC}/agent-organization.ts`],
+			outdir: "dist/browser",
+			target: "browser",
+			format: "esm",
+			external: [...browserExternals, "node:*"],
+			sourcemap: true,
+			minify: false,
+			generateDts: false,
+			skipClean: true,
+			plugins: [edgeRuntimeSourcesPlugin],
+			selfPackageName: "@elizaos/core",
+		},
+	});
+	await runBrowserContract();
+
 	const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 	console.log(`✅ Browser build complete in ${duration}s`);
 }
@@ -897,7 +920,10 @@ export async function buildEdge(
 	const runEdge = runnerFactory({
 		...sharedConfig,
 		buildOptions: {
-			entrypoints: [`${TS_SRC}/index.edge.ts`],
+			entrypoints: [
+				`${TS_SRC}/index.edge.ts`,
+				`${TS_SRC}/agent-organization.ts`,
+			],
 			outdir: "dist/edge",
 			// Browser targeting avoids Bun's CommonJS createRequire shim; supported
 			// node:* imports remain external for Workerd's nodejs_compat runtime.
@@ -1102,7 +1128,6 @@ export async function buildAll(
 		buildEdge(runnerFactory, options.edgeBundleIo),
 		buildTesting(runnerFactory),
 	]);
-
 	// Generate TypeScript declarations AFTER JS builds complete
 	// This prevents race conditions where buildNode() might clean dist/node
 	// after generateTypeScriptDeclarations() creates the index.d.ts file
