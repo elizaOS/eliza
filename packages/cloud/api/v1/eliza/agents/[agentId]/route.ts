@@ -21,6 +21,7 @@ import { adminService } from "@/lib/services/admin";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { publicJobErrorSummary } from "@/lib/services/job-error-text";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+import { isPersonalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
 import { getStewardAgent } from "@/lib/services/steward-client";
 import type {
   AgentAdminDetailsDto,
@@ -136,6 +137,13 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const agentId = c.req.param("agentId") ?? "";
+
+    // Personal Shared identities are rowless namespaced ids. Reject them
+    // before the UUID-backed repository so this endpoint remains a uniform
+    // not-found boundary during Shared-to-Dedicated handoff polling.
+    if (isPersonalSharedAgentId(agentId)) {
+      return c.json({ success: false, error: "Agent not found" }, 404);
+    }
 
     const agent = await elizaSandboxService.getAgent(
       agentId,
