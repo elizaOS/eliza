@@ -139,17 +139,22 @@ function usableCloudCredential(env, key) {
   return value;
 }
 
-function selectedCanonicalCloudApiKey(env) {
+function selectedCanonicalCloudApiKey(
+  env,
+  { includeStagingSpecific = false } = {},
+) {
   return (
     usableCloudCredential(env, "ELIZAOS_CLOUD_API_KEY") ??
-    usableCloudCredential(env, "ELIZA_DEV_CLOUD_API_KEY") ??
+    (includeStagingSpecific
+      ? usableCloudCredential(env, "ELIZA_DEV_CLOUD_API_KEY")
+      : undefined) ??
     usableCloudCredential(env, "ELIZA_CLOUD_API_KEY") ??
     usableCloudCredential(env, "ELIZACLOUD_API_KEY")
   );
 }
 
-function promoteCanonicalCloudApiKey(env) {
-  const selected = selectedCanonicalCloudApiKey(env);
+function promoteCanonicalCloudApiKey(env, options) {
+  const selected = selectedCanonicalCloudApiKey(env, options);
   if (selected) env.ELIZAOS_CLOUD_API_KEY = selected;
   // Downstream legacy consumers use different precedence orders. Leave one
   // canonical credential so they cannot select a conflicting inherited alias.
@@ -364,7 +369,7 @@ function buildDevCloudPlan(env, resolution) {
   }
 
   if (selfHosted) {
-    if (!selectedCanonicalCloudApiKey(env)) {
+    if (!selectedCanonicalCloudApiKey(env, { includeStagingSpecific: true })) {
       throw new Error(
         "Self-hosted local development requires ELIZAOS_CLOUD_API_KEY (or a supported legacy alias). The immutable launcher target cannot acquire or replace its server credential through the local agent proxy.",
       );
@@ -449,7 +454,7 @@ export function applyDevCloudTarget(env, resolution) {
   }
 
   if (plan.selfHosted) {
-    promoteCanonicalCloudApiKey(nextEnv);
+    promoteCanonicalCloudApiKey(nextEnv, { includeStagingSpecific: true });
     enforceCoherentOperationalStewardTuple(nextEnv);
     nextEnv.VITE_ELIZA_DESKTOP_RUNTIME_MODE =
       configuredValue(env, "VITE_ELIZA_DESKTOP_RUNTIME_MODE") ?? "cloud";
