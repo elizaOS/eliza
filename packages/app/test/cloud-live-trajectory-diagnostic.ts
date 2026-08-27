@@ -212,3 +212,20 @@ export async function writeCloudLiveTrajectoryDiagnostic({
     },
   );
 }
+
+/**
+ * Retain the best-effort progress receipt without allowing an evidence-write
+ * failure to replace the trajectory failure that the receipt is describing.
+ */
+export async function rethrowCloudLiveFailureAfterDiagnostic(
+  cause: unknown,
+  writeDiagnostic: () => Promise<void>,
+): Promise<never> {
+  try {
+    await writeDiagnostic();
+  } catch {
+    // error-policy:J7 the diagnostic is secondary evidence; an unavailable
+    // evidence sink must not mask the original live identity failure.
+  }
+  throw cause;
+}

@@ -48,6 +48,7 @@ import {
   CLOUD_LIVE_TRAJECTORY_TIMEOUT_MS,
   type CloudLivePreIdentityDiagnostic,
   type CloudLiveTrajectoryPhase,
+  rethrowCloudLiveFailureAfterDiagnostic,
   writeCloudLiveTrajectoryDiagnostic,
 } from "../cloud-live-trajectory-diagnostic";
 import {
@@ -832,13 +833,14 @@ test.describe("real cloud login + personal identity + chat", () => {
           await readPreIdentityDiagnostic(),
         );
       },
-    ).catch(async (cause: unknown) => {
-      await enterTrajectoryPhase(
-        "personal-identity",
-        await readPreIdentityDiagnostic(),
-      );
-      throw cause;
-    });
+    ).catch((cause: unknown) =>
+      rethrowCloudLiveFailureAfterDiagnostic(cause, async () => {
+        await enterTrajectoryPhase(
+          "personal-identity",
+          await readPreIdentityDiagnostic(),
+        );
+      }),
+    );
     const identityAudit = await primaryAudit.snapshot();
     expect(
       identityAudit.successfulPersonalIdentityGetCount,

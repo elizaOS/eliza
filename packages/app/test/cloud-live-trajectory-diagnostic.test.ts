@@ -8,6 +8,7 @@ import {
   CLOUD_LIVE_TRAJECTORY_PHASES,
   CLOUD_LIVE_TRAJECTORY_TIMEOUT_MS,
   createCloudLiveTrajectoryDiagnostic,
+  rethrowCloudLiveFailureAfterDiagnostic,
   writeCloudLiveTrajectoryDiagnostic,
 } from "./cloud-live-trajectory-diagnostic";
 
@@ -207,5 +208,27 @@ describe("Cloud live trajectory diagnostic", () => {
     });
     expect(written).not.toContain("private-token");
     expect(written).not.toContain("private-transcript");
+  });
+
+  it("preserves the original trajectory failure when its diagnostic writes", async () => {
+    const originalCause = new Error("Personal identity did not resolve");
+    const writeDiagnostic = vi.fn(async () => undefined);
+
+    await expect(
+      rethrowCloudLiveFailureAfterDiagnostic(originalCause, writeDiagnostic),
+    ).rejects.toBe(originalCause);
+    expect(writeDiagnostic).toHaveBeenCalledOnce();
+  });
+
+  it("preserves the original trajectory failure when its diagnostic rejects", async () => {
+    const originalCause = new Error("Personal identity did not resolve");
+    const writeDiagnostic = vi.fn(async () => {
+      throw new Error("diagnostic storage unavailable");
+    });
+
+    await expect(
+      rethrowCloudLiveFailureAfterDiagnostic(originalCause, writeDiagnostic),
+    ).rejects.toBe(originalCause);
+    expect(writeDiagnostic).toHaveBeenCalledOnce();
   });
 });

@@ -11,8 +11,6 @@ vi.mock("@capacitor/core", () => ({
   CapacitorHttp: { get: vi.fn(), post: vi.fn(), request: vi.fn() },
 }));
 
-import { ElizaClient } from "./client-base";
-import "./client-cloud";
 import {
   loadAgentProfileRegistry,
   upsertAndActivateAgentProfile,
@@ -22,6 +20,8 @@ import {
   loadPersistedActiveServer,
   savePersistedActiveServer,
 } from "../state/persistence";
+import { ElizaClient } from "./client-base";
+import { verifyDirectCloudStewardSession } from "./client-cloud";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -180,15 +180,33 @@ describe("getPersonalSharedEliza", () => {
       vi.fn(async () => response),
     );
     const controller = new AbortController();
+    const abortReason = new Error("owner cancelled Personal resolution");
 
     const request = new ElizaClient().getPersonalSharedEliza({
       cloudApiBase: "https://api.eliza.app",
       authToken: "steward-token",
       signal: controller.signal,
     });
-    controller.abort(new DOMException("superseded", "AbortError"));
+    controller.abort(abortReason);
 
-    await expect(request).rejects.toMatchObject({ name: "AbortError" });
+    await expect(request).rejects.toBe(abortReason);
+  });
+
+  it("preserves a caller abort reason before the Personal request is dispatched", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+    const abortReason = new Error("owner cancelled before dispatch");
+    controller.abort(abortReason);
+
+    await expect(
+      new ElizaClient().getPersonalSharedEliza({
+        cloudApiBase: "https://api.eliza.app",
+        authToken: "steward-token",
+        signal: controller.signal,
+      }),
+    ).rejects.toBe(abortReason);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("fails closed on malformed Personal JSON", async () => {
@@ -570,12 +588,17 @@ describe("ensurePersonalDedicatedEliza", () => {
     ).toEqual(["GET", "POST", "GET"]);
   });
 
-  it("keeps the default cutover window open until exactly 360000ms", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(0);
+  it("preserves the caller abort reason through a pending cutover body", async () => {
     const personalElizaId = "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b";
     const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
+    const controller = new AbortController();
+    const abortReason = new Error("owner cancelled Dedicated cutover");
     let cutoverPosts = 0;
+    let releaseLateBody: ((body: string) => void) | undefined;
+    let signalCutoverStarted: (() => void) | undefined;
+    const cutoverStarted = new Promise<void>((resolve) => {
+      signalCutoverStarted = resolve;
+    });
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -596,7 +619,7 @@ describe("ensurePersonalDedicatedEliza", () => {
           return jsonResponse(200, {
             success: true,
             data: {
-              quoteId: "3".repeat(64),
+              quoteId: "4".repeat(64),
               canActivate: true,
               activation: {
                 state: "in_progress",
@@ -611,41 +634,167 @@ describe("ensurePersonalDedicatedEliza", () => {
         }
         if (url.endsWith("/upgrade-tier/cutover")) {
           cutoverPosts += 1;
-          return jsonResponse(409, {
+          const headersOnly = jsonResponse(409, {
             success: false,
             error: "Dedicated is still provisioning",
           });
+          vi.spyOn(headersOnly, "text").mockImplementation(
+            async () =>
+              await new Promise<string>((resolve) => {
+                releaseLateBody = resolve;
+                signalCutoverStarted?.();
+              }),
+          );
+          return headersOnly;
         }
         return jsonResponse(500, { error: "unexpected route" });
       }),
     );
 
-    let outcome: Error | "resolved" | undefined;
-    const attempt = new ElizaClient()
-      .ensurePersonalDedicatedEliza({
-        cloudApiBase: "https://api.eliza.app",
-        authToken: "steward-token",
-        pollIntervalMs: 359_999,
-      })
-      .then(() => {
-        outcome = "resolved";
-      })
-      .catch((error: unknown) => {
-        outcome = error instanceof Error ? error : new Error(String(error));
-      });
+    const attempt = new ElizaClient().ensurePersonalDedicatedEliza({
+      cloudApiBase: "https://api.eliza.app",
+      authToken: "steward-token",
+      pollIntervalMs: 0,
+      signal: controller.signal,
+    });
+    await cutoverStarted;
+    controller.abort(abortReason);
 
-    await vi.advanceTimersByTimeAsync(359_999);
-    expect(outcome).toBeUndefined();
-    expect(cutoverPosts).toBe(2);
+    await expect(attempt).rejects.toBe(abortReason);
+    expect(cutoverPosts).toBe(1);
 
-    await vi.advanceTimersByTimeAsync(1);
-    await attempt;
-    expect(outcome).toBeInstanceOf(Error);
-    expect((outcome as Error).message).toContain(
-      "did not become ready before the signed-in startup deadline",
+    releaseLateBody?.(
+      JSON.stringify({
+        success: false,
+        error: "late Dedicated response",
+      }),
     );
-    expect(cutoverPosts).toBe(3);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(cutoverPosts).toBe(1);
   });
+
+  it.each(["request", "body"] as const)(
+    "aborts a hung boundary cutover %s at exactly 360000ms without late work",
+    async (stalledPhase) => {
+      vi.useFakeTimers();
+      vi.setSystemTime(0);
+      const personalElizaId = "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b";
+      const dedicatedAgentId = "00000000-0000-4000-8000-000000000020";
+      let cutoverPosts = 0;
+      let releaseLateRequest: ((response: Response) => void) | undefined;
+      let releaseLateBody: ((body: string) => void) | undefined;
+      const onProgress = vi.fn();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = String(input);
+          if (url.endsWith("/api/v1/eliza/personal")) {
+            return jsonResponse(200, {
+              success: true,
+              data: {
+                identity: {
+                  id: personalElizaId,
+                  displayName: "Eliza",
+                  runtime: "shared",
+                },
+              },
+            });
+          }
+          if (url.endsWith("/upgrade-tier") && init?.method === "GET") {
+            return jsonResponse(200, {
+              success: true,
+              data: {
+                quoteId: "3".repeat(64),
+                canActivate: true,
+                activation: {
+                  state: "in_progress",
+                  dedicatedAgentId,
+                  status: "provisioning",
+                },
+              },
+            });
+          }
+          if (url.endsWith("/upgrade-tier") && init?.method === "POST") {
+            throw new Error("activation POST must not replay");
+          }
+          if (url.endsWith("/upgrade-tier/cutover")) {
+            cutoverPosts += 1;
+            if (cutoverPosts === 2) {
+              if (stalledPhase === "request") {
+                return await new Promise<Response>((resolve) => {
+                  releaseLateRequest = resolve;
+                });
+              }
+              const headersOnly = jsonResponse(409, {
+                success: false,
+                error: "Dedicated is still provisioning",
+              });
+              vi.spyOn(headersOnly, "text").mockImplementation(
+                async () =>
+                  await new Promise<string>((resolve) => {
+                    releaseLateBody = resolve;
+                  }),
+              );
+              return headersOnly;
+            }
+            return jsonResponse(409, {
+              success: false,
+              error: "Dedicated is still provisioning",
+            });
+          }
+          return jsonResponse(500, { error: "unexpected route" });
+        }),
+      );
+
+      let outcome: Error | "resolved" | undefined;
+      const attempt = new ElizaClient()
+        .ensurePersonalDedicatedEliza({
+          cloudApiBase: "https://api.eliza.app",
+          authToken: "steward-token",
+          onProgress,
+          pollIntervalMs: 359_999,
+        })
+        .then(() => {
+          outcome = "resolved";
+        })
+        .catch((error: unknown) => {
+          outcome = error instanceof Error ? error : new Error(String(error));
+        });
+
+      await vi.advanceTimersByTimeAsync(359_999);
+      expect(outcome).toBeUndefined();
+      expect(cutoverPosts).toBe(2);
+      const progressCountAtBoundaryRequest = onProgress.mock.calls.length;
+
+      await vi.advanceTimersByTimeAsync(1);
+      await attempt;
+      expect(outcome).toBeInstanceOf(Error);
+      expect((outcome as Error).message).toContain(
+        "did not become ready before the signed-in startup deadline",
+      );
+      expect((outcome as Error).cause).toMatchObject({
+        message: "The startup deadline elapsed",
+        name: "TimeoutError",
+      });
+      expect(Date.now()).toBe(360_000);
+      expect(cutoverPosts).toBe(2);
+      expect(onProgress).toHaveBeenCalledTimes(progressCountAtBoundaryRequest);
+
+      const lateResponse = jsonResponse(409, {
+        success: false,
+        error: "late Dedicated response",
+      });
+      releaseLateRequest?.(lateResponse);
+      releaseLateBody?.(await lateResponse.text());
+      await Promise.resolve();
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(cutoverPosts).toBe(2);
+      expect(onProgress).toHaveBeenCalledTimes(progressCountAtBoundaryRequest);
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
 
   it("fails closed on an unknown retained-target status", async () => {
     let activationPosts = 0;
@@ -981,5 +1130,185 @@ describe("personal Eliza runtime repoint", () => {
       id: `cloud:${personalElizaId}`,
       cloudRuntime: "shared",
     });
+  });
+});
+
+describe("verifyDirectCloudStewardSession", () => {
+  const stewardToken = "pinned-steward-token";
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    localStorage.clear();
+  });
+
+  function preservePinnedAmbientClient(): ElizaClient {
+    return new ElizaClient("https://owned-agent.example", "agent-pair-bearer");
+  }
+
+  function expectPinnedAmbientClientPreserved(client: ElizaClient): void {
+    expect(client.getBaseUrl()).toBe("https://owned-agent.example");
+    expect(client.getRestAuthToken()).toBe("agent-pair-bearer");
+    expect(localStorage.getItem("steward_session_token")).toBe(stewardToken);
+  }
+
+  it.each(["user", "credits"] as const)(
+    "keeps the pinned %s body stall transient without clearing or repointing",
+    async (stalledEndpoint) => {
+      vi.useFakeTimers();
+      localStorage.setItem("steward_session_token", stewardToken);
+      const ambientClient = preservePinnedAmbientClient();
+      const requests: Array<{ init?: RequestInit; url: string }> = [];
+      const fetchMock = vi.fn(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = String(input);
+          requests.push({ init, url });
+          const response = jsonResponse(
+            200,
+            url.endsWith("/api/v1/user")
+              ? {
+                  data: {
+                    id: "user-pinned",
+                    organization_id: "org-pinned",
+                  },
+                }
+              : { balance: 8.5 },
+          );
+          const shouldStall =
+            (stalledEndpoint === "user" && url.endsWith("/api/v1/user")) ||
+            (stalledEndpoint === "credits" &&
+              url.endsWith("/api/v1/credits/balance"));
+          if (shouldStall) {
+            vi.spyOn(response, "text").mockImplementation(
+              async () => await new Promise<string>(() => undefined),
+            );
+          }
+          return response;
+        },
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      const verification = verifyDirectCloudStewardSession({
+        cloudApiBase: "https://api-staging.eliza.app",
+        stewardToken,
+      });
+      let rejection: unknown;
+      void verification.catch((error: unknown) => {
+        rejection = error;
+      });
+      await vi.advanceTimersByTimeAsync(30_000);
+      await expect(verification).rejects.toThrow(
+        "Eliza Cloud request timed out after 30s",
+      );
+
+      expect(rejection).toBeInstanceOf(Error);
+      expect((rejection as Error).message).not.toMatch(
+        /auth-rejected|not-authenticated/iu,
+      );
+      expectPinnedAmbientClientPreserved(ambientClient);
+      expect(requests.map(({ url }) => url)).toEqual(
+        stalledEndpoint === "user"
+          ? ["https://api-staging.eliza.app/api/v1/user"]
+          : [
+              "https://api-staging.eliza.app/api/v1/user",
+              "https://api-staging.eliza.app/api/v1/credits/balance",
+            ],
+      );
+      for (const request of requests) {
+        expect(new Headers(request.init?.headers).get("Authorization")).toBe(
+          `Bearer ${stewardToken}`,
+        );
+      }
+    },
+  );
+
+  it.each([
+    { label: "user 5xx", user: jsonResponse(503, { error: "unavailable" }) },
+    {
+      label: "malformed user",
+      user: new Response("not-json", { status: 200 }),
+    },
+  ])(
+    "keeps $label transient and retains the current token",
+    async ({ user }) => {
+      localStorage.setItem("steward_session_token", stewardToken);
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => user),
+      );
+
+      await expect(
+        verifyDirectCloudStewardSession({
+          cloudApiBase: "https://api-staging.eliza.app",
+          stewardToken,
+        }),
+      ).rejects.toBeInstanceOf(Error);
+      expect(localStorage.getItem("steward_session_token")).toBe(stewardToken);
+    },
+  );
+
+  it("keeps a malformed credits body transient and retains the current token", async () => {
+    localStorage.setItem("steward_session_token", stewardToken);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          data: { id: "user-pinned", organization_id: "org-pinned" },
+        }),
+      )
+      .mockResolvedValueOnce(new Response("not-json", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      verifyDirectCloudStewardSession({
+        cloudApiBase: "https://api-staging.eliza.app",
+        stewardToken,
+      }),
+    ).rejects.toThrow("invalid credits response");
+    expect(localStorage.getItem("steward_session_token")).toBe(stewardToken);
+  });
+
+  it.each([401, 403])(
+    "clears only the exact current token after authoritative HTTP %s",
+    async (status) => {
+      localStorage.setItem("steward_session_token", stewardToken);
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => jsonResponse(status, { error: "unauthorized" })),
+      );
+
+      await expect(
+        verifyDirectCloudStewardSession({
+          cloudApiBase: "https://api-staging.eliza.app",
+          stewardToken,
+        }),
+      ).resolves.toMatchObject({
+        status: { connected: false, reason: "auth-rejected" },
+      });
+      expect(localStorage.getItem("steward_session_token")).toBeNull();
+    },
+  );
+
+  it("does not clear a newer token when the verified token is rejected", async () => {
+    localStorage.setItem("steward_session_token", stewardToken);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        localStorage.setItem("steward_session_token", "rotated-steward-token");
+        return jsonResponse(401, { error: "unauthorized" });
+      }),
+    );
+
+    await expect(
+      verifyDirectCloudStewardSession({
+        cloudApiBase: "https://api-staging.eliza.app",
+        stewardToken,
+      }),
+    ).resolves.toMatchObject({
+      status: { connected: false, reason: "auth-rejected" },
+    });
+    expect(localStorage.getItem("steward_session_token")).toBe(
+      "rotated-steward-token",
+    );
   });
 });
