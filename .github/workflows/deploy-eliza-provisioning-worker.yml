@@ -143,7 +143,10 @@ jobs:
       # hand-edited headscale URL/key again. The daemon API URL is derived from
       # the protected environment below and stays loopback-only; it is not an
       # operator variable that can redirect the protected bearer key.
-      HEADSCALE_PUBLIC_URL: ${{ vars.HEADSCALE_PUBLIC_URL }}
+      # Canonical per-environment routing is repository-owned, not an optional
+      # environment variable. Keeping the value here also lets a deploy repair
+      # a missing/stale host entry when the GitHub variable inventory is empty.
+      HEADSCALE_PUBLIC_URL: ${{ needs.determine-env.outputs.environment == 'production' && 'https://headscale.eliza.app' || 'https://headscale-staging.eliza.app' }}
       # Base64 private key used by the daemon to reach dedicated-agent nodes.
       # Keep this in the protected environment instead of relying on a
       # hand-copied file that can drift or disappear when the CP host is rebuilt.
@@ -178,14 +181,13 @@ jobs:
       # leave it unset to preserve whatever is hand-set on the box.
       ELIZA_AGENT_IMAGE: ${{ vars.ELIZA_AGENT_IMAGE }}
       # Warm-pool daemon half (#16961). The replenish phase self-gates on
-      # WARM_POOL_ENABLED, so a host that loses this key silently degrades every
-      # dedicated provision to the 30-120s cold path. Reconciling it here makes
-      # the GitHub environment VARIABLE (not secret — a boolean flag is
-      # auditable config) the source of truth so a CP re-arm can never drop it;
-      # leaving the GH var unset preserves whatever is hand-set on the box.
-      # Activation policy stays with #16961's checklist: flip the environment
-      # var, do not hand-edit the box.
-      WARM_POOL_ENABLED: ${{ vars.WARM_POOL_ENABLED }}
+      # WARM_POOL_ENABLED, so daemon and Worker must agree. The protected GitHub
+      # environment VARIABLE (not secret — a boolean flag is auditable config)
+      # is authoritative; an absent variable resolves to the safe disabled
+      # state instead of preserving unknown hand-set host state. Activation
+      # remains gated by #16961: flip this variable and the matching committed
+      # Worker flag only with the required staging evidence.
+      WARM_POOL_ENABLED: ${{ vars.WARM_POOL_ENABLED || 'false' }}
       # The edge Worker forwards the original per-agent host to this daemon.
       # Keep the daemon's parser on the same environment-specific suffix or a
       # staging host (`<uuid>.cloud-staging.eliza.app`) is rejected as malformed.
@@ -257,7 +259,6 @@ jobs:
             DEPLOY_HOST
             DEPLOY_SSH_KEY
             HEADSCALE_PUBLIC_URL
-            HEADSCALE_API_KEY
             DATABASE_URL
           )
           missing=()
@@ -1162,6 +1163,20 @@ jobs:
             fi
             echo "Verified required provisioning-host setting names; values were not printed."
 
+            case "$WARM_POOL_ENABLED" in
+              true|false) ;;
+              *)
+                echo "::error::WARM_POOL_ENABLED must be exactly true or false"
+                exit 1
+                ;;
+            esac
+            if ! require_environment_setting_equals \
+              "$ENV_FILE" WARM_POOL_ENABLED "$WARM_POOL_ENABLED"; then
+              echo "::error::Provisioning host warm-pool state does not match the protected environment"
+              exit 1
+            fi
+            echo "Verified provisioning-host warm-pool state: $WARM_POOL_ENABLED"
+
             # Capture and scheduling remain off in both files. Only the
             # dedicated daemon receives deletion backup authority.
             if ! require_environment_setting_equals \
@@ -1436,7 +1451,7 @@ jobs:
           username: deploy
           key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
           command_timeout: 5m
-          envs: SYSTEMD_UNIT,BACKUP_SYSTEMD_UNIT,SYSTEMD_ENVIRONMENT_HELPER_SHA256,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST
+          envs: SYSTEMD_UNIT,BACKUP_SYSTEMD_UNIT,SYSTEMD_ENVIRONMENT_HELPER_SHA256,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,WARM_POOL_ENABLED
           script: |
             set -euo pipefail
             ENV_FILE=/opt/eliza/cloud/.env.local
@@ -1464,6 +1479,13 @@ jobs:
                   "$NODE_BIN" "$ENV_SERIALIZER" equals \
                   "$ENV_FILE" ELIZA_CLOUD_AGENT_BASE_DOMAIN; then
               echo "::error::Agent router base-domain drift. Values were not printed."
+              exit 1
+            fi
+            if ! printf '%s' "$WARM_POOL_ENABLED" \
+              | sudo /usr/bin/env -i PATH="$SAFE_CHILD_PATH" \
+                  "$NODE_BIN" "$ENV_SERIALIZER" equals \
+                  "$ENV_FILE" WARM_POOL_ENABLED; then
+              echo "::error::Provisioning host warm-pool drift. Values were not printed."
               exit 1
             fi
             # The worker logs to journald via systemd's stdout/stderr capture.

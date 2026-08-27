@@ -3,6 +3,7 @@ import { describe, expect, it, mock } from "bun:test";
 import {
   allowsOrphanReconciliation,
   assertKmsBackendDurable,
+  assertProvisioningWorkerDatabaseConfigured,
   assertProvisioningWorkerPreflight,
   closeOpenHandles,
   databaseHostForLogs,
@@ -17,6 +18,53 @@ import {
   resetKmsBackendLogForTests,
   WORKER_TIMING,
 } from "./provisioning-worker";
+
+describe("assertProvisioningWorkerDatabaseConfigured", () => {
+  it("allows local test/development storage", () => {
+    expect(() =>
+      assertProvisioningWorkerDatabaseConfigured({
+        NODE_ENV: "test",
+        DATABASE_URL: "pglite://memory",
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertProvisioningWorkerDatabaseConfigured({
+        NODE_ENV: "development",
+        DATABASE_URL: "pglite://memory",
+      }),
+    ).not.toThrow();
+  });
+
+  it("fails closed when a deployed worker has no database URL", () => {
+    expect(() =>
+      assertProvisioningWorkerDatabaseConfigured({ NODE_ENV: "staging" }),
+    ).toThrow(/DATABASE_URL is required/);
+  });
+
+  it("rejects pglite and non-Postgres URLs outside local environments", () => {
+    expect(() =>
+      assertProvisioningWorkerDatabaseConfigured({
+        NODE_ENV: "production",
+        DATABASE_URL: "pglite:///var/lib/eliza",
+      }),
+    ).toThrow(/remote PostgreSQL URL/);
+    expect(() =>
+      assertProvisioningWorkerDatabaseConfigured({
+        NODE_ENV: "production",
+        DATABASE_URL: "mysql://user:pass@db.example/eliza",
+      }),
+    ).toThrow(/postgres/);
+  });
+
+  it("accepts canonical remote PostgreSQL URLs", () => {
+    expect(() =>
+      assertProvisioningWorkerDatabaseConfigured({
+        NODE_ENV: "staging",
+        DATABASE_URL: "postgresql://user:pass@db.example/eliza?sslmode=require",
+      }),
+    ).not.toThrow();
+  });
+});
 
 type WorkerLogger = Parameters<typeof maybePublishHeartbeat>[0];
 

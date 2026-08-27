@@ -1797,6 +1797,27 @@ declare module "./client-base" {
       runtime: "shared" | "dedicated";
     }>;
     /**
+     * Resolve the signed-in account's stable personal identity and guarantee
+     * that Dedicated compute is active before returning. When Shared is still
+     * authoritative, this activates the single-flight Dedicated target and
+     * completes the server-owned history cutover.
+     */
+    ensurePersonalDedicatedEliza(options: {
+      cloudApiBase: string;
+      authToken: string;
+      signal?: AbortSignal;
+      onProgress?: (status: string, detail?: string) => void;
+      pollIntervalMs?: number;
+      timeoutMs?: number;
+    }): Promise<{
+      personalElizaId: string;
+      agentId: string;
+      activeAgentId: string;
+      agentName: string;
+      apiBase: string;
+      runtime: "dedicated";
+    }>;
+    /**
      * Reuse an existing cloud agent when one exists (so we don't mint a brand-new
      * agent on every sign-in), otherwise create + provision a fresh named one.
      * Always returns a valid per-agent REST adapter base (`.../agents/<id>`),
@@ -4278,6 +4299,137 @@ ElizaClient.prototype.getPersonalSharedEliza = async (options) => {
     apiBase: buildCloudSharedAgentApiBase(cloudApiBase, personalElizaId),
     runtime: "shared",
   };
+};
+
+ElizaClient.prototype.ensurePersonalDedicatedEliza = async function (
+  this: ElizaClient,
+  options,
+) {
+  const personal = await this.getPersonalSharedEliza(options);
+  if (personal.runtime === "dedicated") {
+    return { ...personal, runtime: "dedicated" as const };
+  }
+
+  const cloudApiBase = resolveDirectCloudAuthApiBase(options.cloudApiBase);
+  const upgradeUrl = `${cloudApiBase}/api/v1/eliza/agents/${encodeURIComponent(personal.personalElizaId)}/upgrade-tier`;
+  options.signal?.throwIfAborted();
+  options.onProgress?.("provisioning", "Starting your Dedicated agent…");
+
+  const quoteResponse = await directCloudJsonResponse<unknown>(upgradeUrl, {
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${options.authToken}`,
+    },
+    ...(options.signal ? { signal: options.signal } : {}),
+  });
+  const quoteRoot = recordOrNull(quoteResponse.data);
+  const quote = recordOrNull(quoteRoot?.data);
+  const quoteId = firstString(quote?.quoteId);
+  if (!quoteResponse.ok || quoteRoot?.success !== true || !quoteId) {
+    throw Object.assign(
+      new Error(
+        directCloudResponseErrorMessage(
+          quoteResponse.status,
+          quoteResponse.data,
+        ),
+      ),
+      {
+        status: quoteResponse.status,
+        data: quoteResponse.data,
+        url: upgradeUrl,
+      },
+    );
+  }
+  if (quote?.canActivate !== true) {
+    throw Object.assign(
+      new Error(
+        firstString(quote?.unavailableReason) ??
+          "Dedicated compute is required for signed-in Eliza sessions, but this account does not have enough hosting credit.",
+      ),
+      { status: 402, data: quoteResponse.data, url: upgradeUrl },
+    );
+  }
+
+  options.signal?.throwIfAborted();
+  const activationResponse = await directCloudJsonResponse<unknown>(
+    upgradeUrl,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${options.authToken}`,
+      },
+      body: JSON.stringify({ action: "activate_dedicated", quoteId }),
+      ...(options.signal ? { signal: options.signal } : {}),
+    },
+  );
+  const activationRoot = recordOrNull(activationResponse.data);
+  const activation = recordOrNull(activationRoot?.data);
+  const dedicatedAgentId = firstString(activation?.dedicatedAgentId);
+  if (
+    !activationResponse.ok ||
+    activationRoot?.success !== true ||
+    !dedicatedAgentId
+  ) {
+    throw Object.assign(
+      new Error(
+        directCloudResponseErrorMessage(
+          activationResponse.status,
+          activationResponse.data,
+        ),
+      ),
+      {
+        status: activationResponse.status,
+        data: activationResponse.data,
+        url: upgradeUrl,
+      },
+    );
+  }
+
+  const intervalMs = options.pollIntervalMs ?? 5_000;
+  const timeoutMs = options.timeoutMs ?? CLOUD_AGENT_WAKE_TIMEOUT_MS;
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    options.signal?.throwIfAborted();
+    try {
+      const cutover = await this.finalizePersonalDedicatedCutover({
+        personalElizaId: personal.personalElizaId,
+        dedicatedAgentId,
+        cloudApiBase,
+        authToken: options.authToken,
+      });
+      options.onProgress?.("ready", "Connected to your Dedicated agent");
+      return {
+        personalElizaId: personal.personalElizaId,
+        agentId: personal.personalElizaId,
+        activeAgentId: cutover.activeAgentId,
+        agentName: personal.agentName,
+        apiBase: cutover.apiBase,
+        runtime: "dedicated" as const,
+      };
+    } catch (error) {
+      const status =
+        error && typeof error === "object" && "status" in error
+          ? (error as { status?: unknown }).status
+          : null;
+      if (status !== 409 && status !== 423 && status !== 503) throw error;
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `Dedicated agent ${dedicatedAgentId} did not become ready before the signed-in startup deadline.`,
+          { cause: error },
+        );
+      }
+      options.onProgress?.(
+        "starting",
+        "Your Dedicated agent is still starting…",
+      );
+      await abortableDelay(
+        Math.min(intervalMs, deadline - Date.now()),
+        options.signal,
+      );
+    }
+  }
 };
 
 ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
