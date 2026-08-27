@@ -169,7 +169,14 @@ describe("shouldLoadRemoteCodingRunnerForBoot additional branches", () => {
   });
 
   it("rejects malformed and non-HTTP runner URLs before module load", () => {
-    for (const value of ["not-a-url", "file:///tmp/runner"]) {
+    for (const value of [
+      "not-a-url",
+      "file:///tmp/runner",
+      "https://user:pw@runner.example",
+      "https://user@runner.example",
+      "https://runner.example?token=abc",
+      "https://runner.example#frag",
+    ]) {
       expect(() =>
         shouldLoadRemoteCodingRunnerForBoot(runtimeWith(), {
           ELIZA_HOME_RUNNER_URL: value,
