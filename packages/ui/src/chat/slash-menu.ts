@@ -554,6 +554,39 @@ export function resolveClientShortcutExecution(
   return resolveSlashExecution(command, alias, resolveSection);
 }
 
+export type NavigationSlashExecution = Extract<
+  SlashExecution,
+  { kind: "navigate-tab" | "navigate-settings" | "navigate-view" }
+>;
+
+/**
+ * Resolve an exact natural-language navigation command for optimistic routing.
+ * The caller still sends the original text to the agent, so only the local view
+ * transition is accelerated; response wording and side-effect truth remain
+ * model- and receipt-owned.
+ */
+export function resolveOptimisticNavigationExecution(
+  commands: SlashCommandCatalogItem[],
+  text: string,
+  resolveSection: (token: string) => string | undefined = (t) => t,
+  options: Omit<ResolveClientShortcutOptions, "allowNatural"> = {},
+): NavigationSlashExecution | null {
+  const execution = resolveClientShortcutExecution(
+    commands,
+    text,
+    resolveSection,
+    { ...options, allowNatural: true },
+  );
+  if (
+    execution?.kind === "navigate-tab" ||
+    execution?.kind === "navigate-settings" ||
+    execution?.kind === "navigate-view"
+  ) {
+    return execution;
+  }
+  return null;
+}
+
 // ── Completion (Tab) ─────────────────────────────────────────────────────────
 
 /** The draft text after completing to a command alias (with trailing space if it takes args). */

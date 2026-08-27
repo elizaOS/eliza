@@ -55,6 +55,7 @@ import { reportComposerActivity } from "../../chat/report-composer-activity";
 import {
   parseSlashDraft,
   resolveClientShortcutExecution,
+  resolveOptimisticNavigationExecution,
   runSlashExecution,
   type SlashExecution,
 } from "../../chat/slash-menu";
@@ -4495,6 +4496,39 @@ export function ChatOverlay({
   );
 
   const submit = React.useCallback(() => {
+    const isExplicitSlashCommand = parseSlashDraft(draft).isSlash;
+    const optimisticNavigation =
+      !firstRunOpen &&
+      !isExplicitSlashCommand &&
+      slash.naturalShortcutsEnabled &&
+      pendingImages.length === 0
+        ? resolveOptimisticNavigationExecution(
+            slash.commands,
+            draft,
+            slash.resolveSection,
+            {
+              resolveChoices: slash.resolveChoices,
+              isAuthorized: slash.isAuthorized,
+              isElevated: slash.isElevated,
+            },
+          )
+        : null;
+    if (optimisticNavigation) {
+      runSlashExecution(optimisticNavigation, {
+        navigateTab: slash.navigateTab,
+        navigateSettings: slash.navigateSettings,
+        navigateView: slash.navigateView,
+        clearChat: () => {},
+        newConversation: () => {},
+        toggleFullscreen: () => {},
+        openCommandPalette: () => {},
+        showCommands: () => {},
+        toggleTranscription: () => {},
+        send: () => {},
+      });
+      submitText(draft, pendingImages);
+      return;
+    }
     const shortcut =
       !firstRunOpen && pendingImages.length === 0
         ? resolveClientShortcutExecution(
