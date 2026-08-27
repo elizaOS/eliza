@@ -11,7 +11,7 @@
  * `getTokenPrices` currently has no wired price feed and always returns null.
  */
 import type { IAgentRuntime, JsonValue } from "@elizaos/core";
-import { logger, Service } from "@elizaos/core";
+import { logger, Service, tailWellFormed, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { StakingPool } from "@steerprotocol/sdk";
 import {
   AMMType,
@@ -793,7 +793,7 @@ export class SteerLiquidityService extends Service {
 
       const processedVault: SteerVaultDetailInput = {
         address: vaultAddress,
-        name: vault.name || `Steer Vault ${vaultAddress.slice(0, 8)}...`,
+        name: vault.name || `Steer Vault ${truncateWellFormed(toWellFormedUnicode(vaultAddress), 8)}...`,
         chainId,
         token0: vault.token0 || "Unknown",
         token1: vault.token1 || "Unknown",
@@ -1307,7 +1307,7 @@ export class SteerLiquidityService extends Service {
 
   private getTokenName(tokenIdentifier: string): string {
     if (tokenIdentifier.startsWith("0x")) {
-      return `Token ${tokenIdentifier.slice(0, 8)}...${tokenIdentifier.slice(-6)}`;
+      return `Token ${truncateWellFormed(toWellFormedUnicode(tokenIdentifier), 8)}...${tailWellFormed(toWellFormedUnicode(tokenIdentifier), 6)}`;
     }
 
     return tokenIdentifier;
