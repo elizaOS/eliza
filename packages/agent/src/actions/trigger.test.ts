@@ -355,6 +355,65 @@ describe("TRIGGER create — recurrence wins over sprayed one-shot fields", () =
     expect(result?.text).not.toContain("once at");
   });
 
+  it("keeps maxRuns:1 when the user's words negate the cadence through a verb (#26089)", async () => {
+    // The reachable production failure: the planner sprays a cron AND
+    // maxRuns:1, and trigger.ts drops the one-shot cap whenever the user's
+    // own text states explicit recurrence. A verb-linked negation
+    // ("won't be daily") is NOT a statement of recurrence, so the cap must
+    // survive and the reminder must stay a single fire.
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const result = await create(
+      runtime,
+      {
+        instructions: "stretch",
+        displayName: "stretch",
+        triggerType: "cron",
+        cronExpression: "0 8 * * *",
+        maxRuns: 1,
+      },
+      "remind me to stretch tomorrow, it won't be daily",
+    );
+    expect(result?.success).toBe(true);
+    expect(createdTasks[0].metadata.trigger?.maxRuns).toBe(1);
+  });
+
+  it("keeps maxRuns:1 for a 'don't make it weekly' negation (#26089)", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const result = await create(
+      runtime,
+      {
+        instructions: "water the plants",
+        displayName: "water plants",
+        triggerType: "cron",
+        cronExpression: "0 9 * * 1",
+        maxRuns: 1,
+      },
+      "water the plants on Monday, don't make it weekly",
+    );
+    expect(result?.success).toBe(true);
+    expect(createdTasks[0].metadata.trigger?.maxRuns).toBe(1);
+  });
+
+  it("still drops a sprayed maxRuns:1 when the user really does state recurrence", async () => {
+    // Guard the other direction: the #26089 fix must not turn genuine
+    // recurrence into a one-shot. "make it daily" has no negation, so the
+    // sprayed one-shot cap is still the planner's echo and must be dropped.
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const result = await create(
+      runtime,
+      {
+        instructions: "take vitamins",
+        displayName: "vitamins",
+        triggerType: "cron",
+        cronExpression: "0 8 * * *",
+        maxRuns: 1,
+      },
+      "remind me to take vitamins, make it daily",
+    );
+    expect(result?.success).toBe(true);
+    expect(createdTasks[0].metadata.trigger?.maxRuns).toBeUndefined();
+  });
+
   it("resolves cronExpression + delay to recurring even without an explicit triggerType", async () => {
     const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
     const result = await create(runtime, {
