@@ -51,6 +51,16 @@ describe("useRealtimeVoiceMint", () => {
     expect(result.current.agentId).toBeNull();
   });
 
+  it("rejects Personal Shared because signed-in realtime requires Dedicated", () => {
+    const { result } = renderHook(() =>
+      useRealtimeVoiceMint({
+        resolveAgentId: () => "personal:00000000-0000-5000-8000-000000000001",
+        fetch: vi.fn(),
+      }),
+    );
+    expect(result.current.agentId).toBeNull();
+  });
+
   it("getConsentNonce returns the nonce on a 200 consent response", async () => {
     const fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ consentNonce: "nonce-abc" }), {

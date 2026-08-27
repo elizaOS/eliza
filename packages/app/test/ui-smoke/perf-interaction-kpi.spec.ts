@@ -211,6 +211,9 @@ async function installStreamingFetch(page: Page): Promise<void> {
 
 test.describe("dashboard shell interaction framerate", () => {
   test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      Reflect.set(window, "__ELIZA_APP_API_BASE__", window.location.origin);
+    });
     await seedAppStorage(page);
     await page.route("**/api/conversations", async (route) => {
       if (route.request().method() !== "GET") {

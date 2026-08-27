@@ -11,6 +11,7 @@ import type React from "react";
 import type { ReactNode } from "react";
 import { PageFrame } from "../../layouts/page-frame";
 import { cn } from "../../lib/utils";
+import { ScrollArea } from "../ui/scroll-area";
 import { AppWorkspaceChrome } from "./AppWorkspaceChrome";
 
 const CHAT_CLEARANCE_CLASS =
@@ -100,28 +101,30 @@ export function AppWorkspaceContent({
     header ? (
       <div className="flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden">
         {header}
-        <div
+        <ScrollArea
           data-shell-scroll-region="true"
-          className={cn(
-            "eliza-chat-scroll min-h-0 min-w-0 w-full flex-1 overflow-y-auto",
+          className="min-h-0 min-w-0 w-full flex-1"
+          viewportClassName={cn(
+            "eliza-chat-scroll overflow-y-auto",
             clearanceClass,
             className,
           )}
         >
           {children}
-        </div>
+        </ScrollArea>
       </div>
     ) : (
-      <div
+      <ScrollArea
         data-shell-scroll-region="true"
-        className={cn(
-          "eliza-chat-scroll min-h-0 min-w-0 w-full flex-1 overflow-y-auto",
+        className="min-h-0 min-w-0 w-full flex-1"
+        viewportClassName={cn(
+          "eliza-chat-scroll overflow-y-auto",
           clearanceClass,
           className,
         )}
       >
         {children}
-      </div>
+      </ScrollArea>
     )
   ) : (
     <div
