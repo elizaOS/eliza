@@ -58,6 +58,23 @@ describe("WalletButtons capability gating", () => {
     vi.clearAllMocks();
   });
 
+  it("fails closed when wallet capabilities are omitted", () => {
+    render(
+      <WalletButtons
+        auth={auth}
+        autoStart={null}
+        disabled={false}
+        loadingProvider={null}
+        onLoadingChange={vi.fn()}
+        onSuccess={vi.fn()}
+        onError={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /EVM wallet/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Solana wallet/i })).toBeNull();
+  });
+
   it.each([
     { siwe: true, siws: false },
     { siwe: false, siws: true },

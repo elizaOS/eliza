@@ -164,8 +164,8 @@ export function WalletButtons({
   autoStart,
   auth,
   disabled,
-  siwe,
-  siws,
+  siwe = false,
+  siws = false,
   onAutoStartHandled,
   onSuccess,
   onError,
@@ -175,8 +175,8 @@ export function WalletButtons({
   autoStart?: "ethereum" | "solana" | null;
   auth: StewardAuth;
   disabled: boolean;
-  siwe: boolean;
-  siws: boolean;
+  siwe?: boolean;
+  siws?: boolean;
   onAutoStartHandled?: () => void;
   onSuccess: (result: StewardAuthResult) => void | Promise<void>;
   onError: (error: Error, kind: "ethereum" | "solana") => void;
