@@ -60,6 +60,7 @@ export function channelLikeOf(
 		type: channel.type as number,
 		overwrites,
 		everyonePermissions: guild.roles.everyone?.permissions?.bitfield,
+		everyoneRoleId: guild.roles.everyone?.id,
 	};
 }
 

@@ -212,6 +212,21 @@ export async function handleGuildCreate(
 		source: "discord",
 	};
 
+	// Canonical membership evidence (#24365): guilds joined after readiness
+	// never see the ready path, so publish their roster snapshot here,
+	// BEFORE the world-joined events, mirroring the ready-path ordering.
+	if (typeof service.publishGuildMembershipEvidence === "function") {
+		try {
+			await service.publishGuildMembershipEvidence(
+				service.accountId ?? "default",
+				fullGuild,
+			);
+		} catch {
+			// error-policy:J4 the hook degrades internally; world joining
+			// must not fail because evidence publishing did.
+		}
+	}
+
 	service.runtime.emitEvent([DiscordEventTypes.WORLD_JOINED], {
 		runtime: service.runtime,
 		source: "discord",

@@ -26,6 +26,7 @@ import { isDiscordUserAddressed } from "./addressing";
 import { DISCORD_SERVICE_NAME } from "./constants";
 import { type ChannelDebouncer, createChannelDebouncer } from "./debouncer";
 import { asMemberLike } from "./membership-adapters";
+import type { ChannelLike } from "./membership-bridge";
 import {
 	getDiscordMessageCoalesceConfig,
 	makeCoalescedDiscordMessage,
@@ -127,6 +128,10 @@ export interface DiscordServiceInternals {
 		oldMember: GuildMember | import("./membership-bridge").GuildMemberLike;
 		newMember: GuildMember | import("./membership-bridge").GuildMemberLike;
 		eventId?: string;
+		oldChannelOverwrites?: Map<
+			string,
+			import("./membership-bridge").ChannelLike["overwrites"]
+		>;
 	}): Promise<void>;
 	/**
 	 * Ready-path membership snapshot hook (#24365): used by the ready pass
@@ -1226,9 +1231,25 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 					);
 
 					// Canonical membership evidence (#24365): an overwrite change
-					// can flip channel visibility for the affected role or member;
-					// publish permission deltas for the members whose view
-					// changed. Degrade-only, after the existing event flow.
+					// can flip channel visibility for the affected role or
+					// member; publish permission deltas for the members whose
+					// view changed, diffing against the channel's PRE-change
+					// overwrites (comparing post-change state against itself
+					// would always report no transition). Degrade-only, after
+					// the existing event flow.
+					const previousOverwrites = new Map<
+						string,
+						ChannelLike["overwrites"]
+					>();
+					previousOverwrites.set(
+						guildChannel.id,
+						[...oldOverwrites.values()].map((ow) => ({
+							id: ow.id,
+							type: ow.type === 0 ? "role" : "member",
+							allow: ow.allow?.bitfield,
+							deny: ow.deny?.bitfield,
+						})),
+					);
 					if (targetType === "user") {
 						const targetMember =
 							guildChannel.guild.members.cache.get(id) ?? null;
@@ -1243,9 +1264,22 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 									oldMember: targetMember,
 									newMember: targetMember,
 									eventId: `overwrite:${guildChannel.id}:${id}:${Date.now()}`,
+									oldChannelOverwrites: previousOverwrites,
 								});
-							} catch {
-								// error-policy:J4 degrade-only membership evidence.
+							} catch (error) {
+								// error-policy:J4 degrade-only membership evidence:
+								// log and continue the channelUpdate flow.
+								service.runtime.logger.debug(
+									{
+										src: "plugin:discord",
+										agentId: service.runtime.agentId,
+										channelId: guildChannel.id,
+										targetId: id,
+										error:
+											error instanceof Error ? error.message : String(error),
+									},
+									"Discord membership overwrite delta publish failed",
+								);
 							}
 						}
 					} else {
@@ -1263,9 +1297,23 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 										oldMember: member,
 										newMember: member,
 										eventId: `overwrite:${guildChannel.id}:${id}:${member.id}:${Date.now()}`,
+										oldChannelOverwrites: previousOverwrites,
 									});
-								} catch {
-									// error-policy:J4 degrade-only membership evidence.
+								} catch (error) {
+									// error-policy:J4 degrade-only membership evidence:
+									// log and continue the sweep.
+									service.runtime.logger.debug(
+										{
+											src: "plugin:discord",
+											agentId: service.runtime.agentId,
+											channelId: guildChannel.id,
+											roleId: id,
+											memberId: member.id,
+											error:
+												error instanceof Error ? error.message : String(error),
+										},
+										"Discord membership role-overwrite delta publish failed",
+									);
 								}
 							}
 						}
@@ -1318,10 +1366,10 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 
 				// Canonical membership evidence (#24365): a role permission change
 				// can flip channel visibility for every member holding the role.
-				// Synthesize old/new member views differing only in the raw
-				// permission bitfield (role overwrites are read per channel, so
-				// the delta is recomputed from the channel overwrites; the
-				// synthesized bitfield only feeds the Administrator bypass).
+				// Recompute the member's aggregate guild bitfield with and
+				// without the changed role's contribution, so permissions from
+				// the member's OTHER roles are preserved (replacing the aggregate
+				// with the changed role's bitfield alone would lose them).
 				// Degrade-only, after the existing event flow.
 				if (typeof service.publishMemberPermissionDelta === "function") {
 					for (const member of newRole.guild.members.cache.values()) {
@@ -1330,21 +1378,32 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 						}
 						try {
 							const base = asMemberLike(member);
+							const withoutChangedRole =
+								member.permissions.bitfield & ~oldRole.permissions.bitfield;
+							const oldAggregate =
+								withoutChangedRole | oldRole.permissions.bitfield;
+							const newAggregate =
+								withoutChangedRole | newRole.permissions.bitfield;
 							await service.publishMemberPermissionDelta({
 								accountId,
 								guild: newRole.guild,
-								oldMember: {
-									...base,
-									permissions: oldRole.permissions.bitfield,
-								},
-								newMember: {
-									...base,
-									permissions: newRole.permissions.bitfield,
-								},
+								oldMember: { ...base, permissions: oldAggregate },
+								newMember: { ...base, permissions: newAggregate },
 								eventId: `roleperm:${newRole.id}:${member.id}:${Date.now()}`,
 							});
-						} catch {
-							// error-policy:J4 degrade-only membership evidence.
+						} catch (error) {
+							// error-policy:J4 degrade-only membership evidence:
+							// log and continue the role-member sweep.
+							service.runtime.logger.debug(
+								{
+									src: "plugin:discord",
+									agentId: service.runtime.agentId,
+									roleId: newRole.id,
+									memberId: member.id,
+									error: error instanceof Error ? error.message : String(error),
+								},
+								"Discord membership role-permission delta publish failed",
+							);
 						}
 					}
 				}
@@ -1430,8 +1489,17 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 							newMember,
 							eventId: newMember.id,
 						});
-					} catch {
+					} catch (error) {
 						// error-policy:J4 degrade-only membership evidence.
+						service.runtime.logger.debug(
+							{
+								src: "plugin:discord",
+								agentId: service.runtime.agentId,
+								memberId: newMember.id,
+								error: error instanceof Error ? error.message : String(error),
+							},
+							"Discord membership role-change delta publish failed",
+						);
 					}
 				}
 			} catch (err) {
@@ -1587,13 +1655,38 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 		);
 		// Canonical membership evidence (#24365): the disconnect degraded
 		// this account's scopes stale; a resume without a resnapshot would
-		// leave them fail-closed indefinitely. Resnapshot every cached guild
-		// of this account now (fire-and-forget, degrade-only).
-		if (typeof service.publishGuildMembershipEvidence === "function") {
-			for (const guild of service.client.guilds.cache.values()) {
-				void service
-					.publishGuildMembershipEvidence(accountId, guild)
-					.catch((error: unknown) => {
+		// leave them fail-closed indefinitely. Recovery is bounded: only the
+		// guilds on the resumed shard, processed sequentially (a full account
+		// fan-out per resume on sharded clients would multiply the work by
+		// the shard count). Degrade-only.
+		if (
+			typeof service.publishGuildMembershipEvidence === "function" &&
+			service.client.guilds
+		) {
+			void (async () => {
+				const publishGuild = service.publishGuildMembershipEvidence;
+				if (!publishGuild) {
+					return;
+				}
+				const allGuilds = [...service.client.guilds.cache.values()];
+				const shards = service.client.ws.shards as unknown as
+					| Array<{
+							id: number;
+							guilds?: Set<string>;
+					  }>
+					| undefined;
+				const shardGuilds = allGuilds.filter(
+					(guild) =>
+						shards?.find((shard) => shard.guilds?.has(guild.id))?.id ===
+						shardId,
+				);
+				// Single-shard clients or shards that do not report their
+				// guild set: conservatively resnapshot all cached guilds.
+				const targets = shardGuilds.length > 0 ? shardGuilds : allGuilds;
+				for (const guild of targets) {
+					try {
+						await publishGuild(accountId, guild);
+					} catch (error) {
 						// error-policy:J4 degrade-only resnapshot; the scope
 						// stays stale and the next ready pass retries.
 						service.runtime.logger.debug(
@@ -1606,8 +1699,9 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 							},
 							"Discord membership resnapshot after shard resume failed",
 						);
-					});
-			}
+					}
+				}
+			})();
 		}
 	});
 	service.client.on("shardError", (error, shardId) => {

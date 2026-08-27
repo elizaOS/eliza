@@ -60,15 +60,20 @@ function stablePermissionJson(value: JsonObject): string {
 }
 
 /**
- * Observation anchor for delta idempotency keys: gateway event ids (or
- * member ids) are NOT unique across distinct commands (a member can join,
- * leave, and rejoin; roles can transition repeatedly), so a bare id would
- * collide across distinct events and the second observation would be
- * dropped as an idempotency conflict. Anchoring on the observation
- * wall clock makes each distinct command unique.
+ * Observation anchor for idempotency keys and command digests: the ISO
+ * timestamp of ONE gateway observation, computed once per bridge call and
+ * reused for every retry or redelivery of that observation. This makes the
+ * authority's journal replay an identical command benignly (same key AND
+ * same digest), while a distinct observation of the same shape (a rejoin
+ * cycle, a roster refresh) gets a fresh key and never collides. A key
+ * collision with a different digest is an anomaly and fails closed.
  */
-function deltaAnchor(eventId: string | undefined): string {
-	return `${eventId ?? "observed"}:${Date.now()}`;
+function observationAnchor(): string {
+	return new Date().toISOString();
+}
+
+function deltaAnchor(eventId: string | undefined, observedAt: string): string {
+	return `${eventId ?? "observed"}:${observedAt}`;
 }
 
 export interface DiscordMembershipBridgeDeps {
@@ -112,6 +117,10 @@ export class DiscordMembershipBridge {
 			cachedMemberCount: options.guild.members.length,
 			membersIntentEnabled: options.membersIntentEnabled,
 		});
+		// One observation timestamp for the whole guild pass: every retry or
+		// redelivery of this observation reuses it, so journal replays match
+		// both key and digest; a fresh pass gets a fresh anchor.
+		const observedAt = observationAnchor();
 		for (const channel of options.guild.channels) {
 			if (!isMembershipChannel(channel)) {
 				continue;
@@ -147,7 +156,9 @@ export class DiscordMembershipBridge {
 						channel.id,
 						"snapshot-unavailable",
 						completeness.reason,
+						observedAt,
 					]),
+					observedAt,
 				});
 				continue;
 			}
@@ -171,7 +182,9 @@ export class DiscordMembershipBridge {
 					channel.id,
 					"snapshot",
 					snapshotRosterDigest(members),
+					observedAt,
 				]),
+				observedAt,
 			});
 		}
 	}
@@ -223,7 +236,8 @@ export class DiscordMembershipBridge {
 			discordUserId: options.member.id,
 			accountKey: options.accountKey,
 		});
-		const anchor = deltaAnchor(options.eventId);
+		const observedAt = observationAnchor();
+		const anchor = deltaAnchor(options.eventId, observedAt);
 		for (const channel of options.guild.channels) {
 			if (!isMembershipChannel(channel)) {
 				continue;
@@ -272,6 +286,7 @@ export class DiscordMembershipBridge {
 					options.member.id,
 					anchor,
 				]),
+				observedAt,
 			});
 		}
 	}
@@ -298,7 +313,8 @@ export class DiscordMembershipBridge {
 	}): Promise<void> {
 		const canView = new Set(options.canViewChannelIds);
 		const cannotView = new Set(options.cannotViewChannelIds);
-		const anchor = deltaAnchor(options.eventId);
+		const observedAt = observationAnchor();
+		const anchor = deltaAnchor(options.eventId, observedAt);
 		for (const channel of options.guild.channels) {
 			const restored = canView.has(channel.id);
 			const lost = cannotView.has(channel.id);
@@ -360,6 +376,7 @@ export class DiscordMembershipBridge {
 					options.member.id,
 					anchor,
 				]),
+				observedAt,
 			});
 		}
 	}
@@ -408,6 +425,7 @@ export class DiscordMembershipBridge {
 			accountKey: options.accountKey,
 		});
 		const member = options.member;
+		const observedAt = observationAnchor();
 		await this.publisher.renewSender({
 			scope,
 			principalId,
@@ -424,7 +442,9 @@ export class DiscordMembershipBridge {
 				"renewal",
 				options.authorId,
 				options.messageId,
+				observedAt,
 			]),
+			observedAt,
 		});
 	}
 
@@ -488,17 +508,20 @@ export interface ChannelLike {
 	}>;
 	/** Bitfield of the @everyone role's guild-level permissions. */
 	everyonePermissions?: bigint;
+	/** The @everyone role's id for channel-overwrite lookups. */
+	everyoneRoleId?: string;
 }
 
 /**
- * Compute whether a member can ViewChannel per Discord's permission
- * resolution order: the guild Administrator permission bypasses everything;
- * otherwise start from the @everyone role's base permissions, apply all
- * matching role overwrites combined (allow bits OR-accumulated, deny bits
- * OR-accumulated, then allow beats deny within that stage), and apply the
- * member overwrite last (its allow beats its deny, and its deny beats the
- * role stage unless its allow grants). One role denying ViewChannel while
- * another allows it therefore resolves to allowed, matching discord.js.
+ * Compute whether a member can ViewChannel per discord.js resolution: the
+ * member's AGGREGATE guild permissions (all roles OR-accumulated — what
+ * GuildMemberPermissions.bitfield holds) form the base, so guild-level
+ * role grants are honored; the guild Administrator bit bypasses everything.
+ * The channel's @everyone overwrite participates as a role overwrite (the
+ * @everyone role is in every member's role set), followed by the combined
+ * role overwrites for the member's other roles (allow beats deny within
+ * the stage), and the member overwrite last (allow beats deny). One role
+ * denying ViewChannel while another allows it resolves to allowed.
  */
 export function channelCanView(
 	channel: ChannelLike,
@@ -515,8 +538,15 @@ export function channelCanView(
 		return true;
 	}
 	const view = PermissionsBitField.Flags.ViewChannel;
-	const base = channel.everyonePermissions ?? PermissionsBitField.Default;
+	// Base: the member's aggregate guild permissions (role grants included).
+	let resolved =
+		member.permissions ??
+		channel.everyonePermissions ??
+		PermissionsBitField.Default;
 	const memberRoles = new Set(member.roles);
+	if (channel.everyoneRoleId) {
+		memberRoles.add(channel.everyoneRoleId);
+	}
 	let roleAllow = 0n;
 	let roleDeny = 0n;
 	let memberAllow = 0n;
@@ -536,7 +566,7 @@ export function channelCanView(
 			memberDeny = overwrite.deny ?? 0n;
 		}
 	}
-	let resolved = (base & ~roleDeny) | roleAllow;
+	resolved = (resolved & ~roleDeny) | roleAllow;
 	if (hasMemberOverwrite) {
 		resolved = (resolved & ~memberDeny) | memberAllow;
 	}
