@@ -618,6 +618,28 @@ async function resolveIMessageChatId(
   return channelId.startsWith("chat_id:") ? channelId.slice("chat_id:".length) : channelId;
 }
 
+/** Metadata key under which the governed chat-id inventory is persisted. */
+const GOVERNED_CHAT_INVENTORY_KEY = "imessage:membership:chat-inventory";
+
+/**
+ * Read the persisted governed-chat inventory from connector account
+ * metadata (written by the publisher's onRosterCommitted hook). Absent,
+ * non-array, or malformed entries yield an empty inventory — this is a
+ * best-effort restart signal, not trusted input.
+ */
+function readGovernedChatInventory(metadata: unknown): string[] {
+  if (!metadata || typeof metadata !== "object") return [];
+  const raw = (metadata as Record<string, unknown>)[GOVERNED_CHAT_INVENTORY_KEY];
+  if (!Array.isArray(raw)) return [];
+  const ids = new Set<string>();
+  for (const entry of raw) {
+    if (typeof entry === "string" && entry.length > 0 && entry.length <= 512) {
+      ids.add(entry);
+    }
+  }
+  return [...ids];
+}
+
 /**
  * iMessage service for Eliza agents.
  * Note: This only works on macOS.
@@ -1106,12 +1128,63 @@ export class IMessageService extends Service implements IIMessageService {
    * connector — but roster read failures once running degrade fail-closed.
    */
   private async initMembership(): Promise<void> {
-    if (!this.runtime || !this.chatDb) return;
+    if (!this.runtime) return;
     const authority = resolveMembershipService(this.runtime);
     if (!authority) {
       logger.debug(
         "[imessage][membership] canonical MembershipService authority not registered; membership evidence is not published"
       );
+      return;
+    }
+    if (!this.chatDb) {
+      // Restart with chat.db unreadable but the authority registered: the
+      // connector account row carries the last known governed chat-id
+      // inventory from the previous healthy run. Degrade every persisted
+      // scope fail-closed now — fresh roster evidence cannot be published
+      // while chat.db is unavailable, so stale evidence must not authorize.
+      // This requires the durable inventory to be meaningful; when no
+      // inventory was ever persisted (first run without Full Disk Access),
+      // there is nothing to degrade and the connector stays send-only.
+      try {
+        const { getConnectorAccountManager } = await import("@elizaos/core");
+        const manager = getConnectorAccountManager(this.runtime);
+        const account = await manager.getAccount(
+          IMESSAGE_MEMBERSHIP_CONNECTOR_ID,
+          `imessage-${IMESSAGE_LOCAL_ACCOUNT_ID}`
+        );
+        const inventory = readGovernedChatInventory(account?.metadata);
+        if (this.membership || inventory.length > 0) {
+          if (!this.membership) {
+            const { IMessageMembershipPublisher } = await import("./membership.js");
+            const storedId = account?.id;
+            if (
+              storedId &&
+              /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+                storedId
+              )
+            ) {
+              this.membership = new IMessageMembershipPublisher({
+                runtime: this.runtime,
+                connectorAccountId: storedId as UUID,
+                accountKey: IMESSAGE_LOCAL_ACCOUNT_ID,
+                service: authority,
+              });
+            }
+          }
+          if (this.membership) {
+            await this.membership.degradePersistedScopes(inventory);
+            logger.warn(
+              `[imessage][membership] chat.db unavailable at start; degraded ${inventory.length} persisted membership scope(s) fail-closed`
+            );
+          }
+        }
+      } catch (error) {
+        // error-policy:J4 Bootstrap is an expected-failure boundary: report
+        // and continue send-only; no stale evidence is published.
+        this.runtime.reportError?.("imessage:membership:restart-degrade", error, {
+          accountKey: IMESSAGE_LOCAL_ACCOUNT_ID,
+        });
+      }
       return;
     }
     try {
@@ -1146,6 +1219,26 @@ export class IMessageService extends Service implements IIMessageService {
         connectorAccountId: stored.id as UUID,
         accountKey: IMESSAGE_LOCAL_ACCOUNT_ID,
         service: authority,
+        // Persist the governed chat-id inventory on every committed sweep
+        // so a restart with chat.db unavailable can degrade exactly these
+        // scopes fail-closed (see the !chatDb branch above).
+        onRosterCommitted: async (chatIds) => {
+          await manager.upsertAccount(IMESSAGE_MEMBERSHIP_CONNECTOR_ID, {
+            id: `imessage-${IMESSAGE_LOCAL_ACCOUNT_ID}`,
+            provider: IMESSAGE_MEMBERSHIP_CONNECTOR_ID,
+            label: "iMessage (local Apple account)",
+            role: "AGENT",
+            purpose: ["messaging"],
+            accessGate: "open",
+            status: "connected",
+            createdAt: stored.createdAt,
+            updatedAt: Date.now(),
+            metadata: {
+              source: "imessage-membership",
+              [GOVERNED_CHAT_INVENTORY_KEY]: [...chatIds],
+            },
+          });
+        },
       });
       // Initial snapshot sweep; the publisher degrades its scopes and throws
       // a typed error on roster read failure (fail-closed admission).
@@ -1229,6 +1322,20 @@ export class IMessageService extends Service implements IIMessageService {
 
     // Format phone number if needed
     const target = isPhoneNumber(to) ? formatPhoneNumber(to) : to;
+
+    // Membership send gate (issue #24370): when governance is active for
+    // this target, admission requires current source-derived evidence.
+    // Ungoverned targets keep the legacy behavior. A denial is a structured
+    // failure at the connector boundary, never a silent drop.
+    if (this.membership) {
+      const admission = await this.membership.authorizeOutbound(target);
+      if (admission === false) {
+        return {
+          success: false,
+          error: `iMessage membership gate denied send to ${target}: no current roster evidence`,
+        };
+      }
+    }
 
     let media: ResolvedOutboundMedia | null = null;
     if (options?.mediaUrl) {

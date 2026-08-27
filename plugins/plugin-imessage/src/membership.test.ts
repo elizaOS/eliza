@@ -299,3 +299,153 @@ describe("iMessage membership publisher (real PGlite authority)", () => {
     expect(decision.decision).toBe("allowed");
   });
 });
+
+/**
+ * RP R1 follow-up coverage (fix loop): the failure semantics the first
+ * review found missing — real-reader roster failures surfaced through the
+ * failure counter (not a synthetic throw), restart-safe idempotency keys
+ * (fresh publisher over the same durable state re-publishes instead of
+ * conflicting), renewal keys that do not collide across observations, and
+ * the outbound send gate consulting both the local degraded flag and
+ * authority evidence.
+ */
+describe("iMessage membership failure semantics (RP R1 fixes)", () => {
+  it("restart adoption re-publishes without idempotency conflicts across instances", async () => {
+    const source = new SyntheticRosterSource();
+    const chatId = "Imessage;+;chat-restart-1;+155****9001";
+    source.setChat(chatId, "group", ["+155****9001", "+155****9002"]);
+    await publisher.sweepRoster(source);
+
+    // A restarted process over the same durable authority state: every
+    // observation must journal a fresh idempotency key (counter resets are
+    // irrelevant; the observation identity carries the key).
+    const restarted = new IMessageMembershipPublisher({
+      runtime,
+      connectorAccountId,
+      accountKey: "default",
+      service: membership,
+    });
+    const published = await restarted.sweepRoster(source);
+    expect(published).toBeGreaterThanOrEqual(1);
+
+    const scope = await scopeFor(chatId);
+    for (const handle of ["+155****9001", "+155****9002"]) {
+      const decision = await membership.authorize(
+        scope,
+        imessageMembershipPrincipalId("default", handle)
+      );
+      expect(decision.decision).toBe("allowed");
+    }
+  });
+
+  it("repeated renewals of the same sender commit instead of silently conflicting", async () => {
+    const source = new SyntheticRosterSource();
+    const chatId = "Imessage;-;+155****9011";
+    source.setChat(chatId, "direct", ["+155****9011"]);
+    await publisher.sweepRoster(source);
+
+    // Backdate the renewal stamp left by the sweep so the first renewal is
+    // outside the dedupe window and commits.
+    const internal = (
+      publisher as unknown as {
+        scopes: Map<string, { renewedAt: Map<string, number> }>;
+      }
+    ).scopes;
+    const tracker = internal.get(`${connectorAccountId}:${chatId}`);
+    expect(tracker).toBeDefined();
+    tracker?.renewedAt.set(
+      imessageMembershipPrincipalId("default", "+155****9011") as string,
+      Date.now() - 60 * 60 * 1000
+    );
+    const first = await publisher.renewSender({ chatId, handle: "+155****9011" });
+    expect(first).toBe(true);
+
+    // A later renewal (fresh observation, new cursor/timestamp digest) must
+    // not be dropped by a reused permanent idempotency key: force the
+    // window to expire again by backdating the in-process renewal stamp.
+    tracker?.renewedAt.set(
+      imessageMembershipPrincipalId("default", "+155****9011") as string,
+      Date.now() - 60 * 60 * 1000
+    );
+    const second = await publisher.renewSender({ chatId, handle: "+155****9011" });
+    expect(second).toBe(true);
+  });
+
+  it("a degraded scope denies authorizeSend even before the durable commit lands", async () => {
+    const source = new SyntheticRosterSource();
+    const chatId = "Imessage;-;+155****9021";
+    source.setChat(chatId, "direct", ["+155****9021"]);
+    await publisher.sweepRoster(source);
+
+    // Deny through the gate before any durable degradation commit: mark the
+    // scope degraded in-process (simulating a setScopeHealth failure).
+    const internal = (
+      publisher as unknown as {
+        scopes: Map<string, { degraded: boolean }>;
+      }
+    ).scopes;
+    const tracker = internal.get(`${connectorAccountId}:${chatId}`);
+    expect(tracker).toBeDefined();
+    if (tracker) tracker.degraded = true;
+
+    // The local flag is consulted first: the send gate denies without
+    // trusting possibly-stale authority evidence.
+    const allowed = await publisher.authorizeSend({ chatId, handle: "+155****9021" });
+    expect(allowed).toBe(false);
+
+    // Outbound gate over the bare handle resolves the direct chat and also denies.
+    const outbound = await publisher.authorizeOutbound("+155****9021");
+    expect(outbound).toBe(false);
+
+    if (tracker) tracker.degraded = false;
+  });
+
+  it("authorizeOutbound returns null for ungoverned targets and true for healthy governed ones", async () => {
+    const source = new SyntheticRosterSource();
+    const directId = "Imessage;-;+155****9031";
+    const groupId = "Imessage;+;chat-gov-1;+155****9031";
+    source.setChat(directId, "direct", ["+155****9031"]);
+    source.setChat(groupId, "group", ["+155****9031", "+155****9032"]);
+    await publisher.sweepRoster(source);
+
+    // Ungoverned target: legacy null (no gate).
+    expect(await publisher.authorizeOutbound("+155****9999")).toBeNull();
+
+    // Governed direct target: recipient principal is an active member.
+    expect(await publisher.authorizeOutbound("+155****9031")).toBe(true);
+
+    // Governed group target by chat id: scope health is current.
+    expect(await publisher.authorizeOutbound(groupId)).toBe(true);
+
+    // A member removed by the next complete snapshot loses admission.
+    source.setChat(directId, "direct", ["+155****9034"]);
+    await publisher.sweepRoster(source);
+    expect(await publisher.authorizeOutbound("+155****9031")).toBe(false);
+  });
+
+  it("degradePersistedScopes marks an inventory fail-closed for restart-without-chat.db", async () => {
+    const source = new SyntheticRosterSource();
+    const chatId = "Imessage;+;chat-restart-2;+155****9041";
+    source.setChat(chatId, "group", ["+155****9041"]);
+    await publisher.sweepRoster(source);
+
+    // Simulated restart with chat.db unavailable: the fresh publisher holds
+    // no in-memory scope state, only the persisted inventory.
+    const restarted = new IMessageMembershipPublisher({
+      runtime,
+      connectorAccountId,
+      accountKey: "default",
+      service: membership,
+    });
+    await restarted.degradePersistedScopes([chatId]);
+
+    const scope = await scopeFor(chatId);
+    const health = await membership.getScopeHealth(scope);
+    expect(health?.health).toBe("unavailable");
+    const decision = await membership.authorize(
+      scope,
+      imessageMembershipPrincipalId("default", "+155****9041")
+    );
+    expect(decision.decision).toBe("denied");
+  });
+});
