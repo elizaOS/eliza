@@ -131,6 +131,8 @@ export {
 // Keep this here as a single sentinel: if we ever need a static reference,
 // add `as const` data only — never an `import * as` of these packages.
 import {
+  toWellFormedUnicode,
+  truncateWellFormed,
   AgentRuntime,
   AUTONOMY_SERVICE_TYPE,
   AutonomyService,
@@ -2348,7 +2350,7 @@ export function bindCloudGithubTokenToRuntime(
 export function cloudApiKeyFingerprint(value: string | undefined): string {
   const v = value?.trim();
   if (!v) return "(none)";
-  return `${v.slice(0, 6)}…(len ${v.length})`;
+  return `${truncateWellFormed(toWellFormedUnicode(v), 6)}…(len ${v.length})`;
 }
 
 /**
