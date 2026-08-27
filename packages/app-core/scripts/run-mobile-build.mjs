@@ -6200,16 +6200,46 @@ export const ANDROID_PLAY_ALLOWED_QUERY_ACTIONS = Object.freeze([
 // cross-process shared-counter JNI helper. Keep an exact ABI allowlist so a
 // local-agent or inference library still cannot leak into the Cloud client.
 export const ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES = Object.freeze([
-  "base/lib/arm64-v8a/libdatastore_shared_counter.so",
-  "base/lib/armeabi-v7a/libdatastore_shared_counter.so",
-  "base/lib/x86/libdatastore_shared_counter.so",
-  "base/lib/x86_64/libdatastore_shared_counter.so",
+  "lib/arm64-v8a/libdatastore_shared_counter.so",
+  "lib/armeabi-v7a/libdatastore_shared_counter.so",
+  "lib/x86/libdatastore_shared_counter.so",
+  "lib/x86_64/libdatastore_shared_counter.so",
 ]);
 
 export function resolveAndroidCloudAllowedNativeLibraries(env = process.env) {
   return isAndroidFirebaseIndependentRemoteBuild(env)
     ? []
     : [...ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES];
+}
+
+/** Enforce the exact Play JNI set at each archive format's native-library root. */
+export function assertAndroidCloudNativeLibraryAllowlist({
+  artifact,
+  entries,
+  env = process.env,
+} = {}) {
+  const artifactKind = resolveAndroidArtifactKind(artifact);
+  const artifactRoot = artifactKind === "aab" ? "base/" : "";
+  const expectedNativeLibraries = resolveAndroidCloudAllowedNativeLibraries(env)
+    .map((entry) => `${artifactRoot}${entry}`)
+    .sort();
+  const nativeLibraries = entries
+    .filter((entry) => /(?:^|\/)lib\/[^/]+\/[^/]+\.so$/i.test(entry))
+    .sort();
+  if (
+    JSON.stringify(nativeLibraries) !== JSON.stringify(expectedNativeLibraries)
+  ) {
+    throw mobileBuildError(
+      `[mobile-build] android-cloud native libraries differ from the Play allowlist:\n${nativeLibraries
+        .map((entry) => `  - ${entry}`)
+        .join("\n")}`,
+      {
+        code: "ANDROID_PLAY_NATIVE_LIBRARY_ALLOWLIST_FAILED",
+        context: { artifact, artifactKind, nativeLibraries },
+      },
+    );
+  }
+  return nativeLibraries;
 }
 
 export const ANDROID_PLAY_DATA_EXTRACTION_RULES = `<?xml version="1.0" encoding="utf-8"?>
@@ -10048,23 +10078,7 @@ export function auditAndroidCloudArtifact(
     );
   }
   if (!lp3ColorPolicyEnabled) {
-    const nativeLibraries = entries
-      .filter((entry) => /(?:^|\/)lib\/[^/]+\/[^/]+\.so$/i.test(entry))
-      .sort();
-    if (
-      JSON.stringify(nativeLibraries) !==
-      JSON.stringify(resolveAndroidCloudAllowedNativeLibraries(env).sort())
-    ) {
-      throw mobileBuildError(
-        `[mobile-build] android-cloud native libraries differ from the Play allowlist:\n${nativeLibraries
-          .map((entry) => `  - ${entry}`)
-          .join("\n")}`,
-        {
-          code: "ANDROID_PLAY_NATIVE_LIBRARY_ALLOWLIST_FAILED",
-          context: { artifact, nativeLibraries },
-        },
-      );
-    }
+    assertAndroidCloudNativeLibraryAllowlist({ artifact, entries, env });
     const textAssetEntries = entries.filter(
       (entry) =>
         /(?:^|\/)assets\//.test(entry) &&
