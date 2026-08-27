@@ -339,10 +339,10 @@ describe("Android Play manifest policy", () => {
       expect(ANDROID_CLOUD_STRIPPED_PERMISSIONS).toContain(permission);
     }
     expect(ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES).toEqual([
-      "lib/arm64-v8a/libdatastore_shared_counter.so",
-      "lib/armeabi-v7a/libdatastore_shared_counter.so",
-      "lib/x86/libdatastore_shared_counter.so",
-      "lib/x86_64/libdatastore_shared_counter.so",
+      "base/lib/arm64-v8a/libdatastore_shared_counter.so",
+      "base/lib/armeabi-v7a/libdatastore_shared_counter.so",
+      "base/lib/x86/libdatastore_shared_counter.so",
+      "base/lib/x86_64/libdatastore_shared_counter.so",
     ]);
     expect(ANDROID_PLAY_ALLOWED_PERMISSIONS).toContain(
       "android.permission.MODIFY_AUDIO_SETTINGS",

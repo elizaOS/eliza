@@ -6200,10 +6200,10 @@ export const ANDROID_PLAY_ALLOWED_QUERY_ACTIONS = Object.freeze([
 // cross-process shared-counter JNI helper. Keep an exact ABI allowlist so a
 // local-agent or inference library still cannot leak into the Cloud client.
 export const ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES = Object.freeze([
-  "lib/arm64-v8a/libdatastore_shared_counter.so",
-  "lib/armeabi-v7a/libdatastore_shared_counter.so",
-  "lib/x86/libdatastore_shared_counter.so",
-  "lib/x86_64/libdatastore_shared_counter.so",
+  "base/lib/arm64-v8a/libdatastore_shared_counter.so",
+  "base/lib/armeabi-v7a/libdatastore_shared_counter.so",
+  "base/lib/x86/libdatastore_shared_counter.so",
+  "base/lib/x86_64/libdatastore_shared_counter.so",
 ]);
 
 export function resolveAndroidCloudAllowedNativeLibraries(env = process.env) {
