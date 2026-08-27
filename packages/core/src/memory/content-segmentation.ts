@@ -8,6 +8,7 @@
  * concatenation of segment bytes is byte-identical to the source.
  */
 import { createHash, randomUUID } from "node:crypto";
+import { ElizaError } from "../errors.ts";
 
 /** Maximum byte length of one stored source segment. Must not split a code point. */
 export const MEMORY_SEGMENT_BYTES = 128 * 1024;
@@ -62,14 +63,13 @@ export interface ComputedSegmentation {
 	descriptor: MemoryContentSegmentation;
 }
 
-export class MemorySegmentationError extends Error {
+export class MemorySegmentationError extends ElizaError {
 	constructor(
 		message: string,
-		readonly code: string,
-		readonly context: Record<string, unknown> = {},
+		code: string,
+		context: Record<string, unknown> = {},
 	) {
-		super(message);
-		this.name = "MemorySegmentationError";
+		super(message, { code, context });
 	}
 }
 
