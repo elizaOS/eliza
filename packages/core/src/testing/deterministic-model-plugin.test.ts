@@ -210,5 +210,150 @@ describe("createDeterministicModelPlugin", () => {
 	it("registers only text-generation models", () => {
 		const plugin = createDeterministicModelPlugin();
 		expect(plugin.models?.[ModelType.TEXT_EMBEDDING]).toBeUndefined();
+		expect(plugin.models?.[ModelType.TEXT_EMBEDDING_BATCH]).toBeUndefined();
+	});
+});
+
+function embeddingHandler(
+	plugin: ReturnType<typeof createDeterministicModelPlugin>,
+	type:
+		| typeof ModelType.TEXT_EMBEDDING
+		| typeof ModelType.TEXT_EMBEDDING_BATCH = ModelType.TEXT_EMBEDDING,
+) {
+	const handler = plugin.models?.[type];
+	if (!handler) throw new Error(`missing deterministic handler for ${type}`);
+	return handler;
+}
+
+function bytesOf(vector: number[]): Buffer {
+	return Buffer.from(new Float64Array(vector).buffer);
+}
+
+describe("createDeterministicModelPlugin embeddings", () => {
+	it("registers a fixed-dimension TEXT_EMBEDDING contract when enabled", () => {
+		const plugin = createDeterministicModelPlugin({ embeddings: true });
+		expect(plugin.models?.[ModelType.TEXT_EMBEDDING]).toEqual(
+			expect.any(Function),
+		);
+		expect(plugin.models?.[ModelType.TEXT_EMBEDDING_BATCH]).toEqual(
+			expect.any(Function),
+		);
+	});
+
+	it("returns identical vectors for identical normalized inputs across reset", async () => {
+		const plugin = createDeterministicModelPlugin({ embeddings: true });
+		const first = await embeddingHandler(plugin)(runtime, {
+			text: "  Solar  Panel  Yield  ",
+		});
+		plugin.fixtures.resetConsumption();
+		const second = await embeddingHandler(plugin)(runtime, {
+			text: "solar panel yield",
+		});
+		const third = await embeddingHandler(plugin)(runtime, "solar panel yield");
+
+		expect(Array.isArray(first)).toBe(true);
+		expect(first).toHaveLength(384);
+		expect(first.every((value) => Number.isFinite(value))).toBe(true);
+		expect(second).toEqual(first);
+		expect(third).toEqual(first);
+		expect(bytesOf(second).equals(bytesOf(first))).toBe(true);
+		expect(bytesOf(third).equals(bytesOf(first))).toBe(true);
+	});
+
+	it("maps distinct inputs to distinct vectors and honors purpose-built fixtures", async () => {
+		const purposeBuilt = new Array(384).fill(0);
+		purposeBuilt[0] = 1;
+		const plugin = createDeterministicModelPlugin({
+			embeddings: true,
+			fixtures: [
+				{
+					name: "arid-solar",
+					match: {
+						modelType: ModelType.TEXT_EMBEDDING,
+						input: "photovoltaic yield under arid conditions",
+					},
+					response: purposeBuilt,
+					times: "any",
+				},
+			],
+		});
+
+		const mapped = await embeddingHandler(plugin)(runtime, {
+			text: "photovoltaic yield under arid conditions",
+		});
+		const hashed = await embeddingHandler(plugin)(runtime, {
+			text: "weekly grocery list milk eggs bread",
+		});
+
+		expect(mapped).toEqual(purposeBuilt);
+		expect(hashed).not.toEqual(purposeBuilt);
+		expect(hashed).toHaveLength(384);
+	});
+
+	it("answers the null dimension probe with a zero vector of the declared width", async () => {
+		const plugin = createDeterministicModelPlugin({
+			embeddings: { dimension: 8 },
+		});
+		await expect(embeddingHandler(plugin)(runtime, null)).resolves.toEqual(
+			new Array(8).fill(0),
+		);
+		expect(plugin.getFixtureDiagnostics().calls).toEqual([]);
+	});
+
+	it("fails visibly for unmatched strict fixtures and invalid vectors", async () => {
+		const strict = createDeterministicModelPlugin({
+			embeddings: { strict: true, dimension: 4 },
+		});
+		await expect(
+			embeddingHandler(strict)(runtime, { text: "unregistered" }),
+		).rejects.toThrow("no fixture matched");
+
+		const invalid = createDeterministicModelPlugin({
+			embeddings: { dimension: 4 },
+			fixtures: [
+				{
+					name: "wrong-width",
+					match: { modelType: ModelType.TEXT_EMBEDDING, input: "bad" },
+					response: [1, 2],
+				},
+			],
+		});
+		await expect(
+			embeddingHandler(invalid)(runtime, { text: "bad" }),
+		).rejects.toThrow("invalid embedding vector");
+
+		const nonFinite = createDeterministicModelPlugin({
+			embeddings: { dimension: 2 },
+			fixtures: [
+				{
+					name: "nan-vector",
+					match: { modelType: ModelType.TEXT_EMBEDDING, input: "nan" },
+					response: [Number.NaN, 1],
+				},
+			],
+		});
+		await expect(
+			embeddingHandler(nonFinite)(runtime, { text: "nan" }),
+		).rejects.toThrow("invalid embedding vector");
+	});
+
+	it("embeds a batch with the same per-text contract", async () => {
+		const plugin = createDeterministicModelPlugin({
+			embeddings: { dimension: 8 },
+		});
+		const [first] = (await embeddingHandler(
+			plugin,
+			ModelType.TEXT_EMBEDDING_BATCH,
+		)(runtime, { texts: ["alpha"] })) as number[][];
+		plugin.fixtures.resetConsumption();
+		const [again, other] = (await embeddingHandler(
+			plugin,
+			ModelType.TEXT_EMBEDDING_BATCH,
+		)(runtime, { texts: ["alpha", "beta"] })) as number[][];
+
+		expect(again).toEqual(first);
+		expect(other).not.toEqual(first);
+		expect(again).toHaveLength(8);
+		expect(other).toHaveLength(8);
 	});
 });

@@ -21,6 +21,7 @@ import {
 } from "@elizaos/core";
 import {
   createDeterministicModelPlugin,
+  DETERMINISTIC_EMBEDDING_DIMENSION,
   type DeterministicModelDiagnostics,
   type DeterministicModelFixtureRegistry,
   type LiveProviderConfig,
@@ -176,6 +177,12 @@ export function disableScenarioEmbeddingCapability(
   runtime.setSetting(CANONICAL_EMBEDDING_CAPABILITY_SETTING, false, false);
 }
 
+export function enableScenarioDeterministicEmbeddingCapability(
+  runtime: Pick<AgentRuntime, "setSetting">,
+): void {
+  runtime.setSetting(CANONICAL_EMBEDDING_CAPABILITY_SETTING, true, false);
+}
+
 function isPlugin(value: unknown): value is Plugin {
   return (
     value !== null &&
@@ -250,6 +257,7 @@ export interface CreateScenarioRuntimeOptions {
   preferredProvider?: LiveProviderName;
   extraPlugins?: Plugin[];
   useDeterministicModel?: boolean;
+  useDeterministicEmbeddings?: boolean;
   executionProfile?: ScenarioExecutionProfile;
   requiredPlugins?: readonly string[];
   isolateFilesystemState?: boolean;
@@ -401,6 +409,20 @@ export function shouldUseDeterministicModel(
     options.useDeterministicModel === true ||
     envFlag(env.SCENARIO_USE_DETERMINISTIC_MODEL) ||
     envFlag(env.ELIZA_SCENARIO_USE_DETERMINISTIC_MODEL)
+  );
+}
+
+export function shouldUseDeterministicEmbeddings(
+  options: Pick<
+    CreateScenarioRuntimeOptions,
+    "useDeterministicEmbeddings"
+  > = {},
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return (
+    options.useDeterministicEmbeddings === true ||
+    envFlag(env.SCENARIO_USE_DETERMINISTIC_EMBEDDINGS) ||
+    envFlag(env.ELIZA_SCENARIO_USE_DETERMINISTIC_EMBEDDINGS)
   );
 }
 
@@ -980,17 +1002,28 @@ export async function createScenarioRuntime(
     createBasicCapabilitiesPlugin({ advancedCapabilities: true }),
   );
 
-  // Simulated scenarios omit embeddings because their assertions do not score
-  // semantic retrieval. AgentRuntime treats an absent embedding provider as an
-  // explicit disabled capability, avoiding both model downloads and fabricated
-  // vectors. Provider-qualified runs retain the production local provider.
+  // Simulated scenarios omit live embeddings because their assertions do not
+  // score semantic retrieval by default. AgentRuntime treats an absent embedding
+  // provider as an explicit disabled capability. Semantic-recall scenarios can
+  // opt into the deterministic TEXT_EMBEDDING surface instead of downloading a
+  // model. Provider-qualified runs retain the production local provider.
+  const useDeterministicEmbeddings =
+    providerConfig.name === DETERMINISTIC_MODEL_PROVIDER_NAME &&
+    shouldUseDeterministicEmbeddings(options);
   const skipEmbeddingPlugin =
     executionProfile === "simulated" &&
+    !useDeterministicEmbeddings &&
     (process.env.ELIZA_BENCH_SKIP_EMBEDDING ?? "1") !== "0";
   if (skipEmbeddingPlugin) {
     logger.info(
       "[scenario-runner] Embedding generation is disabled for the simulated profile; " +
-        "set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-inference.",
+        "set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-inference " +
+        "or SCENARIO_USE_DETERMINISTIC_EMBEDDINGS=1 for the fixture-backed surface.",
+    );
+  } else if (useDeterministicEmbeddings) {
+    logger.info(
+      "[scenario-runner] Using deterministic TEXT_EMBEDDING for the simulated profile; " +
+        "plugin-local-inference is not loaded.",
     );
   } else {
     const localEmbedding = (await import(
@@ -1004,6 +1037,8 @@ export async function createScenarioRuntime(
   applyRuntimeSettings(runtime, providerConfig.env);
   if (skipEmbeddingPlugin) {
     disableScenarioEmbeddingCapability(runtime);
+  } else if (useDeterministicEmbeddings) {
+    enableScenarioDeterministicEmbeddingCapability(runtime);
   }
   if (providerConfig.name === DETERMINISTIC_MODEL_PROVIDER_NAME) {
     if (!testMocks) {
@@ -1019,6 +1054,9 @@ export async function createScenarioRuntime(
         modelFixtureMode === "legacy-fallback"
           ? resolveScenarioDeterministicModelCall(call)
           : null,
+      embeddings: useDeterministicEmbeddings
+        ? { dimension: DETERMINISTIC_EMBEDDING_DIMENSION }
+        : undefined,
     });
     await runtime.registerPlugin(deterministicModelPlugin);
     const runtimeWithScenarioFixtures = runtime as AgentRuntime & {
