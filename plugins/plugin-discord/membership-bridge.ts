@@ -543,20 +543,30 @@ export function channelCanView(
 		member.permissions ??
 		channel.everyonePermissions ??
 		PermissionsBitField.Default;
-	const memberRoles = new Set(member.roles);
-	if (channel.everyoneRoleId) {
-		memberRoles.add(channel.everyoneRoleId);
-	}
+	// Stage 1: the channel's @everyone overwrite applies on its own, BEFORE
+	// the combined member-role stage (discord.js order): allow beats deny
+	// within the stage, and its deny removes base grants.
+	let everyoneAllow = 0n;
+	let everyoneDeny = 0n;
+	// Stage 2: combined overwrites of the member's other roles.
 	let roleAllow = 0n;
 	let roleDeny = 0n;
 	let memberAllow = 0n;
 	let memberDeny = 0n;
 	let hasMemberOverwrite = false;
+	const everyoneRoleId = channel.everyoneRoleId;
 	for (const overwrite of channel.overwrites ?? []) {
 		const isRoleOverwrite = overwrite.type === "role" || overwrite.type === 0;
 		const isMemberOverwrite =
 			overwrite.type === "member" || overwrite.type === 1;
-		if (isRoleOverwrite && memberRoles.has(overwrite.id)) {
+		if (
+			isRoleOverwrite &&
+			everyoneRoleId !== undefined &&
+			overwrite.id === everyoneRoleId
+		) {
+			everyoneAllow |= overwrite.allow ?? 0n;
+			everyoneDeny |= overwrite.deny ?? 0n;
+		} else if (isRoleOverwrite && member.roles.includes(overwrite.id)) {
 			roleAllow |= overwrite.allow ?? 0n;
 			roleDeny |= overwrite.deny ?? 0n;
 		} else if (isMemberOverwrite && overwrite.id === member.id) {
@@ -566,6 +576,7 @@ export function channelCanView(
 			memberDeny = overwrite.deny ?? 0n;
 		}
 	}
+	resolved = (resolved & ~everyoneDeny) | everyoneAllow;
 	resolved = (resolved & ~roleDeny) | roleAllow;
 	if (hasMemberOverwrite) {
 		resolved = (resolved & ~memberDeny) | memberAllow;

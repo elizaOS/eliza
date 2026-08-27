@@ -679,6 +679,25 @@ describe("RP round-2 regression battery (#24365 review findings)", () => {
 				makeMember({ id: "u8", roles: ["r-other"], permissions: ADMIN | VIEW }),
 			),
 		).toBe(true);
+		// RP r3: the @everyone overwrite is its OWN stage BEFORE the combined
+		// role stage — an @everyone allow plus a member-role deny must DENY
+		// (combining them into one stage would wrongly allow).
+		const chan5 = makeChannel({ id: "ordering-chan-5" });
+		chan5.overwrites.push({ id: "@everyone", type: "role", allow: VIEW });
+		chan5.overwrites.push({ id: "r-deny", type: "role", deny: VIEW });
+		expect(
+			channelCanView(
+				chan5,
+				makeMember({ id: "u9", roles: ["r-deny"], permissions: 0n }),
+			),
+		).toBe(false);
+		// ...while the @everyone allow alone still grants view.
+		expect(
+			channelCanView(
+				chan5,
+				makeMember({ id: "u10", roles: [], permissions: 0n }),
+			),
+		).toBe(true);
 	});
 
 	// F2: snapshot keys must change when roster CONTENT changes even when

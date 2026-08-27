@@ -1366,11 +1366,11 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 
 				// Canonical membership evidence (#24365): a role permission change
 				// can flip channel visibility for every member holding the role.
-				// Recompute the member's aggregate guild bitfield with and
-				// without the changed role's contribution, so permissions from
-				// the member's OTHER roles are preserved (replacing the aggregate
-				// with the changed role's bitfield alone would lose them).
-				// Degrade-only, after the existing event flow.
+				// Recompute the member's aggregate from their OTHER live roles so
+				// overlapping grants from unchanged roles survive the transition
+				// (bit-masking the changed role off the old aggregate would
+				// remove bits those roles also grant). Degrade-only, after the
+				// existing event flow.
 				if (typeof service.publishMemberPermissionDelta === "function") {
 					for (const member of newRole.guild.members.cache.values()) {
 						if (!member.roles.cache.has(newRole.id)) {
@@ -1378,12 +1378,14 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 						}
 						try {
 							const base = asMemberLike(member);
-							const withoutChangedRole =
-								member.permissions.bitfield & ~oldRole.permissions.bitfield;
-							const oldAggregate =
-								withoutChangedRole | oldRole.permissions.bitfield;
-							const newAggregate =
-								withoutChangedRole | newRole.permissions.bitfield;
+							let otherRoles = 0n;
+							for (const role of member.roles.cache.values()) {
+								if (role.id !== newRole.id) {
+									otherRoles |= role.permissions.bitfield;
+								}
+							}
+							const oldAggregate = otherRoles | oldRole.permissions.bitfield;
+							const newAggregate = otherRoles | newRole.permissions.bitfield;
 							await service.publishMemberPermissionDelta({
 								accountId,
 								guild: newRole.guild,
@@ -1669,17 +1671,27 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 					return;
 				}
 				const allGuilds = [...service.client.guilds.cache.values()];
-				const shards = service.client.ws.shards as unknown as
-					| Array<{
-							id: number;
-							guilds?: Set<string>;
-					  }>
-					| undefined;
-				const shardGuilds = allGuilds.filter(
-					(guild) =>
-						shards?.find((shard) => shard.guilds?.has(guild.id))?.id ===
-						shardId,
-				);
+				// discord.js stamps each guild with its owning shard id
+				// (GUILD_CREATE handler); fall back to the shard-count formula
+				// for guilds that somehow lack it. Shards without a total
+				// count (single-shard clients) resnapshot everything.
+				const shardOptions = service.client.options.shards;
+				const shardCount = Array.isArray(shardOptions)
+					? shardOptions.length
+					: typeof service.client.options.shardCount === "number"
+						? service.client.options.shardCount
+						: service.client.ws.shards.size;
+				const shardGuilds = allGuilds.filter((guild) => {
+					const guildShard = (guild as { shardId?: number }).shardId;
+					if (typeof guildShard === "number") {
+						return guildShard === shardId;
+					}
+					return (
+						typeof shardCount === "number" &&
+						shardCount > 1 &&
+						Number(BigInt(guild.id) >> 22n) % shardCount === shardId
+					);
+				});
 				// Single-shard clients or shards that do not report their
 				// guild set: conservatively resnapshot all cached guilds.
 				const targets = shardGuilds.length > 0 ? shardGuilds : allGuilds;
