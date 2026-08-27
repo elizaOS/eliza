@@ -8,6 +8,13 @@ import {
   runMultiAgentArena,
 } from "./multi-agent-arena.ts";
 import {
+  AUTONOMOUS_LIGHTHOUSE_SCOPED_FACTS,
+  AUTONOMOUS_LIGHTHOUSE_SEATS,
+  AUTONOMOUS_LIGHTHOUSE_TURNS,
+  autonomousLighthouseDealReached,
+  evaluateAutonomousLighthouseAssertions,
+} from "./multi-agent-sales-autonomous.ts";
+import {
   evaluateLighthouseAssertions,
   LIGHTHOUSE_PRIVATE_FACTS,
   LIGHTHOUSE_SEATS,
@@ -97,19 +104,37 @@ async function main(): Promise<void> {
   const trajectoryDir = path.join(runDir, "trajectories", runId);
   process.env.ELIZA_TRAJECTORY_LOGGING = "1";
   process.env.ELIZA_TRAJECTORY_DIR = trajectoryDir;
+  const autonomousLighthouse = process.argv.includes(
+    "--scenario=lighthouse-autonomous",
+  );
   const lighthouse = process.argv.includes("--scenario=lighthouse");
-  const seats = lighthouse ? LIGHTHOUSE_SEATS : BUILT_IN_ARENA_SEATS;
-  const turns = lighthouse ? LIGHTHOUSE_TURNS : BUILT_IN_ARENA_TURNS;
+  const seats = autonomousLighthouse
+    ? AUTONOMOUS_LIGHTHOUSE_SEATS
+    : lighthouse
+      ? LIGHTHOUSE_SEATS
+      : BUILT_IN_ARENA_SEATS;
+  const turns = autonomousLighthouse
+    ? AUTONOMOUS_LIGHTHOUSE_TURNS
+    : lighthouse
+      ? LIGHTHOUSE_TURNS
+      : BUILT_IN_ARENA_TURNS;
   const report = await runMultiAgentArena({
     seats,
     turns,
     preferredProvider: "cli",
-    maxPeerRounds: lighthouse ? 2 : 1,
+    maxPeerRounds: autonomousLighthouse ? 6 : lighthouse ? 2 : 1,
     runId,
     ...(lighthouse
       ? {
           privateFacts: LIGHTHOUSE_PRIVATE_FACTS,
           evaluateAssertions: evaluateLighthouseAssertions,
+        }
+      : {}),
+    ...(autonomousLighthouse
+      ? {
+          scopedFacts: AUTONOMOUS_LIGHTHOUSE_SCOPED_FACTS,
+          evaluateAssertions: evaluateAutonomousLighthouseAssertions,
+          shouldStopPeerRounds: autonomousLighthouseDealReached,
         }
       : {}),
   });

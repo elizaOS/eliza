@@ -55,6 +55,20 @@ bun run --cwd packages/scenario-runner eval:sales-lighthouse -- \
   --output=../../reports/multi-agent-arena/lighthouse.json
 ```
 
+Run the next-level autonomous variant with one human kickoff. Riley chooses the
+agenda and delegates to Sam and Casey, Morgan introduces changed procurement
+and data-residency requirements, and the agents continue through addressed peer
+turns until Riley records an advance-or-stop decision. Relationship-scoped
+facts are seeded only into their authorized runtime stores, and the negotiation
+is capped at six peer rounds as a safety bound:
+
+```bash
+ELIZA_CHAT_VIA_CLI=codex \
+ELIZA_CLI_CODEX_BIN=/absolute/path/to/codex \
+bun run --cwd packages/scenario-runner eval:sales-lighthouse-autonomous -- \
+  --output=../../reports/multi-agent-arena/lighthouse-autonomous.json
+```
+
 ## When2Speak Stage-1 evaluation
 
 Run the full labeled JSONL through the same `runV5MessageRuntimeStage1` model
