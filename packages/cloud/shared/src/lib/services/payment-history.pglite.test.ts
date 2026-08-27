@@ -1968,4 +1968,65 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
     // The dispute's own reinstatement overturned it: 0 outstanding, not 40.
     expect(row?.unrecoveredShortfallCredits).toBe(0);
   });
+
+  test("mixed-provenance reinstatement (reference present, legacy clawback without) still overturns its dispute (#26752 r8)", async () => {
+    // RP r8 finding: a legacy clawback without reference derives the
+    // fallback authority "dispute:fallback:<key>", while a later
+    // reinstatement WITH reference derives "dispute <id>" — different
+    // spellings of the same dispute never paired. The reinstatement
+    // credits both spellings (its clawback_key names the clawback row's
+    // key), so either provenance reaches the debt entry.
+    const request = await insertStripePaymentRequest({
+      organizationId,
+      amountCents: 10000,
+      status: "settled",
+      settlementTxRef: "pi_mixed_provenance",
+      settledAt: new Date(),
+    });
+    await insertReceipt({
+      organizationId,
+      paymentRequestId: request.id,
+      providerTxRef: "pi_mixed_provenance",
+      amountCents: 10000,
+    });
+    // LEGACY clawback: no reference — fallback authority
+    // dispute:fallback:stripe:dispute:dp_mixed:4000.
+    await insertReversal({
+      organizationId,
+      type: "clawback",
+      amount: "-40",
+      paymentIntentId: "pi_mixed_provenance",
+      source: "charge.dispute.funds_withdrawn",
+      reversedUsd: 40,
+      unrecoveredUsd: 0,
+      cumulativeTargetUsd: 40,
+      createdAt: new Date("2026-08-20T10:00:00.000Z"),
+      idempotencyKey: "stripe:dispute:dp_mixed:4000",
+    });
+    // Reinstatement WITH reference AND clawback_key: the reference-derived
+    // authority ("dispute dp_mixed") does not exist as a debt entry — the
+    // clawback_key spelling does and receives the credit.
+    await dbWrite.insert(creditTransactions).values({
+      organization_id: organizationId,
+      amount: "40",
+      type: "refund",
+      description: "charge.dispute.funds_reinstated test row",
+      stripe_payment_intent_id: "stripe:dispute:dp_mixed:4000:reinstated",
+      metadata: {
+        payment_intent_id: "pi_mixed_provenance",
+        source: "charge.dispute.funds_reinstated",
+        reference: "dispute dp_mixed",
+        clawback_key: "stripe:dispute:dp_mixed:4000",
+      },
+      created_at: new Date("2026-08-20T11:00:00.000Z"),
+    });
+
+    const rows = await paymentHistoryService.listPaymentStates(organizationId);
+    const row = rows.find((r) => r.id === `payment_request:${request.id}`);
+    expect(row).toBeDefined();
+    expect(row?.paymentState).toBe("dispute_reinstated");
+    expect(row?.reinstatedCredits).toBe(40);
+    // Either spelling reaches the dispute's debt: overturned, 0 not 40.
+    expect(row?.unrecoveredShortfallCredits).toBe(0);
+  });
 });
