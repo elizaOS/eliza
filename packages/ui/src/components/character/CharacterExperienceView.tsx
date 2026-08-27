@@ -2,7 +2,7 @@
  * Renders the character experience page for inspecting and editing agent
  * persona-facing fields.
  */
-import { useCallback, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { client } from "../../api/client";
 import type { ExperienceRecord } from "../../api/client-types";
 import { useFetchData } from "../../hooks/useFetchData";
@@ -14,11 +14,14 @@ import { mapExperienceRecordToHubRecord } from "./character-hub-helpers";
 /**
  * The Experience section of the Character family (#13591): the agent's learned
  * experiences, editable/deletable. Owns just the experiences fetch (not the
- * hub's other reads), so opening it never pulls data it doesn't render. Renders
- * a headerless body — the shared `CharacterSectionNav` supplies the "Character"
- * header + section strip in the shell nav slot.
+ * hub's other reads), so opening it never pulls data it doesn't render. The
+ * host supplies Character-family chrome as part of this view's framed page.
  */
-export function CharacterExperienceView() {
+export function CharacterExperienceView({
+  pageChrome,
+}: {
+  pageChrome?: ReactNode;
+}) {
   const fetchState = useFetchData<ExperienceRecord[]>(async () => {
     const response = await client.listExperiences({ limit: 100 });
     return response.experiences;
@@ -99,7 +102,11 @@ export function CharacterExperienceView() {
   return (
     <ShellViewAgentSurface viewId="experience">
       <FramedPage>
-        <FramedPageBody className="gap-4 pt-1">
+        {pageChrome}
+        <FramedPageBody
+          padded={false}
+          className="gap-4 pt-1 [@media(min-width:768px)_and_(min-height:600px)]:px-6 lg:px-8"
+        >
           {error ? (
             <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
               {error}

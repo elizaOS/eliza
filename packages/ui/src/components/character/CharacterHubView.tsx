@@ -230,7 +230,7 @@ export function CharacterHubView({
       <FramedPageBody
         scroll="page"
         padded={false}
-        className="sm:px-6 lg:px-8"
+        className="[@media(min-width:768px)_and_(min-height:600px)]:px-6 lg:px-8"
         data-testid="character-editor-view"
       >
         <div className="flex min-w-0 flex-col pt-1">

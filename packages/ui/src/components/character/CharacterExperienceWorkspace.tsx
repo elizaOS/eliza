@@ -869,7 +869,7 @@ export function CharacterExperienceWorkspace({
           </div>
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-4">
+        <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 lg:grid-cols-4">
           <StatTile
             label="Captured"
             value={String(stats.total)}

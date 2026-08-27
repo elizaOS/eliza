@@ -477,18 +477,21 @@ function ViewSurfaceFrame({
   children,
   declaration,
   nav,
+  suppressHeader = false,
   title,
 }: {
   children: ReactNode;
   declaration: SurfaceManifestBearer | null | undefined;
   nav?: ReactNode;
+  suppressHeader?: boolean;
   title: string;
 }) {
   const manifest = resolveRoutedSurfaceManifest(declaration);
   if (manifest.layout.topology === "ambient") {
     return <>{children}</>;
   }
-  const showHeader = manifest.header === "normal" && nav === undefined;
+  const showHeader =
+    manifest.header === "normal" && nav === undefined && !suppressHeader;
   return (
     <AppWorkspaceContent
       nav={nav}
@@ -610,8 +613,10 @@ const APP_SHELL_VIEW_PROPS = {
 
 function RegisteredAppShellPage({
   registration,
+  viewProps,
 }: {
   registration: AppShellPageRegistration;
+  viewProps?: Record<string, unknown>;
 }) {
   const bridge = requireRegisteredAgentSurface(
     appShellAgentSurfaceDescriptor(registration),
@@ -619,13 +624,13 @@ function RegisteredAppShellPage({
   let content: ReactNode;
   if (registration.Component) {
     const Component = registration.Component;
-    content = <Component />;
+    content = <Component {...viewProps} />;
   } else if (registration.loader) {
     content = (
       <RetainedLazyComponent
         loader={registration.loader}
         cacheKey={registration.id}
-        componentProps={APP_SHELL_VIEW_PROPS}
+        componentProps={{ ...APP_SHELL_VIEW_PROPS, ...viewProps }}
         fallback={
           <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center text-sm text-muted">
             Loading {registration.label}…
@@ -1153,10 +1158,19 @@ function findRemoteViewForRoute(
   );
 }
 
-function renderRemoteView(view: ViewRegistryEntry, nav?: ReactNode): ReactNode {
+function renderRemoteView(
+  view: ViewRegistryEntry,
+  nav?: ReactNode,
+  viewProps?: Record<string, unknown>,
+): ReactNode {
   if (!view.bundleUrl && !view.frameUrl) return null;
   return (
-    <ViewSurfaceFrame declaration={view} nav={nav} title={view.label}>
+    <ViewSurfaceFrame
+      declaration={view}
+      nav={nav}
+      suppressHeader={Boolean(viewProps?.pageChrome)}
+      title={view.label}
+    >
       <DynamicViewLoader
         bundleUrl={view.bundleUrl}
         frameUrl={view.frameUrl}
@@ -1165,6 +1179,7 @@ function renderRemoteView(view: ViewRegistryEntry, nav?: ReactNode): ReactNode {
         viewType={view.viewType}
         reserveChatClearance={false}
         surface={view.surface}
+        viewProps={viewProps}
       />
     </ViewSurfaceFrame>
   );
@@ -1470,17 +1485,13 @@ function buildStaticTabRenderers(): Record<
       <ViewUnavailableFallback viewId="documents" pageLayout={pageLayout} />
     ),
     experience: ({ characterNav, pageLayout }) => (
-      <AppWorkspaceContent nav={characterNav} pageLayout={pageLayout}>
-        <LazyCharacterExperienceView />
+      <AppWorkspaceContent pageLayout={pageLayout} reserveChatClearance={false}>
+        <LazyCharacterExperienceView pageChrome={characterNav} />
       </AppWorkspaceContent>
     ),
     "character-skills": ({ characterNav, pageLayout }) => (
-      <AppWorkspaceContent
-        nav={characterNav}
-        pageLayout={pageLayout}
-        reserveChatClearance={false}
-      >
-        <LazyCharacterSkillsView />
+      <AppWorkspaceContent pageLayout={pageLayout} reserveChatClearance={false}>
+        <LazyCharacterSkillsView pageChrome={characterNav} />
       </AppWorkspaceContent>
     ),
     memories: wrapOverlayAware(<LazyMemoryViewerView />),
@@ -1644,6 +1655,17 @@ function renderViewRouterContent({
   const walletNav = isWalletSectionPath(navigationPath) ? (
     <WalletSectionNav activePath={navigationPath} />
   ) : undefined;
+  const characterFamilyPath = isCharacterSectionPath(navigationPath);
+  const characterRelationshipsTab =
+    resolveBuiltinTabId(tab) === "relationships";
+  const characterNav =
+    characterFamilyPath || characterRelationshipsTab ? (
+      <CharacterSectionNav
+        activePath={
+          characterFamilyPath ? navigationPath : "/apps/relationships"
+        }
+      />
+    ) : undefined;
   // Native-OS feature surfaces are plugin-owned. Prefer the plugin's bundled
   // registration when it is present; retain the legacy renderer only as a
   // compatibility fallback while older builds finish migrating their plugin.
@@ -1681,15 +1703,30 @@ function renderViewRouterContent({
     enabledKinds,
     managedCloudRuntime,
   );
-  const renderAppShellPage = (registration: AppShellPageRegistration) => (
-    <ViewSurfaceFrame
-      declaration={registration}
-      nav={walletNav}
-      title={registration.label}
-    >
-      <RegisteredAppShellPage registration={registration} />
-    </ViewSurfaceFrame>
-  );
+  const renderAppShellPage = (registration: AppShellPageRegistration) => {
+    const registrationCharacterNav =
+      characterNav ??
+      (registration.id === "relationships" ? (
+        <CharacterSectionNav activePath="/apps/relationships" />
+      ) : undefined);
+    return (
+      <ViewSurfaceFrame
+        declaration={registration}
+        nav={registrationCharacterNav ? undefined : walletNav}
+        suppressHeader={Boolean(registrationCharacterNav)}
+        title={registration.label}
+      >
+        <RegisteredAppShellPage
+          registration={registration}
+          viewProps={
+            registrationCharacterNav
+              ? { pageChrome: registrationCharacterNav }
+              : undefined
+          }
+        />
+      </ViewSurfaceFrame>
+    );
+  };
 
   if (
     visibleAppShellPage &&
@@ -1715,7 +1752,16 @@ function renderViewRouterContent({
     appSlug,
   );
   if (remoteView?.bundleUrl || remoteView?.frameUrl) {
-    return renderRemoteView(remoteView, walletNav);
+    const remoteCharacterNav =
+      characterNav ??
+      (remoteView.id === "relationships" ? (
+        <CharacterSectionNav activePath="/apps/relationships" />
+      ) : undefined);
+    return renderRemoteView(
+      remoteView,
+      remoteCharacterNav ? undefined : walletNav,
+      remoteCharacterNav ? { pageChrome: remoteCharacterNav } : undefined,
+    );
   }
   if (visibleAppShellPage) {
     return renderAppShellPage(visibleAppShellPage);
@@ -1741,13 +1787,6 @@ function renderViewRouterContent({
       </ViewSurfaceFrame>
     );
   }
-
-  // Character-family routes (Personality/Relationships/Skills/Experience) share
-  // one "Character" header + section strip in the same nav slot (#13591). Unlike
-  // Wallet, the members are a fixed host-owned set, so the strip is static.
-  const characterNav = isCharacterSectionPath(navigationPath) ? (
-    <CharacterSectionNav activePath={navigationPath} />
-  ) : undefined;
 
   return renderStaticViewRouterTab({
     tab,
