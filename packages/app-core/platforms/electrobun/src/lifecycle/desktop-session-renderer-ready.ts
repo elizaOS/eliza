@@ -43,6 +43,13 @@ export async function reloadRendererAfterDesktopSessionPrime({
 
   try {
     const rendererUrl = await resolveRendererUrl();
+    // A newer generation may have reserved this window while the URL lookup
+    // above was in flight. Only the generation that still owns the
+    // reservation after the await may navigate or log success; a superseded
+    // generation must not clobber the newer generation's window state.
+    if (reloadedGenerationByWindow.get(window) !== backendGeneration) {
+      return false;
+    }
     window.webview.loadURL(rendererUrl);
     logger.info(
       "[Main] Reloaded desktop renderer after loopback session prime",
