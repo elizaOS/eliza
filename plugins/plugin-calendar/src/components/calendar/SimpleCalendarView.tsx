@@ -683,7 +683,7 @@ export function SimpleCalendarView({
     <div
       className="eliza-calendar-source-slot"
       data-testid="simple-calendar-source-manager"
-      data-placement={sourceNotice ? "promoted" : "secondary"}
+      data-placement="promoted"
     >
       <CalendarSourceManager
         sourceHealth={calendar.sources}
@@ -1051,8 +1051,6 @@ export function SimpleCalendarView({
               </PagePanel>
             ) : null}
           </div>
-
-          {sourceNotice ? null : sourceManager}
         </PagePanel.ContentRail>
       </PagePanel.ContentArea>
     </PagePanel.Frame>
