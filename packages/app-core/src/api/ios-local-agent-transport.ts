@@ -892,7 +892,7 @@ async function tryFullBunStreamingResponse(
     { call: runtime.call, addListener: runtime.addListener },
     (error) => {
       console.warn("[ios-local-agent] stream request failed after head", {
-        path: options.path?.slice(0, 120) ?? null,
+        path: options.path ? truncateWellFormed(toWellFormedUnicode(options.path), 120) : null,
         error: error instanceof Error ? error.message : String(error),
       });
     },
@@ -945,7 +945,7 @@ export async function handleIosLocalAgentNativeRequest(
     appendIosBootTrace("native-request", {
       copy: "app-core",
       n: tracedNativeRequests,
-      path: options.path?.slice(0, 120) ?? null,
+      path: options.path ? truncateWellFormed(toWellFormedUnicode(options.path), 120) : null,
     });
   }
   const path = options.path?.trim();

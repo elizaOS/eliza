@@ -10,7 +10,7 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
-import { logger as Logger } from "@elizaos/core";
+import { logger as Logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { AuthStore, type DrizzleDatabase } from "../services/auth-store";
 import {
   appendAuditEvent,
@@ -159,7 +159,7 @@ export async function handleAuthBootstrapRoutes(
     await store.createIdentity({
       id: identityId,
       kind: "owner",
-      displayName: `Cloud user ${claims.sub.slice(0, 8)}`,
+      displayName: `Cloud user ${truncateWellFormed(toWellFormedUnicode(claims.sub), 8)}`,
       createdAt: now,
       passwordHash: null,
       cloudUserId: claims.sub,

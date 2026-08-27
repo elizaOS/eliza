@@ -13,7 +13,7 @@ import {
   resolveDefaultAgentWorkspaceDir,
   resolveUserPath,
 } from "@elizaos/agent";
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { PGLITE_ERROR_CODES } from "@elizaos/plugin-sql";
 import { formatError } from "@elizaos/shared";
 import { resetPluginSqlPgliteSingleton } from "../pglite-auto-reset.js";
@@ -100,8 +100,11 @@ function getPgliteDataDirFromError(err: unknown): string | null {
   }
 
   for (const rawMessage of collectErrorMessages(err)) {
+    const wellFormed = toWellFormedUnicode(rawMessage);
     const message =
-      rawMessage.length > 4096 ? rawMessage.slice(0, 4096) : rawMessage;
+      wellFormed.length > 4096
+        ? truncateWellFormed(wellFormed, 4096)
+        : wellFormed;
     const retryPathMatch = message.match(
       /before retrying:[ \t]{0,16}([^\n]{1,1024}?)(?:[ \t]*$|\.)/,
     );
