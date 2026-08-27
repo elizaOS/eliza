@@ -1,6 +1,6 @@
 # Molecular component duplicate inventory
 
-Scanned 899 maintained React files. 101 exported compositions have a recognized molecular role and at least two atomic dependencies.
+Scanned 899 maintained React files. 102 exported compositions have a recognized molecular role and at least two atomic dependencies.
 
 Clusters share both a role and an atomic dependency signature. Detection creates a review queue; this committed report contains only final dispositions based on product behavior, state ownership, and responsive layout.
 

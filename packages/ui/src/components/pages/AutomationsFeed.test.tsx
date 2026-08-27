@@ -229,9 +229,12 @@ describe("AutomationsFeed", () => {
     render(<AutomationsFeed />);
 
     await screen.findByText("Nightly review");
-    fireEvent.click(screen.getByRole("button", { name: "New automation" }));
-    expect(screen.getByTestId("automation-create-menu")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "New workflow" }));
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "New automation" }),
+      { button: 0, ctrlKey: false },
+    );
+    expect(await screen.findByTestId("automation-create-menu")).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: "New workflow" }));
     expect(await screen.findByTestId("workflow-studio")).toBeTruthy();
     expect(screen.getByLabelText("Workflow name")).toBeTruthy();
   });
@@ -364,7 +367,15 @@ describe("AutomationsFeed", () => {
     expect(screen.queryByRole("button", { name: /create/i })).toBeNull();
     expect(screen.queryByRole("button", { name: "New" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Workflows" }));
+    fireEvent.pointerDown(
+      screen.getByRole("button", {
+        name: "Filter automations, All selected",
+      }),
+      { button: 0, ctrlKey: false },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitemradio", { name: /^Workflows/ }),
+    );
     const workflowEmptyLabel = await screen.findByText("No workflows");
     expect(workflowEmptyLabel.classList.contains("sr-only")).toBe(true);
     expect(
