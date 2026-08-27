@@ -13,6 +13,7 @@
 import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { logger } from "@elizaos/core";
+import { resolveSelfApiCredential } from "@elizaos/shared/runtime-env";
 
 const BUCKET_CAPACITY = 30;
 const REFILL_PER_SECOND = 10;
@@ -35,11 +36,21 @@ const EXEMPT_PATH_MARKERS = [
   "/api/media/",
 ] as const;
 
+let selfCredential: string | null | undefined;
+
 function bearerKey(req: IncomingMessage): string | null {
   const header = req.headers.authorization;
   if (typeof header !== "string" || !header.startsWith("Bearer ")) return null;
   const token = header.slice(7).trim();
   if (!token) return null;
+  // The runtime's own loopback service calls (views client, app-control,
+  // status frames) authenticate with the shared self-API credential. Capping
+  // that shared identity throttles the agent's own actions — observed live as
+  // hung turns — so it is exempt; the cap exists for per-device sessions.
+  if (selfCredential === undefined) {
+    selfCredential = resolveSelfApiCredential(process.env) ?? null;
+  }
+  if (selfCredential !== null && token === selfCredential) return null;
   return createHash("sha256").update(token).digest("hex").slice(0, 16);
 }
 
@@ -105,7 +116,8 @@ export function maybeCapRequestStorm(
   return true;
 }
 
-/** Test-only: reset all buckets. */
+/** Test-only: reset all buckets and re-resolve the self credential. */
 export function __resetRequestStormCapForTests(): void {
   buckets.clear();
+  selfCredential = undefined;
 }

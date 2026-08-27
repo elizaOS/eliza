@@ -74,6 +74,17 @@ describe("request storm cap", () => {
 		}
 	});
 
+	it("never caps the runtime's own self-API credential", () => {
+		process.env.ELIZA_API_TOKEN = "internal-self-token";
+		__resetRequestStormCapForTests();
+		const req = mockReq({ authorization: "Bearer internal-self-token" });
+		for (let i = 0; i < 200; i++) {
+			expect(maybeCapRequestStorm(req, mockRes(), "/api/views")).toBe(false);
+		}
+		delete process.env.ELIZA_API_TOKEN;
+		__resetRequestStormCapForTests();
+	});
+
 	it("isolates budgets per session", () => {
 		const a = mockReq({ authorization: "Bearer session-a" });
 		for (let i = 0; i < 31; i++)
