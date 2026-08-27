@@ -4925,7 +4925,8 @@ function handleRequiredToolPlannerMiss(params: {
 	// re-draft adds prompt tokens (+~100/pass observed live,
 	// tj-28a877e591e5f3) but zero information. When the immediately previous
 	// context event is a required-tool-retry carrying this same draft, count
-	// the miss (caller) and log (above) but leave the transcript unchanged.
+	// the miss (caller) and log (above) but leave the transcript and mirrored
+	// model history unchanged.
 	const draftIdentity = [
 		params.plannerOutput.messageToUser ?? "",
 		...params.plannerOutput.toolCalls.map(toolCallIdentity),
