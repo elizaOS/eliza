@@ -3500,6 +3500,100 @@ async function handleReadStoredMemory(
 	}
 
 	const sourceText = stored.content.text ?? "";
+
+	// #25140: when the adapter exposes native content paging, serve the read
+	// from the segmented store — a bounded page, never the source-sized
+	// parent. Falls through to the inline path only when the adapter reports
+	// the field has no descriptor AND the inline value fits a bounded page.
+	const pageCapable = runtime.getMemoryContentPage;
+	if (pageCapable) {
+		const offset = safeMemoryReadInteger(
+			numberParam(params.offset),
+			"offset",
+			0,
+		);
+		const limit = safeMemoryReadInteger(numberParam(params.limit), "limit");
+		if (
+			offset === undefined ||
+			(params.limit !== undefined && limit === undefined)
+		) {
+			return memoryReadFailure(
+				"MESSAGE_MEMORY_INVALID_RANGE",
+				"Stored-message offset must be a nonnegative safe integer and limit must be a positive safe integer when supplied.",
+			);
+		}
+		const expectedRevision = textParam(params.expectedRevision);
+		if (offset > 0 && !expectedRevision) {
+			return memoryReadFailure(
+				"MESSAGE_MEMORY_EXPECTED_REVISION_REQUIRED",
+				"Stored-message continuation requires expectedRevision.",
+			);
+		}
+		let page: Awaited<ReturnType<NonNullable<typeof pageCapable>>>;
+		try {
+			page = await pageCapable.call(runtime, {
+				memoryId: memoryRef as UUID,
+				field: { kind: "content.text" },
+				byteStart: offset,
+				...(limit === undefined ? {} : { byteLimit: limit }),
+				...(expectedRevision === undefined ? {} : { expectedRevision }),
+			});
+		} catch (error) {
+			// error-policy:J1 the action boundary translates typed paging
+			// failures into structured user-visible replies.
+			if (error instanceof ElizaError) {
+				return memoryReadFailure(
+					error.code ?? "MESSAGE_MEMORY_PAGE_FAILED",
+					error.message,
+					{ currentRevision: error.context?.currentRevision },
+				);
+			}
+			runtime.reportError("MESSAGE.readStoredMemory.page", error, {
+				memoryId: memoryRef,
+			});
+			return memoryReadFailure(
+				"MESSAGE_MEMORY_AUTHORIZATION_UNAVAILABLE",
+				"Stored-message paged read is unavailable.",
+			);
+		}
+		if (page) {
+			const readView = {
+				reference: buildContentReference({
+					kind: "memory",
+					ref: `memory:${memoryRef}`,
+					revision: page.revision,
+				}),
+				slice: buildReadSlice({
+					range: {
+						unit: "byte",
+						start: page.start,
+						end: page.end,
+						total: page.total,
+					},
+					completeness: page.completeness,
+					revision: page.revision,
+					sliceSha256: page.sliceSha256,
+					sourceSha256: page.sourceSha256,
+				}),
+			};
+			const metadata = {
+				actionName: "MESSAGE",
+				operation: "read_channel",
+				messageRef: readView.reference.ref,
+				readView,
+			};
+			return {
+				success: true,
+				text: page.text,
+				values: { success: true, readView },
+				data: metadata,
+				promptData: metadata,
+			};
+		}
+		// page === null: no descriptor and inline fits — continue below on the
+		// marker-free inline value.
+	}
+
 	const bytes = new TextEncoder().encode(sourceText);
 	if (offset > bytes.length || !isUtf8Boundary(bytes, offset)) {
 		return memoryReadFailure(
