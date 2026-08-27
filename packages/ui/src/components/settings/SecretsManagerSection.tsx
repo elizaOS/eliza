@@ -28,6 +28,7 @@ import {
   type VaultTab,
 } from "../../hooks/useSecretsManagerModal";
 import { getShortcutLabel } from "../../hooks/useSecretsManagerShortcut";
+import { SectionTabStrip } from "../shared/SectionNav";
 import { Badge } from "../ui/badge";
 import { Banner } from "../ui/banner";
 import {
@@ -38,7 +39,7 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { Separator } from "../ui/separator";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
+import { Tabs, TabsContent } from "../ui/tabs";
 import { SettingsActionButton } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 import { LoginsTab } from "./vault-tabs/LoginsTab";
@@ -60,6 +61,13 @@ import type {
 } from "./vault-tabs/types";
 
 const HASH_PREFIX = "vault";
+
+const VAULT_SECTION_TABS = [
+  { id: "overview", label: "Overview", testId: "vault-tab-overview" },
+  { id: "secrets", label: "Secrets", testId: "vault-tab-secrets" },
+  { id: "logins", label: "Logins", testId: "vault-tab-logins" },
+  { id: "routing", label: "Routing", testId: "vault-tab-routing" },
+] as const;
 
 function readHashTab(): VaultTab | null {
   if (typeof window === "undefined") return null;
@@ -600,20 +608,16 @@ export function VaultWorkspace({
               onValueChange={onTabChange}
               className="flex min-h-0 flex-1 flex-col"
             >
-              <TabsList className="h-9 shrink-0 self-start">
-                <TabsTrigger value="overview" data-testid="vault-tab-overview">
-                  Overview
-                </TabsTrigger>
-                <TabsTrigger value="secrets" data-testid="vault-tab-secrets">
-                  Secrets
-                </TabsTrigger>
-                <TabsTrigger value="logins" data-testid="vault-tab-logins">
-                  Logins
-                </TabsTrigger>
-                <TabsTrigger value="routing" data-testid="vault-tab-routing">
-                  Routing
-                </TabsTrigger>
-              </TabsList>
+              <SectionTabStrip
+                entries={VAULT_SECTION_TABS}
+                activeId={activeTab}
+                onSelect={onTabChange}
+                testId="section-nav-vault"
+                ariaLabel="Vault sections"
+                agentIdPrefix="vault-tab"
+                className="self-start px-0 py-0"
+                tabClassName="max-[360px]:px-2"
+              />
 
               <div className="mt-2 min-h-0 flex-1 overflow-y-auto pr-1">
                 <TabsContent
