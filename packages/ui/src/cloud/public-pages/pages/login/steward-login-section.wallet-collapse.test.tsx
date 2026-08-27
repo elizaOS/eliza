@@ -40,6 +40,11 @@ const mountedWalletCapabilities = vi.hoisted(() => ({
   siws: null as boolean | null,
 }));
 
+const mountedProviderCapabilities = vi.hoisted(() => ({
+  enableEvm: null as boolean | null,
+  enableSolana: null as boolean | null,
+}));
+
 vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => {
   const actual =
     await importOriginal<
@@ -112,9 +117,19 @@ vi.mock("../../lib/login-return-to", () => ({
 // Lazy wallet stack is heavy; for disclosure/intent tests stub both pieces so
 // clicking a chain button can exercise the post-intent lock without RainbowKit.
 vi.mock("../../../billing/wallet/steward-wallet-providers", () => ({
-  StewardWalletProviders: ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
-  ),
+  StewardWalletProviders: ({
+    children,
+    enableEvm,
+    enableSolana,
+  }: {
+    children: React.ReactNode;
+    enableEvm: boolean;
+    enableSolana: boolean;
+  }) => {
+    mountedProviderCapabilities.enableEvm = enableEvm;
+    mountedProviderCapabilities.enableSolana = enableSolana;
+    return <>{children}</>;
+  },
 }));
 
 vi.mock("./wallet-buttons", () => ({
@@ -125,9 +140,13 @@ vi.mock("./wallet-buttons", () => ({
   },
 }));
 
-import StewardLoginSection from "./steward-login-section";
-
-function renderSection() {
+// The section caches provider discovery at module scope. Import a fresh module
+// for each case so one test's served chains cannot leak into the next case.
+async function renderSection() {
+  vi.resetModules();
+  const { default: StewardLoginSection } = await import(
+    "./steward-login-section"
+  );
   return render(
     <MemoryRouter initialEntries={["/login"]}>
       <StewardLoginSection />
@@ -175,6 +194,8 @@ describe("StewardLoginSection wallet collapse (#19217)", () => {
     sessionSpies.hasCookie = false;
     mountedWalletCapabilities.siwe = null;
     mountedWalletCapabilities.siws = null;
+    mountedProviderCapabilities.enableEvm = null;
+    mountedProviderCapabilities.enableSolana = null;
   });
 
   afterEach(() => {
@@ -183,7 +204,7 @@ describe("StewardLoginSection wallet collapse (#19217)", () => {
   });
 
   it("collapses wallet methods behind a two-way disclosure toggle", async () => {
-    renderSection();
+    await renderSection();
 
     // Wait for provider discovery to settle, then the collapsed toggle appears.
     const walletToggle = await screen.findByRole("button", {
@@ -233,7 +254,7 @@ describe("StewardLoginSection wallet collapse (#19217)", () => {
   });
 
   it("locks the disclosure only after wallet intent and moves focus into the live region", async () => {
-    renderSection();
+    await renderSection();
 
     const walletToggle = await screen.findByRole("button", {
       name: /Continue with a wallet/i,
@@ -259,6 +280,10 @@ describe("StewardLoginSection wallet collapse (#19217)", () => {
     expect(screen.queryByRole("button", { name: /EVM wallet/i })).toBeNull();
     expect(await screen.findByTestId("mounted-wallet-buttons")).toBeTruthy();
     expect(mountedWalletCapabilities).toEqual({ siwe: true, siws: true });
+    expect(mountedProviderCapabilities).toEqual({
+      enableEvm: true,
+      enableSolana: true,
+    });
 
     const liveRegion = document.getElementById("steward-wallet-options");
     expect(liveRegion).toBeTruthy();
@@ -267,4 +292,43 @@ describe("StewardLoginSection wallet collapse (#19217)", () => {
     // toggle) after the peer button unmounts and the disclosure locks.
     expect(document.activeElement).toBe(liveRegion);
   });
+
+  it.each([
+    {
+      label: "SIWE-only",
+      siwe: true,
+      siws: false,
+      intentName: /EVM wallet/i,
+    },
+    {
+      label: "SIWS-only",
+      siwe: false,
+      siws: true,
+      intentName: /Solana wallet/i,
+    },
+  ])(
+    "keeps provider initialization inside $label discovery",
+    async ({ siwe, siws, intentName }) => {
+      stewardAuthSpies.getProviders.mockResolvedValue({
+        ...walletProviders(),
+        siwe,
+        siws,
+      });
+      await renderSection();
+
+      fireEvent.click(
+        await screen.findByRole("button", {
+          name: /Continue with a wallet/i,
+        }),
+      );
+      fireEvent.click(await screen.findByRole("button", { name: intentName }));
+
+      expect(await screen.findByTestId("mounted-wallet-buttons")).toBeTruthy();
+      expect(mountedWalletCapabilities).toEqual({ siwe, siws });
+      expect(mountedProviderCapabilities).toEqual({
+        enableEvm: siwe,
+        enableSolana: siws,
+      });
+    },
+  );
 });

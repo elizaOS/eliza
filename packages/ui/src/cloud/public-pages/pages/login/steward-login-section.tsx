@@ -2811,7 +2811,10 @@ export default function StewardLoginSection() {
                   </div>
                 }
               >
-                <StewardWalletProviders>
+                <StewardWalletProviders
+                  enableEvm={providers.siwe === true}
+                  enableSolana={providers.siws === true}
+                >
                   <WalletButtons
                     auth={auth}
                     autoStart={autoStartWallet}
