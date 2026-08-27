@@ -445,6 +445,25 @@ function describeEmailLoginError(error: unknown, fallback: string): string {
   return getErrorMessage(error, fallback);
 }
 
+/**
+ * Session restoration is a background reconcile of leftover browser
+ * credentials. A rate-limit from that unowned path must not blast a global
+ * "Too many requests" alert over the working signed-out form (#27712).
+ * User-initiated login actions keep their own catch blocks.
+ */
+function isUnownedSessionRestoreRateLimit(error: unknown): boolean {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    (error as { status: unknown }).status === 429
+  ) {
+    return true;
+  }
+  const message = error instanceof Error ? error.message.trim() : "";
+  return /^too many requests\b/i.test(message);
+}
+
 let cachedStewardProviders: StewardProviders | null = null;
 let stewardProvidersPromise: Promise<StewardProviders> | null = null;
 let stewardProvidersRequestGeneration = 0;
@@ -1042,7 +1061,9 @@ export default function StewardLoginSection() {
           return;
         }
       } catch (sessionError) {
-        if (!cancelled) {
+        // error-policy:J4 Unowned restore 429s stay off the signed-out form.
+        // Genuine restore failures (expired stored token) still surface.
+        if (!cancelled && !isUnownedSessionRestoreRateLimit(sessionError)) {
           setError(
             getErrorMessage(
               sessionError,
