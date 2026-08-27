@@ -177,11 +177,33 @@ export function CharacterLearnedSkillsSection({
         ) : null}
 
         {isEmpty ? (
-          <div className="py-3 text-xs-tight leading-5 text-muted">
-            {t("learnedskills.empty", {
-              defaultValue:
-                "I haven’t picked up any abilities yet. Browse the catalog or add one by example, and I’ll start using it.",
-            })}
+          <div className="flex max-w-lg flex-col items-start gap-3 py-6 md:mx-auto md:min-h-[50vh] md:items-center md:justify-center md:text-center">
+            <div>
+              <h2 className="text-base font-semibold text-txt">
+                {t("learnedskills.emptyTitle", {
+                  defaultValue: "No learned skills yet",
+                })}
+              </h2>
+              <p className="mt-1 text-sm leading-6 text-muted">
+                {t("learnedskills.empty", {
+                  defaultValue:
+                    "Ask Eliza to practice a capability. Skills that are ready for review will appear here.",
+                })}
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() =>
+                client.sendChatMessage(
+                  "Help me learn a new skill. Ask what capability I want to practice.",
+                )
+              }
+            >
+              {t("learnedskills.startLearning", {
+                defaultValue: "Learn a skill",
+              })}
+            </Button>
           </div>
         ) : null}
       </div>
