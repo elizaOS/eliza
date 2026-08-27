@@ -2000,7 +2000,7 @@ function looksLikeCurrentViewInspection(messageText: string): boolean {
 	const normalized = messageText.replace(/\s+/gu, " ").trim();
 	const inspectionSpans = [
 		...normalized.matchAll(
-			/\b(?:identify|name|tell\s+me|what|which)\b[^,;.!?\n]{0,160}?\b(?:(?:this|the)\s+)?(?:current(?:\s+(?:active|open))?|currently\s+(?:active|open)|active|open)\s+(?:app\s+)?(?:panel|screen|ui|view|window)\b(?:\s+(?:(?:is|remains?|stays?)\s+(?:active|open)|i\s+have\s+open))?/giu,
+			/\b(?:identify|name|tell\s+me|what|which)\b[^,;.!?\n]{0,160}?\b(?:(?:this|the)\s+)?(?:current(?:\s+(?:active|open))?|currently\s+(?:active|open)|active|open)\s+(?:app\s+)?(?:panel|screen|ui|view|window)\b(?:\s+(?:(?:is|remains?|stays?)\s+(?:active|open)|i\s+have\s+open))?|\b(?:(?:this|the)\s+)?(?:current(?:\s+(?:active|open))?|currently\s+(?:active|open)|active)?\s*(?:app\s+)?(?:panel|screen|ui|view|window)\b\s+(?:is|remains?|stays?)\s+(?:active|open)\b/giu,
 		),
 	].map((match) => ({
 		start: match.index ?? 0,
