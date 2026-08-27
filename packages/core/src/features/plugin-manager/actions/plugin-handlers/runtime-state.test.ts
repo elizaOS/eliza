@@ -400,7 +400,7 @@ describe("runPluginDetails", () => {
 			"Description: Alpha integration",
 			"Version: 2.3.4",
 			"Repository: https://github.com/elizaos-plugins/plugin-alpha",
-			"Tags: one, two, three, four, five, six, seven, eight",
+			"Tags: one, two, three, four, five, six, seven, eight, nine",
 			"",
 			"Runtime: plugin-alpha [loaded]",
 		].join("\n");

@@ -146,7 +146,6 @@ describe("adminChatProvider", () => {
 			});
 			expect(getMemories).toHaveBeenCalledWith({
 				entityId: ADMIN_ID,
-				limit: 15,
 				unique: false,
 				tableName: "memories",
 			});

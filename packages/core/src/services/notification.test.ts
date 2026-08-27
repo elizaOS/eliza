@@ -350,7 +350,6 @@ describe("NotificationService", () => {
 		expect(stored).toHaveLength(301);
 		expect(stored?.[0]?.title).toBe("Existing 0");
 		expect(stored?.at(-1)?.title).toBe("Must not evict");
-		expect(stored?.at(-1)?.title).toBe("Existing 299");
 	});
 
 	it("still records when no event bus is present", async () => {
