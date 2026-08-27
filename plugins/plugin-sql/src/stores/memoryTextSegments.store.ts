@@ -15,7 +15,6 @@ import {
   clampPageWindow,
   ElizaError,
   encodeUtf8Strict,
-  MEMORY_PAGE_MAX_BYTES,
   MEMORY_SEGMENTATION_THRESHOLD_BYTES,
   type MemorySegmentField,
   memorySegmentFieldKey,
@@ -68,6 +67,8 @@ function readDescriptors(
   }
   return out;
 }
+
+export { readDescriptors as readSegmentationDescriptors };
 
 /** Merges a segmentation descriptor into parent metadata (pure). */
 export function mergeSegmentationMetadata(
