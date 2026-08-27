@@ -683,6 +683,7 @@ import {
   mergeSegmentationMetadata,
   planSegmentedField,
   readMemoryContentPage,
+  readSegmentationDescriptors,
   retireStaleGenerationsInTransaction,
 } from "./stores/memoryTextSegments.store";
 import type { StoreContext } from "./stores/types";
@@ -4185,6 +4186,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         text: planField({ kind: "content.text" }, content.text),
       };
     }
+    const seenAttachmentIds = new Set<string>();
     if (Array.isArray(content.attachments) && content.attachments.length > 0) {
       let changed = false;
       const attachments = content.attachments.map((attachment) => {
@@ -4200,18 +4202,65 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             (attachment as { id: string }).id.trim()
               ? (attachment as { id: string }).id.trim()
               : "";
-          const field = id ? ({ kind: "attachment.text", attachmentId: id } as const) : null;
-          if (field) {
-            const text = (attachment as { text: string }).text;
-            return {
-              ...attachment,
-              text: planField(field, text),
-            };
+          if (!id) {
+            // A large attachment text without a stable id cannot be given an
+            // owner-bound locator; fail closed rather than leave it inline.
+            throw new ElizaError(
+              "Large attachment text requires a non-empty attachment id for segmented storage",
+              {
+                code: "MEMORY_SEGMENT_ATTACHMENT_ID_REQUIRED",
+              },
+            );
           }
+          if (seenAttachmentIds.has(id)) {
+            throw new ElizaError(
+              "Duplicate attachment ids cannot both be segmented on one memory",
+              {
+                code: "MEMORY_SEGMENT_ATTACHMENT_ID_CONFLICT",
+                context: { attachmentId: id },
+              },
+            );
+          }
+          seenAttachmentIds.add(id);
+          const field = { kind: "attachment.text", attachmentId: id } as const;
+          const text = (attachment as { text: string }).text;
+          return {
+            ...attachment,
+            text: planField(field, text),
+          };
         }
         return attachment;
       });
       if (changed) nextContent = { ...nextContent, attachments };
+    }
+
+    // Descriptor reconciliation: a field that is now small, absent, or no
+    // longer segmented must lose its descriptor so the transactional retirement
+    // below deletes its now-unreferenced segment generation. Without this, a
+    // large->small replacement would keep serving the retired generation.
+    // Liveness keys off the PLANS (the post-planning inline text is the small
+    // marker, not the source, so content size alone cannot decide).
+    const liveFields = new Set<string>();
+    for (const plan of plans) {
+      liveFields.add(
+        plan.field.kind === "content.text"
+          ? "content.text"
+          : `attachment.text:${plan.field.attachmentId}`,
+      );
+    }
+    const segmentationMeta = metadata.segmentation;
+    if (
+      segmentationMeta &&
+      typeof segmentationMeta === "object" &&
+      Object.keys(segmentationMeta).length > 0
+    ) {
+      const kept: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(
+        segmentationMeta as Record<string, unknown>,
+      )) {
+        if (liveFields.has(key)) kept[key] = value;
+      }
+      metadata = { ...metadata, segmentation: kept };
     }
     return { content: nextContent, metadata, plans };
   }
