@@ -50,4 +50,20 @@ describe("parseWorkflowBody", () => {
     );
     expect(regions[0].workflow.steps[0].label).toBe("a");
   });
+
+  it("finds a workflow region with CRLF line endings", () => {
+    const text =
+      'before\r\n[WORKFLOW]\r\n{"steps":[{"label":"crlf-task"}]}\r\n[/WORKFLOW]\r\nafter';
+    const regions = findWorkflowRegions(text);
+    expect(regions).toHaveLength(1);
+    expect(regions[0].workflow.steps[0].label).toBe("crlf-task");
+  });
+
+  it("finds a workflow region with whitespace inside tag brackets", () => {
+    const text =
+      'before\n[  WORKFLOW  ]\n{"steps":[{"label":"spaced-task"}]}\n[  /WORKFLOW  ]\nafter';
+    const regions = findWorkflowRegions(text);
+    expect(regions).toHaveLength(1);
+    expect(regions[0].workflow.steps[0].label).toBe("spaced-task");
+  });
 });
