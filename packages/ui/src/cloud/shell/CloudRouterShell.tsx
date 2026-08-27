@@ -449,11 +449,27 @@ function MarketingDownloadsRoute({
 }
 
 /**
- * Where an authenticated visitor landing on a marketing host is sent. The
- * management-route boundary forwards this path to the canonical managed Cloud
- * app, where it renders inside the normal Eliza agent shell.
+ * Where an authenticated visitor landing on a marketing host is sent when
+ * they did not request a named app intent. The management-route boundary
+ * forwards this path to the canonical managed Cloud app, where it renders
+ * inside the normal Eliza agent shell.
  */
 const APEX_AUTHENTICATED_HOME = "/cloud";
+
+/**
+ * Authenticated marketing-host paths that must keep their named app intent
+ * through the Cloud-app handoff instead of collapsing to
+ * {@link APEX_AUTHENTICATED_HOME}. `/chat` is the launch front door.
+ */
+const APEX_PRESERVED_APP_INTENTS = new Set(["/chat"]);
+
+export function isApexPreservedAuthenticatedIntent(pathname: string): boolean {
+  const normalized =
+    pathname.length > 1 && pathname.endsWith("/")
+      ? pathname.slice(0, -1)
+      : pathname;
+  return APEX_PRESERVED_APP_INTENTS.has(normalized);
+}
 
 /**
  * Catch-all element. Renders the agent app exactly as before, except on a
@@ -465,9 +481,11 @@ const APEX_AUTHENTICATED_HOME = "/cloud";
  * surfaces are registered routes and match before it — so:
  *
  *  - unauthenticated → the Steward `/login` page (`returnTo` preserved).
- *  - authenticated → the Cloud handoff ({@link APEX_AUTHENTICATED_HOME}),
- *    whatever the path: `/`, `/settings`, `/chat`, or any other app-only URL
- *    would otherwise boot the backendless app.
+ *  - authenticated named app intents (`/chat`) → the paired cloud-app origin,
+ *    preserving pathname + search + hash so `staging.eliza.app/chat` lands at
+ *    `cloud-staging.eliza.app/chat`.
+ *  - authenticated any other app-only URL (`/`, `/settings`, unknown deep
+ *    links) → {@link APEX_AUTHENTICATED_HOME} (`/cloud`).
  *  - auth state not yet readable → a blank fallback, never the app; rendering
  *    the app while auth resolves lets its tab system rewrite the URL and
  *    strand the visitor before the redirect can fire.
@@ -499,6 +517,9 @@ export function AppCatchAllRoute({
         `${location.pathname}${location.search}`,
       );
       return <Navigate to={`/login?returnTo=${returnTo}`} replace />;
+    }
+    if (isApexPreservedAuthenticatedIntent(location.pathname)) {
+      return <CanonicalCloudAppRedirect />;
     }
     return <Navigate to={APEX_AUTHENTICATED_HOME} replace />;
   }
@@ -623,7 +644,8 @@ export function CloudRouterShell({
 
           {/* Catch-all: the existing tab/view app (chat is home) — except on
               apex control-plane hosts, where the agent app never boots:
-              unauthenticated → /login, authenticated → the console home.
+              unauthenticated → /login, authenticated /chat → cloud-app
+              origin /chat, other authenticated paths → the console home.
               See AppCatchAllRoute. */}
           <Route
             path="*"
