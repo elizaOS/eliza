@@ -2226,6 +2226,30 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		return true;
 	}
 
+	/**
+	 * Compare-and-swap a cache row under an optimistic revision. Rows written
+	 * before the revision contract count as revision 0, matching the SQL
+	 * adapters' `value->>'revision'` semantics.
+	 */
+	async compareAndSwapCache<T>(
+		key: string,
+		expectedRevision: number | null,
+		nextRevision: number,
+		value: T,
+	): Promise<boolean> {
+		const raw = this.cache.get(key);
+		if (raw === undefined) {
+			if (expectedRevision !== null) return false;
+			this.cache.set(key, JSON.stringify({ ...value, revision: nextRevision }));
+			return true;
+		}
+		const parsed = JSON.parse(raw) as { revision?: number };
+		const stored = parsed.revision ?? 0;
+		if (stored !== expectedRevision) return false;
+		this.cache.set(key, JSON.stringify({ ...value, revision: nextRevision }));
+		return true;
+	}
+
 	async getTasks(params: {
 		roomId?: UUID;
 		worldId?: UUID;

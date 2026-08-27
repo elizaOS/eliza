@@ -1677,6 +1677,19 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	setCaches<T>(entries: Array<{ key: string; value: T }>): Promise<boolean>;
 	deleteCaches(keys: string[]): Promise<boolean>;
 
+	// ── Cache compare-and-swap (additive, ledger-safe) ───────────────────
+	// WHY: setCache is a blind last-writer-wins upsert; durable ledgers (e.g.
+	// the content-manifest shard head, #25141) need optimistic revision
+	// control under concurrent writers. expectedRevision null means "row must
+	// not exist yet"; the new value is written together with nextRevision and
+	// the swap succeeds only when the stored revision matches expected.
+	compareAndSwapCache<T>(
+		key: string,
+		expectedRevision: number | null,
+		nextRevision: number,
+		value: T,
+	): Promise<boolean>;
+
 	// Only task instance methods - definitions are in-memory
 	/**
 	 * Get tasks matching criteria
