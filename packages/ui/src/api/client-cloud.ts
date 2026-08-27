@@ -4629,6 +4629,7 @@ export interface DedicatedAdoptionConfirmationQuote {
   hourlyRateUsd: number;
   dailyRateUsd: number;
   minimumBalanceUsd: number;
+  minimumRunwayDays: number;
   balanceUsd: number;
   deficitUsd: number;
   stateDisposition: DedicatedAdoptionStateDisposition;
@@ -4669,6 +4670,7 @@ function parseDedicatedAdoptionQuote(
   const hourlyRateUsd = finiteNumber(quote?.hourlyRateUsd);
   const dailyRateUsd = finiteNumber(quote?.dailyRateUsd);
   const minimumBalanceUsd = finiteNumber(quote?.minimumBalanceUsd);
+  const minimumRunwayDays = finiteNumber(quote?.minimumRunwayDays);
   const balanceUsd = finiteNumber(quote?.balanceUsd);
   const deficitUsd = finiteNumber(quote?.deficitUsd);
   const stateDisposition = firstString(quote?.stateDisposition);
@@ -4682,6 +4684,7 @@ function parseDedicatedAdoptionQuote(
     hourlyRateUsd === null ||
     dailyRateUsd === null ||
     minimumBalanceUsd === null ||
+    minimumRunwayDays === null ||
     balanceUsd === null ||
     deficitUsd === null ||
     (stateDisposition !== "fresh_boot_no_verified_backup" &&
@@ -4703,6 +4706,7 @@ function parseDedicatedAdoptionQuote(
     hourlyRateUsd,
     dailyRateUsd,
     minimumBalanceUsd,
+    minimumRunwayDays,
     balanceUsd,
     deficitUsd,
     stateDisposition,

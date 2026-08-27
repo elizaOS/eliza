@@ -373,8 +373,9 @@ function dedicatedAdoptionConfirmationText(
   return [
     `${changed}Use your existing Dedicated agent?`,
     "",
+    `Current status: ${quote.status}.`,
     `Hosting: $${quote.hourlyRateUsd.toFixed(2)}/hour ($${quote.dailyRateUsd.toFixed(2)}/day).`,
-    `Balance: $${quote.balanceUsd.toFixed(2)}; minimum required: $${quote.minimumBalanceUsd.toFixed(2)}; deficit: $${quote.deficitUsd.toFixed(2)}.`,
+    `Balance: $${quote.balanceUsd.toFixed(2)}; minimum required: $${quote.minimumBalanceUsd.toFixed(2)} (${quote.minimumRunwayDays} days of runway); deficit: $${quote.deficitUsd.toFixed(2)}.`,
     `This action ${quote.startsCompute ? "starts Dedicated compute" : "does not start new compute"} and will ${disposition}.`,
     "",
     "[CHOICE:first-run id=dedicated-adoption]",

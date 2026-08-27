@@ -1777,6 +1777,7 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
             hourlyRateUsd: 0.01,
             dailyRateUsd: 0.24,
             minimumBalanceUsd: 0.72,
+            minimumRunwayDays: 3,
             balanceUsd: 115.54,
             deficitUsd: 0,
             stateDisposition: "verified_backup_present",
@@ -1812,7 +1813,9 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
       "first-run:dedicated-adoption",
     );
     expect(confirmationTurn.text).toContain("$0.01/hour ($0.24/day)");
+    expect(confirmationTurn.text).toContain("Current status: error");
     expect(confirmationTurn.text).toContain("Balance: $115.54");
+    expect(confirmationTurn.text).toContain("3 days of runway");
     expect(confirmationTurn.text).toContain("starts Dedicated compute");
     expect(confirmationTurn.text).toContain("restore its reviewed backup");
     expect(confirmationTurn.text).not.toContain(quoteId);
