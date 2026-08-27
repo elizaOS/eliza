@@ -572,16 +572,11 @@ export function deterministicScheduledDispatchRenderText(
     .replace(/\s+/g, " ")
     .trim();
   // A deterministic stand-in for the dispatch-render model must be predictable
-  // so scenarios can assert the delivered copy exactly, but the renderer's
-  // instruction-echo guard rejects copy that equals (or, at >=64 chars,
-  // contains) the raw instruction. Prefix the de-framed instruction and clamp
-  // long instructions so the deterministic copy always passes that guard.
+  // so scenarios can assert the delivered copy exactly. Prefixing the de-framed
+  // instruction keeps it distinct from the raw instruction without discarding
+  // any owner-authored content.
   if (!ownerMessage) return "checking in.";
-  const clamped =
-    ownerMessage.length >= 64
-      ? `${ownerMessage.slice(0, 60).trimEnd()}…`
-      : ownerMessage;
-  return `Heads up: ${clamped}`;
+  return `Heads up: ${ownerMessage}`;
 }
 
 // The dispatcher renders a notification TITLE through a second model call
