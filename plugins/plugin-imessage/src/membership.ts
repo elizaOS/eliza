@@ -17,7 +17,13 @@ import type {
   MembershipService,
   UUID,
 } from "@elizaos/core";
-import { ChannelType, createUniqueUuid, ElizaError, logger, ServiceType } from "@elizaos/core";
+import {
+  ChannelType,
+  createUniqueUuid,
+  ElizaError,
+  logger,
+  ServiceType,
+} from "@elizaos/core";
 
 /** Connector id the authority's connector_accounts.provider expects. */
 export const IMESSAGE_MEMBERSHIP_CONNECTOR_ID = "imessage";
@@ -91,7 +97,9 @@ export interface IMessageMembershipRosterSource {
   listChatIds(): readonly string[];
 }
 
-export function isMembershipService(service: unknown): service is MembershipService {
+export function isMembershipService(
+  service: unknown,
+): service is MembershipService {
   return (
     typeof service === "object" &&
     service !== null &&
@@ -100,7 +108,9 @@ export function isMembershipService(service: unknown): service is MembershipServ
   );
 }
 
-export function resolveMembershipService(runtime: IAgentRuntime): MembershipService | null {
+export function resolveMembershipService(
+  runtime: IAgentRuntime,
+): MembershipService | null {
   const service = runtime.getService(ServiceType.MEMBERSHIP);
   return isMembershipService(service) ? service : null;
 }
@@ -112,7 +122,10 @@ export function resolveMembershipService(runtime: IAgentRuntime): MembershipServ
  * [1-8] version-nibble check (stringToUuid-derived ids carry the custom
  * 0x0 version nibble and are rejected).
  */
-export function imessageMembershipPrincipalId(accountKey: string, handle: string): UUID {
+export function imessageMembershipPrincipalId(
+  accountKey: string,
+  handle: string,
+): UUID {
   return uuidV5(`${accountKey}:${handle}`);
 }
 
@@ -172,7 +185,10 @@ interface ScopeTracker {
  * the governed scope health must go unavailable — a denial, never an admit.
  */
 export class IMessageRosterUnavailableError extends ElizaError {
-  constructor(message: string, options?: { cause?: unknown; context?: Record<string, unknown> }) {
+  constructor(
+    message: string,
+    options?: { cause?: unknown; context?: Record<string, unknown> },
+  ) {
     super(message, {
       code: "IMESSAGE_ROSTER_UNAVAILABLE",
       context: options?.context,
@@ -204,16 +220,30 @@ export class IMessageMembershipPublisher {
   /**
    * Direct-chat handle → chat id index built from roster sweeps, so the
    * outbound send gate can resolve a bare phone/email target to its
-   * governed scope without re-reading chat.db.
+   * governed scope without re-reading chat.db. Canonicalized keys are
+   * stored alongside the raw roster handle (which is the principal-name
+   * input) so variant spellings resolve to one gate entry while the
+   * principal id keeps deriving from the roster's own spelling.
    */
-  private readonly directChatByHandle = new Map<string, string>();
+  private readonly directChatByHandle = new Map<
+    string,
+    { chatId: string; rosterHandle: string }
+  >();
+  /**
+   * Canonical outbound-target spelling function (the connector's shared
+   * normalizeIMessageConnectorHandle). Applied to every index key and every
+   * authorizeOutbound lookup.
+   */
+  private readonly normalizeTarget: (value: string) => string;
   /**
    * Optional durable-snapshot hook: invoked with every governed chat id
    * after a successful full sweep so the owning service can persist the
    * scope inventory (e.g. on the connector account row) and fail closed
    * across restarts when chat.db is unavailable.
    */
-  private readonly onRosterCommitted?: (chatIds: readonly string[]) => Promise<void>;
+  private readonly onRosterCommitted?: (
+    chatIds: readonly string[],
+  ) => Promise<void>;
 
   constructor(input: {
     runtime: IAgentRuntime;
@@ -224,14 +254,21 @@ export class IMessageMembershipPublisher {
     /** The local Apple account handle, tagged with the self role. */
     ownHandle?: string | null;
     onRosterCommitted?: (chatIds: readonly string[]) => Promise<void>;
+    /**
+     * Canonical outbound-target spelling (the connector's shared
+     * normalizer). Defaults to identity; the service passes the real one.
+     */
+    normalizeTarget?: (value: string) => string;
   }) {
     this.runtime = input.runtime;
     this.connectorAccountId = input.connectorAccountId;
     this.accountKey = input.accountKey;
     this.service = input.service;
-    this.publisherInstanceId = input.publisherInstanceId ?? `imessage-${randomUUID()}`;
+    this.publisherInstanceId =
+      input.publisherInstanceId ?? `imessage-${randomUUID()}`;
     this.ownHandle = input.ownHandle ?? null;
     this.onRosterCommitted = input.onRosterCommitted;
+    this.normalizeTarget = input.normalizeTarget ?? ((value: string) => value);
   }
 
   /** Per-scope serialization: authority mutations for one scope must chain. */
@@ -266,7 +303,9 @@ export class IMessageMembershipPublisher {
    * durable health row already belongs to this stable publisher identity,
    * re-bind at the same generation instead of resetting the evidence chain.
    */
-  private async ensureRegistered(scope: MembershipScope): Promise<ScopeTracker> {
+  private async ensureRegistered(
+    scope: MembershipScope,
+  ): Promise<ScopeTracker> {
     const tracker = this.trackerFor(scope);
     if (tracker.generation > 0) return tracker;
 
@@ -306,7 +345,9 @@ export class IMessageMembershipPublisher {
   }
 
   /** Re-adopt durable state after a fence collision. */
-  private async readoptFromHealth(scope: MembershipScope): Promise<ScopeTracker> {
+  private async readoptFromHealth(
+    scope: MembershipScope,
+  ): Promise<ScopeTracker> {
     const tracker = this.trackerFor(scope);
     const health = await this.service.getScopeHealth(scope);
     if (health) {
@@ -349,7 +390,7 @@ export class IMessageMembershipPublisher {
       await this.markSourceUnavailable(source, error);
       throw new IMessageRosterUnavailableError(
         "chat.db roster enumeration failed; degrading all imessage membership scopes",
-        { cause: error, context: { accountKey: this.accountKey } }
+        { cause: error, context: { accountKey: this.accountKey } },
       );
     }
     let published = 0;
@@ -362,7 +403,7 @@ export class IMessageMembershipPublisher {
         await this.markSourceUnavailable(source, error);
         throw new IMessageRosterUnavailableError(
           `chat.db roster read failed for chat ${chatId}; degrading all imessage membership scopes`,
-          { cause: error, context: { accountKey: this.accountKey, chatId } }
+          { cause: error, context: { accountKey: this.accountKey, chatId } },
         );
       }
       if (!roster) continue;
@@ -381,10 +422,17 @@ export class IMessageMembershipPublisher {
       committedChatIds.push(chatId);
       // Index direct-chat handles so the outbound send gate can resolve a
       // bare phone/email to its governed scope. Rebuilding on every sweep
-      // keeps the index current as chats are created or deleted.
+      // keeps the index current as chats are created or deleted. Both the
+      // roster's own spelling and the canonicalized spelling map to the
+      // same entry so variant target spellings resolve; the entry keeps
+      // the roster handle because principal ids derive from it.
       if (roster.chatType === "direct") {
         for (const participant of roster.participants) {
-          if (participant.handle) this.directChatByHandle.set(participant.handle, chatId);
+          if (!participant.handle) continue;
+          const entry = { chatId, rosterHandle: participant.handle };
+          this.directChatByHandle.set(participant.handle, entry);
+          const canonical = this.normalizeTarget(participant.handle);
+          if (canonical) this.directChatByHandle.set(canonical, entry);
         }
       }
     }
@@ -406,13 +454,13 @@ export class IMessageMembershipPublisher {
   /** Start the periodic roster sweep. No-op when already running. */
   startSweeping(
     source: IMessageMembershipRosterSource,
-    intervalMs: number = IMESSAGE_MEMBERSHIP_SWEEP_INTERVAL_MS
+    intervalMs: number = IMESSAGE_MEMBERSHIP_SWEEP_INTERVAL_MS,
   ): void {
     if (this.sweepTimer) return;
     this.sweepTimer = setInterval(() => {
       this.sweepRoster(source).catch((error) => {
         logger.warn(
-          `[imessage][membership] periodic roster sweep failed: ${error instanceof Error ? error.message : String(error)}`
+          `[imessage][membership] periodic roster sweep failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       });
     }, intervalMs);
@@ -462,7 +510,8 @@ export class IMessageMembershipPublisher {
       for (let attempt = 0; attempt < 2; attempt++) {
         const sourceVersion = tracker.sourceVersion + 1;
         const sourceCursor = `imessage:${roster.chatId}:${sourceVersion}`;
-        const attemptKey = attempt === 0 ? snapshotKey : `${snapshotKey}:r${attempt}`;
+        const attemptKey =
+          attempt === 0 ? snapshotKey : `${snapshotKey}:r${attempt}`;
         try {
           await this.service.applyCompleteSnapshot({
             ...scope,
@@ -473,7 +522,9 @@ export class IMessageMembershipPublisher {
             sourceVersion,
             previousSourceCursor: tracker.sourceCursor,
             sourceCursor,
-            validUntil: new Date(Date.parse(observedAt) + IMESSAGE_MEMBERSHIP_TTL_MS).toISOString(),
+            validUntil: new Date(
+              Date.parse(observedAt) + IMESSAGE_MEMBERSHIP_TTL_MS,
+            ).toISOString(),
             completeness: "complete",
             members,
             idempotencyKey: attemptKey,
@@ -485,7 +536,10 @@ export class IMessageMembershipPublisher {
           tracker.lastSweepAt = Date.now();
           tracker.degraded = false;
           for (const member of members) {
-            tracker.renewedAt.set(member.canonicalPrincipalId as string, Date.now());
+            tracker.renewedAt.set(
+              member.canonicalPrincipalId as string,
+              Date.now(),
+            );
           }
           return true;
         } catch (error) {
@@ -521,14 +575,25 @@ export class IMessageMembershipPublisher {
       canonicalPrincipalId: UUID;
       roles: readonly string[];
       permissionSnapshot: JsonObject;
-      runtime: { worldId: UUID | null; roomId: UUID | null; entityId: UUID | null };
+      runtime: {
+        worldId: UUID | null;
+        roomId: UUID | null;
+        entityId: UUID | null;
+      };
     }>
   > {
     const roomKey = roster.chatId;
     const derivedRoomId = createUniqueUuid(this.runtime, roomKey);
-    const derivedWorldId = createUniqueUuid(this.runtime, `imessage-world-${roomKey}`);
-    const runtimeRoomId = AUTHORITY_UUID_PATTERN.test(derivedRoomId) ? derivedRoomId : null;
-    const runtimeWorldId = AUTHORITY_UUID_PATTERN.test(derivedWorldId) ? derivedWorldId : null;
+    const derivedWorldId = createUniqueUuid(
+      this.runtime,
+      `imessage-world-${roomKey}`,
+    );
+    const runtimeRoomId = AUTHORITY_UUID_PATTERN.test(derivedRoomId)
+      ? derivedRoomId
+      : null;
+    const runtimeWorldId = AUTHORITY_UUID_PATTERN.test(derivedWorldId)
+      ? derivedWorldId
+      : null;
 
     if (runtimeRoomId) {
       await this.ensureRuntimeRoomRow(runtimeRoomId, roster);
@@ -540,9 +605,15 @@ export class IMessageMembershipPublisher {
     const members = [];
     for (const participant of roster.participants) {
       if (!participant.handle) continue;
-      const principalId = imessageMembershipPrincipalId(this.accountKey, participant.handle);
+      const principalId = imessageMembershipPrincipalId(
+        this.accountKey,
+        participant.handle,
+      );
       await this.ensurePrincipalEntity(principalId, participant.handle);
-      const connectorEntityId = createUniqueUuid(this.runtime, participant.handle);
+      const connectorEntityId = createUniqueUuid(
+        this.runtime,
+        participant.handle,
+      );
       members.push({
         canonicalPrincipalId: principalId,
         roles:
@@ -556,14 +627,19 @@ export class IMessageMembershipPublisher {
         runtime: {
           worldId: runtimeWorldId,
           roomId: runtimeRoomId,
-          entityId: AUTHORITY_UUID_PATTERN.test(connectorEntityId) ? connectorEntityId : null,
+          entityId: AUTHORITY_UUID_PATTERN.test(connectorEntityId)
+            ? connectorEntityId
+            : null,
         },
       });
     }
     return members;
   }
 
-  private async ensurePrincipalEntity(principalId: UUID, handle: string): Promise<void> {
+  private async ensurePrincipalEntity(
+    principalId: UUID,
+    handle: string,
+  ): Promise<void> {
     const existing = await this.runtime.getEntityById?.(principalId);
     if (existing) return;
     await this.runtime.createEntities?.([
@@ -580,7 +656,10 @@ export class IMessageMembershipPublisher {
     ]);
   }
 
-  private async ensureRuntimeRoomRow(roomId: UUID, roster: IMessageRosterRead): Promise<void> {
+  private async ensureRuntimeRoomRow(
+    roomId: UUID,
+    roster: IMessageRosterRead,
+  ): Promise<void> {
     if (this.runtime.getRoom) {
       const room = await this.runtime.getRoom(roomId);
       if (room) return;
@@ -594,7 +673,10 @@ export class IMessageMembershipPublisher {
     });
   }
 
-  private async ensureRuntimeWorldRow(worldId: UUID, roster: IMessageRosterRead): Promise<void> {
+  private async ensureRuntimeWorldRow(
+    worldId: UUID,
+    roster: IMessageRosterRead,
+  ): Promise<void> {
     await this.runtime.createWorld?.({
       id: worldId,
       name: roster.displayName ?? roster.chatId,
@@ -622,7 +704,10 @@ export class IMessageMembershipPublisher {
     return this.serialized(key, async () => {
       const tracker = this.trackerFor(scope);
       if (tracker.degraded) return false;
-      const principalId = imessageMembershipPrincipalId(this.accountKey, input.handle);
+      const principalId = imessageMembershipPrincipalId(
+        this.accountKey,
+        input.handle,
+      );
       const last = tracker.renewedAt.get(principalId as string) ?? 0;
       if (Date.now() - last < IMESSAGE_MEMBERSHIP_RENEWAL_MS) {
         return false;
@@ -654,7 +739,9 @@ export class IMessageMembershipPublisher {
           sourceVersion,
           previousSourceCursor: tracker.sourceCursor,
           sourceCursor,
-          validUntil: new Date(Date.parse(observedAt) + IMESSAGE_MEMBERSHIP_TTL_MS).toISOString(),
+          validUntil: new Date(
+            Date.parse(observedAt) + IMESSAGE_MEMBERSHIP_TTL_MS,
+          ).toISOString(),
           idempotencyKey: renewKey,
           observedAt,
         });
@@ -673,7 +760,7 @@ export class IMessageMembershipPublisher {
           // baseline: skip — the sweep is the authoritative evidence path and
           // the sender's committed snapshot is still valid inside its window.
           logger.debug(
-            `[imessage][membership] renewal skipped (no complete baseline in this publisher generation); roster sweep will re-publish: ${input.chatId}`
+            `[imessage][membership] renewal skipped (no complete baseline in this publisher generation); roster sweep will re-publish: ${input.chatId}`,
           );
           return false;
         }
@@ -727,7 +814,7 @@ export class IMessageMembershipPublisher {
         // local degraded flag (fail-closed admission) and surface the
         // failure — admission still denies.
         logger.warn(
-          `[imessage][membership] scope degrade commit failed (staying degraded): ${error instanceof Error ? error.message : String(error)}`
+          `[imessage][membership] scope degrade commit failed (staying degraded): ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     });
@@ -742,7 +829,7 @@ export class IMessageMembershipPublisher {
    */
   async markSourceUnavailable(
     source: IMessageMembershipRosterSource,
-    cause: unknown
+    cause: unknown,
   ): Promise<void> {
     const reason = `chat.db roster source unavailable: ${cause instanceof Error ? cause.message : String(cause)}`;
     for (const chatId of this.knownChatIds(source)) {
@@ -757,8 +844,13 @@ export class IMessageMembershipPublisher {
       // error-policy:J6 Best-effort enumeration fallback: fall back to the
       // in-memory scope table (keys are <account>:<chatId>) plus the
       // direct-handle index built by prior sweeps.
-      const fromScopes = [...this.scopes.keys()].map((k) => k.split(":").slice(1).join(":"));
-      return [...new Set([...fromScopes, ...this.directChatByHandle.values()])];
+      const fromScopes = [...this.scopes.keys()].map((k) =>
+        k.split(":").slice(1).join(":"),
+      );
+      const fromIndex = [...this.directChatByHandle.values()].map(
+        (entry) => entry.chatId,
+      );
+      return [...new Set([...fromScopes, ...fromIndex])];
     }
   }
 
@@ -766,11 +858,29 @@ export class IMessageMembershipPublisher {
    * Degrade a persisted inventory of governed chat scopes (restart with
    * chat.db unavailable): every scope goes unavailable so stale authority
    * evidence cannot authorize while the roster source cannot be read.
+   * Direct-chat ids in the inventory also repopulate the handle index
+   * (their chat_identifier embeds the counterparty handle), so the
+   * outbound gate resolves bare handles to the degraded scopes instead of
+   * treating them as ungoverned.
    */
   async degradePersistedScopes(chatIds: readonly string[]): Promise<void> {
-    const reason = "chat.db unavailable at service start; persisted scope inventory degraded";
+    const reason =
+      "chat.db unavailable at service start; persisted scope inventory degraded";
     for (const chatId of chatIds) {
       await this.degradeScope({ chatId, reason });
+      // chat.db direct-chat identifiers are `<service>;-;<handle>`; groups
+      // use `;+;`-separated multi-part ids. Index the embedded handle under
+      // both its embedded spelling and its canonicalized spelling so
+      // authorizeOutbound gates it during this degraded run; the entry has
+      // no committed roster evidence, so it only ever resolves to a denial.
+      const parts = chatId.split(";");
+      if (parts.length >= 3 && parts[1] === "-") {
+        const embedded = parts.slice(2).join(";");
+        const entry = { chatId, rosterHandle: embedded };
+        this.directChatByHandle.set(embedded, entry);
+        const canonical = this.normalizeTarget(embedded);
+        if (canonical) this.directChatByHandle.set(canonical, entry);
+      }
     }
   }
 
@@ -782,7 +892,10 @@ export class IMessageMembershipPublisher {
    * failure whose durable unavailable commit may itself have failed, so a
    * decision from possibly-stale authority evidence is never trusted.
    */
-  async authorizeSend(input: { chatId: string; handle: string }): Promise<boolean> {
+  async authorizeSend(input: {
+    chatId: string;
+    handle: string;
+  }): Promise<boolean> {
     const scope = imessageMembershipScope({
       agentId: this.runtime.agentId,
       connectorAccountId: this.connectorAccountId,
@@ -790,7 +903,10 @@ export class IMessageMembershipPublisher {
     });
     const tracker = this.scopes.get(scopeKey(scope));
     if (tracker?.degraded) return false;
-    const principalId = imessageMembershipPrincipalId(this.accountKey, input.handle);
+    const principalId = imessageMembershipPrincipalId(
+      this.accountKey,
+      input.handle,
+    );
     try {
       const decision = await this.service.authorize(scope, principalId);
       return decision.decision === "allowed";
@@ -810,12 +926,22 @@ export class IMessageMembershipPublisher {
    * holds for a bare handle. Fails closed on authority errors.
    */
   async authorizeOutbound(target: string): Promise<boolean | null> {
-    let chatId = this.directChatByHandle.get(target) ?? null;
-    const viaHandle = chatId !== null;
+    // Canonical spelling first: the index carries both the roster's own
+    // spelling and the canonicalized spelling, so variant target spellings
+    // of one counterparty resolve to one gate entry.
+    const canonical = this.normalizeTarget(target) || target;
+    const entry =
+      this.directChatByHandle.get(canonical) ??
+      this.directChatByHandle.get(target) ??
+      null;
+    let chatId = entry?.chatId ?? null;
+    const principalHandle = entry?.rosterHandle ?? null;
     if (chatId === null) {
       // A chat id used directly as the target names its own scope; accept
       // the canonical `chat_id:` prefix used by the connector target shape.
-      const bare = target.startsWith("chat_id:") ? target.slice("chat_id:".length) : target;
+      const bare = target.startsWith("chat_id:")
+        ? target.slice("chat_id:".length)
+        : target;
       for (const key of this.scopes.keys()) {
         if (key.endsWith(`:${bare}`)) {
           chatId = key.split(":").slice(1).join(":");
@@ -832,8 +958,11 @@ export class IMessageMembershipPublisher {
     const tracker = this.scopes.get(scopeKey(scope));
     if (tracker?.degraded) return false;
     try {
-      if (viaHandle) {
-        const principalId = imessageMembershipPrincipalId(this.accountKey, target);
+      if (principalHandle !== null) {
+        const principalId = imessageMembershipPrincipalId(
+          this.accountKey,
+          principalHandle,
+        );
         const decision = await this.service.authorize(scope, principalId);
         return decision.decision === "allowed";
       }
