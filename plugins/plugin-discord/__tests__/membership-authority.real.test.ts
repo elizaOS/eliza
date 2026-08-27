@@ -62,6 +62,7 @@ function makeChannel(options: {
 		deny?: bigint;
 	}>;
 	everyonePermissions: bigint;
+	everyoneRoleId: string;
 } {
 	const overwrites: Array<{
 		id: string;
@@ -69,6 +70,10 @@ function makeChannel(options: {
 		allow?: bigint;
 		deny?: bigint;
 	}> = [];
+	if ((options.allowRoleIds?.length ?? 0) > 0) {
+		// Gated channel: the @everyone overwrite denies ViewChannel.
+		overwrites.push({ id: "@everyone", type: "role", deny: VIEW });
+	}
 	for (const roleId of options.allowRoleIds ?? []) {
 		overwrites.push({ id: roleId, type: "role", allow: VIEW });
 	}
@@ -80,9 +85,12 @@ function makeChannel(options: {
 		name: options.name ?? options.id,
 		type: 0,
 		overwrites,
-		// A role-gated channel denies @everyone; only the role overwrite
-		// (or an explicit member allow) can grant ViewChannel.
-		everyonePermissions: (options.allowRoleIds?.length ?? 0) > 0 ? 0n : VIEW,
+		// A role-gated channel denies @everyone via the channel's @everyone
+		// overwrite; only a role overwrite (or an explicit member allow)
+		// can grant ViewChannel. The guild-level @everyone permissions stay
+		// VIEW (Discord grants ViewChannel at guild level by default).
+		everyonePermissions: VIEW,
+		everyoneRoleId: "@everyone",
 	};
 }
 
@@ -635,6 +643,42 @@ describe("RP round-2 regression battery (#24365 review findings)", () => {
 				makeMember({ id: "u4", roles: [], permissions: ADMIN, pending: true }),
 			),
 		).toBe(false);
+		// RP r2: the member's AGGREGATE guild permissions form the base (a
+		// guild-level role grant of ViewChannel counts), but the channel's
+		// @everyone overwrite deny legitimately removes it — matching
+		// discord.js (remove(deny).add(allow) per stage); only a role
+		// overwrite allow (or Administrator) can restore it.
+		const chan4 = makeChannel({ id: "ordering-chan-4" });
+		chan4.overwrites.push({ id: "@everyone", type: "role", deny: VIEW });
+		expect(
+			channelCanView(
+				chan4,
+				makeMember({ id: "u6", roles: [], permissions: VIEW }),
+			),
+		).toBe(false);
+		// A role overwrite allow on the same channel restores it.
+		chan4.overwrites.push({ id: "r-gated", type: "role", allow: VIEW });
+		expect(
+			channelCanView(
+				chan4,
+				makeMember({ id: "u6b", roles: ["r-gated"], permissions: VIEW }),
+			),
+		).toBe(true);
+		// ...and a member with no aggregate ViewChannel is denied there.
+		expect(
+			channelCanView(
+				chan4,
+				makeMember({ id: "u7", roles: [], permissions: 0n }),
+			),
+		).toBe(false);
+		// RP r2: Administrator supplied by an UNCHANGED other role (aggregate
+		// semantics, not a single role's bitfield) bypasses everything.
+		expect(
+			channelCanView(
+				chan4,
+				makeMember({ id: "u8", roles: ["r-other"], permissions: ADMIN | VIEW }),
+			),
+		).toBe(true);
 	});
 
 	// F2: snapshot keys must change when roster CONTENT changes even when

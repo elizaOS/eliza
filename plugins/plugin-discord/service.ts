@@ -175,7 +175,7 @@ import {
 	memberLikeOf,
 	membershipChannelsOf,
 } from "./membership-adapters";
-import type { GuildMemberLike } from "./membership-bridge";
+import type { ChannelLike, GuildMemberLike } from "./membership-bridge";
 import { channelCanView, DiscordMembershipBridge } from "./membership-bridge";
 import {
 	beginDiscordOutboundDelivery,
@@ -852,7 +852,7 @@ export class DiscordService extends Service implements IDiscordService {
 	async publishMemberMembershipDelta(options: {
 		accountId: string;
 		guild: Guild;
-		member: GuildMember;
+		member: GuildMember | GuildMemberLike;
 		membershipState: "active" | "revoked";
 		reason:
 			| "joined"
@@ -875,7 +875,7 @@ export class DiscordService extends Service implements IDiscordService {
 					name: options.guild.name,
 					channels: membershipChannelsOf(options.guild),
 				},
-				member: memberLikeOf(options.member),
+				member: asMemberLike(options.member),
 				membershipState: options.membershipState,
 				reason: options.reason,
 				eventId: options.eventId,
@@ -901,7 +901,10 @@ export class DiscordService extends Service implements IDiscordService {
 	 * member. Computes view transitions per channel from old/new structural
 	 * member shapes; accepts live GuildMembers or pre-mapped bridge shapes
 	 * (synthesized old/new views for role-permission transitions).
-	 * Degrade-only (#24365).
+	 * `oldChannelOverwrites` (channel id -> pre-change overwrites) lets a
+	 * channelUpdate diff visibility against the channel's prior state
+	 * instead of comparing identical post-change state. Degrade-only
+	 * (#24365).
 	 */
 	async publishMemberPermissionDelta(options: {
 		accountId: string;
@@ -909,6 +912,7 @@ export class DiscordService extends Service implements IDiscordService {
 		oldMember: GuildMember | GuildMemberLike;
 		newMember: GuildMember | GuildMemberLike;
 		eventId?: string;
+		oldChannelOverwrites?: Map<string, ChannelLike["overwrites"]>;
 	}): Promise<void> {
 		const bridge = this.membershipBridge();
 		if (!bridge) {
@@ -921,7 +925,16 @@ export class DiscordService extends Service implements IDiscordService {
 			const canView: string[] = [];
 			const cannotView: string[] = [];
 			for (const channel of channels) {
-				const before = channelCanView(channel, oldLike);
+				const previousOverwrites = options.oldChannelOverwrites?.get(
+					channel.id,
+				);
+				const before =
+					previousOverwrites === undefined
+						? channelCanView(channel, oldLike)
+						: channelCanView(
+								{ ...channel, overwrites: previousOverwrites },
+								newLike,
+							);
 				const after = channelCanView(channel, newLike);
 				if (!before && after) {
 					canView.push(channel.id);

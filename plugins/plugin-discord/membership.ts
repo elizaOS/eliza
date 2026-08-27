@@ -455,6 +455,12 @@ export class DiscordMembershipPublisher {
 		roles: string[];
 		permissionSnapshot: JsonObject;
 		idempotencyKey: string;
+		/**
+		 * Observation timestamp anchoring this command: the caller computes it
+		 * once per gateway observation and reuses it for retries/redeliveries,
+		 * so replays match both key and digest in the authority journal.
+		 */
+		observedAt?: string;
 	}): Promise<MembershipMutationReceipt | null> {
 		const service = this.membershipService();
 		if (!service) {
@@ -474,7 +480,7 @@ export class DiscordMembershipPublisher {
 				await this.adoptDurableState(service, options.scope, state);
 			}
 			const now = new Date();
-			const observedAt = now.toISOString();
+			const observedAt = options.observedAt ?? now.toISOString();
 			const validUntil = new Date(
 				now.getTime() + MEMBERSHIP_VALIDITY_MS,
 			).toISOString();
@@ -537,23 +543,6 @@ export class DiscordMembershipPublisher {
 						);
 						continue;
 					}
-					if (code === "MEMBERSHIP_IDEMPOTENCY_CONFLICT") {
-						// A same-key journal replay where the persisted command
-						// differs. With content-anchored keys this only happens
-						// when the first delivery of this exact observation
-						// already committed under a now-superseded cursor — a
-						// benign replay. Return the durable outcome instead of
-						// degrading healthy evidence.
-						logger.debug(
-							{
-								src: "plugin:discord",
-								agentId: this.runtime.agentId,
-								idempotencyKey: options.idempotencyKey,
-							},
-							"Discord membership delta replayed (idempotency journal hit)",
-						);
-						return null;
-					}
 					// error-policy:J4 an unexpected rejection degrades the scope
 					// to stale — authorize fails closed on this channel — and is
 					// reported for observability; the gateway path continues.
@@ -595,6 +584,8 @@ export class DiscordMembershipPublisher {
 		roles: string[];
 		permissionSnapshot: JsonObject;
 		idempotencyKey: string;
+		/** Observation timestamp shared by retries of this observation. */
+		observedAt?: string;
 	}): Promise<void> {
 		const state = this.stateFor(options.scope);
 		const last = state.renewedAt.get(options.principalId) ?? 0;
@@ -622,6 +613,12 @@ export class DiscordMembershipPublisher {
 		completeness: DiscordMembershipCompleteness;
 		members?: DiscordSnapshotMemberEvidence[];
 		idempotencyKey: string;
+		/**
+		 * Observation timestamp anchoring this command: the caller computes it
+		 * once per ready/refresh observation and reuses it for retries, so
+		 * replays match both key and digest in the authority journal.
+		 */
+		observedAt?: string;
 	}): Promise<MembershipMutationReceipt | null> {
 		const service = this.membershipService();
 		if (!service) {
@@ -656,20 +653,6 @@ export class DiscordMembershipPublisher {
 					return receipt;
 				} catch (error) {
 					const code = membershipErrorCode(error);
-					if (code === "MEMBERSHIP_IDEMPOTENCY_CONFLICT") {
-						// error-policy:J4 a same-key replay of an identical
-						// unavailable report: the durable state already carries
-						// this reason, so the replay is a benign no-op.
-						logger.debug(
-							{
-								src: "plugin:discord",
-								agentId: this.runtime.agentId,
-								reason: unavailable.reason,
-							},
-							"Discord membership unavailable report replayed (journal hit)",
-						);
-						return null;
-					}
 					// error-policy:J4 the unavailable report is itself the degrade
 					// signal; a rejection here is surfaced for observability and
 					// the next ready pass retries the report.
@@ -703,7 +686,7 @@ export class DiscordMembershipPublisher {
 				await this.adoptDurableState(service, options.scope, state);
 			}
 			const now = new Date();
-			const observedAt = now.toISOString();
+			const observedAt = options.observedAt ?? now.toISOString();
 			const validUntil = new Date(
 				now.getTime() + MEMBERSHIP_VALIDITY_MS,
 			).toISOString();
@@ -758,21 +741,6 @@ export class DiscordMembershipPublisher {
 							"ordered_delta",
 						);
 						continue;
-					}
-					if (code === "MEMBERSHIP_IDEMPOTENCY_CONFLICT") {
-						// A content-anchored key colliding means this exact roster
-						// already committed under this key (redelivery of an
-						// identical snapshot): the evidence stands as-is, so the
-						// replay is a benign no-op — do NOT degrade the scope.
-						logger.debug(
-							{
-								src: "plugin:discord",
-								agentId: this.runtime.agentId,
-								idempotencyKey: options.idempotencyKey,
-							},
-							"Discord membership snapshot replayed (idempotency journal hit)",
-						);
-						return null;
 					}
 					// error-policy:J4 a failed complete snapshot means the scope's
 					// evidence is NOT refreshed as advertised: degrade the scope to
