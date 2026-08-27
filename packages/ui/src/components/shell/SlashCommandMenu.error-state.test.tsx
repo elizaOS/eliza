@@ -54,6 +54,18 @@ describe("<SlashCommandMenu> closed-state three-state degrade (#12784)", () => {
     expect(screen.queryByTestId("slash-menu-error")).toBeNull();
   });
 
+  it("renders loading text in the fixed wallpaper white ladder, never tone-inverse black", () => {
+    // The loading card rides the near-black wallpaper overlay; its old
+    // tone="inverse" resolved to black-on-black and rendered the row
+    // invisible (story-gate blank-render for the Loading story).
+    render(
+      <SlashCommandMenu state={closedState()} onPick={() => {}} loading />,
+    );
+    const card = screen.getByTestId("slash-menu-loading");
+    expect(card.className).toContain("text-white");
+    expect(card.className).not.toContain("text-inverse-foreground");
+  });
+
   it("renders a DISTINCT error state when the catalog load failed", () => {
     render(<SlashCommandMenu state={closedState()} onPick={() => {}} error />);
     const err = screen.getByTestId("slash-menu-error");
