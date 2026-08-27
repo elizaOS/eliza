@@ -4,7 +4,7 @@
 
 import type http from "node:http";
 import path from "node:path";
-import { ElizaError, logger, sendJsonError } from "@elizaos/core";
+import { ElizaError, logger, sendJsonError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   getDefaultStylePreset,
   getStylePresets,
@@ -280,7 +280,7 @@ export function validateSkillId(
     skillId === "." ||
     skillId.includes("..")
   ) {
-    const safeDisplay = skillId.slice(0, 80).replace(/[^\x20-\x7e]/g, "?");
+    const safeDisplay = truncateWellFormed(toWellFormedUnicode(skillId), 80).replace(/[^\x20-\x7e]/g, "?");
     sendJsonError(res, `Invalid skill ID: "${safeDisplay}"`, 400);
     return null;
   }

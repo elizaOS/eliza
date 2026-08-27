@@ -17,6 +17,7 @@ import {
   MAX_CONFIG_SECRET_FILTER_DEPTH,
   redactConfigSecrets,
   stripRedactedPlaceholderValuesDeep,
+  validateSkillId,
 } from "./server-helpers-config";
 
 describe("isSafeResetStateDir", () => {
@@ -155,5 +156,22 @@ describe("redactConfigSecrets fail-closed walk", () => {
       env: { SAFE_FLAG: "1" },
       cloud: { region: "us" },
     });
+  });
+});
+
+describe("validateSkillId", () => {
+  it("safely handles overlong skill ID containing surrogate pairs", () => {
+    let responseBody = "";
+    const fakeRes = {
+      statusCode: 200,
+      setHeader: () => {},
+      end: (body: string) => { responseBody = body; },
+    } as any;
+
+    const overlong = "skill_" + "a".repeat(75) + "🚀" + "tail";
+    const res = validateSkillId(overlong, fakeRes);
+    expect(res).toBeNull();
+    expect(fakeRes.statusCode).toBe(400);
+    expect(responseBody.isWellFormed()).toBe(true);
   });
 });
