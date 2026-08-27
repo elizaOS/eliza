@@ -5,7 +5,7 @@
  * streaming, stop, retry, edit, clear, and queue management.
  */
 
-import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
+import { MESSAGE_SOURCE_CLIENT_CHAT, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { logger } from "@elizaos/logger";
 import { asRecord } from "@elizaos/shared";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
@@ -1911,8 +1911,11 @@ export function useChatSend(deps: UseChatSendDeps) {
           activeConv.title === "companion.newChat" ||
           activeConv.title === "conversations.newChatTitle")
       ) {
+        const wellFormedText = toWellFormedUnicode(text);
         const fallbackTitle =
-          text.length > 15 ? `${text.slice(0, 15)}...` : text;
+          wellFormedText.length > 15
+            ? `${truncateWellFormed(wellFormedText, 15)}...`
+            : wellFormedText;
         setConversations((prev) =>
           prev.map((c) =>
             c.id === convId ? { ...c, title: fallbackTitle } : c,
@@ -2819,8 +2822,11 @@ export function useChatSend(deps: UseChatSendDeps) {
             optimisticOwnerConversationId,
           );
           try {
+            const wellFormedTrimmed = toWellFormedUnicode(trimmed);
             const actionTitle =
-              trimmed.length > 50 ? `${trimmed.slice(0, 47)}...` : trimmed;
+              wellFormedTrimmed.length > 50
+                ? `${truncateWellFormed(wellFormedTrimmed, 47)}...`
+                : wellFormedTrimmed;
             // Defer the create the same way the fixed cold-open send path does
             // (runQueuedChatSend -> createConversationForFirstSend): on a shared
             // agent base this synthesizes the canonical record locally and skips
@@ -2890,8 +2896,11 @@ export function useChatSend(deps: UseChatSendDeps) {
             activeConv.title === "companion.newChat" ||
             activeConv.title === "conversations.newChatTitle")
         ) {
+          const wellFormedTrimmed = toWellFormedUnicode(trimmed);
           const fallbackTitle =
-            trimmed.length > 15 ? `${trimmed.slice(0, 15)}...` : trimmed;
+            wellFormedTrimmed.length > 15
+              ? `${truncateWellFormed(wellFormedTrimmed, 15)}...`
+              : wellFormedTrimmed;
           setConversations((prev) =>
             prev.map((c) =>
               c.id === convId ? { ...c, title: fallbackTitle } : c,
