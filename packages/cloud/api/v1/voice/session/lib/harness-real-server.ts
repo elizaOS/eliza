@@ -562,6 +562,8 @@ export async function startRealVoiceServer(
           // actually does. Once the poll's request-scoped store parameter
           // lands (#16669), forward `rawRedis` here the way the route does.
           isRevoked: (j) => isVoiceSessionTokenRevoked(j),
+          onTurnMetrics: (receipt) =>
+            hooks.log("info", "voice turn metrics", { ...receipt }),
           downlink,
         }),
     });
