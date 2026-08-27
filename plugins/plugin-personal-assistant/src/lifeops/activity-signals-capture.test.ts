@@ -255,6 +255,34 @@ function publishAuthStatus(phase: string): void {
   }
 }
 
+function typedLifeOpsUnavailableError(): {
+  kind: "http";
+  status: number;
+  path: string;
+  code: string;
+  data: {
+    success: false;
+    code: string;
+    capability: string;
+    requiredExecutionTier: "dedicated-always";
+    upgradeRequired: true;
+  };
+} {
+  return {
+    kind: "http",
+    status: 503,
+    path: "/api/lifeops/activity-signals",
+    code: "lifeops_runtime_unavailable",
+    data: {
+      success: false,
+      code: "lifeops_runtime_unavailable",
+      capability: "lifeops-activity-signals",
+      requiredExecutionTier: "dedicated-always",
+      upgradeRequired: true,
+    },
+  };
+}
+
 describe("startLifeOpsActivitySignalCapture", () => {
   let stop: (() => void) | undefined;
 
@@ -1004,6 +1032,76 @@ describe("startLifeOpsActivitySignalCapture", () => {
     expect(h.dispatchStatus).not.toHaveBeenCalledWith(
       expect.objectContaining({ status: "capture_error" }),
     );
+  });
+
+  it("serializes one capability probe at the ready boundary before lifecycle/page-state fan-out", async () => {
+    vi.useFakeTimers();
+    let resolveCapture:
+      | ((value: { signal: { id: string } }) => void)
+      | undefined;
+    h.captureLifeOpsActivitySignal.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCapture = resolve;
+        }),
+    );
+
+    stop = startLifeOpsActivitySignalCapture(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.captureLifeOpsActivitySignal).toHaveBeenCalledTimes(1);
+    expect(capturedSources()).toEqual(["app_lifecycle"]);
+
+    document.dispatchEvent(new Event("visibilitychange"));
+    window.dispatchEvent(new Event("focus"));
+    document.dispatchEvent(new Event("eliza:app-resume"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.captureLifeOpsActivitySignal).toHaveBeenCalledTimes(1);
+
+    h.captureLifeOpsActivitySignal.mockResolvedValue({
+      signal: { id: "sig-ok" },
+    });
+    resolveCapture?.({ signal: { id: "sig-ok" } });
+    await vi.advanceTimersByTimeAsync(0);
+
+    const sources = capturedSources();
+    expect(sources[0]).toBe("app_lifecycle");
+    expect(sources).toContain("page_visibility");
+  });
+
+  it("latches off for the document after a typed dedicated-runtime-unavailable 503", async () => {
+    vi.useFakeTimers();
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    h.isApiError.mockImplementation(
+      (error) => typeof error === "object" && error !== null && "kind" in error,
+    );
+    h.captureLifeOpsActivitySignal.mockRejectedValue(
+      typedLifeOpsUnavailableError(),
+    );
+
+    stop = startLifeOpsActivitySignalCapture(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.captureLifeOpsActivitySignal).toHaveBeenCalledTimes(1);
+    expect(capturedSources()).toEqual(["app_lifecycle"]);
+    expect(h.dispatchStatus).not.toHaveBeenCalledWith(
+      expect.objectContaining({ status: "capture_error" }),
+    );
+
+    h.captureLifeOpsActivitySignal.mockClear();
+    document.dispatchEvent(new Event("visibilitychange"));
+    window.dispatchEvent(new Event("focus"));
+    document.dispatchEvent(new Event("eliza:app-resume"));
+    await vi.advanceTimersByTimeAsync(65_000);
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(h.captureLifeOpsActivitySignal).not.toHaveBeenCalled();
+    expect(h.dispatchStatus).not.toHaveBeenCalledWith(
+      expect.objectContaining({ status: "capture_error" }),
+    );
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 
   it("removes every listener and interval on stop", async () => {

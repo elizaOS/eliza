@@ -54,8 +54,14 @@
  * Expected unavailability (runtime not yet running, transient network/timeout,
  * endpoint 503, a stale binding whose deleted agent answers with the structural
  * agent-gone 404) quietly stands the capture down.
- * Capability-specific 503s use a bounded retry interval because the global
- * runtime status cannot prove that this optional plugin route is active.
+ * A typed dedicated-runtime-unavailable gate (`lifeops_runtime_unavailable`,
+ * requiredExecutionTier dedicated-always) latches every activity-signal source
+ * off for this document: Shared will not grow a LifeOps ingest path later in
+ * the same renderer, so retrying page/visibility POSTs only fans out 503s.
+ * Generic capability 503s still use a bounded retry interval because a
+ * Dedicated plugin may come up after boot, and the global runtime status
+ * cannot prove that this optional route is active. Sends are serialized so a
+ * retry boundary cannot emit lifecycle + page-state before the probe settles.
  * Anything else is surfaced observably: a `capture_error` status event plus a
  * prefixed console.error — but only while still mounted; a failure that lands
  * after stop is discarded rather than published. Teardown's own failures are
@@ -281,6 +287,8 @@ export function startLifeOpsActivitySignalCapture(
   let runtimeReadinessGeneration = 0;
   let runtimePoller: number | null = null;
   let activitySignalsRetryAtMs = 0;
+  let activitySignalsUnsupported = false;
+  let sendChain: Promise<void> = Promise.resolve();
   let mounted = true;
 
   const stopRuntimeReadiness = (): void => {
@@ -297,17 +305,46 @@ export function startLifeOpsActivitySignalCapture(
     stopRuntimeReadiness();
   };
 
-  const standDownActivitySignals = (): void => {
-    runtimeReady = false;
-    activitySignalsRetryAtMs =
-      Date.now() + ACTIVITY_SIGNALS_CAPABILITY_RETRY_MS;
-  };
-
   const isRuntimeUnavailableError = (error: unknown): boolean =>
     isApiError(error) &&
     error.kind === "http" &&
     error.status === 503 &&
     error.path === "/api/lifeops/activity-signals";
+
+  const isTypedDedicatedRuntimeUnavailable = (error: unknown): boolean => {
+    if (!isRuntimeUnavailableError(error) || !isApiError(error)) {
+      return false;
+    }
+    if (error.code === "lifeops_runtime_unavailable") {
+      return true;
+    }
+    const data = error.data;
+    if (!data || typeof data !== "object") {
+      return false;
+    }
+    const body = data as {
+      code?: unknown;
+      capability?: unknown;
+      requiredExecutionTier?: unknown;
+    };
+    return (
+      body.code === "lifeops_runtime_unavailable" ||
+      (body.capability === "lifeops-activity-signals" &&
+        body.requiredExecutionTier === "dedicated-always")
+    );
+  };
+
+  const standDownActivitySignals = (error: unknown): void => {
+    runtimeReady = false;
+    if (isTypedDedicatedRuntimeUnavailable(error)) {
+      // Shared (and any other dedicated-always wall) will not start ingesting
+      // later in this document. Bounded retry is only for generic 503s.
+      activitySignalsUnsupported = true;
+      return;
+    }
+    activitySignalsRetryAtMs =
+      Date.now() + ACTIVITY_SIGNALS_CAPABILITY_RETRY_MS;
+  };
 
   const isExpectedTransientError = (error: unknown): boolean =>
     isApiError(error) && (error.kind === "network" || error.kind === "timeout");
@@ -343,7 +380,7 @@ export function startLifeOpsActivitySignalCapture(
       return;
     }
     if (isRuntimeUnavailableError(error)) {
-      standDownActivitySignals();
+      standDownActivitySignals(error);
       return;
     }
     if (isExpectedTransientError(error) || isCloudAgentGoneError(error)) {
@@ -390,7 +427,9 @@ export function startLifeOpsActivitySignalCapture(
         return false;
       }
       const ready =
-        status.state === "running" && Date.now() >= activitySignalsRetryAtMs;
+        !activitySignalsUnsupported &&
+        status.state === "running" &&
+        Date.now() >= activitySignalsRetryAtMs;
       runtimeReady = ready;
       return ready;
     } catch (error) {
@@ -416,41 +455,49 @@ export function startLifeOpsActivitySignalCapture(
   const sendSignal = async (
     signal: CaptureLifeOpsActivitySignalRequest,
   ): Promise<LifeOpsActivitySignal | null> => {
-    if (!mounted || !runtimeReady) {
-      return null;
-    }
-    const normalized: CaptureLifeOpsActivitySignalRequest = {
-      ...signal,
-      platform: signal.platform ?? platform,
+    const run = async (): Promise<LifeOpsActivitySignal | null> => {
+      if (!mounted || !runtimeReady || activitySignalsUnsupported) {
+        return null;
+      }
+      const normalized: CaptureLifeOpsActivitySignalRequest = {
+        ...signal,
+        platform: signal.platform ?? platform,
+      };
+      const fingerprint = fingerprintSignal(normalized);
+      const dedupeKey = `${normalized.source}:${normalized.platform ?? ""}`;
+      const previous = lastSent.get(dedupeKey);
+      const nowMs = Date.now();
+      if (
+        previous &&
+        previous.fingerprint === fingerprint &&
+        nowMs - previous.sentAtMs < APP_SIGNAL_DEDUP_WINDOW_MS
+      ) {
+        return null;
+      }
+      lastSent.set(dedupeKey, { fingerprint, sentAtMs: nowMs });
+      try {
+        const { signal: persisted } =
+          await client.captureLifeOpsActivitySignal(normalized);
+        return persisted;
+      } catch (error) {
+        lastSent.delete(dedupeKey);
+        if (isSessionUnavailableError(error)) {
+          suspendForUnavailableSession();
+          return null;
+        }
+        if (isRuntimeUnavailableError(error)) {
+          standDownActivitySignals(error);
+          return null;
+        }
+        throw error;
+      }
     };
-    const fingerprint = fingerprintSignal(normalized);
-    const dedupeKey = `${normalized.source}:${normalized.platform ?? ""}`;
-    const previous = lastSent.get(dedupeKey);
-    const nowMs = Date.now();
-    if (
-      previous &&
-      previous.fingerprint === fingerprint &&
-      nowMs - previous.sentAtMs < APP_SIGNAL_DEDUP_WINDOW_MS
-    ) {
-      return null;
-    }
-    lastSent.set(dedupeKey, { fingerprint, sentAtMs: nowMs });
-    try {
-      const { signal: persisted } =
-        await client.captureLifeOpsActivitySignal(normalized);
-      return persisted;
-    } catch (error) {
-      lastSent.delete(dedupeKey);
-      if (isSessionUnavailableError(error)) {
-        suspendForUnavailableSession();
-        return null;
-      }
-      if (isRuntimeUnavailableError(error)) {
-        standDownActivitySignals();
-        return null;
-      }
-      throw error;
-    }
+    const pending = sendChain.then(run, run);
+    sendChain = pending.then(
+      () => undefined,
+      () => undefined,
+    );
+    return pending;
   };
 
   const sendSnapshotResult = async (result: {
@@ -466,6 +513,9 @@ export function startLifeOpsActivitySignalCapture(
   };
 
   const fireAndForget = (signal: CaptureLifeOpsActivitySignalRequest): void => {
+    if (!mounted || !runtimeReady || activitySignalsUnsupported) {
+      return;
+    }
     void sendSignal(signal).catch(reportCaptureError);
   };
 
@@ -737,10 +787,19 @@ export function startLifeOpsActivitySignalCapture(
   };
 
   const emitCurrentState = (reason: string): void => {
-    emitLifecycleState("active");
-    emitPageState(reason);
-    void emitDesktopSnapshot(reason);
-    void refreshMobileHealthSnapshot(reason).catch(reportCaptureError);
+    void (async () => {
+      await sendSignal({
+        source: "app_lifecycle",
+        state: "active",
+        metadata: { reason: "resume" },
+      });
+      if (!mounted || !runtimeReady || activitySignalsUnsupported) {
+        return;
+      }
+      emitPageState(reason);
+      void emitDesktopSnapshot(reason);
+      void refreshMobileHealthSnapshot(reason).catch(reportCaptureError);
+    })().catch(reportCaptureError);
   };
 
   document.addEventListener("visibilitychange", handleVisibilityChange);
