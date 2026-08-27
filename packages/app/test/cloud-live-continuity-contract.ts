@@ -633,6 +633,9 @@ async function inspectDedicatedControlPlaneResponse(
       final,
     };
   } catch {
+    // error-policy:J3 malformed, non-UTF-8, oversized, or unreadable control-
+    // plane bodies provide no quote/activation/cutover proof; the browser
+    // response remains authoritative and no body content is retained.
     return {
       bodyCompleted: true,
       parsed: false,

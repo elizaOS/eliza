@@ -4439,6 +4439,33 @@ ElizaClient.prototype.getPersonalSharedEliza = async (options) => {
   };
 };
 
+type InProgressDedicatedActivationPolicy =
+  | "reattach-without-post"
+  | "resume-with-confirmed-post";
+
+/**
+ * The server's `in_progress` quote state means target ownership, not always
+ * active work. Only pending/provisioning/running are safe after an ambiguous
+ * activation response: stopped/sleeping/error require the server's confirmed
+ * POST reactivation contract to validate credit and re-arm the same row.
+ */
+function inProgressDedicatedActivationPolicy(
+  status: string,
+): InProgressDedicatedActivationPolicy | null {
+  switch (status) {
+    case "pending":
+    case "provisioning":
+    case "running":
+      return "reattach-without-post";
+    case "error":
+    case "stopped":
+    case "sleeping":
+      return "resume-with-confirmed-post";
+    default:
+      return null;
+  }
+}
+
 ElizaClient.prototype.ensurePersonalDedicatedEliza = async function (
   this: ElizaClient,
   options,
@@ -4491,20 +4518,44 @@ ElizaClient.prototype.ensurePersonalDedicatedEliza = async function (
   options.signal?.throwIfAborted();
   const quoteActivation = recordOrNull(quote?.activation);
   const activationState = firstString(quoteActivation?.state);
-  let dedicatedAgentId: string;
+  let quotedTargetId: string | null = null;
+  let activationPostRequired = false;
+  let dedicatedAgentId: string | null = null;
   if (activationState === "in_progress") {
     const existingTargetId = firstString(quoteActivation?.dedicatedAgentId);
-    if (!existingTargetId) {
+    const existingTargetStatus = firstString(quoteActivation?.status);
+    if (!existingTargetId || !existingTargetStatus) {
       throw new Error(
         "Eliza Cloud returned an invalid in-progress Dedicated activation.",
       );
     }
-    // A prior POST can commit server-side even if its response body stalls or
-    // the client disconnects. The next supported attempt always begins with
-    // this read-only quote and reattaches to its exact target; never replay the
-    // paid activation POST while the server reports in_progress.
-    dedicatedAgentId = existingTargetId;
+    quotedTargetId = existingTargetId;
+    const statusPolicy =
+      inProgressDedicatedActivationPolicy(existingTargetStatus);
+    if (statusPolicy === "reattach-without-post") {
+      // A prior POST can commit server-side even if its response body stalls
+      // or the client disconnects. These statuses already own live work (or
+      // healthy compute), so the read-only quote is sufficient authority to
+      // resume cutover without replaying the paid activation POST.
+      dedicatedAgentId = existingTargetId;
+    } else if (statusPolicy === "resume-with-confirmed-post") {
+      // The server deliberately reports retained resumable targets as
+      // in_progress too, but POST is still required to re-arm compute under
+      // the freshly confirmed quote. Validate that response against the exact
+      // quoted target below; this is a resume, not an ambiguous replay.
+      activationPostRequired = true;
+    } else {
+      throw new Error(
+        "Eliza Cloud returned an invalid in-progress Dedicated status.",
+      );
+    }
   } else if (activationState === "available") {
+    activationPostRequired = true;
+  } else {
+    throw new Error("Eliza Cloud returned an invalid Dedicated quote state.");
+  }
+
+  if (activationPostRequired) {
     const activationResponse = await directCloudJsonResponse<unknown>(
       upgradeUrl,
       {
@@ -4540,9 +4591,17 @@ ElizaClient.prototype.ensurePersonalDedicatedEliza = async function (
         },
       );
     }
+    if (quotedTargetId && activatedTargetId !== quotedTargetId) {
+      throw new Error(
+        "Eliza Cloud resumed a different Dedicated target than the quoted activation.",
+      );
+    }
     dedicatedAgentId = activatedTargetId;
-  } else {
-    throw new Error("Eliza Cloud returned an invalid Dedicated quote state.");
+  }
+  if (!dedicatedAgentId) {
+    throw new Error(
+      "Eliza Cloud did not resolve a Dedicated activation target.",
+    );
   }
 
   const intervalMs = options.pollIntervalMs ?? 5_000;
