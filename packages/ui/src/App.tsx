@@ -1493,7 +1493,7 @@ function buildStaticTabRenderers(): Record<
       </AppWorkspaceContent>
     ),
     runtime: withHeader("runtime", <LazyRuntimeView />),
-    database: withHeader("database", <LazyDatabasePageView />),
+    database: wrapOverlayAware(<LazyDatabasePageView />),
     logs: withHeader("logs", <LazyLogsView />),
     desktop: withHeader("desktop", <LazyDesktopWorkspaceSection />),
     settings: ({
@@ -1520,7 +1520,7 @@ function buildStaticTabRenderers(): Record<
         />
       </AppWorkspaceContent>
     ),
-    vault: wrap(<LazyVaultPageView />),
+    vault: wrapOverlayAware(<LazyVaultPageView />),
     // Camera is an AOSP-ElizaOS-fork-only surface — gate the route on the same
     // marker as the home tile, so a deep-link off the fork falls back to
     // "unavailable" instead of rendering on web/desktop/iOS/Play-Store Android.

@@ -205,8 +205,8 @@ export function VaultModal({
 }
 
 export interface VaultWorkspaceProps extends VaultModalProps {
-  /** Dialog chrome for the shortcut modal; page chrome for `/vault`. */
-  presentation?: "dialog" | "page";
+  /** Dialog chrome, legacy self-owned page chrome, or canonical framed-page chrome. */
+  presentation?: "dialog" | "page" | "framed-page";
 }
 
 export function VaultWorkspace({
@@ -535,7 +535,7 @@ export function VaultWorkspace({
 
   return (
     <>
-      {presentation === "dialog" ? (
+      {presentation === "framed-page" ? null : presentation === "dialog" ? (
         <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-2">
@@ -575,7 +575,7 @@ export function VaultWorkspace({
 
       <div
         data-chat-occlusion-policy={
-          presentation === "page" ? "hide" : undefined
+          presentation !== "dialog" ? "hide" : undefined
         }
         className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden pt-2"
       >
