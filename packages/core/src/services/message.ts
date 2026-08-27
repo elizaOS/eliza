@@ -1448,8 +1448,10 @@ function withProviderOverflowText(state: State): State | null {
 function responseHandlerContextWindow(
 	runtime: IAgentRuntime,
 ): number | undefined {
-	return runtime
-		.getModelRegistrations()
+	const getModelRegistrations = runtime.getModelRegistrations;
+	if (typeof getModelRegistrations !== "function") return undefined;
+	return getModelRegistrations
+		.call(runtime)
 		.find(
 			(registration) =>
 				registration.modelType === ModelType.RESPONSE_HANDLER &&
