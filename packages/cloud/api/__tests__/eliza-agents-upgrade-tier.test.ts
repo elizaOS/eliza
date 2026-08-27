@@ -83,6 +83,12 @@ const currentUser = {
 const realAuthSnapshot = { ...realAuth };
 
 let cutoverHistory = [
+  {
+    id: "lifecycle-1",
+    role: "system" as const,
+    content: "The signed-in mobile session started.",
+    createdAt: 5,
+  },
   { id: "u1", role: "user" as const, content: "hello", createdAt: 10 },
   {
     id: "a1",
@@ -1320,8 +1326,8 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       importFetch.mockImplementation(async () =>
         Response.json({
           complete: true,
-          sourceMessageCount: cutoverHistory.length,
-          inserted: cutoverHistory.length,
+          sourceMessageCount: 2,
+          inserted: 2,
           skipped: 0,
           sourceScheduledTaskCount: 2,
           importedScheduledTasks: 2,
@@ -1646,7 +1652,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       ).toMatchObject({
         sourceAgentId: PERSONAL_C,
         cutoverToken: `personal-cutover:${PERSONAL_C}:${CUTOVER_TARGET}`,
-        sharedMessageCount: cutoverHistory.length,
+        sharedMessageCount: 2,
         sharedScheduledTaskCount: 2,
         sharedTodoCount: 1,
         sharedTodoMutationCount: 1,
@@ -1697,6 +1703,12 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       };
       currentUser.telegram_id = null;
       cutoverHistory = [
+        {
+          id: "lifecycle-1",
+          role: "system",
+          content: "The signed-in mobile session started.",
+          createdAt: 5,
+        },
         { id: "u1", role: "user", content: "hello", createdAt: 10 },
         {
           id: "a1",
