@@ -90,6 +90,28 @@ test.describe("Vault tab accessibility", () => {
     expect(headerDirection).toBe("row");
   });
 
+  test("uses the full available page width on every Vault tab", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+
+    for (const tab of ["Overview", "Secrets", "Logins", "Routing"]) {
+      await page.getByRole("tab", { name: tab }).click();
+      const panel = page.getByRole("tabpanel", {
+        name: `${tab} Vault section`,
+      });
+      await expect(panel).toBeVisible();
+      const panelBox = await panel.boundingBox();
+      const contentBox = await panel
+        .locator(":scope > *")
+        .first()
+        .boundingBox();
+
+      expect(contentBox?.x).toBe(panelBox?.x);
+      expect(contentBox?.width).toBe(panelBox?.width);
+    }
+  });
+
   test("shares route gutters with the Character family", async ({ page }) => {
     for (const viewport of [
       { width: 390, height: 844 },

@@ -166,7 +166,7 @@ export function OverviewTab(props: OverviewTabProps) {
   );
 
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="w-full space-y-4">
       <p
         role="status"
         aria-live="polite"
@@ -196,68 +196,23 @@ export function OverviewTab(props: OverviewTabProps) {
               })}
             </p>
           </div>
-          <Button
-            ref={redetectRef}
-            {...redetectAgentProps}
-            variant="ghost"
-            size="sm"
-            onClick={onReload}
-            aria-label={t("vault.overview.redetect", {
-              defaultValue: "Re-detect backends",
-            })}
-            title={t("vault.overview.redetect", {
-              defaultValue: "Re-detect backends",
-            })}
-          >
-            <RefreshCw className="size-3.5" aria-hidden />
-            Refresh
-          </Button>
-        </div>
-
-        <div className="overflow-hidden rounded-lg border border-line-subtle bg-bg-card">
-          <div className="divide-y divide-line-subtle">
-            {orderedBackends(backends, preferences).map((backend) => (
-              <BackendRow
-                key={backend.id}
-                backend={backend}
-                enabled={isEnabled(backend.id)}
-                isPrimary={preferences.enabled[0] === backend.id}
-                position={preferences.enabled.indexOf(backend.id)}
-                totalEnabled={preferences.enabled.length}
-                methods={
-                  backend.id === "in-house"
-                    ? []
-                    : (installMethods[backend.id as InstallableBackendId] ?? [])
-                }
-                installSheetOpen={installSheet === backend.id}
-                signinSheetOpen={signinSheet === backend.id}
-                onToggle={(on) => setEnabled(backend.id, on)}
-                onMoveUp={() => moveUp(backend.id)}
-                onMoveDown={() => moveDown(backend.id)}
-                onOpenInstallSheet={() =>
-                  setInstallSheet(backend.id as InstallableBackendId)
-                }
-                onOpenSigninSheet={() =>
-                  setSigninSheet(backend.id as InstallableBackendId)
-                }
-                onCloseSheets={() => {
-                  setInstallSheet(null);
-                  setSigninSheet(null);
-                }}
-                onInstallComplete={() => {
-                  setInstallSheet(null);
-                  onInstallComplete();
-                }}
-                onSigninComplete={() => {
-                  setSigninSheet(null);
-                  onSigninComplete();
-                }}
-                onSignout={() => onSignout(backend.id as InstallableBackendId)}
-              />
-            ))}
-          </div>
-
-          <div className="flex items-center justify-end border-t border-line-subtle px-3 py-2.5 sm:px-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              ref={redetectRef}
+              {...redetectAgentProps}
+              variant="ghost"
+              size="sm"
+              onClick={onReload}
+              aria-label={t("vault.overview.redetect", {
+                defaultValue: "Re-detect backends",
+              })}
+              title={t("vault.overview.redetect", {
+                defaultValue: "Re-detect backends",
+              })}
+            >
+              <RefreshCw className="size-3.5" aria-hidden />
+              Refresh
+            </Button>
             <Button
               ref={saveRef}
               {...saveAgentProps}
@@ -275,6 +230,48 @@ export function OverviewTab(props: OverviewTabProps) {
                     })}
             </Button>
           </div>
+        </div>
+
+        <div className="divide-y divide-line-subtle border-y border-line-subtle">
+          {orderedBackends(backends, preferences).map((backend) => (
+            <BackendRow
+              key={backend.id}
+              backend={backend}
+              enabled={isEnabled(backend.id)}
+              isPrimary={preferences.enabled[0] === backend.id}
+              position={preferences.enabled.indexOf(backend.id)}
+              totalEnabled={preferences.enabled.length}
+              methods={
+                backend.id === "in-house"
+                  ? []
+                  : (installMethods[backend.id as InstallableBackendId] ?? [])
+              }
+              installSheetOpen={installSheet === backend.id}
+              signinSheetOpen={signinSheet === backend.id}
+              onToggle={(on) => setEnabled(backend.id, on)}
+              onMoveUp={() => moveUp(backend.id)}
+              onMoveDown={() => moveDown(backend.id)}
+              onOpenInstallSheet={() =>
+                setInstallSheet(backend.id as InstallableBackendId)
+              }
+              onOpenSigninSheet={() =>
+                setSigninSheet(backend.id as InstallableBackendId)
+              }
+              onCloseSheets={() => {
+                setInstallSheet(null);
+                setSigninSheet(null);
+              }}
+              onInstallComplete={() => {
+                setInstallSheet(null);
+                onInstallComplete();
+              }}
+              onSigninComplete={() => {
+                setSigninSheet(null);
+                onSigninComplete();
+              }}
+              onSignout={() => onSignout(backend.id as InstallableBackendId)}
+            />
+          ))}
         </div>
       </section>
     </div>

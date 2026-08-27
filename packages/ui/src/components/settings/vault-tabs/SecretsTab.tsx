@@ -37,7 +37,7 @@ export function SecretsTab({
     [navigate],
   );
   return (
-    <div className="max-w-3xl">
+    <div className="w-full">
       <VaultInventoryPanel
         entries={entries}
         securityFindings={securityFindings}

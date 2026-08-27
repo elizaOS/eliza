@@ -293,7 +293,7 @@ export function LoginsTab() {
   });
 
   return (
-    <section data-testid="saved-logins-panel" className="max-w-3xl space-y-4">
+    <section data-testid="saved-logins-panel" className="w-full space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-[min(100%,30rem)] flex-1 space-y-1">
           <h2 className="text-sm font-semibold text-txt">

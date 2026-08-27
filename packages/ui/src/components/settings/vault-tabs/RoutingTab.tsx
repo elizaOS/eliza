@@ -340,7 +340,7 @@ export function RoutingTab(props: RoutingTabProps) {
   }, [config.rules, rulesFilter]);
 
   return (
-    <div data-testid="routing-tab" className="max-w-3xl space-y-6">
+    <div data-testid="routing-tab" className="w-full space-y-6">
       <p
         role="status"
         aria-live="polite"
