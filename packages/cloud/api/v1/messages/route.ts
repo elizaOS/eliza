@@ -913,9 +913,9 @@ app.post("/", async (c) => {
       }
       if (error instanceof InsufficientCreditsError) {
         return anthropicError(
-          "rate_limit_error",
+          "billing_error",
           `Insufficient cloud credits. Required: $${error.required.toFixed(4)}`,
-          429,
+          402,
         );
       }
       if (
@@ -959,9 +959,9 @@ app.post("/", async (c) => {
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
         return anthropicError(
-          "rate_limit_error",
+          "billing_error",
           `Insufficient credits. Required: $${error.required.toFixed(4)}`,
-          429,
+          402,
         );
       }
       if (error instanceof InferenceBalanceCacheWarmingError) {
