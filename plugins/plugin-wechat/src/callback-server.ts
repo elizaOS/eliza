@@ -95,11 +95,12 @@ class SignatureReplayGuard {
 
   /**
    * Allows byte-identical redelivery (platform retry) and rejects a different
-   * body replayed under a captured account/timestamp/nonce signature. Entries
-   * expire after the freshness window (a stale key can never be legitimately
-   * re-presented) and the map is insertion-order capped so traffic cannot
-   * grow it without bound; at capacity the oldest entry is evicted, which can
-   * only re-admit an already-expired key, never a fresh replay.
+   * body replayed under a captured account/timestamp/nonce signature. An
+   * entry lives exactly as long as its timestamp can still pass freshness
+   * (expiry is keyed to the TIMESTAMP's freshness endpoint, not to receipt
+   * time, so a future-skewed platform clock cannot leave a live window
+   * unguarded), and the map is capped: at capacity new keys are rejected,
+   * which can only fail closed (only signature-valid traffic ever inserts).
    */
   accepts(
     accountId: string,
@@ -118,15 +119,15 @@ class SignatureReplayGuard {
     const prior = this.seen.get(key);
     if (!prior) {
       if (this.seen.size >= this.maxEntries) {
-        const oldest = this.seen.keys().next().value;
-        if (oldest !== undefined) {
-          this.seen.delete(oldest);
-        }
+        // Fail closed at capacity: never evict a still-live key, which would
+        // re-admit an in-window replay.
+        return false;
       }
+      const seconds = Number(timestamp);
       this.seen.set(key, {
         bodySha256,
         retries: 0,
-        expiresAt: now + this.toleranceMs,
+        expiresAt: seconds * 1000 + this.toleranceMs,
       });
       return true;
     }
