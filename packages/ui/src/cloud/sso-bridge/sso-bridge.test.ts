@@ -77,6 +77,7 @@ function clearCookies(): void {
   for (const part of document.cookie.split(";")) {
     const name = part.split("=")[0]?.trim();
     if (name)
+      // biome-ignore lint/suspicious/noDocumentCookie: jsdom must clear the synchronous cookie jar the bridge reads.
       document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
   }
 }

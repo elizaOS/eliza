@@ -38,6 +38,7 @@ function signIn(): void {
 }
 
 function clearAuthedCookie(): void {
+  // biome-ignore lint/suspicious/noDocumentCookie: jsdom must clear the synchronous SSO cookie the bridge reads.
   document.cookie =
     "steward-authed=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
 }
@@ -115,6 +116,7 @@ afterEach(() => {
 
 describe("AppModeEntryRoute — SSO auto-bridge (managed app origin)", () => {
   it("signed out + domain session marker → full-page bounce to the eliza.app mint leg with a stored state nonce + PKCE challenge", async () => {
+    // biome-ignore lint/suspicious/noDocumentCookie: jsdom must seed the synchronous SSO cookie the bridge reads.
     document.cookie = "steward-authed=1; path=/";
     renderEntry("/chat?x=1");
 
@@ -153,6 +155,7 @@ describe("AppModeEntryRoute — SSO auto-bridge (managed app origin)", () => {
   });
 
   it("logout-then-visit does NOT re-bridge: the explicit logged-out marker wins over a live eliza.app session", async () => {
+    // biome-ignore lint/suspicious/noDocumentCookie: jsdom must seed the synchronous SSO cookie the bridge reads.
     document.cookie = "steward-authed=1; path=/";
     localStorage.setItem(SSO_LOGGED_OUT_KEY, "1");
     renderEntry("/");
@@ -161,6 +164,7 @@ describe("AppModeEntryRoute — SSO auto-bridge (managed app origin)", () => {
   });
 
   it("a fresh failed attempt (loop guard) falls through to login instead of bouncing again", async () => {
+    // biome-ignore lint/suspicious/noDocumentCookie: jsdom must seed the synchronous SSO cookie the bridge reads.
     document.cookie = "steward-authed=1; path=/";
     sessionStorage.setItem(SSO_ATTEMPT_KEY, String(Date.now()));
     renderEntry("/");
