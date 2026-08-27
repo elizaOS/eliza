@@ -21,6 +21,21 @@ on:
         required: false
         type: boolean
         default: false
+      production_binding_only_recovery:
+        description: Re-run the trusted production Hyperdrive recovery audit inside the mutation job
+        required: false
+        type: boolean
+        default: false
+      certified_production_base_sha:
+        description: Exact currently served base admitted by the caller
+        required: false
+        type: string
+        default: ""
+      certified_recovery_policy_sha:
+        description: Exact certified develop policy SHA admitted by the caller
+        required: false
+        type: string
+        default: ""
     outputs:
       superseded:
         description: >-
@@ -160,7 +175,7 @@ jobs:
     # while cancel/force-cancel returned HTTP 500 (see #16705).
     # Release serialization is the caller job lock in cloud-cf-deploy.yml (#18092).
     environment: ${{ inputs.target_environment }}
-    timeout-minutes: 10
+    timeout-minutes: 25
     env:
       MIGRATION_DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
       DATABASE_RESILIENCE_GATE_MODE: ${{ vars.DATABASE_RESILIENCE_GATE_MODE || 'off' }}
@@ -176,6 +191,9 @@ jobs:
       superseded: ${{ steps.source_guard.outputs.superseded }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
@@ -454,6 +472,174 @@ jobs:
             fi
           done
           echo "Production database identity enforcement is configured; receipt values were not printed."
+
+      - name: Re-admit bounded Hyperdrive recovery immediately before mutation
+        if: ${{ inputs.production_binding_only_recovery && steps.source_guard.outputs.superseded != 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force }}
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+          BASE_SHA: ${{ inputs.certified_production_base_sha }}
+          POLICY_SHA: ${{ inputs.certified_recovery_policy_sha }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DATABASE_IDENTITY_GATE_MODE: ${{ vars.DATABASE_IDENTITY_GATE_MODE || 'off' }}
+          DATABASE_IDENTITY_ENVIRONMENT: production
+          DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
+          DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          evidence_dir="$RUNNER_TEMP/production-binding-recovery-mutation-gate"
+          mkdir -m 0700 "$evidence_dir"
+          cleanup() {
+            set +e
+            if [ -d "$evidence_dir" ]; then
+              find "$evidence_dir" -type f -exec shred -u -- {} +
+              find "$evidence_dir" -depth -type d -empty -delete
+            fi
+          }
+          trap cleanup EXIT
+
+          [ "$TARGET_ENVIRONMENT" = "production" ] || {
+            echo "::error::Binding-only recovery mutation gate requires production."
+            exit 1
+          }
+          [ "$FORCE" = "false" ] || {
+            echo "::error::Binding-only recovery mutation gate forbids force."
+            exit 1
+          }
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] \
+            && [[ "$POLICY_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "::error::Binding-only recovery mutation gate requires exact base and policy SHAs."
+              exit 1
+            }
+          [ -n "$DATABASE_URL" ] && [ "$DATABASE_URL" = "$MIGRATION_DATABASE_URL" ] || {
+            echo "::error::Protected audit and migration database authorities differ."
+            exit 1
+          }
+          [ -n "$CLOUDFLARE_API_TOKEN" ] \
+            && [[ "$CLOUDFLARE_ACCOUNT_ID" =~ ^[0-9a-f]{32}$ ]] \
+            && [ "$DATABASE_IDENTITY_GATE_MODE" = "enforce" ] \
+            && [[ "$DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+            && [[ "$DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
+              echo "::error::Protected recovery authority settings are incomplete."
+              exit 1
+            }
+
+          git fetch --no-tags \
+            "https://github.com/${GITHUB_REPOSITORY}.git" \
+            develop:refs/remotes/origin/develop
+          git cat-file -e "${POLICY_SHA}^{commit}"
+          git cat-file -e "${BASE_SHA}^{commit}"
+          git merge-base --is-ancestor "$POLICY_SHA" refs/remotes/origin/develop || {
+            echo "::error::Certified recovery policy is no longer contained in develop."
+            exit 1
+          }
+          trusted_admission="$evidence_dir/trusted-production-hyperdrive-binding-admission.mjs"
+          git show "${POLICY_SHA}:packages/cloud/scripts/production-hyperdrive-binding-admission.mjs" \
+            > "$trusted_admission"
+          chmod 0500 "$trusted_admission"
+          bun "$trusted_admission" \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --policy-sha "$POLICY_SHA" \
+            --base-sha "$BASE_SHA" \
+            --candidate-sha "$GITHUB_SHA"
+
+          health_file="$evidence_dir/production-health.json"
+          curl --fail --silent --show-error --location --retry 3 \
+            --header "Cache-Control: no-cache" \
+            --output "$health_file" \
+            "https://api.eliza.app/api/health?mutation_gate_run=${GITHUB_RUN_ID}"
+          jq -e --arg base "$BASE_SHA" \
+            '.status == "ok" and .environment == "production" and .commit == $base' \
+            "$health_file" >/dev/null || {
+              echo "::error::Served production base drifted before mutation."
+              exit 1
+            }
+
+          candidate_id="$(
+            bun -e '
+              const source = await Bun.file("packages/cloud/api/wrangler.toml").text();
+              const config = Bun.TOML.parse(source);
+              const bindings = config?.env?.production?.hyperdrive;
+              if (!Array.isArray(bindings) || bindings.length !== 1) process.exit(1);
+              const binding = bindings[0];
+              if (binding?.binding !== "HYPERDRIVE" || !/^[0-9a-f]{32}$/.test(binding?.id)) process.exit(1);
+              process.stdout.write(binding.id);
+            '
+          )"
+          echo "::add-mask::$candidate_id"
+          hyperdrive_file="$evidence_dir/hyperdrive.json"
+          curl --fail --silent --show-error --location --retry 3 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            --output "$hyperdrive_file" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/hyperdrive/configs/${candidate_id}"
+          chmod 0600 "$hyperdrive_file"
+          bun "$trusted_admission" \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --hyperdrive-json "$hyperdrive_file"
+          candidate_id=""
+
+          env -u GITHUB_STEP_SUMMARY \
+            bun packages/cloud/scripts/admin/preflight-database-identity.ts \
+            > "$evidence_dir/database-identity.stdout" \
+            2> "$evidence_dir/database-identity.stderr"
+          bun -e '
+            import { createRequire } from "node:module";
+            import { enforceTlsForRemote } from "./packages/cloud/shared/src/db/postgres-tls.ts";
+            import {
+              loadCanonicalMigrations,
+              validateAppliedMigrationLedger,
+            } from "./packages/cloud/scripts/admin/canonical-migration-ledger.ts";
+            const { Client } = createRequire(import.meta.url)("pg");
+            const databaseUrl = process.env.DATABASE_URL;
+            if (!databaseUrl) throw new Error("protected_database_url_missing");
+            const { url, ssl } = enforceTlsForRemote(databaseUrl);
+            const client = new Client({
+              application_name: "eliza-production-binding-recovery-ledger",
+              connectionString: url,
+              connectionTimeoutMillis: 8000,
+              options: "-c default_transaction_read_only=on",
+              query_timeout: 8000,
+              statement_timeout: 8000,
+              ...(ssl ? { ssl } : {}),
+            });
+            try {
+              await client.connect();
+              await client.query("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+              const migrations = await loadCanonicalMigrations();
+              const result = await client.query(
+                "SELECT id, hash, created_at FROM drizzle.__drizzle_migrations ORDER BY id ASC",
+              );
+              const ledger = validateAppliedMigrationLedger(result.rows, migrations);
+              if (ledger.lastAppliedJournalIndex !== migrations.length - 1) {
+                throw new Error("production_migration_ledger_not_current");
+              }
+              await client.query("COMMIT");
+              process.stdout.write("Production migration ledger matches exact current main.\n");
+            } catch (error) {
+              await client.query("ROLLBACK").catch(() => {});
+              throw error;
+            } finally {
+              await client.end().catch(() => {});
+            }
+          ' > "$evidence_dir/migration-ledger.stdout" \
+            2> "$evidence_dir/migration-ledger.stderr"
+
+          bun run build:core > "$evidence_dir/build.stdout" 2> "$evidence_dir/build.stderr"
+          (
+            cd packages/cloud/api
+            bunx wrangler deploy --env production --dry-run \
+              --outdir "$evidence_dir/worker-bundle"
+          ) > "$evidence_dir/dry-run.stdout" 2> "$evidence_dir/dry-run.stderr"
+          node packages/cloud/scripts/canonical-deploy-source-guard.mjs \
+            --run-sha "$GITHUB_SHA" \
+            --canonical-ref refs/heads/main \
+            > "$evidence_dir/freshness.stdout" \
+            2> "$evidence_dir/freshness.stderr"
+          echo "Bounded Hyperdrive recovery re-admitted inside the mutation job."
 
       - name: Run migrations
         if: ${{ steps.source_guard.outputs.superseded != 'true' }}
