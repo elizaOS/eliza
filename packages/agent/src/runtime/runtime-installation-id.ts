@@ -6,6 +6,10 @@
  * root-owned ancestor is allowed), and every candidate cleanup matches
  * device/inode before unlinking. Same-UID
  * processes are therefore inside the runtime installation's trust domain.
+ * On the explicitly selected Android runtime boundary, SELinux may deny
+ * directory descriptors for platform-owned ancestors (including `/`); those
+ * ancestors are still validated from lstat owner/mode/identity, and
+ * descriptor-backed checks resume at the app-owned private ancestor.
  * Windows fails closed because this package has no ACL primitive that can prove
  * the equivalent boundary.
  */
@@ -18,21 +22,38 @@ import type { UUID } from "@elizaos/core";
 const INSTALLATION_ID_FILENAME = "runtime-installation-id";
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+/** Android app UIDs start at AID_APP (10000); lower values are platform-owned. */
+const ANDROID_AID_APP_START = 10000;
+const DIRECTORY_OPEN_FLAGS =
+  constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
 type FileHandle = Awaited<ReturnType<typeof fs.open>>;
 type FileStat = Awaited<ReturnType<typeof fs.lstat>>;
+
+interface OpenedTrustedParentDirectory {
+  handle: FileHandle;
+  path: string;
+  stat: FileStat;
+}
 
 interface TrustedDirectory {
   handle: FileHandle;
   stat: FileStat;
-  parent: TrustedParentDirectory;
+  parent: OpenedTrustedParentDirectory;
   ancestors: TrustedParentDirectory[];
   lexicalAncestors: TrustedLexicalEntry[];
+  androidRuntimeBoundary: boolean;
 }
 
 interface TrustedParentDirectory {
-  handle: FileHandle;
+  handle?: FileHandle;
   path: string;
   stat: FileStat;
+}
+
+export type RuntimeInstallationBoundary = "android";
+
+export interface LoadRuntimeInstallationIdOptions {
+  runtimeBoundary?: RuntimeInstallationBoundary;
 }
 
 interface TrustedLexicalEntry {
@@ -87,19 +108,63 @@ function assertTrustedDirectoryStat(stat: FileStat): void {
   }
 }
 
-function assertTrustedParentDirectoryStat(stat: FileStat): void {
+function isAndroidRuntimeBoundary(
+  options?: LoadRuntimeInstallationIdOptions,
+): boolean {
+  if (options?.runtimeBoundary === "android") return true;
+  return process.env.ELIZA_PLATFORM?.trim().toLowerCase() === "android";
+}
+
+function isAndroidPlatformOwnedAncestor(stat: FileStat): boolean {
+  const owner = Number(stat.uid);
+  const runtimeUid = currentUid();
+  if (runtimeUid !== undefined && owner === runtimeUid) return false;
+  return Number.isInteger(owner) && owner >= 0 && owner < ANDROID_AID_APP_START;
+}
+
+function assertTrustedParentDirectoryStat(
+  stat: FileStat,
+  androidRuntimeBoundary = false,
+): void {
   if (!stat.isDirectory() || stat.isSymbolicLink()) {
     throw new Error("Runtime state parent must be a real directory.");
   }
   const uid = currentUid();
   const mode = Number(stat.mode) & 0o7777;
-  const isTrustedOwner =
-    uid === undefined || Number(stat.uid) === uid || Number(stat.uid) === 0;
+  const owner = Number(stat.uid);
+  if (androidRuntimeBoundary && isAndroidPlatformOwnedAncestor(stat)) {
+    // Platform dirs such as /data are group-writable for system; SELinux is
+    // the MAC. Other-write without sticky remains a replaceable boundary.
+    if ((mode & 0o002) !== 0 && (mode & 0o1000) === 0) {
+      throw new Error("Runtime state parent is replaceable by another user.");
+    }
+    return;
+  }
+  const isTrustedOwner = uid === undefined || owner === uid || owner === 0;
   if (!isTrustedOwner) {
     throw new Error("Runtime state parent is not owned by a trusted user.");
   }
   if ((mode & 0o022) !== 0 && (mode & 0o1000) === 0) {
     throw new Error("Runtime state parent is replaceable by another user.");
+  }
+}
+
+async function openTrustedAncestorDirectory(
+  entryPath: string,
+  stat: FileStat,
+  androidRuntimeBoundary: boolean,
+): Promise<FileHandle | undefined> {
+  try {
+    return await fs.open(entryPath, DIRECTORY_OPEN_FLAGS);
+  } catch (error) {
+    if (
+      androidRuntimeBoundary &&
+      (error as NodeJS.ErrnoException).code === "EACCES" &&
+      isAndroidPlatformOwnedAncestor(stat)
+    ) {
+      return undefined;
+    }
+    throw error;
   }
 }
 
@@ -123,6 +188,7 @@ async function closeAncestors(
 ): Promise<void> {
   let failure: unknown;
   for (const ancestor of [...ancestors].reverse()) {
+    if (!ancestor.handle) continue;
     try {
       await ancestor.handle.close();
     } catch (error) {
@@ -157,6 +223,7 @@ function assertTrustedSymlinkStat(stat: FileStat): void {
 
 async function openTrustedLexicalChain(
   directory: string,
+  androidRuntimeBoundary: boolean,
 ): Promise<TrustedLexicalEntry[]> {
   const paths = ancestorPaths(directory);
   const trusted: TrustedLexicalEntry[] = [];
@@ -171,14 +238,15 @@ async function openTrustedLexicalChain(
         trusted.push({ path: entryPath, stat });
         continue;
       }
-      assertTrustedParentDirectoryStat(stat);
-      const handle = await fs.open(
+      assertTrustedParentDirectoryStat(stat, androidRuntimeBoundary);
+      const handle = await openTrustedAncestorDirectory(
         entryPath,
-        constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+        stat,
+        androidRuntimeBoundary,
       );
       trusted.push({ path: entryPath, stat, handle });
     }
-    await revalidateLexicalChain(trusted);
+    await revalidateLexicalChain(trusted, androidRuntimeBoundary);
     return trusted;
   } catch (error) {
     await closeLexicalAncestors(trusted);
@@ -188,6 +256,7 @@ async function openTrustedLexicalChain(
 
 async function revalidateLexicalChain(
   ancestors: TrustedLexicalEntry[],
+  androidRuntimeBoundary: boolean,
 ): Promise<void> {
   for (const ancestor of ancestors) {
     const pathStat = await fs.lstat(ancestor.path);
@@ -195,12 +264,16 @@ async function revalidateLexicalChain(
       throw new Error("Runtime state lexical path changed during validation.");
     }
     if (!ancestor.handle) {
-      assertTrustedSymlinkStat(pathStat);
+      if (pathStat.isSymbolicLink()) {
+        assertTrustedSymlinkStat(pathStat);
+        continue;
+      }
+      assertTrustedParentDirectoryStat(pathStat, androidRuntimeBoundary);
       continue;
     }
-    assertTrustedParentDirectoryStat(pathStat);
+    assertTrustedParentDirectoryStat(pathStat, androidRuntimeBoundary);
     const descriptorStat = await ancestor.handle.stat();
-    assertTrustedParentDirectoryStat(descriptorStat);
+    assertTrustedParentDirectoryStat(descriptorStat, androidRuntimeBoundary);
     if (!sameIdentity(descriptorStat, ancestor.stat)) {
       throw new Error("Runtime state lexical path changed during validation.");
     }
@@ -209,23 +282,36 @@ async function revalidateLexicalChain(
 
 async function revalidateAncestorChain(
   ancestors: TrustedParentDirectory[],
+  androidRuntimeBoundary: boolean,
 ): Promise<void> {
-  for (const ancestor of ancestors) await revalidateParentPath(ancestor);
+  for (const ancestor of ancestors) {
+    await revalidateParentPath(ancestor, androidRuntimeBoundary);
+  }
 }
 
 async function revalidateParentPath(
   trusted: TrustedParentDirectory,
+  androidRuntimeBoundary: boolean,
 ): Promise<void> {
-  const [pathStat, descriptorStat] = await Promise.all([
-    fs.lstat(trusted.path),
-    trusted.handle.stat(),
-  ]);
-  assertTrustedParentDirectoryStat(pathStat);
-  assertTrustedParentDirectoryStat(descriptorStat);
-  if (
-    !sameIdentity(pathStat, trusted.stat) ||
-    !sameIdentity(descriptorStat, trusted.stat)
-  ) {
+  const pathStat = await fs.lstat(trusted.path);
+  assertTrustedParentDirectoryStat(pathStat, androidRuntimeBoundary);
+  if (!sameIdentity(pathStat, trusted.stat)) {
+    throw new Error("Runtime state parent changed during validation.");
+  }
+  if (!trusted.handle) {
+    if (
+      !androidRuntimeBoundary ||
+      !isAndroidPlatformOwnedAncestor(trusted.stat)
+    ) {
+      throw new Error(
+        "Runtime state parent must be opened on a trusted descriptor.",
+      );
+    }
+    return;
+  }
+  const descriptorStat = await trusted.handle.stat();
+  assertTrustedParentDirectoryStat(descriptorStat, androidRuntimeBoundary);
+  if (!sameIdentity(descriptorStat, trusted.stat)) {
     throw new Error("Runtime state parent changed during validation.");
   }
 }
@@ -248,22 +334,33 @@ async function revalidateDirectoryPath(
 async function openTrustedStateDirectory(
   stateDirectory: string,
   lexicalAncestors: TrustedLexicalEntry[],
+  androidRuntimeBoundary: boolean,
 ): Promise<TrustedDirectory> {
   const parentPath = path.dirname(stateDirectory);
   const ancestors: TrustedParentDirectory[] = [];
   try {
     for (const ancestorPath of ancestorPaths(parentPath)) {
       const ancestorStat = await fs.lstat(ancestorPath);
-      assertTrustedParentDirectoryStat(ancestorStat);
-      const handle = await fs.open(
+      assertTrustedParentDirectoryStat(ancestorStat, androidRuntimeBoundary);
+      const handle = await openTrustedAncestorDirectory(
         ancestorPath,
-        constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+        ancestorStat,
+        androidRuntimeBoundary,
       );
       ancestors.push({ path: ancestorPath, stat: ancestorStat, handle });
     }
     const parent = ancestors.at(-1);
-    if (!parent) throw new Error("Runtime state parent chain is empty.");
-    await revalidateAncestorChain(ancestors);
+    if (!parent?.handle) {
+      throw new Error(
+        "Runtime state parent must be opened on a trusted descriptor.",
+      );
+    }
+    const openedParent: OpenedTrustedParentDirectory = {
+      handle: parent.handle,
+      path: parent.path,
+      stat: parent.stat,
+    };
+    await revalidateAncestorChain(ancestors, androidRuntimeBoundary);
     try {
       await fs.mkdir(stateDirectory, { mode: 0o700 });
     } catch (error) {
@@ -271,21 +368,19 @@ async function openTrustedStateDirectory(
     }
     const pathStat = await fs.lstat(stateDirectory);
     assertTrustedDirectoryStat(pathStat);
-    const handle = await fs.open(
-      stateDirectory,
-      constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
-    );
-    const trusted = {
+    const handle = await fs.open(stateDirectory, DIRECTORY_OPEN_FLAGS);
+    const trusted: TrustedDirectory = {
       stat: pathStat,
       handle,
-      parent,
+      parent: openedParent,
       ancestors,
       lexicalAncestors,
+      androidRuntimeBoundary,
     };
     try {
       await revalidateDirectoryPath(stateDirectory, trusted);
-      await revalidateAncestorChain(ancestors);
-      await revalidateLexicalChain(lexicalAncestors);
+      await revalidateAncestorChain(ancestors, androidRuntimeBoundary);
+      await revalidateLexicalChain(lexicalAncestors, androidRuntimeBoundary);
       return trusted;
     } catch (error) {
       await handle.close();
@@ -398,7 +493,7 @@ async function pathsForTrustedDirectory(
   stateDirectory: string,
   trusted: TrustedDirectory,
 ): Promise<string[]> {
-  await revalidateParentPath(trusted.parent);
+  await revalidateParentPath(trusted.parent, trusted.androidRuntimeBoundary);
   try {
     const currentStat = await fs.lstat(stateDirectory);
     if (
@@ -442,7 +537,7 @@ async function pathsForTrustedDirectory(
       if (error.code !== "ERR_DIR_CLOSED") throw error;
     });
   }
-  await revalidateParentPath(trusted.parent);
+  await revalidateParentPath(trusted.parent, trusted.androidRuntimeBoundary);
   return paths;
 }
 
@@ -497,10 +592,14 @@ async function cleanupCandidate(
 /** Loads one durable UUID per trusted state directory without following links. */
 async function loadOrCreateRuntimeInstallationIdImpl(
   stateDirectory: string,
+  androidRuntimeBoundary: boolean,
 ): Promise<UUID> {
   const requestedStateDirectory = path.resolve(stateDirectory);
   const requestedParent = path.dirname(requestedStateDirectory);
-  const lexicalAncestors = await openTrustedLexicalChain(requestedParent);
+  const lexicalAncestors = await openTrustedLexicalChain(
+    requestedParent,
+    androidRuntimeBoundary,
+  );
   let trustedDirectory: TrustedDirectory;
   let resolvedStateDirectory: string;
   try {
@@ -511,6 +610,7 @@ async function loadOrCreateRuntimeInstallationIdImpl(
     trustedDirectory = await openTrustedStateDirectory(
       resolvedStateDirectory,
       lexicalAncestors,
+      androidRuntimeBoundary,
     );
   } catch (error) {
     await closeLexicalAncestors(lexicalAncestors);
@@ -526,8 +626,14 @@ async function loadOrCreateRuntimeInstallationIdImpl(
     if (existing) return existing;
 
     await revalidateDirectoryPath(resolvedStateDirectory, trustedDirectory);
-    await revalidateAncestorChain(trustedDirectory.ancestors);
-    await revalidateLexicalChain(trustedDirectory.lexicalAncestors);
+    await revalidateAncestorChain(
+      trustedDirectory.ancestors,
+      androidRuntimeBoundary,
+    );
+    await revalidateLexicalChain(
+      trustedDirectory.lexicalAncestors,
+      androidRuntimeBoundary,
+    );
     await revalidateDirectoryPath(resolvedStateDirectory, trustedDirectory);
     const candidate = randomUUID() as UUID;
     const temporaryName = `.${INSTALLATION_ID_FILENAME}.${randomUUID()}.tmp`;
@@ -663,24 +769,33 @@ async function loadOrCreateRuntimeInstallationIdImpl(
 /** Loads the host identity with production-fixed platform and filesystem policy. */
 export async function loadOrCreateRuntimeInstallationId(
   stateDirectory: string,
+  options?: LoadRuntimeInstallationIdOptions,
 ): Promise<UUID> {
   if (process.platform === "win32") {
     throw new RuntimeInstallationIdentityUnsupportedError(
       "Secure runtime installation identity storage is unavailable on Windows.",
     );
   }
-  return await loadOrCreateRuntimeInstallationIdImpl(stateDirectory);
+  return await loadOrCreateRuntimeInstallationIdImpl(
+    stateDirectory,
+    isAndroidRuntimeBoundary(options),
+  );
 }
 
 /** Loads identity, rechecks cancellation, and only then invokes the constructor. */
 export async function constructWithRuntimeInstallationIdentity<T>(options: {
   stateDirectory: string;
   abortSignal?: AbortSignal;
+  runtimeBoundary?: RuntimeInstallationBoundary;
   construct: (runtimeInstanceId: UUID) => T;
   load?: (stateDirectory: string) => Promise<UUID>;
 }): Promise<T> {
   const runtimeInstanceId = await (
-    options.load ?? loadOrCreateRuntimeInstallationId
+    options.load ??
+    ((stateDirectory) =>
+      loadOrCreateRuntimeInstallationId(stateDirectory, {
+        runtimeBoundary: options.runtimeBoundary,
+      }))
   )(options.stateDirectory);
   options.abortSignal?.throwIfAborted();
   return options.construct(runtimeInstanceId);
