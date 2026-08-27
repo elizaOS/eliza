@@ -21,6 +21,7 @@ import {
 	MediaFetchError,
 	readResponseWithLimit,
 } from "../../media/fetch.ts";
+import { isSegmentedContentMarker } from "../../memory/content-segmentation.ts";
 import {
 	linkShareOwnText,
 	looksLikeBareLinkShare,
@@ -1012,6 +1013,158 @@ export const readAttachmentAction: Action = {
 
 			const pagedRecords = pageAttachmentRecords(records, params);
 			const expectedRevision = readStringParam(params, "expectedRevision");
+
+			// #25140: when an adapter with native content paging is present and a
+			// record's inline text is a published segmented-content marker, serve
+			// the page from the segment store via the owner-bound descriptor
+			// (`attachment.text:<id>` on the owning memory) instead of paging the
+			// marker string. The owning message id is the direct parent — no room
+			// scan and no source-sized materialization.
+			const pageCapable = runtime.getMemoryContentPage;
+			const segmentedRecord =
+				pageCapable &&
+				pagedRecords.length === 1 &&
+				isSegmentedContentMarker(pagedRecords[0].content)
+					? pagedRecords[0]
+					: null;
+			if (pageCapable && segmentedRecord) {
+				const ownerMessageId = segmentedRecord.attachment._messageId;
+				const attachmentId = segmentedRecord.attachment.id;
+				const offset = readNonnegativeInteger(params, "offset", 0);
+				if (!ownerMessageId) {
+					return {
+						success: false,
+						text: "The segmented attachment has no owning stored message to page from.",
+						error: "ATTACHMENT_PAGE_OWNER_UNRESOLVED",
+						data: {
+							actionName: "ATTACHMENT",
+							action: "read",
+							error: "owner_unresolved",
+							attachmentId,
+						},
+						promptData: {
+							actionName: "ATTACHMENT",
+							action: "read",
+							error: "owner_unresolved",
+							attachmentId,
+						},
+					};
+				}
+				if (offset > 0 && !expectedRevision) {
+					return {
+						success: false,
+						text: "An attachment revision is required to continue reading.",
+						error: "ATTACHMENT_READ_EXPECTED_REVISION_REQUIRED",
+						data: {
+							actionName: "ATTACHMENT",
+							action: "read",
+							error: "expected_revision_required",
+						},
+						promptData: {
+							actionName: "ATTACHMENT",
+							action: "read",
+							error: "expected_revision_required",
+						},
+					};
+				}
+				const limit = readOptionalPositiveInteger(params, "limit");
+				let page: Awaited<ReturnType<NonNullable<typeof pageCapable>>>;
+				try {
+					page = await pageCapable.call(runtime, {
+						memoryId: ownerMessageId,
+						field: { kind: "attachment.text", attachmentId },
+						byteStart: offset,
+						...(limit === undefined ? {} : { byteLimit: limit }),
+						...(expectedRevision === undefined ? {} : { expectedRevision }),
+					});
+				} catch (error) {
+					// error-policy:J1 the action boundary translates typed paging
+					// failures (stale revision, reindex required, drift) into
+					// structured user-visible replies.
+					if (error instanceof ElizaError) {
+						return {
+							success: false,
+							text: error.message,
+							error: error.code,
+							data: {
+								actionName: "ATTACHMENT",
+								action: "read",
+								error: error.code,
+								attachmentId,
+								...(error.context?.currentRevision !== undefined
+									? {
+											currentRevision: error.context.currentRevision,
+										}
+									: {}),
+							},
+							promptData: {
+								actionName: "ATTACHMENT",
+								action: "read",
+								error: error.code,
+								attachmentId,
+							},
+						};
+					}
+					throw error;
+				}
+				if (page) {
+					const readView: ReadView = {
+						reference: buildContentReference({
+							kind: "attachment",
+							ref: `attachment:${attachmentId}`,
+							revision: page.revision,
+						}),
+						slice: buildReadSlice({
+							range: {
+								unit: "byte",
+								start: page.start,
+								end: page.end,
+								total: page.total,
+							},
+							completeness: page.completeness,
+							revision: page.revision,
+							sliceSha256: page.sliceSha256,
+							sourceSha256: page.sourceSha256,
+						}),
+					};
+					const visibleText = await answerAttachmentRequest({
+						runtime,
+						message: messageWithParams,
+						content: page.text,
+						fallbackText: `Read "${titleForRecord(segmentedRecord)}" page but couldn't put an answer together — ask me something specific about it.`,
+					});
+					if (callback) {
+						await callback({
+							text: visibleText,
+							actions: ["ATTACHMENT_READ_SUCCESS"],
+							source: messageWithParams.content.source,
+						});
+					}
+					return {
+						success: true,
+						text: page.text,
+						transcriptVisibility: "internal",
+						userFacingText: visibleText,
+						verifiedUserFacing: true,
+						turnComplete: true,
+						data: {
+							actionName: "ATTACHMENT",
+							action: "read",
+							attachmentId,
+							attachmentIds: [attachmentId],
+							readView,
+						},
+						promptData: {
+							actionName: "ATTACHMENT",
+							action: "read",
+							attachmentId,
+							readView,
+						},
+					};
+				}
+				// page === null: descriptor absent with small inline — fall
+				// through to the inline paging path below.
+			}
 			if (
 				pagedRecords.some((record) => record.readView.slice.range.start > 0) &&
 				!expectedRevision

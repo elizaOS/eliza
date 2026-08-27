@@ -17,6 +17,7 @@ import {
   actorFromAccessContext,
   advanceWorldMetadataRevision,
   appendWorldMetadataRoleAudit,
+  buildSegmentedContentMarker,
   ChannelType,
   type Component,
   type ConnectorAccountAuditEventRecord,
@@ -63,6 +64,9 @@ import {
   type LogBody,
   logger,
   type Memory,
+  type MemoryContentField,
+  type MemoryContentPageParams,
+  type MemoryContentPageResult,
   type MemoryMetadata,
   type MessageSearchHit,
   type Metadata,
@@ -86,6 +90,7 @@ import {
   type RunStatus,
   requireFreshWorldMetadataRevision,
   type SetConnectorAccountCredentialRefParams,
+  shouldSegmentContent,
   type Task,
   type TaskMetadata,
   type UpsertConnectorAccountParams,
@@ -557,7 +562,6 @@ import {
   entityTable,
   logTable,
   memoryTable,
-  memoryTextSegmentTable,
   messageServerAgentsTable,
   messageServerTable,
   messageTable,
@@ -572,6 +576,19 @@ import {
 import { documentSearchTokensExpression } from "./schema/memory";
 
 type AgentRow = typeof agentTable.$inferSelect;
+
+/**
+ * Bounded inline replacement stored in the segmented field itself once the
+ * source bytes live in `memory_text_segments` (#25140). Machine-prefixed and
+ * digest-bearing so no legitimate content can collide with it; consumers that
+ * predate paged reads see an explicit marker, never silent truncation.
+ */
+function buildPublishedContentMarker(
+  descriptor: ReturnType<typeof planSegmentedField>["descriptor"]
+): string {
+  return buildSegmentedContentMarker(descriptor);
+}
+
 type AgentMessageExamples = NonNullable<Agent["messageExamples"]>;
 type AgentKnowledge = NonNullable<Agent["knowledge"]>;
 type MemoryRow = typeof memoryTable.$inferSelect;
@@ -661,12 +678,20 @@ import {
   ConnectorAccountStore,
   type ListConnectorAccountAuditEventsParams,
 } from "./stores/connectorAccount.store";
+import {
+  insertSegmentsInTransaction,
+  mergeSegmentationMetadata,
+  planSegmentedField,
+  readMemoryContentPage,
+  retireStaleGenerationsInTransaction,
+} from "./stores/memoryTextSegments.store";
 import type { StoreContext } from "./stores/types";
 import type { DrizzleDatabase } from "./types";
 
 export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase> {
   readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
   readonly documentRangeReadCapability = 1 as const;
+  readonly memoryContentPageCapability = 1 as const;
   protected readonly maxRetries: number = 3;
   protected readonly baseDelay: number = 1000;
   protected readonly maxDelay: number = 10000;
@@ -4046,6 +4071,31 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return memoryId;
   }
 
+  /**
+   * #25140: authorized byte-window page read over segmented memory content.
+   * Delegates to the segmentation store; typed errors
+   * (MEMORY_CONTENT_REINDEX_REQUIRED, MEMORY_CONTENT_STALE_REVISION, …)
+   * propagate to the caller. Returns null when the field has no descriptor
+   * and its inline value fits a bounded page — callers fall back to the
+   * ordinary small-row read.
+   */
+  async getMemoryContentPage(
+    params: MemoryContentPageParams
+  ): Promise<MemoryContentPageResult | null> {
+    return this.withDatabase(() =>
+      readMemoryContentPage({
+        db: this.db,
+        memoryId: params.memoryId,
+        field: params.field as import("@elizaos/core").MemorySegmentField,
+        byteStart: params.byteStart,
+        ...(params.byteLimit === undefined ? {} : { byteLimit: params.byteLimit }),
+        ...(params.expectedRevision === undefined
+          ? {}
+          : { expectedRevision: params.expectedRevision }),
+      })
+    );
+  }
+
   private async resolveMemoryUniqueness(
     memory: Memory & { metadata?: MemoryMetadata },
     tableName: string
@@ -4087,6 +4137,85 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     }
   }
 
+  /**
+   * Plans segmentation for every field of `content` whose UTF-8 byte length
+   * exceeds the threshold (#25140): `content.text` and each attachment's
+   * `text`. Returns the bounded inline replacement — the shared published
+   * marker — plus per-field plans. Never throws for ordinary content: a
+   * segmentation failure (e.g. unpaired surrogates) surfaces where it occurs
+   * rather than blocking the small-field paths.
+   */
+  private planMemoryContentSegmentation(
+    content: Memory["content"],
+    existingMetadata: unknown
+  ): {
+    content: Memory["content"];
+    metadata: Record<string, unknown>;
+    plans: Array<{
+      field: MemoryContentField;
+      segments: ReturnType<typeof planSegmentedField>["segments"];
+      generation: string;
+    }>;
+  } {
+    const plans: Array<{
+      field: MemoryContentField;
+      segments: ReturnType<typeof planSegmentedField>["segments"];
+      generation: string;
+    }> = [];
+    let metadata =
+      existingMetadata && typeof existingMetadata === "object"
+        ? { ...(existingMetadata as Record<string, unknown>) }
+        : {};
+
+    const planField = (field: MemoryContentField, text: string): string => {
+      const planned = planSegmentedField({ field, text });
+      metadata = mergeSegmentationMetadata(metadata, planned.descriptor);
+      plans.push({
+        field,
+        segments: planned.segments,
+        generation: planned.descriptor.generation,
+      });
+      return buildPublishedContentMarker(planned.descriptor);
+    };
+
+    let nextContent = content;
+    if (typeof content.text === "string" && shouldSegmentContent(content.text)) {
+      nextContent = {
+        ...nextContent,
+        text: planField({ kind: "content.text" }, content.text),
+      };
+    }
+    if (Array.isArray(content.attachments) && content.attachments.length > 0) {
+      let changed = false;
+      const attachments = content.attachments.map((attachment) => {
+        if (
+          attachment &&
+          typeof attachment === "object" &&
+          typeof (attachment as { text?: unknown }).text === "string" &&
+          shouldSegmentContent((attachment as { text: string }).text)
+        ) {
+          changed = true;
+          const id =
+            typeof (attachment as { id?: unknown }).id === "string" &&
+            (attachment as { id: string }).id.trim()
+              ? (attachment as { id: string }).id.trim()
+              : "";
+          const field = id ? ({ kind: "attachment.text", attachmentId: id } as const) : null;
+          if (field) {
+            const text = (attachment as { text: string }).text;
+            return {
+              ...attachment,
+              text: planField(field, text),
+            };
+          }
+        }
+        return attachment;
+      });
+      if (changed) nextContent = { ...nextContent, attachments };
+    }
+    return { content: nextContent, metadata, plans };
+  }
+
   private async insertMemoryInTransaction(
     tx: DrizzleDatabase,
     memory: Memory & { metadata?: MemoryMetadata },
@@ -4094,13 +4223,22 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     memoryId: UUID,
     requireInserted = false
   ): Promise<void> {
+    // #25140: fields whose UTF-8 bytes exceed the segmentation threshold are
+    // published as immutable segments in the SAME transaction as the parent
+    // row; the inline field carries only a bounded published marker and the
+    // parent metadata carries the descriptor.
+    const segmentation = this.planMemoryContentSegmentation(memory.content, memory.metadata);
+    const contentToSegment = segmentation.content;
+
     // Ensure we always pass a JSON string to the SQL bind parameter; if we pass an
     // object directly PG sees `[object Object]` and fails the `::jsonb` cast.
     const contentToInsert =
-      typeof memory.content === "string" ? memory.content : JSON.stringify(memory.content);
+      typeof contentToSegment === "string" ? contentToSegment : JSON.stringify(contentToSegment);
 
     const metadataToInsert =
-      typeof memory.metadata === "string" ? memory.metadata : JSON.stringify(memory.metadata ?? {});
+      typeof segmentation.metadata === "string"
+        ? segmentation.metadata
+        : JSON.stringify(segmentation.metadata ?? {});
 
     const inserted = await tx
       .insert(memoryTable)
@@ -4129,6 +4267,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         });
       }
       return;
+    }
+
+    // #25140: publish the planned segments in the same transaction; rollback
+    // of either write leaves neither (no orphan rows, no partial parent).
+    for (const plan of segmentation.plans) {
+      await insertSegmentsInTransaction({
+        tx,
+        parentId: memoryId,
+        segments: plan.segments,
+        generation: plan.generation,
+      });
     }
 
     if (memory.embedding && Array.isArray(memory.embedding)) {
@@ -4179,23 +4328,43 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this.withDatabase(async () => {
       try {
         await this.db.transaction(async (tx) => {
-          // Update memory content if provided
+          // #25140: replacement of a segmented field publishes a new
+          // immutable generation and retires stale generations in the SAME
+          // transaction as the parent row update. Existing caller metadata is
+          // the merge base so descriptors for untouched fields survive a
+          // partial update.
+          let segmentation: ReturnType<BaseDrizzleAdapter["planMemoryContentSegmentation"]> | null =
+            null;
+          let mergedMetadata: string | undefined;
           if (memory.content) {
-            const contentToUpdate =
-              typeof memory.content === "string" ? memory.content : JSON.stringify(memory.content);
+            const existingMetadata =
+              memory.metadata ??
+              (
+                await tx
+                  .select({ metadata: memoryTable.metadata })
+                  .from(memoryTable)
+                  .where(eq(memoryTable.id, memory.id))
+                  .limit(1)
+              )[0]?.metadata;
+            segmentation = this.planMemoryContentSegmentation(memory.content, existingMetadata);
+            mergedMetadata =
+              typeof segmentation.metadata === "string"
+                ? segmentation.metadata
+                : JSON.stringify(segmentation.metadata ?? {});
+          }
 
-            const metadataToUpdate =
-              typeof memory.metadata === "string"
-                ? memory.metadata
-                : JSON.stringify(memory.metadata ?? {});
+          // Update memory content if provided
+          if (memory.content && segmentation) {
+            const contentToUpdate =
+              typeof segmentation.content === "string"
+                ? segmentation.content
+                : JSON.stringify(segmentation.content);
 
             await tx
               .update(memoryTable)
               .set({
                 content: sql`${contentToUpdate}::jsonb`,
-                ...(memory.metadata && {
-                  metadata: sql`${metadataToUpdate}::jsonb`,
-                }),
+                metadata: sql`${mergedMetadata}::jsonb`,
               })
               .where(eq(memoryTable.id, memory.id));
           } else if (memory.metadata) {
@@ -4211,6 +4380,24 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
                 metadata: sql`${metadataToUpdate}::jsonb`,
               })
               .where(eq(memoryTable.id, memory.id));
+          }
+
+          // #25140: publish the new generation and retire every generation no
+          // longer referenced by the merged metadata, in the same transaction.
+          if (segmentation) {
+            for (const plan of segmentation.plans) {
+              await insertSegmentsInTransaction({
+                tx,
+                parentId: memory.id,
+                segments: plan.segments,
+                generation: plan.generation,
+              });
+            }
+            await retireStaleGenerationsInTransaction({
+              tx,
+              parentId: memory.id,
+              liveMetadata: segmentation.metadata,
+            });
           }
 
           // Update embedding if provided
