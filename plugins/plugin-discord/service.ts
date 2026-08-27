@@ -980,6 +980,7 @@ export class DiscordService extends Service implements IDiscordService {
 	async degradeMembershipForAccount(
 		accountId: string,
 		reason: string,
+		worldIds?: string[],
 	): Promise<void> {
 		const publisher = this.membershipPublisher();
 		if (!publisher) {
@@ -990,6 +991,7 @@ export class DiscordService extends Service implements IDiscordService {
 				accountKey: accountId,
 				health: "stale",
 				reason,
+				worldIds,
 			});
 		} catch (error) {
 			// error-policy:J4 degrade-only membership side surface.

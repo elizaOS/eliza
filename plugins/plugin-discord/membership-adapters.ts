@@ -89,3 +89,33 @@ export function asMemberLike(
 	}
 	return memberLikeOf(member as GuildMember);
 }
+
+/**
+ * Aggregate a member's guild permissions across a role permission change,
+ * preserving discord.js owner semantics: the guild owner holds every
+ * permission independently of roles (GuildMember.permissions resolves
+ * PermissionsBitField.All for the ownerId), so a role bitfield transition
+ * must not synthesize a permission change for them (#24365 RP r4).
+ */
+export function roleUpdatePermissionAggregates(options: {
+	memberId: string;
+	guildOwnerId: string | undefined | null;
+	otherRolesBitfield: bigint;
+	oldRoleBitfield: bigint;
+	newRoleBitfield: bigint;
+	allPermissions: bigint;
+}): { oldPermissions: bigint; newPermissions: bigint } {
+	if (
+		typeof options.guildOwnerId === "string" &&
+		options.memberId === options.guildOwnerId
+	) {
+		return {
+			oldPermissions: options.allPermissions,
+			newPermissions: options.allPermissions,
+		};
+	}
+	return {
+		oldPermissions: options.otherRolesBitfield | options.oldRoleBitfield,
+		newPermissions: options.otherRolesBitfield | options.newRoleBitfield,
+	};
+}

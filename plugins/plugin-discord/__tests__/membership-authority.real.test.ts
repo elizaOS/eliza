@@ -868,3 +868,102 @@ describe("RP round-2 regression battery (#24365 review findings)", () => {
 		expect(health?.reason).toContain("delta_rejected");
 	}, 60_000);
 });
+
+describe("RP round-4 regression battery (#24365 review findings)", () => {
+	// RP r4 finding 2: discord.js grants the guild owner every permission
+	// independently of roles (GuildMember.permissions resolves All for the
+	// ownerId), so a role bitfield transition must not synthesize a
+	// permission change for the owner.
+	it("roleUpdatePermissionAggregates preserves owner all-permissions across a role change", async () => {
+		const { roleUpdatePermissionAggregates } = await import(
+			"../membership-adapters"
+		);
+		const ALL = PermissionsBitField.All;
+		// Guild owner holding the changed role: old and new aggregates must
+		// both be ALL (no fabricated permission loss/regain).
+		const owner = roleUpdatePermissionAggregates({
+			memberId: "u-owner",
+			guildOwnerId: "u-owner",
+			otherRolesBitfield: 0n,
+			oldRoleBitfield: VIEW,
+			newRoleBitfield: 0n,
+			allPermissions: ALL,
+		});
+		expect(owner.oldPermissions).toBe(ALL);
+		expect(owner.newPermissions).toBe(ALL);
+		// Non-owner members still get the role-derived transition.
+		const member = roleUpdatePermissionAggregates({
+			memberId: "u-member",
+			guildOwnerId: "u-owner",
+			otherRolesBitfield: 0n,
+			oldRoleBitfield: VIEW,
+			newRoleBitfield: 0n,
+			allPermissions: ALL,
+		});
+		expect(member.oldPermissions).toBe(VIEW);
+		expect(member.newPermissions).toBe(0n);
+		// Overlapping grants from unchanged roles survive the transition.
+		const overlapping = roleUpdatePermissionAggregates({
+			memberId: "u-member",
+			guildOwnerId: "u-owner",
+			otherRolesBitfield: VIEW,
+			oldRoleBitfield: VIEW,
+			newRoleBitfield: 0n,
+			allPermissions: ALL,
+		});
+		expect(overlapping.oldPermissions).toBe(VIEW);
+		expect(overlapping.newPermissions).toBe(VIEW);
+		// Unknown owner id (undefined/null) falls back to role aggregation.
+		const unknown = roleUpdatePermissionAggregates({
+			memberId: "u-member",
+			guildOwnerId: undefined,
+			otherRolesBitfield: 0n,
+			oldRoleBitfield: VIEW,
+			newRoleBitfield: 0n,
+			allPermissions: ALL,
+		});
+		expect(unknown.oldPermissions).toBe(VIEW);
+		expect(unknown.newPermissions).toBe(0n);
+	});
+
+	// RP r4 finding 1: shardDisconnect degrades account-wide while
+	// shardResume recovers only the resumed shard's guilds — scopes on
+	// healthy shards would stay stale forever. The fix scopes the degrade
+	// to the disconnected shard's guilds via worldIds.
+	it("degradeAllForAccount worldIds filter degrades only the named guilds' scopes", async () => {
+		// Publish scopes in two guilds (two shards).
+		for (const guildId of ["guild-shard-a", "guild-shard-b"]) {
+			const chan = makeChannel({ id: `${guildId}-chan` });
+			await bridge.publishMemberDelta({
+				accountKey: "default",
+				guild: { id: guildId, name: guildId, channels: [chan] },
+				member: makeMember({ id: "u-live" }),
+				membershipState: "active",
+				reason: "joined",
+				eventId: `${guildId}-join`,
+			});
+		}
+		const scopeA = await scopeFor("guild-shard-a", "guild-shard-a-chan");
+		const scopeB = await scopeFor("guild-shard-b", "guild-shard-b-chan");
+		expect((await membership.getScopeHealth(scopeA))?.health).toBe("current");
+		expect((await membership.getScopeHealth(scopeB))?.health).toBe("current");
+		// Shard 0 disconnects: only guild-shard-a's scopes degrade.
+		await publisher.degradeAllForAccount({
+			accountKey: "default",
+			health: "stale",
+			reason: "gateway_shard_disconnect:0:1000",
+			worldIds: ["guild-shard-a"],
+		});
+		expect((await membership.getScopeHealth(scopeA))?.health).toBe("stale");
+		// The healthy shard's scope stays current.
+		expect((await membership.getScopeHealth(scopeB))?.health).toBe("current");
+		// Unfiltered degrade (legacy call shape) still degrades everything.
+		await publisher.degradeAllForAccount({
+			accountKey: "default",
+			health: "stale",
+			reason: "gateway_disconnect:account",
+		});
+		expect((await membership.getScopeHealth(scopeA))?.health).toBe("stale");
+		expect((await membership.getScopeHealth(scopeB))?.health).toBe("stale");
+	}, 60_000);
+});
