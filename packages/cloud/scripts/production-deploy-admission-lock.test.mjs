@@ -41,6 +41,7 @@ function jobBlock(source, jobId) {
 }
 
 const cloudCf = readWorkflow(".github/workflows/cloud-cf-deploy.yml");
+const parsedCloudCf = Bun.YAML.parse(cloudCf);
 const cloudCfRelease = readWorkflow(".github/workflows/cloud-cf-release.yml");
 const provisioning = readWorkflow(
   ".github/workflows/deploy-eliza-provisioning-worker.yml",
@@ -227,14 +228,14 @@ describe("committed Cloud CF workflow matches the policy", () => {
     expect(cloudCfRelease).not.toContain("cloud-cf-deploy-app-");
   });
 
-  test("PR Pages previews remain pinned to staging inputs", () => {
-    const buildPages = jobBlock(cloudCf, "build-pages");
-    expect(buildPages).not.toContain("inputs.target_environment");
-    expect(buildPages).toContain("VITE_API_URL: https://api-staging.eliza.app");
-    expect(buildPages).toContain(
-      "NEXT_PUBLIC_APP_URL: https://cloud-staging.eliza.app",
+  test("PR Pages previews cannot enter the credentialed release workflow", () => {
+    expect(Object.keys(parsedCloudCf.on ?? {}).sort()).toEqual([
+      "workflow_dispatch",
+    ]);
+    expect(parsedCloudCf.jobs).not.toHaveProperty("build-pages");
+    expect(parsedCloudCf.jobs).not.toHaveProperty(
+      "resolve-pages-preview-config",
     );
-    expect(buildPages).toContain("VITE_ENVIRONMENT: staging");
   });
 });
 
