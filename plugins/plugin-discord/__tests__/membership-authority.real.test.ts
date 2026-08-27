@@ -499,14 +499,19 @@ describe("Discord membership publisher (real PGlite authority)", () => {
 			"u-same",
 		);
 		expect(principalA).not.toBe(principalB);
-		expect((await membership.authorize(scopeA!, principalA)).decision).toBe(
+		// authorize requires a defined scope; scopeForChannel resolved both
+		// connector accounts (asserted above), so fail loudly if not.
+		if (!scopeA || !scopeB) {
+			throw new Error("scopeForChannel returned an undefined scope");
+		}
+		expect((await membership.authorize(scopeA, principalA)).decision).toBe(
 			"allowed",
 		);
-		expect((await membership.authorize(scopeB!, principalB)).decision).toBe(
+		expect((await membership.authorize(scopeB, principalB)).decision).toBe(
 			"allowed",
 		);
 		// Cross-account authorization fails closed.
-		expect((await membership.authorize(scopeA!, principalB)).decision).toBe(
+		expect((await membership.authorize(scopeA, principalB)).decision).toBe(
 			"denied",
 		);
 	}, 60_000);
