@@ -533,6 +533,13 @@ export class PluginActivatorService extends Service {
 		}
 
 		// Notify all activated plugins that depend on this secret
+		// Shutdown fence: stop() unsubscribes from secret changes *before* it
+		// awaits the in-flight poll (see stop()), so a handler that resumes after
+		// that point must not dispatch plugin onSecretChanged callbacks or
+		// secret-change listeners into a service that is draining.
+		if (this.unsubscribeSecretChanges === null) {
+			return;
+		}
 		await this.notifySecretChanged(key, value);
 	}
 
