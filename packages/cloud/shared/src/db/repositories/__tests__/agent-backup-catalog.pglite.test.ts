@@ -1586,7 +1586,8 @@ describe("agent backup catalogue on primary PGlite", () => {
       sandboxRecordId: AGENT_ID,
       operationId: "00000000-0000-4000-8000-00000000c03c",
     });
-    if (!first.source_node_history_id) throw new Error("Expected exact cursor node authority");
+    const sourceNodeHistoryId = first.source_node_history_id;
+    if (!sourceNodeHistoryId) throw new Error("Expected exact cursor node authority");
     await dbWrite.execute(sql`
       UPDATE ${agentBackupOrganizationAdmissionCursors}
       SET cursor_at = '2099-01-01T00:00:00.123455Z'::timestamptz
@@ -1595,7 +1596,7 @@ describe("agent backup catalogue on primary PGlite", () => {
     await dbWrite.execute(sql`
       UPDATE ${agentBackupNodeAdmissionCursors}
       SET cursor_at = '2099-01-01T00:00:00.123456Z'::timestamptz
-      WHERE node_history_id = ${first.source_node_history_id}
+      WHERE node_history_id = ${sourceNodeHistoryId}
     `);
     const readExactCursors = async () => {
       const [row] = await dbWrite
@@ -1612,7 +1613,7 @@ describe("agent backup catalogue on primary PGlite", () => {
         .from(agentBackupOrganizationAdmissionCursors)
         .innerJoin(
           agentBackupNodeAdmissionCursors,
-          eq(agentBackupNodeAdmissionCursors.node_history_id, first.source_node_history_id),
+          eq(agentBackupNodeAdmissionCursors.node_history_id, sourceNodeHistoryId),
         )
         .where(eq(agentBackupOrganizationAdmissionCursors.organization_id, ORG_ID));
       return row;
@@ -2030,7 +2031,8 @@ describe("agent backup catalogue on primary PGlite", () => {
       limit: 1,
       leaseMs: 60_000,
     });
-    if (!claim || !backup.source_node_history_id) {
+    const sourceNodeHistoryId = backup.source_node_history_id;
+    if (!claim || !sourceNodeHistoryId) {
       throw new Error("Expected heartbeat admission claim");
     }
     const readCursors = () =>
@@ -2048,9 +2050,7 @@ describe("agent backup catalogue on primary PGlite", () => {
             cursorAt: sql<string | null>`${agentBackupNodeAdmissionCursors.cursor_at}::text`,
           })
           .from(agentBackupNodeAdmissionCursors)
-          .where(
-            eq(agentBackupNodeAdmissionCursors.node_history_id, backup.source_node_history_id),
-          ),
+          .where(eq(agentBackupNodeAdmissionCursors.node_history_id, sourceNodeHistoryId)),
       ]);
     const cursorsBefore = await readCursors();
     expect(cursorsBefore[0]).toEqual([{ cursorAt: expect.any(String) }]);
