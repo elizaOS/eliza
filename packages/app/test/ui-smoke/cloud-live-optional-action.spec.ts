@@ -3,8 +3,11 @@
 import { expect, test } from "@playwright/test";
 import {
   CloudLiveOptionalActionDeadlineError,
+  CloudLivePersonalIdentityDeadlineError,
+  CloudLivePersonalIdentityRecoveryError,
   clickCloudLiveOptionalAction,
   prepareCloudLivePersonalIdentity,
+  waitForCloudLivePersonalIdentity,
 } from "../cloud-live-optional-action";
 
 test.describe("Cloud live optional action boundary", () => {
@@ -174,6 +177,126 @@ test.describe("Cloud live optional action boundary", () => {
         (error: unknown) => ({ ok: false as const, error }),
       );
     expect(result.ok).toBe(false);
+  });
+
+  test("resolves one stable binding without replaying a recovery action", async ({
+    page,
+  }) => {
+    await page.setContent(`
+      <main>Transitioning</main>
+      <script>
+        setTimeout(() => { window.__testActiveBinding = "dedicated"; }, 25);
+      </script>
+    `);
+    let recoveryObserved = false;
+
+    await expect(
+      waitForCloudLivePersonalIdentity({
+        readBinding: () =>
+          page.evaluate(
+            () =>
+              (window as typeof window & { __testActiveBinding?: string })
+                .__testActiveBinding ?? null,
+          ),
+        runtimeCloudRecovery: page.getByTestId("runtime-cloud"),
+        retryRecovery: page.getByTestId("identity-retry"),
+        timeoutMs: 500,
+        runtimeCloudGraceMs: 50,
+        pollIntervalMs: 5,
+        onRecovery: () => {
+          recoveryObserved = true;
+        },
+      }),
+    ).resolves.toBe("dedicated");
+    expect(recoveryObserved).toBe(false);
+  });
+
+  test("fails with the closed runtime-cloud recovery after the initial choice reappears", async ({
+    page,
+  }) => {
+    await page.setContent(`
+      <button data-testid="runtime-cloud">Use Cloud</button>
+      <script>
+        setTimeout(() => {
+          document.querySelector('[data-testid="runtime-cloud"]').remove();
+        }, 10);
+        setTimeout(() => {
+          document.body.insertAdjacentHTML("beforeend", '<button data-testid="runtime-cloud">Use Cloud</button>');
+        }, 30);
+      </script>
+    `);
+    const recoveries: string[] = [];
+
+    const result = await waitForCloudLivePersonalIdentity({
+      readBinding: async () => null,
+      runtimeCloudRecovery: page.getByTestId("runtime-cloud"),
+      retryRecovery: page.getByTestId("identity-retry"),
+      timeoutMs: 500,
+      runtimeCloudGraceMs: 100,
+      pollIntervalMs: 5,
+      onRecovery: (recovery) => {
+        recoveries.push(recovery);
+      },
+    }).then(
+      () => ({ ok: true as const }),
+      (error: unknown) => ({ ok: false as const, error }),
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("runtime recovery unexpectedly resolved");
+    expect(result.error).toBeInstanceOf(CloudLivePersonalIdentityRecoveryError);
+    expect(result.error).toMatchObject({
+      code: "CLOUD_LIVE_PERSONAL_IDENTITY_RECOVERY",
+      recovery: "runtime-cloud",
+    });
+    expect(recoveries).toEqual(["runtime-cloud"]);
+    expect(String(result.error)).not.toMatch(/data-testid|Use Cloud|locator/);
+  });
+
+  test("fails with the closed retry recovery without clicking it", async ({
+    page,
+  }) => {
+    await page.setContent(`
+      <button data-testid="identity-retry">Retry</button>
+      <output data-testid="retry-count">0</output>
+      <script>
+        document.addEventListener("click", () => {
+          document.querySelector('[data-testid="retry-count"]').textContent = "1";
+        });
+      </script>
+    `);
+
+    await expect(
+      waitForCloudLivePersonalIdentity({
+        readBinding: async () => null,
+        runtimeCloudRecovery: page.getByTestId("runtime-cloud"),
+        retryRecovery: page.getByTestId("identity-retry"),
+        timeoutMs: 500,
+        runtimeCloudGraceMs: 50,
+        pollIntervalMs: 5,
+      }),
+    ).rejects.toMatchObject({
+      code: "CLOUD_LIVE_PERSONAL_IDENTITY_RECOVERY",
+      recovery: "retry",
+    });
+    await expect(page.getByTestId("retry-count")).toHaveText("0");
+  });
+
+  test("fails with a closed deadline when binding and recovery stay absent", async ({
+    page,
+  }) => {
+    await page.setContent("<main>Transitioning</main>");
+
+    await expect(
+      waitForCloudLivePersonalIdentity({
+        readBinding: async () => null,
+        runtimeCloudRecovery: page.getByTestId("runtime-cloud"),
+        retryRecovery: page.getByTestId("identity-retry"),
+        timeoutMs: 50,
+        runtimeCloudGraceMs: 10,
+        pollIntervalMs: 5,
+      }),
+    ).rejects.toBeInstanceOf(CloudLivePersonalIdentityDeadlineError);
   });
 
   test("fails closed when an offered action is continuously replaced", async ({

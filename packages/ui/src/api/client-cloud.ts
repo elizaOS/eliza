@@ -914,11 +914,12 @@ async function withDirectCloudHttpTimeout<T>(
   }
 }
 
-async function fetchDirectCloudWithTimeout(
+async function fetchDirectCloudWithTimeout<T>(
   url: string,
   init: RequestInit,
   args: { method: string; url: string },
-): Promise<Response> {
+  consume: (response: Response) => Promise<T>,
+): Promise<T> {
   const controller = new AbortController();
   let abortListener: (() => void) | undefined;
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -935,11 +936,31 @@ async function fetchDirectCloudWithTimeout(
 
   timeoutId = setTimeout(() => {
     timedOut = true;
-    controller.abort();
+    controller.abort(new DOMException("The request timed out", "TimeoutError"));
   }, DIRECT_CLOUD_HTTP_TIMEOUT_MS);
 
+  const aborted = new Promise<never>((_resolve, reject) => {
+    const rejectWithReason = () =>
+      reject(
+        controller.signal.reason ??
+          new DOMException("The request was aborted", "AbortError"),
+      );
+    if (controller.signal.aborted) rejectWithReason();
+    else
+      controller.signal.addEventListener("abort", rejectWithReason, {
+        once: true,
+      });
+  });
+
   try {
-    return await directCloudFetch(url, { ...init, signal: controller.signal });
+    const response = await Promise.race([
+      directCloudFetch(url, { ...init, signal: controller.signal }),
+      aborted,
+    ]);
+    // Keep the same request deadline alive until the body is fully consumed.
+    // A 200 response whose headers arrive before its body must not strand the
+    // Personal/Dedicated conductor indefinitely.
+    return await Promise.race([consume(response), aborted]);
   } catch (err) {
     if (timedOut) {
       throw new Error(
@@ -991,12 +1012,12 @@ async function directCloudJsonResponse<T>(
   }
 
   const requestUrl = resolveBrowserCloudApiRequestUrl(url);
-  const res = await fetchDirectCloudWithTimeout(
+  const { res, text } = await fetchDirectCloudWithTimeout(
     requestUrl,
     { ...init, method, headers },
     { method, url },
+    async (res) => ({ res, text: await res.text() }),
   );
-  const text = await res.text().catch(() => res.statusText);
   const parsed = parseDirectCloudJsonSafe(text) as T;
   return {
     ok: isAcceptableDirectCloudResponse(res.status, parsed),
@@ -1195,17 +1216,16 @@ async function directCloudRequest<T>(
   }
 
   const requestUrl = resolveBrowserCloudApiRequestUrl(url);
-  const res = await fetchDirectCloudWithTimeout(
+  const { res, text } = await fetchDirectCloudWithTimeout(
     requestUrl,
     { ...init, method, headers },
     { method, url },
+    async (res) => ({ res, text: await res.text() }),
   );
   if (res.status === 401) {
     await clearStoredStewardTokenIfCurrent(token);
   }
-  const data = await res.json().catch(async () => ({
-    error: await res.text().catch(() => res.statusText),
-  }));
+  const data = parseDirectCloudJsonSafe(text);
   if (!isAcceptableDirectCloudResponse(res.status, data)) {
     throw Object.assign(
       new Error(directCloudResponseErrorMessage(res.status, data)),
@@ -2028,6 +2048,7 @@ declare module "./client-base" {
       dedicatedAgentId: string;
       cloudApiBase: string;
       authToken: string;
+      signal?: AbortSignal;
     }): Promise<{
       personalElizaId: string;
       activeAgentId: string;
@@ -4468,40 +4489,60 @@ ElizaClient.prototype.ensurePersonalDedicatedEliza = async function (
   }
 
   options.signal?.throwIfAborted();
-  const activationResponse = await directCloudJsonResponse<unknown>(
-    upgradeUrl,
-    {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${options.authToken}`,
-      },
-      body: JSON.stringify({ action: "activate_dedicated", quoteId }),
-      ...(options.signal ? { signal: options.signal } : {}),
-    },
-  );
-  const activationRoot = recordOrNull(activationResponse.data);
-  const activation = recordOrNull(activationRoot?.data);
-  const dedicatedAgentId = firstString(activation?.dedicatedAgentId);
-  if (
-    !activationResponse.ok ||
-    activationRoot?.success !== true ||
-    !dedicatedAgentId
-  ) {
-    throw Object.assign(
-      new Error(
-        directCloudResponseErrorMessage(
-          activationResponse.status,
-          activationResponse.data,
-        ),
-      ),
+  const quoteActivation = recordOrNull(quote?.activation);
+  const activationState = firstString(quoteActivation?.state);
+  let dedicatedAgentId: string;
+  if (activationState === "in_progress") {
+    const existingTargetId = firstString(quoteActivation?.dedicatedAgentId);
+    if (!existingTargetId) {
+      throw new Error(
+        "Eliza Cloud returned an invalid in-progress Dedicated activation.",
+      );
+    }
+    // A prior POST can commit server-side even if its response body stalls or
+    // the client disconnects. The next supported attempt always begins with
+    // this read-only quote and reattaches to its exact target; never replay the
+    // paid activation POST while the server reports in_progress.
+    dedicatedAgentId = existingTargetId;
+  } else if (activationState === "available") {
+    const activationResponse = await directCloudJsonResponse<unknown>(
+      upgradeUrl,
       {
-        status: activationResponse.status,
-        data: activationResponse.data,
-        url: upgradeUrl,
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${options.authToken}`,
+        },
+        body: JSON.stringify({ action: "activate_dedicated", quoteId }),
+        ...(options.signal ? { signal: options.signal } : {}),
       },
     );
+    const activationRoot = recordOrNull(activationResponse.data);
+    const activation = recordOrNull(activationRoot?.data);
+    const activatedTargetId = firstString(activation?.dedicatedAgentId);
+    if (
+      !activationResponse.ok ||
+      activationRoot?.success !== true ||
+      !activatedTargetId
+    ) {
+      throw Object.assign(
+        new Error(
+          directCloudResponseErrorMessage(
+            activationResponse.status,
+            activationResponse.data,
+          ),
+        ),
+        {
+          status: activationResponse.status,
+          data: activationResponse.data,
+          url: upgradeUrl,
+        },
+      );
+    }
+    dedicatedAgentId = activatedTargetId;
+  } else {
+    throw new Error("Eliza Cloud returned an invalid Dedicated quote state.");
   }
 
   const intervalMs = options.pollIntervalMs ?? 5_000;
@@ -4515,6 +4556,7 @@ ElizaClient.prototype.ensurePersonalDedicatedEliza = async function (
         dedicatedAgentId,
         cloudApiBase,
         authToken: options.authToken,
+        ...(options.signal ? { signal: options.signal } : {}),
       });
       options.onProgress?.("ready", "Connected to your Dedicated agent");
       return {
@@ -4969,6 +5011,7 @@ ElizaClient.prototype.finalizePersonalDedicatedCutover = async (options) => {
       Authorization: `Bearer ${options.authToken}`,
     },
     body: JSON.stringify({ dedicatedAgentId: options.dedicatedAgentId }),
+    ...(options.signal ? { signal: options.signal } : {}),
   });
   const root = recordOrNull(response.data);
   const data = recordOrNull(root?.data);

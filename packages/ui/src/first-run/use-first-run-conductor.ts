@@ -917,10 +917,10 @@ export function useFirstRunConductor(): void {
         );
       });
     };
-    // Idempotent: armed up front for a visible entry, or at the moment a
-    // silent entry (#15133) degrades into interactive OAuth via the finish
-    // flow's onInteractiveLogin port — the path that previously had neither
-    // a deadline nor a waiting turn and could strand an empty transcript.
+    // Idempotent and OAuth-only: arm at the moment the finish flow actually
+    // enters interactive OAuth. An already-authenticated entry can spend up to
+    // six minutes activating Dedicated compute; applying this 90s login guard
+    // to that separate phase aborts healthy provisioning before its own bound.
     const armRecoveryDeadline = () => {
       if (loginDeadline) return;
       loginDeadline = armCloudLoginWaitDeadline({
@@ -946,7 +946,6 @@ export function useFirstRunConductor(): void {
     };
     if (!silentCloudEntryRef.current) {
       seedWaitingTurn();
-      armRecoveryDeadline();
     }
     // Pre-open the cloud-login popup synchronously NOW — the action handler is
     // still inside the user gesture, but the provision flow below awaits
@@ -968,6 +967,9 @@ export function useFirstRunConductor(): void {
           seedWaitingTurn();
         }
         armRecoveryDeadline();
+      },
+      onInteractiveLoginComplete: () => {
+        loginDeadline?.cancel();
       },
     })
       .then((outcome) => {

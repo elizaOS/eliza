@@ -2583,7 +2583,7 @@ describe("bounded cloud sign-in wait (#19255)", () => {
     unmount();
   });
 
-  it("an attempt aborted during personal-Eliza resolution cannot persist or complete after a retry starts", async () => {
+  it("keeps already-authenticated Dedicated activation alive beyond the OAuth deadline", async () => {
     vi.useFakeTimers();
     localStorage.removeItem("eliza:enable-runtime-chooser");
     localStorage.removeItem("steward_session_token");
@@ -2617,35 +2617,79 @@ describe("bounded cloud sign-in wait (#19255)", () => {
     expect(signalA).toBeInstanceOf(AbortSignal);
     expect(signalA?.aborted).toBe(false);
 
-    // The deadline abandons A and transfers ownership to a retry B.
+    // The OAuth-only deadline must not govern this already-authenticated
+    // Personal/Dedicated activation. Its own client contract owns the longer
+    // six-minute bound.
     await act(async () => vi.advanceTimersByTimeAsync(90_000));
-    expect(signalA?.aborted).toBe(true);
-    expect(turn("first-run:cloud-login-waiting")?.text).toContain(
+    expect(signalA?.aborted).toBe(false);
+    expect(turn("first-run:cloud-login-waiting")?.text).not.toContain(
       "didn't finish",
     );
-    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
-    await act(async () => vi.advanceTimersByTimeAsync(50));
-    expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(2);
 
-    // A's network boundary ignores cancellation and resolves late. The
-    // post-await abort checkpoint must stop every persistence/completion side
-    // effect while B remains the current attempt.
+    // The same owned attempt may complete and is the only one allowed to
+    // persist the Dedicated binding.
     await act(async () => {
       resolveJoin[0]?.(personalEliza);
-      await vi.advanceTimersByTimeAsync(50);
-    });
-    expect(spies.completeFirstRun).not.toHaveBeenCalled();
-    expect(localStorage.getItem("elizaos:active-server")).toBeNull();
-
-    // B can still settle normally and is the only attempt allowed to commit.
-    await act(async () => {
-      resolveJoin[1]?.(personalEliza);
       await vi.advanceTimersByTimeAsync(50);
     });
     expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
     expect(localStorage.getItem("elizaos:active-server")).toContain(
       PERSONAL_ELIZA_ID,
     );
+    unmount();
+  });
+
+  it("retires the OAuth deadline before a slow Dedicated activation begins", async () => {
+    vi.useFakeTimers();
+    localStorage.removeItem("eliza:enable-runtime-chooser");
+    localStorage.removeItem("steward_session_token");
+    const personalEliza = {
+      personalElizaId: PERSONAL_ELIZA_ID,
+      agentId: PERSONAL_ELIZA_ID,
+      activeAgentId: PERSONAL_ELIZA_ID,
+      agentName: "Eliza Cloud",
+      apiBase: PERSONAL_ELIZA_API_BASE,
+      runtime: "dedicated" as const,
+    };
+    let resolveJoin: ((value: typeof personalEliza) => void) | null = null;
+    mocks.client.getPersonalSharedEliza.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveJoin = resolve;
+        }),
+    );
+    const handleInteractiveCloudLogin = vi.fn(async () => {
+      localStorage.setItem("steward_session_token", "cloud-token");
+    });
+    const spies = seedAppStore({
+      elizaCloudConnected: false,
+      handleInteractiveCloudLogin,
+    });
+    const { turn, unmount } = renderConductor();
+    await act(async () => vi.advanceTimersByTimeAsync(50));
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    await act(async () => vi.advanceTimersByTimeAsync(50));
+    expect(handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
+    expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(1);
+    const signal = mocks.client.getPersonalSharedEliza.mock.calls[0]?.[0]
+      ?.signal as AbortSignal | undefined;
+
+    await act(async () => vi.advanceTimersByTimeAsync(90_000));
+    expect(signal?.aborted).toBe(false);
+    expect(turn("first-run:cloud-login-waiting")?.text).not.toContain(
+      "didn't finish",
+    );
+
+    await act(async () => {
+      resolveJoin?.(personalEliza);
+      await vi.advanceTimersByTimeAsync(50);
+    });
+    expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem("elizaos:active-server")).toContain(
+      PERSONAL_ELIZA_ID,
+    );
+    localStorage.removeItem("steward_session_token");
     unmount();
   });
 

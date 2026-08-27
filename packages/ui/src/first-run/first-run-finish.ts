@@ -121,6 +121,12 @@ export interface FirstRunFinishPorts {
    * degraded into OAuth.
    */
   onInteractiveLogin?: () => void;
+  /**
+   * Fires immediately after interactive Cloud login settles successfully so
+   * the conductor can retire the OAuth-only recovery deadline before personal
+   * agent activation begins.
+   */
+  onInteractiveLoginComplete?: () => void;
 }
 
 type FirstRunRuntimeStateKey =
@@ -793,6 +799,7 @@ export async function listOrAutoProvisionCloudAgent(
     // it can seed the waiting turn and arm the bounded recovery deadline.
     ports.onInteractiveLogin?.();
     await ports.handleInteractiveCloudLogin({ requireClientAuth: true });
+    ports.onInteractiveLoginComplete?.();
     ports.signal?.throwIfAborted();
   }
   const authToken = getCloudAuthToken(client) ?? "";
