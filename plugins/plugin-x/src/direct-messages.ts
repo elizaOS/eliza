@@ -29,6 +29,7 @@ import type { AuthenticatedTwitterSession } from "./client/auth";
 import { checkTwitterDmAccess, resolveTwitterDmPolicy } from "./dm-policy";
 import { parseTwitterInterval } from "./environment";
 import type { TwitterClientState } from "./types";
+import { resolveCloudApiKeyForXEndpoint } from "./utils/cloud-credential-boundary";
 import { createMemorySafe, reconcileTwitterWorld } from "./utils/memory";
 import { normalizeXReceiptId } from "./utils/provider-receipt";
 import { getSetting } from "./utils/settings";
@@ -137,10 +138,13 @@ export class TwitterDirectMessageClient {
     if (!url) throw new Error("X personal DM router is not configured");
     const token =
       getSetting(this.runtime, "TWITTER_BROKER_TOKEN") ??
-      getSetting(this.runtime, "ELIZAOS_CLOUD_API_KEY");
+      resolveCloudApiKeyForXEndpoint(
+        url,
+        getSetting(this.runtime, "ELIZAOS_CLOUD_API_KEY"),
+      );
     if (!token) {
       throw new Error(
-        "X personal DM routing requires TWITTER_BROKER_TOKEN or ELIZAOS_CLOUD_API_KEY",
+        "X personal DM routing requires an explicit TWITTER_BROKER_TOKEN unless the router belongs to the selected Eliza Cloud target",
       );
     }
     const response = await fetch(url, {

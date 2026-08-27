@@ -21,6 +21,7 @@
  */
 
 import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { resolveDevCloudAuthorityEnvValue, resolveDevCloudEnvAuthority } from "@elizaos/shared";
 
 const MAX_BATCH = 100;
 const FLUSH_DEBOUNCE_MS = 200;
@@ -58,8 +59,13 @@ export class WriteBackService {
   private writeCounter = 0;
 
   constructor(opts: WriteBackOptions = {}) {
-    const baseUrl = opts.writeBaseUrl ?? process.env.ELIZA_CLOUD_WRITE_BASE_URL ?? null;
-    const key = opts.serviceKey ?? process.env.ELIZA_CLOUD_SERVICE_KEY ?? null;
+    const devCloudAuthority = resolveDevCloudEnvAuthority();
+    const baseUrl = devCloudAuthority
+      ? resolveDevCloudAuthorityEnvValue("ELIZA_CLOUD_WRITE_BASE_URL")
+      : (opts.writeBaseUrl ?? process.env.ELIZA_CLOUD_WRITE_BASE_URL ?? null);
+    const key = devCloudAuthority
+      ? resolveDevCloudAuthorityEnvValue("ELIZA_CLOUD_SERVICE_KEY")
+      : (opts.serviceKey ?? process.env.ELIZA_CLOUD_SERVICE_KEY ?? null);
     const agentId = opts.agentId ?? process.env.AGENT_ID ?? null;
 
     if (baseUrl && agentId && key) {

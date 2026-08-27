@@ -4,9 +4,9 @@
  */
 import {
   clearStoredStewardToken,
+  readStoredStewardToken,
   STEWARD_REFRESH_ENDPOINT,
   STEWARD_SESSION_ENDPOINT,
-  STEWARD_TOKEN_KEY,
   StewardTokenRemovalError,
 } from "@elizaos/shared/steward-session-client";
 import { createContext } from "react";
@@ -139,7 +139,7 @@ export function clearServerStewardSessionCookies(): void {
 export function readStoredToken(): string | null {
   if (typeof window === "undefined") return null;
   try {
-    return localStorage.getItem(STEWARD_TOKEN_KEY);
+    return readStoredStewardToken();
   } catch {
     // error-policy:J3 storage unavailable reads as signed-out (fail-closed).
     return null;

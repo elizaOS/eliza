@@ -168,6 +168,7 @@ import {
   readAliasedEnv,
   resolveDeploymentTargetInConfig,
   resolveDesktopApiPort,
+  resolveDevCloudAuthorityEnvValue,
   resolveElizaCloudTopology,
   resolveServerOnlyPort,
   resolveServiceRoutingInConfig,
@@ -285,8 +286,17 @@ import {
 import {
   configFileExists,
   type ElizaConfig,
+  loadEffectiveElizaConfig,
   loadElizaConfig,
 } from "../config/config.ts";
+import {
+  applyDevCloudConfigAuthority,
+  createDevCloudConfigAuthorityView,
+  createDevCloudRuntimeSettingsAuthorityOverlay,
+  isDevCloudEnvOwnedKey,
+  isDevCloudInternalEnvKey,
+  restoreDevCloudEnvAuthority,
+} from "../config/dev-cloud-env-authority.ts";
 import {
   CONNECTOR_ENV_MAP,
   collectConnectorEnvVars,
@@ -1941,20 +1951,36 @@ function assertPersistentDatabaseRequired(
 
 function isElizaCloudManagedProcessEnvKey(key: string): boolean {
   const upper = key.toUpperCase();
-  return (
-    upper === "ELIZAOS_CLOUD_API_KEY" ||
-    upper === "ELIZAOS_CLOUD_ENABLED" ||
-    upper === "ELIZAOS_CLOUD_BASE_URL" ||
-    upper === "ELIZAOS_CLOUD_NANO_MODEL" ||
-    upper === "ELIZAOS_CLOUD_MEDIUM_MODEL" ||
-    upper === "ELIZAOS_CLOUD_SMALL_MODEL" ||
-    upper === "ELIZAOS_CLOUD_LARGE_MODEL" ||
-    upper === "ELIZAOS_CLOUD_MEGA_MODEL" ||
-    upper === "ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL" ||
-    upper === "ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL" ||
-    upper === "ELIZAOS_CLOUD_ACTION_PLANNER_MODEL" ||
-    upper === "ELIZAOS_CLOUD_PLANNER_MODEL"
-  );
+  return isDevCloudEnvOwnedKey(upper) || isDevCloudInternalEnvKey(upper);
+}
+
+/**
+ * Hydrate user-owned config environment values without allowing persisted
+ * state to forge launcher authority or repopulate launcher-owned Cloud keys.
+ * @internal Exported for regression tests.
+ */
+export function hydrateConfigEnvForBoot(
+  config: Pick<ElizaConfig, "env">,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  if (
+    !config.env ||
+    typeof config.env !== "object" ||
+    Array.isArray(config.env)
+  ) {
+    return;
+  }
+  const hydrateEntries = (values: Record<string, unknown>): void => {
+    for (const [key, value] of Object.entries(values)) {
+      if (isElizaCloudManagedProcessEnvKey(key)) continue;
+      if (typeof value === "string" && !env[key]) env[key] = value;
+    }
+  };
+  hydrateEntries(config.env as Record<string, unknown>);
+  const vars = (config.env as Record<string, unknown>).vars;
+  if (vars && typeof vars === "object" && !Array.isArray(vars)) {
+    hydrateEntries(vars as Record<string, unknown>);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -2274,12 +2300,21 @@ export async function autoFetchCloudGithubToken(
   if (process.env.GITHUB_TOKEN || process.env.GITHUB_PAT) return null;
 
   // Need cloud credentials and an agent ID
-  const cloudApiKey = process.env.ELIZAOS_CLOUD_API_KEY?.trim();
+  const cloudApiKey = resolveDevCloudAuthorityEnvValue(
+    "ELIZAOS_CLOUD_API_KEY",
+  )?.trim();
   const cloudBaseUrl =
-    process.env.ELIZAOS_CLOUD_BASE_URL?.trim() || "https://api.eliza.app";
+    resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_BASE_URL")?.trim() ||
+    "https://api.eliza.app";
   if (!cloudApiKey || !agentId) return null;
 
-  const managedNs = readAliasedEnv("ELIZA_CLOUD_MANAGED_AGENTS_API_SEGMENT");
+  const managedNs =
+    resolveDevCloudAuthorityEnvValue(
+      "ELIZA_CLOUD_MANAGED_AGENTS_API_SEGMENT",
+    )?.trim() ||
+    resolveDevCloudAuthorityEnvValue(
+      "ELIZAOS_CLOUD_MANAGED_AGENTS_API_SEGMENT",
+    )?.trim();
   if (!managedNs) return null;
 
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
@@ -2366,6 +2401,19 @@ export function cloudApiKeyFingerprint(value: string | undefined): string {
  */
 export function applyCloudConfigToEnv(config: ElizaConfig): void {
   migrateLegacyRuntimeConfig(config as Record<string, unknown>);
+  const devCloudSnapshot = applyDevCloudConfigAuthority(
+    config as Record<string, unknown>,
+  );
+  try {
+    applyCloudConfigToEnvResolved(config);
+  } finally {
+    if (devCloudSnapshot) {
+      restoreDevCloudEnvAuthority(devCloudSnapshot);
+    }
+  }
+}
+
+function applyCloudConfigToEnvResolved(config: ElizaConfig): void {
   ensureProvisionedCloudContainerConfig(config);
   const cloud = config.cloud;
 
@@ -3353,7 +3401,10 @@ function summarizeComponentWrite(input: unknown): Record<string, unknown> {
   };
 }
 
-export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
+export function installRuntimeMethodBindings(
+  runtime: AgentRuntime,
+  devCloudAuthorityOverlay: Readonly<Record<string, string>> = {},
+): void {
   const runtimeWithBindings = runtime as RuntimeWithMethodBindings;
   if (runtimeWithBindings.__elizaMethodBindingsInstalled) {
     return;
@@ -3419,8 +3470,24 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
     // to forward to coding agents via this comma-separated key list (e.g. MCP server tokens).
     "CUSTOM_CREDENTIAL_KEYS",
   ]);
+  const frozenDevCloudAuthorityOverlay = Object.freeze({
+    ...devCloudAuthorityOverlay,
+  });
+  const hasDevCloudAuthorityOverlay =
+    Object.keys(frozenDevCloudAuthorityOverlay).length > 0;
   const originalGetSetting = runtime.getSetting.bind(runtime);
   runtime.getSetting = (key: string) => {
+    // Constructor settings normally lose to character/DB values in core's
+    // getSetting precedence. A launcher-owned development tuple is different:
+    // every Cloud consumer must observe the same immutable launch value even
+    // after a character/config merge mutates the higher-precedence stores.
+    if (hasDevCloudAuthorityOverlay && isDevCloudEnvOwnedKey(key)) {
+      const authorityValue =
+        frozenDevCloudAuthorityOverlay[key.toUpperCase()] ?? "";
+      if (authorityValue === "true") return true;
+      if (authorityValue === "false") return false;
+      return authorityValue;
+    }
     const result = originalGetSetting(key);
     if (result !== null && result !== undefined) return result;
     if (GETSETTING_ENV_ALLOWLIST.has(key)) {
@@ -4120,6 +4187,10 @@ export async function startEliza(
   if (!opts?.headless) {
     config = await runFirstTimeSetup(config);
   }
+  // The launcher-selected dev Cloud target is an ephemeral runtime view. Build
+  // it only after interactive setup has had a chance to persist the user's
+  // real config, then keep stale production state out of every boot consumer.
+  config = createDevCloudConfigAuthorityView(config);
   bootContext.enterPhase("resolve-settings");
 
   // 1c. Apply logging level from config to process.env so the global
@@ -4240,33 +4311,8 @@ export async function startEliza(
   // in config.env; elizaOS plugins read them via process.env / getSetting.
   // Skip ELIZAOS_CLOUD_* — applyCloudConfigToEnv() owns those; otherwise a
   // stale key in config.env refills process.env after disconnect cleared it.
-  if (
-    config.env &&
-    typeof config.env === "object" &&
-    !Array.isArray(config.env)
-  ) {
-    for (const [key, value] of Object.entries(config.env)) {
-      if (isElizaCloudManagedProcessEnvKey(key)) continue;
-      if (typeof value === "string" && !process.env[key]) {
-        process.env[key] = value;
-      }
-    }
-    // Also hydrate from config.env.vars — setEnvValue writes API keys to
-    // both config.env["KEY"] and config.env.vars["KEY"]. If the top-level
-    // key was lost (e.g. pruneEnv, config migration), the nested form is
-    // the authoritative source.
-    const vars = (config.env as Record<string, unknown>).vars;
-    if (vars && typeof vars === "object" && !Array.isArray(vars)) {
-      for (const [key, value] of Object.entries(
-        vars as Record<string, unknown>,
-      )) {
-        if (isElizaCloudManagedProcessEnvKey(key)) continue;
-        if (typeof value === "string" && !process.env[key]) {
-          process.env[key] = value;
-        }
-      }
-    }
-  }
+  // Also hydrates config.env.vars (the nested form written by setEnvValue).
+  hydrateConfigEnvForBoot(config);
 
   // Persisted plugin settings are hydrated into process.env above. Resolve the
   // watchdog only after that merge so first boot validates and uses the same
@@ -4886,6 +4932,9 @@ export async function startEliza(
   await configureLocalEmbeddingEnvEarlyIfNeeded(config);
   opts?.abortSignal?.throwIfAborted();
   bootContext.enterPhase("construct-runtime");
+  const devCloudRuntimeSettingsAuthorityOverlay = Object.freeze(
+    createDevCloudRuntimeSettingsAuthorityOverlay(process.env, config),
+  );
   let runtime = await constructWithRuntimeInstallationIdentity({
     stateDirectory: resolveStateDir(),
     abortSignal: opts?.abortSignal,
@@ -4918,24 +4967,34 @@ export async function startEliza(
                 : undefined,
             }
           : {}),
-        settings: buildRuntimeSettings(config, {
-          preferredProviderId,
-          brainProviderName: preferredTextRuntimeProviderName,
-          embeddingProviderName: preferredEmbeddingRuntimeProviderName,
-          visionModeSetting,
-          managedSkillsDir,
-          bundledSkillsDir,
-          workspaceSkillsDir,
-          connectorSecretsOverlay,
-          providerCredentialsOverlay,
-        }),
+        settings: {
+          ...buildRuntimeSettings(config, {
+            preferredProviderId,
+            brainProviderName: preferredTextRuntimeProviderName,
+            embeddingProviderName: preferredEmbeddingRuntimeProviderName,
+            visionModeSetting,
+            managedSkillsDir,
+            bundledSkillsDir,
+            workspaceSkillsDir,
+            connectorSecretsOverlay,
+            providerCredentialsOverlay,
+          }),
+          // Core's initialization merge gives constructor settings precedence
+          // over DB-persisted values without writing them back. Supplying the
+          // frozen launch tuple here prevents stale DB Cloud secrets/topology
+          // from resurfacing through runtime.getSetting after initialization.
+          ...devCloudRuntimeSettingsAuthorityOverlay,
+        },
       }),
   });
   const walletAddressCacheSession = opts?.deferWalletAddressCacheActivation
     ? beginDeferredAgentWalletAddressCacheSession(runtime.agentId)
     : beginAgentWalletAddressCacheSession(runtime.agentId);
   walletAddressCacheSessionsByRuntime.set(runtime, walletAddressCacheSession);
-  installRuntimeMethodBindings(runtime);
+  installRuntimeMethodBindings(
+    runtime,
+    devCloudRuntimeSettingsAuthorityOverlay,
+  );
   opts?.onRuntimeCreated?.(runtime);
   opts?.abortSignal?.throwIfAborted();
 
@@ -6287,7 +6346,7 @@ export async function startEliza(
             disposedRuntimeBeforeReplacement = true;
           }
           const replacement = await buildInitializedRuntime({
-            config: loadElizaConfig(),
+            config: loadEffectiveElizaConfig(),
             localAgentMode: opts?.localAgentMode,
           });
           logger.info("[eliza] Hot-reload: replacement runtime is ready");

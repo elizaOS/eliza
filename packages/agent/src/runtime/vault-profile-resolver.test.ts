@@ -15,6 +15,7 @@ import {
   writeRoutingConfig,
 } from "@elizaos/vault";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { resetDevCloudEnvAuthorityForTests } from "../config/dev-cloud-env-authority.ts";
 import { applyVaultProfilesForAgent } from "./vault-profile-resolver.ts";
 
 const AGENT_ID = "vault-profile-resolver-agent";
@@ -28,6 +29,10 @@ const KEY_LEGACY = "VPR_TEST_LEGACY_API_KEY";
 const KEY_REF = "VPR_TEST_REF_API_KEY";
 const KEY_WS = "VPR_TEST_WS_API_KEY";
 const KEY_MALFORMED = "VPR_TEST_MALFORMED_API_KEY";
+const CLOUD_KEY = "ELIZAOS_CLOUD_API_KEY";
+const CLOUD_BASE = "ELIZAOS_CLOUD_BASE_URL";
+const DEV_SOURCE = "ELIZA_DEV_SOURCE";
+const DEV_AUTHORITY = "ELIZA_DEV_CLOUD_ENV_AUTHORITY";
 
 const DISABLE = "ELIZA_DISABLE_VAULT_PROFILE_RESOLVER";
 
@@ -41,6 +46,10 @@ const ENV_KEYS = [
   KEY_REF,
   KEY_WS,
   KEY_MALFORMED,
+  CLOUD_KEY,
+  CLOUD_BASE,
+  DEV_SOURCE,
+  DEV_AUTHORITY,
 ] as const;
 
 function restoreEnv(
@@ -82,6 +91,7 @@ describe("applyVaultProfilesForAgent", () => {
 
   afterEach(async () => {
     restoreEnv(envSnapshot);
+    resetDevCloudEnvAuthorityForTests();
     await test.dispose();
   });
 
@@ -120,6 +130,31 @@ describe("applyVaultProfilesForAgent", () => {
     expect(result.failed).toEqual([]);
     expect(process.env[KEY_WORK]).toBe("sk-work");
   });
+
+  it.each(["staging-default", "offline"])(
+    "does not let a profiled production Cloud key replace %s authority",
+    async (authority) => {
+      process.env[DEV_SOURCE] = "1";
+      process.env[DEV_AUTHORITY] = authority;
+      process.env[CLOUD_KEY] = "";
+      process.env[CLOUD_BASE] = "https://api-staging.eliza.app/api/v1";
+      await seedProfiledKey(
+        test.vault,
+        CLOUD_KEY,
+        { production: "profiled-production-key" },
+        "production",
+      );
+
+      const result = await applyVaultProfilesForAgent(test.vault, AGENT_ID);
+
+      expect(result.overridden).toBe(0);
+      expect(result.skipped).toContain(CLOUD_KEY);
+      expect(process.env[CLOUD_KEY]).toBe("");
+      expect(process.env[CLOUD_BASE]).toBe(
+        "https://api-staging.eliza.app/api/v1",
+      );
+    },
+  );
 
   it("is idempotent: a second apply writes the same env value and recounts the override", async () => {
     await seedProfiledKey(test.vault, KEY_WORK, { work: "sk-work" }, "work");

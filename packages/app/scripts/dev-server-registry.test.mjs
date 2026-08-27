@@ -23,6 +23,8 @@ import {
   preferredUiPortForWorktree,
   readRegistry,
   reservePortsForWorktree,
+  resolveDevServerCloudCredentialIdentity,
+  resolveDevServerCloudPolicyIdentity,
   updateRegistryEntry,
   writeRegistry,
 } from "./dev-server-registry.mjs";
@@ -38,7 +40,19 @@ const CLEAN_DEV_CLOUD_ENV = {
   ELIZA_CLOUD_API_KEY: "",
   ELIZACLOUD_API_KEY: "",
   ELIZA_DEV_CLOUD_API_KEY: "",
+  ELIZAOS_CLOUD_SERVICE_KEY: "",
+  ELIZAOS_CLOUD_EMBEDDING_API_KEY: "",
+  ELIZAOS_CLOUD_AGENT_ID: "",
   ELIZA_CLOUD_PROVISIONED: "",
+  ELIZA_CLOUD_SERVICE_KEY: "",
+  ELIZA_CLOUD_SERVICE_TOKEN: "",
+  ELIZA_CLOUD_SESSION_TOKEN: "",
+  ELIZA_CLOUD_TOKEN: "",
+  ELIZACLOUD_TOKEN: "",
+  ELIZA_CLOUD_AUTH_TOKEN: "",
+  ELIZA_CLOUD_SANDBOX_TOKEN: "",
+  ELIZA_CLOUD_AGENT_ID: "",
+  WAIFU_ELIZA_CLOUD_AGENT_ID: "",
   VITE_ELIZA_CLOUD_BASE: "",
   VITE_STEWARD_API_URL: "",
   VITE_STEWARD_TENANT_ID: "",
@@ -48,6 +62,9 @@ const CLEAN_DEV_CLOUD_ENV = {
 function cloudProfileFromConfiguredEnvironment(configured) {
   return createDevServerCloudProfileFingerprint({
     effectiveTarget: configured.effectiveTarget,
+    authorityMode: configured.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY,
+    credentialIdentity: resolveDevServerCloudCredentialIdentity(configured.env),
+    policyIdentity: resolveDevServerCloudPolicyIdentity(configured.env),
     serverApiBase: configured.env.ELIZAOS_CLOUD_BASE_URL,
     rendererCloudBase: configured.env.VITE_ELIZA_CLOUD_BASE,
     stewardApiUrl: configured.env.VITE_STEWARD_API_URL,
@@ -67,6 +84,9 @@ function defaultDevSharedCloudProfile() {
 
 const TEST_CLOUD_PROFILE_INPUT = {
   effectiveTarget: "staging",
+  authorityMode: "staging-explicit",
+  credentialIdentity: { apiKey: "test-staging-key" },
+  policyIdentity: resolveDevServerCloudPolicyIdentity({}),
   serverApiBase: "https://api-staging.example.test/api/v1",
   rendererCloudBase: "https://cloud-staging.example.test",
   stewardApiUrl: "https://staging.example.test/steward",
@@ -78,6 +98,11 @@ const TEST_CLOUD_PROFILE = createDevServerCloudProfileFingerprint(
 );
 const OTHER_CLOUD_PROFILE = createDevServerCloudProfileFingerprint({
   effectiveTarget: "production",
+  authorityMode: "production",
+  credentialIdentity: { apiKey: "test-production-key" },
+  policyIdentity: resolveDevServerCloudPolicyIdentity({
+    ELIZAOS_CLOUD_ENABLED: "true",
+  }),
   serverApiBase: "https://api.example.test/api/v1",
   rendererCloudBase: "https://cloud.example.test",
   stewardApiUrl: "https://example.test/steward",
@@ -210,19 +235,25 @@ async function runNode(scriptPath, { env, timeoutMs = 3_000 } = {}) {
 }
 
 describe("shared dev server registry", () => {
-  it("fingerprints every public Cloud routing field without retaining credentials", () => {
-    assert.match(TEST_CLOUD_PROFILE, /^cloud-v1:[0-9a-f]{64}$/);
+  it("fingerprints routing, authority, and credential identity without retaining credentials", () => {
+    assert.match(TEST_CLOUD_PROFILE, /^cloud-v2:[0-9a-f]{64}$/);
     assert.equal(TEST_CLOUD_PROFILE.includes("example-staging"), false);
-    assert.equal(
+    assert.equal(TEST_CLOUD_PROFILE.includes("test-staging-key"), false);
+    assert.notEqual(
       createDevServerCloudProfileFingerprint({
         ...TEST_CLOUD_PROFILE_INPUT,
-        ELIZAOS_CLOUD_API_KEY: "must-never-enter-the-profile",
+        credentialIdentity: { apiKey: "different-staging-key" },
       }),
       TEST_CLOUD_PROFILE,
     );
 
     const replacements = {
       effectiveTarget: "production",
+      authorityMode: "staging-default",
+      credentialIdentity: { apiKey: "replacement-key" },
+      policyIdentity: resolveDevServerCloudPolicyIdentity({
+        ELIZAOS_CLOUD_USE_RPC: "false",
+      }),
       serverApiBase: "https://api-alt.example.test/api/v1",
       rendererCloudBase: "https://cloud-alt.example.test",
       stewardApiUrl: "https://identity-alt.example.test/steward",
@@ -369,6 +400,91 @@ describe("shared dev server registry", () => {
           assert.match(error.message, /running server was left untouched/);
           return true;
         },
+      );
+      assert.equal(fs.readFileSync(registryPath, "utf8"), before);
+      assert.equal(server.listening, true);
+    }
+  });
+
+  it("does not reuse across authority, credential, or activation-policy changes", async (t) => {
+    const registryPath = makeRegistryPath(t);
+    const server = await listenOnLoopback();
+    t.after(() => closeServer(server));
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const worktree = path.join(path.dirname(registryPath), "worktree");
+
+    const defaultStaging = cloudProfileFromConfiguredEnvironment(
+      configureDevCloudEnvironment([], {
+        ...process.env,
+        ...CLEAN_DEV_CLOUD_ENV,
+      }),
+    );
+    const explicitStaging = cloudProfileFromConfiguredEnvironment(
+      configureDevCloudEnvironment(["--cloud-target=staging"], {
+        ...process.env,
+        ...CLEAN_DEV_CLOUD_ENV,
+      }),
+    );
+    const credentialA = cloudProfileFromConfiguredEnvironment(
+      configureDevCloudEnvironment(["--cloud-target=staging"], {
+        ...process.env,
+        ...CLEAN_DEV_CLOUD_ENV,
+        ELIZA_DEV_CLOUD_API_KEY: "credential-A-must-not-be-stored",
+      }),
+    );
+    const credentialB = cloudProfileFromConfiguredEnvironment(
+      configureDevCloudEnvironment(["--cloud-target=staging"], {
+        ...process.env,
+        ...CLEAN_DEV_CLOUD_ENV,
+        ELIZA_DEV_CLOUD_API_KEY: "credential-B-must-not-be-stored",
+      }),
+    );
+    const policyEnabled = cloudProfileFromConfiguredEnvironment(
+      configureDevCloudEnvironment(["--cloud-target=production"], {
+        ...process.env,
+        ...CLEAN_DEV_CLOUD_ENV,
+        ELIZAOS_CLOUD_API_KEY: "same-credential-must-not-be-stored",
+        ELIZAOS_CLOUD_USE_RPC: "true",
+      }),
+    );
+    const policyDisabled = cloudProfileFromConfiguredEnvironment(
+      configureDevCloudEnvironment(["--cloud-target=production"], {
+        ...process.env,
+        ...CLEAN_DEV_CLOUD_ENV,
+        ELIZAOS_CLOUD_API_KEY: "same-credential-must-not-be-stored",
+        ELIZAOS_CLOUD_USE_RPC: "false",
+      }),
+    );
+
+    assert.notEqual(defaultStaging, explicitStaging);
+    assert.notEqual(credentialA, credentialB);
+    assert.notEqual(policyEnabled, policyDisabled);
+    for (const [existingFingerprint, requestedFingerprint] of [
+      [defaultStaging, explicitStaging],
+      [credentialA, credentialB],
+      [policyEnabled, policyDisabled],
+    ]) {
+      const existing = registryEntry(worktree, address.port, {
+        cloudProfileFingerprint: existingFingerprint,
+      });
+      writeRegistry({ version: 1, entries: [existing] }, registryPath);
+      const before = fs.readFileSync(registryPath, "utf8");
+      assert.equal(before.includes("credential-A-must-not-be-stored"), false);
+      assert.equal(before.includes("credential-B-must-not-be-stored"), false);
+      assert.equal(
+        before.includes("same-credential-must-not-be-stored"),
+        false,
+      );
+
+      await assert.rejects(
+        reservePortsForWorktree(worktree, {
+          registryPath,
+          base: address.port,
+          span: 1,
+          cloudProfileFingerprint: requestedFingerprint,
+        }),
+        /different or missing Cloud profile/,
       );
       assert.equal(fs.readFileSync(registryPath, "utf8"), before);
       assert.equal(server.listening, true);

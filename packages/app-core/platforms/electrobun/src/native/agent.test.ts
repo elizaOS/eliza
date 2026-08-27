@@ -5,11 +5,14 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { applyDevCloudAuthoritySnapshotToEnv } from "@elizaos/shared";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   applyDesktopDeferAppRoutesPolicy,
   applyPackagedStartupEmbeddingWarmupPolicy,
+  bindDesktopApiTokenToDevCloudSnapshot,
   buildChildNodePaths,
+  captureDesktopDevCloudLaunchAuthority,
   configureDesktopLocalApiAuth,
   ensureDesktopApiToken,
   getHealthPollTimeoutMs,
@@ -392,6 +395,45 @@ describe("ensureDesktopApiToken and configureDesktopLocalApiAuth", () => {
     const env: NodeJS.ProcessEnv = { ELIZA_API_TOKEN: "paired" };
     expect(configureDesktopLocalApiAuth(env)).toBe("paired");
     expect(env.ELIZA_PAIRING_DISABLED).toBe("1");
+  });
+
+  it("preserves the pre-sidecar explicit Steward tuple and first-start local API token", () => {
+    const parentEnv: NodeJS.ProcessEnv = {
+      ELIZA_DEV_SOURCE: "1",
+      ELIZA_DEV_CLOUD_ENV_AUTHORITY: "staging-explicit",
+      ELIZA_DEV_CLOUD_TARGET: "staging",
+      ELIZAOS_CLOUD_API_KEY: "staging-launch-key",
+      ELIZAOS_CLOUD_BASE_URL: "https://api-staging.eliza.app/api/v1",
+      STEWARD_API_URL: "https://staging.eliza.app/steward",
+      STEWARD_TENANT_ID: "elizacloud-staging",
+      STEWARD_AGENT_ID: "staging-agent",
+      STEWARD_AGENT_TOKEN: "staging-token",
+    };
+    const launchSnapshot = captureDesktopDevCloudLaunchAuthority(parentEnv);
+
+    parentEnv.STEWARD_API_URL = "http://127.0.0.1:50123";
+    parentEnv.STEWARD_TENANT_ID = "late-sidecar";
+    parentEnv.STEWARD_AGENT_ID = "late-sidecar-agent";
+    parentEnv.STEWARD_AGENT_TOKEN = "late-sidecar-token";
+    const localApiToken = configureDesktopLocalApiAuth(parentEnv);
+    const childSnapshot = bindDesktopApiTokenToDevCloudSnapshot(
+      launchSnapshot,
+      parentEnv,
+    );
+    const childEnv = { ...parentEnv };
+
+    applyDevCloudAuthoritySnapshotToEnv(childEnv, childSnapshot);
+
+    expect(localApiToken).toMatch(/^[a-f0-9]{32}$/);
+    expect(childEnv).toMatchObject({
+      ELIZA_API_TOKEN: localApiToken,
+      ELIZAOS_CLOUD_API_KEY: "staging-launch-key",
+      ELIZAOS_CLOUD_BASE_URL: "https://api-staging.eliza.app/api/v1",
+      STEWARD_API_URL: "https://staging.eliza.app/steward",
+      STEWARD_TENANT_ID: "elizacloud-staging",
+      STEWARD_AGENT_ID: "staging-agent",
+      STEWARD_AGENT_TOKEN: "staging-token",
+    });
   });
 });
 

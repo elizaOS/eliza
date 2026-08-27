@@ -8,7 +8,10 @@
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { configureDevCloudEnvironment } from "../../app-core/scripts/lib/dev-cloud-target.mjs";
+import {
+  assertRendererOnlyDevCloudTargetSupported,
+  configureDevCloudEnvironment,
+} from "../../app-core/scripts/lib/dev-cloud-target.mjs";
 import { resolveViteCommand } from "../../app-core/scripts/lib/dev-ui-vite.mjs";
 import { spawnMirroredChild } from "./lib/spawn-mirrored-child.mjs";
 
@@ -17,6 +20,7 @@ const devCloud = configureDevCloudEnvironment(
   process.argv.slice(2),
   process.env,
 );
+assertRendererOnlyDevCloudTargetSupported(devCloud, "packages/app dev");
 const viteCommand = resolveViteCommand({
   appDir,
   viteArgs: devCloud.passthroughArgs,

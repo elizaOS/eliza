@@ -10,6 +10,7 @@ import {
   isRecoverableRemoteBase,
   isTerminalDedicatedCloudAgentErrorState,
   type PollingBackendDeps,
+  resolveStartupCloudControlPlaneBase,
   runPollingBackend,
   shouldFallBackToLocalOrigin,
 } from "./startup-phase-poll";
@@ -176,6 +177,29 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   (globalThis as { window?: unknown }).window = originalWindow;
+});
+
+describe("resolveStartupCloudControlPlaneBase", () => {
+  it("keeps a staging agent recovery probe off the production control plane", () => {
+    expect(
+      resolveStartupCloudControlPlaneBase(
+        "https://agent-123.cloud-staging.eliza.app",
+        {
+          bootCloudApiBase: "https://api.eliza.app",
+          pageHostname: "localhost",
+        },
+      ),
+    ).toBe("https://api-staging.eliza.app");
+  });
+
+  it("lets an explicit staging boot target override a stale production agent", () => {
+    expect(
+      resolveStartupCloudControlPlaneBase("https://agent-123.cloud.eliza.app", {
+        bootCloudApiBase: "https://api-staging.eliza.app/api/v1",
+        pageHostname: "localhost",
+      }),
+    ).toBe("https://api-staging.eliza.app");
+  });
 });
 
 describe("runPollingBackend", () => {

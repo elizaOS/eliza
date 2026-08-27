@@ -26,10 +26,15 @@ const stateDir =
   path.join(os.tmpdir(), `eliza-dev-smoke-${process.pid}`);
 const cloudOnlyLane = process.env.ELIZA_DEV_SMOKE_CLOUD_ONLY === "1";
 const offlineLane = process.env.ELIZA_DEV_SMOKE_OFFLINE === "1";
+const stagingLiveAuthLane =
+  process.env.ELIZA_DEV_SMOKE_STAGING_LIVE_AUTH === "1";
 
-if (cloudOnlyLane && offlineLane) {
+if (
+  Number(cloudOnlyLane) + Number(offlineLane) + Number(stagingLiveAuthLane) >
+  1
+) {
   throw new Error(
-    "ELIZA_DEV_SMOKE_CLOUD_ONLY and ELIZA_DEV_SMOKE_OFFLINE are mutually exclusive",
+    "ELIZA_DEV_SMOKE_CLOUD_ONLY, ELIZA_DEV_SMOKE_OFFLINE, and ELIZA_DEV_SMOKE_STAGING_LIVE_AUTH are mutually exclusive",
   );
 }
 
@@ -37,7 +42,9 @@ const laneName = cloudOnlyLane
   ? "cloud-only"
   : offlineLane
     ? "local"
-    : "staging";
+    : stagingLiveAuthLane
+      ? "staging-live-auth"
+      : "staging";
 
 process.env.ELIZA_API_PORT = String(apiPort);
 process.env.ELIZA_UI_PORT = String(uiPort);

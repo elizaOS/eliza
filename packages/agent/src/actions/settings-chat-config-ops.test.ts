@@ -37,6 +37,10 @@ import {
   type World,
   type WorldSettings,
 } from "@elizaos/core";
+import {
+  resetDevCloudEnvAuthorityForTests,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { settingsAction } from "./settings-actions.ts";
 
@@ -56,6 +60,16 @@ let tempDir: string;
 let configPath: string;
 let priorConfigPath: string | undefined;
 let priorPersistPath: string | undefined;
+const AUTHORITY_ENV_KEYS = [
+  "ELIZA_DEV_SOURCE",
+  "ELIZA_DEV_CLOUD_ENV_AUTHORITY",
+  "ELIZAOS_CLOUD_BASE_URL",
+  "ELIZAOS_CLOUD_API_KEY",
+  "ELIZAOS_CLOUD_ENABLED",
+] as const;
+const originalAuthorityEnv = Object.fromEntries(
+  AUTHORITY_ENV_KEYS.map((key) => [key, process.env[key]]),
+);
 
 function readConfig(): Record<string, unknown> {
   return JSON.parse(fs.readFileSync(configPath, "utf-8")) as Record<
@@ -65,6 +79,8 @@ function readConfig(): Record<string, unknown> {
 }
 
 beforeEach(() => {
+  resetDevCloudEnvAuthorityForTests();
+  for (const key of AUTHORITY_ENV_KEYS) delete process.env[key];
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "settings-chat-ops-"));
   configPath = path.join(tempDir, "eliza.json");
   // Seed a minimal-but-real config so load/merge/save exercise the real path.
@@ -86,6 +102,12 @@ afterEach(() => {
   if (priorPersistPath === undefined)
     delete process.env.ELIZA_PERSIST_CONFIG_PATH;
   else process.env.ELIZA_PERSIST_CONFIG_PATH = priorPersistPath;
+  for (const key of AUTHORITY_ENV_KEYS) {
+    const value = originalAuthorityEnv[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  resetDevCloudEnvAuthorityForTests();
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
@@ -123,6 +145,50 @@ describe("SETTINGS action — always available at the chat boundary", () => {
 });
 
 describe("SETTINGS update_ai_provider — persists to the real config store", () => {
+  it.each([
+    "staging-default",
+    "offline",
+    "staging-explicit",
+    "production",
+    "self-hosted",
+  ] as const)(
+    "rejects elizacloud under frozen %s authority before loading or mutating config",
+    async (authority) => {
+      const invalidConfig = "{ deliberately invalid config";
+      fs.writeFileSync(configPath, invalidConfig);
+      process.env.ELIZA_DEV_SOURCE = "1";
+      process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = authority;
+      process.env.ELIZAOS_CLOUD_BASE_URL =
+        authority === "self-hosted"
+          ? "https://private.example:8787/api/v1"
+          : "https://api-staging.eliza.app/api/v1";
+      process.env.ELIZAOS_CLOUD_API_KEY = "launch-key";
+      process.env.ELIZAOS_CLOUD_ENABLED = "true";
+      expect(resolveDevCloudEnvAuthority()).toBe(authority);
+
+      process.env.ELIZAOS_CLOUD_API_KEY = "late-hostile-key";
+      const environmentBefore = {
+        apiKey: process.env.ELIZAOS_CLOUD_API_KEY,
+        enabled: process.env.ELIZAOS_CLOUD_ENABLED,
+      };
+      const result = await invoke({
+        action: "update_ai_provider",
+        provider: "elizacloud",
+        apiKey: "request-key",
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.data).toMatchObject({
+        error: "DEV_CLOUD_AUTHORITY_ACTIVE",
+        provider: "elizacloud",
+        authority,
+      });
+      expect(fs.readFileSync(configPath, "utf-8")).toBe(invalidConfig);
+      expect(process.env.ELIZAOS_CLOUD_API_KEY).toBe(environmentBefore.apiKey);
+      expect(process.env.ELIZAOS_CLOUD_ENABLED).toBe(environmentBefore.enabled);
+    },
+  );
+
   it('"switch my model provider to openai" writes provider routing to eliza.json', async () => {
     const result = await invoke({
       action: "update_ai_provider",

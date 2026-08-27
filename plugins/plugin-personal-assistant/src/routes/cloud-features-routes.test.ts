@@ -7,10 +7,16 @@
  * (no live Cloud) — the parse boundary under test is deterministic.
  */
 
+import type { AgentRuntime } from "@elizaos/core";
+import {
+  resetDevCloudEnvAuthorityForTests,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/shared";
 import {
   afterAll,
   afterEach,
   beforeAll,
+  beforeEach,
   describe,
   expect,
   it,
@@ -30,6 +36,28 @@ const BASE_STATE: CloudFeaturesRouteState = {
 
 let originalFetch: typeof globalThis.fetch;
 let originalElizaDev: string | undefined;
+const AUTHORITY_ENV_KEYS = [
+  "ELIZA_DEV_SOURCE",
+  "ELIZA_DEV_CLOUD_ENV_AUTHORITY",
+  "ELIZAOS_CLOUD_API_KEY",
+  "ELIZAOS_CLOUD_BASE_URL",
+] as const;
+const originalAuthorityEnv = Object.fromEntries(
+  AUTHORITY_ENV_KEYS.map((key) => [key, process.env[key]]),
+);
+
+function cloudAuthRuntime(apiKey: string): AgentRuntime {
+  return {
+    getService: () => ({
+      isAuthenticated: () => true,
+      getApiKey: () => apiKey,
+    }),
+    getSetting: () => "runtime-setting-production-key",
+    character: {
+      secrets: { ELIZAOS_CLOUD_API_KEY: "runtime-secret-production-key" },
+    },
+  } as unknown as AgentRuntime;
+}
 
 function stubFetch(
   response: Partial<Response> & { json?: () => Promise<unknown> },
@@ -46,8 +74,19 @@ beforeAll(() => {
   process.env.ELIZA_DEV = "1";
 });
 
+beforeEach(() => {
+  resetDevCloudEnvAuthorityForTests();
+  for (const key of AUTHORITY_ENV_KEYS) delete process.env[key];
+});
+
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  for (const key of AUTHORITY_ENV_KEYS) {
+    const value = originalAuthorityEnv[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  resetDevCloudEnvAuthorityForTests();
 });
 
 afterAll(() => {
@@ -104,4 +143,80 @@ describe("fetchCloudFeatures", () => {
     expect(result.error).toBeNull();
     expect(result.rows).toHaveLength(0);
   });
+
+  it.each(["staging-default", "offline"] as const)(
+    "performs no Cloud fetch under blocked %s authority despite runtime auth",
+    async (authority) => {
+      process.env.ELIZA_DEV_SOURCE = "1";
+      process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = authority;
+      process.env.ELIZAOS_CLOUD_API_KEY = "";
+      process.env.ELIZAOS_CLOUD_BASE_URL =
+        "https://api-staging.eliza.app/api/v1";
+      expect(resolveDevCloudEnvAuthority()).toBe(authority);
+      process.env.ELIZAOS_CLOUD_API_KEY = "late-production-key";
+      process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.eliza.app/api/v1";
+      const fetchMock = vi.fn();
+      globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+
+      const result = await fetchCloudFeatures({
+        config: {
+          cloud: {
+            apiKey: "persisted-production-key",
+            baseUrl: "https://api.eliza.app/api/v1",
+          },
+        },
+        runtime: cloudAuthRuntime("runtime-auth-production-key"),
+      });
+
+      expect(result.status).toBe(401);
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    [
+      "staging-explicit",
+      "https://api-staging.eliza.app/api/v1",
+      "https://cloud-staging.eliza.app/api/v1/features",
+    ],
+    [
+      "self-hosted",
+      "https://cloud.internal.example/api/v1",
+      "https://cloud.internal.example/api/v1/features",
+    ],
+  ] as const)(
+    "uses the frozen key and base for %s despite runtime and late env pollution",
+    async (authority, launchBaseUrl, expectedUrl) => {
+      process.env.ELIZA_DEV_SOURCE = "1";
+      process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = authority;
+      process.env.ELIZAOS_CLOUD_API_KEY = "launcher-key";
+      process.env.ELIZAOS_CLOUD_BASE_URL = launchBaseUrl;
+      expect(resolveDevCloudEnvAuthority()).toBe(authority);
+      process.env.ELIZAOS_CLOUD_API_KEY = "late-production-key";
+      process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.eliza.app/api/v1";
+      const fetchMock = stubFetch({
+        ok: true,
+        status: 200,
+        json: async () => ({ features: [] }),
+      });
+
+      const result = await fetchCloudFeatures({
+        config: {
+          cloud: {
+            apiKey: "persisted-production-key",
+            baseUrl: "https://api.eliza.app/api/v1",
+          },
+        },
+        runtime: cloudAuthRuntime("runtime-auth-production-key"),
+      });
+
+      expect(result.status).toBe(200);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(expectedUrl);
+      expect((init.headers as Record<string, string>).Authorization).toBe(
+        "Bearer launcher-key",
+      );
+    },
+  );
 });

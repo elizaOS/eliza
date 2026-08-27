@@ -6,7 +6,6 @@
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
-  STEWARD_TOKEN_KEY,
 } from "@elizaos/shared/steward-session-client";
 import { DiscordIcon, GoogleIcon, StewardLogin, useAuth } from "@stwd/react";
 import type { StewardProviders } from "@stwd/sdk";
@@ -199,9 +198,7 @@ function parseMobileAuthorizeRequest(
 function readPlaywrightTestToken(): string {
   if (typeof window === "undefined") return "playwright-test-token";
   try {
-    return (
-      window.localStorage.getItem(STEWARD_TOKEN_KEY) ?? "playwright-test-token"
-    );
+    return readStoredStewardToken() ?? "playwright-test-token";
   } catch {
     return "playwright-test-token";
   }

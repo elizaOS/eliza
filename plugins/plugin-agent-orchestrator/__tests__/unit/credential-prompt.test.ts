@@ -21,15 +21,23 @@ function confirmedSendOutcome() {
 }
 
 function makeRuntime(
-  opts: { withSend?: boolean; appUrl?: string; unconfirmed?: boolean } = {},
+  opts: {
+    withSend?: boolean;
+    appUrl?: string;
+    cloudUrl?: string;
+    unconfirmed?: boolean;
+  } = {},
 ) {
   const send = vi.fn(async () =>
     opts.unconfirmed ? undefined : confirmedSendOutcome(),
   );
   const runtime = {
     agentId: "agent-1",
-    getSetting: (k: string) =>
-      k === "ELIZA_APP_URL" ? opts.appUrl : undefined,
+    getSetting: (k: string) => {
+      if (k === "ELIZA_APP_URL") return opts.appUrl;
+      if (k === "ELIZA_CLOUD_URL") return opts.cloudUrl;
+      return undefined;
+    },
     ...(opts.withSend === false ? {} : { sendMessageToTarget: send }),
   };
   return { runtime, send };
@@ -71,6 +79,23 @@ describe("emitCredentialPrompt (#8907)", () => {
     // Secrets never transit chat text: the dead "Reply here" fallback that
     // instructed pasting a secret nothing captures is gone.
     expect(content.text).not.toContain("Reply here");
+  });
+
+  it("uses the Cloud URL only as a fallback when the user-owned app URL is absent", async () => {
+    const { runtime, send } = makeRuntime({
+      cloudUrl: "https://cloud.test/",
+    });
+
+    await emitCredentialPrompt({
+      runtime: runtime as never,
+      metadata: { roomId: ROOM, source: "telegram" },
+      credentialKeys: ["KEY"],
+    });
+
+    const [, content] = send.mock.calls[0];
+    expect(content.text).toContain(
+      "https://cloud.test/settings?section=credentials",
+    );
   });
 
   it("is a no-op when the session has no origin room", async () => {

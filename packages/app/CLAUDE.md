@@ -275,7 +275,7 @@ All env vars use the `ELIZA_` prefix (set in `app.config.ts` → `envPrefix: "EL
 | `ELIZA_DEV_POLLING` | Enable filesystem polling for watch (useful in VMs) |
 | `ELIZA_DEV_CLOUD_TARGET` | Local dev Cloud target: `staging` (default), `production`, or `offline` |
 | `ELIZAOS_CLOUD_BASE_URL` | Server-side Cloud API base; ordinary local dev pins `https://api-staging.eliza.app/api/v1` |
-| `ELIZAOS_CLOUD_API_KEY` | Optional server-only Cloud credential; implicit staging masks inherited values, so select `ELIZA_DEV_CLOUD_TARGET=staging` explicitly when using a staging key |
+| `ELIZAOS_CLOUD_API_KEY` | Generic Cloud credential; local staging launchers scrub it to prevent cross-environment reuse. Use target-specific `ELIZA_DEV_CLOUD_API_KEY` with explicit staging instead |
 | `ELIZA_TTS_DEBUG` | Enable TTS trace logs |
 | `ELIZA_SETTINGS_DEBUG` | Enable settings debug panel |
 | `VITE_ASSET_BASE_URL` | Override asset base URL for CDN hosting |

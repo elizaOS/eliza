@@ -6,6 +6,7 @@
  */
 import { Capacitor } from "@capacitor/core";
 import { runIosFullBunSmokeIfRequested } from "@elizaos/app-core/desktop-shell";
+import { STEWARD_ACTIVE_SCOPE_KEY } from "@elizaos/shared/steward-session-client";
 import {
   DEFAULT_BOOT_CONFIG,
   getBootConfig,
@@ -88,6 +89,7 @@ beforeEach(() => {
     }),
   );
   document.body.innerHTML = '<div id="root"></div>';
+  window.localStorage.clear();
 });
 
 describe("renderer web composition", () => {
@@ -110,6 +112,9 @@ describe("renderer web composition", () => {
       preferSharedCloudTier: true,
       autoUpgradeSharedToDedicated: true,
     });
+    expect(window.localStorage.getItem(STEWARD_ACTIVE_SCOPE_KEY)).toBe(
+      "eliza-cloud:staging",
+    );
     expect(webBoot.initializeStorage).toHaveBeenCalledTimes(2);
     expect(webBoot.initializeCapacitor).toHaveBeenCalledOnce();
     expect(document.body.classList).toContain("platform-web");

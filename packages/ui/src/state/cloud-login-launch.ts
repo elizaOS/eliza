@@ -11,11 +11,11 @@
  * `/login?returnTo=…` page instead. Touch-primary web browsers skip the popup
  * attempt outright — a capability hint (coarse pointer + no hover), not a
  * user-agent sniff — because even a popup that opens there is a disorienting
- * tab switch. Loopback staging development also stays in the current tab: the
- * local `/login` route is the configured auth surface, even while the local
- * agent API is available. Native (Capacitor) keeps the external Browser plugin,
- * while desktop (Electrobun) keeps the RPC external-open; neither is
- * popup-hostile.
+ * tab switch. Loopback staging uses a hosted CLI session instead of local
+ * `/login`: the staging tenant intentionally rejects localhost OAuth callbacks,
+ * while the hosted flow can safely return its claimed session to localhost.
+ * Native (Capacitor) keeps the external Browser plugin, while desktop
+ * (Electrobun) keeps the RPC external-open; neither is popup-hostile.
  *
  * The same-tab round trip needs no new flow: the `/login` page sanitizes and
  * honors `returnTo` (login-return-to.ts), the Steward token lands in this
@@ -170,12 +170,9 @@ function isLoopbackHostname(hostname: string): boolean {
 }
 
 /**
- * Staging Vite development owns a real `/login` route whose Steward target is
- * injected explicitly. Prefer that route over the legacy agent-proxied
- * device-code handshake; the latter opens a second auth surface and does not
- * return the Steward session to the loopback origin. Keep this exception
- * staging-specific: production rejects loopback CORS and custom/self-hosted
- * agent proxies retain their device-code pairing contract.
+ * Classify an explicitly configured loopback Steward development target.
+ * Staging is special because its OAuth tenant rejects localhost callback URLs;
+ * callers route it through the hosted CLI-session exchange instead.
  */
 function loopbackStewardDevelopmentTarget(): "staging" | "other" | null {
   if (!isPlainWebPlatform()) return null;
@@ -197,6 +194,11 @@ function loopbackStewardDevelopmentTarget(): "staging" | "other" | null {
   }
 }
 
+/** True only for the launcher-stamped localhost → staging Steward target. */
+export function isLoopbackStagingStewardDevelopment(): boolean {
+  return loopbackStewardDevelopmentTarget() === "staging";
+}
+
 /**
  * Capability hint for popup-hostile browsers: a touch-primary device with no
  * hover (phones/tablets in any browser engine). Deliberately not a user-agent
@@ -215,9 +217,9 @@ export function isTouchPrimaryWebBrowser(): boolean {
 /**
  * Whether this page's origin can complete a same-origin Steward `/login` round
  * trip: the hosted elizacloud web hosts (steward-url.ts host map) or any host
- * with an explicit Steward API override. Elsewhere (self-hosted dashboards,
- * localhost dev) the `/login` page may have no reachable Steward API, so the
- * legacy device-code flow with its copyable fallback link stays the degrade.
+ * with an explicit Steward API override. A localhost staging override is
+ * deliberately handled by the hosted CLI-session flow because Steward does
+ * not allow localhost OAuth callbacks.
  */
 export function hasSameOriginStewardLogin(): boolean {
   if (typeof window === "undefined") return false;
@@ -239,7 +241,7 @@ export function preOpenCloudLoginWindow(): Window | null {
   if (isPlainWebPlatform() && hasSameOriginStewardLogin()) {
     const loopbackTarget = loopbackStewardDevelopmentTarget();
     if (
-      loopbackTarget === "staging" ||
+      (loopbackTarget === "staging" && isTouchPrimaryWebBrowser()) ||
       (loopbackTarget === null && isTouchPrimaryWebBrowser())
     ) {
       return null;
@@ -300,9 +302,9 @@ export function releaseClaimedCloudLoginWindow(): void {
  * `/login` page instead of driving the popup device-code flow. True on plain
  * web with a same-origin Steward login when the popup handle is dead (blocked
  * at pre-open — the browser-agnostic runtime signal — or never attempted) or
- * when the touch-primary hint prefers same-tab outright. Loopback staging
- * development always uses the local login route, even when an agent proxy and
- * a live popup are both available.
+ * when the touch-primary hint prefers same-tab outright. Loopback development
+ * never uses local `/login`: staging uses a hosted CLI session and other
+ * targets retain their agent-proxied pairing contract.
  */
 export function shouldUseSameTabCloudLogin(
   prePoppedWindow: Window | null,
@@ -311,7 +313,7 @@ export function shouldUseSameTabCloudLogin(
   if (!isPlainWebPlatform()) return false;
   if (!hasSameOriginStewardLogin()) return false;
   const loopbackTarget = loopbackStewardDevelopmentTarget();
-  if (loopbackTarget !== null) return loopbackTarget === "staging";
+  if (loopbackTarget !== null) return false;
   if (options.hasAgentProxy) return false;
   if (isTouchPrimaryWebBrowser()) return true;
   return !prePoppedWindow || prePoppedWindow.closed;

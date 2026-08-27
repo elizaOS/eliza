@@ -8,13 +8,18 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { configureDevCloudEnvironment } from "../../app-core/scripts/lib/dev-cloud-target.mjs";
+import {
+  assertRendererOnlyDevCloudTargetSupported,
+  configureDevCloudEnvironment,
+} from "../../app-core/scripts/lib/dev-cloud-target.mjs";
 import { resolveViteCommand } from "../../app-core/scripts/lib/dev-ui-vite.mjs";
 import {
   createDevServerCloudProfileFingerprint,
   defaultRegistryPath,
   normalizeWorktreePath,
   reservePortsForWorktree,
+  resolveDevServerCloudCredentialIdentity,
+  resolveDevServerCloudPolicyIdentity,
   updateRegistryEntry,
 } from "./dev-server-registry.mjs";
 
@@ -26,8 +31,12 @@ const devCloud = configureDevCloudEnvironment(
   process.argv.slice(2),
   process.env,
 );
+assertRendererOnlyDevCloudTargetSupported(devCloud, "packages/app dev:shared");
 const cloudProfileFingerprint = createDevServerCloudProfileFingerprint({
   effectiveTarget: devCloud.effectiveTarget,
+  authorityMode: devCloud.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY,
+  credentialIdentity: resolveDevServerCloudCredentialIdentity(devCloud.env),
+  policyIdentity: resolveDevServerCloudPolicyIdentity(devCloud.env),
   serverApiBase: devCloud.env.ELIZAOS_CLOUD_BASE_URL,
   rendererCloudBase: devCloud.env.VITE_ELIZA_CLOUD_BASE,
   stewardApiUrl: devCloud.env.VITE_STEWARD_API_URL,

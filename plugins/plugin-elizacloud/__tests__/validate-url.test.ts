@@ -1,3 +1,4 @@
+import { resetDevCloudEnvAuthorityForTests, resolveDevCloudEnvAuthority } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { validateCloudBaseUrl } from "../src/cloud/validate-url.js";
 
@@ -10,18 +11,41 @@ import { validateCloudBaseUrl } from "../src/cloud/validate-url.js";
 
 let savedNodeEnv: string | undefined;
 let savedDev: string | undefined;
+let savedDevSource: string | undefined;
+let savedDevCloudAuthority: string | undefined;
+let savedCloudBaseUrl: string | undefined;
 beforeEach(() => {
+  resetDevCloudEnvAuthorityForTests();
   savedNodeEnv = process.env.NODE_ENV;
   savedDev = process.env.ELIZA_DEV;
+  savedDevSource = process.env.ELIZA_DEV_SOURCE;
+  savedDevCloudAuthority = process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY;
+  savedCloudBaseUrl = process.env.ELIZAOS_CLOUD_BASE_URL;
   // Ensure the IP-range blocking path is active (not the dev-mode bypass).
   process.env.NODE_ENV = "production";
   delete process.env.ELIZA_DEV;
+  delete process.env.ELIZA_DEV_SOURCE;
+  delete process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY;
+  delete process.env.ELIZAOS_CLOUD_BASE_URL;
 });
 afterEach(() => {
   if (savedNodeEnv === undefined) delete process.env.NODE_ENV;
   else process.env.NODE_ENV = savedNodeEnv;
   if (savedDev === undefined) delete process.env.ELIZA_DEV;
   else process.env.ELIZA_DEV = savedDev;
+  if (savedDevSource === undefined) delete process.env.ELIZA_DEV_SOURCE;
+  else process.env.ELIZA_DEV_SOURCE = savedDevSource;
+  if (savedDevCloudAuthority === undefined) {
+    delete process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY;
+  } else {
+    process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = savedDevCloudAuthority;
+  }
+  if (savedCloudBaseUrl === undefined) {
+    delete process.env.ELIZAOS_CLOUD_BASE_URL;
+  } else {
+    process.env.ELIZAOS_CLOUD_BASE_URL = savedCloudBaseUrl;
+  }
+  resetDevCloudEnvAuthorityForTests();
 });
 
 describe("validateCloudBaseUrl — format", () => {
@@ -69,5 +93,19 @@ describe("validateCloudBaseUrl — allowed", () => {
     expect(await validateCloudBaseUrl("https://10.0.0.1/")).toBeNull();
     // Format checks still apply even in dev mode.
     expect(await validateCloudBaseUrl("http://10.0.0.1/")).toMatch(/must use HTTPS/);
+  });
+
+  it("allows only the frozen LAN HTTP endpoint for self-hosted authority", async () => {
+    process.env.ELIZA_DEV_SOURCE = "1";
+    process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "self-hosted";
+    process.env.ELIZAOS_CLOUD_BASE_URL = "http://192.168.1.20:8787/api/v1";
+    resolveDevCloudEnvAuthority();
+
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.eliza.app/api/v1";
+
+    expect(await validateCloudBaseUrl("http://192.168.1.20:8787/api/v1")).toBeNull();
+    expect(await validateCloudBaseUrl("http://192.168.1.20:8787")).toBeNull();
+    expect(await validateCloudBaseUrl("http://192.168.1.20:9999/api/v1")).toMatch(/does not match/);
+    expect(await validateCloudBaseUrl("https://api.eliza.app/api/v1")).toMatch(/does not match/);
   });
 });

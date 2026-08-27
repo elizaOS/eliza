@@ -6,7 +6,9 @@
 
 import type { IAgentRuntime, ImageDescriptionParams, ImageGenerationParams } from "@elizaos/core";
 import { ElizaError, logger, ModelType } from "@elizaos/core";
+import { resolveCloudBillingUrl } from "../cloud/base-url";
 import {
+  getBaseURL,
   getImageDescriptionModel,
   getImageGenerationModel,
   getSetting,
@@ -283,7 +285,7 @@ export async function handleImageDescription(
       const status = finalResponse.status;
       if (status === 402) {
         throw new Error(
-          "Eliza Cloud credits exhausted — top up at https://cloud.eliza.app/cloud/billing"
+          `Eliza Cloud credits exhausted — top up at ${resolveCloudBillingUrl(getBaseURL(runtime))}`,
         );
       }
       if (status === 429) {

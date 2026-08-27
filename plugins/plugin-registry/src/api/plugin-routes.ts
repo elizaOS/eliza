@@ -47,6 +47,7 @@ import {
   clearPluginParamValues,
   collectAgentScopedPluginParamValues,
 } from "./bridge-plugin-settings.ts";
+import { devCloudPluginMutationRejection } from "./dev-cloud-plugin-authority.ts";
 
 /** Normalize npm names to list/toggle ids. Handles both `@elizaos/plugin-*` (current) and legacy `@elizaos/app-*`. */
 function optionalPluginListId(npmName: string): string {
@@ -867,6 +868,7 @@ export async function handlePluginRoutes(
 
     // Search both bundled plugins AND store-installed plugins
     let plugin = state.plugins.find((p) => p.id === pluginId);
+    let discoveredPlugin = false;
     if (!plugin) {
       // Check store-installed plugins from config
       let freshCfg: ElizaConfig;
@@ -879,14 +881,26 @@ export async function handlePluginRoutes(
       const installed = discoverInstalledPlugins(freshCfg, bundledIds);
       const found = installed.find((p) => p.id === pluginId);
       if (found) {
-        // Temporarily add to state.plugins so toggle logic works the same way
-        state.plugins.push(found);
         plugin = found;
+        discoveredPlugin = true;
       }
     }
     if (!plugin) {
       error(res, `Plugin "${pluginId}" not found`, 404);
       return true;
+    }
+
+    const authorityRejection = devCloudPluginMutationRejection(
+      plugin.parameters,
+      body,
+    );
+    if (authorityRejection) {
+      error(res, authorityRejection, 409);
+      return true;
+    }
+    if (discoveredPlugin) {
+      // Only mutate the live catalog after every fail-closed guard passes.
+      state.plugins.push(plugin);
     }
 
     const previousConfig = structuredClone(state.config);
@@ -1276,6 +1290,14 @@ export async function handlePluginRoutes(
     const bundledIds = new Set(state.plugins.map((p) => p.id));
     const installedEntries = discoverInstalledPlugins(state.config, bundledIds);
     const allPlugins: PluginEntry[] = [...state.plugins, ...installedEntries];
+    const authorityRejection = devCloudPluginMutationRejection(
+      allPlugins.flatMap((plugin) => plugin.parameters),
+      { config: body.secrets },
+    );
+    if (authorityRejection) {
+      error(res, authorityRejection, 409);
+      return true;
+    }
     const allowedKeys = new Set<string>();
     for (const plugin of allPlugins) {
       for (const param of plugin.parameters) {

@@ -1,13 +1,11 @@
 /**
  * Proves ordinary local development uses the staging Cloud tuple through the
- * real Vite transform: Cloud-only onboarding, local `/login`, and staging
- * Cloud/Steward boundaries. The compatibility `dev:cloud-only` lane exercises
- * the same contract.
+ * real Vite transform: Cloud-only onboarding and the hosted staging CLI-session
+ * boundary that safely returns to localhost. The compatibility
+ * `dev:cloud-only` lane exercises the same contract.
  */
 
 import { mkdir } from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { expect, type Page, type Route, test } from "@playwright/test";
 import {
   expectNoRenderTelemetryErrors,
@@ -16,14 +14,7 @@ import {
   seedAppStorage,
 } from "../ui-smoke/helpers";
 
-const stewardConfigAbsolutePath = path
-  .resolve(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "../../../ui/src/cloud/shell/steward-config.ts",
-  )
-  .split(path.sep)
-  .join("/");
-const STEWARD_CONFIG_MODULE_URL = `/@fs/${stewardConfigAbsolutePath.replace(/^\/+/, "")}`;
+const STAGING_SESSION_ID = "123e4567-e89b-42d3-a456-426614174000";
 
 async function fulfillJson(
   route: Route,
@@ -38,12 +29,18 @@ async function fulfillJson(
 
 interface CloudAuthRouteState {
   agentLoginPosts: number;
+  directSessionOrigins: string[];
+  directSessionPosts: number;
+  hostedLoginGets: number;
   providerDiscoveryGets: number;
 }
 
 async function routeFreshFirstRun(page: Page): Promise<CloudAuthRouteState> {
   const state: CloudAuthRouteState = {
     agentLoginPosts: 0,
+    directSessionOrigins: [],
+    directSessionPosts: 0,
+    hostedLoginGets: 0,
     providerDiscoveryGets: 0,
   };
 
@@ -89,6 +86,46 @@ async function routeFreshFirstRun(page: Page): Promise<CloudAuthRouteState> {
     if (route.request().method() !== "GET") return route.fallback();
     await fulfillJson(route, { status: "pending" });
   });
+
+  await page.route(
+    /^https:\/\/api-staging\.eliza\.app\/api\/auth\/cli-session$/,
+    async (route) => {
+      const origin = route.request().headers().origin ?? "";
+      const corsHeaders = {
+        "access-control-allow-credentials": "true",
+        "access-control-allow-headers": "content-type",
+        "access-control-allow-methods": "POST, OPTIONS",
+        "access-control-allow-origin": origin,
+      };
+      if (route.request().method() === "OPTIONS") {
+        await route.fulfill({ status: 204, headers: corsHeaders, body: "" });
+        return;
+      }
+      if (route.request().method() !== "POST") return route.fallback();
+      state.directSessionPosts += 1;
+      state.directSessionOrigins.push(origin);
+      await route.fulfill({
+        status: 201,
+        headers: {
+          ...corsHeaders,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ sessionId: STAGING_SESSION_ID }),
+      });
+    },
+  );
+  await page.route(
+    /^https:\/\/staging\.eliza\.app\/auth\/cli-login\?.*$/,
+    async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      state.hostedLoginGets += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "text/html",
+        body: "<!doctype html><html><body><h1>Hosted staging sign-in</h1></body></html>",
+      });
+    },
+  );
 
   await page.route(
     /^https:\/\/staging\.eliza\.app\/steward\/auth\/providers\/?(?:\?.*)?$/,
@@ -144,14 +181,21 @@ async function expectCloudOnlyAuth(
   localOrigin: string,
   extraPages: Page[],
 ): Promise<void> {
-  await expect(page).toHaveURL(/\/login\?returnTo=/, { timeout: 20_000 });
+  await expect(page).toHaveURL(
+    /^https:\/\/staging\.eliza\.app\/auth\/cli-login\?/,
+    { timeout: 20_000 },
+  );
   const loginUrl = new URL(page.url());
-  expect(
-    loginUrl.origin,
-    "the original localhost page must own the Steward login surface",
-  ).toBe(localOrigin);
-  expect(loginUrl.pathname).toBe("/login");
-  expect(loginUrl.searchParams.get("returnTo")).toBe("/");
+  expect(loginUrl.origin).toBe("https://staging.eliza.app");
+  expect(loginUrl.pathname).toBe("/auth/cli-login");
+  expect(loginUrl.searchParams.get("session")).toBe(STAGING_SESSION_ID);
+  const returnTo = new URL(loginUrl.searchParams.get("returnTo") ?? "");
+  expect(returnTo.origin).toBe(localOrigin);
+  expect(returnTo.pathname).toBe("/");
+  expect(returnTo.searchParams.get("elizaCloudLogin")).toBe("complete");
+  expect(returnTo.searchParams.get("elizaCloudLoginSession")).toBe(
+    STAGING_SESSION_ID,
+  );
   expect(
     extraPages,
     "same-tab Cloud sign-in must never open a popup or second page",
@@ -159,7 +203,11 @@ async function expectCloudOnlyAuth(
   expect(page.context().pages()).toHaveLength(1);
   expect(page.context().pages()[0]).toBe(page);
   await expect(
-    page.getByRole("heading", { level: 1, name: "Sign in", exact: true }),
+    page.getByRole("heading", {
+      level: 1,
+      name: "Hosted staging sign-in",
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
   for (const runtime of ["local", "remote"]) {
@@ -194,39 +242,11 @@ test("ordinary Vite development defaults to staging Cloud sign-in", async ({
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expectCloudOnlyAuth(page, localOrigin, extraPages);
-  await expect.poll(() => routeState.providerDiscoveryGets).toBeGreaterThan(0);
+  expect(routeState.directSessionPosts).toBe(1);
+  expect(routeState.directSessionOrigins).toEqual([localOrigin]);
+  expect(routeState.hostedLoginGets).toBe(1);
+  expect(routeState.providerDiscoveryGets).toBe(0);
   expect(routeState.agentLoginPosts).toBe(0);
-  const stewardConfig = await page.evaluate(async (moduleUrl) => {
-    const loaded = (await import(/* @vite-ignore */ moduleUrl)) as {
-      configuredStewardApiUrlOverride: () => string | undefined;
-      configuredStewardTenantId: () => string | undefined;
-    };
-    return {
-      apiUrl: loaded.configuredStewardApiUrlOverride(),
-      tenantId: loaded.configuredStewardTenantId(),
-    };
-  }, STEWARD_CONFIG_MODULE_URL);
-  expect(stewardConfig).toEqual({
-    apiUrl: "https://staging.eliza.app/steward",
-    tenantId: "elizacloud-staging",
-  });
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          (
-            window as unknown as {
-              __ELIZAOS_APP_BOOT_CONFIG__?: { cloudApiBase?: string };
-            }
-          ).__ELIZAOS_APP_BOOT_CONFIG__?.cloudApiBase ?? "",
-      ),
-    )
-    .toBe("https://cloud-staging.eliza.app");
-  expect(
-    await page.evaluate(() =>
-      localStorage.getItem("eliza:enable-runtime-chooser"),
-    ),
-  ).toBeNull();
   await expectNoRenderTelemetryErrors(page, "cloud-only Vite development");
 
   await mkdir(testInfo.outputDir, { recursive: true });
@@ -237,13 +257,14 @@ test("ordinary Vite development defaults to staging Cloud sign-in", async ({
     contentType: "image/png",
   });
 
-  const desktopProviderDiscoveryGets = routeState.providerDiscoveryGets;
+  const desktopDirectSessionPosts = routeState.directSessionPosts;
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expectCloudOnlyAuth(page, localOrigin, extraPages);
-  await expect
-    .poll(() => routeState.providerDiscoveryGets)
-    .toBeGreaterThan(desktopProviderDiscoveryGets);
+  expect(routeState.directSessionPosts).toBe(desktopDirectSessionPosts + 1);
+  expect(routeState.directSessionOrigins.at(-1)).toBe(localOrigin);
+  expect(routeState.hostedLoginGets).toBe(2);
+  expect(routeState.providerDiscoveryGets).toBe(0);
   expect(routeState.agentLoginPosts).toBe(0);
   await expectNoRenderTelemetryErrors(
     page,

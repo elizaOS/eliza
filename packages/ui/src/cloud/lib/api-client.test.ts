@@ -34,8 +34,10 @@ vi.mock("../../api/desktop-http-transport", () => ({
 }));
 
 import {
+  configureStoredStewardTokenScope,
   STEWARD_SESSION_CHANGE_EVENT,
   STEWARD_TOKEN_KEY,
+  STEWARD_TOKEN_SCOPE_KEY,
   type StewardSessionChangeDetail,
 } from "@elizaos/shared/steward-session-client";
 import { setBootConfig } from "../../config/boot-config";
@@ -84,12 +86,20 @@ async function expectCrossOriginThrow(
 
 describe("cloud api-client transport bridge", () => {
   beforeEach(() => {
-    setBootConfig({ branding: {}, cloudApiBase: "https://www.elizacloud.ai" });
+    setBootConfig({
+      branding: {},
+      cloudApiBase: "https://www.elizacloud.ai",
+    });
+    configureStoredStewardTokenScope("https://www.elizacloud.ai");
     capacitorState.isNative = false;
     setElectrobun(false);
     capacitorMocks.request.mockReset();
     desktopTransportMocks.request.mockReset();
     window.localStorage.setItem(STEWARD_TOKEN_KEY, STEWARD_TOKEN);
+    window.localStorage.setItem(
+      STEWARD_TOKEN_SCOPE_KEY,
+      "eliza-cloud:production",
+    );
     setCookie("eliza_csrf=cloud-dashboard-csrf; path=/");
   });
 
@@ -145,6 +155,30 @@ describe("cloud api-client transport bridge", () => {
       expect(
         new Headers((calledInit as RequestInit).headers).get("x-eliza-csrf"),
       ).toBeNull();
+    });
+
+    it("never sends a token from the previous localhost Cloud target", async () => {
+      setBootConfig({
+        branding: {},
+        cloudApiBase: "https://api-staging.eliza.app",
+      });
+      configureStoredStewardTokenScope("https://api-staging.eliza.app");
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(JSON.stringify({ apps: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+      await api("/api/v1/apps");
+
+      const [, calledInit] = fetchSpy.mock.calls[0];
+      expect(
+        new Headers((calledInit as RequestInit).headers).get("Authorization"),
+      ).toBeNull();
+      expect(window.localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(
+        STEWARD_TOKEN,
+      );
     });
   });
 

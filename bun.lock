@@ -1551,6 +1551,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/cloud-sdk": "workspace:*",
+        "@elizaos/shared": "workspace:*",
       },
       "devDependencies": {
         "@elizaos/core": "workspace:*",
@@ -3133,6 +3134,7 @@
         "@electric-sql/experimental": "1.0.14",
         "@electric-sql/pglite": "^0.4.0",
         "@electric-sql/pglite-sync": "0.5.6",
+        "@elizaos/shared": "workspace:*",
         "@neondatabase/serverless": "^1.1.0",
         "@noble/hashes": "2.2.0",
         "drizzle-orm": "0.45.2",
@@ -3473,6 +3475,7 @@
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/shared": "workspace:*",
       },
     },
     "plugins/plugin-zai": {

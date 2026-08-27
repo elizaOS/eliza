@@ -97,35 +97,70 @@ VITE_ELIZA_DESKTOP_RUNTIME_MODE=cloud
 The launcher also sets `ELIZA_DEV_SOURCE=1`, but it does not enable the legacy
 Cloud runtime plugin or supply credentials. Implicit staging clears inherited
 Cloud activation keys as well, so a generic production key from a shell or CI
-cannot be replayed against staging. This keeps local sign-in, agent selection,
-and Cloud API traffic on staging without weakening production CORS. To run the
-legacy plugin with a deliberately minted staging key, opt in explicitly:
+cannot be replayed against staging. The launch selection also outranks stale
+Cloud credentials, endpoints, and routing in persisted local config for that
+process without rewriting the stored config. This keeps local sign-in, agent
+selection, and Cloud API traffic on staging without weakening production CORS.
+To run the legacy plugin with a deliberately minted staging key, opt in with
+the staging-specific credential from the repository root. The credential is
+accepted only alongside an explicit staging selector and remains in the local
+backend; even explicit staging clears generic Cloud and Steward credentials
+because they may belong to production:
 
 ```bash
-ELIZA_DEV_CLOUD_TARGET=staging ELIZAOS_CLOUD_API_KEY=... bun run dev
+# From the repository root
+ELIZA_DEV_CLOUD_TARGET=staging ELIZA_DEV_CLOUD_API_KEY=... bun run dev
 ```
 
 Use `bun run dev:local` (or `bun run --cwd packages/app dev:local`) for the
 local/cloud/remote chooser. This lane suppresses automatic Cloud-plugin startup,
 while an explicit Cloud choice still uses staging. Select production only when
-deliberately testing that environment with
-`bun run dev --cloud-target=production`; localhost auth continues to follow
-production's stricter CORS policy. The equivalent process environment selector
-is `ELIZA_DEV_CLOUD_TARGET=staging|production|offline`.
+deliberately testing that environment, and provide the credential at launch
+because production intentionally rejects loopback browser authentication:
 
-Custom/self-hosted development remains available by setting both the server API
-`ELIZAOS_CLOUD_BASE_URL` and renderer app `VITE_ELIZA_CLOUD_BASE` in the
-launching process; they must identify the same deployment (an `/api/v1` suffix
-on the server URL is ignored for this comparison). `VITE_STEWARD_API_URL` and
-`VITE_STEWARD_TENANT_ID` remain optional independent overrides. Contradictory
-canonical staging/production values fail at startup instead of producing a
-split environment.
+```bash
+# From the repository root
+ELIZAOS_CLOUD_API_KEY=... bun run dev --cloud-target=production
+```
+
+The equivalent process environment selector is
+`ELIZA_DEV_CLOUD_TARGET=staging|production|offline`. The direct
+`packages/app` renderer supports only staging and offline. Production and
+self-hosted launch credentials stay server-side, so those targets require the
+repo-root stack.
+
+Custom/self-hosted development remains available by setting the server API
+`ELIZAOS_CLOUD_BASE_URL`, renderer app `VITE_ELIZA_CLOUD_BASE`, and
+`ELIZAOS_CLOUD_API_KEY` in the launching process. Both bases must be explicit
+non-canonical HTTP(S) endpoints, but they may use separate API and app hosts.
+`VITE_STEWARD_API_URL` and `VITE_STEWARD_TENANT_ID` remain optional independent
+overrides. Missing credentials or contradictory canonical staging/production
+values fail at startup instead of producing a split or partially authenticated
+environment.
+
+```bash
+# From the repository root
+ELIZAOS_CLOUD_BASE_URL=https://api.example.test/api/v1 \
+VITE_ELIZA_CLOUD_BASE=https://app.example.test \
+ELIZAOS_CLOUD_API_KEY=... \
+bun run dev
+```
+
+The deterministic dev smoke keeps its staging services mocked. To opt into the
+anonymous live boundary check, which creates one short-lived staging CLI
+session and stops at the Google authorization redirect without signing in or
+following an OAuth callback, run:
+
+```bash
+bun run --cwd packages/app test:dev-smoke:staging-live-auth
+```
 
 ## Config
 
 App identity lives in `app.config.ts` (`envPrefix: "ELIZA"`); copy that file to
 white-label a new app. Runtime/build env vars use the `ELIZA_` prefix. See `AGENTS.md`
-for the full env var table; `.env.example` documents the build-time `VITE_*` flags.
+for the full env var table; `.env.example` documents launcher examples and the
+build-time `VITE_*` flags.
 
 ### Desktop voice hardware evidence
 

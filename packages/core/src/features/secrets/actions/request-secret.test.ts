@@ -74,4 +74,41 @@ describe("SECRETS action=request", () => {
 		expect(result.text).not.toContain("set secret OPENAI_API_KEY");
 		expect(JSON.stringify(callbacks)).toContain("dm_or_owner_app_instruction");
 	});
+
+	test("falls back from a blank request base to the configured Cloud base", async () => {
+		const callbacks: Array<Record<string, unknown>> = [];
+		await requestSecretHandler(
+			createRuntime({
+				ELIZAOS_CLOUD_API_KEY: "cloud-key",
+				ELIZAOS_CLOUD_ENABLED: "true",
+				ELIZAOS_CLOUD_REQUEST_BASE_URL: "",
+				ELIZAOS_CLOUD_BASE_URL: "https://api-staging.eliza.app/api/v1",
+			}) as never,
+			{
+				entityId: "user-1",
+				roomId: "room-1",
+				content: {
+					text: "Need my OpenAI key",
+					channelType: ChannelType.DM,
+					source: "telegram",
+				},
+			} as never,
+			undefined,
+			{ parameters: { key: "OPENAI_API_KEY" } } as never,
+			async (content) => {
+				callbacks.push(content as Record<string, unknown>);
+				return [];
+			},
+		);
+
+		const envelope = callbacks[0]?.content as {
+			secretRequest?: {
+				delivery?: { mode?: string; linkBaseUrl?: string };
+			};
+		};
+		expect(envelope.secretRequest?.delivery).toMatchObject({
+			mode: "cloud_authenticated_link",
+			linkBaseUrl: "https://api-staging.eliza.app/api/v1",
+		});
+	});
 });

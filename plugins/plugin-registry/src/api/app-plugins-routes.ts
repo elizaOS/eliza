@@ -55,6 +55,7 @@ import {
   clearPluginParamValues,
   collectAgentScopedPluginParamValues,
 } from "./bridge-plugin-settings.ts";
+import { devCloudPluginMutationRejection } from "./dev-cloud-plugin-authority.ts";
 
 const require = createRequire(import.meta.url);
 
@@ -1512,6 +1513,17 @@ export function persistCompatPluginMutation(
   status: number;
   payload: Record<string, unknown>;
 } {
+  const authorityRejection = devCloudPluginMutationRejection(
+    plugin.parameters ?? [],
+    body,
+  );
+  if (authorityRejection) {
+    return {
+      status: 409,
+      payload: { ok: false, error: authorityRejection },
+    };
+  }
+
   const config = loadElizaConfig();
   const configRecord = config as Record<string, unknown>;
   config.plugins ??= {};

@@ -21,7 +21,7 @@ import {
   normalizeDeploymentTargetConfig,
 } from "@elizaos/shared";
 import * as zod from "zod";
-import { loadElizaConfig } from "../../config/config.ts";
+import { loadEffectiveElizaConfig } from "../../config/config.ts";
 
 const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
 
@@ -135,12 +135,13 @@ export function resolveRuntimeMode(
  * next request without a restart.
  */
 export function getRuntimeMode(): RuntimeMode {
-  return resolveRuntimeMode(parseRuntimeModeConfig(loadElizaConfig())).mode;
+  return resolveRuntimeMode(parseRuntimeModeConfig(loadEffectiveElizaConfig()))
+    .mode;
 }
 
 /** Disk-backed snapshot. */
 export function getRuntimeModeSnapshot(): RuntimeModeSnapshot {
-  return resolveRuntimeMode(parseRuntimeModeConfig(loadElizaConfig()));
+  return resolveRuntimeMode(parseRuntimeModeConfig(loadEffectiveElizaConfig()));
 }
 
 /** True for both `local` and `local-only`. */

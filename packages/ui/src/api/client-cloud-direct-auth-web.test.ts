@@ -161,7 +161,10 @@ describe("ElizaClient direct Cloud auth served from a cloud web host", () => {
       "session-1",
     );
 
-    expect(fetchSpy).toHaveBeenCalledWith("/api/auth/cli-session/session-1");
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/auth/cli-session/session-1",
+      {},
+    );
     expect(result).toEqual({
       status: "authenticated",
       organizationId: "org-1",
@@ -276,6 +279,7 @@ describe("ElizaClient direct Cloud auth served from localhost dev (port-shift)",
 
     expect(fetchSpy).toHaveBeenCalledWith(
       `${STAGING_DIRECT_CLOUD_API_BASE_URL}/api/auth/cli-session/session-1`,
+      {},
     );
     expect(result).toEqual({
       status: "authenticated",

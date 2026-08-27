@@ -17,7 +17,17 @@ export const DEFAULT_UI_PORT_SPAN = 900;
 export const DEFAULT_API_PORT_OFFSET = 10_000;
 export const REGISTRY_VERSION = 1;
 const STARTUP_RESERVATION_GRACE_MS = 120_000;
-const CLOUD_PROFILE_FINGERPRINT_PREFIX = "cloud-v1:";
+const CLOUD_PROFILE_FINGERPRINT_PREFIX = "cloud-v2:";
+const CLOUD_POLICY_ENV_KEYS = Object.freeze([
+  "ELIZAOS_CLOUD_ENABLED",
+  "ELIZAOS_CLOUD_USE_INFERENCE",
+  "ELIZAOS_CLOUD_USE_TTS",
+  "ELIZAOS_CLOUD_USE_STT",
+  "ELIZAOS_CLOUD_USE_MEDIA",
+  "ELIZAOS_CLOUD_USE_EMBEDDINGS",
+  "ELIZAOS_CLOUD_USE_RPC",
+  "ELIZA_CLOUD_PROVISIONED",
+]);
 
 function cloudProfileValue(value, field) {
   if (value === undefined) return null;
@@ -27,15 +37,115 @@ function cloudProfileValue(value, field) {
   return value;
 }
 
+function cloudCredentialIdentityDigest(identity) {
+  if (!identity || typeof identity !== "object" || Array.isArray(identity)) {
+    throw new TypeError("credentialIdentity must be an object");
+  }
+  const normalized = Object.fromEntries(
+    Object.entries(identity)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, value]) => {
+        if (
+          typeof value !== "string" &&
+          value !== undefined &&
+          value !== null
+        ) {
+          throw new TypeError(
+            `credentialIdentity.${key} must be a string when supplied`,
+          );
+        }
+        const trimmed = typeof value === "string" ? value.trim() : "";
+        return [key, trimmed || null];
+      }),
+  );
+  return createHash("sha256")
+    .update("eliza-dev-server-cloud-credentials-v1\0")
+    .update(JSON.stringify(normalized))
+    .digest("hex");
+}
+
+function firstConfiguredCloudEnvValue(env, ...keys) {
+  for (const key of keys) {
+    const value = env[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+/** Resolve credential-bearing aliases to the effective identity hashed below. */
+export function resolveDevServerCloudCredentialIdentity(env) {
+  return {
+    apiKey: firstConfiguredCloudEnvValue(
+      env,
+      "ELIZAOS_CLOUD_API_KEY",
+      "ELIZA_DEV_CLOUD_API_KEY",
+      "ELIZA_CLOUD_API_KEY",
+      "ELIZACLOUD_API_KEY",
+    ),
+    serviceKey: firstConfiguredCloudEnvValue(
+      env,
+      "ELIZAOS_CLOUD_SERVICE_KEY",
+      "ELIZA_CLOUD_SERVICE_KEY",
+    ),
+    serviceToken: firstConfiguredCloudEnvValue(
+      env,
+      "ELIZA_CLOUD_SERVICE_TOKEN",
+    ),
+    sessionToken: firstConfiguredCloudEnvValue(
+      env,
+      "ELIZA_CLOUD_SESSION_TOKEN",
+    ),
+    cloudToken: firstConfiguredCloudEnvValue(
+      env,
+      "ELIZA_CLOUD_TOKEN",
+      "ELIZACLOUD_TOKEN",
+    ),
+    authToken: firstConfiguredCloudEnvValue(env, "ELIZA_CLOUD_AUTH_TOKEN"),
+    sandboxToken: firstConfiguredCloudEnvValue(
+      env,
+      "ELIZA_CLOUD_SANDBOX_TOKEN",
+    ),
+    embeddingApiKey: firstConfiguredCloudEnvValue(
+      env,
+      "ELIZAOS_CLOUD_EMBEDDING_API_KEY",
+    ),
+    agentId: firstConfiguredCloudEnvValue(
+      env,
+      "ELIZAOS_CLOUD_AGENT_ID",
+      "ELIZA_CLOUD_AGENT_ID",
+      "WAIFU_ELIZA_CLOUD_AGENT_ID",
+    ),
+  };
+}
+
+/** Resolve non-secret Cloud activation policy to one stable effective identity. */
+export function resolveDevServerCloudPolicyIdentity(env) {
+  return Object.fromEntries(
+    CLOUD_POLICY_ENV_KEYS.map((key) => {
+      const value = env[key];
+      if (value !== undefined && typeof value !== "string") {
+        throw new TypeError(`${key} must be a string when supplied`);
+      }
+      const normalized =
+        typeof value === "string" ? value.trim().toLowerCase() : "";
+      return [key, normalized || null];
+    }),
+  );
+}
+
 /**
  * Build the non-secret identity of the Cloud environment baked into Vite.
  *
- * Only the explicitly listed public routing fields participate. The registry
- * stores the digest, never the source values or any inherited credentials, so
- * it is safe to keep under ~/.eliza while still preventing cross-target reuse.
+ * Public routing, launcher authority, and the opaque identity of effective
+ * credentials participate. The registry stores only the final digest, never
+ * source values or credentials, so it is safe to keep under ~/.eliza while
+ * preventing cross-target, default/explicit, and cross-account reuse.
  */
 export function createDevServerCloudProfileFingerprint({
   effectiveTarget,
+  authorityMode,
+  credentialIdentity,
+  policyIdentity,
   serverApiBase,
   rendererCloudBase,
   stewardApiUrl,
@@ -45,9 +155,22 @@ export function createDevServerCloudProfileFingerprint({
   if (typeof effectiveTarget !== "string" || !effectiveTarget) {
     throw new TypeError("effectiveTarget must be a non-empty string");
   }
+  if (typeof authorityMode !== "string" || !authorityMode) {
+    throw new TypeError("authorityMode must be a non-empty string");
+  }
+  if (
+    !policyIdentity ||
+    typeof policyIdentity !== "object" ||
+    Array.isArray(policyIdentity)
+  ) {
+    throw new TypeError("policyIdentity must be an object");
+  }
   const profile = {
-    version: 1,
+    version: 2,
     effectiveTarget,
+    authorityMode,
+    credentialIdentityDigest: cloudCredentialIdentityDigest(credentialIdentity),
+    policyIdentity,
     serverApiBase: cloudProfileValue(serverApiBase, "serverApiBase"),
     rendererCloudBase: cloudProfileValue(
       rendererCloudBase,
@@ -65,7 +188,7 @@ export function createDevServerCloudProfileFingerprint({
 
 function normalizeCloudProfileFingerprint(value) {
   if (value === undefined) return undefined;
-  if (typeof value !== "string" || !/^cloud-v1:[0-9a-f]{64}$/.test(value)) {
+  if (typeof value !== "string" || !/^cloud-v2:[0-9a-f]{64}$/.test(value)) {
     throw new TypeError(
       "cloudProfileFingerprint must be a createDevServerCloudProfileFingerprint() value",
     );
@@ -79,7 +202,7 @@ function assertReusableCloudProfile(existing, requestedFingerprint, worktree) {
 
   const existingLabel =
     typeof existingFingerprint === "string" &&
-    /^cloud-v1:[0-9a-f]{64}$/.test(existingFingerprint)
+    /^cloud-v2:[0-9a-f]{64}$/.test(existingFingerprint)
       ? existingFingerprint
       : "missing or invalid";
   const requestedLabel = requestedFingerprint ?? "missing";

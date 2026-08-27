@@ -10,7 +10,10 @@ import {
   normalizeCloudApiKey,
 } from "../cloud/auth-service-types.js";
 import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
-import { resolveCloudApiKey } from "../cloud/cloud-api-key.js";
+import {
+  resolveCloudApiKey,
+  resolveCloudApiKeyWithRuntimeOverride,
+} from "../cloud/cloud-api-key.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
 import type { CloudProxyConfigLike } from "../lib/config-like";
 
@@ -32,7 +35,11 @@ function resolveProxyApiKey(
     isCloudAuthApiKeyService(cloudAuth) && cloudAuth.isAuthenticated() === true
       ? normalizeCloudApiKey(cloudAuth.getApiKey?.())
       : null;
-  return runtimeApiKey ?? resolveCloudApiKey(state.config, state.runtime);
+  return resolveCloudApiKeyWithRuntimeOverride(
+    runtimeApiKey,
+    state.config,
+    state.runtime,
+  );
 }
 
 function buildAuthHeaders(
