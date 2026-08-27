@@ -172,9 +172,9 @@ describe("backup admission cohort migrations", () => {
     const journal = (await Bun.file(journalUrl).json()) as {
       entries: Array<{ idx: number; tag: string }>;
     };
-    expect(journal.entries.slice(-migrationNames.length).map(({ tag }) => `${tag}.sql`)).toEqual(
-      migrationNames,
-    );
+    expect(journal.entries.slice(-migrationNames.length).map(({ tag }) => `${tag}.sql`)).toEqual([
+      ...migrationNames,
+    ]);
     for (const migration of migrations) expect(migration.split("\n").length).toBeLessThan(100);
   });
 

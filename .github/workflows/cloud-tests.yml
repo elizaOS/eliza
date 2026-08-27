@@ -158,6 +158,8 @@ jobs:
             packages/cloud/shared/src/db/agent-backup-admission-source-stamps.postgres.integration.test.ts
           bun test --config=/dev/null --isolate \
             packages/cloud/shared/src/db/agent-backup-admission-gc-authority.postgres.integration.test.ts
+          bun test --config=/dev/null --isolate \
+            packages/cloud/shared/src/db/agent-backup-admission-index-lock-budget.postgres.integration.test.ts
       - name: Run PostgreSQL container admission tests
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres

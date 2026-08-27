@@ -87,6 +87,11 @@ realPostgresTest(
           md5('object-' || series)::uuid, 'delete_object'
         FROM generate_series(1, 10000) AS series;
       `);
+      const writerPidResult = await writer.query<{ pid: number }>(
+        "SELECT pg_backend_pid()::int AS pid",
+      );
+      const writerPid = writerPidResult.rows[0]?.pid;
+      if (!writerPid) throw new Error("backup admission GC writer PID is unavailable");
 
       const fileNode = await relationFileNode(migrator, "agent_backup_gc_outbox");
       const indexes = await gcIndexes(migrator);
@@ -128,7 +133,7 @@ realPostgresTest(
         for (let attempt = 0; attempt < 100 && !writerSettled; attempt += 1) {
           const activity = await migrator.query<{ wait_event_type: string | null }>(
             "SELECT wait_event_type FROM pg_stat_activity WHERE pid = $1",
-            [writer.processID],
+            [writerPid],
           );
           if (activity.rows[0]?.wait_event_type === "Lock") {
             writerWaitedOnCatalogLock = true;
