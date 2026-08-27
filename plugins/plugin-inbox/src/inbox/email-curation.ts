@@ -1382,7 +1382,14 @@ export function calibrateEmailCurationConfidence(
   }
   for (const effect of input.policyEffects) {
     if (effect.kind === "lower_confidence") {
-      confidence -= effect.amount ?? 0.1;
+      // A policy hook is third-party input; `amount` can be a non-finite
+      // number (e.g. NaN). `?? 0.1` only guards null/undefined, so a
+      // non-finite amount previously poisoned `confidence` with NaN, which
+      // then made confidenceBand() fall through to "low", skipped citation
+      // validation, and rendered literal "NaN" in reviewer-facing text.
+      const amount = effect.amount;
+      confidence -=
+        typeof amount === "number" && Number.isFinite(amount) ? amount : 0.1;
     }
   }
   if (hasUncitedStrongSemanticEvidence(input.evidence)) {

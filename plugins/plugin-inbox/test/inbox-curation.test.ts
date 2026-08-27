@@ -23,11 +23,14 @@ import {
 } from "../src/actions/inbox.ts";
 import type {
   CurationDecision,
+  EmailCurationAction,
   EmailCurationCandidate,
+  EmailCurationConfidenceCalibrationInput,
   EmailCurationIdentityHook,
   EmailCurationPolicyHook,
 } from "../src/inbox/email-curation.ts";
 import {
+  calibrateEmailCurationConfidence,
   compareCurationDecisions,
   curateEmailCandidates,
 } from "../src/inbox/email-curation.ts";
@@ -204,8 +207,8 @@ describe("InboxService.triageWithCuration", () => {
   });
 });
 
-describe("email curation safe sort (NaN + tiebreak)", () => {
-  it("orders via curateEmailCandidates with NaN confidence tiebreak by candidateId", () => {
+describe("email curation policy amount sanitization + tiebreak", () => {
+  it("orders via curateEmailCandidates with a non-finite policy amount tiebreak by candidateId", () => {
     const baseCandidates: EmailCurationCandidate[] = [
       {
         id: "c-1",
@@ -252,12 +255,19 @@ describe("email curation safe sort (NaN + tiebreak)", () => {
       now: "2026-08-23T00:00:00.000Z",
       policyHook,
     });
-    // c-nan confidence becomes NaN -> sort score NaN -> coerced to 0, so it sorts last; tiebreak by candidateId if scores tie
+    // A non-finite policy amount must not poison confidence with NaN: it
+    // falls back to the same 0.1 penalty as an absent amount, so c-nan gets
+    // a real, lower confidence than c-1 (which has no policy effect) rather
+    // than NaN (which used to be coerced to 0 only at the sort layer, while
+    // leaking into confidenceBand, citation validation, and reviewer text).
+    const nanDecision = out.decisions.find((d) => d.candidateId === "c-nan");
+    expect(Number.isFinite(nanDecision?.confidence)).toBe(true);
+    expect(nanDecision?.confidenceBand).not.toBeUndefined();
+    expect(nanDecision?.bulkReview.rationale).not.toContain("NaN");
+
     const order = out.decisions.map((d) => d.candidateId);
-    // ensure both present and ranking is deterministic
     expect(order).toContain("c-nan");
     expect(order).toContain("c-1");
-    // c-1 should rank before c-nan because NaN -> 0 is smallest
     expect(out.decisions[0]?.candidateId).toBe("c-1");
     expect(out.decisions[0]?.rank).toBe(1);
     expect(out.decisions[1]?.candidateId).toBe("c-nan");
@@ -295,6 +305,40 @@ describe("email curation safe sort (NaN + tiebreak)", () => {
     const arr = [a, b];
     arr.sort(compareCurationDecisions);
     expect(arr[0].candidateId).toBe("c-1");
+  });
+
+  it("ignores a non-finite lower_confidence policy amount instead of propagating NaN", () => {
+    const scores: Record<EmailCurationAction, number> = {
+      save: 0,
+      archive: 0,
+      delete: 0,
+      review: 0.5,
+    };
+    const baseInput: EmailCurationConfidenceCalibrationInput = {
+      action: "review",
+      scores,
+      evidence: [],
+      degraded: false,
+      blockedDelete: false,
+      threadConflict: false,
+      policyEffects: [],
+    };
+    const withoutEffect = calibrateEmailCurationConfidence(baseInput);
+    const withNaNAmount = calibrateEmailCurationConfidence({
+      ...baseInput,
+      policyEffects: [
+        {
+          kind: "lower_confidence",
+          amount: Number.NaN,
+          code: "test_nan",
+          message: "force NaN",
+        },
+      ],
+    });
+    // A non-finite amount must fall back to the same default penalty as an
+    // absent amount, not poison the result with NaN.
+    expect(Number.isFinite(withNaNAmount)).toBe(true);
+    expect(withNaNAmount).toBeLessThan(withoutEffect);
   });
 });
 
