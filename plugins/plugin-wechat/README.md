@@ -75,6 +75,16 @@ the removed proxy transport and now fail with a typed migration error.
 }
 ```
 
+### Receiver binding (`callbackId`)
+
+Inbound `ToUserName` / the decrypted receiver id is the account's WeChat
+original ID (`gh_...`), not the appId — the appId is only the token-API
+identity. Set `callbackId` to the original ID to enable receiver binding for
+an official account; when omitted, receiver binding is skipped rather than
+mis-verified against the appId. WeCom binds automatically to the corpId (set
+`callbackId` only to override), and payloads carrying `AgentID` must match the
+configured `agentId`.
+
 ### Callback exposure
 
 The plugin listens on `0.0.0.0:<callbackPort>` (default 18790) with one path

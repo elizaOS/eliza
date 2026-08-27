@@ -7,6 +7,8 @@
  * proxy-based configuration shapes are deliberately absent.
  */
 
+import { ElizaError } from "@elizaos/core";
+
 /** Discriminator for the two supported first-party WeChat platforms. */
 export type WechatMode = "official-account" | "wecom";
 
@@ -22,6 +24,14 @@ export type WechatMessageSecurityMode = "plaintext" | "encrypted";
 export interface WechatAccountBase {
   enabled?: boolean;
   name?: string;
+  /**
+   * Inbound receiver identity for callback binding. WeCom: the corpId (same
+   * as corpId). Official Account: the account's WeChat original ID (gh_...)
+   * from the MP console — NOT the appId, which is only the token API identity.
+   * When omitted for an official-account, receiver binding is skipped rather
+   * than mis-verified against the appId.
+   */
+  callbackId?: string;
   /**
    * Public HTTPS callback base URL (e.g. `https://bot.example.com`) under which
    * this plugin's callback routes are reachable. Display/diagnostics only —
@@ -87,6 +97,12 @@ export interface ResolvedWechatAccount {
   securityMode: WechatMessageSecurityMode;
   tokenSecret: string;
   encodingAESKey?: string;
+  /**
+   * Expected inbound ToUserName/AES receiver identity when configured; for
+   * wecom this is the corpId, for official-account the gh_ original ID.
+   * Undefined means receiver binding is skipped (no mis-verification).
+   */
+  callbackIdentity?: string;
   label: string;
 }
 
@@ -117,6 +133,8 @@ export interface WechatMessageContext {
     subject: string;
   };
   imageUrl?: string;
+  /** WeCom app message target agent id, when the payload carries AgentID. */
+  agentId?: number;
   /** Subscribe/unsubscribe/notification event kind for `type: "event"`. */
   event?: string;
   platform: {
@@ -158,6 +176,9 @@ export interface WechatSendReceipt {
 /**
  * Errors thrown by this plugin carry a stable machine-readable `code` so route
  * and connector boundaries can translate failures without string matching.
+ * `WechatError` extends the core `ElizaError` per the repository error policy:
+ * a domain failure with an actionable code, structured context, and a preserved
+ * `cause` chain when wrapping.
  */
 export type WechatErrorCode =
   | "WECHAT_CONFIG_INVALID"
@@ -171,17 +192,22 @@ export type WechatErrorCode =
   | "WECHAT_SEND_FAILED"
   | "WECHAT_ACCOUNT_UNAVAILABLE";
 
-export class WechatError extends Error {
+export class WechatError extends ElizaError {
   readonly code: WechatErrorCode;
-  readonly context: Record<string, unknown>;
+  override readonly context: Record<string, unknown>;
 
   constructor(
     code: WechatErrorCode,
     message: string,
     context?: Record<string, unknown>,
+    options?: { cause?: unknown; severity?: "ephemeral" | "fatal" },
   ) {
-    super(message);
-    this.name = "WechatError";
+    super(message, {
+      code,
+      context: context ?? {},
+      cause: options?.cause,
+      severity: options?.severity,
+    });
     this.code = code;
     this.context = context ?? {};
   }

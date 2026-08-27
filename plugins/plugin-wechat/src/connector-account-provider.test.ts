@@ -135,17 +135,17 @@ describe("createWechatConnectorAccountProvider", () => {
     expect(serialized).not.toContain("tok-secret");
   });
 
-  it('production wiring feeds channel evidence through the health source', async () => {
+  it("production wiring feeds channel evidence through the health source", async () => {
     // Simulate the closure src/index.ts installs: the provider reads the
     // live channel evidence lazily at listAccounts time.
     let evidence: Array<{ accountId: string; health?: { state: string } }> = [];
     const provider = createWechatConnectorAccountProvider(
       runtimeWithConfig({
         account: {
-          mode: 'official-account',
-          appId: 'wx1234',
-          appSecret: 'sec',
-          token: 'tok',
+          mode: "official-account",
+          appId: "wx1234",
+          appSecret: "sec",
+          token: "tok",
         },
       }),
       {
@@ -160,9 +160,13 @@ describe("createWechatConnectorAccountProvider", () => {
     );
 
     // Before any observation: pending.
-    expect((await provider.listAccounts?.(manager))?.[0]?.status).toBe('pending');
+    expect((await provider.listAccounts?.(manager))?.[0]?.status).toBe(
+      "pending",
+    );
     // After a verified-callback observation through the same source: connected.
-    evidence = [{ accountId: 'default', health: { state: 'connected' } }];
-    expect((await provider.listAccounts?.(manager))?.[0]?.status).toBe('connected');
+    evidence = [{ accountId: "default", health: { state: "connected" } }];
+    expect((await provider.listAccounts?.(manager))?.[0]?.status).toBe(
+      "connected",
+    );
   });
 });

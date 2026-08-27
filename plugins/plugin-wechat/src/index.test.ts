@@ -8,7 +8,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { Bot } from "./bot";
-import { resolveDirectAccount } from "./channel";
+import { resolveDirectAccount, WechatChannel } from "./channel";
 import { WechatDeliveryError } from "./delivery-error";
 import { isWechatConnectorConfigured } from "./index";
 import {
@@ -159,6 +159,71 @@ describe("direct config resolution (#24371)", () => {
       } as never),
     ).toBe(false);
     expect(isWechatConnectorConfigured(undefined)).toBe(false);
+  });
+  it("does not treat a disabled single-account block as configured", () => {
+    expect(
+      isWechatConnectorConfigured({
+        account: {
+          mode: "official-account",
+          appId: "a",
+          appSecret: "s",
+          token: "t",
+          enabled: false,
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects whitespace-only account ids at channel resolution", () => {
+    const channel = new WechatChannel({
+      config: {
+        accounts: {
+          "   ": {
+            mode: "wecom",
+            corpId: "c",
+            agentId: 1,
+            corpSecret: "s",
+            token: "t",
+            encodingAESKey: "K".repeat(43),
+          },
+        },
+      },
+      onMessage: () => undefined,
+    });
+    expect(() => channel.resolveAccounts()).toThrow(
+      expect.objectContaining({ code: "WECHAT_CONFIG_INVALID" }),
+    );
+  });
+
+  it("resolves callbackIdentity for both direct modes", () => {
+    const channel = new WechatChannel({
+      config: {
+        accounts: {
+          oa: {
+            mode: "official-account",
+            appId: "wx-app",
+            appSecret: "s",
+            token: "t",
+            callbackId: "gh_original",
+          },
+          wecom: {
+            mode: "wecom",
+            corpId: "corp9",
+            agentId: 7,
+            corpSecret: "s",
+            token: "t",
+            encodingAESKey: "K".repeat(43),
+          },
+        },
+      },
+      onMessage: () => undefined,
+    });
+    const resolved = channel.resolveAccounts();
+    const oa = resolved.find((a) => a.mode === "official-account");
+    const wecom = resolved.find((a) => a.mode === "wecom");
+    expect(oa?.callbackIdentity).toBe("gh_original");
+    expect(oa?.platformIdentity).toBe("wx-app");
+    expect(wecom?.callbackIdentity).toBe("corp9");
   });
 });
 
@@ -324,8 +389,9 @@ describe("@elizaos/plugin-wechat internals", () => {
 
     await dispatcher.sendText("openid-alice", "hello world");
 
-    expect(client.sendText).toHaveBeenNthCalledWith(1, "openid-alice", "hello");
-    expect(client.sendText).toHaveBeenNthCalledWith(2, "openid-alice", "world");
+    const sent = vi.mocked(client.sendText).mock.calls.map((call) => call[1]);
+    expect(sent.join("")).toBe("hello world");
+    expect(sent[0]).toBe("hello");
   });
 
   it("keeps surrogate pairs intact when chunking", async () => {
@@ -382,7 +448,7 @@ describe("@elizaos/plugin-wechat internals", () => {
     expect(sent.every((chunk) => chunk.isWellFormed())).toBe(true);
   });
 
-  it("keeps the established whitespace-boundary policy explicit", async () => {
+  it("preserves whitespace exactly across a natural chunk boundary", async () => {
     const client: WechatOutboundTransport = {
       sendText: vi.fn(async () => undefined),
     };
@@ -390,9 +456,9 @@ describe("@elizaos/plugin-wechat internals", () => {
 
     await dispatcher.sendText("openid-alice", "hello  world");
 
-    expect(
-      vi.mocked(client.sendText).mock.calls.map((call) => call[1]),
-    ).toEqual(["hello ", "world"]);
+    const sent = vi.mocked(client.sendText).mock.calls.map((call) => call[1]);
+    expect(sent).toEqual(["hello ", " world"]);
+    expect(sent.join("")).toBe("hello  world");
   });
 
   it("typed WechatError carries a stable machine code", () => {

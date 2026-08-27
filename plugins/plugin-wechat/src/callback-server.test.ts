@@ -26,11 +26,13 @@ const AES_KEY = Buffer.from("0123456789abcdef0123456789abcdef")
 const OFFICIAL: ResolvedWechatAccount = {
   id: "oa-main",
   mode: "official-account",
-  platformAccountId: "gh_app1",
-  platformIdentity: "gh_app1",
+  platformAccountId: "wx-app-id-1",
+  platformIdentity: "wx-app-id-1",
   secret: "s",
   securityMode: "plaintext",
   tokenSecret: "token-oa",
+  // gh_ original ID from the MP console; the inbound ToUserName.
+  callbackIdentity: "gh_app1",
   label: "OA",
 };
 
@@ -44,6 +46,7 @@ const WECOM: ResolvedWechatAccount = {
   securityMode: "encrypted",
   tokenSecret: "token-wecom",
   encodingAESKey: AES_KEY,
+  callbackIdentity: "corp1",
   label: "WeCom",
 };
 
@@ -394,6 +397,121 @@ describe("first-party callback server", () => {
       method: "DELETE",
     });
     expect(res.status).toBe(405);
+  });
+
+  it("rejects a plaintext message addressed to a different gh_ receiver", async () => {
+    const received: WechatMessageContext[] = [];
+    const handle = await start((_id, msg) => {
+      received.push(msg);
+    });
+
+    const xml = buildWechatXml("xml", {
+      ToUserName: "gh_other_account",
+      FromUserName: "openid-alice",
+      CreateTime: "1710969600",
+      MsgType: "text",
+      Content: "cross-receiver",
+      MsgId: "5001",
+    });
+    const signature = sha1Of(OFFICIAL.tokenSecret, TIMESTAMP, NONCE);
+    const res = await httpRequest(
+      handle.port,
+      `/webhook/wechat/oa-main?signature=${signature}&timestamp=${TIMESTAMP}&nonce=${NONCE}`,
+      { method: "POST", body: xml },
+    );
+    expect(res.status).toBe(403);
+    expect(received).toHaveLength(0);
+  });
+
+  it("skips receiver binding for an official account without callbackId", async () => {
+    const received: WechatMessageContext[] = [];
+    const noBinding: ResolvedWechatAccount = {
+      ...OFFICIAL,
+      id: "oa-nobind",
+      callbackIdentity: undefined,
+    };
+    const handle = await start(
+      (_id, msg) => {
+        received.push(msg);
+      },
+      undefined,
+      [noBinding],
+    );
+
+    const xml = buildWechatXml("xml", {
+      ToUserName: "gh_whatever",
+      FromUserName: "openid-alice",
+      CreateTime: "1710969600",
+      MsgType: "text",
+      Content: "legacy config",
+      MsgId: "5002",
+    });
+    const signature = sha1Of(noBinding.tokenSecret, TIMESTAMP, NONCE);
+    const res = await httpRequest(
+      handle.port,
+      `/webhook/wechat/oa-nobind?signature=${signature}&timestamp=${TIMESTAMP}&nonce=${NONCE}`,
+      { method: "POST", body: xml },
+    );
+    expect(res).toEqual({ body: "success", status: 200 });
+    expect(received).toHaveLength(1);
+  });
+
+  it("rejects a WeCom message whose AgentID targets a different agent", async () => {
+    const received: WechatMessageContext[] = [];
+    const handle = await start((_id, msg) => {
+      received.push(msg);
+    });
+
+    const innerXml = buildWechatXml("xml", {
+      ToUserName: "corp1",
+      FromUserName: "wecom-bob",
+      CreateTime: "1710969600",
+      MsgType: "text",
+      Content: "wrong agent",
+      MsgId: "5003",
+      AgentID: "999",
+    });
+    const encrypt = encryptCallbackPayload(innerXml, "corp1", AES_KEY);
+    const envelope = buildWechatXml("xml", {
+      ToUserName: "corp1",
+      Encrypt: encrypt,
+      AgentID: "999",
+    });
+    const signature = sha1Of(WECOM.tokenSecret, TIMESTAMP, NONCE, encrypt);
+    const res = await httpRequest(
+      handle.port,
+      `/webhook/wechat/wecom-main?msg_signature=${signature}&timestamp=${TIMESTAMP}&nonce=${NONCE}`,
+      { method: "POST", body: envelope },
+    );
+    expect(res.status).toBe(403);
+    expect(received).toHaveLength(0);
+  });
+
+  it("accepts a CDATA-wrapped encrypted envelope as the platform emits it", async () => {
+    const received: WechatMessageContext[] = [];
+    const handle = await start((_id, msg) => {
+      received.push(msg);
+    });
+
+    const innerXml =
+      "<xml><ToUserName><![CDATA[corp1]]></ToUserName><FromUserName><![CDATA[wecom-bob]]></FromUserName><CreateTime>1710969600</CreateTime><MsgType><![CDATA[text]]></MsgType><Content><![CDATA[enterprise cdata hello]]></Content><MsgId>5004</MsgId><AgentID>2</AgentID></xml>";
+    const encrypt = encryptCallbackPayload(innerXml, "corp1", AES_KEY);
+    // The outer envelope the platform actually POSTs wraps Encrypt in CDATA.
+    const envelope = `<xml><ToUserName><![CDATA[corp1]]></ToUserName><Encrypt><![CDATA[${encrypt}]]></Encrypt><AgentID><![CDATA[2]]></AgentID></xml>`;
+    const signature = sha1Of(WECOM.tokenSecret, TIMESTAMP, NONCE, encrypt);
+    const res = await httpRequest(
+      handle.port,
+      `/webhook/wechat/wecom-main?msg_signature=${signature}&timestamp=${TIMESTAMP}&nonce=${NONCE}`,
+      { method: "POST", body: envelope },
+    );
+    expect(res).toEqual({ body: "success", status: 200 });
+    expect(received).toHaveLength(1);
+    expect(received[0]).toMatchObject({
+      type: "text",
+      sender: "wecom-bob",
+      content: "enterprise cdata hello",
+      agentId: 2,
+    });
   });
 
   it("returns 500 and reports a delivery failure", async () => {
