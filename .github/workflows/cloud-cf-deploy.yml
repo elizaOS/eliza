@@ -57,6 +57,21 @@ on:
         required: false
         default: false
         type: boolean
+      production_binding_only_recovery:
+        description: Admit only the bounded production Hyperdrive binding recovery against the currently served certified base
+        required: false
+        default: false
+        type: boolean
+      certified_production_base_sha:
+        description: Exact currently served production SHA whose staging tree certificate anchors a binding-only recovery
+        required: false
+        default: ""
+        type: string
+      certified_recovery_policy_sha:
+        description: Exact develop SHA whose successful staging certificate anchors the byte-identical recovery policy
+        required: false
+        default: ""
+        type: string
       source_sha:
         description: Exact develop SHA supplied by the effect reconciler
         required: false
@@ -105,6 +120,9 @@ jobs:
           SOURCE_REF: ${{ github.ref }}
           FORCE: ${{ inputs.force == true }}
           RUN_DEPLOYED_RENDERER_STAGING: ${{ inputs.run_deployed_renderer_staging == true }}
+          PRODUCTION_BINDING_ONLY_RECOVERY: ${{ inputs.production_binding_only_recovery == true }}
+          CERTIFIED_PRODUCTION_BASE_SHA: ${{ inputs.certified_production_base_sha }}
+          CERTIFIED_RECOVERY_POLICY_SHA: ${{ inputs.certified_recovery_policy_sha }}
         run: |
           set -euo pipefail
 
@@ -121,6 +139,28 @@ jobs:
               echo "::error::The deployed-renderer proof must keep the canonical freshness guards enabled."
               exit 1
             fi
+          fi
+
+          if [ "$PRODUCTION_BINDING_ONLY_RECOVERY" = "true" ]; then
+            [ "$TARGET_ENVIRONMENT" = "production" ] || {
+              echo "::error::Production binding-only recovery may target only production."
+              exit 1
+            }
+            [ "$FORCE" = "false" ] || {
+              echo "::error::Production binding-only recovery forbids force."
+              exit 1
+            }
+            [[ "$CERTIFIED_PRODUCTION_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "::error::Production binding-only recovery requires an exact certified base SHA."
+              exit 1
+            }
+            [[ "$CERTIFIED_RECOVERY_POLICY_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "::error::Production binding-only recovery requires an exact certified policy SHA."
+              exit 1
+            }
+          elif [ -n "$CERTIFIED_PRODUCTION_BASE_SHA" ] || [ -n "$CERTIFIED_RECOVERY_POLICY_SHA" ]; then
+            echo "::error::Certified base and policy SHAs are valid only for binding-only recovery."
+            exit 1
           fi
 
           if [ "$TARGET_ENVIRONMENT" = "production" ]; then
@@ -212,6 +252,10 @@ jobs:
       contents: read
     outputs:
       tree_sha: ${{ steps.identity.outputs.tree_sha }}
+      certification_mode: ${{ steps.identity.outputs.certification_mode }}
+      certified_base_sha: ${{ steps.identity.outputs.certified_base_sha }}
+      policy_tree_sha: ${{ steps.identity.outputs.policy_tree_sha }}
+      policy_artifact_name: ${{ steps.identity.outputs.policy_artifact_name }}
       artifact_id: ${{ steps.resolve.outputs.artifact_id }}
       artifact_digest: ${{ steps.resolve.outputs.artifact_digest }}
       staging_run_id: ${{ steps.resolve.outputs.staging_run_id }}
@@ -220,13 +264,21 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.3.14"
 
       - name: Bind production candidate to its Git tree
         id: identity
         env:
           EXPECTED_SHA: ${{ github.sha }}
+          FORCE: ${{ inputs.force == true }}
+          PRODUCTION_BINDING_ONLY_RECOVERY: ${{ inputs.production_binding_only_recovery == true }}
+          CERTIFIED_PRODUCTION_BASE_SHA: ${{ inputs.certified_production_base_sha }}
+          CERTIFIED_RECOVERY_POLICY_SHA: ${{ inputs.certified_recovery_policy_sha }}
         run: |
           set -euo pipefail
           actual_sha="$(git rev-parse HEAD)"
@@ -238,10 +290,69 @@ jobs:
             echo "::error::Production certification checkout is not clean"
             exit 1
           }
-          tree_sha="$(git rev-parse 'HEAD^{tree}')"
+          certification_mode="exact_tree"
+          certified_base_sha="$EXPECTED_SHA"
+          if [ "$PRODUCTION_BINDING_ONLY_RECOVERY" = "true" ]; then
+            [ "$FORCE" = "false" ] || {
+              echo "::error::Binding-only recovery forbids force."
+              exit 1
+            }
+            [[ "$CERTIFIED_PRODUCTION_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "::error::Binding-only recovery requires an exact certified base SHA."
+              exit 1
+            }
+            [[ "$CERTIFIED_RECOVERY_POLICY_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "::error::Binding-only recovery requires an exact certified policy SHA."
+              exit 1
+            }
+            git cat-file -e "${CERTIFIED_PRODUCTION_BASE_SHA}^{commit}" || {
+              echo "::error::Certified production base commit is unavailable."
+              exit 1
+            }
+            git merge-base --is-ancestor "$CERTIFIED_PRODUCTION_BASE_SHA" "$EXPECTED_SHA" || {
+              echo "::error::Certified production base is not an ancestor of the candidate."
+              exit 1
+            }
+            git fetch --no-tags \
+              "https://github.com/${GITHUB_REPOSITORY}.git" \
+              develop:refs/remotes/origin/develop
+            git cat-file -e "${CERTIFIED_RECOVERY_POLICY_SHA}^{commit}" || {
+              echo "::error::Certified recovery policy commit is unavailable."
+              exit 1
+            }
+            git merge-base --is-ancestor \
+              "$CERTIFIED_RECOVERY_POLICY_SHA" refs/remotes/origin/develop || {
+              echo "::error::Certified recovery policy is not contained in develop."
+              exit 1
+            }
+
+            health_file="${RUNNER_TEMP}/production-binding-recovery-health.json"
+            curl --fail --silent --show-error --location --retry 3 \
+              --header "Cache-Control: no-cache" \
+              --output "$health_file" \
+              "https://api.eliza.app/api/health?admission_run=${GITHUB_RUN_ID}"
+            jq -e --arg base "$CERTIFIED_PRODUCTION_BASE_SHA" \
+              '.status == "ok" and .environment == "production" and .commit == $base' \
+              "$health_file" >/dev/null || {
+              echo "::error::Certified base does not match the currently served production API."
+              exit 1
+            }
+
+            certification_mode="binding_only"
+            certified_base_sha="$CERTIFIED_PRODUCTION_BASE_SHA"
+          fi
+
+          tree_sha="$(git rev-parse "${certified_base_sha}^{tree}")"
           artifact_name="cloud-staging-certification-v1-${tree_sha}"
           echo "tree_sha=$tree_sha" >> "$GITHUB_OUTPUT"
           echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+          echo "certification_mode=$certification_mode" >> "$GITHUB_OUTPUT"
+          echo "certified_base_sha=$certified_base_sha" >> "$GITHUB_OUTPUT"
+          if [ "$certification_mode" = "binding_only" ]; then
+            policy_tree_sha="$(git rev-parse "${CERTIFIED_RECOVERY_POLICY_SHA}^{tree}")"
+            echo "policy_tree_sha=$policy_tree_sha" >> "$GITHUB_OUTPUT"
+            echo "policy_artifact_name=cloud-staging-certification-v1-${policy_tree_sha}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Resolve immutable successful staging artifact
         id: resolve
@@ -324,6 +435,8 @@ jobs:
           ARTIFACT_ID: ${{ steps.resolve.outputs.artifact_id }}
           ARTIFACT_DIGEST: ${{ steps.resolve.outputs.artifact_digest }}
           STAGING_RUN_ID: ${{ steps.resolve.outputs.staging_run_id }}
+          CERTIFICATION_MODE: ${{ steps.identity.outputs.certification_mode }}
+          CERTIFIED_BASE_SHA: ${{ steps.identity.outputs.certified_base_sha }}
         run: |
           set -euo pipefail
           certification_dir="${RUNNER_TEMP}/staging-certification"
@@ -334,6 +447,12 @@ jobs:
               exit 1
             }
 
+          workflow_file=".github/workflows/cloud-cf-deploy.yml"
+          if [ "$CERTIFICATION_MODE" = "binding_only" ]; then
+            workflow_file="${RUNNER_TEMP}/certified-base-cloud-cf-deploy.yml"
+            git show "${CERTIFIED_BASE_SHA}:.github/workflows/cloud-cf-deploy.yml" > "$workflow_file"
+          fi
+
           result="$(
             node packages/cloud/scripts/staging-release-certification.mjs verify \
               --cert "${files[0]}" \
@@ -341,7 +460,7 @@ jobs:
               --artifact-json "${RUNNER_TEMP}/staging-certification-artifact.json" \
               --expected-repository "$EXPECTED_REPOSITORY" \
               --expected-tree-sha "$EXPECTED_TREE_SHA" \
-              --workflow-file .github/workflows/cloud-cf-deploy.yml
+              --workflow-file "$workflow_file"
           )"
           jq -e \
             --arg artifact_id "$ARTIFACT_ID" \
@@ -351,18 +470,359 @@ jobs:
               and .artifactDigest == $artifact_digest
               and .runId == $staging_run_id' \
             <<<"$result" >/dev/null
-          echo "Staging certification admitted tree ${EXPECTED_TREE_SHA} from run ${STAGING_RUN_ID}, artifact ${ARTIFACT_ID} (${ARTIFACT_DIGEST})." >> "$GITHUB_STEP_SUMMARY"
+          echo "Staging certification admitted ${CERTIFICATION_MODE} tree ${EXPECTED_TREE_SHA} from run ${STAGING_RUN_ID}, artifact ${ARTIFACT_ID} (${ARTIFACT_DIGEST})." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Resolve immutable successful recovery-policy artifact
+        id: resolve-policy
+        if: ${{ inputs.production_binding_only_recovery == true }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_NAME: ${{ steps.identity.outputs.policy_artifact_name }}
+        run: |
+          set -euo pipefail
+          candidates_file="${RUNNER_TEMP}/recovery-policy-certification-candidates.json"
+          artifact_file="${RUNNER_TEMP}/recovery-policy-certification-artifact.json"
+          run_file="${RUNNER_TEMP}/recovery-policy-certification-run.json"
+          gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=${ARTIFACT_NAME}&per_page=100" \
+            > "$candidates_file"
+          selected=""
+          while IFS= read -r candidate; do
+            [ -n "$candidate" ] || continue
+            artifact_id="$(jq -r '.id' <<<"$candidate")"
+            run_id="$(jq -r '.workflow_run.id // empty' <<<"$candidate")"
+            [ -n "$artifact_id" ] && [ -n "$run_id" ] || continue
+            if ! gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" > "$run_file"; then
+              continue
+            fi
+            if ! jq -e \
+              --arg repo "$GITHUB_REPOSITORY" \
+              '.status == "completed"
+                and .conclusion == "success"
+                and (.event == "push" or .event == "workflow_dispatch")
+                and .head_branch == "develop"
+                and .path == ".github/workflows/cloud-cf-deploy.yml"
+                and .repository.full_name == $repo' \
+              "$run_file" >/dev/null; then
+              continue
+            fi
+            selected="$candidate"
+            break
+          done < <(
+            jq -c \
+              --arg name "$ARTIFACT_NAME" \
+              '[.artifacts[]
+                | select(.name == $name)
+                | select(.expired == false)
+                | select((.digest // "") | test("^sha256:[0-9a-f]{64}$"))]
+               | sort_by(.created_at)
+               | reverse[]' \
+              "$candidates_file"
+          )
+          [ -n "$selected" ] || {
+            echo "::error::No unexpired successful develop certification exists for the recovery policy tree."
+            exit 1
+          }
+          printf '%s\n' "$selected" > "$artifact_file"
+          echo "artifact_id=$(jq -r '.id' "$artifact_file")" >> "$GITHUB_OUTPUT"
+          echo "artifact_digest=$(jq -r '.digest' "$artifact_file")" >> "$GITHUB_OUTPUT"
+          echo "staging_run_id=$(jq -r '.workflow_run.id' "$artifact_file")" >> "$GITHUB_OUTPUT"
+
+      - name: Download selected recovery-policy certification by id
+        if: ${{ inputs.production_binding_only_recovery == true }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          artifact-ids: ${{ steps.resolve-policy.outputs.artifact_id }}
+          path: ${{ runner.temp }}/recovery-policy-certification
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.resolve-policy.outputs.staging_run_id }}
+          digest-mismatch: error
+
+      - name: Verify certified recovery policy and admit candidate with trusted bytes
+        if: ${{ inputs.production_binding_only_recovery == true }}
+        env:
+          EXPECTED_POLICY_TREE_SHA: ${{ steps.identity.outputs.policy_tree_sha }}
+          EXPECTED_REPOSITORY: ${{ github.repository }}
+          POLICY_SHA: ${{ inputs.certified_recovery_policy_sha }}
+          BASE_SHA: ${{ inputs.certified_production_base_sha }}
+          CANDIDATE_SHA: ${{ github.sha }}
+          ARTIFACT_ID: ${{ steps.resolve-policy.outputs.artifact_id }}
+          ARTIFACT_DIGEST: ${{ steps.resolve-policy.outputs.artifact_digest }}
+          STAGING_RUN_ID: ${{ steps.resolve-policy.outputs.staging_run_id }}
+        run: |
+          set -euo pipefail
+          certification_dir="${RUNNER_TEMP}/recovery-policy-certification"
+          mapfile -t files < <(find "$certification_dir" -type f -print)
+          [ "${#files[@]}" -eq 1 ] \
+            && [ "$(basename "${files[0]}")" = "staging-cloud-certification.json" ] || {
+              echo "::error::Recovery policy artifact must contain exactly staging-cloud-certification.json"
+              exit 1
+            }
+          policy_workflow="${RUNNER_TEMP}/trusted-policy-cloud-cf-deploy.yml"
+          trusted_admission="${RUNNER_TEMP}/trusted-production-hyperdrive-binding-admission.mjs"
+          git show "${POLICY_SHA}:.github/workflows/cloud-cf-deploy.yml" > "$policy_workflow"
+          git show "${POLICY_SHA}:packages/cloud/scripts/production-hyperdrive-binding-admission.mjs" > "$trusted_admission"
+          chmod 0500 "$trusted_admission"
+          result="$(
+            node packages/cloud/scripts/staging-release-certification.mjs verify \
+              --cert "${files[0]}" \
+              --run-json "${RUNNER_TEMP}/recovery-policy-certification-run.json" \
+              --artifact-json "${RUNNER_TEMP}/recovery-policy-certification-artifact.json" \
+              --expected-repository "$EXPECTED_REPOSITORY" \
+              --expected-tree-sha "$EXPECTED_POLICY_TREE_SHA" \
+              --workflow-file "$policy_workflow"
+          )"
+          jq -e \
+            --arg artifact_id "$ARTIFACT_ID" \
+            --arg artifact_digest "$ARTIFACT_DIGEST" \
+            --arg staging_run_id "$STAGING_RUN_ID" \
+            '.artifactId == $artifact_id
+              and .artifactDigest == $artifact_digest
+              and .runId == $staging_run_id' \
+            <<<"$result" >/dev/null
+          bun "$trusted_admission" \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --policy-sha "$POLICY_SHA" \
+            --base-sha "$BASE_SHA" \
+            --candidate-sha "$CANDIDATE_SHA"
+          echo "Certified develop policy bytes admitted the bounded production candidate." >> "$GITHUB_STEP_SUMMARY"
 
   authorize-production:
     name: Authorize production environment
     needs: [validate-deploy-source, validate-staging-certification]
     if: ${{ always() && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && needs.validate-staging-certification.result == 'success' && github.event_name != 'pull_request' && ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 20
     # Approval only. This job must not share a mutation concurrency group, or
     # a waiting reviewer holds the release lock (#18092).
     environment: production
     steps:
+      - name: Checkout exact production candidate for bounded recovery audit
+        if: ${{ inputs.production_binding_only_recovery == true }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - if: ${{ inputs.production_binding_only_recovery == true }}
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.15.0"
+
+      - if: ${{ inputs.production_binding_only_recovery == true }}
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.3.14"
+
+      - name: Install dependencies without lifecycle mutation
+        if: ${{ inputs.production_binding_only_recovery == true }}
+        run: bun install --frozen-lockfile --no-save --ignore-scripts
+
+      - name: Validate protected bounded-recovery configuration
+        if: ${{ inputs.production_binding_only_recovery == true }}
+        env:
+          HAS_DATABASE_URL: ${{ secrets.DATABASE_URL != '' }}
+          HAS_RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN != '' }}
+          HAS_CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+          RAILWAY_POSTGRES_SERVICE_ID: ${{ vars.RAILWAY_POSTGRES_SERVICE_ID }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [ "$HAS_DATABASE_URL" = "true" ] || missing+=(DATABASE_URL)
+          [ "$HAS_RAILWAY_TOKEN" = "true" ] || missing+=(RAILWAY_TOKEN)
+          [ "$HAS_CLOUDFLARE_API_TOKEN" = "true" ] || missing+=(CLOUDFLARE_API_TOKEN)
+          [[ "$CLOUDFLARE_ACCOUNT_ID" =~ ^[0-9a-f]{32}$ ]] || missing+=(CLOUDFLARE_ACCOUNT_ID)
+          for name in RAILWAY_PROJECT_ID RAILWAY_ENVIRONMENT_ID; do
+            value="${!name:-}"
+            if [[ ! "$value" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+              missing+=("$name")
+            fi
+          done
+          if [ -n "${RAILWAY_POSTGRES_SERVICE_ID:-}" ] && \
+            [[ ! "$RAILWAY_POSTGRES_SERVICE_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+            missing+=(RAILWAY_POSTGRES_SERVICE_ID)
+          fi
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing or invalid protected bounded-recovery setting name(s): ${missing[*]}"
+            exit 1
+          fi
+          echo "Protected bounded-recovery settings are configured; values were not printed."
+
+      - name: Verify candidate Hyperdrive origin equals protected database authority
+        if: ${{ inputs.production_binding_only_recovery == true }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          POLICY_SHA: ${{ inputs.certified_recovery_policy_sha }}
+        run: |
+          set -euo pipefail
+          umask 077
+          evidence_dir="$RUNNER_TEMP/production-binding-recovery-authority"
+          mkdir -m 0700 "$evidence_dir"
+          candidate_id="$(
+            bun -e '
+              const source = await Bun.file("packages/cloud/api/wrangler.toml").text();
+              const config = Bun.TOML.parse(source);
+              const bindings = config?.env?.production?.hyperdrive;
+              if (!Array.isArray(bindings) || bindings.length !== 1) process.exit(1);
+              const binding = bindings[0];
+              if (binding?.binding !== "HYPERDRIVE" || !/^[0-9a-f]{32}$/.test(binding?.id)) process.exit(1);
+              process.stdout.write(binding.id);
+            '
+          )"
+          echo "::add-mask::$candidate_id"
+          response="$evidence_dir/hyperdrive.json"
+          curl --fail --silent --show-error --location --retry 3 \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            --output "$response" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/hyperdrive/configs/${candidate_id}"
+          chmod 0600 "$response"
+          git fetch --no-tags \
+            "https://github.com/${GITHUB_REPOSITORY}.git" \
+            develop:refs/remotes/origin/develop
+          git merge-base --is-ancestor "$POLICY_SHA" refs/remotes/origin/develop || {
+            echo "::error::Certified recovery policy is no longer contained in develop."
+            exit 1
+          }
+          trusted_admission="$evidence_dir/trusted-production-hyperdrive-binding-admission.mjs"
+          git show "${POLICY_SHA}:packages/cloud/scripts/production-hyperdrive-binding-admission.mjs" \
+            > "$trusted_admission"
+          chmod 0500 "$trusted_admission"
+          bun "$trusted_admission" \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --hyperdrive-json "$response"
+          candidate_id=""
+
+      - name: Install pinned Railway CLI
+        if: ${{ inputs.production_binding_only_recovery == true }}
+        run: |
+          set -euo pipefail
+          cli_root="$RUNNER_TEMP/railway-cli-production-binding-recovery"
+          archive="$RUNNER_TEMP/railway-v5.38.0-production-binding-recovery.tar.gz"
+          mkdir -m 0700 "$cli_root"
+          curl --fail --silent --show-error --location --retry 3 \
+            --output "$archive" \
+            "https://github.com/railwayapp/cli/releases/download/v5.38.0/railway-v5.38.0-x86_64-unknown-linux-gnu.tar.gz"
+          printf '%s  %s\n' \
+            "72835c48a710c48c4542141bf12264823cf3a029b514f9e27994096c036c539e" \
+            "$archive" | sha256sum --check --status
+          tar -xzf "$archive" -C "$cli_root" railway
+          chmod 0755 "$cli_root/railway"
+          echo "$cli_root" >> "$GITHUB_PATH"
+          "$cli_root/railway" --version | grep -F "railway 5.38.0"
+
+      - name: Capture private read-only Railway authority evidence
+        if: ${{ inputs.production_binding_only_recovery == true }}
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+          RAILWAY_POSTGRES_SERVICE_ID: ${{ vars.RAILWAY_POSTGRES_SERVICE_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+          evidence_dir="$RUNNER_TEMP/production-binding-recovery-authority"
+          mkdir -m 0700 "$evidence_dir"
+          capture() {
+            local label="$1"
+            local output="$2"
+            shift 2
+            if ! "$@" > "$output" 2>"$evidence_dir/${label}.stderr"; then
+              echo "::error::Railway $label read failed; raw output was not printed"
+              exit 1
+            fi
+            chmod 0600 "$output" "$evidence_dir/${label}.stderr"
+          }
+          common=(--project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT_ID")
+          capture status "$evidence_dir/status.json" railway status "${common[@]}" --json
+          capture services "$evidence_dir/services.json" railway service list "${common[@]}" --json
+          bun packages/cloud/scripts/admin/resolve-production-railway-postgres-service.ts \
+            --status-json "$evidence_dir/status.json" \
+            --services-json "$evidence_dir/services.json" \
+            --service-id-output "$evidence_dir/resolved-service-id"
+          resolved_service_id="$(<"$evidence_dir/resolved-service-id")"
+          echo "::add-mask::$resolved_service_id"
+          capture variables "$evidence_dir/variables.json" \
+            railway variable list "${common[@]}" --service "$resolved_service_id" --json
+          resolved_service_id=""
+          echo "Captured private Railway authority evidence without printing inventory or variables."
+
+      - name: Audit current-main database authority and migration ledger
+        if: ${{ inputs.production_binding_only_recovery == true }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+          RAILWAY_POSTGRES_SERVICE_ID: ${{ vars.RAILWAY_POSTGRES_SERVICE_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+          evidence_dir="$RUNNER_TEMP/production-binding-recovery-authority"
+          report="$evidence_dir/report.json"
+          if ! GITHUB_TOKEN='${{ github.token }}' \
+            node packages/cloud/scripts/canonical-deploy-source-guard.mjs \
+            --run-sha "$GITHUB_SHA" \
+            --canonical-ref refs/heads/main \
+            > "$evidence_dir/freshness.stdout" \
+            2> "$evidence_dir/freshness.stderr"; then
+            echo "::error::Bounded recovery source is no longer canonical main"
+            exit 1
+          fi
+          set +e
+          env -u GITHUB_STEP_SUMMARY \
+            bun packages/cloud/scripts/admin/audit-production-railway-database-authority.ts \
+            --status-json "$evidence_dir/status.json" \
+            --services-json "$evidence_dir/services.json" \
+            --variables-json "$evidence_dir/variables.json" \
+            --resolved-service-id-file "$evidence_dir/resolved-service-id" \
+            > "$report"
+          audit_status="$?"
+          set -e
+          chmod 0600 "$report"
+          tee -a "$GITHUB_STEP_SUMMARY" < "$report"
+          exit "$audit_status"
+
+      - name: Build and dry-run the exact production Worker
+        if: ${{ inputs.production_binding_only_recovery == true }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          output_dir="$RUNNER_TEMP/production-binding-recovery-worker"
+          mkdir -m 0700 "$output_dir"
+          bun run build:core > "$output_dir/build.stdout" 2> "$output_dir/build.stderr"
+          (
+            cd packages/cloud/api
+            bunx wrangler deploy --env production --dry-run \
+              --outdir "$output_dir/bundle"
+          ) > "$output_dir/dry-run.stdout" 2> "$output_dir/dry-run.stderr"
+          node packages/cloud/scripts/canonical-deploy-source-guard.mjs \
+            --run-sha "$GITHUB_SHA" \
+            --canonical-ref refs/heads/main \
+            > "$output_dir/freshness.stdout" \
+            2> "$output_dir/freshness.stderr"
+          echo "Exact production Worker build and dry-run passed."
+
+      - name: Destroy private bounded-recovery evidence
+        if: ${{ always() && inputs.production_binding_only_recovery == true }}
+        run: |
+          set +e
+          for evidence_dir in \
+            "$RUNNER_TEMP/production-binding-recovery-authority" \
+            "$RUNNER_TEMP/production-binding-recovery-worker"; do
+            if [ -d "$evidence_dir" ]; then
+              find "$evidence_dir" -type f -exec shred -u -- {} +
+              find "$evidence_dir" -depth -type d -empty -delete
+            fi
+          done
+          exit 0
+
       - name: Record production authorization
         run: echo "production environment authorized for this run"
 
@@ -385,6 +845,9 @@ jobs:
       target_environment: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
       force: ${{ github.event_name == 'workflow_dispatch' && inputs.force == true }}
       run_deployed_renderer_staging: ${{ github.event_name == 'workflow_dispatch' && inputs.run_deployed_renderer_staging == true }}
+      production_binding_only_recovery: ${{ github.event_name == 'workflow_dispatch' && inputs.production_binding_only_recovery == true }}
+      certified_production_base_sha: ${{ inputs.certified_production_base_sha }}
+      certified_recovery_policy_sha: ${{ inputs.certified_recovery_policy_sha }}
 
   certify-staging-release:
     name: Certify successful staging Cloud tree
