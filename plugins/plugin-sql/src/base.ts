@@ -683,7 +683,6 @@ import {
   mergeSegmentationMetadata,
   planSegmentedField,
   readMemoryContentPage,
-  readSegmentationDescriptors,
   retireStaleGenerationsInTransaction,
 } from "./stores/memoryTextSegments.store";
 import type { StoreContext } from "./stores/types";
@@ -4083,8 +4082,25 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async getMemoryContentPage(
     params: MemoryContentPageParams
   ): Promise<MemoryContentPageResult | null> {
-    return this.withDatabase(() =>
-      readMemoryContentPage({
+    return this.withDatabase(async () => {
+      // #25140 review: when an access context is supplied, authorize the
+      // parent row with the SAME pushed-down conditions getMemories uses, so
+      // every page reauthorizes at the storage boundary — an ineligible caller
+      // gets null (no descriptor leak), never page bytes.
+      if (params.accessContext) {
+        const authorized = await this.db
+          .select({ id: memoryTable.id })
+          .from(memoryTable)
+          .where(
+            and(
+              eq(memoryTable.id, params.memoryId),
+              ...memoryAccessContextConditions(params.accessContext, this.agentId, "messages")
+            )
+          )
+          .limit(1);
+        if (authorized.length === 0) return null;
+      }
+      return readMemoryContentPage({
         db: this.db,
         memoryId: params.memoryId,
         field: params.field as import("@elizaos/core").MemorySegmentField,
@@ -4093,8 +4109,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         ...(params.expectedRevision === undefined
           ? {}
           : { expectedRevision: params.expectedRevision }),
-      })
-    );
+      });
+    });
   }
 
   private async resolveMemoryUniqueness(
@@ -4188,6 +4204,20 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     }
     const seenAttachmentIds = new Set<string>();
     if (Array.isArray(content.attachments) && content.attachments.length > 0) {
+      // Track EVERY attachment id (small or large): a small attachment sharing
+      // an id with a segmented one would make the owner-bound descriptor key
+      // ambiguous for readers resolving attachment.text:<id>.
+      const allAttachmentIds = new Set<string>();
+      for (const attachment of content.attachments) {
+        if (
+          attachment &&
+          typeof attachment === "object" &&
+          typeof (attachment as { id?: unknown }).id === "string"
+        ) {
+          const rawId = (attachment as { id: string }).id;
+          if (rawId.trim()) allAttachmentIds.add(rawId.trim());
+        }
+      }
       let changed = false;
       const attachments = content.attachments.map((attachment) => {
         if (
@@ -4197,11 +4227,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           shouldSegmentContent((attachment as { text: string }).text)
         ) {
           changed = true;
-          const id =
-            typeof (attachment as { id?: unknown }).id === "string" &&
-            (attachment as { id: string }).id.trim()
-              ? (attachment as { id: string }).id.trim()
+          const rawId =
+            typeof (attachment as { id?: unknown }).id === "string"
+              ? (attachment as { id: string }).id
               : "";
+          const id = rawId.trim();
           if (!id) {
             // A large attachment text without a stable id cannot be given an
             // owner-bound locator; fail closed rather than leave it inline.
@@ -4209,7 +4239,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
               "Large attachment text requires a non-empty attachment id for segmented storage",
               {
                 code: "MEMORY_SEGMENT_ATTACHMENT_ID_REQUIRED",
-              },
+              }
             );
           }
           if (seenAttachmentIds.has(id)) {
@@ -4218,19 +4248,45 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
               {
                 code: "MEMORY_SEGMENT_ATTACHMENT_ID_CONFLICT",
                 context: { attachmentId: id },
-              },
+              }
             );
           }
           seenAttachmentIds.add(id);
           const field = { kind: "attachment.text", attachmentId: id } as const;
           const text = (attachment as { text: string }).text;
+          // Store the trimmed id back on the attachment so the descriptor key
+          // (`attachment.text:<trimmed>`) matches the stored attachment id the
+          // reader resolves; a padded id would otherwise break owner lookup.
           return {
             ...attachment,
+            ...(rawId !== id ? { id } : {}),
             text: planField(field, text),
           };
         }
         return attachment;
       });
+      // A small attachment reusing a segmented id is equally ambiguous. Skip
+      // the segmented entries themselves: their text is now the published
+      // marker (small by design), so they are not "small attachments".
+      for (const attachment of attachments) {
+        if (
+          attachment &&
+          typeof attachment === "object" &&
+          typeof (attachment as { id?: unknown }).id === "string" &&
+          !seenAttachmentIds.has((attachment as { id: string }).id.trim())
+        ) {
+          const id = (attachment as { id: string }).id.trim();
+          if (id && seenAttachmentIds.has(id)) {
+            throw new ElizaError(
+              "Attachment id collides with a segmented attachment on the same memory",
+              {
+                code: "MEMORY_SEGMENT_ATTACHMENT_ID_CONFLICT",
+                context: { attachmentId: id },
+              }
+            );
+          }
+        }
+      }
       if (changed) nextContent = { ...nextContent, attachments };
     }
 
@@ -4245,7 +4301,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       liveFields.add(
         plan.field.kind === "content.text"
           ? "content.text"
-          : `attachment.text:${plan.field.attachmentId}`,
+          : `attachment.text:${plan.field.attachmentId}`
       );
     }
     const segmentationMeta = metadata.segmentation;
@@ -4255,9 +4311,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       Object.keys(segmentationMeta).length > 0
     ) {
       const kept: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(
-        segmentationMeta as Record<string, unknown>,
-      )) {
+      for (const [key, value] of Object.entries(segmentationMeta as Record<string, unknown>)) {
         if (liveFields.has(key)) kept[key] = value;
       }
       metadata = { ...metadata, segmentation: kept };
@@ -4417,11 +4471,34 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
               })
               .where(eq(memoryTable.id, memory.id));
           } else if (memory.metadata) {
-            // Update only metadata if content is not provided
-            const metadataToUpdate =
-              typeof memory.metadata === "string"
-                ? memory.metadata
-                : JSON.stringify(memory.metadata);
+            // Update only metadata if content is not provided. The reserved
+            // `segmentation` block is authoritative storage state owned by the
+            // adapter (#25140): a caller's metadata-only update cannot drop or
+            // rewrite descriptors — that would orphan live generations or lie
+            // about segmented fields. Merge the stored segmentation through.
+            const existingMetaRow = (
+              await tx
+                .select({ metadata: memoryTable.metadata })
+                .from(memoryTable)
+                .where(eq(memoryTable.id, memory.id))
+                .limit(1)
+            )[0]?.metadata;
+            const storedSegmentation =
+              existingMetaRow &&
+              typeof existingMetaRow === "object" &&
+              (existingMetaRow as { segmentation?: unknown }).segmentation
+                ? (existingMetaRow as { segmentation?: unknown }).segmentation
+                : undefined;
+            const callerMetadata =
+              typeof memory.metadata === "object" && memory.metadata !== null
+                ? { ...(memory.metadata as Record<string, unknown>) }
+                : {};
+            if (storedSegmentation !== undefined) {
+              callerMetadata.segmentation = storedSegmentation;
+            } else {
+              delete callerMetadata.segmentation;
+            }
+            const metadataToUpdate = JSON.stringify(callerMetadata);
 
             await tx
               .update(memoryTable)
