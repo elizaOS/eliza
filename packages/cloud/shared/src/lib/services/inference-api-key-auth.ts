@@ -50,7 +50,11 @@ async function findApiKey(rawKey: string, bypassCache: boolean): Promise<ApiKey 
   if (!bypassCache) return await apiKeysService.validateApiKey(rawKey);
 
   const keyHash = createHash("sha256").update(rawKey).digest("hex");
-  return (await apiKeysRepository.findActiveByHashConsistent(keyHash)) ?? null;
+  // Authoritative hydration reads any matching row (including inactive or
+  // soft-deleted) from the primary so the caller can classify
+  // credential_inactive instead of collapsing to credential_invalid
+  // (#29493). Active-only lookups make inactive keys unreachable.
+  return (await apiKeysRepository.findByHashConsistent(keyHash)) ?? null;
 }
 
 async function findUser(
@@ -81,6 +85,9 @@ export async function requireInferenceApiKeyWithOrg(
   if (!apiKey) {
     reject(options, new AuthenticationError("Invalid or expired API key"), "credential_invalid");
   }
+  if (apiKey.deleted_at) {
+    reject(options, new AuthenticationError("Invalid or expired API key"), "credential_invalid");
+  }
   if (!apiKey.is_active) {
     reject(options, new ForbiddenError("API key is inactive"), "credential_inactive");
   }
@@ -105,15 +112,15 @@ export async function requireInferenceApiKeyWithOrg(
   if (!user.is_active) {
     reject(options, new ForbiddenError("User account is inactive"), "account_inactive");
   }
-  if (!user.organization?.is_active) {
-    reject(options, new ForbiddenError("Organization is inactive"), "organization_inactive");
-  }
   if (!user.organization_id || !user.organization) {
     reject(
       options,
       new ForbiddenError("This feature requires a full account. Please sign up to continue."),
       "membership_missing",
     );
+  }
+  if (!user.organization?.is_active) {
+    reject(options, new ForbiddenError("Organization is inactive"), "organization_inactive");
   }
 
   void apiKeysService.incrementUsageDebounced(apiKey.id);
