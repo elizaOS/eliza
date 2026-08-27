@@ -60,6 +60,13 @@ export interface VoiceSessionLike {
    * the frame is accepted without forcing every implementation to react.
    */
   endUplink?(): void;
+  setAudioCapabilities?(capabilities: {
+    mode: "continuous_handoff";
+    echoCancellation: boolean;
+    noiseSuppression: boolean;
+    autoGainControl: boolean;
+    referenceAwarePlayback: boolean;
+  }): void;
 }
 
 export interface ServerWebSocketLike {
@@ -233,6 +240,9 @@ export function attachVoiceWsHandler(socket: ServerWebSocketLike, deps: VoiceWsH
       case "audio_meta":
         // Codec-swap signal (on-mic -> BLE-mic). Phase 1 is pcm16-only; an opus
         // switch is a documented seam. Accept the meta as a no-op for pcm16.
+        return;
+      case "audio_capabilities":
+        session.setAudioCapabilities?.(frame);
         return;
       case "barge_in":
         session.bargeIn();

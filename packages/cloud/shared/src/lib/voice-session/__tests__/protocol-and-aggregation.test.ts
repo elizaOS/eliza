@@ -96,6 +96,38 @@ describe("protocol framing", () => {
     if (r.ok) expect(r.value.t).toBe("end_audio");
   });
 
+  test("accepts only fully-typed continuous handoff audio capabilities", () => {
+    expect(
+      parseClientControlFrame(
+        JSON.stringify({
+          t: "audio_capabilities",
+          mode: "continuous_handoff",
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          referenceAwarePlayback: true,
+        }),
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        ok: true,
+        value: expect.objectContaining({ t: "audio_capabilities" }),
+      }),
+    );
+    expect(
+      parseClientControlFrame(
+        JSON.stringify({
+          t: "audio_capabilities",
+          mode: "continuous_handoff",
+          echoCancellation: "yes",
+          noiseSuppression: true,
+          autoGainControl: true,
+          referenceAwarePlayback: true,
+        }),
+      ),
+    ).toEqual(expect.objectContaining({ ok: false }));
+  });
+
   test("validateAudioFrame enforces the size ceiling and non-empty", () => {
     expect(validateAudioFrame(2560).ok).toBe(true);
     expect(validateAudioFrame(0).ok).toBe(false);

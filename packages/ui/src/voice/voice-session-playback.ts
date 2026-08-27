@@ -124,6 +124,8 @@ export interface VoiceSessionPlaybackOptions {
   onUnlockChange?: (needsUnlock: boolean) => void;
   /** Notified when the queue drains to empty (utterance finished playing). */
   onDrained?: () => void;
+  /** Notified after a requested old-to-new response crossfade completes. */
+  onHandoffComplete?: () => void;
   /**
    * Initial/recovery playout reserve. Frames are released once this much PCM
    * is queued, or immediately when the server marks a short utterance final.
@@ -222,6 +224,8 @@ export interface VoiceSessionPlayback {
   enqueue(bytes: Uint8Array): void;
   /** Release a short final utterance even when it never filled the reserve. */
   finishInput(): void;
+  /** Preserve queued old audio until new audio arrives, then crossfade. */
+  beginHandoff(crossfadeMs: number): void;
   /** Empty the playback queue IMMEDIATELY (barge-in). */
   flush(): void;
   /** Sanitized queue/timing counters; never audio or transcript content. */
@@ -297,6 +301,10 @@ export async function createVoiceSessionPlayback(
   const jsQueue: Float32Array[] = [];
   let jsReadOffset = 0;
   let jsHadAudio = false;
+  let jsHandoffQueue: Float32Array[] = [];
+  let jsHandoffReadOffset = 0;
+  let jsCrossfadeSamples = 0;
+  let jsCrossfadePosition = 0;
 
   const startQueue: Float32Array[] = [];
   let startQueueSamples = 0;
@@ -388,6 +396,8 @@ export async function createVoiceSessionPlayback(
           updateMaxQueuedSamples();
         } else if (d?.type === "drained") {
           handleSinkDrained();
+        } else if (d?.type === "handoff-completed") {
+          options.onHandoffComplete?.();
         }
       };
       node.connect(ctx.destination);
@@ -399,24 +409,61 @@ export async function createVoiceSessionPlayback(
         const outBuf = event.outputBuffer;
         const ch = outBuf.getChannelData(0);
         let consumedSamples = 0;
+        let handoffCompleted = false;
         for (let i = 0; i < ch.length; i += 1) {
           while (jsQueue.length > 0 && jsReadOffset >= jsQueue[0].length) {
             jsQueue.shift();
             jsReadOffset = 0;
           }
-          if (jsQueue.length === 0) {
-            ch[i] = 0;
-          } else {
-            ch[i] = jsQueue[0][jsReadOffset];
+          while (
+            jsHandoffQueue.length > 0 &&
+            jsHandoffReadOffset >= jsHandoffQueue[0].length
+          ) {
+            jsHandoffQueue.shift();
+            jsHandoffReadOffset = 0;
+          }
+          const nextSample =
+            jsQueue.length > 0 ? jsQueue[0][jsReadOffset] : null;
+          const oldSample =
+            jsHandoffQueue.length > 0
+              ? jsHandoffQueue[0][jsHandoffReadOffset]
+              : null;
+          if (
+            nextSample !== null &&
+            oldSample !== null &&
+            jsCrossfadeSamples > 0
+          ) {
+            const progress = Math.min(
+              1,
+              jsCrossfadePosition / jsCrossfadeSamples,
+            );
+            ch[i] = oldSample * (1 - progress) + nextSample * progress;
+            jsReadOffset += 1;
+            jsHandoffReadOffset += 1;
+            jsCrossfadePosition += 1;
+            consumedSamples += 1;
+            if (jsCrossfadePosition >= jsCrossfadeSamples) {
+              jsHandoffQueue = [];
+              jsHandoffReadOffset = 0;
+              handoffCompleted = true;
+            }
+          } else if (nextSample !== null) {
+            ch[i] = nextSample;
             jsReadOffset += 1;
             consumedSamples += 1;
+          } else if (oldSample !== null) {
+            ch[i] = oldSample;
+            jsHandoffReadOffset += 1;
+          } else {
+            ch[i] = 0;
           }
         }
         sinkQueuedSamples = Math.max(0, sinkQueuedSamples - consumedSamples);
         for (let c = 1; c < outBuf.numberOfChannels; c += 1) {
           outBuf.getChannelData(c).set(ch);
         }
-        if (jsQueue.length === 0 && jsHadAudio) {
+        if (handoffCompleted) options.onHandoffComplete?.();
+        if (jsQueue.length === 0 && jsHandoffQueue.length === 0 && jsHadAudio) {
           jsHadAudio = false;
           handleSinkDrained();
         }
@@ -459,6 +506,7 @@ export async function createVoiceSessionPlayback(
     startQueue.length = 0;
     startQueueSamples = 0;
     jsQueue.length = 0;
+    jsHandoffQueue = [];
     sinkQueuedSamples = 0;
     setNeedsUnlock(false);
     emitStats("stopped");
@@ -597,6 +645,27 @@ export async function createVoiceSessionPlayback(
       }
       releaseStartQueue();
     },
+    beginHandoff(crossfadeMs: number) {
+      if (stopped) return;
+      const boundedMs = Math.min(250, Math.max(20, crossfadeMs));
+      if (backend === "audioworklet" && workletNode) {
+        workletNode.port.postMessage({
+          type: "handoff",
+          crossfadeSamples: Math.round((ctx.sampleRate * boundedMs) / 1_000),
+          sequence: ++lastSubmittedSequence,
+        });
+      } else {
+        jsHandoffQueue = jsQueue.splice(0);
+        jsHandoffReadOffset = jsReadOffset;
+        jsReadOffset = 0;
+        jsCrossfadeSamples = Math.round((ctx.sampleRate * boundedMs) / 1_000);
+        jsCrossfadePosition = 0;
+      }
+      inputFinished = false;
+      playbackStarted = true;
+      firstQueuedAtMs = null;
+      lastFrameAtMs = null;
+    },
     getStats() {
       return snapshotStats();
     },
@@ -621,6 +690,7 @@ export async function createVoiceSessionPlayback(
         });
       } else {
         jsQueue.length = 0;
+        jsHandoffQueue = [];
         jsReadOffset = 0;
         jsHadAudio = false;
       }

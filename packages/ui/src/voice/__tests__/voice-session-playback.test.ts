@@ -375,4 +375,28 @@ describe("voice-session streaming PCM playback sink (ScriptProcessor path)", () 
     expect(serialized).not.toContain("audio");
     await pb.stop();
   });
+
+  it("keeps old audio flowing and crossfades into the prepared reply", async () => {
+    const ctx = new FakePlaybackAudioContext(1_000);
+    const completed = vi.fn();
+    const pb = await createVoiceSessionPlayback({
+      createAudioContext: () => ctx,
+      preRollMs: 0,
+      onHandoffComplete: completed,
+    });
+    await pb.unlock();
+    pb.beginInput();
+    pb.enqueue(pcmFrame(0.8, 32));
+    const before = scriptNodeOf(ctx).render(2);
+    expect(before[0]).toBeCloseTo(0.8, 2);
+
+    pb.beginHandoff(20);
+    pb.enqueue(pcmFrame(-0.8, 32));
+    const transition = scriptNodeOf(ctx).render(22);
+    expect(transition[0]).toBeCloseTo(0.8, 2);
+    expect(transition[10]).toBeCloseTo(0, 1);
+    expect(transition[20]).toBeCloseTo(-0.8, 2);
+    expect(completed).toHaveBeenCalledTimes(1);
+    await pb.stop();
+  });
 });
