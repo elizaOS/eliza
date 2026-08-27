@@ -28,6 +28,7 @@ import type {
   EmailCurationPolicyHook,
 } from "../src/inbox/email-curation.ts";
 import {
+  calibrateEmailCurationConfidence,
   compareCurationDecisions,
   curateEmailCandidates,
 } from "../src/inbox/email-curation.ts";
@@ -204,65 +205,129 @@ describe("InboxService.triageWithCuration", () => {
   });
 });
 
-describe("email curation safe sort (NaN + tiebreak)", () => {
-  it("orders via curateEmailCandidates with NaN confidence tiebreak by candidateId", () => {
-    const baseCandidates: EmailCurationCandidate[] = [
-      {
-        id: "c-1",
+describe("email curation confidence boundary and safe sort", () => {
+  it.each([
+    ["NaN", Number.NaN],
+    ["positive infinity", Number.POSITIVE_INFINITY],
+    ["negative infinity", Number.NEGATIVE_INFINITY],
+  ] as const)("treats %s policy amount like an omitted amount", (_, amount) => {
+    const baseInput = {
+      action: "archive" as const,
+      scores: { save: 0, archive: 2, delete: 0, review: 0 },
+      evidence: [],
+      degraded: false,
+      blockedDelete: false,
+      threadConflict: false,
+    };
+    const omitted = calibrateEmailCurationConfidence({
+      ...baseInput,
+      policyEffects: [
+        {
+          kind: "lower_confidence",
+          code: "test_default_penalty",
+          message: "Use the default confidence penalty.",
+        },
+      ],
+    });
+
+    const actual = calibrateEmailCurationConfidence({
+      ...baseInput,
+      policyEffects: [
+        {
+          kind: "lower_confidence",
+          amount,
+          code: "test_non_finite_penalty",
+          message: "Supply an invalid confidence penalty.",
+        },
+      ],
+    });
+
+    expect(actual).toBe(omitted);
+  });
+
+  it("preserves finite policy amounts and accumulates multiple effects", () => {
+    const baseInput = {
+      action: "review" as const,
+      scores: { save: 0, archive: 0, delete: 0, review: 1 },
+      evidence: [],
+      degraded: false,
+      blockedDelete: false,
+      threadConflict: false,
+    };
+    const calibrateWithAmounts = (...amounts: number[]) =>
+      calibrateEmailCurationConfidence({
+        ...baseInput,
+        policyEffects: amounts.map((amount, index) => ({
+          kind: "lower_confidence" as const,
+          amount,
+          code: `test_finite_penalty_${index}`,
+          message: "Apply a finite confidence penalty.",
+        })),
+      });
+    const omitted = calibrateEmailCurationConfidence({
+      ...baseInput,
+      policyEffects: [
+        {
+          kind: "lower_confidence",
+          code: "test_default_penalty",
+          message: "Use the default confidence penalty.",
+        },
+      ],
+    });
+    const lowered = calibrateWithAmounts(0.2);
+    const raised = calibrateWithAmounts(-0.05);
+    const combined = calibrateWithAmounts(0.2, -0.05);
+
+    expect(lowered).toBeLessThan(omitted);
+    expect(raised).toBeGreaterThan(omitted);
+    expect(combined).toBeGreaterThan(lowered);
+    expect(combined).toBeLessThan(omitted);
+  });
+
+  it.each([
+    ["NaN", Number.NaN],
+    ["positive infinity", Number.POSITIVE_INFINITY],
+    ["negative infinity", Number.NEGATIVE_INFINITY],
+  ] as const)(
+    "keeps decision confidence and review rationale finite for %s policy amount",
+    (_, amount) => {
+      const candidate: EmailCurationCandidate = {
+        id: "policy-probe",
         threadId: null,
         subject: "Hello",
         snippet: "hi",
-        body: { text: "Hello world", contentType: "text/plain" as const },
+        body: { text: "Hello world", contentType: "text/plain" },
         from: "Alice Example <alice@example.com>",
         fromEmail: "alice@example.com",
         to: [],
         cc: [],
         labels: [],
         headers: {},
-      },
-      {
-        id: "c-nan",
-        threadId: null,
-        subject: "Hello",
-        snippet: "hi",
-        body: { text: "Hello world", contentType: "text/plain" as const },
-        from: "Bob Example <bob@example.com>",
-        fromEmail: "bob@example.com",
-        to: [],
-        cc: [],
-        labels: [],
-        headers: {},
-      },
-    ];
-    const policyHook: EmailCurationPolicyHook = (ctx) => {
-      if (ctx.candidate.id === "c-nan") {
-        return [
-          {
-            kind: "lower_confidence" as const,
-            amount: Number.NaN,
-            code: "test_nan",
-            message: "force NaN",
-          },
-        ];
+      };
+      const effect = {
+        kind: "lower_confidence" as const,
+        code: "test_confidence_penalty",
+        message: "Lower confidence for the test policy.",
+      };
+      const omittedDecision = curateEmailCandidates({
+        candidates: [candidate],
+        policyHook: () => [effect],
+      }).decisions[0];
+      const decision = curateEmailCandidates({
+        candidates: [candidate],
+        policyHook: () => [{ ...effect, amount }],
+      }).decisions[0];
+      if (!omittedDecision || !decision) {
+        throw new Error("expected one curation decision");
       }
-      return [];
-    };
-    const out = curateEmailCandidates({
-      candidates: baseCandidates,
-      now: "2026-08-23T00:00:00.000Z",
-      policyHook,
-    });
-    // c-nan confidence becomes NaN -> sort score NaN -> coerced to 0, so it sorts last; tiebreak by candidateId if scores tie
-    const order = out.decisions.map((d) => d.candidateId);
-    // ensure both present and ranking is deterministic
-    expect(order).toContain("c-nan");
-    expect(order).toContain("c-1");
-    // c-1 should rank before c-nan because NaN -> 0 is smallest
-    expect(out.decisions[0]?.candidateId).toBe("c-1");
-    expect(out.decisions[0]?.rank).toBe(1);
-    expect(out.decisions[1]?.candidateId).toBe("c-nan");
-    expect(out.decisions[1]?.rank).toBe(2);
-  });
+
+      expect(Number.isFinite(decision.confidence)).toBe(true);
+      expect(decision.confidence).toBeGreaterThanOrEqual(0);
+      expect(decision.confidence).toBeLessThanOrEqual(1);
+      expect(decision.confidence).toBe(omittedDecision.confidence);
+      expect(decision.bulkReview.rationale).not.toMatch(/NaN|Infinity/);
+    },
+  );
 
   it("tiebreaks equal scores by candidateId via compareCurationDecisions", () => {
     const a = {
