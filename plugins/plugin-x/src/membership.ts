@@ -690,6 +690,10 @@ export class XMembershipPublisher {
    * authorization failed globally). Scopes published by other processes are
    * unreachable by design; their evidence expires via TTL.
    */
+  hasBoundScopes(): boolean {
+    return this.scopes.size > 0;
+  }
+
   async degradeAllScopes(reason: string): Promise<void> {
     for (const key of this.scopes.keys()) {
       const [connectorAccountId, externalWorldId, externalRoomId] =

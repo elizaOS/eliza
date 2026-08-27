@@ -14,6 +14,8 @@
  * `pairing` via the core PairingService handshake) before any world state or
  * memory is created for the sender.
  */
+
+import type { MembershipScope } from "@elizaos/core";
 import {
   ChannelType,
   type Content,
@@ -233,18 +235,22 @@ export class TwitterDirectMessageClient {
     if (!this.isRunning || this.pollInFlight) return;
     this.pollInFlight = true;
     try {
-      await this.processNewMessages();
       // Membership evidence (#24372): a successful authenticated poll means
-      // authorization recovered — restore any scopes degraded by a prior
-      // 401/403 so observed activity re-proves participants.
-      if (this.membershipDegradedForAuth) {
+      // authorization recovered — restore degraded scopes BEFORE processing
+      // new events, so recovery-poll observations publish against a restored
+      // (re-registered) evidence chain instead of being rejected while
+      // unavailable or erased by a post-hoc reset. The flag is only cleared
+      // after restoration succeeds, so a contained restore failure is
+      // retried on the next poll (R3 finding 3).
+      if (this.membershipDegradedForAuth && this.hasBoundMembershipScopes()) {
+        await this.restoreMembershipScopes("x_auth_recovered");
         this.membershipDegradedForAuth = false;
         // Clear own-membership markers so restored scopes re-prove the
         // account's own participation immediately instead of waiting out
-        // the marker window (R2 finding 2).
+        // the marker window.
         this.ownMembershipPublishedAt.clear();
-        await this.restoreMembershipScopes("x_auth_recovered");
       }
+      await this.processNewMessages();
     } catch (error) {
       this.runtime.reportError("XDirectMessages.poll", error, {
         accountId: this.client.accountId,
@@ -273,6 +279,10 @@ export class TwitterDirectMessageClient {
    * events endpoint): no conversation remains observable, so all evidence
    * must fail closed. Degrade-only and failure-contained per J4.
    */
+  private hasBoundMembershipScopes(): boolean {
+    return this.membership.hasBoundScopes();
+  }
+
   private async degradeAllMembershipScopes(reason: string): Promise<void> {
     try {
       await this.membership.degradeAllScopes(reason);
@@ -302,6 +312,30 @@ export class TwitterDirectMessageClient {
           error: error instanceof Error ? error.message : String(error),
         },
         "X DM membership scope restore-all failed",
+      );
+    }
+  }
+
+  /**
+   * Restore one conversation scope after the account itself rejoins it.
+   * Contained per J4: a failed restore leaves the scope degraded (fail
+   * closed), never breaks the roster-event loop.
+   */
+  private async restoreOneMembershipScope(
+    scope: MembershipScope,
+    reason: string,
+  ): Promise<void> {
+    try {
+      await this.membership.restoreScope({ scope, reason });
+    } catch (error) {
+      // error-policy:J4 degrade-only side surface; never break the poll path.
+      logger.debug(
+        {
+          src: "plugin:x",
+          accountId: this.client.accountId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "X DM membership scope restore failed",
       );
     }
   }
@@ -867,6 +901,17 @@ export class TwitterDirectMessageClient {
         );
         const key = keyFor(isJoin ? "join" : "left", participantId);
         if (isJoin) {
+          // An own-account ParticipantsJoin after an own-leave means the
+          // account rejoined the conversation: restore the degraded scope
+          // BEFORE publishing, or the rejoin evidence lands against a
+          // durably `unavailable` scope and authorization stays failed
+          // closed forever (R3 finding 2). Contained per J4.
+          if (participantId === ownUserId) {
+            await this.restoreOneMembershipScope(
+              scope,
+              "own_account_rejoined_conversation",
+            );
+          }
           await this.publishOwnMembership(conversationId, ownUserId);
           await this.membership.publishJoin({
             scope,
@@ -964,6 +1009,17 @@ export class TwitterDirectMessageClient {
           // (R2 finding 2).
           eventId: `epoch-${Math.floor(Date.now() / TwitterDirectMessageClient.OWN_MEMBERSHIP_TTL_MS)}`,
         }),
+        // A restart or forced restoration within the same epoch replays
+        // under the same key with regenerated observedAt/validUntil: the
+        // authority reports an idempotency conflict, and eventAnchoredAt
+        // makes that replay BENIGN (the delta already applied). Any
+        // same-epoch replay necessarily happens while the original proof
+        // is still valid (published-at + 6h always outlives the epoch
+        // boundary), so adopting the durable state is correct (R3 finding 1).
+        eventAnchoredAt:
+          Math.floor(
+            Date.now() / TwitterDirectMessageClient.OWN_MEMBERSHIP_TTL_MS,
+          ) * TwitterDirectMessageClient.OWN_MEMBERSHIP_TTL_MS,
       });
       this.ownMembershipPublishedAt.set(conversationId, Date.now());
     } catch (error) {
