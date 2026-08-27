@@ -9,6 +9,10 @@
 import { type TOAuth2Scope, TwitterApi } from "twitter-api-v2";
 import { logger } from "../../utils/logger";
 import type { OAuthConnectionRole } from "../oauth/types";
+import {
+  normalizeXProviderIdentity,
+  X_PROVIDER_IDENTITY_VERIFICATION_FAILED,
+} from "../oauth/x-identity";
 import { secretsService } from "../secrets";
 import {
   getTwitterOAuth2ClientAuthMode,
@@ -481,15 +485,34 @@ class TwitterAutomationService {
 
     try {
       const me = await client.v2.me();
-      screenName = me.data.username;
-      userId = me.data.id;
+      const data =
+        me && typeof me === "object" && "data" in me ? (me as { data?: unknown }).data : undefined;
+      const dataRecord =
+        data !== null && typeof data === "object" && !Array.isArray(data)
+          ? (data as Record<string, unknown>)
+          : {};
+      const identity = normalizeXProviderIdentity({
+        userId: dataRecord.id,
+        username: dataRecord.username,
+      });
+      if (!identity) {
+        // Token exchange succeeded; identity is incomplete so it cannot be treated as verified.
+        identityLookupError = X_PROVIDER_IDENTITY_VERIFICATION_FAILED;
+        logger.warn("[TwitterAutomation] OAuth2 profile lookup returned incomplete identity", {
+          errorCode: identityLookupError,
+          clientAuthMode: getTwitterOAuth2ClientAuthMode(),
+        });
+      } else {
+        screenName = identity.username;
+        userId = identity.userId;
+      }
     } catch (error) {
       // error-policy:J7 profile lookup is best-effort enrichment after a successful token
-      // exchange; the failure is surfaced to the caller via identityLookupError (never faked as a
-      // resolved identity) so the already-valid access token still flows through.
-      identityLookupError = formatTwitterApiError(error, "Failed to fetch X profile");
+      // exchange; the failure is a stable redacted classification (never a fabricated identity)
+      // so the already-valid access token still flows through for recovery.
+      identityLookupError = X_PROVIDER_IDENTITY_VERIFICATION_FAILED;
       logger.warn("[TwitterAutomation] OAuth2 profile lookup failed after token exchange", {
-        error: identityLookupError,
+        errorCode: identityLookupError,
         status: getTwitterApiErrorStatus(error),
         clientAuthMode: getTwitterOAuth2ClientAuthMode(),
       });
