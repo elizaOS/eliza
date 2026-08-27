@@ -151,14 +151,13 @@ function parseVerifiedTwitterIdentity(value: unknown): VerifiedTwitterIdentity |
   }
 
   const avatarUrl = Reflect.get(data, "profile_image_url");
-  if (avatarUrl !== undefined && (typeof avatarUrl !== "string" || avatarUrl.trim().length === 0)) {
-    return null;
-  }
+  const normalizedAvatarUrl =
+    typeof avatarUrl === "string" && avatarUrl.trim().length > 0 ? avatarUrl.trim() : undefined;
 
   return {
     username: username.trim(),
     userId: userId.trim(),
-    ...(typeof avatarUrl === "string" ? { avatarUrl: avatarUrl.trim() } : {}),
+    ...(normalizedAvatarUrl ? { avatarUrl: normalizedAvatarUrl } : {}),
   };
 }
 

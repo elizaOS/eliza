@@ -252,6 +252,52 @@ describe("TwitterAutomationService error policy", () => {
       expect(status.userId).toBe("42");
       expect(status.error).toBeUndefined();
     });
+
+    test.each([
+      ["an empty", ""],
+      ["a blank", "   "],
+      ["a null", null],
+      ["a non-string", 42],
+    ])("ignores %s optional avatar after verifying username and id", async (_case, avatarUrl) => {
+      secretStore.TWITTER_OWNER_OAUTH2_ACCESS_TOKEN = "stored-oauth2-token";
+      twitterApiBehavior.me = async () => ({
+        data: {
+          username: "alice",
+          id: "42",
+          profile_image_url: avatarUrl,
+        },
+      });
+
+      const service = await loadService();
+      const status = await service.getConnectionStatus("org-1", "owner");
+
+      expect(status).toEqual({
+        connected: true,
+        username: "alice",
+        userId: "42",
+      });
+    });
+
+    test("normalizes a valid optional avatar after verifying username and id", async () => {
+      secretStore.TWITTER_OWNER_OAUTH2_ACCESS_TOKEN = "stored-oauth2-token";
+      twitterApiBehavior.me = async () => ({
+        data: {
+          username: "alice",
+          id: "42",
+          profile_image_url: "  https://cdn.example/avatar.png  ",
+        },
+      });
+
+      const service = await loadService();
+      const status = await service.getConnectionStatus("org-1", "owner");
+
+      expect(status).toEqual({
+        connected: true,
+        username: "alice",
+        userId: "42",
+        avatarUrl: "https://cdn.example/avatar.png",
+      });
+    });
   });
 
   describe("getBrokerCredentials (OAuth2 refresh/rotate contract)", () => {
