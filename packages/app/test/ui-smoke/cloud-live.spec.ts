@@ -35,10 +35,15 @@ import {
   installCloudLiveAnchoredRetryChipObserver,
   writeCloudLiveContinuityEvidence,
 } from "../cloud-live-continuity-contract";
+import {
+  CloudLiveOptionalActionDeadlineError,
+  clickCloudLiveOptionalAction,
+} from "../cloud-live-optional-action";
 import { resolveCloudLiveOriginContract } from "../cloud-live-origin";
 import { waitForRendererCloudApiOrigin } from "../cloud-live-renderer-api-readiness";
 import {
   CLOUD_LIVE_TRAJECTORY_TIMEOUT_MS,
+  type CloudLivePreIdentityDiagnostic,
   type CloudLiveTrajectoryPhase,
   writeCloudLiveTrajectoryDiagnostic,
 } from "../cloud-live-trajectory-diagnostic";
@@ -80,44 +85,53 @@ test.use({
   serviceWorkers: "block",
 });
 
-// Click an optional onboarding affordance. Absence is a legitimate product
-// state: the runtime chooser and the OAuth authorize block only render under
-// some first-run configurations, so a visibility timeout is reported as an
-// explicit "not offered". A click that fails on a control that IS visible is a
-// real defect and must fail the lane rather than be swallowed.
 async function clickIfVisible(
   locator: Locator,
   timeout = 10_000,
 ): Promise<boolean> {
-  const target = locator.first();
-  const offered = await target.waitFor({ state: "visible", timeout }).then(
-    () => true,
-    // error-policy:J4 a timeout is the one expected failure — the optional
-    // affordance never appeared — and becomes a distinct absent state. Anything
-    // else is rethrown: a strict-mode violation (two elements matched the
-    // locator) would otherwise be reported as "not offered", quietly turning a
-    // broken selector into a passing skip.
-    (error: unknown) => {
-      if (error instanceof Error && error.name === "TimeoutError") return false;
-      throw error;
-    },
-  );
-  if (!offered) return false;
-  await target.click();
-  return true;
+  return await clickCloudLiveOptionalAction(locator, {
+    phase: "post-identity-tutorial-skip",
+    action: "tutorial-skip",
+    offerTimeoutMs: timeout,
+    actionTimeoutMs: timeout,
+  });
 }
 
 // Drive the cloud entry point of first-run: the transcript's Eliza Cloud option,
 // then the SensitiveRequestBlock "Connect Eliza Cloud" OAuth authorize
 // affordance if shown.
-async function chooseCloudRuntime(page: Page): Promise<void> {
-  await clickIfVisible(
-    page.getByTestId("choice-__first_run__:runtime:cloud"),
-    30_000,
-  );
-  await clickIfVisible(
+async function chooseCloudRuntime(
+  page: Page,
+  onRuntimeChoiceState?: (
+    state: "attempt" | "success" | "timeout",
+  ) => Promise<void>,
+): Promise<void> {
+  await onRuntimeChoiceState?.("attempt");
+  try {
+    const clicked = await clickCloudLiveOptionalAction(
+      page.getByTestId("choice-__first_run__:runtime:cloud"),
+      {
+        phase: "pre-identity-runtime-choice",
+        action: "runtime-cloud",
+        offerTimeoutMs: 30_000,
+        actionTimeoutMs: 30_000,
+      },
+    );
+    if (clicked) await onRuntimeChoiceState?.("success");
+  } catch (error) {
+    if (error instanceof CloudLiveOptionalActionDeadlineError) {
+      await onRuntimeChoiceState?.("timeout");
+    }
+    throw error;
+  }
+  await clickCloudLiveOptionalAction(
     page.getByTestId("sensitive-request-oauth-start"),
-    5_000,
+    {
+      phase: "pre-identity-oauth-choice",
+      action: "oauth-start",
+      offerTimeoutMs: 5_000,
+      actionTimeoutMs: 5_000,
+    },
   );
 }
 
@@ -524,11 +538,12 @@ async function proveAnchoredTurnHistory(
 
 async function resolvePersonalIdentity(
   page: Page,
+  chooseRuntime = true,
 ): Promise<CloudLiveRuntimeBinding> {
   await expect(page.getByTestId("chat-overlay")).toBeVisible({
     timeout: 60_000,
   });
-  await chooseCloudRuntime(page);
+  if (chooseRuntime) await chooseCloudRuntime(page);
   for (let attempt = 1; attempt <= PERSONAL_IDENTITY_ATTEMPTS; attempt += 1) {
     let binding: CloudLiveRuntimeBinding | null = null;
     await expect
@@ -589,11 +604,13 @@ test.describe("real cloud login + personal identity + chat", () => {
       .outputPath("privacy-safe-trajectory-history-network-diagnostics.json");
     const enterTrajectoryPhase = async (
       phase: CloudLiveTrajectoryPhase,
+      preIdentity?: CloudLivePreIdentityDiagnostic,
     ): Promise<void> => {
       await writeCloudLiveTrajectoryDiagnostic({
         diagnosticPath: trajectoryDiagnosticPath,
         phase,
         elapsedMs: Date.now() - trajectoryStartedAt,
+        preIdentity,
       });
     };
     await enterTrajectoryPhase("protected-cloud-boot");
@@ -676,11 +693,47 @@ test.describe("real cloud login + personal identity + chat", () => {
       description: rendererApiOrigin,
     });
 
+    const runtimeChoiceCounters = {
+      runtimeCloudActionAttemptCount: 0,
+      runtimeCloudActionSuccessCount: 0,
+      runtimeCloudActionTimeoutCount: 0,
+    };
+    const writePreIdentityDiagnostic = async (): Promise<void> => {
+      const audit = await primaryAudit.snapshot();
+      await enterTrajectoryPhase("pre-identity-runtime-choice", {
+        ...runtimeChoiceCounters,
+        personalIdentityGetRequestCount: audit.personalIdentityGetRequestCount,
+        successfulPersonalIdentityGetResponseCount:
+          audit.successfulPersonalIdentityGetCount,
+        clientErrorPersonalIdentityGetResponseCount:
+          audit.clientErrorPersonalIdentityGetResponseCount,
+        serverErrorPersonalIdentityGetResponseCount:
+          audit.serverErrorPersonalIdentityGetResponseCount,
+        otherPersonalIdentityGetResponseCount:
+          audit.otherPersonalIdentityGetResponseCount,
+        failedPersonalIdentityGetRequestCount:
+          audit.failedPersonalIdentityGetRequestCount,
+        pendingPersonalIdentityGetRequestCount:
+          audit.pendingPersonalIdentityGetRequestCount,
+      });
+    };
+    await writePreIdentityDiagnostic();
+    await chooseCloudRuntime(page, async (state) => {
+      if (state === "attempt") {
+        runtimeChoiceCounters.runtimeCloudActionAttemptCount += 1;
+      } else if (state === "success") {
+        runtimeChoiceCounters.runtimeCloudActionSuccessCount += 1;
+      } else {
+        runtimeChoiceCounters.runtimeCloudActionTimeoutCount += 1;
+      }
+      await writePreIdentityDiagnostic();
+    });
+
     // The current Cloud join flow resolves the account-derived Personal Eliza
     // identity through the read-only Personal endpoint. It persists the
     // account-owned binding without creating dedicated compute.
     await enterTrajectoryPhase("personal-identity");
-    const referenceBinding = await resolvePersonalIdentity(page);
+    const referenceBinding = await resolvePersonalIdentity(page, false);
     const identityAudit = await primaryAudit.snapshot();
     expect(
       identityAudit.successfulPersonalIdentityGetCount,

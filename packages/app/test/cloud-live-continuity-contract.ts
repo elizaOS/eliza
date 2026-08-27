@@ -60,7 +60,13 @@ export interface CloudLiveNetworkAuditSnapshot {
   clientErrorChatSendResponseCount: number;
   serverErrorChatSendResponseCount: number;
   otherChatSendResponseCount: number;
+  personalIdentityGetRequestCount: number;
   successfulPersonalIdentityGetCount: number;
+  clientErrorPersonalIdentityGetResponseCount: number;
+  serverErrorPersonalIdentityGetResponseCount: number;
+  otherPersonalIdentityGetResponseCount: number;
+  failedPersonalIdentityGetRequestCount: number;
+  pendingPersonalIdentityGetRequestCount: number;
   historyGetRequestCount: number;
   successfulHistoryGetCount: number;
   clientErrorHistoryGetResponseCount: number;
@@ -702,7 +708,12 @@ export function createCloudLiveNetworkAudit(): {
   let clientErrorChatSendResponseCount = 0;
   let serverErrorChatSendResponseCount = 0;
   let otherChatSendResponseCount = 0;
+  let personalIdentityGetRequestCount = 0;
   let successfulPersonalIdentityGetCount = 0;
+  let clientErrorPersonalIdentityGetResponseCount = 0;
+  let serverErrorPersonalIdentityGetResponseCount = 0;
+  let otherPersonalIdentityGetResponseCount = 0;
+  let failedPersonalIdentityGetRequestCount = 0;
   let historyGetRequestCount = 0;
   let successfulHistoryGetCount = 0;
   let clientErrorHistoryGetResponseCount = 0;
@@ -755,6 +766,9 @@ export function createCloudLiveNetworkAudit(): {
         } else unidentifiedChatSendAttemptCount += 1;
       }
       if (isHistoryGet(method, rawUrl)) historyGetRequestCount += 1;
+      if (isPersonalIdentityGet(method, rawUrl)) {
+        personalIdentityGetRequestCount += 1;
+      }
     },
     observeResponse(method, rawUrl, status, responseBody) {
       const chatScope = chatSendScope(method, rawUrl);
@@ -806,15 +820,22 @@ export function createCloudLiveNetworkAudit(): {
           otherHistoryGetResponseCount += 1;
         }
       }
-      if (
-        status >= 200 &&
-        status < 300 &&
-        isPersonalIdentityGet(method, rawUrl)
-      ) {
-        successfulPersonalIdentityGetCount += 1;
+      if (isPersonalIdentityGet(method, rawUrl)) {
+        if (status >= 200 && status < 300) {
+          successfulPersonalIdentityGetCount += 1;
+        } else if (status >= 400 && status < 500) {
+          clientErrorPersonalIdentityGetResponseCount += 1;
+        } else if (status >= 500 && status < 600) {
+          serverErrorPersonalIdentityGetResponseCount += 1;
+        } else {
+          otherPersonalIdentityGetResponseCount += 1;
+        }
       }
     },
     observeRequestFailure(method, rawUrl, errorText = "") {
+      if (isPersonalIdentityGet(method, rawUrl)) {
+        failedPersonalIdentityGetRequestCount += 1;
+      }
       if (!isHistoryGet(method, rawUrl)) return;
       failedHistoryGetRequestCount += 1;
       if (/tim(?:e|ed)[ _-]?out/i.test(errorText)) {
@@ -832,6 +853,12 @@ export function createCloudLiveNetworkAudit(): {
         serverErrorHistoryGetResponseCount +
         otherHistoryGetResponseCount +
         failedHistoryGetRequestCount;
+      const terminalPersonalIdentityGetCount =
+        successfulPersonalIdentityGetCount +
+        clientErrorPersonalIdentityGetResponseCount +
+        serverErrorPersonalIdentityGetResponseCount +
+        otherPersonalIdentityGetResponseCount +
+        failedPersonalIdentityGetRequestCount;
       return {
         forbiddenAgentMutationCount,
         chatSendAttemptCount,
@@ -842,7 +869,16 @@ export function createCloudLiveNetworkAudit(): {
         clientErrorChatSendResponseCount,
         serverErrorChatSendResponseCount,
         otherChatSendResponseCount,
+        personalIdentityGetRequestCount,
         successfulPersonalIdentityGetCount,
+        clientErrorPersonalIdentityGetResponseCount,
+        serverErrorPersonalIdentityGetResponseCount,
+        otherPersonalIdentityGetResponseCount,
+        failedPersonalIdentityGetRequestCount,
+        pendingPersonalIdentityGetRequestCount: Math.max(
+          0,
+          personalIdentityGetRequestCount - terminalPersonalIdentityGetCount,
+        ),
         historyGetRequestCount,
         successfulHistoryGetCount,
         clientErrorHistoryGetResponseCount,
