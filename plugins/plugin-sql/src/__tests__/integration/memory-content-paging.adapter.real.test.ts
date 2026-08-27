@@ -274,6 +274,104 @@ describe("adapter-integrated memory content paging (real PGlite)", () => {
     await manager.close();
   });
 
+  it("large-to-small replacement retires the descriptor and generation", async () => {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-seg-shrink-"));
+    tempDirectories.push(dataDir);
+    const agentId = v4() as UUID;
+    const { adapter, manager } = await openDatabase(dataDir, agentId);
+    await migrate(adapter);
+    const { roomId, entityId } = await seedRoom(adapter, agentId);
+
+    const memoryId = await adapter.createMemory(
+      {
+        entityId,
+        roomId,
+        agentId,
+        content: { text: largeSource(200 * 1024), source: "test" },
+      } as Memory,
+      "messages"
+    );
+    const pageBefore = await adapter.getMemoryContentPage({
+      memoryId,
+      field: { kind: "content.text" },
+      byteStart: 0,
+      byteLimit: 64,
+    });
+    expect(pageBefore).not.toBeNull();
+
+    // Replace with small content: descriptor must be dropped and generation retired.
+    expect(
+      await adapter.updateMemory({
+        id: memoryId,
+        content: { text: "now small", source: "test" },
+      })
+    ).toBe(true);
+
+    const db = adapter.getDatabase() as DrizzleDatabase;
+    const row = (await db.select().from(memoryTable).where(eq(memoryTable.id, memoryId)))[0];
+    const segmentation = (row.metadata as { segmentation?: unknown }).segmentation;
+    expect(segmentation).toEqual({});
+    const leftover = await db.execute(
+      `SELECT count(*)::int AS n FROM memory_text_segments WHERE parent_id = '${memoryId}'`
+    );
+    expect((leftover.rows as Array<{ n: number }>)[0].n).toBe(0);
+    // Small-row read falls back to inline.
+    const pageAfter = await adapter.getMemoryContentPage({
+      memoryId,
+      field: { kind: "content.text" },
+      byteStart: 0,
+    });
+    expect(pageAfter).toBeNull();
+
+    await adapter.close();
+    await manager.close();
+  });
+
+  it("rejects large attachment text without an id and duplicate ids", async () => {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-seg-attid-"));
+    tempDirectories.push(dataDir);
+    const agentId = v4() as UUID;
+    const { adapter, manager } = await openDatabase(dataDir, agentId);
+    await migrate(adapter);
+    const { roomId, entityId } = await seedRoom(adapter, agentId);
+
+    await expect(
+      adapter.createMemory(
+        {
+          entityId,
+          roomId,
+          agentId,
+          content: {
+            text: "small",
+            attachments: [{ url: "https://example.test/x", text: largeSource(150 * 1024) }],
+          },
+        } as unknown as Memory,
+        "messages"
+      )
+    ).rejects.toMatchObject({ code: "MEMORY_SEGMENT_ATTACHMENT_ID_REQUIRED" });
+
+    await expect(
+      adapter.createMemory(
+        {
+          entityId,
+          roomId,
+          agentId,
+          content: {
+            text: "small",
+            attachments: [
+              { id: "dup-1", url: "https://example.test/a", text: largeSource(150 * 1024) },
+              { id: "dup-1", url: "https://example.test/b", text: largeSource(150 * 1024) },
+            ],
+          },
+        } as unknown as Memory,
+        "messages"
+      )
+    ).rejects.toMatchObject({ code: "MEMORY_SEGMENT_ATTACHMENT_ID_CONFLICT" });
+
+    await adapter.close();
+    await manager.close();
+  });
+
   it("publishes segmented attachment text and pages it by owner-bound field", async () => {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-seg-attach-"));
     tempDirectories.push(dataDir);
