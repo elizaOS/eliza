@@ -928,7 +928,6 @@ function ContactSheet({
   );
 }
 
-const SESSION_STORAGE_KEY = "eliza_app_session";
 const COPY_CONFIRMATION_MS = 2_200;
 const HANDOFF_RECOVERY_MS = 5_000;
 
@@ -942,9 +941,11 @@ export default function LandingPage() {
   );
   const phoneCopyOperation = useRef(0);
   const browserWindow = typeof window === "undefined" ? null : window;
-  const signedIn =
-    browserWindow !== null &&
-    browserWindow.localStorage.getItem(SESSION_STORAGE_KEY) !== null;
+  // fix(homepage): remove unreachable signed-in Dashboard heuristic (#28743).
+  // The marketing origin cannot observe the canonical Steward session
+  // (different origin), so the legacy `eliza_app_session` localStorage check
+  // is a false signal. Product decision: neutral Sign in CTA always.
+  const signedIn = false;
   const productNavigation = resolveHomepageProductNavigation(
     browserWindow?.location.hostname ?? "",
   );
