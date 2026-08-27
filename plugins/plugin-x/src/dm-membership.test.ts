@@ -17,9 +17,21 @@ import { TwitterDirectMessageClient } from "./direct-messages";
 const membershipInstances: Array<Record<string, ReturnType<typeof vi.fn>>> = [];
 
 vi.mock("./membership", () => {
+  // Scope returned to the DM client: a plausible MembershipScope so the
+  // publish paths in direct-messages.ts actually execute (R2 finding 3 —
+  // a null scope made the roster tests vacuous).
+  const scopeFor = (conversationId: string) => ({
+    agentId: "00000000-0000-4000-8000-0000000000aa",
+    connectorId: "x",
+    connectorAccountId: "11111111-2222-4333-8444-555555555555",
+    externalWorldId: conversationId,
+    externalRoomId: conversationId,
+  });
   return {
     XMembershipPublisher: class {
-      scopeForConversation = vi.fn().mockResolvedValue(null);
+      scopeForConversation = vi.fn(async (opts: { conversationId: string }) =>
+        scopeFor(opts.conversationId),
+      );
       publishJoin = vi.fn().mockResolvedValue(undefined);
       publishLeave = vi.fn().mockRejectedValue(new Error("publish down"));
       renewSender = vi.fn().mockResolvedValue(undefined);
@@ -119,6 +131,7 @@ describe("TwitterDirectMessageClient membership wiring (#24372)", () => {
   it("routes a ParticipantsJoin event through the membership path and advances the cursor", async () => {
     const runtime = fakeRuntime();
     const { dm, setSession } = buildClient(runtime);
+    const pub = membershipInstances[membershipInstances.length - 1];
     await runtime.setCache(
       "twitter/default/990000000000000001/dm_cursor",
       "100",
@@ -138,16 +151,27 @@ describe("TwitterDirectMessageClient membership wiring (#24372)", () => {
     // poll() is private; drive the full path through start()'s first poll.
     await dm.start();
     await dm.stop();
-    // The roster event was processed (scope resolution returned null in the
-    // stub → no publish) and the cursor still advanced past it.
+    // The roster event was routed to the membership publisher: one join for
+    // the listed participant plus the conversation's first own-membership
+    // proof (the account observed the event, proving its own participation).
+    expect(pub.scopeForConversation).toHaveBeenCalledWith(
+      expect.objectContaining({ conversationId: "1999888777660001" }),
+    );
+    expect(pub.publishJoin).toHaveBeenCalledTimes(2);
+    const rosterCall = pub.publishJoin.mock.calls.find(
+      (call: Array<{ permissionSnapshot: Record<string, unknown> }>) =>
+        !call[0].permissionSnapshot?.self,
+    );
+    expect(rosterCall).toBeDefined();
     expect(
       await runtime.getCache("twitter/default/990000000000000001/dm_cursor"),
     ).toBe("101");
   });
 
-  it("advances the cursor even when a publish would fail (degrade-only containment)", async () => {
+  it("advances the cursor even when a publish fails (degrade-only containment)", async () => {
     const runtime = fakeRuntime();
     const { dm, setSession } = buildClient(runtime);
+    const pub = membershipInstances[membershipInstances.length - 1];
     await runtime.setCache(
       "twitter/default/990000000000000001/dm_cursor",
       "200",
@@ -165,6 +189,9 @@ describe("TwitterDirectMessageClient membership wiring (#24372)", () => {
     );
     await dm.start();
     await dm.stop();
+    // The publish was ATTEMPTED and rejected (mock), yet the cursor still
+    // advanced past the event: membership failures never stall the DM loop.
+    expect(pub.publishLeave).toHaveBeenCalledTimes(1);
     expect(
       await runtime.getCache("twitter/default/990000000000000001/dm_cursor"),
     ).toBe("201");
@@ -173,6 +200,7 @@ describe("TwitterDirectMessageClient membership wiring (#24372)", () => {
   it("publishes own membership for a self-sent message and advances the cursor", async () => {
     const runtime = fakeRuntime();
     const { dm, setSession } = buildClient(runtime);
+    const pub = membershipInstances[membershipInstances.length - 1];
     await runtime.setCache(
       "twitter/default/990000000000000001/dm_cursor",
       "300",
@@ -190,6 +218,10 @@ describe("TwitterDirectMessageClient membership wiring (#24372)", () => {
     );
     await dm.start();
     await dm.stop();
+    // Own participation was published once for the conversation.
+    expect(pub.publishJoin).toHaveBeenCalledTimes(1);
+    const ownCall = pub.publishJoin.mock.calls[0][0];
+    expect(ownCall.permissionSnapshot).toEqual({ observed: true, self: true });
     expect(
       await runtime.getCache("twitter/default/990000000000000001/dm_cursor"),
     ).toBe("301");

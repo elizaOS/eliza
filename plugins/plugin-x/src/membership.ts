@@ -323,18 +323,29 @@ export class XMembershipPublisher {
    * previous publisher's generation floor is advanced by one to satisfy the
    * authority's monotonic publisherGeneration requirement.
    */
+  /**
+   * Register this publisher for a scope. Adoption (a restart of the same
+   * stable publisher identity) re-binds at the SAME generation so committed
+   * evidence survives; a forced registration (restore path) deliberately
+   * takes the takeover branch to reset the durable scope state.
+   */
   private async registerPublisher(
     service: MembershipService,
     scope: MembershipScope,
     state: ScopePublisherState,
+    options?: { force?: boolean },
   ): Promise<void> {
     const health = await this.readScopeHealth(service, scope);
     // Adoption: when the durable publisher binding already belongs to this
     // stable instance id (a restart of the same process identity), re-bind
     // at the SAME generation instead of bumping — bumping would reset the
     // evidence chain (sourceVersion -1) and strand every committed member
-    // fact behind membership_evidence_mismatch denials.
+    // fact behind membership_evidence_mismatch denials. The restore path
+    // passes force to skip this: restoration MUST take the takeover branch
+    // because the authority only accepts health transitions that degrade,
+    // and a re-registration is what resets durable `unavailable` health.
     if (
+      !options?.force &&
       health &&
       health.publisherInstanceId === this.publisherInstanceIdFor(scope) &&
       typeof health.publisherGeneration === "number" &&
@@ -742,10 +753,19 @@ export class XMembershipPublisher {
       return;
     }
     const state = this.stateFor(options.scope);
-    // Serialize with any in-flight publishes for this scope.
+    // Serialize with any in-flight publishes for this scope. Forced
+    // re-registration takes the takeover branch so the durable `unavailable`
+    // health resets to awaiting-evidence; adoption alone would leave the
+    // scope degraded forever (R2 finding 1).
     const run = state.queue.then(
-      () => this.registerPublisher(service, options.scope, state),
-      () => this.registerPublisher(service, options.scope, state),
+      () =>
+        this.registerPublisher(service, options.scope, state, {
+          force: true,
+        }),
+      () =>
+        this.registerPublisher(service, options.scope, state, {
+          force: true,
+        }),
     );
     state.queue = run.catch(() => undefined);
     await run;
@@ -775,7 +795,7 @@ export class XMembershipPublisher {
           state.sourceCursor = durable.sourceCursor;
           state.currentVersion = durable.sourceVersion;
         }
-        return service.setScopeHealth({
+        const receipt = await service.setScopeHealth({
           ...scope,
           expectedGeneration: state.generation,
           health,
@@ -789,15 +809,19 @@ export class XMembershipPublisher {
           ]),
           observedAt: new Date().toISOString(),
         });
+        // Apply receipt-derived fencing state INSIDE the serialized
+        // callback so every subsequently queued operation observes the
+        // committed generation by construction (R2 finding 4).
+        if (receipt) {
+          state.generation = receipt.committedGeneration;
+        }
+        return receipt;
       },
       () => undefined,
     );
     state.queue = run.catch(() => undefined);
     try {
-      const receipt = await run;
-      if (receipt) {
-        state.generation = receipt.committedGeneration;
-      }
+      await run;
     } catch (error) {
       logger.debug(
         {
