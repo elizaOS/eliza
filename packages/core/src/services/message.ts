@@ -16251,9 +16251,9 @@ export class DefaultMessageService implements IMessageService {
 				) {
 					return { kind: "noProvider" };
 				}
-				// Credit exhaustion is sticky across slots because no later
-				// fallback model can make a drained account retryable. The
-				// rate/auth flags still track the most recent slot's cause:
+				// Credit exhaustion and account authorization are sticky across
+				// slots because no later model tier can heal the shared account.
+				// The rate-limit flag still tracks the most recent slot's cause:
 				// reporting "rate-limited" only when the LAST attempted slot was
 				// a 429 avoids misleading the user in a mixed-failure run.
 				// Credits are classified before rate limits below: a 429 *with*
@@ -16261,7 +16261,7 @@ export class DefaultMessageService implements IMessageService {
 				// transient throttle ("try again in a few seconds").
 				sawCreditsExhausted ||= isInsufficientCreditsError(error);
 				sawRateLimit = isRateLimitError(error);
-				sawAuthError = isAuthError(error);
+				sawAuthError ||= isAuthError(error);
 				runtime.logger.warn(
 					{
 						src: "service:message",

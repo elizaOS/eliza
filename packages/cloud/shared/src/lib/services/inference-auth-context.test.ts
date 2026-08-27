@@ -113,6 +113,7 @@ const {
 } = await import("./inference-auth-context");
 const { cache } = await import("../cache/client");
 const { CacheKeys } = await import("../cache/keys");
+const { logger } = await import("../utils/logger");
 const {
   hashApiKey,
   readInferenceAuthContext,
@@ -383,12 +384,29 @@ describe("resolveInferenceAuthContext", () => {
     await Promise.all(waited);
     expect(chainCalls).toBe(1);
 
+    const errorSpy = spyOn(logger, "error").mockImplementation(() => undefined);
     const retry = await resolveInferenceAuthContext(reqWithApiKey(), {
       cacheOnly: true,
       executionCtx: { waitUntil: (promise) => waited.push(promise) },
     });
-    expect(retry).toEqual({ kind: "rejected", status: 401 });
+    expect(retry).toEqual({ kind: "rejected", status: 401, reason: "credential_invalid" });
     expect(chainCalls).toBe(1);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[InferenceAuth] account standing denied inference",
+      expect.objectContaining({
+        status: 401,
+        reason: "credential_invalid",
+        authSource: "x_api_key",
+        cacheBackend: "memory",
+        cacheRead: "rejected",
+        source: "cache",
+      }),
+    );
+    const logged = JSON.stringify(errorSpy.mock.calls);
+    expect(logged).not.toContain(KEY);
+    expect(logged).not.toContain("user-1");
+    errorSpy.mockRestore();
   });
 
   test("authoritative suspension converges to a cached fail-closed decision", async () => {
@@ -410,12 +428,13 @@ describe("resolveInferenceAuthContext", () => {
     const retry = await resolveInferenceAuthContext(reqWithApiKey(), {
       cacheOnly: true,
     });
-    expect(retry).toEqual({ kind: "suspended" });
+    expect(retry).toEqual({ kind: "suspended", reason: "moderation_blocked" });
     expect(moderationCalls).toBe(1);
   });
 
   test("Worker execution context defers positive cache population and observes its outcome", async () => {
     let finishWrite = (): void => {};
+    const readSpy = spyOn(cache, "getWithOutcome");
     const writeSpy = spyOn(cache, "setWithOutcome").mockImplementation(
       async () =>
         await new Promise((resolve) => {
@@ -458,8 +477,11 @@ describe("resolveInferenceAuthContext", () => {
         cacheWrite: "written",
       });
       expect(cacheWriteTelemetry?.durationMs).toBeGreaterThanOrEqual(0);
+      expect(readSpy).toHaveBeenCalledTimes(1);
+      expect(writeSpy).toHaveBeenCalledTimes(1);
     } finally {
       finishWrite();
+      readSpy.mockRestore();
       writeSpy.mockRestore();
     }
   });
@@ -493,7 +515,11 @@ describe("resolveInferenceAuthContext", () => {
 
     const result = await resolveInferenceAuthContext(reqWithApiKey());
 
-    expect(result).toEqual({ kind: "rejected", status: 401 });
+    expect(result).toEqual({
+      kind: "rejected",
+      status: 401,
+      reason: "credential_inactive",
+    });
     expect(chainCalls).toBe(0);
   });
 
