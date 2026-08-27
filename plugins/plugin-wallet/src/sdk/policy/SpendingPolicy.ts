@@ -164,7 +164,14 @@ export class SpendingPolicy {
   approveDraft(draftId: string): boolean {
     const draft = this.drafts.get(draftId);
     if (!draft) return false;
-    draft.approved = true;
+    if (!draft.approved) {
+      draft.approved = true;
+      // An approved draft is committed spend: record it in the rolling
+      // window so DraftThenApprove payments cannot bypass RollingSpendCap.
+      if (this.config.rollingCap) {
+        this.spendWindow.push({ amount: draft.payment.amount, ts: Date.now() });
+      }
+    }
     return true;
   }
 
