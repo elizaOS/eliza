@@ -26,7 +26,7 @@ empty log query for the other runtime proves nothing.
 | Console (`cloud-staging.eliza.app`) | Same artifact as App Pages | Same Pages deployment, independently proved on the Console hostname | Not containerized | No direct DB; inherit the API row |
 | Telegram ingress (Worker edge or `gateway-webhook-stg`) | Exact API Worker source and served `personalSharedTelegramEdge.enabled` beacon; when disabled, also the protected `Deploy Gateway Webhook` run SHA | `enabled=true`: exact Worker deployment plus positive Worker-edge, delivery-ledger, and provider receipt; `enabled=false`: published exact Railway receipt and currently active deployment ID | Worker edge is not containerized; the Railway digest is not emitted by the current receipt and remains unresolved unless provider metadata supplies it | Inherit the compatible API row; the Railway fallback has no direct SQL access |
 | Discord gateway | Unresolved after deployment; the operator checkout is not attested | Railway deployment ID and `/health` + `/ready`; current repository automation does not bind them to a source SHA | Not attested by the current deploy script | No direct SQL access; inherit the compatible API row |
-| Connector `SandboxRegistry` route | Attested agent-image source SHA plus the provisioning-worker SHA that injected the registry and route identity | Same Redis authority as the gateway; privacy-safe paired-key/TTL readback; deployed resolver returns `ready` | Running container digest must match the agent-image attestation | Control-plane sandbox row and compatible API migration authority |
+| Connector `SandboxRegistry` route | Attested agent-image source SHA plus the provisioning-worker SHA that injected the registry and route identity | Same Redis authority as the gateway; privacy-safe trio evidence (public pair in memory; private generation-key presence/TTL without name expansion or value); deployed resolver returns `ready` | Running container digest must match the agent-image attestation | Control-plane sandbox row and compatible API migration authority |
 | Provisioning worker | `Deploy Eliza Provisioning Worker` `deployment_sha` | `/opt/eliza` HEAD plus the running systemd process identity and post-restart stability evidence | Daemon is not containerized; separately resolve the managed-agent image to a registry digest | Exact-SHA migration plus activation preflight in the same workflow |
 | Agent router | Same SHA and checkout as the provisioning worker | Running systemd process plus local and canonical `/healthz` and `/readyz` | Not containerized | Same database and exact-SHA migration authority as the provisioning worker |
 
@@ -249,13 +249,27 @@ deploy receipt is required before accepting Discord staging E2E evidence.
 
 ### Connector SandboxRegistry route
 
-Dedicated containers self-register the current platform route through two
-short-lived Redis keys: `agent:<id>:server` points to a server name and
-`server:<name>:url` points to its resolver address. The current
-`SandboxRegistry` pipelines both writes with a 90-second TTL and refreshes them
-every 30 seconds. The pipeline is not a Redis transaction, so a failed partial
-write remains possible; the Telegram and Discord resolvers read the two keys in
-order and the evidence contract fails closed unless both are present.
+Dedicated containers self-register the current platform route as one
+TTL-backed trio written atomically by `SandboxRegistry` through a single Redis
+`EVAL` (REST and TCP):
+
+- public resolver pair: `agent:<id>:server` (server-name pointer) and
+  `server:<name>:url` (resolver address)
+- private runtime-generation fence: `server:<name>:registration`
+
+Telegram and Discord resolvers read only the public pair, in that order, and
+fail closed unless both are present. That two-key resolver view is not the
+full lifecycle contract: registration, owned refresh, and generation-gated
+cleanup always update all three keys together. Current `SandboxRegistry`
+writers apply a 90-second TTL to the whole trio and refresh on a 30-second
+heartbeat. Those lifetimes are writer-specific; legacy/operator entries and
+other registry writers do not share this contract.
+
+Owned refresh fails closed with `SANDBOX_REGISTRY_OWNERSHIP_LOST` when the
+trio is missing, expired, or owned by another generation. A heartbeat cannot
+recreate an absent trio after initial registration failure or complete expiry.
+Durable recovery after complete expiry is a separate design concern under
+#24767.
 
 1. Resolve the exact gateway deployment, provisioning-worker checkout, sandbox
    row, running container, and agent-image digest before reading the registry.
@@ -267,14 +281,19 @@ order and the evidence contract fails closed unless both are present.
    token, hostname, service ID, or connection fingerprint.
 3. Starting from the exact route agent ID already bound to the sandbox row, use
    a least-privilege read-only Redis operation restricted to
-   `GET`/`EXISTS`/`PTTL` on its two known keys. Do not discover candidates with
+   `GET`/`EXISTS`/`PTTL` on the known public pair plus a presence/TTL check
+   for the private generation key. Read the two public keys only in memory.
+   For the private generation key, verify presence and a positive TTL without
+   publishing its expanded name or value. Do not discover candidates with
    `SCAN`. An older readback derived from `SCAN` is insufficient for this
    known-keys contract: it discovers candidates instead of proving the exact
-   pair already bound to the reviewed route and sandbox. Retain only closed
-   fields such as `pairFound`, `bothTtlsPositive`,
+   trio already bound to the reviewed route and sandbox. Retain only closed
+   fields such as `publicPairFound`, `bothPublicTtlsPositive`,
+   `generationKeyPresent`, `generationTtlPositive`,
    `ttlDeltaWithinBound`, and the UTC sample time. Successive samples spanning a
-   heartbeat should remain coherent; key names and values stay in memory only.
-4. Run the deployed resolver contract against that same pair and require
+   heartbeat should remain coherent; public key names and values stay in
+   memory only, and the private generation key is never expanded or dumped.
+4. Run the deployed resolver contract against the public pair and require
    `kind=ready`. Preserve only the normalized result; a server name or URL is
    sensitive operational data and does not belong in the public receipt.
 5. Prove HTTP reachability separately from the gateway network, then prove one
@@ -282,10 +301,13 @@ order and the evidence contract fails closed unless both are present.
    `ready` resolution alone do not prove that the container accepts traffic or
    that Telegram/Discord delivered a reply.
 
-Fail closed if only one key exists, either TTL is absent/expired, the two
-authorities differ, the pair cannot be bound to the exact sandbox/image, or a
-legacy long-lived pointer is substituted for a current heartbeat. Never scan
-or publish raw agent IDs, server names, URLs, Redis values, or provider content.
+Fail closed if the public pair is incomplete, the private generation key is
+absent or has no positive TTL, any trio TTL is absent/expired, the two
+authorities differ, the trio cannot be bound to the exact sandbox/image, or a
+legacy long-lived pointer is substituted for a current `SandboxRegistry`
+heartbeat. Never scan or publish raw agent IDs, server names, URLs, Redis
+values, expanded private route names, the generation token, or provider
+content.
 
 ### Provisioning worker
 
@@ -389,7 +411,7 @@ Before starting a probe, mark every row `proved`, `not applicable`, or
   unavailable for exact-source staging evidence while its deployment identity
   gap remains open.
 - A connector routing claim additionally requires a live, coherent
-  `SandboxRegistry` pair from the gateway's own Redis authority, `ready`
+  `SandboxRegistry` trio from the gateway's own Redis authority, `ready`
   resolution, the exact container image digest, gateway-to-container HTTP
   reachability, and a positive forward/ACK. No single one of these substitutes
   for the others.

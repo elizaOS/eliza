@@ -235,12 +235,18 @@ export async function resolveIdentity(
 /**
  * Why an agent could not be routed to, which is not one condition but two.
  *
- * `agent:<id>:server` is written by a booted container and lives 30 days, while
- * `server:<name>:url` is refreshed by the pod's heartbeat and expires after two
- * minutes. So a missing routing key means the agent has never come up, and a
- * present routing key with no URL means an established agent whose pod is down
- * or scaled to zero. Callers that treat "no route" as "not provisioned yet" —
- * and answer with onboarding — must only do so for `unregistered`.
+ * This resolver reads the public pair only: `agent:<id>:server` then
+ * `server:<name>:url`. That two-key resolver view is distinct from the
+ * `SandboxRegistry` lifecycle contract, which also maintains a private
+ * `server:<name>:registration` generation fence and writes the full trio
+ * atomically through one Redis EVAL. TTLs are writer-specific: current
+ * `SandboxRegistry` entries use a 90-second trio TTL refreshed every 30
+ * seconds, while legacy/operator writers may still use different lifetimes.
+ * A missing routing pointer means this resolver cannot name a server
+ * (`unregistered`). A present pointer with no URL means a named server that
+ * is not currently resolvable (`unreachable`). Callers that treat "no route"
+ * as "not provisioned yet" — and answer with onboarding — must only do so
+ * for `unregistered`.
  */
 export type AgentServerLookup =
   | ({ kind: "ready" } & ServerRoute)

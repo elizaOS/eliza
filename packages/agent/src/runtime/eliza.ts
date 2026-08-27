@@ -6432,12 +6432,16 @@ export async function startEliza(
 
     // Cloud sandbox self-registration (Path A). When this runtime is the
     // entrypoint of a Hetzner-provisioned container, the provisioner injects
-    // the SANDBOX_REGISTRY_* env vars. Writing the `agent:<id>:server` +
-    // `server:<name>:url` keys to the shared Upstash Redis lets the
-    // multi-tenant gateways resolve this container as the inference target
-    // and forward inbound platform messages here. Returns null for every
-    // non-provisioned runtime, so this is inert outside the cloud
-    // container. See packages/shared/src/sandbox-registry.ts.
+    // the SANDBOX_REGISTRY_* env vars. Writing the public
+    // `agent:<id>:server` + `server:<name>:url` pair and the private
+    // `server:<name>:registration` generation fence atomically to shared Redis
+    // lets the multi-tenant gateways resolve this container as the inference
+    // target and forward inbound platform messages here. Owned heartbeat
+    // refresh cannot recreate a missing trio
+    // (`SANDBOX_REGISTRY_OWNERSHIP_LOST`); durable recovery after complete
+    // expiry is #24767. Returns null for every non-provisioned runtime, so
+    // this is inert outside the cloud container. See
+    // packages/shared/src/sandbox-registry.ts.
     const { buildSandboxRegistryFromEnv } = await import(
       "@elizaos/shared/sandbox-registry"
     );
@@ -6447,7 +6451,7 @@ export async function startEliza(
         await sandboxRegistry.register();
       } catch (err) {
         logger.error(
-          `[eliza] Failed to register sandbox in Redis (gateways will not route inbound platform messages here until the next hb_signal succeeds): ${formatError(err)}`,
+          `[eliza] Failed to register sandbox in Redis (gateways will not route inbound platform messages here; heartbeat cannot recreate a missing trio and fails closed with SANDBOX_REGISTRY_OWNERSHIP_LOST): ${formatError(err)}`,
         );
       }
       sandboxRegistry.startHeartbeat(
