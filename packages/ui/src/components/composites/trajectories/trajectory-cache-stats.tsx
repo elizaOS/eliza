@@ -49,9 +49,9 @@ export function TrajectoryCacheStats({
                 {metric.value}
               </dd>
               {metric.meta ? (
-                <div className="mt-1 text-xs text-[color:var(--settings-muted)]">
+                <dd className="mt-1 text-xs text-[color:var(--settings-muted)]">
                   {metric.meta}
-                </div>
+                </dd>
               ) : null}
             </PagePanel.SummaryCard>
           ))}
