@@ -139,10 +139,9 @@ export default function PaymentStateDetailPage() {
           })}
         </p>
         <Button
-          variant="ghost"
+          variant="linkMono"
           type="button"
           onClick={() => navigate("/settings#cloud-billing")}
-          className="text-xs font-mono text-txt-strong underline uppercase hover:text-txt transition-colors"
         >
           {t("cloud.paymentStateDetail.backToBillingLink", {
             defaultValue: "Back to billing",
@@ -156,7 +155,7 @@ export default function PaymentStateDetailPage() {
     return (
       <div className="flex flex-col items-center gap-3 p-8 border border-brand-surface max-w-6xl mx-auto m-6">
         <p
-          className="text-xs md:text-sm text-red-300 font-mono"
+          className="text-xs md:text-sm text-destructive font-mono"
           data-testid="payment-detail-error"
         >
           {t("cloud.paymentStateDetail.loadFailed", {
@@ -165,10 +164,9 @@ export default function PaymentStateDetailPage() {
         </p>
         <p className="text-xs text-muted-strong font-mono">{phase.message}</p>
         <Button
-          variant="ghost"
+          variant="linkMono"
           type="button"
           onClick={() => void fetchState()}
-          className="text-xs font-mono text-txt-strong underline uppercase hover:text-txt transition-colors"
         >
           {t("cloud.billingTab.paymentActivityRetry", {
             defaultValue: "Retry",

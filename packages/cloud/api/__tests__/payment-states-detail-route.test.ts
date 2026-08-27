@@ -133,7 +133,7 @@ describe("GET /api/v1/billing/payment-states/:id (#22966 detail)", () => {
       "checkout order",
       "no-colon",
       "UPPER:suffix",
-      "x:" + "a".repeat(300),
+      `x:${"a".repeat(300)}`,
     ]) {
       const res = await app.request(
         `/api/v1/billing/payment-states/${encodeURIComponent(bad)}`,

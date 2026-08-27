@@ -72,6 +72,8 @@ const cardVariants = cva("rounded-sm bg-card/70 text-card-fg", {
       brandSurface: "border border-brand-surface bg-surface",
       billingTopDivider:
         "rounded-none border-0 border-t border-border bg-transparent",
+      billingReversalInset:
+        "rounded-none border-l-2 border-warn/60 bg-transparent",
       warningNotice: "border border-warning/40 bg-warning/10",
       dangerNotice: "border border-danger/30 bg-danger/10 p-4",
       codeFrame: "rounded-sm border border-border bg-card",
