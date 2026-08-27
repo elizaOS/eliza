@@ -186,6 +186,62 @@ describe("persisted non-current scope health triggers recovery", () => {
     expect(h.authority.snapshots).toHaveLength(0);
     expect(h.authority.clearTransientRoomIncompleteness).toHaveBeenCalled();
   });
+
+  it("publishes a shrunken fresh roster when BOTH a transient flag and a persisted non-current scope exist", async () => {
+    const h = createHarness();
+    h.authority.isRoomIncomplete = vi.fn(() => true);
+    h.authority.scopeHealth = vi.fn(async () => ({ health: "stale" }));
+    h.client.members.mockResolvedValue({
+      "@one:example": [{ content: { membership: "join" } }],
+      "@bot:example": [{ content: { membership: "join" } }],
+    });
+    const room = createRoomDouble();
+    h.client.getRooms.mockReturnValue([room]);
+    await (
+      h.service as unknown as {
+        publishMembershipSnapshots: (s: unknown, first: boolean) => Promise<void>;
+      }
+    ).publishMembershipSnapshots(h.state, true);
+    // The persisted stale scope must be restored by the (small) complete
+    // roster, not left stranded by a flag-only clear.
+    expect(h.authority.snapshots).toHaveLength(1);
+  });
+
+  it("fails closed on a scope-health probe failure instead of publishing the SDK cache", async () => {
+    const h = createHarness();
+    h.authority.scopeHealth = vi.fn(async () => {
+      throw new Error("db down");
+    });
+    const room = createRoomDouble();
+    h.client.getRooms.mockReturnValue([room]);
+    await (
+      h.service as unknown as {
+        publishMembershipSnapshots: (s: unknown, first: boolean) => Promise<void>;
+      }
+    ).publishMembershipSnapshots(h.state, true);
+    // Probe failure must route through fresh-roster recovery; the fresh
+    // fetch succeeds here, so the published roster is the fresh one.
+    expect(h.client.members).toHaveBeenCalled();
+    expect(h.authority.snapshots).toHaveLength(1);
+  });
+
+  it("never publishes from the SDK cache on a non-first sync", async () => {
+    const h = createHarness();
+    // No incompleteness, current persisted health — but firstSync=false.
+    h.authority.scopeHealth = vi.fn(async () => ({ health: "current" }));
+    h.client.members.mockRejectedValue(new Error("network down"));
+    const room = createRoomDouble();
+    h.client.getRooms.mockReturnValue([room]);
+    await (
+      h.service as unknown as {
+        publishMembershipSnapshots: (s: unknown, first: boolean) => Promise<void>;
+      }
+    ).publishMembershipSnapshots(h.state, false);
+    // Fail closed: no fresh roster => no publication at all (the SDK cache
+    // is not evidence on a reconnect pass), and the room is flagged.
+    expect(h.authority.snapshots).toHaveLength(0);
+    expect(h.authority.reportIncomplete).toHaveBeenCalled();
+  });
 });
 
 describe("unknown membership values are reported, never recorded as leave", () => {
