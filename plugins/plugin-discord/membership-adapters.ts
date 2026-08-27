@@ -73,3 +73,18 @@ export function memberLikeOf(member: GuildMember): GuildMemberLike {
 		user: { bot: member.user?.bot },
 	};
 }
+
+/**
+ * Accept either a live GuildMember or an already-mapped bridge shape (a
+ * GuildMemberLike's roles are a string array, a GuildMember's are a
+ * RoleManager) so synthesized member views can flow through the same
+ * service hooks.
+ */
+export function asMemberLike(
+	member: GuildMember | GuildMemberLike,
+): GuildMemberLike {
+	if (Array.isArray((member as GuildMemberLike).roles)) {
+		return member as GuildMemberLike;
+	}
+	return memberLikeOf(member as GuildMember);
+}

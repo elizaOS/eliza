@@ -170,7 +170,12 @@ import {
 } from "./identity";
 import { buildDiscordReplyPayload } from "./interactions";
 import { DiscordMembershipPublisher } from "./membership";
-import { memberLikeOf, membershipChannelsOf } from "./membership-adapters";
+import {
+	asMemberLike,
+	memberLikeOf,
+	membershipChannelsOf,
+} from "./membership-adapters";
+import type { GuildMemberLike } from "./membership-bridge";
 import { channelCanView, DiscordMembershipBridge } from "./membership-bridge";
 import {
 	beginDiscordOutboundDelivery,
@@ -789,7 +794,6 @@ export class DiscordService extends Service implements IDiscordService {
 				return null;
 			}
 			this.membershipBridgeInstance = new DiscordMembershipBridge(publisher, {
-				runtime: this.runtime,
 				resolveDiscordEntityId: (userId) => this.resolveDiscordEntityId(userId),
 				worldIdForGuild: (guildId) => createUniqueUuid(this.runtime, guildId),
 				roomIdForChannel: (channelId) =>
@@ -895,13 +899,15 @@ export class DiscordService extends Service implements IDiscordService {
 	/**
 	 * Publish a permission-transition delta (role/overwrite change) for one
 	 * member. Computes view transitions per channel from old/new structural
-	 * member shapes. Degrade-only (#24365).
+	 * member shapes; accepts live GuildMembers or pre-mapped bridge shapes
+	 * (synthesized old/new views for role-permission transitions).
+	 * Degrade-only (#24365).
 	 */
 	async publishMemberPermissionDelta(options: {
 		accountId: string;
 		guild: Guild;
-		oldMember: GuildMember;
-		newMember: GuildMember;
+		oldMember: GuildMember | GuildMemberLike;
+		newMember: GuildMember | GuildMemberLike;
 		eventId?: string;
 	}): Promise<void> {
 		const bridge = this.membershipBridge();
@@ -910,8 +916,8 @@ export class DiscordService extends Service implements IDiscordService {
 		}
 		try {
 			const channels = membershipChannelsOf(options.guild);
-			const oldLike = memberLikeOf(options.oldMember);
-			const newLike = memberLikeOf(options.newMember);
+			const oldLike = asMemberLike(options.oldMember);
+			const newLike = asMemberLike(options.newMember);
 			const canView: string[] = [];
 			const cannotView: string[] = [];
 			for (const channel of channels) {

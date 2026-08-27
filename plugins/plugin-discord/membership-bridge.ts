@@ -6,7 +6,8 @@
  * Kept separate from membership.ts so the publisher core stays free of
  * discord.js types and unit-testable against the authority contract alone.
  */
-import type { JsonObject, logger, MembershipScope, UUID } from "@elizaos/core";
+import { createHash } from "node:crypto";
+import type { JsonObject, MembershipScope, UUID } from "@elizaos/core";
 import { PermissionsBitField } from "discord.js";
 import {
 	type DiscordMembershipPublisher,
@@ -23,11 +24,54 @@ function isMembershipChannel(channel: { type: number }): boolean {
 	return channel.type === 0 || channel.type === 5;
 }
 
+/**
+ * Stable content digest of one channel snapshot's member evidence. The
+ * authority digests the full command (including observedAt), so reusing an
+ * idempotency key across commands with different content is rejected as
+ * MEMBERSHIP_IDEMPOTENCY_CONFLICT and the observation is silently dropped.
+ * Anchoring the snapshot key on this digest guarantees the key changes
+ * whenever the roster or permission content changes, while a redelivery of
+ * an identical roster reuses the key (conflict-drop is a benign no-op there:
+ * the first delivery already committed the same evidence).
+ */
+function snapshotRosterDigest(
+	members: DiscordSnapshotMemberEvidence[],
+): string {
+	const stable = members
+		.map(
+			(member) =>
+				`${member.canonicalPrincipalId}|${[...member.roles].sort().join(",")}|${stablePermissionJson(member.permissionSnapshot)}`,
+		)
+		.sort()
+		.join(";");
+	return createHash("sha256").update(stable).digest("hex").slice(0, 16);
+}
+
+function stablePermissionJson(value: JsonObject): string {
+	const keys = Object.keys(value).sort();
+	const parts: string[] = [];
+	for (const key of keys) {
+		const entry = value[key];
+		parts.push(
+			`${JSON.stringify(key)}:${typeof entry === "object" && entry !== null ? JSON.stringify(entry) : JSON.stringify(entry)}`,
+		);
+	}
+	return `{${parts.join(",")}}`;
+}
+
+/**
+ * Observation anchor for delta idempotency keys: gateway event ids (or
+ * member ids) are NOT unique across distinct commands (a member can join,
+ * leave, and rejoin; roles can transition repeatedly), so a bare id would
+ * collide across distinct events and the second observation would be
+ * dropped as an idempotency conflict. Anchoring on the observation
+ * wall clock makes each distinct command unique.
+ */
+function deltaAnchor(eventId: string | undefined): string {
+	return `${eventId ?? "observed"}:${Date.now()}`;
+}
+
 export interface DiscordMembershipBridgeDeps {
-	runtime: {
-		agentId: UUID;
-		logger: typeof logger;
-	};
 	/** Resolve the runtime entity id for a Discord user (owner-alias aware). */
 	resolveDiscordEntityId(userId: string): UUID;
 	/** World/room runtime ids for a guild channel (process-stable). */
@@ -45,11 +89,6 @@ export class DiscordMembershipBridge {
 	) {
 		this.publisher = publisher;
 		this.deps = deps;
-	}
-
-	/** Underlying publisher (service ownership + tests). */
-	get underlying(): DiscordMembershipPublisher {
-		return this.publisher;
 	}
 
 	/**
@@ -131,8 +170,7 @@ export class DiscordMembershipBridge {
 					scope.connectorAccountId,
 					channel.id,
 					"snapshot",
-					String(options.guild.memberCount),
-					String(members.length),
+					snapshotRosterDigest(members),
 				]),
 			});
 		}
@@ -158,7 +196,7 @@ export class DiscordMembershipBridge {
 			| "banned"
 			| "permission_restored"
 			| "permission_lost";
-		/** Gateway event id anchoring the observation, when known. */
+		/** Anchor unique to one gateway observation, when the caller has one. */
 		eventId?: string;
 	}): Promise<void> {
 		const scopeless = await this.publisher.scopeForChannel({
@@ -179,6 +217,13 @@ export class DiscordMembershipBridge {
 			discordUserId: options.member.id,
 			accountKey: options.accountKey,
 		});
+		const runtimeEntityId = this.deps.resolveDiscordEntityId(options.member.id);
+		await this.publisher.ensurePrincipalEntity({
+			principalId: runtimeEntityId,
+			discordUserId: options.member.id,
+			accountKey: options.accountKey,
+		});
+		const anchor = deltaAnchor(options.eventId);
 		for (const channel of options.guild.channels) {
 			if (!isMembershipChannel(channel)) {
 				continue;
@@ -213,6 +258,7 @@ export class DiscordMembershipBridge {
 			await this.publisher.publishDelta({
 				scope,
 				principalId,
+				runtimeEntityId,
 				worldId,
 				roomId,
 				membershipState: options.membershipState,
@@ -224,7 +270,7 @@ export class DiscordMembershipBridge {
 					channel.id,
 					options.reason,
 					options.member.id,
-					options.eventId ?? "observed",
+					anchor,
 				]),
 			});
 		}
@@ -252,6 +298,7 @@ export class DiscordMembershipBridge {
 	}): Promise<void> {
 		const canView = new Set(options.canViewChannelIds);
 		const cannotView = new Set(options.cannotViewChannelIds);
+		const anchor = deltaAnchor(options.eventId);
 		for (const channel of options.guild.channels) {
 			const restored = canView.has(channel.id);
 			const lost = cannotView.has(channel.id);
@@ -275,6 +322,14 @@ export class DiscordMembershipBridge {
 				discordUserId: options.member.id,
 				accountKey: options.accountKey,
 			});
+			const runtimeEntityId = this.deps.resolveDiscordEntityId(
+				options.member.id,
+			);
+			await this.publisher.ensurePrincipalEntity({
+				principalId: runtimeEntityId,
+				discordUserId: options.member.id,
+				accountKey: options.accountKey,
+			});
 			const worldId = this.deps.worldIdForGuild(options.guild.id);
 			const roomId = this.deps.roomIdForChannel(channel.id);
 			await this.publisher.ensureRuntimeMapping({
@@ -289,6 +344,7 @@ export class DiscordMembershipBridge {
 			await this.publisher.publishDelta({
 				scope,
 				principalId,
+				runtimeEntityId,
 				worldId,
 				roomId,
 				membershipState: restored ? "active" : "revoked",
@@ -302,7 +358,7 @@ export class DiscordMembershipBridge {
 					channel.id,
 					restored ? "permission_restored" : "permission_lost",
 					options.member.id,
-					options.eventId ?? "observed",
+					anchor,
 				]),
 			});
 		}
@@ -355,6 +411,7 @@ export class DiscordMembershipBridge {
 		await this.publisher.renewSender({
 			scope,
 			principalId,
+			runtimeEntityId: entityId,
 			worldId,
 			roomId,
 			roles: member ? rolesOf(member) : ["member"],
@@ -400,7 +457,7 @@ export class DiscordMembershipBridge {
 			runtime: {
 				worldId,
 				roomId,
-				entityId: this.deps.resolveDiscordEntityId(member.id),
+				entityId,
 			},
 		};
 	}
@@ -434,9 +491,14 @@ export interface ChannelLike {
 }
 
 /**
- * Compute whether a member can ViewChannel per Discord's overwrite
- * semantics: base @everyone permissions, + every role overwrite the member
- * has (allow OR, deny AND), + the member overwrite last.
+ * Compute whether a member can ViewChannel per Discord's permission
+ * resolution order: the guild Administrator permission bypasses everything;
+ * otherwise start from the @everyone role's base permissions, apply all
+ * matching role overwrites combined (allow bits OR-accumulated, deny bits
+ * OR-accumulated, then allow beats deny within that stage), and apply the
+ * member overwrite last (its allow beats its deny, and its deny beats the
+ * role stage unless its allow grants). One role denying ViewChannel while
+ * another allows it therefore resolves to allowed, matching discord.js.
  */
 export function channelCanView(
 	channel: ChannelLike,
@@ -445,26 +507,40 @@ export function channelCanView(
 	if (member.pending) {
 		return false;
 	}
+	const admin = PermissionsBitField.Flags.Administrator;
+	if (
+		member.permissions !== undefined &&
+		(member.permissions & admin) === admin
+	) {
+		return true;
+	}
+	const view = PermissionsBitField.Flags.ViewChannel;
 	const base = channel.everyonePermissions ?? PermissionsBitField.Default;
-	let allow = base;
-	let deny = 0n;
 	const memberRoles = new Set(member.roles);
+	let roleAllow = 0n;
+	let roleDeny = 0n;
+	let memberAllow = 0n;
+	let memberDeny = 0n;
+	let hasMemberOverwrite = false;
 	for (const overwrite of channel.overwrites ?? []) {
 		const isRoleOverwrite = overwrite.type === "role" || overwrite.type === 0;
 		const isMemberOverwrite =
 			overwrite.type === "member" || overwrite.type === 1;
 		if (isRoleOverwrite && memberRoles.has(overwrite.id)) {
-			allow |= overwrite.allow ?? 0n;
-			deny |= overwrite.deny ?? 0n;
+			roleAllow |= overwrite.allow ?? 0n;
+			roleDeny |= overwrite.deny ?? 0n;
 		} else if (isMemberOverwrite && overwrite.id === member.id) {
-			// Member overwrite replaces the role-computed decision.
-			allow = (allow & ~deny) | (overwrite.allow ?? 0n);
-			deny = overwrite.deny ?? 0n;
-			allow &= ~deny;
+			// One member overwrite per channel per target; the last wins.
+			hasMemberOverwrite = true;
+			memberAllow = overwrite.allow ?? 0n;
+			memberDeny = overwrite.deny ?? 0n;
 		}
 	}
-	const viewBit = PermissionsBitField.Flags.ViewChannel;
-	return (allow & viewBit) === viewBit && (deny & viewBit) === 0n;
+	let resolved = (base & ~roleDeny) | roleAllow;
+	if (hasMemberOverwrite) {
+		resolved = (resolved & ~memberDeny) | memberAllow;
+	}
+	return (resolved & view) === view;
 }
 
 function rolesOf(member: GuildMemberLike): string[] {

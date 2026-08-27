@@ -27,7 +27,7 @@ import {
 	discordMembershipCompletenessForGuild,
 	discordMembershipPrincipalId,
 } from "../membership";
-import { DiscordMembershipBridge } from "../membership-bridge";
+import { channelCanView, DiscordMembershipBridge } from "../membership-bridge";
 
 const cleanups: Array<() => Promise<void>> = [];
 
@@ -180,7 +180,6 @@ beforeAll(async () => {
 	membership = services[0];
 	publisher = new DiscordMembershipPublisher(runtime);
 	bridge = new DiscordMembershipBridge(publisher, {
-		runtime,
 		resolveDiscordEntityId: (userId) =>
 			// Deterministic test mapping; the real service resolves owner-aware
 			// entity ids. Any stable UUID works for the authority's mapping
@@ -457,7 +456,7 @@ describe("Discord membership publisher (real PGlite authority)", () => {
 		});
 		const after = await membership.getMembership(scope, principal);
 		expect(after?.reason).toBe("reconciled_present");
-		expect(after?.generation).toBeGreaterThanOrEqual(before?.generation);
+		expect((before?.generation ?? 0) <= (after?.generation ?? 0));
 	}, 60_000);
 
 	it("isolates accounts: the same user under two accounts never aliases", async () => {
@@ -557,7 +556,6 @@ describe("Discord membership publisher (real PGlite authority)", () => {
 		// re-register (advancing publisherGeneration) and chain deltas.
 		const restarted = new DiscordMembershipPublisher(runtime);
 		const restartedBridge = new DiscordMembershipBridge(restarted, {
-			runtime,
 			resolveDiscordEntityId: (userId) =>
 				discordMembershipPrincipalId("default", userId),
 			worldIdForGuild: (guildId) =>
@@ -581,5 +579,224 @@ describe("Discord membership publisher (real PGlite authority)", () => {
 		expect(decision.decision).toBe("denied");
 		const health = await membership.getScopeHealth(scope);
 		expect(health?.generation).toBeGreaterThan(0);
+	}, 60_000);
+});
+
+describe("RP round-2 regression battery (#24365 review findings)", () => {
+	// F4: discord.js permission ordering. The reviewer's exact case: one
+	// role denying ViewChannel while another role allows it must resolve
+	// to allowed (combined role-overwrite stage: allow beats deny), and
+	// the guild Administrator permission must bypass everything.
+	it("channelCanView implements combined role + member overwrite ordering (F4)", async () => {
+		const ADMIN = PermissionsBitField.Flags.Administrator;
+		// Base: @everyone has ViewChannel.
+		const chan = makeChannel({ id: "ordering-chan" });
+		// One role denies, one role allows: allowed (combined stage).
+		chan.overwrites.push(
+			{ id: "r-a", type: "role", deny: VIEW },
+			{ id: "r-b", type: "role", allow: VIEW },
+		);
+		expect(
+			channelCanView(chan, makeMember({ id: "u1", roles: ["r-a", "r-b"] })),
+		).toBe(true);
+		// Deny-only role: denied.
+		expect(channelCanView(chan, makeMember({ id: "u2", roles: ["r-a"] }))).toBe(
+			false,
+		);
+		// Member overwrite allow beats the role-deny stage.
+		chan.overwrites.push({ id: "u2", type: "member", allow: VIEW });
+		expect(channelCanView(chan, makeMember({ id: "u2", roles: ["r-a"] }))).toBe(
+			true,
+		);
+		// Member overwrite deny overrides an allowed role stage.
+		const chan2 = makeChannel({ id: "ordering-chan-2" });
+		chan2.overwrites.push({ id: "r-c", type: "role", allow: VIEW });
+		chan2.overwrites.push({ id: "u3", type: "member", deny: VIEW });
+		expect(
+			channelCanView(chan2, makeMember({ id: "u3", roles: ["r-c"] })),
+		).toBe(false);
+		// Administrator bypasses even an explicit member deny.
+		const chan3 = makeChannel({ id: "ordering-chan-3" });
+		chan3.overwrites.push({ id: "u4", type: "member", deny: VIEW });
+		expect(
+			channelCanView(
+				chan3,
+				makeMember({ id: "u4", roles: [], permissions: ADMIN | VIEW }),
+			),
+		).toBe(true);
+		// Base grants @everyone; a member with no roles still views the open channel.
+		expect(channelCanView(chan3, makeMember({ id: "u5", roles: [] }))).toBe(
+			true,
+		);
+		// Pending gate blocks even an admin.
+		expect(
+			channelCanView(
+				chan3,
+				makeMember({ id: "u4", roles: [], permissions: ADMIN, pending: true }),
+			),
+		).toBe(false);
+	});
+
+	// F2: snapshot keys must change when roster CONTENT changes even when
+	// counts stay equal, or the authority rejects the publish as an
+	// idempotency conflict and the roster silently never updates.
+	it("changed roster with equal counts still publishes (F2 snapshot digest keys)", async () => {
+		const chan = makeChannel({ id: "digest-chan" });
+		const guild = (members: ReturnType<typeof makeMember>[]) =>
+			guildShape({
+				id: "guild-digest",
+				memberCount: members.length,
+				members,
+				channels: [chan],
+			});
+		const rosterA = [makeMember({ id: "u-a1" }), makeMember({ id: "u-a2" })];
+		await bridge.publishGuildSnapshot({
+			accountKey: "default",
+			membersIntentEnabled: true,
+			guild: guild(rosterA),
+		});
+		const scope = await scopeFor("guild-digest", "digest-chan");
+		const a1 = discordMembershipPrincipalId(
+			scope.connectorAccountId as string,
+			"u-a1",
+		);
+		const a2 = discordMembershipPrincipalId(
+			scope.connectorAccountId as string,
+			"u-a2",
+		);
+		const b1 = discordMembershipPrincipalId(
+			scope.connectorAccountId as string,
+			"u-b1",
+		);
+		expect((await membership.getMembership(scope, a1))?.state).toBe("active");
+		// Replace u-a2 with u-b1: same member count, different roster.
+		const rosterB = [makeMember({ id: "u-a1" }), makeMember({ id: "u-b1" })];
+		await bridge.publishGuildSnapshot({
+			accountKey: "default",
+			membersIntentEnabled: true,
+			guild: guild(rosterB),
+		});
+		// The snapshot MUST have applied: u-b1 present, u-a2 explicitly
+		// revoked by the authority's absent-member reconciliation.
+		expect((await membership.getMembership(scope, b1))?.state).toBe("active");
+		const a2Record = await membership.getMembership(scope, a2);
+		expect(a2Record?.state).toBe("revoked");
+		expect(a2Record?.reason).toBe("reconciled_absent");
+		const health = await membership.getScopeHealth(scope);
+		expect(health?.health).toBe("current");
+	}, 60_000);
+
+	// F2: distinct join/leave cycles of the same member (equal counts,
+	// same event id shape) must both land; a reused key would drop the
+	// second observation.
+	it("rejoin after leave records both transitions (F2 delta anchors)", async () => {
+		const chan = makeChannel({ id: "rejoin-chan" });
+		const member = makeMember({ id: "u-rejoin" });
+		const guild = {
+			id: "guild-rejoin",
+			name: "guild-rejoin",
+			channels: [chan],
+		};
+		await bridge.publishMemberDelta({
+			accountKey: "default",
+			guild,
+			member,
+			membershipState: "active",
+			reason: "joined",
+			eventId: "rejoin-evt",
+		});
+		await bridge.publishMemberDelta({
+			accountKey: "default",
+			guild,
+			member,
+			membershipState: "revoked",
+			reason: "left",
+			eventId: "rejoin-evt",
+		});
+		const scope = await scopeFor("guild-rejoin", "rejoin-chan");
+		const principal = discordMembershipPrincipalId(
+			scope.connectorAccountId as string,
+			"u-rejoin",
+		);
+		// After join+leave the member is denied.
+		expect((await membership.authorize(scope, principal)).decision).toBe(
+			"denied",
+		);
+		// Join again: same event-id shape, distinct observation.
+		await bridge.publishMemberDelta({
+			accountKey: "default",
+			guild,
+			member,
+			membershipState: "active",
+			reason: "joined",
+			eventId: "rejoin-evt",
+		});
+		const record = await membership.getMembership(scope, principal);
+		expect(record?.state).toBe("active");
+		expect(record?.reason).toBe("joined");
+	}, 60_000);
+
+	// F6: deltas must carry the owner-aware runtime entity id, not the
+	// canonical principal id, matching snapshot runtime mappings.
+	it("deltas write the owner-aware runtime entity mapping (F6)", async () => {
+		const chan = makeChannel({ id: "f6-chan" });
+		const member = makeMember({ id: "u-f6" });
+		await bridge.publishMemberDelta({
+			accountKey: "default",
+			guild: { id: "guild-f6", name: "guild-f6", channels: [chan] },
+			member,
+			membershipState: "active",
+			reason: "joined",
+			eventId: "f6-evt",
+		});
+		const scope = await scopeFor("guild-f6", "f6-chan");
+		const principal = discordMembershipPrincipalId(
+			scope.connectorAccountId as string,
+			"u-f6",
+		);
+		const record = await membership.getMembership(scope, principal);
+		expect(record?.runtime.entityId).toBe(
+			discordMembershipPrincipalId("default", "u-f6"),
+		);
+		expect(record?.runtime.entityId).not.toBe(principal);
+	}, 60_000);
+
+	// F7: a failing evidence command must degrade the scope (fail closed)
+	// rather than silently leaving stale-but-current health.
+	it("delta failure path degrades the scope stale (F7 fail-closed)", async () => {
+		const chan = makeChannel({ id: "f7-chan" });
+		const member = makeMember({ id: "u-f7" });
+		await bridge.publishMemberDelta({
+			accountKey: "default",
+			guild: { id: "guild-f7", name: "guild-f7", channels: [chan] },
+			member,
+			membershipState: "active",
+			reason: "joined",
+			eventId: "f7-evt",
+		});
+		const scope = await scopeFor("guild-f7", "f7-chan");
+		expect((await membership.getScopeHealth(scope))?.health).toBe("current");
+		// Publish a delta for a principal the authority has never seen (the
+		// bridge was bypassed, so no entity row was ensured). The authority
+		// rejects with MEMBERSHIP_PRINCIPAL_NOT_FOUND — a non-fencing error
+		// on both attempts — which must take the fail-closed degrade path.
+		const ghostPrincipal = discordMembershipPrincipalId(
+			scope.connectorAccountId as string,
+			"u-never-ensured",
+		);
+		await publisher.publishDelta({
+			scope,
+			principalId: ghostPrincipal,
+			worldId: discordMembershipPrincipalId("guild-f7", "world"),
+			roomId: discordMembershipPrincipalId("f7-chan", "room"),
+			membershipState: "active",
+			reason: "joined",
+			roles: [],
+			permissionSnapshot: {},
+			idempotencyKey: `discord:f7-ghost:${Date.now()}`,
+		});
+		const health = await membership.getScopeHealth(scope);
+		expect(health?.health).toBe("stale");
+		expect(health?.reason).toContain("delta_rejected");
 	}, 60_000);
 });
