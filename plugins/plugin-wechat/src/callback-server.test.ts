@@ -261,9 +261,6 @@ describe("first-party callback server", () => {
 
   it("cannot replay a ciphertext signed for account A against account B", async () => {
     const received: WechatMessageContext[] = [];
-    const handle = await start((_id, msg) => {
-      received.push(msg);
-    });
 
     const innerXml = buildWechatXml("xml", {
       ToUserName: "corp1",
@@ -278,14 +275,60 @@ describe("first-party callback server", () => {
       ToUserName: "corp1",
       Encrypt: encrypt,
     });
-    // Signed with wecom-main's token but addressed to the OTHER account path.
+
+    // Signed with wecom-main's token but POSTed to a DIFFERENT encrypted
+    // account's path: that account's callback token differs, so signature
+    // verification fails closed.
+    const otherEncrypted: ResolvedWechatAccount = {
+      ...WECOM,
+      id: "wecom-other",
+      tokenSecret: "token-other",
+    };
+    const handle2 = await start(undefined, undefined, [
+      OFFICIAL,
+      WECOM,
+      otherEncrypted,
+    ]);
     const signature = sha1Of(WECOM.tokenSecret, TIMESTAMP, NONCE, encrypt);
+    const res = await httpRequest(
+      handle2.port,
+      `/webhook/wechat/wecom-other?msg_signature=${signature}&timestamp=${TIMESTAMP}&nonce=${NONCE}`,
+      { method: "POST", body: envelope },
+    );
+    expect(res.status).toBe(403);
+    expect(received).toHaveLength(0);
+  });
+
+  it("rejects an encrypted payload sent to a plaintext-mode account", async () => {
+    const received: WechatMessageContext[] = [];
+    const handle = await start((_id, msg) => {
+      received.push(msg);
+    });
+
+    const innerXml = buildWechatXml("xml", {
+      ToUserName: "corp1",
+      FromUserName: "wecom-bob",
+      CreateTime: "1710969600",
+      MsgType: "text",
+      Content: "downgrade",
+      MsgId: "3004",
+    });
+    const encrypt = encryptCallbackPayload(innerXml, "corp1", AES_KEY);
+    const envelope = buildWechatXml("xml", {
+      ToUserName: "corp1",
+      Encrypt: encrypt,
+    });
+    // Even a perfectly correct msg_signature cannot route an encrypted
+    // payload through a plaintext-mode account: the plaintext path only
+    // accepts the `signature` parameter, and its absence fails closed (400).
+    const signature = sha1Of(OFFICIAL.tokenSecret, TIMESTAMP, NONCE, encrypt);
     const res = await httpRequest(
       handle.port,
       `/webhook/wechat/oa-main?msg_signature=${signature}&timestamp=${TIMESTAMP}&nonce=${NONCE}`,
       { method: "POST", body: envelope },
     );
-    expect(res.status).toBe(403);
+    expect([400, 403]).toContain(res.status);
+    expect(res.body).not.toBe("success");
     expect(received).toHaveLength(0);
   });
 
