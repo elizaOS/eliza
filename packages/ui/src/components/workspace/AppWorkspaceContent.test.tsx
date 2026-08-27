@@ -61,8 +61,11 @@ describe("AppWorkspaceContent", () => {
     expect(scrollRegion?.contains(screen.getByTestId("workspace-body"))).toBe(
       true,
     );
-    expect(scrollRegion?.tabIndex).toBe(0);
-    expect(chatClearanceOwners(container)).toEqual([scrollRegion]);
+    const viewport = scrollRegion?.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]',
+    );
+    expect(viewport?.tabIndex).toBe(0);
+    expect(chatClearanceOwners(container)).toEqual([viewport]);
   });
 
   it("keeps the headerless router-owned scroller keyboard focusable", () => {
@@ -76,7 +79,11 @@ describe("AppWorkspaceContent", () => {
       '[data-shell-scroll-region="true"]',
     );
     expect(scrollRegion).not.toBeNull();
-    expect(scrollRegion?.tabIndex).toBe(0);
+    expect(
+      scrollRegion?.querySelector<HTMLElement>(
+        '[data-slot="scroll-area-viewport"]',
+      )?.tabIndex,
+    ).toBe(0);
   });
 
   it("lets fullscreen surfaces opt out of floating-chat clearance", () => {
