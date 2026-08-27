@@ -514,6 +514,171 @@ describe("first-party callback server", () => {
     });
   });
 
+  it("rejects an outer-envelope AgentID that targets a different agent", async () => {
+    const received: WechatMessageContext[] = [];
+    const handle = await start((_id, msg) => {
+      received.push(msg);
+    });
+
+    // Inner XML carries NO AgentID; only the outer envelope does (999).
+    const innerXml = buildWechatXml("xml", {
+      ToUserName: "corp1",
+      FromUserName: "wecom-bob",
+      CreateTime: "1710969600",
+      MsgType: "text",
+      Content: "outer-only wrong agent",
+      MsgId: "5005",
+    });
+    const encrypt = encryptCallbackPayload(innerXml, "corp1", AES_KEY);
+    const envelope = buildWechatXml("xml", {
+      ToUserName: "corp1",
+      Encrypt: encrypt,
+      AgentID: "999",
+    });
+    const signature = sha1Of(WECOM.tokenSecret, TIMESTAMP, NONCE, encrypt);
+    const res = await httpRequest(
+      handle.port,
+      `/webhook/wechat/wecom-main?msg_signature=${signature}&timestamp=${TIMESTAMP}&nonce=${NONCE}`,
+      { method: "POST", body: envelope },
+    );
+    expect(res.status).toBe(403);
+    expect(received).toHaveLength(0);
+  });
+
+  it("rejects outer and inner AgentIDs that disagree", async () => {
+    const received: WechatMessageContext[] = [];
+    const handle = await start((_id, msg) => {
+      received.push(msg);
+    });
+
+    const innerXml = buildWechatXml("xml", {
+      ToUserName: "corp1",
+      FromUserName: "wecom-bob",
+      CreateTime: "1710969600",
+      MsgType: "text",
+      Content: "disagreeing agents",
+      MsgId: "5006",
+      AgentID: "2",
+    });
+    const encrypt = encryptCallbackPayload(innerXml, "corp1", AES_KEY);
+    const envelope = buildWechatXml("xml", {
+      ToUserName: "corp1",
+      Encrypt: encrypt,
+      AgentID: "999",
+    });
+    const signature = sha1Of(WECOM.tokenSecret, TIMESTAMP, NONCE, encrypt);
+    const res = await httpRequest(
+      handle.port,
+      `/webhook/wechat/wecom-main?msg_signature=${signature}&timestamp=${TIMESTAMP}&nonce=${NONCE}`,
+      { method: "POST", body: envelope },
+    );
+    expect(res.status).toBe(403);
+    expect(received).toHaveLength(0);
+  });
+
+  it("rejects a WeCom event whose AgentID targets a different agent", async () => {
+    const received: WechatMessageContext[] = [];
+    const handle = await start((_id, msg) => {
+      received.push(msg);
+    });
+
+    const innerXml = buildWechatXml("xml", {
+      ToUserName: "corp1",
+      FromUserName: "wecom-bob",
+      CreateTime: "1710969600",
+      MsgType: "event",
+      Event: "enter_agent",
+      AgentID: "999",
+    });
+    const encrypt = encryptCallbackPayload(innerXml, "corp1", AES_KEY);
+    const envelope = buildWechatXml("xml", {
+      ToUserName: "corp1",
+      Encrypt: encrypt,
+      AgentID: "999",
+    });
+    const signature = sha1Of(WECOM.tokenSecret, TIMESTAMP, NONCE, encrypt);
+    const res = await httpRequest(
+      handle.port,
+      `/webhook/wechat/wecom-main?msg_signature=${signature}&timestamp=${TIMESTAMP}&nonce=${NONCE}`,
+      { method: "POST", body: envelope },
+    );
+    expect(res.status).toBe(403);
+    expect(received).toHaveLength(0);
+  });
+
+  it("binds the encrypted framing receiver to the appId for official accounts", async () => {
+    const received: WechatMessageContext[] = [];
+    const encryptedOa: ResolvedWechatAccount = {
+      ...OFFICIAL,
+      id: "oa-enc",
+      securityMode: "encrypted",
+      encodingAESKey: AES_KEY,
+    };
+    const handle = await start(
+      (_id, msg) => {
+        received.push(msg);
+      },
+      undefined,
+      [encryptedOa],
+    );
+
+    // Framing receiver = appId (wx-app-id-1); inner ToUserName = gh_ original.
+    const innerXml = buildWechatXml("xml", {
+      ToUserName: "gh_app1",
+      FromUserName: "openid-alice",
+      CreateTime: "1710969600",
+      MsgType: "text",
+      Content: "framing is appId",
+      MsgId: "5007",
+    });
+    const encrypt = encryptCallbackPayload(
+      innerXml,
+      encryptedOa.platformIdentity,
+      AES_KEY,
+    );
+    const envelope = buildWechatXml("xml", {
+      ToUserName: "gh_app1",
+      Encrypt: encrypt,
+    });
+    const signature = sha1Of(
+      encryptedOa.tokenSecret,
+      TIMESTAMP,
+      NONCE,
+      encrypt,
+    );
+    const res = await httpRequest(
+      handle.port,
+      `/webhook/wechat/oa-enc?msg_signature=${signature}&timestamp=${TIMESTAMP}&nonce=${NONCE}`,
+      { method: "POST", body: envelope },
+    );
+    expect(res).toEqual({ body: "success", status: 200 });
+    expect(received).toHaveLength(1);
+
+    // A ciphertext framed for a DIFFERENT appId is rejected even though the
+    // signature token matches (cross-app replay under one callback token).
+    const encryptOther = encryptCallbackPayload(
+      innerXml,
+      "wx-other-app",
+      AES_KEY,
+    );
+    const envelopeOther = buildWechatXml("xml", {
+      ToUserName: "gh_app1",
+      Encrypt: encryptOther,
+    });
+    const signatureOther = sha1Of(
+      encryptedOa.tokenSecret,
+      TIMESTAMP,
+      NONCE,
+      encryptOther,
+    );
+    const resOther = await httpRequest(
+      handle.port,
+      `/webhook/wechat/oa-enc?msg_signature=${signatureOther}&timestamp=${TIMESTAMP}&nonce=${NONCE}`,
+      { method: "POST", body: envelopeOther },
+    );
+    expect(resOther.status).toBe(403);
+  });
+
   it("returns 500 and reports a delivery failure", async () => {
     const failures: Array<{ error: unknown; accountId: string }> = [];
     const handle = await start(

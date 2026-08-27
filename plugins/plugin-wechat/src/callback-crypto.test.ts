@@ -125,7 +125,17 @@ describe("parseWechatXml hardening", () => {
       "<xml><ToUserName><![CDATA[gh_123]]></ToUserName><Content><![CDATA[a ]x> b &amp; c]]></Content></xml>",
     );
     expect(parsed.fields.ToUserName).toBe("gh_123");
-    expect(parsed.fields.Content).toBe("a ]x> b & c");
+    // CDATA content is verbatim character data: entity references inside
+    // CDATA are literal text, not markup, and are not decoded.
+    expect(parsed.fields.Content).toBe("a ]x> b &amp; c");
+  });
+
+  it("does not treat a literal root close inside CDATA as markup", () => {
+    const parsed = parseWechatXml(
+      "<xml><Content><![CDATA[pre </xml> post]]></Content><MsgId>1</MsgId></xml>",
+    );
+    expect(parsed.fields.Content).toBe("pre </xml> post");
+    expect(parsed.fields.MsgId).toBe("1");
   });
 
   it("rejects unterminated CDATA sections", () => {

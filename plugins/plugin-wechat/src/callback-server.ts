@@ -192,7 +192,7 @@ function handleUrlVerification(
         echostr,
         account.encodingAESKey ?? "",
       );
-      if (!isBoundReceiver(decrypted.receiverId, account)) {
+      if (!isBoundFramingReceiver(decrypted.receiverId, account)) {
         res.writeHead(403);
         res.end("Forbidden");
         return;
@@ -242,13 +242,14 @@ async function handleMessagePost(
   }
 
   let xmlText: string;
+  let envelopeAgentId: number | undefined;
   if (encryptedMode) {
     // WeCom's documented sequence: extract the outer Encrypt envelope with
     // the hardened parser, verify the signature over it, then decrypt. No
     // decrypted or business payload is parsed before verification succeeds.
-    let encryptField: string;
+    let envelope: { encrypt: string; outerAgentId?: number };
     try {
-      encryptField = extractEncryptField(body);
+      envelope = extractEncryptedEnvelope(body);
     } catch (err) {
       if (err instanceof WechatError) {
         res.writeHead(400);
@@ -257,6 +258,8 @@ async function handleMessagePost(
       }
       throw err;
     }
+    const encryptField = envelope.encrypt;
+    envelopeAgentId = envelope.outerAgentId;
 
     const valid = verifyCallbackSignature(signature, [
       account.tokenSecret,
@@ -274,7 +277,7 @@ async function handleMessagePost(
         encryptField,
         account.encodingAESKey ?? "",
       );
-      if (!isBoundReceiver(decrypted.receiverId, account)) {
+      if (!isBoundFramingReceiver(decrypted.receiverId, account)) {
         res.writeHead(403);
         res.end("Forbidden");
         return;
@@ -317,21 +320,29 @@ async function handleMessagePost(
     res.end("success");
     return;
   }
-  // Receiver binding: a decrypted/plaintext payload addressed to a different
-  // account identity is a cross-account replay, not a message for this route.
-  // Binding uses callbackIdentity (gh_ original ID / corpId) when configured;
-  // unset means binding is skipped (official-account without callbackId).
-  if (message.recipient && !isBoundReceiver(message.recipient, account)) {
+  // Inner receiver binding: a decrypted/plaintext payload addressed to a
+  // different account identity is a cross-account replay, not a message for
+  // this route. Binding uses callbackIdentity (gh_ original ID / corpId) when
+  // configured; unset means binding is skipped (official-account without
+  // callbackId) — never mis-verified against the appId.
+  if (message.recipient && !isBoundInnerReceiver(message.recipient, account)) {
     res.writeHead(403);
     res.end("Forbidden");
     return;
   }
-  // WeCom evidence must belong to the configured agent: the outer AgentID
-  // (present on self-built app callbacks) must match the account's agentId.
+  // WeCom evidence must belong to the configured agent. The outer envelope
+  // AgentID is authoritative when present; the inner AgentID must agree with
+  // both. An outer/inner disagreement or a mismatch with the configured agent
+  // is a cross-agent replay under the same corp credentials.
   if (account.mode === "wecom" && account.wecomAgentId !== undefined) {
+    const agentIds = [envelopeAgentId, message.agentId].filter(
+      (id): id is number => id !== undefined,
+    );
     if (
-      message.agentId !== undefined &&
-      message.agentId !== account.wecomAgentId
+      agentIds.some((id) => id !== account.wecomAgentId) ||
+      (envelopeAgentId !== undefined &&
+        message.agentId !== undefined &&
+        envelopeAgentId !== message.agentId)
     ) {
       res.writeHead(403);
       res.end("Forbidden");
@@ -364,28 +375,44 @@ async function handleMessagePost(
 }
 
 /**
- * Receiver binding across both identity surfaces. When `callbackIdentity` is
- * configured it is the authoritative expected receiver (gh_ original ID for
- * official accounts, corpId for WeCom). Legacy configuration without it falls
- * back to platformIdentity (appId / corpId) — the token-API identity — which
- * for official accounts never matches the inbound ToUserName, so binding is
- * skipped there rather than mis-verified; a mismatch is a cross-account replay.
+ * Framing receiver binding: the AES payload trailer is the token-API identity
+ * (appId for official accounts, corpId for WeCom) — always bound, never
+ * skipped, because it is knowable from configuration alone.
  */
-function isBoundReceiver(
+function isBoundFramingReceiver(
+  observed: string,
+  account: ResolvedWechatAccount,
+): boolean {
+  return observed === account.platformIdentity;
+}
+
+/**
+ * Inner receiver binding: the business XML ToUserName is the corpId for WeCom
+ * but the gh_ original ID (NOT the appId) for official accounts. WeCom always
+ * binds (corpId); an official account binds only when `callbackId` names the
+ * original ID — otherwise the check is skipped rather than mis-verified
+ * against the appId.
+ */
+function isBoundInnerReceiver(
   observed: string,
   account: ResolvedWechatAccount,
 ): boolean {
   if (!account.callbackIdentity) {
-    // No callback identity configured. For official accounts the fallback
-    // (appId) is the token-API identity, never the inbound ToUserName —
-    // binding against it would mis-verify every legitimate callback, so
-    // binding is skipped. WeCom always resolves a callbackIdentity above.
     return account.mode === "official-account";
   }
   return observed === account.callbackIdentity;
 }
 
-function extractEncryptField(body: string): string {
+/**
+ * Parse the outer encrypted envelope: the Encrypt ciphertext plus, when the
+ * platform carries it there, the envelope AgentID. WeCom self-built app
+ * callbacks place AgentID in BOTH the outer envelope and the decrypted inner
+ * XML; both surfaces are validated and must agree with the configured agent.
+ */
+function extractEncryptedEnvelope(body: string): {
+  encrypt: string;
+  outerAgentId?: number;
+} {
   const parsed = parseWechatXml(body);
   const encrypt = parsed.fields.Encrypt;
   if (!encrypt) {
@@ -394,7 +421,14 @@ function extractEncryptField(body: string): string {
       "encrypted callback has no Encrypt field",
     );
   }
-  return encrypt;
+  const rawAgentId = parsed.fields.AgentID;
+  return {
+    encrypt,
+    outerAgentId:
+      rawAgentId !== undefined && /^\d+$/.test(rawAgentId)
+        ? Number(rawAgentId)
+        : undefined,
+  };
 }
 
 /**
@@ -439,6 +473,12 @@ export function normalizePlatformXml(
       threadId: undefined,
       group: undefined,
       event,
+      // WeCom event callbacks carry the target agent too; surfaced for the
+      // same agent binding as message callbacks.
+      agentId:
+        f.AgentID !== undefined && /^\d+$/.test(f.AgentID)
+          ? Number(f.AgentID)
+          : undefined,
       platform: { mode: account.mode, accountId: account.id },
       raw: { root: parsed.root, event: f.Event ?? null },
     };

@@ -140,6 +140,8 @@ export class TokenManager {
       );
     }
 
+    // error-policy:J3 an unparseable token-endpoint body is untrusted input;
+    // rendered as absent so credential rejection is classified, never faked.
     const payload = (await response.json().catch(() => null)) as {
       access_token?: unknown;
       expires_in?: unknown;
