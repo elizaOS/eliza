@@ -33,6 +33,33 @@ interface ClickCloudLiveOptionalActionOptions {
   actionTimeoutMs: number;
 }
 
+interface PrepareCloudLivePersonalIdentityOptions {
+  chooseRuntime: boolean;
+  chatOverlay: Locator;
+  chatOverlayTimeoutMs: number;
+  chooseRuntimeAction: () => Promise<void>;
+}
+
+/**
+ * The chat overlay is a pre-choice gate, not a post-choice invariant: a valid
+ * Cloud choice may replace the first-run overlay while the account binding is
+ * still resolving. Callers that already chose the runtime must proceed directly
+ * to the bounded binding-or-retry predicate.
+ */
+export async function prepareCloudLivePersonalIdentity({
+  chooseRuntime,
+  chatOverlay,
+  chatOverlayTimeoutMs,
+  chooseRuntimeAction,
+}: PrepareCloudLivePersonalIdentityOptions): Promise<void> {
+  if (!chooseRuntime) return;
+  await chatOverlay.waitFor({
+    state: "visible",
+    timeout: chatOverlayTimeoutMs,
+  });
+  await chooseRuntimeAction();
+}
+
 /**
  * Resolve the locator again while Playwright retries a detached/replaced node,
  * but never inherit the enclosing trajectory's multi-minute timeout. Absence is

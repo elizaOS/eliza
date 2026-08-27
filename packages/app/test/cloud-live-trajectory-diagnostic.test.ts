@@ -81,6 +81,19 @@ describe("Cloud live trajectory diagnostic", () => {
     expect(JSON.stringify(diagnostic)).not.toMatch(
       /selector|locator|https?:|token|transcript/i,
     );
+
+    expect(
+      createCloudLiveTrajectoryDiagnostic(
+        "personal-identity",
+        789,
+        diagnostic.preIdentity,
+      ),
+    ).toEqual({
+      schema: CLOUD_LIVE_TRAJECTORY_DIAGNOSTIC_SCHEMA,
+      phase: "personal-identity",
+      elapsedMs: 789,
+      preIdentity: diagnostic.preIdentity,
+    });
   });
 
   it("rejects invalid pre-identity counters", () => {
