@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "../utils/well-formed";
 /**
  * Built-in `DefaultMessageService` (the runtime's `IMessageService` singleton) and
  * the helpers it composes, implementing the full inbound-message pipeline: memory
@@ -12711,7 +12712,7 @@ export function wrapSingleTurnVisibleCallback(
 		if (typeof response?.text === "string" && response.text.trim()) {
 			if (nearDuplicateOfDeliveredThisTurn(response.text)) {
 				fullRuntime.logger?.debug?.(
-					{ actionName, text: response.text.slice(0, 120) },
+					{ actionName, text: truncateWellFormed(toWellFormedUnicode(response.text), 120) },
 					"[message] suppressed near-duplicate delivery within the turn",
 				);
 				recordDeliveredVisibleText?.(response.text);
