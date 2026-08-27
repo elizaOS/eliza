@@ -288,25 +288,26 @@ async function finalTodosCheck(
     agentId: scenarioAgentId,
     includeCompleted: true,
   });
-  const byId = new Map(todos.map((todo) => [todo.id, todo]));
   const failures: string[] = [];
-  if (byId.get(updateId)?.content !== "Polish TODO scenario") {
-    failures.push("update action did not persist edited content");
+  // The clear turn removes the entity's whole cross-room list, so nothing may
+  // survive here: neither the room-scoped write/create rows nor the four seed
+  // fixtures the seed persisted with roomId: null, outside the scenario room.
+  // Their removal is the runtime-level regression proof for #28006 — a
+  // room-scoped delete would have left the roomId:null fixtures behind while
+  // the entity-scoped provider kept surfacing them. The edited content and the
+  // update/complete/cancel statuses are asserted on the list turn that runs
+  // before the clear, since they cannot be observed once the list is emptied.
+  if (todos.length > 0) {
+    failures.push(
+      `entity-wide clear left ${todos.length} todo(s) behind: ${JSON.stringify(
+        todos.map((todo) => ({ id: todo.id, roomId: todo.roomId })),
+      )}`,
+    );
   }
-  if (byId.get(updateId)?.status !== "in_progress") {
-    failures.push("update action did not persist in_progress status");
-  }
-  if (byId.get(completeId)?.status !== "completed") {
-    failures.push("complete action did not persist completed status");
-  }
-  if (byId.get(cancelId)?.status !== "cancelled") {
-    failures.push("cancel action did not persist cancelled status");
-  }
-  if (byId.has(deleteId)) {
-    failures.push("delete action left the deleted fixture row in the store");
-  }
-  if (todos.some((todo) => todo.roomId === scenarioRoomId)) {
-    failures.push("clear action did not remove room-scoped write/create todos");
+  if (todos.some((todo) => todo.roomId !== scenarioRoomId)) {
+    failures.push(
+      "entity-wide clear did not remove todos created outside the scenario room",
+    );
   }
 
   const providerResult = await currentTodosProvider.get(
@@ -319,13 +320,15 @@ async function finalTodosCheck(
     } as never,
   );
   const providerTodos = records(providerResult.data?.todos);
-  if (!providerResult.text.includes("Polish TODO scenario")) {
-    failures.push("CURRENT_TODOS provider did not render active updated todo");
+  if (providerResult.text !== "") {
+    failures.push(
+      `CURRENT_TODOS provider still rendered todos after clear: ${JSON.stringify(providerResult.text)}`,
+    );
   }
-  if (
-    providerTodos.some((todo) => todo.id === completeId || todo.id === cancelId)
-  ) {
-    failures.push("CURRENT_TODOS provider included completed/cancelled todos");
+  if (providerTodos.length > 0) {
+    failures.push(
+      "CURRENT_TODOS provider returned todos after the entity-wide clear",
+    );
   }
   return failures.length > 0 ? failures.join("\n") : undefined;
 }
@@ -638,28 +641,46 @@ export default scenario({
       actionName: "TODO",
       text: "list todos",
       options: { parameters: { action: "list", includeCompleted: true } },
+      // This turn is the last observation of persisted mutation state before
+      // the entity-wide clear empties the list, so it pins the edited content
+      // and the update/complete/cancel statuses that finalTodosCheck can no
+      // longer read afterward.
       assertTurn: expectTodoTurn("list", (data) => {
         if (!updateId || !completeId || !cancelId || !deleteId) {
           return "seeded TODO identities were not available to list assertion";
         }
-        if (!findTodo(data, updateId)) return "list omitted updated fixture";
-        if (!findTodo(data, completeId))
-          return "list omitted completed fixture";
-        if (!findTodo(data, cancelId)) return "list omitted cancelled fixture";
+        const updated = findTodo(data, updateId);
+        if (!updated) return "list omitted updated fixture";
+        if (updated.content !== "Polish TODO scenario") {
+          return `list did not reflect edited content: ${JSON.stringify(updated)}`;
+        }
+        if (updated.status !== "in_progress") {
+          return `list did not reflect in_progress status: ${JSON.stringify(updated)}`;
+        }
+        const completed = findTodo(data, completeId);
+        if (!completed) return "list omitted completed fixture";
+        if (completed.status !== "completed") {
+          return `list did not reflect completed status: ${JSON.stringify(completed)}`;
+        }
+        const cancelled = findTodo(data, cancelId);
+        if (!cancelled) return "list omitted cancelled fixture";
+        if (cancelled.status !== "cancelled") {
+          return `list did not reflect cancelled status: ${JSON.stringify(cancelled)}`;
+        }
         if (findTodo(data, deleteId)) return "list included deleted fixture";
         return undefined;
       }),
     },
     {
       kind: "action",
-      name: "TODO clear removes room-scoped todos",
+      name: "TODO clear removes the entity's whole cross-room list",
       actionName: "TODO",
       text: "clear todos",
       options: { parameters: { action: "clear" } },
       assertTurn: expectTodoTurn("clear", (data) =>
-        data.count === 3
+        data.count === 6
           ? undefined
-          : `expected clear count=3 for room-scoped write/create rows, saw ${String(data.count)}`,
+          : `expected clear count=6 for the entity's whole cross-room list (3 room-scoped write/create rows plus 3 surviving roomId:null seed fixtures), saw ${String(data.count)}`,
       ),
     },
   ],
