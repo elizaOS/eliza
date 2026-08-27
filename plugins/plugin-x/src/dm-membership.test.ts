@@ -268,4 +268,107 @@ describe("TwitterDirectMessageClient membership wiring (#24372)", () => {
     await dm.stop();
     expect(degraded.restoreAllScopes).toHaveBeenCalledWith("x_auth_recovered");
   });
+
+  it("retries auth recovery when restore-all fails: flag stays set and restore is re-attempted (R4 finding 1)", async () => {
+    const runtime = fakeRuntime();
+    const before = membershipInstances.length;
+    const { dm, setSession } = buildClient(runtime);
+    const pub = membershipInstances[before];
+    // Enter the degraded state via a 401 poll.
+    setSession({
+      profile: { userId: "990000000000000001" },
+      client: {
+        v2: {
+          listDmEvents: vi.fn().mockRejectedValue({ data: { status: 401 } }),
+        },
+      },
+    } as unknown as AuthenticatedTwitterSession);
+    await dm.start();
+    await dm.stop();
+    expect(pub.degradeAllScopes).toHaveBeenCalledTimes(1);
+    // Restore-all fails on the recovery poll: the failure must NOT be
+    // treated as successful recovery.
+    pub.restoreAllScopes.mockRejectedValueOnce(new Error("restore down"));
+    setSession(fakeSession([]));
+    await dm.start();
+    await dm.stop();
+    expect(pub.restoreAllScopes).toHaveBeenCalledTimes(1);
+    // Next successful poll retries the restore (flag was retained).
+    setSession(fakeSession([]));
+    await dm.start();
+    await dm.stop();
+    expect(pub.restoreAllScopes).toHaveBeenCalledTimes(2);
+    expect(pub.restoreAllScopes).toHaveBeenLastCalledWith("x_auth_recovered");
+  });
+
+  it("clears the degraded flag without restoring when no scopes are bound (R4 hasBoundScopes edge)", async () => {
+    const runtime = fakeRuntime();
+    const before = membershipInstances.length;
+    const { dm, setSession } = buildClient(runtime);
+    const pub = membershipInstances[before];
+    setSession({
+      profile: { userId: "990000000000000001" },
+      client: {
+        v2: {
+          listDmEvents: vi.fn().mockRejectedValue({ data: { status: 401 } }),
+        },
+      },
+    } as unknown as AuthenticatedTwitterSession);
+    await dm.start();
+    await dm.stop();
+    // No bound scopes: recovery clears the flag without any restore call,
+    // so later polls never force-restore and reset fresh evidence.
+    pub.hasBoundScopes.mockReturnValue(false);
+    setSession(fakeSession([]));
+    await dm.start();
+    await dm.stop();
+    expect(pub.restoreAllScopes).not.toHaveBeenCalled();
+    // And a later poll does not resurrect a stale restore either.
+    pub.hasBoundScopes.mockReturnValue(true);
+    setSession(fakeSession([]));
+    await dm.start();
+    await dm.stop();
+    expect(pub.restoreAllScopes).not.toHaveBeenCalled();
+  });
+
+  it("withholds the cursor when own-rejoin scope restore fails, then succeeds on retry (R4 finding 2)", async () => {
+    const runtime = fakeRuntime();
+    const before = membershipInstances.length;
+    const { dm, setSession } = buildClient(runtime);
+    const pub = membershipInstances[before];
+    await runtime.setCache(
+      "twitter/default/990000000000000001/dm_cursor",
+      "400",
+    );
+    // Own account rejoins; the scope restore fails on the first attempt.
+    const rejoinEvent = {
+      id: "401",
+      event_type: "ParticipantsJoin",
+      dm_conversation_id: "1999888777660004",
+      participant_ids: ["990000000000000001"], // own user
+      sender_id: "990000000000000003",
+      created_at: "2026-08-26T00:00:00.000Z",
+    };
+    pub.restoreScope.mockRejectedValueOnce(new Error("restore down"));
+    setSession(fakeSession([rejoinEvent]));
+    await dm.start();
+    await dm.stop();
+    // The restore was attempted and failed: no join evidence may publish
+    // and the cursor must stay before the event so it is retried.
+    expect(pub.restoreScope).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: "own_account_rejoined_conversation" }),
+    );
+    expect(pub.publishJoin).not.toHaveBeenCalled();
+    expect(
+      await runtime.getCache("twitter/default/990000000000000001/dm_cursor"),
+    ).toBe("400");
+    // Retry: restore succeeds, evidence publishes, cursor advances.
+    setSession(fakeSession([rejoinEvent]));
+    await dm.start();
+    await dm.stop();
+    expect(pub.publishJoin).toHaveBeenCalled();
+    expect(
+      await runtime.getCache("twitter/default/990000000000000001/dm_cursor"),
+    ).toBe("401");
+  });
 });
