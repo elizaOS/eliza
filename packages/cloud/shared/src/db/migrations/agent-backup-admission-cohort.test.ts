@@ -1,0 +1,975 @@
+/** Applies the split admission migrations to PGlite and proves durable cohort invariants. */
+
+import { afterEach, describe, expect, test } from "bun:test";
+import { PGlite } from "@electric-sql/pglite";
+import { getTableConfig } from "drizzle-orm/pg-core";
+import {
+  agentBackupAdmissionClaimShards,
+  agentBackupAdmissionEnrollmentShards,
+  agentBackupAdmissionWork,
+} from "../schemas/agent-backup-admission";
+import { agentSandboxBackups } from "../schemas/agent-sandboxes";
+
+const migrationNames = [
+  "0343_agent_backup_admission_sandbox_source_stamp.sql",
+  "0344_agent_backup_admission_node_source_stamp.sql",
+  "0345_agent_backup_admission_snapshot_visibility.sql",
+  "0346_agent_backup_admission_cohort_authority.sql",
+  "0347_agent_backup_admission_cohort_seed.sql",
+  "0348_agent_backup_admission_work_table.sql",
+  "0349_agent_backup_admission_work_shapes.sql",
+  "0350_agent_backup_admission_work_state_shapes.sql",
+  "0351_agent_backup_admission_work_stage_policy.sql",
+  "0352_agent_backup_admission_work_indexes.sql",
+  "0353_agent_backup_admission_work_identity_guard.sql",
+  "0354_agent_backup_admission_work_state_guard.sql",
+  "0355_agent_backup_admission_work_delete_guard.sql",
+  "0356_agent_backup_admission_shard_guard.sql",
+  "0357_agent_backup_admission_claim_authority.sql",
+  "0358_agent_backup_admission_claim_seed.sql",
+  "0359_agent_backup_admission_claim_indexes.sql",
+  "0360_agent_backup_admission_claim_guard.sql",
+] as const;
+const migrations = await Promise.all(
+  migrationNames.map((name) => Bun.file(new URL(`./${name}`, import.meta.url)).text()),
+);
+const journalUrl = new URL("./meta/_journal.json", import.meta.url);
+const databases: PGlite[] = [];
+
+const ORG_A = "10000000-0000-4000-8000-000000000001";
+const ORG_B = "10000000-0000-4000-8000-000000000002";
+const SANDBOX_A = "20000000-0000-4000-8000-000000000001";
+const SANDBOX_B = "20000000-0000-4000-8000-000000000002";
+const SANDBOX_C = "20000000-0000-4000-8000-000000000003";
+const HISTORY_A = "30000000-0000-4000-8000-000000000001";
+const HISTORY_B = "30000000-0000-4000-8000-000000000002";
+const BACKUP_A = "40000000-0000-4000-8000-000000000001";
+const GC_A = "50000000-0000-4000-8000-000000000001";
+const GC_OBJECT_A = "51000000-0000-4000-8000-000000000001";
+const GC_OBJECT_B = "51000000-0000-4000-8000-000000000002";
+const ACTIVATION = "60000000-0000-4000-8000-000000000001";
+const DUE = "2026-08-20 00:00:00+00";
+const DEADLINE = "2026-08-20 00:15:00+00";
+const CONTAINER = "a".repeat(64);
+const IMAGE = `sha256:${"b".repeat(64)}`;
+
+async function applyAll(db: PGlite): Promise<void> {
+  for (const migration of migrations) {
+    for (const statement of migration.split("--> statement-breakpoint")) {
+      if (statement.trim()) await db.exec(statement);
+    }
+  }
+}
+
+async function database(): Promise<PGlite> {
+  const db = new PGlite();
+  databases.push(db);
+  await db.exec(`
+    CREATE TABLE organizations (
+      id uuid PRIMARY KEY,
+      account_lifecycle_state text NOT NULL DEFAULT 'active',
+      is_active boolean NOT NULL DEFAULT TRUE,
+      account_deletion_request_id uuid
+    );
+    CREATE TABLE agent_node_incarnation_histories (id uuid PRIMARY KEY);
+    CREATE TABLE agent_sandboxes (
+      id uuid PRIMARY KEY, organization_id uuid NOT NULL, sandbox_id text,
+      status text, pool_status text, execution_tier text, activation_generation uuid,
+      activation_lifecycle_revision bigint, lifecycle_revision bigint,
+      activation_phase text, activation_receipt_hash text, activation_container_id text,
+      activation_node_id text, activation_image_digest text, activation_boot_id uuid,
+      activation_authority_published_at timestamptz, activation_dispatched_at timestamptz,
+      activation_completed_at timestamptz, next_backup_at timestamptz,
+      backup_schedule_last_protected_at timestamptz,
+      CONSTRAINT agent_sandboxes_id_organization_unique UNIQUE (id, organization_id)
+    );
+    CREATE TABLE docker_nodes (
+      id uuid PRIMARY KEY, node_id text, current_node_history_id uuid,
+      node_incarnation uuid, fleet_kind text, infrastructure_provider text,
+      provider_server_id text, host_key_fingerprint text
+    );
+    CREATE TABLE agent_sandbox_backups (
+      id uuid PRIMARY KEY, catalog_organization_id uuid, catalog_state text,
+      catalog_resume_state text, source_node_history_id uuid,
+      source_node_record_id uuid, source_node_incarnation uuid,
+      CONSTRAINT agent_sandbox_backups_catalog_identity_unique
+        UNIQUE (id, catalog_organization_id)
+    );
+    CREATE TABLE agent_backup_objects (
+      id uuid PRIMARY KEY, organization_id uuid NOT NULL,
+      UNIQUE (id, organization_id)
+    );
+    CREATE TABLE agent_backup_gc_outbox (
+      id uuid PRIMARY KEY, organization_id uuid NOT NULL,
+      object_id uuid NOT NULL, action text NOT NULL,
+      UNIQUE (object_id, action),
+      FOREIGN KEY (object_id, organization_id)
+        REFERENCES agent_backup_objects (id, organization_id)
+    );
+    INSERT INTO organizations (id) VALUES ('${ORG_A}'), ('${ORG_B}');
+    INSERT INTO agent_node_incarnation_histories VALUES ('${HISTORY_A}'), ('${HISTORY_B}');
+    INSERT INTO agent_sandboxes (
+      id, organization_id, sandbox_id, status, pool_status, execution_tier,
+      activation_generation, activation_lifecycle_revision, lifecycle_revision,
+      activation_phase, activation_receipt_hash, activation_container_id,
+      activation_node_id, activation_image_digest, activation_boot_id,
+      activation_authority_published_at, activation_dispatched_at,
+      activation_completed_at, next_backup_at
+    ) VALUES
+      ('${SANDBOX_A}', '${ORG_A}', 'sandbox-a', 'active', 'allocated', 'dedicated',
+        '${ACTIVATION}', 7, 7, 'active', '${"c".repeat(64)}', '${CONTAINER}',
+        'node-a', '${IMAGE}', '${HISTORY_A}', now(), now(), '${DUE}', '${DUE}'),
+      ('${SANDBOX_B}', '${ORG_A}', 'sandbox-b', 'active', 'allocated', 'dedicated',
+        '${ACTIVATION}', 7, 7, 'active', '${"c".repeat(64)}', '${CONTAINER}',
+        'node-b', '${IMAGE}', '${HISTORY_B}', now(), now(), '${DUE}', '${DUE}'),
+      ('${SANDBOX_C}', '${ORG_B}', 'sandbox-c', 'active', 'allocated', 'dedicated',
+        '${ACTIVATION}', 7, 7, 'active', '${"c".repeat(64)}', '${CONTAINER}',
+        'node-a', '${IMAGE}', '${HISTORY_A}', now(), now(), '${DUE}', '${DUE}');
+    INSERT INTO docker_nodes VALUES
+      ('70000000-0000-4000-8000-000000000001', 'node-a', '${HISTORY_A}',
+        '${HISTORY_A}', 'robot', 'hetzner', NULL, 'SHA256:a'),
+      ('70000000-0000-4000-8000-000000000002', 'node-b', '${HISTORY_B}',
+        '${HISTORY_B}', 'robot', 'hetzner', NULL, 'SHA256:b');
+    INSERT INTO agent_sandbox_backups (id, catalog_organization_id)
+      VALUES ('${BACKUP_A}', '${ORG_A}');
+    INSERT INTO agent_backup_objects VALUES
+      ('${GC_OBJECT_A}', '${ORG_A}'), ('${GC_OBJECT_B}', '${ORG_A}');
+    INSERT INTO agent_backup_gc_outbox VALUES
+      ('${GC_A}', '${ORG_A}', '${GC_OBJECT_A}', 'delete_object');
+  `);
+  await applyAll(db);
+  return db;
+}
+
+async function insertSchedule(
+  db: PGlite,
+  id: string,
+  organizationId: string,
+  sandboxId: string,
+  historyId: string,
+): Promise<void> {
+  await db.query(
+    `INSERT INTO agent_backup_admission_work (
+       id, work_kind, work_stage, organization_id, sandbox_id, node_history_id,
+       source_activation_generation, source_lifecycle_revision, source_provider_handle,
+       source_container_id, source_image_digest, source_rpo_ms, requires_node_lane,
+       priority_class, base_priority, source_due_at, rpo_deadline_at, not_before,
+       ready_cohort, cohort_ordinal, shard_id
+     ) VALUES ($1::uuid, 'schedule_capture', 'reserve_capture', $2::uuid, $3::uuid,
+       $4::uuid, $5::uuid, 7, 'sandbox-provider', $6, $7, 900000, TRUE,
+       'periodic_capture', 3, $8::timestamptz, $9::timestamptz, $8::timestamptz,
+       1, 0, agent_backup_admission_expected_shard($3::uuid))`,
+    [id, organizationId, sandboxId, historyId, ACTIVATION, CONTAINER, IMAGE, DUE, DEADLINE],
+  );
+}
+
+afterEach(async () => {
+  await Promise.all(databases.splice(0).map((db) => db.close()));
+});
+
+describe("backup admission cohort migrations", () => {
+  test("stay split, ordered, and below the migration lock budget", async () => {
+    const journal = (await Bun.file(journalUrl).json()) as {
+      entries: Array<{ idx: number; tag: string }>;
+    };
+    expect(journal.entries.slice(-migrationNames.length).map(({ tag }) => `${tag}.sql`)).toEqual(
+      migrationNames,
+    );
+    for (const migration of migrations) expect(migration.split("\n").length).toBeLessThan(100);
+  });
+
+  test("keeps deployed constraint and index names aligned with Drizzle", async () => {
+    const shardConfig = getTableConfig(agentBackupAdmissionEnrollmentShards);
+    const claimShardConfig = getTableConfig(agentBackupAdmissionClaimShards);
+    const workConfig = getTableConfig(agentBackupAdmissionWork);
+    const backupConfig = getTableConfig(agentSandboxBackups);
+    const expectedConstraints = [
+      "agent_backup_admission_enrollment_shards_pkey",
+      "agent_backup_admission_claim_shards_pkey",
+      "agent_backup_admission_claim_shards_bounds_check",
+      "agent_backup_admission_claim_shards_cycle_shape_check",
+      "agent_backup_admission_work_organization_id_fkey",
+      "agent_backup_admission_work_node_history_id_fkey",
+      "agent_backup_admission_work_sandbox_tenant_fkey",
+      "agent_backup_admission_work_backup_tenant_fkey",
+      "agent_backup_admission_work_gc_authority_fkey",
+      "agent_backup_admission_work_gc_object_tenant_fkey",
+    ];
+    const configuredConstraints = [
+      ...shardConfig.primaryKeys.map((key) => key.getName()),
+      ...claimShardConfig.primaryKeys.map((key) => key.getName()),
+      ...claimShardConfig.checks.map((constraint) => constraint.name),
+      ...workConfig.foreignKeys.map((key) => key.getName()),
+    ];
+    expect(configuredConstraints).toEqual(expect.arrayContaining(expectedConstraints));
+    expect(claimShardConfig.checks.map((constraint) => constraint.name)).toEqual(
+      expect.arrayContaining([
+        "agent_backup_admission_claim_shards_bounds_check",
+        "agent_backup_admission_claim_shards_cycle_shape_check",
+      ]),
+    );
+    expect(claimShardConfig.indexes.map(({ config }) => config.name)).toContain(
+      "agent_backup_admission_claim_shards_turn_idx",
+    );
+
+    const expectedWorkIndexes = [
+      "agent_backup_admission_work_schedule_uidx",
+      "agent_backup_admission_work_operation_stage_uidx",
+      "agent_backup_admission_work_gc_uidx",
+      "agent_backup_admission_work_organization_idx",
+      "agent_backup_admission_work_leased_organization_uidx",
+      "agent_backup_admission_work_leased_node_uidx",
+      "agent_backup_admission_work_due_idx",
+      "agent_backup_admission_work_shard_idx",
+      "agent_backup_admission_work_claim_scan_idx",
+      "agent_backup_admission_work_deferred_ready_shard_idx",
+      "agent_backup_admission_work_expired_lease_shard_idx",
+      "agent_backup_admission_work_expired_lease_idx",
+    ];
+    expect(workConfig.indexes.map(({ config }) => config.name)).toEqual(
+      expect.arrayContaining(expectedWorkIndexes),
+    );
+    const expectedBackupIndexes = [
+      "agent_sandbox_backups_admission_active_org_idx",
+      "agent_sandbox_backups_admission_capture_history_idx",
+      "agent_sandbox_backups_admission_capture_fallback_idx",
+    ];
+    expect(backupConfig.indexes.map(({ config }) => config.name)).toEqual(
+      expect.arrayContaining(expectedBackupIndexes),
+    );
+
+    const db = await database();
+    const deployedConstraints = await db.query<{ name: string }>(`
+      SELECT conname AS name FROM pg_constraint
+      WHERE conrelid IN (
+        'agent_backup_admission_enrollment_shards'::regclass,
+        'agent_backup_admission_claim_shards'::regclass,
+        'agent_backup_admission_work'::regclass
+      )
+    `);
+    expect(deployedConstraints.rows.map(({ name }) => name)).toEqual(
+      expect.arrayContaining(expectedConstraints),
+    );
+    const deployedIndexes = await db.query<{ name: string }>(`
+      SELECT indexname AS name FROM pg_indexes
+      WHERE schemaname = 'public' AND tablename = 'agent_backup_admission_work'
+    `);
+    expect(deployedIndexes.rows.map(({ name }) => name)).toEqual(
+      expect.arrayContaining(expectedWorkIndexes),
+    );
+    const deployedBackupIndexes = await db.query<{ name: string }>(`
+      SELECT indexname AS name FROM pg_indexes
+      WHERE schemaname = 'public' AND tablename = 'agent_sandbox_backups'
+    `);
+    expect(deployedBackupIndexes.rows.map(({ name }) => name)).toEqual(
+      expect.arrayContaining(expectedBackupIndexes),
+    );
+    const deployedClaimIndexes = await db.query<{ name: string }>(`
+      SELECT indexname AS name FROM pg_indexes
+      WHERE schemaname = 'public' AND tablename = 'agent_backup_admission_claim_shards'
+    `);
+    expect(deployedClaimIndexes.rows.map(({ name }) => name)).toContain(
+      "agent_backup_admission_claim_shards_turn_idx",
+    );
+    const indexShapes = await db.query<{
+      name: string;
+      columns: string;
+      predicate: string | null;
+    }>(`
+      SELECT index_relation.relname AS name,
+        (SELECT string_agg(attribute.attname, ',' ORDER BY key.ordinality)
+          FROM unnest(index_record.indkey) WITH ORDINALITY AS key(attnum, ordinality)
+          JOIN pg_attribute attribute ON attribute.attrelid = index_record.indrelid
+            AND attribute.attnum = key.attnum) AS columns,
+        pg_get_expr(index_record.indpred, index_record.indrelid) AS predicate
+      FROM pg_index index_record
+      JOIN pg_class index_relation ON index_relation.oid = index_record.indexrelid
+      WHERE index_relation.relname IN (
+        'agent_backup_admission_claim_shards_turn_idx',
+        'agent_backup_admission_work_claim_scan_idx',
+        'agent_backup_admission_work_deferred_ready_shard_idx',
+        'agent_backup_admission_work_expired_lease_shard_idx',
+        'agent_backup_admission_work_organization_idx',
+        'agent_sandbox_backups_admission_active_org_idx',
+        'agent_sandbox_backups_admission_capture_history_idx',
+        'agent_sandbox_backups_admission_capture_fallback_idx'
+      )
+      ORDER BY index_relation.relname
+    `);
+    expect(indexShapes.rows.map(({ name, columns }) => ({ name, columns }))).toEqual([
+      {
+        name: "agent_backup_admission_claim_shards_turn_idx",
+        columns: "work_kind,last_turn,shard_id",
+      },
+      {
+        name: "agent_backup_admission_work_claim_scan_idx",
+        columns: "work_kind,shard_id,ready_cohort,cohort_ordinal,id",
+      },
+      {
+        name: "agent_backup_admission_work_deferred_ready_shard_idx",
+        columns: "work_kind,shard_id,not_before,id",
+      },
+      {
+        name: "agent_backup_admission_work_expired_lease_shard_idx",
+        columns: "work_kind,shard_id,lease_expires_at,id",
+      },
+      {
+        name: "agent_backup_admission_work_organization_idx",
+        columns: "organization_id,id",
+      },
+      {
+        name: "agent_sandbox_backups_admission_active_org_idx",
+        columns: "catalog_organization_id",
+      },
+      {
+        name: "agent_sandbox_backups_admission_capture_fallback_idx",
+        columns: "source_node_record_id,source_node_incarnation",
+      },
+      {
+        name: "agent_sandbox_backups_admission_capture_history_idx",
+        columns: "source_node_history_id",
+      },
+    ]);
+    const predicateByIndex = new Map(
+      indexShapes.rows.map(({ name, predicate }) => [name, predicate]),
+    );
+    expect(predicateByIndex.get("agent_backup_admission_claim_shards_turn_idx")).toBeNull();
+    expect(predicateByIndex.get("agent_backup_admission_work_claim_scan_idx")).toMatch(
+      /state.*queued/i,
+    );
+    expect(predicateByIndex.get("agent_backup_admission_work_deferred_ready_shard_idx")).toMatch(
+      /state.*deferred/i,
+    );
+    expect(predicateByIndex.get("agent_backup_admission_work_expired_lease_shard_idx")).toMatch(
+      /state.*leased/i,
+    );
+    expect(predicateByIndex.get("agent_backup_admission_work_organization_idx")).toBeNull();
+    expect(predicateByIndex.get("agent_sandbox_backups_admission_active_org_idx")).toMatch(
+      /catalog_state.*scheduled.*capturing.*captured.*uploading.*primary_uploaded.*primary_verified.*secondary_pending.*failed_retryable/is,
+    );
+    for (const name of [
+      "agent_sandbox_backups_admission_capture_history_idx",
+      "agent_sandbox_backups_admission_capture_fallback_idx",
+    ]) {
+      expect(predicateByIndex.get(name)).toMatch(
+        /catalog_state.*scheduled.*capturing.*failed_retryable.*catalog_resume_state.*scheduled.*capturing/is,
+      );
+    }
+    expect(predicateByIndex.get("agent_sandbox_backups_admission_capture_history_idx")).toMatch(
+      /source_node_history_id.*IS NOT NULL/i,
+    );
+    expect(predicateByIndex.get("agent_sandbox_backups_admission_capture_fallback_idx")).toMatch(
+      /source_node_history_id.*IS NULL/i,
+    );
+    await db.exec("SET enable_seqscan = off");
+    const explainIndex = async (selectSql: string): Promise<string> => {
+      const explained = await db.query<{ "QUERY PLAN": unknown }>(
+        `EXPLAIN (FORMAT JSON, COSTS OFF) ${selectSql}`,
+      );
+      return JSON.stringify(explained.rows);
+    };
+    expect(
+      await explainIndex(`SELECT 1 FROM agent_backup_admission_work
+        WHERE organization_id = '${ORG_A}' ORDER BY id`),
+    ).toContain("agent_backup_admission_work_organization_idx");
+    expect(
+      await explainIndex(`SELECT 1 FROM agent_sandbox_backups
+        WHERE catalog_organization_id = '${ORG_A}'
+          AND catalog_state IN (
+            'scheduled', 'capturing', 'captured', 'uploading', 'primary_uploaded',
+            'primary_verified', 'secondary_pending', 'failed_retryable'
+          )`),
+    ).toContain("agent_sandbox_backups_admission_active_org_idx");
+    expect(
+      await explainIndex(`SELECT 1 FROM agent_sandbox_backups
+        WHERE source_node_history_id = '${HISTORY_A}'
+          AND (catalog_state IN ('scheduled', 'capturing')
+            OR (catalog_state = 'failed_retryable'
+              AND catalog_resume_state IN ('scheduled', 'capturing')))`),
+    ).toContain("agent_sandbox_backups_admission_capture_history_idx");
+    expect(
+      await explainIndex(`SELECT 1 FROM agent_sandbox_backups
+        WHERE source_node_history_id IS NULL
+          AND source_node_record_id = '70000000-0000-4000-8000-000000000001'
+          AND source_node_incarnation = '${HISTORY_A}'
+          AND (catalog_state IN ('scheduled', 'capturing')
+            OR (catalog_state = 'failed_retryable'
+              AND catalog_resume_state IN ('scheduled', 'capturing')))`),
+    ).toContain("agent_sandbox_backups_admission_capture_fallback_idx");
+    const addedGcIndexes = await db.query<{ name: string }>(`
+      SELECT indexname AS name FROM pg_indexes
+      WHERE schemaname = 'public' AND tablename = 'agent_backup_gc_outbox'
+        AND indexname = 'agent_backup_gc_outbox_tenant_identity_uidx'
+    `);
+    expect(addedGcIndexes.rows).toHaveLength(0);
+  });
+
+  test("replays without resetting frozen enrollment or claim progress", async () => {
+    const db = await database();
+    const historicalSources = await db.query<{
+      table_name: string;
+      total: number;
+      sentinel: number;
+    }>(`
+      SELECT 'agent_sandboxes' AS table_name, count(*)::int AS total,
+        count(*) FILTER (WHERE backup_admission_xid = '0'::xid8)::int AS sentinel
+      FROM agent_sandboxes
+      UNION ALL
+      SELECT 'docker_nodes', count(*)::int,
+        count(*) FILTER (WHERE backup_admission_xid = '0'::xid8)::int
+      FROM docker_nodes
+      ORDER BY table_name
+    `);
+    expect(historicalSources.rows).toEqual([
+      { table_name: "agent_sandboxes", total: 3, sentinel: 3 },
+      { table_name: "docker_nodes", total: 2, sentinel: 2 },
+    ]);
+    const sourceDefaults = await db.query<{
+      table_name: string;
+      is_not_null: boolean;
+      default_sql: string;
+    }>(`
+      SELECT relation.relname AS table_name, attribute.attnotnull AS is_not_null,
+        pg_get_expr(default_value.adbin, default_value.adrelid) AS default_sql
+      FROM pg_attribute attribute
+      JOIN pg_class relation ON relation.oid = attribute.attrelid
+      JOIN pg_attrdef default_value ON default_value.adrelid = attribute.attrelid
+        AND default_value.adnum = attribute.attnum
+      WHERE relation.relname IN ('agent_sandboxes', 'docker_nodes')
+        AND attribute.attname = 'backup_admission_xid'
+      ORDER BY relation.relname
+    `);
+    expect(sourceDefaults.rows).toEqual([
+      { table_name: "agent_sandboxes", is_not_null: true, default_sql: "pg_current_xact_id()" },
+      { table_name: "docker_nodes", is_not_null: true, default_sql: "pg_current_xact_id()" },
+    ]);
+
+    const counts = await db.query<{ kind: string; count: number }>(`
+      SELECT work_kind AS kind, count(*)::int AS count
+      FROM agent_backup_admission_enrollment_shards GROUP BY work_kind ORDER BY work_kind
+    `);
+    expect(counts.rows).toEqual([
+      { kind: "catalog_operation", count: 64 },
+      { kind: "gc_object", count: 64 },
+      { kind: "schedule_capture", count: 64 },
+    ]);
+    const claimCounts = await db.query<{ kind: string; count: number }>(`
+      SELECT work_kind AS kind, count(*)::int AS count
+      FROM agent_backup_admission_claim_shards GROUP BY work_kind ORDER BY work_kind
+    `);
+    expect(claimCounts.rows).toEqual(counts.rows);
+
+    await db.exec(`UPDATE agent_backup_admission_enrollment_shards
+      SET scan_cutoff_at = clock_timestamp(), scan_snapshot = pg_current_snapshot(),
+        scan_schedule_rpo_ms = 900000,
+        active_cohort = nextval('agent_backup_admission_cohort_seq'),
+        lease_owner = 'migration-test',
+        lease_generation = '91000000-0000-4000-8000-000000000001',
+        lease_expires_at = clock_timestamp() + interval '1 minute'
+      WHERE work_kind = 'schedule_capture' AND shard_id = 32`);
+    await db.exec(`UPDATE agent_backup_admission_claim_shards
+      SET last_turn = nextval('agent_backup_admission_claim_turn_seq'),
+        cycle_observed_at = clock_timestamp(), cycle_max_cohort = 42,
+        cycle_max_ordinal = 99,
+        cycle_max_id = '20000000-0000-4fff-bfff-ffffffffffff',
+        cycle_aging_interval_ms = 900000, priority_pass = 0,
+        updated_at = clock_timestamp()
+      WHERE work_kind = 'schedule_capture' AND shard_id = 32`);
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_claim_shards
+        SET last_turn = nextval('agent_backup_admission_claim_turn_seq'),
+          scan_cursor_cohort = 1
+        WHERE work_kind = 'schedule_capture' AND shard_id = 32`),
+    ).rejects.toThrow();
+    await db.exec(`UPDATE agent_backup_admission_claim_shards
+      SET last_turn = nextval('agent_backup_admission_claim_turn_seq'),
+        scan_cursor_cohort = 1, scan_cursor_ordinal = 0,
+        scan_cursor_id = '20000000-0000-4000-8000-000000000001',
+        updated_at = clock_timestamp()
+      WHERE work_kind = 'schedule_capture' AND shard_id = 32`);
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_enrollment_shards
+        SET scan_cursor_due_at = scan_cutoff_at,
+          scan_cursor_id = '21000000-0000-4000-8000-000000000001',
+          scan_cursor_ordinal = 0,
+          lease_owner = NULL, lease_generation = NULL, lease_expires_at = NULL
+        WHERE work_kind = 'schedule_capture' AND shard_id = 32`),
+    ).rejects.toThrow(/scan_shape_check/i);
+
+    const before = await db.query<{ xid: string }>(`
+      SELECT backup_admission_xid::text AS xid FROM agent_sandboxes WHERE id = '${SANDBOX_A}'
+    `);
+    await db.exec(`UPDATE agent_sandboxes SET backup_admission_xid = '1'::xid8
+      WHERE id = '${SANDBOX_A}'`);
+    const spoofed = await db.query<{ xid: string }>(`
+      SELECT backup_admission_xid::text AS xid FROM agent_sandboxes WHERE id = '${SANDBOX_A}'
+    `);
+    expect(spoofed.rows).toEqual(before.rows);
+    await db.exec(`UPDATE agent_sandboxes SET next_backup_at = next_backup_at + interval '1 second'
+      WHERE id = '${SANDBOX_A}'`);
+    const frozen = await db.query<{ visible: boolean }>(`
+      SELECT agent_backup_admission_source_visible(
+        s.backup_admission_xid, shard.scan_snapshot
+      ) AS visible
+      FROM agent_sandboxes s JOIN agent_backup_admission_enrollment_shards shard
+        ON shard.work_kind = 'schedule_capture' AND shard.shard_id = 32
+      WHERE s.id = '${SANDBOX_A}'
+    `);
+    expect(frozen.rows).toEqual([{ visible: false }]);
+
+    await applyAll(db);
+    const replayed = await db.query<{ total: number; active: number }>(`
+      SELECT count(*)::int AS total,
+        count(*) FILTER (WHERE active_cohort IS NOT NULL)::int AS active
+      FROM agent_backup_admission_enrollment_shards
+    `);
+    expect(replayed.rows).toEqual([{ total: 192, active: 1 }]);
+    const replayedClaim = await db.query<{
+      total: number;
+      active: number;
+      last_turn: string;
+      max_cohort: string;
+      max_ordinal: number;
+      max_id: string;
+      cursor_cohort: string;
+    }>(`
+      SELECT (SELECT count(*)::int FROM agent_backup_admission_claim_shards) AS total,
+        (SELECT count(*)::int FROM agent_backup_admission_claim_shards
+          WHERE cycle_observed_at IS NOT NULL) AS active,
+        last_turn::text AS last_turn, cycle_max_cohort::text AS max_cohort,
+        cycle_max_ordinal AS max_ordinal, cycle_max_id::text AS max_id,
+        scan_cursor_cohort::text AS cursor_cohort
+      FROM agent_backup_admission_claim_shards
+      WHERE work_kind = 'schedule_capture' AND shard_id = 32
+    `);
+    expect(replayedClaim.rows).toEqual([
+      {
+        total: 192,
+        active: 1,
+        last_turn: "3",
+        max_cohort: "42",
+        max_ordinal: 99,
+        max_id: "20000000-0000-4fff-bfff-ffffffffffff",
+        cursor_cohort: "1",
+      },
+    ]);
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_claim_shards
+        SET last_turn = nextval('agent_backup_admission_claim_turn_seq'),
+          scan_cursor_cohort = 0
+        WHERE work_kind = 'schedule_capture' AND shard_id = 32`),
+    ).rejects.toThrow(/cursor must advance/i);
+    await expect(
+      db.exec(`DELETE FROM agent_backup_admission_claim_shards
+        WHERE work_kind = 'schedule_capture' AND shard_id = 32`),
+    ).rejects.toThrow(/cannot be removed/i);
+  });
+
+  test("enforces monotonic claim turns, frozen cycles, and complete priority passes", async () => {
+    const db = await database();
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_claim_shards
+        SET shard_id = 64, last_turn = nextval('agent_backup_admission_claim_turn_seq')
+        WHERE work_kind = 'schedule_capture' AND shard_id = 32`),
+    ).rejects.toThrow(/identity is immutable/i);
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_claim_shards SET last_turn = last_turn
+        WHERE work_kind = 'schedule_capture' AND shard_id = 32`),
+    ).rejects.toThrow(/turn must advance/i);
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_claim_shards
+        SET last_turn = nextval('agent_backup_admission_claim_turn_seq'),
+          cycle_observed_at = clock_timestamp(), cycle_max_cohort = 1,
+          cycle_max_ordinal = 0,
+          cycle_max_id = '1f000000-0000-4fff-bfff-ffffffffffff',
+          cycle_aging_interval_ms = 900000, priority_pass = 0,
+          last_admitted_work_id = '1f000000-0000-4000-8000-000000000001'
+        WHERE work_kind = 'schedule_capture' AND shard_id = 31`),
+    ).rejects.toThrow(/start at its first pass/i);
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_claim_shards
+        SET last_turn = nextval('agent_backup_admission_claim_turn_seq'),
+          cycle_observed_at = clock_timestamp(), cycle_max_cohort = 42,
+          cycle_max_ordinal = 99,
+          cycle_max_id = '21000000-0000-4fff-bfff-ffffffffffff',
+          cycle_aging_interval_ms = 900000, priority_pass = 0
+        WHERE work_kind = 'schedule_capture' AND shard_id = 32`),
+    ).rejects.toThrow(/bounds must belong to their shard/i);
+    await db.exec(`UPDATE agent_backup_admission_claim_shards
+      SET last_turn = nextval('agent_backup_admission_claim_turn_seq'),
+        cycle_observed_at = clock_timestamp(), cycle_max_cohort = 42,
+        cycle_max_ordinal = 99,
+        cycle_max_id = '20000000-0000-4fff-bfff-ffffffffffff',
+        cycle_aging_interval_ms = 900000, priority_pass = 0
+      WHERE work_kind = 'schedule_capture' AND shard_id = 32`);
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_claim_shards
+        SET last_turn = nextval('agent_backup_admission_claim_turn_seq'), cycle_max_cohort = 43
+        WHERE work_kind = 'schedule_capture' AND shard_id = 32`),
+    ).rejects.toThrow(/cycle authority is immutable/i);
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_claim_shards
+        SET last_turn = nextval('agent_backup_admission_claim_turn_seq'),
+          scan_cursor_cohort = 42, scan_cursor_ordinal = 100,
+          scan_cursor_id = '20000000-0000-4000-8000-000000000001'
+        WHERE work_kind = 'schedule_capture' AND shard_id = 32`),
+    ).rejects.toThrow(/cycle_shape_check/i);
+    await db.exec(`UPDATE agent_backup_admission_claim_shards
+      SET last_turn = nextval('agent_backup_admission_claim_turn_seq'),
+        scan_cursor_cohort = 10, scan_cursor_ordinal = 2,
+        scan_cursor_id = '20000000-0000-4000-8000-000000000001'
+      WHERE work_kind = 'schedule_capture' AND shard_id = 32`);
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_claim_shards
+        SET last_turn = nextval('agent_backup_admission_claim_turn_seq'), priority_pass = 1
+        WHERE work_kind = 'schedule_capture' AND shard_id = 32`),
+    ).rejects.toThrow(/must reset its cursor/i);
+    await db.exec(`UPDATE agent_backup_admission_claim_shards
+      SET last_turn = nextval('agent_backup_admission_claim_turn_seq'),
+        scan_cursor_cohort = cycle_max_cohort, scan_cursor_ordinal = cycle_max_ordinal,
+        scan_cursor_id = cycle_max_id
+      WHERE work_kind = 'schedule_capture' AND shard_id = 32`);
+    await db.exec(`UPDATE agent_backup_admission_claim_shards
+      SET last_turn = nextval('agent_backup_admission_claim_turn_seq'), priority_pass = 1,
+        scan_cursor_cohort = NULL, scan_cursor_ordinal = NULL, scan_cursor_id = NULL
+      WHERE work_kind = 'schedule_capture' AND shard_id = 32`);
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_claim_shards
+        SET last_turn = nextval('agent_backup_admission_claim_turn_seq'),
+          cycle_observed_at = NULL, cycle_max_cohort = NULL, cycle_max_ordinal = NULL,
+          cycle_max_id = NULL, cycle_aging_interval_ms = NULL, priority_pass = NULL
+        WHERE work_kind = 'schedule_capture' AND shard_id = 32`),
+    ).rejects.toThrow(/before its final pass/i);
+    await db.exec(`UPDATE agent_backup_admission_claim_shards
+      SET last_turn = nextval('agent_backup_admission_claim_turn_seq'),
+        scan_cursor_cohort = cycle_max_cohort, scan_cursor_ordinal = cycle_max_ordinal,
+        scan_cursor_id = cycle_max_id
+      WHERE work_kind = 'schedule_capture' AND shard_id = 32`);
+    await db.exec(`UPDATE agent_backup_admission_claim_shards
+      SET last_turn = nextval('agent_backup_admission_claim_turn_seq'), priority_pass = 2,
+        scan_cursor_cohort = NULL, scan_cursor_ordinal = NULL, scan_cursor_id = NULL
+      WHERE work_kind = 'schedule_capture' AND shard_id = 32`);
+    await db.exec(`UPDATE agent_backup_admission_claim_shards
+      SET last_turn = nextval('agent_backup_admission_claim_turn_seq'),
+        scan_cursor_cohort = cycle_max_cohort, scan_cursor_ordinal = cycle_max_ordinal,
+        scan_cursor_id = cycle_max_id
+      WHERE work_kind = 'schedule_capture' AND shard_id = 32`);
+    await db.exec(`UPDATE agent_backup_admission_claim_shards
+      SET last_turn = nextval('agent_backup_admission_claim_turn_seq'), priority_pass = 3,
+        scan_cursor_cohort = NULL, scan_cursor_ordinal = NULL, scan_cursor_id = NULL
+      WHERE work_kind = 'schedule_capture' AND shard_id = 32`);
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_claim_shards
+        SET last_turn = nextval('agent_backup_admission_claim_turn_seq'),
+          cycle_observed_at = NULL, cycle_max_cohort = NULL, cycle_max_ordinal = NULL,
+          cycle_max_id = NULL, cycle_aging_interval_ms = NULL, priority_pass = NULL
+        WHERE work_kind = 'schedule_capture' AND shard_id = 32`),
+    ).rejects.toThrow(/final pass and high-water/i);
+    await db.exec(`UPDATE agent_backup_admission_claim_shards
+      SET last_turn = nextval('agent_backup_admission_claim_turn_seq'),
+        scan_cursor_cohort = cycle_max_cohort, scan_cursor_ordinal = cycle_max_ordinal,
+        scan_cursor_id = cycle_max_id
+      WHERE work_kind = 'schedule_capture' AND shard_id = 32`);
+    await db.exec(`UPDATE agent_backup_admission_claim_shards
+      SET last_turn = nextval('agent_backup_admission_claim_turn_seq'),
+        cycle_observed_at = NULL, cycle_max_cohort = NULL, cycle_max_ordinal = NULL,
+        cycle_max_id = NULL, cycle_aging_interval_ms = NULL, priority_pass = NULL,
+        scan_cursor_cohort = NULL, scan_cursor_ordinal = NULL, scan_cursor_id = NULL
+      WHERE work_kind = 'schedule_capture' AND shard_id = 32`);
+    await db.exec(`UPDATE agent_backup_admission_claim_shards
+      SET last_turn = nextval('agent_backup_admission_claim_turn_seq'),
+        cycle_observed_at = clock_timestamp(), cycle_max_cohort = 1,
+        cycle_max_ordinal = 0, cycle_max_id = '00000000-0000-4fff-bfff-ffffffffffff',
+        cycle_aging_interval_ms = 900000, priority_pass = 0
+      WHERE work_kind = 'gc_object' AND shard_id = 0`);
+    await expect(db.exec(`TRUNCATE agent_backup_admission_claim_shards`)).rejects.toThrow(
+      /cannot be removed/i,
+    );
+  });
+
+  test("enforces replay identities, explicit states, exact lanes, and lease fences", async () => {
+    const db = await database();
+    const WORK_A = "80000000-0000-4000-8000-000000000001";
+    const WORK_B = "80000000-0000-4000-8000-000000000002";
+    const WORK_C = "80000000-0000-4000-8000-000000000003";
+    await insertSchedule(db, WORK_A, ORG_A, SANDBOX_A, HISTORY_A);
+    await expect(
+      insertSchedule(db, "80000000-0000-4000-8000-000000000004", ORG_A, SANDBOX_A, HISTORY_A),
+    ).rejects.toThrow();
+    await insertSchedule(db, WORK_B, ORG_A, SANDBOX_B, HISTORY_B);
+    await insertSchedule(db, WORK_C, ORG_B, SANDBOX_C, HISTORY_A);
+    await insertSchedule(db, "80000000-0000-4000-8000-000000000005", ORG_A, SANDBOX_A, HISTORY_B);
+
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_work
+        SET state = 'leased', lease_owner = 'expired-claim',
+          lease_generation = '90000000-0000-4000-8000-000000000006',
+          lease_expires_at = clock_timestamp() - interval '1 second', attempts = attempts + 1
+        WHERE id = '${WORK_B}'`),
+    ).rejects.toThrow(/claim requires a live lease/i);
+    await db.exec(`UPDATE agent_backup_admission_work
+      SET state = 'leased', lease_owner = 'expired-heartbeat',
+        lease_generation = '90000000-0000-4000-8000-000000000007',
+        lease_expires_at = clock_timestamp() + interval '50 milliseconds', attempts = attempts + 1
+      WHERE id = '${WORK_B}'`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_work
+        SET lease_expires_at = clock_timestamp() + interval '1 hour'
+        WHERE id = '${WORK_B}'`),
+    ).rejects.toThrow(/expired.*lease cannot be renewed/i);
+    await db.exec(`UPDATE agent_backup_admission_work
+      SET state = 'queued', lease_owner = NULL, lease_generation = NULL,
+        lease_expires_at = NULL, not_before = clock_timestamp(), ready_cohort = ready_cohort + 1
+      WHERE id = '${WORK_B}'`);
+
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_work
+        SET state = 'deferred', deferred_reason = 'capacity_wait'
+        WHERE id = '${WORK_B}'`),
+    ).rejects.toThrow(/state_shape_check/i);
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_work
+        SET state = 'leased', lease_owner = 'worker-a',
+          lease_generation = '90000000-0000-4000-8000-000000000001',
+          lease_expires_at = clock_timestamp() + interval '1 hour'
+        WHERE id = '${WORK_A}'`),
+    ).rejects.toThrow();
+    await db.exec(`UPDATE agent_backup_admission_work
+      SET state = 'leased', lease_owner = 'worker-a',
+        lease_generation = '90000000-0000-4000-8000-000000000001',
+        lease_expires_at = clock_timestamp() + interval '1 hour', attempts = attempts + 1
+      WHERE id = '${WORK_A}'`);
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_work
+        SET state = 'leased', lease_owner = 'worker-b',
+          lease_generation = '90000000-0000-4000-8000-000000000002',
+          lease_expires_at = clock_timestamp() + interval '1 hour', attempts = attempts + 1
+        WHERE id = '${WORK_B}'`),
+    ).rejects.toThrow(/leased_organization_uidx/i);
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_work
+        SET state = 'leased', lease_owner = 'worker-c',
+          lease_generation = '90000000-0000-4000-8000-000000000003',
+          lease_expires_at = clock_timestamp() + interval '1 hour', attempts = attempts + 1
+        WHERE id = '${WORK_C}'`),
+    ).rejects.toThrow(/leased_node_uidx/i);
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_work
+        SET lease_generation = '90000000-0000-4000-8000-000000000004'
+        WHERE id = '${WORK_A}'`),
+    ).rejects.toThrow(/preserve its fence/i);
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_work SET source_due_at = source_due_at - interval '1 second'
+        WHERE id = '${WORK_A}'`),
+    ).rejects.toThrow(/identity is immutable/i);
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_work
+        SET id = '80000000-0000-4000-8000-000000000099' WHERE id = '${WORK_A}'`),
+    ).rejects.toThrow(/identity is immutable/i);
+    await expect(
+      db.exec(`DELETE FROM agent_backup_admission_work WHERE id = '${WORK_B}'`),
+    ).rejects.toThrow(/unsettled/i);
+    await db.exec(`UPDATE agent_backup_admission_work SET state = 'settled',
+      lease_owner = NULL, lease_generation = NULL, lease_expires_at = NULL,
+      settled_at = clock_timestamp(), settled_reason = 'CAPTURE_RESERVED'
+      WHERE id = '${WORK_A}'`);
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_work SET updated_at = clock_timestamp()
+        WHERE id = '${WORK_A}'`),
+    ).rejects.toThrow(/settled.*immutable/i);
+  });
+
+  test("rejects forged inserts, cross-tenant work, replay, and authority removal", async () => {
+    const db = await database();
+    const WORK_A = "81000000-0000-4000-8000-000000000001";
+    const ORG_C = "10000000-0000-4000-8000-000000000003";
+    const BACKUP_B = "40000000-0000-4000-8000-000000000002";
+    await db.exec(`UPDATE organizations
+      SET account_lifecycle_state = 'deletion_recovery', is_active = FALSE,
+        account_deletion_request_id = '50000000-0000-4000-8000-000000000099'
+      WHERE id = '${ORG_B}'`);
+    await expect(
+      insertSchedule(db, "81000000-0000-4000-8000-000000000099", ORG_B, SANDBOX_C, HISTORY_A),
+    ).rejects.toThrow(/requires active account authority/i);
+    await db.exec(`UPDATE organizations
+      SET account_lifecycle_state = 'active', is_active = TRUE,
+        account_deletion_request_id = NULL
+      WHERE id = '${ORG_B}'`);
+    await expect(
+      db.query(
+        `INSERT INTO agent_backup_admission_work (
+           id, work_kind, work_stage, organization_id, sandbox_id, node_history_id,
+           source_activation_generation, source_lifecycle_revision, source_provider_handle,
+           source_container_id, source_image_digest, source_rpo_ms, requires_node_lane,
+           priority_class, base_priority, source_due_at, rpo_deadline_at, not_before,
+           ready_cohort, cohort_ordinal, shard_id, state, lease_owner, lease_generation,
+           lease_expires_at, attempts
+         ) VALUES ($1::uuid, 'schedule_capture', 'reserve_capture', $2::uuid, $3::uuid,
+           $4::uuid, $5::uuid, 7, 'sandbox-provider', $6, $7, 900000, TRUE,
+           'periodic_capture', 3, $8::timestamptz, $9::timestamptz, $8::timestamptz,
+           1, 0, agent_backup_admission_expected_shard($3::uuid), 'leased', 'forged',
+           '92000000-0000-4000-8000-000000000001', now() + interval '1 hour', 1)`,
+        [WORK_A, ORG_A, SANDBOX_A, HISTORY_A, ACTIVATION, CONTAINER, IMAGE, DUE, DEADLINE],
+      ),
+    ).rejects.toThrow(/enter queued at attempt zero/i);
+
+    await expect(
+      db.exec(`INSERT INTO agent_backup_admission_work (
+        work_kind, work_stage, organization_id, gc_object_id, requires_node_lane,
+        priority_class, base_priority, source_due_at, not_before,
+        ready_cohort, cohort_ordinal, shard_id
+      ) VALUES ('gc_object', 'delete_object', '${ORG_B}', '${GC_OBJECT_A}', FALSE,
+        'garbage_collection', 6, '${DUE}', '${DUE}', 1, 0,
+        agent_backup_admission_expected_shard('${GC_OBJECT_A}'))`),
+    ).rejects.toThrow(/gc_object_tenant_fkey/i);
+
+    await expect(
+      db.exec(`INSERT INTO agent_backup_admission_work (
+        work_kind, work_stage, organization_id, gc_object_id, requires_node_lane,
+        priority_class, base_priority, source_due_at, not_before,
+        ready_cohort, cohort_ordinal, shard_id
+      ) VALUES ('gc_object', 'delete_object', '${ORG_A}', '${GC_OBJECT_B}', FALSE,
+        'garbage_collection', 6, '${DUE}', '${DUE}', 1, 0,
+        agent_backup_admission_expected_shard('${GC_OBJECT_B}'))`),
+    ).rejects.toThrow(/gc_authority_fkey/i);
+
+    await db.exec(`INSERT INTO agent_backup_admission_work (
+      work_kind, work_stage, organization_id, backup_id, requires_node_lane,
+      priority_class, base_priority, source_due_at, not_before,
+      ready_cohort, cohort_ordinal, shard_id
+    ) VALUES ('catalog_operation', 'primary_publication', '${ORG_A}', '${BACKUP_A}', FALSE,
+      'periodic_capture', 3, '${DUE}', '${DUE}', 1, 0,
+      agent_backup_admission_expected_shard('${BACKUP_A}'))`);
+    await expect(
+      db.exec(`DELETE FROM agent_sandbox_backups WHERE id = '${BACKUP_A}'`),
+    ).rejects.toThrow(/unsettled/i);
+    await db.exec(`UPDATE agent_backup_admission_work
+      SET state = 'settled', settled_at = clock_timestamp(), settled_reason = 'PUBLISHED'
+      WHERE backup_id = '${BACKUP_A}'`);
+    await expect(
+      db.exec(`INSERT INTO agent_backup_admission_work (
+        work_kind, work_stage, organization_id, backup_id, requires_node_lane,
+        priority_class, base_priority, source_due_at, not_before,
+        ready_cohort, cohort_ordinal, shard_id
+      ) VALUES ('catalog_operation', 'primary_publication', '${ORG_A}', '${BACKUP_A}', FALSE,
+        'periodic_capture', 3, '${DUE}', '${DUE}', 2, 0,
+        agent_backup_admission_expected_shard('${BACKUP_A}'))`),
+    ).rejects.toThrow(/operation_stage_uidx/i);
+    await db.exec(`DELETE FROM agent_sandbox_backups WHERE id = '${BACKUP_A}'`);
+
+    await db.exec(`INSERT INTO agent_backup_admission_work (
+      work_kind, work_stage, organization_id, gc_object_id, requires_node_lane,
+      priority_class, base_priority, source_due_at, not_before,
+      ready_cohort, cohort_ordinal, shard_id
+    ) VALUES ('gc_object', 'delete_object', '${ORG_A}', '${GC_OBJECT_A}', FALSE,
+      'garbage_collection', 6, '${DUE}', '${DUE}', 1, 0,
+      agent_backup_admission_expected_shard('${GC_OBJECT_A}'))`);
+    await expect(
+      db.exec(`DELETE FROM agent_backup_gc_outbox WHERE id = '${GC_A}'`),
+    ).rejects.toThrow(/unsettled/i);
+    await db.exec(`UPDATE agent_backup_admission_work
+      SET state = 'settled', settled_at = clock_timestamp(), settled_reason = 'GC_COMPLETE'
+      WHERE gc_object_id = '${GC_OBJECT_A}'`);
+    await expect(
+      db.exec(`INSERT INTO agent_backup_admission_work (
+        work_kind, work_stage, organization_id, gc_object_id, requires_node_lane,
+        priority_class, base_priority, source_due_at, not_before,
+        ready_cohort, cohort_ordinal, shard_id
+      ) VALUES ('gc_object', 'delete_object', '${ORG_A}', '${GC_OBJECT_A}', FALSE,
+        'garbage_collection', 6, '${DUE}', '${DUE}', 2, 0,
+        agent_backup_admission_expected_shard('${GC_OBJECT_A}'))`),
+    ).rejects.toThrow(/gc_uidx/i);
+    await db.exec(`DELETE FROM agent_backup_gc_outbox WHERE id = '${GC_A}'`);
+    const remainingGcWork = await db.query<{ count: number }>(`
+      SELECT count(*)::int AS count FROM agent_backup_admission_work
+      WHERE gc_object_id = '${GC_OBJECT_A}'
+    `);
+    expect(remainingGcWork.rows[0]?.count).toBe(0);
+
+    await db.exec(`INSERT INTO organizations (id) VALUES ('${ORG_C}');
+      INSERT INTO agent_sandbox_backups (id, catalog_organization_id)
+        VALUES ('${BACKUP_B}', '${ORG_C}');
+      INSERT INTO agent_backup_admission_work (
+        work_kind, work_stage, organization_id, backup_id, requires_node_lane,
+        priority_class, base_priority, source_due_at, not_before,
+        ready_cohort, cohort_ordinal, shard_id
+      ) VALUES ('catalog_operation', 'primary_publication', '${ORG_C}', '${BACKUP_B}', FALSE,
+        'periodic_capture', 3, '${DUE}', '${DUE}', 1, 0,
+        agent_backup_admission_expected_shard('${BACKUP_B}'))`);
+    await expect(db.exec(`DELETE FROM organizations WHERE id = '${ORG_C}'`)).rejects.toThrow(
+      /unsettled/i,
+    );
+    await db.exec(`UPDATE agent_backup_admission_work
+      SET state = 'settled', settled_at = clock_timestamp(), settled_reason = 'CANCELED'
+      WHERE organization_id = '${ORG_C}'`);
+    await db.exec(`DELETE FROM organizations WHERE id = '${ORG_C}'`);
+    const organizationCascade = await db.query<{ count: number }>(`
+      SELECT count(*)::int AS count FROM agent_backup_admission_work
+      WHERE organization_id = '${ORG_C}'
+    `);
+    expect(organizationCascade.rows).toEqual([{ count: 0 }]);
+
+    await insertSchedule(db, WORK_A, ORG_A, SANDBOX_A, HISTORY_A);
+    await expect(db.exec(`DELETE FROM agent_sandboxes WHERE id = '${SANDBOX_A}'`)).rejects.toThrow(
+      /unsettled/i,
+    );
+    await db.exec(`UPDATE agent_backup_admission_work
+      SET state = 'settled', settled_at = clock_timestamp(), settled_reason = 'CANCELED'
+      WHERE id = '${WORK_A}'`);
+    await db.exec(`DELETE FROM agent_sandboxes WHERE id = '${SANDBOX_A}'`);
+    const cascaded = await db.query<{ count: number }>(`SELECT count(*)::int AS count
+      FROM agent_backup_admission_work WHERE id = '${WORK_A}'`);
+    expect(cascaded.rows).toEqual([{ count: 0 }]);
+
+    await expect(db.exec("TRUNCATE agent_backup_admission_work")).rejects.toThrow(
+      /cannot be truncated/i,
+    );
+    await db.exec(`UPDATE agent_backup_admission_enrollment_shards
+      SET scan_cutoff_at = clock_timestamp(), scan_snapshot = pg_current_snapshot(),
+        scan_schedule_rpo_ms = 900000,
+        active_cohort = nextval('agent_backup_admission_cohort_seq'),
+        lease_owner = 'guard-test',
+        lease_generation = '92000000-0000-4000-8000-000000000002',
+        lease_expires_at = clock_timestamp() + interval '1 minute'
+      WHERE work_kind = 'schedule_capture' AND shard_id = 0`);
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_enrollment_shards
+        SET lease_owner = NULL, lease_generation = NULL, lease_expires_at = NULL
+        WHERE work_kind = 'schedule_capture' AND shard_id = 0`),
+    ).rejects.toThrow(/release must commit progress/i);
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_enrollment_shards
+        SET lease_expires_at = lease_expires_at - interval '30 seconds'
+        WHERE work_kind = 'schedule_capture' AND shard_id = 0`),
+    ).rejects.toThrow(/live lease cannot be replaced/i);
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_enrollment_shards
+        SET scan_cutoff_at = NULL, scan_snapshot = NULL,
+          scan_schedule_rpo_ms = NULL, active_cohort = NULL,
+          lease_owner = 'lease-thief',
+          lease_generation = '92000000-0000-4000-8000-000000000003',
+          lease_expires_at = clock_timestamp() + interval '2 minutes'
+        WHERE work_kind = 'schedule_capture' AND shard_id = 0`),
+    ).rejects.toThrow(/live lease cannot be replaced/i);
+    await db.exec(`UPDATE agent_backup_admission_enrollment_shards
+      SET scan_cursor_due_at = scan_cutoff_at,
+        scan_cursor_id = '00000000-0000-4000-8000-000000000001',
+        scan_cursor_ordinal = 0,
+        lease_owner = NULL, lease_generation = NULL, lease_expires_at = NULL
+      WHERE work_kind = 'schedule_capture' AND shard_id = 0`);
+    await expect(
+      db.exec(`UPDATE agent_backup_admission_enrollment_shards
+        SET scan_cutoff_at = NULL, scan_snapshot = NULL,
+          scan_schedule_rpo_ms = NULL, active_cohort = NULL
+        WHERE work_kind = 'schedule_capture' AND shard_id = 0`),
+    ).rejects.toThrow(/requires an unexpired lease/i);
+    await expect(
+      db.exec(`DELETE FROM agent_backup_admission_enrollment_shards
+        WHERE work_kind = 'schedule_capture' AND shard_id = 1`),
+    ).rejects.toThrow(/cannot be removed/i);
+    await expect(db.exec("TRUNCATE agent_backup_admission_enrollment_shards")).rejects.toThrow(
+      /cannot be removed/i,
+    );
+  });
+});

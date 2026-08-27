@@ -65,6 +65,22 @@ describe("account deletion full-schema foreign-key policy", () => {
     );
   });
 
+  test("requires reconciliation before deleting backup admission work", () => {
+    const admissionWork = listAccountDeletionForeignKeys().find(
+      ({ sourceTable, sourceColumns }) =>
+        sourceTable === "agent_backup_admission_work" && sourceColumns === "organization_id",
+    );
+
+    expect(admissionWork).toEqual({
+      sourceTable: "agent_backup_admission_work",
+      sourceColumns: "organization_id",
+      targetTable: "organizations",
+      targetColumns: "id",
+      onDelete: "cascade",
+    });
+    expect(classifyAccountDeletionForeignKey(admissionWork!)).toBe("reconcile_external_resource");
+  });
+
   test("rejects an unknown restrictive relationship", () => {
     let failure: unknown;
     try {

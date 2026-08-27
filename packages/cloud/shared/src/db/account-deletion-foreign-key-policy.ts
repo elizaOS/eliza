@@ -77,6 +77,7 @@ export function listAccountDeletionForeignKeys(): AccountDeletionForeignKeyDescr
 const EXTERNAL_RESOURCE_TABLES = new Set([
   "ad_accounts",
   "agent_activation_publications",
+  "agent_backup_admission_work",
   "agent_backup_catalog_authorities",
   "agent_backup_gc_outbox",
   "agent_backup_objects",

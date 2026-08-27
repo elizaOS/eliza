@@ -33,6 +33,7 @@ import {
   bigint,
   boolean,
   check,
+  customType,
   foreignKey,
   index,
   integer,
@@ -50,6 +51,12 @@ import { agentNodeIncarnationHistories } from "./agent-node-incarnation-historie
 import { organizations } from "./organizations";
 import { userCharacters } from "./user-characters";
 import { users } from "./users";
+
+const pgXid8 = customType<{ data: string }>({
+  dataType() {
+    return "xid8";
+  },
+});
 
 /** Monotone per-agent authority shared by every backup in a catalogue chain. */
 export const agentBackupCatalogAuthorities = pgTable(
@@ -326,6 +333,10 @@ export const agentSandboxes = pgTable(
     backup_schedule_last_protected_at: timestamp("backup_schedule_last_protected_at", {
       withTimezone: true,
     }),
+    /** Trigger-owned source version; xid8 zero is reserved for pre-cutover rows. */
+    backup_admission_xid: pgXid8("backup_admission_xid")
+      .notNull()
+      .default(sql`pg_current_xact_id()`),
     last_heartbeat_at: timestamp("last_heartbeat_at", { withTimezone: true }),
     error_message: text("error_message"),
     error_count: integer("error_count").notNull().default(0),
@@ -1150,6 +1161,32 @@ export const agentSandboxBackups = pgTable(
           'scheduled', 'capturing', 'captured', 'uploading',
           'primary_uploaded', 'primary_verified', 'secondary_pending',
           'failed_retryable'
+        )`,
+      ),
+    admission_active_org_idx: index("agent_sandbox_backups_admission_active_org_idx")
+      .on(table.catalog_organization_id)
+      .where(
+        sql`${table.catalog_state} IN (
+          'scheduled', 'capturing', 'captured', 'uploading', 'primary_uploaded',
+          'primary_verified', 'secondary_pending', 'failed_retryable'
+        )`,
+      ),
+    admission_capture_history_idx: index("agent_sandbox_backups_admission_capture_history_idx")
+      .on(table.source_node_history_id)
+      .where(
+        sql`${table.source_node_history_id} IS NOT NULL AND (
+          ${table.catalog_state} IN ('scheduled', 'capturing')
+          OR (${table.catalog_state} = 'failed_retryable'
+            AND ${table.catalog_resume_state} IN ('scheduled', 'capturing'))
+        )`,
+      ),
+    admission_capture_fallback_idx: index("agent_sandbox_backups_admission_capture_fallback_idx")
+      .on(table.source_node_record_id, table.source_node_incarnation)
+      .where(
+        sql`${table.source_node_history_id} IS NULL AND (
+          ${table.catalog_state} IN ('scheduled', 'capturing')
+          OR (${table.catalog_state} = 'failed_retryable'
+            AND ${table.catalog_resume_state} IN ('scheduled', 'capturing'))
         )`,
       ),
     catalog_shape_check: check(
