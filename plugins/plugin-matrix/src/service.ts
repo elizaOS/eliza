@@ -1305,7 +1305,7 @@ export class MatrixService extends Service implements IMatrixService {
    */
   private async publishMembershipSnapshots(
     state: MatrixAccountState,
-    _firstSync: boolean
+    firstSync: boolean
   ): Promise<void> {
     const authority = state.membershipAuthority;
     if (!authority) {
@@ -1339,26 +1339,39 @@ export class MatrixService extends Service implements IMatrixService {
       // leave a partial roster unrecovered indefinitely. Only a room the
       // authority already knows (in-memory flag OR persisted non-current
       // health) needs recovery; a never-registered true DM has no scope row
-      // and must not be published.
+      // and must not be published. A non-first sync (reconnect republish,
+      // post-join sweep) NEVER publishes from the SDK cache directly — only
+      // a fresh server roster may become evidence on those passes.
       const incomplete = authority.isRoomIncomplete(room.roomId);
+      // error-policy:J7 a failed health probe is diagnostic and must fail
+      // CLOSED for publication: an unknown persisted-health state cannot be
+      // treated as "recovery unnecessary" (that would publish the possibly
+      // stale SDK roster). Treat a probe failure as needing fresh recovery.
       let persistedNonCurrent = false;
-      if (!incomplete) {
+      let healthProbeFailed = false;
+      {
         const health = await authority
           .scopeHealth({ roomId: room.roomId })
           .catch((err: unknown) => {
-            // error-policy:J7 health probe failure is diagnostic; treat as
-            // not needing recovery rather than blocking the whole pass.
             logger.error(
               `Matrix membership scope health probe failed for ${room.roomId}: ${err instanceof Error ? err.message : String(err)}`
             );
-            return null;
+            return "probe-failed" as const;
           });
-        // A scope the SQL authority holds as stale/unavailable must recover
-        // through a fresh-roster republication even when this process has no
-        // in-memory incompleteness flag (e.g. after a restart).
-        persistedNonCurrent = health !== null && health.health !== "current";
+        if (health === "probe-failed") {
+          healthProbeFailed = true;
+        } else {
+          // A scope the SQL authority holds as stale/unavailable must
+          // recover through a fresh-roster republication even when this
+          // process has no in-memory incompleteness flag (e.g. restart).
+          // Probed even when the in-memory flag is set: a room with BOTH a
+          // transient flag and a persisted scope must still publish its
+          // (shrunken) fresh roster to restore the persisted scope, not just
+          // clear the flag.
+          persistedNonCurrent = health !== null && health.health !== "current";
+        }
       }
-      if (incomplete || persistedNonCurrent) {
+      if (incomplete || persistedNonCurrent || healthProbeFailed || !firstSync) {
         // Recovery requires a GENUINELY FRESH server-side roster:
         // loadMembersIfNeeded is one-shot and cached by the SDK, so a cached
         // resolve does NOT disprove a later timeline-reset gap. Perform a
@@ -2335,22 +2348,28 @@ export class MatrixService extends Service implements IMatrixService {
       // the homeserver call returned — the store scan inside the general
       // publication pass only sees rooms whose getMyMembership() is already
       // "join" in the SDK's possibly-not-yet-synced state, which is exactly
-      // the missed-event case this recovery exists for.
-      void this.publishSingleRoomMembershipSnapshot(state, response)
+      // the missed-event case this recovery exists for. Direct rooms (>2
+      // exclusion) never register membership scopes — guard here the same
+      // way the publication pass does.
+      const directPublish =
+        typeof response.getJoinedMemberCount === "function" && response.getJoinedMemberCount() > 2
+          ? this.publishSingleRoomMembershipSnapshot(state, response)
+          : Promise.resolve(false);
+      void directPublish
         .catch((err) =>
           logger.error(
             `Matrix membership snapshot after join failed: ${err instanceof Error ? err.message : String(err)}`
           )
         )
-        .then((published) => {
-          // Snapshot-only room (no other members yet): also run the general
-          // pass so rooms already in the store get their snapshots too.
+        .then(() => {
+          // Sweep the store too: rooms already known to the SDK get their
+          // snapshots through the general pass (which enforces its own
+          // freshness and direct-room rules).
           void this.publishMembershipSnapshots(state, false).catch((err) =>
             logger.error(
               `Matrix membership snapshot sweep after join failed: ${err instanceof Error ? err.message : String(err)}`
             )
           );
-          return published;
         });
     }
 
