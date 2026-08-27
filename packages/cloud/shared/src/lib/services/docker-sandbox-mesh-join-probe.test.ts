@@ -3,20 +3,44 @@ import { describe, expect, test } from "bun:test";
 import { classifyDockerMeshJoinProbe } from "./docker-sandbox-provider";
 
 describe("classifyDockerMeshJoinProbe", () => {
-  test("terminates a running candidate that entered interactive Headscale auth", () => {
-    expect(
-      classifyDockerMeshJoinProbe(`state=running exit=0
-{
-  "AuthURL": "https://headscale.example.test/register/test-node",
-  "BackendState": "NeedsLogin"
-}`),
-    ).toEqual({
+  test.each([
+    "[docker-entrypoint] tailscale requires interactive authorization (AuthURL/NeedsLogin); unattended mesh join rejected",
+    "[cloud-agent-entrypoint] FATAL: headscale auth key expired/rejected and no persisted identity could reconnect; node needs re-keying",
+  ])("terminates a running candidate on its entrypoint-owned Headscale auth signal", (line) => {
+    expect(classifyDockerMeshJoinProbe(`state=running exit=0\n${line}`)).toEqual({
       status: "terminal",
       reason: "auth_required",
       containerState: "running",
       exitCode: 0,
     });
   });
+
+  test("terminates a running candidate on the entrypoint-owned marker", () => {
+    expect(classifyDockerMeshJoinProbe("state=running exit=0\nauthkey-marker=present")).toEqual({
+      status: "terminal",
+      reason: "auth_required",
+      containerState: "running",
+      exitCode: 0,
+    });
+  });
+
+  test("terminates a restarting candidate on the dedicated entrypoint exit code", () => {
+    expect(classifyDockerMeshJoinProbe("state=restarting exit=78")).toEqual({
+      status: "terminal",
+      reason: "auth_required",
+      containerState: "restarting",
+      exitCode: 78,
+    });
+  });
+
+  test.each(["plugin-openai: invalid key", "database: key expired", "interactive authorization"])(
+    "keeps a healthy running candidate pending when app logs contain %s",
+    (appLog) => {
+      expect(classifyDockerMeshJoinProbe(`state=running exit=0\n${appLog}`)).toEqual({
+        status: "pending",
+      });
+    },
+  );
 
   test("keeps ordinary running and restarting candidates pending", () => {
     expect(

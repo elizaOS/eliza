@@ -977,16 +977,38 @@ export type DockerMeshJoinProbeVerdict =
       readonly exitCode: number | null;
     };
 
+const ENTRYPOINT_MESH_AUTH_TERMINAL_PREFIXES: readonly string[] = [
+  "[docker-entrypoint] tailscale requires interactive authorization (authurl/needslogin);",
+  "[cloud-agent-entrypoint] tailscale requires interactive authorization (authurl/needslogin);",
+  "[docker-entrypoint] fatal: headscale auth key expired/rejected and no persisted identity could reconnect; node needs re-keying",
+  "[cloud-agent-entrypoint] fatal: headscale auth key expired/rejected and no persisted identity could reconnect; node needs re-keying",
+];
+
+function hasEntrypointMeshAuthTerminalEvidence(output: string): boolean {
+  return output
+    .toLowerCase()
+    .split(/\r?\n/)
+    .some((line) =>
+      ENTRYPOINT_MESH_AUTH_TERMINAL_PREFIXES.some((prefix) => line.startsWith(prefix)),
+    );
+}
+
 /**
  * Classify the bounded, secret-free Docker evidence collected while Headscale
- * registration is pending. Only an explicit interactive/auth rejection or a
- * terminal Docker state can abort the normal slow-join budget.
+ * registration is pending. Early admission deliberately accepts only the
+ * entrypoint-owned marker/prefix or exit 78 as auth evidence: once Tailscale is
+ * running, ordinary app/plugin logs share `docker logs` and may contain broad
+ * phrases such as "invalid key" that must not tear down a healthy candidate.
  */
 export function classifyDockerMeshJoinProbe(output: string): DockerMeshJoinProbeVerdict {
   const stateMatch = /^state=(\S+) exit=(-?\d+)$/m.exec(output);
   const containerState = stateMatch?.[1] ?? null;
   const exitCode = stateMatch ? Number.parseInt(stateMatch[2]!, 10) : null;
-  if (classifyMeshAuthStatus({ exitCode, logs: output }) === "auth_expired") {
+  if (
+    exitCode === TS_AUTHKEY_EXPIRED_EXIT_CODE ||
+    /^authkey-marker=present$/m.test(output) ||
+    hasEntrypointMeshAuthTerminalEvidence(output)
+  ) {
     return { status: "terminal", reason: "auth_required", containerState, exitCode };
   }
   if (containerState === "exited" || containerState === "dead") {
@@ -1004,6 +1026,7 @@ async function probeDockerMeshJoinTerminalFailure(
     output = await ssh.exec(
       [
         `docker inspect --format 'state={{.State.Status}} exit={{.State.ExitCode}}' ${shellQuote(containerId)} 2>/dev/null`,
+        `docker exec ${shellQuote(containerId)} sh -c 'test -f "\${TS_STATE_DIR:-/var/lib/tailscale}/${TS_AUTHKEY_EXPIRED_MARKER_BASENAME}" && echo authkey-marker=present || echo authkey-marker=absent' 2>/dev/null || echo authkey-marker=unknown`,
         `docker logs --tail 80 ${shellQuote(containerId)} 2>&1 || true`,
       ].join("; "),
       MESH_JOIN_PROBE_TIMEOUT_MS,
