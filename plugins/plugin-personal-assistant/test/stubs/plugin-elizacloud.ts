@@ -2,6 +2,12 @@
  * Test stub for the elizacloud plugin: cloud-site-URL and secret normalization helpers used
  * by LifeOps cloud-feature tests.
  */
+import {
+  normalizeCloudSiteUrl as normalizeSharedCloudSiteUrl,
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/shared";
+
 const DEFAULT_CLOUD_SITE_URL = "https://api.eliza.app";
 
 function normalizeSecret(value: unknown): string | null {
@@ -12,6 +18,9 @@ function normalizeSecret(value: unknown): string | null {
 }
 
 export function normalizeCloudSiteUrl(rawUrl?: string | null): string {
+  if (resolveDevCloudEnvAuthority()) {
+    return normalizeSharedCloudSiteUrl(rawUrl ?? undefined);
+  }
   const trimmed = rawUrl?.trim();
   if (!trimmed) return DEFAULT_CLOUD_SITE_URL;
   return trimmed.replace(/\/+$/, "");
@@ -28,11 +37,31 @@ export function resolveCloudApiKey(
     getSetting?: (key: string) => unknown;
   } | null,
 ): string | null {
+  if (resolveDevCloudEnvAuthority()) {
+    return normalizeSecret(
+      resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_API_KEY"),
+    );
+  }
   return (
     normalizeSecret(runtime?.getSetting?.("ELIZAOS_CLOUD_API_KEY")) ??
     normalizeSecret(config?.cloud?.apiKey) ??
     normalizeSecret(process.env.ELIZAOS_CLOUD_API_KEY)
   );
+}
+
+export function normalizeCloudApiKey(value: unknown): string | null {
+  return normalizeSecret(value);
+}
+
+export function resolveCloudApiKeyWithRuntimeOverride(
+  runtimeApiKey: string | null | undefined,
+  config?: { cloud?: { apiKey?: string | null } } | null,
+  runtime?: { getSetting?: (key: string) => unknown } | null,
+): string | null {
+  const resolved = resolveCloudApiKey(config, runtime);
+  return resolveDevCloudEnvAuthority()
+    ? resolved
+    : (normalizeSecret(runtimeApiKey) ?? resolved);
 }
 
 export async function validateCloudBaseUrl(

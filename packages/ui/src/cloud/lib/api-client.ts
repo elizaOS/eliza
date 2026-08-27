@@ -31,7 +31,6 @@ import { getElizaApiToken } from "@elizaos/shared";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
-  STEWARD_TOKEN_KEY,
 } from "@elizaos/shared/steward-session-client";
 import { readCsrfTokenFromCookie } from "../../api/auth/csrf-cookie";
 import { CSRF_HEADER_NAME } from "../../api/auth/sessions";
@@ -150,7 +149,7 @@ function resolveApiUrl(path: string): string {
 function readStewardToken(): string | null {
   if (typeof window === "undefined") return null;
   try {
-    return window.localStorage.getItem(STEWARD_TOKEN_KEY);
+    return readStoredStewardToken();
   } catch {
     // error-policy:J3 storage unavailable reads as signed-out (fail-closed).
     return null;

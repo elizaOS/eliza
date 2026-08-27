@@ -21,12 +21,12 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { invalidateCloudAccountCache } from "../cloud-providers/cloud-account";
+import { resolveCloudApiKeysUrl } from "../cloud/base-url";
+import { getBaseURL } from "../utils/config";
 import { createElizaCloudClient } from "../utils/sdk-client";
 import { cloudAccountAuthenticated, NO_CLOUD_MESSAGE } from "./cloud-account-status";
 
 const RESERVED_PREFIX = "agent-sandbox:";
-const SESSION_REQUIRED_MESSAGE =
-  "Eliza Cloud only allows API keys to be created from a signed-in session — my agent credential can't mint them. Open Cloud in Eliza or visit cloud.eliza.app/cloud/api-keys to create one.";
 const ERROR_MESSAGE =
   "I couldn't create the API key right now — the Cloud API returned an error. Try again in a moment.";
 
@@ -87,6 +87,7 @@ export const createCloudApiKeyAction: Action = {
     }
 
     try {
+      const apiKeysUrl = resolveCloudApiKeysUrl(getBaseURL(runtime));
       const { apiKey, plainKey } = await createElizaCloudClient(runtime).createApiKey({
         name,
       });
@@ -97,7 +98,7 @@ export const createCloudApiKeyAction: Action = {
         "",
         plainKey,
         "",
-        "Copy it now — this is the only time the full key is shown. Manage or revoke it from Cloud in the Eliza app or cloud.eliza.app/cloud/api-keys.",
+        `Copy it now — this is the only time the full key is shown. Manage or revoke it from Cloud in the Eliza app or ${apiKeysUrl}.`,
       ].join("\n");
 
       await callback?.({ text: reply, actions: ["CLOUD_CREATE_API_KEY"] });
@@ -112,14 +113,16 @@ export const createCloudApiKeyAction: Action = {
       };
     } catch (err) {
       if (err instanceof CloudApiError && (err.statusCode === 401 || err.statusCode === 403)) {
+        const sessionRequiredMessage =
+          `Eliza Cloud only allows API keys to be created from a signed-in session — my agent credential can't mint them. Open Cloud in Eliza or visit ${resolveCloudApiKeysUrl(getBaseURL(runtime))} to create one.`;
         await callback?.({
-          text: SESSION_REQUIRED_MESSAGE,
+          text: sessionRequiredMessage,
           actions: ["CLOUD_CREATE_API_KEY"],
         });
         return {
           success: false,
           text: "Eliza Cloud API keys require a signed-in session to create.",
-          userFacingText: SESSION_REQUIRED_MESSAGE,
+          userFacingText: sessionRequiredMessage,
           data: { reason: "session_required" },
         };
       }

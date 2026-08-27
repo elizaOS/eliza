@@ -20,7 +20,9 @@ import {
 import {
   buildElizaCodeCerebrasSpec,
   ELIZA_CLOUD_DEFAULT_BASE_URL,
+  type ElizaCodeCloudTuple,
   resolveElizaCodeBin,
+  resolveElizaCodeCloudTuple,
 } from "../lib/eliza-code-spec";
 import {
   buildClaudeCliSpec,
@@ -203,15 +205,22 @@ function vendorCliEnabled(runtime: IAgentRuntime): boolean {
   return flag === "true" || flag === "1" || flag === "on" || flag === "yes";
 }
 
-/**
- * The Eliza Cloud API key eliza-code will authenticate with. Do not fall back
- * to the agent's primary OPENAI_API_KEY; terminal users can inspect their env.
- */
-function resolveCloudApiKey(
+function resolveRequestCloudTuple(
   runtime: IAgentRuntime,
-  bodyKey?: string,
-): string | undefined {
-  return bodyKey ?? getStr(runtime, "PTY_ELIZA_CLOUD_API_KEY");
+  body: Record<string, unknown>,
+): ElizaCodeCloudTuple {
+  // Resolve the launcher policy before touching untrusted per-request base URL
+  // input. Under authority, the body/runtime/process candidates are irrelevant
+  // and must not even trigger allowlist parsing that could diverge the target.
+  const launcherTuple = resolveElizaCodeCloudTuple();
+  if (launcherTuple.authority) return launcherTuple;
+
+  return resolveElizaCodeCloudTuple({
+    // Do not fall back to the agent's primary OPENAI_API_KEY; terminal users
+    // can inspect their child environment.
+    apiKey: str(body.apiKey) ?? getStr(runtime, "PTY_ELIZA_CLOUD_API_KEY"),
+    baseUrl: resolveAllowedBaseUrl(runtime, str(body.baseUrl)),
+  });
 }
 
 function defaultCwd(runtime: IAgentRuntime): string {
@@ -229,14 +238,17 @@ function elizaCodeSpecFromRequest(
   runtime: IAgentRuntime,
   body: Record<string, unknown>,
   cwd: string,
-  apiKey: string,
+  cloud: ElizaCodeCloudTuple,
 ): PtySpawnSpec {
+  if (!cloud.apiKey || !cloud.baseUrl) {
+    throw new Error("Eliza Cloud PTY tuple is incomplete.");
+  }
   return buildElizaCodeCerebrasSpec({
     cwd,
-    apiKey,
+    apiKey: cloud.apiKey,
     binPath: resolveElizaCodeBin(),
     tier: str(body.tier) === "smart" ? "smart" : "fast",
-    baseUrl: resolveAllowedBaseUrl(runtime, str(body.baseUrl)),
+    baseUrl: cloud.baseUrl,
     // Deployment knob (like PTY_ELIZA_CLOUD_API_KEY): pin the tier models
     // without a client change, e.g. while the deployed cloud's model
     // registry lags the repo's DEFAULT_CEREBRAS_TEXT_MODEL.
@@ -318,14 +330,27 @@ async function spawnHandler(
   try {
     let spec: PtySpawnSpec;
     if (kind === "eliza-code") {
-      const apiKey = resolveCloudApiKey(runtime, str(body.apiKey));
-      if (!apiKey) {
-        return json(400, {
-          error:
-            "No dedicated Eliza Cloud API key available. Pass { apiKey } or configure PTY_ELIZA_CLOUD_API_KEY.",
+      const cloud = resolveRequestCloudTuple(runtime, body);
+      if (!cloud.enabled) {
+        return json(403, {
+          error: `Eliza Cloud PTY sessions are disabled for the ${cloud.authority} development target.`,
         });
       }
-      spec = elizaCodeSpecFromRequest(runtime, body, cwd, apiKey);
+      if (!cloud.apiKey) {
+        return json(400, {
+          error: cloud.authority
+            ? `The ${cloud.authority} development target has no launcher-owned Eliza Cloud API key.`
+            : "No dedicated Eliza Cloud API key available. Pass { apiKey } or configure PTY_ELIZA_CLOUD_API_KEY.",
+        });
+      }
+      if (!cloud.baseUrl) {
+        return json(400, {
+          error: cloud.authority
+            ? `The ${cloud.authority} development target has no launcher-owned Eliza Cloud base URL.`
+            : "No Eliza Cloud base URL is available.",
+        });
+      }
+      spec = elizaCodeSpecFromRequest(runtime, body, cwd, cloud);
     } else {
       spec = vendorCliSpecFromRequest(runtime, kind, cwd);
     }

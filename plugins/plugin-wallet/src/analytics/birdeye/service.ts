@@ -10,16 +10,13 @@
  * recurring `BIRDEYE_SYNC_WALLET` task when `BIRDEYE_WALLET_ADDR` is set, and
  * opportunistically registers Birdeye with `INTEL_DATAPROVIDER` if present.
  */
-import {
-  type RouteSpec,
-  resolveCloudRoute,
-  toRuntimeSettings,
-} from "@elizaos/cloud-routing";
+import { type RouteSpec, resolveCloudRoute } from "@elizaos/cloud-routing";
 import {
   type IAgentRuntime,
   Service,
   type ServiceTypeName,
 } from "@elizaos/core";
+import { toWalletCloudRoutingSettings } from "../cloud-routing-authority";
 import Birdeye from "./birdeye-task";
 import {
   BIRDEYE_ENDPOINTS,
@@ -124,7 +121,7 @@ export class BirdeyeService extends Service {
       throw new Error("BirdeyeService requires a runtime");
     }
     const route = resolveCloudRoute(
-      toRuntimeSettings(this.runtime),
+      toWalletCloudRoutingSettings(this.runtime),
       BIRDEYE_ROUTE_SPEC,
     );
     if (route.source === "disabled") {

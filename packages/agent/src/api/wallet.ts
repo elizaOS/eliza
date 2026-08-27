@@ -19,6 +19,7 @@ import type {
   WalletImportResult,
   WalletKeys,
 } from "@elizaos/shared";
+import { resolveDevCloudStewardOperationalTuple } from "@elizaos/shared";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { keccak_256 } from "@noble/hashes/sha3.js";
 import { resolveStewardCredentialsPath } from "../config/paths.ts";
@@ -366,6 +367,8 @@ function deriveLocalSolanaAddress(): string | null {
 }
 
 function readStewardEvmAddress(): string | null {
+  const authoritative = resolveDevCloudStewardOperationalTuple();
+  if (authoritative && !authoritative.enabled) return null;
   const stewardEvm =
     stewardAddressCache?.evm?.trim() ??
     process.env[STEWARD_EVM_ADDRESS_ENV_KEY]?.trim();
@@ -373,6 +376,8 @@ function readStewardEvmAddress(): string | null {
 }
 
 function readStewardSolanaAddress(): string | null {
+  const authoritative = resolveDevCloudStewardOperationalTuple();
+  if (authoritative && !authoritative.enabled) return null;
   const stewardSolana =
     stewardAddressCache?.solana?.trim() ??
     process.env[STEWARD_SOLANA_ADDRESS_ENV_KEY]?.trim();
@@ -747,6 +752,14 @@ type PersistedStewardCredentials = {
   agentToken?: string;
 };
 
+type OperationalStewardConnection = {
+  apiUrl: string;
+  tenantId?: string;
+  agentId: string;
+  apiKey?: string;
+  agentToken?: string;
+};
+
 function normalizeOptionalString(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
@@ -782,6 +795,58 @@ function readPersistedStewardCredentials(): {
   }
 }
 
+function resolveOperationalStewardConnection(
+  includePersisted: boolean,
+  fallbackAgentId?: string | null,
+): OperationalStewardConnection | null {
+  const authoritative = resolveDevCloudStewardOperationalTuple();
+  if (authoritative) {
+    return authoritative.enabled
+      ? {
+          apiUrl: authoritative.apiUrl,
+          ...(authoritative.tenantId
+            ? { tenantId: authoritative.tenantId }
+            : {}),
+          agentId: authoritative.agentId,
+          ...(authoritative.apiKey ? { apiKey: authoritative.apiKey } : {}),
+          ...(authoritative.agentToken
+            ? { agentToken: authoritative.agentToken }
+            : {}),
+        }
+      : null;
+  }
+
+  const persisted = includePersisted ? readPersistedStewardCredentials() : null;
+  const apiUrl =
+    normalizeOptionalString(process.env.STEWARD_API_URL) ?? persisted?.apiUrl;
+  const agentId =
+    normalizeOptionalString(process.env.STEWARD_AGENT_ID) ??
+    normalizeOptionalString(process.env.ELIZA_STEWARD_AGENT_ID) ??
+    persisted?.agentId ??
+    normalizeOptionalString(fallbackAgentId);
+  if (!apiUrl || !agentId) return null;
+
+  const tenantId =
+    normalizeOptionalString(process.env.STEWARD_TENANT_ID) ??
+    persisted?.tenantId ??
+    undefined;
+  const apiKey =
+    normalizeOptionalString(process.env.STEWARD_API_KEY) ??
+    persisted?.apiKey ??
+    undefined;
+  const agentToken =
+    normalizeOptionalString(process.env.STEWARD_AGENT_TOKEN) ??
+    persisted?.agentToken ??
+    undefined;
+  return {
+    apiUrl,
+    ...(tenantId ? { tenantId } : {}),
+    agentId,
+    ...(apiKey ? { apiKey } : {}),
+    ...(agentToken ? { agentToken } : {}),
+  };
+}
+
 /**
  * Initialise the steward wallet address cache.
  *
@@ -791,41 +856,29 @@ function readPersistedStewardCredentials(): {
  * `getWalletAddresses()` can use them without hitting the network.
  */
 export async function initStewardWalletCache(): Promise<void> {
-  const persisted = readPersistedStewardCredentials();
-  const stewardApiUrl =
-    normalizeOptionalString(process.env.STEWARD_API_URL) ?? persisted?.apiUrl;
-  if (!stewardApiUrl) return;
-
-  const agentId =
-    normalizeOptionalString(process.env.STEWARD_AGENT_ID) ||
-    normalizeOptionalString(process.env.ELIZA_STEWARD_AGENT_ID) ||
-    persisted?.agentId ||
-    null;
-
-  if (!agentId) return;
+  const connection = resolveOperationalStewardConnection(true);
+  if (!connection) {
+    if (resolveDevCloudStewardOperationalTuple()) {
+      stewardAddressCache = null;
+      delete process.env[STEWARD_EVM_ADDRESS_ENV_KEY];
+      delete process.env[STEWARD_SOLANA_ADDRESS_ENV_KEY];
+    }
+    return;
+  }
 
   try {
     const headers: Record<string, string> = { Accept: "application/json" };
-    const bearerToken =
-      normalizeOptionalString(process.env.STEWARD_AGENT_TOKEN) ??
-      persisted?.agentToken;
-    const apiKey =
-      normalizeOptionalString(process.env.STEWARD_API_KEY) ?? persisted?.apiKey;
-    const tenantId =
-      normalizeOptionalString(process.env.STEWARD_TENANT_ID) ??
-      persisted?.tenantId;
-
-    if (bearerToken) {
-      headers.Authorization = `Bearer ${bearerToken}`;
-    } else if (apiKey) {
-      headers["X-Steward-Key"] = apiKey;
+    if (connection.agentToken) {
+      headers.Authorization = `Bearer ${connection.agentToken}`;
+    } else if (connection.apiKey) {
+      headers["X-Steward-Key"] = connection.apiKey;
     }
-    if (tenantId) {
-      headers["X-Steward-Tenant"] = tenantId;
+    if (connection.tenantId) {
+      headers["X-Steward-Tenant"] = connection.tenantId;
     }
 
     const res = await fetch(
-      `${stewardApiUrl}/agents/${encodeURIComponent(agentId)}`,
+      `${connection.apiUrl}/agents/${encodeURIComponent(connection.agentId)}`,
       { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) },
     );
 
@@ -936,41 +989,27 @@ export async function getWalletAddressesWithSteward(
 > {
   const base = getWalletAddresses(runtimeAgentId);
 
-  // Only augment when steward is configured
-  const stewardApiUrl = process.env.STEWARD_API_URL?.trim();
-  if (!stewardApiUrl) {
-    return base;
-  }
-
-  const agentId =
-    process.env.STEWARD_AGENT_ID?.trim() ||
-    process.env.ELIZA_STEWARD_AGENT_ID?.trim() ||
-    base.evmAddress?.trim() ||
-    null;
-
-  if (!agentId) {
-    return base;
-  }
+  const connection = resolveOperationalStewardConnection(
+    false,
+    base.evmAddress,
+  );
+  if (!connection) return base;
 
   try {
     const headers: Record<string, string> = {
       Accept: "application/json",
     };
-    const bearerToken = process.env.STEWARD_AGENT_TOKEN?.trim();
-    const apiKey = process.env.STEWARD_API_KEY?.trim();
-    const tenantId = process.env.STEWARD_TENANT_ID?.trim();
-
-    if (bearerToken) {
-      headers.Authorization = `Bearer ${bearerToken}`;
-    } else if (apiKey) {
-      headers["X-Steward-Key"] = apiKey;
+    if (connection.agentToken) {
+      headers.Authorization = `Bearer ${connection.agentToken}`;
+    } else if (connection.apiKey) {
+      headers["X-Steward-Key"] = connection.apiKey;
     }
-    if (tenantId) {
-      headers["X-Steward-Tenant"] = tenantId;
+    if (connection.tenantId) {
+      headers["X-Steward-Tenant"] = connection.tenantId;
     }
 
     const res = await fetch(
-      `${stewardApiUrl}/agents/${encodeURIComponent(agentId)}`,
+      `${connection.apiUrl}/agents/${encodeURIComponent(connection.agentId)}`,
       { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) },
     );
 

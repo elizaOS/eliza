@@ -296,6 +296,10 @@ export function loadElizaConfig(): Record<string, unknown> {
   return {};
 }
 
+export function loadEffectiveElizaConfig(): Record<string, unknown> {
+  return loadElizaConfig();
+}
+
 function readTestElizaConfig(): Record<string, unknown> {
   const configPath = process.env.ELIZA_CONFIG_PATH?.trim();
   if (!configPath) return {};

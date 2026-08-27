@@ -799,7 +799,7 @@ export function createAgentWalletBalanceSource(
     ]);
     const addresses = walletApi.getWalletAddresses(agentId);
     const readiness = walletRpc.resolveWalletRpcReadiness(
-      configModule.loadElizaConfig(),
+      configModule.loadEffectiveElizaConfig(),
     );
     const evmReady = Boolean(addresses.evmAddress && readiness.evmBalanceReady);
     const solReady = Boolean(

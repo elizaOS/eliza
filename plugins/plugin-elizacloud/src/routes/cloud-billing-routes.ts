@@ -1,11 +1,17 @@
 import type http from "node:http";
 import type { AgentRuntime, Service } from "@elizaos/core";
-import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
+import {
+  normalizeCloudSiteUrl,
+  resolveCloudRedirectScope,
+} from "../cloud/base-url.js";
 import {
   type CloudAuthApiKeyService,
   normalizeCloudApiKey,
 } from "../cloud/auth-service-types";
-import { resolveCloudApiKey } from "../cloud/cloud-api-key.js";
+import {
+  resolveCloudApiKey,
+  resolveCloudApiKeyWithRuntimeOverride,
+} from "../cloud/cloud-api-key.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
 import type { CloudProxyConfigLike } from "../lib/config-like";
 import { sendJson, sendJsonError } from "../lib/http";
@@ -95,7 +101,11 @@ function resolveProxyApiKey(state: CloudBillingRouteState): string | null {
       ? normalizeCloudApiKey(cloudAuth.getApiKey?.())
       : null;
 
-  return runtimeApiKey ?? resolveCloudApiKey(state.config, state.runtime);
+  return resolveCloudApiKeyWithRuntimeOverride(
+    runtimeApiKey,
+    state.config,
+    state.runtime,
+  );
 }
 
 function buildAuthHeaders(
@@ -177,7 +187,7 @@ function readBody(req: http.IncomingMessage): Promise<string | undefined> {
   });
 }
 
-async function fetchUpstream(
+export async function fetchUpstream(
   url: string,
   method: string,
   headers: Record<string, string>,
@@ -210,11 +220,13 @@ async function fetchUpstream(
     }
 
     const nextUrl = new URL(location, currentUrl).toString();
-    const currentOrigin = normalizeCloudSiteUrl(new URL(currentUrl).origin);
-    const nextOrigin = normalizeCloudSiteUrl(new URL(nextUrl).origin);
+    const currentOrigin = new URL(currentUrl).origin;
+    const nextOrigin = new URL(nextUrl).origin;
+    const currentScope = resolveCloudRedirectScope(currentOrigin);
+    const nextScope = resolveCloudRedirectScope(nextOrigin);
     if (
-      new URL(currentUrl).origin !== new URL(nextUrl).origin &&
-      currentOrigin !== nextOrigin
+      currentOrigin !== nextOrigin &&
+      (currentScope === null || currentScope !== nextScope)
     ) {
       throw Object.assign(new Error("redirect"), { code: "REDIRECT" });
     }

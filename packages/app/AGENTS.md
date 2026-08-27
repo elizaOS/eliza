@@ -93,8 +93,9 @@ packages/app/
 Common scripts from this package's `package.json`:
 
 ```bash
-bun run --cwd packages/app dev                        # Vite dev server (renderer only; UI port from ELIZA_UI_PORT, default 2138)
-bun run --cwd packages/app dev:cloud-only             # Vite renderer with hosted Cloud onboarding policy
+bun run --cwd packages/app dev                        # Vite renderer linked to staging Cloud (UI port from ELIZA_UI_PORT, default 2138)
+bun run --cwd packages/app dev:local                  # Vite renderer with the local/cloud/remote runtime chooser
+bun run --cwd packages/app dev:cloud-only             # Compatibility alias for hosted Cloud onboarding policy
 bun run --cwd packages/app dev:shared                 # Shared long-lived Vite server on deterministic worktree port
 bun run --cwd packages/app dev:status                 # List running shared dev servers (port, worktree, pid)
 bun run --cwd packages/app dev:rebuild                # Trigger explicit Vite full reload for this worktree
@@ -272,12 +273,15 @@ All env vars use the `ELIZA_` prefix (set in `app.config.ts` → `envPrefix: "EL
 | `ELIZA_APP_SOURCEMAP` | Enable source maps in production build |
 | `ELIZA_DESKTOP_VITE_FAST_DIST` | Set by Electrobun dev orchestrator for Rollup watch mode |
 | `ELIZA_DEV_POLLING` | Enable filesystem polling for watch (useful in VMs) |
+| `ELIZA_DEV_CLOUD_TARGET` | Local dev Cloud target: `staging` (default), `production`, or `offline` |
+| `ELIZAOS_CLOUD_BASE_URL` | Server-side Cloud API base; ordinary local dev pins `https://api-staging.eliza.app/api/v1` |
+| `ELIZAOS_CLOUD_API_KEY` | Generic Cloud credential; local staging launchers scrub it to prevent cross-environment reuse. Use target-specific `ELIZA_DEV_CLOUD_API_KEY` with explicit staging instead |
 | `ELIZA_TTS_DEBUG` | Enable TTS trace logs |
 | `ELIZA_SETTINGS_DEBUG` | Enable settings debug panel |
 | `VITE_ASSET_BASE_URL` | Override asset base URL for CDN hosting |
-| `VITE_ELIZA_CLOUD_BASE` | Hosted Cloud origin used by public-web boot and Cloud runtime configuration |
-| `VITE_ELIZA_DESKTOP_RUNTIME_MODE` | `"cloud"` forces hosted Cloud sign-in policy; `dev:cloud-only` sets it automatically |
-| `VITE_ELIZA_ENABLE_RUNTIME_CHOOSER` | `"1"` opts production/test builds into the local/cloud/remote chooser; ordinary Vite dev enables it by default |
+| `VITE_ELIZA_CLOUD_BASE` | Hosted Cloud app origin used by public-web boot and Cloud runtime configuration |
+| `VITE_ELIZA_DESKTOP_RUNTIME_MODE` | `"cloud"` forces hosted Cloud sign-in policy; ordinary local dev sets it for staging |
+| `VITE_ELIZA_ENABLE_RUNTIME_CHOOSER` | `"1"` opts builds into the local/cloud/remote chooser; `dev:local` sets it automatically |
 | `VITE_STEWARD_API_URL` | Optional public Steward API base URL override |
 | `VITE_STEWARD_TENANT_ID` | Steward tenant identifier for the selected Cloud environment |
 | `ELIZA_CAPACITOR_BUILD_TARGET` | `"ios"` or `"android"` — set during mobile builds |

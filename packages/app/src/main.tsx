@@ -68,6 +68,7 @@ import {
   isCloudPairLoopbackOrigin,
 } from "@elizaos/shared/contracts";
 import { isElizaDedicatedAgentHostname } from "@elizaos/shared/elizacloud";
+import { configureStoredStewardTokenScope } from "@elizaos/shared/steward-session-client";
 import { completeAndroidCloudSignIn } from "@elizaos/ui/android-cloud/android-cloud-auth";
 import { shouldAcknowledgeAndroidCloudCallback } from "@elizaos/ui/android-cloud/android-cloud-client";
 import { client } from "@elizaos/ui/api";
@@ -483,6 +484,7 @@ const isStoreBuild =
   typeof __ELIZA_BUILD_VARIANT__ === "string" &&
   __ELIZA_BUILD_VARIANT__ === "store";
 const IOS_RUNTIME_ENV_CONFIG = resolveIosRuntimeConfig(import.meta.env);
+configureStoredStewardTokenScope(IOS_RUNTIME_ENV_CONFIG.cloudApiBase);
 const DEVICE_BRIDGE_ID_KEY = `${APP_NAMESPACE}_device_bridge_id`;
 const BACKGROUND_RUNNER_LABEL = "eliza-tasks";
 const BACKGROUND_RUNNER_CONFIG_RETRY_MS = 5_000;

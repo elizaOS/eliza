@@ -132,8 +132,9 @@ export function registerTextInferenceModels(runtime: IAgentRuntime): void {
   // Host routing policy is process-owned. Read the captured environment first
   // so a packaged core resolver that lacks dotenv fallback cannot silently
   // re-enable the priority-50 Cloud brain inside a managed container.
+  const envFlag = env.ELIZAOS_CLOUD_USE_INFERENCE?.trim();
   const flag =
-    env.ELIZAOS_CLOUD_USE_INFERENCE ??
+    (envFlag ? envFlag : undefined) ??
     getSetting(runtime, "ELIZAOS_CLOUD_USE_INFERENCE");
   if (flag?.trim().toLowerCase() === "false") {
     logger.info(
@@ -571,6 +572,7 @@ export {
 export {
   normalizeCloudSecret,
   resolveCloudApiKey,
+  resolveCloudApiKeyWithRuntimeOverride,
 } from "./cloud/cloud-api-key";
 export {
   clearCloudSecrets,

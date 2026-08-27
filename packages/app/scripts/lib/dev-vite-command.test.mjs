@@ -180,7 +180,7 @@ describe("development Vite process commands", () => {
       "utf8",
     );
     assert.match(directDevSource, /resolveViteCommand\(\{/);
-    assert.match(directDevSource, /viteArgs: process\.argv\.slice\(2\)/);
+    assert.match(directDevSource, /viteArgs: devCloud\.passthroughArgs/);
     assert.match(directDevSource, /spawnMirroredChild\(/);
   });
 

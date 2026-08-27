@@ -8,7 +8,12 @@ import type {
   SensitiveRequest,
   SensitiveRequestWithPaymentContext,
 } from "@elizaos/core";
-import { getBootConfig, setBootConfig } from "@elizaos/shared";
+import {
+  captureDevCloudEnvAuthoritySnapshot,
+  getBootConfig,
+  resetDevCloudEnvAuthorityForTests,
+  setBootConfig,
+} from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   CLOUD_BASE_FALLBACK,
@@ -16,9 +21,35 @@ import {
 } from "./public-link-adapter";
 
 const SAVED_ENV_KEYS = [
+  "ELIZA_DEV_SOURCE",
+  "ELIZA_DEV_CLOUD_ENV_AUTHORITY",
+  "ELIZAOS_CLOUD_API_KEY",
   "ELIZAOS_CLOUD_BASE_URL",
   "ELIZA_CLOUD_BASE_URL",
 ] as const;
+
+function setAuthority(
+  authority:
+    | "staging-default"
+    | "offline"
+    | "staging-explicit"
+    | "production"
+    | "self-hosted",
+): string {
+  const baseUrl =
+    authority === "production"
+      ? "https://api.eliza.app/api/v1"
+      : authority === "self-hosted"
+        ? "http://127.0.0.1:8787/api/v1"
+        : "https://api-staging.eliza.app/api/v1";
+  process.env.ELIZA_DEV_SOURCE = "1";
+  process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = authority;
+  process.env.ELIZAOS_CLOUD_API_KEY = "launch-key";
+  process.env.ELIZAOS_CLOUD_BASE_URL = baseUrl;
+  resetDevCloudEnvAuthorityForTests();
+  captureDevCloudEnvAuthoritySnapshot();
+  return baseUrl;
+}
 
 function buildRequest(
   overrides: Partial<SensitiveRequestWithPaymentContext> = {},
@@ -89,6 +120,7 @@ describe("publicLinkSensitiveRequestAdapter", () => {
   let savedEnv: Record<(typeof SAVED_ENV_KEYS)[number], string | undefined>;
 
   beforeEach(() => {
+    resetDevCloudEnvAuthorityForTests();
     savedEnv = Object.fromEntries(
       SAVED_ENV_KEYS.map((key) => [key, process.env[key]]),
     ) as Record<(typeof SAVED_ENV_KEYS)[number], string | undefined>;
@@ -101,6 +133,7 @@ describe("publicLinkSensitiveRequestAdapter", () => {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
+    resetDevCloudEnvAuthorityForTests();
   });
 
   it("returns a public URL for any_payer payment with appId", async () => {
@@ -230,4 +263,30 @@ describe("publicLinkSensitiveRequestAdapter", () => {
     );
     expect(process.env.ELIZAOS_CLOUD_BASE_URL).toBeUndefined();
   });
+
+  it.each([
+    "staging-default",
+    "offline",
+    "staging-explicit",
+    "production",
+    "self-hosted",
+  ] as const)(
+    "uses only the frozen %s base after late runtime pollution",
+    async (authority) => {
+      const launchBase = setAuthority(authority);
+      process.env.ELIZAOS_CLOUD_BASE_URL =
+        "https://process-collector.example/api/v1";
+
+      const result = await publicLinkSensitiveRequestAdapter.deliver({
+        request: buildRequest({ id: "req-authority" }),
+        runtime: runtimeWithSetting("https://runtime-collector.example/api/v1"),
+      });
+
+      expect(result.delivered).toBe(true);
+      if (!result.delivered) throw new Error("expected success");
+      expect(result.url).toBe(
+        `${launchBase}/payment/app-charge/app_demo/req-authority/public`,
+      );
+    },
+  );
 });

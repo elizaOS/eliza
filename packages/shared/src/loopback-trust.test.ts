@@ -11,6 +11,7 @@ import http from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getBootConfig, setBootConfig } from "./config/boot-config.js";
+import { resetDevCloudEnvAuthorityForTests } from "./elizacloud/dev-cloud-env-authority.js";
 import {
   isLoopbackRemoteAddress,
   isRemoteAddressInCidrList,
@@ -52,6 +53,9 @@ const TRUST_ENV_KEYS = [
   "ELIZA_REQUIRE_LOCAL_AUTH",
   "ELIZA_DEV_AUTH_BYPASS",
   "ELIZA_CLOUD_PROVISIONED",
+  "ELIZA_DEV_CLOUD_ENV_AUTHORITY",
+  "ELIZA_DEV_CLOUD_TARGET",
+  "ELIZA_DEV_SOURCE",
   "STEWARD_AGENT_TOKEN",
   "ELIZA_API_TOKEN",
   "ELIZAOS_CLOUD_ENABLED",
@@ -61,6 +65,7 @@ const TRUST_ENV_KEYS = [
 
 function clearTrustEnv() {
   for (const key of TRUST_ENV_KEYS) delete process.env[key];
+  resetDevCloudEnvAuthorityForTests();
 }
 
 describe("isLoopbackRemoteAddress", () => {
@@ -504,6 +509,32 @@ describe("isTrustedLocalRequest — agent policy gates (cloudCheck=container, no
     process.env.ELIZA_CLOUD_PROVISIONED = "1";
     process.env.ELIZAOS_CLOUD_ENABLED = "true";
     process.env.ELIZAOS_CLOUD_API_KEY = "cloud-key";
+    expect(isTrustedLocalRequest(localReq(), AGENT_OPTIONS)).toBe(false);
+  });
+
+  it("cloudCheck=container: staging-default ignores late managed-env pollution", () => {
+    process.env.ELIZA_DEV_SOURCE = "1";
+    process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "staging-default";
+
+    expect(isTrustedLocalRequest(localReq(), AGENT_OPTIONS)).toBe(true);
+
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    process.env.STEWARD_AGENT_TOKEN = "late-production-token";
+
+    expect(isTrustedLocalRequest(localReq(), AGENT_OPTIONS)).toBe(true);
+  });
+
+  it("cloudCheck=container: explicit production stays managed after late env clearing", () => {
+    process.env.ELIZA_DEV_SOURCE = "1";
+    process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "production";
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    process.env.ELIZA_API_TOKEN = "launch-api-token";
+
+    expect(isTrustedLocalRequest(localReq(), AGENT_OPTIONS)).toBe(false);
+
+    delete process.env.ELIZA_CLOUD_PROVISIONED;
+    delete process.env.ELIZA_API_TOKEN;
+
     expect(isTrustedLocalRequest(localReq(), AGENT_OPTIONS)).toBe(false);
   });
 });

@@ -12,7 +12,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CompatRuntimeState } from "./compat-route-shared";
 
 const saveElizaConfig = vi.fn();
+const loadElizaConfig = vi.fn(() => ({}) as Record<string, unknown>);
+const loadEffectiveElizaConfig = vi.fn(() => ({}) as Record<string, unknown>);
 const extractAndPersistFirstRunApiKey = vi.fn();
+const getCloudSecret = vi.fn(() => undefined as string | undefined);
+const normalizeLinkedAccountFlagsConfig = vi.fn(() => undefined as unknown);
+const resolveDevCloudEnvAuthority = vi.fn(() => null as string | null);
+const resolveDevCloudAuthorityEnvValue = vi.fn(
+  (key: string) => process.env[key],
+);
 const readRequestBody = vi.fn(
   async (
     req: http.IncomingMessage,
@@ -45,17 +53,20 @@ vi.mock("@elizaos/core", () => ({
 
 vi.mock("@elizaos/agent", () => ({
   applyCanonicalFirstRunConfig: vi.fn(),
-  loadElizaConfig: vi.fn(() => ({})),
+  loadEffectiveElizaConfig,
+  loadElizaConfig,
   saveElizaConfig,
 }));
 
 vi.mock("@elizaos/shared", () => ({
-  getCloudSecret: () => undefined,
+  getCloudSecret,
   migrateLegacyRuntimeConfig: vi.fn(),
   normalizeDeploymentTargetConfig: () => undefined,
   normalizeFirstRunProviderId: () => null,
-  normalizeLinkedAccountFlagsConfig: () => undefined,
+  normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig: () => undefined,
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
 }));
 
 vi.mock("./auth.ts", () => ({
@@ -87,6 +98,7 @@ vi.mock("./server-first-run-helpers", () => ({
 function requestWithRawBody(
   raw: string,
   pathname = "/api/first-run",
+  localPort?: number,
 ): http.IncomingMessage {
   const stream = Readable.from(
     raw.length === 0 ? [] : [Buffer.from(raw, "utf8")],
@@ -94,7 +106,7 @@ function requestWithRawBody(
   return Object.assign(stream, {
     headers: { "content-type": "application/json" },
     method: "POST",
-    socket: { localPort: undefined },
+    socket: { localPort },
     url: pathname,
   }) as unknown as http.IncomingMessage;
 }
@@ -139,7 +151,21 @@ async function postFirstRun(raw: string) {
 describe("POST /api/first-run JSON body", () => {
   beforeEach(() => {
     saveElizaConfig.mockReset();
+    loadElizaConfig.mockReset();
+    loadElizaConfig.mockReturnValue({});
+    loadEffectiveElizaConfig.mockReset();
+    loadEffectiveElizaConfig.mockReturnValue({});
     extractAndPersistFirstRunApiKey.mockReset();
+    getCloudSecret.mockReset();
+    getCloudSecret.mockReturnValue(undefined);
+    normalizeLinkedAccountFlagsConfig.mockReset();
+    normalizeLinkedAccountFlagsConfig.mockReturnValue(undefined);
+    resolveDevCloudEnvAuthority.mockReset();
+    resolveDevCloudEnvAuthority.mockReturnValue(null);
+    resolveDevCloudAuthorityEnvValue.mockReset();
+    resolveDevCloudAuthorityEnvValue.mockImplementation(
+      (key: string) => process.env[key],
+    );
   });
 
   it.each(["", "   ", "{", "not-json", "[]", "null", '"foo"', "42", "true"])(
@@ -204,6 +230,145 @@ describe("POST /api/first-run JSON body", () => {
       error: "Failed to complete first-run setup",
     });
     expect(saveElizaConfig).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["staging-default", "durable"],
+    ["staging-default", "sealed"],
+    ["offline", "durable"],
+    ["offline", "sealed"],
+  ] as const)(
+    "%s authority never selects or resaves a %s production Cloud key",
+    async (authority, source) => {
+      vi.useFakeTimers();
+      try {
+        const durableConfig: Record<string, unknown> = {
+          cloud: {
+            enabled: true,
+            baseUrl: "https://api.eliza.app/api/v1",
+            ...(source === "durable"
+              ? { apiKey: "persisted-production-key" }
+              : {}),
+          },
+        };
+        loadElizaConfig.mockReturnValue(durableConfig);
+        loadEffectiveElizaConfig.mockReturnValue({
+          cloud: {
+            enabled: false,
+            baseUrl: "https://api-staging.eliza.app/api/v1",
+            apiKey: "",
+          },
+        });
+        getCloudSecret.mockReturnValue("sealed-production-key");
+        normalizeLinkedAccountFlagsConfig.mockReturnValue({
+          elizacloud: { status: "linked" },
+        });
+        resolveDevCloudEnvAuthority.mockReturnValue(authority);
+        resolveDevCloudAuthorityEnvValue.mockReturnValue("");
+
+        const { handled, res } = await postFirstRun(
+          JSON.stringify({
+            linkedAccounts: { elizacloud: { status: "linked" } },
+            credentialInputs: {
+              cloudApiKey: "request-production-key",
+              llmApiKey: "direct-provider-key",
+            },
+          }),
+        );
+
+        expect(handled).toBe(true);
+        expect(res.statusCode).toBe(200);
+        expect(getCloudSecret).not.toHaveBeenCalled();
+        expect(resolveDevCloudAuthorityEnvValue).toHaveBeenCalledWith(
+          "ELIZAOS_CLOUD_API_KEY",
+        );
+        expect(extractAndPersistFirstRunApiKey).toHaveBeenCalledWith({
+          linkedAccounts: { elizacloud: { status: "linked" } },
+          credentialInputs: { llmApiKey: "direct-provider-key" },
+        });
+        expect(saveElizaConfig).toHaveBeenCalledTimes(1);
+        const persisted = saveElizaConfig.mock.calls[0]?.[0] as {
+          cloud?: { apiKey?: string };
+        };
+        expect(persisted.cloud?.apiKey).toBe(
+          source === "durable" ? "persisted-production-key" : undefined,
+        );
+        expect(loadEffectiveElizaConfig).toHaveBeenCalledTimes(1);
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it("syncs only non-Cloud first-run state under launcher authority", async () => {
+    const durableCloud = {
+      enabled: true,
+      apiKey: "persisted-production-key",
+      serviceKey: "persisted-production-service-key",
+      baseUrl: "https://api.eliza.app/api/v1",
+    };
+    const durableAgents = {
+      list: [
+        {
+          id: "main",
+          settings: { ELIZAOS_CLOUD_API_KEY: "persisted-production-key" },
+        },
+      ],
+    };
+    loadElizaConfig.mockReturnValue({
+      agents: durableAgents,
+      cloud: durableCloud,
+    });
+    loadEffectiveElizaConfig.mockReturnValue({
+      meta: { firstRunComplete: true },
+      agents: { list: [{ id: "main" }] },
+      ui: { assistant: { name: "Eliza" } },
+      cloud: {
+        enabled: false,
+        apiKey: "",
+        baseUrl: "https://api-staging.eliza.app/api/v1",
+      },
+      deploymentTarget: { runtime: "local" },
+      linkedAccounts: {},
+      serviceRouting: { llmText: { transport: "direct", backend: "openai" } },
+    });
+    resolveDevCloudEnvAuthority.mockReturnValue("staging-default");
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response("{}", { status: 200 }),
+    );
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    try {
+      const { handleFirstRunRoute } = await import("./first-run-routes");
+      const res = responseSink();
+      const handled = await handleFirstRunRoute(
+        requestWithRawBody('{"name":"Eliza"}', "/api/first-run", 2138),
+        res,
+        emptyState(),
+      );
+
+      expect(handled).toBe(true);
+      expect(res.statusCode).toBe(200);
+      const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+      const patch = JSON.parse(String(request.body)) as Record<string, unknown>;
+      expect(patch).toEqual({
+        meta: { firstRunComplete: true },
+        agents: durableAgents,
+        ui: { assistant: { name: "Eliza" } },
+      });
+      expect(patch).not.toHaveProperty("cloud");
+      expect(patch).not.toHaveProperty("deploymentTarget");
+      expect(patch).not.toHaveProperty("linkedAccounts");
+      expect(patch).not.toHaveProperty("serviceRouting");
+      const persisted = saveElizaConfig.mock.calls[0]?.[0] as {
+        cloud?: Record<string, unknown>;
+      };
+      expect(persisted.cloud).toEqual(durableCloud);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it("ignores non-first-run paths", async () => {

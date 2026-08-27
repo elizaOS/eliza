@@ -155,16 +155,24 @@ async function waitForTcp(
 
 async function waitForHttpOk(
   url: string,
-  opts: { timeoutMs?: number; intervalMs?: number; label?: string } = {},
+  opts: {
+    timeoutMs?: number;
+    intervalMs?: number;
+    requestTimeoutMs?: number;
+    label?: string;
+  } = {},
 ): Promise<void> {
   const timeoutMs = opts.timeoutMs ?? 90_000;
   const intervalMs = opts.intervalMs ?? 500;
+  const requestTimeoutMs = opts.requestTimeoutMs ?? 2_000;
   const label = opts.label ?? url;
   const start = Date.now();
   let lastErr: unknown;
   while (Date.now() - start < timeoutMs) {
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(2_000) });
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(requestTimeoutMs),
+      });
       if (res.status < 500) return;
       lastErr = new Error(`status ${res.status}`);
     } catch (err) {
@@ -505,7 +513,14 @@ export async function startCloudStack(
         spawnLogged(
           "frontend",
           BUN,
-          ["run", "dev", "--", "--host", "127.0.0.1"],
+          [
+            "run",
+            "dev",
+            "--",
+            "--host",
+            "127.0.0.1",
+            "--cloud-target=offline",
+          ],
           {
             env: frontendEnv,
             cwd: frontendDir,
@@ -519,6 +534,10 @@ export async function startCloudStack(
     await withFakeStripeBootstrapRollback(fakeStripe, () =>
       waitForHttpOk(frontendUrl, {
         timeoutMs: 120_000,
+        // The first Vite document request may wait for dependency optimization
+        // and source transforms; aborting it every two seconds prevents the
+        // readiness probe itself from ever observing a healthy cold start.
+        requestTimeoutMs: 60_000,
         label: "frontend",
       }),
     );

@@ -7,7 +7,11 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getBootConfig, setBootConfig } from "../config/boot-config.js";
-import { _resetCloudSecretsForTesting } from "../elizacloud/cloud-secrets.js";
+import {
+  _resetCloudSecretsForTesting,
+  scrubCloudSecretsFromEnv,
+} from "../elizacloud/cloud-secrets.js";
+import { resetDevCloudEnvAuthorityForTests } from "../elizacloud/dev-cloud-env-authority.js";
 import { ELIZA_DOMAIN_CONTRACTS } from "../elizacloud/domain-contract.js";
 import { resolveHfDownloadBase, resolveHfDownloadBases } from "./hf-proxy.js";
 
@@ -32,6 +36,8 @@ describe("resolveHfDownloadBase", () => {
   const savedConfig = getBootConfig();
   const savedEnv = {
     ACME_CLOUD_BASE_URL: process.env.ACME_CLOUD_BASE_URL,
+    ELIZA_DEV_CLOUD_ENV_AUTHORITY: process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY,
+    ELIZA_DEV_SOURCE: process.env.ELIZA_DEV_SOURCE,
     ELIZA_HF_BASE_URL: process.env.ELIZA_HF_BASE_URL,
     ELIZA_HF_BASE_URLS: process.env.ELIZA_HF_BASE_URLS,
     ELIZAOS_CLOUD_API_KEY: process.env.ELIZAOS_CLOUD_API_KEY,
@@ -39,9 +45,12 @@ describe("resolveHfDownloadBase", () => {
   };
 
   beforeEach(() => {
+    resetDevCloudEnvAuthorityForTests();
     _resetCloudSecretsForTesting();
     delete process.env.ELIZA_HF_BASE_URL;
     delete process.env.ELIZA_HF_BASE_URLS;
+    delete process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY;
+    delete process.env.ELIZA_DEV_SOURCE;
     delete process.env.ELIZAOS_CLOUD_API_KEY;
     delete process.env.ELIZAOS_CLOUD_BASE_URL;
     delete process.env.ACME_CLOUD_BASE_URL;
@@ -49,6 +58,7 @@ describe("resolveHfDownloadBase", () => {
   });
 
   afterEach(() => {
+    resetDevCloudEnvAuthorityForTests();
     _resetCloudSecretsForTesting();
     for (const [key, value] of Object.entries(savedEnv)) {
       if (value === undefined) delete process.env[key];
@@ -72,6 +82,34 @@ describe("resolveHfDownloadBase", () => {
     expect(resolveHfDownloadBase()).toEqual({
       base: CLOUD_HF_PROXY_BASE,
       authHeader: { authorization: "Bearer key-123" },
+      viaCloud: true,
+      label: "cloud",
+    });
+  });
+
+  it.each(["staging-default", "offline"])(
+    "does not route through Cloud with a sealed production key under %s authority",
+    (authority) => {
+      process.env.ELIZAOS_CLOUD_API_KEY = "sealed-production-key";
+      scrubCloudSecretsFromEnv();
+      process.env.ELIZA_DEV_SOURCE = "1";
+      process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = authority;
+
+      expect(resolveHfDownloadBases()).toEqual([
+        { base: "https://huggingface.co", viaCloud: false, label: "direct" },
+      ]);
+    },
+  );
+
+  it("uses the canonical launcher key for explicit staging", () => {
+    process.env.ELIZA_DEV_SOURCE = "1";
+    process.env.ELIZA_DEV_CLOUD_ENV_AUTHORITY = "staging-explicit";
+    process.env.ELIZAOS_CLOUD_API_KEY = "staging-key";
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://api-staging.eliza.app/api/v1";
+
+    expect(resolveHfDownloadBase()).toEqual({
+      base: "https://api-staging.eliza.app/api/v1/hf-proxy",
+      authHeader: { authorization: "Bearer staging-key" },
       viaCloud: true,
       label: "cloud",
     });

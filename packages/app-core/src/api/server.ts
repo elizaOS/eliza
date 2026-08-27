@@ -32,6 +32,7 @@ import {
   handleRuntimeModeRemoteForward,
   isAllowedHost,
   isAuthorized,
+  loadEffectiveElizaConfig,
   loadElizaConfig,
   normalizeWsClientId,
   persistConversationRoomTitle,
@@ -44,6 +45,7 @@ import {
   streamResponseBodyWithByteLimit,
   startApiServer as upstreamStartApiServer,
 } from "@elizaos/agent";
+import { isDevCloudConfigAuthorityView } from "@elizaos/agent/config/dev-cloud-env-authority";
 import { getDeferredBootStatus } from "@elizaos/agent/runtime/deferred-boot-status";
 import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/account-storage";
 // Override the wallet export rejection function with the hardened version
@@ -457,11 +459,15 @@ function patchCompatStatusResponse(
 }
 
 /**
- * Load config from disk and backfill `cloud.apiKey` from sealed secrets when the
- * user is still linked to Eliza Cloud but a stale write dropped the key.
+ * Resolve the Cloud config used by app-core's compatibility routes. A valid
+ * development Cloud authority owns the complete operational connection and is
+ * returned as an ephemeral, sanitized view; that view must never be repaired
+ * from sealed/env/runtime state or persisted. Outside authority mode, retain
+ * the legacy repair behavior for linked Cloud accounts whose persisted key was
+ * dropped by a stale write.
  */
 function resolveCloudConfig(runtime?: unknown): ElizaConfig {
-  const config = loadElizaConfig();
+  const config = loadEffectiveElizaConfig();
   const cloudRec =
     config.cloud && typeof config.cloud === "object"
       ? (config.cloud as Record<string, unknown>)
@@ -474,6 +480,14 @@ function resolveCloudConfig(runtime?: unknown): ElizaConfig {
         .sort()
         .join(",")}`,
     );
+  }
+  if (isDevCloudConfigAuthorityView(config)) {
+    if (isElizaSettingsDebugEnabled()) {
+      logger.debug(
+        "[eliza][settings][compat] resolveCloudConfig using launcher-owned ephemeral Cloud view",
+      );
+    }
+    return config;
   }
   const linkedAccounts = resolveLinkedAccountsInConfig(
     config as Record<string, unknown>,

@@ -24,6 +24,13 @@ import JSON5 from "json5";
 import { readConfigEnvSync } from "../api/config-env.ts";
 import { syncSolanaPublicKeyEnv } from "../api/wallet-env-sync.ts";
 import { isVaultRef } from "../runtime/operations/vault-bridge.ts";
+import {
+  createDevCloudConfigAuthorityView,
+  isDevCloudConfigAuthorityView,
+  isDevCloudEnvOwnedKey,
+  isDevCloudInternalEnvKey,
+  resolveDevCloudEnvAuthority,
+} from "./dev-cloud-env-authority.ts";
 import { collectConfigEnvVars, collectConnectorEnvVars } from "./env-vars.ts";
 import { resolveConfigIncludes } from "./includes.ts";
 import { normalizeModelMetadataInConfig } from "./model-metadata.ts";
@@ -88,7 +95,10 @@ function resolveBindMountOverlayPath(
 }
 
 function applyConfigEnvToProcessEnv(entries: Record<string, string>): void {
+  const devCloudAuthority = resolveDevCloudEnvAuthority();
   for (const [key, value] of Object.entries(entries)) {
+    if (isDevCloudInternalEnvKey(key)) continue;
+    if (devCloudAuthority && isDevCloudEnvOwnedKey(key)) continue;
     // Skip unresolved vault sentinels. The boot-time vault hydration
     // (resolveConfigEnvForProcess + applyCloudConfigToEnv) writes the resolved
     // plaintext to process.env once at startup. Many services call
@@ -286,6 +296,16 @@ export function loadElizaConfig(): ElizaConfig {
   return resolved;
 }
 
+/**
+ * Load the operational/runtime view of config. The durable loader remains the
+ * source for settings mutations; network and execution paths use this helper
+ * so a launcher-selected dev Cloud target cannot be displaced by persisted
+ * production topology or credentials.
+ */
+export function loadEffectiveElizaConfig(): ElizaConfig {
+  return createDevCloudConfigAuthorityView(loadElizaConfig());
+}
+
 function syncDirectory(dir: string): void {
   let fd: number | undefined;
   try {
@@ -405,6 +425,11 @@ function stripWalletPrivateKeysFromConfig(config: ElizaConfig): void {
 }
 
 export function saveElizaConfig(config: ElizaConfig): void {
+  if (isDevCloudConfigAuthorityView(config)) {
+    throw new Error(
+      "[eliza-config] Refusing to persist an ephemeral dev Cloud authority view",
+    );
+  }
   const configPath = resolveConfigWritePath();
   const canonicalConfigPath = resolveConfigPath();
   const dir = path.dirname(configPath);

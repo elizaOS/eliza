@@ -3,7 +3,49 @@
  * consumes this as the single host-env projection before adding per-session
  * model gateway, credential bridge, and adapter-specific overrides.
  */
+import {
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/shared";
 import { isHostExecutionToolchainEnvKey } from "@elizaos/shared/host-execution-env";
+
+function isDevCloudControlledSubAgentEnvKey(key: string): boolean {
+  const normalized = key.toUpperCase();
+  return (
+    normalized === "ELIZA_DEV_SOURCE" ||
+    normalized === "ELIZA_DEV_CLOUD_ENV_AUTHORITY" ||
+    normalized === "ELIZA_DEV_CLOUD_TARGET" ||
+    normalized.startsWith("ELIZAOS_CLOUD_") ||
+    normalized.startsWith("ELIZA_CLOUD_") ||
+    normalized.startsWith("ELIZA_DEV_CLOUD_") ||
+    normalized.startsWith("ELIZACLOUD_") ||
+    normalized.startsWith("WAIFU_ELIZA_CLOUD_")
+  );
+}
+
+/**
+ * Clamp a child environment to the immutable launcher tuple. Run this after
+ * every caller/adapter overlay so no late alias can replace the frozen values.
+ */
+export function applyDevCloudAuthorityToSubAgentEnv<
+  T extends NodeJS.ProcessEnv,
+>(env: T): T {
+  if (!resolveDevCloudEnvAuthority()) return env;
+  const mutableEnv: NodeJS.ProcessEnv = env;
+
+  for (const key of Object.keys(mutableEnv)) {
+    if (isDevCloudControlledSubAgentEnvKey(key)) delete mutableEnv[key];
+  }
+  const baseUrl = resolveDevCloudAuthorityEnvValue(
+    "ELIZAOS_CLOUD_BASE_URL",
+  )?.trim();
+  const apiKey = resolveDevCloudAuthorityEnvValue(
+    "ELIZAOS_CLOUD_API_KEY",
+  )?.trim();
+  if (baseUrl) mutableEnv.ELIZAOS_CLOUD_BASE_URL = baseUrl;
+  if (apiKey) mutableEnv.ELIZAOS_CLOUD_API_KEY = apiKey;
+  return env;
+}
 
 const DENY_ENV_PATTERNS = [
   /DISCORD.*TOKEN/i,
@@ -217,5 +259,5 @@ export function forwardableSubAgentEnv(
     if (!isEnvForwardableToSubAgent(key, forwardCloudKey)) continue;
     out[canonicalForwardedEnvKey(key)] = value;
   }
-  return out;
+  return applyDevCloudAuthorityToSubAgentEnv(out);
 }

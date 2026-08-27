@@ -16,7 +16,7 @@
 
 import crypto from "node:crypto";
 import path from "node:path";
-import { loadElizaConfig } from "@elizaos/agent/config/config";
+import { loadEffectiveElizaConfig } from "@elizaos/agent/config/config";
 import { resolveOAuthDir } from "@elizaos/agent/config/paths";
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import {
@@ -35,6 +35,10 @@ import {
   type PlaidTransactionDto,
   resolveCloudApiBaseUrl,
 } from "@elizaos/plugin-elizacloud/cloud/managed-payment-clients";
+import {
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/shared";
 import {
   FinancesRepository,
   PlaidSyncCursorConflictError,
@@ -124,10 +128,23 @@ export type FinancesServiceOptions = {
 };
 
 export function resolveFinancesCloudManagedClientConfig(): ElizaCloudManagedClientConfig {
+  if (resolveDevCloudEnvAuthority()) {
+    const apiKey = normalizeElizaCloudApiKey(
+      resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_API_KEY"),
+    );
+    const baseUrl = resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_BASE_URL");
+    return {
+      configured: Boolean(apiKey),
+      apiKey,
+      apiBaseUrl: resolveCloudApiBaseUrl(baseUrl),
+      siteUrl: normalizeCloudSiteUrl(baseUrl),
+    };
+  }
+
   let configKey: string | null = null;
   let configBase: string | null = null;
   try {
-    const config = loadElizaConfig();
+    const config = loadEffectiveElizaConfig();
     const cloud =
       config.cloud && typeof config.cloud === "object"
         ? (config.cloud as Record<string, unknown>)

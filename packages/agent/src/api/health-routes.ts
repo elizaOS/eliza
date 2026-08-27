@@ -29,6 +29,7 @@ import {
   parseCanonicalInteger,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
+import { createDevCloudConfigAuthorityView } from "../config/dev-cloud-env-authority.ts";
 import { getDeferredBootStatus } from "../runtime/deferred-boot-status.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
@@ -507,6 +508,7 @@ export async function handleHealthRoutes(
 
   // ── GET /api/status ─────────────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/status") {
+    const effectiveConfig = createDevCloudConfigAuthorityView(state.config);
     const uptime = state.startedAt ? Date.now() - state.startedAt : undefined;
     // The active-model snapshot is optional status info; never let an
     // unavailable local-inference API turn /api/status into a 500. The deep
@@ -535,7 +537,7 @@ export async function handleHealthRoutes(
     // the one serving now. Resolve live first and keep the cache only as the
     // fallback for a runtime we can no longer inspect (#20045 review).
     const model =
-      detectRuntimeModel(state.runtime ?? null, state.config) ??
+      detectRuntimeModel(state.runtime ?? null, effectiveConfig) ??
       activeLocalModel ??
       state.model;
     // Managed hosting detection is a pure env check from @elizaos/shared and
@@ -546,7 +548,9 @@ export async function handleHealthRoutes(
     let hasCloudApiKey = false;
     try {
       const { resolveCloudApiKey } = await getCloudApiKeyResolver();
-      hasCloudApiKey = Boolean(resolveCloudApiKey(state.config, state.runtime));
+      hasCloudApiKey = Boolean(
+        resolveCloudApiKey(effectiveConfig, state.runtime),
+      );
     } catch {
       // error-policy:J4 optional cloud API-key probe must not fail /api/status
     }

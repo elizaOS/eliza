@@ -35,7 +35,11 @@ import {
   sendJsonError as httpSendJsonError,
   resolveOwnerEntityIdOrDefault,
 } from "@elizaos/core";
-import { readJsonBody as httpReadJsonBody } from "@elizaos/shared";
+import {
+  readJsonBody as httpReadJsonBody,
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/shared";
 import { getScheduledTaskRunner } from "../lifeops/scheduled-task/service.js";
 import { handleEntityRoutes } from "./entities.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
@@ -219,6 +223,34 @@ function runtimeSetting(
 function buildCloudProxyConfig(
   runtime: AgentRuntime | null,
 ): CloudProxyConfigLike {
+  if (resolveDevCloudEnvAuthority()) {
+    const authorityValue = (...keys: string[]): string | undefined => {
+      for (const key of keys) {
+        const value = resolveDevCloudAuthorityEnvValue(key)?.trim();
+        if (value) return value;
+      }
+      return undefined;
+    };
+    return {
+      cloud: {
+        apiKey: authorityValue(
+          "ELIZAOS_CLOUD_API_KEY",
+          "ELIZA_CLOUD_API_KEY",
+          "ELIZACLOUD_API_KEY",
+        ),
+        baseUrl: authorityValue(
+          "ELIZAOS_CLOUD_BASE_URL",
+          "ELIZA_CLOUD_BASE_URL",
+          "ELIZA_CLOUD_URL",
+          "ELIZAOS_CLOUD_URL",
+        ),
+        serviceKey: authorityValue(
+          "ELIZAOS_CLOUD_SERVICE_KEY",
+          "ELIZA_CLOUD_SERVICE_KEY",
+        ),
+      },
+    };
+  }
   return {
     cloud: {
       apiKey:

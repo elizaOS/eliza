@@ -75,6 +75,7 @@ import { scrubPersistedAgentProfileTokens } from "./agent-profiles";
 import { bindDirectCloudLoginToPersonalAgent } from "./bind-direct-cloud-login";
 import {
   CLOUD_LOGIN_POPUP_NAME,
+  isLoopbackStagingStewardDevelopment,
   navigateToSameTabCloudLogin,
   shouldUseSameTabCloudLogin,
   takeClaimedCloudLoginWindow,
@@ -1104,7 +1105,9 @@ export function useCloudState({
       // direct cloud auth (no local backend) or go through the agent proxy.
       const hasBackend = hasCloudLoginBackend();
       const cloudApiBase = getBootConfig().cloudApiBase ?? "https://eliza.app";
-      let useDirectAuth = !hasBackend;
+      const usesHostedLoopbackStagingSession =
+        isLoopbackStagingStewardDevelopment();
+      let useDirectAuth = !hasBackend || usesHostedLoopbackStagingSession;
 
       if (hasBackend) {
         // error-policy:J4 a null status here is a designed branch: a
@@ -1143,6 +1146,8 @@ export function useCloudState({
           return loginCompletion;
         }
       }
+      const shouldBindClientToDirectCloud =
+        useDirectAuth && !(usesHostedLoopbackStagingSession && hasBackend);
 
       // #15143 mobile-web sign-in: when the popup path cannot work — the
       // pre-opened handle came back null (popup blocked; the runtime signal on
@@ -1152,10 +1157,18 @@ export function useCloudState({
       // session whose browser window would never open. The returnTo round
       // trip lands back here and the stored Steward token completes the login
       // (first-run resumes via its marker + mount-time token poll). Direct
-      // cloud targets only: an agent-proxied (hasBackend) login stays on the
-      // device-code flow, whose copyable fallback link is the designed
-      // degrade for blocked popups there.
-      if (useDirectAuth && shouldUseSameTabCloudLogin(prePoppedWindow)) {
+      // cloud targets normally require direct auth: an agent-proxied
+      // (hasBackend) login stays on the device-code flow, whose copyable
+      // fallback link is the designed degrade for blocked popups there. The
+      // Loopback staging is intentionally excluded: its tenant rejects a local
+      // OAuth callback, so it uses the hosted CLI-session flow below. Production
+      // and self-hosted agent proxies retain device-code auth because their
+      // CORS/pairing contracts differ.
+      if (
+        shouldUseSameTabCloudLogin(prePoppedWindow, {
+          hasAgentProxy: !useDirectAuth,
+        })
+      ) {
         closePrePoppedWindow();
         navigateToSameTabCloudLogin();
         elizaCloudLoginBusyRef.current = false;
@@ -1230,6 +1243,20 @@ export function useCloudState({
         // open without crashing but never surface a usable window.
         if (resp.browserUrl && isSafeNavigationUrl(resp.browserUrl)) {
           setElizaCloudLoginFallbackUrl(resp.browserUrl);
+          // Popup-hostile localhost browsers carry this tab through hosted
+          // staging auth. The opaque CLI session returns to localhost for the
+          // mount-time poll below; Steward never receives localhost as its
+          // OAuth redirect_uri.
+          if (
+            usesHostedLoopbackStagingSession &&
+            (!prePoppedWindow || prePoppedWindow.closed)
+          ) {
+            window.location.assign(resp.browserUrl);
+            elizaCloudLoginBusyRef.current = false;
+            setElizaCloudLoginBusy(false);
+            completeLogin();
+            return loginCompletion;
+          }
           // Electrobun's `window.open` is another renderer/WebView surface,
           // not the user's browser. Sending Cloud authentication there makes a
           // click appear to activate Eliza while no system login window opens.
@@ -1355,7 +1382,7 @@ export function useCloudState({
                     cloudApiBase: authenticatedCloudApiBase,
                     token: poll.token,
                   });
-                } else {
+                } else if (shouldBindClientToDirectCloud) {
                   client.setBaseUrl(authenticatedCloudApiBase, {
                     persist: false,
                   });
@@ -1486,8 +1513,12 @@ export function useCloudState({
               ...getBootConfig(),
               cloudApiBase: authenticatedCloudApiBase,
             });
-            client.setBaseUrl(authenticatedCloudApiBase, { persist: false });
-            client.setToken(poll.token);
+            const preservesLocalBackend =
+              isLoopbackStagingStewardDevelopment() && hasCloudLoginBackend();
+            if (!preservesLocalBackend) {
+              client.setBaseUrl(authenticatedCloudApiBase, { persist: false });
+              client.setToken(poll.token);
+            }
             setElizaCloudConnected(true);
             setElizaCloudLoginError(null);
             if (poll.userId) {
