@@ -647,12 +647,12 @@ describe("ChatOverlay", () => {
       });
       vi.stubGlobal("ResizeObserver", TestResizeObserver);
       rectSpy.mockReturnValue({
-        width: 360,
+        width: 288,
         height: 72,
         x: 0,
         y: 0,
         top: 0,
-        right: 208,
+        right: 288,
         bottom: 72,
         left: 0,
         toJSON: () => ({}),
@@ -680,7 +680,10 @@ describe("ChatOverlay", () => {
         document.documentElement.style.getPropertyValue(
           "--eliza-chat-side-clearance",
         ),
-      ).toBe("384px");
+      ).toBe("312px");
+      expect(screen.getByTestId("chat-sheet").parentElement?.style.maxWidth).toBe(
+        "288px",
+      );
       expect(
         document.documentElement.style.getPropertyValue(
           "--eliza-chat-clearance",
@@ -751,7 +754,7 @@ describe("ChatOverlay", () => {
       act(() => window.dispatchEvent(new Event("orientationchange")));
 
       await waitFor(() => {
-        expect(wrapper?.style.maxWidth).toBe("360px");
+        expect(wrapper?.style.maxWidth).toBe("288px");
         expect(overlay.className).toContain("items-end");
       });
 

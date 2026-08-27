@@ -335,10 +335,9 @@ type MotionControls = { stop: () => void };
 // definition of an end-pinned reader.
 const MESSAGE_SCROLLER_END_THRESHOLD_PX = 8;
 // A landscape phone still needs room for the attach, mic, voice, and text
-// controls. The old 208px cap squeezed the editable field to ~46px and made a
-// rotation look like the composer had broken. Keep the corner treatment, but
-// preserve the same useful width as a portrait-phone composer.
-const SHORT_LANDSCAPE_CHAT_MAX_WIDTH_PX = 360;
+// controls. Keep enough room for text entry while leaving most of an 844px
+// landscape viewport to the routed page beside the corner composer.
+const SHORT_LANDSCAPE_CHAT_MAX_WIDTH_PX = 288;
 // Ceiling (px) for the composer-footprint clearance the chat reserves in the
 // home/launcher layout. The panel can momentarily measure its OPEN/animating
 // height on the drag-down→collapse edge; publishing that as the reserved space

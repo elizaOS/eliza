@@ -271,10 +271,9 @@ export function TaskCard({
       type="button"
       onClick={() => onOpen(id)}
       data-testid="task-card"
-      className="group relative"
+      className="group relative rounded-none border-b border-border/50 py-3 first:border-t"
       {...agentProps}
     >
-      <TaskStatusMedallion status={status} />
       <span className="flex min-w-0 flex-1 flex-col gap-1.5">
         <span className="flex items-center gap-2">
           <span className="min-w-0 flex-1 truncate text-sm font-semibold text-txt-strong">
@@ -351,8 +350,7 @@ export function TaskCountChip({
   );
 }
 
-/** Quiet empty state: one glyph + a short title, lots of open space. The longer
- * hint stays for screen readers only — on screen, the icon carries the meaning. */
+/** Quiet list-empty state bounded by the same separators as populated rows. */
 export function TaskEmptyState({
   title,
   hint,
@@ -364,7 +362,7 @@ export function TaskEmptyState({
 }) {
   return (
     <div
-      className="flex flex-col items-center gap-3 py-16 text-center"
+      className="flex min-h-64 flex-col items-center justify-center gap-3 border-y border-border/50 py-10 text-center"
       data-testid="task-empty-state"
     >
       <CircleDashed

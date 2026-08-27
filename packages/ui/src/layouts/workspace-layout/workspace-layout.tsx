@@ -27,7 +27,9 @@ function useWorkspaceLayoutDesktopMode() {
     ) {
       return true;
     }
-    return window.matchMedia("(min-width: 820px)").matches;
+    return window.matchMedia(
+      "(min-width: 820px) and (min-height: 600px)",
+    ).matches;
   });
 
   React.useEffect(() => {
@@ -39,7 +41,9 @@ function useWorkspaceLayoutDesktopMode() {
       return;
     }
 
-    const mediaQuery = window.matchMedia("(min-width: 820px)");
+    const mediaQuery = window.matchMedia(
+      "(min-width: 820px) and (min-height: 600px)",
+    );
     const update = () => setIsDesktop(mediaQuery.matches);
 
     update();

@@ -28,9 +28,12 @@ import { WorkspaceMobileSidebarScope } from "./workspace-mobile-sidebar-scope";
 
 function mockViewport({ desktop }: { desktop: boolean }) {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    // WorkspaceLayout gates the drawer on "(min-width: 820px)"; every other
-    // query (pointer/hover probes from primitives) reports no match.
-    matches: desktop && query.includes("min-width: 820px"),
+    // WorkspaceLayout requires enough width and height for two panes; every
+    // other query (pointer/hover probes from primitives) reports no match.
+    matches:
+      desktop &&
+      query.includes("min-width: 820px") &&
+      query.includes("min-height: 600px"),
     media: query,
     onchange: null,
     addEventListener: vi.fn(),
@@ -159,5 +162,8 @@ describe("mobile sidebar header trigger", () => {
     expect(
       screen.queryByTestId("page-layout-mobile-sidebar-drawer"),
     ).toBeNull();
+    expect(window.matchMedia).toHaveBeenCalledWith(
+      "(min-width: 820px) and (min-height: 600px)",
+    );
   });
 });
