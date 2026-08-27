@@ -9,7 +9,9 @@
  * settlement time, provider); a settled request without its receipt is an
  * explicit unavailable state, never a fabricated success. Reversal amounts
  * keep the ledger's three distinct authorities separate: provider-cumulative
- * reversed USD (per charge/dispute authority, summed across authorities),
+ * reversed amounts in the charge's own currency (per charge/dispute
+ * authority, summed across authorities; Stripe minor units divided by 100,
+ * charge currency despite the legacy `reversed_usd` metadata key),
  * applied credit clawbacks (credit units — NOT USD for credit packs), and
  * the unrecovered shortfall recorded by the clawback mutation. Policy
  * effects are never invented: while the refund/chargeback entitlement
@@ -89,16 +91,29 @@ export interface PaymentStateRow {
   /** Honest labeling of {@link eventTime}. */
   eventTimeKind: "provider_settlement" | "server_creation" | "reversal_ledger_observation";
   paymentState: PaymentStateStatus;
-  /** Provider-cumulative refunded USD summed across distinct charge authorities. */
-  cumulativeRefundedUsd: number;
-  /** Provider-cumulative disputed USD summed across distinct dispute authorities. */
-  cumulativeDisputedUsd: number;
+  /**
+   * Provider-cumulative refunded amount in the purchase's own currency
+   * (major units), summed across distinct charge authorities. NOT USD unless
+   * the charge itself is USD — Stripe's `amount_refunded` minor units carry
+   * the charge currency despite the legacy `reversed_usd` metadata key.
+   */
+  cumulativeRefundedChargeCurrency: number;
+  /**
+   * Provider-cumulative disputed amount in the purchase's own currency
+   * (major units), summed across distinct dispute authorities. NOT USD
+   * unless the charge itself is USD.
+   */
+  cumulativeDisputedChargeCurrency: number;
   /** Credits actually removed by clawbacks (credit units — not USD for credit packs). */
   cumulativeClawbackCredits: number;
   /** Credits restored by dispute reinstatement (credit units). */
   reinstatedCredits: number;
-  /** USD the clawback could not recover from the balance, recorded by the mutation. */
-  unrecoveredShortfallUsd: number;
+  /**
+   * Amount the clawback could not recover from the balance, recorded by the
+   * mutation in the purchase's own currency (major units). NOT USD unless
+   * the charge itself is USD.
+   */
+  unrecoveredShortfallChargeCurrency: number;
   /** True when a dispute reinstatement ledger row exists for this purchase. */
   disputeReinstated: boolean;
   /**
@@ -112,12 +127,11 @@ export interface PaymentStateRow {
 }
 
 interface ReversalAggregate {
-  cumulativeRefundedUsd: number;
-  cumulativeDisputedUsd: number;
+  cumulativeRefundedChargeCurrency: number;
+  cumulativeDisputedChargeCurrency: number;
   cumulativeClawbackCredits: number;
   reinstatedCredits: number;
-  unrecoveredShortfallUsd: number;
-  disputeWithdrawn: boolean;
+  unrecoveredShortfallChargeCurrency: number;
   disputeReinstated: boolean;
   lastReversalAt: number;
   /** Ledger row id of the latest reversal — stable tie-breaker for equal timestamps. */
@@ -127,12 +141,11 @@ interface ReversalAggregate {
 
 function emptyAggregate(): ReversalAggregate {
   return {
-    cumulativeRefundedUsd: 0,
-    cumulativeDisputedUsd: 0,
+    cumulativeRefundedChargeCurrency: 0,
+    cumulativeDisputedChargeCurrency: 0,
     cumulativeClawbackCredits: 0,
     reinstatedCredits: 0,
-    unrecoveredShortfallUsd: 0,
-    disputeWithdrawn: false,
+    unrecoveredShortfallChargeCurrency: 0,
     disputeReinstated: false,
     lastReversalAt: -1,
     lastReversalRowId: "",
@@ -196,7 +209,7 @@ function aggregateReversals(
       current.cumulativeClawbackCredits += amount;
       const shortfall = finiteNumber(metadata.unrecovered_clawback_usd);
       if (shortfall !== null && shortfall > 0) {
-        current.unrecoveredShortfallUsd += shortfall;
+        current.unrecoveredShortfallChargeCurrency += shortfall;
       }
       if (
         at > current.lastReversalAt ||
@@ -206,11 +219,7 @@ function aggregateReversals(
         current.lastReversalRowId = row.id;
         current.lastReversalSource = source;
       }
-      if (source !== "charge.refunded") {
-        current.disputeWithdrawn = true;
-      }
     } else if (row.type === "refund" && source === "charge.dispute.funds_reinstated") {
-      current.disputeWithdrawn = true;
       current.disputeReinstated = true;
       current.reinstatedCredits += amount;
       if (
@@ -258,8 +267,8 @@ function aggregateReversals(
     for (const v of classes.get("refund")?.values() ?? []) refunded += v;
     let disputed = 0;
     for (const v of classes.get("dispute")?.values() ?? []) disputed += v;
-    agg.cumulativeRefundedUsd = refunded;
-    agg.cumulativeDisputedUsd = disputed;
+    agg.cumulativeRefundedChargeCurrency = refunded;
+    agg.cumulativeDisputedChargeCurrency = disputed;
   }
   return byIntent;
 }
@@ -313,8 +322,8 @@ function reversalStatus(reversal: ReversalAggregate, amountCents: number): Payme
     case "charge.dispute.funds_withdrawn":
       return "dispute_withdrawn";
     case "charge.refunded": {
-      const amountUsd = amountCents / 100;
-      const fullyReversed = reversal.cumulativeRefundedUsd + 1e-9 >= amountUsd - 1e-9;
+      const amountMajor = amountCents / 100;
+      const fullyReversed = reversal.cumulativeRefundedChargeCurrency + 1e-9 >= amountMajor - 1e-9;
       return fullyReversed ? "refunded" : "partially_refunded";
     }
     default:
@@ -569,11 +578,11 @@ export class PaymentHistoryService {
         eventTime,
         eventTimeKind,
         paymentState,
-        cumulativeRefundedUsd: reversal?.cumulativeRefundedUsd ?? 0,
-        cumulativeDisputedUsd: reversal?.cumulativeDisputedUsd ?? 0,
+        cumulativeRefundedChargeCurrency: reversal?.cumulativeRefundedChargeCurrency ?? 0,
+        cumulativeDisputedChargeCurrency: reversal?.cumulativeDisputedChargeCurrency ?? 0,
         cumulativeClawbackCredits: reversal?.cumulativeClawbackCredits ?? 0,
         reinstatedCredits: reversal?.reinstatedCredits ?? 0,
-        unrecoveredShortfallUsd: reversal?.unrecoveredShortfallUsd ?? 0,
+        unrecoveredShortfallChargeCurrency: reversal?.unrecoveredShortfallChargeCurrency ?? 0,
         disputeReinstated: reversal?.disputeReinstated ?? false,
         policyEffect: reversed
           ? {
@@ -615,11 +624,11 @@ export class PaymentHistoryService {
           reversal,
           amountCents,
         ),
-        cumulativeRefundedUsd: reversal?.cumulativeRefundedUsd ?? 0,
-        cumulativeDisputedUsd: reversal?.cumulativeDisputedUsd ?? 0,
+        cumulativeRefundedChargeCurrency: reversal?.cumulativeRefundedChargeCurrency ?? 0,
+        cumulativeDisputedChargeCurrency: reversal?.cumulativeDisputedChargeCurrency ?? 0,
         cumulativeClawbackCredits: reversal?.cumulativeClawbackCredits ?? 0,
         reinstatedCredits: reversal?.reinstatedCredits ?? 0,
-        unrecoveredShortfallUsd: reversal?.unrecoveredShortfallUsd ?? 0,
+        unrecoveredShortfallChargeCurrency: reversal?.unrecoveredShortfallChargeCurrency ?? 0,
         disputeReinstated: reversal?.disputeReinstated ?? false,
         policyEffect: reversed
           ? {

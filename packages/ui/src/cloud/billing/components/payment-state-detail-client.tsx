@@ -126,11 +126,11 @@ export function PaymentStateDetailClient({
   );
 
   const hasReversalDetail =
-    row.cumulativeRefundedUsd > 0 ||
-    row.cumulativeDisputedUsd > 0 ||
+    row.cumulativeRefundedChargeCurrency > 0 ||
+    row.cumulativeDisputedChargeCurrency > 0 ||
     row.cumulativeClawbackCredits > 0 ||
     row.reinstatedCredits > 0 ||
-    row.unrecoveredShortfallUsd > 0 ||
+    row.unrecoveredShortfallChargeCurrency > 0 ||
     row.policyEffect !== null;
 
   return (
@@ -272,25 +272,31 @@ export function PaymentStateDetailClient({
               className="flex flex-col gap-1 border-l-2 border-amber-400/60 pl-3"
               data-testid="payment-detail-reversal"
             >
-              {row.cumulativeRefundedUsd > 0 ? (
+              {row.cumulativeRefundedChargeCurrency > 0 ? (
                 <p className="text-xs font-mono text-txt-strong">
                   {t("cloud.billingTab.refundedAmount", {
                     defaultValue: "Refunded",
                   })}
                   :{" "}
                   <span data-testid="payment-detail-refunded">
-                    {formatAmount(row.cumulativeRefundedUsd, "USD")}
+                    {formatAmount(
+                      row.cumulativeRefundedChargeCurrency,
+                      row.currency,
+                    )}
                   </span>
                 </p>
               ) : null}
-              {row.cumulativeDisputedUsd > 0 ? (
+              {row.cumulativeDisputedChargeCurrency > 0 ? (
                 <p className="text-xs font-mono text-txt-strong">
                   {t("cloud.billingTab.disputedAmount", {
                     defaultValue: "Disputed",
                   })}
                   :{" "}
                   <span data-testid="payment-detail-disputed">
-                    {formatAmount(row.cumulativeDisputedUsd, "USD")}
+                    {formatAmount(
+                      row.cumulativeDisputedChargeCurrency,
+                      row.currency,
+                    )}
                   </span>
                 </p>
               ) : null}
@@ -314,14 +320,17 @@ export function PaymentStateDetailClient({
                   {formatCredits(row.cumulativeClawbackCredits)}
                 </span>
               </p>
-              {row.unrecoveredShortfallUsd > 0 ? (
+              {row.unrecoveredShortfallChargeCurrency > 0 ? (
                 <p className="text-xs font-mono text-amber-300">
                   {t("cloud.billingTab.unrecoveredShortfall", {
                     defaultValue: "Unrecovered balance shortfall",
                   })}
                   :{" "}
                   <span data-testid="payment-detail-shortfall">
-                    {formatAmount(row.unrecoveredShortfallUsd, "USD")}
+                    {formatAmount(
+                      row.unrecoveredShortfallChargeCurrency,
+                      row.currency,
+                    )}
                   </span>
                 </p>
               ) : null}

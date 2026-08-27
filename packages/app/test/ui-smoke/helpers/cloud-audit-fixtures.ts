@@ -219,8 +219,8 @@ const paymentStateRow = (overrides: {
   authorityId: string;
   paymentState: string;
   eventTimeKind?: string;
-  cumulativeRefundedUsd?: number;
-  cumulativeDisputedUsd?: number;
+  cumulativeRefundedChargeCurrency?: number;
+  cumulativeDisputedChargeCurrency?: number;
   cumulativeClawbackCredits?: number;
   reinstatedCredits?: number;
   disputeReinstated?: boolean;
@@ -234,11 +234,11 @@ const paymentStateRow = (overrides: {
   currency: "USD",
   eventTime: NOW_ISO,
   eventTimeKind: "provider_settlement",
-  cumulativeRefundedUsd: 0,
-  cumulativeDisputedUsd: 0,
+  cumulativeRefundedChargeCurrency: 0,
+  cumulativeDisputedChargeCurrency: 0,
   cumulativeClawbackCredits: 0,
   reinstatedCredits: 0,
-  unrecoveredShortfallUsd: 0,
+  unrecoveredShortfallChargeCurrency: 0,
   disputeReinstated: false,
   policyEffect: null,
   supportState: "none",
@@ -255,7 +255,7 @@ const PAYMENT_STATE_PARTIAL_REFUND = paymentStateRow({
   id: "checkout_order:order-smoke-2",
   authorityId: "order-smoke-2",
   paymentState: "partially_refunded",
-  cumulativeRefundedUsd: 5,
+  cumulativeRefundedChargeCurrency: 5,
   eventTimeKind: "reversal_ledger_observation",
   policyEffect: {
     status: "unavailable",
@@ -268,7 +268,7 @@ const PAYMENT_STATE_DISPUTE_REINSTATED = paymentStateRow({
   id: "checkout_order:order-smoke-3",
   authorityId: "order-smoke-3",
   paymentState: "dispute_reinstated",
-  cumulativeDisputedUsd: 12.5,
+  cumulativeDisputedChargeCurrency: 12.5,
   cumulativeClawbackCredits: 12,
   reinstatedCredits: 12,
   disputeReinstated: true,

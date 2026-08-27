@@ -80,16 +80,16 @@ export function isPaymentStateRow(
       row.eventTimeKind === "reversal_ledger_observation") &&
     typeof row.paymentState === "string" &&
     PAYMENT_STATE_KEYS.has(row.paymentState) &&
-    typeof row.cumulativeRefundedUsd === "number" &&
-    Number.isFinite(row.cumulativeRefundedUsd) &&
-    typeof row.cumulativeDisputedUsd === "number" &&
-    Number.isFinite(row.cumulativeDisputedUsd) &&
+    typeof row.cumulativeRefundedChargeCurrency === "number" &&
+    Number.isFinite(row.cumulativeRefundedChargeCurrency) &&
+    typeof row.cumulativeDisputedChargeCurrency === "number" &&
+    Number.isFinite(row.cumulativeDisputedChargeCurrency) &&
     typeof row.cumulativeClawbackCredits === "number" &&
     Number.isFinite(row.cumulativeClawbackCredits) &&
     typeof row.reinstatedCredits === "number" &&
     Number.isFinite(row.reinstatedCredits) &&
-    typeof row.unrecoveredShortfallUsd === "number" &&
-    Number.isFinite(row.unrecoveredShortfallUsd) &&
+    typeof row.unrecoveredShortfallChargeCurrency === "number" &&
+    Number.isFinite(row.unrecoveredShortfallChargeCurrency) &&
     typeof row.disputeReinstated === "boolean" &&
     (row.policyEffect === null ||
       (typeof row.policyEffect === "object" &&
