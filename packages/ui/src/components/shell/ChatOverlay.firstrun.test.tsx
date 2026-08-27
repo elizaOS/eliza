@@ -756,6 +756,121 @@ describe("ChatOverlay first-run gating", () => {
     expect(onStateChange).toHaveBeenLastCalledWith("OPEN_HALF_OR_OVER");
   });
 
+  it("reopens onboarding when a newer tutorial choice supersedes the retained Cloud sign-in wait", () => {
+    const waitingMessage = {
+      id: "first-run:cloud-login-waiting",
+      role: "assistant" as const,
+      content: [
+        "Waiting for sign-in in the browser we opened… Finish there, then this chat will continue.",
+        "",
+        "[CHOICE:first-run id=cloud-login-retry-1]",
+        "__first_run__:cloud-login:retry=Open sign-in again",
+        "[/CHOICE]",
+      ].join("\n"),
+      createdAt: 2,
+    };
+    const waitingController = makeController({
+      messages: [waitingMessage],
+    } as unknown as Partial<ShellController>);
+    const { rerender } = render(
+      <ChatOverlay controller={waitingController} firstRunOpen />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+
+    const tutorialController = makeController({
+      messages: [
+        waitingMessage,
+        {
+          id: "first-run:tutorial",
+          role: "assistant",
+          content: [
+            "Want a quick tour?",
+            "",
+            "[CHOICE:first-run id=tutorial]",
+            "__first_run__:tutorial:start=Take the tutorial",
+            "__first_run__:tutorial:skip=Skip for now",
+            "[/CHOICE]",
+          ].join("\n"),
+          createdAt: 3,
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+    rerender(<ChatOverlay controller={tutorialController} firstRunOpen />);
+
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    expect(
+      screen.getByTestId("choice-__first_run__:tutorial:start"),
+    ).toBeTruthy();
+    expect(
+      screen.getByTestId("choice-__first_run__:tutorial:skip"),
+    ).toBeTruthy();
+  });
+
+  it("keeps a refreshed Cloud wait collapsed when its semantic timestamp is newer than a later array entry", () => {
+    const controller = makeController({
+      messages: [
+        {
+          id: "first-run:cloud-login-waiting",
+          role: "assistant",
+          content:
+            "Waiting for sign-in in the browser we opened… Finish there, then this chat will continue.",
+          createdAt: 4,
+        },
+        {
+          id: "first-run:tutorial",
+          role: "assistant",
+          content: [
+            "Want a quick tour?",
+            "",
+            "[CHOICE:first-run id=tutorial]",
+            "__first_run__:tutorial:start=Take the tutorial",
+            "__first_run__:tutorial:skip=Skip for now",
+            "[/CHOICE]",
+          ].join("\n"),
+          createdAt: 3,
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+
+    render(<ChatOverlay controller={controller} firstRunOpen />);
+    expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+      "collapsed",
+    );
+  });
+
+  it.each([
+    ["newer status", 2, 3],
+    ["equal timestamps", 2, 2],
+    ["missing timestamps", undefined, undefined],
+  ])(
+    "lets a %s first-run turn supersede a retained Cloud wait",
+    (_label, waitingCreatedAt, activeCreatedAt) => {
+      const controller = makeController({
+        messages: [
+          {
+            id: "first-run:cloud-login-waiting",
+            role: "assistant",
+            content:
+              "Waiting for sign-in in the browser we opened… Finish there, then this chat will continue.",
+            createdAt: waitingCreatedAt,
+          },
+          {
+            id: "first-run:cloud-error",
+            role: "assistant",
+            content: "Cloud setup needs attention. Choose a recovery action.",
+            createdAt: activeCreatedAt,
+          },
+        ],
+      } as unknown as Partial<ShellController>);
+
+      render(<ChatOverlay controller={controller} firstRunOpen />);
+      expect(screen.getByTestId("chat-sheet").getAttribute("data-detent")).toBe(
+        "half",
+      );
+    },
+  );
+
   it("never idle-collapses first-run sign-in recovery into the handle-only pill", () => {
     vi.useFakeTimers();
     try {
