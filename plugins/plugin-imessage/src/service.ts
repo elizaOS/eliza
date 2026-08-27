@@ -778,17 +778,20 @@ export class IMessageService extends Service implements IIMessageService {
 
     // Start polling only when chat.db is available. When the database cannot
     // be opened, the service is intentionally send-only until the next start.
+    // Native membership evidence (issue #24370): when the canonical
+    // MembershipService authority is registered (plugin-sql) and chat.db is
+    // readable, publish chat_handle_join roster snapshots immediately and on
+    // a periodic sweep. Absent authority keeps the legacy ungated behavior.
+    // This MUST complete before inbound polling starts: a polling tick that
+    // dispatches an agent reply before the gate exists would bypass the
+    // membership authority entirely.
+    await service.initMembership();
+
     if (service.chatDb && service.settings.pollIntervalMs > 0) {
       service.startPolling();
     } else if (!service.chatDb && service.settings.pollIntervalMs > 0) {
       logger.debug("[imessage] inbound polling not started because chat.db is unavailable");
     }
-
-    // Native membership evidence (issue #24370): when the canonical
-    // MembershipService authority is registered (plugin-sql) and chat.db is
-    // readable, publish chat_handle_join roster snapshots immediately and on
-    // a periodic sweep. Absent authority keeps the legacy ungated behavior.
-    await service.initMembership();
 
     // Register the heartbeat task worker + create a recurring task.
     // See registerHeartbeat for what it actually does. We gate on the
@@ -1174,6 +1177,10 @@ export class IMessageService extends Service implements IIMessageService {
             }
           }
           if (this.membership) {
+            // Degrade is per-chat resilient (a failure on one scope leaves
+            // its local degraded flag set and continues with the rest); the
+            // publisher is already assigned so any partially degraded state
+            // still gates sends.
             await this.membership.degradePersistedScopes(inventory);
             logger.warn(
               `[imessage][membership] chat.db unavailable at start; degraded ${inventory.length} persisted membership scope(s) fail-closed`
@@ -1192,6 +1199,15 @@ export class IMessageService extends Service implements IIMessageService {
     try {
       const { getConnectorAccountManager } = await import("@elizaos/core");
       const manager = getConnectorAccountManager(this.runtime);
+      // Read the prior governed-chat inventory BEFORE any upsert: the
+      // upsert below replaces account metadata wholesale (without the
+      // inventory key), so reading after it would always see an empty
+      // inventory and skip startup reconciliation.
+      const priorAccount = await manager.getAccount(
+        IMESSAGE_MEMBERSHIP_CONNECTOR_ID,
+        `imessage-${IMESSAGE_LOCAL_ACCOUNT_ID}`,
+      );
+      const priorInventory = readGovernedChatInventory(priorAccount?.metadata);
       const now = Date.now();
       const stored = await manager.upsertAccount(IMESSAGE_MEMBERSHIP_CONNECTOR_ID, {
         id: `imessage-${IMESSAGE_LOCAL_ACCOUNT_ID}`,
@@ -1215,15 +1231,6 @@ export class IMessageService extends Service implements IIMessageService {
           `membership connector account returned a non-authority-valid id: ${String(stored.id)}`
         );
       }
-      // Reconcile the persisted governed-chat inventory BEFORE the first
-      // sweep: any previously governed chat absent from the fresh roster
-      // (or unreadable now) must go degraded fail-closed, never silently
-      // ungoverned, while durable evidence still exists for it.
-      const priorAccount = await manager.getAccount(
-        IMESSAGE_MEMBERSHIP_CONNECTOR_ID,
-        `imessage-${IMESSAGE_LOCAL_ACCOUNT_ID}`,
-      );
-      const priorInventory = readGovernedChatInventory(priorAccount?.metadata);
       this.membershipRosterSource = createChatDbRosterSource(this.chatDb);
       this.membership = new IMessageMembershipPublisher({
         runtime: this.runtime,
@@ -1309,8 +1316,12 @@ export class IMessageService extends Service implements IIMessageService {
               normalizeTarget: (value) =>
                 normalizeIMessageConnectorHandle(value),
             });
-            await fallback.degradePersistedScopes(inventory);
+            // Assign BEFORE degrading: if the degrade pass itself fails
+            // partway, the already-assigned publisher still gates every
+            // degraded scope through its local flags (degradePersistedScopes
+            // is per-chat resilient and never throws the loop away).
             this.membership = fallback;
+            await fallback.degradePersistedScopes(inventory);
           }
         }
       } catch (degradeError) {
@@ -2358,7 +2369,22 @@ export class IMessageService extends Service implements IIMessageService {
         // follows the same IMESSAGE_AUTO_REPLY consent gate as agent replies.
         // Only the DM pairing path produces one; group denials never do.
         if (access.pairingReplyMessage && this.isAutoReplyEnabled()) {
-          const sendResult = await this.sendSingleMessage(row.handle, access.pairingReplyMessage);
+          // The pairing reply is an autonomous outbound text and follows the
+          // same membership gate as agent replies: a degraded or revoked
+          // scope must not receive it.
+          const pairingGate = this.membership
+            ? await this.membership.authorizeOutbound(row.handle)
+            : null;
+          if (pairingGate === false) {
+            logger.warn(
+              `[imessage] Pairing reply to handle=${row.handle} denied by membership gate`,
+            );
+            continue;
+          }
+          const sendResult = await this.sendSingleMessage(
+            row.handle,
+            access.pairingReplyMessage,
+          );
           if (!sendResult.success) {
             logger.warn(
               `[imessage] Pairing reply send failed for handle=${row.handle}: ${sendResult.error}`

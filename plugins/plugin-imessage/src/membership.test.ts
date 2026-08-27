@@ -576,28 +576,47 @@ describe("iMessage membership R2 fixes (canonical index + reconciliation)", () =
     const chatId = "Imessage;-;+155****9081";
     source.setChat(chatId, "direct", ["+155****9081"]);
 
-    // Break the authority commits for this publisher: every
-    // applyCompleteSnapshot throws a fence error, both retries exhaust, and
-    // the snapshot errors instead of fabricating success.
-    const broken = {
-      applyCompleteSnapshot: async () => {
-        const err = new Error("fence") as Error & { code?: string };
-        err.code = "MEMBERSHIP_GENERATION_FENCE";
-        throw err;
+    // Delegate every authority call to the REAL service so registration and
+    // health reads succeed; intercept only applyCompleteSnapshot to throw a
+    // fence error. Both fenced retries must exhaust and the snapshot must
+    // fail without fabricating success.
+    let snapshotAttempts = 0;
+    const broken = new Proxy(membership, {
+      get(target, prop, receiver) {
+        if (prop === "applyCompleteSnapshot") {
+          return async () => {
+            snapshotAttempts += 1;
+            const err = new Error("fence") as Error & { code?: string };
+            err.code = "MEMBERSHIP_GENERATION_FENCE";
+            throw err;
+          };
+        }
+        return Reflect.get(target, prop, receiver);
       },
-    } as unknown as MembershipService;
+    });
+    let persistedInventory: readonly string[] = [];
     const fenced = new IMessageMembershipPublisher({
       runtime,
       connectorAccountId,
       accountKey: "default",
       service: broken,
+      onRosterCommitted: async (chatIds) => {
+        persistedInventory = [...chatIds];
+      },
     });
     // The per-chat sweep catch reports the failure and skips the chat, so
     // the sweep resolves (0 published) instead of throwing the loop away.
     const published = await fenced.sweepRoster(source);
     expect(published).toBe(0);
 
+    // Both fenced attempts actually ran (the exhaustion path was reached,
+    // not a pre-snapshot TypeError).
+    expect(snapshotAttempts).toBeGreaterThanOrEqual(2);
+
     // The outbound index must NOT contain the uncommitted chat's handle.
     expect(await fenced.authorizeOutbound("+155****9081")).toBeNull();
+
+    // The persisted inventory must not record the uncommitted chat.
+    expect(persistedInventory).not.toContain(chatId);
   });
 });

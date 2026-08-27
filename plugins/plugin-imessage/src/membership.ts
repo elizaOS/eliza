@@ -236,6 +236,12 @@ export class IMessageMembershipPublisher {
   private readonly scopes = new Map<string, ScopeTracker>();
   private readonly chains = new Map<string, Promise<unknown>>();
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
+  /**
+   * Chat ids carried by the last successfully persisted governed-scope
+   * inventory. Drives the between-sweeps deletion ratchet: an id present
+   * here but absent from the next committed sweep degrades fail-closed.
+   */
+  private persistedInventory = new Set<string>();
   private readonly ownHandle: string | null;
   /**
    * Direct-chat handle → chat id index built from roster sweeps, so the
@@ -427,11 +433,11 @@ export class IMessageMembershipPublisher {
         );
       }
       if (!roster) continue;
+      let committed = false;
       try {
-        const committed = await this.publishRosterSnapshot({ roster });
+        committed = await this.publishRosterSnapshot({ roster });
         if (committed) published += 1;
-        // Only a committed (or benignly replayed) observation feeds the
-        // persisted inventory and the outbound index.
+        // Only a committed observation feeds the outbound index.
         if (committed) {
           this.indexRosterDirectHandles(roster);
         }
@@ -444,13 +450,31 @@ export class IMessageMembershipPublisher {
           accountKey: this.accountKey,
         });
       }
-      committedChatIds.push(chatId);
+      // Only a committed (or benignly replayed) observation feeds the
+      // persisted inventory: a chat whose snapshot errored must not be
+      // recorded as governed when its evidence never committed.
+      if (committed) {
+        committedChatIds.push(chatId);
+      }
     }
     if (this.onRosterCommitted && committedChatIds.length > 0) {
       // Persist the governed scope inventory; a failure to persist is a
       // diagnostic (the in-memory state is still correct for this process).
       try {
         await this.onRosterCommitted(committedChatIds);
+        // Deletion ratchet: a chat in the previously persisted inventory
+        // that this sweep no longer committed (deleted from chat.db, or its
+        // snapshot failed) must degrade fail-closed — stale durable
+        // evidence must stop authorizing between periodic sweeps too.
+        const committedSet = new Set(committedChatIds);
+        const reason =
+          "governed chat absent from the committed roster sweep; stale evidence degraded";
+        for (const priorId of this.persistedInventory) {
+          if (!committedSet.has(priorId)) {
+            await this.degradeScope({ chatId: priorId, reason });
+          }
+        }
+        this.persistedInventory = committedSet;
       } catch (error) {
         // error-policy:J7 Diagnostics must not kill the sweep loop.
         this.runtime.reportError?.("imessage:membership:inventory", error, {
@@ -967,7 +991,21 @@ export class IMessageMembershipPublisher {
     const reason =
       "chat.db unavailable at service start; persisted scope inventory degraded";
     for (const chatId of chatIds) {
-      await this.degradeScope({ chatId, reason });
+      // Per-chat resilient: a failure degrading one scope (authority
+      // registration or health write) must not abandon the remaining
+      // scopes to ungoverned. degradeScope sets the local degraded flag
+      // before any authority write, so a failed scope still denies in this
+      // process; the failure is reported and the loop continues.
+      try {
+        await this.degradeScope({ chatId, reason });
+      } catch (error) {
+        // error-policy:J4 Degrade-path failure keeps the local flag and
+        // continues: admission stays denied for this scope either way.
+        this.runtime.reportError?.("imessage:membership:degrade", error, {
+          chatId,
+          accountKey: this.accountKey,
+        });
+      }
       // chat.db direct-chat identifiers are `<service>;-;<handle>`; groups
       // use `;+;`-separated multi-part ids. Index the embedded handle under
       // both its embedded spelling and its canonicalized spelling so
