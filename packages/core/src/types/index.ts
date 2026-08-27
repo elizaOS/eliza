@@ -32,6 +32,7 @@ export * from "./components";
 export * from "./connector-setup";
 export * from "./content";
 export * from "./content-manifest";
+export * from "./content-manifest-shards";
 export * from "./contexts";
 export * from "./database";
 export * from "./documents";

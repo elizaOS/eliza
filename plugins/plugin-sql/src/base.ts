@@ -7370,6 +7370,49 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return true;
   }
 
+  /**
+   * Compare-and-swap a cache row under an optimistic revision stored inside
+   * the jsonb value (`value.revision`). Rows written before the revision
+   * contract (no numeric `revision` key) count as revision 0. Returns false
+   * when the stored revision does not match the expectation; never throws on
+   * a lost race.
+   */
+  async compareAndSwapCache<T>(
+    key: string,
+    expectedRevision: number | null,
+    nextRevision: number,
+    value: T
+  ): Promise<boolean> {
+    return this.withDatabase(async () => {
+      try {
+        const nextValue = { ...(value as object), revision: nextRevision };
+        const inserted = await this.db
+          .insert(cacheTable)
+          .values({ key, agentId: this.agentId, value: nextValue })
+          .onConflictDoUpdate({
+            target: [cacheTable.key, cacheTable.agentId],
+            set: { value: nextValue },
+            // The conflict update is conditional: it only fires when the
+            // stored jsonb revision matches the expectation. The insert arm
+            // covers expectedRevision === null (row must not exist yet); a
+            // racing insert violates the expectation by existing.
+            setWhere:
+              expectedRevision === null
+                ? sql`false`
+                : sql`(cache.value->>'revision') = ${String(expectedRevision)} OR (cache.value->>'revision') IS NULL AND ${String(expectedRevision)} = '0'`,
+          })
+          .returning();
+        return inserted.length > 0;
+      } catch (error) {
+        throw new ElizaError("compareAndSwapCache failed", {
+          code: "DB_UPSERT_FAILED",
+          cause: error,
+          context: { table: "cache", agentId: this.agentId, key },
+        });
+      }
+    });
+  }
+
   async deleteCaches(keys: string[]): Promise<boolean> {
     for (const key of keys) {
       const success = await this.deleteCache(key);

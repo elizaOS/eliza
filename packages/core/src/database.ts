@@ -685,6 +685,23 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	abstract deleteCaches(keys: string[]): Promise<boolean>;
 
 	/**
+	 * Compare-and-swap a cache row under an optimistic revision; see
+	 * IDatabaseAdapter.compareAndSwapCache for the contract. Concrete base is
+	 * provided so adapters written before the contract keep compiling; SQL and
+	 * in-memory adapters override with real conditional updates.
+	 */
+	compareAndSwapCache<T>(
+		_key: string,
+		_expectedRevision: number | null,
+		_nextRevision: number,
+		_value: T,
+	): Promise<boolean> {
+		return Promise.reject(
+			new Error("compareAndSwapCache is not supported by this adapter"),
+		);
+	}
+
+	/**
 	 * Retrieves tasks based on specified parameters.
 	 * @param params Object containing optional roomId and tags to filter tasks
 	 * @returns Promise resolving to an array of Task objects

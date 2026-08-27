@@ -22,6 +22,12 @@ import type {
 /** Public alias for {@link CanonicalTrajectoryExportOptions} (canonical type lives in services). */
 export type TrajectoryExportOptions = CanonicalTrajectoryExportOptions;
 
+import { deriveCompactionContentManifest } from "../../runtime/content-access-manifest";
+import {
+	manifestHeadKey,
+	manifestShardKey,
+	publishManifestLedger,
+} from "../../runtime/content-manifest-ledger";
 import {
 	canonicalPromptForModelCall,
 	omitUnvalidatedProviderSpans,
@@ -39,6 +45,7 @@ import {
 } from "../../services/trajectory-semantic-stage";
 import type { TrajectoryRuntimeLlmCallParams } from "../../trajectory-utils";
 import type { IAgentRuntime } from "../../types";
+import { validateManifestHead } from "../../types/content-manifest-shards";
 import { Service } from "../../types/service";
 
 import type {
@@ -1874,6 +1881,88 @@ export class TrajectoriesService extends Service {
 		execute: TrajectorySqlExecutor = (sqlText) => this.executeRawSql(sqlText),
 		allowCompatibilityFallback = true,
 	): Promise<void> {
+		await this.persistTrajectoryRows(
+			trajectoryId,
+			trajectory,
+			status,
+			execute,
+			allowCompatibilityFallback,
+		);
+		await this.publishContentManifestLedger(trajectoryId, trajectory);
+	}
+
+	/**
+	 * Derive the runtime content manifest from every persisted step's tool
+	 * result carriers and publish it as restart-safe shards through the
+	 * database cache domain (#25141). Diagnostics-only: a ledger failure is
+	 * reported and must never fail trajectory persistence itself.
+	 */
+	private async publishContentManifestLedger(
+		trajectoryId: string,
+		trajectory: Trajectory,
+	): Promise<void> {
+		try {
+			const steps = trajectory.steps
+				.flatMap((step) => {
+					const stages = (step.semanticStages ?? []).filter(
+						(stage) => stage.kind === "tool",
+					);
+					return stages.map((stage) => ({
+						result: (stage.payload.tool as { result?: unknown } | undefined)
+							?.result,
+					}));
+				})
+				.filter((step) => step.result !== undefined);
+			if (steps.length === 0) return;
+			const manifest = deriveCompactionContentManifest(
+				{ steps: steps as never, archivedSteps: [] },
+				{ lastUsedAt: new Date().toISOString() },
+			);
+			if (manifest.contentRefs.length === 0) return;
+			const runtime = this.runtime as IAgentRuntime & {
+				adapter?: {
+					getCaches?: unknown;
+					setCaches?: unknown;
+					compareAndSwapCache?: unknown;
+				};
+			};
+			const adapter = runtime.adapter;
+			if (
+				!adapter ||
+				typeof adapter.getCaches !== "function" ||
+				typeof adapter.setCaches !== "function" ||
+				typeof adapter.compareAndSwapCache !== "function"
+			) {
+				return;
+			}
+			await publishManifestLedger(
+				adapter as never,
+				`${this.runtime.agentId}:trajectory:${trajectoryId}`,
+				manifest,
+			);
+		} catch (error) {
+			// error-policy:J7 the continuity ledger is diagnostic continuity
+			// state; its failure is observed here and must not take down
+			// trajectory persistence.
+			logger.warn(
+				{ err: error, trajectoryId },
+				"[trajectory-logger] content-manifest ledger publication failed",
+			);
+			this.runtime.reportError?.(
+				"TrajectoriesService.publishContentManifestLedger",
+				error,
+				{ trajectoryId },
+			);
+		}
+	}
+
+	private async persistTrajectoryRows(
+		trajectoryId: string,
+		trajectory: Trajectory,
+		status: TrajectoryStatus = "active",
+		execute: TrajectorySqlExecutor = (sqlText) => this.executeRawSql(sqlText),
+		allowCompatibilityFallback = true,
+	): Promise<void> {
 		const totals = this.computeTotals(trajectory.steps);
 		const isFinalStatus = status !== "active";
 		const persistedEndTime = isFinalStatus ? trajectory.endTime : null;
@@ -3340,7 +3429,8 @@ export class TrajectoriesService extends Service {
 		await this.ensureStorageReady();
 
 		const ids = trajectoryIds.map(sqlLiteral).join(", ");
-		return this.executeRawSqlTransaction(async (execute) => {
+		const deleted: string[] = [];
+		const removed = await this.executeRawSqlTransaction(async (execute) => {
 			await execute(`DELETE FROM trajectory_steps WHERE trajectory_id IN (
 				SELECT id FROM trajectories WHERE id IN (${ids})
 				AND agent_id = ${sqlLiteral(this.runtime.agentId)}
@@ -3349,8 +3439,80 @@ export class TrajectoriesService extends Service {
 				`DELETE FROM trajectories WHERE id IN (${ids})
 				 AND agent_id = ${sqlLiteral(this.runtime.agentId)} RETURNING id`,
 			);
+			for (const row of result.rows) {
+				const id = (row as { id?: unknown }).id;
+				if (typeof id === "string") deleted.push(id);
+			}
 			return result.rows.length;
 		});
+		await this.discardContentManifestLedgers(deleted);
+		return removed;
+	}
+
+	/**
+	 * Remove the manifest-ledger cache rows (head + every shard generation's
+	 * sequences recorded on the head) for pruned trajectories (#25141). The
+	 * durable ledger must not outlive the trajectory rows it describes;
+	 * failure to clean is reported, never fatal to the prune.
+	 */
+	private async discardContentManifestLedgers(
+		trajectoryIds: string[],
+	): Promise<void> {
+		if (trajectoryIds.length === 0) return;
+		const adapter = (
+			this.runtime as IAgentRuntime & {
+				adapter?: {
+					getCache?: unknown;
+					deleteCaches?: unknown;
+				};
+			}
+		).adapter;
+		if (
+			!adapter ||
+			typeof adapter.getCache !== "function" ||
+			typeof adapter.deleteCaches !== "function"
+		) {
+			return;
+		}
+		try {
+			const keys: string[] = [];
+			for (const trajectoryId of trajectoryIds) {
+				const headKey = manifestHeadKey(
+					`${this.runtime.agentId}:trajectory:${trajectoryId}`,
+				);
+				const rawHead = await (
+					adapter as unknown as {
+						getCache: (key: string) => Promise<unknown>;
+					}
+				).getCache(headKey);
+				keys.push(headKey);
+				if (rawHead === undefined) continue;
+				const head = validateManifestHead(rawHead);
+				const ledgerId = `${this.runtime.agentId}:trajectory:${trajectoryId}`;
+				for (let sequence = 0; sequence < head.shardCount; sequence++) {
+					keys.push(manifestShardKey(ledgerId, head.shardGeneration, sequence));
+				}
+			}
+			if (keys.length > 0) {
+				await (
+					adapter as unknown as {
+						deleteCaches: (keys: string[]) => Promise<boolean>;
+					}
+				).deleteCaches(keys);
+			}
+		} catch (error) {
+			// error-policy:J7 ledger cleanup is diagnostic continuity state;
+			// its failure must not fail the trajectory prune that owns it.
+			logger.warn(
+				{ err: error, trajectoryIds },
+				"[trajectory-logger] content-manifest ledger cleanup failed",
+			);
+			this.runtime.reportError?.(
+				"TrajectoriesService.discardContentManifestLedgers",
+				error,
+				{ trajectoryIds },
+			);
+		}
 	}
 
 	async clearAllTrajectories(): Promise<number> {
