@@ -11591,8 +11591,10 @@ ${section_end}`;
 	}
 	async getMemories(params: {
 		entityId?: UUID;
+		authorEntityIds?: UUID[];
 		agentId?: UUID;
 		roomId?: UUID;
+		excludeRoomIds?: UUID[];
 		limit?: number;
 		count?: number;
 		offset?: number;
@@ -11641,8 +11643,10 @@ ${section_end}`;
 	 */
 	private coalesceRoomMessagesScan(params: {
 		entityId?: UUID;
+		authorEntityIds?: UUID[];
 		agentId?: UUID;
 		roomId?: UUID;
+		excludeRoomIds?: UUID[];
 		limit?: number;
 		count?: number;
 		offset?: number;
@@ -11662,7 +11666,9 @@ ${section_end}`;
 		if (params.tableName !== "messages" || !params.roomId) return null;
 		if (
 			params.entityId !== undefined ||
+			params.authorEntityIds !== undefined ||
 			params.agentId !== undefined ||
+			params.excludeRoomIds !== undefined ||
 			params.worldId !== undefined ||
 			params.unique ||
 			(params.offset !== undefined && params.offset !== 0) ||

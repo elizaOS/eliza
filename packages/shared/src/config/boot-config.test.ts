@@ -65,7 +65,7 @@ describe("boot-config store-only entry", () => {
       expect(config).toBe(DEFAULT_BOOT_CONFIG);
       expect(config.branding).toEqual({});
       expect(config.cloudApiBase).toBe("https://api.eliza.app");
-      expect(config.preferSharedCloudTier).toBe(true);
+      expect(config.preferSharedCloudTier).toBe(false);
       expect(config.autoUpgradeSharedToDedicated).toBe(false);
 
       const slot = globalSlot();

@@ -34,6 +34,40 @@ class TestStorage {
   failNextPut = false;
   failNextSetAlarm = false;
   failNextTransactionCommit = false;
+  rejectAsyncRateLimitStorage = false;
+
+  readonly kv = {
+    get: <T = unknown>(key: string): T | undefined => {
+      const value = this.values.get(key);
+      return value === undefined ? undefined : (structuredClone(value) as T);
+    },
+    put: <T>(key: string, value: T): void => {
+      if (this.failNextPut) {
+        this.failNextPut = false;
+        throw new Error("injected storage failure");
+      }
+      this.values.set(key, structuredClone(value));
+    },
+    delete: (key: string): boolean => this.values.delete(key),
+    list: <T = unknown>(options: { prefix?: string; limit?: number } = {}) =>
+      this.syncEntries<T>(options),
+  };
+
+  private syncEntries<T>(options: {
+    prefix?: string;
+    limit?: number;
+  }): Array<[string, T]> {
+    const entries = [...this.values.entries()]
+      .filter(
+        ([key]) =>
+          options.prefix === undefined || key.startsWith(options.prefix),
+      )
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, value]): [string, T] => [key, structuredClone(value) as T]);
+    return options.limit === undefined
+      ? entries
+      : entries.slice(0, options.limit);
+  }
 
   async get<T>(key: string): Promise<T | undefined>;
   async get<T>(keys: string[]): Promise<Map<string, T>>;
@@ -41,6 +75,13 @@ class TestStorage {
     keyOrKeys: string | string[],
   ): Promise<T | undefined | Map<string, T>> {
     await Promise.resolve();
+    if (
+      this.rejectAsyncRateLimitStorage &&
+      (keyOrKeys === "rate-limits" ||
+        (Array.isArray(keyOrKeys) && keyOrKeys.includes("rate-limits")))
+    ) {
+      throw new Error("async rate-limit storage path must not be used");
+    }
     if (Array.isArray(keyOrKeys)) {
       return new Map(
         keyOrKeys.flatMap((key) => {
@@ -74,6 +115,9 @@ class TestStorage {
 
   async put(key: string, value: unknown): Promise<void> {
     await Promise.resolve();
+    if (this.rejectAsyncRateLimitStorage && key === "rate-limits") {
+      throw new Error("async rate-limit storage path must not be used");
+    }
     if (this.failNextPut) {
       this.failNextPut = false;
       throw new Error("injected storage failure");
@@ -489,6 +533,46 @@ describe("InferenceAdmissionGate", () => {
         maxRequests: 1,
       }),
     ).rejects.toBeInstanceOf(InferenceAdmissionGateUnavailableError);
+  });
+
+  test("rate-only requests use synchronous SQLite KV and preserve the legacy key", async () => {
+    const storage = new TestStorage();
+    storage.rejectAsyncRateLimitStorage = true;
+    const gate = createGate(storage);
+    const windowStartedAt = 60_000;
+    const clock = spyOn(Date, "now").mockReturnValue(windowStartedAt + 1);
+    try {
+      expect(
+        (
+          await post(gate, "/rate-limit", {
+            endpointType: "completions",
+            windowMs: 60_000,
+            maxRequests: 1,
+            windowStartedAt,
+          })
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await post(gate, "/rate-limit", {
+            endpointType: "completions",
+            windowMs: 60_000,
+            maxRequests: 1,
+            windowStartedAt,
+          })
+        ).status,
+      ).toBe(429);
+      expect(storage.read<Record<string, unknown>>("rate-limits")).toEqual({
+        completions: {
+          count: 2,
+          maxRequests: 1,
+          windowMs: 60_000,
+          windowStartedAt,
+        },
+      });
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   test("rate-limit prewarm loads its isolated window without consuming a request", async () => {
