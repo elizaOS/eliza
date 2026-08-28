@@ -1,3 +1,7 @@
+/**
+ * Contract coverage for the keyless UI-smoke server's read-only designed-empty
+ * surfaces and its fail-closed write/item boundary.
+ */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import net from "node:net";
@@ -133,7 +137,7 @@ it("serves truthful designed-empty local inference and owner surfaces", async ()
   const protection = await jsonGet("/api/secrets/manager/protection");
   assert.equal(protection.ok, true);
   assert.deepEqual(protection.protection.localVault.masterKey, {
-    backend: "unavailable",
+    backend: "none",
     available: false,
     synchronized: false,
     scope: "unavailable",
@@ -157,12 +161,17 @@ it("does not fabricate write or item-route authority", async () => {
     ["POST", "/api/accounts/consumer-keys"],
     ["PATCH", "/api/accounts/consumer-keys/smoke-key"],
     ["GET", "/api/accounts/consumer-keys/smoke-key"],
+    ["POST", "/api/accounts/consumer-keys/smoke-key/rotate"],
     ["POST", "/api/local-inference/device/stream"],
     ["GET", "/api/local-inference/voice-models/check"],
     ["POST", "/api/local-inference/voice-models/preferences"],
+    ["POST", "/api/local-inference/voice-models/smoke-model/update"],
+    ["POST", "/api/local-inference/voice-models/smoke-model/pin"],
     ["POST", "/api/secrets/manager/protection"],
     ["POST", "/api/secrets/logins"],
     ["GET", "/api/secrets/logins/example.test/user"],
+    ["DELETE", "/api/secrets/logins/example.test/user"],
+    ["PUT", "/api/secrets/logins/example.test/autoallow"],
   ]) {
     const response = await fetch(`${origin}${pathname}`, { method });
     expect(response.status, `${method} ${pathname}`).toBe(501);

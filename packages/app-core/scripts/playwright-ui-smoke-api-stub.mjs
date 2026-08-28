@@ -3596,7 +3596,7 @@ const server = http.createServer(async (req, res) => {
           encryptedAtRest: true,
           cipher: "AES-256-GCM",
           masterKey: {
-            backend: "unavailable",
+            backend: "none",
             available: false,
             synchronized: false,
             scope: "unavailable",
