@@ -202,9 +202,16 @@ function parseYamlSubset(yaml: string): Record<string, unknown> {
 
 			if (valueStr === "" || valueStr === "|" || valueStr === ">") {
 				// Could be object, multiline string, or multiline JSON
-				// Check if next non-empty line starts with { or [
+				// Check the first meaningful line. Blank lines and YAML comments
+				// carry no structure, so skip both: a comment between an empty key
+				// and its first `- ` item must not misroute a block sequence to the
+				// nested-object path (which merges the list into one mapping).
 				let nextLineIdx = i + 1;
-				while (nextLineIdx < lines.length && !lines[nextLineIdx].trim()) {
+				while (
+					nextLineIdx < lines.length &&
+					(!lines[nextLineIdx].trim() ||
+						lines[nextLineIdx].trim().startsWith("#"))
+				) {
 					nextLineIdx++;
 				}
 				const nextTrimmed =

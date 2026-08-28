@@ -128,6 +128,58 @@ describe("installSkillDependencies over list-frontmatter skills (issue #29157)",
 		expect(plan.recommendedOptions.length).toBeGreaterThan(0);
 	});
 
+	// A SKILL.md whose block sequences are documented with inline YAML comments
+	// before the first item. The comment previously misrouted both lists to the
+	// nested-object path, so `requires.bins` collapsed to `{}` and `install`
+	// merged into one object; the plan then reported no required binary and no
+	// install option, silently skipping dependency installation.
+	const commentedListSkillMd = [
+		"---",
+		"name: needs-missing-bin-commented",
+		"description: Requires a binary that is not installed, documented with comments.",
+		"metadata:",
+		"  otto:",
+		"    requires:",
+		"      bins:",
+		"        # the tool this skill shells out to",
+		"        - eliza-absent-tool",
+		"    install:",
+		"      # homebrew is the primary channel",
+		"      - id: brew",
+		"        kind: brew",
+		"        formula: eliza-absent-tool",
+		'        bins: ["eliza-absent-tool"]',
+		"      # fall back to apt on Debian/Ubuntu",
+		"      - id: apt",
+		"        kind: apt",
+		"        package: eliza-absent-tool",
+		'        bins: ["eliza-absent-tool"]',
+		"---",
+		"body",
+	].join("\n");
+
+	it("builds an install plan when comments precede both block lists", async () => {
+		const frontmatter = parseFrontmatter(commentedListSkillMd).frontmatter;
+		if (!frontmatter) throw new Error("expected parsed frontmatter");
+		expect(Array.isArray(frontmatter.metadata?.otto?.install)).toBe(true);
+
+		const plan = await getInstallPlan({
+			slug: "needs-missing-bin-commented",
+			frontmatter,
+		});
+
+		expect(plan.requiredBins).toEqual(["eliza-absent-tool"]);
+		expect(plan.missingBins).toEqual(["eliza-absent-tool"]);
+		expect(plan.recommendedOptions.length).toBeGreaterThan(0);
+
+		const results = await installSkillDependencies(
+			{ slug: "needs-missing-bin-commented", frontmatter },
+			{ dryRun: true },
+		);
+		expect(results).toHaveLength(1);
+		expect(results[0].option.bins).toContain("eliza-absent-tool");
+	});
+
 	it("returns [] for a skill without install options and does not throw", async () => {
 		const results = await installSkillDependencies(
 			{ slug: "bare", frontmatter: { name: "bare", description: "No otto." } },

@@ -162,6 +162,52 @@ describe("parseFrontmatter YAML block sequences (issue #29157)", () => {
     });
   });
 
+  it("parses block sequences when a YAML comment precedes the first item", () => {
+    // A comment between an empty key and its first `- ` item must not misroute
+    // the sequence to the nested-object path (which collapsed `requires.bins`
+    // into `{}` and merged `install` into one object).
+    const commented = [
+      "---",
+      "name: commented-skill",
+      "description: Explains its install list with inline YAML comments.",
+      "metadata:",
+      "  otto:",
+      "    requires:",
+      "      bins:",
+      "        # gh drives the GitHub API calls",
+      "        - gh",
+      "    install:",
+      "      # prefer Homebrew on macOS",
+      "      - id: brew",
+      "        kind: brew",
+      "        formula: gh",
+      '        bins: ["gh"]',
+      "      # fall back to apt on Debian/Ubuntu",
+      "      - id: apt",
+      "        kind: apt",
+      "        package: gh",
+      '        bins: ["gh"]',
+      "---",
+      "body",
+    ].join("\n");
+    const otto = parseFrontmatter(commented).frontmatter?.metadata?.otto;
+    expect(otto?.requires?.bins).toEqual(["gh"]);
+    expect(Array.isArray(otto?.install)).toBe(true);
+    expect(otto?.install).toHaveLength(2);
+    expect(otto?.install?.[0]).toEqual({
+      id: "brew",
+      kind: "brew",
+      formula: "gh",
+      bins: ["gh"],
+    });
+    expect(otto?.install?.[1]).toEqual({
+      id: "apt",
+      kind: "apt",
+      package: "gh",
+      bins: ["gh"],
+    });
+  });
+
   it("regression: inline JSON array frontmatter still parses unchanged", () => {
     const inlineJson = [
       "---",
