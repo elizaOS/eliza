@@ -9,6 +9,7 @@
  * including the deploy pipeline's migrate-db gate; enforces TLS for remote
  * databases.
  */
+
 import { enforceTlsForRemote } from "@elizaos/cloud-shared/db/client";
 import { convergeAgentSandboxSchema } from "@elizaos/cloud-shared/db/ensure-agent-sandbox-schema";
 import { createMigrationClientSandboxExecutor } from "@elizaos/cloud-shared/db/migration-sandbox-schema-executor";
@@ -56,6 +57,8 @@ const DEFAULT_LOCK_TIMEOUT_MS = 5_000;
 const DEFAULT_LOCK_MAX_ATTEMPTS = 5;
 const DEFAULT_LOCK_RETRY_BASE_MS = 250;
 const DEFAULT_LOCK_RETRY_MAX_MS = 2_000;
+const NONTRANSACTIONAL_CONCURRENT_INDEX_DIRECTIVE =
+  "-- migrate-with-diagnostics: nontransactional-concurrent-indexes";
 interface DatabaseError extends Error {
   code?: string;
   position?: string;
@@ -72,6 +75,45 @@ interface LockRetryOptions {
   maxAttempts: number;
   baseDelayMs: number;
   maxDelayMs: number;
+}
+
+interface ConcurrentIndexStatement {
+  definitionTail: string;
+  indexName: string;
+  isUnique: boolean;
+  statement: string;
+  tableName: string;
+}
+
+type MigrationExecutionPlan =
+  | { mode: "transactional" }
+  | {
+      mode: "nontransactional-concurrent-indexes";
+      statements: ConcurrentIndexStatement[];
+    };
+
+interface ConcurrentIndexState {
+  constraint_owned: boolean | null;
+  exclusion: boolean | null;
+  extension_owned: boolean | null;
+  index_namespace: string | null;
+  index_oid: string | null;
+  indexed_table_oid: string | null;
+  live: boolean | null;
+  migration_marker: string | null;
+  partition_attached: boolean | null;
+  primary: boolean | null;
+  ready: boolean | null;
+  relation_kind: string | null;
+  target_namespace: string | null;
+  target_oid: string | null;
+  target_relation_kind: string | null;
+  table_name: string | null;
+  valid: boolean | null;
+}
+
+interface ConcurrentIndexDefinition {
+  canonical_definition: string;
 }
 
 type IdentityResultReporter = (
@@ -165,6 +207,133 @@ async function sleep(ms: number): Promise<void> {
 
 function summarizeStatement(statement: string): string {
   return statement.replace(/\s+/g, " ").slice(0, 500);
+}
+
+function statementWithoutFullLineCommentsForDetection(
+  statement: string,
+): string {
+  return statement
+    .split(/\r?\n/)
+    .filter((line) => !line.trimStart().startsWith("--"))
+    .join("\n")
+    .trim();
+}
+
+/**
+ * Parses the deliberately narrow SQL admitted outside a transaction.
+ *
+ * Completed or invalid unmarked indexes are replayed only when PostgreSQL's
+ * canonical catalog shape matches the migration exactly. The source may retain
+ * `IF NOT EXISTS` for direct schema-fixture replay, but the execution statement
+ * deliberately removes it: a same-name DDL race must fail instead of silently
+ * adopting and stamping a foreign definition. Rejecting every other shape before
+ * the first query keeps this opt-in from becoming a generic escape hatch around
+ * the transactional migration runner.
+ */
+function parseConcurrentIndexStatement(
+  migration: Migration,
+  statement: string,
+): ConcurrentIndexStatement {
+  const sqlLines: string[] = [];
+  let sqlStarted = false;
+  for (const line of statement.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!sqlStarted && (trimmed.length === 0 || trimmed.startsWith("--"))) {
+      continue;
+    }
+    sqlStarted = true;
+    sqlLines.push(line);
+  }
+  const sql = sqlLines.join("\n").trim();
+  if (sql.includes("/*") || sql.includes("*/") || sql.includes("--")) {
+    throw new Error(
+      `Nontransactional migration ${migration.entry.tag} contains unsupported SQL comments`,
+    );
+  }
+  const sqlWithoutTerminator = sql.endsWith(";")
+    ? sql.slice(0, -1).trimEnd()
+    : sql;
+  if (sqlWithoutTerminator.includes(";")) {
+    throw new Error(
+      `Nontransactional migration ${migration.entry.tag} must contain exactly one statement per breakpoint`,
+    );
+  }
+  const match =
+    /^CREATE\s+(UNIQUE\s+)?INDEX\s+CONCURRENTLY(?:\s+IF\s+NOT\s+EXISTS)?\s+"([a-z_][a-z0-9_]*)"\s+ON\s+"([a-z_][a-z0-9_]*)"(\s+[\s\S]+)$/i.exec(
+      sqlWithoutTerminator,
+    );
+  if (!match?.[2] || !match[3] || !match[4]) {
+    throw new Error(
+      `Nontransactional migration ${migration.entry.tag} permits only CREATE INDEX CONCURRENTLY statements`,
+    );
+  }
+  if (
+    match[2] !== match[2].toLowerCase() ||
+    match[3] !== match[3].toLowerCase()
+  ) {
+    throw new Error(
+      `Nontransactional migration ${migration.entry.tag} requires lowercase quoted index and table identifiers`,
+    );
+  }
+  if (Buffer.byteLength(match[2], "utf8") > 63) {
+    throw new Error(
+      `Nontransactional migration ${migration.entry.tag} index identifier exceeds PostgreSQL's 63-byte limit`,
+    );
+  }
+  if (Buffer.byteLength(match[3], "utf8") > 63) {
+    throw new Error(
+      `Nontransactional migration ${migration.entry.tag} table identifier exceeds PostgreSQL's 63-byte limit`,
+    );
+  }
+  return {
+    definitionTail: match[4],
+    indexName: match[2],
+    isUnique: match[1] !== undefined,
+    statement: `CREATE ${match[1] ?? ""}INDEX CONCURRENTLY "${match[2]}" ON "${match[3]}"${match[4]}`,
+    tableName: match[3],
+  };
+}
+
+function planMigrationExecution(migration: Migration): MigrationExecutionPlan {
+  const directiveLines = migration.statements.flatMap((statement) =>
+    statement
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line === NONTRANSACTIONAL_CONCURRENT_INDEX_DIRECTIVE),
+  );
+  const containsConcurrentIndex = migration.statements.some((statement) =>
+    /\bCREATE\s+(?:UNIQUE\s+)?INDEX\s+CONCURRENTLY\b/i.test(
+      statementWithoutFullLineCommentsForDetection(statement),
+    ),
+  );
+
+  if (directiveLines.length === 0) {
+    if (containsConcurrentIndex) {
+      throw new Error(
+        `Migration ${migration.entry.tag} contains CREATE INDEX CONCURRENTLY without the required nontransactional directive`,
+      );
+    }
+    return { mode: "transactional" };
+  }
+  const firstSourceLine = migration.statements[0]
+    ?.split(/\r?\n/)
+    .find((line) => line.trim().length > 0)
+    ?.trim();
+  if (
+    directiveLines.length !== 1 ||
+    firstSourceLine !== NONTRANSACTIONAL_CONCURRENT_INDEX_DIRECTIVE
+  ) {
+    throw new Error(
+      `Migration ${migration.entry.tag} must declare the nontransactional directive exactly once as its first line`,
+    );
+  }
+
+  return {
+    mode: "nontransactional-concurrent-indexes",
+    statements: migration.statements.map((statement) =>
+      parseConcurrentIndexStatement(migration, statement),
+    ),
+  };
 }
 
 const POSTGRES_SQLSTATE_PATTERN = /^[0-9A-Z]{5}$/;
@@ -436,6 +605,515 @@ async function releaseMigrationLock(client: MigrationClient): Promise<void> {
   console.log("[db:migrate] released migration lock");
 }
 
+async function readConcurrentIndexState(
+  client: MigrationClient,
+  source: Pick<ConcurrentIndexStatement, "indexName" | "tableName">,
+): Promise<ConcurrentIndexState> {
+  const result = await client.query<ConcurrentIndexState>(
+    `SELECT target_relation.oid::text AS target_oid,
+      target_relation.relkind AS target_relation_kind,
+      target_namespace.nspname AS target_namespace,
+      index_relation.oid::text AS index_oid,
+      index_namespace.nspname AS index_namespace,
+      index_relation.relkind AS relation_kind,
+      indexed_table.oid::text AS indexed_table_oid,
+      indexed_table.relname AS table_name,
+      EXISTS (
+        SELECT 1 FROM pg_catalog.pg_constraint AS owning_constraint
+        WHERE owning_constraint.conindid = index_relation.oid
+      ) AS constraint_owned,
+      EXISTS (
+        SELECT 1 FROM pg_catalog.pg_depend AS extension_dependency
+        WHERE extension_dependency.classid = 'pg_catalog.pg_class'::regclass
+          AND extension_dependency.objid = index_relation.oid
+          AND extension_dependency.objsubid = 0
+          AND extension_dependency.deptype = 'e'
+      ) AS extension_owned,
+      EXISTS (
+        SELECT 1 FROM pg_catalog.pg_inherits AS partition_attachment
+        WHERE partition_attachment.inhrelid = index_relation.oid
+      ) AS partition_attached,
+      index_metadata.indisprimary AS primary,
+      index_metadata.indisexclusion AS exclusion,
+      index_metadata.indisready AS ready,
+      index_metadata.indisvalid AS valid,
+      index_metadata.indislive AS live,
+      pg_catalog.obj_description(index_relation.oid, 'pg_class') AS migration_marker
+    FROM (SELECT to_regclass($1) AS target_oid) AS target_resolution
+    LEFT JOIN pg_catalog.pg_class AS target_relation
+      ON target_relation.oid = target_resolution.target_oid
+    LEFT JOIN pg_catalog.pg_namespace AS target_namespace
+      ON target_namespace.oid = target_relation.relnamespace
+    LEFT JOIN pg_catalog.pg_class AS index_relation
+      ON index_relation.relnamespace = target_relation.relnamespace
+      AND index_relation.relname = $2
+    LEFT JOIN pg_catalog.pg_namespace AS index_namespace
+      ON index_namespace.oid = index_relation.relnamespace
+    LEFT JOIN pg_catalog.pg_index AS index_metadata
+      ON index_metadata.indexrelid = index_relation.oid
+    LEFT JOIN pg_catalog.pg_class AS indexed_table
+      ON indexed_table.oid = index_metadata.indrelid`,
+    [source.tableName, source.indexName],
+  );
+  const state = result.rows[0];
+  if (!state) {
+    throw new Error(
+      `Concurrent index catalog lookup returned no row for ${source.indexName}`,
+    );
+  }
+  if (
+    state.target_oid === null ||
+    !["p", "r"].includes(state.target_relation_kind ?? "") ||
+    typeof state.target_namespace !== "string"
+  ) {
+    throw new Error(
+      `Concurrent index target ${source.tableName} is missing or is not an ordinary or partitioned table`,
+    );
+  }
+  if (state.relation_kind === null) return state;
+  if (
+    state.relation_kind !== "i" ||
+    typeof state.index_namespace !== "string" ||
+    typeof state.index_oid !== "string" ||
+    typeof state.indexed_table_oid !== "string" ||
+    typeof state.table_name !== "string" ||
+    typeof state.constraint_owned !== "boolean" ||
+    typeof state.extension_owned !== "boolean" ||
+    typeof state.partition_attached !== "boolean" ||
+    typeof state.primary !== "boolean" ||
+    typeof state.exclusion !== "boolean" ||
+    typeof state.ready !== "boolean" ||
+    typeof state.valid !== "boolean" ||
+    typeof state.live !== "boolean" ||
+    (state.migration_marker !== null &&
+      typeof state.migration_marker !== "string")
+  ) {
+    throw new Error(
+      `Concurrent index ${source.indexName} collides with a non-index relation or malformed catalog entry`,
+    );
+  }
+  return state;
+}
+
+async function readConcurrentIndexDefinition(
+  client: MigrationClient,
+  indexOid: string,
+): Promise<string> {
+  const result = await client.query<ConcurrentIndexDefinition>(
+    `SELECT pg_catalog.jsonb_build_object(
+      'access_method', access_method.amname,
+      'collations', index_metadata.indcollation::text,
+      'elements', (
+        SELECT pg_catalog.jsonb_agg(
+          pg_catalog.pg_get_indexdef(index_metadata.indexrelid, ordinal, false)
+          ORDER BY ordinal
+        )
+        FROM pg_catalog.generate_series(1, index_metadata.indnatts) AS ordinal
+      ),
+      'expressions', pg_catalog.pg_get_expr(
+        index_metadata.indexprs,
+        index_metadata.indrelid,
+        false
+      ),
+      'key_count', index_metadata.indnkeyatts,
+      'nulls_not_distinct', index_metadata.indnullsnotdistinct,
+      'opclasses', index_metadata.indclass::text,
+      'options', COALESCE((
+        SELECT pg_catalog.jsonb_agg(option ORDER BY option)
+        FROM pg_catalog.unnest(index_relation.reloptions) AS option
+      ), '[]'::jsonb),
+      'ordering', index_metadata.indoption::text,
+      'predicate', pg_catalog.pg_get_expr(
+        index_metadata.indpred,
+        index_metadata.indrelid,
+        false
+      ),
+      'tablespace', tablespace.spcname,
+      'total_count', index_metadata.indnatts,
+      'unique', index_metadata.indisunique
+    )::text AS canonical_definition
+    FROM pg_catalog.pg_index AS index_metadata
+    JOIN pg_catalog.pg_class AS index_relation
+      ON index_relation.oid = index_metadata.indexrelid
+    JOIN pg_catalog.pg_am AS access_method
+      ON access_method.oid = index_relation.relam
+    LEFT JOIN pg_catalog.pg_tablespace AS tablespace
+      ON tablespace.oid = NULLIF(index_relation.reltablespace, 0)
+    WHERE index_metadata.indexrelid = $1::oid`,
+    [indexOid],
+  );
+  const definition = result.rows[0]?.canonical_definition;
+  if (typeof definition !== "string" || result.rows.length !== 1) {
+    throw new Error(
+      "Concurrent index PostgreSQL-canonical definition lookup returned an invalid result",
+    );
+  }
+  return definition;
+}
+
+function sqlIdentifier(value: string): string {
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+async function readExpectedConcurrentIndexDefinition(
+  client: MigrationClient,
+  source: ConcurrentIndexStatement,
+  probeOrdinal: number,
+): Promise<string> {
+  const probeTableName = `__eliza_migration_index_shape_t_${probeOrdinal}`;
+  const probeIndexName = `__eliza_migration_index_shape_i_${probeOrdinal}`;
+  // A permanent index without an explicit TABLESPACE uses default_tablespace,
+  // while a probe on a TEMP table ordinarily uses temp_tablespaces. Align the
+  // transaction-local probe setting so tablespace remains an exact comparison.
+  await client.query(
+    "SELECT pg_catalog.set_config('temp_tablespaces', pg_catalog.current_setting('default_tablespace'), true)",
+  );
+  await client.query(
+    `CREATE TEMP TABLE ${sqlIdentifier(probeTableName)} (LIKE ${sqlIdentifier(source.tableName)} INCLUDING ALL EXCLUDING INDEXES) ON COMMIT DROP`,
+  );
+  await client.query(
+    `CREATE ${source.isUnique ? "UNIQUE " : ""}INDEX ${sqlIdentifier(probeIndexName)} ON ${sqlIdentifier(probeTableName)}${source.definitionTail}`,
+  );
+  const probeOid = await client.query<{ index_oid: string | null }>(
+    "SELECT to_regclass($1)::oid::text AS index_oid",
+    [`pg_temp.${probeIndexName}`],
+  );
+  const indexOid = probeOid.rows[0]?.index_oid;
+  if (typeof indexOid !== "string" || probeOid.rows.length !== 1) {
+    throw new Error(
+      `Concurrent index ${source.indexName} canonical probe was not created`,
+    );
+  }
+  return readConcurrentIndexDefinition(client, indexOid);
+}
+
+function assertConcurrentIndexIdentity(
+  state: ConcurrentIndexState,
+  source: ConcurrentIndexStatement,
+): asserts state is ConcurrentIndexState & {
+  index_namespace: string;
+  index_oid: string;
+  indexed_table_oid: string;
+  target_namespace: string;
+  target_oid: string;
+} {
+  if (
+    state.relation_kind === null ||
+    state.index_namespace !== state.target_namespace ||
+    state.indexed_table_oid !== state.target_oid ||
+    state.table_name !== source.tableName
+  ) {
+    throw new Error(
+      `Concurrent index ${source.indexName} does not belong to the exact target namespace and table ${source.tableName}`,
+    );
+  }
+}
+
+function assertConcurrentIndexIsStandalone(
+  state: ConcurrentIndexState,
+  source: ConcurrentIndexStatement,
+): void {
+  if (
+    state.constraint_owned === true ||
+    state.extension_owned === true ||
+    state.partition_attached === true ||
+    state.primary === true ||
+    state.exclusion === true
+  ) {
+    throw new Error(
+      `Concurrent index ${source.indexName} is constraint-owned, extension-owned, partition-attached, primary, or exclusion-backed and cannot be reconciled by this migration mode`,
+    );
+  }
+}
+
+async function assertConcurrentIndexDefinition(
+  client: MigrationClient,
+  state: ConcurrentIndexState,
+  source: ConcurrentIndexStatement,
+  expectedDefinition: string,
+): Promise<void> {
+  assertConcurrentIndexIdentity(state, source);
+  const actualDefinition = await readConcurrentIndexDefinition(
+    client,
+    state.index_oid,
+  );
+  if (actualDefinition !== expectedDefinition) {
+    throw new Error(
+      `Concurrent index ${source.indexName} does not match its PostgreSQL-canonical migration definition`,
+    );
+  }
+}
+
+function concurrentIndexMigrationMarker(
+  migration: Migration,
+  source: ConcurrentIndexStatement,
+): string {
+  return `eliza:migration-index:v1:${migration.entry.when}:${migration.hash}:${source.indexName}`;
+}
+
+function sqlStringLiteral(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+function concurrentIndexIsComplete(state: ConcurrentIndexState): boolean {
+  return state.ready === true && state.valid === true && state.live === true;
+}
+
+async function runConcurrentIndexFence<T>(
+  client: MigrationClient,
+  label: string,
+  statements: readonly ConcurrentIndexStatement[],
+  options: LockRetryOptions,
+  operation: () => Promise<T>,
+): Promise<T> {
+  await client.query("BEGIN");
+  let transactionActive = true;
+  try {
+    await client.query("SELECT set_config('lock_timeout', $1, true)", [
+      `${options.timeoutMs}ms`,
+    ]);
+    const tableNames = [
+      ...new Set(statements.map(({ tableName }) => tableName)),
+    ].sort();
+    for (const tableName of tableNames) {
+      await client.query(
+        `LOCK TABLE ${sqlIdentifier(tableName)} IN SHARE UPDATE EXCLUSIVE MODE`,
+      );
+    }
+    const result = await operation();
+    await client.query("COMMIT");
+    transactionActive = false;
+    return result;
+  } catch (error) {
+    await runCleanupSteps(
+      [
+        {
+          label: `concurrent-index fence rollback for ${label}`,
+          run: async () => {
+            if (transactionActive) await client.query("ROLLBACK");
+          },
+        },
+      ],
+      reportMigrationCleanupFailure,
+      { error },
+    );
+    throw error;
+  }
+}
+
+async function reconcileConcurrentIndex(
+  client: MigrationClient,
+  migration: Migration,
+  source: ConcurrentIndexStatement,
+  options: LockRetryOptions,
+): Promise<void> {
+  const expectedMarker = concurrentIndexMigrationMarker(migration, source);
+  const reconciliation = await runConcurrentIndexFence(
+    client,
+    `${migration.entry.tag}:${source.indexName}`,
+    [source],
+    options,
+    async () => {
+      const state = await readConcurrentIndexState(client, source);
+      if (state.relation_kind === null) return { action: "create" } as const;
+
+      assertConcurrentIndexIdentity(state, source);
+      assertConcurrentIndexIsStandalone(state, source);
+      const expectedDefinition = await readExpectedConcurrentIndexDefinition(
+        client,
+        source,
+        0,
+      );
+      await assertConcurrentIndexDefinition(
+        client,
+        state,
+        source,
+        expectedDefinition,
+      );
+      if (
+        state.migration_marker !== null &&
+        state.migration_marker !== expectedMarker
+      ) {
+        throw new Error(
+          `Concurrent index ${source.indexName} carries a different migration identity`,
+        );
+      }
+      if (concurrentIndexIsComplete(state)) {
+        return { action: "reuse" } as const;
+      }
+      throw new Error(
+        `Concurrent index ${source.indexName} is incomplete; refusing automatic repair on a live table`,
+      );
+    },
+  );
+
+  if (reconciliation.action === "reuse") {
+    console.log(
+      `[db:migrate] concurrent index ${source.indexName} has the exact canonical definition and is already complete`,
+    );
+    return;
+  }
+  await client.query(source.statement);
+}
+
+async function publishConcurrentIndexMigration(
+  client: MigrationClient,
+  migration: Migration,
+  statements: readonly ConcurrentIndexStatement[],
+  options: LockRetryOptions,
+): Promise<void> {
+  await runConcurrentIndexFence(
+    client,
+    `${migration.entry.tag}:publication`,
+    statements,
+    options,
+    async () => {
+      for (const [index, source] of statements.entries()) {
+        const state = await readConcurrentIndexState(client, source);
+        if (state.relation_kind === null) {
+          throw new Error(
+            `Concurrent index ${source.indexName} disappeared before atomic publication`,
+          );
+        }
+        assertConcurrentIndexIsStandalone(state, source);
+        const expectedDefinition = await readExpectedConcurrentIndexDefinition(
+          client,
+          source,
+          index,
+        );
+        await assertConcurrentIndexDefinition(
+          client,
+          state,
+          source,
+          expectedDefinition,
+        );
+        if (!concurrentIndexIsComplete(state)) {
+          throw new Error(
+            `Concurrent index ${source.indexName} is incomplete before atomic publication`,
+          );
+        }
+        const marker = concurrentIndexMigrationMarker(migration, source);
+        if (
+          state.migration_marker !== null &&
+          state.migration_marker !== marker
+        ) {
+          throw new Error(
+            `Concurrent index ${source.indexName} carries a different migration identity`,
+          );
+        }
+        assertConcurrentIndexIdentity(state, source);
+        await client.query(
+          `COMMENT ON INDEX ${sqlIdentifier(state.target_namespace)}.${sqlIdentifier(source.indexName)} IS ${sqlStringLiteral(marker)}`,
+        );
+        // COMMENT is transactional and keeps a lock on this exact index until
+        // commit. Re-resolve by name and repeat every identity/shape check only
+        // after that lock is held: table SHARE UPDATE EXCLUSIVE alone does not
+        // conflict with every ALTER INDEX variant.
+        const completed = await readConcurrentIndexState(client, source);
+        await assertConcurrentIndexDefinition(
+          client,
+          completed,
+          source,
+          expectedDefinition,
+        );
+        if (
+          completed.index_oid !== state.index_oid ||
+          completed.migration_marker !== marker ||
+          !concurrentIndexIsComplete(completed)
+        ) {
+          throw new Error(
+            `Concurrent index ${source.indexName} changed during atomic publication`,
+          );
+        }
+      }
+      await client.query(
+        `INSERT INTO "${MIGRATIONS_SCHEMA}"."${MIGRATIONS_TABLE}" (hash, created_at) VALUES ($1, $2)`,
+        [migration.hash, migration.entry.when],
+      );
+    },
+  );
+}
+
+/**
+ * Applies a replay-safe concurrent-index migration without wrapping its DDL in
+ * a transaction. The advisory migration lock remains held by `runMigrations`.
+ * Every complete remnant is adopted only after PostgreSQL itself canonicalizes
+ * and matches its full definition. Incomplete remnants fail closed without DDL:
+ * automatic DROP would block the live table, while concurrent DROP cannot bind
+ * to the verified OID and concurrent REINDEX can leave helper remnants after an
+ * interruption. A short, DML-compatible table fence then revalidates every
+ * relation and commits all final markers with the ledger atomically, so a
+ * process loss cannot publish either half alone.
+ */
+async function applyConcurrentIndexMigration(
+  client: MigrationClient,
+  migration: Migration,
+  statements: readonly ConcurrentIndexStatement[],
+  options: LockRetryOptions,
+): Promise<void> {
+  const { entry } = migration;
+  for (let attempt = 1; attempt <= options.maxAttempts; attempt++) {
+    try {
+      await client.query("SELECT set_config('lock_timeout', $1, false)", [
+        `${options.timeoutMs}ms`,
+      ]);
+      console.log(
+        `[db:migrate] applying ${entry.tag} (${statements.length} concurrent indexes, attempt ${attempt}/${options.maxAttempts})`,
+      );
+
+      for (const [index, source] of statements.entries()) {
+        try {
+          await reconcileConcurrentIndex(client, migration, source, options);
+        } catch (error) {
+          console.error(
+            `[db:migrate] failed ${entry.tag} concurrent index ${index + 1}/${statements.length}`,
+          );
+          console.error(
+            `[db:migrate] sql: ${summarizeStatement(source.statement)}`,
+          );
+          console.error(`[db:migrate] error: ${formatDatabaseError(error)}`);
+          throw error;
+        }
+      }
+      await publishConcurrentIndexMigration(
+        client,
+        migration,
+        statements,
+        options,
+      );
+      await client.query("SELECT set_config('lock_timeout', '0', false)");
+      return;
+    } catch (error) {
+      await runCleanupSteps(
+        [
+          {
+            label: `session lock-timeout reset for ${entry.tag}`,
+            run: async () => {
+              await client.query(
+                "SELECT set_config('lock_timeout', '0', false)",
+              );
+            },
+          },
+        ],
+        reportMigrationCleanupFailure,
+        { error },
+      );
+      if (!isLockTimeout(error)) throw error;
+      if (attempt === options.maxAttempts) {
+        console.error(
+          `[db:migrate] ${entry.tag} exhausted ${options.maxAttempts} lock-timeout attempts`,
+        );
+        throw error;
+      }
+      const delayMs = retryDelayMs(attempt, options);
+      console.warn(
+        `[db:migrate] ${entry.tag} lock timeout on attempt ${attempt}/${options.maxAttempts}; retrying in ${delayMs}ms`,
+      );
+      await sleep(delayMs);
+    }
+  }
+}
+
 /** Applies one or more journal entries in one transaction and ledger commit. */
 async function applyMigrationBatch(
   client: MigrationClient,
@@ -444,6 +1122,13 @@ async function applyMigrationBatch(
 ): Promise<void> {
   if (migrations.length === 0) {
     throw new Error("Migration batch must contain at least one journal entry");
+  }
+  for (const migration of migrations) {
+    if (planMigrationExecution(migration).mode !== "transactional") {
+      throw new Error(
+        `Nontransactional migration ${migration.entry.tag} cannot be included in an atomic migration batch`,
+      );
+    }
   }
   const batchLabel = migrations
     .map((migration) => migration.entry.tag)
@@ -515,6 +1200,16 @@ export async function applyMigration(
   migration: Migration,
   options: LockRetryOptions,
 ): Promise<void> {
+  const plan = planMigrationExecution(migration);
+  if (plan.mode === "nontransactional-concurrent-indexes") {
+    await applyConcurrentIndexMigration(
+      client,
+      migration,
+      plan.statements,
+      options,
+    );
+    return;
+  }
   await applyMigrationBatch(client, [migration], options);
 }
 
