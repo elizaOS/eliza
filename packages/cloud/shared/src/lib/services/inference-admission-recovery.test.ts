@@ -144,6 +144,7 @@ test("direct recovery replays one deterministic debit and returns the persisted 
     },
     0.3,
     "backstop",
+    { preserveBalanceHintDuringFencedHandoff: true },
   );
   expect(first).toEqual({
     balanceUsd: 9.5,
