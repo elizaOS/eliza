@@ -502,9 +502,12 @@ export class MatrixMembershipAuthority {
             tracker = await this.readoptFromHealth(scope);
             continue;
           }
-          // error-policy:J7 Incompleteness reporting is diagnostic: the scope
-          // keeps its prior health and the sync loop must survive. Report and
-          // stop rather than fail the caller's sync handling.
+          // error-policy:J7 Incompleteness reporting is diagnostic for the
+          // sync loop, but it must fail admission CLOSED locally: when the
+          // authority store cannot persist the degraded health, the room is
+          // still known-incomplete here, and authorize() must not let a
+          // stale-current persisted decision speak for it.
+          this.markRoomIncomplete(input.roomId, input.reason);
           this.runtime.reportError("matrix:membership-incomplete-report", error, {
             roomId: input.roomId,
             reason: input.reason,
@@ -707,9 +710,26 @@ export class MatrixMembershipAuthority {
       connectorAccountId: this.connectorAccountId,
       roomId: input.roomId,
     });
-    return this.serialized(scopeKey(scope), () =>
-      this.service.authorize(scope, input.canonicalPrincipalId)
-    );
+    // Fail closed locally while the room is known-incomplete: the connector
+    // has observed an unreliable member list (limited sync, lazy-load gap, or
+    // a failed incompleteness persist), so even a persisted current decision
+    // cannot speak for the room. Not a reconcile-miss reason — the SDK roster
+    // is exactly what we distrust — so a hard denial, cleared only by a later
+    // complete snapshot or a fresh-server-roster recovery pass. Checked INSIDE
+    // the serialized section: an authorize queued behind an in-flight
+    // reportIncomplete must observe a flag the report sets while it holds the
+    // scope chain, not a pre-queue snapshot of it.
+    return this.serialized(scopeKey(scope), async () => {
+      if (this.incompleteRooms.has(input.roomId)) {
+        return {
+          decision: "denied",
+          reason: "authority_stale",
+          generation: null,
+          health: "stale",
+        } as MembershipAuthorizationDecision;
+      }
+      return this.service.authorize(scope, input.canonicalPrincipalId);
+    });
   }
 
   /**
