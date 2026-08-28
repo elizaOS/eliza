@@ -91,12 +91,10 @@ export async function* streamPhonemes(
 	};
 }
 
-function appendSeq(seq: KokoroPhonemeSequence, target: number[]): void {
-	// The phonemizer emits a sequence framed with BOS/EOS — strip both when
-	// accumulating windows so the model sees one BOS at the head and one EOS
-	// at the tail. Defensive against phonemizers that omit framing (the
-	// accumulator simply appends raw ids in that case).
-	const ids = seq.ids;
+function stripFraming(ids: Int32Array): Int32Array {
+	// The phonemizer emits a sequence framed with BOS/EOS — strip both so the
+	// model sees one BOS at the head and one EOS at the tail. Defensive
+	// against phonemizers that omit framing (we simply keep the raw ids).
 	let start = 0;
 	let end = ids.length;
 	if (ids.length >= 2) {
@@ -104,7 +102,16 @@ function appendSeq(seq: KokoroPhonemeSequence, target: number[]): void {
 		if (ids[0] !== undefined && ids[0] <= 2) start = 1;
 		if (ids[end - 1] !== undefined && (ids[end - 1] as number) <= 2) end -= 1;
 	}
-	for (let i = start; i < end; i++) {
+	return ids.slice(start, end);
+}
+
+function appendSeq(seq: KokoroPhonemeSequence, target: number[]): void {
+	// The phonemizer emits a sequence framed with BOS/EOS — strip both when
+	// accumulating windows so the model sees one BOS at the head and one EOS
+	// at the tail. Defensive against phonemizers that omit framing (the
+	// accumulator simply appends raw ids in that case).
+	const ids = stripFraming(seq.ids);
+	for (let i = 0; i < ids.length; i++) {
 		const id = ids[i];
 		if (id !== undefined) target.push(id);
 	}
@@ -119,5 +126,8 @@ export async function phonemizePhrase(
 	opts: StreamPhonemesOptions,
 ): Promise<PhonemeStreamWindow> {
 	const seq = await opts.phonemizer.phonemize(text, opts.lang);
-	return { ids: seq.ids, phonemes: seq.phonemes, isFinal: true };
+	// Same framing rule as the streaming path: strip BOS/EOS so a whole-phrase
+	// caller feeds the model one BOS at the head and one EOS at the tail —
+	// equivalent to draining streamPhonemes on a single-item iterator.
+	return { ids: stripFraming(seq.ids), phonemes: seq.phonemes, isFinal: true };
 }
