@@ -45,7 +45,6 @@ import {
 } from "../../services/trajectory-semantic-stage";
 import type { TrajectoryRuntimeLlmCallParams } from "../../trajectory-utils";
 import type { IAgentRuntime } from "../../types";
-import { validateManifestHead } from "../../types/content-manifest-shards";
 import { Service } from "../../types/service";
 
 import type {

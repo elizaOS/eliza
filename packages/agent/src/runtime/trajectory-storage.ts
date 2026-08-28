@@ -2816,6 +2816,7 @@ async function cleanupContentManifestLedgerRows(
     const adapter = runtime.adapter as unknown as
       | {
           getCache: <T>(key: string) => Promise<T | undefined>;
+          getCaches: <T>(keys: string[]) => Promise<Map<string, T>>;
           deleteCaches: (keys: string[]) => Promise<boolean>;
         }
       | undefined;
