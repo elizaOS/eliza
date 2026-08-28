@@ -503,6 +503,29 @@ describe("/v1/messages IAC fast path", () => {
     expect(recordUsageAnalytics).toHaveBeenCalledTimes(1);
   });
 
+  test("monetized app insufficient credits returns non-retryable billing_error 402", async () => {
+    getAuthorizedMonetizedAppForUser.mockResolvedValueOnce({
+      id: "00000000-0000-4000-8000-0000000000dd",
+      monetization_enabled: true,
+      inference_markup_percentage: "100",
+    });
+    reserveInferenceCredits.mockRejectedValueOnce(
+      new TestInsufficientCreditsError(12.5),
+    );
+
+    const response = await postMessages({
+      "X-App-Id": "00000000-0000-4000-8000-0000000000dd",
+    });
+
+    expect(response.status).toBe(402);
+    const body = (await response.json()) as {
+      error?: { type?: string; message?: string };
+    };
+    expect(body.error?.type).toBe("billing_error");
+    expect(body.error?.message).toContain("Insufficient cloud credits");
+    expect(generateText).not.toHaveBeenCalled();
+  });
+
   test("Worker monetized-app admission uses only cache resolution and deferred reservation", async () => {
     const app = {
       id: "00000000-0000-4000-8000-0000000000dd",
