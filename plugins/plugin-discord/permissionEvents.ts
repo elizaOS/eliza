@@ -94,11 +94,14 @@ function getState(
 	allow: string[],
 	deny: string[],
 ): PermissionState {
-	if (allow.includes(perm)) {
-		return "ALLOW";
-	}
+	// Discord overwrite semantics: an explicit DENY beats ALLOW within the
+	// same overwrite entry, so classify deny-first. Diffing allow-first
+	// misreads {allow:[p], deny:[p]} as ALLOW and hides deny grants/revokes.
 	if (deny.includes(perm)) {
 		return "DENY";
+	}
+	if (allow.includes(perm)) {
+		return "ALLOW";
 	}
 	return "NEUTRAL";
 }
