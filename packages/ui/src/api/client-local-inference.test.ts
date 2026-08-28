@@ -2,11 +2,15 @@
  * Covers local-inference client policy helpers: deterministic device-tier
  * classification and the real fetch boundary for atomic text routing.
  */
+import { ElizaError } from "@elizaos/core/errors";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { HardwareProbe } from "../services/local-inference/types";
 import { ElizaClient } from "./client-base";
-import { classifyDeviceTierFromProbe } from "./client-local-inference";
+import {
+  classifyDeviceTierFromProbe,
+  LOCAL_INFERENCE_HARDWARE_RESPONSE_INVALID_CODE,
+} from "./client-local-inference";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -101,6 +105,71 @@ describe("classifyDeviceTierFromProbe", () => {
     );
     expect(result.tier).toBe("POOR");
     expect(result.mobile).toBe(true);
+  });
+});
+
+describe("getLocalInferenceHub", () => {
+  it("rejects malformed hardware before UI state can render it", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          catalog: [],
+          installed: [],
+          active: { modelId: null, loadedAt: null, status: "idle" },
+          downloads: [],
+          hardware: { status: "unsupported" },
+          assignments: {},
+          textReadiness: { updatedAt: new Date(0).toISOString(), slots: {} },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+    const client = new ElizaClient("http://127.0.0.1:31337", "token");
+
+    let thrown: unknown;
+    try {
+      await client.getLocalInferenceHub();
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(ElizaError);
+    expect(thrown).toMatchObject({
+      code: LOCAL_INFERENCE_HARDWARE_RESPONSE_INVALID_CODE,
+      context: {
+        path: "response.hardware.totalRamGb",
+        expected: "a finite non-negative number",
+      },
+    });
+    expect((thrown as Error).message).toContain(
+      "Hardware details are unavailable",
+    );
+  });
+
+  it("accepts the canonical hardware probe contract", async () => {
+    const snapshot = {
+      catalog: [],
+      installed: [],
+      active: { modelId: null, loadedAt: null, status: "idle" },
+      downloads: [],
+      hardware: probe({
+        gpu: { backend: "vulkan", totalVramGb: 8, freeVramGb: 6 },
+      }),
+      assignments: {},
+      textReadiness: { updatedAt: new Date(0).toISOString(), slots: {} },
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(snapshot), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const client = new ElizaClient("http://127.0.0.1:31337", "token");
+
+    await expect(client.getLocalInferenceHub()).resolves.toEqual(snapshot);
   });
 });
 
