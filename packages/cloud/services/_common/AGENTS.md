@@ -33,7 +33,8 @@ structured logging, and Kubernetes ServiceAccount helpers. Private
 - `src/response-attempts.ts` (`./response-attempts`) — bounded observable HTTP
   retry behavior shared across transport runtimes.
 - `src/telegram-connector.ts` (`./telegram-connector`) — Web-standard Telegram
-  webhook verification, parsing, typing, voice download, and reply delivery.
+  webhook verification, parsing, typing, voice download, reply delivery, and
+  value-safe exact-token `getMe` identity attestation.
 - `src/telegram-delivery.ts` (`./telegram-delivery`) — exact-once Telegram
   reply state machine over a runtime-provided atomic ledger.
 
@@ -63,6 +64,10 @@ bun run --cwd packages/cloud/services/_common test         # delivery state-mach
   cheaply.
 - Keep provider protocol and delivery semantics runtime-neutral: Workers and
   Railway must delegate to the same source rather than maintaining forks.
+- Successful Telegram identity attestations are briefly cached by credential
+  plus expected ID/username; failures are never cached. Attestation errors may
+  expose only the safe reason/retryability classification, never their provider
+  payload or a nested cause that can contain the credential-bearing URL.
 
 Repo-wide rules (logger-only, ESM, naming, architecture) are in the root [CLAUDE.md](../../../../CLAUDE.md).
 

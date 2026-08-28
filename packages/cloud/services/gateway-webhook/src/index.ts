@@ -18,6 +18,11 @@ import { initProjectConfig, shutdownProjectConfig } from "./project-config";
 import { createRedis } from "./redis";
 import { requireCanonicalAgentRoutingConfiguration } from "./server-router";
 import {
+  attestCanonicalTelegramProject,
+  registerTelegramIdentityReadinessRoute,
+  telegramIdentityFailureReason,
+} from "./telegram-identity";
+import {
   getSharedWhatsAppVerifyToken,
   resolveWebhookConfig,
 } from "./webhook-config";
@@ -56,11 +61,25 @@ const app = new Hono();
 app.get("/health", (c) =>
   c.json({ status: draining ? "draining" : "healthy", pod: POD_NAME }),
 );
-app.get("/ready", (c) => {
+app.get("/ready", async (c) => {
   if (draining) return c.json({ status: "draining" }, 503);
-  return c.json({ status: "ready" });
+  try {
+    await attestCanonicalTelegramProject();
+    return c.json({ status: "ready" });
+  } catch (error) {
+    return c.json(
+      {
+        status: "not-ready",
+        component: "telegram-identity",
+        reason: telegramIdentityFailureReason(error),
+      },
+      503,
+      { "Retry-After": "5" },
+    );
+  }
 });
 registerForwarderAuthReadinessRoute(app);
+registerTelegramIdentityReadinessRoute(app);
 app.post("/drain", (c) => {
   // Gated on the internal secret like /internal/deliver: this service is the
   // public webhook ingress, so an unauthenticated drain would let anyone who
@@ -193,6 +212,7 @@ async function start() {
   logger.info("Starting webhook gateway", { pod: POD_NAME, port: PORT });
 
   await initProjectConfig();
+  await attestCanonicalTelegramProject();
   await initAuth({
     cloudUrl: ELIZA_CLOUD_URL,
     bootstrapSecret: GATEWAY_BOOTSTRAP_SECRET,
