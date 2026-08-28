@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 describe("inference strong-revocation rollout", () => {
-  test("soaks revocation-fenced auth caching in staging without enabling production", async () => {
+  test("requires revocation-fenced auth caching in staging and production", async () => {
     const config = Bun.TOML.parse(
       await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),
     ) as {
@@ -22,6 +22,6 @@ describe("inference strong-revocation rollout", () => {
     );
     expect(
       config.env?.production?.vars?.INFERENCE_STRONG_REVOCATION_ENABLED,
-    ).toBe("false");
+    ).toBe("true");
   });
 });
