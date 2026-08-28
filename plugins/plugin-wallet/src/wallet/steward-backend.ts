@@ -166,11 +166,18 @@ export class StewardBackend implements WalletBackend {
       );
     }
 
-    const chains = await steward.fetchStewardVaultChainAddresses(
-      cfg.apiUrl,
-      cfg.agentToken,
-      cfg.agentId,
-    );
+    const chains = await steward
+      .fetchStewardVaultChainAddresses(cfg.apiUrl, cfg.agentToken, cfg.agentId)
+      .catch((err: unknown) => {
+        // error-policy:J2 vault fetch failure is classified as StewardUnavailable
+        // so callers can fall back to the local backend, while retaining the
+        // original transport error as `cause` for owner diagnostics.
+        const detail = err instanceof Error ? err.message : String(err);
+        throw new StewardUnavailableError(
+          `Cannot fetch Steward vault chain addresses: ${detail}`,
+          { cause: err },
+        );
+      });
 
     let solanaPubkey: PublicKey | null = null;
     if (chains.solana) {
