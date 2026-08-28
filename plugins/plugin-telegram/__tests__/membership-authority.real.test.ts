@@ -1579,6 +1579,9 @@ describe("telegram membership authority vertical (real PGlite)", () => {
       runtime: unknown;
       defaultAccountId: string;
       membershipGates: Map<string, Promise<unknown>>;
+      settledMembershipGates: Map<string, unknown>;
+      pendingMembershipTransitions: Map<string, unknown[]>;
+      membershipGateFailures: Set<string>;
       handleMyChatMemberUpdate: (
         update: unknown,
         accountId?: string,
@@ -1586,9 +1589,17 @@ describe("telegram membership authority vertical (real PGlite)", () => {
     };
     service.runtime = harness.runtime;
     service.defaultAccountId = "default";
+    // The gate promise is already resolved, but the startup-window check
+    // consults the settled registry synchronously — mirror production state
+    // where the bootstrap completed before these dispatches run.
     service.membershipGates = new Map([
       ["default", Promise.resolve({ authority, botTelegramUserId: "900001" })],
     ]);
+    service.settledMembershipGates = new Map([
+      ["default", { authority, botTelegramUserId: "900001" }],
+    ]);
+    service.pendingMembershipTransitions = new Map();
+    service.membershipGateFailures = new Set();
     await service.handleMyChatMemberUpdate({
       chat: { id: CHAT_ID, type: "supergroup" },
       from: { id: 42, is_bot: false, first_name: "Admin" },

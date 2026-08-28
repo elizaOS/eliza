@@ -143,6 +143,13 @@ export class TelegramMembershipMessageGate {
   private authority: TelegramMembershipAuthority | null;
   private botTelegramUserId: string | null;
   private broken = false;
+  /**
+   * True between manager construction and the first gate resolution: the
+   * poller is live before finishBotStartup settles, and admission must not
+   * degrade to the absent-authority allow mode during that window — a
+   * revoked sender could otherwise slip in before the authority binds.
+   */
+  private pending = false;
   private readonly warned = new Set<string>();
   private reconcileNonce = 0;
 
@@ -164,6 +171,24 @@ export class TelegramMembershipMessageGate {
     this.authority = authority;
     this.botTelegramUserId = botTelegramUserId;
     this.broken = false;
+    this.pending = false;
+    this.warned.clear();
+  }
+
+  /**
+   * Marks the gate pending: the authority's bootstrap is in flight, so
+   * group admission fails closed until rebind/markBroken/markAbsent settles
+   * it. Distinct from absent (legacy allow) and broken (fail closed).
+   */
+  markPending(): void {
+    this.pending = true;
+    this.warned.clear();
+  }
+
+  /** Settles a pending gate into the absent-authority legacy mode. */
+  markAbsent(): void {
+    this.pending = false;
+    this.authority = null;
     this.warned.clear();
   }
 
@@ -174,6 +199,7 @@ export class TelegramMembershipMessageGate {
    */
   markBroken(): void {
     this.broken = true;
+    this.pending = false;
     this.authority = null;
     this.warned.clear();
   }
@@ -192,12 +218,17 @@ export class TelegramMembershipMessageGate {
     }
     if (
       this.broken ||
+      this.pending ||
       (!this.authority && process.env.TELEGRAM_MEMBERSHIP_ENFORCE === "1")
     ) {
-      // Broken bootstrap (authority configured but failed) or explicit strict
-      // mode without an authority: admission fails closed.
+      // Broken bootstrap (authority configured but failed), pending
+      // bootstrap (poller live before the gate settles — fail closed for
+      // that window), or explicit strict mode without an authority:
+      // admission fails closed.
       this.warnOnce(
-        `authority-broken:${input.chatId}`,
+        this.pending
+          ? `authority-pending:${input.chatId}`
+          : `authority-broken:${input.chatId}`,
         "Telegram group admission denied: membership authority is unavailable",
         { chatId: input.chatId },
       );

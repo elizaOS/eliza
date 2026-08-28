@@ -207,7 +207,7 @@ describe("standalone Telegram DM policy gate", () => {
     expect(handleMessage).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps group chats open when nothing is configured", async () => {
+  it("keeps group chats open when nothing is configured and no admission gate is supplied (legacy direct calls)", async () => {
     const { runtime, handleMessage } = makeRuntime({
       settings: { TELEGRAM_DM_POLICY: undefined },
     });
@@ -221,6 +221,62 @@ describe("standalone Telegram DM policy gate", () => {
     await handleTelegramStandaloneMessage(runtime, update as never);
 
     expect(handleMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("admits an active member and denies a revoked member through the membership authority gate", async () => {
+    // The standalone service passes its authority-backed admission gate for
+    // group chats; this replaces the old lockstep assertion that an
+    // unconfigured group is admitted unconditionally.
+    const { TelegramMembershipMessageGate } = await import(
+      "../membership-gate"
+    );
+    const authorize = vi.fn(async () => ({ decision: "allowed" as const }));
+    const markScopeUnavailable = vi.fn(async () => undefined);
+    const gate = new TelegramMembershipMessageGate({
+      runtime: {
+        agentId: "agent-1",
+        reportError: vi.fn(),
+      } as never,
+      authority: {
+        authorize,
+        markScopeUnavailable,
+      } as never,
+      botTelegramUserId: "900001",
+    });
+
+    // Positive control: an active member is admitted.
+    const allowed = context(111) as {
+      chat: { type: string };
+      message: { chat: { type: string } };
+    };
+    allowed.chat.type = "supergroup";
+    allowed.message.chat.type = "supergroup";
+    const { runtime, handleMessage } = makeRuntime({
+      settings: { TELEGRAM_DM_POLICY: undefined },
+    });
+    await handleTelegramStandaloneMessage(runtime, allowed as never, {
+      admissionGate: gate,
+    });
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(authorize).toHaveBeenCalledTimes(1);
+
+    // Negative control: a revoked member is denied before any
+    // ensureConnection / handleMessage work.
+    authorize.mockResolvedValue({
+      decision: "denied",
+      reason: "membership_revoked",
+    } as never);
+    const denied = context(112) as {
+      chat: { type: string };
+      message: { chat: { type: string } };
+    };
+    denied.chat.type = "supergroup";
+    denied.message.chat.type = "supergroup";
+    await handleTelegramStandaloneMessage(runtime, denied as never, {
+      admissionGate: gate,
+    });
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(runtime.ensureConnection).toHaveBeenCalledTimes(1);
   });
 
   it("still honors the allowlist before the DM policy", async () => {
