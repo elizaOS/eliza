@@ -5,7 +5,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS "agent_backup_admission_work_schedule_uidx"
     "sandbox_id", "node_history_id", "source_activation_generation",
     "source_lifecycle_revision", "source_due_at"
   ) WHERE "work_kind" = 'schedule_capture'
-    AND "settled_reason" IS DISTINCT FROM 'RETRY_EXHAUSTED';
+    AND NOT ("state" = 'settled' AND "settled_reason" = 'RETRY_EXHAUSTED'
+      AND "attempts" = 12);
 --> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "agent_backup_admission_work_operation_stage_uidx"
   ON "agent_backup_admission_work" ("backup_id", "work_stage");
