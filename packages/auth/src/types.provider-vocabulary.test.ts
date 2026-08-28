@@ -2,18 +2,41 @@
  * Pins the account credential provider vocabulary in types.ts: the runtime
  * guards that validate client-supplied provider IDs at the accounts API and
  * credential-storage boundaries, the auth-mode partition every subscription
- * provider must satisfy exactly once, the metadata associations relied on by
- * connect-account.ts and credentials.ts (selection IDs, direct-provider
- * fallbacks, coding-plan endpoints), and the provider-to-env-var and
- * provider-to-model-name wiring consumed when materializing credentials.
+ * provider must satisfy exactly once, and the wiring with production
+ * consumers (direct-provider env vars read by credential-resolver and the
+ * account pool, model-provider names read by credentials.ts, coding-plan
+ * endpoints read by accounts-routes.ts).
+ *
+ * Fields without a production consumer are deliberately not byte-pinned
+ * here. Beyond `selectionIds` and `directProviderId`, the metadata fields
+ * `providerId`, `authMode`, `defaultBaseUrl`, and `probePath` also have no
+ * reader outside their declaration (the provider-choice and fallback paths
+ * source their data from the first-run provider catalog in @elizaos/core,
+ * and route handlers read `CODING_PLAN_PROVIDER_BASE_URL` directly, not the
+ * metadata copy). Pinning them would be lockstep mirroring of dead metadata.
+ * The wiring that IS consumed is pinned: `DIRECT_ACCOUNT_PROVIDER_ENV`
+ * (credential-resolver + account-pool), `SUBSCRIPTION_PROVIDER_MAP`
+ * (credentials.ts), `CODING_PLAN_PROVIDER_BASE_URL` (accounts-routes.ts),
+ * and metadata `availability`/`allowedClient`/`setupHint`/`billingMode`/
+ * `availabilityReason` (credentials.ts subscriptionStatusMetadata, rendered
+ * by the UI subscription status view). `selectionIds` and
+ * `directProviderId` are only checked for agreement with the real first-run
+ * catalog wiring so the two cannot drift apart.
  *
  * Real module, deterministic, no mocks: every case calls the exported
  * functions with concrete inputs. The discriminating cases are near-miss
  * strings and cross-vocabulary confusions (an OAuth id is not a coding-plan
  * id; a direct API provider is not a subscription), so a guard that starts
  * checking the wrong list, or a provider added to one list but not its
- * partition, fails here.
+ * partition, fails here. The consumers of the guards themselves are
+ * exercised at their own boundaries: connect-account.test.ts (agent)
+ * covers the availability filter that offers providers in-chat.
  */
+import {
+  getDirectAccountProviderForFirstRunProvider,
+  getFirstRunProviderOption,
+  getStoredSubscriptionProviderForRequest,
+} from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   ACCOUNT_CREDENTIAL_PROVIDER_IDS,
@@ -193,12 +216,14 @@ describe("vocabulary invariants", () => {
 });
 
 describe("getSubscriptionProviderMetadata", () => {
-  it("returns a structurally complete entry for every subscription provider", () => {
+  it("returns entries whose consumed fields are populated for every provider", () => {
+    // displayName (connect-account.ts), allowedClient/setupHint/billingMode/
+    // availability/availabilityReason (credentials.ts
+    // subscriptionStatusMetadata, rendered by the UI subscription status
+    // view) are the metadata fields with production readers.
     for (const id of SUBSCRIPTION_PROVIDER_IDS) {
       const metadata = getSubscriptionProviderMetadata(id);
       expect(metadata, id).toBeDefined();
-      // A wrong-keyed record would echo a different providerId back.
-      expect(metadata.providerId).toBe(id);
       expect(metadata.displayName.length).toBeGreaterThan(0);
       expect(metadata.allowedClient.length).toBeGreaterThan(0);
       expect(metadata.setupHint.length).toBeGreaterThan(0);
@@ -208,82 +233,66 @@ describe("getSubscriptionProviderMetadata", () => {
       expect(["available", "external", "unavailable"]).toContain(
         metadata.availability,
       );
+      // subscriptionStatusMetadata forwards availabilityReason to the UI only
+      // for unavailable providers; an unavailable provider without a reason
+      // renders an unexplained dead row.
+      if (metadata.availability === "unavailable") {
+        expect(
+          metadata.availabilityReason,
+          `${id} is unavailable but has no availabilityReason`,
+        ).toBeTruthy();
+      }
     }
   });
 
-  it("pins the selectionIds consumers use to choose a provider", () => {
-    // The UI/account flow matches persisted selection IDs back to providers;
-    // swapping them between providers silently re-routes accounts.
-    const expectedSelectionIds: Record<string, readonly string[]> = {
-      "anthropic-subscription": ["anthropic-subscription"],
-      "openai-codex": ["openai-subscription"],
-      "gemini-cli": ["gemini-subscription"],
-      "zai-coding": ["zai-coding-subscription"],
-      "kimi-coding": ["kimi-coding-subscription"],
-      "deepseek-coding": ["deepseek-coding-subscription"],
-    };
+  it("metadata selectionIds resolve back to this provider through the first-run catalog", () => {
+    // The UI/account flow matches persisted selection IDs (e.g.
+    // "openai-subscription") back to stored providers via core's
+    // SUBSCRIPTION_PROVIDER_SELECTIONS; auth's metadata selectionIds must
+    // agree with that mapping or a selection silently re-routes accounts.
+    // This exercises the real consumer function rather than mirroring the
+    // literal arrays.
     for (const id of SUBSCRIPTION_PROVIDER_IDS) {
-      expect(getSubscriptionProviderMetadata(id).selectionIds).toEqual(
-        expectedSelectionIds[id],
-      );
+      for (const selectionId of getSubscriptionProviderMetadata(id)
+        .selectionIds) {
+        expect(
+          getStoredSubscriptionProviderForRequest(selectionId),
+          `${selectionId} should store as ${id}`,
+        ).toBe(id);
+      }
     }
-  });
-
-  it("pins which subscription providers carry a direct-provider fallback", () => {
-    const expectedDirect: Record<string, string | undefined> = {
-      "anthropic-subscription": "anthropic-api",
-      "openai-codex": "openai-api",
-      "gemini-cli": undefined,
-      "zai-coding": "zai-api",
-      "kimi-coding": "moonshot-api",
-      "deepseek-coding": "deepseek-api",
-    };
-    for (const id of SUBSCRIPTION_PROVIDER_IDS) {
-      expect(getSubscriptionProviderMetadata(id).directProviderId).toBe(
-        expectedDirect[id],
-      );
-    }
-  });
-
-  it("coding-plan providers point at their dedicated endpoint", () => {
-    for (const id of CODING_PLAN_KEY_SUBSCRIPTION_PROVIDER_IDS) {
-      const metadata = getSubscriptionProviderMetadata(id);
-      expect(metadata.defaultBaseUrl).toBe(CODING_PLAN_PROVIDER_BASE_URL[id]);
-      expect(metadata.probePath).toBe("/models");
-    }
-    // Non-plan providers do not carry a plan endpoint.
+    // The stored provider id itself round-trips too.
     expect(
-      getSubscriptionProviderMetadata("anthropic-subscription").defaultBaseUrl,
-    ).toBeUndefined();
+      getStoredSubscriptionProviderForRequest("anthropic-subscription"),
+    ).toBe("anthropic-subscription");
+    expect(getStoredSubscriptionProviderForRequest("openai-codex")).toBe(
+      "openai-codex",
+    );
+    // Near-miss and non-selection inputs resolve to null, never a provider.
+    expect(
+      getStoredSubscriptionProviderForRequest("openai-subscription2"),
+    ).toBe(null);
+    expect(getStoredSubscriptionProviderForRequest(42 as unknown)).toBe(null);
   });
 
-  it("metadata authMode agrees with the guard partition", () => {
+  it("metadata directProviderId, when present, agrees with the first-run fallback wiring", () => {
+    // Production fallback resolution goes through core's
+    // getDirectAccountProviderForFirstRunProvider (credential-resolver,
+    // ProviderSwitcher). The auth metadata's directProviderId is not read by
+    // that path, but the two must not disagree, or the metadata will
+    // misdescribe the fallback users actually get. The provider-to-family
+    // association is derived from the first-run catalog itself, not from
+    // another literal map.
     for (const id of SUBSCRIPTION_PROVIDER_IDS) {
-      const { authMode } = getSubscriptionProviderMetadata(id);
-      expect(
-        isOAuthSubscriptionProvider(id),
-        `${id} authMode=${authMode} vs isOAuthSubscriptionProvider`,
-      ).toBe(authMode === "oauth");
-      expect(
-        isCodingPlanKeySubscriptionProvider(id),
-        `${id} authMode=${authMode} vs isCodingPlanKeySubscriptionProvider`,
-      ).toBe(authMode === "coding-plan-key");
-      expect(
-        isExternalCliSubscriptionProvider(id),
-        `${id} authMode=${authMode} vs isExternalCliSubscriptionProvider`,
-      ).toBe(authMode === "external-cli");
-      expect(
-        isUnavailableSubscriptionProvider(id),
-        `${id} authMode=${authMode} vs isUnavailableSubscriptionProvider`,
-      ).toBe(authMode === "unavailable");
-    }
-  });
-
-  it("directProviderId, when present, names a real direct-account provider", () => {
-    for (const id of SUBSCRIPTION_PROVIDER_IDS) {
+      const option = getFirstRunProviderOption(id);
+      if (!option) {
+        throw new Error(`Missing first-run provider option for ${id}`);
+      }
       const { directProviderId } = getSubscriptionProviderMetadata(id);
-      if (directProviderId === undefined) continue;
-      expect(isDirectAccountProvider(directProviderId), id).toBe(true);
+      expect(
+        getDirectAccountProviderForFirstRunProvider(option.family),
+        `${id} (family ${option.family}) first-run fallback`,
+      ).toBe(directProviderId ?? null);
     }
   });
 });
