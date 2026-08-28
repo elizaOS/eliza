@@ -15,6 +15,7 @@ import { AUTONOMY_SERVICE_TYPE, type AutonomyService } from "./service.ts";
 const AGENT_ID = "10000000-0000-0000-0000-000000000000" as UUID;
 const ROOM_ID = "20000000-0000-0000-0000-000000000000" as UUID;
 const OTHER_ROOM_ID = "30000000-0000-0000-0000-000000000000" as UUID;
+const ADMIN_ROOM_ID = "35000000-0000-0000-0000-000000000000" as UUID;
 const ADMIN_USER_ID = "admin-user";
 const ADMIN_ID = stringToUuid(ADMIN_USER_ID);
 
@@ -69,7 +70,7 @@ function historyMemory(
 	return {
 		agentId: AGENT_ID,
 		entityId,
-		roomId: ROOM_ID,
+		roomId: ADMIN_ROOM_ID,
 		createdAt,
 		content: text === undefined ? {} : { text },
 	};
@@ -131,8 +132,13 @@ describe("adminChatProvider", () => {
 		"reports configured admin history with no messages for %s",
 		async (memories) => {
 			const getMemories = vi.fn(async () => memories as Memory[] | null);
+			const getRoomsForParticipant = vi.fn(async () => [
+				ROOM_ID,
+				ADMIN_ROOM_ID,
+			]);
 			const runtime = runtimeWithService(autonomyService(), {
 				getSetting: () => ADMIN_USER_ID,
+				getRoomsForParticipant,
 				getMemories,
 			});
 
@@ -147,13 +153,15 @@ describe("adminChatProvider", () => {
 			expect(getMemories).toHaveBeenCalledWith({
 				agentId: AGENT_ID,
 				entityId: ADMIN_ID,
-				roomId: ROOM_ID,
+				roomId: ADMIN_ROOM_ID,
 				limit: 15,
 				orderBy: "createdAt",
 				orderDirection: "desc",
 				unique: false,
 				tableName: "memories",
 			});
+			expect(getRoomsForParticipant).toHaveBeenCalledWith(ADMIN_ID);
+			expect(getMemories).toHaveBeenCalledTimes(1);
 		},
 	);
 
@@ -171,6 +179,7 @@ describe("adminChatProvider", () => {
 		];
 		const runtime = runtimeWithService(autonomyService(), {
 			getSetting: () => ADMIN_USER_ID,
+			getRoomsForParticipant: async () => [ADMIN_ROOM_ID],
 			getMemories: async () => memories,
 		});
 
@@ -208,6 +217,7 @@ describe("adminChatProvider", () => {
 		);
 		const runtime = runtimeWithService(autonomyService(), {
 			getSetting: () => ADMIN_USER_ID,
+			getRoomsForParticipant: async () => [ADMIN_ROOM_ID],
 			getMemories,
 		});
 
@@ -216,7 +226,7 @@ describe("adminChatProvider", () => {
 		expect(getMemories).toHaveBeenCalledWith({
 			agentId: AGENT_ID,
 			entityId: ADMIN_ID,
-			roomId: ROOM_ID,
+			roomId: ADMIN_ROOM_ID,
 			limit: 15,
 			orderBy: "createdAt",
 			orderDirection: "desc",
@@ -245,6 +255,7 @@ describe("adminChatProvider", () => {
 	test("marks old history inactive and renders an empty last admin message as N/A", async () => {
 		const runtime = runtimeWithService(autonomyService(), {
 			getSetting: () => ADMIN_USER_ID,
+			getRoomsForParticipant: async () => [ADMIN_ROOM_ID],
 			getMemories: async () => [historyMemory(ADMIN_ID, "", 1)],
 		});
 
@@ -262,6 +273,7 @@ describe("adminChatProvider", () => {
 		const reportError = vi.fn();
 		const runtime = runtimeWithService(autonomyService(), {
 			getSetting: () => ADMIN_USER_ID,
+			getRoomsForParticipant: async () => [ADMIN_ROOM_ID],
 			getMemories: vi.fn().mockRejectedValue(failure),
 			reportError,
 		});

@@ -4,8 +4,20 @@
  * participants' turns from the same bounded room/agent transcript.
  */
 import { randomUUID } from "node:crypto";
-import type { AccessContext, Memory, UUID } from "@elizaos/core";
+import {
+  type AccessContext,
+  type IAgentRuntime,
+  type Memory,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
 import { beforeEach, describe, expect, it } from "vitest";
+import { adminChatProvider } from "../../packages/core/src/features/autonomy/providers";
+import {
+  AUTONOMY_SERVICE_TYPE,
+  type AutonomyService,
+} from "../../packages/core/src/features/autonomy/service";
+import { createMockRuntime } from "../../packages/core/src/testing/mock-runtime";
 import { InMemoryDatabaseAdapter } from "./adapter";
 import { MemoryStorage } from "./storage-memory";
 
@@ -147,5 +159,101 @@ describe("getMemories entity isolation parity", () => {
       accessContext,
     });
     expect(messages.map((memory) => memory.content.text)).toEqual(["authorized room"]);
+  });
+});
+
+describe("admin history provider adapter parity", () => {
+  it("reads only actual admin-participant rooms and keeps the newest fifteen turns", async () => {
+    const agentId = randomUUID() as UUID;
+    const autonomyEntityId = randomUUID() as UUID;
+    const otherEntityId = randomUUID() as UUID;
+    const adminUserId = "provider-parity-admin";
+    const adminId = stringToUuid(adminUserId);
+    const autonomousRoomId = randomUUID() as UUID;
+    const adminRoomId = randomUUID() as UUID;
+    const unrelatedRoomId = randomUUID() as UUID;
+    const storage = new MemoryStorage();
+    await storage.init();
+    const adapter = new InMemoryDatabaseAdapter(storage, agentId);
+    await adapter.init();
+
+    await adapter.createRoomParticipants([agentId, autonomyEntityId], autonomousRoomId);
+    await adapter.createRoomParticipants([adminId, agentId], adminRoomId);
+    await adapter.createRoomParticipants([otherEntityId, agentId], unrelatedRoomId);
+
+    const adminRoomHistory = Array.from(
+      { length: 20 },
+      (_, index): Memory => ({
+        id: randomUUID() as UUID,
+        agentId,
+        entityId: index % 2 === 0 ? adminId : agentId,
+        roomId: adminRoomId,
+        createdAt: index + 1,
+        content: { text: `admin room turn ${index + 1}` },
+      })
+    );
+    await adapter.createMemories([
+      ...adminRoomHistory.map((memory) => ({ memory, tableName: "memories" })),
+      {
+        memory: {
+          id: randomUUID() as UUID,
+          agentId,
+          entityId: autonomyEntityId,
+          roomId: autonomousRoomId,
+          createdAt: 1_000,
+          content: { text: "internal autonomous turn must stay private" },
+        },
+        tableName: "memories",
+      },
+      {
+        memory: {
+          id: randomUUID() as UUID,
+          agentId,
+          entityId: otherEntityId,
+          roomId: unrelatedRoomId,
+          createdAt: 2_000,
+          content: { text: "unrelated room turn must stay private" },
+        },
+        tableName: "memories",
+      },
+    ]);
+
+    const autonomyService = {
+      getAutonomousRoomId: () => autonomousRoomId,
+    } as Pick<AutonomyService, "getAutonomousRoomId">;
+    const runtime = createMockRuntime({
+      agentId,
+      getSetting: (key: string) => (key === "ADMIN_USER_ID" ? adminUserId : undefined),
+      getService: ((serviceType: string) =>
+        serviceType === AUTONOMY_SERVICE_TYPE
+          ? autonomyService
+          : null) as IAgentRuntime["getService"],
+      getRoomsForParticipant: (entityId: UUID) => adapter.getRoomsForParticipants([entityId]),
+      getMemories: (params) => adapter.getMemories(params),
+    });
+
+    const result = await adminChatProvider.get(runtime, {
+      agentId,
+      entityId: autonomyEntityId,
+      roomId: autonomousRoomId,
+      content: { text: "autonomous tick" },
+    });
+
+    expect(result.data).toMatchObject({
+      messageCount: 15,
+      historyWindowCount: 15,
+    });
+    for (let index = 1; index <= 5; index += 1) {
+      expect(result.text).not.toContain(`admin room turn ${index}\n`);
+    }
+    for (let index = 6; index <= 20; index += 1) {
+      expect(result.text).toContain(`admin room turn ${index}`);
+    }
+    expect(result.text).toContain("Agent: admin room turn 20");
+    expect(result.text).not.toContain("internal autonomous turn must stay private");
+    expect(result.text).not.toContain("unrelated room turn must stay private");
+    expect(result.text?.indexOf("admin room turn 6")).toBeLessThan(
+      result.text?.indexOf("admin room turn 20") ?? -1
+    );
   });
 });

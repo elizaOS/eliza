@@ -69,16 +69,29 @@ export const adminChatProvider: Provider = {
 			}
 
 			const adminUUID = stringToUuid(adminUserId);
-			const adminMessages = await runtime.getMemories({
-				agentId: runtime.agentId,
-				entityId: adminUUID,
-				roomId: autonomousRoomId,
-				limit: ADMIN_HISTORY_LIMIT,
-				orderBy: "createdAt",
-				orderDirection: "desc",
-				unique: false,
-				tableName: "memories",
-			});
+			// The autonomous room is an internal invocation context. It does not
+			// include the configured Admin participant, so treating it as the chat
+			// source would either return no history under RLS or tempt adapters to
+			// weaken isolation. Discover only rooms the Admin actually participates
+			// in, then query each room with the Admin principal intact.
+			const adminRoomIds = [
+				...new Set(await runtime.getRoomsForParticipant(adminUUID)),
+			].filter((roomId) => roomId !== autonomousRoomId);
+			const roomMessages = await Promise.all(
+				adminRoomIds.map((roomId) =>
+					runtime.getMemories({
+						agentId: runtime.agentId,
+						entityId: adminUUID,
+						roomId,
+						limit: ADMIN_HISTORY_LIMIT,
+						orderBy: "createdAt",
+						orderDirection: "desc",
+						unique: false,
+						tableName: "memories",
+					}),
+				),
+			);
+			const adminMessages = roomMessages.flatMap((messages) => messages ?? []);
 
 			if (!adminMessages || adminMessages.length === 0) {
 				return {
