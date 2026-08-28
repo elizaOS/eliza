@@ -1,8 +1,10 @@
 /**
  * Rollback-atomicity probe for #25140 review round 4: when segment
- * publication fails inside the parent-insert transaction, NEITHER the parent
- * row NOR any segment row may survive (deterministic, real PGlite; the
- * failure is induced with a composite-PK collision on the segment insert).
+ * publication fails inside the production createMemory path, NEITHER the
+ * parent row NOR any segment row survives (deterministic, real PGlite; the
+ * failure is induced by a database trigger that rejects segment inserts for
+ * one parent, so the probe exercises adapter.createMemory →
+ * insertMemoryInTransaction end-to-end, not a hand-rolled transaction).
  * This is the crash-window the reviewer flagged — a parent committed with a
  * descriptor but no segments would brick every later paged read with
  * MEMORY_SEGMENT_DESCRIPTOR_DRIFT.
@@ -10,20 +12,13 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { UUID } from "@elizaos/core";
-import { buildSegmentedContentMarker } from "@elizaos/core";
+import type { Memory, UUID } from "@elizaos/core";
 import { v4 } from "uuid";
 import { afterEach, describe, expect, it } from "vitest";
 import { plugin as sqlPlugin } from "../../index";
 import { DatabaseMigrationService } from "../../migration-service";
 import { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { PGliteClientManager } from "../../pglite/manager";
-import { memoryTable } from "../../schema/memory";
-import {
-  insertSegmentsInTransaction,
-  mergeSegmentationMetadata,
-  planSegmentedField,
-} from "../../stores/memoryTextSegments.store";
 import type { DrizzleDatabase } from "../../types";
 
 const tempDirectories: string[] = [];
@@ -85,7 +80,7 @@ describe("segmented publication rollback atomicity (real PGlite)", () => {
     }
   });
 
-  it("rolls back parent and segments together when segment publication fails mid-transaction", async () => {
+  it("createMemory leaves neither parent nor segments when segment publication fails mid-transaction", async () => {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-segments-rollback-"));
     tempDirectories.push(dataDir);
     const agentId = v4() as UUID;
@@ -94,48 +89,48 @@ describe("segmented publication rollback atomicity (real PGlite)", () => {
     const { roomId, entityId } = await seedRoom(adapter, agentId);
     const db = adapter.getDatabase() as DrizzleDatabase;
 
-    const plan = planSegmentedField({
-      field: { kind: "content.text" },
-      text: largeSource(150 * 1024),
-      segmentBytes: 64 * 1024,
-    });
+    // Reject every segment insert from inside the database: the parent
+    // insert succeeds first, then the segment publication fails inside the
+    // SAME production transaction — the exact crash-window shape.
+    await db.execute(
+      "CREATE OR REPLACE FUNCTION reject_segment() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'segment insert rejected'; END; $$ LANGUAGE plpgsql"
+    );
+    await db.execute(
+      "CREATE TRIGGER reject_segment BEFORE INSERT ON memory_text_segments FOR EACH ROW EXECUTE FUNCTION reject_segment()"
+    );
 
-    // Corrupt one planned segment's digest so the bulk insert violates the
-    // `char_length(segment_sha256) = 64` check AFTER the parent row insert
-    // succeeded inside the same transaction — the exact crash-window shape
-    // (parent committed, segments fail) the reviewer flagged.
-    const memoryId = v4() as UUID;
-    const metadata = mergeSegmentationMetadata({}, plan.descriptor);
     await expect(
-      db.transaction(async (tx) => {
-        await tx.insert(memoryTable).values({
-          id: memoryId,
-          type: "messages",
-          content: { text: buildSegmentedContentMarker(plan.descriptor) },
-          metadata,
+      adapter.createMemory(
+        {
           entityId,
           roomId,
           agentId,
-          unique: true,
-        });
-        await insertSegmentsInTransaction({
-          tx,
-          parentId: memoryId,
-          segments: plan.segments.map((segment, index) =>
-            index === 0 ? { ...segment, sha256: "corrupt" } : segment
-          ),
-          generation: plan.descriptor.generation,
-        });
-      })
-    ).rejects.toThrow();
+          content: { text: largeSource(150 * 1024), source: "test" },
+        } as unknown as Memory,
+        "messages"
+      )
+    ).rejects.toThrow(/memory_text_segments/);
 
-    const parentRows = await db.execute(
-      `SELECT count(*)::int AS n FROM memories WHERE id = '${memoryId}'`
+    // A control small memory still writes fine (trigger only rejects
+    // segment rows), proving the probe failed on the segmentation path.
+    const smallId = await adapter.createMemory(
+      {
+        entityId,
+        roomId,
+        agentId,
+        content: { text: "small memory", source: "test" },
+      } as unknown as Memory,
+      "messages"
     );
-    expect((parentRows.rows as Array<{ n: number }>)[0].n).toBe(0);
-    const segmentRows = await db.execute(
-      `SELECT count(*)::int AS n FROM memory_text_segments WHERE parent_id = '${memoryId}'`
+    expect(smallId).toBeTruthy();
+
+    // No segmented parent survived: every remaining messages row in the
+    // room is the small control (segmented markers absent).
+    const markers = await db.execute(
+      `SELECT count(*)::int AS n FROM memories WHERE room_id::text = '${roomId}' AND content->>'text' LIKE '[elizaos:segmented-content%'`
     );
+    expect((markers.rows as Array<{ n: number }>)[0].n).toBe(0);
+    const segmentRows = await db.execute("SELECT count(*)::int AS n FROM memory_text_segments");
     expect((segmentRows.rows as Array<{ n: number }>)[0].n).toBe(0);
 
     await adapter.close();

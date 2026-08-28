@@ -21,6 +21,7 @@ import {
 	buildSegmentedContentMarker,
 	segmentMemoryContent,
 } from "../../memory/content-segmentation.ts";
+import { createMockRuntime } from "../../testing/mock-runtime.ts";
 import type {
 	ActionResult,
 	HandlerCallback,
@@ -252,5 +253,75 @@ describe("ATTACHMENT save_as_document over segmented content (#25140 R4)", () =>
 			"MEMORY_CONTENT_STALE_REVISION",
 		);
 		expect(saved).toHaveLength(0);
+	});
+});
+
+/**
+ * Dispatch-gate regression: a runtime exposing the paging METHOD without the
+ * capability advertisement must never receive page calls on either dispatch
+ * site (ATTACHMENT read, MESSAGE read_channel). Restoring method-only
+ * dispatch at either site fails these tests.
+ */
+describe("native-paging dispatch gate (#25140 R4)", () => {
+	it("ATTACHMENT read never pages a segmented marker on a method-only runtime", async () => {
+		const runtime = runtimeWithRecords(baseRuntime(false), MEMORY_ID);
+		const result = await readAttachmentAction.handler(
+			runtime,
+			makeMessage(),
+			undefined,
+			{
+				parameters: { action: "read", attachmentId: ATTACHMENT_ID, limit: 64 },
+			},
+			async () => [] as Memory[],
+			undefined,
+		);
+		expect(result).toBeTruthy();
+		// The method existed on the runtime but was NOT called: the capability
+		// gate, not method presence, decides dispatch.
+		expect(
+			(runtime.getMemoryContentPage as unknown as ReturnType<typeof vi.fn>).mock
+				.calls,
+		).toHaveLength(0);
+	});
+
+	it("MESSAGE read_channel never pages on a method-only runtime", async () => {
+		const { messageAction } = await import(
+			"../advanced-capabilities/actions/message.ts"
+		);
+		const runtime = createMockRuntime({
+			agentId: AGENT_ID,
+			getMemoryById: async () =>
+				({
+					id: MEMORY_ID,
+					roomId: ROOM_ID,
+					entityId: REQUESTER_ID,
+					agentId: AGENT_ID,
+					content: { text: MARKER, source: "discord" },
+					metadata: { scope: "room" },
+					createdAt: 1,
+				}) as Memory,
+			getParticipantsForRoom: async () => [REQUESTER_ID],
+			// Method WITHOUT the capability advertisement.
+			getMemoryContentPage: fakePageEndpoint().getMemoryContentPage,
+		} as never);
+		const result = await messageAction.handler(
+			runtime,
+			makeMessage(),
+			undefined,
+			{
+				parameters: {
+					action: "read_channel",
+					messageId: MEMORY_ID,
+					limit: 64,
+				},
+			},
+			async () => [] as Memory[],
+			undefined,
+		);
+		expect(result).toBeTruthy();
+		expect(
+			(runtime.getMemoryContentPage as unknown as ReturnType<typeof vi.fn>).mock
+				.calls,
+		).toHaveLength(0);
 	});
 });
