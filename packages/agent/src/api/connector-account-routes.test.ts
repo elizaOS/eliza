@@ -13,6 +13,7 @@ const coreMocks = vi.hoisted(() => {
   type TestAccount = {
     id: string;
     provider: string;
+    accountKey?: string;
     label?: string;
     role?: string;
     purpose?: string[];
@@ -937,7 +938,7 @@ describe("connector account routes", () => {
   });
 
   it("strips client-controlled policy metadata and owner-binding fields", async () => {
-    const { ctx, captured } = createConnectorAccountHarness({
+    const { ctx, captured, storage } = createConnectorAccountHarness({
       method: "POST",
       pathname: "/api/connectors/google/accounts",
       body: {
@@ -946,6 +947,7 @@ describe("connector account routes", () => {
         accessGate: "owner_binding",
         ownerBindingId: "client-binding",
         ownerIdentityId: "client-identity",
+        accountKey: "client-controlled-account-key",
         metadata: {
           safe: "visible",
           privacy: "public",
@@ -979,6 +981,9 @@ describe("connector account routes", () => {
       ownerBindingId: "client-binding",
       ownerIdentityId: "client-identity",
     });
+    await expect(
+      storage.getAccount("google", "acct_policy"),
+    ).resolves.not.toHaveProperty("accountKey");
     expect(JSON.stringify(captured.body)).not.toContain("refresh-secret");
     expect(JSON.stringify(captured.body)).not.toContain("credentialRefs");
   });
