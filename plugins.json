@@ -1,1 +1,11 @@
-{ "plugins": [] }
+{ 
+  "plugins": [
+    {
+      "name": "@superzydan/plugin-x402-dex",
+      "description": "Real-time DEX market intelligence via x402 Base Mainnet micropayments.",
+      "url": "https://github.com/Zydanny/plugin-x402-dex",
+      "category": "crypto",
+      "tags": ["x402", "base", "dex", "trading", "market-intel"]
+    }
+  ] 
+}
