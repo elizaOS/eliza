@@ -177,6 +177,11 @@ export async function createRemoteCommand(input: {
   recoveredPending: boolean;
   bindingDigest: string;
 }> {
+  if (isUnsupportedNativeIOS()) {
+    throw new Error(
+      "Secure mobile command signing is unavailable until the native iOS plugin is installed.",
+    );
+  }
   if (isNativeController()) {
     const result = await nativeRemoteController.createCommand({
       ownerId: input.ownerId,
@@ -232,7 +237,7 @@ export async function acknowledgeRemoteCommandEnqueue(input: {
 }): Promise<boolean> {
   if (isUnsupportedNativeIOS()) {
     throw new Error(
-      "Secure mobile session cleanup is unavailable until the native iOS plugin is installed.",
+      "Secure mobile enqueue acknowledgement is unavailable until the native iOS plugin is installed.",
     );
   }
   if (isNativeController()) {
@@ -259,6 +264,11 @@ export async function openRemoteCommandResult(input: {
   command: SignedRemoteCommand;
   targetIdentity: RemoteTargetPublicIdentity;
 }): Promise<{ status: string; result?: RemoteJsonValue; errorCode?: string }> {
+  if (isUnsupportedNativeIOS()) {
+    throw new Error(
+      "Secure mobile result decryption is unavailable until the native iOS plugin is installed.",
+    );
+  }
   if (isNativeController()) {
     const result = await nativeRemoteController.openResult(input);
     if (!isOpenedResult(result))
@@ -286,6 +296,11 @@ export async function openRemoteCommandStartReceipt(input: {
   command: SignedRemoteCommand;
   targetIdentity: RemoteTargetPublicIdentity;
 }): Promise<{ startedAt: number; executionId: string }> {
+  if (isUnsupportedNativeIOS()) {
+    throw new Error(
+      "Secure mobile start receipt verification is unavailable until the native iOS plugin is installed.",
+    );
+  }
   if (isNativeController()) {
     const result = await nativeRemoteController.openStartReceipt(input);
     if (!isOpenedStartReceipt(result))
@@ -313,6 +328,11 @@ export async function clearRemoteControllerSessionState(input: {
   controllerDeviceId: string;
   sessionId: string;
 }): Promise<boolean> {
+  if (isUnsupportedNativeIOS()) {
+    throw new Error(
+      "Secure mobile session cleanup is unavailable until the native iOS plugin is installed.",
+    );
+  }
   if (isNativeController()) {
     const result = await nativeRemoteController.clearSessionState(input);
     if (!isRecord(result) || typeof result.cleared !== "boolean") {
