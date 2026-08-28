@@ -252,6 +252,8 @@ describe("forbidden Cloud agent mutations", () => {
       decodedDedicatedCutoverPendingResponseCount: 0,
       decodedDedicatedCutoverFinalResponseCount: 0,
       uninspectableDedicatedCutoverResponseBodyCount: 0,
+      dedicatedAdoptionQuoteGetRequestCount: 0,
+      dedicatedAdoptionConfirmationPostRequestCount: 0,
       historyGetRequestCount: 1,
       successfulHistoryGetCount: 1,
       clientErrorHistoryGetResponseCount: 0,
@@ -332,6 +334,8 @@ describe("forbidden Cloud agent mutations", () => {
         data: { runtime: "dedicated", activeAgentId: "private-target" },
       }).responseBody,
     );
+    audit.observeRequest("GET", `${upgrade}/adopt-existing`);
+    audit.observeRequest("POST", `${upgrade}/adopt-existing`);
     audit.observeRequest("GET", upgrade);
     audit.observeRequestFailure("GET", upgrade, "private timeout detail");
     audit.observeRequest("GET", upgrade);
@@ -384,6 +388,8 @@ describe("forbidden Cloud agent mutations", () => {
       decodedDedicatedCutoverPendingResponseCount: 1,
       decodedDedicatedCutoverFinalResponseCount: 1,
       uninspectableDedicatedCutoverResponseBodyCount: 0,
+      dedicatedAdoptionQuoteGetRequestCount: 1,
+      dedicatedAdoptionConfirmationPostRequestCount: 1,
     });
     expect(JSON.stringify(snapshot)).not.toMatch(/api\.test|private|timeout/);
   });

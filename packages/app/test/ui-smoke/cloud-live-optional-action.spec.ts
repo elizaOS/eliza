@@ -3,16 +3,352 @@
 import { expect, type Locator, test } from "@playwright/test";
 import { installDedicatedAdoptionConsentProof } from "../cloud-live-dedicated-adoption-consent";
 import {
+  CloudLiveDedicatedConfirmationRequiredError,
   CloudLiveOptionalActionDeadlineError,
   CloudLivePersonalIdentityDeadlineError,
   CloudLivePersonalIdentityRecoveryError,
   clickCloudLiveOptionalAction,
+  createCloudLiveDedicatedConsentGate,
   prepareCloudLivePersonalIdentity,
   waitForCloudLivePersonalIdentity,
 } from "../cloud-live-optional-action";
 
 test.describe("Cloud live optional action boundary", () => {
   test.use({ serviceWorkers: "block" });
+
+  test("keeps Dedicated activation and adoption confirmation fail-closed by default", async ({
+    page,
+  }) => {
+    let mutationRequestCount = 0;
+    await page.route("**/upgrade-tier{,/**}", async (route) => {
+      mutationRequestCount += 1;
+      await route.fulfill({ status: 204, body: "" });
+    });
+    await page.setContent(`
+      <button data-testid="activation-confirm">Confirm and start — private quote $17.42</button>
+      <button data-testid="activation-cancel">Not now</button>
+      <button data-testid="adoption-confirm">Confirm existing private-agent-id</button>
+      <button data-testid="adoption-cancel">Not now</button>
+      <output data-testid="click-count">0</output>
+      <script>
+        document.addEventListener("click", async (event) => {
+          if (!(event.target instanceof HTMLElement)) return;
+          if (!event.target.dataset.testid?.endsWith("-confirm")) return;
+          const output = document.querySelector('[data-testid="click-count"]');
+          output.textContent = String(Number(output.textContent) + 1);
+          await fetch("https://api.test/api/v1/eliza/agents/private-agent-id/upgrade-tier/adopt-existing", { method: "POST" });
+        });
+      </script>
+    `);
+    const gate = createCloudLiveDedicatedConsentGate({});
+    const startedAt = Date.now();
+
+    const result = await waitForCloudLivePersonalIdentity({
+      readBinding: async () => null,
+      runtimeCloudRecovery: page.getByTestId("runtime-cloud"),
+      retryRecovery: page.getByTestId("identity-retry"),
+      dedicatedConsent: {
+        gate,
+        confirmationChoices: page.locator(
+          '[data-testid="activation-confirm"], [data-testid="adoption-confirm"]',
+        ),
+        cancellationChoices: page.locator(
+          '[data-testid="activation-cancel"], [data-testid="adoption-cancel"]',
+        ),
+        performConfirmation: (confirmation) => confirmation.click(),
+      },
+      timeoutMs: 500,
+      runtimeCloudGraceMs: 50,
+      pollIntervalMs: 5,
+    }).then(
+      () => ({ ok: true as const }),
+      (error: unknown) => ({ ok: false as const, error }),
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok)
+      throw new Error("unapproved confirmation unexpectedly resolved");
+    expect(result.error).toBeInstanceOf(
+      CloudLiveDedicatedConfirmationRequiredError,
+    );
+    expect(result.error).toMatchObject({
+      code: "CLOUD_LIVE_DEDICATED_CONFIRMATION_REQUIRED",
+      reason: "approval-required",
+    });
+    expect(String(result.error)).not.toMatch(
+      /private|17\.42|quote|selector|locator|upgrade-tier/i,
+    );
+    expect(Date.now() - startedAt).toBeLessThan(500);
+    await expect(page.getByTestId("click-count")).toHaveText("0");
+    expect(mutationRequestCount).toBe(0);
+    expect(gate.snapshot()).toEqual({
+      approvalGrantedCount: 0,
+      confirmationOfferCount: 1,
+      confirmationClickCount: 0,
+      cancellationCount: 0,
+    });
+  });
+
+  test("permits exactly one visible UI confirmation for an explicitly approved staging dispatch", async ({
+    page,
+  }) => {
+    await page.setContent(`
+      <button data-testid="activation-confirm">Confirm and start</button>
+      <button data-testid="activation-cancel">Not now</button>
+      <output data-testid="click-count">0</output>
+      <script>
+        document.addEventListener("click", (event) => {
+          if (!(event.target instanceof HTMLButtonElement)) return;
+          if (event.target.dataset.testid !== "activation-confirm") return;
+          const output = document.querySelector('[data-testid="click-count"]');
+          output.textContent = String(Number(output.textContent) + 1);
+          event.target.disabled = true;
+          document.querySelector('[data-testid="activation-cancel"]').disabled = true;
+          setTimeout(() => { window.__testActiveBinding = "dedicated"; }, 25);
+        });
+      </script>
+    `);
+    const gate = createCloudLiveDedicatedConsentGate({
+      ELIZA_UI_SMOKE_APPROVE_BILLABLE_DEDICATED_CONFIRMATION: "1",
+      ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV: "staging",
+      GITHUB_EVENT_NAME: "workflow_dispatch",
+    });
+
+    await expect(
+      waitForCloudLivePersonalIdentity({
+        readBinding: () =>
+          page.evaluate(
+            () =>
+              (window as typeof window & { __testActiveBinding?: string })
+                .__testActiveBinding ?? null,
+          ),
+        runtimeCloudRecovery: page.getByTestId("runtime-cloud"),
+        retryRecovery: page.getByTestId("identity-retry"),
+        dedicatedConsent: {
+          gate,
+          confirmationChoices: page.getByTestId("activation-confirm"),
+          cancellationChoices: page.getByTestId("activation-cancel"),
+          performConfirmation: (confirmation) => confirmation.click(),
+        },
+        timeoutMs: 500,
+        runtimeCloudGraceMs: 50,
+        pollIntervalMs: 5,
+      }),
+    ).resolves.toBe("dedicated");
+    await expect(page.getByTestId("click-count")).toHaveText("1");
+    expect(gate.snapshot()).toEqual({
+      approvalGrantedCount: 1,
+      confirmationOfferCount: 1,
+      confirmationClickCount: 1,
+      cancellationCount: 0,
+    });
+  });
+
+  test("ignores a stale locked confirmation while a binding resolves", async ({
+    page,
+  }) => {
+    await page.setContent(`
+      <button data-testid="adoption-confirm" aria-pressed="true" disabled>Confirmed</button>
+      <button data-testid="adoption-cancel" aria-pressed="false" disabled>Not now</button>
+      <script>setTimeout(() => { window.__testActiveBinding = "dedicated"; }, 25);</script>
+    `);
+    const gate = createCloudLiveDedicatedConsentGate({});
+
+    await expect(
+      waitForCloudLivePersonalIdentity({
+        readBinding: () =>
+          page.evaluate(
+            () =>
+              (window as typeof window & { __testActiveBinding?: string })
+                .__testActiveBinding ?? null,
+          ),
+        runtimeCloudRecovery: page.getByTestId("runtime-cloud"),
+        retryRecovery: page.getByTestId("identity-retry"),
+        dedicatedConsent: {
+          gate,
+          confirmationChoices: page.getByTestId("adoption-confirm"),
+          cancellationChoices: page.getByTestId("adoption-cancel"),
+          performConfirmation: (confirmation) => confirmation.click(),
+        },
+        timeoutMs: 500,
+        runtimeCloudGraceMs: 50,
+        pollIntervalMs: 5,
+      }),
+    ).resolves.toBe("dedicated");
+    expect(gate.snapshot().confirmationClickCount).toBe(0);
+  });
+
+  test("lets a new current quote supersede an older cancelled turn", async ({
+    page,
+  }) => {
+    await page.setContent(`
+      <button data-testid="adoption-confirm" disabled>Confirm old quote</button>
+      <button data-testid="adoption-cancel" aria-pressed="true" disabled>Not now</button>
+      <button data-testid="activation-confirm">Confirm current quote</button>
+      <button data-testid="activation-cancel">Not now</button>
+      <output data-testid="click-count">0</output>
+      <script>
+        document.addEventListener("click", (event) => {
+          if (!(event.target instanceof HTMLButtonElement)) return;
+          if (event.target.dataset.testid !== "activation-confirm") return;
+          document.querySelector('[data-testid="click-count"]').textContent = "1";
+          event.target.disabled = true;
+          document.querySelector('[data-testid="activation-cancel"]').disabled = true;
+          setTimeout(() => { window.__testActiveBinding = "dedicated"; }, 25);
+        });
+      </script>
+    `);
+    const gate = createCloudLiveDedicatedConsentGate({
+      ELIZA_UI_SMOKE_APPROVE_BILLABLE_DEDICATED_CONFIRMATION: "1",
+      ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV: "staging",
+      GITHUB_EVENT_NAME: "workflow_dispatch",
+    });
+
+    await expect(
+      waitForCloudLivePersonalIdentity({
+        readBinding: () =>
+          page.evaluate(
+            () =>
+              (window as typeof window & { __testActiveBinding?: string })
+                .__testActiveBinding ?? null,
+          ),
+        runtimeCloudRecovery: page.getByTestId("runtime-cloud"),
+        retryRecovery: page.getByTestId("identity-retry"),
+        dedicatedConsent: {
+          gate,
+          confirmationChoices: page.locator(
+            '[data-testid="activation-confirm"], [data-testid="adoption-confirm"]',
+          ),
+          cancellationChoices: page.locator(
+            '[data-testid="activation-cancel"], [data-testid="adoption-cancel"]',
+          ),
+          performConfirmation: (confirmation) => confirmation.click(),
+        },
+        timeoutMs: 500,
+        runtimeCloudGraceMs: 50,
+        pollIntervalMs: 5,
+      }),
+    ).resolves.toBe("dedicated");
+    await expect(page.getByTestId("click-count")).toHaveText("1");
+    expect(gate.snapshot().cancellationCount).toBe(0);
+  });
+
+  test("requires fresh dispatch approval when a changed quote is reissued", async ({
+    page,
+  }) => {
+    await page.setContent(`
+      <main data-testid="choices">
+        <button data-testid="adoption-confirm">Confirm current quote</button>
+        <button data-testid="adoption-cancel">Not now</button>
+      </main>
+      <output data-testid="click-count">0</output>
+      <script>
+        document.addEventListener("click", (event) => {
+          if (!(event.target instanceof HTMLButtonElement)) return;
+          if (event.target.dataset.testid !== "adoption-confirm") return;
+          const output = document.querySelector('[data-testid="click-count"]');
+          output.textContent = String(Number(output.textContent) + 1);
+          event.target.disabled = true;
+          document.querySelector('[data-testid="adoption-cancel"]').disabled = true;
+          document.querySelector('[data-testid="choices"]').insertAdjacentHTML(
+            "beforeend",
+            '<button data-testid="adoption-confirm">Confirm changed private quote</button><button data-testid="adoption-cancel">Not now</button>',
+          );
+        });
+      </script>
+    `);
+    const gate = createCloudLiveDedicatedConsentGate({
+      ELIZA_UI_SMOKE_APPROVE_BILLABLE_DEDICATED_CONFIRMATION: "1",
+      ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV: "staging",
+      GITHUB_EVENT_NAME: "workflow_dispatch",
+    });
+
+    await expect(
+      waitForCloudLivePersonalIdentity({
+        readBinding: async () => null,
+        runtimeCloudRecovery: page.getByTestId("runtime-cloud"),
+        retryRecovery: page.getByTestId("identity-retry"),
+        dedicatedConsent: {
+          gate,
+          confirmationChoices: page.getByTestId("adoption-confirm"),
+          cancellationChoices: page.getByTestId("adoption-cancel"),
+          performConfirmation: (confirmation) => confirmation.click(),
+        },
+        timeoutMs: 500,
+        runtimeCloudGraceMs: 50,
+        pollIntervalMs: 5,
+      }),
+    ).rejects.toMatchObject({
+      code: "CLOUD_LIVE_DEDICATED_CONFIRMATION_REQUIRED",
+      reason: "quote-changed",
+    });
+    await expect(page.getByTestId("click-count")).toHaveText("1");
+    expect(gate.snapshot()).toEqual({
+      approvalGrantedCount: 1,
+      confirmationOfferCount: 2,
+      confirmationClickCount: 1,
+      cancellationCount: 0,
+    });
+  });
+
+  test("classifies cancellation without replaying confirmation", async ({
+    page,
+  }) => {
+    await page.setContent(`
+      <button data-testid="activation-confirm" aria-pressed="false" disabled>Confirm</button>
+      <button data-testid="activation-cancel" aria-pressed="true" disabled>Not now</button>
+    `);
+    const gate = createCloudLiveDedicatedConsentGate({
+      ELIZA_UI_SMOKE_APPROVE_BILLABLE_DEDICATED_CONFIRMATION: "1",
+      ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV: "staging",
+      GITHUB_EVENT_NAME: "workflow_dispatch",
+    });
+
+    await expect(
+      waitForCloudLivePersonalIdentity({
+        readBinding: async () => null,
+        runtimeCloudRecovery: page.getByTestId("runtime-cloud"),
+        retryRecovery: page.getByTestId("identity-retry"),
+        dedicatedConsent: {
+          gate,
+          confirmationChoices: page.getByTestId("activation-confirm"),
+          cancellationChoices: page.getByTestId("activation-cancel"),
+          performConfirmation: (confirmation) => confirmation.click(),
+        },
+        timeoutMs: 500,
+        runtimeCloudGraceMs: 50,
+        pollIntervalMs: 5,
+      }),
+    ).rejects.toMatchObject({
+      code: "CLOUD_LIVE_DEDICATED_CONFIRMATION_REQUIRED",
+      reason: "cancelled",
+    });
+    expect(gate.snapshot()).toEqual({
+      approvalGrantedCount: 1,
+      confirmationOfferCount: 0,
+      confirmationClickCount: 0,
+      cancellationCount: 1,
+    });
+  });
+
+  test("rejects billable approval outside an explicit staging dispatch", () => {
+    for (const env of [
+      {
+        ELIZA_UI_SMOKE_APPROVE_BILLABLE_DEDICATED_CONFIRMATION: "1",
+        ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV: "production",
+        GITHUB_EVENT_NAME: "workflow_dispatch",
+      },
+      {
+        ELIZA_UI_SMOKE_APPROVE_BILLABLE_DEDICATED_CONFIRMATION: "1",
+        ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV: "staging",
+        GITHUB_EVENT_NAME: "schedule",
+      },
+    ]) {
+      expect(() => createCloudLiveDedicatedConsentGate(env)).toThrow(
+        "Dedicated confirmation approval requires an explicit staging workflow dispatch",
+      );
+    }
+  });
 
   test("clicks a stable offered action", async ({ page }) => {
     await page.setContent(`
@@ -212,7 +548,7 @@ test.describe("Cloud live optional action boundary", () => {
     expect(recoveryObserved).toBe(false);
   });
 
-  test("reuses a Dedicated quote completed before the binding wait", async ({
+  test("reuses a Dedicated quote only after explicit staging approval", async ({
     page,
   }) => {
     let quoteGetCount = 0;
@@ -248,7 +584,7 @@ test.describe("Cloud live optional action boundary", () => {
         <p>Balance: $115.54; minimum required: $0.72 (3 days of runway); deficit: $0.00.</p>
         <p>This action starts Dedicated compute and will restore its reviewed backup.</p>
         <button data-testid="dedicated-adoption-confirm">Confirm and continue</button>
-        <button>Not now</button>
+        <button data-testid="dedicated-adoption-cancel">Not now</button>
       </article>
       <output data-testid="confirmation-count">0</output>
       <script>
@@ -274,6 +610,11 @@ test.describe("Cloud live optional action boundary", () => {
     const dedicatedAdoptionConsent = page.getByTestId(
       "dedicated-adoption-confirm",
     );
+    const gate = createCloudLiveDedicatedConsentGate({
+      ELIZA_UI_SMOKE_APPROVE_BILLABLE_DEDICATED_CONFIRMATION: "1",
+      ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV: "staging",
+      GITHUB_EVENT_NAME: "workflow_dispatch",
+    });
 
     try {
       await expect(
@@ -288,22 +629,30 @@ test.describe("Cloud live optional action boundary", () => {
           },
           runtimeCloudRecovery: page.getByTestId("runtime-cloud"),
           retryRecovery: page.getByTestId("identity-retry"),
-          dedicatedAdoptionConsent,
+          dedicatedConsent: {
+            gate,
+            confirmationChoices: dedicatedAdoptionConsent,
+            cancellationChoices: page.getByTestId("dedicated-adoption-cancel"),
+            performConfirmation: async (confirmation) => {
+              consentHandlerCalls += 1;
+              await dedicatedAdoptionProof.confirmVisibleConsent(confirmation);
+            },
+          },
           timeoutMs: 500,
           runtimeCloudGraceMs: 50,
           pollIntervalMs: 5,
-          onDedicatedAdoptionConsent: async () => {
-            consentHandlerCalls += 1;
-            await dedicatedAdoptionProof.confirmVisibleConsent(
-              dedicatedAdoptionConsent,
-            );
-          },
         }),
       ).resolves.toBe("dedicated");
       expect(bindingReadCount).toBeGreaterThan(0);
       expect(quoteGetCount).toBe(1);
       expect(consentHandlerCalls).toBe(1);
       await expect(page.getByTestId("confirmation-count")).toHaveText("1");
+      expect(gate.snapshot()).toEqual({
+        approvalGrantedCount: 1,
+        confirmationOfferCount: 1,
+        confirmationClickCount: 1,
+        cancellationCount: 0,
+      });
     } finally {
       dedicatedAdoptionProof.dispose();
     }

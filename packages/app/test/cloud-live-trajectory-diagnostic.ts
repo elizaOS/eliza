@@ -12,6 +12,7 @@ export const CLOUD_LIVE_TRAJECTORY_PHASES = [
   "protected-cloud-boot",
   "pre-identity-runtime-choice",
   "personal-identity",
+  "dedicated-confirmation-required",
   "live-chat",
   "post-reload-navigation",
   "post-reload-history",
@@ -38,6 +39,10 @@ export interface CloudLivePreIdentityDiagnostic {
   runtimeCloudActionTimeoutCount: number;
   runtimeCloudRecoveryVisibleCount: number;
   personalIdentityRetryVisibleCount: number;
+  approvalGrantedCount: number;
+  confirmationOfferCount: number;
+  confirmationClickCount: number;
+  cancellationCount: number;
   personalIdentityGetRequestCount: number;
   successfulPersonalIdentityGetResponseCount: number;
   clientErrorPersonalIdentityGetResponseCount: number;
@@ -84,6 +89,8 @@ export interface CloudLivePreIdentityDiagnostic {
   decodedDedicatedCutoverPendingResponseCount: number;
   decodedDedicatedCutoverFinalResponseCount: number;
   uninspectableDedicatedCutoverResponseBodyCount: number;
+  dedicatedAdoptionQuoteGetRequestCount: number;
+  dedicatedAdoptionConfirmationPostRequestCount: number;
 }
 
 const CLOUD_LIVE_PRE_IDENTITY_DIAGNOSTIC_KEYS = [
@@ -92,6 +99,10 @@ const CLOUD_LIVE_PRE_IDENTITY_DIAGNOSTIC_KEYS = [
   "runtimeCloudActionTimeoutCount",
   "runtimeCloudRecoveryVisibleCount",
   "personalIdentityRetryVisibleCount",
+  "approvalGrantedCount",
+  "confirmationOfferCount",
+  "confirmationClickCount",
+  "cancellationCount",
   "personalIdentityGetRequestCount",
   "successfulPersonalIdentityGetResponseCount",
   "clientErrorPersonalIdentityGetResponseCount",
@@ -138,6 +149,8 @@ const CLOUD_LIVE_PRE_IDENTITY_DIAGNOSTIC_KEYS = [
   "decodedDedicatedCutoverPendingResponseCount",
   "decodedDedicatedCutoverFinalResponseCount",
   "uninspectableDedicatedCutoverResponseBodyCount",
+  "dedicatedAdoptionQuoteGetRequestCount",
+  "dedicatedAdoptionConfirmationPostRequestCount",
 ] as const satisfies readonly (keyof CloudLivePreIdentityDiagnostic)[];
 
 interface WriteCloudLiveTrajectoryDiagnosticOptions {

@@ -106,6 +106,8 @@ export interface CloudLiveNetworkAuditSnapshot {
   decodedDedicatedCutoverPendingResponseCount: number;
   decodedDedicatedCutoverFinalResponseCount: number;
   uninspectableDedicatedCutoverResponseBodyCount: number;
+  dedicatedAdoptionQuoteGetRequestCount: number;
+  dedicatedAdoptionConfirmationPostRequestCount: number;
   historyGetRequestCount: number;
   successfulHistoryGetCount: number;
   clientErrorHistoryGetResponseCount: number;
@@ -394,6 +396,23 @@ function dedicatedControlPlaneRequest(
   if (match[1]) return verb === "POST" ? "cutover" : null;
   if (verb === "GET") return "quote";
   return verb === "POST" ? "activation" : null;
+}
+
+function dedicatedAdoptionRequest(
+  method: string,
+  rawUrl: string,
+): "quote" | "confirmation" | null {
+  const pathname = requestPath(rawUrl);
+  if (
+    !/^\/api\/(?:cloud\/)?v1\/eliza\/agents\/[^/]+\/upgrade-tier\/adopt-existing$/.test(
+      pathname,
+    )
+  ) {
+    return null;
+  }
+  const verb = method.trim().toUpperCase();
+  if (verb === "GET") return "quote";
+  return verb === "POST" ? "confirmation" : null;
 }
 
 function chatClientMessageId(postData: string | null | undefined): string {
@@ -938,6 +957,8 @@ export function createCloudLiveNetworkAudit(): {
   let decodedSharedPersonalIdentityResponseCount = 0;
   let decodedDedicatedPersonalIdentityResponseCount = 0;
   let uninspectablePersonalIdentityResponseBodyCount = 0;
+  let dedicatedAdoptionQuoteGetRequestCount = 0;
+  let dedicatedAdoptionConfirmationPostRequestCount = 0;
   const dedicatedControlPlane = {
     quote: {
       request: 0,
@@ -1057,6 +1078,12 @@ export function createCloudLiveNetworkAudit(): {
       const dedicatedRequest = dedicatedControlPlaneRequest(method, rawUrl);
       if (dedicatedRequest)
         dedicatedControlPlane[dedicatedRequest].request += 1;
+      const adoptionRequest = dedicatedAdoptionRequest(method, rawUrl);
+      if (adoptionRequest === "quote") {
+        dedicatedAdoptionQuoteGetRequestCount += 1;
+      } else if (adoptionRequest === "confirmation") {
+        dedicatedAdoptionConfirmationPostRequestCount += 1;
+      }
     },
     observeResponse(method, rawUrl, status, responseBody) {
       const chatScope = chatSendScope(method, rawUrl);
@@ -1298,6 +1325,8 @@ export function createCloudLiveNetworkAudit(): {
           dedicatedControlPlane.cutover.finalDecoded,
         uninspectableDedicatedCutoverResponseBodyCount:
           dedicatedControlPlane.cutover.uninspectableBody,
+        dedicatedAdoptionQuoteGetRequestCount,
+        dedicatedAdoptionConfirmationPostRequestCount,
         historyGetRequestCount,
         successfulHistoryGetCount,
         clientErrorHistoryGetResponseCount,

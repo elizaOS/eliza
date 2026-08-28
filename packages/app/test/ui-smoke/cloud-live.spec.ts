@@ -40,9 +40,12 @@ import {
   installDedicatedAdoptionConsentProof,
 } from "../cloud-live-dedicated-adoption-consent";
 import {
+  CloudLiveDedicatedConfirmationRequiredError,
+  type CloudLiveDedicatedConsentGate,
   CloudLiveOptionalActionDeadlineError,
   type CloudLivePersonalIdentityRecovery,
   clickCloudLiveOptionalAction,
+  createCloudLiveDedicatedConsentGate,
   prepareCloudLivePersonalIdentity,
   waitForCloudLivePersonalIdentity,
 } from "../cloud-live-optional-action";
@@ -548,6 +551,7 @@ async function proveAnchoredTurnHistory(
 
 async function resolvePersonalIdentity(
   page: Page,
+  dedicatedConsentGate: CloudLiveDedicatedConsentGate,
   chooseRuntime = true,
   onRecovery?: (recovery: CloudLivePersonalIdentityRecovery) => Promise<void>,
   existingDedicatedAdoptionProof?: DedicatedAdoptionConsentProof,
@@ -562,8 +566,8 @@ async function resolvePersonalIdentity(
       chatOverlayTimeoutMs: 60_000,
       chooseRuntimeAction: () => chooseCloudRuntime(page),
     });
-    const dedicatedAdoptionConsent = page.getByTestId(
-      "choice-__first_run__:dedicated-adoption:confirm",
+    const confirmationChoices = page.locator(
+      '[data-testid="choice-__first_run__:dedicated-adoption:confirm"], [data-testid^="choice-__first_run__:dedicated-adoption:confirm:"], [data-testid="choice-__first_run__:dedicated-activation:confirm"], [data-testid^="choice-__first_run__:dedicated-activation:confirm:"]',
     );
     const binding = await waitForCloudLivePersonalIdentity({
       readBinding: () => readActiveBinding(page),
@@ -571,11 +575,39 @@ async function resolvePersonalIdentity(
         "choice-__first_run__:runtime:cloud",
       ),
       retryRecovery: page.getByTestId("choice-__first_run__:error:retry"),
-      dedicatedAdoptionConsent,
+      dedicatedConsent: {
+        gate: dedicatedConsentGate,
+        // #29622 generation-suffixes current choices so stale transcript turns
+        // cannot authorize a newer quote. Keep exact selectors during the merge
+        // window so this lane diagnoses either source revision.
+        confirmationChoices,
+        cancellationChoices: page.locator(
+          '[data-testid="choice-__first_run__:dedicated-adoption:cancel"], [data-testid^="choice-__first_run__:dedicated-adoption:cancel:"], [data-testid="choice-__first_run__:dedicated-activation:cancel"], [data-testid^="choice-__first_run__:dedicated-activation:cancel:"]',
+        ),
+        performConfirmation: async (confirmation) => {
+          const testId = await confirmation.getAttribute("data-testid");
+          if (
+            testId?.startsWith(
+              "choice-__first_run__:dedicated-adoption:confirm",
+            )
+          ) {
+            await dedicatedAdoptionProof.confirmVisibleConsent(confirmation);
+            return;
+          }
+          if (
+            !testId?.startsWith(
+              "choice-__first_run__:dedicated-activation:confirm",
+            )
+          ) {
+            throw new Error(
+              "[cloud-live] Dedicated confirmation control was not recognized",
+            );
+          }
+          await confirmation.click({ timeout: 15_000 });
+        },
+      },
       timeoutMs: PERSONAL_IDENTITY_ATTEMPT_TIMEOUT_MS,
       runtimeCloudGraceMs: 15_000,
-      onDedicatedAdoptionConsent: () =>
-        dedicatedAdoptionProof.confirmVisibleConsent(dedicatedAdoptionConsent),
       onRecovery,
     });
     await clickIfVisible(
@@ -667,6 +699,9 @@ test.describe("real cloud login + personal identity + chat", () => {
       type: "named-warming-proof-required",
       description: String(REQUIRE_NAMED_WARMING),
     });
+    const dedicatedConsentGate = createCloudLiveDedicatedConsentGate(
+      process.env,
+    );
 
     const stagingLatencyEvidencePath =
       process.env.ELIZA_UI_SMOKE_STAGING_CHAT_LATENCY_EVIDENCE_PATH?.trim() ??
@@ -811,6 +846,11 @@ test.describe("real cloud login + personal identity + chat", () => {
             audit.decodedDedicatedCutoverFinalResponseCount,
           uninspectableDedicatedCutoverResponseBodyCount:
             audit.uninspectableDedicatedCutoverResponseBodyCount,
+          dedicatedAdoptionQuoteGetRequestCount:
+            audit.dedicatedAdoptionQuoteGetRequestCount,
+          dedicatedAdoptionConfirmationPostRequestCount:
+            audit.dedicatedAdoptionConfirmationPostRequestCount,
+          ...dedicatedConsentGate.snapshot(),
         };
       };
     const writePreIdentityDiagnostic = async (): Promise<void> => {
@@ -846,6 +886,7 @@ test.describe("real cloud login + personal identity + chat", () => {
         );
         return await resolvePersonalIdentity(
           page,
+          dedicatedConsentGate,
           false,
           async (recovery) => {
             if (recovery === "runtime-cloud") {
@@ -862,7 +903,9 @@ test.describe("real cloud login + personal identity + chat", () => {
         ).catch((cause: unknown) =>
           rethrowCloudLiveFailureAfterDiagnostic(cause, async () => {
             await enterTrajectoryPhase(
-              "personal-identity",
+              cause instanceof CloudLiveDedicatedConfirmationRequiredError
+                ? "dedicated-confirmation-required"
+                : "personal-identity",
               await readPreIdentityDiagnostic(),
             );
           }),
@@ -1205,7 +1248,18 @@ test.describe("real cloud login + personal identity + chat", () => {
           expect(freshDeployedRenderer).toEqual(deployedRenderer);
         }
         await enterTrajectoryPhase("fresh-context-identity");
-        const freshBinding = await resolvePersonalIdentity(freshPage);
+        const freshBinding = await resolvePersonalIdentity(
+          freshPage,
+          dedicatedConsentGate,
+        ).catch((cause: unknown) =>
+          rethrowCloudLiveFailureAfterDiagnostic(cause, async () => {
+            await enterTrajectoryPhase(
+              cause instanceof CloudLiveDedicatedConfirmationRequiredError
+                ? "dedicated-confirmation-required"
+                : "fresh-context-identity",
+            );
+          }),
+        );
         const freshHistoryBefore = await freshAudit.snapshot();
         await openAppPath(freshPage, "/chat");
         await enterTrajectoryPhase("fresh-context-history");
