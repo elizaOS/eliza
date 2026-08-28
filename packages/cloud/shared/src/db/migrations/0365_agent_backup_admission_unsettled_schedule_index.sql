@@ -1,3 +1,4 @@
+-- migrate-with-diagnostics: nontransactional-concurrent-indexes
 -- Bounds outstanding schedule-authority lookup and rejects competing captures.
 
 CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS
