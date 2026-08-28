@@ -12,9 +12,10 @@
  *      the embedded PGlite adapter — not the shared remote Postgres. (A revert
  *      that leaks `DATABASE_URL` back in would flip this and is the exact #8783
  *      regression.)
- *   2. PLUGIN SET = lean. `@elizaos/agent`'s `collectPluginNames`, driven by the
- *      env's `ELIZA_PLUGIN_SET=lean-chat` + `ELIZAOS_CLOUD_*`, must EXCLUDE
- *      local-inference / wallet / workflow but INCLUDE elizacloud (#8434).
+ *   2. PLUGIN SET = lean + local embeddings. `@elizaos/agent`'s
+ *      `collectPluginNames`, driven by the managed env, must RETAIN
+ *      local-inference (the TEXT_EMBEDDING owner), exclude wallet/workflow, and
+ *      include elizacloud for the remaining model routes (#8434).
  *   3. EMBEDDING COLUMN = dim384. A FRESH provision (no ELIZAOS_CLOUD_API_KEY in
  *      existingEnv) defaults to local-primary gte-small embeddings, so the env
  *      pins `EMBEDDING_DIMENSION=384` and the 384-d vectors land in the
@@ -68,7 +69,7 @@ async function buildManagedEnv(): Promise<Record<string, string>> {
 }
 
 describe("D10 lean-chat local-state cloud agent boot — end-to-end", () => {
-  test("managed env pins local state + lean chat + 1536-d embeddings (no DATABASE_URL)", async () => {
+  test("managed env pins local state + lean chat + 384-d local embeddings (no DATABASE_URL)", async () => {
     const env = await buildManagedEnv();
     expect(env.ELIZA_AGENT_LOCAL_STATE).toBe("1");
     expect(env.ELIZA_PLUGIN_SET).toBe("lean-chat");
@@ -76,6 +77,7 @@ describe("D10 lean-chat local-state cloud agent boot — end-to-end", () => {
     // gte-small embeddings, 384-d hints, cloud embeddings off.
     expect(env.EMBEDDING_DIMENSION).toBe("384");
     expect(env.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("384");
+    expect(env.ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS).toBe("1");
     expect(env.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("false");
     expect(env.ELIZAOS_CLOUD_ENABLED).toBe("true");
     // The load-bearing absence: the producer must NOT carry DATABASE_URL.
@@ -106,7 +108,7 @@ describe("D10 lean-chat local-state cloud agent boot — end-to-end", () => {
     expect(adapter.constructor.name).toBe("PgliteDatabaseAdapter");
   });
 
-  test("(2) resolved lean-chat plugin set excludes local-inference/wallet/workflow, includes elizacloud", async () => {
+  test("(2) resolved lean-chat plugin set retains the local TEXT_EMBEDDING owner", async () => {
     const env = await buildManagedEnv();
     // The plugin resolver reads these signals from process.env directly.
     // Managed env producer always injects ELIZA_CLOUD_PROVISIONED=1 so the
@@ -121,7 +123,7 @@ describe("D10 lean-chat local-state cloud agent boot — end-to-end", () => {
 
     const has = (needle: string) => plugins.some((p) => p.includes(needle));
     expect(has("plugin-elizacloud")).toBe(true);
-    expect(has("plugin-local-inference")).toBe(false);
+    expect(has("plugin-local-inference")).toBe(true);
     expect(has("plugin-wallet")).toBe(false);
     expect(has("plugin-workflow")).toBe(false);
   }, 30_000);

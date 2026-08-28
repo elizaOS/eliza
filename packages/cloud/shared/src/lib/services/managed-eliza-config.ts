@@ -217,6 +217,10 @@ export function mergeManagedPublicBaseUrl(
  * ways: ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS=1 opts an existing agent in (only
  * after re-embedding its store), =0 keeps a fresh agent on the cloud path, and
  * ELIZAOS_CLOUD_USE_EMBEDDINGS=true always restores cloud embeddings.
+ * Whenever this helper selects local-primary, it also stamps the lean-chat
+ * opt-in consumed by the agent plugin resolver. Without that shared decision,
+ * the control plane can pin 384-d local semantics while the container drops
+ * the only plugin that registers the local TEXT_EMBEDDING handler.
  *
  * NOTE on dimensions: EMBEDDING_DIMENSION / ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS
  * set the width of the vectors the plugin-elizacloud TEXT_EMBEDDING handler
@@ -239,7 +243,12 @@ export function applyManagedAgentInferenceEnvDefaults(
     existingEnv.ELIZAOS_CLOUD_USE_EMBEDDINGS?.trim().toLowerCase() !== "true";
   const embeddingDimension = localPrimaryEmbeddings ? "384" : "1536";
   return {
-    ...(localPrimaryEmbeddings ? { ELIZAOS_CLOUD_USE_EMBEDDINGS: "false" } : {}),
+    ...(localPrimaryEmbeddings
+      ? {
+          ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS: "1",
+          ELIZAOS_CLOUD_USE_EMBEDDINGS: "false",
+        }
+      : {}),
     ELIZAOS_CLOUD_EMBEDDING_URL:
       existingEnv.ELIZAOS_CLOUD_EMBEDDING_URL ?? resolveCloudApiBaseUrl(),
     EMBEDDING_DIMENSION: existingEnv.EMBEDDING_DIMENSION ?? embeddingDimension,
@@ -327,10 +336,11 @@ export async function prepareManagedElizaBaseEnvironment(
       // BOTH embedding-output dimensions to the handler's output width, and pin
       // the healthy Cerebras-direct small/large models so the container never
       // resolves a tier to the `:nitro` default. For the explicit
-      // ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS=1 rollout lane, the helper yields the
-      // cloud embedding slot and uses 384-dim hints so local gte-small,
-      // ensureEmbeddingDimension, and storage agree. Embedding controls honor
-      // explicit per-agent overrides; managed small/large model pins do not.
+      // local-primary lane, the helper stamps the lean-chat plugin opt-in,
+      // yields the cloud embedding slot, and uses 384-dim hints so local
+      // gte-small, ensureEmbeddingDimension, and storage agree. Embedding
+      // controls honor explicit per-agent overrides; managed small/large model
+      // pins do not.
       ...applyManagedAgentInferenceEnvDefaults(existingEnv),
       // New managed agents keep agent-state in a LOCAL in-container DB (PGlite on
       // the persistent /root/.eliza volume) instead of the shared cloud Postgres;
