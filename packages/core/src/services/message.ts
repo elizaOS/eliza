@@ -246,7 +246,6 @@ import {
 	runWithTrajectoryContext,
 } from "../trajectory-context";
 import { withEvaluatorStep } from "../trajectory-utils";
-import type { CharacterSettings } from "../types/agent";
 import type { CodingActionProfile } from "../types/coding";
 import type {
 	Action,
@@ -413,24 +412,6 @@ export {
 	inferLocalShellCommandFromMessageText,
 	inferWebSearchQueryFromMessageText,
 };
-
-/**
- * Per-agent reply-length budget (#16395): a positive-integer `max_tokens`
- * ceiling applied to the Stage-1/synthesis call so operators can pin terse
- * replies (e.g. group-chat turns) without rewriting the persona, and have it
- * enforced by the provider rather than requested politely in `system`.
- * `characterSchema` validates the field (`z.number().int().positive()`); the
- * integer guard here only covers characters constructed without validation.
- * Unset or invalid → undefined, i.e. the unchanged channel default applies.
- */
-function resolveMaxReplyTokens(
-	settings: CharacterSettings | undefined,
-): number | undefined {
-	const raw = settings?.maxReplyTokens;
-	return typeof raw === "number" && Number.isInteger(raw) && raw > 0
-		? raw
-		: undefined;
-}
 
 const STAGE1_COMPLETION_LIMIT_REPLY =
 	"That answer got cut off before I could finish it. Please try again with a shorter request or ask for a narrower format.";
@@ -1449,8 +1430,10 @@ function withProviderOverflowText(state: State): State | null {
 function responseHandlerContextWindow(
 	runtime: IAgentRuntime,
 ): number | undefined {
-	return runtime
-		.getModelRegistrations()
+	const getModelRegistrations = runtime.getModelRegistrations;
+	if (typeof getModelRegistrations !== "function") return undefined;
+	return getModelRegistrations
+		.call(runtime)
 		.find(
 			(registration) =>
 				registration.modelType === ModelType.RESPONSE_HANDLER &&
@@ -8918,20 +8901,17 @@ export async function runV5MessageRuntimeStage1(args: {
 				.eliza ?? {}),
 			thinking: "off",
 		};
-		// An operator may explicitly cap every channel with a real max_tokens.
-		// Without that setting the selected provider/model owns the output boundary.
-		const maxReplyTokens = resolveMaxReplyTokens(
-			args.runtime.character.settings,
-		);
 		const stage1ModelParams = {
 			messages: messageHandlerInput.messages,
 			promptSegments: messageHandlerInput.promptSegments,
 			tools: messageHandlerTools,
 			toolChoice: "required" as const,
-			// Stage 1 packs the whole answer into `replyText`; a hidden channel default
-			// can cut the structured envelope off mid-generation.
-			maxTokens: maxReplyTokens,
-			omitMaxTokens: maxReplyTokens == null,
+			// Stage 1 packs the complete structured response and user-visible answer
+			// into one generation on every channel. Let the adapter use the selected
+			// provider/model maximum; an application-level ceiling can only turn a
+			// valid long answer into an incomplete envelope.
+			maxTokens: undefined,
+			omitMaxTokens: true,
 			// Streamed structured generation: the local engine (W4) streams the
 			// HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`
 			// / `contexts` route the moment they are known. User-visible `replyText`
