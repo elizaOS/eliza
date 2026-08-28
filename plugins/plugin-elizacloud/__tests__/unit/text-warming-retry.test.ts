@@ -1,15 +1,17 @@
 /**
  * Offline unit coverage for the cold-gateway warming retry: a 503 whose body
  * carries a structural `*_cache_warming` code (or the retryable
- * service_unavailable envelope) is retried in place with bounded backoff so
- * the runtime's useModel failover ladder is never consumed by a gateway that
- * recovers in ~3s, while every other failure still throws immediately. The
- * fetch is mocked; timers are faked to drive the backoff deterministically.
+ * service_unavailable envelope) is retried in place with bounded backoff so a
+ * gateway that recovers in ~3s stays within one registration. Persistent
+ * warming preserves a typed exhaustion signal for provider-aware fallback,
+ * while every other failure still throws immediately. The fetch is mocked;
+ * timers are faked to drive the backoff deterministically.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED, type IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  ElizaCloudGatewayWarmingExhaustedError,
   generateNativeChatCompletion,
   isWarmingUnavailableResponse,
   nextWarmingRetryDelayMs,
@@ -19,6 +21,8 @@ import {
 
 type RuntimeFixture = Pick<IAgentRuntime, "character" | "emitEvent" | "getSetting"> &
   Partial<IAgentRuntime>;
+
+type ElizaErrorShape = Error & { code?: string; status?: number };
 
 function runtime(): IAgentRuntime {
   const settings: Record<string, string | undefined> = {
@@ -211,7 +215,7 @@ describe("buffered native chat completion", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("gives up after the bounded budget on persistent warming", async () => {
+  it("spends exactly one bounded retry budget and preserves typed exhaustion", async () => {
     const fetchMock = mockFetchSequence([warmingResponse]);
     const pending = generateNativeChatCompletion(
       runtime(),
@@ -221,6 +225,8 @@ describe("buffered native chat completion", () => {
     ).catch((error: Error & { status?: number }) => error);
     await vi.runAllTimersAsync();
     const error = await pending;
+    expect(error).toBeInstanceOf(ElizaCloudGatewayWarmingExhaustedError);
+    expect((error as ElizaErrorShape).code).toBe(ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED);
     expect((error as Error & { status?: number }).status).toBe(503);
     // 1 initial attempt + 4 bounded retries, then the normal error path.
     expect(fetchMock).toHaveBeenCalledTimes(5);
@@ -280,6 +286,38 @@ describe("streaming native chat completion", () => {
     expect((error as Error & { status?: number }).status).toBe(503);
     expect((error as Error).message).toBe("upstream provider exploded");
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves caller abort during warming backoff without another request", async () => {
+    const fetchMock = mockFetchSequence([warmingResponse]);
+    const controller = new AbortController();
+    const abortReason = new DOMException("turn cancelled", "AbortError");
+    const pending = streamNativeChatCompletion(
+      runtime(),
+      "TEXT_SMALL",
+      { ...NATIVE_PARAMS, signal: controller.signal },
+      CONTEXT
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    controller.abort(abortReason);
+    await expect(pending).rejects.toBe(abortReason);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves typed exhaustion when streaming spends its one retry budget", async () => {
+    const fetchMock = mockFetchSequence([warmingResponse]);
+    const pending = streamNativeChatCompletion(
+      runtime(),
+      "TEXT_SMALL",
+      NATIVE_PARAMS,
+      CONTEXT
+    ).catch((error: Error) => error);
+    await vi.runAllTimersAsync();
+    const error = await pending;
+    expect(error).toBeInstanceOf(ElizaCloudGatewayWarmingExhaustedError);
+    expect((error as ElizaErrorShape).code).toBe(ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 });
 

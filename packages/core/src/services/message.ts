@@ -1815,8 +1815,10 @@ export function shouldSkipResponseMemoryPersistence(memory: Memory): boolean {
 export {
 	buildFailureReplyPrompt,
 	classifyStructuredFailureCause,
+	ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED,
 	INSUFFICIENT_CREDITS_REPLY,
 	isAuthError,
+	isElizaCloudGatewayWarmingExhaustedError,
 	isInsufficientCreditsError,
 	isInsufficientCreditsMessage,
 	isModelProviderFallbackError,
