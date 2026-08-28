@@ -116,12 +116,20 @@ function unsubscribeMethod(args: {
   listUnsubscribePost: string | null;
 }): EmailSubscriptionSender["unsubscribeMethod"] {
   const options = listUnsubscribeOptions(args.listUnsubscribe);
-  if (options.mailto) return "mailto";
-  if (!options.httpUrl) return "manual_only";
-  if (/one-click/i.test(args.listUnsubscribePost ?? "")) {
-    return "http_one_click";
+  // Classification must mirror the executor's HTTP-first preference in
+  // `unsubscribeEmailSender` (it dispatches `unsubscribeHttpUrl` before
+  // `unsubscribeMailto`). RFC 8058 §2 recommends senders publish BOTH a
+  // mailto and an https target with `List-Unsubscribe-Post:
+  // List-Unsubscribe=One-Click`; classifying that common case as "mailto"
+  // desynced the summary and the recorded method from the request actually
+  // sent, firing an HTTP GET instead of the required one-click POST.
+  if (options.httpUrl) {
+    return /one-click/i.test(args.listUnsubscribePost ?? "")
+      ? "http_one_click"
+      : "http_get";
   }
-  return "http_get";
+  if (options.mailto) return "mailto";
+  return "manual_only";
 }
 
 function parseMailtoUnsubscribe(value: string): {
