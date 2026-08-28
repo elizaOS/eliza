@@ -1074,6 +1074,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   async getMemories(params: {
     entityId?: UUID;
+    authorEntityIds?: UUID[];
     agentId?: UUID;
     limit?: number;
     count?: number;
@@ -1084,6 +1085,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     start?: number;
     end?: number;
     roomId?: UUID;
+    excludeRoomIds?: UUID[];
     worldId?: UUID;
     metadata?: Record<string, unknown>;
     textContains?: string;
@@ -1096,10 +1098,33 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       throw new Error("getMemories cursor and offset are mutually exclusive");
     }
     const textContains = params.textContains?.trim().toLowerCase();
+    const participantRoomIds = params.entityId
+      ? new Set(
+          (
+            await this.storage.getWhere<StoredParticipant>(
+              COLLECTIONS.PARTICIPANTS,
+              (participant) => participant.entityId === params.entityId
+            )
+          ).map((participant) => participant.roomId)
+        )
+      : null;
+    const authorEntityIds = params.authorEntityIds ? new Set(params.authorEntityIds) : null;
+    const excludedRoomIds = params.excludeRoomIds ? new Set(params.excludeRoomIds) : null;
     const memories = await this.storage.getWhere<StoredMemory>(COLLECTIONS.MEMORIES, (m) => {
-      if (params.entityId && m.entityId !== params.entityId) return false;
+      // Match plugin-sql entity RLS: entityId is the isolation principal, not
+      // an author-row predicate. A principal sees every author's memories in
+      // rooms it participates in, plus its own agent-owned document records.
+      if (params.entityId && participantRoomIds) {
+        const tableName = storedMemoryTableName(m);
+        const agentDocument =
+          (tableName === "documents" || tableName === "document_fragments") &&
+          m.agentId === params.entityId;
+        if (!participantRoomIds.has(m.roomId) && !agentDocument) return false;
+      }
       if (params.agentId && m.agentId !== params.agentId) return false;
+      if (authorEntityIds && !authorEntityIds.has(m.entityId as UUID)) return false;
       if (params.roomId && m.roomId !== params.roomId) return false;
+      if (excludedRoomIds?.has(m.roomId as UUID)) return false;
       if (params.worldId && m.worldId !== params.worldId) return false;
       if (params.tableName && storedMemoryTableName(m) !== params.tableName) return false;
       if (params.start && m.createdAt && m.createdAt < params.start) return false;

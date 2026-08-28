@@ -1183,6 +1183,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 
 	async getMemories(params: {
 		entityId?: UUID;
+		authorEntityIds?: UUID[];
 		agentId?: UUID;
 		limit?: number;
 		count?: number;
@@ -1193,6 +1194,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		start?: number;
 		end?: number;
 		roomId?: UUID;
+		excludeRoomIds?: UUID[];
 		worldId?: UUID;
 		metadata?: Record<string, unknown>;
 		textContains?: string;
@@ -1220,9 +1222,29 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		if (params.agentId) {
 			all = all.filter((memory) => memory.agentId === params.agentId);
 		}
-		// `entityId` selects the SQL/RLS isolation context; it is not a memory-row
-		// predicate. Process-local storage has no RLS session to establish, so the
-		// agent boundary above is the matching isolation behavior.
+		if (params.entityId) {
+			const participantRoomIds =
+				this.roomsByParticipant.get(String(params.entityId)) ??
+				new Set<string>();
+			const agentOwnedDocument =
+				params.tableName === "documents" ||
+				params.tableName === "document_fragments";
+			all = all.filter(
+				(memory) =>
+					participantRoomIds.has(String(memory.roomId)) ||
+					(agentOwnedDocument && memory.agentId === params.entityId),
+			);
+		}
+		if (params.authorEntityIds) {
+			const authorEntityIds = new Set(params.authorEntityIds);
+			all = all.filter((memory) => authorEntityIds.has(memory.entityId));
+		}
+		if (params.excludeRoomIds) {
+			const excludedRoomIds = new Set(params.excludeRoomIds);
+			all = all.filter((memory) => !excludedRoomIds.has(memory.roomId));
+		}
+		// `entityId` selects the SQL/RLS isolation principal; author filtering is a
+		// separate narrowing predicate above.
 		if (params.unique) {
 			all = all.filter((memory) => memory.unique);
 		}
