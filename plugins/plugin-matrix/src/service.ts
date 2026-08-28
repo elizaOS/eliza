@@ -1429,13 +1429,39 @@ export class MatrixService extends Service implements IMatrixService {
       if (result === null || typeof result !== "object") {
         return null;
       }
+      // The homeserver /members endpoint (and matrix-js-sdk's
+      // MatrixClient.members, which returns the raw response — see
+      // Room.loadMembersFromServer consuming response.chunk) answers with
+      // { chunk: IStateEventWithRoomId[] }, one state event per member with
+      // the subject in state_key. Parse the chunk, not a map keyed by userId.
+      const chunk = (result as { chunk?: unknown }).chunk;
+      if (!Array.isArray(chunk)) {
+        return null;
+      }
       const joined: string[] = [];
-      for (const [userId, events] of Object.entries(result)) {
-        // One authoritative membership event per user; only an explicit
-        // "join" counts as presence on the fresh server roster.
-        const latest = Array.isArray(events) ? events[events.length - 1] : undefined;
-        if (latest?.content?.membership === "join") {
-          joined.push(userId);
+      for (const event of chunk) {
+        if (event === null || typeof event !== "object") {
+          // A structurally invalid entry means the roster cannot be known
+          // complete — skipping it could publish a partial roster as a
+          // complete baseline. Fail closed.
+          return null;
+        }
+        const { state_key: stateKey, content } = event as {
+          state_key?: unknown;
+          content?: { membership?: unknown } | null;
+        };
+        if (
+          typeof stateKey !== "string" ||
+          content === null ||
+          typeof content !== "object" ||
+          typeof content.membership !== "string"
+        ) {
+          return null;
+        }
+        // Only an explicit "join" counts as presence on the fresh server roster;
+        // well-formed leave/invite events are simply not presence.
+        if (content.membership === "join") {
+          joined.push(stateKey);
         }
       }
       return joined;
@@ -1606,9 +1632,20 @@ export class MatrixService extends Service implements IMatrixService {
       return;
     }
     const room = state.client.getRoom(roomId);
-    if (room && room.getJoinedMemberCount() <= 2 && member.membership !== "join") {
-      // Direct rooms are not membership-governed; only bot-join lifecycle
-      // (which can grow a DM out of a group) is tracked below.
+    if (
+      room &&
+      room.getJoinedMemberCount() <= 2 &&
+      member.membership !== "join" &&
+      member.userId !== state.settings.userId
+    ) {
+      // Direct rooms are not membership-governed; a PEER's leave/ban in a
+      // <=2-member room must create NO authority evidence. Returning here is
+      // load-bearing: falling through would register a publisher scope for a
+      // DM and record an ordered delta with no snapshot baseline, poisoning
+      // the grown-room bootstrap below if the DM later becomes a group. The
+      // bot's OWN leave/ban is excluded: the self-transition block below must
+      // still tombstone a governed scope (e.g. a group that shrank to two).
+      return;
     }
     // Bot self-transitions own the scope lifecycle.
     if (member.userId === state.settings.userId) {

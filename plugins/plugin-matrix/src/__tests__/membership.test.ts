@@ -559,6 +559,114 @@ describe("MatrixMembershipMessageGate", () => {
     expect(authority.isRoomIncomplete(ROOM)).toBe(false);
   });
 
+  it("fails closed locally when persisting incompleteness fails", async () => {
+    const { service } = createAuthorityService();
+    const authority = createAuthority(service);
+    await publishBaseline(authority);
+    // The authority store goes down AFTER a current baseline: the next
+    // incompleteness report must still fail admission closed locally.
+    let failIncomplete = false;
+    const rawReport = service.reportIncompleteSnapshot as ReturnType<typeof vi.fn>;
+    rawReport.mockImplementation(async () => {
+      if (failIncomplete) {
+        throw new Error("authority store outage");
+      }
+      return {
+        contractVersion: 1,
+        operation: "health" as const,
+        idempotentReplay: false,
+        committedGeneration: 1,
+        health: {} as MembershipScopeHealth,
+      };
+    });
+    failIncomplete = true;
+    await authority.reportIncomplete({
+      roomId: ROOM,
+      reason: "member_list_incomplete",
+      observedAt: "2026-08-26T00:05:00.000Z",
+    });
+    failIncomplete = false;
+    expect(authority.isRoomIncomplete(ROOM)).toBe(true);
+    // The underlying authority would still say allowed — the LOCAL incomplete
+    // flag must fail the room closed anyway (ss251 review control).
+    const decision = await authority.authorize({
+      roomId: ROOM,
+      canonicalPrincipalId: PRINCIPAL_A,
+    });
+    expect(decision.decision).toBe("denied");
+    expect(decision.reason).toBe("authority_stale");
+    // Recovery: a complete snapshot clears the flag and reopens admission.
+    const ok = await authority.publishSnapshot({
+      roomId: ROOM,
+      observedAt: "2026-08-26T00:10:00.000Z",
+      members: [
+        {
+          canonicalPrincipalId: PRINCIPAL_A,
+          roles: ["member"],
+          permissionSnapshot: { membership: "join" },
+          runtime: { worldId: null, roomId: null, entityId: PRINCIPAL_A },
+        },
+      ],
+      idempotencyKey: "recovery-after-failed-incomplete",
+    });
+    expect(ok).toBe(true);
+    expect(authority.isRoomIncomplete(ROOM)).toBe(false);
+    const after = await authority.authorize({
+      roomId: ROOM,
+      canonicalPrincipalId: PRINCIPAL_A,
+    });
+    expect(after.decision).toBe("allowed");
+  });
+
+  it("an authorize queued behind a failing reportIncomplete is denied (no TOCTOU)", async () => {
+    const { service } = createAuthorityService();
+    const authority = createAuthority(service);
+    await publishBaseline(authority);
+    let releaseReport: (() => void) | undefined;
+    let fail = false;
+    const rawReport = service.reportIncompleteSnapshot as ReturnType<typeof vi.fn>;
+    rawReport.mockImplementation(
+      () =>
+        new Promise((resolve, reject) => {
+          if (!fail) {
+            resolve({
+              contractVersion: 1,
+              operation: "health" as const,
+              idempotentReplay: false,
+              committedGeneration: 1,
+              health: {} as MembershipScopeHealth,
+            });
+            return;
+          }
+          releaseReport = () => reject(new Error("authority store outage"));
+        })
+    );
+    // Start reportIncomplete and pause its storage call while it HOLDS the
+    // serialized scope chain.
+    fail = true;
+    const reporting = authority.reportIncomplete({
+      roomId: ROOM,
+      reason: "member_list_incomplete",
+      observedAt: "2026-08-26T00:05:00.000Z",
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    // Queue an authorize behind the in-flight report. The incomplete flag is
+    // not set yet — the pre-serialization state RP flagged as a TOCTOU gap.
+    const authorizing = authority.authorize({
+      roomId: ROOM,
+      canonicalPrincipalId: PRINCIPAL_A,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    // The report's persist fails: it must set the local flag before releasing
+    // the chain, so the queued authorize — running AFTER it — must see it.
+    releaseReport?.();
+    await reporting;
+    const decision = await authorizing;
+    expect(authority.isRoomIncomplete(ROOM)).toBe(true);
+    expect(decision.decision).toBe("denied");
+    expect(decision.reason).toBe("authority_stale");
+  });
+
   it("fails closed when no authority is configured but enforcement is strict", async () => {
     process.env.MATRIX_MEMBERSHIP_ENFORCE = "1";
     try {

@@ -8,6 +8,7 @@
  * authority surfaces are in-memory doubles — no live homeserver.
  */
 import type { IAgentRuntime } from "@elizaos/core";
+import { createUniqueUuid } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
 import { MatrixService } from "../service.js";
@@ -34,6 +35,8 @@ function createAuthority() {
     clearTransientRoomIncompleteness: vi.fn(() => true),
     scopeHealth: vi.fn(async (): Promise<{ health: string } | null> => null),
     clearScopeRemoval: vi.fn(() => {}),
+    markScopeUnavailable: vi.fn(async () => {}),
+    recordTransition: vi.fn(async () => {}),
     publishSnapshot: vi.fn(
       async (input: { roomId: string; members: { canonicalPrincipalId: string }[] }) => {
         snapshots.push({
@@ -76,11 +79,16 @@ function createHarness(): Harness {
   const client = {
     getRooms: vi.fn(() => [] as unknown[]),
     getRoom: vi.fn(() => null),
+    // Real boundary shape (matrix-js-sdk 41.x): client.members() resolves the
+    // raw homeserver /members envelope consumed via response.chunk — see
+    // Room.loadMembersFromServer() — not a userId -> event-arrays map.
     members: vi.fn(async () => ({
-      "@fresh1:example": [{ content: { membership: "join" } }],
-      "@fresh2:example": [{ content: { membership: "join" } }],
-      "@fresh3:example": [{ content: { membership: "join" } }],
-      "@bot:example": [{ content: { membership: "join" } }],
+      chunk: [
+        { state_key: "@fresh1:example", content: { membership: "join" } },
+        { state_key: "@fresh2:example", content: { membership: "join" } },
+        { state_key: "@fresh3:example", content: { membership: "join" } },
+        { state_key: "@bot:example", content: { membership: "join" } },
+      ],
     })),
   };
   const state: Record<string, unknown> = {
@@ -173,8 +181,10 @@ describe("persisted non-current scope health triggers recovery", () => {
     const h = createHarness();
     h.authority.isRoomIncomplete = vi.fn(() => true);
     h.client.members.mockResolvedValue({
-      "@one:example": [{ content: { membership: "join" } }],
-      "@bot:example": [{ content: { membership: "join" } }],
+      chunk: [
+        { state_key: "@one:example", content: { membership: "join" } },
+        { state_key: "@bot:example", content: { membership: "join" } },
+      ],
     });
     const room = createRoomDouble();
     h.client.getRooms.mockReturnValue([room]);
@@ -192,8 +202,10 @@ describe("persisted non-current scope health triggers recovery", () => {
     h.authority.isRoomIncomplete = vi.fn(() => true);
     h.authority.scopeHealth = vi.fn(async () => ({ health: "stale" }));
     h.client.members.mockResolvedValue({
-      "@one:example": [{ content: { membership: "join" } }],
-      "@bot:example": [{ content: { membership: "join" } }],
+      chunk: [
+        { state_key: "@one:example", content: { membership: "join" } },
+        { state_key: "@bot:example", content: { membership: "join" } },
+      ],
     });
     const room = createRoomDouble();
     h.client.getRooms.mockReturnValue([room]);
@@ -271,5 +283,209 @@ describe("unknown membership values are reported, never recorded as leave", () =
     await handler.call(h.service, h.state, event, member, oldMembership);
     expect(h.runtime.reportError).toHaveBeenCalled();
     expect(h.authority.publishSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("a peer leave in a direct room must not create authority evidence (review control)", async () => {
+    const h = createHarness();
+    const event = {
+      getSender: vi.fn(() => "@peer:example"),
+      getRoomId: vi.fn(() => "!dm:example"),
+      getId: vi.fn(() => "$dm-leave"),
+      getTs: vi.fn(() => 1),
+    };
+    const member = { userId: "@peer:example", membership: "leave", previousMembership: "join" };
+    const svc = h.service as unknown as Record<string, unknown>;
+    const handler = svc.handleMembershipTransition as
+      | ((
+          s: unknown,
+          e: unknown,
+          m: unknown,
+          old: string | undefined,
+          room?: unknown
+        ) => Promise<void>)
+      | undefined;
+    if (typeof handler !== "function") {
+      throw new Error("handleMembershipTransition not found on MatrixService prototype");
+    }
+    // The SDK Room model for a direct room: at most two joined members.
+    const dmRoom = createRoomDouble({
+      roomId: "!dm:example",
+      getJoinedMemberCount: vi.fn(() => 1),
+    });
+    h.client.getRoom.mockReturnValue(dmRoom);
+    await handler.call(h.service, h.state, event, member, "join", dmRoom);
+    expect(h.authority.recordTransition).not.toHaveBeenCalled();
+    expect(h.authority.markScopeUnavailable).not.toHaveBeenCalled();
+    expect(h.runtime.createEntity).not.toHaveBeenCalled();
+  });
+
+  it("a peer leave in a GROUP room still records the ordered-delta transition", async () => {
+    const h = createHarness();
+    const event = {
+      getSender: vi.fn(() => "@peer:example"),
+      getRoomId: vi.fn(() => "!ops:example"),
+      getId: vi.fn(() => "$ops-leave"),
+      getTs: vi.fn(() => 1),
+    };
+    const member = { userId: "@peer:example", membership: "leave", previousMembership: "join" };
+    const svc = h.service as unknown as Record<string, unknown>;
+    const handler = svc.handleMembershipTransition as
+      | ((
+          s: unknown,
+          e: unknown,
+          m: unknown,
+          old: string | undefined,
+          room?: unknown
+        ) => Promise<void>)
+      | undefined;
+    if (typeof handler !== "function") {
+      throw new Error("handleMembershipTransition not found on MatrixService prototype");
+    }
+    const groupRoom = createRoomDouble();
+    h.client.getRoom.mockReturnValue(groupRoom);
+    await handler.call(h.service, h.state, event, member, "join", groupRoom);
+    expect(h.authority.recordTransition).toHaveBeenCalledTimes(1);
+    expect(h.runtime.createEntity).toHaveBeenCalled();
+  });
+
+  it("the bot's own ban in a <=2-member room still tombstones the scope", async () => {
+    const h = createHarness();
+    const event = {
+      getSender: vi.fn(() => "@admin:example"),
+      getRoomId: vi.fn(() => "!dm:example"),
+      getId: vi.fn(() => "$bot-ban"),
+      getTs: vi.fn(() => 1),
+    };
+    // The bot's OWN transition in a room reporting <=2 joined members — the
+    // direct-room skip must NOT swallow the bot self-leave lifecycle.
+    const member = { userId: "@bot:example", membership: "ban", previousMembership: "join" };
+    const svc = h.service as unknown as Record<string, unknown>;
+    const handler = svc.handleMembershipTransition as
+      | ((
+          s: unknown,
+          e: unknown,
+          m: unknown,
+          old: string | undefined,
+          room?: unknown
+        ) => Promise<void>)
+      | undefined;
+    if (typeof handler !== "function") {
+      throw new Error("handleMembershipTransition not found on MatrixService prototype");
+    }
+    const dmRoom = createRoomDouble({
+      roomId: "!dm:example",
+      getJoinedMemberCount: vi.fn(() => 1),
+    });
+    h.client.getRoom.mockReturnValue(dmRoom);
+    await handler.call(h.service, h.state, event, member, "join", dmRoom);
+    expect(h.authority.markScopeUnavailable).toHaveBeenCalledWith({
+      roomId: "!dm:example",
+      reason: "bot_banned",
+    });
+    expect(h.authority.recordTransition).not.toHaveBeenCalled();
+  });
+});
+
+describe("fresh roster parsing matches the homeserver /members envelope", () => {
+  it("parses the SDK /members chunk response instead of the invented map shape", async () => {
+    const h = createHarness();
+    h.authority.isRoomIncomplete = vi.fn(() => true);
+    // Real boundary shape (matrix-js-sdk 41.x): client.members() resolves the
+    // raw homeserver /members envelope, and Room.loadMembersFromServer()
+    // consumes response.chunk — a { chunk: IStateEventWithRoomId[] } object,
+    // NOT a userId -> event-arrays map.
+    h.client.members.mockResolvedValue({
+      chunk: [
+        { state_key: "@fresh1:example", content: { membership: "join" } },
+        { state_key: "@fresh2:example", content: { membership: "join" } },
+        { state_key: "@fresh3:example", content: { membership: "join" } },
+        { state_key: "@bot:example", content: { membership: "join" } },
+      ],
+    });
+    const room = createRoomDouble();
+    h.client.getRooms.mockReturnValue([room]);
+    await (
+      h.service as unknown as {
+        publishMembershipSnapshots: (s: unknown, first: boolean) => Promise<void>;
+      }
+    ).publishMembershipSnapshots(h.state, false);
+    expect(h.authority.snapshots).toHaveLength(1);
+    // Exact identities, not just counts: assert the EXACT derived principal
+    // UUIDs (same derivation production uses) so a parser emitting wrong
+    // identifiers (e.g. the literal "chunk" key) fails here.
+    const expected = ["@fresh1:example", "@fresh2:example", "@fresh3:example", "@bot:example"].map(
+      (matrixId) => createUniqueUuid(h.runtime, `work:${matrixId}`)
+    );
+    expect(h.authority.snapshots[0]?.members.sort()).toEqual(expected.sort());
+  });
+
+  it("ignores non-join chunk events (leave/invite) on the fresh roster", async () => {
+    const h = createHarness();
+    h.authority.isRoomIncomplete = vi.fn(() => true);
+    h.client.members.mockResolvedValue({
+      chunk: [
+        { state_key: "@fresh1:example", content: { membership: "join" } },
+        { state_key: "@fresh2:example", content: { membership: "join" } },
+        { state_key: "@gone:example", content: { membership: "leave" } },
+        { state_key: "@invited:example", content: { membership: "invite" } },
+        { state_key: "@bot:example", content: { membership: "join" } },
+      ],
+    });
+    const room = createRoomDouble();
+    h.client.getRooms.mockReturnValue([room]);
+    await (
+      h.service as unknown as {
+        publishMembershipSnapshots: (s: unknown, first: boolean) => Promise<void>;
+      }
+    ).publishMembershipSnapshots(h.state, false);
+    expect(h.authority.snapshots).toHaveLength(1);
+    expect(h.authority.snapshots[0]?.members).toHaveLength(3);
+  });
+
+  it("fails closed on a malformed envelope (no chunk array): no snapshot, room stays incomplete", async () => {
+    const h = createHarness();
+    h.authority.isRoomIncomplete = vi.fn(() => true);
+    // A homeserver/SDK response that is an object but NOT the expected
+    // { chunk: [...] } envelope (e.g. an error body): the parser must return
+    // null so the room stays incomplete — never publish a complete snapshot
+    // from an unparseable roster.
+    h.client.members.mockResolvedValue({ error: "M_UNKNOWN", not_chunk: true });
+    const room = createRoomDouble();
+    h.client.getRooms.mockReturnValue([room]);
+    await (
+      h.service as unknown as {
+        publishMembershipSnapshots: (s: unknown, first: boolean) => Promise<void>;
+      }
+    ).publishMembershipSnapshots(h.state, false);
+    expect(h.authority.snapshots).toHaveLength(0);
+    expect(h.authority.reportIncomplete).toHaveBeenCalled();
+    // The transient flag is NOT cleared: recovery will retry next pass.
+    expect(h.authority.clearTransientRoomIncompleteness).not.toHaveBeenCalled();
+  });
+
+  it("fails closed on a structurally invalid chunk ENTRY: no partial roster becomes a baseline", async () => {
+    const h = createHarness();
+    h.authority.isRoomIncomplete = vi.fn(() => true);
+    // Valid joins plus ONE malformed entry (missing content.membership): the
+    // parser cannot know the skipped event was irrelevant — skipping it would
+    // publish a partial roster as a complete snapshot and clear the flag.
+    h.client.members.mockResolvedValue({
+      chunk: [
+        { state_key: "@fresh1:example", content: { membership: "join" } },
+        { state_key: "@fresh2:example", content: { membership: "join" } },
+        { state_key: "@bot:example" },
+        { state_key: "@fresh3:example", content: { membership: "join" } },
+      ],
+    });
+    const room = createRoomDouble();
+    h.client.getRooms.mockReturnValue([room]);
+    await (
+      h.service as unknown as {
+        publishMembershipSnapshots: (s: unknown, first: boolean) => Promise<void>;
+      }
+    ).publishMembershipSnapshots(h.state, false);
+    expect(h.authority.snapshots).toHaveLength(0);
+    expect(h.authority.reportIncomplete).toHaveBeenCalled();
+    expect(h.authority.clearTransientRoomIncompleteness).not.toHaveBeenCalled();
   });
 });
