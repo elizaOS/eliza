@@ -27,6 +27,7 @@ function makeRuntime(): IAgentRuntime {
     createWorld: vi.fn(async () => true),
     createRoom: vi.fn(async () => true),
     emitEvent: vi.fn(),
+    getRoomsForParticipant: vi.fn(async () => [] as UUID[]),
   } as unknown as IAgentRuntime;
 }
 
@@ -181,6 +182,27 @@ describe("chatAndEntityMiddleware membership admission ordering", () => {
 describe("leave revocation removes room participation", () => {
   it("calls removeParticipant for the departed principal's observed and main rooms", async () => {
     const runtime = makeRuntime();
+    // Forum-topic participation: the principal also sits in a topic room of
+    // the SAME chat world (plus an unrelated chat's world that must NOT be
+    // cleared). getRoom resolves worldId so the enumeration can filter.
+    const worldId = "00000000-0000-0000-0000-0000000000bb" as UUID;
+    const topicRoom = "00000000-0000-0000-0000-0000000000cc" as UUID;
+    const otherWorldRoom = "00000000-0000-0000-0000-0000000000dd" as UUID;
+    runtime.getRoomsForParticipant = vi.fn(async () => [
+      topicRoom,
+      otherWorldRoom,
+    ]);
+    runtime.getRoom = vi.fn(
+      async (id: UUID) =>
+        (id === topicRoom
+          ? { id, worldId }
+          : id === otherWorldRoom
+            ? {
+                id,
+                worldId: "00000000-0000-0000-0000-0000000000ee" as UUID,
+              }
+            : null) as never,
+    );
     const gate = {
       authority: {
         recordEvent: vi.fn(async () => undefined),
@@ -235,12 +257,14 @@ describe("leave revocation removes room participation", () => {
     );
 
     expect(gate.authority.recordEvent).toHaveBeenCalledTimes(1);
-    expect(
-      (runtime.removeParticipant as ReturnType<typeof vi.fn>).mock.calls,
-    ).toEqual([
-      [expect.any(String), roomId],
-      [expect.any(String), expect.any(String)],
-    ]);
+    const removedRooms = (
+      runtime.removeParticipant as ReturnType<typeof vi.fn>
+    ).mock.calls.map((call) => call[1]);
+    // Observed room, main room, AND the same-world topic room are cleared;
+    // the unrelated world's room is NOT.
+    expect(removedRooms).toContain(roomId);
+    expect(new Set(removedRooms)).toContain(topicRoom);
+    expect(removedRooms).not.toContain(otherWorldRoom);
     // A revocation must never (re)create participation: no ensureConnection.
     expect(runtime.ensureConnection).not.toHaveBeenCalled();
   });

@@ -145,6 +145,19 @@ export async function handleTelegramStandaloneMessage(
      * authority in standalone mode.
      */
     admissionGate?: TelegramMembershipMessageGate;
+    /**
+     * Live Telegram membership-status provider for the gate's reconcile
+     * path: without it an ordinary active member with missing/expired
+     * scope evidence can never be reconciled (the fallback below throws
+     * and admission stays denied), making authority-backed standalone
+     * groups unusable. The standalone service passes the Telegraf
+     * context's getChatMember; tests may omit it to pin the fail-closed
+     * fallback.
+     */
+    getChatMember?: (
+      chatId: string | number,
+      userId: string | number,
+    ) => Promise<{ status: string; user: { id: number } }>;
   },
 ): Promise<void> {
   try {
@@ -237,12 +250,16 @@ export async function handleTelegramStandaloneMessage(
         telegramUserId,
         runtimeMapping: { worldId, roomId, entityId },
         getChatMember: async () => {
-          // The standalone context carries no telegram client; the gate's
-          // reconcile path handles a throwing provider query by staying
-          // denied (fail closed), which is the correct standalone default.
-          throw new Error(
-            "standalone handler has no getChatMember provider access",
-          );
+          if (!options?.getChatMember) {
+            // No live provider (tests / legacy callers): the gate's
+            // reconcile path handles a throwing provider query by staying
+            // denied (fail closed), which is the correct fallback when no
+            // Telegram client is reachable.
+            throw new Error(
+              "standalone handler has no getChatMember provider access",
+            );
+          }
+          return await options.getChatMember(chat.id, telegramUserId);
         },
       });
       if (!admitted) {
