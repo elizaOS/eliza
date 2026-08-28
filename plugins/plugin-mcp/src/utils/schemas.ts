@@ -91,7 +91,13 @@ export function isToolSelectionArgument(value: unknown): value is ToolSelectionA
     return false;
   }
   const obj = value as Record<string, unknown>;
-  return typeof obj.toolArguments === "object" && obj.toolArguments !== null;
+  // The declared JSON schema types toolArguments as { "type": "object" },
+  // which excludes arrays — typeof alone would accept them.
+  return (
+    typeof obj.toolArguments === "object" &&
+    obj.toolArguments !== null &&
+    !Array.isArray(obj.toolArguments)
+  );
 }
 
 export function isResourceSelection(value: unknown): value is ResourceSelection {
