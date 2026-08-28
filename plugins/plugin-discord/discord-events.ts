@@ -181,13 +181,16 @@ interface EventListenerConfig {
 
 /**
  * The guilds served by one gateway shard (#24365). discord.js stamps each
- * guild with its owning shard id (GUILD_CREATE handler); fall back to the
- * shard-count formula for guilds that lack it. When every cached guild
- * carries a shard stamp the filter is exact, so a known shard that owns
- * zero cached guilds returns an empty list — degrading it must not sweep
- * healthy sibling shards' guilds. Only partially- or un-stamped geometry
- * is unknown, where the conservative every-guild fallback keeps
- * degrade/resume symmetric.
+ * guild with its owning shard id (GUILD_CREATE handler). Geometry is exact
+ * in two cases: every cached guild carries a stamp, or no guild does while
+ * the shard count is known and >1 — Discord's gateway sharding assignment
+ * is deterministic ((id >> 22) % shardCount), so the formula is protocol
+ * authority, not a guess. In both exact cases a shard that owns zero
+ * cached guilds returns an empty list — degrading it must not sweep
+ * healthy sibling shards' guilds. Mixed stamps or an unknown count leave
+ * the geometry only partially known, so the conservative every-guild
+ * fallback keeps degrade/resume symmetric (an incomplete subset could
+ * silently skip degrading guilds the disconnected shard actually serves).
  */
 function guildsForShard<T extends { id: string; shardId?: number }>(
 	client: unknown,
@@ -216,18 +219,14 @@ function guildsForShard<T extends { id: string; shardId?: number }>(
 			shardCount > 1 && Number(BigInt(guild.id) >> 22n) % shardCount === shardId
 		);
 	});
-	// Geometry is known exactly when every cached guild carries a shard
-	// stamp: the filter then provably owns the answer, including an empty
-	// one for a shard with no cached guilds. Any unstamped guild leaves
-	// the geometry unknown, so the conservative all-guilds fallback keeps
-	// degrade/resume symmetric (RP #29748 blocker 2).
-	const geometryKnown =
+	if (
 		allGuilds.length > 0 &&
-		allGuilds.every((guild) => typeof guild.shardId === "number");
-	if (geometryKnown) {
+		(allGuilds.every((g) => typeof g.shardId === "number") ||
+			(allGuilds.every((g) => typeof g.shardId !== "number") && shardCount > 1))
+	) {
 		return shardGuilds;
 	}
-	return shardGuilds.length > 0 ? shardGuilds : allGuilds;
+	return allGuilds;
 }
 
 function parseSettingInt(
@@ -1626,13 +1625,12 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				}
 			}
 		} catch (err) {
-			service.runtime.logger.error(
-				{
-					src: "plugin:discord",
-					agentId: service.runtime.agentId,
-					error: err instanceof Error ? err.message : String(err),
-				},
-				"Error in membership channelUpdate handler",
+			// error-policy:J7 handler diagnostics must not kill the gateway
+			// listener; surfaced via reportError per the repo error policy.
+			service.runtime.reportError(
+				"discord:membership-channel-update",
+				err instanceof Error ? err : new Error(String(err)),
+				{ accountId, channelId: newChannel?.id },
 			);
 		}
 	});
@@ -1701,13 +1699,12 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				}
 			}
 		} catch (err) {
-			service.runtime.logger.error(
-				{
-					src: "plugin:discord",
-					agentId: service.runtime.agentId,
-					error: err instanceof Error ? err.message : String(err),
-				},
-				"Error in membership roleUpdate handler",
+			// error-policy:J7 handler diagnostics must not kill the gateway
+			// listener; surfaced via reportError per the repo error policy.
+			service.runtime.reportError(
+				"discord:membership-role-update",
+				err instanceof Error ? err : new Error(String(err)),
+				{ accountId, roleId: newRole?.id },
 			);
 		}
 	});
@@ -1723,6 +1720,10 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				try {
 					fullOldMember = await oldMember.fetch();
 				} catch {
+					// error-policy:J3 untrusted-input sanitizing: a partial
+					// member whose pre-change state cannot be fetched cannot
+					// be diffed; skip this transition rather than publish a
+					// delta fabricated from the post-change state alone.
 					return;
 				}
 			}
@@ -1760,13 +1761,12 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				}
 			}
 		} catch (err) {
-			service.runtime.logger.error(
-				{
-					src: "plugin:discord",
-					agentId: service.runtime.agentId,
-					error: err instanceof Error ? err.message : String(err),
-				},
-				"Error in membership guildMemberUpdate handler",
+			// error-policy:J7 handler diagnostics must not kill the gateway
+			// listener; surfaced via reportError per the repo error policy.
+			service.runtime.reportError(
+				"discord:membership-guild-member-update",
+				err instanceof Error ? err : new Error(String(err)),
+				{ accountId, memberId: newMember?.id },
 			);
 		}
 	});
