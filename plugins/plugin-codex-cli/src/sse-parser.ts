@@ -24,6 +24,7 @@ export async function* parseSSE(stream: ReadableStream<Uint8Array>): AsyncGenera
     if (eventId !== undefined) event.id = eventId;
     if (retry !== undefined) event.retry = retry;
     eventName = undefined;
+    eventId = undefined;
     retry = undefined;
     dataLines = [];
     return event;
@@ -77,6 +78,10 @@ export async function* parseSSE(stream: ReadableStream<Uint8Array>): AsyncGenera
           if (field === "event") eventName = valueText;
           else if (field === "data") dataLines.push(valueText);
           else if (field === "id") eventId = valueText;
+          else if (field === "retry") {
+            const parsed = Number.parseInt(valueText, 10);
+            if (Number.isFinite(parsed)) retry = parsed;
+          }
         }
       }
     }
