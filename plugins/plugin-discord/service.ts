@@ -1809,18 +1809,14 @@ export class DiscordService extends Service implements IDiscordService {
 			publishGuildMembershipEvidence: (acctId: string, guild: Guild) =>
 				parent.publishGuildMembershipEvidence(acctId, guild),
 			publishMemberMembershipDelta: (
-				options: Parameters<
-					DiscordService["publishMemberMembershipDelta"]
-				>[0],
+				options: Parameters<DiscordService["publishMemberMembershipDelta"]>[0],
 			) =>
 				parent.publishMemberMembershipDelta({
 					...options,
 					accountId: state?.accountId ?? options.accountId,
 				}),
 			publishMemberPermissionDelta: (
-				options: Parameters<
-					DiscordService["publishMemberPermissionDelta"]
-				>[0],
+				options: Parameters<DiscordService["publishMemberPermissionDelta"]>[0],
 			) =>
 				parent.publishMemberPermissionDelta({
 					...options,
@@ -1830,12 +1826,9 @@ export class DiscordService extends Service implements IDiscordService {
 				acctId: string,
 				reason: string,
 				worldIds?: string[],
-			) =>
-				parent.degradeMembershipForAccount(acctId, reason, worldIds),
+			) => parent.degradeMembershipForAccount(acctId, reason, worldIds),
 			renewSenderMembershipEvidence: (
-				options: Parameters<
-					DiscordService["renewSenderMembershipEvidence"]
-				>[0],
+				options: Parameters<DiscordService["renewSenderMembershipEvidence"]>[0],
 			) =>
 				parent.renewSenderMembershipEvidence({
 					...options,
