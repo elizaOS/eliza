@@ -1176,7 +1176,7 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
     expect(wide.length).toBe(140);
   });
 
-  test("sub-millisecond created_at precision keeps SQL and page ranking identical across surfaces", async () => {
+  test("sub-millisecond created_at precision keeps SQL and page ranking identical within a surface", async () => {
     // Two checkout orders whose created_at values differ ONLY in
     // PostgreSQL microseconds (identical after JS Date ms conversion),
     // inserted via raw SQL so the µs digits survive, with CONTROLLED ids:
@@ -1199,10 +1199,9 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
          'quoted', '2026-08-27T12:00:00.000200Z', '{}')
     `);
 
-    // SQL ranking: ...900Z (id ...b) is newer → page 1 = ...b, page 2 = ...a.
-    // A JS ms-truncating merge sees identical times and orders by id
-    // descending (...a first) while each surface prefix already contains
-    // both rows — the rank inversion duplicates one and strands the other.
+    // SQL ranking: the id ...a row (created .000900Z, newer µs) outranks
+    // ...b (.000200Z) despite ...a being lexicographically smaller — the
+    // inversion any JS ms+localeCompare merge would get wrong.
     const seen: string[] = [];
     for (let offset = 0; offset < 4; offset++) {
       const page = await paymentHistoryService.listPaymentStates(organizationId, 1, offset);
@@ -1216,6 +1215,54 @@ describe("listPaymentStates — projection boundary contracts (#26752 review)", 
         "checkout_order:11111111-1111-4111-8111-00000000000a",
         "checkout_order:11111111-1111-4111-8111-00000000000b",
       ]),
+    );
+  });
+
+  test("cross-surface UUID collision keeps pagination exact — surface partitions hydration", async () => {
+    // Authority ids are unique per TABLE, not across tables: a
+    // payment_request and a checkout_order may share one UUID. The union
+    // window must carry the surface with the id (final SQL tie-breaker) and
+    // hydration must query each table only with its OWN ids — otherwise a
+    // limit=1 page hydrates both rows and the walk duplicates one and
+    // strands the other (#26752 review r3 P1).
+    const sharedId = "11111111-2222-4222-8222-0000000000aa";
+    // Identical created_at in both tables: (created_at, id) is fully tied, so
+    // the surface discriminator is the ONLY thing separating the rows — this
+    // directly exercises the final SQL tie-breaker, not just partitioning.
+    const tiedInstant = "2026-08-27T12:00:02.000000Z";
+    await dbWrite.execute(sql`
+      INSERT INTO stripe_checkout_orders (
+        id, organization_id, initiated_by_user_id, client_request_key,
+        request_digest, purchase_type, credits_to_grant, charge_amount_cents,
+        currency, status, created_at, metadata
+      ) VALUES
+        (${sharedId}, ${organizationId}, ${userId},
+         'collide-key', repeat('a', 64), 'custom_amount', '1', 100, 'usd',
+         'quoted', ${tiedInstant}, '{}')
+    `);
+    await dbWrite.execute(sql`
+      INSERT INTO payment_requests (
+        id, organization_id, provider, amount_cents, currency, status,
+        payment_context, expires_at, created_at, metadata
+      ) VALUES
+        (${sharedId}, ${organizationId}, 'stripe', 200, 'USD', 'pending',
+         '{"kind":"any_payer"}'::jsonb, now() + interval '1 hour',
+         ${tiedInstant}, '{}'::jsonb)
+    `);
+
+    // Each limit=1 page contains exactly ONE row; the walk covers both
+    // prefixed ids exactly once.
+    const seen: string[] = [];
+    for (let offset = 0; offset < 4; offset++) {
+      const page = await paymentHistoryService.listPaymentStates(organizationId, 1, offset);
+      expect(page.length).toBeLessThan(2);
+      if (page.length === 0) break;
+      expect(seen.includes(page[0].id)).toBe(false);
+      seen.push(page[0].id);
+    }
+    expect(seen.length).toBe(2);
+    expect(new Set(seen)).toEqual(
+      new Set([`payment_request:${sharedId}`, `checkout_order:${sharedId}`]),
     );
   });
 
