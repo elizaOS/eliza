@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS "agent_backup_admission_claim_shards" (
   "work_kind" text NOT NULL,
   "shard_id" smallint NOT NULL,
   "last_turn" bigint NOT NULL DEFAULT 0,
+  "cycle_start_turn" bigint,
   "cycle_observed_at" timestamp with time zone,
   "cycle_max_cohort" bigint,
   "cycle_max_ordinal" integer,
@@ -17,6 +18,7 @@ CREATE TABLE IF NOT EXISTS "agent_backup_admission_claim_shards" (
   "scan_cursor_ordinal" integer,
   "scan_cursor_id" uuid,
   "last_admitted_work_id" uuid,
+  "last_admission_proof_turn" bigint,
   "updated_at" timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT "agent_backup_admission_claim_shards_pkey"
     PRIMARY KEY ("work_kind", "shard_id"),
@@ -47,3 +49,25 @@ CREATE TABLE IF NOT EXISTS "agent_backup_admission_claim_shards" (
             ("cycle_max_cohort", "cycle_max_ordinal", "cycle_max_id"))))
   ) IS TRUE)
 );
+--> statement-breakpoint
+ALTER TABLE "agent_backup_admission_claim_shards"
+  ADD COLUMN IF NOT EXISTS "cycle_start_turn" bigint,
+  ADD COLUMN IF NOT EXISTS "last_admission_proof_turn" bigint;
+--> statement-breakpoint
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE
+    conname = 'agent_backup_admission_claim_shards_proof_shape_check'
+    AND conrelid = 'agent_backup_admission_claim_shards'::regclass) THEN
+    ALTER TABLE "agent_backup_admission_claim_shards" ADD CONSTRAINT
+      "agent_backup_admission_claim_shards_proof_shape_check" CHECK ((
+        ("cycle_observed_at" IS NULL AND "cycle_start_turn" IS NULL
+          AND "last_admitted_work_id" IS NULL AND "last_admission_proof_turn" IS NULL)
+        OR ("cycle_observed_at" IS NOT NULL AND "cycle_start_turn" > 0
+          AND "cycle_start_turn" <= "last_turn"
+          AND (("last_admitted_work_id" IS NULL AND "last_admission_proof_turn" IS NULL)
+            OR ("last_admitted_work_id" IS NOT NULL
+              AND "last_admission_proof_turn" > "cycle_start_turn"
+              AND "last_admission_proof_turn" < "last_turn")))
+      ) IS TRUE);
+  END IF;
+END $$;

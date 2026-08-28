@@ -28,6 +28,12 @@ const pgSnapshot = customType<{ data: string }>({
   },
 });
 
+const pgXid8 = customType<{ data: string }>({
+  dataType() {
+    return "xid8";
+  },
+});
+
 export const AGENT_BACKUP_ADMISSION_SHARD_COUNT = 64;
 
 export const AGENT_BACKUP_ADMISSION_WORK_KINDS = [
@@ -182,6 +188,7 @@ export const agentBackupAdmissionClaimShards = pgTable(
     work_kind: text("work_kind").$type<AgentBackupAdmissionWorkKind>().notNull(),
     shard_id: smallint("shard_id").notNull(),
     last_turn: bigint("last_turn", { mode: "bigint" }).notNull().default(0n),
+    cycle_start_turn: bigint("cycle_start_turn", { mode: "bigint" }),
     cycle_observed_at: timestamp("cycle_observed_at", { withTimezone: true }),
     cycle_max_cohort: bigint("cycle_max_cohort", { mode: "bigint" }),
     cycle_max_ordinal: integer("cycle_max_ordinal"),
@@ -192,6 +199,7 @@ export const agentBackupAdmissionClaimShards = pgTable(
     scan_cursor_ordinal: integer("scan_cursor_ordinal"),
     scan_cursor_id: uuid("scan_cursor_id"),
     last_admitted_work_id: uuid("last_admitted_work_id"),
+    last_admission_proof_turn: bigint("last_admission_proof_turn", { mode: "bigint" }),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
@@ -249,6 +257,26 @@ export const agentBackupAdmissionClaimShards = pgTable(
         )
       )) IS TRUE`,
     ),
+    proof_shape_check: check(
+      "agent_backup_admission_claim_shards_proof_shape_check",
+      sql`((
+        ${table.cycle_observed_at} IS NULL
+        AND ${table.cycle_start_turn} IS NULL
+        AND ${table.last_admitted_work_id} IS NULL
+        AND ${table.last_admission_proof_turn} IS NULL
+      ) OR (
+        ${table.cycle_observed_at} IS NOT NULL
+        AND ${table.cycle_start_turn} > 0
+        AND ${table.cycle_start_turn} <= ${table.last_turn}
+        AND (
+          (${table.last_admitted_work_id} IS NULL
+            AND ${table.last_admission_proof_turn} IS NULL)
+          OR (${table.last_admitted_work_id} IS NOT NULL
+            AND ${table.last_admission_proof_turn} > ${table.cycle_start_turn}
+            AND ${table.last_admission_proof_turn} < ${table.last_turn})
+        )
+      )) IS TRUE`,
+    ),
   }),
 );
 
@@ -294,6 +322,12 @@ export const agentBackupAdmissionWork = pgTable(
     lease_expires_at: timestamp("lease_expires_at", { withTimezone: true }),
     /** Zero before first claim, then the one-based attempt component of every lease fence. */
     attempts: integer("attempts").notNull().default(0),
+    /** Trigger-owned durable proof of the exact claim cycle and transition. */
+    claim_cycle_start_turn: bigint("claim_cycle_start_turn", { mode: "bigint" }),
+    claim_proof_turn: bigint("claim_proof_turn", { mode: "bigint" }),
+    claim_proof_xid: pgXid8("claim_proof_xid"),
+    claim_proof_priority_pass: smallint("claim_proof_priority_pass"),
+    claim_proof_attempt: integer("claim_proof_attempt"),
     settled_at: timestamp("settled_at", { withTimezone: true }),
     settled_reason: text("settled_reason"),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -523,6 +557,24 @@ export const agentBackupAdmissionWork = pgTable(
         )
         AND ${table.attempts} >= 0
       ) IS TRUE`,
+    ),
+    claim_proof_shape_check: check(
+      "agent_backup_admission_work_claim_proof_shape_check",
+      sql`((
+        ${table.attempts} = 0
+        AND num_nonnulls(${table.claim_cycle_start_turn}, ${table.claim_proof_turn},
+          ${table.claim_proof_xid}, ${table.claim_proof_priority_pass},
+          ${table.claim_proof_attempt}) = 0
+      ) OR (
+        ${table.attempts} >= 1
+        AND ${table.claim_cycle_start_turn} > 0
+        AND ${table.claim_proof_turn} > 0
+        AND ${table.claim_proof_priority_pass} >= 0
+        AND ${table.claim_proof_attempt} = ${table.attempts}
+        AND num_nonnulls(${table.claim_cycle_start_turn}, ${table.claim_proof_turn},
+          ${table.claim_proof_xid}, ${table.claim_proof_priority_pass},
+          ${table.claim_proof_attempt}) = 5
+      )) IS TRUE`,
     ),
   }),
 );
