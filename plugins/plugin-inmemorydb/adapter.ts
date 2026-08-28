@@ -1096,11 +1096,27 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       throw new Error("getMemories cursor and offset are mutually exclusive");
     }
     const textContains = params.textContains?.trim().toLowerCase();
+    const participantRoomIds = params.entityId
+      ? new Set(
+          (
+            await this.storage.getWhere<StoredParticipant>(
+              COLLECTIONS.PARTICIPANTS,
+              (participant) => participant.entityId === params.entityId
+            )
+          ).map((participant) => participant.roomId)
+        )
+      : null;
     const memories = await this.storage.getWhere<StoredMemory>(COLLECTIONS.MEMORIES, (m) => {
-      // Match plugin-sql and core's process-local adapter: entityId establishes
-      // the SQL/RLS isolation principal; it is not a memory-row predicate.
-      // The in-memory adapter has no RLS session, so agent/room/accessContext
-      // below provide the corresponding storage and authorization boundaries.
+      // Match plugin-sql entity RLS: entityId is the isolation principal, not
+      // an author-row predicate. A principal sees every author's memories in
+      // rooms it participates in, plus its own agent-owned document records.
+      if (params.entityId && participantRoomIds) {
+        const tableName = storedMemoryTableName(m);
+        const agentDocument =
+          (tableName === "documents" || tableName === "document_fragments") &&
+          m.agentId === params.entityId;
+        if (!participantRoomIds.has(m.roomId) && !agentDocument) return false;
+      }
       if (params.agentId && m.agentId !== params.agentId) return false;
       if (params.roomId && m.roomId !== params.roomId) return false;
       if (params.worldId && m.worldId !== params.worldId) return false;
