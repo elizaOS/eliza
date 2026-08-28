@@ -13,6 +13,7 @@ import {
   acquireEphemeralPostgres,
   type EphemeralPostgres,
 } from "../../../lib/services/tenant-db/__tests__/ephemeral-postgres";
+import { installAgentNodeOccurrenceTriggerForTests } from "../../agent-node-occurrence-test-support";
 import {
   agentBackupNodeAdmissionCursors,
   agentBackupOrganizationAdmissionCursors,
@@ -52,7 +53,6 @@ const SANDBOX_ID = "00000000-0000-4000-8000-00000000e003";
 const WORK_ID = "11000000-0000-4000-8000-00000000e004";
 const NODE_RECORD_ID = "00000000-0000-4000-8000-00000000e005";
 const NODE_HISTORY_ID = "00000000-0000-4000-8000-00000000e006";
-const REARMED_NODE_HISTORY_ID = "00000000-0000-4000-8000-00000000e00a";
 const NODE_INCARNATION = "00000000-0000-4000-8000-00000000e007";
 const ACTIVATION_GENERATION = "00000000-0000-4000-8000-00000000e008";
 const DELETION_REQUEST_ID = "00000000-0000-4000-8000-00000000e009";
@@ -1015,43 +1015,114 @@ describe("backup admission reservation on real PostgreSQL", () => {
         throw new Error("real PostgreSQL reservation repositories were not initialized");
       }
       const claim = await claimOne(60_000);
-      await expect(
-        withLockedRow({
-          selectSql: "SELECT id FROM docker_nodes WHERE id = $1::uuid FOR UPDATE",
-          selectValues: [NODE_RECORD_ID],
-          run: () => reservationRepository!.reserveAndSettleAgentBackupAdmissionClaim({ claim }),
-          beforeRelease: async (locker) => {
-            await locker.query(
-              `INSERT INTO agent_node_incarnation_histories (
-                 id, docker_node_record_id, node_id, node_incarnation, fleet_kind,
-                 infrastructure_provider, provider_server_id, host_key_fingerprint
-               ) VALUES ($1::uuid, $2::uuid, $3, $4::uuid, 'robot', 'hetzner', NULL, $5)`,
-              [
-                REARMED_NODE_HISTORY_ID,
-                NODE_RECORD_ID,
-                NODE_ID,
-                NODE_INCARNATION,
-                "sha256:reservation-postgres-host-key",
-              ],
-            );
-            const rearmed = await locker.query<{ current_node_history_id: string }>(
-              `UPDATE docker_nodes
-               SET current_node_history_id = $2::uuid, updated_at = clock_timestamp()
-               WHERE id = $1::uuid
-               RETURNING current_node_history_id::text`,
-              [NODE_RECORD_ID, REARMED_NODE_HISTORY_ID],
-            );
-            expect(rearmed.rows).toEqual([{ current_node_history_id: REARMED_NODE_HISTORY_ID }]);
-          },
-        }),
-      ).rejects.toThrow(/already reserved with a different payload/i);
+      const structuralAuthority = await control.query<{ conname: string }>(
+        `SELECT conname
+         FROM pg_constraint
+         WHERE conrelid = 'docker_nodes'::regclass
+           AND conname IN (
+             'docker_nodes_current_node_history_fkey',
+             'docker_nodes_node_occurrence_shape_check'
+           )
+         ORDER BY conname`,
+      );
+      expect(structuralAuthority.rows).toEqual([
+        { conname: "docker_nodes_current_node_history_fkey" },
+        { conname: "docker_nodes_node_occurrence_shape_check" },
+      ]);
+
+      // pushSchema supplies the live post-0300 structural authority; install
+      // the exact function and trigger statements from 0301 that Drizzle
+      // cannot derive, then prove its write guard before exercising rearm.
+      await installAgentNodeOccurrenceTriggerForTests((statement) => control!.query(statement));
+      let rearmedHistoryId: string | null = null;
+      try {
+        await expect(
+          control.query(
+            `UPDATE docker_nodes SET current_node_history_id = $2::uuid
+             WHERE id = $1::uuid`,
+            [NODE_RECORD_ID, DELETION_REQUEST_ID],
+          ),
+        ).rejects.toThrow(/current node history id is trigger-owned/i);
+        await expect(
+          withLockedRow({
+            selectSql: "SELECT id FROM docker_nodes WHERE id = $1::uuid FOR UPDATE",
+            selectValues: [NODE_RECORD_ID],
+            run: () => reservationRepository!.reserveAndSettleAgentBackupAdmissionClaim({ claim }),
+            beforeRelease: async (locker) => {
+              const disarmed = await locker.query<{
+                current_node_history_id: string | null;
+                node_incarnation: string | null;
+              }>(
+                `UPDATE docker_nodes
+                 SET node_incarnation = NULL, updated_at = clock_timestamp()
+                 WHERE id = $1::uuid
+                 RETURNING current_node_history_id::text, node_incarnation::text`,
+                [NODE_RECORD_ID],
+              );
+              expect(disarmed.rows).toEqual([
+                { current_node_history_id: null, node_incarnation: null },
+              ]);
+
+              const rearmed = await locker.query<{
+                current_node_history_id: string;
+                node_incarnation: string;
+              }>(
+                `UPDATE docker_nodes
+                 SET node_incarnation = $2::uuid, updated_at = clock_timestamp()
+                 WHERE id = $1::uuid
+                 RETURNING current_node_history_id::text, node_incarnation::text`,
+                [NODE_RECORD_ID, NODE_INCARNATION],
+              );
+              rearmedHistoryId = rearmed.rows[0]?.current_node_history_id ?? null;
+              expect(rearmed.rows).toEqual([
+                {
+                  current_node_history_id: expect.any(String),
+                  node_incarnation: NODE_INCARNATION,
+                },
+              ]);
+            },
+          }),
+        ).rejects.toThrow(/already reserved with a different payload/i);
+      } finally {
+        await control.query(`
+          DROP TRIGGER IF EXISTS docker_nodes_incarnation_history ON docker_nodes;
+          DROP FUNCTION IF EXISTS journal_agent_node_incarnation();
+        `);
+      }
       await expectNoPartialReservation();
-      const occurrence = await control.query<{ current_node_history_id: string }>(
-        `SELECT current_node_history_id::text
-         FROM docker_nodes WHERE id = $1::uuid`,
+      expect(rearmedHistoryId).not.toBeNull();
+      expect(rearmedHistoryId).not.toBe(NODE_HISTORY_ID);
+      const occurrence = await control.query<{
+        current_node_history_id: string;
+        history_count: number;
+        node_incarnation: string;
+      }>(
+        `SELECT node.current_node_history_id::text, node.node_incarnation::text,
+           count(history.id)::integer AS history_count
+         FROM docker_nodes AS node
+         JOIN agent_node_incarnation_histories AS history
+           ON history.docker_node_record_id = node.id
+          AND history.node_incarnation = node.node_incarnation
+         WHERE node.id = $1::uuid
+         GROUP BY node.current_node_history_id, node.node_incarnation`,
         [NODE_RECORD_ID],
       );
-      expect(occurrence.rows).toEqual([{ current_node_history_id: REARMED_NODE_HISTORY_ID }]);
+      expect(occurrence.rows).toEqual([
+        {
+          current_node_history_id: rearmedHistoryId,
+          history_count: 2,
+          node_incarnation: NODE_INCARNATION,
+        },
+      ]);
+      const productionTrigger = await control.query<{ installed: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1 FROM pg_trigger
+           WHERE tgrelid = 'docker_nodes'::regclass
+             AND tgname = 'docker_nodes_incarnation_history'
+             AND NOT tgisinternal
+         ) AS installed`,
+      );
+      expect(productionTrigger.rows).toEqual([{ installed: false }]);
     },
     TEST_TIMEOUT,
   );
