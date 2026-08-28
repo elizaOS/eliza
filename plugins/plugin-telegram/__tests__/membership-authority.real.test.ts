@@ -1581,6 +1581,7 @@ describe("telegram membership authority vertical (real PGlite)", () => {
       membershipGates: Map<string, Promise<unknown>>;
       settledMembershipGates: Map<string, unknown>;
       pendingMembershipTransitions: Map<string, unknown[]>;
+      replayingMembershipTransitions: Set<string>;
       membershipGateFailures: Set<string>;
       handleMyChatMemberUpdate: (
         update: unknown,
@@ -1599,6 +1600,7 @@ describe("telegram membership authority vertical (real PGlite)", () => {
       ["default", { authority, botTelegramUserId: "900001" }],
     ]);
     service.pendingMembershipTransitions = new Map();
+    service.replayingMembershipTransitions = new Set();
     service.membershipGateFailures = new Set();
     await service.handleMyChatMemberUpdate({
       chat: { id: CHAT_ID, type: "supergroup" },

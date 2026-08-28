@@ -75,13 +75,13 @@ export class TelegramStandaloneService extends Service {
    * authority the full TelegramService uses, so standalone group admission
    * and bot kick/re-add tombstoning cannot bypass the membership authority.
    * Null while bootstrap is pending; the message gate instance fails closed
-   * (pending) until the gate settles absent/failed.
+   * (pending) until the gate settles absent/failed. Constructed lazily in
+   * launch() with the REAL runtime: every warning/denial path in
+   * TelegramMembershipMessageGate dereferences runtime.agentId, so a
+   * null-runtime gate would throw instead of denying (and throw instead of
+   * the documented absent-authority allow mode).
    */
-  private readonly admissionGate = new TelegramMembershipMessageGate({
-    runtime: null as unknown as IAgentRuntime,
-    authority: null,
-    botTelegramUserId: null,
-  });
+  private admissionGate: TelegramMembershipMessageGate | null = null;
 
   static async start(
     runtime: IAgentRuntime,
@@ -109,7 +109,7 @@ export class TelegramStandaloneService extends Service {
    * allow mode.
    */
   private async bootstrapMembershipGate(bot: Telegraf<Context>): Promise<void> {
-    this.admissionGate.markPending();
+    this.gate().markPending();
     try {
       const botInfo = await bot.telegram.getMe();
       const gate = await createTelegramMembershipGate({
@@ -118,14 +118,14 @@ export class TelegramStandaloneService extends Service {
       });
       if (gate) {
         this.membershipGate = gate;
-        this.admissionGate.rebind(gate.authority, gate.botTelegramUserId);
+        this.gate().rebind(gate.authority, gate.botTelegramUserId);
       } else {
-        this.admissionGate.markAbsent();
+        this.gate().markAbsent();
       }
     } catch (error) {
       // error-policy:J2 Bootstrap failure must not degrade to the absent-
       // authority allow mode: mark broken so group admission fails closed.
-      this.admissionGate.markBroken();
+      this.gate().markBroken();
       this.runtime.reportError(
         "telegram-standalone:membership-bootstrap",
         error,
@@ -184,7 +184,7 @@ export class TelegramStandaloneService extends Service {
       // error-policy:J2 The tombstone/clear could not be applied; the scope
       // may still authorize on stale evidence. Mark the admission gate
       // broken so every group admission fails closed.
-      this.admissionGate.markBroken();
+      this.gate().markBroken();
       this.membershipGate = null;
       this.runtime.reportError(
         "telegram-standalone:membership-scope-health",
@@ -201,9 +201,14 @@ export class TelegramStandaloneService extends Service {
 
   private membershipGate: TelegramMembershipGate | null = null;
 
-  /** The admission gate consulted for standalone group admission. */
+  /**
+   * The admission gate consulted for standalone group admission. Never null
+   * once launch() begins (constructed with the real runtime there); the
+   * non-null assertion documents that bot.on("message") handlers only run
+   * after launch() has created it.
+   */
   private gate(): TelegramMembershipMessageGate {
-    return this.admissionGate;
+    return this.admissionGate as TelegramMembershipMessageGate;
   }
 
   private async launch(): Promise<void> {
@@ -222,6 +227,15 @@ export class TelegramStandaloneService extends Service {
       const bot = new Telegraf(botToken, { telegram: { apiRoot } });
       this.bot = bot;
       this.botToken = botToken;
+      // Construct the admission gate with the REAL runtime BEFORE any
+      // handler can consult it: the gate's warning/denial paths
+      // dereference runtime.agentId, so a null-runtime gate would throw
+      // instead of returning a decision.
+      this.admissionGate = new TelegramMembershipMessageGate({
+        runtime: this.runtime,
+        authority: null,
+        botTelegramUserId: null,
+      });
       claimTelegramPollerToken(botToken, {
         bot,
         mode: "standalone",
@@ -233,6 +247,12 @@ export class TelegramStandaloneService extends Service {
         markTelegramPollerUpdate(botToken, bot);
         await handleTelegramStandaloneMessage(this.runtime, ctx, {
           admissionGate: this.gate(),
+          // Live membership-status provider so the gate's reconcile path can
+          // admit an ordinary active member whose scope evidence is missing
+          // or expired — without it authority-backed standalone groups could
+          // only admit principals with already-current durable evidence.
+          getChatMember: async (chatId, userId) =>
+            await ctx.telegram.getChatMember(chatId, Number(userId)),
         });
       });
 

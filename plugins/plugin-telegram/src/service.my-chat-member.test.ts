@@ -94,6 +94,14 @@ function makeService(gate: GateFake | null) {
     service as unknown as { settledMembershipGates: Map<string, unknown> }
   ).settledMembershipGates = new Map();
   (
+    service as unknown as { replayingMembershipTransitions: Set<string> }
+  ).replayingMembershipTransitions = new Set();
+  (
+    service as unknown as {
+      membershipBotIdentity: Map<string, Promise<unknown>>;
+    }
+  ).membershipBotIdentity = new Map();
+  (
     service as unknown as {
       messageManager: { markMembershipGateBroken: ReturnType<typeof vi.fn> };
     }
@@ -505,6 +513,93 @@ describe("my_chat_member delivery contract", () => {
     await new Promise((r) => setTimeout(r, 10));
     expect(authority.markScopeUnavailable).toHaveBeenCalledTimes(1);
     gateFactory.create = null;
+  });
+
+  it("drains live arrivals behind the queued startup replay in arrival order", async () => {
+    // RP R1 finding (medium): the replay marks the gate settled and drains
+    // the queue while Telegraf may concurrently dispatch a NEWER live
+    // transition — the live one could serialize into the authority ahead of
+    // older queued entries (kick-then-re-add inverting). The replay fence
+    // re-queues live arrivals and drains them AFTER the queued ones.
+    let resolveGate: (gate: GateFake | null) => void = () => {};
+    const gatePromise = new Promise<GateFake | null>((resolve) => {
+      resolveGate = resolve;
+    });
+    // A genuine re-add: old status revoked (kicked) -> new status member.
+    const reAddUpdate = {
+      ...botMemberUpdate("member"),
+      old_chat_member: {
+        status: "kicked",
+        user: { id: 777, is_bot: true },
+      },
+    };
+    const { service } = makeService(null);
+    const internals = service as unknown as {
+      membershipGates: Map<string, Promise<GateFake | null>>;
+      settledMembershipGates: Map<string, GateFake | null>;
+      pendingMembershipTransitions: Map<string, unknown[]>;
+      replayingMembershipTransitions: Set<string>;
+      handleMyChatMemberUpdate: (
+        update: unknown,
+        accountId?: string,
+      ) => Promise<void>;
+      queuePendingMembershipTransition: (
+        update: unknown,
+        accountId: string,
+      ) => void;
+    };
+    internals.membershipGates.set("acct", gatePromise);
+    internals.pendingMembershipTransitions = new Map();
+    internals.replayingMembershipTransitions = new Set();
+    const order: string[] = [];
+    const authority = {
+      markScopeUnavailable: vi.fn(async () => {
+        // Simulate the live re-add arrival landing WHILE the queued kick's
+        // authority write is in flight. UNFENCED, this dispatch would run
+        // to completion first and log "clear" before "kick".
+        await internals.handleMyChatMemberUpdate(reAddUpdate, "acct");
+        order.push("kick");
+      }),
+      clearScopeRemoval: vi.fn(async () => {
+        order.push("clear");
+      }),
+    };
+    const settled = new Map<string, GateFake | null>();
+    internals.settledMembershipGates = settled as never;
+    (
+      service as unknown as { getMembershipGate: ReturnType<typeof vi.fn> }
+    ).getMembershipGate = vi.fn(async () => {
+      if (settled.has("acct")) {
+        return settled.get("acct") ?? null;
+      }
+      const gate = await gatePromise;
+      settled.set("acct", gate);
+      return gate;
+    });
+
+    // Queue a kick for chat -100999 while the gate bootstraps.
+    await internals.handleMyChatMemberUpdate(botMemberUpdate("kicked"), "acct");
+    expect(internals.pendingMembershipTransitions.get("acct")?.length).toBe(1);
+
+    // Resolve the gate: the replay starts and drains the queued kick. The
+    // kick's authority write triggers a LIVE re-add arrival for another
+    // chat; the fence must queue it behind the drain, not let it dispatch
+    // concurrently.
+    resolveGate({
+      authority,
+      connectorAccountId: "connector-1",
+      botTelegramUserId: "777",
+    });
+    await gatePromise;
+    await new Promise((r) => setTimeout(r, 20));
+
+    // The queued kick was tombstoned...
+    expect(authority.markScopeUnavailable).toHaveBeenCalledTimes(1);
+    // ...and the live re-add (which raced mid-drain) dispatched AFTER the
+    // queued kick — arrival order preserved across the replay/live boundary
+    // — and drained fully (queue empty).
+    expect(order).toEqual(["kick", "clear"]);
+    expect(internals.pendingMembershipTransitions.has("acct")).toBe(false);
   });
 
   it("registers a my_chat_member handler during message-handler setup", async () => {
