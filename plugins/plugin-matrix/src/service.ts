@@ -1602,21 +1602,25 @@ export class MatrixService extends Service implements IMatrixService {
     // for the whole reconnect gap. Attempt ALL rooms, retain the first
     // failure, and rethrow it after the loop so the reconnect handler's
     // catch logs it and the next sync retries — a swallow would disguise a
-    // scope that never degraded (error policy: J2, rethrow with cause).
+    // scope that never degraded. A boolean flag marks failure: the rejection
+    // value itself may be null (error-policy:J7 — a failed degrade write
+    // must not kill the degrade loop; the aggregate surfaces after it).
     let firstFailure: unknown = null;
+    let sawFailure = false;
     for (const room of state.client.getRooms().filter((r) => r.getMyMembership() === "join")) {
       try {
         await authority.markScopeStale({ roomId: room.roomId, reason });
       } catch (error) {
-        if (firstFailure === null) {
+        if (!sawFailure) {
           firstFailure = error;
+          sawFailure = true;
         }
         logger.error(
           `Matrix membership scope stale-degrade failed for ${room.roomId}: ${error instanceof Error ? error.message : String(error)}`
         );
       }
     }
-    if (firstFailure !== null) {
+    if (sawFailure) {
       throw firstFailure;
     }
   }

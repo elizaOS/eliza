@@ -496,7 +496,7 @@ describe("fresh roster parsing matches the homeserver /members envelope", () => 
 });
 
 describe("reconnect degrade attempts every joined room even when one durable write fails", () => {
-  it("one failed markScopeStale write does not abort degradation of later rooms (ss251 CR control)", async () => {
+  it("one failed markScopeStale write does not abort degradation of later rooms", async () => {
     const h = createHarness();
     const first = createRoomDouble({ roomId: "!first:example" });
     const second = createRoomDouble({ roomId: "!second:example" });
@@ -530,5 +530,27 @@ describe("reconnect degrade attempts every joined room even when one durable wri
       roomId: "!second:example",
       reason: "sync_error",
     });
+  });
+});
+
+describe("non-Error rejection values still surface from the degrade loop", () => {
+  it("a null rejection is retained and rethrown, not swallowed by the sentinel", async () => {
+    const h = createHarness();
+    const first = createRoomDouble({ roomId: "!first:example" });
+    const second = createRoomDouble({ roomId: "!second:example" });
+    h.client.getRooms.mockReturnValue([first, second]);
+    h.authority.markScopeStale.mockImplementation(async (input: { roomId: string }) => {
+      if (input.roomId === "!first:example") {
+        throw null; // eslint-disable-line no-throw-literal -- the sentinel-under-test
+      }
+    });
+    await expect(
+      (
+        h.service as unknown as {
+          degradeAllMembershipScopes: (s: unknown, reason: string) => Promise<void>;
+        }
+      ).degradeAllMembershipScopes(h.state, "sync_error")
+    ).rejects.toBeNull();
+    expect(h.authority.markScopeStale).toHaveBeenCalledTimes(2);
   });
 });
