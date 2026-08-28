@@ -238,7 +238,11 @@ class MiniTrajectoryDb {
 interface Harness {
 	db: MiniTrajectoryDb;
 	adapter: InMemoryDatabaseAdapter;
-	makeService(): Promise<TrajectoriesService>;
+	/** The full runtime adapter (cache domain + SQL executor surface). */
+	runtimeAdapter: InMemoryDatabaseAdapter;
+	makeService(
+		runtimeAdapterOverride?: InMemoryDatabaseAdapter,
+	): Promise<TrajectoriesService>;
 }
 
 async function makeHarness(): Promise<Harness> {
@@ -264,10 +268,12 @@ async function makeHarness(): Promise<Harness> {
 			await work({ execute: (sqlText: string) => db.execute(sqlText) });
 		},
 	};
-	const makeService = async (): Promise<TrajectoriesService> => {
+	const makeService = async (
+		runtimeAdapterOverride?: InMemoryDatabaseAdapter,
+	): Promise<TrajectoriesService> => {
 		const runtime = {
 			agentId: AGENT_ID,
-			adapter: runtimeAdapter,
+			adapter: runtimeAdapterOverride ?? runtimeAdapter,
 			getService: () => null,
 			getServicesByType: () => [],
 			reportError: () => {},
@@ -282,7 +288,7 @@ async function makeHarness(): Promise<Harness> {
 		await service.initialize();
 		return service;
 	};
-	return { db, adapter, makeService };
+	return { db, adapter, runtimeAdapter, makeService };
 }
 
 /** Drive the REAL public capture pipeline with a tool-result carrier. */
@@ -391,6 +397,47 @@ describe("TrajectoriesService detail reader consumes the persisted manifest ledg
 		expect(
 			(detail?.metadata as Record<string, unknown>)?.contentManifest,
 		).toEqual([]);
+		await reader.stop();
+		await harness.adapter.close();
+	}, 30_000);
+
+	it("carriers that authorized content but a failed publication surface unavailable, never a fabricated empty manifest", async () => {
+		const harness = await makeHarness();
+		// The writer's adapter accepts reads but every ledger write throws —
+		// both the shard-row setCaches and the head compareAndSwapCache — so
+		// the production publish path (best-effort by design) leaves no head
+		// behind while the trajectory's own carriers DID authorize content
+		// refs. The reader must not report [] for that.
+		const runtimeAdapter = Object.create(
+			harness.runtimeAdapter,
+		) as typeof harness.runtimeAdapter & {
+			setCaches: (
+				entries: Array<{ key: string; value: unknown }>,
+			) => Promise<boolean>;
+			compareAndSwapCache: (
+				key: string,
+				expectedRevision: number | null,
+				nextRevision: number,
+				value: unknown,
+			) => Promise<boolean>;
+		};
+		const failWrite = async (): Promise<boolean> => {
+			throw new Error("simulated ledger write failure");
+		};
+		runtimeAdapter.setCaches = failWrite;
+		runtimeAdapter.compareAndSwapCache = failWrite;
+		const writer = await harness.makeService(runtimeAdapter);
+		const trajectoryId = await captureToolTrajectory(writer, [
+			{ ref: "unpublished.txt", start: 0, end: 80 },
+		]);
+		await writer.stop();
+
+		const reader = await harness.makeService();
+		const detail = await reader.getTrajectoryDetail(trajectoryId);
+		expect(detail).not.toBeNull();
+		expect(
+			(detail?.metadata as Record<string, unknown>)?.contentManifest,
+		).toEqual({ unavailable: true });
 		await reader.stop();
 		await harness.adapter.close();
 	}, 30_000);
