@@ -150,6 +150,12 @@ let subscriptionFunded = false;
 let leaseFailure: Error | undefined;
 const isSubscriptionFundedOrganization = mock(async () => subscriptionFunded);
 const isOptimisticEligible = mock(() => eligible);
+const inferenceBalanceFence = {
+  lowerCommittedBalance: mock(async () => undefined),
+  publishAuthoritativeBalance: mock(async () => undefined),
+};
+const createInferenceAdmissionBalanceFence = mock(() => inferenceBalanceFence);
+
 const acquireInferenceAdmissionLease = mock(
   async (params: { organizationId: string; requestId: string; estimatedCostUsd: number }) => {
     if (leaseFailure) throw leaseFailure;
@@ -216,6 +222,7 @@ mock.module("./inference-billing-fast-path", () => ({
 }));
 mock.module("./inference-admission-gate", () => ({
   acquireInferenceAdmissionLease,
+  createInferenceAdmissionBalanceFence,
   inferenceSettlementAmounts: (_lease: unknown, actualCostUsd: number) => ({
     balanceBackedUsd: actualCostUsd,
     gateConsumedUsd: actualCostUsd,
@@ -279,6 +286,9 @@ async function hydratePricing(model: string): Promise<void> {
   expect(background).toHaveLength(1);
   await background[0];
   acquireInferenceAdmissionLease.mockClear();
+  createInferenceAdmissionBalanceFence.mockClear();
+  inferenceBalanceFence.lowerCommittedBalance.mockClear();
+  inferenceBalanceFence.publishAuthoritativeBalance.mockClear();
 }
 
 beforeEach(() => {
@@ -305,6 +315,9 @@ beforeEach(() => {
   admitInferenceChargeViaLedger.mockClear();
   optimisticSettle.mockClear();
   acquireInferenceAdmissionLease.mockClear();
+  createInferenceAdmissionBalanceFence.mockClear();
+  inferenceBalanceFence.lowerCommittedBalance.mockClear();
+  inferenceBalanceFence.publishAuthoritativeBalance.mockClear();
   settleInferenceAdmissionLease.mockClear();
   markInferenceAdmissionLeaseDispatched.mockClear();
   isOptimisticEligible.mockClear();
@@ -465,7 +478,7 @@ test("warm Worker admission writes only the Durable Object lease before provider
     },
     0.01,
     "deferred",
-    { preserveBalanceHintDuringFencedHandoff: true },
+    { preserveBalanceHintDuringFencedHandoff: true, inferenceBalanceFence },
   );
   expect(settleInferenceAdmissionLease).toHaveBeenCalledTimes(1);
   expect(settleInferenceAdmissionLease.mock.calls[0]?.[1]).toBe(0.01);
@@ -482,6 +495,9 @@ test("strong proof on and off each acquire exactly one Durable Object lease", as
 
   for (const strongProof of [credential, undefined]) {
     acquireInferenceAdmissionLease.mockClear();
+  createInferenceAdmissionBalanceFence.mockClear();
+  inferenceBalanceFence.lowerCommittedBalance.mockClear();
+  inferenceBalanceFence.publishAuthoritativeBalance.mockClear();
     await admitOrganizationInference({
       ...admissionParams(model, []),
       ...(strongProof ? { credential: strongProof } : {}),
@@ -559,6 +575,7 @@ test("unknown provider cost retains the admitted estimate and wins a later zero 
   expect(debitInferenceCost.mock.calls[0]?.[2]).toBe("deferred");
   expect(debitInferenceCost.mock.calls[0]?.[3]).toEqual({
     preserveBalanceHintDuringFencedHandoff: true,
+    inferenceBalanceFence,
   });
   expect(settleInferenceAdmissionLease).toHaveBeenCalledTimes(1);
   expect(settleInferenceAdmissionLease.mock.calls[0]?.[1]).toBeCloseTo(
@@ -630,6 +647,9 @@ test("the exact Durable Object path admits when balance equals the estimate", as
   if (!quotedLease) throw new Error("expected quoted inference lease");
 
   acquireInferenceAdmissionLease.mockClear();
+  createInferenceAdmissionBalanceFence.mockClear();
+  inferenceBalanceFence.lowerCommittedBalance.mockClear();
+  inferenceBalanceFence.publishAuthoritativeBalance.mockClear();
   gateBalance = quotedLease.estimatedCostUsd;
   const background: Promise<unknown>[] = [];
   const request = admissionParams(model, background);
@@ -815,6 +835,7 @@ test("warm Worker affiliate admission has zero pre-dispatch repository calls", a
     billingSource: "bitrouter",
     actualCost: 0.02,
     preserveInferenceBalanceHint: true,
+    inferenceBalanceFence,
     reservationMetadata: {
       affiliatePayout: {
         sourceId: `ai_billing:affiliate:${leaseParams.requestId}`,

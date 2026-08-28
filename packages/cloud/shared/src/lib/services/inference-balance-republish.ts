@@ -45,7 +45,12 @@ export async function republishOrgBalanceHintAfterDebit(
   organizationId: string,
   balanceUsd: number,
   balanceRevision: string,
+  options: {
+    publishAuthoritativeBalance?: (balanceUsd: number, balanceRevision: string) => Promise<void>;
+  } = {},
 ): Promise<void> {
   const balanceAt = Date.now();
+  // Fence the committed revision before exposing its eventually consistent hint.
+  await options.publishAuthoritativeBalance?.(balanceUsd, balanceRevision);
   await republishOrgBalanceHint(organizationId, balanceUsd, balanceAt, balanceRevision);
 }
