@@ -26,6 +26,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentButton, getViewRegistry } from "./agent-surface";
 import { registerAppShellPage } from "./app-shell-registry";
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "./config/boot-config";
+import type { AuthStatusState } from "./hooks/useAuthStatus";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 import { resetUiRegistryHostForTests } from "./registry-host";
 import { getActiveSurfaceRealmScope } from "./surface-realm-broker";
@@ -52,6 +53,28 @@ const authStatusMock = vi.hoisted(() => ({
   refetch: vi.fn(),
   use: vi.fn(),
 }));
+
+const authenticatedAuthStatus = vi.hoisted(
+  () =>
+    ({
+      phase: "authenticated",
+      identity: {
+        id: "test-user",
+        displayName: "Test User",
+        kind: "owner",
+      },
+      session: {
+        id: "test-session",
+        kind: "local",
+        expiresAt: null,
+      },
+      access: {
+        mode: "local",
+        passwordConfigured: true,
+        ownerConfigured: true,
+      },
+    }) satisfies AuthStatusState,
+);
 
 const cloudOriginMock = vi.hoisted(() => ({
   agentless: false,
@@ -313,7 +336,10 @@ vi.mock("./hooks/useAuthStatus", () => ({
   useAuthStatus: (options: { skip?: boolean } = {}) => {
     authStatusMock.use(options);
     return {
-      state: { phase: authStatusMock.phase },
+      state:
+        authStatusMock.phase === "authenticated"
+          ? authenticatedAuthStatus
+          : { phase: authStatusMock.phase },
       refetch: authStatusMock.refetch,
     };
   },
@@ -331,12 +357,7 @@ vi.mock("./hooks/useAuthStatus", () => ({
   // same static phase in AuthStatusState shape.
   getAuthStatusSnapshot: () =>
     authStatusMock.phase === "authenticated"
-      ? {
-          phase: "authenticated",
-          identity: { id: "test-user" },
-          session: { id: "test-session" },
-          access: {},
-        }
+      ? authenticatedAuthStatus
       : { phase: "unauthenticated" },
   subscribeAuthStatus: () => vi.fn(),
 }));
