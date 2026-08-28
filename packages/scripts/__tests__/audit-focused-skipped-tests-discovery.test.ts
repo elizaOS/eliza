@@ -371,10 +371,22 @@ describe("anti-larp test discovery", () => {
       `,
       `
         const test = require("node:test");
+        globalThis.process = { platform: "win32" };
+        const gate = process.platform === "win32";
+        test("case five", { skip: gate }, () => {});
+      `,
+      `
+        const test = require("node:test");
+        global.process = { platform: "win32" };
+        const gate = process.platform === "win32";
+        test("case six", { skip: gate }, () => {});
+      `,
+      `
+        const test = require("node:test");
         require = () => ({ platform: () => "win32" });
         const os = require("node:os");
         const gate = os.platform() === "win32";
-        test("case five", { skip: gate }, () => {});
+        test("case seven", { skip: gate }, () => {});
       `,
     ];
     for (const source of reassignedRuntimeRoots) {

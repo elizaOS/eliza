@@ -750,7 +750,17 @@ function assignmentTargetHasImplicitRoot(node, rootName) {
     ts.isElementAccessExpression(value)
   ) {
     const root = baseIdentifier(value);
-    return root?.text === rootName && nearestBinding(root) === undefined;
+    if (root?.text === rootName && nearestBinding(root) === undefined) {
+      return true;
+    }
+    const chain = callChain(value);
+    return (
+      rootName === "process" &&
+      (chain?.[0] === "globalThis" || chain?.[0] === "global") &&
+      chain[1] === "process" &&
+      root !== undefined &&
+      nearestBinding(root) === undefined
+    );
   }
   if (ts.isArrayLiteralExpression(value)) {
     return value.elements.some((element) =>
