@@ -280,8 +280,11 @@ Staging and production inference require:
 `INFERENCE_AUTH_CACHE_ENABLED="true"` is inert unless
 `INFERENCE_STRONG_REVOCATION_ENABLED="true"`. Staging and production require
 the revocation-fenced positive cache. The release reconciler deploys and
-certifies the exact source in staging before the same commit can reach main or
-production, so a failed latency or revocation probe leaves production on its
+certifies the exact source in staging before the same commit can reach main.
+That certificate proves release identity and generic staging health, but does
+not include the auth-latency or revocation probe results. The production
+workflow dispatch must remain operator-held until both probes pass on the
+certificate's exact source tree; a failed probe leaves production on its
 previous authoritative configuration. The thin entry has its own
 `THIN_INFERENCE_ENTRY_ENABLED` rollout control.
 The thin entry lazily evaluates only the matched generative route module rather
