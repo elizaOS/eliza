@@ -490,6 +490,13 @@ import {
   type SlackMembershipReadResult,
 } from "./membership";
 import {
+  AUTHORITY_UUID_PATTERN,
+  resolveMembershipService,
+  type SlackMembershipPublisher,
+  type SlackMembershipRuntimeIds,
+  slackMembershipAccountId,
+} from "./membership-authority";
+import {
   extractSlackEventWorkspace,
   SlackAccountPolicyResolver,
   type SlackInboundPolicyDecision,
@@ -584,6 +591,12 @@ export class SlackService extends Service implements ISlackService {
   private defaultAccountId = DEFAULT_ACCOUNT_ID;
   private accountStates: Map<string, SlackAccountRuntime> = new Map();
   private accountStarts: Map<string, Promise<SlackAccountRuntime>> = new Map();
+  /**
+   * Canonical membership publishers per account: publishes Web API roster
+   * evidence to the MembershipService authority when one is registered.
+   * Absent (and membership stays runtime-participation-only) otherwise.
+   */
+  private membershipPublishers = new Map<string, SlackMembershipPublisher>();
   private userCache: Map<string, SlackUser> = new Map();
   private channelCache: Map<string, SlackChannel> = new Map();
   private isConnected = false;
@@ -1009,6 +1022,7 @@ export class SlackService extends Service implements ISlackService {
       );
 
       await this.ensureWorkspaceExists(accountId);
+      await this.initMembershipPublisher(accountId, teamId);
       return state;
     })();
 
@@ -1039,6 +1053,7 @@ export class SlackService extends Service implements ISlackService {
         );
       }
       this.accountStates.clear();
+      this.membershipPublishers.clear();
       this.syncDefaultAccountAliases();
       return;
     }
@@ -1053,6 +1068,271 @@ export class SlackService extends Service implements ISlackService {
         { src: "plugin:slack", agentId: this.runtime.agentId },
         "Slack service stopped",
       );
+    }
+  }
+
+  /**
+   * Constructs the canonical membership publisher for one account when a
+   * MembershipService authority is registered. The connector-account row is
+   * upserted through the ConnectorAccountManager so the authority's FK
+   * resolves to a stable durable UUID; a bootstrap failure is reported and
+   * leaves the publisher absent (legacy behavior) rather than crashing the
+   * account connection.
+   */
+  private async initMembershipPublisher(
+    accountId: string,
+    teamId: string,
+  ): Promise<void> {
+    let authority: import("@elizaos/core").MembershipService | null = null;
+    try {
+      authority = resolveMembershipService(this.runtime);
+    } catch (cause) {
+      // error-policy:J4 user-facing degrade: a runtime whose service registry
+      // cannot answer (harness runtimes without getService) degrades to the
+      // visibly-distinct no-authority mode; the failure is surfaced, not
+      // silently treated as healthy.
+      this.runtime.reportError?.(
+        "slack-membership-authority-resolve",
+        new ElizaError("Slack membership authority resolution failed", {
+          code: "SLACK_MEMBERSHIP_AUTHORITY_RESOLVE_FAILED",
+          context: { accountId },
+          cause,
+        }),
+      );
+      authority = null;
+    }
+    if (!authority) {
+      this.runtime.logger.debug(
+        { src: "plugin:slack", accountId },
+        "canonical MembershipService authority not registered; membership evidence is not published",
+      );
+      return;
+    }
+    try {
+      const { getConnectorAccountManager } = await import("@elizaos/core");
+      const manager = getConnectorAccountManager(this.runtime);
+      const accountRecordId = `slack-membership-${accountId}`;
+      const prior = await manager.getAccount(
+        SLACK_SERVICE_NAME,
+        accountRecordId,
+      );
+      const now = Date.now();
+      // The authority requires the connectorAccountId to be a versioned UUID
+      // matching a durable connector-account row. Storages that echo
+      // non-UUID record ids (in-memory fallbacks) get a deterministic v5 id
+      // persisted AS the record id, so the authority's FK resolves exactly.
+      const durableAccountRecordId =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          String(prior?.id),
+        )
+          ? (prior?.id as string)
+          : slackMembershipAccountId(accountRecordId);
+      const stored = await manager.upsertAccount(
+        SLACK_SERVICE_NAME,
+        {
+          ...(prior ?? {
+            provider: SLACK_SERVICE_NAME,
+            label: `Slack membership (${accountId})`,
+            role: "AGENT",
+            purpose: ["messaging", "reading"],
+            accessGate: "open",
+            status: "connected",
+          }),
+          id: durableAccountRecordId,
+          createdAt: prior?.createdAt ?? now,
+          updatedAt: now,
+          metadata: {
+            ...(prior?.metadata as Record<string, unknown> | undefined),
+            source: "slack-membership",
+            teamId,
+          },
+        },
+        durableAccountRecordId,
+      );
+      // The authority keys every scope by a versioned-UUID connector
+      // account id. Storages that echo a non-UUID record id (in-memory
+      // fallbacks) get a deterministic v5 derivation instead, so scope
+      // identity stays stable across restarts.
+      const connectorAccountId =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          String(stored.id),
+        )
+          ? (stored.id as UUID)
+          : slackMembershipAccountId(accountRecordId);
+      const { SlackMembershipPublisher } = await import(
+        "./membership-authority.js"
+      );
+      this.membershipPublishers.set(
+        accountId,
+        new SlackMembershipPublisher({
+          runtime: this.runtime,
+          connectorAccountId: connectorAccountId,
+          accountKey: accountId,
+          service: authority,
+          deriveRuntimeIds: ({ channelId, slackUserId }) =>
+            this.deriveMembershipRuntimeIds(channelId, slackUserId, accountId),
+          ensurePrincipalEntity: (principalId, slackUserId) =>
+            this.ensureMembershipPrincipalEntity(
+              principalId,
+              slackUserId,
+              accountId,
+            ),
+          ensureRuntimeRoomAndWorld: (runtimeIds, channelId) =>
+            this.ensureMembershipRoomAndWorld(runtimeIds, channelId, accountId),
+        }),
+      );
+      this.runtime.logger.info(
+        { src: "plugin:slack", accountId, teamId },
+        "canonical Slack membership publisher registered",
+      );
+    } catch (error) {
+      // error-policy:J7 Publication is a governed overlay: a bootstrap
+      // failure must not take down the account connection; it is reported
+      // and membership stays runtime-participation-only for this process.
+      this.runtime.reportError("slack-membership-publisher-init", error, {
+        accountId,
+      });
+    }
+  }
+
+  /**
+   * Runtime mapping for authority members, mirroring the message path's
+   * derivation: workspace world, channel room, scoped user entity. Derived
+   * ids are only forwarded when they satisfy the authority's UUID pattern
+   * (createUniqueUuid-derived ids carry the custom 0x0 version nibble and
+   * are rejected).
+   */
+  private deriveMembershipRuntimeIds(
+    channelId: string,
+    slackUserId: string,
+    accountId: string,
+  ): SlackMembershipRuntimeIds {
+    const teamId = this.getTeamIdForAccount(accountId);
+    const worldId = teamId
+      ? createUniqueUuid(
+          this.runtime,
+          this.scopedSlackKey("slack-workspace", teamId, accountId),
+        )
+      : null;
+    const roomId = createUniqueUuid(
+      this.runtime,
+      this.scopedSlackKey("slack-room", channelId, accountId),
+    );
+    const entityId = this.getEntityId(slackUserId, accountId);
+    return {
+      worldId: worldId && AUTHORITY_UUID_PATTERN.test(worldId) ? worldId : null,
+      roomId: AUTHORITY_UUID_PATTERN.test(roomId) ? roomId : null,
+      entityId: AUTHORITY_UUID_PATTERN.test(entityId) ? entityId : null,
+    };
+  }
+
+  /**
+   * The authority requires existing entity rows for every principal; create
+   * a stub carrying the Slack identity when missing.
+   */
+  private async ensureMembershipPrincipalEntity(
+    principalId: UUID,
+    slackUserId: string,
+    accountId: string,
+  ): Promise<void> {
+    const existing = await this.runtime.getEntityById?.(principalId);
+    if (existing) return;
+    await this.runtime.createEntities?.([
+      {
+        id: principalId,
+        agentId: this.runtime.agentId,
+        names: [`slack:${accountId}:${slackUserId}`],
+        metadata: {
+          source: "slack-membership",
+          accountId,
+          slackUserId,
+        },
+      },
+    ]);
+  }
+
+  /**
+   * The authority requires existing room/world rows for forwarded runtime
+   * mappings; ensure the channel room (and workspace world when derived
+   * pattern-valid) exists before publishing.
+   */
+  private async ensureMembershipRoomAndWorld(
+    runtimeIds: SlackMembershipRuntimeIds,
+    channelId: string,
+    accountId: string,
+  ): Promise<void> {
+    if (runtimeIds.roomId) {
+      const room = await this.runtime.getRoom?.(runtimeIds.roomId);
+      if (!room) {
+        const state = this.accountStates.get(accountId);
+        const name =
+          state?.channelCache.get(channelId)?.name ??
+          this.channelCache.get(channelId)?.name ??
+          channelId;
+        await this.runtime.createRoom?.({
+          id: runtimeIds.roomId,
+          name,
+          source: "slack",
+          type: ChannelType.GROUP,
+          channelId,
+        });
+      }
+    }
+    if (runtimeIds.worldId) {
+      const world = await this.runtime.getWorld?.(runtimeIds.worldId);
+      if (!world) {
+        const teamId = this.getTeamIdForAccount(accountId);
+        await this.runtime.createWorld?.({
+          id: runtimeIds.worldId,
+          name: `Slack Workspace ${teamId ?? accountId}`,
+          agentId: this.runtime.agentId,
+          metadata: { source: "slack", accountId },
+        });
+      }
+    }
+  }
+
+  /**
+   * Canonical publication for one roster read: a completed walk publishes a
+   * complete snapshot; an unavailable read reports incomplete evidence (the
+   * scope goes stale — never a mass revocation). Publication failures are
+   * reported (J7) and never mask the read result the caller consumes.
+   */
+  private async publishMembershipEvidence(
+    accountId: string,
+    channelId: string,
+    result: SlackMembershipReadResult,
+  ): Promise<void> {
+    const publisher = this.membershipPublishers.get(accountId);
+    if (!publisher) return;
+    const teamId = this.getTeamIdForAccount(accountId);
+    if (!teamId) return;
+    try {
+      if (result.kind === "snapshot") {
+        const botUserId = this.getBotUserIdForAccount(accountId);
+        await publisher.publishSnapshot({
+          teamId,
+          channelId,
+          memberIds: result.memberIds,
+          botUserId,
+          observedAt: result.observedAt,
+        });
+        return;
+      }
+      await publisher.reportUnavailable({
+        teamId,
+        channelId,
+        reason: `slack conversations.members unavailable: ${result.reason}`,
+        observedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      // error-policy:J7 Diagnostics must not kill the renewal path: the
+      // runtime-participation projection below still runs on a snapshot;
+      // the authority keeps its prior state and the failure is reported.
+      this.runtime.reportError("slack-membership-publish", error, {
+        accountId,
+        channelId,
+      });
     }
   }
 
@@ -2063,6 +2343,36 @@ export class SlackService extends Service implements ISlackService {
     ) {
       return;
     }
+    // Canonical delta publication precedes runtime renewal: a committed
+    // join delta makes the new member's authority evidence active even if
+    // the runtime projection below fails, and the projection still runs
+    // when publication is absent (no authority) or skips (no baseline).
+    try {
+      const teamId = this.getTeamIdForAccount(accountId);
+      const publisher = this.membershipPublishers.get(accountId);
+      if (teamId && publisher) {
+        // observedAt anchors on publication time, not the Slack event_ts:
+        // redelivered events can carry arbitrarily old timestamps, and the
+        // evidence TTL must reflect when the connector observed it.
+        await publisher.publishDelta({
+          teamId,
+          channelId: event.channel,
+          slackUserId: event.user,
+          joined: true,
+          reason: "joined",
+        });
+      }
+    } catch (error) {
+      // error-policy:J7 The delta is a governed overlay on the event path;
+      // report the failure and continue into runtime renewal so the event
+      // is not lost.
+      this.runtime.reportError("slack-membership-delta", error, {
+        accountId,
+        channelId: event.channel,
+        userId: event.user,
+        eventType: "member_joined_channel",
+      });
+    }
     try {
       await this.renewChannelMember(event.user, event.channel, accountId);
     } catch (cause) {
@@ -2098,6 +2408,34 @@ export class SlackService extends Service implements ISlackService {
       SlackEventTypes.MEMBER_LEFT_CHANNEL as string,
       this.buildMemberEventPayload(event, accountId),
     );
+
+    // Canonical delta publication precedes runtime participant removal: a
+    // committed leave delta revokes the departing member's authority
+    // evidence even if the runtime projection below fails. Skips benignly
+    // when no authority is registered or no snapshot baseline exists.
+    try {
+      const teamId = this.getTeamIdForAccount(accountId);
+      const publisher = this.membershipPublishers.get(accountId);
+      if (teamId && publisher) {
+        // observedAt anchors on publication time (see the join handler).
+        await publisher.publishDelta({
+          teamId,
+          channelId: event.channel,
+          slackUserId: event.user,
+          joined: false,
+          reason: "left",
+        });
+      }
+    } catch (error) {
+      // error-policy:J7 The delta is a governed overlay on the event path;
+      // report the failure and continue into participant removal.
+      this.runtime.reportError("slack-membership-delta", error, {
+        accountId,
+        channelId: event.channel,
+        userId: event.user,
+        eventType: "member_left_channel",
+      });
+    }
 
     // Leaving one channel never deactivates the workspace entity; only the
     // room participation for this channel is dropped.
@@ -2343,7 +2681,10 @@ export class SlackService extends Service implements ISlackService {
 
   /**
    * Renews a channel's member list into runtime rooms: entities and
-   * participant connections are ensured for every snapshot member. When the
+   * participant connections are ensured for every snapshot member, and the
+   * completed roster is published to the canonical MembershipService
+   * authority when one is registered (a complete snapshot for a successful
+   * walk; an incomplete-snapshot report for an unavailable read). When the
    * read is unavailable nothing is revoked — the prior roster stays as-is
    * and the unavailable reason is surfaced to the caller.
    */
@@ -2352,12 +2693,13 @@ export class SlackService extends Service implements ISlackService {
     accountId?: string | null,
   ): Promise<SlackMembershipReadResult> {
     const result = await this.getChannelMembership(channelId, accountId);
-    if (result.kind !== "snapshot") {
-      return result;
-    }
     const normalized = normalizeAccountId(
       accountId ?? this.defaultAccountId ?? DEFAULT_ACCOUNT_ID,
     );
+    await this.publishMembershipEvidence(normalized, channelId, result);
+    if (result.kind !== "snapshot") {
+      return result;
+    }
     for (const memberId of result.memberIds) {
       if (memberId === this.getBotUserIdForAccount(normalized)) {
         continue;
@@ -3420,12 +3762,7 @@ export class SlackService extends Service implements ISlackService {
       // shared .reverse() below therefore needs the thread transcript
       // pre-reversed so the published order stays chronological.
       rawMessages = (
-        await this.readThreadReplies(
-          channelId,
-          threadTs,
-          undefined,
-          accountId,
-        )
+        await this.readThreadReplies(channelId, threadTs, undefined, accountId)
       ).reverse();
     } else {
       rawMessages = await this.readHistory(channelId, undefined, accountId);
