@@ -619,7 +619,7 @@ async function resolveIMessageChatId(
 }
 
 /** Metadata key under which the governed chat-id inventory is persisted. */
-const GOVERNED_CHAT_INVENTORY_KEY = "imessage:membership:chat-inventory";
+export const GOVERNED_CHAT_INVENTORY_KEY = "imessage:membership:chat-inventory";
 
 /**
  * Read the persisted governed-chat inventory from connector account
@@ -627,7 +627,7 @@ const GOVERNED_CHAT_INVENTORY_KEY = "imessage:membership:chat-inventory";
  * non-array, or malformed entries yield an empty inventory — this is a
  * best-effort restart signal, not trusted input.
  */
-function readGovernedChatInventory(metadata: unknown): string[] {
+export function readGovernedChatInventory(metadata: unknown): string[] {
   if (!metadata || typeof metadata !== "object") return [];
   const raw = (metadata as Record<string, unknown>)[GOVERNED_CHAT_INVENTORY_KEY];
   if (!Array.isArray(raw)) return [];
@@ -638,6 +638,23 @@ function readGovernedChatInventory(metadata: unknown): string[] {
     }
   }
   return [...ids];
+}
+
+/**
+ * Build the connector-account metadata for a startup upsert that must
+ * preserve the previous process's governed-chat inventory. Upserts
+ * replace metadata wholesale, so a startup that writes { source } alone
+ * erases the inventory before the first sweep can degrade removed scopes
+ * — this helper exists so the startup path and its regression coverage
+ * share one implementation.
+ */
+export function governedChatInventoryMetadata(
+  priorInventory: readonly string[]
+): Record<string, string | string[]> {
+  return {
+    source: "imessage-membership",
+    [GOVERNED_CHAT_INVENTORY_KEY]: [...priorInventory],
+  };
 }
 
 /**
@@ -1171,8 +1188,7 @@ export class IMessageService extends Service implements IIMessageService {
                 connectorAccountId: storedId as UUID,
                 accountKey: IMESSAGE_LOCAL_ACCOUNT_ID,
                 service: authority,
-                normalizeTarget: (value) =>
-                  normalizeIMessageConnectorHandle(value),
+                normalizeTarget: (value) => normalizeIMessageConnectorHandle(value),
               });
             }
           }
@@ -1205,7 +1221,7 @@ export class IMessageService extends Service implements IIMessageService {
       // inventory and skip startup reconciliation.
       const priorAccount = await manager.getAccount(
         IMESSAGE_MEMBERSHIP_CONNECTOR_ID,
-        `imessage-${IMESSAGE_LOCAL_ACCOUNT_ID}`,
+        `imessage-${IMESSAGE_LOCAL_ACCOUNT_ID}`
       );
       const priorInventory = readGovernedChatInventory(priorAccount?.metadata);
       const now = Date.now();
@@ -1219,7 +1235,15 @@ export class IMessageService extends Service implements IIMessageService {
         status: "connected",
         createdAt: now,
         updatedAt: now,
-        metadata: { source: "imessage-membership" },
+        // Preserve the previous process's governed-chat inventory in the
+        // durable account metadata: the upsert replaces metadata
+        // wholesale, and the first sweep may fail to degrade every removed
+        // scope (or never run). A restart before a fully committed sweep
+        // must still find the prior inventory to degrade — overwriting it
+        // here would erase the restart ratchet before the sweep runs.
+        // governedChatInventoryMetadata is the production helper shared
+        // with the regression coverage for this exact transition.
+        metadata: governedChatInventoryMetadata(priorInventory),
       });
       if (
         !stored.id ||
@@ -1238,6 +1262,11 @@ export class IMessageService extends Service implements IIMessageService {
         accountKey: IMESSAGE_LOCAL_ACCOUNT_ID,
         service: authority,
         normalizeTarget: (value) => normalizeIMessageConnectorHandle(value),
+        // Seed the deletion ratchet with the previous process's persisted
+        // inventory: the first sweep of this process must degrade any
+        // removed scope (or retain the inventory when that degrade cannot
+        // commit) instead of overwriting it sight-unseen.
+        initialInventory: priorInventory,
         // Persist the governed chat-id inventory on every committed sweep
         // so a restart with chat.db unavailable can degrade exactly these
         // scopes fail-closed (see the !chatDb branch above).
@@ -1259,18 +1288,14 @@ export class IMessageService extends Service implements IIMessageService {
           });
         },
       });
-      // Initial snapshot sweep; the publisher degrades its scopes and throws
-      // a typed error on roster read failure (fail-closed admission).
-      const published = await this.membership.sweepRoster(
-        this.membershipRosterSource,
-      );
-      // Degrade every previously governed chat the fresh roster no longer
-      // lists (chat deleted, roster shrunk to empty, or an enumeration the
-      // source now omits): stale durable evidence must stop authorizing.
-      await this.membership.reconcileRemovedScopes(
-        priorInventory,
-        this.membershipRosterSource,
-      );
+      // Initial snapshot sweep. The publisher seeds its deletion ratchet
+      // from priorInventory (see initialInventory above), so this first
+      // sweep already degrades every previously governed chat the fresh
+      // roster no longer lists — and retains it in the persisted
+      // inventory when that degrade cannot commit. No separate
+      // reconcile pass runs: degrading the same scopes twice would issue
+      // duplicate health mutations with fresh idempotency keys.
+      const published = await this.membership.sweepRoster(this.membershipRosterSource);
       this.membership.startSweeping(this.membershipRosterSource);
       logger.info(
         `[imessage][membership] native roster snapshots published for ${published} chat(s); periodic sweep active`
@@ -1284,7 +1309,7 @@ export class IMessageService extends Service implements IIMessageService {
       this.membership = null;
       this.membershipRosterSource = null;
       logger.warn(
-        `[imessage][membership] bootstrap failed; degrading persisted membership scopes: ${error instanceof Error ? error.message : String(error)}`,
+        `[imessage][membership] bootstrap failed; degrading persisted membership scopes: ${error instanceof Error ? error.message : String(error)}`
       );
       this.runtime.reportError?.("imessage:membership:bootstrap", error, {
         accountKey: IMESSAGE_LOCAL_ACCOUNT_ID,
@@ -1294,18 +1319,16 @@ export class IMessageService extends Service implements IIMessageService {
         const manager = getConnectorAccountManager(this.runtime);
         const account = await manager.getAccount(
           IMESSAGE_MEMBERSHIP_CONNECTOR_ID,
-          `imessage-${IMESSAGE_LOCAL_ACCOUNT_ID}`,
+          `imessage-${IMESSAGE_LOCAL_ACCOUNT_ID}`
         );
         const inventory = readGovernedChatInventory(account?.metadata);
         if (inventory.length > 0 && authority) {
-          const { IMessageMembershipPublisher } = await import(
-            "./membership.js"
-          );
+          const { IMessageMembershipPublisher } = await import("./membership.js");
           const storedId = account?.id;
           if (
             storedId &&
             /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-              storedId,
+              storedId
             )
           ) {
             const fallback = new IMessageMembershipPublisher({
@@ -1313,8 +1336,7 @@ export class IMessageService extends Service implements IIMessageService {
               connectorAccountId: storedId as UUID,
               accountKey: IMESSAGE_LOCAL_ACCOUNT_ID,
               service: authority,
-              normalizeTarget: (value) =>
-                normalizeIMessageConnectorHandle(value),
+              normalizeTarget: (value) => normalizeIMessageConnectorHandle(value),
             });
             // Assign BEFORE degrading: if the degrade pass itself fails
             // partway, the already-assigned publisher still gates every
@@ -1328,11 +1350,9 @@ export class IMessageService extends Service implements IIMessageService {
         // error-policy:J4 The degrade fallback itself failed: nothing more
         // can be done at this boundary; sending stays up but the failure is
         // reported for visibility.
-        this.runtime.reportError?.(
-          "imessage:membership:bootstrap-degrade-fallback",
-          degradeError,
-          { accountKey: IMESSAGE_LOCAL_ACCOUNT_ID },
-        );
+        this.runtime.reportError?.("imessage:membership:bootstrap-degrade-fallback", degradeError, {
+          accountKey: IMESSAGE_LOCAL_ACCOUNT_ID,
+        });
       }
     }
   }
@@ -2031,109 +2051,6 @@ export class IMessageService extends Service implements IIMessageService {
         "IMESSAGE_TRANSPORT"
       );
     }
-
-    const pollIntervalRaw = getStringSetting(
-      "IMESSAGE_POLL_INTERVAL_MS",
-      "IMESSAGE_POLL_INTERVAL_MS"
-    );
-    const parsedPollIntervalMs = Number(pollIntervalRaw);
-    const pollIntervalMs =
-      pollIntervalRaw.trim() === "" || !Number.isFinite(parsedPollIntervalMs)
-        ? DEFAULT_POLL_INTERVAL_MS
-        : Math.max(0, parsedPollIntervalMs);
-
-    // Resolve all startup configuration before opening chat.db or arming the
-    // polling interval. A rejected setting must not leave a partial service
-    // running after Service.start() rejects.
-    const heartbeatIntervalMs = resolveHeartbeatIntervalMs(
-      getStringSetting("IMESSAGE_HEARTBEAT_INTERVAL_MS", "IMESSAGE_HEARTBEAT_INTERVAL_MS")
-    );
-
-    const dmPolicy = getStringSetting(
-      "IMESSAGE_DM_POLICY",
-      "IMESSAGE_DM_POLICY",
-      "pairing"
-    ) as IMessageSettings["dmPolicy"];
-
-    const groupPolicy = getStringSetting(
-      "IMESSAGE_GROUP_POLICY",
-      "IMESSAGE_GROUP_POLICY",
-      "allowlist"
-    ) as IMessageSettings["groupPolicy"];
-
-    const allowFromRaw = getStringSetting("IMESSAGE_ALLOW_FROM", "IMESSAGE_ALLOW_FROM");
-    const allowFrom = allowFromRaw
-      ? allowFromRaw
-          .split(",")
-          .map((s: string) => s.trim())
-          .filter(Boolean)
-      : [];
-
-    const enabledRaw = getStringSetting("IMESSAGE_ENABLED", "IMESSAGE_ENABLED", "true");
-    const enabled = enabledRaw !== "false";
-
-    return {
-      transport: transportRaw,
-      dbPath,
-      pollIntervalMs,
-      heartbeatIntervalMs,
-      dmPolicy,
-      groupPolicy,
-      allowFrom,
-      enabled,
-      blooioApiKey:
-        getStringSetting("IMESSAGE_BLOOIO_API_KEY", "IMESSAGE_BLOOIO_API_KEY") ||
-        getStringSetting("BLOOIO_API_KEY", "BLOOIO_API_KEY") ||
-        undefined,
-      blooioWebhookSecret:
-        getStringSetting("IMESSAGE_BLOOIO_WEBHOOK_SECRET", "IMESSAGE_BLOOIO_WEBHOOK_SECRET") ||
-        getStringSetting("BLOOIO_WEBHOOK_SECRET", "BLOOIO_WEBHOOK_SECRET") ||
-        undefined,
-      blooioFromNumber:
-        getStringSetting("IMESSAGE_BLOOIO_FROM_NUMBER", "IMESSAGE_BLOOIO_FROM_NUMBER") ||
-        getStringSetting("BLOOIO_FROM_NUMBER", "BLOOIO_FROM_NUMBER") ||
-        undefined,
-      blooioChannelId:
-        getStringSetting("IMESSAGE_BLOOIO_CHANNEL_ID", "IMESSAGE_BLOOIO_CHANNEL_ID") || undefined,
-    };
-  }
-
-  private async validateSettings(): Promise<void> {
-    if (!this.settings) {
-      throw new IMessageConfigurationError("Settings not loaded");
-    }
-
-    if (this.settings.transport === "blooio") {
-      for (const [setting, value] of [
-        ["IMESSAGE_BLOOIO_API_KEY", this.settings.blooioApiKey],
-        ["IMESSAGE_BLOOIO_WEBHOOK_SECRET", this.settings.blooioWebhookSecret],
-        ["IMESSAGE_BLOOIO_FROM_NUMBER", this.settings.blooioFromNumber],
-        ["IMESSAGE_BLOOIO_CHANNEL_ID", this.settings.blooioChannelId],
-      ] as const) {
-        if (!value)
-          throw new IMessageConfigurationError(
-            `${setting} is required for the Blooio transport`,
-            setting
-          );
-      }
-    }
-
-    // Do not probe Messages.app during service startup. Sending is gated by
-    // Apple Automation while chat.db reads are gated by Full Disk Access;
-    // coupling them prevented receive-only operation and could trigger an
-    // unrelated TCC prompt merely by enabling inbound messages.
-  }
-
-  private async sendSingleMessage(to: string, text: string): Promise<IMessageSendResult> {
-    if (this.settings?.transport === "blooio") {
-      return await sendBlooioMessage({
-        apiKey: this.settings.blooioApiKey as string,
-        from: this.settings.blooioChannelId ?? (this.settings.blooioFromNumber as string),
-        to,
-        text,
-        idempotencyKey: `imessage-${crypto.randomUUID()}`,
-      });
-    }
     // Outbound delivery stays on Apple's local Messages automation surface.
     // No third-party CLI, daemon, network service, or fallback transport is
     // invoked from the native connector.
@@ -2373,14 +2290,11 @@ export class IMessageService extends Service implements IIMessageService {
           // same membership gate as agent replies: a degraded or revoked
           // scope must not receive it.
           const pairingGate = this.membership
-            ? await this.membership.authorizeOutboundInChat(
-                row.handle,
-                row.chatId,
-              )
+            ? await this.membership.authorizeOutboundInChat(row.handle, row.chatId)
             : null;
           if (pairingGate === false) {
             logger.warn(
-              `[imessage] Pairing reply to handle=${row.handle} denied by membership gate`,
+              `[imessage] Pairing reply to handle=${row.handle} denied by membership gate`
             );
             continue;
           }
@@ -2765,7 +2679,7 @@ export class IMessageService extends Service implements IIMessageService {
         : null;
       if (replyGate === false) {
         logger.error(
-          `[imessage] Reply to ROWID=${row.rowId} denied by membership gate (degraded or revoked scope)`,
+          `[imessage] Reply to ROWID=${row.rowId} denied by membership gate (degraded or revoked scope)`
         );
         return [];
       }

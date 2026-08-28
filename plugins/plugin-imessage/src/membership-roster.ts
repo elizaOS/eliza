@@ -15,10 +15,7 @@
  * evidence stays authoritative.
  */
 import type { ChatDbChatSummary, ChatDbReader } from "./chatdb-reader";
-import type {
-  IMessageMembershipRosterSource,
-  IMessageRosterRead,
-} from "./membership";
+import type { IMessageMembershipRosterSource, IMessageRosterRead } from "./membership";
 
 /**
  * Handle → service map read once per adapter construction. chat.db's
@@ -30,7 +27,7 @@ interface HandleServiceIndex {
 }
 
 export function createHandleServiceIndex(
-  pairs: ReadonlyMap<string, string | null>,
+  pairs: ReadonlyMap<string, string | null>
 ): HandleServiceIndex {
   return {
     get(handle: string): string | null {
@@ -53,7 +50,7 @@ export class IMessageRosterReadFailedError extends Error {
  */
 export function createChatDbRosterSource(
   reader: ChatDbReader,
-  handleServices?: HandleServiceIndex,
+  handleServices?: HandleServiceIndex
 ): IMessageMembershipRosterSource {
   let counter = 0;
   const cache = new Map<string, ChatDbChatSummary>();
@@ -83,7 +80,7 @@ export function createChatDbRosterSource(
     // publisher, which degrades fail-closed.
     if (reader.rosterReadFailureCount() > failuresBefore) {
       throw new IMessageRosterReadFailedError(
-        "chat.db roster enumeration query failed (reader degraded to an empty result; suspected TCC/database access loss)",
+        "chat.db roster enumeration query failed (reader degraded to an empty result; suspected TCC/database access loss)"
       );
     }
     return chats;

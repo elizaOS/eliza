@@ -25,8 +25,7 @@ export const IMessageEventTypes = {
   ERROR: "IMESSAGE_ERROR",
 } as const;
 
-export type IMessageEventType =
-  (typeof IMessageEventTypes)[keyof typeof IMessageEventTypes];
+export type IMessageEventType = (typeof IMessageEventTypes)[keyof typeof IMessageEventTypes];
 
 /**
  * iMessage chat types
@@ -174,19 +173,13 @@ export interface IIMessageService extends Service {
   isMacOS(): boolean;
 
   /** Send a message */
-  sendMessage(
-    to: string,
-    text: string,
-    options?: IMessageSendOptions,
-  ): Promise<IMessageSendResult>;
+  sendMessage(to: string, text: string, options?: IMessageSendOptions): Promise<IMessageSendResult>;
 
   /** Get recent messages */
   getRecentMessages(limit?: number): Promise<IMessageMessage[]>;
 
   /** List newest messages, optionally filtered to one chat. */
-  getMessages(
-    options?: IMessageListMessagesOptions,
-  ): Promise<IMessageMessage[]>;
+  getMessages(options?: IMessageListMessagesOptions): Promise<IMessageMessage[]>;
 
   /** Get chats */
   getChats(): Promise<IMessageChat[]>;
@@ -205,7 +198,7 @@ export class IMessagePluginError extends Error {
   constructor(
     message: string,
     public readonly code: string,
-    public readonly details?: Record<string, unknown>,
+    public readonly details?: Record<string, unknown>
   ) {
     super(message);
     this.name = "IMessagePluginError";
@@ -259,9 +252,7 @@ export function isEmail(input: string): boolean {
  */
 export function isValidIMessageTarget(target: string): boolean {
   const trimmed = target.trim();
-  return (
-    isPhoneNumber(trimmed) || isEmail(trimmed) || trimmed.startsWith("chat_id:")
-  );
+  return isPhoneNumber(trimmed) || isEmail(trimmed) || trimmed.startsWith("chat_id:");
 }
 
 /**
@@ -311,7 +302,7 @@ export function formatPhoneNumber(phone: string): string {
  */
 export function normalizeIMessageConnectorHandle(
   value: string,
-  normalizeContact: (raw: string) => string,
+  normalizeContact: (raw: string) => string
 ): string {
   const stripped = value
     .trim()
@@ -324,8 +315,7 @@ export function normalizeIMessageConnectorHandle(
     return `chat_id:${normalizedTarget}`;
   }
   if (isEmail(normalizedTarget)) return normalizedTarget.toLowerCase();
-  if (isPhoneNumber(normalizedTarget))
-    return formatPhoneNumber(normalizedTarget);
+  if (isPhoneNumber(normalizedTarget)) return formatPhoneNumber(normalizedTarget);
   return normalizeContact(normalizedTarget) || normalizedTarget;
 }
 
@@ -347,11 +337,11 @@ function takeAtLeastOneUnit(text: string, limit: number): string {
 
 export function splitMessageForIMessage(
   text: string,
-  maxLength: number = MAX_IMESSAGE_MESSAGE_LENGTH,
+  maxLength: number = MAX_IMESSAGE_MESSAGE_LENGTH
 ): string[] {
   if (!Number.isFinite(maxLength) || maxLength < 1) {
     throw new Error(
-      `splitMessageForIMessage: maxLength must be a positive finite number, got ${maxLength}`,
+      `splitMessageForIMessage: maxLength must be a positive finite number, got ${maxLength}`
     );
   }
   const limit = Math.floor(maxLength);
