@@ -59,24 +59,26 @@ export async function handleCloudRelayRoute(
     return true;
   }
 
-  // Try known service names used across package boundaries.
-  const service = (state.runtime.getService("CLOUD_MANAGED_GATEWAY_RELAY") ??
-    state.runtime.getService("cloud-managed-gateway-relay") ??
-    state.runtime.getService(
-      "cloudManagedGatewayRelay",
-    )) as RelayServiceLike | null;
-
-  if (!service || typeof service.getSessionInfo !== "function") {
-    helpers.json(res, {
-      available: false,
-      status: "not_registered",
-      reason:
-        "Gateway relay service not active. Connect to Eliza Cloud in Settings to enable instance routing.",
-    });
-    return true;
-  }
-
   try {
+    // Try known service names used across package boundaries. A throwing
+    // registry must degrade like any other probe failure instead of crashing
+    // the route.
+    const service = (state.runtime.getService("CLOUD_MANAGED_GATEWAY_RELAY") ??
+      state.runtime.getService("cloud-managed-gateway-relay") ??
+      state.runtime.getService(
+        "cloudManagedGatewayRelay",
+      )) as RelayServiceLike | null;
+
+    if (!service || typeof service.getSessionInfo !== "function") {
+      helpers.json(res, {
+        available: false,
+        status: "not_registered",
+        reason:
+          "Gateway relay service not active. Connect to Eliza Cloud in Settings to enable instance routing.",
+      });
+      return true;
+    }
+
     const info = service.getSessionInfo();
     helpers.json(res, {
       available: true,
