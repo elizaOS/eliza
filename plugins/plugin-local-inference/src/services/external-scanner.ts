@@ -244,6 +244,10 @@ async function scanOllama(root: string): Promise<InstalledModel[]> {
 				l.mediaType.includes("model"),
 			);
 			if (!modelLayer?.digest) continue;
+			// error-policy:J3 — only canonical sha256 digests are accepted.
+			// A malformed digest would otherwise be joined onto the blobs
+			// root and stat'ed (path traversal out of the ollama store).
+			if (!/^sha256:[a-f0-9]{64}$/.test(modelLayer.digest)) continue;
 			const digest = modelLayer.digest.replace("sha256:", "sha256-");
 			const blobPath = path.join(blobsRoot, digest);
 			let size = modelLayer.size;
