@@ -216,7 +216,12 @@ function escapeDriveQuery(value: string): string {
 
 function driveQuery(query: string): string {
   const trimmed = query.trim();
-  if (/\btrashed\s*=/.test(trimmed)) {
+  // Only honor an explicit trashed predicate when it appears outside a quoted
+  // string literal — otherwise a content search for the literal text
+  // "trashed = ..." (e.g. name contains 'trashed = report') would silently drop
+  // the trashed = false safety filter and expose deleted files.
+  const withoutQuoted = trimmed.replace(/'(?:\\.|[^'\\])*'/g, "");
+  if (/\btrashed\s*=/.test(withoutQuoted)) {
     return trimmed;
   }
   return `(${trimmed}) and trashed = false`;
