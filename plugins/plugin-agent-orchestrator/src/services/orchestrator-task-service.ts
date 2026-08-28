@@ -164,6 +164,7 @@ import {
   type OrchestratorRoomRoster,
   type OrchestratorRoomRosterOverview,
   type OrchestratorTaskDocument,
+  type OrchestratorTaskEvent,
   type OrchestratorTaskPriority,
   type OrchestratorTaskRecord,
   type OrchestratorTaskSession,
@@ -6862,15 +6863,7 @@ export class OrchestratorTaskService extends Service {
         const idleMs = nowMs - latestActivityMs;
         if (idleMs < thresholdMs) continue;
 
-        // Repair rows the bridge never saw go terminal, so DTOs stop counting
-        // phantom "active" sessions for the interrupted task.
-        for (const row of deadRows) {
-          await this.store.updateSession(row.sessionId, {
-            status: "stopped",
-            stoppedAt: nowMs,
-          });
-        }
-        await this.store.addEvent({
+        const event = {
           id: randomUUID(),
           taskId: doc.task.id,
           eventType: "task_stalled_reaped",
@@ -6884,8 +6877,20 @@ export class OrchestratorTaskService extends Service {
           },
           timestamp: nowMs,
           createdAt: nowIso(),
+        } satisfies OrchestratorTaskEvent;
+        const interrupted = await this.store.interruptStuckTaskIfUnchanged({
+          taskId: doc.task.id,
+          expectedTaskUpdatedAt: doc.task.updatedAt,
+          expectedSessions: doc.sessions.map((session) => ({
+            sessionId: session.sessionId,
+            status: session.status,
+            updatedAt: session.updatedAt,
+          })),
+          deadSessionIds: deadRows.map((row) => row.sessionId),
+          event,
+          nowMs,
         });
-        await this.advanceTaskStatus(doc.task.id, "interrupted");
+        if (!interrupted) continue;
         this.emitChange(doc.task.id);
         this.log("info", "stuck task reaped to interrupted", {
           taskId: doc.task.id,
@@ -6899,6 +6904,7 @@ export class OrchestratorTaskService extends Service {
       this.log("warn", "stuck-task reap pass failed", {
         error: err instanceof Error ? err.message : String(err),
       });
+      this.runtime.reportError("OrchestratorTask.reapStuckTasks", err);
     } finally {
       this.stuckTaskReapInFlight = false;
     }

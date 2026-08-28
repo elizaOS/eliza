@@ -17,6 +17,7 @@ import {
 import type {
   CreateTaskInput,
   OrchestratorTaskDocument,
+  OrchestratorTaskEvent,
   OrchestratorTaskPlanRevision,
   OrchestratorTaskSession,
 } from "../../src/services/orchestrator-task-types.js";
@@ -39,6 +40,11 @@ function createInput(
   overrides: Partial<CreateTaskInput> = {},
 ): CreateTaskInput {
   return { title: "Ship feature", goal: "Implement and verify", ...overrides };
+}
+
+function must<T>(value: T | null | undefined, label: string): T {
+  if (value == null) throw new Error(`Missing ${label}`);
+  return value;
 }
 
 function sessionFor(
@@ -74,6 +80,30 @@ function sessionFor(
     createdAt: now,
     updatedAt: now,
     ...overrides,
+  };
+}
+
+function stuckReapInput(doc: OrchestratorTaskDocument) {
+  const event: OrchestratorTaskEvent = {
+    id: "reap-event",
+    taskId: doc.task.id,
+    eventType: "task_stalled_reaped",
+    summary: "stuck task",
+    data: {},
+    timestamp: 2,
+    createdAt: new Date("2026-05-20T12:01:00.000Z").toISOString(),
+  };
+  return {
+    taskId: doc.task.id,
+    expectedTaskUpdatedAt: doc.task.updatedAt,
+    expectedSessions: doc.sessions.map((session) => ({
+      sessionId: session.sessionId,
+      status: session.status,
+      updatedAt: session.updatedAt,
+    })),
+    deadSessionIds: doc.sessions.map((session) => session.sessionId),
+    event,
+    nowMs: 2,
   };
 }
 
@@ -502,6 +532,45 @@ describe("InMemoryTaskStore", () => {
 });
 
 describe("FileTaskStore", () => {
+  it("persists one atomic stuck-task reap and rejects a stale snapshot", async () => {
+    const file = await tempFile();
+    const store = new FileTaskStore(file);
+    const { task } = await store.createTask(
+      createInput({ title: "file reap" }),
+    );
+    await store.updateTask(task.id, { status: "active", lastActivityAt: 1 });
+    await store.addSession(sessionFor(task.id));
+    const snapshot = await store.getTask(task.id);
+    expect(snapshot).not.toBeNull();
+
+    await store.addSession(
+      sessionFor(task.id, { id: "row-2", sessionId: "late-session" }),
+    );
+    expect(
+      await store.interruptStuckTaskIfUnchanged(
+        stuckReapInput(must(snapshot, "file task snapshot")),
+      ),
+    ).toBe(false);
+    const current = await store.getTask(task.id);
+    expect(current).not.toBeNull();
+    const input = stuckReapInput(must(current, "current file task"));
+    input.deadSessionIds = ["session-1", "late-session"];
+    expect(await store.interruptStuckTaskIfUnchanged(input)).toBe(true);
+
+    const reopened = new FileTaskStore(file);
+    const persisted = await reopened.getTask(task.id);
+    expect(persisted?.task.status).toBe("interrupted");
+    expect(persisted?.sessions.map((session) => session.status)).toEqual([
+      "stopped",
+      "stopped",
+    ]);
+    expect(
+      persisted?.events.filter(
+        (event) => event.eventType === "task_stalled_reaped",
+      ),
+    ).toHaveLength(1);
+  });
+
   it("serializes first-touch loads so concurrent operations cannot hydrate over each other", async () => {
     const file = await tempFile();
     const seed = new FileTaskStore(file);
@@ -663,6 +732,36 @@ class PgliteBareScanRejectingAdapter extends FakeSqlAdapter {
 }
 
 describe("RuntimeDbTaskStore", () => {
+  it("persists an atomic stuck-task reap through the runtime DB backend", async () => {
+    const adapter = new FakeSqlAdapter();
+    const store = new RuntimeDbTaskStore(adapter);
+    const { task } = await store.createTask(
+      createInput({ title: "runtime DB reap" }),
+    );
+    await store.updateTask(task.id, { status: "active", lastActivityAt: 1 });
+    await store.addSession(sessionFor(task.id));
+    const snapshot = await store.getTask(task.id);
+    expect(snapshot).not.toBeNull();
+    expect(
+      await store.interruptStuckTaskIfUnchanged(
+        stuckReapInput(must(snapshot, "runtime DB task snapshot")),
+      ),
+    ).toBe(true);
+
+    const reopened = new RuntimeDbTaskStore(adapter);
+    const persisted = await reopened.getTask(task.id);
+    expect(persisted?.task.status).toBe("interrupted");
+    expect(persisted?.sessions[0]).toMatchObject({
+      status: "stopped",
+      stoppedAt: 2,
+    });
+    expect(
+      persisted?.events.filter(
+        (event) => event.eventType === "task_stalled_reaped",
+      ),
+    ).toHaveLength(1);
+  });
+
   it("hydrates a filtered task collection with one SQL query instead of one point read per task", async () => {
     const seenSql: string[] = [];
     const adapter = new FakeSqlAdapter();

@@ -2377,6 +2377,39 @@ describe("OrchestratorTaskService — aggregation and bulk controls", () => {
 });
 
 describe("OrchestratorTaskService — stuck-task reaping", () => {
+  it("repairs and interrupts a genuinely stuck task exactly once", async () => {
+    const acp = new FakeAcp();
+    const { service, store } = makeServiceWithStore(acp, {
+      ELIZA_ORCHESTRATOR_STUCK_TASK_REAP_MS: "1",
+    });
+    const task = await service.createTask(createInput({ title: "stuck" }));
+    const staleSessionId = await addStoredSession(
+      store,
+      task.id,
+      "stale-session",
+    );
+    await store.updateSession(staleSessionId, { lastActivityAt: 1 });
+    await store.updateTask(task.id, { status: "active", lastActivityAt: 1 });
+    const nowMs = Date.now() + 60_000;
+
+    expect(await service.reapStuckTasks(nowMs)).toEqual([task.id]);
+    const detail = must(await service.getTask(task.id), "task detail");
+    expect(detail.status).toBe("interrupted");
+    expect(detail.sessions).toEqual([
+      expect.objectContaining({
+        sessionId: staleSessionId,
+        status: "stopped",
+        stoppedAt: nowMs,
+      }),
+    ]);
+    expect(
+      detail.events.filter(
+        (event) => event.eventType === "task_stalled_reaped",
+      ),
+    ).toHaveLength(1);
+    expect(await service.reapStuckTasks(nowMs + 60_000)).toEqual([]);
+  });
+
   it("preserves a task when a live session attaches after candidate discovery", async () => {
     const acp = new FakeAcp();
     const { service, store } = makeServiceWithStore(acp, {
@@ -2407,6 +2440,48 @@ describe("OrchestratorTaskService — stuck-task reaping", () => {
         return snapshot;
       },
     );
+
+    expect(await service.reapStuckTasks(Date.now() + 60_000)).toEqual([]);
+    const detail = must(await service.getTask(task.id), "task detail");
+    expect(detail.status).toBe("active");
+    expect(detail.sessions.map((session) => session.sessionId)).toContain(
+      "new-live-session",
+    );
+    expect(
+      detail.events.some((event) => event.eventType === "task_stalled_reaped"),
+    ).toBe(false);
+  });
+
+  it("preserves a task when a live session attaches during the ACP liveness probe", async () => {
+    const acp = new FakeAcp();
+    const { service, store } = makeServiceWithStore(acp, {
+      ELIZA_ORCHESTRATOR_STUCK_TASK_REAP_MS: "1",
+    });
+    const task = await service.createTask(
+      createInput({ title: "post-refresh-race-safe" }),
+    );
+    const staleSessionId = await addStoredSession(
+      store,
+      task.id,
+      "stale-session",
+    );
+    await store.updateSession(staleSessionId, { lastActivityAt: 1 });
+    await store.updateTask(task.id, { lastActivityAt: 1 });
+
+    const getSession = acp.getSession.bind(acp);
+    vi.spyOn(acp, "getSession").mockImplementationOnce(async (sessionId) => {
+      const result = await getSession(sessionId);
+      const liveSessionId = await addStoredSession(
+        store,
+        task.id,
+        "new-live-session",
+      );
+      acp.liveSessions.set(liveSessionId, {
+        id: liveSessionId,
+        status: "ready",
+      });
+      return result;
+    });
 
     expect(await service.reapStuckTasks(Date.now() + 60_000)).toEqual([]);
     const detail = must(await service.getTask(task.id), "task detail");

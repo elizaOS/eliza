@@ -22,21 +22,34 @@ import {
 } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type {
-  CreateTaskInput,
-  OrchestratorTaskArtifact,
-  OrchestratorTaskDecision,
-  OrchestratorTaskDocument,
-  OrchestratorTaskEvent,
-  OrchestratorTaskMessage,
-  OrchestratorTaskPlanRevision,
-  OrchestratorTaskRecord,
-  OrchestratorTaskSession,
-  OrchestratorTaskUsage,
-  TaskListFilter,
+import {
+  type CreateTaskInput,
+  nextTaskStatus,
+  type OrchestratorTaskArtifact,
+  type OrchestratorTaskDecision,
+  type OrchestratorTaskDocument,
+  type OrchestratorTaskEvent,
+  type OrchestratorTaskMessage,
+  type OrchestratorTaskPlanRevision,
+  type OrchestratorTaskRecord,
+  type OrchestratorTaskSession,
+  type OrchestratorTaskUsage,
+  type TaskListFilter,
+  TERMINAL_TASK_SESSION_STATUSES,
 } from "./orchestrator-task-types.js";
 
 export type TaskStoreBackend = "runtime-db" | "file" | "memory";
+
+export interface InterruptStuckTaskInput {
+  taskId: string;
+  expectedTaskUpdatedAt: string;
+  expectedSessions: Array<
+    Pick<OrchestratorTaskSession, "sessionId" | "status" | "updatedAt">
+  >;
+  deadSessionIds: string[];
+  event: OrchestratorTaskEvent;
+  nowMs: number;
+}
 
 interface Logger {
   warn?: (message: string, ...args: unknown[]) => void;
@@ -523,6 +536,70 @@ export class InMemoryTaskStore {
     });
   }
 
+  /**
+   * Interrupt a stuck task only when the document is still the exact snapshot
+   * whose external session liveness was checked by the caller. Session repair,
+   * audit event, and task transition share one queued write so a concurrent
+   * attach cannot land between those mutations and be overwritten by a stale
+   * reap decision.
+   */
+  async interruptStuckTaskIfUnchanged(
+    input: InterruptStuckTaskInput,
+  ): Promise<boolean> {
+    return this.enqueue(async () => {
+      const doc = this.docs.get(input.taskId);
+      if (doc?.task.status !== "active" || doc.task.paused) return false;
+      if (doc.task.updatedAt !== input.expectedTaskUpdatedAt) return false;
+
+      const expectedSessions = input.expectedSessions
+        .map(
+          (session) =>
+            `${session.sessionId}\u0000${session.status}\u0000${session.updatedAt}`,
+        )
+        .sort();
+      const currentSessions = doc.sessions
+        .map(
+          (session) =>
+            `${session.sessionId}\u0000${session.status}\u0000${session.updatedAt}`,
+        )
+        .sort();
+      if (
+        expectedSessions.length !== currentSessions.length ||
+        expectedSessions.some(
+          (session, index) => session !== currentSessions[index],
+        )
+      ) {
+        return false;
+      }
+
+      const deadSessionIds = new Set(input.deadSessionIds);
+      const liveSessionIds = doc.sessions
+        .filter(
+          (session) => !TERMINAL_TASK_SESSION_STATUSES.has(session.status),
+        )
+        .map((session) => session.sessionId);
+      if (liveSessionIds.some((sessionId) => !deadSessionIds.has(sessionId))) {
+        return false;
+      }
+
+      const nextStatus = nextTaskStatus(doc.task.status, "interrupted");
+      const updatedAt = nowIso();
+      for (const session of doc.sessions) {
+        if (!deadSessionIds.has(session.sessionId)) continue;
+        session.status = "stopped";
+        session.stoppedAt = input.nowMs;
+        session.updatedAt = updatedAt;
+      }
+      doc.events.push(structuredClone(input.event));
+      doc.task.status = nextStatus;
+      doc.task.updatedAt = updatedAt;
+      doc.task.lastActivityAt = Date.now();
+      this.noteMutated(input.taskId);
+      await this.afterWrite();
+      return true;
+    });
+  }
+
   async findSession(
     sessionId: string,
     taskId?: string,
@@ -730,6 +807,10 @@ export class FileTaskStore extends InMemoryTaskStore {
   ) {
     await this.ensureLoaded();
     return super.updateSession(sessionId, patch, taskId);
+  }
+  override async interruptStuckTaskIfUnchanged(input: InterruptStuckTaskInput) {
+    await this.ensureLoaded();
+    return super.interruptStuckTaskIfUnchanged(input);
   }
   override async findSession(sessionId: string, taskId?: string) {
     await this.ensureLoaded();
@@ -1183,6 +1264,12 @@ export class RuntimeDbTaskStore {
     });
   }
 
+  async interruptStuckTaskIfUnchanged(input: InterruptStuckTaskInput) {
+    return this.mutate(input.taskId, (cache) =>
+      cache.interruptStuckTaskIfUnchanged(input),
+    );
+  }
+
   async findSession(sessionId: string, taskId?: string) {
     await this.ensureInitialized();
     if (taskId) {
@@ -1365,6 +1452,9 @@ export class OrchestratorTaskStore {
     taskId?: string,
   ) {
     return this.delegate.updateSession(sessionId, patch, taskId);
+  }
+  interruptStuckTaskIfUnchanged(input: InterruptStuckTaskInput) {
+    return this.delegate.interruptStuckTaskIfUnchanged(input);
   }
   findSession(sessionId: string, taskId?: string) {
     return this.delegate.findSession(sessionId, taskId);
