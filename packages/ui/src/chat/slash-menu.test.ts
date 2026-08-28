@@ -368,6 +368,22 @@ describe("resolveOptimisticNavigationExecution", () => {
     ).toEqual({ kind: "navigate-view", viewId: "notes" });
   });
 
+  it("keeps Home and loaded views immediate when the remote command catalog is unavailable", () => {
+    const options = { resolveChoices: () => ["notes", "calendar"] };
+
+    expect(
+      resolveOptimisticNavigationExecution([], "go home", undefined, options),
+    ).toEqual({ kind: "navigate-tab", tab: "home" });
+    expect(
+      resolveOptimisticNavigationExecution(
+        [],
+        "open calendar",
+        undefined,
+        options,
+      ),
+    ).toEqual({ kind: "navigate-view", viewId: "calendar" });
+  });
+
   it("never optimistically runs client actions or unknown views", () => {
     expect(
       resolveOptimisticNavigationExecution(commands, "clear chat", undefined, {

@@ -4498,10 +4498,7 @@ export function ChatOverlay({
   const submit = React.useCallback(() => {
     const isExplicitSlashCommand = parseSlashDraft(draft).isSlash;
     const optimisticNavigation =
-      !firstRunOpen &&
-      !isExplicitSlashCommand &&
-      slash.naturalShortcutsEnabled &&
-      pendingImages.length === 0
+      !firstRunOpen && !isExplicitSlashCommand && pendingImages.length === 0
         ? resolveOptimisticNavigationExecution(
             slash.commands,
             draft,

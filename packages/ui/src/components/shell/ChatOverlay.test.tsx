@@ -451,7 +451,9 @@ describe("ChatOverlay", () => {
       commands: [command],
       loading: false,
       error: false,
-      naturalShortcutsEnabled: true,
+      // Ordinary prose stays model-owned; exact view navigation has a narrow
+      // optimistic path that must remain available independently.
+      naturalShortcutsEnabled: false,
       resolveChoices: () => ["notes", "calendar"],
       describeChoice: () => "",
       resolveSection: () => undefined,
