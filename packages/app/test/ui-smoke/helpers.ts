@@ -1529,6 +1529,18 @@ function smokeDatabaseQuery(sql: string) {
 
 /** Installs baseline API routes for smoke tests before flow-specific overrides. */
 export async function installDefaultAppRoutes(page: Page): Promise<void> {
+  // The UI-smoke server serves a production renderer from a same-origin
+  // backend proxy. Model the host's pre-React API-base injection so the bundle
+  // does not mistake that local stack for the hosted Cloud-only surface before
+  // any route fixture has a chance to answer. Keep this at document start: the
+  // app resolves branding while its entry module is evaluating.
+  await page.addInitScript(() => {
+    const host = window as typeof window & {
+      __ELIZA_APP_API_BASE__?: string;
+    };
+    host.__ELIZA_APP_API_BASE__ = window.location.origin;
+  });
+
   let notesRevision = 4;
   let smokeNotes: SmokeNote[] = [
     {

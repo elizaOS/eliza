@@ -326,6 +326,7 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   // Owner-voice drafting persistence proof (#14871): deterministic compose +
   // revise round-trip with a custom predicate over the persisted draft artifact.
   "creative-owner-voice-draft-persistence",
+  "cross.world-continuity.topology-boundaries",
   "elizacloud.account-status",
   "finances.owner-finances-dashboard",
   "form.restore-stashed",
