@@ -83,7 +83,7 @@ export function reconcilePendingActionNotifications(
     const actionId = persistedNotificationActionId(notification);
     if (actionId === null) return true;
     if (pendingIds.has(actionId)) return false;
-    return notification.readAt === undefined;
+    return notification.readAt === null || notification.readAt === undefined;
   });
   const projected = pending.map((item): AgentNotification => {
     const activation = derivePendingActionActivation(item);

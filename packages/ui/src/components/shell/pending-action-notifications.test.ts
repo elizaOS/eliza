@@ -49,6 +49,7 @@ describe("pending-action notification projection", () => {
     unrelated.id = "22222222-2222-4222-8222-222222222222";
     unrelated.groupKey = "approval:request-2";
     unrelated.data = { requestId: "request-2" };
+    unrelated.readAt = null;
     const projected = reconcilePendingActionNotifications(
       [persistedApproval(), unrelated],
       [pending()],
@@ -100,6 +101,23 @@ describe("pending-action notification projection", () => {
     expect(reconcilePendingActionNotifications([resolved], [], NOW)).toEqual(
       [],
     );
+  });
+
+  it("preserves both runtime and legacy unread approval rows", () => {
+    const runtimeUnread = persistedApproval();
+    runtimeUnread.readAt = null;
+    const legacyUnread = persistedApproval();
+    legacyUnread.id = "22222222-2222-4222-8222-222222222222";
+    legacyUnread.groupKey = "approval:request-2";
+    legacyUnread.data = { requestId: "request-2" };
+
+    expect(
+      reconcilePendingActionNotifications(
+        [runtimeUnread, legacyUnread],
+        [],
+        NOW,
+      ),
+    ).toEqual([runtimeUnread, legacyUnread]);
   });
 
   it("covers task approvals and free prompts without inventing one response", () => {
