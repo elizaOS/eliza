@@ -90,6 +90,38 @@ describe("positiveExpectationMatches", () => {
   });
 });
 
+describe("bounded one-glyph OCR substitution tolerance (#29143)", () => {
+  it("verifies a healthy capture whose OCR transcribes labels with single-glyph substitutions", () => {
+    const f = evaluateOcrContent({
+      ocr: ocr(
+        "Computer Sessions / Computer sessions / Linux sandbox / Rescarch / Pause / browscr / Open floating",
+        { meanConfidence: 0.89 },
+      ),
+      expectation: expectationFor("plugin-computer-use-sessions-gui"),
+    });
+    expect(f.ocrInconclusive).toBe(false);
+    expect(f.missingRequired).toHaveLength(0);
+    expect(f.verdict).toBe("verified");
+  });
+
+  it("still breaks when a required label is absent despite glyph tolerance", () => {
+    const f = evaluateOcrContent({
+      ocr: ocr("Computer Sessions / Linux sandbox / Rescarch / Pause"),
+      expectation: expectationFor("plugin-computer-use-sessions-gui"),
+    });
+    expect(f.missingRequired).toContain("Research browser");
+    expect(f.verdict).toBe("broken");
+  });
+
+  it("still breaks when a label differs by more than one glyph", () => {
+    const f = evaluateOcrContent({
+      ocr: ocr("Computer Sessions / Rescorch browscr"),
+      expectation: expectationFor("plugin-computer-use-sessions-gui"),
+    });
+    expect(f.verdict).toBe("broken");
+  });
+});
+
 describe("evaluateOcrContent", () => {
   it("marks a failed decode broken, never empty", () => {
     const f = evaluateOcrContent({ ocr: ocr("", { ok: false, words: 0 }) });
