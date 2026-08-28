@@ -47,6 +47,8 @@ const SHARED_FULL = "cccccccc-ffff-4fff-8fff-ffffffffffff";
 const SHARED_SELECTED = "cccccccc-f111-4f11-8f11-111111111111";
 const SELECTED_EXISTING = "dddddddd-f111-4f11-8f11-111111111111";
 const SELECTED_STALE = "dddddddd-f222-4f22-8f22-222222222222";
+const SHARED_RETAINED_AUTHORITY = "cccccccc-f333-4f33-8f33-333333333333";
+const MISSING_RETAINED_TARGET = "dddddddd-f333-4f33-8f33-333333333333";
 const PERSONAL_A = personalSharedAgentId({
   userId: USER_A,
   organizationId: ORG_A,
@@ -431,6 +433,75 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     expect(await res.json()).toMatchObject({
       code: "dedicated_confirmation_required",
     });
+  });
+
+  test("a retained authority with no target returns an actionable 409 before mint", async () => {
+    expect(pgliteReady).toBe(true);
+    const { dbWrite } = await import("@/db/client");
+    const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+    const { apiKeys } = await import("@/db/schemas/api-keys");
+    const { jobs } = await import("@/db/schemas/jobs");
+    const { personalDedicatedUpgradeAuthorities } = await import(
+      "@/db/schemas/personal-dedicated-upgrade-authorities"
+    );
+    await setOrgBalance(ORG_A, "10");
+    await dbWrite.insert(agentSandboxes).values({
+      id: SHARED_RETAINED_AUTHORITY,
+      organization_id: ORG_A,
+      user_id: USER_A,
+      agent_name: "Retained authority source",
+      execution_tier: "shared",
+      status: "running",
+      database_status: "none",
+    });
+    await dbWrite.insert(personalDedicatedUpgradeAuthorities).values({
+      organization_id: ORG_A,
+      user_id: USER_A,
+      source_agent_id: SHARED_RETAINED_AUTHORITY,
+      dedicated_agent_id: MISSING_RETAINED_TARGET,
+    });
+
+    const agentsBefore = await dbWrite.select().from(agentSandboxes);
+    const keysBefore = await dbWrite.select().from(apiKeys);
+    const response = await upgrade(SHARED_RETAINED_AUTHORITY);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: "dedicated_activation_reset_required",
+      retryable: false,
+    });
+    expect(await dbWrite.select().from(agentSandboxes)).toEqual(agentsBefore);
+    expect(await dbWrite.select().from(apiKeys)).toEqual(keysBefore);
+    expect(
+      await dbWrite
+        .select()
+        .from(jobs)
+        .where(eq(jobs.agent_id, MISSING_RETAINED_TARGET)),
+    ).toHaveLength(0);
+    expect(
+      await dbWrite
+        .select()
+        .from(personalDedicatedUpgradeAuthorities)
+        .where(
+          eq(
+            personalDedicatedUpgradeAuthorities.source_agent_id,
+            SHARED_RETAINED_AUTHORITY,
+          ),
+        ),
+    ).toHaveLength(1);
+
+    await dbWrite
+      .delete(personalDedicatedUpgradeAuthorities)
+      .where(
+        eq(
+          personalDedicatedUpgradeAuthorities.source_agent_id,
+          SHARED_RETAINED_AUTHORITY,
+        ),
+      );
+    await dbWrite
+      .delete(agentSandboxes)
+      .where(eq(agentSandboxes.id, SHARED_RETAINED_AUTHORITY));
+    await setOrgBalance(ORG_A, "0.50");
   });
 
   test("quotes Dedicated from server-owned pricing for only the caller's personal Eliza", async () => {
