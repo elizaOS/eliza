@@ -66,28 +66,36 @@ export function minutesUntilLocalBedtime(args: {
 }): number | null {
   const parts = parseHHMM(args.localBedtime);
   if (!parts) return null;
-  const nowParts = getZonedDateParts(args.now, args.timezone);
-  const todayInstant = buildUtcDateFromLocalParts(args.timezone, {
-    year: nowParts.year,
-    month: nowParts.month,
-    day: nowParts.day,
-    hour: parts.hour,
-    minute: parts.minute,
-    second: 0,
-  }).getTime();
-  const nowMs = args.now.getTime();
-  const candidateMs =
-    todayInstant >= nowMs
-      ? todayInstant
-      : buildUtcDateFromLocalParts(args.timezone, {
-          year: nowParts.year,
-          month: nowParts.month,
-          day: nowParts.day + 1,
-          hour: parts.hour,
-          minute: parts.minute,
-          second: 0,
-        }).getTime();
-  return Math.round((candidateMs - nowMs) / 60_000);
+  try {
+    const nowParts = getZonedDateParts(args.now, args.timezone);
+    const todayInstant = buildUtcDateFromLocalParts(args.timezone, {
+      year: nowParts.year,
+      month: nowParts.month,
+      day: nowParts.day,
+      hour: parts.hour,
+      minute: parts.minute,
+      second: 0,
+    }).getTime();
+    const nowMs = args.now.getTime();
+    const candidateMs =
+      todayInstant >= nowMs
+        ? todayInstant
+        : buildUtcDateFromLocalParts(args.timezone, {
+            year: nowParts.year,
+            month: nowParts.month,
+            day: nowParts.day + 1,
+            hour: parts.hour,
+            minute: parts.minute,
+            second: 0,
+          }).getTime();
+    return Math.round((candidateMs - nowMs) / 60_000);
+  } catch {
+    // An invalid IANA timezone (e.g. a corrupt owner profile value) makes the
+    // Intl projection throw RangeError. The contract here is "null when inputs
+    // are missing or invalid" — return null instead of crashing the scheduler
+    // tick so the night check-in can still fire via the normal projection path.
+    return null;
+  }
 }
 
 function isIrregular(
