@@ -3414,25 +3414,47 @@ export class TrajectoriesService extends Service {
 	 * a ledger head should exist. A reader uses it to distinguish the honest
 	 * "nothing was ever authorized" empty state from a lost or failed
 	 * publication.
+	 *
+	 * Tri-state by design: the derivation itself can fail on malformed
+	 * persisted carriers (the publisher catches the same failure and leaves
+	 * no head), so `undefined` means "cannot reconstruct" — callers must
+	 * treat that as unavailable, never as empty.
 	 */
-	private expectedContentRefCount(trajectory: Trajectory): number {
-		const carriers = trajectory.steps
-			.flatMap((step) => {
-				const stages = (step.semanticStages ?? []).filter(
-					(stage) => stage.kind === "tool",
-				);
-				return stages.map((stage) => ({
-					result: (stage.payload.tool as { result?: unknown } | undefined)
-						?.result,
-				}));
-			})
-			.filter((step) => step.result !== undefined);
-		if (carriers.length === 0) return 0;
-		const manifest = deriveCompactionContentManifest(
-			{ steps: carriers as never, archivedSteps: [] },
-			{ lastUsedAt: new Date().toISOString() },
-		);
-		return manifest.contentRefs.length;
+	private expectedContentRefCount(trajectory: Trajectory): number | undefined {
+		try {
+			const carriers = trajectory.steps
+				.flatMap((step) => {
+					const stages = (step.semanticStages ?? []).filter(
+						(stage) => stage.kind === "tool",
+					);
+					return stages.map((stage) => ({
+						result: (stage.payload.tool as { result?: unknown } | undefined)
+							?.result,
+					}));
+				})
+				.filter((step) => step.result !== undefined);
+			if (carriers.length === 0) return 0;
+			const manifest = deriveCompactionContentManifest(
+				{ steps: carriers as never, archivedSteps: [] },
+				{ lastUsedAt: new Date().toISOString() },
+			);
+			return manifest.contentRefs.length;
+		} catch (error) {
+			// error-policy:J4 the absence reconstruction is a projection on
+			// untrusted persisted carriers; a derivation failure must degrade
+			// to the explicit unavailable state, never fail the read or
+			// masquerade as an honest empty manifest.
+			logger.warn(
+				{ err: error, trajectoryId: trajectory.trajectoryId },
+				"[trajectory-logger] content-manifest absence reconstruction failed",
+			);
+			this.runtime.reportError?.(
+				"TrajectoriesService.expectedContentRefCount",
+				error,
+				{ trajectoryId: trajectory.trajectoryId },
+			);
+			return undefined;
+		}
 	}
 
 	/**
@@ -3442,6 +3464,9 @@ export class TrajectoriesService extends Service {
 	 * authorized but no ledger can be read.
 	 */
 	private projectContentManifestAbsence(trajectory: Trajectory): void {
+		// Tri-state: undefined (reconstruction failed) falls to unavailable
+		// alongside "refs exist but no ledger" — only a derived 0 is honest
+		// emptiness.
 		trajectory.metadata = {
 			...trajectory.metadata,
 			contentManifest:
