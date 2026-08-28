@@ -46,6 +46,9 @@ interface ObservedSenderEntry {
   via: string;
 }
 
+/** Minimum time after a failed probe before a send re-attempts token recovery. */
+const UNAVAILABLE_RECOVERY_BACKOFF_MS = 30_000;
+
 export interface ChannelOptions {
   config: WechatConfig;
   onMessage: (
@@ -250,14 +253,23 @@ export class WechatChannel {
       );
     }
     // Fail closed on an outbound-unavailable account: an API/login failure
-    // must surface as a typed error, never a hopeful network attempt.
+    // must surface as a typed error, never a hopeful network attempt. A probe
+    // may lift the state after the recovery backoff so a transient startup
+    // failure (DNS blip, timeout) cannot strand outbound until restart.
     const outbound = this.outboundHealth.get(accountId);
     if (outbound?.state === "unavailable") {
-      throw new WechatError(
-        "WECHAT_ACCOUNT_UNAVAILABLE",
-        "wechat account outbound transport is unavailable",
-        { accountId, lastFailureDetail: outbound.lastFailureDetail },
-      );
+      await this.attemptRecovery(accountId, entry.account);
+      const recovered = this.outboundHealth.get(accountId);
+      if (recovered?.state === "unavailable") {
+        throw new WechatError(
+          "WECHAT_ACCOUNT_UNAVAILABLE",
+          "wechat account outbound transport is unavailable",
+          {
+            accountId,
+            lastFailureDetail: recovered.lastFailureDetail,
+          },
+        );
+      }
     }
     // The dispatcher chunks the text and sends each chunk through the
     // first-party API client.
@@ -291,6 +303,33 @@ export class WechatChannel {
       return { ...inbound, state: "degraded" };
     }
     return outbound;
+  }
+
+  /**
+   * Rate-limited recovery probe for an outbound-unavailable account. A send
+   * arriving after the backoff window re-runs the token probe; success flips
+   * health to connected (the send then proceeds through the normal path) and
+   * failure re-marks unavailable with a fresh timestamp, restarting the
+   * backoff. Probes inside the window are skipped so a dead platform cannot
+   * turn every send into a synchronous network call.
+   */
+  private async attemptRecovery(
+    accountId: string,
+    account: ResolvedWechatAccount,
+  ): Promise<void> {
+    const outbound = this.outboundHealth.get(accountId);
+    if (outbound?.state !== "unavailable") return;
+    const elapsed = this.now() - (outbound.lastFailureAt ?? 0);
+    if (elapsed < UNAVAILABLE_RECOVERY_BACKOFF_MS) return;
+    try {
+      await this.tokens.getAccessToken(account);
+      // getAccessToken reports health through onHealthChange on both
+      // outcomes; a success here flips outboundHealth to connected.
+    } catch {
+      // error-policy:J4 the failed recovery probe leaves the account in its
+      // visibly distinct unavailable state; sendText translates to the typed
+      // WECHAT_ACCOUNT_UNAVAILABLE error at its boundary.
+    }
   }
 
   getResolvedAccount(accountId: string): ResolvedWechatAccount | undefined {
