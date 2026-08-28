@@ -6,6 +6,7 @@
  * (the fallback when children aren't statically inspectable). Consumed by the
  * sidebar root when it renders the collapsed variant.
  */
+import { toWellFormedUnicode } from "@elizaos/core";
 import * as React from "react";
 
 import { SegmentedControl } from "../../ui/segmented-control";
@@ -87,12 +88,15 @@ function cleanRailLabel(value: string | null | undefined): string {
 }
 
 function buildRailMonogram(label: string): string {
-  const words = label.trim().split(/\s+/).filter(Boolean);
+  const wellFormed = toWellFormedUnicode(label);
+  const words = wellFormed.trim().split(/\s+/).filter(Boolean);
   const initials = words
     .slice(0, 2)
-    .map((word) => word[0]?.toUpperCase() ?? "")
+    .map((word) => (Array.from(word)[0] ?? "").toUpperCase())
     .join("");
-  return (initials || label.slice(0, 1).toUpperCase() || "?").slice(0, 2);
+  const raw =
+    initials || (Array.from(wellFormed)[0] ?? "").toUpperCase() || "?";
+  return Array.from(raw).slice(0, 2).join("");
 }
 
 function resolveRailContent(label: string, icon: React.ReactNode | null) {

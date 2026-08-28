@@ -14,6 +14,7 @@
  * drawer. Barrel-exported and mounted inside the chat panel layout.
  */
 
+import { toWellFormedUnicode } from "@elizaos/core";
 import {
   Bell,
   BellOff,
@@ -108,12 +109,15 @@ interface ConversationsSidebarProps {
 }
 
 function railMonogram(label: string): string {
-  const words = label.trim().split(/\s+/).filter(Boolean);
+  const wellFormed = toWellFormedUnicode(label);
+  const words = wellFormed.trim().split(/\s+/).filter(Boolean);
   const initials = words
     .slice(0, 2)
-    .map((word) => word[0]?.toUpperCase() ?? "")
+    .map((word) => (Array.from(word)[0] ?? "").toUpperCase())
     .join("");
-  return (initials || label.slice(0, 1).toUpperCase() || "?").slice(0, 2);
+  const raw =
+    initials || (Array.from(wellFormed)[0] ?? "").toUpperCase() || "?";
+  return Array.from(raw).slice(0, 2).join("");
 }
 
 function isTerminalRow(row: ConversationsSidebarRow): boolean {

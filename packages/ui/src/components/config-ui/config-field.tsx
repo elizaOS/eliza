@@ -6,6 +6,7 @@
  * chip that opens an edit dialog — matching the Devin settings pattern —
  * while booleans stay an inline switch.
  */
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { Pencil } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type {
@@ -71,7 +72,10 @@ function displayValue(
     const raw = Array.isArray(renderProps.value)
       ? renderProps.value.join(", ")
       : String(renderProps.value);
-    return raw.length > 28 ? `${raw.slice(0, 26)}…` : raw;
+    const wellFormed = toWellFormedUnicode(raw);
+    return wellFormed.length > 28
+      ? `${truncateWellFormed(wellFormed, 26)}…`
+      : wellFormed;
   }
   if (renderProps.isSet) {
     return t("config-field.configured", { defaultValue: "Configured" });
