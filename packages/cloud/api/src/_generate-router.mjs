@@ -31,6 +31,11 @@ const SHARD_KEYS_OUT_FILE = resolve(
   "_router-shard-keys.generated.ts",
 );
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
+export const APPROVED_CODEGEN_SKIPPED_RELATIVE_FILES = Object.freeze([
+  "v1/cron/remote-host-managed-cleanup/route.ts",
+  "v1/remote/hosts/[id]/managed-network/activate/route.ts",
+  "v1/remote/sessions/activate/route.ts",
+]);
 
 export async function* walk(dir) {
   for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
@@ -115,6 +120,29 @@ export function isHonoRouteSource(code) {
   return HONO_IMPORT_RE.test(code) || HONO_APP_FACTORY_RE.test(code);
 }
 
+export function isRouteCodegenSkippedSource(code) {
+  return /^\/\/ route-codegen: skip(?:\r?\n|$)/.test(code);
+}
+
+export function assertApprovedCodegenSkips(
+  intentionallySkippedFiles,
+  apiRoot = API_ROOT,
+) {
+  const actual = intentionallySkippedFiles
+    .map((file) => relative(apiRoot, file).replace(/\\/g, "/"))
+    .sort();
+  if (
+    actual.length !== APPROVED_CODEGEN_SKIPPED_RELATIVE_FILES.length ||
+    actual.some(
+      (file, index) => file !== APPROVED_CODEGEN_SKIPPED_RELATIVE_FILES[index],
+    )
+  ) {
+    throw new Error(
+      `[codegen] exact route skip allowlist mismatch: ${JSON.stringify(actual)}`,
+    );
+  }
+}
+
 export async function isHonoConverted(filePath) {
   const code = await fs.readFile(filePath, "utf8");
   return isHonoRouteSource(code);
@@ -190,6 +218,7 @@ export async function collectRouteEntries(apiRoot = API_ROOT) {
   const seen = new Map();
   const entries = [];
   const unmountedFiles = [];
+  const intentionallySkippedFiles = [];
   let unconverted = 0;
   for (const f of files) {
     const paths = fileToHttpPaths(f, apiRoot);
@@ -202,7 +231,13 @@ export async function collectRouteEntries(apiRoot = API_ROOT) {
       seen.set(path, f);
     }
 
-    const converted = await isHonoConverted(f);
+    const code = await fs.readFile(f, "utf8");
+    if (isRouteCodegenSkippedSource(code)) {
+      intentionallySkippedFiles.push(f);
+      continue;
+    }
+
+    const converted = isHonoRouteSource(code);
     if (!converted) {
       unconverted++;
       unmountedFiles.push(f);
@@ -217,11 +252,19 @@ export async function collectRouteEntries(apiRoot = API_ROOT) {
   }
 
   entries.sort(compareMountPaths);
-  return { files, entries, unconverted, unmountedFiles };
+  return {
+    files,
+    entries,
+    unconverted,
+    unmountedFiles,
+    intentionallySkippedFiles,
+  };
 }
 
 export async function generateRouter() {
-  const { entries, unconverted, unmountedFiles } = await collectRouteEntries();
+  const { entries, unconverted, unmountedFiles, intentionallySkippedFiles } =
+    await collectRouteEntries();
+  assertApprovedCodegenSkips(intentionallySkippedFiles);
   const shardKeys = [
     ...new Set(
       entries
@@ -311,7 +354,7 @@ export async function generateRouter() {
   ].join("\n");
   await fs.writeFile(SHARD_KEYS_OUT_FILE, shardKeysBody, "utf8");
   console.log(
-    `[codegen] wrote ${OUT_FILE} and ${SHARD_KEYS_OUT_FILE} (${entries.length} mounted, ${shardKeys.length} shards, ${unconverted} unconverted)`,
+    `[codegen] wrote ${OUT_FILE} and ${SHARD_KEYS_OUT_FILE} (${entries.length} mounted, ${shardKeys.length} shards, ${intentionallySkippedFiles.length} intentionally skipped, ${unconverted} unconverted)`,
   );
   if (unconverted > 0) {
     console.error(

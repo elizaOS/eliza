@@ -1,3 +1,4 @@
+// route-codegen: skip
 /** Activates a pending managed host only after exact Headscale node discovery. */
 
 import { Hono } from "hono";

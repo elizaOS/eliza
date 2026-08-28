@@ -1,3 +1,4 @@
+// route-codegen: skip
 /** Atomically discovers and consumes one host-bound pairing code. */
 
 import { Hono } from "hono";
