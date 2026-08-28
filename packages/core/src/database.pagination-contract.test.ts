@@ -21,6 +21,11 @@ const UUID_A = "11111111-1111-4111-8111-111111111111" as UUID;
 const UUID_B = "22222222-2222-4222-8222-222222222222" as UUID;
 const UUID_C = "33333333-3333-4333-8333-333333333333" as UUID;
 
+// Letter-bearing UUIDs that differ from their lowercased form when uppercased,
+// so case-normalization assertions actually exercise the `toLowerCase()` path.
+const LETTER_A = "aabbccdd-eeff-4a11-8b22-aabbccddeeff" as UUID;
+const LETTER_B = "bbccddee-ff00-4b22-8c33-bbccddeeff00" as UUID;
+
 function makeTask(overrides: Partial<Task> = {}): Task {
 	return { name: "task", id: UUID_A, createdAt: 1_000, ...overrides };
 }
@@ -30,6 +35,12 @@ describe("validateQueryEntitiesPagination", () => {
 		expect(() => validateQueryEntitiesPagination({})).not.toThrow();
 		expect(() =>
 			validateQueryEntitiesPagination({ limit: 0, offset: 0 }),
+		).not.toThrow();
+	});
+
+	it("accepts explicitly undefined limit and offset", () => {
+		expect(() =>
+			validateQueryEntitiesPagination({ limit: undefined, offset: undefined }),
 		).not.toThrow();
 	});
 
@@ -44,7 +55,7 @@ describe("validateQueryEntitiesPagination", () => {
 		);
 	});
 
-	it("rejects fractional, NaN, Infinity, and non-integer values", () => {
+	it("rejects fractional, NaN, Infinity, and non-integer values with boundary prefix", () => {
 		for (const bad of [
 			1.5,
 			Number.NaN,
@@ -52,10 +63,10 @@ describe("validateQueryEntitiesPagination", () => {
 			Number.NEGATIVE_INFINITY,
 		]) {
 			expect(() => validateQueryEntitiesPagination({ limit: bad })).toThrow(
-				RangeError,
+				/queryEntities limit must be a non-negative safe integer/,
 			);
 			expect(() => validateQueryEntitiesPagination({ offset: bad })).toThrow(
-				RangeError,
+				/queryEntities offset must be a non-negative safe integer/,
 			);
 		}
 	});
@@ -78,6 +89,12 @@ describe("validateTaskQueryPagination", () => {
 		).not.toThrow();
 	});
 
+	it("accepts explicitly undefined limit and offset", () => {
+		expect(() =>
+			validateTaskQueryPagination({ limit: undefined, offset: undefined }),
+		).not.toThrow();
+	});
+
 	it("throws a boundary-prefixed RangeError for negative values", () => {
 		expect(() => validateTaskQueryPagination({ limit: -1 })).toThrow(
 			new RangeError("getTasks limit must be a non-negative safe integer"),
@@ -87,7 +104,7 @@ describe("validateTaskQueryPagination", () => {
 		);
 	});
 
-	it("rejects fractional, NaN, Infinity, and non-integer values", () => {
+	it("rejects fractional, NaN, Infinity, and non-integer values with boundary prefix", () => {
 		for (const bad of [
 			1.5,
 			Number.NaN,
@@ -95,10 +112,10 @@ describe("validateTaskQueryPagination", () => {
 			Number.NEGATIVE_INFINITY,
 		]) {
 			expect(() => validateTaskQueryPagination({ limit: bad })).toThrow(
-				RangeError,
+				/getTasks limit must be a non-negative safe integer/,
 			);
 			expect(() => validateTaskQueryPagination({ offset: bad })).toThrow(
-				RangeError,
+				/getTasks offset must be a non-negative safe integer/,
 			);
 		}
 	});
@@ -120,9 +137,10 @@ describe("compareMemoryIds", () => {
 	});
 
 	it("treats mixed-case forms of the same id as equal", () => {
-		const uppercase = UUID_A.toUpperCase() as UUID;
-		expect(compareMemoryIds(UUID_A, uppercase)).toBe(0);
-		expect(compareMemoryIds(uppercase, UUID_A)).toBe(0);
+		// Use letter-bearing UUIDs so toUpperCase() actually changes the string.
+		const uppercase = LETTER_A.toUpperCase() as UUID;
+		expect(compareMemoryIds(LETTER_A, uppercase)).toBe(0);
+		expect(compareMemoryIds(uppercase, LETTER_A)).toBe(0);
 	});
 
 	it("orders across the case boundary, not by raw byte value", () => {
@@ -160,19 +178,18 @@ describe("compareTasksForQuery", () => {
 		const withTime = makeTask({ id: UUID_B, createdAt: 1_000 });
 		expect(compareTasksForQuery(without, withTime)).toBeGreaterThan(0);
 		expect(compareTasksForQuery(withTime, without)).toBeLessThan(0);
-		// Two undefined-createdAt tasks fall through to the id tie-break.
-		expect(
-			compareTasksForQuery(
-				without,
-				makeTask({ id: UUID_A, createdAt: undefined }),
-			),
-		).toBe(0);
+		// Two undefined-createdAt tasks with distinct ids fall through to the
+		// id tie-break, not a trivial early return.
+		const otherUndated = makeTask({ id: UUID_B, createdAt: undefined });
+		expect(compareTasksForQuery(without, otherUndated)).toBeLessThan(0);
+		expect(compareTasksForQuery(otherUndated, without)).toBeGreaterThan(0);
 	});
 
 	it("normalizes id case in the tie-break", () => {
-		const lower = makeTask({ id: UUID_A, createdAt: 1_000 });
+		// Use letter-bearing UUIDs so toUpperCase() actually changes the string.
+		const lower = makeTask({ id: LETTER_A, createdAt: 1_000 });
 		const upper = makeTask({
-			id: UUID_A.toUpperCase() as UUID,
+			id: LETTER_A.toUpperCase() as UUID,
 			createdAt: 1_000,
 		});
 		expect(compareTasksForQuery(lower, upper)).toBe(0);
