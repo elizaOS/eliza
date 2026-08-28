@@ -19,11 +19,8 @@ export function isConfirmed(_options?: Record<string, unknown>): boolean {
   return false;
 }
 
-function toConfirmationValue(value: unknown): ConfirmationValue {
-  if (value === undefined) {
-    return null;
-  }
-  if (value === null) {
+function toConfirmationValue(value: unknown, ancestors?: WeakSet<object>): ConfirmationValue {
+  if (value === undefined || value === null) {
     return null;
   }
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
@@ -33,19 +30,42 @@ function toConfirmationValue(value: unknown): ConfirmationValue {
     return value.toString();
   }
   if (Array.isArray(value)) {
-    return value.map((item) => toConfirmationValue(item));
+    const chain = ancestors ?? new WeakSet<object>();
+    if (chain.has(value)) {
+      return "[Circular]";
+    }
+    chain.add(value);
+    const result = value.map((item) => toConfirmationValue(item, chain));
+    chain.delete(value);
+    return result;
   }
   if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [key, toConfirmationValue(item)])
+    // Non-plain objects (Date, Map, RegExp, class instances) have no
+    // enumerable JSON shape. Surface their string form instead of silently
+    // collapsing them to an empty record in the confirmation preview.
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      return String(value);
+    }
+    const chain = ancestors ?? new WeakSet<object>();
+    if (chain.has(value)) {
+      return "[Circular]";
+    }
+    chain.add(value);
+    const result = Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, toConfirmationValue(item, chain)])
     ) as Record<string, ConfirmationValue>;
+    chain.delete(value);
+    return result;
   }
   return String(value);
 }
 
 function toConfirmationRecord(record: object): Record<string, ConfirmationValue> {
+  const chain = new WeakSet<object>();
+  chain.add(record);
   return Object.fromEntries(
-    Object.entries(record).map(([key, value]) => [key, toConfirmationValue(value)])
+    Object.entries(record).map(([key, value]) => [key, toConfirmationValue(value, chain)])
   ) as Record<string, ConfirmationValue>;
 }
 
