@@ -14,11 +14,18 @@ import type { PaymentStateDisplay } from "./components/payment-activity-card";
 import { PaymentStateDetailClient } from "./components/payment-state-detail-client";
 import { isPaymentStateRow } from "./components/payment-state-row-validation";
 
+// Every phase carries the route id it was requested for; requestedId may be
+// undefined only when the route param itself is absent. Strict identity
+// matching in the render guard depends on this field always being set.
 type DetailPhase =
-  | { kind: "loading" }
-  | { kind: "error"; message: string }
-  | { kind: "not-found" }
-  | { kind: "ready"; row: PaymentStateDisplay };
+  | { kind: "loading"; requestedId: string | undefined }
+  | { kind: "error"; message: string; requestedId: string | undefined }
+  | { kind: "not-found"; requestedId: string | undefined }
+  | {
+      kind: "ready";
+      row: PaymentStateDisplay;
+      requestedId: string | undefined;
+    };
 
 interface PaymentStateResponse {
   state: PaymentStateDisplay;
@@ -28,7 +35,10 @@ export default function PaymentStateDetailPage() {
   const t = useCloudT();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [phase, setPhase] = useState<DetailPhase>({ kind: "loading" });
+  const [phase, setPhase] = useState<DetailPhase>({
+    kind: "loading",
+    requestedId: id,
+  });
   // Monotonic generation counter: every in-flight fetch captures the current
   // value, and only the most recent generation may commit state. A delayed
   // completion for a previous route id (the fetch closes over `id`) must
@@ -38,9 +48,9 @@ export default function PaymentStateDetailPage() {
 
   const fetchState = useCallback(async () => {
     const requestGeneration = ++generation.current;
-    setPhase({ kind: "loading" });
+    setPhase({ kind: "loading", requestedId: id });
     if (!id) {
-      setPhase({ kind: "not-found" });
+      setPhase({ kind: "not-found", requestedId: id });
       return;
     }
     try {
@@ -58,6 +68,7 @@ export default function PaymentStateDetailPage() {
         setPhase({
           kind: "error",
           message: "Payment state response was malformed.",
+          requestedId: id,
         });
         return;
       }
@@ -68,10 +79,11 @@ export default function PaymentStateDetailPage() {
         setPhase({
           kind: "error",
           message: "Payment state response was malformed.",
+          requestedId: id,
         });
         return;
       }
-      setPhase({ kind: "ready", row: data.state });
+      setPhase({ kind: "ready", row: data.state, requestedId: id });
     } catch (error) {
       if (requestGeneration !== generation.current) {
         return;
@@ -80,7 +92,7 @@ export default function PaymentStateDetailPage() {
       // not a generic error — the linked row may have scrolled out of the
       // projection window or the id may simply be stale.
       if (error instanceof ApiError && error.status === 404) {
-        setPhase({ kind: "not-found" });
+        setPhase({ kind: "not-found", requestedId: id });
         return;
       }
       // error-policy:J4 transport failure becomes a visible error state with
@@ -91,6 +103,7 @@ export default function PaymentStateDetailPage() {
           error instanceof Error
             ? error.message
             : "Payment detail could not be loaded.",
+        requestedId: id,
       });
     }
   }, [id]);
@@ -123,11 +136,21 @@ export default function PaymentStateDetailPage() {
     defaultValue: "Loading payment detail",
   });
 
-  if (phase.kind === "loading") {
+  // Route identity contract (#26752 P2): the rendered phase must belong to
+  // the ACTIVE route id. Between an id transition and the new fetch's first
+  // commit, React re-renders this same mounted component with the OLD phase
+  // while the URL already shows the new id — payment A's ready/error/not-
+  // found must never be visible under /payments/B. Every phase is stamped
+  // with the id it was requested for; any phase not matching the current
+  // id degrades to loading-for-this-id until the new fetch commits.
+  const visiblePhase: DetailPhase =
+    phase.requestedId === id ? phase : { kind: "loading", requestedId: id };
+
+  if (visiblePhase.kind === "loading") {
     return <DashboardLoadingState label={loadingLabel} />;
   }
 
-  if (phase.kind === "not-found") {
+  if (visiblePhase.kind === "not-found") {
     return (
       <div className="flex flex-col items-center gap-3 p-8 border border-brand-surface max-w-6xl mx-auto m-6">
         <p
@@ -151,7 +174,7 @@ export default function PaymentStateDetailPage() {
     );
   }
 
-  if (phase.kind === "error") {
+  if (visiblePhase.kind === "error") {
     return (
       <div className="flex flex-col items-center gap-3 p-8 border border-brand-surface max-w-6xl mx-auto m-6">
         <p
@@ -162,7 +185,9 @@ export default function PaymentStateDetailPage() {
             defaultValue: "Payment detail could not be loaded",
           })}
         </p>
-        <p className="text-xs text-muted-strong font-mono">{phase.message}</p>
+        <p className="text-xs text-muted-strong font-mono">
+          {visiblePhase.message}
+        </p>
         <Button
           variant="linkMono"
           type="button"
@@ -176,5 +201,5 @@ export default function PaymentStateDetailPage() {
     );
   }
 
-  return <PaymentStateDetailClient row={phase.row} />;
+  return <PaymentStateDetailClient row={visiblePhase.row} />;
 }

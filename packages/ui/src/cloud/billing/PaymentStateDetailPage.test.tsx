@@ -288,6 +288,125 @@ describe("PaymentStateDetailPage fetch states", () => {
     expect(screen.queryByText("authority-A")).toBeNull();
   });
 
+  it("first commit for the new route id is loading with no stale authority row (#26752 P2)", async () => {
+    // Layout-effect regression requested by review: resolve A, hold B
+    // pending, navigate A→B, and assert the FIRST commit rendered for B
+    // has no authority row and is loading — not ready(A) reused under the
+    // B URL. React re-renders the same mounted component with the new id
+    // BEFORE the new fetch's passive effect starts, so without the
+    // requestedId guard the old ready(A) phase renders under /payments/B.
+    function Harness() {
+      const navigate = useNavigate();
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() =>
+              navigate("/cloud/billing/payments/checkout_order:b3")
+            }
+          >
+            go-b
+          </button>
+          <Routes>
+            <Route
+              path="/cloud/billing/payments/:id"
+              element={<PaymentStateDetailPage />}
+            />
+          </Routes>
+        </>
+      );
+    }
+
+    // A resolves; B stays pending forever.
+    apiMock.api.mockResolvedValueOnce({
+      state: stateRow({
+        id: "checkout_order:a3",
+        authorityId: "authority-A3",
+        amountCents: 1100,
+      }),
+    });
+    apiMock.api.mockImplementationOnce(() => new Promise(() => {}));
+
+    render(
+      <MemoryRouter
+        initialEntries={["/cloud/billing/payments/checkout_order:a3"]}
+      >
+        <Harness />
+      </MemoryRouter>,
+    );
+
+    // A is resolved and rendered.
+    await screen.findByTestId("payment-detail-title");
+    expect(screen.getByTestId("payment-detail-authority").textContent).toBe(
+      "authority-A3",
+    );
+
+    // Navigate to B; synchronously after the route commit, the rendered
+    // surface must already be loading-for-B with no A authority present.
+    fireEvent.click(screen.getByRole("button", { name: "go-b" }));
+    // The click handler runs navigate() synchronously; React commits the
+    // re-render before yielding, so the assertions below observe the first
+    // B commit without awaiting any timer or fetch.
+    expect(screen.getByRole("status").getAttribute("aria-label")).toBe(
+      "Loading payment detail",
+    );
+    expect(screen.queryByTestId("payment-detail-authority")).toBeNull();
+    expect(screen.queryByTestId("payment-detail-title")).toBeNull();
+    expect(screen.queryByText("authority-A3")).toBeNull();
+    expect(screen.queryByTestId("payment-detail-error")).toBeNull();
+    expect(screen.queryByTestId("payment-detail-not-found")).toBeNull();
+  });
+
+  it("a stale error state for a previous route id never renders under the new id (#26752 P2)", async () => {
+    // The identity guard must cover EVERY phase kind, not just ready: A's
+    // malformed-payload error must degrade to loading-for-B on the first B
+    // commit, never render A's error text under /payments/B.
+    function Harness() {
+      const navigate = useNavigate();
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() =>
+              navigate("/cloud/billing/payments/checkout_order:b4")
+            }
+          >
+            go-b
+          </button>
+          <Routes>
+            <Route
+              path="/cloud/billing/payments/:id"
+              element={<PaymentStateDetailPage />}
+            />
+          </Routes>
+        </>
+      );
+    }
+
+    // A fails with a malformed payload; B stays pending forever.
+    apiMock.api.mockResolvedValueOnce({ unrelated: true });
+    apiMock.api.mockImplementationOnce(() => new Promise(() => {}));
+
+    render(
+      <MemoryRouter
+        initialEntries={["/cloud/billing/payments/checkout_order:a4"]}
+      >
+        <Harness />
+      </MemoryRouter>,
+    );
+
+    // A's error state is rendered.
+    await screen.findByTestId("payment-detail-error");
+
+    // Navigate to B: the first B commit must be loading, not A's error.
+    fireEvent.click(screen.getByRole("button", { name: "go-b" }));
+    expect(screen.getByRole("status").getAttribute("aria-label")).toBe(
+      "Loading payment detail",
+    );
+    expect(screen.queryByTestId("payment-detail-error")).toBeNull();
+    expect(screen.queryByText(/malformed/i)).toBeNull();
+  });
+
   it("a delayed failure for a previous route id never overwrites the current row (#26752 P2)", async () => {
     // Same generation guard on the catch path: a stale rejection must not
     // tear down the newer route's rendered row.
