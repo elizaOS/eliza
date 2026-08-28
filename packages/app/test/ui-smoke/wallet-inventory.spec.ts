@@ -97,13 +97,6 @@ test("wallet inventory exposes chain badges, rows, copy controls, and hide state
   const sidebar = await openWalletSidebar(page);
 
   await expect(sidebar.getByText("$1,550.50")).toBeVisible();
-  for (const chain of ["ethereum", "base", "bsc", "avax", "solana"]) {
-    await expect(
-      sidebar.getByTestId(`wallet-chain-chip-${chain}`),
-      `${chain} chain badge should be rendered`,
-    ).toBeVisible();
-  }
-
   await expect(
     sidebar.getByTestId("wallet-token-row-ethereum-native-eth"),
   ).toContainText("ETH");
@@ -117,6 +110,13 @@ test("wallet inventory exposes chain badges, rows, copy controls, and hide state
     sidebar.getByTestId("wallet-token-row-solana-native-sol"),
   ).toContainText("SOL");
 
+  await sidebar.getByRole("button", { name: "Show wallet details" }).click();
+  await expect(
+    sidebar.getByTestId("wallet-address-chain-chip-ethereum"),
+  ).toBeVisible();
+  await expect(
+    sidebar.getByTestId("wallet-address-chain-chip-solana"),
+  ).toBeVisible();
   await sidebar.getByTestId("wallet-copy-evm-address").click();
   if (clipboardReadable) {
     await expect
@@ -126,7 +126,7 @@ test("wallet inventory exposes chain badges, rows, copy controls, and hide state
       .toBe("0x1234567890abcdef1234567890abcdef12345678");
   }
 
-  await sidebar.getByTestId("wallet-copy-sol-address").click();
+  await sidebar.getByTestId("wallet-copy-solana-address").click();
   if (clipboardReadable) {
     await expect
       .poll(() => page.evaluate(() => navigator.clipboard.readText()), {
@@ -140,13 +140,14 @@ test("wallet inventory exposes chain badges, rows, copy controls, and hide state
   await expect(sidebar.getByText("Smoke Solana Collectible")).toBeVisible();
 
   await sidebar.getByTestId("wallet-tab-defi").click();
-  await expect(sidebar.getByText("No DeFi positions.")).toBeVisible();
+  await expect(sidebar.getByText("ETH / USDC Position")).toBeVisible();
 
   await sidebar.getByTestId("wallet-tab-tokens").click();
   await expect(
     sidebar.getByTestId("wallet-token-row-ethereum-native-usdc"),
   ).toBeVisible();
-  await sidebar.getByTestId("wallet-token-hide-ethereum-native-usdc").click();
+  await sidebar.getByTestId("wallet-token-manage-ethereum-native-usdc").click();
+  await page.getByTestId("wallet-token-hide-ethereum-native-usdc").click();
   await expect(
     sidebar.getByTestId("wallet-token-row-ethereum-native-usdc"),
   ).toHaveCount(0);
