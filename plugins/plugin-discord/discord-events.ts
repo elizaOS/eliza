@@ -26,7 +26,10 @@ import {
 import { isDiscordUserAddressed } from "./addressing";
 import { DISCORD_SERVICE_NAME } from "./constants";
 import { type ChannelDebouncer, createChannelDebouncer } from "./debouncer";
-import { asMemberLike, roleUpdatePermissionAggregates } from "./membership-adapters";
+import {
+	asMemberLike,
+	roleUpdatePermissionAggregates,
+} from "./membership-adapters";
 import type { ChannelLike } from "./membership-bridge";
 import {
 	getDiscordMessageCoalesceConfig,
@@ -179,9 +182,12 @@ interface EventListenerConfig {
 /**
  * The guilds served by one gateway shard (#24365). discord.js stamps each
  * guild with its owning shard id (GUILD_CREATE handler); fall back to the
- * shard-count formula for guilds that lack it. Unknown shard geometry
- * (single-shard clients or shards without a total count) conservatively
- * returns every cached guild so degrade/resume stay symmetric.
+ * shard-count formula for guilds that lack it. When every cached guild
+ * carries a shard stamp the filter is exact, so a known shard that owns
+ * zero cached guilds returns an empty list — degrading it must not sweep
+ * healthy sibling shards' guilds. Only partially- or un-stamped geometry
+ * is unknown, where the conservative every-guild fallback keeps
+ * degrade/resume symmetric.
  */
 function guildsForShard<T extends { id: string; shardId?: number }>(
 	client: unknown,
@@ -210,6 +216,17 @@ function guildsForShard<T extends { id: string; shardId?: number }>(
 			shardCount > 1 && Number(BigInt(guild.id) >> 22n) % shardCount === shardId
 		);
 	});
+	// Geometry is known exactly when every cached guild carries a shard
+	// stamp: the filter then provably owns the answer, including an empty
+	// one for a shard with no cached guilds. Any unstamped guild leaves
+	// the geometry unknown, so the conservative all-guilds fallback keeps
+	// degrade/resume symmetric (RP #29748 blocker 2).
+	const geometryKnown =
+		allGuilds.length > 0 &&
+		allGuilds.every((guild) => typeof guild.shardId === "number");
+	if (geometryKnown) {
+		return shardGuilds;
+	}
 	return shardGuilds.length > 0 ? shardGuilds : allGuilds;
 }
 
@@ -1269,95 +1286,6 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 							audit,
 						} as EventPayload,
 					);
-
-					// Canonical membership evidence (#24365): an overwrite change
-					// can flip channel visibility for the affected role or
-					// member; publish permission deltas for the members whose
-					// view changed, diffing against the channel's PRE-change
-					// overwrites (comparing post-change state against itself
-					// would always report no transition). Degrade-only, after
-					// the existing event flow.
-					const previousOverwrites = new Map<
-						string,
-						ChannelLike["overwrites"]
-					>();
-					previousOverwrites.set(
-						guildChannel.id,
-						[...oldOverwrites.values()].map((ow) => ({
-							id: ow.id,
-							type: ow.type === 0 ? "role" : "member",
-							allow: ow.allow?.bitfield,
-							deny: ow.deny?.bitfield,
-						})),
-					);
-					if (targetType === "user") {
-						const targetMember =
-							guildChannel.guild.members.cache.get(id) ?? null;
-						if (
-							targetMember &&
-							typeof service.publishMemberPermissionDelta === "function"
-						) {
-							try {
-								await service.publishMemberPermissionDelta({
-									accountId,
-									guild: guildChannel.guild,
-									oldMember: targetMember,
-									newMember: targetMember,
-									eventId: `overwrite:${guildChannel.id}:${id}:${Date.now()}`,
-									oldChannelOverwrites: previousOverwrites,
-								});
-							} catch (error) {
-								// error-policy:J4 degrade-only membership evidence:
-								// log and continue the channelUpdate flow.
-								service.runtime.logger.debug(
-									{
-										src: "plugin:discord",
-										agentId: service.runtime.agentId,
-										channelId: guildChannel.id,
-										targetId: id,
-										error:
-											error instanceof Error ? error.message : String(error),
-									},
-									"Discord membership overwrite delta publish failed",
-								);
-							}
-						}
-					} else {
-						// A role overwrite change can affect every member holding
-						// the role; diff each cached member's view before/after.
-						for (const member of guildChannel.guild.members.cache.values()) {
-							if (
-								member.roles.cache.has(id) &&
-								typeof service.publishMemberPermissionDelta === "function"
-							) {
-								try {
-									await service.publishMemberPermissionDelta({
-										accountId,
-										guild: guildChannel.guild,
-										oldMember: member,
-										newMember: member,
-										eventId: `overwrite:${guildChannel.id}:${id}:${member.id}:${Date.now()}`,
-										oldChannelOverwrites: previousOverwrites,
-									});
-								} catch (error) {
-									// error-policy:J4 degrade-only membership evidence:
-									// log and continue the sweep.
-									service.runtime.logger.debug(
-										{
-											src: "plugin:discord",
-											agentId: service.runtime.agentId,
-											channelId: guildChannel.id,
-											roleId: id,
-											memberId: member.id,
-											error:
-												error instanceof Error ? error.message : String(error),
-										},
-										"Discord membership role-overwrite delta publish failed",
-									);
-								}
-							}
-						}
-					}
 				}
 			} catch (err) {
 				service.runtime.logger.error(
@@ -1403,64 +1331,6 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 					changes,
 					audit,
 				} as EventPayload);
-
-				// Canonical membership evidence (#24365): a role permission change
-				// can flip channel visibility for every member holding the role.
-				// Recompute the member's aggregate from their OTHER live roles so
-				// overlapping grants from unchanged roles survive the transition
-				// (bit-masking the changed role off the old aggregate would
-				// remove bits those roles also grant). Degrade-only, after the
-				// existing event flow.
-				if (typeof service.publishMemberPermissionDelta === "function") {
-					for (const member of newRole.guild.members.cache.values()) {
-						if (!member.roles.cache.has(newRole.id)) {
-							continue;
-						}
-						try {
-							const base = asMemberLike(member);
-							let otherRoles = 0n;
-							for (const role of member.roles.cache.values()) {
-								if (role.id !== newRole.id) {
-									otherRoles |= role.permissions.bitfield;
-								}
-							}
-							// discord.js grants the guild owner every permission
-							// independently of roles; preserve that invariant so a
-							// role transition never fabricates a permission change
-							// for the owner (RP r4 finding 2).
-							const aggregates = roleUpdatePermissionAggregates({
-								memberId: member.id,
-								guildOwnerId: newRole.guild.ownerId,
-								otherRolesBitfield: otherRoles,
-								oldRoleBitfield: oldRole.permissions.bitfield,
-								newRoleBitfield: newRole.permissions.bitfield,
-								allPermissions: PermissionsBitField.All,
-							});
-							const oldAggregate = aggregates.oldPermissions;
-							const newAggregate = aggregates.newPermissions;
-							await service.publishMemberPermissionDelta({
-								accountId,
-								guild: newRole.guild,
-								oldMember: { ...base, permissions: oldAggregate },
-								newMember: { ...base, permissions: newAggregate },
-								eventId: `roleperm:${newRole.id}:${member.id}:${Date.now()}`,
-							});
-						} catch (error) {
-							// error-policy:J4 degrade-only membership evidence:
-							// log and continue the role-member sweep.
-							service.runtime.logger.debug(
-								{
-									src: "plugin:discord",
-									agentId: service.runtime.agentId,
-									roleId: newRole.id,
-									memberId: member.id,
-									error: error instanceof Error ? error.message : String(error),
-								},
-								"Discord membership role-permission delta publish failed",
-							);
-						}
-					}
-				}
 			} catch (err) {
 				service.runtime.logger.error(
 					{
@@ -1530,32 +1400,6 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 					})),
 					audit,
 				} as EventPayload);
-
-				// Canonical membership evidence (#24365): role transitions change
-				// channel visibility; publish the per-channel permission delta.
-				// Degrade-only, after the existing event flow.
-				if (typeof service.publishMemberPermissionDelta === "function") {
-					try {
-						await service.publishMemberPermissionDelta({
-							accountId,
-							guild: newMember.guild,
-							oldMember: fullOldMember as GuildMember,
-							newMember,
-							eventId: newMember.id,
-						});
-					} catch (error) {
-						// error-policy:J4 degrade-only membership evidence.
-						service.runtime.logger.debug(
-							{
-								src: "plugin:discord",
-								agentId: service.runtime.agentId,
-								memberId: newMember.id,
-								error: error instanceof Error ? error.message : String(error),
-							},
-							"Discord membership role-change delta publish failed",
-						);
-					}
-				}
 			} catch (err) {
 				service.runtime.logger.error(
 					{
@@ -1652,6 +1496,280 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 			}
 		});
 	} // end if (isAuditLogEnabled)
+
+	// ── Membership evidence: permission-relevant updates (#24365) ──────
+	// The canonical membership publisher must observe channel-overwrite,
+	// role-permission, and member-role transitions under the DEFAULT
+	// configuration: these events grant or revoke authorization evidence,
+	// and a revocation that never reaches the publisher leaves stale
+	// evidence authorizing a removed member until expiry or resnapshot.
+	// They are deliberately registered OUTSIDE the DISCORD_AUDIT_LOG_ENABLED
+	// block above — that gate exists because audit-log enrichment
+	// (fetchAuditEntry) requires the View Audit Log permission, which is
+	// an opt-in intent; membership state must not depend on it (RP #29748
+	// blocker 3).
+
+	service.client.on("channelUpdate", async (oldChannel, newChannel) => {
+		try {
+			let channel = newChannel;
+			if (channel.partial) {
+				channel = await channel.fetch();
+			}
+
+			if (!("permissionOverwrites" in oldChannel) || !("guild" in channel)) {
+				return;
+			}
+
+			const guildChannel = channel as GuildChannel;
+			const oldGuildChannel = oldChannel as GuildChannel;
+			const oldOverwrites = oldGuildChannel.permissionOverwrites.cache;
+			const newOverwrites = guildChannel.permissionOverwrites.cache;
+
+			const allIds = new Set([
+				...oldOverwrites.keys(),
+				...newOverwrites.keys(),
+			]);
+
+			for (const id of allIds) {
+				const oldOw = oldOverwrites.get(id);
+				const newOw = newOverwrites.get(id);
+				const { changes } = diffOverwrites(oldOw, newOw);
+
+				if (changes.length === 0) {
+					continue;
+				}
+
+				// An overwrite change can flip channel visibility for the
+				// affected role or member; publish permission deltas for the
+				// members whose view changed, diffing against the channel's
+				// PRE-change overwrites (comparing post-change state against
+				// itself would always report no transition). Degrade-only.
+				const oldOwType = oldOw && oldOw.type !== undefined ? oldOw.type : null;
+				const newOwType = newOw && newOw.type !== undefined ? newOw.type : null;
+				const targetType =
+					(oldOwType ?? newOwType ?? 1) === 0 ? "role" : "user";
+				const previousOverwrites = new Map<string, ChannelLike["overwrites"]>();
+				previousOverwrites.set(
+					guildChannel.id,
+					[...oldOverwrites.values()].map((ow) => ({
+						id: ow.id,
+						type: ow.type === 0 ? "role" : "member",
+						allow: ow.allow?.bitfield,
+						deny: ow.deny?.bitfield,
+					})),
+				);
+				if (targetType === "user") {
+					const targetMember = guildChannel.guild.members.cache.get(id) ?? null;
+					if (
+						targetMember &&
+						typeof service.publishMemberPermissionDelta === "function"
+					) {
+						try {
+							await service.publishMemberPermissionDelta({
+								accountId,
+								guild: guildChannel.guild,
+								oldMember: targetMember,
+								newMember: targetMember,
+								eventId: `overwrite:${guildChannel.id}:${id}:${Date.now()}`,
+								oldChannelOverwrites: previousOverwrites,
+							});
+						} catch (error) {
+							// error-policy:J4 degrade-only membership evidence:
+							// log and continue the channelUpdate flow.
+							service.runtime.logger.debug(
+								{
+									src: "plugin:discord",
+									agentId: service.runtime.agentId,
+									channelId: guildChannel.id,
+									targetId: id,
+									error: error instanceof Error ? error.message : String(error),
+								},
+								"Discord membership overwrite delta publish failed",
+							);
+						}
+					}
+				} else {
+					// A role overwrite change can affect every member holding
+					// the role; diff each cached member's view before/after.
+					for (const member of guildChannel.guild.members.cache.values()) {
+						if (
+							member.roles.cache.has(id) &&
+							typeof service.publishMemberPermissionDelta === "function"
+						) {
+							try {
+								await service.publishMemberPermissionDelta({
+									accountId,
+									guild: guildChannel.guild,
+									oldMember: member,
+									newMember: member,
+									eventId: `overwrite:${guildChannel.id}:${id}:${member.id}:${Date.now()}`,
+									oldChannelOverwrites: previousOverwrites,
+								});
+							} catch (error) {
+								// error-policy:J4 degrade-only membership evidence:
+								// log and continue the sweep.
+								service.runtime.logger.debug(
+									{
+										src: "plugin:discord",
+										agentId: service.runtime.agentId,
+										channelId: guildChannel.id,
+										roleId: id,
+										memberId: member.id,
+										error:
+											error instanceof Error ? error.message : String(error),
+									},
+									"Discord membership role-overwrite delta publish failed",
+								);
+							}
+						}
+					}
+				}
+			}
+		} catch (err) {
+			service.runtime.logger.error(
+				{
+					src: "plugin:discord",
+					agentId: service.runtime.agentId,
+					error: err instanceof Error ? err.message : String(err),
+				},
+				"Error in membership channelUpdate handler",
+			);
+		}
+	});
+
+	service.client.on("roleUpdate", async (oldRole, newRole) => {
+		try {
+			const changes = diffRolePermissions(oldRole, newRole);
+			if (changes.length === 0) {
+				return;
+			}
+
+			// A role permission change can flip channel visibility for
+			// every member holding the role. Recompute the member's
+			// aggregate from their OTHER live roles so overlapping grants
+			// from unchanged roles survive the transition (bit-masking the
+			// changed role off the old aggregate would remove bits those
+			// roles also grant). Degrade-only.
+			if (typeof service.publishMemberPermissionDelta === "function") {
+				for (const member of newRole.guild.members.cache.values()) {
+					if (!member.roles.cache.has(newRole.id)) {
+						continue;
+					}
+					try {
+						const base = asMemberLike(member);
+						let otherRoles = 0n;
+						for (const role of member.roles.cache.values()) {
+							if (role.id !== newRole.id) {
+								otherRoles |= role.permissions.bitfield;
+							}
+						}
+						// discord.js grants the guild owner every permission
+						// independently of roles; preserve that invariant so a
+						// role transition never fabricates a permission change
+						// for the owner (RP r4 finding 2).
+						const aggregates = roleUpdatePermissionAggregates({
+							memberId: member.id,
+							guildOwnerId: newRole.guild.ownerId,
+							otherRolesBitfield: otherRoles,
+							oldRoleBitfield: oldRole.permissions.bitfield,
+							newRoleBitfield: newRole.permissions.bitfield,
+							allPermissions: PermissionsBitField.All,
+						});
+						const oldAggregate = aggregates.oldPermissions;
+						const newAggregate = aggregates.newPermissions;
+						await service.publishMemberPermissionDelta({
+							accountId,
+							guild: newRole.guild,
+							oldMember: { ...base, permissions: oldAggregate },
+							newMember: { ...base, permissions: newAggregate },
+							eventId: `roleperm:${newRole.id}:${member.id}:${Date.now()}`,
+						});
+					} catch (error) {
+						// error-policy:J4 degrade-only membership evidence:
+						// log and continue the role-member sweep.
+						service.runtime.logger.debug(
+							{
+								src: "plugin:discord",
+								agentId: service.runtime.agentId,
+								roleId: newRole.id,
+								memberId: member.id,
+								error: error instanceof Error ? error.message : String(error),
+							},
+							"Discord membership role-permission delta publish failed",
+						);
+					}
+				}
+			}
+		} catch (err) {
+			service.runtime.logger.error(
+				{
+					src: "plugin:discord",
+					agentId: service.runtime.agentId,
+					error: err instanceof Error ? err.message : String(err),
+				},
+				"Error in membership roleUpdate handler",
+			);
+		}
+	});
+
+	service.client.on("guildMemberUpdate", async (oldMember, newMember) => {
+		try {
+			if (!oldMember) {
+				return;
+			}
+
+			let fullOldMember = oldMember;
+			if (oldMember.partial) {
+				try {
+					fullOldMember = await oldMember.fetch();
+				} catch {
+					return;
+				}
+			}
+
+			const { added, removed } = diffMemberRoles(
+				fullOldMember as GuildMember,
+				newMember,
+			);
+			if (added.length === 0 && removed.length === 0) {
+				return;
+			}
+
+			// Role transitions change channel visibility; publish the
+			// per-channel permission delta. Degrade-only.
+			if (typeof service.publishMemberPermissionDelta === "function") {
+				try {
+					await service.publishMemberPermissionDelta({
+						accountId,
+						guild: newMember.guild,
+						oldMember: fullOldMember as GuildMember,
+						newMember,
+						eventId: newMember.id,
+					});
+				} catch (error) {
+					// error-policy:J4 degrade-only membership evidence.
+					service.runtime.logger.debug(
+						{
+							src: "plugin:discord",
+							agentId: service.runtime.agentId,
+							memberId: newMember.id,
+							error: error instanceof Error ? error.message : String(error),
+						},
+						"Discord membership role-change delta publish failed",
+					);
+				}
+			}
+		} catch (err) {
+			service.runtime.logger.error(
+				{
+					src: "plugin:discord",
+					agentId: service.runtime.agentId,
+					error: err instanceof Error ? err.message : String(err),
+				},
+				"Error in membership guildMemberUpdate handler",
+			);
+		}
+	});
 
 	// ── gateway shard lifecycle ────────────────────────────────────────
 	// Observability only. A live incident (2026-08-02 04:01 UTC) lost a
