@@ -31,12 +31,21 @@ import { mergeViewCatalog, type ViewEntry } from "./view-catalog";
 const CATALOG_CACHE_KEY = "view-catalog:apps";
 const INSTALLED_CACHE_KEY = "view-catalog:installed";
 const CATALOG_STALE_MS = 60_000;
+const OPTIONAL_SOURCE_RETRY_DELAY_MS = 500;
+const OPTIONAL_SOURCE_RETRY_LIMIT = 1;
 
 export interface UseViewCatalogResult {
   entries: ViewEntry[];
   loading: boolean;
+  /**
+   * Fatal launcher error. Source failures are fatal only when no usable entry
+   * remains; otherwise the healthy sources continue to power the launcher.
+   */
   error: Error | null;
+  /** Source-specific failures retained for diagnostics and targeted recovery. */
+  sourceErrors: readonly ViewCatalogSourceError[];
   refresh: () => void;
+  retrySource: (source: ViewCatalogSource) => void;
   /**
    * Launch/install the app behind an entry and return the authoritative launch
    * result. Catalog callers need the returned run/viewer on the first click:
@@ -44,6 +53,13 @@ export interface UseViewCatalogResult {
    * a newly-installed app's viewer.
    */
   get: (entry: ViewEntry) => Promise<AppLaunchResult | null>;
+}
+
+export type ViewCatalogSource = "views" | "catalog" | "installed";
+
+export interface ViewCatalogSourceError {
+  source: ViewCatalogSource;
+  error: Error;
 }
 
 export function useViewCatalog(): UseViewCatalogResult {
@@ -105,10 +121,96 @@ export function useViewCatalog(): UseViewCatalogResult {
 
   const catalog = catalogRes.status === "success" ? catalogRes.data : [];
   const installed = installedRes.status === "success" ? installedRes.data : [];
-  const error =
-    viewsError ??
-    (catalogRes.status === "error" ? catalogRes.error : null) ??
-    (installedRes.status === "error" ? installedRes.error : null);
+  const catalogError = catalogRes.status === "error" ? catalogRes.error : null;
+  const installedError =
+    installedRes.status === "error" ? installedRes.error : null;
+  const sourceErrors = useMemo<readonly ViewCatalogSourceError[]>(() => {
+    const failures: ViewCatalogSourceError[] = [];
+    if (viewsError) failures.push({ source: "views", error: viewsError });
+    if (catalogError) {
+      failures.push({ source: "catalog", error: catalogError });
+    }
+    if (installedError) {
+      failures.push({ source: "installed", error: installedError });
+    }
+    return failures;
+  }, [viewsError, catalogError, installedError]);
+
+  // A transient optional-source failure should not turn the built-in launcher
+  // into an error surface, but it also must not silently hide installable apps
+  // until a remount. Retry only the failed source once. Timers are cancelled on
+  // authority/source changes, and the live-authority check prevents a departed
+  // agent's retry from repopulating the current catalog.
+  const optionalRetryAttemptsRef = useRef<{
+    authority: string;
+    catalog: number;
+    installed: number;
+  }>({ authority, catalog: 0, installed: 0 });
+  useEffect(() => {
+    const attempts = optionalRetryAttemptsRef.current;
+    if (attempts.authority !== authority) {
+      optionalRetryAttemptsRef.current = {
+        authority,
+        catalog: 0,
+        installed: 0,
+      };
+    }
+    if (!appShellRoutesSupported) return;
+
+    const currentAttempts = optionalRetryAttemptsRef.current;
+    // A successful settlement closes that source's failure episode. Loading
+    // and error states deliberately keep the consumed budget so one failing
+    // request cannot loop forever, while a later independent outage still gets
+    // its own single recovery attempt.
+    if (catalogRes.status === "success") currentAttempts.catalog = 0;
+    if (installedRes.status === "success") currentAttempts.installed = 0;
+
+    const timers: number[] = [];
+    const scheduleRetry = (
+      source: "catalog" | "installed",
+      failed: boolean,
+      refetch: () => Promise<unknown>,
+    ) => {
+      if (!failed) return;
+      const current = optionalRetryAttemptsRef.current;
+      if (
+        current.authority !== authority ||
+        current[source] >= OPTIONAL_SOURCE_RETRY_LIMIT
+      ) {
+        return;
+      }
+      current[source] += 1;
+      timers.push(
+        window.setTimeout(() => {
+          if (getActiveAgentAuthority() !== authority) return;
+          void refetch();
+        }, OPTIONAL_SOURCE_RETRY_DELAY_MS),
+      );
+    };
+
+    scheduleRetry("catalog", catalogError !== null, catalogRes.refetch);
+    scheduleRetry("installed", installedError !== null, installedRes.refetch);
+    return () => {
+      for (const timer of timers) window.clearTimeout(timer);
+    };
+  }, [
+    authority,
+    appShellRoutesSupported,
+    catalogRes.status,
+    installedRes.status,
+    catalogError,
+    installedError,
+    catalogRes.refetch,
+    installedRes.refetch,
+  ]);
+
+  // Disabled cached resources intentionally retain their neutral `loading`
+  // status. Only enabled app-shell sources participate in launcher settlement;
+  // otherwise a views-only runtime with no entries can skeleton forever.
+  const optionalSourcesLoading =
+    appShellRoutesSupported &&
+    (catalogRes.status === "loading" || installedRes.status === "loading");
+  const sourcesLoading = viewsLoading || optionalSourcesLoading;
 
   const entries = useMemo(() => {
     const merged = mergeViewCatalog({
@@ -128,9 +230,33 @@ export function useViewCatalog(): UseViewCatalogResult {
   const refresh = useCallback(() => {
     if (getActiveAgentAuthority() !== authority) return;
     refreshViews();
+    if (!appShellRoutesSupported) return;
     catalogRes.refetch();
     installedRes.refetch();
-  }, [authority, refreshViews, catalogRes.refetch, installedRes.refetch]);
+  }, [
+    authority,
+    appShellRoutesSupported,
+    refreshViews,
+    catalogRes.refetch,
+    installedRes.refetch,
+  ]);
+
+  const retrySource = useCallback(
+    (source: ViewCatalogSource) => {
+      if (getActiveAgentAuthority() !== authority) return;
+      if (source === "views") refreshViews();
+      else if (!appShellRoutesSupported) return;
+      else if (source === "catalog") catalogRes.refetch();
+      else installedRes.refetch();
+    },
+    [
+      authority,
+      appShellRoutesSupported,
+      refreshViews,
+      catalogRes.refetch,
+      installedRes.refetch,
+    ],
+  );
 
   const get = useCallback(
     async (entry: ViewEntry) => {
@@ -179,10 +305,17 @@ export function useViewCatalog(): UseViewCatalogResult {
 
   return {
     entries,
-    // First paint waits on loaded views; the catalog fills in as it resolves.
-    loading: viewsLoading && views.length === 0,
-    error,
+    // With no usable entry, keep the skeleton until every enabled source has
+    // settled so one fast failure cannot flash a false global error while a
+    // healthy source is still arriving.
+    loading: entries.length === 0 && sourcesLoading,
+    error:
+      entries.length === 0 && !sourcesLoading
+        ? (sourceErrors[0]?.error ?? null)
+        : null,
+    sourceErrors,
     refresh,
+    retrySource,
     get,
   };
 }

@@ -4,7 +4,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RegistryAppInfo } from "../api";
-import { __resetResourceCache } from "./resource-cache";
+import { __resetResourceCache, invalidate } from "./resource-cache";
 
 const mocks = vi.hoisted(() => {
   const authority = {
@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => {
   };
   return {
     authority,
+    appShellRoutesSupported: { value: true },
     client: {
       getBaseUrl: vi.fn(() => authority.value),
       onBaseUrlChange: vi.fn((onChange: () => void) => {
@@ -24,11 +25,19 @@ const mocks = vi.hoisted(() => {
     },
     loadAppsCatalog: vi.fn(),
     refreshViews: vi.fn(),
+    routableViews: {
+      views: [] as Array<Record<string, unknown>>,
+      loading: false,
+      error: null as Error | null,
+    },
   };
 });
 
 vi.mock("../api", () => ({ client: mocks.client }));
 vi.mock("../api/client", () => ({ client: mocks.client }));
+vi.mock("../api/app-shell-capabilities", () => ({
+  supportsFullAppShellRoutes: () => mocks.appShellRoutesSupported.value,
+}));
 vi.mock("../components/apps/load-apps-catalog", () => ({
   loadAppsCatalog: mocks.loadAppsCatalog,
 }));
@@ -40,13 +49,12 @@ vi.mock("../state/useViewKinds", () => ({
 }));
 vi.mock("./useAvailableViews", () => ({
   useRoutableViews: () => ({
-    views: [],
-    loading: false,
-    error: null,
+    ...mocks.routableViews,
     refresh: mocks.refreshViews,
   }),
 }));
 
+import { getActiveAgentAuthority } from "./useActiveAgentAuthority";
 import { useViewCatalog } from "./useViewCatalog";
 
 function deferred<T>() {
@@ -78,12 +86,256 @@ function catalogApp(name: string): RegistryAppInfo {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.loadAppsCatalog.mockReset();
+  mocks.client.listInstalledApps.mockReset();
+  mocks.client.launchApp.mockReset();
   __resetResourceCache();
   mocks.authority.value = "https://agent-a.test";
+  mocks.appShellRoutesSupported.value = true;
   mocks.authority.listeners.clear();
+  mocks.routableViews.views = [];
+  mocks.routableViews.loading = false;
+  mocks.routableViews.error = null;
 });
 
 describe("useViewCatalog authority isolation", () => {
+  it("settles to an honest empty launcher when app-shell sources are unsupported", () => {
+    mocks.appShellRoutesSupported.value = false;
+
+    const { result } = renderHook(() => useViewCatalog());
+
+    expect(result.current.entries).toEqual([]);
+    expect(result.current.loading).toBe(false);
+    expect(result.current.error).toBeNull();
+    expect(result.current.sourceErrors).toEqual([]);
+    expect(mocks.loadAppsCatalog).not.toHaveBeenCalled();
+    expect(mocks.client.listInstalledApps).not.toHaveBeenCalled();
+
+    act(() => result.current.refresh());
+    expect(mocks.refreshViews).toHaveBeenCalledTimes(1);
+    expect(mocks.loadAppsCatalog).not.toHaveBeenCalled();
+    expect(mocks.client.listInstalledApps).not.toHaveBeenCalled();
+  });
+
+  it("surfaces the views error when unsupported app-shell sources are disabled", () => {
+    mocks.appShellRoutesSupported.value = false;
+    mocks.routableViews.error = new Error("views unavailable");
+
+    const { result } = renderHook(() => useViewCatalog());
+
+    expect(result.current.entries).toEqual([]);
+    expect(result.current.loading).toBe(false);
+    expect(result.current.error?.message).toBe("views unavailable");
+    expect(result.current.sourceErrors).toEqual([
+      { source: "views", error: mocks.routableViews.error },
+    ]);
+    expect(mocks.loadAppsCatalog).not.toHaveBeenCalled();
+    expect(mocks.client.listInstalledApps).not.toHaveBeenCalled();
+
+    act(() => result.current.retrySource("views"));
+    expect(mocks.refreshViews).toHaveBeenCalledTimes(1);
+    act(() => result.current.retrySource("catalog"));
+    act(() => result.current.retrySource("installed"));
+    expect(mocks.loadAppsCatalog).not.toHaveBeenCalled();
+    expect(mocks.client.listInstalledApps).not.toHaveBeenCalled();
+  });
+
+  it("degrades a failed optional catalog without marking healthy views broken", async () => {
+    mocks.routableViews.views = [
+      {
+        id: "notes",
+        label: "Notes",
+        path: "/notes",
+        available: true,
+        builtin: true,
+        pluginName: "@elizaos/builtin",
+        viewType: "gui",
+        viewKind: "release",
+      },
+    ];
+    mocks.loadAppsCatalog.mockRejectedValue(new Error("catalog unavailable"));
+    mocks.client.listInstalledApps.mockResolvedValue([]);
+
+    const { result } = renderHook(() => useViewCatalog());
+    await waitFor(() => expect(result.current.sourceErrors).toHaveLength(1));
+
+    expect(result.current.entries.map((entry) => entry.id)).toEqual(["notes"]);
+    expect(result.current.error).toBeNull();
+    expect(result.current.sourceErrors[0]?.source).toBe("catalog");
+
+    act(() => result.current.retrySource("catalog"));
+    await waitFor(() => expect(mocks.loadAppsCatalog).toHaveBeenCalledTimes(2));
+    expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(1);
+    expect(mocks.refreshViews).not.toHaveBeenCalled();
+  });
+
+  it("uses one delayed catalog retry without refetching healthy sources", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.loadAppsCatalog
+        .mockRejectedValueOnce(new Error("catalog temporarily unavailable"))
+        .mockResolvedValueOnce([catalogApp("recovered-app")]);
+      mocks.client.listInstalledApps.mockResolvedValue([]);
+
+      const { result } = renderHook(() => useViewCatalog());
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(result.current.sourceErrors).toHaveLength(1);
+      expect(result.current.error?.message).toBe(
+        "catalog temporarily unavailable",
+      );
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(499);
+      });
+      expect(mocks.loadAppsCatalog).toHaveBeenCalledTimes(1);
+      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(result.current.entries.map((entry) => entry.id)).toEqual([
+        "recovered-app",
+      ]);
+      expect(mocks.loadAppsCatalog).toHaveBeenCalledTimes(2);
+      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(1);
+      expect(mocks.refreshViews).not.toHaveBeenCalled();
+      expect(result.current.sourceErrors).toEqual([]);
+      expect(result.current.error).toBeNull();
+
+      mocks.loadAppsCatalog
+        .mockRejectedValueOnce(new Error("later catalog outage"))
+        .mockResolvedValueOnce([catalogApp("recovered-again")]);
+      act(() => {
+        invalidate(`view-catalog:apps:${getActiveAgentAuthority()}`);
+        result.current.retrySource("catalog");
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(result.current.sourceErrors).toEqual([
+        {
+          source: "catalog",
+          error: expect.objectContaining({ message: "later catalog outage" }),
+        },
+      ]);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(499);
+      });
+      expect(mocks.loadAppsCatalog).toHaveBeenCalledTimes(3);
+      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(result.current.entries.map((entry) => entry.id)).toEqual([
+        "recovered-again",
+      ]);
+      expect(mocks.loadAppsCatalog).toHaveBeenCalledTimes(4);
+      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(1);
+      expect(result.current.sourceErrors).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("uses one delayed installed-app retry without refetching the catalog", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.loadAppsCatalog.mockResolvedValue([catalogApp("catalog-app")]);
+      mocks.client.listInstalledApps
+        .mockRejectedValueOnce(
+          new Error("installed apps temporarily unavailable"),
+        )
+        .mockResolvedValueOnce([]);
+
+      const { result } = renderHook(() => useViewCatalog());
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(result.current.entries.map((entry) => entry.id)).toEqual([
+        "catalog-app",
+      ]);
+      expect(result.current.sourceErrors).toEqual([
+        {
+          source: "installed",
+          error: expect.objectContaining({
+            message: "installed apps temporarily unavailable",
+          }),
+        },
+      ]);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(499);
+      });
+      expect(mocks.loadAppsCatalog).toHaveBeenCalledTimes(1);
+      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(mocks.loadAppsCatalog).toHaveBeenCalledTimes(1);
+      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(2);
+      expect(mocks.refreshViews).not.toHaveBeenCalled();
+      expect(result.current.sourceErrors).toEqual([]);
+      expect(result.current.error).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels a departed authority's pending optional-source retry", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.loadAppsCatalog
+        .mockRejectedValueOnce(new Error("agent A catalog unavailable"))
+        .mockResolvedValueOnce([catalogApp("agent-b-app")]);
+      mocks.client.listInstalledApps.mockResolvedValue([]);
+
+      const { result } = renderHook(() => useViewCatalog());
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(result.current.sourceErrors).toHaveLength(1);
+
+      act(() => {
+        mocks.authority.value = "https://agent-b.test";
+        for (const onChange of mocks.authority.listeners) onChange();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(result.current.entries.map((entry) => entry.id)).toEqual([
+        "agent-b-app",
+      ]);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(500);
+      });
+      expect(mocks.loadAppsCatalog).toHaveBeenCalledTimes(2);
+      expect(mocks.client.listInstalledApps).toHaveBeenCalledTimes(2);
+      expect(mocks.refreshViews).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps a source failure fatal when no usable launcher entry remains", async () => {
+    mocks.loadAppsCatalog.mockRejectedValue(new Error("catalog unavailable"));
+    mocks.client.listInstalledApps.mockResolvedValue([]);
+
+    const { result } = renderHook(() => useViewCatalog());
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+
+    expect(result.current.entries).toEqual([]);
+    expect(result.current.error?.message).toBe("catalog unavailable");
+    expect(result.current.sourceErrors[0]?.source).toBe("catalog");
+  });
+
   it("clears old entries on switch and ignores superseded catalog responses", async () => {
     const agentBCatalog = deferred<RegistryAppInfo[]>();
     const agentBInstalled = deferred<Array<{ name: string }>>();
