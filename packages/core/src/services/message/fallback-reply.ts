@@ -29,6 +29,15 @@ type ErrorWithStatus = {
 	error?: unknown;
 };
 
+/**
+ * Stable provider error code emitted after Eliza Cloud spends its complete
+ * in-handler cache-warming retry budget. Runtime dispatch uses this typed
+ * signal to avoid spending that same budget again through another model
+ * registration backed by the same provider.
+ */
+export const ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED =
+	"ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED";
+
 function asErrorObject(error: unknown): ErrorWithStatus | null {
 	return typeof error === "object" && error !== null
 		? (error as ErrorWithStatus)
@@ -43,6 +52,16 @@ function unwrapRetryError(error: unknown): unknown {
 		return candidate.errors[candidate.errors.length - 1];
 	}
 	return error;
+}
+
+/** True only for Eliza Cloud's bounded cache-warming exhaustion signal. */
+export function isElizaCloudGatewayWarmingExhaustedError(
+	error: unknown,
+): boolean {
+	return (
+		asErrorObject(unwrapRetryError(error))?.code ===
+		ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED
+	);
 }
 
 function hasHttpStatus(error: unknown, statuses: readonly number[]): boolean {
@@ -271,6 +290,9 @@ export function isModelProviderFallbackError(
 		return false;
 	}
 	const unwrapped = unwrapRetryError(error);
+	if (isElizaCloudGatewayWarmingExhaustedError(unwrapped)) {
+		return true;
+	}
 	// Local inference can disappear after registration (model unload, device
 	// disconnect, or an unavailable native binding). Its typed capability error
 	// means another text provider may safely answer the same request.
