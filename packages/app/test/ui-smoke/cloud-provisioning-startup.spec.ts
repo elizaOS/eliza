@@ -1066,3 +1066,44 @@ test("new cloud agent provisions through direct cloud sandbox and reaches chat",
 
   await expectDeterministicChatTurn(page, "my name is Shaw and I want Discord");
 });
+
+// Chromium regression for #29534: clickIfVisible must bound its click
+// action so a continuously replaced control falls through instead of
+// inheriting the enclosing test deadline.
+test.describe("clickIfVisible bounded click", () => {
+  test("stable control returns true and clicks", async ({ page }) => {
+    await page.setContent('<button id="target">go</button>');
+    const clicked = page.evaluate(() => {
+      const btn = document.getElementById("target") as HTMLButtonElement;
+      btn.addEventListener("click", () => btn.setAttribute("data-clicked", "yes"));
+    });
+    await clicked;
+    const target = page.locator("#target");
+    const result = await clickIfVisible(target, 2_000);
+    expect(result).toBe(true);
+    await expect(page.locator("#target")).toHaveAttribute("data-clicked", "yes");
+  });
+
+  test("continuously replaced control falls through within bounded time", async ({
+    page,
+  }, testInfo) => {
+    testInfo.setTimeout(30_000);
+    await page.setContent(
+      '<button id="target">go</button><script>' +
+        "setInterval(() => {" +
+        "  const el = document.getElementById('target');" +
+        "  if (el) { const next = el.cloneNode(true); el.replaceWith(next); }" +
+        "}, 50);" +
+        "</script>",
+    );
+    const target = page.locator("#target");
+    const startedAt = Date.now();
+    const result = await clickIfVisible(target, 2_000);
+    const elapsedMs = Date.now() - startedAt;
+    // The re-rendered control must not block: bounded click returns false
+    // promptly (well under the enclosing test deadline), and the helper
+    // does not throw.
+    expect(result).toBe(false);
+    expect(elapsedMs).toBeLessThan(10_000);
+  });
+});
