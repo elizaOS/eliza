@@ -100,6 +100,7 @@ import {
 import {
   readPersistedResolvedPendingActionIds,
   resolvedPendingActionIdsStorageKey,
+  usePendingActions,
 } from "./pending-action-notifications";
 
 let seq = 0;
@@ -114,6 +115,19 @@ function deferred<T>(): {
     resolve = resolvePromise;
   });
   return { promise, resolve };
+}
+
+function PendingActionRenderProbe({
+  onRender,
+}: {
+  onRender: (state: { loaded: boolean; titles: readonly string[] }) => void;
+}) {
+  const state = usePendingActions();
+  onRender({
+    loaded: state.loaded,
+    titles: state.pending.map((item) => item.title),
+  });
+  return null;
 }
 
 describe("notificationScrollFadeEdges", () => {
@@ -1295,6 +1309,59 @@ describe("NotificationsHomeCenter", () => {
         resolvedPendingActionIdsStorageKey(ownerB.identity.id, ""),
       ) ?? "",
     ).not.toContain("owner-a-request");
+  });
+
+  it("never exposes a committed owner snapshot during an account switch", async () => {
+    const ownerBResponse = deferred<{ pending: PendingUserAction[] }>();
+    const ownerB: AuthStatusState = {
+      ...AUTHENTICATED_OWNER,
+      identity: { ...AUTHENTICATED_OWNER.identity, id: "u-2" },
+      session: { ...AUTHENTICATED_OWNER.session, id: "s-2" },
+    };
+    const renders: Array<{ loaded: boolean; titles: readonly string[] }> = [];
+    __setAuthStatusForTests(AUTHENTICATED_OWNER);
+    vi.mocked(client.listPendingActions)
+      .mockResolvedValueOnce({
+        pending: [
+          {
+            id: "owner-a-committed",
+            kind: "approval",
+            source: "lifeops",
+            title: "Owner A committed",
+            createdAt: 1_700_000_000_000,
+          },
+        ],
+      })
+      .mockImplementationOnce(() => ownerBResponse.promise);
+
+    render(
+      <PendingActionRenderProbe onRender={(state) => renders.push(state)} />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(renders.at(-1)).toEqual({
+      loaded: true,
+      titles: ["Owner A committed"],
+    });
+
+    renders.length = 0;
+    act(() => {
+      __setAuthStatusForTests(ownerB);
+    });
+    expect(renders.length).toBeGreaterThan(0);
+    expect(
+      renders.every(
+        (state) => !state.loaded && !state.titles.includes("Owner A committed"),
+      ),
+    ).toBe(true);
+
+    await act(async () => {
+      ownerBResponse.resolve({ pending: [] });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
   });
 
   it("acting on a row removes it; surviving rows keep their stable order", () => {

@@ -56,8 +56,14 @@ export type PersistedResolvedPendingActionIds =
   | { status: "unavailable" };
 
 export type PersistResolvedPendingActionIdsResult =
-  | { status: "persisted" }
+  | {
+      status: "persisted" | "partial";
+      ids: ReadonlySet<string>;
+    }
   | { status: "unavailable" };
+
+const STORAGE_RETRY_DELAY_MS = 5_000;
+const MAX_STORAGE_RETRY_ATTEMPTS = 3;
 
 function resolvedPendingActionIdEntryPrefix(key: string): string {
   return `${key}:id:`;
@@ -203,24 +209,33 @@ export function persistResolvedPendingActionIds(
   nextIds: ReadonlySet<string>,
   observedAt: number,
 ): PersistResolvedPendingActionIdsResult {
-  try {
-    for (const id of previousIds) {
-      if (!nextIds.has(id)) {
+  let partial = false;
+  for (const id of previousIds) {
+    if (!nextIds.has(id)) {
+      try {
         storage.setItem(
           resolvedPendingActionIdEntryKey(key, id),
           JSON.stringify({ state: "pending", observedAt }),
         );
+      } catch {
+        partial = true;
       }
     }
-    for (const id of nextIds) {
-      if (!previousIds.has(id)) {
+  }
+  for (const id of nextIds) {
+    if (!previousIds.has(id)) {
+      try {
         storage.setItem(
           resolvedPendingActionIdEntryKey(key, id),
           JSON.stringify({ state: "resolved", observedAt }),
         );
+      } catch {
+        partial = true;
       }
     }
+  }
 
+  try {
     const prefix = resolvedPendingActionIdEntryPrefix(key);
     const entries = Array.from({ length: storage.length }, (_, index) =>
       storage.key(index),
@@ -241,11 +256,25 @@ export function persistResolvedPendingActionIds(
         storage.removeItem(entryKey);
       });
   } catch {
-    // error-policy:J4 storage quota/privacy restrictions retain the process-
-    // local fence instead of crashing the Home surface.
-    return { status: "unavailable" };
+    partial = true;
   }
-  return { status: "persisted" };
+
+  const confirmed = readPersistedResolvedPendingActionIds(storage, key);
+  if (confirmed.status === "unavailable") return confirmed;
+  return {
+    status: partial ? "partial" : "persisted",
+    ids:
+      confirmed.status === "missing"
+        ? EMPTY_RESOLVED_PENDING_ACTION_IDS
+        : confirmed.ids,
+  };
+}
+
+function resolutionIdSetsEqual(
+  left: ReadonlySet<string>,
+  right: ReadonlySet<string>,
+): boolean {
+  return left.size === right.size && [...left].every((id) => right.has(id));
 }
 
 function removeInvalidResolvedPendingActionIds(
@@ -428,7 +457,9 @@ export function usePendingActions(): {
   });
   const [loaded, setLoaded] = useState(false);
   const [observedAt, setObservedAt] = useState(0);
+  const [storageRetryObservedAt, setStorageRetryObservedAt] = useState(0);
   const mountedRef = useRef(true);
+  const storageRetryCountRef = useRef(0);
   const persistedResolutionIdsRef = useRef<{
     ownerKey: string | null;
     ids: ReadonlySet<string>;
@@ -514,18 +545,34 @@ export function usePendingActions(): {
       snapshot.ownerKey,
       snapshot.resolvedActionIds,
     );
-    persistResolvedPendingActionIds(
+    if (resolutionIdSetsEqual(persistedPrevious, snapshot.resolvedActionIds)) {
+      storageRetryCountRef.current = 0;
+      return;
+    }
+    const result = persistResolvedPendingActionIds(
       window.localStorage,
       snapshot.ownerKey,
       persistedPrevious,
       snapshot.resolvedActionIds,
-      Date.now(),
+      storageRetryObservedAt || Date.now(),
     );
-    persistedResolutionIdsRef.current = {
-      ownerKey: snapshot.ownerKey,
-      ids: snapshot.resolvedActionIds,
-    };
-  }, [snapshot.ownerKey, snapshot.resolvedActionIds]);
+    if (result.status !== "unavailable") {
+      persistedResolutionIdsRef.current = {
+        ownerKey: snapshot.ownerKey,
+        ids: result.ids,
+      };
+      if (resolutionIdSetsEqual(result.ids, snapshot.resolvedActionIds)) {
+        storageRetryCountRef.current = 0;
+        return;
+      }
+    }
+    if (storageRetryCountRef.current >= MAX_STORAGE_RETRY_ATTEMPTS) return;
+    storageRetryCountRef.current += 1;
+    const retry = window.setTimeout(() => {
+      setStorageRetryObservedAt(Date.now());
+    }, STORAGE_RETRY_DELAY_MS);
+    return () => window.clearTimeout(retry);
+  }, [snapshot.ownerKey, snapshot.resolvedActionIds, storageRetryObservedAt]);
 
   const load = useCallback(async () => {
     const requestGeneration = ++requestGenerationRef.current;
@@ -588,10 +635,13 @@ export function usePendingActions(): {
   }, [load]);
   useIntervalWhenDocumentVisible(() => void load(), 20_000);
 
+  const snapshotMatchesOwner = snapshot.ownerKey === ownerKey;
   return {
-    pending: snapshot.pending,
-    resolvedActionIds: snapshot.resolvedActionIds,
-    loaded,
+    pending: snapshotMatchesOwner ? snapshot.pending : [],
+    resolvedActionIds: snapshotMatchesOwner
+      ? snapshot.resolvedActionIds
+      : EMPTY_RESOLVED_PENDING_ACTION_IDS,
+    loaded: snapshotMatchesOwner && loaded,
     observedAt,
   };
 }

@@ -57,6 +57,22 @@ class UnavailableStorage extends MemoryStorage {
   }
 }
 
+class FailOneSetStorage extends MemoryStorage {
+  private setCount = 0;
+
+  constructor(private readonly failAtSet: number) {
+    super();
+  }
+
+  override setItem(key: string, value: string): void {
+    this.setCount += 1;
+    if (this.setCount === this.failAtSet) {
+      throw new DOMException("Transient write failure", "QuotaExceededError");
+    }
+    super.setItem(key, value);
+  }
+}
+
 function pending(
   overrides: Partial<PendingUserAction> = {},
 ): PendingUserAction {
@@ -190,7 +206,7 @@ describe("pending-action notification projection", () => {
         mountedResolvedIds,
         NOW,
       ),
-    ).toEqual({ status: "persisted" });
+    ).toEqual({ status: "persisted", ids: new Set(["request-1"]) });
 
     const remounted = readPersistedResolvedPendingActionIds(storage, key);
     expect(remounted.status).toBe("valid");
@@ -222,7 +238,7 @@ describe("pending-action notification projection", () => {
         new Set(["resolved-a"]),
         NOW,
       ),
-    ).toEqual({ status: "persisted" });
+    ).toEqual({ status: "persisted", ids: new Set(["resolved-a"]) });
     expect(
       persistResolvedPendingActionIds(
         storage,
@@ -231,7 +247,10 @@ describe("pending-action notification projection", () => {
         new Set(["resolved-b"]),
         NOW + 1,
       ),
-    ).toEqual({ status: "persisted" });
+    ).toEqual({
+      status: "persisted",
+      ids: new Set(["resolved-a", "resolved-b"]),
+    });
 
     const merged = readPersistedResolvedPendingActionIds(storage, key);
     expect(merged.status).toBe("valid");
@@ -266,6 +285,41 @@ describe("pending-action notification projection", () => {
         NOW,
       ),
     ).toEqual({ status: "unavailable" });
+  });
+
+  it("retries from read-back state after a partial transition write", () => {
+    const storage = new FailOneSetStorage(2);
+    const key = resolvedPendingActionIdsStorageKey("owner-1", "");
+    const desired = new Set(["resolved-a", "resolved-b"]);
+
+    const partial = persistResolvedPendingActionIds(
+      storage,
+      key,
+      new Set(),
+      desired,
+      NOW,
+    );
+    expect(partial).toEqual({
+      status: "partial",
+      ids: new Set(["resolved-a"]),
+    });
+    if (partial.status === "unavailable") {
+      throw new Error("Expected readable partial state");
+    }
+
+    expect(
+      persistResolvedPendingActionIds(
+        storage,
+        key,
+        partial.ids,
+        desired,
+        NOW + 1,
+      ),
+    ).toEqual({ status: "persisted", ids: desired });
+    expect(readPersistedResolvedPendingActionIds(storage, key)).toEqual({
+      status: "valid",
+      ids: desired,
+    });
   });
 
   it("isolates durable resolution fences by owner and authority", () => {
