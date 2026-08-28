@@ -1927,8 +1927,16 @@ export async function streamNativeChatCompletion(
       throw err;
     }
     if (response.status !== 503) break;
-    const warmingBodyText = await response.text();
-    releasePermit();
+    let warmingBodyText: string;
+    try {
+      warmingBodyText = await response.text();
+    } finally {
+      // The caller signal can abort while a 503 body is still streaming. The
+      // permit covers that read, so release it on both success and rejection;
+      // otherwise one cancelled response permanently consumes limiter
+      // capacity and eventually starves every later Cloud call.
+      releasePermit();
+    }
     const delayMs = nextWarmingRetryDelayMs(warmingRetryState, response, warmingBodyText);
     if (signal?.aborted) {
       throw signal.reason ?? new DOMException("Aborted", "AbortError");

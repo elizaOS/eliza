@@ -11,12 +11,14 @@ import { ELIZA_CLOUD_GATEWAY_WARMING_EXHAUSTED, type IAgentRuntime } from "@eliz
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  __resetNativeChatLimiterForTests,
   ElizaCloudGatewayWarmingExhaustedError,
   generateNativeChatCompletion,
   isWarmingUnavailableResponse,
   nextWarmingRetryDelayMs,
   requestNativeWithWarmingRetry,
   streamNativeChatCompletion,
+  withNativeChatLimit,
 } from "../../src/models/text";
 
 type RuntimeFixture = Pick<IAgentRuntime, "character" | "emitEvent" | "getSetting"> &
@@ -252,11 +254,15 @@ describe("buffered native chat completion", () => {
 describe("streaming native chat completion", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    process.env.ELIZAOS_CLOUD_NATIVE_CONCURRENCY = "1";
+    __resetNativeChatLimiterForTests();
   });
 
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+    delete process.env.ELIZAOS_CLOUD_NATIVE_CONCURRENCY;
+    __resetNativeChatLimiterForTests();
   });
 
   it("retries a warming 503 then streams the recovered response", async () => {
@@ -303,6 +309,47 @@ describe("streaming native chat completion", () => {
     controller.abort(abortReason);
     await expect(pending).rejects.toBe(abortReason);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases the concurrency permit when a warming response body read aborts", async () => {
+    const controller = new AbortController();
+    const abortReason = new DOMException("turn cancelled", "AbortError");
+    const body = new ReadableStream<Uint8Array>({
+      start(streamController) {
+        controller.signal.addEventListener(
+          "abort",
+          () => streamController.error(controller.signal.reason),
+          { once: true }
+        );
+      },
+    });
+    const fetchMock = mockFetchSequence([
+      () =>
+        new Response(body, {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        }),
+    ]);
+    const pending = streamNativeChatCompletion(
+      runtime(),
+      "TEXT_SMALL",
+      { ...NATIVE_PARAMS, signal: controller.signal },
+      CONTEXT
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    controller.abort(abortReason);
+    await expect(pending).rejects.toBe(abortReason);
+
+    let followupEntered = false;
+    await expect(
+      withNativeChatLimit(async () => {
+        followupEntered = true;
+        return "released";
+      })
+    ).resolves.toBe("released");
+    expect(followupEntered).toBe(true);
   });
 
   it("preserves typed exhaustion when streaming spends its one retry budget", async () => {
