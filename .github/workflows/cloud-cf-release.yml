@@ -11,6 +11,10 @@ on:
         description: staging or production
         required: true
         type: string
+      telegram_authority_run_attempt:
+        description: Workflow attempt that resolved Telegram configuration outside a GitHub Environment
+        required: true
+        type: string
       telegram_repo_or_org_configured:
         description: Whether either Telegram public identity variable resolves outside a GitHub Environment
         required: true
@@ -72,7 +76,9 @@ jobs:
       - name: Validate Telegram public identity preflight
         id: telegram
         env:
+          RELEASE_RUN_ATTEMPT: ${{ github.run_attempt }}
           TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+          TELEGRAM_AUTHORITY_RUN_ATTEMPT: ${{ inputs.telegram_authority_run_attempt }}
           TELEGRAM_REPO_OR_ORG_CONFIGURED: ${{ inputs.telegram_repo_or_org_configured }}
           # The caller proves the same names are absent at repository and
           # organization scope before staging may trust this job Environment.
@@ -91,6 +97,13 @@ jobs:
             [[ "$candidate" =~ ^[1-9][0-9]{0,15}$ ]] || return 1
             (( 10#$candidate <= 4503599627370495 ))
           }
+
+          [[ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || \
+            fail "Telegram configuration authority run attempt is missing or invalid"
+          [[ "$RELEASE_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || \
+            fail "Cloud release run attempt is missing or invalid"
+          [ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" = "$RELEASE_RUN_ATTEMPT" ] || \
+            fail "Telegram configuration authority was not resolved for the current workflow attempt; re-run all jobs"
 
           case "$TARGET_ENVIRONMENT" in
             staging|production) ;;
@@ -197,6 +210,25 @@ jobs:
       # and the caller's certification job gate on it.
       superseded: ${{ steps.source_guard.outputs.superseded }}
     steps:
+      - name: Reject stale Telegram configuration authority
+        env:
+          RELEASE_RUN_ATTEMPT: ${{ github.run_attempt }}
+          TELEGRAM_AUTHORITY_RUN_ATTEMPT: ${{ inputs.telegram_authority_run_attempt }}
+        run: |
+          set -euo pipefail
+          [[ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Telegram configuration authority run attempt is missing or invalid" >&2
+            exit 1
+          }
+          [[ "$RELEASE_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Cloud release run attempt is missing or invalid" >&2
+            exit 1
+          }
+          [ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" = "$RELEASE_RUN_ATTEMPT" ] || {
+            echo "::error::Telegram configuration authority was not resolved for the current workflow attempt; re-run all jobs" >&2
+            exit 1
+          }
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
@@ -716,6 +748,25 @@ jobs:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-api
       CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
     steps:
+      - name: Reject stale Telegram configuration authority
+        env:
+          RELEASE_RUN_ATTEMPT: ${{ github.run_attempt }}
+          TELEGRAM_AUTHORITY_RUN_ATTEMPT: ${{ inputs.telegram_authority_run_attempt }}
+        run: |
+          set -euo pipefail
+          [[ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Telegram configuration authority run attempt is missing or invalid" >&2
+            exit 1
+          }
+          [[ "$RELEASE_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Cloud release run attempt is missing or invalid" >&2
+            exit 1
+          }
+          [ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" = "$RELEASE_RUN_ATTEMPT" ] || {
+            echo "::error::Telegram configuration authority was not resolved for the current workflow attempt; re-run all jobs" >&2
+            exit 1
+          }
+
       - name: Reclaim disk from leaked checkouts of prior runs
         continue-on-error: true
         run: |
@@ -2190,6 +2241,25 @@ jobs:
       telegram_bot_username: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_username }}
       whatsapp_phone_number: ${{ needs.resolve-pages-environment-config.outputs.whatsapp_phone_number }}
     steps:
+      - name: Reject stale Telegram configuration authority
+        env:
+          RELEASE_RUN_ATTEMPT: ${{ github.run_attempt }}
+          TELEGRAM_AUTHORITY_RUN_ATTEMPT: ${{ inputs.telegram_authority_run_attempt }}
+        run: |
+          set -euo pipefail
+          [[ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Telegram configuration authority run attempt is missing or invalid" >&2
+            exit 1
+          }
+          [[ "$RELEASE_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Cloud release run attempt is missing or invalid" >&2
+            exit 1
+          }
+          [ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" = "$RELEASE_RUN_ATTEMPT" ] || {
+            echo "::error::Telegram configuration authority was not resolved for the current workflow attempt; re-run all jobs" >&2
+            exit 1
+          }
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Bind Pages artifacts to this producer attempt
@@ -2292,6 +2362,25 @@ jobs:
       # github.run_attempt.
       pages_authority_artifact: pages-deployment-authority-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
+      - name: Reject stale Telegram configuration authority
+        env:
+          RELEASE_RUN_ATTEMPT: ${{ github.run_attempt }}
+          TELEGRAM_AUTHORITY_RUN_ATTEMPT: ${{ inputs.telegram_authority_run_attempt }}
+        run: |
+          set -euo pipefail
+          [[ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Telegram configuration authority run attempt is missing or invalid" >&2
+            exit 1
+          }
+          [[ "$RELEASE_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Cloud release run attempt is missing or invalid" >&2
+            exit 1
+          }
+          [ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" = "$RELEASE_RUN_ATTEMPT" ] || {
+            echo "::error::Telegram configuration authority was not resolved for the current workflow attempt; re-run all jobs" >&2
+            exit 1
+          }
+
       - name: Reclaim disk from leaked checkouts of prior runs
         continue-on-error: true
         run: |

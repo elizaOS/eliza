@@ -361,10 +361,14 @@ database migration or API deployment. Staging consumes the complete
 protected `staging` GitHub Environment and requires both components to differ
 from production. Before the reusable release enters any Environment,
 `cloud-cf-deploy.yml` evaluates both names at organization/repository scope and
-passes a required provenance flag. The Environment-scoped preflight first
-rejects either component at either outer scope as conflicting authority, then
-validates the pair exposed by its job Environment; all of this precedes any
-mutation.
+passes a required provenance flag plus the workflow attempt that produced it.
+The Environment-scoped preflight rejects a stale attempt receipt before it
+validates or emits Environment values, then rejects either component at either
+outer scope as conflicting authority and validates the pair exposed by its job
+Environment. Because GitHub preserves successful job outputs during failed-job
+reruns, the migration, API deploy, Pages build, and Pages deploy jobs each
+repeat the attempt check as their first step; a partial rerun must be replaced
+with a full rerun before any stale receipt can reach a release mutation.
 Missing, partial, malformed, out-of-range, duplicate-scope, or
 cross-environment staging configuration stops the release without printing
 either value. Production continues to ignore every GitHub Telegram input and

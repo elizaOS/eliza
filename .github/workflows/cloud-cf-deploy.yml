@@ -109,13 +109,19 @@ jobs:
     timeout-minutes: 2
     outputs:
       repo_or_org_configured: ${{ steps.scope.outputs.configured }}
+      run_attempt: ${{ steps.scope.outputs.run_attempt }}
     steps:
       - name: Detect Telegram variables outside a GitHub Environment
         id: scope
         env:
+          TELEGRAM_AUTHORITY_RUN_ATTEMPT: ${{ github.run_attempt }}
           TELEGRAM_REPO_OR_ORG_CONFIGURED: ${{ vars.VITE_TELEGRAM_BOT_ID != '' || vars.VITE_TELEGRAM_BOT_USERNAME != '' }}
         run: |
           set -euo pipefail
+          [[ "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::Unable to resolve Telegram configuration authority run attempt"
+            exit 1
+          }
           case "$TELEGRAM_REPO_OR_ORG_CONFIGURED" in
             true|false) ;;
             *)
@@ -124,6 +130,7 @@ jobs:
               ;;
           esac
           printf 'configured=%s\n' "$TELEGRAM_REPO_OR_ORG_CONFIGURED" >> "$GITHUB_OUTPUT"
+          printf 'run_attempt=%s\n' "$TELEGRAM_AUTHORITY_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
 
   validate-deploy-source:
     name: Validate Canonical Deploy Source
@@ -865,6 +872,7 @@ jobs:
     secrets: inherit
     with:
       target_environment: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
+      telegram_authority_run_attempt: ${{ needs.resolve-telegram-configuration-authority.outputs.run_attempt }}
       telegram_repo_or_org_configured: ${{ needs.resolve-telegram-configuration-authority.outputs.repo_or_org_configured == 'true' }}
       force: ${{ github.event_name == 'workflow_dispatch' && inputs.force == true }}
       # Resolve the proof request at the entry workflow boundary. A live-ready
