@@ -73,7 +73,6 @@ describe("isLocalRuntime", () => {
   });
 });
 
-
 describe("runtime-mode snapshot cache", () => {
   it("does not reload config on every call within the stat interval", async () => {
     const { __resetRuntimeModeSnapshotCacheForTests, getRuntimeModeSnapshot } =

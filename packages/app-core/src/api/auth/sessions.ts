@@ -189,6 +189,7 @@ export function denyOnAuthStoreError(scope: string): (error: unknown) => null {
           0,
           120,
         ),
+        stack: error instanceof Error ? error.stack : undefined,
       },
       `[Auth] ${scope} failed; failing closed (deny)`,
     );

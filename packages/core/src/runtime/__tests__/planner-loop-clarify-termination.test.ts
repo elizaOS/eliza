@@ -223,9 +223,7 @@ describe("planner-loop clarifying-question termination", () => {
 	});
 
 	it("keeps the corrective budget in coding mode: a premature question is still re-prompted", async () => {
-		const prevSurface = process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
 		const prevMisses = process.env.ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES;
-		process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = "1";
 		process.env.ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES = "1";
 		try {
 			const question = "Which framework do you want me to use?";
@@ -237,6 +235,7 @@ describe("planner-loop clarifying-question termination", () => {
 			const result = await runPlannerLoop({
 				runtime,
 				context: { id: "ctx" },
+				codingMode: true,
 				tools: [{ name: "FILE", description: "Write a file." }],
 				config: { maxRequiredToolMisses: 1 },
 				executeToolCall: vi.fn(),
@@ -250,9 +249,6 @@ describe("planner-loop clarifying-question termination", () => {
 			expect(result.finalMessage).toBe(question);
 			expect(runtime.useModel).toHaveBeenCalledTimes(2);
 		} finally {
-			if (prevSurface === undefined)
-				delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
-			else process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = prevSurface;
 			if (prevMisses === undefined)
 				delete process.env.ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES;
 			else process.env.ELIZA_CODING_MAX_REQUIRED_TOOL_MISSES = prevMisses;

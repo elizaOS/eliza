@@ -445,8 +445,8 @@ import {
   buildPluginDiagnosticEntry,
   resolveWalletDiagnosticStatus,
 } from "./plugin-diagnostic.ts";
-import { handleRuntimeManagementRoutes } from "./runtime-management-routes.ts";
 import { maybeCapRequestStorm } from "./request-storm-cap.ts";
+import { handleRuntimeManagementRoutes } from "./runtime-management-routes.ts";
 import {
   handleRuntimeModePreDispatch,
   handleRuntimeModeRemoteForward,
