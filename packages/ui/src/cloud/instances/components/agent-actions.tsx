@@ -38,7 +38,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  BrandButton,
 } from "@elizaos/ui/cloud-ui";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -573,8 +572,8 @@ export function ElizaAgentActions({
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex flex-wrap gap-3">
             {hasStandaloneWebUi && (
-              <BrandButton
-                variant="primary"
+              <Button
+                variant="default"
                 size="sm"
                 className="min-h-touch"
                 onClick={() => void openWebUIWithPairing(agentId)}
@@ -583,12 +582,12 @@ export function ElizaAgentActions({
                 {t("cloud.containers.agentActions.openWebUi", {
                   defaultValue: "Open Web UI",
                 })}
-              </BrandButton>
+              </Button>
             )}
 
             {canUpgrade && (
-              <BrandButton
-                variant="primary"
+              <Button
+                variant="default"
                 size="sm"
                 className="min-h-touch"
                 onClick={() => void reviewDedicatedQuote()}
@@ -615,12 +614,12 @@ export function ElizaAgentActions({
                     : t("cloud.containers.agentActions.upgrade", {
                         defaultValue: "Upgrade to Dedicated",
                       })}
-              </BrandButton>
+              </Button>
             )}
 
             {isStopped && (
-              <BrandButton
-                variant="primary"
+              <Button
+                variant="default"
                 size="sm"
                 className="min-h-touch"
                 onClick={() => doAction("resume")}
@@ -634,12 +633,12 @@ export function ElizaAgentActions({
                 {t("cloud.containers.agentActions.resume", {
                   defaultValue: "Resume Agent",
                 })}
-              </BrandButton>
+              </Button>
             )}
 
             {canWake && (
-              <BrandButton
-                variant="primary"
+              <Button
+                variant="default"
                 size="sm"
                 className="min-h-touch"
                 onClick={() => doAction("wake")}
@@ -657,11 +656,11 @@ export function ElizaAgentActions({
                 {t("cloud.containers.agentActions.reactivate", {
                   defaultValue: "Reactivate Agent",
                 })}
-              </BrandButton>
+              </Button>
             )}
 
             {isRunning && isDedicated && (
-              <BrandButton
+              <Button
                 variant="outline"
                 size="sm"
                 className="min-h-touch"
@@ -676,13 +675,13 @@ export function ElizaAgentActions({
                 {t("cloud.containers.agentActions.suspend", {
                   defaultValue: "Suspend Agent",
                 })}
-              </BrandButton>
+              </Button>
             )}
           </div>
 
           <div className="flex flex-wrap gap-2 lg:justify-end">
             {canSleep && (
-              <BrandButton
+              <Button
                 variant="outline"
                 size="sm"
                 className="min-h-touch"
@@ -701,7 +700,7 @@ export function ElizaAgentActions({
                 {t("cloud.containers.agentActions.deactivate", {
                   defaultValue: "Deactivate Agent",
                 })}
-              </BrandButton>
+              </Button>
             )}
 
             {isDedicated && !showDeleteConfirm ? (
@@ -744,16 +743,16 @@ export function ElizaAgentActions({
                     defaultValue: "Yes, delete",
                   })}
                 </Button>
-                <BrandButton
-                  variant="outline"
+                <Button
+                  variant="outlineMuted"
                   size="sm"
                   onClick={() => setShowDeleteConfirm(false)}
-                  className="min-h-touch text-white/60"
+                  className="min-h-touch"
                 >
                   {t("cloud.containers.agentActions.cancel", {
                     defaultValue: "Cancel",
                   })}
-                </BrandButton>
+                </Button>
               </Alert>
             ) : null}
           </div>

@@ -14,7 +14,7 @@ export function RelationshipsPage({
   pageChrome?: ReactNode;
 }): JSX.Element {
   return (
-    <FramedPage reserveComposer={false}>
+    <FramedPage gutterOwner="framed-page" reserveComposer={false}>
       {pageChrome}
       <FramedPageBody>
         <RelationshipsView />

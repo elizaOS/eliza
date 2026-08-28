@@ -1468,11 +1468,11 @@ function buildStaticTabRenderers(): Record<
     stream: wrap(<LazyStreamView />),
     "pendant-transcript": wrapOverlayAware(<LazyPendantTranscriptView />),
     tasks: wrapOverlayAware(<LazyTasksPageView />),
-    automations: wrap(<LazyAutomationsFeed />),
+    automations: wrapOverlayAware(<LazyAutomationsFeed />),
     plugins: withHeader("plugins", <LazyPluginsPageView />),
     skills: withHeader("skills", <LazySkillsView />),
     trajectories: wrap(<LazyTrajectoriesView />),
-    transcripts: wrap(<LazyLiveMeetingPageView />),
+    transcripts: withHeader("transcripts", <LazyLiveMeetingPageView />),
     // Relationships is plugin-owned. Its app-shell registration claims the
     // route and supplies the page chrome; an absent plugin is an unavailable
     // feature rather than a host-side duplicate implementation.
@@ -1495,14 +1495,7 @@ function buildStaticTabRenderers(): Record<
       </AppWorkspaceContent>
     ),
     memories: wrapOverlayAware(<LazyMemoryViewerView />),
-    files: ({ pageLayout }) => (
-      <AppWorkspaceContent
-        header={<ViewHeader title={titleForTab("files")} />}
-        pageLayout={pageLayout}
-      >
-        <LazyFilesView />
-      </AppWorkspaceContent>
-    ),
+    files: wrapOverlayAware(<LazyFilesView />),
     runtime: withHeader("runtime", <LazyRuntimeView />),
     database: wrapOverlayAware(<LazyDatabasePageView />),
     logs: withHeader("logs", <LazyLogsView />),

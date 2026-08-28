@@ -94,7 +94,6 @@ import {
   toneForViewerAttachment,
 } from "../apps/extensions/surface.helpers.ts";
 import {
-  SurfaceBadge,
   SurfaceCard,
   SurfaceEmptyState,
   SurfaceGrid,
@@ -106,6 +105,7 @@ import { Button } from "../ui/button.tsx";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { Input } from "../ui/input.tsx";
 import { Spinner } from "../ui/spinner.tsx";
+import { StatusBadge } from "../ui/status-badge.tsx";
 import { SandboxedViewFrame } from "./SandboxedViewFrame";
 import {
   navigateToViews,
@@ -388,7 +388,7 @@ const APP_CORE_VIEW_COMPAT: Record<string, unknown> = {
   useApp,
   useAppSelector,
   useAppSelectorShallow,
-  SurfaceBadge,
+  StatusBadge,
   SurfaceCard,
   SurfaceEmptyState,
   SurfaceGrid,

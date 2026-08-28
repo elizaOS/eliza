@@ -22,6 +22,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@elizaos/ui";
+import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 import { useState } from "react";
 
 /** A typed edge shown under its source entity, already projected for display. */
@@ -94,67 +95,41 @@ export function RelationshipsSpatialView({
   return (
     <Card variant="transparentSquare" className="w-full min-w-0">
       {snapshot.state === "loading" ? (
-        <div className="py-8 text-center text-sm text-muted">
-          Loading relationships
-        </div>
+        <PagePanel.ContentState
+          state="loading"
+          placement="panel"
+          heading="Loading relationships"
+          role="status"
+          aria-label="Loading relationships"
+        />
       ) : snapshot.state === "error" ? (
-        <RelationshipsErrorBody snapshot={snapshot} dispatch={dispatch} />
+        <PagePanel.ContentState
+          state="error"
+          placement="panel"
+          title="Could not load relationships"
+          description={snapshot.error ?? "Could not load relationships."}
+          action={
+            <Button size="sm" data-agent-id="retry" onClick={dispatch("retry")}>
+              Retry
+            </Button>
+          }
+        />
       ) : snapshot.state === "empty" ? (
-        <RelationshipsEmptyBody dispatch={dispatch} />
+        <PagePanel.ContentState
+          state="empty"
+          placement="panel"
+          title="No relationships yet"
+          description="Add a person to start building the relationship graph."
+          action={
+            <Button size="sm" data-agent-id="add" onClick={dispatch("add")}>
+              Add someone
+            </Button>
+          }
+        />
       ) : (
         <RelationshipsReadyBody snapshot={snapshot} onAction={onAction} />
       )}
     </Card>
-  );
-}
-
-function RelationshipsErrorBody({
-  snapshot,
-  dispatch,
-}: {
-  snapshot: RelationshipsSnapshot;
-  dispatch: (action: string) => () => void;
-}) {
-  return (
-    <>
-      <h2 className="text-sm font-semibold text-txt">
-        Could not load relationships
-      </h2>
-      <p className="mt-1 text-sm text-danger">
-        {snapshot.error ?? "Could not load relationships."}
-      </p>
-      <Button
-        className="mt-3"
-        size="sm"
-        data-agent-id="retry"
-        onClick={dispatch("retry")}
-      >
-        Retry
-      </Button>
-    </>
-  );
-}
-
-function RelationshipsEmptyBody({
-  dispatch,
-}: {
-  dispatch: (action: string) => () => void;
-}) {
-  return (
-    <div className="py-8 text-center">
-      <h2 className="text-sm font-semibold text-txt">No relationships yet</h2>
-      <p className="mt-1 text-sm text-muted">
-        Add a person to start building the relationship graph.
-      </p>
-      <Button
-        className="mt-3"
-        size="sm"
-        data-agent-id="add"
-        onClick={dispatch("add")}
-      >
-        Add someone
-      </Button>
-    </div>
   );
 }
 
@@ -188,9 +163,11 @@ function RelationshipsReadyBody({
         {visible.length} {visible.length === 1 ? "entity" : "entities"}
       </div>
       {visible.length === 0 ? (
-        <div className="py-8 text-sm text-muted">
-          No matching relationships.
-        </div>
+        <PagePanel.ContentState
+          state="empty"
+          placement="panel"
+          title="No matching relationships."
+        />
       ) : (
         <div className="mt-2 divide-y divide-border/45 border-y border-border/45">
           {visible.map((node) => (

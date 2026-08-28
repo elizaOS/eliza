@@ -664,8 +664,8 @@ export function AutomationsFeed({
   const feedContent = (
     <ShellViewAgentSurface viewId="automations">
       <FramedPage
-        reserveComposer={false}
-        className="flex h-full min-h-0 min-w-0 w-full flex-col pb-[var(--eliza-chat-clearance,5.25rem)] [@media(orientation:landscape)_and_(max-height:520px)]:pb-0"
+        gutterOwner="framed-page"
+        data-chat-clearance-aware="true"
         data-testid="automations-layout"
       >
         {/* Uniform view header (#13451/#13597): bare-icon back, centered title. */}
@@ -732,7 +732,6 @@ export function AutomationsFeed({
         <FramedPageBody
           scroll="page"
           data-testid="automations-scroll-region"
-          data-shell-scroll-region="true"
           className="device-layout gap-4 overflow-x-hidden py-4"
         >
           <div

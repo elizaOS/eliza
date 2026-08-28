@@ -22,9 +22,9 @@ import {
   TrendingUp,
 } from "lucide-react";
 import {
-  BrandCard,
   BrandTabsContent,
   BrandTabsResponsive,
+  Card,
   CornerBrackets,
   CostInsightsCard,
   DashboardPageContainer,
@@ -230,7 +230,7 @@ export function AnalyticsPageClient({
       </section>
       <div className="space-y-10 lg:space-y-14">
         <section className="space-y-8 lg:space-y-10">
-          <BrandCard className="relative">
+          <Card variant="brand" className="relative">
             <CornerBrackets size="sm" className="opacity-50" />
             <div className="relative z-10 space-y-4">
               <h3 className="text-base font-semibold text-white">
@@ -238,13 +238,13 @@ export function AnalyticsPageClient({
               </h3>
               <AnalyticsFilters />
             </div>
-          </BrandCard>
+          </Card>
 
           <KeyMetricsGrid metrics={metrics} />
         </section>
 
         <section className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:gap-10">
-          <BrandCard className="relative min-w-0 overflow-hidden">
+          <Card variant="brand" className="relative min-w-0 overflow-hidden">
             <CornerBrackets size="sm" className="opacity-50" />
             <div className="relative z-10 space-y-4">
               <h3 className="text-base font-semibold text-white">
@@ -255,7 +255,7 @@ export function AnalyticsPageClient({
                 granularity={data.filters.granularity}
               />
             </div>
-          </BrandCard>
+          </Card>
 
           <CostInsightsCard
             costTrending={data.costTrending}

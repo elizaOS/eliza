@@ -29,6 +29,14 @@ import {
 } from "./useRealtimeVoiceMint";
 
 const UUID = "33333333-3333-3333-3333-333333333333";
+const CONVERSATION_ID = "voice/room?active=true";
+
+function jsonHealthResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8" },
+  });
+}
 
 describe("useRealtimeVoiceMint", () => {
   it("resolves a valid dedicated agent UUID", () => {
@@ -154,7 +162,7 @@ describe("useRealtimeVoiceMint", () => {
     it("flag ON + probe OK + no resolvable agent id → arms with the sentinel UUID", async () => {
       const fetch = vi
         .fn()
-        .mockResolvedValue(new Response("{}", { status: 200 }));
+        .mockResolvedValue(jsonHealthResponse({ ready: true }));
       const { result } = renderHook(() =>
         useRealtimeVoiceMint({
           resolveAgentId: () => null,
@@ -168,6 +176,41 @@ describe("useRealtimeVoiceMint", () => {
       await waitFor(() =>
         expect(result.current.agentId).toBe(REALTIME_FORCE_SENTINEL_AGENT_ID),
       );
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/v1/voice/session/health",
+        expect.objectContaining({ method: "GET", redirect: "error" }),
+      );
+    });
+
+    it("keeps an unscoped force probe armed across conversation switches", async () => {
+      const fetch = vi
+        .fn()
+        .mockResolvedValue(jsonHealthResponse({ ready: true }));
+      const resolveAgentId = () => null;
+      const { result, rerender } = renderHook(
+        ({ conversationId }) =>
+          useRealtimeVoiceMint({
+            resolveAgentId,
+            forceEnabled: true,
+            selfHostedEnabled: false,
+            conversationId,
+            fetch,
+          }),
+        { initialProps: { conversationId: "conversation-a" } },
+      );
+
+      await waitFor(() =>
+        expect(result.current.agentId).toBe(REALTIME_FORCE_SENTINEL_AGENT_ID),
+      );
+      expect(fetch).toHaveBeenCalledTimes(1);
+
+      rerender({ conversationId: "conversation-b" });
+      expect(result.current.agentId).toBe(REALTIME_FORCE_SENTINEL_AGENT_ID);
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(result.current.agentId).toBe(REALTIME_FORCE_SENTINEL_AGENT_ID);
     });
 
     it("flag ON but a real agent id resolves → the REAL id wins, not the sentinel", () => {
@@ -200,7 +243,7 @@ describe("useRealtimeVoiceMint", () => {
       const fetch = vi
         .fn()
         // non-consuming health probe
-        .mockResolvedValueOnce(new Response("{}", { status: 200 }))
+        .mockResolvedValueOnce(jsonHealthResponse({ ready: true }))
         // fresh consent nonce on the visible start gesture
         .mockResolvedValueOnce(
           new Response(JSON.stringify({ consentNonce: "live-nonce" }), {
@@ -234,19 +277,65 @@ describe("useRealtimeVoiceMint", () => {
         expect.objectContaining({ method: "POST" }),
       );
     });
+
+    it.each([
+      ["a non-200 2xx", () => jsonHealthResponse({ ready: true }, 201)],
+      ["a 204", () => new Response(null, { status: 204 })],
+      [
+        "an HTML login page",
+        () =>
+          new Response("<html>sign in</html>", {
+            status: 200,
+            headers: { "content-type": "text/html" },
+          }),
+      ],
+      ["JSON ready:false", () => jsonHealthResponse({ ready: false })],
+      [
+        "a redirect response",
+        () =>
+          new Response(null, {
+            status: 302,
+            headers: { location: "/login" },
+          }),
+      ],
+      [
+        "a followed redirect",
+        () => {
+          const response = jsonHealthResponse({ ready: true });
+          Object.defineProperty(response, "redirected", { value: true });
+          return response;
+        },
+      ],
+    ])("does not arm from %s", async (_label, response) => {
+      const fetch = vi.fn().mockResolvedValue(response());
+      const { result } = renderHook(() =>
+        useRealtimeVoiceMint({
+          resolveAgentId: () => null,
+          forceEnabled: true,
+          fetch,
+        }),
+      );
+
+      await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+      expect(result.current.agentId).toBeNull();
+    });
   });
 
   describe("production self-hosted eligibility", () => {
-    it("arms only after the paired runtime proves its same-origin gateway", async () => {
-      const fetch = vi
-        .fn()
-        .mockResolvedValue(new Response('{"ready":true}', { status: 200 }));
+    it("arms only after the paired runtime proves the active conversation", async () => {
+      const fetch = vi.fn().mockResolvedValue(
+        jsonHealthResponse({
+          ready: true,
+          conversationId: CONVERSATION_ID,
+        }),
+      );
       const { result } = renderHook(() =>
         useRealtimeVoiceMint({
           resolveAgentId: () => null,
           resolveSelfHostedRuntime: () => true,
           selfHostedEnabled: true,
           forceEnabled: false,
+          conversationId: CONVERSATION_ID,
           fetch,
         }),
       );
@@ -256,9 +345,94 @@ describe("useRealtimeVoiceMint", () => {
         expect(result.current.agentId).toBe(REALTIME_FORCE_SENTINEL_AGENT_ID),
       );
       expect(fetch).toHaveBeenCalledWith(
-        "/api/v1/voice/session/health",
-        expect.objectContaining({ method: "GET" }),
+        "/api/v1/voice/session/health?conversationId=voice%2Froom%3Factive%3Dtrue",
+        expect.objectContaining({ method: "GET", redirect: "error" }),
       );
+    });
+
+    it("rejects an older ready response that does not echo the requested conversation", async () => {
+      const fetch = vi
+        .fn()
+        .mockResolvedValue(jsonHealthResponse({ ready: true }));
+      const { result } = renderHook(() =>
+        useRealtimeVoiceMint({
+          resolveAgentId: () => null,
+          resolveSelfHostedRuntime: () => true,
+          selfHostedEnabled: true,
+          forceEnabled: false,
+          conversationId: CONVERSATION_ID,
+          fetch,
+        }),
+      );
+
+      await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+      expect(result.current.agentId).toBeNull();
+    });
+
+    it("does not arm when the gateway reports another conversation", async () => {
+      const fetch = vi
+        .fn()
+        .mockResolvedValue(jsonHealthResponse({ ready: false }));
+      const { result } = renderHook(() =>
+        useRealtimeVoiceMint({
+          resolveAgentId: () => null,
+          resolveSelfHostedRuntime: () => true,
+          selfHostedEnabled: true,
+          forceEnabled: false,
+          conversationId: CONVERSATION_ID,
+          fetch,
+        }),
+      );
+
+      await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+      expect(result.current.agentId).toBeNull();
+    });
+
+    it("disarms immediately while a switched conversation is reprobed", async () => {
+      let resolveSecondProbe: ((response: Response) => void) | undefined;
+      const secondProbe = new Promise<Response>((resolve) => {
+        resolveSecondProbe = resolve;
+      });
+      const fetch = vi
+        .fn()
+        .mockResolvedValueOnce(
+          jsonHealthResponse({
+            ready: true,
+            conversationId: "conversation-a",
+          }),
+        )
+        .mockReturnValueOnce(secondProbe);
+      const resolveAgentId = () => null;
+      const resolveSelfHostedRuntime = () => true;
+      const { result, rerender } = renderHook(
+        ({ conversationId }) =>
+          useRealtimeVoiceMint({
+            resolveAgentId,
+            resolveSelfHostedRuntime,
+            selfHostedEnabled: true,
+            forceEnabled: false,
+            conversationId,
+            fetch,
+          }),
+        { initialProps: { conversationId: "conversation-a" } },
+      );
+
+      await waitFor(() =>
+        expect(result.current.agentId).toBe(REALTIME_FORCE_SENTINEL_AGENT_ID),
+      );
+
+      rerender({ conversationId: "conversation-b" });
+      expect(result.current.agentId).toBeNull();
+      await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+      expect(fetch).toHaveBeenLastCalledWith(
+        "/api/v1/voice/session/health?conversationId=conversation-b",
+        expect.objectContaining({ method: "GET", redirect: "error" }),
+      );
+
+      await act(async () => {
+        resolveSecondProbe?.(jsonHealthResponse({ ready: false }));
+        await secondProbe;
+      });
     });
 
     it("does not arm for a non-remote runtime under the self-hosted stamp", () => {
@@ -269,6 +443,7 @@ describe("useRealtimeVoiceMint", () => {
           resolveSelfHostedRuntime: () => false,
           selfHostedEnabled: true,
           forceEnabled: false,
+          conversationId: CONVERSATION_ID,
           fetch,
         }),
       );
@@ -287,6 +462,7 @@ describe("useRealtimeVoiceMint", () => {
           resolveSelfHostedRuntime: () => true,
           selfHostedEnabled: true,
           forceEnabled: false,
+          conversationId: CONVERSATION_ID,
           fetch,
         }),
       );

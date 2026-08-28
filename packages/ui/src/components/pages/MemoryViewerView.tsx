@@ -397,7 +397,16 @@ function MemoryListSurface({
   );
 }
 
-function MemoryStateSurface({ children }: { children: ReactNode }) {
+function MemoryStateSurface({
+  children,
+  plain = false,
+}: {
+  children: ReactNode;
+  plain?: boolean;
+}) {
+  if (plain) {
+    return <div className="overflow-hidden">{children}</div>;
+  }
   return (
     <Card variant="panel" radius="xlarge" className="overflow-hidden">
       {children}
@@ -544,7 +553,7 @@ function MemoryFeedPanel({
 
   if (feed.length === 0) {
     return (
-      <MemoryStateSurface>
+      <MemoryStateSurface plain>
         <PagePanel.ContentState
           state="empty"
           placement="workspace"
@@ -773,7 +782,7 @@ function MemoryBrowserPanel({
           />
         </MemoryStateSurface>
       ) : !result || result.memories.length === 0 ? (
-        <MemoryStateSurface>
+        <MemoryStateSurface plain>
           <PagePanel.ContentState
             state="empty"
             placement="workspace"
@@ -1246,7 +1255,7 @@ function MemoryViewerViewForAuthority({
           <h2 className="px-1 text-xs font-semibold text-[color:var(--settings-muted)]">
             {t("memoryviewer.library", { defaultValue: "Library" })}
           </h2>
-          <div className="space-y-4 rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)] p-4">
+          <div className="space-y-4 border-b border-[color:var(--settings-hairline)] px-1 pb-5">
             <div className="flex min-h-11 items-center justify-between gap-3">
               <span className="text-sm text-[color:var(--settings-foreground)]">
                 {t("memoryviewer.allMemories", {
@@ -1301,7 +1310,7 @@ function MemoryViewerViewForAuthority({
           <h2 className="px-1 text-xs font-semibold text-[color:var(--settings-muted)]">
             {t("memoryviewer.people", { defaultValue: "People" })}
           </h2>
-          <div className="rounded-[16px] border border-[color:var(--settings-hairline)] bg-[var(--settings-panel)] p-4">
+          <div className="border-b border-[color:var(--settings-hairline)] px-1 pb-5">
             {peopleLoading ? (
               <div className="flex min-h-11 items-center text-sm text-[color:var(--settings-muted)]">
                 {t("memoryviewer.loading", { defaultValue: "Loading..." })}
@@ -1412,7 +1421,7 @@ function MemoryViewerViewForAuthority({
 
   return (
     <ShellViewAgentSurface viewId="memories">
-      <FramedPage>
+      <FramedPage gutterOwner="framed-page">
         <FramedPageHeader
           title={t("memoryviewer.title", { defaultValue: "Memories" })}
           actions={
