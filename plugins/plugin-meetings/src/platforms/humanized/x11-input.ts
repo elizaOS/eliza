@@ -73,7 +73,17 @@ export class X11Input {
 
   async moveAbs(x: number, y: number): Promise<void> {
     if (this.dryRun) this.simPointer = { x, y };
-    await this.run(["xdotool", "mousemove", "--sync", String(x), String(y)]);
+    // Terminate option parsing before the coordinates so negative values
+    // (offscreen moves) are not interpreted as xdotool options; moveRel
+    // already terminates with "--".
+    await this.run([
+      "xdotool",
+      "mousemove",
+      "--sync",
+      "--",
+      String(x),
+      String(y),
+    ]);
   }
 
   async moveRel(dx: number, dy: number): Promise<void> {
