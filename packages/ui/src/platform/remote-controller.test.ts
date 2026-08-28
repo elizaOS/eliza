@@ -24,6 +24,7 @@ vi.mock("../bridge/electrobun-rpc", () => ({
   invokeDesktopBridgeRequest: vi.fn(),
 }));
 
+import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import {
   acknowledgeRemoteCommandEnqueue,
   clearRemoteControllerSessionState,
@@ -138,6 +139,20 @@ describe("Capacitor remote controller bridge", () => {
     await expect(
       getOrCreateRemoteControllerIdentity({ ownerId: "owner-1" }),
     ).rejects.toThrow("native iOS plugin is installed");
+    nativeAvailable.value = true;
+  });
+
+  it("never falls through to desktop RPC for absent native operations", async () => {
+    nativeAvailable.value = false;
+    const calls = [
+      createRemoteCommand({} as never),
+      acknowledgeRemoteCommandEnqueue({} as never),
+      openRemoteCommandResult({} as never),
+      openRemoteCommandStartReceipt({} as never),
+      clearRemoteControllerSessionState({} as never),
+    ];
+    await expect(Promise.all(calls)).rejects.toThrow("native iOS plugin");
+    expect(invokeDesktopBridgeRequest).not.toHaveBeenCalled();
     nativeAvailable.value = true;
   });
 
