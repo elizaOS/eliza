@@ -522,7 +522,6 @@ async function readHomeDarkForegrounds(page) {
 }
 const ATTENTION_HOME_TEST_IDS = [
   "home-notification-center",
-  "chat-widget-needs-attention",
   "chat-widget-todos",
   "todo-goal-attention-row",
   "chat-widget-calendar-upcoming",
