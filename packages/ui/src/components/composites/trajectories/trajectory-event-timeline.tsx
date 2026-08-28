@@ -7,6 +7,8 @@ import { CheckCircle, Circle, Clock3, XCircle } from "lucide-react";
 import type * as React from "react";
 
 import { Badge } from "../../ui/badge";
+import { Card } from "../../ui/card";
+import { PagePanel } from "../page-panel";
 export type TrajectoryTimelineStatus =
   | "queued"
   | "running"
@@ -54,55 +56,57 @@ export function TrajectoryEventTimeline({
   heading,
 }: TrajectoryEventTimelineProps) {
   return (
-    <section>
+    <PagePanel as="section" variant="section" className="px-5 py-4">
       <div className="mb-3 text-sm font-semibold text-[color:var(--settings-foreground)]">
         {heading}
       </div>
       {events.length === 0 ? (
-        <div className="border-y border-dashed border-[color:var(--settings-hairline)] py-6 text-center text-sm text-[color:var(--settings-muted)]">
-          {emptyLabel}
-        </div>
+        <Card variant="dashedEmpty">{emptyLabel}</Card>
       ) : (
-        <ol className="divide-y divide-[color:var(--settings-hairline)] border-y border-[color:var(--settings-hairline)]">
+        <ol className="space-y-2">
           {events.map((event) => (
-            <li
+            <Card
+              asChild
               key={event.id}
-              className="grid min-h-14 grid-cols-[1.25rem_minmax(0,1fr)] gap-3 py-3"
+              variant="insetPadded"
+              className="grid min-h-14 grid-cols-[1.25rem_minmax(0,1fr)] gap-3"
             >
-              <div className="mt-0.5 flex justify-center">
-                {statusIcon(event.status)}
-              </div>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <span className="truncate text-sm font-medium text-[color:var(--settings-foreground)]">
-                    {event.label}
-                  </span>
-                  {event.stage ? (
-                    <Badge asChild variant="trajectoryStage" size="compact">
-                      <span>{event.stage}</span>
-                    </Badge>
-                  ) : null}
-                  {event.timestampLabel ? (
-                    <span className="ml-auto text-xs text-[color:var(--settings-muted)]">
-                      {event.timestampLabel}
+              <li>
+                <div className="mt-0.5 flex justify-center">
+                  {statusIcon(event.status)}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="truncate text-sm font-medium text-[color:var(--settings-foreground)]">
+                      {event.label}
                     </span>
+                    {event.stage ? (
+                      <Badge asChild variant="trajectoryStage" size="compact">
+                        <span>{event.stage}</span>
+                      </Badge>
+                    ) : null}
+                    {event.timestampLabel ? (
+                      <span className="ml-auto text-xs text-[color:var(--settings-muted)]">
+                        {event.timestampLabel}
+                      </span>
+                    ) : null}
+                  </div>
+                  {event.description ? (
+                    <div className="mt-1 line-clamp-2 text-xs leading-5 text-[color:var(--settings-muted)]">
+                      {event.description}
+                    </div>
+                  ) : null}
+                  {event.meta ? (
+                    <div className="mt-1 text-xs text-[color:var(--settings-muted)]">
+                      {event.meta}
+                    </div>
                   ) : null}
                 </div>
-                {event.description ? (
-                  <div className="mt-1 line-clamp-2 text-xs leading-5 text-[color:var(--settings-muted)]">
-                    {event.description}
-                  </div>
-                ) : null}
-                {event.meta ? (
-                  <div className="mt-1 text-xs text-[color:var(--settings-muted)]">
-                    {event.meta}
-                  </div>
-                ) : null}
-              </div>
-            </li>
+              </li>
+            </Card>
           ))}
         </ol>
       )}
-    </section>
+    </PagePanel>
   );
 }
