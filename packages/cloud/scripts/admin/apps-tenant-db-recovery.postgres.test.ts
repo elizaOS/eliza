@@ -119,6 +119,7 @@ async function buildMultiTenantBackupFixture(
         env: {
           PGHOST: url.hostname,
           PGPORT: url.port || "5432",
+          PGUSER: decodeURIComponent(url.username),
           PGPASSWORD: url.password ?? "",
         },
       },
