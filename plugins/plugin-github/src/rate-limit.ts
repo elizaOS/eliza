@@ -32,7 +32,19 @@ function headerNumber(
   if (!headers) {
     return null;
   }
-  const raw = headers[name] ?? headers[name.toLowerCase()];
+  let raw = headers[name];
+  if (raw === undefined) {
+    // Header casing is not guaranteed: fetch layers normalize to lowercase,
+    // but proxies/SDKs can preserve original casing. Match case-insensitively
+    // so a capitalized `X-RateLimit-Remaining` is not missed.
+    const lower = name.toLowerCase();
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === lower) {
+        raw = headers[key];
+        break;
+      }
+    }
+  }
   if (raw === undefined) {
     return null;
   }
