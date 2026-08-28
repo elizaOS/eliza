@@ -11,14 +11,18 @@
  */
 
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import type {
   ActiveModelState,
+  CatalogModel,
   DownloadJob,
+  HardwareProbe,
   InstalledModel,
 } from "../../../api/client-local-inference";
 import { ActiveModelBar } from "../ActiveModelBar";
 import { DownloadProgress } from "../DownloadProgress";
+import { ModelCard } from "../ModelCard";
 
 afterEach(cleanup);
 
@@ -71,6 +75,51 @@ function indicatorTransform(): string {
 function barAriaValueNow(): string {
   const bar = screen.getByRole("progressbar");
   return bar.getAttribute("aria-valuenow") ?? "";
+}
+
+/** Complete CatalogModel fixture (mirrors the stories' shape; no casts). */
+function catalogModel(overrides: Partial<CatalogModel> = {}): CatalogModel {
+  return {
+    id: "eliza-1-2b",
+    displayName: "eliza-1-2b",
+    hfRepo: "elizaos/eliza-1",
+    ggufFile: "eliza-1-2b.gguf",
+    params: "2B",
+    parameterLabel: "2B",
+    quant: "Q4_K_M",
+    sizeGb: 2.4,
+    minRamGb: 6,
+    category: "chat",
+    bucket: "mid",
+    blurb: "fixture",
+    ...overrides,
+  };
+}
+
+function beefyHardware(): HardwareProbe {
+  return {
+    totalRamGb: 32,
+    freeRamGb: 24,
+    gpu: null,
+    cpuCores: 10,
+    platform: "darwin",
+    arch: "arm64",
+    appleSilicon: true,
+    recommendedBucket: "large",
+    source: "os-fallback",
+  };
+}
+
+/** ModelCard's full action-row props; noop handlers keep the fixture terse. */
+function cardActions() {
+  return {
+    onDownload: () => {},
+    onCancel: () => {},
+    onActivate: () => {},
+    onUninstall: () => {},
+    onVerify: () => {},
+    onRedownload: () => {},
+  };
 }
 
 describe("DownloadProgress — rendered download telemetry", () => {
@@ -173,5 +222,110 @@ describe("ActiveModelBar — rendered active-model identity", () => {
       />,
     );
     expect(container.innerHTML).toBe("");
+  });
+});
+
+describe("ModelCard — rendered install detection at its consumer", () => {
+  it("an exact-id installed entry suppresses Download and offers the installed action row", () => {
+    render(
+      <ModelCard
+        model={catalogModel()}
+        hardware={beefyHardware()}
+        installed={[installedModel()]}
+        downloads={[]}
+        active={idleActive()}
+        busy={false}
+        {...cardActions()}
+      />,
+    );
+    // Installed size line renders via findInstalled's exact-id match…
+    screen.getByText("Installed · 782.0 MB");
+    // …the Download button must NOT be offered for an installed model…
+    expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
+    // …and the installed-only actions appear.
+    screen.getByRole("button", { name: "Make active" });
+    screen.getByRole("button", { name: "Verify" });
+    screen.getByRole("button", { name: "Uninstall" });
+  });
+
+  it("an external basename match installs the model and keeps Download off", async () => {
+    // Capture the id the Verify button actually receives — it must be the
+    // matched installed entry's own id (findInstalled's pick), not the
+    // catalog id.
+    let verifyId: string | undefined;
+    const actions = {
+      ...cardActions(),
+      onVerify: (id: string) => (verifyId = id),
+    };
+    render(
+      <ModelCard
+        model={catalogModel()}
+        hardware={beefyHardware()}
+        installed={[
+          installedModel({
+            // Different id — only the gguf basename matches, exercising
+            // findInstalled's external fallback path through the render.
+            id: "external-hf-xyz789",
+            path: "/external/models/eliza-1-2b.gguf",
+            source: "external-scan",
+            externalOrigin: "lm-studio",
+          }),
+        ]}
+        downloads={[]}
+        active={idleActive()}
+        busy={false}
+        {...actions}
+      />,
+    );
+    screen.getByText("Installed · 782.0 MB · via lm-studio");
+    expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
+    // Verify uses the installed entry's own id (not the catalog id) —
+    // proven by firing the click, not by reading the component.
+    await userEvent.click(screen.getByRole("button", { name: "Verify" }));
+    expect(verifyId).toBe("external-hf-xyz789");
+    // External-scan installs offer no Uninstall/Redownload (source-gated).
+    expect(screen.queryByRole("button", { name: "Uninstall" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Redownload" })).toBeNull();
+  });
+
+  it("a not-installed model renders Download and no installed actions", () => {
+    render(
+      <ModelCard
+        model={catalogModel()}
+        hardware={beefyHardware()}
+        installed={[]}
+        downloads={[]}
+        active={idleActive()}
+        busy={false}
+        {...cardActions()}
+      />,
+    );
+    screen.getByRole("button", { name: "Download" });
+    expect(screen.queryByText(/Installed ·/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Make active" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Verify" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Uninstall" })).toBeNull();
+  });
+
+  it("an external entry whose basename does not match stays downloadable", () => {
+    render(
+      <ModelCard
+        model={catalogModel()}
+        hardware={beefyHardware()}
+        installed={[
+          installedModel({
+            id: "external-hf-xyz789",
+            path: "/external/models/other-model.gguf",
+            source: "external-scan",
+          }),
+        ]}
+        downloads={[]}
+        active={idleActive()}
+        busy={false}
+        {...cardActions()}
+      />,
+    );
+    screen.getByRole("button", { name: "Download" });
+    expect(screen.queryByText(/Installed ·/)).toBeNull();
   });
 });
