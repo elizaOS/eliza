@@ -663,6 +663,7 @@ export class DiscordMembershipPublisher {
 							idempotencyKey: options.idempotencyKey,
 							reason: unavailable.reason,
 							scope: this.scopeKey(options.scope),
+							code: code || "unknown",
 						},
 					);
 					return null;
