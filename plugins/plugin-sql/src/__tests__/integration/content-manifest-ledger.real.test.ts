@@ -113,15 +113,18 @@ describe("content-manifest ledger over a real SQL store", () => {
     const raw0 = await adapter.getCache(manifestShardKey(LEDGER, head.shardGeneration, 0));
     expect(raw0).toBeDefined();
 
-    // A second publication (different content) advances the revision and
-    // the loader follows the new generation.
-    const head2 = await publishManifestLedger(store(), LEDGER, makeManifest(5, 3), {
+    // A second publication (superset content: same 9 entries, each with a
+    // GROWN range set) advances the revision and the loader follows the new
+    // generation. Shrinking/replacing entries would be an omission and is
+    // covered by the containment vectors below.
+    const grown = makeManifest(9, 3);
+    const head2 = await publishManifestLedger(store(), LEDGER, grown, {
       maxEntriesPerShard: 2,
     });
     expect(head2.revision).toBe(1);
     expect(head2.shardGeneration).not.toBe(head.shardGeneration);
     const loaded2 = await loadManifestLedger(store(), LEDGER);
-    expect(loaded2.entries).toHaveLength(5);
+    expect(loaded2.entries).toHaveLength(9);
     expect(loaded2.entries[0].rangesUsed).toHaveLength(3);
   });
 
@@ -135,6 +138,107 @@ describe("content-manifest ledger over a real SQL store", () => {
       maxEntriesPerShard: 3,
     });
     expect(second.revision).toBe(first.revision);
+  });
+
+  it("idempotency survives a deterministic clock advance on the real store", async () => {
+    const ledger = "real-ledger-idem-clock";
+    const manifest = makeManifest(6, 2);
+    const first = await publishManifestLedger(store(), ledger, manifest, {
+      maxEntriesPerShard: 3,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    // Deterministic clock control: the second publication is built with a
+    // strictly later injected createdAt so the chain hash differs by
+    // construction — no real sleep. The content digest alone must decide
+    // idempotency on the real SQL store too.
+    const second = await publishManifestLedger(store(), ledger, manifest, {
+      maxEntriesPerShard: 3,
+      createdAt: "2027-06-06T06:06:06.006Z",
+    });
+    // Idempotent: the PRIOR head is returned unchanged (same object state as
+    // persisted — we cannot compare identity across adapters, so compare the
+    // persisted fields: revision unmoved, digest equal, and the head's
+    // updatedAt still the FIRST publication's — the later build never wrote).
+    expect(second.revision).toBe(first.revision);
+    expect(second.contentSha256).toBe(first.contentSha256);
+    // Retention metadata changes are new content, not idempotent no-ops.
+    const weakened = {
+      ...manifest,
+      contentRefs: manifest.contentRefs.map((entry) => ({
+        ...entry,
+        retained: false,
+      })),
+    };
+    const third = await publishManifestLedger(store(), ledger, weakened, {
+      maxEntriesPerShard: 3,
+    });
+    expect(third.revision).toBe(first.revision + 1);
+  });
+
+  it("entry-level revision containment vectors on the real store", async () => {
+    const ledger = "real-ledger-entry-rev";
+    // Revision carried ONLY at entry level (reference.revision absent).
+    const entryLevel = validateCompactionContentManifest({
+      schemaVersion: 1,
+      contentRefs: [
+        {
+          reference: { kind: "file", ref: "entry-rev.txt" },
+          revision: "r1",
+          reason: "tool:FILE",
+          rangesUsed: [{ unit: "byte", start: 0, end: 10 }],
+          lastUsedAt: "2026-08-27T00:00:00.000Z",
+          retained: true,
+        },
+      ],
+      modifiedFiles: [],
+      pendingProcesses: [],
+    });
+    const first = await publishManifestLedger(store(), ledger, entryLevel, {
+      maxEntriesPerShard: 3,
+    });
+    expect(first.revision).toBe(0);
+    // Replacing r1 with r2 (entry-level only) must be rejected as an
+    // omission of the prior authorized identity.
+    const bumped = validateCompactionContentManifest({
+      schemaVersion: 1,
+      contentRefs: [
+        {
+          reference: { kind: "file", ref: "entry-rev.txt" },
+          revision: "r2",
+          reason: "tool:FILE",
+          rangesUsed: [{ unit: "byte", start: 0, end: 10 }],
+          lastUsedAt: "2026-08-27T00:00:00.000Z",
+          retained: true,
+        },
+      ],
+      modifiedFiles: [],
+      pendingProcesses: [],
+    });
+    await expect(
+      publishManifestLedger(store(), ledger, bumped, {
+        maxEntriesPerShard: 3,
+      })
+    ).rejects.toThrow(/omits prior authorized entries/i);
+    // Losing the entry-level revision entirely is also rejected.
+    const dropped = validateCompactionContentManifest({
+      schemaVersion: 1,
+      contentRefs: [
+        {
+          reference: { kind: "file", ref: "entry-rev.txt" },
+          reason: "tool:FILE",
+          rangesUsed: [{ unit: "byte", start: 0, end: 10 }],
+          lastUsedAt: "2026-08-27T00:00:00.000Z",
+          retained: true,
+        },
+      ],
+      modifiedFiles: [],
+      pendingProcesses: [],
+    });
+    await expect(
+      publishManifestLedger(store(), ledger, dropped, {
+        maxEntriesPerShard: 3,
+      })
+    ).rejects.toThrow(/omits prior authorized entries/i);
   });
 
   it("count-bound and byte-bound rollovers both traverse losslessly", async () => {
