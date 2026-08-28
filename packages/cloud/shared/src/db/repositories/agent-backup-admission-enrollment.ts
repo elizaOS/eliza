@@ -355,18 +355,21 @@ export async function enrollDueAgentBackupScheduleAdmissionCohort(params: {
                   > (${shard.cursor_due_at}::timestamptz, ${shard.cursor_id}::uuid)
               )
               AND NOT EXISTS (
-                SELECT 1 FROM ${agentBackupAdmissionWork} AS existing
-                WHERE existing.work_kind = 'schedule_capture'
-                  AND existing.sandbox_id = eligible.id
-                  AND existing.source_activation_generation = eligible.activation_generation
-                  AND existing.source_lifecycle_revision = eligible.activation_lifecycle_revision
-                  AND (
-                    existing.state <> 'settled'
-                    OR (
-                      existing.node_history_id = eligible.node_history_id
-                      AND existing.source_due_at = eligible.activation_completed_at
-                    )
-                  )
+                SELECT 1 FROM ${agentBackupAdmissionWork} AS outstanding
+                WHERE outstanding.work_kind = 'schedule_capture'
+                  AND outstanding.sandbox_id = eligible.id
+                  AND outstanding.source_activation_generation = eligible.activation_generation
+                  AND outstanding.source_lifecycle_revision = eligible.activation_lifecycle_revision
+                  AND outstanding.state <> 'settled'
+              )
+              AND NOT EXISTS (
+                SELECT 1 FROM ${agentBackupAdmissionWork} AS replay
+                WHERE replay.work_kind = 'schedule_capture'
+                  AND replay.sandbox_id = eligible.id
+                  AND replay.node_history_id = eligible.node_history_id
+                  AND replay.source_activation_generation = eligible.activation_generation
+                  AND replay.source_lifecycle_revision = eligible.activation_lifecycle_revision
+                  AND replay.source_due_at = eligible.activation_completed_at
               )
             ORDER BY eligible.activation_completed_at, eligible.id
             LIMIT ${limit + 1}
@@ -385,18 +388,21 @@ export async function enrollDueAgentBackupScheduleAdmissionCohort(params: {
                   > (${shard.cursor_due_at}::timestamptz, ${shard.cursor_id}::uuid)
               )
               AND NOT EXISTS (
-                SELECT 1 FROM ${agentBackupAdmissionWork} AS existing
-                WHERE existing.work_kind = 'schedule_capture'
-                  AND existing.sandbox_id = eligible.id
-                  AND existing.source_activation_generation = eligible.activation_generation
-                  AND existing.source_lifecycle_revision = eligible.activation_lifecycle_revision
-                  AND (
-                    existing.state <> 'settled'
-                    OR (
-                      existing.node_history_id = eligible.node_history_id
-                      AND existing.source_due_at = eligible.next_backup_at
-                    )
-                  )
+                SELECT 1 FROM ${agentBackupAdmissionWork} AS outstanding
+                WHERE outstanding.work_kind = 'schedule_capture'
+                  AND outstanding.sandbox_id = eligible.id
+                  AND outstanding.source_activation_generation = eligible.activation_generation
+                  AND outstanding.source_lifecycle_revision = eligible.activation_lifecycle_revision
+                  AND outstanding.state <> 'settled'
+              )
+              AND NOT EXISTS (
+                SELECT 1 FROM ${agentBackupAdmissionWork} AS replay
+                WHERE replay.work_kind = 'schedule_capture'
+                  AND replay.sandbox_id = eligible.id
+                  AND replay.node_history_id = eligible.node_history_id
+                  AND replay.source_activation_generation = eligible.activation_generation
+                  AND replay.source_lifecycle_revision = eligible.activation_lifecycle_revision
+                  AND replay.source_due_at = eligible.next_backup_at
               )
             ORDER BY eligible.next_backup_at, eligible.id
             LIMIT ${limit + 1}
@@ -422,19 +428,22 @@ export async function enrollDueAgentBackupScheduleAdmissionCohort(params: {
                 ) > (${shard.cursor_due_at}::timestamptz, ${shard.cursor_id}::uuid)
               )
               AND NOT EXISTS (
-                SELECT 1 FROM ${agentBackupAdmissionWork} AS existing
-                WHERE existing.work_kind = 'schedule_capture'
-                  AND existing.sandbox_id = eligible.id
-                  AND existing.source_activation_generation = eligible.activation_generation
-                  AND existing.source_lifecycle_revision = eligible.activation_lifecycle_revision
-                  AND (
-                    existing.state <> 'settled'
-                    OR (
-                      existing.node_history_id = eligible.node_history_id
-                      AND existing.source_due_at = eligible.rpo_anchor_at
-                        + (${cohortRpoMs} * INTERVAL '1 millisecond')
-                    )
-                  )
+                SELECT 1 FROM ${agentBackupAdmissionWork} AS outstanding
+                WHERE outstanding.work_kind = 'schedule_capture'
+                  AND outstanding.sandbox_id = eligible.id
+                  AND outstanding.source_activation_generation = eligible.activation_generation
+                  AND outstanding.source_lifecycle_revision = eligible.activation_lifecycle_revision
+                  AND outstanding.state <> 'settled'
+              )
+              AND NOT EXISTS (
+                SELECT 1 FROM ${agentBackupAdmissionWork} AS replay
+                WHERE replay.work_kind = 'schedule_capture'
+                  AND replay.sandbox_id = eligible.id
+                  AND replay.node_history_id = eligible.node_history_id
+                  AND replay.source_activation_generation = eligible.activation_generation
+                  AND replay.source_lifecycle_revision = eligible.activation_lifecycle_revision
+                  AND replay.source_due_at = eligible.rpo_anchor_at
+                    + (${cohortRpoMs} * INTERVAL '1 millisecond')
               )
             ORDER BY eligible.rpo_anchor_at, eligible.id
             LIMIT ${limit + 1}

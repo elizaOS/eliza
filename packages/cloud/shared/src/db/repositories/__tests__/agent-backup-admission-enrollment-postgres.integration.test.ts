@@ -1,7 +1,9 @@
 /**
  * Proves restartable backup-admission enrollment with independent PostgreSQL
  * sessions. PGlite covers repository-call idempotence, but cannot prove that a
- * row lock on one shard remains held while `SKIP LOCKED` enrolls another.
+ * row lock on one shard remains held while `SKIP LOCKED` enrolls another. It
+ * also proves bounded historical lookups and cross-identity uniqueness on
+ * the exact PostgreSQL indexes used in production.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -69,6 +71,7 @@ const ENROLLMENT_MIGRATIONS = [
   "0357_agent_backup_admission_work_state_guard",
   "0358_agent_backup_admission_work_delete_guard",
   "0359_agent_backup_admission_shard_guard",
+  "0365_agent_backup_admission_unsettled_schedule_index",
 ] as const;
 const ORIGINAL_ENV = {
   DATABASE_URL: process.env.DATABASE_URL,
@@ -83,6 +86,12 @@ const ORIGINAL_ENV = {
 
 type ClientModule = typeof import("../../client");
 type EnrollmentRepository = typeof import("../agent-backup-admission-enrollment");
+
+interface ExplainPlanNode {
+  "Index Name"?: string;
+  "Node Type"?: string;
+  Plans?: ExplainPlanNode[];
+}
 
 let postgres: EphemeralPostgres | null = null;
 let isolatedDatabaseName: string | null = null;
@@ -106,6 +115,10 @@ function postgresErrorCode(error: unknown): string | null {
     current = record.cause;
   }
   return null;
+}
+
+function flattenExplainPlan(node: ExplainPlanNode): ExplainPlanNode[] {
+  return [node, ...(node.Plans ?? []).flatMap(flattenExplainPlan)];
 }
 
 async function createIsolatedDatabase(baseDsn: string): Promise<{
@@ -216,10 +229,16 @@ async function initializeHarness(): Promise<void> {
 async function applyMigration(tag: string): Promise<void> {
   if (!dbWrite) throw new Error("Real PostgreSQL harness was not initialized");
   const source = readFileSync(new URL(`../../migrations/${tag}.sql`, import.meta.url), "utf8");
+  const statements = source
+    .split("--> statement-breakpoint")
+    .map((statement) => statement.trim())
+    .filter(Boolean);
+  if (source.startsWith("-- migrate-with-diagnostics: nontransactional-concurrent-indexes")) {
+    for (const statement of statements) await dbWrite.execute(sql.raw(statement));
+    return;
+  }
   await dbWrite.transaction(async (transaction) => {
-    for (const statement of source.split("--> statement-breakpoint")) {
-      if (statement.trim()) await transaction.execute(sql.raw(statement));
-    }
+    for (const statement of statements) await transaction.execute(sql.raw(statement));
   });
 }
 
@@ -527,4 +546,166 @@ realPostgres("backup admission enrollment row-lock evidence", () => {
     },
     TIMEOUT,
   );
+
+  test("bounds 10k settled-history probes and serializes distinct outstanding identities", async () => {
+    if (!isolatedDsn) throw new Error("Real PostgreSQL harness was not initialized");
+    const audit = new Client({ connectionString: isolatedDsn });
+    const firstWriter = new Client({ connectionString: isolatedDsn });
+    const secondWriter = new Client({ connectionString: isolatedDsn });
+    let firstTransactionOpen = false;
+    let secondTransactionOpen = false;
+    try {
+      await Promise.all([audit.connect(), firstWriter.connect(), secondWriter.connect()]);
+      const history = await audit.query<{ current_node_history_id: string }>(
+        `SELECT current_node_history_id
+           FROM docker_nodes
+           WHERE id = $1::uuid AND current_node_history_id IS NOT NULL`,
+        [NODE_RECORD_ID],
+      );
+      const historyId = history.rows[0]?.current_node_history_id;
+      if (!historyId) throw new Error("Source occurrence was not materialized");
+
+      await audit.query(
+        `UPDATE agent_backup_admission_work
+           SET state = 'settled', deferred_reason = NULL,
+             lease_owner = NULL, lease_generation = NULL, lease_expires_at = NULL,
+             settled_at = clock_timestamp(), settled_reason = 'TEST_HISTORY_CLOSE',
+             updated_at = clock_timestamp()
+           WHERE sandbox_id = $1::uuid AND state <> 'settled'`,
+        [SHARD_ZERO_SANDBOX_ID],
+      );
+      await audit.query(`DO $history$
+          DECLARE history_ordinal integer; inserted_id uuid;
+          BEGIN
+            FOR history_ordinal IN 1..10000 LOOP
+              INSERT INTO agent_backup_admission_work (
+                work_kind, work_stage, organization_id, sandbox_id, node_history_id,
+                source_activation_generation, source_lifecycle_revision,
+                source_provider_handle, source_container_id, source_image_digest,
+                source_rpo_ms, requires_node_lane, priority_class, base_priority,
+                source_due_at, rpo_deadline_at, not_before,
+                ready_cohort, cohort_ordinal, shard_id
+              ) VALUES (
+                'schedule_capture', 'reserve_capture', '${ORGANIZATION_ID}',
+                '${SHARD_ZERO_SANDBOX_ID}', '${historyId}',
+                '72000000-0000-4000-8000-00000000d010', 7,
+                'backup-admission-postgres-shard-zero', '${"b".repeat(64)}',
+                '${IMAGE_DIGEST}', 900000, TRUE, 'periodic_capture', 3,
+                '2025-01-01 00:00:00+00'::timestamptz
+                  + history_ordinal * INTERVAL '1 second',
+                '2025-01-01 00:15:00+00'::timestamptz
+                  + history_ordinal * INTERVAL '1 second',
+                '2025-01-01 00:00:00+00'::timestamptz
+                  + history_ordinal * INTERVAL '1 second',
+                history_ordinal, history_ordinal, 0
+              ) RETURNING id INTO inserted_id;
+              UPDATE agent_backup_admission_work
+              SET state = 'settled', settled_at = clock_timestamp(),
+                settled_reason = 'TEST_HISTORY', updated_at = clock_timestamp()
+              WHERE id = inserted_id;
+            END LOOP;
+          END
+        $history$`);
+      await audit.query("ANALYZE agent_backup_admission_work");
+      await audit.query("SET enable_seqscan = off");
+
+      const explain = async (query: string, values: unknown[]): Promise<ExplainPlanNode[]> => {
+        const result = await audit.query<{ "QUERY PLAN": Array<{ Plan: ExplainPlanNode }> }>(
+          `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${query}`,
+          values,
+        );
+        const root = result.rows[0]?.["QUERY PLAN"][0]?.Plan;
+        if (!root) throw new Error("PostgreSQL did not return an explain plan");
+        return flattenExplainPlan(root);
+      };
+      const outstandingPlan = await explain(
+        `SELECT 1 FROM agent_backup_admission_work
+           WHERE work_kind = 'schedule_capture' AND sandbox_id = $1::uuid
+             AND source_activation_generation = $2::uuid
+             AND source_lifecycle_revision = 7 AND state <> 'settled'`,
+        [SHARD_ZERO_SANDBOX_ID, "72000000-0000-4000-8000-00000000d010"],
+      );
+      expect(outstandingPlan.map((node) => node["Index Name"])).toContain(
+        "agent_backup_admission_work_unsettled_schedule_uidx",
+      );
+      expect(outstandingPlan.map((node) => node["Node Type"])).not.toContain("Seq Scan");
+      const replayPlan = await explain(
+        `SELECT 1 FROM agent_backup_admission_work
+           WHERE work_kind = 'schedule_capture' AND sandbox_id = $1::uuid
+             AND node_history_id = $2::uuid
+             AND source_activation_generation = $3::uuid
+             AND source_lifecycle_revision = 7
+             AND source_due_at = '2025-01-01 00:00:01+00'::timestamptz`,
+        [SHARD_ZERO_SANDBOX_ID, historyId, "72000000-0000-4000-8000-00000000d010"],
+      );
+      expect(replayPlan.map((node) => node["Index Name"])).toContain(
+        "agent_backup_admission_work_schedule_uidx",
+      );
+      expect(replayPlan.map((node) => node["Node Type"])).not.toContain("Seq Scan");
+
+      const insertSchedule = (writer: Client, dueAt: string, ordinal: number) =>
+        writer.query<{ id: string }>(
+          `INSERT INTO agent_backup_admission_work (
+               work_kind, work_stage, organization_id, sandbox_id, node_history_id,
+               source_activation_generation, source_lifecycle_revision,
+               source_provider_handle, source_container_id, source_image_digest,
+               source_rpo_ms, requires_node_lane, priority_class, base_priority,
+               source_due_at, rpo_deadline_at, not_before,
+               ready_cohort, cohort_ordinal, shard_id
+             ) VALUES (
+               'schedule_capture', 'reserve_capture', $1::uuid, $2::uuid, $3::uuid,
+               $4::uuid, 7, 'backup-admission-postgres-shard-zero', $5, $6,
+               60000, TRUE, 'active_rpo', 1, $7::timestamptz,
+               $7::timestamptz + INTERVAL '1 minute', $7::timestamptz,
+               20000, $8::integer, 0
+             ) RETURNING id`,
+          [
+            ORGANIZATION_ID,
+            SHARD_ZERO_SANDBOX_ID,
+            historyId,
+            "72000000-0000-4000-8000-00000000d010",
+            "b".repeat(64),
+            IMAGE_DIGEST,
+            dueAt,
+            ordinal,
+          ],
+        );
+
+      await firstWriter.query("BEGIN");
+      firstTransactionOpen = true;
+      await secondWriter.query("BEGIN");
+      secondTransactionOpen = true;
+      const winner = await insertSchedule(firstWriter, "2026-09-01T00:00:00.000Z", 1);
+      const loser = insertSchedule(secondWriter, "2026-09-01T00:01:00.000Z", 2).then(
+        () => null,
+        (error: unknown) => error,
+      );
+      await firstWriter.query("COMMIT");
+      firstTransactionOpen = false;
+      const loserFailure = await resolveWithin(
+        loser,
+        5_000,
+        "Competing outstanding schedule insert did not resolve after winner commit",
+      );
+      expect(postgresErrorCode(loserFailure)).toBe("23505");
+      await secondWriter.query("ROLLBACK");
+      secondTransactionOpen = false;
+
+      const winnerId = winner.rows[0]?.id;
+      if (!winnerId) throw new Error("Outstanding schedule winner was not returned");
+      await audit.query(
+        `UPDATE agent_backup_admission_work
+           SET state = 'settled', settled_at = clock_timestamp(),
+             settled_reason = 'TEST_RACE_COMPLETE', updated_at = clock_timestamp()
+           WHERE id = $1::uuid`,
+        [winnerId],
+      );
+      const replacement = await insertSchedule(secondWriter, "2026-09-01T00:02:00.000Z", 3);
+      expect(replacement.rowCount).toBe(1);
+    } finally {
+      if (firstTransactionOpen) await firstWriter.query("ROLLBACK");
+      if (secondTransactionOpen) await secondWriter.query("ROLLBACK");
+      await Promise.allSettled([audit.end(), firstWriter.end(), secondWriter.end()]);
+    }
+  }, 120_000);
 });

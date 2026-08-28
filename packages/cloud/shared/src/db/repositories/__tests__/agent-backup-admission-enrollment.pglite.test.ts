@@ -75,6 +75,7 @@ const COHORT_MIGRATIONS = [
   "0357_agent_backup_admission_work_state_guard",
   "0358_agent_backup_admission_work_delete_guard",
   "0359_agent_backup_admission_shard_guard",
+  "0365_agent_backup_admission_unsettled_schedule_index",
 ] as const;
 
 type ClientModule = typeof import("../../client");
@@ -587,14 +588,32 @@ describe("agent backup admission enrollment", () => {
     });
     expect(new Date(before?.source_due_at ?? 0).getTime()).toBe(originalDueAt.getTime());
 
-    for (const ownerId of ["rpo-policy-tightened-a", "rpo-policy-tightened-b"]) {
-      expect(await enroll(ownerId, 100, 60_000)).toMatchObject({
-        shardId: 0,
-        enrolled: 0,
-        queued: 0,
-        cohortComplete: true,
-      });
-    }
+    expect(await enroll("rpo-policy-tightened-a", 100, 60_000)).toMatchObject({
+      shardId: 0,
+      enrolled: 0,
+      queued: 0,
+      cohortComplete: true,
+    });
+    await dbWrite.execute(sql`
+      UPDATE ${agentBackupAdmissionWork}
+      SET state = 'deferred', deferred_reason = 'CAPACITY_WAIT',
+        not_before = clock_timestamp() + INTERVAL '5 minutes', updated_at = clock_timestamp()
+      WHERE id = ${before?.id}::uuid
+    `);
+    const [deferred] = await sqlRows<{ document: string }>(
+      dbWrite,
+      sql`
+        SELECT row_to_json(work)::text AS document
+        FROM ${agentBackupAdmissionWork} AS work
+        WHERE id = ${before?.id}::uuid
+      `,
+    );
+    expect(await enroll("rpo-policy-tightened-b", 100, 60_000)).toMatchObject({
+      shardId: 0,
+      enrolled: 0,
+      queued: 0,
+      cohortComplete: true,
+    });
     const unchanged = await sqlRows<{
       document: string;
       unsettled: number;
@@ -611,12 +630,12 @@ describe("agent backup admission enrollment", () => {
       `,
     );
     expect(unchanged).toHaveLength(1);
-    expect(unchanged[0]).toMatchObject({ document: before?.document, unsettled: 1 });
+    expect(unchanged[0]).toMatchObject({ document: deferred?.document, unsettled: 1 });
     expect(new Date(unchanged[0]?.next_backup_at ?? 0).getTime()).toBe(originalDueAt.getTime());
 
     await dbWrite.execute(sql`
       UPDATE ${agentBackupAdmissionWork}
-      SET state = 'settled', settled_at = clock_timestamp(),
+      SET state = 'settled', deferred_reason = NULL, settled_at = clock_timestamp(),
         settled_reason = 'CAPTURE_COMPLETED', updated_at = clock_timestamp()
       WHERE id = ${before?.id}::uuid
     `);
