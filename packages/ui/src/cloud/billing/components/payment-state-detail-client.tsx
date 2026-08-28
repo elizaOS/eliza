@@ -9,7 +9,7 @@
 
 "use client";
 
-import { BrandCard, CornerBrackets } from "@elizaos/ui/cloud-ui";
+import { CornerBrackets } from "@elizaos/ui/cloud-ui";
 import { ArrowLeft, LifeBuoy } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -154,7 +154,7 @@ export function PaymentStateDetailClient({
         </Button>
       </div>
 
-      <BrandCard className="relative">
+      <Card variant="brand" className="relative">
         <CornerBrackets size="sm" className="opacity-50" />
         <div className="relative z-10 space-y-6">
           <div className="flex items-center gap-2">
@@ -361,7 +361,7 @@ export function PaymentStateDetailClient({
             </p>
           ) : null}
         </div>
-      </BrandCard>
+      </Card>
     </div>
   );
 }
