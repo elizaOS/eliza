@@ -375,7 +375,7 @@ ph eg`,
       "< Logs\nAll levels\nAll sources\nAll tags\nINFO\nsmoke\nsmoke API ready",
     ],
     [
-      "builtin-relationships",
+      "builtin-character",
       "< Character\npersonality Relationships skills Experience\nv al v\nsear\nch\n+ PQ\nple.",
     ],
     [
