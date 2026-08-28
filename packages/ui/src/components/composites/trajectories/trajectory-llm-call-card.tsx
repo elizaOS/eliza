@@ -8,6 +8,8 @@ import * as React from "react";
 
 import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
+import { Separator } from "../../ui/separator";
 import { TrajectoryCodeBlock } from "./trajectory-code-block";
 
 interface CallMetricProps {
@@ -18,7 +20,7 @@ interface CallMetricProps {
 
 function CallMetric({ label, value, meta }: CallMetricProps) {
   return (
-    <div className="px-3 py-3 first:pl-0 last:pr-0">
+    <Card variant="bottomDivider" className="px-3 py-3">
       <div className="text-xs text-[color:var(--settings-muted)]">{label}</div>
       <div className="mt-1 truncate text-sm font-semibold text-[color:var(--settings-foreground)]">
         {value}
@@ -28,7 +30,7 @@ function CallMetric({ label, value, meta }: CallMetricProps) {
           {meta}
         </div>
       ) : null}
-    </div>
+    </Card>
   );
 }
 
@@ -97,8 +99,9 @@ export function TrajectoryLlmCallCard({
   const purposeValue = tags?.length ? tags.join(", ") : "Inference";
 
   return (
-    <section className="border-t border-[color:var(--settings-hairline)] pt-5">
-      <div className="flex flex-col gap-4">
+    <section>
+      <Separator tone="subtle40" />
+      <div className="flex flex-col gap-4 pt-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-1.5">
             <div className="text-xs font-medium text-[color:var(--settings-muted)]">
@@ -141,32 +144,35 @@ export function TrajectoryLlmCallCard({
           ) : null}
         </div>
 
-        <div className="grid divide-y divide-[color:var(--settings-hairline)] border-y border-[color:var(--settings-hairline)] md:grid-cols-2 md:divide-x md:divide-y-0 xl:grid-cols-5">
-          <CallMetric
-            label={purposeLabel}
-            value={purposeValue}
-            meta={callLabel}
-          />
-          <CallMetric
-            label={latencyLabel}
-            value={latencyValue}
-            meta={outputLinesLabel}
-          />
-          <CallMetric
-            label={tokensLabel}
-            value={totalTokensValue}
-            meta={tokenBreakdownMeta}
-          />
-          <CallMetric
-            label={maxLabel}
-            value={maxValue}
-            meta={inputLinesLabel}
-          />
-          <CallMetric
-            label={temperatureLabel}
-            value={temperatureValue}
-            meta={systemPrompt ? systemLinesLabel : systemExpandLabel}
-          />
+        <div>
+          <Separator tone="subtle40" />
+          <div className="grid md:grid-cols-2 xl:grid-cols-5">
+            <CallMetric
+              label={purposeLabel}
+              value={purposeValue}
+              meta={callLabel}
+            />
+            <CallMetric
+              label={latencyLabel}
+              value={latencyValue}
+              meta={outputLinesLabel}
+            />
+            <CallMetric
+              label={tokensLabel}
+              value={totalTokensValue}
+              meta={tokenBreakdownMeta}
+            />
+            <CallMetric
+              label={maxLabel}
+              value={maxValue}
+              meta={inputLinesLabel}
+            />
+            <CallMetric
+              label={temperatureLabel}
+              value={temperatureValue}
+              meta={systemPrompt ? systemLinesLabel : systemExpandLabel}
+            />
+          </div>
         </div>
 
         {systemPrompt && showSystem ? (
