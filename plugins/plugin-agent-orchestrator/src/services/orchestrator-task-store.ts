@@ -22,21 +22,34 @@ import {
 } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type {
-  CreateTaskInput,
-  OrchestratorTaskArtifact,
-  OrchestratorTaskDecision,
-  OrchestratorTaskDocument,
-  OrchestratorTaskEvent,
-  OrchestratorTaskMessage,
-  OrchestratorTaskPlanRevision,
-  OrchestratorTaskRecord,
-  OrchestratorTaskSession,
-  OrchestratorTaskUsage,
-  TaskListFilter,
+import {
+  type CreateTaskInput,
+  nextTaskStatus,
+  type OrchestratorTaskArtifact,
+  type OrchestratorTaskDecision,
+  type OrchestratorTaskDocument,
+  type OrchestratorTaskEvent,
+  type OrchestratorTaskMessage,
+  type OrchestratorTaskPlanRevision,
+  type OrchestratorTaskRecord,
+  type OrchestratorTaskSession,
+  type OrchestratorTaskUsage,
+  type TaskListFilter,
+  TERMINAL_TASK_SESSION_STATUSES,
 } from "./orchestrator-task-types.js";
 
 export type TaskStoreBackend = "runtime-db" | "file" | "memory";
+
+export interface InterruptStuckTaskInput {
+  taskId: string;
+  expectedTaskUpdatedAt: string;
+  expectedSessions: Array<
+    Pick<OrchestratorTaskSession, "sessionId" | "status" | "updatedAt">
+  >;
+  deadSessionIds: string[];
+  event: OrchestratorTaskEvent;
+  nowMs: number;
+}
 
 interface Logger {
   warn?: (message: string, ...args: unknown[]) => void;
@@ -389,6 +402,57 @@ function matchesFilter(
   return true;
 }
 
+function applyStuckTaskInterrupt(
+  doc: OrchestratorTaskDocument,
+  input: InterruptStuckTaskInput,
+): boolean {
+  if (doc.task.status !== "active" || doc.task.paused) return false;
+  if (doc.task.updatedAt !== input.expectedTaskUpdatedAt) return false;
+
+  const expectedSessions = input.expectedSessions
+    .map(
+      (session) =>
+        `${session.sessionId}\u0000${session.status}\u0000${session.updatedAt}`,
+    )
+    .sort();
+  const currentSessions = doc.sessions
+    .map(
+      (session) =>
+        `${session.sessionId}\u0000${session.status}\u0000${session.updatedAt}`,
+    )
+    .sort();
+  if (
+    expectedSessions.length !== currentSessions.length ||
+    expectedSessions.some(
+      (session, index) => session !== currentSessions[index],
+    )
+  ) {
+    return false;
+  }
+
+  const deadSessionIds = new Set(input.deadSessionIds);
+  const liveSessionIds = doc.sessions
+    .filter((session) => !TERMINAL_TASK_SESSION_STATUSES.has(session.status))
+    .map((session) => session.sessionId);
+  if (liveSessionIds.some((sessionId) => !deadSessionIds.has(sessionId))) {
+    return false;
+  }
+
+  const nextStatus = nextTaskStatus(doc.task.status, "interrupted");
+  const updatedAt = nowIso();
+  for (const session of doc.sessions) {
+    if (!deadSessionIds.has(session.sessionId)) continue;
+    session.status = "stopped";
+    session.stoppedAt = input.nowMs;
+    session.updatedAt = updatedAt;
+  }
+  doc.events.push(structuredClone(input.event));
+  doc.task.status = nextStatus;
+  doc.task.updatedAt = updatedAt;
+  doc.task.lastActivityAt = Date.now();
+  return true;
+}
+
 /**
  * In-memory backend. The file backend extends this with JSON persistence; the
  * SQL backend reimplements the same surface against a runtime adapter.
@@ -424,15 +488,20 @@ export class InMemoryTaskStore {
   async listTasks(
     filter: TaskListFilter = {},
   ): Promise<OrchestratorTaskRecord[]> {
+    return (await this.listTaskDocuments(filter)).map((doc) => doc.task);
+  }
+
+  async listTaskDocuments(
+    filter: TaskListFilter = {},
+  ): Promise<OrchestratorTaskDocument[]> {
     const matches = [...this.docs.values()]
       .filter((doc) => matchesFilter(doc.task, filter, buildSearchText(doc)))
-      .map((doc) => doc.task)
-      .sort((a, b) => b.lastActivityAt - a.lastActivityAt);
+      .sort((a, b) => b.task.lastActivityAt - a.task.lastActivityAt);
     const limited =
       filter.limit && filter.limit > 0
         ? matches.slice(0, filter.limit)
         : matches;
-    return limited.map((t) => structuredClone(t));
+    return limited.map(cloneDocument);
   }
 
   async updateTask(
@@ -515,6 +584,25 @@ export class InMemoryTaskStore {
         await this.afterWrite();
         return;
       }
+    });
+  }
+
+  /**
+   * Interrupt a stuck task only when the document is still the exact snapshot
+   * whose external session liveness was checked by the caller. Session repair,
+   * audit event, and task transition share one queued write so a concurrent
+   * attach cannot land between those mutations and be overwritten by a stale
+   * reap decision.
+   */
+  async interruptStuckTaskIfUnchanged(
+    input: InterruptStuckTaskInput,
+  ): Promise<boolean> {
+    return this.enqueue(async () => {
+      const doc = this.docs.get(input.taskId);
+      if (!doc || !applyStuckTaskInterrupt(doc, input)) return false;
+      this.noteMutated(input.taskId);
+      await this.afterWrite();
+      return true;
     });
   }
 
@@ -699,6 +787,10 @@ export class FileTaskStore extends InMemoryTaskStore {
     await this.ensureLoaded();
     return super.listTasks(filter);
   }
+  override async listTaskDocuments(filter?: TaskListFilter) {
+    await this.ensureLoaded();
+    return super.listTaskDocuments(filter);
+  }
   override async updateTask(
     id: string,
     patch: Partial<OrchestratorTaskRecord>,
@@ -721,6 +813,49 @@ export class FileTaskStore extends InMemoryTaskStore {
   ) {
     await this.ensureLoaded();
     return super.updateSession(sessionId, patch, taskId);
+  }
+  override async interruptStuckTaskIfUnchanged(input: InterruptStuckTaskInput) {
+    await this.ensureLoaded();
+    return this.enqueue(async () =>
+      this.withLock(async () => {
+        let contents: string;
+        try {
+          contents = await readFile(this.filePath, "utf8");
+        } catch (error) {
+          const code =
+            isRecord(error) && typeof error.code === "string" ? error.code : "";
+          if (code === "ENOENT") return false;
+          throw error;
+        }
+        const parsed = JSON.parse(contents) as unknown;
+        if (!Array.isArray(parsed)) {
+          throw new Error(
+            "orchestrator-task-store: state file is not a task-document array",
+          );
+        }
+        const documents = parsed.map(normalizeTaskDocument);
+        if (documents.some((doc) => doc === null)) {
+          throw new Error(
+            "orchestrator-task-store: state file contains an invalid task document",
+          );
+        }
+        const validDocuments = documents as OrchestratorTaskDocument[];
+        const doc = validDocuments.find(
+          (candidate) => candidate.task.id === input.taskId,
+        );
+        if (!doc || !applyStuckTaskInterrupt(doc, input)) {
+          this.hydrate(validDocuments);
+          return false;
+        }
+
+        const tempPath = `${this.filePath}.${process.pid}.${Date.now()}.tmp`;
+        const payload = JSON.stringify(validDocuments, null, 2);
+        await writeFile(tempPath, `${payload}\n`, "utf8");
+        await rename(tempPath, this.filePath);
+        this.hydrate(validDocuments);
+        return true;
+      }),
+    );
   }
   override async findSession(sessionId: string, taskId?: string) {
     await this.ensureLoaded();
@@ -1043,12 +1178,54 @@ export class RuntimeDbTaskStore {
     );
   }
 
+  private async persistIfDocumentMatches(
+    doc: OrchestratorTaskDocument,
+    expectedDocument: string,
+  ): Promise<void> {
+    const searchText = buildSearchText(doc);
+    await this.exec().run(
+      `UPDATE orchestrator_tasks SET
+         status = ?,
+         archived = ?,
+         priority = ?,
+         title = ?,
+         project_id = ?,
+         search_text = ?,
+         updated_at = ?,
+         last_activity_at = ?,
+         document = ?
+       WHERE id = ? AND document = ?`,
+      [
+        doc.task.status,
+        doc.task.archived ? 1 : 0,
+        doc.task.priority,
+        doc.task.title,
+        doc.task.projectId ?? null,
+        searchText,
+        doc.task.updatedAt,
+        doc.task.lastActivityAt,
+        JSON.stringify(doc),
+        doc.task.id,
+        expectedDocument,
+      ],
+    );
+  }
+
   private async loadOne(id: string): Promise<OrchestratorTaskDocument | null> {
+    return (await this.loadOneWithRawDocument(id))?.doc ?? null;
+  }
+
+  private async loadOneWithRawDocument(
+    id: string,
+  ): Promise<{ doc: OrchestratorTaskDocument; rawDocument: string } | null> {
     const rows = await this.exec().all(
       "SELECT document FROM orchestrator_tasks WHERE id = ?",
       [id],
     );
-    return rows.length > 0 ? this.parseDoc(rows[0]) : null;
+    const row = rows[0];
+    if (!isRecord(row) || typeof row.document !== "string") return null;
+    const doc = this.parseDoc(row);
+    return doc ? { doc, rawDocument: row.document } : null;
   }
 
   async createTask(input: CreateTaskInput): Promise<OrchestratorTaskDocument> {
@@ -1068,6 +1245,12 @@ export class RuntimeDbTaskStore {
   async listTasks(
     filter: TaskListFilter = {},
   ): Promise<OrchestratorTaskRecord[]> {
+    return (await this.listTaskDocuments(filter)).map((doc) => doc.task);
+  }
+
+  async listTaskDocuments(
+    filter: TaskListFilter = {},
+  ): Promise<OrchestratorTaskDocument[]> {
     await this.ensureInitialized();
     const clauses: string[] = [];
     const params: unknown[] = [];
@@ -1106,8 +1289,8 @@ export class RuntimeDbTaskStore {
       params,
     );
     return rows
-      .map((row) => this.parseDoc(row)?.task)
-      .filter((t): t is OrchestratorTaskRecord => Boolean(t));
+      .map((row) => this.parseDoc(row))
+      .filter((doc): doc is OrchestratorTaskDocument => doc !== null);
   }
 
   /** Run a mutation against the freshest stored document, then persist it. */
@@ -1165,6 +1348,22 @@ export class RuntimeDbTaskStore {
       await this.cache.updateSession(sessionId, patch, found.taskId);
       const next = await this.cache.getTask(found.taskId);
       if (next) await this.persist(next);
+    });
+  }
+
+  async interruptStuckTaskIfUnchanged(input: InterruptStuckTaskInput) {
+    return this.enqueue(async () => {
+      await this.ensureInitialized();
+      const loaded = await this.loadOneWithRawDocument(input.taskId);
+      if (!loaded) return false;
+      const next = cloneDocument(loaded.doc);
+      if (!applyStuckTaskInterrupt(next, input)) return false;
+      await this.persistIfDocumentMatches(next, loaded.rawDocument);
+      const persisted = await this.loadOne(input.taskId);
+      return (
+        persisted?.task.status === "interrupted" &&
+        persisted.events.some((event) => event.id === input.event.id)
+      );
     });
   }
 
@@ -1332,6 +1531,9 @@ export class OrchestratorTaskStore {
   listTasks(filter?: TaskListFilter) {
     return this.delegate.listTasks(filter);
   }
+  listTaskDocuments(filter?: TaskListFilter) {
+    return this.delegate.listTaskDocuments(filter);
+  }
   updateTask(id: string, patch: Partial<OrchestratorTaskRecord>) {
     return this.delegate.updateTask(id, patch);
   }
@@ -1347,6 +1549,9 @@ export class OrchestratorTaskStore {
     taskId?: string,
   ) {
     return this.delegate.updateSession(sessionId, patch, taskId);
+  }
+  interruptStuckTaskIfUnchanged(input: InterruptStuckTaskInput) {
+    return this.delegate.interruptStuckTaskIfUnchanged(input);
   }
   findSession(sessionId: string, taskId?: string) {
     return this.delegate.findSession(sessionId, taskId);
