@@ -634,6 +634,30 @@ describe("calibrateEmailCurationConfidence — caps and penalties", () => {
     expect(confidence).toBe(1);
   });
 
+  it("caps a blocked-delete review at 0.66 even when a negative policy amount raises confidence", () => {
+    // A negative lower_confidence amount RAISES confidence (the engine
+    // subtracts it). The blockedDelete review cap must run after the
+    // policy-effects loop, or this input would present at 1.0 — the cap
+    // guarantees a review whose delete was blocked never exceeds 0.66.
+    const confidence = calibrateEmailCurationConfidence({
+      action: "review",
+      scores: { save: 0, archive: 0, delete: 0, review: 1 },
+      evidence: [],
+      degraded: false,
+      blockedDelete: true,
+      threadConflict: false,
+      policyEffects: [
+        {
+          kind: "lower_confidence",
+          amount: -0.5,
+          code: "test_boost",
+          message: "test",
+        },
+      ],
+    });
+    expect(confidence).toBe(0.66);
+  });
+
   it("rounds a three-decimal pre-clamp value to two decimals", () => {
     // review:7 tops the review formula at 0.66; subtracting 0.153 gives
     // 0.507 pre-round — the rounding step, not the clamps, owns the result.
