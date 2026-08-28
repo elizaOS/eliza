@@ -43,6 +43,7 @@ const SANDBOX_ID = "00000000-0000-4000-8000-00000000d003";
 const WORK_ID = "00000000-0000-4000-8000-00000000d004";
 const NODE_RECORD_ID = "00000000-0000-4000-8000-00000000d005";
 const NODE_HISTORY_ID = "00000000-0000-4000-8000-00000000d006";
+const REARMED_NODE_HISTORY_ID = "00000000-0000-4000-8000-00000000d00b";
 const NODE_INCARNATION = "00000000-0000-4000-8000-00000000d007";
 const ACTIVATION_GENERATION = "00000000-0000-4000-8000-00000000d008";
 const CLAIM_GENERATION = "00000000-0000-4000-8000-00000000d009";
@@ -413,6 +414,29 @@ describe("agent backup admission reservation on primary PGlite", () => {
 
     await expect(reserveAndSettleAgentBackupAdmissionClaim({ claim })).rejects.toThrow(
       /source image no longer matches/i,
+    );
+    await expectNoPartialReservation();
+  });
+
+  test("rolls back when the same node incarnation points at a new occurrence", async () => {
+    const claim = await seedClaim();
+    await dbWrite.insert(agentNodeIncarnationHistories).values({
+      id: REARMED_NODE_HISTORY_ID,
+      docker_node_record_id: NODE_RECORD_ID,
+      node_id: NODE_ID,
+      node_incarnation: NODE_INCARNATION,
+      fleet_kind: "robot",
+      infrastructure_provider: "hetzner",
+      provider_server_id: null,
+      host_key_fingerprint: "sha256:reservation-host-key",
+    });
+    await dbWrite
+      .update(dockerNodes)
+      .set({ current_node_history_id: REARMED_NODE_HISTORY_ID })
+      .where(eq(dockerNodes.id, NODE_RECORD_ID));
+
+    await expect(reserveAndSettleAgentBackupAdmissionClaim({ claim })).rejects.toThrow(
+      /already reserved with a different payload/i,
     );
     await expectNoPartialReservation();
   });

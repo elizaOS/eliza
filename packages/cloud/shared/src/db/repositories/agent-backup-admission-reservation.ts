@@ -402,6 +402,14 @@ export async function reserveAndSettleAgentBackupAdmissionClaim(params: {
       retentionUntil,
     });
 
+    // The catalogue resolver holds a no-key-update lock on the current node
+    // occurrence until this transaction commits. Its fresh result must still
+    // match the append-only occurrence frozen by admission: an ABA/rearm may
+    // reuse the same node incarnation while advancing current_node_history_id.
+    // Fail before settlement so the tentative catalogue insert/revision rolls
+    // back together with this old claim.
+    assertPersistedReservationMatches({ backup, claim, source });
+
     const [settled] = await tx
       .update(agentBackupAdmissionWork)
       .set({

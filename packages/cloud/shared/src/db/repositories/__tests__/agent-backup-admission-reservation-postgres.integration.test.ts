@@ -4,7 +4,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { pushSchema } from "drizzle-kit/api";
 import { sql } from "drizzle-orm";
@@ -52,6 +52,7 @@ const SANDBOX_ID = "00000000-0000-4000-8000-00000000e003";
 const WORK_ID = "11000000-0000-4000-8000-00000000e004";
 const NODE_RECORD_ID = "00000000-0000-4000-8000-00000000e005";
 const NODE_HISTORY_ID = "00000000-0000-4000-8000-00000000e006";
+const REARMED_NODE_HISTORY_ID = "00000000-0000-4000-8000-00000000e00a";
 const NODE_INCARNATION = "00000000-0000-4000-8000-00000000e007";
 const ACTIVATION_GENERATION = "00000000-0000-4000-8000-00000000e008";
 const DELETION_REQUEST_ID = "00000000-0000-4000-8000-00000000e009";
@@ -121,6 +122,50 @@ interface CapacityAndJobsSnapshot {
   allocated: number;
   changedNodes: number;
   autoscaledNodes: number;
+}
+
+interface ScaleReservationPayloadProof {
+  operationId: string;
+  organizationId: string;
+  sandboxId: string;
+  activationGeneration: string;
+  lifecycleRevision: string;
+  nodeHistoryId: string;
+  nodeRecordId: string;
+  nodeId: string;
+  nodeIncarnation: string;
+  sourceProvider: "operator-onboarded" | "hetzner-cloud";
+  providerServerId: string | null;
+  providerHandle: string;
+  containerId: string;
+  retentionUntil: Date;
+  catalogPayloadDigest: string;
+}
+
+function expectedScaleReservationPayloadDigest(row: ScaleReservationPayloadProof): string {
+  const canonicalPayload = JSON.stringify({
+    organizationId: row.organizationId,
+    agentId: row.sandboxId,
+    sandboxRecordId: row.sandboxId,
+    operationId: row.operationId,
+    activationGeneration: row.activationGeneration,
+    lifecycleRevision: row.lifecycleRevision,
+    snapshotType: "auto",
+    backupKind: "full",
+    parentBackupId: null,
+    baseBackupId: null,
+    sourceProvider: row.sourceProvider,
+    sourceNodeRecordId: row.nodeRecordId,
+    sourceNodeId: row.nodeId,
+    sourceNodeIncarnation: row.nodeIncarnation,
+    sourceNodeHistoryId: row.nodeHistoryId,
+    sourceProviderServerId: row.providerServerId,
+    sourceProviderHandle: row.providerHandle,
+    sourceContainerId: row.containerId,
+    retentionReason: "schedule",
+    retentionUntil: row.retentionUntil.toISOString(),
+  });
+  return createHash("sha256").update(canonicalPayload).digest("hex");
 }
 
 let postgres: EphemeralPostgres | null = await acquireEphemeralPostgres();
@@ -791,7 +836,7 @@ async function withLockedRow<T>(params: {
   selectSql: string;
   selectValues: unknown[];
   run: () => Promise<T>;
-  beforeRelease?: () => Promise<void>;
+  beforeRelease?: (locker: Client) => Promise<void>;
 }): Promise<T> {
   if (!isolatedDsn || !control) throw new Error("real PostgreSQL harness was not initialized");
   const locker = new Client({
@@ -811,7 +856,7 @@ async function withLockedRow<T>(params: {
     if (!pid) throw new Error("PostgreSQL blocker PID is unavailable");
     operation = params.run();
     await waitForRepositoryLockWaiters(control, pid, 1);
-    await params.beforeRelease?.();
+    await params.beforeRelease?.(locker);
     await locker.query("COMMIT");
     result = await operation;
     completed = true;
@@ -959,6 +1004,54 @@ describe("backup admission reservation on real PostgreSQL", () => {
         }),
       ).rejects.toThrow(/expired while waiting|lost its final live-fence CAS/i);
       await expectNoPartialReservation();
+    },
+    TEST_TIMEOUT,
+  );
+
+  realPostgresTest(
+    "rejects an old claim when a locked node is re-armed to a new same-incarnation occurrence",
+    async () => {
+      if (!claimRepository || !reservationRepository || !control) {
+        throw new Error("real PostgreSQL reservation repositories were not initialized");
+      }
+      const claim = await claimOne(60_000);
+      await expect(
+        withLockedRow({
+          selectSql: "SELECT id FROM docker_nodes WHERE id = $1::uuid FOR UPDATE",
+          selectValues: [NODE_RECORD_ID],
+          run: () => reservationRepository!.reserveAndSettleAgentBackupAdmissionClaim({ claim }),
+          beforeRelease: async (locker) => {
+            await locker.query(
+              `INSERT INTO agent_node_incarnation_histories (
+                 id, docker_node_record_id, node_id, node_incarnation, fleet_kind,
+                 infrastructure_provider, provider_server_id, host_key_fingerprint
+               ) VALUES ($1::uuid, $2::uuid, $3, $4::uuid, 'robot', 'hetzner', NULL, $5)`,
+              [
+                REARMED_NODE_HISTORY_ID,
+                NODE_RECORD_ID,
+                NODE_ID,
+                NODE_INCARNATION,
+                "sha256:reservation-postgres-host-key",
+              ],
+            );
+            const rearmed = await locker.query<{ current_node_history_id: string }>(
+              `UPDATE docker_nodes
+               SET current_node_history_id = $2::uuid, updated_at = clock_timestamp()
+               WHERE id = $1::uuid
+               RETURNING current_node_history_id::text`,
+              [NODE_RECORD_ID, REARMED_NODE_HISTORY_ID],
+            );
+            expect(rearmed.rows).toEqual([{ current_node_history_id: REARMED_NODE_HISTORY_ID }]);
+          },
+        }),
+      ).rejects.toThrow(/already reserved with a different payload/i);
+      await expectNoPartialReservation();
+      const occurrence = await control.query<{ current_node_history_id: string }>(
+        `SELECT current_node_history_id::text
+         FROM docker_nodes WHERE id = $1::uuid`,
+        [NODE_RECORD_ID],
+      );
+      expect(occurrence.rows).toEqual([{ current_node_history_id: REARMED_NODE_HISTORY_ID }]);
     },
     TEST_TIMEOUT,
   );
@@ -1341,11 +1434,63 @@ describe("backup admission reservation on real PostgreSQL", () => {
         authorities: number;
         revisionOneAuthorities: number;
         exactHandoffs: number;
+        immutableVectorMismatches: number;
         missingHandoffs: number;
         orphanHandoffs: number;
         duplicateOperations: number;
         brokenAuthorityHandoffs: number;
       }>(`
+        WITH immutable_handoffs AS (
+          SELECT work.id
+          FROM agent_backup_admission_work AS work
+          JOIN agent_node_incarnation_histories AS history
+            ON history.id = work.node_history_id
+          JOIN docker_nodes AS node
+            ON node.id = history.docker_node_record_id
+           AND node.node_id = history.node_id
+           AND node.node_incarnation = history.node_incarnation
+           AND node.current_node_history_id = history.id
+           AND node.fleet_kind = history.fleet_kind
+           AND node.infrastructure_provider = history.infrastructure_provider
+           AND node.provider_server_id IS NOT DISTINCT FROM history.provider_server_id
+           AND node.host_key_fingerprint = history.host_key_fingerprint
+          JOIN agent_sandbox_backups AS backup
+            ON backup.backup_operation_id = work.id
+           AND backup.catalog_organization_id = work.organization_id
+           AND backup.catalog_agent_id = work.sandbox_id
+           AND backup.sandbox_record_id = work.sandbox_id
+           AND backup.lifecycle_generation = work.source_activation_generation
+           AND backup.lifecycle_revision = work.source_lifecycle_revision
+           AND backup.source_node_history_id = work.node_history_id
+           AND backup.source_node_record_id = history.docker_node_record_id
+           AND backup.source_node_id = history.node_id
+           AND backup.source_node_incarnation = history.node_incarnation
+           AND backup.source_provider_server_id IS NOT DISTINCT FROM history.provider_server_id
+           AND backup.source_provider = CASE history.fleet_kind
+             WHEN 'robot' THEN 'operator-onboarded'
+             WHEN 'cloud' THEN 'hetzner-cloud'
+             ELSE NULL
+           END
+           AND backup.source_provider_handle = work.source_provider_handle
+           AND backup.source_container_id = work.source_container_id
+          JOIN agent_backup_catalog_authorities AS authority
+            ON authority.organization_id = backup.catalog_organization_id
+           AND authority.agent_id = backup.catalog_agent_id
+           AND authority.catalog_revision = backup.catalog_revision
+          WHERE work.state = 'settled'
+            AND work.settled_reason = 'CAPTURE_RESERVED'
+            AND backup.catalog_version = 2
+            AND backup.catalog_state = 'scheduled'
+            AND backup.snapshot_type = 'auto'
+            AND backup.backup_kind = 'full'
+            AND backup.parent_backup_id IS NULL
+            AND backup.base_backup_id IS NULL
+            AND backup.retention_reason = 'schedule'
+            AND backup.retention_until IS NOT NULL
+            AND backup.catalog_payload_digest ~ '^[0-9a-f]{64}$'
+            AND backup.catalog_revision = 1
+            AND authority.restore_generation = 0
+        )
         SELECT
           (SELECT count(*)::integer FROM agent_backup_admission_work) AS "totalWork",
           (SELECT count(*)::integer FROM agent_backup_admission_work
@@ -1362,17 +1507,9 @@ describe("backup admission reservation on real PostgreSQL", () => {
           (SELECT count(*)::integer FROM agent_backup_catalog_authorities) AS authorities,
           (SELECT count(*)::integer FROM agent_backup_catalog_authorities
             WHERE catalog_revision = 1 AND restore_generation = 0) AS "revisionOneAuthorities",
-          (SELECT count(*)::integer
-            FROM agent_backup_admission_work AS work
-            JOIN agent_sandbox_backups AS backup
-              ON backup.backup_operation_id = work.id
-             AND backup.catalog_organization_id = work.organization_id
-             AND backup.catalog_agent_id = work.sandbox_id
-            JOIN agent_backup_catalog_authorities AS authority
-              ON authority.organization_id = backup.catalog_organization_id
-             AND authority.agent_id = backup.catalog_agent_id
-             AND authority.catalog_revision = backup.catalog_revision
-            WHERE backup.catalog_state = 'scheduled') AS "exactHandoffs",
+          (SELECT count(*)::integer FROM immutable_handoffs) AS "exactHandoffs",
+          ((SELECT count(*) FROM agent_backup_admission_work)
+            - (SELECT count(*) FROM immutable_handoffs))::integer AS "immutableVectorMismatches",
           (SELECT count(*)::integer
             FROM agent_backup_admission_work AS work
             LEFT JOIN agent_sandbox_backups AS backup
@@ -1411,12 +1548,55 @@ describe("backup admission reservation on real PostgreSQL", () => {
           authorities: SCALE_TOTAL_COUNT,
           revisionOneAuthorities: SCALE_TOTAL_COUNT,
           exactHandoffs: SCALE_TOTAL_COUNT,
+          immutableVectorMismatches: 0,
           missingHandoffs: 0,
           orphanHandoffs: 0,
           duplicateOperations: 0,
           brokenAuthorityHandoffs: 0,
         },
       ]);
+
+      const payloadProof = await control.query<ScaleReservationPayloadProof>(`
+        SELECT
+          work.id::text AS "operationId",
+          work.organization_id::text AS "organizationId",
+          work.sandbox_id::text AS "sandboxId",
+          work.source_activation_generation::text AS "activationGeneration",
+          work.source_lifecycle_revision::text AS "lifecycleRevision",
+          work.node_history_id::text AS "nodeHistoryId",
+          history.docker_node_record_id::text AS "nodeRecordId",
+          history.node_id AS "nodeId",
+          history.node_incarnation::text AS "nodeIncarnation",
+          CASE history.fleet_kind
+            WHEN 'robot' THEN 'operator-onboarded'
+            WHEN 'cloud' THEN 'hetzner-cloud'
+          END AS "sourceProvider",
+          history.provider_server_id AS "providerServerId",
+          work.source_provider_handle AS "providerHandle",
+          work.source_container_id AS "containerId",
+          backup.retention_until AS "retentionUntil",
+          backup.catalog_payload_digest AS "catalogPayloadDigest"
+        FROM agent_backup_admission_work AS work
+        JOIN agent_node_incarnation_histories AS history
+          ON history.id = work.node_history_id
+        JOIN agent_sandbox_backups AS backup
+          ON backup.backup_operation_id = work.id
+         AND backup.catalog_organization_id = work.organization_id
+         AND backup.catalog_agent_id = work.sandbox_id
+        ORDER BY work.id
+      `);
+      const payloadDigestMismatches = payloadProof.rows.filter(
+        (row) =>
+          !(row.retentionUntil instanceof Date) ||
+          expectedScaleReservationPayloadDigest(row) !== row.catalogPayloadDigest,
+      );
+      expect({
+        payloadDigestsVerified: payloadProof.rowCount,
+        payloadDigestMismatches: payloadDigestMismatches.length,
+      }).toEqual({
+        payloadDigestsVerified: SCALE_TOTAL_COUNT,
+        payloadDigestMismatches: 0,
+      });
 
       const shardProof = await control.query<{
         settledShards: number;
