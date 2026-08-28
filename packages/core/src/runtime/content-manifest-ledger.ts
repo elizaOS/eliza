@@ -73,15 +73,17 @@ export function canonicalShardBytes(shard: ManifestShard): string {
 }
 
 /**
- * Canonical chain-body bytes of a shard: the content-bearing fields only —
- * schemaVersion, ledgerId, sequence, entries, entryCount, entriesSha256, and
- * the prevSha256 link. Excluded by design: chainSha256 (self), nextSequence
- * (unknowable before the next shard exists; pinned instead by the validator's
- * sequence+1 rule and the loader's continuity checks), byteLength (pinned by
- * the loader's byteLength == canonical-bytes check), and createdAt (republication
- * timestamps must not defeat content idempotency). Replacing an earlier
- * shard's entries and patching later prevSha256 links still changes every
- * downstream chain hash and the head's ledgerSha256.
+ * Canonical chain-body bytes of a shard: every field except chainSha256
+ * (self), nextSequence (unknowable before the next shard exists; pinned
+ * instead by the validator's sequence+1 rule and the loader's continuity
+ * checks), and byteLength (self-referential with the record length; pinned
+ * instead by the loader's byteLength == canonical-bytes check, which binds
+ * the exact stored record). createdAt IS included: a persisted shard's
+ * bytes are frozen at publication (generation-addressed re-upserts write
+ * identical bytes), so binding it costs nothing and a retimed createdAt
+ * breaks the chain hash. Replacing an earlier shard's entries and patching
+ * later prevSha256 links still changes every downstream chain hash and the
+ * head's ledgerSha256.
  */
 export function shardBodyBytes(
   shard: Omit<ManifestShard, "chainSha256" | "nextSequence">,
@@ -89,8 +91,7 @@ export function shardBodyBytes(
   return JSON.stringify(shard, (key, value) =>
     key === "chainSha256" ||
     key === "nextSequence" ||
-    key === "byteLength" ||
-    key === "createdAt"
+    key === "byteLength"
       ? undefined
       : value,
   );
@@ -107,17 +108,40 @@ export function hashEntries(entries: CompactionContentEntry[]): string {
 
 /**
  * Stable identity of a manifest entry for omission containment: the
- * authorized reference plus the used ranges. Two entries with the same
- * reference and ranges are the same authorization regardless of revision
- * strings or retention metadata, which a republication may legitimately
- * update.
+ * authorized reference plus revision. Range growth is legitimate
+ * progressive-content behavior (a later turn may authorize MORE of the same
+ * reference), so ranges are compared as supersets at containment time, not
+ * as part of identity.
  */
 export function entryIdentity(entry: CompactionContentEntry): string {
   return JSON.stringify({
     kind: entry.reference.kind,
     ref: entry.reference.ref,
-    rangesUsed: entry.rangesUsed,
+    revision: entry.reference.revision,
   });
+}
+
+/**
+ * Range string used for subset comparison: a coarse interval key. Ranges
+ * with identical unit/start/end are identical authorizations.
+ */
+function rangeKey(
+  range: CompactionContentEntry["rangesUsed"][number],
+): string {
+  return `${range.unit}:${range.start}:${range.end}`;
+}
+
+/**
+ * True when every prior range for the same identity is still covered by the
+ * replacement entry's ranges (exact-set or superset). Grown range sets pass;
+ * shrunk or dropped ranges fail containment.
+ */
+export function rangesCoverPrior(
+  prior: CompactionContentEntry,
+  next: CompactionContentEntry,
+): boolean {
+  const nextRanges = new Set(next.rangesUsed.map(rangeKey));
+  return prior.rangesUsed.every((range) => nextRanges.has(rangeKey(range)));
 }
 
 /** Entries of a manifest in publication order. */
@@ -341,15 +365,26 @@ export async function publishManifestLedger(
       return prior;
     }
     // Omission containment (#25141): a replacement ledger must carry every
-    // reference the prior ledger authorized. Loading the prior shards and
-    // comparing entry identities fails closed — a smaller manifest can
-    // never silently evict canonical entries.
+    // reference the prior ledger authorized, with every previously used
+    // range still covered (growth allowed, shrink/eviction not). Loading
+    // the prior shards and comparing identities + range coverage fails
+    // closed — a smaller manifest can never silently evict canonical
+    // entries or drop ranges.
     const priorLedger = await loadManifestLedger(store, ledgerId);
-    const newIdentities = new Set(entriesOf(manifest).map(entryIdentity));
-    const missing = priorLedger.shards
-      .flatMap((shard) => shard.entries)
-      .map(entryIdentity)
-      .filter((identity) => !newIdentities.has(identity));
+    const newEntries = entriesOf(manifest);
+    const newByIdentity = new Map(
+      newEntries.map((entry) => [entryIdentity(entry), entry]),
+    );
+    const missing: string[] = [];
+    for (const priorEntry of priorLedger.shards.flatMap((s) => s.entries)) {
+      const identity = entryIdentity(priorEntry);
+      const replacement = newByIdentity.get(identity);
+      if (replacement === undefined) {
+        missing.push(identity);
+      } else if (!rangesCoverPrior(priorEntry, replacement)) {
+        missing.push(identity);
+      }
+    }
     if (missing.length > 0) {
       throw new ElizaError(
         "Manifest ledger replacement omits prior authorized entries",
@@ -404,6 +439,19 @@ export async function publishManifestLedger(
         winner.totalEntries === head.totalEntries &&
         winner.totalRanges === head.totalRanges
       ) {
+        // Idempotent against the identical winner. The losing writer's own
+        // generation-addressed shard rows are inert — sweep them (best
+        // effort) BEFORE returning so repeated identical races do not
+        // accumulate unreachable rows.
+        try {
+          await store.deleteCaches?.(
+            shards.map((shard) =>
+              manifestShardKey(ledgerId, head.shardGeneration, shard.sequence),
+            ),
+          );
+        } catch {
+          // inert rows; a later superseding publish sweeps by prior count
+        }
         return winner;
       }
     }

@@ -419,6 +419,11 @@ function compareStoredMemoriesNewestFirst(a: StoredMemory, b: StoredMemory): num
   return compareMemoryIds(bId, aId);
 }
 
+/** Hidden per-storage CAS mutex slot shared by all adapters over one storage. */
+const CACHE_CAS_MUTEX = Symbol.for(
+  "elizaos.plugin-inmemorydb.cache-cas-mutex",
+);
+
 export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
   private storage: IStorage;
@@ -867,6 +872,26 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     this.documentMutationTail = run.then(
       () => undefined,
       () => undefined
+    );
+    return run;
+  }
+
+  /**
+   * Storage-scoped CAS serialization: adapters may share one IStorage (the
+   * global MemoryStorage singleton), so cross-instance compare-and-swap
+   * must serialize on the storage object, not the adapter. The mutex lives
+   * in a symbol-keyed hidden property on the storage instance.
+   */
+  private withStorageCasLock<T>(operation: () => Promise<T>): Promise<T> {
+    const holders = this.storage as unknown as Record<
+      symbol,
+      Promise<void> | undefined
+    >;
+    const tail = holders[CACHE_CAS_MUTEX] ?? Promise.resolve();
+    const run = tail.then(operation, operation);
+    holders[CACHE_CAS_MUTEX] = run.then(
+      () => undefined,
+      () => undefined,
     );
     return run;
   }
@@ -2265,34 +2290,49 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     key: string,
     expectedRevision: number | null,
     nextRevision: number,
-    value: T
+    value: T,
   ): Promise<boolean> {
-    const entry = await this.storage.get<StoredCacheEntry<T>>(COLLECTIONS.CACHE, key);
-    if (entry === null || entry === undefined) {
-      if (expectedRevision !== null) return false;
+    // Revision lives inside value, mirroring the SQL adapters'
+    // value->>'revision' semantics so rows written by setCaches (plain
+    // values) and by CAS agree across engines. The whole check-then-set is
+    // serialized under a STORAGE-scoped mutex (adapters may share one
+    // MemoryStorage, e.g. the global singleton): two concurrent CAS calls
+    // on the same revision — even through different adapter instances —
+    // can never both succeed.
+    return this.withStorageCasLock(async () => {
+      const entry = await this.storage.get<StoredCacheEntry<T>>(
+        COLLECTIONS.CACHE,
+        key,
+      );
+      if (entry === null || entry === undefined) {
+        if (expectedRevision !== null) return false;
+        await this.storage.set(COLLECTIONS.CACHE, key, {
+          value: { ...(value as object), revision: nextRevision } as T,
+          expiresAt: undefined,
+        });
+        return true;
+      }
+      if (entry.expiresAt && Date.now() > entry.expiresAt) {
+        await this.storage.delete(COLLECTIONS.CACHE, key);
+        if (expectedRevision !== null) return false;
+        await this.storage.set(COLLECTIONS.CACHE, key, {
+          value: { ...(value as object), revision: nextRevision } as T,
+          expiresAt: undefined,
+        });
+        return true;
+      }
+      const storedValue = entry.value as { revision?: number } | null;
+      const stored =
+        storedValue !== null && typeof storedValue === "object"
+          ? (storedValue.revision ?? 0)
+          : 0;
+      if (stored !== expectedRevision) return false;
       await this.storage.set(COLLECTIONS.CACHE, key, {
-        value,
-        revision: nextRevision,
+        ...entry,
+        value: { ...(value as object), revision: nextRevision } as T,
       });
       return true;
-    }
-    if (entry.expiresAt && Date.now() > entry.expiresAt) {
-      await this.storage.delete(COLLECTIONS.CACHE, key);
-      if (expectedRevision !== null) return false;
-      await this.storage.set(COLLECTIONS.CACHE, key, {
-        value,
-        revision: nextRevision,
-      });
-      return true;
-    }
-    const stored = entry.revision ?? 0;
-    if (stored !== expectedRevision) return false;
-    await this.storage.set(COLLECTIONS.CACHE, key, {
-      ...entry,
-      value,
-      revision: nextRevision,
     });
-    return true;
   }
 
   // ── Task CRUD ─────────────────────────────────────────────────────────
