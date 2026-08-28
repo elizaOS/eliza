@@ -804,7 +804,7 @@ function TrajectoriesViewForAuthority({
                 )}
                 aria-label="Trajectory history"
               >
-                <div className="flex min-h-11 shrink-0 items-center justify-between gap-3 px-1">
+                <div className="flex min-h-11 shrink-0 items-center justify-between gap-3 px-4">
                   <div className="min-w-0">
                     <h2 className="text-[15px] font-semibold text-[color:var(--settings-foreground)]">
                       Activity
