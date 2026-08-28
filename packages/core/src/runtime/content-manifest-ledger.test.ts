@@ -340,6 +340,123 @@ describe("publishManifestLedger / loadManifestLedger", () => {
     ).toThrow(/exceeds the configured byte bound even alone/);
   });
 
+  // ── R3 follow-ups: deterministic idempotency + revision normalization ──
+
+  it("idempotency survives a clock advance between identical publications", async () => {
+    const store = new MemoryStore();
+    const manifest = makeManifest(6);
+    const first = await publishManifestLedger(store, LEDGER, manifest, {
+      maxEntriesPerShard: 3,
+    });
+    // Deterministic delay: createdAt differs by construction once the
+    // clock advances even 1ms; a real sleep is flaky, so fake the clock by
+    // publishing a THIRD manifest built with a later-derived entries list —
+    // instead, directly verify the invariant: republish identical content
+    // after forcing a different createdAt path (content digest must win).
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const second = await publishManifestLedger(store, LEDGER, manifest, {
+      maxEntriesPerShard: 3,
+    });
+    // Same content => idempotent: revision unchanged, same head returned.
+    expect(second.revision).toBe(first.revision);
+    expect(second.contentSha256).toBe(first.contentSha256);
+    // And the ledger still loads with full integrity.
+    const loaded = await loadManifestLedger(store, LEDGER);
+    expect(loaded.entries).toHaveLength(6);
+  });
+
+  it("CAS-loser reread recognizes an identical-content winner after a clock advance", async () => {
+    const store = new MemoryStore();
+    const manifest = makeManifest(6);
+    await publishManifestLedger(store, LEDGER, manifest, {
+      maxEntriesPerShard: 3,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    // Racing writer that missed the head on its first read (clock has
+    // advanced; winner's chain hash differs from ours, but the CONTENT
+    // digest matches — the loser must still return idempotently).
+    const racingStore = Object.create(store);
+    let hideHead = true;
+    racingStore.getCache = async <T>(key: string): Promise<T | undefined> => {
+      if (hideHead && key === manifestHeadKey(LEDGER)) {
+        hideHead = false;
+        return undefined;
+      }
+      return store.getCache<T>(key);
+    };
+    const head = await publishManifestLedger(racingStore, LEDGER, manifest, {
+      maxEntriesPerShard: 3,
+    });
+    expect(head.revision).toBe(0);
+  });
+
+  it("containment: entry-level revision change is rejected (revision only on entry)", async () => {
+    const base = makeManifest(4);
+    // Revision carried ONLY at entry level (reference.revision absent) —
+    // a valid representation the validator accepts.
+    const atEntry = (i: number, rev: string | undefined) => ({
+      ...base.contentRefs[i],
+      reference: { ...base.contentRefs[i].reference, revision: undefined },
+      ...(rev === undefined ? {} : { revision: rev }),
+    });
+    const seeded = validateCompactionContentManifest({
+      schemaVersion: 1,
+      contentRefs: base.contentRefs.map((e, i) =>
+        i === 2 ? atEntry(2, "entry-r1") : e,
+      ),
+      modifiedFiles: [],
+      pendingProcesses: [],
+    });
+    const fresh = new MemoryStore();
+    await publishManifestLedger(fresh, LEDGER, seeded, {
+      maxEntriesPerShard: 3,
+    });
+    const changed = validateCompactionContentManifest({
+      schemaVersion: 1,
+      contentRefs: base.contentRefs.map((e, i) =>
+        i === 2 ? atEntry(2, "entry-r2") : e,
+      ),
+      modifiedFiles: [],
+      pendingProcesses: [],
+    });
+    await expect(
+      publishManifestLedger(fresh, LEDGER, changed, { maxEntriesPerShard: 3 }),
+    ).rejects.toThrow(/omits prior authorized entries/);
+  });
+
+  it("containment: entry-level revision LOSS is rejected (revision only on entry)", async () => {
+    const base = makeManifest(4);
+    const atEntry = (i: number, rev: string | undefined) => ({
+      ...base.contentRefs[i],
+      reference: { ...base.contentRefs[i].reference, revision: undefined },
+      ...(rev === undefined ? {} : { revision: rev }),
+    });
+    const seeded = validateCompactionContentManifest({
+      schemaVersion: 1,
+      contentRefs: base.contentRefs.map((e, i) =>
+        i === 2 ? atEntry(2, "entry-r1") : e,
+      ),
+      modifiedFiles: [],
+      pendingProcesses: [],
+    });
+    const fresh = new MemoryStore();
+    await publishManifestLedger(fresh, LEDGER, seeded, {
+      maxEntriesPerShard: 3,
+    });
+    // Replacement drops the entry-level revision entirely.
+    const dropped = validateCompactionContentManifest({
+      schemaVersion: 1,
+      contentRefs: base.contentRefs.map((e, i) =>
+        i === 2 ? atEntry(2, undefined) : e,
+      ),
+      modifiedFiles: [],
+      pendingProcesses: [],
+    });
+    await expect(
+      publishManifestLedger(fresh, LEDGER, dropped, { maxEntriesPerShard: 3 }),
+    ).rejects.toThrow(/omits prior authorized entries/);
+  });
+
   // ── R2 follow-ups: containment semantics + createdAt binding ──
 
   it("containment: growing one entry's ranges passes", async () => {
