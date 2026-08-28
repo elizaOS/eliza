@@ -104,7 +104,10 @@ export async function getWalletKey(
           const keypair = Keypair.fromSecretKey(secretKey);
           return { publicKey: keypair.publicKey };
         } catch {
-          // Invalid format, will generate new keypair below
+          // Invalid format — fail loudly rather than silently minting a
+          // replacement wallet: read-only lookups must never mint a secret
+          // as a side effect (cf. getExistingSolanaPublicKey).
+          throw new Error("Invalid private key format");
         }
       }
     }
