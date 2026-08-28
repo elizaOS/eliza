@@ -57,12 +57,15 @@ describe("<SlashCommandMenu> closed-state three-state degrade (#12784)", () => {
   it("renders loading text in the fixed wallpaper white ladder, never tone-inverse black", () => {
     // The loading card rides the near-black wallpaper overlay; its old
     // tone="inverse" resolved to black-on-black and rendered the row
-    // invisible (story-gate blank-render for the Loading story).
+    // invisible (story-gate blank-render for the Loading story). The white
+    // ladder is owned by the atom's visualStyle paint channel via semantic
+    // wallpaper-overlay variables, not a painted text-* class.
     render(
       <SlashCommandMenu state={closedState()} onPick={() => {}} loading />,
     );
     const card = screen.getByTestId("slash-menu-loading");
-    expect(card.className).toContain("text-white");
+    expect(card.style.color).toBe("var(--txt-wallpaper-overlay)");
+    expect(card.style.borderColor).toBe("var(--border-wallpaper-overlay)");
     expect(card.className).not.toContain("text-inverse-foreground");
   });
 
