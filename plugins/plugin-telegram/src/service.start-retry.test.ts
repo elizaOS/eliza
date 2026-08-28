@@ -371,7 +371,9 @@ describe("TelegramService startup wiring", () => {
         eventRegistration.mock.calls.length +
         2,
     );
-    expect(eventRegistration).toHaveBeenCalledTimes(3);
+    // message, message_reaction, callback_query, and my_chat_member (the
+    // bot's own membership-status delivery contract).
+    expect(eventRegistration).toHaveBeenCalledTimes(4);
     expect(handleMessage).toHaveBeenCalledTimes(1);
     expect(process.listenerCount("SIGINT") - sigintBefore).toBe(1);
     expect(process.listenerCount("SIGTERM") - sigtermBefore).toBe(1);

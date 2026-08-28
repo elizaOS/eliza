@@ -1534,4 +1534,156 @@ describe("telegram membership authority vertical (real PGlite)", () => {
       );
     });
   }, 120_000);
+
+  it("end-to-end through the my_chat_member delivery path: kick tombstones admission, backlogged evidence stays denied, re-add + fresh evidence restores it", async () => {
+    // This regression drives TelegramService.handleMyChatMemberUpdate — the
+    // poller's actual dispatch entry for the bot's own status updates — over
+    // the REAL authority + SqlMembershipService, pinning the security
+    // property the update delivery must provide (issue #23101 review: a
+    // kick/re-add cycle must not leave pre-removal evidence authorizing).
+    const { authority, harness, getChatMember } = await bootMembershipHarness();
+    const entityId = await import("@elizaos/plugin-telegram").then((m) =>
+      m.resolveTelegramRuntimeEntityId(
+        harness.runtime,
+        "default",
+        String(MEMBER_TG_ID),
+      ),
+    );
+    await ensurePrincipal(harness, entityId);
+    const runtimeMap = { worldId: null, roomId: null, entityId };
+
+    // Pre-removal membership: the member is admitted.
+    await authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+      state: "active",
+      reason: "joined",
+      messageId: 1,
+      telegramUserId: String(MEMBER_TG_ID),
+      runtime: runtimeMap,
+      observedAt: new Date(Date.now() - 10_000).toISOString(),
+    });
+    const before = await authority.authorize({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+    });
+    expect(before.decision).toBe("allowed");
+
+    // Drive the service-level dispatch exactly as the registered
+    // bot.on("my_chat_member") handler does for a kick update.
+    const service = Object.create(
+      (await import("@elizaos/plugin-telegram")).TelegramService.prototype,
+    ) as unknown as {
+      runtime: unknown;
+      defaultAccountId: string;
+      membershipGates: Map<string, Promise<unknown>>;
+      handleMyChatMemberUpdate: (
+        update: unknown,
+        accountId?: string,
+      ) => Promise<void>;
+    };
+    service.runtime = harness.runtime;
+    service.defaultAccountId = "default";
+    service.membershipGates = new Map([
+      ["default", Promise.resolve({ authority, botTelegramUserId: "900001" })],
+    ]);
+    await service.handleMyChatMemberUpdate({
+      chat: { id: CHAT_ID, type: "supergroup" },
+      from: { id: 42, is_bot: false, first_name: "Admin" },
+      date: Math.floor(Date.now() / 1000),
+      old_chat_member: {
+        status: "member",
+        user: { id: 900_001, is_bot: true },
+      },
+      new_chat_member: {
+        status: "kicked",
+        user: { id: 900_001, is_bot: true },
+      },
+    });
+
+    // Post-kick admission is denied even though the pre-removal evidence
+    // is still within its validity window.
+    const afterKick = await authority.authorize({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+    });
+    expect(afterKick.decision, "kick must tombstone admission").toBe("denied");
+
+    // A backlogged join redelivery (observed AFTER the removal) must not
+    // re-authorize the pre-removal member.
+    await authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+      state: "active",
+      reason: "joined",
+      messageId: 2,
+      telegramUserId: String(MEMBER_TG_ID),
+      runtime: runtimeMap,
+      observedAt: new Date().toISOString(),
+    });
+    const afterBacklog = await authority.authorize({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+    });
+    expect(
+      afterBacklog.decision,
+      "backlogged evidence cannot restore a bot-removed scope",
+    ).toBe("denied");
+
+    // Re-add through the same delivery path clears the tombstone...
+    await service.handleMyChatMemberUpdate({
+      chat: { id: CHAT_ID, type: "supergroup" },
+      from: { id: 42, is_bot: false, first_name: "Admin" },
+      date: Math.floor(Date.now() / 1000),
+      old_chat_member: {
+        status: "kicked",
+        user: { id: 900_001, is_bot: true },
+      },
+      new_chat_member: {
+        status: "member",
+        user: { id: 900_001, is_bot: true },
+      },
+    });
+
+    // ...but the re-add alone does NOT restore admission: the persisted
+    // scope health is still unavailable, so the pre-removal evidence must
+    // keep failing closed until FRESH evidence lands.
+    const afterReaddBeforeFresh = await authority.authorize({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+    });
+    expect(
+      afterReaddBeforeFresh.decision,
+      "re-add alone must not restore admission — fresh evidence is required",
+    ).toBe("denied");
+
+    // ...and FRESH evidence (stamped after the re-add) restores admission.
+    await authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+      state: "active",
+      reason: "joined",
+      messageId: 3,
+      telegramUserId: String(MEMBER_TG_ID),
+      runtime: runtimeMap,
+      observedAt: new Date().toISOString(),
+    });
+    const afterReadd = await authority.authorize({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+    });
+    expect(
+      afterReadd.decision,
+      "after re-add + fresh evidence, admission restores",
+    ).toBe("allowed");
+    expect(getChatMember).not.toHaveBeenCalled();
+  }, 120_000);
 });

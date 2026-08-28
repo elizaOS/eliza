@@ -43,6 +43,7 @@ import type {
   Chat,
   ChatMemberAdministrator,
   ChatMemberOwner,
+  ChatMemberUpdated,
   User,
 } from "telegraf/types";
 import {
@@ -61,7 +62,10 @@ import { TELEGRAM_SERVICE_NAME } from "./constants";
 import { checkTelegramDmAccess, resolveTelegramDmPolicy } from "./dm-policy";
 import { resolveTelegramRuntimeEntityId } from "./identity";
 import type { TelegramMembershipReason } from "./membership";
-import { telegramMembershipScope } from "./membership";
+import {
+  telegramMembershipScope,
+  telegramStatusToMembership,
+} from "./membership";
 import {
   createTelegramMembershipGate,
   type TelegramMembershipGate,
@@ -1345,7 +1349,16 @@ export class TelegramService extends Service {
           .launch(
             {
               dropPendingUpdates: false,
-              allowedUpdates: ["message", "message_reaction", "callback_query"],
+              // my_chat_member MUST be listed: it is Telegram's only update
+              // type for the bot's own chat-member status, and both the
+              // bot-removal tombstone and the re-add clear in membership.ts
+              // depend on it being delivered.
+              allowedUpdates: [
+                "message",
+                "message_reaction",
+                "callback_query",
+                "my_chat_member",
+              ],
             },
             () => {
               connectedAt = Date.now();
@@ -1647,6 +1660,36 @@ export class TelegramService extends Service {
             error: error instanceof Error ? error.message : String(error),
           },
           "Error handling callback query",
+        );
+      }
+    });
+
+    // Bot's own chat-member status transitions (kick/leave/re-add). This is
+    // the authoritative Telegram update for the bot's membership: the message
+    // path's new_chat_members/left_chat_member fallbacks do not fire while
+    // polling (a kicked bot stops receiving the chat's messages entirely), so
+    // without this handler the bot-removal tombstone in the membership
+    // authority would never be written and the scope's stale evidence would
+    // keep authorizing members of a chat the bot can no longer observe.
+    bot?.on("my_chat_member", async (ctx) => {
+      try {
+        const token = state?.account.botToken ?? this.botToken;
+        if (token) {
+          markTelegramPollerUpdate(token, bot);
+        }
+        await this.handleMyChatMemberUpdate(
+          ctx.update.my_chat_member,
+          accountId,
+        );
+      } catch (error) {
+        logger.error(
+          {
+            src: "plugin:telegram",
+            agentId: this.runtime.agentId,
+            accountId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Error handling my_chat_member update",
         );
       }
     });
@@ -2154,6 +2197,85 @@ export class TelegramService extends Service {
         };
         await this.runtime.updateEntity(existingEntity);
       }
+    }
+  }
+
+  /**
+   * Applies the bot's own chat-member status transition from a
+   * `my_chat_member` update — Telegram's designated (and, while polling,
+   * only reliable) signal that the bot was kicked, left, or was re-added to a
+   * chat. Kicked/left tombstones the scope (fail-closed admission for the
+   * whole chat, exactly like the `left_chat_member` message path); a re-add
+   * clears the tombstone so fresh evidence can re-establish authority. The
+   * status mapping reuses `telegramStatusToMembership` so a restricted bot
+   * with `is_member: false` is treated as removed, not present.
+   *
+   * @private
+   */
+  private async handleMyChatMemberUpdate(
+    update: ChatMemberUpdated | undefined,
+    accountId = this.defaultAccountId,
+  ): Promise<void> {
+    // Every failure in this method must land in the fail-closed degradation
+    // below — never in a caller that only logs — so the entire body sits
+    // inside one try. getMembershipGate itself cannot reject (it catches and
+    // resolves null), and a null gate is the documented legacy
+    // no-authority-service mode, not a failure; both properties are pinned
+    // by service.my-chat-member.test.ts.
+    try {
+      if (!update?.chat || !update.new_chat_member) {
+        return;
+      }
+      const gate = await this.getMembershipGate(accountId);
+      if (!gate) {
+        return;
+      }
+      const botId = update.new_chat_member.user.id.toString();
+      if (botId !== gate.botTelegramUserId) {
+        return;
+      }
+      const chatId = update.chat.id.toString();
+      const chatRoomKey = this.membershipChatRoomKey(chatId, accountId);
+      const membership = telegramStatusToMembership(update.new_chat_member);
+      const previous = telegramStatusToMembership(update.old_chat_member);
+      if (membership.state === "revoked") {
+        // Same fail-closed contract as the message-path bot removal: degrade
+        // the scope so admission for the whole chat fails closed. Repeated
+        // revoked transitions are idempotent.
+        await gate.authority.markScopeUnavailable({
+          chatId,
+          chatRoomKey,
+          reason: "bot_removed",
+        });
+        return;
+      }
+      // The bot is (again) a member of this chat. Only a revoked→present
+      // TRANSITION is a re-add: Telegram also emits my_chat_member for
+      // present→present changes (administrator-rights edits, restricted
+      // metadata), and clearing the tombstone / setting the re-add watermark
+      // on those would spuriously invalidate in-flight valid evidence.
+      // A present→present update must be a no-op.
+      if (previous.state === "revoked") {
+        gate.authority.clearScopeRemoval({ chatId, chatRoomKey });
+      }
+    } catch (error) {
+      // error-policy:J2 The tombstone/clear could not be applied: the scope
+      // may still authorize on stale evidence. Mark the admission gate
+      // broken so every group admission fails closed rather than continuing
+      // on an un-tombstoned scope; the my_chat_member handler's own catch
+      // only logs, so the degradation must happen here.
+      (
+        this.getAccountState(accountId)?.messageManager ?? this.messageManager
+      )?.markMembershipGateBroken();
+      this.membershipGateFailures.add(accountId);
+      this.membershipGates.delete(accountId);
+      this.runtime.reportError("telegram:membership-scope-health", error, {
+        chatId: update?.chat?.id?.toString() ?? "unknown",
+        accountId,
+        reason: "bot_removed",
+        source: "my_chat_member",
+        degraded: "gate-broken",
+      });
     }
   }
 
