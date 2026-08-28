@@ -664,6 +664,7 @@ export function AutomationsFeed({
   const feedContent = (
     <ShellViewAgentSurface viewId="automations">
       <FramedPage
+        gutterOwner="framed-page"
         data-chat-clearance-aware="true"
         data-testid="automations-layout"
       >

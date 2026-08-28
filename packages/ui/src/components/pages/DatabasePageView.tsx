@@ -87,7 +87,7 @@ export function DatabasePageView({
   }
   return (
     <ShellViewAgentSurface viewId="database">
-      <FramedPage>
+      <FramedPage gutterOwner="framed-page">
         <FramedPageHeader title="Databases" actions={contentHeader} />
         <FramedPageNavigation>{leftNav}</FramedPageNavigation>
         <FramedPageBody scroll="view" padded={false}>

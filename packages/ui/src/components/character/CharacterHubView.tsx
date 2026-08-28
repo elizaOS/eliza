@@ -225,7 +225,7 @@ export function CharacterHubView({
   );
 
   return (
-    <FramedPage>
+    <FramedPage gutterOwner="framed-page">
       {pageChrome}
       <FramedPageBody scroll="page" data-testid="character-editor-view">
         <div className="flex min-w-0 flex-col pt-1">

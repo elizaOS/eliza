@@ -722,15 +722,13 @@ export function RuntimeView({
             <DetailSkeleton className="min-h-[24rem]" />
           ) : !snapshot ? (
             <PagePanel.Empty
-              variant="panel"
-              className="min-h-[24rem]"
+              className="min-h-[24rem] [@media(max-height:480px)]:min-h-[9rem] [@media(max-height:480px)]:py-3"
               description={t("runtimeview.loadingDescription")}
               title={t("runtimeview.noSnapshotAvailable")}
             />
           ) : !snapshot.runtimeAvailable ? (
             <PagePanel.Empty
-              variant="panel"
-              className="min-h-[24rem] border-warning/25 bg-warning/10 text-warning"
+              className="min-h-[24rem] text-warning [@media(max-height:480px)]:min-h-[9rem] [@media(max-height:480px)]:py-3"
               description={t("runtimeview.runtimePendingDescription")}
               title={t("runtimeview.AgentRuntimeIsNot")}
             />

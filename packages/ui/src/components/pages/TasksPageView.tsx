@@ -167,7 +167,7 @@ export function TasksPageView() {
   );
   return (
     <ShellViewAgentSurface viewId="tasks">
-      <FramedPage data-testid="tasks-view">
+      <FramedPage gutterOwner="framed-page" data-testid="tasks-view">
         <FramedPageHeader title="Projects" />
         <FramedPageNavigation>{segmentControl}</FramedPageNavigation>
         <FramedPageBody scroll="view" padded={false} className="device-layout">

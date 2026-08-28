@@ -294,7 +294,7 @@ function LogsViewBody() {
   return (
     <div className="flex h-full flex-col gap-3" data-testid="logs-view">
       {/* Filters row — filters left, count beside the title */}
-      <PagePanel variant="surface" className="space-y-3">
+      <PagePanel variant="section" className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <span className="text-xs text-muted tabular-nums">
             {filteredLogs.length}
@@ -412,7 +412,7 @@ function LogsViewBody() {
 
       {/* Log entries — full remaining height */}
       <PagePanel
-        variant="surface"
+        variant="section"
         data-testid="logs-entry-panel"
         className="flex-1 min-h-0 overflow-y-auto font-mono text-sm"
         {...logPanelShiftIntentProps}
@@ -423,9 +423,9 @@ function LogsViewBody() {
             rows={LOG_INITIAL_SKELETON_ROWS}
             rowClassName={LOG_INITIAL_SKELETON_ROW_CLASS}
           />
-        ) : filteredLogs.length === 0 ? (
+        ) : filteredLogs.length === 0 && !logLoadError ? (
           <PagePanel.Empty
-            className="flex-1"
+            className="flex-1 [@media(max-height:480px)]:min-h-[9rem] [@media(max-height:480px)]:gap-2 [@media(max-height:480px)]:p-3"
             icon={<ScrollText className="size-6" aria-hidden />}
             title={
               hasActiveFilters
