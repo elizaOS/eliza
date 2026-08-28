@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
-// Drives the FocusView GUI data wrapper through the rendered DOM. Asserts each
-// SelfControlStatus phase (loading, error,
-// unavailable, permission, active, empty), the clickable Retry / Release
-// agent-instrumented controls, the early-release mutation + refetch, and the
-// release-gating when a block can't be unblocked early.
+/**
+ * Exercises the Focus GUI wrapper through its rendered DOM with deterministic
+ * status fetchers. The suite covers every visible phase plus the assistant
+ * handoff, retry, release, refetch, and release-gating behavior.
+ */
 
 import {
   cleanup,
@@ -17,12 +17,23 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { SelfControlStatus } from "../../services/website-blocker/index.js";
 
+const sendChatMessage = vi.hoisted(() => vi.fn());
+
 // `@elizaos/ui` is the giant renderer barrel; the wrapper only touches
 // `client.getBaseUrl()` / `client.stopWebsiteBlock()` on its default fetcher
 // seam, which every test overrides via the injection props.
 vi.mock("@elizaos/ui", () => ({
   client: {
     getBaseUrl: () => "http://test.local",
+    sendChatMessage,
+    stopWebsiteBlock: vi.fn(async () => ({ success: true, removed: true })),
+  },
+}));
+
+vi.mock("@elizaos/ui/api", () => ({
+  client: {
+    getBaseUrl: () => "http://test.local",
+    sendChatMessage,
     stopWebsiteBlock: vi.fn(async () => ({ success: true, removed: true })),
   },
 }));
@@ -121,13 +132,13 @@ describe("FocusView — phases", () => {
 
   it("renders the empty state when available, inactive, nothing blocked", async () => {
     render(<FocusView fetchStatus={async () => EMPTY_STATUS} />);
-    await screen.findByText("Idle");
+    await screen.findByText("No focus session active");
   });
 
   it("renders the active state with times, count, list, and Release control", async () => {
     render(<FocusView fetchStatus={async () => ACTIVE_STATUS} />);
     await screen.findByText(/Focus active/i);
-    expect(screen.getByText(/Mode: subdomain/i)).toBeTruthy();
+    expect(screen.getByText(/subdomain matching/i)).toBeTruthy();
     expect(screen.getByText("x.com")).toBeTruthy();
     expect(screen.getByText("news.google.com")).toBeTruthy();
     expect(agent("release")).toBeTruthy();
@@ -135,6 +146,17 @@ describe("FocusView — phases", () => {
 });
 
 describe("FocusView — actions", () => {
+  it("routes a new focus session through the assistant", async () => {
+    render(<FocusView fetchStatus={async () => EMPTY_STATUS} />);
+
+    await screen.findByText("No focus session active");
+    fireEvent.click(agent("start"));
+
+    expect(sendChatMessage).toHaveBeenCalledWith(
+      "Start a focus session for me.",
+    );
+  });
+
   it("Retry refetches after an error", async () => {
     let attempt = 0;
     const fetchStatus = vi.fn(async () => {
@@ -147,7 +169,7 @@ describe("FocusView — actions", () => {
     await screen.findByText("network down");
     fireEvent.click(agent("retry"));
 
-    await screen.findByText("Idle");
+    await screen.findByText("No focus session active");
     expect(fetchStatus).toHaveBeenCalledTimes(2);
   });
 
@@ -165,7 +187,7 @@ describe("FocusView — actions", () => {
     fireEvent.click(agent("release"));
 
     await waitFor(() => expect(releaseBlock).toHaveBeenCalledTimes(1));
-    await screen.findByText("Idle");
+    await screen.findByText("No focus session active");
     expect(fetchStatus).toHaveBeenCalledTimes(2);
   });
 

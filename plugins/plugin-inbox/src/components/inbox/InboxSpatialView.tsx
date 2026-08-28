@@ -146,7 +146,11 @@ export function InboxSpatialView({
 
   return (
     <Card gap={2} padding={1}>
-      <InboxChannelFilters filters={snapshot.filters} dispatch={dispatch} />
+      {snapshot.status === "loading" ||
+      snapshot.hasConnectedChannels ||
+      snapshot.items.length > 0 ? (
+        <InboxChannelFilters filters={snapshot.filters} dispatch={dispatch} />
+      ) : null}
       {snapshot.status !== "loading" && snapshot.status !== "error" ? (
         <InboxDegradedBanner
           degradedSources={snapshot.degradedSources}
@@ -208,15 +212,19 @@ function InboxChannelFilters({
 }) {
   return (
     <HStack gap={1} wrap align="center" shrink={0}>
+      <Text style="caption" tone="muted" shrink={0}>
+        Show
+      </Text>
       {filters.map((filter) => (
         <Button
           key={filter.channel}
-          variant={filter.active ? "solid" : "outline"}
-          tone={filter.active ? "primary" : "default"}
+          variant={filter.active ? "solid" : "ghost"}
+          tone={filter.active ? "primary" : "muted"}
+          pressed={filter.active}
           agent={`inbox-channel-${filter.channel}`}
           onPress={dispatch(`channel:${filter.channel}`)}
         >
-          {filter.active ? `* ${filter.label}` : filter.label}
+          {filter.label}
         </Button>
       ))}
     </HStack>
@@ -286,16 +294,24 @@ function InboxEmptyBody({
   if (noChannels) {
     return (
       <VStack gap={1}>
-        <Text bold>None</Text>
-        <Button width="100%" agent="connect" onPress={dispatch("connect")}>
-          Connect
-        </Button>
+        <Text bold>No inboxes connected</Text>
+        <Text tone="muted" style="caption">
+          Connect a messaging channel to review conversations here.
+        </Text>
+        <HStack gap={1}>
+          <Button agent="connect" onPress={dispatch("connect")}>
+            Connect channel
+          </Button>
+        </HStack>
       </VStack>
     );
   }
   return (
     <VStack gap={1}>
       <Text bold>Inbox zero</Text>
+      <Text tone="muted" style="caption">
+        Nothing needs your attention right now.
+      </Text>
     </VStack>
   );
 }
@@ -358,13 +374,13 @@ function InboxChannelGroupBody({
                 </Text>
               </VStack>
               <Button
-                variant="outline"
-                tone="default"
-                agent={`open:${item.id}`}
+                variant="ghost"
+                tone="muted"
+                agent={{ id: `open:${item.id}`, label: `Open ${title}` }}
                 onPress={dispatch(`open:${item.id}`)}
                 shrink={0}
               >
-                Open
+                ›
               </Button>
             </HStack>
           );

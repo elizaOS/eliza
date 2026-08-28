@@ -10,7 +10,15 @@
  * without pulling browser-only runtime imports into the presentational layer.
  */
 
-import { Button, Card, Divider, HStack, List, Text } from "@elizaos/ui/spatial";
+import {
+  Button,
+  Card,
+  Divider,
+  HStack,
+  List,
+  Text,
+  VStack,
+} from "@elizaos/ui/spatial";
 
 /** Which screen of the website-blocking state machine to draw. */
 export type FocusPhase =
@@ -50,7 +58,7 @@ export interface FocusSnapshot {
 
 export interface FocusSpatialViewProps {
   snapshot: FocusSnapshot;
-  /** Dispatch by agent id: `retry` (reload after error), `release` (end block). */
+  /** Dispatch by agent id: `retry`, `start` (chat handoff), `release` (end block). */
   onAction?: (action: string) => void;
 }
 
@@ -129,9 +137,18 @@ function FocusBody({
       return <FocusActiveBody snapshot={snapshot} dispatch={dispatch} />;
     default:
       return (
-        <Text tone="muted" style="caption">
-          Idle
-        </Text>
+        <VStack gap={1}>
+          <Text bold>No focus session active</Text>
+          <Text tone="muted" style="caption">
+            Start a session to temporarily block distracting websites. Eliza
+            keeps them unavailable until the session ends.
+          </Text>
+          <HStack gap={1}>
+            <Button agent="start" onPress={dispatch("start")}>
+              Start focus
+            </Button>
+          </HStack>
+        </VStack>
       );
   }
 }
@@ -151,8 +168,8 @@ function FocusActiveBody({
       {canRelease ? (
         <HStack gap={1}>
           <Button
+            variant="outline"
             tone="danger"
-            grow={1}
             disabled={snapshot.releasing === true}
             agent="release"
             onPress={dispatch("release")}
@@ -162,13 +179,17 @@ function FocusActiveBody({
         </HStack>
       ) : null}
 
-      <Text tone="muted" style="caption">
-        Started {snapshot.startedAt ?? "unknown"}
-        {snapshot.endsAt ? ` - ends ${snapshot.endsAt}` : " - no end time"}
-      </Text>
-      <Text tone="muted" style="caption">
-        Mode: {snapshot.matchMode ?? "exact"}
-      </Text>
+      <VStack gap={0}>
+        <Text tone="muted" style="caption">
+          Started {snapshot.startedAt ?? "unknown"}
+        </Text>
+        <Text tone="muted" style="caption">
+          {snapshot.endsAt ? `Ends ${snapshot.endsAt}` : "No end time"}
+        </Text>
+        <Text tone="muted" style="caption">
+          {snapshot.matchMode ?? "exact"} matching
+        </Text>
+      </VStack>
 
       <Divider label={`${sites.length} blocked`} />
       {sites.length === 0 ? (
@@ -180,7 +201,7 @@ function FocusActiveBody({
           {sites.map((site) => (
             <HStack key={site} gap={1} align="center">
               <Text tone="muted" wrap={false}>
-                x
+                •
               </Text>
               <Text grow={1} wrap={false}>
                 {site}

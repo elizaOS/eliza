@@ -118,6 +118,12 @@ function agent(agentId: string): HTMLElement {
   return el as HTMLElement;
 }
 
+async function selectFilter(agentId: string, option: string): Promise<void> {
+  HTMLElement.prototype.scrollIntoView = vi.fn();
+  fireEvent.keyDown(agent(agentId), { key: "Enter" });
+  fireEvent.click(await screen.findByRole("option", { name: option }));
+}
+
 afterEach(() => {
   cleanup();
   sendChatMessage.mockClear();
@@ -238,7 +244,7 @@ describe("FinancesView — states", () => {
         })}
       />,
     );
-    await screen.findByText("None");
+    await screen.findByText("No accounts connected");
     expect(agent("connect")).toBeTruthy();
     // No fabricated balance surfaces in the disconnected state.
     expect(screen.queryByText("$2,765.50")).toBeNull();
@@ -252,7 +258,7 @@ describe("FinancesView — states", () => {
         })}
       />,
     );
-    await screen.findByText("None");
+    await screen.findByText("No accounts connected");
     fireEvent.click(agent("connect"));
     expect(sendChatMessage).toHaveBeenCalledTimes(1);
   });
@@ -422,12 +428,12 @@ describe("FinancesView — filters", () => {
     await screen.findByText("Latte");
     expect(screen.getByText("Old purchase")).toBeTruthy();
 
-    fireEvent.click(agent("filter-window-7"));
+    await selectFilter("finance-period-filter", "7d");
     expect(screen.getByText("Latte")).toBeTruthy();
     expect(screen.queryByText("Old purchase")).toBeNull();
     expect(screen.getByText("Transactions (1 of 2)")).toBeTruthy();
 
-    fireEvent.click(agent("filter-clear"));
+    await selectFilter("finance-period-filter", "All");
     expect(screen.getByText("Old purchase")).toBeTruthy();
   });
 
@@ -439,14 +445,14 @@ describe("FinancesView — filters", () => {
     );
     await screen.findByText("Latte");
 
-    fireEvent.click(agent("filter-category-dining"));
+    await selectFilter("finance-category-filter", "dining");
     expect(screen.queryByText("Old purchase")).toBeNull();
     expect(screen.getByText("Latte")).toBeTruthy();
 
     // Stack the 7d window on top: dining + old window would still match Latte;
     // toggle to the shopping category instead so nothing matches.
-    fireEvent.click(agent("filter-category-shopping"));
-    fireEvent.click(agent("filter-window-7"));
+    await selectFilter("finance-category-filter", "shopping");
+    await selectFilter("finance-period-filter", "7d");
     expect(screen.getByText("No transactions match the filter")).toBeTruthy();
     expect(screen.getByText("Transactions (0 of 2)")).toBeTruthy();
   });

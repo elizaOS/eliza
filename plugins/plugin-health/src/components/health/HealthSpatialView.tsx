@@ -15,7 +15,14 @@
  * or computes — it displays label/value rows and dispatches actions.
  */
 
-import { Button, Card, Escape, HStack, Text } from "@elizaos/ui/spatial";
+import {
+  Button,
+  Card,
+  Escape,
+  HStack,
+  Text,
+  VStack,
+} from "@elizaos/ui/spatial";
 import type { CSSProperties } from "react";
 
 /** A single label/value summary row, already projected to display strings. */
@@ -106,7 +113,10 @@ function WindowRange({
   dispatch: (action: string) => () => void;
 }) {
   return (
-    <HStack gap={1} align="center" padding={{ left: 12 }}>
+    <HStack gap={1} align="center">
+      <Text style="caption" tone="muted" shrink={0}>
+        Range
+      </Text>
       {WINDOW_OPTIONS.map((days) => {
         const selected = days === windowDays;
         return (
@@ -114,7 +124,8 @@ function WindowRange({
             key={days}
             agent={`window-${days}`}
             tone={selected ? "primary" : "default"}
-            variant={selected ? "solid" : "outline"}
+            variant={selected ? "solid" : "ghost"}
+            pressed={selected}
             onPress={dispatch(`window:${days}`)}
           >
             {`${days}d`}
@@ -148,7 +159,14 @@ function HealthErrorBody({
 }
 
 function HealthEmptyBody() {
-  return <Text bold>None</Text>;
+  return (
+    <VStack gap={1}>
+      <Text bold>No sleep data yet</Text>
+      <Text tone="muted" style="caption">
+        Connect a health source or record sleep to see patterns here.
+      </Text>
+    </VStack>
+  );
 }
 
 function HealthReadyBody({ snapshot }: { snapshot: HealthSnapshot }) {
@@ -193,15 +211,17 @@ const proactiveLineStyle: CSSProperties = {
 const readyGridStyle: CSSProperties = {
   alignItems: "start",
   display: "grid",
-  gap: "0.5rem",
-  gridTemplateColumns: "repeat(auto-fit, minmax(min(12rem, 100%), 1fr))",
+  columnGap: "2rem",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(20rem, 100%), 1fr))",
   minWidth: 0,
+  rowGap: "1.25rem",
 };
 
 const domSectionStyle: CSSProperties = {
+  borderTop: "1px solid var(--border, rgba(255, 255, 255, 0.12))",
   boxSizing: "border-box",
   minWidth: 0,
-  padding: "0.25rem 0.125rem",
+  padding: "0.75rem 0 0",
 };
 
 const domSectionTitleStyle: CSSProperties = {
@@ -209,12 +229,12 @@ const domSectionTitleStyle: CSSProperties = {
   fontSize: "0.72rem",
   fontWeight: 600,
   lineHeight: 1.15,
-  margin: "0 0 0.25rem",
+  margin: "0 0 0.625rem",
 };
 
 const definitionListStyle: CSSProperties = {
   display: "grid",
-  gap: "0.16rem",
+  gap: "0.4rem",
   margin: 0,
   minWidth: 0,
 };

@@ -9,8 +9,7 @@ export type ViewCase = {
   shellPill: "expected" | "suppressed";
   /**
    * Minimum normalized `<main>` innerText length that counts as "loaded".
-   * Views whose designed keyless empty state is a single short word (the
-   * focus view renders just "Idle") override the
+   * Views with intentionally concise keyless empty states can override the
    * default so the load heuristic cannot false-negative on them.
    */
   minVisibleTextLength: number;

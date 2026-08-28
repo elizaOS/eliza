@@ -198,7 +198,7 @@ describe("InboxView — empty states", () => {
         fetchers={makeFetchers({ fetchInbox: async () => emptyInbox(false) })}
       />,
     );
-    await screen.findByText("None");
+    await screen.findByText("No inboxes connected");
     expect(agent("connect")).toBeTruthy();
   });
 
@@ -208,7 +208,7 @@ describe("InboxView — empty states", () => {
         fetchers={makeFetchers({ fetchInbox: async () => emptyInbox(false) })}
       />,
     );
-    await screen.findByText("None");
+    await screen.findByText("No inboxes connected");
     fireEvent.click(agent("connect"));
     expect(sendChatMessage).toHaveBeenCalledTimes(1);
   });
@@ -220,7 +220,7 @@ describe("InboxView — empty states", () => {
       />,
     );
     await screen.findByText(/Inbox zero/i);
-    expect(screen.queryByText("None")).toBeNull();
+    expect(screen.queryByText("No inboxes connected")).toBeNull();
   });
 });
 
@@ -302,7 +302,7 @@ describe("InboxView — degraded connector", () => {
       />,
     );
     // Not-connected is the connect empty state, not a degradation warning.
-    await screen.findByText("None");
+    await screen.findByText("No inboxes connected");
     expect(screen.queryByText("Gmail unavailable")).toBeNull();
     expect(agent("connect")).toBeTruthy();
   });

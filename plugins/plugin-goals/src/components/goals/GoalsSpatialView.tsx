@@ -16,7 +16,16 @@
  * goal" chat affordance on the empty state.
  */
 
-import { Button, Card, HStack, List, Text, VStack } from "@elizaos/ui/spatial";
+import {
+  Button,
+  Card,
+  Divider,
+  Field,
+  HStack,
+  List,
+  Text,
+  VStack,
+} from "@elizaos/ui/spatial";
 import {
   GOAL_STATUSES,
   type GoalItem,
@@ -168,7 +177,10 @@ function GoalsReadyBody({
   if (snapshot.goals.length === 0) {
     return (
       <>
-        <Text bold>None</Text>
+        <Text bold>No goals yet</Text>
+        <Text tone="muted" style="caption">
+          Set an outcome and Eliza will help you keep it moving.
+        </Text>
         <HStack gap={1}>
           <Button agent="new" onPress={dispatch("new")}>
             Set a goal
@@ -196,19 +208,22 @@ function GoalsReadyBody({
         </Text>
       ) : null}
 
-      <HStack gap={1} wrap>
-        {GOAL_STATUSES.map((status) => (
-          <Button
-            key={status}
-            variant={active.has(status) ? "solid" : "outline"}
-            tone={active.has(status) ? "primary" : "default"}
-            agent={`filter:${status}`}
-            onPress={dispatch(`filter:${status}`)}
-          >
-            {STATUS_LABELS[status]}
-          </Button>
-        ))}
-      </HStack>
+      <Field
+        kind="select"
+        label="Status"
+        value={active.size === 1 ? STATUS_LABELS[[...active][0]] : "All goals"}
+        options={[
+          "All goals",
+          ...GOAL_STATUSES.map((status) => STATUS_LABELS[status]),
+        ]}
+        agent="goal-status-filter"
+        onChange={(label) => {
+          const selected = GOAL_STATUSES.find(
+            (status) => STATUS_LABELS[status] === label,
+          );
+          dispatch(`filter-set:${selected ?? "all"}`)();
+        }}
+      />
 
       {groups.length === 0 ? (
         <Text tone="muted" align="center" style="caption">
@@ -230,9 +245,9 @@ function GoalsStatusGroup({
 }) {
   return (
     <>
-      <Text style="caption" tone="muted">
-        {STATUS_LABELS[group.status]} ({group.goals.length})
-      </Text>
+      <Divider
+        label={`${STATUS_LABELS[group.status]} (${group.goals.length})`}
+      />
       <List gap={0}>
         {group.goals.map((goal) => (
           <GoalRow key={goal.id} goal={goal} />

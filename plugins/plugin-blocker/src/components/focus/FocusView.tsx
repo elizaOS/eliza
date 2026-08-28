@@ -63,6 +63,12 @@ function defaultReleaseBlock(): Promise<unknown> {
   return client.stopWebsiteBlock();
 }
 
+function requestFocusSession(): void {
+  (client as { sendChatMessage?: (text: string) => void }).sendChatMessage?.(
+    "Start a focus session for me.",
+  );
+}
+
 type LoadState =
   | { kind: "loading" }
   | { kind: "error"; message: string }
@@ -181,6 +187,9 @@ export function FocusView({
           return;
         case "release":
           release();
+          return;
+        case "start":
+          requestFocusSession();
           return;
       }
     },

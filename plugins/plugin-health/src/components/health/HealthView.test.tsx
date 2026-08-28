@@ -160,14 +160,14 @@ describe("HealthView (fetch-driven)", () => {
     await screen.findByText("network down");
     fireEvent.click(agent("retry"));
 
-    await screen.findByText("None");
+    await screen.findByText("No sleep data yet");
     expect(fetchHistory).toHaveBeenCalledTimes(2);
   });
 
   it("renders the empty (connect-a-source) state when no episodes exist", async () => {
     render(<HealthView fetchers={makeFetchers(emptyHistory())} />);
 
-    await screen.findByText("None");
+    await screen.findByText("No sleep data yet");
     expect(screen.queryByText("14d empty")).toBeNull();
   });
 

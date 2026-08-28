@@ -581,6 +581,10 @@ export function FinancesView(props: FinancesViewProps = {}): ReactNode {
         setFilters(NO_FILTERS);
         return;
       }
+      if (action === "filter-category-all") {
+        setFilters((current) => ({ ...current, category: null }));
+        return;
+      }
       if (action.startsWith("filter-window-")) {
         const days = Number(action.slice("filter-window-".length));
         setFilters((prev) => ({
