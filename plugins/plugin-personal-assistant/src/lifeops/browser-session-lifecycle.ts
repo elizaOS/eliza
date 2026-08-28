@@ -156,9 +156,7 @@ function normalizeIntervention(
     channel: stringOrNull(value.channel),
     requestedAt,
     resolvedAt:
-      status === "resolved"
-        ? (stringOrNull(value.resolvedAt) ?? now)
-        : stringOrNull(value.resolvedAt),
+      status === "resolved" ? (stringOrNull(value.resolvedAt) ?? now) : null,
     detail: stringOrNull(value.detail),
   };
 }
