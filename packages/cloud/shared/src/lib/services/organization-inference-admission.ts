@@ -34,6 +34,7 @@ import {
 import {
   acquireInferenceAdmissionLease,
   createInferenceAdmissionBalanceFence,
+  fenceInferenceAdmissionLeaseForSettlement,
   InferenceAdmissionGateUnavailableError,
   type InferenceAdmissionLease,
   InferenceAdmissionLeaseRejectedError,
@@ -267,6 +268,10 @@ function attachInferenceAdmissionLease(
       }
       if (selected.kind === "unknown" || selected.actualCostUsd > 0) {
         await markProviderDispatched();
+        await fenceInferenceAdmissionLeaseForSettlement(
+          lease,
+          selected.kind === "actual" ? selected.actualCostUsd : lease.estimatedCostUsd,
+        );
       }
       const reconciliation =
         selected.kind === "actual"
