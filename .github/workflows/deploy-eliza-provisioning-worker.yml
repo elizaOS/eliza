@@ -849,6 +849,15 @@ jobs:
             append_environment_setting \
               "$ENV_REPLACEMENTS" "$ENV_ASSIGNMENTS" \
               PROVISIONING_JOB_LANES agent
+            # The legacy orphan reconciler classifies rowless/wrong-node
+            # containers from mutable database observations and can issue a
+            # direct `docker rm -f`. Until its authority includes the live
+            # generation's immutable container id + attempt, deploys must
+            # actively disarm it. This constant overwrites stale hand-edited
+            # host state instead of preserving ORPHAN_RECONCILER_ENABLED=1.
+            append_environment_setting \
+              "$ENV_REPLACEMENTS" "$ENV_ASSIGNMENTS" \
+              ORPHAN_RECONCILER_ENABLED 0
             # Headscale is the required dedicated-agent ingress. Bridge-host
             # fallback was a legacy escape hatch; if it remains hand-set on the
             # box, docker-sandbox-provider deliberately disables VPN injection
@@ -1168,6 +1177,12 @@ jobs:
               exit 1
             fi
             echo "Verified required provisioning-host setting names; values were not printed."
+
+            if ! require_environment_setting_equals \
+              "$ENV_FILE" ORPHAN_RECONCILER_ENABLED 0; then
+              echo "::error::Provisioning host orphan reconciler must remain disarmed"
+              exit 1
+            fi
 
             case "$WARM_POOL_ENABLED" in
               true|false) ;;
@@ -1492,6 +1507,13 @@ jobs:
                   "$NODE_BIN" "$ENV_SERIALIZER" equals \
                   "$ENV_FILE" WARM_POOL_ENABLED; then
               echo "::error::Provisioning host warm-pool drift. Values were not printed."
+              exit 1
+            fi
+            if ! printf '%s' 0 \
+              | sudo /usr/bin/env -i PATH="$SAFE_CHILD_PATH" \
+                  "$NODE_BIN" "$ENV_SERIALIZER" equals \
+                  "$ENV_FILE" ORPHAN_RECONCILER_ENABLED; then
+              echo "::error::Provisioning host orphan reconciler is not disarmed."
               exit 1
             fi
             # The worker logs to journald via systemd's stdout/stderr capture.

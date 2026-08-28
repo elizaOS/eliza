@@ -36,6 +36,7 @@ const FIELD_ENCRYPTION_KEY = "SECRETS_MASTER_KEY";
 const BRIDGE_FALLBACK_KEY = "AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK";
 const AGENT_BASE_DOMAIN_KEY = "ELIZA_CLOUD_AGENT_BASE_DOMAIN";
 const CONTAINERS_SSH_KEY = "CONTAINERS_SSH_KEY";
+const ORPHAN_RECONCILER_KEY = "ORPHAN_RECONCILER_ENABLED";
 const DELETION_AUTHORITY_SECRET_NAMES = [
   "AGENT_BACKUP_R2_ACCESS_KEY_ID",
   "AGENT_BACKUP_R2_SECRET_ACCESS_KEY",
@@ -390,6 +391,12 @@ describe("provisioning deployment EnvironmentFile wiring", () => {
     expect(workflow).toContain(
       'DATABASE_SSL_NO_VERIFY="$DATABASE_SSL_NO_VERIFY"',
     );
+    expect(workflow).toContain(
+      "Provisioning host orphan reconciler must remain disarmed",
+    );
+    expect(workflow).toContain(
+      "Provisioning host orphan reconciler is not disarmed.",
+    );
   });
 
   it("pins privileged helper execution to an exact-SHA root-owned copy", () => {
@@ -598,10 +605,11 @@ describe("atomic workflow block (executed verbatim)", () => {
     );
   });
 
-  it("removes bridge fallback, pins the lane, and strips backup authority from the shared file", () => {
+  it("removes bridge fallback, pins safe daemon gates, and strips backup authority from the shared file", () => {
     const result = runAtomicReconcile({
       seedHostFile:
         `${BRIDGE_FALLBACK_KEY}=1\nOTHER=keep\n` +
+        `${ORPHAN_RECONCILER_KEY}=1\n` +
         "AGENT_BACKUP_R2_SECRET_ACCESS_KEY=must-disappear\n" +
         "AGENT_BACKUP_OPERATION_LEASE_MS=must-disappear\n",
       seedBackupFile:
@@ -612,6 +620,12 @@ describe("atomic workflow block (executed verbatim)", () => {
     expect(
       lookupSystemdEnvironmentValue(result.host, "PROVISIONING_JOB_LANES"),
     ).toBe("agent");
+    expect(
+      lookupSystemdEnvironmentValue(result.host, ORPHAN_RECONCILER_KEY),
+    ).toBe("0");
+    expect(
+      result.host.match(new RegExp(`^${ORPHAN_RECONCILER_KEY}=`, "gm")),
+    ).toHaveLength(1);
     expect(result.host).toContain("OTHER=keep\n");
     expect(result.host).not.toContain("AGENT_BACKUP_R2_SECRET_ACCESS_KEY");
     expect(result.host).not.toContain("AGENT_BACKUP_OPERATION_LEASE_MS");

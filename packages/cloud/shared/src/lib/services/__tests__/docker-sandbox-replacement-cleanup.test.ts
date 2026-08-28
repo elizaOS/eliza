@@ -2445,6 +2445,33 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     expect(deleteVpn).toHaveBeenCalledWith("1447");
   });
 
+  test("a stale immutable id cannot resolve or delete its same-name successor", async () => {
+    const legacyLookup = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(NODE);
+    const { commands } = stubSsh(async (command) => {
+      if (command.startsWith("docker inspect")) {
+        throw new Error(
+          `[docker-ssh] Command exited with code 1 on ${NODE.hostname}: [stderr] Error: No such object: ${CONTAINER_ID}`,
+        );
+      }
+      return "";
+    });
+
+    await expect(
+      replacementProvider().stopOnSpecificNodeForReplacement(
+        NODE.node_id,
+        CONTAINER_NAME,
+        null,
+        legacyReplacementIdentity({ vpnNodeName: null, previousVpnNodeId: null }),
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(legacyLookup).toHaveBeenCalledWith(NODE.node_id);
+    expect(commands).toHaveLength(1);
+    expect(commands[0]).toContain(CONTAINER_ID);
+    expect(commands[0]).not.toContain(`docker stop`);
+    expect(commands[0]).not.toContain(`docker rm`);
+  });
+
   test("keeps an exact id-less fence unresolved when Docker reports absence", async () => {
     stubNodeLookup();
     const { commands } = stubSsh(async () => {

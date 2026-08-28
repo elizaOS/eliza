@@ -93,7 +93,7 @@ import type { CreditReconciliationResult, CreditReservation } from "./credits";
 import { withDefaultAgentCharacter } from "./default-agent-character";
 import { holdsCountedNodeSlot, isDeletionContinuation } from "./docker-node-workload-queries";
 import type { DockerSandboxMetadata } from "./docker-sandbox-provider";
-import { shellQuote } from "./docker-sandbox-utils";
+import { getContainerName, shellQuote } from "./docker-sandbox-utils";
 import { DockerSSHClient } from "./docker-ssh";
 import {
   AGENT_PERSONAL_CUTOVER_KEY,
@@ -133,6 +133,7 @@ import {
   type SandboxProvider,
 } from "./sandbox-provider";
 import {
+  assertSandboxReplacementAttemptId,
   isContainerBackedExecutionTier,
   type SandboxDeletionStopOutcome,
   SandboxReplacementCleanupUnresolvedError,
@@ -4445,10 +4446,7 @@ export class ElizaSandboxService {
             await this.retirePersistedReplacementCleanup(rec.id, rec.organization_id);
           } else {
             const provider = await this.getProvider();
-            if (!provider.stopForReplacement) {
-              throw new Error("Sandbox provider cannot prove failed provision absent");
-            }
-            await provider.stopForReplacement(handle.sandboxId);
+            await this.retireFailedProvisionHandle(provider, handle, rec.id);
           }
         } catch (stopErr) {
           // error-policy:J1 provisioning boundary translation — failed ghost
@@ -12058,6 +12056,90 @@ export class ElizaSandboxService {
       vpnRegistrationStartedAt,
       allocationCounted: metadata.allocationCounted,
     };
+  }
+
+  /**
+   * Retire the exact container returned by a failed provision tail.
+   *
+   * Docker container names are deterministic per agent and therefore mutable
+   * across attempts. A delayed cleanup must never resolve that name again: a
+   * healthy successor may already own it. Preserve the returned immutable
+   * Docker id + attempt label all the way into the provider's inspect-before-
+   * stop fence. Non-Docker providers retain their historical sandbox-id path.
+   */
+  private async retireFailedProvisionHandle(
+    provider: SandboxProvider,
+    handle: SandboxHandle,
+    expectedAgentId: string,
+  ): Promise<void> {
+    if (!isDockerBackedMetadata(handle.metadata)) {
+      if (!provider.stopForReplacement) {
+        throw new Error("Sandbox provider cannot prove failed provision absent");
+      }
+      await provider.stopForReplacement(handle.sandboxId);
+      return;
+    }
+
+    const metadata = isDockerSandboxMetadata(handle.metadata) ? handle.metadata : undefined;
+    if (!metadata) {
+      throw new Error("Failed Docker provision has incomplete placement metadata");
+    }
+    const locator = this.replacementLocatorFromHandle(handle);
+    if (
+      metadata.agentId !== expectedAgentId ||
+      locator.sandboxId !== locator.containerName ||
+      locator.containerName !== getContainerName(expectedAgentId)
+    ) {
+      throw new Error("Failed Docker provision cleanup identity does not match its agent");
+    }
+    assertSandboxReplacementAttemptId(locator.replacementAttemptId);
+    if (!locator.containerId || !/^[a-f0-9]{12,64}$/.test(locator.containerId)) {
+      throw new Error("Failed Docker provision cleanup has no immutable container id");
+    }
+    if (!provider.stopOnSpecificNodeForReplacement) {
+      throw new Error("Sandbox provider cannot retire an exact failed Docker provision");
+    }
+
+    // Legacy replacement callbacks freeze the immutable container/attempt but
+    // may carry only part of the newer node-record authority tuple. Supplying a
+    // partial tuple would correctly fail the provider's exact-authority gate,
+    // so omit it unless the handle explicitly declares the v1 cleanup protocol.
+    const exactNodeAuthority =
+      metadata.replacementSecretCleanupVersion === 1
+        ? {
+            nodeRecordId: metadata.nodeRecordId,
+            nodeHostname: metadata.hostname,
+            nodeSshPort: metadata.nodeSshPort,
+            nodeSshUser: metadata.nodeSshUser,
+            nodeHostKeyFingerprint: metadata.nodeHostKeyFingerprint,
+            replacementSecretCleanupVersion: 1 as const,
+          }
+        : {};
+    if (
+      metadata.replacementSecretCleanupVersion === 1 &&
+      (!metadata.nodeRecordId ||
+        !metadata.hostname ||
+        typeof metadata.nodeSshPort !== "number" ||
+        !metadata.nodeSshUser ||
+        !metadata.nodeHostKeyFingerprint)
+    ) {
+      throw new Error("Failed Docker provision cleanup has incomplete exact node authority");
+    }
+
+    await provider.stopOnSpecificNodeForReplacement(
+      locator.nodeId,
+      locator.containerName,
+      locator.vpnNodeId,
+      {
+        ...exactNodeAuthority,
+        replacementAttemptId: locator.replacementAttemptId,
+        containerId: locator.containerId,
+        vpnNodeName: locator.vpnNodeName,
+        previousVpnNodeId: locator.previousVpnNodeId,
+        vpnRegistrationStartedAt: locator.vpnRegistrationStartedAt?.toISOString() ?? null,
+        allocationCounted: locator.allocationCounted,
+      },
+    );
   }
 
   private replacementLocatorFromCleanupError(

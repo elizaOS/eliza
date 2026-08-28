@@ -2229,9 +2229,9 @@ describe("ElizaSandboxService sleep", () => {
 // backed sandbox to `running` when the provider handle carries no durable
 // node_id (metadata shape drift, or an empty-string nodeId). Such a row would be
 // an unattributable orphan the node recount undercounts (#15378) and the orphan
-// reconciler provably cannot reap (allHaveNodeAndStamp skips live null-node
-// rows). The guard must fail LOUD + NON-retryable, and the container must be
-// torn down per the standard post-create-failure convention.
+// reconciler cannot safely reap without immutable generation authority. The
+// guard must fail LOUD and leave an incomplete Docker handle non-destructive:
+// resolving its mutable name could remove a healthy successor.
 describe("ElizaSandboxService provision — node attribution guard (C1b)", () => {
   function dedicatedProvisionTarget(): AgentSandbox {
     // A dedicated agent mid-provision: DB already ready (so provision() skips
@@ -2330,7 +2330,7 @@ describe("ElizaSandboxService provision — node attribution guard (C1b)", () =>
   }
 
   test.skipIf(process.platform === "win32")(
-    "docker-backed handle with EMPTY nodeId: no running+null row, non-retryable, container stopped",
+    "docker-backed handle with EMPTY nodeId: no running+null row and no mutable-name teardown",
     async () => {
       const { result, create, stop, updateSpy } = await runProvisionWithMetadata({
         // Docker-backed by provider tag, but the strict guard fails (empty
@@ -2345,31 +2345,28 @@ describe("ElizaSandboxService provision — node attribution guard (C1b)", () =>
 
       // Provision fails (not a fabricated success).
       expect(result.success).toBe(false);
+      expect(result.retryable).toBe(true);
+      expect(result.error).toContain("Replacement cleanup is still pending");
 
       // NEVER minted a running row.
       for (const call of updateSpy.mock.calls) {
         expect((call[1] as { status?: string }).status).not.toBe("running");
       }
 
-      // markError ran with the distinguishable, non-retryable prefix.
+      // Incomplete cleanup identity remains retryable and never marks the row
+      // terminal: doing so would discard the only chance to reconcile safely.
       const errorUpdate = updateSpy.mock.calls.find(
         (c) => (c[1] as { status?: string }).status === "error",
       );
-      expect(errorUpdate).toBeDefined();
-      if (!errorUpdate) {
-        throw new Error("Expected the empty-node attribution error update");
-      }
-      expect((errorUpdate[1] as { error_message?: string }).error_message).toContain(
-        "provision attribution guard:",
-      );
+      expect(errorUpdate).toBeUndefined();
 
-      // Non-retryable: the guard message matches none of the port-collision
-      // retry patterns, so create() ran exactly once (no retry loop).
+      // This invocation does not create again. The returned retryable result is
+      // for later cleanup reconciliation with better identity, not an in-loop
+      // attempt that could collide on the deterministic name.
       expect(create).toHaveBeenCalledTimes(1);
 
-      // Container torn down per the post-create-failure convention (not leaked,
-      // not left invisible-but-alive).
-      expect(stop).toHaveBeenCalledTimes(1);
+      // Fail closed: this legacy method resolves a reusable Docker name.
+      expect(stop).not.toHaveBeenCalled();
     },
   );
 
@@ -2384,21 +2381,17 @@ describe("ElizaSandboxService provision — node attribution guard (C1b)", () =>
       });
 
       expect(result.success).toBe(false);
+      expect(result.retryable).toBe(true);
+      expect(result.error).toContain("Replacement cleanup is still pending");
       for (const call of updateSpy.mock.calls) {
         expect((call[1] as { status?: string }).status).not.toBe("running");
       }
       const errorUpdate = updateSpy.mock.calls.find(
         (c) => (c[1] as { status?: string }).status === "error",
       );
-      expect(errorUpdate).toBeDefined();
-      if (!errorUpdate) {
-        throw new Error("Expected the incomplete-metadata attribution error update");
-      }
-      expect((errorUpdate[1] as { error_message?: string }).error_message).toContain(
-        "provision attribution guard:",
-      );
+      expect(errorUpdate).toBeUndefined();
       expect(create).toHaveBeenCalledTimes(1);
-      expect(stop).toHaveBeenCalledTimes(1);
+      expect(stop).not.toHaveBeenCalled();
     },
   );
 
@@ -7318,6 +7311,22 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
     };
   }
 
+  function exactFailedProvisionHandle(): SandboxHandle {
+    const containerName = `agent-${AGENT}`;
+    return {
+      ...providerHandle(),
+      sandboxId: containerName,
+      metadata: {
+        ...providerHandle().metadata,
+        containerName,
+        volumePath: `/var/lib/eliza/${containerName}`,
+        replacementAttemptId: "55555555-5555-4555-8555-555555555555",
+        containerId: "b".repeat(64),
+        allocationCounted: true,
+      },
+    };
+  }
+
   test("(1) lock lost but row already running+reachable → reuse, provider.create NEVER called", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const runningRow: AgentSandbox = {
@@ -8008,7 +8017,7 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
     }
   });
 
-  test("(9) restore failure after the early running-write still ends in markError", async () => {
+  test("(9) post-adoption failure retires the exact Docker generation, never its reusable name", async () => {
     // 'running' must never stick on a failed provision: a restore failure takes
     // the same catch as before (ghost cleanup → markError), so the early
     // reachability flip cannot leave a broken agent advertised as running.
@@ -8070,13 +8079,17 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       svc as unknown as { pushState: () => Promise<unknown> },
       "pushState",
     ).mockRejectedValue(new Error("State restore failed: HTTP 500"));
-    const stop = mock(async () => {});
+    const stopForReplacement = mock(async () => {});
+    const stopOnSpecificNodeForReplacement = mock(async () => {});
+    const failedHandle = exactFailedProvisionHandle();
     const getProviderSpy = spyOn(
       svc as unknown as { getProvider: () => Promise<SandboxProvider> },
       "getProvider",
     ).mockResolvedValue({
-      create: mock(async () => providerHandle()),
-      stop,
+      create: mock(async () => failedHandle),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement,
+      stopOnSpecificNodeForReplacement,
       checkHealth: async () => true,
     } as SandboxProvider);
     try {
@@ -8085,8 +8098,20 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       expect(res.error).toBe("State restore failed: HTTP 500");
       expect(runningWrites).toBe(1);
       expect(markErrorSpy).toHaveBeenCalledTimes(1);
-      // Ghost cleanup still stops the container whose restore failed.
-      expect(stop).toHaveBeenCalledWith("sandbox-blue-1");
+      // The row already adopted and cleared its temporary cleanup fence before
+      // restore failed. The catch must retain the returned immutable handle;
+      // resolving the deterministic name here could kill a healthy retry.
+      expect(stopForReplacement).not.toHaveBeenCalled();
+      expect(stopOnSpecificNodeForReplacement).toHaveBeenCalledWith(
+        "node-2",
+        `agent-${AGENT}`,
+        null,
+        expect.objectContaining({
+          replacementAttemptId: "55555555-5555-4555-8555-555555555555",
+          containerId: "b".repeat(64),
+          allocationCounted: true,
+        }),
+      );
       // A transient 5xx must NOT be classified as unrecoverable: the snapshot
       // chain stays intact for the retry that may restore it.
       expect(pruneSpy).not.toHaveBeenCalled();
@@ -8304,12 +8329,20 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       svc as unknown as { ensureRuntimeAgentStarted: () => Promise<unknown> },
       "ensureRuntimeAgentStarted",
     ).mockResolvedValue(null);
-    const create = mock(async () => providerHandle());
-    const stop = mock(async () => {});
+    const failedHandle = exactFailedProvisionHandle();
+    const create = mock(async () => failedHandle);
+    const stopForReplacement = mock(async () => {});
+    const stopOnSpecificNodeForReplacement = mock(async () => {});
     const getProviderSpy = spyOn(
       svc as unknown as { getProvider: () => Promise<SandboxProvider> },
       "getProvider",
-    ).mockResolvedValue({ create, stop, checkHealth: async () => true } as SandboxProvider);
+    ).mockResolvedValue({
+      create,
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement,
+      stopOnSpecificNodeForReplacement,
+      checkHealth: async () => true,
+    } as SandboxProvider);
     try {
       const res = await svc.provision(AGENT, ORG);
       // A transient failure fails the provision (the resume job retries), rather
@@ -8321,8 +8354,17 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       expect(pruneSpy).not.toHaveBeenCalled();
       const logged = errorLogSpy.mock.calls.map((c) => String(c[0])).join("\n");
       expect(logged).not.toContain("Unrecoverable snapshot");
-      // Ghost cleanup still stops the just-created container.
-      expect(stop).toHaveBeenCalledTimes(1);
+      // Cleanup retains the exact generation and never resolves its reusable name.
+      expect(stopForReplacement).not.toHaveBeenCalled();
+      expect(stopOnSpecificNodeForReplacement).toHaveBeenCalledWith(
+        "node-2",
+        `agent-${AGENT}`,
+        null,
+        expect.objectContaining({
+          replacementAttemptId: "55555555-5555-4555-8555-555555555555",
+          containerId: "b".repeat(64),
+        }),
+      );
     } finally {
       findSpy.mockRestore();
       findByIdSpy.mockRestore();
@@ -8729,8 +8771,9 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
     try {
       const res = await svc.provision(AGENT, ORG);
       expect(res.success).toBe(false);
-      expect((res as { retryable?: boolean }).retryable).not.toBe(true);
-      expect(stop).toHaveBeenCalledTimes(1);
+      expect((res as { retryable?: boolean }).retryable).toBe(true);
+      expect(res.error).toContain("Replacement cleanup is still pending");
+      expect(stop).not.toHaveBeenCalled();
       expect(
         updateSpy.mock.calls.some(
           ([, data]) => (data as { sandbox_id?: string }).sandbox_id === "sandbox-blue-1",
@@ -8739,13 +8782,7 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       const errorWrite = updateSpy.mock.calls.find(
         ([, data]) => (data as { status?: string }).status === "error",
       );
-      expect(errorWrite).toBeDefined();
-      if (!errorWrite) {
-        throw new Error("Expected the failed-provision error write");
-      }
-      expect(String((errorWrite[1] as { error_message?: string }).error_message)).toContain(
-        "provision attribution guard:",
-      );
+      expect(errorWrite).toBeUndefined();
     } finally {
       findSpy.mockRestore();
       lockSpy.mockRestore();
@@ -8884,8 +8921,10 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       const res = await svc.provision(AGENT, ORG);
 
       expect(res.success).toBe(false);
+      expect((res as { retryable?: boolean }).retryable).toBe(true);
+      expect(res.error).toContain("Replacement cleanup is still pending");
       expect(create).not.toHaveBeenCalled();
-      expect(stop).toHaveBeenCalledTimes(1);
+      expect(stop).not.toHaveBeenCalled();
       expect(healthInputs).toEqual([
         {
           sandboxId: "sandbox-blue-1",
@@ -8906,13 +8945,7 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       const errorWrite = updateSpy.mock.calls.find(
         ([, data]) => (data as { status?: string }).status === "error",
       );
-      expect(errorWrite).toBeDefined();
-      if (!errorWrite) {
-        throw new Error("Expected the invalid-adoption error write");
-      }
-      expect(String((errorWrite[1] as { error_message?: string }).error_message)).toContain(
-        "provision attribution guard:",
-      );
+      expect(errorWrite).toBeUndefined();
     } finally {
       findSpy.mockRestore();
       lockSpy.mockRestore();
